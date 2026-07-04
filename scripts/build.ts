@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-const root = '/Users/morphism/Documents/git/backlog-campaign';
+const root = path.resolve(import.meta.dirname, '..');
 const srcDir = path.join(root, 'src');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
 const version = pkg.version;
