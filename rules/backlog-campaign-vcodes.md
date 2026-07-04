@@ -1,0 +1,37 @@
+---
+description: V-code enforcement table for backlog campaign agents — restate in every worker prompt
+globs:
+alwaysApply: false
+---
+
+# Backlog Campaign V-Codes
+
+Restate this table in every implementation and review agent prompt. Do not paste
+longer definitions (token cost, drift). Persist every finding to
+`findings-ledger.json`.
+
+| Code | Rule | Severity |
+|------|------|----------|
+| V-SOLID-01/03 | Single responsibility; substitutability | BLOCK |
+| V-DRY-01 | No >10-line duplication | BLOCK |
+| V-DRY-02/03 | 3–10-line duplication; repeated magic values | WARN |
+| V-KISS-01 / V-YAGNI-01 | No over-abstraction; no speculative features | BLOCK |
+| V-KISS-03 | No empty scaffolding | WARN |
+| V-YAGNI-03 | No single-consumer abstractions | WARN |
+| V-DRY-04 | No copy-paste templates with trivial renames | WARN |
+| V-TEST-01/02 | All new logic tested, tests FIRST | BLOCK |
+| V-TEST-05 | Meaningful assertions (not existence checks) | WARN |
+| V-SEC-01/02 | No injection; no auth bypass | BLOCK |
+| V-SEC-03/04 | No hardcoded secrets; no XSS | BLOCK |
+| V-SEC-06 | Every security finding carries a concrete attack scenario | BLOCK |
+| V-INT-02 | NEVER reimplement an existing utility | BLOCK |
+| V-INT-01/03/04 | Follow conventions at touchpoints; no third variant of a solved concern | WARN |
+| V-FIX-01 | Fixes address the root cause, documented — never the symptom | BLOCK |
+| V-PARETO-01 | No >3× complexity for marginal gain | WARN |
+| V-DOC-02/04 | Public-API and DESIGN.md updates in the same PR | BLOCK |
+| V-CONFIG-01 | New config/env keys follow established naming, registered | WARN |
+| V-SCOPE-01/02 | No refactoring untouched code; no scope creep | WARN |
+
+**BLOCK** = must fix before merge (or escalate to user with justification).
+**WARN** = fix or document deferral in PR and ledger.
+Reviewers return findings as V-codes with file:line.
