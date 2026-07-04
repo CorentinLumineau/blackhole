@@ -7,7 +7,7 @@ Mutations to `.backlog-campaign/queue.json` and
 
 | File | Purpose |
 |------|---------|
-| `config.json` | Committed campaign config (template) |
+| `config.json` | Campaign config (see `config-template.md`) |
 | `queue.json` | Issue phase, status, DAG (gitignored) |
 | `findings-ledger.json` | V-code findings (gitignored) |
 | `plans/<issue>.md` | Plan artifacts (gitignored) |

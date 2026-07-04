@@ -54,8 +54,6 @@ const compileContent = (content: string, agentDir: string, rulesPath: string, ta
     res = res.replaceAll('{{AGENT_DIR}}', agentDir);
   }
   res = res.replaceAll('{{VCODES_PATH}}', rulesPath);
-  res = res.replaceAll('{{AGENT_DIR}}/skills/backlog-campaign/references/backlog-campaign-vcodes.md', rulesPath);
-  // skills.sh nested: collapse double-nesting from {{AGENT_DIR}}/skills/backlog-campaign/...
   if (target === 'skills' && agentDir !== '') {
     res = res.replaceAll('skills/backlog-campaign/skills/backlog-campaign/', 'skills/backlog-campaign/');
   }
@@ -143,71 +141,35 @@ compileFolder(
   'skills'
 );
 
-// 3. Compile Target B: Cursor (root-level submodule layout + local .cursor/)
-console.log('Compiling Target B (Cursor Submodule / Claude Plugin root layouts)...');
+// 3. Compile Target B: Cursor (submodule root layout + .cursor/ mirror)
+console.log('Compiling Target B (Cursor)...');
 const rulesList = ['backlog-campaign-protocol.md', 'backlog-campaign-state.md', 'backlog-campaign-vcodes.md'];
-for (const rule of rulesList) {
-  const isVcodesMdc = rule === 'backlog-campaign-vcodes.md';
-  const destName = rule.substring(0, rule.length - 3) + '.mdc';
-  processFile(
-    path.join(srcDir, 'references', rule),
-    path.join(root, 'rules', destName),
-    '.cursor',
-    '.cursor/rules/backlog-campaign-vcodes.mdc',
-    'cursor',
-    isVcodesMdc
-  );
-  processFile(
-    path.join(srcDir, 'references', rule),
-    path.join(root, '.cursor', 'rules', destName),
-    '.cursor',
-    '.cursor/rules/backlog-campaign-vcodes.mdc',
-    'cursor',
-    isVcodesMdc
-  );
-}
-compileFolder(
-  'agents',
-  path.join(root, 'agents'),
-  '.cursor',
-  '.cursor/rules/backlog-campaign-vcodes.mdc',
-  'cursor'
-);
-compileFolder(
-  'agents',
-  path.join(root, '.cursor', 'agents'),
-  '.cursor',
-  '.cursor/rules/backlog-campaign-vcodes.mdc',
-  'cursor'
-);
-processFile(
-  path.join(srcDir, 'SKILL.md'),
-  path.join(root, 'skills', 'backlog-campaign', 'SKILL.md'),
-  '.cursor',
-  '.cursor/rules/backlog-campaign-vcodes.mdc',
-  'cursor'
-);
-processFile(
-  path.join(srcDir, 'SKILL.md'),
-  path.join(root, '.cursor', 'skills', 'backlog-campaign', 'SKILL.md'),
-  '.cursor',
-  '.cursor/rules/backlog-campaign-vcodes.mdc',
-  'cursor'
-);
-compileFolder(
-  'references',
-  path.join(root, 'skills', 'backlog-campaign', 'references'),
-  '.cursor',
-  '.cursor/rules/backlog-campaign-vcodes.mdc',
-  'cursor'
-);
-compileFolder(
-  'references',
-  path.join(root, '.cursor', 'skills', 'backlog-campaign', 'references'),
-  '.cursor',
-  '.cursor/rules/backlog-campaign-vcodes.mdc',
-  'cursor'
-);
+const cursorAgentDir = '.cursor';
+const cursorVcodesPath = '.cursor/rules/backlog-campaign-vcodes.mdc';
+
+const writeCursorRules = (destDir: string) => {
+  for (const rule of rulesList) {
+    const isVcodesMdc = rule === 'backlog-campaign-vcodes.md';
+    const destName = rule.substring(0, rule.length - 3) + '.mdc';
+    processFile(
+      path.join(srcDir, 'references', rule),
+      path.join(destDir, destName),
+      cursorAgentDir,
+      cursorVcodesPath,
+      'cursor',
+      isVcodesMdc
+    );
+  }
+};
+
+writeCursorRules(path.join(root, 'rules'));
+writeCursorRules(path.join(root, '.cursor', 'rules'));
+compileFolder('agents', path.join(root, 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor');
+compileFolder('agents', path.join(root, '.cursor', 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor');
+processFile(path.join(srcDir, 'SKILL.md'), path.join(root, 'skills', 'backlog-campaign', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');
+processFile(path.join(srcDir, 'SKILL.md'), path.join(root, '.cursor', 'skills', 'backlog-campaign', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');
+compileFolder('references', path.join(root, 'skills', 'backlog-campaign', 'references'), cursorAgentDir, cursorVcodesPath, 'cursor');
+compileFolder('references', path.join(root, '.cursor', 'skills', 'backlog-campaign', 'references'), cursorAgentDir, cursorVcodesPath, 'cursor');
 
 // 4. Compile Target C: Claude Project-Level Native (.claude/)
 console.log('Compiling Target C (Claude Project Native)...');
@@ -244,51 +206,24 @@ compileFolder(
 
 // 5. Generate Claude Code Plugin Manifest (.claude-plugin/plugin.json)
 console.log('Generating Claude Code Plugin manifests...');
-const pluginJson = {
-  name: "backlog-campaign",
-  description: "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
-  version: version,
-  author: {
-    name: "backlog-campaign contributors"
-  },
-  license: "Apache-2.0",
-  keywords: [
-    "backlog-campaign",
-    "claude-code",
-    "native",
-    "workflows",
-    "skills"
-  ]
+const pluginMeta = {
+  name: 'backlog-campaign',
+  description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
+  version,
+  author: { name: 'backlog-campaign contributors' },
+  license: 'Apache-2.0',
+  keywords: ['backlog-campaign', 'claude-code', 'native', 'workflows', 'skills'],
 };
 const pluginDir = path.join(root, '.claude-plugin');
 if (!fs.existsSync(pluginDir)) fs.mkdirSync(pluginDir, { recursive: true });
-fs.writeFileSync(path.join(pluginDir, 'plugin.json'), JSON.stringify(pluginJson, null, 2), 'utf-8');
+fs.writeFileSync(path.join(pluginDir, 'plugin.json'), JSON.stringify(pluginMeta, null, 2), 'utf-8');
 
 // 6. Generate Claude Code Marketplace Catalog (marketplace.json)
 const marketplaceJson = {
-  name: "backlog-campaign-marketplace",
-  description: "Backlog Campaign Marketplace",
-  owner: {
-    name: "CorentinLumineau"
-  },
-  plugins: [
-    {
-      name: "backlog-campaign",
-      version: version,
-      source: ".",
-      description: "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
-      author: {
-        name: "backlog-campaign contributors"
-      },
-      keywords: [
-        "backlog-campaign",
-        "claude-code",
-        "native",
-        "workflows",
-        "skills"
-      ]
-    }
-  ]
+  name: 'backlog-campaign-marketplace',
+  description: 'Backlog Campaign Marketplace',
+  owner: { name: 'CorentinLumineau' },
+  plugins: [{ ...pluginMeta, source: '.' }],
 };
 fs.writeFileSync(path.join(root, 'marketplace.json'), JSON.stringify(marketplaceJson, null, 2), 'utf-8');
 

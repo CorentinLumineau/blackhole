@@ -7,19 +7,20 @@
   "plugins": [
     {
       "name": "backlog-campaign",
-      "version": "0.1.0",
-      "source": ".",
       "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
+      "version": "0.1.0",
       "author": {
         "name": "backlog-campaign contributors"
       },
+      "license": "Apache-2.0",
       "keywords": [
         "backlog-campaign",
         "claude-code",
         "native",
         "workflows",
         "skills"
-      ]
+      ],
+      "source": "."
     }
   ]
 }

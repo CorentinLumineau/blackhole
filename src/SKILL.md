@@ -37,7 +37,7 @@ Direct `/backlog-campaign run` or `/goal` in a single session: act as orchestrat
 
 **Native forge sync** — automatic, never AskQuestion to confirm.
 
-1. **Config** — `.backlog-campaign/config.json` (template in repo)
+1. **Config** — `.backlog-campaign/config.json` (from `config-template.md` in this repo)
 2. **State init** — `queue.json`, `findings-ledger.json`, `plans/`
 3. **Validate** — `jq empty` on both JSON files
 4. **Forge sync** — if `auto_sync` true (default): `gh auth status` then [forge-sync.md](references/forge-sync.md). Sandbox: `full_network`.

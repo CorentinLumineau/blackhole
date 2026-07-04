@@ -17,7 +17,7 @@ confirm before syncing.
 | Session resume / handoff | Full sync |
 | Any agent using `queue.json` for scheduling | Sync first if `refreshed_at` older than current turn |
 
-When `config.json` has `auto_sync: false`, skip forge calls (offline only).
+When `.backlog-campaign/config.json` has `auto_sync: false`, skip forge calls (offline only).
 
 **User-visible output:** only report material changes — e.g. `Synced: +2 new
 issues (#333, #334)`, closed issues merged, or drift fixed. No prompt.
