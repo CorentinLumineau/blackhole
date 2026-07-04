@@ -61,14 +61,14 @@ Return a JSON array of findings or an empty array if LGTM:
   {
     "vcode": "V-KISS-03",
     "severity": "BLOCK",
-    "file": "lib/db/index.ts",
+    "file": "src/db/client.ts",
     "line": 42,
     "summary": "Empty catch block in query wrapper"
   },
   {
     "vcode": "V-PARETO-02",
     "severity": "WARN",
-    "file": "lib/components/PortfolioList.tsx",
+    "file": "src/components/IssueTable.tsx",
     "line": 15,
     "summary": "Component scroll performance optimization",
     "gain": 7,
