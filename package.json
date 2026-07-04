@@ -1,6 +1,6 @@
 {
   "name": "backlog-campaign",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
   "scripts": {
     "build": "bun run scripts/build.ts",
