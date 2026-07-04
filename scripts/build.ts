@@ -3,6 +3,8 @@ import * as path from 'path';
 
 const root = '/Users/morphism/Documents/git/backlog-campaign';
 const srcDir = path.join(root, 'src');
+const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
+const version = pkg.version;
 
 const cleanDir = (dirPath: string) => {
   if (fs.existsSync(dirPath)) {
@@ -156,7 +158,7 @@ console.log('Generating Claude Code Plugin manifests...');
 const pluginJson = {
   name: "backlog-campaign",
   description: "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
-  version: "1.0.0",
+  version: version,
   author: {
     name: "backlog-campaign contributors"
   },
@@ -183,7 +185,7 @@ const marketplaceJson = {
   plugins: [
     {
       name: "backlog-campaign",
-      version: "1.0.0",
+      version: version,
       source: ".",
       description: "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
       author: {

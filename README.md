@@ -1,69 +1,69 @@
-# Backlog Campaign — Agent-Agnostic Skill Package
+# Backlog Campaign — Multi-Platform Native Skill & Plugin
 
-An AI agent-agnostic skill package designed to orchestrate a "backlog campaign" until there are zero open issues and PRs in the repository. Compatible with **skills.sh** and a variety of AI coding agents (including Cursor, Antigravity/Gemini, Claude Code, Windsurf, Roo Code, and GitHub Copilot).
+An AI agent-agnostic backlog orchestrator designed to empty the repository issue backlog. Natively integrates with:
+1. **Claude Code (Anthropic)**: Installable as a native CLI plugin via a custom marketplace.
+2. **Cursor**: Pre-configured native Rules (`.cursor/rules/*.mdc`) and Custom Agents (`.cursor/agents/*.md`).
+3. **skills.sh (Generic)**: Installs directly via the `skills.sh` registry.
 
-It automates the issue lifecycle using a strict 5-phase protocol (Handle → Plan → Implement → Review → Loop) and preserves finding ledgers and queues in a project-local, agent-agnostic state directory `.backlog-campaign/`.
+It automates the issue lifecycle using a strict 5-phase protocol (Handle → Plan → Implement → Review → Loop) and preserves findings ledgers and queues in a project-local state directory `.backlog-campaign/`.
 
-## Installation
+---
 
-You can install this skill into any target repository using the standard `skills.sh` registry CLI:
+## 1. Installation Pathways
 
+### Pathway A: Claude Code Native (Anthropic)
+Register this repository as a plugin marketplace and install the plugin natively:
 ```bash
-npx skills add <owner/repo>
+# 1. Register the marketplace
+/plugin marketplace add https://github.com/CorentinLumineau/backlog-campaign
+
+# 2. Install the plugin
+/plugin install backlog-campaign@backlog-campaign-marketplace
 ```
+*For project-specific, non-shared setups, you can alternatively copy the pre-compiled `.claude/` directory into your project root.*
 
-*(Where `<owner/repo>` is the name of your GitHub repository hosting this skill.)*
+### Pathway B: Cursor Native
+Copy or symlink the pre-compiled `.cursor/` directory to the root of your target project:
+*   **Custom Agents**: The coordinator and orchestrator will be immediately available.
+*   **Glob-Scoped Rules**: Cursor will automatically load the V-code quality gates checklist (`.cursor/rules/backlog-campaign-vcodes.mdc`) into the chat context whenever code files (TypeScript, Go, Python, etc.) are opened.
 
-### Step 2: Configure Rules & Agents
-
-Since different AI agents use different mechanisms for loading rules (e.g., `.cursorrules`, `.clauderules`, `.agents/AGENTS.md`), the package includes a helper script `skills.sh` that links the rules and custom agent definitions to your active agent(s):
-
+### Pathway C: Generic Agent / `skills.sh` Registry
+Install directly using the standard `skills.sh` registry CLI:
 ```bash
-# From the root of your target project:
-sh skills/backlog-campaign/skills.sh install
+npx skills add CorentinLumineau/backlog-campaign
 ```
+The files are downloaded to `skills/backlog-campaign/`. Any compatible agent will automatically read `SKILL.md` and load the associated rules from the `references/` directory.
 
-To install using symbolic links (useful for development so updates to the skill are instantly reflected in the agent folders):
-```bash
-sh skills/backlog-campaign/skills.sh install --symlink
-```
+---
 
-To target a specific agent explicitly:
-```bash
-sh skills/backlog-campaign/skills.sh install --agent cursor
-```
+## 2. Usage & Workflow
 
-## Usage
+Once loaded, your AI agent will automatically detect the skill instructions via `SKILL.md` or native rule files and follow the protocol:
 
-Once installed, your AI agent will automatically detect the skill instructions via `SKILL.md` or the injected rule blocks and follow the backlog campaign protocol:
-
-1. **Bootstrap Phase 0**: The agent reads the campaign configuration at `.backlog-campaign/config.json` (created from a template on installation) and reconciles state files (`queue.json` and `findings-ledger.json`).
-2. **Execution loop**: The agent handles, plans, splits, implements, and reviews issues until the backlog is empty.
+1. **Bootstrap Phase 0**: The agent reads the campaign configuration at `.backlog-campaign/config.json` (created from a template) and reconciles state files (`queue.json` and `findings-ledger.json`).
+2. **Execution Loop**: The agent handles, plans, splits, implements, and reviews issues until the backlog is empty.
 3. **Continuous updates**: You can ask your agent for status, sync, or run commands at any time.
 
-### CLI Status Check
+---
 
-You can inspect the installation status of the backlog campaign skill in your project at any time:
+## 3. Development & DRY Compilation Pipeline
 
+To respect DRY (Don't Repeat Yourself) and SOLID design principles, all code, agent prompts, and rules are maintained in a **Single Source of Truth** under the `src/` directory.
+
+The project uses a Bun-based compiler to compile `src/` into the specific formats required by each platform:
 ```bash
-sh skills/backlog-campaign/skills.sh status
+# Run the compiler to build target folders (.cursor/, .claude/, and root files)
+bun run build
 ```
 
-### Uninstallation
+### Source of Truth Layout
+*   `src/SKILL.md`: The base skill entrypoint.
+*   `src/agents/`: Coordinator and Orchestrator agent templates.
+*   `src/references/`: Stage-by-stage manuals and rule specifications (protocol, state mutations, and V-codes).
 
-To cleanly remove all rule injections and agent links from your project:
-
-```bash
-sh skills/backlog-campaign/skills.sh uninstall
-```
-
-*(Note: The runtime campaign state folder `.backlog-campaign/` is preserved during uninstallation to prevent accidental data loss.)*
-
-## Repository Structure
-
-*   `SKILL.md`: Main skill entrypoint for the `skills.sh` registry.
-*   `config.json`: Default campaign configuration template.
-*   `skills.sh`: The helper script to link/copy the rules and agents.
-*   `references/`: Detailed, stage-by-stage manuals for the five lifecycle phases.
-*   `agents/`: Custom instructions for subagents (`backlog-coordinator` and `backlog-orchestrator`).
-*   `rules/`: Core system rules (protocol, state mutations, and V-code enforcement).
+### Build Pipeline Targets
+*   `SKILL.md`, `agents/`, `references/` (root-level): Generated for **skills.sh** (resolves `{{AGENT_DIR}}` -> `skills/backlog-campaign`).
+*   `.cursor/`: Generated for **Cursor** (resolves `{{AGENT_DIR}}` -> `.cursor` and converts rules to `.mdc` format with glob auto-triggers).
+*   `.claude/`: Generated for **Claude Code project local** (resolves `{{AGENT_DIR}}` -> `.claude`).
+*   `.claude-plugin/plugin.json`: Metadata manifest generated for **Claude Code plugin**.
+*   `marketplace.json`: Catalog definition for the Claude Code marketplace.
