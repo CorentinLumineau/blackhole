@@ -11,7 +11,7 @@ Orchestrator-led. Workers: read-only `explore` only.
 - [ ] Triage size label — label alone does not determine split
 - [ ] clarify-gates.md — AskQuestion if ANY ambiguity (all sizes)
 - [ ] issue-splitting.md — split if not one reviewable PR (not only l/xl/epic)
-- [ ] Epic-shaped / size:l/xl → runbook epic orchestration + PO gate
+- [ ] Epic-shaped / size:l/xl → `epic-orchestration.md` runbook + PO gate
 - [ ] queue.json: phase plan, status ready OR blocked (awaiting-user-*)
 ```
 
@@ -27,8 +27,8 @@ vague multi-part body. File children with AC, deps, touch hints.
 
 ## Epic handoff
 
-`size:l` / `size:xl` / epic-shaped → runbook epic section; parent blocked
-until PO sign-off on design + children.
+`size:l` / `size:xl` / epic-shaped → follow `epic-orchestration.md` runbook;
+parent blocked until PO sign-off on design + children.
 
 ## Output
 

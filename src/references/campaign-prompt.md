@@ -32,6 +32,34 @@ Clarify and split (ALL issue sizes):
 <SESSION_HANDOFF if resuming — else omit>
 ```
 
+## PLAN_CONTEXT — convention preamble for worker spawns
+
+When the orchestrator spawns a `backlog-implementer` or `backlog-reviewer`
+worker, it **must prepend** the following block (filled from the issue plan)
+before the worker's main prompt body:
+
+```
+<PLAN_CONTEXT>
+Touch-Paths (authoritative list — V-SCOPE-02):
+{{TOUCH_PATHS}}
+
+Codebase Conventions (from plan § Conventions):
+{{CODEBASE_CONVENTIONS}}
+</PLAN_CONTEXT>
+```
+
+- `TOUCH_PATHS`: the `touch_paths` array from `queue.json` for this issue (one path per line).
+- `CODEBASE_CONVENTIONS`: the `## Codebase Conventions` section verbatim from the plan file
+  (`plans/issue-N.md`). If the section is absent, write `(none declared)`. For
+  early implementer spawns before the plan's Conventions section is written,
+  also use `(none declared)`.
+
+**Not consumed by:** `backlog-planner` (produces the plan), `backlog-synthesizer`
+(aggregates reviewer findings only).
+
+Workers treat `<PLAN_CONTEXT>` as binding. Implementers must not edit files
+outside `Touch-Paths`; reviewers audit against them (`V-SCOPE-02`).
+
 ## Coordinator usage
 
 {{#cursor}}

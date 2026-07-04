@@ -38,6 +38,53 @@ const parseGroundTruth = (): Record<string, number | string> => {
   return out;
 };
 
+// V-TOOLS-01: Deny-list tool policy — no tools: allowlist; correct disallowedTools per role
+const checkAgentToolPolicy = () => {
+  const agentsDir = path.join(srcDir, 'agents');
+  const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md'));
+  const errors: string[] = [];
+
+  const denyMatrix: Record<string, string[] | null> = {
+    'backlog-coordinator.md': ['Write', 'Edit', 'Delete'],
+    'backlog-orchestrator.md': ['Write', 'Edit', 'Delete'],
+    'backlog-planner.md': ['Delete'],
+    'backlog-implementer.md': null,
+    'backlog-reviewer.md': ['Write', 'Edit', 'Delete'],
+    'backlog-synthesizer.md': ['Write', 'Edit', 'Delete'],
+  };
+
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
+    const fm = content.match(/^---\n([\s\S]*?)\n---/);
+    const fmBody = fm ? fm[1] : '';
+
+    if (/^tools:/m.test(fmBody)) {
+      errors.push(`${file}: has tools: allowlist (use deny-list only)`);
+    }
+
+    const expected = denyMatrix[file];
+    if (expected === null) {
+      // implementer: disallowedTools must be absent (full access by design — agent-tools.md SSOT)
+      if (/^disallowedTools:/m.test(fmBody)) {
+        errors.push(`${file}: must NOT have disallowedTools (implementer requires full tool access)`);
+      }
+    } else if (expected) {
+      if (!fmBody.includes('disallowedTools:')) {
+        errors.push(`${file}: missing disallowedTools`);
+      } else {
+        for (const tool of expected) {
+          if (!fmBody.includes(tool)) {
+            errors.push(`${file}: disallowedTools missing ${tool}`);
+          }
+        }
+      }
+    }
+  }
+
+  if (errors.length) fail('V-TOOLS-01', errors.join('; '));
+  else pass('V-TOOLS-01');
+};
+
 // V-AGENT-01: Agent frontmatter
 const checkAgentFrontmatter = () => {
   const agentsDir = path.join(srcDir, 'agents');
@@ -199,13 +246,35 @@ const checkGroundTruth = () => {
     errors.push(`vcode_table_rows: expected ${gt.vcode_table_rows}, got ${vcodeRows}`);
   }
 
-  const requiredRefs = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
+  const requiredRefs = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md', 'agent-tools.md'];
   for (const ref of requiredRefs) {
     if (!fs.existsSync(path.join(srcDir, 'references', ref))) errors.push(`missing reference: ${ref}`);
   }
 
   if (errors.length) fail('V-GROUND-01', errors.join('; '));
   else pass('V-GROUND-01');
+};
+
+// V-EPIC-01: epic-orchestration.md exists and phase-handle.md links to it
+const checkEpicRunbook = () => {
+  const errors: string[] = [];
+
+  if (!fs.existsSync(path.join(srcDir, 'references', 'epic-orchestration.md'))) {
+    errors.push('epic-orchestration.md does not exist');
+  }
+
+  const phaseHandle = read('src/references/phase-handle.md');
+  if (!phaseHandle.includes('epic-orchestration.md')) {
+    errors.push('phase-handle.md does not link to epic-orchestration.md');
+  }
+
+  const issueSplitting = read('src/references/issue-splitting.md');
+  if (!issueSplitting.includes('epic-orchestration.md')) {
+    errors.push('issue-splitting.md does not link to epic-orchestration.md');
+  }
+
+  if (errors.length) fail('V-EPIC-01', errors.join('; '));
+  else pass('V-EPIC-01');
 };
 
 // V-BUILD-01: Build produces clean git diff (optional skip with VERIFY_SKIP_BUILD=1)
@@ -246,6 +315,7 @@ const checkBuild = () => {
 const main = () => {
   console.log('backlog-campaign verify\n');
 
+  checkAgentToolPolicy();
   checkAgentFrontmatter();
   checkDelegationContracts();
   checkPhaseNames();
@@ -253,6 +323,7 @@ const main = () => {
   checkFixtures();
   checkSkillModes();
   checkGroundTruth();
+  checkEpicRunbook();
   checkBuild();
 
   const expectedChecks = Number(parseGroundTruth().verify_check_count) || 8;

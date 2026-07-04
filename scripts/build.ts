@@ -66,7 +66,8 @@ const processFile = (
   agentDir: string,
   rulesPath: string,
   target: Target,
-  isVcodesMdc = false
+  isVcodesMdc = false,
+  isAgent = false
 ) => {
   let content = fs.readFileSync(srcPath, 'utf-8');
 
@@ -75,8 +76,11 @@ const processFile = (
     if (isVcodesMdc) {
       content = enrichVcodesMdcGlobs(content);
     }
+  } else if (isAgent && target === 'claude') {
+    // Claude agents: preserve frontmatter (name, description, model, disallowedTools)
+    // — do not strip, since Claude Code reads agent frontmatter
   } else {
-    // Claude / skills.sh: strip Cursor-only MDC frontmatter entirely
+    // Claude rules / skills.sh: strip Cursor-only MDC frontmatter entirely
     content = stripCursorFrontmatter(content);
   }
 
@@ -91,7 +95,7 @@ const processFile = (
   fs.writeFileSync(destPath, compiled, 'utf-8');
 };
 
-const compileFolder = (srcSub: string, destParent: string, agentDir: string, rulesPath: string, target: Target) => {
+const compileFolder = (srcSub: string, destParent: string, agentDir: string, rulesPath: string, target: Target, isAgent = false) => {
   const fullSrc = path.join(srcDir, srcSub);
   if (!fs.existsSync(fullSrc)) return;
 
@@ -101,9 +105,9 @@ const compileFolder = (srcSub: string, destParent: string, agentDir: string, rul
     const destPath = path.join(destParent, file);
     const stat = fs.statSync(srcPath);
     if (stat.isDirectory()) {
-      compileFolder(path.join(srcSub, file), destPath, agentDir, rulesPath, target);
+      compileFolder(path.join(srcSub, file), destPath, agentDir, rulesPath, target, isAgent);
     } else if (stat.isFile()) {
-      processFile(srcPath, destPath, agentDir, rulesPath, target);
+      processFile(srcPath, destPath, agentDir, rulesPath, target, false, isAgent);
     }
   }
 };
@@ -164,8 +168,8 @@ const writeCursorRules = (destDir: string) => {
 
 writeCursorRules(path.join(root, 'rules'));
 writeCursorRules(path.join(root, '.cursor', 'rules'));
-compileFolder('agents', path.join(root, 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor');
-compileFolder('agents', path.join(root, '.cursor', 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor');
+compileFolder('agents', path.join(root, 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor', true);
+compileFolder('agents', path.join(root, '.cursor', 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor', true);
 processFile(path.join(srcDir, 'SKILL.md'), path.join(root, 'skills', 'backlog-campaign', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');
 processFile(path.join(srcDir, 'SKILL.md'), path.join(root, '.cursor', 'skills', 'backlog-campaign', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');
 compileFolder('references', path.join(root, 'skills', 'backlog-campaign', 'references'), cursorAgentDir, cursorVcodesPath, 'cursor');
@@ -178,7 +182,8 @@ compileFolder(
   path.join(root, '.claude', 'agents'),
   '.claude',
   '.claude/rules/backlog-campaign-vcodes.md',
-  'claude'
+  'claude',
+  true
 );
 for (const rule of rulesList) {
   processFile(

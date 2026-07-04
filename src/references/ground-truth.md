@@ -45,10 +45,11 @@ Source: `src/references/backlog-campaign-vcodes.md`
 
 ## Verify checks
 
-**verify_check_count:** 8
+**verify_check_count:** 10
 
 | Check ID | Description |
 |----------|-------------|
+| V-TOOLS-01 | No tools: allowlist on agents; correct disallowedTools per deny matrix |
 | V-DELEG-01 | Worker agents declare 5-field or output contract |
 | V-AGENT-01 | Agent frontmatter complete |
 | V-PHASE-01 | Phase playbooks use consistent phase names |
@@ -57,6 +58,7 @@ Source: `src/references/backlog-campaign-vcodes.md`
 | V-SCHEMA-01 | Fixture JSON validates |
 | V-SKILL-01 | SKILL.md modes align with phases |
 | V-GROUND-01 | Ground-truth counts match filesystem |
+| V-EPIC-01 | epic-orchestration.md exists and phase-handle links to it |
 
 ## Config schema
 
@@ -83,3 +85,5 @@ Required keys: `repo`, `target_branch`, `forge`
 - `checkpoint-protocol.md`
 - `findings-ledger.md`
 - `queue-dag.md`
+- `agent-tools.md`
+- `epic-orchestration.md`

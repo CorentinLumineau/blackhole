@@ -13,7 +13,7 @@ to **any** size label, not only `size:l` / `size:xl`.
 | Plan reveals >1 day or >~400 LOC touch | Split before implement |
 | Review would need domain + security + math passes on unrelated files | Split |
 | `size:m` but spans 3+ top-level domains | Split to `size:s` children |
-| Parent is epic | Orchestrator-led split (runbook epic section) |
+| Parent is epic | Orchestrator-led split (see `epic-orchestration.md`) |
 
 ## Do not split
 
