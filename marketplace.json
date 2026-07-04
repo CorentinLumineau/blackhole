@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "backlog-campaign",
-      "version": "0.1.5",
+      "version": "0.1.0",
       "source": ".",
       "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
       "author": {
