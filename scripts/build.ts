@@ -39,40 +39,31 @@ const processFile = (srcPath: string, destPath: string, agentDir: string, rulesP
   fs.writeFileSync(destPath, compiled, 'utf-8');
 };
 
-const compileFolder = (srcSub: string, destParent: string, agentDir: string, rulesPath: string, toMdc = false) => {
+const compileFolder = (srcSub: string, destParent: string, agentDir: string, rulesPath: string) => {
   const fullSrc = path.join(srcDir, srcSub);
   if (!fs.existsSync(fullSrc)) return;
 
   const files = fs.readdirSync(fullSrc);
   for (const file of files) {
     const srcPath = path.join(fullSrc, file);
-    let destName = file;
-    let isVcodesMdc = false;
-
-    if (toMdc && file.endsWith('.md')) {
-      destName = file.substring(0, file.length - 3) + '.mdc';
-      if (file === 'backlog-campaign-vcodes.md') {
-        isVcodesMdc = true;
-      }
-    }
-
-    const destPath = path.join(destParent, destName);
+    const destPath = path.join(destParent, file);
     const stat = fs.statSync(srcPath);
     if (stat.isDirectory()) {
-      compileFolder(path.join(srcSub, file), destPath, agentDir, rulesPath, toMdc);
+      compileFolder(path.join(srcSub, file), destPath, agentDir, rulesPath);
     } else if (stat.isFile()) {
-      processFile(srcPath, destPath, agentDir, rulesPath, isVcodesMdc);
+      processFile(srcPath, destPath, agentDir, rulesPath);
     }
   }
 };
 
 // 1. Clean existing build directories
 console.log('Cleaning existing build directories...');
-cleanDir(path.join(root, '.cursor'));
+cleanDir(path.join(root, 'rules'));
+cleanDir(path.join(root, 'agents'));
+cleanDir(path.join(root, 'skills'));
+cleanDir(path.join(root, 'references'));
 cleanDir(path.join(root, '.claude'));
 cleanDir(path.join(root, '.claude-plugin'));
-cleanDir(path.join(root, 'agents'));
-cleanDir(path.join(root, 'references'));
 if (fs.existsSync(path.join(root, 'SKILL.md'))) {
   fs.unlinkSync(path.join(root, 'SKILL.md'));
 }
@@ -80,17 +71,11 @@ if (fs.existsSync(path.join(root, 'marketplace.json'))) {
   fs.unlinkSync(path.join(root, 'marketplace.json'));
 }
 
-// 2. Compile Target A: Agent-Agnostic / skills.sh (Root level)
+// 2. Compile Target A: Agent-Agnostic / skills.sh (Root level flat layout)
 console.log('Compiling Target A (skills.sh root-level)...');
 processFile(
   path.join(srcDir, 'SKILL.md'),
   path.join(root, 'SKILL.md'),
-  'skills/backlog-campaign',
-  'skills/backlog-campaign/references/backlog-campaign-vcodes.md'
-);
-compileFolder(
-  'agents',
-  path.join(root, 'agents'),
   'skills/backlog-campaign',
   'skills/backlog-campaign/references/backlog-campaign-vcodes.md'
 );
@@ -101,37 +86,38 @@ compileFolder(
   'skills/backlog-campaign/references/backlog-campaign-vcodes.md'
 );
 
-// 3. Compile Target B: Cursor Native (.cursor/)
-console.log('Compiling Target B (Cursor Native)...');
-compileFolder(
-  'agents',
-  path.join(root, '.cursor', 'agents'),
-  '.cursor',
-  '.cursor/rules/backlog-campaign-vcodes.mdc'
-);
-// Compile rules directly from references to .cursor/rules/*.mdc
-const rules = ['backlog-campaign-protocol.md', 'backlog-campaign-state.md', 'backlog-campaign-vcodes.md'];
-for (const rule of rules) {
+// 3. Compile Target B: Unified Root-level directories (natively read by Cursor submodule / Claude Plugin)
+console.log('Compiling Target B (Cursor Submodule / Claude Plugin root layouts)...');
+// rules/ containing .mdc files for Cursor
+const rulesList = ['backlog-campaign-protocol.md', 'backlog-campaign-state.md', 'backlog-campaign-vcodes.md'];
+for (const rule of rulesList) {
   const isVcodesMdc = rule === 'backlog-campaign-vcodes.md';
   const destName = rule.substring(0, rule.length - 3) + '.mdc';
   processFile(
     path.join(srcDir, 'references', rule),
-    path.join(root, '.cursor', 'rules', destName),
+    path.join(root, 'rules', destName),
     '.cursor',
     '.cursor/rules/backlog-campaign-vcodes.mdc',
     isVcodesMdc
   );
 }
-// Compile skill entrypoint and references into .cursor/skills/backlog-campaign/
+// agents/ containing .md files resolved for Cursor (.cursor)
+compileFolder(
+  'agents',
+  path.join(root, 'agents'),
+  '.cursor',
+  '.cursor/rules/backlog-campaign-vcodes.mdc'
+);
+// skills/backlog-campaign/ containing SKILL.md and references/ resolved for Cursor (.cursor)
 processFile(
   path.join(srcDir, 'SKILL.md'),
-  path.join(root, '.cursor', 'skills', 'backlog-campaign', 'SKILL.md'),
+  path.join(root, 'skills', 'backlog-campaign', 'SKILL.md'),
   '.cursor',
   '.cursor/rules/backlog-campaign-vcodes.mdc'
 );
 compileFolder(
   'references',
-  path.join(root, '.cursor', 'skills', 'backlog-campaign', 'references'),
+  path.join(root, 'skills', 'backlog-campaign', 'references'),
   '.cursor',
   '.cursor/rules/backlog-campaign-vcodes.mdc'
 );
@@ -144,7 +130,7 @@ compileFolder(
   '.claude',
   '.claude/rules/backlog-campaign-vcodes.md'
 );
-for (const rule of rules) {
+for (const rule of rulesList) {
   processFile(
     path.join(srcDir, 'references', rule),
     path.join(root, '.claude', 'rules', rule),

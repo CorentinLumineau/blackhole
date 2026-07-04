@@ -57,8 +57,7 @@ Never drop a finding. Every V-code → ledger before end of turn.
  - End turn after batch spawn
  - Workers need `required_permissions: ["full_network"]` for gh/git/bun
  
- Prefer when available: `reviewer`, `tester`, `refactorer`, `debugger`,
- `planner`. Else: `general-purpose worker`, `explore`, `shell`.
+ Prefer when available: `backlog-reviewer`, `backlog-implementer`, `backlog-planner`. Else: `general-purpose worker`, `explore`, `shell`.
  
 - **Delegation Contract**: Every worker prompt you write MUST use the following 5 fields explicitly:
   - **Objective**: Detailed issue goals and constraints.

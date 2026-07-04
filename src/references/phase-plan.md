@@ -4,7 +4,7 @@
 
 ```
 - [ ] queue entry: phase plan (from handle)
-- [ ] Plan artifact → plans/<issue>.md or issue comment
+- [ ] Spawn backlog-planner to create Plan artifact → plans/<issue>.md or issue comment
 - [ ] Plan-time V-code scan → findings-ledger (phase: plan)
 - [ ] Out-of-scope → gh issue create + ledger deferred_to_issue
 - [ ] issue-splitting.md — if plan reveals multi-PR scope, split NOW
