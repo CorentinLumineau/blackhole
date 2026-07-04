@@ -30,7 +30,14 @@ longer definitions (token cost, drift). Persist every finding to
 | V-PARETO-01 | No >3× complexity for marginal gain | WARN |
 | V-DOC-02/04 | Public-API and DESIGN.md updates in the same PR | BLOCK |
 | V-CONFIG-01 | New config/env keys follow established naming, registered | WARN |
-| V-SCOPE-01/02 | No refactoring untouched code; no scope creep | WARN |
+| V-SCOPE-01 | No refactoring untouched code | WARN |
+| V-SCOPE-02 | Touch-Paths violation — files modified outside plan scope | WARN |
+| V-API-01 | API contract drift — public interface diverges from plan | BLOCK |
+| V-BRANCH-01 | Force-push to protected branches (main, master, release/*) | BLOCK |
+| V-BRANCH-02 | Direct commit to main/master without review and approval | BLOCK |
+| V-BRANCH-03 | Branch name does not match campaign/issue-N convention | WARN |
+| V-WORKTREE-01 | Worktree leak — failed to clean up temporary directories | BLOCK |
+| V-GIT-01 | PR created without Closes #N issue linkage in description | BLOCK |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.

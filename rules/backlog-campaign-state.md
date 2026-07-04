@@ -48,3 +48,8 @@ Full schemas: `{{AGENT_DIR}}/skills/backlog-campaign/references/findings-ledger.
 `forge-sync.md`). Never ask the user to run sync. Runs at: Phase 0 bootstrap,
 start of every orchestrator turn, Phase 5 loop, before parallel batch scheduling.
 Fix drift before spawning workers.
+
+## Worktree & Branch obligations
+
+- Run `git worktree prune` and `git fetch --prune` before creating a new worktree or branch.
+- Verify worktree directories are clean and removed from disk after worker tasks finish. Do not leave orphaned worktree directories in the scratchpad.

@@ -25,10 +25,12 @@
 Set `notes: awaiting-plan-approval` until user confirms.
 
 ## V-code scan (plan-time)
-
-Touch paths: V-INT-02, V-DRY-01/02, V-KISS-01 → ledger before turn end.
-
-## Scope growth
-
-If plan exceeds one reviewable PR → stop, split per `issue-splitting.md`,
-AskQuestion, do not spawn implement.
+ 
+- Touch paths: V-INT-02, V-DRY-01/02, V-KISS-01 → ledger before turn end.
+- **Touch-Paths Definition**: The plan MUST explicitly declare the exact list of files allowed to be modified during implementation. This serves as the scope boundary baseline (`V-SCOPE-02`).
+- **API/Schema Baseline**: The plan MUST declare any changes to public APIs, database columns, or configuration keys (`V-API-01`).
+ 
+ ## Scope growth
+ 
+ If plan exceeds one reviewable PR → stop, split per `issue-splitting.md`,
+ AskQuestion, do not spawn implement.
