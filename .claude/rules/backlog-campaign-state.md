@@ -20,7 +20,7 @@ Mutations to `.backlog-campaign/queue.json` and
 | `plans/<issue>.md` | Plan artifacts (gitignored) |
 | `archive/` | Rotated ledger snapshots (gitignored) |
 
-Full schemas: `skills/backlog-campaign/skills/backlog-campaign/references/findings-ledger.md`,
+Full schemas: `.claude/skills/backlog-campaign/references/findings-ledger.md`,
 `queue-dag.md`.
 
 ## Write protocol

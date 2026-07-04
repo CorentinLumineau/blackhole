@@ -1,6 +1,6 @@
 ---
 description: V-code enforcement table for backlog campaign agents — restate in every worker prompt
-globs: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.go", "**/*.py", "**/*.rs", "**/*.java", "**/*.c", "**/*.cpp", "**/*.cs"]
+globs:
 alwaysApply: false
 ---
 

@@ -17,15 +17,15 @@ point.
 | Track one orchestrator agent ID | Spawn implementation workers |
 | AskQuestion for campaign-level choices | Duplicate orchestrator work |
 
-Binding: `skills/backlog-campaign/skills/backlog-campaign/references/multitask-mode.md`
+Binding: `{{AGENT_DIR}}/skills/backlog-campaign/references/multitask-mode.md`
 
 ## On campaign start
 
-1. Read `skills/backlog-campaign/skills/backlog-campaign/SKILL.md` — run Phase 0 bootstrap
+1. Read `{{AGENT_DIR}}/skills/backlog-campaign/SKILL.md` — run Phase 0 bootstrap
    (auto-sync included).
 2. Brief status to user (open issues, ready set, LEDGER OPEN).
 3. Spawn orchestrator with prompt from
-   `skills/backlog-campaign/skills/backlog-campaign/references/campaign-prompt.md`:
+   `{{AGENT_DIR}}/skills/backlog-campaign/references/campaign-prompt.md`:
    - `Task` with `model: "composer-2.5"`, `run_in_background: true`
    - Use `backlog-orchestrator` subagent type / agent file
 4. **End your turn** — do not wait for orchestrator.
