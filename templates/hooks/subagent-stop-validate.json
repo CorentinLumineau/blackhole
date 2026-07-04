@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0",
+  "description": "Optional Cursor SubagentStop hook — validates worker JSON against worker-schemas.md shapes.",
+  "hooks": {
+    "subagentStop": [
+      {
+        "command": "echo 'Validate worker output JSON against worker-schemas.md before accepting handoff.'"
+      }
+    ]
+  },
+  "_note": "Copy to consumer project's .cursor/hooks.json and customize validation as needed. Not required for agent-agnostic operation."
+}

@@ -95,3 +95,30 @@ track: quick | standard
 ## Sprint Contract
 ...
 ```
+
+---
+
+## Return format
+
+Return JSON matching `worker-schemas.md` planner contract:
+
+```json
+{
+  "status": "ready",
+  "plan_path": "plans/issue-298.md",
+  "track": "standard",
+  "failing_checks": [],
+  "clarification_markers": 0
+}
+```
+
+When blocked (ambiguous requirements, >2 clarification markers, or failed quality gate):
+
+```json
+{
+  "status": "blocked",
+  "plan_path": null,
+  "failing_checks": ["clarification_limit", "touch_paths_declared"],
+  "clarification_markers": 3
+}
+```

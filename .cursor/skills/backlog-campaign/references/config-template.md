@@ -31,6 +31,15 @@ Committed template: `.backlog-campaign/config.json`
 | `auto_sync` | no | When `true` (default), forge reconcile runs automatically |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 
+Runtime state files (gitignored in consumer repos):
+
+| File | Purpose |
+|------|---------|
+| `queue.json` | Issue DAG and scheduling |
+| `findings-ledger.json` | V-code findings SSOT |
+| `plans/<issue>.md` | Implementation plans |
+| `campaign-checkpoint.md` | Resume summary (see `checkpoint-protocol.md`) |
+
 On first bootstrap, copy template to runtime if missing fields — do not
 overwrite existing runtime config without user confirmation.
 

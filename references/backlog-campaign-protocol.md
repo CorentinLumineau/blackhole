@@ -43,6 +43,7 @@ Playbooks: `references/phase-*.md`
 ## Orchestrator discipline
 
 - One PR per issue; coordinator never implements or merges
+- Review: `backlog-reviewer` → `backlog-synthesizer` → ledger (see `review-core.md`)
 - File new issues for discoveries (bugs, refactors, quick wins)
 
 ## Branch & Worktree Hygiene (V-BRANCH, V-WORKTREE)

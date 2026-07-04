@@ -51,3 +51,21 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
 7.  **Continuous Discovery**:
     *   If you spot unrelated codebase smells, performance bottlenecks, UX/UI issues, or test coverage gaps, do not refactor them here.
     *   Instead, log them in your JSON response `new_findings` array with estimated `gain` (1-10) and `effort` (1-10) so the orchestrator can file separate tracking issues.
+
+---
+
+## Return format
+
+Return JSON matching `worker-schemas.md` implementer contract:
+
+```json
+{
+  "status": "complete",
+  "pr_number": 42,
+  "branch": "campaign/issue-298",
+  "tests_passed": true,
+  "touch_paths_honored": true,
+  "new_findings": [],
+  "filed_issues": []
+}
+```

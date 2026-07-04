@@ -1,0 +1,37 @@
+{
+  "refreshed_at": "2026-07-05T00:00:00.000Z",
+  "campaign_started_at": "2026-07-04T10:00:00.000Z",
+  "user_queue_order": [301, 298, 275],
+  "issues": {
+    "298": {
+      "title": "Cashflow v3 epic",
+      "phase": "review",
+      "status": "in-flight",
+      "depends_on": [],
+      "blocks": [301, 302],
+      "worktree": "/tmp/campaign/wt-298",
+      "pr": 42,
+      "migration_slot": false,
+      "touch_paths": ["lib/cashflow/**", "app/(app)/cashflow/**"],
+      "size": "xl",
+      "epic_parent": null,
+      "review_iteration": 1,
+      "notes": null
+    },
+    "301": {
+      "title": "Cashflow export",
+      "phase": "handle",
+      "status": "blocked",
+      "depends_on": [298],
+      "blocks": [],
+      "worktree": null,
+      "pr": null,
+      "migration_slot": false,
+      "touch_paths": ["lib/cashflow/export/**"],
+      "size": "m",
+      "epic_parent": 298,
+      "review_iteration": 0,
+      "notes": "overlap with #298"
+    }
+  }
+}

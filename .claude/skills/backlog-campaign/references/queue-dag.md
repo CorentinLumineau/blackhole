@@ -22,6 +22,7 @@ Path: `.backlog-campaign/queue.json` (gitignored at runtime).
       "touch_paths": ["lib/cashflow/**", "app/(app)/cashflow/**"],
       "size": "xl",
       "epic_parent": null,
+      "review_iteration": 0,
       "notes": "awaiting PO sign-off"
     }
   }
@@ -34,6 +35,7 @@ Path: `.backlog-campaign/queue.json` (gitignored at runtime).
 |-------|--------|-------|
 | `phase` | `handle` \| `plan` \| `implement` \| `review` \| `done` | Current lifecycle phase |
 | `status` | `blocked` \| `ready` \| `in-flight` \| `merged` \| `closed` | Scheduling state |
+| `review_iteration` | number | Review loop counter (default 0); see `review-core.md` |
 | `notes` | string \| null | e.g. `awaiting-user-clarification`, `awaiting-plan-approval`, `overlap with #N` |
 | `depends_on` | number[] | Issue numbers that must be merged/closed first |
 | `blocks` | number[] | Inverse index (optional, for display) |
@@ -80,12 +82,24 @@ with note `overlap with #N`).
 **Migration slot:** at most one `in-flight` issue with `migration_slot: true`.
 Others with `migration_slot: true` stay `blocked` until slot frees.
 
-### Step 4 — Batch selection
+### Step 4 — Wave computation
 
-Take up to `parallel_max` (default 4 from config) from ready set, ordered by
-`user_queue_order`. Spawn workers in **one orchestrator turn**.
+Before batch selection, compute **execution waves** via topological sort on `depends_on`:
 
-### Step 5 — Persist
+1. Wave 0: issues with empty `depends_on` (and ready per Step 2)
+2. Wave N: issues whose dependencies are all `merged` or `closed` in prior waves
+3. Within each wave, apply conflict filter (Step 3) and Pareto sort (descending Priority)
+
+Log wave number before spawning: `WAVE <N>: issues [301, 298, ...]`.
+
+Waves respect both dependency order and touch_paths conflict deferral. An issue deferred for overlap joins the next wave when the blocker clears.
+
+### Step 5 — Batch selection
+
+Take up to `parallel_max` (default 4 from config) from the **current wave's** ready set, ordered by
+`user_queue_order` then Pareto Priority. Spawn workers in **one orchestrator turn**.
+
+### Step 6 — Persist
 
 Bump `refreshed_at` on every mutation:
 

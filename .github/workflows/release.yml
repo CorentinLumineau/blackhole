@@ -29,6 +29,11 @@ jobs:
       - name: Run Build
         run: bun run build
 
+      - name: Run Verify
+        run: bun run verify
+        env:
+          VERIFY_SKIP_BUILD: "1"
+
       - name: Verify build is in sync (Quality Gate)
         run: |
           if [ -n "$(git status --porcelain)" ]; then

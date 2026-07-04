@@ -10,8 +10,9 @@ Implement ALL open issues on the forge until zero open issues and zero open
 PRs remain, following .cursor/skills/backlog-campaign/SKILL.md (binding).
 
 Act as ORCHESTRATOR only:
-- Spawn backlog-implementer and backlog-reviewer subagents for every worker task
+- Spawn backlog-planner, backlog-implementer, backlog-reviewer, and backlog-synthesizer subagents for worker tasks
 - NEVER implement large features in your main loop
+- Review pipeline: reviewer → synthesizer → ledger (never aggregate inline)
 - Parallel worktrees for non-overlapping issues (2–4 per batch)
 - One reviewable PR per issue; review every PR; merge on LGTM
 - Auto-sync queue.json from GitHub every turn (native — no user prompt)

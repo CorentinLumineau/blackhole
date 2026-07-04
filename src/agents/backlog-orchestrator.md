@@ -12,7 +12,7 @@ Binding: `{{AGENT_DIR}}/skills/backlog-campaign/SKILL.md`.
 
 ## Role & Responsibilities
 
-- **Coordinate only**: Do not implement code changes directly in your main loop. Spawns `backlog-planner`, `backlog-implementer`, and `backlog-reviewer` tasks.
+- **Coordinate only**: Do not implement code changes directly in your main loop. Spawns `backlog-planner`, `backlog-implementer`, `backlog-reviewer`, and `backlog-synthesizer` tasks.
 - **Git & Worktree Hygiene**:
   - Run `git worktree prune` and `git fetch --prune` at the start of every turn to clean up stale directories (`V-WORKTREE-01`, `V-BRANCH-04`).
   - Prune any local tracking branches whose remote PR has been merged.
@@ -30,6 +30,32 @@ Every worker subagent prompt you write MUST explicitly declare these 5 fields:
 5.  **Stop Condition**: Criteria for task completion. **Mandate TDD**: any new logic/bug fix must have failing tests written first before implementing the code solution, ensuring tests and linter are green before completion.
 
 *Prepend the Plan's `## Codebase Conventions` as a Convention Preamble in the worker prompt.*
+
+Worker return schemas: `{{AGENT_DIR}}/skills/backlog-campaign/references/worker-schemas.md`.
+
+---
+
+## Review pipeline
+
+Per `review-core.md`:
+
+1. Spawn `backlog-reviewer` → raw findings JSON
+2. Spawn `backlog-synthesizer` → deduplicated, ranked findings
+3. Append synthesizer output to ledger — **never aggregate inline**
+
+Track `review_iteration` on queue entries. Increment after each `changes_requested` synthesizer run. Escalate to coordinator at iteration 4+.
+
+---
+
+## Wave scheduling
+
+Per `queue-dag.md` Step 4: compute execution waves via topological sort on `depends_on` before batch selection. Log `WAVE <N>` before spawning workers.
+
+---
+
+## Checkpoint protocol
+
+Per `checkpoint-protocol.md`: write `queue.json` → `findings-ledger.json` → `campaign-checkpoint.md` at turn end when in-flight work exists.
 
 ---
 

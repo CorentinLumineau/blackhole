@@ -4,6 +4,7 @@
   "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
   "scripts": {
     "build": "bun run scripts/build.ts",
+    "verify": "bun run scripts/verify.ts",
     "release": "bun run scripts/release.ts"
   },
   "dependencies": {},

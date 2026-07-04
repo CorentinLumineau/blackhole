@@ -11,7 +11,12 @@
 - [ ] clarify-gates.md — AskQuestion if still ambiguous
 - [ ] User plan approval if scope was unclear or split occurred
 - [ ] queue.json: phase implement, status ready OR blocked (awaiting-plan-approval)
+- [ ] Planner returns worker-schemas.md contract (`status`, `plan_path`, `failing_checks`)
 ```
+
+## Planner return format
+
+See [worker-schemas.md](worker-schemas.md) planner contract. On `status: blocked`, set queue `notes: awaiting-user-clarification` or `awaiting-plan-approval` per failing checks.
 
 ## Plan approval gate
 

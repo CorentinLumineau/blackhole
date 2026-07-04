@@ -28,23 +28,7 @@ Do not commit directly to main (`V-BRANCH-02`) or force-push (`V-BRANCH-01`).
 
 ## Worker return format
 
-```json
-{
-  "pr_number": 42,
-  "new_findings": [
-    {
-      "vcode": "V-TEST-01",
-      "severity": "BLOCK",
-      "file": "lib/foo.ts",
-      "line": 10,
-      "summary": "Missing test for edge case"
-    }
-  ],
-  "filed_issues": [305]
-}
-```
-
-Orchestrator appends `new_findings` to ledger (`phase: implement`) before
+See [worker-schemas.md](worker-schemas.md) implementer contract. Orchestrator appends `new_findings` to ledger (`phase: implement`) before
 ending turn. For each new finding concerning improvements, best practices, UX/UI, performance, or coverage, the orchestrator files a new GitHub tracking issue (`gh issue create`) to schedule it in the backlog campaign queue.
 
 

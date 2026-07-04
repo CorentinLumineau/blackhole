@@ -27,7 +27,7 @@ flowchart LR
   Merge --> Ingest
 ```
 
-- **Parallel Worker Swarms**: The orchestrator schedules and runs multiple worker subagents concurrently in isolated git worktrees.
+- **Parallel Workers**: The orchestrator schedules multiple worker subagents concurrently in isolated git worktrees. Review uses a reviewer → synthesizer pipeline per PR.
 - **TDD Enforcement**: Workers must write unit tests first before making changes.
 - **Plan-Conformance Gates**: Workers are blocked if they modify files outside their declared Touch-Paths or introduce database/API schema drift.
 - **PR & Merge Hygiene**: Pull requests are automatically created, linked with `Closes #N` tags, audited for AI-generated code slop, and merged when green.
@@ -71,7 +71,7 @@ The orchestrator operates over a project-local, gitignored state directory `.bac
 1. **Handle**: Ingests new issues, triages dependencies, splits epics, and moves issues to planning.
 2. **Plan**: Spawns `backlog-planner` to create a plan file, defining specific Touch-Paths and API/schema baselines.
 3. **Implement**: Spawns `backlog-implementer` inside a git worktree (`wt-<issue>`) to code, run tests, and open a PR.
-4. **Review**: Spawns `backlog-reviewer` to audit the PR against the plan touchpaths and check for AI code slop.
+4. **Review**: Spawns `backlog-reviewer` then `backlog-synthesizer` to audit the PR and aggregate findings.
 5. **Loop**: Merges approved PRs, cleans up worktrees, prunes tracking branches, and proceeds to the next queue item.
 
 ---
@@ -140,8 +140,14 @@ To keep all rules, agent prompts, and phase playbooks DRY (Don't Repeat Yourself
 We use a Bun-based compiler to build target directories:
 ```bash
 bun run build
+bun run verify
 ```
-*Note: A git pre-commit hook is installed automatically in your development environment to run `bun run build` and stage the output files before every commit, ensuring compile-free code changes.*
+
+Optional: install a git pre-commit hook that runs build before commit:
+
+```bash
+bash scripts/install-hook.sh
+```
 
 ---
 

@@ -32,6 +32,7 @@ Direct `/backlog-campaign run` or `/goal` in a single session: act as orchestrat
 | `plan #N` | `plan #N` | Orchestrator — phase 2 only |
 | `implement #N` | `implement #N` | Orchestrator — phase 3 only |
 | `review #N` | `review #N` | Orchestrator — phase 4 only |
+| `campaign-audit` | `audit`, `campaign audit` | Read-only protocol conformance check |
 
 ## Phase 0: Bootstrap (ALL modes)
 
@@ -55,6 +56,8 @@ Direct `/backlog-campaign run` or `/goal` in a single session: act as orchestrat
 | 4 Review | [phase-review.md](references/phase-review.md) |
 | 5 Loop | [phase-loop.md](references/phase-loop.md) |
 
+Review infrastructure: [review-core.md](references/review-core.md)
+
 Cross-cutting:
 
 - [clarify-gates.md](references/clarify-gates.md) — AskQuestion for **all sizes**
@@ -70,7 +73,7 @@ require `gh issue create` + `deferred_to_issue`.
 0. Auto-sync every turn
 1. Ready set → [queue-dag.md](references/queue-dag.md) — skip `blocked` (user gates)
 2. Per issue: handle → plan → **user gate if needed** → implement → review → loop
-3. Spawn workers via the designated agent files (`backlog-planner`, `backlog-implementer`, `backlog-reviewer`), `run_in_background: true`, one turn per batch
+3. Spawn workers via the designated agent files (`backlog-planner`, `backlog-implementer`, `backlog-reviewer`, `backlog-synthesizer`), `run_in_background: true`, one turn per batch
 4. End turn; triage completions → ledger → next phase
 
 **Do not spawn implement** while `status: blocked` with
@@ -84,6 +87,28 @@ require `gh issue create` + `deferred_to_issue`.
 - [queue-dag.md](references/queue-dag.md)
 - [forge-sync.md](references/forge-sync.md)
 - [config-template.md](references/config-template.md)
+- [worker-schemas.md](references/worker-schemas.md)
+- [checkpoint-protocol.md](references/checkpoint-protocol.md)
+- [ground-truth.md](references/ground-truth.md)
+
+## Campaign audit mode
+
+Read-only conformance check (`campaign-audit`):
+
+1. Run `bun run verify` (or read last CI result)
+2. Validate fixture schemas (`fixtures/queue.example.json`, `fixtures/findings-ledger.example.json`)
+3. Check phase playbooks reference consistent agent names and phase strings per `ground-truth.md`
+4. Output `audit-report.md` with F-codes:
+
+| F-code | Check |
+|--------|-------|
+| F-AGENT-01 | All agents in ground-truth exist in `src/agents/` |
+| F-PHASE-01 | Five phase playbooks present and named correctly |
+| F-VERIFY-01 | `bun run verify` passes |
+| F-SCHEMA-01 | Fixture JSON validates |
+| F-DRIFT-01 | ground-truth counts match actual files |
+
+Do not modify code during audit — report only.
 
 ## Rules references
 

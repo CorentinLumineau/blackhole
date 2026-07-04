@@ -54,25 +54,32 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 
 ## Output Format
 
-Return a JSON array of findings or an empty array if LGTM:
+Return JSON matching `worker-schemas.md` reviewer contract:
 
 ```json
-[
-  {
-    "vcode": "V-KISS-03",
-    "severity": "BLOCK",
-    "file": "src/db/client.ts",
-    "line": 42,
-    "summary": "Empty catch block in query wrapper"
-  },
-  {
-    "vcode": "V-PARETO-02",
-    "severity": "WARN",
-    "file": "src/components/IssueTable.tsx",
-    "line": 15,
-    "summary": "Component scroll performance optimization",
-    "gain": 7,
-    "effort": 2
-  }
-]
+{
+  "status": "complete",
+  "findings": [
+    {
+      "vcode": "V-KISS-03",
+      "severity": "BLOCK",
+      "file": "src/db/client.ts",
+      "line": 42,
+      "summary": "Empty catch block in query wrapper"
+    },
+    {
+      "vcode": "V-PARETO-02",
+      "severity": "WARN",
+      "file": "src/components/IssueTable.tsx",
+      "line": 15,
+      "summary": "Component scroll performance optimization",
+      "gain": 7,
+      "effort": 2
+    }
+  ]
+}
 ```
+
+On audit failure (cannot read PR, missing plan), return `{ "status": "error", "findings": [], "error": "..." }`.
+
+Raw findings are passed to `backlog-synthesizer` for aggregation — do not deduplicate or rank.

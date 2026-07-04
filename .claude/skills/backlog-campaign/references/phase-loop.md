@@ -26,6 +26,7 @@
 
 For issue N, PR P:
 
+- Reset `review_iteration` to 0 on merge
 - `fixed-in-pr` → `resolved`, `resolved_at` set
 - `open` BLOCK on merged files → file new issue or `resolved` if obsolete
 - `deferred` → keep until deferred issue merges
