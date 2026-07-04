@@ -38,12 +38,20 @@ For issue N, PR P:
    - New issues start at **handle** or **plan** if handle complete
    - Returned-from-review start at **implement**
 
+## Continuous Discovery of Improvements (Backlog Growth)
+ 
+- The orchestrator triages all discoveries logged in the findings ledger.
+- For every non-blocking best practice suggestion, performance optimization, UX/UI polish request, or test coverage gap:
+  1. If not yet filed, execute `gh issue create --title "[Discovery] <Name>" --body "..."` (linking to the original source code context).
+  2. Map the ledger's `deferred_to_issue` field to the new issue ID.
+  3. The next auto-sync step reconciles the new issue into `queue.json` as a new campaign backlog item.
+ 
 ## Campaign complete
-
+ 
 ```
 gh issue list --state open → []
 gh pr list --state open → []
 queue.json: no in-flight entries
 ```
-
+ 
 Report to user: SHIPPED summary, LEDGER OPEN count, any deferred issues filed.

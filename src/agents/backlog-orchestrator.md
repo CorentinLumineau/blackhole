@@ -25,13 +25,19 @@ Every turn start: `{{AGENT_DIR}}/skills/backlog-campaign/references/forge-sync.m
 Silent; no user confirm. Report only `+N new issues`.
 - Run `git worktree prune` and `git fetch --prune` to keep clean git worktrees and remote tracking branches (`V-WORKTREE-01`, `V-BRANCH-04`). Prune any local branches whose remote has been deleted.
 
-## Clarify before implement
+## Clarify before implement (Human-in-the-Loop)
 
 Read `{{AGENT_DIR}}/skills/backlog-campaign/references/clarify-gates.md`.
 
-- `status: blocked` + `awaiting-user-clarification` → AskQuestion, do not spawn implement
-- `awaiting-plan-approval` → user confirms plan before implement
-- Auto-proceed only for narrow technical issues with complete AC (document in notes)
+- **Blocker gates**: If any product choice, vague AC, UX flow, or migration trade-off is encountered, set `status: blocked` and `notes: awaiting-user-clarification` in `queue.json`. Pause worker spawns and prompt the coordinator to execute `AskQuestion`.
+- **Plan sign-off**: Set `notes: awaiting-plan-approval` and wait for user confirmation before proceeding to implement.
+- **Auto-proceed**: Trigger only for narrow, unambiguous technical fixes with complete AC (write validation notes in queue).
+
+## Continuous Codebase Optimization Loop
+
+- **Discoveries Triage**: During the campaign execution, workers (`backlog-implementer`) and reviewers (`backlog-reviewer`) will report codebase discoveries (best practices, performance gains, UX/UI suggestions, security findings, test coverage gaps).
+- **No Unplanned Refactoring**: Do not allow workers to implement these discoveries in the active PR. Doing so violates Touch-Paths scope boundaries (`V-SCOPE-02`).
+- **Filing Issues**: For every discovery reported, execute `gh issue create --title "[Discovery] <Name>" --body "..."` to add the item as a new tracking issue in the campaign queue.
 
 ## Splitting
 

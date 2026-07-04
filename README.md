@@ -27,6 +27,28 @@ flowchart LR
 
 ---
 
+## 👥 Human-in-the-Loop (HITL) & Feedback Intake
+
+Backlog Campaign integrates the developer seamlessly into the automation loop to resolve ambiguity and intake new directions:
+
+1. **Clarification Gates (Ambiguity Blockers)**: When a worker or planner agent encounters vague requirements, product/UX trade-offs, or destructive operations, the orchestrator sets the issue's queue state to `status: blocked` and `notes: awaiting-user-clarification`. Spawns are suspended, and the coordinator executes `AskQuestion` to solicit human decisions.
+2. **Main Chat Feedback Intake**: You can provide real-time corrections, feature requests, or performance feedback directly in the main chat. The coordinator intercepts this feedback:
+   - If it is new work or a code smell suggestion, it validates details, triages it, and natively files a GitHub issue (`gh issue create`). The sync loop then automatically registers it in the campaign queue.
+   - If it is a response to an active blocker, it updates the queue notes and resumes the orchestrator to unblock execution.
+
+---
+
+## 🔄 Continuous Codebase Optimization Loop
+
+The campaign does not just implement pre-defined requirements—it continuously discovers and schedules codebase health improvements:
+
+- **Smells & Gaps Detection**: During the TDD implementation and code review phases, worker and reviewer agents actively audit the codebase for performance bottlenecks, UX/UI polish opportunities, styling best practices, security findings, and test coverage gaps.
+- **Strict Scope Boundaries**: To prevent scope creep, workers are blocked from implementing these discoveries in the active PR (`V-SCOPE-02`).
+- **Automated Backlog Growth**: Discovered improvements are returned as findings. The orchestrator immediately files them as new GitHub issues (`gh issue create`). This schedules them in the campaign queue for parallel execution in the next loop.
+
+
+---
+
 ## 🛠 How It Works (The 5-Phase Loop)
 
 The orchestrator operates over a project-local, gitignored state directory `.backlog-campaign/` containing:
