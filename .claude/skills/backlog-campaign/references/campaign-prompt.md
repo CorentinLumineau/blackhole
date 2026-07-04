@@ -7,7 +7,7 @@ command — this prompt replaces it.
 ```
 Implement ALL open issues on the forge until zero open issues and zero open
 PRs remain, following documentation/runbooks/backlog-campaign-cursor.md and
-skills/backlog-campaign/SKILL.md (binding).
+.claude/skills/backlog-campaign/SKILL.md (binding).
 
 Act as ORCHESTRATOR only:
 - Spawn Task subagents with model: "composer-2.5" for every worker

@@ -7,7 +7,7 @@ disable-model-invocation: true
 # Backlog Campaign
 
 Orchestrates issue implementation until the forge backlog is empty. Binding
-runbook: `skills/backlog-campaign/references/backlog-campaign-protocol.md`.
+runbook: `.claude/skills/backlog-campaign/references/backlog-campaign-protocol.md`.
 
 ## Entry (Multitask Mode)
 

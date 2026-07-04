@@ -15,6 +15,9 @@ const cleanDir = (dirPath: string) => {
 const compileContent = (content: string, agentDir: string, rulesPath: string): string => {
   let res = content.replaceAll('{{AGENT_DIR}}', agentDir);
   res = res.replaceAll('{{AGENT_DIR}}/rules/backlog-campaign-vcodes.md', rulesPath);
+  if (agentDir === 'skills/backlog-campaign') {
+    res = res.replaceAll('skills/backlog-campaign/skills/backlog-campaign/', 'skills/backlog-campaign/');
+  }
   return res;
 };
 
@@ -62,6 +65,7 @@ cleanDir(path.join(root, 'rules'));
 cleanDir(path.join(root, 'agents'));
 cleanDir(path.join(root, 'skills'));
 cleanDir(path.join(root, 'references'));
+cleanDir(path.join(root, '.cursor'));
 cleanDir(path.join(root, '.claude'));
 cleanDir(path.join(root, '.claude-plugin'));
 if (fs.existsSync(path.join(root, 'SKILL.md'))) {
@@ -100,11 +104,24 @@ for (const rule of rulesList) {
     '.cursor/rules/backlog-campaign-vcodes.mdc',
     isVcodesMdc
   );
+  processFile(
+    path.join(srcDir, 'references', rule),
+    path.join(root, '.cursor', 'rules', destName),
+    '.cursor',
+    '.cursor/rules/backlog-campaign-vcodes.mdc',
+    isVcodesMdc
+  );
 }
 // agents/ containing .md files resolved for Cursor (.cursor)
 compileFolder(
   'agents',
   path.join(root, 'agents'),
+  '.cursor',
+  '.cursor/rules/backlog-campaign-vcodes.mdc'
+);
+compileFolder(
+  'agents',
+  path.join(root, '.cursor', 'agents'),
   '.cursor',
   '.cursor/rules/backlog-campaign-vcodes.mdc'
 );
@@ -115,9 +132,21 @@ processFile(
   '.cursor',
   '.cursor/rules/backlog-campaign-vcodes.mdc'
 );
+processFile(
+  path.join(srcDir, 'SKILL.md'),
+  path.join(root, '.cursor', 'skills', 'backlog-campaign', 'SKILL.md'),
+  '.cursor',
+  '.cursor/rules/backlog-campaign-vcodes.mdc'
+);
 compileFolder(
   'references',
   path.join(root, 'skills', 'backlog-campaign', 'references'),
+  '.cursor',
+  '.cursor/rules/backlog-campaign-vcodes.mdc'
+);
+compileFolder(
+  'references',
+  path.join(root, '.cursor', 'skills', 'backlog-campaign', 'references'),
   '.cursor',
   '.cursor/rules/backlog-campaign-vcodes.mdc'
 );
@@ -138,6 +167,18 @@ for (const rule of rulesList) {
     '.claude/rules/backlog-campaign-vcodes.md'
   );
 }
+processFile(
+  path.join(srcDir, 'SKILL.md'),
+  path.join(root, '.claude', 'skills', 'backlog-campaign', 'SKILL.md'),
+  '.claude',
+  '.claude/rules/backlog-campaign-vcodes.md'
+);
+compileFolder(
+  'references',
+  path.join(root, '.claude', 'skills', 'backlog-campaign', 'references'),
+  '.claude',
+  '.claude/rules/backlog-campaign-vcodes.md'
+);
 
 // 5. Generate Claude Code Plugin Manifest (.claude-plugin/plugin.json)
 console.log('Generating Claude Code Plugin manifests...');

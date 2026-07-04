@@ -13,8 +13,8 @@ finish/run the backlog campaign, follow this protocol.
 
 - **No `/goal`** — use Multitask Mode: `backlog-coordinator` → spawns
   `backlog-orchestrator` in background
-- Skill: `skills/backlog-campaign/SKILL.md`
-- Flow: `skills/backlog-campaign/references/multitask-mode.md`
+- Skill: `.claude/skills/backlog-campaign/SKILL.md`
+- Flow: `.claude/skills/backlog-campaign/references/multitask-mode.md`
 
 Coordinator routes only; orchestrator runs five phases; workers implement.
 
@@ -22,7 +22,7 @@ Coordinator routes only; orchestrator runs five phases; workers implement.
 
 Handle → Plan → Implement → Review → Loop.
 
-Playbooks: `skills/backlog-campaign/references/phase-*.md`
+Playbooks: `.claude/skills/backlog-campaign/references/phase-*.md`
 
 ## Clarify — all issue sizes
 

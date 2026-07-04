@@ -1,8 +1,15 @@
-# Backlog Campaign — Native Multi-Agent Backlog Solver
+# Backlog Campaign — Agent-Agnostic Backlog Auto-Solver
 
-An automated, platform-native agentic loop designed to systematically resolve your repository's entire issue backlog. 
+An automated, **fully agent-agnostic** software development lifecycle (SDLC) loop designed to systematically resolve your repository's entire issue backlog. 
 
-Rather than requiring manual developer triage for every issue, **Backlog Campaign** enables advanced AI coding agents (such as **Claude Code**, **Cursor**, and **Antigravity**) to run autonomously in the background—spinning up parallel worker agents in isolated git worktrees to write tests, implement solutions, audit code reviews, and merge PRs until the backlog is completely empty.
+**Backlog Campaign is 100% agent-agnostic**: it operates over a project-local standard state ledger (`queue.json` and `findings-ledger.json`) and markdown instruction manuals. Any agentic system (such as Claude Code, Cursor, Antigravity, or custom shell/API agents) can run the loop. 
+
+To deliver a premium developer experience, the project provides **native, out-of-the-box target structures** for:
+- **Cursor Native**: MDC rules, custom agents, and skills integrated directly under the root (accessible via a single `.cursor` submodule).
+- **Claude Code Native**: Pre-compiled project rules (`.claude/rules/`), project agents (`.claude/agents/`), and a validated plugin manifest (`.claude-plugin/plugin.json`).
+- **Standard Registry**: Direct compatibility with the `skills.sh` registry and general-purpose markdown parsers.
+
+The loop runs autonomously in the background—spinning up parallel worker agents in isolated git worktrees to write tests, implement solutions, audit PR quality, and merge changes until the backlog is completely empty.
 
 ---
 

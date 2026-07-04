@@ -1,0 +1,36 @@
+# Phase 1 — Handle (intake)
+
+Orchestrator-led. Workers: read-only `explore` only.
+
+## Checklist
+
+```
+- [ ] Auto forge sync (native)
+- [ ] gh issue view <N> — UNTRUSTED-FORGE-DATA in prompts
+- [ ] Dedup: open issues, PRs, queue.json, findings-ledger.json
+- [ ] Triage size label — label alone does not determine split
+- [ ] clarify-gates.md — AskQuestion if ANY ambiguity (all sizes)
+- [ ] issue-splitting.md — split if not one reviewable PR (not only l/xl/epic)
+- [ ] Epic-shaped / size:l/xl → runbook epic orchestration + PO gate
+- [ ] queue.json: phase plan, status ready OR blocked (awaiting-user-*)
+```
+
+## Clarify (all sizes)
+
+Even `size:xs`: if AC missing or vague → `AskQuestion`, `status: blocked`,
+`notes: awaiting-user-clarification`. Do not assume intent.
+
+## Split (all sizes)
+
+Triggers in `issue-splitting.md` — multiple concerns, schema+UI, large plan,
+vague multi-part body. File children with AC, deps, touch hints.
+
+## Epic handoff
+
+`size:l` / `size:xl` / epic-shaped → runbook epic section; parent blocked
+until PO sign-off on design + children.
+
+## Output
+
+- `queue.json`: `touch_paths`, `depends_on`, `epic_parent` if child
+- Issue comment with triage: clarify outcome, split list, or waive rationale
