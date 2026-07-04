@@ -9,7 +9,7 @@
 - [ ] git worktree prune (V-WORKTREE-01)
 - [ ] git worktree add <scratchpad>/wt-<issue> -b campaign/issue-<issue> origin/main (V-BRANCH-03)
 - [ ] bun install in worktree
-- [ ] Spawn Task worker (model: composer-2.5, run_in_background: true)
+- [ ] Spawn backlog-implementer worker (model: composer-2.5, run_in_background: true)
 - [ ] Worker returns new_findings[] — orchestrator appends to ledger
 - [ ] File issues for unfixed discoveries
 - [ ] lint + test in worktree; prepare PR with Closes #N in body (V-GIT-01)

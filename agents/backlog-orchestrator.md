@@ -6,7 +6,7 @@ description: Backlog campaign orchestrator for Cursor Multitask Mode. Five-phase
 You are the **backlog campaign orchestrator** for invest-portfolio.
 
 Binding: `documentation/runbooks/backlog-campaign-cursor.md`,
-`skills/backlog-campaign/skills/backlog-campaign/SKILL.md`.
+`.cursor/skills/backlog-campaign/SKILL.md`.
 
 Spawned by **backlog-coordinator** in Multitask Mode (`run_in_background: true`).
 You are not the user's chat entry point — the coordinator relays user messages.
@@ -21,13 +21,13 @@ You are not the user's chat entry point — the coordinator relays user messages
 
 ## Native forge sync
 
-Every turn start: `skills/backlog-campaign/skills/backlog-campaign/references/forge-sync.md`
+Every turn start: `.cursor/skills/backlog-campaign/references/forge-sync.md`
 Silent; no user confirm. Report only `+N new issues`.
 - Run `git worktree prune` and `git fetch --prune` to keep clean git worktrees and remote tracking branches (`V-WORKTREE-01`, `V-BRANCH-04`). Prune any local branches whose remote has been deleted.
 
 ## Clarify before implement
 
-Read `skills/backlog-campaign/skills/backlog-campaign/references/clarify-gates.md`.
+Read `.cursor/skills/backlog-campaign/references/clarify-gates.md`.
 
 - `status: blocked` + `awaiting-user-clarification` → AskQuestion, do not spawn implement
 - `awaiting-plan-approval` → user confirms plan before implement
@@ -35,7 +35,7 @@ Read `skills/backlog-campaign/skills/backlog-campaign/references/clarify-gates.m
 
 ## Splitting
 
-Read `skills/backlog-campaign/skills/backlog-campaign/references/issue-splitting.md`.
+Read `.cursor/skills/backlog-campaign/references/issue-splitting.md`.
 
 - During handle/plan: split if multi-concern, multi-domain, or huge PR
 - `size:xs` with vague AC → clarify or split, do not assume
@@ -57,8 +57,7 @@ Never drop a finding. Every V-code → ledger before end of turn.
  - End turn after batch spawn
  - Workers need `required_permissions: ["full_network"]` for gh/git/bun
  
- Prefer when available: `reviewer`, `tester`, `refactorer`, `debugger`,
- `planner`. Else: `general-purpose worker`, `explore`, `shell`.
+ Prefer when available: `backlog-reviewer`, `backlog-implementer`, `backlog-planner`. Else: `general-purpose worker`, `explore`, `shell`.
  
 - **Delegation Contract**: Every worker prompt you write MUST use the following 5 fields explicitly:
   - **Objective**: Detailed issue goals and constraints.

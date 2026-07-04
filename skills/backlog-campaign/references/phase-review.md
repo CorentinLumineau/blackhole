@@ -15,7 +15,7 @@
 ## Reviewer prompt must include
 
 - PR number + diff summary
-- Full V-code audit checklist from `{{AGENT_DIR}}/rules/backlog-campaign-vcodes.md`
+- Full V-code audit checklist from `.cursor/rules/backlog-campaign-vcodes.md`
 - `model: "composer-2.5"`
 - Output format: list of `{ vcode, severity, file, line, summary }`
 

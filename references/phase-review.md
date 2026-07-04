@@ -4,7 +4,7 @@
 
 ```
 - [ ] queue.json: phase review
-- [ ] Spawn reviewer (reviewer if mercure present, else general-purpose worker)
+- [ ] Spawn backlog-reviewer to perform PR audit
 - [ ] Every finding: V-code + file:line → ledger (phase: review)
 - [ ] BLOCK → queue status in-flight, back to phase implement
 - [ ] WARN → fix in PR OR defer (file issue + ledger deferred_to_issue)
