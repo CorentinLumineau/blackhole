@@ -21,3 +21,4 @@ Binding rules: `.claude/skills/backlog-campaign/references/backlog-campaign-vcod
   - No empty boilerplate scaffolding (`V-KISS-03`) or speculative abstractions (`V-YAGNI-03`).
 - **Verification**: Run the project tests and linters locally inside the worktree (e.g. `bun test`, `bun run lint`) to guarantee the branch is fully stable before opening a PR.
 - **PR Issue Linkage**: Open a pull request containing `Closes #N` or `Fixes #N` pointing to the issue ID in the PR body (`V-GIT-01`).
+- **Discovery of Improvements**: If you find any codebase improvements (including but not limited to code smell, performance bottlenecks, UX/UI polish, styling conventions, or test coverage gaps), document them in the `new_findings` array in your JSON response. For each discovery finding, you MUST estimate **`gain`** (1-10, impact value) and **`effort`** (1-10, complexity/time). Do not implement them in the current branch to avoid Touch-Paths scope creep (`V-SCOPE-02`).

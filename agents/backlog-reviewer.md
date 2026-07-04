@@ -23,7 +23,11 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
    - **Copy-Paste Templates (`V-DRY-04`)**: Flag template files duplicated with only name renames.
 3. **Tests & Coverage**:
    - Verify that all new logic is accompanied by robust tests (`V-TEST-01`) with solid assertions (`V-TEST-05`).
-4. **PR & Git Hygiene**:
+4. **Improvement Discoveries**:
+   - Audit the code for potential improvements (code smells, performance bottlenecks, UX/UI suggestions, best practices, test coverage gaps).
+   - Log them as findings with severity `WARN` and V-code `V-PARETO-02`. You MUST estimate **`gain`** (1-10) and **`effort`** (1-10) for each.
+   - Do not request fixing these in the current PR to avoid Touch-Paths scope creep (`V-SCOPE-02`).
+5. **PR & Git Hygiene**:
    - **PR Linkage (`V-GIT-01`)**: Reject the PR if the description lacks `Closes #N` or `Fixes #N`.
    - **Branch Commits (`V-BRANCH-02`)**: Ensure all changes are isolated in the feature branch and no direct commits were pushed to protected branches.
 
@@ -38,6 +42,15 @@ Return a JSON array of findings or an empty array if LGTM:
     "file": "lib/db/index.ts",
     "line": 42,
     "summary": "Empty catch block in query wrapper"
+  },
+  {
+    "vcode": "V-PARETO-02",
+    "severity": "WARN",
+    "file": "lib/components/PortfolioList.tsx",
+    "line": 15,
+    "summary": "Component rerenders on scroll could be optimized via useMemo",
+    "gain": 7,
+    "effort": 2
   }
 ]
 ```

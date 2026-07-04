@@ -46,7 +46,8 @@ Do not commit directly to main (`V-BRANCH-02`) or force-push (`V-BRANCH-01`).
 ```
 
 Orchestrator appends `new_findings` to ledger (`phase: implement`) before
-ending turn.
+ending turn. For each new finding concerning improvements, best practices, UX/UI, performance, or coverage, the orchestrator files a new GitHub tracking issue (`gh issue create`) to schedule it in the backlog campaign queue.
+
 
 ## Quality gate (pre-PR)
 

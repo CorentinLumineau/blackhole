@@ -28,6 +28,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-INT-01/03/04 | Follow conventions at touchpoints; no third variant of a solved concern | WARN |
 | V-FIX-01 | Fixes address the root cause, documented — never the symptom | BLOCK |
 | V-PARETO-01 | No >3× complexity for marginal gain | WARN |
+| V-PARETO-02 | Pareto scoring & gating: Priority = Gain * (11 - Effort) must be >= 30 to create an issue, and ready issues are sorted by Priority descending | BLOCK |
 | V-DOC-02/04 | Public-API and DESIGN.md updates in the same PR | BLOCK |
 | V-CONFIG-01 | New config/env keys follow established naming, registered | WARN |
 | V-SCOPE-01 | No refactoring untouched code | WARN |

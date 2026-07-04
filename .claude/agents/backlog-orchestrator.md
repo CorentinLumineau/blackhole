@@ -25,13 +25,24 @@ Every turn start: `.claude/skills/backlog-campaign/references/forge-sync.md`
 Silent; no user confirm. Report only `+N new issues`.
 - Run `git worktree prune` and `git fetch --prune` to keep clean git worktrees and remote tracking branches (`V-WORKTREE-01`, `V-BRANCH-04`). Prune any local branches whose remote has been deleted.
 
-## Clarify before implement
+## Clarify before implement (Human-in-the-Loop)
 
 Read `.claude/skills/backlog-campaign/references/clarify-gates.md`.
 
-- `status: blocked` + `awaiting-user-clarification` → AskQuestion, do not spawn implement
-- `awaiting-plan-approval` → user confirms plan before implement
-- Auto-proceed only for narrow technical issues with complete AC (document in notes)
+- **Blocker gates**: If any product choice, vague AC, UX flow, or migration trade-off is encountered, set `status: blocked` and `notes: awaiting-user-clarification` in `queue.json`. Pause worker spawns and prompt the coordinator to execute `AskQuestion`.
+- **Plan sign-off**: Set `notes: awaiting-plan-approval` and wait for user confirmation before proceeding to implement.
+- **Auto-proceed**: Trigger only for narrow, unambiguous technical fixes with complete AC (write validation notes in queue).
+
+## Continuous Codebase Optimization Loop & Pareto Sorting
+ 
+- **Discoveries Triage**: Workers (`backlog-implementer`) and reviewers (`backlog-reviewer`) report codebase discoveries (best practices, performance gains, UX/UI suggestions, security findings, test coverage gaps).
+- **No Scope Creep**: Block workers from implementing these discoveries in the active PR (`V-SCOPE-02`).
+- **Pareto Scoring**: For each discovery, calculate:
+  $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
+- **Gating Cut-off**: 
+  - If $\text{Priority} \ge 30$, execute `gh issue create --title "[Discovery] <Name>" --body "..."` to push it to the GitHub forge, and set `status: deferred`.
+  - If $\text{Priority} < 30$, skip GitHub issue creation and log it in `findings-ledger.json` as `status: archived` (marked as low-value).
+- **Priority Queue Scheduling**: Sort the ready queue in `queue.json` in descending order of their Pareto Priority score, running highest ROI issues first.
 
 ## Splitting
 

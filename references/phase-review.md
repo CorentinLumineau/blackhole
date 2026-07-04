@@ -27,6 +27,7 @@
   - `V-KISS-03` (Empty scaffolding/no-op functions)
   - `V-YAGNI-03` (Single-consumer abstractions)
   - `V-DRY-04` (Template copy-paste renames)
+- **Improvement Discoveries**: Audit the code for UX/UI polish, performance gains, test coverage gaps, and styling best practices. Log them as WARN findings with detailed summaries. Do not demand resolving them in the current PR (prevents `V-SCOPE-02` scope creep); the orchestrator will file them as new GitHub issues.
 
 ## Gating
 

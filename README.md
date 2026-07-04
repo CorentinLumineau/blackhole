@@ -27,6 +27,32 @@ flowchart LR
 
 ---
 
+## 👥 Human-in-the-Loop (HITL) & Feedback Intake
+
+Backlog Campaign integrates the developer seamlessly into the automation loop to resolve ambiguity and intake new directions:
+
+1. **Clarification Gates (Ambiguity Blockers)**: When a worker or planner agent encounters vague requirements, product/UX trade-offs, or destructive operations, the orchestrator sets the issue's queue state to `status: blocked` and `notes: awaiting-user-clarification`. Spawns are suspended, and the coordinator executes `AskQuestion` to solicit human decisions.
+2. **Main Chat Feedback Intake**: You can provide real-time corrections, feature requests, or performance feedback directly in the main chat. The coordinator intercepts this feedback:
+   - If it is new work or a code smell suggestion, it validates details, triages it, and natively files a GitHub issue (`gh issue create`). The sync loop then automatically registers it in the campaign queue.
+   - If it is a response to an active blocker, it updates the queue notes and resumes the orchestrator to unblock execution.
+
+---
+
+## 🔄 Continuous Codebase Optimization Loop & Pareto Gating
+ 
+The campaign does not just implement pre-defined requirements—it continuously discovers, gates, and schedules codebase health improvements:
+ 
+- **Universal Discoveries**: During implementation and review phases, agents audit the codebase for *any* optimization worth doing (including UX/UI polish, performance gains, styling best practices, security improvements, or test coverage gaps).
+- **Strict Scope Boundaries**: To prevent scope creep, workers are blocked from implementing these discoveries in the active PR (`V-SCOPE-02`).
+- **Pareto Scoring & Gating**: For every discovery finding, agents estimate **Gain (1-10)** and **Effort (1-10)**. The orchestrator computes:
+  $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
+  *   **High-Value ($\ge 30$)**: Automatically filed as a new GitHub tracking issue (`gh issue create`) to grow the backlog campaign queue.
+  *   **Low-Value ($< 30$)**: Logged in `findings-ledger.json` as `status: archived` and filtered out from the active queue to keep the backlog clean and noise-free.
+- **ROI Priority Scheduling**: The orchestrator automatically sorts the active ready queue in descending order of their Priority score, ensuring high-ROI issues are implemented first.
+
+
+---
+
 ## 🛠 How It Works (The 5-Phase Loop)
 
 The orchestrator operates over a project-local, gitignored state directory `.backlog-campaign/` containing:

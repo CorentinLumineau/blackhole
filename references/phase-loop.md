@@ -33,17 +33,29 @@ For issue N, PR P:
 ## Next batch
 
 1. Run forge sync
-2. Build ready set per `queue-dag.md`
+2. Build ready set per `queue-dag.md` and **sort in descending order** of their Pareto Priority score.
 3. For each selected issue, set `in-flight`, spawn worker at correct phase:
    - New issues start at **handle** or **plan** if handle complete
    - Returned-from-review start at **implement**
 
+## Continuous Discovery of Improvements (Backlog Growth)
+ 
+- The orchestrator triages all discoveries logged in the findings ledger.
+- For every codebase improvement suggestion:
+  1. Calculate the Priority score: $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$.
+  2. If $\text{Priority} \ge 30$:
+     - If not yet filed, execute `gh issue create --title "[Discovery] <Name>" --body "..."` (explain context, gain, effort, and priority score).
+     - Map the ledger's `deferred_to_issue` field to the new issue ID.
+     - The next auto-sync step reconciles the new issue into `queue.json` as a new campaign backlog item.
+  3. If $\text{Priority} < 30$:
+     - Set status in findings ledger to `archived` (marked as low-value). Do not file a GitHub issue to keep the backlog clean and noise-free.
+ 
 ## Campaign complete
-
+ 
 ```
 gh issue list --state open → []
 gh pr list --state open → []
 queue.json: no in-flight entries
 ```
-
+ 
 Report to user: SHIPPED summary, LEDGER OPEN count, any deferred issues filed.

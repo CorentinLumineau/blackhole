@@ -32,10 +32,10 @@ Binding: `{{AGENT_DIR}}/skills/backlog-campaign/references/multitask-mode.md`
 
 ## On user message
 
-1. If orchestrator is live and idle or completed a turn → `resume` with user
-   text, **`interrupt: false`**
-2. Do NOT re-paste full campaign-prompt unless spawning fresh orchestrator
-3. If user asks status → Phase 0 bootstrap + dashboard, do not spawn workers
+- Follow the Chat Feedback Intake protocol (`{{AGENT_DIR}}/skills/backlog-campaign/references/clarify-gates.md`):
+  1. **New Feedback/Work**: Intercept suggestions, performance notes, UI/UX ideas, and feature requests. Deduplicate against active issues. If the idea is vague, use `AskQuestion` to clarify the user's intent. Once defined, file a GitHub issue natively (`gh issue create --title "..." --body "..."`). Re-run sync to ingest it into the queue.
+  2. **Active Blockers**: If the user is responding to a blocked task (e.g. `awaiting-user-clarification` or `awaiting-plan-approval`), capture the response, update the notes, and resume the orchestrator with `interrupt: false` and the user's feedback text.
+  3. **Status requests**: If the user asks for status, run the Phase 0 bootstrap + dashboard (do not spawn new workers). Do not resume or interrupt orchestrator for routine status checks.
 
 ## On orchestrator blocker
 
