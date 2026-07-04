@@ -148,3 +148,20 @@ Optional: install a git pre-commit hook that runs build before commit:
 ```bash
 bash scripts/install-hook.sh
 ```
+
+---
+
+## Maintainer: Creating a release
+
+Every published tag `vX.Y.Z` must have a matching notes file at `.github/releases/vX.Y.Z.md` before the tag is pushed. CI uses that file as the GitHub release body; if no file exists, it falls back to git-cliff.
+
+```bash
+bun run release prepare vX.Y.Z   # scaffold notes + bump package.json
+# edit .github/releases/vX.Y.Z.md (product-focused, not internal changelog)
+bun run release validate vX.Y.Z
+git add -A && git commit -m "docs: add vX.Y.Z release notes" && git push origin main
+bun run release tag vX.Y.Z
+bun run release push vX.Y.Z
+```
+
+Agent workflow: attach the maintainer skill at [`.github/skills/create-release/SKILL.md`](.github/skills/create-release/SKILL.md).

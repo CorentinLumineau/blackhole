@@ -42,7 +42,25 @@ jobs:
             exit 1
           fi
 
+      - name: Resolve release notes
+        id: notes
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          NOTES_FILE=".github/releases/${TAG}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "source=file" >> "$GITHUB_OUTPUT"
+            echo "title=${TAG}" >> "$GITHUB_OUTPUT"
+            {
+              echo 'body<<EOF'
+              cat "$NOTES_FILE"
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "source=git-cliff" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Generate Changelog
+        if: steps.notes.outputs.source == 'git-cliff'
         uses: orhun/git-cliff-action@v4
         id: git-cliff
         with:
@@ -55,6 +73,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          body: ${{ steps.git-cliff.outputs.content }}
+          name: ${{ steps.notes.outputs.source == 'file' && format('{0} — Release', steps.notes.outputs.title) || '' }}
+          body: ${{ steps.notes.outputs.source == 'file' && steps.notes.outputs.body || steps.git-cliff.outputs.content }}
           draft: false
           prerelease: false
