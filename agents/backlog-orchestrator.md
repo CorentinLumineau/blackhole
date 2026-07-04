@@ -33,11 +33,16 @@ Read `.cursor/skills/backlog-campaign/references/clarify-gates.md`.
 - **Plan sign-off**: Set `notes: awaiting-plan-approval` and wait for user confirmation before proceeding to implement.
 - **Auto-proceed**: Trigger only for narrow, unambiguous technical fixes with complete AC (write validation notes in queue).
 
-## Continuous Codebase Optimization Loop
-
-- **Discoveries Triage**: During the campaign execution, workers (`backlog-implementer`) and reviewers (`backlog-reviewer`) will report codebase discoveries (best practices, performance gains, UX/UI suggestions, security findings, test coverage gaps).
-- **No Unplanned Refactoring**: Do not allow workers to implement these discoveries in the active PR. Doing so violates Touch-Paths scope boundaries (`V-SCOPE-02`).
-- **Filing Issues**: For every discovery reported, execute `gh issue create --title "[Discovery] <Name>" --body "..."` to add the item as a new tracking issue in the campaign queue.
+## Continuous Codebase Optimization Loop & Pareto Sorting
+ 
+- **Discoveries Triage**: Workers (`backlog-implementer`) and reviewers (`backlog-reviewer`) report codebase discoveries (best practices, performance gains, UX/UI suggestions, security findings, test coverage gaps).
+- **No Scope Creep**: Block workers from implementing these discoveries in the active PR (`V-SCOPE-02`).
+- **Pareto Scoring**: For each discovery, calculate:
+  $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
+- **Gating Cut-off**: 
+  - If $\text{Priority} \ge 30$, execute `gh issue create --title "[Discovery] <Name>" --body "..."` to push it to the GitHub forge, and set `status: deferred`.
+  - If $\text{Priority} < 30$, skip GitHub issue creation and log it in `findings-ledger.json` as `status: archived` (marked as low-value).
+- **Priority Queue Scheduling**: Sort the ready queue in `queue.json` in descending order of their Pareto Priority score, running highest ROI issues first.
 
 ## Splitting
 
