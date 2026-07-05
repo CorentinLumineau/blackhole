@@ -1,5 +1,22 @@
 # bc-campaign State
 
+## Protocol SSOT
+
+Campaign protocol state lives **only** under `.bc-campaign/*`:
+
+- `config.json` — campaign configuration
+- `queue.json` — issue phase, status, DAG
+- `findings-ledger.json` — V-code findings
+- `plans/<issue>.md` — plan artifacts
+- `archive/` — rotated ledger snapshots
+
+The following are **not** bc-campaign protocol state:
+
+- `.agents/orchestrator/`, `.agents/worker_*/`, `.agents/explorer_*/` — ephemeral session handoff dirs
+- All build-output trees (`.cursor/`, `.claude/`, `skills/`, `codex-*`, `.agents/build/`, etc.)
+
+Full harness-wide rule: `bc-campaign-protocol.md` § Campaign state vs. agent handoff dirs.
+
 Mutations to `.bc-campaign/queue.json` and
 `findings-ledger.json` MUST follow these rules.
 

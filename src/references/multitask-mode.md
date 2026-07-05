@@ -37,6 +37,12 @@ User message → Coordinator resumes orchestrator (interrupt: false) with user t
 - Spawn a second orchestrator while first is live
 - Re-paste full campaign-prompt on routine resume — only user message
 
+### Protocol state boundaries
+
+- Never write or mutate `queue.json`, `findings-ledger.json`, or plan files under `.agents/worker_*/` (or any `.agents/*` handoff dir).
+- Never treat `.agents/orchestrator/`, `.agents/worker_*/`, or `.agents/explorer_*/` as substitutes for `.bc-campaign/` protocol state.
+- Orchestrator and workers read/write campaign state only via `.bc-campaign/*` per `bc-campaign-state.md`.
+
 ## Coordinator MUST
 
 - Track **one** orchestrator subagent ID for the campaign

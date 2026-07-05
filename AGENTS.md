@@ -2,6 +2,8 @@
 
 Quick reference for invoking the backlog campaign across agent platforms.
 
+Campaign protocol state (queue, ledger, plans) lives only under `.bc-campaign/` — see [bc-campaign-state.md](.cursor/skills/bc-campaign/references/bc-campaign-state.md).
+
 ## Triggers
 
 | Command | Action |

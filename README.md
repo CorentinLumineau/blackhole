@@ -218,6 +218,17 @@ bun run verify         # Includes V-CODEX-* checks
 bun run doctor         # Campaign bootstrap preflight (before coordinator)
 ```
 
+### Repository layout
+
+| Layer | Path(s) | Role | How to change |
+|-------|---------|------|---------------|
+| **Source (authoring)** | `src/` | DRY source for agents, rules, references, playbooks | Edit `src/` directly |
+| **Build outputs** | `.cursor/`, `.claude/`, `skills/`, `codex-*`, `.agents/build/`, `plugins/backlog-campaign/`, etc. | Platform-specific compiled artifacts | `bun run build` — never hand-edit |
+| **Campaign runtime (protocol SSOT)** | `.bc-campaign/` (`queue.json`, `findings-ledger.json`, `config.json`, `plans/`) | Live campaign state; sole protocol SSOT | Mutate only per `bc-campaign-state.md` write protocol |
+| **Ephemeral handoff** | `.agents/orchestrator/`, `.agents/worker_*/`, `.agents/explorer_*/` | Per-session agent handoff; gitignored | Not protocol state — do not use for queue/ledger |
+
+Ephemeral handoff dirs share the `.agents/` parent with Gemini `build/` output (see [Pathway D: Antigravity / Gemini Native](#pathway-d-antigravity--gemini-native)) but are separate namespaces.
+
 Optional: install a git pre-commit hook that runs build before commit:
 
 ```bash
