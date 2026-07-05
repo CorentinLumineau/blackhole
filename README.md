@@ -264,8 +264,6 @@ bun run install:verify # Workstation install health matrix (Cursor/Claude/Gemini
 
 ### Repository layout
 
-See **[documentation/architecture.md](documentation/architecture.md)** for the full build-flow diagram, target-tree table, and runtime vs compile-artifact distinction.
-
 | Layer | Path(s) | Role | How to change |
 |-------|---------|------|---------------|
 | **Source (authoring)** | `src/` | DRY source for agents, rules, references, playbooks | Edit `src/` directly |
