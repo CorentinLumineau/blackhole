@@ -59,6 +59,10 @@ CI reads `.github/releases/${TAG}.md` when the file exists; otherwise falls back
    ```bash
    gh release view vX.Y.Z
    ```
+8. **Close milestone** (when `vX.Y.Z` was the active roadmap milestone)
+   - Confirm zero open issues on that milestone: `gh issue list --milestone "vX.Y.Z" --state open`
+   - Close via GitHub UI or API — **only after** step 7 succeeds
+   - See `.cursor/rules/release-milestone-governance.mdc` for project policy
 
 ## Retagging an existing release
 

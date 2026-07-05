@@ -31,3 +31,7 @@ Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/bc-campaign/SK
 ## Installation
 
 See [README.md](README.md#-installation-paths) for Cursor submodule, Claude marketplace, Codex CLI, and skills.sh setup.
+
+## Maintainer — releases & milestones
+
+Each semver milestone (`v0.4.1`, `v0.4.2`, …) is closed **only** by publishing its matching release via [`.github/skills/create-release/SKILL.md`](.github/skills/create-release/SKILL.md). Project rule: [`.cursor/rules/release-milestone-governance.mdc`](.cursor/rules/release-milestone-governance.mdc).

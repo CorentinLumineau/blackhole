@@ -26,3 +26,9 @@
 
 - [ ] `gh release view vX.Y.Z` — body matches notes file
 - [ ] Release title reasonable
+
+## Milestone closure (project policy)
+
+- [ ] `gh issue list --milestone "vX.Y.Z" --state open` returns empty
+- [ ] GitHub milestone `vX.Y.Z` closed **after** release is published (not before)
+- [ ] Did **not** use ad-hoc `gh release create` — used this skill + `bun run release` only
