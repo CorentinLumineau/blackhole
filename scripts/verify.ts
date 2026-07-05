@@ -675,6 +675,36 @@ const checkCheckpointAlignment = () => {
   else pass('V-CHECKPOINT-01');
 };
 
+/** Tracked build-output path markers — aligned with CI post-build git status check. */
+export const BUILD_OUTPUT_PATH_MARKERS = [
+  'agents/',
+  'rules/',
+  'skills/',
+  '.cursor/',
+  '.claude/',
+  '.claude-plugin/',
+  '.gemini-plugin/',
+  '.agents/build/',
+  'SKILL.md',
+  'marketplace.json',
+  '.codex-plugin/',
+  'codex-agents/',
+  'codex-skills/',
+  'codex-marketplace.json',
+  'plugins/backlog-campaign/',
+  'references/',
+] as const;
+
+export function isBuildOutputPorcelainLine(line: string): boolean {
+  return BUILD_OUTPUT_PATH_MARKERS.some((marker) => line.includes(marker));
+}
+
+/** Lines present in `after` porcelain but not in `before` (build-introduced dirtiness). */
+export function newPorcelainLines(before: string, after: string): string[] {
+  const beforeSet = new Set((before || '').trim().split('\n').filter(Boolean));
+  return (after || '').trim().split('\n').filter(Boolean).filter((line) => !beforeSet.has(line));
+}
+
 // V-BUILD-01: Build produces clean git diff (optional skip with VERIFY_SKIP_BUILD=1)
 const checkBuild = () => {
   if (process.env.VERIFY_SKIP_BUILD === '1') {
@@ -690,32 +720,19 @@ const checkBuild = () => {
   }
 
   const after = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf-8' });
-  // Only fail if build introduced NEW dirty files beyond what existed before
-  const afterLines = (after.stdout || '').trim().split('\n').filter(Boolean);
-  const buildOutputs = afterLines.filter(
-    (l) =>
-      l.includes('agents/') ||
-      l.includes('rules/') ||
-      l.includes('skills/') ||
-      l.includes('.cursor/') ||
-      l.includes('.claude/') ||
-      l.includes('.claude-plugin/') ||
-      l.includes('.gemini-plugin/') ||
-      l.includes('.agents/build/') ||
-      l.includes('SKILL.md') ||
-      l.includes('marketplace.json') ||
-      l.includes('.codex-plugin/') ||
-      l.includes('codex-agents/') ||
-      l.includes('codex-skills/') ||
-      l.includes('codex-marketplace.json')
+  const buildDirty = newPorcelainLines(before.stdout || '', after.stdout || '').filter(
+    isBuildOutputPorcelainLine,
   );
 
-  if (buildOutputs.length > 0 && !before.stdout?.includes('agents/')) {
-    // During dev, build may need to run — warn only if verify is run without prior build
-    pass('V-BUILD-01');
-  } else {
-    pass('V-BUILD-01');
+  if (buildDirty.length > 0) {
+    fail(
+      'V-BUILD-01',
+      `build dirtied committed output trees — run \`bun run build\` and commit outputs:\n${buildDirty.join('\n')}`,
+    );
+    return;
   }
+
+  pass('V-BUILD-01');
 };
 
 const main = () => {
