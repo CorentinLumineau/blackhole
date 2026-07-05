@@ -64,12 +64,15 @@ Awaiting implement fix for V-KISS-03 on #298.
 
 ## Compaction recovery
 
+See also: [recovery-protocol.md](recovery-protocol.md) (dirty worktree / mixed-issue stash recovery).
+
 After context loss or session restart:
 
 1. Read `campaign-checkpoint.md` if present; else infer from `queue.json`
 2. Run forge sync (`forge-sync.md`)
 3. Validate `jq empty` on queue + ledger
 4. Resume in-flight issues at their `phase` — do not re-spawn completed work
+4b. If an in-flight issue has an associated `wt-<issue>` and the worktree is dirty (or stash contains recovery tags), **pause implementer respawn** and follow [recovery-protocol.md](recovery-protocol.md) before continuing
 5. Increment `orchestrator_turn_id` on first post-recovery turn
 
 ## Fields

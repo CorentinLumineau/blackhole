@@ -14,6 +14,7 @@
 - [ ] File issues for unfixed discoveries
 - [ ] lint + test in worktree; prepare PR with Closes #N in body (V-GIT-01)
 - [ ] queue.json: phase review (when PR open)
+- [ ] Recovery protocol clear if resuming dirty wt-<issue> (recovery-protocol.md)
 ```
 
 ## Plan artifact paths (worktree rule)
@@ -53,3 +54,7 @@ In worktree:
 ```
 
 Build runs in **main clone** after merge prep (not in worktree).
+
+## Recovery (mixed worktrees)
+
+When a worktree is dirty after crash, compaction, or mixed-issue edits, the orchestrator **must** complete the recovery checklist in [recovery-protocol.md](recovery-protocol.md) §5 before any `bc-implementer` (re)spawn — do not resume implementation until the worktree matches a single issue scope.
