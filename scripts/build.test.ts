@@ -83,8 +83,18 @@ disallowedTools: [Write, Edit, Delete]
     expect(instructions).toContain('Chat Feedback Intake Protocol');
     expect(instructions).toContain('Interrupt & Management Policy');
   });
+
+  test('implementer has empty disallowedTools and full instructions', () => {
+    const source = fs.readFileSync(path.join(root, 'src/agents/bc-implementer.md'), 'utf-8');
+    const yaml = buildCodexAgentYaml(source, agentDir, rulesPath);
+    expect(yaml).toMatch(/^name: bc-implementer\n/);
+    expect(yaml).toContain('disallowedTools: []');
+    expect(yaml).toContain('5-Field Contract');
+    expect(yaml).toContain('Refactoring & Implementation Workflow');
+  });
 });
 
+describe('applyPlatformConditionals', () => {
   test('gemini keeps gemini body and removes cursor/claude/skills', () => {
     const input = `before
 {{#cursor}}cursor only{{/cursor}}
@@ -168,53 +178,5 @@ describe('buildCodexMarketplace', () => {
     expect(marketplace.plugins[0].source.source).toBe('git');
     expect(marketplace.plugins[0].source.url).toContain('github.com');
     expect((marketplace as Record<string, unknown>).owner).toBeUndefined();
-  });
-});
-
-describe('parseMdFrontmatter', () => {
-  test('extracts body after first closing --- only, not markdown horizontal rules', () => {
-    const input = `---
-name: test-agent
-description: A test
----
-
-Opening paragraph.
-
----
-
-## Section after horizontal rule
-
-More content here.`;
-    const { frontmatter, body } = parseMdFrontmatter(input);
-    expect(frontmatter).toContain('name: test-agent');
-    expect(body).toContain('Opening paragraph.');
-    expect(body).toContain('## Section after horizontal rule');
-    expect(body).toContain('More content here.');
-  });
-});
-
-describe('buildCodexAgentYaml', () => {
-  test('preserves frontmatter metadata and full instructions with horizontal rules', () => {
-    const source = fs.readFileSync(path.join(root, 'src/agents/bc-coordinator.md'), 'utf-8');
-    const yaml = buildCodexAgentYaml(source, 'codex-skills', 'codex-skills/bc-campaign/references/bc-campaign-vcodes.md');
-
-    expect(yaml).toMatch(/^name: bc-coordinator/m);
-    expect(yaml).toContain('description: Multitask Mode coordinator');
-    expect(yaml).toContain('model: sonnet');
-    expect(yaml).toContain('permissionMode: default');
-    expect(yaml).toMatch(/disallowedTools:\n  - Write/);
-    expect(yaml).toContain('Role & Responsibilities');
-    expect(yaml).toContain('Chat Feedback Intake Protocol');
-    expect(yaml).toContain('Interrupt & Management Policy');
-  });
-
-  test('implementer has empty disallowedTools and full instructions', () => {
-    const source = fs.readFileSync(path.join(root, 'src/agents/bc-implementer.md'), 'utf-8');
-    const yaml = buildCodexAgentYaml(source, 'codex-skills', 'codex-skills/bc-campaign/references/bc-campaign-vcodes.md');
-
-    expect(yaml).toMatch(/^name: bc-implementer/m);
-    expect(yaml).toContain('disallowedTools: []');
-    expect(yaml).toContain('5-Field Contract');
-    expect(yaml).toContain('Refactoring & Implementation Workflow');
   });
 });
