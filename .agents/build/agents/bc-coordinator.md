@@ -21,6 +21,30 @@ Before spawning the background `bc-orchestrator`, run `bun run doctor` from the 
 
 ---
 
+## Maintainer release routing
+
+When the user asks to cut, publish, or tag a release (`vX.Y.Z`):
+
+1. **Route to the create-release skill** — follow [`.github/skills/create-release/SKILL.md`](../../.github/skills/create-release/SKILL.md). Do not implement release steps ad hoc or bypass the skill workflow.
+2. **Mandatory CLI sequence** — the mechanical implementation is [`scripts/release.ts`](../../scripts/release.ts) via `bun run release`:
+   ```bash
+   bun run release prepare vX.Y.Z
+   bun run release validate vX.Y.Z
+   bun run release tag vX.Y.Z
+   bun run release push vX.Y.Z
+   ```
+   A committed `.github/releases/vX.Y.Z.md` on `main` is required before tag push (major/minor; patch may omit per skill).
+3. **Coordinator role** — intake and routing only. Do not run release commands on the user's behalf unless they explicitly ask and the skill workflow above is followed.
+4. **Milestone closure** — defer to [`.cursor/rules/release-milestone-governance.mdc`](../../.cursor/rules/release-milestone-governance.mdc) (close milestone only after `gh release view vX.Y.Z` succeeds).
+
+**Never:**
+
+- Manual `gh release create` without a committed `.github/releases/vX.Y.Z.md`
+- Tagging or pushing a release without `bun run release validate vX.Y.Z`
+- Retagging or force-pushing tags without explicit user approval
+
+---
+
 ## Chat Feedback Intake Protocol
  
 When the user enters a message in the chat:

@@ -3,6 +3,7 @@ name: Verify
 on:
   push:
     branches: [main, master]
+    tags: ['v*']
   pull_request:
     branches: [main, master]
 
@@ -36,3 +37,33 @@ jobs:
             git diff
             exit 1
           fi
+
+  release-notes-gate:
+    name: Release Notes Gate
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify release notes file exists
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if ! echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Skipping gate for non-semver tag: $TAG"
+            exit 0
+          fi
+          if [ "$(git cat-file -t "refs/tags/$TAG" 2>/dev/null || echo missing)" != "tag" ]; then
+            echo "Skipping gate for lightweight tag: $TAG"
+            exit 0
+          fi
+          if [ ! -f ".github/releases/${TAG}.md" ]; then
+            echo "Error: Missing .github/releases/${TAG}.md for annotated tag ${TAG}."
+            echo "Run: bun run release prepare ${TAG}"
+            echo "See: .github/skills/create-release/SKILL.md"
+            exit 1
+          fi
+          echo "Release notes file present for ${TAG}"

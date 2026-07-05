@@ -35,4 +35,4 @@ See [README.md](README.md#-installation-paths) for Cursor submodule, Claude mark
 
 ## Maintainer — releases & milestones
 
-Each semver milestone (`v0.4.1`, `v0.4.2`, …) is closed **only** by publishing its matching release via [`.github/skills/create-release/SKILL.md`](.github/skills/create-release/SKILL.md). Project rule: [`.cursor/rules/release-milestone-governance.mdc`](.cursor/rules/release-milestone-governance.mdc).
+Each semver milestone (`v0.4.1`, `v0.4.2`, …) is closed **only** by publishing its matching release via [`.github/skills/create-release/SKILL.md`](.github/skills/create-release/SKILL.md). The CLI backing that skill is [`scripts/release.ts`](scripts/release.ts) — run `bun run release prepare|validate|tag|push vX.Y.Z`. Project rule: [`.cursor/rules/release-milestone-governance.mdc`](.cursor/rules/release-milestone-governance.mdc).

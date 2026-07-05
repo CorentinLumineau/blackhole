@@ -239,7 +239,9 @@ bash scripts/install-hook.sh
 
 ## Maintainer: Creating a release
 
-Every published tag `vX.Y.Z` must have a matching notes file at `.github/releases/vX.Y.Z.md` before the tag is pushed. CI uses that file as the GitHub release body; if no file exists, it falls back to git-cliff.
+**MUST** use the create-release skill workflow for every published tag `vX.Y.Z`. The CLI is implemented by [`scripts/release.ts`](scripts/release.ts) (`bun run release …`). Do not cut releases ad hoc.
+
+Every published tag must have a matching notes file at `.github/releases/vX.Y.Z.md` committed on `main` before the tag is pushed (major/minor; patch may omit per skill). CI uses that file as the GitHub release body.
 
 ```bash
 bun run release prepare vX.Y.Z   # scaffold notes + bump package.json
@@ -250,4 +252,10 @@ bun run release tag vX.Y.Z
 bun run release push vX.Y.Z
 ```
 
-Agent workflow: attach the maintainer skill at [`.github/skills/create-release/SKILL.md`](.github/skills/create-release/SKILL.md).
+Agent workflow: attach the maintainer skill at [`.github/skills/create-release/SKILL.md`](.github/skills/create-release/SKILL.md). Milestone closure: [`.cursor/rules/release-milestone-governance.mdc`](.cursor/rules/release-milestone-governance.mdc).
+
+**Anti-patterns (blocked):**
+
+- Manual `gh release create` without a committed `.github/releases/vX.Y.Z.md`
+- Tagging or pushing a release without `bun run release validate vX.Y.Z`
+- Retagging or force-pushing tags without explicit approval
