@@ -93,8 +93,9 @@ Claude Code natively supports long-running background sessions via the `/goal` c
 Cursor natively supports multi-file background operations using **Composer / Multitask Mode**.
 - **How to invoke**:
   1. Open the Cursor Composer (Cmd+I) and switch to **Agent** or **Multitask Mode**.
-  2. Input the command: `@bc-coordinator run the campaign` (or simply trigger `/bc-campaign`).
-  3. The `bc-coordinator` will bootstrap the campaign and spawn the background `bc-orchestrator` task, freeing up your composer for other work.
+  2. Run `bun run doctor` to preflight install health, config, and built artifacts.
+  3. Input the command: `@bc-coordinator run the campaign` (or simply trigger `/bc-campaign`).
+  4. The `bc-coordinator` will bootstrap the campaign and spawn the background `bc-orchestrator` task, freeing up your composer for other work.
 
 ### 3. Antigravity (Gemini) — Multitask Mode
 Antigravity has no native `/goal` command. Use the **coordinator** as the entry point:
@@ -212,6 +213,7 @@ bun run build --no-codex  # Skip Codex targets when iterating on other platforms
 bun run build --all    # All targets including Gemini
 bun test
 bun run verify         # Includes V-CODEX-* checks
+bun run doctor         # Campaign bootstrap preflight (before coordinator)
 ```
 
 Optional: install a git pre-commit hook that runs build before commit:
