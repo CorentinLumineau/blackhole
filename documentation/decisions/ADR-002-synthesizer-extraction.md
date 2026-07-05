@@ -1,7 +1,8 @@
 ---
 tracking_initiative: backlog-campaign-v2
-status: accepted
+status: superseded
 scope: review
+superseded_by: ADR-003
 ---
 
 # ADR-002: Synthesizer Extraction
@@ -33,8 +34,12 @@ Shared infrastructure lives in `src/references/review-core.md`.
 
 - **6-agent review swarm** (mercure x-review): Rejected — backlog-campaign stays lean with one reviewer + synthesizer
 
+## Supersession
+
+Superseded by [ADR-003](ADR-003-synthesizer-removal.md) — deterministic `scripts/review-aggregate.ts` replaces the LLM synthesizer agent per [`documentation/audits/analysis-bc-synthesizer-yagni.md`](../audits/analysis-bc-synthesizer-yagni.md).
+
 ## References
 
-- `src/agents/backlog-synthesizer.md`
+- `src/agents/bc-synthesizer.md` *(removed — see ADR-003)*
 - `src/references/review-core.md`
 - `src/references/worker-schemas.md`

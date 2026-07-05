@@ -46,12 +46,6 @@ describe('validateWorker reviewer', () => {
     expectInvalid('reviewer', 'reviewer-missing-findings.json'));
 });
 
-describe('validateWorker synthesizer', () => {
-  test('valid approved', () => expectValid('synthesizer', 'synthesizer-approved.json'));
-  test('invalid status enum', () =>
-    expectInvalid('synthesizer', 'synthesizer-invalid-status.json'));
-});
-
 describe('extractWorkerJson', () => {
   test('extracts fenced json block', () => {
     const summary = `Done.\n\n\`\`\`json\n{"status":"ready","plan_path":"p.md","track":"quick","failing_checks":[],"clarification_markers":0}\n\`\`\``;
@@ -77,7 +71,7 @@ describe('resolveRole', () => {
     expect(resolveRole({ subagent_type: 'bc-planner' })).toBe('planner');
     expect(resolveRole({ subagent_type: 'bc-implementer' })).toBe('implementer');
     expect(resolveRole({ subagent_type: 'bc-reviewer' })).toBe('reviewer');
-    expect(resolveRole({ subagent_type: 'bc-synthesizer' })).toBe('synthesizer');
+    expect(resolveRole({ subagent_type: 'bc-synthesizer' })).toBeNull();
   });
 
   test('returns null for non-campaign subagents', () => {

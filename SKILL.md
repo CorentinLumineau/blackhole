@@ -67,7 +67,7 @@ require `gh issue create` + `deferred_to_issue`.
 0. Auto-sync every turn
 1. Ready set → [queue-dag.md](references/queue-dag.md) — skip `blocked` (user gates)
 2. Per issue: handle → plan → **user gate if needed** → implement → review → loop
-3. Spawn workers via the designated agent files (`bc-planner`, `bc-implementer`, `bc-reviewer`, `bc-synthesizer`), `run_in_background: true`, one turn per batch
+3. Spawn workers via the designated agent files (`bc-planner`, `bc-implementer`, `bc-reviewer`), `run_in_background: true`, one turn per batch
 4. End turn; triage completions → ledger → next phase
 
 **Do not spawn implement** while `status: blocked` with

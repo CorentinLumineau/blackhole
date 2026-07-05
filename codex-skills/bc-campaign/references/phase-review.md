@@ -7,23 +7,21 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 ```
 - [ ] queue.json: phase review
 - [ ] Spawn bc-reviewer to perform PR audit
-- [ ] Spawn bc-synthesizer to aggregate reviewer findings
-- [ ] Synthesizer output → ledger append (phase: review)
+- [ ] Run scripts/review-aggregate.ts on reviewer JSON
+- [ ] Aggregate output → ledger append (phase: review)
 - [ ] BLOCK → increment review_iteration; back to phase implement (see review-core iteration budget)
 - [ ] review_iteration >= 4 → escalate to coordinator (AskQuestion)
 - [ ] WARN → fix in PR OR defer (file issue + ledger deferred_to_issue)
-- [ ] Docs-only PR → orchestrator direct review, still run synthesizer
-- [ ] LGTM (synthesizer lgtm: true) → proceed to phase loop (merge)
+- [ ] Docs-only PR → orchestrator direct review, still run review-aggregate.ts
+- [ ] LGTM (aggregate lgtm: true) → proceed to phase loop (merge)
 - [ ] Write campaign-checkpoint.md per checkpoint-protocol.md
 ```
 
 ## Review pipeline
 
 1. **Reviewer** — spawn `bc-reviewer` with PR diff, plan Touch-Paths, V-code checklist.
-2. **Synthesizer** — spawn `bc-synthesizer` with reviewer JSON + issue/PR context + `review_iteration`.
-3. **Orchestrator** — append synthesizer `findings` to ledger; route by `lgtm` and iteration budget.
-
-The orchestrator **never** aggregates findings inline.
+2. **Aggregate** — orchestrator runs `scripts/review-aggregate.ts` with reviewer JSON + issue/PR context.
+3. **Orchestrator** — append aggregate `findings` to ledger; route by `lgtm` and iteration budget.
 
 ## Reviewer prompt must include
 
@@ -31,13 +29,6 @@ The orchestrator **never** aggregates findings inline.
 - Full V-code audit checklist from `codex-skills/bc-campaign/references/bc-campaign-vcodes.md`
 - Model: use the designated worker agent (`bc-reviewer`)
 - Output format: `worker-schemas.md` reviewer contract
-
-## Synthesizer prompt must include
-
-- Reviewer JSON output (raw)
-- Issue ref, PR ref, current `review_iteration`
-- Output format: `worker-schemas.md` synthesizer contract
-- Model: `bc-synthesizer` (`quick` mode on iteration 2+ when ≤10 findings)
 
 ## Audit Checklist Extensions
 
@@ -64,5 +55,5 @@ Never merge on errored review — empty findings from failed agent is not LGTM.
 
 ## Ledger before turn end
 
-All synthesizer findings appended to `findings-ledger.json` with `pr_ref` set.
+All aggregate findings appended to `findings-ledger.json` with `pr_ref` set.
 Unresolved BLOCK rows stay `status: open`.

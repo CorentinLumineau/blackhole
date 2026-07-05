@@ -11,9 +11,8 @@ Machine-verified canonical values for bc-campaign. `scripts/verify.ts` reads thi
 | bc-planner | `src/agents/bc-planner.md` |
 | bc-implementer | `src/agents/bc-implementer.md` |
 | bc-reviewer | `src/agents/bc-reviewer.md` |
-| bc-synthesizer | `src/agents/bc-synthesizer.md` |
 
-**agent_count:** 6
+**agent_count:** 5
 
 ## Phases
 
@@ -63,7 +62,7 @@ Source: `src/references/bc-campaign-vcodes.md`
 | V-CODEX-01 | Codex build succeeds as part of default `bun run build` |
 | V-CODEX-02 | Codex plugin.json and marketplace validate against fixture baselines |
 | V-CODEX-03 | codex-skills/bc-campaign/SKILL.md with disable-model-invocation |
-| V-CODEX-04 | Six agent YAML files in codex-agents/ with instructions block |
+| V-CODEX-04 | Five agent YAML files in codex-agents/ with instructions block |
 
 ## Config schema
 

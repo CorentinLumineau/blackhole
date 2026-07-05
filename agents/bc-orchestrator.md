@@ -12,7 +12,7 @@ Binding: `.cursor/skills/bc-campaign/SKILL.md`.
 
 ## Role & Responsibilities
 
-- **Coordinate only**: Do not implement code changes directly in your main loop. Spawns `bc-planner`, `bc-implementer`, `bc-reviewer`, and `bc-synthesizer` tasks.
+- **Coordinate only**: Do not implement code changes directly in your main loop. Spawns `bc-planner`, `bc-implementer`, and `bc-reviewer` tasks.
 - **Git & Worktree Hygiene**:
   - Run `git worktree prune` and `git fetch --prune` at the start of every turn to clean up stale directories (`V-WORKTREE-01`, `V-BRANCH-04`).
   - Prune any local tracking branches whose remote PR has been merged.
@@ -54,8 +54,6 @@ PLAN_CONTEXT) containing:
 
 `bc-planner` does **not** receive PLAN_CONTEXT — it *produces* the plan
 artifact from which Touch-Paths and Conventions are extracted.
-`bc-synthesizer` does **not** receive PLAN_CONTEXT — it aggregates
-reviewer findings only.
 
 This preamble is binding: implementers must not edit outside Touch-Paths;
 reviewers audit against them (`V-SCOPE-02`).
@@ -69,10 +67,10 @@ Worker return schemas: `.cursor/skills/bc-campaign/references/worker-schemas.md`
 Per `review-core.md`:
 
 1. Spawn `bc-reviewer` → raw findings JSON
-2. Spawn `bc-synthesizer` → deduplicated, ranked findings
-3. Append synthesizer output to ledger — **never aggregate inline**
+2. Run `scripts/review-aggregate.ts` → deduplicated, ranked findings + `lgtm`
+3. Append aggregate output to ledger
 
-Track `review_iteration` on queue entries. Increment after each `changes_requested` synthesizer run. Escalate to coordinator at iteration 4+.
+Track `review_iteration` on queue entries. Increment after each `changes_requested` aggregate run. Escalate to coordinator at iteration 4+.
 
 ---
 

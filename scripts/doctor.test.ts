@@ -47,7 +47,7 @@ describe('validateConfigJson', () => {
 });
 
 describe('checkCursorAgents', () => {
-  test('passes when all six bc agents present', () => {
+  test('passes when all five bc agents present', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-agents-'));
     const agentsDir = path.join(root, '.cursor', 'agents');
     fs.mkdirSync(agentsDir, { recursive: true });
@@ -60,11 +60,11 @@ describe('checkCursorAgents', () => {
     expect(check.id).toBe('D-AGENTS-01');
   });
 
-  test('fails when only five agents present', () => {
+  test('fails when only four agents present', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-agents-'));
     const agentsDir = path.join(root, '.cursor', 'agents');
     fs.mkdirSync(agentsDir, { recursive: true });
-    for (const name of EXPECTED_BC_AGENTS.slice(0, 5)) {
+    for (const name of EXPECTED_BC_AGENTS.slice(0, 4)) {
       fs.writeFileSync(path.join(agentsDir, name), '# agent\n');
     }
 

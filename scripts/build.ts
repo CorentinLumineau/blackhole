@@ -306,8 +306,8 @@ const assertGeminiTree = (destRoot: string, label: string) => {
   const ruleFiles = fs.existsSync(rulesDir)
     ? fs.readdirSync(rulesDir).filter((f) => rulesList.includes(f))
     : [];
-  if (agentFiles.length !== 6) {
-    throw new Error(`Gemini ${label}: expected 6 agents, got ${agentFiles.length}`);
+  if (agentFiles.length !== 5) {
+    throw new Error(`Gemini ${label}: expected 5 agents, got ${agentFiles.length}`);
   }
   if (ruleFiles.length !== 3) {
     throw new Error(`Gemini ${label}: expected 3 rules, got ${ruleFiles.length}`);
@@ -366,8 +366,8 @@ const assertCodexTree = (rootDir: string) => {
   const agentFiles = fs.existsSync(agentsDir)
     ? fs.readdirSync(agentsDir).filter((f) => f.startsWith('bc-') && f.endsWith('.yaml'))
     : [];
-  if (agentFiles.length !== 6) {
-    throw new Error(`Codex: expected 6 agent YAML files, got ${agentFiles.length}`);
+  if (agentFiles.length !== 5) {
+    throw new Error(`Codex: expected 5 agent YAML files, got ${agentFiles.length}`);
   }
   for (const file of agentFiles) {
     const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');

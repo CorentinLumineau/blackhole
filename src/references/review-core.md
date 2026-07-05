@@ -1,18 +1,18 @@
 # Review Core — Shared Review Infrastructure
 
-Canonical definitions for review delegation, aggregation, iteration budgets, and gating. Referenced by `phase-review.md`, `bc-reviewer`, and `bc-synthesizer`.
+Canonical definitions for review delegation, aggregation, iteration budgets, and gating. Referenced by `phase-review.md` and `bc-reviewer`.
 
 ## Review pipeline
 
 ```
-bc-reviewer (raw findings)
+bc-reviewer (raw findings JSON)
         ↓
-bc-synthesizer (dedup, cross-correlate, Pareto rank)
+scripts/review-aggregate.ts (deterministic dedup, Pareto rank)
         ↓
 orchestrator (ledger append, phase routing)
 ```
 
-The orchestrator **never** aggregates findings inline — delegation to `bc-synthesizer` is mandatory.
+The orchestrator calls `scripts/review-aggregate.ts` after reviewer completion — no LLM aggregation subagent.
 
 ## Severity → action mapping
 
@@ -30,9 +30,8 @@ Never merge on errored review — empty findings from a failed agent is not LGTM
 LGTM requires **all** of:
 
 1. `bc-reviewer` returned `status: "complete"` (not `error`)
-2. `bc-synthesizer` returned `status: "approved"` and `lgtm: true`
-3. `blockers_count === 0`
-4. No unresolved BLOCK rows in ledger for this issue/PR
+2. `scripts/review-aggregate.ts` returned `lgtm: true` and `blockers_count === 0`
+3. No unresolved BLOCK rows in ledger for this issue/PR
 
 ## Pareto scoring
 
@@ -51,14 +50,7 @@ Aligns with `phase-loop.md` continuous discovery protocol.
 
 Before ledger append, deduplicate on `(vcode, file, line, issue_ref)` per `findings-ledger.md`.
 
-Synthesizer performs semantic dedup upstream; orchestrator performs exact-key dedup at write time.
-
-## Cross-correlation
-
-When 2+ findings share the same root cause (same file + related vcodes, or identical intent):
-
-- Keep one finding; note `multi_source: true`
-- Promote severity one level (max `BLOCK`)
+`review-aggregate.ts` performs exact-key dedup with severity merge (`BLOCK` > `WARN` > `NOTE`/`INFO`); orchestrator performs the same key check at write time.
 
 ## Review iteration budget
 
@@ -70,7 +62,7 @@ Tracked on queue entry as `review_iteration` (integer, default 0).
 | 4+ | Escalate to user via coordinator (`AskQuestion`) |
 | Hard ceiling: 5 | Stop auto-fix; require human triage |
 
-Increment `review_iteration` after each synthesizer run that returns `changes_requested`.
+Increment `review_iteration` after each aggregate run that returns `changes_requested`.
 
 Reset `review_iteration` to 0 when PR merges or issue returns to plan phase.
 
@@ -83,16 +75,24 @@ Every `bc-reviewer` delegation MUST include:
 3. Full V-code audit checklist from `{{VCODES_PATH}}`
 4. Output format per `worker-schemas.md` reviewer contract
 
-## Synthesizer prompt requirements
+## Aggregate invocation
 
-Every `bc-synthesizer` delegation MUST include:
+After `bc-reviewer` completes, the orchestrator runs:
 
-1. Reviewer JSON output (raw)
-2. Issue ref + PR ref
-3. Current `review_iteration`
-4. Optional prior ledger rows for same issue
-5. Output format per `worker-schemas.md` synthesizer contract
+```bash
+bun run scripts/review-aggregate.ts \
+  --reviewer-file <path> \
+  --issue-ref <N> \
+  [--pr-ref <P>] \
+  [--prior-file <ledger-rows.json>]
+```
+
+Output schema: `worker-schemas.md` § Review aggregate.
 
 ## Docs-only PRs
 
-Orchestrator may perform direct review for docs-only PRs, but must still run synthesizer on findings before ledger append.
+Orchestrator may perform direct review for docs-only PRs, but must still run `review-aggregate.ts` on findings before ledger append.
+
+## Revisit condition
+
+Re-introduce a dedicated aggregation agent only if bc-campaign adopts parallel multi-reviewer swarms (2+ independent reviewers per PR). See ADR-003.

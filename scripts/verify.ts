@@ -51,7 +51,6 @@ const checkAgentToolPolicy = () => {
     'bc-planner.md': ['Delete'],
     'bc-implementer.md': null,
     'bc-reviewer.md': ['Write', 'Edit', 'Delete'],
-    'bc-synthesizer.md': ['Write', 'Edit', 'Delete'],
   };
 
   for (const file of files) {
@@ -120,7 +119,7 @@ const checkDelegationContracts = () => {
     }
   }
 
-  const outputAgents = ['bc-reviewer.md', 'bc-synthesizer.md', 'bc-planner.md', 'bc-implementer.md'];
+  const outputAgents = ['bc-reviewer.md', 'bc-planner.md', 'bc-implementer.md'];
   for (const file of outputAgents) {
     const content = read(`src/agents/${file}`);
     if (!/worker-schemas|Output format|Return format/i.test(content)) {
@@ -344,8 +343,8 @@ const checkGeminiBuild = () => {
 
   const workspaceAgents = listFiles(path.join(AGENTS_BUILD_ROOT, 'agents'));
   const bcAgents = workspaceAgents.filter((f) => f.startsWith('bc-'));
-  if (bcAgents.length !== 6) {
-    errors.push(`${AGENTS_BUILD_AGENT_DIR}/agents: expected 6 bc-*.md, got ${bcAgents.length}`);
+  if (bcAgents.length !== 5) {
+    errors.push(`${AGENTS_BUILD_AGENT_DIR}/agents: expected 5 bc-*.md, got ${bcAgents.length}`);
   }
 
   for (const rule of ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md']) {
@@ -504,8 +503,8 @@ const checkCodexBuild = () => {
     ? fs.readdirSync(agentsDir).filter((f) => f.startsWith('bc-') && f.endsWith('.yaml'))
     : [];
   const agentErrors: string[] = [];
-  if (agentFiles.length !== 6) {
-    agentErrors.push(`expected 6 bc-*.yaml agents, got ${agentFiles.length}`);
+  if (agentFiles.length !== 5) {
+    agentErrors.push(`expected 5 bc-*.yaml agents, got ${agentFiles.length}`);
   }
   const yamlScalar = (content: string, field: string): string | null => {
     const m = content.match(new RegExp(`^${field}:\\s*(.+)$`, 'm'));

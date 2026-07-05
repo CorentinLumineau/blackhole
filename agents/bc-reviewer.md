@@ -87,4 +87,4 @@ Return JSON matching `worker-schemas.md` reviewer contract:
 
 On audit failure (cannot read PR, missing plan), return `{ "status": "error", "findings": [], "error": "..." }`.
 
-Raw findings are passed to `bc-synthesizer` for aggregation — do not deduplicate or rank.
+Raw findings are passed to `scripts/review-aggregate.ts` for deduplication and ranking — do not deduplicate or rank in reviewer output.
