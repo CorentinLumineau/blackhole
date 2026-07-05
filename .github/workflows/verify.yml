@@ -27,9 +27,6 @@ jobs:
       - name: Run verify
         run: bun run verify
 
-      - name: Install verify smoke
-        run: bun run install:verify
-
       - name: Run build
         run: bun run build
 

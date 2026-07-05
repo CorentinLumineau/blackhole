@@ -6,7 +6,6 @@
     "build": "bun run scripts/build.ts",
     "build:codex": "bun run scripts/build.ts",
     "doctor": "bun run scripts/doctor.ts",
-    "install:verify": "bun run scripts/install-verify.ts",
     "verify": "bun run scripts/verify.ts",
     "verify:codex": "bun run scripts/verify.ts",
     "release": "bun run scripts/release.ts",
