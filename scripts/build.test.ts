@@ -9,6 +9,8 @@ import {
   buildCodexMarketplace,
   parseMdFrontmatter,
   buildCodexAgentYaml,
+  compileGeminiTree,
+  assertGeminiDistributionTree,
 } from './build.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -66,6 +68,34 @@ describe('compileContent', () => {
       'gemini'
     );
     expect(result).toBe('dir=.agents vcodes=.agents/rules/bc-campaign-vcodes.md');
+  });
+});
+
+describe('compileGeminiTree distribution bundle', () => {
+  const tmpRoot = path.join(root, '.tmp-gemini-dist-test');
+
+  test('emits skills and rules without agents/ for Antigravity distribution layout', () => {
+    if (fs.existsSync(tmpRoot)) fs.rmSync(tmpRoot, { recursive: true, force: true });
+    fs.mkdirSync(tmpRoot, { recursive: true });
+
+    compileGeminiTree(tmpRoot, 'plugins/backlog-campaign', 'plugins/backlog-campaign/rules/bc-campaign-vcodes.md', {
+      includeAgents: false,
+    });
+    fs.writeFileSync(
+      path.join(tmpRoot, 'plugin.json'),
+      JSON.stringify(buildGeminiPluginManifest('0.0.0-test'), null, 2),
+      'utf-8'
+    );
+
+    expect(() => assertGeminiDistributionTree(tmpRoot)).not.toThrow();
+    expect(fs.existsSync(path.join(tmpRoot, 'agents'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpRoot, 'rules', 'bc-campaign-vcodes.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpRoot, 'skills', 'bc-campaign', 'SKILL.md'))).toBe(true);
+
+    const skill = fs.readFileSync(path.join(tmpRoot, 'skills', 'bc-campaign', 'SKILL.md'), 'utf-8');
+    expect(skill).toContain('plugins/backlog-campaign');
+
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
   });
 });
 

@@ -319,6 +319,48 @@ const checkGeminiBuild = () => {
     }
   }
 
+  const distRoot = path.join(root, 'plugins', 'backlog-campaign');
+  const distManifest = path.join(distRoot, 'plugin.json');
+  if (!fs.existsSync(distManifest)) {
+    errors.push('missing plugins/backlog-campaign/plugin.json');
+  } else {
+    try {
+      const manifest = JSON.parse(fs.readFileSync(distManifest, 'utf-8'));
+      for (const key of ['$schema', 'name', 'version', 'description']) {
+        if (!manifest[key]) errors.push(`plugins/backlog-campaign/plugin.json missing ${key}`);
+      }
+    } catch {
+      errors.push('plugins/backlog-campaign/plugin.json invalid JSON');
+    }
+  }
+
+  if (fs.existsSync(path.join(distRoot, 'agents'))) {
+    errors.push('plugins/backlog-campaign/agents/ must not exist (Antigravity distribution schema)');
+  }
+
+  for (const rule of ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md']) {
+    if (!fs.existsSync(path.join(distRoot, 'rules', rule))) {
+      errors.push(`missing plugins/backlog-campaign/rules/${rule}`);
+    }
+  }
+
+  const distSkillPath = path.join(distRoot, 'skills', 'bc-campaign', 'SKILL.md');
+  if (!fs.existsSync(distSkillPath)) {
+    errors.push('missing plugins/backlog-campaign/skills/bc-campaign/SKILL.md');
+  }
+
+  const distRefsDir = path.join(distRoot, 'skills', 'bc-campaign', 'references');
+  if (!fs.existsSync(distRefsDir) || fs.readdirSync(distRefsDir).length === 0) {
+    errors.push('missing or empty plugins/backlog-campaign/skills/bc-campaign/references/');
+  }
+
+  for (const rel of walkMdFiles('plugins/backlog-campaign')) {
+    const content = read(rel);
+    if (/\{\{#cursor\}\}/.test(content) || /\{\{#claude\}\}/.test(content)) {
+      errors.push(`${rel}: contains raw platform conditional`);
+    }
+  }
+
   for (const rel of walkMdFiles('.agents')) {
     const content = read(rel);
     if (/\{\{#cursor\}\}/.test(content) || /\{\{#claude\}\}/.test(content)) {

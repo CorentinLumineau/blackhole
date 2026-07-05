@@ -258,8 +258,15 @@ export const buildCodexMarketplace = () => ({
   ],
 });
 
-export const compileGeminiTree = (destRoot: string, agentDir: string, rulesPath: string) => {
-  compileFolder('agents', path.join(destRoot, 'agents'), agentDir, rulesPath, 'gemini', true);
+export const compileGeminiTree = (
+  destRoot: string,
+  agentDir: string,
+  rulesPath: string,
+  options: { includeAgents?: boolean } = {}
+) => {
+  if (options.includeAgents !== false) {
+    compileFolder('agents', path.join(destRoot, 'agents'), agentDir, rulesPath, 'gemini', true);
+  }
   for (const rule of rulesList) {
     processFile(
       path.join(srcDir, 'references', rule),
@@ -299,6 +306,32 @@ const assertGeminiTree = (destRoot: string, label: string) => {
   }
   if (ruleFiles.length !== 3) {
     throw new Error(`Gemini ${label}: expected 3 rules, got ${ruleFiles.length}`);
+  }
+};
+
+/** Antigravity distribution bundle: plugin.json + skills/ + rules/ only (no agents/). */
+export const assertGeminiDistributionTree = (destRoot: string) => {
+  if (fs.existsSync(path.join(destRoot, 'agents'))) {
+    throw new Error('Gemini distribution: must not include agents/ (use workspace .agents/ for agent prompts)');
+  }
+  const rulesDir = path.join(destRoot, 'rules');
+  const ruleFiles = fs.existsSync(rulesDir)
+    ? fs.readdirSync(rulesDir).filter((f) => rulesList.includes(f))
+    : [];
+  if (ruleFiles.length !== 3) {
+    throw new Error(`Gemini distribution: expected 3 rules, got ${ruleFiles.length}`);
+  }
+  const skillPath = path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md');
+  if (!fs.existsSync(skillPath)) {
+    throw new Error('Gemini distribution: missing skills/bc-campaign/SKILL.md');
+  }
+  const refsDir = path.join(destRoot, 'skills', 'bc-campaign', 'references');
+  if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
+    throw new Error('Gemini distribution: missing or empty skills/bc-campaign/references/');
+  }
+  const manifestPath = path.join(destRoot, 'plugin.json');
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error('Gemini distribution: missing plugin.json');
   }
 };
 
@@ -360,6 +393,7 @@ if (buildGemini) {
   cleanDir(path.join(root, '.agents', 'rules'));
   cleanDir(path.join(root, '.agents', 'agents'));
   cleanDir(path.join(root, '.agents', 'skills', 'bc-campaign'));
+  cleanDir(path.join(root, 'plugins', 'backlog-campaign'));
   cleanDir(path.join(root, '.gemini-plugin'));
 }
 if (buildCodex) {
@@ -457,15 +491,24 @@ compileFolder(
   'claude'
 );
 
-// 5. Compile Target D: Gemini/Antigravity — workspace (.agents/) + distribution (.gemini-plugin/) — opt-in (#13)
+// 5. Compile Target D: Gemini/Antigravity — workspace (.agents/) + distribution (plugins/backlog-campaign/) — opt-in (#13, #27)
 if (buildGemini) {
-  console.log('Compiling Target D (Gemini/Antigravity Project Native)...');
+  console.log('Compiling Target D (Gemini/Antigravity workspace — .agents/)...');
   const agentsRoot = path.join(root, '.agents');
+  // Workspace tree includes agents/ for @bc-* invocation and Multitask Mode handoff paths.
   compileGeminiTree(agentsRoot, '.agents', '.agents/rules/bc-campaign-vcodes.md');
   assertGeminiTree(agentsRoot, 'workspace');
 
-  console.log('Generating Gemini Plugin manifest...');
+  console.log('Compiling Target D distribution bundle (plugins/backlog-campaign/)...');
+  const distRoot = path.join(root, 'plugins', 'backlog-campaign');
+  const distAgentDir = 'plugins/backlog-campaign';
+  const distRulesPath = 'plugins/backlog-campaign/rules/bc-campaign-vcodes.md';
+  compileGeminiTree(distRoot, distAgentDir, distRulesPath, { includeAgents: false });
   const geminiPluginMeta = buildGeminiPluginManifest(version);
+  fs.writeFileSync(path.join(distRoot, 'plugin.json'), JSON.stringify(geminiPluginMeta, null, 2), 'utf-8');
+  assertGeminiDistributionTree(distRoot);
+
+  // Detached manifest for marketplace metadata (same payload as co-located plugin.json).
   const geminiPluginDir = path.join(root, '.gemini-plugin');
   if (!fs.existsSync(geminiPluginDir)) fs.mkdirSync(geminiPluginDir, { recursive: true });
   fs.writeFileSync(path.join(geminiPluginDir, 'plugin.json'), JSON.stringify(geminiPluginMeta, null, 2), 'utf-8');

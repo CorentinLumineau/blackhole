@@ -156,28 +156,33 @@ Any compatible agent will read the root `SKILL.md` and load the associated rules
 
 ### Pathway D: Antigravity / Gemini Native
 
-Three installation options:
+`bun run build --gemini` emits **two** Gemini trees:
 
-**Workspace customization (this repo or submodule):**
+| Tree | Purpose | Contents |
+|------|---------|----------|
+| `.agents/` | Workspace customization (this repo or submodule) | `agents/` (6 bc-* prompts), `rules/`, `skills/bc-campaign/` |
+| `plugins/backlog-campaign/` | Redistributable Antigravity plugin bundle | `plugin.json`, `rules/`, `skills/bc-campaign/` (no `agents/`) |
+
+**Workspace customization (agent prompts + skills):**
 ```bash
 bun run build --gemini
 ```
-Compiles `.agents/agents/`, `.agents/rules/`, and `.agents/skills/bc-campaign/` for auto-discovery in the workspace.
+Compiles `.agents/agents/`, `.agents/rules/`, and `.agents/skills/bc-campaign/`. The `agents/` directory holds compiled bc-* agent prompts for `@bc-coordinator` / Multitask Mode invocation; Antigravity does not require `agents/` in the official distribution bundle schema.
 
-**Global plugin:**
+**Global / redistributable install (Antigravity plugin schema):**
 ```bash
 bun run build --gemini
-ln -s /path/to/backlog-campaign/.agents ~/.gemini/config/plugins/backlog-campaign
+ln -s /path/to/backlog-campaign/plugins/backlog-campaign ~/.gemini/config/plugins/backlog-campaign
 ```
-Or copy the `.agents/` tree to `~/.gemini/config/plugins/backlog-campaign/`.
+Or copy `plugins/backlog-campaign/` to `~/.gemini/config/plugins/backlog-campaign/`. This tree is co-located per [Antigravity plugin docs](https://antigravity.google): `plugin.json` beside `skills/` and `rules/`.
 
 **Workspace plugin (other consumer repos):**
 ```bash
-# After build, symlink or copy the workspace .agents tree:
-ln -s /path/to/backlog-campaign/.agents .agents/plugins/backlog-campaign
+# After build, symlink or copy the distribution bundle:
+ln -s /path/to/backlog-campaign/plugins/backlog-campaign .agents/plugins/backlog-campaign
 ```
 
-The `.gemini-plugin/plugin.json` manifest describes the plugin for Antigravity distribution; compiled agent content lives in `.agents/` only.
+For local development in this repo, prefer the full `.agents/` workspace tree (includes agent prompts). Use `plugins/backlog-campaign/` when packaging or installing globally. `.gemini-plugin/plugin.json` mirrors the distribution manifest for marketplace metadata only.
 
 ### Pathway E: Codex CLI Native
 
@@ -209,7 +214,7 @@ To keep all rules, agent prompts, and phase playbooks DRY (Don't Repeat Yourself
 We use a Bun-based compiler to build target directories:
 ```bash
 bun run build          # Cursor, Claude, skills.sh (default CI)
-bun run build --gemini # Antigravity: .agents/ + .gemini-plugin/
+bun run build --gemini # Antigravity: .agents/ + plugins/backlog-campaign/ + .gemini-plugin/
 bun run build:codex    # Codex CLI: .codex-plugin/ + codex-skills/ + codex-agents/
 bun run build --all    # All targets including Gemini and Codex
 bun test
