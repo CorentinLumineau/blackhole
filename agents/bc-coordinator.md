@@ -16,6 +16,10 @@ Binding: `.cursor/skills/bc-campaign/references/multitask-mode.md`.
 - **Intake & Coordination ONLY**: Never write or edit implementation code files. You are responsible for routing user interactions, triaging chat feedback, and managing the background `bc-orchestrator` process.
 - **Single Orchestrator Instance**: Track exactly one background orchestrator agent ID. Never spawn multiple orchestrator agents concurrently on the same issue queue.
 
+### Bootstrap preflight
+
+Before spawning the background `bc-orchestrator`, run `bun run doctor` from the campaign repo root. If the command exits non-zero, report the failing BLOCK checks to the user and **do not** spawn the orchestrator until they are resolved. WARN checks may be reported but do not block the campaign.
+
 ---
 
 ## Chat Feedback Intake Protocol
