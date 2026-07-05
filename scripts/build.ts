@@ -450,6 +450,17 @@ const writeCursorRules = (destDir: string) => {
 
 writeCursorRules(path.join(root, 'rules'));
 writeCursorRules(path.join(root, '.cursor', 'rules'));
+
+/** Project maintainer rules (not plugin SSOT) — survive cleanDir; copied into Cursor rules dir. */
+const copyMaintainerCursorRules = (destDir: string) => {
+  const maintainerRulesDir = path.join(root, '.github', 'rules');
+  if (!fs.existsSync(maintainerRulesDir)) return;
+  for (const file of fs.readdirSync(maintainerRulesDir)) {
+    if (!file.endsWith('.mdc')) continue;
+    fs.copyFileSync(path.join(maintainerRulesDir, file), path.join(destDir, file));
+  }
+};
+copyMaintainerCursorRules(path.join(root, '.cursor', 'rules'));
 compileFolder('agents', path.join(root, 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor', true);
 compileFolder('agents', path.join(root, '.cursor', 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor', true);
 processFile(path.join(srcDir, 'SKILL.md'), path.join(root, 'skills', 'bc-campaign', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');

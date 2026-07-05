@@ -1,0 +1,40 @@
+---
+description: Maintainer release discipline — close GitHub milestones only via create-release workflow
+alwaysApply: true
+---
+
+# Release & Milestone Governance
+
+**Project maintainer policy** (not part of the bc-campaign plugin protocol).
+
+## Milestone ↔ release contract
+
+- Each open semver milestone (`v0.4.1`, `v0.4.2`, …) maps **1:1** to a GitHub release tag `vX.Y.Z`.
+- **Close a milestone only after** its matching release is published — never before.
+- **Never** close a milestone without going through the create-release workflow.
+
+## Required workflow
+
+When all issues on milestone `vX.Y.Z` are done:
+
+1. Follow [`.github/skills/create-release/SKILL.md`](../skills/create-release/SKILL.md):
+   `bun run release prepare|validate|tag|push` with `.github/releases/vX.Y.Z.md`
+2. Verify: `gh release view vX.Y.Z` — body matches the notes file
+3. Close the milestone (after release is live):
+   ```bash
+   # Verify no open issues remain
+   gh issue list --milestone "vX.Y.Z" --state open
+   # Close by milestone number (from gh api repos/.../milestones or GitHub UI)
+   gh api -X PATCH repos/CorentinLumineau/backlog-campaign/milestones/{number} -f state=closed
+   ```
+
+## Anti-patterns (blocked)
+
+- Manual `gh release create` without a committed `.github/releases/vX.Y.Z.md`
+- Closing a milestone while open issues remain (unless explicitly descoped)
+- Cutting a release tag that does not match the milestone semver being closed
+- Retagging or force-pushing tags without user approval
+
+## Campaign scope alignment
+
+When running bc-campaign against a milestone, set `scope_milestone` in `.bc-campaign/config.json` to the **same** semver title. Finish the campaign, then cut the release and close the milestone in one maintainer pass.
