@@ -1,0 +1,48 @@
+# bc-campaign State
+
+Mutations to `.bc-campaign/queue.json` and
+`findings-ledger.json` MUST follow these rules.
+
+## Paths
+
+| File | Purpose |
+|------|---------|
+| `config.json` | Campaign config (see `config-template.md`) |
+| `queue.json` | Issue phase, status, DAG (gitignored) |
+| `findings-ledger.json` | V-code findings (gitignored) |
+| `plans/<issue>.md` | Plan artifacts (gitignored) |
+| `archive/` | Rotated ledger snapshots (gitignored) |
+
+Full schemas: `codex-skills/bc-campaign/references/findings-ledger.md`,
+`queue-dag.md`.
+
+## Write protocol
+
+1. Validate before read-dependent logic: `jq empty <file>`
+2. Read-modify-write via `.tmp` + `mv` (atomic)
+3. Bump `refreshed_at` on every mutation
+4. Idempotency: dedup ledger by `(vcode, file, line, issue_ref)` before append
+
+## Ledger obligations
+
+- Append before orchestrator ends turn
+- `deferred` without `deferred_to_issue` is invalid
+- Increment `next_id` when adding `F-NNNNN` ids
+
+## Queue obligations
+
+- `in-flight` set when worker spawned; clear on merge or blocker
+- At most one `migration_slot: true` in `in-flight`
+- Promote `blocked → ready` only when dependencies satisfied and user gates pass
+
+## Sync
+
+**Native auto-sync** — reconcile with forge automatically (see
+`forge-sync.md`). Never ask the user to run sync. Runs at: Phase 0 bootstrap,
+start of every orchestrator turn, Phase 5 loop, before parallel batch scheduling.
+Fix drift before spawning workers.
+
+## Worktree & Branch obligations
+
+- Run `git worktree prune` and `git fetch --prune` before creating a new worktree or branch.
+- Verify worktree directories are clean and removed from disk after worker tasks finish. Do not leave orphaned worktree directories in the scratchpad.

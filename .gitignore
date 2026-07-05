@@ -16,8 +16,5 @@ build/
 .gemini-plugin/*
 !.gemini-plugin/plugin.json
 
-# Codex CLI build outputs (opt-in via bun run build --codex)
-.codex-plugin/
-codex-skills/
-codex-agents/
-codex-marketplace.json
+# Codex CLI build outputs (committed for zero-build marketplace install — #31)
+# .codex-plugin/, codex-skills/, codex-agents/, codex-marketplace.json are tracked

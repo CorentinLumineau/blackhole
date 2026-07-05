@@ -378,20 +378,12 @@ const checkGeminiBuild = () => {
   else pass('V-GEMINI-01');
 };
 
-// V-CODEX-01 through V-CODEX-04: Codex CLI compile outputs (opt-in via VERIFY_BUILD_CODEX=1)
+// V-CODEX-01 through V-CODEX-04: Codex CLI compile outputs (default verify — #31)
 const checkCodexBuild = () => {
-  if (process.env.VERIFY_BUILD_CODEX !== '1') {
-    pass('V-CODEX-01');
-    pass('V-CODEX-02');
-    pass('V-CODEX-03');
-    pass('V-CODEX-04');
-    return;
-  }
-
   if (process.env.VERIFY_SKIP_BUILD !== '1') {
-    const build = spawnSync('bun', ['run', 'build', '--codex'], { cwd: root, encoding: 'utf-8' });
+    const build = spawnSync('bun', ['run', 'build'], { cwd: root, encoding: 'utf-8' });
     if (build.status !== 0) {
-      fail('V-CODEX-01', `build --codex failed: ${build.stderr || build.stdout}`);
+      fail('V-CODEX-01', `build failed: ${build.stderr || build.stdout}`);
       fail('V-CODEX-02', 'skipped — build failed');
       fail('V-CODEX-03', 'skipped — build failed');
       fail('V-CODEX-04', 'skipped — build failed');
@@ -595,7 +587,11 @@ const checkBuild = () => {
       l.includes('.agents/rules/') ||
       l.includes('.agents/skills/') ||
       l.includes('SKILL.md') ||
-      l.includes('marketplace.json')
+      l.includes('marketplace.json') ||
+      l.includes('.codex-plugin/') ||
+      l.includes('codex-agents/') ||
+      l.includes('codex-skills/') ||
+      l.includes('codex-marketplace.json')
   );
 
   if (buildOutputs.length > 0 && !before.stdout?.includes('agents/')) {

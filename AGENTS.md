@@ -15,7 +15,7 @@ Quick reference for invoking the backlog campaign across agent platforms.
 
 **`bc-campaign`** — modes: `run`, `status`, `handle`, `plan`, `implement`, `review`, `campaign-audit`
 
-Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/bc-campaign/SKILL.md`](.cursor/skills/bc-campaign/SKILL.md) (Cursor), or `codex-skills/bc-campaign/SKILL.md` (Codex, after `bun run build:codex`).
+Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/bc-campaign/SKILL.md`](.cursor/skills/bc-campaign/SKILL.md) (Cursor), or [`codex-skills/bc-campaign/SKILL.md`](codex-skills/bc-campaign/SKILL.md) (Codex).
 
 ## Agent roster
 

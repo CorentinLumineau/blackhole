@@ -6,11 +6,11 @@ const srcDir = path.join(root, 'src');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
 const version = pkg.version;
 
-// Gemini/Codex targets are opt-in until tracked in repo (#10, #13). Default build matches CI.
+// Gemini is opt-in until tracked in repo (#13). Codex is part of default build (#31).
 const args = new Set(process.argv.slice(2));
 const buildAll = args.has('--all');
 const buildGemini = buildAll || args.has('--gemini');
-const buildCodex = buildAll || args.has('--codex');
+const buildCodex = !args.has('--no-codex');
 
 const cleanDir = (dirPath: string) => {
   if (fs.existsSync(dirPath)) {
@@ -537,7 +537,7 @@ const marketplaceJson = {
 };
 fs.writeFileSync(path.join(root, 'marketplace.json'), JSON.stringify(marketplaceJson, null, 2), 'utf-8');
 
-// 9. Compile Target E: Codex CLI Native Support — opt-in (#10)
+// 9. Compile Target E: Codex CLI Native Support (default build — #31)
 if (buildCodex) {
   console.log('Compiling Target E (Codex CLI Support)...');
   const codexAgentDir = 'codex-skills';
