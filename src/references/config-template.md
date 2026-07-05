@@ -1,6 +1,6 @@
 # Campaign Config Template
 
-Committed template: `.backlog-campaign/config.json`
+Committed template: `.bc-campaign/config.json`
 
 ```json
 {

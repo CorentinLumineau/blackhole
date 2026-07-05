@@ -1,14 +1,14 @@
 # Campaign Prompt — spawn text for orchestrator
 
 Use this verbatim (fill session handoff if resuming) when the **coordinator**
-spawns or resumes the `backlog-orchestrator` subagent.
+spawns or resumes the `bc-orchestrator` subagent.
 
 ```
 Implement ALL open issues on the forge until zero open issues and zero open
 PRs remain, following SKILL.md (binding).
 
 Act as ORCHESTRATOR only:
-- Spawn backlog-planner, backlog-implementer, backlog-reviewer, and backlog-synthesizer subagents for worker tasks
+- Spawn bc-planner, bc-implementer, bc-reviewer, and bc-synthesizer subagents for worker tasks
 - NEVER implement large features in your main loop
 - Review pipeline: reviewer → synthesizer → ledger (never aggregate inline)
 - Parallel worktrees for non-overlapping issues (2–4 per batch)
@@ -28,7 +28,7 @@ Clarify and split (ALL issue sizes):
 
 ## PLAN_CONTEXT — convention preamble for worker spawns
 
-When the orchestrator spawns a `backlog-implementer` or `backlog-reviewer`
+When the orchestrator spawns a `bc-implementer` or `bc-reviewer`
 worker, it **must prepend** the following block (filled from the issue plan)
 before the worker's main prompt body:
 
@@ -48,7 +48,7 @@ Codebase Conventions (from plan § Conventions):
   early implementer spawns before the plan's Conventions section is written,
   also use `(none declared)`.
 
-**Not consumed by:** `backlog-planner` (produces the plan), `backlog-synthesizer`
+**Not consumed by:** `bc-planner` (produces the plan), `bc-synthesizer`
 (aggregates reviewer findings only).
 
 Workers treat `<PLAN_CONTEXT>` as binding. Implementers must not edit files
@@ -57,7 +57,7 @@ outside `Touch-Paths`; reviewers audit against them (`V-SCOPE-02`).
 ## Coordinator usage
 
 
-**First spawn:** start the `backlog-orchestrator` agent in background with the campaign prompt above.
+**First spawn:** start the `bc-orchestrator` agent in background with the campaign prompt above.
 
 **Resume (user feedback):** send the user's message to the running orchestrator — do not re-paste the full campaign prompt.
 

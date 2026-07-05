@@ -1,26 +1,26 @@
 ---
-name: backlog-campaign
-description: Orchestrates backlog campaign until zero open issues and PRs. Multitask Mode entry via backlog-coordinator. Auto-syncs GitHub issues, clarifies/splits any size, five-phase lifecycle, V-code ledger. Use for finish the backlog, backlog campaign, /backlog-campaign, orchestrate issues, split issues.
+name: bc-campaign
+description: Orchestrates backlog campaign until zero open issues and PRs. Multitask Mode entry via bc-coordinator. Auto-syncs GitHub issues, clarifies/splits any size, five-phase lifecycle, V-code ledger. Use for finish the backlog, backlog campaign, /bc-campaign, orchestrate issues, split issues, bc-run, bc-status.
 disable-model-invocation: true
 ---
 
 # Backlog Campaign
 
 Orchestrates issue implementation until the forge backlog is empty. Binding
-runbook: `{{AGENT_DIR}}/skills/backlog-campaign/references/backlog-campaign-protocol.md`.
+runbook: `{{AGENT_DIR}}/skills/bc-campaign/references/bc-campaign-protocol.md`.
 
 ## Entry (Multitask Mode)
 
 If the agent lacks a native long-running goal loop, use Multitask Mode (Pattern B) with a coordinator + background orchestrator:
 
-1. User talks to **`backlog-coordinator`** agent (or attaches this skill in Multitask Mode)
-2. Coordinator runs Phase 0 → spawns **`backlog-orchestrator`** in background
+1. User talks to **`bc-coordinator`** agent (or attaches this skill in Multitask Mode)
+2. Coordinator runs Phase 0 → spawns **`bc-orchestrator`** in background
 3. User feedback → coordinator **resumes** orchestrator (`interrupt: false`)
 
 Full flow: [multitask-mode.md](references/multitask-mode.md)
 Orchestrator spawn text: [campaign-prompt.md](references/campaign-prompt.md)
 
-Direct `/backlog-campaign run` or `/goal` in a single session: act as orchestrator (legacy Pattern A) — still follow all phases below.
+Direct `/bc-campaign run` or `/goal` in a single session: act as orchestrator (legacy Pattern A) — still follow all phases below.
 
 ## Modes
 
@@ -38,7 +38,7 @@ Direct `/backlog-campaign run` or `/goal` in a single session: act as orchestrat
 
 **Native forge sync** — automatic, never AskQuestion to confirm.
 
-1. **Config** — `.backlog-campaign/config.json` (from `config-template.md` in this repo)
+1. **Config** — `.bc-campaign/config.json` (from `config-template.md` in this repo)
 2. **State init** — `queue.json`, `findings-ledger.json`, `plans/`
 3. **Validate** — `jq empty` on both JSON files
 4. **Forge sync** — if `auto_sync` true (default): `gh auth status` then [forge-sync.md](references/forge-sync.md). Sandbox: `full_network`.
@@ -73,7 +73,7 @@ require `gh issue create` + `deferred_to_issue`.
 0. Auto-sync every turn
 1. Ready set → [queue-dag.md](references/queue-dag.md) — skip `blocked` (user gates)
 2. Per issue: handle → plan → **user gate if needed** → implement → review → loop
-3. Spawn workers via the designated agent files (`backlog-planner`, `backlog-implementer`, `backlog-reviewer`, `backlog-synthesizer`), `run_in_background: true`, one turn per batch
+3. Spawn workers via the designated agent files (`bc-planner`, `bc-implementer`, `bc-reviewer`, `bc-synthesizer`), `run_in_background: true`, one turn per batch
 4. End turn; triage completions → ledger → next phase
 
 **Do not spawn implement** while `status: blocked` with
@@ -103,6 +103,7 @@ Read-only conformance check (`campaign-audit`):
 | F-code | Check |
 |--------|-------|
 | F-AGENT-01 | All agents in ground-truth exist in `src/agents/` |
+| F-AGENT-03 | Validate agent name prefix is bc- |
 | F-PHASE-01 | Five phase playbooks present and named correctly |
 | F-VERIFY-01 | `bun run verify` passes |
 | F-SCHEMA-01 | Fixture JSON validates |
@@ -112,9 +113,9 @@ Do not modify code during audit — report only.
 
 ## Rules references
 
-- [backlog-campaign-protocol.md](references/backlog-campaign-protocol.md)
-- [backlog-campaign-state.md](references/backlog-campaign-state.md)
-- [backlog-campaign-vcodes.md](references/backlog-campaign-vcodes.md)
+- [bc-campaign-protocol.md](references/bc-campaign-protocol.md)
+- [bc-campaign-state.md](references/bc-campaign-state.md)
+- [bc-campaign-vcodes.md](references/bc-campaign-vcodes.md)
 
 ## User interaction
 

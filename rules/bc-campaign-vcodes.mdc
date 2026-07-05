@@ -1,0 +1,45 @@
+---
+description: V-code enforcement table for bc-campaign agents — restate in every worker prompt
+globs: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.go", "**/*.py", "**/*.rs", "**/*.java", "**/*.c", "**/*.cpp", "**/*.cs"]
+alwaysApply: false
+---
+
+# bc-campaign V-Codes
+
+Restate this table in every implementation and review agent prompt. Do not paste
+longer definitions (token cost, drift). Persist every finding to
+`findings-ledger.json`.
+
+| Code | Rule | Severity |
+|------|------|----------|
+| V-SOLID-01/03 | Single responsibility; substitutability | BLOCK |
+| V-DRY-01 | No >10-line duplication | BLOCK |
+| V-DRY-02/03 | 3–10-line duplication; repeated magic values | WARN |
+| V-KISS-01 / V-YAGNI-01 | No over-abstraction; no speculative features | BLOCK |
+| V-KISS-03 | No empty scaffolding | WARN |
+| V-YAGNI-03 | No single-consumer abstractions | WARN |
+| V-DRY-04 | No copy-paste templates with trivial renames | WARN |
+| V-TEST-01/02 | All new logic tested, tests FIRST | BLOCK |
+| V-TEST-05 | Meaningful assertions (not existence checks) | WARN |
+| V-SEC-01/02 | No injection; no auth bypass | BLOCK |
+| V-SEC-03/04 | No hardcoded secrets; no XSS | BLOCK |
+| V-SEC-06 | Every security finding carries a concrete attack scenario | BLOCK |
+| V-INT-02 | NEVER reimplement an existing utility | BLOCK |
+| V-INT-01/03/04 | Follow conventions at touchpoints; no third variant of a solved concern | WARN |
+| V-FIX-01 | Fixes address the root cause, documented — never the symptom | BLOCK |
+| V-PARETO-01 | No >3× complexity for marginal gain | WARN |
+| V-PARETO-02 | Pareto scoring & gating: Priority = Gain * (11 - Effort) must be >= 30 to create an issue, and ready issues are sorted by Priority descending | BLOCK |
+| V-DOC-02/04 | Public-API and design docs updates in the same PR | BLOCK |
+| V-CONFIG-01 | New config/env keys follow established naming, registered | WARN |
+| V-SCOPE-01 | No refactoring untouched code | WARN |
+| V-SCOPE-02 | Touch-Paths violation — files modified outside plan scope | WARN |
+| V-API-01 | API contract drift — public interface diverges from plan | BLOCK |
+| V-BRANCH-01 | Force-push to protected branches (main, master, release/*) | BLOCK |
+| V-BRANCH-02 | Direct commit to main/master without review and approval | BLOCK |
+| V-BRANCH-03 | Branch name does not match campaign/issue-N convention | WARN |
+| V-WORKTREE-01 | Worktree leak — failed to clean up temporary directories | BLOCK |
+| V-GIT-01 | PR created without Closes #N issue linkage in description | BLOCK |
+
+**BLOCK** = must fix before merge (or escalate to user with justification).
+**WARN** = fix or document deferral in PR and ledger.
+Reviewers return findings as V-codes with file:line.

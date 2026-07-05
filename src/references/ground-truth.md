@@ -1,19 +1,17 @@
 # Ground Truth — Protocol Drift Detection
 
-Machine-verified canonical values for backlog-campaign. `scripts/verify.ts` reads this file and fails on mismatch.
+Machine-verified canonical values for bc-campaign. `scripts/verify.ts` reads this file and fails on mismatch.
 
 **Do not edit counts manually without updating the corresponding source files.**
 
 ## Agents
 
-| Name | File |
-|------|------|
-| backlog-coordinator | `src/agents/backlog-coordinator.md` |
-| backlog-orchestrator | `src/agents/backlog-orchestrator.md` |
-| backlog-planner | `src/agents/backlog-planner.md` |
-| backlog-implementer | `src/agents/backlog-implementer.md` |
-| backlog-reviewer | `src/agents/backlog-reviewer.md` |
-| backlog-synthesizer | `src/agents/backlog-synthesizer.md` |
+| bc-coordinator | `src/agents/bc-coordinator.md` |
+| bc-orchestrator | `src/agents/bc-orchestrator.md` |
+| bc-planner | `src/agents/bc-planner.md` |
+| bc-implementer | `src/agents/bc-implementer.md` |
+| bc-reviewer | `src/agents/bc-reviewer.md` |
+| bc-synthesizer | `src/agents/bc-synthesizer.md` |
 
 **agent_count:** 6
 
@@ -39,7 +37,7 @@ Phase playbook files:
 
 ## V-codes
 
-Source: `src/references/backlog-campaign-vcodes.md`
+Source: `src/references/bc-campaign-vcodes.md`
 
 **vcode_table_rows:** 27
 

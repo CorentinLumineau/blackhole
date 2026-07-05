@@ -1,6 +1,6 @@
 # Queue DAG — Schema + Scheduling
 
-Path: `.backlog-campaign/queue.json` (gitignored at runtime).
+Path: `.bc-campaign/queue.json` (gitignored at runtime).
 
 ## Schema
 
@@ -104,9 +104,9 @@ Take up to `parallel_max` (default 4 from config) from the **current wave's** re
 Bump `refreshed_at` on every mutation:
 
 ```bash
-jq '.refreshed_at = (now | todate)' .backlog-campaign/queue.json \
-  > .backlog-campaign/queue.json.tmp \
-  && mv .backlog-campaign/queue.json.tmp .backlog-campaign/queue.json
+jq '.refreshed_at = (now | todate)' .bc-campaign/queue.json \
+  > .bc-campaign/queue.json.tmp \
+  && mv .bc-campaign/queue.json.tmp .bc-campaign/queue.json
 ```
 
 ## Initialize from forge

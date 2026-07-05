@@ -1,7 +1,7 @@
 # Campaign Prompt — spawn text for orchestrator
 
 Use this verbatim (fill session handoff if resuming) when the **coordinator**
-spawns or resumes the `backlog-orchestrator` subagent.
+spawns or resumes the `bc-orchestrator` subagent.
 {{#cursor}}
 Cursor has no `/goal` command — this prompt replaces it.
 {{/cursor}}
@@ -11,10 +11,10 @@ Use when not invoking the orchestrator via native `/goal`.
 
 ```
 Implement ALL open issues on the forge until zero open issues and zero open
-PRs remain, following {{AGENT_DIR}}/skills/backlog-campaign/SKILL.md (binding).
+PRs remain, following {{AGENT_DIR}}/skills/bc-campaign/SKILL.md (binding).
 
 Act as ORCHESTRATOR only:
-- Spawn backlog-planner, backlog-implementer, backlog-reviewer, and backlog-synthesizer subagents for worker tasks
+- Spawn bc-planner, bc-implementer, bc-reviewer, and bc-synthesizer subagents for worker tasks
 - NEVER implement large features in your main loop
 - Review pipeline: reviewer → synthesizer → ledger (never aggregate inline)
 - Parallel worktrees for non-overlapping issues (2–4 per batch)
@@ -34,7 +34,7 @@ Clarify and split (ALL issue sizes):
 
 ## PLAN_CONTEXT — convention preamble for worker spawns
 
-When the orchestrator spawns a `backlog-implementer` or `backlog-reviewer`
+When the orchestrator spawns a `bc-implementer` or `bc-reviewer`
 worker, it **must prepend** the following block (filled from the issue plan)
 before the worker's main prompt body:
 
@@ -54,7 +54,7 @@ Codebase Conventions (from plan § Conventions):
   early implementer spawns before the plan's Conventions section is written,
   also use `(none declared)`.
 
-**Not consumed by:** `backlog-planner` (produces the plan), `backlog-synthesizer`
+**Not consumed by:** `bc-planner` (produces the plan), `bc-synthesizer`
 (aggregates reviewer findings only).
 
 Workers treat `<PLAN_CONTEXT>` as binding. Implementers must not edit files
@@ -66,7 +66,7 @@ outside `Touch-Paths`; reviewers audit against them (`V-SCOPE-02`).
 **First spawn:**
 ```
 Task(
-  subagent_type: use backlog-orchestrator agent file,
+  subagent_type: use bc-orchestrator agent file,
   run_in_background: true,
   prompt: <campaign-prompt above>
 )
@@ -82,14 +82,14 @@ prompt: <user message verbatim — do not re-paste full campaign prompt>
 New spawn with campaign-prompt + filled SESSION_HANDOFF block.
 {{/cursor}}
 {{#claude}}
-**First spawn:** invoke the `backlog-orchestrator` agent in background with the campaign prompt above (or use `/goal` on that agent).
+**First spawn:** invoke the `bc-orchestrator` agent in background with the campaign prompt above (or use `/goal` on that agent).
 
 **Resume (user feedback):** resume the orchestrator session with the user's message — do not re-paste the full campaign prompt.
 
 **Resume (orchestrator completed/failed):** spawn a fresh orchestrator with campaign-prompt + filled SESSION_HANDOFF block.
 {{/claude}}
 {{#skills}}
-**First spawn:** start the `backlog-orchestrator` agent in background with the campaign prompt above.
+**First spawn:** start the `bc-orchestrator` agent in background with the campaign prompt above.
 
 **Resume (user feedback):** send the user's message to the running orchestrator — do not re-paste the full campaign prompt.
 

@@ -52,7 +52,7 @@ AskQuestion: "Epic #<N> split into children #A, #B, #C.
 Please review the split plan and confirm (or request changes) before I begin implementation."
 ```
 
-Do **not** spawn any `backlog-planner` or `backlog-implementer` workers for children
+Do **not** spawn any `bc-planner` or `bc-implementer` workers for children
 until the user explicitly approves the split.
 
 ---
@@ -74,7 +74,7 @@ Each child follows the standard campaign flow:
 `handle → plan → implement → review → done`
 
 The orchestrator treats each child as an independent issue after wave scheduling.
-Apply the 5-field delegation contract (`backlog-orchestrator.md`) to every worker spawn.
+Apply the 5-field delegation contract (`bc-orchestrator.md`) to every worker spawn.
 
 ---
 

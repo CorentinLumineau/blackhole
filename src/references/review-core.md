@@ -1,18 +1,18 @@
 # Review Core — Shared Review Infrastructure
 
-Canonical definitions for review delegation, aggregation, iteration budgets, and gating. Referenced by `phase-review.md`, `backlog-reviewer`, and `backlog-synthesizer`.
+Canonical definitions for review delegation, aggregation, iteration budgets, and gating. Referenced by `phase-review.md`, `bc-reviewer`, and `bc-synthesizer`.
 
 ## Review pipeline
 
 ```
-backlog-reviewer (raw findings)
+bc-reviewer (raw findings)
         ↓
-backlog-synthesizer (dedup, cross-correlate, Pareto rank)
+bc-synthesizer (dedup, cross-correlate, Pareto rank)
         ↓
 orchestrator (ledger append, phase routing)
 ```
 
-The orchestrator **never** aggregates findings inline — delegation to `backlog-synthesizer` is mandatory.
+The orchestrator **never** aggregates findings inline — delegation to `bc-synthesizer` is mandatory.
 
 ## Severity → action mapping
 
@@ -29,8 +29,8 @@ Never merge on errored review — empty findings from a failed agent is not LGTM
 
 LGTM requires **all** of:
 
-1. `backlog-reviewer` returned `status: "complete"` (not `error`)
-2. `backlog-synthesizer` returned `status: "approved"` and `lgtm: true`
+1. `bc-reviewer` returned `status: "complete"` (not `error`)
+2. `bc-synthesizer` returned `status: "approved"` and `lgtm: true`
 3. `blockers_count === 0`
 4. No unresolved BLOCK rows in ledger for this issue/PR
 
@@ -76,7 +76,7 @@ Reset `review_iteration` to 0 when PR merges or issue returns to plan phase.
 
 ## Reviewer prompt requirements
 
-Every `backlog-reviewer` delegation MUST include:
+Every `bc-reviewer` delegation MUST include:
 
 1. PR number + diff summary
 2. Plan Touch-Paths and schema baseline
@@ -85,7 +85,7 @@ Every `backlog-reviewer` delegation MUST include:
 
 ## Synthesizer prompt requirements
 
-Every `backlog-synthesizer` delegation MUST include:
+Every `bc-synthesizer` delegation MUST include:
 
 1. Reviewer JSON output (raw)
 2. Issue ref + PR ref
