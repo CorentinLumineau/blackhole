@@ -14,6 +14,8 @@ Committed template: `.bc-campaign/config.json`
   "issue_labels": {
     "campaign": "campaign/backlog"
   },
+  "scope_milestone": "v0.4.0",
+  "scope_labels": ["campaign/backlog", "size:m"],
   "auto_sync": true,
   "entry_mode": "multitask"
 }
@@ -28,8 +30,23 @@ Committed template: `.bc-campaign/config.json`
 | `scratchpad_dir` | no | Parent dir for git worktrees |
 | `size_label_prefix` | no | Label prefix for size tags (default `size:`) |
 | `default_touch_paths` | no | Glob patterns for default scope boundary |
+| `issue_labels.campaign` | no | Label applied on runtime `gh issue create` (see `forge-sync.md`) |
+| `scope_milestone` | no | Milestone **title** (not number). When set, only issues in this milestone are in campaign scope |
+| `scope_labels` | no | When set, issue must have **all** listed labels (AND). Empty array treated as unset |
 | `auto_sync` | no | When `true` (default), forge reconcile runs automatically |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
+
+**Scope filter composition** (both fields optional — unset means no filter on that axis):
+
+| `scope_milestone` | `scope_labels` | Effective filter |
+|-------------------|----------------|------------------|
+| unset | unset | All open issues (default) |
+| set | unset | Milestone match only |
+| unset | set | All labels present |
+| set | set | Milestone match **AND** all labels present |
+
+`issue_labels.campaign` is independent of `scope_labels` — scope labels are additive
+filters for ingest/completion, not auto-merged into scope unless listed in `scope_labels`.
 
 Runtime state files (gitignored in consumer repos):
 

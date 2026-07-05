@@ -34,7 +34,8 @@ In: ...  Out: ...
 Blocked by #N (if any)
 ## Touch hints
 - path/glob" \
-  --label "size:s"
+  --label "size:s" \
+  $(bun scripts/forge-scope.ts create-args)
 ```
 
 - Target `size:s` or `size:m` per child. If a child is still too large, split again.

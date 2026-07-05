@@ -207,6 +207,25 @@ const checkFixtures = () => {
     }
   }
 
+  try {
+    const config = JSON.parse(read('fixtures/config.example.json'));
+    for (const key of ['repo', 'target_branch', 'forge'] as const) {
+      if (!config[key] || typeof config[key] !== 'string') {
+        errors.push(`config.example.json: missing or invalid ${key}`);
+      }
+    }
+    if (config.scope_milestone !== undefined && typeof config.scope_milestone !== 'string') {
+      errors.push('config.example.json: scope_milestone must be a string');
+    }
+    if (config.scope_labels !== undefined) {
+      if (!Array.isArray(config.scope_labels) || !config.scope_labels.every((l: unknown) => typeof l === 'string')) {
+        errors.push('config.example.json: scope_labels must be a string array');
+      }
+    }
+  } catch {
+    errors.push('fixtures/config.example.json: invalid JSON');
+  }
+
   if (errors.length) fail('V-SCHEMA-01', errors.join('; '));
   else pass('V-SCHEMA-01');
 };

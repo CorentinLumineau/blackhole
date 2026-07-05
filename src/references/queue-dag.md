@@ -69,7 +69,8 @@ An issue is **ready** when ALL hold:
 2. `notes` does not contain `awaiting-user` or `awaiting-plan` (user gates)
 2. Every `depends_on` issue has `status: merged` or `closed` on forge
 3. No active `migration_slot` holder unless this issue holds the slot
-4. Issue is open on forge (`gh issue view --json state`)
+4. Issue is open on forge **within campaign scope** (`gh issue view --json state` plus
+   `issueMatchesScope` when `scope_milestone` / `scope_labels` are configured)
 
 Promote `blocked → ready` when dependencies clear and user gates pass.
 
@@ -114,7 +115,8 @@ jq '.refreshed_at = (now | todate)' .bc-campaign/queue.json \
 On first `sync` with empty queue:
 
 ```bash
-gh issue list --state open --json number,title,labels --limit 200
+gh issue list --state open --json number,title,labels,milestone --limit 200 \
+  $(bun scripts/forge-scope.ts list-args)
 ```
 
 Create one `issues.<n>` entry per open issue: `phase: handle`, `status: ready`,

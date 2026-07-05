@@ -29,13 +29,23 @@ Every worker subagent prompt you write MUST explicitly declare these 5 fields:
 4.  **Tool Guidance**: Specific commands to execute (e.g., project test and lint commands). **Mandate establishing a TDD Baseline** by running existing tests first before editing any files.
 5.  **Stop Condition**: Criteria for task completion. **Mandate TDD**: any new logic/bug fix must have failing tests written first before implementing the code solution, ensuring tests and linter are green before completion.
 
-**Before spawning a `bc-implementer` or `bc-reviewer`, prepend a
+**Planner gate (MUST NOT skip):** Do **not** spawn `bc-implementer` until **both**
+conditions are met:
+
+1. Plan artifact exists on disk at `{repo_root}/.bc-campaign/plans/issue-N.md`
+2. Planner worker JSON returned `status: ready` (not `blocked`)
+
+If either is missing, stay in Phase 2 Plan — spawn or re-spawn `bc-planner`.
+Queue entry must be `phase: implement`, `status: ready` before implement spawn.
+
+**Before spawning a `bc-implementer` or `bc-reviewer`**, prepend a
 `<PLAN_CONTEXT>` block (see
 `.claude/skills/bc-campaign/references/campaign-prompt.md` §
 PLAN_CONTEXT) containing:
 
-1. **Touch-Paths** — from `queue.json` `touch_paths` for this issue
-2. **Codebase Conventions** — the `## Codebase Conventions` section from `plans/issue-N.md`
+1. **Plan artifact** — absolute path to `{repo_root}/.bc-campaign/plans/issue-N.md`
+2. **Touch-Paths** — from `queue.json` `touch_paths` for this issue
+3. **Codebase Conventions** — the `## Codebase Conventions` section from the plan file
    (write `(none declared)` if absent)
 
 `bc-planner` does **not** receive PLAN_CONTEXT — it *produces* the plan
@@ -88,6 +98,6 @@ Per `checkpoint-protocol.md`: write `queue.json` → `findings-ledger.json` → 
 *   **Calculate Priority**:
     $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
 *   **Gating Cut-off**:
-    *   If $\text{Priority} \ge 30$, execute `gh issue create --title "[Discovery] <Name>" --body "..."` to push it to the GitHub forge, and log it as `deferred`.
+    *   If $\text{Priority} \ge 30$, execute `gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)` to push it to the GitHub forge, and log it as `deferred`.
     *   If $\text{Priority} < 30$, set status in ledger to `archived` and skip issue creation to avoid backlog noise.
 *   **Ready Queue Sorting**: Automatically sort the ready set in `queue.json` in descending order of their Priority score, ensuring high-ROI issues are scheduled for implementation first.

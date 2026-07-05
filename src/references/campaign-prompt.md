@@ -40,6 +40,9 @@ before the worker's main prompt body:
 
 ```
 <PLAN_CONTEXT>
+Plan artifact (absolute repo-root path):
+{{PLAN_ABSOLUTE_PATH}}
+
 Touch-Paths (authoritative list — V-SCOPE-02):
 {{TOUCH_PATHS}}
 
@@ -48,11 +51,12 @@ Codebase Conventions (from plan § Conventions):
 </PLAN_CONTEXT>
 ```
 
+- `PLAN_ABSOLUTE_PATH`: absolute path to `{repo_root}/.bc-campaign/plans/issue-N.md`.
+  Implementers in worktrees MUST read the plan via this path — worktree cwd does
+  not contain `.bc-campaign/plans/`.
 - `TOUCH_PATHS`: the `touch_paths` array from `queue.json` for this issue (one path per line).
 - `CODEBASE_CONVENTIONS`: the `## Codebase Conventions` section verbatim from the plan file
-  (`plans/issue-N.md`). If the section is absent, write `(none declared)`. For
-  early implementer spawns before the plan's Conventions section is written,
-  also use `(none declared)`.
+  at `PLAN_ABSOLUTE_PATH`. If the section is absent, write `(none declared)`.
 
 **Not consumed by:** `bc-planner` (produces the plan), `bc-synthesizer`
 (aggregates reviewer findings only).

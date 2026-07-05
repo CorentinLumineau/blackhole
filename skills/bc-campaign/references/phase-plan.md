@@ -10,8 +10,10 @@
 - [ ] issue-splitting.md — if plan reveals multi-PR scope, split NOW
 - [ ] clarify-gates.md — AskQuestion if still ambiguous
 - [ ] User plan approval if scope was unclear or split occurred
-- [ ] queue.json: phase implement, status ready OR blocked (awaiting-plan-approval)
 - [ ] Planner returns worker-schemas.md contract (`status`, `plan_path`, `failing_checks`)
+- [ ] Plan artifact exists: `{repo_root}/.bc-campaign/plans/issue-N.md`
+- [ ] Planner JSON `status: ready` — do NOT spawn implementer if `blocked`
+- [ ] queue.json: phase implement, status ready OR blocked (awaiting-plan-approval)
 ```
 
 ## Planner return format

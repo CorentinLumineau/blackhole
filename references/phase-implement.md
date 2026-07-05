@@ -16,6 +16,18 @@
 - [ ] queue.json: phase review (when PR open)
 ```
 
+## Plan artifact paths (worktree rule)
+
+Plan artifacts live at `{repo_root}/.bc-campaign/plans/issue-N.md` — always
+relative to the **main clone repo root**, not the worktree checkout.
+
+- Implementers run in isolated worktrees (`wt-<issue>`); the plan file is
+  **not** in the worktree working directory.
+- Orchestrator MUST pass the plan file as an **absolute repo-root path** in
+  `<PLAN_CONTEXT>` (e.g. `/path/to/repo/.bc-campaign/plans/issue-11.md`).
+- Implementers MUST read the plan via that absolute path — never assume a
+  relative `.bc-campaign/plans/` path resolves from the worktree cwd.
+
 ## Worker prompt must include (5-Field Delegation Contract)
 
 1. **Objective**: Detailed issue goals and issue ref + UNTRUSTED-FORGE-DATA body.
