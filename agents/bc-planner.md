@@ -1,7 +1,6 @@
 ---
 name: bc-planner
 description: Backlog campaign planner agent. Generates structured implementation plans enforcing complexity tracks, quality gates, and base commit stamping.
-model: composer-2.5
 permissionMode: default
 disallowedTools: [Delete]
 ---

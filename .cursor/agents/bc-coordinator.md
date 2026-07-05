@@ -1,7 +1,6 @@
 ---
 name: bc-coordinator
 description: Multitask Mode coordinator for backlog campaign. Acts as user intake layer, managing the background bc-orchestrator, resolving blockers, and triaging chat feedback.
-model: composer-2.5
 permissionMode: default
 disallowedTools: [Write, Edit, Delete]
 ---

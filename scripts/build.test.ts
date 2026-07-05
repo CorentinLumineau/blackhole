@@ -9,6 +9,7 @@ import {
   buildCodexMarketplace,
   parseMdFrontmatter,
   buildCodexAgentYaml,
+  serializeCodexAgentYaml,
   compileGeminiTree,
   assertGeminiDistributionTree,
 } from './build.ts';
@@ -152,6 +153,25 @@ More content here.`;
   });
 });
 
+describe('serializeCodexAgentYaml', () => {
+  test('omits model when absent from frontmatter', () => {
+    const yaml = serializeCodexAgentYaml(
+      { name: 'test', description: 'desc', permissionMode: 'default' },
+      'body content here'
+    );
+    expect(yaml).not.toMatch(/^model:/m);
+    expect(yaml).not.toContain('model:');
+  });
+
+  test('emits model when present in frontmatter', () => {
+    const yaml = serializeCodexAgentYaml(
+      { name: 'test', description: 'desc', model: 'sonnet', permissionMode: 'default' },
+      'body'
+    );
+    expect(yaml).toContain('model: sonnet');
+  });
+});
+
 describe('buildCodexAgentYaml', () => {
   const agentDir = 'codex-skills';
   const rulesPath = 'codex-skills/bc-campaign/references/bc-campaign-vcodes.md';
@@ -161,7 +181,6 @@ describe('buildCodexAgentYaml', () => {
       `---
 name: bc-coordinator
 description: test desc
-model: sonnet
 permissionMode: default
 disallowedTools: [Write, Edit, Delete]
 ---
@@ -178,7 +197,7 @@ disallowedTools: [Write, Edit, Delete]
     );
     expect(yaml).toMatch(/^name: bc-coordinator\n/);
     expect(yaml).toContain('description: test desc');
-    expect(yaml).toContain('model: sonnet');
+    expect(yaml).not.toMatch(/^model:/m);
     expect(yaml).toContain('permissionMode: default');
     expect(yaml).toContain('disallowedTools:');
     expect(yaml).toContain('  - Write');
@@ -194,7 +213,7 @@ disallowedTools: [Write, Edit, Delete]
     const yaml = buildCodexAgentYaml(source, agentDir, rulesPath);
     expect(yaml).toMatch(/^name: bc-coordinator\n/);
     expect(yaml).toContain('description: Multitask Mode coordinator');
-    expect(yaml).toContain('model: composer-2.5');
+    expect(yaml).not.toMatch(/^model:/m);
     expect(yaml).toContain('permissionMode: default');
     expect(yaml).toContain('  - Write');
     const instructions = yaml.split('instructions: |\n')[1] ?? '';

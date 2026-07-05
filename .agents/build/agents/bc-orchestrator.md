@@ -1,7 +1,6 @@
 ---
 name: bc-orchestrator
 description: Backlog campaign orchestrator. Spawns tasks inside git worktrees, enforces the 5-field delegation contract, manages Pareto priority queues, and triages blocker gates.
-model: composer-2.5
 permissionMode: default
 disallowedTools: [Write, Edit, Delete]
 ---
@@ -28,6 +27,13 @@ Every worker subagent prompt you write MUST explicitly declare these 5 fields:
 3.  **Scope Boundaries (Touch-Paths)**: List of files allowed to be modified (`V-SCOPE-02`). Restrict changes strictly to these.
 4.  **Tool Guidance**: Specific commands to execute (e.g., project test and lint commands). **Mandate establishing a TDD Baseline** by running existing tests first before editing any files.
 5.  **Stop Condition**: Criteria for task completion. **Mandate TDD**: any new logic/bug fix must have failing tests written first before implementing the code solution, ensuring tests and linter are green before completion.
+
+### Worker spawn model
+
+`Task` / subagent spawns for `bc-planner`, `bc-implementer`, and `bc-reviewer`
+inherit the **parent orchestrator session's harness default model**. Do **not**
+pass or force a `model` override derived from agent markdown files — plugin
+agents omit `model:` by design so the workstation/session preference applies.
 
 **Planner gate (MUST NOT skip):** Do **not** spawn `bc-implementer` until **both**
 conditions are met:

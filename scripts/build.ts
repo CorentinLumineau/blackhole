@@ -61,7 +61,7 @@ export const serializeCodexAgentYaml = (fm: Record<string, string>, bodyContent:
   let yaml = '';
   yaml += `name: ${fm.name || ''}\n`;
   yaml += `description: ${fm.description || ''}\n`;
-  yaml += `model: ${fm.model || ''}\n`;
+  if (fm.model) yaml += `model: ${fm.model}\n`;
   yaml += `permissionMode: ${fm.permissionMode || ''}\n`;
   if (tools.length > 0) {
     yaml += `disallowedTools:\n`;
@@ -165,7 +165,7 @@ const processFile = (
       content = enrichVcodesMdcGlobs(content);
     }
   } else if (isAgent && (target === 'claude' || target === 'gemini' || target === 'codex')) {
-    // Claude/Gemini/Codex agents: preserve frontmatter (name, description, model, disallowedTools)
+    // Claude/Gemini/Codex agents: preserve frontmatter (name, description, disallowedTools; model omitted by design)
     // — do not strip; Codex serializes frontmatter into YAML separately
   } else if (target === 'codex' && isSkill) {
     // Codex skill: preserve skill frontmatter (disable-model-invocation, name, description)
