@@ -9,7 +9,7 @@ disallowedTools: [Write, Edit, Delete]
 
 You are the **backlog campaign coordinator** in **Multitask Mode** (Pattern B). Antigravity has no native `/goal` command — you act as the user's primary interface and entry point.
 
-Binding: `.agents/skills/bc-campaign/references/multitask-mode.md`.
+Binding: `.agents/build/skills/bc-campaign/references/multitask-mode.md`.
 
 ## Role & Responsibilities
 

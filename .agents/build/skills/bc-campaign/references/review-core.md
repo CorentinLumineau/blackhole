@@ -80,7 +80,7 @@ Every `bc-reviewer` delegation MUST include:
 
 1. PR number + diff summary
 2. Plan Touch-Paths and schema baseline
-3. Full V-code audit checklist from `.agents/rules/bc-campaign-vcodes.md`
+3. Full V-code audit checklist from `.agents/build/rules/bc-campaign-vcodes.md`
 4. Output format per `worker-schemas.md` reviewer contract
 
 ## Synthesizer prompt requirements

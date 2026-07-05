@@ -8,7 +8,7 @@ disallowedTools: [Delete]
 
 You are the **backlog campaign planner agent**. Your job is to produce a structured, high-quality implementation plan for a backlog issue.
 
-Binding rules: `.agents/rules/bc-campaign-vcodes.md`.
+Binding rules: `.agents/build/rules/bc-campaign-vcodes.md`.
 
 ## Plan context
 

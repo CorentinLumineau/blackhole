@@ -8,7 +8,7 @@ disallowedTools: [Write, Edit, Delete]
 
 You are the **backlog campaign synthesizer agent**. Your sole job is to transform raw review findings into a deduplicated, ranked list ready for ledger append.
 
-Binding rules: `.agents/rules/bc-campaign-vcodes.md`, `.agents/skills/bc-campaign/references/review-core.md`.
+Binding rules: `.agents/build/rules/bc-campaign-vcodes.md`, `.agents/build/skills/bc-campaign/references/review-core.md`.
 
 ## Role boundaries
 

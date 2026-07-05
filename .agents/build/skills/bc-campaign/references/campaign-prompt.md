@@ -7,7 +7,7 @@ Antigravity has no `/goal` command — this prompt replaces it when the coordina
 
 ```
 Implement ALL open issues on the forge until zero open issues and zero open
-PRs remain, following .agents/skills/bc-campaign/SKILL.md (binding).
+PRs remain, following .agents/build/skills/bc-campaign/SKILL.md (binding).
 
 Act as ORCHESTRATOR only:
 - Spawn bc-planner, bc-implementer, bc-reviewer, and bc-synthesizer subagents for worker tasks

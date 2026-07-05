@@ -13,7 +13,7 @@ Mutations to `.bc-campaign/queue.json` and
 | `plans/<issue>.md` | Plan artifacts (gitignored) |
 | `archive/` | Rotated ledger snapshots (gitignored) |
 
-Full schemas: `.agents/skills/bc-campaign/references/findings-ledger.md`,
+Full schemas: `.agents/build/skills/bc-campaign/references/findings-ledger.md`,
 `queue-dag.md`.
 
 ## Write protocol

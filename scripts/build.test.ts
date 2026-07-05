@@ -60,14 +60,14 @@ describe('compileContent', () => {
     );
   });
 
-  test('substitutes workspace paths for .agents layout', () => {
+  test('substitutes workspace paths for .agents/build layout', () => {
     const result = compileContent(
       'dir={{AGENT_DIR}} vcodes={{VCODES_PATH}}',
-      '.agents',
-      '.agents/rules/bc-campaign-vcodes.md',
+      '.agents/build',
+      '.agents/build/rules/bc-campaign-vcodes.md',
       'gemini'
     );
-    expect(result).toBe('dir=.agents vcodes=.agents/rules/bc-campaign-vcodes.md');
+    expect(result).toBe('dir=.agents/build vcodes=.agents/build/rules/bc-campaign-vcodes.md');
   });
 });
 

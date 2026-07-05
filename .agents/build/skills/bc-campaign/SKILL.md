@@ -1,7 +1,7 @@
 # Backlog Campaign
 
 Orchestrates issue implementation until the forge backlog is empty. Binding
-runbook: `.agents/skills/bc-campaign/references/bc-campaign-protocol.md`.
+runbook: `.agents/build/skills/bc-campaign/references/bc-campaign-protocol.md`.
 
 ## Entry (Multitask Mode)
 

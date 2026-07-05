@@ -3,6 +3,11 @@ import * as path from 'path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const srcDir = path.join(root, 'src');
+
+/** Gemini workspace compile output — separate from ephemeral handoff dirs under `.agents/`. */
+export const AGENTS_BUILD_ROOT = path.join('.agents', 'build');
+export const AGENTS_BUILD_AGENT_DIR = '.agents/build';
+export const AGENTS_BUILD_VCODES = '.agents/build/rules/bc-campaign-vcodes.md';
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
 const version = pkg.version;
 
@@ -390,9 +395,7 @@ cleanDir(path.join(root, '.cursor'));
 cleanDir(path.join(root, '.claude'));
 cleanDir(path.join(root, '.claude-plugin'));
 if (buildGemini) {
-  cleanDir(path.join(root, '.agents', 'rules'));
-  cleanDir(path.join(root, '.agents', 'agents'));
-  cleanDir(path.join(root, '.agents', 'skills', 'bc-campaign'));
+  cleanDir(path.join(root, AGENTS_BUILD_ROOT));
   cleanDir(path.join(root, 'plugins', 'backlog-campaign'));
   cleanDir(path.join(root, '.gemini-plugin'));
 }
@@ -502,13 +505,12 @@ compileFolder(
   'claude'
 );
 
-// 5. Compile Target D: Gemini/Antigravity — workspace (.agents/) + distribution (plugins/backlog-campaign/) — opt-in (#13, #27)
+// 5. Compile Target D: Gemini/Antigravity — workspace (.agents/build/) + distribution (plugins/backlog-campaign/) — opt-in (#13, #27)
 if (buildGemini) {
-  console.log('Compiling Target D (Gemini/Antigravity workspace — .agents/)...');
-  const agentsRoot = path.join(root, '.agents');
-  // Workspace tree includes agents/ for @bc-* invocation and Multitask Mode handoff paths.
-  compileGeminiTree(agentsRoot, '.agents', '.agents/rules/bc-campaign-vcodes.md');
-  assertGeminiTree(agentsRoot, 'workspace');
+  console.log('Compiling Target D (Gemini/Antigravity workspace — .agents/build/)...');
+  const agentsBuildRoot = path.join(root, AGENTS_BUILD_ROOT);
+  compileGeminiTree(agentsBuildRoot, AGENTS_BUILD_AGENT_DIR, AGENTS_BUILD_VCODES);
+  assertGeminiTree(agentsBuildRoot, 'workspace');
 
   console.log('Compiling Target D distribution bundle (plugins/backlog-campaign/)...');
   const distRoot = path.join(root, 'plugins', 'backlog-campaign');

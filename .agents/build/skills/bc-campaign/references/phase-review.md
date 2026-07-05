@@ -28,7 +28,7 @@ The orchestrator **never** aggregates findings inline.
 ## Reviewer prompt must include
 
 - PR number + diff summary
-- Full V-code audit checklist from `.agents/rules/bc-campaign-vcodes.md`
+- Full V-code audit checklist from `.agents/build/rules/bc-campaign-vcodes.md`
 - Model: use the designated worker agent (`bc-reviewer`)
 - Output format: `worker-schemas.md` reviewer contract
 
