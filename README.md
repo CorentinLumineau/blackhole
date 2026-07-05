@@ -259,6 +259,7 @@ bun run build --all    # All targets including Gemini
 bun test
 bun run verify         # Includes V-CODEX-* checks
 bun run doctor         # Campaign bootstrap preflight (before coordinator)
+bun run install:verify # Workstation install health matrix (Cursor/Claude/Gemini/Codex/skills.sh)
 ```
 
 ### Repository layout
