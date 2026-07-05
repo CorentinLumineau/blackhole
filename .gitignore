@@ -11,3 +11,7 @@ build/
 !.agents/rules/
 !.agents/agents/
 !.agents/skills/
+
+# Gemini/Antigravity plugin manifest (track compiled plugin.json only)
+.gemini-plugin/*
+!.gemini-plugin/plugin.json

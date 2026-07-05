@@ -186,10 +186,21 @@ const checkVcodeReferences = () => {
 const checkFixtures = () => {
   const errors: string[] = [];
 
-  for (const fixture of ['fixtures/queue.example.json', 'fixtures/findings-ledger.example.json']) {
+  for (const fixture of [
+    'fixtures/queue.example.json',
+    'fixtures/findings-ledger.example.json',
+    'fixtures/gemini-plugin.example.json',
+  ]) {
     try {
       const data = JSON.parse(read(fixture));
-      if (!data.refreshed_at) errors.push(`${fixture}: missing refreshed_at`);
+      if (fixture.includes('queue') || fixture.includes('findings-ledger')) {
+        if (!data.refreshed_at) errors.push(`${fixture}: missing refreshed_at`);
+      }
+      if (fixture.includes('gemini-plugin')) {
+        for (const key of ['$schema', 'name', 'version', 'description']) {
+          if (!data[key]) errors.push(`${fixture}: missing ${key}`);
+        }
+      }
     } catch (e) {
       errors.push(`${fixture}: invalid JSON`);
     }
@@ -228,6 +239,83 @@ const checkFixtures = () => {
 
   if (errors.length) fail('V-SCHEMA-01', errors.join('; '));
   else pass('V-SCHEMA-01');
+};
+
+const walkMdFiles = (dir: string): string[] => {
+  const full = path.join(root, dir);
+  if (!fs.existsSync(full)) return [];
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(full, { withFileTypes: true })) {
+    const rel = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkMdFiles(rel));
+    else if (entry.name.endsWith('.md')) out.push(rel);
+  }
+  return out;
+};
+
+// V-GEMINI-01: Gemini/Antigravity compile outputs are complete and platform-clean
+const checkGeminiBuild = () => {
+  if (process.env.VERIFY_SKIP_BUILD !== '1') {
+    const build = spawnSync('bun', ['run', 'build', '--gemini'], { cwd: root, encoding: 'utf-8' });
+    if (build.status !== 0) {
+      fail('V-GEMINI-01', `build --gemini failed: ${build.stderr || build.stdout}`);
+      return;
+    }
+  }
+
+  const errors: string[] = [];
+
+  const workspaceAgents = listFiles('.agents/agents');
+  const bcAgents = workspaceAgents.filter((f) => f.startsWith('bc-'));
+  if (bcAgents.length !== 6) {
+    errors.push(`.agents/agents: expected 6 bc-*.md, got ${bcAgents.length}`);
+  }
+
+  for (const rule of ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md']) {
+    if (!fs.existsSync(path.join(root, '.agents', 'rules', rule))) {
+      errors.push(`missing .agents/rules/${rule}`);
+    }
+  }
+
+  const skillPath = path.join(root, '.agents', 'skills', 'bc-campaign', 'SKILL.md');
+  if (!fs.existsSync(skillPath)) {
+    errors.push('missing .agents/skills/bc-campaign/SKILL.md');
+  }
+
+  const refsDir = path.join(root, '.agents', 'skills', 'bc-campaign', 'references');
+  if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
+    errors.push('missing or empty .agents/skills/bc-campaign/references/');
+  }
+
+  const manifestPath = path.join(root, '.gemini-plugin', 'plugin.json');
+  if (!fs.existsSync(manifestPath)) {
+    errors.push('missing .gemini-plugin/plugin.json');
+  } else {
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      for (const key of ['$schema', 'name', 'version', 'description']) {
+        if (!manifest[key]) errors.push(`plugin.json missing ${key}`);
+      }
+    } catch {
+      errors.push('plugin.json invalid JSON');
+    }
+  }
+
+  for (const rel of walkMdFiles('.agents')) {
+    const content = read(rel);
+    if (/\{\{#cursor\}\}/.test(content) || /\{\{#claude\}\}/.test(content)) {
+      errors.push(`${rel}: contains raw platform conditional`);
+    }
+  }
+
+  const protocol = read('.agents/rules/bc-campaign-protocol.md');
+  const entryMatch = protocol.match(/## Entry\n([\s\S]*?)\n## Five phases/);
+  if (!entryMatch || !/Multitask|bc-coordinator/i.test(entryMatch[1])) {
+    errors.push('bc-campaign-protocol.md Entry section missing Multitask/gemini content');
+  }
+
+  if (errors.length) fail('V-GEMINI-01', errors.join('; '));
+  else pass('V-GEMINI-01');
 };
 
 // V-SKILL-01: SKILL.md modes match phase playbooks
@@ -350,6 +438,7 @@ const main = () => {
   checkGroundTruth();
   checkEpicRunbook();
   checkBuild();
+  checkGeminiBuild();
 
   const expectedChecks = Number(parseGroundTruth().verify_check_count) || 8;
   if (results.length !== expectedChecks) {

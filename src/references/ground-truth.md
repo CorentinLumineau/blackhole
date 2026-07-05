@@ -43,7 +43,7 @@ Source: `src/references/bc-campaign-vcodes.md`
 
 ## Verify checks
 
-**verify_check_count:** 10
+**verify_check_count:** 11
 
 | Check ID | Description |
 |----------|-------------|
@@ -57,6 +57,7 @@ Source: `src/references/bc-campaign-vcodes.md`
 | V-SKILL-01 | SKILL.md modes align with phases |
 | V-GROUND-01 | Ground-truth counts match filesystem |
 | V-EPIC-01 | epic-orchestration.md exists and phase-handle links to it |
+| V-GEMINI-01 | Gemini build outputs complete; no stale platform conditionals |
 
 ## Config schema
 

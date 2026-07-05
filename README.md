@@ -96,12 +96,15 @@ Cursor natively supports multi-file background operations using **Composer / Mul
   2. Input the command: `@bc-coordinator run the campaign` (or simply trigger `/bc-campaign`).
   3. The `bc-coordinator` will bootstrap the campaign and spawn the background `bc-orchestrator` task, freeing up your composer for other work.
 
-### 3. Antigravity & Generic Agents
-In Antigravity or other agent systems, you can trigger the loop by attaching the skill and running:
+### 3. Antigravity (Gemini) — Multitask Mode
+Antigravity has no native `/goal` command. Use the **coordinator** as the entry point:
+- **How to invoke**: `@bc-coordinator run the campaign` (or attach the skill and start Multitask Mode with the coordinator agent).
+- The `bc-coordinator` bootstraps the campaign and spawns the background `bc-orchestrator`.
+
+You can also run the compiled skill directly:
 ```bash
 antigravity run /bc-campaign
 ```
-The agent reads the root-level `SKILL.md` and coordinates the planner, implementer, and reviewer subagents.
 
 ### Platform quick reference
 
@@ -110,7 +113,7 @@ The agent reads the root-level `SKILL.md` and coordinates the planner, implement
 | **Claude Code** | `/goal run bc-campaign until empty` |
 | **Cursor** | `@bc-coordinator run the campaign` or `/bc-campaign` |
 | **skills.sh** | `npx skills add CorentinLumineau/backlog-campaign` then attach `bc-campaign` |
-| **Antigravity** | `antigravity run /bc-campaign` |
+| **Antigravity** | `@bc-coordinator run the campaign` or `antigravity run /bc-campaign` |
 
 See [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) for agent roster and Claude-specific triggers.
 
@@ -142,6 +145,31 @@ npx skills add CorentinLumineau/backlog-campaign
 ```
 Any compatible agent will read the root `SKILL.md` and load the associated rules from the `references/` directory.
 
+### Pathway D: Antigravity / Gemini Native
+
+Three installation options:
+
+**Workspace customization (this repo or submodule):**
+```bash
+bun run build --gemini
+```
+Compiles `.agents/agents/`, `.agents/rules/`, and `.agents/skills/bc-campaign/` for auto-discovery in the workspace.
+
+**Global plugin:**
+```bash
+bun run build --gemini
+ln -s /path/to/backlog-campaign/.agents ~/.gemini/config/plugins/backlog-campaign
+```
+Or copy the `.agents/` tree to `~/.gemini/config/plugins/backlog-campaign/`.
+
+**Workspace plugin (other consumer repos):**
+```bash
+# After build, symlink or copy the workspace .agents tree:
+ln -s /path/to/backlog-campaign/.agents .agents/plugins/backlog-campaign
+```
+
+The `.gemini-plugin/plugin.json` manifest describes the plugin for Antigravity distribution; compiled agent content lives in `.agents/` only.
+
 ---
 
 ## 💻 Development & Compilation
@@ -150,7 +178,10 @@ To keep all rules, agent prompts, and phase playbooks DRY (Don't Repeat Yourself
 
 We use a Bun-based compiler to build target directories:
 ```bash
-bun run build
+bun run build          # Cursor, Claude, skills.sh (default CI)
+bun run build --gemini # Antigravity: .agents/ + .gemini-plugin/
+bun run build --all    # All targets including Gemini
+bun test
 bun run verify
 ```
 

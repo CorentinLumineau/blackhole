@@ -5,8 +5,8 @@
   "scripts": {
     "build": "bun run scripts/build.ts",
     "verify": "bun run scripts/verify.ts",
-    "test": "bun test scripts/forge-scope.test.ts",
-    "release": "bun run scripts/release.ts"
+    "release": "bun run scripts/release.ts",
+    "test": "bun test"
   },
   "dependencies": {},
   "devDependencies": {

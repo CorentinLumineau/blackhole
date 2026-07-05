@@ -2,19 +2,12 @@
 
 Use this verbatim (fill session handoff if resuming) when the **coordinator**
 spawns or resumes the `bc-orchestrator` subagent.
-{{#cursor}}
-Cursor has no `/goal` command — this prompt replaces it.
-{{/cursor}}
-{{#claude}}
-Use when not invoking the orchestrator via native `/goal`.
-{{/claude}}
-{{#gemini}}
+
 Antigravity has no `/goal` command — this prompt replaces it when the coordinator spawns the background orchestrator.
-{{/gemini}}
 
 ```
 Implement ALL open issues on the forge until zero open issues and zero open
-PRs remain, following {{AGENT_DIR}}/skills/bc-campaign/SKILL.md (binding).
+PRs remain, following .agents/skills/bc-campaign/SKILL.md (binding).
 
 Act as ORCHESTRATOR only:
 - Spawn bc-planner, bc-implementer, bc-reviewer, and bc-synthesizer subagents for worker tasks
@@ -69,43 +62,9 @@ outside `Touch-Paths`; reviewers audit against them (`V-SCOPE-02`).
 
 ## Coordinator usage
 
-{{#cursor}}
-**First spawn:**
-```
-Task(
-  subagent_type: use bc-orchestrator agent file,
-  run_in_background: true,
-  prompt: <campaign-prompt above>
-)
-```
 
-**Resume (user feedback):**
-```
-resume orchestrator_id, interrupt: false,
-prompt: <user message verbatim — do not re-paste full campaign prompt>
-```
-
-**Resume (orchestrator completed/failed):**
-New spawn with campaign-prompt + filled SESSION_HANDOFF block.
-{{/cursor}}
-{{#claude}}
-**First spawn:** invoke the `bc-orchestrator` agent in background with the campaign prompt above (or use `/goal` on that agent).
-
-**Resume (user feedback):** resume the orchestrator session with the user's message — do not re-paste the full campaign prompt.
-
-**Resume (orchestrator completed/failed):** spawn a fresh orchestrator with campaign-prompt + filled SESSION_HANDOFF block.
-{{/claude}}
-{{#skills}}
-**First spawn:** start the `bc-orchestrator` agent in background with the campaign prompt above.
-
-**Resume (user feedback):** send the user's message to the running orchestrator — do not re-paste the full campaign prompt.
-
-**Resume (orchestrator completed/failed):** spawn a fresh orchestrator with campaign-prompt + filled SESSION_HANDOFF block.
-{{/skills}}
-{{#gemini}}
 **First spawn:** invoke the `bc-orchestrator` agent in background with the campaign prompt above.
 
 **Resume (user feedback):** resume the orchestrator session with the user's message — do not re-paste the full campaign prompt.
 
 **Resume (orchestrator completed/failed):** spawn a fresh orchestrator with campaign-prompt + filled SESSION_HANDOFF block.
-{{/gemini}}

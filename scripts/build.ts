@@ -37,7 +37,7 @@ type Target = 'cursor' | 'claude' | 'skills' | 'gemini' | 'codex';
 
 // Strip platform-conditional blocks: {{#cursor}}...{{/cursor}} etc.
 // Keeps only the block matching the current compile target.
-const applyPlatformConditionals = (content: string, target: Target): string => {
+export const applyPlatformConditionals = (content: string, target: Target): string => {
   const active = target === 'skills' ? 'skills' : target;
   let res = content;
   for (const platform of ['cursor', 'claude', 'skills', 'gemini', 'codex'] as const) {
@@ -50,7 +50,7 @@ const applyPlatformConditionals = (content: string, target: Target): string => {
   return res;
 };
 
-const compileContent = (content: string, agentDir: string, rulesPath: string, target: Target): string => {
+export const compileContent = (content: string, agentDir: string, rulesPath: string, target: Target): string => {
   let res = content;
   if (target === 'codex') {
     res = res.replaceAll('{{AGENT_DIR}}/skills/bc-campaign/', 'codex-skills/bc-campaign/');
@@ -173,7 +173,63 @@ const compileFolder = (srcSub: string, destParent: string, agentDir: string, rul
   }
 };
 
-// 1. Clean existing build directories
+const rulesList = ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md'];
+
+export const buildGeminiPluginManifest = (pkgVersion: string) => ({
+  $schema: 'https://antigravity.google/schemas/v1/plugin.json',
+  name: 'backlog-campaign',
+  description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
+  version: pkgVersion,
+  author: { name: 'backlog-campaign contributors' },
+  license: 'Apache-2.0',
+  keywords: ['backlog-campaign', 'gemini', 'native', 'workflows', 'skills'],
+});
+
+export const compileGeminiTree = (destRoot: string, agentDir: string, rulesPath: string) => {
+  compileFolder('agents', path.join(destRoot, 'agents'), agentDir, rulesPath, 'gemini', true);
+  for (const rule of rulesList) {
+    processFile(
+      path.join(srcDir, 'references', rule),
+      path.join(destRoot, 'rules', rule),
+      agentDir,
+      rulesPath,
+      'gemini'
+    );
+  }
+  processFile(
+    path.join(srcDir, 'SKILL.md'),
+    path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md'),
+    agentDir,
+    rulesPath,
+    'gemini'
+  );
+  compileFolder(
+    'references',
+    path.join(destRoot, 'skills', 'bc-campaign', 'references'),
+    agentDir,
+    rulesPath,
+    'gemini'
+  );
+};
+
+const assertGeminiTree = (destRoot: string, label: string) => {
+  const agentsDir = path.join(destRoot, 'agents');
+  const rulesDir = path.join(destRoot, 'rules');
+  const agentFiles = fs.existsSync(agentsDir)
+    ? fs.readdirSync(agentsDir).filter((f) => f.startsWith('bc-') && f.endsWith('.md'))
+    : [];
+  const ruleFiles = fs.existsSync(rulesDir)
+    ? fs.readdirSync(rulesDir).filter((f) => rulesList.includes(f))
+    : [];
+  if (agentFiles.length !== 6) {
+    throw new Error(`Gemini ${label}: expected 6 agents, got ${agentFiles.length}`);
+  }
+  if (ruleFiles.length !== 3) {
+    throw new Error(`Gemini ${label}: expected 3 rules, got ${ruleFiles.length}`);
+  }
+};
+
+const main = () => {
 console.log('Cleaning existing build directories...');
 cleanDir(path.join(root, 'rules'));
 cleanDir(path.join(root, 'agents'));
@@ -222,7 +278,6 @@ compileFolder(
 
 // 3. Compile Target B: Cursor (submodule root layout + .cursor/ mirror)
 console.log('Compiling Target B (Cursor)...');
-const rulesList = ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md'];
 const cursorAgentDir = '.cursor';
 const cursorVcodesPath = '.cursor/rules/bc-campaign-vcodes.mdc';
 
@@ -284,50 +339,15 @@ compileFolder(
   'claude'
 );
 
-// 5. Compile Target D: Gemini/Antigravity Project-Level Native (.agents/) — opt-in (#13)
+// 5. Compile Target D: Gemini/Antigravity — workspace (.agents/) + distribution (.gemini-plugin/) — opt-in (#13)
 if (buildGemini) {
   console.log('Compiling Target D (Gemini/Antigravity Project Native)...');
-  compileFolder(
-    'agents',
-    path.join(root, '.agents', 'agents'),
-    '.agents',
-    '.agents/rules/bc-campaign-vcodes.md',
-    'gemini',
-    true
-  );
-  for (const rule of rulesList) {
-    processFile(
-      path.join(srcDir, 'references', rule),
-      path.join(root, '.agents', 'rules', rule),
-      '.agents',
-      '.agents/rules/bc-campaign-vcodes.md',
-      'gemini'
-    );
-  }
-  processFile(
-    path.join(srcDir, 'SKILL.md'),
-    path.join(root, '.agents', 'skills', 'bc-campaign', 'SKILL.md'),
-    '.agents',
-    '.agents/rules/bc-campaign-vcodes.md',
-    'gemini'
-  );
-  compileFolder(
-    'references',
-    path.join(root, '.agents', 'skills', 'bc-campaign', 'references'),
-    '.agents',
-    '.agents/rules/bc-campaign-vcodes.md',
-    'gemini'
-  );
+  const agentsRoot = path.join(root, '.agents');
+  compileGeminiTree(agentsRoot, '.agents', '.agents/rules/bc-campaign-vcodes.md');
+  assertGeminiTree(agentsRoot, 'workspace');
 
   console.log('Generating Gemini Plugin manifest...');
-  const geminiPluginMeta = {
-    name: 'bc-campaign',
-    description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
-    version,
-    author: { name: 'backlog-campaign contributors' },
-    license: 'Apache-2.0',
-    keywords: ['backlog-campaign', 'gemini', 'native', 'workflows', 'skills']
-  };
+  const geminiPluginMeta = buildGeminiPluginManifest(version);
   const geminiPluginDir = path.join(root, '.gemini-plugin');
   if (!fs.existsSync(geminiPluginDir)) fs.mkdirSync(geminiPluginDir, { recursive: true });
   fs.writeFileSync(path.join(geminiPluginDir, 'plugin.json'), JSON.stringify(geminiPluginMeta, null, 2), 'utf-8');
@@ -407,3 +427,8 @@ if (buildCodex) {
 }
 
 console.log('Build compilation completed successfully!');
+};
+
+if (import.meta.main) {
+  main();
+}

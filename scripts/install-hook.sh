@@ -15,6 +15,7 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 bun run build
+bun run build --gemini
 git add -A agents/ rules/ skills/ references/ .cursor/ .claude/ .claude-plugin/ SKILL.md marketplace.json .agents/rules/ .agents/agents/ .agents/skills/bc-campaign/ .gemini-plugin/ 2>/dev/null || true
 EOF
 

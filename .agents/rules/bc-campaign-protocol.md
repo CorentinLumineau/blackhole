@@ -1,38 +1,14 @@
----
-description: bc-campaign protocol — Multitask Mode, five phases, clarify all sizes, never-drop findings
-globs:
-alwaysApply: true
----
-
 # bc-campaign Protocol
 
 When this repo has `.bc-campaign/config.json` or the user asks to
 finish/run the backlog campaign, follow this protocol.
 
 ## Entry
-{{#cursor}}
+
 - **No `/goal`** — use Multitask Mode: `bc-coordinator` → spawns
   `bc-orchestrator` in background
-- Skill: `{{AGENT_DIR}}/skills/bc-campaign/SKILL.md`
-- Flow: `{{AGENT_DIR}}/skills/bc-campaign/references/multitask-mode.md`
-{{/cursor}}
-{{#claude}}
-- **Use `/goal`** or Multitask Mode: `bc-coordinator` → spawns
-  `bc-orchestrator` in background
-- Skill: `{{AGENT_DIR}}/skills/bc-campaign/SKILL.md`
-- Flow: `{{AGENT_DIR}}/skills/bc-campaign/references/multitask-mode.md`
-{{/claude}}
-{{#skills}}
-- Use Multitask Mode (coordinator + background orchestrator) or a direct orchestrator session
-- Skill: root `SKILL.md`
-- Flow: `references/multitask-mode.md`
-{{/skills}}
-{{#gemini}}
-- **No `/goal`** — use Multitask Mode: `bc-coordinator` → spawns
-  `bc-orchestrator` in background
-- Skill: `{{AGENT_DIR}}/skills/bc-campaign/SKILL.md`
-- Flow: `{{AGENT_DIR}}/skills/bc-campaign/references/multitask-mode.md`
-{{/gemini}}
+- Skill: `.agents/skills/bc-campaign/SKILL.md`
+- Flow: `.agents/skills/bc-campaign/references/multitask-mode.md`
 
 Coordinator routes only; orchestrator runs five phases; workers implement.
 
@@ -40,7 +16,7 @@ Coordinator routes only; orchestrator runs five phases; workers implement.
 
 Handle → Plan → Implement → Review → Loop.
 
-Playbooks: `{{AGENT_DIR}}/skills/bc-campaign/references/phase-*.md`
+Playbooks: `.agents/skills/bc-campaign/references/phase-*.md`
 
 ## Clarify — all issue sizes
 
