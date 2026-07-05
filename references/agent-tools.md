@@ -29,11 +29,14 @@ and all future platform additions.
 Use `disallowedTools` (camelCase) — the Cursor agent convention. Same key is
 recognised by Claude Code agents. No `tools:` allowlist line.
 
+Do **not** set `model:` in agent frontmatter. Workers inherit the parent
+session/harness default model (Sonnet, Composer, etc.); plugin artifacts must
+not bake in a fixed model.
+
 ```yaml
 ---
 name: bc-coordinator
 description: ...
-model: sonnet
 permissionMode: default
 disallowedTools: [Write, Edit, Delete]
 ---
@@ -45,7 +48,6 @@ Implementer omits `disallowedTools` entirely (full access by design):
 ---
 name: bc-implementer
 description: ...
-model: sonnet
 permissionMode: default
 ---
 ```

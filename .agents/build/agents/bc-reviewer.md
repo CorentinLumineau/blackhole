@@ -1,7 +1,6 @@
 ---
 name: bc-reviewer
 description: Backlog campaign reviewer agent. Performs strict audits on implementation PRs, enforcing V-codes, quality, security, and best practices.
-model: composer-2.5
 permissionMode: default
 disallowedTools: [Write, Edit, Delete]
 ---

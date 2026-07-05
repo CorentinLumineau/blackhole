@@ -98,9 +98,10 @@ const checkAgentFrontmatter = () => {
       missing.push(`${file}: no frontmatter`);
       continue;
     }
-    for (const key of ['name:', 'description:', 'model:']) {
+    for (const key of ['name:', 'description:']) {
       if (!fm[1].includes(key)) missing.push(`${file}: missing ${key}`);
     }
+    if (/\bmodel:/.test(fm[1])) missing.push(`${file}: model must be absent (inherit harness default)`);
   }
 
   if (missing.length) fail('V-AGENT-01', missing.join('; '));
@@ -518,9 +519,13 @@ const checkCodexBuild = () => {
       continue;
     }
 
-    for (const field of ['name', 'description', 'model', 'permissionMode'] as const) {
+    for (const field of ['name', 'description', 'permissionMode'] as const) {
       const val = yamlScalar(content, field);
       if (!val) agentErrors.push(`${file}: missing or empty ${field}`);
+    }
+
+    if (yamlScalar(content, 'model') !== null) {
+      agentErrors.push(`${file}: model must be absent (inherit harness default)`);
     }
 
     const hasToolEntries = /^disallowedTools:\n(?:\s+-\s+\S+\n)+/m.test(content);
