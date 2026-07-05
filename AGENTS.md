@@ -26,7 +26,6 @@ Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/bc-campaign/SK
 | `bc-planner` | Touch-paths, plan artifacts |
 | `bc-implementer` | TDD implementation in isolated worktrees |
 | `bc-reviewer` | PR quality and plan-conformance audit |
-| `bc-synthesizer` | Deduplicate and rank review findings |
 
 ## Installation
 

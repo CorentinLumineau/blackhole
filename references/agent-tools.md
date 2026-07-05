@@ -18,7 +18,6 @@ pattern (e.g. `x-design` uses `disallowed-tools: Edit` only).
 | **bc-planner** | `Delete` | May write `plans/issue-N.md`; must not delete arbitrary repo files |
 | **bc-implementer** | *(none)* | Full implementation access — tests, git, gh, edits, new MCP tools |
 | **bc-reviewer** | `Write, Edit, Delete` | Read-only audit (`V-SCOPE` at review time) |
-| **bc-synthesizer** | `Write, Edit, Delete` | Read-only aggregation (ADR-002) |
 
 ## Not denied (inherits from platform)
 

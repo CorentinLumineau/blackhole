@@ -5,7 +5,7 @@
     "subagentStop": [
       {
         "command": "bun run scripts/validate-worker-json.ts --hook",
-        "matcher": "bc-planner|bc-implementer|bc-reviewer|bc-synthesizer",
+        "matcher": "bc-planner|bc-implementer|bc-reviewer",
         "failClosed": true
       }
     ]

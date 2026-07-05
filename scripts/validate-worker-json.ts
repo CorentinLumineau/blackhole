@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 
-export type Role = 'planner' | 'implementer' | 'reviewer' | 'synthesizer';
+export type Role = 'planner' | 'implementer' | 'reviewer';
 
 export type HookInput = {
   subagent_type?: string;
@@ -14,7 +14,6 @@ export type HookInput = {
 const PLANNER_STATUSES = ['ready', 'blocked', 'error'] as const;
 const IMPLEMENTER_STATUSES = ['complete', 'blocked', 'error'] as const;
 const REVIEWER_STATUSES = ['complete', 'error'] as const;
-const SYNTHESIZER_STATUSES = ['approved', 'changes_requested', 'error'] as const;
 const TRACKS = ['quick', 'standard'] as const;
 const SEVERITIES = ['BLOCK', 'WARN', 'INFO'] as const;
 
@@ -22,11 +21,10 @@ const ROLE_FROM_TYPE: Record<string, Role> = {
   'bc-planner': 'planner',
   'bc-implementer': 'implementer',
   'bc-reviewer': 'reviewer',
-  'bc-synthesizer': 'synthesizer',
 };
 
 const ROLE_PATTERN =
-  /\bbc-(planner|implementer|reviewer|synthesizer)\b/i;
+  /\bbc-(planner|implementer|reviewer)\b/i;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -196,50 +194,6 @@ function validateReviewer(data: unknown): string[] {
   return errors;
 }
 
-function validateSynthesizer(data: unknown): string[] {
-  const errors: string[] = [];
-  if (!isObject(data)) {
-    return ['payload: expected object'];
-  }
-
-  requireField(errors, data, 'status', isString, 'string');
-  if (isString(data.status)) {
-    pushEnumError(errors, 'status', data.status, SYNTHESIZER_STATUSES);
-  }
-
-  if (!('findings' in data)) {
-    errors.push('findings: required');
-  } else {
-    errors.push(...validateFindingsArray(data.findings, 'findings'));
-  }
-
-  requireField(errors, data, 'blockers_count', isNumber, 'number');
-  requireField(errors, data, 'lgtm', isBoolean, 'boolean');
-
-  if ('pareto_candidates' in data && data.pareto_candidates !== undefined) {
-    if (!Array.isArray(data.pareto_candidates)) {
-      errors.push('pareto_candidates: expected array');
-    } else {
-      data.pareto_candidates.forEach((candidate, index) => {
-        const path = `pareto_candidates[${index}]`;
-        if (!isObject(candidate)) {
-          errors.push(`${path}: expected object`);
-          return;
-        }
-        requireField(errors, candidate, 'summary', isString, 'string');
-        requireField(errors, candidate, 'priority', isNumber, 'number');
-        requireField(errors, candidate, 'file', isString, 'string');
-      });
-    }
-  }
-
-  if (data.status === 'error') {
-    requireField(errors, data, 'error', isString, 'string');
-  }
-
-  return errors;
-}
-
 export function validateWorker(role: Role, data: unknown): string[] {
   switch (role) {
     case 'planner':
@@ -248,8 +202,6 @@ export function validateWorker(role: Role, data: unknown): string[] {
       return validateImplementer(data);
     case 'reviewer':
       return validateReviewer(data);
-    case 'synthesizer':
-      return validateSynthesizer(data);
     default:
       return [`role: unsupported role "${role as string}"`];
   }
@@ -507,7 +459,7 @@ async function main() {
   if (!role) {
     console.error(
       'Usage: bun run scripts/validate-worker-json.ts --hook\n' +
-        '       bun run scripts/validate-worker-json.ts --role <planner|implementer|reviewer|synthesizer> (--file <path> | --json <string>)',
+        '       bun run scripts/validate-worker-json.ts --role <planner|implementer|reviewer> (--file <path> | --json <string>)',
     );
     process.exit(1);
   }

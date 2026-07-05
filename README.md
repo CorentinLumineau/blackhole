@@ -27,7 +27,7 @@ flowchart LR
   Merge --> Ingest
 ```
 
-- **Parallel Workers**: The orchestrator schedules multiple worker subagents concurrently in isolated git worktrees. Review uses a reviewer → synthesizer pipeline per PR.
+- **Parallel Workers**: The orchestrator schedules multiple worker subagents concurrently in isolated git worktrees. Review uses a reviewer → `review-aggregate.ts` pipeline per PR.
 - **TDD Enforcement**: Workers must write unit tests first before making changes.
 - **Plan-Conformance Gates**: Workers are blocked if they modify files outside their declared Touch-Paths or introduce database/API schema drift.
 - **PR & Merge Hygiene**: Pull requests are automatically created, linked with `Closes #N` tags, audited for AI-generated code slop, and merged when green.
@@ -71,7 +71,7 @@ The orchestrator operates over a project-local, gitignored state directory `.bc-
 1. **Handle**: Ingests new issues, triages dependencies, splits epics, and moves issues to planning.
 2. **Plan**: Spawns `bc-planner` to create a plan file, defining specific Touch-Paths and API/schema baselines.
 3. **Implement**: Spawns `bc-implementer` inside a git worktree (`wt-<issue>`) to code, run tests, and open a PR.
-4. **Review**: Spawns `bc-reviewer` then `bc-synthesizer` to audit the PR and aggregate findings.
+4. **Review**: Spawns `bc-reviewer` to audit the PR, then runs `scripts/review-aggregate.ts` to deduplicate and rank findings.
 5. **Loop**: Merges approved PRs, cleans up worktrees, prunes tracking branches, and proceeds to the next queue item.
 
 ---

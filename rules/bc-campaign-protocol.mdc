@@ -50,7 +50,7 @@ Playbooks: `.cursor/skills/bc-campaign/references/phase-*.md`
 ## Orchestrator discipline
 
 - One PR per issue; coordinator never implements or merges
-- Review: `bc-reviewer` → `bc-synthesizer` → ledger (see `review-core.md`)
+- Review: `bc-reviewer` → `scripts/review-aggregate.ts` → ledger (see `review-core.md`)
 - File new issues for discoveries (bugs, refactors, quick wins)
 
 ## Branch & Worktree Hygiene (V-BRANCH, V-WORKTREE)

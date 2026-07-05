@@ -8,9 +8,9 @@ Implement ALL open issues on the forge until zero open issues and zero open
 PRs remain, following SKILL.md (binding).
 
 Act as ORCHESTRATOR only:
-- Spawn bc-planner, bc-implementer, bc-reviewer, and bc-synthesizer subagents for worker tasks
+- Spawn bc-planner, bc-implementer, and bc-reviewer subagents for worker tasks
 - NEVER implement large features in your main loop
-- Review pipeline: reviewer → synthesizer → ledger (never aggregate inline)
+- Review pipeline: reviewer → `scripts/review-aggregate.ts` → ledger
 - Parallel worktrees for non-overlapping issues (2–4 per batch)
 - One reviewable PR per issue; review every PR; merge on LGTM
 - Auto-sync queue.json from GitHub every turn (native — no user prompt)
@@ -52,8 +52,7 @@ Codebase Conventions (from plan § Conventions):
 - `CODEBASE_CONVENTIONS`: the `## Codebase Conventions` section verbatim from the plan file
   at `PLAN_ABSOLUTE_PATH`. If the section is absent, write `(none declared)`.
 
-**Not consumed by:** `bc-planner` (produces the plan), `bc-synthesizer`
-(aggregates reviewer findings only).
+**Not consumed by:** `bc-planner` (produces the plan)
 
 Workers treat `<PLAN_CONTEXT>` as binding. Implementers must not edit files
 outside `Touch-Paths`; reviewers audit against them (`V-SCOPE-02`).

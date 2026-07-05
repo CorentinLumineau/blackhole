@@ -15,7 +15,6 @@ export const EXPECTED_BC_AGENTS = [
   'bc-planner.md',
   'bc-implementer.md',
   'bc-reviewer.md',
-  'bc-synthesizer.md',
 ] as const;
 
 const REQUIRED_CONFIG_KEYS = ['repo', 'target_branch', 'forge'] as const;
@@ -58,7 +57,7 @@ export function checkCursorAgents(repoRoot: string): DoctorCheck {
       id: 'D-AGENTS-01',
       severity: 'BLOCK',
       ok: false,
-      detail: `expected 6 bc-*.md agents, found ${bcAgents.length} — run \`bun run build\` (missing: ${missing.join(', ')})`,
+      detail: `expected 5 bc-*.md agents, found ${bcAgents.length} — run \`bun run build\` (missing: ${missing.join(', ')})`,
     };
   }
 

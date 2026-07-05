@@ -8,7 +8,7 @@ Optional: consumers may install the Cursor SubagentStop hook below for machine-e
 
 **Install:** Merge the `hooks` block from [`templates/hooks/subagent-stop-validate.json`](../../templates/hooks/subagent-stop-validate.json) into your project's `.cursor/hooks.json`. Requires `bun` on `PATH`; hook `command` paths are relative to the repo root.
 
-**Behavior:** On `subagentStop`, when the hook `matcher` hits `bc-planner`, `bc-implementer`, `bc-reviewer`, or `bc-synthesizer`, Cursor runs `bun run scripts/validate-worker-json.ts --hook` with the stop payload on **stdin**. Non-zero exit blocks handoff (`failClosed: true`). Subagent stops with `status` `error` or `aborted`, or non-campaign subagents, pass through (exit `0`).
+**Behavior:** On `subagentStop`, when the hook `matcher` hits `bc-planner`, `bc-implementer`, or `bc-reviewer`, Cursor runs `bun run scripts/validate-worker-json.ts --hook` with the stop payload on **stdin**. Non-zero exit blocks handoff (`failClosed: true`). Subagent stops with `status` `error` or `aborted`, or non-campaign subagents, pass through (exit `0`).
 
 **Extraction order:** Worker JSON is parsed from (1) a fenced ` ```json ` block in `summary`, (2) the last brace-balanced `{...}` object in `summary`, or (3) the tail of `agent_transcript_path` when readable.
 
@@ -123,7 +123,9 @@ When `status: blocked`, `failing_checks` lists failed items:
 
 `gain` and `effort` required only for `V-PARETO-02` findings.
 
-## Synthesizer (`bc-synthesizer`)
+## Review aggregate (`scripts/review-aggregate.ts`)
+
+Orchestrator invokes after `bc-reviewer` completes. Not a worker agent — deterministic script output:
 
 ```json
 {
@@ -141,8 +143,10 @@ When `status: blocked`, `failing_checks` lists failed items:
 | `findings` | finding[] | yes |
 | `blockers_count` | number | yes |
 | `lgtm` | boolean | yes |
-| `pareto_candidates` | `{ summary, priority, file }[]` | no |
+| `pareto_candidates` | `{ summary, priority, file }[]` | yes (may be empty) |
 | `error` | string | when `status: error` |
+
+CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>]`
 
 ## Orchestrator validation
 
@@ -150,5 +154,5 @@ Before ledger append or phase transition:
 
 1. Parse worker JSON; on parse failure → treat as worker error, do not advance phase
 2. For implementer: reject if `touch_paths_honored === false` or `tests_passed === false`
-3. For synthesizer: route to implement only when `lgtm === false` and `review_iteration < 5`
-4. Append synthesizer `findings` to ledger with `phase: review` and `pr_ref` set
+3. Run `scripts/review-aggregate.ts` on reviewer output; route to implement only when `lgtm === false` and `review_iteration < 5`
+4. Append aggregate `findings` to ledger with `phase: review` and `pr_ref` set
