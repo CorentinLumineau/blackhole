@@ -1,0 +1,39 @@
+{
+  "name": "bc-campaign",
+  "version": "0.4.0",
+  "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
+  "author": {
+    "name": "Corentin Lumineau",
+    "email": "corentin@lumineau.dev",
+    "url": "https://github.com/CorentinLumineau"
+  },
+  "homepage": "https://github.com/CorentinLumineau/backlog-campaign",
+  "repository": "https://github.com/CorentinLumineau/backlog-campaign",
+  "license": "Apache-2.0",
+  "keywords": [
+    "backlog-campaign",
+    "codex",
+    "native",
+    "workflows",
+    "skills"
+  ],
+  "skills": "./codex-skills/",
+  "interface": {
+    "displayName": "Backlog Campaign",
+    "shortDescription": "Auto-solve your entire GitHub backlog",
+    "longDescription": "Five-phase lifecycle: Handle → Plan → Implement → Review → Loop.",
+    "developerName": "Corentin Lumineau",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Write",
+      "Interactive"
+    ],
+    "websiteURL": "https://github.com/CorentinLumineau/backlog-campaign",
+    "defaultPrompt": [
+      "Run the backlog campaign until empty for this repo.",
+      "Show backlog status: open issues, in-flight, and queue.",
+      "Implement issue #N using the campaign pipeline."
+    ],
+    "brandColor": "#3B82F6"
+  }
+}

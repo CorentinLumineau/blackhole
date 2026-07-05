@@ -186,24 +186,17 @@ For local development in this repo, prefer the full `.agents/` workspace tree (i
 
 ### Pathway E: Codex CLI Native
 
-Register the Codex marketplace and install the plugin:
+Codex build outputs (`.codex-plugin/`, `codex-skills/`, `codex-agents/`, `codex-marketplace.json`) are **committed in-repo** — no local build step is required for marketplace install.
 
 ```bash
-# 1. Register the marketplace
+# 1. Register the marketplace (works on a clean git checkout)
 codex plugin marketplace add https://github.com/CorentinLumineau/backlog-campaign
 
 # 2. Install the plugin
 codex plugin add bc-campaign@bc-campaign-codex
 ```
 
-Build Codex outputs locally (opt-in — not part of default CI):
-
-```bash
-bun run build:codex
-# or: bun run build --codex
-```
-
-This emits `.codex-plugin/plugin.json`, `codex-skills/bc-campaign/`, `codex-agents/*.yaml`, and `codex-marketplace.json`.
+**Maintainers:** after editing `src/`, run `bun run build` (Codex is included by default) and commit any changed Codex outputs. Use `bun run build --no-codex` to skip Codex when iterating on other targets only.
 
 ---
 
@@ -213,13 +206,12 @@ To keep all rules, agent prompts, and phase playbooks DRY (Don't Repeat Yourself
 
 We use a Bun-based compiler to build target directories:
 ```bash
-bun run build          # Cursor, Claude, skills.sh (default CI)
+bun run build          # Cursor, Claude, skills.sh, Codex (default CI)
 bun run build --gemini # Antigravity: .agents/ + plugins/backlog-campaign/ + .gemini-plugin/
-bun run build:codex    # Codex CLI: .codex-plugin/ + codex-skills/ + codex-agents/
-bun run build --all    # All targets including Gemini and Codex
+bun run build --no-codex  # Skip Codex targets when iterating on other platforms
+bun run build --all    # All targets including Gemini
 bun test
-bun run verify
-VERIFY_BUILD_CODEX=1 bun run verify   # Include Codex build checks (V-CODEX-*)
+bun run verify         # Includes V-CODEX-* checks
 ```
 
 Optional: install a git pre-commit hook that runs build before commit:
