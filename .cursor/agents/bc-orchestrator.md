@@ -97,6 +97,12 @@ Per `checkpoint-protocol.md` — **Turn-end checklist** (when any issue is `in-f
 
 Template, write order, and compaction recovery: `checkpoint-protocol.md`.
 
+## Session resume & recovery
+
+On compaction recovery, after reading checkpoint, inspect worktrees per `recovery-protocol.md` §2.
+
+**MUST** complete `recovery-protocol.md` §5 orchestrator checklist before spawning `bc-implementer` when any in-flight issue has a dirty worktree or recovery stash. Do not spawn implementer until worktree scope matches a single issue.
+
 ---
 
 ## Human-in-the-Loop (HITL) & Blocker Gating
