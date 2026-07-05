@@ -20,7 +20,7 @@ Adopt a five-phase lifecycle for every campaign issue:
 4. **Review** — V-code audit via reviewer + synthesizer pipeline
 5. **Loop** — merge, ledger cleanup, schedule next batch
 
-State is persisted in `.backlog-campaign/queue.json` with `phase` and `status` fields.
+State is persisted in `.bc-campaign/queue.json` with `phase` and `status` fields.
 
 ## Consequences
 
