@@ -263,6 +263,8 @@ bun run doctor         # Campaign bootstrap preflight (before coordinator)
 
 ### Repository layout
 
+See **[documentation/architecture.md](documentation/architecture.md)** for the full build-flow diagram, target-tree table, and runtime vs compile-artifact distinction.
+
 | Layer | Path(s) | Role | How to change |
 |-------|---------|------|---------------|
 | **Source (authoring)** | `src/` | DRY source for agents, rules, references, playbooks | Edit `src/` directly |
