@@ -485,6 +485,8 @@ if (buildGemini) {
   compileGeminiTree(agentsBuildRoot, AGENTS_BUILD_AGENT_DIR, AGENTS_BUILD_VCODES);
   assertGeminiTree(agentsBuildRoot, 'workspace');
 
+  console.log('Generating Gemini Plugin manifest...');
+  const geminiPluginMeta = buildGeminiPluginManifest(version);
 
   // Detached manifest for marketplace metadata (same payload as co-located plugin.json).
   const geminiPluginDir = path.join(root, '.gemini-plugin');
