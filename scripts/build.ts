@@ -76,7 +76,8 @@ const processFile = (
   rulesPath: string,
   target: Target,
   isVcodesMdc = false,
-  isAgent = false
+  isAgent = false,
+  isSkill = false
 ) => {
   let content = fs.readFileSync(srcPath, 'utf-8');
 
@@ -88,6 +89,8 @@ const processFile = (
   } else if (isAgent && (target === 'claude' || target === 'gemini')) {
     // Claude/Gemini agents: preserve frontmatter (name, description, model, disallowedTools)
     // — do not strip, since Claude Code / Gemini reads agent frontmatter
+  } else if (target === 'codex' && isSkill) {
+    // Codex skill: preserve skill frontmatter (disable-model-invocation, name, description)
   } else {
     // Claude rules / skills.sh / Gemini rules: strip Cursor-only MDC frontmatter entirely
     content = stripCursorFrontmatter(content);
@@ -185,6 +188,56 @@ export const buildGeminiPluginManifest = (pkgVersion: string) => ({
   keywords: ['backlog-campaign', 'gemini', 'native', 'workflows', 'skills'],
 });
 
+export const buildCodexPluginManifest = (pkgVersion: string) => ({
+  name: 'bc-campaign',
+  version: pkgVersion,
+  description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
+  author: {
+    name: 'Corentin Lumineau',
+    email: 'corentin@lumineau.dev',
+    url: 'https://github.com/CorentinLumineau',
+  },
+  homepage: 'https://github.com/CorentinLumineau/backlog-campaign',
+  repository: 'https://github.com/CorentinLumineau/backlog-campaign',
+  license: 'Apache-2.0',
+  keywords: ['backlog-campaign', 'codex', 'native', 'workflows', 'skills'],
+  skills: './codex-skills/',
+  interface: {
+    displayName: 'Backlog Campaign',
+    shortDescription: 'Auto-solve your entire GitHub backlog',
+    longDescription: 'Five-phase lifecycle: Handle → Plan → Implement → Review → Loop.',
+    developerName: 'Corentin Lumineau',
+    category: 'Developer Tools',
+    capabilities: ['Write', 'Interactive'],
+    websiteURL: 'https://github.com/CorentinLumineau/backlog-campaign',
+    defaultPrompt: [
+      'Run the backlog campaign until empty for this repo.',
+      'Show backlog status: open issues, in-flight, and queue.',
+      'Implement issue #N using the campaign pipeline.',
+    ],
+    brandColor: '#3B82F6',
+  },
+});
+
+export const buildCodexMarketplace = () => ({
+  name: 'bc-campaign-codex',
+  interface: { displayName: 'Backlog Campaign - Codex' },
+  plugins: [
+    {
+      name: 'bc-campaign',
+      source: {
+        source: 'git',
+        url: 'https://github.com/CorentinLumineau/backlog-campaign',
+      },
+      policy: {
+        installation: 'AVAILABLE',
+        authentication: 'ON_INSTALL',
+      },
+      category: 'Developer Tools',
+    },
+  ],
+});
+
 export const compileGeminiTree = (destRoot: string, agentDir: string, rulesPath: string) => {
   compileFolder('agents', path.join(destRoot, 'agents'), agentDir, rulesPath, 'gemini', true);
   for (const rule of rulesList) {
@@ -226,6 +279,51 @@ const assertGeminiTree = (destRoot: string, label: string) => {
   }
   if (ruleFiles.length !== 3) {
     throw new Error(`Gemini ${label}: expected 3 rules, got ${ruleFiles.length}`);
+  }
+};
+
+export const compileCodexTree = (rootDir: string, agentDir: string, rulesPath: string) => {
+  compileFolder('agents', path.join(rootDir, 'codex-agents'), agentDir, rulesPath, 'codex', true);
+  processFile(
+    path.join(srcDir, 'SKILL.md'),
+    path.join(rootDir, 'codex-skills', 'bc-campaign', 'SKILL.md'),
+    agentDir,
+    rulesPath,
+    'codex',
+    false,
+    false,
+    true
+  );
+  compileFolder(
+    'references',
+    path.join(rootDir, 'codex-skills', 'bc-campaign', 'references'),
+    agentDir,
+    rulesPath,
+    'codex'
+  );
+};
+
+const assertCodexTree = (rootDir: string) => {
+  const agentsDir = path.join(rootDir, 'codex-agents');
+  const agentFiles = fs.existsSync(agentsDir)
+    ? fs.readdirSync(agentsDir).filter((f) => f.startsWith('bc-') && f.endsWith('.yaml'))
+    : [];
+  if (agentFiles.length !== 6) {
+    throw new Error(`Codex: expected 6 agent YAML files, got ${agentFiles.length}`);
+  }
+  for (const file of agentFiles) {
+    const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
+    if (!content.includes('instructions: |')) {
+      throw new Error(`Codex: ${file} missing instructions block scalar`);
+    }
+  }
+  const skillPath = path.join(rootDir, 'codex-skills', 'bc-campaign', 'SKILL.md');
+  if (!fs.existsSync(skillPath)) {
+    throw new Error('Codex: missing codex-skills/bc-campaign/SKILL.md');
+  }
+  const refsDir = path.join(rootDir, 'codex-skills', 'bc-campaign', 'references');
+  if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
+    throw new Error('Codex: missing or empty codex-skills/bc-campaign/references/');
   }
 };
 
@@ -381,48 +479,16 @@ if (buildCodex) {
   console.log('Compiling Target E (Codex CLI Support)...');
   const codexAgentDir = 'codex-skills';
   const codexVcodesPath = 'codex-skills/bc-campaign/references/bc-campaign-vcodes.md';
-  compileFolder(
-    'agents',
-    path.join(root, 'codex-agents'),
-    codexAgentDir,
-    codexVcodesPath,
-    'codex',
-    true
-  );
-  processFile(
-    path.join(srcDir, 'SKILL.md'),
-    path.join(root, 'codex-skills', 'bc-campaign', 'SKILL.md'),
-    codexAgentDir,
-    codexVcodesPath,
-    'codex'
-  );
-  compileFolder(
-    'references',
-    path.join(root, 'codex-skills', 'bc-campaign', 'references'),
-    codexAgentDir,
-    codexVcodesPath,
-    'codex'
-  );
+  compileCodexTree(root, codexAgentDir, codexVcodesPath);
+  assertCodexTree(root);
 
   console.log('Generating Codex Plugin manifest...');
-  const codexPluginMeta = {
-    name: 'bc-campaign',
-    description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
-    version,
-    author: { name: 'bc-campaign contributors' },
-    license: 'Apache-2.0',
-    keywords: ['bc-campaign', 'codex', 'native', 'workflows', 'skills'],
-  };
+  const codexPluginMeta = buildCodexPluginManifest(version);
   const codexPluginDir = path.join(root, '.codex-plugin');
   if (!fs.existsSync(codexPluginDir)) fs.mkdirSync(codexPluginDir, { recursive: true });
   fs.writeFileSync(path.join(codexPluginDir, 'plugin.json'), JSON.stringify(codexPluginMeta, null, 2), 'utf-8');
 
-  const codexMarketplaceJson = {
-    name: 'bc-campaign-marketplace',
-    description: 'Backlog Campaign Marketplace',
-    owner: { name: 'CorentinLumineau' },
-    plugins: [{ ...codexPluginMeta, source: '.' }],
-  };
+  const codexMarketplaceJson = buildCodexMarketplace();
   fs.writeFileSync(path.join(root, 'codex-marketplace.json'), JSON.stringify(codexMarketplaceJson, null, 2), 'utf-8');
 }
 

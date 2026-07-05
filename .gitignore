@@ -15,3 +15,9 @@ build/
 # Gemini/Antigravity plugin manifest (track compiled plugin.json only)
 .gemini-plugin/*
 !.gemini-plugin/plugin.json
+
+# Codex CLI build outputs (opt-in via bun run build --codex)
+.codex-plugin/
+codex-skills/
+codex-agents/
+codex-marketplace.json

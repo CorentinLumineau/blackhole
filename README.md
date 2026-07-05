@@ -106,6 +106,14 @@ You can also run the compiled skill directly:
 antigravity run /bc-campaign
 ```
 
+### 4. Codex CLI (OpenAI Native)
+Codex supports long-running background sessions via the `/goal` command (same pattern as Claude Code).
+- **How to invoke**:
+  ```bash
+  /goal run bc-campaign until empty
+  ```
+  Or use Multitask Mode: `@bc-coordinator run the campaign` when you prefer coordinator-driven intake.
+
 ### Platform quick reference
 
 | Platform | Invoke command |
@@ -114,6 +122,7 @@ antigravity run /bc-campaign
 | **Cursor** | `@bc-coordinator run the campaign` or `/bc-campaign` |
 | **skills.sh** | `npx skills add CorentinLumineau/backlog-campaign` then attach `bc-campaign` |
 | **Antigravity** | `@bc-coordinator run the campaign` or `antigravity run /bc-campaign` |
+| **Codex CLI** | `/goal run bc-campaign until empty` or `@bc-campaign status` |
 
 See [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) for agent roster and Claude-specific triggers.
 
@@ -170,6 +179,27 @@ ln -s /path/to/backlog-campaign/.agents .agents/plugins/backlog-campaign
 
 The `.gemini-plugin/plugin.json` manifest describes the plugin for Antigravity distribution; compiled agent content lives in `.agents/` only.
 
+### Pathway E: Codex CLI Native
+
+Register the Codex marketplace and install the plugin:
+
+```bash
+# 1. Register the marketplace
+codex plugin marketplace add https://github.com/CorentinLumineau/backlog-campaign
+
+# 2. Install the plugin
+codex plugin add bc-campaign@bc-campaign-codex
+```
+
+Build Codex outputs locally (opt-in — not part of default CI):
+
+```bash
+bun run build:codex
+# or: bun run build --codex
+```
+
+This emits `.codex-plugin/plugin.json`, `codex-skills/bc-campaign/`, `codex-agents/*.yaml`, and `codex-marketplace.json`.
+
 ---
 
 ## 💻 Development & Compilation
@@ -180,9 +210,11 @@ We use a Bun-based compiler to build target directories:
 ```bash
 bun run build          # Cursor, Claude, skills.sh (default CI)
 bun run build --gemini # Antigravity: .agents/ + .gemini-plugin/
-bun run build --all    # All targets including Gemini
+bun run build:codex    # Codex CLI: .codex-plugin/ + codex-skills/ + codex-agents/
+bun run build --all    # All targets including Gemini and Codex
 bun test
 bun run verify
+VERIFY_BUILD_CODEX=1 bun run verify   # Include Codex build checks (V-CODEX-*)
 ```
 
 Optional: install a git pre-commit hook that runs build before commit:

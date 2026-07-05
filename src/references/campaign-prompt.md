@@ -11,6 +11,9 @@ Use when not invoking the orchestrator via native `/goal`.
 {{#gemini}}
 Antigravity has no `/goal` command — this prompt replaces it when the coordinator spawns the background orchestrator.
 {{/gemini}}
+{{#codex}}
+Codex supports native `/goal run bc-campaign until empty` — use this prompt when the coordinator spawns the background orchestrator instead.
+{{/codex}}
 
 ```
 Implement ALL open issues on the forge until zero open issues and zero open

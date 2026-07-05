@@ -190,6 +190,8 @@ const checkFixtures = () => {
     'fixtures/queue.example.json',
     'fixtures/findings-ledger.example.json',
     'fixtures/gemini-plugin.example.json',
+    'fixtures/codex-plugin.example.json',
+    'fixtures/codex-marketplace.example.json',
   ]) {
     try {
       const data = JSON.parse(read(fixture));
@@ -199,6 +201,22 @@ const checkFixtures = () => {
       if (fixture.includes('gemini-plugin')) {
         for (const key of ['$schema', 'name', 'version', 'description']) {
           if (!data[key]) errors.push(`${fixture}: missing ${key}`);
+        }
+      }
+      if (fixture.includes('codex-plugin')) {
+        for (const key of ['name', 'interface', 'skills']) {
+          if (!data[key]) errors.push(`${fixture}: missing ${key}`);
+        }
+        if (data.interface && !data.interface.displayName) {
+          errors.push(`${fixture}: interface missing displayName`);
+        }
+      }
+      if (fixture.includes('codex-marketplace')) {
+        if (!data.plugins?.[0]?.source?.source) {
+          errors.push(`${fixture}: plugins[0].source.source missing`);
+        }
+        if (data.plugins?.[0]?.source?.source !== 'git') {
+          errors.push(`${fixture}: plugins[0].source.source must be git`);
         }
       }
     } catch (e) {
@@ -316,6 +334,100 @@ const checkGeminiBuild = () => {
 
   if (errors.length) fail('V-GEMINI-01', errors.join('; '));
   else pass('V-GEMINI-01');
+};
+
+// V-CODEX-01 through V-CODEX-04: Codex CLI compile outputs (opt-in via VERIFY_BUILD_CODEX=1)
+const checkCodexBuild = () => {
+  if (process.env.VERIFY_BUILD_CODEX !== '1') {
+    pass('V-CODEX-01');
+    pass('V-CODEX-02');
+    pass('V-CODEX-03');
+    pass('V-CODEX-04');
+    return;
+  }
+
+  if (process.env.VERIFY_SKIP_BUILD !== '1') {
+    const build = spawnSync('bun', ['run', 'build', '--codex'], { cwd: root, encoding: 'utf-8' });
+    if (build.status !== 0) {
+      fail('V-CODEX-01', `build --codex failed: ${build.stderr || build.stdout}`);
+      fail('V-CODEX-02', 'skipped — build failed');
+      fail('V-CODEX-03', 'skipped — build failed');
+      fail('V-CODEX-04', 'skipped — build failed');
+      return;
+    }
+  }
+  pass('V-CODEX-01');
+
+  const manifestErrors: string[] = [];
+  const manifestPath = path.join(root, '.codex-plugin', 'plugin.json');
+  if (!fs.existsSync(manifestPath)) {
+    manifestErrors.push('missing .codex-plugin/plugin.json');
+  } else {
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      for (const key of ['name', 'interface', 'skills', 'version']) {
+        if (!manifest[key]) manifestErrors.push(`plugin.json missing ${key}`);
+      }
+      if (manifest.interface && !manifest.interface.displayName) {
+        manifestErrors.push('plugin.json interface missing displayName');
+      }
+    } catch {
+      manifestErrors.push('plugin.json invalid JSON');
+    }
+  }
+  const marketplacePath = path.join(root, 'codex-marketplace.json');
+  if (fs.existsSync(marketplacePath)) {
+    try {
+      const marketplace = JSON.parse(fs.readFileSync(marketplacePath, 'utf-8'));
+      if (marketplace.plugins?.[0]?.source?.source !== 'git') {
+        manifestErrors.push('codex-marketplace.json must use git source format');
+      }
+      if (marketplace.owner) {
+        manifestErrors.push('codex-marketplace.json must not use Claude owner shape');
+      }
+    } catch {
+      manifestErrors.push('codex-marketplace.json invalid JSON');
+    }
+  } else {
+    manifestErrors.push('missing codex-marketplace.json');
+  }
+  if (manifestErrors.length) fail('V-CODEX-02', manifestErrors.join('; '));
+  else pass('V-CODEX-02');
+
+  const skillPath = path.join(root, 'codex-skills', 'bc-campaign', 'SKILL.md');
+  if (!fs.existsSync(skillPath)) {
+    fail('V-CODEX-03', 'missing codex-skills/bc-campaign/SKILL.md');
+  } else {
+    const skill = fs.readFileSync(skillPath, 'utf-8');
+    if (!skill.includes('disable-model-invocation: true')) {
+      fail('V-CODEX-03', 'SKILL.md missing disable-model-invocation: true');
+    } else {
+      pass('V-CODEX-03');
+    }
+  }
+
+  const agentsDir = path.join(root, 'codex-agents');
+  const agentFiles = fs.existsSync(agentsDir)
+    ? fs.readdirSync(agentsDir).filter((f) => f.startsWith('bc-') && f.endsWith('.yaml'))
+    : [];
+  const agentErrors: string[] = [];
+  if (agentFiles.length !== 6) {
+    agentErrors.push(`expected 6 bc-*.yaml agents, got ${agentFiles.length}`);
+  }
+  for (const file of agentFiles) {
+    const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
+    if (!content.includes('instructions: |')) {
+      agentErrors.push(`${file}: missing instructions block`);
+    }
+  }
+  for (const rel of walkMdFiles('codex-skills')) {
+    const content = read(rel);
+    if (/\{\{#cursor\}\}/.test(content) || /\{\{#claude\}\}/.test(content)) {
+      agentErrors.push(`${rel}: contains raw platform conditional`);
+    }
+  }
+  if (agentErrors.length) fail('V-CODEX-04', agentErrors.join('; '));
+  else pass('V-CODEX-04');
 };
 
 // V-SKILL-01: SKILL.md modes match phase playbooks
@@ -439,6 +551,7 @@ const main = () => {
   checkEpicRunbook();
   checkBuild();
   checkGeminiBuild();
+  checkCodexBuild();
 
   const expectedChecks = Number(parseGroundTruth().verify_check_count) || 8;
   if (results.length !== expectedChecks) {

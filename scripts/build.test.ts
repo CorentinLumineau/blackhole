@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { applyPlatformConditionals, compileContent, buildGeminiPluginManifest } from './build.ts';
+import {
+  applyPlatformConditionals,
+  compileContent,
+  buildGeminiPluginManifest,
+  buildCodexPluginManifest,
+  buildCodexMarketplace,
+} from './build.ts';
 
 describe('applyPlatformConditionals', () => {
   test('gemini keeps gemini body and removes cursor/claude/skills', () => {
@@ -17,6 +23,19 @@ after`;
     expect(result).not.toContain('{{#cursor}}');
     expect(result).not.toContain('{{#claude}}');
     expect(result).not.toContain('{{#gemini}}');
+  });
+
+  test('codex keeps codex body and removes other platforms', () => {
+    const input = `before
+{{#cursor}}cursor only{{/cursor}}
+{{#claude}}claude only{{/claude}}
+{{#codex}}codex content{{/codex}}
+after`;
+    const result = applyPlatformConditionals(input, 'codex');
+    expect(result).toContain('codex content');
+    expect(result).not.toContain('cursor only');
+    expect(result).not.toContain('claude only');
+    expect(result).not.toContain('{{#codex}}');
   });
 });
 
@@ -51,5 +70,26 @@ describe('buildGeminiPluginManifest', () => {
     expect(manifest.name).toBe('backlog-campaign');
     expect(manifest.version).toBe('1.2.3');
     expect(manifest.description).toContain('backlog campaign');
+  });
+});
+
+describe('buildCodexPluginManifest', () => {
+  test('includes required Codex plugin fields', () => {
+    const manifest = buildCodexPluginManifest('0.3.0');
+    expect(manifest.name).toBe('bc-campaign');
+    expect(manifest.version).toBe('0.3.0');
+    expect(manifest.skills).toBe('./codex-skills/');
+    expect(manifest.interface?.displayName).toBe('Backlog Campaign');
+    expect(manifest.interface?.defaultPrompt?.length).toBeGreaterThan(0);
+  });
+});
+
+describe('buildCodexMarketplace', () => {
+  test('uses git source format not Claude owner shape', () => {
+    const marketplace = buildCodexMarketplace();
+    expect(marketplace.name).toBe('bc-campaign-codex');
+    expect(marketplace.plugins[0].source.source).toBe('git');
+    expect(marketplace.plugins[0].source.url).toContain('github.com');
+    expect((marketplace as Record<string, unknown>).owner).toBeUndefined();
   });
 });
