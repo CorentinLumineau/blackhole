@@ -43,7 +43,7 @@ Source: `src/references/bc-campaign-vcodes.md`
 
 ## Verify checks
 
-**verify_check_count:** 15
+**verify_check_count:** 16
 
 | Check ID | Description |
 |----------|-------------|
@@ -54,6 +54,7 @@ Source: `src/references/bc-campaign-vcodes.md`
 | V-VCODE-01 | V-codes referenced in agents or phases |
 | V-BUILD-01 | Build produces clean output |
 | V-SCHEMA-01 | Fixture JSON validates |
+| V-PLAN-01 | In-flight plan/implement/review entries require plans/issue-N.md |
 | V-SKILL-01 | SKILL.md modes align with phases |
 | V-GROUND-01 | Ground-truth counts match filesystem |
 | V-EPIC-01 | epic-orchestration.md exists and phase-handle links to it |

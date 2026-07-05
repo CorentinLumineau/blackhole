@@ -1,4 +1,10 @@
 {
+  "_vplan01_documentation": {
+    "rule": "phase in {plan, implement, review} AND status in-flight → plans/issue-N.md must exist",
+    "valid_example": "issues.298: review + in-flight + fixtures/plans/issue-298.md present",
+    "invalid_example": "issues.<N>: plan + in-flight without plans/issue-N.md → V-PLAN-01 fail",
+    "exempt": "handle/done phases; ready/blocked/merged/closed statuses"
+  },
   "refreshed_at": "2026-07-05T00:00:00.000Z",
   "campaign_started_at": "2026-07-04T10:00:00.000Z",
   "user_queue_order": [301, 298, 275],

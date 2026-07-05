@@ -35,6 +35,10 @@ conditions are met:
 1. Plan artifact exists on disk at `{repo_root}/.bc-campaign/plans/issue-N.md`
 2. Planner worker JSON returned `status: ready` (not `blocked`)
 
+`bun run verify` enforces the same plan-on-disk rule via **V-PLAN-01** for any
+queue entry in `plan`, `implement`, or `review` with `status: in-flight` (use
+`--campaign-dir .bc-campaign` for live campaign state).
+
 If either is missing, stay in Phase 2 Plan — spawn or re-spawn `bc-planner`.
 Queue entry must be `phase: implement`, `status: ready` before implement spawn.
 

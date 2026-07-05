@@ -259,6 +259,64 @@ const checkFixtures = () => {
   else pass('V-SCHEMA-01');
 };
 
+const PLAN_REQUIRED_PHASES = new Set(['plan', 'implement', 'review']);
+
+const parseCampaignDirArg = (): string | null => {
+  const argv = process.argv.slice(2);
+  const idx = argv.indexOf('--campaign-dir');
+  if (idx === -1 || idx + 1 >= argv.length) return null;
+  return argv[idx + 1];
+};
+
+const resolveCampaignPaths = () => {
+  const campaignDirArg = parseCampaignDirArg();
+  const campaignDir = campaignDirArg
+    ? path.resolve(campaignDirArg)
+    : path.join(root, 'fixtures');
+  const queueFile = campaignDirArg
+    ? path.join(campaignDir, 'queue.json')
+    : path.join(campaignDir, 'queue.example.json');
+  return { campaignDir, queueFile };
+};
+
+// V-PLAN-01: In-flight plan/implement/review entries require plans/issue-N.md
+const checkPlanArtifacts = () => {
+  const { campaignDir, queueFile } = resolveCampaignPaths();
+
+  if (!fs.existsSync(queueFile)) {
+    pass('V-PLAN-01');
+    return;
+  }
+
+  let queue: { issues?: Record<string, { phase?: string; status?: string }> };
+  try {
+    queue = JSON.parse(fs.readFileSync(queueFile, 'utf-8'));
+  } catch {
+    fail('V-PLAN-01', `${path.relative(root, queueFile)}: invalid JSON`);
+    return;
+  }
+
+  if (!queue.issues || typeof queue.issues !== 'object') {
+    pass('V-PLAN-01');
+    return;
+  }
+
+  const errors: string[] = [];
+  for (const [id, issue] of Object.entries(queue.issues)) {
+    if (!issue || typeof issue !== 'object') continue;
+    if (issue.status !== 'in-flight') continue;
+    if (!issue.phase || !PLAN_REQUIRED_PHASES.has(issue.phase)) continue;
+
+    const planPath = path.join(campaignDir, 'plans', `issue-${id}.md`);
+    if (!fs.existsSync(planPath)) {
+      errors.push(`issue #${id} (${issue.phase}): missing ${path.relative(root, planPath)}`);
+    }
+  }
+
+  if (errors.length) fail('V-PLAN-01', errors.join('; '));
+  else pass('V-PLAN-01');
+};
+
 const walkMdFiles = (dir: string): string[] => {
   const full = path.join(root, dir);
   if (!fs.existsSync(full)) return [];
@@ -611,6 +669,7 @@ const main = () => {
   checkPhaseNames();
   checkVcodeReferences();
   checkFixtures();
+  checkPlanArtifacts();
   checkSkillModes();
   checkGroundTruth();
   checkEpicRunbook();
