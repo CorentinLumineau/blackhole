@@ -13,87 +13,6 @@ import {
 
 const root = path.resolve(import.meta.dirname, '..');
 
-describe('parseMdFrontmatter', () => {
-  test('body preserves markdown horizontal rules after frontmatter', () => {
-    const content = `---
-name: test-agent
-model: sonnet
----
-
-## Section One
-
----
-
-## Section Two
-`;
-    const { frontmatter, body } = parseMdFrontmatter(content);
-    expect(frontmatter).toContain('name: test-agent');
-    expect(body).toContain('## Section One');
-    expect(body).toContain('## Section Two');
-  });
-});
-
-describe('buildCodexAgentYaml', () => {
-  const agentDir = 'codex-skills';
-  const rulesPath = 'codex-skills/bc-campaign/references/bc-campaign-vcodes.md';
-
-  test('preserves frontmatter metadata and compiles codex-only body', () => {
-    const yaml = buildCodexAgentYaml(
-      `---
-name: bc-coordinator
-description: test desc
-model: sonnet
-permissionMode: default
-disallowedTools: [Write, Edit, Delete]
----
-
-{{#codex}}codex intro{{/codex}}
-{{#cursor}}cursor only{{/cursor}}
-
----
-
-## Section after HR
-`,
-      agentDir,
-      rulesPath
-    );
-    expect(yaml).toMatch(/^name: bc-coordinator\n/);
-    expect(yaml).toContain('description: test desc');
-    expect(yaml).toContain('model: sonnet');
-    expect(yaml).toContain('permissionMode: default');
-    expect(yaml).toContain('disallowedTools:');
-    expect(yaml).toContain('  - Write');
-    expect(yaml).toContain('codex intro');
-    expect(yaml).not.toContain('cursor only');
-    expect(yaml).toContain('## Section after HR');
-    const instructions = yaml.split('instructions: |\n')[1] ?? '';
-    expect(instructions.replace(/^  /gm, '').trim().length).toBeGreaterThan(20);
-  });
-
-  test('bc-coordinator source yields full metadata and long instructions', () => {
-    const source = fs.readFileSync(path.join(root, 'src/agents/bc-coordinator.md'), 'utf-8');
-    const yaml = buildCodexAgentYaml(source, agentDir, rulesPath);
-    expect(yaml).toMatch(/^name: bc-coordinator\n/);
-    expect(yaml).toContain('description: Multitask Mode coordinator');
-    expect(yaml).toContain('model: sonnet');
-    expect(yaml).toContain('permissionMode: default');
-    expect(yaml).toContain('  - Write');
-    const instructions = yaml.split('instructions: |\n')[1] ?? '';
-    expect(instructions.replace(/^  /gm, '').trim().length).toBeGreaterThan(200);
-    expect(instructions).toContain('Chat Feedback Intake Protocol');
-    expect(instructions).toContain('Interrupt & Management Policy');
-  });
-
-  test('implementer has empty disallowedTools and full instructions', () => {
-    const source = fs.readFileSync(path.join(root, 'src/agents/bc-implementer.md'), 'utf-8');
-    const yaml = buildCodexAgentYaml(source, agentDir, rulesPath);
-    expect(yaml).toMatch(/^name: bc-implementer\n/);
-    expect(yaml).toContain('disallowedTools: []');
-    expect(yaml).toContain('5-Field Contract');
-    expect(yaml).toContain('Refactoring & Implementation Workflow');
-  });
-});
-
 describe('applyPlatformConditionals', () => {
   test('gemini keeps gemini body and removes cursor/claude/skills', () => {
     const input = `before
@@ -178,5 +97,89 @@ describe('buildCodexMarketplace', () => {
     expect(marketplace.plugins[0].source.source).toBe('git');
     expect(marketplace.plugins[0].source.url).toContain('github.com');
     expect((marketplace as Record<string, unknown>).owner).toBeUndefined();
+  });
+});
+
+describe('parseMdFrontmatter', () => {
+  test('extracts body after first closing --- only, not markdown horizontal rules', () => {
+    const input = `---
+name: test-agent
+description: A test
+---
+
+Opening paragraph.
+
+---
+
+## Section after horizontal rule
+
+More content here.`;
+    const { frontmatter, body } = parseMdFrontmatter(input);
+    expect(frontmatter).toContain('name: test-agent');
+    expect(body).toContain('Opening paragraph.');
+    expect(body).toContain('## Section after horizontal rule');
+    expect(body).toContain('More content here.');
+  });
+});
+
+describe('buildCodexAgentYaml', () => {
+  const agentDir = 'codex-skills';
+  const rulesPath = 'codex-skills/bc-campaign/references/bc-campaign-vcodes.md';
+
+  test('preserves frontmatter metadata and compiles codex-only body', () => {
+    const yaml = buildCodexAgentYaml(
+      `---
+name: bc-coordinator
+description: test desc
+model: sonnet
+permissionMode: default
+disallowedTools: [Write, Edit, Delete]
+---
+
+{{#codex}}codex intro{{/codex}}
+{{#cursor}}cursor only{{/cursor}}
+
+---
+
+## Section after HR
+`,
+      agentDir,
+      rulesPath
+    );
+    expect(yaml).toMatch(/^name: bc-coordinator\n/);
+    expect(yaml).toContain('description: test desc');
+    expect(yaml).toContain('model: sonnet');
+    expect(yaml).toContain('permissionMode: default');
+    expect(yaml).toContain('disallowedTools:');
+    expect(yaml).toContain('  - Write');
+    expect(yaml).toContain('codex intro');
+    expect(yaml).not.toContain('cursor only');
+    expect(yaml).toContain('## Section after HR');
+    const instructions = yaml.split('instructions: |\n')[1] ?? '';
+    expect(instructions.replace(/^  /gm, '').trim().length).toBeGreaterThan(20);
+  });
+
+  test('bc-coordinator source yields full metadata and long instructions', () => {
+    const source = fs.readFileSync(path.join(root, 'src/agents/bc-coordinator.md'), 'utf-8');
+    const yaml = buildCodexAgentYaml(source, agentDir, rulesPath);
+    expect(yaml).toMatch(/^name: bc-coordinator\n/);
+    expect(yaml).toContain('description: Multitask Mode coordinator');
+    expect(yaml).toContain('model: sonnet');
+    expect(yaml).toContain('permissionMode: default');
+    expect(yaml).toContain('  - Write');
+    const instructions = yaml.split('instructions: |\n')[1] ?? '';
+    expect(instructions.replace(/^  /gm, '').trim().length).toBeGreaterThan(200);
+    expect(instructions).toContain('Chat Feedback Intake Protocol');
+    expect(instructions).toContain('Interrupt & Management Policy');
+  });
+
+  test('implementer has empty disallowedTools and full instructions', () => {
+    const source = fs.readFileSync(path.join(root, 'src/agents/bc-implementer.md'), 'utf-8');
+    const yaml = buildCodexAgentYaml(source, agentDir, rulesPath);
+
+    expect(yaml).toMatch(/^name: bc-implementer\n/);
+    expect(yaml).toContain('disallowedTools: []');
+    expect(yaml).toContain('5-Field Contract');
+    expect(yaml).toContain('Refactoring & Implementation Workflow');
   });
 });
