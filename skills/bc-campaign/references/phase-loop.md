@@ -45,7 +45,7 @@ For issue N, PR P:
 - For every codebase improvement suggestion:
   1. Calculate the Priority score: $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$.
   2. If $\text{Priority} \ge 30$:
-     - If not yet filed, execute `gh issue create --title "[Discovery] <Name>" --body "..."` (explain context, gain, effort, and priority score).
+     - If not yet filed, execute `gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)` (explain context, gain, effort, and priority score).
      - Map the ledger's `deferred_to_issue` field to the new issue ID.
      - The next auto-sync step reconciles the new issue into `queue.json` as a new campaign backlog item.
   3. If $\text{Priority} < 30$:
@@ -54,7 +54,7 @@ For issue N, PR P:
 ## Campaign complete
  
 ```
-gh issue list --state open → []
+gh issue list --state open $(bun scripts/forge-scope.ts list-args) → []
 gh pr list --state open → []
 queue.json: no in-flight entries
 ```

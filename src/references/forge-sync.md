@@ -40,11 +40,30 @@ gh auth status
 Fail fast with user-visible message if not authenticated. Do not ask to sync —
 only report that auth blocks sync.
 
+### 1.5 Read campaign scope
+
+Read optional scope from `.bc-campaign/config.json` (or `CAMPAIGN_CONFIG` env override):
+
+```bash
+# Pseudocode — prefer bun helper
+bun scripts/forge-scope.ts list-args   # prints --milestone / --label flags
+```
+
+`readScope(config)` returns `{ milestone?, labels? }`. Empty `scope_labels: []` is
+treated as unset. When both scope fields are unset, behavior matches an unscoped campaign.
+
+If `gh issue list` fails because the milestone title does not exist, **fail sync** with a
+user-visible error — do not silently ingest zero issues.
+
 ### 2. Fetch open issues
 
 ```bash
-gh issue list --state open --json number,title,labels,body --limit 200
+gh issue list --state open --json number,title,labels,body,milestone --limit 200 \
+  $(bun scripts/forge-scope.ts list-args)
 ```
+
+When scope is active, `gh` applies milestone and label filters (labels use AND semantics).
+Post-fetch, skip any issue that fails `issueMatchesScope` before ingest (step 4).
 
 ### 3. Fetch open PRs
 
@@ -55,6 +74,9 @@ gh pr list --state open --json number,title,headRefName,body --limit 100
 ### 4. Upsert new forge issues into queue
 
 For each open issue on forge **not** in `queue.json.issues`:
+
+**Ingest filter:** skip issues that fail `issueMatchesScope` (out of milestone or missing
+required labels). Do not create new queue entries for out-of-scope issues.
 
 ```json
 {
@@ -77,6 +99,10 @@ Append issue number to `user_queue_order` if missing (end of list, or sort by
 number — match existing queue convention).
 
 Track `new_issue_numbers[]` for the sync summary line.
+
+**Reconcile (step 5):** continue updating existing queue entries even if they later fall
+out of scope (preserve in-flight work; do not delete queue rows). Do not ingest new
+out-of-scope issues.
 
 ### 5. Reconcile existing queue entries
 
@@ -115,20 +141,40 @@ Bump `queue.json` `refreshed_at`. Write atomically (`.tmp` + `mv`).
 
 ### 9. Campaign completion check
 
+Use the **same scoped** issue list as step 2:
+
 ```bash
-OPEN_ISSUES=$(gh issue list --state open --json number | jq 'length')
+OPEN_ISSUES=$(gh issue list --state open --json number \
+  $(bun scripts/forge-scope.ts list-args) | jq 'length')
 OPEN_PRS=$(gh pr list --state open --json number | jq 'length')
 ```
 
-Campaign complete when both are `0` and no queue entry is `in-flight`.
+Campaign complete when scoped `OPEN_ISSUES` is `0` and no queue entry is `in-flight`.
+(Unscoped campaigns: count all open issues.)
 
 ### 10. Sync summary (optional log)
 
 One line when material:
 
 ```
-Forge sync: 18 open, +2 new (#333, #334), 0 drift
+Forge sync (scope: milestone v0.4.0): 3 open, +1 new (#14), 0 drift
 ```
+
+When scope is unset, omit the `(scope: …)` clause.
+
+## Runtime issue creation
+
+Whenever the campaign files a new GitHub issue (`gh issue create`), apply configured scope
+and the campaign discoverability label:
+
+```bash
+gh issue create --title "..." --body "..." \
+  $(bun scripts/forge-scope.ts create-args)
+```
+
+`create-args` emits `--milestone` and `--label` flags from `scope_milestone` / `scope_labels`.
+It also adds `issue_labels.campaign` when present and not already listed in `scope_labels`
+(so new issues remain discoverable without duplicating labels).
 
 ## UNTRUSTED-FORGE-DATA
 

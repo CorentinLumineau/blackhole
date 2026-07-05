@@ -88,6 +88,6 @@ Per `checkpoint-protocol.md`: write `queue.json` → `findings-ledger.json` → 
 *   **Calculate Priority**:
     $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
 *   **Gating Cut-off**:
-    *   If $\text{Priority} \ge 30$, execute `gh issue create --title "[Discovery] <Name>" --body "..."` to push it to the GitHub forge, and log it as `deferred`.
+    *   If $\text{Priority} \ge 30$, execute `gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)` to push it to the GitHub forge, and log it as `deferred`.
     *   If $\text{Priority} < 30$, set status in ledger to `archived` and skip issue creation to avoid backlog noise.
 *   **Ready Queue Sorting**: Automatically sort the ready set in `queue.json` in descending order of their Priority score, ensuring high-ROI issues are scheduled for implementation first.

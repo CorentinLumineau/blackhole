@@ -49,7 +49,7 @@ Do **not** spawn implement workers while `blocked` for user gates.
 User messages in coordinator/orchestrator chat:
 
 1. If ambiguous → AskQuestion
-2. If new work → file `gh issue create` (structured body) → auto-sync ingests
+2. If new work → file `gh issue create` with `$(bun scripts/forge-scope.ts create-args)` (structured body) → auto-sync ingests
 3. If queue reorder → update `user_queue_order` after user confirms
 4. If correction to in-flight issue → resume implement worker with scope update
 

@@ -1,0 +1,16 @@
+{
+  "repo": "owner/repo-name",
+  "target_branch": "main",
+  "forge": "github",
+  "parallel_max": 4,
+  "scratchpad_dir": "/tmp/campaign",
+  "size_label_prefix": "size:",
+  "default_touch_paths": ["src/**"],
+  "issue_labels": {
+    "campaign": "campaign/backlog"
+  },
+  "scope_milestone": "v0.4.0",
+  "scope_labels": ["campaign/backlog"],
+  "auto_sync": true,
+  "entry_mode": "multitask"
+}
