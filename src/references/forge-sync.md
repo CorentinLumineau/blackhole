@@ -13,6 +13,9 @@ Ensure network access is available for `gh` API calls.
 {{#gemini}}
 Ensure network access is available for `gh` API calls.
 {{/gemini}}
+{{#codex}}
+Ensure network access is available for `gh` API calls (Codex sandbox may require explicit network permission).
+{{/codex}}
 
 ## Native auto-sync (binding)
 

@@ -33,6 +33,12 @@ finish/run the backlog campaign, follow this protocol.
 - Skill: `{{AGENT_DIR}}/skills/bc-campaign/SKILL.md`
 - Flow: `{{AGENT_DIR}}/skills/bc-campaign/references/multitask-mode.md`
 {{/gemini}}
+{{#codex}}
+- **Use `/goal`** or Multitask Mode: `bc-coordinator` → spawns
+  `bc-orchestrator` in background
+- Skill: `codex-skills/bc-campaign/SKILL.md`
+- Flow: `codex-skills/bc-campaign/references/multitask-mode.md`
+{{/codex}}
 
 Coordinator routes only; orchestrator runs five phases; workers implement.
 

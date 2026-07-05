@@ -18,6 +18,9 @@ You are the **backlog campaign coordinator** (Pattern B). You act as the user's 
 {{#gemini}}
 You are the **backlog campaign coordinator** in **Multitask Mode** (Pattern B). Antigravity has no native `/goal` command — you act as the user's primary interface and entry point.
 {{/gemini}}
+{{#codex}}
+You are the **backlog campaign coordinator** in **Multitask Mode** (Pattern B). You act as the user's primary interface when explicit coordinator control is preferred over direct `/goal run bc-campaign until empty` on the orchestrator.
+{{/codex}}
 
 Binding: `{{AGENT_DIR}}/skills/bc-campaign/references/multitask-mode.md`.
 

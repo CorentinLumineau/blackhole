@@ -8,13 +8,14 @@ Quick reference for invoking the backlog campaign across agent platforms.
 |---------|--------|
 | `/bc-campaign run` | Start or resume the campaign loop |
 | `@bc-campaign status` | Sync forge and show queue dashboard |
-| `@bc-coordinator run the campaign` | Multitask Mode entry (Cursor) |
+| `@bc-coordinator run the campaign` | Multitask Mode entry (Cursor, Gemini) |
+| `/goal run bc-campaign until empty` | Native background loop (Claude Code, Codex CLI) |
 
 ## Skill namespace
 
 **`bc-campaign`** — modes: `run`, `status`, `handle`, `plan`, `implement`, `review`, `campaign-audit`
 
-Skill entry: [`SKILL.md`](SKILL.md) (skills.sh) or [`.cursor/skills/bc-campaign/SKILL.md`](.cursor/skills/bc-campaign/SKILL.md) (Cursor).
+Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/bc-campaign/SKILL.md`](.cursor/skills/bc-campaign/SKILL.md) (Cursor), or `codex-skills/bc-campaign/SKILL.md` (Codex, after `bun run build:codex`).
 
 ## Agent roster
 
@@ -29,4 +30,4 @@ Skill entry: [`SKILL.md`](SKILL.md) (skills.sh) or [`.cursor/skills/bc-campaign/
 
 ## Installation
 
-See [README.md](README.md#-installation-paths) for Cursor submodule, Claude marketplace, and skills.sh setup.
+See [README.md](README.md#-installation-paths) for Cursor submodule, Claude marketplace, Codex CLI, and skills.sh setup.

@@ -43,7 +43,7 @@ Source: `src/references/bc-campaign-vcodes.md`
 
 ## Verify checks
 
-**verify_check_count:** 11
+**verify_check_count:** 15
 
 | Check ID | Description |
 |----------|-------------|
@@ -58,6 +58,10 @@ Source: `src/references/bc-campaign-vcodes.md`
 | V-GROUND-01 | Ground-truth counts match filesystem |
 | V-EPIC-01 | epic-orchestration.md exists and phase-handle links to it |
 | V-GEMINI-01 | Gemini build outputs complete; no stale platform conditionals |
+| V-CODEX-01 | Codex build --codex succeeds (opt-in: VERIFY_BUILD_CODEX=1) |
+| V-CODEX-02 | Codex plugin.json and marketplace validate against fixture baselines |
+| V-CODEX-03 | codex-skills/bc-campaign/SKILL.md with disable-model-invocation |
+| V-CODEX-04 | Six agent YAML files in codex-agents/ with instructions block |
 
 ## Config schema
 
