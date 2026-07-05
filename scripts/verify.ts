@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
+import { AGENTS_BUILD_ROOT, AGENTS_BUILD_AGENT_DIR } from './build.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const srcDir = path.join(root, 'src');
@@ -341,26 +342,26 @@ const checkGeminiBuild = () => {
 
   const errors: string[] = [];
 
-  const workspaceAgents = listFiles('.agents/agents');
+  const workspaceAgents = listFiles(path.join(AGENTS_BUILD_ROOT, 'agents'));
   const bcAgents = workspaceAgents.filter((f) => f.startsWith('bc-'));
   if (bcAgents.length !== 6) {
-    errors.push(`.agents/agents: expected 6 bc-*.md, got ${bcAgents.length}`);
+    errors.push(`${AGENTS_BUILD_AGENT_DIR}/agents: expected 6 bc-*.md, got ${bcAgents.length}`);
   }
 
   for (const rule of ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md']) {
-    if (!fs.existsSync(path.join(root, '.agents', 'rules', rule))) {
-      errors.push(`missing .agents/rules/${rule}`);
+    if (!fs.existsSync(path.join(root, AGENTS_BUILD_ROOT, 'rules', rule))) {
+      errors.push(`missing ${AGENTS_BUILD_AGENT_DIR}/rules/${rule}`);
     }
   }
 
-  const skillPath = path.join(root, '.agents', 'skills', 'bc-campaign', 'SKILL.md');
+  const skillPath = path.join(root, AGENTS_BUILD_ROOT, 'skills', 'bc-campaign', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
-    errors.push('missing .agents/skills/bc-campaign/SKILL.md');
+    errors.push(`missing ${AGENTS_BUILD_AGENT_DIR}/skills/bc-campaign/SKILL.md`);
   }
 
-  const refsDir = path.join(root, '.agents', 'skills', 'bc-campaign', 'references');
+  const refsDir = path.join(root, AGENTS_BUILD_ROOT, 'skills', 'bc-campaign', 'references');
   if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
-    errors.push('missing or empty .agents/skills/bc-campaign/references/');
+    errors.push(`missing or empty ${AGENTS_BUILD_AGENT_DIR}/skills/bc-campaign/references/`);
   }
 
   const manifestPath = path.join(root, '.gemini-plugin', 'plugin.json');
@@ -419,14 +420,14 @@ const checkGeminiBuild = () => {
     }
   }
 
-  for (const rel of walkMdFiles('.agents')) {
+  for (const rel of walkMdFiles(AGENTS_BUILD_ROOT)) {
     const content = read(rel);
     if (/\{\{#cursor\}\}/.test(content) || /\{\{#claude\}\}/.test(content)) {
       errors.push(`${rel}: contains raw platform conditional`);
     }
   }
 
-  const protocol = read('.agents/rules/bc-campaign-protocol.md');
+  const protocol = read(path.join(AGENTS_BUILD_ROOT, 'rules', 'bc-campaign-protocol.md'));
   const entryMatch = protocol.match(/## Entry\n([\s\S]*?)\n## Five phases/);
   if (!entryMatch || !/Multitask|bc-coordinator/i.test(entryMatch[1])) {
     errors.push('bc-campaign-protocol.md Entry section missing Multitask/gemini content');
@@ -696,9 +697,7 @@ const checkBuild = () => {
       l.includes('.claude/') ||
       l.includes('.claude-plugin/') ||
       l.includes('.gemini-plugin/') ||
-      l.includes('.agents/agents/') ||
-      l.includes('.agents/rules/') ||
-      l.includes('.agents/skills/') ||
+      l.includes('.agents/build/') ||
       l.includes('SKILL.md') ||
       l.includes('marketplace.json') ||
       l.includes('.codex-plugin/') ||

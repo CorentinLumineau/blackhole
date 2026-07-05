@@ -7,8 +7,8 @@ finish/run the backlog campaign, follow this protocol.
 
 - **No `/goal`** — use Multitask Mode: `bc-coordinator` → spawns
   `bc-orchestrator` in background
-- Skill: `.agents/skills/bc-campaign/SKILL.md`
-- Flow: `.agents/skills/bc-campaign/references/multitask-mode.md`
+- Skill: `.agents/build/skills/bc-campaign/SKILL.md`
+- Flow: `.agents/build/skills/bc-campaign/references/multitask-mode.md`
 
 Coordinator routes only; orchestrator runs five phases; workers implement.
 
@@ -16,7 +16,7 @@ Coordinator routes only; orchestrator runs five phases; workers implement.
 
 Handle → Plan → Implement → Review → Loop.
 
-Playbooks: `.agents/skills/bc-campaign/references/phase-*.md`
+Playbooks: `.agents/build/skills/bc-campaign/references/phase-*.md`
 
 ## Clarify — all issue sizes
 
@@ -67,10 +67,12 @@ The following are **not** bc-campaign protocol state:
 - `.agents/orchestrator/`, `.agents/worker_*/`, `.agents/explorer_*/` — ephemeral
   session handoff dirs from individual agent runs; safe to ignore for queue/ledger
   mutations.
-- `.agents/agents/`, `.agents/skills/` — **build outputs** from `bun run build`
-  (Antigravity target); edit `src/` and rebuild, do not hand-edit.
+- `.agents/build/agents/`, `.agents/build/rules/`, `.agents/build/skills/` — **build
+  outputs** from `bun run build --gemini` (Antigravity workspace target); edit `src/`
+  and rebuild, do not hand-edit.
 
-Never treat `.agents/` handoff dirs as a substitute for `.bc-campaign/` state.
+Handoff dirs share the `.agents/` parent with build output but are separate namespaces.
+Never treat handoff dirs as a substitute for `.bc-campaign/` state.
 
 ## Plan Touch-Paths & API Drift (V-SCOPE, V-API)
 

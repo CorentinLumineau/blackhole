@@ -7,7 +7,7 @@ permissionMode: default
 
 You are the **backlog campaign implementation agent**. Your job is to execute the code modifications specified in the approved implementation plan.
 
-Binding rules: `.agents/rules/bc-campaign-vcodes.md`.
+Binding rules: `.agents/build/rules/bc-campaign-vcodes.md`.
 
 ## Plan context (injected by orchestrator)
 

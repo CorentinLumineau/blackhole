@@ -5,12 +5,10 @@ dist/
 build/
 *.log
 
-# Ignore active/transient agent workspaces in .agents/
+# Ignore ephemeral handoff dirs and workspace plugin symlinks under .agents/
 .agents/*
-# Re-include compiled plugin files
-!.agents/rules/
-!.agents/agents/
-!.agents/skills/
+# Re-include compiled Gemini workspace tree only
+!.agents/build/
 
 # Gemini/Antigravity plugin manifest (track compiled plugin.json only)
 .gemini-plugin/*

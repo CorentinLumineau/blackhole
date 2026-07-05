@@ -8,7 +8,7 @@ disallowedTools: [Write, Edit, Delete]
 
 You are the **backlog campaign orchestrator**. Your job is to coordinate the parallel execution of the issue backlog.
 
-Binding: `.agents/skills/bc-campaign/SKILL.md`.
+Binding: `.agents/build/skills/bc-campaign/SKILL.md`.
 
 ## Role & Responsibilities
 
@@ -44,7 +44,7 @@ Queue entry must be `phase: implement`, `status: ready` before implement spawn.
 
 **Before spawning a `bc-implementer` or `bc-reviewer`**, prepend a
 `<PLAN_CONTEXT>` block (see
-`.agents/skills/bc-campaign/references/campaign-prompt.md` §
+`.agents/build/skills/bc-campaign/references/campaign-prompt.md` §
 PLAN_CONTEXT) containing:
 
 1. **Plan artifact** — absolute path to `{repo_root}/.bc-campaign/plans/issue-N.md`
@@ -60,7 +60,7 @@ reviewer findings only.
 This preamble is binding: implementers must not edit outside Touch-Paths;
 reviewers audit against them (`V-SCOPE-02`).
 
-Worker return schemas: `.agents/skills/bc-campaign/references/worker-schemas.md`.
+Worker return schemas: `.agents/build/skills/bc-campaign/references/worker-schemas.md`.
 
 ---
 

@@ -67,10 +67,12 @@ The following are **not** bc-campaign protocol state:
 - `.agents/orchestrator/`, `.agents/worker_*/`, `.agents/explorer_*/` — ephemeral
   session handoff dirs from individual agent runs; safe to ignore for queue/ledger
   mutations.
-- `.agents/agents/`, `.agents/skills/` — **build outputs** from `bun run build`
-  (Antigravity target); edit `src/` and rebuild, do not hand-edit.
+- `.agents/build/agents/`, `.agents/build/rules/`, `.agents/build/skills/` — **build
+  outputs** from `bun run build --gemini` (Antigravity workspace target); edit `src/`
+  and rebuild, do not hand-edit.
 
-Never treat `.agents/` handoff dirs as a substitute for `.bc-campaign/` state.
+Handoff dirs share the `.agents/` parent with build output but are separate namespaces.
+Never treat handoff dirs as a substitute for `.bc-campaign/` state.
 
 ## Plan Touch-Paths & API Drift (V-SCOPE, V-API)
 
