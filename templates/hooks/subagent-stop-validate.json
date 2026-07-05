@@ -1,12 +1,14 @@
 {
-  "version": "1.0.0",
-  "description": "Optional Cursor SubagentStop hook — validates worker JSON against worker-schemas.md shapes.",
+  "version": 1,
+  "description": "Optional Cursor SubagentStop hook — validates bc-campaign worker JSON against worker-schemas.md.",
   "hooks": {
     "subagentStop": [
       {
-        "command": "echo 'Validate worker output JSON against worker-schemas.md before accepting handoff.'"
+        "command": "bun run scripts/validate-worker-json.ts --hook",
+        "matcher": "bc-planner|bc-implementer|bc-reviewer|bc-synthesizer",
+        "failClosed": true
       }
     ]
   },
-  "_note": "Copy to consumer project's .cursor/hooks.json and customize validation as needed. Not required for agent-agnostic operation."
+  "_note": "Merge the hooks block into your project's .cursor/hooks.json (fragment, not a full hooks file). Requires bun on PATH; paths are relative to the repo root."
 }

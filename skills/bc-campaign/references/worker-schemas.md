@@ -2,7 +2,32 @@
 
 Structured JSON contracts for campaign worker agents. The orchestrator validates worker output against these shapes before mutating state.
 
-Optional: consumers may install `templates/hooks/subagent-stop-validate.json` for Cursor SubagentStop structural validation.
+Optional: consumers may install the Cursor SubagentStop hook below for machine-enforced structural validation at subagent handoff.
+
+## SubagentStop hook (Cursor)
+
+**Install:** Merge the `hooks` block from [`templates/hooks/subagent-stop-validate.json`](../../templates/hooks/subagent-stop-validate.json) into your project's `.cursor/hooks.json`. Requires `bun` on `PATH`; hook `command` paths are relative to the repo root.
+
+**Behavior:** On `subagentStop`, when the hook `matcher` hits `bc-planner`, `bc-implementer`, `bc-reviewer`, or `bc-synthesizer`, Cursor runs `bun run scripts/validate-worker-json.ts --hook` with the stop payload on **stdin**. Non-zero exit blocks handoff (`failClosed: true`). Subagent stops with `status` `error` or `aborted`, or non-campaign subagents, pass through (exit `0`).
+
+**Extraction order:** Worker JSON is parsed from (1) a fenced ` ```json ` block in `summary`, (2) the last brace-balanced `{...}` object in `summary`, or (3) the tail of `agent_transcript_path` when readable.
+
+**Exit codes:** `0` = valid or pass-through; `1` = validation or JSON extraction failure; `2` = hook stdin JSON parse failure.
+
+### Orchestrator / harness fallback (non-Cursor)
+
+Harnesses without Cursor hooks can validate worker output before mutating `queue.json`:
+
+```bash
+# Full structural validation (preferred)
+bun run scripts/validate-worker-json.ts --role planner --file handoff.json
+bun run scripts/validate-worker-json.ts --role implementer --json '{"status":"complete",...}'
+
+# Quick spot-check only (not a substitute for full validation)
+jq -e '.status and .plan_path' handoff.json
+```
+
+Fixture pairs for each role live under [`fixtures/worker-json/`](../../fixtures/worker-json/). Validator implementation: [`scripts/validate-worker-json.ts`](../../scripts/validate-worker-json.ts).
 
 ## Planner (`bc-planner`)
 
