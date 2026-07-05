@@ -18,7 +18,7 @@ Claude Code users can use `/goal` directly on the `bc-orchestrator` agent instea
 ```
 User: "finish the backlog" / attaches bc-campaign skill / /bc-campaign run
   ↓
-Coordinator: Phase 0 bootstrap (auto-sync) — optional status to user
+Coordinator: Phase 0 bootstrap (auto-sync) — run `bun run status` → print **full** dashboard (`coordinator-dashboard.md`)
   ↓
 Coordinator: Task — attach `.cursor/agents/bc-orchestrator.md` (not subagent_type enum), prompt: campaign-prompt.md, run_in_background: true
   ↓
@@ -67,6 +67,21 @@ Spawn prompt text and mis-spawn hazard detail: `campaign-prompt.md` § Coordinat
 - Relay user chat as resume prompt to orchestrator
 - Resume orchestrator when: user input, blocker needing user, orchestrator turn ended with queue work and orchestrator idle
 - Spawn fresh orchestrator only when prior agent completed/failed entirely
+- Print the **full** dashboard (`bun run status`) on campaign start and after each orchestrator turn notification — see `coordinator-dashboard.md`
+
+## Coordinator turn flow (with visibility)
+
+```
+Orchestrator turn completes (notification)
+  ↓
+Coordinator: bun run status → print full dashboard to user
+  ↓
+If queue work remains and not blocked on user: resume orchestrator
+  ↓
+END TURN
+```
+
+**Anti-pattern:** collapsing the dashboard to a one-line summary — users rely on the main chat for campaign overview.
 
 ## User starting the campaign
 
