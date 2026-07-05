@@ -9,6 +9,7 @@
     "verify": "bun run scripts/verify.ts",
     "verify:codex": "bun run scripts/verify.ts",
     "release": "bun run scripts/release.ts",
+    "status": "bun run scripts/campaign-status.ts",
     "test": "bun test"
   },
   "dependencies": {},
