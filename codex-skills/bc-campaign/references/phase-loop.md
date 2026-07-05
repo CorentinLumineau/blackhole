@@ -10,6 +10,7 @@
 - [ ] Resolve/defer ledger entries for this issue/PR
 - [ ] forge-sync.md protocol
 - [ ] Compute ready set (queue-dag.md)
+- [ ] Persist queue.json → findings-ledger.json → campaign-checkpoint.md when in-flight work exists (checkpoint-protocol.md)
 - [ ] Spawn parallel batch (up to parallel_max) — one turn, end turn
 - [ ] Open issues + open PRs both zero? → campaign complete
 ```

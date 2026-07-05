@@ -615,6 +615,61 @@ const checkEpicRunbook = () => {
   else pass('V-EPIC-01');
 };
 
+// V-CHECKPOINT-01: checkpoint-protocol template ↔ orchestrator/phase-loop alignment
+export const extractCheckpointTemplateKeys = (content: string): string[] => {
+  const templateMatch = content.match(/## Checkpoint template[\s\S]*?```markdown\n([\s\S]*?)```/);
+  if (!templateMatch) return [];
+
+  const frontmatterMatch = templateMatch[1].match(/^---\n([\s\S]*?)\n---/);
+  if (!frontmatterMatch) return [];
+
+  return frontmatterMatch[1]
+    .split('\n')
+    .map((line) => line.match(/^([\w_]+):/)?.[1])
+    .filter((key): key is string => Boolean(key));
+};
+
+const checkCheckpointAlignment = () => {
+  const requiredKeys = ['refreshed_at', 'orchestrator_turn_id', 'last_completed_phase'];
+  const protocol = read('src/references/checkpoint-protocol.md');
+  const orchestrator = read('src/agents/bc-orchestrator.md');
+  const phaseLoop = read('src/references/phase-loop.md');
+  const errors: string[] = [];
+
+  const templateKeys = extractCheckpointTemplateKeys(protocol);
+  for (const key of requiredKeys) {
+    if (!templateKeys.includes(key)) errors.push(`checkpoint-protocol.md template missing ${key}`);
+  }
+
+  if (!orchestrator.includes('checkpoint-protocol.md')) {
+    errors.push('bc-orchestrator.md missing checkpoint-protocol.md reference');
+  }
+  if (!orchestrator.includes('orchestrator_turn_id')) {
+    errors.push('bc-orchestrator.md missing orchestrator_turn_id');
+  }
+  const writeOrder =
+    orchestrator.includes('queue.json') &&
+    orchestrator.includes('findings-ledger.json') &&
+    orchestrator.includes('campaign-checkpoint.md');
+  const orderedWrite =
+    /queue\.json\s*→\s*findings-ledger\.json\s*→\s*campaign-checkpoint\.md/.test(orchestrator);
+  if (!writeOrder || !orderedWrite) {
+    errors.push('bc-orchestrator.md missing ordered queue.json → findings-ledger.json → campaign-checkpoint.md');
+  }
+
+  const phaseWriteOrder =
+    /queue\.json\s*→\s*findings-ledger\.json\s*→\s*campaign-checkpoint\.md/.test(phaseLoop);
+  if (!phaseWriteOrder) {
+    errors.push('phase-loop.md missing ordered queue.json → findings-ledger.json → campaign-checkpoint.md');
+  }
+  if (!phaseLoop.includes('checkpoint-protocol.md')) {
+    errors.push('phase-loop.md missing checkpoint-protocol.md reference');
+  }
+
+  if (errors.length) fail('V-CHECKPOINT-01', errors.join('; '));
+  else pass('V-CHECKPOINT-01');
+};
+
 // V-BUILD-01: Build produces clean git diff (optional skip with VERIFY_SKIP_BUILD=1)
 const checkBuild = () => {
   if (process.env.VERIFY_SKIP_BUILD === '1') {
@@ -673,6 +728,7 @@ const main = () => {
   checkSkillModes();
   checkGroundTruth();
   checkEpicRunbook();
+  checkCheckpointAlignment();
   checkBuild();
   checkGeminiBuild();
   checkCodexBuild();
@@ -694,4 +750,6 @@ const main = () => {
   if (failed > 0) process.exit(1);
 };
 
-main();
+if (import.meta.main) {
+  main();
+}

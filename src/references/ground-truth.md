@@ -43,7 +43,7 @@ Source: `src/references/bc-campaign-vcodes.md`
 
 ## Verify checks
 
-**verify_check_count:** 16
+**verify_check_count:** 17
 
 | Check ID | Description |
 |----------|-------------|
@@ -58,6 +58,7 @@ Source: `src/references/bc-campaign-vcodes.md`
 | V-SKILL-01 | SKILL.md modes align with phases |
 | V-GROUND-01 | Ground-truth counts match filesystem |
 | V-EPIC-01 | epic-orchestration.md exists and phase-handle links to it |
+| V-CHECKPOINT-01 | checkpoint template frontmatter keys align with orchestrator and phase-loop write order |
 | V-GEMINI-01 | Gemini build outputs complete; no stale platform conditionals |
 | V-CODEX-01 | Codex build succeeds as part of default `bun run build` |
 | V-CODEX-02 | Codex plugin.json and marketplace validate against fixture baselines |

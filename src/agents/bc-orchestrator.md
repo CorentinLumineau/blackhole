@@ -84,7 +84,18 @@ Per `queue-dag.md` Step 4: compute execution waves via topological sort on `depe
 
 ## Checkpoint protocol
 
-Per `checkpoint-protocol.md`: write `queue.json` → `findings-ledger.json` → `campaign-checkpoint.md` at turn end when in-flight work exists.
+Per `checkpoint-protocol.md` — **Turn-end checklist** (when any issue is `in-flight`):
+
+```
+- [ ] Any issue `status: in-flight` in queue.json?
+- [ ] jq empty on queue.json and findings-ledger.json
+- [ ] Persist queue.json → findings-ledger.json → campaign-checkpoint.md (never reorder)
+- [ ] campaign-checkpoint.md uses checkpoint-protocol.md template with YAML frontmatter
+- [ ] orchestrator_turn_id incremented (monotonic); post-recovery first turn increments per compaction recovery
+- [ ] Session handoff includes CHECKPOINT line (turn N | in-flight issues | LEDGER OPEN count)
+```
+
+Template, write order, and compaction recovery: `checkpoint-protocol.md`.
 
 ---
 

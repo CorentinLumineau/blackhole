@@ -8,7 +8,7 @@ Lightweight persistence for orchestrator crash/compaction recovery. Complements 
 |------|---------|
 | `.bc-campaign/queue.json` | Scheduling DAG (primary) |
 | `.bc-campaign/findings-ledger.json` | Findings SSOT (primary) |
-| `.bc-campaign/campaign-checkpoint.md` | Human-readable resume summary (optional) |
+| `.bc-campaign/campaign-checkpoint.md` | Human-readable resume summary (**required when any queue issue is `in-flight`**) |
 
 ## Write order
 
@@ -19,6 +19,12 @@ On every orchestrator turn end, persist in this order:
 3. `campaign-checkpoint.md` (when in-flight work exists)
 
 Never write checkpoint before queue and ledger are valid (`jq empty` on both).
+
+## Turn ID rules
+
+- **Normal turn end:** `orchestrator_turn_id = (previous checkpoint value || 0) + 1`
+- **Post-compaction/recovery first turn:** increment per compaction recovery step 5 (even if no other state changed)
+- **`last_completed_phase`:** last phase fully completed for primary in-flight issue this turn (`handle` | `plan` | `implement` | `review`)
 
 ## Checkpoint template
 
