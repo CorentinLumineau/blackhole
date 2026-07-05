@@ -62,16 +62,16 @@ The campaign does not just implement pre-defined requirements—it continuously 
 
 ## 🛠 How It Works (The 5-Phase Loop)
 
-The orchestrator operates over a project-local, gitignored state directory `.backlog-campaign/` containing:
+The orchestrator operates over a project-local, gitignored state directory `.bc-campaign/` containing:
 - `queue.json`: Active campaign DAG, issue phases, and worker execution states.
 - `findings-ledger.json`: V-code quality findings tracking Open, Fixed, or Deferred issues.
 - `plans/<issue>.md`: Touch-paths, schema baselines, and implementation designs.
 
 ### The Five Lifecycle Phases
 1. **Handle**: Ingests new issues, triages dependencies, splits epics, and moves issues to planning.
-2. **Plan**: Spawns `backlog-planner` to create a plan file, defining specific Touch-Paths and API/schema baselines.
-3. **Implement**: Spawns `backlog-implementer` inside a git worktree (`wt-<issue>`) to code, run tests, and open a PR.
-4. **Review**: Spawns `backlog-reviewer` then `backlog-synthesizer` to audit the PR and aggregate findings.
+2. **Plan**: Spawns `bc-planner` to create a plan file, defining specific Touch-Paths and API/schema baselines.
+3. **Implement**: Spawns `bc-implementer` inside a git worktree (`wt-<issue>`) to code, run tests, and open a PR.
+4. **Review**: Spawns `bc-reviewer` then `bc-synthesizer` to audit the PR and aggregate findings.
 5. **Loop**: Merges approved PRs, cleans up worktrees, prunes tracking branches, and proceeds to the next queue item.
 
 ---
@@ -85,23 +85,34 @@ Claude Code natively supports long-running background sessions via the `/goal` c
 - **How to invoke**:
   Start Claude in your project directory and execute:
   ```bash
-  /goal run backlog campaign until empty
+  /goal run bc-campaign until empty
   ```
-  Claude will automatically load the `backlog-campaign` skill and agents, register the `backlog-coordinator` and `backlog-orchestrator`, and run the execution loop autonomously in the background until all open issues are resolved.
+  Claude will automatically load the `bc-campaign` skill and agents, register the `bc-coordinator` and `bc-orchestrator`, and run the execution loop autonomously in the background until all open issues are resolved.
 
 ### 2. Cursor (Multitask Mode / Composer)
 Cursor natively supports multi-file background operations using **Composer / Multitask Mode**.
 - **How to invoke**:
   1. Open the Cursor Composer (Cmd+I) and switch to **Agent** or **Multitask Mode**.
-  2. Input the command: `@backlog-coordinator run the campaign` (or simply trigger `/backlog-campaign`).
-  3. The `backlog-coordinator` will bootstrap the campaign and spawn the background `backlog-orchestrator` task, freeing up your chat composer for other work.
+  2. Input the command: `@bc-coordinator run the campaign` (or simply trigger `/bc-campaign`).
+  3. The `bc-coordinator` will bootstrap the campaign and spawn the background `bc-orchestrator` task, freeing up your composer for other work.
 
 ### 3. Antigravity & Generic Agents
 In Antigravity or other agent systems, you can trigger the loop by attaching the skill and running:
 ```bash
-antigravity run /backlog-campaign
+antigravity run /bc-campaign
 ```
 The agent reads the root-level `SKILL.md` and coordinates the planner, implementer, and reviewer subagents.
+
+### Platform quick reference
+
+| Platform | Invoke command |
+|----------|----------------|
+| **Claude Code** | `/goal run bc-campaign until empty` |
+| **Cursor** | `@bc-coordinator run the campaign` or `/bc-campaign` |
+| **skills.sh** | `npx skills add CorentinLumineau/backlog-campaign` then attach `bc-campaign` |
+| **Antigravity** | `antigravity run /bc-campaign` |
+
+See [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) for agent roster and Claude-specific triggers.
 
 ---
 
@@ -121,7 +132,7 @@ Register the repository as a plugin marketplace catalog and install it:
 /plugin marketplace add https://github.com/CorentinLumineau/backlog-campaign
 
 # 2. Install the plugin
-/plugin install backlog-campaign@backlog-campaign-marketplace
+/plugin install bc-campaign@bc-campaign-marketplace
 ```
 
 ### Pathway C: Generic / skills.sh Registry

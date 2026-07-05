@@ -1,6 +1,13 @@
 node_modules/
-.backlog-campaign/
+.bc-campaign/
 .DS_Store
 dist/
 build/
 *.log
+
+# Ignore active/transient agent workspaces in .agents/
+.agents/*
+# Re-include compiled plugin files
+!.agents/rules/
+!.agents/agents/
+!.agents/skills/

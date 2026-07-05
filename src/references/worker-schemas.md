@@ -4,7 +4,7 @@ Structured JSON contracts for campaign worker agents. The orchestrator validates
 
 Optional: consumers may install `templates/hooks/subagent-stop-validate.json` for Cursor SubagentStop structural validation.
 
-## Planner (`backlog-planner`)
+## Planner (`bc-planner`)
 
 ```json
 {
@@ -35,7 +35,7 @@ When `status: blocked`, `failing_checks` lists failed items:
 - `clarification_limit` — at most 2 `[NEEDS CLARIFICATION]` markers
 - `base_commit` — `plan_base_commit` stamped in frontmatter
 
-## Implementer (`backlog-implementer`)
+## Implementer (`bc-implementer`)
 
 ```json
 {
@@ -59,7 +59,7 @@ When `status: blocked`, `failing_checks` lists failed items:
 | `new_findings` | finding[] | no |
 | `filed_issues` | number[] | no |
 
-## Reviewer (`backlog-reviewer`)
+## Reviewer (`bc-reviewer`)
 
 ```json
 {
@@ -98,7 +98,7 @@ When `status: blocked`, `failing_checks` lists failed items:
 
 `gain` and `effort` required only for `V-PARETO-02` findings.
 
-## Synthesizer (`backlog-synthesizer`)
+## Synthesizer (`bc-synthesizer`)
 
 ```json
 {

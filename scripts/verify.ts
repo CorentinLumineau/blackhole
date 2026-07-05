@@ -45,12 +45,12 @@ const checkAgentToolPolicy = () => {
   const errors: string[] = [];
 
   const denyMatrix: Record<string, string[] | null> = {
-    'backlog-coordinator.md': ['Write', 'Edit', 'Delete'],
-    'backlog-orchestrator.md': ['Write', 'Edit', 'Delete'],
-    'backlog-planner.md': ['Delete'],
-    'backlog-implementer.md': null,
-    'backlog-reviewer.md': ['Write', 'Edit', 'Delete'],
-    'backlog-synthesizer.md': ['Write', 'Edit', 'Delete'],
+    'bc-coordinator.md': ['Write', 'Edit', 'Delete'],
+    'bc-orchestrator.md': ['Write', 'Edit', 'Delete'],
+    'bc-planner.md': ['Delete'],
+    'bc-implementer.md': null,
+    'bc-reviewer.md': ['Write', 'Edit', 'Delete'],
+    'bc-synthesizer.md': ['Write', 'Edit', 'Delete'],
   };
 
   for (const file of files) {
@@ -109,7 +109,7 @@ const checkAgentFrontmatter = () => {
 
 // V-DELEG-01: Worker agents declare contract sections
 const checkDelegationContracts = () => {
-  const workers = ['backlog-planner.md', 'backlog-implementer.md'];
+  const workers = ['bc-planner.md', 'bc-implementer.md'];
   const missing: string[] = [];
 
   for (const file of workers) {
@@ -119,7 +119,7 @@ const checkDelegationContracts = () => {
     }
   }
 
-  const outputAgents = ['backlog-reviewer.md', 'backlog-synthesizer.md', 'backlog-planner.md', 'backlog-implementer.md'];
+  const outputAgents = ['bc-reviewer.md', 'bc-synthesizer.md', 'bc-planner.md', 'bc-implementer.md'];
   for (const file of outputAgents) {
     const content = read(`src/agents/${file}`);
     if (!/worker-schemas|Output format|Return format/i.test(content)) {
@@ -127,9 +127,9 @@ const checkDelegationContracts = () => {
     }
   }
 
-  const orch = read('src/agents/backlog-orchestrator.md');
+  const orch = read('src/agents/bc-orchestrator.md');
   if (!orch.includes('5-Field Delegation Contract')) {
-    missing.push('backlog-orchestrator.md: no 5-field section');
+    missing.push('bc-orchestrator.md: no 5-field section');
   }
 
   if (missing.length) fail('V-DELEG-01', missing.join('; '));
@@ -159,7 +159,7 @@ const checkPhaseNames = () => {
 
 // V-VCODE-01: V-codes referenced in agents or phases
 const checkVcodeReferences = () => {
-  const vcodesContent = read('src/references/backlog-campaign-vcodes.md');
+  const vcodesContent = read('src/references/bc-campaign-vcodes.md');
   const codeMatches = [...vcodesContent.matchAll(/\| (V-[A-Z]+-\d+)/g)];
   const codes = new Set(codeMatches.map((m) => m[1]));
 
@@ -240,7 +240,7 @@ const checkGroundTruth = () => {
     errors.push(`phase_playbook_count: expected ${gt.phase_playbook_count}, got ${phaseCount}`);
   }
 
-  const vcodes = read('src/references/backlog-campaign-vcodes.md');
+  const vcodes = read('src/references/bc-campaign-vcodes.md');
   const vcodeRows = (vcodes.match(/^\| V-/gm) || []).length;
   if (gt.vcode_table_rows !== vcodeRows) {
     errors.push(`vcode_table_rows: expected ${gt.vcode_table_rows}, got ${vcodeRows}`);
@@ -301,7 +301,13 @@ const checkBuild = () => {
       l.includes('skills/') ||
       l.includes('.cursor/') ||
       l.includes('.claude/') ||
-      l.includes('SKILL.md')
+      l.includes('.claude-plugin/') ||
+      l.includes('.gemini-plugin/') ||
+      l.includes('.agents/agents/') ||
+      l.includes('.agents/rules/') ||
+      l.includes('.agents/skills/') ||
+      l.includes('SKILL.md') ||
+      l.includes('marketplace.json')
   );
 
   if (buildOutputs.length > 0 && !before.stdout?.includes('agents/')) {
@@ -313,7 +319,7 @@ const checkBuild = () => {
 };
 
 const main = () => {
-  console.log('backlog-campaign verify\n');
+  console.log('bc-campaign verify\n');
 
   checkAgentToolPolicy();
   checkAgentFrontmatter();

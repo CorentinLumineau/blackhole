@@ -2,25 +2,25 @@
 
 Use **Multitask Mode** when the platform does not have a native long-running
 goal loop (e.g. Cursor), or when you want explicit coordinator control.
-Claude Code users can use `/goal` directly on the `backlog-orchestrator` agent instead.
+Claude Code users can use `/goal` directly on the `bc-orchestrator` agent instead.
 
 ## Roles
 
 | Role | Agent | May implement? | May merge? |
 |------|-------|----------------|------------|
 | User | Chat | — | approves via AskQuestion |
-| Coordinator | `backlog-coordinator` | **No** | **No** |
-| Orchestrator | `backlog-orchestrator` | **No** (spawn workers) | Yes (after LGTM) |
+| Coordinator | `bc-coordinator` | **No** | **No** |
+| Orchestrator | `bc-orchestrator` | **No** (spawn workers) | Yes (after LGTM) |
 | Workers | Task subagents | Yes (one issue) | No |
 
 ## Coordinator flow
 
 ```
-User: "finish the backlog" / attaches backlog-campaign skill / /backlog-campaign run
+User: "finish the backlog" / attaches bc-campaign skill / /bc-campaign run
   ↓
 Coordinator: Phase 0 bootstrap (auto-sync) — optional status to user
   ↓
-Coordinator: Task → backlog-orchestrator (campaign-prompt.md), run_in_background: true
+Coordinator: Task → bc-orchestrator (campaign-prompt.md), run_in_background: true
   ↓
 Coordinator: END TURN (do not busy-wait)
   ↓
@@ -48,9 +48,9 @@ User message → Coordinator resumes orchestrator (interrupt: false) with user t
 
 Say any of:
 
-- `/backlog-campaign run`
+- `/bc-campaign run`
 - "Finish the backlog" / "run the backlog campaign"
-- Attach `backlog-campaign` skill and ask to start
+- Attach `bc-campaign` skill and ask to start
 
 Coordinator spawns orchestrator; user does not need to paste a long prompt.
 

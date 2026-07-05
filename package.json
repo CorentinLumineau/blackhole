@@ -1,5 +1,5 @@
 {
-  "name": "backlog-campaign",
+  "name": "bc-campaign",
   "version": "0.3.0",
   "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
   "scripts": {

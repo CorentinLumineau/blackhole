@@ -6,8 +6,8 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 
 ```
 - [ ] queue.json: phase review
-- [ ] Spawn backlog-reviewer to perform PR audit
-- [ ] Spawn backlog-synthesizer to aggregate reviewer findings
+- [ ] Spawn bc-reviewer to perform PR audit
+- [ ] Spawn bc-synthesizer to aggregate reviewer findings
 - [ ] Synthesizer output → ledger append (phase: review)
 - [ ] BLOCK → increment review_iteration; back to phase implement (see review-core iteration budget)
 - [ ] review_iteration >= 4 → escalate to coordinator (AskQuestion)
@@ -19,8 +19,8 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 
 ## Review pipeline
 
-1. **Reviewer** — spawn `backlog-reviewer` with PR diff, plan Touch-Paths, V-code checklist.
-2. **Synthesizer** — spawn `backlog-synthesizer` with reviewer JSON + issue/PR context + `review_iteration`.
+1. **Reviewer** — spawn `bc-reviewer` with PR diff, plan Touch-Paths, V-code checklist.
+2. **Synthesizer** — spawn `bc-synthesizer` with reviewer JSON + issue/PR context + `review_iteration`.
 3. **Orchestrator** — append synthesizer `findings` to ledger; route by `lgtm` and iteration budget.
 
 The orchestrator **never** aggregates findings inline.
@@ -29,7 +29,7 @@ The orchestrator **never** aggregates findings inline.
 
 - PR number + diff summary
 - Full V-code audit checklist from `{{VCODES_PATH}}`
-- Model: use the designated worker agent (`backlog-reviewer`)
+- Model: use the designated worker agent (`bc-reviewer`)
 - Output format: `worker-schemas.md` reviewer contract
 
 ## Synthesizer prompt must include
@@ -37,7 +37,7 @@ The orchestrator **never** aggregates findings inline.
 - Reviewer JSON output (raw)
 - Issue ref, PR ref, current `review_iteration`
 - Output format: `worker-schemas.md` synthesizer contract
-- Model: `backlog-synthesizer` (`quick` mode on iteration 2+ when ≤10 findings)
+- Model: `bc-synthesizer` (`quick` mode on iteration 2+ when ≤10 findings)
 
 ## Audit Checklist Extensions
 

@@ -1,20 +1,20 @@
 {
-  "name": "backlog-campaign-marketplace",
+  "name": "bc-campaign-marketplace",
   "description": "Backlog Campaign Marketplace",
   "owner": {
     "name": "CorentinLumineau"
   },
   "plugins": [
     {
-      "name": "backlog-campaign",
+      "name": "bc-campaign",
       "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
       "version": "0.3.0",
       "author": {
-        "name": "backlog-campaign contributors"
+        "name": "bc-campaign contributors"
       },
       "license": "Apache-2.0",
       "keywords": [
-        "backlog-campaign",
+        "bc-campaign",
         "claude-code",
         "native",
         "workflows",

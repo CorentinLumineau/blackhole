@@ -13,12 +13,12 @@ pattern (e.g. `x-design` uses `disallowed-tools: Edit` only).
 
 | Agent | `disallowedTools` | Rationale |
 |-------|-------------------|-----------|
-| **backlog-coordinator** | `Write, Edit, Delete` | Intake/routing only — never edits implementation files |
-| **backlog-orchestrator** | `Write, Edit, Delete` | Coordinate only — spawn workers, mutate JSON state via Shell/jq, not source edits |
-| **backlog-planner** | `Delete` | May write `plans/issue-N.md`; must not delete arbitrary repo files |
-| **backlog-implementer** | *(none)* | Full implementation access — tests, git, gh, edits, new MCP tools |
-| **backlog-reviewer** | `Write, Edit, Delete` | Read-only audit (`V-SCOPE` at review time) |
-| **backlog-synthesizer** | `Write, Edit, Delete` | Read-only aggregation (ADR-002) |
+| **bc-coordinator** | `Write, Edit, Delete` | Intake/routing only — never edits implementation files |
+| **bc-orchestrator** | `Write, Edit, Delete` | Coordinate only — spawn workers, mutate JSON state via Shell/jq, not source edits |
+| **bc-planner** | `Delete` | May write `plans/issue-N.md`; must not delete arbitrary repo files |
+| **bc-implementer** | *(none)* | Full implementation access — tests, git, gh, edits, new MCP tools |
+| **bc-reviewer** | `Write, Edit, Delete` | Read-only audit (`V-SCOPE` at review time) |
+| **bc-synthesizer** | `Write, Edit, Delete` | Read-only aggregation (ADR-002) |
 
 ## Not denied (inherits from platform)
 
@@ -32,7 +32,7 @@ recognised by Claude Code agents. No `tools:` allowlist line.
 
 ```yaml
 ---
-name: backlog-coordinator
+name: bc-coordinator
 description: ...
 model: sonnet
 permissionMode: default
@@ -44,7 +44,7 @@ Implementer omits `disallowedTools` entirely (full access by design):
 
 ```yaml
 ---
-name: backlog-implementer
+name: bc-implementer
 description: ...
 model: sonnet
 permissionMode: default

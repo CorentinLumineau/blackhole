@@ -9,7 +9,7 @@
 - [ ] git worktree prune (V-WORKTREE-01)
 - [ ] git worktree add <scratchpad>/wt-<issue> -b campaign/issue-<issue> origin/main (V-BRANCH-03)
 - [ ] install dependencies in worktree (e.g. `npm install`, `bun install`, etc.)
-- [ ] Spawn backlog-implementer worker (run_in_background: true)
+- [ ] Spawn bc-implementer worker (run_in_background: true)
 - [ ] Worker returns new_findings[] — orchestrator appends to ledger
 - [ ] File issues for unfixed discoveries
 - [ ] lint + test in worktree; prepare PR with Closes #N in body (V-GIT-01)
