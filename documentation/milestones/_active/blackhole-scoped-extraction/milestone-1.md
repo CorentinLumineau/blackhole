@@ -6,7 +6,7 @@ review_trigger: "on milestone completion"
 created: 2026-07-06
 last_updated: 2026-07-06
 plan_base_commit: 015e7cc
-pr: TBD — patched by git-pr
+pr: https://github.com/CorentinLumineau/blackhole/pull/90
 related:
   - documentation/architecture/retrospective-blackhole.md
   - documentation/audits/architecture-coherence.md
