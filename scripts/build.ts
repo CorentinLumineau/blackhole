@@ -8,6 +8,11 @@ const srcDir = path.join(root, 'src');
 export const AGENTS_BUILD_ROOT = path.join('.agents', 'build');
 export const AGENTS_BUILD_AGENT_DIR = '.agents/build';
 export const AGENTS_BUILD_VCODES = '.agents/build/rules/bc-campaign-vcodes.md';
+
+/** Redistributable Antigravity plugin bundle — co-located plugin.json + skills/ + rules/, no agents/. */
+export const DISTRIBUTION_ROOT = path.join('plugins', 'backlog-campaign');
+export const DISTRIBUTION_AGENT_DIR = 'plugins/backlog-campaign';
+export const DISTRIBUTION_VCODES = 'plugins/backlog-campaign/rules/bc-campaign-vcodes.md';
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
 const version = pkg.version;
 
@@ -297,6 +302,14 @@ export const compileGeminiTree = (
   );
 };
 
+export const writeGeminiManifest = (destPath: string, manifest: Record<string, unknown>) => {
+  const destDir = path.dirname(destPath);
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+  fs.writeFileSync(destPath, JSON.stringify(manifest, null, 2), 'utf-8');
+};
+
 const assertGeminiTree = (destRoot: string, label: string) => {
   const agentsDir = path.join(destRoot, 'agents');
   const rulesDir = path.join(destRoot, 'rules');
@@ -311,6 +324,26 @@ const assertGeminiTree = (destRoot: string, label: string) => {
   }
   if (ruleFiles.length !== 3) {
     throw new Error(`Gemini ${label}: expected 3 rules, got ${ruleFiles.length}`);
+  }
+};
+
+/** Distribution bundle shape check — deliberately separate from assertGeminiTree: this tree
+ * requires zero agents (AC4), the opposite invariant of the 5-agent workspace tree. */
+export const assertDistributionTree = (destRoot: string) => {
+  const rulesDir = path.join(destRoot, 'rules');
+  const ruleFiles = fs.existsSync(rulesDir)
+    ? fs.readdirSync(rulesDir).filter((f) => rulesList.includes(f))
+    : [];
+  if (ruleFiles.length < 3) {
+    throw new Error(`Gemini distribution: expected 3 rules, got ${ruleFiles.length}`);
+  }
+  const skillPath = path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md');
+  if (!fs.existsSync(skillPath)) {
+    throw new Error('Gemini distribution: missing skills/bc-campaign/SKILL.md');
+  }
+  const manifestPath = path.join(destRoot, 'plugin.json');
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error('Gemini distribution: missing plugin.json');
   }
 };
 
@@ -371,6 +404,7 @@ cleanDir(path.join(root, '.claude-plugin'));
 if (buildGemini) {
   cleanDir(path.join(root, AGENTS_BUILD_ROOT));
   cleanDir(path.join(root, '.gemini-plugin'));
+  cleanDir(path.join(root, DISTRIBUTION_ROOT));
 }
 if (buildCodex) {
   cleanDir(path.join(root, 'codex-agents'));
@@ -486,9 +520,16 @@ if (buildGemini) {
   const geminiPluginMeta = buildGeminiPluginManifest(version);
 
   // Detached manifest for marketplace metadata (same payload as co-located plugin.json).
-  const geminiPluginDir = path.join(root, '.gemini-plugin');
-  if (!fs.existsSync(geminiPluginDir)) fs.mkdirSync(geminiPluginDir, { recursive: true });
-  fs.writeFileSync(path.join(geminiPluginDir, 'plugin.json'), JSON.stringify(geminiPluginMeta, null, 2), 'utf-8');
+  writeGeminiManifest(path.join(root, '.gemini-plugin', 'plugin.json'), geminiPluginMeta);
+
+  // Distribution bundle: redistributable plugin co-located with skills/ and rules/, no agents/
+  // (AC4). Independent write site from the detached manifest above — each block is deletable
+  // without breaking the other (see Grounding in .bc-campaign/plans/issue-27.md).
+  console.log('Compiling Target D2 (Gemini/Antigravity distribution bundle — plugins/backlog-campaign/)...');
+  const distributionRoot = path.join(root, DISTRIBUTION_ROOT);
+  compileGeminiTree(distributionRoot, DISTRIBUTION_AGENT_DIR, DISTRIBUTION_VCODES, { includeAgents: false });
+  writeGeminiManifest(path.join(distributionRoot, 'plugin.json'), geminiPluginMeta);
+  assertDistributionTree(distributionRoot);
 }
 
 // 6. Generate Claude Code Plugin Manifest (.claude-plugin/plugin.json)

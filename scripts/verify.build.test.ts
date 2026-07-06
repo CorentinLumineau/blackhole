@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { buildCodexPluginManifest } from './build.ts';
-import { detectBuildOutputDrift, evaluateBuildCheck } from './verify.ts';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { buildCodexPluginManifest, buildGeminiPluginManifest, compileGeminiTree, writeGeminiManifest } from './build.ts';
+import { detectBuildOutputDrift, evaluateBuildCheck, evaluateDistributionBundle } from './verify.ts';
+
+const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'bc-campaign-verify-test-'));
 
 describe('detectBuildOutputDrift', () => {
   test('returns [] for porcelain input with no build-output-pattern matches', () => {
@@ -25,6 +30,14 @@ describe('detectBuildOutputDrift', () => {
     const dirty = detectBuildOutputDrift(porcelain);
     expect(dirty).toContain(' M .codex-plugin/plugin.json');
     expect(dirty).toContain(' M .gemini-plugin/plugin.json');
+  });
+
+  test('flags dirty plugins/backlog-campaign/plugin.json the same way as .gemini-plugin/ (parity)', () => {
+    const porcelain = ' M plugins/backlog-campaign/plugin.json\n M .gemini-plugin/plugin.json\n';
+    expect(detectBuildOutputDrift(porcelain)).toEqual([
+      ' M plugins/backlog-campaign/plugin.json',
+      ' M .gemini-plugin/plugin.json',
+    ]);
   });
 });
 
@@ -82,5 +95,63 @@ describe('evaluateBuildCheck', () => {
       afterPorcelain: ' M README.md\n',
     });
     expect(result).toEqual({ id: 'V-BUILD-01', ok: true });
+  });
+});
+
+describe('evaluateDistributionBundle', () => {
+  const populateFixtureTree = (destRoot: string) => {
+    compileGeminiTree(
+      destRoot,
+      'plugins/backlog-campaign',
+      'plugins/backlog-campaign/rules/bc-campaign-vcodes.md',
+      { includeAgents: false }
+    );
+    writeGeminiManifest(path.join(destRoot, 'plugin.json'), buildGeminiPluginManifest('1.0.0'));
+  };
+
+  test('passes (empty error list) on a correctly-built tree', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateFixtureTree(destRoot);
+      expect(evaluateDistributionBundle(destRoot)).toEqual([]);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('fails with a clear message when plugin.json is absent', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateFixtureTree(destRoot);
+      fs.unlinkSync(path.join(destRoot, 'plugin.json'));
+      const errors = evaluateDistributionBundle(destRoot);
+      expect(errors.some((e) => e.includes('plugin.json'))).toBe(true);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('fails with a clear message when rules/ is incomplete', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateFixtureTree(destRoot);
+      fs.unlinkSync(path.join(destRoot, 'rules', 'bc-campaign-state.md'));
+      const errors = evaluateDistributionBundle(destRoot);
+      expect(errors.some((e) => e.includes('bc-campaign-state.md'))).toBe(true);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('fails with a clear message when skills/bc-campaign/SKILL.md is missing', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateFixtureTree(destRoot);
+      fs.unlinkSync(path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md'));
+      const errors = evaluateDistributionBundle(destRoot);
+      expect(errors.some((e) => e.includes('SKILL.md'))).toBe(true);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
   });
 });

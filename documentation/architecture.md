@@ -31,6 +31,7 @@ flowchart LR
         O3[.claude/ + .claude-plugin/]
         O4[codex-agents/ codex-skills/<br/>.codex-plugin/ codex-marketplace.json]
         O5[".agents/build/ + .gemini-plugin/<br/>(bun run build --gemini)"]
+        O6["plugins/backlog-campaign/<br/>(bun run build --gemini)"]
     end
 
     SRC --> BUILD --> O1
@@ -38,6 +39,7 @@ flowchart LR
     BUILD --> O3
     BUILD --> O4
     BUILD -. "--gemini flag only" .-> O5
+    BUILD -. "--gemini flag only" .-> O6
 
     subgraph RUNTIME["Gitignored runtime — not build output"]
         direction TB
@@ -63,7 +65,8 @@ should be hand-edited directly — changes made there are overwritten on the nex
 | `.cursor/` | Cursor | Cursor IDE agent/rules/skills loader | Edit via `src/` only — never hand-edit. |
 | `.claude/` + `.claude-plugin/` (`plugin.json`, `marketplace.json`) | Claude Code | Claude Code plugin + marketplace manifest | Edit via `src/` only — never hand-edit. |
 | `codex-agents/` + `codex-skills/` + `.codex-plugin/` + `codex-marketplace.json` | Codex CLI | Codex plugin + marketplace manifest | Edit via `src/` only — never hand-edit. |
-| `.agents/build/` + `.gemini-plugin/` | Antigravity / Gemini | Gemini native plugin manifest | Edit via `src/` only — never hand-edit. |
+| `.agents/build/` + `.gemini-plugin/` | Antigravity / Gemini (workspace) | Workspace customization (`@bc-coordinator` / Multitask Mode); `.gemini-plugin/plugin.json` mirrors marketplace metadata | Edit via `src/` only — never hand-edit. |
+| `plugins/backlog-campaign/` | Antigravity / Gemini (distribution) | Redistributable plugin bundle — co-located `plugin.json` + `skills/` + `rules/`, no `agents/` (AC4: not part of the plugin schema) | Edit via `src/` only — never hand-edit. |
 
 ## Build & verify
 

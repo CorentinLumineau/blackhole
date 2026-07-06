@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import {
   applyPlatformConditionals,
@@ -11,9 +12,13 @@ import {
   buildCodexAgentYaml,
   serializeCodexAgentYaml,
   compileGeminiTree,
+  writeGeminiManifest,
+  assertDistributionTree,
 } from './build.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
+
+const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'bc-campaign-build-test-'));
 
 describe('applyPlatformConditionals', () => {
   test('gemini keeps gemini body and removes cursor/claude/skills', () => {
@@ -80,6 +85,108 @@ describe('buildGeminiPluginManifest', () => {
     expect(manifest.keywords[0]).toBe('bc-campaign');
     expect(manifest.version).toBe('1.2.3');
     expect(manifest.description).toContain('backlog campaign');
+  });
+});
+
+describe('compileGeminiTree', () => {
+  test('includeAgents: false produces rules + skill + references but no agents/ dir', () => {
+    const destRoot = makeTempDir();
+    try {
+      compileGeminiTree(
+        destRoot,
+        'plugins/backlog-campaign',
+        'plugins/backlog-campaign/rules/bc-campaign-vcodes.md',
+        { includeAgents: false }
+      );
+
+      expect(fs.existsSync(path.join(destRoot, 'agents'))).toBe(false);
+
+      for (const rule of ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md']) {
+        expect(fs.existsSync(path.join(destRoot, 'rules', rule))).toBe(true);
+      }
+
+      const skillPath = path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md');
+      expect(fs.existsSync(skillPath)).toBe(true);
+
+      const refsDir = path.join(destRoot, 'skills', 'bc-campaign', 'references');
+      expect(fs.existsSync(refsDir)).toBe(true);
+      expect(fs.readdirSync(refsDir).length).toBeGreaterThan(0);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('writeGeminiManifest', () => {
+  test('writes valid JSON matching the input object, creating parent dirs as needed', () => {
+    const destRoot = makeTempDir();
+    try {
+      const destPath = path.join(destRoot, 'nested', 'dir', 'plugin.json');
+      const manifest = buildGeminiPluginManifest('9.9.9');
+
+      writeGeminiManifest(destPath, manifest);
+
+      expect(fs.existsSync(destPath)).toBe(true);
+      const written = JSON.parse(fs.readFileSync(destPath, 'utf-8'));
+      expect(written).toEqual(manifest);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('assertDistributionTree', () => {
+  const populateFixtureTree = (destRoot: string) => {
+    compileGeminiTree(
+      destRoot,
+      'plugins/backlog-campaign',
+      'plugins/backlog-campaign/rules/bc-campaign-vcodes.md',
+      { includeAgents: false }
+    );
+    writeGeminiManifest(path.join(destRoot, 'plugin.json'), buildGeminiPluginManifest('1.0.0'));
+  };
+
+  test('passes (returns void, no throw) on a fully-populated fixture tree', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateFixtureTree(destRoot);
+      expect(() => assertDistributionTree(destRoot)).not.toThrow();
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('throws when rules/ has fewer than 3 recognized rule files', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateFixtureTree(destRoot);
+      fs.unlinkSync(path.join(destRoot, 'rules', 'bc-campaign-state.md'));
+      expect(() => assertDistributionTree(destRoot)).toThrow();
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('throws when skills/bc-campaign/SKILL.md is missing', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateFixtureTree(destRoot);
+      fs.unlinkSync(path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md'));
+      expect(() => assertDistributionTree(destRoot)).toThrow();
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('throws when plugin.json is missing at destRoot', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateFixtureTree(destRoot);
+      fs.unlinkSync(path.join(destRoot, 'plugin.json'));
+      expect(() => assertDistributionTree(destRoot)).toThrow();
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
   });
 });
 

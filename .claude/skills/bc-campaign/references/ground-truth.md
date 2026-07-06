@@ -42,7 +42,7 @@ Source: `src/references/bc-campaign-vcodes.md`
 
 ## Verify checks
 
-**verify_check_count:** 17
+**verify_check_count:** 18
 
 | Check ID | Description |
 |----------|-------------|
@@ -59,6 +59,7 @@ Source: `src/references/bc-campaign-vcodes.md`
 | V-EPIC-01 | epic-orchestration.md exists and phase-handle links to it |
 | V-CHECKPOINT-01 | checkpoint template frontmatter keys align with orchestrator and phase-loop write order |
 | V-GEMINI-01 | Gemini build outputs complete; no stale platform conditionals |
+| V-GEMINI-02 | Gemini distribution bundle (plugins/backlog-campaign/) complete; co-located plugin.json, skills/, rules/, no agents/ |
 | V-CODEX-01 | Codex build succeeds as part of default `bun run build` |
 | V-CODEX-02 | Codex plugin.json and marketplace validate against fixture baselines |
 | V-CODEX-03 | codex-skills/bc-campaign/SKILL.md with disable-model-invocation |
