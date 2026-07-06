@@ -269,6 +269,7 @@ bun run doctor         # Campaign bootstrap preflight (before coordinator)
 | **Ephemeral handoff** | `.agents/orchestrator/`, `.agents/worker_*/`, `.agents/explorer_*/` | Per-session agent handoff; gitignored | Not protocol state — do not use for queue/ledger |
 
 Ephemeral handoff dirs share the `.agents/` parent with Gemini `build/` output (see [Pathway D: Antigravity / Gemini Native](#pathway-d-antigravity--gemini-native)) but are separate namespaces.
+> Full repository map (build pipeline diagram, every committed target tree, SSOT vs runtime distinctions): see [documentation/architecture.md](documentation/architecture.md).
 
 Optional: install a git pre-commit hook that runs build before commit:
 
