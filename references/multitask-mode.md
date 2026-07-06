@@ -93,6 +93,17 @@ Say any of:
 
 Coordinator spawns orchestrator; user does not need to paste a long prompt.
 
+## Claude Code harness notes
+
+| Signal | Meaning | Wrong reaction |
+|--------|---------|----------------|
+| `idle_notification` from a background agent | The agent's **current turn ended** — not unreachable, not gone | Re-messaging the agent asking it to "report status" and waiting on a chat reply |
+
+Verify phase/worker completion via on-disk artifacts — the plan file under
+`.bc-campaign/plans/`, PR state (`gh pr list` / `gh pr view`), worktree
+`git status` — or the Agent tool's own completion/result signal. **Never**
+poll completion by chat message.
+
 ## Pattern A (legacy)
 
 Single session as orchestrator without coordinator — only if user explicitly

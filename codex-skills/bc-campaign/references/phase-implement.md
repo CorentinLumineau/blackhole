@@ -43,6 +43,7 @@ Do not commit directly to main (`V-BRANCH-02`) or force-push (`V-BRANCH-01`).
 
 See [worker-schemas.md](worker-schemas.md) implementer contract. Orchestrator appends `new_findings` to ledger (`phase: implement`) before
 ending turn. For each new finding concerning improvements, best practices, UX/UI, performance, or coverage, the orchestrator files a new GitHub tracking issue (`gh issue create`) to schedule it in the backlog campaign queue.
+See [multitask-mode.md](multitask-mode.md) § Claude Code harness notes for how to verify a spawned worker's completion without chat polling.
 
 
 ## Quality gate (pre-PR)
