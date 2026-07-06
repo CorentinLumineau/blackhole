@@ -330,43 +330,36 @@ const walkMdFiles = (dir: string): string[] => {
   return out;
 };
 
-// V-GEMINI-01: Gemini/Antigravity compile outputs are complete and platform-clean
-const checkGeminiBuild = () => {
-  if (process.env.VERIFY_SKIP_BUILD !== '1') {
-    const build = spawnSync('bun', ['run', 'build', '--gemini'], { cwd: root, encoding: 'utf-8' });
-    if (build.status !== 0) {
-      fail('V-GEMINI-01', `build --gemini failed: ${build.stderr || build.stdout}`);
-      return;
-    }
-  }
-
+// Shared plugin-tree shape validation used by both the workspace tree (V-GEMINI-01) and the
+// distribution bundle (V-GEMINI-02): rules/, skills/bc-campaign/{SKILL.md,references/}, plugin.json.
+// treeRoot and manifestPath are passed separately because V-GEMINI-01's manifest lives in a
+// detached directory (.gemini-plugin/) while its rules/skills live under AGENTS_BUILD_ROOT —
+// V-GEMINI-02's distribution bundle co-locates all of them under one destRoot.
+const validatePluginTreeShape = (
+  treeRoot: string,
+  manifestPath: string,
+  labels: { treePrefix: string; manifest: string },
+): string[] => {
   const errors: string[] = [];
 
-  const workspaceAgents = listFiles(path.join(AGENTS_BUILD_ROOT, 'agents'));
-  const bcAgents = workspaceAgents.filter((f) => f.startsWith('bc-'));
-  if (bcAgents.length !== 5) {
-    errors.push(`${AGENTS_BUILD_AGENT_DIR}/agents: expected 5 bc-*.md, got ${bcAgents.length}`);
-  }
-
   for (const rule of ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md']) {
-    if (!fs.existsSync(path.join(root, AGENTS_BUILD_ROOT, 'rules', rule))) {
-      errors.push(`missing ${AGENTS_BUILD_AGENT_DIR}/rules/${rule}`);
+    if (!fs.existsSync(path.join(treeRoot, 'rules', rule))) {
+      errors.push(`missing ${labels.treePrefix}rules/${rule}`);
     }
   }
 
-  const skillPath = path.join(root, AGENTS_BUILD_ROOT, 'skills', 'bc-campaign', 'SKILL.md');
+  const skillPath = path.join(treeRoot, 'skills', 'bc-campaign', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
-    errors.push(`missing ${AGENTS_BUILD_AGENT_DIR}/skills/bc-campaign/SKILL.md`);
+    errors.push(`missing ${labels.treePrefix}skills/bc-campaign/SKILL.md`);
   }
 
-  const refsDir = path.join(root, AGENTS_BUILD_ROOT, 'skills', 'bc-campaign', 'references');
+  const refsDir = path.join(treeRoot, 'skills', 'bc-campaign', 'references');
   if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
-    errors.push(`missing or empty ${AGENTS_BUILD_AGENT_DIR}/skills/bc-campaign/references/`);
+    errors.push(`missing or empty ${labels.treePrefix}skills/bc-campaign/references/`);
   }
 
-  const manifestPath = path.join(root, '.gemini-plugin', 'plugin.json');
   if (!fs.existsSync(manifestPath)) {
-    errors.push('missing .gemini-plugin/plugin.json');
+    errors.push(`missing ${labels.manifest}`);
   } else {
     try {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
@@ -378,6 +371,45 @@ const checkGeminiBuild = () => {
     }
   }
 
+  return errors;
+};
+
+// checkGeminiBuild and checkGeminiDistributionBundle both need `bun run build --gemini` to have
+// run before asserting file shape — memoize so a full `bun run verify` pass only builds once.
+let geminiBuildResult: { ok: boolean; output: string } | null = null;
+
+const runGeminiBuild = (): { ok: boolean; output: string } => {
+  if (!geminiBuildResult) {
+    const build = spawnSync('bun', ['run', 'build', '--gemini'], { cwd: root, encoding: 'utf-8' });
+    geminiBuildResult = { ok: build.status === 0, output: build.stderr || build.stdout || '' };
+  }
+  return geminiBuildResult;
+};
+
+// V-GEMINI-01: Gemini/Antigravity compile outputs are complete and platform-clean
+const checkGeminiBuild = () => {
+  if (process.env.VERIFY_SKIP_BUILD !== '1') {
+    const build = runGeminiBuild();
+    if (!build.ok) {
+      fail('V-GEMINI-01', `build --gemini failed: ${build.output}`);
+      return;
+    }
+  }
+
+  const workspaceAgents = listFiles(path.join(AGENTS_BUILD_ROOT, 'agents'));
+  const bcAgents = workspaceAgents.filter((f) => f.startsWith('bc-'));
+  const errors: string[] = [];
+  if (bcAgents.length !== 5) {
+    errors.push(`${AGENTS_BUILD_AGENT_DIR}/agents: expected 5 bc-*.md, got ${bcAgents.length}`);
+  }
+
+  errors.push(
+    ...validatePluginTreeShape(
+      path.join(root, AGENTS_BUILD_ROOT),
+      path.join(root, '.gemini-plugin', 'plugin.json'),
+      { treePrefix: `${AGENTS_BUILD_AGENT_DIR}/`, manifest: '.gemini-plugin/plugin.json' },
+    ),
+  );
 
   for (const rel of walkMdFiles(AGENTS_BUILD_ROOT)) {
     const content = read(rel);
@@ -399,37 +431,10 @@ const checkGeminiBuild = () => {
 // V-GEMINI-02: Gemini/Antigravity distribution bundle (plugins/backlog-campaign/) shape check —
 // independent from V-GEMINI-01's workspace-tree assertions (see build.ts assertDistributionTree).
 export const evaluateDistributionBundle = (destRoot: string): string[] => {
-  const errors: string[] = [];
-
-  for (const rule of ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md']) {
-    if (!fs.existsSync(path.join(destRoot, 'rules', rule))) {
-      errors.push(`missing rules/${rule}`);
-    }
-  }
-
-  const skillPath = path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md');
-  if (!fs.existsSync(skillPath)) {
-    errors.push('missing skills/bc-campaign/SKILL.md');
-  }
-
-  const refsDir = path.join(destRoot, 'skills', 'bc-campaign', 'references');
-  if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
-    errors.push('missing or empty skills/bc-campaign/references/');
-  }
-
-  const manifestPath = path.join(destRoot, 'plugin.json');
-  if (!fs.existsSync(manifestPath)) {
-    errors.push('missing plugin.json');
-  } else {
-    try {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-      for (const key of ['$schema', 'name', 'version', 'description']) {
-        if (!manifest[key]) errors.push(`plugin.json missing ${key}`);
-      }
-    } catch {
-      errors.push('plugin.json invalid JSON');
-    }
-  }
+  const errors = validatePluginTreeShape(destRoot, path.join(destRoot, 'plugin.json'), {
+    treePrefix: '',
+    manifest: 'plugin.json',
+  });
 
   if (fs.existsSync(path.join(destRoot, 'agents'))) {
     errors.push('distribution bundle must not contain agents/ (AC4)');
@@ -440,9 +445,9 @@ export const evaluateDistributionBundle = (destRoot: string): string[] => {
 
 const checkGeminiDistributionBundle = () => {
   if (process.env.VERIFY_SKIP_BUILD !== '1') {
-    const build = spawnSync('bun', ['run', 'build', '--gemini'], { cwd: root, encoding: 'utf-8' });
-    if (build.status !== 0) {
-      fail('V-GEMINI-02', `build --gemini failed: ${build.stderr || build.stdout}`);
+    const build = runGeminiBuild();
+    if (!build.ok) {
+      fail('V-GEMINI-02', `build --gemini failed: ${build.output}`);
       return;
     }
   }
