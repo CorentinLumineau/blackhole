@@ -257,7 +257,18 @@ bun run build --all    # All targets including Gemini
 bun test
 bun run verify         # Includes V-CODEX-* checks
 bun run doctor         # Campaign bootstrap preflight (before coordinator)
+bun run install:verify # Workstation install audit (Cursor/Claude/Gemini/Codex/skills.sh/symlinks)
 ```
+
+`bun run install:verify` prints a read-only platform matrix (PASS/PARTIAL/FAIL per row) covering
+Cursor, Claude, Gemini, Codex, the `skills.sh` global install, `~/.agents/skills/`, and broken
+symlinks. It never writes to disk — every check is an `fs.existsSync`/`lstatSync`/`readlinkSync`/
+`readdirSync` read. **The "Claude" row is a repo-local build-artifact proxy, not a true
+workstation-wide Claude install check**: it reports PASS when both `.claude-plugin/marketplace.json`
+and at least one `.claude/agents/bc-*.md` are present in this repo (i.e. `bun run build` has
+produced Claude-Code-consumable output here), PARTIAL when only one is present, and FAIL when
+neither is present — there is no documented on-disk state for a `/plugin marketplace add` +
+`/plugin install` install to check against.
 
 ### Repository layout
 

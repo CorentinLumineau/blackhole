@@ -82,7 +82,7 @@ export function checkStaleGlobalSkill(homeDir: string): DoctorCheck {
   return { id: 'D-SKILL-01', severity: 'WARN', ok: true };
 }
 
-function resolveSymlinkTarget(linkPath: string): string {
+export function resolveSymlinkTarget(linkPath: string): string {
   const target = fs.readlinkSync(linkPath);
   return path.isAbsolute(target) ? target : path.resolve(path.dirname(linkPath), target);
 }

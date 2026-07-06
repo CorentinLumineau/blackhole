@@ -38,6 +38,9 @@ jobs:
             exit 1
           fi
 
+      - name: Run install:verify
+        run: bun run install:verify
+
   release-notes-gate:
     name: Release Notes Gate
     runs-on: ubuntu-latest
