@@ -284,7 +284,7 @@ export function loadCampaignState(campaignDir: string) {
 
 function main() {
   const args = process.argv.slice(2);
-  let campaignDir = path.join(root, '.bc-campaign');
+  let campaignDir = path.join(root, '.blackhole');
   let skipGh = false;
 
   for (let i = 0; i < args.length; i++) {

@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Release & Milestone Governance
 
-**Project maintainer policy** (not part of the bc-campaign plugin protocol).
+**Project maintainer policy** (not part of the blackhole plugin protocol).
 
 ## Milestone ↔ release contract
 
@@ -37,4 +37,4 @@ When all issues on milestone `vX.Y.Z` are done:
 
 ## Campaign scope alignment
 
-When running bc-campaign against a milestone, set `scope_milestone` in `.bc-campaign/config.json` to the **same** semver title. Finish the campaign, then cut the release and close the milestone in one maintainer pass.
+When running blackhole against a milestone, set `scope_milestone` in `.blackhole/config.json` to the **same** semver title. Finish the campaign, then cut the release and close the milestone in one maintainer pass.

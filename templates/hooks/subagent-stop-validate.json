@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "description": "Optional Cursor SubagentStop hook — validates bc-campaign worker JSON against worker-schemas.md.",
+  "description": "Optional Cursor SubagentStop hook — validates blackhole worker JSON against worker-schemas.md.",
   "hooks": {
     "subagentStop": [
       {
         "command": "bun run scripts/validate-worker-json.ts --hook",
-        "matcher": "bc-planner|bc-implementer|bc-reviewer",
+        "matcher": "planner|implementer|reviewer",
         "failClosed": true
       }
     ]

@@ -1,6 +1,6 @@
 # Campaign Config Template
 
-Committed template: `.bc-campaign/config.json`
+Committed template: `.blackhole/config.json`
 
 ```json
 {
@@ -12,10 +12,10 @@ Committed template: `.bc-campaign/config.json`
   "size_label_prefix": "size:",
   "default_touch_paths": ["src/**", "lib/**", "app/**"],
   "issue_labels": {
-    "campaign": "campaign/backlog"
+    "campaign": "blackhole/backlog"
   },
   "scope_milestone": "v0.4.0",
-  "scope_labels": ["campaign/backlog", "size:m"],
+  "scope_labels": ["blackhole/backlog", "size:m"],
   "auto_sync": true,
   "entry_mode": "multitask"
 }

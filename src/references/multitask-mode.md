@@ -2,25 +2,25 @@
 
 Use **Multitask Mode** when the platform does not have a native long-running
 goal loop (e.g. Cursor), or when you want explicit coordinator control.
-Claude Code users can use `/goal` directly on the `bc-orchestrator` agent instead.
+Claude Code users can use `/goal` directly on the `orchestrator` agent instead.
 
 ## Roles
 
 | Role | Agent | May implement? | May merge? |
 |------|-------|----------------|------------|
 | User | Chat | — | approves via AskQuestion |
-| Coordinator | `bc-coordinator` | **No** | **No** |
-| Orchestrator | `bc-orchestrator` | **No** (spawn workers) | Yes (after LGTM) |
+| Coordinator | `coordinator` | **No** | **No** |
+| Orchestrator | `orchestrator` | **No** (spawn workers) | Yes (after LGTM) |
 | Workers | Task subagents | Yes (one issue) | No |
 
 ## Coordinator flow
 
 ```
-User: "finish the backlog" / attaches bc-campaign skill / /bc-campaign run
+User: "finish the backlog" / attaches blackhole skill / /blackhole run
   ↓
 Coordinator: Phase 0 bootstrap (auto-sync) — run `bun run status` → print **full** dashboard (`coordinator-dashboard.md`)
   ↓
-Coordinator: Task — attach `.cursor/agents/bc-orchestrator.md` (not subagent_type enum), prompt: campaign-prompt.md, run_in_background: true
+Coordinator: Task — attach `.cursor/agents/orchestrator.md` (not subagent_type enum), prompt: campaign-prompt.md, run_in_background: true
   ↓
 Coordinator: END TURN (do not busy-wait)
   ↓
@@ -40,9 +40,9 @@ do not use built-in `subagent_type` enums as a stand-in.
 
 | Role | Agent file |
 |------|------------|
-| Coordinator (user-facing) | `.cursor/agents/bc-coordinator.md` |
-| Orchestrator (background) | `.cursor/agents/bc-orchestrator.md` |
-| Workers | `.cursor/agents/bc-planner.md`, `.cursor/agents/bc-implementer.md`, `.cursor/agents/bc-reviewer.md` |
+| Coordinator (user-facing) | `.cursor/agents/coordinator.md` |
+| Orchestrator (background) | `.cursor/agents/orchestrator.md` |
+| Workers | `.cursor/agents/planner.md`, `.cursor/agents/implementer.md`, `.cursor/agents/reviewer.md` |
 
 Spawn prompt text and mis-spawn hazard detail: `campaign-prompt.md` § Coordinator usage.
 
@@ -58,8 +58,8 @@ Spawn prompt text and mis-spawn hazard detail: `campaign-prompt.md` § Coordinat
 ### Protocol state boundaries
 
 - Never write or mutate `queue.json`, `findings-ledger.json`, or plan files under `.agents/worker_*/` (or any `.agents/*` handoff dir).
-- Never treat `.agents/orchestrator/`, `.agents/worker_*/`, or `.agents/explorer_*/` as substitutes for `.bc-campaign/` protocol state.
-- Orchestrator and workers read/write campaign state only via `.bc-campaign/*` per `bc-campaign-state.md`.
+- Never treat `.agents/orchestrator/`, `.agents/worker_*/`, or `.agents/explorer_*/` as substitutes for `.blackhole/` protocol state.
+- Orchestrator and workers read/write campaign state only via `.blackhole/*` per `blackhole-state.md`.
 
 ## Coordinator MUST
 
@@ -87,9 +87,9 @@ END TURN
 
 Say any of:
 
-- `/bc-campaign run`
+- `/blackhole run`
 - "Finish the backlog" / "run the backlog campaign"
-- Attach `bc-campaign` skill and ask to start
+- Attach `blackhole` skill and ask to start
 
 Coordinator spawns orchestrator; user does not need to paste a long prompt.
 
@@ -100,7 +100,7 @@ Coordinator spawns orchestrator; user does not need to paste a long prompt.
 | `idle_notification` from a background agent | The agent's **current turn ended** — not unreachable, not gone | Re-messaging the agent asking it to "report status" and waiting on a chat reply |
 
 Verify phase/worker completion via on-disk artifacts — the plan file under
-`.bc-campaign/plans/`, PR state (`gh pr list` / `gh pr view`), worktree
+`.blackhole/plans/`, PR state (`gh pr list` / `gh pr view`), worktree
 `git status` — or the Agent tool's own completion/result signal. **Never**
 poll completion by chat message.
 

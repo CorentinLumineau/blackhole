@@ -1,8 +1,8 @@
-# Backlog Campaign — Agent-Agnostic Backlog Auto-Solver
+# Blackhole — Agent-Agnostic Backlog Auto-Solver
 
 An automated, **fully agent-agnostic** software development lifecycle (SDLC) loop designed to systematically resolve your repository's entire issue backlog. 
 
-**Backlog Campaign is 100% agent-agnostic**: it operates over a project-local standard state ledger (`queue.json` and `findings-ledger.json`) and markdown instruction manuals. Any agentic system (such as Claude Code, Cursor, Antigravity, or custom shell/API agents) can run the loop. 
+**Blackhole is 100% agent-agnostic**: it operates over a project-local standard state ledger (`queue.json` and `findings-ledger.json`) and markdown instruction manuals. Any agentic system (such as Claude Code, Cursor, Antigravity, or custom shell/API agents) can run the loop. 
 
 To deliver a premium developer experience, the project provides **native, out-of-the-box target structures** for:
 - **Cursor Native**: MDC rules, custom agents, and skills integrated directly under the root (accessible via a single `.cursor` submodule).
@@ -15,7 +15,7 @@ The loop runs autonomously in the background—spinning up parallel worker agent
 
 ## 🎯 Concrete Goal: Zero Open Issues, Zero Manual Triage
 
-The goal of Backlog Campaign is to take an open backlog on your forge (GitHub, GitLab, etc.) and automate the entire software development lifecycle (SDLC) for every issue:
+The goal of Blackhole is to take an open backlog on your forge (GitHub, GitLab, etc.) and automate the entire software development lifecycle (SDLC) for every issue:
 
 ```mermaid
 flowchart LR
@@ -36,7 +36,7 @@ flowchart LR
 
 ## 👥 Human-in-the-Loop (HITL) & Feedback Intake
 
-Backlog Campaign integrates the developer seamlessly into the automation loop to resolve ambiguity and intake new directions:
+Blackhole integrates the developer seamlessly into the automation loop to resolve ambiguity and intake new directions:
 
 1. **Clarification Gates (Ambiguity Blockers)**: When a worker or planner agent encounters vague requirements, product/UX trade-offs, or destructive operations, the orchestrator sets the issue's queue state to `status: blocked` and `notes: awaiting-user-clarification`. Spawns are suspended, and the coordinator executes `AskQuestion` to solicit human decisions.
 2. **Main Chat Feedback Intake**: You can provide real-time corrections, feature requests, or performance feedback directly in the main chat. The coordinator intercepts this feedback:
@@ -62,16 +62,16 @@ The campaign does not just implement pre-defined requirements—it continuously 
 
 ## 🛠 How It Works (The 5-Phase Loop)
 
-The orchestrator operates over a project-local, gitignored state directory `.bc-campaign/` containing:
+The orchestrator operates over a project-local, gitignored state directory `.blackhole/` containing:
 - `queue.json`: Active campaign DAG, issue phases, and worker execution states.
 - `findings-ledger.json`: V-code quality findings tracking Open, Fixed, or Deferred issues.
 - `plans/<issue>.md`: Touch-paths, schema baselines, and implementation designs.
 
 ### The Five Lifecycle Phases
 1. **Handle**: Ingests new issues, triages dependencies, splits epics, and moves issues to planning.
-2. **Plan**: Spawns `bc-planner` to create a plan file, defining specific Touch-Paths and API/schema baselines.
-3. **Implement**: Spawns `bc-implementer` inside a git worktree (`wt-<issue>`) to code, run tests, and open a PR.
-4. **Review**: Spawns `bc-reviewer` to audit the PR, then runs `scripts/review-aggregate.ts` to deduplicate and rank findings.
+2. **Plan**: Spawns `planner` to create a plan file, defining specific Touch-Paths and API/schema baselines.
+3. **Implement**: Spawns `implementer` inside a git worktree (`wt-<issue>`) to code, run tests, and open a PR.
+4. **Review**: Spawns `reviewer` to audit the PR, then runs `scripts/review-aggregate.ts` to deduplicate and rank findings.
 5. **Loop**: Merges approved PRs, cleans up worktrees, prunes tracking branches, and proceeds to the next queue item.
 
 ---
@@ -85,45 +85,45 @@ Claude Code natively supports long-running background sessions via the `/goal` c
 - **How to invoke**:
   Start Claude in your project directory and execute:
   ```bash
-  /goal run bc-campaign until empty
+  /goal run blackhole until empty
   ```
-  Claude will automatically load the `bc-campaign` skill and agents, register the `bc-coordinator` and `bc-orchestrator`, and run the execution loop autonomously in the background until all open issues are resolved.
+  Claude will automatically load the `blackhole` skill and agents, register the `coordinator` and `orchestrator`, and run the execution loop autonomously in the background until all open issues are resolved.
 
 ### 2. Cursor (Multitask Mode / Composer)
 Cursor natively supports multi-file background operations using **Composer / Multitask Mode**.
 - **How to invoke**:
   1. Open the Cursor Composer (Cmd+I) and switch to **Agent** or **Multitask Mode**.
   2. Run `bun run doctor` to preflight install health, config, and built artifacts.
-  3. Input the command: `@bc-coordinator run the campaign` (or simply trigger `/bc-campaign`).
-  4. The `bc-coordinator` will bootstrap the campaign and spawn the background `bc-orchestrator` task, freeing up your composer for other work.
+  3. Input the command: `@coordinator run the campaign` (or simply trigger `/blackhole`).
+  4. The `coordinator` will bootstrap the campaign and spawn the background `orchestrator` task, freeing up your composer for other work.
 
 ### 3. Antigravity (Gemini) — Multitask Mode
 Antigravity has no native `/goal` command. Use the **coordinator** as the entry point:
-- **How to invoke**: `@bc-coordinator run the campaign` (or attach the skill and start Multitask Mode with the coordinator agent).
-- The `bc-coordinator` bootstraps the campaign and spawns the background `bc-orchestrator`.
+- **How to invoke**: `@coordinator run the campaign` (or attach the skill and start Multitask Mode with the coordinator agent).
+- The `coordinator` bootstraps the campaign and spawns the background `orchestrator`.
 
 You can also run the compiled skill directly:
 ```bash
-antigravity run /bc-campaign
+antigravity run /blackhole
 ```
 
 ### 4. Codex CLI (OpenAI Native)
 Codex supports long-running background sessions via the `/goal` command (same pattern as Claude Code).
 - **How to invoke**:
   ```bash
-  /goal run bc-campaign until empty
+  /goal run blackhole until empty
   ```
-  Or use Multitask Mode: `@bc-coordinator run the campaign` when you prefer coordinator-driven intake.
+  Or use Multitask Mode: `@coordinator run the campaign` when you prefer coordinator-driven intake.
 
 ### Platform quick reference
 
 | Platform | Invoke command |
 |----------|----------------|
-| **Claude Code** | `/goal run bc-campaign until empty` |
-| **Cursor** | `@bc-coordinator run the campaign` or `/bc-campaign` |
-| **skills.sh** | `npx skills add CorentinLumineau/backlog-campaign` then attach `bc-campaign` |
-| **Antigravity** | `@bc-coordinator run the campaign` or `antigravity run /bc-campaign` |
-| **Codex CLI** | `/goal run bc-campaign until empty` or `@bc-campaign status` |
+| **Claude Code** | `/goal run blackhole until empty` |
+| **Cursor** | `@coordinator run the campaign` or `/blackhole` |
+| **skills.sh** | `npx skills add CorentinLumineau/backlog-campaign` then attach `blackhole` |
+| **Antigravity** | `@coordinator run the campaign` or `antigravity run /blackhole` |
+| **Codex CLI** | `/goal run blackhole until empty` or `@blackhole status` |
 
 See [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) for agent roster and Claude-specific triggers.
 
@@ -145,21 +145,21 @@ Register the repository as a plugin marketplace catalog and install it:
 /plugin marketplace add https://github.com/CorentinLumineau/backlog-campaign
 
 # 2. Install the plugin
-/plugin install bc-campaign@bc-campaign-marketplace
+/plugin install blackhole@blackhole-marketplace
 ```
-The marketplace URL uses the GitHub repo slug `backlog-campaign`; the installed plugin id is `bc-campaign`.
+The marketplace URL uses the GitHub repo slug `backlog-campaign`; the installed plugin id is `blackhole`.
 
 ### Pathway C: Generic / skills.sh Registry
 
 Install the skill from the skills.sh registry (repo slug + explicit skill id):
 
 ```bash
-npx skills add CorentinLumineau/backlog-campaign --skill bc-campaign -y
+npx skills add CorentinLumineau/backlog-campaign --skill blackhole -y
 ```
 
-After install, attach or invoke **`bc-campaign`** in your agent UI. Compatible agents read the root `SKILL.md` and load rules from the `references/` directory.
+After install, attach or invoke **`blackhole`** in your agent UI. Compatible agents read the root `SKILL.md` and load rules from the `references/` directory.
 
-**Naming:** The GitHub repository is `backlog-campaign`; the installable skill id is **`bc-campaign`**. Always pass `--skill bc-campaign` — the repo slug alone does not select the skill when the repo exposes multiple skills or a non-default skill name.
+**Naming:** The GitHub repository is `backlog-campaign`; the installable skill id is **`blackhole`**. Always pass `--skill blackhole` — the repo slug alone does not select the skill when the repo exposes multiple skills or a non-default skill name.
 
 **Version pinning:** `CorentinLumineau/backlog-campaign@v0.4.0` or `@0.4.0` on the repo slug is **not supported** by the current `skills` CLI (v1.5.x). The CLI treats `@…` as a skill name, not a git ref or semver tag. To pin a release, check out a release tag in a fork/submodule or re-run `skills add` after upstream publishes; do not use `@version` syntax on the repo slug.
 
@@ -174,22 +174,22 @@ Examples:
 
 ```bash
 # Project (default)
-npx skills add CorentinLumineau/backlog-campaign --skill bc-campaign -y
+npx skills add CorentinLumineau/backlog-campaign --skill blackhole -y
 
 # Global
-npx skills add CorentinLumineau/backlog-campaign --skill bc-campaign -g -y
+npx skills add CorentinLumineau/backlog-campaign --skill blackhole -g -y
 ```
 
 ### Pathway D: Antigravity / Gemini Native
 
-The distribution `plugin.json` `name` is **`bc-campaign`** (same plugin id as Claude and Codex). The build output directory `.agents/build/` uses the repo slug for path layout — that folder name is not the plugin id.
+The distribution `plugin.json` `name` is **`blackhole`** (same plugin id as Claude and Codex). The build output directory `.agents/build/` uses the repo slug for path layout — that folder name is not the plugin id.
 
 `bun run build --gemini` compiles the Gemini/Antigravity workspace tree under `.agents/build/`.
 
 | Tree | Purpose | Contents |
 |------|---------|----------|
-| `.agents/build/` | Workspace customization (this repo or submodule) | `agents/` (5 bc-* prompts), `rules/`, `skills/bc-campaign/` |
-| `plugins/backlog-campaign/` | Redistributable Antigravity plugin bundle | `plugin.json`, `rules/`, `skills/bc-campaign/` — no `agents/` (AC4: not part of the plugin schema) |
+| `.agents/build/` | Workspace customization (this repo or submodule) | `agents/` (5 agent prompts), `rules/`, `skills/blackhole/` |
+| `plugins/blackhole/` | Redistributable Antigravity plugin bundle | `plugin.json`, `rules/`, `skills/blackhole/` — no `agents/` (AC4: not part of the plugin schema) |
 
 Ephemeral session handoff dirs (`.agents/orchestrator/`, `.agents/worker_*/`, etc.) share the `.agents/` parent but are gitignored and separate from the tracked `build/` compile tree.
 
@@ -197,24 +197,24 @@ Ephemeral session handoff dirs (`.agents/orchestrator/`, `.agents/worker_*/`, et
 ```bash
 bun run build --gemini
 ```
-Compiles `.agents/build/agents/`, `.agents/build/rules/`, and `.agents/build/skills/bc-campaign/`. The `agents/` directory holds compiled bc-* agent prompts for `@bc-coordinator` / Multitask Mode invocation; Antigravity does not require `agents/` in the official distribution bundle schema.
+Compiles `.agents/build/agents/`, `.agents/build/rules/`, and `.agents/build/skills/blackhole/`. The `agents/` directory holds compiled agent prompts for `@coordinator` / Multitask Mode invocation; Antigravity does not require `agents/` in the official distribution bundle schema.
 
 **Global / redistributable install (Antigravity plugin schema):**
 ```bash
 bun run build --gemini
-ln -s /path/to/backlog-campaign/plugins/backlog-campaign ~/.gemini/config/plugins/bc-campaign
+ln -s /path/to/backlog-campaign/plugins/blackhole ~/.gemini/config/plugins/blackhole
 ```
-Or copy `plugins/backlog-campaign/` to `~/.gemini/config/plugins/bc-campaign/`. The global path uses the plugin id (`bc-campaign`); the source folder keeps the repo-slug name. This tree is co-located per [Antigravity plugin docs](https://antigravity.google): `plugin.json` beside `skills/` and `rules/` — it deliberately has no `agents/` directory, since `agents/` is a workspace-only convention for `@bc-coordinator` / Multitask Mode invocation, not part of the Antigravity plugin schema.
+Or copy `plugins/blackhole/` to `~/.gemini/config/plugins/blackhole/`. The global path and the source folder both use the plugin id (`blackhole`). This tree is co-located per [Antigravity plugin docs](https://antigravity.google): `plugin.json` beside `skills/` and `rules/` — it deliberately has no `agents/` directory, since `agents/` is a workspace-only convention for `@coordinator` / Multitask Mode invocation, not part of the Antigravity plugin schema.
 
-**Breaking change (v0.4+):** If you previously symlinked to `~/.gemini/config/plugins/backlog-campaign`, remove that stale path and reinstall under `~/.gemini/config/plugins/bc-campaign` after upgrading.
+**Breaking change (v0.5+):** If you previously symlinked to `~/.gemini/config/plugins/bc-campaign` (or the older `~/.gemini/config/plugins/backlog-campaign`), remove that stale path and reinstall under `~/.gemini/config/plugins/blackhole` after upgrading.
 
 **Workspace plugin (other consumer repos):**
 ```bash
 # After build, symlink or copy the distribution bundle:
-ln -s /path/to/backlog-campaign/plugins/backlog-campaign .agents/plugins/backlog-campaign
+ln -s /path/to/backlog-campaign/plugins/blackhole .agents/plugins/blackhole
 ```
 
-For local development in this repo, prefer the full `.agents/build/` workspace tree (includes agent prompts). Use `plugins/backlog-campaign/` when packaging or installing globally. `.gemini-plugin/plugin.json` mirrors the distribution manifest for marketplace metadata only.
+For local development in this repo, prefer the full `.agents/build/` workspace tree (includes agent prompts). Use `plugins/blackhole/` when packaging or installing globally. `.gemini-plugin/plugin.json` mirrors the distribution manifest for marketplace metadata only.
 
 #### Identifiers: repo slug vs plugin id
 
@@ -223,9 +223,9 @@ For local development in this repo, prefer the full `.agents/build/` workspace t
 | GitHub repository | `CorentinLumineau/backlog-campaign` | Marketplace URLs, `gh`, CI, submodule remotes |
 | skills.sh / Pathway C | `npx skills add CorentinLumineau/backlog-campaign` | Registry tied to repo name |
 | Codex/Gemini `homepage` / `repository` / `websiteURL` | `…/backlog-campaign` | Points at actual repo URL |
-| Legacy global installs | `~/.gemini/config/plugins/backlog-campaign`, `~/.agents/skills/backlog-campaign` | Existing symlinks; `bun run doctor` may WARN (#35) |
+| Legacy global installs | `~/.gemini/config/plugins/bc-campaign`, `~/.agents/skills/backlog-campaign` | Existing symlinks from prior naming generations; `bun run doctor` may WARN |
 
-The **plugin id** (`bc-campaign`) is consistent across Claude, Codex, and Gemini manifests. The **repo slug** (`backlog-campaign`) remains for URLs and the distribution folder name until a dedicated path-migration issue.
+The **plugin id** (`blackhole`) is consistent across Claude, Codex, and Gemini manifests and now also matches the distribution folder name (`plugins/blackhole/`). The **repo slug** (`backlog-campaign`) remains only for GitHub/registry URLs.
 
 ### Pathway E: Codex CLI Native
 
@@ -236,10 +236,10 @@ Codex build outputs (`.codex-plugin/`, `codex-skills/`, `codex-agents/`, `codex-
 codex plugin marketplace add https://github.com/CorentinLumineau/backlog-campaign
 
 # 2. Install the plugin
-codex plugin add bc-campaign@bc-campaign-codex
+codex plugin add blackhole@blackhole-codex
 ```
 
-The marketplace URL uses the GitHub repo slug `backlog-campaign`; the installed plugin id is `bc-campaign`.
+The marketplace URL uses the GitHub repo slug `backlog-campaign`; the installed plugin id is `blackhole`.
 
 **Maintainers:** after editing `src/`, run `bun run build` (Codex is included by default) and commit any changed Codex outputs. Use `bun run build --no-codex` to skip Codex when iterating on other targets only.
 
@@ -266,7 +266,7 @@ Cursor, Claude, Gemini, Codex, the `skills.sh` global install, `~/.agents/skills
 symlinks. It never writes to disk — every check is an `fs.existsSync`/`lstatSync`/`readlinkSync`/
 `readdirSync` read. **The "Claude" row is a repo-local build-artifact proxy, not a true
 workstation-wide Claude install check**: it reports PASS when both `.claude-plugin/marketplace.json`
-and at least one `.claude/agents/bc-*.md` are present in this repo (i.e. `bun run build` has
+and at least one `.claude/agents/*.md` are present in this repo (i.e. `bun run build` has
 produced Claude-Code-consumable output here), PARTIAL when only one is present, and FAIL when
 neither is present — there is no documented on-disk state for a `/plugin marketplace add` +
 `/plugin install` install to check against.
@@ -277,7 +277,7 @@ neither is present — there is no documented on-disk state for a `/plugin marke
 |-------|---------|------|---------------|
 | **Source (authoring)** | `src/` | DRY source for agents, rules, references, playbooks | Edit `src/` directly |
 | **Build outputs** | `.cursor/`, `.claude/`, `skills/`, `codex-*`, `.agents/build/`, `.agents/build/`, etc. | Platform-specific compiled artifacts | `bun run build` — never hand-edit |
-| **Campaign runtime (protocol SSOT)** | `.bc-campaign/` (`queue.json`, `findings-ledger.json`, `config.json`, `plans/`) | Live campaign state; sole protocol SSOT | Mutate only per `bc-campaign-state.md` write protocol |
+| **Campaign runtime (protocol SSOT)** | `.blackhole/` (`queue.json`, `findings-ledger.json`, `config.json`, `plans/`) | Live campaign state; sole protocol SSOT | Mutate only per `blackhole-state.md` write protocol |
 | **Ephemeral handoff** | `.agents/orchestrator/`, `.agents/worker_*/`, `.agents/explorer_*/` | Per-session agent handoff; gitignored | Not protocol state — do not use for queue/ledger |
 
 Ephemeral handoff dirs share the `.agents/` parent with Gemini `build/` output (see [Pathway D: Antigravity / Gemini Native](#pathway-d-antigravity--gemini-native)) but are separate namespaces.

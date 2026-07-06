@@ -8,7 +8,7 @@ Optional: consumers may install the Cursor SubagentStop hook below for machine-e
 
 **Install:** Merge the `hooks` block from [`templates/hooks/subagent-stop-validate.json`](../../templates/hooks/subagent-stop-validate.json) into your project's `.cursor/hooks.json`. Requires `bun` on `PATH`; hook `command` paths are relative to the repo root.
 
-**Behavior:** On `subagentStop`, when the hook `matcher` hits `bc-planner`, `bc-implementer`, or `bc-reviewer`, Cursor runs `bun run scripts/validate-worker-json.ts --hook` with the stop payload on **stdin**. Non-zero exit blocks handoff (`failClosed: true`). Subagent stops with `status` `error` or `aborted`, or non-campaign subagents, pass through (exit `0`).
+**Behavior:** On `subagentStop`, when the hook `matcher` hits `planner`, `implementer`, or `reviewer`, Cursor runs `bun run scripts/validate-worker-json.ts --hook` with the stop payload on **stdin**. Non-zero exit blocks handoff (`failClosed: true`). Subagent stops with `status` `error` or `aborted`, or non-campaign subagents, pass through (exit `0`).
 
 **Extraction order:** Worker JSON is parsed from (1) a fenced ` ```json ` block in `summary`, (2) the last brace-balanced `{...}` object in `summary`, or (3) the tail of `agent_transcript_path` when readable.
 
@@ -29,7 +29,7 @@ jq -e '.status and .plan_path' handoff.json
 
 Fixture pairs for each role live under [`fixtures/worker-json/`](../../fixtures/worker-json/). Validator implementation: [`scripts/validate-worker-json.ts`](../../scripts/validate-worker-json.ts).
 
-## Planner (`bc-planner`)
+## Planner (`planner`)
 
 ```json
 {
@@ -60,13 +60,13 @@ When `status: blocked`, `failing_checks` lists failed items:
 - `clarification_limit` — at most 2 `[NEEDS CLARIFICATION]` markers
 - `base_commit` — `plan_base_commit` stamped in frontmatter
 
-## Implementer (`bc-implementer`)
+## Implementer (`implementer`)
 
 ```json
 {
   "status": "complete",
   "pr_number": 42,
-  "branch": "campaign/issue-298",
+  "branch": "blackhole/issue-298",
   "tests_passed": true,
   "touch_paths_honored": true,
   "new_findings": [],
@@ -84,7 +84,7 @@ When `status: blocked`, `failing_checks` lists failed items:
 | `new_findings` | finding[] | no |
 | `filed_issues` | number[] | no |
 
-## Reviewer (`bc-reviewer`)
+## Reviewer (`reviewer`)
 
 ```json
 {
@@ -125,7 +125,7 @@ When `status: blocked`, `failing_checks` lists failed items:
 
 ## Review aggregate (`scripts/review-aggregate.ts`)
 
-Orchestrator invokes after `bc-reviewer` completes. Not a worker agent — deterministic script output:
+Orchestrator invokes after `reviewer` completes. Not a worker agent — deterministic script output:
 
 ```json
 {

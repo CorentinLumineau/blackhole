@@ -6,7 +6,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 
 ```
 - [ ] queue.json: phase review
-- [ ] Spawn bc-reviewer to perform PR audit
+- [ ] Spawn reviewer to perform PR audit
 - [ ] Run scripts/review-aggregate.ts on reviewer JSON
 - [ ] Aggregate output → ledger append (phase: review)
 - [ ] BLOCK → increment review_iteration; back to phase implement (see review-core iteration budget)
@@ -19,15 +19,15 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 
 ## Review pipeline
 
-1. **Reviewer** — spawn `bc-reviewer` with PR diff, plan Touch-Paths, V-code checklist.
+1. **Reviewer** — spawn `reviewer` with PR diff, plan Touch-Paths, V-code checklist.
 2. **Aggregate** — orchestrator runs `scripts/review-aggregate.ts` with reviewer JSON + issue/PR context.
 3. **Orchestrator** — append aggregate `findings` to ledger; route by `lgtm` and iteration budget.
 
 ## Reviewer prompt must include
 
 - PR number + diff summary
-- Full V-code audit checklist from `references/bc-campaign-vcodes.md`
-- Model: use the designated worker agent (`bc-reviewer`)
+- Full V-code audit checklist from `references/blackhole-vcodes.md`
+- Model: use the designated worker agent (`reviewer`)
 - Output format: `worker-schemas.md` reviewer contract
 
 ## Audit Checklist Extensions

@@ -4,18 +4,21 @@ import * as path from 'path';
 import { spawnSync } from 'child_process';
 
 const root = path.resolve(import.meta.dirname, '..');
-const DEFAULT_CONFIG_PATH = '.bc-campaign/config.json';
+const DEFAULT_CONFIG_PATH = '.blackhole/config.json';
 
 export type CheckSeverity = 'BLOCK' | 'WARN';
 export type DoctorCheck = { id: string; severity: CheckSeverity; ok: boolean; detail?: string };
 
 export const EXPECTED_BC_AGENTS = [
-  'bc-coordinator.md',
-  'bc-orchestrator.md',
-  'bc-planner.md',
-  'bc-implementer.md',
-  'bc-reviewer.md',
+  'coordinator.md',
+  'orchestrator.md',
+  'planner.md',
+  'implementer.md',
+  'reviewer.md',
 ] as const;
+
+/** Stale skill directory names one and two generations back (DR-2, #64). */
+const LEGACY_SKILL_NAMES = ['bc-campaign', 'backlog-campaign'] as const;
 
 const REQUIRED_CONFIG_KEYS = ['repo', 'target_branch', 'forge'] as const;
 
@@ -49,7 +52,7 @@ export function checkCursorAgents(repoRoot: string): DoctorCheck {
 
   const bcAgents = fs
     .readdirSync(agentsDir)
-    .filter((f) => f.startsWith('bc-') && f.endsWith('.md'));
+    .filter((f) => (EXPECTED_BC_AGENTS as readonly string[]).includes(f));
 
   const missing = EXPECTED_BC_AGENTS.filter((name) => !bcAgents.includes(name));
   if (missing.length > 0) {
@@ -57,7 +60,7 @@ export function checkCursorAgents(repoRoot: string): DoctorCheck {
       id: 'D-AGENTS-01',
       severity: 'BLOCK',
       ok: false,
-      detail: `expected 5 bc-*.md agents, found ${bcAgents.length} — run \`bun run build\` (missing: ${missing.join(', ')})`,
+      detail: `expected 5 agent .md files, found ${bcAgents.length} — run \`bun run build\` (missing: ${missing.join(', ')})`,
     };
   }
 
@@ -70,14 +73,16 @@ export function shouldRunGhAuth(config: Record<string, unknown>): boolean {
 }
 
 export function checkStaleGlobalSkill(homeDir: string): DoctorCheck {
-  const stalePath = path.join(homeDir, '.agents', 'skills', 'backlog-campaign');
-  if (fs.existsSync(stalePath)) {
-    return {
-      id: 'D-SKILL-01',
-      severity: 'WARN',
-      ok: false,
-      detail: `stale skill at ${stalePath} — remove or migrate to bc-campaign`,
-    };
+  for (const name of LEGACY_SKILL_NAMES) {
+    const stalePath = path.join(homeDir, '.agents', 'skills', name);
+    if (fs.existsSync(stalePath)) {
+      return {
+        id: 'D-SKILL-01',
+        severity: 'WARN',
+        ok: false,
+        detail: `stale skill at ${stalePath} — remove or migrate to blackhole`,
+      };
+    }
   }
   return { id: 'D-SKILL-01', severity: 'WARN', ok: true };
 }
@@ -232,6 +237,8 @@ export function runDoctorChecks(repoRoot: string = root): DoctorCheck[] {
   const geminiPaths = [
     path.join(homeDir, '.gemini', 'config', 'plugins', 'backlog-campaign'),
     path.join(repoRoot, '.agents', 'plugins', 'backlog-campaign'),
+    path.join(homeDir, '.gemini', 'config', 'plugins', 'bc-campaign'),
+    path.join(repoRoot, '.agents', 'plugins', 'bc-campaign'),
   ];
   checks.push(...checkGeminiSymlinks(geminiPaths));
 
@@ -239,7 +246,7 @@ export function runDoctorChecks(repoRoot: string = root): DoctorCheck[] {
 }
 
 function main(): void {
-  console.log('bc-campaign doctor\n');
+  console.log('blackhole doctor\n');
 
   const checks = runDoctorChecks();
   let blockPassed = 0;

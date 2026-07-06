@@ -1,16 +1,16 @@
 # Ground Truth — Protocol Drift Detection
 
-Machine-verified canonical values for bc-campaign. `scripts/verify.ts` reads this file and fails on mismatch.
+Machine-verified canonical values for Blackhole. `scripts/verify.ts` reads this file and fails on mismatch.
 
 **Do not edit counts manually without updating the corresponding source files.**
 
 ## Agents
 
-| bc-coordinator | `src/agents/bc-coordinator.md` |
-| bc-orchestrator | `src/agents/bc-orchestrator.md` |
-| bc-planner | `src/agents/bc-planner.md` |
-| bc-implementer | `src/agents/bc-implementer.md` |
-| bc-reviewer | `src/agents/bc-reviewer.md` |
+| coordinator | `src/agents/coordinator.md` |
+| orchestrator | `src/agents/orchestrator.md` |
+| planner | `src/agents/planner.md` |
+| implementer | `src/agents/implementer.md` |
+| reviewer | `src/agents/reviewer.md` |
 
 **agent_count:** 5
 
@@ -36,7 +36,7 @@ Phase playbook files:
 
 ## V-codes
 
-Source: `src/references/bc-campaign-vcodes.md`
+Source: `src/references/blackhole-vcodes.md`
 
 **vcode_table_rows:** 27
 
@@ -59,10 +59,10 @@ Source: `src/references/bc-campaign-vcodes.md`
 | V-EPIC-01 | epic-orchestration.md exists and phase-handle links to it |
 | V-CHECKPOINT-01 | checkpoint template frontmatter keys align with orchestrator and phase-loop write order |
 | V-GEMINI-01 | Gemini build outputs complete; no stale platform conditionals |
-| V-GEMINI-02 | Gemini distribution bundle (plugins/backlog-campaign/) complete; co-located plugin.json, skills/, rules/, no agents/ |
+| V-GEMINI-02 | Gemini distribution bundle (plugins/blackhole/) complete; co-located plugin.json, skills/, rules/, no agents/ |
 | V-CODEX-01 | Codex build succeeds as part of default `bun run build` |
 | V-CODEX-02 | Codex plugin.json and marketplace validate against fixture baselines |
-| V-CODEX-03 | codex-skills/bc-campaign/SKILL.md with disable-model-invocation |
+| V-CODEX-03 | codex-skills/blackhole/SKILL.md with disable-model-invocation |
 | V-CODEX-04 | Five agent YAML files in codex-agents/ with instructions block |
 
 ## Config schema

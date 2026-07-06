@@ -8,21 +8,21 @@ orchestrator turn logs.
 
 ```bash
 bun run status
-# or: bun run scripts/campaign-status.ts --campaign-dir .bc-campaign
+# or: bun run scripts/campaign-status.ts --campaign-dir .blackhole
 ```
 
-Reads `.bc-campaign/config.json`, `queue.json`, `findings-ledger.json`,
+Reads `.blackhole/config.json`, `queue.json`, `findings-ledger.json`,
 `campaign-checkpoint.md`, and (when `gh` is available) scoped forge open counts.
 
 ## When to print (REQUIRED)
 
 | Event | Who | Action |
 |-------|-----|--------|
-| Campaign start (before spawning orchestrator) | `bc-coordinator` | Run `bun run status` → print **full** output to user |
-| Orchestrator background turn completes | `bc-coordinator` | Run `bun run status` → print **full** output, then resume orchestrator if work remains |
-| User asks `status` / `@bc-campaign status` | Coordinator or orchestrator | Run `bun run status` → print full output; do not spawn workers |
-| Intake files a GitHub issue | `bc-coordinator` | Print one line: `📋 Filed #N — <title> (milestone <M>)` then re-run status if campaign is active |
-| Orchestrator ends turn | `bc-orchestrator` | Ensure checkpoint written; coordinator prints dashboard on notification |
+| Campaign start (before spawning orchestrator) | `coordinator` | Run `bun run status` → print **full** output to user |
+| Orchestrator background turn completes | `coordinator` | Run `bun run status` → print **full** output, then resume orchestrator if work remains |
+| User asks `status` / `@blackhole status` | Coordinator or orchestrator | Run `bun run status` → print full output; do not spawn workers |
+| Intake files a GitHub issue | `coordinator` | Print one line: `📋 Filed #N — <title> (milestone <M>)` then re-run status if campaign is active |
+| Orchestrator ends turn | `orchestrator` | Ensure checkpoint written; coordinator prints dashboard on notification |
 
 **Do not** collapse the dashboard to a one-line confirmation. Users rely on the main
 chat for campaign overview.

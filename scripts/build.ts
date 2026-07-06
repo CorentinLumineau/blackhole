@@ -7,12 +7,12 @@ const srcDir = path.join(root, 'src');
 /** Gemini workspace compile output — separate from ephemeral handoff dirs under `.agents/`. */
 export const AGENTS_BUILD_ROOT = path.join('.agents', 'build');
 export const AGENTS_BUILD_AGENT_DIR = '.agents/build';
-export const AGENTS_BUILD_VCODES = '.agents/build/rules/bc-campaign-vcodes.md';
+export const AGENTS_BUILD_VCODES = '.agents/build/rules/blackhole-vcodes.md';
 
 /** Redistributable Antigravity plugin bundle — co-located plugin.json + skills/ + rules/, no agents/. */
-export const DISTRIBUTION_ROOT = path.join('plugins', 'backlog-campaign');
-export const DISTRIBUTION_AGENT_DIR = 'plugins/backlog-campaign';
-export const DISTRIBUTION_VCODES = 'plugins/backlog-campaign/rules/bc-campaign-vcodes.md';
+export const DISTRIBUTION_ROOT = path.join('plugins', 'blackhole');
+export const DISTRIBUTION_AGENT_DIR = 'plugins/blackhole';
+export const DISTRIBUTION_VCODES = 'plugins/blackhole/rules/blackhole-vcodes.md';
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
 const version = pkg.version;
 
@@ -122,18 +122,18 @@ export const applyPlatformConditionals = (content: string, target: Target): stri
 export const compileContent = (content: string, agentDir: string, rulesPath: string, target: Target): string => {
   let res = content;
   if (target === 'codex') {
-    res = res.replaceAll('{{AGENT_DIR}}/skills/bc-campaign/', 'codex-skills/bc-campaign/');
+    res = res.replaceAll('{{AGENT_DIR}}/skills/blackhole/', 'codex-skills/blackhole/');
   }
   if (agentDir === '') {
     // skills.sh root layout: flat references/ at repo root
-    res = res.replaceAll('{{AGENT_DIR}}/skills/bc-campaign/', '');
+    res = res.replaceAll('{{AGENT_DIR}}/skills/blackhole/', '');
     res = res.replaceAll('{{AGENT_DIR}}', '');
   } else {
     res = res.replaceAll('{{AGENT_DIR}}', agentDir);
   }
   res = res.replaceAll('{{VCODES_PATH}}', rulesPath);
   if (target === 'skills' && agentDir !== '') {
-    res = res.replaceAll('skills/bc-campaign/skills/bc-campaign/', 'skills/bc-campaign/');
+    res = res.replaceAll('skills/blackhole/skills/blackhole/', 'skills/blackhole/');
   }
   return res;
 };
@@ -206,20 +206,25 @@ const compileFolder = (srcSub: string, destParent: string, agentDir: string, rul
   }
 };
 
-const rulesList = ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md'];
+const rulesList = ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md'];
+
+/** The 5 agent files — bare names (no prefix) since the Blackhole rename (#64). */
+export const AGENT_NAMES = ['coordinator', 'orchestrator', 'planner', 'implementer', 'reviewer'] as const;
+export const AGENT_MD_FILES = new Set(AGENT_NAMES.map((n) => `${n}.md`));
+export const AGENT_YAML_FILES = new Set(AGENT_NAMES.map((n) => `${n}.yaml`));
 
 export const buildGeminiPluginManifest = (pkgVersion: string) => ({
   $schema: 'https://antigravity.google/schemas/v1/plugin.json',
-  name: 'bc-campaign',
+  name: 'blackhole',
   description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
   version: pkgVersion,
-  author: { name: 'bc-campaign contributors' },
+  author: { name: 'blackhole contributors' },
   license: 'Apache-2.0',
-  keywords: ['bc-campaign', 'gemini', 'native', 'workflows', 'skills'],
+  keywords: ['blackhole', 'gemini', 'native', 'workflows', 'skills'],
 });
 
 export const buildCodexPluginManifest = (pkgVersion: string) => ({
-  name: 'bc-campaign',
+  name: 'blackhole',
   version: pkgVersion,
   description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
   author: {
@@ -230,10 +235,10 @@ export const buildCodexPluginManifest = (pkgVersion: string) => ({
   homepage: 'https://github.com/CorentinLumineau/backlog-campaign',
   repository: 'https://github.com/CorentinLumineau/backlog-campaign',
   license: 'Apache-2.0',
-  keywords: ['backlog-campaign', 'codex', 'native', 'workflows', 'skills'],
+  keywords: ['blackhole', 'codex', 'native', 'workflows', 'skills'],
   skills: './codex-skills/',
   interface: {
-    displayName: 'Backlog Campaign',
+    displayName: 'Blackhole',
     shortDescription: 'Auto-solve your entire GitHub backlog',
     longDescription: 'Five-phase lifecycle: Handle → Plan → Implement → Review → Loop.',
     developerName: 'Corentin Lumineau',
@@ -250,11 +255,11 @@ export const buildCodexPluginManifest = (pkgVersion: string) => ({
 });
 
 export const buildCodexMarketplace = () => ({
-  name: 'bc-campaign-codex',
-  interface: { displayName: 'Backlog Campaign - Codex' },
+  name: 'blackhole-codex',
+  interface: { displayName: 'Blackhole - Codex' },
   plugins: [
     {
-      name: 'bc-campaign',
+      name: 'blackhole',
       source: {
         source: 'git',
         url: 'https://github.com/CorentinLumineau/backlog-campaign',
@@ -288,14 +293,14 @@ export const compileGeminiTree = (
   }
   processFile(
     path.join(srcDir, 'SKILL.md'),
-    path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md'),
+    path.join(destRoot, 'skills', 'blackhole', 'SKILL.md'),
     agentDir,
     rulesPath,
     'gemini'
   );
   compileFolder(
     'references',
-    path.join(destRoot, 'skills', 'bc-campaign', 'references'),
+    path.join(destRoot, 'skills', 'blackhole', 'references'),
     agentDir,
     rulesPath,
     'gemini'
@@ -314,7 +319,7 @@ const assertGeminiTree = (destRoot: string, label: string) => {
   const agentsDir = path.join(destRoot, 'agents');
   const rulesDir = path.join(destRoot, 'rules');
   const agentFiles = fs.existsSync(agentsDir)
-    ? fs.readdirSync(agentsDir).filter((f) => f.startsWith('bc-') && f.endsWith('.md'))
+    ? fs.readdirSync(agentsDir).filter((f) => AGENT_MD_FILES.has(f))
     : [];
   const ruleFiles = fs.existsSync(rulesDir)
     ? fs.readdirSync(rulesDir).filter((f) => rulesList.includes(f))
@@ -337,9 +342,9 @@ export const assertDistributionTree = (destRoot: string) => {
   if (ruleFiles.length < 3) {
     throw new Error(`Gemini distribution: expected 3 rules, got ${ruleFiles.length}`);
   }
-  const skillPath = path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md');
+  const skillPath = path.join(destRoot, 'skills', 'blackhole', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
-    throw new Error('Gemini distribution: missing skills/bc-campaign/SKILL.md');
+    throw new Error('Gemini distribution: missing skills/blackhole/SKILL.md');
   }
   const manifestPath = path.join(destRoot, 'plugin.json');
   if (!fs.existsSync(manifestPath)) {
@@ -351,7 +356,7 @@ export const compileCodexTree = (rootDir: string, agentDir: string, rulesPath: s
   compileFolder('agents', path.join(rootDir, 'codex-agents'), agentDir, rulesPath, 'codex', true);
   processFile(
     path.join(srcDir, 'SKILL.md'),
-    path.join(rootDir, 'codex-skills', 'bc-campaign', 'SKILL.md'),
+    path.join(rootDir, 'codex-skills', 'blackhole', 'SKILL.md'),
     agentDir,
     rulesPath,
     'codex',
@@ -361,7 +366,7 @@ export const compileCodexTree = (rootDir: string, agentDir: string, rulesPath: s
   );
   compileFolder(
     'references',
-    path.join(rootDir, 'codex-skills', 'bc-campaign', 'references'),
+    path.join(rootDir, 'codex-skills', 'blackhole', 'references'),
     agentDir,
     rulesPath,
     'codex'
@@ -371,7 +376,7 @@ export const compileCodexTree = (rootDir: string, agentDir: string, rulesPath: s
 const assertCodexTree = (rootDir: string) => {
   const agentsDir = path.join(rootDir, 'codex-agents');
   const agentFiles = fs.existsSync(agentsDir)
-    ? fs.readdirSync(agentsDir).filter((f) => f.startsWith('bc-') && f.endsWith('.yaml'))
+    ? fs.readdirSync(agentsDir).filter((f) => AGENT_YAML_FILES.has(f))
     : [];
   if (agentFiles.length !== 5) {
     throw new Error(`Codex: expected 5 agent YAML files, got ${agentFiles.length}`);
@@ -382,13 +387,13 @@ const assertCodexTree = (rootDir: string) => {
       throw new Error(`Codex: ${file} missing instructions block scalar`);
     }
   }
-  const skillPath = path.join(rootDir, 'codex-skills', 'bc-campaign', 'SKILL.md');
+  const skillPath = path.join(rootDir, 'codex-skills', 'blackhole', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
-    throw new Error('Codex: missing codex-skills/bc-campaign/SKILL.md');
+    throw new Error('Codex: missing codex-skills/blackhole/SKILL.md');
   }
-  const refsDir = path.join(rootDir, 'codex-skills', 'bc-campaign', 'references');
+  const refsDir = path.join(rootDir, 'codex-skills', 'blackhole', 'references');
   if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
-    throw new Error('Codex: missing or empty codex-skills/bc-campaign/references/');
+    throw new Error('Codex: missing or empty codex-skills/blackhole/references/');
   }
 };
 
@@ -424,25 +429,25 @@ processFile(
   path.join(srcDir, 'SKILL.md'),
   path.join(root, 'SKILL.md'),
   '',
-  'references/bc-campaign-vcodes.md',
+  'references/blackhole-vcodes.md',
   'skills'
 );
 compileFolder(
   'references',
   path.join(root, 'references'),
   '',
-  'references/bc-campaign-vcodes.md',
+  'references/blackhole-vcodes.md',
   'skills'
 );
 
 // 3. Compile Target B: Cursor (submodule root layout + .cursor/ mirror)
 console.log('Compiling Target B (Cursor)...');
 const cursorAgentDir = '.cursor';
-const cursorVcodesPath = '.cursor/rules/bc-campaign-vcodes.mdc';
+const cursorVcodesPath = '.cursor/rules/blackhole-vcodes.mdc';
 
 const writeCursorRules = (destDir: string) => {
   for (const rule of rulesList) {
-    const isVcodesMdc = rule === 'bc-campaign-vcodes.md';
+    const isVcodesMdc = rule === 'blackhole-vcodes.md';
     const destName = rule.substring(0, rule.length - 3) + '.mdc';
     processFile(
       path.join(srcDir, 'references', rule),
@@ -470,10 +475,10 @@ const copyMaintainerCursorRules = (destDir: string) => {
 copyMaintainerCursorRules(path.join(root, '.cursor', 'rules'));
 compileFolder('agents', path.join(root, 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor', true);
 compileFolder('agents', path.join(root, '.cursor', 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor', true);
-processFile(path.join(srcDir, 'SKILL.md'), path.join(root, 'skills', 'bc-campaign', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');
-processFile(path.join(srcDir, 'SKILL.md'), path.join(root, '.cursor', 'skills', 'bc-campaign', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');
-compileFolder('references', path.join(root, 'skills', 'bc-campaign', 'references'), cursorAgentDir, cursorVcodesPath, 'cursor');
-compileFolder('references', path.join(root, '.cursor', 'skills', 'bc-campaign', 'references'), cursorAgentDir, cursorVcodesPath, 'cursor');
+processFile(path.join(srcDir, 'SKILL.md'), path.join(root, 'skills', 'blackhole', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');
+processFile(path.join(srcDir, 'SKILL.md'), path.join(root, '.cursor', 'skills', 'blackhole', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');
+compileFolder('references', path.join(root, 'skills', 'blackhole', 'references'), cursorAgentDir, cursorVcodesPath, 'cursor');
+compileFolder('references', path.join(root, '.cursor', 'skills', 'blackhole', 'references'), cursorAgentDir, cursorVcodesPath, 'cursor');
 
 // 4. Compile Target C: Claude Project-Level Native (.claude/)
 console.log('Compiling Target C (Claude Project Native)...');
@@ -481,7 +486,7 @@ compileFolder(
   'agents',
   path.join(root, '.claude', 'agents'),
   '.claude',
-  '.claude/rules/bc-campaign-vcodes.md',
+  '.claude/rules/blackhole-vcodes.md',
   'claude',
   true
 );
@@ -490,22 +495,22 @@ for (const rule of rulesList) {
     path.join(srcDir, 'references', rule),
     path.join(root, '.claude', 'rules', rule),
     '.claude',
-    '.claude/rules/bc-campaign-vcodes.md',
+    '.claude/rules/blackhole-vcodes.md',
     'claude'
   );
 }
 processFile(
   path.join(srcDir, 'SKILL.md'),
-  path.join(root, '.claude', 'skills', 'bc-campaign', 'SKILL.md'),
+  path.join(root, '.claude', 'skills', 'blackhole', 'SKILL.md'),
   '.claude',
-  '.claude/rules/bc-campaign-vcodes.md',
+  '.claude/rules/blackhole-vcodes.md',
   'claude'
 );
 compileFolder(
   'references',
-  path.join(root, '.claude', 'skills', 'bc-campaign', 'references'),
+  path.join(root, '.claude', 'skills', 'blackhole', 'references'),
   '.claude',
-  '.claude/rules/bc-campaign-vcodes.md',
+  '.claude/rules/blackhole-vcodes.md',
   'claude'
 );
 
@@ -524,8 +529,8 @@ if (buildGemini) {
 
   // Distribution bundle: redistributable plugin co-located with skills/ and rules/, no agents/
   // (AC4). Independent write site from the detached manifest above — each block is deletable
-  // without breaking the other (see Grounding in .bc-campaign/plans/issue-27.md).
-  console.log('Compiling Target D2 (Gemini/Antigravity distribution bundle — plugins/backlog-campaign/)...');
+  // without breaking the other (see Grounding in .blackhole/plans/issue-27.md).
+  console.log('Compiling Target D2 (Gemini/Antigravity distribution bundle — plugins/blackhole/)...');
   const distributionRoot = path.join(root, DISTRIBUTION_ROOT);
   compileGeminiTree(distributionRoot, DISTRIBUTION_AGENT_DIR, DISTRIBUTION_VCODES, { includeAgents: false });
   writeGeminiManifest(path.join(distributionRoot, 'plugin.json'), geminiPluginMeta);
@@ -535,12 +540,12 @@ if (buildGemini) {
 // 6. Generate Claude Code Plugin Manifest (.claude-plugin/plugin.json)
 console.log('Generating Claude Code Plugin manifests...');
 const pluginMeta = {
-  name: 'bc-campaign',
+  name: 'blackhole',
   description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
   version,
-  author: { name: 'bc-campaign contributors' },
+  author: { name: 'blackhole contributors' },
   license: 'Apache-2.0',
-  keywords: ['bc-campaign', 'claude-code', 'native', 'workflows', 'skills'],
+  keywords: ['blackhole', 'claude-code', 'native', 'workflows', 'skills'],
 };
 const pluginDir = path.join(root, '.claude-plugin');
 if (!fs.existsSync(pluginDir)) fs.mkdirSync(pluginDir, { recursive: true });
@@ -548,8 +553,8 @@ fs.writeFileSync(path.join(pluginDir, 'plugin.json'), JSON.stringify(pluginMeta,
 
 // 8. Generate Claude Code Marketplace Catalog (.claude-plugin/marketplace.json)
 const marketplaceJson = {
-  name: 'bc-campaign-marketplace',
-  description: 'Backlog Campaign Marketplace',
+  name: 'blackhole-marketplace',
+  description: 'Blackhole Marketplace',
   owner: { name: 'CorentinLumineau' },
   plugins: [{ ...pluginMeta, source: '.' }],
 };
@@ -559,7 +564,7 @@ fs.writeFileSync(path.join(pluginDir, 'marketplace.json'), JSON.stringify(market
 if (buildCodex) {
   console.log('Compiling Target E (Codex CLI Support)...');
   const codexAgentDir = 'codex-skills';
-  const codexVcodesPath = 'codex-skills/bc-campaign/references/bc-campaign-vcodes.md';
+  const codexVcodesPath = 'codex-skills/blackhole/references/blackhole-vcodes.md';
   compileCodexTree(root, codexAgentDir, codexVcodesPath);
   assertCodexTree(root);
 

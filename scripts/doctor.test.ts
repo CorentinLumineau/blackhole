@@ -104,7 +104,7 @@ describe('checkStaleGlobalSkill', () => {
     expect(check.id).toBe('D-SKILL-01');
   });
 
-  test('warn when stale skill path exists', () => {
+  test('warn when stale skill path (backlog-campaign generation) exists', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-home-'));
     const skillDir = path.join(home, '.agents', 'skills', 'backlog-campaign');
     fs.mkdirSync(skillDir, { recursive: true });
@@ -112,7 +112,18 @@ describe('checkStaleGlobalSkill', () => {
     const check = checkStaleGlobalSkill(home);
     expect(check.ok).toBe(false);
     expect(check.severity).toBe('WARN');
-    expect(check.detail).toMatch(/bc-campaign/);
+    expect(check.detail).toMatch(/blackhole/);
+  });
+
+  test('warn when stale skill path (bc-campaign generation) exists', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-home-'));
+    const skillDir = path.join(home, '.agents', 'skills', 'bc-campaign');
+    fs.mkdirSync(skillDir, { recursive: true });
+
+    const check = checkStaleGlobalSkill(home);
+    expect(check.ok).toBe(false);
+    expect(check.severity).toBe('WARN');
+    expect(check.detail).toMatch(/blackhole/);
   });
 });
 

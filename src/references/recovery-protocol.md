@@ -8,9 +8,9 @@ See also: `phase-implement.md` (worktree naming), `queue-dag.md` (wave schedulin
 
 ## §1 Problem
 
-Campaign workers operate in isolated worktrees (`<scratchpad>/wt-<issue>` on branch `campaign/issue-<issue>`). When a session crashes, compacts, or an implementer edits outside touch-path scope, a single worktree may accumulate uncommitted changes or commits spanning **multiple** issues. That violates `V-BRANCH-02` (one issue per branch/worktree) and `V-SCOPE-02` (touch-path boundaries).
+Campaign workers operate in isolated worktrees (`<scratchpad>/wt-<issue>` on branch `blackhole/issue-<issue>`). When a session crashes, compacts, or an implementer edits outside touch-path scope, a single worktree may accumulate uncommitted changes or commits spanning **multiple** issues. That violates `V-BRANCH-02` (one issue per branch/worktree) and `V-SCOPE-02` (touch-path boundaries).
 
-Recovery must restore the **one-issue-per-worktree** invariant before any `bc-implementer` is (re)spawned.
+Recovery must restore the **one-issue-per-worktree** invariant before any `implementer` is (re)spawned.
 
 ---
 
@@ -37,7 +37,7 @@ Before choosing abort vs split vs cherry-pick, build a file→issue map:
 
 1. Collect dirty paths from `git status --porcelain` (and `git diff --name-only` for unstaged).
 2. For each in-flight issue `#N` in `queue.json`, load:
-   - `.bc-campaign/plans/issue-N.md` → `## Touch-Paths`
+   - `.blackhole/plans/issue-N.md` → `## Touch-Paths`
    - `queue.json` → `issues.*.touch_paths`
 3. Match each dirty file against globs (simple prefix/glob match). Prefer plan `## Touch-Paths` when present (more specific than queue globs).
 4. Build map: `{ issue: [files...] }` plus `unmapped: [files...]`.
@@ -53,7 +53,7 @@ When ambiguous overlaps occur (one file matches multiple issues), escalate to co
 |-----------|--------|
 | All dirty files map to **one** issue `#N` and worktree is `wt-N` | **Resume** — clean staging if needed, re-spawn implementer |
 | Dirty files map to **multiple** issues, changes are **uncommitted** only | **Split** — per-issue partial stash or `git add -p` by touch_paths; park non-target files in stash tagged `recovery-issue-<N>`; one issue at a time |
-| Dirty files map to multiple issues but include **commits** on wrong branch | **Cherry-pick** — identify commits per issue (`git log --oneline`), cherry-pick onto correct `campaign/issue-N` branches in correct worktrees |
+| Dirty files map to multiple issues but include **commits** on wrong branch | **Cherry-pick** — identify commits per issue (`git log --oneline`), cherry-pick onto correct `blackhole/issue-N` branches in correct worktrees |
 | Unmappable files, corrupted state, or wrong base branch | **Abort** — `git stash push -u -m "recovery-abort-wt-<issue> <ISO8601>"` or discard if user approves; `git worktree remove --force`; reset queue issue to `ready` / re-plan |
 | Worktree branch PR already merged | **Stale cleanup** — see Example (c); no cherry-pick |
 
@@ -63,16 +63,16 @@ Enforcement gates: `V-BRANCH-02`, `V-WORKTREE-01`, `V-SCOPE-02`.
 
 ## §5 Orchestrator checklist before re-spawning implementer
 
-After crash or compaction recovery, **complete this checklist** before spawning `bc-implementer`:
+After crash or compaction recovery, **complete this checklist** before spawning `implementer`:
 
 1. Complete `checkpoint-protocol.md` compaction steps (read checkpoint, forge sync, validate JSON).
 2. Run `git worktree prune` + `git fetch --prune` (`V-WORKTREE-01`).
 3. For each in-flight implement issue: run §2 detection.
 4. If dirty: execute §3 map + §4 decision tree — **do not spawn** until worktree matches single-issue scope.
-5. Confirm plan artifact exists at `{repo_root}/.bc-campaign/plans/issue-N.md` and planner returned `status: ready`.
+5. Confirm plan artifact exists at `{repo_root}/.blackhole/plans/issue-N.md` and planner returned `status: ready`.
 6. Confirm `queue.json`: `phase: implement`, `status: in-flight` or `ready` as appropriate.
 7. Log recovery action in `campaign-checkpoint.md` Notes (e.g. `Recovery: split stash wt-11 → #11 + #13`).
-8. Only then spawn `bc-implementer` with `<PLAN_CONTEXT>`.
+8. Only then spawn `implementer` with `<PLAN_CONTEXT>`.
 
 ---
 
@@ -80,9 +80,9 @@ After crash or compaction recovery, **complete this checklist** before spawning 
 
 ### (a) Plan missing
 
-Queue shows `#N` with `phase: implement` but `.bc-campaign/plans/issue-N.md` is absent.
+Queue shows `#N` with `phase: implement` but `.blackhole/plans/issue-N.md` is absent.
 
-**Action:** Do **not** spawn implementer. Set `phase: plan`, `status: ready`; spawn `bc-planner`. If worktree has dirty files, stash with `recovery-plan-missing-N` or abort worktree per §4.
+**Action:** Do **not** spawn implementer. Set `phase: plan`, `status: ready`; spawn `planner`. If worktree has dirty files, stash with `recovery-plan-missing-N` or abort worktree per §4.
 
 ### (b) Mixed-issue stash
 
@@ -99,7 +99,7 @@ Pop stash in the correct `wt-<issue>`; spawn implementers one wave at a time, re
 
 ### (c) Stale worktree after PR merge
 
-`gh pr view` shows PR for `campaign/issue-11` merged; `wt-11` still exists.
+`gh pr view` shows PR for `blackhole/issue-11` merged; `wt-11` still exists.
 
 **Action — Abort/cleanup:**
 
@@ -116,5 +116,5 @@ Prune branch; set queue `#11` `phase: done`. Do **not** cherry-pick unless unmer
 When abort vs split is non-obvious or data-loss risk exists:
 
 1. Set `status: blocked`, `notes: awaiting-recovery-approval` in `queue.json`.
-2. Delegate to `bc-coordinator` with the file map table from §3.
+2. Delegate to `coordinator` with the file map table from §3.
 3. Do not spawn implementer until coordinator clears the gate.

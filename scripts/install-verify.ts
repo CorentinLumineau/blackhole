@@ -7,6 +7,7 @@ import {
   checkStaleGlobalSkill,
   resolveSymlinkTarget,
 } from './doctor';
+import { AGENT_MD_FILES } from './build';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -20,7 +21,7 @@ const CODEX_ARTIFACTS = [
   'codex-marketplace.json',
 ] as const;
 
-const OWN_SYMLINK_NAME_PATTERN = /bc-campaign|backlog-campaign/;
+const OWN_SYMLINK_NAME_PATTERN = /blackhole|bc-campaign|backlog-campaign/;
 
 export function checkCursorRow(repoRoot: string): InstallCheck {
   const check = checkCursorAgents(repoRoot);
@@ -40,7 +41,7 @@ export function checkClaudeRow(repoRoot: string): InstallCheck {
   const agentsDir = path.join(repoRoot, '.claude', 'agents');
   const hasBcAgent =
     fs.existsSync(agentsDir) &&
-    fs.readdirSync(agentsDir).some((f) => f.startsWith('bc-') && f.endsWith('.md'));
+    fs.readdirSync(agentsDir).some((f) => AGENT_MD_FILES.has(f));
 
   if (hasMarketplace && hasBcAgent) return { platform: 'Claude', status: 'PASS', detail };
   if (hasMarketplace || hasBcAgent) return { platform: 'Claude', status: 'PARTIAL', detail };
@@ -48,19 +49,34 @@ export function checkClaudeRow(repoRoot: string): InstallCheck {
 }
 
 export function checkGeminiRow(homeDir: string): InstallCheck {
-  const currentPath = path.join(homeDir, '.gemini', 'config', 'plugins', 'bc-campaign');
-  const legacyPath = path.join(homeDir, '.gemini', 'config', 'plugins', 'backlog-campaign');
-  const [currentCheck, legacyCheck] = checkGeminiSymlinks([currentPath, legacyPath]);
+  const currentPath = path.join(homeDir, '.gemini', 'config', 'plugins', 'blackhole');
+  const legacyPathBc = path.join(homeDir, '.gemini', 'config', 'plugins', 'bc-campaign');
+  const legacyPathBacklog = path.join(homeDir, '.gemini', 'config', 'plugins', 'backlog-campaign');
+  const [currentCheck, legacyBcCheck, legacyBacklogCheck] = checkGeminiSymlinks([
+    currentPath,
+    legacyPathBc,
+    legacyPathBacklog,
+  ]);
 
   if (!currentCheck.ok) return { platform: 'Gemini', status: 'FAIL', detail: currentCheck.detail };
-  if (!legacyCheck.ok) return { platform: 'Gemini', status: 'FAIL', detail: legacyCheck.detail };
+  if (!legacyBcCheck.ok) return { platform: 'Gemini', status: 'FAIL', detail: legacyBcCheck.detail };
+  if (!legacyBacklogCheck.ok) {
+    return { platform: 'Gemini', status: 'FAIL', detail: legacyBacklogCheck.detail };
+  }
 
   if (fs.existsSync(currentPath)) return { platform: 'Gemini', status: 'PASS' };
-  if (fs.existsSync(legacyPath)) {
+  if (fs.existsSync(legacyPathBc)) {
     return {
       platform: 'Gemini',
       status: 'PARTIAL',
-      detail: `legacy path ${legacyPath} — migrate to bc-campaign naming`,
+      detail: `legacy path ${legacyPathBc} — migrate to blackhole naming`,
+    };
+  }
+  if (fs.existsSync(legacyPathBacklog)) {
+    return {
+      platform: 'Gemini',
+      status: 'PARTIAL',
+      detail: `legacy path ${legacyPathBacklog} — migrate to blackhole naming`,
     };
   }
   return { platform: 'Gemini', status: 'PASS', detail: 'not installed' };
@@ -85,7 +101,7 @@ export function checkCodexRow(repoRoot: string): InstallCheck {
 }
 
 export function checkSkillsShGlobalRow(homeDir: string): InstallCheck {
-  const currentDir = path.join(homeDir, '.agents', 'skills', 'bc-campaign');
+  const currentDir = path.join(homeDir, '.agents', 'skills', 'blackhole');
   if (fs.existsSync(currentDir)) return { platform: 'skills.sh (global)', status: 'PASS' };
 
   const legacyCheck = checkStaleGlobalSkill(homeDir);
@@ -145,7 +161,7 @@ export function checkBrokenSymlinksRow(scanDirs: string[]): InstallCheck {
     return {
       platform: 'Broken symlinks',
       status: 'FAIL',
-      detail: `broken bc-campaign symlink(s): ${ownBroken.join(', ')}`,
+      detail: `broken blackhole symlink(s): ${ownBroken.join(', ')}`,
     };
   }
   if (otherBroken.length > 0) {
@@ -189,7 +205,7 @@ function printRow(check: InstallCheck): void {
 }
 
 function main(): void {
-  console.log('bc-campaign install:verify\n');
+  console.log('blackhole install:verify\n');
 
   const homeDir = os.homedir();
   const checks = runInstallChecks(root, homeDir);

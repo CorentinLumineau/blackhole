@@ -4,14 +4,14 @@
 
 ```
 - [ ] queue entry: phase plan (from handle)
-- [ ] Spawn bc-planner to create Plan artifact → plans/<issue>.md or issue comment
+- [ ] Spawn planner to create Plan artifact → plans/<issue>.md or issue comment
 - [ ] Plan-time V-code scan → findings-ledger (phase: plan)
 - [ ] Out-of-scope → gh issue create + ledger deferred_to_issue
 - [ ] issue-splitting.md — if plan reveals multi-PR scope, split NOW
 - [ ] clarify-gates.md — AskQuestion if still ambiguous
 - [ ] User plan approval if scope was unclear or split occurred
 - [ ] Planner returns worker-schemas.md contract (`status`, `plan_path`, `failing_checks`)
-- [ ] Plan artifact exists: `{repo_root}/.bc-campaign/plans/issue-N.md`
+- [ ] Plan artifact exists: `{repo_root}/.blackhole/plans/issue-N.md`
 - [ ] Planner JSON `status: ready` — do NOT spawn implementer if `blocked`
 - [ ] queue.json: phase implement, status ready OR blocked (awaiting-plan-approval)
 ```

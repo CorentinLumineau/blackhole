@@ -1,20 +1,20 @@
-# Backlog Campaign
+# Blackhole
 
 Orchestrates issue implementation until the forge backlog is empty. Binding
-runbook: `references/bc-campaign-protocol.md`.
+runbook: `references/blackhole-protocol.md`.
 
 ## Entry (Multitask Mode)
 
 If the agent lacks a native long-running goal loop, use Multitask Mode (Pattern B) with a coordinator + background orchestrator:
 
-1. User talks to **`bc-coordinator`** agent (or attaches this skill in Multitask Mode)
-2. Coordinator runs Phase 0 → spawns **`bc-orchestrator`** in background
+1. User talks to **`coordinator`** agent (or attaches this skill in Multitask Mode)
+2. Coordinator runs Phase 0 → spawns **`orchestrator`** in background
 3. User feedback → coordinator **resumes** orchestrator (`interrupt: false`)
 
 Full flow: [multitask-mode.md](references/multitask-mode.md)
 Orchestrator spawn text: [campaign-prompt.md](references/campaign-prompt.md)
 
-Direct `/bc-campaign run` or `/goal` in a single session: act as orchestrator (legacy Pattern A) — still follow all phases below.
+Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (legacy Pattern A) — still follow all phases below.
 
 ## Modes
 
@@ -32,7 +32,7 @@ Direct `/bc-campaign run` or `/goal` in a single session: act as orchestrator (l
 
 **Native forge sync** — automatic, never AskQuestion to confirm.
 
-1. **Config** — `.bc-campaign/config.json` (from `config-template.md` in this repo)
+1. **Config** — `.blackhole/config.json` (from `config-template.md` in this repo)
 2. **State init** — `queue.json`, `findings-ledger.json`, `plans/`
 3. **Validate** — `jq empty` on both JSON files
 4. **Forge sync** — if `auto_sync` true (default): `gh auth status` then [forge-sync.md](references/forge-sync.md). Sandbox: `full_network`.
@@ -67,7 +67,7 @@ require `gh issue create` + `deferred_to_issue`.
 0. Auto-sync every turn
 1. Ready set → [queue-dag.md](references/queue-dag.md) — skip `blocked` (user gates)
 2. Per issue: handle → plan → **user gate if needed** → implement → review → loop
-3. Spawn workers via the designated agent files (`bc-planner`, `bc-implementer`, `bc-reviewer`), `run_in_background: true`, one turn per batch
+3. Spawn workers via the designated agent files (`planner`, `implementer`, `reviewer`), `run_in_background: true`, one turn per batch
 4. End turn; triage completions → ledger → next phase
 
 **Do not spawn implement** while `status: blocked` with
@@ -97,7 +97,7 @@ Read-only conformance check (`campaign-audit`):
 | F-code | Check |
 |--------|-------|
 | F-AGENT-01 | All agents in ground-truth exist in `src/agents/` |
-| F-AGENT-03 | Validate agent name prefix is bc- |
+| F-AGENT-03 | Validate agent frontmatter `name:` matches its filename |
 | F-PHASE-01 | Five phase playbooks present and named correctly |
 | F-VERIFY-01 | `bun run verify` passes |
 | F-SCHEMA-01 | Fixture JSON validates |
@@ -107,9 +107,9 @@ Do not modify code during audit — report only.
 
 ## Rules references
 
-- [bc-campaign-protocol.md](references/bc-campaign-protocol.md)
-- [bc-campaign-state.md](references/bc-campaign-state.md)
-- [bc-campaign-vcodes.md](references/bc-campaign-vcodes.md)
+- [blackhole-protocol.md](references/blackhole-protocol.md)
+- [blackhole-state.md](references/blackhole-state.md)
+- [blackhole-vcodes.md](references/blackhole-vcodes.md)
 
 ## User interaction
 

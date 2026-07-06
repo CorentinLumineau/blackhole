@@ -67,11 +67,17 @@ describe('extractWorkerJson', () => {
 });
 
 describe('resolveRole', () => {
-  test('maps subagent_type', () => {
-    expect(resolveRole({ subagent_type: 'bc-planner' })).toBe('planner');
-    expect(resolveRole({ subagent_type: 'bc-implementer' })).toBe('implementer');
-    expect(resolveRole({ subagent_type: 'bc-reviewer' })).toBe('reviewer');
+  test('maps bare subagent_type', () => {
+    expect(resolveRole({ subagent_type: 'planner' })).toBe('planner');
+    expect(resolveRole({ subagent_type: 'implementer' })).toBe('implementer');
+    expect(resolveRole({ subagent_type: 'reviewer' })).toBe('reviewer');
     expect(resolveRole({ subagent_type: 'bc-synthesizer' })).toBeNull();
+  });
+
+  test('maps plugin-scoped subagent_type', () => {
+    expect(resolveRole({ subagent_type: 'blackhole:planner' })).toBe('planner');
+    expect(resolveRole({ subagent_type: 'blackhole:implementer' })).toBe('implementer');
+    expect(resolveRole({ subagent_type: 'blackhole:reviewer' })).toBe('reviewer');
   });
 
   test('returns null for non-campaign subagents', () => {
@@ -80,8 +86,8 @@ describe('resolveRole', () => {
   });
 
   test('falls back to description/task text', () => {
-    expect(resolveRole({ description: 'bc-implementer for issue #18' })).toBe('implementer');
-    expect(resolveRole({ task: 'Run bc-reviewer on PR 42' })).toBe('reviewer');
+    expect(resolveRole({ description: 'implementer for issue #18' })).toBe('implementer');
+    expect(resolveRole({ task: 'Run reviewer on PR 42' })).toBe('reviewer');
   });
 });
 

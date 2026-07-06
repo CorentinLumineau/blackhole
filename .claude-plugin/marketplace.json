@@ -1,20 +1,20 @@
 {
-  "name": "bc-campaign-marketplace",
-  "description": "Backlog Campaign Marketplace",
+  "name": "blackhole-marketplace",
+  "description": "Blackhole Marketplace",
   "owner": {
     "name": "CorentinLumineau"
   },
   "plugins": [
     {
-      "name": "bc-campaign",
+      "name": "blackhole",
       "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
-      "version": "0.4.2",
+      "version": "0.5.0",
       "author": {
-        "name": "bc-campaign contributors"
+        "name": "blackhole contributors"
       },
       "license": "Apache-2.0",
       "keywords": [
-        "bc-campaign",
+        "blackhole",
         "claude-code",
         "native",
         "workflows",

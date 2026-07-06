@@ -30,7 +30,7 @@ confirm before syncing.
 | Session resume / handoff | Full sync |
 | Any agent using `queue.json` for scheduling | Sync first if `refreshed_at` older than current turn |
 
-When `.bc-campaign/config.json` has `auto_sync: false`, skip forge calls (offline only).
+When `.blackhole/config.json` has `auto_sync: false`, skip forge calls (offline only).
 
 **User-visible output:** only report material changes — e.g. `Synced: +2 new
 issues (#333, #334)`, closed issues merged, or drift fixed. No prompt.
@@ -48,7 +48,7 @@ only report that auth blocks sync.
 
 ### 1.5 Read campaign scope
 
-Read optional scope from `.bc-campaign/config.json` (or `CAMPAIGN_CONFIG` env override):
+Read optional scope from `.blackhole/config.json` (or `CAMPAIGN_CONFIG` env override):
 
 ```bash
 # Pseudocode — prefer bun helper
@@ -153,7 +153,7 @@ matching GitHub issue body so the next forge sync does not drop inferred deps.
 - After issue split sets child `depends_on`
 - After epic orchestration assigns child deps
 
-Skip when `.bc-campaign/config.json` has `auto_sync: false` (offline — queue-only).
+Skip when `.blackhole/config.json` has `auto_sync: false` (offline — queue-only).
 
 **Idempotent merge rules:**
 

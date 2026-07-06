@@ -1,19 +1,19 @@
-# bc-campaign — Claude Code
+# Blackhole — Claude Code
 
 ## Run the campaign
 
 ```bash
-/goal run bc-campaign until empty
+/goal run blackhole until empty
 ```
 
 ## Install the plugin
 
 ```bash
 /plugin marketplace add https://github.com/CorentinLumineau/backlog-campaign
-/plugin install bc-campaign@bc-campaign-marketplace
+/plugin install blackhole@blackhole-marketplace
 ```
 
 ## References
 
 - Agent roster and triggers: [AGENTS.md](AGENTS.md)
-- Skill entry: [.claude/skills/bc-campaign/SKILL.md](.claude/skills/bc-campaign/SKILL.md)
+- Skill entry: [.claude/skills/blackhole/SKILL.md](.claude/skills/blackhole/SKILL.md)

@@ -17,7 +17,7 @@ type CampaignConfig = {
   issue_labels?: { campaign?: string };
 };
 
-const DEFAULT_CONFIG_PATH = '.bc-campaign/config.json';
+const DEFAULT_CONFIG_PATH = '.blackhole/config.json';
 
 export function readScope(config: CampaignConfig): CampaignScope {
   const scope: CampaignScope = {};

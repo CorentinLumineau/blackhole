@@ -1,33 +1,33 @@
-# bc-campaign — Agent Roster & Quick Start
+# Blackhole — Agent Roster & Quick Start
 
 Quick reference for invoking the backlog campaign across agent platforms.
 
-Campaign protocol state (queue, ledger, plans) lives only under `.bc-campaign/` — see [bc-campaign-state.md](.cursor/skills/bc-campaign/references/bc-campaign-state.md).
+Campaign protocol state (queue, ledger, plans) lives only under `.blackhole/` — see [blackhole-state.md](.cursor/skills/blackhole/references/blackhole-state.md).
 
 ## Triggers
 
 | Command | Action |
 |---------|--------|
-| `/bc-campaign run` | Start or resume the campaign loop |
-| `@bc-campaign status` | Sync forge and show queue dashboard |
-| `@bc-coordinator run the campaign` | Multitask Mode entry (Cursor, Gemini) |
-| `/goal run bc-campaign until empty` | Native background loop (Claude Code, Codex CLI) |
+| `/blackhole run` | Start or resume the campaign loop |
+| `@blackhole status` | Sync forge and show queue dashboard |
+| `@coordinator run the campaign` | Multitask Mode entry (Cursor, Gemini) |
+| `/goal run blackhole until empty` | Native background loop (Claude Code, Codex CLI) |
 
 ## Skill namespace
 
-**`bc-campaign`** — modes: `run`, `status`, `handle`, `plan`, `implement`, `review`, `campaign-audit`
+**`blackhole`** — modes: `run`, `status`, `handle`, `plan`, `implement`, `review`, `campaign-audit`
 
-Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/bc-campaign/SKILL.md`](.cursor/skills/bc-campaign/SKILL.md) (Cursor), or [`codex-skills/bc-campaign/SKILL.md`](codex-skills/bc-campaign/SKILL.md) (Codex).
+Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/blackhole/SKILL.md`](.cursor/skills/blackhole/SKILL.md) (Cursor), or [`codex-skills/blackhole/SKILL.md`](codex-skills/blackhole/SKILL.md) (Codex).
 
 ## Agent roster
 
 | Agent | Role |
 |-------|------|
-| `bc-coordinator` | User intake, blocker routing, Multitask Mode entry |
-| `bc-orchestrator` | Five-phase loop, worker scheduling, forge sync |
-| `bc-planner` | Touch-paths, plan artifacts |
-| `bc-implementer` | TDD implementation in isolated worktrees |
-| `bc-reviewer` | PR quality and plan-conformance audit |
+| `coordinator` | User intake, blocker routing, Multitask Mode entry |
+| `orchestrator` | Five-phase loop, worker scheduling, forge sync |
+| `planner` | Touch-paths, plan artifacts |
+| `implementer` | TDD implementation in isolated worktrees |
+| `reviewer` | PR quality and plan-conformance audit |
 
 ## Installation
 

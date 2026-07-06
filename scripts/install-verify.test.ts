@@ -60,12 +60,12 @@ describe('checkCursorRow', () => {
 });
 
 describe('checkClaudeRow', () => {
-  test('PASS when both marketplace.json and a bc-*.md agent present', () => {
+  test('PASS when both marketplace.json and an agent .md file present', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'install-verify-claude-'));
     fs.mkdirSync(path.join(root, '.claude-plugin'), { recursive: true });
     fs.writeFileSync(path.join(root, '.claude-plugin', 'marketplace.json'), '{}');
     fs.mkdirSync(path.join(root, '.claude', 'agents'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.claude', 'agents', 'bc-coordinator.md'), '# agent\n');
+    fs.writeFileSync(path.join(root, '.claude', 'agents', 'coordinator.md'), '# agent\n');
 
     const check = checkClaudeRow(root);
     expect(check.status).toBe('PASS');
@@ -81,10 +81,10 @@ describe('checkClaudeRow', () => {
     expect(check.status).toBe('PARTIAL');
   });
 
-  test('PARTIAL when only a bc-*.md agent present', () => {
+  test('PARTIAL when only an agent .md file present', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'install-verify-claude-'));
     fs.mkdirSync(path.join(root, '.claude', 'agents'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.claude', 'agents', 'bc-reviewer.md'), '# agent\n');
+    fs.writeFileSync(path.join(root, '.claude', 'agents', 'reviewer.md'), '# agent\n');
 
     const check = checkClaudeRow(root);
     expect(check.status).toBe('PARTIAL');
@@ -104,13 +104,25 @@ describe('checkGeminiRow', () => {
     fs.mkdirSync(pluginsDir, { recursive: true });
     const target = path.join(home, 'target');
     fs.mkdirSync(target);
-    fs.symlinkSync(target, path.join(pluginsDir, 'bc-campaign'));
+    fs.symlinkSync(target, path.join(pluginsDir, 'blackhole'));
 
     const check = checkGeminiRow(home);
     expect(check.status).toBe('PASS');
   });
 
-  test('PARTIAL when only legacy-name symlink is valid', () => {
+  test('PARTIAL when only bc-campaign-generation legacy-name symlink is valid', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'install-verify-gemini-'));
+    const pluginsDir = path.join(home, '.gemini', 'config', 'plugins');
+    fs.mkdirSync(pluginsDir, { recursive: true });
+    const target = path.join(home, 'target');
+    fs.mkdirSync(target);
+    fs.symlinkSync(target, path.join(pluginsDir, 'bc-campaign'));
+
+    const check = checkGeminiRow(home);
+    expect(check.status).toBe('PARTIAL');
+  });
+
+  test('PARTIAL when only backlog-campaign-generation legacy-name symlink is valid', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'install-verify-gemini-'));
     const pluginsDir = path.join(home, '.gemini', 'config', 'plugins');
     fs.mkdirSync(pluginsDir, { recursive: true });
@@ -126,7 +138,7 @@ describe('checkGeminiRow', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'install-verify-gemini-'));
     const pluginsDir = path.join(home, '.gemini', 'config', 'plugins');
     fs.mkdirSync(pluginsDir, { recursive: true });
-    fs.symlinkSync(path.join(home, 'missing-target'), path.join(pluginsDir, 'bc-campaign'));
+    fs.symlinkSync(path.join(home, 'missing-target'), path.join(pluginsDir, 'blackhole'));
 
     const check = checkGeminiRow(home);
     expect(check.status).toBe('FAIL');
@@ -167,13 +179,21 @@ describe('checkCodexRow', () => {
 describe('checkSkillsShGlobalRow', () => {
   test('PASS when current-name dir present', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'install-verify-skillssh-'));
-    fs.mkdirSync(path.join(home, '.agents', 'skills', 'bc-campaign'), { recursive: true });
+    fs.mkdirSync(path.join(home, '.agents', 'skills', 'blackhole'), { recursive: true });
 
     const check = checkSkillsShGlobalRow(home);
     expect(check.status).toBe('PASS');
   });
 
-  test('PARTIAL when only legacy-name dir present', () => {
+  test('PARTIAL when only bc-campaign-generation legacy-name dir present', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'install-verify-skillssh-'));
+    fs.mkdirSync(path.join(home, '.agents', 'skills', 'bc-campaign'), { recursive: true });
+
+    const check = checkSkillsShGlobalRow(home);
+    expect(check.status).toBe('PARTIAL');
+  });
+
+  test('PARTIAL when only backlog-campaign-generation legacy-name dir present', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'install-verify-skillssh-'));
     fs.mkdirSync(path.join(home, '.agents', 'skills', 'backlog-campaign'), { recursive: true });
 

@@ -7,10 +7,10 @@
   "size_label_prefix": "size:",
   "default_touch_paths": ["src/**"],
   "issue_labels": {
-    "campaign": "campaign/backlog"
+    "campaign": "blackhole/backlog"
   },
   "scope_milestone": "v0.4.0",
-  "scope_labels": ["campaign/backlog"],
+  "scope_labels": ["blackhole/backlog"],
   "auto_sync": true,
   "entry_mode": "multitask"
 }

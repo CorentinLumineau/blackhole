@@ -31,7 +31,7 @@ flowchart LR
         O3[.claude/ + .claude-plugin/]
         O4[codex-agents/ codex-skills/<br/>.codex-plugin/ codex-marketplace.json]
         O5[".agents/build/ + .gemini-plugin/<br/>(bun run build --gemini)"]
-        O6["plugins/backlog-campaign/<br/>(bun run build --gemini)"]
+        O6["plugins/blackhole/<br/>(bun run build --gemini)"]
     end
 
     SRC --> BUILD --> O1
@@ -43,12 +43,12 @@ flowchart LR
 
     subgraph RUNTIME["Gitignored runtime — not build output"]
         direction TB
-        R1[`**.bc-campaign/** — protocol SSOT<br/>queue.json, findings-ledger.json,<br/>config.json, plans/`]
+        R1[`**.blackhole/** — protocol SSOT<br/>queue.json, findings-ledger.json,<br/>config.json, plans/`]
         R2[`**.agents/orchestrator/**<br/>**.agents/worker_*/**<br/>**.agents/explorer_*/**<br/>— ephemeral handoff, NOT SSOT`]
     end
 ```
 
-`RUNTIME` is intentionally drawn apart from `OUT`: nothing under `.bc-campaign/` or the
+`RUNTIME` is intentionally drawn apart from `OUT`: nothing under `.blackhole/` or the
 ephemeral `.agents/orchestrator|worker_*|explorer_*` handoff dirs is produced by
 `scripts/build.ts`, and neither is a build artifact you regenerate — they are live
 campaign state, gitignored, and governed by their own write protocol (see
@@ -65,8 +65,8 @@ should be hand-edited directly — changes made there are overwritten on the nex
 | `.cursor/` | Cursor | Cursor IDE agent/rules/skills loader | Edit via `src/` only — never hand-edit. |
 | `.claude/` + `.claude-plugin/` (`plugin.json`, `marketplace.json`) | Claude Code | Claude Code plugin + marketplace manifest | Edit via `src/` only — never hand-edit. |
 | `codex-agents/` + `codex-skills/` + `.codex-plugin/` + `codex-marketplace.json` | Codex CLI | Codex plugin + marketplace manifest | Edit via `src/` only — never hand-edit. |
-| `.agents/build/` + `.gemini-plugin/` | Antigravity / Gemini (workspace) | Workspace customization (`@bc-coordinator` / Multitask Mode); `.gemini-plugin/plugin.json` mirrors marketplace metadata | Edit via `src/` only — never hand-edit. |
-| `plugins/backlog-campaign/` | Antigravity / Gemini (distribution) | Redistributable plugin bundle — co-located `plugin.json` + `skills/` + `rules/`, no `agents/` (AC4: not part of the plugin schema) | Edit via `src/` only — never hand-edit. |
+| `.agents/build/` + `.gemini-plugin/` | Antigravity / Gemini (workspace) | Workspace customization (`@coordinator` / Multitask Mode); `.gemini-plugin/plugin.json` mirrors marketplace metadata | Edit via `src/` only — never hand-edit. |
+| `plugins/blackhole/` | Antigravity / Gemini (distribution) | Redistributable plugin bundle — co-located `plugin.json` + `skills/` + `rules/`, no `agents/` (AC4: not part of the plugin schema) | Edit via `src/` only — never hand-edit. |
 
 ## Build & verify
 
@@ -83,9 +83,9 @@ afterward — any drift between `src/` and a committed target tree blocks the PR
 ## Complementary docs
 
 This page maps the repo's files and build pipeline. It does not describe how the
-`.bc-campaign/` campaign runtime state is read or written — that is owned by
-[`src/references/bc-campaign-state.md`](../src/references/bc-campaign-state.md) (compiled
-to each platform's `references/bc-campaign-state.md`), and the agent roster/triggers
+`.blackhole/` campaign runtime state is read or written — that is owned by
+[`src/references/blackhole-state.md`](../src/references/blackhole-state.md) (compiled
+to each platform's `references/blackhole-state.md`), and the agent roster/triggers
 live in [`AGENTS.md`](../AGENTS.md). These three docs are complementary, not
-duplicates: this one is the map, `bc-campaign-state.md` is the runtime write protocol,
+duplicates: this one is the map, `blackhole-state.md` is the runtime write protocol,
 and `AGENTS.md` is the quick-start index.

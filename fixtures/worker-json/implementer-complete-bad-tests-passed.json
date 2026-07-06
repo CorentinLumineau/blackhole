@@ -1,7 +1,7 @@
 {
   "status": "complete",
   "pr_number": 42,
-  "branch": "campaign/issue-18",
+  "branch": "blackhole/issue-18",
   "tests_passed": "yes",
   "touch_paths_honored": true
 }

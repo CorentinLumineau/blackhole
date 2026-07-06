@@ -1,7 +1,7 @@
 # Campaign Prompt — spawn text for orchestrator
 
 Use this verbatim (fill session handoff if resuming) when the **coordinator**
-spawns or resumes the `bc-orchestrator` subagent.
+spawns or resumes the `orchestrator` subagent.
 {{#cursor}}
 Cursor has no `/goal` command — this prompt replaces it.
 {{/cursor}}
@@ -12,15 +12,15 @@ Use when not invoking the orchestrator via native `/goal`.
 Antigravity has no `/goal` command — this prompt replaces it when the coordinator spawns the background orchestrator.
 {{/gemini}}
 {{#codex}}
-Codex supports native `/goal run bc-campaign until empty` — use this prompt when the coordinator spawns the background orchestrator instead.
+Codex supports native `/goal run blackhole until empty` — use this prompt when the coordinator spawns the background orchestrator instead.
 {{/codex}}
 
 ```
 Implement ALL open issues on the forge until zero open issues and zero open
-PRs remain, following {{AGENT_DIR}}/skills/bc-campaign/SKILL.md (binding).
+PRs remain, following {{AGENT_DIR}}/skills/blackhole/SKILL.md (binding).
 
 Act as ORCHESTRATOR only:
-- Spawn bc-planner, bc-implementer, and bc-reviewer subagents for worker tasks
+- Spawn planner, implementer, and reviewer subagents for worker tasks
 - NEVER implement large features in your main loop
 - Review pipeline: reviewer → `scripts/review-aggregate.ts` → ledger
 - Parallel worktrees for non-overlapping issues (2–4 per batch)
@@ -40,7 +40,7 @@ Clarify and split (ALL issue sizes):
 
 ## PLAN_CONTEXT — convention preamble for worker spawns
 
-When the orchestrator spawns a `bc-implementer` or `bc-reviewer`
+When the orchestrator spawns a `implementer` or `reviewer`
 worker, it **must prepend** the following block (filled from the issue plan)
 before the worker's main prompt body:
 
@@ -57,14 +57,14 @@ Codebase Conventions (from plan § Conventions):
 </PLAN_CONTEXT>
 ```
 
-- `PLAN_ABSOLUTE_PATH`: absolute path to `{repo_root}/.bc-campaign/plans/issue-N.md`.
+- `PLAN_ABSOLUTE_PATH`: absolute path to `{repo_root}/.blackhole/plans/issue-N.md`.
   Implementers in worktrees MUST read the plan via this path — worktree cwd does
-  not contain `.bc-campaign/plans/`.
+  not contain `.blackhole/plans/`.
 - `TOUCH_PATHS`: the `touch_paths` array from `queue.json` for this issue (one path per line).
 - `CODEBASE_CONVENTIONS`: the `## Codebase Conventions` section verbatim from the plan file
   at `PLAN_ABSOLUTE_PATH`. If the section is absent, write `(none declared)`.
 
-**Not consumed by:** `bc-planner` (produces the plan)
+**Not consumed by:** `planner` (produces the plan)
 
 Workers treat `<PLAN_CONTEXT>` as binding. Implementers must not edit files
 outside `Touch-Paths`; reviewers audit against them (`V-SCOPE-02`).
@@ -75,33 +75,33 @@ outside `Touch-Paths`; reviewers audit against them (`V-SCOPE-02`).
 **First spawn (coordinator → orchestrator):**
 
 1. Spawn `Task` with `run_in_background: true`.
-2. **Attach** the orchestrator agent definition: `.cursor/agents/bc-orchestrator.md`
-   (built from `src/agents/bc-orchestrator.md`).
+2. **Attach** the orchestrator agent definition: `.cursor/agents/orchestrator.md`
+   (built from `src/agents/orchestrator.md`).
 3. Set `prompt` to the campaign-prompt body above (verbatim).
 4. Do **not** set `subagent_type` to a built-in enum (`generalPurpose`, `explore`,
-   `shell`, etc.) — that spawns a generic subagent without bc-campaign bindings.
+   `shell`, etc.) — that spawns a generic subagent without blackhole bindings.
 
-**Worker spawns (orchestrator → bc-planner / bc-implementer / bc-reviewer):**
+**Worker spawns (orchestrator → planner / implementer / reviewer):**
 
 Same rule: attach the matching `.cursor/agents/bc-<role>.md` file
-(`.cursor/agents/bc-planner.md`, `.cursor/agents/bc-implementer.md`,
-`.cursor/agents/bc-reviewer.md`). Do not substitute built-in `subagent_type`
+(`.cursor/agents/planner.md`, `.cursor/agents/implementer.md`,
+`.cursor/agents/reviewer.md`). Do not substitute built-in `subagent_type`
 enums or free-text role names without the agent file. Workers inherit the parent
-harness model (see `bc-orchestrator.md` § Worker spawn model).
+harness model (see `orchestrator.md` § Worker spawn model).
 
 **Mis-spawn hazard:**
 
-- Built-in `subagent_type` spawns a **generic** subagent without bc-campaign
+- Built-in `subagent_type` spawns a **generic** subagent without blackhole
   bindings (`SKILL.md`, V-codes, delegation contract, phase playbooks).
 - Coordinator mis-spawn: orchestrator may **implement directly** in the main loop,
   violating Pattern B role separation.
 - Orchestrator mis-spawn: workers skip planner gate, touch-path enforcement, and
   structured JSON return schemas (`worker-schemas.md`).
 - SubagentStop hook (`templates/hooks/subagent-stop-validate.json`) matches agent
-  **names** from attached files (`bc-planner`, etc.) — generic spawns bypass
+  **names** from attached files (`planner`, etc.) — generic spawns bypass
   validation.
 - Symptom checklist: subagent ignores Touch-Paths, writes outside
-  `.bc-campaign/plans/`, merges without review pipeline, or returns unstructured
+  `.blackhole/plans/`, merges without review pipeline, or returns unstructured
   prose instead of planner/implementer/reviewer JSON.
 
 **Resume (user feedback):**
@@ -112,24 +112,24 @@ prompt: <user message verbatim — do not re-paste full campaign prompt>
 
 **Resume (orchestrator completed/failed):**
 New spawn with campaign-prompt + filled SESSION_HANDOFF block (attach
-`.cursor/agents/bc-orchestrator.md` again — same pattern as first spawn).
+`.cursor/agents/orchestrator.md` again — same pattern as first spawn).
 {{/cursor}}
 {{#claude}}
-**First spawn:** invoke the `bc-orchestrator` agent in background with the campaign prompt above (or use `/goal` on that agent).
+**First spawn:** invoke the `orchestrator` agent in background with the campaign prompt above (or use `/goal` on that agent).
 
 **Resume (user feedback):** resume the orchestrator session with the user's message — do not re-paste the full campaign prompt.
 
 **Resume (orchestrator completed/failed):** spawn a fresh orchestrator with campaign-prompt + filled SESSION_HANDOFF block.
 {{/claude}}
 {{#skills}}
-**First spawn:** start the `bc-orchestrator` agent in background with the campaign prompt above.
+**First spawn:** start the `orchestrator` agent in background with the campaign prompt above.
 
 **Resume (user feedback):** send the user's message to the running orchestrator — do not re-paste the full campaign prompt.
 
 **Resume (orchestrator completed/failed):** spawn a fresh orchestrator with campaign-prompt + filled SESSION_HANDOFF block.
 {{/skills}}
 {{#gemini}}
-**First spawn:** invoke the `bc-orchestrator` agent in background with the campaign prompt above.
+**First spawn:** invoke the `orchestrator` agent in background with the campaign prompt above.
 
 **Resume (user feedback):** resume the orchestrator session with the user's message — do not re-paste the full campaign prompt.
 

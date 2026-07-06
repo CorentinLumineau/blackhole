@@ -13,11 +13,11 @@ pattern (e.g. `x-design` uses `disallowed-tools: Edit` only).
 
 | Agent | `disallowedTools` | Rationale |
 |-------|-------------------|-----------|
-| **bc-coordinator** | `Write, Edit, Delete` | Intake/routing only — never edits implementation files |
-| **bc-orchestrator** | `Write, Edit, Delete` | Coordinate only — spawn workers, mutate JSON state via Shell/jq, not source edits |
-| **bc-planner** | `Delete` | May write `plans/issue-N.md`; must not delete arbitrary repo files |
-| **bc-implementer** | *(none)* | Full implementation access — tests, git, gh, edits, new MCP tools |
-| **bc-reviewer** | `Write, Edit, Delete` | Read-only audit (`V-SCOPE` at review time) |
+| **coordinator** | `Write, Edit, Delete` | Intake/routing only — never edits implementation files |
+| **orchestrator** | `Write, Edit, Delete` | Coordinate only — spawn workers, mutate JSON state via Shell/jq, not source edits |
+| **planner** | `Delete` | May write `plans/issue-N.md`; must not delete arbitrary repo files |
+| **implementer** | *(none)* | Full implementation access — tests, git, gh, edits, new MCP tools |
+| **reviewer** | `Write, Edit, Delete` | Read-only audit (`V-SCOPE` at review time) |
 
 ## Not denied (inherits from platform)
 
@@ -35,7 +35,7 @@ not bake in a fixed model.
 
 ```yaml
 ---
-name: bc-coordinator
+name: coordinator
 description: ...
 permissionMode: default
 disallowedTools: [Write, Edit, Delete]
@@ -46,7 +46,7 @@ Implementer omits `disallowedTools` entirely (full access by design):
 
 ```yaml
 ---
-name: bc-implementer
+name: implementer
 description: ...
 permissionMode: default
 ---

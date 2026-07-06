@@ -23,11 +23,11 @@ describe('buildListArgs', () => {
   });
 
   test('milestone and labels', () => {
-    const args = buildListArgs({ milestone: 'v0.4.0', labels: ['campaign/backlog'] });
+    const args = buildListArgs({ milestone: 'v0.4.0', labels: ['blackhole/backlog'] });
     expect(args).toContain('--milestone');
     expect(args).toContain('v0.4.0');
     expect(args).toContain('--label');
-    expect(args).toContain('campaign/backlog');
+    expect(args).toContain('blackhole/backlog');
   });
 
   test('empty scope', () => {
@@ -68,8 +68,8 @@ describe('issueMatchesScope', () => {
   });
 
   test('milestone and labels combined', () => {
-    const scope = { milestone: 'v0.4.0', labels: ['campaign/backlog'] };
-    expect(issueMatchesScope(issue('v0.4.0', ['campaign/backlog']), scope)).toBe(true);
+    const scope = { milestone: 'v0.4.0', labels: ['blackhole/backlog'] };
+    expect(issueMatchesScope(issue('v0.4.0', ['blackhole/backlog']), scope)).toBe(true);
     expect(issueMatchesScope(issue('v0.4.0', []), scope)).toBe(false);
   });
 });
@@ -78,10 +78,10 @@ describe('readScope', () => {
   test('reads milestone and labels', () => {
     const scope = readScope({
       scope_milestone: 'v0.4.0',
-      scope_labels: ['campaign/backlog', 'size:m'],
+      scope_labels: ['blackhole/backlog', 'size:m'],
     });
     expect(scope.milestone).toBe('v0.4.0');
-    expect(scope.labels).toEqual(['campaign/backlog', 'size:m']);
+    expect(scope.labels).toEqual(['blackhole/backlog', 'size:m']);
   });
 
   test('empty scope_labels treated as unset', () => {

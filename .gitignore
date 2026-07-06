@@ -1,4 +1,5 @@
 node_modules/
+.blackhole/
 .bc-campaign/
 .DS_Store
 dist/

@@ -1,6 +1,6 @@
 {
-  "name": "bc-campaign",
-  "version": "0.4.2",
+  "name": "blackhole",
+  "version": "0.5.0",
   "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
   "author": {
     "name": "Corentin Lumineau",
@@ -11,7 +11,7 @@
   "repository": "https://github.com/CorentinLumineau/backlog-campaign",
   "license": "Apache-2.0",
   "keywords": [
-    "backlog-campaign",
+    "blackhole",
     "codex",
     "native",
     "workflows",
@@ -19,7 +19,7 @@
   ],
   "skills": "./codex-skills/",
   "interface": {
-    "displayName": "Backlog Campaign",
+    "displayName": "Blackhole",
     "shortDescription": "Auto-solve your entire GitHub backlog",
     "longDescription": "Five-phase lifecycle: Handle → Plan → Implement → Review → Loop.",
     "developerName": "Corentin Lumineau",

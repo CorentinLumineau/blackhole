@@ -6,9 +6,9 @@ Lightweight persistence for orchestrator crash/compaction recovery. Complements 
 
 | File | Purpose |
 |------|---------|
-| `.bc-campaign/queue.json` | Scheduling DAG (primary) |
-| `.bc-campaign/findings-ledger.json` | Findings SSOT (primary) |
-| `.bc-campaign/campaign-checkpoint.md` | Human-readable resume summary (**required when any queue issue is `in-flight`**) |
+| `.blackhole/queue.json` | Scheduling DAG (primary) |
+| `.blackhole/findings-ledger.json` | Findings SSOT (primary) |
+| `.blackhole/campaign-checkpoint.md` | Human-readable resume summary (**required when any queue issue is `in-flight`**) |
 
 ## Write order
 
@@ -28,7 +28,7 @@ Never write checkpoint before queue and ledger are valid (`jq empty` on both).
 
 ## Checkpoint template
 
-Path: `.bc-campaign/campaign-checkpoint.md`
+Path: `.blackhole/campaign-checkpoint.md`
 
 ```markdown
 ---
@@ -47,7 +47,7 @@ last_completed_phase: review
 
 ## In-flight workers
 
-- bc-reviewer on #298 PR 42 (spawned turn 12)
+- reviewer on #298 PR 42 (spawned turn 12)
 
 ## Ready set
 

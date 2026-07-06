@@ -1,11 +1,11 @@
 # Review Core — Shared Review Infrastructure
 
-Canonical definitions for review delegation, aggregation, iteration budgets, and gating. Referenced by `phase-review.md` and `bc-reviewer`.
+Canonical definitions for review delegation, aggregation, iteration budgets, and gating. Referenced by `phase-review.md` and `reviewer`.
 
 ## Review pipeline
 
 ```
-bc-reviewer (raw findings JSON)
+reviewer (raw findings JSON)
         ↓
 scripts/review-aggregate.ts (deterministic dedup, Pareto rank)
         ↓
@@ -29,7 +29,7 @@ Never merge on errored review — empty findings from a failed agent is not LGTM
 
 LGTM requires **all** of:
 
-1. `bc-reviewer` returned `status: "complete"` (not `error`)
+1. `reviewer` returned `status: "complete"` (not `error`)
 2. `scripts/review-aggregate.ts` returned `lgtm: true` and `blockers_count === 0`
 3. No unresolved BLOCK rows in ledger for this issue/PR
 
@@ -68,16 +68,16 @@ Reset `review_iteration` to 0 when PR merges or issue returns to plan phase.
 
 ## Reviewer prompt requirements
 
-Every `bc-reviewer` delegation MUST include:
+Every `reviewer` delegation MUST include:
 
 1. PR number + diff summary
 2. Plan Touch-Paths and schema baseline
-3. Full V-code audit checklist from `references/bc-campaign-vcodes.md`
+3. Full V-code audit checklist from `references/blackhole-vcodes.md`
 4. Output format per `worker-schemas.md` reviewer contract
 
 ## Aggregate invocation
 
-After `bc-reviewer` completes, the orchestrator runs:
+After `reviewer` completes, the orchestrator runs:
 
 ```bash
 bun run scripts/review-aggregate.ts \
@@ -95,4 +95,4 @@ Orchestrator may perform direct review for docs-only PRs, but must still run `re
 
 ## Revisit condition
 
-Re-introduce a dedicated aggregation agent only if bc-campaign adopts parallel multi-reviewer swarms (2+ independent reviewers per PR). See ADR-003.
+Re-introduce a dedicated aggregation agent only if blackhole adopts parallel multi-reviewer swarms (2+ independent reviewers per PR). See ADR-003.

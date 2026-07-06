@@ -18,13 +18,16 @@ const TRACKS = ['quick', 'standard'] as const;
 const SEVERITIES = ['BLOCK', 'WARN', 'INFO'] as const;
 
 const ROLE_FROM_TYPE: Record<string, Role> = {
-  'bc-planner': 'planner',
-  'bc-implementer': 'implementer',
-  'bc-reviewer': 'reviewer',
+  planner: 'planner',
+  implementer: 'implementer',
+  reviewer: 'reviewer',
+  'blackhole:planner': 'planner',
+  'blackhole:implementer': 'implementer',
+  'blackhole:reviewer': 'reviewer',
 };
 
 const ROLE_PATTERN =
-  /\bbc-(planner|implementer|reviewer)\b/i;
+  /\b(?:blackhole:)?(planner|implementer|reviewer)\b/i;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

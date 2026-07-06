@@ -7,9 +7,9 @@
 - [ ] Plan approved (or narrow technical waive documented)
 - [ ] queue.json: phase implement, status in-flight
 - [ ] git worktree prune (V-WORKTREE-01)
-- [ ] git worktree add <scratchpad>/wt-<issue> -b campaign/issue-<issue> origin/main (V-BRANCH-03)
+- [ ] git worktree add <scratchpad>/wt-<issue> -b blackhole/issue-<issue> origin/main (V-BRANCH-03)
 - [ ] install dependencies in worktree (e.g. `npm install`, `bun install`, etc.)
-- [ ] Spawn bc-implementer worker (run_in_background: true)
+- [ ] Spawn implementer worker (run_in_background: true)
 - [ ] Worker returns new_findings[] — orchestrator appends to ledger
 - [ ] File issues for unfixed discoveries
 - [ ] lint + test in worktree; prepare PR with Closes #N in body (V-GIT-01)
@@ -19,15 +19,15 @@
 
 ## Plan artifact paths (worktree rule)
 
-Plan artifacts live at `{repo_root}/.bc-campaign/plans/issue-N.md` — always
+Plan artifacts live at `{repo_root}/.blackhole/plans/issue-N.md` — always
 relative to the **main clone repo root**, not the worktree checkout.
 
 - Implementers run in isolated worktrees (`wt-<issue>`); the plan file is
   **not** in the worktree working directory.
 - Orchestrator MUST pass the plan file as an **absolute repo-root path** in
-  `<PLAN_CONTEXT>` (e.g. `/path/to/repo/.bc-campaign/plans/issue-11.md`).
+  `<PLAN_CONTEXT>` (e.g. `/path/to/repo/.blackhole/plans/issue-11.md`).
 - Implementers MUST read the plan via that absolute path — never assume a
-  relative `.bc-campaign/plans/` path resolves from the worktree cwd.
+  relative `.blackhole/plans/` path resolves from the worktree cwd.
 
 ## Worker prompt must include (5-Field Delegation Contract)
 
@@ -58,4 +58,4 @@ Build runs in **main clone** after merge prep (not in worktree).
 
 ## Recovery (mixed worktrees)
 
-When a worktree is dirty after crash, compaction, or mixed-issue edits, the orchestrator **must** complete the recovery checklist in [recovery-protocol.md](recovery-protocol.md) §5 before any `bc-implementer` (re)spawn — do not resume implementation until the worktree matches a single issue scope.
+When a worktree is dirty after crash, compaction, or mixed-issue edits, the orchestrator **must** complete the recovery checklist in [recovery-protocol.md](recovery-protocol.md) §5 before any `implementer` (re)spawn — do not resume implementation until the worktree matches a single issue scope.

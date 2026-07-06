@@ -5,11 +5,11 @@ import * as path from 'path';
 import { buildCodexPluginManifest, buildGeminiPluginManifest, compileGeminiTree, writeGeminiManifest } from './build.ts';
 import { detectBuildOutputDrift, evaluateBuildCheck, evaluateDistributionBundle } from './verify.ts';
 
-const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'bc-campaign-verify-test-'));
+const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-verify-test-'));
 
 describe('detectBuildOutputDrift', () => {
   test('returns [] for porcelain input with no build-output-pattern matches', () => {
-    const porcelain = ' M src/agents/bc-coordinator.md\n';
+    const porcelain = ' M src/agents/coordinator.md\n';
     expect(detectBuildOutputDrift(porcelain)).toEqual([]);
   });
 
@@ -32,10 +32,10 @@ describe('detectBuildOutputDrift', () => {
     expect(dirty).toContain(' M .gemini-plugin/plugin.json');
   });
 
-  test('flags dirty plugins/backlog-campaign/plugin.json the same way as .gemini-plugin/ (parity)', () => {
-    const porcelain = ' M plugins/backlog-campaign/plugin.json\n M .gemini-plugin/plugin.json\n';
+  test('flags dirty plugins/blackhole/plugin.json the same way as .gemini-plugin/ (parity)', () => {
+    const porcelain = ' M plugins/blackhole/plugin.json\n M .gemini-plugin/plugin.json\n';
     expect(detectBuildOutputDrift(porcelain)).toEqual([
-      ' M plugins/backlog-campaign/plugin.json',
+      ' M plugins/blackhole/plugin.json',
       ' M .gemini-plugin/plugin.json',
     ]);
   });
@@ -102,8 +102,8 @@ describe('evaluateDistributionBundle', () => {
   const populateFixtureTree = (destRoot: string) => {
     compileGeminiTree(
       destRoot,
-      'plugins/backlog-campaign',
-      'plugins/backlog-campaign/rules/bc-campaign-vcodes.md',
+      'plugins/blackhole',
+      'plugins/blackhole/rules/blackhole-vcodes.md',
       { includeAgents: false }
     );
     writeGeminiManifest(path.join(destRoot, 'plugin.json'), buildGeminiPluginManifest('1.0.0'));
@@ -135,19 +135,19 @@ describe('evaluateDistributionBundle', () => {
     const destRoot = makeTempDir();
     try {
       populateFixtureTree(destRoot);
-      fs.unlinkSync(path.join(destRoot, 'rules', 'bc-campaign-state.md'));
+      fs.unlinkSync(path.join(destRoot, 'rules', 'blackhole-state.md'));
       const errors = evaluateDistributionBundle(destRoot);
-      expect(errors.some((e) => e.includes('bc-campaign-state.md'))).toBe(true);
+      expect(errors.some((e) => e.includes('blackhole-state.md'))).toBe(true);
     } finally {
       fs.rmSync(destRoot, { recursive: true, force: true });
     }
   });
 
-  test('fails with a clear message when skills/bc-campaign/SKILL.md is missing', () => {
+  test('fails with a clear message when skills/blackhole/SKILL.md is missing', () => {
     const destRoot = makeTempDir();
     try {
       populateFixtureTree(destRoot);
-      fs.unlinkSync(path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md'));
+      fs.unlinkSync(path.join(destRoot, 'skills', 'blackhole', 'SKILL.md'));
       const errors = evaluateDistributionBundle(destRoot);
       expect(errors.some((e) => e.includes('SKILL.md'))).toBe(true);
     } finally {

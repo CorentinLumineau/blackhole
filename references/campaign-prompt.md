@@ -1,14 +1,14 @@
 # Campaign Prompt — spawn text for orchestrator
 
 Use this verbatim (fill session handoff if resuming) when the **coordinator**
-spawns or resumes the `bc-orchestrator` subagent.
+spawns or resumes the `orchestrator` subagent.
 
 ```
 Implement ALL open issues on the forge until zero open issues and zero open
 PRs remain, following SKILL.md (binding).
 
 Act as ORCHESTRATOR only:
-- Spawn bc-planner, bc-implementer, and bc-reviewer subagents for worker tasks
+- Spawn planner, implementer, and reviewer subagents for worker tasks
 - NEVER implement large features in your main loop
 - Review pipeline: reviewer → `scripts/review-aggregate.ts` → ledger
 - Parallel worktrees for non-overlapping issues (2–4 per batch)
@@ -28,7 +28,7 @@ Clarify and split (ALL issue sizes):
 
 ## PLAN_CONTEXT — convention preamble for worker spawns
 
-When the orchestrator spawns a `bc-implementer` or `bc-reviewer`
+When the orchestrator spawns a `implementer` or `reviewer`
 worker, it **must prepend** the following block (filled from the issue plan)
 before the worker's main prompt body:
 
@@ -45,14 +45,14 @@ Codebase Conventions (from plan § Conventions):
 </PLAN_CONTEXT>
 ```
 
-- `PLAN_ABSOLUTE_PATH`: absolute path to `{repo_root}/.bc-campaign/plans/issue-N.md`.
+- `PLAN_ABSOLUTE_PATH`: absolute path to `{repo_root}/.blackhole/plans/issue-N.md`.
   Implementers in worktrees MUST read the plan via this path — worktree cwd does
-  not contain `.bc-campaign/plans/`.
+  not contain `.blackhole/plans/`.
 - `TOUCH_PATHS`: the `touch_paths` array from `queue.json` for this issue (one path per line).
 - `CODEBASE_CONVENTIONS`: the `## Codebase Conventions` section verbatim from the plan file
   at `PLAN_ABSOLUTE_PATH`. If the section is absent, write `(none declared)`.
 
-**Not consumed by:** `bc-planner` (produces the plan)
+**Not consumed by:** `planner` (produces the plan)
 
 Workers treat `<PLAN_CONTEXT>` as binding. Implementers must not edit files
 outside `Touch-Paths`; reviewers audit against them (`V-SCOPE-02`).
@@ -60,7 +60,7 @@ outside `Touch-Paths`; reviewers audit against them (`V-SCOPE-02`).
 ## Coordinator usage
 
 
-**First spawn:** start the `bc-orchestrator` agent in background with the campaign prompt above.
+**First spawn:** start the `orchestrator` agent in background with the campaign prompt above.
 
 **Resume (user feedback):** send the user's message to the running orchestrator — do not re-paste the full campaign prompt.
 

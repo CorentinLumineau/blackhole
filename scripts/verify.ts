@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
-import { AGENTS_BUILD_ROOT, AGENTS_BUILD_AGENT_DIR, DISTRIBUTION_ROOT } from './build.ts';
+import { AGENTS_BUILD_ROOT, AGENTS_BUILD_AGENT_DIR, DISTRIBUTION_ROOT, AGENT_MD_FILES, AGENT_YAML_FILES } from './build.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const srcDir = path.join(root, 'src');
@@ -46,11 +46,11 @@ const checkAgentToolPolicy = () => {
   const errors: string[] = [];
 
   const denyMatrix: Record<string, string[] | null> = {
-    'bc-coordinator.md': ['Write', 'Edit', 'Delete'],
-    'bc-orchestrator.md': ['Write', 'Edit', 'Delete'],
-    'bc-planner.md': ['Delete'],
-    'bc-implementer.md': null,
-    'bc-reviewer.md': ['Write', 'Edit', 'Delete'],
+    'coordinator.md': ['Write', 'Edit', 'Delete'],
+    'orchestrator.md': ['Write', 'Edit', 'Delete'],
+    'planner.md': ['Delete'],
+    'implementer.md': null,
+    'reviewer.md': ['Write', 'Edit', 'Delete'],
   };
 
   for (const file of files) {
@@ -110,7 +110,7 @@ const checkAgentFrontmatter = () => {
 
 // V-DELEG-01: Worker agents declare contract sections
 const checkDelegationContracts = () => {
-  const workers = ['bc-planner.md', 'bc-implementer.md'];
+  const workers = ['planner.md', 'implementer.md'];
   const missing: string[] = [];
 
   for (const file of workers) {
@@ -120,7 +120,7 @@ const checkDelegationContracts = () => {
     }
   }
 
-  const outputAgents = ['bc-reviewer.md', 'bc-planner.md', 'bc-implementer.md'];
+  const outputAgents = ['reviewer.md', 'planner.md', 'implementer.md'];
   for (const file of outputAgents) {
     const content = read(`src/agents/${file}`);
     if (!/worker-schemas|Output format|Return format/i.test(content)) {
@@ -128,9 +128,9 @@ const checkDelegationContracts = () => {
     }
   }
 
-  const orch = read('src/agents/bc-orchestrator.md');
+  const orch = read('src/agents/orchestrator.md');
   if (!orch.includes('5-Field Delegation Contract')) {
-    missing.push('bc-orchestrator.md: no 5-field section');
+    missing.push('orchestrator.md: no 5-field section');
   }
 
   if (missing.length) fail('V-DELEG-01', missing.join('; '));
@@ -160,7 +160,7 @@ const checkPhaseNames = () => {
 
 // V-VCODE-01: V-codes referenced in agents or phases
 const checkVcodeReferences = () => {
-  const vcodesContent = read('src/references/bc-campaign-vcodes.md');
+  const vcodesContent = read('src/references/blackhole-vcodes.md');
   const codeMatches = [...vcodesContent.matchAll(/\| (V-[A-Z]+-\d+)/g)];
   const codes = new Set(codeMatches.map((m) => m[1]));
 
@@ -331,7 +331,7 @@ const walkMdFiles = (dir: string): string[] => {
 };
 
 // Shared plugin-tree shape validation used by both the workspace tree (V-GEMINI-01) and the
-// distribution bundle (V-GEMINI-02): rules/, skills/bc-campaign/{SKILL.md,references/}, plugin.json.
+// distribution bundle (V-GEMINI-02): rules/, skills/blackhole/{SKILL.md,references/}, plugin.json.
 // treeRoot and manifestPath are passed separately because V-GEMINI-01's manifest lives in a
 // detached directory (.gemini-plugin/) while its rules/skills live under AGENTS_BUILD_ROOT —
 // V-GEMINI-02's distribution bundle co-locates all of them under one destRoot.
@@ -342,20 +342,20 @@ const validatePluginTreeShape = (
 ): string[] => {
   const errors: string[] = [];
 
-  for (const rule of ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md']) {
+  for (const rule of ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md']) {
     if (!fs.existsSync(path.join(treeRoot, 'rules', rule))) {
       errors.push(`missing ${labels.treePrefix}rules/${rule}`);
     }
   }
 
-  const skillPath = path.join(treeRoot, 'skills', 'bc-campaign', 'SKILL.md');
+  const skillPath = path.join(treeRoot, 'skills', 'blackhole', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
-    errors.push(`missing ${labels.treePrefix}skills/bc-campaign/SKILL.md`);
+    errors.push(`missing ${labels.treePrefix}skills/blackhole/SKILL.md`);
   }
 
-  const refsDir = path.join(treeRoot, 'skills', 'bc-campaign', 'references');
+  const refsDir = path.join(treeRoot, 'skills', 'blackhole', 'references');
   if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
-    errors.push(`missing or empty ${labels.treePrefix}skills/bc-campaign/references/`);
+    errors.push(`missing or empty ${labels.treePrefix}skills/blackhole/references/`);
   }
 
   if (!fs.existsSync(manifestPath)) {
@@ -397,10 +397,10 @@ const checkGeminiBuild = () => {
   }
 
   const workspaceAgents = listFiles(path.join(AGENTS_BUILD_ROOT, 'agents'));
-  const bcAgents = workspaceAgents.filter((f) => f.startsWith('bc-'));
+  const agentFiles = workspaceAgents.filter((f) => AGENT_MD_FILES.has(f));
   const errors: string[] = [];
-  if (bcAgents.length !== 5) {
-    errors.push(`${AGENTS_BUILD_AGENT_DIR}/agents: expected 5 bc-*.md, got ${bcAgents.length}`);
+  if (agentFiles.length !== 5) {
+    errors.push(`${AGENTS_BUILD_AGENT_DIR}/agents: expected 5 agent .md files, got ${agentFiles.length}`);
   }
 
   errors.push(
@@ -418,17 +418,17 @@ const checkGeminiBuild = () => {
     }
   }
 
-  const protocol = read(path.join(AGENTS_BUILD_ROOT, 'rules', 'bc-campaign-protocol.md'));
+  const protocol = read(path.join(AGENTS_BUILD_ROOT, 'rules', 'blackhole-protocol.md'));
   const entryMatch = protocol.match(/## Entry\n([\s\S]*?)\n## Five phases/);
-  if (!entryMatch || !/Multitask|bc-coordinator/i.test(entryMatch[1])) {
-    errors.push('bc-campaign-protocol.md Entry section missing Multitask/gemini content');
+  if (!entryMatch || !/Multitask|coordinator/i.test(entryMatch[1])) {
+    errors.push('blackhole-protocol.md Entry section missing Multitask/gemini content');
   }
 
   if (errors.length) fail('V-GEMINI-01', errors.join('; '));
   else pass('V-GEMINI-01');
 };
 
-// V-GEMINI-02: Gemini/Antigravity distribution bundle (plugins/backlog-campaign/) shape check —
+// V-GEMINI-02: Gemini/Antigravity distribution bundle (plugins/blackhole/) shape check —
 // independent from V-GEMINI-01's workspace-tree assertions (see build.ts assertDistributionTree).
 export const evaluateDistributionBundle = (destRoot: string): string[] => {
   const errors = validatePluginTreeShape(destRoot, path.join(destRoot, 'plugin.json'), {
@@ -507,9 +507,9 @@ const checkCodexBuild = () => {
   if (manifestErrors.length) fail('V-CODEX-02', manifestErrors.join('; '));
   else pass('V-CODEX-02');
 
-  const skillPath = path.join(root, 'codex-skills', 'bc-campaign', 'SKILL.md');
+  const skillPath = path.join(root, 'codex-skills', 'blackhole', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
-    fail('V-CODEX-03', 'missing codex-skills/bc-campaign/SKILL.md');
+    fail('V-CODEX-03', 'missing codex-skills/blackhole/SKILL.md');
   } else {
     const skill = fs.readFileSync(skillPath, 'utf-8');
     if (!skill.includes('disable-model-invocation: true')) {
@@ -521,11 +521,11 @@ const checkCodexBuild = () => {
 
   const agentsDir = path.join(root, 'codex-agents');
   const agentFiles = fs.existsSync(agentsDir)
-    ? fs.readdirSync(agentsDir).filter((f) => f.startsWith('bc-') && f.endsWith('.yaml'))
+    ? fs.readdirSync(agentsDir).filter((f) => AGENT_YAML_FILES.has(f))
     : [];
   const agentErrors: string[] = [];
   if (agentFiles.length !== 5) {
-    agentErrors.push(`expected 5 bc-*.yaml agents, got ${agentFiles.length}`);
+    agentErrors.push(`expected 5 agent .yaml files, got ${agentFiles.length}`);
   }
   const yamlScalar = (content: string, field: string): string | null => {
     const m = content.match(new RegExp(`^${field}:\\s*(.+)$`, 'm'));
@@ -603,7 +603,7 @@ const checkGroundTruth = () => {
     errors.push(`phase_playbook_count: expected ${gt.phase_playbook_count}, got ${phaseCount}`);
   }
 
-  const vcodes = read('src/references/bc-campaign-vcodes.md');
+  const vcodes = read('src/references/blackhole-vcodes.md');
   const vcodeRows = (vcodes.match(/^\| V-/gm) || []).length;
   if (gt.vcode_table_rows !== vcodeRows) {
     errors.push(`vcode_table_rows: expected ${gt.vcode_table_rows}, got ${vcodeRows}`);
@@ -657,7 +657,7 @@ export const extractCheckpointTemplateKeys = (content: string): string[] => {
 const checkCheckpointAlignment = () => {
   const requiredKeys = ['refreshed_at', 'orchestrator_turn_id', 'last_completed_phase'];
   const protocol = read('src/references/checkpoint-protocol.md');
-  const orchestrator = read('src/agents/bc-orchestrator.md');
+  const orchestrator = read('src/agents/orchestrator.md');
   const phaseLoop = read('src/references/phase-loop.md');
   const errors: string[] = [];
 
@@ -667,10 +667,10 @@ const checkCheckpointAlignment = () => {
   }
 
   if (!orchestrator.includes('checkpoint-protocol.md')) {
-    errors.push('bc-orchestrator.md missing checkpoint-protocol.md reference');
+    errors.push('orchestrator.md missing checkpoint-protocol.md reference');
   }
   if (!orchestrator.includes('orchestrator_turn_id')) {
-    errors.push('bc-orchestrator.md missing orchestrator_turn_id');
+    errors.push('orchestrator.md missing orchestrator_turn_id');
   }
   const writeOrder =
     orchestrator.includes('queue.json') &&
@@ -679,7 +679,7 @@ const checkCheckpointAlignment = () => {
   const orderedWrite =
     /queue\.json\s*→\s*findings-ledger\.json\s*→\s*campaign-checkpoint\.md/.test(orchestrator);
   if (!writeOrder || !orderedWrite) {
-    errors.push('bc-orchestrator.md missing ordered queue.json → findings-ledger.json → campaign-checkpoint.md');
+    errors.push('orchestrator.md missing ordered queue.json → findings-ledger.json → campaign-checkpoint.md');
   }
 
   const phaseWriteOrder =
@@ -773,7 +773,7 @@ const checkBuild = () => {
 };
 
 const main = () => {
-  console.log('bc-campaign verify\n');
+  console.log('blackhole verify\n');
 
   checkAgentToolPolicy();
   checkAgentFrontmatter();

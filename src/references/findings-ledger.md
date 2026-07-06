@@ -1,6 +1,6 @@
 # Findings Ledger — Schema + Write Protocol
 
-Path: `.bc-campaign/findings-ledger.json` (gitignored at runtime).
+Path: `.blackhole/findings-ledger.json` (gitignored at runtime).
 
 ## Schema
 
@@ -62,7 +62,7 @@ deferred → resolved    (when deferred issue merges — optional cleanup)
 2. **Validate** before any read-dependent step:
 
 ```bash
-jq empty .bc-campaign/findings-ledger.json
+jq empty .blackhole/findings-ledger.json
 ```
 
 3. **Dedup** before append — key `(vcode, file, line, issue_ref)`:
@@ -70,7 +70,7 @@ jq empty .bc-campaign/findings-ledger.json
 ```bash
 jq --arg v "V-DRY-01" --arg f "lib/foo.ts" --argjson l 42 --argjson i 298 \
   'any(.findings[]; .vcode == $v and .file == $f and .line == $l and .issue_ref == $i)' \
-  .bc-campaign/findings-ledger.json
+  .blackhole/findings-ledger.json
 ```
 
 If `true`, skip append.
@@ -80,8 +80,8 @@ If `true`, skip append.
 ```bash
 # Pseudocode: orchestrator builds JSON patch, writes via jq
 jq '.findings += [$new] | .next_id += 1 | .refreshed_at = (now | todate)' \
-  .bc-campaign/findings-ledger.json > .bc-campaign/findings-ledger.json.tmp \
-  && mv .bc-campaign/findings-ledger.json.tmp .bc-campaign/findings-ledger.json
+  .blackhole/findings-ledger.json > .blackhole/findings-ledger.json.tmp \
+  && mv .blackhole/findings-ledger.json.tmp .blackhole/findings-ledger.json
 ```
 
 5. **Deferral** — never set `status: deferred` without filing issue first:
@@ -93,7 +93,7 @@ gh issue create --title "..." --body "..." \
 ```
 
 6. **Archival** — when `resolved` count exceeds 200, move to
-   `.bc-campaign/archive/findings-<timestamp>.json` and prune from
+   `.blackhole/archive/findings-<timestamp>.json` and prune from
    active ledger (keep `open` and `deferred`).
 
 ## Binding obligations

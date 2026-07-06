@@ -18,7 +18,7 @@ import {
 
 const root = path.resolve(import.meta.dirname, '..');
 
-const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'bc-campaign-build-test-'));
+const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-build-test-'));
 
 describe('applyPlatformConditionals', () => {
   test('gemini keeps gemini body and removes cursor/claude/skills', () => {
@@ -56,12 +56,12 @@ describe('compileContent', () => {
   test('substitutes AGENT_DIR and VCODES_PATH for distribution layout', () => {
     const result = compileContent(
       'dir={{AGENT_DIR}} vcodes={{VCODES_PATH}}',
-      'plugins/backlog-campaign',
-      'plugins/backlog-campaign/rules/bc-campaign-vcodes.md',
+      'plugins/blackhole',
+      'plugins/blackhole/rules/blackhole-vcodes.md',
       'gemini'
     );
     expect(result).toBe(
-      'dir=plugins/backlog-campaign vcodes=plugins/backlog-campaign/rules/bc-campaign-vcodes.md'
+      'dir=plugins/blackhole vcodes=plugins/blackhole/rules/blackhole-vcodes.md'
     );
   });
 
@@ -69,10 +69,10 @@ describe('compileContent', () => {
     const result = compileContent(
       'dir={{AGENT_DIR}} vcodes={{VCODES_PATH}}',
       '.agents/build',
-      '.agents/build/rules/bc-campaign-vcodes.md',
+      '.agents/build/rules/blackhole-vcodes.md',
       'gemini'
     );
-    expect(result).toBe('dir=.agents/build vcodes=.agents/build/rules/bc-campaign-vcodes.md');
+    expect(result).toBe('dir=.agents/build vcodes=.agents/build/rules/blackhole-vcodes.md');
   });
 });
 
@@ -80,9 +80,9 @@ describe('buildGeminiPluginManifest', () => {
   test('includes required Antigravity schema fields', () => {
     const manifest = buildGeminiPluginManifest('1.2.3');
     expect(manifest.$schema).toBe('https://antigravity.google/schemas/v1/plugin.json');
-    expect(manifest.name).toBe('bc-campaign');
-    expect(manifest.author.name).toBe('bc-campaign contributors');
-    expect(manifest.keywords[0]).toBe('bc-campaign');
+    expect(manifest.name).toBe('blackhole');
+    expect(manifest.author.name).toBe('blackhole contributors');
+    expect(manifest.keywords[0]).toBe('blackhole');
     expect(manifest.version).toBe('1.2.3');
     expect(manifest.description).toContain('backlog campaign');
   });
@@ -94,21 +94,21 @@ describe('compileGeminiTree', () => {
     try {
       compileGeminiTree(
         destRoot,
-        'plugins/backlog-campaign',
-        'plugins/backlog-campaign/rules/bc-campaign-vcodes.md',
+        'plugins/blackhole',
+        'plugins/blackhole/rules/blackhole-vcodes.md',
         { includeAgents: false }
       );
 
       expect(fs.existsSync(path.join(destRoot, 'agents'))).toBe(false);
 
-      for (const rule of ['bc-campaign-protocol.md', 'bc-campaign-state.md', 'bc-campaign-vcodes.md']) {
+      for (const rule of ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md']) {
         expect(fs.existsSync(path.join(destRoot, 'rules', rule))).toBe(true);
       }
 
-      const skillPath = path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md');
+      const skillPath = path.join(destRoot, 'skills', 'blackhole', 'SKILL.md');
       expect(fs.existsSync(skillPath)).toBe(true);
 
-      const refsDir = path.join(destRoot, 'skills', 'bc-campaign', 'references');
+      const refsDir = path.join(destRoot, 'skills', 'blackhole', 'references');
       expect(fs.existsSync(refsDir)).toBe(true);
       expect(fs.readdirSync(refsDir).length).toBeGreaterThan(0);
     } finally {
@@ -139,8 +139,8 @@ describe('assertDistributionTree', () => {
   const populateFixtureTree = (destRoot: string) => {
     compileGeminiTree(
       destRoot,
-      'plugins/backlog-campaign',
-      'plugins/backlog-campaign/rules/bc-campaign-vcodes.md',
+      'plugins/blackhole',
+      'plugins/blackhole/rules/blackhole-vcodes.md',
       { includeAgents: false }
     );
     writeGeminiManifest(path.join(destRoot, 'plugin.json'), buildGeminiPluginManifest('1.0.0'));
@@ -160,18 +160,18 @@ describe('assertDistributionTree', () => {
     const destRoot = makeTempDir();
     try {
       populateFixtureTree(destRoot);
-      fs.unlinkSync(path.join(destRoot, 'rules', 'bc-campaign-state.md'));
+      fs.unlinkSync(path.join(destRoot, 'rules', 'blackhole-state.md'));
       expect(() => assertDistributionTree(destRoot)).toThrow();
     } finally {
       fs.rmSync(destRoot, { recursive: true, force: true });
     }
   });
 
-  test('throws when skills/bc-campaign/SKILL.md is missing', () => {
+  test('throws when skills/blackhole/SKILL.md is missing', () => {
     const destRoot = makeTempDir();
     try {
       populateFixtureTree(destRoot);
-      fs.unlinkSync(path.join(destRoot, 'skills', 'bc-campaign', 'SKILL.md'));
+      fs.unlinkSync(path.join(destRoot, 'skills', 'blackhole', 'SKILL.md'));
       expect(() => assertDistributionTree(destRoot)).toThrow();
     } finally {
       fs.rmSync(destRoot, { recursive: true, force: true });
@@ -193,10 +193,10 @@ describe('assertDistributionTree', () => {
 describe('buildCodexPluginManifest', () => {
   test('includes required Codex plugin fields', () => {
     const manifest = buildCodexPluginManifest('0.3.0');
-    expect(manifest.name).toBe('bc-campaign');
+    expect(manifest.name).toBe('blackhole');
     expect(manifest.version).toBe('0.3.0');
     expect(manifest.skills).toBe('./codex-skills/');
-    expect(manifest.interface?.displayName).toBe('Backlog Campaign');
+    expect(manifest.interface?.displayName).toBe('Blackhole');
     expect(manifest.interface?.defaultPrompt?.length).toBeGreaterThan(0);
   });
 });
@@ -204,7 +204,7 @@ describe('buildCodexPluginManifest', () => {
 describe('buildCodexMarketplace', () => {
   test('uses git source format not Claude owner shape', () => {
     const marketplace = buildCodexMarketplace();
-    expect(marketplace.name).toBe('bc-campaign-codex');
+    expect(marketplace.name).toBe('blackhole-codex');
     expect(marketplace.plugins[0].source.source).toBe('git');
     expect(marketplace.plugins[0].source.url).toContain('github.com');
     expect((marketplace as Record<string, unknown>).owner).toBeUndefined();
@@ -254,12 +254,12 @@ describe('serializeCodexAgentYaml', () => {
 
 describe('buildCodexAgentYaml', () => {
   const agentDir = 'codex-skills';
-  const rulesPath = 'codex-skills/bc-campaign/references/bc-campaign-vcodes.md';
+  const rulesPath = 'codex-skills/blackhole/references/blackhole-vcodes.md';
 
   test('preserves frontmatter metadata and compiles codex-only body', () => {
     const yaml = buildCodexAgentYaml(
       `---
-name: bc-coordinator
+name: coordinator
 description: test desc
 permissionMode: default
 disallowedTools: [Write, Edit, Delete]
@@ -275,7 +275,7 @@ disallowedTools: [Write, Edit, Delete]
       agentDir,
       rulesPath
     );
-    expect(yaml).toMatch(/^name: bc-coordinator\n/);
+    expect(yaml).toMatch(/^name: coordinator\n/);
     expect(yaml).toContain('description: test desc');
     expect(yaml).not.toMatch(/^model:/m);
     expect(yaml).toContain('permissionMode: default');
@@ -288,10 +288,10 @@ disallowedTools: [Write, Edit, Delete]
     expect(instructions.replace(/^  /gm, '').trim().length).toBeGreaterThan(20);
   });
 
-  test('bc-coordinator source yields full metadata and long instructions', () => {
-    const source = fs.readFileSync(path.join(root, 'src/agents/bc-coordinator.md'), 'utf-8');
+  test('coordinator source yields full metadata and long instructions', () => {
+    const source = fs.readFileSync(path.join(root, 'src/agents/coordinator.md'), 'utf-8');
     const yaml = buildCodexAgentYaml(source, agentDir, rulesPath);
-    expect(yaml).toMatch(/^name: bc-coordinator\n/);
+    expect(yaml).toMatch(/^name: coordinator\n/);
     expect(yaml).toContain('description: Multitask Mode coordinator');
     expect(yaml).not.toMatch(/^model:/m);
     expect(yaml).toContain('permissionMode: default');
@@ -303,10 +303,10 @@ disallowedTools: [Write, Edit, Delete]
   });
 
   test('implementer has empty disallowedTools and full instructions', () => {
-    const source = fs.readFileSync(path.join(root, 'src/agents/bc-implementer.md'), 'utf-8');
+    const source = fs.readFileSync(path.join(root, 'src/agents/implementer.md'), 'utf-8');
     const yaml = buildCodexAgentYaml(source, agentDir, rulesPath);
 
-    expect(yaml).toMatch(/^name: bc-implementer\n/);
+    expect(yaml).toMatch(/^name: implementer\n/);
     expect(yaml).toContain('disallowedTools: []');
     expect(yaml).toContain('5-Field Contract');
     expect(yaml).toContain('Refactoring & Implementation Workflow');

@@ -1,6 +1,6 @@
 # Queue DAG — Schema + Scheduling
 
-Path: `.bc-campaign/queue.json` (gitignored at runtime).
+Path: `.blackhole/queue.json` (gitignored at runtime).
 
 ## Schema
 
@@ -108,9 +108,9 @@ When `depends_on` changed this turn, run [forge-sync.md](forge-sync.md) §6.5 wr
 Bump `refreshed_at` on every mutation:
 
 ```bash
-jq '.refreshed_at = (now | todate)' .bc-campaign/queue.json \
-  > .bc-campaign/queue.json.tmp \
-  && mv .bc-campaign/queue.json.tmp .bc-campaign/queue.json
+jq '.refreshed_at = (now | todate)' .blackhole/queue.json \
+  > .blackhole/queue.json.tmp \
+  && mv .blackhole/queue.json.tmp .blackhole/queue.json
 ```
 
 ## Initialize from forge
