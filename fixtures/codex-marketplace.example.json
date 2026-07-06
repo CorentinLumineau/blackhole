@@ -6,7 +6,7 @@
       "name": "blackhole",
       "source": {
         "source": "git",
-        "url": "https://github.com/CorentinLumineau/backlog-campaign"
+        "url": "https://github.com/CorentinLumineau/blackhole"
       },
       "policy": {
         "installation": "AVAILABLE",

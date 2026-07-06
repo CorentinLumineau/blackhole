@@ -15,4 +15,4 @@
 
 ---
 
-**Full feature overview:** see [v0.1.0 release notes](https://github.com/CorentinLumineau/backlog-campaign/releases/tag/v0.1.0) · [README](https://github.com/CorentinLumineau/backlog-campaign#readme)
+**Full feature overview:** see [v0.1.0 release notes](https://github.com/CorentinLumineau/blackhole/releases/tag/v0.1.0) · [README](https://github.com/CorentinLumineau/blackhole#readme)

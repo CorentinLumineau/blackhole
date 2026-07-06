@@ -121,7 +121,7 @@ Codex supports long-running background sessions via the `/goal` command (same pa
 |----------|----------------|
 | **Claude Code** | `/goal run blackhole until empty` |
 | **Cursor** | `@coordinator run the campaign` or `/blackhole` |
-| **skills.sh** | `npx skills add CorentinLumineau/backlog-campaign` then attach `blackhole` |
+| **skills.sh** | `npx skills add CorentinLumineau/blackhole` then attach `blackhole` |
 | **Antigravity** | `@coordinator run the campaign` or `antigravity run /blackhole` |
 | **Codex CLI** | `/goal run blackhole until empty` or `@blackhole status` |
 
@@ -134,7 +134,7 @@ See [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) for agent roster and Claud
 ### Pathway A: Cursor Native (Git Submodule)
 The cleanest, symlink-free way to install the plugin in Cursor is to add the repository directly as a git submodule named `.cursor`:
 ```bash
-git submodule add https://github.com/CorentinLumineau/backlog-campaign .cursor
+git submodule add https://github.com/CorentinLumineau/blackhole .cursor
 ```
 Cursor automatically discovers and loads the custom agents (`agents/`), rules (`rules/`), and skills (`skills/`) from the submodule!
 
@@ -142,26 +142,26 @@ Cursor automatically discovers and loads the custom agents (`agents/`), rules (`
 Register the repository as a plugin marketplace catalog and install it:
 ```bash
 # 1. Register the marketplace
-/plugin marketplace add https://github.com/CorentinLumineau/backlog-campaign
+/plugin marketplace add https://github.com/CorentinLumineau/blackhole
 
 # 2. Install the plugin
 /plugin install blackhole@blackhole-marketplace
 ```
-The marketplace URL uses the GitHub repo slug `backlog-campaign`; the installed plugin id is `blackhole`.
+The GitHub repository slug and the installed plugin id are both `blackhole`.
 
 ### Pathway C: Generic / skills.sh Registry
 
 Install the skill from the skills.sh registry (repo slug + explicit skill id):
 
 ```bash
-npx skills add CorentinLumineau/backlog-campaign --skill blackhole -y
+npx skills add CorentinLumineau/blackhole --skill blackhole -y
 ```
 
 After install, attach or invoke **`blackhole`** in your agent UI. Compatible agents read the root `SKILL.md` and load rules from the `references/` directory.
 
-**Naming:** The GitHub repository is `backlog-campaign`; the installable skill id is **`blackhole`**. Always pass `--skill blackhole` — the repo slug alone does not select the skill when the repo exposes multiple skills or a non-default skill name.
+**Naming:** The GitHub repository slug and the installable skill id are both **`blackhole`**. Always pass `--skill blackhole` — the repo slug alone does not select the skill when the repo exposes multiple skills or a non-default skill name.
 
-**Version pinning:** `CorentinLumineau/backlog-campaign@v0.4.0` or `@0.4.0` on the repo slug is **not supported** by the current `skills` CLI (v1.5.x). The CLI treats `@…` as a skill name, not a git ref or semver tag. To pin a release, check out a release tag in a fork/submodule or re-run `skills add` after upstream publishes; do not use `@version` syntax on the repo slug.
+**Version pinning:** `CorentinLumineau/blackhole@v0.4.0` or `@0.4.0` on the repo slug is **not supported** by the current `skills` CLI (v1.5.x). The CLI treats `@…` as a skill name, not a git ref or semver tag. To pin a release, check out a release tag in a fork/submodule or re-run `skills add` after upstream publishes; do not use `@version` syntax on the repo slug.
 
 **Install scope:**
 
@@ -174,10 +174,10 @@ Examples:
 
 ```bash
 # Project (default)
-npx skills add CorentinLumineau/backlog-campaign --skill blackhole -y
+npx skills add CorentinLumineau/blackhole --skill blackhole -y
 
 # Global
-npx skills add CorentinLumineau/backlog-campaign --skill blackhole -g -y
+npx skills add CorentinLumineau/blackhole --skill blackhole -g -y
 ```
 
 ### Pathway D: Antigravity / Gemini Native
@@ -218,14 +218,15 @@ For local development in this repo, prefer the full `.agents/build/` workspace t
 
 #### Identifiers: repo slug vs plugin id
 
-| Harness | Stays `backlog-campaign` | Reason |
-|---------|--------------------------|--------|
-| GitHub repository | `CorentinLumineau/backlog-campaign` | Marketplace URLs, `gh`, CI, submodule remotes |
-| skills.sh / Pathway C | `npx skills add CorentinLumineau/backlog-campaign` | Registry tied to repo name |
-| Codex/Gemini `homepage` / `repository` / `websiteURL` | `…/backlog-campaign` | Points at actual repo URL |
+The GitHub repository slug and the plugin id are now the same string everywhere: **`blackhole`** — the GitHub repository (`CorentinLumineau/blackhole`), the skills.sh/Pathway C registry name, the Codex/Gemini `homepage`/`repository`/`websiteURL` fields, and the Claude/Codex/Gemini plugin manifests all agree, and the distribution folder name (`plugins/blackhole/`) matches too.
+
+The one place this still diverges is pre-existing local installs from before the rename:
+
+| Harness | May still reference | Reason |
+|---------|----------------------|--------|
 | Legacy global installs | `~/.gemini/config/plugins/bc-campaign`, `~/.agents/skills/backlog-campaign` | Existing symlinks from prior naming generations; `bun run doctor` may WARN |
 
-The **plugin id** (`blackhole`) is consistent across Claude, Codex, and Gemini manifests and now also matches the distribution folder name (`plugins/blackhole/`). The **repo slug** (`backlog-campaign`) remains only for GitHub/registry URLs.
+Reinstall under the Pathway matching your harness (above) to move off the old naming; see also [Migrating from bc-campaign](#migrating-from-bc-campaign).
 
 ### Pathway E: Codex CLI Native
 
@@ -233,13 +234,13 @@ Codex build outputs (`.codex-plugin/`, `codex-skills/`, `codex-agents/`, `codex-
 
 ```bash
 # 1. Register the marketplace (works on a clean git checkout)
-codex plugin marketplace add https://github.com/CorentinLumineau/backlog-campaign
+codex plugin marketplace add https://github.com/CorentinLumineau/blackhole
 
 # 2. Install the plugin
 codex plugin add blackhole@blackhole-codex
 ```
 
-The marketplace URL uses the GitHub repo slug `backlog-campaign`; the installed plugin id is `blackhole`.
+The GitHub repository slug and the installed plugin id are both `blackhole`.
 
 **Maintainers:** after editing `src/`, run `bun run build` (Codex is included by default) and commit any changed Codex outputs. Use `bun run build --no-codex` to skip Codex when iterating on other targets only.
 

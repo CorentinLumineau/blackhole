@@ -9,7 +9,7 @@
 ## Install the plugin
 
 ```bash
-/plugin marketplace add https://github.com/CorentinLumineau/backlog-campaign
+/plugin marketplace add https://github.com/CorentinLumineau/blackhole
 /plugin install blackhole@blackhole-marketplace
 ```
 

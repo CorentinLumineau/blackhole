@@ -25,7 +25,7 @@ When all issues on milestone `vX.Y.Z` are done:
    # Verify no open issues remain
    gh issue list --milestone "vX.Y.Z" --state open
    # Close by milestone number (from gh api repos/.../milestones or GitHub UI)
-   gh api -X PATCH repos/CorentinLumineau/backlog-campaign/milestones/{number} -f state=closed
+   gh api -X PATCH repos/CorentinLumineau/blackhole/milestones/{number} -f state=closed
    ```
 
 ## Anti-patterns (blocked)

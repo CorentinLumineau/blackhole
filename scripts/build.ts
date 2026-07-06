@@ -232,8 +232,8 @@ export const buildCodexPluginManifest = (pkgVersion: string) => ({
     email: 'corentin@lumineau.dev',
     url: 'https://github.com/CorentinLumineau',
   },
-  homepage: 'https://github.com/CorentinLumineau/backlog-campaign',
-  repository: 'https://github.com/CorentinLumineau/backlog-campaign',
+  homepage: 'https://github.com/CorentinLumineau/blackhole',
+  repository: 'https://github.com/CorentinLumineau/blackhole',
   license: 'Apache-2.0',
   keywords: ['blackhole', 'codex', 'native', 'workflows', 'skills'],
   skills: './codex-skills/',
@@ -244,7 +244,7 @@ export const buildCodexPluginManifest = (pkgVersion: string) => ({
     developerName: 'Corentin Lumineau',
     category: 'Developer Tools',
     capabilities: ['Write', 'Interactive'],
-    websiteURL: 'https://github.com/CorentinLumineau/backlog-campaign',
+    websiteURL: 'https://github.com/CorentinLumineau/blackhole',
     defaultPrompt: [
       'Run the backlog campaign until empty for this repo.',
       'Show backlog status: open issues, in-flight, and queue.',
@@ -262,7 +262,7 @@ export const buildCodexMarketplace = () => ({
       name: 'blackhole',
       source: {
         source: 'git',
-        url: 'https://github.com/CorentinLumineau/backlog-campaign',
+        url: 'https://github.com/CorentinLumineau/blackhole',
       },
       policy: {
         installation: 'AVAILABLE',
