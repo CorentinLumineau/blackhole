@@ -217,7 +217,7 @@ const compileFolder = (srcSub: string, destParent: string, agentDir: string, rul
   }
 };
 
-const rulesList = ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md'];
+export const RULES_LIST = ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md'];
 
 /** The 5 agent files — bare names (no prefix) since the Blackhole rename (#64). */
 export const AGENT_NAMES = ['coordinator', 'orchestrator', 'planner', 'implementer', 'reviewer'] as const;
@@ -293,7 +293,7 @@ export const compileGeminiTree = (
   if (options.includeAgents !== false) {
     compileFolder('agents', path.join(destRoot, 'agents'), agentDir, rulesPath, 'gemini', true);
   }
-  for (const rule of rulesList) {
+  for (const rule of RULES_LIST) {
     processFile(
       path.join(srcDir, 'references', rule),
       path.join(destRoot, 'rules', rule),
@@ -333,7 +333,7 @@ const assertGeminiTree = (destRoot: string, label: string) => {
     ? fs.readdirSync(agentsDir).filter((f) => AGENT_MD_FILES.has(f))
     : [];
   const ruleFiles = fs.existsSync(rulesDir)
-    ? fs.readdirSync(rulesDir).filter((f) => rulesList.includes(f))
+    ? fs.readdirSync(rulesDir).filter((f) => RULES_LIST.includes(f))
     : [];
   if (agentFiles.length !== 5) {
     throw new Error(`Gemini ${label}: expected 5 agents, got ${agentFiles.length}`);
@@ -348,7 +348,7 @@ const assertGeminiTree = (destRoot: string, label: string) => {
 export const assertDistributionTree = (destRoot: string) => {
   const rulesDir = path.join(destRoot, 'rules');
   const ruleFiles = fs.existsSync(rulesDir)
-    ? fs.readdirSync(rulesDir).filter((f) => rulesList.includes(f))
+    ? fs.readdirSync(rulesDir).filter((f) => RULES_LIST.includes(f))
     : [];
   if (ruleFiles.length < 3) {
     throw new Error(`Gemini distribution: expected 3 rules, got ${ruleFiles.length}`);
@@ -457,7 +457,7 @@ const cursorAgentDir = '.cursor';
 const cursorVcodesPath = '.cursor/rules/blackhole-vcodes.mdc';
 
 const writeCursorRules = (destDir: string) => {
-  for (const rule of rulesList) {
+  for (const rule of RULES_LIST) {
     const isVcodesMdc = rule === 'blackhole-vcodes.md';
     const destName = rule.substring(0, rule.length - 3) + '.mdc';
     processFile(
@@ -501,7 +501,7 @@ compileFolder(
   'claude',
   true
 );
-for (const rule of rulesList) {
+for (const rule of RULES_LIST) {
   processFile(
     path.join(srcDir, 'references', rule),
     path.join(root, '.claude', 'rules', rule),

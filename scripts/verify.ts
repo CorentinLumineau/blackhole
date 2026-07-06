@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
-import { AGENTS_BUILD_ROOT, AGENTS_BUILD_AGENT_DIR, DISTRIBUTION_ROOT, AGENT_MD_FILES, AGENT_YAML_FILES } from './build.ts';
+import { AGENTS_BUILD_ROOT, AGENTS_BUILD_AGENT_DIR, DISTRIBUTION_ROOT, AGENT_MD_FILES, AGENT_YAML_FILES, RULES_LIST } from './build.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const srcDir = path.join(root, 'src');
@@ -342,7 +342,7 @@ const validatePluginTreeShape = (
 ): string[] => {
   const errors: string[] = [];
 
-  for (const rule of ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md']) {
+  for (const rule of RULES_LIST) {
     if (!fs.existsSync(path.join(treeRoot, 'rules', rule))) {
       errors.push(`missing ${labels.treePrefix}rules/${rule}`);
     }
@@ -457,20 +457,21 @@ const checkGeminiDistributionBundle = () => {
   else pass('V-GEMINI-02');
 };
 
-// V-CODEX-01 through V-CODEX-04: Codex CLI compile outputs (default verify — #31)
-const checkCodexBuild = () => {
+// V-CODEX-01: build succeeds (skip-env counts as success)
+const checkCodexBuildExec = (): boolean => {
   if (process.env.VERIFY_SKIP_BUILD !== '1') {
     const build = spawnSync('bun', ['run', 'build'], { cwd: root, encoding: 'utf-8' });
     if (build.status !== 0) {
       fail('V-CODEX-01', `build failed: ${build.stderr || build.stdout}`);
-      fail('V-CODEX-02', 'skipped — build failed');
-      fail('V-CODEX-03', 'skipped — build failed');
-      fail('V-CODEX-04', 'skipped — build failed');
-      return;
+      return false;
     }
   }
   pass('V-CODEX-01');
+  return true;
+};
 
+// V-CODEX-02: .codex-plugin/plugin.json + codex-marketplace.json shape
+const checkCodexManifest = () => {
   const manifestErrors: string[] = [];
   const manifestPath = path.join(root, '.codex-plugin', 'plugin.json');
   if (!fs.existsSync(manifestPath)) {
@@ -506,7 +507,10 @@ const checkCodexBuild = () => {
   }
   if (manifestErrors.length) fail('V-CODEX-02', manifestErrors.join('; '));
   else pass('V-CODEX-02');
+};
 
+// V-CODEX-03: codex-skills/blackhole/SKILL.md shape
+const checkCodexSkillFile = () => {
   const skillPath = path.join(root, 'codex-skills', 'blackhole', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
     fail('V-CODEX-03', 'missing codex-skills/blackhole/SKILL.md');
@@ -518,7 +522,10 @@ const checkCodexBuild = () => {
       pass('V-CODEX-03');
     }
   }
+};
 
+// V-CODEX-04: codex-agents/*.yaml shape + codex-skills conditional-leak check
+const checkCodexAgentFiles = () => {
   const agentsDir = path.join(root, 'codex-agents');
   const agentFiles = fs.existsSync(agentsDir)
     ? fs.readdirSync(agentsDir).filter((f) => AGENT_YAML_FILES.has(f))
@@ -572,6 +579,19 @@ const checkCodexBuild = () => {
   }
   if (agentErrors.length) fail('V-CODEX-04', agentErrors.join('; '));
   else pass('V-CODEX-04');
+};
+
+// V-CODEX-01 through V-CODEX-04: Codex CLI compile outputs (default verify — #31)
+const checkCodexBuild = () => {
+  if (!checkCodexBuildExec()) {
+    fail('V-CODEX-02', 'skipped — build failed');
+    fail('V-CODEX-03', 'skipped — build failed');
+    fail('V-CODEX-04', 'skipped — build failed');
+    return;
+  }
+  checkCodexManifest();
+  checkCodexSkillFile();
+  checkCodexAgentFiles();
 };
 
 // V-SKILL-01: SKILL.md modes match phase playbooks
