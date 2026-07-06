@@ -125,7 +125,7 @@ intentional. No finding.
 | Live state directory name | `.bc-campaign/` | **RESOLVED — see §3, F4** |
 | **Candidate residue** | `scripts/build.ts:235-236,247,265`, `.codex-plugin/plugin.json`, `codex-marketplace.json`, `fixtures/codex-plugin.example.json`, `fixtures/codex-marketplace.example.json`, `README.md` (10+ occurrences), `CLAUDE.md:12` | **F3, HIGH — see below** |
 
-### F3 (HIGH) — GitHub repository rename not reflected in generated URLs
+### F3 (RESOLVED) — GitHub repository rename not reflected in generated URLs
 
 Fresh verification this session:
 
@@ -167,6 +167,21 @@ to the new `blackhole` slug and drop the "stays `backlog-campaign`" rationale ta
 if the rename was unintentional/reversible, revert the remote and confirm the intended
 canonical slug before touching any of the above — this audit does not have enough context to
 know which direction is correct, only that code and reality currently disagree.
+
+**Re-verified fresh this session**: PR #77 (`Closes #73`) fixed every location this finding
+lists. `grep -rn "CorentinLumineau/backlog-campaign" --include="*" .` (excluding `.git/`) now
+returns zero hits in `scripts/build.ts`, `.codex-plugin/plugin.json`,
+`codex-marketplace.json`, `fixtures/codex-plugin.example.json`,
+`fixtures/codex-marketplace.example.json`, `CLAUDE.md`, or `README.md` — the only remaining
+matches are this document's own prose (quoting the pre-fix state as history) and
+`documentation/audits/platform-build-verification.md`'s "Known Discrepancy #2" entry, which
+already notes the fix was in flight. `README.md:219-228`'s rationale table has been replaced
+by a `#### Identifiers: repo slug vs plugin id` section stating the repo slug and plugin id
+are now the same string (`blackhole`) everywhere. This is now consistent with the renamed
+repository and requires no follow-up. Noting the resolution here (rather than silently
+omitting it) so the audit's own findings ledger doesn't re-report a stale drift in a future
+re-read of this document — issue #79 was filed 12 minutes after #73 closed, off this exact
+stale finding, before the annotation below existed.
 
 ### Cross-file name consistency (unaffected by F3)
 
