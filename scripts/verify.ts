@@ -635,46 +635,79 @@ const checkCheckpointAlignment = () => {
 };
 
 // V-BUILD-01: Build produces clean git diff (optional skip with VERIFY_SKIP_BUILD=1)
+export const BUILD_OUTPUT_PATTERNS = [
+  'agents/',
+  'rules/',
+  'skills/',
+  '.cursor/',
+  '.claude/',
+  '.claude-plugin/',
+  '.gemini-plugin/',
+  '.agents/build/',
+  'SKILL.md',
+  'marketplace.json',
+  '.codex-plugin/',
+  'codex-agents/',
+  'codex-skills/',
+  'codex-marketplace.json',
+];
+
+export const detectBuildOutputDrift = (porcelainStdout: string): string[] =>
+  porcelainStdout
+    .split('\n')
+    .filter((line) => line.length > 0)
+    .filter((line) => {
+      // Porcelain lines are "XY path" — strip the 2-char status + space
+      // so patterns only match root build-output paths, not nested src/ paths
+      // that happen to share a directory name (e.g. src/agents/foo.md).
+      const filePath = line.slice(3);
+      return BUILD_OUTPUT_PATTERNS.some((pattern) => filePath.startsWith(pattern));
+    });
+
+export const evaluateBuildCheck = (input: {
+  skip: boolean;
+  buildOk: boolean;
+  buildOutput: string;
+  afterPorcelain: string;
+}): CheckResult => {
+  if (input.skip) return { id: 'V-BUILD-01', ok: true };
+
+  if (!input.buildOk) {
+    return { id: 'V-BUILD-01', ok: false, detail: `build failed: ${input.buildOutput}` };
+  }
+
+  const dirty = detectBuildOutputDrift(input.afterPorcelain);
+  if (dirty.length > 0) {
+    return {
+      id: 'V-BUILD-01',
+      ok: false,
+      detail: `build left dirty output: ${dirty.join(', ')} — run 'bun run build' and commit the result`,
+    };
+  }
+
+  return { id: 'V-BUILD-01', ok: true };
+};
+
 const checkBuild = () => {
-  if (process.env.VERIFY_SKIP_BUILD === '1') {
-    pass('V-BUILD-01');
-    return;
+  const skip = process.env.VERIFY_SKIP_BUILD === '1';
+  let buildOk = true;
+  let buildOutput = '';
+  let afterPorcelain = '';
+
+  if (!skip) {
+    const build = spawnSync('bun', ['run', 'build'], { cwd: root, encoding: 'utf-8' });
+    buildOk = build.status === 0;
+    buildOutput = build.stderr || build.stdout || '';
+
+    if (buildOk) {
+      const after = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf-8' });
+      afterPorcelain = after.stdout || '';
+    }
   }
 
-  const before = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf-8' });
-  const build = spawnSync('bun', ['run', 'build'], { cwd: root, encoding: 'utf-8' });
-  if (build.status !== 0) {
-    fail('V-BUILD-01', `build failed: ${build.stderr || build.stdout}`);
-    return;
-  }
-
-  const after = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf-8' });
-  // Only fail if build introduced NEW dirty files beyond what existed before
-  const afterLines = (after.stdout || '').trim().split('\n').filter(Boolean);
-  const buildOutputs = afterLines.filter(
-    (l) =>
-      l.includes('agents/') ||
-      l.includes('rules/') ||
-      l.includes('skills/') ||
-      l.includes('.cursor/') ||
-      l.includes('.claude/') ||
-      l.includes('.claude-plugin/') ||
-      l.includes('.gemini-plugin/') ||
-      l.includes('.agents/build/') ||
-      l.includes('SKILL.md') ||
-      l.includes('marketplace.json') ||
-      l.includes('.codex-plugin/') ||
-      l.includes('codex-agents/') ||
-      l.includes('codex-skills/') ||
-      l.includes('codex-marketplace.json')
-  );
-
-  if (buildOutputs.length > 0 && !before.stdout?.includes('agents/')) {
-    // During dev, build may need to run — warn only if verify is run without prior build
-    pass('V-BUILD-01');
-  } else {
-    pass('V-BUILD-01');
-  }
+  const result = evaluateBuildCheck({ skip, buildOk, buildOutput, afterPorcelain });
+  if (result.ok) pass(result.id);
+  else fail(result.id, result.detail ?? '');
 };
 
 const main = () => {

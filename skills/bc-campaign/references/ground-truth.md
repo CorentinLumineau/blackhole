@@ -51,7 +51,7 @@ Source: `src/references/bc-campaign-vcodes.md`
 | V-AGENT-01 | Agent frontmatter complete |
 | V-PHASE-01 | Phase playbooks use consistent phase names |
 | V-VCODE-01 | V-codes referenced in agents or phases |
-| V-BUILD-01 | Build produces clean output |
+| V-BUILD-01 | Build produces clean output (fails on dirty build-output paths; opt out via VERIFY_SKIP_BUILD=1) |
 | V-SCHEMA-01 | Fixture JSON validates |
 | V-PLAN-01 | In-flight plan/implement/review entries require plans/issue-N.md |
 | V-SKILL-01 | SKILL.md modes align with phases |
