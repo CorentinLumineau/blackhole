@@ -41,8 +41,8 @@ flowchart LR
 
     subgraph RUNTIME["Gitignored runtime — not build output"]
         direction TB
-        R1["**.bc-campaign/** — protocol SSOT<br/>queue.json, findings-ledger.json,<br/>config.json, plans/"]
-        R2["**.agents/orchestrator/**<br/>**.agents/worker_*/**<br/>**.agents/explorer_*/**<br/>— ephemeral handoff, NOT SSOT"]
+        R1[`**.bc-campaign/** — protocol SSOT<br/>queue.json, findings-ledger.json,<br/>config.json, plans/`]
+        R2[`**.agents/orchestrator/**<br/>**.agents/worker_*/**<br/>**.agents/explorer_*/**<br/>— ephemeral handoff, NOT SSOT`]
     end
 ```
 
