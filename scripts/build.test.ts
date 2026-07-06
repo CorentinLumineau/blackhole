@@ -16,7 +16,10 @@ import {
   assertDistributionTree,
   compileCodexTree,
   generatedMarkerLine,
+  buildClaudePluginManifest,
+  buildClaudeMarketplace,
 } from './build.ts';
+import { projectIdentity } from './project-identity.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -87,6 +90,12 @@ describe('buildGeminiPluginManifest', () => {
     expect(manifest.keywords[0]).toBe('blackhole');
     expect(manifest.version).toBe('1.2.3');
     expect(manifest.description).toContain('backlog campaign');
+  });
+
+  test('sources description and keywords from project-identity.ts (not a separate literal)', () => {
+    const manifest = buildGeminiPluginManifest('1.2.3');
+    expect(manifest.description).toBe(projectIdentity.description);
+    expect(manifest.keywords).toEqual([projectIdentity.name, 'gemini', ...projectIdentity.keywordsBase]);
   });
 });
 
@@ -201,6 +210,34 @@ describe('buildCodexPluginManifest', () => {
     expect(manifest.interface?.displayName).toBe('Blackhole');
     expect(manifest.interface?.defaultPrompt?.length).toBeGreaterThan(0);
   });
+
+  test('sources name, homepage, repository, and keywords from project-identity.ts', () => {
+    const manifest = buildCodexPluginManifest('0.3.0');
+    expect(manifest.name).toBe(projectIdentity.name);
+    expect(manifest.homepage).toBe(projectIdentity.homepage);
+    expect(manifest.repository).toBe(projectIdentity.repository);
+    expect(manifest.keywords).toEqual([projectIdentity.name, 'codex', ...projectIdentity.keywordsBase]);
+  });
+});
+
+describe('buildClaudePluginManifest', () => {
+  test('includes required Claude Code plugin fields, sourced from project-identity.ts', () => {
+    const manifest = buildClaudePluginManifest('1.2.3');
+    expect(manifest.name).toBe(projectIdentity.name);
+    expect(manifest.version).toBe('1.2.3');
+    expect(manifest.license).toBe('Apache-2.0');
+    expect(manifest.keywords).toEqual([projectIdentity.name, 'claude-code', ...projectIdentity.keywordsBase]);
+  });
+});
+
+describe('buildClaudeMarketplace', () => {
+  test('derives name from project-identity.ts and embeds the plugin manifest', () => {
+    const pluginMeta = buildClaudePluginManifest('1.2.3');
+    const marketplace = buildClaudeMarketplace(pluginMeta);
+    expect(marketplace.name).toBe(`${projectIdentity.name}-marketplace`);
+    expect(marketplace.plugins[0].name).toBe(projectIdentity.name);
+    expect(marketplace.plugins[0].source).toBe('.');
+  });
 });
 
 describe('buildCodexMarketplace', () => {
@@ -210,6 +247,12 @@ describe('buildCodexMarketplace', () => {
     expect(marketplace.plugins[0].source.source).toBe('git');
     expect(marketplace.plugins[0].source.url).toContain('github.com');
     expect((marketplace as Record<string, unknown>).owner).toBeUndefined();
+  });
+
+  test('derives name and plugin name from project-identity.ts', () => {
+    const marketplace = buildCodexMarketplace();
+    expect(marketplace.name).toBe(`${projectIdentity.name}-codex`);
+    expect(marketplace.plugins[0].name).toBe(projectIdentity.name);
   });
 });
 

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { projectIdentity } from './project-identity.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const srcDir = path.join(root, 'src');
@@ -13,8 +14,7 @@ export const AGENTS_BUILD_VCODES = '.agents/build/rules/blackhole-vcodes.md';
 export const DISTRIBUTION_ROOT = path.join('plugins', 'blackhole');
 export const DISTRIBUTION_AGENT_DIR = 'plugins/blackhole';
 export const DISTRIBUTION_VCODES = 'plugins/blackhole/rules/blackhole-vcodes.md';
-const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
-const version = pkg.version;
+const version = projectIdentity.version;
 
 // Gemini is opt-in until tracked in repo (#13). Codex is part of default build (#31).
 const args = new Set(process.argv.slice(2));
@@ -226,16 +226,16 @@ export const AGENT_YAML_FILES = new Set(AGENT_NAMES.map((n) => `${n}.yaml`));
 
 export const buildGeminiPluginManifest = (pkgVersion: string) => ({
   $schema: 'https://antigravity.google/schemas/v1/plugin.json',
-  name: 'blackhole',
-  description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
+  name: projectIdentity.name,
+  description: projectIdentity.description,
   version: pkgVersion,
   author: { name: 'blackhole contributors' },
   license: 'Apache-2.0',
-  keywords: ['blackhole', 'gemini', 'native', 'workflows', 'skills'],
+  keywords: [projectIdentity.name, 'gemini', ...projectIdentity.keywordsBase],
 });
 
 export const buildCodexPluginManifest = (pkgVersion: string) => ({
-  name: 'blackhole',
+  name: projectIdentity.name,
   version: pkgVersion,
   description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
   author: {
@@ -243,10 +243,10 @@ export const buildCodexPluginManifest = (pkgVersion: string) => ({
     email: 'corentin@lumineau.dev',
     url: 'https://github.com/CorentinLumineau',
   },
-  homepage: 'https://github.com/CorentinLumineau/blackhole',
-  repository: 'https://github.com/CorentinLumineau/blackhole',
+  homepage: projectIdentity.homepage,
+  repository: projectIdentity.repository,
   license: 'Apache-2.0',
-  keywords: ['blackhole', 'codex', 'native', 'workflows', 'skills'],
+  keywords: [projectIdentity.name, 'codex', ...projectIdentity.keywordsBase],
   skills: './codex-skills/',
   interface: {
     displayName: 'Blackhole',
@@ -266,11 +266,11 @@ export const buildCodexPluginManifest = (pkgVersion: string) => ({
 });
 
 export const buildCodexMarketplace = () => ({
-  name: 'blackhole-codex',
+  name: `${projectIdentity.name}-codex`,
   interface: { displayName: 'Blackhole - Codex' },
   plugins: [
     {
-      name: 'blackhole',
+      name: projectIdentity.name,
       source: {
         source: 'git',
         url: 'https://github.com/CorentinLumineau/blackhole',
@@ -282,6 +282,22 @@ export const buildCodexMarketplace = () => ({
       category: 'Developer Tools',
     },
   ],
+});
+
+export const buildClaudePluginManifest = (pkgVersion: string) => ({
+  name: projectIdentity.name,
+  description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
+  version: pkgVersion,
+  author: { name: 'blackhole contributors' },
+  license: 'Apache-2.0',
+  keywords: [projectIdentity.name, 'claude-code', ...projectIdentity.keywordsBase],
+});
+
+export const buildClaudeMarketplace = (pluginMeta: ReturnType<typeof buildClaudePluginManifest>) => ({
+  name: `${projectIdentity.name}-marketplace`,
+  description: 'Blackhole Marketplace',
+  owner: { name: 'CorentinLumineau' },
+  plugins: [{ ...pluginMeta, source: '.' }],
 });
 
 export const compileGeminiTree = (
@@ -550,25 +566,13 @@ if (buildGemini) {
 
 // 6. Generate Claude Code Plugin Manifest (.claude-plugin/plugin.json)
 console.log('Generating Claude Code Plugin manifests...');
-const pluginMeta = {
-  name: 'blackhole',
-  description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
-  version,
-  author: { name: 'blackhole contributors' },
-  license: 'Apache-2.0',
-  keywords: ['blackhole', 'claude-code', 'native', 'workflows', 'skills'],
-};
+const pluginMeta = buildClaudePluginManifest(version);
 const pluginDir = path.join(root, '.claude-plugin');
 if (!fs.existsSync(pluginDir)) fs.mkdirSync(pluginDir, { recursive: true });
 fs.writeFileSync(path.join(pluginDir, 'plugin.json'), JSON.stringify(pluginMeta, null, 2), 'utf-8');
 
 // 8. Generate Claude Code Marketplace Catalog (.claude-plugin/marketplace.json)
-const marketplaceJson = {
-  name: 'blackhole-marketplace',
-  description: 'Blackhole Marketplace',
-  owner: { name: 'CorentinLumineau' },
-  plugins: [{ ...pluginMeta, source: '.' }],
-};
+const marketplaceJson = buildClaudeMarketplace(pluginMeta);
 fs.writeFileSync(path.join(pluginDir, 'marketplace.json'), JSON.stringify(marketplaceJson, null, 2), 'utf-8');
 
 // 9. Compile Target E: Codex CLI Native Support (default build — #31)
