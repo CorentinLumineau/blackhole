@@ -92,9 +92,12 @@ export function resolveSymlinkTarget(linkPath: string): string {
   return path.isAbsolute(target) ? target : path.resolve(path.dirname(linkPath), target);
 }
 
+/** One id per legacy Gemini plugin path (DR-2, #64) — zipped by index, not derived from a ternary. */
+const GEMINI_CHECK_IDS = ['D-GEMINI-01', 'D-GEMINI-02', 'D-GEMINI-03', 'D-GEMINI-04'] as const;
+
 export function checkGeminiSymlinks(paths: string[]): DoctorCheck[] {
   return paths.map((linkPath, index) => {
-    const id = index === 0 ? 'D-GEMINI-01' : 'D-GEMINI-02';
+    const id = GEMINI_CHECK_IDS[index];
 
     let stat: fs.Stats;
     try {

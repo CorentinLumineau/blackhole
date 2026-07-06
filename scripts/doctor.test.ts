@@ -165,6 +165,21 @@ describe('checkGeminiSymlinks', () => {
     const checks = checkGeminiSymlinks([file]);
     expect(checks[0].ok).toBe(true);
   });
+
+  test('assigns a distinct D-GEMINI id to every path, not just the first two', () => {
+    const checks = checkGeminiSymlinks([
+      '/nonexistent/a',
+      '/nonexistent/b',
+      '/nonexistent/c',
+      '/nonexistent/d',
+    ]);
+    expect(checks.map((c) => c.id)).toEqual([
+      'D-GEMINI-01',
+      'D-GEMINI-02',
+      'D-GEMINI-03',
+      'D-GEMINI-04',
+    ]);
+  });
 });
 
 describe('exitCodeFromChecks', () => {

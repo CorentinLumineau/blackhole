@@ -243,6 +243,15 @@ The marketplace URL uses the GitHub repo slug `backlog-campaign`; the installed 
 
 **Maintainers:** after editing `src/`, run `bun run build` (Codex is included by default) and commit any changed Codex outputs. Use `bun run build --no-codex` to skip Codex when iterating on other targets only.
 
+### Migrating from bc-campaign
+
+If you have an existing `bc-campaign` (or `backlog-campaign`) install, moving to `blackhole` takes two manual steps:
+
+1. **Move the runtime state directory**: `mv .bc-campaign .blackhole` — renames your existing `config.json`, `queue.json`, `findings-ledger.json`, and `plans/` in place; no data is lost.
+2. **Reinstall the plugin under its new id**: `blackhole` replaces `bc-campaign`/`backlog-campaign` across every platform's plugin registry. Reinstall using the Pathway matching your harness above — for Antigravity/Gemini global installs, see the breaking-change note under Pathway D for the old symlink path to remove.
+
+`bun run doctor` flags stale `bc-campaign`/`backlog-campaign` paths (`D-SKILL-01`, `D-GEMINI-01`..`D-GEMINI-04`) so you can confirm the migration is complete.
+
 ---
 
 ## 💻 Development & Compilation
