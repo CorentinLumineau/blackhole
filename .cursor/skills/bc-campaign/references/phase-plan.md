@@ -19,6 +19,7 @@
 ## Planner return format
 
 See [worker-schemas.md](worker-schemas.md) planner contract. On `status: blocked`, set queue `notes: awaiting-user-clarification` or `awaiting-plan-approval` per failing checks.
+See [multitask-mode.md](multitask-mode.md) § Claude Code harness notes for how to verify a blocked/idle worker's status without chat polling.
 
 ## Plan approval gate
 
