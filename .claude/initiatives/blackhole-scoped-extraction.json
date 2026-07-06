@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "name": "blackhole-scoped-extraction",
+  "status": "in_progress",
+  "currentMilestone": "M2",
+  "lastUpdated": "2026-07-06T00:00:00Z",
+  "progress": { "M1": "completed", "M2": "planned", "M3": "planned" },
+  "checkpoints": [
+    { "milestone": "M1", "completedAt": "2026-07-06T00:00:00Z", "notes": "project-identity.ts extracted and wired into build.ts; review-fix loop APPROVED (1 iteration, 1 HIGH fixed, 1 LOW accepted); bun test 158/158, bun run verify 18/18; on branch blackhole/milestone-1-identity-ssot, ready to commit" }
+  ],
+  "nextAction": "Commit M1 on branch blackhole/milestone-1-identity-ssot; then implement M2 (tree-shape.ts)"
+}
