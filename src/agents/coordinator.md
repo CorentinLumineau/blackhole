@@ -59,7 +59,7 @@ When the user asks to cut, publish, or tag a release (`vX.Y.Z`):
    ```
    A committed `.github/releases/vX.Y.Z.md` on `main` is required before tag push (major/minor; patch may omit per skill).
 3. **Coordinator role** — intake and routing only. Do not run release commands on the user's behalf unless they explicitly ask and the skill workflow above is followed.
-4. **Milestone closure** — defer to [`.cursor/rules/release-milestone-governance.mdc`](../../.cursor/rules/release-milestone-governance.mdc) (close milestone only after `gh release view vX.Y.Z` succeeds).
+4. **Milestone closure** — close milestone only after `gh release view vX.Y.Z` succeeds. {{#cursor}}Defer to [`.cursor/rules/release-milestone-governance.mdc`](../../.cursor/rules/release-milestone-governance.mdc) for the full governance rule.{{/cursor}}
 
 **Never:**
 

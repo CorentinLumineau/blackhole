@@ -13,10 +13,13 @@ import {
   serializeCodexAgentYaml,
   compileGeminiTree,
   writeGeminiManifest,
-  assertDistributionTree,
   compileCodexTree,
   generatedMarkerLine,
+  buildClaudePluginManifest,
+  buildClaudeMarketplace,
+  cleanDir,
 } from './build.ts';
+import { projectIdentity } from './project-identity.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -88,6 +91,58 @@ describe('buildGeminiPluginManifest', () => {
     expect(manifest.version).toBe('1.2.3');
     expect(manifest.description).toContain('backlog campaign');
   });
+
+  test('sources description and keywords from project-identity.ts (not a separate literal)', () => {
+    const manifest = buildGeminiPluginManifest('1.2.3');
+    expect(manifest.description).toBe(projectIdentity.description);
+    expect(manifest.keywords).toEqual([projectIdentity.name, 'gemini', ...projectIdentity.keywordsBase]);
+  });
+});
+
+describe('cleanDir', () => {
+  test('removes an existing directory recursively', () => {
+    const destRoot = makeTempDir();
+    try {
+      const nested = path.join(destRoot, 'a', 'b');
+      fs.mkdirSync(nested, { recursive: true });
+      fs.writeFileSync(path.join(nested, 'file.txt'), 'x');
+
+      cleanDir(path.join(destRoot, 'a'));
+
+      expect(fs.existsSync(path.join(destRoot, 'a'))).toBe(false);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('is a no-op when the directory does not exist', () => {
+    const destRoot = makeTempDir();
+    try {
+      const missing = path.join(destRoot, 'does-not-exist');
+      expect(() => cleanDir(missing)).not.toThrow();
+      expect(fs.existsSync(missing)).toBe(false);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('leaves sibling directories untouched (regression: cleaning .claude/agents must not remove .claude/initiatives)', () => {
+    const destRoot = makeTempDir();
+    try {
+      const claudeDir = path.join(destRoot, '.claude');
+      fs.mkdirSync(path.join(claudeDir, 'agents'), { recursive: true });
+      fs.mkdirSync(path.join(claudeDir, 'initiatives'), { recursive: true });
+      fs.writeFileSync(path.join(claudeDir, 'progress.md'), 'in progress');
+
+      cleanDir(path.join(claudeDir, 'agents'));
+
+      expect(fs.existsSync(path.join(claudeDir, 'agents'))).toBe(false);
+      expect(fs.existsSync(path.join(claudeDir, 'initiatives'))).toBe(true);
+      expect(fs.readFileSync(path.join(claudeDir, 'progress.md'), 'utf-8')).toBe('in progress');
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('compileGeminiTree', () => {
@@ -137,61 +192,6 @@ describe('writeGeminiManifest', () => {
   });
 });
 
-describe('assertDistributionTree', () => {
-  const populateFixtureTree = (destRoot: string) => {
-    compileGeminiTree(
-      destRoot,
-      'plugins/blackhole',
-      'plugins/blackhole/rules/blackhole-vcodes.md',
-      { includeAgents: false }
-    );
-    writeGeminiManifest(path.join(destRoot, 'plugin.json'), buildGeminiPluginManifest('1.0.0'));
-  };
-
-  test('passes (returns void, no throw) on a fully-populated fixture tree', () => {
-    const destRoot = makeTempDir();
-    try {
-      populateFixtureTree(destRoot);
-      expect(() => assertDistributionTree(destRoot)).not.toThrow();
-    } finally {
-      fs.rmSync(destRoot, { recursive: true, force: true });
-    }
-  });
-
-  test('throws when rules/ has fewer than 3 recognized rule files', () => {
-    const destRoot = makeTempDir();
-    try {
-      populateFixtureTree(destRoot);
-      fs.unlinkSync(path.join(destRoot, 'rules', 'blackhole-state.md'));
-      expect(() => assertDistributionTree(destRoot)).toThrow();
-    } finally {
-      fs.rmSync(destRoot, { recursive: true, force: true });
-    }
-  });
-
-  test('throws when skills/blackhole/SKILL.md is missing', () => {
-    const destRoot = makeTempDir();
-    try {
-      populateFixtureTree(destRoot);
-      fs.unlinkSync(path.join(destRoot, 'skills', 'blackhole', 'SKILL.md'));
-      expect(() => assertDistributionTree(destRoot)).toThrow();
-    } finally {
-      fs.rmSync(destRoot, { recursive: true, force: true });
-    }
-  });
-
-  test('throws when plugin.json is missing at destRoot', () => {
-    const destRoot = makeTempDir();
-    try {
-      populateFixtureTree(destRoot);
-      fs.unlinkSync(path.join(destRoot, 'plugin.json'));
-      expect(() => assertDistributionTree(destRoot)).toThrow();
-    } finally {
-      fs.rmSync(destRoot, { recursive: true, force: true });
-    }
-  });
-});
-
 describe('buildCodexPluginManifest', () => {
   test('includes required Codex plugin fields', () => {
     const manifest = buildCodexPluginManifest('0.3.0');
@@ -201,6 +201,37 @@ describe('buildCodexPluginManifest', () => {
     expect(manifest.interface?.displayName).toBe('Blackhole');
     expect(manifest.interface?.defaultPrompt?.length).toBeGreaterThan(0);
   });
+
+  test('sources name, description, homepage, repository, and keywords from project-identity.ts', () => {
+    const manifest = buildCodexPluginManifest('0.3.0');
+    expect(manifest.name).toBe(projectIdentity.name);
+    expect(manifest.description).toBe(projectIdentity.description);
+    expect(manifest.homepage).toBe(projectIdentity.homepage);
+    expect(manifest.repository).toBe(projectIdentity.repository);
+    expect(manifest.interface?.websiteURL).toBe(projectIdentity.repository);
+    expect(manifest.keywords).toEqual([projectIdentity.name, 'codex', ...projectIdentity.keywordsBase]);
+  });
+});
+
+describe('buildClaudePluginManifest', () => {
+  test('includes required Claude Code plugin fields, sourced from project-identity.ts', () => {
+    const manifest = buildClaudePluginManifest('1.2.3');
+    expect(manifest.name).toBe(projectIdentity.name);
+    expect(manifest.description).toBe(projectIdentity.description);
+    expect(manifest.version).toBe('1.2.3');
+    expect(manifest.license).toBe('Apache-2.0');
+    expect(manifest.keywords).toEqual([projectIdentity.name, 'claude-code', ...projectIdentity.keywordsBase]);
+  });
+});
+
+describe('buildClaudeMarketplace', () => {
+  test('derives name from project-identity.ts and embeds the plugin manifest', () => {
+    const pluginMeta = buildClaudePluginManifest('1.2.3');
+    const marketplace = buildClaudeMarketplace(pluginMeta);
+    expect(marketplace.name).toBe(`${projectIdentity.name}-marketplace`);
+    expect(marketplace.plugins[0].name).toBe(projectIdentity.name);
+    expect(marketplace.plugins[0].source).toBe('.');
+  });
 });
 
 describe('buildCodexMarketplace', () => {
@@ -208,8 +239,14 @@ describe('buildCodexMarketplace', () => {
     const marketplace = buildCodexMarketplace();
     expect(marketplace.name).toBe('blackhole-codex');
     expect(marketplace.plugins[0].source.source).toBe('git');
-    expect(marketplace.plugins[0].source.url).toContain('github.com');
+    expect(marketplace.plugins[0].source.url).toBe(projectIdentity.repository);
     expect((marketplace as Record<string, unknown>).owner).toBeUndefined();
+  });
+
+  test('derives name and plugin name from project-identity.ts', () => {
+    const marketplace = buildCodexMarketplace();
+    expect(marketplace.name).toBe(`${projectIdentity.name}-codex`);
+    expect(marketplace.plugins[0].name).toBe(projectIdentity.name);
   });
 });
 

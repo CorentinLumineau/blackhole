@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { AGENTS_BUILD_ROOT, AGENTS_BUILD_AGENT_DIR, DISTRIBUTION_ROOT, AGENT_MD_FILES, AGENT_YAML_FILES, RULES_LIST } from './build.ts';
+import { validatePluginTreeShape, distributionTreeErrors, codexTreeErrors, hasInstructionsBlock } from './tree-shape.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const srcDir = path.join(root, 'src');
@@ -64,7 +65,7 @@ const checkAgentToolPolicy = () => {
 
     const expected = denyMatrix[file];
     if (expected === null) {
-      // implementer: disallowedTools must be absent (full access by design — agent-tools.md SSOT)
+      // implementer: disallowedTools must be absent (full access by design — this denyMatrix is the SSOT)
       if (/^disallowedTools:/m.test(fmBody)) {
         errors.push(`${file}: must NOT have disallowedTools (implementer requires full tool access)`);
       }
@@ -330,50 +331,6 @@ const walkMdFiles = (dir: string): string[] => {
   return out;
 };
 
-// Shared plugin-tree shape validation used by both the workspace tree (V-GEMINI-01) and the
-// distribution bundle (V-GEMINI-02): rules/, skills/blackhole/{SKILL.md,references/}, plugin.json.
-// treeRoot and manifestPath are passed separately because V-GEMINI-01's manifest lives in a
-// detached directory (.gemini-plugin/) while its rules/skills live under AGENTS_BUILD_ROOT —
-// V-GEMINI-02's distribution bundle co-locates all of them under one destRoot.
-const validatePluginTreeShape = (
-  treeRoot: string,
-  manifestPath: string,
-  labels: { treePrefix: string; manifest: string },
-): string[] => {
-  const errors: string[] = [];
-
-  for (const rule of RULES_LIST) {
-    if (!fs.existsSync(path.join(treeRoot, 'rules', rule))) {
-      errors.push(`missing ${labels.treePrefix}rules/${rule}`);
-    }
-  }
-
-  const skillPath = path.join(treeRoot, 'skills', 'blackhole', 'SKILL.md');
-  if (!fs.existsSync(skillPath)) {
-    errors.push(`missing ${labels.treePrefix}skills/blackhole/SKILL.md`);
-  }
-
-  const refsDir = path.join(treeRoot, 'skills', 'blackhole', 'references');
-  if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
-    errors.push(`missing or empty ${labels.treePrefix}skills/blackhole/references/`);
-  }
-
-  if (!fs.existsSync(manifestPath)) {
-    errors.push(`missing ${labels.manifest}`);
-  } else {
-    try {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-      for (const key of ['$schema', 'name', 'version', 'description']) {
-        if (!manifest[key]) errors.push(`plugin.json missing ${key}`);
-      }
-    } catch {
-      errors.push('plugin.json invalid JSON');
-    }
-  }
-
-  return errors;
-};
-
 // checkGeminiBuild and checkGeminiDistributionBundle both need `bun run build --gemini` to have
 // run before asserting file shape — memoize so a full `bun run verify` pass only builds once.
 let geminiBuildResult: { ok: boolean; output: string } | null = null;
@@ -408,6 +365,7 @@ const checkGeminiBuild = () => {
       path.join(root, AGENTS_BUILD_ROOT),
       path.join(root, '.gemini-plugin', 'plugin.json'),
       { treePrefix: `${AGENTS_BUILD_AGENT_DIR}/`, manifest: '.gemini-plugin/plugin.json' },
+      RULES_LIST,
     ),
   );
 
@@ -429,19 +387,10 @@ const checkGeminiBuild = () => {
 };
 
 // V-GEMINI-02: Gemini/Antigravity distribution bundle (plugins/blackhole/) shape check —
-// independent from V-GEMINI-01's workspace-tree assertions (see build.ts assertDistributionTree).
-export const evaluateDistributionBundle = (destRoot: string): string[] => {
-  const errors = validatePluginTreeShape(destRoot, path.join(destRoot, 'plugin.json'), {
-    treePrefix: '',
-    manifest: 'plugin.json',
-  });
-
-  if (fs.existsSync(path.join(destRoot, 'agents'))) {
-    errors.push('distribution bundle must not contain agents/ (AC4)');
-  }
-
-  return errors;
-};
+// independent from V-GEMINI-01's workspace-tree assertions (see tree-shape.ts's
+// geminiWorkspaceTreeErrors, which build.ts uses at build time for the opposite invariant).
+export const evaluateDistributionBundle = (destRoot: string): string[] =>
+  distributionTreeErrors(destRoot, path.join(destRoot, 'plugin.json'), RULES_LIST);
 
 const checkGeminiDistributionBundle = () => {
   if (process.env.VERIFY_SKIP_BUILD !== '1') {
@@ -509,31 +458,44 @@ const checkCodexManifest = () => {
   else pass('V-CODEX-02');
 };
 
-// V-CODEX-03: codex-skills/blackhole/SKILL.md shape
-const checkCodexSkillFile = () => {
-  const skillPath = path.join(root, 'codex-skills', 'blackhole', 'SKILL.md');
-  if (!fs.existsSync(skillPath)) {
-    fail('V-CODEX-03', 'missing codex-skills/blackhole/SKILL.md');
-  } else {
-    const skill = fs.readFileSync(skillPath, 'utf-8');
-    if (!skill.includes('disable-model-invocation: true')) {
-      fail('V-CODEX-03', 'SKILL.md missing disable-model-invocation: true');
-    } else {
-      pass('V-CODEX-03');
-    }
-  }
-};
-
-// V-CODEX-04: codex-agents/*.yaml shape + codex-skills conditional-leak check
-const checkCodexAgentFiles = () => {
+const codexAgentFileList = (): string[] => {
   const agentsDir = path.join(root, 'codex-agents');
-  const agentFiles = fs.existsSync(agentsDir)
+  return fs.existsSync(agentsDir)
     ? fs.readdirSync(agentsDir).filter((f) => AGENT_YAML_FILES.has(f))
     : [];
-  const agentErrors: string[] = [];
-  if (agentFiles.length !== 5) {
-    agentErrors.push(`expected 5 agent .yaml files, got ${agentFiles.length}`);
+};
+
+// V-CODEX-03: codex-skills/blackhole/SKILL.md shape. SKILL.md-existence and non-empty-references
+// checks route through tree-shape.ts's codexTreeErrors (shared with build.ts's assertion);
+// only the disable-model-invocation content check stays local to this file.
+const checkCodexSkillFile = () => {
+  const sharedErrors = codexTreeErrors(root, codexAgentFileList()).filter(
+    (e) => e.includes('SKILL.md') || e.includes('references')
+  );
+  const errors = [...sharedErrors];
+
+  const skillPath = path.join(root, 'codex-skills', 'blackhole', 'SKILL.md');
+  if (fs.existsSync(skillPath)) {
+    const skill = fs.readFileSync(skillPath, 'utf-8');
+    if (!skill.includes('disable-model-invocation: true')) {
+      errors.push('SKILL.md missing disable-model-invocation: true');
+    }
   }
+
+  if (errors.length) fail('V-CODEX-03', errors.join('; '));
+  else pass('V-CODEX-03');
+};
+
+// V-CODEX-04: codex-agents/*.yaml shape + codex-skills conditional-leak check. The 5-agent-count
+// check routes through tree-shape.ts's codexTreeErrors (shared with build.ts's assertion); the
+// per-file instructions-block *presence* check reuses tree-shape.ts's hasInstructionsBlock
+// predicate (no duplicated boolean logic), but the `continue`-based control flow around it
+// stays local to this file — folding the control flow itself into codexTreeErrors would force
+// that shared function to know about verify-only concerns (deliberate, scoped deviation).
+const checkCodexAgentFiles = () => {
+  const agentsDir = path.join(root, 'codex-agents');
+  const agentFiles = codexAgentFileList();
+  const agentErrors: string[] = codexTreeErrors(root, agentFiles).filter((e) => e.includes('5 agent'));
   const yamlScalar = (content: string, field: string): string | null => {
     const m = content.match(new RegExp(`^${field}:\\s*(.+)$`, 'm'));
     return m ? m[1].trim() : null;
@@ -541,7 +503,7 @@ const checkCodexAgentFiles = () => {
 
   for (const file of agentFiles) {
     const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
-    if (!content.includes('instructions: |')) {
+    if (!hasInstructionsBlock(content)) {
       agentErrors.push(`${file}: missing instructions block`);
       continue;
     }
@@ -629,7 +591,7 @@ const checkGroundTruth = () => {
     errors.push(`vcode_table_rows: expected ${gt.vcode_table_rows}, got ${vcodeRows}`);
   }
 
-  const requiredRefs = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md', 'agent-tools.md'];
+  const requiredRefs = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
   for (const ref of requiredRefs) {
     if (!fs.existsSync(path.join(srcDir, 'references', ref))) errors.push(`missing reference: ${ref}`);
   }

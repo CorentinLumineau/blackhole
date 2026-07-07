@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { projectIdentity } from './project-identity.ts';
+import { geminiWorkspaceTreeErrors, distributionTreeErrors, codexTreeErrors, INSTRUCTIONS_MARKER } from './tree-shape.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const srcDir = path.join(root, 'src');
@@ -13,8 +15,7 @@ export const AGENTS_BUILD_VCODES = '.agents/build/rules/blackhole-vcodes.md';
 export const DISTRIBUTION_ROOT = path.join('plugins', 'blackhole');
 export const DISTRIBUTION_AGENT_DIR = 'plugins/blackhole';
 export const DISTRIBUTION_VCODES = 'plugins/blackhole/rules/blackhole-vcodes.md';
-const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
-const version = pkg.version;
+const version = projectIdentity.version;
 
 // Gemini is opt-in until tracked in repo (#13). Codex is part of default build (#31).
 const args = new Set(process.argv.slice(2));
@@ -22,7 +23,7 @@ const buildAll = args.has('--all');
 const buildGemini = buildAll || args.has('--gemini');
 const buildCodex = !args.has('--no-codex');
 
-const cleanDir = (dirPath: string) => {
+export const cleanDir = (dirPath: string) => {
   if (fs.existsSync(dirPath)) {
     fs.rmSync(dirPath, { recursive: true, force: true });
   }
@@ -78,7 +79,7 @@ export const serializeCodexAgentYaml = (fm: Record<string, string>, bodyContent:
     .split('\n')
     .map((line) => (line ? `  ${line}` : ''))
     .join('\n');
-  yaml += `instructions: |\n${indentedBody}\n`;
+  yaml += `${INSTRUCTIONS_MARKER}\n${indentedBody}\n`;
   return yaml;
 };
 
@@ -226,27 +227,27 @@ export const AGENT_YAML_FILES = new Set(AGENT_NAMES.map((n) => `${n}.yaml`));
 
 export const buildGeminiPluginManifest = (pkgVersion: string) => ({
   $schema: 'https://antigravity.google/schemas/v1/plugin.json',
-  name: 'blackhole',
-  description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
+  name: projectIdentity.name,
+  description: projectIdentity.description,
   version: pkgVersion,
   author: { name: 'blackhole contributors' },
   license: 'Apache-2.0',
-  keywords: ['blackhole', 'gemini', 'native', 'workflows', 'skills'],
+  keywords: [projectIdentity.name, 'gemini', ...projectIdentity.keywordsBase],
 });
 
 export const buildCodexPluginManifest = (pkgVersion: string) => ({
-  name: 'blackhole',
+  name: projectIdentity.name,
   version: pkgVersion,
-  description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
+  description: projectIdentity.description,
   author: {
     name: 'Corentin Lumineau',
     email: 'corentin@lumineau.dev',
     url: 'https://github.com/CorentinLumineau',
   },
-  homepage: 'https://github.com/CorentinLumineau/blackhole',
-  repository: 'https://github.com/CorentinLumineau/blackhole',
+  homepage: projectIdentity.homepage,
+  repository: projectIdentity.repository,
   license: 'Apache-2.0',
-  keywords: ['blackhole', 'codex', 'native', 'workflows', 'skills'],
+  keywords: [projectIdentity.name, 'codex', ...projectIdentity.keywordsBase],
   skills: './codex-skills/',
   interface: {
     displayName: 'Blackhole',
@@ -255,7 +256,7 @@ export const buildCodexPluginManifest = (pkgVersion: string) => ({
     developerName: 'Corentin Lumineau',
     category: 'Developer Tools',
     capabilities: ['Write', 'Interactive'],
-    websiteURL: 'https://github.com/CorentinLumineau/blackhole',
+    websiteURL: projectIdentity.repository,
     defaultPrompt: [
       'Run the backlog campaign until empty for this repo.',
       'Show backlog status: open issues, in-flight, and queue.',
@@ -266,14 +267,14 @@ export const buildCodexPluginManifest = (pkgVersion: string) => ({
 });
 
 export const buildCodexMarketplace = () => ({
-  name: 'blackhole-codex',
+  name: `${projectIdentity.name}-codex`,
   interface: { displayName: 'Blackhole - Codex' },
   plugins: [
     {
-      name: 'blackhole',
+      name: projectIdentity.name,
       source: {
         source: 'git',
-        url: 'https://github.com/CorentinLumineau/blackhole',
+        url: projectIdentity.repository,
       },
       policy: {
         installation: 'AVAILABLE',
@@ -282,6 +283,22 @@ export const buildCodexMarketplace = () => ({
       category: 'Developer Tools',
     },
   ],
+});
+
+export const buildClaudePluginManifest = (pkgVersion: string) => ({
+  name: projectIdentity.name,
+  description: projectIdentity.description,
+  version: pkgVersion,
+  author: { name: 'blackhole contributors' },
+  license: 'Apache-2.0',
+  keywords: [projectIdentity.name, 'claude-code', ...projectIdentity.keywordsBase],
+});
+
+export const buildClaudeMarketplace = (pluginMeta: ReturnType<typeof buildClaudePluginManifest>) => ({
+  name: `${projectIdentity.name}-marketplace`,
+  description: 'Blackhole Marketplace',
+  owner: { name: 'CorentinLumineau' },
+  plugins: [{ ...pluginMeta, source: '.' }],
 });
 
 export const compileGeminiTree = (
@@ -326,43 +343,6 @@ export const writeGeminiManifest = (destPath: string, manifest: Record<string, u
   fs.writeFileSync(destPath, JSON.stringify(manifest, null, 2), 'utf-8');
 };
 
-const assertGeminiTree = (destRoot: string, label: string) => {
-  const agentsDir = path.join(destRoot, 'agents');
-  const rulesDir = path.join(destRoot, 'rules');
-  const agentFiles = fs.existsSync(agentsDir)
-    ? fs.readdirSync(agentsDir).filter((f) => AGENT_MD_FILES.has(f))
-    : [];
-  const ruleFiles = fs.existsSync(rulesDir)
-    ? fs.readdirSync(rulesDir).filter((f) => RULES_LIST.includes(f))
-    : [];
-  if (agentFiles.length !== 5) {
-    throw new Error(`Gemini ${label}: expected 5 agents, got ${agentFiles.length}`);
-  }
-  if (ruleFiles.length !== 3) {
-    throw new Error(`Gemini ${label}: expected 3 rules, got ${ruleFiles.length}`);
-  }
-};
-
-/** Distribution bundle shape check — deliberately separate from assertGeminiTree: this tree
- * requires zero agents (AC4), the opposite invariant of the 5-agent workspace tree. */
-export const assertDistributionTree = (destRoot: string) => {
-  const rulesDir = path.join(destRoot, 'rules');
-  const ruleFiles = fs.existsSync(rulesDir)
-    ? fs.readdirSync(rulesDir).filter((f) => RULES_LIST.includes(f))
-    : [];
-  if (ruleFiles.length < 3) {
-    throw new Error(`Gemini distribution: expected 3 rules, got ${ruleFiles.length}`);
-  }
-  const skillPath = path.join(destRoot, 'skills', 'blackhole', 'SKILL.md');
-  if (!fs.existsSync(skillPath)) {
-    throw new Error('Gemini distribution: missing skills/blackhole/SKILL.md');
-  }
-  const manifestPath = path.join(destRoot, 'plugin.json');
-  if (!fs.existsSync(manifestPath)) {
-    throw new Error('Gemini distribution: missing plugin.json');
-  }
-};
-
 export const compileCodexTree = (rootDir: string, agentDir: string, rulesPath: string) => {
   compileFolder('agents', path.join(rootDir, 'codex-agents'), agentDir, rulesPath, 'codex', true);
   processFile(
@@ -384,30 +364,6 @@ export const compileCodexTree = (rootDir: string, agentDir: string, rulesPath: s
   );
 };
 
-const assertCodexTree = (rootDir: string) => {
-  const agentsDir = path.join(rootDir, 'codex-agents');
-  const agentFiles = fs.existsSync(agentsDir)
-    ? fs.readdirSync(agentsDir).filter((f) => AGENT_YAML_FILES.has(f))
-    : [];
-  if (agentFiles.length !== 5) {
-    throw new Error(`Codex: expected 5 agent YAML files, got ${agentFiles.length}`);
-  }
-  for (const file of agentFiles) {
-    const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
-    if (!content.includes('instructions: |')) {
-      throw new Error(`Codex: ${file} missing instructions block scalar`);
-    }
-  }
-  const skillPath = path.join(rootDir, 'codex-skills', 'blackhole', 'SKILL.md');
-  if (!fs.existsSync(skillPath)) {
-    throw new Error('Codex: missing codex-skills/blackhole/SKILL.md');
-  }
-  const refsDir = path.join(rootDir, 'codex-skills', 'blackhole', 'references');
-  if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
-    throw new Error('Codex: missing or empty codex-skills/blackhole/references/');
-  }
-};
-
 const main = () => {
 console.log('Cleaning existing build directories...');
 cleanDir(path.join(root, 'rules'));
@@ -415,7 +371,11 @@ cleanDir(path.join(root, 'agents'));
 cleanDir(path.join(root, 'skills'));
 cleanDir(path.join(root, 'references'));
 cleanDir(path.join(root, '.cursor'));
-cleanDir(path.join(root, '.claude'));
+// Only clean the subdirs build.ts actually writes — `.claude/` also holds
+// maintainer state (initiatives/, progress.md) that must survive a rebuild.
+cleanDir(path.join(root, '.claude', 'agents'));
+cleanDir(path.join(root, '.claude', 'rules'));
+cleanDir(path.join(root, '.claude', 'skills'));
 cleanDir(path.join(root, '.claude-plugin'));
 if (buildGemini) {
   cleanDir(path.join(root, AGENTS_BUILD_ROOT));
@@ -530,7 +490,12 @@ if (buildGemini) {
   console.log('Compiling Target D (Gemini/Antigravity workspace — .agents/build/)...');
   const agentsBuildRoot = path.join(root, AGENTS_BUILD_ROOT);
   compileGeminiTree(agentsBuildRoot, AGENTS_BUILD_AGENT_DIR, AGENTS_BUILD_VCODES);
-  assertGeminiTree(agentsBuildRoot, 'workspace');
+  const workspaceAgentsDir = path.join(agentsBuildRoot, 'agents');
+  const workspaceAgentFiles = fs.existsSync(workspaceAgentsDir)
+    ? fs.readdirSync(workspaceAgentsDir).filter((f) => AGENT_MD_FILES.has(f))
+    : [];
+  const workspaceErrors = geminiWorkspaceTreeErrors(agentsBuildRoot, 'workspace', RULES_LIST, workspaceAgentFiles);
+  if (workspaceErrors.length) throw new Error(workspaceErrors.join('; '));
 
   console.log('Generating Gemini Plugin manifest...');
   const geminiPluginMeta = buildGeminiPluginManifest(version);
@@ -545,30 +510,23 @@ if (buildGemini) {
   const distributionRoot = path.join(root, DISTRIBUTION_ROOT);
   compileGeminiTree(distributionRoot, DISTRIBUTION_AGENT_DIR, DISTRIBUTION_VCODES, { includeAgents: false });
   writeGeminiManifest(path.join(distributionRoot, 'plugin.json'), geminiPluginMeta);
-  assertDistributionTree(distributionRoot);
+  const distributionErrors = distributionTreeErrors(
+    distributionRoot,
+    path.join(distributionRoot, 'plugin.json'),
+    RULES_LIST
+  );
+  if (distributionErrors.length) throw new Error(distributionErrors.join('; '));
 }
 
 // 6. Generate Claude Code Plugin Manifest (.claude-plugin/plugin.json)
 console.log('Generating Claude Code Plugin manifests...');
-const pluginMeta = {
-  name: 'blackhole',
-  description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
-  version,
-  author: { name: 'blackhole contributors' },
-  license: 'Apache-2.0',
-  keywords: ['blackhole', 'claude-code', 'native', 'workflows', 'skills'],
-};
+const pluginMeta = buildClaudePluginManifest(version);
 const pluginDir = path.join(root, '.claude-plugin');
 if (!fs.existsSync(pluginDir)) fs.mkdirSync(pluginDir, { recursive: true });
 fs.writeFileSync(path.join(pluginDir, 'plugin.json'), JSON.stringify(pluginMeta, null, 2), 'utf-8');
 
 // 8. Generate Claude Code Marketplace Catalog (.claude-plugin/marketplace.json)
-const marketplaceJson = {
-  name: 'blackhole-marketplace',
-  description: 'Blackhole Marketplace',
-  owner: { name: 'CorentinLumineau' },
-  plugins: [{ ...pluginMeta, source: '.' }],
-};
+const marketplaceJson = buildClaudeMarketplace(pluginMeta);
 fs.writeFileSync(path.join(pluginDir, 'marketplace.json'), JSON.stringify(marketplaceJson, null, 2), 'utf-8');
 
 // 9. Compile Target E: Codex CLI Native Support (default build — #31)
@@ -577,7 +535,12 @@ if (buildCodex) {
   const codexAgentDir = 'codex-skills';
   const codexVcodesPath = 'codex-skills/blackhole/references/blackhole-vcodes.md';
   compileCodexTree(root, codexAgentDir, codexVcodesPath);
-  assertCodexTree(root);
+  const codexAgentsDir = path.join(root, 'codex-agents');
+  const codexAgentFiles = fs.existsSync(codexAgentsDir)
+    ? fs.readdirSync(codexAgentsDir).filter((f) => AGENT_YAML_FILES.has(f))
+    : [];
+  const codexErrors = codexTreeErrors(root, codexAgentFiles);
+  if (codexErrors.length) throw new Error(codexErrors.join('; '));
 
   console.log('Generating Codex Plugin manifest...');
   const codexPluginMeta = buildCodexPluginManifest(version);

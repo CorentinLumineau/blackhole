@@ -1,0 +1,14 @@
+{
+  "version": "2.0",
+  "name": "blackhole-scoped-extraction",
+  "status": "completed",
+  "currentMilestone": "M3",
+  "lastUpdated": "2026-07-07T00:00:00Z",
+  "progress": { "M1": "completed", "M2": "completed", "M3": "completed" },
+  "checkpoints": [
+    { "milestone": "M1", "completedAt": "2026-07-06T00:00:00Z", "notes": "committed, PR #90" },
+    { "milestone": "M2", "completedAt": "2026-07-07T00:00:00Z", "notes": "committed, PR #90" },
+    { "milestone": "M3", "completedAt": "2026-07-07T00:00:00Z", "notes": "committed, PR #90 — reviewed APPROVED, no fixes needed. All 3 milestones complete; PR #90 description updated to reflect full scope." }
+  ],
+  "nextAction": "Merge PR #90, then run /x-initiative archive"
+}
