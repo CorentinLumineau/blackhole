@@ -2,12 +2,13 @@
   "version": "2.0",
   "name": "blackhole-scoped-extraction",
   "status": "in_progress",
-  "currentMilestone": "M2",
+  "currentMilestone": "M3",
   "lastUpdated": "2026-07-07T00:00:00Z",
-  "progress": { "M1": "completed", "M2": "completed", "M3": "planned" },
+  "progress": { "M1": "completed", "M2": "completed", "M3": "implemented" },
   "checkpoints": [
     { "milestone": "M1", "completedAt": "2026-07-06T00:00:00Z", "notes": "committed, PR #90 open" },
-    { "milestone": "M2", "completedAt": "2026-07-07T00:00:00Z", "notes": "tree-shape.ts extracted; review-fix loop (3 MEDIUM fixed); bun test 180/180, bun run verify 18/18; byte-identical full-tree regression re-confirmed; on branch blackhole/milestone-1-identity-ssot, ready to commit" }
+    { "milestone": "M2", "completedAt": "2026-07-07T00:00:00Z", "notes": "committed, PR #90" },
+    { "milestone": "M3", "completedAt": "2026-07-07T00:00:00Z", "notes": "INDEX.md created, agent-tools.md pruned, coordinator.md gated; bun test 180/180, bun run verify 18/18; on branch blackhole/milestone-1-identity-ssot, not yet reviewed/committed. Final milestone of the initiative." }
   ],
-  "nextAction": "Commit M2 on blackhole/milestone-1-identity-ssot (bundled into PR #90 per user request); then implement M3"
+  "nextAction": "Review-fix loop + commit M3 on blackhole/milestone-1-identity-ssot (bundled into PR #90); then update PR description and consider archiving the initiative once merged"
 }

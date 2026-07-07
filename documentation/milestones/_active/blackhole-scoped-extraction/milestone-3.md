@@ -1,10 +1,12 @@
 ---
 type: plan
-status: current
+status: completed
+completedAt: 2026-07-07
 review_trigger: "on milestone completion"
 created: 2026-07-06
-last_updated: 2026-07-06
+last_updated: 2026-07-07
 plan_base_commit: 015e7cc
+pr: TBD — patched by git-pr
 related:
   - documentation/architecture/retrospective-blackhole.md
   - documentation/audits/architecture-coherence.md
@@ -12,6 +14,28 @@ initiative: blackhole-scoped-extraction
 milestone: 3 of 3 (Governance & Cleanup)
 track: quick
 ---
+
+## Completion
+
+- **status**: completed
+- **completedAt**: 2026-07-07
+- **pr**: TBD — patched by git-pr
+
+### Shipped
+
+- `documentation/decisions/INDEX.md` (new) — 3-row ADR index (V-ADA-02 resolved).
+- `src/references/agent-tools.md` deleted (zero functional citations, grep-confirmed); `src/references/ground-truth.md`'s stray inventory-list entry removed.
+- `src/agents/coordinator.md` — the unconditional `.cursor/rules/release-milestone-governance.mdc` reference wrapped in `{{#cursor}}...{{/cursor}}`; the platform-neutral instruction ("close milestone only after `gh release view vX.Y.Z` succeeds") stays visible on all 5 platforms, the Cursor-specific file link now renders only on the Cursor mirror.
+- **Discovery beyond the plan's literal scope** (direct consumers of the deleted file, not scope creep): `scripts/verify.ts:594`'s `requiredRefs` array explicitly required `agent-tools.md` to exist — the plan didn't anticipate this; removed to keep `V-GROUND-01` passing. Also fixed a now-stale code comment at `verify.ts:68` referencing the deleted file as an "SSOT" (the SSOT is now `checkAgentToolPolicy`'s own `denyMatrix`, which was already the actual mechanically-enforced source of truth).
+- Verified: `bun run build --all` completes cleanly; `find . -name agent-tools.md` returns empty across all 5 compiled mirrors; the Cursor-only reference correctly survives in the 2 legitimate Cursor targets (root `agents/`, `.cursor/agents/` — both are Cursor-target mirrors per `build.ts`'s "Cursor submodule root layout + .cursor/ mirror" design) and is absent from the 3 true non-Cursor targets (`.claude/agents/`, `codex-agents/`, `.agents/build/agents/`). `bun test`: 180/180 pass (unchanged). `bun run verify` (`VERIFY_SKIP_BUILD=1`): 18/18 pass, including `V-GROUND-01`.
+
+### Review-Fix Round
+
+3-agent swarm reviewed: **APPROVED** (Correctness 9/10, Security 10/10, Quality 8/10, Testing 8/10). One reviewer-raised HIGH finding was investigated and corrected before aggregation: it claimed the `{{#cursor}}` wrap on `coordinator.md:62` removed a milestone-closing procedure from non-Cursor platforms — verified via `git show` against the pre-fix commit that the original line was already a bare pointer to the Cursor-only `.mdc` file, never an inlined procedure, so non-Cursor platforms had zero functional access before *or* after this fix. Reclassified to LOW (a legitimate but out-of-scope enhancement idea — inlining the actual `gh` command sequence for non-Cursor platforms — for a future milestone, not a defect in this one). Two other findings, both non-blocking: a pre-existing (not introduced by this PR) gap where `verify.ts`'s `requiredRefs` mechanically enforces only 3 of `ground-truth.md`'s 6-entry reference list, and a cosmetic casing mismatch in `INDEX.md`'s status column vs. ADR frontmatter. No fixes applied — all three are documented here as candidates for a future follow-up issue.
+
+### Progress Log
+
+- **2026-07-07**: Milestone completed in one session, on the same branch as Milestones 1-2 (`blackhole/milestone-1-identity-ssot`) per user request to bundle all 3 into PR #90. This is the initiative's final milestone.
 
 # Milestone 3: Governance & Cleanup
 
