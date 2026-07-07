@@ -1,14 +1,14 @@
 {
   "version": "2.0",
   "name": "blackhole-scoped-extraction",
-  "status": "in_progress",
+  "status": "completed",
   "currentMilestone": "M3",
   "lastUpdated": "2026-07-07T00:00:00Z",
-  "progress": { "M1": "completed", "M2": "completed", "M3": "implemented" },
+  "progress": { "M1": "completed", "M2": "completed", "M3": "completed" },
   "checkpoints": [
-    { "milestone": "M1", "completedAt": "2026-07-06T00:00:00Z", "notes": "committed, PR #90 open" },
+    { "milestone": "M1", "completedAt": "2026-07-06T00:00:00Z", "notes": "committed, PR #90" },
     { "milestone": "M2", "completedAt": "2026-07-07T00:00:00Z", "notes": "committed, PR #90" },
-    { "milestone": "M3", "completedAt": "2026-07-07T00:00:00Z", "notes": "INDEX.md created, agent-tools.md pruned, coordinator.md gated; bun test 180/180, bun run verify 18/18; on branch blackhole/milestone-1-identity-ssot, not yet reviewed/committed. Final milestone of the initiative." }
+    { "milestone": "M3", "completedAt": "2026-07-07T00:00:00Z", "notes": "committed, PR #90 — reviewed APPROVED, no fixes needed. All 3 milestones complete; PR #90 description updated to reflect full scope." }
   ],
-  "nextAction": "Review-fix loop + commit M3 on blackhole/milestone-1-identity-ssot (bundled into PR #90); then update PR description and consider archiving the initiative once merged"
+  "nextAction": "Merge PR #90, then run /x-initiative archive"
 }

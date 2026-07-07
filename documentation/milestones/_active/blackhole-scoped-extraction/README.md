@@ -1,8 +1,9 @@
 ---
 type: milestone
-status: current
+status: completed
 created: 2026-07-06
-last_updated: 2026-07-06
+last_updated: 2026-07-07
+completedAt: 2026-07-07
 related:
   - documentation/architecture/retrospective-blackhole.md
   - documentation/audits/architecture-coherence.md
@@ -57,8 +58,8 @@ on purpose, until a 6th platform is actually proposed (see Key Constraints below
 | # | Name | Value | Effort | Status | Deployable |
 |---|------|-------|--------|--------|------------|
 | M1 | Identity SSOT (`project-identity.ts`) | 45% | 25% | **Completed** (2026-07-06) | Yes |
-| M2 | Tree-Shape SSOT (`tree-shape.ts`) | 35% | 45% | Planned | Yes |
-| M3 | Governance & Cleanup | 20% | 15% | Planned | Yes |
+| M2 | Tree-Shape SSOT (`tree-shape.ts`) | 35% | 45% | **Completed** (2026-07-07) | Yes |
+| M3 | Governance & Cleanup | 20% | 15% | **Completed** (2026-07-07) | Yes |
 
 ## Dependency Graph
 
@@ -74,8 +75,9 @@ graph LR
 
 ## Current Focus
 
-**M1 completed 2026-07-06.** Next: **M2: Tree-Shape SSOT** — no dependency on M1, can start
-immediately.
+**All 3 milestones completed 2026-07-07.** Bundled into a single PR per user request:
+[#90](https://github.com/CorentinLumineau/blackhole/pull/90). Initiative complete pending
+merge — candidate for `/x-initiative archive` once PR #90 lands.
 
 ## Key Constraints Carried From the Retrospective
 
