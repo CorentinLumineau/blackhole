@@ -155,11 +155,13 @@ describe('buildCodexPluginManifest', () => {
     expect(manifest.interface?.defaultPrompt?.length).toBeGreaterThan(0);
   });
 
-  test('sources name, homepage, repository, and keywords from project-identity.ts', () => {
+  test('sources name, description, homepage, repository, and keywords from project-identity.ts', () => {
     const manifest = buildCodexPluginManifest('0.3.0');
     expect(manifest.name).toBe(projectIdentity.name);
+    expect(manifest.description).toBe(projectIdentity.description);
     expect(manifest.homepage).toBe(projectIdentity.homepage);
     expect(manifest.repository).toBe(projectIdentity.repository);
+    expect(manifest.interface?.websiteURL).toBe(projectIdentity.repository);
     expect(manifest.keywords).toEqual([projectIdentity.name, 'codex', ...projectIdentity.keywordsBase]);
   });
 });
@@ -168,6 +170,7 @@ describe('buildClaudePluginManifest', () => {
   test('includes required Claude Code plugin fields, sourced from project-identity.ts', () => {
     const manifest = buildClaudePluginManifest('1.2.3');
     expect(manifest.name).toBe(projectIdentity.name);
+    expect(manifest.description).toBe(projectIdentity.description);
     expect(manifest.version).toBe('1.2.3');
     expect(manifest.license).toBe('Apache-2.0');
     expect(manifest.keywords).toEqual([projectIdentity.name, 'claude-code', ...projectIdentity.keywordsBase]);
@@ -189,7 +192,7 @@ describe('buildCodexMarketplace', () => {
     const marketplace = buildCodexMarketplace();
     expect(marketplace.name).toBe('blackhole-codex');
     expect(marketplace.plugins[0].source.source).toBe('git');
-    expect(marketplace.plugins[0].source.url).toContain('github.com');
+    expect(marketplace.plugins[0].source.url).toBe(projectIdentity.repository);
     expect((marketplace as Record<string, unknown>).owner).toBeUndefined();
   });
 

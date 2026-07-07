@@ -238,7 +238,7 @@ export const buildGeminiPluginManifest = (pkgVersion: string) => ({
 export const buildCodexPluginManifest = (pkgVersion: string) => ({
   name: projectIdentity.name,
   version: pkgVersion,
-  description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
+  description: projectIdentity.description,
   author: {
     name: 'Corentin Lumineau',
     email: 'corentin@lumineau.dev',
@@ -256,7 +256,7 @@ export const buildCodexPluginManifest = (pkgVersion: string) => ({
     developerName: 'Corentin Lumineau',
     category: 'Developer Tools',
     capabilities: ['Write', 'Interactive'],
-    websiteURL: 'https://github.com/CorentinLumineau/blackhole',
+    websiteURL: projectIdentity.repository,
     defaultPrompt: [
       'Run the backlog campaign until empty for this repo.',
       'Show backlog status: open issues, in-flight, and queue.',
@@ -274,7 +274,7 @@ export const buildCodexMarketplace = () => ({
       name: projectIdentity.name,
       source: {
         source: 'git',
-        url: 'https://github.com/CorentinLumineau/blackhole',
+        url: projectIdentity.repository,
       },
       policy: {
         installation: 'AVAILABLE',
@@ -287,7 +287,7 @@ export const buildCodexMarketplace = () => ({
 
 export const buildClaudePluginManifest = (pkgVersion: string) => ({
   name: projectIdentity.name,
-  description: 'Agent-agnostic backlog campaign orchestrator to empty the forge backlog.',
+  description: projectIdentity.description,
   version: pkgVersion,
   author: { name: 'blackhole contributors' },
   license: 'Apache-2.0',
