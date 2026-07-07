@@ -90,5 +90,4 @@ Required keys: `repo`, `target_branch`, `forge`
 - `checkpoint-protocol.md`
 - `findings-ledger.md`
 - `queue-dag.md`
-- `agent-tools.md`
 - `epic-orchestration.md`

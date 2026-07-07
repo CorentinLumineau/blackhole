@@ -65,7 +65,7 @@ const checkAgentToolPolicy = () => {
 
     const expected = denyMatrix[file];
     if (expected === null) {
-      // implementer: disallowedTools must be absent (full access by design — agent-tools.md SSOT)
+      // implementer: disallowedTools must be absent (full access by design — this denyMatrix is the SSOT)
       if (/^disallowedTools:/m.test(fmBody)) {
         errors.push(`${file}: must NOT have disallowedTools (implementer requires full tool access)`);
       }
@@ -591,7 +591,7 @@ const checkGroundTruth = () => {
     errors.push(`vcode_table_rows: expected ${gt.vcode_table_rows}, got ${vcodeRows}`);
   }
 
-  const requiredRefs = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md', 'agent-tools.md'];
+  const requiredRefs = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
   for (const ref of requiredRefs) {
     if (!fs.existsSync(path.join(srcDir, 'references', ref))) errors.push(`missing reference: ${ref}`);
   }
