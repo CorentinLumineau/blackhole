@@ -131,6 +131,9 @@ function validatePlanner(data: unknown): string[] {
     if (isString(data.track)) {
       pushEnumError(errors, 'track', data.track, TRACKS);
     }
+    if (data.track === 'design') {
+      errors.push('track: design track must never report status ready (ADR-004: design is always blocked)');
+    }
     if (!Array.isArray(data.failing_checks)) {
       errors.push('failing_checks: expected array');
     }
