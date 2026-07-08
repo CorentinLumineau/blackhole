@@ -1,0 +1,6 @@
+{
+  "status": "blocked",
+  "failing_checks": ["touch_paths_declared"],
+  "clarification_markers": 1,
+  "track": 42
+}

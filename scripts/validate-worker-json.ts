@@ -149,10 +149,14 @@ function validatePlanner(data: unknown): string[] {
       errors.push('failing_checks: expected string[]');
     }
     requireField(errors, data, 'clarification_markers', isNumber, 'number');
-    if ('track' in data && isString(data.track)) {
-      pushEnumError(errors, 'track', data.track, TRACKS);
-      if (data.track === 'design') {
-        requireField(errors, data, 'plan_path', isString, 'string');
+    if ('track' in data) {
+      if (!isString(data.track)) {
+        errors.push('track: expected string');
+      } else {
+        pushEnumError(errors, 'track', data.track, TRACKS);
+        if (data.track === 'design') {
+          requireField(errors, data, 'plan_path', isString, 'string');
+        }
       }
     }
   }
@@ -176,8 +180,12 @@ function validateImplementer(data: unknown): string[] {
     requireField(errors, data, 'branch', isString, 'string');
     requireField(errors, data, 'tests_passed', isBoolean, 'boolean');
     requireField(errors, data, 'touch_paths_honored', isBoolean, 'boolean');
-    if ('execution_mode' in data && isString(data.execution_mode)) {
-      pushEnumError(errors, 'execution_mode', data.execution_mode, EXECUTION_MODES);
+    if ('execution_mode' in data) {
+      if (!isString(data.execution_mode)) {
+        errors.push('execution_mode: expected string');
+      } else {
+        pushEnumError(errors, 'execution_mode', data.execution_mode, EXECUTION_MODES);
+      }
     }
   }
 

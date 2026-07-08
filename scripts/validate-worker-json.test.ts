@@ -27,6 +27,8 @@ const expectInvalid = (role: Role, fixture: string) => {
 describe('validateWorker planner', () => {
   test('valid ready', () => expectValid('planner', 'planner-ready.json'));
   test('valid blocked', () => expectValid('planner', 'planner-blocked.json'));
+  test('invalid blocked track type confusion', () =>
+    expectInvalid('planner', 'planner-blocked-track-type-confusion.json'));
   test('invalid missing plan_path on ready', () =>
     expectInvalid('planner', 'planner-ready-missing-plan-path.json'));
   test('invalid track enum', () =>
@@ -47,6 +49,8 @@ describe('validateWorker implementer', () => {
     expectValid('implementer', 'implementer-complete-execution-mode.json'));
   test('invalid execution_mode enum', () =>
     expectInvalid('implementer', 'implementer-complete-bad-execution-mode.json'));
+  test('invalid execution_mode type confusion', () =>
+    expectInvalid('implementer', 'implementer-complete-execution-mode-type-confusion.json'));
 });
 
 describe('validateWorker reviewer', () => {
