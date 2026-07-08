@@ -167,12 +167,8 @@ function validateImplementer(data: unknown): string[] {
     requireField(errors, data, 'branch', isString, 'string');
     requireField(errors, data, 'tests_passed', isBoolean, 'boolean');
     requireField(errors, data, 'touch_paths_honored', isBoolean, 'boolean');
-    if ('execution_mode' in data) {
-      if (!isString(data.execution_mode)) {
-        errors.push('execution_mode: expected string');
-      } else {
-        pushEnumError(errors, 'execution_mode', data.execution_mode, EXECUTION_MODES);
-      }
+    if ('execution_mode' in data && isString(data.execution_mode)) {
+      pushEnumError(errors, 'execution_mode', data.execution_mode, EXECUTION_MODES);
     }
   }
 
