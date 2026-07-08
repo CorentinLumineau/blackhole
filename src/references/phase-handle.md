@@ -36,3 +36,13 @@ parent blocked until PO sign-off on design + children.
 
 - `queue.json`: `touch_paths`, `depends_on`, `epic_parent` if child
 - Issue comment with triage: clarify outcome, split list, or waive rationale
+
+## Route awareness (ADR-004)
+
+When a `route` object is present on the issue's `queue.json` entry (populated by the
+future `router` agent, #95), Handle's own outputs are unchanged — still `touch_paths`,
+`depends_on`, and the clarify/split outcomes exactly as above. `route.needs_split`
+reuses the existing Split mechanism described above — route-derived dispatch does not
+introduce a new split code path. Downstream track selection (`plan_mode`, `needs_design`)
+is entirely a Phase 2 Plan concern; see `orchestrator.md` § Route-derived dispatch and
+`phase-plan.md` § Route-derived planner spawn for the full precedence rules.

@@ -35,11 +35,64 @@ inherit the **parent orchestrator session's harness default model**. Do **not**
 pass or force a `model` override derived from agent markdown files — plugin
 agents omit `model:` by design so the workstation/session preference applies.
 
-**Planner gate (MUST NOT skip):** Do **not** spawn `implementer` until **both**
-conditions are met:
+### Route-derived dispatch (ADR-004 step 3)
+
+Before spawning `planner`, derive its spawn directive from the issue's `queue.json`
+`route{}` object (schema: `queue-dag.md` § `route` object). Evaluate in this precedence
+order — each step is a hard gate over the ones below it:
+
+1. **Void route** — `route` absent, or `.blackhole/config.json` `adaptive_routing: false`
+   → send no explicit `track` directive; `planner` self-assesses Quick/Standard exactly
+   as today (`plan_mode: full` semantics, zero behavior change). This is every issue in
+   today's queue — nothing writes `route` yet, the `router` agent (#95) has not landed —
+   and is byte-for-byte identical to pre-ADR-004 dispatch.
+2. **Split precedence** — `route.needs_split: true` voids every other route flag on this
+   parent issue (hard rule, not an ordering). Dispatch stops here: hand off to the
+   existing Phase 1 split mechanism (`issue-splitting.md`, referenced from
+   `phase-handle.md`) — no new split code path is introduced. Children re-enter at dedup
+   with their own independent `route`.
+3. **Per-flag confidence gate** — before consulting `plan_mode` or `needs_design`,
+   compare `route.confidence.<flag>` against `.blackhole/config.json`
+   `router_confidence_thresholds.<flag>` (default 70 per flag). Below threshold, resolve
+   to that flag's cautious default instead of the computed value: `plan_mode` low
+   confidence → treat as `full` (no directive); `needs_design` low confidence → treat as
+   `true` (dispatch to design track — never skip the human design gate on an uncertain
+   classification). Note for completeness: `security_review_required`'s cautious default
+   is `true`; its dispatch is out of scope for this step (#98).
+4. **`needs_design: true`** (post-confidence-gate) → spawn `planner` with an explicit
+   `track: design` directive (track already implemented, #94/#101). See
+   `phase-plan.md` § Plan approval gate, "Design track (ADR-004)" row — the
+   unconditional human sign-off gate is already documented there; no new gate logic here.
+5. **`plan_mode: skip`** (post-confidence-gate, only when `needs_design` did not already
+   claim the dispatch) → spawn `planner` with an explicit `track: skip` directive (track
+   already implemented, #94/#101). The Planner gate below still applies unmodified — the
+   `skip` track's `planner` spawn still produces a plan artifact on disk and returns
+   `status: ready` per `worker-schemas.md`, so gate conditions 1–2 are satisfied exactly
+   like any other track. Tool-policy constraint restated: the orchestrator never writes
+   this artifact itself (`disallowedTools: [Write, Edit, Delete]`, line 5, this file) —
+   `planner`'s `skip` track is the write-capable agent in this handoff (ADR-004
+   Trade-offs table, "Who writes the skip rationale record").
+6. **`plan_mode: quick` or `plan_mode: full`** (post-confidence-gate) → send no explicit
+   `track` directive; `planner` performs its existing Quick/Standard self-assessment
+   unchanged. This is a deliberate, documented scope boundary — `planner.md` Step 2
+   scopes explicit-directive-only behavior to Skip/Design — not an oversight; forcing an
+   explicit `quick`/`full` directive is out of scope for this step.
+
+**Planner gate (always enforced — never bypassed, including `plan_mode: skip`):** Do
+**not** spawn `implementer` until **both** conditions are met:
 
 1. Plan artifact exists on disk at `{repo_root}/.blackhole/plans/issue-N.md`
 2. Planner worker JSON returned `status: ready` (not `blocked`)
+
+**Explicit skip exception (ADR-004):** (i) when `route.plan_mode: skip` selected the
+`planner` `skip` track, this gate is satisfied by the skip track's own deliverable — a
+4-section rationale record at the same `plans/issue-N.md` path, `status: ready` in the
+worker JSON; (ii) the skip track does **not** bypass this gate — it is a
+`planner`-produced artifact like any other track; (iii) the gate's "never skip
+verification" guarantee is unconditional across `quick`/`standard`/`skip`; only `design`
+is exempt from *this specific implement-readiness gate* because it never returns
+`status: ready` (unconditional `status: blocked` — see `phase-plan.md` § Plan approval
+gate).
 
 `bun run verify` enforces the same plan-on-disk rule via **V-PLAN-01** for any
 queue entry in `plan`, `implement`, or `review` with `status: in-flight` (use

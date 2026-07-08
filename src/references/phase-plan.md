@@ -4,7 +4,7 @@
 
 ```
 - [ ] queue entry: phase plan (from handle)
-- [ ] Spawn planner to create Plan artifact → plans/<issue>.md or issue comment
+- [ ] Spawn planner to create Plan artifact → plans/<issue>.md or issue comment (directive derived from `route` when present, see § Route-derived planner spawn)
 - [ ] Plan-time V-code scan → findings-ledger (phase: plan)
 - [ ] Out-of-scope → gh issue create + ledger deferred_to_issue
 - [ ] issue-splitting.md — if plan reveals multi-PR scope, split NOW
@@ -20,6 +20,16 @@
 
 See [worker-schemas.md](worker-schemas.md) planner contract. On `status: blocked`, set queue `notes: awaiting-user-clarification` or `awaiting-plan-approval` per failing checks, or `awaiting-design-approval` when `track: design` (`failing_checks` includes `design_pending_approval`).
 See [multitask-mode.md](multitask-mode.md) § Claude Code harness notes for how to verify a blocked/idle worker's status without chat polling.
+
+## Route-derived planner spawn (ADR-004)
+
+When the issue has a `route` object on its `queue.json` entry, the orchestrator derives
+the `planner` spawn directive from it before running the checklist above. See
+`orchestrator.md` § Route-derived dispatch for the full precedence rules
+(`needs_split` > `needs_design` > `plan_mode`, each gated by `route.confidence.<flag>`
+against `router_confidence_thresholds`). Zero-regression guarantee: absent/void `route`,
+or `adaptive_routing: false`, preserves today's exact behavior — no explicit directive,
+planner self-assesses Quick/Standard unchanged.
 
 ## Plan approval gate
 

@@ -78,9 +78,13 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 | `computed_at_phase` | `handle` \| `plan` \| `implement` \| `review` | Phase at which this route was computed |
 | `revision` | number | Bumped on every re-route; never retroactively changes already-executed chain steps |
 
-**Non-goal for this issue**: no orchestrator/agent logic reads or writes `route` yet — the
-"would trigger" language above is documentation of future intent (steps 2-8), not a behavior
-claim about the current codebase.
+**Consumer status** (per-flag, updated as ADR-004 steps land): `plan_mode`, `needs_split`,
+and `needs_design` are now read by orchestrator dispatch (`orchestrator.md` §
+Route-derived dispatch, #93); `needs_research`, `needs_investigation`, and
+`security_review_required` remain documented-but-unactioned flags (steps 6/8 — #96/#98,
+not yet implemented); nothing writes `route` yet (the `router` agent, step 1 — #95, not
+yet implemented), so every issue in today's queue falls through the "void route"
+fallback and dispatches exactly as it did before ADR-004.
 
 ### Status transitions
 
