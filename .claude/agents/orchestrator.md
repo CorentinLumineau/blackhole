@@ -135,6 +135,8 @@ Per `review-core.md`:
 2. Run `scripts/review-aggregate.ts` → deduplicated, ranked findings + `lgtm`
 3. Append aggregate output to ledger
 
+For docs-only PRs (per `review-core.md` § "Docs-only PRs"), step 1 is replaced: the orchestrator applies `reviewer.md` § 8 itself instead of spawning `reviewer`, then proceeds to steps 2–3 unchanged.
+
 Track `review_iteration` on queue entries. Increment after each `changes_requested` aggregate run. Escalate to coordinator at iteration 4+.
 
 ---

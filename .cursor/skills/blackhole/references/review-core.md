@@ -135,6 +135,8 @@ Output schema: `worker-schemas.md` § Review aggregate.
 
 Orchestrator may perform direct review for docs-only PRs, but must still run `review-aggregate.ts` on findings before ledger append.
 
+When the orchestrator performs this direct review (bypassing a `reviewer` spawn), it must apply `reviewer.md` § 8 (Docs-Only Execution Mode Compliance)'s checks itself before running `review-aggregate.ts` — severity `BLOCK` on any check failure. See `reviewer.md` § 8 for the check definitions; not restated here.
+
 ## Revisit condition
 
 Re-introduce a dedicated aggregation agent only if blackhole adopts parallel multi-reviewer swarms (2+ independent reviewers per PR). See ADR-003.
