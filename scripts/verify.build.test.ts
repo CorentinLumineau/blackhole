@@ -39,6 +39,11 @@ describe('detectBuildOutputDrift', () => {
       ' M .gemini-plugin/plugin.json',
     ]);
   });
+
+  test('regression: #138 stale .agents/build/ gemini workspace mirror is detected', () => {
+    const porcelain = ' M .agents/build/agents/coordinator.md\n';
+    expect(detectBuildOutputDrift(porcelain)).toEqual([' M .agents/build/agents/coordinator.md']);
+  });
 });
 
 describe('evaluateBuildCheck', () => {

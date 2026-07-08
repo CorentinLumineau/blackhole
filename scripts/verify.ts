@@ -362,8 +362,12 @@ const walkMdFiles = (dir: string): string[] => {
   return out;
 };
 
-// checkGeminiBuild and checkGeminiDistributionBundle both need `bun run build --gemini` to have
-// run before asserting file shape — memoize so a full `bun run verify` pass only builds once.
+// checkGeminiBuild, checkGeminiDistributionBundle, and checkBuild all need `bun run build
+// --gemini` to have run before asserting file shape / diffing porcelain — memoize so a full
+// `bun run verify` pass only builds once.
+// Note: `--gemini` and `--all` produce byte-identical output under current build.ts flag
+// semantics (buildCodex defaults to true regardless of either flag), so this call also covers
+// the codex mirror; if buildCodex's default ever changes, revisit this equivalence.
 let geminiBuildResult: { ok: boolean; output: string } | null = null;
 
 const runGeminiBuild = (): { ok: boolean; output: string } => {
@@ -771,9 +775,9 @@ const checkBuild = () => {
   let afterPorcelain = '';
 
   if (!skip) {
-    const build = spawnSync('bun', ['run', 'build'], { cwd: root, encoding: 'utf-8' });
-    buildOk = build.status === 0;
-    buildOutput = build.stderr || build.stdout || '';
+    const build = runGeminiBuild();
+    buildOk = build.ok;
+    buildOutput = build.output;
 
     if (buildOk) {
       const after = spawnSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf-8' });
