@@ -152,9 +152,10 @@ failed fix attempts) or `touch_paths_overrun` (fix needs 3+ files beyond the pla
 Touch-Paths). Single-valued (unlike the array-shaped `failing_checks`) — the worker stops at the
 first trigger it hits, it does not accumulate multiple in one session.
 
-**Non-goal for this issue**: no orchestrator logic reads `escalation_trigger` to actually
-re-route via `investigator.investigate` or escalate `plan_mode` to `full` yet — this field is
-documentation of future intent, mirroring `execution_mode`'s own disclaimer above.
+**Consumer status**: `escalation_trigger` is now read by the orchestrator's escalation dispatch
+(`orchestrator.md` § Escalation dispatch, #137) — an `implementer` returning `status: blocked`
+with this field set is routed to a direct `investigator` (`sub_mode: investigate`) spawn instead
+of a blind `implementer` re-spawn.
 
 See `implementer.md` § Bugfix Gate for the Scout Check / Improvement Record convention the same
 gate also produces (content spec stays there — `V-DRY`).
