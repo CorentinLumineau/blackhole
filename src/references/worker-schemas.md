@@ -111,7 +111,7 @@ When `status: blocked`, `failing_checks` lists failed items:
 | `touch_paths_honored` | boolean | when `complete` |
 | `execution_mode` | `standard` \| `refactor-strict` \| `docs-only` | no, optional — absent defaults to `standard` |
 | `task_type` | `feature` \| `bugfix` \| `refactor` \| `docs` | no, optional |
-| `escalation_trigger` | `failed_attempts` \| `touch_paths_overrun` \| `null` | no, optional — only meaningful on `status: blocked` |
+| `escalation_trigger` | `failed_attempts` \| `touch_paths_overrun` | no, optional — only meaningful on `status: blocked` |
 | `new_findings` | finding[] | no |
 | `filed_issues` | number[] | no |
 
