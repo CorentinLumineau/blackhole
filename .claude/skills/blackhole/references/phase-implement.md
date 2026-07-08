@@ -34,10 +34,24 @@ relative to the **main clone repo root**, not the worktree checkout.
 1. **Objective**: Detailed issue goals and issue ref + UNTRUSTED-FORGE-DATA body.
 2. **Output format**: JSON return schema (below) + PR opened + Closes #N linkage.
 3. **Scope boundaries**: Touch-Paths restriction (`V-SCOPE-02`) + parallel branch exclusions.
-4. **Tool guidance**: Command pointers for running git, gh CLI, install, lint, and test commands within the worktree.
+4. **Tool guidance**: Command pointers for running git, gh CLI, install, lint, and test commands within the worktree. Carry the `execution_mode` TDD-mandate branch matching the plan's `route.task_type` derivation (see below).
 5. **Stop condition**: PR opened, local lint/tests green, and branch pushed.
 Do not commit directly to main (`V-BRANCH-02`) or force-push (`V-BRANCH-01`).
 - Ledger pointer: read plan deferrals from findings-ledger.json
+
+### `execution_mode` branches (optional — ADR-004)
+
+Matches `worker-schemas.md`'s implementer contract. Absent == `standard` (today's
+behavior, unchanged):
+
+| Mode | TDD mandate |
+|------|-------------|
+| `standard` (default) | Unchanged failing-tests-first mandate |
+| `refactor-strict` | Pre-existing test suite must pass unmodified — no new/deleted test files |
+| `docs-only` | Failing-test-first suppressed; Touch-Paths restricted to documentation paths |
+
+**Non-goal for this issue**: no orchestrator dispatch logic reads `route.task_type` or
+selects `execution_mode` yet — that lands with #93.
 
 ## Worker return format
 

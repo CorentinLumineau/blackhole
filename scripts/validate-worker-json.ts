@@ -15,6 +15,7 @@ const PLANNER_STATUSES = ['ready', 'blocked', 'error'] as const;
 const IMPLEMENTER_STATUSES = ['complete', 'blocked', 'error'] as const;
 const REVIEWER_STATUSES = ['complete', 'error'] as const;
 const TRACKS = ['quick', 'standard', 'skip', 'design'] as const;
+const EXECUTION_MODES = ['standard', 'refactor-strict', 'docs-only'] as const;
 const SEVERITIES = ['BLOCK', 'WARN', 'INFO'] as const;
 
 const ROLE_FROM_TYPE: Record<string, Role> = {
@@ -166,6 +167,9 @@ function validateImplementer(data: unknown): string[] {
     requireField(errors, data, 'branch', isString, 'string');
     requireField(errors, data, 'tests_passed', isBoolean, 'boolean');
     requireField(errors, data, 'touch_paths_honored', isBoolean, 'boolean');
+    if ('execution_mode' in data && isString(data.execution_mode)) {
+      pushEnumError(errors, 'execution_mode', data.execution_mode, EXECUTION_MODES);
+    }
   }
 
   if ('new_findings' in data && data.new_findings !== undefined && !Array.isArray(data.new_findings)) {

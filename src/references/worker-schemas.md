@@ -93,6 +93,7 @@ When `status: blocked`, `failing_checks` lists failed items:
   "branch": "blackhole/issue-298",
   "tests_passed": true,
   "touch_paths_honored": true,
+  "execution_mode": "standard",
   "new_findings": [],
   "filed_issues": []
 }
@@ -105,8 +106,26 @@ When `status: blocked`, `failing_checks` lists failed items:
 | `branch` | string | when `complete` |
 | `tests_passed` | boolean | when `complete` |
 | `touch_paths_honored` | boolean | when `complete` |
+| `execution_mode` | `standard` \| `refactor-strict` \| `docs-only` | no, optional — absent defaults to `standard` |
 | `new_findings` | finding[] | no |
 | `filed_issues` | number[] | no |
+
+### `execution_mode` (optional — ADR-004)
+
+Selects which TDD-mandate variant governs the implementer's session:
+
+- `standard` — default (and the mode used when `execution_mode` is absent): unchanged
+  failing-tests-first mandate.
+- `refactor-strict` — the pre-existing test suite must pass **unmodified**; no new or
+  deleted test files during the session.
+- `docs-only` — failing-test-first mandate suppressed; Touch-Paths restricted to
+  documentation paths.
+
+**Non-goal for this issue**: no orchestrator/agent logic computes or passes
+`execution_mode` yet — that derivation from `route.task_type` (`feature`/`bugfix` →
+`standard`, `refactor` → `refactor-strict`, `docs` → `docs-only`) is future work (`router`
+agent, #95; orchestrator dispatch, #93). This field is documentation of future intent, not
+a behavior claim about the current codebase.
 
 ## Reviewer (`reviewer`)
 
