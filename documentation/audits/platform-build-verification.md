@@ -3,7 +3,7 @@ type: audit
 status: current
 review_trigger: "on release"
 created: 2026-07-06
-last_updated: 2026-07-06
+last_updated: 2026-07-08
 ---
 
 # Platform Build Verification — Post-Rename End-to-End Pass
@@ -98,7 +98,7 @@ Commands run: `bun run build`, `bun run verify`, `cat
 | Assertion | Result |
 |---|---|
 | `.codex-plugin/plugin.json` `version` equals `package.json` version | PASS — both `0.5.0` |
-| `codex-agents/*.yaml` — 5 files, each has `instructions: \|` block, `permissionMode:`, no `model:` scalar | PASS — verified all 5 files (`coordinator`, `implementer`, `orchestrator`, `planner`, `reviewer`) have exactly 1 `instructions: \|` line, 1 `permissionMode:` line, 0 `model:` lines |
+| `codex-agents/*.yaml` — 5 files, each has `instructions: \|` block, `permissionMode:`, `model: sonnet` scalar (required per #109/#117, enforced by `V-AGENT-01`/`V-CODEX-04`) | PASS — verified all 5 files (`coordinator`, `implementer`, `orchestrator`, `planner`, `reviewer`) have exactly 1 `instructions: \|` line, 1 `permissionMode:` line, 1 `model: sonnet` line |
 | `.codex-plugin/plugin.json` `homepage`/`repository` and `codex-marketplace.json` `plugins[0].source.url` — stale-URL check (Known Discrepancy #2) | **FAIL (confirmed) — see Findings** |
 
 **Requires manual confirmation in a real client**: installing via a real
