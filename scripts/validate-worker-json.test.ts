@@ -51,6 +51,19 @@ describe('validateWorker implementer', () => {
     expectInvalid('implementer', 'implementer-complete-bad-execution-mode.json'));
   test('invalid execution_mode type confusion', () =>
     expectInvalid('implementer', 'implementer-complete-execution-mode-type-confusion.json'));
+  test('valid complete with task_type', () =>
+    expectValid('implementer', 'implementer-complete-task-type.json'));
+  test('invalid task_type enum', () =>
+    expectInvalid('implementer', 'implementer-complete-bad-task-type.json'));
+  test('invalid task_type type confusion', () =>
+    expectInvalid('implementer', 'implementer-complete-task-type-type-confusion.json'));
+  test('valid blocked', () => expectValid('implementer', 'implementer-blocked.json'));
+  test('valid blocked with escalation_trigger', () =>
+    expectValid('implementer', 'implementer-blocked-escalation-trigger.json'));
+  test('invalid escalation_trigger enum', () =>
+    expectInvalid('implementer', 'implementer-blocked-bad-escalation-trigger.json'));
+  test('invalid escalation_trigger type confusion', () =>
+    expectInvalid('implementer', 'implementer-blocked-escalation-trigger-type-confusion.json'));
 });
 
 describe('validateWorker reviewer', () => {

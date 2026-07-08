@@ -1,0 +1,4 @@
+{
+  "status": "blocked",
+  "escalation_trigger": "not-a-real-trigger"
+}
