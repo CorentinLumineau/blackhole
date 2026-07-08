@@ -31,6 +31,8 @@ describe('validateWorker planner', () => {
     expectInvalid('planner', 'planner-ready-missing-plan-path.json'));
   test('invalid track enum', () =>
     expectInvalid('planner', 'planner-ready-invalid-track.json'));
+  test('invalid ready with design track', () =>
+    expectInvalid('planner', 'planner-ready-invalid-design-track.json'));
   test('valid ready skip', () => expectValid('planner', 'planner-ready-skip.json'));
   test('valid blocked design', () => expectValid('planner', 'planner-blocked-design.json'));
   test('invalid blocked design missing plan_path', () =>
