@@ -52,7 +52,7 @@ export const validatePluginTreeShape = (
   return errors;
 };
 
-/** Gemini/Antigravity workspace tree — requires exactly 6 agents (opposite invariant of
+/** Gemini/Antigravity workspace tree — requires exactly 7 agents (opposite invariant of
  * distributionTreeErrors below). Called with manifestPath: null since build.ts's call site
  * runs before the detached .gemini-plugin/plugin.json is written. */
 export const geminiWorkspaceTreeErrors = (
@@ -62,8 +62,8 @@ export const geminiWorkspaceTreeErrors = (
   agentFiles: string[]
 ): string[] => {
   const errors: string[] = [];
-  if (agentFiles.length !== 6) {
-    errors.push(`Gemini ${label}: expected 6 agents, got ${agentFiles.length}`);
+  if (agentFiles.length !== 7) {
+    errors.push(`Gemini ${label}: expected 7 agents, got ${agentFiles.length}`);
   }
   errors.push(
     ...validatePluginTreeShape(destRoot, null, { treePrefix: `${label}/`, manifest: '' }, rulesList)
@@ -97,14 +97,14 @@ export const INSTRUCTIONS_MARKER = 'instructions: |';
 
 export const hasInstructionsBlock = (content: string): boolean => content.includes(INSTRUCTIONS_MARKER);
 
-/** Codex CLI tree — exact 6-agent-yaml count, each with an instructions block scalar, plus
+/** Codex CLI tree — exact 7-agent-yaml count, each with an instructions block scalar, plus
  * SKILL.md and a non-empty references/ dir. Message prefixes ("SKILL.md", "references",
- * "6 agent") are a deliberate, controlled contract with verify.ts's V-code partitioning
+ * "7 agent") are a deliberate, controlled contract with verify.ts's V-code partitioning
  * (Task 4) — pinned by this file's own message-contract tests; keep both sides in sync. */
 export const codexTreeErrors = (rootDir: string, agentFiles: string[]): string[] => {
   const errors: string[] = [];
-  if (agentFiles.length !== 6) {
-    errors.push(`Codex: expected 6 agent YAML files, got ${agentFiles.length}`);
+  if (agentFiles.length !== 7) {
+    errors.push(`Codex: expected 7 agent YAML files, got ${agentFiles.length}`);
   }
   for (const file of agentFiles) {
     const content = fs.readFileSync(path.join(rootDir, 'codex-agents', file), 'utf-8');

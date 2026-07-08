@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 
-export type Role = 'planner' | 'implementer' | 'reviewer' | 'router';
+export type Role = 'planner' | 'implementer' | 'reviewer' | 'router' | 'investigator';
 
 export type HookInput = {
   subagent_type?: string;
@@ -21,20 +21,24 @@ const ROUTE_STATUSES = ['routed', 'error'] as const;
 const TASK_TYPES = ['feature', 'bugfix', 'refactor', 'docs'] as const;
 const PLAN_MODES = ['skip', 'quick', 'full'] as const;
 const TRIGGERS = ['initial', 'clarify-resolved', 'research-landed', 'investigation-landed'] as const;
+const INVESTIGATOR_STATUSES = ['complete', 'error'] as const;
+const SUB_MODES = ['research', 'investigate'] as const;
 
 const ROLE_FROM_TYPE: Record<string, Role> = {
   planner: 'planner',
   implementer: 'implementer',
   reviewer: 'reviewer',
   router: 'router',
+  investigator: 'investigator',
   'blackhole:planner': 'planner',
   'blackhole:implementer': 'implementer',
   'blackhole:reviewer': 'reviewer',
   'blackhole:router': 'router',
+  'blackhole:investigator': 'investigator',
 };
 
 const ROLE_PATTERN =
-  /\b(?:blackhole:)?(planner|implementer|reviewer|router)\b/i;
+  /\b(?:blackhole:)?(planner|implementer|reviewer|router|investigator)\b/i;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -291,6 +295,32 @@ function validateReviewer(data: unknown): string[] {
   return errors;
 }
 
+function validateInvestigator(data: unknown): string[] {
+  const errors: string[] = [];
+  if (!isObject(data)) {
+    return ['payload: expected object'];
+  }
+
+  requireField(errors, data, 'status', isString, 'string');
+  if (isString(data.status)) {
+    pushEnumError(errors, 'status', data.status, INVESTIGATOR_STATUSES);
+  }
+
+  if (data.status === 'complete') {
+    requireField(errors, data, 'note_path', isString, 'string');
+    requireField(errors, data, 'sub_mode', isString, 'string');
+    if (isString(data.sub_mode)) {
+      pushEnumError(errors, 'sub_mode', data.sub_mode, SUB_MODES);
+    }
+    requireField(errors, data, 'confidence', isConfidenceScore, 'number (0-100)');
+    requireField(errors, data, 'computed_at_revision', isNumber, 'number');
+  } else if (data.status === 'error') {
+    requireField(errors, data, 'error', isString, 'string');
+  }
+
+  return errors;
+}
+
 export function validateWorker(role: Role, data: unknown): string[] {
   switch (role) {
     case 'planner':
@@ -301,6 +331,8 @@ export function validateWorker(role: Role, data: unknown): string[] {
       return validateReviewer(data);
     case 'router':
       return validateRouter(data);
+    case 'investigator':
+      return validateInvestigator(data);
     default:
       return [`role: unsupported role "${role as string}"`];
   }
@@ -558,7 +590,7 @@ async function main() {
   if (!role) {
     console.error(
       'Usage: bun run scripts/validate-worker-json.ts --hook\n' +
-        '       bun run scripts/validate-worker-json.ts --role <planner|implementer|reviewer|router> (--file <path> | --json <string>)',
+        '       bun run scripts/validate-worker-json.ts --role <planner|implementer|reviewer|router|investigator> (--file <path> | --json <string>)',
     );
     process.exit(1);
   }

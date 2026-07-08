@@ -53,6 +53,7 @@ const checkAgentToolPolicy = () => {
     'implementer.md': null,
     'reviewer.md': ['Write', 'Edit', 'Delete'],
     'router.md': ['Write', 'Edit', 'Delete'],
+    'investigator.md': ['Write', 'Edit', 'Delete'],
   };
 
   for (const file of files) {
@@ -124,7 +125,7 @@ const checkDelegationContracts = () => {
     }
   }
 
-  const outputAgents = ['reviewer.md', 'planner.md', 'implementer.md', 'router.md'];
+  const outputAgents = ['reviewer.md', 'planner.md', 'implementer.md', 'router.md', 'investigator.md'];
   for (const file of outputAgents) {
     const content = read(`src/agents/${file}`);
     if (!/worker-schemas|Output format|Return format/i.test(content)) {
@@ -359,8 +360,8 @@ const checkGeminiBuild = () => {
   const workspaceAgents = listFiles(path.join(AGENTS_BUILD_ROOT, 'agents'));
   const agentFiles = workspaceAgents.filter((f) => AGENT_MD_FILES.has(f));
   const errors: string[] = [];
-  if (agentFiles.length !== 6) {
-    errors.push(`${AGENTS_BUILD_AGENT_DIR}/agents: expected 6 agent .md files, got ${agentFiles.length}`);
+  if (agentFiles.length !== 7) {
+    errors.push(`${AGENTS_BUILD_AGENT_DIR}/agents: expected 7 agent .md files, got ${agentFiles.length}`);
   }
 
   errors.push(

@@ -1,0 +1,8 @@
+{
+  "status": "error",
+  "note_path": null,
+  "sub_mode": "investigate",
+  "confidence": null,
+  "computed_at_revision": null,
+  "error": "gh issue view failed: not found"
+}

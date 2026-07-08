@@ -209,6 +209,47 @@ documented in `findings-ledger.md` § "Routing decision records".
 }
 ```
 
+## Investigator (`investigator`)
+
+```json
+{
+  "status": "complete",
+  "note_path": "plans/issue-298-investigation.md",
+  "sub_mode": "investigate",
+  "confidence": 85,
+  "computed_at_revision": 2
+}
+```
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `status` | `complete` \| `error` | yes |
+| `note_path` | string | when `complete` |
+| `sub_mode` | `research` \| `investigate` | when `complete` |
+| `confidence` | number 0-100 | when `complete` |
+| `computed_at_revision` | number (= `route.revision` at spawn time) | when `complete` |
+| `error` | string | when `status: error` |
+
+```json
+{
+  "status": "error",
+  "note_path": null,
+  "sub_mode": "investigate",
+  "confidence": null,
+  "computed_at_revision": null,
+  "error": "gh issue view failed: not found"
+}
+```
+
+The note file itself (not this JSON envelope) carries its own fixed frontmatter — `issue`,
+`sub_mode`, `confidence`, `computed_at_revision` — plus required sections per sub-mode
+(`investigate` → Symptoms/Hypotheses/Root Cause/Resolution; `research` → Executive
+Summary/Findings/Sources). Full behavioral spec: `investigator.md` (not duplicated here).
+
+**Path convention**: `plans/issue-N-research.md` (research sub-mode) or
+`plans/issue-N-investigation.md` (investigate sub-mode) — co-located with `plans/issue-N.md`,
+mirroring `planner.md`'s Design Track sibling-artifact convention (`plans/issue-N-design.md`).
+
 ## Review aggregate (`scripts/review-aggregate.ts`)
 
 Orchestrator invokes after `reviewer` completes. Not a worker agent — deterministic script output:

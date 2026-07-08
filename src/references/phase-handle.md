@@ -60,3 +60,24 @@ but does not replace Handle's own manual `issue-splitting.md`/`clarify-gates.md`
 dispatch does not introduce a new split code path. Downstream track selection (`plan_mode`,
 `needs_design`) is entirely a Phase 2 Plan concern; see `orchestrator.md` § Route-derived
 dispatch and `phase-plan.md` § Route-derived planner spawn for the full precedence rules.
+
+## Investigator agent (ADR-004)
+
+**Spawn condition**: `route.needs_research` or `route.needs_investigation` true (computed by
+`router`'s initial pass, see § Router agent above). Handle spawns `investigator` for the
+corresponding sub-mode — `research` when `needs_research`, `investigate` when
+`needs_investigation`.
+
+**Note-landing → re-route-checkpoint trigger**: `investigator`'s note file landing on disk at
+`plans/issue-N-research.md` or `plans/issue-N-investigation.md` (path convention: `router.md` §
+Re-route checkpoints for the flags each checkpoint re-validates, `worker-schemas.md` §
+Investigator for the note-file schema) is the *trigger* for `router`'s `research-landed` /
+`investigation-landed` checkpoints. `investigator` only produces the note — the checkpoint
+re-validation itself (`router` re-invoked, `route.revision` bumped) is entirely `router.md`'s
+job, not duplicated here.
+
+**Scope note**: `investigator` never mutates `queue.json` or `findings-ledger.json` — its only
+filesystem write is its own note file. Deciding (routing) vs. discovering (evidence-gathering)
+is a real SRP boundary (ADR-004 Trade-offs table) that Handle's dispatch respects: this section
+documents the spawn point and trigger relationship only, not a decision-making role for
+`investigator`.
