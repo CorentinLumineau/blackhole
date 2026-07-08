@@ -24,6 +24,8 @@ longer definitions (token cost, drift). Persist every finding to
 | V-SEC-01/02 | No injection; no auth bypass | BLOCK |
 | V-SEC-03/04 | No hardcoded secrets; no XSS | BLOCK |
 | V-SEC-06 | Every security finding carries a concrete attack scenario | BLOCK |
+| V-SEC-07 | Adversarial re-verification — each security finding independently re-checked before it can block merge | WARN |
+| V-SEC-08 | Security findings artifact must structurally validate before merge when security_review_required: true | BLOCK |
 | V-INT-02 | NEVER reimplement an existing utility | BLOCK |
 | V-INT-01/03/04 | Follow conventions at touchpoints; no third variant of a solved concern | WARN |
 | V-FIX-01 | Fixes address the root cause, documented — never the symptom | BLOCK |

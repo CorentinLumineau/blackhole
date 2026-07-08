@@ -7,6 +7,9 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 ```
 - [ ] queue.json: phase review
 - [ ] Spawn reviewer to perform PR audit
+- [ ] Route check: read route.security_review_required (+ confidence gate) → enrich reviewer prompt with security-mode audit (see review-core.md § Security-mode review)
+- [ ] Route check: read route.plan_mode → scope plan-conformance audit to quick/full; skip → compensating no-API-surface check (see review-core.md § Skip-PR compensating control)
+- [ ] Security-mode PR → confirm merge-gate validator (V-SEC-08) before LGTM
 - [ ] Run scripts/review-aggregate.ts on reviewer JSON
 - [ ] Aggregate output → ledger append (phase: review)
 - [ ] BLOCK → increment review_iteration; back to phase implement (see review-core iteration budget)
