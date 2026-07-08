@@ -129,7 +129,7 @@ Queue shows `#N` with `route.needs_research` or `route.needs_investigation` true
 Respawn `investigator` (issue #96) for the missing sub-mode (`research` or
 `investigate`) — the interrupted evidence-gathering step must complete before the
 downstream flags it feeds (`needs_design`, `plan_mode`, `security_review_required`,
-per `queue-dag.md` "Re-route checkpoints") can be trusted. If the worktree/stash state
+per `documentation/decisions/ADR-004-adaptive-phase-routing.md` "Re-route checkpoints") can be trusted. If the worktree/stash state
 is also dirty, resolve per §4 first. As with (a), this is a doc-only rule ready for
 when the `investigator` agent lands — no dispatch code acts on it yet.
 
@@ -168,7 +168,7 @@ that issue, verify the route is not stale:
 **On stale**: do not dispatch. Force a re-route (router agent, issue #95) before
 resuming the chain — never act on flags computed against evidence that no longer
 matches reality. This is a hard rule, not best-effort, mirroring the ADR's own
-three synchronous re-route checkpoints (`queue-dag.md` "Re-route checkpoints" table)
+three synchronous re-route checkpoints (`documentation/decisions/ADR-004-adaptive-phase-routing.md` "Re-route checkpoints" table)
 but applied defensively on the recovery/resume path specifically, because recovery is
 asynchronous and the queue can sit blocked for days — unlike the synchronous
 checkpoints, staleness here cannot be assumed away by "no checkpoint fired yet".
