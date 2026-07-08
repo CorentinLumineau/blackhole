@@ -142,6 +142,33 @@ const checkDelegationContracts = () => {
   else pass('V-DELEG-01');
 };
 
+// V-DESIGN-01: Design Track template in planner.md declares all 8 required section headings
+export const DESIGN_TRACK_REQUIRED_HEADINGS = [
+  '## Requirements Framing',
+  '## Options + Trade-off Matrix',
+  '## Adversarial Evaluation',
+  '## Component Decomposition',
+  '## Design Principles Validation',
+  '## Refactoring Impact Analysis',
+  '## Assumption Audit',
+  '## Gate',
+];
+
+export const findMissingDesignTrackHeadings = (
+  content: string,
+  required: string[] = DESIGN_TRACK_REQUIRED_HEADINGS,
+): string[] => required.filter((heading) => !content.includes(heading));
+
+const checkDesignTrackTemplate = () => {
+  const content = read('src/agents/planner.md');
+  const missing = findMissingDesignTrackHeadings(content);
+  if (missing.length) {
+    fail('V-DESIGN-01', `planner.md missing Design Track headings: ${missing.join(', ')}`);
+  } else {
+    pass('V-DESIGN-01');
+  }
+};
+
 // V-PHASE-01: Phase playbooks reference consistent phase names
 const checkPhaseNames = () => {
   const phases = ['handle', 'plan', 'implement', 'review', 'done'];
@@ -765,6 +792,7 @@ const main = () => {
   checkAgentToolPolicy();
   checkAgentFrontmatter();
   checkDelegationContracts();
+  checkDesignTrackTemplate();
   checkPhaseNames();
   checkVcodeReferences();
   checkFixtures();

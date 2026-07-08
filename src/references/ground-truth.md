@@ -44,12 +44,13 @@ Source: `src/references/blackhole-vcodes.md`
 
 ## Verify checks
 
-**verify_check_count:** 18
+**verify_check_count:** 19
 
 | Check ID | Description |
 |----------|-------------|
 | V-TOOLS-01 | No tools: allowlist on agents; correct disallowedTools per deny matrix |
 | V-DELEG-01 | Worker agents declare 5-field or output contract |
+| V-DESIGN-01 | Design Track template in planner.md declares all 8 required section headings |
 | V-AGENT-01 | Agent frontmatter complete |
 | V-PHASE-01 | Phase playbooks use consistent phase names |
 | V-VCODE-01 | V-codes referenced in agents or phases |
