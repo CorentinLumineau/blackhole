@@ -1,0 +1,7 @@
+{
+  "status": "ready",
+  "plan_path": ".blackhole/plans/issue-18.md",
+  "track": "skip",
+  "failing_checks": [],
+  "clarification_markers": 0
+}

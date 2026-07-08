@@ -1,0 +1,6 @@
+{
+  "status": "blocked",
+  "track": "design",
+  "failing_checks": ["design_pending_approval"],
+  "clarification_markers": 0
+}

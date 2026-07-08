@@ -14,7 +14,7 @@ export type HookInput = {
 const PLANNER_STATUSES = ['ready', 'blocked', 'error'] as const;
 const IMPLEMENTER_STATUSES = ['complete', 'blocked', 'error'] as const;
 const REVIEWER_STATUSES = ['complete', 'error'] as const;
-const TRACKS = ['quick', 'standard'] as const;
+const TRACKS = ['quick', 'standard', 'skip', 'design'] as const;
 const SEVERITIES = ['BLOCK', 'WARN', 'INFO'] as const;
 
 const ROLE_FROM_TYPE: Record<string, Role> = {
@@ -139,6 +139,12 @@ function validatePlanner(data: unknown): string[] {
       errors.push('failing_checks: expected string[]');
     }
     requireField(errors, data, 'clarification_markers', isNumber, 'number');
+    if ('track' in data && isString(data.track)) {
+      pushEnumError(errors, 'track', data.track, TRACKS);
+      if (data.track === 'design') {
+        requireField(errors, data, 'plan_path', isString, 'string');
+      }
+    }
   }
 
   return errors;

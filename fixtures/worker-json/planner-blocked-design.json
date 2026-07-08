@@ -1,0 +1,7 @@
+{
+  "status": "blocked",
+  "plan_path": ".blackhole/plans/issue-18-design.md",
+  "track": "design",
+  "failing_checks": ["design_pending_approval"],
+  "clarification_markers": 0
+}
