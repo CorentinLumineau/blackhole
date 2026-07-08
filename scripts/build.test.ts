@@ -332,7 +332,7 @@ disallowedTools: [Write, Edit, Delete]
     const yaml = buildCodexAgentYaml(source, agentDir, rulesPath);
     expect(yaml).toMatch(/^name: coordinator\n/);
     expect(yaml).toContain('description: Multitask Mode coordinator');
-    expect(yaml).not.toMatch(/^model:/m);
+    expect(yaml).toContain('model: sonnet');
     expect(yaml).toContain('permissionMode: default');
     expect(yaml).toContain('  - Write');
     const instructions = yaml.split('instructions: |\n')[1] ?? '';

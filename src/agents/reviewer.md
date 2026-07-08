@@ -1,6 +1,7 @@
 ---
 name: reviewer
 description: Backlog campaign reviewer agent. Performs strict audits on implementation PRs, enforcing V-codes, quality, security, and best practices.
+model: sonnet
 permissionMode: default
 disallowedTools: [Write, Edit, Delete]
 ---
