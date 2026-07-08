@@ -56,6 +56,13 @@ instructions: |
   *   **PR Linkage (`V-GIT-01`)**: Verify the PR description contains `Closes #N` or `Fixes #N`.
   *   **Branch Commits (`V-BRANCH-02`)**: Ensure all changes are isolated in the feature branch and no direct commits were pushed to protected branches.
 
+  ### 8. Docs-Only Execution Mode Compliance
+  *   **Detection**: every file in the PR diff matches a documentation path pattern (`**/*.md`, `documentation/**`) — the same signal § 1's Touch-Paths audit already computes. When true, apply this section *in addition to* § 1 (never in place of it).
+  *   **Drift-Check Table present**: the PR description contains a Drift-Check Table (one row per touched doc claim, per `implementer.md` § Execution Mode `docs-only` gate). Missing table — severity `BLOCK`.
+  *   **Drift-Check Table accuracy spot-check**: sample at least one row's "Current code state" claim against the actually-cited current source. A misrepresented row — severity `BLOCK`, note the correct state in the finding.
+  *   **Example verification confirmations present**: every touched code block in the diff has a matching one-line confirmation in the PR description. A missing confirmation — severity `BLOCK`.
+  *   **Example verification accuracy spot-check**: independently re-verify at least one confirmed code block against its cited source. A mismatch — severity `BLOCK`.
+
   ---
 
   ## Output Format

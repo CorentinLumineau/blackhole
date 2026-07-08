@@ -114,6 +114,17 @@ directive, treat it as absent — behave exactly as `standard`.
 *   **`docs-only`**: failing-test-first mandate suppressed entirely. Touch-Paths are
     restricted to documentation paths (e.g. `**/*.md`, `documentation/**`) — touching any
     non-doc file is a Touch-Paths violation (`V-SCOPE-02`), not merely a style note.
+    - **Staleness/Drift-Check gate (unconditional)**: before editing any doc, compare the
+      doc's existing claims (signatures, examples, described behavior) against the current
+      code they describe. Produce a Drift-Check Table in the PR description — one row per
+      touched doc claim: `Doc claim | Current code state | Drift type (none |
+      api-signature-changed | new-feature-undocumented | behavior-changed | file-moved) |
+      Required action`. Same "no bypass" shape as the Bugfix Gate / Refactoring Verification
+      gate — the table is produced even when every row resolves to `none`.
+    - **Example verification**: every code block written or touched in the diff must be
+      syntactically valid against the current API — verify the referenced symbol/signature
+      against its actual current source location (parameter names, return shape, import
+      path). Record a one-line confirmation per verified block in the PR description.
 
 ---
 

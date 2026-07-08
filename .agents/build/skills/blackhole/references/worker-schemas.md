@@ -124,7 +124,9 @@ Selects which TDD-mandate variant governs the implementer's session:
 - `refactor-strict` — the pre-existing test suite must pass **unmodified**; no new or
   deleted test files during the session.
 - `docs-only` — failing-test-first mandate suppressed; Touch-Paths restricted to
-  documentation paths.
+  documentation paths. Also gates a Staleness/Drift-Check Table and per-code-block example
+  verification (content spec stays in `implementer.md` § Execution Mode `docs-only` gate —
+  `V-DRY`), audited by `reviewer.md` § 8.
 
 **Non-goal for this issue**: no orchestrator/agent logic computes or passes
 `execution_mode` yet — that derivation from `route.task_type` (`feature`/`bugfix` →
