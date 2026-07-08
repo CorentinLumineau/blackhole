@@ -1,0 +1,10 @@
+{
+  "status": "complete",
+  "pr_number": 42,
+  "branch": "blackhole/issue-298",
+  "tests_passed": true,
+  "touch_paths_honored": true,
+  "execution_mode": "refactor-strict",
+  "new_findings": [],
+  "filed_issues": []
+}

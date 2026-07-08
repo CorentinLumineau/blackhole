@@ -41,6 +41,10 @@ describe('validateWorker implementer', () => {
   test('valid complete', () => expectValid('implementer', 'implementer-complete.json'));
   test('invalid tests_passed type', () =>
     expectInvalid('implementer', 'implementer-complete-bad-tests-passed.json'));
+  test('valid complete with execution_mode', () =>
+    expectValid('implementer', 'implementer-complete-execution-mode.json'));
+  test('invalid execution_mode enum', () =>
+    expectInvalid('implementer', 'implementer-complete-bad-execution-mode.json'));
 });
 
 describe('validateWorker reviewer', () => {

@@ -42,6 +42,7 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
 3.  **TDD (Test-Driven Development)**:
     *   Write tests first (`V-TEST-02`). Any new logic or bug fix must be covered by a corresponding test (`V-TEST-01`).
     *   Enforce test quality: write meaningful assertions; do not just check variable existence (`V-TEST-05`).
+    *   Follow the **Execution Mode** branch below — see `### Execution Mode` for the mode-conditional variant of this step.
 4.  **Incremental Implementation**:
     *   Apply logic changes step-by-step.
     *   Run the project's test suite after each incremental step. Stop immediately if any test fails, rollback, and diagnose.
@@ -58,6 +59,24 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
 
 ---
 
+### Execution Mode
+
+`execution_mode` (`standard` \| `refactor-strict` \| `docs-only`) branches step 3's TDD
+mandate. When the orchestrator's spawn prompt does not carry an `execution_mode`
+directive, treat it as absent — behave exactly as `standard`.
+
+*   **`standard`** (default): unchanged step-3 mandate verbatim — write failing tests
+    first, then implement (`V-TEST-01/02`). No behavior change for the common case.
+*   **`refactor-strict`**: zero-regression branch. Failing-tests-first is suppressed in
+    favor of: capture the baseline test file list and pass/fail state **before** editing,
+    then again **after**. The pre-existing test suite must pass **unmodified** — the diff
+    must show zero added or deleted test files during the session.
+*   **`docs-only`**: failing-test-first mandate suppressed entirely. Touch-Paths are
+    restricted to documentation paths (e.g. `**/*.md`, `documentation/**`) — touching any
+    non-doc file is a Touch-Paths violation (`V-SCOPE-02`), not merely a style note.
+
+---
+
 ## Return format
 
 Return JSON matching `worker-schemas.md` implementer contract:
@@ -69,6 +88,7 @@ Return JSON matching `worker-schemas.md` implementer contract:
   "branch": "blackhole/issue-298",
   "tests_passed": true,
   "touch_paths_honored": true,
+  "execution_mode": "standard",
   "new_findings": [],
   "filed_issues": []
 }
