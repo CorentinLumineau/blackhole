@@ -66,8 +66,8 @@ Contract rules, each closing a verified failure mode:
 - **Per-flag confidence, not one scalar.** A wrong `needs_split` is an annoyance; a wrong
   `security_review_required: false` on an autonomously-merging pipeline is an incident. Each
   chain decision gates on its own flag's confidence; low confidence on any flag resolves to
-  that flag's cautious default (`plan_mode` → `full`, `security_review_required` → `true`,
-  `needs_design` → `true`).
+  that flag's cautious default (`needs_split` → `true`, `plan_mode` → `full`,
+  `security_review_required` → `true`, `needs_design` → `true`).
 - **`body_hash` + `revision` are the staleness markers.** Any consumer (orchestrator dispatch,
   recovery pass) that finds the current issue body hashing differently from `route.body_hash`
   must trigger re-routing before acting.

@@ -46,13 +46,18 @@ instructions: |
   1. **Void route** — `route` absent, or `.blackhole/config.json` `adaptive_routing: false`
      → send no explicit `track` directive; `planner` self-assesses Quick/Standard exactly
      as today (`plan_mode: full` semantics, zero behavior change). This is every issue in
-     today's queue — nothing writes `route` yet, the `router` agent (#95) has not landed —
+     today's queue — the `router` agent (#95) has landed (PR #118) but has not yet
+     re-triaged any issue already in today's queue, so no `route` object is populated yet —
      and is byte-for-byte identical to pre-ADR-004 dispatch.
-  2. **Split precedence** — `route.needs_split: true` voids every other route flag on this
-     parent issue (hard rule, not an ordering). Dispatch stops here: hand off to the
-     existing Phase 1 split mechanism (`issue-splitting.md`, referenced from
-     `phase-handle.md`) — no new split code path is introduced. Children re-enter at dedup
-     with their own independent `route`.
+  2. **Split precedence** — before consulting `route.needs_split`, compare
+     `route.confidence.split` against `.blackhole/config.json`
+     `router_confidence_thresholds.split` (default 70). Below threshold, resolve to
+     `needs_split`'s cautious default (`true`) instead of the computed value; at or above
+     threshold, use the computed value as-is. If the resolved value is `true`, it voids
+     every other route flag on this parent issue (hard rule, not an ordering). Dispatch
+     stops here: hand off to the existing Phase 1 split mechanism (`issue-splitting.md`,
+     referenced from `phase-handle.md`) — no new split code path is introduced. Children
+     re-enter at dedup with their own independent `route`. If `false`, continue to step 3.
   3. **Per-flag confidence gate** — before consulting `plan_mode` or `needs_design`,
      compare `route.confidence.<flag>` against `.blackhole/config.json`
      `router_confidence_thresholds.<flag>` (default 70 per flag). Below threshold, resolve
