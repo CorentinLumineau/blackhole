@@ -82,7 +82,10 @@ When `status: blocked`, `failing_checks` lists failed items:
 - `design_pending_approval` — design track artifact produced at `plan_path`; blocked pending the
   **mandatory** human gate (ADR-004: "no confidence bypass, human always decides"). Not a
   quality-gate failure — the design track is *always* blocked by design, regardless of how
-  complete or unambiguous the design note is.
+  complete or unambiguous the design note is. The artifact at `plan_path` carries the full
+  analytical substance (Options + trade-off matrix, adversarial evaluation via multiplicity,
+  component decomposition, design principles validation, refactoring impact analysis, assumption
+  audit) per `planner.md`'s Design Track template — content only, no JSON field change.
 
 ## Implementer (`implementer`)
 
