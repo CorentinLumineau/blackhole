@@ -44,10 +44,30 @@ Fixture pairs for each role live under [`fixtures/worker-json/`](../../fixtures/
 | Field | Values | Required |
 |-------|--------|----------|
 | `status` | `ready` \| `blocked` \| `error` | yes |
-| `plan_path` | string | when `ready` |
-| `track` | `quick` \| `standard` | when `ready` |
+| `plan_path` | string | when `ready`, **or** when `blocked` and `track: design` |
+| `track` | `quick` \| `standard` \| `skip` \| `design` | when `ready`, or when `blocked` and caller knows the track |
 | `failing_checks` | string[] | when `blocked` |
 | `clarification_markers` | number | when `ready` or `blocked` |
+
+```json
+{
+  "status": "ready",
+  "plan_path": ".blackhole/plans/issue-298.md",
+  "track": "skip",
+  "failing_checks": [],
+  "clarification_markers": 0
+}
+```
+
+```json
+{
+  "status": "blocked",
+  "plan_path": ".blackhole/plans/issue-298-design.md",
+  "track": "design",
+  "failing_checks": ["design_pending_approval"],
+  "clarification_markers": 0
+}
+```
 
 ### Plan quality gate checks
 
@@ -59,6 +79,10 @@ When `status: blocked`, `failing_checks` lists failed items:
 - `ac_mapping` — acceptance criteria mapped to tasks
 - `clarification_limit` — at most 2 `[NEEDS CLARIFICATION]` markers
 - `base_commit` — `plan_base_commit` stamped in frontmatter
+- `design_pending_approval` — design track artifact produced at `plan_path`; blocked pending the
+  **mandatory** human gate (ADR-004: "no confidence bypass, human always decides"). Not a
+  quality-gate failure — the design track is *always* blocked by design, regardless of how
+  complete or unambiguous the design note is.
 
 ## Implementer (`implementer`)
 
