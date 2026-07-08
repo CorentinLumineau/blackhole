@@ -444,9 +444,9 @@ const checkGeminiDistributionBundle = () => {
 // V-CODEX-01: build succeeds (skip-env counts as success)
 const checkCodexBuildExec = (): boolean => {
   if (process.env.VERIFY_SKIP_BUILD !== '1') {
-    const build = spawnSync('bun', ['run', 'build'], { cwd: root, encoding: 'utf-8' });
-    if (build.status !== 0) {
-      fail('V-CODEX-01', `build failed: ${build.stderr || build.stdout}`);
+    const build = runGeminiBuild();
+    if (!build.ok) {
+      fail('V-CODEX-01', `build failed: ${build.output}`);
       return false;
     }
   }
