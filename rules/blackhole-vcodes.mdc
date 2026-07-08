@@ -26,6 +26,8 @@ longer definitions (token cost, drift). Persist every finding to
 | V-SEC-06 | Every security finding carries a concrete attack scenario | BLOCK |
 | V-SEC-07 | Adversarial re-verification — each security finding independently re-checked before it can block merge | WARN |
 | V-SEC-08 | Security findings artifact must structurally validate before merge when security_review_required: true | BLOCK |
+| V-SEC-09 | Local-analyze confidence-boost scan may only raise security_review_required — a clean/absent scan must never lower an already-true value | BLOCK |
+| V-SEC-10 | Local-analyze grep matches must pass the one-line false-positive verification (comment/fixture/string-literal check) before counting toward a raise | WARN |
 | V-INT-02 | NEVER reimplement an existing utility | BLOCK |
 | V-INT-01/03/04 | Follow conventions at touchpoints; no third variant of a solved concern | WARN |
 | V-FIX-01 | Fixes address the root cause, documented — never the symptom | BLOCK |

@@ -131,6 +131,22 @@ New top-level `routing_decisions` array (sibling to `findings`), with its own
         "computed_at_phase": "handle",
         "revision": 1
       },
+      "local_analyze": {
+        "triggered": true,
+        "reason": "plan_mode confidence 55 < threshold 70",
+        "touch_paths_scanned": ["src/auth/session.ts"],
+        "matches": [
+          {
+            "file": "src/auth/session.ts",
+            "line": 12,
+            "pattern": "auth/",
+            "verified": true,
+            "classification": "real"
+          }
+        ],
+        "security_review_required_raised": true,
+        "plan_mode_confidence_boosted": false
+      },
       "created_at": "2026-07-04T12:00:00.000Z"
     }
   ]
@@ -145,6 +161,17 @@ New top-level `routing_decisions` array (sibling to `findings`), with its own
 | `issue_ref` | number | Parent campaign issue |
 | `trigger` | `initial` \| `clarify-resolved` \| `research-landed` \| `investigation-landed` | Matches the ADR's three re-route checkpoints plus the initial pass |
 | `route` | object | Same shape as `queue.json` issue `route` object — see `queue-dag.md` `### \`route\` object` |
+| `local_analyze` | object \| `null` | ADR-004 step 5b confidence-boost scan record; `null` when the scan did not trigger (confidence already ≥ threshold, or the row predates this mechanism) |
+| `local_analyze.triggered` | boolean | Always `true` when the object is non-null |
+| `local_analyze.reason` | string | Human-readable trigger justification (which confidence score, threshold) |
+| `local_analyze.touch_paths_scanned` | string[] | The exact globs scanned — the routed issue's own `touch_paths`, never repo-wide |
+| `local_analyze.matches` | array | One entry per candidate grep/glob hit, including hits later discarded by verification |
+| `local_analyze.matches[].file` / `.line` | string / number | Location of the candidate match |
+| `local_analyze.matches[].pattern` | string | Which security-adjacent pattern matched |
+| `local_analyze.matches[].verified` | boolean | Result of the one-line verification step |
+| `local_analyze.matches[].classification` | `real` \| `comment` \| `fixture` \| `string-literal` | Only `real` may raise `security_review_required` |
+| `local_analyze.security_review_required_raised` | boolean | Did this scan raise the flag from `false`→`true`? Auditable proof of the monotonicity invariant, not just the final value |
+| `local_analyze.plan_mode_confidence_boosted` | boolean | Did this scan raise `route.confidence.plan_mode`? |
 | `created_at` | ISO timestamp | Record creation time |
 
 One entry appended per route computation/revision — **append-only, never mutated**, for
