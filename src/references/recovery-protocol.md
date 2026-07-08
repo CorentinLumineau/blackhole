@@ -2,7 +2,7 @@
 
 Binding recovery procedure for polluted git worktrees and mixed-issue stashes that violate one-PR-per-issue (`V-BRANCH-02`). Complements `checkpoint-protocol.md` (queue/checkpoint layer) with a decision tree for dirty worktrees holding changes from multiple issues.
 
-See also: `phase-implement.md` (worktree naming), `queue-dag.md` (wave scheduling after split).
+See also: `phase-implement.md` (worktree naming), `queue-dag.md` (wave scheduling after split), `queue-dag.md` (`route` object schema), `findings-ledger.md` (`routing_decisions` audit trail), `documentation/decisions/ADR-004-adaptive-phase-routing.md` (source ADR for §8 and the interrupted state in §6(d)).
 
 ---
 
@@ -67,9 +67,16 @@ After crash or compaction recovery, **complete this checklist** before spawning 
 
 1. Complete `checkpoint-protocol.md` compaction steps (read checkpoint, forge sync, validate JSON).
 2. Run `git worktree prune` + `git fetch --prune` (`V-WORKTREE-01`).
+2b. For every in-flight issue with a `route` object present in `queue.json`, run §8
+    Route staleness check before any dispatch decision (planner, investigator, or
+    implementer) for that issue. Skip when `route` is absent.
 3. For each in-flight implement issue: run §2 detection.
 4. If dirty: execute §3 map + §4 decision tree — **do not spawn** until worktree matches single-issue scope.
-5. Confirm plan artifact exists at `{repo_root}/.blackhole/plans/issue-N.md` and planner returned `status: ready`.
+5. Confirm plan artifact exists at `{repo_root}/.blackhole/plans/issue-N.md` and planner returned `status: ready`. **Track-agnostic**: a `skip`-track rationale record (4-line Objective / Touch-Paths / Why-no-plan / Rollback, ADR-004 — `skip` track ships in issue #94) at this same path satisfies this check identically to a Quick or Standard plan — the check is existence-only (`V-PLAN-01`), it has never inspected `track`, and must not start now.
+5b. Confirm no interrupted research/investigation state exists (§6 Example (d)) — if
+    `route.needs_research` or `route.needs_investigation` is true and the evidence
+    artifact is absent, respawn `investigator` (#96) before proceeding to plan or
+    implement dispatch.
 6. Confirm `queue.json`: `phase: implement`, `status: in-flight` or `ready` as appropriate.
 7. Log recovery action in `campaign-checkpoint.md` Notes (e.g. `Recovery: split stash wt-11 → #11 + #13`).
 8. Only then spawn `implementer` with `<PLAN_CONTEXT>`.
@@ -81,6 +88,8 @@ After crash or compaction recovery, **complete this checklist** before spawning 
 ### (a) Plan missing
 
 Queue shows `#N` with `phase: implement` but `.blackhole/plans/issue-N.md` is absent.
+
+This is file-*absence*, not track-mismatch — a `skip`, `quick`, or `standard` artifact at that path all count as present (see §5 step 5).
 
 **Action:** Do **not** spawn implementer. Set `phase: plan`, `status: ready`; spawn `planner`. If worktree has dirty files, stash with `recovery-plan-missing-N` or abort worktree per §4.
 
@@ -109,6 +118,21 @@ git worktree remove <scratchpad>/wt-11
 
 Prune branch; set queue `#11` `phase: done`. Do **not** cherry-pick unless unmerged commits remain on branch (then cherry-pick to new branch only if issue still open).
 
+### (d) Research/investigation artifact missing
+
+Queue shows `#N` with `route.needs_research` or `route.needs_investigation` true,
+`computed_at_phase`/`phase` indicating the evidence-gathering step is in progress
+(`phase: handle`, `status: in-flight`), but no corresponding artifact
+(`issue-N-research.md` or `issue-N-investigation.md`) exists on disk.
+
+**Action:** Mirrors (a) Plan missing. Do **not** proceed to plan-mode dispatch.
+Respawn `investigator` (issue #96) for the missing sub-mode (`research` or
+`investigate`) — the interrupted evidence-gathering step must complete before the
+downstream flags it feeds (`needs_design`, `plan_mode`, `security_review_required`,
+per `queue-dag.md` "Re-route checkpoints") can be trusted. If the worktree/stash state
+is also dirty, resolve per §4 first. As with (a), this is a doc-only rule ready for
+when the `investigator` agent lands — no dispatch code acts on it yet.
+
 ---
 
 ## §7 Coordinator escalation
@@ -118,3 +142,38 @@ When abort vs split is non-obvious or data-loss risk exists:
 1. Set `status: blocked`, `notes: awaiting-recovery-approval` in `queue.json`.
 2. Delegate to `coordinator` with the file map table from §3.
 3. Do not spawn implementer until coordinator clears the gate.
+
+---
+
+## §8 Route staleness check (ADR-004)
+
+Applies only when the `queue.json` issue entry has a `route` object present
+(`src/references/queue-dag.md` `### \`route\` object`). Absent `route` = pre-ADR-004
+behavior — skip this section entirely, no staleness check applies.
+
+**Rule** (ADR-004 "Recovery protocol (extended)"): on every resume — crash recovery,
+compaction recovery, or a fresh orchestrator turn picking up an issue with an existing
+`route` — before dispatching *any* worker (planner, investigator, or implementer) for
+that issue, verify the route is not stale:
+
+1. Recompute the current issue body hash (title + body, same hash function the router
+   uses at classification time — router ships in issue #95).
+2. Compare to `route.body_hash`.
+3. Check whether a research or investigation artifact for this issue
+   (`issue-N-research.md` / `issue-N-investigation.md`, investigator ships in issue #96)
+   exists on disk with a revision/timestamp that postdates `route.revision`'s last bump.
+4. **Stale** when either (2) mismatches or (3) is true. Route is **not** stale merely
+   because time has passed — only a body change or a newer artifact invalidates it.
+
+**On stale**: do not dispatch. Force a re-route (router agent, issue #95) before
+resuming the chain — never act on flags computed against evidence that no longer
+matches reality. This is a hard rule, not best-effort, mirroring the ADR's own
+three synchronous re-route checkpoints (`queue-dag.md` "Re-route checkpoints" table)
+but applied defensively on the recovery/resume path specifically, because recovery is
+asynchronous and the queue can sit blocked for days — unlike the synchronous
+checkpoints, staleness here cannot be assumed away by "no checkpoint fired yet".
+
+**Non-goal for this issue**: no orchestrator/agent logic reads or writes `route` yet,
+and the router/investigator agents that would act on a stale-route signal do not exist
+yet (issues #93, #95, #96). This section documents the recovery-side rule so it is
+ready the moment those land — it is not a behavior claim about the current codebase.
