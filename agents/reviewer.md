@@ -56,7 +56,7 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 *   **Branch Commits (`V-BRANCH-02`)**: Ensure all changes are isolated in the feature branch and no direct commits were pushed to protected branches.
 
 ### 8. Docs-Only Execution Mode Compliance
-*   **Detection**: every file in the PR diff matches a documentation path pattern (`**/*.md`, `documentation/**`) — the same signal § 1 (5-Field Contract & Plan Compliance)'s Touch-Paths audit already computes. When true, apply this section *in addition to* § 1 (never in place of it).
+*   **Detection**: every file in the PR diff matches a documentation path pattern (`**/*.md`, `documentation/**`, `codex-agents/*.yaml`) — the last is `bun run build`'s generated Codex mirror of `src/agents/*.md` (never hand-edited), so a diff limited to it plus its `.md` source is still docs-only in spirit. This is the same signal § 1 (5-Field Contract & Plan Compliance)'s Touch-Paths audit already computes. When true, apply this section *in addition to* § 1 (never in place of it).
 *   **Drift-Check Table present**: the PR description contains a Drift-Check Table (one row per touched doc claim, per `implementer.md` § Execution Mode `docs-only` gate). Missing table — severity `BLOCK`.
 *   **Drift-Check Table accuracy spot-check**: sample at least one row's "Current code state" claim against the actually-cited current source. A misrepresented row — severity `BLOCK`, note the correct state in the finding.
 *   **Example verification confirmations present**: every touched code block in the diff has a matching one-line confirmation in the PR description. A missing confirmation — severity `BLOCK`.
