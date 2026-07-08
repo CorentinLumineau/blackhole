@@ -11,6 +11,7 @@
 - [ ] install dependencies in worktree (e.g. `npm install`, `bun install`, etc.)
 - [ ] Spawn implementer worker (run_in_background: true)
 - [ ] Worker returns new_findings[] — orchestrator appends to ledger
+- [ ] implementer status: blocked with escalation_trigger set → orchestrator.md § Escalation dispatch (do not re-spawn implementer directly; spawn investigator instead)
 - [ ] File issues for unfixed discoveries
 - [ ] lint + test in worktree; prepare PR with Closes #N in body (V-GIT-01)
 - [ ] queue.json: phase review (when PR open)

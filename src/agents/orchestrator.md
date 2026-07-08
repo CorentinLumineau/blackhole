@@ -127,6 +127,37 @@ Worker return schemas: `{{AGENT_DIR}}/skills/blackhole/references/worker-schemas
 
 ---
 
+## Escalation dispatch (implementer → investigator)
+
+**Trigger condition**: `implementer` returns `status: blocked` with `escalation_trigger` set
+(`failed_attempts` or `touch_paths_overrun` — `worker-schemas.md` § `escalation_trigger`). Do
+**not** re-spawn `implementer` and do not treat this as a generic worker error — route to
+root-cause investigation instead:
+
+1. **`queue.json` mutation** (Bash/`jq`, atomic `.tmp` + `mv` write per `blackhole-state.md` §
+   Write protocol): set `phase: implement`, `status: blocked`,
+   `notes: "awaiting-investigation"` for the issue.
+2. **Direct `investigator` spawn**, `sub_mode: investigate`, using the same spawn contract as
+   `phase-handle.md` § Investigator agent. Declare the 5-Field Delegation Contract exactly like
+   every other worker spawn:
+   1. **Objective**: root-cause evidence gathering for the specific `escalation_trigger` value
+      `implementer` returned.
+   2. **Output format**: note at `plans/issue-N-investigation.md`.
+   3. **Scope boundaries**: read-only — no code edits.
+   4. **Tool guidance**: none — inherits `investigator`'s own tool policy.
+   5. **Stop condition**: `status: complete` with the note on disk.
+3. **Resume rule**: `investigator`'s note landing on disk is already the documented
+   `investigation-landed` trigger (`router.md` § Re-route checkpoints) — re-spawn `router` per
+   that existing, unmodified contract, then resume dispatch via § Route-derived dispatch above
+   using the refreshed `route`. Once the re-route resolves, clear
+   `notes: "awaiting-investigation"` and transition `status: blocked → ready` (existing
+   transition, `queue-dag.md` § Status transitions — "user gate cleared" generalizes to
+   "investigation gate cleared").
+
+See `worker-schemas.md` § `escalation_trigger` for the field this section consumes.
+
+---
+
 ## Review pipeline
 
 Per `review-core.md`:
