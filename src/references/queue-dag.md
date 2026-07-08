@@ -65,7 +65,7 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 
 | Field | Values | Notes |
 |-------|--------|-------|
-| `needs_split` | boolean | Hard rule: when true, voids all sibling flags — children re-enter at dedup with their own route |
+| `needs_split` | boolean | Confidence-gated (`confidence.split` vs. `router_confidence_thresholds.split`, default 70); low-confidence cautious default: `true`. Hard rule: when true, voids all sibling flags — children re-enter at dedup with their own route |
 | `needs_clarification` | boolean | Triggers `status: blocked` (existing AskQuestion gate) |
 | `needs_research` | boolean | Would trigger investigator · research sub-mode (step 6 — not yet implemented) |
 | `needs_investigation` | boolean | Would trigger investigator · investigate sub-mode (step 6 — not yet implemented) |
@@ -73,7 +73,7 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 | `task_type` | `feature` \| `bugfix` \| `refactor` \| `docs` | Content-derived, never from forge labels; labels are a cautious tie-break only |
 | `plan_mode` | `skip` \| `quick` \| `full` | Would select planner track (steps 3-4 — not yet implemented) |
 | `security_review_required` | boolean | Would select reviewer security mode (step 8 — not yet implemented) |
-| `confidence` | object `{ split, design, plan_mode, security }`, each 0-100 | Per-flag confidence; low confidence resolves to that flag's cautious default (`plan_mode → full`, `security_review_required → true`, `needs_design → true`) |
+| `confidence` | object `{ split, design, plan_mode, security }`, each 0-100 | Per-flag confidence; low confidence resolves to that flag's cautious default (`needs_split → true`, `plan_mode → full`, `security_review_required → true`, `needs_design → true`) |
 | `body_hash` | string | sha of issue title+body at classification time; staleness marker |
 | `computed_at_phase` | `handle` \| `plan` \| `implement` \| `review` | Phase at which this route was computed |
 | `revision` | number | Bumped on every re-route; never retroactively changes already-executed chain steps |
@@ -82,9 +82,10 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 and `needs_design` are now read by orchestrator dispatch (`orchestrator.md` §
 Route-derived dispatch, #93); `needs_research`, `needs_investigation`, and
 `security_review_required` remain documented-but-unactioned flags (steps 6/8 — #96/#98,
-not yet implemented); nothing writes `route` yet (the `router` agent, step 1 — #95, not
-yet implemented), so every issue in today's queue falls through the "void route"
-fallback and dispatches exactly as it did before ADR-004.
+not yet implemented); the `router` agent (step 1 — #95, PR #118) has landed, but every
+issue in today's live queue still falls through the "void route" fallback and dispatches
+exactly as it did before ADR-004, only because none has re-entered Handle since #118
+merged.
 
 ### Status transitions
 
