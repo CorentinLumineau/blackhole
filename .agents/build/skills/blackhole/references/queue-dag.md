@@ -42,6 +42,45 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 | `migration_slot` | boolean | True if issue owns schema migration |
 | `touch_paths` | string[] | Glob patterns for conflict detection |
 | `epic_parent` | number \| null | Child issues link to parent epic |
+| `route` | object \| absent | Optional (ADR-004); absent == today's behavior (`plan_mode: full`). See `### \`route\` object` subsection |
+
+### `route` object (optional — ADR-004)
+
+```json
+"route": {
+  "needs_split": false,
+  "needs_clarification": false,
+  "needs_research": false,
+  "needs_investigation": true,
+  "needs_design": false,
+  "task_type": "bugfix",
+  "plan_mode": "quick",
+  "security_review_required": false,
+  "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90 },
+  "body_hash": "<sha of issue title+body at classification time>",
+  "computed_at_phase": "handle",
+  "revision": 1
+}
+```
+
+| Field | Values | Notes |
+|-------|--------|-------|
+| `needs_split` | boolean | Hard rule: when true, voids all sibling flags — children re-enter at dedup with their own route |
+| `needs_clarification` | boolean | Triggers `status: blocked` (existing AskQuestion gate) |
+| `needs_research` | boolean | Would trigger investigator · research sub-mode (step 6 — not yet implemented) |
+| `needs_investigation` | boolean | Would trigger investigator · investigate sub-mode (step 6 — not yet implemented) |
+| `needs_design` | boolean | Would trigger planner design track + hard human gate (step 4 — not yet implemented) |
+| `task_type` | `feature` \| `bugfix` \| `refactor` \| `docs` | Content-derived, never from forge labels; labels are a cautious tie-break only |
+| `plan_mode` | `skip` \| `quick` \| `full` | Would select planner track (steps 3-4 — not yet implemented) |
+| `security_review_required` | boolean | Would select reviewer security mode (step 8 — not yet implemented) |
+| `confidence` | object `{ split, design, plan_mode, security }`, each 0-100 | Per-flag confidence; low confidence resolves to that flag's cautious default (`plan_mode → full`, `security_review_required → true`, `needs_design → true`) |
+| `body_hash` | string | sha of issue title+body at classification time; staleness marker |
+| `computed_at_phase` | `handle` \| `plan` \| `implement` \| `review` | Phase at which this route was computed |
+| `revision` | number | Bumped on every re-route; never retroactively changes already-executed chain steps |
+
+**Non-goal for this issue**: no orchestrator/agent logic reads or writes `route` yet — the
+"would trigger" language above is documentation of future intent (steps 2-8), not a behavior
+claim about the current codebase.
 
 ### Status transitions
 

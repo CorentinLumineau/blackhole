@@ -17,6 +17,8 @@ Committed template: `.blackhole/config.json`
   "scope_milestone": "v0.4.0",
   "scope_labels": ["blackhole/backlog", "size:m"],
   "auto_sync": true,
+  "adaptive_routing": true,
+  "router_confidence_thresholds": { "split": 70, "design": 70, "plan_mode": 70, "security": 70 },
   "entry_mode": "multitask"
 }
 ```
@@ -34,6 +36,8 @@ Committed template: `.blackhole/config.json`
 | `scope_milestone` | no | Milestone **title** (not number). When set, only issues in this milestone are in campaign scope |
 | `scope_labels` | no | When set, issue must have **all** listed labels (AND). Empty array treated as unset |
 | `auto_sync` | no | When `true` (default), forge reconcile runs automatically |
+| `adaptive_routing` | no | Emergency kill switch for ADR-004 router-agent routing (default `true`); when `false`, routing is inert regardless of `route` presence in `queue.json` |
+| `router_confidence_thresholds` | no | Per-flag confidence thresholds keyed by `split`, `design`, `plan_mode`, `security` (matches `route.confidence` keys); each defaults to `70` when absent |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 
 **Scope filter composition** (both fields optional — unset means no filter on that axis):
