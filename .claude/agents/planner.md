@@ -42,6 +42,14 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
 *   **Objective**: Clear, testable goal.
 *   **Touch-Paths**: List of files allowed to be modified.
 *   **Task Steps**: Step-by-step instructions.
+*   **Bugfix classification**: When the `queue.json` issue entry carries a `route` object with
+    `task_type: bugfix`, or (no `route` object present) the issue is self-evidently a bug fix per
+    this track's own "Simple bugs" selection criterion (Step 2) — mirroring Design Track
+    subsection 1's route-first, content-fallback pattern — stamp `task_type: bugfix` in the plan's
+    frontmatter (see Plan Output File Template below). This is distinct from Skip Track: a bugfix
+    still needs an implementation plan and gains `implementer.md`'s Bugfix Gate, it is never Skip
+    Track's "no code change needed" bypass. See `implementer.md` § Bugfix Gate for the Root-Cause
+    Verification gate, escalation triggers, and Scout Check this stamp activates.
 
 ### 2. Standard Track
 *   **Objective**: Issue summary and constraints.
@@ -58,7 +66,9 @@ Entered **only** on an explicit `track: skip` spawn directive — never self-sel
 content (Step 2). Deterministic: no codebase analysis (Step 3 exception), no options weighed.
 Writes a fixed 4-section rationale record because the orchestrator's tool policy
 (`disallowedTools: [Write, Edit, Delete]`) forbids the orchestrator from writing it directly —
-`planner` is the write-capable agent in this handoff.
+`planner` is the write-capable agent in this handoff. `task_type: bugfix` classification is a
+distinct mapping handled by Quick Track's Bugfix classification note (see above), never Skip
+Track's job — a bug fix that still requires an edit is never "no code change needed."
 
 *   **Objective**: One-line restatement of why the issue needs no implementation plan.
 *   **Touch-Paths**: Empty or `N/A` — skip track makes no code changes.
@@ -157,6 +167,7 @@ Write to `plans/<issue-N>.md` in this format:
 issue: #<Issue Number>
 plan_base_commit: <Short SHA of HEAD>
 track: quick | standard
+task_type: bugfix | null
 ---
 
 # Plan - Issue #<Number>

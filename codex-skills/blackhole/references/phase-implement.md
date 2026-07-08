@@ -34,7 +34,7 @@ relative to the **main clone repo root**, not the worktree checkout.
 1. **Objective**: Detailed issue goals and issue ref + UNTRUSTED-FORGE-DATA body.
 2. **Output format**: JSON return schema (below) + PR opened + Closes #N linkage.
 3. **Scope boundaries**: Touch-Paths restriction (`V-SCOPE-02`) + parallel branch exclusions.
-4. **Tool guidance**: Command pointers for running git, gh CLI, install, lint, and test commands within the worktree. Carry the `execution_mode` TDD-mandate branch matching the plan's `route.task_type` derivation (see below).
+4. **Tool guidance**: Command pointers for running git, gh CLI, install, lint, and test commands within the worktree. Carry the `execution_mode` TDD-mandate branch matching the plan's `route.task_type` derivation (see below), and — when the plan frontmatter carries `task_type: bugfix` (Quick track) — the Bugfix Gate's Decision Record and Scout Check expectations (`implementer.md` § Bugfix Gate).
 5. **Stop condition**: PR opened, local lint/tests green, and branch pushed.
 Do not commit directly to main (`V-BRANCH-02`) or force-push (`V-BRANCH-01`).
 - Ledger pointer: read plan deferrals from findings-ledger.json
@@ -47,11 +47,23 @@ behavior, unchanged):
 | Mode | TDD mandate |
 |------|-------------|
 | `standard` (default) | Unchanged failing-tests-first mandate |
-| `refactor-strict` | Pre-existing test suite must pass unmodified — no new/deleted test files |
+| `refactor-strict` | Pre-existing test suite must pass unmodified — no new/deleted test files; Refactoring Verification gate + per-step commit/rollback |
 | `docs-only` | Failing-test-first suppressed; Touch-Paths restricted to documentation paths |
 
 **Non-goal for this issue**: no orchestrator dispatch logic reads `route.task_type` or
 selects `execution_mode` yet — that lands with #93.
+
+### `task_type` / Bugfix Gate (optional — ADR-004)
+
+Parallel to `execution_mode` above, matching `worker-schemas.md`'s implementer contract:
+
+| `task_type` | Gate |
+|------|------|
+| `bugfix` (Quick track only) | Bugfix Gate: unconditional Root-Cause Verification gate (Decision Record before the first edit), 2 escalation triggers (`failed_attempts`, `touch_paths_overrun`), Scout Check (in-scope improvement recorded as an Improvement Record, not deferred) |
+
+**Non-goal for this issue**: no orchestrator dispatch logic computes or passes `route.task_type`
+to implementer at spawn time yet — same non-wiring status as `execution_mode` above
+(`implementer.md` § Bugfix Gate has the full gate spec).
 
 ## Worker return format
 

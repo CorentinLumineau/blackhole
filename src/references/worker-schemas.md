@@ -110,6 +110,8 @@ When `status: blocked`, `failing_checks` lists failed items:
 | `tests_passed` | boolean | when `complete` |
 | `touch_paths_honored` | boolean | when `complete` |
 | `execution_mode` | `standard` \| `refactor-strict` \| `docs-only` | no, optional — absent defaults to `standard` |
+| `task_type` | `feature` \| `bugfix` \| `refactor` \| `docs` | no, optional |
+| `escalation_trigger` | `failed_attempts` \| `touch_paths_overrun` | no, optional — only meaningful on `status: blocked` |
 | `new_findings` | finding[] | no |
 | `filed_issues` | number[] | no |
 
@@ -129,6 +131,31 @@ Selects which TDD-mandate variant governs the implementer's session:
 `standard`, `refactor` → `refactor-strict`, `docs` → `docs-only`) is future work (`router`
 agent, #95; orchestrator dispatch, #93). This field is documentation of future intent, not
 a behavior claim about the current codebase.
+
+### `task_type` (optional — ADR-004)
+
+Mirrors the plan frontmatter's `task_type: bugfix` stamp (`planner.md` § Quick Track) when the
+implementer's Bugfix Gate applies. Values reuse `TASK_TYPES` verbatim
+(`scripts/validate-worker-json.ts:21`): `feature` \| `bugfix` \| `refactor` \| `docs`.
+
+**Non-goal for this issue**: no orchestrator/router logic computes or passes `route.task_type`
+to implementer at spawn time yet — this field is documentation of future intent, not a behavior
+claim about the current codebase, mirroring `execution_mode`'s own disclaimer above.
+
+### `escalation_trigger` (optional — ADR-004)
+
+Signals why an implementer session stopped and returned `status: blocked` for one of the Bugfix
+Gate's two escalation triggers (`implementer.md` § Bugfix Gate): `failed_attempts` (2 distinct
+failed fix attempts) or `touch_paths_overrun` (fix needs 3+ files beyond the plan's declared
+Touch-Paths). Single-valued (unlike the array-shaped `failing_checks`) — the worker stops at the
+first trigger it hits, it does not accumulate multiple in one session.
+
+**Non-goal for this issue**: no orchestrator logic reads `escalation_trigger` to actually
+re-route via `investigator.investigate` or escalate `plan_mode` to `full` yet — this field is
+documentation of future intent, mirroring `execution_mode`'s own disclaimer above.
+
+See `implementer.md` § Bugfix Gate for the Scout Check / Improvement Record convention the same
+gate also produces (content spec stays there — `V-DRY`).
 
 ## Reviewer (`reviewer`)
 
