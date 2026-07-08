@@ -19,6 +19,7 @@ const EXECUTION_MODES = ['standard', 'refactor-strict', 'docs-only'] as const;
 const SEVERITIES = ['BLOCK', 'WARN', 'INFO'] as const;
 const ROUTE_STATUSES = ['routed', 'error'] as const;
 const TASK_TYPES = ['feature', 'bugfix', 'refactor', 'docs'] as const;
+const ESCALATION_TRIGGERS = ['failed_attempts', 'touch_paths_overrun'] as const;
 const PLAN_MODES = ['skip', 'quick', 'full'] as const;
 const TRIGGERS = ['initial', 'clarify-resolved', 'research-landed', 'investigation-landed'] as const;
 const INVESTIGATOR_STATUSES = ['complete', 'error'] as const;
@@ -190,6 +191,24 @@ function validateImplementer(data: unknown): string[] {
       } else {
         pushEnumError(errors, 'execution_mode', data.execution_mode, EXECUTION_MODES);
       }
+    }
+  }
+
+  if (data.status === 'blocked') {
+    if ('escalation_trigger' in data) {
+      if (!isString(data.escalation_trigger)) {
+        errors.push('escalation_trigger: expected string');
+      } else {
+        pushEnumError(errors, 'escalation_trigger', data.escalation_trigger, ESCALATION_TRIGGERS);
+      }
+    }
+  }
+
+  if ('task_type' in data) {
+    if (!isString(data.task_type)) {
+      errors.push('task_type: expected string');
+    } else {
+      pushEnumError(errors, 'task_type', data.task_type, TASK_TYPES);
     }
   }
 
