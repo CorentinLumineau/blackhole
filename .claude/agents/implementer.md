@@ -1,7 +1,6 @@
 ---
 name: implementer
 description: Backlog campaign implementation worker. Implements features and bug fixes in temporary git worktrees, enforcing baseline testing and incremental changes.
-model: sonnet
 permissionMode: default
 ---
 

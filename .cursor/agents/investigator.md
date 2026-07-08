@@ -1,7 +1,6 @@
 ---
 name: investigator
 description: Backlog campaign investigator agent. Gathers evidence for router re-route checkpoints via research (external docs/changelog/migration lookup) and investigate (root-cause hypothesis loop) sub-modes; never plans, implements, or mutates queue state.
-model: sonnet
 permissionMode: default
 disallowedTools: [Write, Edit, Delete]
 ---

@@ -1,7 +1,6 @@
 ---
 name: coordinator
 description: Multitask Mode coordinator for backlog campaign. Acts as user intake layer, managing the background orchestrator, resolving blockers, and triaging chat feedback.
-model: sonnet
 permissionMode: default
 disallowedTools: [Write, Edit, Delete]
 ---

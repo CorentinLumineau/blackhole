@@ -104,9 +104,7 @@ const checkAgentFrontmatter = () => {
     for (const key of ['name:', 'description:']) {
       if (!fm[1].includes(key)) missing.push(`${file}: missing ${key}`);
     }
-    const modelMatch = fm[1].match(/^model:\s*(.+)$/m);
-    if (!modelMatch) missing.push(`${file}: missing model: sonnet`);
-    else if (modelMatch[1].trim() !== 'sonnet') missing.push(`${file}: model must be sonnet, got ${modelMatch[1].trim()}`);
+    if (/\bmodel:/.test(fm[1])) missing.push(`${file}: model must be absent (inherit harness default)`);
   }
 
   if (missing.length) fail('V-AGENT-01', missing.join('; '));
@@ -548,9 +546,8 @@ const checkCodexAgentFiles = () => {
       if (!val) agentErrors.push(`${file}: missing or empty ${field}`);
     }
 
-    const modelVal = yamlScalar(content, 'model');
-    if (modelVal !== 'sonnet') {
-      agentErrors.push(`${file}: model must be sonnet, got ${modelVal ?? 'absent'}`);
+    if (yamlScalar(content, 'model') !== null) {
+      agentErrors.push(`${file}: model must be absent (inherit harness default)`);
     }
 
     const hasToolEntries = /^disallowedTools:\n(?:\s+-\s+\S+\n)+/m.test(content);
