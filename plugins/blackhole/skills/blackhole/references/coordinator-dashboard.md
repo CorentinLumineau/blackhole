@@ -19,7 +19,7 @@ Reads `.blackhole/config.json`, `queue.json`, `findings-ledger.json`,
 | Event | Who | Action |
 |-------|-----|--------|
 | Campaign start (before spawning orchestrator) | `coordinator` | Run `bun run status` → print **full** output to user |
-| Orchestrator background turn completes | `coordinator` | Run `bun run status` → print **full** output, then resume orchestrator if work remains |
+| Orchestrator background turn completes (idle notification) | `coordinator` | Run `bun run status` → print **full** output, then resume orchestrator if work remains — fires only when orchestrator has cleared its in-flight worker barrier and ended its turn |
 | User asks `status` / `@blackhole status` | Coordinator or orchestrator | Run `bun run status` → print full output; do not spawn workers |
 | Intake files a GitHub issue | `coordinator` | Print one line: `📋 Filed #N — <title> (milestone <M>)` then re-run status if campaign is active |
 | Orchestrator ends turn | `orchestrator` | Ensure checkpoint written; coordinator prints dashboard on notification |
@@ -58,6 +58,7 @@ END TURN
 - "Turn 5 complete" with no dashboard
 - Resuming orchestrator without printing status when user has not seen progress
 - Replacing dashboard with subagent `user_visible_high_level_summary` only — summary is a teaser; dashboard is SSOT for chat
+- Orchestrator ends turn with `## In-flight workers` populated — campaign stalls; workers complete but no agent triages (`multitask-mode.md` § Cursor Pattern B — Background worker barrier)
 
 ## References
 

@@ -113,6 +113,15 @@ prompt: <user message verbatim — do not re-paste full campaign prompt>
 **Resume (orchestrator completed/failed):**
 New spawn with campaign-prompt + filled SESSION_HANDOFF block (attach
 `.cursor/agents/orchestrator.md` again — same pattern as first spawn).
+
+**Orchestrator barrier (Cursor):**
+
+The coordinator does **not** wait for the orchestrator's workers — the orchestrator
+owns the in-turn barrier for its background worker batches.
+
+- After worker spawns with `run_in_background: true`, **do not end turn** until the batch barrier clears (`## In-flight workers` empty).
+- Verify phase transitions via on-disk artifacts (`queue.json`, `.blackhole/plans/`, PR state), not chat polling.
+- Use `Await` per background task ID after each `WAVE <N>` batch before turn-end checklist.
 {{/cursor}}
 {{#claude}}
 **First spawn:** invoke the `orchestrator` agent in background with the campaign prompt above (or use `/goal` on that agent).

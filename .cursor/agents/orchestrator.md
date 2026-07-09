@@ -175,6 +175,42 @@ Track `review_iteration` on queue entries. Increment after each `changes_request
 
 Per `queue-dag.md` Step 4: compute execution waves via topological sort on `depends_on` before batch selection. Log `WAVE <N>` before spawning workers.
 
+**One turn per batch** means one orchestrator turn **includes** the barrier wait for that batch — not spawn-and-exit. Do not end the turn after logging `WAVE <N>` until the batch barrier clears.
+
+---
+
+## Background worker barrier (Cursor / Pattern B)
+
+When this turn spawns one or more workers with `run_in_background: true` (router wave,
+parallel planners, implementers, reviewers):
+
+### Spawn
+
+1. Log `WAVE <N>: issues [...]` before the first spawn.
+2. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, and spawn turn id.
+
+### Barrier
+
+Block **in-turn** until every worker in the batch completes. On Cursor, use `Await` on
+each background task ID (canonical harness pattern). Do **not** end the turn and wait for
+notifications — Cursor does not deliver worker-completion notifications to a parent
+orchestrator that has already ended its turn.
+
+### Triage (idempotent)
+
+For each completed worker:
+
+1. Parse and validate return JSON (`scripts/validate-worker-json.ts` or harness hook output) — see `worker-schemas.md` § Orchestrator validation and § Barrier triage.
+2. Apply queue/ledger mutations per role (router → `route{}`; planner → plan gate; implementer → PR linkage; reviewer → aggregate pipeline).
+3. Remove the worker from `## In-flight workers`.
+4. **Idempotency:** if the artifact already satisfies the gate before spawn (e.g. `route{}` present, plan file on disk, PR open), skip re-spawn and advance phase. When checkpoint lists workers as active but artifacts already landed, see `recovery-protocol.md` (#153) — do not implement full stale-row healing here.
+
+### Turn-end gate
+
+Run the **Checkpoint protocol** turn-end checklist only when `## In-flight workers` is
+empty. If any worker is still in-flight, **do not** increment `orchestrator_turn_id` or
+end the turn.
+
 ---
 
 ## Checkpoint protocol

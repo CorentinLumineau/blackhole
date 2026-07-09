@@ -49,7 +49,7 @@ Spawn prompt text and mis-spawn hazard detail: `campaign-prompt.md` § Coordinat
 ## Coordinator MUST NOT
 
 - Implement features, review PRs, or merge
-- Resume orchestrator on every worker completion (orchestrator gets notifications)
+- Resume orchestrator on every worker completion — on Cursor, neither the coordinator nor the orchestrator receives per-worker idle notifications after ending a turn; the **orchestrator** must barrier-wait for its own background worker batch **in-turn** before turn-end
 - Use `interrupt: true` except user "stop now" or safety-critical policy
 - Spawn a second orchestrator while first is live
 - Re-paste full campaign-prompt on routine resume — only user message
@@ -65,7 +65,7 @@ Spawn prompt text and mis-spawn hazard detail: `campaign-prompt.md` § Coordinat
 
 - Track **one** orchestrator subagent ID for the campaign
 - Relay user chat as resume prompt to orchestrator
-- Resume orchestrator when: user input, blocker needing user, orchestrator turn ended with queue work and orchestrator idle
+- Resume orchestrator when: user input, blocker needing user, orchestrator **background turn completes** (idle notification) **and** queue work remains — this is the outer loop; the inner loop is the orchestrator's in-turn worker barrier, not coordinator polling workers
 - Spawn fresh orchestrator only when prior agent completed/failed entirely
 - Print the **full** dashboard (`bun run status`) on campaign start and after each orchestrator turn notification — see `coordinator-dashboard.md`
 
@@ -82,6 +82,28 @@ END TURN
 ```
 
 **Anti-pattern:** collapsing the dashboard to a one-line summary — users rely on the main chat for campaign overview.
+
+## Cursor Pattern B — Background worker barrier
+
+On Cursor, the orchestrator **must not** end its turn while `campaign-checkpoint.md`
+`## In-flight workers` lists any spawned background worker. After spawning a batch
+with `run_in_background: true`, block in-turn until every worker in the batch
+completes, then triage outputs before the turn-end checklist.
+
+```
+Orchestrator turn
+  → forge sync
+  → WAVE N: spawn workers (run_in_background: true)
+  → BARRIER: wait in-turn for ALL batch completions
+  → triage: validate JSON + mutate queue.json + clear in-flight workers
+  → turn-end checklist + checkpoint
+  → END TURN (coordinator may resume for next orchestrator turn)
+```
+
+**Idle vs barrier:** `idle_notification` means the agent's **current turn ended** —
+not that a worker batch finished. Coordinator idle = orchestrator turn ended (resume
+outer loop). Worker completion = orchestrator must have already barrier-waited in-turn
+before ending its turn.
 
 ## User starting the campaign
 
@@ -103,6 +125,23 @@ Verify phase/worker completion via on-disk artifacts — the plan file under
 `.blackhole/plans/`, PR state (`gh pr list` / `gh pr view`), worktree
 `git status` — or the Agent tool's own completion/result signal. **Never**
 poll completion by chat message.
+
+## Runbook — WAVE router barrier
+
+Acceptance fixture for Pattern B stall fix (#151):
+
+| Step | Actor | Action | Expected state |
+|------|-------|--------|----------------|
+| 1 | coordinator | Phase 0 + spawn orchestrator (`run_in_background: true`) | orchestrator live |
+| 2 | orchestrator | forge sync; select 2–4 handle-phase issues without `route{}` | queue ready |
+| 3 | orchestrator | `WAVE 0`: spawn `router` per issue, `run_in_background: true` | checkpoint lists N in-flight workers |
+| 4 | orchestrator | **Barrier wait** in-turn for all N routers | no turn-end yet |
+| 5 | routers | each writes `route{}` + `routing_decisions` row | artifacts on disk |
+| 6 | orchestrator | triage: validate JSON, set `phase: plan`, `status: ready`, clear in-flight workers | checkpoint workers empty |
+| 7 | orchestrator | turn-end checklist → end turn | coordinator receives idle |
+| 8 | coordinator | `bun run status` → resume orchestrator if more work | next phase dispatches **without user message** |
+
+**Failure signal (pre-fix):** step 4 skipped → step 6 never runs → `notes: "router initial pass (WAVE 0)"` persists with `route{}` present.
 
 ## Pattern A (legacy)
 

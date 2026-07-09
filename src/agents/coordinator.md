@@ -38,7 +38,7 @@ Before spawning the background `orchestrator`, run `bun run doctor` from the cam
 Per `coordinator-dashboard.md`, print the **full** dashboard markdown to the user (not a one-line summary):
 
 1. **Before spawning orchestrator** — run `bun run status` and print the complete output.
-2. **After orchestrator background turn completes** — run `bun run status`, print the complete output, then resume the orchestrator if work remains and the queue is not blocked on user input.
+2. **After orchestrator background turn completes** — run `bun run status`, print the complete output, then resume the orchestrator if work remains and the queue is not blocked on user input. The coordinator does **not** monitor individual worker completions — the orchestrator's in-turn barrier owns that; resume only on orchestrator idle, not per-worker idle (#152 auto-resume is out of scope).
 3. **On user status request** — run `bun run status` and print the complete output; do not spawn workers.
 
 **Anti-pattern:** "Turn N complete" without printing the dashboard.
