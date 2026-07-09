@@ -221,7 +221,7 @@ instructions: |
   1. Parse and validate return JSON (`scripts/validate-worker-json.ts` or harness hook output) — see `worker-schemas.md` § Orchestrator validation and § Barrier triage.
   2. Apply queue/ledger mutations per role (router → `route{}`; planner → plan gate; implementer → PR linkage; reviewer → aggregate pipeline).
   3. Remove the worker from `## In-flight workers`.
-  4. **Idempotency:** if the artifact already satisfies the gate before spawn (e.g. `route{}` present, plan file on disk, PR open), skip re-spawn and advance phase. When checkpoint lists workers as active but artifacts already landed, see `recovery-protocol.md` (#153) — do not implement full stale-row healing here.
+  4. **Idempotency:** if the artifact already satisfies the gate before spawn (e.g. `route{}` present, plan file on disk, PR open), skip re-spawn and advance phase. When checkpoint lists workers as active but artifacts already landed, run `recovery-protocol.md` §9 drift heal at turn start (`detectArtifactDrift`) — do not re-spawn completed workers when artifacts match the current revision.
 
   ### Turn-end gate
 
@@ -248,9 +248,21 @@ instructions: |
 
   ## Session resume & recovery
 
-  On compaction recovery, after reading checkpoint, inspect worktrees per `recovery-protocol.md` §2.
+  On **every orchestrator turn start** (including compaction recovery and session resume),
+  after reading checkpoint and forge sync:
 
-  **MUST** complete `recovery-protocol.md` §5 orchestrator checklist before spawning `implementer` when any in-flight issue has a dirty worktree or recovery stash. Do not spawn implementer until worktree scope matches a single issue.
+  1. Run `recovery-protocol.md` **§9** artifact-vs-queue drift heal for all
+     `status: in-flight` issues — **before** Wave scheduling and **before** any `Task` spawn.
+     Use `scripts/recovery-drift.ts` (`detectArtifactDrift`) to detect drift; apply heal
+     mutations (clear stale notes/checkpoint rows, advance phase) before spawning workers.
+  2. Cross-link **§8** (staleness) and **§9** (drift): staleness forces re-route when
+     `route.body_hash` no longer matches; drift advances without re-run when artifacts match
+     the current revision and are not stale.
+  3. Inspect worktrees per `recovery-protocol.md` §2.
+
+  **MUST** complete `recovery-protocol.md` §5 orchestrator checklist before spawning
+  `implementer` when any in-flight issue has a dirty worktree or recovery stash. Do not spawn
+  implementer until worktree scope matches a single issue.
 
   ---
 

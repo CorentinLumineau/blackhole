@@ -1,0 +1,15 @@
+{
+  "title": "Example implemented issue",
+  "phase": "implement",
+  "status": "in-flight",
+  "depends_on": [],
+  "blocks": [],
+  "worktree": "/tmp/campaign/wt-99",
+  "pr": 153,
+  "migration_slot": false,
+  "touch_paths": ["src/**"],
+  "size": "s",
+  "epic_parent": null,
+  "review_iteration": 0,
+  "notes": "implementer WAVE 2 in-flight"
+}

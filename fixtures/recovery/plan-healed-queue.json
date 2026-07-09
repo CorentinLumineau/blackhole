@@ -1,0 +1,15 @@
+{
+  "title": "Example planned issue (healed)",
+  "phase": "implement",
+  "status": "ready",
+  "depends_on": [],
+  "blocks": [],
+  "worktree": null,
+  "pr": null,
+  "migration_slot": false,
+  "touch_paths": ["src/**"],
+  "size": "s",
+  "epic_parent": null,
+  "review_iteration": 0,
+  "notes": null
+}

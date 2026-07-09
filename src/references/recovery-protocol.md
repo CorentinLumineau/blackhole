@@ -66,6 +66,9 @@ Enforcement gates: `V-BRANCH-02`, `V-WORKTREE-01`, `V-SCOPE-02`.
 After crash or compaction recovery, **complete this checklist** before spawning `implementer`:
 
 1. Complete `checkpoint-protocol.md` compaction steps (read checkpoint, forge sync, validate JSON).
+1b. Run §9 artifact-vs-queue drift scan for every `status: in-flight` issue; heal stale
+    worker state before any worker spawn (router, planner, implementer, reviewer). Use
+    `scripts/recovery-drift.ts` helpers (`detectArtifactDrift`).
 2. Run `git worktree prune` + `git fetch --prune` (`V-WORKTREE-01`).
 2b. For every in-flight issue with a `route` object present in `queue.json`, run §8
     Route staleness check before any dispatch decision (planner, investigator, or
@@ -177,3 +180,64 @@ checkpoints, staleness here cannot be assumed away by "no checkpoint fired yet".
 and the router/investigator agents that would act on a stale-route signal do not exist
 yet (issues #93, #95, #96). This section documents the recovery-side rule so it is
 ready the moment those land — it is not a behavior claim about the current codebase.
+
+---
+
+## §9 Artifact-vs-queue drift
+
+Background workers (router, planner, implementer) finish and persist deliverables, but
+the orchestrator never triages — queue rows remain `status: in-flight` with stale
+notes/checkpoint worker rows while artifacts already exist (primary cause: Cursor Multitask
+idle stall per #151, deferred finding F-00013).
+
+### §9.1 Problem
+
+| Symptom | Queue state | Artifact on disk |
+|---------|-------------|------------------|
+| Router finished, orchestrator stalled | `phase: handle`, `status: in-flight`, notes reference router/WAVE 0 | `issues.N.route` with `body_hash` |
+| Planner finished, orchestrator stalled | `phase: plan`, `status: in-flight` | `.blackhole/plans/issue-N.md` exists |
+| Implementer finished, orchestrator stalled | `phase: implement`, `status: in-flight` | `issues.N.pr` set; forge PR open |
+
+### §9.2 Detection
+
+Run at orchestrator turn start, compaction recovery, and session resume — for every
+`status: in-flight` issue, **before** spawning workers:
+
+| Worker | Artifact present | Drift signal (queue and/or checkpoint) |
+|--------|------------------|----------------------------------------|
+| `router` | `issues.N.route` object with `body_hash` | `phase: handle` + notes/checkpoint still reference router/WAVE 0 in-flight |
+| `planner` | `.blackhole/plans/issue-N.md` exists | `phase: plan` + `status: in-flight` (no `pr`) |
+| `implementer` | `issues.N.pr` set and `gh pr view` shows open PR | `phase: implement` + `status: in-flight` |
+
+Pure detection helper: `scripts/recovery-drift.ts` → `detectArtifactDrift(issueId, issue, context)`.
+Context carries `{ planExists, routeStale, prOpen, checkpointWorkers, notes }`.
+
+When `routeStale` is true (§8), router drift heal is suppressed — staleness forces re-route
+instead of advancing on a stale `route`.
+
+### §9.3 Heal actions
+
+Idempotent — safe on second resume:
+
+1. Clear stale `notes` (e.g. `"router initial pass (WAVE 0)"`) and remove completed worker
+   rows from `campaign-checkpoint.md` `## In-flight workers`.
+2. Transition queue per normal dispatch rules:
+   - **Router done** + route not stale (§8): `phase: plan`, `status: ready` (or `blocked` if
+     `route.needs_clarification`); do **not** re-spawn `router`.
+   - **Planner done**: `phase: implement`, `status: ready` when plan artifact exists and
+     planner JSON was `status: ready`.
+   - **Implementer done** (open PR): `phase: review`, `status: ready` (or `in-flight` if
+     reviewer already spawned — match `phase-review.md`).
+3. Log heal in checkpoint Notes: `Recovery: artifact-drift #N <worker> → <next-phase>`.
+
+### §9.4 Idempotency
+
+After heal, drift signals must be absent. A second turn-start pass must **not** spawn
+duplicate router/planner/implementer for the same `body_hash`/plan revision. Explicit guard:
+skip spawn when artifact + target phase already satisfied (`heal.skipSpawn` from
+`detectArtifactDrift`).
+
+### §9.5 Non-goal
+
+Does not fix #151 root cause (coordinator/orchestrator wake); complements #152 docs and
+optional #154 prevention.

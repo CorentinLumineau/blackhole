@@ -1,0 +1,29 @@
+{
+  "title": "Example routed issue (healed)",
+  "phase": "plan",
+  "status": "ready",
+  "depends_on": [],
+  "blocks": [],
+  "worktree": null,
+  "pr": null,
+  "migration_slot": false,
+  "touch_paths": ["src/**"],
+  "size": "s",
+  "epic_parent": null,
+  "review_iteration": 0,
+  "notes": null,
+  "route": {
+    "needs_split": false,
+    "needs_clarification": false,
+    "needs_research": false,
+    "needs_investigation": false,
+    "needs_design": false,
+    "task_type": "bugfix",
+    "plan_mode": "quick",
+    "security_review_required": false,
+    "confidence": { "split": 90, "design": 80, "plan_mode": 85, "security": 90 },
+    "body_hash": "sha256-router-done-fixture",
+    "computed_at_phase": "handle",
+    "revision": 1
+  }
+}
