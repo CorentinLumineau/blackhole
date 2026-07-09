@@ -197,3 +197,72 @@ describe('DOORBELL_MESSAGE', () => {
     expect(DOORBELL_MESSAGE).toContain('bun run status');
   });
 });
+
+describe('runHook CLI fail-open', () => {
+  const scriptPath = path.join(root, 'scripts/campaign-resume-signal.ts');
+
+  async function runHookCli(stdin: string, campaignDir: string) {
+    const proc = Bun.spawn({
+      cmd: ['bun', 'run', scriptPath, '--hook', '--campaign-dir', campaignDir],
+      stdin: new Blob([stdin]),
+      stdout: 'pipe',
+      stderr: 'pipe',
+      cwd: root,
+    });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    return { exitCode, stdout, stderr };
+  }
+
+  function assertFailOpen(
+    result: { exitCode: number; stdout: string; stderr: string },
+    campaignDir: string,
+  ) {
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe('');
+    expect(result.stdout).not.toContain('followup_message');
+    expect(fs.existsSync(path.join(campaignDir, 'resume-request.json'))).toBe(false);
+  }
+
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'resume-hook-cli-'));
+  });
+
+  afterEach(() => {
+    fs.chmodSync(tmpDir, 0o700);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('malformed stdin JSON exits 0 without doorbell or resume-request.json', async () => {
+    const result = await runHookCli('{not json', tmpDir);
+    assertFailOpen(result, tmpDir);
+    expect(result.stderr).toContain('stdin JSON parse failed');
+  });
+
+  test('empty stdin exits 0 without doorbell or resume-request.json', async () => {
+    const result = await runHookCli('', tmpDir);
+    assertFailOpen(result, tmpDir);
+  });
+
+  test('top-level catch exits 0 without doorbell or resume-request.json', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'queue.json'),
+      JSON.stringify(readFixture('queue-work-remaining.json'), null, 2),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'campaign-checkpoint.md'),
+      readTextFixture('checkpoint-with-work.md'),
+    );
+    fs.chmodSync(tmpDir, 0o555);
+
+    const hookInput = JSON.stringify(readFixture('hook-orchestrator-stop.json'));
+    const result = await runHookCli(hookInput, tmpDir);
+    assertFailOpen(result, tmpDir);
+    expect(result.stderr).toContain('resume hook error:');
+  });
+});
