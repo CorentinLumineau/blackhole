@@ -1,0 +1,10 @@
+{
+  "refreshed_at": "2026-07-09T11:59:00.000Z",
+  "issues": {
+    "154": {
+      "title": "Resume hook",
+      "phase": "implement",
+      "status": "ready"
+    }
+  }
+}
