@@ -13,6 +13,7 @@ describe('detectArtifactDrift router-done', () => {
   const issue = readIssueFixture('router-done-queue.json');
   const context: DriftContext = {
     planExists: false,
+    plannerReady: false,
     routeStale: false,
     prOpen: false,
     checkpointWorkers: [{ role: 'router', issue: 42 }],
@@ -52,6 +53,7 @@ describe('detectArtifactDrift plan-done', () => {
   const issue = readIssueFixture('plan-done-queue.json');
   const context: DriftContext = {
     planExists: true,
+    plannerReady: true,
     routeStale: false,
     prOpen: false,
     checkpointWorkers: [{ role: 'planner', issue: 99 }],
@@ -70,12 +72,19 @@ describe('detectArtifactDrift plan-done', () => {
       logNote: 'Recovery: artifact-drift #99 planner → implement',
     });
   });
+
+  test('skips planner drift when plan exists but plannerReady is false', () => {
+    const result = detectArtifactDrift(99, issue, { ...context, plannerReady: false });
+    expect(result.drift).toBeNull();
+    expect(result.heal).toBeNull();
+  });
 });
 
 describe('detectArtifactDrift pr-open', () => {
   const issue = readIssueFixture('pr-open-queue.json');
   const context: DriftContext = {
     planExists: true,
+    plannerReady: false,
     routeStale: false,
     prOpen: true,
     checkpointWorkers: [{ role: 'implementer', issue: 99 }],
@@ -112,6 +121,7 @@ describe('detectArtifactDrift idempotency', () => {
     const issue = readIssueFixture('router-healed-queue.json');
     const result = detectArtifactDrift(42, issue, {
       planExists: false,
+      plannerReady: false,
       routeStale: false,
       prOpen: false,
       checkpointWorkers: [],
@@ -125,6 +135,7 @@ describe('detectArtifactDrift idempotency', () => {
     const issue = readIssueFixture('plan-healed-queue.json');
     const result = detectArtifactDrift(99, issue, {
       planExists: true,
+      plannerReady: false,
       routeStale: false,
       prOpen: false,
       checkpointWorkers: [],
@@ -138,6 +149,7 @@ describe('detectArtifactDrift idempotency', () => {
     const issue = readIssueFixture('pr-healed-queue.json');
     const result = detectArtifactDrift(99, issue, {
       planExists: true,
+      plannerReady: false,
       routeStale: false,
       prOpen: true,
       checkpointWorkers: [],

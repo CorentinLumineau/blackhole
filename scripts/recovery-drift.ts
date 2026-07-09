@@ -22,6 +22,8 @@ export type CheckpointWorker = {
 
 export type DriftContext = {
   planExists: boolean;
+  /** True when planner worker JSON returned status "ready" (recovery-protocol §9.3). */
+  plannerReady: boolean;
   routeStale: boolean;
   prOpen: boolean;
   checkpointWorkers: CheckpointWorker[];
@@ -89,7 +91,12 @@ export function detectArtifactDrift(
     };
   }
 
-  if (issue.phase === 'plan' && context.planExists && issue.pr == null) {
+  if (
+    issue.phase === 'plan' &&
+    context.planExists &&
+    context.plannerReady &&
+    issue.pr == null
+  ) {
     return {
       drift: 'planner',
       heal: {
