@@ -160,6 +160,13 @@ describe('evaluateResumeHook integration', () => {
     expect(record.stopping_agent).toBe('router');
   });
 
+  test('worker stop with ready work but no in-flight workers produces no resume', () => {
+    const input = readFixture('hook-worker-stop.json');
+    const result = evaluateResumeHook(input, tmpDir, new Date('2026-07-09T12:00:00.000Z'));
+    expect(result.action).toBe('none');
+    expect(fs.existsSync(path.join(tmpDir, 'resume-request.json'))).toBe(false);
+  });
+
   test('error status pass-through', () => {
     const input = { ...readFixture('hook-orchestrator-stop.json'), status: 'error' };
     const result = evaluateResumeHook(input, tmpDir);
