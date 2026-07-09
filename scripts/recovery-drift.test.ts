@@ -5,9 +5,16 @@ import { detectArtifactDrift, type DriftContext, type QueueIssue } from './recov
 
 const root = path.resolve(import.meta.dirname, '..');
 const fixturesDir = path.join(root, 'fixtures/recovery');
+const planStubPath = path.join(fixturesDir, 'plan-stub.md');
 
 const readIssueFixture = (name: string): QueueIssue =>
   JSON.parse(fs.readFileSync(path.join(fixturesDir, name), 'utf-8'));
+
+/** Assert recovery plan fixture is on disk; mirrors runtime planExists signal. */
+const planExistsFromFixture = (): boolean => {
+  expect(fs.existsSync(planStubPath)).toBe(true);
+  return true;
+};
 
 describe('detectArtifactDrift router-done', () => {
   const issue = readIssueFixture('router-done-queue.json');
@@ -52,7 +59,7 @@ describe('detectArtifactDrift router-done', () => {
 describe('detectArtifactDrift plan-done', () => {
   const issue = readIssueFixture('plan-done-queue.json');
   const context: DriftContext = {
-    planExists: true,
+    planExists: planExistsFromFixture(),
     plannerReady: true,
     routeStale: false,
     prOpen: false,
@@ -83,7 +90,7 @@ describe('detectArtifactDrift plan-done', () => {
 describe('detectArtifactDrift pr-open', () => {
   const issue = readIssueFixture('pr-open-queue.json');
   const context: DriftContext = {
-    planExists: true,
+    planExists: planExistsFromFixture(),
     plannerReady: false,
     routeStale: false,
     prOpen: true,
@@ -134,7 +141,7 @@ describe('detectArtifactDrift idempotency', () => {
   test('plan-healed state produces no drift', () => {
     const issue = readIssueFixture('plan-healed-queue.json');
     const result = detectArtifactDrift(99, issue, {
-      planExists: true,
+      planExists: planExistsFromFixture(),
       plannerReady: false,
       routeStale: false,
       prOpen: false,
@@ -148,7 +155,7 @@ describe('detectArtifactDrift idempotency', () => {
   test('pr-healed state produces no drift', () => {
     const issue = readIssueFixture('pr-healed-queue.json');
     const result = detectArtifactDrift(99, issue, {
-      planExists: true,
+      planExists: planExistsFromFixture(),
       plannerReady: false,
       routeStale: false,
       prOpen: true,
