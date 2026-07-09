@@ -147,6 +147,37 @@ describe('evaluateResumeHook integration', () => {
     expect(fs.existsSync(path.join(tmpDir, 'resume-request.json'))).toBe(false);
   });
 
+  test('orchestrator stop with empty queue and empty checkpoint produces no resume', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'queue.json'),
+      JSON.stringify(
+        { refreshed_at: '2026-07-09T11:59:00.000Z', issues: {} },
+        null,
+        2,
+      ),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'campaign-checkpoint.md'),
+      `---
+refreshed_at: 2026-07-09T11:59:00.000Z
+orchestrator_turn_id: 12
+---
+
+# Campaign Checkpoint
+
+## In-flight workers
+
+## Ready set
+
+`,
+    );
+    const input = readFixture('hook-orchestrator-stop.json');
+    const result = evaluateResumeHook(input, tmpDir, new Date('2026-07-09T12:00:00.000Z'));
+    expect(result.action).toBe('none');
+    expect(fs.existsSync(path.join(tmpDir, 'resume-request.json'))).toBe(false);
+    expect(result.resumeRequest).toBeUndefined();
+  });
+
   test('worker stale barrier writes file only', () => {
     fs.writeFileSync(
       path.join(tmpDir, 'campaign-checkpoint.md'),
