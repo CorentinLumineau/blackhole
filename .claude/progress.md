@@ -1,19 +1,14 @@
 ## Current Status
 
-ADR-005 (PR merge-gate + dependency-ordering) implementation + review COMPLETE on branch
-`feature/pr-merge-gate-dependency-ordering` — all 9 plan tasks (T1-T9) landed, uncommitted.
-`/x-review-loop` ran 5 iterations to convergence (APPROVED, Correctness 9/10, Quality 9/10):
-iter 1 found 5 (1 CRITICAL, 2 HIGH, 2 MEDIUM) incl. a bug that silently defeated gated-batch
-mode entirely; iter 2 found 3 more (1 cross-correlated independently by both quality+security
-reviewers — unreliable `status`-based V-MERGE attribution) incl. a DoS and a permanent-deadlock
-class; iter 3 found 2 (my own fix-propagation staleness — updated merge-gate.md's algorithm
-but forgot to sync forge-sync.md's citation of it); iter 4 (past the 3-auto-iteration budget,
-user triaged via AskUserQuestion → "Fix selected") found 1 (gated-batch's actual merge-execution
-mechanism was fully specified but never wired to any trigger point); iter 5 (hard ceiling)
-confirmed clean, zero new findings. All fixes verified: `bun run build` clean, `bun run verify`
-19/19 (sanctioned `VERIFY_SKIP_BUILD=1` — plain run correctly shows only the pre-commit
-git-diff check failing), `bun test` 224/224, after every one of the 4 fix rounds. Ready to
-commit.
+ADR-005 (PR merge-gate + dependency-ordering) — COMPLETE and committed on branch
+`feature/pr-merge-gate-dependency-ordering` (commits `7fa448d` + `0e07f7d`). All 9 plan
+tasks (T1-T9) landed. `/x-review-loop` ran 5 iterations to APPROVED convergence
+(Correctness 9/10, Quality 9/10), finding and fixing 10 real issues across the loop —
+including a bug that silently defeated gated-batch mode entirely, a merge-throughput DoS,
+a permanent-deadlock class, an unreliable cross-attribution mechanism (caught independently
+by two reviewers), and an unreachable core mechanism. `bun run build`, `bun run build
+--gemini`, `bun run verify` 19/19 clean (no skip flag needed — fully committed, zero
+drift), `bun test` 224/224. Ready for PR / next work.
 
 `blackhole-scoped-extraction` (prior initiative, unrelated) is COMPLETE — all 3 milestones
 implemented, reviewed, and committed on branch `blackhole/milestone-1-identity-ssot`, bundled
