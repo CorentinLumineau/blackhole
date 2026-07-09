@@ -16,6 +16,8 @@
       "depends_on": [],
       "merge_hold": true,
       "merge_after": [],
+      "milestone": "v0.4.0",
+      "labels": ["blackhole/backlog", "size:xl"],
       "blocks": [301, 302],
       "worktree": "/tmp/campaign/wt-298",
       "pr": 42,
@@ -33,6 +35,8 @@
       "depends_on": [298],
       "merge_hold": false,
       "merge_after": [298],
+      "milestone": "v0.4.0",
+      "labels": ["blackhole/backlog", "size:m"],
       "blocks": [],
       "worktree": null,
       "pr": null,
@@ -56,6 +60,26 @@
         "computed_at_phase": "handle",
         "revision": 1
       }
+    },
+    "275": {
+      "title": "Cashflow schema migration (merged example)",
+      "phase": "done",
+      "status": "merged",
+      "depends_on": [],
+      "merge_hold": false,
+      "merge_after": [],
+      "milestone": "v0.4.0",
+      "labels": ["blackhole/backlog", "size:s"],
+      "merged_by": "blackhole",
+      "blocks": [],
+      "worktree": null,
+      "pr": 40,
+      "migration_slot": true,
+      "touch_paths": ["lib/cashflow/schema/**"],
+      "size": "s",
+      "epic_parent": null,
+      "review_iteration": 0,
+      "notes": "fixture: demonstrates merged_by attribution for V-MERGE-01/02"
     }
   }
 }

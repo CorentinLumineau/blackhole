@@ -94,3 +94,4 @@ Required keys: `repo`, `target_branch`, `forge`
 - `findings-ledger.md`
 - `queue-dag.md`
 - `epic-orchestration.md`
+- `merge-gate.md`

@@ -1,6 +1,6 @@
 ---
 tracking_initiative: none
-status: proposed
+status: accepted
 scope: orchestration
 ---
 
