@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "description": "Optional Cursor SubagentStop hook — signals campaign resume via resume-request.json and coordinator doorbell.",
+  "hooks": {
+    "subagentStop": [
+      {
+        "command": "bun run scripts/campaign-resume-signal.ts --hook",
+        "matcher": "orchestrator|router|planner|implementer|reviewer|investigator",
+        "failClosed": false,
+        "loop_limit": 4
+      }
+    ]
+  },
+  "_note": "Merge AFTER the validate hook entry in your project's .cursor/hooks.json (fragment, not a full hooks file). Validate must run first so worker JSON is checked before resume file is written. Requires bun on PATH; paths are relative to the repo root."
+}
