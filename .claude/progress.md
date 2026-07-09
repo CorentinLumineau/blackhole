@@ -1,12 +1,35 @@
 ## Current Status
 
-The `blackhole-scoped-extraction` initiative is COMPLETE — all 3 milestones implemented,
-reviewed, and committed on branch `blackhole/milestone-1-identity-ssot`, bundled into a single
-PR ([#90](https://github.com/CorentinLumineau/blackhole/pull/90)) per user request. PR
-description updated to reflect the full 3-milestone scope. Awaiting merge.
+ADR-005 (PR merge-gate + dependency-ordering) — COMPLETE and committed on branch
+`feature/pr-merge-gate-dependency-ordering` (commits `7fa448d` + `0e07f7d`). All 9 plan
+tasks (T1-T9) landed. `/x-review-loop` ran 5 iterations to APPROVED convergence
+(Correctness 9/10, Quality 9/10), finding and fixing 10 real issues across the loop —
+including a bug that silently defeated gated-batch mode entirely, a merge-throughput DoS,
+a permanent-deadlock class, an unreliable cross-attribution mechanism (caught independently
+by two reviewers), and an unreachable core mechanism. `bun run build`, `bun run build
+--gemini`, `bun run verify` 19/19 clean (no skip flag needed — fully committed, zero
+drift), `bun test` 224/224. Ready for PR / next work.
+
+`blackhole-scoped-extraction` (prior initiative, unrelated) is COMPLETE — all 3 milestones
+implemented, reviewed, and committed on branch `blackhole/milestone-1-identity-ssot`, bundled
+into a single PR ([#90](https://github.com/CorentinLumineau/blackhole/pull/90)) per user
+request. Awaiting merge (independent of this work).
 
 ## Completed Tasks
 
+- **2026-07-09** (uncommitted, branch `feature/pr-merge-gate-dependency-ordering`): T1-T7 of
+  `plan-pr-merge-gate-dependency-ordering.md` — `queue-dag.md`/`config-template.md` schema
+  fields (T1/T2), new `src/references/merge-gate.md` algorithm doc (T3), `phase-loop.md`
+  precondition wiring (T4), `blackhole-vcodes.md` V-MERGE-01/02 rows (T5), `orchestrator.md`
+  pointer (T6), `forge-sync.md` steps 5.5/6.6 (T7). Discovery beyond the plan's literal scope
+  (mirrors the M3 precedent below): T5's 2 new vcode rows required
+  `src/references/ground-truth.md`'s `vcode_table_rows` count bumped 31→33 (V-GROUND-01
+  enforces this count mechanically) — not listed in the plan's Critical Files table, fixed as
+  a direct, mechanical consequence of T5 rather than unrelated scope creep. `bun run build`
+  + `VERIFY_SKIP_BUILD=1 bun run verify` 19/19 pass after every task (V-BUILD-01 itself
+  requires a clean git diff, which is structurally impossible pre-commit — skipped
+  intentionally via the tooling's own sanctioned escape hatch, confirmed pass will re-check
+  after the eventual commit).
 - **2026-07-06** (commit `f545fd1`, branch `blackhole/milestone-1-identity-ssot`, PR #90):
   Milestone 1 — `scripts/project-identity.ts` + test extracted; `scripts/build.ts` manifest
   builders (`buildGeminiPluginManifest`, `buildCodexPluginManifest`, `buildCodexMarketplace`,
@@ -45,9 +68,14 @@ description updated to reflect the full 3-milestone scope. Awaiting merge.
 
 ## Next Steps
 
-1. Merge PR #90 (all 3 milestones committed, reviewed, PR description updated)
-2. Run `/x-initiative archive` for `blackhole-scoped-extraction` once PR #90 merges
-3. Consider filing follow-up issues for the two out-of-scope discoveries below (`.claude/` cleanDir wipe bug; `requiredRefs` 3/6 coverage gap in `checkGroundTruth`)
+1. Run `/x-review` on `feature/pr-merge-gate-dependency-ordering` (ADR-005 implementation,
+   T1-T9 complete, uncommitted) before committing.
+2. Commit + open PR once review passes (`bun run verify` — without `VERIFY_SKIP_BUILD` —
+   will pass naturally once the compiled-output diff is committed).
+3. Merge PR #90 (all 3 milestones committed, reviewed, PR description updated) — independent
+   of the above.
+4. Run `/x-initiative archive` for `blackhole-scoped-extraction` once PR #90 merges.
+5. Consider filing follow-up issues for the two out-of-scope discoveries below (`.claude/` cleanDir wipe bug; `requiredRefs` 3/6 coverage gap in `checkGroundTruth`)
 
 ## Known Limitations
 

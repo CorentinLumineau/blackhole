@@ -106,8 +106,17 @@ For each issue in `queue.json`:
 | Issue closed | Set `status: merged` or `closed`; `phase: done` |
 | PR merged (linked) | Set `pr`, `status: merged`, `phase: done` |
 | PR open, linked | Set `pr`, `phase: review` if was `implement` |
-| Title / labels changed | Update `title`, `size` from forge |
+| Title / labels changed | Update `title`, `size`, `labels` (label names array) from forge |
+| Milestone changed | Update `milestone` (title, or `null` if unassigned) from forge |
 | Still open, in queue | Refresh `depends_on` from body (step 6) |
+
+**`milestone`/`labels` sync** (ADR-005): every reconcile pass refreshes `queue.json`'s
+`milestone`/`labels` fields from the same `gh issue list --json number,title,labels,milestone`
+fetch already used at ingest (§4) — no second API call. These fields feed
+`merge-gate.md` § 1 Condition 3's gated-batch scope matching; they are otherwise unused by
+existing scheduling logic (Steps 2-4 below match scope via `scripts/forge-scope.ts` against
+**live forge state** at ingest time, not these cached queue fields — the cache exists
+specifically so `mergeEligible()` can scope-match without a live `gh` call mid-merge-loop).
 
 When the orchestrator **mutated** `depends_on` this turn (handle inference, split, epic
 child deps), run **§6.5 write-back before step 6** so the queue remains authoritative until
@@ -115,6 +124,13 @@ the issue body is synced. Skip write-back when `auto_sync: false` (offline — q
 
 **Preserve** `in-flight` entries — do not demote to `ready` while worker active
 unless forge shows issue closed.
+
+### 5.5 Merge-hold drift reconciliation
+
+For each issue with `merge_hold: true` or an unresolved `merge_after` entry, run
+`gh pr view --json state,mergedAt` on its linked PR per `merge-gate.md` § 3 — do not
+duplicate the reconciliation or attribution algorithm here (`merge-gate.md` § 3
+owns both the detection and the `V-MERGE-01`/`V-MERGE-02` attribution rule in full).
 
 ### 6. Parse dependencies from issue body
 
@@ -167,6 +183,12 @@ Helper exports: `parseDependsFromBody(body)`, `mergeDependsIntoBody(body, depend
 
 **Round-trip acceptance:** body → sync → queue `depends_on` mutation → write-back →
 re-sync preserves `depends_on`.
+
+### 6.6 Cross-graph cycle detection
+
+Check the union of `merge_after` and `depends_on` edges for cycles per `merge-gate.md`
+§ 2 — do not duplicate the detection algorithm here. On a cycle, set both issues
+`status: blocked` with note `merge-order cycle with #N`.
 
 ### 7. PR cross-reference
 

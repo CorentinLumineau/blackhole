@@ -6,3 +6,4 @@
 | ADR-002-synthesizer-extraction.md | Dedicated LLM synthesizer agent after reviewer | adr | Superseded (by ADR-003) | on protocol change |
 | ADR-003-synthesizer-removal.md | Synthesizer removed in favor of deterministic review-aggregate.ts | adr | Accepted | on protocol change |
 | ADR-004-adaptive-phase-routing.md | Router-agent adaptive phase routing — single-pass flag contract with re-route checkpoints, flag-derived execution chain (amends ADR-001) | adr | Proposed | on protocol change |
+| ADR-005-pr-merge-gate-dependency-ordering.md | PR merge-gate (`merge_hold`) and dependency-ordering (`merge_after`) for scoped, self-reviewed campaign batches | adr | Proposed | on protocol change |

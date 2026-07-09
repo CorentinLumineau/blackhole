@@ -228,6 +228,8 @@ Run the **Checkpoint protocol** turn-end checklist only when `## In-flight worke
 empty. If any worker is still in-flight, **do not** increment `orchestrator_turn_id` or
 end the turn.
 
+Per `merge-gate.md` § 1: before merging an LGTM'd issue's PR, evaluate `mergeEligible(issue)` — hold/merge_after/gated-batch checks, never duplicated inline here.
+
 ---
 
 ## Checkpoint protocol

@@ -40,7 +40,7 @@ Phase playbook files:
 
 Source: `src/references/blackhole-vcodes.md`
 
-**vcode_table_rows:** 31
+**vcode_table_rows:** 33
 
 ## Verify checks
 
@@ -94,3 +94,4 @@ Required keys: `repo`, `target_branch`, `forge`
 - `findings-ledger.md`
 - `queue-dag.md`
 - `epic-orchestration.md`
+- `merge-gate.md`

@@ -13,5 +13,6 @@
   "scope_labels": ["blackhole/backlog"],
   "auto_sync": true,
   "worker_model_policy": "cost-optimized",
-  "entry_mode": "multitask"
+  "entry_mode": "multitask",
+  "merge_mode": "gated-batch"
 }
