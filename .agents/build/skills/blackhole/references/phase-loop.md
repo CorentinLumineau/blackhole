@@ -17,10 +17,32 @@
 
 ## Merge protocol
 
+**Trigger, per `config.json.merge_mode`** (checklist line "LGTM AND
+`mergeEligible(issue)`? → merge PR"):
+- `"immediate"` (default): apply steps 0-5 below to each LGTM'd issue
+  individually, as encountered.
+- `"gated-batch"`: do **not** apply steps 0-5 issue-by-issue as encountered.
+  Instead, once `merge-gate.md` § 1 Condition 3 is satisfied for the whole
+  in-scope set (every sibling LGTM'd), run `merge-gate.md` § 4's sequential
+  batch procedure — it internally invokes steps 0-5 below, once per issue, in
+  topological `merge_after` order, persisting `queue.json` after each. Do not
+  duplicate § 4's ordering/persistence logic here; this section owns only the
+  per-PR merge mechanics § 4 calls into.
+
+0. Evaluate `merge-gate.md` § 1 `mergeEligible(issue)`. If `false`, **STOP** —
+   do not proceed to step 1 for this issue (leave it `in-flight`; re-evaluated
+   next turn). This step is binding wherever this section is cited or
+   delegated — never skip it to reach step 1 directly.
 1. `gh pr view <n> --json headRefOid` equals local HEAD
 2. `gh pr checks <n>` green (except Vercel preview — expected fail)
 3. Run the project's build command in main clone (if applicable)
-4. `gh pr merge --squash` (use `&&` only, never `;`)
+4. `gh pr merge --squash` (use `&&` only, never `;`) — immediately after this
+   command succeeds, in the **same** atomic `queue.json` write that sets
+   `status: merged`, also set `merged_by: blackhole` on the issue (ADR-005 —
+   see `merge-gate.md` § 3 for why: this is the sole signal `V-MERGE-01`/
+   `V-MERGE-02` attribution relies on; `status: in-flight` alone does not
+   indicate blackhole itself performed the merge and must not be used for
+   attribution).
 5. Post-merge: migration apply if schema PR; deploy verify per runbook
 
 ## Ledger cleanup on merge

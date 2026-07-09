@@ -37,8 +37,8 @@ longer definitions (token cost, drift). Persist every finding to
 | V-BRANCH-03 | Branch name does not match blackhole/issue-N convention | WARN |
 | V-WORKTREE-01 | Worktree leak — failed to clean up temporary directories | BLOCK |
 | V-GIT-01 | PR created without Closes #N issue linkage in description | BLOCK |
-| V-MERGE-01 | merge executed while ineligible (hold set or merge_after unresolved) | BLOCK |
-| V-MERGE-02 | merge-order cycle detected, or PR merged externally bypassing an active hold | WARN |
+| V-MERGE-01 | drift-reconciled merge with merged_by:blackhole present — step 0 bypassed | BLOCK |
+| V-MERGE-02 | drift-reconciled merge with merged_by absent — external bypass of hold/merge_after | WARN |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.

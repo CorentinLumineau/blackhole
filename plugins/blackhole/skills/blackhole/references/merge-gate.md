@@ -3,8 +3,9 @@
 Owns the entire merge-eligibility algorithm (ADR-005): whether an LGTM'd issue's PR
 may actually be merged this turn. No merge mechanics live here — HEAD/CI/build
 checks and the `gh pr merge` call itself stay in `phase-loop.md` § Merge protocol;
-this doc is consulted from that step as a single delegated precondition
-(`LGTM AND mergeEligible(issue)`), never inlined.
+this doc is consulted from that section's own **step 0** as a single delegated
+precondition (`mergeEligible(issue)` — `false` stops the protocol before step 1),
+never inlined and never satisfied merely by citation from a different heading.
 
 Consumes `queue.json`'s `merge_hold` / `merge_after` fields (see `queue-dag.md`
 Field rules) and `config.json`'s `merge_mode` field (see `config-template.md`).
@@ -29,7 +30,8 @@ function mergeEligible(issue, queue, config):
     if config.merge_mode == "gated-batch":
         scope = readScope(config)                       # scripts/forge-scope.ts
         siblings = [i for i in queue.issues.values()
-                    if issueMatchesScope(i, scope)]       # scripts/forge-scope.ts
+                    if issueMatchesScope(asForgeIssue(i), scope)
+                    and i.status not in ["closed", "merged"]]  # mirrors Condition 2's rule
         if not all(isLgtm(s) for s in siblings):
             return false
 
@@ -69,11 +71,30 @@ Only evaluated when `config.json.merge_mode == "gated-batch"` (default
 `"immediate"` skips this condition entirely — the loop above never enters the
 `if` body, so immediate-mode campaigns pay zero extra cost). "Siblings" means
 every `queue.json` issue matching the campaign's configured scope
-(`scope_milestone` / `scope_labels`), computed via `readScope(config)` +
-`issueMatchesScope(issue, scope)` from `scripts/forge-scope.ts` — the same
-scope mechanism `forge-sync.md` already uses for issue ingest/completion
-counting. Do not build a second scope-matching mechanism; call these two
-exported functions directly.
+(`scope_milestone` / `scope_labels`) **and** not already `closed` or `merged`,
+computed via `readScope(config)` + `issueMatchesScope(issue, scope)` from
+`scripts/forge-scope.ts` — the same scope mechanism `forge-sync.md` already
+uses for issue ingest/completion counting. Do not build a second
+scope-matching mechanism; call this exported function directly.
+
+**Closed-sibling exclusion**: an in-scope issue closed as wontfix/duplicate
+never had a PR and can never satisfy `isLgtm()` (`review-core.md` requires an
+actual completed reviewer run). Without exclusion, one ordinary closed issue
+would permanently deadlock `all(isLgtm(...))` for the **entire** scope — the
+identical deadlock class Condition 2's `merged OR closed` rule already fixes
+for `merge_after`, extended here to the sibling set. `merged` siblings are
+excluded for the same reason (already done, nothing further to wait for).
+
+**Data shape note**: `issueMatchesScope` expects a forge-shaped issue —
+`{ milestone?: { title }, labels?: { name }[] }` — not `queue.json`'s native
+shape. `asForgeIssue(queueIssue)` is the trivial adapter:
+`{ milestone: queueIssue.milestone ? { title: queueIssue.milestone } : undefined,
+labels: queueIssue.labels.map(name => ({ name })) }`, reading the `milestone`/
+`labels` fields `forge-sync.md` § 5 now syncs onto every `queue.json` issue every
+turn (`queue-dag.md` Field rules). This is a shape adapter only — it does not
+duplicate `issueMatchesScope`'s matching logic, and it deliberately reads the
+turn-cached queue fields rather than making a live `gh issue view` call per
+sibling, so Condition 3 stays a pure in-memory check over already-synced state.
 
 The condition is satisfied only when **every** in-scope issue satisfies
 `isLgtm()`. A scope of exactly one in-scope issue makes this vacuously true
@@ -133,9 +154,31 @@ If `state == "MERGED"` (`mergedAt` non-null) despite the hold/unresolved
 predecessor, that is **drift**: the merge already happened and cannot be
 undone. Reconcile `queue.json` to match forge reality (`status: merged`,
 `phase: done` — same as any other externally-observed merge, per
-`forge-sync.md` § Reconcile existing queue entries) and log `V-MERGE-02`
-(WARN) to `findings-ledger.json`. This is audit-only: the ledger row records
-that a hold was bypassed, it does not and cannot reverse the merge.
+`forge-sync.md` § Reconcile existing queue entries), then attribute and log
+using the `merged_by` field (`queue-dag.md` Field rules — set **only** by
+`phase-loop.md` § Merge protocol step 4, in the same atomic write as
+`status: merged`; deliberately **not** `status: in-flight`, which reflects
+concurrent worker activity unrelated to who actually called `gh pr merge` and
+is ambiguous in both directions — it is set for any active review/implement
+work, not merge attempts specifically, and it flips to `merged` in the same
+turn a real internal violation would occur):
+
+- **`merged_by == "blackhole"`** (the marker was set — blackhole's own
+  orchestrator executed step 4 despite step 0 saying stop, proving step 0 was
+  bypassed or buggy): log **`V-MERGE-01` (BLOCK)** — a genuine internal
+  process violation, blocks the campaign turn until acknowledged (per
+  `blackhole-vcodes.md`'s BLOCK severity contract: fix or escalate to the
+  user with justification).
+- **`merged_by` absent** (blackhole never executed step 4 for this issue —
+  it was structurally impossible for blackhole to do so while step 0 holds,
+  so the merge came from outside): log **`V-MERGE-02` (WARN)** — an external
+  actor (human via the forge UI, a different tool) merged the PR outside
+  blackhole's control.
+
+Both cases are audit-only: the ledger row records what happened, it does not
+and cannot reverse the merge. This single detection point (§3) is the sole
+trigger for both `V-MERGE-01` and `V-MERGE-02` — they are not two separate
+checks, only two attributions of the same drift observation.
 
 ## 4. Gated-batch merge execution — one PR at a time
 
@@ -167,12 +210,15 @@ no rollback logic required for the PRs that already landed.
 | `merge_after` entry has `status: closed` (not `merged`) | Satisfied — same `merged OR closed` rule as `depends_on` |
 | Self-referential or mutual cycle (`A merge_after [B]`, `B merge_after [A]`), including cross-graph via `depends_on` | § 2 cycle detector flags both, sets `status: blocked` on each with note `merge-order cycle with #N`, surfaced via `AskQuestion` — never a silent deadlock |
 | Gated-batch, exactly one in-scope issue | Condition 3's `all(...)` over a one-element set is vacuously true — identical behavior to immediate mode |
+| Gated-batch, an in-scope sibling closed as wontfix/duplicate (never had a PR) | Excluded from Condition 3's sibling set (`closed`/`merged` excluded, mirroring Condition 2's rule) — does not permanently deadlock the whole scope's merges |
 | `merge_hold: true` **and** an unresolved `merge_after` entry simultaneously | Either condition alone is sufficient to block; §1 short-circuits on Condition 1, so Condition 2 is never even evaluated — but the result is the same either way (see §1's ordering note) |
-| PR merged externally while `merge_hold: true` (or `merge_after` unresolved) | § 3 detects via `gh pr view --json state,mergedAt` on the next forge-sync; logs `V-MERGE-02` WARN — audit only, the merge cannot be undone |
+| PR merged externally while `merge_hold: true` (or `merge_after` unresolved), no `merged_by` marker | § 3 detects via `gh pr view --json state,mergedAt` on the next forge-sync; `merged_by` absent → logs `V-MERGE-02` WARN (external bypass) — audit only, the merge cannot be undone |
+| PR merged while ineligible AND `merged_by: blackhole` marker present | § 3 detects the same way; `merged_by` present proves blackhole's own step 0 was bypassed; logs `V-MERGE-01` BLOCK instead of `V-MERGE-02` |
 
 ## Consulted by
 
-- `phase-loop.md` § Merge protocol — `LGTM AND mergeEligible(issue)` precondition before `gh pr merge`.
+- `phase-loop.md` § Merge protocol, **step 0** — hard `mergeEligible(issue)` stop-gate before step 1, not merely a checklist reference one heading away.
+- `phase-loop.md` § Merge protocol's **trigger** paragraph — when `merge_mode: gated-batch`, invokes **§ 4** (this doc) instead of applying steps 0-5 issue-by-issue; § 4 internally calls back into steps 0-5 per issue.
 - `forge-sync.md` — cycle detection (§ 2) and drift reconciliation (§ 3), run every turn at the sync boundary.
 - `orchestrator.md` Phase 5 — pointer reference only, no inline logic.
 

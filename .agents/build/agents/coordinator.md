@@ -19,10 +19,22 @@ Binding: `.agents/build/skills/blackhole/references/coordinator-dashboard.md`.
 ### Bootstrap preflight
 
 **Campaign launch configuration gate** (ADR-005 § Campaign Launch Configuration
-Gate) — fires **only** when `.blackhole/config.json` does not yet exist (true
-first bootstrap). Skip this step entirely on resume, where the file already
-exists per `config-template.md`'s "do not overwrite existing runtime config
-without user confirmation":
+Gate) — run steps 1-3 below whenever **any** of these three conditions hold,
+regardless of whether `.blackhole/config.json` already exists:
+
+1. **True first bootstrap** — `.blackhole/config.json` does not yet exist.
+2. **Post-"Campaign complete" restart** — `phase-loop.md` § Campaign complete
+   just asked "Start a new campaign?" and the user answered yes.
+3. **Explicit mid-campaign reconfigure** — the user asked, via Chat Feedback
+   Intake Protocol item 5, to "reconfigure scope" or "change merge mode".
+
+**Skip steps 1-3 only on routine resume** — i.e., when `.blackhole/config.json`
+already exists AND none of the three conditions above hold (per
+`config-template.md`'s "do not overwrite existing runtime config without user
+confirmation"). This carve-out is the ONLY skip condition — do not skip steps
+1-3, including step 2's gated-batch+unscoped Validation warning, merely
+because `config.json` exists; conditions 2 and 3 both fire precisely when it
+already does:
 
 1. Use `AskQuestion` to confirm **scope**:
    - "All open issues (default)"
@@ -39,6 +51,16 @@ without user confirmation":
    - "Gated batch — wait for all in-scope PRs to reach LGTM, self-review, then merge in dependency order"
 
    Map the answer onto the existing `merge_mode` field (ADR-005).
+
+   **Validation**: if the answer is "Gated batch" **and** step 1's scope answer
+   was "All open issues (default)" (no `scope_labels`/`scope_milestone` set),
+   warn the user before accepting: gated-batch with no scope filter means
+   **every** open issue in the repo — including unrelated ones with no PR at
+   all — must reach LGTM before any PR merges; any new unrelated issue filed
+   during the campaign extends the wait indefinitely. Use `AskQuestion` to
+   offer: "Pick a label/milestone scope instead (recommended)" | "Confirm —
+   use gated-batch across all open issues anyway". Only proceed to step 3 with
+   `merge_mode: gated-batch` + unscoped after explicit confirmation.
 
 3. Copy the committed template to `.blackhole/config.json` if it does not yet
    exist, then write the confirmed `scope_labels`/`scope_milestone`/
@@ -92,8 +114,9 @@ When the user enters a message in the chat:
     *   If $\text{Priority} \ge 30$, file a GitHub issue natively (`gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)`). On success, print `📋 Filed #N — <title> (milestone <M>)` then re-run `bun run status` if the campaign is active.
     *   If $\text{Priority} < 30$, log it as `status: archived` in `findings-ledger.json` and inform the user of the low ROI triage (do not file an issue).
 2.  **Resolving Blockers**:
-    *   If the orchestrator is blocked (`notes: awaiting-user-clarification` or `awaiting-plan-approval` in `queue.json`), parse the user's response.
+    *   If the orchestrator is blocked (`notes: awaiting-user-clarification`, `awaiting-plan-approval`, or `merge-order cycle with #N` — ADR-005, `merge-gate.md` § 2 — in `queue.json`), parse the user's response.
     *   If the response is ambiguous, use `AskQuestion` to resolve the doubt.
+    *   For a `merge-order cycle` block: present both (or all) cycle-member issue numbers and their `merge_after`/`depends_on` edges, ask the user which edge to break (via `AskQuestion`), then clear the losing edge and the `blocked` status/note on both issues before resuming.
     *   Update the queue notes and `resume` the orchestrator with `interrupt: false`, passing the user's clarification details.
 3.  **Status Requests**:
     *   If the user asks for campaign status, run `bun run status` and print the **full** markdown dashboard to the user. Do not resume or spawn new workers.
