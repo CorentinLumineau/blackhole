@@ -190,11 +190,11 @@ describe('confidence gate', () => {
     expect(result.findings[0].summary).toContain('low priority issue');
   });
 
-  test('confidence >= 80 → passthrough unchanged, no caveat', () => {
+  test('confidence > 80 → passthrough unchanged, no caveat', () => {
     const result = aggregateReview({
       reviewer: {
         status: 'complete',
-        findings: [baseFinding({ severity: 'BLOCK', confidence: 80, summary: 'high confidence issue' })],
+        findings: [baseFinding({ severity: 'BLOCK', confidence: 81, summary: 'high confidence issue' })],
       },
       issueRef: '46',
     });
@@ -276,5 +276,149 @@ describe('confidence gate', () => {
     expect(result.pareto_candidates[0].summary).toBe('high priority');
     expect(result.pareto_candidates[0].priority).toBe(81);
     expect(result.pareto_candidates[1].priority).toBe(9);
+  });
+});
+
+describe('confidence band boundary (round-1 review fix — passthrough is strictly > 80)', () => {
+  test('confidence exactly 80 → downgraded BLOCK→WARN with caveat (band is inclusive 50-80)', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [baseFinding({ severity: 'BLOCK', confidence: 80, summary: 'boundary issue' })],
+      },
+      issueRef: '46',
+    });
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('WARN');
+    expect(result.findings[0].summary).toMatch(/confidence 80/);
+    expect(result.blockers_count).toBe(0);
+  });
+
+  test('confidence 81 → passthrough unchanged, no caveat', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [baseFinding({ severity: 'BLOCK', confidence: 81, summary: 'clean pass' })],
+      },
+      issueRef: '46',
+    });
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('BLOCK');
+    expect(result.findings[0].summary).toBe('clean pass');
+    expect(result.blockers_count).toBe(1);
+  });
+});
+
+describe('confidence gate idempotency (round-1 review fix — re-running must not double-append caveat)', () => {
+  test('aggregating twice over already-gated priorFindings produces identical output', () => {
+    const first = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [baseFinding({ severity: 'BLOCK', confidence: 65, summary: 'flaky check' })],
+      },
+      issueRef: '46',
+    });
+
+    expect(first.findings).toHaveLength(1);
+    expect(first.findings[0].severity).toBe('WARN');
+
+    const second = aggregateReview({
+      reviewer: { status: 'complete', findings: [] },
+      issueRef: '46',
+      priorFindings: first.findings,
+    });
+
+    expect(second.findings).toEqual(first.findings);
+
+    const caveatOccurrences = (
+      second.findings[0].summary.match(/low-confidence finding: verify before acting/g) ?? []
+    ).length;
+    expect(caveatOccurrences).toBe(1);
+  });
+
+  test('re-running a third time over the already-gated findings is still a no-op', () => {
+    const first = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [baseFinding({ severity: 'WARN', confidence: 55, summary: 'stable check' })],
+      },
+      issueRef: '46',
+    });
+
+    const second = aggregateReview({
+      reviewer: { status: 'complete', findings: [] },
+      issueRef: '46',
+      priorFindings: first.findings,
+    });
+
+    const third = aggregateReview({
+      reviewer: { status: 'complete', findings: [] },
+      issueRef: '46',
+      priorFindings: second.findings,
+    });
+
+    expect(third.findings).toEqual(first.findings);
+  });
+});
+
+describe('confidence caveat interpolates actual confidence value (round-1 review fix)', () => {
+  test('caveat text embeds the finding\'s own confidence value, not a static range', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [baseFinding({ severity: 'BLOCK', confidence: 62, summary: 'interpolation check' })],
+      },
+      issueRef: '46',
+    });
+    expect(result.findings[0].summary).toContain('confidence 62');
+    expect(result.findings[0].summary).not.toContain('confidence 50-80');
+  });
+});
+
+describe('confidence bounds clamping/validation (round-1 review fix)', () => {
+  test('confidence below 0 clamps to 0 → sub-50 band, dropped entirely', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [baseFinding({ severity: 'BLOCK', confidence: -20 })],
+      },
+      issueRef: '46',
+    });
+    expect(result.findings).toHaveLength(0);
+    expect(result.blockers_count).toBe(0);
+  });
+
+  test('confidence above 100 clamps to 100 → passthrough unchanged', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [baseFinding({ severity: 'BLOCK', confidence: 150, summary: 'clamped high' })],
+      },
+      issueRef: '46',
+    });
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('BLOCK');
+    expect(result.findings[0].summary).toBe('clamped high');
+    expect(result.blockers_count).toBe(1);
+  });
+
+  test('non-number confidence is treated as absent → full-confidence passthrough', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [
+          baseFinding({
+            severity: 'BLOCK',
+            confidence: 'high' as unknown as number,
+            summary: 'non-numeric confidence',
+          }),
+        ],
+      },
+      issueRef: '46',
+    });
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('BLOCK');
+    expect(result.findings[0].summary).toBe('non-numeric confidence');
+    expect(result.blockers_count).toBe(1);
   });
 });

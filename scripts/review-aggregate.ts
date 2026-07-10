@@ -56,28 +56,63 @@ function stampIssueRef(findings: Finding[], issueRef: string): Finding[] {
   }));
 }
 
-const LOW_CONFIDENCE_CAVEAT = '[low-confidence finding: verify before acting — confidence 50-80]';
+// Stable idempotency marker: matches a previously-applied caveat regardless of
+// the interpolated confidence value, so re-running the gate over an
+// already-gated finding never appends a second caveat (V-API-01 fix).
+const LOW_CONFIDENCE_CAVEAT_RE =
+  /\[low-confidence finding: verify before acting — confidence \d+\]/;
+
+function lowConfidenceCaveat(confidence: number): string {
+  return `[low-confidence finding: verify before acting — confidence ${confidence}]`;
+}
+
+/**
+ * Clamps/validates a raw `confidence` value read from (possibly external)
+ * finding data: values below 0 clamp to 0, values above 100 clamp to 100,
+ * and anything that isn't a finite number (including `NaN`) is treated as
+ * absent (`undefined`, i.e. full confidence). `undefined` stays `undefined`.
+ */
+function clampConfidence(confidence: unknown): number | undefined {
+  if (confidence === undefined) {
+    return undefined;
+  }
+  if (typeof confidence !== 'number' || Number.isNaN(confidence)) {
+    return undefined;
+  }
+  return Math.min(100, Math.max(0, confidence));
+}
 
 /**
  * Confidence-band gate (AC1): findings with `confidence < 50` are dropped
- * entirely; `confidence` in `[50, 80)` survive but are downgraded from
- * `BLOCK` to `WARN` (never BLOCK in this band) and carry an explicit
- * caveat in `summary`; `confidence >= 80` (or absent, i.e. full confidence)
- * pass through unchanged. Mirrors `reviewer.md` §11's behavioral policy as
- * the deterministic backstop.
+ * entirely; `confidence` in `[50, 80]` (inclusive on both ends) survive but
+ * are downgraded from `BLOCK` to `WARN` (never BLOCK in this band) and carry
+ * an explicit caveat in `summary` naming the finding's actual confidence
+ * value; `confidence > 80` (or absent, i.e. full confidence) pass through
+ * unchanged. Mirrors `reviewer.md` §11 / `review-core.md`'s documented band
+ * boundaries as the deterministic backstop. Idempotent: re-running the gate
+ * over findings that already carry the caveat marker is a no-op — it does
+ * not append the marker a second time.
  */
 export function applyConfidenceGate(findings: Finding[]): Finding[] {
   return findings
+    .map((finding) => {
+      const clamped = clampConfidence(finding.confidence);
+      return clamped === finding.confidence ? finding : { ...finding, confidence: clamped };
+    })
     .filter((finding) => finding.confidence === undefined || finding.confidence >= 50)
     .map((finding) => {
-      if (finding.confidence === undefined || finding.confidence >= 80) {
+      if (finding.confidence === undefined || finding.confidence > 80) {
         return finding;
       }
+
+      const alreadyGated = LOW_CONFIDENCE_CAVEAT_RE.test(finding.summary);
 
       return {
         ...finding,
         severity: finding.severity === 'BLOCK' ? 'WARN' : finding.severity,
-        summary: `${finding.summary} ${LOW_CONFIDENCE_CAVEAT}`,
+        summary: alreadyGated
+          ? finding.summary
+          : `${finding.summary} ${lowConfidenceCaveat(finding.confidence)}`,
       };
     });
 }
