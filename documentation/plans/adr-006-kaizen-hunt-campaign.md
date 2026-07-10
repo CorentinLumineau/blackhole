@@ -73,6 +73,28 @@ definitions — no session-model inheritance.
 | Drift from ADR-006's verified decisions (e.g. a second scoring formula sneaks into a kind ref) | Every issue body cites the ADR §; reviewer audits plan-conformance; the SSOT rule is stated in each kind reference |
 | `every-n-loops` trigger interacts badly with `merge_mode: gated-batch` | K4 acceptance criterion: wave dispatch is a no-op while a gated batch is mid-merge (merge-gate § 4 sequence is never interleaved with filings) |
 
+## Companion Hardening Batch (mercure imports, filed 2026-07-10)
+
+Scored with the campaign's own gate (`Priority = Gain × (11 − Effort) ≥ 30`) after filtering
+capabilities blackhole already has (V-SEC-06/07 adversarial security validation, Scout
+Check, anti-slop codes, worktree hygiene, checkpoint/recovery, ADR-004's investigator
+hypothesis spec). Independent of the K-issue DAG — parallelizable any time:
+
+| Issue | Import | Priority |
+|-------|--------|----------|
+| #204 | Verification-evidence gate in implementer (RUN/READ/VERIFY before claim) | 72 |
+| #205 | Confidence-based finding filtering + root-cause consolidation in reviewer | 63 |
+| #206 | Error classification (Transient/Permanent/Partial) + Failed-Approaches log | 56 |
+| #207 | Suggestion-proportionality gate; out-of-diff observations feed kaizen | 45 |
+
+Evaluated and **deferred** (borderline, revisit after the hunt capability proves itself):
+adversarial critics panel for design-track plans (42), cross-correlation severity promotion
+(40 — only applies where dual scans exist; single reviewer per PR since ADR-003),
+post-compact recovery hook (36 — checkpoint-protocol covers most), escalation-registry
+formalization (36 — model-routing.md covers the intent). Rejected: structural-output guard
+hook (24 — orchestrator already validates worker JSON), post-edit format/typecheck hooks
+(32 — consumer-repo tooling varies; review catches it).
+
 ## Success Criteria
 
 - [ ] All 7 issues merged, each via its own reviewed PR with `Closes #N` linkage
