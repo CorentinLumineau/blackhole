@@ -34,6 +34,12 @@ CI reads `.github/releases/${TAG}.md` when the file exists; otherwise falls back
    ```bash
    bun run release prepare vX.Y.Z
    ```
+   `prepare` bumps `package.json` and then runs `bun run build --all` internally, regenerating
+   the 5 version-carrying manifests (`.claude-plugin/plugin.json`,
+   `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`, `.gemini-plugin/plugin.json`,
+   `plugins/blackhole/plugin.json`) — no separate manual build step is needed. If a rebuild is
+   ever done manually, use `bun run build --all` (not plain `bun run build`), which misses the
+   gemini and `plugins/blackhole` targets.
 3. **Edit notes** — `.github/releases/vX.Y.Z.md`
    - Use [TEMPLATE.md](../../releases/TEMPLATE.md) and the prior release as reference
    - **v0.1.0** (first release only): full product overview — goal, flow, agents, install
@@ -46,7 +52,10 @@ CI reads `.github/releases/${TAG}.md` when the file exists; otherwise falls back
    ```
 5. **Commit**
    ```bash
-   git add .github/releases/vX.Y.Z.md package.json
+   git add .github/releases/vX.Y.Z.md package.json \
+     .claude-plugin/plugin.json .claude-plugin/marketplace.json \
+     .codex-plugin/plugin.json .gemini-plugin/plugin.json \
+     plugins/blackhole/plugin.json
    git commit -m "docs: add vX.Y.Z release notes"
    git push origin main
    ```

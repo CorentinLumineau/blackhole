@@ -7,8 +7,6 @@ const releasesDir = path.join(root, '.github', 'releases');
 const templatePath = path.join(releasesDir, 'TEMPLATE.md');
 const pkgPath = path.join(root, 'package.json');
 
-const [, , command, rawTag] = process.argv;
-
 function usage(): never {
   console.log(`Usage:
   bun run release prepare <vX.Y.Z>   Copy TEMPLATE → notes file, bump package.json
@@ -45,6 +43,34 @@ function writePkg(pkg: { version: string; [k: string]: unknown }): void {
 
 function git(cmd: string): string {
   return execSync(cmd, { cwd: root, encoding: 'utf-8' }).trim();
+}
+
+function build(): void {
+  execSync('bun run build --all', { cwd: root, stdio: 'inherit' });
+}
+
+export const MANIFEST_PATHS: Array<{ path: string; versionOf: (json: unknown) => string | undefined }> = [
+  { path: '.claude-plugin/plugin.json', versionOf: (json) => (json as { version?: string }).version },
+  {
+    path: '.claude-plugin/marketplace.json',
+    versionOf: (json) => (json as { plugins?: Array<{ version?: string }> }).plugins?.[0]?.version,
+  },
+  { path: '.codex-plugin/plugin.json', versionOf: (json) => (json as { version?: string }).version },
+  { path: '.gemini-plugin/plugin.json', versionOf: (json) => (json as { version?: string }).version },
+  { path: 'plugins/blackhole/plugin.json', versionOf: (json) => (json as { version?: string }).version },
+];
+
+export function findManifestVersionMismatches(
+  pkgVersion: string,
+  manifests: Record<string, unknown>
+): string[] {
+  const mismatches: string[] = [];
+  for (const { path: manifestPath, versionOf } of MANIFEST_PATHS) {
+    if (versionOf(manifests[manifestPath]) !== pkgVersion) {
+      mismatches.push(manifestPath);
+    }
+  }
+  return mismatches;
 }
 
 function tagExists(tag: string): boolean {
@@ -130,13 +156,16 @@ function prepare(tag: string): void {
   pkg.version = version;
   writePkg(pkg);
 
+  build();
+
   console.log(`Created ${path.relative(root, dest)}`);
   console.log(`Bumped package.json → ${version}`);
+  console.log(`Ran bun run build --all — regenerated the 5 version-carrying manifests`);
   console.log('');
   console.log('Next steps:');
   console.log(`  1. Edit ${path.relative(root, dest)} with product-focused release notes`);
   console.log(`  2. bun run release validate ${tag}`);
-  console.log(`  3. git add -A && git commit -m "docs: add ${tag} release notes"`);
+  console.log(`  3. Commit notes + package.json + the 5 regenerated manifests, then push`);
   console.log(`  4. bun run release tag ${tag}`);
   console.log(`  5. bun run release push ${tag}`);
 }
@@ -158,23 +187,30 @@ function push(tagName: string): void {
   console.log(`✓ Pushed main and ${tagName} — CI will publish the GitHub release`);
 }
 
-if (!command || !rawTag) usage();
+function main(): void {
+  const [, , command, rawTag] = process.argv;
+  if (!command || !rawTag) usage();
 
-const tagArg = normalizeTag(rawTag);
+  const tagArg = normalizeTag(rawTag);
 
-switch (command) {
-  case 'prepare':
-    prepare(tagArg);
-    break;
-  case 'validate':
-    validate(tagArg);
-    break;
-  case 'tag':
-    tag(tagArg);
-    break;
-  case 'push':
-    push(tagArg);
-    break;
-  default:
-    usage();
+  switch (command) {
+    case 'prepare':
+      prepare(tagArg);
+      break;
+    case 'validate':
+      validate(tagArg);
+      break;
+    case 'tag':
+      tag(tagArg);
+      break;
+    case 'push':
+      push(tagArg);
+      break;
+    default:
+      usage();
+  }
+}
+
+if (import.meta.main) {
+  main();
 }
