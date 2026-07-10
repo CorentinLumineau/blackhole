@@ -12,6 +12,7 @@ import {
   buildCodexAgentYaml,
   serializeCodexAgentYaml,
   compileGeminiTree,
+  copyTemplatesDir,
   writeGeminiManifest,
   compileCodexTree,
   generatedMarkerLine,
@@ -170,6 +171,54 @@ describe('compileGeminiTree', () => {
       expect(fs.readdirSync(refsDir).length).toBeGreaterThan(0);
     } finally {
       fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('copyTemplatesDir', () => {
+  test('copies all files from templates/companion-files into destRoot, preserving filenames', () => {
+    const destRoot = makeTempDir();
+    try {
+      copyTemplatesDir(destRoot);
+
+      const sourceDir = path.join(root, 'templates', 'companion-files');
+      const destDir = path.join(destRoot, 'templates', 'companion-files');
+      const sourceFiles = fs.readdirSync(sourceDir).sort();
+      const destFiles = fs.readdirSync(destDir).sort();
+
+      expect(destFiles).toEqual(sourceFiles);
+      for (const file of sourceFiles) {
+        expect(fs.readFileSync(path.join(destDir, file), 'utf-8')).toBe(
+          fs.readFileSync(path.join(sourceDir, file), 'utf-8')
+        );
+      }
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('both compileGeminiTree call-site shapes (workspace and distribution) populate templates/companion-files', () => {
+    const workspaceRoot = makeTempDir();
+    const distributionRoot = makeTempDir();
+    try {
+      compileGeminiTree(workspaceRoot, '.agents/build', '.agents/build/rules/blackhole-vcodes.md');
+      compileGeminiTree(
+        distributionRoot,
+        'plugins/blackhole',
+        'plugins/blackhole/rules/blackhole-vcodes.md',
+        { includeAgents: false }
+      );
+
+      const sourceFiles = fs.readdirSync(path.join(root, 'templates', 'companion-files')).sort();
+      expect(
+        fs.readdirSync(path.join(workspaceRoot, 'templates', 'companion-files')).sort()
+      ).toEqual(sourceFiles);
+      expect(
+        fs.readdirSync(path.join(distributionRoot, 'templates', 'companion-files')).sort()
+      ).toEqual(sourceFiles);
+    } finally {
+      fs.rmSync(workspaceRoot, { recursive: true, force: true });
+      fs.rmSync(distributionRoot, { recursive: true, force: true });
     }
   });
 });

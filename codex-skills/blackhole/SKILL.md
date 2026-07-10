@@ -39,10 +39,19 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 **Native forge sync** — automatic, never AskQuestion to confirm.
 
 1. **Config** — `.blackhole/config.json` (from `config-template.md` in this repo)
-2. **State init** — `queue.json`, `findings-ledger.json`, `plans/`
-3. **Validate** — `jq empty` on both JSON files
-4. **Forge sync** — if `auto_sync` true (default): `gh auth status` then [forge-sync.md](references/forge-sync.md). Sandbox: `full_network`.
-5. **Dashboard** — open issues/PRs, new since sync, in-flight, LEDGER OPEN, ready set
+2. **Companion-file scaffold** — gated by `docs_governance.companion_files` (default `true`,
+   config already loaded from step 1; skip entirely when `false` or `docs_governance.enabled`
+   is `false`). For `ARCHITECTURE.md`/`AGENTS.md`, create the root file from
+   `templates/companion-files/{name}.template` **only if it does not already exist**,
+   substituting `{project-name}` from `.blackhole/config.json`'s `repo` field
+   (`owner/repo-name` → `repo-name`) or `basename "$(pwd)"` when `repo` is absent or has no
+   `/`. Additionally create `DESIGN.md` under the same skip-if-exists rule **only when**
+   `bash scripts/detect-frontend.sh` emits `frontend=yes`. Full contract:
+   [templates/companion-files/README.md](../templates/companion-files/README.md).
+3. **State init** — `queue.json`, `findings-ledger.json`, `plans/`
+4. **Validate** — `jq empty` on both JSON files
+5. **Forge sync** — if `auto_sync` true (default): `gh auth status` then [forge-sync.md](references/forge-sync.md). Sandbox: `full_network`.
+6. **Dashboard** — open issues/PRs, new since sync, in-flight, LEDGER OPEN, ready set
 
 ---
 

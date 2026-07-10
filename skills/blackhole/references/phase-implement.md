@@ -36,7 +36,7 @@ relative to the **main clone repo root**, not the worktree checkout.
 2. **Output format**: JSON return schema (below) + PR opened + Closes #N linkage.
 3. **Scope boundaries**: Touch-Paths restriction (`V-SCOPE-02`) + parallel branch exclusions.
 4. **Tool guidance**: Command pointers for running git, gh CLI, install, lint, and test commands within the worktree. Carry the `execution_mode` TDD-mandate branch matching the plan's `route.task_type` derivation (see below), and — when the plan frontmatter carries `task_type: bugfix` (Quick track) — the Bugfix Gate's Decision Record and Scout Check expectations (`implementer.md` § Bugfix Gate).
-5. **Stop condition**: PR opened, local lint/tests green, and branch pushed — and, when the diff touches the public-API/schema/config surface within Touch-Paths, companion docs updated in the same PR (`V-DOC-02/04`, `implementer.md` step 6's Companion-doc sync bullet).
+5. **Stop condition**: PR opened, local lint/tests green, and branch pushed — and, when the diff touches the public-API/schema/config surface within Touch-Paths, companion docs updated in the same PR (`V-DOC-02/04`, `implementer.md` step 6's Companion-doc sync bullet). Phase 0's companion-file scaffold (`SKILL.md` step 2) already creates the *root* `ARCHITECTURE.md`/`AGENTS.md`/`DESIGN.md` when absent, so this bullet only covers diff-triggered *updates* to already-existing companion docs, not initial creation.
 Do not commit directly to main (`V-BRANCH-02`) or force-push (`V-BRANCH-01`).
 - Ledger pointer: read plan deferrals from findings-ledger.json
 

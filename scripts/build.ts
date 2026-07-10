@@ -5,6 +5,7 @@ import { geminiWorkspaceTreeErrors, distributionTreeErrors, codexTreeErrors, INS
 
 const root = path.resolve(import.meta.dirname, '..');
 const srcDir = path.join(root, 'src');
+const templatesDir = path.join(root, 'templates');
 
 /** Gemini workspace compile output — separate from ephemeral handoff dirs under `.agents/`. */
 export const AGENTS_BUILD_ROOT = path.join('.agents', 'build');
@@ -301,6 +302,17 @@ export const buildClaudeMarketplace = (pluginMeta: ReturnType<typeof buildClaude
   plugins: [{ ...pluginMeta, source: '.' }],
 });
 
+/** Copies templates/companion-files/ (repo root, not src/) into destRoot's own
+ * templates/companion-files/ subtree. Only Gemini/Antigravity targets need this: Claude Code,
+ * Cursor, and Codex all install via full-repo-source mechanisms and already have templates/
+ * at its natural repo-relative path with zero build-pipeline change. */
+export const copyTemplatesDir = (destRoot: string) => {
+  const src = path.join(templatesDir, 'companion-files');
+  if (!fs.existsSync(src)) return;
+  const dest = path.join(destRoot, 'templates', 'companion-files');
+  fs.cpSync(src, dest, { recursive: true });
+};
+
 export const compileGeminiTree = (
   destRoot: string,
   agentDir: string,
@@ -333,6 +345,7 @@ export const compileGeminiTree = (
     rulesPath,
     'gemini'
   );
+  copyTemplatesDir(destRoot);
 };
 
 export const writeGeminiManifest = (destPath: string, manifest: Record<string, unknown>) => {
