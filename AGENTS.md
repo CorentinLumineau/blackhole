@@ -21,13 +21,16 @@ Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/blackhole/SKIL
 
 ## Agent roster
 
-| Agent | Role |
-|-------|------|
-| `coordinator` | User intake, blocker routing, Multitask Mode entry |
-| `orchestrator` | Five-phase loop, worker scheduling, forge sync |
-| `planner` | Touch-paths, plan artifacts |
-| `implementer` | TDD implementation in isolated worktrees |
-| `reviewer` | PR quality and plan-conformance audit |
+| Agent | Role | Trigger |
+|-------|------|---------|
+| `coordinator` | User intake, blocker routing, Multitask Mode entry | Multitask Mode entry point (Pattern B); manages the background orchestrator and triages chat feedback |
+| `orchestrator` | Five-phase loop, worker scheduling, forge sync | Spawned by `coordinator` (or the native `/goal` loop) to run Handle → Plan → Implement → Review → Loop |
+| `router` | Issue classification into the `route{}` object (ADR-004) | Spawned by Handle immediately after Dedup (initial pass); re-invoked at re-route checkpoints `clarify-resolved`, `research-landed`, `investigation-landed` |
+| `planner` | Touch-paths, plan artifacts | Spawned by the orchestrator's Plan phase for a routed, unblocked issue |
+| `implementer` | TDD implementation in isolated worktrees | Spawned by the orchestrator's Implement phase against an approved plan |
+| `reviewer` | PR quality and plan-conformance audit | Spawned by the orchestrator's Review phase against an open PR |
+| `investigator` | Evidence-gathering for router re-route checkpoints | Handle spawns `investigator` for `research` when `route.needs_research`, or `investigate` when `route.needs_investigation` |
+| `hunter` | Read-only kaizen improvement scanner (ADR-006) | Spawned for one hunt wave of one kind (`best-practices`, `coverage`, `refactor`, `bug`) per spawn during a kaizen campaign |
 
 ## Installation
 

@@ -125,7 +125,8 @@ id are both `blackhole` — always pass `--skill blackhole` explicitly. Version 
 ```bash
 bun run build --gemini
 ```
-Compiles `.agents/build/` (workspace customization — 7 agent prompts, rules, skills) and
+Compiles `.agents/build/` (workspace customization — 8 agent prompts per
+[`src/references/ground-truth.md`](src/references/ground-truth.md), rules, skills) and
 `plugins/blackhole/` (redistributable plugin bundle, no `agents/` per the Antigravity plugin
 schema). For a global install:
 ```bash
