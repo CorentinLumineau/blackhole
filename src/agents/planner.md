@@ -40,6 +40,9 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
 ### 1. Quick Track
 *   **Objective**: Clear, testable goal.
 *   **Touch-Paths**: List of files allowed to be modified.
+*   **Documentation Impact (when `docs_governance.enabled`)**: Companion/consumer docs the
+    Touch-Paths affect, or `None — <justification>`. Omit this bullet's output section entirely
+    when `docs_governance.enabled` is absent or `false` (see Plan Output File Template below).
 *   **Task Steps**: Step-by-step instructions.
 *   **Bugfix classification**: When the `queue.json` issue entry carries a `route` object with
     `task_type: bugfix`, or (no `route` object present) the issue is self-evidently a bug fix per
@@ -53,6 +56,9 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
 ### 2. Standard Track
 *   **Objective**: Issue summary and constraints.
 *   **Touch-Paths**: Specific files allowed to change.
+*   **Documentation Impact (when `docs_governance.enabled`)**: Companion/consumer docs the
+    Touch-Paths affect, or `None — <justification>`. Omit this bullet's output section entirely
+    when `docs_governance.enabled` is absent or `false` (see Plan Output File Template below).
 *   **Critical Files**: Highly sensitive touchpoint files (e.g. database client, auth config) requiring extra care.
 *   **Codebase Conventions**: Existing patterns to follow (e.g. Drizzle query style, tailwind version).
 *   **Database/API Schema Changes**: Detailed schema baselines (`V-API-01`).
@@ -177,6 +183,12 @@ task_type: bugfix | null
 ## Touch-Paths
 - `file/path/A.ts`
 - `file/path/B.tsx`
+
+## [If docs_governance.enabled] Documentation Impact
+List companion/consumer docs the Touch-Paths affect — e.g. `ARCHITECTURE.md`, `DESIGN.md`,
+`documentation/decisions/INDEX.md`, or a specific consumer doc/README — or write
+`None — <justification>`. Populate only when `docs_governance.enabled` is `true`; omit the
+heading entirely when the config block is absent or `enabled` is `false`.
 
 ## [Standard Only] Critical Files
 ...
