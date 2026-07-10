@@ -98,7 +98,9 @@ already does:
    invent new field names or redefine defaults beyond what
    `config-template.md` already documents.
 
-   Before accepting the answer, print a cheap, local-only live preview of
+   Before accepting the answer — on every branch of this question, including
+   "Keep current kaizen settings" (mirroring step 1's preview-before-accept
+   pattern) — print a cheap, local-only live preview of
    what the confirmed `kaizen` block would target — no new forge (`gh`) call,
    both inputs are already-loaded local state: enabled `kaizen.kinds`
    (gated by `kaizen.enabled`); `kaizen.trigger` plus `kaizen.loop_interval`
