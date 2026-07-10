@@ -41,11 +41,11 @@ Committed template: `.blackhole/config.json`
 | `auto_sync` | no | When `true` (default), forge reconcile runs automatically |
 | `adaptive_routing` | no | Emergency kill switch for ADR-004 router-agent routing (default `true`); when `false`, routing is inert regardless of `route` presence in `queue.json` |
 | `router_confidence_thresholds` | no | Per-flag confidence thresholds keyed by `split`, `design`, `plan_mode`, `security`, `docs` (matches `route.confidence` keys); each defaults to `70` when absent |
-| `docs_governance` | no | Nested object of flags/thresholds for companion-file, docs-impact-routing, and write-governance features (`enabled`, `companion_files`, `docs_impact_routing`, `write_governance`, `severity_overrides`); absent block = current behavior preserved (no dependent feature exists yet) |
+| `docs_governance` | no | Nested object of flags/thresholds for companion-file, docs-impact-routing, and write-governance features (`enabled`, `companion_files`, `docs_impact_routing`, `write_governance`, `severity_overrides`); absent block = current behavior preserved (all three sub-flags gate live features — see rows below) |
 | `docs_governance.enabled` | no | Emergency kill switch for the whole `docs_governance` block (default `true`); when `false`, every dependent feature is inert regardless of sub-field values |
-| `docs_governance.companion_files` | no | Gates the future V-ADA companion-file reviewer audit (default `true`); when `false`, that audit is inert regardless of `enabled` — unimplemented as of this issue (see #172+/B5) |
+| `docs_governance.companion_files` | no | Gates the V-ADA companion-file reviewer audit (default `true`); when `false`, that audit is inert regardless of `enabled` — live consumer: `src/agents/reviewer.md` § 10 "Companion-File Audit (`V-ADA-01/02/03/05/06/07`)", config-gated at `reviewer.md:69` |
 | `docs_governance.docs_impact_routing` | no | Gates the router `docs_impact` flag (`src/agents/router.md`, `src/agents/orchestrator.md` § Route-derived dispatch, #177); default `true`; when `false` (or `docs_governance.enabled: false`), `docs_impact` resolves to its cautious default (`true`) regardless of computed value or confidence |
-| `docs_governance.write_governance` | no | Gates future search-before-write/canonical-slug rules for consumer-repo writes (default `true`); when `false`, those rules are inert regardless of `enabled` — unimplemented as of this issue (see B7) |
+| `docs_governance.write_governance` | no | Gates search-before-write/canonical-slug rules for consumer-repo writes (default `true`); when `false`, those rules are inert regardless of `enabled` — live consumers: `src/agents/implementer.md` (companion-doc update step, gated at `implementer.md:67`) and `src/agents/planner.md` (Standard Track Documentation Impact bullet, gated at `planner.md:65`) |
 | `docs_governance.severity_overrides` | no | Map of V-code → `BLOCK`\|`WARN`, keyed by docs-governance V-code; empty/absent = defaults apply. May only escalate a WARN-default docs-governance code to BLOCK — must never de-escalate the pre-existing `V-DOC-02`/`V-DOC-04` BLOCK severity |
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
@@ -54,9 +54,11 @@ Committed template: `.blackhole/config.json`
 **`docs_governance` contract note**: when the block is absent, or
 `docs_governance.enabled` is `false`, every dependent feature (reviewer V-ADA
 companion-file audit, router `docs_impact` flag, write-governance remedies —
-`docs_impact` now exists as of #177, but has no dispatch consumer yet; the
-others still don't exist) MUST be a no-op and current behavior is preserved
-exactly. Any future issue that wires a dependent feature must check this flag
+`docs_impact`'s dispatch consumer is `src/agents/orchestrator.md:83-89` §
+Route-derived dispatch (#177); the reviewer companion-file audit's consumer is
+`reviewer.md` § 10 (above); write-governance's consumers are
+`implementer.md`/`planner.md` (above)) MUST be a no-op and current behavior is
+preserved exactly. Any future issue that wires a dependent feature must check this flag
 (and its relevant sub-flag) before acting — the same obligation
 `adaptive_routing` already imposes on router-agent routing.
 `docs_governance.severity_overrides` may only **escalate** a WARN-default
