@@ -46,6 +46,7 @@ Minimum tier per spawn. Start at the listed tier; apply **all** matching bump ro
 | `implementer` | `standard` | TDD implementation in worktree |
 | `reviewer` | `standard` | Plan-conformance + quality audit |
 | `orchestrator` (background) | `standard` | Coordinate-only — no direct codegen |
+| `hunter` | `standard` | Scan quality is the product (ADR-006 § Components) — haiku hunters were the noise source mercure's confidence-filtering machinery exists to clean up after, so `hunter` deliberately skips the `economy` tier `investigator`'s read-only-scan precedent would otherwise suggest |
 
 ### Route-derived tier bumps (`queue.json` `route{}`)
 

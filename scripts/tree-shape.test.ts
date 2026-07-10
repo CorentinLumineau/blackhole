@@ -10,7 +10,7 @@ import {
   INSTRUCTIONS_MARKER,
   hasInstructionsBlock,
 } from './tree-shape.ts';
-import { compileGeminiTree, writeGeminiManifest, buildGeminiPluginManifest, RULES_LIST } from './build.ts';
+import { compileGeminiTree, writeGeminiManifest, buildGeminiPluginManifest, RULES_LIST, AGENT_NAMES } from './build.ts';
 
 const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'tree-shape-test-'));
 
@@ -176,24 +176,25 @@ describe('geminiWorkspaceTreeErrors', () => {
     compileGeminiTree(destRoot, '.agents/build', '.agents/build/rules/blackhole-vcodes.md');
   };
 
-  test('returns [] on a fully-populated 7-agent workspace tree', () => {
+  test('returns [] on a fully-populated workspace tree (count derived from AGENT_NAMES)', () => {
     const destRoot = makeTempDir();
     try {
       populateWorkspaceTree(destRoot);
       const agentFiles = fs.readdirSync(path.join(destRoot, 'agents'));
-      expect(geminiWorkspaceTreeErrors(destRoot, 'workspace', RULES_LIST, agentFiles)).toEqual([]);
+      expect(agentFiles.length).toBe(AGENT_NAMES.length);
+      expect(geminiWorkspaceTreeErrors(destRoot, 'workspace', RULES_LIST, agentFiles, AGENT_NAMES.length)).toEqual([]);
     } finally {
       fs.rmSync(destRoot, { recursive: true, force: true });
     }
   });
 
-  test('reports an agent-count error when fewer than 7 agents are present', () => {
+  test('reports an agent-count error when fewer than expectedAgentCount agents are present', () => {
     const destRoot = makeTempDir();
     try {
       populateWorkspaceTree(destRoot);
       const agentFiles = fs.readdirSync(path.join(destRoot, 'agents')).slice(0, 4);
-      const errors = geminiWorkspaceTreeErrors(destRoot, 'workspace', RULES_LIST, agentFiles);
-      expect(errors.some((e) => e.includes('7 agent'))).toBe(true);
+      const errors = geminiWorkspaceTreeErrors(destRoot, 'workspace', RULES_LIST, agentFiles, AGENT_NAMES.length);
+      expect(errors.some((e) => e.includes(`expected ${AGENT_NAMES.length} agent`))).toBe(true);
     } finally {
       fs.rmSync(destRoot, { recursive: true, force: true });
     }
@@ -205,8 +206,8 @@ describe('geminiWorkspaceTreeErrors', () => {
       populateWorkspaceTree(destRoot);
       fs.unlinkSync(path.join(destRoot, 'rules', 'blackhole-state.md'));
       const agentFiles = fs.readdirSync(path.join(destRoot, 'agents')).slice(0, 4);
-      const errors = geminiWorkspaceTreeErrors(destRoot, 'workspace', RULES_LIST, agentFiles);
-      expect(errors.some((e) => e.includes('7 agent'))).toBe(true);
+      const errors = geminiWorkspaceTreeErrors(destRoot, 'workspace', RULES_LIST, agentFiles, AGENT_NAMES.length);
+      expect(errors.some((e) => e.includes(`expected ${AGENT_NAMES.length} agent`))).toBe(true);
       expect(errors.some((e) => e.includes('blackhole-state.md'))).toBe(true);
     } finally {
       fs.rmSync(destRoot, { recursive: true, force: true });
@@ -219,7 +220,19 @@ describe('geminiWorkspaceTreeErrors', () => {
       populateWorkspaceTree(destRoot);
       const agentFiles = fs.readdirSync(path.join(destRoot, 'agents'));
       // No plugin.json written anywhere under destRoot — must still pass.
-      expect(geminiWorkspaceTreeErrors(destRoot, 'workspace', RULES_LIST, agentFiles)).toEqual([]);
+      expect(geminiWorkspaceTreeErrors(destRoot, 'workspace', RULES_LIST, agentFiles, AGENT_NAMES.length)).toEqual([]);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('a mismatched expectedAgentCount still errors even when agentFiles is fully populated (mismatch still errors)', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateWorkspaceTree(destRoot);
+      const agentFiles = fs.readdirSync(path.join(destRoot, 'agents'));
+      const errors = geminiWorkspaceTreeErrors(destRoot, 'workspace', RULES_LIST, agentFiles, AGENT_NAMES.length + 1);
+      expect(errors.some((e) => e.includes(`expected ${AGENT_NAMES.length + 1} agent`))).toBe(true);
     } finally {
       fs.rmSync(destRoot, { recursive: true, force: true });
     }
@@ -290,7 +303,7 @@ describe('codexTreeErrors', () => {
   const populateCodexTree = (rootDir: string) => {
     fs.mkdirSync(path.join(rootDir, 'codex-agents'), { recursive: true });
     fs.mkdirSync(path.join(rootDir, 'codex-skills', 'blackhole', 'references'), { recursive: true });
-    for (const name of ['coordinator', 'orchestrator', 'planner', 'implementer', 'reviewer', 'router', 'investigator']) {
+    for (const name of AGENT_NAMES) {
       fs.writeFileSync(
         path.join(rootDir, 'codex-agents', `${name}.yaml`),
         `name: ${name}\ninstructions: |\n  hello\n`,
@@ -305,24 +318,37 @@ describe('codexTreeErrors', () => {
     );
   };
 
-  test('returns [] on a fully-populated 7-agent codex tree', () => {
+  test('returns [] on a fully-populated codex tree (count derived from AGENT_NAMES, 8th agent passes)', () => {
     const rootDir = makeTempDir();
     try {
       populateCodexTree(rootDir);
       const agentFiles = fs.readdirSync(path.join(rootDir, 'codex-agents'));
-      expect(codexTreeErrors(rootDir, agentFiles)).toEqual([]);
+      expect(agentFiles.length).toBe(AGENT_NAMES.length);
+      expect(codexTreeErrors(rootDir, agentFiles, AGENT_NAMES.length)).toEqual([]);
     } finally {
       fs.rmSync(rootDir, { recursive: true, force: true });
     }
   });
 
-  test('reports an agent-count error when fewer than 7 yaml files are present', () => {
+  test('reports an agent-count error when fewer than expectedAgentCount yaml files are present', () => {
     const rootDir = makeTempDir();
     try {
       populateCodexTree(rootDir);
       const agentFiles = fs.readdirSync(path.join(rootDir, 'codex-agents')).slice(0, 4);
-      const errors = codexTreeErrors(rootDir, agentFiles);
-      expect(errors.some((e) => e.includes('7 agent'))).toBe(true);
+      const errors = codexTreeErrors(rootDir, agentFiles, AGENT_NAMES.length);
+      expect(errors.some((e) => e.includes(`expected ${AGENT_NAMES.length} agent`))).toBe(true);
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a mismatched expectedAgentCount still errors even when agentFiles is fully populated (mismatch still errors)', () => {
+    const rootDir = makeTempDir();
+    try {
+      populateCodexTree(rootDir);
+      const agentFiles = fs.readdirSync(path.join(rootDir, 'codex-agents'));
+      const errors = codexTreeErrors(rootDir, agentFiles, AGENT_NAMES.length + 1);
+      expect(errors.some((e) => e.includes(`expected ${AGENT_NAMES.length + 1} agent`))).toBe(true);
     } finally {
       fs.rmSync(rootDir, { recursive: true, force: true });
     }
@@ -334,7 +360,7 @@ describe('codexTreeErrors', () => {
       populateCodexTree(rootDir);
       fs.writeFileSync(path.join(rootDir, 'codex-agents', 'coordinator.yaml'), 'name: coordinator\n', 'utf-8');
       const agentFiles = fs.readdirSync(path.join(rootDir, 'codex-agents'));
-      const errors = codexTreeErrors(rootDir, agentFiles);
+      const errors = codexTreeErrors(rootDir, agentFiles, AGENT_NAMES.length);
       expect(errors.some((e) => e.includes('instructions'))).toBe(true);
     } finally {
       fs.rmSync(rootDir, { recursive: true, force: true });
@@ -347,7 +373,7 @@ describe('codexTreeErrors', () => {
       populateCodexTree(rootDir);
       fs.unlinkSync(path.join(rootDir, 'codex-skills', 'blackhole', 'SKILL.md'));
       const agentFiles = fs.readdirSync(path.join(rootDir, 'codex-agents'));
-      const errors = codexTreeErrors(rootDir, agentFiles);
+      const errors = codexTreeErrors(rootDir, agentFiles, AGENT_NAMES.length);
       expect(errors.some((e) => e.includes('SKILL.md'))).toBe(true);
     } finally {
       fs.rmSync(rootDir, { recursive: true, force: true });
@@ -360,7 +386,7 @@ describe('codexTreeErrors', () => {
       populateCodexTree(rootDir);
       fs.unlinkSync(path.join(rootDir, 'codex-skills', 'blackhole', 'references', 'x.md'));
       const agentFiles = fs.readdirSync(path.join(rootDir, 'codex-agents'));
-      const errors = codexTreeErrors(rootDir, agentFiles);
+      const errors = codexTreeErrors(rootDir, agentFiles, AGENT_NAMES.length);
       expect(errors.some((e) => e.includes('references'))).toBe(true);
     } finally {
       fs.rmSync(rootDir, { recursive: true, force: true });
@@ -380,13 +406,15 @@ describe('INSTRUCTIONS_MARKER / hasInstructionsBlock', () => {
 });
 
 // Coupling contract: scripts/verify.ts partitions codexTreeErrors' output by substring match
-// ('SKILL.md', 'references', '7 agent') to route errors to the correct V-code. These tests
-// pin the exact substrings that partition depends on — a wording change here that breaks one
-// of them must fail a test, not silently empty verify.ts's filter.
+// ('SKILL.md', 'references', 'agent YAML files') to route errors to the correct V-code. These
+// tests pin the exact substrings that partition depends on — a wording change here that breaks
+// one of them must fail a test, not silently empty verify.ts's filter. The agent-count substring
+// is deliberately count-agnostic ('agent YAML files', not e.g. '7 agent') since expectedAgentCount
+// is now a caller-supplied parameter (issue #199) rather than a hardcoded literal.
 describe('codexTreeErrors message contract (verify.ts substring partition)', () => {
-  test('agent-count error contains "7 agent"', () => {
-    const errors = codexTreeErrors(makeTempDir(), []);
-    expect(errors.some((e) => e.includes('7 agent'))).toBe(true);
+  test('agent-count error contains "agent YAML files"', () => {
+    const errors = codexTreeErrors(makeTempDir(), [], AGENT_NAMES.length);
+    expect(errors.some((e) => e.includes('agent YAML files'))).toBe(true);
   });
 
   test('missing SKILL.md error contains "SKILL.md"', () => {
@@ -394,7 +422,7 @@ describe('codexTreeErrors message contract (verify.ts substring partition)', () 
     try {
       fs.mkdirSync(path.join(rootDir, 'codex-skills', 'blackhole', 'references'), { recursive: true });
       fs.writeFileSync(path.join(rootDir, 'codex-skills', 'blackhole', 'references', 'x.md'), '# ref\n', 'utf-8');
-      const errors = codexTreeErrors(rootDir, []);
+      const errors = codexTreeErrors(rootDir, [], AGENT_NAMES.length);
       expect(errors.some((e) => e.includes('SKILL.md'))).toBe(true);
     } finally {
       fs.rmSync(rootDir, { recursive: true, force: true });
@@ -406,7 +434,7 @@ describe('codexTreeErrors message contract (verify.ts substring partition)', () 
     try {
       fs.mkdirSync(path.join(rootDir, 'codex-skills', 'blackhole'), { recursive: true });
       fs.writeFileSync(path.join(rootDir, 'codex-skills', 'blackhole', 'SKILL.md'), '# SKILL\n', 'utf-8');
-      const errors = codexTreeErrors(rootDir, []);
+      const errors = codexTreeErrors(rootDir, [], AGENT_NAMES.length);
       expect(errors.some((e) => e.includes('references'))).toBe(true);
     } finally {
       fs.rmSync(rootDir, { recursive: true, force: true });

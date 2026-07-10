@@ -52,18 +52,22 @@ export const validatePluginTreeShape = (
   return errors;
 };
 
-/** Gemini/Antigravity workspace tree — requires exactly 7 agents (opposite invariant of
- * distributionTreeErrors below). Called with manifestPath: null since build.ts's call site
- * runs before the detached .gemini-plugin/plugin.json is written. */
+/** Gemini/Antigravity workspace tree — requires exactly `expectedAgentCount` agents (opposite
+ * invariant of distributionTreeErrors below). Called with manifestPath: null since build.ts's
+ * call site runs before the detached .gemini-plugin/plugin.json is written.
+ * `expectedAgentCount` is caller-supplied (never hardcoded here) so the next agent addition
+ * doesn't re-trip this check — pass `AGENT_NAMES.length` (or an equivalent already-derived
+ * constant) from the call site (issue #199). */
 export const geminiWorkspaceTreeErrors = (
   destRoot: string,
   label: string,
   rulesList: string[],
-  agentFiles: string[]
+  agentFiles: string[],
+  expectedAgentCount: number
 ): string[] => {
   const errors: string[] = [];
-  if (agentFiles.length !== 7) {
-    errors.push(`Gemini ${label}: expected 7 agents, got ${agentFiles.length}`);
+  if (agentFiles.length !== expectedAgentCount) {
+    errors.push(`Gemini ${label}: expected ${expectedAgentCount} agents, got ${agentFiles.length}`);
   }
   errors.push(
     ...validatePluginTreeShape(destRoot, null, { treePrefix: `${label}/`, manifest: '' }, rulesList)
@@ -72,7 +76,7 @@ export const geminiWorkspaceTreeErrors = (
 };
 
 /** Distribution bundle — deliberately separate from geminiWorkspaceTreeErrors: this tree
- * requires zero agents (AC4), the opposite invariant of the 5-agent workspace tree. Do not
+ * requires zero agents (AC4), the opposite invariant of the full-roster workspace tree. Do not
  * generalize these two into one parameterized "expected agent count" function. */
 export const distributionTreeErrors = (
   destRoot: string,
@@ -97,14 +101,17 @@ export const INSTRUCTIONS_MARKER = 'instructions: |';
 
 export const hasInstructionsBlock = (content: string): boolean => content.includes(INSTRUCTIONS_MARKER);
 
-/** Codex CLI tree — exact 7-agent-yaml count, each with an instructions block scalar, plus
- * SKILL.md and a non-empty references/ dir. Message prefixes ("SKILL.md", "references",
- * "7 agent") are a deliberate, controlled contract with verify.ts's V-code partitioning
- * (Task 4) — pinned by this file's own message-contract tests; keep both sides in sync. */
-export const codexTreeErrors = (rootDir: string, agentFiles: string[]): string[] => {
+/** Codex CLI tree — exact `expectedAgentCount`-agent-yaml count, each with an instructions block
+ * scalar, plus SKILL.md and a non-empty references/ dir. Message prefixes ("SKILL.md",
+ * "references", "agent YAML files") are a deliberate, controlled contract with verify.ts's
+ * V-code partitioning (Task 4) — pinned by this file's own message-contract tests; keep both
+ * sides in sync. `expectedAgentCount` is caller-supplied (never hardcoded here), pass
+ * `AGENT_NAMES.length` (or an equivalent already-derived constant) from the call site so the
+ * next agent addition doesn't re-trip this check (issue #199). */
+export const codexTreeErrors = (rootDir: string, agentFiles: string[], expectedAgentCount: number): string[] => {
   const errors: string[] = [];
-  if (agentFiles.length !== 7) {
-    errors.push(`Codex: expected 7 agent YAML files, got ${agentFiles.length}`);
+  if (agentFiles.length !== expectedAgentCount) {
+    errors.push(`Codex: expected ${expectedAgentCount} agent YAML files, got ${agentFiles.length}`);
   }
   for (const file of agentFiles) {
     const content = fs.readFileSync(path.join(rootDir, 'codex-agents', file), 'utf-8');
