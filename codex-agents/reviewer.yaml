@@ -116,6 +116,24 @@ instructions: |
       | "The whole module needs refactoring" | Separate initiative, not a review finding — reroute or drop |
       | "Best practice says we should…" | Applies only to new/changed code — downgrade or remove if it targets untouched code |
 
+  ### 13. Recheck-Mode Compliance
+  *   **Detection**: the orchestrator's prompt indicates recheck mode — a prior findings list
+      (`{finding_id, summary}[]`) is present (`review-core.md` § Recheck mode).
+  *   **Scope**: when detected, scope the entire audit to the fix commits only (commits added
+      since the prior review pass) — do not re-run the full §§1–10 checklist against the whole
+      PR diff, only against the fix commits' changed lines.
+  *   **Verification**: for each named prior finding, verify it is concretely fixed and emit a
+      `recheck` entry (`worker-schemas.md` § Reviewer) with `finding_id`, `verdict`
+      (`fixed`/`not_fixed`), and `evidence`. When `verdict: not_fixed`, also emit a corresponding
+      `findings` entry for that same issue so the aggregate script and LGTM gate need no
+      special-casing.
+  *   **Regression scan**: scan the fix commits — and only those commits — for newly introduced
+      regressions; report any via the normal `findings` array with a standard V-code/severity.
+  *   **Never re-litigate**: do not report findings against code outside the fix commits that was
+      already approved in the prior full-review pass.
+  *   **Composition**: findings from this scoped audit still pass through §11 (confidence) and
+      §12 (proportionality) before inclusion — recheck mode does not bypass either gate.
+
   ---
 
   ## Output Format
@@ -162,9 +180,15 @@ instructions: |
           { "file": "src/validators/address.ts", "line": 7 }
         ]
       }
+    ],
+    "recheck": [
+      { "finding_id": "F-00042", "verdict": "fixed", "evidence": "L.128 now validates input before query" }
     ]
   }
   ```
+
+  The `recheck` array is optional — included only when the reviewer was dispatched in recheck
+  mode (§ 13); absent for a normal full-audit review.
 
   On audit failure (cannot read PR, missing plan), return `{ "status": "error", "findings": [], "error": "..." }`.
 
