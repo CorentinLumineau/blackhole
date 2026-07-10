@@ -51,17 +51,27 @@ document these trigger conditions, but no artifact currently produces them.
 
 ## Confidence
 
-Compute `route.confidence.{split,design,plan_mode,security}`, each a 0-100 score, one per
+Compute `route.confidence.{split,design,plan_mode,security,docs}`, each a 0-100 score, one per
 gated flag. You compute the score; you do not gate on it. The cautious-default gating logic
 that consumes these scores already lives in `orchestrator.md` § Route-derived dispatch — do
 not duplicate it here.
+
+### docs_impact classification
+
+`route.docs_impact` is content-derived from the issue, same as `task_type`. Classify `true`
+if the issue's expected diff matches **any** of these signals, `false` otherwise:
+
+- Touches a public API, schema, or config surface
+- Changes user-facing behavior
+- Introduces a new subsystem
 
 ## Local-analyze confidence-boost mechanism (ADR-004 step 5b)
 
 When `route.confidence.plan_mode` falls below `router_confidence_thresholds.plan_mode`
 (default `70`), run this scan yourself before falling back to the cautious `plan_mode: full`
-default. No agent spawn — this stays router-tier cheap. Never triggers on `split`/`design`
-confidence, and never influences `needs_split`, `needs_design`, or `task_type`.
+default. No agent spawn — this stays router-tier cheap. Never triggers on
+`split`/`design`/`docs` confidence, and never influences `needs_split`, `needs_design`, or
+`task_type`.
 
 **Trigger condition**: `route.confidence.plan_mode < router_confidence_thresholds.plan_mode`.
 
@@ -159,7 +169,8 @@ Return JSON matching `worker-schemas.md` router contract:
     "task_type": "bugfix",
     "plan_mode": "quick",
     "security_review_required": false,
-    "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90 },
+    "docs_impact": false,
+    "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85 },
     "body_hash": "<sha of issue title+body at classification time>",
     "computed_at_phase": "handle",
     "revision": 1

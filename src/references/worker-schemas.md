@@ -297,7 +297,8 @@ gate also produces (content spec stays there — `V-DRY`).
     "task_type": "bugfix",
     "plan_mode": "quick",
     "security_review_required": false,
-    "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90 },
+    "docs_impact": false,
+    "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85 },
     "body_hash": "<sha of issue title+body at classification time>",
     "computed_at_phase": "handle",
     "revision": 1

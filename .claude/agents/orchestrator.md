@@ -80,7 +80,13 @@ order — each step is a hard gate over the ones below it:
    confidence → treat as `full` (no directive); `needs_design` low confidence → treat as
    `true` (dispatch to design track — never skip the human design gate on an uncertain
    classification). Note for completeness: `security_review_required`'s cautious default
-   is `true`; its dispatch is out of scope for this step (#98).
+   is `true`; its dispatch is out of scope for this step (#98). `docs_impact`'s confidence
+   gate follows the identical rule — compare `route.confidence.docs` against
+   `router_confidence_thresholds.docs` (default 70); below threshold, **or** when
+   `.blackhole/config.json` `docs_governance.enabled` or `docs_governance.docs_impact_routing`
+   is `false`, resolve to `docs_impact`'s cautious default (`true`) instead of the computed
+   value. Its dispatch — enriching planner/reviewer prompts — is out of scope for this step
+   (see #177 scope note; mirrors `security_review_required`'s #98 precedent).
 4. **`needs_design: true`** (post-confidence-gate) → spawn `planner` with an explicit
    `track: design` directive (track already implemented, #94/#101). See
    `phase-plan.md` § Plan approval gate, "Design track (ADR-004)" row — the

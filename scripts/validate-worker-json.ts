@@ -252,13 +252,14 @@ function validateRoute(route: unknown, path: string): string[] {
   }
 
   requireField(errors, route, 'security_review_required', isBoolean, 'boolean');
+  requireField(errors, route, 'docs_impact', isBoolean, 'boolean');
 
   if (!('confidence' in route)) {
     errors.push('confidence: required');
   } else if (!isObject(route.confidence)) {
     errors.push('confidence: expected object');
   } else {
-    for (const field of ['split', 'design', 'plan_mode', 'security'] as const) {
+    for (const field of ['split', 'design', 'plan_mode', 'security', 'docs'] as const) {
       requireField(errors, route.confidence, field, isConfidenceScore, 'number (0-100)');
     }
   }
