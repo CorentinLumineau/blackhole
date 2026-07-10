@@ -54,6 +54,7 @@ const checkAgentToolPolicy = () => {
     'reviewer.md': ['Write', 'Edit', 'Delete'],
     'router.md': ['Write', 'Edit', 'Delete'],
     'investigator.md': ['Write', 'Edit', 'Delete'],
+    'hunter.md': ['Write', 'Edit', 'Delete'],
   };
 
   for (const file of files) {
@@ -415,8 +416,10 @@ const checkGeminiBuild = () => {
   const workspaceAgents = listFiles(path.join(AGENTS_BUILD_ROOT, 'agents'));
   const agentFiles = workspaceAgents.filter((f) => AGENT_MD_FILES.has(f));
   const errors: string[] = [];
-  if (agentFiles.length !== 7) {
-    errors.push(`${AGENTS_BUILD_AGENT_DIR}/agents: expected 7 agent .md files, got ${agentFiles.length}`);
+  // Expected count derives from AGENT_MD_FILES (build.ts's AGENT_NAMES-derived SSOT), never a
+  // hardcoded literal — the next agent addition must not re-trip this check (issue #199).
+  if (agentFiles.length !== AGENT_MD_FILES.size) {
+    errors.push(`${AGENTS_BUILD_AGENT_DIR}/agents: expected ${AGENT_MD_FILES.size} agent .md files, got ${agentFiles.length}`);
   }
 
   errors.push(
@@ -528,7 +531,7 @@ const codexAgentFileList = (): string[] => {
 // checks route through tree-shape.ts's codexTreeErrors (shared with build.ts's assertion);
 // only the disable-model-invocation content check stays local to this file.
 const checkCodexSkillFile = () => {
-  const sharedErrors = codexTreeErrors(root, codexAgentFileList()).filter(
+  const sharedErrors = codexTreeErrors(root, codexAgentFileList(), AGENT_YAML_FILES.size).filter(
     (e) => e.includes('SKILL.md') || e.includes('references')
   );
   const errors = [...sharedErrors];
@@ -554,7 +557,7 @@ const checkCodexSkillFile = () => {
 const checkCodexAgentFiles = () => {
   const agentsDir = path.join(root, 'codex-agents');
   const agentFiles = codexAgentFileList();
-  const agentErrors: string[] = codexTreeErrors(root, agentFiles).filter((e) => e.includes('5 agent'));
+  const agentErrors: string[] = codexTreeErrors(root, agentFiles, AGENT_YAML_FILES.size).filter((e) => e.includes('5 agent'));
   const yamlScalar = (content: string, field: string): string | null => {
     const m = content.match(new RegExp(`^${field}:\\s*(.+)$`, 'm'));
     return m ? m[1].trim() : null;

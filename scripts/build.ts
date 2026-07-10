@@ -221,8 +221,8 @@ const compileFolder = (srcSub: string, destParent: string, agentDir: string, rul
 
 export const RULES_LIST = ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md', 'doc-governance.md'];
 
-/** The 7 agent files — bare names (no prefix) since the Blackhole rename (#64). */
-export const AGENT_NAMES = ['coordinator', 'orchestrator', 'planner', 'implementer', 'reviewer', 'router', 'investigator'] as const;
+/** The 8 agent files — bare names (no prefix) since the Blackhole rename (#64). */
+export const AGENT_NAMES = ['coordinator', 'orchestrator', 'planner', 'implementer', 'reviewer', 'router', 'investigator', 'hunter'] as const;
 export const AGENT_MD_FILES = new Set(AGENT_NAMES.map((n) => `${n}.md`));
 export const AGENT_YAML_FILES = new Set(AGENT_NAMES.map((n) => `${n}.yaml`));
 
@@ -507,7 +507,7 @@ if (buildGemini) {
   const workspaceAgentFiles = fs.existsSync(workspaceAgentsDir)
     ? fs.readdirSync(workspaceAgentsDir).filter((f) => AGENT_MD_FILES.has(f))
     : [];
-  const workspaceErrors = geminiWorkspaceTreeErrors(agentsBuildRoot, 'workspace', RULES_LIST, workspaceAgentFiles);
+  const workspaceErrors = geminiWorkspaceTreeErrors(agentsBuildRoot, 'workspace', RULES_LIST, workspaceAgentFiles, AGENT_NAMES.length);
   if (workspaceErrors.length) throw new Error(workspaceErrors.join('; '));
 
   console.log('Generating Gemini Plugin manifest...');
@@ -552,7 +552,7 @@ if (buildCodex) {
   const codexAgentFiles = fs.existsSync(codexAgentsDir)
     ? fs.readdirSync(codexAgentsDir).filter((f) => AGENT_YAML_FILES.has(f))
     : [];
-  const codexErrors = codexTreeErrors(root, codexAgentFiles);
+  const codexErrors = codexTreeErrors(root, codexAgentFiles, AGENT_NAMES.length);
   if (codexErrors.length) throw new Error(codexErrors.join('; '));
 
   console.log('Generating Codex Plugin manifest...');
