@@ -44,7 +44,7 @@ Source: `src/references/blackhole-vcodes.md`
 
 ## Verify checks
 
-**verify_check_count:** 19
+**verify_check_count:** 20
 
 | Check ID | Description |
 |----------|-------------|
@@ -54,6 +54,7 @@ Source: `src/references/blackhole-vcodes.md`
 | V-AGENT-01 | Agent frontmatter complete |
 | V-PHASE-01 | Phase playbooks use consistent phase names |
 | V-VCODE-01 | V-codes referenced in agents or phases |
+| V-ADADOC-01 | blackhole-vcodes.md documents V-ADA family; reviewer.md documents Companion-File Audit section |
 | V-BUILD-01 | Build (full target set: cursor/claude/skills/codex + gemini/antigravity mirrors) produces clean git diff (opt out via VERIFY_SKIP_BUILD=1) |
 | V-SCHEMA-01 | Fixture JSON validates |
 | V-PLAN-01 | In-flight plan/implement/review entries require plans/issue-N.md |
