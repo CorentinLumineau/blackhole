@@ -47,6 +47,8 @@ longer definitions (token cost, drift). Persist every finding to
 | V-GIT-01 | PR created without Closes #N issue linkage in description | BLOCK |
 | V-MERGE-01 | drift-reconciled merge with merged_by:blackhole present — step 0 bypassed | BLOCK |
 | V-MERGE-02 | drift-reconciled merge with merged_by absent — external bypass of hold/merge_after | WARN |
+| V-HUNT-01 | Kaizen issue filed from a finding without a `CONFIRMED` verification pass | BLOCK |
+| V-HUNT-02 | Hunt wave filed more than `max_issues_per_wave` issues, or filed below `min_priority` | WARN |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.

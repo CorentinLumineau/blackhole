@@ -368,6 +368,80 @@ Summary/Findings/Sources). Full behavioral spec: `investigator.md` (not duplicat
 `plans/issue-N-investigation.md` (investigate sub-mode) — co-located with `plans/issue-N.md`,
 mirroring `planner.md`'s Design Track sibling-artifact convention (`plans/issue-N-design.md`).
 
+## Hunter (`hunter`)
+
+```json
+{
+  "status": "complete",
+  "kind": "quickwins",
+  "wave": 3,
+  "territory": {
+    "bands_scanned": ["src/agents", "src/references"],
+    "exhausted": false
+  },
+  "findings": [
+    {
+      "kind": "quickwins",
+      "file": "src/agents/orchestrator.md",
+      "line": 88,
+      "summary": "Dead conditional branch never reached after ADR-004 routing landed",
+      "evidence_snippet": "if (route.needs_split && false) { ... }",
+      "rationale": "The `&& false` makes this branch unreachable; safe deletion reduces confusion for future readers",
+      "gain": 4,
+      "effort": 1,
+      "severity": "LOW",
+      "verification": "CONFIRMED"
+    }
+  ]
+}
+```
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `status` | `complete` \| `error` | yes |
+| `kind` | one of `kaizen.kinds` (e.g. `quickwins`, `best-practices`, `coverage`, `refactor`, `bug`) | yes |
+| `wave` | number | yes — matches `hunt_state.kinds.<kind>.waves` at spawn time + 1 |
+| `territory.bands_scanned` | string[] | yes — bands scanned during this wave, merged into `hunt_state.kinds.<kind>.bands_done` on completion |
+| `territory.exhausted` | boolean | yes — whether no unscanned bands remain for this kind |
+| `findings` | finding[] | yes (empty array = nothing found this wave) |
+| `error` | string | when `status: error` |
+
+### Finding shape (Hunter)
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `kind` | matches envelope `kind` | yes |
+| `file` | string | yes |
+| `line` | number | yes |
+| `summary` | string | yes |
+| `evidence_snippet` | string | yes — verbatim excerpt proving the finding is real, not hypothetical |
+| `rationale` | string | yes |
+| `gain` | number 1-10, per the kind's calibration table | yes |
+| `effort` | number 1-10, per the kind's calibration table | yes |
+| `severity` | `LOW` \| `MEDIUM` \| `HIGH` \| `BLOCK` | yes |
+| `verification` | `CONFIRMED` \| `STALE` | yes |
+
+The hunter runs its verification pass unconditionally before returning: only `CONFIRMED`
+findings may be filed as issues — filing an unverified finding is `V-HUNT-01` (BLOCK).
+`STALE` findings (evidence no longer matches current source) are dropped, never filed.
+`gain`/`effort` are 1-10, anchored by the kind's calibration table (`src/references/hunt/`,
+issue #198) — the hunter itself does not compute `Priority`; the orchestrator computes
+`Priority = Gain * (11 - Effort)` and gates filing against `kaizen.min_priority` and
+`kaizen.max_issues_per_wave` — a wave that files more issues than `max_issues_per_wave`, or
+below `min_priority`, is `V-HUNT-02` (WARN). One wave per spawn: the hunter never loops
+internally across waves.
+
+```json
+{
+  "status": "error",
+  "kind": "quickwins",
+  "wave": null,
+  "territory": null,
+  "findings": [],
+  "error": "gh issue view failed: not found"
+}
+```
+
 ## Review aggregate (`scripts/review-aggregate.ts`)
 
 Orchestrator invokes after `reviewer` completes. Not a worker agent — deterministic script output:

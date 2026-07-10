@@ -40,7 +40,7 @@ Phase playbook files:
 
 Source: `src/references/blackhole-vcodes.md`
 
-**vcode_table_rows:** 41
+**vcode_table_rows:** 43
 
 ## Verify checks
 

@@ -19,6 +19,15 @@
     "write_governance": true,
     "severity_overrides": { "V-ADA-01": "BLOCK" }
   },
+  "kaizen": {
+    "enabled": false,
+    "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug"],
+    "trigger": "on-empty",
+    "loop_interval": 5,
+    "min_priority": 30,
+    "max_issues_per_wave": 10,
+    "max_waves": 6
+  },
   "worker_model_policy": "cost-optimized",
   "entry_mode": "multitask",
   "merge_mode": "gated-batch"

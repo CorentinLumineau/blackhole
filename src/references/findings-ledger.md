@@ -35,7 +35,7 @@ Path: `.blackhole/findings-ledger.json` (gitignored at runtime).
 | `id` | `F-NNNNN` | Zero-padded from `next_id`; increment after append |
 | `vcode` | `V-*` | Required on every row |
 | `severity` | `BLOCK` \| `WARN` \| `NOTE` | Matches vcodes rule |
-| `phase` | `handle` \| `plan` \| `implement` \| `review` | When discovered |
+| `phase` | `handle` \| `plan` \| `implement` \| `review` \| `hunt` | When discovered |
 | `issue_ref` | number | Parent campaign issue |
 | `pr_ref` | number \| null | Set when PR exists |
 | `status` | `open` \| `fixed-in-pr` \| `deferred` \| `resolved` | See state machine |
@@ -192,6 +192,54 @@ One entry appended per route computation/revision — **append-only, never mutat
 human spot-audit. Same `.tmp` + `mv` atomic-write protocol as the `findings` write protocol
 above (validate with `jq empty`, then read-modify-write atomically, bumping
 `next_routing_id` and `refreshed_at`).
+
+## Hunt state (ADR-006)
+
+Schema-only addition — no write logic ships in this issue (that lands with the `hunter`
+agent, #199, and orchestrator dispatch, #200). Unlike `routing_decisions[]`, `hunt_state` is
+**not** an append-only array of records — it is a single object keyed by kind, a per-kind
+watermark of hunt progress:
+
+```json
+{
+  "refreshed_at": "2026-07-04T12:00:00.000Z",
+  "next_id": 1,
+  "findings": [],
+  "next_routing_id": 1,
+  "routing_decisions": [],
+  "hunt_state": {
+    "kinds": {
+      "quickwins": {
+        "bands_done": ["src/agents", "src/references"],
+        "waves": 2,
+        "exhausted": false,
+        "last_wave_at": "2026-07-04T12:00:00.000Z"
+      }
+    }
+  }
+}
+```
+
+### Field rules
+
+| Field | Values | Notes |
+|-------|--------|-------|
+| `hunt_state.kinds` | object | Keyed by `kaizen.kinds` entry (`quickwins`, `best-practices`, `coverage`, `refactor`, `bug`, ...) |
+| `hunt_state.kinds.<kind>.bands_done` | string[] | Territory bands (e.g. directory globs) already scanned for this kind, in scan order |
+| `hunt_state.kinds.<kind>.waves` | number | Count of hunt waves dispatched for this kind so far; compared against `kaizen.max_waves` |
+| `hunt_state.kinds.<kind>.exhausted` | boolean | `true` once every band is scanned or `waves` reaches `kaizen.max_waves` — no further waves dispatch for this kind until reset |
+| `hunt_state.kinds.<kind>.last_wave_at` | ISO timestamp \| `null` | When the most recent wave for this kind completed |
+
+`hunt_state` is a watermark, not a decision log: each key is read-modify-written in place as
+hunt waves complete, never appended to as a growing history. Same atomic write protocol as
+every other ledger mutation — `jq empty` validate, then read-modify-write via `.tmp` + `mv`,
+bumping `refreshed_at` (`blackhole-state.md` § Write protocol).
+
+**Consumer sweep**: no code under `scripts/` or `src/` currently switches/matches on the
+findings-ledger row's `phase` field (distinct from the unrelated queue-issue `IssuePhase` enum
+in `scripts/recovery-drift.ts`/`scripts/campaign-status.ts`, which is unaffected by this
+change). Only `fixtures/findings-ledger.example.json` and doc prose reference finding `phase`
+values today — adding `hunt` to the enum is a clean additive extension with zero consumer risk.
 
 ## Binding obligations
 

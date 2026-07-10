@@ -20,6 +20,7 @@ Committed template: `.blackhole/config.json`
   "adaptive_routing": true,
   "router_confidence_thresholds": { "split": 70, "design": 70, "plan_mode": 70, "security": 70, "docs": 70 },
   "docs_governance": { "enabled": true, "companion_files": true, "docs_impact_routing": true, "write_governance": true, "severity_overrides": {} },
+  "kaizen": { "enabled": false, "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug"], "trigger": "on-empty", "loop_interval": 5, "min_priority": 30, "max_issues_per_wave": 10, "max_waves": 6 },
   "worker_model_policy": "cost-optimized",
   "entry_mode": "multitask",
   "merge_mode": "immediate"
@@ -47,6 +48,14 @@ Committed template: `.blackhole/config.json`
 | `docs_governance.docs_impact_routing` | no | Gates the router `docs_impact` flag (`src/agents/router.md`, `src/agents/orchestrator.md` § Route-derived dispatch, #177); default `true`; when `false` (or `docs_governance.enabled: false`), `docs_impact` resolves to its cautious default (`true`) regardless of computed value or confidence |
 | `docs_governance.write_governance` | no | Gates search-before-write/canonical-slug rules for consumer-repo writes (default `true`); when `false`, those rules are inert regardless of `enabled` — live consumers: `src/agents/implementer.md` (companion-doc update step, gated at `implementer.md:67`) and `src/agents/planner.md` (Standard Track Documentation Impact bullet, gated at `planner.md:65`) |
 | `docs_governance.severity_overrides` | no | Map of V-code → `BLOCK`\|`WARN`, keyed by docs-governance V-code; empty/absent = defaults apply. May only escalate a WARN-default docs-governance code to BLOCK — must never de-escalate the pre-existing `V-DOC-02`/`V-DOC-04` BLOCK severity |
+| `kaizen` | no | Nested object gating the kaizen improvement-hunt loop (ADR-006): `enabled`, `kinds`, `trigger`, `loop_interval`, `min_priority`, `max_issues_per_wave`, `max_waves`; absent block = current behavior preserved (hunting is opt-in, see contract note below) |
+| `kaizen.enabled` | no | Kill switch for the whole `kaizen` block (default `false` — hunting is opt-in, unlike `docs_governance` which defaults `true`); when `false`, hunt dispatch never fires regardless of sub-field values |
+| `kaizen.kinds` | no | Array of hunt territory kinds to scan (default `["quickwins", "best-practices", "coverage", "refactor", "bug"]`) |
+| `kaizen.trigger` | no | `on-empty` \| `every-n-loops` \| `manual` (default `on-empty`) — when the Phase-5 loop dispatches a hunt wave |
+| `kaizen.loop_interval` | no | Number of Phase-5 loop iterations between hunt waves when `trigger: every-n-loops` (default `5`) |
+| `kaizen.min_priority` | no | Minimum `Priority = Gain * (11 - Effort)` a finding must clear to be filed as an issue (default `30`, matching the `V-PARETO-02` BLOCK floor); may only be **raised** above `30`, never lowered below the `V-PARETO-02` threshold |
+| `kaizen.max_issues_per_wave` | no | Cap on issues filed per hunt wave (default `10`) — exceeding it is `V-HUNT-02` (WARN) |
+| `kaizen.max_waves` | no | Cap on total hunt waves per kind before it is marked exhausted (default `6`) |
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 | `merge_mode` | no | `immediate` (default) or `gated-batch` (ADR-005); preserves current behavior exactly when absent/default — each PR merges as soon as it reaches LGTM. `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one PR at a time in `merge_after` dependency order; see `merge-gate.md` |
@@ -64,6 +73,14 @@ preserved exactly. Any future issue that wires a dependent feature must check th
 `docs_governance.severity_overrides` may only **escalate** a WARN-default
 docs-governance V-code to `BLOCK` per repo; it must never de-escalate the
 pre-existing `V-DOC-02`/`V-DOC-04` `BLOCK` severity.
+
+**`kaizen` contract note**: when the block is absent, or `kaizen.enabled` is
+`false`, the kaizen improvement-hunt loop (ADR-006) MUST be a no-op and
+current behavior is preserved exactly — no hunt wave dispatches, no hunter
+agent spawns, `hunt_state` is never written. `kaizen.min_priority` may only be
+**raised** above its default of `30`, never lowered below the `V-PARETO-02`
+`BLOCK` threshold. This is the same obligation `docs_governance.enabled` and
+`adaptive_routing` already impose on their respective features.
 
 **Scope filter composition** (both fields optional — unset means no filter on that axis):
 
