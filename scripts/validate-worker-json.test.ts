@@ -71,6 +71,8 @@ describe('validateWorker reviewer', () => {
     expectValid('reviewer', 'reviewer-complete-empty.json'));
   test('invalid missing findings', () =>
     expectInvalid('reviewer', 'reviewer-missing-findings.json'));
+  test('valid V-DOC-02/04 finding', () =>
+    expectValid('reviewer', 'reviewer-complete-vdoc-finding.json'));
 });
 
 describe('validateWorker router', () => {
