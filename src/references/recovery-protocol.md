@@ -2,7 +2,9 @@
 
 Binding recovery procedure for polluted git worktrees and mixed-issue stashes that violate one-PR-per-issue (`V-BRANCH-02`). Complements `checkpoint-protocol.md` (queue/checkpoint layer) with a decision tree for dirty worktrees holding changes from multiple issues.
 
-See also: `phase-implement.md` (worktree naming), `queue-dag.md` (wave scheduling after split), `queue-dag.md` (`route` object schema), `findings-ledger.md` (`routing_decisions` audit trail), `documentation/decisions/ADR-004-adaptive-phase-routing.md` (source ADR for §8 and the interrupted state in §6(d)).
+See also: `phase-implement.md` (worktree naming), `queue-dag.md` (wave scheduling after split), `queue-dag.md` (`route` object schema), `findings-ledger.md` (`routing_decisions` audit trail), `documentation/decisions/ADR-004-adaptive-phase-routing.md` (source ADR for §8 and the interrupted state in §6(d)), `orchestrator.md` § Error Classification (Transient / Permanent / Partial-Corruption — sole taxonomy, not restated here).
+
+§4's decision tree below operationalizes the **Partial/Corruption** path specifically for dirty worktrees and mixed-issue stashes — it does not redefine the taxonomy.
 
 ---
 

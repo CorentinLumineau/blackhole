@@ -497,6 +497,21 @@ After a background worker batch barrier completes (`orchestrator.md` § Backgrou
 
 1. **Barrier complete** → validate each worker JSON (`scripts/validate-worker-json.ts`) **before** mutating `queue.json`.
 2. **Idempotency:** if `route{}`, plan file, or PR already satisfies the phase gate, log skip and advance without re-spawn.
-3. **Validation failure:** keep the issue `in-flight`, do not end the orchestrator turn until the error is routed (existing worker error handling).
+3. **Validation failure:** classify per `orchestrator.md` § Error Classification (sole
+   taxonomy, not restated here) before deciding retry vs escalate — **Transient** → retry
+   ≤2 with backoff; **Permanent** → report with actionable context and append a
+   Failed-Approaches entry (`checkpoint-protocol.md` § Failed-Approaches Log);
+   **Partial/Corruption** → verify artifacts, resume from checkpoint. Keep the issue
+   `in-flight`, do not end the orchestrator turn until the error is routed.
 
 The SubagentStop **validate** hook checks JSON at handoff; the **resume** hook (#154) automates the outer coordinator loop via `resume-request.json` and an orchestrator→coordinator doorbell only. Inner-loop continuity remains the orchestrator in-turn `Await` barrier (#151) — worker stops do not inject `followup_message` to the orchestrator.
+
+### Blocked-iteration escalation (orchestrator → coordinator)
+
+**Not a new worker JSON contract** — no `status`/`route` fields. A plain-text signal
+riding on the existing `CHECKPOINT` session-handoff line
+(`checkpoint-protocol.md` § Session handoff), fired when the Blocked-Iteration
+Escalation rule (`orchestrator.md` § Human-in-the-Loop (HITL) & Blocker Gating) trips at
+count `3` for one or more issues: the `CHECKPOINT` line's optional
+`| BLOCKED-ESCALATED: #<issue>[,#<issue>...]` trailing segment lists them, so the
+campaign never loops silently on a blocked issue.

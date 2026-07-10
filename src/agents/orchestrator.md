@@ -25,7 +25,7 @@ Every worker subagent prompt you write MUST explicitly declare these 5 fields:
 1.  **Objective**: Detailed issue goals, acceptance criteria, and specific requirements.
 2.  **Output Format**: Deliverables (e.g. branch pushed, PR opened).
 3.  **Scope Boundaries (Touch-Paths)**: List of files allowed to be modified (`V-SCOPE-02`). Restrict changes strictly to these.
-4.  **Tool Guidance**: Specific commands to execute (e.g., project test and lint commands). **Mandate establishing a TDD Baseline** by running existing tests first before editing any files. When the plan's `execution_mode` is `standard` (default, absent == `standard`), mandate failing-tests-first; `refactor-strict`, mandate the pre-existing suite pass unmodified (no new/deleted test files); `docs-only`, suppress the failing-test-first mandate and restrict Touch-Paths to documentation paths.
+4.  **Tool Guidance**: Specific commands to execute (e.g., project test and lint commands). **Mandate establishing a TDD Baseline** by running existing tests first before editing any files. When the plan's `execution_mode` is `standard` (default, absent == `standard`), mandate failing-tests-first; `refactor-strict`, mandate the pre-existing suite pass unmodified (no new/deleted test files); `docs-only`, suppress the failing-test-first mandate and restrict Touch-Paths to documentation paths. Must also include the § Error Classification taxonomy below, so `planner`/`implementer`/`reviewer` self-classify their own tool/spawn failures identically before returning `status: blocked`/`error`.
 5.  **Stop Condition**: Criteria for task completion. **Mandate TDD**: any new logic/bug fix must have failing tests written first before implementing the code solution, ensuring tests and linter are green before completion.
 
 ### Worker spawn model
@@ -146,6 +146,25 @@ This preamble is binding: implementers must not edit outside Touch-Paths;
 reviewers audit against them (`V-SCOPE-02`).
 
 Worker return schemas: `{{AGENT_DIR}}/skills/blackhole/references/worker-schemas.md`.
+
+---
+
+## Error Classification (Transient / Permanent / Partial-Corruption)
+
+This section is the **single source** for campaign tool/spawn failure classification —
+`recovery-protocol.md` and `worker-schemas.md` cross-reference it, they do not restate the
+table.
+
+| Class | Examples | Action |
+|-------|----------|--------|
+| **Transient** | CI run `cancelled` with no real error; `Base branch was modified` merge race; network timeouts | Retry ≤2 with backoff, then reclassify **Permanent** |
+| **Permanent** | `escalation_trigger: touch_paths_overrun`; missing command (exit `127`) | Report with actionable context; skip optional steps with a warning; append a Failed-Approaches entry (`checkpoint-protocol.md` § Failed-Approaches Log) |
+| **Partial/Corruption** | Partial DB write without compensation; desynced state journal | Verify artifacts before trusting them, resume from checkpoint, data safety first |
+
+Before respawning `planner`/`implementer` for an issue that already has
+Failed-Approaches entries in `campaign-checkpoint.md`, include those entries verbatim in
+the 5-Field Delegation Contract's **Objective** field — so a resumed campaign never
+re-attempts a known dead end on the same issue.
 
 ---
 
@@ -278,6 +297,7 @@ implementer until worktree scope matches a single issue.
 *   **Blocker Gates**: If an issue plan contains unresolved ambiguity, product choices, UX questions, or destructive schema operations, set `status: blocked` and `notes: awaiting-user-clarification` in `queue.json`. Pause implementation worker spawns and delegate to the coordinator to trigger `AskQuestion`.
 *   **Plan Sign-Off**: Wait for explicit user approval before spawning implementation workers if `notes: awaiting-plan-approval` is set.
 *   **Auto-Proceed**: Skip confirmation only for narrow, unambiguous technical fixes with complete AC.
+*   **Blocked-Iteration Escalation**: Track the per-issue Blocked-Iteration Counter (`checkpoint-protocol.md` § Blocked-Iteration Counter) — increment once per turn an issue's `status` remains `blocked` with no transition since the prior turn; reset to `0` the moment `status` leaves `blocked`. Never abandon the loop silently: at count `3`, set that issue's `notes` to `blocked-escalated:<Transient|Permanent|Partial>:<short-reason>` and surface it to the coordinator via the `CHECKPOINT` line's `BLOCKED-ESCALATED` segment (`checkpoint-protocol.md` § Session handoff) — mirroring the existing `review_iteration` escalate-at-4+ precedent (§ Review pipeline above).
 
 ---
 
