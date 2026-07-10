@@ -216,8 +216,8 @@ const checkVcodeReferences = () => {
   const refDir = path.join(srcDir, 'references');
   const agentDir = path.join(srcDir, 'agents');
   const corpus = [
-    ...fs.readdirSync(refDir).map((f) => fs.readFileSync(path.join(refDir, f), 'utf-8')),
-    ...fs.readdirSync(agentDir).map((f) => fs.readFileSync(path.join(agentDir, f), 'utf-8')),
+    ...walkMdFilesAbs(refDir).map((f) => fs.readFileSync(f, 'utf-8')),
+    ...walkMdFilesAbs(agentDir).map((f) => fs.readFileSync(f, 'utf-8')),
   ].join('\n');
 
   const unreferenced: string[] = [];
@@ -367,17 +367,24 @@ const checkPlanArtifacts = () => {
   else pass('V-PLAN-01');
 };
 
-const walkMdFiles = (dir: string): string[] => {
-  const full = path.join(root, dir);
-  if (!fs.existsSync(full)) return [];
+// Recursive .md tree walk keyed off an absolute directory — the reusable core so both the
+// root-relative walkMdFiles() and any absolute-path caller (incl. tests with a temp dir
+// fixture) share one tree-walk implementation (V-INT-02). Guards each entry with
+// isDirectory() before recursing, so a subdirectory never reaches fs.readFileSync() and
+// triggers EISDIR (#216).
+export const walkMdFilesAbs = (absDir: string): string[] => {
+  if (!fs.existsSync(absDir)) return [];
   const out: string[] = [];
-  for (const entry of fs.readdirSync(full, { withFileTypes: true })) {
-    const rel = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walkMdFiles(rel));
-    else if (entry.name.endsWith('.md')) out.push(rel);
+  for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
+    const full = path.join(absDir, entry.name);
+    if (entry.isDirectory()) out.push(...walkMdFilesAbs(full));
+    else if (entry.name.endsWith('.md')) out.push(full);
   }
   return out;
 };
+
+const walkMdFiles = (dir: string): string[] =>
+  walkMdFilesAbs(path.join(root, dir)).map((f) => path.relative(root, f));
 
 // checkGeminiBuild, checkGeminiDistributionBundle, and checkBuild all need `bun run build
 // --gemini` to have run before asserting file shape / diffing porcelain — memoize so a full
