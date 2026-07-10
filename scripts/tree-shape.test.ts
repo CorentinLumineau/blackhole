@@ -80,7 +80,33 @@ describe('validatePluginTreeShape', () => {
     try {
       populateFixtureTree(destRoot);
       const refsDir = path.join(destRoot, 'skills', 'blackhole', 'references');
-      for (const f of fs.readdirSync(refsDir)) fs.unlinkSync(path.join(refsDir, f));
+      for (const f of fs.readdirSync(refsDir)) fs.rmSync(path.join(refsDir, f), { recursive: true, force: true });
+      const errors = validatePluginTreeShape(
+        destRoot,
+        path.join(destRoot, 'plugin.json'),
+        { treePrefix: '', manifest: 'plugin.json' },
+        RULES_LIST
+      );
+      expect(errors.some((e) => e.includes('references/'))).toBe(true);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  // Regression #226: references/ may contain a subdirectory (e.g. src/references/hunt/ added
+  // by #198), and the cleanup loop must not assume every entry is a plain file.
+  test('cleanup handles a subdirectory under references/ without throwing (regression #226)', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateFixtureTree(destRoot);
+      const refsDir = path.join(destRoot, 'skills', 'blackhole', 'references');
+      const subDir = path.join(refsDir, 'hunt');
+      fs.mkdirSync(subDir);
+      fs.writeFileSync(path.join(subDir, 'nested.md'), '# nested\n', 'utf-8');
+      expect(() => {
+        for (const f of fs.readdirSync(refsDir)) fs.rmSync(path.join(refsDir, f), { recursive: true, force: true });
+      }).not.toThrow();
+      expect(fs.readdirSync(refsDir)).toEqual([]);
       const errors = validatePluginTreeShape(
         destRoot,
         path.join(destRoot, 'plugin.json'),
