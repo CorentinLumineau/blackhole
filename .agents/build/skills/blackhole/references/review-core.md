@@ -165,6 +165,17 @@ Orchestrator may perform direct review for docs-only PRs, but must still run `re
 
 When the orchestrator performs this direct review (bypassing a `reviewer` spawn), it must apply `reviewer.md` § 8 (Docs-Only Execution Mode Compliance)'s checks itself before running `review-aggregate.ts` — severity `BLOCK` on any check failure. See `reviewer.md` § 8 for the check definitions; not restated here.
 
+## Suggestion Proportionality Gate
+
+`reviewer.md` §12 defines a pre-finalize self-check the reviewer applies to its own draft
+findings — before returning `status: complete` — catching gold-plating (speculative
+abstractions, disproportionate remediation complexity) and out-of-diff drift in the reviewer's
+own suggestions. Unlike confidence-filtering (above), there is no deterministic script backstop
+for this gate — the reviewer is solely responsible for self-applying it. Findings removed solely
+for citing out-of-diff code are re-tagged `V-PARETO-02` and reuse the existing
+`pareto_candidates` rerouting mechanism defined in § Pareto scoring above, rather than being
+dropped.
+
 ## Revisit condition
 
 Re-introduce a dedicated aggregation agent only if blackhole adopts parallel multi-reviewer swarms (2+ independent reviewers per PR). See ADR-003.
