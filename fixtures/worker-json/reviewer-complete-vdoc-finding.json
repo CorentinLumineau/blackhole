@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "findings": [
+    {
+      "vcode": "V-DOC-02/04",
+      "severity": "BLOCK",
+      "file": "src/api/routes.ts",
+      "line": 12,
+      "summary": "New exported route added without a matching documentation/** update in this PR"
+    }
+  ]
+}

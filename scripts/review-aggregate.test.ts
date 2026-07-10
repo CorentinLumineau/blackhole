@@ -37,6 +37,21 @@ describe('aggregateReview', () => {
     expect(result.findings).toHaveLength(1);
   });
 
+  test('V-DOC-02/04 BLOCK finding → dedups and gates like any other BLOCK vcode', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [baseFinding({ severity: 'BLOCK', vcode: 'V-DOC-02/04' })],
+      },
+      issueRef: '46',
+    });
+    expect(result.status).toBe('changes_requested');
+    expect(result.lgtm).toBe(false);
+    expect(result.blockers_count).toBe(1);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].vcode).toBe('V-DOC-02/04');
+  });
+
   test('dedup keeps highest severity for same key', () => {
     const result = aggregateReview({
       reviewer: {

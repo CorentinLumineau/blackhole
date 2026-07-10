@@ -61,6 +61,10 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 *   **Example verification confirmations present**: every touched code block in the diff has a matching one-line confirmation in the PR description. A missing confirmation — severity `BLOCK`.
 *   **Example verification accuracy spot-check**: independently re-verify at least one confirmed code block against its cited source. A mismatch — severity `BLOCK`.
 
+### 9. Public-API / Docs Currency (`V-DOC-02/04`)
+*   **Detection**: the diff touches the public-API/schema/config surface defined in § 1's `V-API-01` bullet (public interfaces, configurations, or database schemas) in a file outside § 8's documentation path patterns (`**/*.md`, `documentation/**`, `codex-agents/*.yaml`).
+*   **Check**: when detection is true, the diff must include a same-PR update to a doc file matching § 8's globs (`**/*.md`, `documentation/**`) or an inline docstring/comment on the changed symbol. A missing update — severity `BLOCK`, V-code `V-DOC-02/04`, cite the `file:line` of the undocumented change.
+
 ---
 
 ## Output Format
