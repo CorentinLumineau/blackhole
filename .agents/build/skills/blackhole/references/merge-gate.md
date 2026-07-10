@@ -18,7 +18,7 @@ Field rules) and `config.json`'s `merge_mode` field (see `config-template.md`).
 Reuses `scripts/forge-scope.ts` (`readScope`, `issueMatchesScope`) for gated-batch
 scope — does not reimplement it (V-INT-02).
 
-## 0. CI-wait poller contract
+## CI-wait poller contract
 
 Specification only — no merge mechanics live here (this doc's own charter,
 above): the poll/retry/rerun mechanics themselves are `phase-loop.md` § Merge
