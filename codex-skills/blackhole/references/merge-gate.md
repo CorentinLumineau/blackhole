@@ -7,6 +7,12 @@ this doc is consulted from that section's own **step 0** as a single delegated
 precondition (`mergeEligible(issue)` — `false` stops the protocol before step 1),
 never inlined and never satisfied merely by citation from a different heading.
 
+**`merge_mode: leave-open` bypass note** (ADR-006): for issues under this
+mode, `mergeEligible(issue)` is never invoked at all — `phase-loop.md`'s
+Merge protocol trigger paragraph bypasses steps 0-5 entirely for these
+issues. This is a **bypass**, not a new eligibility condition; do not add a
+fourth numbered condition to `mergeEligible()` below for `leave-open`.
+
 Consumes `queue.json`'s `merge_hold` / `merge_after` fields (see `queue-dag.md`
 Field rules) and `config.json`'s `merge_mode` field (see `config-template.md`).
 Reuses `scripts/forge-scope.ts` (`readScope`, `issueMatchesScope`) for gated-batch
@@ -175,6 +181,18 @@ turn a real internal violation would occur):
   actor (human via the forge UI, a different tool) merged the PR outside
   blackhole's control.
 
+**`merge_mode: leave-open` carve-out** (ADR-006): for issues where
+`config.json.merge_mode == "leave-open"`, an externally-observed merge (`gh
+pr view --json state,mergedAt` showing `MERGED`) is **not** drift — it is the
+designed completion path (a human merges the LGTM'd PR blackhole
+intentionally left open). Do not log `V-MERGE-01` or `V-MERGE-02` for these
+issues; reconcile `queue.json` to `status: merged`, `phase: done` via the
+existing generic forge-sync reconciliation path (`forge-sync.md` § Reconcile
+existing queue entries) with no V-code logged. This carve-out takes
+precedence over the `merged_by`-attribution bullets above whenever
+`merge_mode == "leave-open"` — those bullets classify drift only for
+non-`leave-open` issues.
+
 Both cases are audit-only: the ledger row records what happened, it does not
 and cannot reverse the merge. This single detection point (§3) is the sole
 trigger for both `V-MERGE-01` and `V-MERGE-02` — they are not two separate
@@ -214,6 +232,7 @@ no rollback logic required for the PRs that already landed.
 | `merge_hold: true` **and** an unresolved `merge_after` entry simultaneously | Either condition alone is sufficient to block; §1 short-circuits on Condition 1, so Condition 2 is never even evaluated — but the result is the same either way (see §1's ordering note) |
 | PR merged externally while `merge_hold: true` (or `merge_after` unresolved), no `merged_by` marker | § 3 detects via `gh pr view --json state,mergedAt` on the next forge-sync; `merged_by` absent → logs `V-MERGE-02` WARN (external bypass) — audit only, the merge cannot be undone |
 | PR merged while ineligible AND `merged_by: blackhole` marker present | § 3 detects the same way; `merged_by` present proves blackhole's own step 0 was bypassed; logs `V-MERGE-01` BLOCK instead of `V-MERGE-02` |
+| `leave-open` PR merged externally after LGTM | Reconciled normally via forge-sync's generic externally-observed-merge path — no `V-MERGE-01`/`V-MERGE-02` logged (designed path, not drift; see § 3's `leave-open` carve-out) |
 
 ## Consulted by
 

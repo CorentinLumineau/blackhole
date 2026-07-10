@@ -28,6 +28,16 @@
   topological `merge_after` order, persisting `queue.json` after each. Do not
   duplicate § 4's ordering/persistence logic here; this section owns only the
   per-PR merge mechanics § 4 calls into.
+- `"leave-open"` (ADR-006): do **not** apply steps 0-5 to these issues at
+  all — no `mergeEligible(issue)` call, no `gh pr merge` (see `merge-gate.md`'s
+  bypass note). Once `review-core.md`'s `isLgtm(issue)` is true, treat the
+  issue as delivered for campaign-complete purposes only: annotate
+  `queue.json`'s `notes` field (not `status`/`phase`) — e.g.
+  `"delivered-at-LGTM (leave-open) — awaiting human merge"` — and leave the PR
+  open. The actual external merge is picked up later by the normal
+  forge-sync externally-observed-merge reconciliation path (unchanged,
+  generic — no new logic needed here beyond citing it; see `merge-gate.md` §
+  3).
 
 0. Evaluate `merge-gate.md` § 1 `mergeEligible(issue)`. If `false`, **STOP** —
    do not proceed to step 1 for this issue (leave it `in-flight`; re-evaluated
@@ -53,6 +63,9 @@ For issue N, PR P:
 - `fixed-in-pr` → `resolved`, `resolved_at` set
 - `open` BLOCK on merged files → file new issue or `resolved` if obsolete
 - `deferred` → keep until deferred issue merges
+- Under `merge_mode: leave-open`, `fixed-in-pr` rows stay `fixed-in-pr` (not
+  `resolved`) until the later forge-sync observes the real external merge —
+  do not resolve them prematurely at LGTM time.
 
 ## Next batch
 
@@ -78,7 +91,7 @@ For issue N, PR P:
  
 ```
 gh issue list --state open $(bun scripts/forge-scope.ts list-args) → []
-gh pr list --state open → []
+gh pr list --state open → [] (excluding LGTM'd `leave-open` PRs, which count as delivered)
 queue.json: no in-flight entries
 ```
  

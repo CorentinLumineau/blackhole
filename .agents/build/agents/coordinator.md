@@ -18,9 +18,10 @@ Binding: `.agents/build/skills/blackhole/references/coordinator-dashboard.md`.
 
 ### Bootstrap preflight
 
-**Campaign launch configuration gate** (ADR-005 § Campaign Launch Configuration
-Gate) — run steps 1-3 below whenever **any** of these three conditions hold,
-regardless of whether `.blackhole/config.json` already exists:
+**Campaign launch configuration gate** (ADR-005 § Campaign Launch
+Configuration Gate, extended per ADR-006 § "Campaign launch form") — run
+steps 1-6 below whenever **any** of these three conditions hold, regardless
+of whether `.blackhole/config.json` already exists:
 
 1. **True first bootstrap** — `.blackhole/config.json` does not yet exist.
 2. **Post-"Campaign complete" restart** — `phase-loop.md` § Campaign complete
@@ -28,11 +29,11 @@ regardless of whether `.blackhole/config.json` already exists:
 3. **Explicit mid-campaign reconfigure** — the user asked, via Chat Feedback
    Intake Protocol item 5, to "reconfigure scope" or "change merge mode".
 
-**Skip steps 1-3 only on routine resume** — i.e., when `.blackhole/config.json`
+**Skip steps 1-6 only on routine resume** — i.e., when `.blackhole/config.json`
 already exists AND none of the three conditions above hold (per
 `config-template.md`'s "do not overwrite existing runtime config without user
 confirmation"). This carve-out is the ONLY skip condition — do not skip steps
-1-3, including step 2's gated-batch+unscoped Validation warning, merely
+1-6, including step 2's gated-batch+unscoped Validation warning, merely
 because `config.json` exists; conditions 2 and 3 both fire precisely when it
 already does:
 
@@ -44,13 +45,20 @@ already does:
    Map the answer onto the existing `scope_labels` / `scope_milestone` fields
    (`config-template.md`) — do not invent new field names. For "Specific
    label(s)" or "Specific milestone", ask a follow-up for the label(s) or
-   milestone title.
+   milestone title. Before accepting the answer, run `gh issue list --state
+   open $(bun scripts/forge-scope.ts list-args)` against the **chosen**
+   filters and print the resulting count and first titles as a
+   targeted-issues preview, so the user sees exactly what the campaign will
+   pull in before confirming.
 
 2. Use `AskQuestion` to confirm **merge mode**:
    - "Immediate — merge each PR as it reaches LGTM (default)"
    - "Gated batch — wait for all in-scope PRs to reach LGTM, self-review, then merge in dependency order"
+   - "Leave open — drive every PR to LGTM, never merge, leave for human review (new)"
 
-   Map the answer onto the existing `merge_mode` field (ADR-005).
+   Map the answer onto the existing `merge_mode` field (ADR-005; `leave-open`
+   added per ADR-006) — `immediate` and `gated-batch` semantics are
+   unaffected by the new value.
 
    **Validation**: if the answer is "Gated batch" **and** step 1's scope answer
    was "All open issues (default)" (no `scope_labels`/`scope_milestone` set),
@@ -62,9 +70,40 @@ already does:
    use gated-batch across all open issues anyway". Only proceed to step 3 with
    `merge_mode: gated-batch` + unscoped after explicit confirmation.
 
-3. Copy the committed template to `.blackhole/config.json` if it does not yet
+3. **Dependency setup** — only when step 2's answer is "Gated batch": present
+   the planned `merge_after` ordering for the in-scope issue set (derived
+   from `depends_on` edges already synced via `forge-sync.md` into the queue
+   DAG) via `AskQuestion`: "Confirm the ordering as shown" | "Adjust an
+   issue's `merge_after` manually". On adjustment, ask which issue and its
+   new `merge_after` list, then persist the adjusted arrays into the
+   corresponding `queue.json` issue entries (atomic read-modify-write per
+   `blackhole-state.md` § Write protocol). Skipped entirely when step 2's
+   answer is "Immediate" or "Leave open" — nothing to order when merges
+   either happen individually or never happen at all.
+
+4. **Parallelism** — use `AskQuestion` to confirm `parallel_max`, with the
+   current `config.json` value (or the template default, `4`) pre-selected:
+   "Keep current value (default)" | "Set a different value". Map the answer
+   onto the existing `parallel_max` field (`config-template.md`) — do not
+   invent a new field name.
+
+5. **Kaizen** — use `AskQuestion` to confirm the `kaizen` block
+   (`config-template.md`), with the current config value (or the template
+   defaults — `enabled: false`) pre-selected: "Keep current kaizen settings
+   (default: disabled)" | "Enable/adjust kaizen hunting". When the user wants
+   to adjust, ask follow-ups for `kaizen.enabled`, `kaizen.kinds`,
+   `kaizen.trigger` (plus `kaizen.loop_interval` only when `trigger:
+   every-n-loops`), `kaizen.min_priority`, `kaizen.max_issues_per_wave`, and
+   `kaizen.max_waves` — map each answer onto its existing named field; do not
+   invent new field names or redefine defaults beyond what
+   `config-template.md` already documents.
+
+6. Copy the committed template to `.blackhole/config.json` if it does not yet
    exist, then write the confirmed `scope_labels`/`scope_milestone`/
-   `merge_mode` values into it, before proceeding to the next step.
+   `merge_mode`/`parallel_max`/`kaizen` values (and any adjusted `merge_after`
+   arrays from step 3) into it atomically (`blackhole-state.md` § Write
+   protocol). Re-run `bun run status` and print the full dashboard (see §
+   Campaign visibility), then proceed to spawn/resume the orchestrator.
 
 Before spawning the background `orchestrator`, run `bun run doctor` from the campaign repo root. If the command exits non-zero, report the failing BLOCK checks to the user and **do not** spawn the orchestrator until they are resolved. WARN checks may be reported but do not block the campaign.
 
@@ -124,8 +163,8 @@ When the user enters a message in the chat:
     *   Ensure any new task spawned by the orchestrator utilizes the strict **5-field contract** (Objective, Output Format, Scope Boundaries, Tool Guidance, Stop Condition).
     *   Verify that all code modifications comply with Quality Gates (V-codes) and establish a TDD baseline (tests run before modifications).
 5.  **Reconfiguring Scope / Merge Mode**:
-    *   If the user asks, mid-campaign, to "reconfigure scope" or "change merge mode": re-run the **Campaign launch configuration gate** (§ Bootstrap preflight) on demand — do not wait for a "Campaign complete" report.
-    *   Re-write the confirmed `scope_labels`/`scope_milestone`/`merge_mode` fields into `.blackhole/config.json`.
+    *   If the user asks, mid-campaign, to "reconfigure scope" or "change merge mode": re-run the **Campaign launch configuration gate** (§ Bootstrap preflight, steps 1-6) on demand — do not wait for a "Campaign complete" report.
+    *   Re-write the confirmed `scope_labels`/`scope_milestone`/`merge_mode`/`parallel_max`/`kaizen` fields into `.blackhole/config.json`.
     *   After updating, re-run `bun run status` and print the full dashboard so the user sees the effect of the change immediately.
 
 ---
