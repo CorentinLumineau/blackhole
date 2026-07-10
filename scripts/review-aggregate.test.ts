@@ -115,6 +115,22 @@ describe('aggregateReview', () => {
     expect(result.pareto_candidates[1].priority).toBe(9);
   });
 
+  test('V-ADA-01 findings on same file, different issue_ref → not deduped by aggregator', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [
+          baseFinding({ vcode: 'V-ADA-01', severity: 'WARN', issue_ref: '47' }),
+        ],
+      },
+      issueRef: '46',
+      priorFindings: [
+        baseFinding({ vcode: 'V-ADA-01', severity: 'WARN', issue_ref: '46' }),
+      ],
+    });
+    expect(result.findings).toHaveLength(2);
+  });
+
   test('reviewer status error → aggregate error', () => {
     const result = aggregateReview({
       reviewer: { status: 'error', error: 'audit failed', findings: [] },

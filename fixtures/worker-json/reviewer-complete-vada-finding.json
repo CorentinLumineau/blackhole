@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "findings": [
+    {
+      "vcode": "V-ADA-01",
+      "severity": "WARN",
+      "file": "ARCHITECTURE.md",
+      "line": 1,
+      "summary": "ARCHITECTURE.md absent at project root"
+    }
+  ]
+}

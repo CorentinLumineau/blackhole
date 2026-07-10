@@ -12,6 +12,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - [ ] Security-mode PR → confirm merge-gate validator (V-SEC-08) before LGTM
 - [ ] Run scripts/review-aggregate.ts on reviewer JSON
 - [ ] Aggregate output → ledger append (phase: review)
+- [ ] V-ADA-01/V-ADA-05 findings: before append, dedup by (vcode, file) ignoring issue_ref — skip append if an open/deferred row already exists for that (vcode, file) under any issue_ref (see findings-ledger.md).
 - [ ] BLOCK → increment review_iteration; back to phase implement (see review-core iteration budget)
 - [ ] review_iteration >= 4 → escalate to coordinator (AskQuestion)
 - [ ] WARN → fix in PR OR defer (file issue + ledger deferred_to_issue)
@@ -43,6 +44,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
   - `V-DRY-04` (Template copy-paste renames)
 - **Improvement Discoveries**: Audit the code for UX/UI polish, performance gains, test coverage gaps, and styling best practices. Log them as WARN findings with detailed summaries. Do not demand resolving them in the current PR (prevents `V-SCOPE-02` scope creep); the orchestrator will file them as new GitHub issues.
 - **Docs Currency (`V-DOC-02/04`)**: Reviewer must confirm any public-API/schema/config-surface change (§1's `V-API-01` surface) ships with a same-PR documentation update (`**/*.md`, `documentation/**`, or inline docstring); missing update is `BLOCK`.
+- **Companion-File Audit (`V-ADA-01/02/03/05/06/07`)**: Reviewer must confirm ARCHITECTURE.md, decisions/INDEX.md currency, AGENTS.md, and conditional DESIGN.md per `reviewer.md` §10; gated by `docs_governance.companion_files`. All WARN.
 
 ## Gating
 
