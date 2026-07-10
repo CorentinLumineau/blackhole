@@ -9,6 +9,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - [ ] Spawn reviewer to perform PR audit
 - [ ] Route check: read route.security_review_required (+ confidence gate) → enrich reviewer prompt with security-mode audit (see review-core.md § Security-mode review)
 - [ ] Route check: read route.plan_mode → scope plan-conformance audit to quick/full; skip → compensating no-API-surface check (see review-core.md § Skip-PR compensating control)
+- [ ] Recheck check: read recheck-mode trigger (review_iteration >= 1, no new touch-paths, no new BLOCK surface — see review-core.md § Recheck mode) → when satisfied, dispatch reviewer in recheck mode against the fix commits only, instead of a full-diff audit
 - [ ] Security-mode PR → confirm merge-gate validator (V-SEC-08) before LGTM
 - [ ] Run scripts/review-aggregate.ts on reviewer JSON
 - [ ] Aggregate output → ledger append (phase: review)
@@ -33,6 +34,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - Full V-code audit checklist from `codex-skills/blackhole/references/blackhole-vcodes.md`
 - Model: use the designated worker agent (`reviewer`)
 - Output format: `worker-schemas.md` reviewer contract
+- Route check: when the recheck-mode trigger is satisfied, see `review-core.md` § Recheck mode for the exact trigger conditions and scoped-audit mechanism (not restated here).
 
 ## Audit Checklist Extensions
 

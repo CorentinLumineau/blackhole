@@ -272,6 +272,9 @@ is recommended as a follow-up issue.
       "line": 42,
       "summary": "Empty catch block in query wrapper"
     }
+  ],
+  "recheck": [
+    { "finding_id": "F-00042", "verdict": "fixed", "evidence": "L.128 now validates input before query" }
   ]
 }
 ```
@@ -281,6 +284,21 @@ is recommended as a follow-up issue.
 | `status` | `complete` \| `error` | yes |
 | `findings` | finding[] | yes (empty array = no issues found) |
 | `error` | string | when `status: error` |
+| `recheck` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in recheck mode (`review-core.md` § Recheck mode); absent/omitted for a normal full-audit review |
+
+### `recheck` (optional — recheck-mode fast path, issue #214)
+
+Carries one entry per prior finding named in the recheck-mode prompt, verifying whether the
+fix commits resolved it:
+
+- `finding_id` — the existing ledger `F-NNNNN` id (`findings-ledger.md`) of the prior finding
+  being rechecked, not a new id scheme.
+- `verdict` — `fixed` \| `not_fixed`. `not_fixed` is treated identically to a `BLOCK` finding
+  for that same `finding_id` — the reviewer must also emit a corresponding `findings` entry
+  when `verdict: not_fixed`, so the aggregate script and LGTM gate need no special-casing for
+  `recheck`.
+- `evidence` — a short concrete pointer (e.g. `file:line` + what changed) showing why the
+  finding is judged fixed or not — not a restatement of the original finding summary.
 
 ### Finding shape (shared)
 
