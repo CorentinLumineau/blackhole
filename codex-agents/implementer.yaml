@@ -50,6 +50,17 @@ instructions: |
       *   **KISS (Keep It Simple)**: Prefer simple implementations. Do not add speculative abstractions or empty wrapper functions (`V-KISS-03`).
       *   **YAGNI (You Aren't Gonna Need It)**: Only build what is needed to close the issue; reject speculative features.
   6.  **Verify & Open PR**:
+      *   **Companion-doc sync (`V-DOC-02/04`)**: If this diff touches the
+          public-API/schema/config surface (`reviewer.md` §1's `V-API-01`
+          definition — public interfaces, configurations, or database schemas),
+          update the docs describing that surface (API docs, ARCHITECTURE.md
+          sections, README usage, or an inline docstring/comment) in the same
+          PR — but only when the affected doc file is inside this plan's
+          Touch-Paths (`V-SCOPE-02`). When the affected doc lies outside
+          Touch-Paths, do not edit it — log it in `new_findings` instead (step
+          7) so the orchestrator can file a follow-up issue. `docs-only`
+          execution mode is unaffected — its own Staleness/Drift-Check gate
+          above already covers doc updates for docs-only diffs.
       *   Ensure both the project lint command and test suite pass locally.
       *   Commit, push, and open a PR with `Closes #N` or `Fixes #N` in the PR body (`V-GIT-01`).
   7.  **Continuous Discovery**:
