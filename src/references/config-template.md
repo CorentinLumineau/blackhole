@@ -19,6 +19,7 @@ Committed template: `.blackhole/config.json`
   "auto_sync": true,
   "adaptive_routing": true,
   "router_confidence_thresholds": { "split": 70, "design": 70, "plan_mode": 70, "security": 70 },
+  "docs_governance": { "enabled": true, "companion_files": true, "docs_impact_routing": true, "write_governance": true, "severity_overrides": {} },
   "worker_model_policy": "cost-optimized",
   "entry_mode": "multitask",
   "merge_mode": "immediate"
@@ -40,9 +41,26 @@ Committed template: `.blackhole/config.json`
 | `auto_sync` | no | When `true` (default), forge reconcile runs automatically |
 | `adaptive_routing` | no | Emergency kill switch for ADR-004 router-agent routing (default `true`); when `false`, routing is inert regardless of `route` presence in `queue.json` |
 | `router_confidence_thresholds` | no | Per-flag confidence thresholds keyed by `split`, `design`, `plan_mode`, `security` (matches `route.confidence` keys); each defaults to `70` when absent |
+| `docs_governance` | no | Nested object of flags/thresholds for companion-file, docs-impact-routing, and write-governance features (`enabled`, `companion_files`, `docs_impact_routing`, `write_governance`, `severity_overrides`); absent block = current behavior preserved (no dependent feature exists yet) |
+| `docs_governance.enabled` | no | Emergency kill switch for the whole `docs_governance` block (default `true`); when `false`, every dependent feature is inert regardless of sub-field values |
+| `docs_governance.companion_files` | no | Gates the future V-ADA companion-file reviewer audit (default `true`); when `false`, that audit is inert regardless of `enabled` — unimplemented as of this issue (see #172+/B5) |
+| `docs_governance.docs_impact_routing` | no | Gates the future router `docs_impact` flag (default `true`); when `false`, that flag is inert regardless of `enabled` — unimplemented as of this issue (see B6) |
+| `docs_governance.write_governance` | no | Gates future search-before-write/canonical-slug rules for consumer-repo writes (default `true`); when `false`, those rules are inert regardless of `enabled` — unimplemented as of this issue (see B7) |
+| `docs_governance.severity_overrides` | no | Map of V-code → `BLOCK`\|`WARN`, keyed by docs-governance V-code; empty/absent = defaults apply. May only escalate a WARN-default docs-governance code to BLOCK — must never de-escalate the pre-existing `V-DOC-02`/`V-DOC-04` BLOCK severity |
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 | `merge_mode` | no | `immediate` (default) or `gated-batch` (ADR-005); preserves current behavior exactly when absent/default — each PR merges as soon as it reaches LGTM. `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one PR at a time in `merge_after` dependency order; see `merge-gate.md` |
+
+**`docs_governance` contract note**: when the block is absent, or
+`docs_governance.enabled` is `false`, every dependent feature (reviewer V-ADA
+companion-file audit, router `docs_impact` flag, write-governance remedies —
+none of which exist yet) MUST be a no-op and current behavior is preserved
+exactly. Any future issue that wires a dependent feature must check this flag
+(and its relevant sub-flag) before acting — the same obligation
+`adaptive_routing` already imposes on router-agent routing.
+`docs_governance.severity_overrides` may only **escalate** a WARN-default
+docs-governance V-code to `BLOCK` per repo; it must never de-escalate the
+pre-existing `V-DOC-02`/`V-DOC-04` `BLOCK` severity.
 
 **Scope filter composition** (both fields optional — unset means no filter on that axis):
 

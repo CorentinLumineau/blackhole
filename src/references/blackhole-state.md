@@ -70,3 +70,10 @@ Fix drift before spawning workers.
 
 - Run `git worktree prune` and `git fetch --prune` before creating a new worktree or branch.
 - Verify worktree directories are clean and removed from disk after worker tasks finish. Do not leave orphaned worktree directories in the scratchpad.
+
+Note: `config.json`'s `docs_governance` block (see `config-template.md`) is a
+kill switch for companion-file, docs-impact-routing, and write-governance
+state mutations. Any future feature that reads or mutates state under this
+block's scope must check `docs_governance.enabled` (and the relevant
+sub-flag) before acting — absent block or `enabled: false` means current
+behavior is preserved exactly.

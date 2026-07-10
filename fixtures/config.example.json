@@ -12,6 +12,13 @@
   "scope_milestone": "v0.4.0",
   "scope_labels": ["blackhole/backlog"],
   "auto_sync": true,
+  "docs_governance": {
+    "enabled": true,
+    "companion_files": true,
+    "docs_impact_routing": true,
+    "write_governance": true,
+    "severity_overrides": { "V-ADA-01": "BLOCK" }
+  },
   "worker_model_policy": "cost-optimized",
   "entry_mode": "multitask",
   "merge_mode": "gated-batch"
