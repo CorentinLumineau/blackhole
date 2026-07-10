@@ -102,6 +102,7 @@ Read-only conformance check (`campaign-audit`):
 | F-VERIFY-01 | `bun run verify` passes |
 | F-SCHEMA-01 | Fixture JSON validates |
 | F-DRIFT-01 | ground-truth counts match actual files |
+| F-DOCS-01 | Companion files present (`ARCHITECTURE.md`, `AGENTS.md`) / `documentation/decisions/INDEX.md` current on consumer repo (read-only, report only) |
 
 Do not modify code during audit — report only.
 
