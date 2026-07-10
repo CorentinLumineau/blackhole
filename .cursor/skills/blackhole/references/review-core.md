@@ -47,6 +47,34 @@ $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
 
 Aligns with `phase-loop.md` continuous discovery protocol.
 
+## Confidence-based filtering & consolidation
+
+Findings carry an optional `confidence` (0-100; distinct from `route.confidence`) that gates
+their surfacing before dedup:
+
+| Band | Behavior |
+|------|----------|
+| `> 80` (or `confidence` absent) | Reported normally, severity unchanged |
+| `50–80` | Reported with an explicit caveat in `summary`; **never** `BLOCK` — downgraded to `WARN` |
+| `< 50` | Suppressed entirely — dropped before dedup, never `BLOCK`/high-severity |
+
+`reviewer.md` §11 documents the *behavioral policy* the LLM reviewer self-applies (score +
+suppress + caveat); `scripts/review-aggregate.ts`'s exported `applyConfidenceGate` is the
+deterministic backstop that mechanically re-enforces the same band boundaries even if the
+reviewer mis-scores — it runs after the prior/new finding merge and before `dedupeFindings`, so
+previously-ledgered rows are re-validated identically to fresh ones (idempotent no-op if a row
+already satisfies the gate). Both must agree on the exact band boundaries (`<50` / `50–80` /
+`>80`) — do not let them drift apart.
+
+Same-root-cause consolidation: when one underlying defect repeats at N locations, the reviewer
+emits a single finding with a `locations: [{ file, line }, ...]` array instead of N separate
+finding objects. Dedup (below) continues to key on the finding's primary `file`/`line` only —
+`locations[]` is additive context, not a new dedup axis.
+
+Coordination note (AC4, non-blocking): once ADR-006 #199 lands a `confidence` field in hunter
+wave hunt findings, this same band logic applies to that pipeline too. No behavior change is
+required by this issue — cross-reference only.
+
 ## Dedup key
 
 Before ledger append, deduplicate on `(vcode, file, line, issue_ref)` per `findings-ledger.md`.
