@@ -59,6 +59,10 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
 *   **Documentation Impact (when `docs_governance.enabled`)**: Companion/consumer docs the
     Touch-Paths affect, or `None — <justification>`. Omit this bullet's output section entirely
     when `docs_governance.enabled` is absent or `false` (see Plan Output File Template below).
+    When this section names a new file under `documentation/` (rather than an update to an
+    existing one), note whether search-before-write was considered — confirm no existing doc
+    already covers the concern — per `doc-governance.md`, gated by
+    `docs_governance.write_governance`.
 *   **Critical Files**: Highly sensitive touchpoint files (e.g. database client, auth config) requiring extra care.
 *   **Codebase Conventions**: Existing patterns to follow (e.g. Drizzle query style, tailwind version).
 *   **Database/API Schema Changes**: Detailed schema baselines (`V-API-01`).
@@ -188,7 +192,9 @@ task_type: bugfix | null
 List companion/consumer docs the Touch-Paths affect — e.g. `ARCHITECTURE.md`, `DESIGN.md`,
 `documentation/decisions/INDEX.md`, or a specific consumer doc/README — or write
 `None — <justification>`. Populate only when `docs_governance.enabled` is `true`; omit the
-heading entirely when the config block is absent or `enabled` is `false`.
+heading entirely when the config block is absent or `enabled` is `false`. When naming a new
+`documentation/` file, apply `doc-governance.md`'s search-before-write and canonical-naming
+obligations, gated by `docs_governance.write_governance`.
 
 ## [Standard Only] Critical Files
 ...

@@ -218,7 +218,7 @@ const compileFolder = (srcSub: string, destParent: string, agentDir: string, rul
   }
 };
 
-export const RULES_LIST = ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md'];
+export const RULES_LIST = ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md', 'doc-governance.md'];
 
 /** The 7 agent files — bare names (no prefix) since the Blackhole rename (#64). */
 export const AGENT_NAMES = ['coordinator', 'orchestrator', 'planner', 'implementer', 'reviewer', 'router', 'investigator'] as const;

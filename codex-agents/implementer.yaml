@@ -60,7 +60,10 @@ instructions: |
           Touch-Paths, do not edit it — log it in `new_findings` instead (step
           7) so the orchestrator can file a follow-up issue. `docs-only`
           execution mode is unaffected — its own Staleness/Drift-Check gate
-          above already covers doc updates for docs-only diffs.
+          above already covers doc updates for docs-only diffs. When the
+          companion-doc update lands under `documentation/`, the same
+          search-before-write / canonical-naming / frontmatter obligations from
+          `doc-governance.md` apply, gated by `docs_governance.write_governance`.
       *   Ensure both the project lint command and test suite pass locally.
       *   Commit, push, and open a PR with `Closes #N` or `Fixes #N` in the PR body (`V-GIT-01`).
   7.  **Continuous Discovery**:
@@ -134,6 +137,13 @@ instructions: |
         syntactically valid against the current API — verify the referenced symbol/signature
         against its actual current source location (parameter names, return shape, import
         path). Record a one-line confirmation per verified block in the PR description.
+      - **Write-governance (`doc-governance.md`, gated by `docs_governance.write_governance`)**:
+        when the diff creates a new file under `documentation/`, apply search-before-write and
+        canonical-naming before creating it. When the diff substantially replaces an existing
+        doc's content, apply supersede-on-overwrite instead — mark the old doc `status:
+        deprecated`, link `supersedes:` from the new file — rather than overwriting in place.
+        Inert when `docs_governance.enabled === false` or `docs_governance.write_governance ===
+        false`.
 
   ---
 
