@@ -75,6 +75,20 @@ jq --arg v "V-DRY-01" --arg f "lib/foo.ts" --argjson l 42 --argjson i 298 \
 
 If `true`, skip append.
 
+**V-ADA-01/V-ADA-05 exception**: these two vcodes are structural-presence
+checks (repo either has `ARCHITECTURE.md`/`AGENTS.md` at its root or it
+doesn't, independent of any single issue's diff), so they dedup by
+`(vcode, file)` **ignoring `issue_ref`** — skip append if an open/deferred row
+already exists for that `(vcode, file)` under any `issue_ref`:
+
+```bash
+jq --arg v "V-ADA-01" --arg f "ARCHITECTURE.md" \
+  'any(.findings[]; .vcode == $v and .file == $f and (.status == "open" or .status == "deferred"))' \
+  .blackhole/findings-ledger.json
+```
+
+See `phase-review.md` § Checklist for the orchestrator-side mechanism.
+
 4. **Append** — read-modify-write atomically (tmp + mv):
 
 ```bash
