@@ -1,6 +1,6 @@
 ---
 tracking_initiative: blackhole-kaizen-hunt
-status: proposed
+status: Accepted
 scope: orchestration
 supersedes: partial (amends ADR-001, does not replace it)
 ---
