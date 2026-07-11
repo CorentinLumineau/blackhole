@@ -5,27 +5,19 @@ import * as path from 'path';
 import { walkMdFilesAbs, findMissingGateMarkers, isAgentCountError, findHarnessTokenLeaks } from './verify.ts';
 import { codexTreeErrors } from './tree-shape.ts';
 import { AGENT_YAML_FILES } from './build.ts';
+import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
 
-const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-verify-vcode-test-'));
+const makeTempDir = (): string => sharedMakeTempDir('blackhole-verify-vcode-test');
 
+// The recursive walk itself (nested/symlink/hidden/empty cases, incl. the #216 EISDIR
+// regression) is exercised against the shared primitive in scripts/lib/fs.test.ts. This suite
+// keeps only a thin-wrapper contract check: walkMdFilesAbs still filters to .md files.
 describe('walkMdFilesAbs', () => {
-  test('survives a subdirectory containing an .md file without throwing EISDIR (#216)', () => {
+  test('filters to .md files only and ignores non-.md siblings', () => {
     const dir = makeTempDir();
     try {
       fs.writeFileSync(path.join(dir, 'top-level.md'), '# top\nV-TOP-01\n');
-      fs.mkdirSync(path.join(dir, 'nested'));
-      fs.writeFileSync(path.join(dir, 'nested', 'child.md'), '# nested\nV-NESTED-01\n');
-
-      expect(() => walkMdFilesAbs(dir)).not.toThrow();
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test('returns both the top-level and nested .md files, readable without error', () => {
-    const dir = makeTempDir();
-    try {
-      fs.writeFileSync(path.join(dir, 'top-level.md'), '# top\nV-TOP-01\n');
+      fs.writeFileSync(path.join(dir, 'notes.txt'), 'not markdown');
       fs.mkdirSync(path.join(dir, 'nested'));
       fs.writeFileSync(path.join(dir, 'nested', 'child.md'), '# nested\nV-NESTED-01\n');
 
@@ -42,15 +34,8 @@ describe('walkMdFilesAbs', () => {
     }
   });
 
-  test('ignores non-.md files and returns [] for a directory that does not exist', () => {
-    const dir = makeTempDir();
-    try {
-      fs.writeFileSync(path.join(dir, 'notes.txt'), 'not markdown');
-      expect(walkMdFilesAbs(dir)).toEqual([]);
-      expect(walkMdFilesAbs(path.join(dir, 'does-not-exist'))).toEqual([]);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
+  test('returns [] for a directory that does not exist', () => {
+    expect(walkMdFilesAbs(path.join(makeTempDir(), 'does-not-exist'))).toEqual([]);
   });
 });
 

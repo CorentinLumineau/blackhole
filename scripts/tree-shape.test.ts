@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import {
   validatePluginTreeShape,
@@ -11,8 +10,9 @@ import {
   hasInstructionsBlock,
 } from './tree-shape.ts';
 import { compileGeminiTree, writeGeminiManifest, buildGeminiPluginManifest, RULES_LIST, AGENT_NAMES } from './build.ts';
+import { makeTempDir as sharedMakeTempDir, cleanupDirEntries } from './lib/fs.ts';
 
-const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'tree-shape-test-'));
+const makeTempDir = (): string => sharedMakeTempDir('tree-shape-test');
 
 const populateFixtureTree = (destRoot: string) => {
   compileGeminiTree(
@@ -80,7 +80,7 @@ describe('validatePluginTreeShape', () => {
     try {
       populateFixtureTree(destRoot);
       const refsDir = path.join(destRoot, 'skills', 'blackhole', 'references');
-      for (const f of fs.readdirSync(refsDir)) fs.rmSync(path.join(refsDir, f), { recursive: true, force: true });
+      cleanupDirEntries(refsDir);
       const errors = validatePluginTreeShape(
         destRoot,
         path.join(destRoot, 'plugin.json'),
@@ -103,9 +103,7 @@ describe('validatePluginTreeShape', () => {
       const subDir = path.join(refsDir, 'hunt');
       fs.mkdirSync(subDir, { recursive: true });
       fs.writeFileSync(path.join(subDir, 'nested.md'), '# nested\n', 'utf-8');
-      expect(() => {
-        for (const f of fs.readdirSync(refsDir)) fs.rmSync(path.join(refsDir, f), { recursive: true, force: true });
-      }).not.toThrow();
+      expect(() => cleanupDirEntries(refsDir)).not.toThrow();
       expect(fs.readdirSync(refsDir)).toEqual([]);
       const errors = validatePluginTreeShape(
         destRoot,
