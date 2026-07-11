@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { buildCodexPluginManifest, buildGeminiPluginManifest, compileGeminiTree, writeGeminiManifest } from './build.ts';
-import { detectBuildOutputDrift, evaluateBuildCheck, evaluateDistributionBundle } from './verify.ts';
+import { detectBuildOutputDrift, evaluateBuildCheck, evaluateDistributionBundle } from './checks/build.check.ts';
 import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
 
 const makeTempDir = (): string => sharedMakeTempDir('blackhole-verify-test');
