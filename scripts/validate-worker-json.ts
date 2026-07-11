@@ -65,6 +65,14 @@ function isNumberArray(value: unknown): value is number[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'number' && !Number.isNaN(item));
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return isString(value) && value.trim().length > 0;
+}
+
+function isEvidence(value: unknown): value is { command: string; result: string } {
+  return isObject(value) && isNonEmptyString(value.command) && isNonEmptyString(value.result);
+}
+
 function pushEnumError(errors: string[], field: string, value: unknown, allowed: readonly string[]) {
   if (!allowed.includes(String(value))) {
     errors.push(`${field}: invalid enum value "${String(value)}" (expected ${allowed.join('|')})`);
@@ -185,6 +193,13 @@ function validateImplementer(data: unknown): string[] {
     requireField(errors, data, 'branch', isString, 'string');
     requireField(errors, data, 'tests_passed', isBoolean, 'boolean');
     requireField(errors, data, 'touch_paths_honored', isBoolean, 'boolean');
+    requireField(
+      errors,
+      data,
+      'evidence',
+      isEvidence,
+      'object { command: string, result: string } with non-empty command and result',
+    );
     if ('execution_mode' in data) {
       if (!isString(data.execution_mode)) {
         errors.push('execution_mode: expected string');

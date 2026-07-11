@@ -5,6 +5,10 @@
   "tests_passed": true,
   "touch_paths_honored": true,
   "execution_mode": "refactor-strict",
+  "evidence": {
+    "command": "bun test scripts/campaign-status.test.ts",
+    "result": "42 pass, 0 fail"
+  },
   "new_findings": [],
   "filed_issues": []
 }

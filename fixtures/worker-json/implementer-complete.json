@@ -4,6 +4,10 @@
   "branch": "blackhole/issue-18",
   "tests_passed": true,
   "touch_paths_honored": true,
+  "evidence": {
+    "command": "bun test scripts/campaign-status.test.ts",
+    "result": "42 pass, 0 fail"
+  },
   "new_findings": [],
   "filed_issues": []
 }

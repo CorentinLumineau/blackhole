@@ -168,6 +168,46 @@ const checkDesignTrackTemplate = () => {
   }
 };
 
+// V-GATE-01: implementer.md's 5-step verification-evidence gate and reviewer.md's §12
+// Suggestion Proportionality Gate keep their required marker text — regression guard for #204/#211
+// and #207/#212. The reviewer marker below uses a contiguous phrase from the actual file text
+// rather than the "single current consumer" paraphrase, because that paraphrase wraps across a
+// line break in reviewer.md and is not a literal substring (see issue #219 plan discussion).
+export const IMPLEMENTER_GATE_REQUIRED_MARKERS = [
+  '5-step gate',
+  '**IDENTIFY**',
+  '**RUN**',
+  '**READ**',
+  '**VERIFY**',
+  '**CLAIM**',
+  'should work" / "should pass" / "probably" / "likely"',
+  'based on the code" / "based on my analysis"',
+];
+
+export const REVIEWER_PROPORTIONALITY_REQUIRED_MARKERS = [
+  'Suggestion Proportionality Gate',
+  'abstraction layer (interface, factory, strategy) for a single',
+];
+
+export const findMissingGateMarkers = (content: string, required: string[]): string[] =>
+  required.filter((marker) => !content.includes(marker));
+
+const checkGateContentAssertions = () => {
+  const implementerContent = read('src/agents/implementer.md');
+  const reviewerContent = read('src/agents/reviewer.md');
+
+  const implementerMissing = findMissingGateMarkers(implementerContent, IMPLEMENTER_GATE_REQUIRED_MARKERS);
+  const reviewerMissing = findMissingGateMarkers(reviewerContent, REVIEWER_PROPORTIONALITY_REQUIRED_MARKERS);
+
+  const errors = [
+    ...implementerMissing.map((m) => `implementer.md missing "${m}"`),
+    ...reviewerMissing.map((m) => `reviewer.md missing "${m}"`),
+  ];
+
+  if (errors.length) fail('V-GATE-01', errors.join('; '));
+  else pass('V-GATE-01');
+};
+
 // V-ADADOC-01: blackhole-vcodes.md documents the V-ADA family; reviewer.md documents Companion-File Audit
 export const COMPANION_FILE_REQUIRED_VCODES = ['V-ADA-01', 'V-ADA-02', 'V-ADA-03', 'V-ADA-05/06/07'];
 
@@ -826,6 +866,7 @@ const main = () => {
   checkPhaseNames();
   checkVcodeReferences();
   checkCompanionFileDocs();
+  checkGateContentAssertions();
   checkFixtures();
   checkPlanArtifacts();
   checkSkillModes();

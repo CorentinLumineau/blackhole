@@ -1,13 +1,12 @@
 {
   "status": "complete",
   "pr_number": 42,
-  "branch": "blackhole/issue-298",
+  "branch": "blackhole/issue-219",
   "tests_passed": true,
   "touch_paths_honored": true,
-  "task_type": "bugfix",
   "evidence": {
-    "command": "bun test scripts/campaign-status.test.ts",
-    "result": "42 pass, 0 fail"
+    "command": "",
+    "result": ""
   },
   "new_findings": [],
   "filed_issues": []

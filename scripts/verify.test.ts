@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { walkMdFilesAbs } from './verify.ts';
+import { walkMdFilesAbs, findMissingGateMarkers } from './verify.ts';
 
 const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-verify-vcode-test-'));
 
@@ -49,5 +49,19 @@ describe('walkMdFilesAbs', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('findMissingGateMarkers', () => {
+  test('returns the subset of required markers absent from content', () => {
+    const content = '5-step gate\n**IDENTIFY** — what needs verification?\n**RUN** — execute now.';
+    const required = ['5-step gate', '**IDENTIFY**', '**RUN**', '**READ**', '**VERIFY**', '**CLAIM**'];
+    expect(findMissingGateMarkers(content, required)).toEqual(['**READ**', '**VERIFY**', '**CLAIM**']);
+  });
+
+  test('returns [] when all required markers are present', () => {
+    const content = '5-step gate\n**IDENTIFY**\n**RUN**\n**READ**\n**VERIFY**\n**CLAIM**';
+    const required = ['5-step gate', '**IDENTIFY**', '**RUN**', '**READ**', '**VERIFY**', '**CLAIM**'];
+    expect(findMissingGateMarkers(content, required)).toEqual([]);
   });
 });
