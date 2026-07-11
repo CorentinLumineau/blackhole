@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { extractCheckpointTemplateKeys } from './verify.ts';
+import { extractCheckpointTemplateKeys } from './checks/checkpoint.check.ts';
 
 const FIXTURE = `
 ## Checkpoint template
