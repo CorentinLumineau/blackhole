@@ -682,6 +682,42 @@ const checkSkillModes = () => {
   }
 };
 
+// V-HARNESS-01: claude-code-native.md core stays harness-neutral (no tool tokens outside the
+// per-harness mapping appendix). The appendix (marked by APPENDIX_MARKER) and everything after it
+// are where harness-specific primitive names belong; the core sections above the marker must stay
+// generic so non-Claude harnesses reading this doc aren't confronted with Claude-only vocabulary.
+export const HARNESS_TOKENS = [
+  'Workflow tool',
+  'AskUserQuestion',
+  'pipeline(',
+  'parallel(',
+  'resumeFromRunId',
+  'subagentStop',
+];
+
+export const APPENDIX_MARKER = '## Per-harness mapping appendix';
+
+export const findHarnessTokenLeaks = (content: string, tokens: string[] = HARNESS_TOKENS): string[] => {
+  const markerIndex = content.indexOf(APPENDIX_MARKER);
+  const core = markerIndex === -1 ? content : content.slice(0, markerIndex);
+
+  const leaks: string[] = [];
+  for (const line of core.split('\n')) {
+    for (const token of tokens) {
+      if (line.includes(token)) leaks.push(`${token}@${line.trim()}`);
+    }
+  }
+  return leaks;
+};
+
+const checkClaudeCodeNativeNeutrality = () => {
+  const content = read('src/references/claude-code-native.md');
+  const leaks = findHarnessTokenLeaks(content);
+
+  if (leaks.length) fail('V-HARNESS-01', `harness token leak(s) before appendix: ${leaks.join('; ')}`);
+  else pass('V-HARNESS-01');
+};
+
 // V-GROUND-01: Ground-truth counts match filesystem
 const checkGroundTruth = () => {
   const gt = parseGroundTruth();
@@ -878,6 +914,7 @@ const main = () => {
   checkFixtures();
   checkPlanArtifacts();
   checkSkillModes();
+  checkClaudeCodeNativeNeutrality();
   checkGroundTruth();
   checkEpicRunbook();
   checkCheckpointAlignment();
