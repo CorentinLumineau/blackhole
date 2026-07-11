@@ -17,7 +17,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - [ ] BLOCK → increment review_iteration; back to phase implement (see review-core iteration budget)
 - [ ] review_iteration >= 4 → escalate to coordinator (AskQuestion)
 - [ ] WARN → fix in PR OR defer (file issue + ledger deferred_to_issue)
-- [ ] Docs-only PR → orchestrator direct review, still run review-aggregate.ts
+- [ ] Docs-only PR (determined by `reviewer.md` §8's plan-first detection — file-extension match is a no-plan fallback only, not restated here) → orchestrator direct review, still run review-aggregate.ts
 - [ ] LGTM (aggregate lgtm: true) → proceed to phase loop (merge)
 - [ ] Write campaign-checkpoint.md per checkpoint-protocol.md
 ```
