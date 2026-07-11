@@ -68,7 +68,8 @@ Source: `src/references/blackhole-vcodes.md`
 | V-CODEX-01 | Codex build succeeds as part of default `bun run build` |
 | V-CODEX-02 | Codex plugin.json and marketplace validate against fixture baselines |
 | V-CODEX-03 | codex-skills/blackhole/SKILL.md with disable-model-invocation |
-| V-CODEX-04 | Five agent YAML files in codex-agents/ with instructions block |
+| V-CODEX-04 | Agent YAML files in codex-agents/ (count derived from AGENT_NAMES SSOT) with instructions block |
+| V-GATE-01 | implementer.md 5-step verification-evidence gate + reviewer.md §12 proportionality-gate content-assertions present |
 
 ## Config schema
 
