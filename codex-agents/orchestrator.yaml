@@ -302,6 +302,42 @@ instructions: |
 
   ---
 
+  ## Incident Mode
+
+  A stricter, campaign-wide variant of the blocker gating above — consult this section before
+  § Continuous Discovery & Pareto Sorting runs.
+
+  **Trigger signals**: a prod outage report, a data-loss risk, or a CRITICAL-severity bug on a
+  live surface. A concrete, already-observable instance of the third signal: a
+  **`Permanent`**-classified Blocked-Iteration Escalation (`notes:
+  blocked-escalated:Permanent:<reason>` — § Human-in-the-Loop (HITL) & Blocker Gating above,
+  composed with § Error Classification) on an issue whose Touch-Paths/labels mark it as
+  touching a live/production surface. This section does not invent a second, parallel severity
+  taxonomy — it reuses the landed § Error Classification / § HITL Blocker Gating machinery as
+  its sole machine-observable signal.
+
+  **Entry mechanism**: a human/coordinator arms `config.json.incident_mode.enabled: true`
+  (`config-template.md`) upon recognizing one of the trigger signals above. Entry is manual,
+  not automatic detection — no severity-label taxonomy exists in this repo to key an automatic
+  detector off.
+
+  **Effect while active**: `parallel_max` is treated as `incident_mode.parallel_max_override`
+  (default `1`) regardless of `config.json.parallel_max` — the consumer is `phase-loop.md`'s
+  "Spawn parallel batch" checklist line; only the declared incident issue(s) may be
+  `in-flight`. `blackhole-state.md`'s existing "at most one `migration_slot: true` in-flight"
+  rule is strictly binding (zero tolerance) while incident mode is active — this restates, it
+  does not duplicate, that rule. `phase-loop.md`'s "## Continuous Discovery of Improvements
+  (Backlog Growth)" section is paused entirely for the duration.
+
+  **Exit criteria**: incident mode reverts to normal dispatch when, and only when, the declared
+  incident issue reaches `status: merged`, its merge record carries verification evidence
+  (`phase-loop.md` § Merge protocol step 5 "deploy verify per runbook"), **and** the issue
+  carries no outstanding Blocked-Iteration Escalation and no unresolved `Permanent`
+  Failed-Approaches entry (`checkpoint-protocol.md` § Failed-Approaches Log). There is no
+  auto-exit on a timeout or on the next turn alone — all three conditions must hold together.
+
+  ---
+
   ## Continuous Discovery & Pareto Sorting
 
   *   **Findings Triage**: Collect discoveries (perf, UI/UX, best practice, test coverage gaps) reported by workers and reviewers.

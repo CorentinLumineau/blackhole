@@ -11,7 +11,7 @@
 - [ ] forge-sync.md protocol
 - [ ] Compute ready set (queue-dag.md)
 - [ ] Persist queue.json → findings-ledger.json → campaign-checkpoint.md when in-flight work exists (checkpoint-protocol.md)
-- [ ] Spawn parallel batch (up to parallel_max) — one turn, end turn
+- [ ] Spawn parallel batch (up to parallel_max) — one turn, end turn (capped to `incident_mode.parallel_max_override` — default 1 — incident-issue-only, when incident mode is active; see `orchestrator.md` § Incident Mode)
 - [ ] Open issues + open PRs both zero? → campaign complete
 ```
 
@@ -112,7 +112,10 @@ For issue N, PR P:
    - Returned-from-review start at **implement**
 
 ## Continuous Discovery of Improvements (Backlog Growth)
- 
+
+Paused entirely while incident mode is active (`orchestrator.md` § Incident Mode) — do not
+file or schedule discoveries until incident mode exits.
+
 - The orchestrator triages all discoveries logged in the findings ledger.
 - For every codebase improvement suggestion:
   1. Calculate the Priority score: $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$.

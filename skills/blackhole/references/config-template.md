@@ -21,6 +21,7 @@ Committed template: `.blackhole/config.json`
   "router_confidence_thresholds": { "split": 70, "design": 70, "plan_mode": 70, "security": 70, "docs": 70 },
   "docs_governance": { "enabled": true, "companion_files": true, "docs_impact_routing": true, "write_governance": true, "severity_overrides": {} },
   "kaizen": { "enabled": false, "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug"], "trigger": "on-empty", "loop_interval": 5, "min_priority": 30, "max_issues_per_wave": 10, "max_waves": 6 },
+  "incident_mode": { "enabled": false, "parallel_max_override": 1, "pause_discovery": true },
   "worker_model_policy": "cost-optimized",
   "entry_mode": "multitask",
   "merge_mode": "immediate"
@@ -56,6 +57,10 @@ Committed template: `.blackhole/config.json`
 | `kaizen.min_priority` | no | Minimum `Priority = Gain * (11 - Effort)` a finding must clear to be filed as an issue (default `30`, matching the `V-PARETO-02` BLOCK floor); may only be **raised** above `30`, never lowered below the `V-PARETO-02` threshold |
 | `kaizen.max_issues_per_wave` | no | Cap on issues filed per hunt wave (default `10`) — exceeding it is `V-HUNT-02` (WARN) |
 | `kaizen.max_waves` | no | Cap on total hunt waves per kind before it is marked exhausted (default `6`) |
+| `incident_mode` | no | Nested object gating the campaign-wide incident posture (`orchestrator.md` § Incident Mode): `enabled`, `parallel_max_override`, `pause_discovery`; absent block = current behavior preserved (incident mode is a rare, deliberately-armed emergency posture, opt-in like `kaizen`, see contract note below) |
+| `incident_mode.enabled` | no | Kill switch for the whole `incident_mode` block (default `false` — armed manually by a human/coordinator, unlike `docs_governance` which defaults `true`); when `false`, incident-mode dispatch behavior never fires regardless of sub-field values |
+| `incident_mode.parallel_max_override` | no | `parallel_max` value enforced while incident mode is active (default `1`), regardless of `config.json.parallel_max` |
+| `incident_mode.pause_discovery` | no | When `true` (default), `phase-loop.md` § Continuous Discovery of Improvements is paused entirely while incident mode is active |
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 | `merge_mode` | no | `"immediate"` (default) \| `"gated-batch"` (ADR-005) \| `"leave-open"` (ADR-006); preserves current behavior exactly when absent/default — each PR merges as soon as it reaches LGTM. Adding `leave-open` is a pure additive enum value — `immediate`/`gated-batch` semantics are unchanged. `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one PR at a time in `merge_after` dependency order; see `merge-gate.md`. `leave-open`: blackhole never merges — every PR is driven to LGTM and left open for human review/merge; an LGTM'd open PR counts as *delivered* for campaign-complete purposes; `merged_by: blackhole` is never set for these issues; `fixed-in-pr` ledger rows stay `fixed-in-pr` until the human merge is later observed by a sync; see `phase-loop.md` § Merge protocol and `merge-gate.md` |
@@ -81,6 +86,14 @@ agent spawns, `hunt_state` is never written. `kaizen.min_priority` may only be
 **raised** above its default of `30`, never lowered below the `V-PARETO-02`
 `BLOCK` threshold. This is the same obligation `docs_governance.enabled` and
 `adaptive_routing` already impose on their respective features.
+
+**`incident_mode` contract note**: when the block is absent, or
+`incident_mode.enabled` is `false`, the incident-mode posture (`orchestrator.md` §
+Incident Mode) MUST be a no-op and current behavior is preserved exactly — no
+`parallel_max` override, no strict `migration_slot` enforcement beyond the
+existing baseline rule, no pausing of `phase-loop.md` § Continuous Discovery of
+Improvements. This is the same obligation `docs_governance.enabled` and
+`kaizen.enabled` already impose on their respective features.
 
 **Scope filter composition** (both fields optional — unset means no filter on that axis):
 
