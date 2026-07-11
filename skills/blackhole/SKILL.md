@@ -32,6 +32,7 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 | `plan #N` | `plan #N` | Orchestrator — phase 2 only |
 | `implement #N` | `implement #N` | Orchestrator — phase 3 only |
 | `review #N` | `review #N` | Orchestrator — phase 4 only |
+| `hunt [kind]` | `hunt`, `hunt <kind>` | Orchestrator — manual kaizen wave (`kaizen.trigger: manual`, or any time regardless of trigger) |
 | `campaign-audit` | `audit`, `campaign audit` | Read-only protocol conformance check |
 
 ## Phase 0: Bootstrap (ALL modes)

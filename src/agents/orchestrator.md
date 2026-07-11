@@ -45,7 +45,7 @@ full matrix: `{{AGENT_DIR}}/skills/blackhole/references/model-routing.md`).
 | Spawn | Typical tier |
 |-------|----------------|
 | `router`, `investigator` (investigate), `planner` skip | `economy` |
-| `planner` quick/standard, `reviewer`, `orchestrator`, `implementer` (default) | `standard` |
+| `planner` quick/standard, `reviewer`, `orchestrator`, `implementer` (default), `hunter` | `standard` |
 | `planner` design, `implementer` + security/`size:xl`, `reviewer` at high `review_iteration` | `premium` |
 
 Do **not** read `model:` from agent markdown frontmatter (`V-AGENT-01`). On
@@ -310,3 +310,44 @@ implementer until worktree scope matches a single issue.
     *   If $\text{Priority} \ge 30$, execute `gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)` to push it to the GitHub forge, and log it as `deferred`.
     *   If $\text{Priority} < 30$, set status in ledger to `archived` and skip issue creation to avoid backlog noise.
 *   **Ready Queue Sorting**: Automatically sort the ready set in `queue.json` in descending order of their Priority score, ensuring high-ROI issues are scheduled for implementation first.
+
+---
+
+## Kaizen hunt dispatch
+
+ADR-006's proactive counterpart to § Continuous Discovery above (which triages *reactive*
+discoveries reported by workers/reviewers). Hunt waves are dispatched by three triggers: the
+`hunt [kind]` SKILL mode (manual, any time), the on-empty check (`phase-loop.md` §
+Campaign complete), and the every-n-loops interleave (`phase-loop.md` § Next batch step 0).
+All three call into the same protocol — the entire spawn/dedup/gate/file/cap/watermark
+mechanics and all four stop conditions are specified **once**, in
+`{{AGENT_DIR}}/skills/blackhole/references/phase-loop.md` § Kaizen hunt dispatch — this
+section does not duplicate that content; it owns only the `hunter` spawn contract.
+
+**5-Field Delegation Contract for the `hunter` spawn:**
+
+1.  **Objective**: The `kind` to scan (one of `kaizen.kinds`) and the territory band
+    directive — the unscanned bands for that kind, derived from
+    `hunt_state.kinds.<kind>.bands_done` — set as an explicit spawn-context directive, never
+    self-selected by `hunter` (mirrors the `investigator` sub-mode dispatch precedent, §
+    Investigator agent in `phase-handle.md`).
+2.  **Output Format**: `hunter`'s JSON contract (`worker-schemas.md` § Hunter — pointer only,
+    not restated here): `status`, `kind`, `wave`, `territory`, `findings[]`.
+3.  **Scope Boundaries**: Read-only — no `queue.json`/ledger mutation, no issue filing.
+    `hunter`'s own agent definition (`hunter.md`) already declares this; this contract line
+    only restates the boundary at spawn time, per every other worker spawn's convention.
+4.  **Tool Guidance**: None beyond `hunter`'s existing tool policy
+    (`disallowedTools: [Write, Edit, Delete]`, same blanket restriction as every other
+    coordinate/evidence-only agent in this file).
+5.  **Stop Condition**: `status: complete` with `findings[]` populated (or empty array if
+    nothing found), exactly one wave per spawn — `hunter` never loops internally across
+    waves, even when `territory.exhausted` comes out `false`.
+
+Model tier: `standard` (§ Worker spawn model above; `model-routing.md`'s `hunter` row is the
+SSOT for the rationale).
+
+Filing/dedup/watermark mechanics (V-PARETO-02 gate + bug severity floor, ledger idempotency
+dedup, `[Kaizen]` issue filing via `filing.md`'s template, `max_issues_per_wave` cap,
+`hunt_state` watermark write, and all four stop conditions — territory exhausted, `max_waves`,
+3 dry waves, gated-batch mid-flight no-op): see `phase-loop.md` § Kaizen hunt dispatch (single
+source, not duplicated here).
