@@ -45,7 +45,7 @@ Source: `src/references/blackhole-vcodes.md`
 
 ## Verify checks
 
-**verify_check_count:** 21
+**verify_check_count:** 22
 
 | Check ID | Description |
 |----------|-------------|
@@ -60,6 +60,7 @@ Source: `src/references/blackhole-vcodes.md`
 | V-SCHEMA-01 | Fixture JSON validates |
 | V-PLAN-01 | In-flight plan/implement/review entries require plans/issue-N.md |
 | V-SKILL-01 | SKILL.md modes align with phases |
+| V-HARNESS-01 | claude-code-native.md core stays harness-neutral (no tool tokens outside per-harness appendix) |
 | V-GROUND-01 | Ground-truth counts match filesystem |
 | V-EPIC-01 | epic-orchestration.md exists and phase-handle links to it |
 | V-CHECKPOINT-01 | checkpoint template frontmatter keys align with orchestrator and phase-loop write order |
