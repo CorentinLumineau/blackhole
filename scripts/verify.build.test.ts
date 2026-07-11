@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { buildCodexPluginManifest, buildGeminiPluginManifest, compileGeminiTree, writeGeminiManifest } from './build.ts';
 import { detectBuildOutputDrift, evaluateBuildCheck, evaluateDistributionBundle } from './verify.ts';
+import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
 
-const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-verify-test-'));
+const makeTempDir = (): string => sharedMakeTempDir('blackhole-verify-test');
 
 describe('detectBuildOutputDrift', () => {
   test('returns [] for porcelain input with no build-output-pattern matches', () => {

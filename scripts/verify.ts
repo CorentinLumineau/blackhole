@@ -3,6 +3,7 @@ import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { AGENTS_BUILD_ROOT, AGENTS_BUILD_AGENT_DIR, DISTRIBUTION_ROOT, AGENT_MD_FILES, AGENT_YAML_FILES, RULES_LIST } from './build.ts';
 import { validatePluginTreeShape, distributionTreeErrors, codexTreeErrors, hasInstructionsBlock } from './tree-shape.ts';
+import { walkFilesAbs } from './lib/fs.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const srcDir = path.join(root, 'src');
@@ -441,21 +442,11 @@ const checkPlanArtifacts = () => {
   else pass('V-PLAN-01');
 };
 
-// Recursive .md tree walk keyed off an absolute directory — the reusable core so both the
-// root-relative walkMdFiles() and any absolute-path caller (incl. tests with a temp dir
-// fixture) share one tree-walk implementation (V-INT-02). Guards each entry with
-// isDirectory() before recursing, so a subdirectory never reaches fs.readFileSync() and
-// triggers EISDIR (#216).
-export const walkMdFilesAbs = (absDir: string): string[] => {
-  if (!fs.existsSync(absDir)) return [];
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
-    const full = path.join(absDir, entry.name);
-    if (entry.isDirectory()) out.push(...walkMdFilesAbs(full));
-    else if (entry.name.endsWith('.md')) out.push(full);
-  }
-  return out;
-};
+// Thin .md-filtering wrapper over scripts/lib/fs.ts's shared, directory-safe walker
+// (ADR-007 R6 — one tree-walker, no local reimplementation, V-INT-02). Export name kept as
+// walkMdFilesAbs so existing importers (verify.test.ts, this file) are unaffected.
+export const walkMdFilesAbs = (absDir: string): string[] =>
+  walkFilesAbs(absDir).filter((f) => f.endsWith('.md'));
 
 const walkMdFiles = (dir: string): string[] =>
   walkMdFilesAbs(path.join(root, dir)).map((f) => path.relative(root, f));
