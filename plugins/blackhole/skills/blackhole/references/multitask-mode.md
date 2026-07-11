@@ -142,8 +142,8 @@ Acceptance fixture for Pattern B stall fix (#151):
 | 2 | orchestrator | forge sync; select 2–4 handle-phase issues without `route{}` | queue ready |
 | 3 | orchestrator | `WAVE 0`: spawn `router` per issue, `run_in_background: true` | checkpoint lists N in-flight workers |
 | 4 | orchestrator | **Barrier wait** in-turn for all N routers | no turn-end yet |
-| 5 | routers | each writes `route{}` + `routing_decisions` row | artifacts on disk |
-| 6 | orchestrator | triage: validate JSON, set `phase: plan`, `status: ready`, clear in-flight workers | checkpoint workers empty |
+| 5 | routers | each **returns** `route{}` + `trigger` + `local_analyze` in its result JSON (never writes `queue.json`/`findings-ledger.json` directly — single-writer-orchestrator invariant) | N return payloads collected |
+| 6 | orchestrator | triage: validate JSON, apply mutations **serially, one router at a time** — construct + append the `routing_decisions` row from each return, set `phase: plan`, `status: ready`, clear in-flight workers | checkpoint workers empty; artifacts on disk |
 | 7 | orchestrator | turn-end checklist → end turn | coordinator receives idle |
 | 8 | coordinator | `bun run status` → resume orchestrator if more work | next phase dispatches **without user message** |
 
