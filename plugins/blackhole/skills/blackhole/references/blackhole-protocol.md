@@ -91,8 +91,9 @@ The following are **not** blackhole protocol state:
   session handoff dirs from individual agent runs; safe to ignore for queue/ledger
   mutations.
 - `.agents/build/agents/`, `.agents/build/rules/`, `.agents/build/skills/` — **build
-  outputs** from `bun run build --gemini` (Antigravity workspace target); edit `src/`
-  and rebuild, do not hand-edit.
+  outputs** from `bun run build` (Antigravity workspace target, built by default —
+  ADR-007 T2; `--gemini`/`--all`/`--no-codex` are deprecated no-op aliases scheduled for
+  removal next release); edit `src/` and rebuild, do not hand-edit.
 
 Handoff dirs share the `.agents/` parent with build output but are separate namespaces.
 Never treat handoff dirs as a substitute for `.blackhole/` state.

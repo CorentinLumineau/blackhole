@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -19,12 +20,22 @@ import {
   buildClaudePluginManifest,
   buildClaudeMarketplace,
   cleanDir,
+  isTargetTracked,
+  GEMINI_TARGET_DIRS,
+  CODEX_TARGET_DIRS,
+  DEPRECATED_BUILD_FLAGS,
 } from './build.ts';
 import { projectIdentity } from './project-identity.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 
 const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-build-test-'));
+
+const makeTempGitRepo = (): string => {
+  const dir = makeTempDir();
+  execFileSync('git', ['init', '-q'], { cwd: dir });
+  return dir;
+};
 
 describe('applyPlatformConditionals', () => {
   test('gemini keeps gemini body and removes cursor/claude/skills', () => {
@@ -529,5 +540,136 @@ describe('generated-file marker', () => {
     } finally {
       fs.rmSync(destRoot, { recursive: true, force: true });
     }
+  });
+});
+
+// ADR-007 T2 (R5′): tracked ⇒ built-by-default. Step 0 requires an independently-testable
+// tracking audit — a build target only keeps an opt-in flag requirement when it is genuinely
+// untracked in git (ADR-007 Risk Assessment row 4).
+describe('isTargetTracked', () => {
+  test('reports true when the directory has at least one git-tracked file', () => {
+    const repo = makeTempGitRepo();
+    try {
+      fs.mkdirSync(path.join(repo, 'tracked-target'), { recursive: true });
+      fs.writeFileSync(path.join(repo, 'tracked-target', 'file.txt'), 'x');
+      execFileSync('git', ['add', 'tracked-target'], { cwd: repo });
+
+      expect(isTargetTracked(repo, ['tracked-target'])).toBe(true);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('reports false for a fixture with one deliberately-untracked target directory (not silently defaulted on)', () => {
+    const repo = makeTempGitRepo();
+    try {
+      fs.mkdirSync(path.join(repo, 'untracked-target'), { recursive: true });
+      fs.writeFileSync(path.join(repo, 'untracked-target', 'file.txt'), 'y');
+      // Deliberately not `git add`-ed.
+
+      expect(isTargetTracked(repo, ['untracked-target'])).toBe(false);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('reports true when only one of several candidate paths is tracked', () => {
+    const repo = makeTempGitRepo();
+    try {
+      fs.mkdirSync(path.join(repo, 'tracked'), { recursive: true });
+      fs.writeFileSync(path.join(repo, 'tracked', 'file.txt'), 'x');
+      execFileSync('git', ['add', 'tracked'], { cwd: repo });
+      fs.mkdirSync(path.join(repo, 'untracked'), { recursive: true });
+      fs.writeFileSync(path.join(repo, 'untracked', 'file.txt'), 'y');
+
+      expect(isTargetTracked(repo, ['untracked', 'tracked'])).toBe(true);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('reports false when no path exists at all (path outside repo or nonexistent)', () => {
+    const repo = makeTempGitRepo();
+    try {
+      expect(isTargetTracked(repo, ['does-not-exist'])).toBe(false);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('live-repo audit: every current gemini and codex build target is git-tracked today (step 0 finding)', () => {
+    expect(isTargetTracked(root, GEMINI_TARGET_DIRS)).toBe(true);
+    expect(isTargetTracked(root, CODEX_TARGET_DIRS)).toBe(true);
+  });
+});
+
+describe('bun run build — tracked ⇒ built-by-default (ADR-007 T2)', () => {
+  const runBuild = (extraArgs: string[]): { stdout: string; stderr: string; status: number | null } => {
+    const proc = Bun.spawnSync({
+      cmd: ['bun', 'run', 'scripts/build.ts', ...extraArgs],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    return {
+      stdout: proc.stdout.toString('utf-8'),
+      stderr: proc.stderr.toString('utf-8'),
+      status: proc.exitCode,
+    };
+  };
+
+  const snapshotTargets = (dirs: string[]): string =>
+    dirs
+      .map((dir) => {
+        const abs = path.join(root, dir);
+        if (!fs.existsSync(abs)) return `${dir}:absent`;
+        const stat = fs.statSync(abs);
+        if (stat.isFile()) return `${dir}:${fs.readFileSync(abs, 'utf-8')}`;
+        const files: string[] = [];
+        const walk = (d: string) => {
+          for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+            const full = path.join(d, entry.name);
+            if (entry.isDirectory()) walk(full);
+            else files.push(`${path.relative(abs, full)}:${fs.readFileSync(full, 'utf-8')}`);
+          }
+        };
+        walk(abs);
+        return files.sort().join('\n');
+      })
+      .join('\n---\n');
+
+  test('plain invocation (no flags) regenerates every currently git-tracked target', () => {
+    const result = runBuild([]);
+    expect(result.status).toBe(0);
+    const baseline = snapshotTargets([...GEMINI_TARGET_DIRS, ...CODEX_TARGET_DIRS]);
+    expect(baseline).not.toContain(':absent');
+  });
+
+  test.each(['--gemini', '--all', '--no-codex'])(
+    '%s is a behaviorally no-op alias producing byte-identical output to the flagless run',
+    (flag) => {
+      const flagless = runBuild([]);
+      const baseline = snapshotTargets([...GEMINI_TARGET_DIRS, ...CODEX_TARGET_DIRS]);
+      expect(flagless.status).toBe(0);
+
+      const flagged = runBuild([flag]);
+      const afterFlagged = snapshotTargets([...GEMINI_TARGET_DIRS, ...CODEX_TARGET_DIRS]);
+      expect(flagged.status).toBe(0);
+      expect(afterFlagged).toBe(baseline);
+    }
+  );
+
+  test.each(['--gemini', '--all', '--no-codex'])(
+    '%s emits a one-line deprecation notice to stderr',
+    (flag) => {
+      const result = runBuild([flag]);
+      expect(result.status).toBe(0);
+      expect(result.stderr.toLowerCase()).toContain('deprecat');
+      expect(result.stderr).toContain(flag);
+    }
+  );
+
+  test('DEPRECATED_BUILD_FLAGS names exactly the three retired flags', () => {
+    expect(new Set(DEPRECATED_BUILD_FLAGS)).toEqual(new Set(['--gemini', '--all', '--no-codex']));
   });
 });
