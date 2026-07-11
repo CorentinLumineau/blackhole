@@ -342,7 +342,8 @@ fix commits resolved it:
     "computed_at_phase": "handle",
     "revision": 1
   },
-  "trigger": "initial"
+  "trigger": "initial",
+  "local_analyze": null
 }
 ```
 
@@ -351,17 +352,25 @@ fix commits resolved it:
 | `status` | `routed` \| `error` | yes |
 | `route` | object | when `routed` (`null` when `error`) |
 | `trigger` | `initial` \| `clarify-resolved` \| `research-landed` \| `investigation-landed` | when `routed` |
+| `local_analyze` | object \| `null` | when `routed` (`null` when `error`, or when the confidence-boost mechanism did not trigger) |
 | `error` | string | when `status: error` |
 
 `route`'s own field names, enum values, and types are frozen — see `queue-dag.md` § `route`
-object (not re-tabulated here). The `routing_decisions` ledger row this write produces is
-documented in `findings-ledger.md` § "Routing decision records".
+object (not re-tabulated here). `local_analyze`'s shape (`triggered`, `reason`,
+`touch_paths_scanned`, `matches[]`, `security_review_required_raised`,
+`plan_mode_confidence_boosted`) is frozen — see `findings-ledger.md` § "Routing decision
+records" (not re-tabulated here). The router never writes `queue.json` or
+`findings-ledger.json` directly (single-writer-orchestrator invariant, `blackhole-state.md` §
+Single-writer invariant): the orchestrator constructs and appends the `routing_decisions`
+ledger row — assigning `id` from `next_routing_id`, `issue_ref` from spawn context, and
+`created_at` = now — from this returned JSON, at triage time (`orchestrator.md` § Triage).
 
 ```json
 {
   "status": "error",
   "route": null,
   "trigger": "initial",
+  "local_analyze": null,
   "error": "gh issue view failed: not found"
 }
 ```
