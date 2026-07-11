@@ -1,0 +1,90 @@
+# Claude Code-Native Orchestration (Pattern C)
+
+Opt-in alternative to Multitask Mode (Pattern B, [multitask-mode.md](multitask-mode.md)) on
+harnesses whose main chat can act as the orchestrator directly — collapsing the 3-hop clarify
+round trip and removing the LLM-discipline wave-barrier stall class documented in
+`multitask-mode.md` § Runbook (#151). Pattern B stays fully intact and is the required path on
+harnesses lacking the capabilities below (Cursor/OpenCode).
+
+## Capability matrix (core — harness-neutral)
+
+Pattern C requires a harness to provide four capabilities. This core section names the
+capabilities only — no harness-specific primitive names. The per-harness mapping lives in the
+appendix below.
+
+| Capability | What it provides |
+|---|---|
+| **C1** — Deterministic orchestration primitive | A fan-out mechanism with wave barriers and schema-validated worker returns, so a batch cannot silently skip its own completion check |
+| **C2** — Background→foreground completion notifications | The foreground session is notified when a background-safe phase batch finishes, without polling |
+| **C3** — Foreground user-question channel | A native mechanism for the orchestrator to ask the user a question and block on the answer, in the main chat, without a coordinator relay |
+| **C4** — Per-agent isolation | Each spawned worker runs in its own isolated context (e.g. a dedicated worktree), so parallel workers cannot clobber each other's state |
+
+When a harness provides C1–C4, the main chat may act as the orchestrator directly: no
+coordinator, no background orchestrator agent. When a harness lacks C1 specifically, fall back to
+today's Agent-tool wave barrier (Pattern B mechanics) for fan-out — zero regression. C1 is
+therefore an **appendix-level** mapping, not a core-mandatory dependency: harnesses without a
+native fan-out primitive still get C2–C4 (or degrade further to full Pattern B) without a
+documentation gap.
+
+## Foreground state ownership (named constraint)
+
+Whatever runs the background-safe fan-out phase — a native primitive batch or an Agent-tool
+batch — may only produce fan-out and schema-validated worker returns. **All** `queue.json` and
+`findings-ledger.json` mutations happen in the foreground orchestrator, never in the background
+phase itself. The flow is: gate-first → fan-out → foreground-triage. This resolves the
+adversarial-evaluation finding that background scripts have no filesystem access, and keeps a
+single writer for campaign state regardless of which pattern is active.
+
+## Two-tier gate topology
+
+1. **Batched gate-first per wave.** Before fan-out, the foreground orchestrator collects every
+   issue in the candidate wave needing `needs_clarification`, `needs_design`, or plan-approval and
+   asks the user **once**, batched into a single interaction — not once per issue.
+2. **Mid-wave blocked-return loop.** A worker that hits ambiguity mid-wave does not wait on the
+   user — it returns `status: blocked` with a structured reason. That issue's chain skips its
+   remaining stages for this wave; sibling chains continue uninterrupted. Once the user answers,
+   the issue re-dispatches as a fresh chain in the next wave.
+
+## Per-issue chain granularity
+
+One orchestration unit is one issue chain — handle → plan → implement → review for a single
+issue — not one unit per wave. Earliest-finish chains merge and unblock dependents without
+waiting for wave stragglers, which is what per-issue granularity buys over wave-grained
+scheduling.
+
+## Per-harness mapping appendix
+
+{{#claude}}
+### Claude Code
+
+| Capability | Claude Code mapping |
+|---|---|
+| C1 | The `Workflow` tool's deterministic fan-out (`parallel()` / `pipeline()`), per the escalation matrix in `mercure-agent-delegation.md` § Workflow vs. Agent — pin `agentType` and `model` on every `agent()` call (see `model-routing.md` § Workflow-tool enforcement) |
+| C2 | Background-agent completion/idle notifications |
+| C3 | The `AskUserQuestion` tool, used in the foreground main chat |
+| C4 | Dedicated per-issue git worktrees (`wt-<issue>`), per `blackhole-protocol.md` § Branch & Worktree Hygiene |
+
+On Claude Code, the main chat runs the orchestrator directly (`/goal` or attaching this skill) —
+no coordinator, no background orchestrator agent. Fan-out for a wave's background-safe phases
+uses the `Workflow` tool when available; if a specific fan-out does not meet the `Workflow` tool's
+trigger conditions, fall back to the `Agent` tool with the same in-turn barrier discipline Pattern
+B already documents.
+{{/claude}}
+{{#cursor}}
+### Cursor / OpenCode
+
+No native C1/C3 primitive on this harness today. Use Pattern B
+([multitask-mode.md](multitask-mode.md)) in full — coordinator + background orchestrator, Agent-
+tool (`Task`) fan-out with the in-turn wave barrier.
+{{/cursor}}
+
+## Resume path
+
+On a harness offering a native run journal or `resumeFromRunId`-style mechanism, that journal is a
+**supplementary** crash-recovery layer for the background-safe fan-out phase only. It never
+replaces the cross-harness SSOT: `.blackhole/campaign-checkpoint.md` plus `queue.json` and
+`findings-ledger.json` remain the source of truth for resume on every harness, Pattern B or
+Pattern C. Resuming from a harness journal still requires re-validating those files (`jq empty` +
+phase inference) per [checkpoint-protocol.md](checkpoint-protocol.md) § Compaction recovery before
+continuing — a harness journal is a convenience for locating the last run, not a substitute for
+that validation.

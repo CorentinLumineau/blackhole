@@ -4,6 +4,12 @@ Structured JSON contracts for campaign worker agents. The orchestrator validates
 
 Optional: consumers may install the Cursor SubagentStop hook below for machine-enforced structural validation at subagent handoff.
 
+On a harness with a native orchestration primitive (Pattern C, see
+[claude-code-native.md](claude-code-native.md)), a `schema:` option on the fan-out tool call can
+mechanically enforce these same contracts at the tool-call layer — the JSON shapes below are the
+schema source, unchanged. This complements, not replaces, the SubagentStop hook / `validate-worker-json.ts`
+path documented below for harnesses without a native fan-out primitive.
+
 ## SubagentStop hook (Cursor)
 
 **Install:** Merge the `hooks` block from [`templates/hooks/subagent-stop-validate.json`](../../templates/hooks/subagent-stop-validate.json) into your project's `.cursor/hooks.json`. Requires `bun` on `PATH`; hook `command` paths are relative to the repo root.

@@ -20,6 +20,11 @@ If the agent lacks a native long-running goal loop, use Multitask Mode (Pattern 
 Full flow: [multitask-mode.md](references/multitask-mode.md)
 Orchestrator spawn text: [campaign-prompt.md](references/campaign-prompt.md)
 
+If the harness has a deterministic fan-out primitive **and** background→foreground completion
+notifications (capabilities C1/C2 in [claude-code-native.md](references/claude-code-native.md)),
+prefer **Pattern C**: main chat acts as orchestrator directly, no coordinator, gate-first batched
+clarify in the foreground. Full flow: [claude-code-native.md](references/claude-code-native.md).
+
 Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (legacy Pattern A) — still follow all phases below.
 
 ## Modes

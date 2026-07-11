@@ -75,6 +75,16 @@ After context loss or session restart:
 4b. If an in-flight issue has an associated `wt-<issue>` and the worktree is dirty (or stash contains recovery tags), **pause implementer respawn** and follow [recovery-protocol.md](recovery-protocol.md) before continuing
 5. Increment `orchestrator_turn_id` on first post-recovery turn
 
+## Harness-native resume (Pattern C)
+
+On a harness offering a native run journal or `resumeFromRunId`-style mechanism (see
+[claude-code-native.md](claude-code-native.md) § Resume path), that journal is a **supplementary**
+crash-recovery layer for the background-safe fan-out phase only. It never substitutes for this
+file's cross-harness SSOT: `.blackhole/campaign-checkpoint.md` plus `queue.json` and
+`findings-ledger.json` remain the source of truth for resume regardless of harness or pattern.
+Resuming from a harness journal still requires re-validating those files (`jq empty` + phase
+inference per § Compaction recovery above) before continuing.
+
 ## Fields
 
 | Field | Location | Description |

@@ -4,6 +4,12 @@ Use **Multitask Mode** when the platform does not have a native long-running
 goal loop (e.g. Cursor), or when you want explicit coordinator control.
 Claude Code users can use `/goal` directly on the `orchestrator` agent instead.
 
+On a harness with a deterministic fan-out primitive plus background→foreground completion
+notifications, prefer **Pattern C** instead — the main chat acts as orchestrator directly, no
+coordinator hop. See [claude-code-native.md](claude-code-native.md). This file documents
+**Pattern B**, which remains the required path on harnesses without that primitive
+(Cursor/OpenCode) and the universal fallback everywhere else.
+
 ## Roles
 
 | Role | Agent | May implement? | May merge? |
