@@ -1,7 +1,20 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
-import { AGENTS_BUILD_ROOT, AGENTS_BUILD_AGENT_DIR, DISTRIBUTION_ROOT, AGENT_MD_FILES, AGENT_YAML_FILES, RULES_LIST } from './build.ts';
+import {
+  AGENTS_BUILD_ROOT,
+  AGENTS_BUILD_AGENT_DIR,
+  DISTRIBUTION_ROOT,
+  AGENT_MD_FILES,
+  AGENT_YAML_FILES,
+  RULES_LIST,
+  AGENT_NAMES,
+  PHASE_NAMES,
+  PHASE_PLAYBOOK_FILES,
+  REQUIRED_REFERENCES,
+  VCODE_TABLE_ROW_COUNT,
+  EXPECTED_CHECK_COUNT,
+} from './build.ts';
 import { validatePluginTreeShape, distributionTreeErrors, codexTreeErrors, hasInstructionsBlock } from './tree-shape.ts';
 import { walkFilesAbs } from './lib/fs.ts';
 
@@ -26,19 +39,6 @@ const listFiles = (dir: string, ext = '.md'): string[] => {
   const full = path.join(root, dir);
   if (!fs.existsSync(full)) return [];
   return fs.readdirSync(full).filter((f) => f.endsWith(ext));
-};
-
-const parseGroundTruth = (): Record<string, number | string> => {
-  const content = read('src/references/ground-truth.md');
-  const out: Record<string, number | string> = {};
-  for (const line of content.split('\n')) {
-    const m = line.match(/^\*\*([\w_]+):\*\*\s*(.+)$/);
-    if (m) {
-      const val = m[2].trim();
-      out[m[1]] = /^\d+$/.test(val) ? Number(val) : val;
-    }
-  }
-  return out;
 };
 
 // V-TOOLS-01: Deny-list tool policy — no tools: allowlist; correct disallowedTools per role
@@ -263,18 +263,16 @@ const checkSingleWriterInvariant = () => {
 
 // V-PHASE-01: Phase playbooks reference consistent phase names
 const checkPhaseNames = () => {
-  const phases = ['handle', 'plan', 'implement', 'review', 'done'];
-  const playbooks = ['phase-handle.md', 'phase-plan.md', 'phase-implement.md', 'phase-review.md', 'phase-loop.md'];
   const missing: string[] = [];
 
-  for (const pb of playbooks) {
+  for (const pb of PHASE_PLAYBOOK_FILES) {
     const content = read(`src/references/${pb}`);
-    const hits = phases.filter((p) => content.includes(p));
+    const hits = PHASE_NAMES.filter((p) => content.includes(p));
     if (hits.length === 0) missing.push(`${pb}: no phase name references`);
   }
 
   const queueDag = read('src/references/queue-dag.md');
-  for (const p of phases) {
+  for (const p of PHASE_NAMES) {
     if (!queueDag.includes(`\`${p}\``)) missing.push(`queue-dag.md: missing phase ${p}`);
   }
 
@@ -882,32 +880,91 @@ const checkClaudeCodeNativeNeutrality = () => {
   else pass('V-HARNESS-01');
 };
 
-// V-GROUND-01: Ground-truth counts match filesystem
+// V-GROUND-01 (ADR-007 T3/R1′): two-sided facts-conformance. Diffs an independently-scanned
+// filename set against a declared filename set, order-insensitive, returning null on a match or
+// a message naming both sets on mismatch (never a boolean — the failing check must be able to
+// name the exact expected-vs-actual sets, ADR-007 Risk Assessment row 2 mitigation).
+export const findRosterScanMismatch = (scanned: string[], declared: string[]): string | null => {
+  const s = [...scanned].sort();
+  const d = [...declared].sort();
+  if (JSON.stringify(s) === JSON.stringify(d)) return null;
+  return `expected [${d.join(', ')}], found [${s.join(', ')}]`;
+};
+
+// Same two-sided shape for a plain declared-count vs scanned-count comparison (e.g. a markdown
+// table's row count) — names the label plus both numbers on mismatch.
+export const findRowCountMismatch = (label: string, declared: number, actual: number): string | null =>
+  declared === actual ? null : `${label}: declared ${declared}, found ${actual}`;
+
+// V-GROUND-01: facts-conformance — independent filesystem scan of src/agents/,
+// src/references/phase-*.md, and blackhole-vcodes.md's row count, compared against build.ts's
+// § facts declaration. Never collapsed onto one derivation path (ADR-007 Rejected Alternatives:
+// "Single-source derivation for both sides of the drift check").
 const checkGroundTruth = () => {
-  const gt = parseGroundTruth();
   const errors: string[] = [];
 
-  const agentCount = listFiles('src/agents').length;
-  if (gt.agent_count !== agentCount) errors.push(`agent_count: expected ${gt.agent_count}, got ${agentCount}`);
+  const scannedAgents = listFiles('src/agents');
+  const declaredAgents = AGENT_NAMES.map((n) => `${n}.md`);
+  const agentMismatch = findRosterScanMismatch(scannedAgents, declaredAgents);
+  if (agentMismatch) errors.push(`agents: ${agentMismatch}`);
 
-  const phaseCount = listFiles('src/references').filter((f) => f.startsWith('phase-')).length;
-  if (gt.phase_playbook_count !== phaseCount) {
-    errors.push(`phase_playbook_count: expected ${gt.phase_playbook_count}, got ${phaseCount}`);
-  }
+  const scannedPlaybooks = listFiles('src/references').filter((f) => f.startsWith('phase-'));
+  const playbookMismatch = findRosterScanMismatch(scannedPlaybooks, [...PHASE_PLAYBOOK_FILES]);
+  if (playbookMismatch) errors.push(`phase playbooks: ${playbookMismatch}`);
 
   const vcodes = read('src/references/blackhole-vcodes.md');
   const vcodeRows = (vcodes.match(/^\| V-/gm) || []).length;
-  if (gt.vcode_table_rows !== vcodeRows) {
-    errors.push(`vcode_table_rows: expected ${gt.vcode_table_rows}, got ${vcodeRows}`);
-  }
+  const rowCountMismatch = findRowCountMismatch('vcode table rows', VCODE_TABLE_ROW_COUNT, vcodeRows);
+  if (rowCountMismatch) errors.push(rowCountMismatch);
 
-  const requiredRefs = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
-  for (const ref of requiredRefs) {
+  for (const ref of REQUIRED_REFERENCES) {
     if (!fs.existsSync(path.join(srcDir, 'references', ref))) errors.push(`missing reference: ${ref}`);
   }
 
   if (errors.length) fail('V-GROUND-01', errors.join('; '));
   else pass('V-GROUND-01');
+};
+
+// V-DOCTABLE-01 (ADR-007 T3/R1′): tolerant row-set parser — extracts backtick-quoted names from
+// the `## Agent roster` section only (ignores prose mentions elsewhere and header/separator
+// rows), so AGENTS.md stays fully hand-authored while still being checked against the § facts
+// declaration (ADR-007 Rejected Alternatives: no generation-in-place / no `<!-- roster -->`
+// markers).
+export const extractAgentRosterTableNames = (agentsMdContent: string): string[] => {
+  const section = agentsMdContent.split(/^## Agent roster$/m)[1]?.split(/^## /m)[0] ?? '';
+  const names: string[] = [];
+  for (const line of section.split('\n')) {
+    const m = line.match(/^\|\s*`([\w-]+)`\s*\|/);
+    if (m) names.push(m[1]);
+  }
+  return names;
+};
+
+// Lighter count-consistency check: README.md's agent-count prose mention against
+// AGENT_NAMES.length — prints the expected value on failure.
+export const findReadmeAgentCountMismatch = (readmeContent: string, expectedCount: number): string | null => {
+  const pattern = new RegExp(`\\b${expectedCount}\\s+agent prompts\\b`);
+  if (pattern.test(readmeContent)) return null;
+  return `expected mention of "${expectedCount} agent prompts", not found`;
+};
+
+// V-DOCTABLE-01: AGENTS.md's roster table and README.md's agent-count mention, checked (not
+// generated) against the § facts declaration.
+const checkDocTables = () => {
+  const errors: string[] = [];
+
+  const agentsMd = read('AGENTS.md');
+  const foundNames = extractAgentRosterTableNames(agentsMd).map((n) => `${n}.md`);
+  const declaredNames = AGENT_NAMES.map((n) => `${n}.md`);
+  const rosterMismatch = findRosterScanMismatch(foundNames, declaredNames);
+  if (rosterMismatch) errors.push(`AGENTS.md roster: ${rosterMismatch}`);
+
+  const readme = read('README.md');
+  const readmeMismatch = findReadmeAgentCountMismatch(readme, AGENT_NAMES.length);
+  if (readmeMismatch) errors.push(`README.md: ${readmeMismatch}`);
+
+  if (errors.length) fail('V-DOCTABLE-01', errors.join('; '));
+  else pass('V-DOCTABLE-01');
 };
 
 // V-EPIC-01: epic-orchestration.md exists and phase-handle.md links to it
@@ -1081,6 +1138,7 @@ const main = () => {
   checkSkillModes();
   checkClaudeCodeNativeNeutrality();
   checkGroundTruth();
+  checkDocTables();
   checkLinkIntegrity();
   checkEpicRunbook();
   checkCheckpointAlignment();
@@ -1089,9 +1147,8 @@ const main = () => {
   checkGeminiDistributionBundle();
   checkCodexBuild();
 
-  const expectedChecks = Number(parseGroundTruth().verify_check_count) || 8;
-  if (results.length !== expectedChecks) {
-    console.warn(`Warning: expected ${expectedChecks} checks, ran ${results.length}`);
+  if (results.length !== EXPECTED_CHECK_COUNT) {
+    console.warn(`Warning: expected ${EXPECTED_CHECK_COUNT} checks, ran ${results.length}`);
   }
 
   let failed = 0;

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { projectIdentity } from './project-identity.ts';
 import { geminiWorkspaceTreeErrors, distributionTreeErrors, codexTreeErrors, INSTRUCTIONS_MARKER } from './tree-shape.ts';
+import { walkFilesAbs } from './lib/fs.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const srcDir = path.join(root, 'src');
@@ -221,26 +222,29 @@ const processFile = (
   fs.writeFileSync(destPath, marked, 'utf-8');
 };
 
+// ADR-007 R6: recurses via the one shared tree-walker (scripts/lib/fs.ts) instead of a local
+// readdirSync/stat recursion — after this migration, zero recursive directory walkers remain
+// outside scripts/lib/fs.ts (V-INT-02).
 const compileFolder = (srcSub: string, destParent: string, agentDir: string, rulesPath: string, target: Target, isAgent = false) => {
   const fullSrc = path.join(srcDir, srcSub);
   if (!fs.existsSync(fullSrc)) return;
 
-  const files = fs.readdirSync(fullSrc);
-  for (const file of files) {
-    const srcPath = path.join(fullSrc, file);
+  for (const srcPath of walkFilesAbs(fullSrc)) {
+    const relFile = path.relative(fullSrc, srcPath);
     // Codex agents are output as .yaml instead of .md
-    const destFile = (isAgent && target === 'codex' && file.endsWith('.md'))
-      ? file.replace(/\.md$/, '.yaml')
-      : file;
+    const destFile = (isAgent && target === 'codex' && relFile.endsWith('.md'))
+      ? relFile.replace(/\.md$/, '.yaml')
+      : relFile;
     const destPath = path.join(destParent, destFile);
-    const stat = fs.statSync(srcPath);
-    if (stat.isDirectory()) {
-      compileFolder(path.join(srcSub, file), destPath, agentDir, rulesPath, target, isAgent);
-    } else if (stat.isFile()) {
-      processFile(srcPath, destPath, agentDir, rulesPath, target, false, isAgent);
-    }
+    processFile(srcPath, destPath, agentDir, rulesPath, target, false, isAgent);
   }
 };
+
+// § facts — machine-checkable ground truth, declared exactly once (ADR-007 T3/R1′). verify.ts's
+// facts-conformance check (V-GROUND-01) compares an independent filesystem/doc scan against
+// these declarations — never restate any of these as an inline literal at a consumption site,
+// and never collapse the scan and the declaration onto one derivation path (the critics'
+// binding rejection of single-source generation, ADR-007 Rejected Alternatives).
 
 export const RULES_LIST = ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md', 'doc-governance.md'];
 
@@ -248,6 +252,22 @@ export const RULES_LIST = ['blackhole-protocol.md', 'blackhole-state.md', 'black
 export const AGENT_NAMES = ['coordinator', 'orchestrator', 'planner', 'implementer', 'reviewer', 'router', 'investigator', 'hunter'] as const;
 export const AGENT_MD_FILES = new Set(AGENT_NAMES.map((n) => `${n}.md`));
 export const AGENT_YAML_FILES = new Set(AGENT_NAMES.map((n) => `${n}.yaml`));
+
+/** Exact phase strings used in `queue.json` `issues.*.phase` (V-PHASE-01). */
+export const PHASE_NAMES = ['handle', 'plan', 'implement', 'review', 'done'] as const;
+
+/** The 5 phase-playbook files under `src/references/` — note the terminal `done` phase loops
+ *  back via `phase-loop.md`, it has no dedicated `phase-done.md` file (V-PHASE-01/V-GROUND-01). */
+export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-implement.md', 'phase-review.md', 'phase-loop.md'];
+
+/** References every phase playbook assumes exist under `src/references/` (V-GROUND-01). */
+export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
+
+/** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
+export const VCODE_TABLE_ROW_COUNT = 43;
+
+/** Total `scripts/verify.ts` check count — bump alongside every new `check*()` added to `main()`. */
+export const EXPECTED_CHECK_COUNT = 25;
 
 export const buildGeminiPluginManifest = (pkgVersion: string) => ({
   $schema: 'https://antigravity.google/schemas/v1/plugin.json',

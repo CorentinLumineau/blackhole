@@ -1,102 +1,16 @@
 # Ground Truth — Protocol Drift Detection
 
-Machine-verified canonical values for Blackhole. `scripts/verify.ts` reads this file and fails on mismatch.
+This file is a prose pointer, not a source of truth. Machine-checkable facts (the agent roster,
+phase names, phase-playbook files, required references, and the V-code table row count) are
+declared exactly once in `scripts/build.ts`'s `§ facts` section — never restated here or
+anywhere else as a literal.
 
-**Do not edit counts manually without updating the corresponding source files.**
+`scripts/verify.ts`'s two-sided facts-conformance check (`V-GROUND-01`) independently scans the
+filesystem (`src/agents/`, `src/references/phase-*.md`, `src/references/blackhole-vcodes.md`'s
+row count) and compares the scan against the `§ facts` declaration — two separately-fallible
+derivations, never collapsed onto one (ADR-007 R1′). `V-DOCTABLE-01` separately checks that
+`AGENTS.md`'s roster table and `README.md`'s agent-count mention still agree with the same
+declaration; both files stay fully hand-authored, never generated.
 
-## Agents
-
-| coordinator | `src/agents/coordinator.md` |
-| orchestrator | `src/agents/orchestrator.md` |
-| router | `src/agents/router.md` |
-| planner | `src/agents/planner.md` |
-| implementer | `src/agents/implementer.md` |
-| reviewer | `src/agents/reviewer.md` |
-| investigator | `src/agents/investigator.md` |
-| hunter | `src/agents/hunter.md` |
-
-**agent_count:** 8
-
-## Phases
-
-Exact phase strings used in `queue.json` `issues.*.phase`:
-
-- `handle`
-- `plan`
-- `implement`
-- `review`
-- `done`
-
-Phase playbook files:
-
-- `phase-handle.md`
-- `phase-plan.md`
-- `phase-implement.md`
-- `phase-review.md`
-- `phase-loop.md`
-
-**phase_playbook_count:** 5
-
-## V-codes
-
-Source: `src/references/blackhole-vcodes.md`
-
-**vcode_table_rows:** 43
-
-## Verify checks
-
-**verify_check_count:** 22
-
-| Check ID | Description |
-|----------|-------------|
-| V-TOOLS-01 | No tools: allowlist on agents; correct disallowedTools per deny matrix |
-| V-DELEG-01 | Worker agents declare 5-field or output contract |
-| V-DESIGN-01 | Design Track template in planner.md declares all 8 required section headings |
-| V-AGENT-01 | Agent frontmatter complete |
-| V-PHASE-01 | Phase playbooks use consistent phase names |
-| V-VCODE-01 | V-codes referenced in agents or phases |
-| V-ADADOC-01 | blackhole-vcodes.md documents V-ADA family; reviewer.md documents Companion-File Audit section |
-| V-BUILD-01 | Build (full target set: cursor/claude/skills/codex + gemini/antigravity mirrors) produces clean git diff (opt out via VERIFY_SKIP_BUILD=1) |
-| V-SCHEMA-01 | Fixture JSON validates |
-| V-PLAN-01 | In-flight plan/implement/review entries require plans/issue-N.md |
-| V-SKILL-01 | SKILL.md modes align with phases |
-| V-HARNESS-01 | claude-code-native.md core stays harness-neutral (no tool tokens outside per-harness appendix) |
-| V-GROUND-01 | Ground-truth counts match filesystem |
-| V-EPIC-01 | epic-orchestration.md exists and phase-handle links to it |
-| V-CHECKPOINT-01 | checkpoint template frontmatter keys align with orchestrator and phase-loop write order |
-| V-GEMINI-01 | Gemini build outputs complete; no stale platform conditionals |
-| V-GEMINI-02 | Gemini distribution bundle (plugins/blackhole/) complete; co-located plugin.json, skills/, rules/, no agents/ |
-| V-CODEX-01 | Codex build succeeds as part of default `bun run build` |
-| V-CODEX-02 | Codex plugin.json and marketplace validate against fixture baselines |
-| V-CODEX-03 | codex-skills/blackhole/SKILL.md with disable-model-invocation |
-| V-CODEX-04 | Agent YAML files in codex-agents/ (count derived from AGENT_NAMES SSOT) with instructions block |
-| V-GATE-01 | implementer.md 5-step verification-evidence gate + reviewer.md §12 proportionality-gate content-assertions present |
-
-## Config schema
-
-**config_schema_version:** 1
-
-Required keys: `repo`, `target_branch`, `forge`
-
-## SKILL modes
-
-- `run`
-- `status`
-- `handle`
-- `plan`
-- `implement`
-- `review`
-- `hunt`
-- `campaign-audit`
-
-**skill_mode_count:** 8
-
-## References (required)
-
-- `review-core.md`
-- `worker-schemas.md`
-- `checkpoint-protocol.md`
-- `findings-ledger.md`
-- `queue-dag.md`
-- `epic-orchestration.md`
-- `merge-gate.md`
+See `scripts/build.ts` § facts and `scripts/verify.ts`'s `checkGroundTruth`/`checkDocTables` for
+the current declared values and comparison logic.

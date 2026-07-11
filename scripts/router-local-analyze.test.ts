@@ -63,21 +63,18 @@ describe('router.md local-analyze monotonicity invariant', () => {
   });
 });
 
-describe('blackhole-vcodes.md / ground-truth.md — V-SEC-09/V-SEC-10 registration', () => {
+describe('blackhole-vcodes.md — V-SEC-09/V-SEC-10 registration', () => {
   test('vcodes table has V-SEC-09 (BLOCK) and V-SEC-10 (WARN) rows', () => {
     const vcodes = read('src/references/blackhole-vcodes.md');
     expect(vcodes).toMatch(/\| V-SEC-09 \|.*\| BLOCK \|/);
     expect(vcodes).toMatch(/\| V-SEC-10 \|.*\| WARN \|/);
   });
 
-  test('ground-truth vcode_table_rows matches the actual table row count', () => {
-    const vcodes = read('src/references/blackhole-vcodes.md');
-    const rowCount = vcodes
-      .split('\n')
-      .filter((line) => /^\|\s*V-/.test(line)).length;
-    const groundTruth = read('src/references/ground-truth.md');
-    const match = groundTruth.match(/\*\*vcode_table_rows:\*\*\s*(\d+)/);
-    expect(match).not.toBeNull();
-    expect(Number(match?.[1])).toBe(rowCount);
-  });
+  // The former "ground-truth vcode_table_rows matches the actual table row count" test was
+  // removed here (ADR-007 T3/R1′): ground-truth.md no longer carries a hand-maintained
+  // vcode_table_rows counter to drift against (its counter role is retired — see
+  // src/references/ground-truth.md). The invariant this test guarded is now enforced at CI
+  // time by scripts/verify.ts's V-GROUND-01 two-sided facts-conformance check, which compares
+  // the same live row count against build.ts's § facts VCODE_TABLE_ROW_COUNT declaration —
+  // strictly better coverage than this unit-level comparison against a doc counter.
 });
