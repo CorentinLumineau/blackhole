@@ -14,7 +14,7 @@ import {
   findRowCountMismatch,
   extractAgentRosterTableNames,
   findReadmeAgentCountMismatch,
-} from './verify.ts';
+} from './checks/core.check.ts';
 import { codexTreeErrors } from './tree-shape.ts';
 import { AGENT_YAML_FILES, AGENT_NAMES } from './build.ts';
 import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
@@ -284,21 +284,18 @@ describe('findRosterScanMismatch', () => {
     expect(findRosterScanMismatch(['b.md', 'a.md'], ['a.md', 'b.md'])).toBeNull();
   });
 
-  test('names the exact expected-vs-actual sets when a fixture agent file is added without a matching AGENT_NAMES edit', () => {
+  test('names only the symmetric difference (extra) when a fixture agent file is added without a matching AGENT_NAMES edit', () => {
     const declared = [...AGENT_NAMES].map((n) => `${n}.md`);
     const scanned = [...declared, 'stray-new-agent.md'];
     const mismatch = findRosterScanMismatch(scanned, declared);
-    expect(mismatch).not.toBeNull();
-    expect(mismatch).toContain('stray-new-agent.md');
-    for (const name of declared) expect(mismatch).toContain(name);
+    expect(mismatch).toBe('extra [stray-new-agent.md]');
   });
 
-  test('names the exact expected-vs-actual sets when a declared agent file is removed from disk', () => {
+  test('names only the symmetric difference (missing) when a declared agent file is removed from disk', () => {
     const declared = [...AGENT_NAMES].map((n) => `${n}.md`);
     const scanned = declared.slice(1); // first agent's file missing from the scan
     const mismatch = findRosterScanMismatch(scanned, declared);
-    expect(mismatch).not.toBeNull();
-    expect(mismatch).toContain(declared[0]);
+    expect(mismatch).toBe(`missing [${declared[0]}]`);
   });
 });
 
