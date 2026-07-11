@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { DESIGN_TRACK_REQUIRED_HEADINGS, findMissingDesignTrackHeadings } from './verify.ts';
+import { DESIGN_TRACK_REQUIRED_HEADINGS, findMissingDesignTrackHeadings } from './checks/design-track.check.ts';
 
 const COMPLETE_FIXTURE = `
 ## Requirements Framing
