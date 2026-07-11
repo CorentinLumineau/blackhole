@@ -588,7 +588,15 @@ const checkCodexSkillFile = () => {
   else pass('V-CODEX-03');
 };
 
-// V-CODEX-04: codex-agents/*.yaml shape + codex-skills conditional-leak check. The 5-agent-count
+// V-CODEX-04 filter: identifies codexTreeErrors entries describing an agent-count mismatch
+// (e.g. "Codex: expected 6 agent YAML files, got 5"). Exported for direct unit coverage (#234)
+// since checkCodexAgentFiles closes over the repo-root filesystem and can't be exercised in
+// isolation otherwise. Post-#199 the expected count is parameterized, so the message no longer
+// contains a literal "5" — match the stable "agent YAML files" substring instead (fixes #234's
+// dead filter, which never matched and silently swallowed agent-count mismatches).
+export const isAgentCountError = (e: string): boolean => e.includes('agent YAML files');
+
+// V-CODEX-04: codex-agents/*.yaml shape + codex-skills conditional-leak check. The agent-count
 // check routes through tree-shape.ts's codexTreeErrors (shared with build.ts's assertion); the
 // per-file instructions-block *presence* check reuses tree-shape.ts's hasInstructionsBlock
 // predicate (no duplicated boolean logic), but the `continue`-based control flow around it
@@ -597,7 +605,7 @@ const checkCodexSkillFile = () => {
 const checkCodexAgentFiles = () => {
   const agentsDir = path.join(root, 'codex-agents');
   const agentFiles = codexAgentFileList();
-  const agentErrors: string[] = codexTreeErrors(root, agentFiles, AGENT_YAML_FILES.size).filter((e) => e.includes('5 agent'));
+  const agentErrors: string[] = codexTreeErrors(root, agentFiles, AGENT_YAML_FILES.size).filter(isAgentCountError);
   const yamlScalar = (content: string, field: string): string | null => {
     const m = content.match(new RegExp(`^${field}:\\s*(.+)$`, 'm'));
     return m ? m[1].trim() : null;

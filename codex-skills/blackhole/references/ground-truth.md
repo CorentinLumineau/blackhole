@@ -45,7 +45,7 @@ Source: `src/references/blackhole-vcodes.md`
 
 ## Verify checks
 
-**verify_check_count:** 20
+**verify_check_count:** 21
 
 | Check ID | Description |
 |----------|-------------|
