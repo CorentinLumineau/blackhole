@@ -84,9 +84,10 @@ Required keys: `repo`, `target_branch`, `forge`
 - `plan`
 - `implement`
 - `review`
+- `hunt`
 - `campaign-audit`
 
-**skill_mode_count:** 7
+**skill_mode_count:** 8
 
 ## References (required)
 
