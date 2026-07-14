@@ -38,7 +38,7 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 // the codex mirror; if buildCodex's default ever changes, revisit this equivalence.
 let geminiBuildResult: { ok: boolean; output: string } | null = null;
 
-const runGeminiBuild = (): { ok: boolean; output: string } => {
+const runFullBuildOnce = (): { ok: boolean; output: string } => {
   if (!geminiBuildResult) {
     const build = spawnSync('bun', ['run', 'build', '--gemini'], { cwd: root, encoding: 'utf-8' });
     geminiBuildResult = { ok: build.status === 0, output: build.stderr || build.stdout || '' };
@@ -49,7 +49,7 @@ const runGeminiBuild = (): { ok: boolean; output: string } => {
 // V-GEMINI-01: Gemini/Antigravity compile outputs are complete and platform-clean
 const checkGeminiBuild = (): CheckResult => {
   if (process.env.VERIFY_SKIP_BUILD !== '1') {
-    const build = runGeminiBuild();
+    const build = runFullBuildOnce();
     if (!build.ok) {
       return { id: 'V-GEMINI-01', ok: false, detail: `build --gemini failed: ${build.output}` };
     }
@@ -98,7 +98,7 @@ export const evaluateDistributionBundle = (destRoot: string): string[] =>
 
 const checkGeminiDistributionBundle = (): CheckResult => {
   if (process.env.VERIFY_SKIP_BUILD !== '1') {
-    const build = runGeminiBuild();
+    const build = runFullBuildOnce();
     if (!build.ok) {
       return { id: 'V-GEMINI-02', ok: false, detail: `build --gemini failed: ${build.output}` };
     }
@@ -112,7 +112,7 @@ const checkGeminiDistributionBundle = (): CheckResult => {
 // V-CLAUDE-DIST-01: Claude Code marketplace distribution bundle (plugins/blackhole-claude/) shape
 // check — the inverse invariant of V-GEMINI-02: this bundle REQUIRES agents/ (ADR-009, issue
 // #262; Claude marketplace plugins ship agents, unlike the Gemini bundle's AC4 no-agents rule).
-// Unconditional in build.ts (not gated behind `--gemini`), but still relies on runGeminiBuild()
+// Unconditional in build.ts (not gated behind `--gemini`), but still relies on runFullBuildOnce()
 // since that memoized runner executes the full `bun run build` script that also compiles this
 // bundle — see build.check.ts's module doc comment above.
 export const evaluateClaudeDistributionBundle = (destRoot: string): string[] => {
@@ -125,7 +125,7 @@ export const evaluateClaudeDistributionBundle = (destRoot: string): string[] => 
 
 const checkClaudeDistributionBundle = (): CheckResult => {
   if (process.env.VERIFY_SKIP_BUILD !== '1') {
-    const build = runGeminiBuild();
+    const build = runFullBuildOnce();
     if (!build.ok) {
       return { id: 'V-CLAUDE-DIST-01', ok: false, detail: `build failed: ${build.output}` };
     }
@@ -139,7 +139,7 @@ const checkClaudeDistributionBundle = (): CheckResult => {
 // V-CODEX-01: build succeeds (skip-env counts as success)
 const checkCodexBuildExec = (): CheckResult => {
   if (process.env.VERIFY_SKIP_BUILD !== '1') {
-    const build = runGeminiBuild();
+    const build = runFullBuildOnce();
     if (!build.ok) {
       return { id: 'V-CODEX-01', ok: false, detail: `build failed: ${build.output}` };
     }
@@ -349,7 +349,7 @@ const checkBuild = (): CheckResult => {
   let afterPorcelain = '';
 
   if (!skip) {
-    const build = runGeminiBuild();
+    const build = runFullBuildOnce();
     buildOk = build.ok;
     buildOutput = build.output;
 
