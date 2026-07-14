@@ -1,5 +1,5 @@
 ---
-name: mercure-sync
+name: prj-mercure-sync
 description: >-
   Compare blackhole against the latest mercure plugin releases and file gated
   adoption issues. Use when asked to sync with mercure, review mercure's
@@ -14,7 +14,7 @@ deciding what, if anything, blackhole should adopt — filtered through blackhol
 philosophy, never copied wholesale. This is a self-development tool for the blackhole
 *project*, not a campaign capability: it does not compile through `src/` and never ships to
 consumer repos running a blackhole campaign (they have no reason to diff themselves against
-mercure). Precedent: [`create-release`](../create-release/SKILL.md).
+mercure). Precedent: [`prj-create-release`](../prj-create-release/SKILL.md).
 
 ## Prerequisites
 

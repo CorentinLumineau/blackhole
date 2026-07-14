@@ -186,7 +186,7 @@ Optional pre-commit build hook: `bash scripts/install-hook.sh`
 ## Maintainer: Creating a release
 
 **Must** use the release skill for every published tag — see
-[`.claude/skills/create-release/SKILL.md`](.claude/skills/create-release/SKILL.md). The CLI is
+[`.claude/skills/prj-create-release/SKILL.md`](.claude/skills/prj-create-release/SKILL.md). The CLI is
 [`scripts/release.ts`](scripts/release.ts) (`bun run release …`); every tag needs a matching
 `.github/releases/vX.Y.Z.md` committed on `main` first.
 

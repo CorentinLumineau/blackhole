@@ -138,7 +138,7 @@ Per `coordinator-dashboard.md`, print the **full** dashboard markdown to the use
 
 When the user asks to cut, publish, or tag a release (`vX.Y.Z`):
 
-1. **Route to the create-release skill** — follow [`.claude/skills/create-release/SKILL.md`](../../.claude/skills/create-release/SKILL.md). Do not implement release steps ad hoc or bypass the skill workflow.
+1. **Route to the create-release skill** — follow [`.claude/skills/prj-create-release/SKILL.md`](../../.claude/skills/prj-create-release/SKILL.md). Do not implement release steps ad hoc or bypass the skill workflow.
 2. **Mandatory CLI sequence** — the mechanical implementation is [`scripts/release.ts`](../../scripts/release.ts) via `bun run release`:
    ```bash
    bun run release prepare vX.Y.Z

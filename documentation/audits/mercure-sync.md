@@ -6,7 +6,7 @@ created: 2026-07-14
 last_updated: 2026-07-14
 last_reviewed_mercure_version: v9.4.0
 related:
-  - .claude/skills/mercure-sync/SKILL.md
+  - .claude/skills/prj-mercure-sync/SKILL.md
   - documentation/audits/analysis-blackhole-adaptive-phase-routing.md
   - documentation/audits/mercure-companion-files-gap-analysis.md
   - documentation/decisions/ADR-006-kaizen-hunt.md
@@ -14,7 +14,7 @@ related:
 
 # Mercure Sync — Living Tracking Doc
 
-Canonical, single tracking doc for `.claude/skills/mercure-sync/SKILL.md` runs. Every mercure
+Canonical, single tracking doc for `.claude/skills/prj-mercure-sync/SKILL.md` runs. Every mercure
 mechanism considered here is filtered through the skill's Adoption Lens before it can become a
 backlog item — mercure is a source of ideas, never a template blackhole copies wholesale. Do not
 create a dated variant of this file; update it in place on every run.

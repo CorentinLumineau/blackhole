@@ -119,7 +119,7 @@ intentional. No finding.
 | Category | Files | Verdict |
 |----------|-------|---------|
 | Intentional (DR-2 legacy detection) | `scripts/doctor.ts:20-21,241-244`, `scripts/install-verify.ts:24,53-54` | Keep |
-| Historical record | `documentation/decisions/ADR-001/002/003` (`tracking_initiative: backlog-campaign-v2` frontmatter, decision prose), `.github/releases/v0.1.0.md`…`v0.4.2.md`, `.claude/skills/create-release/SKILL.md` | Keep — accurate record of naming at time of authorship |
+| Historical record | `documentation/decisions/ADR-001/002/003` (`tracking_initiative: backlog-campaign-v2` frontmatter, decision prose), `.github/releases/v0.1.0.md`…`v0.4.2.md`, `.claude/skills/prj-create-release/SKILL.md` | Keep — accurate record of naming at time of authorship |
 | Test literal (context read) | `scripts/validate-worker-json.test.ts:74` — `resolveRole({ subagent_type: 'bc-synthesizer' })` expects `null` | Keep — deliberate legacy-role-rejection regression test (confirmed by reading `scripts/validate-worker-json.test.ts:69-85`: sibling assertions cover current bare/plugin-scoped roles, this one specifically guards against a removed role resolving to a truthy value) |
 | Legacy-generation test fixtures | `scripts/install-verify.test.ts:113-131,188-198,261-281`, `scripts/doctor.test.ts:107-120` | Keep — these deliberately construct `bc-campaign`/`backlog-campaign`-named symlinks/dirs to test the legacy-detection code paths above |
 | Live state directory name | `.bc-campaign/` | **RESOLVED — see §3, F4** |

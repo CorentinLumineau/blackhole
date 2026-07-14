@@ -38,8 +38,8 @@ See [README.md](README.md#-installation-paths) for Cursor submodule, Claude mark
 
 ## Maintainer — releases & milestones
 
-Each semver milestone (`v0.4.1`, `v0.4.2`, …) is closed **only** by publishing its matching release via [`.claude/skills/create-release/SKILL.md`](.claude/skills/create-release/SKILL.md). The CLI backing that skill is [`scripts/release.ts`](scripts/release.ts) — run `bun run release prepare|validate|tag|push vX.Y.Z`. Project rule: [`.cursor/rules/release-milestone-governance.mdc`](.cursor/rules/release-milestone-governance.mdc).
+Each semver milestone (`v0.4.1`, `v0.4.2`, …) is closed **only** by publishing its matching release via [`.claude/skills/prj-create-release/SKILL.md`](.claude/skills/prj-create-release/SKILL.md). The CLI backing that skill is [`scripts/release.ts`](scripts/release.ts) — run `bun run release prepare|validate|tag|push vX.Y.Z`. Project rule: [`.cursor/rules/release-milestone-governance.mdc`](.cursor/rules/release-milestone-governance.mdc).
 
 ## Maintainer — upstream sync
 
-Periodically review new mercure plugin releases and decide what, if anything, blackhole should adopt via [`.claude/skills/mercure-sync/SKILL.md`](.claude/skills/mercure-sync/SKILL.md). Every candidate is filtered through blackhole's own Adoption Lens (autonomous, single-skill-many-modes, agent-agnostic) before it can be filed as a `[Upstream]` issue — mercure is a source of ideas, never a template to copy. Living tracking doc: [`documentation/audits/mercure-sync.md`](documentation/audits/mercure-sync.md).
+Periodically review new mercure plugin releases and decide what, if anything, blackhole should adopt via [`.claude/skills/prj-mercure-sync/SKILL.md`](.claude/skills/prj-mercure-sync/SKILL.md). Every candidate is filtered through blackhole's own Adoption Lens (autonomous, single-skill-many-modes, agent-agnostic) before it can be filed as a `[Upstream]` issue — mercure is a source of ideas, never a template to copy. Living tracking doc: [`documentation/audits/mercure-sync.md`](documentation/audits/mercure-sync.md).

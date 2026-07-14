@@ -1,5 +1,5 @@
 ---
-name: create-release
+name: prj-create-release
 description: >-
   Cut a new backlog-campaign GitHub release. Use when asked to create a release,
   cut vX.Y.Z, publish release notes, or tag a version.

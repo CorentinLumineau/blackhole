@@ -17,7 +17,7 @@ alwaysApply: true
 
 When all issues on milestone `vX.Y.Z` are done:
 
-1. Follow [`.claude/skills/create-release/SKILL.md`](../../.claude/skills/create-release/SKILL.md):
+1. Follow [`.claude/skills/prj-create-release/SKILL.md`](../../.claude/skills/prj-create-release/SKILL.md):
    `bun run release prepare|validate|tag|push` with `.github/releases/vX.Y.Z.md`
 2. Verify: `gh release view vX.Y.Z` — body matches the notes file
 3. Close the milestone (after release is live):
