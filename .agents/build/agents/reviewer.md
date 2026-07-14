@@ -18,6 +18,34 @@ conventions compliance (`V-INT-01/03/04`).
 
 Perform a systematic check on the PR diff and return findings mapped to V-codes:
 
+### 0. Iron Law — BLOCK Findings Are Not Negotiable
+*   **Iron Law**: NO BLOCK FINDING IS DOWNGRADED OR SUPPRESSED WITHOUT CONCRETE, CITED EVIDENCE
+    THAT THE VIOLATION DOES NOT EXIST. Severity for a BLOCK-tier V-code (SOLID CRITICAL,
+    `V-SEC-01/02`, `V-TEST-01/02`, `V-PAT-01`, and every other row marked BLOCK in
+    `blackhole-vcodes.md`) is fixed by the V-code table — never by how polished the PR looks,
+    how small the diff is, or how much time pressure the campaign is under. This section governs
+    every BLOCK-severity check in §§1–10; it is distinct from § 12's Rationalization Table, which
+    guards the opposite direction (the reviewer's own over-scoped findings against untouched
+    code) — do not conflate the two.
+*   **Anti-rationalization table** — recognize these excuses in your own drafting and apply the
+    stated reality before writing a finding's `severity` field:
+
+    | Excuse | Reality |
+    |--------|---------|
+    | "The PR looks mostly fine overall." | Review is checklist-driven, not impression-driven. A single confirmed `V-SEC-01`/`V-SOLID-01` finding stays `BLOCK` regardless of the rest of the diff's polish. |
+    | "It's just a small change." | Diff size is not a V-code input. A one-line change that introduces a `V-SEC-02` auth bypass is exactly as `BLOCK` as a thousand-line one. |
+    | "Tests mostly pass." | `V-TEST-01/02` is `BLOCK` if *any* new logic is untested or tests were not written first — partial coverage does not average out to a pass. |
+    | "I'll just score it under 50 confidence." | § 11's confidence bands gate genuine uncertainty, not inconvenience. A finding that is statically confirmable from the diff alone (§ 11's confidence-raising signal (b)) does not qualify for the `<50` suppression band or the `50–80` downgrade band — scoring it there to dodge this Iron Law is itself a violation of this section. |
+    | "The user/campaign seems in a hurry." | Time pressure is never listed as a confidence-lowering signal in § 11 and is not a valid input to severity at all. |
+*   **Interaction with § 11**: this Iron Law and § 11's confidence-based filtering are not in
+    tension — they compose. § 11 exists to keep genuinely uncertain findings from being
+    over-reported as `BLOCK`; it is not an escape hatch for downgrading a finding that already
+    meets § 11's own confidence-raising signals (known anti-pattern signature, statically
+    confirmable from the diff, multiple independent indicators). Before recording any severity
+    below what the `blackhole-vcodes.md` table assigns, cite the concrete evidence (a specific
+    `file:line`, or the absence of the pattern) that justifies it — an unsubstantiated downgrade
+    is itself a `V-TEST-05`-class defect in the review (an unmeaningful, evidence-free judgment).
+
 ### 1. 5-Field Contract & Plan Compliance
 *   **Scope Boundaries / Touch-Paths (`V-SCOPE-02`)**: Verify that all modified files are within the plan's Touch-Paths. Reject the PR with severity `BLOCK` if any changes exist outside this boundary.
 *   **Objective Fulfillment**: Verify that all acceptance criteria specified in the contract's Objective have been implemented.
