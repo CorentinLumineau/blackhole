@@ -1,0 +1,33 @@
+# Architecture: {package-name}
+
+> Package-level architecture. Root reference: {root-relative-path}/ARCHITECTURE.md
+> Architectural decisions live in documentation/decisions/ — see INDEX.md for the log.
+
+---
+
+## Module Map
+
+<!--
+  Internal module structure of this package.
+  Updated when packages are added, removed, or restructured.
+-->
+
+{Internal module structure of this package.}
+
+## Dependencies
+
+<!--
+  Upstream = what this package depends on (other packages, external libs).
+  Downstream = what depends on this package (consumers).
+-->
+
+- **Upstream** (this package depends on): {list}
+- **Downstream** (depends on this package): {list}
+
+## Active Constraints
+
+<!--
+  Package-specific technical constraints — versioning rules, API contracts, perf budgets.
+-->
+
+- {Package-specific technical constraints.}

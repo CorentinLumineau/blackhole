@@ -20,7 +20,7 @@
         "workflows",
         "skills"
       ],
-      "source": "."
+      "source": "./plugins/blackhole-claude"
     }
   ]
 }

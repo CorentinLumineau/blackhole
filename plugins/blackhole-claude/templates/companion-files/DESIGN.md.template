@@ -1,0 +1,35 @@
+---
+name: {project-name}
+description: {project-description}
+colors:
+  primary: "#000000"
+  secondary: "#666666"
+typography:
+  body-md:
+    fontFamily: "System UI"
+    fontSize: "1rem"
+rounded:
+  sm: 4px
+  md: 8px
+spacing:
+  sm: 8px
+  md: 16px
+---
+
+> Visual design system / token registry for this project.
+>
+> Created automatically when frontend is detected. Maintained by x-design when UI
+> ADRs are accepted (V-ADA-04). Not for architectural decisions — those live in
+> ARCHITECTURE.md.
+
+## Overview
+
+{Describe the visual identity of this project. Replace with actual design rationale.}
+
+## Colors
+
+{Document color usage and meaning for each token above.}
+
+## Typography
+
+{Document typeface choices and scale.}

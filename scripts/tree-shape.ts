@@ -95,6 +95,46 @@ export const distributionTreeErrors = (
   return errors;
 };
 
+/** Claude Code marketplace distribution bundle (ADR-009, issue #262) — deliberately separate
+ * from distributionTreeErrors above: this tree REQUIRES `expectedAgentCount` agents/, the inverse
+ * of AC4 (Claude marketplace plugins ship agents; the Gemini/Antigravity no-agents rule is
+ * platform-schema-scoped only). The manifest also lives at a different path than the Gemini
+ * bundle's flat `plugin.json` — `.claude-plugin/plugin.json` *inside* the bundle — and carries no
+ * `$schema` field, so its field check runs standalone here rather than through
+ * validatePluginTreeShape's manifest branch. Do not generalize this with distributionTreeErrors
+ * or geminiWorkspaceTreeErrors — the invariants stay deliberately incompatible (see the
+ * "do not generalize" note above). */
+export const claudeDistributionTreeErrors = (
+  destRoot: string,
+  agentFiles: string[],
+  expectedAgentCount: number,
+  rulesList: string[]
+): string[] => {
+  const errors: string[] = [];
+  if (agentFiles.length !== expectedAgentCount) {
+    errors.push(`Claude bundle: expected ${expectedAgentCount} agents, got ${agentFiles.length}`);
+  }
+  errors.push(
+    ...validatePluginTreeShape(destRoot, null, { treePrefix: '', manifest: '' }, rulesList)
+  );
+
+  const manifestPath = path.join(destRoot, '.claude-plugin', 'plugin.json');
+  if (!fs.existsSync(manifestPath)) {
+    errors.push('missing .claude-plugin/plugin.json');
+  } else {
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      for (const key of ['name', 'version', 'description']) {
+        if (!manifest[key]) errors.push(`.claude-plugin/plugin.json missing ${key}`);
+      }
+    } catch {
+      errors.push('.claude-plugin/plugin.json invalid JSON');
+    }
+  }
+
+  return errors;
+};
+
 /** Codex YAML instructions-block scalar marker — the single source of truth consumed by
  * build.ts's serializer, this module's codexTreeErrors, and verify.ts's per-file check. */
 export const INSTRUCTIONS_MARKER = 'instructions: |';

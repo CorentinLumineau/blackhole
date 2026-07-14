@@ -24,6 +24,10 @@ import {
   GEMINI_TARGET_DIRS,
   CODEX_TARGET_DIRS,
   DEPRECATED_BUILD_FLAGS,
+  CLAUDE_DISTRIBUTION_ROOT,
+  CLAUDE_DISTRIBUTION_AGENT_DIR,
+  CLAUDE_DISTRIBUTION_VCODES,
+  AGENT_NAMES,
 } from './build.ts';
 import { projectIdentity } from './project-identity.ts';
 
@@ -184,6 +188,51 @@ describe('compileGeminiTree', () => {
       fs.rmSync(destRoot, { recursive: true, force: true });
     }
   });
+
+  // ADR-009 (issue #262): compileGeminiTree is reused for the Claude marketplace distribution
+  // bundle via `target: 'claude'`. Platform-conditional {{#claude}}/{{#gemini}} blocks must
+  // resolve to the CORRECT platform's content — passing the wrong target would silently compile
+  // the other platform's conditional text into the bundle.
+  test('target: "claude" compiles Claude-specific platform-conditional content, not Gemini (issue #262)', () => {
+    const destRoot = makeTempDir();
+    try {
+      compileGeminiTree(
+        destRoot,
+        CLAUDE_DISTRIBUTION_AGENT_DIR,
+        CLAUDE_DISTRIBUTION_VCODES,
+        { includeAgents: true, target: 'claude' }
+      );
+
+      const protocol = fs.readFileSync(path.join(destRoot, 'rules', 'blackhole-protocol.md'), 'utf-8');
+      expect(protocol).toContain('**Use `/goal`**');
+      expect(protocol).not.toContain('**No `/goal`**');
+
+      expect(fs.existsSync(path.join(destRoot, 'agents'))).toBe(true);
+      expect(fs.readdirSync(path.join(destRoot, 'agents')).length).toBe(AGENT_NAMES.length);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('default target (no option passed) still compiles Gemini-specific content unchanged (regression)', () => {
+    const destRoot = makeTempDir();
+    try {
+      compileGeminiTree(destRoot, '.agents/build', '.agents/build/rules/blackhole-vcodes.md');
+      const protocol = fs.readFileSync(path.join(destRoot, 'rules', 'blackhole-protocol.md'), 'utf-8');
+      expect(protocol).toContain('**No `/goal`**');
+      expect(protocol).not.toContain('**Use `/goal`**');
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('CLAUDE_DISTRIBUTION_ROOT', () => {
+  test('is plugins/blackhole-claude, distinct from the Gemini DISTRIBUTION_ROOT (ADR-009)', () => {
+    expect(CLAUDE_DISTRIBUTION_ROOT).toBe(path.join('plugins', 'blackhole-claude'));
+    expect(CLAUDE_DISTRIBUTION_AGENT_DIR).toBe('plugins/blackhole-claude');
+    expect(CLAUDE_DISTRIBUTION_VCODES).toBe('plugins/blackhole-claude/rules/blackhole-vcodes.md');
+  });
 });
 
 describe('copyTemplatesDir', () => {
@@ -290,7 +339,14 @@ describe('buildClaudeMarketplace', () => {
     const marketplace = buildClaudeMarketplace(pluginMeta);
     expect(marketplace.name).toBe(`${projectIdentity.name}-marketplace`);
     expect(marketplace.plugins[0].name).toBe(projectIdentity.name);
-    expect(marketplace.plugins[0].source).toBe('.');
+  });
+
+  // ADR-009 (issue #262): source points at the isolated Claude marketplace bundle, not the repo
+  // root — Claude Code resolves a relative "./..." source against the marketplace root.
+  test('source points at the isolated Claude marketplace bundle, not the repo root', () => {
+    const pluginMeta = buildClaudePluginManifest('1.2.3');
+    const marketplace = buildClaudeMarketplace(pluginMeta);
+    expect(marketplace.plugins[0].source).toBe('./plugins/blackhole-claude');
   });
 });
 

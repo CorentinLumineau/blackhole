@@ -5,11 +5,18 @@ import {
   AGENTS_BUILD_ROOT,
   AGENTS_BUILD_AGENT_DIR,
   DISTRIBUTION_ROOT,
+  CLAUDE_DISTRIBUTION_ROOT,
   AGENT_MD_FILES,
   AGENT_YAML_FILES,
   RULES_LIST,
 } from '../build.ts';
-import { validatePluginTreeShape, distributionTreeErrors, codexTreeErrors, hasInstructionsBlock } from '../tree-shape.ts';
+import {
+  validatePluginTreeShape,
+  distributionTreeErrors,
+  claudeDistributionTreeErrors,
+  codexTreeErrors,
+  hasInstructionsBlock,
+} from '../tree-shape.ts';
 import { isAgentCountError, listFiles, walkMdFilesAbs, walkMdFiles } from './core.check.ts';
 
 // ADR-007 T5/R2' — build.check.ts: everything gated behind `bun run build --gemini`
@@ -100,6 +107,33 @@ const checkGeminiDistributionBundle = (): CheckResult => {
   const errors = evaluateDistributionBundle(path.join(root, DISTRIBUTION_ROOT));
   if (errors.length) return { id: 'V-GEMINI-02', ok: false, detail: errors.join('; ') };
   return { id: 'V-GEMINI-02', ok: true };
+};
+
+// V-CLAUDE-DIST-01: Claude Code marketplace distribution bundle (plugins/blackhole-claude/) shape
+// check — the inverse invariant of V-GEMINI-02: this bundle REQUIRES agents/ (ADR-009, issue
+// #262; Claude marketplace plugins ship agents, unlike the Gemini bundle's AC4 no-agents rule).
+// Unconditional in build.ts (not gated behind `--gemini`), but still relies on runGeminiBuild()
+// since that memoized runner executes the full `bun run build` script that also compiles this
+// bundle — see build.check.ts's module doc comment above.
+export const evaluateClaudeDistributionBundle = (destRoot: string): string[] => {
+  const agentsDir = path.join(destRoot, 'agents');
+  const agentFiles = fs.existsSync(agentsDir)
+    ? fs.readdirSync(agentsDir).filter((f) => AGENT_MD_FILES.has(f))
+    : [];
+  return claudeDistributionTreeErrors(destRoot, agentFiles, AGENT_MD_FILES.size, RULES_LIST);
+};
+
+const checkClaudeDistributionBundle = (): CheckResult => {
+  if (process.env.VERIFY_SKIP_BUILD !== '1') {
+    const build = runGeminiBuild();
+    if (!build.ok) {
+      return { id: 'V-CLAUDE-DIST-01', ok: false, detail: `build failed: ${build.output}` };
+    }
+  }
+
+  const errors = evaluateClaudeDistributionBundle(path.join(root, CLAUDE_DISTRIBUTION_ROOT));
+  if (errors.length) return { id: 'V-CLAUDE-DIST-01', ok: false, detail: errors.join('; ') };
+  return { id: 'V-CLAUDE-DIST-01', ok: true };
 };
 
 // V-CODEX-01: build succeeds (skip-env counts as success)
@@ -334,5 +368,6 @@ export const runChecks = (): CheckResult[] => [
   checkBuild(),
   checkGeminiBuild(),
   checkGeminiDistributionBundle(),
+  checkClaudeDistributionBundle(),
   ...checkCodexBuild(),
 ];

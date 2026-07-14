@@ -5,6 +5,7 @@ import {
   validatePluginTreeShape,
   geminiWorkspaceTreeErrors,
   distributionTreeErrors,
+  claudeDistributionTreeErrors,
   codexTreeErrors,
   INSTRUCTIONS_MARKER,
   hasInstructionsBlock,
@@ -291,6 +292,75 @@ describe('distributionTreeErrors', () => {
       fs.unlinkSync(path.join(destRoot, 'skills', 'blackhole', 'SKILL.md'));
       const errors = distributionTreeErrors(destRoot, path.join(destRoot, 'plugin.json'), RULES_LIST);
       expect(errors.some((e) => e.includes('SKILL.md'))).toBe(true);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+// ADR-009 (issue #262): Claude Code marketplace distribution bundle — the inverse invariant of
+// distributionTreeErrors above (requires agents/ rather than forbidding it).
+describe('claudeDistributionTreeErrors', () => {
+  const populateClaudeFixtureTree = (destRoot: string) => {
+    compileGeminiTree(
+      destRoot,
+      'plugins/blackhole-claude',
+      'plugins/blackhole-claude/rules/blackhole-vcodes.md',
+      { includeAgents: true, target: 'claude' }
+    );
+    const pluginDir = path.join(destRoot, '.claude-plugin');
+    fs.mkdirSync(pluginDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(pluginDir, 'plugin.json'),
+      JSON.stringify({ name: 'blackhole', version: '1.0.0', description: 'x' }),
+      'utf-8'
+    );
+  };
+
+  test('returns [] on a fully-populated bundle with agents/ present (count derived from AGENT_NAMES)', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateClaudeFixtureTree(destRoot);
+      const agentFiles = fs.readdirSync(path.join(destRoot, 'agents'));
+      expect(agentFiles.length).toBe(AGENT_NAMES.length);
+      expect(claudeDistributionTreeErrors(destRoot, agentFiles, AGENT_NAMES.length, RULES_LIST)).toEqual([]);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('reports an agent-count error when agents/ is empty — inverse of AC4 (Claude bundles must ship agents)', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateClaudeFixtureTree(destRoot);
+      const errors = claudeDistributionTreeErrors(destRoot, [], AGENT_NAMES.length, RULES_LIST);
+      expect(errors.some((e) => e.includes(`expected ${AGENT_NAMES.length} agent`))).toBe(true);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('reports a missing .claude-plugin/plugin.json', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateClaudeFixtureTree(destRoot);
+      fs.unlinkSync(path.join(destRoot, '.claude-plugin', 'plugin.json'));
+      const agentFiles = fs.readdirSync(path.join(destRoot, 'agents'));
+      const errors = claudeDistributionTreeErrors(destRoot, agentFiles, AGENT_NAMES.length, RULES_LIST);
+      expect(errors.some((e) => e.includes('.claude-plugin/plugin.json'))).toBe(true);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('reports incomplete rules/', () => {
+    const destRoot = makeTempDir();
+    try {
+      populateClaudeFixtureTree(destRoot);
+      fs.unlinkSync(path.join(destRoot, 'rules', 'blackhole-state.md'));
+      const agentFiles = fs.readdirSync(path.join(destRoot, 'agents'));
+      const errors = claudeDistributionTreeErrors(destRoot, agentFiles, AGENT_NAMES.length, RULES_LIST);
+      expect(errors.some((e) => e.includes('blackhole-state.md'))).toBe(true);
     } finally {
       fs.rmSync(destRoot, { recursive: true, force: true });
     }

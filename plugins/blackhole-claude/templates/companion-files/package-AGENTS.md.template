@@ -1,0 +1,17 @@
+# Agents: {package-name}
+
+> Package-scoped agent context. Read alongside root AGENTS.md/CLAUDE.md.
+> Root reference: {root-relative-path}/AGENTS.md
+
+## Package Scope
+
+{Describe this package's role, key modules, and any package-specific constraints
+that agents should respect when working in this directory.}
+
+## Package Architecture
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for this package's design details.
+
+## Package-Specific Rules
+
+- {Any additional behavioral rules specific to this package.}

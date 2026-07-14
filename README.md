@@ -150,6 +150,14 @@ to skip while iterating on other targets) and commit the changed outputs.
 All source lives under `src/` — every platform tree below it is a `bun run build` output, never
 hand-edited.
 
+`bun run build` also emits `plugins/blackhole-claude/` — the isolated Claude Code marketplace
+bundle (ADR-009): a co-located `.claude-plugin/plugin.json` + `agents/` + `skills/` + `rules/` +
+`templates/`, compiled the same way as the Antigravity `plugins/blackhole/` bundle above but
+shipping `agents/` (Claude marketplace plugins ship the 8 campaign agents; Gemini's AC4
+no-agents rule is platform-schema-scoped only). `.claude-plugin/marketplace.json`'s `source`
+points at this bundle, not the repo root, so repo-root `.claude/` is now free for
+maintainer-only, auto-discovered content that never reaches consumers.
+
 ```bash
 bun run build            # regenerates every git-tracked target: Cursor, Claude, skills.sh,
                           # Codex, Antigravity/Gemini — tracked ⇒ built by default; --gemini/
@@ -164,6 +172,8 @@ bun run install:verify   # read-only workstation install audit (Cursor/Claude/Ge
 |-------|---------|------|
 | Source | `src/` | Edit here — the only edit surface |
 | Build outputs | `.cursor/`, `.claude/`, `skills/`, `codex-*`, `.agents/build/`, `plugins/` | Generated — `bun run build`, never hand-edit |
+| Claude marketplace bundle | `plugins/blackhole-claude/` | Isolated, redistributable Claude Code plugin — ships `agents/` unlike the Gemini bundle (ADR-009); `marketplace.json` `source` points here |
+| Maintainer-only Claude content | `.claude/` (repo root) | Auto-discovered locally, never redistributed — freed up by the bundle split (ADR-009, issue #262) |
 | Campaign runtime | `.blackhole/` (`queue.json`, `findings-ledger.json`, `config.json`, `plans/`) | Live state, gitignored, sole protocol SSOT |
 | Ephemeral handoff | `.agents/orchestrator/`, `.agents/worker_*/` | Per-session, gitignored, not protocol state |
 

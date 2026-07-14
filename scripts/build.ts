@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { projectIdentity } from './project-identity.ts';
-import { geminiWorkspaceTreeErrors, distributionTreeErrors, codexTreeErrors, INSTRUCTIONS_MARKER } from './tree-shape.ts';
+import { geminiWorkspaceTreeErrors, distributionTreeErrors, claudeDistributionTreeErrors, codexTreeErrors, INSTRUCTIONS_MARKER } from './tree-shape.ts';
 import { walkFilesAbs } from './lib/fs.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -18,6 +18,16 @@ export const AGENTS_BUILD_VCODES = '.agents/build/rules/blackhole-vcodes.md';
 export const DISTRIBUTION_ROOT = path.join('plugins', 'blackhole');
 export const DISTRIBUTION_AGENT_DIR = 'plugins/blackhole';
 export const DISTRIBUTION_VCODES = 'plugins/blackhole/rules/blackhole-vcodes.md';
+
+/** Redistributable Claude Code marketplace bundle (ADR-009) — co-located
+ * .claude-plugin/plugin.json + agents/ + skills/ + rules/ + templates/. Unlike the Gemini
+ * distribution bundle above, this bundle SHIPS agents/: Claude marketplace plugins ship the 8
+ * campaign agents, and AC4's no-agents rule is Gemini/Antigravity-schema-scoped only. Isolates
+ * the intentionally-shipped plugin surface from maintainer-only repo-root `.claude/` content
+ * (issue #262). */
+export const CLAUDE_DISTRIBUTION_ROOT = path.join('plugins', 'blackhole-claude');
+export const CLAUDE_DISTRIBUTION_AGENT_DIR = 'plugins/blackhole-claude';
+export const CLAUDE_DISTRIBUTION_VCODES = 'plugins/blackhole-claude/rules/blackhole-vcodes.md';
 const version = projectIdentity.version;
 
 // ADR-007 T2 (R5′): tracked ⇒ built-by-default. Any build output already tracked by git is
@@ -275,7 +285,7 @@ export const VCODE_TABLE_ROW_COUNT = 43;
  * array. `verify.ts` warns (does not fail) on a mismatch, so this is the sole place the
  * expectation is declared — never restate it as a literal at any consumption site.
  */
-export const EXPECTED_CHECK_COUNT = 26;
+export const EXPECTED_CHECK_COUNT = 27;
 
 export const buildGeminiPluginManifest = (pkgVersion: string) => ({
   $schema: 'https://antigravity.google/schemas/v1/plugin.json',
@@ -346,17 +356,24 @@ export const buildClaudePluginManifest = (pkgVersion: string) => ({
   keywords: [projectIdentity.name, 'claude-code', ...projectIdentity.keywordsBase],
 });
 
+/** `source` points at the isolated Claude marketplace bundle (ADR-009, issue #262) rather than
+ * the repo root — Claude Code resolves a relative `"./..."` source against the marketplace root
+ * (the dir containing `.claude-plugin/`), so this keeps maintainer-only repo-root `.claude/`
+ * content out of every consumer's install surface. */
 export const buildClaudeMarketplace = (pluginMeta: ReturnType<typeof buildClaudePluginManifest>) => ({
   name: `${projectIdentity.name}-marketplace`,
   description: 'Blackhole Marketplace',
   owner: { name: 'CorentinLumineau' },
-  plugins: [{ ...pluginMeta, source: '.' }],
+  plugins: [{ ...pluginMeta, source: `./${CLAUDE_DISTRIBUTION_ROOT.split(path.sep).join('/')}` }],
 });
 
 /** Copies templates/companion-files/ (repo root, not src/) into destRoot's own
- * templates/companion-files/ subtree. Only Gemini/Antigravity targets need this: Claude Code,
- * Cursor, and Codex all install via full-repo-source mechanisms and already have templates/
- * at its natural repo-relative path with zero build-pipeline change. */
+ * templates/companion-files/ subtree. Isolated distribution bundles need their own copy since
+ * they don't ship at the repo root: the Gemini/Antigravity bundle (plugins/blackhole/) and, since
+ * ADR-009 (issue #262), the Claude Code marketplace bundle (plugins/blackhole-claude/) — both
+ * call this via compileGeminiTree. Cursor and Codex still install via full-repo-source/committed
+ * mechanisms and already have templates/ at its natural repo-relative path with zero
+ * build-pipeline change. */
 export const copyTemplatesDir = (destRoot: string) => {
   const src = path.join(templatesDir, 'companion-files');
   if (!fs.existsSync(src)) return;
@@ -364,14 +381,25 @@ export const copyTemplatesDir = (destRoot: string) => {
   fs.cpSync(src, dest, { recursive: true });
 };
 
+/**
+ * Compiles a full plugin tree — agents? + rules + SKILL.md + references + templates — for a
+ * given platform `target` (default 'gemini', preserving every existing call site's behavior
+ * unchanged). Reused as-is for the Claude Code marketplace distribution bundle (ADR-009, issue
+ * #262) via `target: 'claude'`, since `applyPlatformConditionals` resolves `{{#claude}}`/
+ * `{{#gemini}}` blocks differently per target — passing the wrong `target` for a destination
+ * would silently compile the wrong platform's conditional content into it. Parameterizing the
+ * existing walker (rather than hand-rolling a second one) keeps V-INT-02: the recursion itself
+ * still runs through `walkFilesAbs` (scripts/lib/fs.ts) via `compileFolder`.
+ */
 export const compileGeminiTree = (
   destRoot: string,
   agentDir: string,
   rulesPath: string,
-  options: { includeAgents?: boolean } = {}
+  options: { includeAgents?: boolean; target?: Target } = {}
 ) => {
+  const target = options.target ?? 'gemini';
   if (options.includeAgents !== false) {
-    compileFolder('agents', path.join(destRoot, 'agents'), agentDir, rulesPath, 'gemini', true);
+    compileFolder('agents', path.join(destRoot, 'agents'), agentDir, rulesPath, target, true);
   }
   for (const rule of RULES_LIST) {
     processFile(
@@ -379,7 +407,7 @@ export const compileGeminiTree = (
       path.join(destRoot, 'rules', rule),
       agentDir,
       rulesPath,
-      'gemini'
+      target
     );
   }
   processFile(
@@ -387,14 +415,14 @@ export const compileGeminiTree = (
     path.join(destRoot, 'skills', 'blackhole', 'SKILL.md'),
     agentDir,
     rulesPath,
-    'gemini'
+    target
   );
   compileFolder(
     'references',
     path.join(destRoot, 'skills', 'blackhole', 'references'),
     agentDir,
     rulesPath,
-    'gemini'
+    target
   );
   copyTemplatesDir(destRoot);
 };
@@ -469,6 +497,10 @@ cleanDir(path.join(root, '.claude', 'agents'));
 cleanDir(path.join(root, '.claude', 'rules'));
 cleanDir(path.join(root, '.claude', 'skills'));
 cleanDir(path.join(root, '.claude-plugin'));
+// Claude marketplace distribution bundle (ADR-009) — unconditional like the rest of Target C
+// above, not gated behind the Gemini/Codex tracked-target opt-in flags: it is the redistributable
+// form of the always-built repo-root .claude/ Target C, not an optional bonus target.
+cleanDir(path.join(root, CLAUDE_DISTRIBUTION_ROOT));
 if (buildGemini) {
   cleanDir(path.join(root, AGENTS_BUILD_ROOT));
   cleanDir(path.join(root, '.gemini-plugin'));
@@ -577,6 +609,18 @@ compileFolder(
   'claude'
 );
 
+// 4b. Compile Target C2: Claude Code marketplace distribution bundle (plugins/blackhole-claude/)
+// — ADR-009, issue #262. Isolates the intentionally-shipped plugin surface (skill + 8 campaign
+// agents + rules + templates) from maintainer-only repo-root .claude/ content. Unlike the Gemini
+// distribution bundle (Target D2 below), this bundle SHIPS agents/ — Claude marketplace plugins
+// ship agents; AC4's no-agents rule is Gemini/Antigravity-schema-scoped only.
+console.log('Compiling Claude Code marketplace bundle (plugins/blackhole-claude/)...');
+const claudeDistRoot = path.join(root, CLAUDE_DISTRIBUTION_ROOT);
+compileGeminiTree(claudeDistRoot, CLAUDE_DISTRIBUTION_AGENT_DIR, CLAUDE_DISTRIBUTION_VCODES, {
+  includeAgents: true,
+  target: 'claude',
+});
+
 // 5. Compile Target D: Gemini/Antigravity — workspace (.agents/build/) — opt-in (#13)
 if (buildGemini) {
   console.log('Compiling Target D (Gemini/Antigravity workspace — .agents/build/)...');
@@ -616,6 +660,21 @@ const pluginMeta = buildClaudePluginManifest(version);
 const pluginDir = path.join(root, '.claude-plugin');
 if (!fs.existsSync(pluginDir)) fs.mkdirSync(pluginDir, { recursive: true });
 fs.writeFileSync(path.join(pluginDir, 'plugin.json'), JSON.stringify(pluginMeta, null, 2), 'utf-8');
+
+// 6b. Bundle manifest: same payload as the repo-root manifest above, written to its own
+// .claude-plugin/plugin.json *inside* the isolated distribution bundle (ADR-009) — the Claude
+// plugin schema requires the manifest co-located with the plugin, unlike Gemini's flat
+// plugin.json at bundle root (buildGeminiPluginManifest / writeGeminiManifest above).
+const claudeBundlePluginDir = path.join(claudeDistRoot, '.claude-plugin');
+if (!fs.existsSync(claudeBundlePluginDir)) fs.mkdirSync(claudeBundlePluginDir, { recursive: true });
+fs.writeFileSync(path.join(claudeBundlePluginDir, 'plugin.json'), JSON.stringify(pluginMeta, null, 2), 'utf-8');
+
+const claudeBundleAgentsDir = path.join(claudeDistRoot, 'agents');
+const claudeBundleAgentFiles = fs.existsSync(claudeBundleAgentsDir)
+  ? fs.readdirSync(claudeBundleAgentsDir).filter((f) => AGENT_MD_FILES.has(f))
+  : [];
+const claudeDistErrors = claudeDistributionTreeErrors(claudeDistRoot, claudeBundleAgentFiles, AGENT_NAMES.length, RULES_LIST);
+if (claudeDistErrors.length) throw new Error(claudeDistErrors.join('; '));
 
 // 8. Generate Claude Code Marketplace Catalog (.claude-plugin/marketplace.json)
 const marketplaceJson = buildClaudeMarketplace(pluginMeta);
