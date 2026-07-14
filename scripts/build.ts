@@ -493,9 +493,14 @@ cleanDir(path.join(root, 'references'));
 cleanDir(path.join(root, '.cursor'));
 // Only clean the subdirs build.ts actually writes — `.claude/` also holds
 // maintainer state (initiatives/, progress.md) that must survive a rebuild.
+// `.claude/skills` is narrowed to the `blackhole/` subdir specifically (issue #267): build only
+// ever writes `.claude/skills/blackhole/`, so wiping the whole `skills/` dir deleted sibling
+// maintainer-only skills (e.g. `create-release/`) that live alongside it. `.claude/agents` and
+// `.claude/rules` still wipe wholesale — narrow them the same way only if maintainer agents/rules
+// are ever added (YAGNI; not done now, since build writes the entirety of both dirs today).
 cleanDir(path.join(root, '.claude', 'agents'));
 cleanDir(path.join(root, '.claude', 'rules'));
-cleanDir(path.join(root, '.claude', 'skills'));
+cleanDir(path.join(root, '.claude', 'skills', 'blackhole'));
 cleanDir(path.join(root, '.claude-plugin'));
 // Claude marketplace distribution bundle (ADR-009) — unconditional like the rest of Target C
 // above, not gated behind the Gemini/Codex tracked-target opt-in flags: it is the redistributable
