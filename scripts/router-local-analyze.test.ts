@@ -78,3 +78,18 @@ describe('blackhole-vcodes.md — V-SEC-09/V-SEC-10 registration', () => {
   // the same live row count against build.ts's § facts VCODE_TABLE_ROW_COUNT declaration —
   // strictly better coverage than this unit-level comparison against a doc counter.
 });
+
+describe('blackhole-vcodes.md / reviewer.md — V-UX-01 registration (#271)', () => {
+  test('vcodes table has a V-UX-01 (WARN) row', () => {
+    const vcodes = read('src/references/blackhole-vcodes.md');
+    expect(vcodes).toMatch(/\| V-UX-01 \|.*\| WARN \|/);
+  });
+
+  test('reviewer.md audits V-UX-01 by reusing § 10\'s V-ADA-03 detection, not reimplementing it', () => {
+    const reviewer = read('src/agents/reviewer.md');
+    expect(reviewer).toContain('Information-Hierarchy Audit (`V-UX-01`)');
+    // Guards V-INT-02: the new audit must cross-reference § 10's frontend-detection keyword
+    // set rather than restating or reimplementing it.
+    expect(reviewer).toMatch(/frontend-detection keyword set as § 10's `V-ADA-03` bullet/);
+  });
+});

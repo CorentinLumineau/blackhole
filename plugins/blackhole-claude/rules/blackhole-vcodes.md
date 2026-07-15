@@ -32,6 +32,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-ADA-02 | `documentation/decisions/INDEX.md` missing an Accepted ADR added in this diff (remedy: append INDEX row) | WARN |
 | V-ADA-03 | `DESIGN.md` absent when diff touches a detected frontend/UI project (remedy: flag) | WARN |
 | V-ADA-05/06/07 | `AGENTS.md` absent at root, new monorepo package missing `AGENTS.md`, or package `AGENTS.md` unindexed at root (remedy: flag) | WARN |
+| V-UX-01 | Information overload on a UI-touching diff — flat field dumps, >~7-column dumps with no grouping/drill-down, everything-expanded-by-default, buried primary info, or deprecated data at equal prominence, instead of tiered at-a-glance/summary/detail/raw disclosure | WARN |
 | V-DOC-GOV-01 | New doc created under `documentation/` without a search-before-write check (duplicate-concern risk) | WARN |
 | V-DOC-GOV-02 | Doc under `documentation/` missing lifecycle frontmatter (`type`, `status`) | WARN |
 | V-DOC-GOV-03 | Doc filename uses a date-stamp suffix instead of the canonical `{concern-slug}.md` naming (ADR files exempt) | WARN |
