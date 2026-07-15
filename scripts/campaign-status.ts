@@ -206,6 +206,120 @@ export function discoveryFilings(findings: LedgerFinding[]) {
     }));
 }
 
+type IssueRow = { num: number; issue: QueueIssue };
+
+// One render*Section helper per independently-addable dashboard section — each returns
+// the section's lines (including its trailing blank-line separator) or [] when the
+// section has nothing to show. Keeps formatDashboard a thin composer (issue #281).
+
+function renderInFlightSection(inFlight: IssueRow[]): string[] {
+  if (inFlight.length === 0) return [];
+  const lines: string[] = [
+    '### In-flight',
+    '| Issue | Phase | PR | Notes |',
+    '|-------|-------|-----|-------|',
+  ];
+  for (const { num, issue } of inFlight) {
+    const pr = issue.pr != null ? `#${issue.pr}` : '—';
+    const notes = issue.notes ? issue.notes.replace(/\|/g, '\\|') : '—';
+    lines.push(`| #${num} ${issue.title ?? ''} | ${issue.phase ?? '—'} | ${pr} | ${notes} |`);
+  }
+  lines.push('');
+  return lines;
+}
+
+function renderBlockedSection(blocked: IssueRow[]): string[] {
+  if (blocked.length === 0) return [];
+  const lines: string[] = ['### Blocked'];
+  for (const { num, issue } of blocked) {
+    lines.push(`- **#${num}** ${issue.title ?? ''} — ${issue.notes ?? 'blocked'}`);
+  }
+  lines.push('');
+  return lines;
+}
+
+function renderReadySection(ready: IssueRow[]): string[] {
+  if (ready.length === 0) return [];
+  return [
+    '### Ready',
+    ready.map(({ num, issue }) => `#${num} (${issue.phase ?? 'handle'})`).join(', '),
+    '',
+  ];
+}
+
+function renderRoutingSection(active: IssueRow[]): string[] {
+  const routed = active.filter(({ issue }) => issue.route);
+  if (routed.length === 0) return [];
+  const lines: string[] = ['### Routing'];
+  for (const { num, issue } of routed) {
+    lines.push(`- **#${num}** ${issue.title ?? ''}`);
+    lines.push(`  ${renderRouteChain(issue.route, issue.phase)}`);
+  }
+  lines.push('');
+  return lines;
+}
+
+function renderWavesSection(issues: Record<string, QueueIssue>): string[] {
+  const { waves, unresolved } = computeWaves(issues);
+  if (waves.length === 0 && unresolved.length === 0) return [];
+  const lines: string[] = ['### Waves'];
+  waves.forEach((wave, i) => {
+    lines.push(`**Wave ${i}:** ${wave.map((n) => `#${n}`).join(', ')}`);
+  });
+  if (unresolved.length > 0) {
+    lines.push(`**Unresolved (dependency cycle):** ${unresolved.map((n) => `#${n}`).join(', ')}`);
+  }
+  lines.push('');
+  return lines;
+}
+
+function renderCompletedSection(done: IssueRow[]): string[] {
+  if (done.length === 0) return [];
+  return [
+    '### Completed (queue)',
+    done
+      .map(({ num, issue }) => `#${num}${issue.pr != null ? ` → PR #${issue.pr}` : ''}`)
+      .join(' · '),
+    '',
+  ];
+}
+
+function renderFiledSection(filed: ReturnType<typeof discoveryFilings>): string[] {
+  if (filed.length === 0) return [];
+  const lines: string[] = ['### Issues filed (deferred discoveries)'];
+  for (const f of filed) {
+    lines.push(`- **#${f.issue}** — ${f.summary} (\`${f.vcode}\`)`);
+  }
+  lines.push('');
+  return lines;
+}
+
+function renderLedgerOpenSection(findings: LedgerFinding[]): string[] {
+  const openFindings = findings.filter((f) => f.status === 'open');
+  if (openFindings.length === 0) return [];
+  const lines: string[] = ['### Ledger open'];
+  for (const f of openFindings.slice(0, 10)) {
+    lines.push(
+      `- **${f.id ?? '?'}** \`${f.vcode}\` ${f.severity} — ${f.summary ?? ''}${f.issue_ref != null ? ` (#${f.issue_ref})` : ''}`,
+    );
+  }
+  if (openFindings.length > 10) {
+    lines.push(`- …and ${openFindings.length - 10} more`);
+  }
+  lines.push('');
+  return lines;
+}
+
+function renderActiveWorkersSection(checkpointBody: string | undefined): string[] {
+  if (!checkpointBody?.includes('## In-flight workers')) return [];
+  const workerSection = checkpointBody
+    .split('## In-flight workers')[1]
+    ?.split(/^## /m)[0]
+    ?.trim();
+  if (!workerSection) return [];
+  return ['### Active workers', workerSection, ''];
+}
+
 export function formatDashboard(opts: {
   scope?: CampaignScope;
   checkpoint: CheckpointMeta;
@@ -250,99 +364,15 @@ export function formatDashboard(opts: {
   );
   lines.push('');
 
-  if (inFlight.length > 0) {
-    lines.push('### In-flight');
-    lines.push('| Issue | Phase | PR | Notes |');
-    lines.push('|-------|-------|-----|-------|');
-    for (const { num, issue } of inFlight) {
-      const pr = issue.pr != null ? `#${issue.pr}` : '—';
-      const notes = issue.notes ? issue.notes.replace(/\|/g, '\\|') : '—';
-      lines.push(`| #${num} ${issue.title ?? ''} | ${issue.phase ?? '—'} | ${pr} | ${notes} |`);
-    }
-    lines.push('');
-  }
-
-  if (blocked.length > 0) {
-    lines.push('### Blocked');
-    for (const { num, issue } of blocked) {
-      lines.push(`- **#${num}** ${issue.title ?? ''} — ${issue.notes ?? 'blocked'}`);
-    }
-    lines.push('');
-  }
-
-  if (ready.length > 0) {
-    lines.push('### Ready');
-    lines.push(
-      ready.map(({ num, issue }) => `#${num} (${issue.phase ?? 'handle'})`).join(', '),
-    );
-    lines.push('');
-  }
-
-  const routed = active.filter(({ issue }) => issue.route);
-  if (routed.length > 0) {
-    lines.push('### Routing');
-    for (const { num, issue } of routed) {
-      lines.push(`- **#${num}** ${issue.title ?? ''}`);
-      lines.push(`  ${renderRouteChain(issue.route, issue.phase)}`);
-    }
-    lines.push('');
-  }
-
-  const { waves, unresolved } = computeWaves(issues);
-  if (waves.length > 0 || unresolved.length > 0) {
-    lines.push('### Waves');
-    waves.forEach((wave, i) => {
-      lines.push(`**Wave ${i}:** ${wave.map((n) => `#${n}`).join(', ')}`);
-    });
-    if (unresolved.length > 0) {
-      lines.push(`**Unresolved (dependency cycle):** ${unresolved.map((n) => `#${n}`).join(', ')}`);
-    }
-    lines.push('');
-  }
-
-  if (done.length > 0) {
-    lines.push('### Completed (queue)');
-    lines.push(
-      done
-        .map(({ num, issue }) => `#${num}${issue.pr != null ? ` → PR #${issue.pr}` : ''}`)
-        .join(' · '),
-    );
-    lines.push('');
-  }
-
-  if (filed.length > 0) {
-    lines.push('### Issues filed (deferred discoveries)');
-    for (const f of filed) {
-      lines.push(`- **#${f.issue}** — ${f.summary} (\`${f.vcode}\`)`);
-    }
-    lines.push('');
-  }
-
-  const openFindings = findings.filter((f) => f.status === 'open');
-  if (openFindings.length > 0) {
-    lines.push('### Ledger open');
-    for (const f of openFindings.slice(0, 10)) {
-      lines.push(
-        `- **${f.id ?? '?'}** \`${f.vcode}\` ${f.severity} — ${f.summary ?? ''}${f.issue_ref != null ? ` (#${f.issue_ref})` : ''}`,
-      );
-    }
-    if (openFindings.length > 10) {
-      lines.push(`- …and ${openFindings.length - 10} more`);
-    }
-    lines.push('');
-  }
-
-  if (checkpointBody?.includes('## In-flight workers')) {
-    const workerSection = checkpointBody
-      .split('## In-flight workers')[1]
-      ?.split(/^## /m)[0]
-      ?.trim();
-    if (workerSection) {
-      lines.push('### Active workers');
-      lines.push(workerSection);
-      lines.push('');
-    }
-  }
+  lines.push(...renderInFlightSection(inFlight));
+  lines.push(...renderBlockedSection(blocked));
+  lines.push(...renderReadySection(ready));
+  lines.push(...renderRoutingSection(active));
+  lines.push(...renderWavesSection(issues));
+  lines.push(...renderCompletedSection(done));
+  lines.push(...renderFiledSection(filed));
+  lines.push(...renderLedgerOpenSection(findings));
+  lines.push(...renderActiveWorkersSection(checkpointBody));
 
   return lines.join('\n').trimEnd();
 }
