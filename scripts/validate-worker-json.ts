@@ -500,7 +500,7 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf-8');
 }
 
-function readTranscriptTail(path: string, maxBytes = 64_000): string | null {
+export function readTranscriptTail(path: string, maxBytes = 64_000): string | null {
   try {
     const stat = fs.statSync(path);
     const start = Math.max(0, stat.size - maxBytes);
@@ -518,7 +518,7 @@ function readTranscriptTail(path: string, maxBytes = 64_000): string | null {
   }
 }
 
-function extractFromHookInput(input: HookInput): unknown {
+export function extractFromHookInput(input: HookInput): unknown {
   const summary = input.summary ?? '';
 
   try {
