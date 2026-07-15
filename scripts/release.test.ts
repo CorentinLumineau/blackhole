@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { findManifestVersionMismatches, MANIFEST_PATHS } from './release.ts';
+import { findManifestVersionMismatches, MANIFEST_PATHS, normalizeTag } from './release.ts';
 
 describe('findManifestVersionMismatches', () => {
   test('returns [] when package.json and all 5 manifests share the same version', () => {
@@ -36,6 +36,63 @@ describe('findManifestVersionMismatches', () => {
     manifests['.claude-plugin/marketplace.json'] = { version: '1.0.0', plugins: [{ version: '0.9.0' }] };
 
     expect(findManifestVersionMismatches('1.0.0', manifests)).toEqual(['.claude-plugin/marketplace.json']);
+  });
+});
+
+// normalizeTag is the sole gate against a malformed version string reaching an irreversible
+// `git tag`/`git push` (release.ts:19-25). It calls `process.exit(1)` on rejection, so every
+// reject-path assertion mocks process.exit (never actually exits the test runner) and
+// console.error, then restores both afterwards.
+describe('normalizeTag', () => {
+  function withExitMocked(run: (exitSpy: ReturnType<typeof spyOn>, errorSpy: ReturnType<typeof spyOn>) => void): void {
+    const exitSpy = spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      run(exitSpy, errorSpy);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  }
+
+  test('accepts a valid vX.Y.Z tag and returns it unchanged', () => {
+    withExitMocked((exitSpy, errorSpy) => {
+      expect(normalizeTag('v1.2.3')).toBe('v1.2.3');
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  test('rejects a tag missing the leading "v"', () => {
+    withExitMocked((exitSpy, errorSpy) => {
+      normalizeTag('1.2.3');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid tag "1.2.3"'));
+    });
+  });
+
+  test('rejects a tag with an extra version segment', () => {
+    withExitMocked((exitSpy, errorSpy) => {
+      normalizeTag('v1.2.3.4');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid tag "v1.2.3.4"'));
+    });
+  });
+
+  test('rejects a tag with a non-numeric segment', () => {
+    withExitMocked((exitSpy, errorSpy) => {
+      normalizeTag('v1.2.x');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid tag "v1.2.x"'));
+    });
+  });
+
+  test('rejects a tag missing the patch segment', () => {
+    withExitMocked((exitSpy, errorSpy) => {
+      normalizeTag('v1.2');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid tag "v1.2"'));
+    });
   });
 });
 

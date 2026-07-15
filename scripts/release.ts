@@ -16,7 +16,7 @@ function usage(): never {
   process.exit(1);
 }
 
-function normalizeTag(tag: string): string {
+export function normalizeTag(tag: string): string {
   const t = tag.trim();
   if (!/^v\d+\.\d+\.\d+$/.test(t)) {
     console.error(`Invalid tag "${tag}". Expected format: vX.Y.Z`);
