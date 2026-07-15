@@ -1,7 +1,7 @@
 {
   "name": "blackhole",
   "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "author": {
     "name": "blackhole contributors"
   },
