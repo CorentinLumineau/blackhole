@@ -1,0 +1,24 @@
+{
+  "version": "2.0",
+  "name": "autonomous-thinking-routes",
+  "status": "in_progress",
+  "currentMilestone": "M1",
+  "lastUpdated": "2026-07-15T00:00:00Z",
+  "adr": "documentation/decisions/ADR-010-autonomous-thinking-routes.md",
+  "audit": "documentation/audits/autonomous-workflow-parity.md",
+  "milestonesDir": "documentation/milestones/_active/autonomous-thinking-routes",
+  "progress": { "M1": "implemented-unreviewed", "M2": "pending", "M3": "pending", "M4": "pending", "M5": "pending" },
+  "checkpoints": [
+    {
+      "milestone": "planning",
+      "completedAt": "2026-07-15T00:00:00Z",
+      "notes": "All 5 milestone plans generated in parallel (x-planner swarm), quality-gated 8/8 each, retry_count 0, plan_base_commit d4d978b. M3 carries one [NEEDS CLARIFICATION] marker (analysis-landed re-validation set)."
+    },
+    {
+      "milestone": "M1",
+      "completedAt": "2026-07-15T00:00:00Z",
+      "notes": "T1-T6 implemented (orchestrated: 4 parallel + T4 + T6). bun test 454/454; verify 26/27 (only V-BUILD-01 pre-commit dirty-output, resolves at commit); V-GROUND-01/V-SCHEMA-01/V-LINK-01 green. Uncommitted — awaiting x-review + git-commit."
+    }
+  ],
+  "nextAction": "Review M1 via /x-review, then /git-commit (branch + PR)"
+}

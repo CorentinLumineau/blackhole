@@ -1,18 +1,31 @@
 {
   "version": "3.0",
-  "focus": "blackhole-scoped-extraction",
-  "lastUpdated": "2026-07-06T00:00:00Z",
+  "focus": "autonomous-thinking-routes",
+  "lastUpdated": "2026-07-15T00:00:00Z",
   "initiatives": [
+    {
+      "name": "autonomous-thinking-routes",
+      "displayName": "Autonomous Thinking Routes (ADR-010): mercure workflow parity",
+      "priority": 1,
+      "status": "in_progress",
+      "dependsOn": [],
+      "relatedTo": ["documentation/decisions/ADR-010-autonomous-thinking-routes.md", "documentation/audits/autonomous-workflow-parity.md"],
+      "blockedBy": [],
+      "created": "2026-07-15T00:00:00Z"
+    }
+  ],
+  "archived": [
     {
       "name": "blackhole-scoped-extraction",
       "displayName": "Scoped Extraction: project-identity.ts + tree-shape.ts",
       "priority": 1,
-      "status": "in_progress",
+      "status": "archived",
       "dependsOn": [],
       "relatedTo": [],
       "blockedBy": [],
-      "created": "2026-07-06T00:00:00Z"
+      "created": "2026-07-06T00:00:00Z",
+      "archivedAt": "2026-07-15T00:00:00Z",
+      "archiveNote": "All 3 milestones complete, bundled in PR #90 (awaiting merge). Milestone folder moved to documentation/milestones/_archived/."
     }
-  ],
-  "archived": []
+  ]
 }
