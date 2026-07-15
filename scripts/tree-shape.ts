@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { readJsonFile } from './lib/fs.ts';
 
 // Single source of truth for "what does a valid compiled plugin tree look like" — consumed by
 // both scripts/build.ts (build-time, throw-on-invalid) and scripts/verify.ts (post-hoc,
@@ -39,7 +40,7 @@ export const validatePluginTreeShape = (
       errors.push(`missing ${labels.manifest}`);
     } else {
       try {
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+        const manifest = readJsonFile(manifestPath, manifestPath) as Record<string, unknown>;
         for (const key of ['$schema', 'name', 'version', 'description']) {
           if (!manifest[key]) errors.push(`plugin.json missing ${key}`);
         }
@@ -123,7 +124,7 @@ export const claudeDistributionTreeErrors = (
     errors.push('missing .claude-plugin/plugin.json');
   } else {
     try {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      const manifest = readJsonFile(manifestPath, manifestPath) as Record<string, unknown>;
       for (const key of ['name', 'version', 'description']) {
         if (!manifest[key]) errors.push(`.claude-plugin/plugin.json missing ${key}`);
       }

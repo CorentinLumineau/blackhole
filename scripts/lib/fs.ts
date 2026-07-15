@@ -43,3 +43,18 @@ export const cleanupDirEntries = (dir: string): void => {
     fs.rmSync(path.join(dir, entry), { recursive: true, force: true });
   }
 };
+
+// Labeled JSON file read: reads and parses `path`, prefixing any read/parse failure with
+// `label` so the caller gets a clear "which file, what went wrong" message instead of a bare
+// ENOENT/SyntaxError. The one shared helper for this concern (V-INT-02) — call sites across
+// scripts/ previously hand-rolled near-identical try/catch wrappers or did a bare
+// JSON.parse(fs.readFileSync(...)) with no error context (#280). Returns `unknown`; callers
+// cast to their expected shape same as they did with the bare JSON.parse before this helper.
+export const readJsonFile = (filePath: string, label: string): unknown => {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${label}: ${message}`);
+  }
+};

@@ -1,5 +1,5 @@
-import * as fs from 'fs';
 import * as path from 'path';
+import { readJsonFile } from './lib/fs.ts';
 
 export type CampaignScope = {
   milestone?: string;
@@ -96,8 +96,7 @@ function resolveConfigPath(): string {
 
 function loadConfig(): CampaignConfig {
   const configPath = resolveConfigPath();
-  const raw = fs.readFileSync(configPath, 'utf-8');
-  return JSON.parse(raw) as CampaignConfig;
+  return readJsonFile(configPath, configPath) as CampaignConfig;
 }
 
 if (import.meta.main) {

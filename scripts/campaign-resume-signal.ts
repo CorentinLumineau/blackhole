@@ -13,6 +13,7 @@ import {
   type HookInput,
   type Role,
 } from './validate-worker-json';
+import { readJsonFile } from './lib/fs.ts';
 
 export type CampaignAgent =
   | 'orchestrator'
@@ -177,7 +178,7 @@ export function buildDedupeKey(
 export function readResumeRequest(filePath: string): ResumeRequest | null {
   if (!fs.existsSync(filePath)) return null;
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as ResumeRequest;
+    const parsed = readJsonFile(filePath, filePath) as ResumeRequest;
     if (parsed.version !== 1) return null;
     return parsed;
   } catch {
@@ -258,7 +259,7 @@ export function evaluateResumeHook(
 
   let queue: QueueJson;
   try {
-    queue = JSON.parse(fs.readFileSync(queuePath, 'utf-8')) as QueueJson;
+    queue = readJsonFile(queuePath, queuePath) as QueueJson;
   } catch {
     return { action: 'none' };
   }
@@ -388,7 +389,7 @@ async function main() {
   }
 
   if (inputFile) {
-    const input = JSON.parse(fs.readFileSync(inputFile, 'utf-8')) as HookInput;
+    const input = readJsonFile(inputFile, inputFile) as HookInput;
     const result = evaluateResumeHook(input, resolvedCampaignDir);
     console.log(JSON.stringify(result, null, 2));
     process.exit(0);

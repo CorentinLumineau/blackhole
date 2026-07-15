@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import { readJsonFile } from './lib/fs.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const releasesDir = path.join(root, '.github', 'releases');
@@ -34,7 +35,7 @@ function notesPath(tag: string): string {
 }
 
 function readPkg(): { version: string; [k: string]: unknown } {
-  return JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+  return readJsonFile(pkgPath, pkgPath) as { version: string; [k: string]: unknown };
 }
 
 function writePkg(pkg: { version: string; [k: string]: unknown }): void {

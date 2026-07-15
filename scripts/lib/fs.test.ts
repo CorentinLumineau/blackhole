@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { walkFilesAbs, makeTempDir, cleanupDirEntries } from './fs.ts';
+import { walkFilesAbs, makeTempDir, cleanupDirEntries, readJsonFile } from './fs.ts';
 
 // #216 regression: a subdirectory entry must never reach fs.readFileSync()/be misread as a
 // file — the walker must guard isDirectory() before recursing so a nested dir never throws
@@ -174,6 +174,43 @@ describe('cleanupDirEntries', () => {
 
       expect(() => cleanupDirEntries(dir)).not.toThrow();
       expect(fs.readdirSync(dir)).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// #280: one shared labeled JSON read/parse helper — call sites across scripts/ previously
+// hand-rolled near-identical try/catch wrappers or did a bare JSON.parse(readFileSync(...))
+// with no error context.
+describe('readJsonFile', () => {
+  test('returns the parsed object for a valid JSON file', () => {
+    const dir = makeTempDir('fs-readjson-valid');
+    try {
+      const filePath = path.join(dir, 'data.json');
+      fs.writeFileSync(filePath, JSON.stringify({ a: 1, b: 'two' }));
+      expect(readJsonFile(filePath, 'test file')).toEqual({ a: 1, b: 'two' });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('throws an error prefixed with the label when the file contains malformed JSON', () => {
+    const dir = makeTempDir('fs-readjson-malformed');
+    try {
+      const filePath = path.join(dir, 'bad.json');
+      fs.writeFileSync(filePath, '{ not valid json');
+      expect(() => readJsonFile(filePath, 'malformed file')).toThrow(/^malformed file: /);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('throws an error prefixed with the label when the file does not exist', () => {
+    const dir = makeTempDir('fs-readjson-missing');
+    try {
+      const filePath = path.join(dir, 'does-not-exist.json');
+      expect(() => readJsonFile(filePath, 'missing file')).toThrow(/^missing file: /);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

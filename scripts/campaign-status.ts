@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { readScope, buildListArgs, type CampaignScope } from './forge-scope';
+import { readJsonFile } from './lib/fs.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -417,13 +418,13 @@ export function loadCampaignState(campaignDir: string) {
   const ledgerPath = path.join(campaignDir, 'findings-ledger.json');
   const checkpointPath = path.join(campaignDir, 'campaign-checkpoint.md');
 
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as {
+  const config = readJsonFile(configPath, configPath) as {
     repo?: string;
     scope_milestone?: string;
     scope_labels?: string[];
   };
-  const queue = JSON.parse(fs.readFileSync(queuePath, 'utf-8')) as QueueJson;
-  const ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf-8')) as LedgerJson;
+  const queue = readJsonFile(queuePath, queuePath) as QueueJson;
+  const ledger = readJsonFile(ledgerPath, ledgerPath) as LedgerJson;
 
   let checkpoint: CheckpointMeta = {};
   let checkpointBody = '';

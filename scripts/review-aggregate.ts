@@ -1,4 +1,4 @@
-import * as fs from 'fs';
+import { readJsonFile } from './lib/fs.ts';
 
 export type Finding = {
   vcode: string;
@@ -226,15 +226,6 @@ function parseArgs(argv: string[]): {
     }
   }
   return out;
-}
-
-function readJsonFile(path: string, label: string): unknown {
-  try {
-    return JSON.parse(fs.readFileSync(path, 'utf-8'));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`${label}: ${message}`);
-  }
 }
 
 function isReviewerInput(value: unknown): value is ReviewerInput {

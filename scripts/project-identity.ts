@@ -1,5 +1,5 @@
-import * as fs from 'fs';
 import * as path from 'path';
+import { readJsonFile } from './lib/fs.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const pkgPath = path.join(root, 'package.json');
@@ -18,7 +18,7 @@ const REPO_URL = 'https://github.com/CorentinLumineau/blackhole';
 const KEYWORDS_BASE = ['native', 'workflows', 'skills'];
 
 export const readProjectIdentity = (): ProjectIdentity => {
-  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+  const pkg = readJsonFile(pkgPath, pkgPath) as { name: string; version: string; description: string };
   return {
     name: pkg.name,
     version: pkg.version,

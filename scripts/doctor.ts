@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
+import { readJsonFile } from './lib/fs.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const DEFAULT_CONFIG_PATH = '.blackhole/config.json';
@@ -225,7 +226,7 @@ export function runDoctorChecks(repoRoot: string = root): DoctorCheck[] {
     checks.push(checkConfigValid(configPath));
 
     if (checks[checks.length - 1].ok) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
+      const config = readJsonFile(configPath, configPath) as Record<string, unknown>;
       if (shouldRunGhAuth(config)) {
         checks.push(runGhAuth());
       }
