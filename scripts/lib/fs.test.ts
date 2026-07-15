@@ -94,6 +94,25 @@ describe('walkFilesAbs', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // #274 regression: a dangling symlink (target does not exist) must be skipped, not crash the
+  // walk. fs.statSync() on a broken symlink throws ENOENT synchronously — the walker must guard
+  // with an existence check before stat'ing, the same way it already guards EISDIR (#216).
+  test('skips a dangling symlink instead of throwing ENOENT (#274)', () => {
+    const dir = makeTempDir('fs-walk-broken-symlink');
+    try {
+      fs.writeFileSync(path.join(dir, 'top.md'), 'top');
+      const subDir = path.join(dir, 'sub');
+      fs.mkdirSync(subDir);
+      fs.symlinkSync(path.join(dir, 'nonexistent-target'), path.join(subDir, 'broken-link'));
+
+      expect(() => walkFilesAbs(dir)).not.toThrow();
+      const files = walkFilesAbs(dir);
+      expect(files).toEqual([path.join(dir, 'top.md')]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('makeTempDir', () => {
