@@ -1,8 +1,11 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import {
+  extractFromHookInput,
   extractWorkerJson,
+  readTranscriptTail,
   resolveRole,
   validateWorker,
   type Role,
@@ -158,6 +161,96 @@ describe('resolveRole', () => {
   test('falls back to description/task text', () => {
     expect(resolveRole({ description: 'implementer for issue #18' })).toBe('implementer');
     expect(resolveRole({ task: 'Run reviewer on PR 42' })).toBe('reviewer');
+  });
+});
+
+describe('readTranscriptTail', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-worker-json-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('returns only the tail bytes when file exceeds maxBytes', () => {
+    const filePath = path.join(tmpDir, 'transcript.txt');
+    const marker = 'TAILMARKER1234567890';
+    const content = 'x'.repeat(50) + marker;
+    fs.writeFileSync(filePath, content, 'utf-8');
+
+    const tail = readTranscriptTail(filePath, marker.length);
+
+    expect(tail).toBe(marker);
+    expect(tail?.length).toBe(marker.length);
+  });
+
+  test('returns null for a missing file', () => {
+    const missingPath = path.join(tmpDir, 'does-not-exist.txt');
+
+    expect(readTranscriptTail(missingPath)).toBeNull();
+  });
+});
+
+describe('extractFromHookInput', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-worker-json-hook-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('extracts JSON directly from summary when present', () => {
+    const input = {
+      summary: '{"status":"complete","pr_number":1,"branch":"b","tests_passed":true,"touch_paths_honored":true}',
+    };
+
+    const result = extractFromHookInput(input) as Record<string, unknown>;
+
+    expect(result.status).toBe('complete');
+    expect(result.pr_number).toBe(1);
+  });
+
+  test('falls back to transcript tail when summary has no JSON', () => {
+    const transcriptPath = path.join(tmpDir, 'transcript.txt');
+    fs.writeFileSync(
+      transcriptPath,
+      'agent chatter before...\n{"status":"blocked","failing_checks":["x"],"clarification_markers":0}\nmore chatter',
+      'utf-8',
+    );
+    const input = {
+      summary: 'no structured output here',
+      agent_transcript_path: transcriptPath,
+    };
+
+    const result = extractFromHookInput(input) as Record<string, unknown>;
+
+    expect(result.status).toBe('blocked');
+    expect(result.clarification_markers).toBe(0);
+  });
+
+  test('throws when neither summary nor transcript contain JSON', () => {
+    const input = { summary: 'no structured output here' };
+
+    expect(() => extractFromHookInput(input)).toThrow(
+      'no worker JSON found in summary or transcript',
+    );
+  });
+
+  test('throws when transcript path is missing on disk', () => {
+    const input = {
+      summary: 'no structured output here',
+      agent_transcript_path: path.join(tmpDir, 'missing-transcript.txt'),
+    };
+
+    expect(() => extractFromHookInput(input)).toThrow(
+      'no worker JSON found in summary or transcript',
+    );
   });
 });
 
