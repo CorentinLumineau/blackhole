@@ -1,6 +1,6 @@
 {
   "name": "blackhole",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
   "scripts": {
     "build": "bun run scripts/build.ts",
