@@ -73,6 +73,22 @@ Blocked by #11
     expect(merged).not.toMatch(/Depends on #/i);
   });
 
+  test('preserves freeform prose under ## Dependencies when deps change', () => {
+    const body = `## Dependencies
+Blocked by #5
+
+See tracking sheet for context.
+
+## Acceptance criteria
+- [ ] Do thing
+`;
+    const merged = mergeDependsIntoBody(body, [5, 9]);
+    expect(merged).toContain('Blocked by #5');
+    expect(merged).toContain('Blocked by #9');
+    expect(merged).toContain('See tracking sheet for context.');
+    expect(merged).toContain('## Acceptance criteria');
+  });
+
   test('does not rewrite Part of #N lines', () => {
     const body = `Part of #298
 

@@ -82,8 +82,13 @@ export function mergeDependsIntoBody(body: string, dependsOn: number[]): string 
 
   if (section) {
     const before = nonDepLines.slice(0, section.start + 1);
+    // Everything strictly between the header and the next section that isn't
+    // a dependency line (already filtered out above) — freeform prose,
+    // blank lines, etc. This must be preserved, not discarded (V-FIX-01: the
+    // prior slice-and-replace approach silently dropped non-dep content).
+    const preserved = nonDepLines.slice(section.start + 1, section.end);
     const after = nonDepLines.slice(section.end);
-    const result = [...before, ...depLines, ...after];
+    const result = [...before, ...depLines, ...preserved, ...after];
     return trimTrailingBlankLines(result).join('\n');
   }
 
