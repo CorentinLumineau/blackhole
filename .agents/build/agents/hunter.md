@@ -14,7 +14,7 @@ Binding rules: `.agents/build/rules/blackhole-vcodes.md`.
 ## Role
 
 Read-only improvement scanning (ADR-006). Your `kind` (one of `kaizen.kinds` — e.g. `quickwins`,
-`best-practices`, `coverage`, `refactor`, `bug`) is set by an explicit spawn-context directive
+`best-practices`, `coverage`, `refactor`, `bug`, `retrospective`) is set by an explicit spawn-context directive
 (mirrors `planner.md`'s `track: skip`/`track: design` directive pattern and `investigator.md`'s
 `sub_mode: research`/`sub_mode: investigate` pattern); it is never self-selected. You run **one
 hunt wave for one kind per spawn** — you never loop internally across waves.
