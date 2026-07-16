@@ -90,6 +90,29 @@ consumers, `MEDIUM` for a moderate touch-path hotspot); it goes through the norm
 `V-PARETO-02` gate like every kind other than `bug`'s severity-floor exception (precedent:
 `src/references/hunt/bug.md` § Severity-term reconciliation note).
 
+## Finding file/line convention
+
+The hunter's Finding shape (`worker-schemas.md` § Finding shape (Hunter)) requires `file`
+(string) and `line` (number) on every finding, and the ledger dedups on
+`(vcode, file, line, issue_ref)` (`findings-ledger.md` § Write protocol, step 3). Every
+other hunt kind's findings are naturally single-file/single-line, so those two fields fall
+out of the scan directly. This kind's candidates are cluster- or PR-level instead — there is
+no single file:line to report — so this section fixes a canonical convention per heuristic,
+chosen so that re-detecting the *same* cluster/hotspot/outlier across waves always yields the
+*same* `(file, line)` pair and the dedup check correctly collapses re-reports into one row
+instead of manufacturing a new row every wave:
+
+| Heuristic | `file` | `line` | Rationale |
+|-----------|--------|--------|-----------|
+| Recurring V-code clusters | The shared module/dir path prefix common to the clustered rows, with a trailing `/` (e.g. `scripts/checks/`) to signal it is a prefix, not a literal file | `0` | The cluster spans multiple files by definition — the prefix is the smallest identifier stable across future waves re-detecting the same cluster |
+| Touch-path hotspots | The exact hotspot file path (this heuristic already narrows to one concrete file touched across 3+ merged PRs) | `0` | The finding is about the file as a whole being a de facto shared dependency, not one line in it |
+| Review-iteration outliers | The sentinel `pr:<number>` (e.g. `pr:42`) | `0` | The finding concerns a merged PR, not a file — the sentinel keeps the value distinct from any real file path so it can never collide with an unrelated per-file finding |
+| `needs_design: true` flagging | Inherits the `file`/`line` of the heuristic-1-or-2 candidate it is layered onto | inherits | This heuristic never stands alone — it re-frames an existing cluster/hotspot candidate's `rationale`, so it carries that candidate's location, not a new one |
+
+This is a documentation convention only — it introduces no new ledger field and no change to
+the dedup mechanism itself (`findings-ledger.md` § Write protocol), matching this kind's
+"pure additive extension" framing above.
+
 ## Calibration table
 
 `effort` for this kind, like `refactor.md`'s, is **not** raw implementation time — it is
@@ -99,10 +122,10 @@ cluster spanning a dozen+ files or issues climbs toward the high end.
 
 | Heuristic | Trigger | Gain range | Effort range | Worked example |
 |-----------|---------|------------|---------------|-----------------|
-| Recurring V-code clusters | 3+ ledger rows (current + archived) sharing `vcode` and a file/module prefix | 5–8 | 3–6 | `findings-ledger.json` (current + one archived snapshot) shows `V-DRY-02` filed 5 times across `scripts/checks/dry-01.check.ts`, `dry-02.check.ts`, `dry-03.check.ts` over the campaign's history, each a near-identical duplicated validation block → gain 6, effort 4 → Priority 6 × (11 − 4) = 6 × 7 = 42 (moderate); the candidate's `rationale` is written with architectural framing ("shared helper extraction spanning 3 files") so it routes `needs_design: true` on filing |
-| Touch-path hotspots | Same file path touched across 3+ merged issues' PRs | 4–7 | 3–5 | `gh pr list --state merged --json number,files,mergedAt --limit 100` shows `src/agents/orchestrator.md` touched by 4 separate merged PRs (#212, #219, #224, #231) over the campaign, none of whose plans anticipated the others → gain 5, effort 3 → Priority 5 × (11 − 3) = 5 × 8 = 40 (moderate) |
-| Review-iteration outliers | Merged PR's `gh pr view <n> --json reviews` review-submission count is materially above the campaign's typical pattern for its size label | 3–6 | 2–4 | `gh pr view 227 --json reviews` returns 5 review-submission entries for a `size:s` issue that should typically close in 1-2 rounds, indicating the underlying module's design made review unusually hard → gain 4, effort 2 → Priority 4 × (11 − 2) = 4 × 9 = 36 (borderline) |
-| `needs_design: true` flagging (architectural candidates) | A recurring-cluster or hotspot candidate's fix is a coupling hotspot or cross-cutting extraction, not a contained single-file fix | 6–9 | 5–8 | A god-module fan-in cluster surfaced by heuristic 1/2 spans 8 consumer files with no shared abstraction → gain 8, effort 6 → Priority 8 × (11 − 6) = 8 × 5 = 40 (moderate); the finding's `rationale` explicitly states the architectural scope so the router's ADR-004 content-based computation sets `needs_design: true` on the filed issue, routing it into the M2 design tier rather than a normal implement-only issue |
+| Recurring V-code clusters | 3+ ledger rows (current + archived) sharing `vcode` and a file/module prefix | 5–8 | 3–6 | `findings-ledger.json` (current + one archived snapshot) shows a vcode filed 5 times across three modules under a shared directory prefix, each a near-identical duplicated validation block (illustrative, invented) → gain 6, effort 4 → Priority 6 × (11 − 4) = 6 × 7 = 42 (moderate); the candidate's `rationale` is written with architectural framing ("shared helper extraction spanning 3 files") so it routes `needs_design: true` on filing. Finding location: `file: "<shared-dir-prefix>/"`, `line: 0` (shared-prefix convention, § Finding file/line convention) |
+| Touch-path hotspots | Same file path touched across 3+ merged issues' PRs | 4–7 | 3–5 | `gh pr list --state merged --json number,files,mergedAt --limit 100` shows one file touched by 4 separate merged PRs over the campaign, none of whose plans anticipated the others (illustrative, invented) → gain 5, effort 3 → Priority 5 × (11 − 3) = 5 × 8 = 40 (moderate). Finding location: `file: "<hotspot-file-path>"`, `line: 0` (whole-file convention, § Finding file/line convention) |
+| Review-iteration outliers | Merged PR's `gh pr view <n> --json reviews` review-submission count is materially above the campaign's typical pattern for its size label | 3–6 | 2–4 | `gh pr view <N> --json reviews` returns 5 review-submission entries for a `size:s` issue that should typically close in 1-2 rounds, indicating the underlying module's design made review unusually hard (illustrative, invented) → gain 4, effort 2 → Priority 4 × (11 − 2) = 4 × 9 = 36 (borderline). Finding location: `file: "pr:<N>"`, `line: 0` (PR-level sentinel convention, § Finding file/line convention) |
+| `needs_design: true` flagging (architectural candidates) | A recurring-cluster or hotspot candidate's fix is a coupling hotspot or cross-cutting extraction, not a contained single-file fix | 6–9 | 5–8 | A god-module fan-in cluster surfaced by heuristic 1/2 spans 8 consumer files with no shared abstraction (illustrative, invented) → gain 8, effort 6 → Priority 8 × (11 − 6) = 8 × 5 = 40 (moderate); the finding's `rationale` explicitly states the architectural scope so the router's ADR-004 content-based computation sets `needs_design: true` on the filed issue, routing it into the M2 design tier rather than a normal implement-only issue. Finding location: inherits the `file`/`line` of the underlying heuristic-1/2 candidate (§ Finding file/line convention) |
 
 `gain` and `effort` are each 1–10, matching the hunter output contract
 (`worker-schemas.md` § Hunter, Finding shape). The ranges above are per-heuristic
