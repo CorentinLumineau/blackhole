@@ -1,0 +1,96 @@
+# Design Rubric (ADR-010 D4)
+
+Fixed trade-off matrix columns and per-column weights, keyed by decision type. This file — not
+the planner, not the aggregate script — owns the scoring axes: `planner.md` §4.3 cites it
+verbatim rather than picking columns ad hoc, and `scripts/design-aggregate.ts` validates every
+scorer's input against its declared weights before computing a verdict. Closing this axis-choice
+gap is ADR-010 D4.1's exact target.
+
+## Decision-type taxonomy
+
+Derived from the 6 candidate columns `planner.md`'s Design Track subsection 2 already names
+(Complexity, Maintainability, Risk, Effort, Reversibility, Consistency-with-existing-pattern).
+Each decision type below fixes the 3-5 relevant columns for that type — the planner no longer
+"picks 3-5 relevant columns" per decision at runtime; it looks up the row for the type that
+matches the issue.
+
+| Decision type | When it applies |
+|----------------|------------------|
+| `architecture-choice` | New or replaced structural boundary — module split, service extraction, dispatch-mechanism swap |
+| `library-selection` | Choosing between third-party or in-repo utility candidates for a recurring concern |
+| `refactor-strategy` | Restructuring existing behavior-preserving code — extraction, consolidation, pattern migration |
+| `data-model-change` | Schema, config-key, or JSON-contract shape change with existing consumers |
+
+## Fixed columns + weights per decision type
+
+Weights sum to **100** per decision type (invariant `scripts/design-aggregate.ts` validates
+before scoring — a weight set that does not sum to 100 is treated as malformed input and blocks
+the verdict, same fail-safe-default rule as a missing critic).
+
+### `architecture-choice`
+
+| Column | Weight |
+|--------|--------|
+| Risk | 30 |
+| Maintainability | 25 |
+| Complexity | 20 |
+| Reversibility | 15 |
+| Consistency-with-existing-pattern | 10 |
+
+### `library-selection`
+
+| Column | Weight |
+|--------|--------|
+| Maintainability | 25 |
+| Risk | 20 |
+| Effort | 20 |
+| Reversibility | 20 |
+| Consistency-with-existing-pattern | 15 |
+
+### `refactor-strategy`
+
+| Column | Weight |
+|--------|--------|
+| Effort | 25 |
+| Complexity | 20 |
+| Risk | 20 |
+| Reversibility | 20 |
+| Consistency-with-existing-pattern | 15 |
+
+### `data-model-change`
+
+| Column | Weight |
+|--------|--------|
+| Risk | 35 |
+| Reversibility | 25 |
+| Maintainability | 20 |
+| Effort | 20 |
+
+## 1-5 scale (anchor meanings)
+
+Every column score is an integer or decimal on a fixed 1-5 scale, same anchors for the primary
+and both blind critics — this identical scale is what makes "blind" scoring comparable across
+all three scorers:
+
+| Score | Meaning |
+|-------|---------|
+| 1 | Worst plausible outcome for this column (e.g. highest risk, least maintainable, least reversible) |
+| 2 | Below average |
+| 3 | Neutral / acceptable |
+| 4 | Above average |
+| 5 | Best plausible outcome for this column |
+
+## Weighted-total formula
+
+For an option with per-column scores `column_score` against the decision type's fixed weights:
+
+```
+weighted_total(option) = Σ(column_score × column_weight) / 100
+```
+
+Weights sum to 100, so `weighted_total` stays on the same 1-5 scale as the raw column scores.
+`scripts/design-aggregate.ts` computes this once per scorer (primary + 2 critics) per option,
+ranks options by `weighted_total`, and requires the SAME option to win under all three scorers
+with a dominance margin over the runner-up exceeding `autonomy.design_dominance_delta` (default
+30%) — see that script's doc comments for the full verdict logic; this file is the fixed-input
+side of the contract, not the aggregation logic itself.

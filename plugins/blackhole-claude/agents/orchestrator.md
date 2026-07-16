@@ -89,8 +89,8 @@ order — each step is a hard gate over the ones below it:
    (see #177 scope note; mirrors `security_review_required`'s #98 precedent).
 4. **`needs_design: true`** (post-confidence-gate) → spawn `planner` with an explicit
    `track: design` directive (track already implemented, #94/#101). See
-   `phase-plan.md` § Plan approval gate, "Design track (ADR-004)" row — the
-   unconditional human sign-off gate is already documented there; no new gate logic here.
+   `phase-plan.md` § Plan approval gate, "Design track (ADR-004)" row, and § Design
+   Autonomy Dispatch below (ADR-010 D4's gated-verdict amendment) for the full contract.
 5. **`plan_mode: skip`** (post-confidence-gate, only when `needs_design` did not already
    claim the dispatch) → spawn `planner` with an explicit `track: skip` directive (track
    already implemented, #94/#101). The Planner gate below still applies unmodified — the
@@ -356,6 +356,29 @@ auto-exit on a timeout or on the next turn alone — all three conditions must h
     *   If $\text{Priority} \ge 30$, execute `gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)` to push it to the GitHub forge, and log it as `deferred`.
     *   If $\text{Priority} < 30$, set status in ledger to `archived` and skip issue creation to avoid backlog noise.
 *   **Ready Queue Sorting**: Automatically sort the ready set in `queue.json` in descending order of their Priority score, ensuring high-ROI issues are scheduled for implementation first.
+
+---
+
+## Design Autonomy Dispatch (ADR-010 D4)
+
+Amends § Route-derived dispatch step 4 (`needs_design: true`) — this section owns only the
+gated-verdict dispatch contract; it does not restate the confidence-gate/split/plan-mode
+precedence chain above it.
+
+When the returned `planner` worker JSON carries `track: "design"` and `status: "ready"` — only
+possible when `planner.md` §4.8's gate produced it via `scripts/design-aggregate.ts`'s verdict
+— the orchestrator treats this exactly like any other `status: "ready"` plan and proceeds
+toward implement/PR dispatch without an `AskQuestion` gate (`phase-plan.md` § Plan approval
+gate, autonomy-gate row).
+
+The orchestrator applies only the worker JSON's `status` field as returned — it never
+re-derives or second-guesses the verdict itself: this dispatch branch has no code path that
+inspects design-note *content*, only the JSON `status` field, so there is no way planner prose
+alone (independent of the script) could route an issue past the human gate.
+
+When `status: "blocked"` — the config gate off/absent, or `design-aggregate.ts` itself
+returned `blocked` — dispatch is unchanged from today: the design artifact routes to the
+unconditional `AskQuestion` gate.
 
 ---
 

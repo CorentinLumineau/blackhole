@@ -40,11 +40,15 @@ planner self-assesses Quick/Standard unchanged.
 | Split filed during plan | User confirms child breakdown |
 | Epic / PO gate | User sign-off per runbook |
 | Design track (ADR-004) | ALWAYS AskQuestion — no confidence bypass, regardless of AC clarity |
+| Design track, autonomy gate ready (`autonomy.enabled ∧ design_autonomy`, `design-aggregate.ts` verdict `ready`) | No AskQuestion — proceeds like standard/quick `status: ready` |
 
 Design-track artifact content depth (Options + trade-off matrix, adversarial evaluation via
 multiplicity, component decomposition, principles validation, refactoring impact, assumption
 audit — see `planner.md` § Design Track) does not change this gate's mechanics: the human
-AskQuestion fires exactly as before, unconditionally.
+AskQuestion fires exactly as before, unconditionally, whenever the row above applies (autonomy
+gate off/absent, or `design-aggregate.ts` itself returned `blocked`). The new autonomy-gate row
+does not change the *mechanics* of the AskQuestion path when it does fire — same wording pattern
+as this paragraph's own design-track content-depth disclaimer.
 
 Set `notes: awaiting-plan-approval` until user confirms.
 

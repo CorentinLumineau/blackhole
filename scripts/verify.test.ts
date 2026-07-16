@@ -481,10 +481,13 @@ describe('checkContentGate integration (real orchestrator.md, zero false positiv
       CONTENT_GATE_NEW_SECTION_BUDGET_LOC,
     );
     expect(violations).toEqual([]);
-    // Every section currently in the file is expected to already be in the baseline (governance
-    // added with zero content change to orchestrator.md) — a new, un-grandfathered section here
-    // would mean orchestrator.md changed in this PR, which T6 explicitly forbids.
-    expect(Object.keys(sections).every((h) => h in ORCHESTRATOR_CONTENT_GATE_BASELINE)).toBe(true);
+    // Sections not in the grandfathered baseline are legitimate new (post-T6) additions, budget-
+    // checked above via findContentGateViolations rather than forbidden outright — ADR-010 M2's
+    // "## Design Autonomy Dispatch" is the first such addition. Assert the non-baseline set is
+    // exactly the expected new-section allowlist, so an unexpected/undocumented new `##` header
+    // still fails loudly here even though it would pass the budget check above.
+    const nonBaselineSections = Object.keys(sections).filter((h) => !(h in ORCHESTRATOR_CONTENT_GATE_BASELINE));
+    expect(nonBaselineSections).toEqual(['## Design Autonomy Dispatch (ADR-010 D4)']);
   });
 });
 

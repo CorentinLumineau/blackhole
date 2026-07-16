@@ -176,6 +176,55 @@ When `status: blocked`, `failing_checks` lists failed items:
   analytical substance (Options + trade-off matrix, adversarial evaluation via multiplicity,
   component decomposition, design principles validation, refactoring impact analysis, assumption
   audit) per `planner.md`'s Design Track template — content only, no JSON field change.
+  **ADR-010 D4 amendment**: when `autonomy.enabled && autonomy.design_autonomy` is `true`, this
+  check is replaced by `scripts/design-aggregate.ts`'s deterministic verdict — see
+  `planner.md` §4.8 and the `design-aggregate` schema below. `design_pending_approval` remains
+  the unconditional outcome whenever that gate is off or absent.
+
+## Design Track Critic (blind sub-invocation)
+
+Returned by the Design Track's two critique-only sub-invocations described in `planner.md` §4.3
+(Adversarial Evaluation) — **not** a new agent identity: still `subagent_type: planner`, no
+`disallowedTools`/matcher change to the SubagentStop hook. Extracted from the sub-invocation's
+final plain-text response using the same fenced-block-first / brace-balanced-fallback order
+documented above (SubagentStop hook, `worker-schemas.md:17`).
+
+```json
+{
+  "per_option_scores": {
+    "Option A": { "Risk": 4, "Maintainability": 3 },
+    "Option B": { "Risk": 2, "Maintainability": 5 }
+  },
+  "findings": [
+    {
+      "option": "Option A",
+      "tag": "discriminating",
+      "severity": "CRITICAL",
+      "note": "Option A introduces an unreviewed auth bypass under concurrent writes"
+    }
+  ]
+}
+```
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `per_option_scores` | `{ [option]: { [column]: number } }` — one entry per option in the primary's provisional trade-off matrix (stripped of the primary's Chosen field before spawn), scored 1-5 against `design-rubric.md`'s fixed columns/weights for this decision's type | yes |
+| `findings` | `{ option, tag, severity, note }[]` | yes (empty array = no findings) |
+
+### Finding shape (Design Track Critic)
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `option` | string, matches a key in `per_option_scores` | yes |
+| `tag` | `discriminating` \| `domain-inherent` | yes |
+| `severity` | `CRITICAL` \| `NOTABLE` \| `MINOR` | yes |
+| `note` | string | yes |
+
+Consumed by `scripts/design-aggregate.ts` (see below) as one of the 2 blind-critic inputs
+alongside the primary's own weighted matrix — never as free-text critique. A `discriminating` +
+`CRITICAL` finding tagged on the winning option blocks the verdict; a `domain-inherent` +
+`CRITICAL` finding on the winner does not (see the `design-aggregate` schema's reasons vocabulary
+below).
 
 ## Implementer (`implementer`)
 
@@ -517,6 +566,35 @@ Orchestrator invokes after `reviewer` completes. Not a worker agent — determin
 | `error` | string | when `status: error` |
 
 CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>]`
+
+## Design aggregate (`scripts/design-aggregate.ts`)
+
+Orchestrator/planner invokes when `autonomy.enabled && autonomy.design_autonomy` is `true`
+(`planner.md` §4.8, ADR-010 D4). Not a worker agent — deterministic script output the planner
+reads but never overrides:
+
+```json
+{
+  "status": "blocked",
+  "winner": null,
+  "reasons": ["dominance"],
+  "scorer_results": [
+    { "scorer": "primary", "winner": "Option A", "margin": 20 },
+    { "scorer": "critic_a", "winner": "Option A", "margin": 20 },
+    { "scorer": "critic_b", "winner": "Option A", "margin": 20 }
+  ]
+}
+```
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `status` | `ready` \| `blocked` | yes |
+| `winner` | string \| `null` — the winning option name when `ready`; always `null` when `blocked` | yes |
+| `reasons` | `("dominance" \| "disagreement" \| "critical-finding" \| "breaking-consumer" \| "malformed-input")[]` — every failed condition, `[]` when `ready` | yes |
+| `scorer_results` | `{ scorer: "primary" \| "critic_a" \| "critic_b", winner: string \| null, margin: number \| null }[]` — `[]` on `malformed-input` (scoring never ran) | yes |
+| `detail` | string | when a `malformed-input` reason needs a human-readable diagnostic |
+
+CLI: `bun run scripts/design-aggregate.ts --input-file <path>`
 
 ## Orchestrator validation
 
