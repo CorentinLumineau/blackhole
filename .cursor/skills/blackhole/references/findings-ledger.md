@@ -173,7 +173,7 @@ New top-level `routing_decisions` array (sibling to `findings`), with its own
 |-------|--------|-------|
 | `id` | `R-NNNNN` | Zero-padded from `next_routing_id`; increment after append |
 | `issue_ref` | number | Parent campaign issue |
-| `trigger` | `initial` \| `clarify-resolved` \| `research-landed` \| `investigation-landed` | Matches the ADR's three re-route checkpoints plus the initial pass |
+| `trigger` | `initial` \| `clarify-resolved` \| `research-landed` \| `investigation-landed` \| `analysis-landed` | Matches the ADR's four re-route checkpoints plus the initial pass |
 | `route` | object | Same shape as `queue.json` issue `route` object — see `queue-dag.md` `### \`route\` object` |
 | `local_analyze` | object \| `null` | ADR-004 step 5b confidence-boost scan record; `null` when the scan did not trigger (confidence already ≥ threshold, or the row predates this mechanism) |
 | `local_analyze.triggered` | boolean | Always `true` when the object is non-null |
