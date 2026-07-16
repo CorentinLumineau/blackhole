@@ -58,11 +58,12 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
   "needs_research": false,
   "needs_investigation": true,
   "needs_design": false,
+  "needs_analysis": false,
   "task_type": "bugfix",
   "plan_mode": "quick",
   "security_review_required": false,
   "docs_impact": false,
-  "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85 },
+  "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85, "analysis": 70 },
   "body_hash": "<sha of issue title+body at classification time>",
   "computed_at_phase": "handle",
   "revision": 1
@@ -76,11 +77,12 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 | `needs_research` | boolean | Would trigger investigator · research sub-mode (step 6 — not yet implemented) |
 | `needs_investigation` | boolean | Would trigger investigator · investigate sub-mode (step 6 — not yet implemented) |
 | `needs_design` | boolean | Would trigger planner design track + hard human gate (step 4 — not yet implemented) |
+| `needs_analysis` | boolean | Confidence-gated (`confidence.analysis` vs. `router_confidence_thresholds.analysis`, default 70); cautious default `true` for `size:l`+ or `needs_design: true` issues, else `false` (ADR-010 D1) — triggers investigator · analyze sub-mode (step 6), additionally gated by `autonomy.enabled && autonomy.analyze_routing` |
 | `task_type` | `feature` \| `bugfix` \| `refactor` \| `docs` | Content-derived, never from forge labels; labels are a cautious tie-break only |
 | `plan_mode` | `skip` \| `quick` \| `full` | Would select planner track (steps 3-4 — not yet implemented) |
 | `security_review_required` | boolean | Would select reviewer security mode (step 8 — not yet implemented) |
 | `docs_impact` | boolean | Would select planner/reviewer docs-impact enrichment (dispatch out of scope — computed and confidence-gated only; see #177) |
-| `confidence` | object `{ split, design, plan_mode, security, docs }`, each 0-100 | Per-flag confidence; low confidence resolves to that flag's cautious default (`needs_split → true`, `plan_mode → full`, `security_review_required → true`, `needs_design → true`, `docs_impact → true`) |
+| `confidence` | object `{ split, design, plan_mode, security, docs, analysis }`, each 0-100 | Per-flag confidence; low confidence resolves to that flag's cautious default (`needs_split → true`, `plan_mode → full`, `security_review_required → true`, `needs_design → true`, `docs_impact → true`, `needs_analysis → true`) |
 | `body_hash` | string | sha of issue title+body at classification time; staleness marker |
 | `computed_at_phase` | `handle` \| `plan` \| `implement` \| `review` | Phase at which this route was computed |
 | `revision` | number | Bumped on every re-route; never retroactively changes already-executed chain steps |

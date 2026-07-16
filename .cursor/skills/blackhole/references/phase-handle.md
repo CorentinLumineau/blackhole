@@ -47,11 +47,11 @@ parent blocked until PO sign-off on design + children.
 issue's `queue.json` entry, plus one `routing_decisions` row to `findings-ledger.json`. Full
 write-protocol detail lives in `router.md` — not duplicated here.
 
-**Re-route checkpoints**: `router` is re-invoked at three checkpoints (ADR-004 verbatim —
-full table in `router.md`): `clarify-resolved` (all flags re-validated — reachable today,
-since Handle's existing clarify gate already produces a resume-after-answer flow),
-`research-landed` and `investigation-landed` (downstream flags re-validated — not yet
-reachable, since the `investigator` agent that produces those notes has not landed).
+**Re-route checkpoints**: `router` is re-invoked at four checkpoints (ADR-004/ADR-010 verbatim —
+full table in `router.md`): `clarify-resolved`, `research-landed`, and `investigation-landed` are
+all reachable today — the `investigator` agent has landed and is wired live at § Investigator
+agent below. `analysis-landed` becomes reachable the same way once `route.needs_analysis` fires
+and `investigator`'s `analyze` sub-mode lands its note.
 
 **Scope note**: Handle's own Split/Clarify triage above stays self-directed for this issue —
 `router` computes and persists `route.needs_split`/`route.needs_clarification` accurately,
@@ -61,20 +61,22 @@ dispatch does not introduce a new split code path. Downstream track selection (`
 `needs_design`) is entirely a Phase 2 Plan concern; see `orchestrator.md` § Route-derived
 dispatch and `phase-plan.md` § Route-derived planner spawn for the full precedence rules.
 
-## Investigator agent (ADR-004)
+## Investigator agent (ADR-004, ADR-010)
 
-**Spawn condition**: `route.needs_research` or `route.needs_investigation` true (computed by
-`router`'s initial pass, see § Router agent above). Handle spawns `investigator` for the
-corresponding sub-mode — `research` when `needs_research`, `investigate` when
-`needs_investigation`.
+**Spawn condition**: `route.needs_research`, `route.needs_investigation`, or
+`route.needs_analysis` true (computed by `router`'s initial pass, see § Router agent above).
+Handle spawns `investigator` for the corresponding sub-mode — `research` when `needs_research`,
+`investigate` when `needs_investigation`, `analyze` when `needs_analysis`. `needs_analysis`
+dispatch is additionally gated by `autonomy.enabled && autonomy.analyze_routing`
+(`config-template.md`) — absent/false preserves today's behavior unchanged.
 
 **Note-landing → re-route-checkpoint trigger**: `investigator`'s note file landing on disk at
-`plans/issue-N-research.md` or `plans/issue-N-investigation.md` (path convention: `router.md` §
-Re-route checkpoints for the flags each checkpoint re-validates, `worker-schemas.md` §
-Investigator for the note-file schema) is the *trigger* for `router`'s `research-landed` /
-`investigation-landed` checkpoints. `investigator` only produces the note — the checkpoint
-re-validation itself (`router` re-invoked, `route.revision` bumped) is entirely `router.md`'s
-job, not duplicated here.
+`plans/issue-N-research.md`, `plans/issue-N-investigation.md`, or `plans/issue-N-analysis.md`
+(path convention: `router.md` § Re-route checkpoints for the flags each checkpoint re-validates,
+`worker-schemas.md` § Investigator for the note-file schema) is the *trigger* for `router`'s
+`research-landed` / `investigation-landed` / `analysis-landed` checkpoints. `investigator` only
+produces the note — the checkpoint re-validation itself (`router` re-invoked, `route.revision`
+bumped) is entirely `router.md`'s job, not duplicated here.
 
 **Scope note**: `investigator` never mutates `queue.json` or `findings-ledger.json` — its only
 filesystem write is its own note file. Deciding (routing) vs. discovering (evidence-gathering)

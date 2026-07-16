@@ -336,11 +336,12 @@ fix commits resolved it:
     "needs_research": false,
     "needs_investigation": true,
     "needs_design": false,
+    "needs_analysis": false,
     "task_type": "bugfix",
     "plan_mode": "quick",
     "security_review_required": false,
     "docs_impact": false,
-    "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85 },
+    "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85, "analysis": 70 },
     "body_hash": "<sha of issue title+body at classification time>",
     "computed_at_phase": "handle",
     "revision": 1
@@ -354,7 +355,7 @@ fix commits resolved it:
 |-------|--------|----------|
 | `status` | `routed` \| `error` | yes |
 | `route` | object | when `routed` (`null` when `error`) |
-| `trigger` | `initial` \| `clarify-resolved` \| `research-landed` \| `investigation-landed` | when `routed` |
+| `trigger` | `initial` \| `clarify-resolved` \| `research-landed` \| `investigation-landed` \| `analysis-landed` | when `routed` |
 | `local_analyze` | object \| `null` | when `routed` (`null` when `error`, or when the confidence-boost mechanism did not trigger) |
 | `error` | string | when `status: error` |
 
@@ -390,11 +391,23 @@ ledger row — assigning `id` from `next_routing_id`, `issue_ref` from spawn con
 }
 ```
 
+Analyze sub-mode example:
+
+```json
+{
+  "status": "complete",
+  "note_path": "plans/issue-298-analysis.md",
+  "sub_mode": "analyze",
+  "confidence": 75,
+  "computed_at_revision": 1
+}
+```
+
 | Field | Values | Required |
 |-------|--------|----------|
 | `status` | `complete` \| `error` | yes |
 | `note_path` | string | when `complete` |
-| `sub_mode` | `research` \| `investigate` | when `complete` |
+| `sub_mode` | `research` \| `investigate` \| `analyze` | when `complete` |
 | `confidence` | number 0-100 | when `complete` |
 | `computed_at_revision` | number (= `route.revision` at spawn time) | when `complete` |
 | `error` | string | when `status: error` |
@@ -413,11 +426,13 @@ ledger row — assigning `id` from `next_routing_id`, `issue_ref` from spawn con
 The note file itself (not this JSON envelope) carries its own fixed frontmatter — `issue`,
 `sub_mode`, `confidence`, `computed_at_revision` — plus required sections per sub-mode
 (`investigate` → Symptoms/Hypotheses/Root Cause/Resolution; `research` → Executive
-Summary/Findings/Sources). Full behavioral spec: `investigator.md` (not duplicated here).
+Summary/Findings/Sources; `analyze` → Conventions Catalog/Architecture Coherence/Performance
+Baselines). Full behavioral spec: `investigator.md` (not duplicated here).
 
-**Path convention**: `plans/issue-N-research.md` (research sub-mode) or
-`plans/issue-N-investigation.md` (investigate sub-mode) — co-located with `plans/issue-N.md`,
-mirroring `planner.md`'s Design Track sibling-artifact convention (`plans/issue-N-design.md`).
+**Path convention**: `plans/issue-N-research.md` (research sub-mode),
+`plans/issue-N-investigation.md` (investigate sub-mode), or `plans/issue-N-analysis.md` (analyze
+sub-mode) — co-located with `plans/issue-N.md`, mirroring `planner.md`'s Design Track
+sibling-artifact convention (`plans/issue-N-design.md`).
 
 ## Hunter (`hunter`)
 

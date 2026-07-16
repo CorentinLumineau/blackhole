@@ -93,6 +93,8 @@ describe('validateWorker router', () => {
   test('valid error', () => expectValid('router', 'router-error.json'));
   test('invalid error missing error field', () =>
     expectInvalid('router', 'router-error-missing-error-field.json'));
+  test('valid routed with needs_analysis and analysis-landed trigger', () =>
+    expectValid('router', 'router-routed-needs-analysis.json'));
 });
 
 describe('validateWorker investigator', () => {
@@ -100,8 +102,15 @@ describe('validateWorker investigator', () => {
     expectValid('investigator', 'investigator-complete-research.json'));
   test('valid complete investigate', () =>
     expectValid('investigator', 'investigator-complete-investigate.json'));
+  test('valid complete analyze', () =>
+    expectValid('investigator', 'investigator-complete-analyze.json'));
   test('invalid sub_mode enum', () =>
     expectInvalid('investigator', 'investigator-complete-invalid-sub-mode.json'));
+  test('invalid sub_mode enum still fails against three-value SUB_MODES (regression guard)', () => {
+    const data = readFixture('investigator-complete-invalid-sub-mode.json');
+    expect(data.sub_mode).toBe('diagnose');
+    expect(validateWorker('investigator', data).length).toBeGreaterThan(0);
+  });
   test('invalid confidence out of 0-100 range', () =>
     expectInvalid('investigator', 'investigator-complete-invalid-confidence-range.json'));
   test('valid error', () => expectValid('investigator', 'investigator-error.json'));

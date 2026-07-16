@@ -41,22 +41,34 @@ instructions: |
   | `clarify-resolved` | all | The answer may change everything — same as a new issue body |
   | `research-landed` | `needs_investigation`, `needs_design`, `plan_mode`, `security_review_required` | External docs may reveal a breaking change or CVE |
   | `investigation-landed` | `needs_design`, `plan_mode`, `security_review_required` | Root cause may be architectural |
+  | `analysis-landed` | `needs_investigation`, `needs_design`, `plan_mode`, `security_review_required` | Conventions/architecture-coherence/performance evidence may reveal the same downstream shifts research does (ADR-010 D2 default — mirrors `research-landed`'s re-validated set) |
 
   Each re-route bumps `route.revision` and re-hashes `route.body_hash`. Flags already **acted
   on** — an artifact already exists for the chain step that flag drives — are never
   retroactively changed; re-routing only affects not-yet-executed chain steps.
 
-  Of the three, only `clarify-resolved` is reachable today (Handle's existing clarify gate
-  already produces a resume-after-answer flow). `research-landed` and `investigation-landed` are
-  not reachable until the `investigator` agent exists (not yet landed) — you still recognize and
-  document these trigger conditions, but no artifact currently produces them.
+  `clarify-resolved`, `research-landed`, and `investigation-landed` are all reachable today — the
+  `investigator` agent has landed and is wired live at `phase-handle.md` § Investigator agent, so
+  its `plans/issue-N-research.md`/`plans/issue-N-investigation.md` notes already trigger the
+  corresponding checkpoints. `analysis-landed` becomes reachable the same way once
+  `route.needs_analysis` fires and `investigator`'s `analyze` sub-mode lands its
+  `plans/issue-N-analysis.md` note (`phase-handle.md` § Investigator agent).
 
   ## Confidence
 
-  Compute `route.confidence.{split,design,plan_mode,security,docs}`, each a 0-100 score, one per
-  gated flag. You compute the score; you do not gate on it. The cautious-default gating logic
-  that consumes these scores already lives in `orchestrator.md` § Route-derived dispatch — do
-  not duplicate it here.
+  Compute `route.confidence.{split,design,plan_mode,security,docs,analysis}`, each a 0-100 score,
+  one per gated flag. You compute the score; you do not gate on it. The cautious-default gating
+  logic that consumes these scores already lives in `orchestrator.md` § Route-derived dispatch —
+  do not duplicate it here.
+
+  ### `needs_analysis` classification
+
+  `route.needs_analysis` is confidence-gated (`confidence.analysis` vs.
+  `router_confidence_thresholds.analysis`, default 70 per `config-template.md`), cautious default
+  `true` for `size:l`+ or `route.needs_design: true` issues, else `false` (ADR-010 D1, verbatim).
+  Dispatch of the resulting flag is additionally gated by `autonomy.enabled &&
+  autonomy.analyze_routing` — see `config-template.md` — a config concern this agent does not
+  implement, only computes the flag for.
 
   ### docs_impact classification
 
@@ -175,11 +187,12 @@ instructions: |
       "needs_research": false,
       "needs_investigation": true,
       "needs_design": false,
+      "needs_analysis": false,
       "task_type": "bugfix",
       "plan_mode": "quick",
       "security_review_required": false,
       "docs_impact": false,
-      "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85 },
+      "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85, "analysis": 70 },
       "body_hash": "<sha of issue title+body at classification time>",
       "computed_at_phase": "handle",
       "revision": 1
