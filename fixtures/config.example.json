@@ -21,7 +21,7 @@
   },
   "kaizen": {
     "enabled": false,
-    "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug"],
+    "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective"],
     "trigger": "on-empty",
     "loop_interval": 5,
     "min_priority": 30,
