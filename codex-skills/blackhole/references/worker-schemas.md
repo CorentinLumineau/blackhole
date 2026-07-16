@@ -135,7 +135,7 @@ Fixtures: [`fixtures/resume-signal/`](../../fixtures/resume-signal/). Implementa
 |-------|--------|----------|
 | `status` | `ready` \| `blocked` \| `error` | yes |
 | `plan_path` | string | when `ready`, **or** when `blocked` and `track: design` |
-| `track` | `quick` \| `standard` \| `skip` \| `design` | when `ready`, or when `blocked` and caller knows the track |
+| `track` | `quick` \| `standard` \| `skip` \| `design` \| `brainstorm` | when `ready`, or when `blocked` and caller knows the track |
 | `failing_checks` | string[] | when `blocked` |
 | `clarification_markers` | number | when `ready` or `blocked` |
 

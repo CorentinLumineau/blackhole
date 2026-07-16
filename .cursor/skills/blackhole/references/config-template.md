@@ -108,8 +108,7 @@ Improvements. This is the same obligation `docs_governance.enabled` and
 is `false`, every dependent feature (design autonomy tier, analyze/brainstorm
 routing, confidence-gated escalation) MUST be a no-op and current behavior is
 preserved exactly — no route flag changes dispatch, no `design-aggregate.ts`
-invocation (that script does not exist until Milestone 2), no confidence math
-runs. This is the same obligation `docs_governance.enabled` and
+invocation, no confidence math runs. This is the same obligation `docs_governance.enabled` and
 `kaizen.enabled` already impose on their respective features.
 
 **Scope filter composition** (both fields optional — unset means no filter on that axis):

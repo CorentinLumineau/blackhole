@@ -84,7 +84,7 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 | `plan_mode` | `skip` \| `quick` \| `full` | Would select planner track (steps 3-4 — not yet implemented) |
 | `security_review_required` | boolean | Would select reviewer security mode (step 8 — not yet implemented) |
 | `docs_impact` | boolean | Would select planner/reviewer docs-impact enrichment (dispatch out of scope — computed and confidence-gated only; see #177) |
-| `confidence` | object `{ split, design, plan_mode, security, docs, brainstorm, analysis }`, each 0-100 | Per-flag confidence; low confidence resolves to that flag's cautious default (`needs_split → true`, `plan_mode → full`, `security_review_required → true`, `needs_design → true`, `docs_impact → true`, `needs_brainstorm → true`, `needs_analysis → true`) |
+| `confidence` | object `{ split, design, plan_mode, security, docs, brainstorm, analysis }`, each 0-100 | Per-flag confidence; low confidence resolves to that flag's cautious default (`needs_split → true`, `plan_mode → full`, `security_review_required → true`, `needs_design → true`, `docs_impact → true`, `needs_brainstorm → true`, `needs_analysis → true` for `size:l`+ or `needs_design: true` issues, else `false`) |
 | `body_hash` | string | sha of issue title+body at classification time; staleness marker |
 | `computed_at_phase` | `handle` \| `plan` \| `implement` \| `review` | Phase at which this route was computed |
 | `revision` | number | Bumped on every re-route; never retroactively changes already-executed chain steps |
