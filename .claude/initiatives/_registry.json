@@ -1,13 +1,13 @@
 {
   "version": "3.0",
   "focus": "autonomous-thinking-routes",
-  "lastUpdated": "2026-07-15T00:00:00Z",
+  "lastUpdated": "2026-07-16T00:00:00Z",
   "initiatives": [
     {
       "name": "autonomous-thinking-routes",
       "displayName": "Autonomous Thinking Routes (ADR-010): mercure workflow parity",
       "priority": 1,
-      "status": "in_progress",
+      "status": "completed",
       "dependsOn": [],
       "relatedTo": ["documentation/decisions/ADR-010-autonomous-thinking-routes.md", "documentation/audits/autonomous-workflow-parity.md"],
       "blockedBy": [],
