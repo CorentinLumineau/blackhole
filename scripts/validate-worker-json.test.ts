@@ -27,6 +27,17 @@ const expectInvalid = (role: Role, fixture: string) => {
   expect(validateWorker(role, data).length).toBeGreaterThan(0);
 };
 
+const makeBrainstormChildren = (count: number) =>
+  Array.from({ length: count }, (_, i) => ({
+    title: `Proposed child ${i + 1}`,
+    body: `Body for proposed child ${i + 1}.`,
+    acceptance_criteria: [`Criterion for child ${i + 1}`],
+    size_estimate: 's',
+    suggested_route: { task_type: 'feature', plan_mode: 'quick' },
+    gain: 5,
+    effort: 3,
+  }));
+
 describe('validateWorker planner', () => {
   test('valid ready', () => expectValid('planner', 'planner-ready.json'));
   test('valid blocked', () => expectValid('planner', 'planner-blocked.json'));
@@ -83,6 +94,30 @@ describe('validateWorker planner', () => {
       clarification_markers: 0,
     });
     expect(errors.length).toBeGreaterThan(0);
+  });
+  test('valid ready brainstorm at exactly 5-children cap', () => {
+    const errors = validateWorker('planner', {
+      status: 'ready',
+      plan_path: '.blackhole/plans/issue-298-brainstorm.md',
+      track: 'brainstorm',
+      artifact_path: 'documentation/brainstorms/cashflow-v3-idea.md',
+      children: makeBrainstormChildren(5),
+      failing_checks: [],
+      clarification_markers: 0,
+    });
+    expect(errors).toEqual([]);
+  });
+  test('invalid ready brainstorm exceeds 5-children cap', () => {
+    const errors = validateWorker('planner', {
+      status: 'ready',
+      plan_path: '.blackhole/plans/issue-298-brainstorm.md',
+      track: 'brainstorm',
+      artifact_path: 'documentation/brainstorms/cashflow-v3-idea.md',
+      children: makeBrainstormChildren(6),
+      failing_checks: [],
+      clarification_markers: 0,
+    });
+    expect(errors.some((e) => e.includes('children') && e.includes('5'))).toBe(true);
   });
   test('invalid blocked brainstorm missing blocking_question', () => {
     const errors = validateWorker('planner', {

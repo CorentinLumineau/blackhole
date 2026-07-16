@@ -25,6 +25,7 @@ const PLAN_MODES = ['skip', 'quick', 'full'] as const;
 const TRIGGERS = ['initial', 'clarify-resolved', 'research-landed', 'investigation-landed', 'analysis-landed'] as const;
 const INVESTIGATOR_STATUSES = ['complete', 'error'] as const;
 const SUB_MODES = ['research', 'investigate', 'analyze'] as const;
+const BRAINSTORM_CHILDREN_CAP = 5;
 
 const ROLE_FROM_TYPE: Record<string, Role> = {
   planner: 'planner',
@@ -208,6 +209,11 @@ function validatePlanner(data: unknown): string[] {
       } else if (!Array.isArray(data.children)) {
         errors.push('children: expected array');
       } else {
+        if (data.children.length > BRAINSTORM_CHILDREN_CAP) {
+          errors.push(
+            `children: at most ${BRAINSTORM_CHILDREN_CAP} proposed children allowed (got ${data.children.length})`,
+          );
+        }
         data.children.forEach((child, index) => {
           errors.push(...validateBrainstormChild(child, index));
         });
