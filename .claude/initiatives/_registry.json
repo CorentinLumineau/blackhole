@@ -1,20 +1,21 @@
 {
   "version": "3.0",
-  "focus": "autonomous-thinking-routes",
+  "focus": null,
   "lastUpdated": "2026-07-16T00:00:00Z",
-  "initiatives": [
+  "initiatives": [],
+  "archived": [
     {
       "name": "autonomous-thinking-routes",
       "displayName": "Autonomous Thinking Routes (ADR-010): mercure workflow parity",
       "priority": 1,
-      "status": "completed",
+      "status": "archived",
       "dependsOn": [],
       "relatedTo": ["documentation/decisions/ADR-010-autonomous-thinking-routes.md", "documentation/audits/autonomous-workflow-parity.md"],
       "blockedBy": [],
-      "created": "2026-07-15T00:00:00Z"
-    }
-  ],
-  "archived": [
+      "created": "2026-07-15T00:00:00Z",
+      "archivedAt": "2026-07-16T00:00:00Z",
+      "archiveNote": "All 5 milestones merged to main (PRs #295-#299, squash). ADR-010 Accepted. Summary at documentation/milestones/_archived/autonomous-thinking-routes.md. 5 WARN deferrals tracked as issues #300-#302."
+    },
     {
       "name": "blackhole-scoped-extraction",
       "displayName": "Scoped Extraction: project-identity.ts + tree-shape.ts",

@@ -1,5 +1,5 @@
 ---
-status: Proposed
+status: Accepted
 scope: orchestration
 supersedes: partial (amends ADR-004 route{} and planner Design Track §4.8; supersedes clarify-gates.md as escalation *mechanism*)
 related:
@@ -13,7 +13,7 @@ related:
 
 ## Status
 
-Proposed — 2026-07-15
+Accepted — 2026-07-16 (all five rollout milestones merged: PRs #295–#299)
 
 ## Context
 
