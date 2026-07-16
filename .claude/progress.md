@@ -1,47 +1,61 @@
 ## Current Status
 
-**ADR-006 (routing visibility + reuse gate) — implemented, uncommitted** on branch
-`blackhole/adr-006-routing-visibility-reuse-gate`. Workstream A (dashboard `renderRouteChain` +
-`computeWaves` + Routing/Waves sections in `scripts/campaign-status.ts`, 17 new TDD tests) and
-Workstream B (implementer Reuse Check Gate + reviewer §5 verify/live-grep fallback + worker-schemas
-pointer) + C2 (queue-dag route-backfill note) done. `bun test` 272/272, `bun run build` clean,
-`VERIFY_SKIP_BUILD=1 bun run verify` 19/19 (V-GROUND-01 vcode count still 33). planner.md +
-queue.json schema deliberately untouched. C3 (operational route backfill) is post-merge, not code.
-Rollout scope resolved (user): open, non-in-flight only (skip done/merged/closed).
-**/x-review-loop: 1 iteration, converged** — 4 WARN findings (0 CRITICAL/HIGH) all fixed:
-V-DRY-02/03 (extracted `DONE_STATUSES`/`isDone`), V-DOC-03 (corrected a FALSE "0-byte stub"
-claim — investigator.md is actually 106 lines, error propagated from a bad early `ls` read into
-ADR/plan/dashboard, now fixed everywhere), V-TEST-01×3 (added unknown-dep/self-cycle/plan_mode
-regression tests). Post-fix: bun test 275/275, build clean, verify 19/19. Next: /git-commit.
+**Initiative: autonomous-thinking-routes (ADR-010) — M1 implemented, uncommitted** on `main`
+working tree (branch to be created at commit). Full APEX session 2026-07-15:
+audit (`documentation/audits/autonomous-workflow-parity.md`) → ADR-010 (Proposed) →
+5 milestone plans (all 8/8 quality-gated, `plan_base_commit d4d978b`) → M1 implemented.
+
+**M1 delivered** (confidence kernel + artifact contract + autonomy config, zero behavior
+change while `autonomy.enabled: false`):
+- NEW `src/references/confidence-gates.md` — 5-dimension kernel (mercure v9.6.0 port, verbatim
+  dimension names), 5 route weight profiles, two-band async mapping, never-bypass list
+- NEW `src/references/artifact-contract.md` — per-route durable artifacts, merge-=-approval
+  in-PR delivery, `docs_governance.write_governance` gated
+- `config-template.md` + `fixtures/config.example.json` — opt-in `autonomy` block (kaizen
+  kill-switch contract)
+- `blackhole-vcodes.md` + `build.ts` — V-AUTO-01 (BLOCK), V-AUTO-02 (WARN); count 44→46
+- `clarify-gates.md` — prose supersede-as-mechanism pointer (content preserved)
+- Tests: extended `router-local-analyze.test.ts` + NEW `scripts/autonomy-config.test.ts`
+- Gates: `bun test` 454/454 pass; `bun run verify` 26/27 (only V-BUILD-01 — uncommitted build
+  outputs, self-resolves at commit); `bun run build` clean; V-GROUND-01/V-SCHEMA-01 ✓
+
+Also this session: archived initiative `blackhole-scoped-extraction` (complete, PR #90);
+fixed cross-repo ADR-reference wording in ADR-010 + audit (V-LINK-01 now green).
 
 ### Prior work (archival)
 
-ADR-005 (PR merge-gate + dependency-ordering) — COMPLETE and committed on branch
-`feature/pr-merge-gate-dependency-ordering` (commits `7fa448d` + `0e07f7d`). All 9 plan
-tasks (T1-T9) landed. `/x-review-loop` ran 5 iterations to APPROVED convergence
-(Correctness 9/10, Quality 9/10), finding and fixing 10 real issues across the loop —
-including a bug that silently defeated gated-batch mode entirely, a merge-throughput DoS,
-a permanent-deadlock class, an unreliable cross-attribution mechanism (caught independently
-by two reviewers), and an unreachable core mechanism. `bun run build`, `bun run build
---gemini`, `bun run verify` 19/19 clean (no skip flag needed — fully committed, zero
-drift), `bun test` 224/224. Ready for PR / next work.
-
-`blackhole-scoped-extraction` (prior initiative, unrelated) is COMPLETE — all 3 milestones
-implemented, reviewed, and committed on branch `blackhole/milestone-1-identity-ssot`, bundled
-into a single PR ([#90](https://github.com/CorentinLumineau/blackhole/pull/90)) per user
-request. Awaiting merge (independent of this work).
-
-ADR-007 implementation COMPLETE (2026-07-11): all 6 tasks merged (#248-#253 → PRs #254-#259). ADR-007 flipped to Accepted. Backlog empty.
+ADR-007 all 6 tasks merged (#248-#253 → PRs #254-#259), flipped Accepted; ADR-006
+implemented; 55-issue campaign complete; blackhole-scoped-extraction complete (PR #90,
+now archived in registry).
 
 ## Completed Tasks
-ADR-007: T1 walker (PR #254), T2 tracked⇒default (PR #255), T4 link-integrity (PR #256), T3 facts conformance (PR #257), T5 verify decomposition (PR #258), T6 section gate (PR #259). Verify: 26 checks, 366 tests. Earlier: 25-issue campaign, v0.9.0 + v0.10.0.
+
+- M1 T1–T6 (all) — uncommitted, awaiting /x-review → /git-commit
 
 ## Failed Approaches
-ADR-007 § Rejected Alternatives (binding): generation-in-place, central registry, orchestrator/worker-schemas splits, mtime cache.
+
+- ADR-010 rejected alternatives (binding): Approach B — dedicated architect agent (no write
+  path; repeats ADR-002→ADR-003 synthesizer revert); Approach C — named workflow chains
+  (destroys per-flag confidence, breaks frozen phase enum, no migration path).
+- Design-autonomy verdict must NEVER be computed by the planner itself (critic finding:
+  self-graded homework) — deterministic script + blind critics + fixed rubric only.
+- ADR-007 § Rejected Alternatives (binding): generation-in-place, central registry,
+  orchestrator/worker-schemas splits, mtime cache.
 
 ## Next Steps
-1. Consider v0.11.0 release (6 merged PRs since v0.10.0: full ADR-007 delivery)
-2. Optional: enable kaizen block in .blackhole/config.json for hunted backlog
+
+1. /x-review of M1 diff, then /git-commit (branch + PR; V-BUILD-01 resolves on commit)
+2. M2 — design autonomy (design-rubric.md, blind critics, scripts/design-aggregate.ts, gated
+   Design Track §4.8 rewrite) — documentation/milestones/_active/autonomous-thinking-routes/milestone-2.md
+3. M3 (analyze route) and M5 (retrospective kind) parallelizable after M1 merges; M4
+   (brainstorm) prefers M2's conventions
+4. M3 open question: which route fields the `analysis-landed` checkpoint re-validates
+   (plan defaults to mirroring `research-landed`)
+5. Deferred from before: consider v0.11.0+ release; optional kaizen enable in config
 
 ## Known Limitations
-worker-schemas.md split deliberately deferred (watch: >700 LOC or role contract >80 LOC).
+
+- ADR-010 status is Proposed — flips to Accepted on user sign-off (INDEX row updates then)
+- `autonomy` features are documentation-only until M2+ wires consumers; enabling the config
+  block today changes nothing (by design)
+- worker-schemas.md split deliberately deferred (watch: >700 LOC or role contract >80 LOC)

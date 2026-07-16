@@ -50,6 +50,8 @@ longer definitions (token cost, drift). Persist every finding to
 | V-MERGE-02 | drift-reconciled merge with merged_by absent — external bypass of hold/merge_after | WARN |
 | V-HUNT-01 | Kaizen issue filed from a finding without a `CONFIRMED` verification pass | BLOCK |
 | V-HUNT-02 | Hunt wave filed more than `max_issues_per_wave` issues, or filed below `min_priority` | WARN |
+| V-AUTO-01 | Autonomous design proceeds without a `design-aggregate.ts` verdict artifact | BLOCK |
+| V-AUTO-02 | Thinking-route artifact missing from PR when the route fired | WARN |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.

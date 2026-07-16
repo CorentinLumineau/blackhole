@@ -93,3 +93,11 @@ describe('blackhole-vcodes.md / reviewer.md — V-UX-01 registration (#271)', ()
     expect(reviewer).toMatch(/frontend-detection keyword set as § 10's `V-ADA-03` bullet/);
   });
 });
+
+describe('blackhole-vcodes.md — V-AUTO-01/V-AUTO-02 registration', () => {
+  test('vcodes table has V-AUTO-01 (BLOCK) and V-AUTO-02 (WARN) rows', () => {
+    const vcodes = read('src/references/blackhole-vcodes.md');
+    expect(vcodes).toMatch(/\| V-AUTO-01 \|.*\| BLOCK \|/);
+    expect(vcodes).toMatch(/\| V-AUTO-02 \|.*\| WARN \|/);
+  });
+});

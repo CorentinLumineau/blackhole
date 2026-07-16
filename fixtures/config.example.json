@@ -28,6 +28,15 @@
     "max_issues_per_wave": 10,
     "max_waves": 6
   },
+  "autonomy": {
+    "enabled": false,
+    "confidence_threshold": 80,
+    "design_dominance_delta": 30,
+    "design_autonomy": true,
+    "analyze_routing": true,
+    "brainstorm_routing": true,
+    "never_bypass": ["destructive", "credentials", "epic-go-no-go"]
+  },
   "worker_model_policy": "cost-optimized",
   "entry_mode": "multitask",
   "merge_mode": "gated-batch"

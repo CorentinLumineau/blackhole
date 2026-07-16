@@ -22,6 +22,7 @@ Committed template: `.blackhole/config.json`
   "docs_governance": { "enabled": true, "companion_files": true, "docs_impact_routing": true, "write_governance": true, "severity_overrides": {} },
   "kaizen": { "enabled": false, "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug"], "trigger": "on-empty", "loop_interval": 5, "min_priority": 30, "max_issues_per_wave": 10, "max_waves": 6 },
   "incident_mode": { "enabled": false, "parallel_max_override": 1, "pause_discovery": true },
+  "autonomy": { "enabled": false, "confidence_threshold": 80, "design_dominance_delta": 30, "design_autonomy": true, "analyze_routing": true, "brainstorm_routing": true, "never_bypass": ["destructive", "credentials", "epic-go-no-go"] },
   "worker_model_policy": "cost-optimized",
   "entry_mode": "multitask",
   "merge_mode": "immediate"
@@ -61,6 +62,14 @@ Committed template: `.blackhole/config.json`
 | `incident_mode.enabled` | no | Kill switch for the whole `incident_mode` block (default `false` — armed manually by a human/coordinator, unlike `docs_governance` which defaults `true`); when `false`, incident-mode dispatch behavior never fires regardless of sub-field values |
 | `incident_mode.parallel_max_override` | no | `parallel_max` value enforced while incident mode is active (default `1`), regardless of `config.json.parallel_max` |
 | `incident_mode.pause_discovery` | no | When `true` (default), `phase-loop.md` § Continuous Discovery of Improvements is paused entirely while incident mode is active |
+| `autonomy` | no | Nested object gating the opt-in autonomous thinking-route features (ADR-010): `enabled`, `confidence_threshold`, `design_dominance_delta`, `design_autonomy`, `analyze_routing`, `brainstorm_routing`, `never_bypass`; absent block = current behavior preserved (opt-in, see contract note below) |
+| `autonomy.enabled` | no | Kill switch for the whole `autonomy` block (default `false` — opt-in like `kaizen`, unlike `docs_governance` which defaults `true`); when `false`, autonomous-thinking-route dispatch never fires regardless of sub-field values |
+| `autonomy.confidence_threshold` | no | Composite confidence score (0–100) a route/design decision must clear to proceed autonomously (default `80`); see [confidence-gates.md](confidence-gates.md) for the 5-dimension kernel and two-band mapping |
+| `autonomy.design_dominance_delta` | no | Minimum point spread between the top-scored design alternative and the runner-up required for autonomous design promotion (default `30`); see [confidence-gates.md](confidence-gates.md) |
+| `autonomy.design_autonomy` | no | Gates the autonomous design tier — blind-critic scoring, `design-aggregate.ts` verdict, and in-PR ADR promotion (default `true`); when `false` (or `autonomy.enabled: false`), design decisions always route to human ADR review |
+| `autonomy.analyze_routing` | no | Gates the router's `needs_analysis` autonomous dispatch to the investigator `analyze` sub-mode (default `true`); when `false` (or `autonomy.enabled: false`), analyze routing is inert |
+| `autonomy.brainstorm_routing` | no | Gates the router's `needs_brainstorm` autonomous dispatch to the planner `track: brainstorm` (default `true`); when `false` (or `autonomy.enabled: false`), brainstorm routing is inert |
+| `autonomy.never_bypass` | no | Array of categorical triggers that always force human escalation regardless of confidence score (default `["destructive", "credentials", "epic-go-no-go"]`); see [confidence-gates.md](confidence-gates.md) |
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 | `merge_mode` | no | `"immediate"` (default) \| `"gated-batch"` (ADR-005) \| `"leave-open"` (ADR-006); preserves current behavior exactly when absent/default — each PR merges as soon as it reaches LGTM. Adding `leave-open` is a pure additive enum value — `immediate`/`gated-batch` semantics are unchanged. `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one PR at a time in `merge_after` dependency order; see `merge-gate.md`. `leave-open`: blackhole never merges — every PR is driven to LGTM and left open for human review/merge; an LGTM'd open PR counts as *delivered* for campaign-complete purposes; `merged_by: blackhole` is never set for these issues; `fixed-in-pr` ledger rows stay `fixed-in-pr` until the human merge is later observed by a sync; see `phase-loop.md` § Merge protocol and `merge-gate.md` |
@@ -93,6 +102,14 @@ Incident Mode) MUST be a no-op and current behavior is preserved exactly — no
 `parallel_max` override, no strict `migration_slot` enforcement beyond the
 existing baseline rule, no pausing of `phase-loop.md` § Continuous Discovery of
 Improvements. This is the same obligation `docs_governance.enabled` and
+`kaizen.enabled` already impose on their respective features.
+
+**`autonomy` contract note**: when the block is absent, or `autonomy.enabled`
+is `false`, every dependent feature (design autonomy tier, analyze/brainstorm
+routing, confidence-gated escalation) MUST be a no-op and current behavior is
+preserved exactly — no route flag changes dispatch, no `design-aggregate.ts`
+invocation (that script does not exist until Milestone 2), no confidence math
+runs. This is the same obligation `docs_governance.enabled` and
 `kaizen.enabled` already impose on their respective features.
 
 **Scope filter composition** (both fields optional — unset means no filter on that axis):
