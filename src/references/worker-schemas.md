@@ -176,6 +176,67 @@ When `status: blocked`, `failing_checks` lists failed items:
   analytical substance (Options + trade-off matrix, adversarial evaluation via multiplicity,
   component decomposition, design principles validation, refactoring impact analysis, assumption
   audit) per `planner.md`'s Design Track template — content only, no JSON field change.
+- `brainstorm_confidence_below_threshold` — brainstorm track composite confidence
+  (`confidence-gates.md`) fell below `autonomy.confidence_threshold`; `blocking_question` names
+  the specific product ambiguity (see § Brainstorm track below).
+
+### Brainstorm track (optional — ADR-010 D3)
+
+```json
+{
+  "status": "ready",
+  "plan_path": ".blackhole/plans/issue-298-brainstorm.md",
+  "track": "brainstorm",
+  "artifact_path": "documentation/brainstorms/cashflow-v3-idea.md",
+  "children": [
+    {
+      "title": "Add CSV export for cashflow ledger",
+      "body": "Users need to export the cashflow ledger as CSV for offline analysis.",
+      "acceptance_criteria": [
+        "Export button present on the ledger view",
+        "CSV includes date, amount, category columns"
+      ],
+      "size_estimate": "s",
+      "suggested_route": { "task_type": "feature", "plan_mode": "quick" },
+      "gain": 6,
+      "effort": 3
+    }
+  ],
+  "failing_checks": [],
+  "clarification_markers": 0
+}
+```
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `artifact_path` | string | when `status: ready` and `track: brainstorm` |
+| `children` | `child[]` | when `status: ready` and `track: brainstorm` |
+
+`children[]` field shape (`validateBrainstormChild`, `scripts/validate-worker-json.ts`):
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `title` | non-empty string | yes |
+| `body` | non-empty string | yes |
+| `acceptance_criteria` | non-empty string[] | yes |
+| `size_estimate` | `xs` \| `s` \| `m` \| `l` \| `xl` | yes |
+| `suggested_route` | object `{ task_type, plan_mode }` — values from the existing `TASK_TYPES`/`PLAN_MODES` enums | yes |
+| `gain` | number 1-10 | yes |
+| `effort` | number 1-10 | yes |
+
+```json
+{
+  "status": "blocked",
+  "track": "brainstorm",
+  "blocking_question": "Should the cashflow forecast be per-account or aggregated across all accounts?",
+  "failing_checks": ["brainstorm_confidence_below_threshold"],
+  "clarification_markers": 0
+}
+```
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `blocking_question` | non-empty string | when `status: blocked` and `track: brainstorm` |
 
 ## Implementer (`implementer`)
 

@@ -53,10 +53,10 @@ instructions: |
 
   ## Confidence
 
-  Compute `route.confidence.{split,design,plan_mode,security,docs}`, each a 0-100 score, one per
-  gated flag. You compute the score; you do not gate on it. The cautious-default gating logic
-  that consumes these scores already lives in `orchestrator.md` § Route-derived dispatch — do
-  not duplicate it here.
+  Compute `route.confidence.{split,design,plan_mode,security,docs,brainstorm}`, each a 0-100
+  score, one per gated flag. You compute the score; you do not gate on it. The cautious-default
+  gating logic that consumes these scores already lives in `orchestrator.md` § Route-derived
+  dispatch — do not duplicate it here.
 
   ### docs_impact classification
 
@@ -66,6 +66,15 @@ instructions: |
   - Touches a public API, schema, or config surface
   - Changes user-facing behavior
   - Introduces a new subsystem
+
+  ### needs_brainstorm classification (ADR-010 D1)
+
+  `route.needs_brainstorm` is content-derived, same as `docs_impact` above. Classify `true` when
+  the issue body **both** (a) lacks testable, machine-verifiable acceptance criteria, **and** (b)
+  lacks a concrete technical mechanism (no named files, APIs, or approach — pure idea-stage
+  prose). Classify `false` when either (a) or (b) is satisfied. The confidence-gate and voiding
+  rule that consume this classification are specified once, in `queue-dag.md` § `route` object —
+  not re-tabulated here.
 
   ## Local-analyze confidence-boost mechanism (ADR-004 step 5b)
 
@@ -175,11 +184,12 @@ instructions: |
       "needs_research": false,
       "needs_investigation": true,
       "needs_design": false,
+      "needs_brainstorm": false,
       "task_type": "bugfix",
       "plan_mode": "quick",
       "security_review_required": false,
       "docs_impact": false,
-      "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85 },
+      "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85, "brainstorm": 20 },
       "body_hash": "<sha of issue title+body at classification time>",
       "computed_at_phase": "handle",
       "revision": 1

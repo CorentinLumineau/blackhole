@@ -1,0 +1,7 @@
+{
+  "status": "blocked",
+  "track": "brainstorm",
+  "blocking_question": "Should the cashflow forecast be per-account or aggregated across all accounts?",
+  "failing_checks": ["brainstorm_confidence_below_threshold"],
+  "clarification_markers": 0
+}

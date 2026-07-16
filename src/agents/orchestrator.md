@@ -49,8 +49,7 @@ full matrix: `{{AGENT_DIR}}/skills/blackhole/references/model-routing.md`).
 | `planner` design, `implementer` + security/`size:xl`, `reviewer` at high `review_iteration` | `premium` |
 
 Do **not** read `model:` from agent markdown frontmatter (`V-AGENT-01`). On
-`escalation_trigger` blocked returns, bump one tier on the next respawn for that role (cap
-`premium`).
+`escalation_trigger` blocked returns, bump one tier on the next respawn for that role (cap `premium`).
 
 ### Route-derived dispatch (ADR-004 step 3)
 
@@ -73,6 +72,7 @@ order — each step is a hard gate over the ones below it:
    stops here: hand off to the existing Phase 1 split mechanism (`issue-splitting.md`,
    referenced from `phase-handle.md`) — no new split code path is introduced. Children
    re-enter at dedup with their own independent `route`. If `false`, continue to step 3.
+2.5. **Brainstorm precedence (ADR-010 D3)** — see § Brainstorm dispatch precedence below.
 3. **Per-flag confidence gate** — before consulting `plan_mode` or `needs_design`,
    compare `route.confidence.<flag>` against `.blackhole/config.json`
    `router_confidence_thresholds.<flag>` (default 70 per flag). Below threshold, resolve
@@ -146,6 +146,55 @@ This preamble is binding: implementers must not edit outside Touch-Paths;
 reviewers audit against them (`V-SCOPE-02`).
 
 Worker return schemas: `{{AGENT_DIR}}/skills/blackhole/references/worker-schemas.md`.
+
+---
+
+## Brainstorm dispatch precedence (ADR-010 D3)
+
+Referenced from § Route-derived dispatch step 2.5 above (identical shape to the `docs_impact`
+config-gate precedent in that same section) — separately budgeted per `V-CONTENTGATE-01`.
+
+When `autonomy.enabled && autonomy.brainstorm_routing` are both true (`config-template.md`),
+compare `route.confidence.brainstorm` against `.blackhole/config.json`
+`router_confidence_thresholds.brainstorm` (default 70); below threshold, resolve to
+`needs_brainstorm`'s cautious default (`true`) instead of the computed value. If the resolved
+value is `true`: spawn `planner` with an explicit `track: brainstorm` directive; dispatch stops
+here — `plan_mode`/`needs_design` are not evaluated for this issue (`queue-dag.md`'s voiding
+rule). If `false`, or the config gate is off, continue to step 3 of § Route-derived dispatch
+unchanged (zero-regression).
+
+---
+
+## Brainstorm terminal handling (ADR-010 D3)
+
+Fixed ordering — do not reorder these steps; closing the issue or filing children before the
+artifact PR merges breaks the audit trail (see the milestone plan's Threat Model, Repudiation
+row).
+
+On `planner` returning `status: ready, track: brainstorm`:
+
+1. Spawn `implementer` with `execution_mode: docs-only`, Touch-Paths restricted to
+   `documentation/brainstorms/{slug}.md`, Objective "commit the working draft from
+   `.blackhole/plans/issue-N-brainstorm.md` into the durable artifact path, open a PR" —
+   reusing the existing docs-only 5-Field Delegation Contract shape unchanged (no new fields).
+2. Reviewer audits the PR per the **existing** docs-only branch of § Review pipeline below
+   (unchanged — no new reviewer logic).
+3. Wait for the artifact PR to reach `status: merged` (existing `merge-gate.md` path,
+   unchanged).
+4. Only after step 3: file the `children[]` from the planner's return through the **existing**
+   `{{AGENT_DIR}}/skills/blackhole/references/phase-loop.md` § Continuous Discovery of
+   Improvements path — one Priority computation and one `gh issue create` per child clearing
+   the `>= 30` gate; children below the gate are logged `archived` in the ledger, never filed
+   (identical rule, not a new one).
+5. Close the original brainstorm issue: `queue.json` status transition `* → closed`
+   (`queue-dag.md` § Status transitions, existing enum, no new status value) with `notes:
+   "satisfied-by-children:<n1>,<n2>,..."` (extends the existing free-text `notes` convention)
+   and an issue-closing comment referencing the merged artifact PR number and every filed child
+   issue number (audit trail, mirrors the #152/#916 close-as-satisfied precedent).
+
+On `planner` returning `status: blocked, track: brainstorm`: do **not** run terminal handling —
+set `notes: awaiting-user-clarification` and surface `blocking_question` via the existing HITL
+Blocker Gate mechanism (§ Human-in-the-Loop (HITL) & Blocker Gating below), unchanged.
 
 ---
 

@@ -14,7 +14,8 @@ export type HookInput = {
 const PLANNER_STATUSES = ['ready', 'blocked', 'error'] as const;
 const IMPLEMENTER_STATUSES = ['complete', 'blocked', 'error'] as const;
 const REVIEWER_STATUSES = ['complete', 'error'] as const;
-const TRACKS = ['quick', 'standard', 'skip', 'design'] as const;
+const TRACKS = ['quick', 'standard', 'skip', 'design', 'brainstorm'] as const;
+const SIZE_ESTIMATES = ['xs', 's', 'm', 'l', 'xl'] as const;
 const EXECUTION_MODES = ['standard', 'refactor-strict', 'docs-only'] as const;
 const SEVERITIES = ['BLOCK', 'WARN', 'INFO'] as const;
 const ROUTE_STATUSES = ['routed', 'error'] as const;
@@ -67,6 +68,10 @@ function isNumberArray(value: unknown): value is number[] {
 
 function isNonEmptyString(value: unknown): value is string {
   return isString(value) && value.trim().length > 0;
+}
+
+function isGainEffortScore(value: unknown): value is number {
+  return isNumber(value) && value >= 1 && value <= 10;
 }
 
 function isEvidence(value: unknown): value is { command: string; result: string } {
@@ -132,6 +137,49 @@ function validateFindingsArray(value: unknown, path: string): string[] {
   return errors;
 }
 
+function validateBrainstormChild(child: unknown, index: number): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(child)) {
+    errors.push(`children[${index}]: expected object`);
+    return errors;
+  }
+
+  requireField(errors, child, 'title', isNonEmptyString, 'non-empty string');
+  requireField(errors, child, 'body', isNonEmptyString, 'non-empty string');
+
+  if (!('acceptance_criteria' in child)) {
+    errors.push('acceptance_criteria: required');
+  } else if (!isStringArray(child.acceptance_criteria) || child.acceptance_criteria.length === 0) {
+    errors.push('acceptance_criteria: expected non-empty string[]');
+  }
+
+  requireField(errors, child, 'size_estimate', isString, 'string');
+  if (isString(child.size_estimate)) {
+    pushEnumError(errors, 'size_estimate', child.size_estimate, SIZE_ESTIMATES);
+  }
+
+  if (!('suggested_route' in child)) {
+    errors.push('suggested_route: required');
+  } else if (!isObject(child.suggested_route)) {
+    errors.push('suggested_route: expected object');
+  } else {
+    requireField(errors, child.suggested_route, 'task_type', isString, 'string');
+    if (isString(child.suggested_route.task_type)) {
+      pushEnumError(errors, 'suggested_route.task_type', child.suggested_route.task_type, TASK_TYPES);
+    }
+    requireField(errors, child.suggested_route, 'plan_mode', isString, 'string');
+    if (isString(child.suggested_route.plan_mode)) {
+      pushEnumError(errors, 'suggested_route.plan_mode', child.suggested_route.plan_mode, PLAN_MODES);
+    }
+  }
+
+  requireField(errors, child, 'gain', isGainEffortScore, 'number (1-10)');
+  requireField(errors, child, 'effort', isGainEffortScore, 'number (1-10)');
+
+  return errors.map((error) => `children[${index}].${error}`);
+}
+
 function validatePlanner(data: unknown): string[] {
   const errors: string[] = [];
   if (!isObject(data)) {
@@ -153,6 +201,18 @@ function validatePlanner(data: unknown): string[] {
     if (data.track === 'design') {
       errors.push('track: design track must never report status ready (ADR-004: design is always blocked)');
     }
+    if (data.track === 'brainstorm') {
+      requireField(errors, data, 'artifact_path', isString, 'string');
+      if (!('children' in data)) {
+        errors.push('children: required');
+      } else if (!Array.isArray(data.children)) {
+        errors.push('children: expected array');
+      } else {
+        data.children.forEach((child, index) => {
+          errors.push(...validateBrainstormChild(child, index));
+        });
+      }
+    }
     if (!Array.isArray(data.failing_checks)) {
       errors.push('failing_checks: expected array');
     }
@@ -169,6 +229,9 @@ function validatePlanner(data: unknown): string[] {
         pushEnumError(errors, 'track', data.track, TRACKS);
         if (data.track === 'design') {
           requireField(errors, data, 'plan_path', isString, 'string');
+        }
+        if (data.track === 'brainstorm') {
+          requireField(errors, data, 'blocking_question', isNonEmptyString, 'non-empty string');
         }
       }
     }
@@ -255,6 +318,7 @@ function validateRoute(route: unknown, path: string): string[] {
   requireField(errors, route, 'needs_research', isBoolean, 'boolean');
   requireField(errors, route, 'needs_investigation', isBoolean, 'boolean');
   requireField(errors, route, 'needs_design', isBoolean, 'boolean');
+  requireField(errors, route, 'needs_brainstorm', isBoolean, 'boolean');
 
   requireField(errors, route, 'task_type', isString, 'string');
   if (isString(route.task_type)) {
@@ -274,7 +338,7 @@ function validateRoute(route: unknown, path: string): string[] {
   } else if (!isObject(route.confidence)) {
     errors.push('confidence: expected object');
   } else {
-    for (const field of ['split', 'design', 'plan_mode', 'security', 'docs'] as const) {
+    for (const field of ['split', 'design', 'plan_mode', 'security', 'docs', 'brainstorm'] as const) {
       requireField(errors, route.confidence, field, isConfidenceScore, 'number (0-100)');
     }
   }

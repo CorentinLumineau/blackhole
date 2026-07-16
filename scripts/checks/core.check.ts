@@ -775,6 +775,8 @@ export const ORCHESTRATOR_CONTENT_GATE_BASELINE: Record<string, number> = {
   '## Incident Mode': 36,
   '## Continuous Discovery & Pareto Sorting': 12,
   '## Kaizen hunt dispatch': 38,
+  '## Brainstorm dispatch precedence (ADR-010 D3)': 16,
+  '## Brainstorm terminal handling (ADR-010 D3)': 33,
 };
 
 // New (non-baseline) `##` sections are capped at 50 LOC — the approved plan default, chosen to

@@ -1,0 +1,8 @@
+{
+  "status": "ready",
+  "plan_path": ".blackhole/plans/issue-298-brainstorm.md",
+  "track": "brainstorm",
+  "artifact_path": "documentation/brainstorms/cashflow-v3-idea.md",
+  "failing_checks": [],
+  "clarification_markers": 0
+}

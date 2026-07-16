@@ -1,0 +1,34 @@
+{
+  "status": "ready",
+  "plan_path": ".blackhole/plans/issue-298-brainstorm.md",
+  "track": "brainstorm",
+  "artifact_path": "documentation/brainstorms/cashflow-v3-idea.md",
+  "children": [
+    {
+      "title": "Add CSV export for cashflow ledger",
+      "body": "Users need to export the cashflow ledger as CSV for offline analysis.",
+      "acceptance_criteria": [
+        "Export button present on the ledger view",
+        "CSV includes date, amount, category columns"
+      ],
+      "size_estimate": "s",
+      "suggested_route": { "task_type": "feature", "plan_mode": "quick" },
+      "gain": 6,
+      "effort": 3
+    },
+    {
+      "title": "Add cashflow forecast chart",
+      "body": "Show a 90-day rolling forecast based on historical cashflow trends.",
+      "acceptance_criteria": [
+        "Chart renders on the dashboard",
+        "Forecast recalculates when a new transaction is recorded"
+      ],
+      "size_estimate": "m",
+      "suggested_route": { "task_type": "feature", "plan_mode": "full" },
+      "gain": 7,
+      "effort": 5
+    }
+  ],
+  "failing_checks": [],
+  "clarification_markers": 0
+}

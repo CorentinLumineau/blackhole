@@ -40,6 +40,7 @@ planner self-assesses Quick/Standard unchanged.
 | Split filed during plan | User confirms child breakdown |
 | Epic / PO gate | User sign-off per runbook |
 | Design track (ADR-004) | ALWAYS AskQuestion — no confidence bypass, regardless of AC clarity |
+| Brainstorm track (ADR-010) | Confidence-gated — AskQuestion only on `status: blocked` (low-confidence product choice); `status: ready` proceeds to terminal handling without a human gate, unlike Design track's unconditional block |
 
 Design-track artifact content depth (Options + trade-off matrix, adversarial evaluation via
 multiplicity, component decomposition, principles validation, refactoring impact, assumption

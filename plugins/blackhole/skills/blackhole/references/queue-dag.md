@@ -58,11 +58,12 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
   "needs_research": false,
   "needs_investigation": true,
   "needs_design": false,
+  "needs_brainstorm": false,
   "task_type": "bugfix",
   "plan_mode": "quick",
   "security_review_required": false,
   "docs_impact": false,
-  "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85 },
+  "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85, "brainstorm": 20 },
   "body_hash": "<sha of issue title+body at classification time>",
   "computed_at_phase": "handle",
   "revision": 1
@@ -76,11 +77,12 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 | `needs_research` | boolean | Would trigger investigator · research sub-mode (step 6 — not yet implemented) |
 | `needs_investigation` | boolean | Would trigger investigator · investigate sub-mode (step 6 — not yet implemented) |
 | `needs_design` | boolean | Would trigger planner design track + hard human gate (step 4 — not yet implemented) |
+| `needs_brainstorm` | boolean | Confidence-gated (`confidence.brainstorm` vs. `router_confidence_thresholds.brainstorm`, default 70); low-confidence cautious default: `true` when the issue body lacks testable AC **and** lacks a concrete mechanism (ADR-010 D1). Hard rule: when resolved `true` (post confidence-gate), voids `plan_mode`/`needs_design` for this dispatch — the issue is never directly planned; other flags (`needs_research`, `needs_investigation`, `security_review_required`, `docs_impact`) are unaffected. |
 | `task_type` | `feature` \| `bugfix` \| `refactor` \| `docs` | Content-derived, never from forge labels; labels are a cautious tie-break only |
 | `plan_mode` | `skip` \| `quick` \| `full` | Would select planner track (steps 3-4 — not yet implemented) |
 | `security_review_required` | boolean | Would select reviewer security mode (step 8 — not yet implemented) |
 | `docs_impact` | boolean | Would select planner/reviewer docs-impact enrichment (dispatch out of scope — computed and confidence-gated only; see #177) |
-| `confidence` | object `{ split, design, plan_mode, security, docs }`, each 0-100 | Per-flag confidence; low confidence resolves to that flag's cautious default (`needs_split → true`, `plan_mode → full`, `security_review_required → true`, `needs_design → true`, `docs_impact → true`) |
+| `confidence` | object `{ split, design, plan_mode, security, docs, brainstorm }`, each 0-100 | Per-flag confidence; low confidence resolves to that flag's cautious default (`needs_split → true`, `plan_mode → full`, `security_review_required → true`, `needs_design → true`, `docs_impact → true`, `needs_brainstorm → true`) |
 | `body_hash` | string | sha of issue title+body at classification time; staleness marker |
 | `computed_at_phase` | `handle` \| `plan` \| `implement` \| `review` | Phase at which this route was computed |
 | `revision` | number | Bumped on every re-route; never retroactively changes already-executed chain steps |
@@ -95,7 +97,8 @@ security-mode trigger (`review-core.md` § Security-mode review, `phase-review.m
 today's live queue still falls through the "void route" fallback and dispatches exactly as
 it did before ADR-004, only because none has re-entered Handle since #118 merged.
 docs_impact is router-computed and orchestrator-confidence-gated as of #177, but has no
-dispatch consumer yet.
+dispatch consumer yet. `needs_brainstorm` is router-computed and orchestrator-dispatched as of
+ADR-010 M4 (`orchestrator.md` § Route-derived dispatch, Step 2.5).
 
 **Route backfill (ADR-008 rollout)**: to populate `route{}` on the standing queue so the
 dashboard's Routing section (`coordinator-dashboard.md` § Dashboard sections) renders real

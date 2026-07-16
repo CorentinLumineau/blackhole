@@ -42,6 +42,57 @@ describe('validateWorker planner', () => {
   test('valid blocked design', () => expectValid('planner', 'planner-blocked-design.json'));
   test('invalid blocked design missing plan_path', () =>
     expectInvalid('planner', 'planner-blocked-design-missing-plan-path.json'));
+  test('valid ready brainstorm', () => expectValid('planner', 'planner-ready-brainstorm.json'));
+  test('valid blocked brainstorm', () => expectValid('planner', 'planner-blocked-brainstorm.json'));
+  test('invalid ready brainstorm missing children', () =>
+    expectInvalid('planner', 'planner-ready-brainstorm-missing-children.json'));
+  test('invalid ready brainstorm missing artifact_path', () => {
+    const errors = validateWorker('planner', {
+      status: 'ready',
+      plan_path: '.blackhole/plans/issue-298-brainstorm.md',
+      track: 'brainstorm',
+      children: [
+        {
+          title: 'Add CSV export',
+          body: 'Users need to export the ledger as CSV.',
+          acceptance_criteria: ['Export button present'],
+          size_estimate: 's',
+          suggested_route: { task_type: 'feature', plan_mode: 'quick' },
+          gain: 6,
+          effort: 3,
+        },
+      ],
+      failing_checks: [],
+      clarification_markers: 0,
+    });
+    expect(errors.some((e) => e.includes('artifact_path'))).toBe(true);
+  });
+  test('invalid ready brainstorm malformed child object', () => {
+    const errors = validateWorker('planner', {
+      status: 'ready',
+      plan_path: '.blackhole/plans/issue-298-brainstorm.md',
+      track: 'brainstorm',
+      artifact_path: 'documentation/brainstorms/cashflow-v3-idea.md',
+      children: [
+        {
+          title: 'Add CSV export',
+          // missing body, acceptance_criteria, size_estimate, suggested_route, gain, effort
+        },
+      ],
+      failing_checks: [],
+      clarification_markers: 0,
+    });
+    expect(errors.length).toBeGreaterThan(0);
+  });
+  test('invalid blocked brainstorm missing blocking_question', () => {
+    const errors = validateWorker('planner', {
+      status: 'blocked',
+      track: 'brainstorm',
+      failing_checks: ['brainstorm_confidence_below_threshold'],
+      clarification_markers: 0,
+    });
+    expect(errors.some((e) => e.includes('blocking_question'))).toBe(true);
+  });
 });
 
 describe('validateWorker implementer', () => {
