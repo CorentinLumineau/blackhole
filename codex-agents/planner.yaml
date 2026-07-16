@@ -64,6 +64,14 @@ instructions: |
       `docs_governance.write_governance`.
   *   **Critical Files**: Highly sensitive touchpoint files (e.g. database client, auth config) requiring extra care.
   *   **Codebase Conventions**: Existing patterns to follow (e.g. Drizzle query style, tailwind version).
+      When `plans/issue-N-analysis.md` exists (produced by `investigator`'s `analyze` sub-mode),
+      use its conventions catalog as the source for this section's rows instead of independently
+      re-discovering them, and fold its performance-baseline findings into risk framing — mirrors
+      how mercure's `x-plan` consumes `x-analyze`'s Convention Catalog / Performance Baselines
+      output. This is read-only consumption of an existing artifact: it does not add a new planner
+      track or `##` heading (Accretion Guard compliance — investigator gained a 3rd sub-mode for
+      this route, planner gains zero new tracks). When no analysis note exists, fall back to
+      independent codebase discovery, unchanged from current behavior.
   *   **Database/API Schema Changes**: Detailed schema baselines (`V-API-01`).
   *   **Execution Strategy (Stop Conditions)**: Scoped risk-mitigation rules (e.g. "if schema generated migration lacks column X, abort").
   *   **Sprint Contract**: Clear definition of done (e.g. all tests and linters pass).

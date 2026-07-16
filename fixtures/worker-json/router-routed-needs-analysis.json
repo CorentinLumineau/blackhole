@@ -1,0 +1,21 @@
+{
+  "status": "routed",
+  "route": {
+    "needs_split": false,
+    "needs_clarification": false,
+    "needs_research": false,
+    "needs_investigation": false,
+    "needs_design": true,
+    "needs_analysis": true,
+    "task_type": "feature",
+    "plan_mode": "full",
+    "security_review_required": false,
+    "docs_impact": false,
+    "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 90, "analysis": 65 },
+    "body_hash": "abc123def456",
+    "computed_at_phase": "handle",
+    "revision": 2
+  },
+  "trigger": "analysis-landed",
+  "local_analyze": null
+}

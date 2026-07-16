@@ -21,9 +21,9 @@ const ROUTE_STATUSES = ['routed', 'error'] as const;
 const TASK_TYPES = ['feature', 'bugfix', 'refactor', 'docs'] as const;
 const ESCALATION_TRIGGERS = ['failed_attempts', 'touch_paths_overrun'] as const;
 const PLAN_MODES = ['skip', 'quick', 'full'] as const;
-const TRIGGERS = ['initial', 'clarify-resolved', 'research-landed', 'investigation-landed'] as const;
+const TRIGGERS = ['initial', 'clarify-resolved', 'research-landed', 'investigation-landed', 'analysis-landed'] as const;
 const INVESTIGATOR_STATUSES = ['complete', 'error'] as const;
-const SUB_MODES = ['research', 'investigate'] as const;
+const SUB_MODES = ['research', 'investigate', 'analyze'] as const;
 
 const ROLE_FROM_TYPE: Record<string, Role> = {
   planner: 'planner',
@@ -255,6 +255,7 @@ function validateRoute(route: unknown, path: string): string[] {
   requireField(errors, route, 'needs_research', isBoolean, 'boolean');
   requireField(errors, route, 'needs_investigation', isBoolean, 'boolean');
   requireField(errors, route, 'needs_design', isBoolean, 'boolean');
+  requireField(errors, route, 'needs_analysis', isBoolean, 'boolean');
 
   requireField(errors, route, 'task_type', isString, 'string');
   if (isString(route.task_type)) {
@@ -274,7 +275,7 @@ function validateRoute(route: unknown, path: string): string[] {
   } else if (!isObject(route.confidence)) {
     errors.push('confidence: expected object');
   } else {
-    for (const field of ['split', 'design', 'plan_mode', 'security', 'docs'] as const) {
+    for (const field of ['split', 'design', 'plan_mode', 'security', 'docs', 'analysis'] as const) {
       requireField(errors, route.confidence, field, isConfidenceScore, 'number (0-100)');
     }
   }
