@@ -316,6 +316,7 @@ below).
 | `evidence` | object `{ command: string, result: string }` | yes when `status: complete`; absent when `blocked`/`error` |
 | `new_findings` | finding[] | no |
 | `filed_issues` | number[] | no |
+| `decision_records` | decision record[] (see below) | no |
 
 ### `execution_mode` (optional — ADR-004)
 
@@ -377,6 +378,28 @@ enforce this field's presence or shape, and no fixture under `fixtures/worker-js
 exercises it — both are out of this issue's declared Touch-Paths. Wiring structural
 enforcement (a `verify.evidence-gate.test.ts` content-assertion check plus a fixture update)
 is recommended as a follow-up issue.
+
+### `decision_records[]` (optional — ADR-012 E4)
+
+Array of Decision Record rows the implementer additionally emits, one per record-producing
+gate (`implementer.md` § Reuse Check Gate, § Scout Check, § Bugfix Gate's Root-Cause
+Verification gate, § Execution Mode's Refactoring Verification gate) — **in addition to** the
+existing PR-body text for that gate, never instead of it. Row shape:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `pr` | number | one of `pr` / `issue` required | PR number the decision was made in |
+| `issue` | number | one of `pr` / `issue` required | issue number, when no PR exists yet |
+| `kind` | string (enum) | yes | `root-cause` \| `approach` \| `refactor` \| `improvement` \| `reuse` |
+| `touch_paths` | string[] | yes | files the decision governed |
+| `decision` | string | yes | one line |
+| `why` | string | yes | one line |
+
+**Consumer**: the orchestrator, and only the orchestrator, appends these rows serially
+post-barrier to `documentation/reference/decision-log.md` (single-writer invariant —
+`orchestrator.md` § Decision Record Append, `blackhole-state.md` § Single-writer invariant).
+No worker ever writes the file directly — this field is the sole channel a worker uses to
+hand a decision to the orchestrator.
 
 ## Reviewer (`reviewer`)
 

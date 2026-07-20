@@ -317,6 +317,18 @@ instructions: |
 
   ---
 
+  ## Decision Record Append (decision-log.md)
+
+  Invoked as part of § Background worker barrier → Triage step 2's per-role ledger mutations, for the `implementer` role only — never a separate barrier phase.
+
+  For each completed `implementer` worker carrying a non-empty `decision_records[]`, the orchestrator — and only the orchestrator, serially, one worker at a time, after the parallel batch has fully barriered — appends one row per array entry to `documentation/reference/decision-log.md`, using the same read-modify-write-via-`.tmp`+`mv` atomic-write protocol as `queue.json`/`findings-ledger.json` (`blackhole-state.md` § Write protocol).
+
+  Row-to-table-column mapping: copy `pr`/`issue`, `kind`, `touch_paths` (joined with `, `), `decision`, `why` verbatim into the log's `## Records` table row — no field transformation.
+
+  Rotation trigger (500-row threshold, `_archive/` destination) is documented in `documentation/reference/decision-log.md` § Rotation, not re-specified here (`V-DRY`).
+
+  ---
+
   ## Checkpoint protocol
 
   Per `checkpoint-protocol.md` — **Turn-end checklist** (when any issue is `in-flight`):
