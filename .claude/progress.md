@@ -7,7 +7,7 @@
   agent) → review → green `bun run verify` + `bun run build` + `bun test` → merge to main → next.
 - Run as a **mercure initiative, NOT a blackhole self-campaign** (milestones edit blackhole's own
   agent contracts; a self-campaign would review changes to its own contract).
-- Currently: companion done; **MPP-M1 merged**; starting **MPP-M2** (matrix seed, needs M1).
+- Currently: companion done; **MPP-M1, M2 merged**; starting **MPP-M3** (wave 3; M3→M4→M5 sequential).
 
 ## Green baseline (main @ 22a84bb)
 - `bun run verify` → 28/28
@@ -22,8 +22,8 @@ This is the regression gate for every milestone.
 4. CSC-M2 promotion path (needs M1)       ✅ merged 8f13aef
 5. CSC-M3 Active Constraints (needs M2)   ✅ merged 48581f4
 6. MPP-M1 sync/Lens v2 (wave1)            ✅ merged 8d0842b
-7. MPP-M2 matrix seed (needs M1)          ← in progress
-8. MPP-M3 threat/perf (needs M2)
+7. MPP-M2 matrix seed (needs M1)          ✅ merged 3a87aba
+8. MPP-M3 threat/perf (needs M2)          ← in progress
 9. MPP-M4 merge/delivery hardening (needs M2)
 10. MPP-M5 parity hunt kind (needs M2)
 
@@ -67,6 +67,11 @@ This is the regression gate for every milestone.
   2 hard rejections, Release/Backlog dual-mode workflow. New `scripts/checks/parity-matrix.check.ts` +12-case
   TDD test (V-PMATRIX-01, file-absent SKIP until M2 seeds the matrix). **EXPECTED_CHECK_COUNT 28→29**;
   VCODE_TABLE_ROW_COUNT held 46. Gate: verify 29/29 (V-PMATRIX-01 green), build byte-identical, tests 521/0.
+- **MPP-M2** (ADR-013 D1 matrix seed) — merged `3a87aba`. New `documentation/audits/mercure-parity-matrix.md`:
+  82 rows (75 mechanism: checklist 21/gate 19/plan-section 13/artifact 13/protocol 5/fleet 4, + 7 ADR-011/012
+  in-flight rows citing companion milestones), all 10 GAP-N + Likely-N/A represented, 20 gap rows scored,
+  `## Gap Priority Scoring` section. mercure-sync.md Coverage table deprecated (note only). V-PMATRIX-01 green
+  against the real matrix. Gate: verify 29/29, build clean, tests 521/0.
 
 ## Failed Approaches
 (none yet)
