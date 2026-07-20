@@ -1,7 +1,7 @@
 {
   "version": "3.0",
-  "focus": "companion-substrate-closure",
-  "lastUpdated": "2026-07-20T12:00:00Z",
+  "focus": "mercure-parity-program",
+  "lastUpdated": "2026-07-20T13:00:00Z",
   "initiatives": [
     {
       "name": "mercure-parity-program",
@@ -19,8 +19,8 @@
       "created": "2026-07-20T00:00:00Z",
       "milestonesTotal": 6,
       "milestonesComplete": 0,
-      "currentMilestone": null,
-      "note": "Execution mode: mercure initiative (NOT a blackhole self-campaign) — milestones edit the sync skill and agent enforcement contracts. Related to companion-substrate-closure (no hard dependency): ADR-011/012 ground enters the parity matrix as in-flight rows."
+      "currentMilestone": "M1",
+      "note": "Execution mode: mercure initiative (NOT a blackhole self-campaign) — milestones edit the sync skill and agent enforcement contracts. Related to companion-substrate-closure (no hard dependency): ADR-011/012 ground enters the parity matrix as in-flight rows. M6 (live backlog sweep) DEFERRED — files real GitHub issues, gated to user."
     },
     {
       "name": "companion-substrate-closure",
@@ -36,9 +36,9 @@
       "blockedBy": [],
       "created": "2026-07-20T00:00:00Z",
       "milestonesTotal": 6,
-      "milestonesComplete": 0,
-      "currentMilestone": null,
-      "note": "Execution mode: mercure initiative (NOT a blackhole self-campaign) \u2014 M0 modifies implementer.md/reviewer.md, so a self-hosted run would have the reviewer review a change to its own contract."
+      "milestonesComplete": 5,
+      "currentMilestone": "M5 (deferred)",
+      "note": "Execution mode: mercure initiative (NOT a blackhole self-campaign) \u2014 M0 modifies implementer.md/reviewer.md, so a self-hosted run would have the reviewer review a change to its own contract. M0/M1/M4/M2/M3 all merged to main (54d08f4, eed17e5, 1fb772e, 8f13aef, 48581f4). M5 (autonomy flip) DEFERRED \u2014 BREAKING, needs green campaign + human T3 sign-off."
     }
   ],
   "archived": [

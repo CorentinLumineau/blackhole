@@ -7,7 +7,8 @@
   agent) → review → green `bun run verify` + `bun run build` + `bun test` → merge to main → next.
 - Run as a **mercure initiative, NOT a blackhole self-campaign** (milestones edit blackhole's own
   agent contracts; a self-campaign would review changes to its own contract).
-- Currently: **CSC-M0, M1, M4, M2 merged**; starting **CSC-M3** (wave 3, last companion before gated M5).
+- Currently: **companion-substrate-closure autonomous scope COMPLETE** (M0,M1,M4,M2,M3 merged; M5
+  deferred). Focus switched to **mercure-parity-program**; starting **MPP-M1**.
 
 ## Green baseline (main @ 22a84bb)
 - `bun run verify` → 28/28
@@ -20,8 +21,8 @@ This is the regression gate for every milestone.
 2. CSC-M1 schema precedence (wave1)       ✅ merged eed17e5
 3. CSC-M4 decision memory (wave1)         ✅ merged 1fb772e
 4. CSC-M2 promotion path (needs M1)       ✅ merged 8f13aef
-5. CSC-M3 Active Constraints (needs M2)   ← in progress
-6. MPP-M1 sync/Lens v2 (wave1)
+5. CSC-M3 Active Constraints (needs M2)   ✅ merged 48581f4
+6. MPP-M1 sync/Lens v2 (wave1)            ← in progress
 7. MPP-M2 matrix seed (needs M1)
 8. MPP-M3 threat/perf (needs M2)
 9. MPP-M4 merge/delivery hardening (needs M2)
@@ -56,6 +57,12 @@ This is the regression gate for every milestone.
   human-approved design VERBATIM on `resume_context: design_approved` — never self-grades, never
   re-invokes design-aggregate.ts. V-DESIGN-01/02 + V-CONTENTGATE-01 green; verify.test.ts allowlist now
   lists 3 non-baseline sections. Counts held. Gate: verify 28/28, build clean, tests 509/0.
+- **CSC-M3** (ADR-012 E3 Active Constraints) — merged `48581f4`. T0 neutralized template `{e.g.}`
+  placeholders; Trigger A (planner §4.8 ready branch) appends `(ADR-{NNN})`-attributed constraint via
+  the 3-question Cross-Cutting Heuristic; Trigger B (new track-independent planner Workflow step,
+  "seeds", reachable from Quick track) seeds from analyze notes with `(analyze: issue #N)` attribution
+  + dedup. V-DESIGN markers intact, counts held. Gate: verify 28/28, build clean, tests 509/0.
+  → **companion-substrate-closure autonomous scope COMPLETE (5/6; M5 deferred).**
 
 ## Failed Approaches
 (none yet)

@@ -4,7 +4,7 @@
   "status": "active",
   "created": "2026-07-20T00:00:00Z",
   "lastUpdated": "2026-07-20T00:00:00Z",
-  "currentMilestone": "M3",
+  "currentMilestone": "M5 (deferred — BREAKING, needs green campaign + human T3 sign-off)",
   "executionMode": "mercure-initiative",
   "goal": "blackhole as autonomous mercure over a shared artifact substrate: same code quality, interrupts only when needed, decisions banked durably for future implementations",
   "sources": [
@@ -89,10 +89,11 @@
       "dependsOn": [
         "M2"
       ],
-      "status": "pending",
+      "status": "completed",
       "tasksTotal": 4,
-      "tasksComplete": 0,
+      "tasksComplete": 4,
       "file": "documentation/milestones/_active/companion-substrate-closure/milestone-3.md",
+      "mergedCommit": "48581f4",
       "summary": "Trigger A on ADR promotion + Trigger B mandatory analyze seeding",
       "planStatus": "planned"
     },
