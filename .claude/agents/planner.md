@@ -26,13 +26,27 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
      orchestrator dispatch). If no explicit directive is present, proceed with Quick/Standard
      assessment as above.
 3. **Analyze Codebase**: Search the repository using Grep/Glob/Read to inspect existing patterns, conventions, and touchpoints. **Skip Track exception**: when directed to `track: skip`, omit this step entirely — the Skip Track is deterministic and performs no codebase analysis.
-4. **Verify Pareto Gating**: Estimate **Gain (1-10)** and **Effort (1-10)** for the planned implementation. Calculate $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$. If $\text{Priority} < 30$, halt planning, set the issue to low ROI, and recommend archival in the queue findings.
-5. **Enforce V-codes (Plan-time checks)**:
+4. **Seed Active Constraints from analyze note** (ADR-012 E3, Trigger B): When
+   `plans/issue-N-analysis.md` exists (produced by `investigator`'s `analyze` sub-mode), the
+   planner **seeds** `ARCHITECTURE.md` `## Active Constraints` from its Architecture Coherence
+   findings — this runs regardless of which track (Quick, Standard, Design, Brainstorm) the
+   plan resolves to, because it is the only path that reaches Active Constraints on a repo whose
+   issues all route to Quick track. **Skip Track is the sole exception**, consistent with Step
+   3's existing "no codebase analysis" carve-out for that track. For each finding in the note's
+   Architecture Coherence section, apply the same Cross-Cutting Heuristic as §4.8's Trigger A
+   (Breadth / Enforcement stakes / Foreclosure, score ≥2/3 to promote — see §4.8 for the full
+   3-question wording, not restated here). For each qualifying finding: if `## Active
+   Constraints` is empty, append `- {constraint} (analyze: issue #N)` unconditionally; if it
+   already carries bullets (from a prior Trigger A or Trigger B write), first check for a
+   near-duplicate — same citation already present, or ≥80% text overlap with an existing bullet
+   — and skip the append if found. The `(analyze: issue #N)` attribution suffix is mandatory.
+5. **Verify Pareto Gating**: Estimate **Gain (1-10)** and **Effort (1-10)** for the planned implementation. Calculate $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$. If $\text{Priority} < 30$, halt planning, set the issue to low ROI, and recommend archival in the queue findings.
+6. **Enforce V-codes (Plan-time checks)**:
    * `V-INT-02`: Do not plan utility re-implementations.
    * `V-KISS-01`: Keep the design minimal. Avoid premature abstractions.
    * `V-YAGNI-01`: No speculative features or unused generic classes.
-6. **Generate Plan Sections**: Write the plan file to `plans/<issue>.md`. Use the Marker Convention to highlight human-in-the-loop clarifications.
-7. **Verify Quality Gate**: Ensure all Touch-Paths are declared explicitly (`V-SCOPE-02`) and schema baseline changes are fully specified (`V-API-01`).
+7. **Generate Plan Sections**: Write the plan file to `plans/<issue>.md`. Use the Marker Convention to highlight human-in-the-loop clarifications.
+8. **Verify Quality Gate**: Ensure all Touch-Paths are declared explicitly (`V-SCOPE-02`) and schema baseline changes are fully specified (`V-API-01`).
 
 ---
 
@@ -188,6 +202,25 @@ The artifact consolidates 8 ordered subsections:
       draft/final flip, merge is the approval. Return `status: "ready"` in the worker JSON with
       `track: "design"` — the `ready`/`blocked` worker-JSON contract shape itself is unchanged;
       `V-INT-01` rides in the existing `findings` array, no new required field.
+
+      **Cross-Cutting Heuristic (ADR-012 E3, Trigger A)**: in the **same PR/commit** as the ADR
+      + INDEX row above, apply this 3-question test to the ADR's Decision section:
+      1. **Breadth** — Does the constraint govern ≥2 independent subsystems/modules/agents, not
+         one file or one feature?
+      2. **Enforcement stakes** — Would violating it corrupt shared state, break a protocol
+         invariant, or trigger an existing BLOCK-severity V-code — not merely a
+         style/readability preference?
+      3. **Foreclosure** — Does it rule out an entire *category* of future implementation
+         approaches for that surface, rather than prescribing today's preferred implementation
+         detail?
+      Score ≥2/3 YES → append one bullet to `ARCHITECTURE.md` `## Active Constraints`:
+      `- {constraint, one sentence, imperative} (ADR-{NNN})`. The `(ADR-{NNN})` attribution
+      suffix is mandatory — it is the primary pollution mitigation for this section, giving a
+      human pruning it later a citation to check rather than bare prose to second-guess. Score
+      ≤1/3 → do not append; the constraint stays local to the ADR's own Decision text. This
+      write is committed inside the same PR as the ADR file and INDEX row (ADR-010 "merge =
+      approval" — no agent process runs at merge time). The `status: "ready"`/`"blocked"`
+      worker-JSON contract shape is unchanged by this append — no new required field.
     - `status: "blocked"` (from `design-aggregate.ts`), **or** the config gate is off or the
       `autonomy` block is absent → return `status: "blocked"` exactly as today: unconditional,
       no confidence bypass, the same code path the block has always used. The full analytical
