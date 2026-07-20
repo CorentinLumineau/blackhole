@@ -174,11 +174,20 @@ The artifact consolidates 8 ordered subsections:
     The planner reads the script's returned `status`.
     **The planner MUST NOT substitute its own judgment** for it — the script is the sole source
     of the verdict, never the planner's own read of the artifact's substance:
-    - `status: "ready"` (from `design-aggregate.ts`) → promote this design note into
-      `documentation/decisions/ADR-{NNN}-{slug}.md` plus a `documentation/decisions/INDEX.md`
-      row, per the `artifact-contract.md` delivery mechanism (ADR-010 D5): commit the ADR inside
-      the issue's own PR — no orchestrator file write, no draft/final flip, merge is the
-      approval. Return `status: "ready"` in the worker JSON with `track: "design"`.
+    - `status: "ready"` (from `design-aggregate.ts`) → before writing, run
+      `scripts/detect-doc-schema.sh` (repo-convention-precedence detection, ADR-012 E1) against
+      both target artifacts: `index` mode on `documentation/decisions/INDEX.md`, `frontmatter`
+      mode on an existing sibling ADR file if one exists. Emit the new ADR's frontmatter and its
+      `documentation/decisions/INDEX.md` row in the detected schema per
+      `doc-governance.md` § Repo Convention Precedence's three-outcome contract; on
+      `schema=ambiguous` for either artifact, emit in blackhole's own schema and include a
+      `V-INT-01` WARN finding (citing the offending `file:line`) in the same worker JSON return.
+      Then promote this design note into `documentation/decisions/ADR-{NNN}-{slug}.md` plus the
+      `documentation/decisions/INDEX.md` row, per the `artifact-contract.md` delivery mechanism
+      (ADR-010 D5): commit the ADR inside the issue's own PR — no orchestrator file write, no
+      draft/final flip, merge is the approval. Return `status: "ready"` in the worker JSON with
+      `track: "design"` — the `ready`/`blocked` worker-JSON contract shape itself is unchanged;
+      `V-INT-01` rides in the existing `findings` array, no new required field.
     - `status: "blocked"` (from `design-aggregate.ts`), **or** the config gate is off or the
       `autonomy` block is absent → return `status: "blocked"` exactly as today: unconditional,
       no confidence bypass, the same code path the block has always used. The full analytical

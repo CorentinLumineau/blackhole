@@ -12,7 +12,7 @@ repo-convention precedence.
 |-------|----------|
 | analyze | `documentation/audits/analysis-issue-N.md` |
 | brainstorm | `documentation/brainstorms/{concern-slug}.md` |
-| design (auto-approved or human-approved) | `documentation/decisions/ADR-{NNN}-{slug}.md` + `documentation/decisions/INDEX.md` row |
+| design (auto-approved or human-approved) | `documentation/decisions/ADR-{NNN}-{slug}.md` + `documentation/decisions/INDEX.md` row — schema (both the INDEX row shape and the ADR frontmatter shape) follows [doc-governance.md](doc-governance.md) § Repo Convention Precedence's detection |
 | investigate | `documentation/investigations/{concern-slug}.md` |
 
 ## Delivery mechanism — who writes, who approves
