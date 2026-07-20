@@ -35,7 +35,7 @@ relative to the **main clone repo root**, not the worktree checkout.
 1. **Objective**: Detailed issue goals and issue ref + UNTRUSTED-FORGE-DATA body.
 2. **Output format**: JSON return schema (below) + PR opened + Closes #N linkage.
 3. **Scope boundaries**: Touch-Paths restriction (`V-SCOPE-02`) + parallel branch exclusions.
-4. **Tool guidance**: Command pointers for running git, gh CLI, install, lint, and test commands within the worktree. Carry the `execution_mode` TDD-mandate branch matching the plan's `route.task_type` derivation (see below), and — when the plan frontmatter carries `task_type: bugfix` (Quick track) — the Bugfix Gate's Decision Record and Scout Check expectations (`implementer.md` § Bugfix Gate).
+4. **Tool guidance**: Command pointers for running git, gh CLI, install, lint, and test commands within the worktree. Carry the `execution_mode` TDD-mandate branch matching the plan's `route.task_type` derivation (see below); when the plan frontmatter carries `task_type: bugfix` (Quick track), also carry the Bugfix Gate's Root-Cause Decision Record and escalation-trigger expectations (`implementer.md` § Bugfix Gate). Scout Check applies unconditionally to every execution mode and plan track, not gated by `task_type: bugfix` — see `implementer.md` § Scout Check.
 5. **Stop condition**: PR opened, local lint/tests green, and branch pushed — and, when the diff touches the public-API/schema/config surface within Touch-Paths, companion docs updated in the same PR (`V-DOC-02/04`, `implementer.md` step 6's Companion-doc sync bullet). Phase 0's companion-file scaffold (`SKILL.md` step 2) already creates the *root* `ARCHITECTURE.md`/`AGENTS.md`/`DESIGN.md` when absent, so this bullet only covers diff-triggered *updates* to already-existing companion docs, not initial creation.
 Do not commit directly to main (`V-BRANCH-02`) or force-push (`V-BRANCH-01`).
 - Ledger pointer: read plan deferrals from findings-ledger.json
@@ -60,7 +60,7 @@ Parallel to `execution_mode` above, matching `worker-schemas.md`'s implementer c
 
 | `task_type` | Gate |
 |------|------|
-| `bugfix` (Quick track only) | Bugfix Gate: unconditional Root-Cause Verification gate (Decision Record before the first edit), 2 escalation triggers (`failed_attempts`, `touch_paths_overrun`), Scout Check (in-scope improvement recorded as an Improvement Record, not deferred) |
+| `bugfix` (Quick track only) | Bugfix Gate: unconditional Root-Cause Verification gate (Decision Record before the first edit), 2 escalation triggers (`failed_attempts`, `touch_paths_overrun`). Scout Check (in-scope improvement recorded as an Improvement Record) is unconditional for every `task_type`/`execution_mode` — see `implementer.md` § Scout Check, not specific to this row |
 
 **Non-goal for this issue**: no orchestrator dispatch logic computes or passes `route.task_type`
 to implementer at spawn time yet — same non-wiring status as `execution_mode` above
