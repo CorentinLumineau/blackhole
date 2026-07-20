@@ -18,9 +18,9 @@
       "blockedBy": [],
       "created": "2026-07-20T00:00:00Z",
       "milestonesTotal": 6,
-      "milestonesComplete": 0,
-      "currentMilestone": "M1",
-      "note": "Execution mode: mercure initiative (NOT a blackhole self-campaign) — milestones edit the sync skill and agent enforcement contracts. Related to companion-substrate-closure (no hard dependency): ADR-011/012 ground enters the parity matrix as in-flight rows. M6 (live backlog sweep) DEFERRED — files real GitHub issues, gated to user."
+      "milestonesComplete": 5,
+      "currentMilestone": "M6 (deferred)",
+      "note": "M1-M5 all merged to main (8d0842b, 3a87aba, bf875a4, a808875, 4e20a79). M6 (live backlog sweep) DEFERRED — runs prj-mercure-sync live and files real GitHub issues, gated to user. Execution mode: mercure initiative (NOT a blackhole self-campaign)."
     },
     {
       "name": "companion-substrate-closure",

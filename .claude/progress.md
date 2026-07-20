@@ -7,7 +7,8 @@
   agent) → review → green `bun run verify` + `bun run build` + `bun test` → merge to main → next.
 - Run as a **mercure initiative, NOT a blackhole self-campaign** (milestones edit blackhole's own
   agent contracts; a self-campaign would review changes to its own contract).
-- Currently: companion done; **MPP-M1, M2, M3, M4 merged**; starting **MPP-M5** (LAST autonomous milestone).
+- Currently: **ALL 10 AUTONOMOUS MILESTONES COMPLETE** (companion M0/M1/M4/M2/M3; parity M1-M5).
+  Only the 2 gated milestones remain (CSC-M5, MPP-M6) — awaiting user decision.
 
 ## Green baseline (main @ 22a84bb)
 - `bun run verify` → 28/28
@@ -25,7 +26,7 @@ This is the regression gate for every milestone.
 7. MPP-M2 matrix seed (needs M1)          ✅ merged 3a87aba
 8. MPP-M3 threat/perf (needs M2)          ✅ merged bf875a4
 9. MPP-M4 merge/delivery hardening (needs M2)  ✅ merged a808875
-10. MPP-M5 parity hunt kind (needs M2)         ← in progress
+10. MPP-M5 parity hunt kind (needs M2)         ✅ merged 4e20a79
 
 ## Deferred (gated — hand to user)
 - CSC-M5 autonomy.enabled flip — BREAKING; needs a real green campaign + human T3 sign-off.
