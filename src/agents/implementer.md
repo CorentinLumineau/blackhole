@@ -110,6 +110,8 @@ duplicate code is written, not after the PR is opened.
     - `Reuse Check: <N> bespoke occurrences of <concern> — reusing <closest>, extraction filed`
       — the rule-of-three threshold fired (3+ hits).
     The entry is produced even when nothing is found (the negative result is the audit trail).
+    Also append this entry as a `decision_records[]` row with `kind: "reuse"` in the return
+    JSON — see `worker-schemas.md` § `decision_records[]` for the row shape.
 *   **On overlap ambiguity**: if a search surfaces a candidate that overlaps but does not cleanly
     fit (different signature/behaviour needed), do not silently duplicate logic nor force an
     ill-fitting reuse — stop and report per the plan's Stop Conditions.
@@ -129,6 +131,8 @@ statement of Scout Check; the Bugfix Gate below only points here, it does not re
     substitute for this).
 *   If the touched code is already clean, record "no improvement needed — code already clean" —
     the reviewer verifies the entry's presence, not a forced change.
+*   Also append this Improvement Record as a `decision_records[]` row with `kind: "improvement"`
+    in the return JSON — see `worker-schemas.md` § `decision_records[]` for the row shape.
 *   The diff boundary (`V-SCOPE-01`) — not the execution mode or `task_type` — is the sole
     discriminator between this section and step 7's Continuous Discovery.
 
@@ -145,7 +149,9 @@ whether or not this gate is active.
 *   **Root-Cause Verification gate (unconditional)**: before the first edit, produce a short
     Decision Record (Root cause identified / Alternatives considered / Why this fix), recorded in
     the PR description. No code path skips this when `task_type: bugfix` is present — same
-    "no bypass" shape as `planner.md`'s Design Track `needs_design` gate.
+    "no bypass" shape as `planner.md`'s Design Track `needs_design` gate. Also append this
+    Decision Record as a `decision_records[]` row with `kind: "root-cause"` in the return JSON —
+    see `worker-schemas.md` § `decision_records[]` for the row shape.
 *   **Escalation triggers**: after 2 distinct failed fix attempts within the session (a fix
     applied, tests still failing, tried again, tests still failing) — stop; do not attempt a third
     approach. Return `status: blocked`, `escalation_trigger: "failed_attempts"`. If the fix has
@@ -172,7 +178,9 @@ directive, treat it as absent — behave exactly as `standard`.
     - **Refactoring Verification gate (unconditional)**: before the first edit, produce a short
       Decision Record (deep vs. shallow restructuring choice, coupling-impact assessment),
       recorded in the PR description — same "no bypass" shape, reusing the Bugfix Gate's
-      Decision-Record mechanism above.
+      Decision-Record mechanism above. Also append this Decision Record as a `decision_records[]`
+      row with `kind: "refactor"` in the return JSON — see `worker-schemas.md` §
+      `decision_records[]` for the row shape.
     - **Per-step commit/rollback**: extends step 4's "Incremental Implementation" cadence
       (unchanged step granularity) — each incremental change is tested **and committed** before
       the next; a failing step `git reset --hard`s to the last known-good commit, not just
@@ -274,5 +282,11 @@ triggers above:
   "filed_issues": []
 }
 ```
+
+`decision_records[]` (optional) carries one row per record-producing gate exercised this
+session (Reuse Check Gate, Scout Check, Bugfix Gate Root-Cause Verification, Refactoring
+Verification) — populating your own return JSON's `decision_records[]` is your only
+obligation; you never write `documentation/reference/decision-log.md` yourself, the
+orchestrator does that serially post-barrier (`worker-schemas.md` § `decision_records[]`).
 
 See `worker-schemas.md` § Implementer for the full field table.
