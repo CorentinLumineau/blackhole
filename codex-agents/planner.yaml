@@ -194,6 +194,20 @@ instructions: |
         decomposition, design principles validation, refactoring impact analysis, assumption
         audit) does not itself create a `ready` exception for an "obviously correct" design —
         only `design-aggregate.ts`'s own computed verdict can.
+      - `resume_context: design_approved` (ADR-012 E2.3 — from an explicit orchestrator spawn
+        directive; **never** self-selected, **never** inferred by re-invoking
+        `design-aggregate.ts` or by re-reading the design note's substance) → promote the
+        on-disk `.blackhole/plans/issue-N-design.md` **verbatim**: no re-analysis, no
+        re-invocation of `design-aggregate.ts`, no blind-critic re-spawn. Run
+        `scripts/detect-doc-schema.sh` exactly as the `ready` branch above (same
+        repo-convention-precedence detection, ADR-012 E1) and emit
+        `documentation/decisions/ADR-{NNN}-{slug}.md` plus the matching
+        `documentation/decisions/INDEX.md` row in the detected schema. Both committed inside the
+        issue's own PR — no orchestrator file write (orchestrator is `disallowedTools: [Write,
+        Edit, Delete]`), no draft/final flip; merge is the approval (`artifact-contract.md` §
+        Delivery mechanism, ADR-010 D5). Return `status: "ready"`, `track: "design"` in the
+        worker JSON — identical shape to the `ready` branch above, so no downstream consumer
+        needs a new case.
 
   ### 5. Brainstorm Track (ADR-010 D3)
 

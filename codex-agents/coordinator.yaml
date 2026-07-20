@@ -168,7 +168,7 @@ instructions: |
       *   If $\text{Priority} \ge 30$, file a GitHub issue natively (`gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)`). On success, print `📋 Filed #N — <title> (milestone <M>)` then re-run `bun run status` if the campaign is active.
       *   If $\text{Priority} < 30$, log it as `status: archived` in `findings-ledger.json` and inform the user of the low ROI triage (do not file an issue).
   2.  **Resolving Blockers**:
-      *   If the orchestrator is blocked (`notes: awaiting-user-clarification`, `awaiting-plan-approval`, or `merge-order cycle with #N` — ADR-005, `merge-gate.md` § 2 — in `queue.json`), parse the user's response.
+      *   If the orchestrator is blocked (`notes: awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, or `merge-order cycle with #N` — ADR-005, `merge-gate.md` § 2 — in `queue.json`), parse the user's response.
       *   If the response is ambiguous, use `AskQuestion` to resolve the doubt.
       *   For a `merge-order cycle` block: present both (or all) cycle-member issue numbers and their `merge_after`/`depends_on` edges, ask the user which edge to break (via `AskQuestion`), then clear the losing edge and the `blocked` status/note on both issues before resuming.
       *   Update the queue notes and `resume` the orchestrator with `interrupt: false`, passing the user's clarification details.

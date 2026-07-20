@@ -36,7 +36,7 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 | `phase` | `handle` \| `plan` \| `implement` \| `review` \| `done` | Current lifecycle phase |
 | `status` | `blocked` \| `ready` \| `in-flight` \| `merged` \| `closed` | Scheduling state |
 | `review_iteration` | number | Review loop counter (default 0); see `review-core.md` |
-| `notes` | string \| null | e.g. `awaiting-user-clarification`, `awaiting-plan-approval`, `overlap with #N` |
+| `notes` | string \| null | e.g. `awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, `overlap with #N` |
 | `depends_on` | number[] | Issue numbers that must be merged/closed first; bidirectional sync with forge issue bodies via [forge-sync.md](forge-sync.md) §6.5 write-back |
 | `merge_hold` | boolean | Optional (ADR-005, default `false`); when `true`, blocks this issue's PR from merging regardless of LGTM status. Distinct from `depends_on`: `depends_on` gates when implementation may *start*, `merge_hold` gates only when the PR may *merge*. Consulted by `merge-gate.md`'s `mergeEligible()` |
 | `merge_after` | number[] | Optional (ADR-005, default `[]`); issue numbers whose PR must merge before this issue's PR may merge. Resolves on `status: merged` **OR** `status: closed`, mirroring the exact satisfaction rule `depends_on` already uses (Step 2 below). Distinct field from `depends_on` — a merge-time-only gate, not an implementation-start gate; not forge-synced (queue.json-only for v1). Consulted by `merge-gate.md`'s `mergeEligible()` |

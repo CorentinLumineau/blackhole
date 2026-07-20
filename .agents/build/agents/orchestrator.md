@@ -441,6 +441,31 @@ When `status: "blocked"` — the config gate off/absent, or `design-aggregate.ts
 returned `blocked` — dispatch is unchanged from today: the design artifact routes to the
 unconditional `AskQuestion` gate.
 
+Resume-after-human-approval dispatch (`resume_context: design_approved`) is a distinct
+contract — see § Design-Approval Resume Dispatch below.
+
+---
+
+## Design-Approval Resume Dispatch (ADR-012 E2.3)
+
+Trigger: the coordinator resumes the orchestrator (`interrupt: false`) after clearing
+`status: blocked` / `notes: awaiting-design-approval` on a `track: design` issue — the
+resumption path T1 repairs (`coordinator.md` § Resolving Blockers).
+
+Action: re-spawn `planner` with an explicit `resume_context: design_approved` directive —
+never a generic re-spawn, which would re-run the whole Design Track (including two fresh
+blind-critic invocations) and discard the artifact the human actually reviewed.
+
+Directive provenance: `resume_context: design_approved` is set by the orchestrator **only**
+in direct response to the coordinator's resume signal, itself downstream of the human's
+parsed approval. The orchestrator never infers this directive from design-note content — it
+is a pass-through of the human verdict, following the same explicit-directive-only
+convention ADR-004 established for `track: design` / `track: brainstorm`.
+
+The planner's third `## Gate` branch (`planner.md` §4.8) promotes the on-disk design
+artifact verbatim on this directive; this section owns only the spawn-side dispatch
+contract, not the promotion logic itself.
+
 ---
 
 ## Kaizen hunt dispatch
