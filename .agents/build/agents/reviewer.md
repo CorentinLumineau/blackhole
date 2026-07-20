@@ -73,9 +73,26 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 *   `V-INT-02` (No utility re-implementation): Reject code that reimplements existing utilities.
 *   **Reuse Check artifact (verify — BLOCK if absent)**: confirm the PR body carries the
     implementer's one-line `Reuse Check:` entry (produced by `implementer.md` § Reuse Check Gate).
-    A missing entry is severity `BLOCK` (`V-INT-02`) — the proactive gate was skipped.
+    Accept all three valid artifact forms (ADR-011 D1):
+    - `Reuse Check: reusing <name> (<file:line>)` — an existing utility was adopted.
+    - `Reuse Check: none found — first occurrence of <concern> (repo-wide)` — the repo-wide existence search came up empty.
+    - `Reuse Check: <N> bespoke occurrences of <concern> — reusing <closest>, extraction filed` — the rule-of-three threshold fired; confirm a matching `new_findings[]` extraction entry is present in the worker's return payload.
+    A missing entry (in any of the three forms) is severity `BLOCK` (`V-INT-02`) — the proactive
+    gate was skipped.
     Spot-check accuracy: independently re-verify at least one `Reuse Check: reusing <name>` claim
     against the cited `file:line`, mirroring § 8's Drift-Check accuracy spot-check.
+*   **Negative-claim spot-check (`none found` claims, BLOCK if refuted)**: do not take a
+    `Reuse Check: none found` claim at face value — independently re-verify at least one such
+    claim per PR with your own repo-wide grep for the stated concern. A refuted claim (your grep
+    surfaces a pre-existing match the implementer missed) is severity `BLOCK`, `V-INT-02` — a
+    false negative here silently reintroduces the duplication the gate exists to prevent, exactly
+    the rubber-stamp risk this spot-check closes.
+*   **Improvement Record presence (verify — WARN if absent)**: confirm the PR body carries an
+    Improvement Record entry (produced by `implementer.md` § Scout Check, unconditional per
+    ADR-011 D2). A missing Improvement Record is severity `WARN`, not `BLOCK` — Scout Check's
+    review obligation is presence, not a claimed kaizen-yield benefit (D2 explicitly disclaims
+    that benefit), and "no improvement needed — code already clean" is valid content. Check only
+    that the entry exists; do not second-guess its substance.
 *   `V-INT-01/03/04` (Conventions compliance): Verify touchpoint integration follows established conventions (e.g. error handling, logging, validation).
     *   **Live-grep fallback (when `Codebase Conventions = (none declared)`)**: the injected
         `<PLAN_CONTEXT>` carries no conventions for Quick-track plans. Do **not** silently skip

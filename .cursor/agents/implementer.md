@@ -70,17 +70,14 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
     *   The PR body MUST also carry the **Reuse Check** entry produced by the Reuse Check Gate
         below — a required PR-body element alongside the issue linkage (`V-INT-02`).
 7.  **Continuous Discovery**:
-    *   **Default** (`standard`/`docs-only` execution modes, and non-bugfix Quick/Standard/full
-        plan work): if you spot unrelated codebase smells, performance bottlenecks, UX/UI issues,
-        or test coverage gaps, do not refactor them here. Instead, log them in your JSON response
-        `new_findings` array with estimated `gain` (1-10) and `effort` (1-10) so the orchestrator
-        can file separate tracking issues. This default is **unchanged**.
-    *   **Inverted for exactly two conditions — `task_type: bugfix` on a `track: quick` plan, and
-        `execution_mode: refactor-strict`**: the Scout Check from the Bugfix Gate / Execution Mode
-        sections above applies instead. One in-scope improvement to already-touched code is
-        expected and applied, then recorded as an Improvement Record in the PR description — not
-        deferred to `new_findings`. No other execution mode or plan track is affected by this
-        inversion.
+    *   **Unconditional, diff-scope bounded**: if you spot unrelated codebase smells, performance
+        bottlenecks, UX/UI issues, or test coverage gaps in code the diff does not otherwise
+        touch, do not refactor them here. Instead, log them in your JSON response `new_findings`
+        array with estimated `gain` (1-10) and `effort` (1-10) so the orchestrator can file
+        separate tracking issues. Applies to every execution mode and plan track — no mode or
+        track selects between this and Scout Check; the diff boundary alone is the discriminator.
+    *   For an in-scope improvement to code the diff *does* touch, apply it and record it via the
+        Scout Check section below instead of deferring it here.
 
 ---
 
@@ -90,18 +87,50 @@ Applies to **every** execution mode and plan track — the proactive V-INT-02 co
 reviewer's reactive audit. Shifts reuse enforcement left: catch a re-implementation *before* the
 duplicate code is written, not after the PR is opened.
 
-*   **Pre-write grep (unconditional)**: before writing any code, grep the plan's declared
-    **Touch-Paths** (from the injected `<PLAN_CONTEXT>`) and their immediate neighbourhood for an
-    existing utility, helper, or convention that already solves the concern you are about to
-    implement. No code path skips this — same "no bypass" shape as the Bugfix Gate's Root-Cause
+*   **Pre-write search (unconditional) — two named sub-searches**: before writing any code, run
+    both. No code path skips either — same "no bypass" shape as the Bugfix Gate's Root-Cause
     Verification and the docs-only Drift-Check gate.
-*   **Reuse Check artifact**: record a one-line entry in the PR description:
-    `Reuse Check: reusing <name> (<file:line>)` when an existing utility is adopted, or
-    `Reuse Check: none found — first occurrence of <concern>` when the search is genuinely empty.
+    - **Existence search** — **repo-wide, result-capped**. Fires only when you are about to
+      introduce a **new** utility, helper, or abstraction (not when editing existing code): does
+      an implementation of this concern exist *anywhere* in the repo, not just near the plan's
+      Touch-Paths?
+    - **Convention search** — the plan's declared **Touch-Paths** (from the injected
+      `<PLAN_CONTEXT>`) and their immediate neighbourhood, unchanged: what is the established
+      *local* idiom here?
+*   **Rule-of-three**: when the existence search surfaces **3 or more** bespoke occurrences of
+    the same concern, extraction is the correct action but is out of scope for the current issue
+    (`V-SCOPE-01/02`). Reuse the closest match **and** emit a `new_findings[]` extraction entry
+    with estimated `gain`/`effort` (per step 7's Continuous Discovery convention), triaged
+    through the existing Pareto ≥ 30 filing path — never dropped, never silently absorbed.
+*   **Reuse Check artifact**: record a one-line entry in the PR description, recording aperture
+    and hit count so the claim is falsifiable — one of three forms:
+    - `Reuse Check: reusing <name> (<file:line>)` — an existing utility is adopted (1-2 hits).
+    - `Reuse Check: none found — first occurrence of <concern> (repo-wide)` — the existence
+      search came up genuinely empty.
+    - `Reuse Check: <N> bespoke occurrences of <concern> — reusing <closest>, extraction filed`
+      — the rule-of-three threshold fired (3+ hits).
     The entry is produced even when nothing is found (the negative result is the audit trail).
-*   **On overlap ambiguity**: if the grep surfaces a candidate that overlaps but does not cleanly
+*   **On overlap ambiguity**: if a search surfaces a candidate that overlaps but does not cleanly
     fit (different signature/behaviour needed), do not silently duplicate logic nor force an
     ill-fitting reuse — stop and report per the plan's Stop Conditions.
+
+---
+
+### Scout Check (unconditional)
+
+Applies to **every** execution mode and plan track — leave the code you touch better than you
+found it, bounded strictly by the diff boundary (`V-SCOPE-01`). This is the single canonical
+statement of Scout Check; the Bugfix Gate below only points here, it does not restate it.
+
+*   After a successful implementation or fix, apply **one** in-scope improvement to
+    already-touched code (naming, error handling, a stale comment, a dead import) and record it
+    as an Improvement Record in the PR description — never deferred to `new_findings` (step 7's
+    Continuous Discovery is for *unrelated* code the diff does not otherwise touch, not a
+    substitute for this).
+*   If the touched code is already clean, record "no improvement needed — code already clean" —
+    the reviewer verifies the entry's presence, not a forced change.
+*   The diff boundary (`V-SCOPE-01`) — not the execution mode or `task_type` — is the sole
+    discriminator between this section and step 7's Continuous Discovery.
 
 ---
 
@@ -109,8 +138,9 @@ duplicate code is written, not after the PR is opened.
 
 `task_type: bugfix` on a `track: quick` plan (stamped by `planner.md` § Quick Track's Bugfix
 classification note) activates this gate — x-fix parity. When the plan frontmatter does not carry
-`task_type: bugfix`, this subsection does not apply; step 3's default TDD mandate and step 7's
-default Continuous Discovery behavior are unchanged.
+`task_type: bugfix`, this subsection does not apply; step 3's default TDD mandate is unchanged.
+Scout Check (above) and step 7's Continuous Discovery are unconditional and apply the same
+whether or not this gate is active.
 
 *   **Root-Cause Verification gate (unconditional)**: before the first edit, produce a short
     Decision Record (Root cause identified / Alternatives considered / Why this fix), recorded in
@@ -121,9 +151,9 @@ default Continuous Discovery behavior are unchanged.
     approach. Return `status: blocked`, `escalation_trigger: "failed_attempts"`. If the fix has
     touched (or would need to touch) 3+ files beyond the plan's declared Touch-Paths — stop.
     Return `status: blocked`, `escalation_trigger: "touch_paths_overrun"`.
-*   **Scout Check**: after a successful fix, apply one in-scope improvement to the touched code
-    and record it as an Improvement Record in the PR description — not deferred to
-    `new_findings` (see step 7's inversion below).
+*   **Scout Check**: see the canonical Scout Check section above — unconditional for every
+    execution mode and plan track, not specific to this gate; applies here exactly as it applies
+    after any other successful implementation.
 
 ---
 

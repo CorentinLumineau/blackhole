@@ -52,7 +52,9 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     frontmatter (see Plan Output File Template below). This is distinct from Skip Track: a bugfix
     still needs an implementation plan and gains `implementer.md`'s Bugfix Gate, it is never Skip
     Track's "no code change needed" bypass. See `implementer.md` § Bugfix Gate for the Root-Cause
-    Verification gate, escalation triggers, and Scout Check this stamp activates.
+    Verification gate and escalation triggers this stamp activates. Scout Check
+    (`implementer.md` § Scout Check) is unconditional for every execution mode and plan track —
+    this stamp does not uniquely activate it.
 
 ### 2. Standard Track
 *   **Objective**: Issue summary and constraints.
