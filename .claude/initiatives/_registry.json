@@ -4,6 +4,25 @@
   "lastUpdated": "2026-07-20T00:00:00Z",
   "initiatives": [
     {
+      "name": "mercure-parity-program",
+      "displayName": "Mercure Parity Program (ADR-013): living parity matrix + Adoption Lens v2 + sync v2 + gap closures",
+      "priority": 2,
+      "status": "active",
+      "dependsOn": [],
+      "relatedTo": [
+        "documentation/decisions/ADR-013-mercure-parity-program.md",
+        "documentation/audits/mercure-parity-surface.md",
+        "documentation/milestones/_active/mercure-parity-program/README.md",
+        "companion-substrate-closure"
+      ],
+      "blockedBy": [],
+      "created": "2026-07-20T00:00:00Z",
+      "milestonesTotal": 6,
+      "milestonesComplete": 0,
+      "currentMilestone": null,
+      "note": "Execution mode: mercure initiative (NOT a blackhole self-campaign) — milestones edit the sync skill and agent enforcement contracts. Related to companion-substrate-closure (no hard dependency): ADR-011/012 ground enters the parity matrix as in-flight rows."
+    },
+    {
       "name": "companion-substrate-closure",
       "displayName": "Companion Substrate Closure (ADR-011 + ADR-012): implement-time accretion control + durable artifact substrate",
       "priority": 1,

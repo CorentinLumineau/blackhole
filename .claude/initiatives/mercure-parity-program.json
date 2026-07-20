@@ -1,0 +1,32 @@
+{
+  "version": "2.0",
+  "name": "mercure-parity-program",
+  "displayName": "Mercure Parity Program (ADR-013): living parity matrix + Adoption Lens v2 + sync v2 + gap closures",
+  "status": "active",
+  "created": "2026-07-20T00:00:00Z",
+  "lastUpdated": "2026-07-20T00:00:00Z",
+  "source": {
+    "adr": "documentation/decisions/ADR-013-mercure-parity-program.md",
+    "audit": "documentation/audits/mercure-parity-surface.md",
+    "brainstorm": "documentation/brainstorms/mercure-parity-program.md"
+  },
+  "executionMode": "mercure-initiative",
+  "executionModeNote": "NOT a blackhole self-campaign — milestones edit the sync skill and agent enforcement contracts themselves (same rationale as companion-substrate-closure).",
+  "milestonesTotal": 6,
+  "milestonesComplete": 0,
+  "currentMilestone": "M1",
+  "milestones": [
+    { "id": "M1", "name": "Sync v2 + Lens v2 + verify check", "wave": 1, "dependsOn": [], "status": "pending", "plan": "documentation/milestones/_active/mercure-parity-program/milestone-1.md" },
+    { "id": "M2", "name": "Parity matrix seed (~70 rows)", "wave": 2, "dependsOn": ["M1"], "status": "pending", "plan": "documentation/milestones/_active/mercure-parity-program/milestone-2.md" },
+    { "id": "M3", "name": "GAP-1: V-THREAT/V-PERF machinery", "wave": 3, "dependsOn": ["M2"], "status": "pending", "plan": "documentation/milestones/_active/mercure-parity-program/milestone-3.md" },
+    { "id": "M4", "name": "Merge/delivery hardening (GAP-2/3/8)", "wave": 3, "dependsOn": ["M2"], "status": "pending", "plan": "documentation/milestones/_active/mercure-parity-program/milestone-4.md" },
+    { "id": "M5", "name": "parity self-audit hunt kind", "wave": 3, "dependsOn": ["M2"], "status": "pending", "plan": "documentation/milestones/_active/mercure-parity-program/milestone-5.md" },
+    { "id": "M6", "name": "First matrix-driven backlog sweep", "wave": 4, "dependsOn": ["M1", "M2"], "status": "pending", "plan": "documentation/milestones/_active/mercure-parity-program/milestone-6.md" }
+  ],
+  "bindingConstraints": [
+    "Lens v2 must be live before any matrix row is seeded (ADR-013 sequencing — the acceptance-order hazard, internalized)",
+    "prj-mercure-sync is the SOLE writer of mercure-parity-matrix.md; consumers file issues citing PM-row ids",
+    "ADR-011/012 ground enters the matrix as in-flight rows — never re-implemented here",
+    "Async-only HITL; agent-agnostic campaign runtime; config kill-switch pattern for all new machinery"
+  ]
+}
