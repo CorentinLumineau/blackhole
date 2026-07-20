@@ -123,7 +123,7 @@ Read-only conformance check (`campaign-audit`):
 | F-VERIFY-01 | `bun run verify` passes |
 | F-SCHEMA-01 | Fixture JSON validates |
 | F-DRIFT-01 | declaration vs independent-scan conformance — see `build.ts` § facts |
-| F-DOCS-01 | Companion files present (`ARCHITECTURE.md`, `AGENTS.md`) / `documentation/decisions/INDEX.md` current on consumer repo (read-only, report only) |
+| F-DOCS-01 | Companion files present (`ARCHITECTURE.md`, `AGENTS.md`) / `documentation/decisions/INDEX.md` current on consumer repo — a row in either schema `scripts/detect-doc-schema.sh` detects (mercure or blackhole) counts as current (read-only, report only) |
 | F-HUNT-01 | Kaizen hunt conformance (read-only, report only): (a) `hunt_state` watermark internally consistent — each kind key exists in `kaizen.kinds`, `waves <= kaizen.max_waves`, `exhausted` forced `true` once `waves` or `dry_waves` hits its stop threshold; (b) sample hunt-origin filed issues (ledger `phase: hunt` rows with `deferred_to_issue` set) — re-read the cited `file:line` against the issue's Verbatim-code excerpt, flag drift as STALE-since-filing (does not roll back); (c) cumulative filed-issue count per kind does not exceed `waves(kind) * kaizen.max_issues_per_wave` (upper-bound cap sanity check) |
 
 Do not modify code during audit — report only.
