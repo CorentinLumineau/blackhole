@@ -9,18 +9,24 @@ disable-model-invocation: true
 
 # Mercure Sync
 
-Maintainer workflow for reviewing what shipped in recent **mercure** plugin releases and
-deciding what, if anything, blackhole should adopt — filtered through blackhole's own
-philosophy, never copied wholesale. This is a self-development tool for the blackhole
-*project*, not a campaign capability: it does not compile through `src/` and never ships to
-consumer repos running a blackhole campaign (they have no reason to diff themselves against
-mercure). Precedent: [`prj-create-release`](../prj-create-release/SKILL.md).
+Maintainer workflow for reviewing what shipped in recent **mercure** plugin releases — and, more
+broadly, the mercure enforcement surface tracked in `documentation/audits/mercure-parity-matrix.md`
+— and deciding what, if anything, blackhole should adopt — filtered through blackhole's own
+philosophy (Adoption Lens v2), never copied wholesale. This is a self-development tool for the
+blackhole *project*, not a campaign capability: it does not compile through `src/` and never
+ships to consumer repos running a blackhole campaign (they have no reason to diff themselves
+against mercure). Precedent: [`prj-create-release`](../prj-create-release/SKILL.md).
 
 ## Prerequisites
 
 - `gh auth status` succeeds, with read access to `CorentinLumineau/mercure` and write access
   to this repo's issues
 - `documentation/audits/mercure-sync.md` exists (created by the first run)
+- `documentation/audits/mercure-parity-matrix.md` exists (created by M2's seed run). Release
+  mode and backlog mode below both require it — until M2 ships, this skill's dual-mode workflow
+  text is written but not yet runnable end-to-end. `scripts/checks/parity-matrix.check.ts`
+  (`V-PMATRIX-01`) tolerates this by design: it returns `ok: true` unread while the matrix file
+  is absent, and becomes load-bearing the moment M2 creates it — no further code change needed.
 
 ## Contract
 
@@ -28,103 +34,120 @@ mercure). Precedent: [`prj-create-release`](../prj-create-release/SKILL.md).
 |----------|------|
 | Living audit doc | `documentation/audits/mercure-sync.md` |
 | Last-reviewed watermark | `last_reviewed_mercure_version` frontmatter field on that doc |
+| Parity matrix | `documentation/audits/mercure-parity-matrix.md` |
 | Filed issues | `[Upstream] <summary>` via `gh issue create`, `deferred_to_issue` linkage in `findings-ledger.json` |
 | Filing cap/kill-switch | optional `.blackhole/config.json` `mercure_sync` block: `{ "enabled": true, "max_issues_per_run": 5, "min_priority": 30 }` — absent block = these defaults |
 
-## Adoption Lens
+## Adoption Lens v2
 
 Every mercure mechanism gets classified against blackhole's own design identity before it is
-ever considered for adoption. This lens *is* the point of the skill — the comparison is easy,
-the filtering is what keeps blackhole blackhole. Two prior deep-dives already apply this lens
-in full and are the reference examples:
-[`analysis-blackhole-adaptive-phase-routing.md`](../../../documentation/audits/analysis-blackhole-adaptive-phase-routing.md),
-[`mercure-companion-files-gap-analysis.md`](../../../documentation/audits/mercure-companion-files-gap-analysis.md).
+ever considered for adoption — this lens *is* the point of the skill. Lens v2 (ADR-013 D2)
+replaces the old REJECT-biased posture: the evidence showed the actual bottleneck is **sweep
+throughput** (~65 mercure domains never swept in 3 runs), not over-adoption — every domain
+swept so far shipped adoptions. Classification is now by **mechanism kind**, with a per-kind
+default posture and a stated burden of proof required to overturn that default:
 
-**REJECT** a mercure mechanism outright when it:
+| Tier | Default | Burden of proof |
+|---|---|---|
+| Enforcement/quality mechanisms (V-codes, checklists, gates, verification protocols) | **ADOPT** | Rejecting requires showing it structurally cannot work autonomously |
+| Workflow/interaction mechanisms (approval gates, chaining, interview) | **ADAPT** — translate to async seams (`status: blocked`, confidence gates, deterministic verdicts) | Adopting verbatim requires showing no sync-HITL dependency |
+| Domain/runtime-ops mechanisms (SRE, incident response, deployment) | **N/A** | Adopting requires showing backlog-orchestration relevance |
 
-- Introduces **synchronous, mid-loop human gating** into a worker agent. Blackhole's answer to
-  "ask the human" is already async — `AskQuestion` + `status: blocked`, resolved whenever a
-  human next engages, never a live turn-blocking wait (see `README.md` § Human-in-the-loop).
-  mercure's `AskUserQuestion` pattern is a strictly worse fit for a background orchestrator —
-  never import it as a new primitive, even if a specific mercure skill leans on it heavily.
-- Grows the **skill surface**. Blackhole is deliberately one skill (`blackhole`) with modes —
-  not 74 skills like mercure. A new mercure mechanism almost never becomes a new blackhole
-  skill; it becomes a mode, a `route{}` flag, a V-code, a hunt kind, or a reference file
-  extending an agent that already exists.
-- Is **not agent-agnostic**. State must live in `.blackhole/` markdown/JSON that any harness
-  can read — never a Claude-Code-only mechanism (hooks, MCP-only tools, statusline).
-  `mercure-sync` itself is a rare, deliberate exception (a maintainer-only project skill under
-  `.claude/skills/`, not part of the campaign runtime) — the campaign machinery itself never gets
-  this exception.
-- **Duplicates an existing extension seam** (`V-INT-02`) — check first whether a hunt kind
-  (`src/references/hunt/*.md`), a `route{}` flag (mirroring `security_review_required`/
-  `docs_impact`), an existing V-code family, or a `verify.ts` check already covers the ground.
-- Doesn't apply to blackhole's **domain**. Blackhole orchestrates a backlog; it does not run a
-  production service. mercure mechanisms aimed at runtime operations (incident response, SRE,
-  observability dashboards) are out of scope by default — note them as N/A, don't force a fit.
+Only two **hard rejections** survive from the old lens — everything else below is a rebuttable
+tier default, not an absolute:
 
-**ADOPT / ADAPT** when a mechanism is:
+1. **Synchronous, mid-loop human gating as a primitive.** Blackhole's answer to "ask the human"
+   is already async — `AskQuestion` + `status: blocked`, resolved whenever a human next engages,
+   never a live turn-blocking wait (see `README.md` § Human-in-the-loop). mercure's
+   `AskUserQuestion` pattern is a strictly worse fit for a background orchestrator — never import
+   it as a new primitive, even if a specific mercure skill leans on it heavily.
+2. **Non-agent-agnostic campaign-runtime mechanisms.** State must live in `.blackhole/` +
+   `documentation/` markdown/JSON that any harness can read — never a Claude-Code-only mechanism
+   (hooks, MCP-only tools, statusline) inside the campaign runtime. `mercure-sync` itself remains
+   a rare, deliberate exception (a maintainer-only project skill under `.claude/skills/`, not
+   part of the campaign runtime) — the campaign machinery itself never gets this exception.
 
-- **Config-gated, advisory-by-default** — mirrors the `docs_governance`/`kaizen` kill-switch
-  pattern: absent block or `enabled: false` preserves current behavior exactly.
-- **Findings-ledger-driven, not interactive** — drift or gaps become a WARN finding or an
-  auto-filed follow-up issue through the existing Pareto path, never a mid-loop question.
-- **Additive to an existing seam** — a new hunt kind, a new `route{}` flag consumed by
-  existing orchestrator dispatch, a new V-code row, a new `verify.ts` check.
+The old lens's "almost never a new skill" and "not this domain" filters are **retained as the
+tier-2/tier-3 defaults above**, not as REJECT clauses: a workflow/interaction mechanism defaults
+to ADAPT (translate to an async seam), not "reject, it grows the skill surface"; a domain/
+runtime-ops mechanism defaults to N/A (out of scope by default), not "reject, wrong domain".
+Both defaults are rebuttable by the stated burden of proof — they are not automatic REJECTs.
+
+Existing extension-seam-reuse discipline is retained unchanged (`V-INT-02`): check first whether
+a hunt kind (`src/references/hunt/*.md`), a `route{}` flag (mirroring
+`security_review_required`/`docs_impact`), an existing V-code family, or a `verify.ts` check
+already covers the ground. An adoption lands as a mode, route flag, V-code row, hunt kind,
+reference file, or verify check whenever one fits; a new agent or campaign subsystem requires
+the matrix to show no existing seam can host the mechanism.
+
+`V-PARETO-02` remains the **sole** prioritizer and filing gate — `Priority = Gain × (11 −
+Effort)`, both on a 1–10 scale, same formula blackhole already uses for kaizen hunt findings, no
+second formula. Pareto orders which ADOPT/ADAPT items get filed, and in what order; **it never
+overrides a tier classification** — a mechanism tiered ADOPT stays ADOPT regardless of its
+Priority score (a low score just means it waits its turn or sits below the filing floor,
+recorded but unfiled); a mechanism tiered N/A never becomes filable no matter how high its
+hypothetical Priority would compute.
 
 ## Workflow
 
+Two named, numbered entry modes replace the old single changelog-skimming workflow. Both read
+and write the same artifacts (`## Contract`) and both restate, **unchanged** from the v1 skill,
+four disciplines:
+
+- `V-HUNT-01` verify-before-file — never file an unverified finding.
+- Filing cap `mercure_sync.max_issues_per_run` (default 5) and the `min_priority` floor
+  (default 30).
+- Dedup against open issues **and** matrix `in-flight` refs before filing — the matrix
+  `in-flight` check is new in v2 (v1 only dedupped against open issues and its own Outcome
+  table).
+- This skill never writes `queue.json` or `findings-ledger.json` directly — those files have a
+  single-writer invariant (orchestrator-only, `blackhole-state.md`) and `mercure-sync` runs
+  outside the orchestrator's own turn. A filed issue surfaces into `queue.json` through the
+  ordinary "Native forge sync" ingestion on the campaign's next turn, exactly like any
+  human-authored issue.
+
+### Release mode
+
+Trigger: a new mercure release lands above the watermark.
+
 1. **Read the watermark.** Read `last_reviewed_mercure_version` from
-   `documentation/audits/mercure-sync.md`'s frontmatter. If the doc does not exist yet, this is
-   the first run — treat the watermark as unset and baseline against the current latest release.
-2. **List releases since the watermark.**
-   ```bash
-   gh release list --repo CorentinLumineau/mercure
-   ```
-   If the watermark's version is already the latest, still consider running one *targeted* sweep
-   of a mercure domain not yet covered by any prior sync entry (see the doc's coverage table) —
-   don't report "nothing to do" just because no new tag landed; the backlog of *uncompared*
-   mercure domains is usually larger than the backlog of *new releases*.
-3. **Read release notes** for each new version:
-   ```bash
-   gh release view vX.Y.Z --repo CorentinLumineau/mercure
-   ```
-   For deeper mechanism-level detail than release notes carry, read the mercure plugin cache
-   directly if the relevant version is present locally
-   (`~/.claude/plugins/cache/mercure/mercure/<version>/`) — skills, agents, and rules content,
-   not just the changelog line.
-4. **Cross-reference against blackhole's current `src/`** (grep/read `src/agents/`,
-   `src/references/`, `src/references/hunt/`, `src/references/blackhole-vcodes.md`) to classify
-   each notable mercure mechanism: already-covered, or a genuine gap.
-5. **Apply the Adoption Lens** to every gap: ADOPT / ADAPT / REJECT / N/A, each with a one-line
-   rationale citing the specific principle satisfied or violated.
-6. **Score ADOPT/ADAPT items** with `V-PARETO-02`: `Priority = Gain × (11 − Effort)`, both on a
-   1–10 scale, same formula blackhole already uses for kaizen hunt findings — no second formula.
-7. **Update `documentation/audits/mercure-sync.md` in place** (search-before-write; this file
-   *is* the canonical path — never create a dated variant). Sections: frontmatter (including
-   `last_reviewed_mercure_version`), Coverage table (which mercure domains have been swept, by
-   which run/date), this run's Gap matrix, Adoption Lens verdicts, Pareto-scored backlog,
-   Outcome table (filed issue links, updated after step 8).
-8. **File gated issues.** For each ADOPT/ADAPT item with `Priority >= mercure_sync.min_priority`
-   (default 30) that is independently re-verified (re-read the cited mercure source, confirm
-   still absent from blackhole `src/` — mirrors `V-HUNT-01`'s verify-before-file discipline):
-   ```bash
-   gh issue create --repo CorentinLumineau/blackhole \
-     --title "[Upstream] <summary>" \
-     --body "<Summary / mercure source citation / Gain·Effort·Priority footer / adoption approach>"
-   ```
-   Dedup against open issues and the audit doc's own Outcome table first — never re-file. Cap at
-   `mercure_sync.max_issues_per_run` (default 5); excess above-floor items stay recorded in the
-   audit doc for the next run, never dropped (mirrors kaizen hunt's never-drop-findings rule).
-   This skill never writes `queue.json` or `findings-ledger.json` directly — those files have a
-   single-writer invariant (orchestrator-only, `blackhole-state.md`), and `mercure-sync` runs
-   outside the orchestrator's own turn. The filed issue surfaces into `queue.json` through the
-   ordinary "Native forge sync" ingestion on the campaign's next turn, exactly like any
-   human-authored issue — no special ledger bookkeeping from this skill.
-9. **Record outcomes** — append filed issue links to the audit doc's Outcome table. This table,
-   not `findings-ledger.json`, is `mercure-sync`'s durable record of why each issue was filed.
-10. **Bump the watermark** — set `last_reviewed_mercure_version` to the latest version actually
-    covered by this run.
+   `documentation/audits/mercure-sync.md`'s frontmatter. If the doc does not exist yet, treat
+   the watermark as unset and baseline against the current latest release.
+2. **List releases since the watermark** (`gh release list --repo CorentinLumineau/mercure`).
+3. **Read release notes** for each new version (`gh release view vX.Y.Z --repo
+   CorentinLumineau/mercure`), plus the mercure plugin cache directly for mechanism-level detail
+   beyond what release notes carry, when the version is present locally
+   (`~/.claude/plugins/cache/mercure/mercure/<version>/`).
+4. **Map each change to touched matrix rows**, citing rows by id (D1's single-writer/
+   row-id-citation contract — `documentation/audits/mercure-parity-matrix.md`), never by table
+   position.
+5. **Re-verify only the touched rows** against blackhole's current `src/`. On ambiguous mapping,
+   or a cross-cutting change (e.g. `rules/`), widen the re-check to every row in the affected
+   `kind` tier rather than guessing at a narrower row set.
+6. **Apply the Adoption Lens v2** to every touched row still classified `gap`, or one that has
+   regressed to `gap` on re-check (`covered → gap` regressions are legal and mandatory per D1).
+7. **Score ADOPT/ADAPT items** with `V-PARETO-02`.
+8. **Update matrix rows.** A Lens v2 verdict lands as a status transition on the cited row(s) —
+   never as prose only (see `## Never`).
+9. **File gated issues** for verified ADOPT/ADAPT items at or above `min_priority`, capped at
+   `max_issues_per_run`, deduped against open issues and matrix `in-flight` refs.
+10. **Bump the watermark** to the latest version covered by this run, and **append a run-log
+    entry** to `documentation/audits/mercure-sync.md`.
+
+### Backlog mode
+
+Trigger: maintainer invocation, no new mercure release required.
+
+1. **Take the top-priority `gap`/unswept rows** from
+   `documentation/audits/mercure-parity-matrix.md`, ordered by each row's `priority` field
+   (`V-PARETO-02`).
+2. **Deep-compare each against the pinned plugin cache** — full mechanism content, not just
+   release notes.
+3. **Apply the Adoption Lens v2** to classify each.
+4. **Update rows.** A Lens v2 verdict lands as a status transition on the cited row(s) — never
+   as prose only.
+5. **File gated issues** for verified ADOPT/ADAPT items at or above `min_priority`, capped at
+   `max_issues_per_run`, deduped against open issues and matrix `in-flight` refs.
 
 ## References
 
@@ -132,17 +155,24 @@ in full and are the reference examples:
 - [Companion-files precedent](../../../documentation/audits/mercure-companion-files-gap-analysis.md)
 - [ADR-006 — Kaizen Hunt](../../../documentation/decisions/ADR-006-kaizen-hunt.md) (Pareto scoring
   + verify-before-file discipline, ported here without a second formula or a second finding store)
+- [ADR-013 — Mercure Parity Program](../../../documentation/decisions/ADR-013-mercure-parity-program.md)
+  D1 (matrix row schema, single-writer rule), D2 (Adoption Lens v2), D3 (this skill's dual-mode
+  workflow)
 - [`documentation/architecture.md`](../../../documentation/architecture.md) — why this skill
   lives outside `src/`
 
 ## Never
 
-- Never adopt a mercure mechanism without running it through the Adoption Lens first
-- Never file an issue for a REJECT- or N/A-classified item
+- Never adopt a mercure mechanism without running it through the Adoption Lens v2 first
+- Never adopt a mechanism that fails either of the two Lens v2 hard rejections, and never file
+  an issue for an item tiered N/A without a rebuttal that clears its stated burden of proof
 - Never file an unverified finding (mirrors `V-HUNT-01`)
 - Never invent a second Pareto formula or a second findings store — reuse `V-PARETO-02` and
   `findings-ledger.json`
 - Never add a new blackhole skill/subsystem when an existing extension seam (hunt kind, route
-  flag, V-code family, `verify.ts` check) already fits
+  flag, V-code family, `verify.ts` check) already fits (`V-INT-02`)
 - Never create a dated variant of `documentation/audits/mercure-sync.md` — always update the one
   canonical file in place
+- Never let a Lens v2 verdict land as prose only — it must land as a matrix row **status
+  transition** (`gap → in-flight(ref)`, `→ adapted`, `→ covered`, or `N/A(reason)`) on the cited
+  row(s) of `documentation/audits/mercure-parity-matrix.md`
