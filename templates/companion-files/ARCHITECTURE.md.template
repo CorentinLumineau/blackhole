@@ -201,10 +201,12 @@ graph LR
 <!--
   Cross-cutting non-negotiables that constrain implementation choices.
   Planning context for agents (x-plan reads this section).
+  Examples: "No external state — all persistence goes through the repository layer";
+  "Offline-first — every feature must work without network after initial sync".
+  Machine-written bullets carry a mandatory attribution suffix: "(ADR-{NNN})" for
+  ADR-promoted constraints, "(analyze: issue #N)" for constraints seeded from an
+  analyze note — see planner.md's Cross-Cutting Heuristic.
 -->
-
-- {e.g. "No external state — all persistence goes through the repository layer"}
-- {e.g. "Offline-first — every feature must work without network after initial sync"}
 
 ---
 
