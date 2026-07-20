@@ -56,3 +56,20 @@ When the target consumer repo already documents its own frontmatter/lifecycle co
 follow that repo's convention instead of imposing the default schema above (`V-INT-01`). The
 four-field default schema in this rule applies only when no repo-specific convention is
 discoverable.
+
+Precedence detection covers **both** artifact layers a consumer repo may already have adopted
+mercure's own conventions for: `documentation/decisions/INDEX.md`'s table header, and an ADR
+file's frontmatter block. The comparison logic — column lists, discriminator keys, and
+normalization rules — is not restated here; `scripts/detect-doc-schema.sh` is the SSOT (cited
+as cross-reference, not invoked by prose-only consumers of this rule, same pattern as
+`scripts/detect-frontend.sh` in `reviewer.md`'s V-ADA-04 keyword SSOT).
+
+Three-outcome contract, per artifact layer:
+
+- **File/ADR absent**: fall back to blackhole's own schema. No `V-INT-01` — there is nothing
+  to diverge from yet.
+- **`schema=mercure` or `schema=blackhole`**: the detected schema wins — emit in that schema,
+  matching the repo's existing convention exactly.
+- **`schema=ambiguous`**: fall back to blackhole's own schema **and** emit a `V-INT-01` WARN
+  citing the offending `file:line` (the malformed/partial header or frontmatter block that
+  produced the ambiguous result) — the misfire must be visible, never silent (ADR-012 R6).
