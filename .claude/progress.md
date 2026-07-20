@@ -7,7 +7,7 @@
   agent) → review → green `bun run verify` + `bun run build` + `bun test` → merge to main → next.
 - Run as a **mercure initiative, NOT a blackhole self-campaign** (milestones edit blackhole's own
   agent contracts; a self-campaign would review changes to its own contract).
-- Currently: companion done; **MPP-M1, M2 merged**; starting **MPP-M3** (wave 3; M3→M4→M5 sequential).
+- Currently: companion done; **MPP-M1, M2, M3 merged**; starting **MPP-M4** (wave 3; then M5).
 
 ## Green baseline (main @ 22a84bb)
 - `bun run verify` → 28/28
@@ -23,8 +23,8 @@ This is the regression gate for every milestone.
 5. CSC-M3 Active Constraints (needs M2)   ✅ merged 48581f4
 6. MPP-M1 sync/Lens v2 (wave1)            ✅ merged 8d0842b
 7. MPP-M2 matrix seed (needs M1)          ✅ merged 3a87aba
-8. MPP-M3 threat/perf (needs M2)          ← in progress
-9. MPP-M4 merge/delivery hardening (needs M2)
+8. MPP-M3 threat/perf (needs M2)          ✅ merged bf875a4
+9. MPP-M4 merge/delivery hardening (needs M2)  ← in progress
 10. MPP-M5 parity hunt kind (needs M2)
 
 ## Deferred (gated — hand to user)
@@ -72,6 +72,11 @@ This is the regression gate for every milestone.
   in-flight rows citing companion milestones), all 10 GAP-N + Likely-N/A represented, 20 gap rows scored,
   `## Gap Priority Scoring` section. mercure-sync.md Coverage table deprecated (note only). V-PMATRIX-01 green
   against the real matrix. Gate: verify 29/29, build clean, tests 521/0.
+- **MPP-M3** (ADR-013 GAP-1 threat/perf) — merged `bf875a4`. 4 new V-codes (V-THREAT-02/03, V-PERF-01/02)
+  in blackhole-vcodes.md, **VCODE_TABLE_ROW_COUNT 46→50** (V-GROUND-01 green) + TDD registration test;
+  conditional Standard-track planner sections (## Threat Model STRIDE, ## Performance Budget), reviewer
+  §16/§17 audits (plan-section-conditional). NOTE: plan said §15/§16 but §15 was taken by CSC-M4, so
+  landed as §16/§17. 5 tracks + V-DESIGN preserved. Gate: verify 29/29, build clean, tests 522/0.
 
 ## Failed Approaches
 (none yet)
