@@ -159,6 +159,80 @@ describe('validateWorker implementer', () => {
     expectInvalid('implementer', 'implementer-complete-empty-evidence.json'));
 });
 
+describe('validateWorker implementer decision_records[] (ADR-012 E4)', () => {
+  const baseComplete = {
+    status: 'complete',
+    pr_number: 42,
+    branch: 'blackhole/issue-42',
+    tests_passed: true,
+    touch_paths_honored: true,
+    evidence: { command: 'bun test scripts/campaign-status.test.ts', result: '42 pass, 0 fail' },
+  };
+
+  test('accepts implementer JSON with decision_records[]', () => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      decision_records: [
+        {
+          pr: 42,
+          kind: 'root-cause',
+          touch_paths: ['src/db/client.ts'],
+          decision: 'Use a prepared statement cache keyed by query shape',
+          why: 'N+1 query was the actual regression, not the ORM',
+        },
+        {
+          issue: 12,
+          kind: 'reuse',
+          touch_paths: ['scripts/lib/retry.ts'],
+          decision: 'Reused existing retry() instead of a new backoff loop',
+          why: 'Avoids a third retry implementation (V-INT-02)',
+        },
+      ],
+    });
+    expect(errors).toEqual([]);
+  });
+
+  test('accepts implementer JSON without decision_records[]', () => {
+    const errors = validateWorker('implementer', { ...baseComplete });
+    expect(errors).toEqual([]);
+  });
+
+  test.each([
+    [
+      'invalid kind',
+      { pr: 1, kind: 'vibes', touch_paths: ['a.ts'], decision: 'd', why: 'w' },
+      'decision_records[0].kind',
+    ],
+    [
+      'both pr and issue absent',
+      { kind: 'root-cause', touch_paths: ['a.ts'], decision: 'd', why: 'w' },
+      'decision_records[0]',
+    ],
+    [
+      'touch_paths not a string array',
+      { pr: 1, kind: 'root-cause', touch_paths: 'src/x.ts', decision: 'd', why: 'w' },
+      'touch_paths',
+    ],
+    [
+      'missing decision',
+      { pr: 1, kind: 'root-cause', touch_paths: ['a.ts'], why: 'w' },
+      'decision',
+    ],
+    [
+      'missing why',
+      { pr: 1, kind: 'root-cause', touch_paths: ['a.ts'], decision: 'd' },
+      'why',
+    ],
+  ])('rejects malformed decision_records[] rows: %s', (_label, row, expectedFragment) => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      decision_records: [row],
+    });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes(expectedFragment))).toBe(true);
+  });
+});
+
 describe('validateWorker reviewer', () => {
   test('valid empty findings', () =>
     expectValid('reviewer', 'reviewer-complete-empty.json'));
