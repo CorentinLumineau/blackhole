@@ -4,7 +4,7 @@
   "status": "active",
   "created": "2026-07-20T00:00:00Z",
   "lastUpdated": "2026-07-20T00:00:00Z",
-  "currentMilestone": "M1",
+  "currentMilestone": "M4",
   "executionMode": "mercure-initiative",
   "goal": "blackhole as autonomous mercure over a shared artifact substrate: same code quality, interrupts only when needed, decisions banked durably for future implementations",
   "sources": [
@@ -46,10 +46,11 @@
       "title": "E1 \u2014 repo-convention schema precedence",
       "wave": 1,
       "dependsOn": [],
-      "status": "pending",
+      "status": "completed",
       "tasksTotal": 7,
-      "tasksComplete": 0,
+      "tasksComplete": 7,
       "file": "documentation/milestones/_active/companion-substrate-closure/milestone-1.md",
+      "mergedCommit": "eed17e5",
       "summary": "doc-governance precedence extended to INDEX header + ADR frontmatter; 4 consumers updated",
       "planStatus": "planned"
     },
