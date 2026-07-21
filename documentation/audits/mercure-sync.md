@@ -160,6 +160,39 @@ Priority 40 sits at the bottom of the "moderate" band (40–59) — above the 30
 |---------|-------|-------|
 | U2 | [#271](https://github.com/CorentinLumineau/blackhole/issues/271) | Filed via `gh issue create`, labeled `blackhole/backlog` + `size:s`; will surface into `queue.json` on the campaign's next native forge sync, same as any human-authored issue. UX hunt-kind extension (Item 2) recorded as REJECT — not filed. |
 
+## Run 3 — 2026-07-21 (backlog-mode sweep, mercure-parity-program M6)
+
+### Scope
+
+First `prj-mercure-sync` v2 **backlog-mode** run (ADR-013 D3) — matrix-driven, not release-triggered
+(no watermark bump). Swept the top-priority `gap`/unswept row per the live
+`documentation/audits/mercure-parity-matrix.md` Gap Priority Scoring table.
+
+### Target selection
+
+GAP-6 (x-security-audit exploitability depth) was **not** the target: it is folded into PM-004
+(`covered`), not a scoreable `gap` row. Of the literal priority-48 tie (PM-010, PM-028, PM-045),
+**PM-010 and PM-045 were found stale** — already resolved by M3 (`bf875a4`: V-THREAT-02/03 +
+V-PERF-01/02, reviewer §16, planner Standard-track `## Threat Model`) — and were corrected in the
+matrix this run (`gap → covered`). **PM-028** (Coverage Regression Check, `V-TEST-09`) was the only
+genuinely unswept priority-48 row and is the sweep target.
+
+### Adoption Lens v2 verdict — PM-028: **ADOPT**
+
+Tier-1 enforcement/quality mechanism (ADR-013 D2). No autonomous-safety obstacle: a coverage-delta
+comparison is a deterministic tool invocation (before/after diff on touched files) with no sync-HITL
+dependency, and can reuse `hunt/coverage.md`'s runner-detection heuristic. Neither hard-rejection
+category applies.
+
+### Outcome
+
+| Row | Issue | Notes |
+|-----|-------|-------|
+| PM-028 | [#306](https://github.com/CorentinLumineau/blackhole/issues/306) | Filed via `gh issue create`; matrix row PM-028 → `in-flight(#306)`. Within cap (`max_issues_per_run` default 5) and above floor (`min_priority` 30; Priority 48). |
+
+Also corrected this run (matrix-accuracy, no issue filed): PM-010, PM-045 `gap → covered` (stale
+since M3 landed). No REJECT/N/A items (single-target sweep). Zero items withheld by the cap.
+
 ## Design note for future runs
 
 - Run 2 reviewed a genuine version delta (`v9.4.0` → `v9.6.0`), both tags landing 2026-07-14.

@@ -47,7 +47,7 @@ this entire matrix's `gap`/`N/A` rows collectively replace as the itemized succe
 | PM-007 | checklist | KISS Audit — over-engineered abstractions `V-KISS-01`, deep nesting `V-KISS-02` (mercure-quality-audit-criteria.md § Phase 2 KISS Audit) (mercure v9.6.1) | `src/agents/reviewer.md:63-64` § 3 Anti-Slop `V-KISS-03` only; `src/agents/implementer.md:51` § 5 Quality Standards KISS; `src/references/blackhole-vcodes.md:18-19` — no `V-KISS-01/02` full-abstraction/nesting rows | adapted | — | 2026-07-20, mercure v9.6.1 |
 | PM-008 | checklist | YAGNI Audit — speculative features `V-YAGNI-01`, premature optimization `V-YAGNI-02` (mercure-quality-audit-criteria.md § Phase 2 YAGNI Audit) (mercure v9.6.1) | `src/agents/reviewer.md:65` § 3 Anti-Slop `V-YAGNI-03` only; `src/agents/planner.md:47` Step 6 `V-YAGNI-01`; `src/references/blackhole-vcodes.md:18,20` — no dedicated `V-YAGNI-02` row | adapted | — | 2026-07-20, mercure v9.6.1 |
 | PM-009 | checklist | Spec Violation Severity — scope-creep/missing-requirement/wrong-requirement 3-tier table (mercure-quality-audit-criteria.md § Phase 1) (mercure v9.6.1) | `src/agents/reviewer.md:51` § 1 Objective Fulfillment; `src/agents/reviewer.md:110` § 7 PR Linkage — no explicit 3-tier scope-creep severity table | adapted | — | 2026-07-20, mercure v9.6.1 |
-| PM-010 | checklist | Threat Model Audit — STRIDE mitigation completeness, `V-THREAT-02/03` (mercure-quality-audit-criteria.md § Phase 2 Threat Model Audit) (mercure v9.6.1) | none — no `V-THREAT` family in `src/references/blackhole-vcodes.md`; confirmed by GAP-1 | gap | 48 | 2026-07-20, mercure v9.6.1 |
+| PM-010 | checklist | Threat Model Audit — STRIDE mitigation completeness, `V-THREAT-02/03` (mercure-quality-audit-criteria.md § Phase 2 Threat Model Audit) (mercure v9.6.1) | `src/references/blackhole-vcodes.md:50-51` V-THREAT-02/03; `src/agents/reviewer.md` §16 Threat Model Audit (landed by M3, bf875a4) | covered | — | 2026-07-21, mercure v9.6.1 |
 | PM-011 | checklist | Blast-Radius Audit — dependency/consumer impact estimate vs actual diff scope, `V-SCOPE-03` (mercure-quality-audit-criteria.md § Phase 2 Blast-Radius Audit) (mercure v9.6.1) | none — `src/references/blackhole-vcodes.md` has `V-SCOPE-01/02` (touch-paths) but no blast-radius consumer-impact check; confirmed by GAP-1 | gap | 40 | 2026-07-20, mercure v9.6.1 |
 | PM-012 | checklist | API Contract Audit — diff matches plan's API Contract table, breaking changes flagged, `V-API-01/02` (mercure-quality-audit-criteria.md § Phase 2 API Contract Audit) (mercure v9.6.1) | `src/agents/reviewer.md:53` § 1 API/Schema Contract Drift; `src/references/blackhole-vcodes.md:49` `V-API-01` only — no `V-API-02` breaking-change-flag row, no plan-time API Contract template either side (GAP-1 notes this is a known upstream mercure gap too) | adapted | — | 2026-07-20, mercure v9.6.1 |
 | PM-013 | checklist | Architectural Coherence Audit — diff doesn't use a rejected-ADR-approach pattern, `V-ARCH-01/02` (mercure-quality-audit-criteria.md § Phase 2 Architectural Coherence Audit) (mercure v9.6.1) | none — no `V-ARCH` family in `src/references/blackhole-vcodes.md` | gap | 32 | 2026-07-20, mercure v9.6.1 |
@@ -65,7 +65,7 @@ this entire matrix's `gap`/`N/A` rows collectively replace as the itemized succe
 | PM-025 | gate | Approach Verification P7.5 — Decision Record before first test/edit (mercure-hard-choice-protocol.md § Structural Gates, x-implement row) (mercure v9.6.1) | `src/agents/implementer.md:149-154` § Bugfix Gate Root-Cause Verification; `src/agents/implementer.md:178-183` § Execution Mode `refactor-strict` Refactoring Verification — both gated on `task_type: bugfix` / `refactor-strict` mode, not every session unconditionally | adapted | — | 2026-07-20, mercure v9.6.1 |
 | PM-026 | gate | Scout Check — 1 diff-bounded improvement, unconditional (mercure-scout-protocol.md § When to Apply) (mercure v9.6.1) | `src/agents/implementer.md:121-138` § Scout Check (unconditional for every execution mode and plan track) | covered | — | 2026-07-20, mercure v9.6.1 |
 | PM-027 | gate | Quality Gates — lint/typecheck/test/build all green before completion (mercure-quality-gates.md § Before Marking Complete) (mercure v9.6.1) | `src/agents/implementer.md:53,68` § 6 Verify & Open PR "Ensure both the project lint command and test suite pass locally" | covered | — | 2026-07-20, mercure v9.6.1 |
-| PM-028 | gate | Coverage Regression Check, `V-TEST-09` (mercure-quality-gates.md § Testing "verify coverage on changed files"; v-codes-testing.md) (mercure v9.6.1) | none — no `V-TEST-09` in `src/references/blackhole-vcodes.md`; no coverage-regression command in `implementer.md` § 6 | gap | 48 | 2026-07-20, mercure v9.6.1 |
+| PM-028 | gate | Coverage Regression Check, `V-TEST-09` (mercure-quality-gates.md § Testing "verify coverage on changed files"; v-codes-testing.md:15) (mercure v9.6.1) | none yet — no `V-TEST-09` in `src/references/blackhole-vcodes.md`; `implementer.md` § 6 covers lint+test pass only, no coverage-delta; adoption filed as #306 (add V-TEST-09 BLOCK row + coverage-delta sub-step reusing hunt/coverage.md runner detection) | in-flight(#306) | — | 2026-07-21, mercure v9.6.1 |
 | PM-029 | gate | Enforcement Summary — compliance table at checkpoints, any BLOCK-severity fail = cannot proceed (mercure-enforcement-contract.md § Enforcement Summary) (mercure v9.6.1) | `src/agents/implementer.md:212-234` § Verification Evidence Gate (5-step gate covers test/build claim verification, not a standalone per-V-code compliance table) | adapted | — | 2026-07-20, mercure v9.6.1 |
 | PM-030 | gate | Documentation Sync — BLOCK on public-API doc drift, `V-DOC-02/04` (mercure-doc-governance.md; mercure-quality-gates.md § Documentation) (mercure v9.6.1) | `src/agents/implementer.md:54-67` § 6 Companion-doc sync; `src/agents/reviewer.md:121-123` § 9 Public-API / Docs Currency; `src/references/blackhole-vcodes.md:36` `V-DOC-02/04` BLOCK | covered | — | 2026-07-20, mercure v9.6.1 |
 | PM-031 | gate | Companion File Sync Phase 5.5 — `ARCHITECTURE.md`/`DESIGN.md`/`AGENTS.md` presence and indexing, `V-ADA-01..08` (mercure-companion-awareness.md § V-ADA Code Mapping) (mercure v9.6.1) | `src/agents/reviewer.md:125-131` § 10 Companion-File Audit — review-time, not a distinct implement-time phase step; `src/references/blackhole-vcodes.md:37-40` `V-ADA-01/02/03/05/06/07` (no `V-ADA-04`/`08`) | adapted | — | 2026-07-20, mercure v9.6.1 |
@@ -82,7 +82,7 @@ this entire matrix's `gap`/`N/A` rows collectively replace as the itemized succe
 | PM-042 | plan-section | Task Breakdown — acceptance criteria, BLOCKING Std/Ent (x-plan Plan Approval Quality Gate Check 1) (mercure v9.6.1) | `src/agents/planner.md:351-356` Plan Output File Template Task Breakdown; `src/references/worker-schemas.md:169` `ac_mapping` plan quality gate check | covered | — | 2026-07-20, mercure v9.6.1 |
 | PM-043 | plan-section | Critical Files — highly sensitive touchpoints (x-plan § Critical Files) (mercure v9.6.1) | `src/agents/planner.md:83` Standard Track Critical Files | covered | — | 2026-07-20, mercure v9.6.1 |
 | PM-044 | plan-section | Codebase Conventions — BLOCKING when integration touchpoints affected (x-plan Plan Approval Quality Gate Check 8) (mercure v9.6.1) | `src/agents/planner.md:84-92` Standard Track Codebase Conventions | covered | — | 2026-07-20, mercure v9.6.1 |
-| PM-045 | plan-section | Threat Model / STRIDE (x-plan § Threat Model) (mercure v9.6.1) | none — no plan section produces STRIDE analysis; GAP-1 | gap | 48 | 2026-07-20, mercure v9.6.1 |
+| PM-045 | plan-section | Threat Model / STRIDE (x-plan § Threat Model) (mercure v9.6.1) | `src/agents/planner.md` Standard Track `## Threat Model` conditional STRIDE section (landed by M3, bf875a4) | covered | — | 2026-07-21, mercure v9.6.1 |
 | PM-046 | plan-section | Dependency Blast-Radius (x-plan § Dependency Blast-Radius) (mercure v9.6.1) | none — no plan section estimates consumer/dependency impact scope; GAP-1 | gap | 40 | 2026-07-20, mercure v9.6.1 |
 | PM-047 | plan-section | Performance Budget (x-plan § Performance Budget) (mercure v9.6.1) | none — no plan section sets performance thresholds for touched components; GAP-1 | gap | 42 | 2026-07-20, mercure v9.6.1 |
 | PM-048 | plan-section | Edge Cases (x-plan § Edge Cases) (mercure v9.6.1) | none — implicit only in Task Breakdown/Sprint Contract, no dedicated section | gap | 36 | 2026-07-20, mercure v9.6.1 |
@@ -129,17 +129,11 @@ Backlog tables). One row per `gap`-status row above.
 
 | `PM-id` | Gain | Effort | Priority |
 |---|---|---|---|
-| `PM-003` | 6 | 4 | 42 |
-| `PM-010` | 8 | 5 | 48 |
-| `PM-011` | 5 | 3 | 40 |
+| `PM-003` | 6 | 4 | 42 || `PM-011` | 5 | 3 | 40 |
 | `PM-013` | 4 | 3 | 32 |
-| `PM-014` | 6 | 4 | 42 |
-| `PM-028` | 6 | 3 | 48 |
-| `PM-032` | 4 | 4 | 28 |
+| `PM-014` | 6 | 4 | 42 || `PM-032` | 4 | 4 | 28 |
 | `PM-039` | 6 | 5 | 36 |
-| `PM-040` | 5 | 5 | 30 |
-| `PM-045` | 8 | 5 | 48 |
-| `PM-046` | 5 | 3 | 40 |
+| `PM-040` | 5 | 5 | 30 || `PM-046` | 5 | 3 | 40 |
 | `PM-047` | 6 | 4 | 42 |
 | `PM-048` | 4 | 2 | 36 |
 | `PM-049` | 4 | 4 | 28 |
