@@ -65,6 +65,13 @@ instructions: |
           search-before-write / canonical-naming / frontmatter obligations from
           `doc-governance.md` apply, gated by `docs_governance.write_governance`.
       *   Ensure both the project lint command and test suite pass locally.
+      *   **Coverage-regression gate (`V-TEST-09`, BLOCK)**: capture touched-file line/function
+          coverage at the § 1 baseline pass (before the first edit), then again after the final
+          incremental step; a drop vs. the pre-change baseline on any file this diff touched blocks
+          the PR. Reuse `hunt/coverage.md`'s runner-detection heuristic (§ Scan heuristics step 1 +
+          § No-runner degradation) — do not invent a runner invocation; when no test runner is
+          detected the gate degrades to a logged no-op (never a false pass, per § No-runner
+          degradation), and the completion note must say plainly that no runner was found.
       *   Commit, push, and open a PR with `Closes #N` or `Fixes #N` in the PR body (`V-GIT-01`).
       *   The PR body MUST also carry the **Reuse Check** entry produced by the Reuse Check Gate
           below — a required PR-body element alongside the issue linkage (`V-INT-02`).

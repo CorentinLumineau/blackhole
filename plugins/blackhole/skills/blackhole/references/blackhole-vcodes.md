@@ -15,6 +15,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-DRY-04 | No copy-paste templates with trivial renames | WARN |
 | V-TEST-01/02 | All new logic tested, tests FIRST | BLOCK |
 | V-TEST-05 | Meaningful assertions (not existence checks) | WARN |
+| V-TEST-09 | Coverage regression on changed files — line/function coverage vs. pre-change baseline must not drop | BLOCK |
 | V-SEC-01/02 | No injection; no auth bypass | BLOCK |
 | V-SEC-03/04 | No hardcoded secrets; no XSS | BLOCK |
 | V-SEC-06 | Every security finding carries a concrete attack scenario | BLOCK |

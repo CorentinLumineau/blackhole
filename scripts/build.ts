@@ -274,7 +274,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 50;
+export const VCODE_TABLE_ROW_COUNT = 51;
 
 /**
  * Total check count across every `scripts/checks/*.check.ts` domain file (ADR-007 T5/R2′:
@@ -285,7 +285,7 @@ export const VCODE_TABLE_ROW_COUNT = 50;
  * array. `verify.ts` warns (does not fail) on a mismatch, so this is the sole place the
  * expectation is declared — never restate it as a literal at any consumption site.
  */
-export const EXPECTED_CHECK_COUNT = 29;
+export const EXPECTED_CHECK_COUNT = 30;
 
 export const buildGeminiPluginManifest = (pkgVersion: string) => ({
   $schema: 'https://antigravity.google/schemas/v1/plugin.json',

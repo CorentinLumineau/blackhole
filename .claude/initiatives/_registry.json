@@ -1,47 +1,41 @@
 {
   "version": "3.0",
-  "focus": "mercure-parity-program",
-  "lastUpdated": "2026-07-20T13:00:00Z",
-  "initiatives": [
-    {
-      "name": "mercure-parity-program",
-      "displayName": "Mercure Parity Program (ADR-013): living parity matrix + Adoption Lens v2 + sync v2 + gap closures",
-      "priority": 2,
-      "status": "active",
-      "dependsOn": [],
-      "relatedTo": [
-        "documentation/decisions/ADR-013-mercure-parity-program.md",
-        "documentation/audits/mercure-parity-surface.md",
-        "documentation/milestones/_active/mercure-parity-program/README.md",
-        "companion-substrate-closure"
-      ],
-      "blockedBy": [],
-      "created": "2026-07-20T00:00:00Z",
-      "milestonesTotal": 6,
-      "milestonesComplete": 6,
-      "currentMilestone": "COMPLETE — ready for /x-archive",
-      "note": "All 6 merged+pushed. M1-M5: 8d0842b, 3a87aba, bf875a4, a808875, 4e20a79. M6 first backlog-mode sweep 001d8da — PM-028 (V-TEST-09) ADOPT → filed #306; corrected stale PM-010/045 gap→covered. Execution mode: mercure initiative (NOT a blackhole self-campaign)."
-    },
+  "focus": null,
+  "lastUpdated": "2026-07-21T00:00:00Z",
+  "initiatives": [],
+  "archived": [
     {
       "name": "companion-substrate-closure",
       "displayName": "Companion Substrate Closure (ADR-011 + ADR-012): implement-time accretion control + durable artifact substrate",
       "priority": 1,
-      "status": "active",
+      "status": "archived",
       "dependsOn": [],
       "relatedTo": [
         "documentation/decisions/ADR-011-implement-time-accretion-control.md",
         "documentation/decisions/ADR-012-shared-artifact-substrate.md",
-        "documentation/milestones/_active/companion-substrate-closure/README.md"
+        "documentation/milestones/_archived/companion-substrate-closure.md"
       ],
       "blockedBy": [],
       "created": "2026-07-20T00:00:00Z",
-      "milestonesTotal": 6,
-      "milestonesComplete": 6,
-      "currentMilestone": "COMPLETE (T3 verification pending)",
-      "note": "All 6 milestones merged to main. M0/M1/M4/M2/M3: 54d08f4, eed17e5, 1fb772e, 8f13aef, 48581f4. M5 autonomy flip (BREAKING) merged 2c6d24e by explicit maintainer decision \u2014 Entry-Gate row 6 (green campaign) WAIVED, T3 live-campaign verification (4 criteria) still outstanding, observe on next campaign; rollback autonomy.enabled:false. Execution mode: mercure initiative (NOT a blackhole self-campaign)."
-    }
-  ],
-  "archived": [
+      "archivedAt": "2026-07-21T00:00:00Z",
+      "archiveNote": "All 6 milestones merged+pushed (54d08f4, eed17e5, 1fb772e, 8f13aef, 48581f4, 2c6d24e). Summary at documentation/milestones/_archived/companion-substrate-closure.md. OPEN FOLLOW-UP: M5 autonomy flip shipped with the green-campaign Entry-Gate WAIVED — T3 live-campaign verification (4 criteria) still outstanding, observe on next campaign; rollback autonomy.enabled:false."
+    },
+    {
+      "name": "mercure-parity-program",
+      "displayName": "Mercure Parity Program (ADR-013): living parity matrix + Adoption Lens v2 + sync v2 + gap closures",
+      "priority": 2,
+      "status": "archived",
+      "dependsOn": [],
+      "relatedTo": [
+        "documentation/decisions/ADR-013-mercure-parity-program.md",
+        "documentation/audits/mercure-parity-matrix.md",
+        "documentation/milestones/_archived/mercure-parity-program.md"
+      ],
+      "blockedBy": [],
+      "created": "2026-07-20T00:00:00Z",
+      "archivedAt": "2026-07-21T00:00:00Z",
+      "archiveNote": "All 6 milestones merged+pushed (8d0842b, 3a87aba, bf875a4, a808875, 4e20a79, 001d8da). Summary at documentation/milestones/_archived/mercure-parity-program.md. M6 first backlog-mode sweep filed GitHub #306 (V-TEST-09 coverage-regression gate, open) and corrected stale matrix rows PM-010/045."
+    },
     {
       "name": "autonomous-thinking-routes",
       "displayName": "Autonomous Thinking Routes (ADR-010): mercure workflow parity",
