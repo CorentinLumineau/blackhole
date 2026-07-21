@@ -22,7 +22,7 @@ Committed template: `.blackhole/config.json`
   "docs_governance": { "enabled": true, "companion_files": true, "docs_impact_routing": true, "write_governance": true, "severity_overrides": {} },
   "kaizen": { "enabled": false, "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity"], "trigger": "on-empty", "loop_interval": 5, "min_priority": 30, "max_issues_per_wave": 10, "max_waves": 6 },
   "incident_mode": { "enabled": false, "parallel_max_override": 1, "pause_discovery": true },
-  "autonomy": { "enabled": false, "confidence_threshold": 80, "design_dominance_delta": 30, "design_autonomy": true, "analyze_routing": true, "brainstorm_routing": true, "never_bypass": ["destructive", "credentials", "epic-go-no-go"] },
+  "autonomy": { "enabled": true, "confidence_threshold": 80, "design_dominance_delta": 30, "design_autonomy": true, "analyze_routing": true, "brainstorm_routing": false, "never_bypass": ["destructive", "credentials", "epic-go-no-go"] },
   "worker_model_policy": "cost-optimized",
   "entry_mode": "multitask",
   "merge_mode": "immediate"
