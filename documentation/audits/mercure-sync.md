@@ -3,7 +3,7 @@ type: analysis
 status: current
 review_trigger: "on mercure release"
 created: 2026-07-14
-last_updated: 2026-07-14
+last_updated: 2026-07-22
 last_reviewed_mercure_version: v9.6.0
 related:
   - .claude/skills/prj-mercure-sync/SKILL.md
@@ -192,6 +192,44 @@ category applies.
 
 Also corrected this run (matrix-accuracy, no issue filed): PM-010, PM-045 `gap → covered` (stale
 since M3 landed). No REJECT/N/A items (single-target sweep). Zero items withheld by the cap.
+
+## Run 4 — 2026-07-22 (backlog-mode sweep)
+
+### Scope
+
+Second v2 **backlog-mode** run (ADR-013 D3) — matrix-driven, no watermark bump. Triggered by a
+synergy assessment (`documentation/audits/analysis-blackhole-mercure-synergy.md` F4: close the
+autonomous-quality guardrail gap before enabling autonomy). Swept the top-priority `gap` cluster
+(priority 40–42) per the live parity matrix. Note: mercure `v9.6.2` landed 2026-07-21 above the
+`v9.6.0` watermark — a **release-mode** concern deferred to a future run; this run stays
+matrix-driven against the pinned `v9.6.1` cache.
+
+### Target selection
+
+Swept 5 candidate mechanisms (each deep-compared against the pinned `~/.claude/plugins/cache/mercure/mercure/9.6.1/`,
+each verify-before-file per `V-HUNT-01`):
+
+- **PM-047 + PM-014 (Performance Budget, priority 42)** — **GAP-REFUTED**. Fully wired end-to-end:
+  investigator analyze sub-mode → planner conditional `## Performance Budget` (`planner.md:108-118`,
+  Plan Output Template `:379`) → reviewer §17 audit (`reviewer.md:270-280`). Corrected `gap → covered`,
+  no issue filed (false-positive the vcodes-listed-but-unwired hypothesis; caught by V-HUNT-01).
+
+### Adoption Lens v2 verdicts — 4 ADOPT/ADAPT items filed
+
+All four land on existing seams (V-INT-02 reuse) — no new agents/subsystems:
+
+| Row(s) | Mechanism | Verdict | Pareto | Issue |
+|--------|-----------|---------|--------|-------|
+| PM-003 | Design Pattern Review (V-PAT) | ADOPT (circular-dep + singleton net-new; fixes dangling `reviewer.md:24` V-PAT-01 cite) | Gain 6 × (11−3) = **48** | [#308](https://github.com/CorentinLumineau/blackhole/issues/308) |
+| PM-052 | Sprint Contract per-AC completion gate | ADOPT (completion half) / ADAPT (plan half ~90% present) | Gain 6 × (11−4) = **42** | [#309](https://github.com/CorentinLumineau/blackhole/issues/309) |
+| PM-011 + PM-046 | Dependency Blast-Radius (V-SCOPE-03) | ADAPT (reuse Design Track grep scan for Standard Track) + ADOPT (WARN audit) | Gain 5 × (11−3) = **40** | [#310](https://github.com/CorentinLumineau/blackhole/issues/310) |
+| PM-050 | Quick Threat Check | ADAPT-into-existing-seam (reuse `route.security_review_required`) | Gain 4 × (11−3) = **32** | [#311](https://github.com/CorentinLumineau/blackhole/issues/311) |
+
+### Outcome
+
+4 issues filed (#308–#311), within cap (`max_issues_per_run` 5) and above floor (`min_priority` 30).
+Matrix transitions this run: PM-003/PM-052/PM-011/PM-046/PM-050 `gap → in-flight(#308–#311)`;
+PM-014/PM-047 `gap → covered` (refuted). Zero items withheld by the cap. No REJECT/N/A verdicts.
 
 ## Design note for future runs
 
