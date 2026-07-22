@@ -7,10 +7,11 @@ brainstorm, design, implement, epic go/no-go. Consumed by router, planner, and o
 gates as the single escalation mechanism — [clarify-gates.md](clarify-gates.md)'s categorical
 triggers are not deleted, they become dimension inputs (see below).
 
-**Kill switch**: this whole kernel is inert unless `.blackhole/config.json`
-`autonomy.enabled: true`. Absent block or `enabled: false` preserves current behavior exactly
-— every route falls back to the categorical [clarify-gates.md](clarify-gates.md) mechanism
-with no confidence math involved.
+**Always active** (ADR-014): this kernel is the unconditional escalation mechanism — there is
+no master switch to fall back off of. Each route's composite still resolves through the
+per-route weight profile and threshold below; only the *dispatch* of the feature a route gates
+(design tier, analyze routing, brainstorm routing) is further scoped by that feature's own
+`autonomy.{sub_flag}` (see `config-template.md`).
 
 ## Dimensions
 

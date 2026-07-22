@@ -174,7 +174,7 @@ and assumption audit below must be grounded in the actual code, not assertion; t
 "light" shortcut for the design track. Produces a **single** consolidated artifact at
 `plans/issue-N-design.md`. Returns `status: blocked` unconditionally — "no confidence bypass",
 human always decides — **except** the one gated path §4.8 defines (ADR-010 D4): when
-`autonomy.enabled && autonomy.design_autonomy` is `true` AND `scripts/design-aggregate.ts`
+`autonomy.design_autonomy` is `true` AND `scripts/design-aggregate.ts`
 independently computes `status: "ready"` from the primary matrix plus both blind critics' JSON.
 The planner never self-certifies this path — it is only ever reachable through the script's own
 verdict; see §4.8.
@@ -237,7 +237,7 @@ The artifact consolidates 8 ordered subsections:
     Validated / `~` Contestable / `◐` Blind spot / `✗` Incorrect, with a one-line note per
     assumption.
 8.  **Gate (ADR-010 D4 — config-gated, otherwise unchanged)**: When
-    `.blackhole/config.json` `autonomy.enabled && autonomy.design_autonomy` is `true`, invoke
+    `.blackhole/config.json` `autonomy.design_autonomy` is `true`, invoke
     `scripts/design-aggregate.ts` with the primary's weighted matrix (subsection 2/3), both
     critics' raw JSON (subsection 3), and the Refactoring Impact Analysis rows (subsection 6).
     The planner reads the script's returned `status`.
@@ -528,7 +528,7 @@ always decides):
 }
 ```
 
-Design track — `status: ready` (only reachable when `autonomy.enabled && autonomy.design_autonomy`
+Design track — `status: ready` (only reachable when `autonomy.design_autonomy`
 is `true` AND `scripts/design-aggregate.ts` independently computed `status: "ready"`; the planner
 reads and forwards this verdict, it does not compute it — see §4.8):
 

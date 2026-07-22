@@ -22,7 +22,7 @@ Committed template: `.blackhole/config.json`
   "docs_governance": { "enabled": true, "companion_files": true, "docs_impact_routing": true, "write_governance": true, "severity_overrides": {} },
   "kaizen": { "enabled": false, "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity"], "trigger": "on-empty", "loop_interval": 5, "min_priority": 30, "max_issues_per_wave": 10, "max_waves": 6 },
   "incident_mode": { "enabled": false, "parallel_max_override": 1, "pause_discovery": true },
-  "autonomy": { "enabled": true, "confidence_threshold": 80, "design_dominance_delta": 30, "design_autonomy": true, "analyze_routing": true, "brainstorm_routing": false, "never_bypass": ["destructive", "credentials", "epic-go-no-go"] },
+  "autonomy": { "confidence_threshold": 80, "design_dominance_delta": 30, "design_autonomy": true, "analyze_routing": true, "brainstorm_routing": false, "never_bypass": ["destructive", "credentials", "epic-go-no-go"] },
   "worker_model_policy": "cost-optimized",
   "entry_mode": "multitask",
   "merge_mode": "immediate"
@@ -43,7 +43,7 @@ Committed template: `.blackhole/config.json`
 | `scope_labels` | no | When set, issue must have **all** listed labels (AND). Empty array treated as unset |
 | `auto_sync` | no | When `true` (default), forge reconcile runs automatically |
 | `adaptive_routing` | no | Emergency kill switch for ADR-004 router-agent routing (default `true`); when `false`, routing is inert regardless of `route` presence in `queue.json` |
-| `router_confidence_thresholds` | no | Per-flag confidence thresholds keyed by `split`, `design`, `plan_mode`, `security`, `docs`, `brainstorm`, `analysis` (matches `route.confidence` keys); each defaults to `70` when absent. The `brainstorm` threshold alone does not turn on `needs_brainstorm` dispatch — that is additionally gated by `autonomy.enabled && autonomy.brainstorm_routing`; the `analysis` threshold alone does not turn on `needs_analysis` dispatch — that is additionally gated by `autonomy.enabled && autonomy.analyze_routing` (see below) |
+| `router_confidence_thresholds` | no | Per-flag confidence thresholds keyed by `split`, `design`, `plan_mode`, `security`, `docs`, `brainstorm`, `analysis` (matches `route.confidence` keys); each defaults to `70` when absent. The `brainstorm` threshold alone does not turn on `needs_brainstorm` dispatch — that is additionally gated by `autonomy.brainstorm_routing`; the `analysis` threshold alone does not turn on `needs_analysis` dispatch — that is additionally gated by `autonomy.analyze_routing` (see below) |
 | `docs_governance` | no | Nested object of flags/thresholds for companion-file, docs-impact-routing, and write-governance features (`enabled`, `companion_files`, `docs_impact_routing`, `write_governance`, `severity_overrides`); absent block = current behavior preserved (all three sub-flags gate live features — see rows below) |
 | `docs_governance.enabled` | no | Emergency kill switch for the whole `docs_governance` block (default `true`); when `false`, every dependent feature is inert regardless of sub-field values |
 | `docs_governance.companion_files` | no | Gates the V-ADA companion-file reviewer audit (default `true`); when `false`, that audit is inert regardless of `enabled` — live consumers: `src/agents/reviewer.md` § 10 "Companion-File Audit (`V-ADA-01/02/03/05/06/07`)", config-gated at `reviewer.md:69`, and `src/SKILL.md` Phase 0 step 2 "Companion-file scaffold", config-gated at `SKILL.md:42` |
@@ -62,13 +62,12 @@ Committed template: `.blackhole/config.json`
 | `incident_mode.enabled` | no | Kill switch for the whole `incident_mode` block (default `false` — armed manually by a human/coordinator, unlike `docs_governance` which defaults `true`); when `false`, incident-mode dispatch behavior never fires regardless of sub-field values |
 | `incident_mode.parallel_max_override` | no | `parallel_max` value enforced while incident mode is active (default `1`), regardless of `config.json.parallel_max` |
 | `incident_mode.pause_discovery` | no | When `true` (default), `phase-loop.md` § Continuous Discovery of Improvements is paused entirely while incident mode is active |
-| `autonomy` | no | Nested object gating the opt-in autonomous thinking-route features (ADR-010): `enabled`, `confidence_threshold`, `design_dominance_delta`, `design_autonomy`, `analyze_routing`, `brainstorm_routing`, `never_bypass`; absent block = current behavior preserved (opt-in, see contract note below) |
-| `autonomy.enabled` | no | Kill switch for the whole `autonomy` block (default `false` — opt-in like `kaizen`, unlike `docs_governance` which defaults `true`); when `false`, autonomous-thinking-route dispatch never fires regardless of sub-field values |
+| `autonomy` | no | Nested object configuring the always-active autonomous thinking-route features (ADR-010, ADR-014): `confidence_threshold`, `design_dominance_delta`, `design_autonomy`, `analyze_routing`, `brainstorm_routing`, `never_bypass`; absent block = sub-field defaults apply, see contract note below |
 | `autonomy.confidence_threshold` | no | Composite confidence score (0–100) a route/design decision must clear to proceed autonomously (default `80`); see [confidence-gates.md](confidence-gates.md) for the 5-dimension kernel and two-band mapping |
 | `autonomy.design_dominance_delta` | no | Minimum point spread between the top-scored design alternative and the runner-up required for autonomous design promotion (default `30`); see [confidence-gates.md](confidence-gates.md) |
-| `autonomy.design_autonomy` | no | Gates the autonomous design tier — blind-critic scoring, `design-aggregate.ts` verdict, and in-PR ADR promotion (default `true`); when `false` (or `autonomy.enabled: false`), design decisions always route to human ADR review |
-| `autonomy.analyze_routing` | no | Gates the router's `needs_analysis` autonomous dispatch to the investigator `analyze` sub-mode (default `true`); when `false` (or `autonomy.enabled: false`), analyze routing is inert |
-| `autonomy.brainstorm_routing` | no | Gates the router's `needs_brainstorm` autonomous dispatch to the planner `track: brainstorm` (default `true`); when `false` (or `autonomy.enabled: false`), brainstorm routing is inert |
+| `autonomy.design_autonomy` | no | Gates the autonomous design tier — blind-critic scoring, `design-aggregate.ts` verdict, and in-PR ADR promotion (default `true`); when `false`, design decisions always route to human ADR review |
+| `autonomy.analyze_routing` | no | Gates the router's `needs_analysis` autonomous dispatch to the investigator `analyze` sub-mode (default `true`); when `false`, analyze routing is inert |
+| `autonomy.brainstorm_routing` | no | Gates the router's `needs_brainstorm` autonomous dispatch to the planner `track: brainstorm` (default `false` — terminal-closure pin, ADR-010 D3); when `false`, brainstorm routing is inert |
 | `autonomy.never_bypass` | no | Array of categorical triggers that always force human escalation regardless of confidence score (default `["destructive", "credentials", "epic-go-no-go"]`); see [confidence-gates.md](confidence-gates.md) |
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
@@ -104,12 +103,15 @@ existing baseline rule, no pausing of `phase-loop.md` § Continuous Discovery of
 Improvements. This is the same obligation `docs_governance.enabled` and
 `kaizen.enabled` already impose on their respective features.
 
-**`autonomy` contract note**: when the block is absent, or `autonomy.enabled`
-is `false`, every dependent feature (design autonomy tier, analyze/brainstorm
-routing, confidence-gated escalation) MUST be a no-op and current behavior is
-preserved exactly — no route flag changes dispatch, no `design-aggregate.ts`
-invocation, no confidence math runs. This is the same obligation `docs_governance.enabled` and
-`kaizen.enabled` already impose on their respective features.
+**`autonomy` contract note**: autonomy is unconditionally active (ADR-014) — there is no master
+switch and no "off" state for the block as a whole. The confidence-gate kernel
+([confidence-gates.md](confidence-gates.md)) always runs its composite math. When the block is
+absent, or an individual sub-field is unset, that sub-field's own default applies
+(`confidence_threshold: 80`, `design_dominance_delta: 30`, `design_autonomy: true`,
+`analyze_routing: true`, `brainstorm_routing: false`, `never_bypass:
+["destructive", "credentials", "epic-go-no-go"]`) — each sub-flag independently gates only its
+own feature's *dispatch* (design tier, analyze routing, brainstorm routing), never the kernel
+itself.
 
 **Scope filter composition** (both fields optional — unset means no filter on that axis):
 

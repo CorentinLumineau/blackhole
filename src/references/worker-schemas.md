@@ -176,10 +176,10 @@ When `status: blocked`, `failing_checks` lists failed items:
   analytical substance (Options + trade-off matrix, adversarial evaluation via multiplicity,
   component decomposition, design principles validation, refactoring impact analysis, assumption
   audit) per `planner.md`'s Design Track template — content only, no JSON field change.
-  **ADR-010 D4 amendment**: when `autonomy.enabled && autonomy.design_autonomy` is `true`, this
+  **ADR-010 D4 amendment**: when `autonomy.design_autonomy` is `true`, this
   check is replaced by `scripts/design-aggregate.ts`'s deterministic verdict — see
   `planner.md` §4.8 and the `design-aggregate` schema below. `design_pending_approval` remains
-  the unconditional outcome whenever that gate is off or absent.
+  the unconditional outcome whenever that sub-flag is off.
 - `brainstorm_confidence_below_threshold` — brainstorm track composite confidence
   (`confidence-gates.md`) fell below `autonomy.confidence_threshold`; `blocking_question` names
   the specific product ambiguity (see § Brainstorm track below).
@@ -703,7 +703,7 @@ CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N>
 
 ## Design aggregate (`scripts/design-aggregate.ts`)
 
-Orchestrator/planner invokes when `autonomy.enabled && autonomy.design_autonomy` is `true`
+Orchestrator/planner invokes when `autonomy.design_autonomy` is `true`
 (`planner.md` §4.8, ADR-010 D4). Not a worker agent — deterministic script output the planner
 reads but never overrides:
 

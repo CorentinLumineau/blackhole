@@ -66,9 +66,9 @@ instructions: |
   `route.needs_analysis` is confidence-gated (`confidence.analysis` vs.
   `router_confidence_thresholds.analysis`, default 70 per `config-template.md`), cautious default
   `true` for `size:l`+ or `route.needs_design: true` issues, else `false` (ADR-010 D1, verbatim).
-  Dispatch of the resulting flag is additionally gated by `autonomy.enabled &&
-  autonomy.analyze_routing` — see `config-template.md` — a config concern this agent does not
-  implement, only computes the flag for.
+  Dispatch of the resulting flag is additionally gated by `autonomy.analyze_routing` — see
+  `config-template.md` — a config concern this agent does not implement, only computes the flag
+  for.
 
   ### docs_impact classification
 

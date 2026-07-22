@@ -154,7 +154,7 @@ Worker return schemas: `plugins/blackhole-claude/skills/blackhole/references/wor
 Referenced from § Route-derived dispatch step 2.5 above (identical shape to the `docs_impact`
 config-gate precedent in that same section) — separately budgeted per `V-CONTENTGATE-01`.
 
-When `autonomy.enabled && autonomy.brainstorm_routing` are both true (`config-template.md`),
+When `autonomy.brainstorm_routing` is true (`config-template.md`),
 compare `route.confidence.brainstorm` against `.blackhole/config.json`
 `router_confidence_thresholds.brainstorm` (default 70); below threshold, resolve to
 `needs_brainstorm`'s cautious default (`true`) instead of the computed value. If the resolved

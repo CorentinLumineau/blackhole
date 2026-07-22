@@ -3,11 +3,10 @@
 User is **always** the source of truth for direction. Sync is automatic;
 **clarification is not** — use `AskQuestion` when in doubt.
 
-> [confidence-gates.md](confidence-gates.md) supersedes this file as the escalation
-> mechanism when the `autonomy` config block is enabled: the categorical triggers below
-> are preserved and now feed the Problem/Technical dimension inputs of the confidence
-> kernel (ADR-010 D6). When `autonomy` is absent or disabled, this file remains the
-> operative gate exactly as today.
+> [confidence-gates.md](confidence-gates.md) is the escalation mechanism (ADR-014: autonomy
+> is always active, no master switch) — the categorical triggers below are preserved and feed
+> the Problem/Technical dimension inputs of the confidence kernel (ADR-010 D6). This file is
+> the dimension-input source for that kernel, not a standalone fallback gate.
 
 ## Default: clarify before commit
 

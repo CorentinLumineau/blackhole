@@ -67,8 +67,8 @@ dispatch and `phase-plan.md` § Route-derived planner spawn for the full precede
 `route.needs_analysis` true (computed by `router`'s initial pass, see § Router agent above).
 Handle spawns `investigator` for the corresponding sub-mode — `research` when `needs_research`,
 `investigate` when `needs_investigation`, `analyze` when `needs_analysis`. `needs_analysis`
-dispatch is additionally gated by `autonomy.enabled && autonomy.analyze_routing`
-(`config-template.md`) — absent/false preserves today's behavior unchanged.
+dispatch is additionally gated by `autonomy.analyze_routing`
+(`config-template.md`) — false preserves today's non-dispatch behavior unchanged.
 
 **Note-landing → re-route-checkpoint trigger**: `investigator`'s note file landing on disk at
 `plans/issue-N-research.md`, `plans/issue-N-investigation.md`, or `plans/issue-N-analysis.md`
