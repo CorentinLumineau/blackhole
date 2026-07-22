@@ -111,3 +111,43 @@ describe('blackhole-vcodes.md — V-THREAT-02/03 and V-PERF-01/02 registration',
     expect(vcodes).toMatch(/\| V-PERF-02 \|.*\| WARN \|/);
   });
 });
+
+describe('blackhole-vcodes.md / planner.md / reviewer.md — V-THREAT-01 registration (#311)', () => {
+  test('vcodes table has a V-THREAT-01 (BLOCK) row, ordered before V-THREAT-02', () => {
+    const vcodes = read('src/references/blackhole-vcodes.md');
+    expect(vcodes).toMatch(/\| V-THREAT-01 \|.*\| BLOCK \|/);
+    // Row ordering: V-THREAT-01 must precede V-THREAT-02 in the table.
+    const idx01 = vcodes.indexOf('| V-THREAT-01 |');
+    const idx02 = vcodes.indexOf('| V-THREAT-02 |');
+    expect(idx01).toBeGreaterThan(-1);
+    expect(idx02).toBeGreaterThan(-1);
+    expect(idx01).toBeLessThan(idx02);
+  });
+
+  test('planner.md Quick Track reuses route.security_review_required — no new detection logic', () => {
+    const planner = read('src/agents/planner.md');
+    const quickTrack = planner.split('### 1. Quick Track')[1]?.split('### 2. Standard Track')[0] ?? '';
+    expect(quickTrack.length).toBeGreaterThan(0);
+    expect(quickTrack).toContain('Threat escalation check');
+    expect(quickTrack).toContain('route.security_review_required');
+    expect(quickTrack).toContain('threat_screen_passed: true');
+    expect(quickTrack).toContain('V-THREAT-01');
+    // Guards V-DRY-01/V-INT-02: reuse must be explicit, not a re-derivation.
+    expect(quickTrack).toMatch(/reuses the router's already-computed flag/);
+    expect(quickTrack).toMatch(/zero new pattern-matching or\s+detection logic/);
+  });
+
+  test('Plan Output File Template documents the threat_screen_passed frontmatter field', () => {
+    const planner = read('src/agents/planner.md');
+    expect(planner).toContain('threat_screen_passed: true | null');
+  });
+
+  test('reviewer.md audits V-THREAT-01 by reusing review-core.md security-mode injection and the plan-file stamp, not new detection logic', () => {
+    const reviewer = read('src/agents/reviewer.md');
+    expect(reviewer).toContain('Quick-track escalation check (`V-THREAT-01`, `BLOCK`)');
+    expect(reviewer).toContain('threat_screen_passed: true');
+    expect(reviewer).toMatch(/review-core\.md.*Security-mode\s+review/);
+    // Conditional-omission fallback must be present, mirroring V-THREAT-02/03's discipline.
+    expect(reviewer).toMatch(/Not security-mode, or plan track is not quick — no finding/);
+  });
+});

@@ -68,6 +68,22 @@ instructions: |
       Verification gate and escalation triggers this stamp activates. Scout Check
       (`implementer.md` § Scout Check) is unconditional for every execution mode and plan track —
       this stamp does not uniquely activate it.
+  *   **Threat escalation check (conditional)**: When the issue's resolved
+      `route.security_review_required` (post confidence-gate — the same value `review-core.md` §
+      Security-mode review already consumes) is `true` — mirroring this track's own
+      Bugfix-classification route-first pattern above, not a new heuristic shape — before
+      finalizing the Quick Track plan, emit a 3-question STRIDE-lite screen: (1) does this change
+      touch auth/authz? (2) does it read or write user data? (3) does it add or modify an endpoint?
+      Any "yes" halts Quick Track planning and re-enters Standard Track (Step 2 below), which gains
+      the existing conditional `## Threat Model` section (see § Standard Track's Threat Model
+      bullet). All three "no" — proceed with Quick Track planning unchanged and stamp
+      `threat_screen_passed: true` in the plan's frontmatter (see Plan Output File Template below),
+      so the reviewer can audit that the screen actually ran rather than being silently skipped
+      (`V-THREAT-01`). **Reuse discipline**: this bullet reuses the router's already-computed flag
+      and local-analyze scan verbatim (`router.md`) — it adds zero new pattern-matching or
+      detection logic (`V-DRY-01`/`V-INT-02`). When no `route` object exists (today's queue), this
+      bullet is inert — same fallback as this track's Bugfix classification bullet above (no route
+      → no screen, no stamp).
 
   ### 2. Standard Track
   *   **Objective**: Issue summary and constraints.
@@ -355,6 +371,7 @@ instructions: |
   plan_base_commit: <Short SHA of HEAD>
   track: quick | standard
   task_type: bugfix | null
+  threat_screen_passed: true | null
   ---
 
   # Plan - Issue #<Number>

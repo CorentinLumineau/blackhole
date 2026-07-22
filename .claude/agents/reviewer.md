@@ -255,7 +255,17 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     the PR-body prose (that would require semantic comparison) — only presence/absence per
     `kind`.
 
-### 16. Threat Model Audit (`V-THREAT-02/03`)
+### 16. Threat Model Audit (`V-THREAT-01/02/03`)
+*   **Quick-track escalation check (`V-THREAT-01`, `BLOCK`)**: when this review is running in
+    security-mode (the additional exploitability-audit block `review-core.md` § Security-mode
+    review injects into this prompt when `route.security_review_required` resolved `true`) **and**
+    the plan file's frontmatter (read at `PLAN_ABSOLUTE_PATH`, same field the Detection check
+    below reads) carries `track: quick` — verify the frontmatter also carries
+    `threat_screen_passed: true` (`planner.md` § Quick Track's Threat escalation check bullet). A
+    security-mode review of a Quick-track plan missing that stamp — severity `BLOCK`, cite the
+    plan file (the plan-time screen was skipped, or a "yes" answer never escalated the track to
+    Standard). Not security-mode, or plan track is not quick — no finding (conditional-omission
+    fallback, same discipline as V-THREAT-02/03 below).
 *   **Detection**: read the plan file at `PLAN_ABSOLUTE_PATH` (from `<PLAN_CONTEXT>`, the same
     field § 8's Docs-Only detection already reads) for a `## Threat Model` heading. Absent
     heading — emit no §16 findings (vacuous gate; mirrors mercure's own "runs when the plan
