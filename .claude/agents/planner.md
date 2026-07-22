@@ -116,6 +116,17 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     section instead of leaving it as unstructured prose — it does not add a second investigator
     consumption path (`V-DRY-01`: same data, new presentation). When not triggered, omit the
     section entirely, same discipline as Threat Model above.
+*   **Dependency Blast-Radius (`## Dependency Blast-Radius`, conditional)**: Trigger —
+    reuse Design Track subsection 6's grep-based consumer scan (`planner.md` §4.6,
+    "Refactoring Impact Analysis"): for every interface the plan's Touch-Paths change
+    (function signature, JSON contract field, config key, file-path convention), grep the
+    codebase for call-sites/consumers — same direct tool scan, same
+    BREAKING/DEPRECATION/TRANSPARENT classification, not a restated grep procedure or an
+    LLM estimate (`V-INT-02`/`V-DRY-01`: one scan method, two emission sites). When the scan
+    finds **3 or more** affected consumers, emit a table with the same columns as subsection
+    6 (consumer file:line, classification, one-line note). Below 3 affected consumers, omit
+    the section entirely — no `## Dependency Blast-Radius` heading, no placeholder — same
+    conditional-omission discipline as Threat Model and Performance Budget above.
 *   **Execution Strategy (Stop Conditions)**: Scoped risk-mitigation rules (e.g. "if schema generated migration lacks column X, abort").
 *   **Sprint Contract**: Restates, in one place, the per-task acceptance criteria already
     attached to each `## Task Breakdown` item (`— **AC**: <condition>`, see Plan Output File

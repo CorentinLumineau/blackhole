@@ -51,6 +51,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-CONFIG-01 | New config/env keys follow established naming, registered | WARN |
 | V-SCOPE-01 | No refactoring untouched code | WARN |
 | V-SCOPE-02 | Touch-Paths violation — files modified outside plan scope | WARN |
+| V-SCOPE-03 | Missing/underestimated blast-radius — a Standard-track plan with 3+ affected consumers lacks a `## Dependency Blast-Radius` section | WARN |
 | V-API-01 | API contract drift — public interface diverges from plan | BLOCK |
 | V-THREAT-02 | Threat Model — every HIGH/CRITICAL-severity threat has mitigation status 'Mitigated' | BLOCK |
 | V-THREAT-03 | Threat Model — all six STRIDE categories evaluated (Spoofing, Tampering, Repudiation, Info Disclosure, DoS, Elevation of Privilege) | WARN |

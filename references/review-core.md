@@ -126,8 +126,9 @@ Reset `review_iteration` to 0 when PR merges or issue returns to plan phase.
 1. **Trigger**: `route.plan_mode === 'skip'` (from `queue.json`; `route` absent → not
    applicable, unconditional full audit unchanged).
 2. **Rule**: plan-conformance auditing (`V-API-01` API/schema drift, `V-SCOPE-02`
-   touch-paths-vs-plan) is scoped to `route.plan_mode ∈ {quick, full}` — a skip PR's
-   4-line rationale record has no contract section to diff against.
+   touch-paths-vs-plan, `V-SCOPE-03` blast-radius-vs-plan) is scoped to
+   `route.plan_mode ∈ {quick, full}` — a skip PR's 4-line rationale record has no contract
+   section to diff against.
 3. **Compensating check**: for `plan_mode: skip` PRs, reviewer instead independently
    verifies the diff touches no public API/schema surface (no exported function
    signature, DB schema, config key, or route/response-shape change).
