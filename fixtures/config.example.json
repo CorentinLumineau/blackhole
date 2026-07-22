@@ -29,7 +29,6 @@
     "max_waves": 6
   },
   "autonomy": {
-    "enabled": false,
     "confidence_threshold": 80,
     "design_dominance_delta": 30,
     "design_autonomy": true,

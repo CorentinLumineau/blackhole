@@ -2,9 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Regression/structural tests locking in Milestone 1's autonomy contract (ADR-010):
-// the config schema, confidence-gates kernel, and durable-artifact contract must keep
-// carrying the exact field/dimension/route names other Milestone 2+ work will bind to.
+// Regression/structural tests locking in Milestone 1's autonomy contract (ADR-010) and its
+// ADR-014 "default and only mode" flip: the config schema, confidence-gates kernel, and
+// durable-artifact contract must keep carrying the exact field/dimension/route names other
+// Milestone 2+ work will bind to.
 
 const root = path.resolve(import.meta.dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
@@ -16,9 +17,9 @@ describe('fixtures/config.example.json — autonomy block', () => {
     expect(config).toBeTypeOf('object');
   });
 
-  test('autonomy.enabled defaults to false (opt-in, like kaizen)', () => {
+  test('autonomy block has no enabled master switch (ADR-014 — always active)', () => {
     expect(config.autonomy).toBeTypeOf('object');
-    expect(config.autonomy.enabled).toBe(false);
+    expect(config.autonomy.enabled).toBeUndefined();
   });
 });
 
