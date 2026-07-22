@@ -53,6 +53,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-SCOPE-02 | Touch-Paths violation — files modified outside plan scope | WARN |
 | V-SCOPE-03 | Missing/underestimated blast-radius — a Standard-track plan with 3+ affected consumers lacks a `## Dependency Blast-Radius` section | WARN |
 | V-API-01 | API contract drift — public interface diverges from plan | BLOCK |
+| V-THREAT-01 | Threat Model — a Quick-track change with `route.security_review_required` proceeded without the plan-time threat escalation check / track escalation | BLOCK |
 | V-THREAT-02 | Threat Model — every HIGH/CRITICAL-severity threat has mitigation status 'Mitigated' | BLOCK |
 | V-THREAT-03 | Threat Model — all six STRIDE categories evaluated (Spoofing, Tampering, Repudiation, Info Disclosure, DoS, Elevation of Privilege) | WARN |
 | V-PERF-01 | Performance Budget — no N+1 queries, unindexed sorts, sync I/O in hot path, full-table scans, or unbounded pagination for a budgeted component | BLOCK |
