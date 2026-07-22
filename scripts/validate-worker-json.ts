@@ -22,6 +22,8 @@ const ROUTE_STATUSES = ['routed', 'error'] as const;
 const TASK_TYPES = ['feature', 'bugfix', 'refactor', 'docs'] as const;
 const DECISION_RECORD_KINDS = ['root-cause', 'approach', 'refactor', 'improvement', 'reuse'] as const;
 const ESCALATION_TRIGGERS = ['failed_attempts', 'touch_paths_overrun'] as const;
+const SPRINT_CONTRACT_STATUSES = ['PASS', 'PARTIAL', 'N/A'] as const;
+const AC_VERDICTS = ['PASS', 'FAIL', 'N/A'] as const;
 const PLAN_MODES = ['skip', 'quick', 'full'] as const;
 const TRIGGERS = ['initial', 'clarify-resolved', 'research-landed', 'investigation-landed', 'analysis-landed'] as const;
 const INVESTIGATOR_STATUSES = ['complete', 'error'] as const;
@@ -170,6 +172,37 @@ function validateDecisionRecordsArray(value: unknown, path: string): string[] {
   }
   value.forEach((record, index) => {
     errors.push(...validateDecisionRecord(record, `${path}[${index}]`));
+  });
+  return errors;
+}
+
+function validateAcResult(row: unknown, path: string): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(row)) {
+    errors.push(`${path}: expected object`);
+    return errors;
+  }
+
+  requireField(errors, row, 'criterion', isNonEmptyString, 'non-empty string');
+  requireField(errors, row, 'check', isNonEmptyString, 'non-empty string');
+  requireField(errors, row, 'result', isNonEmptyString, 'non-empty string');
+  requireField(errors, row, 'verdict', isString, 'string');
+  if (isString(row.verdict)) {
+    pushEnumError(errors, 'verdict', row.verdict, AC_VERDICTS);
+  }
+
+  return errors.map((error) => `${path}.${error}`);
+}
+
+function validateAcResultsArray(value: unknown, path: string): string[] {
+  const errors: string[] = [];
+  if (!Array.isArray(value)) {
+    errors.push(`${path}: expected array`);
+    return errors;
+  }
+  value.forEach((row, index) => {
+    errors.push(...validateAcResult(row, `${path}[${index}]`));
   });
   return errors;
 }
@@ -342,6 +375,23 @@ function validateImplementer(data: unknown): string[] {
 
   if ('decision_records' in data && data.decision_records !== undefined) {
     errors.push(...validateDecisionRecordsArray(data.decision_records, 'decision_records'));
+  }
+
+  if ('sprint_contract_status' in data) {
+    if (!isString(data.sprint_contract_status)) {
+      errors.push('sprint_contract_status: expected string');
+    } else {
+      pushEnumError(errors, 'sprint_contract_status', data.sprint_contract_status, SPRINT_CONTRACT_STATUSES);
+      if (data.sprint_contract_status !== 'N/A') {
+        if (!Array.isArray(data.ac_results) || data.ac_results.length === 0) {
+          errors.push('ac_results: required non-empty array when sprint_contract_status is not N/A');
+        }
+      }
+    }
+  }
+
+  if ('ac_results' in data && data.ac_results !== undefined) {
+    errors.push(...validateAcResultsArray(data.ac_results, 'ac_results'));
   }
 
   return errors;

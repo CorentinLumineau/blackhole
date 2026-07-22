@@ -48,7 +48,7 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 
 ### 1. 5-Field Contract & Plan Compliance
 *   **Scope Boundaries / Touch-Paths (`V-SCOPE-02`)**: Verify that all modified files are within the plan's Touch-Paths. Reject the PR with severity `BLOCK` if any changes exist outside this boundary.
-*   **Objective Fulfillment**: Verify that all acceptance criteria specified in the contract's Objective have been implemented.
+*   **Objective Fulfillment**: Verify that all acceptance criteria specified in the contract's Objective have been implemented. When the PR description carries a per-AC Sprint Contract table (`implementer.md` § Verification Evidence Gate's Sprint Contract closure gate — one row per `— **AC**: <condition>` marker: criterion, check, result, verdict), consume those structured `PASS`/`FAIL`/`N/A` verdicts directly instead of re-judging each criterion narratively from the diff. Treat any `FAIL` row, or a `PARTIAL`/non-`PASS` `sprint_contract_status` on a Standard-track PR, as a finding under this same Objective Fulfillment check (no new V-code — reuses this uncoded check, same convention as the plan-conformance and staleness-audit cross-references elsewhere in this document). Absence of the table (Quick/Skip/Design/Brainstorm tracks, or a plan with no AC markers) falls back to today's narrative judgment, unchanged.
 *   **Output Format & Stop Conditions**: Ensure the output matches the required format and satisfies all Stop Conditions.
 *   **API/Schema Contract Drift (`V-API-01`)**: Verify that public interfaces, configurations, or database schemas have not drifted from the plan baseline.
 

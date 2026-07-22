@@ -233,6 +233,94 @@ describe('validateWorker implementer decision_records[] (ADR-012 E4)', () => {
   });
 });
 
+describe('validateWorker implementer sprint_contract_status / ac_results[] (issue #309)', () => {
+  const baseComplete = {
+    status: 'complete',
+    pr_number: 42,
+    branch: 'blackhole/issue-42',
+    tests_passed: true,
+    touch_paths_honored: true,
+    evidence: { command: 'bun test scripts/campaign-status.test.ts', result: '42 pass, 0 fail' },
+  };
+
+  test('valid complete with sprint_contract_status PASS and ac_results[]', () =>
+    expectValid('implementer', 'implementer-complete-sprint-contract-pass.json'));
+
+  test('valid complete with sprint_contract_status N/A and no ac_results[]', () =>
+    expectValid('implementer', 'implementer-complete-sprint-contract-na.json'));
+
+  test('accepts implementer JSON without sprint_contract_status/ac_results (backward compatible)', () => {
+    const errors = validateWorker('implementer', { ...baseComplete });
+    expect(errors).toEqual([]);
+  });
+
+  test('invalid sprint_contract_status enum value', () =>
+    expectInvalid('implementer', 'implementer-complete-bad-sprint-contract-status.json'));
+
+  test('invalid sprint_contract_status PASS with empty ac_results[]', () => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      sprint_contract_status: 'PASS',
+      ac_results: [],
+    });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes('ac_results'))).toBe(true);
+  });
+
+  test('invalid sprint_contract_status PASS with ac_results absent', () => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      sprint_contract_status: 'PARTIAL',
+    });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes('ac_results'))).toBe(true);
+  });
+
+  test('valid sprint_contract_status N/A with ac_results absent', () => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      sprint_contract_status: 'N/A',
+    });
+    expect(errors).toEqual([]);
+  });
+
+  test.each([
+    [
+      'invalid verdict enum',
+      { criterion: 'Export button renders', check: 'bun test -t export', result: '1 pass', verdict: 'MAYBE' },
+      'ac_results[0].verdict',
+    ],
+    [
+      'missing criterion',
+      { check: 'bun test -t export', result: '1 pass', verdict: 'PASS' },
+      'criterion',
+    ],
+    [
+      'missing check',
+      { criterion: 'Export button renders', result: '1 pass', verdict: 'PASS' },
+      'check',
+    ],
+    [
+      'missing result',
+      { criterion: 'Export button renders', check: 'bun test -t export', verdict: 'PASS' },
+      'result',
+    ],
+    [
+      'missing verdict',
+      { criterion: 'Export button renders', check: 'bun test -t export', result: '1 pass' },
+      'verdict',
+    ],
+  ])('rejects malformed ac_results[] rows: %s', (_label, row, expectedFragment) => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      sprint_contract_status: 'PASS',
+      ac_results: [row],
+    });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes(expectedFragment))).toBe(true);
+  });
+});
+
 describe('validateWorker reviewer', () => {
   test('valid empty findings', () =>
     expectValid('reviewer', 'reviewer-complete-empty.json'));

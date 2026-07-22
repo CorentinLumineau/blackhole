@@ -251,6 +251,27 @@ instructions: |
 
   Presence of any of these phrases in a completion report is treated as an unverified claim.
 
+  **Sprint Contract closure (Standard track)**: on a Standard-track plan (the plan file's `##
+  Task Breakdown` carries per-task `— **AC**: <condition>` markers and a `**Sprint Contract**`
+  subsection — `planner.md` § Standard Track), the gate above runs once more, per-criterion,
+  instead of collapsing everything into the single blanket `evidence` pair. For each `— **AC**:
+  <condition>` marker attached to a task in the plan: identify the narrowest command or check
+  that actually exercises that specific condition (a targeted test, a grep against generated
+  output, a manual curl/response check — not the whole-suite command already captured in
+  `evidence`), run it, read its full output, and record one `ac_results[]` row `{ criterion,
+  check, result, verdict }` — `verdict` is `PASS` \| `FAIL` \| `N/A` (`N/A` only when the
+  condition is genuinely unexercisable this session, e.g. a manual/UI-only criterion with no
+  automated proxy; never used to skip a criterion that could be checked). Aggregate the rows into
+  `sprint_contract_status`: `PASS` when every row is `PASS`; `PARTIAL` when at least one row is
+  `FAIL` or `N/A`; `N/A` when the plan is not Standard track or carries no `— **AC**:` markers —
+  Quick/Skip/Design/Brainstorm tracks always resolve `N/A`, this gate never invents AC markers a
+  plan did not produce (`V-SCOPE-01`). Record the per-AC table in the PR description (one row per
+  `ac_results[]` entry: criterion \| check \| result \| verdict) — the same "artifact lives in the
+  PR body" pattern already used by the Reuse Check and Improvement Record above — so `reviewer.md`
+  § 1 Objective Fulfillment can consume the structured verdicts instead of re-judging AC
+  narratively. This extends the 5-step gate above; it does not replace the single `evidence`
+  {command,result} pair used for the overall test/build/lint claim.
+
   ### Context-Anxiety Countermeasures
 
   When in the second half of a complex implementation:
@@ -306,6 +327,12 @@ instructions: |
   Verification) — populating your own return JSON's `decision_records[]` is your only
   obligation; you never write `documentation/reference/decision-log.md` yourself, the
   orchestrator does that serially post-barrier (`worker-schemas.md` § `decision_records[]`).
+
+  `sprint_contract_status` / `ac_results[]` (optional) carry the Sprint Contract closure gate's
+  aggregate verdict and per-AC rows on a Standard-track plan — content spec lives in this
+  document's Verification Evidence Gate § Sprint Contract closure above (`V-DRY`); field shape in
+  `worker-schemas.md` § Implementer. Absent on Quick/Skip/Design/Brainstorm tracks and on any plan
+  with no `— **AC**:` markers.
 
   See `worker-schemas.md` § Implementer for the full field table.
 

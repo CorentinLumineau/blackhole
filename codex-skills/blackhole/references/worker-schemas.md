@@ -317,6 +317,8 @@ below).
 | `new_findings` | finding[] | no |
 | `filed_issues` | number[] | no |
 | `decision_records` | decision record[] (see below) | no |
+| `sprint_contract_status` | `PASS` \| `PARTIAL` \| `N/A` | no, optional — Standard track only |
+| `ac_results` | ac-result[] (see below) | no, optional — required non-empty when `sprint_contract_status` is present and not `N/A` |
 
 ### `execution_mode` (optional — ADR-004)
 
@@ -373,11 +375,12 @@ Evidence Gate's RUN/READ/VERIFY steps: `command` is the primary verification com
 executed (test suite, or lint+test combined for a Quick-track doc change); `result` is the
 verbatim last/summary result line of that command's output — not a paraphrase.
 
-**Non-goal for this issue**: `scripts/validate-worker-json.ts` does not yet structurally
-enforce this field's presence or shape, and no fixture under `fixtures/worker-json/`
-exercises it — both are out of this issue's declared Touch-Paths. Wiring structural
-enforcement (a `verify.evidence-gate.test.ts` content-assertion check plus a fixture update)
-is recommended as a follow-up issue.
+**Structural enforcement** (closed, issue #237): `scripts/validate-worker-json.ts` requires a
+non-empty `{ command, result }` object on `status: complete` payloads, exercised by
+`implementer-complete-missing-evidence.json` and `implementer-complete-empty-evidence.json`
+under `fixtures/worker-json/`. This paragraph previously flagged the enforcement as a "Non-goal
+for this issue" follow-up; that follow-up landed in #237 and this note is updated in place
+rather than left stale (`V-DOC-GOV`-class staleness).
 
 ### `decision_records[]` (optional — ADR-012 E4)
 
@@ -400,6 +403,38 @@ post-barrier to `documentation/reference/decision-log.md` (single-writer invaria
 `orchestrator.md` § Decision Record Append, `blackhole-state.md` § Single-writer invariant).
 No worker ever writes the file directly — this field is the sole channel a worker uses to
 hand a decision to the orchestrator.
+
+### `sprint_contract_status` / `ac_results[]` (optional — Sprint Contract completion gate, issue #309)
+
+Extends the Verification Evidence Gate from a single blanket `{command,result}` pair to a
+per-criterion closure check on Standard-track plans, mirroring mercure `x-implement`'s
+per-criterion verdict loop over the plan's Sprint Contract (`planner.md` § Standard Track). Plan
+authoring (`ac_mapping`, the `**Sprint Contract**` plan subsection) was already enforced at plan
+time — these two fields close the matching gap at completion time. Content spec (which markers
+trigger the loop, how each row's `check`/`verdict` is derived, the PR-body table) lives in
+`implementer.md` § Verification Evidence Gate's Sprint Contract closure gate — not restated here
+(`V-DRY`).
+
+`ac_results[]` row shape:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `criterion` | string | yes | verbatim (or near-verbatim) `— **AC**: <condition>` text from the plan task it closes |
+| `check` | string | yes | the narrowest command/check actually run to exercise this criterion |
+| `result` | string | yes | verbatim last/summary output line of that check — not a paraphrase, same evidentiary bar as the top-level `evidence` field |
+| `verdict` | string (enum) | yes | `PASS` \| `FAIL` \| `N/A` |
+
+`sprint_contract_status` aggregates the rows: `PASS` when every row is `PASS`; `PARTIAL` when at
+least one row is `FAIL` or `N/A`; `N/A` when the plan is not Standard track or has no `— **AC**:`
+markers to close. When `sprint_contract_status` is present and not `N/A`, `ac_results` must be a
+non-empty array — `scripts/validate-worker-json.ts` structurally enforces this shape (both
+fields optional; absence still validates, preserving backward compatibility with existing
+fixtures — `V-TEST-09`).
+
+**Consumer**: `phase-implement.md` § Unverified-claim hold treats `sprint_contract_status !==
+PASS` (when present, Standard track) as an additional hold condition alongside the existing
+missing-`evidence` check. `reviewer.md` § 1 Objective Fulfillment consumes the PR-body per-AC
+table instead of re-judging AC narratively when present.
 
 ## Reviewer (`reviewer`)
 

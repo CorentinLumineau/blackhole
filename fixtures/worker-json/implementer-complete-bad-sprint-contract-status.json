@@ -1,0 +1,22 @@
+{
+  "status": "complete",
+  "pr_number": 44,
+  "branch": "blackhole/issue-311",
+  "tests_passed": true,
+  "touch_paths_honored": true,
+  "evidence": {
+    "command": "bun test scripts/campaign-status.test.ts",
+    "result": "42 pass, 0 fail"
+  },
+  "sprint_contract_status": "DONE",
+  "ac_results": [
+    {
+      "criterion": "Export button renders on load",
+      "check": "bun test tests/export.test.ts -t 'renders export button'",
+      "result": "1 pass, 0 fail",
+      "verdict": "PASS"
+    }
+  ],
+  "new_findings": [],
+  "filed_issues": []
+}

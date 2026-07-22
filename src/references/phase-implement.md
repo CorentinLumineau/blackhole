@@ -81,6 +81,16 @@ implementer re-submits with fresh, quoted evidence. Documentation-level obligati
 code enforcement lands in this issue (`scripts/validate-worker-json.ts` and the orchestrator
 dispatch logic are out of Touch-Paths).
 
+**Sprint Contract hold (issue #309)**: the same hold applies when a `status: complete`
+submission for a Standard-track plan carries `sprint_contract_status` and its value is not
+`PASS` (`PARTIAL` or a Standard-track plan reporting `N/A` where the plan's Sprint Contract
+declared `— **AC**:` markers, i.e. the loop was skipped rather than genuinely inapplicable) —
+hold at `phase: implement`, do not advance to `phase: review`, until the implementer re-submits
+with every `ac_results[]` row resolved to `PASS` or an honest `status: blocked`. Absent
+`sprint_contract_status` (Quick/Skip/Design/Brainstorm tracks, or a Standard-track plan with no
+`— **AC**:` markers) is not itself a hold condition — this extends the existing missing-`evidence`
+hold above, it does not replace it.
+
 
 ## Quality gate (pre-PR)
 
