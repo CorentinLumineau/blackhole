@@ -13,6 +13,10 @@ longer definitions (token cost, drift). Persist every finding to
 | V-KISS-03 | No empty scaffolding | WARN |
 | V-YAGNI-03 | No single-consumer abstractions | WARN |
 | V-DRY-04 | No copy-paste templates with trivial renames | WARN |
+| V-PAT-01 | God Object — class/module with 7+ responsibilities or >300 lines (see `hunt/best-practices.md` SRP heuristic, `hunt/refactor.md` god-module cluster) | BLOCK |
+| V-PAT-02 | Circular dependency between modules | BLOCK |
+| V-PAT-03 | Missing error-handling pattern — bare catch / swallowed errors (see `hunt/bug.md`) | BLOCK |
+| V-PAT-04 | Anti-pattern usage — singleton abuse, service locator | WARN |
 | V-TEST-01/02 | All new logic tested, tests FIRST | BLOCK |
 | V-TEST-05 | Meaningful assertions (not existence checks) | WARN |
 | V-TEST-09 | Coverage regression on changed files — line/function coverage vs. pre-change baseline must not drop | BLOCK |

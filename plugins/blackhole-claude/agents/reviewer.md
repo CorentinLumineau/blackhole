@@ -64,6 +64,9 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     *   `V-KISS-03` (Empty scaffolding): Reject empty catch blocks, pass-through helper functions, or empty boilerplate scaffolding.
     *   `V-YAGNI-03` (Single-consumer abstraction): Reject interfaces or factories designed for only a single class/implementation.
     *   `V-DRY-04` (Template copy-paste): Reject files duplicated with only name replacements.
+*   **Design Pattern Review**: No God Objects (`V-PAT-01`), no circular dependencies between
+    modules (`V-PAT-02`), no missing/swallowed error-handling pattern (`V-PAT-03`), no
+    anti-pattern usage — singleton abuse, service locator (`V-PAT-04`).
 
 ### 4. Security Checks
 *   No hardcoded secrets, API keys, or credentials (`V-SEC-03/04`).

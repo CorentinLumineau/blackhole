@@ -274,7 +274,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 51;
+export const VCODE_TABLE_ROW_COUNT = 55;
 
 /**
  * Total check count across every `scripts/checks/*.check.ts` domain file (ADR-007 T5/R2′:

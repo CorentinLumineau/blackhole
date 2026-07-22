@@ -25,6 +25,10 @@ never a vague "looks bad" impression:
 - **KISS** — a function's cyclomatic complexity exceeds 10.
 - **YAGNI** — dead or speculative code: unused config flags, "future" parameters nothing
   reads yet, unreachable branches, single-consumer abstractions built "just in case."
+- **Singleton abuse / service locator** — a module reaches into a global singleton instance
+  or a service-locator registry to obtain a dependency instead of receiving it via
+  constructor/parameter injection, hiding the dependency graph and blocking test doubles —
+  a DIP-adjacent anti-pattern distinct from the direct-concrete-instantiation trigger above.
 
 Every finding is read-verified before it is reported: the hunter re-reads the cited
 `file:line` and only reports `CONFIRMED` findings (`worker-schemas.md` § Hunter).
@@ -40,6 +44,7 @@ Every finding is read-verified before it is reported: the hunter re-reads the ci
 | DRY violation | >5-line block duplicated verbatim (or near-verbatim) 3+ times | 4–7 | 2–5 | Identical 8-line retry loop copy-pasted at 3 call sites → gain 6, effort 3 → Priority 6 × (11 − 3) = 6 × 8 = 48 (moderate) |
 | KISS violation | Function cyclomatic complexity >10 | 4–6 | 3–6 | 14-branch validation function with no extracted helpers → gain 5, effort 4 → Priority 5 × (11 − 4) = 5 × 7 = 35 (borderline) |
 | YAGNI violation | Dead or speculative code (unused flags, unread "future" params, unreachable branches) | 2–4 | 1–3 | Unused `enableExperimentalMode` flag with zero call sites reading it → gain 3, effort 1 → Priority 3 × (11 − 1) = 3 × 10 = 30 (borderline, files at the floor) |
+| Singleton abuse / service locator | Module fetches a dependency from a global singleton or service-locator registry instead of injection | 3–6 | 2–5 | A payment handler calls `ServiceLocator.get("Logger")` internally instead of accepting a logger parameter, blocking test doubles → gain 5, effort 3 → Priority 5 × (11 − 3) = 5 × 8 = 40 (moderate) |
 
 `gain` and `effort` are each 1–10, matching the hunter output contract
 (`worker-schemas.md` § Hunter, Finding shape). The ranges above are per-heuristic
