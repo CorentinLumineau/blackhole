@@ -10,14 +10,35 @@ inputs:
 runs:
   using: composite
   steps:
+    # Self-hosted runners keep Bun and ~/.bun/install/cache on local disk between runs, so
+    # installing Bun and round-tripping the cache to GitHub is pure overhead (~164s/run). Only
+    # ephemeral github-hosted runners (fork PRs on ubuntu-latest) need setup-bun + actions/cache.
     - uses: oven-sh/setup-bun@v2
+      if: runner.environment == 'github-hosted'
       with:
         bun-version: ${{ inputs.bun-version }}
 
     - name: Cache bun install
+      if: runner.environment == 'github-hosted'
       uses: actions/cache@v4
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
         restore-keys: |
           bun-${{ runner.os }}-
+
+    # On self-hosted runners Bun is preinstalled; assert it is present and matches the pin
+    # instead of reinstalling it.
+    - name: Assert preinstalled Bun (self-hosted)
+      if: runner.environment == 'self-hosted'
+      shell: bash
+      run: |
+        if ! command -v bun >/dev/null 2>&1; then
+          echo "::error::Bun is not installed on this self-hosted runner. Install Bun ${{ inputs.bun-version }} (https://bun.sh) or run setup-bun." >&2
+          exit 1
+        fi
+        have="$(bun --version)"
+        if [ "$have" != "${{ inputs.bun-version }}" ]; then
+          echo "::warning::Self-hosted Bun $have != pinned ${{ inputs.bun-version }}; consider aligning the runner toolchain."
+        fi
+        echo "Using preinstalled Bun $have"
