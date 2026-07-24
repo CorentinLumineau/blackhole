@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { QUEUE_STATUSES, QUEUE_NOTES, HUNT_KINDS, PLATFORM_TARGETS, ADR_STATUSES } from '../build.ts';
+import { QUEUE_STATUSES, QUEUE_NOTES, HUNT_KINDS, PLATFORM_TARGETS } from '../build.ts';
 import { walkFilesAbs } from '../lib/fs.ts';
 
 // Issue #320 — V-VOCAB-01: generalized, registry-driven extension of ADR-007 R1′'s two-sided
@@ -9,13 +9,37 @@ import { walkFilesAbs } from '../lib/fs.ts';
 // Never generated from the scan (ADR-007 Rejected Alternatives): each VocabSpec pairs a
 // hand-authored `declared` array (build.ts § facts) with an independent `scan()` derivation —
 // the two are authored and reasoned about separately, and only the comparison step is shared.
+//
+// NOTE: an ADR-status vocabulary was deliberately dropped from this registry during review
+// (fix round 1, PR #339) — issue #324 (PR #338) already owns that concern with a purpose-built
+// `adr-status.check.ts` (three checks cross-validating frontmatter, INDEX row, and the in-body
+// `## Status` section against `accepted | superseded | deprecated`, the *designed* convention).
+// This plan's `ADR_STATUSES` was only ever a permissive superset descriptive of the pre-#324
+// corpus (`proposed`/`accepted`/`superseded`/`current`); keeping both would have been a
+// V-INT-03 "third variant of a solved concern" — a value like `deprecated`, which #324
+// legitimizes, would pass `adr-status.check.ts` and fail this check. Removed.
+//
+// KNOWN BLIND SPOTS (documented per review, not fixed — precision-over-recall v1; see each
+// extractor's own comment for the specific narrowing rationale):
+//   - queue status: invisible unless the literal token `phase` co-occurs on the same line,
+//     regardless of markup — misses table cells, bullets without `phase`, and bare backtick
+//     prose (`` `status: blocked` `` with no `phase` nearby)
+//   - queue notes: only catches drift *within* the `awaiting-*` family — a genuinely new
+//     gate-value class with a different prefix is invisible
+//   - kaizen kinds: only the `"kinds": [...]` JSON-array form; the prose "e.g. `x`, `y`" form
+//     is deliberately excluded (see extractHuntKinds)
+//   - platform targets: only an array literal containing the quoted `'cursor'` anchor; a
+//     partial array without that anchor, or a target restated via `if`/`switch` comparison
+//     chains, is invisible
+// Each gap is a documented engineering decision, not a silent trap — a future vocabulary or
+// extractor revision should widen these deliberately, with the same false-positive calibration
+// discipline used to narrow them in the first place (see PR #339 for the calibration evidence).
 
 export type CheckResult = { id: string; ok: boolean; detail?: string };
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const srcDir = path.join(root, 'src');
 const scriptsDir = path.join(root, 'scripts');
-const decisionsDir = path.join(root, 'documentation', 'decisions');
 
 // Same two-sided reporting shape as findRosterScanMismatch/findRowCountMismatch
 // (scripts/checks/ground-truth.check.ts) — never a boolean, always names the offending values so
@@ -98,36 +122,6 @@ export const extractPlatformTargets = (content: string): string[] => {
   return out;
 };
 
-// --- ADR frontmatter `status` (V-VOCAB-01) ---
-export const extractAdrFrontmatterStatus = (content: string): string[] => {
-  const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!fm) return [];
-  const m = fm[1].match(/^status\s*:\s*(.+)$/m);
-  return m ? [m[1].trim()] : [];
-};
-
-// documentation/decisions/INDEX.md's `| ... | status | ... |` table column — column position is
-// located via the header row rather than a hardcoded index, so a future column reorder doesn't
-// silently misattribute. Strips a trailing parenthetical qualifier (`Superseded (by ADR-003)`).
-export const extractAdrStatusesFromIndex = (content: string): string[] => {
-  const lines = content.split('\n');
-  const headerIdx = lines.findIndex((l) => l.includes('| path') && /\bstatus\b/.test(l));
-  if (headerIdx === -1) return [];
-  const headers = lines[headerIdx].split('|').map((c) => c.trim().toLowerCase());
-  const statusCol = headers.indexOf('status');
-  if (statusCol === -1) return [];
-  const out: string[] = [];
-  for (const line of lines.slice(headerIdx + 2)) {
-    if (!line.trim().startsWith('|')) continue;
-    const cells = line.split('|').map((c) => c.trim());
-    const raw = cells[statusCol];
-    if (!raw) continue;
-    const word = raw.split(/[\s(]/)[0];
-    if (word) out.push(word);
-  }
-  return out;
-};
-
 const readAll = (absPath: string) => fs.readFileSync(absPath, 'utf-8');
 
 const scanSrcMd = (extractor: (content: string) => string[]): string[] =>
@@ -143,15 +137,6 @@ const scanScriptsTs = (extractor: (content: string) => string[]): string[] =>
     .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
     .flatMap((f) => extractor(readAll(f)));
 
-const scanAdrStatuses = (): string[] =>
-  walkFilesAbs(decisionsDir)
-    .filter((f) => f.endsWith('.md'))
-    .flatMap((f) => {
-      const base = path.basename(f);
-      const content = readAll(f);
-      return base === 'INDEX.md' ? extractAdrStatusesFromIndex(content) : extractAdrFrontmatterStatus(content);
-    });
-
 export type VocabSpec = {
   name: string;
   declared: readonly string[];
@@ -161,13 +146,13 @@ export type VocabSpec = {
 
 // Registry-driven (Codebase Conventions design decision 1, issue #320): adding a 6th vocabulary
 // is a 1-entry addition here, never a new inline sub-check block — the same OCP property
-// ADR-007's Design Principles claim for § facts generally.
+// ADR-007's Design Principles claim for § facts generally. (4 entries — ADR status was removed
+// in fix round 1; see the NOTE above.)
 export const VOCAB_REGISTRY: VocabSpec[] = [
   { name: 'queue status', declared: QUEUE_STATUSES, scan: () => scanSrcMd(extractQueueStatuses) },
   { name: 'queue notes', declared: QUEUE_NOTES, scan: () => scanSrcMd(extractQueueNotes) },
   { name: 'kaizen kinds', declared: HUNT_KINDS, scan: () => scanSrcMd(extractHuntKinds) },
   { name: 'platform targets', declared: PLATFORM_TARGETS, scan: () => scanScriptsTs(extractPlatformTargets) },
-  { name: 'ADR status', declared: ADR_STATUSES, scan: scanAdrStatuses, caseInsensitive: true },
 ];
 
 const checkVocabulary = (): CheckResult => {

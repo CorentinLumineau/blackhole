@@ -6,8 +6,6 @@ import {
   extractQueueNotes,
   extractHuntKinds,
   extractPlatformTargets,
-  extractAdrFrontmatterStatus,
-  extractAdrStatusesFromIndex,
 } from './checks/vocabulary.check.ts';
 
 // ADR-007 T5/R2' style: pure extraction/comparison functions tested against synthetic string
@@ -103,37 +101,13 @@ describe('extractPlatformTargets', () => {
   });
 });
 
-describe('extractAdrFrontmatterStatus', () => {
-  test('extracts the status field from YAML frontmatter', () => {
-    expect(extractAdrFrontmatterStatus('---\ntype: adr\nstatus: Accepted\ncreated: 2026-01-01\n---\n# ADR')).toEqual([
-      'Accepted',
-    ]);
-  });
-
-  test('returns empty when frontmatter has no status field', () => {
-    expect(extractAdrFrontmatterStatus('---\ntype: adr\n---\n# ADR')).toEqual([]);
-  });
-});
-
-describe('extractAdrStatusesFromIndex', () => {
-  test('extracts the status column, stripping a parenthetical suffix', () => {
-    const fixture = [
-      '# Decision Index',
-      '',
-      '| path | summary | type | status | review_trigger |',
-      '|------|---------|------|--------|----------------|',
-      '| ADR-001-x.md | X | adr | Accepted | on protocol change |',
-      '| ADR-002-y.md | Y | adr | Superseded (by ADR-003) | on protocol change |',
-    ].join('\n');
-    expect(extractAdrStatusesFromIndex(fixture)).toEqual(['Accepted', 'Superseded']);
-  });
-});
-
 describe('VOCAB_REGISTRY', () => {
-  test('has exactly 5 entries, one per named vocabulary', () => {
-    expect(VOCAB_REGISTRY).toHaveLength(5);
+  // ADR status was removed in fix round 1 (PR #339 review) — issue #324 (PR #338) already owns
+  // that concern with a purpose-built, more rigorous check. 4 entries, not 5.
+  test('has exactly 4 entries, one per named vocabulary', () => {
+    expect(VOCAB_REGISTRY).toHaveLength(4);
     expect(VOCAB_REGISTRY.map((v) => v.name).sort()).toEqual(
-      ['ADR status', 'kaizen kinds', 'platform targets', 'queue notes', 'queue status'].sort(),
+      ['kaizen kinds', 'platform targets', 'queue notes', 'queue status'].sort(),
     );
   });
 });

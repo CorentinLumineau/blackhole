@@ -311,12 +311,12 @@ export const HUNT_KINDS = ['quickwins', 'best-practices', 'coverage', 'refactor'
  *  declared side of the scripts/**\/*.ts scan for any stray re-hardcoded copy of this array. */
 export const PLATFORM_TARGETS = ['cursor', 'claude', 'skills', 'gemini', 'codex'] as const;
 
-/** ADR frontmatter `status:` (V-VOCAB-01) — a truthful superset of what's legitimately in use
- *  today (`accepted`/`Accepted`, `superseded`, `current`), compared case-insensitively. `current`
- *  is `mercure-doc-governance`'s generic lifecycle value leaking into this repo's own
- *  `Proposed | Accepted | Superseded` ADR convention — a noted taxonomy-overlap follow-up
- *  candidate, out of this issue's Touch-Paths (`documentation/decisions/**` is read-only here). */
-export const ADR_STATUSES = ['proposed', 'accepted', 'superseded', 'current'];
+// NOTE: an ADR-status vocabulary (`ADR_STATUSES`) was declared here in the original version of
+// this PR and removed in fix round 1 — issue #324 (PR #338) already owns ADR-status
+// conformance with a purpose-built, more rigorous check (`adr-status.check.ts`, cross-validating
+// frontmatter, INDEX row, and the in-body `## Status` section against the designed
+// `accepted | superseded | deprecated` enum). Keeping both would have been a V-INT-03 "third
+// variant of a solved concern" — see `scripts/checks/vocabulary.check.ts`'s header comment.
 
 /**
  * Total check count across every `scripts/checks/*.check.ts` domain file (ADR-007 T5/R2′:
