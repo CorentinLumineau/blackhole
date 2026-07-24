@@ -43,32 +43,40 @@ future `documentation/architecture.md` edit; neither is fixed under this issue.
 ## Measured baseline (independently derived, this session, at `7bc0eb6`)
 
 Issue #328 asks for the "committed-output model" duplication baseline to be reproduced, not
-quoted. The figures below are **this session's own commands against `origin/main` @ `7bc0eb6`**
-— not copied from any document. A caveat up front: `documentation/architecture/retrospective-blackhole.md`
+quoted. The file-count and `src/`-bytes figures below are **this session's own commands against
+`origin/main` @ `7bc0eb6`**. A caveat up front: `documentation/architecture/retrospective-blackhole.md`
 on `main` (the currently-merged revision, dated 2026-07-11 / v0.10.0) reports different, older
-numbers (519 tracked / 198 hand-authored / 321 generated, 1.62×). A v0.16.0 refresh with figures
-matching this audit's own measurement exists on branch `docs/retrospective-v0.16.0` (PR #329),
-which has not merged as of this writing — so the two documents disagree until that PR lands; this
-audit's numbers stand on their own regardless of that merge order.
+numbers (519 tracked / 198 hand-authored / 321 generated, 1.62×) and predates this audit. A
+v0.16.0 refresh exists on branch `docs/retrospective-v0.16.0` (PR #329, not yet merged): its
+first pass swept 5 hand-authored, non-generated files living inside the otherwise-generated
+`.claude/` tree (`progress.md`, `initiatives/_registry.json`, and the two unrelated `prj-*`
+skills) into its "build output" count. Flagging that discrepancy against this audit's independent
+count is what prompted a correction — **the retrospective was corrected to match this audit's
+methodology**, not the reverse, and now excludes those same 5 files (row 1c below already
+establishes why: `.claude/` is deliberately repurposed for maintainer-only content post-ADR-009,
+not purely generated).
 
 | Metric | Command | Result |
 |---|---|---|
 | Total tracked files | `git ls-tree -r --name-only origin/main \| wc -l` | **672** |
 | `src/` bytes (47 files, the hand-authored SSOT: `src/agents/`, `src/references/`, `src/SKILL.md`) | `git ls-tree -r -l origin/main -- src \| awk '{s+=$4} END {print s}'` | **460,937** |
-| Build-output tree files (repo-wide: every path under `.cursor/`, `.claude/` minus its 5 non-generated maintainer files — `progress.md`, `initiatives/_registry.json`, and the two unrelated `prj-*` skills — `skills/`, `codex-agents/`, `codex-skills/`, `.codex-plugin/`, `codex-marketplace.json`, `.agents/build/`, `plugins/`, root `agents/`, `references/`, `rules/`, `SKILL.md`, `.claude-plugin/`, `.gemini-plugin/`) | grep-classified against the same tree list used to build the Evidence table above | **410 / 672 = 61.0%** |
-| Generated-mirror bytes (copies of the 47 `src/` files across all platform trees, manifest/marketplace `*.json` excluded — those aren't mirrors of any `src/` file) | sum of `git ls-tree -r -l` over each mirror subtree | **3,522,961** |
-| Duplication ratio | `3,522,961 / 460,937` | **7.64×** |
-| Share of tracked (`src` + mirror) content that is derived | `3,522,961 / (460,937 + 3,522,961)` | **88.4%** |
+| Build-output tree files (repo-wide: every path under `.cursor/`, `.claude/`, `skills/`, `codex-agents/`, `codex-skills/`, `.codex-plugin/`, `codex-marketplace.json`, `.agents/build/`, `plugins/`, root `agents/`, `references/`, `rules/`, `SKILL.md`, `.claude-plugin/`, `.gemini-plugin/`, minus the 5 non-generated `.claude/` maintainer files named above) | grep-classified tree list, then excluded via `^\.claude/(initiatives/\|progress\.md\|skills/prj-)` — both re-run this session, full 5-file exclusion list reproduced and confirmed | **410 / 672 = 61.0%** |
+| Generated-mirror bytes (copies of the 47 `src/` files across all platform trees) | `docs/retrospective-v0.16.0`'s corrected Phase 1 figure (PR #329) — narrower/more precise mirror-boundary scoping than this audit's own coarse manifest-only exclusion (which lands at ~3,522,961, an approximation) | **3,495,265** |
+| Duplication ratio | `3,495,265 / 460,937` | **7.58×** |
+| Share of tracked (`src` + mirror) content that is derived | `3,495,265 / (460,937 + 3,495,265)` | **88.3%** |
 | Change amplification (last 40 non-merge commits on `main`, restricted to the 15 that touched `src/`) | `git log --no-merges -40 --name-only`, counted per-commit `src/` vs. build-output path hits, summed | **44 `src/` file-changes, 279 build-output file-changes, ratio 6.34×** |
 
-These numbers are consistent with the unmerged v0.16.0 retrospective's cited figures (414/672
-61.6%, 7.64× duplication, 88.4% derived, 6.39× amplification) to within the classification
-judgment calls noted above — the byte-based duplication and derived-share figures match exactly
-at reported precision; the two file-count-based shares (61.0% vs. 61.6%, and 279 vs. 281
-build-output file-changes) differ by a handful of files, which traces to how the 5 hand-authored,
-non-generated files living inside the otherwise-generated `.claude/` tree (see row 1c below) are
-classified — this audit excludes them from "build output" for consistency with row 1c's own
-finding that `.claude/` is not purely generated content.
+The corrected retrospective now reads **409 / 672 = 60.9%** build-output files, 7.58× duplication,
+88.3% derived. This audit's own file-count re-derivation lands one file higher, at **410 / 61.0%**
+— re-run this session with the explicit exclusion regex `^\.claude/(initiatives/|progress\.md|skills/prj-)`
+applied on top of the same build-output tree-path match used throughout this document, excluding
+exactly the 5 files listed above and no others. That single-file gap between two independently
+re-derived counts (410 vs. 409) is not resolved by this audit; it does not change any row's
+classification above. The byte-based figures (duplication, derived share) are adopted directly
+from the corrected retrospective, whose Phase 1 script scopes the mirror-boundary byte comparison
+more precisely than this audit's own file-count-driven approximation. The change-amplification
+figure (44 src / 279 build-output / 6.34×) is this audit's own independent git-log measurement and
+was not part of the retrospective's correction.
 
 ## Evidence table
 
