@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { findMissingGateMarkers } from './core.check.ts';
+import { findMissingGateMarkers } from './agents.check.ts';
 
 // ADR-007 T5/R2' — design-track.check.ts: matches verify.design-track.test.ts.
 
@@ -71,6 +71,6 @@ const checkDesignAutonomyGateGrounding = (): CheckResult => {
   return { id: 'V-DESIGN-02', ok: true };
 };
 
-// ADR-007 T5/R2': domain entrypoint — see core.check.ts's runChecks doc comment for the shared
+// ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
 export const runChecks = (): CheckResult[] => [checkDesignTrackTemplate(), checkDesignAutonomyGateGrounding()];
