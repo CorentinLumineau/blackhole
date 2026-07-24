@@ -1,6 +1,6 @@
 ---
 type: adr
-status: Accepted
+status: accepted
 created: 2026-07-11
 last_updated: 2026-07-11
 review_trigger: "on protocol change"
