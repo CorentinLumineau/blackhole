@@ -1,6 +1,5 @@
 # Plan Output File Template
 
-
 Write to `plans/<issue-N>.md` in this format:
 
 ```markdown
