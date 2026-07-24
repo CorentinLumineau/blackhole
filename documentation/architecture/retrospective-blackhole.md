@@ -47,7 +47,7 @@ defect (ADR-012 Finding 3b: `awaiting-design-approval` recognized by `phase-plan
 |---|---|
 | **Biggest insight** | The `§ facts` + two-sided-verification mechanism is excellent and under-applied. It guards 7 declarations (roster, phases, playbooks, rules, required refs, 2 counters). It guards **zero** of the 5 protocol *value vocabularies* that agent prose actually restates 8–12 times each. |
 | **Biggest improvement available** | Extend `§ facts` + `V-GROUND-01` from "structural facts" to "closed vocabularies". ~60 LOC of declarations, one generalized check. Closes the defect class that produced ADR-012 F3b. |
-| **Biggest honest trade-off** | 88.4% of tracked repo content is build output (7.64× byte duplication, 6.39× change amplification). This is **load-bearing, not accidental** — it is what makes `/plugin marketplace add <repo>` a zero-build-step install. It should be measured before it is touched, not "fixed". |
+| **Biggest honest trade-off** | 88.3% of tracked repo content is build output (7.58× byte duplication, 6.39× change amplification). This is **load-bearing, not accidental** — it is what makes `/plugin marketplace add <repo>` a zero-build-step install. It should be measured before it is touched, not "fixed". |
 
 ---
 
@@ -63,7 +63,7 @@ defect (ADR-012 Finding 3b: `awaiting-design-approval` recognized by `phase-plan
 | `src/SKILL.md` | 1 | 141 | skill entry |
 | `scripts/*.ts` (prod) | 24 | 6,133 | build, verify runner, 8 check domains, validators, status, release |
 | `scripts/*.test.ts` | 29 | 6,709 | 1.09 : 1 test-to-prod LOC ratio |
-| **Tracked total** | **672** | — | of which **414 (61.6%) is build output** |
+| **Tracked total** | **672** | — | of which **409 (60.9%) is build output** |
 
 ### Coupling map (Ca = fan-in, Ce = fan-out, by basename reference across `src/**.md`)
 
@@ -95,8 +95,8 @@ The transform producing that 6.39× is a **single token substitution**.
 copies of `orchestrator.md` are tracked.
 
 ```
-src bytes = 460,937        build-output bytes = 3,522,601        duplication = 7.64×
-88.4% of tracked content is derived
+src bytes = 460,937        build-output bytes = 3,495,265        duplication = 7.58×
+88.3% of tracked content is derived
 ```
 
 ### Hotspots (commit count, all history)
@@ -280,7 +280,7 @@ scoped as measurement precisely because the answer is unknown.
 
 | Layer | Current | Redesigned | Note |
 |---|---|---|---|
-| Build output vs source | 7.64× (88.4% derived) | 7.64× — **unchanged** | Load-bearing; R6 measures, does not change |
+| Build output vs source | 7.58× (88.3% derived) | 7.58× — **unchanged** | Load-bearing; R6 measures, does not change |
 | Within `src/**.md` | 10 recurring lines / 7,942 = **0.13%** | ~0.08% | Pareto formula (8 files) + hunt scoring bands (4 files) |
 | Protocol vocabularies | 5 undeclared, restated 8–12× each | 0 undeclared | R1 — the material DRY win |
 | Target name literals | 8 production files | 1 | R4 |
@@ -303,7 +303,7 @@ Single-source-of-truth proposals, with generation method:
 |---|---|---|---|---|
 | **Agents ×3** (8 → 24) | `AGENT_NAMES` + `V-GROUND-01` absorb the roster; but ~18 `src` files and 7 scripts mention each agent by name | Per-agent prose references | Unchanged — inherent to prose-defined agents | O(n) files, O(n) prose sites |
 | **References ×3** (38 → 114) | `V-LINK-01` scales freely; `cleanDir` full regeneration, no cache | Build wall-clock, currently trivial | Unchanged | O(n) |
-| **Platform targets 5 → 15** | 8 production files edited per target; tracked output grows 7.64× per target | **OCP violation compounds linearly** | R4 collapses to ~3 sites/target | O(n) → O(1) *coordination*, O(n) content |
+| **Platform targets 5 → 15** | 8 production files edited per target; tracked output grows 7.58× per target | **OCP violation compounds linearly** | R4 collapses to ~3 sites/target | O(n) → O(1) *coordination*, O(n) content |
 | **Team 1 → 5** | Cognitive load is genuinely low: entry chain `CLAUDE.md`(19) → `AGENTS.md`(45) → `SKILL.md`(141) → protocol(134) + state(92) + vcodes(75) = **506 lines** | Reviewing 6.39× amplified diffs — a reviewer must skip generated hunks by hand | R6 measures; no change proposed without evidence | Review cost O(6.39n) |
 
 The single-writer invariant (`blackhole-state.md`, `V-WRITE-01`) is the architecture's best
@@ -326,7 +326,7 @@ lost-update race without `flock` or CAS, and it holds at any worker count.
 **Extension points today: 7** (`§ facts` declarations) **+ glob check discovery + `V-LINK-01`.**
 **Redesigned: 12** declarations, same seams.
 
-**Portability**: 414 / 672 tracked files (61.6%) are platform-specific — but **zero** of the 47
+**Portability**: 409 / 672 tracked files (60.9%) are platform-specific — but **zero** of the 47
 `src/` files are. Platform coupling is entirely confined to generated output and to the 8 scripts
 R4 addresses. The agent-agnostic constraint in `ARCHITECTURE.md` § Active Constraints holds.
 
@@ -347,7 +347,7 @@ the never-drop-findings protocol.
 | 1 | Total tracked files | 672 | 672 | 0 | Simplicity |
 | 2 | Total LOC (`src` md / `scripts` prod) | 7,942 / 6,133 | ~8,000 / ~6,100 | +58 / −33 | Simplicity |
 | 3 | Cross-reference count (`src`) | 506 citations, ΣCa 321 | ~506 | 0 | DRY |
-| 4 | Duplication ratio — build output | 7.64× (88.4% derived) | 7.64× | 0 *(deliberate)* | DRY |
+| 4 | Duplication ratio — build output | 7.58× (88.3% derived) | 7.58× | 0 *(deliberate)* | DRY |
 | 5 | Duplication ratio — within `src` | 0.13% | 0.08% | −0.05pp | DRY |
 | 6 | SRP violations (>300 LOC **and** 7+ resp.) | 6 | 4 | **−2** | SRP |
 | 7 | OCP violations (new-target edit surface) | 8 prod files | 1 | **−7** | OCP |
@@ -355,7 +355,7 @@ the never-drop-findings protocol.
 | 9 | Cognitive load (entry chain) | 506 lines | 506 lines | 0 | Accessibility |
 | 10 | Breaking-change surface (new platform) | 16 files (8 prod + 8 test) | 3 prod + ~3 test | **−10** | Future-proof |
 | 11 | Extension points | 7 decls + 2 seams | 12 decls + 2 seams | **+5** | OCP |
-| 12 | Platform coupling | 414/672 = 61.6% *(0% of `src`)* | 61.6% *(0% of `src`)* | 0 | Portability |
+| 12 | Platform coupling | 409/672 = 60.9% *(0% of `src`)* | 60.9% *(0% of `src`)* | 0 | Portability |
 | 13 | Time-to-add-agent | 25 files | 18 files | **−7** | Developer XP |
 | 14 | Audit drift risk | **5 unguarded vocabularies**, 4 live ADR-status mismatches, 2 manual counters (two-sided ✓) | 0 unguarded, 0 mismatches, 2 counters | **−5 / −4** | Integrity |
 
@@ -380,3 +380,32 @@ Also above threshold and filed: **R5** plan-template extraction (Gain 5, Effort 
 Below threshold, retained `open`, never dropped: `Priority = Gain × (11 − Effort)` restated in
 8 files + hunt scoring bands in 4 — Gain 3, Effort 3, **Priority 24**. Drift risk is low
 (ADR-006 fixed the formula); revisit if it changes.
+
+---
+
+## Correction (2026-07-24, post-review)
+
+The build-output file count originally published in this document was **wrong**, and the error was
+caught by the campaign this retrospective produced — specifically by `impl-328`, which was told to
+derive the baseline independently rather than copy it, and returned a different number.
+
+| Metric | Originally published | Corrected |
+|---|---|---|
+| Build-output files | 414 (61.6%) | **409 (60.9%)** |
+| Build-output bytes | 3,522,601 | **3,495,265** |
+| Byte duplication | 7.64× | **7.58×** |
+| Derived share of tracked content | 88.4% | **88.3%** |
+
+**Cause**: the original classifier matched everything under `.claude/`, sweeping in five
+maintainer-only files that are not build output at all —
+`.claude/progress.md`, `.claude/initiatives/_registry.json`,
+`.claude/skills/prj-create-release/` (2 files), and `.claude/skills/prj-mercure-sync/SKILL.md`.
+
+Those five are precisely the *maintainer-only local content* class that **ADR-009** exists to
+separate from the shipped plugin surface — an ADR cited elsewhere in this very document. The
+measurement conflated the two categories the decision was written to keep apart.
+
+None of the document's conclusions change: the argument rests on the order of magnitude
+(≈61% of files, ≈88% of bytes, ~7.6× duplication), not on the third significant figure. The
+correction is recorded rather than silently applied because a retrospective that asserts measured
+figures should show when its own measurements were revised.
