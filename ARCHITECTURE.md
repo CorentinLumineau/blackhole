@@ -29,12 +29,12 @@ backlog-campaign/
 ├── .blackhole/           # GITIGNORED runtime state (protocol SSOT) — queue.json, findings-ledger.json,
 │                         #   config.json, plans/, archive/ — never hand-edited by agents outside protocol
 ├── .agents/              # GITIGNORED ephemeral per-run handoff dirs (orchestrator/, worker_*/, explorer_*/)
-│                         #   plus .agents/build/ (Antigravity/Gemini compiled output, --gemini flag)
+│                         #   plus .agents/build/ (Antigravity/Gemini compiled output, built by default)
 ├── skills/, agents/, references/, rules/   # BUILD OUTPUT — flat skills.sh registry mirror of src/
 ├── .cursor/               # BUILD OUTPUT — Cursor IDE agent/rules/skills mirror
 ├── .claude/ + .claude-plugin/   # BUILD OUTPUT — Claude Code plugin + marketplace manifest
 ├── codex-agents/ + codex-skills/ + .codex-plugin/ + codex-marketplace.json  # BUILD OUTPUT — Codex CLI
-├── .gemini-plugin/ + plugins/blackhole/   # BUILD OUTPUT — Antigravity/Gemini targets (--gemini flag)
+├── .gemini-plugin/ + plugins/blackhole/   # BUILD OUTPUT — Antigravity/Gemini targets (built by default; --gemini/--all/--no-codex are deprecated no-op aliases)
 ├── documentation/        # ADRs, audits, reviews, architecture reference (this project's own docs)
 ├── fixtures/              # Example/test fixtures for config, queue, ledger, plugin manifests
 ├── templates/             # Hook templates used by the build
@@ -236,11 +236,12 @@ per-host setup (Cursor submodule, Claude Code plugin marketplace, Codex CLI, ski
 **Run commands**:
 ```bash
 bun install                # install
-bun run build               # compile src/ -> all platform targets
-bun run build --gemini      # also compile Antigravity/Gemini target
+bun run build               # compile src/ -> all platform targets, incl. Antigravity/Gemini (tracked ⇒ built-by-default)
 bun run verify               # validate plugin coherence across compiled targets
 bun test                     # run all *.test.ts (build, verify, forge-*, review-aggregate, ...)
 ```
+
+`--gemini`, `--all`, and `--no-codex` are deprecated no-op aliases kept only for muscle-memory compatibility (`scripts/build.ts`'s `DEPRECATED_BUILD_FLAGS`, ADR-007 R5′).
 
 **Testing frameworks**: `bun test` (Bun's built-in test runner) — every `scripts/*.ts` has a
 co-located `*.test.ts`.
@@ -252,11 +253,20 @@ co-located `*.test.ts`.
 
 ## 9. Future Considerations
 
-- Documentation governance gap: `documentation/decisions/` has 3 ADRs (ADR-001..003) but no
-  `documentation/decisions/INDEX.md` yet — flagged as V-ADA-02 during this retrospective.
-- The `.agents/build/` and `.gemini-plugin/` targets are only produced with the `--gemini` flag,
-  making them easy to forget to regenerate before a release; consider folding `--gemini` into
-  the default `bun run build` once the Gemini target stabilizes.
+- **Committed build-output measurement** (issue #328, open): 88.4% of tracked files
+  (414 of 672) are compiled build output — a 7.64× src→build byte duplication and 6.39×
+  change amplification. The open question is which documented install path actually
+  resolves each committed tree (`.claude/` + `.claude-plugin/`, `plugins/blackhole`,
+  `plugins/blackhole-claude`, `.cursor/`, `codex-agents/` + `codex-skills/` +
+  `.codex-plugin/`, `.gemini-plugin/`, `.agents/build/`, and the flat root
+  `skills/`/`agents/`/`references/`/`rules/` registry); trees with no resolving install
+  path are candidates for release-time generation instead of tracking. No tree is removed
+  until that mapping lands — issue #328 is a measurement task only.
+- **ADR status vocabulary** (issue #324, open): ADR frontmatter uses four spellings
+  (`Accepted`, `accepted`, `current`, `superseded`) against the three values declared in
+  `doc-governance.md` (`current | deprecated | archived`), and no check enforces either
+  set. The open question is whether ADRs adopt the generic doc-governance enum or an
+  ADR-specific one.
 
 ---
 
@@ -270,7 +280,7 @@ co-located `*.test.ts`.
   `.blackhole/` (see `src/references/blackhole-state.md`); ephemeral per-run agent handoff dirs
   under `.agents/orchestrator|worker_*|explorer_*` are NOT a substitute for `.blackhole/` state.
 - **When working on X**: Any change to an agent/skill/rule/reference must be made in `src/` and
-  then compiled via `bun run build` (and `--gemini` if the Gemini target is affected) — never
+  then compiled via `bun run build` (compiles every platform target, including Antigravity/Gemini, by default) — never
   hand-edit a compiled target directly, CI will reject the drift.
 - **Avoid**: Do not hand-edit `.cursor/`, `.claude/`, `codex-*`, `.gemini-plugin/`,
   `plugins/blackhole/`, or the flat root `skills/`/`agents/`/`references/`/`rules/` — all are
