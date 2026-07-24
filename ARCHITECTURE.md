@@ -253,9 +253,9 @@ co-located `*.test.ts`.
 
 ## 9. Future Considerations
 
-- **Committed build-output measurement** (issue #328, open): **60.9% of tracked files**
-  (409 of 672) are compiled build output, accounting for **88.3% of tracked bytes**
-  (7.58× src→build duplication) and 6.39× change amplification. The open question is
+- **Committed build-output measurement** (issue #328, open): **61.0% of tracked files**
+  (410 of 672) are compiled build output, accounting for **88.4% of tracked bytes**
+  (7.60× src→build duplication) and 6.39× change amplification. The open question is
   which documented install path actually resolves each committed tree (`.claude/` +
   `.claude-plugin/`, `plugins/blackhole`,
   `plugins/blackhole-claude`, `.cursor/`, `codex-agents/` + `codex-skills/` +
