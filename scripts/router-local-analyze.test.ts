@@ -138,8 +138,11 @@ describe('blackhole-vcodes.md / planner.md / reviewer.md — V-THREAT-01 registr
   });
 
   test('Plan Output File Template documents the threat_screen_passed frontmatter field', () => {
-    const planner = read('src/agents/planner.md');
-    expect(planner).toContain('threat_screen_passed: true | null');
+    // Issue #325: the Plan Output File Template (all three sub-templates) was extracted
+    // verbatim from src/agents/planner.md into src/references/plan-template.md, leaving a
+    // thin pointer section in planner.md. This frontmatter field lives in the extracted file.
+    const planTemplate = read('src/references/plan-template.md');
+    expect(planTemplate).toContain('threat_screen_passed: true | null');
   });
 
   test('reviewer.md audits V-THREAT-01 by reusing review-core.md security-mode injection and the plan-file stamp, not new detection logic', () => {

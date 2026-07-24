@@ -66,7 +66,7 @@ status: blocked
     expect(findMissingDesignTrackHeadings(fixture)).toEqual(['## Options + Trade-off Matrix']);
   });
 
-  test('DESIGN_TRACK_REQUIRED_HEADINGS lists all 8 headings verbatim from planner.md template', () => {
+  test('DESIGN_TRACK_REQUIRED_HEADINGS lists all 8 headings verbatim from plan-template.md', () => {
     expect(DESIGN_TRACK_REQUIRED_HEADINGS).toEqual([
       '## Requirements Framing',
       '## Options + Trade-off Matrix',
