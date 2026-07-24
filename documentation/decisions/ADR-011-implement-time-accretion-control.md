@@ -16,7 +16,7 @@ supersedes:
 
 ## Status
 
-Proposed
+Accepted — 2026-07-21 (shipped in v0.15.0: `companion-substrate-closure` M0/M1 D1-D4 merged)
 
 Amends ADR-008 § B (reuse gate aperture). Paired with ADR-012, which owns the artifact
 substrate concerns from the same investigation.
