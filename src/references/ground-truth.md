@@ -17,3 +17,13 @@ See `scripts/build.ts` § facts and `scripts/checks/ground-truth.check.ts`'s `ch
 `checkDocTables` for the current declared values and comparison logic. `scripts/verify.ts` itself
 is only a thin runner (ADR-007 T5/R2′) that glob-discovers every `scripts/checks/*.check.ts`
 domain file — it no longer contains any check logic directly.
+
+`§ facts` also declares five *value vocabularies* — closed sets of enum-shaped strings that agent
+prose restates verbatim at many consumption sites, rather than the structural facts above: queue
+status, queue notes (its closed gate-value subset), kaizen kinds, platform build targets, and ADR
+frontmatter status. `scripts/checks/vocabulary.check.ts`'s registry-driven check (`V-VOCAB-01`)
+extends the same two-separately-fallible-derivations discipline to each of them — one hand-authored
+declared array per vocabulary in `§ facts`, one independent scan of `src/**/*.md` (or, for ADR
+status, `documentation/decisions/**.md`) — never generated from the scan, and never collapsed onto
+one derivation path. Adding a sixth vocabulary is a single registry-entry addition, not a new
+inline sub-check.

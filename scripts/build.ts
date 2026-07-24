@@ -138,14 +138,19 @@ const enrichVcodesMdcGlobs = (content: string): string => {
   );
 };
 
-type Target = 'cursor' | 'claude' | 'skills' | 'gemini' | 'codex';
+// Derived from the § facts PLATFORM_TARGETS declaration below (typeof works regardless of
+// declaration order within a module — this is a type-level query, not a runtime read). Collapses
+// the pre-existing type-only/runtime-array duplicate (issue #320 Codebase Conventions design
+// decision 4): before this, the 5 target names lived only in this type, with no runtime array a
+// check could ever validate against the 8 script sites that hand-list them.
+type Target = (typeof PLATFORM_TARGETS)[number];
 
 // Strip platform-conditional blocks: {{#cursor}}...{{/cursor}} etc.
 // Keeps only the block matching the current compile target.
 export const applyPlatformConditionals = (content: string, target: Target): string => {
   const active = target === 'skills' ? 'skills' : target;
   let res = content;
-  for (const platform of ['cursor', 'claude', 'skills', 'gemini', 'codex'] as const) {
+  for (const platform of PLATFORM_TARGETS) {
     if (platform !== active) {
       res = res.replace(new RegExp(`\\{\\{#${platform}\\}\\}[\\s\\S]*?\\{\\{/${platform}\\}\\}\\n?`, 'g'), '');
     }
@@ -276,6 +281,43 @@ export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'chec
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
 export const VCODE_TABLE_ROW_COUNT = 57;
 
+// § facts — value vocabularies (issue #320, ADR-007 R1′ extension). Closed sets of enum-shaped
+// strings that agent prose restates verbatim at many consumption sites, declared once here and
+// checked by V-VOCAB-01's independent scan-vs-declaration comparison (never generated from the
+// scan — same two-separately-fallible-derivations discipline as V-GROUND-01 above).
+
+/** `queue.json` `issues.<n>.status` (V-VOCAB-01) — canonical enum per `queue-dag.md`'s field-rules
+ *  table. Scanned narrowly (lines mentioning both `phase` and `status:`) to avoid colliding with
+ *  the differently-shaped worker-JSON `status` vocabulary that shares the same field name. */
+export const QUEUE_STATUSES = ['blocked', 'ready', 'in-flight', 'merged', 'closed'];
+
+/** `queue.json` `issues.<n>.notes`' closed kebab-token gate-value subset (V-VOCAB-01) — the class
+ *  of value that caused ADR-012 Finding 3b (`awaiting-design-approval` restated in one file,
+ *  omitted from two others' enums). `notes` also carries open, parameterized free text (e.g.
+ *  `overlap with #N`) that is out of scope for a closed-set check by design. */
+export const QUEUE_NOTES = [
+  'awaiting-user-clarification',
+  'awaiting-plan-approval',
+  'awaiting-design-approval',
+  'awaiting-investigation',
+  'awaiting-recovery-approval',
+  'clarify waived — narrow technical',
+];
+
+/** `kaizen.kinds` (V-VOCAB-01) — hunt territory kinds, canonical default per `config-template.md`. */
+export const HUNT_KINDS = ['quickwins', 'best-practices', 'coverage', 'refactor', 'bug', 'retrospective', 'parity'];
+
+/** Platform build targets (V-VOCAB-01) — see `PLATFORM_TARGETS` above `type Target`; also the
+ *  declared side of the scripts/**\/*.ts scan for any stray re-hardcoded copy of this array. */
+export const PLATFORM_TARGETS = ['cursor', 'claude', 'skills', 'gemini', 'codex'] as const;
+
+/** ADR frontmatter `status:` (V-VOCAB-01) — a truthful superset of what's legitimately in use
+ *  today (`accepted`/`Accepted`, `superseded`, `current`), compared case-insensitively. `current`
+ *  is `mercure-doc-governance`'s generic lifecycle value leaking into this repo's own
+ *  `Proposed | Accepted | Superseded` ADR convention — a noted taxonomy-overlap follow-up
+ *  candidate, out of this issue's Touch-Paths (`documentation/decisions/**` is read-only here). */
+export const ADR_STATUSES = ['proposed', 'accepted', 'superseded', 'current'];
+
 /**
  * Total check count across every `scripts/checks/*.check.ts` domain file (ADR-007 T5/R2′:
  * `verify.ts` is a thin runner that glob-discovers these files — there is no central registry).
@@ -285,7 +327,7 @@ export const VCODE_TABLE_ROW_COUNT = 57;
  * array. `verify.ts` warns (does not fail) on a mismatch, so this is the sole place the
  * expectation is declared — never restate it as a literal at any consumption site.
  */
-export const EXPECTED_CHECK_COUNT = 30;
+export const EXPECTED_CHECK_COUNT = 31;
 
 export const buildGeminiPluginManifest = (pkgVersion: string) => ({
   $schema: 'https://antigravity.google/schemas/v1/plugin.json',
