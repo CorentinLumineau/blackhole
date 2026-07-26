@@ -16,49 +16,6 @@ export type CheckResult = { id: string; ok: boolean; detail?: string };
 
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
-// V-PHASE-01: Phase playbooks reference consistent phase names
-const checkPhaseNames = (): CheckResult => {
-  const missing: string[] = [];
-
-  for (const pb of PHASE_PLAYBOOK_FILES) {
-    const content = read(`src/references/${pb}`);
-    const hits = PHASE_NAMES.filter((p) => content.includes(p));
-    if (hits.length === 0) missing.push(`${pb}: no phase name references`);
-  }
-
-  const queueDag = read('src/references/queue-dag.md');
-  for (const p of PHASE_NAMES) {
-    if (!queueDag.includes(`\`${p}\``)) missing.push(`queue-dag.md: missing phase ${p}`);
-  }
-
-  if (missing.length) return { id: 'V-PHASE-01', ok: false, detail: missing.join('; ') };
-  return { id: 'V-PHASE-01', ok: true };
-};
-
-// V-VCODE-01: V-codes referenced in agents or phases
-const checkVcodeReferences = (): CheckResult => {
-  const vcodesContent = read('src/references/blackhole-vcodes.md');
-  const codeMatches = [...vcodesContent.matchAll(/\| (V-[A-Z]+-\d+)/g)];
-  const codes = new Set(codeMatches.map((m) => m[1]));
-
-  const refDir = path.join(srcDir, 'references');
-  const agentDir = path.join(srcDir, 'agents');
-  const corpus = [
-    ...walkMdFilesAbs(refDir).map((f) => fs.readFileSync(f, 'utf-8')),
-    ...walkMdFilesAbs(agentDir).map((f) => fs.readFileSync(f, 'utf-8')),
-  ].join('\n');
-
-  const unreferenced: string[] = [];
-  for (const code of codes) {
-    if (!corpus.includes(code)) unreferenced.push(code);
-  }
-
-  if (unreferenced.length > codes.size * 0.5) {
-    return { id: 'V-VCODE-01', ok: false, detail: `Many unreferenced codes: ${unreferenced.slice(0, 5).join(', ')}...` };
-  }
-  return { id: 'V-VCODE-01', ok: true };
-};
-
 const PLAN_REQUIRED_PHASES = new Set(['plan', 'implement', 'review']);
 
 const parseCampaignDirArg = (): string | null => {
@@ -79,10 +36,51 @@ const resolveCampaignPaths = () => {
   return { campaignDir, queueFile };
 };
 
-// V-PLAN-01: In-flight plan/implement/review entries require plans/issue-N.md
-const checkPlanArtifacts = (): CheckResult => {
-  const { campaignDir, queueFile } = resolveCampaignPaths();
+export const validatePhaseNames = (
+  playbookContents: Record<string, string>,
+  queueDagContent: string,
+  phaseNames: readonly string[] = PHASE_NAMES,
+): CheckResult => {
+  const missing: string[] = [];
 
+  for (const pb of PHASE_PLAYBOOK_FILES) {
+    const content = playbookContents[pb];
+    if (content === undefined) {
+      missing.push(`${pb}: no phase name references`);
+      continue;
+    }
+    const hits = phaseNames.filter((p) => content.includes(p));
+    if (hits.length === 0) missing.push(`${pb}: no phase name references`);
+  }
+
+  for (const p of phaseNames) {
+    if (!queueDagContent.includes(`\`${p}\``)) missing.push(`queue-dag.md: missing phase ${p}`);
+  }
+
+  if (missing.length) return { id: 'V-PHASE-01', ok: false, detail: missing.join('; ') };
+  return { id: 'V-PHASE-01', ok: true };
+};
+
+export const validateVcodeReferences = (vcodesContent: string, corpus: string): CheckResult => {
+  const codeMatches = [...vcodesContent.matchAll(/\| (V-[A-Z]+-\d+)/g)];
+  const codes = new Set(codeMatches.map((m) => m[1]));
+
+  const unreferenced: string[] = [];
+  for (const code of codes) {
+    if (!corpus.includes(code)) unreferenced.push(code);
+  }
+
+  if (unreferenced.length > codes.size * 0.5) {
+    return { id: 'V-VCODE-01', ok: false, detail: `Many unreferenced codes: ${unreferenced.slice(0, 5).join(', ')}...` };
+  }
+  return { id: 'V-VCODE-01', ok: true };
+};
+
+export const validatePlanArtifacts = (
+  campaignDir: string,
+  queueFile: string,
+  rootDir: string = root,
+): CheckResult => {
   if (!fs.existsSync(queueFile)) {
     return { id: 'V-PLAN-01', ok: true };
   }
@@ -91,7 +89,7 @@ const checkPlanArtifacts = (): CheckResult => {
   try {
     queue = JSON.parse(fs.readFileSync(queueFile, 'utf-8'));
   } catch {
-    return { id: 'V-PLAN-01', ok: false, detail: `${path.relative(root, queueFile)}: invalid JSON` };
+    return { id: 'V-PLAN-01', ok: false, detail: `${path.relative(rootDir, queueFile)}: invalid JSON` };
   }
 
   if (!queue.issues || typeof queue.issues !== 'object') {
@@ -106,7 +104,7 @@ const checkPlanArtifacts = (): CheckResult => {
 
     const planPath = path.join(campaignDir, 'plans', `issue-${id}.md`);
     if (!fs.existsSync(planPath)) {
-      errors.push(`issue #${id} (${issue.phase}): missing ${path.relative(root, planPath)}`);
+      errors.push(`issue #${id} (${issue.phase}): missing ${path.relative(rootDir, planPath)}`);
     }
   }
 
@@ -114,14 +112,12 @@ const checkPlanArtifacts = (): CheckResult => {
   return { id: 'V-PLAN-01', ok: true };
 };
 
-// V-SKILL-01: SKILL.md modes match phase playbooks
-const checkSkillModes = (): CheckResult => {
-  const skill = read('src/SKILL.md');
+export const validateSkillModes = (skillContent: string): CheckResult => {
   const required = ['run', 'status', 'handle', 'plan', 'implement', 'review', 'campaign-audit'];
-  const missing = required.filter((m) => !skill.includes(m));
+  const missing = required.filter((m) => !skillContent.includes(m));
 
   const phaseFiles = ['phase-handle', 'phase-plan', 'phase-implement', 'phase-review', 'phase-loop'];
-  const missingPhases = phaseFiles.filter((p) => !skill.includes(p));
+  const missingPhases = phaseFiles.filter((p) => !skillContent.includes(p));
 
   if (missing.length || missingPhases.length) {
     return {
@@ -159,6 +155,40 @@ export const findHarnessTokenLeaks = (content: string, tokens: string[] = HARNES
     }
   }
   return leaks;
+};
+
+// V-PHASE-01: Phase playbooks reference consistent phase names
+const checkPhaseNames = (): CheckResult => {
+  const playbookContents = Object.fromEntries(
+    PHASE_PLAYBOOK_FILES.map((pb) => [pb, read(`src/references/${pb}`)]),
+  );
+  const queueDag = read('src/references/queue-dag.md');
+  return validatePhaseNames(playbookContents, queueDag);
+};
+
+// V-VCODE-01: V-codes referenced in agents or phases
+const checkVcodeReferences = (): CheckResult => {
+  const vcodesContent = read('src/references/blackhole-vcodes.md');
+  const refDir = path.join(srcDir, 'references');
+  const agentDir = path.join(srcDir, 'agents');
+  const corpus = [
+    ...walkMdFilesAbs(refDir).map((f) => fs.readFileSync(f, 'utf-8')),
+    ...walkMdFilesAbs(agentDir).map((f) => fs.readFileSync(f, 'utf-8')),
+  ].join('\n');
+
+  return validateVcodeReferences(vcodesContent, corpus);
+};
+
+// V-PLAN-01: In-flight plan/implement/review entries require plans/issue-N.md
+const checkPlanArtifacts = (): CheckResult => {
+  const { campaignDir, queueFile } = resolveCampaignPaths();
+  return validatePlanArtifacts(campaignDir, queueFile, root);
+};
+
+// V-SKILL-01: SKILL.md modes match phase playbooks
+const checkSkillModes = (): CheckResult => {
+  const skill = read('src/SKILL.md');
+  return validateSkillModes(skill);
 };
 
 const checkClaudeCodeNativeNeutrality = (): CheckResult => {
