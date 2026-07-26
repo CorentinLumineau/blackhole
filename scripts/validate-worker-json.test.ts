@@ -349,11 +349,19 @@ describe('validateWorker hunter', () => {
   test('valid complete with empty findings', () => expectValid('hunter', 'hunter-complete.json'));
   test('valid complete with finding', () =>
     expectValid('hunter', 'hunter-complete-with-finding.json'));
+  test('valid complete with populated findings', () =>
+    expectValid('hunter', 'hunter-complete-with-findings.json'));
   test('valid error', () => expectValid('hunter', 'hunter-error.json'));
   test('invalid error missing error field', () =>
     expectInvalid('hunter', 'hunter-error-missing-error-field.json'));
   test('invalid severity enum', () =>
     expectInvalid('hunter', 'hunter-complete-invalid-severity.json'));
+  test('invalid finding severity enum', () => {
+    const data = readFixture('hunter-complete-invalid-severity.json');
+    const errors = validateWorker('hunter', data);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes('findings[0].severity'))).toBe(true);
+  });
   test('invalid verification enum', () =>
     expectInvalid('hunter', 'hunter-complete-invalid-verification.json'));
   test('invalid complete missing territory', () =>
@@ -700,7 +708,7 @@ describe('validate-worker-json hook CLI', () => {
     expect(result.stderr.trim()).toBe('');
   });
 
-  test('valid hunter stop exits 0', async () => {
+  test('valid hunter resume-signal hook fixture exits 0', async () => {
     const hookFixturePath = path.join(root, 'fixtures/resume-signal/hook-hunter-stop.json');
     const hookInput = fs.readFileSync(hookFixturePath, 'utf-8');
     const result = await runValidateWorkerCli(['--hook'], hookInput);
@@ -708,11 +716,11 @@ describe('validate-worker-json hook CLI', () => {
     expect(result.stderr.trim()).toBe('');
   });
 
-  test('invalid hunter worker JSON exits 1 with validation error', async () => {
+  test('invalid hunter missing kind exits 1 with validation error', async () => {
     const invalidHunter = {
       status: 'complete',
-      kind: 'quickwins',
       wave: 1,
+      territory: { bands_scanned: ['src/agents'], exhausted: false },
       findings: [],
     };
     const result = await runValidateWorkerCli(
@@ -720,7 +728,7 @@ describe('validate-worker-json hook CLI', () => {
       hunterHookInput(fencedJsonSummary(invalidHunter)),
     );
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('territory');
+    expect(result.stderr).toContain('kind');
   });
 
   // readStdin catch (validate-worker-json.ts:709-714) is not reachable in subprocess
@@ -773,5 +781,30 @@ describe('validate-worker-json CLI mode', () => {
     const result = await runValidateWorkerCli(['--role', 'planner', '--file', missingPath]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('ENOENT');
+  });
+
+  test('--role hunter --file valid fixture exits 0', async () => {
+    const fixturePath = path.join(fixturesDir, 'hunter-complete.json');
+    const result = await runValidateWorkerCli(['--role', 'hunter', '--file', fixturePath]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('--role hunter --file invalid fixture exits 1 with validation error', async () => {
+    const fixturePath = path.join(fixturesDir, 'hunter-error-missing-error-field.json');
+    const result = await runValidateWorkerCli(['--role', 'hunter', '--file', fixturePath]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('error');
+  });
+
+  test('--role hunter --json invalid payload exits 1 with validation error', async () => {
+    const payload = JSON.stringify({
+      status: 'error',
+      kind: 'quickwins',
+      findings: [],
+    });
+    const result = await runValidateWorkerCli(['--role', 'hunter', '--json', payload]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('error');
   });
 });
