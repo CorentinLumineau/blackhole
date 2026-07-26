@@ -164,10 +164,13 @@ Report to user: SHIPPED summary, LEDGER OPEN count, any deferred issues filed.
 Then ask, via the coordinator's `AskQuestion` convention: "Start a new
 campaign?"
 
-- **Yes** — the coordinator re-fires the Campaign Launch Configuration Gate
-  (`coordinator.md` § Bootstrap preflight, ADR-005) before its next
-  orchestrator spawn, so the user reconfigures scope and `merge_mode` for the
-  new campaign.
+- **Yes** — re-fire the Campaign Launch Configuration Gate (`coordinator.md`
+  § Bootstrap preflight, ADR-005) before the next orchestrator spawn, so the
+  user reconfigures scope and `merge_mode` for the new campaign. The actor is
+  the coordinator under Pattern B; under Pattern C there is no coordinator, so
+  the **foreground orchestrator** (main chat) re-fires it — see
+  `claude-code-native.md` § Bootstrap gate ownership. A restart is a new
+  `run`-mode campaign start, so the gate applies on both patterns.
 - **No** — the session ends normally; no further prompting.
 
 ## Kaizen hunt dispatch

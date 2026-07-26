@@ -7,6 +7,7 @@ import {
   formatScopeLabel,
   groupIssuesByPhase,
   parseCheckpointFrontmatter,
+  parseStatusArgs,
   renderConfigSummary,
   renderRouteChain,
   type Route,
@@ -513,5 +514,26 @@ describe('renderConfigSummary', () => {
         scope: { labels: config.scope_labels },
       }),
     ).toContain(expected);
+  });
+});
+
+describe('parseStatusArgs', () => {
+  test('no subcommand defaults to the dashboard, preserving existing invocations', () => {
+    expect(parseStatusArgs([]).mode).toBe('dashboard');
+    expect(parseStatusArgs(['--no-gh'])).toMatchObject({ mode: 'dashboard', skipGh: true });
+  });
+
+  test('config-summary subcommand selects the config summary', () => {
+    expect(parseStatusArgs(['config-summary']).mode).toBe('config-summary');
+  });
+
+  test('flags still parse when combined with a subcommand', () => {
+    const parsed = parseStatusArgs(['config-summary', '--campaign-dir', '/tmp/campaign']);
+    expect(parsed.mode).toBe('config-summary');
+    expect(parsed.campaignDir).toBe('/tmp/campaign');
+  });
+
+  test('an unknown subcommand is not silently treated as the dashboard', () => {
+    expect(() => parseStatusArgs(['bogus-command'])).toThrow(/bogus-command/);
   });
 });

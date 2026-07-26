@@ -43,6 +43,16 @@ before its first fan-out.
 
 ## Baseline (measured 2026-07-26, before any task runs)
 
+> **AMENDED 2026-07-26 — this section and task T0 do NOT apply to the implementation branch.**
+> The `V-LINK-01` failure described below exists only on `docs/adr-010-story-driven-conformance`,
+> the unmerged branch whose own commit `8a99644` introduced it. It was never present on `main`
+> (verified: `main@2c00702` is `27/27` green). Per the user's split decision, T0 was implemented
+> and committed as `2c5e0ba` **on that branch**, and the feature work branched from `main` with an
+> already-green baseline. Read the numbers below as the historical record of why T0 existed, not
+> as a description of `feat/campaign-config-confirmation-gate`. Post-implementation target on the
+> feature branch is `28/28` for the reason stated at the end of this section — but from a `27/27`
+> starting point, with no T0 step. See `.claude/progress.md` for the current account.
+
 Fresh evidence — every acceptance criterion below is stated relative to this baseline, not to an
 assumed-green tree:
 

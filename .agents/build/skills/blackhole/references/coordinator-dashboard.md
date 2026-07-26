@@ -14,6 +14,16 @@ bun run status
 Reads `.blackhole/config.json`, `queue.json`, `findings-ledger.json`,
 `campaign-checkpoint.md`, and (when `gh` is available) scoped forge open counts.
 
+Sibling subcommand — config summary only, no forge call, no queue/ledger render:
+
+```bash
+bun run status config-summary
+```
+
+Used by the routine resume confirmation gate (`coordinator.md` § Bootstrap preflight). It is not
+part of the dashboard: the dashboard prints every orchestrator turn, this prints at campaign
+launch confirmation only.
+
 ## When to print (REQUIRED)
 
 | Event | Who | Action |

@@ -14,6 +14,10 @@ related:
 
 # ADR-015: Routine-Resume Campaign Config Confirmation Gate
 
+Accepted on implementation, 2026-07-26, per this repo's ADR lifecycle convention (ADR-007:
+"flips to Accepted when implemented"): the gate is implemented and verify-green on
+`feat/campaign-config-confirmation-gate`, pending merge to `main`.
+
 Amends ADR-005 § Campaign Launch Configuration Gate and ADR-006 § "Campaign launch form" by
 adding a fourth trigger surface to the same gate. The 6-step form's content, ordering, defaults,
 and validation logic are unchanged.
@@ -60,6 +64,11 @@ Three scope decisions:
    exported helper rather than an addition to `formatDashboard()`, because the dashboard renders
    on every `bun run status` and every orchestrator turn; the config summary belongs at launch
    confirmation only (and permanently widening an already-dense dashboard invites V-UX-01).
+   It is reachable from the prompt layer as `bun run status config-summary` — a subcommand on
+   `campaign-status.ts`'s existing entry point, dispatching on `argv[2]` exactly as
+   `forge-scope.ts` already does for `list-args`/`create-args`. An exported-but-uninvokable
+   helper would have left the gate undocumentable in shell terms and pushed the coordinator
+   toward hand-formatting its own summary (V-INT-02).
 
 **Documented at all three entry paths, enforced by a check.** The gate is stated in
 `coordinator.md` (Pattern B), `claude-code-native.md` (Pattern C), and `SKILL.md` Phase 0

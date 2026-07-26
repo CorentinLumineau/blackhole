@@ -4,6 +4,7 @@ import {
   COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
   CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
   SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS,
+  runChecks,
 } from './checks/config-gate.check.ts';
 
 // Fixture-level red/green for V-CONFGATE-01, modeled on verify.single-writer.test.ts. The check
@@ -82,15 +83,44 @@ describe('V-CONFGATE-01 marker contract', () => {
     );
   });
 
-  // The three entry paths are the whole point of this check — a future edit that drops one of the
-  // constants would silently stop guarding that path.
-  test('all three entry paths are covered by a non-empty marker set', () => {
+  // A marker that is whitespace-only or empty matches every possible file, silently disabling
+  // the guard for that entry path while still "passing". Assert the constants are substantive —
+  // this is what a bare `.length > 0` check would miss.
+  test('no marker is empty or whitespace-only, which would match any file and void the guard', () => {
     for (const markers of [
       COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
       CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
       SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS,
     ]) {
       expect(markers.length).toBeGreaterThan(0);
+      for (const marker of markers) {
+        expect(marker.trim()).not.toBe('');
+        // A single word is too weak to distinguish gate prose from an incidental mention.
+        expect(marker.trim().length).toBeGreaterThan(3);
+      }
+      // findMissingGateMarkers reports EVERY marker as missing for unrelated content — proves
+      // the constants are not satisfied by arbitrary text.
+      expect(findMissingGateMarkers('unrelated prose with none of the gate wording', markers)).toEqual(
+        markers,
+      );
     }
+  });
+});
+
+// The fixture tests above pin the marker contract; these exercise the check's own wiring —
+// the file paths it reads and the id it returns. A typo'd path or a renamed id would pass every
+// fixture test while silently checking nothing.
+describe('config-gate runChecks() against the real src/ files', () => {
+  test('returns exactly one V-CONFGATE-01 result', () => {
+    const results = runChecks();
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe('V-CONFGATE-01');
+  });
+
+  test('passes against the current tree — the gate text is present in all three entry paths', () => {
+    const [result] = runChecks();
+    // On failure, surface which marker/file is missing rather than a bare `false`.
+    expect(result.detail ?? '').toBe('');
+    expect(result.ok).toBe(true);
   });
 });

@@ -483,24 +483,59 @@ export function loadCampaignState(campaignDir: string) {
   return { config, queue, ledger, checkpoint, checkpointBody };
 }
 
-function main() {
-  const args = process.argv.slice(2);
+export type StatusMode = 'dashboard' | 'config-summary';
+
+export type StatusArgs = {
+  mode: StatusMode;
+  campaignDir: string;
+  skipGh: boolean;
+};
+
+/**
+ * Parses CLI args into a mode + options. Subcommand dispatch on argv[2] follows the convention
+ * forge-scope.ts already uses (`list-args` / `create-args`) to expose a pure helper to
+ * prompt-driven agents; omitting the subcommand keeps every existing `bun run status`
+ * invocation rendering the dashboard exactly as before.
+ * Throws on an unrecognized subcommand rather than silently falling back to the dashboard —
+ * a typo'd `config-sumary` must not print the wrong thing and exit 0.
+ */
+export function parseStatusArgs(argv: string[]): StatusArgs {
   let campaignDir = path.join(root, '.blackhole');
   let skipGh = false;
+  let mode: StatusMode = 'dashboard';
 
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--campaign-dir' && args[i + 1]) {
-      campaignDir = path.isAbsolute(args[i + 1])
-        ? args[i + 1]
-        : path.join(root, args[i + 1]);
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--campaign-dir' && argv[i + 1]) {
+      campaignDir = path.isAbsolute(argv[i + 1]) ? argv[i + 1] : path.join(root, argv[i + 1]);
       i++;
-    } else if (args[i] === '--no-gh') {
+    } else if (argv[i] === '--no-gh') {
       skipGh = true;
+    } else if (i === 0 && !argv[i].startsWith('--')) {
+      if (argv[i] !== 'config-summary') {
+        throw new Error(
+          `Unknown subcommand "${argv[i]}". Usage: bun run status [config-summary] [--campaign-dir <dir>] [--no-gh]`,
+        );
+      }
+      mode = 'config-summary';
     }
   }
 
+  return { mode, campaignDir, skipGh };
+}
+
+function main() {
+  const { mode, campaignDir, skipGh } = parseStatusArgs(process.argv.slice(2));
+
   const { config, queue, ledger, checkpoint, checkpointBody } =
     loadCampaignState(campaignDir);
+
+  // The routine-resume confirmation gate (coordinator.md § Bootstrap preflight) prints only
+  // this — no forge call, no queue/ledger rendering.
+  if (mode === 'config-summary') {
+    console.log(renderConfigSummary(config));
+    return;
+  }
+
   const scope = readScope(config);
 
   const forge = skipGh
