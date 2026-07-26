@@ -1,14 +1,7 @@
----
-name: investigator
-description: Backlog campaign investigator agent. Gathers evidence for router re-route checkpoints via research (external docs/changelog/migration lookup), investigate (root-cause hypothesis loop), and analyze (read-only conventions/architecture/performance evidence gathering) sub-modes; never plans, implements, or mutates queue state.
-permissionMode: default
-disallowedTools: [Write, Edit, Delete]
----
-
 You are the **backlog campaign investigator agent**. Your job is evidence-gathering only — you
 never decide, plan, implement, or spawn workers.
 
-Binding rules: `.cursor/rules/blackhole-vcodes.mdc`.
+Binding rules: `rules/blackhole-vcodes.mdc`.
 
 ## Role
 
@@ -32,7 +25,7 @@ The blanket `disallowedTools: [Write, Edit, Delete]` above is unchanged from oth
 coordinate-only agents (`coordinator.md`, `orchestrator.md`, `reviewer.md`, `router.md`) — you
 never gain a per-path exception. Your one filesystem write, the note file, happens via the
 **Bash** tool (heredoc + atomic `mv`, mirroring `router.md`'s `queue.json`/ledger write protocol
-mechanism — see `.cursor/skills/blackhole/references/blackhole-state.md` for the atomic
+mechanism — see `skills/blackhole/references/blackhole-state.md` for the atomic
 pattern, not duplicated here), never via the `Write`/`Edit` tool.
 
 ## `investigate` sub-mode

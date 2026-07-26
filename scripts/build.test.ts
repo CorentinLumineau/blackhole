@@ -102,6 +102,30 @@ describe('compileContent', () => {
     );
     expect(result).toBe('dir=.agents/build vcodes=.agents/build/rules/blackhole-vcodes.md');
   });
+
+  test('skills-target agent cites skills/blackhole/ (not flat references/)', () => {
+    const input = 'see `{{AGENT_DIR}}/skills/blackhole/references/confidence-gates.md`';
+    const result = compileContent(input, '', 'rules/blackhole-vcodes.mdc', 'skills', true);
+    expect(result).toBe('see `skills/blackhole/references/confidence-gates.md`');
+  });
+
+  test('skills-target flat SKILL.md still strips to references/', () => {
+    const input = 'ref {{AGENT_DIR}}/skills/blackhole/references/foo.md';
+    const result = compileContent(input, '', 'references/blackhole-vcodes.md', 'skills', false);
+    expect(result).toBe('ref references/foo.md');
+  });
+
+  test('cursor-target agent substitution unchanged', () => {
+    const input = '{{AGENT_DIR}}/skills/blackhole/references/foo.md';
+    const result = compileContent(
+      input,
+      '.cursor',
+      '.cursor/rules/blackhole-vcodes.mdc',
+      'cursor',
+      true
+    );
+    expect(result).toBe('.cursor/skills/blackhole/references/foo.md');
+  });
 });
 
 describe('buildGeminiPluginManifest', () => {

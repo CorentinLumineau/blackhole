@@ -160,15 +160,27 @@ export const applyPlatformConditionals = (content: string, target: Target): stri
   return res;
 };
 
-export const compileContent = (content: string, agentDir: string, rulesPath: string, target: Target): string => {
+export const compileContent = (
+  content: string,
+  agentDir: string,
+  rulesPath: string,
+  target: Target,
+  isAgent = false
+): string => {
   let res = content;
   if (target === 'codex') {
     res = res.replaceAll('{{AGENT_DIR}}/skills/blackhole/', 'codex-skills/blackhole/');
   }
   if (agentDir === '') {
-    // skills.sh root layout: flat references/ at repo root
-    res = res.replaceAll('{{AGENT_DIR}}/skills/blackhole/', '');
-    res = res.replaceAll('{{AGENT_DIR}}', '');
+    if (target === 'skills' && isAgent) {
+      // skills.sh root agents: cite the skills/blackhole/ tree (not flat references/)
+      res = res.replaceAll('{{AGENT_DIR}}/skills/blackhole/', 'skills/blackhole/');
+      res = res.replaceAll('{{AGENT_DIR}}', '');
+    } else {
+      // skills.sh root layout: flat references/ at repo root
+      res = res.replaceAll('{{AGENT_DIR}}/skills/blackhole/', '');
+      res = res.replaceAll('{{AGENT_DIR}}', '');
+    }
   } else {
     res = res.replaceAll('{{AGENT_DIR}}', agentDir);
   }
@@ -230,7 +242,7 @@ const processFile = (
   }
 
   content = applyPlatformConditionals(content, target);
-  const compiled = compileContent(content, agentDir, rulesPath, target);
+  const compiled = compileContent(content, agentDir, rulesPath, target, isAgent);
   const separator = compiled.endsWith('\n') ? '' : '\n';
   const marked = `${compiled}${separator}${generatedMarkerLine(relSrcPath, 'html')}\n`;
 
@@ -368,7 +380,7 @@ export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
  * array. `verify.ts` warns (does not fail) on a mismatch, so this is the sole place the
  * expectation is declared — never restate it as a literal at any consumption site.
  */
-export const EXPECTED_CHECK_COUNT = 35;
+export const EXPECTED_CHECK_COUNT = 36;
 
 export const buildGeminiPluginManifest = (pkgVersion: string) => ({
   $schema: 'https://antigravity.google/schemas/v1/plugin.json',
@@ -628,6 +640,7 @@ const compileSkillsTarget = () => {
     'references/blackhole-vcodes.md',
     'skills'
   );
+  compileFolder('agents', path.join(root, 'agents'), '', 'rules/blackhole-vcodes.mdc', 'skills', true);
 };
 
 // 3. Compile Target B: Cursor (submodule root layout + .cursor/ mirror)
@@ -664,7 +677,6 @@ const compileCursorTarget = () => {
     }
   };
   copyMaintainerCursorRules(path.join(root, '.cursor', 'rules'));
-  compileFolder('agents', path.join(root, 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor', true);
   compileFolder('agents', path.join(root, '.cursor', 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor', true);
   processFile(path.join(srcDir, 'SKILL.md'), path.join(root, 'skills', 'blackhole', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');
   processFile(path.join(srcDir, 'SKILL.md'), path.join(root, '.cursor', 'skills', 'blackhole', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');
