@@ -18,7 +18,7 @@ Validate must appear **first** in the `subagentStop` array so worker JSON is val
     "subagentStop": [
       {
         "command": "bun run scripts/validate-worker-json.ts --hook",
-        "matcher": "planner|implementer|reviewer|router|investigator",
+        "matcher": "planner|implementer|reviewer|router|investigator|hunter",
         "failClosed": true
       },
       {
