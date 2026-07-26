@@ -19,7 +19,7 @@ const checkGeminiBuild = (): CheckResult => {
   if (process.env.VERIFY_SKIP_BUILD !== '1') {
     const build = runFullBuildOnce();
     if (!build.ok) {
-      return { id: 'V-GEMINI-01', ok: false, detail: `build --gemini failed: ${build.output}` };
+      return { id: 'V-GEMINI-01', ok: false, detail: `build failed: ${build.output}` };
     }
   }
 
@@ -69,7 +69,7 @@ const checkGeminiDistributionBundle = (): CheckResult => {
   if (process.env.VERIFY_SKIP_BUILD !== '1') {
     const build = runFullBuildOnce();
     if (!build.ok) {
-      return { id: 'V-GEMINI-02', ok: false, detail: `build --gemini failed: ${build.output}` };
+      return { id: 'V-GEMINI-02', ok: false, detail: `build failed: ${build.output}` };
     }
   }
 

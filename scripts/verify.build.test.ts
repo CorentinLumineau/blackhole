@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { describe, expect, test } from 'bun:test';
 import {
   buildCodexPluginManifest,
@@ -100,5 +102,17 @@ describe('evaluateBuildCheck', () => {
       afterPorcelain: ' M README.md\n',
     });
     expect(result).toEqual({ id: 'V-BUILD-01', ok: true });
+  });
+});
+
+describe("check-common.ts's runFullBuildOnce (ADR-007 T2/R5′)", () => {
+  test('invokes plain `bun run build`, never a --all/--gemini/--no-codex flag', () => {
+    const checkCommonSrc = fs.readFileSync(
+      path.join(import.meta.dirname, 'lib/check-common.ts'),
+      'utf-8',
+    );
+    expect(checkCommonSrc).toContain("spawnSync('bun', ['run', 'build'],");
+    expect(checkCommonSrc).not.toMatch(/bun run build --(gemini|all|no-codex)/);
+    expect(checkCommonSrc).not.toContain("['run', 'build', '--gemini']");
   });
 });
