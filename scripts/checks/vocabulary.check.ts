@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
-import { QUEUE_STATUSES, QUEUE_NOTES, HUNT_KINDS, PLATFORM_TARGETS } from '../build.ts';
+import { QUEUE_STATUSES, QUEUE_NOTES, HUNT_KINDS, PLATFORM_TARGETS } from '../lib/build/facts.ts';
 import { walkFilesAbs } from '../lib/fs.ts';
 
 // Issue #320 — V-VOCAB-01: generalized, registry-driven extension of ADR-007 R1′'s two-sided

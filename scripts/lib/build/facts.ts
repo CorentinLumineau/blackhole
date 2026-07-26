@@ -1,4 +1,7 @@
-// § facts — machine-checkable ground truth, declared exactly once (ADR-007 T3/R1′). verify.ts's
+// § facts — machine-checkable ground truth, declared exactly once (ADR-007 T3/R1′). Direct
+// consumers: scripts/checks/{ground-truth,vocabulary,content-gates,playbook,codex-build,
+// claude-dist,gemini-build,agent-dir-citations}.check.ts, scripts/{verify,doctor,install-verify}.ts,
+// scripts/lib/check-common.ts, and verify.* / build / tree-shape tests. verify.ts's
 // facts-conformance check (V-GROUND-01) compares an independent filesystem/doc scan against
 // these declarations — never restate any of these as an inline literal at a consumption site,
 // and never collapse the scan and the declaration onto one derivation path (the critics'

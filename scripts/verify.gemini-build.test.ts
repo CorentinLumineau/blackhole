@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { buildGeminiPluginManifest } from './lib/build/manifests.ts';
 import {
-  buildGeminiPluginManifest,
   compileGeminiTree,
   writeGeminiManifest,
-} from './build.ts';
+} from './lib/build/trees.ts';
 import {
   evaluateDistributionBundle,
 } from './checks/gemini-build.check.ts';

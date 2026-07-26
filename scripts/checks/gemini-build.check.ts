@@ -5,9 +5,8 @@ import {
   AGENTS_BUILD_ROOT,
   AGENTS_BUILD_AGENT_DIR,
   DISTRIBUTION_ROOT,
-  AGENT_MD_FILES,
-  RULES_LIST,
-} from '../build.ts';
+} from '../lib/build/paths.ts';
+import { AGENT_MD_FILES, RULES_LIST } from '../lib/build/facts.ts';
 import { distributionTreeErrors, validatePluginTreeShape } from '../tree-shape.ts';
 import { listFiles, leakedPlatformConditionalMarkers, runFullBuildOnce, walkMdFiles } from '../lib/check-common.ts';
 

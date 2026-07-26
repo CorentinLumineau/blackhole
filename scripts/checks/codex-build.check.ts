@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
-import { AGENT_YAML_FILES } from '../build.ts';
+import { AGENT_YAML_FILES } from '../lib/build/facts.ts';
 import { codexTreeErrors, hasInstructionsBlock } from '../tree-shape.ts';
 import { leakedPlatformConditionalMarkers, runFullBuildOnce, walkMdFilesAbs } from '../lib/check-common.ts';
 

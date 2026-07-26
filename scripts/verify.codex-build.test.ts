@@ -2,12 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { AGENT_YAML_FILES } from './lib/build/facts.ts';
 import {
-  AGENT_YAML_FILES,
   buildCodexMarketplace,
   buildCodexPluginManifest,
-  compileCodexTree,
-} from './build.ts';
+} from './lib/build/manifests.ts';
+import { compileCodexTree } from './lib/build/trees.ts';
 import {
   codexBuildResultsAfterExec,
   evaluateCodexAgentFiles,

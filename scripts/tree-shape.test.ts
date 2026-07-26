@@ -10,7 +10,9 @@ import {
   INSTRUCTIONS_MARKER,
   hasInstructionsBlock,
 } from './tree-shape.ts';
-import { compileGeminiTree, writeGeminiManifest, buildGeminiPluginManifest, RULES_LIST, AGENT_NAMES } from './build.ts';
+import { compileGeminiTree, writeGeminiManifest } from './lib/build/trees.ts';
+import { buildGeminiPluginManifest } from './lib/build/manifests.ts';
+import { RULES_LIST, AGENT_NAMES } from './lib/build/facts.ts';
 import { makeTempDir as sharedMakeTempDir, cleanupDirEntries } from './lib/fs.ts';
 
 const makeTempDir = (): string => sharedMakeTempDir('tree-shape-test');

@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { readJsonFile } from './lib/fs.ts';
-import { AGENT_NAMES } from './build.ts';
+import { AGENT_NAMES } from './lib/build/facts.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const DEFAULT_CONFIG_PATH = '.blackhole/config.json';

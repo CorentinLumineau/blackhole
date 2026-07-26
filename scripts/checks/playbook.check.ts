@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
-import { PHASE_NAMES, PHASE_PLAYBOOK_FILES } from '../build.ts';
+import { PHASE_NAMES, PHASE_PLAYBOOK_FILES } from '../lib/build/facts.ts';
 import { walkMdFilesAbs } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — playbook.check.ts: cross-cutting playbook/harness self-consistency checks

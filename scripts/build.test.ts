@@ -6,31 +6,34 @@ import * as path from 'path';
 import {
   applyPlatformConditionals,
   compileContent,
-  buildGeminiPluginManifest,
-  buildCodexPluginManifest,
-  buildCodexMarketplace,
   parseMdFrontmatter,
   buildCodexAgentYaml,
   serializeCodexAgentYaml,
+  generatedMarkerLine,
+} from './lib/build/content.ts';
+import {
+  buildGeminiPluginManifest,
+  buildCodexPluginManifest,
+  buildCodexMarketplace,
+  buildClaudePluginManifest,
+  buildClaudeMarketplace,
+} from './lib/build/manifests.ts';
+import {
   compileGeminiTree,
   copyTemplatesDir,
   writeGeminiManifest,
   compileCodexTree,
-  generatedMarkerLine,
-  buildClaudePluginManifest,
-  buildClaudeMarketplace,
-  cleanDir,
-  isTargetTracked,
-  determineBuildTargets,
+} from './lib/build/trees.ts';
+import { cleanDir, isTargetTracked, determineBuildTargets } from './lib/build/clean.ts';
+import {
   GEMINI_TARGET_DIRS,
   CODEX_TARGET_DIRS,
   DEPRECATED_BUILD_FLAGS,
   CLAUDE_DISTRIBUTION_ROOT,
   CLAUDE_DISTRIBUTION_AGENT_DIR,
   CLAUDE_DISTRIBUTION_VCODES,
-  AGENT_NAMES,
-  PLATFORM_TARGETS,
-} from './build.ts';
+} from './lib/build/paths.ts';
+import { AGENT_NAMES, PLATFORM_TARGETS } from './lib/build/facts.ts';
 import { projectIdentity } from './project-identity.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -835,31 +838,12 @@ const buildModuleFiles = (): string[] => [
     .map((f) => path.join(root, 'scripts', 'lib', 'build', f)),
 ];
 
-const parseBuildImportNames = (importBlock: string): string[] =>
-  importBlock
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .filter((part) => !/^type\s+/.test(part))
-    .map((part) => part.replace(/\s+as\s+\w+$/, '').trim());
-
-const collectBuildConsumerImportNames = (): Set<string> => {
-  const names = new Set<string>();
+const checkDomainConsumerFiles = (): string[] => {
   const checksDir = path.join(root, 'scripts', 'checks');
-  const consumerFiles = [
+  return [
     ...fs.readdirSync(checksDir).filter((f) => f.endsWith('.check.ts')).map((f) => path.join(checksDir, f)),
     path.join(root, 'scripts', 'verify.ts'),
   ];
-  const importRe =
-    /^import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+['"](?:\.\.\/|\.\/)build\.ts['"]/gm;
-
-  for (const filePath of consumerFiles) {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    for (const match of content.matchAll(importRe)) {
-      for (const name of parseBuildImportNames(match[1])) names.add(name);
-    }
-  }
-  return names;
 };
 
 describe('build module SRP (issue #363)', () => {
@@ -871,34 +855,20 @@ describe('build module SRP (issue #363)', () => {
   );
 });
 
-describe('build.ts barrel export completeness (issue #363)', () => {
-  test('every value symbol imported by scripts/checks/*.check.ts and scripts/verify.ts is exported', async () => {
-    const imported = collectBuildConsumerImportNames();
-    expect(imported.size).toBeGreaterThan(0);
-
-    const buildModule = await import('./build.ts');
+describe('build.ts CLI-only (issue #378)', () => {
+  test('build.ts has no export statements', () => {
     const buildSource = fs.readFileSync(path.join(root, 'scripts', 'build.ts'), 'utf-8');
+    expect(buildSource).not.toMatch(/^export\s/m);
+  });
 
-    for (const name of imported) {
-      expect(name in buildModule, `missing runtime export: ${name}`).toBe(true);
-    }
-
-    // Type-only imports (erased at runtime) must still be re-exported from the barrel.
-    const checksDir = path.join(root, 'scripts', 'checks');
-    const typeImportRe =
-      /^import\s+\{[^}]*\btype\s+(\w+)[^}]*\}\s+from\s+['"](?:\.\.\/|\.\/)build\.ts['"]/gm;
-    for (const filePath of [
-      ...fs.readdirSync(checksDir).filter((f) => f.endsWith('.check.ts')).map((f) => path.join(checksDir, f)),
-      path.join(root, 'scripts', 'verify.ts'),
-    ]) {
+  test('check domains and verify.ts import lib/build/* directly, not the build.ts barrel', () => {
+    const barrelImportRe = /from\s+['"](?:\.\.\/|\.\/)build\.ts['"]/;
+    for (const filePath of checkDomainConsumerFiles()) {
       const content = fs.readFileSync(filePath, 'utf-8');
-      for (const match of content.matchAll(typeImportRe)) {
-        const typeName = match[1];
-        expect(
-          buildSource.includes(`type ${typeName}`),
-          `missing type re-export: ${typeName}`
-        ).toBe(true);
-      }
+      expect(
+        barrelImportRe.test(content),
+        `${path.relative(root, filePath)} still imports build.ts barrel`
+      ).toBe(false);
     }
   });
 });

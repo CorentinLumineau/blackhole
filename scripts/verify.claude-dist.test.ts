@@ -1,10 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import {
-  buildClaudePluginManifest,
-  compileGeminiTree,
-} from './build.ts';
+import { buildClaudePluginManifest } from './lib/build/manifests.ts';
+import { compileGeminiTree } from './lib/build/trees.ts';
 import { evaluateClaudeDistributionBundle } from './checks/claude-dist.check.ts';
 import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
 
