@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { readJsonFile } from './lib/fs.ts';
+import { AGENT_NAMES } from './build.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const DEFAULT_CONFIG_PATH = '.blackhole/config.json';
@@ -10,13 +11,7 @@ const DEFAULT_CONFIG_PATH = '.blackhole/config.json';
 export type CheckSeverity = 'BLOCK' | 'WARN';
 export type DoctorCheck = { id: string; severity: CheckSeverity; ok: boolean; detail?: string };
 
-export const EXPECTED_BC_AGENTS = [
-  'coordinator.md',
-  'orchestrator.md',
-  'planner.md',
-  'implementer.md',
-  'reviewer.md',
-] as const;
+export const EXPECTED_BC_AGENTS = AGENT_NAMES.map((name) => `${name}.md`);
 
 /** Stale skill directory names one and two generations back (DR-2, #64). */
 const LEGACY_SKILL_NAMES = ['bc-campaign', 'backlog-campaign'] as const;
@@ -61,7 +56,7 @@ export function checkCursorAgents(repoRoot: string): DoctorCheck {
       id: 'D-AGENTS-01',
       severity: 'BLOCK',
       ok: false,
-      detail: `expected 5 agent .md files, found ${bcAgents.length} — run \`bun run build\` (missing: ${missing.join(', ')})`,
+      detail: `expected ${EXPECTED_BC_AGENTS.length} agent .md files, found ${bcAgents.length} — run \`bun run build\` (missing: ${missing.join(', ')})`,
     };
   }
 
