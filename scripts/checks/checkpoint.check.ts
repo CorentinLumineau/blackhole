@@ -23,11 +23,12 @@ export const extractCheckpointTemplateKeys = (content: string): string[] => {
     .filter((key): key is string => Boolean(key));
 };
 
-const checkCheckpointAlignment = (): CheckResult => {
+export const evaluateCheckpointAlignment = (
+  protocol: string,
+  orchestrator: string,
+  phaseLoop: string
+): CheckResult => {
   const requiredKeys = ['refreshed_at', 'orchestrator_turn_id', 'last_completed_phase'];
-  const protocol = read('src/references/checkpoint-protocol.md');
-  const orchestrator = read('src/agents/orchestrator.md');
-  const phaseLoop = read('src/references/phase-loop.md');
   const errors: string[] = [];
 
   const templateKeys = extractCheckpointTemplateKeys(protocol);
@@ -63,6 +64,13 @@ const checkCheckpointAlignment = (): CheckResult => {
   if (errors.length) return { id: 'V-CHECKPOINT-01', ok: false, detail: errors.join('; ') };
   return { id: 'V-CHECKPOINT-01', ok: true };
 };
+
+const checkCheckpointAlignment = (): CheckResult =>
+  evaluateCheckpointAlignment(
+    read('src/references/checkpoint-protocol.md'),
+    read('src/agents/orchestrator.md'),
+    read('src/references/phase-loop.md')
+  );
 
 // ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
