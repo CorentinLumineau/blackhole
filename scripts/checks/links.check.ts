@@ -76,6 +76,7 @@ export const findDeadMarkdownLinks = (fileAbs: string, content: string, fileLabe
 export const EXTERNAL_ADR_REFS: ReadonlySet<string> = new Set([
   '026', // ADR-002-synthesizer-extraction.md: "ADR-026 in mercure"
   '082', // ADR-006-kaizen-hunt.md: "x-analyze ADR-082 lesson" / "the mechanism ADR-082 exists"
+  '103', // ADR-016-story-driven-conformance-adoption.md: "the architecture defined in mercure ADR-103"
 ]);
 
 // Parses a `related:` key out of ADR frontmatter (the block already captured between the `---`

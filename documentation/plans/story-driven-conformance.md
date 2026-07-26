@@ -6,7 +6,7 @@ created: 2026-07-24
 last_updated: 2026-07-24
 related:
   [
-    documentation/decisions/ADR-010-story-driven-conformance-adoption.md,
+    documentation/decisions/ADR-016-story-driven-conformance-adoption.md,
     documentation/decisions/ADR-004-adaptive-phase-routing.md,
     documentation/decisions/ADR-006-kaizen-hunt.md,
     src/references/hunt/filing.md,
