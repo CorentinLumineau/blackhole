@@ -252,7 +252,7 @@ describe('playbook runChecks() against the real tree', () => {
   test('all checks pass against the current tree', () => {
     const results = runChecks();
     for (const result of results) {
-      expect(result.detail ?? '').toBe(result.ok ? '' : result.detail);
+      expect(result.detail ?? '').toBe('');
       expect(result.ok).toBe(true);
     }
   });
