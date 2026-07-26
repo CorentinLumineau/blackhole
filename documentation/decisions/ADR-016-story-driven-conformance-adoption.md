@@ -13,8 +13,8 @@ related:
 
 # ADR-016: Story-Driven Conformance — blackhole Adoption
 
-Adoption decision for the architecture defined in **mercure ADR-099** (*Feedback-Driven Intent
-Layer — User-Story Catalog as a Shared Contract*). ADR-099 owns the cross-plugin architecture; this
+Adoption decision for the architecture defined in **mercure ADR-103** (*Feedback-Driven Intent
+Layer — User-Story Catalog as a Shared Contract*). ADR-103 owns the cross-plugin architecture; this
 ADR records what blackhole does about it and the policy choices that are blackhole's alone.
 Implementation detail (hunt heuristics, calibration table, phasing) lives in
 `documentation/plans/story-driven-conformance.md`.
@@ -35,14 +35,14 @@ The consequence is structural rather than incidental:
 - `V-FIX-01` demands a documented root cause, but the root cause of an intent defect is a mismatch
   against a specification blackhole has no representation of.
 
-ADR-099 supplies the missing referent: a user-story catalog in the project's git tree, with
+ADR-103 supplies the missing referent: a user-story catalog in the project's git tree, with
 acceptance criteria that a diff can be checked against.
 
 ## Decision
 
 ### D1 — Adopt the shared catalog contract; do not own it
 
-blackhole reads (and, for conformance findings, cites) the catalog defined by ADR-099. It does not
+blackhole reads (and, for conformance findings, cites) the catalog defined by ADR-103. It does not
 define the format, and it does not store the catalog.
 
 The catalog stays in the project's git tree. `.blackhole/` holds **linkage only**:
@@ -56,7 +56,7 @@ without blackhole installed; only the campaign linkage is blackhole-specific sta
 
 ### D2 — Gate policy: confidence-gated, HITL only when genuinely ambiguous
 
-Per ADR-099 D4, gate policy is a host property. blackhole keeps **its own existing philosophy**
+Per ADR-103 D4, gate policy is a host property. blackhole keeps **its own existing philosophy**
 rather than importing mercure's always-ask contract: routing flags act autonomously above their
 confidence threshold and fall back to a cautious default below it; only genuine ambiguity and
 architecturally significant decisions raise an async `AskQuestion`. Intent reconciliation joins that
@@ -64,7 +64,7 @@ model as one more confidence-scored flag — it does not get a bespoke gate.
 
 The cautious default below threshold is **`needs_story` / ask**, never a silent amendment.
 
-### D3 — ADR-099 D5 is binding here without variation
+### D3 — ADR-103 D5 is binding here without variation
 
 Confidence gating decides *whether to ask*, never *whether to record*. Any `story-wrong` outcome
 produces a committed criteria diff citing the feedback that motivated it. This is what keeps D2
@@ -128,7 +128,7 @@ without stories would block every PR. `severity_overrides` may only escalate WAR
 
 ## Alternatives considered
 
-Recorded in full in mercure ADR-099 (single-plugin ownership, catalog as ledger state, derived
+Recorded in full in mercure ADR-103 (single-plugin ownership, catalog as ledger state, derived
 stories, sixth phase, uniform gate policy). blackhole-specific rejections:
 
 **Extend the `bug` hunt kind instead of adding a kind.** Rejected: `bug` is defined by
@@ -140,7 +140,7 @@ and cannot find a story that nothing implements. Discovery needs the hunt.
 
 ## Prerequisite
 
-A project opting in must carry a catalog in the ADR-099 format, stable never-reused ids, and a
+A project opting in must carry a catalog in the ADR-103 format, stable never-reused ids, and a
 working rule that PRs name their story. `invest-portfolio` satisfies all three today
 (`documentation/user-stories/`, `AGENTS.md` § Story-driven development,
 `.github/pull_request_template.md`) and is the natural pilot.
