@@ -10,7 +10,10 @@ export type CheckResult = { id: string; ok: boolean; detail?: string };
 
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
-// V-DESIGN-01: Design Track template in planner.md declares all 8 required section headings
+// V-DESIGN-01: Design Track template in plan-template.md declares all 8 required section
+// headings. Issue #325 extracted the Plan Output File Template (all 3 sub-templates, including
+// the Design Track template this check validates) verbatim out of planner.md into
+// src/references/plan-template.md, leaving a thin pointer section in planner.md.
 export const DESIGN_TRACK_REQUIRED_HEADINGS = [
   '## Requirements Framing',
   '## Options + Trade-off Matrix',
@@ -28,10 +31,14 @@ export const findMissingDesignTrackHeadings = (
 ): string[] => required.filter((heading) => !content.includes(heading));
 
 const checkDesignTrackTemplate = (): CheckResult => {
-  const content = read('src/agents/planner.md');
+  const content = read('src/references/plan-template.md');
   const missing = findMissingDesignTrackHeadings(content);
   if (missing.length) {
-    return { id: 'V-DESIGN-01', ok: false, detail: `planner.md missing Design Track headings: ${missing.join(', ')}` };
+    return {
+      id: 'V-DESIGN-01',
+      ok: false,
+      detail: `plan-template.md missing Design Track headings: ${missing.join(', ')}`,
+    };
   }
   return { id: 'V-DESIGN-01', ok: true };
 };

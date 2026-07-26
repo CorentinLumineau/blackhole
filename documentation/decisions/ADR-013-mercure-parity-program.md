@@ -18,7 +18,7 @@ supersedes:
 
 ## Status
 
-Proposed
+Accepted — 2026-07-21 (shipped in v0.15.0: `mercure-parity-program` M1-M6 merged, incl. #306 first backlog sweep)
 
 Single decision record ratifying four coupled clusters atomically (adversarial evaluation
 showed a two-ADR split creates an acceptance-order hazard — see Trade-offs). Consumes, never

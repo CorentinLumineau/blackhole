@@ -17,7 +17,7 @@ supersedes:
 
 ## Status
 
-Proposed
+Accepted — 2026-07-21 (shipped in v0.15.0: `companion-substrate-closure` M0-M5 merged, including E5 autonomy default flip)
 
 Completes ADR-010's artifact contract on the human-approved path. Paired with ADR-011, whose
 D1/D2 **must land before E5** (see E5 sequencing).
