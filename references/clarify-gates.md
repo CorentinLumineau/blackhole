@@ -26,6 +26,32 @@ Before promoting an issue from **handle → plan** or **plan → implement**:
 proceed after handle; `size:xs` with ambiguity still blocks on `status: blocked`,
 `notes: awaiting-user-clarification`.
 
+## AskQuestion payload contract
+
+Every blocked clarification question must be **self-contained**: answerable by a
+human who has **no session scrollback** — only the question text, the issue body,
+and queue state. Blackhole's async HITL seam (`status: blocked` +
+`notes: awaiting-user-clarification`) has no implicit context to fall back on;
+the question itself must carry everything needed to decide.
+
+Each `AskQuestion` payload must include all three elements:
+
+| Element | Requirement |
+|---------|-------------|
+| **Decision** | The specific choice or approval being requested — lead with this. |
+| **Evidence** | The finding that triggered the gate, with `file:line` citations or issue refs where applicable. |
+| **Options** | Concrete alternatives with one-line trade-offs each (not bare signal-table labels like "Touch paths unclear"). |
+
+**Efficient-output subset** (folded here — no standalone rule file):
+
+- Lead with the decision being asked.
+- Be precise about counts and scope (e.g. "3 children", not "several").
+- Cap open-ended lists at 5 items; append an explicit "+N more" — never truncate silently.
+- No preamble or closers ("Hope this helps", "Let me know").
+
+Worked example: [epic-orchestration.md](epic-orchestration.md) §3 PO gate — the epic
+split approval template demonstrates all three payload elements.
+
 ## Auto-proceed (narrow exception only)
 
 Orchestrator may skip AskQuestion **only** when ALL true:
