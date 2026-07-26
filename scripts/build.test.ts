@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import {
   applyPlatformConditionals,
@@ -35,10 +34,11 @@ import {
 } from './lib/build/paths.ts';
 import { AGENT_NAMES, PLATFORM_TARGETS } from './lib/build/facts.ts';
 import { projectIdentity } from './project-identity.ts';
+import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 
-const makeTempDir = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-build-test-'));
+const makeTempDir = (): string => sharedMakeTempDir('blackhole-build-test');
 
 const makeTempGitRepo = (): string => {
   const dir = makeTempDir();

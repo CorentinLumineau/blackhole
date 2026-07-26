@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import {
   discoverCheckModules,
@@ -8,6 +7,7 @@ import {
   runVerifyChecks,
   warnOnCheckCountMismatch,
 } from './verify';
+import { makeTempDir } from './lib/fs.ts';
 
 let tempDir: string;
 
@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 function makeChecksDir(): string {
-  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'verify-runner-'));
+  tempDir = makeTempDir('verify-runner-');
   return tempDir;
 }
 

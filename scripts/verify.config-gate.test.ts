@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { findMissingGateMarkers } from './lib/check-common.ts';
+import { expectMarkerContract, expectMarkersSubstantive } from './lib/marker-fixture-test.ts';
 import {
   COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
   CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
@@ -51,34 +51,25 @@ const SKILL_FIXTURE_STALE = `
 
 describe('V-CONFGATE-01 marker contract', () => {
   test('a coordinator.md carrying the routine-resume gate passes; the pre-change text fails', () => {
-    expect(
-      findMissingGateMarkers(COORDINATOR_FIXTURE_FIXED, COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS),
-    ).toEqual([]);
-    expect(
-      findMissingGateMarkers(COORDINATOR_FIXTURE_STALE, COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS),
-    ).toEqual(COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS);
+    expectMarkerContract(
+      COORDINATOR_FIXTURE_FIXED,
+      COORDINATOR_FIXTURE_STALE,
+      COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
+    );
   });
 
   test('claude-code-native.md must state Pattern C gate ownership', () => {
-    expect(
-      findMissingGateMarkers(
-        CLAUDE_NATIVE_FIXTURE_FIXED,
-        CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
-      ),
-    ).toEqual([]);
-    expect(
-      findMissingGateMarkers(
-        CLAUDE_NATIVE_FIXTURE_STALE,
-        CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
-      ),
-    ).toEqual(CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS);
+    expectMarkerContract(
+      CLAUDE_NATIVE_FIXTURE_FIXED,
+      CLAUDE_NATIVE_FIXTURE_STALE,
+      CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
+    );
   });
 
   test('SKILL.md Phase 0 must name the gate and scope it to run mode', () => {
-    expect(findMissingGateMarkers(SKILL_FIXTURE_FIXED, SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS)).toEqual(
-      [],
-    );
-    expect(findMissingGateMarkers(SKILL_FIXTURE_STALE, SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS)).toEqual(
+    expectMarkerContract(
+      SKILL_FIXTURE_FIXED,
+      SKILL_FIXTURE_STALE,
       SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS,
     );
   });
@@ -92,17 +83,7 @@ describe('V-CONFGATE-01 marker contract', () => {
       CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
       SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS,
     ]) {
-      expect(markers.length).toBeGreaterThan(0);
-      for (const marker of markers) {
-        expect(marker.trim()).not.toBe('');
-        // A single word is too weak to distinguish gate prose from an incidental mention.
-        expect(marker.trim().length).toBeGreaterThan(3);
-      }
-      // findMissingGateMarkers reports EVERY marker as missing for unrelated content — proves
-      // the constants are not satisfied by arbitrary text.
-      expect(findMissingGateMarkers('unrelated prose with none of the gate wording', markers)).toEqual(
-        markers,
-      );
+      expectMarkersSubstantive(markers);
     }
   });
 });

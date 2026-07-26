@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { findMissingGateMarkers } from './lib/check-common.ts';
 import {
   DESIGN_TRACK_REQUIRED_HEADINGS,
   findMissingDesignTrackHeadings,
   ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS,
   PLANNER_DESIGN_GATE_REQUIRED_MARKERS,
 } from './checks/design-track.check.ts';
+import { expectMarkersMissing, expectMarkersPresent } from './lib/marker-fixture-test.ts';
 
 const COMPLETE_FIXTURE = `
 ## Requirements Framing
@@ -110,26 +110,20 @@ unconditional human sign-off gate is already documented there; no new gate logic
 
 describe('PLANNER_DESIGN_GATE_REQUIRED_MARKERS', () => {
   test('fixed planner.md fixture (gated verdict + no-substitution language) has all markers present', () => {
-    expect(findMissingGateMarkers(PLANNER_FIXTURE_FIXED, PLANNER_DESIGN_GATE_REQUIRED_MARKERS)).toEqual([]);
+    expectMarkersPresent(PLANNER_FIXTURE_FIXED, PLANNER_DESIGN_GATE_REQUIRED_MARKERS);
   });
 
   test('stale planner.md fixture (pre-M2 unconditional-blocked gate) is missing all markers', () => {
-    expect(findMissingGateMarkers(PLANNER_FIXTURE_STALE, PLANNER_DESIGN_GATE_REQUIRED_MARKERS)).toEqual(
-      PLANNER_DESIGN_GATE_REQUIRED_MARKERS,
-    );
+    expectMarkersMissing(PLANNER_FIXTURE_STALE, PLANNER_DESIGN_GATE_REQUIRED_MARKERS);
   });
 });
 
 describe('ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS', () => {
   test('fixed orchestrator.md fixture (applies-only-status language) has all markers present', () => {
-    expect(
-      findMissingGateMarkers(ORCHESTRATOR_FIXTURE_FIXED, ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS),
-    ).toEqual([]);
+    expectMarkersPresent(ORCHESTRATOR_FIXTURE_FIXED, ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS);
   });
 
   test('stale orchestrator.md fixture (pre-M2 dispatch, no gated-verdict language) is missing all markers', () => {
-    expect(
-      findMissingGateMarkers(ORCHESTRATOR_FIXTURE_STALE, ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS),
-    ).toEqual(ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS);
+    expectMarkersMissing(ORCHESTRATOR_FIXTURE_STALE, ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS);
   });
 });

@@ -4,7 +4,7 @@ import {
   ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS,
   runChecks,
 } from './checks/single-writer.check.ts';
-import { findMissingGateMarkers } from './lib/check-common.ts';
+import { expectMarkersMissing, expectMarkersPresent } from './lib/marker-fixture-test.ts';
 
 // Regression guard for issue #224: router.md must no longer instruct direct writes to
 // queue.json/findings-ledger.json, and orchestrator.md must explicitly state serial,
@@ -55,27 +55,21 @@ For each completed worker:
 
 describe('ROUTER_NO_DIRECT_WRITE_REQUIRED_MARKERS', () => {
   test('fixed router.md fixture (returns, does not write) has all markers present', () => {
-    expect(findMissingGateMarkers(ROUTER_FIXTURE_FIXED, ROUTER_NO_DIRECT_WRITE_REQUIRED_MARKERS)).toEqual([]);
+    expectMarkersPresent(ROUTER_FIXTURE_FIXED, ROUTER_NO_DIRECT_WRITE_REQUIRED_MARKERS);
   });
 
   test('stale router.md fixture (pre-fix direct-write instruction) is missing all markers', () => {
-    expect(findMissingGateMarkers(ROUTER_FIXTURE_STALE, ROUTER_NO_DIRECT_WRITE_REQUIRED_MARKERS)).toEqual(
-      ROUTER_NO_DIRECT_WRITE_REQUIRED_MARKERS,
-    );
+    expectMarkersMissing(ROUTER_FIXTURE_STALE, ROUTER_NO_DIRECT_WRITE_REQUIRED_MARKERS);
   });
 });
 
 describe('ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS', () => {
   test('fixed orchestrator.md fixture (serial, row-construction language) has all markers present', () => {
-    expect(
-      findMissingGateMarkers(ORCHESTRATOR_FIXTURE_FIXED, ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS),
-    ).toEqual([]);
+    expectMarkersPresent(ORCHESTRATOR_FIXTURE_FIXED, ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS);
   });
 
   test('stale orchestrator.md fixture (pre-fix ambiguous "apply mutations") is missing all markers', () => {
-    expect(
-      findMissingGateMarkers(ORCHESTRATOR_FIXTURE_STALE, ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS),
-    ).toEqual(ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS);
+    expectMarkersMissing(ORCHESTRATOR_FIXTURE_STALE, ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS);
   });
 });
 

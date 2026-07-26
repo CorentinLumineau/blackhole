@@ -4,7 +4,7 @@ import {
   VCODES_TEST09_REQUIRED_MARKERS,
   IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS,
 } from './checks/coverage-regression.check.ts';
-import { findMissingGateMarkers } from './lib/check-common.ts';
+import { expectMarkersMissing, expectMarkersPresent } from './lib/marker-fixture-test.ts';
 
 // PM-028 (issue #306): mercure-parity adoption of the V-TEST-09 coverage-regression gate. blackhole's
 // implementer.md § 6 previously checked only lint + test pass with no coverage-delta gate. These
@@ -45,25 +45,21 @@ const IMPLEMENTER_FIXTURE_STALE = `
 
 describe('VCODES_TEST09_REQUIRED_MARKERS', () => {
   test('fixed vcodes fixture (V-TEST-09 BLOCK row present) has all markers present', () => {
-    expect(findMissingGateMarkers(VCODES_FIXTURE_FIXED, VCODES_TEST09_REQUIRED_MARKERS)).toEqual([]);
+    expectMarkersPresent(VCODES_FIXTURE_FIXED, VCODES_TEST09_REQUIRED_MARKERS);
   });
 
   test('stale vcodes fixture (no V-TEST-09 row) is missing all markers', () => {
-    expect(findMissingGateMarkers(VCODES_FIXTURE_STALE, VCODES_TEST09_REQUIRED_MARKERS)).toEqual(
-      VCODES_TEST09_REQUIRED_MARKERS,
-    );
+    expectMarkersMissing(VCODES_FIXTURE_STALE, VCODES_TEST09_REQUIRED_MARKERS);
   });
 });
 
 describe('IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS', () => {
   test('fixed implementer.md fixture (coverage-delta sub-step present) has all markers present', () => {
-    expect(findMissingGateMarkers(IMPLEMENTER_FIXTURE_FIXED, IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS)).toEqual([]);
+    expectMarkersPresent(IMPLEMENTER_FIXTURE_FIXED, IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS);
   });
 
   test('stale implementer.md fixture (lint+test only, no coverage gate) is missing all markers', () => {
-    expect(
-      findMissingGateMarkers(IMPLEMENTER_FIXTURE_STALE, IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS),
-    ).toEqual(IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS);
+    expectMarkersMissing(IMPLEMENTER_FIXTURE_STALE, IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS);
   });
 });
 
