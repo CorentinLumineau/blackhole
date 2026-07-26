@@ -1,0 +1,23 @@
+{
+  "status": "complete",
+  "kind": "quickwins",
+  "wave": 1,
+  "territory": {
+    "bands_scanned": ["src/agents"],
+    "exhausted": false
+  },
+  "findings": [
+    {
+      "kind": "quickwins",
+      "file": "src/agents/orchestrator.md",
+      "line": 88,
+      "summary": "Dead conditional branch never reached after ADR-004 routing landed",
+      "evidence_snippet": "if (route.needs_split && false) { ... }",
+      "rationale": "The `&& false` makes this branch unreachable; safe deletion reduces confusion for future readers",
+      "gain": 4,
+      "effort": 1,
+      "severity": "CRITICAL",
+      "verification": "CONFIRMED"
+    }
+  ]
+}

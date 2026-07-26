@@ -347,6 +347,17 @@ describe('validateWorker router', () => {
 
 describe('validateWorker hunter', () => {
   test('valid complete with empty findings', () => expectValid('hunter', 'hunter-complete.json'));
+  test('valid complete with finding', () =>
+    expectValid('hunter', 'hunter-complete-with-finding.json'));
+  test('valid error', () => expectValid('hunter', 'hunter-error.json'));
+  test('invalid error missing error field', () =>
+    expectInvalid('hunter', 'hunter-error-missing-error-field.json'));
+  test('invalid severity enum', () =>
+    expectInvalid('hunter', 'hunter-complete-invalid-severity.json'));
+  test('invalid verification enum', () =>
+    expectInvalid('hunter', 'hunter-complete-invalid-verification.json'));
+  test('invalid complete missing territory', () =>
+    expectInvalid('hunter', 'hunter-complete-missing-territory.json'));
 });
 
 describe('validateWorker investigator', () => {
@@ -427,6 +438,7 @@ describe('resolveRole', () => {
   test('falls back to description/task text', () => {
     expect(resolveRole({ description: 'implementer for issue #18' })).toBe('implementer');
     expect(resolveRole({ task: 'Run reviewer on PR 42' })).toBe('reviewer');
+    expect(resolveRole({ description: 'hunter quickwins wave' })).toBe('hunter');
   });
 });
 
@@ -686,6 +698,29 @@ describe('validate-worker-json hook CLI', () => {
     );
     expect(result.exitCode).toBe(0);
     expect(result.stderr.trim()).toBe('');
+  });
+
+  test('valid hunter stop exits 0', async () => {
+    const hookFixturePath = path.join(root, 'fixtures/resume-signal/hook-hunter-stop.json');
+    const hookInput = fs.readFileSync(hookFixturePath, 'utf-8');
+    const result = await runValidateWorkerCli(['--hook'], hookInput);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('invalid hunter worker JSON exits 1 with validation error', async () => {
+    const invalidHunter = {
+      status: 'complete',
+      kind: 'quickwins',
+      wave: 1,
+      findings: [],
+    };
+    const result = await runValidateWorkerCli(
+      ['--hook'],
+      hunterHookInput(fencedJsonSummary(invalidHunter)),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('territory');
   });
 
   // readStdin catch (validate-worker-json.ts:709-714) is not reachable in subprocess
