@@ -4,9 +4,20 @@ import { execSync } from 'child_process';
 import { readJsonFile } from './lib/fs.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
-const releasesDir = path.join(root, '.github', 'releases');
-const templatePath = path.join(releasesDir, 'TEMPLATE.md');
-const pkgPath = path.join(root, 'package.json');
+
+export type ReleaseDeps = {
+  build?: () => void;
+  execGit?: (cmd: string) => string;
+};
+
+function repoPaths(repoRoot: string) {
+  const releasesDir = path.join(repoRoot, '.github', 'releases');
+  return {
+    releasesDir,
+    templatePath: path.join(releasesDir, 'TEMPLATE.md'),
+    pkgPath: path.join(repoRoot, 'package.json'),
+  };
+}
 
 function usage(): never {
   console.log(`Usage:
@@ -30,20 +41,25 @@ function versionFromTag(tag: string): string {
   return tag.startsWith('v') ? tag.slice(1) : tag;
 }
 
-function notesPath(tag: string): string {
+function notesPath(releasesDir: string, tag: string): string {
   return path.join(releasesDir, `${tag}.md`);
 }
 
-function readPkg(): { version: string; [k: string]: unknown } {
+function readPkg(pkgPath: string): { version: string; [k: string]: unknown } {
   return readJsonFile(pkgPath, pkgPath) as { version: string; [k: string]: unknown };
 }
 
-function writePkg(pkg: { version: string; [k: string]: unknown }): void {
+function writePkg(pkgPath: string, pkg: { version: string; [k: string]: unknown }): void {
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
 }
 
-function git(cmd: string): string {
-  return execSync(cmd, { cwd: root, encoding: 'utf-8' }).trim();
+function createGit(repoRoot: string, deps?: ReleaseDeps) {
+  return (cmd: string): string => {
+    if (deps?.execGit) {
+      return deps.execGit(cmd).trim();
+    }
+    return execSync(cmd, { cwd: repoRoot, encoding: 'utf-8' }).trim();
+  };
 }
 
 function build(): void {
@@ -76,7 +92,7 @@ export function findManifestVersionMismatches(
   return mismatches;
 }
 
-function tagExists(tag: string): boolean {
+function tagExists(git: (cmd: string) => string, tag: string): boolean {
   try {
     git(`git rev-parse refs/tags/${tag}`);
     return true;
@@ -85,7 +101,7 @@ function tagExists(tag: string): boolean {
   }
 }
 
-function remoteTagExists(tag: string): boolean {
+function remoteTagExists(git: (cmd: string) => string, tag: string): boolean {
   try {
     const out = git(`git ls-remote --tags origin refs/tags/${tag}`);
     return out.length > 0;
@@ -94,34 +110,40 @@ function remoteTagExists(tag: string): boolean {
   }
 }
 
-function validate(tag: string, opts: { allowDirty?: boolean } = {}): void {
+export function validateRelease(
+  repoRoot: string,
+  tag: string,
+  opts: { allowDirty?: boolean; deps?: ReleaseDeps } = {}
+): void {
+  const { releasesDir, pkgPath } = repoPaths(repoRoot);
+  const git = createGit(repoRoot, opts.deps);
   const version = versionFromTag(tag);
-  const notes = notesPath(tag);
+  const notes = notesPath(releasesDir, tag);
 
   if (!fs.existsSync(notes)) {
-    console.error(`Missing release notes: ${path.relative(root, notes)}`);
+    console.error(`Missing release notes: ${path.relative(repoRoot, notes)}`);
     console.error(`Run: bun run release prepare ${tag}`);
     process.exit(1);
   }
 
   const content = fs.readFileSync(notes, 'utf-8').trim();
   if (content.length < 100) {
-    console.error(`Release notes too short (${content.length} chars): ${path.relative(root, notes)}`);
+    console.error(`Release notes too short (${content.length} chars): ${path.relative(repoRoot, notes)}`);
     process.exit(1);
   }
 
-  const pkg = readPkg();
+  const pkg = readPkg(pkgPath);
   if (pkg.version !== version) {
     console.error(`package.json version "${pkg.version}" does not match tag "${tag}" (expected ${version})`);
     process.exit(1);
   }
 
-  if (tagExists(tag)) {
+  if (tagExists(git, tag)) {
     console.error(`Tag ${tag} already exists locally. Delete it first if you intend to recreate.`);
     process.exit(1);
   }
 
-  if (remoteTagExists(tag)) {
+  if (remoteTagExists(git, tag)) {
     console.error(`Tag ${tag} already exists on origin.`);
     process.exit(1);
   }
@@ -137,17 +159,18 @@ function validate(tag: string, opts: { allowDirty?: boolean } = {}): void {
   console.log(`✓ ${tag} validated — notes file OK, package.json ${version}`);
 }
 
-function prepare(tag: string): void {
+export function prepareRelease(repoRoot: string, tag: string, deps?: ReleaseDeps): void {
+  const { releasesDir, templatePath, pkgPath } = repoPaths(repoRoot);
   const version = versionFromTag(tag);
-  const dest = notesPath(tag);
+  const dest = notesPath(releasesDir, tag);
 
   if (!fs.existsSync(templatePath)) {
-    console.error(`Missing template: ${path.relative(root, templatePath)}`);
+    console.error(`Missing template: ${path.relative(repoRoot, templatePath)}`);
     process.exit(1);
   }
 
   if (fs.existsSync(dest)) {
-    console.error(`Release notes already exist: ${path.relative(root, dest)}`);
+    console.error(`Release notes already exist: ${path.relative(repoRoot, dest)}`);
     process.exit(1);
   }
 
@@ -155,39 +178,41 @@ function prepare(tag: string): void {
   template = template.replaceAll('vX.Y.Z', tag).replaceAll('X.Y.Z', version);
   fs.writeFileSync(dest, template, 'utf-8');
 
-  const pkg = readPkg();
+  const pkg = readPkg(pkgPath);
   pkg.version = version;
-  writePkg(pkg);
+  writePkg(pkgPath, pkg);
 
-  build();
+  (deps?.build ?? build)();
 
-  console.log(`Created ${path.relative(root, dest)}`);
+  console.log(`Created ${path.relative(repoRoot, dest)}`);
   console.log(`Bumped package.json → ${version}`);
   console.log(`Ran bun run build — regenerated the 5 version-carrying manifests`);
   console.log('');
   console.log('Next steps:');
-  console.log(`  1. Edit ${path.relative(root, dest)} with product-focused release notes`);
+  console.log(`  1. Edit ${path.relative(repoRoot, dest)} with product-focused release notes`);
   console.log(`  2. bun run release validate ${tag}`);
   console.log(`  3. Commit notes + package.json + the 5 regenerated manifests, then push`);
   console.log(`  4. bun run release tag ${tag}`);
   console.log(`  5. bun run release push ${tag}`);
 }
 
-function tag(tagName: string): void {
-  validate(tagName);
-  const message = `Release ${tagName}`;
-  git(`git tag -a ${tagName} -m "${message}"`);
-  console.log(`✓ Created annotated tag ${tagName} on ${git('git rev-parse --short HEAD')}`);
+export function tagRelease(repoRoot: string, tag: string, deps?: ReleaseDeps): void {
+  validateRelease(repoRoot, tag, { deps });
+  const git = createGit(repoRoot, deps);
+  const message = `Release ${tag}`;
+  git(`git tag -a ${tag} -m "${message}"`);
+  console.log(`✓ Created annotated tag ${tag} on ${git('git rev-parse --short HEAD')}`);
 }
 
-function push(tagName: string): void {
-  if (!tagExists(tagName)) {
-    console.error(`Tag ${tagName} does not exist locally. Run: bun run release tag ${tagName}`);
+export function pushRelease(repoRoot: string, tag: string, deps?: ReleaseDeps): void {
+  const git = createGit(repoRoot, deps);
+  if (!tagExists(git, tag)) {
+    console.error(`Tag ${tag} does not exist locally. Run: bun run release tag ${tag}`);
     process.exit(1);
   }
   git('git push origin main');
-  git(`git push origin ${tagName}`);
-  console.log(`✓ Pushed main and ${tagName} — CI will publish the GitHub release`);
+  git(`git push origin ${tag}`);
+  console.log(`✓ Pushed main and ${tag} — CI will publish the GitHub release`);
 }
 
 function main(): void {
@@ -198,16 +223,16 @@ function main(): void {
 
   switch (command) {
     case 'prepare':
-      prepare(tagArg);
+      prepareRelease(root, tagArg);
       break;
     case 'validate':
-      validate(tagArg);
+      validateRelease(root, tagArg);
       break;
     case 'tag':
-      tag(tagArg);
+      tagRelease(root, tagArg);
       break;
     case 'push':
-      push(tagArg);
+      pushRelease(root, tagArg);
       break;
     default:
       usage();

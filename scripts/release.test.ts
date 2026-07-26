@@ -1,7 +1,126 @@
-import { describe, expect, spyOn, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
-import { findManifestVersionMismatches, MANIFEST_PATHS, normalizeTag } from './release.ts';
+import {
+  findManifestVersionMismatches,
+  MANIFEST_PATHS,
+  normalizeTag,
+  prepareRelease,
+  pushRelease,
+  tagRelease,
+  validateRelease,
+} from './release.ts';
+
+const TAG = 'v9.9.9';
+const VERSION = '9.9.9';
+const LONG_NOTES = 'x'.repeat(100);
+
+class ProcessExitError extends Error {
+  constructor(readonly code: number | undefined) {
+    super(`process.exit(${code})`);
+    this.name = 'ProcessExitError';
+  }
+}
+
+function withExitMocked(
+  run: (
+    exitSpy: ReturnType<typeof spyOn>,
+    errorSpy: ReturnType<typeof spyOn>,
+    warnSpy: ReturnType<typeof spyOn>,
+    logSpy: ReturnType<typeof spyOn>,
+  ) => void,
+): void {
+  const exitSpy = spyOn(process, 'exit').mockImplementation(((code?: number) => {
+    throw new ProcessExitError(code);
+  }) as never);
+  const errorSpy = spyOn(console, 'error').mockImplementation(() => undefined);
+  const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+  const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
+  try {
+    run(exitSpy, errorSpy, warnSpy, logSpy);
+  } finally {
+    exitSpy.mockRestore();
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
+    logSpy.mockRestore();
+  }
+}
+
+type SeedRepoOptions = {
+  pkgVersion: string;
+  notesContent?: string;
+  localTag?: boolean;
+  remoteTag?: boolean;
+  template?: boolean;
+  dirty?: boolean;
+};
+
+const tempDirs: string[] = [];
+
+function seedRepo(opts: SeedRepoOptions): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-test-'));
+  tempDirs.push(root);
+
+  fs.mkdirSync(path.join(root, '.github', 'releases'), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, 'package.json'),
+    JSON.stringify({ name: 'blackhole-test', version: opts.pkgVersion }, null, 2) + '\n',
+    'utf-8',
+  );
+
+  if (opts.template !== false) {
+    fs.writeFileSync(
+      path.join(root, '.github', 'releases', 'TEMPLATE.md'),
+      '## Release vX.Y.Z\n\nNotes for X.Y.Z with enough placeholder text to satisfy validate when substituted.\n',
+      'utf-8',
+    );
+  }
+
+  if (opts.notesContent !== undefined) {
+    fs.writeFileSync(path.join(root, '.github', 'releases', `${TAG}.md`), opts.notesContent, 'utf-8');
+  }
+
+  return root;
+}
+
+function defaultExecGit(opts: {
+  localTag?: boolean;
+  remoteTag?: boolean;
+  dirty?: boolean;
+  calls?: string[];
+}): (cmd: string) => string {
+  return (cmd: string) => {
+    opts.calls?.push(cmd);
+    if (cmd === `git rev-parse refs/tags/${TAG}`) {
+      if (opts.localTag) return 'deadbeef';
+      throw new Error('unknown ref');
+    }
+    if (cmd === `git ls-remote --tags origin refs/tags/${TAG}`) {
+      return opts.remoteTag ? `${'a'.repeat(40)}\trefs/tags/${TAG}` : '';
+    }
+    if (cmd === 'git status --porcelain') {
+      return opts.dirty ? ' M package.json' : '';
+    }
+    if (cmd === 'git rev-parse --short HEAD') {
+      return 'abc1234';
+    }
+    if (cmd.startsWith('git tag -a')) {
+      return '';
+    }
+    if (cmd.startsWith('git push origin')) {
+      return '';
+    }
+    throw new Error(`unexpected git command: ${cmd}`);
+  };
+}
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 describe('findManifestVersionMismatches', () => {
   test('returns [] when package.json and all 5 manifests share the same version', () => {
@@ -9,7 +128,6 @@ describe('findManifestVersionMismatches', () => {
     for (const { path } of MANIFEST_PATHS) {
       manifests[path] = { version: '0.8.0' };
     }
-    // marketplace.json has no top-level version — nest it under plugins[0] instead.
     manifests['.claude-plugin/marketplace.json'] = { plugins: [{ version: '0.8.0' }] };
 
     expect(findManifestVersionMismatches('0.8.0', manifests)).toEqual([]);
@@ -31,32 +149,23 @@ describe('findManifestVersionMismatches', () => {
     for (const { path } of MANIFEST_PATHS) {
       manifests[path] = { version: '1.0.0' };
     }
-    // Top-level version field present but wrong shape for this file — must be ignored in favor
-    // of plugins[0].version, and a stale nested version must still be caught.
     manifests['.claude-plugin/marketplace.json'] = { version: '1.0.0', plugins: [{ version: '0.9.0' }] };
 
     expect(findManifestVersionMismatches('1.0.0', manifests)).toEqual(['.claude-plugin/marketplace.json']);
   });
 });
 
-// normalizeTag is the sole gate against a malformed version string reaching an irreversible
-// `git tag`/`git push` (release.ts:19-25). It calls `process.exit(1)` on rejection, so every
-// reject-path assertion mocks process.exit (never actually exits the test runner) and
-// console.error, then restores both afterwards.
 describe('normalizeTag', () => {
-  function withExitMocked(run: (exitSpy: ReturnType<typeof spyOn>, errorSpy: ReturnType<typeof spyOn>) => void): void {
-    const exitSpy = spyOn(process, 'exit').mockImplementation((() => undefined) as never);
-    const errorSpy = spyOn(console, 'error').mockImplementation(() => undefined);
-    try {
+  function withNormalizeExitMocked(
+    run: (exitSpy: ReturnType<typeof spyOn>, errorSpy: ReturnType<typeof spyOn>) => void,
+  ): void {
+    withExitMocked((exitSpy, errorSpy) => {
       run(exitSpy, errorSpy);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
+    });
   }
 
   test('accepts a valid vX.Y.Z tag and returns it unchanged', () => {
-    withExitMocked((exitSpy, errorSpy) => {
+    withNormalizeExitMocked((exitSpy, errorSpy) => {
       expect(normalizeTag('v1.2.3')).toBe('v1.2.3');
       expect(exitSpy).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
@@ -64,44 +173,193 @@ describe('normalizeTag', () => {
   });
 
   test('rejects a tag missing the leading "v"', () => {
-    withExitMocked((exitSpy, errorSpy) => {
-      normalizeTag('1.2.3');
+    withNormalizeExitMocked((exitSpy, errorSpy) => {
+      expect(() => normalizeTag('1.2.3')).toThrow(ProcessExitError);
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid tag "1.2.3"'));
     });
   });
 
   test('rejects a tag with an extra version segment', () => {
-    withExitMocked((exitSpy, errorSpy) => {
-      normalizeTag('v1.2.3.4');
+    withNormalizeExitMocked((exitSpy, errorSpy) => {
+      expect(() => normalizeTag('v1.2.3.4')).toThrow(ProcessExitError);
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid tag "v1.2.3.4"'));
     });
   });
 
   test('rejects a tag with a non-numeric segment', () => {
-    withExitMocked((exitSpy, errorSpy) => {
-      normalizeTag('v1.2.x');
+    withNormalizeExitMocked((exitSpy, errorSpy) => {
+      expect(() => normalizeTag('v1.2.x')).toThrow(ProcessExitError);
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid tag "v1.2.x"'));
     });
   });
 
   test('rejects a tag missing the patch segment', () => {
-    withExitMocked((exitSpy, errorSpy) => {
-      normalizeTag('v1.2');
+    withNormalizeExitMocked((exitSpy, errorSpy) => {
+      expect(() => normalizeTag('v1.2')).toThrow(ProcessExitError);
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid tag "v1.2"'));
     });
   });
 });
 
-// ADR-007 T2 (R5′) regression: `release.ts`'s build() step must invoke plain `bun run build` —
-// tracked ⇒ built by default means the release CLI no longer needs (or should pass) `--all` to
-// regenerate every git-tracked target. `build()` isn't exported (it just wraps a single
-// execSync call with no branching logic worth unit-testing in isolation), so this reads the
-// source text directly — the same pattern this repo's other regression tests use for asserting
-// invariants about literal command strings.
+describe('validateRelease', () => {
+  test('exits when release notes file is missing', () => {
+    const root = seedRepo({ pkgVersion: VERSION });
+    withExitMocked((exitSpy, errorSpy) => {
+      expect(() => validateRelease(root, TAG, { deps: { execGit: defaultExecGit({}) } })).toThrow(ProcessExitError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Missing release notes'));
+    });
+  });
+
+  test('exits when release notes are shorter than 100 characters', () => {
+    const root = seedRepo({ pkgVersion: VERSION, notesContent: 'too short' });
+    withExitMocked((exitSpy, errorSpy) => {
+      expect(() => validateRelease(root, TAG, { deps: { execGit: defaultExecGit({}) } })).toThrow(ProcessExitError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Release notes too short'));
+    });
+  });
+
+  test('exits when package.json version does not match the tag', () => {
+    const root = seedRepo({ pkgVersion: '0.0.1', notesContent: LONG_NOTES });
+    withExitMocked((exitSpy, errorSpy) => {
+      expect(() => validateRelease(root, TAG, { deps: { execGit: defaultExecGit({}) } })).toThrow(ProcessExitError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('does not match tag'));
+    });
+  });
+
+  test('exits when the tag already exists locally', () => {
+    const root = seedRepo({ pkgVersion: VERSION, notesContent: LONG_NOTES });
+    withExitMocked((exitSpy, errorSpy) => {
+      expect(() =>
+        validateRelease(root, TAG, { deps: { execGit: defaultExecGit({ localTag: true }) } }),
+      ).toThrow(ProcessExitError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('already exists locally'));
+    });
+  });
+
+  test('exits when the tag already exists on origin', () => {
+    const root = seedRepo({ pkgVersion: VERSION, notesContent: LONG_NOTES });
+    withExitMocked((exitSpy, errorSpy) => {
+      expect(() =>
+        validateRelease(root, TAG, { deps: { execGit: defaultExecGit({ remoteTag: true }) } }),
+      ).toThrow(ProcessExitError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('already exists on origin'));
+    });
+  });
+
+  test('warns on a dirty working tree but still succeeds', () => {
+    const root = seedRepo({ pkgVersion: VERSION, notesContent: LONG_NOTES });
+    withExitMocked((exitSpy, _errorSpy, warnSpy, logSpy) => {
+      validateRelease(root, TAG, { deps: { execGit: defaultExecGit({ dirty: true }) } });
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith('Warning: working tree is not clean:');
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('validated'));
+    });
+  });
+
+  test('succeeds when all checks pass', () => {
+    const root = seedRepo({ pkgVersion: VERSION, notesContent: LONG_NOTES });
+    withExitMocked((exitSpy, errorSpy, warnSpy, logSpy) => {
+      validateRelease(root, TAG, { deps: { execGit: defaultExecGit({}) } });
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledWith(`✓ ${TAG} validated — notes file OK, package.json ${VERSION}`);
+    });
+  });
+});
+
+describe('prepareRelease', () => {
+  test('exits when TEMPLATE.md is missing', () => {
+    const root = seedRepo({ pkgVersion: '0.0.1', template: false });
+    withExitMocked((exitSpy, errorSpy) => {
+      expect(() => prepareRelease(root, TAG, { build: () => undefined })).toThrow(ProcessExitError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Missing template'));
+    });
+  });
+
+  test('exits when release notes file already exists', () => {
+    const root = seedRepo({ pkgVersion: VERSION, notesContent: LONG_NOTES });
+    withExitMocked((exitSpy, errorSpy) => {
+      expect(() => prepareRelease(root, TAG, { build: () => undefined })).toThrow(ProcessExitError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('already exist'));
+    });
+  });
+
+  test('creates notes from template, bumps package.json, and invokes build', () => {
+    const root = seedRepo({ pkgVersion: '0.0.1' });
+    let buildCalled = false;
+    prepareRelease(root, TAG, { build: () => {
+      buildCalled = true;
+    } });
+
+    const notesFile = path.join(root, '.github', 'releases', `${TAG}.md`);
+    const notes = fs.readFileSync(notesFile, 'utf-8');
+    expect(notes).toContain(TAG);
+    expect(notes).toContain(VERSION);
+    expect(notes).not.toContain('vX.Y.Z');
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8')) as { version: string };
+    expect(pkg.version).toBe(VERSION);
+    expect(buildCalled).toBe(true);
+  });
+});
+
+describe('tagRelease', () => {
+  test('propagates validate failure when release notes are missing', () => {
+    const root = seedRepo({ pkgVersion: VERSION });
+    withExitMocked((exitSpy, errorSpy) => {
+      expect(() => tagRelease(root, TAG, { execGit: defaultExecGit({}) })).toThrow(ProcessExitError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Missing release notes'));
+    });
+  });
+
+  test('creates an annotated local tag on the happy path', () => {
+    const root = seedRepo({ pkgVersion: VERSION, notesContent: LONG_NOTES });
+    const calls: string[] = [];
+    withExitMocked((exitSpy, _errorSpy, _warnSpy, logSpy) => {
+      tagRelease(root, TAG, { execGit: defaultExecGit({ calls }) });
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(calls.some((cmd) => cmd.startsWith(`git tag -a ${TAG}`))).toBe(true);
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining(`Created annotated tag ${TAG}`));
+    });
+  });
+});
+
+describe('pushRelease', () => {
+  test('exits when the local tag does not exist', () => {
+    const root = seedRepo({ pkgVersion: VERSION });
+    withExitMocked((exitSpy, errorSpy) => {
+      expect(() => pushRelease(root, TAG, { execGit: defaultExecGit({}) })).toThrow(ProcessExitError);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('does not exist locally'));
+    });
+  });
+
+  test('pushes main and the tag to origin on the happy path', () => {
+    const root = seedRepo({ pkgVersion: VERSION });
+    const calls: string[] = [];
+    withExitMocked((exitSpy, _errorSpy, _warnSpy, logSpy) => {
+      pushRelease(root, TAG, { execGit: defaultExecGit({ localTag: true, calls }) });
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(calls).toContain('git push origin main');
+      expect(calls).toContain(`git push origin ${TAG}`);
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Pushed main'));
+    });
+  });
+});
+
 describe("release.ts's build() step (ADR-007 T2/R5′)", () => {
   test('invokes plain `bun run build`, never a --all/--gemini/--no-codex flag', () => {
     const releaseSrc = fs.readFileSync(path.join(import.meta.dirname, 'release.ts'), 'utf-8');
