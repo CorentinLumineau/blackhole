@@ -47,11 +47,21 @@ Blocked by #N (if any)
 
 ## 3. PO gate (design sign-off)
 
-Set parent `notes: awaiting-plan-approval` and surface to coordinator:
+Set parent `notes: awaiting-plan-approval` and surface to coordinator.
+Conforms to `clarify-gates.md` § AskQuestion payload contract.
 
 ```
-AskQuestion: "Epic #<N> split into children #A, #B, #C.
-Please review the split plan and confirm (or request changes) before I begin implementation."
+AskQuestion:
+**Decision:** Approve the epic split (or request changes) before implementation begins.
+
+**Evidence:** Epic #<N> decomposed into 3 children:
+- #A — <title / concern>
+- #B — <title / concern>
+- #C — <title / concern>
+
+**Options:**
+- **Approve as-is** — unblocks wave scheduling; children enter the normal handle → plan → implement pipeline.
+- **Request changes** — re-split required; parent stays blocked until the revised child set is approved.
 ```
 
 Do **not** spawn any `planner` or `implementer` workers for children
