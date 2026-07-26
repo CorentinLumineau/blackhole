@@ -21,6 +21,7 @@ import {
   buildClaudeMarketplace,
   cleanDir,
   isTargetTracked,
+  determineBuildTargets,
   GEMINI_TARGET_DIRS,
   CODEX_TARGET_DIRS,
   DEPRECATED_BUILD_FLAGS,
@@ -758,6 +759,22 @@ describe('bun run build — tracked ⇒ built-by-default (ADR-007 T2)', () => {
 
   test('DEPRECATED_BUILD_FLAGS names exactly the three retired flags', () => {
     expect(new Set(DEPRECATED_BUILD_FLAGS)).toEqual(new Set(['--gemini', '--all', '--no-codex']));
+  });
+
+  test('determineBuildTargets uses tracking-only gating — deprecated flags do not change buildGemini/buildCodex when all targets are tracked', () => {
+    expect(isTargetTracked(root, GEMINI_TARGET_DIRS)).toBe(true);
+    expect(isTargetTracked(root, CODEX_TARGET_DIRS)).toBe(true);
+
+    const baseline = determineBuildTargets(new Set());
+    expect(baseline).toEqual({ buildGemini: true, buildCodex: true });
+
+    for (const flag of DEPRECATED_BUILD_FLAGS) {
+      expect(determineBuildTargets(new Set([flag]))).toEqual({ buildGemini: true, buildCodex: true });
+    }
+    expect(determineBuildTargets(new Set([...DEPRECATED_BUILD_FLAGS]))).toEqual({
+      buildGemini: true,
+      buildCodex: true,
+    });
   });
 });
 
