@@ -1,8 +1,10 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import * as childProcess from 'child_process';
 import {
   computeWaves,
   countLedgerByStatus,
   discoveryFilings,
+  fetchForgeCounts,
   formatDashboard,
   formatScopeLabel,
   groupIssuesByPhase,
@@ -514,6 +516,110 @@ describe('renderConfigSummary', () => {
         scope: { labels: config.scope_labels },
       }),
     ).toContain(expected);
+  });
+});
+
+describe('fetchForgeCounts', () => {
+  let spawnSyncSpy: ReturnType<typeof spyOn<typeof childProcess, 'spawnSync'>>;
+
+  afterEach(() => {
+    spawnSyncSpy?.mockRestore();
+  });
+
+  function mockGhCalls(
+    handlers: {
+      issue?: () => childProcess.SpawnSyncReturns<string>;
+      pr?: () => childProcess.SpawnSyncReturns<string>;
+    },
+  ): void {
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockImplementation((_cmd, args) => {
+      const subcommand = args?.[0];
+      if (subcommand === 'issue') return handlers.issue?.() ?? { status: 0, stdout: '[]', stderr: '' };
+      if (subcommand === 'pr') return handlers.pr?.() ?? { status: 0, stdout: '[]', stderr: '' };
+      return { status: 1, stdout: '', stderr: 'unexpected gh subcommand' };
+    });
+  }
+
+  test('returns open issue and PR counts when both gh calls succeed', () => {
+    mockGhCalls({
+      issue: () => ({
+        status: 0,
+        stdout: JSON.stringify([{ number: 1 }, { number: 2 }]),
+        stderr: '',
+      }),
+      pr: () => ({
+        status: 0,
+        stdout: JSON.stringify([{ number: 10 }]),
+        stderr: '',
+      }),
+    });
+
+    expect(fetchForgeCounts({}, 'owner/repo')).toEqual({
+      openIssues: 2,
+      openPrs: 1,
+      ok: true,
+    });
+
+    expect(spawnSyncSpy).toHaveBeenCalledTimes(2);
+    const issueArgs = spawnSyncSpy.mock.calls.find((call) => call[1]?.[0] === 'issue')?.[1];
+    const prArgs = spawnSyncSpy.mock.calls.find((call) => call[1]?.[0] === 'pr')?.[1];
+    expect(issueArgs).toContain('--repo');
+    expect(issueArgs).toContain('owner/repo');
+    expect(prArgs).toContain('--repo');
+    expect(prArgs).toContain('owner/repo');
+  });
+
+  test('returns structured error when issue list fails', () => {
+    mockGhCalls({
+      issue: () => ({ status: 1, stdout: '', stderr: 'rate limited' }),
+    });
+
+    expect(fetchForgeCounts({}, 'owner/repo')).toEqual({
+      openIssues: 0,
+      openPrs: 0,
+      ok: false,
+      error: 'rate limited',
+    });
+  });
+
+  test('returns invalid gh JSON error when issue stdout is not JSON', () => {
+    mockGhCalls({
+      issue: () => ({ status: 0, stdout: 'not-json', stderr: '' }),
+    });
+
+    expect(fetchForgeCounts({}, 'owner/repo')).toEqual({
+      openIssues: 0,
+      openPrs: 0,
+      ok: false,
+      error: 'invalid gh JSON',
+    });
+  });
+
+  test('keeps ok true when issue list succeeds but PR list fails', () => {
+    mockGhCalls({
+      issue: () => ({
+        status: 0,
+        stdout: JSON.stringify([{ number: 1 }, { number: 2 }, { number: 3 }]),
+        stderr: '',
+      }),
+      pr: () => ({ status: 1, stdout: '', stderr: 'pr list failed' }),
+    });
+
+    expect(fetchForgeCounts({}, 'owner/repo')).toEqual({
+      openIssues: 3,
+      openPrs: 0,
+      ok: true,
+    });
+  });
+
+  test('passes milestone scope to the issue-list gh invocation', () => {
+    mockGhCalls({});
+
+    fetchForgeCounts({ milestone: 'v0.4.2' }, 'owner/repo');
+
+    const issueArgs = spawnSyncSpy.mock.calls.find((call) => call[1]?.[0] === 'issue')?.[1];
+    expect(issueArgs).toContain('--milestone');
+    expect(issueArgs).toContain('v0.4.2');
   });
 });
 
