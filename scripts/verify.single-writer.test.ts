@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  findMissingGateMarkers,
   ROUTER_NO_DIRECT_WRITE_REQUIRED_MARKERS,
   ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS,
   runChecks,
 } from './checks/single-writer.check.ts';
+import { findMissingGateMarkers } from './lib/check-common.ts';
 
 // Regression guard for issue #224: router.md must no longer instruct direct writes to
 // queue.json/findings-ledger.json, and orchestrator.md must explicitly state serial,

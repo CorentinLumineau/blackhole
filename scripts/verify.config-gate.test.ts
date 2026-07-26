@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { findMissingGateMarkers } from './checks/agents.check.ts';
+import { findMissingGateMarkers } from './lib/check-common.ts';
 import {
   COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
   CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,

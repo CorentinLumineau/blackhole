@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { walkMdFilesAbs } from './lib/check-common.ts';
 import {
-  walkMdFilesAbs,
   extractMarkdownLinkTargets,
   findDeadMarkdownLinks,
   findAdrCrossReferenceErrors,

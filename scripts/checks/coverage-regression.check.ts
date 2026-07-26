@@ -1,5 +1,5 @@
 import { read, type CheckResult } from './check-utils.ts';
-import { findMissingGateMarkers } from './agents.check.ts';
+import { findMissingGateMarkers } from '../lib/check-common.ts';
 
 // PM-028 (issue #306) — coverage-regression.check.ts (V-TEST-09): mercure parity adoption of the
 // coverage-regression gate. Validates two source artifacts carry the gate:
@@ -8,11 +8,6 @@ import { findMissingGateMarkers } from './agents.check.ts';
 //   2. src/agents/implementer.md § 6 "Verify & Open PR" carries the coverage-delta sub-step,
 //      reusing hunt/coverage.md's runner-detection heuristic (no invented runner invocation;
 //      no-runner degrades to a logged no-op, never a false pass).
-//
-// findMissingGateMarkers is the shared substring-presence helper (agents.check.ts), reused here
-// exactly as single-writer.check.ts reuses it — one definition, no local reimplementation
-// (V-INT-02).
-export { findMissingGateMarkers };
 
 // The V-TEST-09 row, verbatim per issue #306's requested wording. Matching the full row (down to
 // the trailing "| BLOCK") asserts code + description + severity together — a bare ".includes('BLOCK')"
