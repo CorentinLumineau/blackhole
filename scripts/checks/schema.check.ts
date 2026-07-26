@@ -1,17 +1,10 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import { root, read, type CheckResult } from './check-utils.ts';
 
 // ADR-007 T5/R2' — schema.check.ts: fixture JSON shape validators (split from the former
 // catch-all check file, issue #322).
 
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
-
-// Per-fixture-type shape validators (V-SCHEMA-01), extracted for direct unit coverage (#279 —
-// checkFixtures previously had ~74 lines of inline per-fixture branching with zero tests). Each
 // takes the already-JSON.parsed fixture body plus its label (used verbatim in error messages, so
 // output text is unchanged from the pre-extraction inline version) and returns the shape errors
 // found — [] when valid. Pure, no I/O: checkFixtures alone owns read()/JSON.parse()/try-catch and

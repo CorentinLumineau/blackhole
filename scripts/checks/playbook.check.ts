@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { root, read, type CheckResult } from './check-utils.ts';
 import { PHASE_NAMES, PHASE_PLAYBOOK_FILES } from '../build.ts';
 import { walkMdFilesAbs } from './links.check.ts';
 
@@ -9,12 +10,7 @@ import { walkMdFilesAbs } from './links.check.ts';
 // playbooks, claude-code-native.md stays harness-neutral above its appendix — grouped because
 // each independently verifies "the harness's own playbook machinery says what it does".
 
-const root = path.resolve(import.meta.dirname, '..', '..');
 const srcDir = path.join(root, 'src');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 const PLAN_REQUIRED_PHASES = new Set(['plan', 'implement', 'review']);
 

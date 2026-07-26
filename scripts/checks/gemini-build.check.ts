@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { root, read, type CheckResult } from './check-utils.ts';
 import {
   AGENTS_BUILD_ROOT,
   AGENTS_BUILD_AGENT_DIR,
@@ -14,12 +15,6 @@ import { leakedPlatformConditionalMarkers, runFullBuildOnce } from './build.chec
 
 // ADR-007 T5/R2' — gemini-build.check.ts: Gemini/Antigravity workspace compile outputs and
 // distribution bundle shape — matches verify.gemini-build.test.ts.
-
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 // V-GEMINI-01: Gemini/Antigravity compile outputs are complete and platform-clean
 const checkGeminiBuild = (): CheckResult => {

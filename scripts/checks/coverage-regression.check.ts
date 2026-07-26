@@ -1,5 +1,4 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { read, type CheckResult } from './check-utils.ts';
 import { findMissingGateMarkers } from './agents.check.ts';
 
 // PM-028 (issue #306) — coverage-regression.check.ts (V-TEST-09): mercure parity adoption of the
@@ -14,12 +13,6 @@ import { findMissingGateMarkers } from './agents.check.ts';
 // exactly as single-writer.check.ts reuses it — one definition, no local reimplementation
 // (V-INT-02).
 export { findMissingGateMarkers };
-
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 // The V-TEST-09 row, verbatim per issue #306's requested wording. Matching the full row (down to
 // the trailing "| BLOCK") asserts code + description + severity together — a bare ".includes('BLOCK')"

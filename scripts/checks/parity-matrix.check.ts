@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { root, type CheckResult } from './check-utils.ts';
 
 // ADR-013 D1/T2 — parity-matrix.check.ts: validates the row schema of
 // documentation/audits/mercure-parity-matrix.md (V-PMATRIX-01). Mirrors the paired-file shape
@@ -11,9 +12,6 @@ import * as path from 'path';
 // exact precedent: playbook.check.ts's checkPlanArtifacts / V-PLAN-01
 // (`if (!fs.existsSync(queueFile)) return { id: 'V-PLAN-01', ok: true };`).
 
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const root = path.resolve(import.meta.dirname, '..', '..');
 const MATRIX_PATH = path.join(root, 'documentation', 'audits', 'mercure-parity-matrix.md');
 
 // D1 row schema (binding, ADR-013): | id | kind | mechanism | blackhole | status | priority | verified |

@@ -1,16 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { root, read, type CheckResult } from './check-utils.ts';
 import { CONTENT_GATE_BUDGETS, type ContentGateBudget } from '../build.ts';
 
 // ADR-007 T5/R2' — content-gates.check.ts: declared-budget section/file-size gate (split from
 // the former catch-all check file, issue #322; generalized from a single hardcoded file to a
 // declared `{file/glob -> {maxSectionLoc, maxFileLoc}}` map, issue #323, ADR-007 T6/R3′).
-
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 // Splits content into lines, dropping a trailing empty string produced by splitting content that
 // ends in a newline, so the resulting line count matches `wc -l` exactly. Shared by

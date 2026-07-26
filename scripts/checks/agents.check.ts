@@ -1,15 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { root, read, type CheckResult } from './check-utils.ts';
 
 // ADR-007 T5/R2' — agents.check.ts: agent roster frontmatter, tool-policy, delegation-contract,
 // and gate-marker checks (split from the former catch-all check file, issue #322).
 
-const root = path.resolve(import.meta.dirname, '..', '..');
 const srcDir = path.join(root, 'src');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 // V-TOOLS-01: Deny-list tool policy — no tools: allowlist; correct disallowedTools per role
 export const AGENT_TOOL_POLICY_DENY_MATRIX: Record<string, string[] | null> = {

@@ -1,13 +1,12 @@
 import * as path from 'path';
 import { EXPECTED_CHECK_COUNT } from './build.ts';
+import { type CheckResult } from './checks/check-utils.ts';
 
 // ADR-007 T5/R2': verify.ts is a thin runner — glob-discovers scripts/checks/*.check.ts (sorted,
 // deterministic order), dynamically imports each module, calls its exported runChecks(), and
 // concatenates the CheckResult[]s. No central registry file (the critics' binding rejection of a
 // check-registry hub): adding a new domain means adding a new scripts/checks/{domain}.check.ts
 // file with a runChecks() export — this runner never changes.
-
-type CheckResult = { id: string; ok: boolean; detail?: string };
 
 const defaultChecksDir = path.join(path.resolve(import.meta.dirname, '..'), 'scripts', 'checks');
 

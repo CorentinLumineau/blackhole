@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { root, type CheckResult } from './check-utils.ts';
 
 // ADR-007 T5/R2' — adr-status.check.ts: matches verify.adr-status.test.ts.
 //
@@ -14,10 +15,6 @@ import * as path from 'path';
 //      F-00006) — human prose carrying shipped-milestone evidence, never flattened to a bare
 //      token; only its *leading token* must agree with frontmatter, case-insensitively, and
 //      only when the section is present at all (V-ADR-03)
-
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
 
 const decisionsDir = path.join(root, 'documentation', 'decisions');
 

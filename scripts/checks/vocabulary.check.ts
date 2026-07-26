@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { root, type CheckResult } from './check-utils.ts';
 import { QUEUE_STATUSES, QUEUE_NOTES, HUNT_KINDS, PLATFORM_TARGETS } from '../build.ts';
 import { walkFilesAbs } from '../lib/fs.ts';
 
@@ -35,9 +36,6 @@ import { walkFilesAbs } from '../lib/fs.ts';
 // extractor revision should widen these deliberately, with the same false-positive calibration
 // discipline used to narrow them in the first place (see PR #339 for the calibration evidence).
 
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const root = path.resolve(import.meta.dirname, '..', '..');
 const srcDir = path.join(root, 'src');
 const scriptsDir = path.join(root, 'scripts');
 

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { root, read, type CheckResult } from './check-utils.ts';
 import {
   AGENT_NAMES,
   PHASE_PLAYBOOK_FILES,
@@ -11,12 +12,7 @@ import {
 // filesystem scan) + doc-table conformance (AGENTS.md roster, README.md count) — split from
 // the former catch-all check file, issue #322. Canonical home for #320's V-GROUND-01 generalization.
 
-const root = path.resolve(import.meta.dirname, '..', '..');
 const srcDir = path.join(root, 'src');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 export const listFiles = (dir: string, ext = '.md'): string[] => {
   const full = path.join(root, dir);

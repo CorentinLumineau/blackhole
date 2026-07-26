@@ -1,15 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
+import { root, type CheckResult } from './check-utils.ts';
 import { PLATFORM_TARGETS } from '../build.ts';
 
 // ADR-007 T5/R2' — build.check.ts: V-BUILD-01 (clean git diff after build) plus shared build
 // memo and cross-target helpers imported by gemini-build.check.ts, claude-dist.check.ts, and
 // codex-build.check.ts — matches verify.build.test.ts.
-
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
 
 // Platform-conditional-leak scan (V-GEMINI-01/V-CODEX-04): compiled output for `activeTarget`
 // must contain no unresolved {{#<platform>}} marker for any *other* platform — a leaked marker
