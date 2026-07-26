@@ -9,6 +9,7 @@ import {
   AGENT_MD_FILES,
   AGENT_YAML_FILES,
   RULES_LIST,
+  PLATFORM_TARGETS,
 } from '../build.ts';
 import {
   validatePluginTreeShape,
@@ -39,6 +40,22 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 // "agent YAML files" substring instead (fixes #234's dead filter, which never matched and
 // silently swallowed agent-count mismatches).
 export const isAgentCountError = (e: string): boolean => e.includes('agent YAML files');
+
+// Platform-conditional-leak scan (V-GEMINI-01/V-CODEX-04): compiled output for `activeTarget`
+// must contain no unresolved {{#<platform>}} marker for any *other* platform — a leaked marker
+// means applyPlatformConditionals failed to strip it. Iterates PLATFORM_TARGETS (build.ts's
+// § facts SSOT, issue #327) instead of a hardcoded cursor/claude pair, so a leak from any of the
+// 5 platforms is caught — previously only 2 of 5 were checked, silently missing e.g. a leaked
+// {{#skills}} block in Gemini output or a leaked {{#gemini}} block in Codex output. Exported for
+// direct unit coverage, same rationale as isAgentCountError above — both call sites below close
+// over the repo-root filesystem and can't be exercised in isolation otherwise.
+export const leakedPlatformConditionalMarkers = (
+  content: string,
+  activeTarget: (typeof PLATFORM_TARGETS)[number]
+): string[] =>
+  PLATFORM_TARGETS.filter((platform) => platform !== activeTarget).filter((platform) =>
+    new RegExp(`\\{\\{#${platform}\\}\\}`).test(content)
+  );
 
 // checkGeminiBuild, checkGeminiDistributionBundle, and checkBuild all need `bun run build
 // --gemini` to have run before asserting file shape / diffing porcelain — memoize so a full
@@ -85,8 +102,9 @@ const checkGeminiBuild = (): CheckResult => {
 
   for (const rel of walkMdFiles(AGENTS_BUILD_ROOT)) {
     const content = read(rel);
-    if (/\{\{#cursor\}\}/.test(content) || /\{\{#claude\}\}/.test(content)) {
-      errors.push(`${rel}: contains raw platform conditional`);
+    const leaked = leakedPlatformConditionalMarkers(content, 'gemini');
+    if (leaked.length) {
+      errors.push(`${rel}: contains raw platform conditional (${leaked.join(', ')})`);
     }
   }
 
@@ -275,8 +293,9 @@ const checkCodexAgentFiles = (): CheckResult => {
   }
   for (const rel of walkMdFiles('codex-skills')) {
     const content = read(rel);
-    if (/\{\{#cursor\}\}/.test(content) || /\{\{#claude\}\}/.test(content)) {
-      agentErrors.push(`${rel}: contains raw platform conditional`);
+    const leaked = leakedPlatformConditionalMarkers(content, 'codex');
+    if (leaked.length) {
+      agentErrors.push(`${rel}: contains raw platform conditional (${leaked.join(', ')})`);
     }
   }
   if (agentErrors.length) return { id: 'V-CODEX-04', ok: false, detail: agentErrors.join('; ') };
