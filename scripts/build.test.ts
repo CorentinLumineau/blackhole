@@ -840,11 +840,8 @@ const parseBuildImportNames = (importBlock: string): string[] =>
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean)
-    .map((part) => {
-      const typeMatch = part.match(/^type\s+(\w+)/);
-      if (typeMatch) return typeMatch[1];
-      return part.replace(/\s+as\s+\w+$/, '').trim();
-    });
+    .filter((part) => !/^type\s+/.test(part))
+    .map((part) => part.replace(/\s+as\s+\w+$/, '').trim());
 
 const collectBuildConsumerImportNames = (): Set<string> => {
   const names = new Set<string>();
@@ -853,7 +850,8 @@ const collectBuildConsumerImportNames = (): Set<string> => {
     ...fs.readdirSync(checksDir).filter((f) => f.endsWith('.check.ts')).map((f) => path.join(checksDir, f)),
     path.join(root, 'scripts', 'verify.ts'),
   ];
-  const importRe = /import\s+(?:type\s+)?\{([\s\S]*?)\}\s+from\s+['"](?:\.\.\/|\.\/)build\.ts['"]/g;
+  const importRe =
+    /^import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+['"](?:\.\.\/|\.\/)build\.ts['"]/gm;
 
   for (const filePath of consumerFiles) {
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -874,13 +872,33 @@ describe('build module SRP (issue #363)', () => {
 });
 
 describe('build.ts barrel export completeness (issue #363)', () => {
-  test('every symbol imported by scripts/checks/*.check.ts and scripts/verify.ts is exported', async () => {
+  test('every value symbol imported by scripts/checks/*.check.ts and scripts/verify.ts is exported', async () => {
     const imported = collectBuildConsumerImportNames();
     expect(imported.size).toBeGreaterThan(0);
 
     const buildModule = await import('./build.ts');
+    const buildSource = fs.readFileSync(path.join(root, 'scripts', 'build.ts'), 'utf-8');
+
     for (const name of imported) {
-      expect(name in buildModule, `missing export: ${name}`).toBe(true);
+      expect(name in buildModule, `missing runtime export: ${name}`).toBe(true);
+    }
+
+    // Type-only imports (erased at runtime) must still be re-exported from the barrel.
+    const checksDir = path.join(root, 'scripts', 'checks');
+    const typeImportRe =
+      /^import\s+\{[^}]*\btype\s+(\w+)[^}]*\}\s+from\s+['"](?:\.\.\/|\.\/)build\.ts['"]/gm;
+    for (const filePath of [
+      ...fs.readdirSync(checksDir).filter((f) => f.endsWith('.check.ts')).map((f) => path.join(checksDir, f)),
+      path.join(root, 'scripts', 'verify.ts'),
+    ]) {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      for (const match of content.matchAll(typeImportRe)) {
+        const typeName = match[1];
+        expect(
+          buildSource.includes(`type ${typeName}`),
+          `missing type re-export: ${typeName}`
+        ).toBe(true);
+      }
     }
   });
 });
