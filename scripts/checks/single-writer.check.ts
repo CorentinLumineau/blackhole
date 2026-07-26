@@ -29,13 +29,13 @@ export const ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS = [
 const checkSingleWriterInvariant = (): CheckResult => {
   const routerMissing = findMissingGateMarkers(read('src/agents/router.md'), ROUTER_NO_DIRECT_WRITE_REQUIRED_MARKERS);
   const orchestratorMissing = findMissingGateMarkers(
-    read('src/agents/orchestrator.md'),
+    read('src/references/orchestrator-runtime.md'),
     ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS,
   );
 
   const errors = [
     ...routerMissing.map((m) => `router.md missing "${m}"`),
-    ...orchestratorMissing.map((m) => `orchestrator.md missing "${m}"`),
+    ...orchestratorMissing.map((m) => `orchestrator-runtime.md missing "${m}"`),
   ];
 
   if (errors.length) return { id: 'V-WRITE-01', ok: false, detail: errors.join('; ') };

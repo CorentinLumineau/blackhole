@@ -25,7 +25,7 @@ See [multitask-mode.md](multitask-mode.md) § Claude Code harness notes for how 
 
 When the issue has a `route` object on its `queue.json` entry, the orchestrator derives
 the `planner` spawn directive from it before running the checklist above. See
-`orchestrator.md` § Route-derived dispatch for the full precedence rules
+`orchestrator-delegation.md` § Route-derived dispatch for the full precedence rules
 (`needs_split` > `needs_design` > `plan_mode`, each gated by `route.confidence.<flag>`
 against `router_confidence_thresholds`). Zero-regression guarantee: absent/void `route`,
 or `adaptive_routing: false`, preserves today's exact behavior — no explicit directive,

@@ -58,7 +58,7 @@ and `investigator`'s `analyze` sub-mode lands its note.
 but does not replace Handle's own manual `issue-splitting.md`/`clarify-gates.md` judgment.
 `route.needs_split` reuses the existing Split mechanism described above — route-derived
 dispatch does not introduce a new split code path. Downstream track selection (`plan_mode`,
-`needs_design`) is entirely a Phase 2 Plan concern; see `orchestrator.md` § Route-derived
+`needs_design`) is entirely a Phase 2 Plan concern; see `orchestrator-delegation.md` § Route-derived
 dispatch and `phase-plan.md` § Route-derived planner spawn for the full precedence rules.
 
 ## Investigator agent (ADR-004, ADR-010)

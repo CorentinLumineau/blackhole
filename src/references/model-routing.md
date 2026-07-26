@@ -172,4 +172,4 @@ second source — resolve the tier from those tables first, then pin the resolve
 - [ ] Design planner → premium; skip planner → economy; implementer → standard (+ bumps)
 ```
 
-See `orchestrator.md` § Worker spawn model and `campaign-prompt.md` § Coordinator usage.
+See `orchestrator-delegation.md` § Worker spawn model and `campaign-prompt.md` § Coordinator usage.

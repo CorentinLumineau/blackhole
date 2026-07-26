@@ -90,7 +90,7 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 | `revision` | number | Bumped on every re-route; never retroactively changes already-executed chain steps |
 
 **Consumer status** (per-flag, updated as ADR-004 steps land): `plan_mode`, `needs_split`,
-and `needs_design` are now read by orchestrator dispatch (`orchestrator.md` §
+and `needs_design` are now read by orchestrator dispatch (`orchestrator-delegation.md` §
 Route-derived dispatch, #93); `needs_research` and `needs_investigation` are now read by
 Handle's investigator spawn condition (`phase-handle.md` § Investigator agent, step 6 —
 #96, PR #125), and `security_review_required` is now read by the review phase's
@@ -100,7 +100,7 @@ today's live queue still falls through the "void route" fallback and dispatches 
 it did before ADR-004, only because none has re-entered Handle since #118 merged.
 docs_impact is router-computed and orchestrator-confidence-gated as of #177, but has no
 dispatch consumer yet. `needs_brainstorm` is router-computed and orchestrator-dispatched as of
-ADR-010 M4 (`orchestrator.md` § Route-derived dispatch, Step 2.5).
+ADR-010 M4 (`orchestrator-delegation.md` § Route-derived dispatch, Step 2.5).
 
 **Route backfill (ADR-008 rollout)**: to populate `route{}` on the standing queue so the
 dashboard's Routing section (`coordinator-dashboard.md` § Dashboard sections) renders real
@@ -111,7 +111,7 @@ value). **Safety** (no `queue.json` lock strategy — see `blackhole-state.md` �
 run the backfill **sequentially**, one `router` spawn at a time, **never** parallel-batched with
 regular Ready-set worker spawns; skipping `in-flight` avoids a concurrent-write collision with an
 active worker mutating the same issue entry. Backfilling a route is **display-only** — it never
-re-evaluates an already-executed dispatch decision (`orchestrator.md` § Route-derived dispatch
+re-evaluates an already-executed dispatch decision (`orchestrator-delegation.md` § Route-derived dispatch
 reads `route{}` once, immediately before spawning `planner`; issues already past `phase: plan`
 are unaffected). One-time backfill, run before that turn's Step 2 Ready-set computation. The
 `route` object schema table above is unchanged (frozen per `router.md` § Schema reference).

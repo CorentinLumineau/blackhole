@@ -305,7 +305,7 @@ issue content (Step 2, same exception list as Skip/Design above). Expands a vagu
 issue into a requirements framing plus 2-3 options with a provisional recommendation, at
 **reduced depth** relative to the Design Track. **Terminal semantics**: this track never
 produces a mergeable code PR — it returns a brainstorm artifact plus proposed child issues; the
-orchestrator handles filing and closing (`orchestrator.md` § Brainstorm terminal handling).
+orchestrator handles filing and closing (`orchestrator-dispatch.md` § Brainstorm terminal handling).
 
 1.  **Requirements Framing**: reuses Design Track subsection 1's mechanics verbatim
     (route-first, content-fallback pattern) — see § Design Track subsection 1 above, not
@@ -336,7 +336,7 @@ orchestrator handles filing and closing (`orchestrator.md` § Brainstorm termina
 suffix convention) — it does **not** write directly to `documentation/brainstorms/`. The
 durable copy at `documentation/brainstorms/{concern-slug}.md`
 (`.cursor/skills/blackhole/references/artifact-contract.md`) is committed by
-`implementer` under `execution_mode: docs-only` as part of `orchestrator.md` § Brainstorm
+`implementer` under `execution_mode: docs-only` as part of `orchestrator-dispatch.md` § Brainstorm
 terminal handling — not this track's job.
 
 ---

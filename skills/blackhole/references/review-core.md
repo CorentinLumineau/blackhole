@@ -100,10 +100,10 @@ Reset `review_iteration` to 0 when PR merges or issue returns to plan phase.
 1. **Trigger**: read `route.security_review_required` from the issue's `queue.json` entry
    at review-phase spawn time. `route` absent → not applicable, unconditional
    current-checklist-only review (`queue-dag.md` "void route" convention).
-2. **Confidence gate**: mirrors `orchestrator.md` § Route-derived dispatch's exact
+2. **Confidence gate**: mirrors `orchestrator-delegation.md` § Route-derived dispatch's exact
    precedence — before consulting the flag, compare `route.confidence.security` against
    `.blackhole/config.json` `router_confidence_thresholds.security` (default 70); below
-   threshold, treat as `true` (cautious default, matches `orchestrator.md`'s own stated
+   threshold, treat as `true` (cautious default, matches `orchestrator-delegation.md`'s own stated
    note verbatim).
 3. **Mechanism**: single `reviewer` spawn — when the gate resolves `true`, the Reviewer
    prompt requirements (below) gain an additional block: a diff-scoped exploitability

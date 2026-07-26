@@ -33,7 +33,7 @@ protocol step 2's, unchanged.
   mining evidence flagged as excessive.
 - **Reclassification**: governed entirely by `phase-loop.md` step 2's rules
   (`cancelled` → rerun once; "Base branch was modified" → re-fetch + retry
-  once; 2-retry cap → `orchestrator.md` § Error Classification) — not
+  once; 2-retry cap → `orchestrator-runtime.md` § Error Classification) — not
   restated here.
 
 ## 1. `mergeEligible(issue) -> bool`

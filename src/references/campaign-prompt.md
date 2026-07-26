@@ -89,7 +89,7 @@ Same rule: attach the matching `.cursor/agents/bc-<role>.md` file
 (`.cursor/agents/planner.md`, `.cursor/agents/implementer.md`,
 `.cursor/agents/reviewer.md`). Do not substitute built-in `subagent_type`
 enums or free-text role names without the agent file. Apply `worker_model_policy` from
-`model-routing.md` (see `orchestrator.md` § Worker spawn model).
+`model-routing.md` (see `orchestrator-delegation.md` § Worker spawn model).
 
 **Mis-spawn hazard:**
 
