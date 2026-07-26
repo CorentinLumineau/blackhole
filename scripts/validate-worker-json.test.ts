@@ -584,6 +584,12 @@ const plannerHookInput = (summary: string) =>
     summary,
   });
 
+const hunterHookInput = (summary: string) =>
+  JSON.stringify({
+    subagent_type: 'hunter',
+    summary,
+  });
+
 describe('validate-worker-json hook CLI', () => {
   test('empty stdin exits 2 with empty payload message', async () => {
     const result = await runValidateWorkerCli(['--hook'], '');
@@ -626,6 +632,26 @@ describe('validate-worker-json hook CLI', () => {
     );
     expect(result.exitCode).toBe(0);
     expect(result.stderr.trim()).toBe('');
+  });
+
+  test('valid hunter stop exits 0', async () => {
+    const hunterJson = readFixture('hunter-complete.json');
+    const result = await runValidateWorkerCli(
+      ['--hook'],
+      hunterHookInput(fencedJsonSummary(hunterJson)),
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('invalid hunter worker JSON exits 1 with validation error', async () => {
+    const invalidHunter = readFixture('hunter-complete-missing-territory.json');
+    const result = await runValidateWorkerCli(
+      ['--hook'],
+      hunterHookInput(fencedJsonSummary(invalidHunter)),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('territory');
   });
 
   test('invalid planner worker JSON exits 1 with validation error', async () => {
