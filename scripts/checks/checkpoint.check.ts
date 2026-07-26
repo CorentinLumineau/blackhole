@@ -1,3 +1,4 @@
+import { parseMdFrontmatter } from '../lib/build/content.ts';
 import { read, type CheckResult } from './check-utils.ts';
 
 // ADR-007 T5/R2' — checkpoint.check.ts: matches verify.checkpoint.test.ts.
@@ -7,10 +8,10 @@ export const extractCheckpointTemplateKeys = (content: string): string[] => {
   const templateMatch = content.match(/## Checkpoint template[\s\S]*?```markdown\n([\s\S]*?)```/);
   if (!templateMatch) return [];
 
-  const frontmatterMatch = templateMatch[1].match(/^---\n([\s\S]*?)\n---/);
-  if (!frontmatterMatch) return [];
+  const { frontmatter } = parseMdFrontmatter(templateMatch[1]);
+  if (!frontmatter) return [];
 
-  return frontmatterMatch[1]
+  return frontmatter
     .split('\n')
     .map((line) => line.match(/^([\w_]+):/)?.[1])
     .filter((key): key is string => Boolean(key));

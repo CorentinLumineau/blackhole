@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseMdFrontmatter } from '../lib/build/content.ts';
 import { root, read, type CheckResult } from './check-utils.ts';
 import { walkMdFilesAbs } from '../lib/check-common.ts';
 
@@ -112,9 +113,9 @@ export const findAdrCrossReferenceErrors = (
     const content = fs.readFileSync(abs, 'utf-8');
     const rel = path.relative(repoRoot, abs);
 
-    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-    if (frontmatterMatch) {
-      for (const entry of extractRelatedEntries(frontmatterMatch[1])) {
+    const { frontmatter } = parseMdFrontmatter(content);
+    if (frontmatter) {
+      for (const entry of extractRelatedEntries(frontmatter)) {
         const resolved = path.resolve(repoRoot, entry);
         if (!fs.existsSync(resolved)) {
           errors.push(`${rel}: related: entry does not exist -> ${entry}`);
