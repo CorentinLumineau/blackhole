@@ -12,48 +12,59 @@ export type CheckResult = { id: string; ok: boolean; detail?: string };
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 // V-TOOLS-01: Deny-list tool policy — no tools: allowlist; correct disallowedTools per role
+export const AGENT_TOOL_POLICY_DENY_MATRIX: Record<string, string[] | null> = {
+  'coordinator.md': ['Write', 'Edit', 'Delete'],
+  'orchestrator.md': ['Write', 'Edit', 'Delete'],
+  'planner.md': ['Delete'],
+  'implementer.md': null,
+  'reviewer.md': ['Write', 'Edit', 'Delete'],
+  'router.md': ['Write', 'Edit', 'Delete'],
+  'investigator.md': ['Write', 'Edit', 'Delete'],
+  'hunter.md': ['Write', 'Edit', 'Delete'],
+};
+
+export const validateAgentToolPolicyFrontmatter = (
+  file: string,
+  fmBody: string,
+  expected: string[] | null,
+): string[] => {
+  const errors: string[] = [];
+
+  if (/^tools:/m.test(fmBody)) {
+    errors.push(`${file}: has tools: allowlist (use deny-list only)`);
+  }
+
+  if (expected === null) {
+    // implementer: disallowedTools must be absent (full access by design — AGENT_TOOL_POLICY_DENY_MATRIX is the SSOT)
+    if (/^disallowedTools:/m.test(fmBody)) {
+      errors.push(`${file}: must NOT have disallowedTools (implementer requires full tool access)`);
+    }
+  } else if (expected) {
+    if (!fmBody.includes('disallowedTools:')) {
+      errors.push(`${file}: missing disallowedTools`);
+    } else {
+      for (const tool of expected) {
+        if (!fmBody.includes(tool)) {
+          errors.push(`${file}: disallowedTools missing ${tool}`);
+        }
+      }
+    }
+  }
+
+  return errors;
+};
+
 const checkAgentToolPolicy = (): CheckResult => {
   const agentsDir = path.join(srcDir, 'agents');
   const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md'));
   const errors: string[] = [];
 
-  const denyMatrix: Record<string, string[] | null> = {
-    'coordinator.md': ['Write', 'Edit', 'Delete'],
-    'orchestrator.md': ['Write', 'Edit', 'Delete'],
-    'planner.md': ['Delete'],
-    'implementer.md': null,
-    'reviewer.md': ['Write', 'Edit', 'Delete'],
-    'router.md': ['Write', 'Edit', 'Delete'],
-    'investigator.md': ['Write', 'Edit', 'Delete'],
-    'hunter.md': ['Write', 'Edit', 'Delete'],
-  };
-
   for (const file of files) {
     const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
     const fm = content.match(/^---\n([\s\S]*?)\n---/);
     const fmBody = fm ? fm[1] : '';
-
-    if (/^tools:/m.test(fmBody)) {
-      errors.push(`${file}: has tools: allowlist (use deny-list only)`);
-    }
-
-    const expected = denyMatrix[file];
-    if (expected === null) {
-      // implementer: disallowedTools must be absent (full access by design — this denyMatrix is the SSOT)
-      if (/^disallowedTools:/m.test(fmBody)) {
-        errors.push(`${file}: must NOT have disallowedTools (implementer requires full tool access)`);
-      }
-    } else if (expected) {
-      if (!fmBody.includes('disallowedTools:')) {
-        errors.push(`${file}: missing disallowedTools`);
-      } else {
-        for (const tool of expected) {
-          if (!fmBody.includes(tool)) {
-            errors.push(`${file}: disallowedTools missing ${tool}`);
-          }
-        }
-      }
-    }
+    const expected = AGENT_TOOL_POLICY_DENY_MATRIX[file];
+    errors.push(...validateAgentToolPolicyFrontmatter(file, fmBody, expected));
   }
 
   if (errors.length) return { id: 'V-TOOLS-01', ok: false, detail: errors.join('; ') };
