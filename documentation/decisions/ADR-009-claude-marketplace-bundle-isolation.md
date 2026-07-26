@@ -1,6 +1,6 @@
 ---
 type: adr
-status: Accepted
+status: accepted
 created: 2026-07-14
 last_updated: 2026-07-14
 review_trigger: "on ADR acceptance"

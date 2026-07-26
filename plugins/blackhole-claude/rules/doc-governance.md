@@ -43,6 +43,30 @@ update to the same approach): mark the old doc `status: deprecated` and leave it
 never delete it — then create or update the new doc with `supersedes: <path-to-old-doc>` in
 its frontmatter. Skipping this on a substantive replacement is `V-DOC-GOV-04`.
 
+## ADR Status Enum
+
+`documentation/decisions/ADR-*.md` files use a dedicated status enum instead of the generic
+`current | deprecated | archived` schema declared above:
+`status ∈ {accepted, superseded, deprecated}`. This preserves the plurality-observed spelling
+and the industry-standard ADR lifecycle term ("accepted" signals a decision was actively made)
+— see
+`.blackhole/plans/issue-324.md`'s Design Decision for the full rationale and rejected
+alternative.
+
+The enum is enforced across three surfaces, each with a different tolerance for the value's
+shape:
+
+- **Frontmatter `status:`** — a bare enum token, exact case (`V-ADR-01`).
+- **`documentation/decisions/INDEX.md`'s `status` column** — a bare enum token, exact case,
+  equal to the file's frontmatter value (`V-ADR-02`).
+- **An in-body `## Status` section** — optional (present on a subset of ADRs); when present,
+  it carries human prose evidence (e.g. "Accepted — 2026-07-21 (shipped in v0.15.0: ...)") that
+  must never be flattened to a bare token. Only its **leading token** is checked, and only for
+  agreement with frontmatter, case-insensitively (`V-ADR-03`). Absence of the section is not a
+  failure.
+
+Enforced by `scripts/checks/adr-status.check.ts`.
+
 ## Repo Convention Precedence
 
 When the target consumer repo already documents its own frontmatter/lifecycle convention for
