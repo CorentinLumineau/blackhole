@@ -1,0 +1,113 @@
+import { AC_VERDICTS, DECISION_RECORD_KINDS, SEVERITIES } from './constants.ts';
+import {
+  isNonEmptyString,
+  isNumber,
+  isObject,
+  isString,
+  isStringArray,
+  pushEnumError,
+  requireField,
+} from './predicates.ts';
+
+export function validateFinding(finding: unknown, path: string): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(finding)) {
+    errors.push(`${path}: expected object`);
+    return errors;
+  }
+
+  requireField(errors, finding, 'vcode', isString, 'string');
+  requireField(errors, finding, 'severity', isString, 'string');
+  if (isString(finding.severity)) {
+    pushEnumError(errors, `${path}.severity`, finding.severity, SEVERITIES);
+  }
+  requireField(errors, finding, 'file', isString, 'string');
+  requireField(errors, finding, 'line', isNumber, 'number');
+  requireField(errors, finding, 'summary', isString, 'string');
+
+  if (finding.vcode === 'V-PARETO-02') {
+    requireField(errors, finding, 'gain', isNumber, 'number');
+    requireField(errors, finding, 'effort', isNumber, 'number');
+  }
+
+  return errors;
+}
+
+export function validateFindingsArray(value: unknown, path: string): string[] {
+  const errors: string[] = [];
+  if (!Array.isArray(value)) {
+    errors.push(`${path}: expected array`);
+    return errors;
+  }
+  value.forEach((finding, index) => {
+    errors.push(...validateFinding(finding, `${path}[${index}]`));
+  });
+  return errors;
+}
+
+export function validateDecisionRecord(record: unknown, path: string): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(record)) {
+    errors.push(`${path}: expected object`);
+    return errors;
+  }
+
+  requireField(errors, record, 'kind', isString, 'string');
+  if (isString(record.kind)) {
+    pushEnumError(errors, 'kind', record.kind, DECISION_RECORD_KINDS);
+  }
+  requireField(errors, record, 'touch_paths', isStringArray, 'string[]');
+  requireField(errors, record, 'decision', isNonEmptyString, 'non-empty string');
+  requireField(errors, record, 'why', isNonEmptyString, 'non-empty string');
+
+  if (!isNumber(record.pr) && !isNumber(record.issue)) {
+    errors.push('pr/issue: exactly one of pr or issue is required');
+  }
+
+  return errors.map((error) => `${path}.${error}`);
+}
+
+export function validateDecisionRecordsArray(value: unknown, path: string): string[] {
+  const errors: string[] = [];
+  if (!Array.isArray(value)) {
+    errors.push(`${path}: expected array`);
+    return errors;
+  }
+  value.forEach((record, index) => {
+    errors.push(...validateDecisionRecord(record, `${path}[${index}]`));
+  });
+  return errors;
+}
+
+export function validateAcResult(row: unknown, path: string): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(row)) {
+    errors.push(`${path}: expected object`);
+    return errors;
+  }
+
+  requireField(errors, row, 'criterion', isNonEmptyString, 'non-empty string');
+  requireField(errors, row, 'check', isNonEmptyString, 'non-empty string');
+  requireField(errors, row, 'result', isNonEmptyString, 'non-empty string');
+  requireField(errors, row, 'verdict', isString, 'string');
+  if (isString(row.verdict)) {
+    pushEnumError(errors, 'verdict', row.verdict, AC_VERDICTS);
+  }
+
+  return errors.map((error) => `${path}.${error}`);
+}
+
+export function validateAcResultsArray(value: unknown, path: string): string[] {
+  const errors: string[] = [];
+  if (!Array.isArray(value)) {
+    errors.push(`${path}: expected array`);
+    return errors;
+  }
+  value.forEach((row, index) => {
+    errors.push(...validateAcResult(row, `${path}[${index}]`));
+  });
+  return errors;
+}
