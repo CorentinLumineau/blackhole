@@ -5,7 +5,6 @@ on:
     branches: [main, master]
     tags: ['v*']
   pull_request:
-    branches: [main, master]
 
 # Cancel superseded in-progress runs on the same branch/PR, but never cancel a tag run
 # (a release build must complete).
