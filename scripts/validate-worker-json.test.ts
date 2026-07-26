@@ -556,3 +556,161 @@ describe('finding shape', () => {
     expect(errors).toEqual([]);
   });
 });
+
+const scriptPath = path.join(root, 'scripts/validate-worker-json.ts');
+
+async function runValidateWorkerCli(args: string[], stdin?: string) {
+  const proc = Bun.spawn({
+    cmd: ['bun', 'run', scriptPath, ...args],
+    stdin: stdin !== undefined ? new Blob([stdin]) : undefined,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    cwd: root,
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  return { exitCode, stdout, stderr };
+}
+
+const fencedJsonSummary = (payload: unknown) =>
+  `\`\`\`json\n${JSON.stringify(payload)}\n\`\`\``;
+
+const plannerHookInput = (summary: string) =>
+  JSON.stringify({
+    subagent_type: 'planner',
+    summary,
+  });
+
+describe('validate-worker-json hook CLI', () => {
+  test('empty stdin exits 2 with empty payload message', async () => {
+    const result = await runValidateWorkerCli(['--hook'], '');
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain('empty payload');
+  });
+
+  test('malformed stdin JSON exits 2 with JSON parse failed message', async () => {
+    const result = await runValidateWorkerCli(['--hook'], '{not json');
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain('JSON parse failed');
+  });
+
+  test('status error pass-through exits 0', async () => {
+    const result = await runValidateWorkerCli(['--hook'], JSON.stringify({ status: 'error' }));
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('status aborted pass-through exits 0', async () => {
+    const result = await runValidateWorkerCli(['--hook'], JSON.stringify({ status: 'aborted' }));
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('non-campaign subagent exits 0 without validation', async () => {
+    const result = await runValidateWorkerCli(
+      ['--hook'],
+      JSON.stringify({ subagent_type: 'generic-agent', summary: 'unrelated work' }),
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('valid planner stop exits 0', async () => {
+    const plannerJson = readFixture('planner-ready.json');
+    const result = await runValidateWorkerCli(
+      ['--hook'],
+      plannerHookInput(fencedJsonSummary(plannerJson)),
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('invalid planner worker JSON exits 1 with validation error', async () => {
+    const invalidPlanner = {
+      status: 'ready',
+      track: 'standard',
+      failing_checks: [],
+      clarification_markers: 0,
+    };
+    const result = await runValidateWorkerCli(
+      ['--hook'],
+      plannerHookInput(fencedJsonSummary(invalidPlanner)),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('plan_path');
+  });
+
+  test('no JSON in summary exits 1 with no worker JSON found', async () => {
+    const result = await runValidateWorkerCli(
+      ['--hook'],
+      plannerHookInput('planning finished without structured output'),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('no worker JSON found');
+  });
+
+  test('piped stdin without --hook flag auto-enters hook mode', async () => {
+    const plannerJson = readFixture('planner-ready.json');
+    const result = await runValidateWorkerCli(
+      [],
+      plannerHookInput(fencedJsonSummary(plannerJson)),
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  // readStdin catch (validate-worker-json.ts:709-714) is not reachable in subprocess
+  // tests — Bun.stdin.stream() does not throw under normal piped/closed stdin.
+});
+
+describe('validate-worker-json CLI mode', () => {
+  test('prints usage when no role or hook flags are given', async () => {
+    // Subprocess stdin is non-TTY, so argv must be non-empty to avoid auto-hook mode.
+    const result = await runValidateWorkerCli(['help']);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Usage:');
+  });
+
+  test('--role without --file or --json exits 1', async () => {
+    const result = await runValidateWorkerCli(['--role', 'planner']);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('requires --file or --json');
+  });
+
+  test('--role planner --file valid fixture exits 0', async () => {
+    const fixturePath = path.join(fixturesDir, 'planner-ready.json');
+    const result = await runValidateWorkerCli(['--role', 'planner', '--file', fixturePath]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('--role planner --file invalid fixture exits 1 with validation error', async () => {
+    const fixturePath = path.join(fixturesDir, 'planner-ready-missing-plan-path.json');
+    const result = await runValidateWorkerCli(['--role', 'planner', '--file', fixturePath]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('plan_path');
+  });
+
+  test('--role planner --json valid payload exits 0', async () => {
+    const payload = JSON.stringify(readFixture('planner-ready.json'));
+    const result = await runValidateWorkerCli(['--role', 'planner', '--json', payload]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('--role planner --json invalid JSON exits 1 with parse error', async () => {
+    const result = await runValidateWorkerCli(['--role', 'planner', '--json', '{bad']);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('JSON Parse error');
+  });
+
+  test('--role planner --file missing path exits 1 with file read error', async () => {
+    const missingPath = path.join(fixturesDir, 'does-not-exist.json');
+    const result = await runValidateWorkerCli(['--role', 'planner', '--file', missingPath]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('ENOENT');
+  });
+});
