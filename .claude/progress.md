@@ -1,6 +1,6 @@
 ## Current Status
 
-**ADR-011 (routine-resume campaign config confirmation gate)** — implemented on branch
+**ADR-015 (routine-resume campaign config confirmation gate)** — implemented on branch
 `feat/campaign-config-confirmation-gate` (based on `main` @ `2c00702`).
 
 `/blackhole run` no longer starts silently on routine resume: the coordinator (Pattern B) or
@@ -30,7 +30,7 @@ and cross-session context that history does not carry.
   (config key naming, WARN). Verify-check IDs are a separate namespace from the campaign V-code
   table; the check is `V-CONFGATE-01` and adds no `blackhole-vcodes.md` row.
 - Folding the config summary into `formatDashboard()` — it renders on every orchestrator turn;
-  the summary belongs at launch confirmation only (ADR-011 § Alternatives).
+  the summary belongs at launch confirmation only (ADR-015 § Alternatives).
 
 ## Next Steps
 

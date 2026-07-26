@@ -231,8 +231,8 @@ plan exists to fix (a marker-based check makes bypass structurally detectable, n
    passed` including `✓ V-CONFGATE-01`, exit 0).
    **Depends on**: T3.
 
-7. **T7 — ADR-011 + decisions INDEX row**
-   Write `documentation/decisions/ADR-011-routine-resume-confirmation-gate.md` (next sequential
+7. **T7 — ADR-015 + decisions INDEX row**
+   Write `documentation/decisions/ADR-015-routine-resume-confirmation-gate.md` (next sequential
    ADR number after ADR-010) documenting: Context (silent routine-resume skip, no visibility, no
    Pattern-C gate-ownership statement), Decision (4th trigger surface on the existing gate — not a
    new gate; run-mode-only scope; lightweight Proceed/Reconfigure vs. re-running the full form),
@@ -245,7 +245,7 @@ plan exists to fix (a marker-based check makes bypass structurally detectable, n
    protocol, not a proposal awaiting review, once T4-T6 are merged) and `review_trigger: "on
    protocol change"` matching the existing ADR rows' convention.
    **Acceptance criteria**: `documentation/decisions/INDEX.md` has exactly 11 ADR rows (10 existing + 1 new);
-   `grep -c "ADR-011" documentation/decisions/INDEX.md` returns `1`.
+   `grep -c "ADR-015" documentation/decisions/INDEX.md` returns `1`.
    **Depends on**: T4 (ADR must describe the final, landed gate wording — not a draft).
 
 8. **T8 — Refresh `.claude/progress.md`**
@@ -292,8 +292,8 @@ plan exists to fix (a marker-based check makes bypass structurally detectable, n
 | `scripts/checks/config-gate.check.ts` | New file | `V-CONFGATE-01` content-assertion check (T3) |
 | `scripts/verify.config-gate.test.ts` | New file | Fixture-level unit test for the new check (T3) |
 | `scripts/build.ts` | Modify | Bump `EXPECTED_CHECK_COUNT` 27 → 28 (T3) |
-| `documentation/decisions/ADR-011-routine-resume-confirmation-gate.md` | New file | ADR amending ADR-005/ADR-006 gate trigger conditions (T7) |
-| `documentation/decisions/INDEX.md` | Modify | New ADR-011 row (T7, V-ADA-02) |
+| `documentation/decisions/ADR-015-routine-resume-confirmation-gate.md` | New file | ADR amending ADR-005/ADR-006 gate trigger conditions (T7) |
+| `documentation/decisions/INDEX.md` | Modify | New ADR-015 row (T7, V-ADA-02) |
 | `.claude/progress.md` | Modify | Refresh stale ADR-006 status and check/test counts (T8) |
 
 ## Touch-Paths
@@ -343,7 +343,7 @@ manufactured content with no real threat surface to enumerate — omitted per th
 | `renderConfigSummary` reimplements the existing `formatDashboard` scope-label logic instead of reusing `readScope()`, creating two formatters that can drift apart (V-DRY-01) | MEDIUM | T1's test asserts the scope line is byte-identical to `formatDashboard`'s existing wording for the same input config — a second independent formatter fails this assertion |
 | `EXPECTED_CHECK_COUNT` bump forgotten after adding the new check (verify.ts only WARNs, does not fail, on mismatch) | LOW | Bundled into T3's own acceptance criteria; re-verified independently by T9's `28/28` assertion |
 | T0's `EXTERNAL_ADR_REFS` entry over-suppresses — a genuinely dead local `ADR-103-*.md` link would go unreported | LOW | The set is consumed at exactly one call site and keyed on the ADR *number*; blackhole's own ADRs are sequential and currently at 010, so a local ADR-103 cannot exist for ~93 more decisions. T0's two-directional test pins the behavior in both states, and the per-entry comment records the citing file so the allowlist stays auditable at a glance (matching the existing `'026'`/`'082'` convention) |
-| ADR-011 (T7) is drafted against a stale description of the gate before T4's final wording lands | LOW | T7 explicitly depends on T4 and is scheduled in Execution Strategy Phase C, strictly after Phase B (T4/T5/T6) completes |
+| ADR-015 (T7) is drafted against a stale description of the gate before T4's final wording lands | LOW | T7 explicitly depends on T4 and is scheduled in Execution Strategy Phase C, strictly after Phase B (T4/T5/T6) completes |
 
 No item above reaches HIGH severity — the change is additive, gated to one existing carve-out
 branch, and structurally enforced by a new verify check rather than relying on prose discipline
@@ -394,7 +394,7 @@ in parallel (Phase B, ≤4 agents per `orchestration-strategy.md`); T7/T8/T9 are
 | General-purpose subagent | T4 | sonnet | **Objective**: Add the routine-resume confirmation gate to `src/agents/coordinator.md` § Bootstrap preflight per T4's exact wording and marker requirements. **Output format**: Markdown addition, placed immediately after the existing "Skip steps 1-6 only on routine resume" paragraph. **Scope**: `src/agents/coordinator.md` only; do not alter the existing numbered conditions 1-3 or steps 1-6 body. **Tool guidance**: Diff-check against `coordinator.md:32-136` before/after to confirm zero unintended changes. **Stop condition**: All 4 `COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS` present verbatim; `bun run verify`'s coordinator sub-check for `V-CONFGATE-01` passes. |
 | General-purpose subagent | T5 | sonnet | **Objective**: Add `## Bootstrap gate ownership` to `src/references/claude-code-native.md` per T5's spec. **Output format**: New markdown section, placed after `## Foreground state ownership`. **Scope**: `src/references/claude-code-native.md` only. **Tool guidance**: Point at `coordinator.md` as SSOT — do not restate the 6-step form or the T4 addition. **Stop condition**: Both `CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS` present verbatim; matching `V-CONFGATE-01` sub-check passes. |
 | General-purpose subagent | T6 | sonnet | **Objective**: Extend `src/SKILL.md` Phase 0 step 1 per T6's spec. **Output format**: Extend the existing "Config" bullet — do not replace it. **Scope**: `src/SKILL.md` Phase 0 step 1 only. **Tool guidance**: Confirm the mode table (`SKILL.md:30-41`) is unchanged. **Stop condition**: All 3 `SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS` present verbatim; `bun run verify` reports 28/28 with `✓ V-CONFGATE-01`. |
-| x-doc-writer | T7 | sonnet (full) | **Objective**: Write `documentation/decisions/ADR-011-routine-resume-confirmation-gate.md` and add its row to `documentation/decisions/INDEX.md` per T7's spec. **Output format**: New ADR file (Status/Context/Decision/Consequences) + one INDEX.md row. **Scope**: those two files only. **Tool guidance**: Match ADR-006's style as the most recent amendment-type ADR. **Stop condition**: `documentation/decisions/INDEX.md` has 11 ADR rows; `ADR-011` referenced exactly once. |
+| x-doc-writer | T7 | sonnet (full) | **Objective**: Write `documentation/decisions/ADR-015-routine-resume-confirmation-gate.md` and add its row to `documentation/decisions/INDEX.md` per T7's spec. **Output format**: New ADR file (Status/Context/Decision/Consequences) + one INDEX.md row. **Scope**: those two files only. **Tool guidance**: Match ADR-006's style as the most recent amendment-type ADR. **Stop condition**: `documentation/decisions/INDEX.md` has 11 ADR rows; `ADR-015` referenced exactly once. |
 | x-doc-writer | T8 | sonnet (full) | **Objective**: Refresh `.claude/progress.md` per T8's spec — remove stale ADR-006 status, update counts, point to `git log` instead of restating history. **Output format**: Rewritten `## Current Status` / `## Completed Tasks` / `## Next Steps` sections. **Scope**: `.claude/progress.md` only. **Tool guidance**: Keep terse — this is process hygiene, not documentation prose. **Stop condition**: Stale ADR-006 "uncommitted" string removed; current branch/objective referenced. |
 | x-tester | T9 | sonnet (full) | **Objective**: Run the full verification battery (`bun test`, `bun run build`, `bun run verify`, targeted greps) and report fresh evidence per T9's acceptance criteria. **Output format**: Pass/fail table with exact counts quoted from command output. **Scope**: read-only verification, no code changes (escalate to the relevant task's agent if a check fails). **Tool guidance**: Follow the Verification Evidence 5-step gate — do not claim completion without quoting fresh output. **Stop condition**: All bullets in T9's acceptance criteria confirmed with quoted output, or a specific failing check is reported for remediation. |
 
@@ -421,7 +421,7 @@ at `core.check.ts:456-457`. **Stop condition**: `VERIFY_SKIP_BUILD=1 bun run ver
 - [ ] `bun run build` → exits 0, no drift warnings
 - [ ] `bun run verify` → `28/28 checks passed`, exit 0, `✓ V-CONFGATE-01` and `✓ V-LINK-01`, no
       check-count WARN
-- [ ] `grep -c "ADR-011" documentation/decisions/INDEX.md` → `1`
+- [ ] `grep -c "ADR-015" documentation/decisions/INDEX.md` → `1`
 - [ ] `grep -q "Routine resume confirmation gate" src/agents/coordinator.md` → match
 - [ ] `grep -q "owns the Campaign launch configuration gate" src/references/claude-code-native.md` → match
 - [ ] `grep -q "Campaign launch configuration gate" src/SKILL.md` → match
