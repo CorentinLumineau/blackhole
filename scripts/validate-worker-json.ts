@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 
-export type Role = 'planner' | 'implementer' | 'reviewer' | 'router' | 'investigator';
+export type Role = 'planner' | 'implementer' | 'reviewer' | 'router' | 'investigator' | 'hunter';
 
 export type HookInput = {
   subagent_type?: string;
@@ -27,6 +27,9 @@ const AC_VERDICTS = ['PASS', 'FAIL', 'N/A'] as const;
 const PLAN_MODES = ['skip', 'quick', 'full'] as const;
 const TRIGGERS = ['initial', 'clarify-resolved', 'research-landed', 'investigation-landed', 'analysis-landed'] as const;
 const INVESTIGATOR_STATUSES = ['complete', 'error'] as const;
+const HUNTER_STATUSES = ['complete', 'error'] as const;
+const HUNTER_SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'BLOCK'] as const;
+const HUNTER_VERIFICATIONS = ['CONFIRMED', 'STALE'] as const;
 const SUB_MODES = ['research', 'investigate', 'analyze'] as const;
 const BRAINSTORM_CHILDREN_CAP = 5;
 
@@ -36,15 +39,17 @@ const ROLE_FROM_TYPE: Record<string, Role> = {
   reviewer: 'reviewer',
   router: 'router',
   investigator: 'investigator',
+  hunter: 'hunter',
   'blackhole:planner': 'planner',
   'blackhole:implementer': 'implementer',
   'blackhole:reviewer': 'reviewer',
   'blackhole:router': 'router',
   'blackhole:investigator': 'investigator',
+  'blackhole:hunter': 'hunter',
 };
 
 const ROLE_PATTERN =
-  /\b(?:blackhole:)?(planner|implementer|reviewer|router|investigator)\b/i;
+  /\b(?:blackhole:)?(planner|implementer|reviewer|router|investigator|hunter)\b/i;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -525,6 +530,97 @@ function validateInvestigator(data: unknown): string[] {
   return errors;
 }
 
+function validateHunterFinding(finding: unknown, path: string): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(finding)) {
+    errors.push(`${path}: expected object`);
+    return errors;
+  }
+
+  requireField(errors, finding, 'kind', isNonEmptyString, 'non-empty string');
+  requireField(errors, finding, 'file', isString, 'string');
+  requireField(errors, finding, 'line', isNumber, 'number');
+  requireField(errors, finding, 'summary', isString, 'string');
+  requireField(errors, finding, 'evidence_snippet', isString, 'string');
+  requireField(errors, finding, 'rationale', isString, 'string');
+  requireField(errors, finding, 'gain', isGainEffortScore, 'number (1-10)');
+  requireField(errors, finding, 'effort', isGainEffortScore, 'number (1-10)');
+  requireField(errors, finding, 'severity', isString, 'string');
+  if (isString(finding.severity)) {
+    pushEnumError(errors, `${path}.severity`, finding.severity, HUNTER_SEVERITIES);
+  }
+  requireField(errors, finding, 'verification', isString, 'string');
+  if (isString(finding.verification)) {
+    pushEnumError(errors, `${path}.verification`, finding.verification, HUNTER_VERIFICATIONS);
+  }
+
+  return errors;
+}
+
+function validateHunterFindingsArray(value: unknown, path: string): string[] {
+  const errors: string[] = [];
+  if (!Array.isArray(value)) {
+    errors.push(`${path}: expected array`);
+    return errors;
+  }
+  value.forEach((finding, index) => {
+    errors.push(...validateHunterFinding(finding, `${path}[${index}]`));
+  });
+  return errors;
+}
+
+function validateHunterTerritory(territory: unknown, path: string): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(territory)) {
+    errors.push(`${path}: expected object`);
+    return errors;
+  }
+
+  requireField(errors, territory, 'bands_scanned', isStringArray, 'string[]');
+  requireField(errors, territory, 'exhausted', isBoolean, 'boolean');
+
+  return errors;
+}
+
+function validateHunter(data: unknown): string[] {
+  const errors: string[] = [];
+  if (!isObject(data)) {
+    return ['payload: expected object'];
+  }
+
+  requireField(errors, data, 'status', isString, 'string');
+  if (isString(data.status)) {
+    pushEnumError(errors, 'status', data.status, HUNTER_STATUSES);
+  }
+
+  requireField(errors, data, 'kind', isNonEmptyString, 'non-empty string');
+
+  if (data.status === 'complete') {
+    requireField(errors, data, 'wave', isNumber, 'number');
+    if (!('territory' in data)) {
+      errors.push('territory: required');
+    } else {
+      errors.push(...validateHunterTerritory(data.territory, 'territory'));
+    }
+    if (!('findings' in data)) {
+      errors.push('findings: required');
+    } else {
+      errors.push(...validateHunterFindingsArray(data.findings, 'findings'));
+    }
+  } else if (data.status === 'error') {
+    requireField(errors, data, 'error', isString, 'string');
+    if (!('findings' in data)) {
+      errors.push('findings: required');
+    } else {
+      errors.push(...validateHunterFindingsArray(data.findings, 'findings'));
+    }
+  }
+
+  return errors;
+}
+
 export function validateWorker(role: Role, data: unknown): string[] {
   switch (role) {
     case 'planner':
@@ -537,6 +633,8 @@ export function validateWorker(role: Role, data: unknown): string[] {
       return validateRouter(data);
     case 'investigator':
       return validateInvestigator(data);
+    case 'hunter':
+      return validateHunter(data);
     default:
       return [`role: unsupported role "${role as string}"`];
   }
@@ -794,7 +892,7 @@ async function main() {
   if (!role) {
     console.error(
       'Usage: bun run scripts/validate-worker-json.ts --hook\n' +
-        '       bun run scripts/validate-worker-json.ts --role <planner|implementer|reviewer|router|investigator> (--file <path> | --json <string>)',
+        '       bun run scripts/validate-worker-json.ts --role <planner|implementer|reviewer|router|investigator|hunter> (--file <path> | --json <string>)',
     );
     process.exit(1);
   }
