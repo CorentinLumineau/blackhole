@@ -8,7 +8,7 @@ import * as path from 'path';
 //
 // File-absent SKIP is binding (see milestone-1.md § T2): the matrix file is only created by M2
 // (seed run). Until then this check must return ok:true immediately, no read/parse attempted —
-// exact precedent: core.check.ts's checkPlanArtifacts / V-PLAN-01
+// exact precedent: playbook.check.ts's checkPlanArtifacts / V-PLAN-01
 // (`if (!fs.existsSync(queueFile)) return { id: 'V-PLAN-01', ok: true };`).
 
 export type CheckResult = { id: string; ok: boolean; detail?: string };
@@ -154,6 +154,6 @@ const checkParityMatrix = (): CheckResult => {
   return validateParityMatrixContent(content);
 };
 
-// ADR-007 T5/R2': domain entrypoint — see core.check.ts's runChecks doc comment for the shared
+// ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
 export const runChecks = (): CheckResult[] => [checkParityMatrix()];

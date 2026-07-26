@@ -17,7 +17,8 @@ import {
   codexTreeErrors,
   hasInstructionsBlock,
 } from '../tree-shape.ts';
-import { isAgentCountError, listFiles, walkMdFilesAbs, walkMdFiles } from './core.check.ts';
+import { listFiles } from './ground-truth.check.ts';
+import { walkMdFiles } from './links.check.ts';
 
 // ADR-007 T5/R2' — build.check.ts: everything gated behind `bun run build --gemini`
 // (Gemini/Antigravity workspace + distribution bundle + Codex CLI compile outputs) — matches
@@ -29,6 +30,15 @@ export type CheckResult = { id: string; ok: boolean; detail?: string };
 
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
+// V-CODEX-04 filter: identifies codexTreeErrors entries describing an agent-count mismatch
+// (e.g. "Codex: expected 6 agent YAML files, got 5"). Exported for direct unit coverage (#234)
+// since checkCodexAgentFiles below closes over the repo-root filesystem and can't be exercised
+// in isolation otherwise. Moved in directly (issue #322 split) — its sole consumer is this file's
+// own checkCodexAgentFiles, so no cross-file import is needed (V-YAGNI-03). Post-#199 the expected
+// count is parameterized, so the message no longer contains a literal "5" — match the stable
+// "agent YAML files" substring instead (fixes #234's dead filter, which never matched and
+// silently swallowed agent-count mismatches).
+export const isAgentCountError = (e: string): boolean => e.includes('agent YAML files');
 
 // checkGeminiBuild, checkGeminiDistributionBundle, and checkBuild all need `bun run build
 // --gemini` to have run before asserting file shape / diffing porcelain — memoize so a full
@@ -220,8 +230,8 @@ const checkCodexSkillFile = (): CheckResult => {
 // predicate (no duplicated boolean logic), but the `continue`-based control flow around it
 // stays local to this file — folding the control flow itself into codexTreeErrors would force
 // that shared function to know about verify-only concerns (deliberate, scoped deviation).
-// isAgentCountError itself lives in core.check.ts (its paired unit test lives in verify.test.ts,
-// core's catch-all test file) — imported here for the agent-count-mismatch filter only.
+// isAgentCountError itself is defined above in this file (moved in from the former catch-all check file, issue
+// #322 — its sole consumer).
 const checkCodexAgentFiles = (): CheckResult => {
   const agentsDir = path.join(root, 'codex-agents');
   const agentFiles = codexAgentFileList();
@@ -362,7 +372,7 @@ const checkBuild = (): CheckResult => {
   return evaluateBuildCheck({ skip, buildOk, buildOutput, afterPorcelain });
 };
 
-// ADR-007 T5/R2': domain entrypoint — see core.check.ts's runChecks doc comment for the shared
+// ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
 export const runChecks = (): CheckResult[] => [
   checkBuild(),

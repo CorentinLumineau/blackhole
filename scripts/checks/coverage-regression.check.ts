@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { findMissingGateMarkers } from './core.check.ts';
+import { findMissingGateMarkers } from './agents.check.ts';
 
 // PM-028 (issue #306) — coverage-regression.check.ts (V-TEST-09): mercure parity adoption of the
 // coverage-regression gate. Validates two source artifacts carry the gate:
@@ -10,7 +10,7 @@ import { findMissingGateMarkers } from './core.check.ts';
 //      reusing hunt/coverage.md's runner-detection heuristic (no invented runner invocation;
 //      no-runner degrades to a logged no-op, never a false pass).
 //
-// findMissingGateMarkers is the shared substring-presence helper (core.check.ts), reused here
+// findMissingGateMarkers is the shared substring-presence helper (agents.check.ts), reused here
 // exactly as single-writer.check.ts reuses it — one definition, no local reimplementation
 // (V-INT-02).
 export { findMissingGateMarkers };
@@ -54,6 +54,6 @@ const checkCoverageRegressionGate = (): CheckResult => {
   return { id: 'V-TEST-09', ok: true };
 };
 
-// ADR-007 T5/R2': domain entrypoint — see core.check.ts's runChecks doc comment for the shared
+// ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
 export const runChecks = (): CheckResult[] => [checkCoverageRegressionGate()];

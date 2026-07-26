@@ -64,6 +64,6 @@ const checkCheckpointAlignment = (): CheckResult => {
   return { id: 'V-CHECKPOINT-01', ok: true };
 };
 
-// ADR-007 T5/R2': domain entrypoint — see core.check.ts's runChecks doc comment for the shared
+// ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
 export const runChecks = (): CheckResult[] => [checkCheckpointAlignment()];
