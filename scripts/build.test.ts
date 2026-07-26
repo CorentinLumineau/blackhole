@@ -815,3 +815,90 @@ describe('cleanDir(.claude/skills) narrowed to blackhole/ only (issue #267)', ()
     }
   });
 });
+
+// Issue #363 — SRP gate: thin entry + focused modules under scripts/lib/build/.
+const splitLines = (content: string): string[] => {
+  const lines = content.split('\n');
+  return lines.length && lines[lines.length - 1] === '' ? lines.slice(0, -1) : lines;
+};
+
+const countFileLoc = (filePath: string): number =>
+  splitLines(fs.readFileSync(filePath, 'utf-8')).length;
+
+const MAX_BUILD_MODULE_LOC = 300;
+
+const buildModuleFiles = (): string[] => [
+  path.join(root, 'scripts', 'build.ts'),
+  ...fs
+    .readdirSync(path.join(root, 'scripts', 'lib', 'build'))
+    .filter((f) => f.endsWith('.ts'))
+    .map((f) => path.join(root, 'scripts', 'lib', 'build', f)),
+];
+
+const parseBuildImportNames = (importBlock: string): string[] =>
+  importBlock
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => !/^type\s+/.test(part))
+    .map((part) => part.replace(/\s+as\s+\w+$/, '').trim());
+
+const collectBuildConsumerImportNames = (): Set<string> => {
+  const names = new Set<string>();
+  const checksDir = path.join(root, 'scripts', 'checks');
+  const consumerFiles = [
+    ...fs.readdirSync(checksDir).filter((f) => f.endsWith('.check.ts')).map((f) => path.join(checksDir, f)),
+    path.join(root, 'scripts', 'verify.ts'),
+  ];
+  const importRe =
+    /^import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+['"](?:\.\.\/|\.\/)build\.ts['"]/gm;
+
+  for (const filePath of consumerFiles) {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    for (const match of content.matchAll(importRe)) {
+      for (const name of parseBuildImportNames(match[1])) names.add(name);
+    }
+  }
+  return names;
+};
+
+describe('build module SRP (issue #363)', () => {
+  test.each(buildModuleFiles().map((f) => [path.relative(root, f), f] as const))(
+    '%s is ≤ 300 LOC',
+    (_rel, filePath) => {
+      expect(countFileLoc(filePath)).toBeLessThanOrEqual(MAX_BUILD_MODULE_LOC);
+    }
+  );
+});
+
+describe('build.ts barrel export completeness (issue #363)', () => {
+  test('every value symbol imported by scripts/checks/*.check.ts and scripts/verify.ts is exported', async () => {
+    const imported = collectBuildConsumerImportNames();
+    expect(imported.size).toBeGreaterThan(0);
+
+    const buildModule = await import('./build.ts');
+    const buildSource = fs.readFileSync(path.join(root, 'scripts', 'build.ts'), 'utf-8');
+
+    for (const name of imported) {
+      expect(name in buildModule, `missing runtime export: ${name}`).toBe(true);
+    }
+
+    // Type-only imports (erased at runtime) must still be re-exported from the barrel.
+    const checksDir = path.join(root, 'scripts', 'checks');
+    const typeImportRe =
+      /^import\s+\{[^}]*\btype\s+(\w+)[^}]*\}\s+from\s+['"](?:\.\.\/|\.\/)build\.ts['"]/gm;
+    for (const filePath of [
+      ...fs.readdirSync(checksDir).filter((f) => f.endsWith('.check.ts')).map((f) => path.join(checksDir, f)),
+      path.join(root, 'scripts', 'verify.ts'),
+    ]) {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      for (const match of content.matchAll(typeImportRe)) {
+        const typeName = match[1];
+        expect(
+          buildSource.includes(`type ${typeName}`),
+          `missing type re-export: ${typeName}`
+        ).toBe(true);
+      }
+    }
+  });
+});
