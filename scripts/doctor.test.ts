@@ -47,7 +47,7 @@ describe('validateConfigJson', () => {
 });
 
 describe('checkCursorAgents', () => {
-  test('passes when all five bc agents present', () => {
+  test('passes when all expected bc agents present', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-agents-'));
     const agentsDir = path.join(root, '.cursor', 'agents');
     fs.mkdirSync(agentsDir, { recursive: true });
@@ -60,17 +60,31 @@ describe('checkCursorAgents', () => {
     expect(check.id).toBe('D-AGENTS-01');
   });
 
-  test('fails when only four agents present', () => {
+  test('fails when one fewer than expected agents present', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-agents-'));
     const agentsDir = path.join(root, '.cursor', 'agents');
     fs.mkdirSync(agentsDir, { recursive: true });
-    for (const name of EXPECTED_BC_AGENTS.slice(0, 4)) {
+    for (const name of EXPECTED_BC_AGENTS.slice(0, EXPECTED_BC_AGENTS.length - 1)) {
       fs.writeFileSync(path.join(agentsDir, name), '# agent\n');
     }
 
     const check = checkCursorAgents(root);
     expect(check.ok).toBe(false);
     expect(check.detail).toMatch(/build/);
+  });
+
+  test('fails when hunt/routing agents missing but legacy five present', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-agents-'));
+    const agentsDir = path.join(root, '.cursor', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    const legacyFive = ['coordinator.md', 'orchestrator.md', 'planner.md', 'implementer.md', 'reviewer.md'];
+    for (const name of legacyFive) {
+      fs.writeFileSync(path.join(agentsDir, name), '# agent\n');
+    }
+
+    const check = checkCursorAgents(root);
+    expect(check.ok).toBe(false);
+    expect(check.detail).toMatch(/router\.md|investigator\.md|hunter\.md/);
   });
 
   test('fails when agents directory missing', () => {

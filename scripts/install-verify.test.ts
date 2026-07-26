@@ -27,7 +27,7 @@ function writeCodexArtifact(repoRoot: string, name: string): void {
 }
 
 describe('checkCursorRow', () => {
-  test('PASS when all five bc agents present', () => {
+  test('PASS when all expected bc agents present', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'install-verify-cursor-'));
     const agentsDir = path.join(root, '.cursor', 'agents');
     fs.mkdirSync(agentsDir, { recursive: true });
@@ -40,7 +40,7 @@ describe('checkCursorRow', () => {
     expect(check.platform).toBe('Cursor');
   });
 
-  test('PARTIAL when 1-4 of 5 agents present', () => {
+  test(`PARTIAL when 1-${EXPECTED_BC_AGENTS.length - 1} of ${EXPECTED_BC_AGENTS.length} agents present`, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'install-verify-cursor-'));
     const agentsDir = path.join(root, '.cursor', 'agents');
     fs.mkdirSync(agentsDir, { recursive: true });
@@ -52,7 +52,7 @@ describe('checkCursorRow', () => {
     expect(check.status).toBe('PARTIAL');
   });
 
-  test('FAIL when agents directory missing (0/5)', () => {
+  test(`FAIL when agents directory missing (0/${EXPECTED_BC_AGENTS.length})`, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'install-verify-cursor-'));
     const check = checkCursorRow(root);
     expect(check.status).toBe('FAIL');
