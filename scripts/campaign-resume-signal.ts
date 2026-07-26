@@ -21,7 +21,8 @@ export type CampaignAgent =
   | 'planner'
   | 'implementer'
   | 'reviewer'
-  | 'investigator';
+  | 'investigator'
+  | 'hunter';
 
 export type ResumeReason = 'orchestrator_turn_complete' | 'stale_barrier';
 
@@ -49,6 +50,7 @@ const CAMPAIGN_AGENTS = new Set<CampaignAgent>([
   'implementer',
   'reviewer',
   'investigator',
+  'hunter',
 ]);
 
 const WORKER_AGENTS = new Set<CampaignAgent>([
@@ -57,6 +59,7 @@ const WORKER_AGENTS = new Set<CampaignAgent>([
   'implementer',
   'reviewer',
   'investigator',
+  'hunter',
 ]);
 
 const AGENT_FROM_TYPE: Record<string, CampaignAgent> = {
@@ -66,16 +69,18 @@ const AGENT_FROM_TYPE: Record<string, CampaignAgent> = {
   implementer: 'implementer',
   reviewer: 'reviewer',
   investigator: 'investigator',
+  hunter: 'hunter',
   'blackhole:orchestrator': 'orchestrator',
   'blackhole:router': 'router',
   'blackhole:planner': 'planner',
   'blackhole:implementer': 'implementer',
   'blackhole:reviewer': 'reviewer',
   'blackhole:investigator': 'investigator',
+  'blackhole:hunter': 'hunter',
 };
 
 const AGENT_PATTERN =
-  /\b(?:blackhole:)?(orchestrator|router|planner|implementer|reviewer|investigator)\b/i;
+  /\b(?:blackhole:)?(orchestrator|router|planner|implementer|reviewer|investigator|hunter)\b/i;
 
 const USER_GATE_PATTERN = /awaiting-user|awaiting-plan|awaiting-design/i;
 

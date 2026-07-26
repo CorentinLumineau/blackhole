@@ -40,6 +40,15 @@ describe('resolveCampaignAgent', () => {
   test('returns null for non-campaign agents', () => {
     expect(resolveCampaignAgent({ subagent_type: 'generalPurpose' })).toBeNull();
   });
+
+  test('resolves hunter from subagent_type', () => {
+    expect(resolveCampaignAgent({ subagent_type: 'hunter' })).toBe('hunter');
+    expect(resolveCampaignAgent({ subagent_type: 'blackhole:hunter' })).toBe('hunter');
+  });
+
+  test('resolves hunter from description fallback', () => {
+    expect(resolveCampaignAgent({ description: 'blackhole hunter bug wave' })).toBe('hunter');
+  });
 });
 
 describe('resume gates', () => {
@@ -189,6 +198,26 @@ orchestrator_turn_id: 12
     const record = JSON.parse(fs.readFileSync(path.join(tmpDir, 'resume-request.json'), 'utf-8'));
     expect(record.reason).toBe('stale_barrier');
     expect(record.stopping_agent).toBe('router');
+  });
+
+  test('hunter stale barrier writes file only', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'campaign-checkpoint.md'),
+      readTextFixture('checkpoint-stale-barrier.md'),
+    );
+    const input = readFixture('hook-hunter-stop.json');
+    const result = evaluateResumeHook(input, tmpDir, new Date('2026-07-09T12:00:00.000Z'));
+    expect(result.action).toBe('file_only');
+    const record = JSON.parse(fs.readFileSync(path.join(tmpDir, 'resume-request.json'), 'utf-8'));
+    expect(record.reason).toBe('stale_barrier');
+    expect(record.stopping_agent).toBe('hunter');
+  });
+
+  test('hunter stop with ready work but no in-flight workers produces no resume', () => {
+    const input = readFixture('hook-hunter-stop.json');
+    const result = evaluateResumeHook(input, tmpDir, new Date('2026-07-09T12:00:00.000Z'));
+    expect(result.action).toBe('none');
+    expect(fs.existsSync(path.join(tmpDir, 'resume-request.json'))).toBe(false);
   });
 
   test('worker stop with ready work but no in-flight workers produces no resume', () => {

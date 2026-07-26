@@ -345,6 +345,10 @@ describe('validateWorker router', () => {
     expectValid('router', 'router-routed-needs-analysis.json'));
 });
 
+describe('validateWorker hunter', () => {
+  test('valid complete with empty findings', () => expectValid('hunter', 'hunter-complete.json'));
+});
+
 describe('validateWorker investigator', () => {
   test('valid complete research', () =>
     expectValid('investigator', 'investigator-complete-research.json'));
@@ -408,6 +412,11 @@ describe('resolveRole', () => {
   test('maps investigator subagent_type', () => {
     expect(resolveRole({ subagent_type: 'investigator' })).toBe('investigator');
     expect(resolveRole({ subagent_type: 'blackhole:investigator' })).toBe('investigator');
+  });
+
+  test('maps hunter subagent_type', () => {
+    expect(resolveRole({ subagent_type: 'hunter' })).toBe('hunter');
+    expect(resolveRole({ subagent_type: 'blackhole:hunter' })).toBe('hunter');
   });
 
   test('returns null for non-campaign subagents', () => {

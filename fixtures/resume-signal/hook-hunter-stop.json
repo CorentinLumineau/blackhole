@@ -1,0 +1,5 @@
+{
+  "subagent_type": "hunter",
+  "status": "completed",
+  "summary": "```json\n{\"status\":\"complete\",\"kind\":\"quickwins\",\"wave\":1,\"territory\":{\"bands_scanned\":[\"src/agents\"],\"exhausted\":false},\"findings\":[]}\n```"
+}

@@ -1,0 +1,10 @@
+{
+  "status": "complete",
+  "kind": "quickwins",
+  "wave": 1,
+  "territory": {
+    "bands_scanned": ["src/agents"],
+    "exhausted": false
+  },
+  "findings": []
+}
