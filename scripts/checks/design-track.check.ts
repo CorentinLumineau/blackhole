@@ -1,5 +1,5 @@
 import { read, type CheckResult } from './check-utils.ts';
-import { findMissingGateMarkers } from './agents.check.ts';
+import { findMissingGateMarkers } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — design-track.check.ts: matches verify.design-track.test.ts.
 

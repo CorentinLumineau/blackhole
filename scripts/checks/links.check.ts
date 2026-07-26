@@ -1,22 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
-import { walkFilesAbs } from '../lib/fs.ts';
+import { walkMdFilesAbs } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — links.check.ts: markdown cross-reference integrity + epic-runbook linkage
 // (split from the former catch-all check file, issue #322).
 
 const srcDir = path.join(root, 'src');
-
-// Thin .md-filtering wrapper over scripts/lib/fs.ts's shared, directory-safe walker
-// (ADR-007 R6 — one tree-walker, no local reimplementation, V-INT-02). Export name kept as
-// walkMdFilesAbs so existing importers (verify.links.test.ts, build.check.ts, this file) are
-// unaffected.
-export const walkMdFilesAbs = (absDir: string): string[] =>
-  walkFilesAbs(absDir).filter((f) => f.endsWith('.md'));
-
-export const walkMdFiles = (dir: string): string[] =>
-  walkMdFilesAbs(path.join(root, dir)).map((f) => path.relative(root, f));
 
 // V-LINK-01 (ADR-007 T4/R7): markdown cross-reference integrity.
 //

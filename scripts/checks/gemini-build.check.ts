@@ -9,9 +9,7 @@ import {
   RULES_LIST,
 } from '../build.ts';
 import { distributionTreeErrors, validatePluginTreeShape } from '../tree-shape.ts';
-import { listFiles } from './ground-truth.check.ts';
-import { walkMdFiles } from './links.check.ts';
-import { leakedPlatformConditionalMarkers, runFullBuildOnce } from './build.check.ts';
+import { listFiles, leakedPlatformConditionalMarkers, runFullBuildOnce, walkMdFiles } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — gemini-build.check.ts: Gemini/Antigravity workspace compile outputs and
 // distribution bundle shape — matches verify.gemini-build.test.ts.

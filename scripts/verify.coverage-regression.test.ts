@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  findMissingGateMarkers,
   runChecks,
   VCODES_TEST09_REQUIRED_MARKERS,
   IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS,
 } from './checks/coverage-regression.check.ts';
+import { findMissingGateMarkers } from './lib/check-common.ts';
 
 // PM-028 (issue #306): mercure-parity adoption of the V-TEST-09 coverage-regression gate. blackhole's
 // implementer.md § 6 previously checked only lint + test pass with no coverage-delta gate. These

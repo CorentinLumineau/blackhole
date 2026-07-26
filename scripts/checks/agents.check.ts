@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
+import { findMissingGateMarkers } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — agents.check.ts: agent roster frontmatter, tool-policy, delegation-contract,
 // and gate-marker checks (split from the former catch-all check file, issue #322).
@@ -139,13 +140,6 @@ export const REVIEWER_PROPORTIONALITY_REQUIRED_MARKERS = [
   'Suggestion Proportionality Gate',
   'abstraction layer (interface, factory, strategy) for a single',
 ];
-
-// Shared filter: which of `required` are absent from `content`. Used by this file's own
-// V-GATE-01 check and re-exported (unchanged) by single-writer.check.ts, coverage-regression.check.ts,
-// and design-track.check.ts for their own gate-marker checks — one definition, ADR-007 R6/V-INT-02
-// (no local reimplementation of an equivalently-shaped filter function).
-export const findMissingGateMarkers = (content: string, required: string[]): string[] =>
-  required.filter((marker) => !content.includes(marker));
 
 const checkGateContentAssertions = (): CheckResult => {
   const implementerContent = read('src/agents/implementer.md');

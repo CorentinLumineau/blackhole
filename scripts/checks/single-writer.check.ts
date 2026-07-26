@@ -1,14 +1,7 @@
 import { read, type CheckResult } from './check-utils.ts';
-import { findMissingGateMarkers } from './agents.check.ts';
+import { findMissingGateMarkers } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — single-writer.check.ts: matches verify.single-writer.test.ts.
-//
-// findMissingGateMarkers is defined once in agents.check.ts (its own V-GATE-01 check needs it
-// too) and re-exported here so this domain's paired test file (verify.single-writer.test.ts) can
-// import it from its own domain's check file rather than reaching across into agents.check.ts —
-// one definition, ADR-007 R6/V-INT-02 (no local reimplementation of an equivalently-shaped
-// filter function).
-export { findMissingGateMarkers };
 
 // V-WRITE-01: single-writer-orchestrator invariant (issue #224) — router.md must no longer
 // instruct direct writes to queue.json/findings-ledger.json, and orchestrator.md's Triage

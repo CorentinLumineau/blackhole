@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { findMissingGateMarkers } from './checks/agents.check.ts';
+import { findMissingGateMarkers } from './lib/check-common.ts';
 import {
   DESIGN_TRACK_REQUIRED_HEADINGS,
   findMissingDesignTrackHeadings,

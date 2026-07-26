@@ -7,18 +7,13 @@ import {
   REQUIRED_REFERENCES,
   VCODE_TABLE_ROW_COUNT,
 } from '../build.ts';
+import { listFiles } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — ground-truth.check.ts: two-sided facts-conformance (declared § facts vs.
 // filesystem scan) + doc-table conformance (AGENTS.md roster, README.md count) — split from
 // the former catch-all check file, issue #322. Canonical home for #320's V-GROUND-01 generalization.
 
 const srcDir = path.join(root, 'src');
-
-export const listFiles = (dir: string, ext = '.md'): string[] => {
-  const full = path.join(root, dir);
-  if (!fs.existsSync(full)) return [];
-  return fs.readdirSync(full).filter((f) => f.endsWith(ext));
-};
 
 // V-GROUND-01 (ADR-007 T3/R1′): two-sided facts-conformance. Diffs an independently-scanned
 // filename set against a declared filename set, order-insensitive, returning null on a match or

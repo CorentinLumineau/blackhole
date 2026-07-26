@@ -3,7 +3,7 @@ import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
 import { CLAUDE_DISTRIBUTION_ROOT, AGENT_MD_FILES, RULES_LIST } from '../build.ts';
 import { claudeDistributionTreeErrors } from '../tree-shape.ts';
-import { runFullBuildOnce } from './build.check.ts';
+import { runFullBuildOnce } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — claude-dist.check.ts: Claude Code marketplace distribution bundle shape —
 // matches verify.claude-dist.test.ts.

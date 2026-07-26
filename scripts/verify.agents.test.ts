@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
   AGENT_TOOL_POLICY_DENY_MATRIX,
-  findMissingGateMarkers,
   runChecks,
   validateAgentToolPolicyFrontmatter,
 } from './checks/agents.check.ts';
+import { findMissingGateMarkers } from './lib/check-common.ts';
 
 describe('findMissingGateMarkers', () => {
   test('returns the subset of required markers absent from content', () => {

@@ -9,7 +9,7 @@ import {
 import {
   evaluateDistributionBundle,
 } from './checks/gemini-build.check.ts';
-import { leakedPlatformConditionalMarkers } from './checks/build.check.ts';
+import { leakedPlatformConditionalMarkers } from './lib/check-common.ts';
 import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
 
 const makeTempDir = (): string => sharedMakeTempDir('blackhole-verify-test');
