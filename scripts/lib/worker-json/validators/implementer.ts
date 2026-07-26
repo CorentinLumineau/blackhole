@@ -20,48 +20,38 @@ import {
   validateDecisionRecordsArray,
 } from '../shared-validators.ts';
 
-export function validateImplementer(data: unknown): string[] {
-  const errors: string[] = [];
-  if (!isObject(data)) {
-    return ['payload: expected object'];
-  }
-
-  requireField(errors, data, 'status', isString, 'string');
-  if (isString(data.status)) {
-    pushEnumError(errors, 'status', data.status, IMPLEMENTER_STATUSES);
-  }
-
-  if (data.status === 'complete') {
-    requireField(errors, data, 'pr_number', isNumber, 'number');
-    requireField(errors, data, 'branch', isString, 'string');
-    requireField(errors, data, 'tests_passed', isBoolean, 'boolean');
-    requireField(errors, data, 'touch_paths_honored', isBoolean, 'boolean');
-    requireField(
-      errors,
-      data,
-      'evidence',
-      isEvidence,
-      'object { command: string, result: string } with non-empty command and result',
-    );
-    if ('execution_mode' in data) {
-      if (!isString(data.execution_mode)) {
-        errors.push('execution_mode: expected string');
-      } else {
-        pushEnumError(errors, 'execution_mode', data.execution_mode, EXECUTION_MODES);
-      }
+function validateImplementerCompleteFields(data: Record<string, unknown>, errors: string[]): void {
+  requireField(errors, data, 'pr_number', isNumber, 'number');
+  requireField(errors, data, 'branch', isString, 'string');
+  requireField(errors, data, 'tests_passed', isBoolean, 'boolean');
+  requireField(errors, data, 'touch_paths_honored', isBoolean, 'boolean');
+  requireField(
+    errors,
+    data,
+    'evidence',
+    isEvidence,
+    'object { command: string, result: string } with non-empty command and result',
+  );
+  if ('execution_mode' in data) {
+    if (!isString(data.execution_mode)) {
+      errors.push('execution_mode: expected string');
+    } else {
+      pushEnumError(errors, 'execution_mode', data.execution_mode, EXECUTION_MODES);
     }
   }
+}
 
-  if (data.status === 'blocked') {
-    if ('escalation_trigger' in data) {
-      if (!isString(data.escalation_trigger)) {
-        errors.push('escalation_trigger: expected string');
-      } else {
-        pushEnumError(errors, 'escalation_trigger', data.escalation_trigger, ESCALATION_TRIGGERS);
-      }
+function validateImplementerBlockedFields(data: Record<string, unknown>, errors: string[]): void {
+  if ('escalation_trigger' in data) {
+    if (!isString(data.escalation_trigger)) {
+      errors.push('escalation_trigger: expected string');
+    } else {
+      pushEnumError(errors, 'escalation_trigger', data.escalation_trigger, ESCALATION_TRIGGERS);
     }
   }
+}
 
+function validateImplementerOptionalFields(data: Record<string, unknown>, errors: string[]): void {
   if ('task_type' in data) {
     if (!isString(data.task_type)) {
       errors.push('task_type: expected string');
@@ -98,6 +88,28 @@ export function validateImplementer(data: unknown): string[] {
   if ('ac_results' in data && data.ac_results !== undefined) {
     errors.push(...validateAcResultsArray(data.ac_results, 'ac_results'));
   }
+}
+
+export function validateImplementer(data: unknown): string[] {
+  const errors: string[] = [];
+  if (!isObject(data)) {
+    return ['payload: expected object'];
+  }
+
+  requireField(errors, data, 'status', isString, 'string');
+  if (isString(data.status)) {
+    pushEnumError(errors, 'status', data.status, IMPLEMENTER_STATUSES);
+  }
+
+  if (data.status === 'complete') {
+    validateImplementerCompleteFields(data, errors);
+  }
+
+  if (data.status === 'blocked') {
+    validateImplementerBlockedFields(data, errors);
+  }
+
+  validateImplementerOptionalFields(data, errors);
 
   return errors;
 }
