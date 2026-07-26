@@ -1,5 +1,4 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { read, type CheckResult } from './check-utils.ts';
 import { findMissingGateMarkers } from './agents.check.ts';
 
 // ADR-007 T5/R2' — config-gate.check.ts: matches verify.config-gate.test.ts.
@@ -15,12 +14,6 @@ import { findMissingGateMarkers } from './agents.check.ts';
 // Documenting the gate in only one of them silently reopens the bypass hole on the other two.
 // Marker-based content assertion, modeled on agents.check.ts's V-GATE-01 — a prose convention alone
 // is not regression-detectable, a required-substring check is.
-
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 export const COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS = [
   'Routine resume confirmation gate',

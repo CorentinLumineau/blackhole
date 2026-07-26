@@ -1,14 +1,7 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { read, type CheckResult } from './check-utils.ts';
 import { findMissingGateMarkers } from './agents.check.ts';
 
 // ADR-007 T5/R2' — design-track.check.ts: matches verify.design-track.test.ts.
-
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 // V-DESIGN-01: Design Track template in plan-template.md declares all 8 required section
 // headings. Issue #325 extracted the Plan Output File Template (all 3 sub-templates, including

@@ -1,16 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { root, read, type CheckResult } from './check-utils.ts';
 import { walkFilesAbs } from '../lib/fs.ts';
 
 // ADR-007 T5/R2' — links.check.ts: markdown cross-reference integrity + epic-runbook linkage
 // (split from the former catch-all check file, issue #322).
 
-const root = path.resolve(import.meta.dirname, '..', '..');
 const srcDir = path.join(root, 'src');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 // Thin .md-filtering wrapper over scripts/lib/fs.ts's shared, directory-safe walker
 // (ADR-007 R6 — one tree-walker, no local reimplementation, V-INT-02). Export name kept as

@@ -1,13 +1,6 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { read, type CheckResult } from './check-utils.ts';
 
 // ADR-007 T5/R2' — checkpoint.check.ts: matches verify.checkpoint.test.ts.
-
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 // V-CHECKPOINT-01: checkpoint-protocol template ↔ orchestrator/phase-loop alignment
 export const extractCheckpointTemplateKeys = (content: string): string[] => {

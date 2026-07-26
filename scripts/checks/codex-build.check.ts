@@ -1,15 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { root, type CheckResult } from './check-utils.ts';
 import { AGENT_YAML_FILES } from '../build.ts';
 import { codexTreeErrors, hasInstructionsBlock } from '../tree-shape.ts';
 import { leakedPlatformConditionalMarkers, runFullBuildOnce } from './build.check.ts';
 import { walkMdFilesAbs } from './links.check.ts';
 
 // ADR-007 T5/R2' — codex-build.check.ts: Codex CLI compile outputs — verify.codex-build.test.ts.
-
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-type CheckResult = { id: string; ok: boolean; detail?: string };
 
 // V-CODEX-04 filter for codexTreeErrors agent-count mismatches (#234, #322).
 export const isAgentCountError = (e: string): boolean => e.includes('agent YAML files');

@@ -1,5 +1,4 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { read, type CheckResult } from './check-utils.ts';
 import { findMissingGateMarkers } from './agents.check.ts';
 
 // ADR-007 T5/R2' — single-writer.check.ts: matches verify.single-writer.test.ts.
@@ -10,12 +9,6 @@ import { findMissingGateMarkers } from './agents.check.ts';
 // one definition, ADR-007 R6/V-INT-02 (no local reimplementation of an equivalently-shaped
 // filter function).
 export { findMissingGateMarkers };
-
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
-
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
 // V-WRITE-01: single-writer-orchestrator invariant (issue #224) — router.md must no longer
 // instruct direct writes to queue.json/findings-ledger.json, and orchestrator.md's Triage

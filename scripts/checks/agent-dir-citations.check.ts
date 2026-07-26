@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { root, type CheckResult } from './check-utils.ts';
 import {
   AGENTS_BUILD_AGENT_DIR,
   AGENT_MD_FILES,
@@ -9,10 +10,6 @@ import {
 // V-AGENTDIR-01: compiled agent markdown must cite skills/blackhole/ paths that resolve under
 // each platform target's agent-dir prefix. Codex YAML agents are out of scope — citations use a
 // different syntax (codex-skills/blackhole/) and are validated by V-CODEX-* checks instead.
-
-const root = path.resolve(import.meta.dirname, '..', '..');
-
-export type CheckResult = { id: string; ok: boolean; detail?: string };
 
 /** Per-target agent trees and the citation prefix each must use (derived from build.ts facts). */
 export const AGENT_DIR_CITATION_TARGETS = [
