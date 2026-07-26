@@ -44,7 +44,13 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 
 **Native forge sync** — automatic, never AskQuestion to confirm.
 
-1. **Config** — `.blackhole/config.json` (from `config-template.md` in this repo)
+1. **Config** — `.blackhole/config.json` (from `config-template.md` in this repo). In `run` mode
+   this step also runs the **Campaign launch configuration gate** (`coordinator.md` § Bootstrap
+   preflight, the SSOT): either the full 6-step form (first bootstrap, post-campaign restart, or
+   explicit reconfigure) or otherwise the lightweight
+   routine resume confirmation gate — print the current config, then Proceed / Reconfigure.
+   The gate applies in `run` mode only; every other mode in the table above loads config with no
+   confirm step.
 2. **Companion-file scaffold** — gated by `docs_governance.companion_files` (default `true`,
    config already loaded from step 1; skip entirely when `false` or `docs_governance.enabled`
    is `false`). For `ARCHITECTURE.md`/`AGENTS.md`, create the root file from

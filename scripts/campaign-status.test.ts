@@ -4,8 +4,10 @@ import {
   countLedgerByStatus,
   discoveryFilings,
   formatDashboard,
+  formatScopeLabel,
   groupIssuesByPhase,
   parseCheckpointFrontmatter,
+  renderConfigSummary,
   renderRouteChain,
   type Route,
 } from './campaign-status';
@@ -452,5 +454,64 @@ orchestrator_turn_id: 5
     expect(out).toContain('Wave 1');
     expect(out).toContain('#1');
     expect(out).toContain('#2');
+  });
+});
+
+describe('renderConfigSummary', () => {
+  test('renders every campaign-shaping field at its template default for an empty config', () => {
+    const out = renderConfigSummary({});
+
+    expect(out).toContain('all open issues');
+    expect(out).toContain('**Merge mode:** immediate');
+    expect(out).toContain('**Parallel max:** 4');
+    expect(out).toContain('**Kaizen:** disabled');
+    expect(out).toContain('**Docs governance:** enabled');
+    expect(out).toContain('**Incident mode:** disabled');
+    expect(out).toContain('**Worker model policy:** cost-optimized');
+    expect(out).toContain('**Auto-sync:** on');
+    expect(out).toContain('**Adaptive routing:** on');
+  });
+
+  test('renders explicitly-set values over the defaults', () => {
+    const out = renderConfigSummary({
+      scope_milestone: 'v0.14.0',
+      merge_mode: 'gated-batch',
+      parallel_max: 2,
+      kaizen: { enabled: true },
+      docs_governance: { enabled: false },
+      incident_mode: { enabled: true },
+      worker_model_policy: 'quality-first',
+      auto_sync: false,
+      adaptive_routing: false,
+    });
+
+    expect(out).toContain('milestone **v0.14.0**');
+    expect(out).toContain('**Merge mode:** gated-batch');
+    expect(out).toContain('**Parallel max:** 2');
+    expect(out).toContain('**Kaizen:** enabled');
+    expect(out).toContain('**Docs governance:** disabled');
+    expect(out).toContain('**Incident mode:** enabled');
+    expect(out).toContain('**Worker model policy:** quality-first');
+    expect(out).toContain('**Auto-sync:** off');
+    expect(out).toContain('**Adaptive routing:** off');
+  });
+
+  // V-DRY-01 regression guard: the summary must not grow a second scope-label formatter that
+  // can drift from the dashboard's. Both render the shared formatScopeLabel output verbatim.
+  test('scope wording is byte-identical to the dashboard for the same scope', () => {
+    const config = { scope_labels: ['size:xs', 'track:standard'] };
+    const expected = formatScopeLabel({ labels: config.scope_labels });
+
+    expect(expected).toBe('labels `size:xs`, `track:standard`');
+    expect(renderConfigSummary(config)).toContain(expected);
+    expect(
+      formatDashboard({
+        checkpoint: { orchestrator_turn_id: 3 },
+        queue: { refreshed_at: '2026-07-05T18:00:00.000Z', issues: {} },
+        ledger: { findings: [] },
+        forge: { openIssues: 6, openPrs: 0, ok: true },
+        scope: { labels: config.scope_labels },
+      }),
+    ).toContain(expected);
   });
 });

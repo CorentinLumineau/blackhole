@@ -48,7 +48,24 @@ already exists AND none of the three conditions above hold (per
 confirmation"). This carve-out is the ONLY skip condition — do not skip steps
 1-6, including step 2's gated-batch+unscoped Validation warning, merely
 because `config.json` exists; conditions 2 and 3 both fire precisely when it
-already does:
+already does.
+
+**Routine resume confirmation gate** — a skipped form is not a silent start.
+When steps 1-6 are skipped per the carve-out above **and** the mode being
+entered is `run`, then before spawning or resuming the orchestrator:
+
+- Print the current campaign config using `renderConfigSummary`
+  (`scripts/campaign-status.ts`) — reuse it, do not hand-format a summary here.
+- Then `AskQuestion`: "Proceed with this config (default)" | "Reconfigure".
+- On **Proceed** — continue straight to spawn/resume; steps 1-6 stay skipped,
+  now as an explicit user-confirmed skip rather than a silent one.
+- On **Reconfigure** — run the full gate (steps 1-6 below) from step 1, then
+  spawn/resume. Do not abbreviate or partially re-run the form.
+
+This confirmation fires on `run` mode only — `status`, `handle #N`, `plan #N`,
+`implement #N`, `review #N`, `hunt [kind]`, and `campaign-audit` keep loading
+`.blackhole/config.json` with no confirm step, per `SKILL.md` Phase 0 step 1.
+The full 6-step form follows:
 
 1. Use `AskQuestion` to confirm **scope**:
    - "All open issues (default)"
