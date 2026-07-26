@@ -339,8 +339,9 @@ export const PLATFORM_TARGETS = ['cursor', 'claude', 'skills', 'gemini', 'codex'
 // Each budget is seeded at *current measured value (at issue #323's landing commit) × 1.2*,
 // rounded up — the gate ratchets from today's shape rather than blocking on day one. Do not
 // hand-edit these numbers to make a failing check pass — split the file/section, or accept that
-// growing past the seeded ceiling is the violation being reported. Re-measured at #323
-// implementation time (base: blackhole/issue-327, post-#322 split, post-#320 vocabularies):
+// growing past the seeded ceiling is the violation being reported. Agent-file rows measured at
+// #323 implementation time (base: blackhole/issue-327, post-#322 split, post-#320 vocabularies);
+// `scripts/checks/*.check.ts` row re-measured at #336 (post build.check.ts domain split):
 //
 // | File / class                       | Metric              | Measured | × 1.2 seed |
 // |-------------------------------------|---------------------|---------:|-----------:|
@@ -350,25 +351,16 @@ export const PLATFORM_TARGETS = ['cursor', 'claude', 'skills', 'gemini', 'codex'
 // | src/agents/planner.md                | total file LOC       | 593      | 712        |
 // | src/references/worker-schemas.md     | max `##` section LOC | 149      | 179        |
 // | src/references/worker-schemas.md     | total file LOC       | 765      | 918        |
-// | scripts/checks/*.check.ts            | max `check*()` fn LOC | 68      | 82         |
-// | scripts/checks/*.check.ts            | max single file LOC   | 402     | 483        |
+// | scripts/checks/*.check.ts            | max `check*()` fn LOC | 56      | 68         |
+// | scripts/checks/*.check.ts            | max single file LOC   | 181     | 218        |
 //
-// Note (disclosed, not silently masked): `scripts/checks/build.check.ts` is 402 LOC / 9 check
-// functions — already over #322's own stated "no domain exceeds 300 LOC or 7 checks" acceptance
-// criterion. That gap predates #323 (build.check.ts was 373/8 before #322's split, which only
-// touched core.check.ts) and is outside #323's Touch-Paths ("installs the gate, does not act on
-// it"). Seeding the glob's `maxFileLoc` at the true current max (402×1.2) rather than at
-// 300×1.2=360 is deliberate: seeding below the current max would make `bun run verify` fail on
-// unmodified `main`, violating this gate's own "must pass on landing" contract. A follow-up
-// issue to split `build.check.ts` is recommended in the #323 PR body — this map does not
-// silently paper over the gap, it just declines to trip CI for a change this issue didn't make.
 export type ContentGateBudget = { maxSectionLoc: number; maxFileLoc: number };
 
 export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
   'src/agents/orchestrator.md': { maxSectionLoc: 158, maxFileLoc: 610 },
   'src/agents/planner.md': { maxSectionLoc: 350, maxFileLoc: 712 },
   'src/references/worker-schemas.md': { maxSectionLoc: 179, maxFileLoc: 918 },
-  'scripts/checks/*.check.ts': { maxSectionLoc: 82, maxFileLoc: 483 },
+  'scripts/checks/*.check.ts': { maxSectionLoc: 68, maxFileLoc: 218 },
 };
 
 /**
