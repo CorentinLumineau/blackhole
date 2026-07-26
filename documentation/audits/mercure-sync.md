@@ -3,8 +3,8 @@ type: analysis
 status: current
 review_trigger: "on mercure release"
 created: 2026-07-14
-last_updated: 2026-07-22
-last_reviewed_mercure_version: v9.6.0
+last_updated: 2026-07-26
+last_reviewed_mercure_version: v9.7.0
 related:
   - .claude/skills/prj-mercure-sync/SKILL.md
   - documentation/audits/analysis-blackhole-adaptive-phase-routing.md
@@ -231,13 +231,114 @@ All four land on existing seams (V-INT-02 reuse) — no new agents/subsystems:
 Matrix transitions this run: PM-003/PM-052/PM-011/PM-046/PM-050 `gap → in-flight(#308–#311)`;
 PM-014/PM-047 `gap → covered` (refuted). Zero items withheld by the cap. No REJECT/N/A verdicts.
 
+## Run 5 — 2026-07-26 (release-mode sweep, `v9.6.0` → `v9.7.0`)
+
+### Scope
+
+First v2 **release-mode** run (ADR-013 D3) since the matrix was seeded — three tags above the
+`v9.6.0` watermark: `v9.6.1` (2026-07-20), `v9.6.2` (2026-07-21), `v9.7.0` (2026-07-23). Run 4
+explicitly deferred `v9.6.2` as "a release-mode concern deferred to a future run"; this run
+discharges that deferral and covers `v9.7.0` as well.
+
+Release notes were read for all three tags, then the delta was deep-compared at mechanism level
+against the local plugin cache (`~/.claude/plugins/cache/mercure/mercure/9.6.0` vs `9.7.0`, both
+present locally — 73 differing paths). `v9.6.1` is a workclaude-integration bump only, with no
+mechanism content.
+
+### Mechanism inventory (4 mechanisms + 1 ergonomics cluster)
+
+| # | Mechanism | Source | Touched row(s) |
+|---|-----------|--------|----------------|
+| M1 | Efficient-output executive-summary doctrine — 6 formatting rules (ADR-102) | `rules/references/efficient-output.md` (new); `verify.sh` Check 22 link-marker | PM-083 (folded) |
+| M2 | Skill-level `disallowed-tools` leaks across `Skill()` chaining — removed from 6 analysis skills, restriction relocated to agents (ADR-090), `verify.sh` Check 34 **inverted** into a regression guard | `scripts/verify.sh:1413-1432`; `skills/x-troubleshoot/SKILL.md` frontmatter | PM-074 |
+| M3 | Summary-before-gate — 14 skills reached `AskUserQuestion` with no findings printed first | v9.7.0 release notes; per-skill SKILL.md diffs | PM-083 |
+| M4 | Campaign-activation trust boundary — trigger from the human's own message before any forge fetch; campaign state from session state only; `<UNTRUSTED-FORGE-DATA>` can never activate/claim/extend a campaign | `skills/git-pr/references/pr-fix-batch-orchestration.md` (new) | PM-084 |
+| M5 | `git-pr fix` consolidation, 3-queue discovery, auto-selected issue labels, `/goal` ergonomics | v9.6.2 + v9.7.0 release notes; `skills/git-pr/` | PM-085 |
+
+Mapping was unambiguous for M2 (existing row) and M5 (no existing row, ergonomics cluster). M1
+and M3 target the same blackhole seam and were merged onto one new row rather than two — see the
+M1 verdict below. No cross-cutting `rules/` change required widening the re-check to a whole
+`kind` tier.
+
+### Adoption Lens v2 verdicts
+
+**M2 — convergent validation, no gap. PM-074 stays `covered`.** mercure's v9.7.0 fix moves hard
+capability restriction *off* skills and *onto* agents (ADR-090) — the model blackhole already
+had. Verified this run: `grep -rn "disallowed-tools" src/` = **0** (no skill-level restriction
+exists to leak), and `scripts/checks/agents.check.ts:14-52` (`V-TOOLS-01`) already enforces the
+same guard in **both** directions — implementer MUST NOT declare `disallowedTools`, read-only
+agents MUST declare all three — which mercure's inverted `verify.sh` Check 34 only added in
+v9.7.0. Recorded as a re-verification (`2026-07-20, v9.6.1` → `2026-07-26, v9.7.0`) with an
+enriched citation, not a transition. Nothing to file.
+
+**M1 — ADAPT, folded into M3's row (PM-083), not filed separately.** Tier-2 workflow/interaction
+mechanism, so the default is ADAPT rather than reject. But blackhole has no
+executive-summary-before-chaining-gate surface to host the doctrine: its human-facing output is
+the `CHECKPOINT` line (schema-structured already) and the async blocked-question payload. A
+standalone `efficient-output.md` port would land a rule file with a single consumer
+(`V-YAGNI-03`) and a second formatting authority over the same seam (`V-INT-02`). The
+transferable subset — action-first, precise counts, explicit "+N more" truncation, no
+preamble/closers — is adopted **inside** PM-083's payload contract. This is a fold, not a
+rejection: the mechanism lands, on one seam instead of two.
+
+**M3 — ADAPT to the async seam. PM-083 `gap → in-flight(#346)`, Pareto 40.** `clarify-gates.md`
+fully specifies *when* to `AskQuestion` and never *what the question must carry*; the same holds
+at every call site, with `epic-orchestration.md:53` the sole self-contained precedent. The
+failure mode is **worse in blackhole than upstream**: mercure's gate is synchronous, so even an
+unprinted summary leaves the user with session scrollback; blackhole's is deliberately async
+(`orchestrator.md:366-371`), answered possibly in a different session with no scrollback at all,
+and a stall burns the Blocked-Iteration Counter to escalation at 3. Hard rejection #1 does **not**
+fire — this is explicitly not an import of mercure's `AskUserQuestion` primitive; the sync/async
+split is untouched and only the payload's self-containedness changes.
+
+**M4 — ADOPT. PM-084 `gap → in-flight(#345)`, Pareto 42.** Tier-1 enforcement mechanism.
+Blackhole's untrusted-data rule is one line (`forge-sync.md:252-262`) with partial call-site
+coverage, and it misses the highest-leverage surface: `src/agents/router.md` has **zero**
+UNTRUSTED mentions while deriving the entire `route{}` object from issue title/body/labels
+(`router.md:15,82-88`), feeding the confidence kernel and `autonomy.*` — with autonomy
+unconditionally active (ADR-014). The only escalate-only guard today is `V-SEC-09`, scoped to a
+single flag from a single source. Lands on existing seams (`V-INT-02`): router prompt wrapping,
+a generalized invariant in `forge-sync.md`, and a `V-SEC`-family row — no new agent or subsystem.
+
+**M5 — N/A. PM-085 recorded as `N/A(...)`.** mercure-only git ergonomics for a user-facing
+command blackhole has no analog of (its PR-fix flow is orchestrator-internal). Same verdict class
+as Run 2's item 3. Tier-3 default N/A stands — no rebuttal clears the burden of proof. The one
+transferable sub-mechanism inside the `/goal` work, the campaign-activation trust boundary, was
+split out as M4/PM-084 and adopted on its own merits rather than smuggled in with the ergonomics.
+
+### Outcome
+
+| Row | Verdict | Issue |
+|-----|---------|-------|
+| PM-084 | ADOPT (Gain 6 × (11−4) = **42**) | [#345](https://github.com/CorentinLumineau/blackhole/issues/345) |
+| PM-083 | ADAPT (Gain 5 × (11−3) = **40**), M1 folded in | [#346](https://github.com/CorentinLumineau/blackhole/issues/346) |
+| PM-074 | covered — convergent validation, re-verified v9.7.0 | none |
+| PM-085 | N/A — mercure-only git ergonomics | none |
+
+2 issues filed, both above the `min_priority` floor (30) and within `max_issues_per_run` (5;
+`.blackhole/config.json` is absent in this maintainer worktree, so the skill's defaults apply).
+**Zero items withheld by the cap.** Both verified immediately before filing (`V-HUNT-01`) by
+re-reading the v9.7.0 cache and the cited `src/` lines. Deduped against the 4 open issues
+(#335–#337, #341 — all unrelated) and against every matrix `in-flight` ref. Watermark bumped
+`v9.6.0` → `v9.7.0`.
+
+**Observation for the next backlog-mode run** (not acted on here — release mode re-verifies only
+touched rows): the five `in-flight` refs from Runs 3–4 (#306, #308, #309, #310, #311) are all
+**CLOSED** on the forge. Those rows are candidates for an `in-flight → covered` transition once
+re-verified against `src/`.
+
 ## Design note for future runs
 
 - Run 2 reviewed a genuine version delta (`v9.4.0` → `v9.6.0`), both tags landing 2026-07-14.
   As in Run 1, it filed **one** Pareto-qualifying item and explicitly recorded the REJECT
   (browser-automation UX swarm) so a future run doesn't re-surface it as a "new" gap.
-- The watermark is now `v9.6.0` (the latest tag). The next run should either (a) pick up any
-  newer mercure version delta, or (b) sweep one more domain from the Coverage table's
-  "everything else" row — `x-security-audit`'s exploitability-gate methodology (`V-SEC-06/07`)
-  remains the natural next pick, since blackhole's own `V-SEC-06..10` already exist and a fresh
-  comparison would confirm whether they're complete or only partially ported.
+- The watermark is now `v9.7.0` (the latest tag, Run 5). With no version delta outstanding, the
+  next run should be **backlog mode** against the live parity matrix. Two candidate targets:
+  (a) re-verify the five closed `in-flight` refs from Runs 3–4 (#306, #308–#311) for an
+  `in-flight → covered` transition, which is cheap matrix-accuracy work; (b) the top remaining
+  `gap` cluster at priority 36 (PM-039, PM-048, PM-055, PM-063).
+- Run 5 is the first run where a mercure change landed as **convergent validation** rather than a
+  gap — mercure's ADR-090 `disallowed-tools` fix moved upstream *toward* a model blackhole
+  already had, guard included. Worth recording explicitly: the matrix's value is not only finding
+  what blackhole lacks but confirming where it was already right, so a later run does not
+  re-open a settled row as a "new" upstream mechanism.
