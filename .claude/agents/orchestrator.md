@@ -20,231 +20,31 @@ Binding: `.claude/skills/blackhole/SKILL.md`.
 
 ## 5-Field Delegation Contract
 
-Every worker subagent prompt you write MUST explicitly declare these 5 fields:
-
-1.  **Objective**: Detailed issue goals, acceptance criteria, and specific requirements.
-2.  **Output Format**: Deliverables (e.g. branch pushed, PR opened).
-3.  **Scope Boundaries (Touch-Paths)**: List of files allowed to be modified (`V-SCOPE-02`). Restrict changes strictly to these.
-4.  **Tool Guidance**: Specific commands to execute (e.g., project test and lint commands). **Mandate establishing a TDD Baseline** by running existing tests first before editing any files. When the plan's `execution_mode` is `standard` (default, absent == `standard`), mandate failing-tests-first; `refactor-strict`, mandate the pre-existing suite pass unmodified (no new/deleted test files); `docs-only`, suppress the failing-test-first mandate and restrict Touch-Paths to documentation paths. Must also include the § Error Classification taxonomy below, so `planner`/`implementer`/`reviewer` self-classify their own tool/spawn failures identically before returning `status: blocked`/`error`.
-5.  **Stop Condition**: Criteria for task completion. **Mandate TDD**: any new logic/bug fix must have failing tests written first before implementing the code solution, ensuring tests and linter are green before completion.
-
-### Worker spawn model
-
-Read `.blackhole/config.json` → `worker_model_policy` (default `cost-optimized` when absent;
-full matrix: `.claude/skills/blackhole/references/model-routing.md`).
-
-`Task` / subagent spawns must align **model cost to task**, not use one tier for every role:
-
-| Policy | Spawn behavior |
-|--------|----------------|
-| `cost-optimized` | Resolve per spawn: `economy` / `standard` / `premium` from role + track + `route{}` signals, then pass the **cheapest capable** harness slug for that tier. |
-| `inherit` | Omit `model` — workers inherit the parent session's harness default (v0.6.1 behavior). |
-
-**Task-tier examples (cost-optimized):**
-
-| Spawn | Typical tier |
-|-------|----------------|
-| `router`, `investigator` (investigate), `planner` skip | `economy` |
-| `planner` quick/standard, `reviewer`, `orchestrator`, `implementer` (default), `hunter` | `standard` |
-| `planner` design, `implementer` + security/`size:xl`, `reviewer` at high `review_iteration` | `premium` |
-
-Do **not** read `model:` from agent markdown frontmatter (`V-AGENT-01`). On
-`escalation_trigger` blocked returns, bump one tier on the next respawn for that role (cap `premium`).
-
-### Route-derived dispatch (ADR-004 step 3)
-
-Before spawning `planner`, derive its spawn directive from the issue's `queue.json`
-`route{}` object (schema: `queue-dag.md` § `route` object). Evaluate in this precedence
-order — each step is a hard gate over the ones below it:
-
-1. **Void route** — `route` absent, or `.blackhole/config.json` `adaptive_routing: false`
-   → send no explicit `track` directive; `planner` self-assesses Quick/Standard exactly
-   as today (`plan_mode: full` semantics, zero behavior change). This is every issue in
-   today's queue — the `router` agent (#95) has landed (PR #118) but has not yet
-   re-triaged any issue already in today's queue, so no `route` object is populated yet —
-   and is byte-for-byte identical to pre-ADR-004 dispatch.
-2. **Split precedence** — before consulting `route.needs_split`, compare
-   `route.confidence.split` against `.blackhole/config.json`
-   `router_confidence_thresholds.split` (default 70). Below threshold, resolve to
-   `needs_split`'s cautious default (`true`) instead of the computed value; at or above
-   threshold, use the computed value as-is. If the resolved value is `true`, it voids
-   every other route flag on this parent issue (hard rule, not an ordering). Dispatch
-   stops here: hand off to the existing Phase 1 split mechanism (`issue-splitting.md`,
-   referenced from `phase-handle.md`) — no new split code path is introduced. Children
-   re-enter at dedup with their own independent `route`. If `false`, continue to step 3.
-2.5. **Brainstorm precedence (ADR-010 D3)** — see § Brainstorm dispatch precedence below.
-3. **Per-flag confidence gate** — before consulting `plan_mode` or `needs_design`,
-   compare `route.confidence.<flag>` against `.blackhole/config.json`
-   `router_confidence_thresholds.<flag>` (default 70 per flag). Below threshold, resolve
-   to that flag's cautious default instead of the computed value: `plan_mode` low
-   confidence → treat as `full` (no directive); `needs_design` low confidence → treat as
-   `true` (dispatch to design track — never skip the human design gate on an uncertain
-   classification). Note for completeness: `security_review_required`'s cautious default
-   is `true`; its dispatch is out of scope for this step (#98). `docs_impact`'s confidence
-   gate follows the identical rule — compare `route.confidence.docs` against
-   `router_confidence_thresholds.docs` (default 70); below threshold, **or** when
-   `.blackhole/config.json` `docs_governance.enabled` or `docs_governance.docs_impact_routing`
-   is `false`, resolve to `docs_impact`'s cautious default (`true`) instead of the computed
-   value. Its dispatch — enriching planner/reviewer prompts — is out of scope for this step
-   (see #177 scope note; mirrors `security_review_required`'s #98 precedent).
-4. **`needs_design: true`** (post-confidence-gate) → spawn `planner` with an explicit
-   `track: design` directive (track already implemented, #94/#101). See
-   `phase-plan.md` § Plan approval gate, "Design track (ADR-004)" row, and § Design
-   Autonomy Dispatch below (ADR-010 D4's gated-verdict amendment) for the full contract.
-5. **`plan_mode: skip`** (post-confidence-gate, only when `needs_design` did not already
-   claim the dispatch) → spawn `planner` with an explicit `track: skip` directive (track
-   already implemented, #94/#101). The Planner gate below still applies unmodified — the
-   `skip` track's `planner` spawn still produces a plan artifact on disk and returns
-   `status: ready` per `worker-schemas.md`, so gate conditions 1–2 are satisfied exactly
-   like any other track. Tool-policy constraint restated: the orchestrator never writes
-   this artifact itself (`disallowedTools: [Write, Edit, Delete]`, line 5, this file) —
-   `planner`'s `skip` track is the write-capable agent in this handoff (ADR-004
-   Trade-offs table, "Who writes the skip rationale record").
-6. **`plan_mode: quick` or `plan_mode: full`** (post-confidence-gate) → send no explicit
-   `track` directive; `planner` performs its existing Quick/Standard self-assessment
-   unchanged. This is a deliberate, documented scope boundary — `planner.md` Step 2
-   scopes explicit-directive-only behavior to Skip/Design — not an oversight; forcing an
-   explicit `quick`/`full` directive is out of scope for this step.
-
-**Planner gate (always enforced — never bypassed, including `plan_mode: skip`):** Do
-**not** spawn `implementer` until **both** conditions are met:
-
-1. Plan artifact exists on disk at `{repo_root}/.blackhole/plans/issue-N.md`
-2. Planner worker JSON returned `status: ready` (not `blocked`)
-
-**Explicit skip exception (ADR-004):** (i) when `route.plan_mode: skip` selected the
-`planner` `skip` track, this gate is satisfied by the skip track's own deliverable — a
-4-section rationale record at the same `plans/issue-N.md` path, `status: ready` in the
-worker JSON; (ii) the skip track does **not** bypass this gate — it is a
-`planner`-produced artifact like any other track; (iii) the gate's "never skip
-verification" guarantee is unconditional across `quick`/`standard`/`skip`; only `design`
-is exempt from *this specific implement-readiness gate* because it never returns
-`status: ready` (unconditional `status: blocked` — see `phase-plan.md` § Plan approval
-gate).
-
-`bun run verify` enforces the same plan-on-disk rule via **V-PLAN-01** for any
-queue entry in `plan`, `implement`, or `review` with `status: in-flight` (use
-`--campaign-dir .blackhole` for live campaign state).
-
-If either is missing, stay in Phase 2 Plan — spawn or re-spawn `planner`.
-Queue entry must be `phase: implement`, `status: ready` before implement spawn.
-
-**Before spawning a `implementer` or `reviewer`**, prepend a
-`<PLAN_CONTEXT>` block (see
-`.claude/skills/blackhole/references/campaign-prompt.md` §
-PLAN_CONTEXT) containing:
-
-1. **Plan artifact** — absolute path to `{repo_root}/.blackhole/plans/issue-N.md`
-2. **Touch-Paths** — from `queue.json` `touch_paths` for this issue
-3. **Codebase Conventions** — the `## Codebase Conventions` section from the plan file
-   (write `(none declared)` if absent)
-
-`planner` does **not** receive PLAN_CONTEXT — it *produces* the plan
-artifact from which Touch-Paths and Conventions are extracted.
-
-This preamble is binding: implementers must not edit outside Touch-Paths;
-reviewers audit against them (`V-SCOPE-02`).
-
-Worker return schemas: `.claude/skills/blackhole/references/worker-schemas.md`.
+Worker spawn model, route-derived dispatch, Planner gate, and PLAN_CONTEXT preamble moved verbatim to `.claude/skills/blackhole/references/orchestrator-delegation.md` — delegation *data*, not orchestrator *behavior*, previously duplicated across platform build targets (`V-DRY-01`). This section owns only the pointer; the contract lives solely in the referenced file.
 
 ---
 
 ## Brainstorm dispatch precedence (ADR-010 D3)
 
-Referenced from § Route-derived dispatch step 2.5 above (identical shape to the `docs_impact`
-config-gate precedent in that same section) — separately budgeted per `V-CONTENTGATE-01`.
-
-When `autonomy.brainstorm_routing` is true (`config-template.md`),
-compare `route.confidence.brainstorm` against `.blackhole/config.json`
-`router_confidence_thresholds.brainstorm` (default 70); below threshold, resolve to
-`needs_brainstorm`'s cautious default (`true`) instead of the computed value. If the resolved
-value is `true`: spawn `planner` with an explicit `track: brainstorm` directive; dispatch stops
-here — `plan_mode`/`needs_design` are not evaluated for this issue (`queue-dag.md`'s voiding
-rule). If `false`, or the config gate is off, continue to step 3 of § Route-derived dispatch
-unchanged (zero-regression).
+See `.claude/skills/blackhole/references/orchestrator-dispatch.md` § Brainstorm dispatch precedence (ADR-010 D3).
 
 ---
 
 ## Brainstorm terminal handling (ADR-010 D3)
 
-Fixed ordering — do not reorder these steps; closing the issue or filing children before the
-artifact PR merges breaks the audit trail (see the milestone plan's Threat Model, Repudiation
-row).
-
-On `planner` returning `status: ready, track: brainstorm`:
-
-1. Spawn `implementer` with `execution_mode: docs-only`, Touch-Paths restricted to
-   `documentation/brainstorms/{slug}.md`, Objective "commit the working draft from
-   `.blackhole/plans/issue-N-brainstorm.md` into the durable artifact path, open a PR" —
-   reusing the existing docs-only 5-Field Delegation Contract shape unchanged (no new fields).
-2. Reviewer audits the PR per the **existing** docs-only branch of § Review pipeline below
-   (unchanged — no new reviewer logic).
-3. Wait for the artifact PR to reach `status: merged` (existing `merge-gate.md` path,
-   unchanged).
-4. Only after step 3: file the `children[]` from the planner's return through the **existing**
-   `.claude/skills/blackhole/references/phase-loop.md` § Continuous Discovery of
-   Improvements path — one Priority computation and one `gh issue create` per child clearing
-   the `>= 30` gate; children below the gate are logged `archived` in the ledger, never filed
-   (identical rule, not a new one).
-5. Close the original brainstorm issue: `queue.json` status transition `* → closed`
-   (`queue-dag.md` § Status transitions, existing enum, no new status value) with `notes:
-   "satisfied-by-children:<n1>,<n2>,..."` (extends the existing free-text `notes` convention)
-   and an issue-closing comment referencing the merged artifact PR number and every filed child
-   issue number (audit trail, mirrors the #152/#916 close-as-satisfied precedent).
-
-On `planner` returning `status: blocked, track: brainstorm`: do **not** run terminal handling —
-set `notes: awaiting-user-clarification` and surface `blocking_question` via the existing HITL
-Blocker Gate mechanism (§ Human-in-the-Loop (HITL) & Blocker Gating below), unchanged.
+See `.claude/skills/blackhole/references/orchestrator-dispatch.md` § Brainstorm terminal handling (ADR-010 D3).
 
 ---
 
 ## Error Classification (Transient / Permanent / Partial-Corruption)
 
-This section is the **single source** for campaign tool/spawn failure classification —
-`recovery-protocol.md` and `worker-schemas.md` cross-reference it, they do not restate the
-table.
-
-| Class | Examples | Action |
-|-------|----------|--------|
-| **Transient** | CI run `cancelled` with no real error; `Base branch was modified` merge race; network timeouts | Retry ≤2 with backoff, then reclassify **Permanent** |
-| **Permanent** | `escalation_trigger: touch_paths_overrun`; missing command (exit `127`) | Report with actionable context; skip optional steps with a warning; append a Failed-Approaches entry (`checkpoint-protocol.md` § Failed-Approaches Log) |
-| **Partial/Corruption** | Partial DB write without compensation; desynced state journal | Verify artifacts before trusting them, resume from checkpoint, data safety first |
-
-Before respawning `planner`/`implementer` for an issue that already has
-Failed-Approaches entries in `campaign-checkpoint.md`, include those entries verbatim in
-the 5-Field Delegation Contract's **Objective** field — so a resumed campaign never
-re-attempts a known dead end on the same issue.
+See `.claude/skills/blackhole/references/orchestrator-runtime.md` § Error Classification (Transient / Permanent / Partial-Corruption).
 
 ---
 
 ## Escalation dispatch (implementer → investigator)
 
-**Trigger condition**: `implementer` returns `status: blocked` with `escalation_trigger` set
-(`failed_attempts` or `touch_paths_overrun` — `worker-schemas.md` § `escalation_trigger`). Do
-**not** re-spawn `implementer` and do not treat this as a generic worker error — route to
-root-cause investigation instead:
-
-1. **`queue.json` mutation** (Bash/`jq`, atomic `.tmp` + `mv` write per `blackhole-state.md` §
-   Write protocol): set `phase: implement`, `status: blocked`,
-   `notes: "awaiting-investigation"` for the issue.
-2. **Direct `investigator` spawn**, `sub_mode: investigate`, using the same spawn contract as
-   `phase-handle.md` § Investigator agent. Declare the 5-Field Delegation Contract exactly like
-   every other worker spawn:
-   1. **Objective**: root-cause evidence gathering for the specific `escalation_trigger` value
-      `implementer` returned.
-   2. **Output format**: note at `plans/issue-N-investigation.md`.
-   3. **Scope boundaries**: read-only — no code edits.
-   4. **Tool guidance**: none — inherits `investigator`'s own tool policy.
-   5. **Stop condition**: `status: complete` with the note on disk.
-3. **Resume rule**: `investigator`'s note landing on disk is already the documented
-   `investigation-landed` trigger (`router.md` § Re-route checkpoints) — re-spawn `router` per
-   that existing, unmodified contract, then resume dispatch via § Route-derived dispatch above
-   using the refreshed `route`. Once the re-route resolves, clear
-   `notes: "awaiting-investigation"` and transition `status: blocked → ready` (existing
-   transition, `queue-dag.md` § Status transitions — "user gate cleared" generalizes to
-   "investigation gate cleared").
-
-See `worker-schemas.md` § `escalation_trigger` for the field this section consumes.
+See `.claude/skills/blackhole/references/orchestrator-dispatch.md` § Escalation dispatch (implementer → investigator).
 
 ---
 
@@ -272,47 +72,7 @@ Per `queue-dag.md` Step 4: compute execution waves via topological sort on `depe
 
 ## Background worker barrier (Cursor / Pattern B)
 
-When this turn spawns one or more workers with `run_in_background: true` (router wave,
-parallel planners, implementers, reviewers):
-
-### Spawn
-
-1. Log `WAVE <N>: issues [...]` before the first spawn.
-2. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, and spawn turn id.
-
-### Barrier
-
-Block **in-turn** until every worker in the batch completes. On Cursor, use `Await` on
-each background task ID (canonical harness pattern). Do **not** end the turn and wait for
-notifications — Cursor does not deliver worker-completion notifications to a parent
-orchestrator that has already ended its turn.
-
-### Triage (idempotent)
-
-For each completed worker:
-
-1. Parse and validate return JSON (`scripts/validate-worker-json.ts` or harness hook output) — see `worker-schemas.md` § Orchestrator validation and § Barrier triage.
-2. Apply queue/ledger mutations per role, **serially, one completed worker at a time** — even
-   though the batch itself ran in parallel, the orchestrator never parallelizes the
-   `queue.json`/`findings-ledger.json` writes (router → `route{}`; planner → plan gate;
-   implementer → PR linkage; reviewer → aggregate pipeline). This is the
-   single-writer-orchestrator invariant (`blackhole-state.md` § Single-writer invariant):
-   parallel-batch workers (e.g. a router wave) never write these two files directly — they
-   return computed data, and the orchestrator alone applies it. For each completed `router`,
-   construct the full `routing_decisions` row from its returned JSON before appending: assign
-   `id` from `next_routing_id`, `issue_ref` from spawn context, `created_at` = now, and copy
-   `route`, `trigger`, and `local_analyze` verbatim from the return (`worker-schemas.md` §
-   Router).
-3. Remove the worker from `## In-flight workers`.
-4. **Idempotency:** if the artifact already satisfies the gate before spawn (e.g. `route{}` present, plan file on disk, PR open), skip re-spawn and advance phase. When checkpoint lists workers as active but artifacts already landed, run `recovery-protocol.md` §9 drift heal at turn start (`detectArtifactDrift`) — do not re-spawn completed workers when artifacts match the current revision.
-
-### Turn-end gate
-
-Run the **Checkpoint protocol** turn-end checklist only when `## In-flight workers` is
-empty. If any worker is still in-flight, **do not** increment `orchestrator_turn_id` or
-end the turn.
-
-Per `merge-gate.md` § 1: before merging an LGTM'd issue's PR, evaluate `mergeEligible(issue)` — hold/merge_after/gated-batch checks, never duplicated inline here. The CI-wait itself (`phase-loop.md` § Merge protocol step 2) follows this same § Background worker barrier idiom — a detached poll the orchestrator barriers on in-turn, never a foreground sleep — not a new, parallel background-task concept.
+See `.claude/skills/blackhole/references/orchestrator-runtime.md` § Background worker barrier (Cursor / Pattern B).
 
 ---
 
@@ -345,21 +105,7 @@ Template, write order, and compaction recovery: `checkpoint-protocol.md`.
 
 ## Session resume & recovery
 
-On **every orchestrator turn start** (including compaction recovery and session resume),
-after reading checkpoint and forge sync:
-
-1. Run `recovery-protocol.md` **§9** artifact-vs-queue drift heal for all
-   `status: in-flight` issues — **before** Wave scheduling and **before** any `Task` spawn.
-   Use `scripts/recovery-drift.ts` (`detectArtifactDrift`) to detect drift; apply heal
-   mutations (clear stale notes/checkpoint rows, advance phase) before spawning workers.
-2. Cross-link **§8** (staleness) and **§9** (drift): staleness forces re-route when
-   `route.body_hash` no longer matches; drift advances without re-run when artifacts match
-   the current revision and are not stale.
-3. Inspect worktrees per `recovery-protocol.md` §2.
-
-**MUST** complete `recovery-protocol.md` §5 orchestrator checklist before spawning
-`implementer` when any in-flight issue has a dirty worktree or recovery stash. Do not spawn
-implementer until worktree scope matches a single issue.
+See `.claude/skills/blackhole/references/orchestrator-runtime.md` § Session resume & recovery.
 
 ---
 
@@ -374,37 +120,7 @@ implementer until worktree scope matches a single issue.
 
 ## Incident Mode
 
-A stricter, campaign-wide variant of the blocker gating above — consult this section before
-§ Continuous Discovery & Pareto Sorting runs.
-
-**Trigger signals**: a prod outage report, a data-loss risk, or a CRITICAL-severity bug on a
-live surface. A concrete, already-observable instance of the third signal: a
-**`Permanent`**-classified Blocked-Iteration Escalation (`notes:
-blocked-escalated:Permanent:<reason>` — § Human-in-the-Loop (HITL) & Blocker Gating above,
-composed with § Error Classification) on an issue whose Touch-Paths/labels mark it as
-touching a live/production surface. This section does not invent a second, parallel severity
-taxonomy — it reuses the landed § Error Classification / § HITL Blocker Gating machinery as
-its sole machine-observable signal.
-
-**Entry mechanism**: a human/coordinator arms `config.json.incident_mode.enabled: true`
-(`config-template.md`) upon recognizing one of the trigger signals above. Entry is manual,
-not automatic detection — no severity-label taxonomy exists in this repo to key an automatic
-detector off.
-
-**Effect while active**: `parallel_max` is treated as `incident_mode.parallel_max_override`
-(default `1`) regardless of `config.json.parallel_max` — the consumer is `phase-loop.md`'s
-"Spawn parallel batch" checklist line; only the declared incident issue(s) may be
-`in-flight`. `blackhole-state.md`'s existing "at most one `migration_slot: true` in-flight"
-rule is strictly binding (zero tolerance) while incident mode is active — this restates, it
-does not duplicate, that rule. `phase-loop.md`'s "## Continuous Discovery of Improvements
-(Backlog Growth)" section is paused entirely for the duration.
-
-**Exit criteria**: incident mode reverts to normal dispatch when, and only when, the declared
-incident issue reaches `status: merged`, its merge record carries verification evidence
-(`phase-loop.md` § Merge protocol step 5 "deploy verify per runbook"), **and** the issue
-carries no outstanding Blocked-Iteration Escalation and no unresolved `Permanent`
-Failed-Approaches entry (`checkpoint-protocol.md` § Failed-Approaches Log). There is no
-auto-exit on a timeout or on the next turn alone — all three conditions must hold together.
+See `.claude/skills/blackhole/references/orchestrator-runtime.md` § Incident Mode.
 
 ---
 
@@ -422,88 +138,17 @@ auto-exit on a timeout or on the next turn alone — all three conditions must h
 
 ## Design Autonomy Dispatch (ADR-010 D4)
 
-Amends § Route-derived dispatch step 4 (`needs_design: true`) — this section owns only the
-gated-verdict dispatch contract; it does not restate the confidence-gate/split/plan-mode
-precedence chain above it.
-
-When the returned `planner` worker JSON carries `track: "design"` and `status: "ready"` — only
-possible when `planner.md` §4.8's gate produced it via `scripts/design-aggregate.ts`'s verdict
-— the orchestrator treats this exactly like any other `status: "ready"` plan and proceeds
-toward implement/PR dispatch without an `AskQuestion` gate (`phase-plan.md` § Plan approval
-gate, autonomy-gate row).
-
-The orchestrator applies only the worker JSON's `status` field as returned — it never
-re-derives or second-guesses the verdict itself: this dispatch branch has no code path that
-inspects design-note *content*, only the JSON `status` field, so there is no way planner prose
-alone (independent of the script) could route an issue past the human gate.
-
-When `status: "blocked"` — the config gate off/absent, or `design-aggregate.ts` itself
-returned `blocked` — dispatch is unchanged from today: the design artifact routes to the
-unconditional `AskQuestion` gate.
-
-Resume-after-human-approval dispatch (`resume_context: design_approved`) is a distinct
-contract — see § Design-Approval Resume Dispatch below.
+See `.claude/skills/blackhole/references/orchestrator-dispatch.md` § Design Autonomy Dispatch (ADR-010 D4).
 
 ---
 
 ## Design-Approval Resume Dispatch (ADR-012 E2.3)
 
-Trigger: the coordinator resumes the orchestrator (`interrupt: false`) after clearing
-`status: blocked` / `notes: awaiting-design-approval` on a `track: design` issue — the
-resumption path T1 repairs (`coordinator.md` § Resolving Blockers).
-
-Action: re-spawn `planner` with an explicit `resume_context: design_approved` directive —
-never a generic re-spawn, which would re-run the whole Design Track (including two fresh
-blind-critic invocations) and discard the artifact the human actually reviewed.
-
-Directive provenance: `resume_context: design_approved` is set by the orchestrator **only**
-in direct response to the coordinator's resume signal, itself downstream of the human's
-parsed approval. The orchestrator never infers this directive from design-note content — it
-is a pass-through of the human verdict, following the same explicit-directive-only
-convention ADR-004 established for `track: design` / `track: brainstorm`.
-
-The planner's third `## Gate` branch (`planner.md` §4.8) promotes the on-disk design
-artifact verbatim on this directive; this section owns only the spawn-side dispatch
-contract, not the promotion logic itself.
+See `.claude/skills/blackhole/references/orchestrator-dispatch.md` § Design-Approval Resume Dispatch (ADR-012 E2.3).
 
 ---
 
 ## Kaizen hunt dispatch
 
-ADR-006's proactive counterpart to § Continuous Discovery above (which triages *reactive*
-discoveries reported by workers/reviewers). Hunt waves are dispatched by three triggers: the
-`hunt [kind]` SKILL mode (manual, any time), the on-empty check (`phase-loop.md` §
-Campaign complete), and the every-n-loops interleave (`phase-loop.md` § Next batch step 0).
-All three call into the same protocol — the entire spawn/dedup/gate/file/cap/watermark
-mechanics and all four stop conditions are specified **once**, in
-`.claude/skills/blackhole/references/phase-loop.md` § Kaizen hunt dispatch — this
-section does not duplicate that content; it owns only the `hunter` spawn contract.
-
-**5-Field Delegation Contract for the `hunter` spawn:**
-
-1.  **Objective**: The `kind` to scan (one of `kaizen.kinds`) and the territory band
-    directive — the unscanned bands for that kind, derived from
-    `hunt_state.kinds.<kind>.bands_done` — set as an explicit spawn-context directive, never
-    self-selected by `hunter` (mirrors the `investigator` sub-mode dispatch precedent, §
-    Investigator agent in `phase-handle.md`).
-2.  **Output Format**: `hunter`'s JSON contract (`worker-schemas.md` § Hunter — pointer only,
-    not restated here): `status`, `kind`, `wave`, `territory`, `findings[]`.
-3.  **Scope Boundaries**: Read-only — no `queue.json`/ledger mutation, no issue filing.
-    `hunter`'s own agent definition (`hunter.md`) already declares this; this contract line
-    only restates the boundary at spawn time, per every other worker spawn's convention.
-4.  **Tool Guidance**: None beyond `hunter`'s existing tool policy
-    (`disallowedTools: [Write, Edit, Delete]`, same blanket restriction as every other
-    coordinate/evidence-only agent in this file).
-5.  **Stop Condition**: `status: complete` with `findings[]` populated (or empty array if
-    nothing found), exactly one wave per spawn — `hunter` never loops internally across
-    waves, even when `territory.exhausted` comes out `false`.
-
-Model tier: `standard` (§ Worker spawn model above; `model-routing.md`'s `hunter` row is the
-SSOT for the rationale).
-
-Filing/dedup/watermark mechanics (V-PARETO-02 gate + bug severity floor, ledger idempotency
-dedup, `[Kaizen]` issue filing via `filing.md`'s template, `max_issues_per_wave` cap,
-`hunt_state` watermark write, and all four stop conditions — territory exhausted, `max_waves`,
-3 dry waves, gated-batch mid-flight no-op): see `phase-loop.md` § Kaizen hunt dispatch (single
-source, not duplicated here).
+See `.claude/skills/blackhole/references/orchestrator-dispatch.md` § Kaizen hunt dispatch.
 <!-- GENERATED by scripts/build.ts from src/agents/orchestrator.md — do not hand-edit -->

@@ -43,10 +43,10 @@ Full schemas: `codex-skills/blackhole/references/findings-ledger.md`,
 ## Single-writer invariant
 
 The orchestrator is the sole writer of `queue.json` and `findings-ledger.json`. Workers
-spawned as part of a parallel batch (e.g. a router wave, `orchestrator.md` § Background worker
+spawned as part of a parallel batch (e.g. a router wave, `orchestrator-runtime.md` § Background worker
 barrier) never write either file directly — each worker computes and returns its result as
 JSON, and the orchestrator applies mutations serially, one completed worker at a time, post-barrier
-(`orchestrator.md` § Triage), even though the batch itself ran in parallel. This closes the
+(`orchestrator-runtime.md` § Triage), even though the batch itself ran in parallel. This closes the
 lost-update race that a direct-write-per-worker protocol would otherwise create (concurrent
 read-before-either-writes on the same counter/array — issue #224). File locking (`flock`) and
 optimistic retry/CAS were considered and explicitly deferred in favor of this invariant, because

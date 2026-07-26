@@ -358,7 +358,7 @@ Touch-Paths). Single-valued (unlike the array-shaped `failing_checks`) — the w
 first trigger it hits, it does not accumulate multiple in one session.
 
 **Consumer status**: `escalation_trigger` is now read by the orchestrator's escalation dispatch
-(`orchestrator.md` § Escalation dispatch, #137) — an `implementer` returning `status: blocked`
+(`orchestrator-dispatch.md` § Escalation dispatch, #137) — an `implementer` returning `status: blocked`
 with this field set is routed to a direct `investigator` (`sub_mode: investigate`) spawn instead
 of a blind `implementer` re-spawn.
 
@@ -535,7 +535,7 @@ records" (not re-tabulated here). The router never writes `queue.json` or
 `findings-ledger.json` directly (single-writer-orchestrator invariant, `blackhole-state.md` §
 Single-writer invariant): the orchestrator constructs and appends the `routing_decisions`
 ledger row — assigning `id` from `next_routing_id`, `issue_ref` from spawn context, and
-`created_at` = now — from this returned JSON, at triage time (`orchestrator.md` § Triage).
+`created_at` = now — from this returned JSON, at triage time (`orchestrator-runtime.md` § Triage).
 
 ```json
 {
@@ -741,11 +741,11 @@ Before ledger append or phase transition:
 
 ### Barrier triage
 
-After a background worker batch barrier completes (`orchestrator.md` § Background worker barrier):
+After a background worker batch barrier completes (`orchestrator-runtime.md` § Background worker barrier):
 
 1. **Barrier complete** → validate each worker JSON (`scripts/validate-worker-json.ts`) **before** mutating `queue.json`.
 2. **Idempotency:** if `route{}`, plan file, or PR already satisfies the phase gate, log skip and advance without re-spawn.
-3. **Validation failure:** classify per `orchestrator.md` § Error Classification (sole
+3. **Validation failure:** classify per `orchestrator-runtime.md` § Error Classification (sole
    taxonomy, not restated here) before deciding retry vs escalate — **Transient** → retry
    ≤2 with backoff; **Permanent** → report with actionable context and append a
    Failed-Approaches entry (`checkpoint-protocol.md` § Failed-Approaches Log);

@@ -78,8 +78,8 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 //
 // | File / class                       | Metric              | Measured | × 1.2 seed |
 // |-------------------------------------|---------------------|---------:|-----------:|
-// | src/agents/orchestrator.md           | max `##` section LOC | 131      | 158        |
-// | src/agents/orchestrator.md           | total file LOC       | 508      | 610        |
+// | src/agents/orchestrator.md           | max `##` section LOC | 15       | 18         |
+// | src/agents/orchestrator.md           | total file LOC       | 153      | 185        |
 // | src/agents/planner.md                | max `##` section LOC | 291      | 350        |
 // | src/agents/planner.md                | total file LOC       | 593      | 712        |
 // | src/references/worker-schemas.md     | max `##` section LOC | 149      | 179        |
@@ -91,7 +91,7 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 export type ContentGateBudget = { maxSectionLoc: number; maxFileLoc: number };
 
 export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
-  'src/agents/orchestrator.md': { maxSectionLoc: 158, maxFileLoc: 610 },
+  'src/agents/orchestrator.md': { maxSectionLoc: 18, maxFileLoc: 185 },
   'src/agents/planner.md': { maxSectionLoc: 350, maxFileLoc: 712 },
   'src/references/worker-schemas.md': { maxSectionLoc: 179, maxFileLoc: 918 },
   'scripts/checks/*.check.ts': { maxSectionLoc: 68, maxFileLoc: 218 },

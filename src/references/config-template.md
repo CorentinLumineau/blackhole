@@ -47,7 +47,7 @@ Committed template: `.blackhole/config.json`
 | `docs_governance` | no | Nested object of flags/thresholds for companion-file, docs-impact-routing, and write-governance features (`enabled`, `companion_files`, `docs_impact_routing`, `write_governance`, `severity_overrides`); absent block = current behavior preserved (all three sub-flags gate live features — see rows below) |
 | `docs_governance.enabled` | no | Emergency kill switch for the whole `docs_governance` block (default `true`); when `false`, every dependent feature is inert regardless of sub-field values |
 | `docs_governance.companion_files` | no | Gates the V-ADA companion-file reviewer audit (default `true`); when `false`, that audit is inert regardless of `enabled` — live consumers: `src/agents/reviewer.md` § 10 "Companion-File Audit (`V-ADA-01/02/03/05/06/07`)", config-gated at `reviewer.md:69`, and `src/SKILL.md` Phase 0 step 2 "Companion-file scaffold", config-gated at `SKILL.md:42` |
-| `docs_governance.docs_impact_routing` | no | Gates the router `docs_impact` flag (`src/agents/router.md`, `src/agents/orchestrator.md` § Route-derived dispatch, #177); default `true`; when `false` (or `docs_governance.enabled: false`), `docs_impact` resolves to its cautious default (`true`) regardless of computed value or confidence |
+| `docs_governance.docs_impact_routing` | no | Gates the router `docs_impact` flag (`src/agents/router.md`, `src/references/orchestrator-delegation.md` § Route-derived dispatch, #177); default `true`; when `false` (or `docs_governance.enabled: false`), `docs_impact` resolves to its cautious default (`true`) regardless of computed value or confidence |
 | `docs_governance.write_governance` | no | Gates search-before-write/canonical-slug rules for consumer-repo writes (default `true`); when `false`, those rules are inert regardless of `enabled` — live consumers: `src/agents/implementer.md` (companion-doc update step, gated at `implementer.md:67`) and `src/agents/planner.md` (Standard Track Documentation Impact bullet, gated at `planner.md:65`) |
 | `docs_governance.severity_overrides` | no | Map of V-code → `BLOCK`\|`WARN`, keyed by docs-governance V-code; empty/absent = defaults apply. May only escalate a WARN-default docs-governance code to BLOCK — must never de-escalate the pre-existing `V-DOC-02`/`V-DOC-04` BLOCK severity |
 | `kaizen` | no | Nested object gating the kaizen improvement-hunt loop (ADR-006): `enabled`, `kinds`, `trigger`, `loop_interval`, `min_priority`, `max_issues_per_wave`, `max_waves`; absent block = current behavior preserved (hunting is opt-in, see contract note below) |
@@ -58,7 +58,7 @@ Committed template: `.blackhole/config.json`
 | `kaizen.min_priority` | no | Minimum `Priority = Gain * (11 - Effort)` a finding must clear to be filed as an issue (default `30`, matching the `V-PARETO-02` BLOCK floor); may only be **raised** above `30`, never lowered below the `V-PARETO-02` threshold |
 | `kaizen.max_issues_per_wave` | no | Cap on issues filed per hunt wave (default `10`) — exceeding it is `V-HUNT-02` (WARN) |
 | `kaizen.max_waves` | no | Cap on total hunt waves per kind before it is marked exhausted (default `6`) |
-| `incident_mode` | no | Nested object gating the campaign-wide incident posture (`orchestrator.md` § Incident Mode): `enabled`, `parallel_max_override`, `pause_discovery`; absent block = current behavior preserved (incident mode is a rare, deliberately-armed emergency posture, opt-in like `kaizen`, see contract note below) |
+| `incident_mode` | no | Nested object gating the campaign-wide incident posture (`orchestrator-runtime.md` § Incident Mode): `enabled`, `parallel_max_override`, `pause_discovery`; absent block = current behavior preserved (incident mode is a rare, deliberately-armed emergency posture, opt-in like `kaizen`, see contract note below) |
 | `incident_mode.enabled` | no | Kill switch for the whole `incident_mode` block (default `false` — armed manually by a human/coordinator, unlike `docs_governance` which defaults `true`); when `false`, incident-mode dispatch behavior never fires regardless of sub-field values |
 | `incident_mode.parallel_max_override` | no | `parallel_max` value enforced while incident mode is active (default `1`), regardless of `config.json.parallel_max` |
 | `incident_mode.pause_discovery` | no | When `true` (default), `phase-loop.md` § Continuous Discovery of Improvements is paused entirely while incident mode is active |
@@ -76,7 +76,7 @@ Committed template: `.blackhole/config.json`
 **`docs_governance` contract note**: when the block is absent, or
 `docs_governance.enabled` is `false`, every dependent feature (reviewer V-ADA
 companion-file audit, router `docs_impact` flag, write-governance remedies —
-`docs_impact`'s dispatch consumer is `src/agents/orchestrator.md:83-89` §
+`docs_impact`'s dispatch consumer is `src/references/orchestrator-delegation.md` §
 Route-derived dispatch (#177); the reviewer companion-file audit's consumer is
 `reviewer.md` § 10 (above); write-governance's consumers are
 `implementer.md`/`planner.md` (above)) MUST be a no-op and current behavior is
@@ -96,7 +96,7 @@ agent spawns, `hunt_state` is never written. `kaizen.min_priority` may only be
 `adaptive_routing` already impose on their respective features.
 
 **`incident_mode` contract note**: when the block is absent, or
-`incident_mode.enabled` is `false`, the incident-mode posture (`orchestrator.md` §
+`incident_mode.enabled` is `false`, the incident-mode posture (`orchestrator-runtime.md` §
 Incident Mode) MUST be a no-op and current behavior is preserved exactly — no
 `parallel_max` override, no strict `migration_slot` enforcement beyond the
 existing baseline rule, no pausing of `phase-loop.md` § Continuous Discovery of

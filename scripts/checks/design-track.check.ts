@@ -54,17 +54,17 @@ export const ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS = [
 
 const checkDesignAutonomyGateGrounding = (): CheckResult => {
   const plannerContent = read('src/agents/planner.md');
-  const orchestratorContent = read('src/agents/orchestrator.md');
+  const orchestratorDispatchContent = read('src/references/orchestrator-dispatch.md');
 
   const plannerMissing = findMissingGateMarkers(plannerContent, PLANNER_DESIGN_GATE_REQUIRED_MARKERS);
   const orchestratorMissing = findMissingGateMarkers(
-    orchestratorContent,
+    orchestratorDispatchContent,
     ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS,
   );
 
   const errors = [
     ...plannerMissing.map((m) => `planner.md missing "${m}"`),
-    ...orchestratorMissing.map((m) => `orchestrator.md missing "${m}"`),
+    ...orchestratorMissing.map((m) => `orchestrator-dispatch.md missing "${m}"`),
   ];
 
   if (errors.length) return { id: 'V-DESIGN-02', ok: false, detail: errors.join('; ') };

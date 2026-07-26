@@ -1,0 +1,164 @@
+## Brainstorm dispatch precedence (ADR-010 D3)
+
+Referenced from § Route-derived dispatch step 2.5 above (identical shape to the `docs_impact`
+config-gate precedent in that same section) — separately budgeted per `V-CONTENTGATE-01`.
+
+When `autonomy.brainstorm_routing` is true (`config-template.md`),
+compare `route.confidence.brainstorm` against `.blackhole/config.json`
+`router_confidence_thresholds.brainstorm` (default 70); below threshold, resolve to
+`needs_brainstorm`'s cautious default (`true`) instead of the computed value. If the resolved
+value is `true`: spawn `planner` with an explicit `track: brainstorm` directive; dispatch stops
+here — `plan_mode`/`needs_design` are not evaluated for this issue (`queue-dag.md`'s voiding
+rule). If `false`, or the config gate is off, continue to step 3 of § Route-derived dispatch
+unchanged (zero-regression).
+
+
+
+## Brainstorm terminal handling (ADR-010 D3)
+
+Fixed ordering — do not reorder these steps; closing the issue or filing children before the
+artifact PR merges breaks the audit trail (see the milestone plan's Threat Model, Repudiation
+row).
+
+On `planner` returning `status: ready, track: brainstorm`:
+
+1. Spawn `implementer` with `execution_mode: docs-only`, Touch-Paths restricted to
+   `documentation/brainstorms/{slug}.md`, Objective "commit the working draft from
+   `.blackhole/plans/issue-N-brainstorm.md` into the durable artifact path, open a PR" —
+   reusing the existing docs-only 5-Field Delegation Contract shape unchanged (no new fields).
+2. Reviewer audits the PR per the **existing** docs-only branch of § Review pipeline below
+   (unchanged — no new reviewer logic).
+3. Wait for the artifact PR to reach `status: merged` (existing `merge-gate.md` path,
+   unchanged).
+4. Only after step 3: file the `children[]` from the planner's return through the **existing**
+   `.agents/build/skills/blackhole/references/phase-loop.md` § Continuous Discovery of
+   Improvements path — one Priority computation and one `gh issue create` per child clearing
+   the `>= 30` gate; children below the gate are logged `archived` in the ledger, never filed
+   (identical rule, not a new one).
+5. Close the original brainstorm issue: `queue.json` status transition `* → closed`
+   (`queue-dag.md` § Status transitions, existing enum, no new status value) with `notes:
+   "satisfied-by-children:<n1>,<n2>,..."` (extends the existing free-text `notes` convention)
+   and an issue-closing comment referencing the merged artifact PR number and every filed child
+   issue number (audit trail, mirrors the #152/#916 close-as-satisfied precedent).
+
+On `planner` returning `status: blocked, track: brainstorm`: do **not** run terminal handling —
+set `notes: awaiting-user-clarification` and surface `blocking_question` via the existing HITL
+Blocker Gate mechanism (§ Human-in-the-Loop (HITL) & Blocker Gating below), unchanged.
+
+
+
+## Escalation dispatch (implementer → investigator)
+
+**Trigger condition**: `implementer` returns `status: blocked` with `escalation_trigger` set
+(`failed_attempts` or `touch_paths_overrun` — `worker-schemas.md` § `escalation_trigger`). Do
+**not** re-spawn `implementer` and do not treat this as a generic worker error — route to
+root-cause investigation instead:
+
+1. **`queue.json` mutation** (Bash/`jq`, atomic `.tmp` + `mv` write per `blackhole-state.md` §
+   Write protocol): set `phase: implement`, `status: blocked`,
+   `notes: "awaiting-investigation"` for the issue.
+2. **Direct `investigator` spawn**, `sub_mode: investigate`, using the same spawn contract as
+   `phase-handle.md` § Investigator agent. Declare the 5-Field Delegation Contract exactly like
+   every other worker spawn:
+   1. **Objective**: root-cause evidence gathering for the specific `escalation_trigger` value
+      `implementer` returned.
+   2. **Output format**: note at `plans/issue-N-investigation.md`.
+   3. **Scope boundaries**: read-only — no code edits.
+   4. **Tool guidance**: none — inherits `investigator`'s own tool policy.
+   5. **Stop condition**: `status: complete` with the note on disk.
+3. **Resume rule**: `investigator`'s note landing on disk is already the documented
+   `investigation-landed` trigger (`router.md` § Re-route checkpoints) — re-spawn `router` per
+   that existing, unmodified contract, then resume dispatch via § Route-derived dispatch above
+   using the refreshed `route`. Once the re-route resolves, clear
+   `notes: "awaiting-investigation"` and transition `status: blocked → ready` (existing
+   transition, `queue-dag.md` § Status transitions — "user gate cleared" generalizes to
+   "investigation gate cleared").
+
+See `worker-schemas.md` § `escalation_trigger` for the field this section consumes.
+
+
+## Design Autonomy Dispatch (ADR-010 D4)
+
+Amends § Route-derived dispatch step 4 (`needs_design: true`) — this section owns only the
+gated-verdict dispatch contract; it does not restate the confidence-gate/split/plan-mode
+precedence chain above it.
+
+When the returned `planner` worker JSON carries `track: "design"` and `status: "ready"` — only
+possible when `planner.md` §4.8's gate produced it via `scripts/design-aggregate.ts`'s verdict
+— the orchestrator treats this exactly like any other `status: "ready"` plan and proceeds
+toward implement/PR dispatch without an `AskQuestion` gate (`phase-plan.md` § Plan approval
+gate, autonomy-gate row).
+
+The orchestrator applies only the worker JSON's `status` field as returned — it never
+re-derives or second-guesses the verdict itself: this dispatch branch has no code path that
+inspects design-note *content*, only the JSON `status` field, so there is no way planner prose
+alone (independent of the script) could route an issue past the human gate.
+
+When `status: "blocked"` — the config gate off/absent, or `design-aggregate.ts` itself
+returned `blocked` — dispatch is unchanged from today: the design artifact routes to the
+unconditional `AskQuestion` gate.
+
+Resume-after-human-approval dispatch (`resume_context: design_approved`) is a distinct
+contract — see § Design-Approval Resume Dispatch below.
+
+
+## Design-Approval Resume Dispatch (ADR-012 E2.3)
+
+Trigger: the coordinator resumes the orchestrator (`interrupt: false`) after clearing
+`status: blocked` / `notes: awaiting-design-approval` on a `track: design` issue — the
+resumption path T1 repairs (`coordinator.md` § Resolving Blockers).
+
+Action: re-spawn `planner` with an explicit `resume_context: design_approved` directive —
+never a generic re-spawn, which would re-run the whole Design Track (including two fresh
+blind-critic invocations) and discard the artifact the human actually reviewed.
+
+Directive provenance: `resume_context: design_approved` is set by the orchestrator **only**
+in direct response to the coordinator's resume signal, itself downstream of the human's
+parsed approval. The orchestrator never infers this directive from design-note content — it
+is a pass-through of the human verdict, following the same explicit-directive-only
+convention ADR-004 established for `track: design` / `track: brainstorm`.
+
+The planner's third `## Gate` branch (`planner.md` §4.8) promotes the on-disk design
+artifact verbatim on this directive; this section owns only the spawn-side dispatch
+contract, not the promotion logic itself.
+
+
+## Kaizen hunt dispatch
+
+ADR-006's proactive counterpart to § Continuous Discovery above (which triages *reactive*
+discoveries reported by workers/reviewers). Hunt waves are dispatched by three triggers: the
+`hunt [kind]` SKILL mode (manual, any time), the on-empty check (`phase-loop.md` §
+Campaign complete), and the every-n-loops interleave (`phase-loop.md` § Next batch step 0).
+All three call into the same protocol — the entire spawn/dedup/gate/file/cap/watermark
+mechanics and all four stop conditions are specified **once**, in
+`.agents/build/skills/blackhole/references/phase-loop.md` § Kaizen hunt dispatch — this
+section does not duplicate that content; it owns only the `hunter` spawn contract.
+
+**5-Field Delegation Contract for the `hunter` spawn:**
+
+1.  **Objective**: The `kind` to scan (one of `kaizen.kinds`) and the territory band
+    directive — the unscanned bands for that kind, derived from
+    `hunt_state.kinds.<kind>.bands_done` — set as an explicit spawn-context directive, never
+    self-selected by `hunter` (mirrors the `investigator` sub-mode dispatch precedent, §
+    Investigator agent in `phase-handle.md`).
+2.  **Output Format**: `hunter`'s JSON contract (`worker-schemas.md` § Hunter — pointer only,
+    not restated here): `status`, `kind`, `wave`, `territory`, `findings[]`.
+3.  **Scope Boundaries**: Read-only — no `queue.json`/ledger mutation, no issue filing.
+    `hunter`'s own agent definition (`hunter.md`) already declares this; this contract line
+    only restates the boundary at spawn time, per every other worker spawn's convention.
+4.  **Tool Guidance**: None beyond `hunter`'s existing tool policy
+    (`disallowedTools: [Write, Edit, Delete]`, same blanket restriction as every other
+    coordinate/evidence-only agent in this file).
+5.  **Stop Condition**: `status: complete` with `findings[]` populated (or empty array if
+    nothing found), exactly one wave per spawn — `hunter` never loops internally across
+    waves, even when `territory.exhausted` comes out `false`.
+
+Model tier: `standard` (§ Worker spawn model above; `model-routing.md`'s `hunter` row is the
+SSOT for the rationale).
+
+Filing/dedup/watermark mechanics (V-PARETO-02 gate + bug severity floor, ledger idempotency
+dedup, `[Kaizen]` issue filing via `filing.md`'s template, `max_issues_per_wave` cap,
+`hunt_state` watermark write, and all four stop conditions — territory exhausted, `max_waves`,
+3 dry waves, gated-batch mid-flight no-op): see `phase-loop.md` § Kaizen hunt dispatch (single
+source, not duplicated here).
+<!-- GENERATED by scripts/build.ts from src/references/orchestrator-dispatch.md — do not hand-edit -->

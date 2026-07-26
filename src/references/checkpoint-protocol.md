@@ -96,7 +96,7 @@ inference per § Compaction recovery above) before continuing.
 
 ## Failed-Approaches Log
 
-Durable record of **Permanent**-classified failures (`orchestrator.md` § Error
+Durable record of **Permanent**-classified failures (`orchestrator-runtime.md` § Error
 Classification — sole taxonomy, not restated here), so a resumed campaign never
 re-attempts a known dead end on the same issue.
 
@@ -122,7 +122,7 @@ bullet per Permanent-classified failure.
 
 **Non-goal for this issue**: `planner.md`/`implementer.md` are not Touch-Paths here, so
 neither agent definition reads this log directly. Consumption on retry is wired at the
-orchestrator's prompt-construction step only (`orchestrator.md` § Error Classification) —
+orchestrator's prompt-construction step only (`orchestrator-runtime.md` § Error Classification) —
 the orchestrator includes an issue's existing entries verbatim in the next
 `planner`/`implementer` respawn prompt's Objective field.
 

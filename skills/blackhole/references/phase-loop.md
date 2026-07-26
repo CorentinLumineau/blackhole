@@ -11,7 +11,7 @@
 - [ ] forge-sync.md protocol
 - [ ] Compute ready set (queue-dag.md)
 - [ ] Persist queue.json → findings-ledger.json → campaign-checkpoint.md when in-flight work exists (checkpoint-protocol.md)
-- [ ] Spawn parallel batch (up to parallel_max) — one turn, end turn (capped to `incident_mode.parallel_max_override` — default 1 — incident-issue-only, when incident mode is active; see `orchestrator.md` § Incident Mode)
+- [ ] Spawn parallel batch (up to parallel_max) — one turn, end turn (capped to `incident_mode.parallel_max_override` — default 1 — incident-issue-only, when incident mode is active; see `orchestrator-runtime.md` § Incident Mode)
 - [ ] Open issues + open PRs both zero? → campaign complete
 ```
 
@@ -52,7 +52,7 @@
    `run_in_background: true` + notification (Claude Code), background `Task`
    + `Await` on the task id (Cursor), or the equivalent detached-poll
    primitive on other harnesses — and use the same **Background worker
-   barrier** idiom already documented in `orchestrator.md` (§ Background
+   barrier** idiom already documented in `orchestrator-runtime.md` (§ Background
    worker barrier) to resume steps 3-5 once the CI-green signal lands,
    instead of ending the turn and chat-polling. Poll interval/cap are
    specified in `merge-gate.md` § 0 (this section owns only the mechanics
@@ -66,7 +66,7 @@
       `mergeStateStatus` reports the PR's base was modified mid-watch,
       re-fetch `target_branch` and retry the check once.
    3. **2-retry cap**: if either rule's single retry does not resolve to a
-      clean green/red CI result, reclassify per `orchestrator.md` § Error
+      clean green/red CI result, reclassify per `orchestrator-runtime.md` § Error
       Classification (Transient → Permanent path) — do not restate that
       table here.
 3. Run the project's build command in main clone (if applicable)
@@ -113,7 +113,7 @@ For issue N, PR P:
 
 ## Continuous Discovery of Improvements (Backlog Growth)
 
-Paused entirely while incident mode is active (`orchestrator.md` § Incident Mode) — do not
+Paused entirely while incident mode is active (`orchestrator-runtime.md` § Incident Mode) — do not
 file or schedule discoveries until incident mode exits.
 
 - The orchestrator triages all discoveries logged in the findings ledger.
@@ -194,7 +194,7 @@ increment, do not mark a dry wave, do not touch `hunt_state` at all. Re-evaluate
 
 1. **Spawn.** Spawn `hunter` with the round-robin-selected `kind` and its territory directive
    (unscanned bands, derived from `hunt_state.kinds.<kind>.bands_done`) — 5-Field Delegation
-   Contract per `orchestrator.md` § Kaizen hunt dispatch.
+   Contract per `orchestrator-dispatch.md` § Kaizen hunt dispatch.
 2. **Dedup.** Against the ledger idempotency key `(vcode, file, line, issue_ref)` **and** open
    forge issues (title/`file:line` match) — a `CONFIRMED` finding matching an existing ledger
    row or an already-open `[Kaizen]` issue for the same `file:line` is dropped before gating,
