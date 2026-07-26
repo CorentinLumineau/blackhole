@@ -1,6 +1,4 @@
-import * as path from 'path';
-import * as fs from 'fs';
-import { root, read, type CheckResult } from './check-utils.ts';
+import { read, type CheckResult } from './check-utils.ts';
 
 // ADR-007 T5/R2' — schema.check.ts: fixture JSON shape validators (split from the former
 // catch-all check file, issue #322).

@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
 import {
