@@ -4,11 +4,6 @@ import * as os from 'os';
 import * as path from 'path';
 import { AGENT_YAML_FILES } from './lib/build/facts.ts';
 import {
-  buildCodexMarketplace,
-  buildCodexPluginManifest,
-} from './lib/build/manifests.ts';
-import { compileCodexTree } from './lib/build/trees.ts';
-import {
   codexBuildResultsAfterExec,
   evaluateCodexAgentFiles,
   evaluateCodexBuildExec,
@@ -19,28 +14,9 @@ import {
 } from './checks/codex-build.check.ts';
 import { codexTreeErrors } from './tree-shape.ts';
 import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
+import { populateCodexFixtureTree } from './lib/test-fixtures.ts';
 
 const makeTempDir = (): string => sharedMakeTempDir('blackhole-verify-test');
-
-const populateCodexFixtureTree = (destRoot: string) => {
-  compileCodexTree(
-    destRoot,
-    'codex-skills',
-    'codex-skills/blackhole/references/blackhole-vcodes.md',
-  );
-  const pluginDir = path.join(destRoot, '.codex-plugin');
-  fs.mkdirSync(pluginDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(pluginDir, 'plugin.json'),
-    JSON.stringify(buildCodexPluginManifest('1.0.0'), null, 2),
-    'utf-8',
-  );
-  fs.writeFileSync(
-    path.join(destRoot, 'codex-marketplace.json'),
-    JSON.stringify(buildCodexMarketplace(), null, 2),
-    'utf-8',
-  );
-};
 
 const codexAgentFiles = (destRoot: string): string[] => {
   const agentsDir = path.join(destRoot, 'codex-agents');

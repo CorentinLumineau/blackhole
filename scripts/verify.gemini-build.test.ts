@@ -1,74 +1,45 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildGeminiPluginManifest } from './lib/build/manifests.ts';
-import {
-  compileGeminiTree,
-  writeGeminiManifest,
-} from './lib/build/trees.ts';
 import {
   evaluateDistributionBundle,
 } from './checks/gemini-build.check.ts';
 import { leakedPlatformConditionalMarkers } from './lib/check-common.ts';
-import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
-
-const makeTempDir = (): string => sharedMakeTempDir('blackhole-verify-test');
+import { populateGeminiDistributionTree, withTempDir } from './lib/test-fixtures.ts';
 
 describe('evaluateDistributionBundle', () => {
-  const populateFixtureTree = (destRoot: string) => {
-    compileGeminiTree(
-      destRoot,
-      'plugins/blackhole',
-      'plugins/blackhole/rules/blackhole-vcodes.md',
-      { includeAgents: false }
-    );
-    writeGeminiManifest(path.join(destRoot, 'plugin.json'), buildGeminiPluginManifest('1.0.0'));
-  };
-
   test('passes (empty error list) on a correctly-built tree', () => {
-    const destRoot = makeTempDir();
-    try {
-      populateFixtureTree(destRoot);
+    withTempDir('blackhole-verify-test', (destRoot) => {
+      populateGeminiDistributionTree(destRoot);
       expect(evaluateDistributionBundle(destRoot)).toEqual([]);
-    } finally {
-      fs.rmSync(destRoot, { recursive: true, force: true });
-    }
+    });
   });
 
   test('fails with a clear message when plugin.json is absent', () => {
-    const destRoot = makeTempDir();
-    try {
-      populateFixtureTree(destRoot);
+    withTempDir('blackhole-verify-test', (destRoot) => {
+      populateGeminiDistributionTree(destRoot);
       fs.unlinkSync(path.join(destRoot, 'plugin.json'));
       const errors = evaluateDistributionBundle(destRoot);
       expect(errors.some((e) => e.includes('plugin.json'))).toBe(true);
-    } finally {
-      fs.rmSync(destRoot, { recursive: true, force: true });
-    }
+    });
   });
 
   test('fails with a clear message when rules/ is incomplete', () => {
-    const destRoot = makeTempDir();
-    try {
-      populateFixtureTree(destRoot);
+    withTempDir('blackhole-verify-test', (destRoot) => {
+      populateGeminiDistributionTree(destRoot);
       fs.unlinkSync(path.join(destRoot, 'rules', 'blackhole-state.md'));
       const errors = evaluateDistributionBundle(destRoot);
       expect(errors.some((e) => e.includes('blackhole-state.md'))).toBe(true);
-    } finally {
-      fs.rmSync(destRoot, { recursive: true, force: true });
-    }
+    });
   });
 
   test('fails with a clear message when skills/blackhole/SKILL.md is missing', () => {
-    const destRoot = makeTempDir();
-    try {
-      populateFixtureTree(destRoot);
+    withTempDir('blackhole-verify-test', (destRoot) => {
+      populateGeminiDistributionTree(destRoot);
       fs.unlinkSync(path.join(destRoot, 'skills', 'blackhole', 'SKILL.md'));
       const errors = evaluateDistributionBundle(destRoot);
       expect(errors.some((e) => e.includes('SKILL.md'))).toBe(true);
-    } finally {
-      fs.rmSync(destRoot, { recursive: true, force: true });
-    }
+    });
   });
 });
 

@@ -4,21 +4,6 @@ import {
   runChecks,
   validateAgentToolPolicyFrontmatter,
 } from './checks/agents.check.ts';
-import { findMissingGateMarkers } from './lib/check-common.ts';
-
-describe('findMissingGateMarkers', () => {
-  test('returns the subset of required markers absent from content', () => {
-    const content = '5-step gate\n**IDENTIFY** — what needs verification?\n**RUN** — execute now.';
-    const required = ['5-step gate', '**IDENTIFY**', '**RUN**', '**READ**', '**VERIFY**', '**CLAIM**'];
-    expect(findMissingGateMarkers(content, required)).toEqual(['**READ**', '**VERIFY**', '**CLAIM**']);
-  });
-
-  test('returns [] when all required markers are present', () => {
-    const content = '5-step gate\n**IDENTIFY**\n**RUN**\n**READ**\n**VERIFY**\n**CLAIM**';
-    const required = ['5-step gate', '**IDENTIFY**', '**RUN**', '**READ**', '**VERIFY**', '**CLAIM**'];
-    expect(findMissingGateMarkers(content, required)).toEqual([]);
-  });
-});
 
 describe('V-TOOLS-01 — agent tool policy deny-matrix', () => {
   const coordinatorExpected = AGENT_TOOL_POLICY_DENY_MATRIX['coordinator.md']!;

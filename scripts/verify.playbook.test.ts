@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import {
   findHarnessTokenLeaks,
@@ -11,6 +10,7 @@ import {
   validateVcodeReferences,
 } from './checks/playbook.check.ts';
 import { PHASE_PLAYBOOK_FILES } from './lib/build/facts.ts';
+import { makeTempDir } from './lib/fs.ts';
 
 describe('findHarnessTokenLeaks (V-HARNESS-01 — #245)', () => {
   test('fail-closed: appendix marker absent treats the whole file as core — a stray token anywhere fails', () => {
@@ -154,7 +154,7 @@ describe('validatePlanArtifacts (V-PLAN-01 — #372)', () => {
   });
 
   const makeTempCampaign = () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'playbook-plan-'));
+    const dir = makeTempDir('playbook-plan-');
     tempDirs.push(dir);
     return dir;
   };

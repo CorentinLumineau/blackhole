@@ -7,16 +7,14 @@ import {
   findDeadMarkdownLinks,
   findAdrCrossReferenceErrors,
 } from './checks/links.check.ts';
-import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
-
-const makeTempDir = (): string => sharedMakeTempDir('blackhole-verify-vcode-test');
+import { makeTempDir } from './lib/fs.ts';
 
 // The recursive walk itself (nested/symlink/hidden/empty cases, incl. the #216 EISDIR
 // regression) is exercised against the shared primitive in scripts/lib/fs.test.ts. This suite
 // keeps only a thin-wrapper contract check: walkMdFilesAbs still filters to .md files.
 describe('walkMdFilesAbs', () => {
   test('filters to .md files only and ignores non-.md siblings', () => {
-    const dir = makeTempDir();
+    const dir = makeTempDir('blackhole-verify-vcode-test');
     try {
       fs.writeFileSync(path.join(dir, 'top-level.md'), '# top\nV-TOP-01\n');
       fs.writeFileSync(path.join(dir, 'notes.txt'), 'not markdown');
@@ -37,7 +35,7 @@ describe('walkMdFilesAbs', () => {
   });
 
   test('returns [] for a directory that does not exist', () => {
-    expect(walkMdFilesAbs(path.join(makeTempDir(), 'does-not-exist'))).toEqual([]);
+    expect(walkMdFilesAbs(path.join(makeTempDir('blackhole-verify-vcode-test'), 'does-not-exist'))).toEqual([]);
   });
 });
 
@@ -61,10 +59,8 @@ describe('extractMarkdownLinkTargets', () => {
 });
 
 describe('findDeadMarkdownLinks', () => {
-  const makeTempDir = (): string => sharedMakeTempDir('blackhole-verify-link-test');
-
   test('a same-directory relative link that resolves to an existing file passes', () => {
-    const dir = makeTempDir();
+    const dir = makeTempDir('blackhole-verify-adr-link-test');
     try {
       fs.writeFileSync(path.join(dir, 'b.md'), '# b');
       expect(findDeadMarkdownLinks(path.join(dir, 'a.md'), '[b](./b.md)')).toEqual([]);
@@ -74,7 +70,7 @@ describe('findDeadMarkdownLinks', () => {
   });
 
   test('a ../hunt/-style relative link that resolves to an existing file passes', () => {
-    const dir = makeTempDir();
+    const dir = makeTempDir('blackhole-verify-adr-link-test');
     try {
       fs.mkdirSync(path.join(dir, 'hunt'));
       fs.writeFileSync(path.join(dir, 'hunt', 'quickwins.md'), '# quickwins');
@@ -87,7 +83,7 @@ describe('findDeadMarkdownLinks', () => {
   });
 
   test('a dead link fails naming the exact file and line', () => {
-    const dir = makeTempDir();
+    const dir = makeTempDir('blackhole-verify-adr-link-test');
     try {
       const content = '# Title\n\n[missing](./does-not-exist.md)';
       const errors = findDeadMarkdownLinks(path.join(dir, 'a.md'), content, 'src/a.md');
@@ -99,10 +95,8 @@ describe('findDeadMarkdownLinks', () => {
 });
 
 describe('findAdrCrossReferenceErrors', () => {
-  const makeTempDir = (): string => sharedMakeTempDir('blackhole-verify-adr-link-test');
-
   test('a stale related: frontmatter entry fails', () => {
-    const dir = makeTempDir();
+    const dir = makeTempDir('blackhole-verify-adr-link-test');
     try {
       const decisionsDir = path.join(dir, 'documentation', 'decisions');
       fs.mkdirSync(decisionsDir, { recursive: true });
@@ -120,7 +114,7 @@ describe('findAdrCrossReferenceErrors', () => {
   });
 
   test('a valid related: entry and a self-resolving inline ADR-NNN mention pass', () => {
-    const dir = makeTempDir();
+    const dir = makeTempDir('blackhole-verify-adr-link-test');
     try {
       const decisionsDir = path.join(dir, 'documentation', 'decisions');
       fs.mkdirSync(decisionsDir, { recursive: true });
@@ -137,7 +131,7 @@ describe('findAdrCrossReferenceErrors', () => {
   });
 
   test('an inline ADR-NNN mention with no local file fails unless allowlisted', () => {
-    const dir = makeTempDir();
+    const dir = makeTempDir('blackhole-verify-adr-link-test');
     try {
       const decisionsDir = path.join(dir, 'documentation', 'decisions');
       fs.mkdirSync(decisionsDir, { recursive: true });
@@ -155,7 +149,7 @@ describe('findAdrCrossReferenceErrors', () => {
   });
 
   test('returns [] when documentation/decisions does not exist (e.g. a repo fixture without ADRs)', () => {
-    const dir = makeTempDir();
+    const dir = makeTempDir('blackhole-verify-adr-link-test');
     try {
       expect(findAdrCrossReferenceErrors(dir)).toEqual([]);
     } finally {
@@ -168,7 +162,7 @@ describe('findAdrCrossReferenceErrors', () => {
   // documentation/decisions/ADR-103-*.md. Asserted two-directionally so the allowlist entry
   // cannot silently rot: present in the real default set, and still reported without it.
   test("the default allowlist treats mercure's ADR-103 as external, and still reports it when absent", () => {
-    const dir = makeTempDir();
+    const dir = makeTempDir('blackhole-verify-adr-link-test');
     try {
       const decisionsDir = path.join(dir, 'documentation', 'decisions');
       fs.mkdirSync(decisionsDir, { recursive: true });
