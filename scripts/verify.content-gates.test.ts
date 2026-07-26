@@ -4,15 +4,16 @@ import * as path from 'path';
 import {
   parseSectionLineCounts,
   findContentGateViolations,
-  ORCHESTRATOR_CONTENT_GATE_BASELINE,
-  CONTENT_GATE_NEW_SECTION_BUDGET_LOC,
+  resolveContentGateTargets,
+  CHECK_TS_SECTION_PATTERN,
 } from './checks/content-gates.check.ts';
+import { CONTENT_GATE_BUDGETS } from './build.ts';
 
-// V-CONTENTGATE-01 (ADR-007 T6/R3′): section-budget content-gate for orchestrator.md. Inline
-// fixtures cover the parser and the grow-never/new-section-budget decision logic; a final live
-// integration case runs the same pure functions against the real orchestrator.md content to
-// confirm zero false positives (T6 acceptance criterion 1).
-describe('parseSectionLineCounts', () => {
+// V-CONTENTGATE-01 (ADR-007 T6/R3′, generalized issue #323): declared-budget section/file-size
+// gate. Inline fixtures cover the parser, the glob-class resolver, and the violation-finding
+// logic; a final live integration case runs the real budget map against the real repo to confirm
+// zero false positives.
+describe('parseSectionLineCounts (markdown default)', () => {
   test('ignores ## headings inside fenced code blocks (fence-aware)', () => {
     const content = [
       '## Real Section',
@@ -55,71 +56,123 @@ describe('parseSectionLineCounts', () => {
   });
 });
 
-describe('findContentGateViolations', () => {
-  test('passes a baseline-grandfathered section at its recorded baseline size', () => {
-    const sections = { '## Route-derived dispatch': 110 };
-    const baseline = { '## Route-derived dispatch': 110 };
-    expect(findContentGateViolations(sections, baseline, 50)).toEqual([]);
+describe('parseSectionLineCounts (CHECK_TS_SECTION_PATTERN boundary)', () => {
+  test('maps each check function declaration to its line span', () => {
+    const content = [
+      'const checkFoo = (): CheckResult => {',
+      '  return { id: "X", ok: true };',
+      '};',
+      'const checkBar = (): CheckResult[] => {',
+      '  return [];',
+      '};',
+    ].join('\n');
+    expect(parseSectionLineCounts(content, CHECK_TS_SECTION_PATTERN)).toEqual({
+      'const checkFoo = (): CheckResult => {': 3,
+      'const checkBar = (): CheckResult[] => {': 3,
+    });
   });
 
-  test('passes a baseline section that has shrunk below its recorded baseline', () => {
-    const sections = { '## Route-derived dispatch': 90 };
-    const baseline = { '## Route-derived dispatch': 110 };
-    expect(findContentGateViolations(sections, baseline, 50)).toEqual([]);
-  });
-
-  test('fails a baseline section that grew past its recorded baseline (grow-never)', () => {
-    const sections = { '## Route-derived dispatch': 111 };
-    const baseline = { '## Route-derived dispatch': 110 };
-    const violations = findContentGateViolations(sections, baseline, 50);
-    expect(violations).toHaveLength(1);
-    expect(violations[0]).toContain('## Route-derived dispatch');
-    expect(violations[0]).toContain('111 LOC');
-    expect(violations[0]).toContain('grandfathered baseline of 110 LOC');
-  });
-
-  test('passes a new (non-baseline) section at or under the budget', () => {
-    const sections = { '## New Thin Pointer': 50 };
-    expect(findContentGateViolations(sections, {}, 50)).toEqual([]);
-  });
-
-  test('fails a new section exceeding the budget, naming the header and its line count', () => {
-    const sections = { '## New Sprawling Section': 51 };
-    const violations = findContentGateViolations(sections, {}, 50);
-    expect(violations).toHaveLength(1);
-    expect(violations[0]).toContain('## New Sprawling Section');
-    expect(violations[0]).toContain('51 LOC');
-    expect(violations[0]).toContain('50-LOC budget');
+  test('does not match non-check consts', () => {
+    const content = ['const notACheck = 5;', 'const checkReal = (): CheckResult => {', '  x;', '};'].join('\n');
+    expect(parseSectionLineCounts(content, CHECK_TS_SECTION_PATTERN)).toEqual({
+      'const checkReal = (): CheckResult => {': 3,
+    });
   });
 });
 
-describe('checkContentGate integration (real orchestrator.md, zero false positives)', () => {
-  test('every current orchestrator.md `##` section is grandfathered in the baseline and passes', () => {
-    const orchestratorMd = fs.readFileSync(
-      path.join(import.meta.dirname, '..', 'src', 'agents', 'orchestrator.md'),
-      'utf-8',
-    );
-    const sections = parseSectionLineCounts(orchestratorMd);
+describe('resolveContentGateTargets', () => {
+  test('resolves a literal path to itself, unchanged', () => {
+    expect(resolveContentGateTargets('src/agents/orchestrator.md')).toEqual(['src/agents/orchestrator.md']);
+  });
+
+  test('resolves a glob-class key to every current matching file, sorted', () => {
+    const liveFiles = fs
+      .readdirSync(path.join(import.meta.dirname, 'checks'))
+      .filter((f) => f.endsWith('.check.ts'))
+      .map((f) => path.join('scripts/checks', f))
+      .sort();
+    expect(resolveContentGateTargets('scripts/checks/*.check.ts')).toEqual(liveFiles);
+  });
+});
+
+describe('findContentGateViolations', () => {
+  test('passes a section at or under maxSectionLoc and a file at or under maxFileLoc', () => {
     const violations = findContentGateViolations(
-      sections,
-      ORCHESTRATOR_CONTENT_GATE_BASELINE,
-      CONTENT_GATE_NEW_SECTION_BUDGET_LOC,
+      'some/file.md',
+      { '## A Section': 50 },
+      100,
+      { maxSectionLoc: 50, maxFileLoc: 100 },
     );
     expect(violations).toEqual([]);
-    // Sections not in the grandfathered baseline are legitimate new (post-T6) additions, budget-
-    // checked above via findContentGateViolations rather than forbidden outright — ADR-010 M2's
-    // "## Design Autonomy Dispatch" was the first such addition; companion-substrate-closure M4
-    // Task 4 (ADR-012 E4) adds "## Decision Record Append" as the second, placed immediately
-    // after the grandfathered barrier section it back-points to. companion-substrate-closure M2
-    // Task 2 (ADR-012 E2.3) adds "## Design-Approval Resume Dispatch" as the third, placed
-    // immediately after "## Design Autonomy Dispatch" (the section it back-points to). Assert the
-    // non-baseline set is exactly the expected new-section allowlist, so an unexpected/undocumented
-    // new `##` header still fails loudly here even though it would pass the budget check above.
-    const nonBaselineSections = Object.keys(sections).filter((h) => !(h in ORCHESTRATOR_CONTENT_GATE_BASELINE));
-    expect(nonBaselineSections).toEqual([
-      '## Decision Record Append (decision-log.md)',
-      '## Design Autonomy Dispatch (ADR-010 D4)',
-      '## Design-Approval Resume Dispatch (ADR-012 E2.3)',
-    ]);
+  });
+
+  test('fails a section one LOC over maxSectionLoc, naming the target, section, LOC, and limit', () => {
+    const violations = findContentGateViolations(
+      'some/file.md',
+      { '## Sprawling Section': 51 },
+      51,
+      { maxSectionLoc: 50, maxFileLoc: 1000 },
+    );
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain('some/file.md');
+    expect(violations[0]).toContain('## Sprawling Section');
+    expect(violations[0]).toContain('51 LOC');
+    expect(violations[0]).toContain('50-LOC section budget');
+  });
+
+  test('fails a file one LOC over maxFileLoc, naming the target, "whole file", LOC, and limit', () => {
+    const violations = findContentGateViolations(
+      'some/file.md',
+      {},
+      101,
+      { maxSectionLoc: 1000, maxFileLoc: 100 },
+    );
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain('some/file.md');
+    expect(violations[0]).toContain('whole file');
+    expect(violations[0]).toContain('101 LOC');
+    expect(violations[0]).toContain('100-LOC file budget');
+  });
+
+  test('can report both a section violation and a file violation for the same target', () => {
+    const violations = findContentGateViolations(
+      'some/file.md',
+      { '## Over': 60 },
+      200,
+      { maxSectionLoc: 50, maxFileLoc: 100 },
+    );
+    expect(violations).toHaveLength(2);
+  });
+});
+
+describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positives)', () => {
+  test('covers exactly the 4 declared keys', () => {
+    expect(Object.keys(CONTENT_GATE_BUDGETS).sort()).toEqual(
+      [
+        'src/agents/orchestrator.md',
+        'src/agents/planner.md',
+        'src/references/worker-schemas.md',
+        'scripts/checks/*.check.ts',
+      ].sort(),
+    );
+  });
+
+  test('every covered file/glob passes its budget against the current repo state', () => {
+    const root = path.resolve(import.meta.dirname, '..');
+    const allErrors: string[] = [];
+
+    for (const [pattern, budget] of Object.entries(CONTENT_GATE_BUDGETS)) {
+      const targets = resolveContentGateTargets(pattern);
+      expect(targets.length).toBeGreaterThan(0);
+      for (const target of targets) {
+        const content = fs.readFileSync(path.join(root, target), 'utf-8');
+        const boundaryPattern = target.endsWith('.check.ts') ? CHECK_TS_SECTION_PATTERN : /^## /;
+        const sections = parseSectionLineCounts(content, boundaryPattern);
+        const totalLoc = content.split('\n').filter((_, i, arr) => !(i === arr.length - 1 && arr[i] === '')).length;
+        allErrors.push(...findContentGateViolations(target, sections, totalLoc, budget));
+      }
+    }
+
+    expect(allErrors).toEqual([]);
   });
 });

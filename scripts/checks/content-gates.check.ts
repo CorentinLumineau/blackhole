@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { CONTENT_GATE_BUDGETS, type ContentGateBudget } from '../build.ts';
 
-// ADR-007 T5/R2' — content-gates.check.ts: orchestrator.md section-budget grow-never gate
-// (split from the former catch-all check file, issue #322). Canonical home for #323's V-CONTENTGATE-01 extension.
+// ADR-007 T5/R2' — content-gates.check.ts: declared-budget section/file-size gate (split from
+// the former catch-all check file, issue #322; generalized from a single hardcoded file to a
+// declared `{file/glob -> {maxSectionLoc, maxFileLoc}}` map, issue #323, ADR-007 T6/R3′).
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 
@@ -10,22 +12,31 @@ export type CheckResult = { id: string; ok: boolean; detail?: string };
 
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 
-// V-CONTENTGATE-01 (ADR-007 T6/R3′): section-budget content-gate for orchestrator.md. Parses
-// only `##`-level section boundaries (matching the master plan's "parse orchestrator.md's `##`
-// section boundaries" — nested `###` subsections, e.g. "Route-derived dispatch" inside "5-Field
-// Delegation Contract", are not independently budgeted). Returns a header -> line-count map,
-// where a section's line count spans from its header line up to (not including) the next
-// `##`-level header, or EOF. A trailing empty string produced by splitting content that ends in
-// a newline is dropped first so the final section's count matches `wc -l` exactly.
-export const parseSectionLineCounts = (content: string): Record<string, number> => {
-  let lines = content.split('\n');
-  if (lines.length && lines[lines.length - 1] === '') lines = lines.slice(0, -1);
+// Splits content into lines, dropping a trailing empty string produced by splitting content that
+// ends in a newline, so the resulting line count matches `wc -l` exactly. Shared by
+// parseSectionLineCounts and checkContentGate's whole-file LOC measurement (V-DRY-01).
+const splitLines = (content: string): string[] => {
+  const lines = content.split('\n');
+  return lines.length && lines[lines.length - 1] === '' ? lines.slice(0, -1) : lines;
+};
+
+// V-CONTENTGATE-01 (ADR-007 T6/R3′): section-boundary parser, generalized (issue #323) to accept
+// any boundary `RegExp` — defaults to the original `##`-level markdown heading pattern so every
+// pre-existing call site and test is unaffected. Returns a header -> line-count map, where a
+// section's line count spans from its boundary line up to (not including) the next boundary
+// line, or EOF. Fence-awareness (lines inside ``` / ~~~ fences never count as a boundary) is
+// preserved verbatim from the original markdown-only implementation.
+export const parseSectionLineCounts = (
+  content: string,
+  boundaryPattern: RegExp = /^## /,
+): Record<string, number> => {
+  const lines = splitLines(content);
 
   const headerIdx: number[] = [];
   let inFence = false;
   lines.forEach((l, i) => {
     if (/^(```|~~~)/.test(l)) inFence = !inFence;
-    if (!inFence && /^## /.test(l)) headerIdx.push(i);
+    if (!inFence && boundaryPattern.test(l)) headerIdx.push(i);
   });
 
   const sections: Record<string, number> = {};
@@ -37,61 +48,66 @@ export const parseSectionLineCounts = (content: string): Record<string, number> 
   return sections;
 };
 
-// Grow-never baseline snapshot, captured at this check's landing commit (ADR-007 T6). Every
-// section that existed in orchestrator.md at this commit is grandfathered: it may shrink or stay
-// the same size forever, but it must never GROW past the LOC recorded here — growth past the
-// baseline is exactly the accretion this governance-only check exists to prevent. Any `##`
-// section header not in this map is "new" (added after this commit) and is budget-checked
-// against CONTENT_GATE_NEW_SECTION_BUDGET_LOC instead. Do not hand-edit these numbers to make a
-// failing check pass — shrink the section, or accept that growing a baseline section is the
-// violation being reported.
-export const ORCHESTRATOR_CONTENT_GATE_BASELINE: Record<string, number> = {
-  '## Role & Responsibilities': 9,
-  '## 5-Field Delegation Contract': 131,
-  '## Error Classification (Transient / Permanent / Partial-Corruption)': 19,
-  '## Escalation dispatch (implementer → investigator)': 31,
-  '## Review pipeline': 14,
-  '## Wave scheduling': 8,
-  '## Background worker barrier (Cursor / Pattern B)': 46,
-  '## Checkpoint protocol': 15,
-  '## Session resume & recovery': 20,
-  '## Human-in-the-Loop (HITL) & Blocker Gating': 9,
-  '## Incident Mode': 36,
-  '## Continuous Discovery & Pareto Sorting': 12,
-  '## Kaizen hunt dispatch': 38,
-  '## Brainstorm dispatch precedence (ADR-010 D3)': 16,
-  '## Brainstorm terminal handling (ADR-010 D3)': 33,
+// Second boundary pattern (issue #323): every current `scripts/checks/*.check.ts` check function
+// is declared in this exact style — `const check<Name> = (): CheckResult => {` or `(): CheckResult[]
+// => {` — verified by grep against all 32 current check functions with zero exceptions. Widen
+// (documented, tested) rather than silently skip a function that drifts from this convention.
+export const CHECK_TS_SECTION_PATTERN = /^const check\w+\s*=\s*\(\):\s*CheckResult(\[\])?\s*=>\s*\{/;
+const MARKDOWN_SECTION_PATTERN = /^## /;
+
+const boundaryPatternFor = (target: string): RegExp =>
+  target.endsWith('.check.ts') ? CHECK_TS_SECTION_PATTERN : MARKDOWN_SECTION_PATTERN;
+
+// Resolves a CONTENT_GATE_BUDGETS key to the concrete file(s) it covers. A literal path (no `*`)
+// resolves to itself. A pattern containing `*` is a glob *class* — e.g. `scripts/checks/*.check.ts`
+// — resolved by listing its directory (`fs.readdirSync`, the existing directory-listing
+// convention already used elsewhere in build.ts) filtered to entries matching the suffix after
+// the `*`, sorted for determinism. Only a single trailing-`*` suffix match is needed (no nested
+// wildcards), so this deliberately does not pull in a glob dependency (V-INT-02, V-YAGNI-01).
+export const resolveContentGateTargets = (pattern: string): string[] => {
+  if (!pattern.includes('*')) return [pattern];
+
+  const dir = path.dirname(pattern);
+  const suffix = path.basename(pattern).replace('*', '');
+  return fs
+    .readdirSync(path.join(root, dir))
+    .filter((f) => f.endsWith(suffix))
+    .map((f) => path.join(dir, f))
+    .sort();
 };
 
-// New (non-baseline) `##` sections are capped at 50 LOC — the approved plan default, chosen to
-// sit between the newest "thin pointer" precedent sections (Kaizen hunt dispatch, 38 LOC;
-// Incident Mode, 36 LOC) and comfortably below the un-grandfathered core-loop sections (46-131
-// LOC) that pre-date this governance rule.
-export const CONTENT_GATE_NEW_SECTION_BUDGET_LOC = 50;
-
+// Collects violations for one target file against its budget: any section exceeding
+// `maxSectionLoc`, and/or the whole file exceeding `maxFileLoc`. Each violation names the
+// target, the section header (or "whole file"), the measured LOC, and the configured limit.
 export const findContentGateViolations = (
+  target: string,
   sections: Record<string, number>,
-  baseline: Record<string, number>,
-  newSectionBudgetLoc: number,
+  totalLoc: number,
+  budget: ContentGateBudget,
 ): string[] => {
   const errors: string[] = [];
   for (const [header, loc] of Object.entries(sections)) {
-    const baselineLoc = baseline[header];
-    if (baselineLoc !== undefined) {
-      if (loc > baselineLoc) {
-        errors.push(`${header}: grew to ${loc} LOC, exceeds grandfathered baseline of ${baselineLoc} LOC (grow-never)`);
-      }
-    } else if (loc > newSectionBudgetLoc) {
-      errors.push(`${header}: new section is ${loc} LOC, exceeds ${newSectionBudgetLoc}-LOC budget`);
+    if (loc > budget.maxSectionLoc) {
+      errors.push(`${target} — ${header}: ${loc} LOC, exceeds ${budget.maxSectionLoc}-LOC section budget`);
     }
+  }
+  if (totalLoc > budget.maxFileLoc) {
+    errors.push(`${target} — whole file: ${totalLoc} LOC, exceeds ${budget.maxFileLoc}-LOC file budget`);
   }
   return errors;
 };
 
 const checkContentGate = (): CheckResult => {
-  const content = read('src/agents/orchestrator.md');
-  const sections = parseSectionLineCounts(content);
-  const errors = findContentGateViolations(sections, ORCHESTRATOR_CONTENT_GATE_BASELINE, CONTENT_GATE_NEW_SECTION_BUDGET_LOC);
+  const errors: string[] = [];
+
+  for (const [pattern, budget] of Object.entries(CONTENT_GATE_BUDGETS)) {
+    for (const target of resolveContentGateTargets(pattern)) {
+      const content = read(target);
+      const sections = parseSectionLineCounts(content, boundaryPatternFor(target));
+      const totalLoc = splitLines(content).length;
+      errors.push(...findContentGateViolations(target, sections, totalLoc, budget));
+    }
+  }
 
   if (errors.length) return { id: 'V-CONTENTGATE-01', ok: false, detail: errors.join('; ') };
   return { id: 'V-CONTENTGATE-01', ok: true };
