@@ -349,11 +349,19 @@ describe('validateWorker hunter', () => {
   test('valid complete with empty findings', () => expectValid('hunter', 'hunter-complete.json'));
   test('valid complete with finding', () =>
     expectValid('hunter', 'hunter-complete-with-finding.json'));
+  test('valid complete with populated findings', () =>
+    expectValid('hunter', 'hunter-complete-with-findings.json'));
   test('valid error', () => expectValid('hunter', 'hunter-error.json'));
   test('invalid error missing error field', () =>
     expectInvalid('hunter', 'hunter-error-missing-error-field.json'));
   test('invalid severity enum', () =>
     expectInvalid('hunter', 'hunter-complete-invalid-severity.json'));
+  test('invalid finding severity enum', () => {
+    const data = readFixture('hunter-complete-invalid-severity.json');
+    const errors = validateWorker('hunter', data);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes('findings[0].severity'))).toBe(true);
+  });
   test('invalid verification enum', () =>
     expectInvalid('hunter', 'hunter-complete-invalid-verification.json'));
   test('invalid complete missing territory', () =>
@@ -780,6 +788,13 @@ describe('validate-worker-json CLI mode', () => {
     const result = await runValidateWorkerCli(['--role', 'hunter', '--file', fixturePath]);
     expect(result.exitCode).toBe(0);
     expect(result.stderr.trim()).toBe('');
+  });
+
+  test('--role hunter --file invalid fixture exits 1 with validation error', async () => {
+    const fixturePath = path.join(fixturesDir, 'hunter-error-missing-error-field.json');
+    const result = await runValidateWorkerCli(['--role', 'hunter', '--file', fixturePath]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('error');
   });
 
   test('--role hunter --json invalid payload exits 1 with validation error', async () => {
