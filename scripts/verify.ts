@@ -9,27 +9,40 @@ import { EXPECTED_CHECK_COUNT } from './build.ts';
 
 type CheckResult = { id: string; ok: boolean; detail?: string };
 
-const root = path.resolve(import.meta.dirname, '..');
-const checksDir = path.join(root, 'scripts', 'checks');
+const defaultChecksDir = path.join(path.resolve(import.meta.dirname, '..'), 'scripts', 'checks');
 
-const discoverCheckModules = (): string[] =>
-  [...new Bun.Glob('*.check.ts').scanSync({ cwd: checksDir })].sort();
+export function discoverCheckModules(checksDir: string): string[] {
+  return [...new Bun.Glob('*.check.ts').scanSync({ cwd: checksDir })].sort();
+}
 
-const main = async () => {
-  console.log('blackhole verify\n');
-
+export async function runVerifyChecks(options?: { checksDir?: string }): Promise<CheckResult[]> {
+  const dir = options?.checksDir ?? defaultChecksDir;
   const results: CheckResult[] = [];
-  for (const file of discoverCheckModules()) {
-    const mod = await import(path.join(checksDir, file));
+  for (const file of discoverCheckModules(dir)) {
+    const mod = await import(path.join(dir, file));
     if (typeof mod.runChecks !== 'function') {
       throw new Error(`scripts/checks/${file}: missing runChecks() export`);
     }
     results.push(...(mod.runChecks() as CheckResult[]));
   }
+  return results;
+}
 
-  if (results.length !== EXPECTED_CHECK_COUNT) {
-    console.warn(`Warning: expected ${EXPECTED_CHECK_COUNT} checks, ran ${results.length}`);
+export function exitCodeFromVerifyResults(results: CheckResult[]): number {
+  return results.some((r) => !r.ok) ? 1 : 0;
+}
+
+export function warnOnCheckCountMismatch(results: CheckResult[], expected: number): void {
+  if (results.length !== expected) {
+    console.warn(`Warning: expected ${expected} checks, ran ${results.length}`);
   }
+}
+
+const main = async () => {
+  console.log('blackhole verify\n');
+
+  const results = await runVerifyChecks();
+  warnOnCheckCountMismatch(results, EXPECTED_CHECK_COUNT);
 
   let failed = 0;
   for (const r of results) {
@@ -40,7 +53,7 @@ const main = async () => {
 
   console.log(`\n${results.length - failed}/${results.length} checks passed`);
 
-  if (failed > 0) process.exit(1);
+  process.exit(exitCodeFromVerifyResults(results));
 };
 
 if (import.meta.main) {
