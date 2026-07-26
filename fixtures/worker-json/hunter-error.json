@@ -1,0 +1,6 @@
+{
+  "status": "error",
+  "kind": "quickwins",
+  "findings": [],
+  "error": "gh issue view failed: not found"
+}
