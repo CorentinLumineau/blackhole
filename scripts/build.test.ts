@@ -28,6 +28,7 @@ import {
   CLAUDE_DISTRIBUTION_AGENT_DIR,
   CLAUDE_DISTRIBUTION_VCODES,
   AGENT_NAMES,
+  PLATFORM_TARGETS,
 } from './build.ts';
 import { projectIdentity } from './project-identity.ts';
 
@@ -40,6 +41,12 @@ const makeTempGitRepo = (): string => {
   execFileSync('git', ['init', '-q'], { cwd: dir });
   return dir;
 };
+
+describe('PLATFORM_TARGETS', () => {
+  test('is the single declared SSOT for the 5 platform-target names (issue #327)', () => {
+    expect(PLATFORM_TARGETS).toEqual(['cursor', 'claude', 'skills', 'gemini', 'codex']);
+  });
+});
 
 describe('applyPlatformConditionals', () => {
   test('gemini keeps gemini body and removes cursor/claude/skills', () => {

@@ -138,14 +138,19 @@ const enrichVcodesMdcGlobs = (content: string): string => {
   );
 };
 
-type Target = 'cursor' | 'claude' | 'skills' | 'gemini' | 'codex';
+// Derived from the § facts PLATFORM_TARGETS declaration below (typeof works regardless of
+// declaration order within a module — this is a type-level query, not a runtime read). Collapses
+// the pre-existing type-only/runtime-array duplicate (issue #320 Codebase Conventions design
+// decision 4): before this, the 5 target names lived only in this type, with no runtime array a
+// check could ever validate against the 8 script sites that hand-list them.
+type Target = (typeof PLATFORM_TARGETS)[number];
 
 // Strip platform-conditional blocks: {{#cursor}}...{{/cursor}} etc.
 // Keeps only the block matching the current compile target.
 export const applyPlatformConditionals = (content: string, target: Target): string => {
   const active = target === 'skills' ? 'skills' : target;
   let res = content;
-  for (const platform of ['cursor', 'claude', 'skills', 'gemini', 'codex'] as const) {
+  for (const platform of PLATFORM_TARGETS) {
     if (platform !== active) {
       res = res.replace(new RegExp(`\\{\\{#${platform}\\}\\}[\\s\\S]*?\\{\\{/${platform}\\}\\}\\n?`, 'g'), '');
     }
@@ -276,6 +281,84 @@ export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'chec
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
 export const VCODE_TABLE_ROW_COUNT = 57;
 
+// § facts — value vocabularies (issue #320, ADR-007 R1′ extension). Closed sets of enum-shaped
+// strings that agent prose restates verbatim at many consumption sites, declared once here and
+// checked by V-VOCAB-01's independent scan-vs-declaration comparison (never generated from the
+// scan — same two-separately-fallible-derivations discipline as V-GROUND-01 above).
+
+/** `queue.json` `issues.<n>.status` (V-VOCAB-01) — canonical enum per `queue-dag.md`'s field-rules
+ *  table. Scanned narrowly (lines mentioning both `phase` and `status:`) to avoid colliding with
+ *  the differently-shaped worker-JSON `status` vocabulary that shares the same field name. */
+export const QUEUE_STATUSES = ['blocked', 'ready', 'in-flight', 'merged', 'closed'];
+
+/** `queue.json` `issues.<n>.notes`' closed kebab-token gate-value subset (V-VOCAB-01) — the class
+ *  of value that caused ADR-012 Finding 3b (`awaiting-design-approval` restated in one file,
+ *  omitted from two others' enums). `notes` also carries open, parameterized free text (e.g.
+ *  `overlap with #N`) that is out of scope for a closed-set check by design. */
+export const QUEUE_NOTES = [
+  'awaiting-user-clarification',
+  'awaiting-plan-approval',
+  'awaiting-design-approval',
+  'awaiting-investigation',
+  'awaiting-recovery-approval',
+  'clarify waived — narrow technical',
+];
+
+/** `kaizen.kinds` (V-VOCAB-01) — hunt territory kinds, canonical default per `config-template.md`. */
+export const HUNT_KINDS = ['quickwins', 'best-practices', 'coverage', 'refactor', 'bug', 'retrospective', 'parity'];
+
+/** Platform build targets (V-VOCAB-01) — see `PLATFORM_TARGETS` above `type Target`; also the
+ *  declared side of the scripts/**\/*.ts scan for any stray re-hardcoded copy of this array. */
+export const PLATFORM_TARGETS = ['cursor', 'claude', 'skills', 'gemini', 'codex'] as const;
+
+// NOTE: an ADR-status vocabulary (`ADR_STATUSES`) was declared here in the original version of
+// this PR and removed in fix round 1 — issue #324 (PR #338) already owns ADR-status
+// conformance with a purpose-built, more rigorous check (`adr-status.check.ts`, cross-validating
+// frontmatter, INDEX row, and the in-body `## Status` section against the designed
+// `accepted | superseded | deprecated` enum). Keeping both would have been a V-INT-03 "third
+// variant of a solved concern" — see `scripts/checks/vocabulary.check.ts`'s header comment.
+
+// § facts — content-gate budgets (issue #323, ADR-007 T6/R3′ extension). Generalizes
+// V-CONTENTGATE-01 from a single hardcoded file (orchestrator.md, new-sections-only) to a
+// declared `{file/glob -> {maxSectionLoc, maxFileLoc}}` map — closing the same instance-vs-class
+// gap #320 closed for value vocabularies. A key with a trailing `*` (e.g.
+// `scripts/checks/*.check.ts`) is a glob class: every file in that directory matching the
+// suffix after the `*` is covered automatically, so a future domain file needs zero map edits.
+// Each budget is seeded at *current measured value (at issue #323's landing commit) × 1.2*,
+// rounded up — the gate ratchets from today's shape rather than blocking on day one. Do not
+// hand-edit these numbers to make a failing check pass — split the file/section, or accept that
+// growing past the seeded ceiling is the violation being reported. Re-measured at #323
+// implementation time (base: blackhole/issue-327, post-#322 split, post-#320 vocabularies):
+//
+// | File / class                       | Metric              | Measured | × 1.2 seed |
+// |-------------------------------------|---------------------|---------:|-----------:|
+// | src/agents/orchestrator.md           | max `##` section LOC | 131      | 158        |
+// | src/agents/orchestrator.md           | total file LOC       | 508      | 610        |
+// | src/agents/planner.md                | max `##` section LOC | 291      | 350        |
+// | src/agents/planner.md                | total file LOC       | 593      | 712        |
+// | src/references/worker-schemas.md     | max `##` section LOC | 149      | 179        |
+// | src/references/worker-schemas.md     | total file LOC       | 765      | 918        |
+// | scripts/checks/*.check.ts            | max `check*()` fn LOC | 68      | 82         |
+// | scripts/checks/*.check.ts            | max single file LOC   | 402     | 483        |
+//
+// Note (disclosed, not silently masked): `scripts/checks/build.check.ts` is 402 LOC / 9 check
+// functions — already over #322's own stated "no domain exceeds 300 LOC or 7 checks" acceptance
+// criterion. That gap predates #323 (build.check.ts was 373/8 before #322's split, which only
+// touched core.check.ts) and is outside #323's Touch-Paths ("installs the gate, does not act on
+// it"). Seeding the glob's `maxFileLoc` at the true current max (402×1.2) rather than at
+// 300×1.2=360 is deliberate: seeding below the current max would make `bun run verify` fail on
+// unmodified `main`, violating this gate's own "must pass on landing" contract. A follow-up
+// issue to split `build.check.ts` is recommended in the #323 PR body — this map does not
+// silently paper over the gap, it just declines to trip CI for a change this issue didn't make.
+export type ContentGateBudget = { maxSectionLoc: number; maxFileLoc: number };
+
+export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
+  'src/agents/orchestrator.md': { maxSectionLoc: 158, maxFileLoc: 610 },
+  'src/agents/planner.md': { maxSectionLoc: 350, maxFileLoc: 712 },
+  'src/references/worker-schemas.md': { maxSectionLoc: 179, maxFileLoc: 918 },
+  'scripts/checks/*.check.ts': { maxSectionLoc: 82, maxFileLoc: 483 },
+};
+
 /**
  * Total check count across every `scripts/checks/*.check.ts` domain file (ADR-007 T5/R2′:
  * `verify.ts` is a thin runner that glob-discovers these files — there is no central registry).
@@ -285,7 +368,7 @@ export const VCODE_TABLE_ROW_COUNT = 57;
  * array. `verify.ts` warns (does not fail) on a mismatch, so this is the sole place the
  * expectation is declared — never restate it as a literal at any consumption site.
  */
-export const EXPECTED_CHECK_COUNT = 30;
+export const EXPECTED_CHECK_COUNT = 31;
 
 export const buildGeminiPluginManifest = (pkgVersion: string) => ({
   $schema: 'https://antigravity.google/schemas/v1/plugin.json',
