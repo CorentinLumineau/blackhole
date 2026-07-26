@@ -162,4 +162,30 @@ describe('findAdrCrossReferenceErrors', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // Regression guard for the ADR-016 / mercure-ADR-103 cross-repo reference. ADR-016 cites
+  // mercure's ADR-103 (a different repo's ADR numbering), which can never resolve to a local
+  // documentation/decisions/ADR-103-*.md. Asserted two-directionally so the allowlist entry
+  // cannot silently rot: present in the real default set, and still reported without it.
+  test("the default allowlist treats mercure's ADR-103 as external, and still reports it when absent", () => {
+    const dir = makeTempDir();
+    try {
+      const decisionsDir = path.join(dir, 'documentation', 'decisions');
+      fs.mkdirSync(decisionsDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(decisionsDir, 'ADR-016-example.md'),
+        '# ADR-016: Example\n\nAdoption decision for the architecture defined in mercure ADR-103.\n',
+      );
+
+      // Direction 1: the real default allowlist (EXTERNAL_ADR_REFS) must carry '103'.
+      expect(findAdrCrossReferenceErrors(dir)).toEqual([]);
+
+      // Direction 2: the underlying check still fires when '103' is not allowlisted.
+      expect(findAdrCrossReferenceErrors(dir, new Set())).toEqual([
+        'documentation/decisions/ADR-016-example.md: inline mention of ADR-103 does not resolve to a local documentation/decisions/ADR-103-*.md file',
+      ]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
