@@ -3,6 +3,7 @@ import {
   findMissingGateMarkers,
   ROUTER_NO_DIRECT_WRITE_REQUIRED_MARKERS,
   ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS,
+  runChecks,
 } from './checks/single-writer.check.ts';
 
 // Regression guard for issue #224: router.md must no longer instruct direct writes to
@@ -75,5 +76,23 @@ describe('ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS', () => {
     expect(
       findMissingGateMarkers(ORCHESTRATOR_FIXTURE_STALE, ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS),
     ).toEqual(ORCHESTRATOR_SERIAL_TRIAGE_REQUIRED_MARKERS);
+  });
+});
+
+// The fixture tests above pin the marker contract; these exercise the check's own wiring —
+// the file paths it reads and the id it returns. A typo'd path or a renamed id would pass every
+// fixture test while silently checking nothing.
+describe('single-writer runChecks() against the real src/ files', () => {
+  test('returns exactly one V-WRITE-01 result', () => {
+    const results = runChecks();
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe('V-WRITE-01');
+  });
+
+  test('passes against the current tree', () => {
+    const [result] = runChecks();
+    // On failure, surface which marker/file is missing rather than a bare `false`.
+    expect(result.detail ?? '').toBe('');
+    expect(result.ok).toBe(true);
   });
 });
