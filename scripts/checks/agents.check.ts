@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseMdFrontmatter } from '../lib/build/content.ts';
 import { root, read, type CheckResult } from './check-utils.ts';
 import { findMissingGateMarkers } from '../lib/check-common.ts';
 
@@ -58,8 +59,7 @@ const checkAgentToolPolicy = (): CheckResult => {
 
   for (const file of files) {
     const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
-    const fm = content.match(/^---\n([\s\S]*?)\n---/);
-    const fmBody = fm ? fm[1] : '';
+    const fmBody = parseMdFrontmatter(content).frontmatter;
     const expected = AGENT_TOOL_POLICY_DENY_MATRIX[file];
     errors.push(...validateAgentToolPolicyFrontmatter(file, fmBody, expected));
   }
@@ -76,15 +76,15 @@ const checkAgentFrontmatter = (): CheckResult => {
 
   for (const file of files) {
     const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
-    const fm = content.match(/^---\n([\s\S]*?)\n---/);
-    if (!fm) {
+    const { frontmatter } = parseMdFrontmatter(content);
+    if (!frontmatter) {
       missing.push(`${file}: no frontmatter`);
       continue;
     }
     for (const key of ['name:', 'description:']) {
-      if (!fm[1].includes(key)) missing.push(`${file}: missing ${key}`);
+      if (!frontmatter.includes(key)) missing.push(`${file}: missing ${key}`);
     }
-    if (/\bmodel:/.test(fm[1])) missing.push(`${file}: model must be absent (inherit harness default)`);
+    if (/\bmodel:/.test(frontmatter)) missing.push(`${file}: model must be absent (inherit harness default)`);
   }
 
   if (missing.length) return { id: 'V-AGENT-01', ok: false, detail: missing.join('; ') };

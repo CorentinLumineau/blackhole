@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseMdFrontmatter } from '../lib/build/content.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
 // ADR-007 T5/R2' — adr-status.check.ts: matches verify.adr-status.test.ts.
@@ -23,9 +24,9 @@ export type AdrStatus = (typeof ADR_STATUS_ENUM)[number];
 
 // V-ADR-01: extract the frontmatter `status:` value (raw, unvalidated) from an ADR file's content.
 export const extractFrontmatterStatus = (content: string): string | null => {
-  const fm = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!fm) return null;
-  const line = fm[1].split('\n').find((l) => /^status:\s*/.test(l));
+  const { frontmatter } = parseMdFrontmatter(content);
+  if (!frontmatter) return null;
+  const line = frontmatter.split('\n').find((l) => /^status:\s*/.test(l));
   if (!line) return null;
   return line.replace(/^status:\s*/, '').trim();
 };
