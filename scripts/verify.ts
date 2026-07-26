@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { EXPECTED_CHECK_COUNT } from './build.ts';
+import { EXPECTED_CHECK_COUNT } from './lib/build/facts.ts';
 import { type CheckResult } from './checks/check-utils.ts';
 
 // ADR-007 T5/R2': verify.ts is a thin runner — glob-discovers scripts/checks/*.check.ts (sorted,

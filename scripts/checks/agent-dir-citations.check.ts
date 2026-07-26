@@ -3,9 +3,9 @@ import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
 import {
   AGENTS_BUILD_AGENT_DIR,
-  AGENT_MD_FILES,
   CLAUDE_DISTRIBUTION_AGENT_DIR,
-} from '../build.ts';
+} from '../lib/build/paths.ts';
+import { AGENT_MD_FILES } from '../lib/build/facts.ts';
 
 // V-AGENTDIR-01: compiled agent markdown must cite skills/blackhole/ paths that resolve under
 // each platform target's agent-dir prefix. Codex YAML agents are out of scope — citations use a

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   buildCodexPluginManifest,
-} from './build.ts';
+} from './lib/build/manifests.ts';
 import {
   detectBuildOutputDrift,
   evaluateBuildCheck,

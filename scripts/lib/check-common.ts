@@ -3,11 +3,11 @@ import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { root } from '../checks/check-utils.ts';
 import { walkFilesAbs } from './fs.ts';
-import { PLATFORM_TARGETS } from '../build.ts';
+import { PLATFORM_TARGETS } from './build/facts.ts';
 
 // ADR-007 R6 / issue #375 — shared cross-domain check helpers extracted from domain
 // *.check.ts modules so checks no longer act as an informal shared library (V-INT-02).
-// Imports only check-utils (root), lib/fs (walkFilesAbs), and build.ts (PLATFORM_TARGETS) —
+// Imports only check-utils (root), lib/fs (walkFilesAbs), and lib/build/facts.ts (PLATFORM_TARGETS) —
 // never any *.check.ts module, to avoid import cycles.
 
 // Shared filter: which of `required` are absent from `content`. Used by agents.check.ts's

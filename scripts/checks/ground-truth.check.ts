@@ -6,7 +6,7 @@ import {
   PHASE_PLAYBOOK_FILES,
   REQUIRED_REFERENCES,
   VCODE_TABLE_ROW_COUNT,
-} from '../build.ts';
+} from '../lib/build/facts.ts';
 import { listFiles } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — ground-truth.check.ts: two-sided facts-conformance (declared § facts vs.

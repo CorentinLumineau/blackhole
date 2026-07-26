@@ -7,7 +7,7 @@ import {
   resolveContentGateTargets,
   CHECK_TS_SECTION_PATTERN,
 } from './checks/content-gates.check.ts';
-import { CONTENT_GATE_BUDGETS } from './build.ts';
+import { CONTENT_GATE_BUDGETS } from './lib/build/facts.ts';
 
 // V-CONTENTGATE-01 (ADR-007 T6/R3′, generalized issue #323): declared-budget section/file-size
 // gate. Inline fixtures cover the parser, the glob-class resolver, and the violation-finding

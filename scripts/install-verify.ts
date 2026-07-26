@@ -7,7 +7,7 @@ import {
   checkStaleGlobalSkill,
   resolveSymlinkTarget,
 } from './doctor';
-import { AGENT_MD_FILES } from './build';
+import { AGENT_MD_FILES } from './lib/build/facts.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 

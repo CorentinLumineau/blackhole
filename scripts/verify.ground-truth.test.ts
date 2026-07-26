@@ -5,7 +5,7 @@ import {
   extractAgentRosterTableNames,
   findReadmeAgentCountMismatch,
 } from './checks/ground-truth.check.ts';
-import { AGENT_NAMES } from './build.ts';
+import { AGENT_NAMES } from './lib/build/facts.ts';
 
 // V-GROUND-01 (ADR-007 T3/R1′): two-sided facts-conformance — an independent filesystem scan is
 // compared against build.ts's § facts declaration, never collapsed onto one derivation (the

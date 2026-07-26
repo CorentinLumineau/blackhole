@@ -10,7 +10,7 @@ import {
   validateSkillModes,
   validateVcodeReferences,
 } from './checks/playbook.check.ts';
-import { PHASE_PLAYBOOK_FILES } from './build.ts';
+import { PHASE_PLAYBOOK_FILES } from './lib/build/facts.ts';
 
 describe('findHarnessTokenLeaks (V-HARNESS-01 — #245)', () => {
   test('fail-closed: appendix marker absent treats the whole file as core — a stray token anywhere fails', () => {
