@@ -33,19 +33,18 @@ export const leakedPlatformConditionalMarkers = (
   );
 
 // checkGeminiBuild, checkGeminiDistributionBundle, checkClaudeDistributionBundle, checkBuild,
-// and checkCodexBuild all need `bun run build --gemini` to have run before asserting file shape /
+// and checkCodexBuild all need `bun run build` to have run before asserting file shape /
 // diffing porcelain — memoize so a full `bun run verify` pass only builds once.
-// Note: `--gemini` and `--all` produce byte-identical output under current build.ts flag
-// semantics (buildCodex defaults to true regardless of either flag), so this call also covers
-// the codex mirror; if buildCodex's default ever changes, revisit this equivalence.
-let geminiBuildResult: { ok: boolean; output: string } | null = null;
+// ADR-007 T2: plain `bun run build` regenerates every git-tracked target; deprecated
+// --gemini/--all/--no-codex flags are no-ops per DEPRECATED_BUILD_FLAGS in build.ts.
+let fullBuildResult: { ok: boolean; output: string } | null = null;
 
 export const runFullBuildOnce = (): { ok: boolean; output: string } => {
-  if (!geminiBuildResult) {
-    const build = spawnSync('bun', ['run', 'build', '--gemini'], { cwd: root, encoding: 'utf-8' });
-    geminiBuildResult = { ok: build.status === 0, output: build.stderr || build.stdout || '' };
+  if (!fullBuildResult) {
+    const build = spawnSync('bun', ['run', 'build'], { cwd: root, encoding: 'utf-8' });
+    fullBuildResult = { ok: build.status === 0, output: build.stderr || build.stdout || '' };
   }
-  return geminiBuildResult;
+  return fullBuildResult;
 };
 
 // Thin .md-filtering wrapper over scripts/lib/fs.ts's shared, directory-safe walker
