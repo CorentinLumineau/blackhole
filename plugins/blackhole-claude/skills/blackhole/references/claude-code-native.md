@@ -35,6 +35,18 @@ phase itself. The flow is: gate-first → fan-out → foreground-triage. This re
 adversarial-evaluation finding that background scripts have no filesystem access, and keeps a
 single writer for campaign state regardless of which pattern is active.
 
+## Bootstrap gate ownership
+
+Pattern C has no coordinator, so nothing else can run the campaign's launch-time config gate. The
+foreground orchestrator (main chat) therefore **owns the Campaign launch configuration gate** for
+every `run`-mode campaign start — including the lightweight
+routine resume confirmation gate that fires when `.blackhole/config.json` already exists — and
+must execute it **before** its first fan-out, never after workers are already in flight.
+
+`coordinator.md` § Bootstrap preflight is the SSOT for that gate's trigger conditions and its
+step-by-step form. This document deliberately does not restate them: one gate definition, read by
+whichever pattern is active (V-DRY-01).
+
 ## Two-tier gate topology
 
 1. **Batched gate-first per wave.** Before fan-out, the foreground orchestrator collects every

@@ -321,6 +321,56 @@ function renderActiveWorkersSection(checkpointBody: string | undefined): string[
   return ['### Active workers', workerSection, ''];
 }
 
+// Single scope-label formatter, shared by the dashboard header and renderConfigSummary so the
+// two can never drift into two wordings for the same scope (V-DRY-01 / V-INT-02).
+export function formatScopeLabel(scope?: CampaignScope): string {
+  if (scope?.milestone) return `milestone **${scope.milestone}**`;
+  if (scope?.labels?.length) return `labels ${scope.labels.map((l) => `\`${l}\``).join(', ')}`;
+  return 'all open issues';
+}
+
+// Narrow config subset this renderer reads — mirrors forge-scope.ts's per-consumer narrow type
+// rather than introducing a shared monolithic CampaignConfig (V-KISS-01).
+export type ConfigSummaryInput = {
+  scope_milestone?: string;
+  scope_labels?: string[];
+  merge_mode?: string;
+  parallel_max?: number;
+  kaizen?: { enabled?: boolean };
+  docs_governance?: { enabled?: boolean };
+  incident_mode?: { enabled?: boolean };
+  worker_model_policy?: string;
+  auto_sync?: boolean;
+  adaptive_routing?: boolean;
+};
+
+const onOff = (v: boolean | undefined, dflt: boolean): string => ((v ?? dflt) ? 'on' : 'off');
+const enabledLabel = (v: boolean | undefined, dflt: boolean): string =>
+  (v ?? dflt) ? 'enabled' : 'disabled';
+
+/**
+ * Human-readable summary of the campaign-shaping config fields, for the routine-resume
+ * confirmation gate (coordinator.md § Bootstrap preflight). Defaults mirror config-template.md.
+ * Deliberately NOT folded into formatDashboard(): `bun run status` runs on every orchestrator
+ * turn, and this belongs at launch confirmation only.
+ */
+export function renderConfigSummary(config: ConfigSummaryInput): string {
+  const kz = config.kaizen?.enabled ?? false;
+
+  return [
+    '## Campaign configuration',
+    '',
+    `**Scope:** ${formatScopeLabel(readScope(config))}`,
+    `**Merge mode:** ${config.merge_mode ?? 'immediate'}`,
+    `**Parallel max:** ${config.parallel_max ?? 4}`,
+    `**Kaizen:** ${enabledLabel(kz, false)}`,
+    `**Docs governance:** ${enabledLabel(config.docs_governance?.enabled, true)}`,
+    `**Incident mode:** ${enabledLabel(config.incident_mode?.enabled, false)}`,
+    `**Worker model policy:** ${config.worker_model_policy ?? 'cost-optimized'}`,
+    `**Auto-sync:** ${onOff(config.auto_sync, true)} · **Adaptive routing:** ${onOff(config.adaptive_routing, true)}`,
+  ].join('\n');
+}
+
 export function formatDashboard(opts: {
   scope?: CampaignScope;
   checkpoint: CheckpointMeta;
@@ -335,11 +385,7 @@ export function formatDashboard(opts: {
   const { active, done, inFlight, blocked, ready } = groupIssuesByPhase(issues);
   const ledgerCounts = countLedgerByStatus(findings);
   const filed = discoveryFilings(findings);
-  const scopeLabel = scope?.milestone
-    ? `milestone **${scope.milestone}**`
-    : scope?.labels?.length
-      ? `labels ${scope.labels.map((l) => `\`${l}\``).join(', ')}`
-      : 'all open issues';
+  const scopeLabel = formatScopeLabel(scope);
 
   const lines: string[] = [];
 
@@ -437,24 +483,59 @@ export function loadCampaignState(campaignDir: string) {
   return { config, queue, ledger, checkpoint, checkpointBody };
 }
 
-function main() {
-  const args = process.argv.slice(2);
+export type StatusMode = 'dashboard' | 'config-summary';
+
+export type StatusArgs = {
+  mode: StatusMode;
+  campaignDir: string;
+  skipGh: boolean;
+};
+
+/**
+ * Parses CLI args into a mode + options. Subcommand dispatch on argv[2] follows the convention
+ * forge-scope.ts already uses (`list-args` / `create-args`) to expose a pure helper to
+ * prompt-driven agents; omitting the subcommand keeps every existing `bun run status`
+ * invocation rendering the dashboard exactly as before.
+ * Throws on an unrecognized subcommand rather than silently falling back to the dashboard —
+ * a typo'd `config-sumary` must not print the wrong thing and exit 0.
+ */
+export function parseStatusArgs(argv: string[]): StatusArgs {
   let campaignDir = path.join(root, '.blackhole');
   let skipGh = false;
+  let mode: StatusMode = 'dashboard';
 
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--campaign-dir' && args[i + 1]) {
-      campaignDir = path.isAbsolute(args[i + 1])
-        ? args[i + 1]
-        : path.join(root, args[i + 1]);
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--campaign-dir' && argv[i + 1]) {
+      campaignDir = path.isAbsolute(argv[i + 1]) ? argv[i + 1] : path.join(root, argv[i + 1]);
       i++;
-    } else if (args[i] === '--no-gh') {
+    } else if (argv[i] === '--no-gh') {
       skipGh = true;
+    } else if (i === 0 && !argv[i].startsWith('--')) {
+      if (argv[i] !== 'config-summary') {
+        throw new Error(
+          `Unknown subcommand "${argv[i]}". Usage: bun run status [config-summary] [--campaign-dir <dir>] [--no-gh]`,
+        );
+      }
+      mode = 'config-summary';
     }
   }
 
+  return { mode, campaignDir, skipGh };
+}
+
+function main() {
+  const { mode, campaignDir, skipGh } = parseStatusArgs(process.argv.slice(2));
+
   const { config, queue, ledger, checkpoint, checkpointBody } =
     loadCampaignState(campaignDir);
+
+  // The routine-resume confirmation gate (coordinator.md § Bootstrap preflight) prints only
+  // this — no forge call, no queue/ledger rendering.
+  if (mode === 'config-summary') {
+    console.log(renderConfigSummary(config));
+    return;
+  }
+
   const scope = readScope(config);
 
   const forge = skipGh
