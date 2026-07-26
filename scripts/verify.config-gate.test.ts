@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { expectMarkerContract, expectMarkersSubstantive } from './lib/marker-fixture-test.ts';
 import {
   COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
   CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
   SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS,
   runChecks,
 } from './checks/config-gate.check.ts';
-import { expectMarkerContract, expectMarkersSubstantive } from './lib/marker-fixture-test.ts';
 
 // Fixture-level red/green for V-CONFGATE-01, modeled on verify.single-writer.test.ts. The check
 // itself reads the real src/ files; these fixtures pin the marker contract independently so a
