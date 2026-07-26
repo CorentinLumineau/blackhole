@@ -60,6 +60,70 @@ export function validateBrainstormChild(child: unknown, index: number): string[]
   return errors.map((error) => `children[${index}].${error}`);
 }
 
+function validatePlannerReadyBrainstormFields(data: Record<string, unknown>, errors: string[]): void {
+  requireField(errors, data, 'artifact_path', isString, 'string');
+  if (!('children' in data)) {
+    errors.push('children: required');
+  } else if (!Array.isArray(data.children)) {
+    errors.push('children: expected array');
+  } else {
+    if (data.children.length > BRAINSTORM_CHILDREN_CAP) {
+      errors.push(
+        `children: at most ${BRAINSTORM_CHILDREN_CAP} proposed children allowed (got ${data.children.length})`,
+      );
+    }
+    data.children.forEach((child, index) => {
+      errors.push(...validateBrainstormChild(child, index));
+    });
+  }
+}
+
+function validatePlannerReadyFields(data: Record<string, unknown>, errors: string[]): void {
+  requireField(errors, data, 'plan_path', isString, 'string');
+  requireField(errors, data, 'track', isString, 'string');
+  if (isString(data.track)) {
+    pushEnumError(errors, 'track', data.track, TRACKS);
+  }
+  if (data.track === 'design') {
+    errors.push('track: design track must never report status ready (ADR-004: design is always blocked)');
+  }
+  if (data.track === 'brainstorm') {
+    validatePlannerReadyBrainstormFields(data, errors);
+  }
+  if (!Array.isArray(data.failing_checks)) {
+    errors.push('failing_checks: expected array');
+  }
+  requireField(errors, data, 'clarification_markers', isNumber, 'number');
+}
+
+function validatePlannerBlockedDesignFields(data: Record<string, unknown>, errors: string[]): void {
+  requireField(errors, data, 'plan_path', isString, 'string');
+}
+
+function validatePlannerBlockedBrainstormFields(data: Record<string, unknown>, errors: string[]): void {
+  requireField(errors, data, 'blocking_question', isNonEmptyString, 'non-empty string');
+}
+
+function validatePlannerBlockedFields(data: Record<string, unknown>, errors: string[]): void {
+  if (!isStringArray(data.failing_checks)) {
+    errors.push('failing_checks: expected string[]');
+  }
+  requireField(errors, data, 'clarification_markers', isNumber, 'number');
+  if ('track' in data) {
+    if (!isString(data.track)) {
+      errors.push('track: expected string');
+    } else {
+      pushEnumError(errors, 'track', data.track, TRACKS);
+      if (data.track === 'design') {
+        validatePlannerBlockedDesignFields(data, errors);
+      }
+      if (data.track === 'brainstorm') {
+        validatePlannerBlockedBrainstormFields(data, errors);
+      }
+    }
+  }
+}
+
 export function validatePlanner(data: unknown): string[] {
   const errors: string[] = [];
   if (!isObject(data)) {
@@ -71,55 +135,10 @@ export function validatePlanner(data: unknown): string[] {
     pushEnumError(errors, 'status', data.status, PLANNER_STATUSES);
   }
 
-  const status = data.status;
-  if (status === 'ready') {
-    requireField(errors, data, 'plan_path', isString, 'string');
-    requireField(errors, data, 'track', isString, 'string');
-    if (isString(data.track)) {
-      pushEnumError(errors, 'track', data.track, TRACKS);
-    }
-    if (data.track === 'design') {
-      errors.push('track: design track must never report status ready (ADR-004: design is always blocked)');
-    }
-    if (data.track === 'brainstorm') {
-      requireField(errors, data, 'artifact_path', isString, 'string');
-      if (!('children' in data)) {
-        errors.push('children: required');
-      } else if (!Array.isArray(data.children)) {
-        errors.push('children: expected array');
-      } else {
-        if (data.children.length > BRAINSTORM_CHILDREN_CAP) {
-          errors.push(
-            `children: at most ${BRAINSTORM_CHILDREN_CAP} proposed children allowed (got ${data.children.length})`,
-          );
-        }
-        data.children.forEach((child, index) => {
-          errors.push(...validateBrainstormChild(child, index));
-        });
-      }
-    }
-    if (!Array.isArray(data.failing_checks)) {
-      errors.push('failing_checks: expected array');
-    }
-    requireField(errors, data, 'clarification_markers', isNumber, 'number');
-  } else if (status === 'blocked') {
-    if (!isStringArray(data.failing_checks)) {
-      errors.push('failing_checks: expected string[]');
-    }
-    requireField(errors, data, 'clarification_markers', isNumber, 'number');
-    if ('track' in data) {
-      if (!isString(data.track)) {
-        errors.push('track: expected string');
-      } else {
-        pushEnumError(errors, 'track', data.track, TRACKS);
-        if (data.track === 'design') {
-          requireField(errors, data, 'plan_path', isString, 'string');
-        }
-        if (data.track === 'brainstorm') {
-          requireField(errors, data, 'blocking_question', isNonEmptyString, 'non-empty string');
-        }
-      }
-    }
+  if (data.status === 'ready') {
+    validatePlannerReadyFields(data, errors);
+  } else if (data.status === 'blocked') {
+    validatePlannerBlockedFields(data, errors);
   }
 
   return errors;
