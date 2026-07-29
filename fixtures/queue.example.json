@@ -26,7 +26,8 @@
       "size": "xl",
       "epic_parent": null,
       "review_iteration": 1,
-      "notes": null
+      "notes": null,
+      "rulings_checked_at": 3
     },
     "301": {
       "title": "Cashflow export",

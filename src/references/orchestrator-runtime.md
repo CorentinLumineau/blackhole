@@ -25,7 +25,7 @@ parallel planners, implementers, reviewers):
 ### Spawn
 
 1. Log `WAVE <N>: issues [...]` before the first spawn.
-2. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, and spawn turn id.
+2. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
 
 ### Barrier
 
@@ -39,7 +39,8 @@ orchestrator that has already ended its turn.
 For each completed worker:
 
 1. Parse and validate return JSON (`scripts/validate-worker-json.ts` or harness hook output) — see `worker-schemas.md` § Orchestrator validation and § Barrier triage.
-2. Apply queue/ledger mutations per role, **serially, one completed worker at a time** — even
+2. **Ruling-revision quarantine** (issue #422, gated by `docs_governance.enabled`/`companion_files`): before applying this worker's mutations, compare its recorded spawn-time `rulings_revision` (step 2 above) against the ledger's current `rulings_revision`. On mismatch — **quarantine**: do not advance the phase; set `status: blocked`, `notes: awaiting-ruling-recheck`; add the issue to the coordinator's conflict list instead of applying the worker's normal mutations (step 3 below).
+3. Apply queue/ledger mutations per role, **serially, one completed worker at a time** — even
    though the batch itself ran in parallel, the orchestrator never parallelizes the
    `queue.json`/`findings-ledger.json` writes (router → `route{}`; planner → plan gate;
    implementer → PR linkage; reviewer → aggregate pipeline). This is the
@@ -50,8 +51,8 @@ For each completed worker:
    `id` from `next_routing_id`, `issue_ref` from spawn context, `created_at` = now, and copy
    `route`, `trigger`, and `local_analyze` verbatim from the return (`worker-schemas.md` §
    Router).
-3. Remove the worker from `## In-flight workers`.
-4. **Idempotency:** if the artifact already satisfies the gate before spawn (e.g. `route{}` present, plan file on disk, PR open), skip re-spawn and advance phase. When checkpoint lists workers as active but artifacts already landed, run `recovery-protocol.md` §9 drift heal at turn start (`detectArtifactDrift`) — do not re-spawn completed workers when artifacts match the current revision.
+4. Remove the worker from `## In-flight workers`.
+5. **Idempotency:** if the artifact already satisfies the gate before spawn (e.g. `route{}` present, plan file on disk, PR open), skip re-spawn and advance phase. When checkpoint lists workers as active but artifacts already landed, run `recovery-protocol.md` §9 drift heal at turn start (`detectArtifactDrift`) — do not re-spawn completed workers when artifacts match the current revision.
 
 ### Turn-end gate
 

@@ -322,6 +322,9 @@ co-located `*.test.ts`.
   explicit declaration that it was unavailable. (ADR-018)
 - A companion file introduced for a single hunt kind must be gated on that kind's activation,
   never added to the universal Phase-0 scaffold. (ADR-019)
+- No issue may advance past a phase transition while its `queue.json` `rulings_checked_at`
+  watermark trails the owner-rulings ledger's `rulings_revision` — it is re-judged by the planner
+  or quarantined at the background-worker barrier first. (ADR-020)
 
 ---
 

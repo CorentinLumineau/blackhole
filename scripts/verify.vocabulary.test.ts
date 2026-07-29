@@ -7,6 +7,7 @@ import {
   extractHuntKinds,
   extractPlatformTargets,
 } from './checks/vocabulary.check.ts';
+import { QUEUE_NOTES } from './lib/build/facts.ts';
 
 // ADR-007 T5/R2' style: pure extraction/comparison functions tested against synthetic string
 // fixtures — no real filesystem reads (real-repo scanning is exercised by `bun run verify` /
@@ -65,6 +66,16 @@ describe('extractQueueNotes', () => {
 
   test('an undeclared awaiting-* token is still extracted', () => {
     expect(extractQueueNotes('notes: "awaiting-something-new"')).toEqual(['awaiting-something-new']);
+  });
+});
+
+describe('QUEUE_NOTES gate token — awaiting-ruling-recheck (issue #422)', () => {
+  test('QUEUE_NOTES declares awaiting-ruling-recheck', () => {
+    expect(QUEUE_NOTES).toContain('awaiting-ruling-recheck');
+  });
+
+  test('a scanned awaiting-ruling-recheck mention matches the declared vocabulary', () => {
+    expect(findVocabMismatch(['awaiting-ruling-recheck'], QUEUE_NOTES)).toBeNull();
   });
 });
 

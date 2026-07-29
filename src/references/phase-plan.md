@@ -11,6 +11,7 @@
 - [ ] clarify-gates.md — AskQuestion if still ambiguous
 - [ ] User plan approval if scope was unclear or split occurred
 - [ ] Planner returns worker-schemas.md contract (`status`, `plan_path`, `failing_checks`)
+- [ ] Ruling re-check evaluated before the phase transition (issue #422 — `orchestrator.md` § Ruling Re-Check Gate)
 - [ ] Plan artifact exists: `{repo_root}/.blackhole/plans/issue-N.md`
 - [ ] Planner JSON `status: ready` — do NOT spawn implementer if `blocked`
 - [ ] queue.json: phase implement, status ready OR blocked (awaiting-plan-approval)
@@ -18,7 +19,7 @@
 
 ## Planner return format
 
-See [worker-schemas.md](worker-schemas.md) planner contract. On `status: blocked`, set queue `notes: awaiting-user-clarification` or `awaiting-plan-approval` per failing checks, or `awaiting-design-approval` when `track: design` (`failing_checks` includes `design_pending_approval`) — and also, regardless of track, when `failing_checks` includes `ui_pending_approval` (ADR-017; no new `QUEUE_NOTES` token — `awaiting-design-approval` is reused for both the design-track block and the plan-time UI gate block).
+See [worker-schemas.md](worker-schemas.md) planner contract. On `status: blocked`, set queue `notes: awaiting-user-clarification` or `awaiting-plan-approval` per failing checks, or `awaiting-design-approval` when `track: design` (`failing_checks` includes `design_pending_approval`) — and also, regardless of track, when `failing_checks` includes `ui_pending_approval` (ADR-017; no new `QUEUE_NOTES` token — `awaiting-design-approval` is reused for both the design-track block and the plan-time UI gate block). Independently of `status`, a non-empty `ruling_conflicts[]` on the planner return sets `notes: awaiting-ruling-recheck` instead of advancing the phase (issue #422 — `worker-schemas.md` § Rulings ledger (read-input); `orchestrator.md` § Ruling Re-Check Gate).
 See [multitask-mode.md](multitask-mode.md) § Claude Code harness notes for how to verify a blocked/idle worker's status without chat polling.
 
 ## Route-derived planner spawn (ADR-004)

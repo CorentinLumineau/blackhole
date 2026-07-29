@@ -177,15 +177,19 @@ When the user asks to cut, publish, or tag a release (`vX.Y.Z`):
 When the user enters a message in the chat:
  
 1.  **Triaging New Directions**:
+    *   Classify first per `clarify-gates.md` § Chat feedback intake's task-vs-ruling
+        classification fork (issue #422) — a **ruling** routes to that section's ledger-append
+        bullet instead of the steps below, which remain the **task** branch.
     *   If the user suggests a feature, codebase improvement, styling refactoring, performance optimization, or UI polish: check if it matches an existing issue.
     *   If it is vague, use `AskQuestion` to clarify the requirements.
     *   Once defined, **apply the Pareto-gating rule**: estimate **Gain (1-10)** and **Effort (1-10)**, and compute $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$.
     *   If $\text{Priority} \ge 30$, file a GitHub issue natively (`gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)`). On success, print `📋 Filed #N — <title> (milestone <M>)` then re-run `bun run status` if the campaign is active.
     *   If $\text{Priority} < 30$, log it as `status: archived` in `findings-ledger.json` and inform the user of the low ROI triage (do not file an issue).
 2.  **Resolving Blockers**:
-    *   If the orchestrator is blocked (`notes: awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, or `merge-order cycle with #N` — ADR-005, `merge-gate.md` § 2 — in `queue.json`), parse the user's response.
+    *   If the orchestrator is blocked (`notes: awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, `awaiting-ruling-recheck`, or `merge-order cycle with #N` — ADR-005, `merge-gate.md` § 2 — in `queue.json`), parse the user's response.
     *   If the response is ambiguous, use `AskQuestion` to resolve the doubt.
     *   For a `merge-order cycle` block: present both (or all) cycle-member issue numbers and their `merge_after`/`depends_on` edges, ask the user which edge to break (via `AskQuestion`), then clear the losing edge and the `blocked` status/note on both issues before resuming.
+    *   For `awaiting-ruling-recheck` (issue #422): present one conflict list aggregating every held and judged issue (each row: issue `#N`, ruling `R-NNN`, one-line summary, suggested disposition), collect a per-item **close** / **amend** / **proceed** disposition via `AskQuestion`, then hand the dispositions back to the orchestrator for the `queue.json` mutation — the coordinator never writes `queue.json` directly (`blackhole-state.md` § Single-writer invariant).
     *   Update the queue notes and `resume` the orchestrator with `interrupt: false`, passing the user's clarification details.
 3.  **Status Requests**:
     *   If the user asks for campaign status, run `bun run status` and print the **full** markdown dashboard to the user. Do not resume or spawn new workers.

@@ -47,6 +47,7 @@ export const QUEUE_NOTES = [
   'awaiting-design-approval',
   'awaiting-investigation',
   'awaiting-recovery-approval',
+  'awaiting-ruling-recheck',
   'clarify waived — narrow technical',
 ];
 

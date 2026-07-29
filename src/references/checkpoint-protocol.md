@@ -47,7 +47,7 @@ last_completed_phase: review
 
 ## In-flight workers
 
-- reviewer on #298 PR 42 (spawned turn 12)
+- reviewer on #298 PR 42 (spawned turn 12, rulings_revision 7)
 
 ## Ready set
 

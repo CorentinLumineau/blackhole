@@ -138,6 +138,8 @@ Fixtures: [`fixtures/resume-signal/`](../../fixtures/resume-signal/). Implementa
 | `track` | `quick` \| `standard` \| `skip` \| `design` \| `brainstorm` | when `ready`, or when `blocked` and caller knows the track |
 | `failing_checks` | string[] | when `blocked` |
 | `clarification_markers` | number | when `ready` or `blocked` |
+| `rulings_checked_at` | number | no — present only when the ledger was read |
+| `ruling_conflicts` | `ruling_conflict[]` | no — defaults to `[]`; required (possibly empty) when `rulings_checked_at` is present — see § Rulings ledger (read-input) below |
 
 ```json
 {
@@ -255,10 +257,45 @@ When `status: blocked`, `failing_checks` lists failed items:
 ### Rulings ledger (read-input)
 
 `planner.md` § Step 3 reads `documentation/reference/product-principles.md` (the owner-rulings
-ledger) as read-input when present, gated by `docs_governance.companion_files`. No dedicated
-JSON field — a plan conflicting with an `active`-status ruling surfaces as a
-`[NEEDS CLARIFICATION]` marker in the plan output, counted by the existing
-`clarification_markers` field above.
+ledger) as read-input when present, gated by `docs_governance.companion_files`. A plan conflicting
+with an `active`-status ruling still surfaces as a `[NEEDS CLARIFICATION]` marker in the plan
+output, counted by the existing `clarification_markers` field above.
+
+**Issue #422 — ruling watermark + phase-gate re-validation** adds two optional fields, consuming
+the § Step 3 read above rather than a second read path (`V-DRY-01`), so the orchestrator can stamp
+a per-issue watermark and aggregate an owner-facing conflict list:
+
+```json
+{
+  "status": "ready",
+  "plan_path": ".blackhole/plans/issue-422.md",
+  "track": "standard",
+  "failing_checks": [],
+  "clarification_markers": 0,
+  "rulings_checked_at": 7,
+  "ruling_conflicts": [
+    {
+      "ruling_id": "R-007",
+      "summary": "Plan task T4 adds expense rows to the monthly TODO; ruling R-007 excludes expenses from the TODO.",
+      "suggested_disposition": "amend"
+    }
+  ]
+}
+```
+
+`ruling_conflicts[]` field shape (`validateRulingConflictEntry`, `scripts/lib/worker-json/validators/planner.ts`):
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `ruling_id` | string matching `^R-\d{3}$` | yes |
+| `summary` | non-empty string | yes |
+| `suggested_disposition` | `close` \| `amend` \| `proceed` (`RULING_DISPOSITIONS`) | yes |
+
+`rulings_checked_at` is the frontmatter `rulings_revision` the planner read (absent means the
+ledger was not read). An empty `ruling_conflicts` alongside `rulings_checked_at` is the explicit
+all-clear that authorizes the orchestrator to stamp `queue.json`'s `rulings_checked_at` watermark
+(§ Barrier triage below; `queue-dag.md` field rules); a non-empty array instead sends the issue to
+`status: blocked`, `notes: awaiting-ruling-recheck`.
 
 ## Design Track Critic (blind sub-invocation)
 
@@ -805,6 +842,11 @@ After a background worker batch barrier completes (`orchestrator-runtime.md` § 
    Failed-Approaches entry (`checkpoint-protocol.md` § Failed-Approaches Log);
    **Partial/Corruption** → verify artifacts, resume from checkpoint. Keep the issue
    `in-flight`, do not end the orchestrator turn until the error is routed.
+4. **Ruling conflicts (issue #422):** a planner return with a non-empty `ruling_conflicts[]` sends
+   the issue to `status: blocked`, `notes: awaiting-ruling-recheck` instead of advancing the
+   phase; an empty `ruling_conflicts[]` alongside `rulings_checked_at` stamps the queue watermark
+   and advances normally (`orchestrator.md` § Human-in-the-Loop (HITL) & Blocker Gating, Ruling
+   Re-Check Gate).
 
 The SubagentStop **validate** hook checks JSON at handoff; the **resume** hook (#154) automates the outer coordinator loop via `resume-request.json` and an orchestrator→coordinator doorbell only. Inner-loop continuity remains the orchestrator in-turn `Await` barrier (#151) — worker stops do not inject `followup_message` to the orchestrator.
 
