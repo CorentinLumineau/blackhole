@@ -54,7 +54,13 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
 
 ### 1. Quick Track
 *   **Objective**: Clear, testable goal.
-*   **Touch-Paths**: List of files allowed to be modified.
+*   **Touch-Paths**: List of files allowed to be modified. When a Touch-Path is a build source
+    under `src/**` (e.g. `src/agents/*.md`, `src/references/*.md`), declare the source path(s)
+    plus the single phrase "plus all generated dist trees per `scripts/lib/build/targets.ts`" —
+    do not hand-enumerate the compiled output trees (`.cursor/`, `.claude/`, `skills/`,
+    `codex-*`, `.agents/build/`, `plugins/`). `scripts/lib/build/targets.ts` is the SSOT for
+    which trees a given source compiles to, so a hand enumeration drifts the moment a target is
+    added, renamed, or split (`V-INT-02`/`V-DRY-01`: one enumeration, one place).
 *   **Documentation Impact (when `docs_governance.enabled`)**: Companion/consumer docs the
     Touch-Paths affect, or `None — <justification>`. Omit this bullet's output section entirely
     when `docs_governance.enabled` is absent or `false` (see Plan Output File Template below).
@@ -103,7 +109,8 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
 
 ### 2. Standard Track
 *   **Objective**: Issue summary and constraints.
-*   **Touch-Paths**: Specific files allowed to change.
+*   **Touch-Paths**: Specific files allowed to change — same generated-dist-tree citation
+    convention as Quick Track's Touch-Paths bullet above, not a new heuristic shape (`V-INT-03`).
 *   **Documentation Impact (when `docs_governance.enabled`)**: Companion/consumer docs the
     Touch-Paths affect, or `None — <justification>`. Omit this bullet's output section entirely
     when `docs_governance.enabled` is absent or `false` (see Plan Output File Template below).
