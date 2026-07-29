@@ -25,7 +25,8 @@ Committed template: `.blackhole/config.json`
   "autonomy": { "confidence_threshold": 80, "design_dominance_delta": 30, "design_autonomy": true, "analyze_routing": true, "brainstorm_routing": false, "never_bypass": ["destructive", "credentials", "epic-go-no-go"] },
   "worker_model_policy": "cost-optimized",
   "entry_mode": "multitask",
-  "merge_mode": "immediate"
+  "merge_mode": "immediate",
+  "display_targets": []
 }
 ```
 
@@ -72,6 +73,7 @@ Committed template: `.blackhole/config.json`
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 | `merge_mode` | no | `"immediate"` (default) \| `"gated-batch"` (ADR-005) \| `"leave-open"` (ADR-006); preserves current behavior exactly when absent/default — each PR merges as soon as it reaches LGTM. Adding `leave-open` is a pure additive enum value — `immediate`/`gated-batch` semantics are unchanged. `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one PR at a time in `merge_after` dependency order; see `merge-gate.md`. `leave-open`: blackhole never merges — every PR is driven to LGTM and left open for human review/merge; an LGTM'd open PR counts as *delivered* for campaign-complete purposes; `merged_by: blackhole` is never set for these issues; `fixed-in-pr` ledger rows stay `fixed-in-pr` until the human merge is later observed by a sync; see `phase-loop.md` § Merge protocol and `merge-gate.md` |
+| `display_targets` | no | Array of viewport widths in px (e.g. `[412, 700, 2560]`) to capture visual evidence at for UI-affecting PRs (ADR-018); absent or empty (default) ⇒ both the implementer's capture step and the reviewer's Visual Evidence Audit are no-ops |
 
 **`docs_governance` contract note**: when the block is absent, or
 `docs_governance.enabled` is `false`, every dependent feature (reviewer V-ADA
@@ -112,6 +114,12 @@ absent, or an individual sub-field is unset, that sub-field's own default applie
 ["destructive", "credentials", "epic-go-no-go"]`) — each sub-flag independently gates only its
 own feature's *dispatch* (design tier, analyze routing, brainstorm routing), never the kernel
 itself.
+
+**`display_targets` contract note**: when the array is absent or empty, the visual evidence
+gate (ADR-018) is a no-op end to end — the implementer's Visual Evidence Capture step never
+runs and the reviewer's Visual Evidence Audit never fires, and current behavior is preserved
+exactly. This is the same discipline `docs_governance`/`kaizen`/`incident_mode` already impose
+on their own features above.
 
 **Scope filter composition** (both fields optional — unset means no filter on that axis):
 

@@ -1,0 +1,21 @@
+{
+  "status": "complete",
+  "pr_number": 42,
+  "branch": "blackhole/issue-420",
+  "tests_passed": true,
+  "touch_paths_honored": true,
+  "evidence": {
+    "command": "bun test scripts/campaign-status.test.ts",
+    "result": "42 pass, 0 fail"
+  },
+  "visual_evidence": [
+    {
+      "target": 1280,
+      "route": "/dashboard",
+      "state": "default",
+      "capture_status": "captured"
+    }
+  ],
+  "new_findings": [],
+  "filed_issues": []
+}

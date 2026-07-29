@@ -18,6 +18,7 @@ import {
 import {
   validateAcResultsArray,
   validateDecisionRecordsArray,
+  validateVisualEvidenceArray,
 } from '../shared-validators.ts';
 
 function validateImplementerCompleteFields(data: Record<string, unknown>, errors: string[]): void {
@@ -87,6 +88,10 @@ function validateImplementerOptionalFields(data: Record<string, unknown>, errors
 
   if ('ac_results' in data && data.ac_results !== undefined) {
     errors.push(...validateAcResultsArray(data.ac_results, 'ac_results'));
+  }
+
+  if ('visual_evidence' in data && data.visual_evidence !== undefined) {
+    errors.push(...validateVisualEvidenceArray(data.visual_evidence, 'visual_evidence'));
   }
 }
 

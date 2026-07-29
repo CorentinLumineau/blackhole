@@ -337,6 +337,7 @@ below).
 | `decision_records` | decision record[] (see below) | no |
 | `sprint_contract_status` | `PASS` \| `PARTIAL` \| `N/A` | no, optional — Standard track only |
 | `ac_results` | ac-result[] (see below) | no, optional — required non-empty when `sprint_contract_status` is present and not `N/A` |
+| `visual_evidence` | visual-evidence[] (see below) | no, optional — additive, config-gated by `display_targets` |
 
 ### `execution_mode` (optional — ADR-004)
 
@@ -460,6 +461,26 @@ fixtures — `V-TEST-09`).
 PASS` (when present, Standard track) as an additional hold condition alongside the existing
 missing-`evidence` check. `reviewer.md` § 1 Objective Fulfillment consumes the PR-body per-AC
 table instead of re-judging AC narratively when present.
+
+### `visual_evidence[]` (optional — issue #420)
+
+Additive array declaring rendered-screenshot evidence for UI-affecting diffs, gated by config
+`display_targets` (`config-template.md`) — content spec (capture trigger, storage convention,
+capture-failure handling) lives in `implementer.md` § Visual Evidence Capture, not restated
+here (`V-DRY`). Row shape:
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `target` | number | yes | one of the configured `display_targets` widths |
+| `path` | string | when `capture_status: captured` | repo-relative path to the committed PNG |
+| `route` | string | when `capture_status: captured` | page/route captured |
+| `state` | string | when `capture_status: captured` | interaction-state descriptor |
+| `capture_status` | string (enum) | yes | `captured` \| `unavailable` |
+| `note` | string | when `capture_status: unavailable` | explicit reason capture could not run — never a silent skip |
+
+**Consumer**: `reviewer.md` § Visual Evidence Audit reads this array — absence entirely on a
+UI-affecting diff with `display_targets` configured is `V-VIS-01` (BLOCK); a declared
+`unavailable` entry is `V-VIS-02` (WARN, never silent).
 
 ## Reviewer (`reviewer`)
 

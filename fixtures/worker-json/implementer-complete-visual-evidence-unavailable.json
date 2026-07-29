@@ -1,0 +1,25 @@
+{
+  "status": "complete",
+  "pr_number": 42,
+  "branch": "blackhole/issue-420",
+  "tests_passed": true,
+  "touch_paths_honored": true,
+  "evidence": {
+    "command": "bun test scripts/campaign-status.test.ts",
+    "result": "42 pass, 0 fail"
+  },
+  "visual_evidence": [
+    {
+      "target": 412,
+      "capture_status": "unavailable",
+      "note": "no dev-server script found in package.json; Playwright not installed"
+    },
+    {
+      "target": 700,
+      "capture_status": "unavailable",
+      "note": "no dev-server script found in package.json; Playwright not installed"
+    }
+  ],
+  "new_findings": [],
+  "filed_issues": []
+}

@@ -72,6 +72,8 @@ longer definitions (token cost, drift). Persist every finding to
 | V-HUNT-02 | Hunt wave filed more than `max_issues_per_wave` issues, or filed below `min_priority` | WARN |
 | V-AUTO-01 | Autonomous design proceeds without a `design-aggregate.ts` verdict artifact | BLOCK |
 | V-AUTO-02 | Thinking-route artifact missing from PR when the route fired | WARN |
+| V-VIS-01 | UI-affecting diff with display_targets configured but no visual_evidence declared — silent skip | BLOCK |
+| V-VIS-02 | visual_evidence[] present with a declared capture_status: unavailable entry — non-blocking, never silent | WARN |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.
