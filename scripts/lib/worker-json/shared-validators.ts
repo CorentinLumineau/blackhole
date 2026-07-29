@@ -9,6 +9,22 @@ import {
   requireField,
 } from './predicates.ts';
 
+export function validateArrayOf(
+  value: unknown,
+  path: string,
+  validateEntry: (entry: unknown, entryPath: string) => string[],
+): string[] {
+  const errors: string[] = [];
+  if (!Array.isArray(value)) {
+    errors.push(`${path}: expected array`);
+    return errors;
+  }
+  value.forEach((entry, index) => {
+    errors.push(...validateEntry(entry, `${path}[${index}]`));
+  });
+  return errors;
+}
+
 export function validateFinding(finding: unknown, path: string): string[] {
   const errors: string[] = [];
 
@@ -35,15 +51,7 @@ export function validateFinding(finding: unknown, path: string): string[] {
 }
 
 export function validateFindingsArray(value: unknown, path: string): string[] {
-  const errors: string[] = [];
-  if (!Array.isArray(value)) {
-    errors.push(`${path}: expected array`);
-    return errors;
-  }
-  value.forEach((finding, index) => {
-    errors.push(...validateFinding(finding, `${path}[${index}]`));
-  });
-  return errors;
+  return validateArrayOf(value, path, validateFinding);
 }
 
 export function validateDecisionRecord(record: unknown, path: string): string[] {
@@ -70,15 +78,7 @@ export function validateDecisionRecord(record: unknown, path: string): string[] 
 }
 
 export function validateDecisionRecordsArray(value: unknown, path: string): string[] {
-  const errors: string[] = [];
-  if (!Array.isArray(value)) {
-    errors.push(`${path}: expected array`);
-    return errors;
-  }
-  value.forEach((record, index) => {
-    errors.push(...validateDecisionRecord(record, `${path}[${index}]`));
-  });
-  return errors;
+  return validateArrayOf(value, path, validateDecisionRecord);
 }
 
 export function validateAcResult(row: unknown, path: string): string[] {
@@ -101,15 +101,7 @@ export function validateAcResult(row: unknown, path: string): string[] {
 }
 
 export function validateAcResultsArray(value: unknown, path: string): string[] {
-  const errors: string[] = [];
-  if (!Array.isArray(value)) {
-    errors.push(`${path}: expected array`);
-    return errors;
-  }
-  value.forEach((row, index) => {
-    errors.push(...validateAcResult(row, `${path}[${index}]`));
-  });
-  return errors;
+  return validateArrayOf(value, path, validateAcResult);
 }
 
 export function validateVisualEvidenceEntry(entry: unknown, path: string): string[] {
@@ -140,13 +132,5 @@ export function validateVisualEvidenceEntry(entry: unknown, path: string): strin
 }
 
 export function validateVisualEvidenceArray(value: unknown, path: string): string[] {
-  const errors: string[] = [];
-  if (!Array.isArray(value)) {
-    errors.push(`${path}: expected array`);
-    return errors;
-  }
-  value.forEach((entry, index) => {
-    errors.push(...validateVisualEvidenceEntry(entry, `${path}[${index}]`));
-  });
-  return errors;
+  return validateArrayOf(value, path, validateVisualEvidenceEntry);
 }

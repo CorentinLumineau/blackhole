@@ -17,16 +17,17 @@ import {
   pushEnumError,
   requireField,
 } from '../predicates.ts';
+import { validateArrayOf } from '../shared-validators.ts';
 
 // Issue #422 — ruling watermark + phase-gate re-validation. `R-NNN` is #417's stable per-ruling
 // citation handle, never the kebab slug.
 const RULING_ID_PATTERN = /^R-\d{3}$/;
 
-function validateRulingConflictEntry(entry: unknown, index: number): string[] {
+function validateRulingConflictEntry(entry: unknown, path: string): string[] {
   const errors: string[] = [];
 
   if (!isObject(entry)) {
-    errors.push(`ruling_conflicts[${index}]: expected object`);
+    errors.push(`${path}: expected object`);
     return errors;
   }
 
@@ -42,7 +43,7 @@ function validateRulingConflictEntry(entry: unknown, index: number): string[] {
     pushEnumError(errors, 'suggested_disposition', entry.suggested_disposition, RULING_DISPOSITIONS);
   }
 
-  return errors.map((error) => `ruling_conflicts[${index}].${error}`);
+  return errors.map((error) => `${path}.${error}`);
 }
 
 // Both fields are optional (§ Database/API Schema Changes, plan issue-422): `rulings_checked_at`
@@ -61,18 +62,16 @@ function validateRulingConflicts(data: Record<string, unknown>, errors: string[]
     if (!Array.isArray(data.ruling_conflicts)) {
       errors.push('ruling_conflicts: expected array');
     } else {
-      data.ruling_conflicts.forEach((entry, index) => {
-        errors.push(...validateRulingConflictEntry(entry, index));
-      });
+      errors.push(...validateArrayOf(data.ruling_conflicts, 'ruling_conflicts', validateRulingConflictEntry));
     }
   }
 }
 
-export function validateBrainstormChild(child: unknown, index: number): string[] {
+export function validateBrainstormChild(child: unknown, path: string): string[] {
   const errors: string[] = [];
 
   if (!isObject(child)) {
-    errors.push(`children[${index}]: expected object`);
+    errors.push(`${path}: expected object`);
     return errors;
   }
 
@@ -108,7 +107,7 @@ export function validateBrainstormChild(child: unknown, index: number): string[]
   requireField(errors, child, 'gain', isGainEffortScore, 'number (1-10)');
   requireField(errors, child, 'effort', isGainEffortScore, 'number (1-10)');
 
-  return errors.map((error) => `children[${index}].${error}`);
+  return errors.map((error) => `${path}.${error}`);
 }
 
 function validatePlannerReadyBrainstormFields(data: Record<string, unknown>, errors: string[]): void {
@@ -123,9 +122,7 @@ function validatePlannerReadyBrainstormFields(data: Record<string, unknown>, err
         `children: at most ${BRAINSTORM_CHILDREN_CAP} proposed children allowed (got ${data.children.length})`,
       );
     }
-    data.children.forEach((child, index) => {
-      errors.push(...validateBrainstormChild(child, index));
-    });
+    errors.push(...validateArrayOf(data.children, 'children', validateBrainstormChild));
   }
 }
 
