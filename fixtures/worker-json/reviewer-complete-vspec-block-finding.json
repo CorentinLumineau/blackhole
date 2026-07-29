@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "findings": [
+    {
+      "vcode": "V-SPEC-01",
+      "severity": "BLOCK",
+      "file": "documentation/user-stories/US-SET-04.md",
+      "line": 18,
+      "summary": "PR both changes UI code and edits this story's acceptance criteria, but the PR body/commits carry no Spec-Change-Approved: trailer authorizing the rewrite"
+    }
+  ]
+}
