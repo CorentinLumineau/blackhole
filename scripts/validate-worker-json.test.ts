@@ -343,6 +343,9 @@ describe('validateWorker router', () => {
     expectInvalid('router', 'router-error-missing-error-field.json'));
   test('valid routed with needs_analysis and analysis-landed trigger', () =>
     expectValid('router', 'router-routed-needs-analysis.json'));
+  test('invalid missing ui field', () =>
+    expectInvalid('router', 'router-routed-missing-ui.json'));
+  test('valid routed with ui: true', () => expectValid('router', 'router-routed-ui-true.json'));
 });
 
 describe('validateWorker hunter', () => {

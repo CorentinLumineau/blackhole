@@ -9,6 +9,7 @@ plan_base_commit: <Short SHA of HEAD>
 track: quick | standard
 task_type: bugfix | null
 threat_screen_passed: true | null
+ui_gate: pending | approved | null
 ---
 
 # Plan - Issue #<Number>
@@ -38,6 +39,17 @@ obligations, gated by `docs_governance.write_governance`.
 ...
 
 ## [Standard + security-sensitive Only] Threat Model
+...
+
+## [If route.ui and non-trivial size] UI Interpretation Gate
+
+### Owner said
+...
+
+### I interpreted
+...
+
+### Open ambiguities
 ...
 
 ## [Standard + perf-sensitive Only] Performance Budget

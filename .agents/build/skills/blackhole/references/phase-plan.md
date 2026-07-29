@@ -18,7 +18,7 @@
 
 ## Planner return format
 
-See [worker-schemas.md](worker-schemas.md) planner contract. On `status: blocked`, set queue `notes: awaiting-user-clarification` or `awaiting-plan-approval` per failing checks, or `awaiting-design-approval` when `track: design` (`failing_checks` includes `design_pending_approval`).
+See [worker-schemas.md](worker-schemas.md) planner contract. On `status: blocked`, set queue `notes: awaiting-user-clarification` or `awaiting-plan-approval` per failing checks, or `awaiting-design-approval` when `track: design` (`failing_checks` includes `design_pending_approval`) — and also, regardless of track, when `failing_checks` includes `ui_pending_approval` (ADR-017; no new `QUEUE_NOTES` token — `awaiting-design-approval` is reused for both the design-track block and the plan-time UI gate block).
 See [multitask-mode.md](multitask-mode.md) § Claude Code harness notes for how to verify a blocked/idle worker's status without chat polling.
 
 ## Route-derived planner spawn (ADR-004)

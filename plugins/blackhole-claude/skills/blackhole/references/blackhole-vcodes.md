@@ -52,6 +52,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-THREAT-01 | Threat Model — a Quick-track change with `route.security_review_required` proceeded without the plan-time threat escalation check / track escalation | BLOCK |
 | V-THREAT-02 | Threat Model — every HIGH/CRITICAL-severity threat has mitigation status 'Mitigated' | BLOCK |
 | V-THREAT-03 | Threat Model — all six STRIDE categories evaluated (Spoofing, Tampering, Repudiation, Info Disclosure, DoS, Elevation of Privilege) | WARN |
+| V-UI-01 | UI Interpretation Gate — a `route.ui: true`, non-`size:xs` issue merged with `ui_gate` absent or `pending` (not `approved`) in the plan frontmatter | BLOCK |
 | V-PERF-01 | Performance Budget — no N+1 queries, unindexed sorts, sync I/O in hot path, full-table scans, or unbounded pagination for a budgeted component | BLOCK |
 | V-PERF-02 | Performance Budget — diff touching a budgeted component does not regress against its documented threshold | WARN |
 | V-BRANCH-01 | Force-push to protected branches (main, master, release/*) | BLOCK |

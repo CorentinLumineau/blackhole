@@ -316,6 +316,8 @@ co-located `*.test.ts`.
 - Every PR must link its issue (`Closes #N`) before merge (V-GIT-01).
 - Blackhole is agent-agnostic by design — protocol and state must remain readable/writable by
   any agent host, not coupled to Claude Code, Cursor, Codex, or Gemini specifically.
+- UI-affecting issues above trivial size require an owner-approved mockup + interpretation block
+  before implement dispatch (ADR-017)
 
 ---
 
