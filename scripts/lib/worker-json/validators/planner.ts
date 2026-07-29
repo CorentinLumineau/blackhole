@@ -23,11 +23,11 @@ import { validateArrayOf } from '../shared-validators.ts';
 // citation handle, never the kebab slug.
 const RULING_ID_PATTERN = /^R-\d{3}$/;
 
-function validateRulingConflictEntry(entry: unknown, index: number): string[] {
+function validateRulingConflictEntry(entry: unknown, path: string): string[] {
   const errors: string[] = [];
 
   if (!isObject(entry)) {
-    errors.push(`ruling_conflicts[${index}]: expected object`);
+    errors.push(`${path}: expected object`);
     return errors;
   }
 
@@ -43,7 +43,7 @@ function validateRulingConflictEntry(entry: unknown, index: number): string[] {
     pushEnumError(errors, 'suggested_disposition', entry.suggested_disposition, RULING_DISPOSITIONS);
   }
 
-  return errors.map((error) => `ruling_conflicts[${index}].${error}`);
+  return errors.map((error) => `${path}.${error}`);
 }
 
 // Both fields are optional (§ Database/API Schema Changes, plan issue-422): `rulings_checked_at`
@@ -62,9 +62,7 @@ function validateRulingConflicts(data: Record<string, unknown>, errors: string[]
     if (!Array.isArray(data.ruling_conflicts)) {
       errors.push('ruling_conflicts: expected array');
     } else {
-      data.ruling_conflicts.forEach((entry, index) => {
-        errors.push(...validateRulingConflictEntry(entry, index));
-      });
+      errors.push(...validateArrayOf(data.ruling_conflicts, 'ruling_conflicts', validateRulingConflictEntry));
     }
   }
 }
