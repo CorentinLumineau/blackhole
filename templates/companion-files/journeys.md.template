@@ -1,0 +1,26 @@
+---
+type: reference
+status: template
+created: {YYYY-MM-DD}
+last_updated: {YYYY-MM-DD}
+review_trigger: "on ADR acceptance"
+---
+
+# User Journeys: {project-name}
+
+<!-- STATUS: unfilled template — the ux-coherence journeys band treats this file as ground
+     truth only once at least one `## Job:` section below replaces this comment. Replace this
+     block with 3-6 owner-approved core user jobs before the first ux-coherence wave runs.
+     Once the first real `## Job:` section is added, update the frontmatter `status` above
+     from `template` to `current`. -->
+
+## Job: example-illustrative-job
+
+*(Illustrative example only — not a real job. Replace this section, and every placeholder
+value inside it, with the product's own core user jobs before the first `ux-coherence` wave
+runs.)*
+
+- **Statement**: <one sentence — what is the user trying to accomplish, in their own terms>
+- **Owning surface**: <the page/view/route that should own this job today, or "none" if it
+  currently has no owning surface — this is itself a finding candidate>
+- **Owner-approved**: pending

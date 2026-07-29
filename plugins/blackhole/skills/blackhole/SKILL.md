@@ -53,8 +53,10 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    substituting `{project-name}` from `.blackhole/config.json`'s `repo` field
    (`owner/repo-name` → `repo-name`) or `basename "$(pwd)"` when `repo` is absent or has no
    `/`. Additionally create `DESIGN.md` under the same skip-if-exists rule **only when**
-   `bash scripts/detect-frontend.sh` emits `frontend=yes`. Full contract:
-   [templates/companion-files/README.md](../templates/companion-files/README.md).
+   `bash scripts/detect-frontend.sh` emits `frontend=yes`. Additionally create `journeys.md`
+   under the same skip-if-exists rule **only when** `docs_governance.companion_files` is not
+   `false` **and** `kaizen.enabled` is `true` **and** `kaizen.kinds` contains `ux-coherence`.
+   Full contract: [templates/companion-files/README.md](../templates/companion-files/README.md).
 3. **State init** — `queue.json`, `findings-ledger.json`, `plans/`
 4. **Validate** — `jq empty` on both JSON files
 5. **Forge sync** — if `auto_sync` true (default): `gh auth status` then [forge-sync.md](references/forge-sync.md). Sandbox: `full_network`.
