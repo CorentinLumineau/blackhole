@@ -14,6 +14,7 @@ import {
   pushEnumError,
   requireField,
 } from '../predicates.ts';
+import { validateArrayOf } from '../shared-validators.ts';
 
 function validateHunterFinding(finding: unknown, path: string): string[] {
   const errors: string[] = [];
@@ -44,15 +45,7 @@ function validateHunterFinding(finding: unknown, path: string): string[] {
 }
 
 function validateHunterFindingsArray(value: unknown, path: string): string[] {
-  const errors: string[] = [];
-  if (!Array.isArray(value)) {
-    errors.push(`${path}: expected array`);
-    return errors;
-  }
-  value.forEach((finding, index) => {
-    errors.push(...validateHunterFinding(finding, `${path}[${index}]`));
-  });
-  return errors;
+  return validateArrayOf(value, path, validateHunterFinding);
 }
 
 function validateHunterTerritory(territory: unknown, path: string): string[] {
