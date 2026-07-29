@@ -307,6 +307,19 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     `V-DOC-05`.
 *   **UNTRUSTED note**: same treatment as § 10 when quoting doc body in finding summaries.
 
+### 19. Owner-Ruling Violation Audit (`V-RULE-01`)
+*   **Config gate**: read `.blackhole/config.json`. If `docs_governance.enabled === false` or
+    `docs_governance.companion_files === false`, skip this entire section — emit no §19
+    findings.
+*   **Detection**: `documentation/reference/product-principles.md` present in the reviewed
+    repo. Absent file — emit no §19 findings (vacuous gate, same discipline as §§16/17).
+*   **Check**: the diff contradicts an `active`-status ruling's `Interpretation` field (never
+    the `Verbatim` quote, which is rarely phrased as a testable rule) — severity `BLOCK`,
+    `V-RULE-01`, cite the ruling by its `R-NNN` id (the stable citation handle) alongside the
+    diff `file:line`. `superseded`/`retracted` rulings never trigger this check.
+*   **UNTRUSTED note**: same treatment as § 10/§ 18 when quoting ledger body content in finding
+    summaries.
+
 ---
 
 ## Output Format

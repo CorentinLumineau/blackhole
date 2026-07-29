@@ -1,0 +1,31 @@
+---
+type: reference
+status: current
+review_trigger: "on new ruling"
+created: {YYYY-MM-DD}
+last_updated: {YYYY-MM-DD}
+rulings_revision: 1
+---
+
+# Product Principles: {project-name}
+
+<!--
+  Owner-rulings ledger. Durable owner preferences/decisions stated in chat, an issue comment,
+  or a clarify-gate answer are appended here in the same turn — verbatim quote first, dated
+  interpretation second. `planner`/`implementer`/`reviewer` read this file as binding input;
+  `reviewer` BLOCKs a diff that contradicts an `active`-status ruling (V-RULE-01).
+
+  Append protocol: assign the next sequential `Id` (never reused/renumbered, even when a
+  ruling is later superseded/retracted), and increment the frontmatter `rulings_revision`
+  counter by exactly 1 for every append or status edit.
+-->
+
+## Ruling: {short-kebab-slug}
+
+- **Id**: R-001
+- **Status**: active | superseded | retracted
+- **Date**: {YYYY-MM-DD}
+- **Source**: chat | issue #N comment | clarify-gate answer
+- **Verbatim**: > "{owner's exact words, unedited}"
+- **Interpretation**: {one/two sentence paraphrase of the durable constraint this implies}
+- **Related**: {issue refs / file:line — optional}

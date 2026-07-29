@@ -25,7 +25,7 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
      directive (`route.plan_mode` / `route.needs_brainstorm` dispatch, `router` agent and
      orchestrator dispatch). If no explicit directive is present, proceed with Quick/Standard
      assessment as above.
-3. **Analyze Codebase**: Search the repository using Grep/Glob/Read to inspect existing patterns, conventions, and touchpoints. **Skip Track exception**: when directed to `track: skip`, omit this step entirely — the Skip Track is deterministic and performs no codebase analysis.
+3. **Analyze Codebase**: Search the repository using Grep/Glob/Read to inspect existing patterns, conventions, and touchpoints. Also read `documentation/reference/product-principles.md` (the owner-rulings ledger) if present, gated by `docs_governance.companion_files`: a plan that would need to violate an `active`-status ruling must either avoid the conflict or carry a `[NEEDS CLARIFICATION]` marker citing the ruling section. **Skip Track exception**: when directed to `track: skip`, omit this step entirely — the Skip Track is deterministic and performs no codebase analysis.
 4. **Seed Active Constraints from analyze note** (ADR-012 E3, Trigger B): When
    `plans/issue-N-analysis.md` exists (produced by `investigator`'s `analyze` sub-mode), the
    planner **seeds** `ARCHITECTURE.md` `## Active Constraints` from its Architecture Coherence

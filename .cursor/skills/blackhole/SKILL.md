@@ -53,7 +53,8 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    confirm step.
 2. **Companion-file scaffold** — gated by `docs_governance.companion_files` (default `true`,
    config already loaded from step 1; skip entirely when `false` or `docs_governance.enabled`
-   is `false`). For `ARCHITECTURE.md`/`AGENTS.md`, create the root file from
+   is `false`). For `ARCHITECTURE.md`/`AGENTS.md`/`documentation/reference/product-principles.md`
+   (the owner-rulings ledger — `V-RULE-01`), create the file from
    `templates/companion-files/{name}.template` **only if it does not already exist**,
    substituting `{project-name}` from `.blackhole/config.json`'s `repo` field
    (`owner/repo-name` → `repo-name`) or `basename "$(pwd)"` when `repo` is absent or has no

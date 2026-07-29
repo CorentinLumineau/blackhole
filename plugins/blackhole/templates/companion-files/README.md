@@ -1,7 +1,9 @@
 # Companion-file templates — blackhole campaign
 
 Source templates for the companion files that `reviewer.md` §10's V-ADA audit
-(`V-ADA-01/02/03/05/06/07`) checks for: `ARCHITECTURE.md`, `AGENTS.md`, `DESIGN.md`.
+(`V-ADA-01/02/03/05/06/07`) checks for: `ARCHITECTURE.md`, `AGENTS.md`, `DESIGN.md`. Also
+includes `product-principles.md.template`, the owner-rulings ledger `reviewer.md` §19's
+`V-RULE-01` audit checks for.
 `src/SKILL.md` Phase 0's companion-file scaffold step creates these at the repo root
 when missing — see that step for the full runtime contract; this README documents
 what each template is for and the substitution/skip rules the scaffold follows.
@@ -13,6 +15,7 @@ what each template is for and the substitution/skip rules the scaffold follows.
 | `ARCHITECTURE.md.template` | `ARCHITECTURE.md` | Repo root — living codebase comprehension doc |
 | `AGENTS.md.template` | `AGENTS.md` | Repo root — behavioral config, symlinked from `CLAUDE.md` |
 | `DESIGN.md.template` | `DESIGN.md` | Repo root — visual design tokens, frontend-only |
+| `product-principles.md.template` | `documentation/reference/product-principles.md` | Owner-rulings ledger — unconditional, not frontend-gated, same skip-if-exists treatment as `ARCHITECTURE.md`/`AGENTS.md` |
 | `package-AGENTS.md.template` | *(reference only)* | Per-package `AGENTS.md` — not auto-instantiated |
 | `package-ARCHITECTURE.md.template` | *(reference only)* | Per-package `ARCHITECTURE.md` — not auto-instantiated |
 
@@ -30,10 +33,11 @@ root directory's own name).
 
 ## Skip-if-exists, never overwrite
 
-The scaffold step creates `ARCHITECTURE.md` / `AGENTS.md` / `DESIGN.md` **only when
-the target file does not already exist**. An existing file — however stale — is
-left untouched. This makes the scaffold idempotent: running Phase 0 repeatedly
-never clobbers a companion file a human or agent has since edited.
+The scaffold step creates `ARCHITECTURE.md` / `AGENTS.md` / `DESIGN.md` /
+`documentation/reference/product-principles.md` **only when the target file does not
+already exist**. An existing file — however stale — is left untouched. This makes the
+scaffold idempotent: running Phase 0 repeatedly never clobbers a companion file a human
+or agent has since edited.
 
 ## `DESIGN.md` frontend gate
 
