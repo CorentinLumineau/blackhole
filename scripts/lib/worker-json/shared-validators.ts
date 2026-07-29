@@ -51,15 +51,7 @@ export function validateFinding(finding: unknown, path: string): string[] {
 }
 
 export function validateFindingsArray(value: unknown, path: string): string[] {
-  const errors: string[] = [];
-  if (!Array.isArray(value)) {
-    errors.push(`${path}: expected array`);
-    return errors;
-  }
-  value.forEach((finding, index) => {
-    errors.push(...validateFinding(finding, `${path}[${index}]`));
-  });
-  return errors;
+  return validateArrayOf(value, path, validateFinding);
 }
 
 export function validateDecisionRecord(record: unknown, path: string): string[] {
