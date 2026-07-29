@@ -474,6 +474,8 @@ describe('validateWorker reviewer', () => {
     expectValid('reviewer', 'reviewer-complete-vdoc-finding.json'));
   test('valid V-ADA-01 finding', () =>
     expectValid('reviewer', 'reviewer-complete-vada-finding.json'));
+  test('valid V-SPEC-01 finding', () =>
+    expectValid('reviewer', 'reviewer-complete-vspec-block-finding.json'));
 });
 
 describe('validateWorker router', () => {
