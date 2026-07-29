@@ -27,3 +27,7 @@ itself is never deleted, only trimmed.
 
 | PR/Issue | Kind | Touch Paths | Decision | Why |
 |---|---|---|---|---|
+| PR #428 / #421 | reuse | src/references/hunt/ux-coherence.md | Reused parity.md structure + kaizen-parity-kind.test.ts test shape for the 8th hunt kind | One-file-per-kind is the established extracted pattern; rule-of-three N/A |
+| PR #428 / #421 | improvement | src/references/config-template.md | No improvement needed beyond plan's registration edits | Touched lines already clean; formatting convention preserved |
+| PR #430 / #422 | reuse | scripts/lib/worker-json/validators/planner.ts | Reused validateBrainstormChild local-helper shape for validateRulingConflictEntry/validateRulingConflicts instead of extracting a shared combinator | 5 bespoke occurrences now exist (past rule-of-three) but extraction is out of #422 scope — filed as #431 |
+| PR #430 / #422 | improvement | src/references/clarify-gates.md | Replaced stale forward-reference ("#422 owns...not that classifier") with live pointer to the new fork + coordinator disposition wiring | Prose promised future work this PR delivers; leaving it would be a stale claim |
