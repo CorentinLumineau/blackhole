@@ -2,6 +2,7 @@ import {
   BRAINSTORM_CHILDREN_CAP,
   PLAN_MODES,
   PLANNER_STATUSES,
+  RULING_DISPOSITIONS,
   SIZE_ESTIMATES,
   TASK_TYPES,
   TRACKS,
@@ -16,6 +17,56 @@ import {
   pushEnumError,
   requireField,
 } from '../predicates.ts';
+
+// Issue #422 — ruling watermark + phase-gate re-validation. `R-NNN` is #417's stable per-ruling
+// citation handle, never the kebab slug.
+const RULING_ID_PATTERN = /^R-\d{3}$/;
+
+function validateRulingConflictEntry(entry: unknown, index: number): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(entry)) {
+    errors.push(`ruling_conflicts[${index}]: expected object`);
+    return errors;
+  }
+
+  requireField(errors, entry, 'ruling_id', isNonEmptyString, 'non-empty string');
+  if (isNonEmptyString(entry.ruling_id) && !RULING_ID_PATTERN.test(entry.ruling_id)) {
+    errors.push('ruling_id: expected format R-NNN (e.g. "R-007")');
+  }
+
+  requireField(errors, entry, 'summary', isNonEmptyString, 'non-empty string');
+
+  requireField(errors, entry, 'suggested_disposition', isString, 'string');
+  if (isString(entry.suggested_disposition)) {
+    pushEnumError(errors, 'suggested_disposition', entry.suggested_disposition, RULING_DISPOSITIONS);
+  }
+
+  return errors.map((error) => `ruling_conflicts[${index}].${error}`);
+}
+
+// Both fields are optional (§ Database/API Schema Changes, plan issue-422): `rulings_checked_at`
+// present without `ruling_conflicts` is invalid — it is what distinguishes "read the ledger and
+// found nothing" (both present, conflicts possibly empty) from "did not read the ledger" (both
+// absent).
+function validateRulingConflicts(data: Record<string, unknown>, errors: string[]): void {
+  if ('rulings_checked_at' in data) {
+    requireField(errors, data, 'rulings_checked_at', isNumber, 'number');
+    if (!('ruling_conflicts' in data)) {
+      errors.push('ruling_conflicts: required when rulings_checked_at is present');
+    }
+  }
+
+  if ('ruling_conflicts' in data) {
+    if (!Array.isArray(data.ruling_conflicts)) {
+      errors.push('ruling_conflicts: expected array');
+    } else {
+      data.ruling_conflicts.forEach((entry, index) => {
+        errors.push(...validateRulingConflictEntry(entry, index));
+      });
+    }
+  }
+}
 
 export function validateBrainstormChild(child: unknown, index: number): string[] {
   const errors: string[] = [];
@@ -94,6 +145,7 @@ function validatePlannerReadyFields(data: Record<string, unknown>, errors: strin
     errors.push('failing_checks: expected array');
   }
   requireField(errors, data, 'clarification_markers', isNumber, 'number');
+  validateRulingConflicts(data, errors);
 }
 
 function validatePlannerBlockedDesignFields(data: Record<string, unknown>, errors: string[]): void {
@@ -122,6 +174,7 @@ function validatePlannerBlockedFields(data: Record<string, unknown>, errors: str
       }
     }
   }
+  validateRulingConflicts(data, errors);
 }
 
 export function validatePlanner(data: unknown): string[] {

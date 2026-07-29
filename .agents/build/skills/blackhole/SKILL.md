@@ -95,7 +95,8 @@ require `gh issue create` + `deferred_to_issue`.
 4. End turn; triage completions → ledger → next phase
 
 **Do not spawn implement** while `status: blocked` with
-`awaiting-user-clarification`, `awaiting-plan-approval`, or `awaiting-design-approval`.
+`awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, or
+`awaiting-ruling-recheck`.
 
 ---
 

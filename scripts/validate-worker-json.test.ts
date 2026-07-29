@@ -128,6 +128,107 @@ describe('validateWorker planner', () => {
     });
     expect(errors.some((e) => e.includes('blocking_question'))).toBe(true);
   });
+
+  // Issue #422 — ruling watermark + phase-gate re-validation: rulings_checked_at + ruling_conflicts[]
+  test('valid ready with rulings_checked_at and an explicit all-clear ruling_conflicts', () => {
+    const errors = validateWorker('planner', {
+      status: 'ready',
+      plan_path: '.blackhole/plans/issue-298.md',
+      track: 'standard',
+      failing_checks: [],
+      clarification_markers: 0,
+      rulings_checked_at: 7,
+      ruling_conflicts: [],
+    });
+    expect(errors).toEqual([]);
+  });
+
+  test('invalid rulings_checked_at present without ruling_conflicts', () => {
+    const errors = validateWorker('planner', {
+      status: 'ready',
+      plan_path: '.blackhole/plans/issue-298.md',
+      track: 'standard',
+      failing_checks: [],
+      clarification_markers: 0,
+      rulings_checked_at: 7,
+    });
+    expect(errors.some((e) => e.includes('ruling_conflicts'))).toBe(true);
+  });
+
+  test('invalid ruling_conflicts[].ruling_id not matching ^R-\\d{3}$', () => {
+    const errors = validateWorker('planner', {
+      status: 'ready',
+      plan_path: '.blackhole/plans/issue-298.md',
+      track: 'standard',
+      failing_checks: [],
+      clarification_markers: 0,
+      rulings_checked_at: 7,
+      ruling_conflicts: [
+        {
+          ruling_id: 'R7',
+          summary: 'Plan conflicts with ruling.',
+          suggested_disposition: 'amend',
+        },
+      ],
+    });
+    expect(errors.some((e) => e.includes('ruling_id'))).toBe(true);
+  });
+
+  test('invalid ruling_conflicts[].suggested_disposition enum violation', () => {
+    const errors = validateWorker('planner', {
+      status: 'ready',
+      plan_path: '.blackhole/plans/issue-298.md',
+      track: 'standard',
+      failing_checks: [],
+      clarification_markers: 0,
+      rulings_checked_at: 7,
+      ruling_conflicts: [
+        {
+          ruling_id: 'R-007',
+          summary: 'Plan conflicts with ruling.',
+          suggested_disposition: 'ignore',
+        },
+      ],
+    });
+    expect(errors.some((e) => e.includes('suggested_disposition'))).toBe(true);
+  });
+
+  test('valid ready with neither rulings_checked_at nor ruling_conflicts (backward compatibility)', () => {
+    const errors = validateWorker('planner', {
+      status: 'ready',
+      plan_path: '.blackhole/plans/issue-298.md',
+      track: 'standard',
+      failing_checks: [],
+      clarification_markers: 0,
+    });
+    expect(errors).toEqual([]);
+  });
+
+  test('invalid ruling_conflicts not an array', () => {
+    const errors = validateWorker('planner', {
+      status: 'ready',
+      plan_path: '.blackhole/plans/issue-298.md',
+      track: 'standard',
+      failing_checks: [],
+      clarification_markers: 0,
+      rulings_checked_at: 7,
+      ruling_conflicts: 'not-an-array',
+    });
+    expect(errors.some((e) => e.includes('ruling_conflicts') && e.includes('array'))).toBe(true);
+  });
+
+  test('invalid ruling_conflicts[] entry not an object', () => {
+    const errors = validateWorker('planner', {
+      status: 'ready',
+      plan_path: '.blackhole/plans/issue-298.md',
+      track: 'standard',
+      failing_checks: [],
+      clarification_markers: 0,
+      rulings_checked_at: 7,
+      ruling_conflicts: ['R-007'],
+    });
+    expect(errors.some((e) => e.includes('ruling_conflicts[0]') && e.includes('object'))).toBe(true);
+  });
 });
 
 describe('validateWorker implementer', () => {

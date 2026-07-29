@@ -25,7 +25,7 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
      directive (`route.plan_mode` / `route.needs_brainstorm` dispatch, `router` agent and
      orchestrator dispatch). If no explicit directive is present, proceed with Quick/Standard
      assessment as above.
-3. **Analyze Codebase**: Search the repository using Grep/Glob/Read to inspect existing patterns, conventions, and touchpoints. Also read `documentation/reference/product-principles.md` (the owner-rulings ledger) if present, gated by `docs_governance.companion_files`: a plan that would need to violate an `active`-status ruling must either avoid the conflict or carry a `[NEEDS CLARIFICATION]` marker citing the ruling section. **Skip Track exception**: when directed to `track: skip`, omit this step entirely — the Skip Track is deterministic and performs no codebase analysis.
+3. **Analyze Codebase**: Search the repository using Grep/Glob/Read to inspect existing patterns, conventions, and touchpoints. Also read `documentation/reference/product-principles.md` (the owner-rulings ledger) if present, gated by `docs_governance.companion_files`: a plan that would need to violate an `active`-status ruling must either avoid the conflict or carry a `[NEEDS CLARIFICATION]` marker citing the ruling section. When the ledger is present, this same read (never a second read path, `V-DRY-01`) also drives the issue's ruling watermark (issue #422): return `rulings_checked_at` set to the ledger frontmatter's `rulings_revision`, and `ruling_conflicts[]` — empty when nothing conflicts (the explicit all-clear that authorizes the orchestrator to stamp the queue watermark), or one entry per conflicting `active`-status ruling, citing its `R-NNN` id, a one-sentence summary, and a `close`/`amend`/`proceed` `suggested_disposition` — see `worker-schemas.md` § Rulings ledger (read-input). **Skip Track exception**: when directed to `track: skip`, omit this step entirely — the Skip Track is deterministic and performs no codebase analysis.
 4. **Seed Active Constraints from analyze note** (ADR-012 E3, Trigger B): When
    `plans/issue-N-analysis.md` exists (produced by `investigator`'s `analyze` sub-mode), the
    planner **seeds** `ARCHITECTURE.md` `## Active Constraints` from its Architecture Coherence
@@ -406,6 +406,21 @@ Return JSON matching `worker-schemas.md` planner contract:
   "track": "standard",
   "failing_checks": [],
   "clarification_markers": 0
+}
+```
+
+When the rulings ledger was read (issue #422 — both fields optional, `worker-schemas.md` §
+Rulings ledger (read-input)):
+
+```json
+{
+  "status": "ready",
+  "plan_path": ".blackhole/plans/issue-298.md",
+  "track": "standard",
+  "failing_checks": [],
+  "clarification_markers": 0,
+  "rulings_checked_at": 7,
+  "ruling_conflicts": []
 }
 ```
 

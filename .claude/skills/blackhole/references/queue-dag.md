@@ -36,7 +36,7 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 | `phase` | `handle` \| `plan` \| `implement` \| `review` \| `done` | Current lifecycle phase |
 | `status` | `blocked` \| `ready` \| `in-flight` \| `merged` \| `closed` | Scheduling state |
 | `review_iteration` | number | Review loop counter (default 0); see `review-core.md` |
-| `notes` | string \| null | e.g. `awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, `overlap with #N` |
+| `notes` | string \| null | e.g. `awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, `awaiting-ruling-recheck`, `overlap with #N` |
 | `depends_on` | number[] | Issue numbers that must be merged/closed first; bidirectional sync with forge issue bodies via [forge-sync.md](forge-sync.md) §6.5 write-back |
 | `merge_hold` | boolean | Optional (ADR-005, default `false`); when `true`, blocks this issue's PR from merging regardless of LGTM status. Distinct from `depends_on`: `depends_on` gates when implementation may *start*, `merge_hold` gates only when the PR may *merge*. Consulted by `merge-gate.md`'s `mergeEligible()` |
 | `merge_after` | number[] | Optional (ADR-005, default `[]`); issue numbers whose PR must merge before this issue's PR may merge. Resolves on `status: merged` **OR** `status: closed`, mirroring the exact satisfaction rule `depends_on` already uses (Step 2 below). Distinct field from `depends_on` — a merge-time-only gate, not an implementation-start gate; not forge-synced (queue.json-only for v1). Consulted by `merge-gate.md`'s `mergeEligible()` |
@@ -48,6 +48,7 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 | `touch_paths` | string[] | Glob patterns for conflict detection |
 | `epic_parent` | number \| null | Child issues link to parent epic |
 | `route` | object \| absent | Optional (ADR-004); absent == today's behavior (`plan_mode: full`). See `### \`route\` object` subsection |
+| `rulings_checked_at` | number \| absent | Optional (issue #422); absent ≡ `0`. The rulings ledger (`documentation/reference/product-principles.md`) frontmatter `rulings_revision` this issue was last validated against — monotonic, never decremented, written only by the orchestrator (single-writer, `blackhole-state.md`) in the same atomic write as the phase transition it accompanies. Set from a planner return whose `ruling_conflicts: []` (`worker-schemas.md` § Rulings ledger (read-input)). Staleness predicate `stale(I)`, the single definition every consumption site cites (`orchestrator.md` § Ruling Re-Check Gate, `orchestrator-runtime.md` § Triage): `stale(I) ≡ ledgerPresent AND docs_governance.enabled AND docs_governance.companion_files AND (I.rulings_checked_at ?? 0) < ledger.rulings_revision` — absent ledger or either config flag `false` means the predicate never fires, byte-identical to today's behavior |
 
 ### `route` object (optional — ADR-004)
 
