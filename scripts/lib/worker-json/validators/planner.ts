@@ -17,6 +17,7 @@ import {
   pushEnumError,
   requireField,
 } from '../predicates.ts';
+import { validateArrayOf } from '../shared-validators.ts';
 
 // Issue #422 — ruling watermark + phase-gate re-validation. `R-NNN` is #417's stable per-ruling
 // citation handle, never the kebab slug.
@@ -68,11 +69,11 @@ function validateRulingConflicts(data: Record<string, unknown>, errors: string[]
   }
 }
 
-export function validateBrainstormChild(child: unknown, index: number): string[] {
+export function validateBrainstormChild(child: unknown, path: string): string[] {
   const errors: string[] = [];
 
   if (!isObject(child)) {
-    errors.push(`children[${index}]: expected object`);
+    errors.push(`${path}: expected object`);
     return errors;
   }
 
@@ -108,7 +109,7 @@ export function validateBrainstormChild(child: unknown, index: number): string[]
   requireField(errors, child, 'gain', isGainEffortScore, 'number (1-10)');
   requireField(errors, child, 'effort', isGainEffortScore, 'number (1-10)');
 
-  return errors.map((error) => `children[${index}].${error}`);
+  return errors.map((error) => `${path}.${error}`);
 }
 
 function validatePlannerReadyBrainstormFields(data: Record<string, unknown>, errors: string[]): void {
@@ -123,9 +124,7 @@ function validatePlannerReadyBrainstormFields(data: Record<string, unknown>, err
         `children: at most ${BRAINSTORM_CHILDREN_CAP} proposed children allowed (got ${data.children.length})`,
       );
     }
-    data.children.forEach((child, index) => {
-      errors.push(...validateBrainstormChild(child, index));
-    });
+    errors.push(...validateArrayOf(data.children, 'children', validateBrainstormChild));
   }
 }
 
