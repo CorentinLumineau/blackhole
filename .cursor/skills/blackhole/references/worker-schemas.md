@@ -183,6 +183,16 @@ When `status: blocked`, `failing_checks` lists failed items:
 - `brainstorm_confidence_below_threshold` — brainstorm track composite confidence
   (`confidence-gates.md`) fell below `autonomy.confidence_threshold`; `blocking_question` names
   the specific product ambiguity (see § Brainstorm track below).
+- `ui_pending_approval` — Quick/Standard track plan produced a `## UI Interpretation Gate`
+  section (mockup + Owner said/I interpreted/Open ambiguities); blocked pending the owner's
+  review of the interpretation, stamped `ui_gate: pending` in frontmatter (ADR-017). **Narrower
+  than `design_pending_approval`**: `design_pending_approval` blocks *unconditionally* regardless
+  of plan completeness (Design Track's whole point); `ui_pending_approval` fires only when
+  `route.ui: true` **and** the issue is above trivial size (`size:xs` exempt) — the plan itself
+  is otherwise complete and ready, the block is narrowly on the human interpretation-review, not
+  on plan quality generally. The orchestrator, not the planner, flips `ui_gate: pending` →
+  `ui_gate: approved` after the owner signals approval via the existing clarify gate — see
+  `orchestrator-delegation.md` § Planner gate.
 
 ### Brainstorm track (optional — ADR-010 D3)
 

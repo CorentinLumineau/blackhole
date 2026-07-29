@@ -85,6 +85,21 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     detection logic (`V-DRY-01`/`V-INT-02`). When no `route` object exists (today's queue), this
     bullet is inert — same fallback as this track's Bugfix classification bullet above (no route
     → no screen, no stamp).
+*   **UI Interpretation Gate (conditional, ADR-017)**: When the issue's resolved `route.ui`
+    (post confidence-gate — read from the router's already-computed flag, no re-derivation) is
+    `true` **and** the issue's size label is not `size:xs` — mirroring this track's own Threat
+    escalation check bullet above, not a new heuristic shape — before finalizing the Quick Track
+    plan, emit a `## UI Interpretation Gate` section into the ordinary `plans/issue-N.md`
+    containing an ASCII/HTML mockup plus a three-part `### Owner said` / `### I interpreted` /
+    `### Open ambiguities` block (`### Owner said` quotes the owner's own words from the issue
+    verbatim, never paraphrased). Return `status: blocked`, `failing_checks:
+    ["ui_pending_approval"]`, and stamp `ui_gate: pending` in the plan's frontmatter (see Plan
+    Output File Template below). This block is narrower than Design Track's unconditional block
+    — it fires only on `route.ui: true` at non-`size:xs`, not on every Quick Track plan
+    (`worker-schemas.md` § Plan quality gate checks). `size:xs` at `route.ui: true` is the sole
+    exemption to this gate; every other size, or an unset/null size, is gated (cautious default).
+    When no `route` object exists, or `route.ui` resolved `false`, this bullet is inert — same
+    fallback as the Threat escalation check bullet above.
 
 ### 2. Standard Track
 *   **Objective**: Issue summary and constraints.
@@ -121,6 +136,18 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     two-tier), mitigation status (`Mitigated`\|`Accepted Risk`\|`Open`). When not triggered, omit
     the section entirely — no `## Threat Model` heading, no placeholder — same
     conditional-omission discipline as the Documentation Impact bullet above.
+*   **UI Interpretation Gate (`## UI Interpretation Gate`, conditional, ADR-017)**: Trigger —
+    the issue's resolved `route.ui` (post confidence-gate, read from the router's
+    already-computed flag, no re-derivation) is `true` **and** the issue's size label is not
+    `size:xs` — same trigger and mechanics as Quick Track's UI Interpretation Gate bullet above,
+    not a new heuristic shape (`V-INT-03`). When triggered, emit an ASCII/HTML mockup plus a
+    three-part `### Owner said` / `### I interpreted` / `### Open ambiguities` block
+    (`### Owner said` quotes the owner's own words from the issue verbatim, never paraphrased),
+    return `status: blocked`, `failing_checks: ["ui_pending_approval"]`, and stamp `ui_gate:
+    pending` in the plan's frontmatter (see Plan Output File Template below). `size:xs` at
+    `route.ui: true` is the sole exemption; every other size, or an unset/null size, is gated
+    (cautious default). When not triggered, omit the section entirely — no `## UI Interpretation
+    Gate` heading, no placeholder — same conditional-omission discipline as Threat Model above.
 *   **Performance Budget (`## Performance Budget`, conditional)**: Trigger —
     `plans/issue-N-analysis.md` exists (produced by `investigator`'s `analyze` sub-mode) **and**
     its Performance Baselines subsection is non-empty (not the "omit entirely when no measurable
