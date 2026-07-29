@@ -21,7 +21,7 @@
   },
   "kaizen": {
     "enabled": false,
-    "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity"],
+    "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity", "ux-coherence"],
     "trigger": "on-empty",
     "loop_interval": 5,
     "min_priority": 30,

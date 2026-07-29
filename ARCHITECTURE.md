@@ -320,6 +320,8 @@ co-located `*.test.ts`.
   before implement dispatch (ADR-017)
 - UI-affecting PRs must carry rendered visual evidence at every declared display target, or an
   explicit declaration that it was unavailable. (ADR-018)
+- A companion file introduced for a single hunt kind must be gated on that kind's activation,
+  never added to the universal Phase-0 scaffold. (ADR-019)
 
 ---
 
