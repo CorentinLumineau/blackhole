@@ -1,4 +1,4 @@
-import { AC_VERDICTS, DECISION_RECORD_KINDS, SEVERITIES } from './constants.ts';
+import { AC_VERDICTS, CAPTURE_STATUSES, DECISION_RECORD_KINDS, SEVERITIES } from './constants.ts';
 import {
   isNonEmptyString,
   isNumber,
@@ -108,6 +108,45 @@ export function validateAcResultsArray(value: unknown, path: string): string[] {
   }
   value.forEach((row, index) => {
     errors.push(...validateAcResult(row, `${path}[${index}]`));
+  });
+  return errors;
+}
+
+export function validateVisualEvidenceEntry(entry: unknown, path: string): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(entry)) {
+    errors.push(`${path}: expected object`);
+    return errors;
+  }
+
+  requireField(errors, entry, 'target', isNumber, 'number');
+  requireField(errors, entry, 'capture_status', isString, 'string');
+  if (isString(entry.capture_status)) {
+    pushEnumError(errors, 'capture_status', entry.capture_status, CAPTURE_STATUSES);
+  }
+
+  if (entry.capture_status === 'captured') {
+    requireField(errors, entry, 'path', isNonEmptyString, 'non-empty string');
+    requireField(errors, entry, 'route', isNonEmptyString, 'non-empty string');
+    requireField(errors, entry, 'state', isNonEmptyString, 'non-empty string');
+  }
+
+  if (entry.capture_status === 'unavailable') {
+    requireField(errors, entry, 'note', isNonEmptyString, 'non-empty string');
+  }
+
+  return errors.map((error) => `${path}.${error}`);
+}
+
+export function validateVisualEvidenceArray(value: unknown, path: string): string[] {
+  const errors: string[] = [];
+  if (!Array.isArray(value)) {
+    errors.push(`${path}: expected array`);
+    return errors;
+  }
+  value.forEach((entry, index) => {
+    errors.push(...validateVisualEvidenceEntry(entry, `${path}[${index}]`));
   });
   return errors;
 }

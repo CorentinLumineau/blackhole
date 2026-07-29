@@ -318,6 +318,8 @@ co-located `*.test.ts`.
   any agent host, not coupled to Claude Code, Cursor, Codex, or Gemini specifically.
 - UI-affecting issues above trivial size require an owner-approved mockup + interpretation block
   before implement dispatch (ADR-017)
+- UI-affecting PRs must carry rendered visual evidence at every declared display target, or an
+  explicit declaration that it was unavailable. (ADR-018)
 
 ---
 

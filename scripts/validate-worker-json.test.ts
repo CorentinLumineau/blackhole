@@ -321,6 +321,49 @@ describe('validateWorker implementer sprint_contract_status / ac_results[] (issu
   });
 });
 
+describe('validateWorker implementer visual_evidence[] (issue #420)', () => {
+  const baseComplete = {
+    status: 'complete',
+    pr_number: 42,
+    branch: 'blackhole/issue-42',
+    tests_passed: true,
+    touch_paths_honored: true,
+    evidence: { command: 'bun test scripts/campaign-status.test.ts', result: '42 pass, 0 fail' },
+  };
+
+  test('valid complete with visual_evidence[] (captured + unavailable)', () =>
+    expectValid('implementer', 'implementer-complete-visual-evidence.json'));
+
+  test('valid complete with visual_evidence[] all unavailable', () =>
+    expectValid('implementer', 'implementer-complete-visual-evidence-unavailable.json'));
+
+  test('invalid captured entry missing path', () =>
+    expectInvalid('implementer', 'implementer-complete-bad-visual-evidence.json'));
+
+  test('invalid unavailable entry missing note', () => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      visual_evidence: [{ target: 2560, capture_status: 'unavailable' }],
+    });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes('note'))).toBe(true);
+  });
+
+  test('invalid capture_status enum value', () => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      visual_evidence: [{ target: 1280, capture_status: 'maybe' }],
+    });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes('capture_status'))).toBe(true);
+  });
+
+  test('accepts implementer JSON without visual_evidence (backward compatible)', () => {
+    const errors = validateWorker('implementer', { ...baseComplete });
+    expect(errors).toEqual([]);
+  });
+});
+
 describe('validateWorker reviewer', () => {
   test('valid empty findings', () =>
     expectValid('reviewer', 'reviewer-complete-empty.json'));
