@@ -22,7 +22,13 @@ const {
 const HOOK = 'validate-bash-command';
 
 const main = () => {
-  const input = readHookInput();
+  let input;
+  try {
+    input = readHookInput();
+  } catch (error) {
+    failClosed({ hook: HOOK, tool: 'Bash', error, patternId: 'hook-input-parse-failure', label: 'hook input' });
+    return;
+  }
   const tool = input.tool_name || 'Bash';
   const command = (input.tool_input && input.tool_input.command) || '';
 

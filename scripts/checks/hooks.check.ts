@@ -22,6 +22,17 @@ export const REQUIRED_PRETOOLUSE_MATCHERS = ['Bash', 'Write|Edit'];
 
 export const PATTERN_FILES = ['bash-patterns.json', 'file-patterns.json'];
 
+/** The array-valued keys each pattern file must carry. Explicit per-file, rather than "every
+ * top-level key whose value is an array" (the loose version this replaced): a renamed or dropped
+ * key must fail this check, and a blind flatten-any-array-key scan would instead just find
+ * whatever array *is* present and validate that, silently accepting the schema drift (F-00050,
+ * review round 1) — the same fail-closed-only-if-we-actually-notice argument the module header
+ * above makes about pattern-load failure applies here to pattern *shape*. */
+export const REQUIRED_PATTERN_KEYS: Record<string, string[]> = {
+  'bash-patterns.json': ['blockPatterns', 'warnPatterns'],
+  'file-patterns.json': ['blockedSystemPaths', 'pathTraversal', 'sensitiveFiles'],
+};
+
 type PatternEntry = { id?: unknown; pattern?: unknown; flags?: unknown; reason?: unknown };
 type HookCommand = { type?: unknown; command?: unknown };
 type PreToolUseEntry = { matcher?: unknown; hooks?: HookCommand[] };
@@ -69,8 +80,9 @@ export const evaluateHooksWiring = (bundleRoot: string, label: string): string[]
   return errors;
 };
 
-/** Pattern data for one bundle: both files present, parseable, versioned, and every entry
- * compiling as a RegExp — the invariant the hooks' fail-closed behavior depends on. */
+/** Pattern data for one bundle: both files present, parseable, versioned, carrying every required
+ * array key (`REQUIRED_PATTERN_KEYS`), and every entry compiling as a RegExp — the invariant the
+ * hooks' fail-closed behavior depends on. */
 export const evaluateHookPatterns = (bundleRoot: string, label: string): string[] => {
   const errors: string[] = [];
   for (const file of PATTERN_FILES) {
@@ -88,15 +100,35 @@ export const evaluateHookPatterns = (bundleRoot: string, label: string): string[
     }
     if (parsed.version !== 1) errors.push(`${label}: ${file} unsupported schema version ${parsed.version}`);
 
-    const entries = Object.values(parsed).filter(Array.isArray).flat() as PatternEntry[];
+    const entries: PatternEntry[] = [];
+    for (const key of REQUIRED_PATTERN_KEYS[file] ?? []) {
+      const list = parsed[key];
+      if (!Array.isArray(list)) {
+        errors.push(`${label}: ${file} missing required array "${key}"`);
+        continue;
+      }
+      entries.push(...(list as PatternEntry[]));
+    }
     if (entries.length === 0) errors.push(`${label}: ${file} declares no patterns`);
     for (const entry of entries) {
       if (typeof entry.id !== 'string' || typeof entry.reason !== 'string') {
         errors.push(`${label}: ${file} entry missing id or reason`);
         continue;
       }
+      // entry.pattern must be checked as a string before compiling: new RegExp(undefined, ...)
+      // compiles to /(?:)/ (matches everything) without throwing, so a bare `as string` cast here
+      // would let a missing "pattern" field pass with zero static errors while the loader throws
+      // at runtime (F-00050, review round 1).
+      if (typeof entry.pattern !== 'string') {
+        errors.push(`${label}: ${file} entry "${entry.id}" missing string "pattern"`);
+        continue;
+      }
+      if (entry.flags !== undefined && typeof entry.flags !== 'string') {
+        errors.push(`${label}: ${file} entry "${entry.id}" has non-string "flags"`);
+        continue;
+      }
       try {
-        new RegExp(entry.pattern as string, (entry.flags as string) ?? '');
+        new RegExp(entry.pattern, entry.flags ?? '');
       } catch (err) {
         errors.push(`${label}: ${file} entry "${entry.id}" does not compile (${(err as Error).message})`);
       }

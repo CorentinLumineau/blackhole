@@ -24,10 +24,14 @@ const {
 
 const HOOK = 'validate-file-changes';
 
-/** Realpath of the nearest ancestor of `p` that exists on disk. Containment has to be decided on
- * resolved paths (temp dirs and home directories are routinely symlinks), but the write target
- * itself usually does not exist yet — its nearest existing ancestor does. `../` is already refused
- * before this runs, so an ancestor inside the worktree implies the target is inside it too. */
+/** Realpath of the nearest existing ancestor of `p` — `p` itself if it already exists (following
+ * it through if it is itself a symlink), otherwise the nearest parent that does. Containment has
+ * to be decided on resolved paths (temp dirs and home directories are routinely symlinks), and
+ * that includes the leaf: `ln -s ~/.ssh/authorized_keys ./notes.txt` then a Write to `notes.txt`
+ * must resolve through that symlink too, not just through a symlinked ancestor directory — passing
+ * the target path itself (not its dirname) is what makes `fs.realpathSync` see it. `../` is
+ * already refused before this runs, so an ancestor inside the worktree implies the target is
+ * inside it too, for the common case where the target does not exist yet. */
 const resolveExistingAncestor = (p) => {
   let current = path.resolve(p);
   for (;;) {
@@ -42,13 +46,19 @@ const resolveExistingAncestor = (p) => {
 };
 
 const isInsideWorktree = (filePath, root) => {
-  const anchor = resolveExistingAncestor(path.dirname(path.resolve(filePath)));
+  const anchor = resolveExistingAncestor(path.resolve(filePath));
   const realRoot = resolveExistingAncestor(root);
   return anchor === realRoot || anchor.startsWith(realRoot + path.sep);
 };
 
 const main = () => {
-  const input = readHookInput();
+  let input;
+  try {
+    input = readHookInput();
+  } catch (error) {
+    failClosed({ hook: HOOK, tool: 'Write', error, patternId: 'hook-input-parse-failure', label: 'hook input' });
+    return;
+  }
   const tool = input.tool_name || 'Write';
   const toolInput = input.tool_input || {};
   const filePath = toolInput.file_path || toolInput.path || '';

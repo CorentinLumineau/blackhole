@@ -1,16 +1,16 @@
 {
   "version": 1,
-  "_note": "Destructive-command patterns for the Bash PreToolUse gate (#447). Data, not code: adding a pattern is a JSON edit, never a source change (OCP). Every `pattern` is a JS RegExp source string compiled with `flags`; both are validated at `bun run scripts/verify.ts` time by scripts/checks/hooks.check.ts. blockPatterns deny the call (exit 2); warnPatterns allow it and record it.",
+  "_note": "Destructive-command patterns for the Bash PreToolUse gate (#447). Data, not code: adding a pattern is a JSON edit, never a source change (OCP). Every `pattern` is a JS RegExp source string compiled with `flags`; both are validated at `bun run scripts/verify.ts` time by scripts/checks/hooks.check.ts. blockPatterns deny the call (exit 2); warnPatterns allow it and record it. Flag-bearing entries (rm/chmod) use a lookahead over the whole `rm`/`chmod` clause to detect the recursive flag regardless of order or spelling (`-rf`, `-fr`, `-r -f`, `--recursive`), so one entry covers combined, split, and long-form flags without enumerating every permutation (scripts/hooks-validate-bash.test.ts's evasion matrix pins the spellings this was built to close).",
   "blockPatterns": [
     {
       "id": "rm-rf-root",
-      "pattern": "\\brm\\s+(-rf|-fr|--recursive)\\s+/(?!\\S*/)",
+      "pattern": "\\brm\\s+(?=[^|;&\\n]*(?:-[a-zA-Z]*r[a-zA-Z]*\\b|--recursive\\b))[^|;&\\n]*\\s[\"']?(/{1,2}|/\\.|/\\*)[\"']?(?=[\\s;&|'\"]|$)",
       "flags": "i",
       "reason": "Recursive delete targeting the root filesystem"
     },
     {
       "id": "rm-rf-home",
-      "pattern": "\\brm\\s+(-rf|-fr|--recursive)\\s+~/?(\\s|$)",
+      "pattern": "\\brm\\s+(?=[^|;&\\n]*(?:-[a-zA-Z]*r[a-zA-Z]*\\b|--recursive\\b))[^|;&\\n]*\\s[\"']?(~/?|\\$HOME/?|\\$\\{HOME\\}/?)[\"']?(?=[\\s;&|'\"]|$)",
       "flags": "i",
       "reason": "Recursive delete targeting the home directory"
     },
@@ -22,7 +22,7 @@
     },
     {
       "id": "disk-device-write",
-      "pattern": ">\\s*/dev/(sd[a-z]|hd[a-z]|nvme\\d|vd[a-z])",
+      "pattern": ">\\s*[\"']?/dev/(sd[a-z]|hd[a-z]|nvme\\d|vd[a-z])",
       "flags": "i",
       "reason": "Redirect writes directly to a raw disk device"
     },
@@ -34,31 +34,31 @@
     },
     {
       "id": "dd-to-device",
-      "pattern": "\\bdd\\s[^|;&]*\\bof=/dev/",
+      "pattern": "\\bdd\\s[^|;&]*\\bof=[\"']?/dev/",
       "flags": "i",
       "reason": "Raw block-device write via dd"
     },
     {
       "id": "curl-pipe-shell",
-      "pattern": "\\bcurl\\b[^|]*\\|\\s*(sudo\\s+)?(ba|z|k|da)?sh\\b",
+      "pattern": "\\bcurl\\b[^|]*\\|\\s*[\"']?((?:sudo|env|nice)\\s+)*[\"']?(ba|z|k|da)?sh\\b",
       "flags": "i",
       "reason": "Piped remote execution (curl | sh)"
     },
     {
       "id": "wget-pipe-shell",
-      "pattern": "\\bwget\\b[^|]*\\|\\s*(sudo\\s+)?(ba|z|k|da)?sh\\b",
+      "pattern": "\\bwget\\b[^|]*\\|\\s*[\"']?((?:sudo|env|nice)\\s+)*[\"']?(ba|z|k|da)?sh\\b",
       "flags": "i",
       "reason": "Piped remote execution (wget | sh)"
     },
     {
       "id": "fork-bomb",
-      "pattern": ":\\(\\)\\s*\\{\\s*:\\s*\\|\\s*:\\s*&\\s*\\}\\s*;\\s*:",
+      "pattern": "([A-Za-z0-9_:]+)\\s*\\(\\)\\s*\\{\\s*\\1\\s*\\|\\s*\\1\\s*&?\\s*\\}\\s*;?\\s*\\1",
       "flags": "",
       "reason": "Fork bomb"
     },
     {
       "id": "chmod-777-root",
-      "pattern": "\\bchmod\\s+(-R\\s+)?0?777\\s+/(?!\\S*/)",
+      "pattern": "\\bchmod\\s+((-R|--recursive)\\s+)?(0?777|a[+=]rwx|ugo[+=]rwx)\\s+[\"']?(/{1,2}|/\\.)[\"']?(?=[\\s;&|'\"]|$)",
       "flags": "i",
       "reason": "World-writable permissions on a system path"
     }
@@ -69,6 +69,12 @@
       "pattern": "\\bgit\\s+push\\b[^|;&]*\\s(--force\\b|-f\\b|--force-with-lease\\b)",
       "flags": "i",
       "reason": "Force push can overwrite remote history"
+    },
+    {
+      "id": "git-push-force-refspec",
+      "pattern": "\\bgit\\s+push\\b[^|;&]*\\s\\+[\\w][\\w\\-./:]*",
+      "flags": "i",
+      "reason": "Force push via a leading '+' refspec can overwrite remote history without a --force flag"
     },
     {
       "id": "git-reset-hard",

@@ -4,6 +4,7 @@ import * as path from 'path';
 import { root } from './checks/check-utils.ts';
 import {
   HOOK_BUNDLE_ROOTS,
+  REQUIRED_PATTERN_KEYS,
   REQUIRED_PRETOOLUSE_MATCHERS,
   evaluateHookPatterns,
   evaluateHooksWiring,
@@ -140,6 +141,41 @@ describe('hooks.check.ts evaluators', () => {
       const errors = evaluateHookPatterns(bundle, 'fixture');
       expect(errors.some((e) => e.includes('file-patterns.json'))).toBe(true);
     });
+  });
+
+  // F-00050 (review round 1): the pre-fix evaluator flattened `Object.values().filter(Array
+  // .isArray)` — any array-valued top-level key, not specifically the required ones — so renaming
+  // or dropping a required key (e.g. `blockPatterns` -> `blockedPatterns`) still found *some*
+  // array to validate and reported zero errors on a bundle whose loader would actually throw at
+  // runtime.
+  test('a pattern file with a renamed required key is reported, not silently skipped', () => {
+    withDamagedBundle((bundle) => {
+      const abs = path.join(bundle, 'hooks', 'patterns', 'bash-patterns.json');
+      const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8'));
+      parsed.blockedPatterns = parsed.blockPatterns;
+      delete parsed.blockPatterns;
+      fs.writeFileSync(abs, JSON.stringify(parsed));
+      const errors = evaluateHookPatterns(bundle, 'fixture');
+      expect(errors.some((e) => e.includes('blockPatterns'))).toBe(true);
+    });
+  });
+
+  // F-00050 (review round 1): `new RegExp(entry.pattern as string, ...)` lied to the type checker
+  // — at runtime, `new RegExp(undefined)` compiles to `/(?:)/` (matches everything) without
+  // throwing, so an entry missing `pattern` entirely passed with zero static errors.
+  test('a pattern entry missing "pattern" is reported, not silently compiled as match-all', () => {
+    withDamagedBundle((bundle) => {
+      const abs = path.join(bundle, 'hooks', 'patterns', 'bash-patterns.json');
+      const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8'));
+      delete parsed.blockPatterns[0].pattern;
+      fs.writeFileSync(abs, JSON.stringify(parsed));
+      const errors = evaluateHookPatterns(bundle, 'fixture');
+      expect(errors.some((e) => e.includes(parsed.blockPatterns[0].id) && e.includes('pattern'))).toBe(true);
+    });
+  });
+
+  test('REQUIRED_PATTERN_KEYS covers both shipped pattern files', () => {
+    expect(Object.keys(REQUIRED_PATTERN_KEYS).sort()).toEqual(['bash-patterns.json', 'file-patterns.json']);
   });
 });
 
