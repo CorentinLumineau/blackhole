@@ -62,7 +62,9 @@ root-cause investigation instead:
    every other worker spawn:
    1. **Objective**: root-cause evidence gathering for the specific `escalation_trigger` value
       `implementer` returned.
-   2. **Output format**: note at `plans/issue-N-investigation.md`.
+   2. **Output format**: note at `plans/issue-N-investigation.md`. The orchestrator also passes
+      `.blackhole/staged/<issue>/` as an absolute repo-root path per `blackhole-state.md` §
+      Staging (ADR-021 D1) — not restated here.
    3. **Scope boundaries**: read-only — no code edits.
    4. **Tool guidance**: none — inherits `investigator`'s own tool policy.
    5. **Stop condition**: `status: complete` with the note on disk.
