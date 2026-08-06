@@ -46,6 +46,18 @@ Root-cause hunting via a ranked-hypothesis loop:
 - Delegate test execution to another agent/tool rather than asserting outcomes yourself — you
   gather and rank evidence, you do not execute fixes or assert unverified conclusions.
 
+Promotion target: the investigation note is promoted to
+`documentation/investigations/{concern-slug}.md` per `artifact-contract.md`'s route table. Stage
+a copy at `.blackhole/staged/<issue>/{concern-slug}.md` via the same Bash heredoc + atomic `mv`
+pattern used for the note file itself (see § Tool policy above), at the absolute repo-root
+staging directory the orchestrator passes at spawn time (`blackhole-state.md` § Staging (ADR-021
+D1)). Append the entry to `.blackhole/staged/<issue>/manifest.json` per that section's schema.
+When `docs_governance.enabled` or `docs_governance.write_governance` resolves absent or `false`,
+skip staging entirely — write nothing, append no manifest entry. This is staging, not a
+promotion commit — no branch exists at Phase 2 (ADR-021 D1); the implementer's carry-step (#467,
+not implemented here) copies the staged file into `documentation/` and commits it. Missing
+promotion is `V-AUTO-02`.
+
 ## `research` sub-mode
 
 Multi-source, cited evidence gathering:
@@ -75,8 +87,16 @@ than an implementation decision:
   the touched surface — never fabricate a number.
 
 Promotion target: the analysis note is promoted to
-`documentation/audits/analysis-issue-N.md` per `artifact-contract.md` (Milestone 1 deliverable —
-the promotion mechanism itself is not re-defined here); missing promotion is `V-AUTO-02`.
+`documentation/audits/analysis-issue-N.md` per `artifact-contract.md`. Stage a copy at
+`.blackhole/staged/<issue>/analysis-issue-N.md` via the same Bash heredoc + atomic `mv` pattern
+used for the note file itself (see § Tool policy above), at the absolute repo-root staging
+directory the orchestrator passes at spawn time (`blackhole-state.md` § Staging (ADR-021 D1)).
+Append the entry to `.blackhole/staged/<issue>/manifest.json` per that section's schema. When
+`docs_governance.enabled` or `docs_governance.write_governance` resolves absent or `false`, skip
+staging entirely — write nothing, append no manifest entry. This is staging, not a promotion
+commit — no branch exists at Phase 2 (ADR-021 D1); the implementer's carry-step (#467, not
+implemented here) copies the staged file into `documentation/` and commits it. Missing promotion
+is `V-AUTO-02`.
 
 ## Note schema
 

@@ -32,6 +32,10 @@ against `router_confidence_thresholds`). Zero-regression guarantee: absent/void 
 or `adaptive_routing: false`, preserves today's exact behavior — no explicit directive,
 planner self-assesses Quick/Standard unchanged.
 
+For the `track: design` and `resume_context: design_approved` spawn cases, the orchestrator
+passes `.blackhole/staged/<issue>/` as an absolute repo-root path per `blackhole-state.md` §
+Staging (ADR-021 D1) — not restated here.
+
 ## Plan approval gate
 
 | Situation | Before implement |

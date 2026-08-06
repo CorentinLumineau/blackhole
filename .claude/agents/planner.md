@@ -280,17 +280,25 @@ The artifact consolidates 8 ordered subsections:
     - `status: "ready"` (from `design-aggregate.ts`) → before writing, run
       `scripts/detect-doc-schema.sh` (repo-convention-precedence detection, ADR-012 E1) against
       both target artifacts: `index` mode on `documentation/decisions/INDEX.md`, `frontmatter`
-      mode on an existing sibling ADR file if one exists. Emit the new ADR's frontmatter and its
+      mode on an existing sibling ADR file if one exists. Render the new ADR's frontmatter and its
       `documentation/decisions/INDEX.md` row in the detected schema per
       `doc-governance.md` § Repo Convention Precedence's three-outcome contract; on
-      `schema=ambiguous` for either artifact, emit in blackhole's own schema and include a
+      `schema=ambiguous` for either artifact, render in blackhole's own schema and include a
       `V-INT-01` WARN finding (citing the offending `file:line`) in the same worker JSON return.
-      Then promote this design note into `documentation/decisions/ADR-{NNN}-{slug}.md` plus the
-      `documentation/decisions/INDEX.md` row, per the `artifact-contract.md` delivery mechanism
-      (ADR-010 D5): commit the ADR inside the issue's own PR — no orchestrator file write, no
-      draft/final flip, merge is the approval. Return `status: "ready"` in the worker JSON with
-      `track: "design"` — the `ready`/`blocked` worker-JSON contract shape itself is unchanged;
-      `V-INT-01` rides in the existing `findings` array, no new required field.
+      Then, when `docs_governance.enabled` and `docs_governance.write_governance` both resolve
+      present and `true` (absent or `false` on either ⇒ skip staging entirely — write nothing,
+      append no manifest entry), stage the rendered ADR body at
+      `.blackhole/staged/<issue>/ADR-{NNN}-{slug}.md` and the INDEX row fragment at
+      `.blackhole/staged/<issue>/decisions-index-row.md`, via Bash heredoc + atomic `mv`, at the
+      absolute repo-root staging directory the orchestrator passes at spawn time
+      (`blackhole-state.md` § Staging (ADR-021 D1)). Append both entries to
+      `.blackhole/staged/<issue>/manifest.json` per that section's schema. This is staging, not a
+      commit inside the issue's own PR — no branch exists yet at Phase 2 (ADR-021 D1); the
+      implementer's carry-step (#467, not implemented here) is what later copies the staged files
+      into `documentation/` and commits them. No orchestrator file write, no draft/final flip.
+      Return `status: "ready"` in the worker JSON with `track: "design"` — the `ready`/`blocked`
+      worker-JSON contract shape itself is unchanged; `V-INT-01` rides in the existing `findings`
+      array, no new required field.
 
       **Cross-Cutting Heuristic (ADR-012 E3, Trigger A)**: in the **same PR/commit** as the ADR
       + INDEX row above, apply this 3-question test to the ADR's Decision section:
@@ -323,14 +331,19 @@ The artifact consolidates 8 ordered subsections:
       on-disk `.blackhole/plans/issue-N-design.md` **verbatim**: no re-analysis, no
       re-invocation of `design-aggregate.ts`, no blind-critic re-spawn. Run
       `scripts/detect-doc-schema.sh` exactly as the `ready` branch above (same
-      repo-convention-precedence detection, ADR-012 E1) and emit
+      repo-convention-precedence detection, ADR-012 E1) and render
       `documentation/decisions/ADR-{NNN}-{slug}.md` plus the matching
-      `documentation/decisions/INDEX.md` row in the detected schema. Both committed inside the
-      issue's own PR — no orchestrator file write (orchestrator is `disallowedTools: [Write,
-      Edit, Delete]`), no draft/final flip; merge is the approval (`artifact-contract.md` §
-      Delivery mechanism, ADR-010 D5). Return `status: "ready"`, `track: "design"` in the
-      worker JSON — identical shape to the `ready` branch above, so no downstream consumer
-      needs a new case.
+      `documentation/decisions/INDEX.md` row in the detected schema. When `docs_governance.enabled`
+      and `docs_governance.write_governance` both resolve present and `true` (absent or `false` on
+      either ⇒ skip staging entirely — write nothing, append no manifest entry), stage both at
+      `.blackhole/staged/<issue>/ADR-{NNN}-{slug}.md` and
+      `.blackhole/staged/<issue>/decisions-index-row.md` via the same Bash heredoc + atomic `mv`
+      write and manifest append as the `ready` branch above — no orchestrator file write
+      (orchestrator is `disallowedTools: [Write, Edit, Delete]`), no draft/final flip. This is
+      staging, not a commit inside the issue's own PR — no branch exists yet at Phase 2 (ADR-021
+      D1); the implementer's carry-step (#467, not implemented here) commits the staged files once
+      the PR branch exists. Return `status: "ready"`, `track: "design"` in the worker JSON —
+      identical shape to the `ready` branch above, so no downstream consumer needs a new case.
 
 ### 5. Brainstorm Track (ADR-010 D3)
 
