@@ -4,7 +4,7 @@ status: current
 review_trigger: "on new ruling"
 created: 2026-08-06
 last_updated: 2026-08-06
-rulings_revision: 3
+rulings_revision: 4
 ---
 
 # Product Principles: blackhole
@@ -83,3 +83,41 @@ rulings_revision: 3
 - **Related**: issue #440; `documentation/audits/documentation-framework-alignment.md` §10.1;
   `src/references/config-template.md` `merge_mode` contract note; `src/agents/coordinator.md` §
   Bootstrap preflight condition 4; issues #439, #447
+
+## Ruling: decision-gates-carry-an-executive-summary
+
+- **Id**: R-003
+- **Status**: active
+- **Date**: 2026-08-06
+- **Source**: chat (campaign session, at the #476 split gate)
+- **Verbatim**: > "on this case, we should have more information about what is going on, more information to help the user to decide the right choice for him. right now, i was having only the number of issue, the way that the confidence was low ... we need like executive summary of what is going on + ask question about option possible to make the user having all to decide properly"
+- **Interpretation**: a user-facing decision gate must carry the reasoning, not a pointer to it.
+  Every `AskQuestion` posed to the owner is preceded by an executive summary stating **what** the
+  subject is in substance (not by identifier), **why** a gate fired, the **evidence**
+  (`file:line` or named mechanism), and the **per-option consequence** — including the strongest
+  case for the option not recommended. An issue number, a V-code, and a confidence score are
+  labels for context the owner does not have loaded; transferring the label without the reasoning
+  produces a question the owner cannot evaluate and can only rubber-stamp.
+
+  Confidence-gate-triggered questions carry an additional obligation: state that the flag was
+  resolved by a **threshold rule**, not by a judgment that the cautious default is correct. The
+  owner needs to know they are overriding a heuristic, not a conclusion.
+
+  This ruling binds gate **content**, not gate **placement** — which conditions fire a gate is
+  untouched. It is the asking-path complement of issue #456's non-asking-path gap (a
+  reformulation never posted as the async veto surface); both are failures of the single contract
+  that the owner can see what the agent understood.
+- **Surfaces**: `src/references/clarify-gates.md`; `src/references/confidence-gates.md`;
+  `src/agents/coordinator.md`; any skill or reference specifying an `AskQuestion` interaction
+- **Keywords**: `AskQuestion`, clarify gate, split sign-off, plan approval, design approval,
+  UI interpretation gate, merge escalation, review-iteration escalation, cautious default
+- **Related**: issue #483 (implements this ruling); issue #456 (complement — reformulation never
+  posted on the proceed path); `src/references/clarify-gates.md`;
+  `src/references/confidence-gates.md`; routing decision R-00010 (the #476 split gate that
+  triggered the ruling)
+
+## Applied dispositions (R-003)
+
+| Date | Conflict | Disposition |
+|------|----------|-------------|
+| 2026-08-06 | The #476 split gate presented issue number + `confidence.split 62 < 70` with no summary of what #476 was, why the gate fired, or what each option cost | **accepted** — owner chose the split anyway, but on the recommendation rather than on the evidence. Re-presented immediately afterward with the full picture and an explicit offer to reverse; ruling filed as #483 so the gate contract is fixed in the product, not just in this session's conduct |
