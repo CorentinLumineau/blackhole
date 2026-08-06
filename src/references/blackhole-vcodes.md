@@ -74,6 +74,8 @@ longer definitions (token cost, drift). Persist every finding to
 | V-AUTO-02 | Thinking-route artifact missing from PR when the route fired | WARN |
 | V-VIS-01 | UI-affecting diff with display_targets configured but no visual_evidence declared — silent skip | BLOCK |
 | V-VIS-02 | visual_evidence[] present with a declared capture_status: unavailable entry — non-blocking, never silent | WARN |
+| V-HOOK-01 | PreToolUse hook denied a destructive/unsafe Bash or Write/Edit call; the `.blackhole/hook-events/` record must be ingested into findings-ledger.json before the issue advances past implement | BLOCK |
+| V-HOOK-02 | PreToolUse hook flagged a risky-but-allowed call for review — sensitive-file write, force push, registry publish, destructive SQL | WARN |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.

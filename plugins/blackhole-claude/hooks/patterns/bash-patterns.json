@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "_note": "Destructive-command patterns for the Bash PreToolUse gate (#447). Data, not code: adding a pattern is a JSON edit, never a source change (OCP). Every `pattern` is a JS RegExp source string compiled with `flags`; both are validated at `bun run scripts/verify.ts` time by scripts/checks/hooks.check.ts. blockPatterns deny the call (exit 2); warnPatterns allow it and record it.",
+  "blockPatterns": [
+    {
+      "id": "rm-rf-root",
+      "pattern": "\\brm\\s+(-rf|-fr|--recursive)\\s+/(?!\\S*/)",
+      "flags": "i",
+      "reason": "Recursive delete targeting the root filesystem"
+    },
+    {
+      "id": "rm-rf-home",
+      "pattern": "\\brm\\s+(-rf|-fr|--recursive)\\s+~/?(\\s|$)",
+      "flags": "i",
+      "reason": "Recursive delete targeting the home directory"
+    },
+    {
+      "id": "rm-no-preserve-root",
+      "pattern": "\\brm\\s[^|;&]*--no-preserve-root",
+      "flags": "i",
+      "reason": "Delete with the root-filesystem guard explicitly disabled"
+    },
+    {
+      "id": "disk-device-write",
+      "pattern": ">\\s*/dev/(sd[a-z]|hd[a-z]|nvme\\d|vd[a-z])",
+      "flags": "i",
+      "reason": "Redirect writes directly to a raw disk device"
+    },
+    {
+      "id": "mkfs",
+      "pattern": "\\bmkfs(\\.[a-z0-9]+)?\\s",
+      "flags": "i",
+      "reason": "Filesystem format operation"
+    },
+    {
+      "id": "dd-to-device",
+      "pattern": "\\bdd\\s[^|;&]*\\bof=/dev/",
+      "flags": "i",
+      "reason": "Raw block-device write via dd"
+    },
+    {
+      "id": "curl-pipe-shell",
+      "pattern": "\\bcurl\\b[^|]*\\|\\s*(sudo\\s+)?(ba|z|k|da)?sh\\b",
+      "flags": "i",
+      "reason": "Piped remote execution (curl | sh)"
+    },
+    {
+      "id": "wget-pipe-shell",
+      "pattern": "\\bwget\\b[^|]*\\|\\s*(sudo\\s+)?(ba|z|k|da)?sh\\b",
+      "flags": "i",
+      "reason": "Piped remote execution (wget | sh)"
+    },
+    {
+      "id": "fork-bomb",
+      "pattern": ":\\(\\)\\s*\\{\\s*:\\s*\\|\\s*:\\s*&\\s*\\}\\s*;\\s*:",
+      "flags": "",
+      "reason": "Fork bomb"
+    },
+    {
+      "id": "chmod-777-root",
+      "pattern": "\\bchmod\\s+(-R\\s+)?0?777\\s+/(?!\\S*/)",
+      "flags": "i",
+      "reason": "World-writable permissions on a system path"
+    }
+  ],
+  "warnPatterns": [
+    {
+      "id": "git-push-force",
+      "pattern": "\\bgit\\s+push\\b[^|;&]*\\s(--force\\b|-f\\b|--force-with-lease\\b)",
+      "flags": "i",
+      "reason": "Force push can overwrite remote history"
+    },
+    {
+      "id": "git-reset-hard",
+      "pattern": "\\bgit\\s+reset\\s+--hard\\b",
+      "flags": "i",
+      "reason": "Hard reset discards uncommitted changes"
+    },
+    {
+      "id": "git-clean-force",
+      "pattern": "\\bgit\\s+clean\\s+-[a-z]*(fd|df)",
+      "flags": "i",
+      "reason": "git clean removes untracked files irrecoverably"
+    },
+    {
+      "id": "npm-publish",
+      "pattern": "\\bnpm\\s+publish\\b",
+      "flags": "i",
+      "reason": "Publishes to a package registry"
+    },
+    {
+      "id": "docker-prune",
+      "pattern": "\\bdocker\\s+(system|volume|image)\\s+prune\\b",
+      "flags": "i",
+      "reason": "Docker prune removes unreferenced local state"
+    },
+    {
+      "id": "sql-drop",
+      "pattern": "\\bdrop\\s+(database|table|schema)\\b",
+      "flags": "i",
+      "reason": "SQL drop operation"
+    },
+    {
+      "id": "sql-truncate",
+      "pattern": "\\btruncate\\s+table\\b",
+      "flags": "i",
+      "reason": "SQL truncate operation"
+    },
+    {
+      "id": "secret-literal",
+      "pattern": "\\b(password|passwd|api[_-]?key|secret|token)\\s*=\\s*['\"][^'\"]{4,}['\"]",
+      "flags": "i",
+      "reason": "Command line appears to carry a literal credential"
+    }
+  ]
+}
