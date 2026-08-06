@@ -11,8 +11,9 @@ import { compileCodexTree, compileGeminiTree, writeGeminiManifest } from './buil
 import { root } from './build/paths.ts';
 import { makeTempDir } from './fs.ts';
 
-// ADR-007 R6 — shared bun:test fixture kit for distribution-tree population and temp-dir lifecycle.
-// Delegates to lib/build compile/manifest functions; never reimplements makeTempDir (V-INT-02).
+// ADR-007 R6 — shared bun:test fixture kit: distribution-tree population, temp-dir lifecycle, and
+// (since #447) the PreToolUse hook subprocess harness. Delegates to lib/build compile/manifest
+// functions; never reimplements makeTempDir (V-INT-02).
 
 export const withTempDir = <T>(prefix: string, fn: (dir: string) => T): T => {
   const dir = makeTempDir(prefix);
