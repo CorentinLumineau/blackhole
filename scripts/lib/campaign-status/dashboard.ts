@@ -143,7 +143,10 @@ const enabledLabel = (v: boolean | undefined, dflt: boolean): string =>
 
 /**
  * Human-readable summary of the campaign-shaping config fields, for the routine-resume
- * confirmation gate (coordinator.md § Bootstrap preflight). Defaults mirror config-template.md.
+ * confirmation gate (coordinator.md § Bootstrap preflight). Defaults mirror config-template.md,
+ * with one deliberate exception: `merge_mode` has no default (ruling R-002,
+ * `documentation/reference/product-principles.md`) — an absent value renders as an explicit
+ * unset sentinel rather than silently falling back to `"immediate"`.
  * Deliberately NOT folded into formatDashboard(): `bun run status` runs on every orchestrator
  * turn, and this belongs at launch confirmation only.
  */
@@ -154,7 +157,7 @@ export function renderConfigSummary(config: ConfigSummaryInput): string {
     '## Campaign configuration',
     '',
     `**Scope:** ${formatScopeLabel(readScope(config))}`,
-    `**Merge mode:** ${config.merge_mode ?? 'immediate'}`,
+    `**Merge mode:** ${config.merge_mode ?? 'unset (bootstrap-blocking)'}`,
     `**Parallel max:** ${config.parallel_max ?? 4}`,
     `**Kaizen:** ${enabledLabel(kz, false)}`,
     `**Docs governance:** ${enabledLabel(config.docs_governance?.enabled, true)}`,

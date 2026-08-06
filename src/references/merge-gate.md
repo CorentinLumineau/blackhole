@@ -91,8 +91,8 @@ for the predecessor-closed deadlock class. All entries must resolve; an empty
 
 ### Condition 3 — gated-batch sibling wait
 
-Only evaluated when `config.json.merge_mode == "gated-batch"` (default
-`"immediate"` skips this condition entirely — the loop above never enters the
+Only evaluated when `config.json.merge_mode == "gated-batch"` (`"immediate"`
+skips this condition entirely — the loop above never enters the
 `if` body, so immediate-mode campaigns pay zero extra cost). "Siblings" means
 every `queue.json` issue matching the campaign's configured scope
 (`scope_milestone` / `scope_labels`) **and** not already `closed` or `merged`,
