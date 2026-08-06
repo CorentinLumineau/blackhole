@@ -25,7 +25,6 @@ Committed template: `.blackhole/config.json`
   "autonomy": { "confidence_threshold": 80, "design_dominance_delta": 30, "design_autonomy": true, "analyze_routing": true, "brainstorm_routing": false, "never_bypass": ["destructive", "credentials", "epic-go-no-go"] },
   "worker_model_policy": "cost-optimized",
   "entry_mode": "multitask",
-  "merge_mode": "immediate",
   "display_targets": []
 }
 ```
@@ -72,7 +71,7 @@ Committed template: `.blackhole/config.json`
 | `autonomy.never_bypass` | no | Array of categorical triggers that always force human escalation regardless of confidence score (default `["destructive", "credentials", "epic-go-no-go"]`); see [confidence-gates.md](confidence-gates.md) |
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
-| `merge_mode` | no | `"immediate"` (default) \| `"gated-batch"` (ADR-005) \| `"leave-open"` (ADR-006); preserves current behavior exactly when absent/default — each PR merges as soon as it reaches LGTM. Adding `leave-open` is a pure additive enum value — `immediate`/`gated-batch` semantics are unchanged. `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one PR at a time in `merge_after` dependency order; see `merge-gate.md`. `leave-open`: blackhole never merges — every PR is driven to LGTM and left open for human review/merge; an LGTM'd open PR counts as *delivered* for campaign-complete purposes; `merged_by: blackhole` is never set for these issues; `fixed-in-pr` ledger rows stay `fixed-in-pr` until the human merge is later observed by a sync; see `phase-loop.md` § Merge protocol and `merge-gate.md` |
+| `merge_mode` | **yes at bootstrap** | `"immediate"` \| `"gated-batch"` (ADR-005) \| `"leave-open"` (ADR-006) — **no default** (ruling R-002, `documentation/reference/product-principles.md`): an absent or invalid value is a bootstrap-blocking condition, not a silent fallback; see the contract note below. `immediate`: each PR merges as soon as it reaches LGTM. `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one PR at a time in `merge_after` dependency order; see `merge-gate.md`. `leave-open`: blackhole never merges — every PR is driven to LGTM and left open for human review/merge; an LGTM'd open PR counts as *delivered* for campaign-complete purposes; `merged_by: blackhole` is never set for these issues; `fixed-in-pr` ledger rows stay `fixed-in-pr` until the human merge is later observed by a sync; see `phase-loop.md` § Merge protocol and `merge-gate.md` |
 | `display_targets` | no | Array of viewport widths in px (e.g. `[412, 700, 2560]`) to capture visual evidence at for UI-affecting PRs (ADR-018); absent or empty (default) ⇒ both the implementer's capture step and the reviewer's Visual Evidence Audit are no-ops |
 
 **`docs_governance` contract note**: when the block is absent, or
@@ -114,6 +113,17 @@ absent, or an individual sub-field is unset, that sub-field's own default applie
 ["destructive", "credentials", "epic-go-no-go"]`) — each sub-flag independently gates only its
 own feature's *dispatch* (design tier, analyze routing, brainstorm routing), never the kernel
 itself.
+
+**`merge_mode` contract note**: this is the one field that deliberately breaks the
+"absent block/field = current behavior preserved" pattern every contract note above follows —
+`merge_mode` has **no default** (ruling R-002, `documentation/reference/product-principles.md`).
+An absent or invalid value is a bootstrap-blocking condition: `coordinator.md` § Bootstrap
+preflight's trigger-condition list treats it as a fourth condition forcing the full campaign
+launch configuration gate, and `renderConfigSummary` (`scripts/lib/campaign-status/dashboard.ts`)
+renders an explicit `unset (bootstrap-blocking)` sentinel rather than silently reporting
+`"immediate"`. Once set, `immediate`/`gated-batch`/`leave-open` semantics are exactly as
+described in the field table row above — this note governs only what happens when the field is
+missing, not the three values' runtime behavior.
 
 **`display_targets` contract note**: when the array is absent or empty, the visual evidence
 gate (ADR-018) is a no-op end to end — the implementer's Visual Evidence Capture step never

@@ -465,7 +465,10 @@ describe('renderConfigSummary', () => {
     const out = renderConfigSummary({});
 
     expect(out).toContain('all open issues');
-    expect(out).toContain('**Merge mode:** immediate');
+    // merge_mode is the deliberate no-default exception (ruling R-002,
+    // documentation/reference/product-principles.md) — an absent value must render as an
+    // explicit unset sentinel, never silently fall back to "immediate".
+    expect(out).toContain('**Merge mode:** unset (bootstrap-blocking)');
     expect(out).toContain('**Parallel max:** 4');
     expect(out).toContain('**Kaizen:** disabled');
     expect(out).toContain('**Docs governance:** enabled');

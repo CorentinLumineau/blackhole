@@ -20,7 +20,7 @@ Binding: `.claude/skills/blackhole/references/coordinator-dashboard.md`.
 
 **Campaign launch configuration gate** (ADR-005 § Campaign Launch
 Configuration Gate, extended per ADR-006 § "Campaign launch form") — run
-steps 1-6 below whenever **any** of these three conditions hold, regardless
+steps 1-6 below whenever **any** of these four conditions hold, regardless
 of whether `.blackhole/config.json` already exists:
 
 1. **True first bootstrap** — `.blackhole/config.json` does not yet exist.
@@ -28,14 +28,20 @@ of whether `.blackhole/config.json` already exists:
    just asked "Start a new campaign?" and the user answered yes.
 3. **Explicit mid-campaign reconfigure** — the user asked, via Chat Feedback
    Intake Protocol item 5, to "reconfigure scope" or "change merge mode".
+4. **Missing or invalid `merge_mode`** — `.blackhole/config.json` exists but its
+   `merge_mode` field is absent, empty, or not one of `immediate` /
+   `gated-batch` / `leave-open`. `merge_mode` has no default (ruling R-002,
+   `documentation/reference/product-principles.md`): the highest-autonomy
+   posture must never be inherited silently, so an unset/invalid value forces
+   step 2 below rather than falling back to any value.
 
 **Skip steps 1-6 only on routine resume** — i.e., when `.blackhole/config.json`
-already exists AND none of the three conditions above hold (per
+already exists AND none of the four conditions above hold (per
 `config-template.md`'s "do not overwrite existing runtime config without user
 confirmation"). This carve-out is the ONLY skip condition — do not skip steps
 1-6, including step 2's gated-batch+unscoped Validation warning, merely
-because `config.json` exists; conditions 2 and 3 both fire precisely when it
-already does.
+because `config.json` exists; conditions 2, 3, and 4 all fire precisely when
+it already does.
 
 **Routine resume confirmation gate** — a skipped form is not a silent start.
 When steps 1-6 are skipped per the carve-out above **and** the mode being
@@ -74,7 +80,7 @@ The full 6-step form follows:
    pull in before confirming.
 
 2. Use `AskQuestion` to confirm **merge mode**:
-   - "Immediate — merge each PR as it reaches LGTM (default)"
+   - "Immediate — merge each PR as it reaches LGTM"
    - "Gated batch — wait for all in-scope PRs to reach LGTM, self-review, then merge in dependency order"
    - "Leave open — drive every PR to LGTM, never merge, leave for human review (new)"
 

@@ -19,7 +19,7 @@
 
 **Trigger, per `config.json.merge_mode`** (checklist line "LGTM AND
 `mergeEligible(issue)`? → merge PR"):
-- `"immediate"` (default): apply steps 0-5 below to each LGTM'd issue
+- `"immediate"`: apply steps 0-5 below to each LGTM'd issue
   individually, as encountered.
 - `"gated-batch"`: do **not** apply steps 0-5 issue-by-issue as encountered.
   Instead, once `merge-gate.md` § 1 Condition 3 is satisfied for the whole
