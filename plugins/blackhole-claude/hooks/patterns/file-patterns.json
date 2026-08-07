@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "_note": "Sensitive-path patterns for the Write|Edit PreToolUse gate (#447). Data, not code (OCP). `blockedSystemPaths` and `pathTraversal` deny the call (exit 2); `sensitiveFiles` allow it and record it — a coarse filename regex has real false-positive risk (.env.example), and stalling an unattended worker is worse than a recorded write. Canonical SSOT: issue #448's pre-`git add` staging check reads `sensitiveFiles` from this file rather than declaring a second list (V-INT-02).",
+  "blockedSystemPaths": [
+    { "id": "etc", "pattern": "^/etc/", "flags": "i", "reason": "System configuration directory" },
+    { "id": "usr", "pattern": "^/usr/", "flags": "i", "reason": "System binaries and libraries" },
+    { "id": "var", "pattern": "^/var/", "flags": "i", "reason": "System state directory" },
+    { "id": "root-home", "pattern": "^/root/", "flags": "i", "reason": "Root user home directory" },
+    { "id": "bin", "pattern": "^/s?bin/", "flags": "i", "reason": "System binaries" },
+    { "id": "boot", "pattern": "^/boot/", "flags": "i", "reason": "Boot loader files" },
+    { "id": "proc", "pattern": "^/proc/", "flags": "i", "reason": "Kernel process interface" },
+    { "id": "sys", "pattern": "^/sys/", "flags": "i", "reason": "Kernel sysfs interface" },
+    { "id": "windows", "pattern": "^[a-z]:\\\\Windows\\\\", "flags": "i", "reason": "Windows system directory" },
+    { "id": "program-files", "pattern": "^[a-z]:\\\\Program Files", "flags": "i", "reason": "Windows program directory" }
+  ],
+  "pathTraversal": [
+    { "id": "dotdot-slash", "pattern": "(^|/)\\.\\./", "flags": "", "reason": "Relative path traversal (../)" },
+    { "id": "dotdot-backslash", "pattern": "(^|\\\\)\\.\\.\\\\", "flags": "", "reason": "Relative path traversal (..\\)" }
+  ],
+  "sensitiveFiles": [
+    { "id": "env", "pattern": "(^|/)\\.env$", "flags": "i", "reason": "Environment file — may hold credentials" },
+    { "id": "env-suffixed", "pattern": "(^|/)\\.env\\.[^/]+$", "flags": "i", "reason": "Environment file variant — may hold credentials" },
+    { "id": "credentials-json", "pattern": "(^|/)credentials\\.json$", "flags": "i", "reason": "Credential store" },
+    { "id": "secrets-json", "pattern": "(^|/)secrets\\.json$", "flags": "i", "reason": "Secret store" },
+    { "id": "pem", "pattern": "\\.pem$", "flags": "i", "reason": "PEM-encoded key or certificate" },
+    { "id": "private-key", "pattern": "\\.key$", "flags": "i", "reason": "Private key material" },
+    { "id": "certificate", "pattern": "\\.crt$", "flags": "i", "reason": "Certificate material" },
+    { "id": "id-rsa", "pattern": "(^|/)id_rsa", "flags": "i", "reason": "SSH private key" },
+    { "id": "id-ed25519", "pattern": "(^|/)id_ed25519", "flags": "i", "reason": "SSH private key" },
+    { "id": "ssh-dir", "pattern": "(^|/)\\.ssh/", "flags": "i", "reason": "SSH configuration and key directory" },
+    { "id": "aws-credentials", "pattern": "(^|/)\\.aws/credentials$", "flags": "i", "reason": "AWS credential file" },
+    { "id": "netrc", "pattern": "(^|/)\\.netrc$", "flags": "i", "reason": "Machine credential file" },
+    { "id": "npmrc", "pattern": "(^|/)\\.npmrc$", "flags": "i", "reason": "npm registry token file" },
+    { "id": "pypirc", "pattern": "(^|/)\\.pypirc$", "flags": "i", "reason": "PyPI registry token file" }
+  ]
+}

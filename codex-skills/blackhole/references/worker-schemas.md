@@ -119,6 +119,33 @@ test -f .blackhole/resume-request.json && jq -e '.target == "coordinator"' .blac
 
 Fixtures: [`fixtures/resume-signal/`](../../fixtures/resume-signal/). Implementation: [`scripts/campaign-resume-signal.ts`](../../scripts/campaign-resume-signal.ts).
 
+## PreToolUse hook events (`.blackhole/hook-events/`, #447)
+
+**Install:** shipped, never merged by hand — `bun run build` copies [`templates/hooks/pretooluse/`](../../templates/hooks/pretooluse/hooks.json) into `plugins/blackhole/hooks/`, `plugins/blackhole-claude/hooks/`, and (as a side effect of the shared `compileGeminiTree` call site) `.agents/build/hooks/`, so a marketplace install wires `PreToolUse` for `Bash` and `Write|Edit` with no consumer action. Each bundle reads pattern data from its own `hooks/patterns/`; the canonical SSOT — and the path every other install form resolves, since those vendor the repo source — is repo-root `templates/hooks/pretooluse/patterns/`. Deliberately literal, not `codex-skills`-relative: only these three roots receive the tree, so a per-target placeholder would render a path that does not exist on the other five generated copies of this file (root `references/`, `skills/blackhole/references/`, `.cursor/skills/blackhole/references/`, `.claude/skills/blackhole/references/`, `codex-skills/blackhole/references/`).
+
+**Behavior:** two tiers, because an unattended worker has nobody to ask. A **block** match (destructive command, system path, `../` traversal, write resolving outside the worktree) prints `{"hookSpecificOutput":{"permissionDecision":"deny", ...}}`, writes the reason to **stderr** (the field the harness's exit-2 blocking-error contract feeds back to the calling model), and exits `2`. A **warn** match (sensitive filename, force push, registry publish, destructive SQL) prints the same `hookSpecificOutput.permissionDecision: "allow"` shape plus a `systemMessage`, and exits `0`. No match: exit `0`, no output, no record. Patterns are data — adding one is a JSON edit, never a code change.
+
+**Failure split:** *fail-closed* on pattern-load failure — a validator that cannot parse its pattern data cannot tell safe from dangerous, so it denies. That is only safe to ship because `scripts/checks/hooks.check.ts` (`V-HOOKWIRE-01` / `V-HOOKPAT-01`) validates both pattern files at `bun run scripts/verify.ts` time. *Fail-open, per-check* on plumbing failure — outside a git context only the worktree-containment sub-check is skipped (stderr warning); the git-independent pattern checks still run.
+
+### `.blackhole/hook-events/<event-id>.json` schema
+
+One file per event, written by non-agent code into the **main clone** (resolved via `git rev-parse --git-common-dir`, so every linked worktree lands in one directory). Filenames are `<iso-ts>-<pid>-<rand>.json` — unique by construction, so concurrent worktrees never race; unlike `resume-request.json` no read-modify-write merge is needed at write time.
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `version` | `1` | yes |
+| `recorded_at` | ISO-8601 | yes |
+| `hook` | `validate-bash-command` \| `validate-file-changes` | yes |
+| `tool` | `Bash` \| `Write` \| `Edit` | yes |
+| `decision` | `deny` \| `allow` | yes |
+| `tier` | `block` \| `warn` | yes |
+| `pattern_id` | matched entry's `id`, or `outside-worktree` \| `pattern-load-failure` \| `hook-input-parse-failure` | yes |
+| `reason` | human-readable refusal/flag text | yes |
+| `worktree` | absolute worktree root of the calling process, or `null` | yes |
+| `detail` | matched command or file path — credential literals masked, ≤300 chars | yes |
+
+**Orchestrator consumption:** Triage step 1b ([`orchestrator-runtime.md`](orchestrator-runtime.md) § Triage) globs the directory before validating worker return JSON, resolves `issue_ref` by matching `worktree` against `queue.json`'s in-flight worktree paths, appends a `V-HOOK-01` (block) or `V-HOOK-02` (warn) row with `phase: "implement"` through the ledger's existing write protocol, then deletes the ingested file. Written from outside the agent process, a refusal the worker never mentions in its own return JSON is still on the record — that defeats an uncooperative worker's *silence*, not its filesystem access: a worker with Bash access to the main clone could still delete or overwrite its own event file before Triage ingests it. Globbing before validating the return JSON narrows that window; it does not close it.
+
 ## Planner (`planner`)
 
 ```json
