@@ -1,4 +1,5 @@
 ---
+type: adr
 status: accepted
 scope: orchestration
 supersedes: partial (amends ADR-004 route{} and planner Design Track §4.8; supersedes clarify-gates.md as escalation *mechanism*)

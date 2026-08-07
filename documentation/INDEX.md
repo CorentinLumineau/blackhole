@@ -1,0 +1,35 @@
+# Documentation Index
+
+| path | summary | type | status | review_trigger |
+|------|---------|------|--------|----------------|
+| architecture.md | Architecture entry point pointing to the durable ARCHITECTURE.md narrative | reference | current | on build target change |
+| architecture/adaptive-routing.md | Adaptive phase routing architecture — router-agent flag contract and re-route checkpoints | architecture | current | on ADR-004 amendment |
+| architecture/retrospective-blackhole.md | Architectural retrospective of blackhole against SOLID and coupling taxonomy | retrospective | draft | on major version release |
+| audits/analysis-blackhole-adaptive-phase-routing.md | Comparative analysis of blackhole's fixed pipeline against mercure's x-auto router | analysis | draft | on ADR acceptance |
+| audits/analysis-blackhole-mercure-synergy.md | Synergy analysis identifying mercure parity gaps blackhole should close | analysis | draft | on ADR acceptance |
+| audits/analysis-blackhole-routing-reuse-visibility.md | Routing visibility and Reuse Check gate analysis feeding ADR-008 | analysis | draft | on ADR acceptance |
+| audits/analysis-ci-pipeline.md | CI pipeline analysis for the blackhole build and verify toolchain | analysis | draft | on ADR acceptance |
+| audits/architecture-coherence.md | Architecture coherence audit across agents, skills, and reference files | analysis | current | on release |
+| audits/autonomous-workflow-parity.md | Autonomous workflow parity audit against mercure's thinking-route coverage | analysis | draft | on ADR acceptance |
+| audits/build-tree-install-resolution.md | Build-tree install resolution audit for the multi-target build pipeline | analysis | current | on release |
+| audits/documentation-framework-alignment.md | Documentation-framework alignment audit that identified the gaps this issue closes | analysis | draft | on mercure release |
+| audits/mercure-companion-files-gap-analysis.md | Gap analysis of mercure companion-file (V-ADA) protocol coverage in blackhole | analysis | current | on protocol change |
+| audits/mercure-parity-matrix.md | Mechanism-by-mechanism parity matrix between mercure and blackhole | reference | current | on release |
+| audits/mercure-parity-surface.md | Survey of the mercure surface blackhole parity work targets | research | current | on ADR acceptance |
+| audits/mercure-sync.md | Mercure sync audit tracking upstream skill/agent drift | analysis | current | on mercure release |
+| audits/platform-build-verification.md | Platform build verification audit for generated distribution targets | audit | current | on release |
+| brainstorms/implement-side-quality-parity.md | Early exploration of implement-side quality parity with mercure, superseded by later ADRs | brainstorm | deprecated | on ADR acceptance |
+| brainstorms/mercure-parity-program.md | Brainstorm scoping the multi-milestone mercure parity program | brainstorm | current | on ADR acceptance |
+| plans/adr-004-adaptive-routing-campaign.md | Implementation campaign plan for ADR-004 adaptive phase routing | plan | current | on ADR acceptance |
+| plans/adr-006-kaizen-hunt-campaign.md | Implementation campaign plan for ADR-006 kaizen hunt | plan | current | on ADR acceptance |
+| plans/plan-adr-007-drift-proof-toolchain-reseating.md | Implementation plan for ADR-007's drift-proof toolchain re-seating blueprint | plan | current | on ADR acceptance |
+| plans/plan-campaign-config-confirmation-gate.md | Plan for the campaign config confirmation gate at bootstrap preflight | plan | current | on ADR acceptance or Bootstrap preflight change |
+| plans/plan-pr-merge-gate-dependency-ordering.md | Implementation plan for ADR-005's PR merge-gate and dependency ordering | plan | current | on file change |
+| plans/plan-routing-visibility-reuse-gate.md | Implementation plan for dashboard routing visibility and the implementer Reuse Check gate | plan | current | on ADR acceptance |
+| plans/story-driven-conformance.md | Plan for story-driven conformance across the campaign's issue lifecycle | plan | current | on ADR acceptance or kaizen hunt-kind change |
+| reference/check-utils-blast-radius.md | Blast-radius reference for shared check-utils.ts consumers across scripts/checks | reference | current | on check-utils.ts or scripts/checks/*.check.ts import change |
+| reference/decision-log.md | Running decision log of Hard Choice / Bugfix / Refactoring decision records | reference | current | on file change |
+| reference/product-principles.md | Owner-rulings ledger of durable product preferences binding on future diffs | reference | current | on new ruling |
+| reviews/release-v0.13.1-to-head-audit.md | Release audit covering all changes from v0.13.1 to HEAD | review | current | on release |
+| reviews/review-campaign-config-confirmation-gate.md | Review of the campaign config confirmation gate implementation | review | current | on ADR-015 change |
+| reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |

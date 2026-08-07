@@ -4,6 +4,7 @@ skill: x-analyze
 created: 2026-07-22
 target: "blackhole ↔ mercure autonomous-parity synergy"
 status: draft
+review_trigger: "on ADR acceptance"
 related:
   - documentation/decisions/ADR-010-autonomous-thinking-routes.md
   - documentation/decisions/ADR-012-shared-artifact-substrate.md

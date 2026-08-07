@@ -1,4 +1,5 @@
 ---
+type: adr
 tracking_initiative: none
 status: accepted
 scope: orchestration
