@@ -34,9 +34,10 @@ const { execFileSync } = require('child_process');
  *  - KV form (`KEY=value` / `KEY: value`): the keyword may be a whole SCREAMING_SNAKE_CASE
  *    identifier segment (`GITHUB_TOKEN`, `AWS_SECRET_ACCESS_KEY`, `MY_API_KEY`) — a plain `\b`
  *    boundary in front of the keyword misses these, since `_` is a word character and `\b` never
- *    fires between two word characters. The lookbehind below treats `_`/digit/start as a valid
- *    boundary instead, and optional underscore-joined segments on both sides absorb the rest of
- *    the identifier so the whole name (not just the matched keyword) is preserved in the output.
+ *    fires between two word characters. The leading lazy non-capturing group folded into capture
+ *    group 1 below absorbs any underscore-joined prefix segments instead, and the trailing
+ *    underscore-joined group does the same after the keyword, so the whole name (not just the
+ *    matched keyword) is preserved in the output.
  *  - Space form (`--token xyz`, `Bearer xyz`): no `=`/`:` joins the keyword to its value at all.
  */
 const SECRET_KV =

@@ -4,13 +4,13 @@
   "blockPatterns": [
     {
       "id": "rm-rf-root",
-      "pattern": "\\brm\\s+(?=[^|;&\\n]*(?:-[a-zA-Z]*r[a-zA-Z]*\\b|--recursive\\b))[^|;&\\n]*\\s[\"']?(/{1,2}|/\\.|/\\*)[\"']?(?=[\\s;&|'\"]|$)",
+      "pattern": "\\brm\\s+(?=[^|;&\\n]*(?:-[a-zA-Z]*r[a-zA-Z]*\\b|--recursive\\b))[^|;&\\n]*\\s[\"']?(/{1,2}|/\\.|/\\*)[\"']?(?=[\\s;&|'\")`]|$)",
       "flags": "i",
       "reason": "Recursive delete targeting the root filesystem"
     },
     {
       "id": "rm-rf-home",
-      "pattern": "\\brm\\s+(?=[^|;&\\n]*(?:-[a-zA-Z]*r[a-zA-Z]*\\b|--recursive\\b))[^|;&\\n]*\\s[\"']?(~/?|\\$HOME/?|\\$\\{HOME\\}/?)[\"']?(?=[\\s;&|'\"]|$)",
+      "pattern": "\\brm\\s+(?=[^|;&\\n]*(?:-[a-zA-Z]*r[a-zA-Z]*\\b|--recursive\\b))[^|;&\\n]*\\s[\"']?(~/?|\\$HOME/?|\\$\\{HOME\\}/?)[\"']?(?=[\\s;&|'\")`]|$)",
       "flags": "i",
       "reason": "Recursive delete targeting the home directory"
     },
@@ -58,7 +58,7 @@
     },
     {
       "id": "chmod-777-root",
-      "pattern": "\\bchmod\\s+((-R|--recursive)\\s+)?(0?777|a[+=]rwx|ugo[+=]rwx)\\s+[\"']?(/{1,2}|/\\.)[\"']?(?=[\\s;&|'\"]|$)",
+      "pattern": "\\bchmod\\s+((-R|--recursive)\\s+)?(0?777|a[+=]rwx|ugo[+=]rwx)\\s+[\"']?(/{1,2}|/\\.)[\"']?(?=[\\s;&|'\")`]|$)",
       "flags": "i",
       "reason": "World-writable permissions on a system path"
     }
