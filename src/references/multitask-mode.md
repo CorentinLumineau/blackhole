@@ -56,7 +56,9 @@ Spawn prompt text, model policy, and mis-spawn hazard detail: `campaign-prompt.m
 
 - Implement features, review PRs, or merge
 - Resume orchestrator on every worker completion — on Cursor, neither the coordinator nor the orchestrator receives per-worker idle notifications after ending a turn; the **orchestrator** must barrier-wait for its own background worker batch **in-turn** before turn-end
-- Use `interrupt: true` except user "stop now" or safety-critical policy
+- Use `interrupt: true` except the explicit `stop --abandon` tier or safety-critical policy — see
+  `phase-stop.md`. A bare `stop` (drain, default) is relayed as a normal resume message
+  (`interrupt: false`), never a hard kill.
 - Spawn a second orchestrator while first is live
 - Re-paste full campaign-prompt on routine resume — only user message
 - Spawn the orchestrator via built-in `subagent_type` enums — see mis-spawn hazard in `campaign-prompt.md` § Coordinator usage

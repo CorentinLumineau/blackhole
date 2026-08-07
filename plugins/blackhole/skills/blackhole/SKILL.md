@@ -32,6 +32,8 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 | `implement #N` | `implement #N` | Orchestrator — phase 3 only |
 | `review #N` | `review #N` | Orchestrator — phase 4 only |
 | `hunt [kind]` | `hunt`, `hunt <kind>` | Orchestrator — manual kaizen wave (`kaizen.trigger: manual`, or any time regardless of trigger) |
+| `stop` (drain, default) | `stop`, `pause`, `drain the campaign` | Orchestrator (foreground, Pattern C/A) or Coordinator relay → orchestrator (Pattern B) — see `phase-stop.md` |
+| `stop --abandon` | `stop --abandon`, `abandon`, `kill`, `abort`, `force stop` | Orchestrator/Coordinator, explicit opt-in only — see `phase-stop.md` |
 | `campaign-audit` | `audit`, `campaign audit` | Read-only protocol conformance check |
 
 ## Phase 0: Bootstrap (ALL modes)
@@ -129,6 +131,7 @@ Read-only conformance check (`campaign-audit`):
 | F-DRIFT-01 | declaration vs independent-scan conformance — see `build.ts` § facts |
 | F-DOCS-01 | Companion files present (`ARCHITECTURE.md`, `AGENTS.md`) / `documentation/decisions/INDEX.md` current on consumer repo — a row in either schema `scripts/detect-doc-schema.sh` detects (mercure or blackhole) counts as current (read-only, report only) |
 | F-HUNT-01 | Kaizen hunt conformance (read-only, report only): (a) `hunt_state` watermark internally consistent — each kind key exists in `kaizen.kinds`, `waves <= kaizen.max_waves`, `exhausted` forced `true` once `waves` or `dry_waves` hits its stop threshold; (b) sample hunt-origin filed issues (ledger `phase: hunt` rows with `deferred_to_issue` set) — re-read the cited `file:line` against the issue's Verbatim-code excerpt, flag drift as STALE-since-filing (does not roll back); (c) cumulative filed-issue count per kind does not exceed `waves(kind) * kaizen.max_issues_per_wave` (upper-bound cap sanity check) |
+| F-STOP-01 | `queue.json` contains no `in-flight` entry naming a worker outside the currently-running set (`scripts/checks/stop-mode.check.ts`'s `assertNoOrphanedInFlight` — a pure invariant unit-tested in `scripts/verify.stop-mode.test.ts`; the guarantee is satisfied by construction via the drain/abandon procedures in `phase-stop.md`, not scanned by `bun run verify`) |
 
 Do not modify code during audit — report only.
 

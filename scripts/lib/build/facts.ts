@@ -17,9 +17,12 @@ export const AGENT_YAML_FILES = new Set(AGENT_NAMES.map((n) => `${n}.yaml`));
 /** Exact phase strings used in `queue.json` `issues.*.phase` (V-PHASE-01). */
 export const PHASE_NAMES = ['handle', 'plan', 'implement', 'review', 'done'] as const;
 
-/** The 5 phase-playbook files under `src/references/` — note the terminal `done` phase loops
- *  back via `phase-loop.md`, it has no dedicated `phase-done.md` file (V-PHASE-01/V-GROUND-01). */
-export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-implement.md', 'phase-review.md', 'phase-loop.md'];
+/** The `src/references/phase-*.md` roster — the 5 five-phase-lifecycle playbooks (note the
+ *  terminal `done` phase loops back via `phase-loop.md`, it has no dedicated `phase-done.md`
+ *  file) plus `phase-stop.md`, the campaign control-surface `stop` mode playbook (issue #478) —
+ *  not a lifecycle phase, but it shares the `phase-*.md` filename prefix and directory, so
+ *  `V-GROUND-01`'s independent filesystem scan requires it declared here too (V-PHASE-01/V-GROUND-01). */
+export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-implement.md', 'phase-review.md', 'phase-loop.md', 'phase-stop.md'];
 
 /** References every phase playbook assumes exist under `src/references/` (V-GROUND-01). */
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
@@ -111,4 +114,4 @@ export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
  * array. `verify.ts` warns (does not fail) on a mismatch, so this is the sole place the
  * expectation is declared — never restate it as a literal at any consumption site.
  */
-export const EXPECTED_CHECK_COUNT = 38;
+export const EXPECTED_CHECK_COUNT = 39;

@@ -76,6 +76,12 @@ See `plugins/blackhole-claude/skills/blackhole/references/orchestrator-runtime.m
 
 ---
 
+## Stop mode
+
+See `plugins/blackhole-claude/skills/blackhole/references/phase-stop.md`.
+
+---
+
 ## Decision Record Append (decision-log.md)
 
 Invoked as part of § Background worker barrier → Triage step 2's per-role ledger mutations, for the `implementer` role only — never a separate barrier phase.
