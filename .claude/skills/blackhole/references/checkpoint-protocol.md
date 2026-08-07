@@ -35,6 +35,8 @@ Path: `.blackhole/campaign-checkpoint.md`
 refreshed_at: 2026-07-05T00:00:00.000Z
 orchestrator_turn_id: 12
 last_completed_phase: review
+stopped_by: null
+stop_kind: null
 ---
 
 # Campaign Checkpoint
@@ -48,6 +50,9 @@ last_completed_phase: review
 ## In-flight workers
 
 - reviewer on #298 PR 42 (spawned turn 12, rulings_revision 7)
+- optional trailing tag, present only during/after a stop event (absent on a normal turn's
+  rows — non-breaking): reviewer on #298 PR 42 (spawned turn 12, rulings_revision 7)
+  `worker_state: killed`
 
 ## Ready set
 
@@ -93,6 +98,9 @@ inference per § Compaction recovery above) before continuing.
 | `last_completed_phase` | checkpoint frontmatter | Last phase fully completed for primary in-flight issue |
 | `review_iteration` | `queue.json` issues.* | Per-issue review loop counter |
 | `in_flight_workers` | checkpoint body | Active worker spawns for resume |
+| `stopped_by` | checkpoint frontmatter | Who requested the stop — `user` \| `null` (`phase-stop.md`) |
+| `stop_kind` | checkpoint frontmatter | `drained` \| `killed` \| `null` — which `phase-stop.md` tier ran (`flushed` is reserved for #479's future partial-flush tier — not a valid value of this field until leg B ships) |
+| `worker_state` | `## In-flight workers` row, stop-event-only | `drained` \| `killed` — tags a killed worker's row before removal (`phase-stop.md` § `--abandon` tier); absent on a normal turn's rows |
 
 ## Failed-Approaches Log
 

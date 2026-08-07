@@ -76,6 +76,12 @@ See `.agents/build/skills/blackhole/references/orchestrator-runtime.md` § Backg
 
 ---
 
+## Stop mode
+
+See `.agents/build/skills/blackhole/references/phase-stop.md`.
+
+---
+
 ## Decision Record Append (decision-log.md)
 
 Invoked as part of § Background worker barrier → Triage step 2's per-role ledger mutations, for the `implementer` role only — never a separate barrier phase.
