@@ -83,6 +83,14 @@ export const parseRootIndexRows = (content: string): RootIndexRow[] => {
   return rows;
 };
 
+// Idempotent row-append primitive (issue #490, ADR-021 D2 carry-step) — built on
+// parseRootIndexRows above (V-INT-02). Guards a duplicate row on implementer re-spawn.
+export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow): { content: string; appended: boolean } => {
+  if (parseRootIndexRows(indexContent).some((r) => r.path === row.path)) return { content: indexContent, appended: false };
+  const line = `| ${row.path} | ${row.summary} | ${row.type} | ${row.status} | ${row.reviewTrigger} |`;
+  return { content: `${indexContent}${indexContent.endsWith('\n') ? '' : '\n'}${line}\n`, appended: true };
+};
+
 // V-DOCHEALTH-01 (new, blocking): every INDEX.md row resolves to an existing file.
 export const findDanglingIndexRows = (indexPaths: string[], existingRelPaths: Set<string>): string[] =>
   indexPaths.filter((p) => !existingRelPaths.has(p));

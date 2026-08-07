@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+  appendIndexRowIfAbsent,
   evaluateIndexDangling,
   evaluateOrphanFiles,
   findDanglingIndexRows,
@@ -105,6 +106,82 @@ describe('parseRootIndexRows', () => {
       status: 'current',
       reviewTrigger: 'on release',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (b2) appendIndexRowIfAbsent — idempotent row-append primitive (issue #490, ADR-021 D2
+// carry-step). Built on parseRootIndexRows (V-INT-02) rather than re-parsing the table.
+// End-to-end coverage: a manifest fixture entry's staged row fragment is parsed via the same
+// parseRootIndexRows used for the target INDEX.md, then promoted through
+// appendIndexRowIfAbsent — not a unit test of the helper in isolation.
+// ---------------------------------------------------------------------------
+describe('appendIndexRowIfAbsent (ADR-021 D2 carry-step row-append)', () => {
+  const FRESH_INDEX = `# Doc Index
+
+| path | summary | type | status | review_trigger |
+|------|---------|------|--------|----------------|
+`;
+
+  const ROW = {
+    path: 'audits/foo.md',
+    summary: 'Foo audit',
+    type: 'audit',
+    status: 'current',
+    reviewTrigger: 'on file change',
+  };
+
+  test('appends a well-formed 5-column row to a fresh 0-row INDEX.md', () => {
+    const result = appendIndexRowIfAbsent(FRESH_INDEX, ROW);
+    expect(result.appended).toBe(true);
+
+    const rows = parseRootIndexRows(result.content);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(ROW);
+    // All 5 columns present and non-empty.
+    expect(rows[0].path).not.toBe('');
+    expect(rows[0].summary).not.toBe('');
+    expect(rows[0].type).not.toBe('');
+    expect(rows[0].status).not.toBe('');
+    expect(rows[0].reviewTrigger).not.toBe('');
+  });
+
+  test('idempotent — re-running the identical call on the first call output does not duplicate the row', () => {
+    const first = appendIndexRowIfAbsent(FRESH_INDEX, ROW);
+    expect(first.appended).toBe(true);
+    expect(parseRootIndexRows(first.content)).toHaveLength(1);
+
+    const second = appendIndexRowIfAbsent(first.content, ROW);
+    expect(second.appended).toBe(false);
+    expect(parseRootIndexRows(second.content)).toHaveLength(1);
+    // Content is byte-identical on the no-op second call — no accidental mutation.
+    expect(second.content).toBe(first.content);
+  });
+
+  test('end-to-end: a staged manifest append_row entry is parsed and promoted intact', () => {
+    // Fixture manifest entry, per blackhole-state.md § Staging (ADR-021 D1/D2) schema.
+    const manifestEntry = {
+      route: 'analyze',
+      sub_mode: 'analyze',
+      produced_by: 'investigator',
+      target_kind: 'append_row',
+      target_path: 'documentation/INDEX.md',
+    };
+    expect(manifestEntry.target_kind).toBe('append_row');
+    expect(manifestEntry.target_path).toBe('documentation/INDEX.md');
+
+    // The staged row fragment is a single-row table, parsed with the same parser used for the
+    // target file itself (V-INT-02) — never a bespoke ad-hoc split.
+    const stagedFragment = `| audits/analysis-issue-465.md | Comparative analysis of blast radius | analysis | current | on file change |\n`;
+    const stagedRows = parseRootIndexRows(stagedFragment);
+    expect(stagedRows).toHaveLength(1);
+
+    const promoted = appendIndexRowIfAbsent(FRESH_INDEX, stagedRows[0]);
+    expect(promoted.appended).toBe(true);
+
+    const finalRows = parseRootIndexRows(promoted.content);
+    expect(finalRows).toHaveLength(1);
+    expect(finalRows[0]).toEqual(stagedRows[0]);
   });
 });
 
