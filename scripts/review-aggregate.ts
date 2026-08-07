@@ -134,13 +134,15 @@ export function applyConfidenceGate(findings: Finding[]): Finding[] {
 
 /**
  * Excludes a prior finding from the collision set when the reviewer's
- * `recheck[]` names it `verdict: fixed` via the ledger `id` (Option 2,
- * issue #485) — the same "recognize a prior pass's artifact, don't
- * re-collide with it" idempotency pattern as `LOW_CONFIDENCE_CAVEAT_RE`
- * above, applied to a second signal. A `recheck` entry whose `finding_id`
- * matches no prior finding's `id` is fail-loud, not silently ignored
- * (Option 4 fallback): it is returned in `unresolved`, and the caller
- * forces `lgtm: false` when `unresolved` is non-empty.
+ * `recheck[]` names it `verdict: fixed` via the ledger `id` — the same
+ * "recognize a prior pass's artifact, don't re-collide with it" idempotency
+ * pattern as `LOW_CONFIDENCE_CAVEAT_RE` above, applied to a second signal.
+ * Exclusion happens before dedup and before the LGTM computation, so a
+ * recheck-fixed finding never collides with or suppresses a fresh one at the
+ * same file:line. A `recheck` entry whose `finding_id` matches no prior
+ * finding's `id` is fail-loud, not silently dropped: it is returned in
+ * `unresolved`, and the caller forces `lgtm: false` when `unresolved` is
+ * non-empty — an unresolvable linkage must escalate, never pass silently.
  */
 function resolveRecheckExclusions(
   prior: Finding[],
