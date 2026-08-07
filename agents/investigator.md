@@ -47,9 +47,9 @@ staging directory the orchestrator passes at spawn time (`blackhole-state.md` §
 D1)). Append the entry to `.blackhole/staged/<issue>/manifest.json` per that section's schema.
 When `docs_governance.enabled` or `docs_governance.write_governance` resolves absent or `false`,
 skip staging entirely — write nothing, append no manifest entry. This is staging, not a
-promotion commit — no branch exists at Phase 2 (ADR-021 D1); the implementer's carry-step (#467,
-not implemented here) copies the staged file into `documentation/` and commits it. Missing
-promotion is `V-AUTO-02`.
+promotion commit — no branch exists at Phase 2 (ADR-021 D1); the implementer's carry-step
+(`implementer.md` § Carry Staged Artifacts, ADR-021 D2) copies the staged file into
+`documentation/` and commits it. Missing promotion is `V-AUTO-02`.
 
 ## `research` sub-mode
 
@@ -87,9 +87,9 @@ directory the orchestrator passes at spawn time (`blackhole-state.md` § Staging
 Append the entry to `.blackhole/staged/<issue>/manifest.json` per that section's schema. When
 `docs_governance.enabled` or `docs_governance.write_governance` resolves absent or `false`, skip
 staging entirely — write nothing, append no manifest entry. This is staging, not a promotion
-commit — no branch exists at Phase 2 (ADR-021 D1); the implementer's carry-step (#467, not
-implemented here) copies the staged file into `documentation/` and commits it. Missing promotion
-is `V-AUTO-02`.
+commit — no branch exists at Phase 2 (ADR-021 D1); the implementer's carry-step
+(`implementer.md` § Carry Staged Artifacts, ADR-021 D2) copies the staged file into
+`documentation/` and commits it. Missing promotion is `V-AUTO-02`.
 
 ## Note schema
 

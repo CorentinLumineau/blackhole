@@ -58,7 +58,12 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
     *   **KISS (Keep It Simple)**: Prefer simple implementations. Do not add speculative abstractions or empty wrapper functions (`V-KISS-03`).
     *   **YAGNI (You Aren't Gonna Need It)**: Only build what is needed to close the issue; reject speculative features.
 6.  **Verify & Open PR**:
-    *   **Companion-doc sync (`V-DOCSYNC-01`)**: If this diff touches the
+    *   **Carry Staged Artifacts (`V-DOC-02/04`, ADR-021 D2)**: before opening the PR, run the
+        unconditional carry-step described in § Carry Staged Artifacts below — staged artifacts
+        for this issue are copied into their `documentation/` targets (frontmatter rewritten
+        where required) and committed inside this same PR, positioned before the commit/push
+        bullet below.
+    *   **Companion-doc sync (`V-DOC-02/04`)**: If this diff touches the
         public-API/schema/config surface (`reviewer.md` §1's `V-API-01`
         definition — public interfaces, configurations, or database schemas),
         update the docs describing that surface (API docs, ARCHITECTURE.md
@@ -80,9 +85,6 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
         § No-runner degradation) — do not invent a runner invocation; when no test runner is
         detected the gate degrades to a logged no-op (never a false pass, per § No-runner
         degradation), and the completion note must say plainly that no runner was found.
-    *   **Pre-staging sensitive-filename check (`V-SEC-11`, BLOCK)**: before this or any earlier
-        `git add` in the session, run the unconditional gate below — it must see every path
-        about to be staged.
     *   Commit, push, and open a PR with `Closes #N` or `Fixes #N` in the PR body (`V-GIT-01`).
     *   The PR body MUST also carry the **Reuse Check** entry produced by the Reuse Check Gate
         below — a required PR-body element alongside the issue linkage (`V-INT-02`).
@@ -226,49 +228,66 @@ directive, treat it as absent — behave exactly as `standard`.
 
 ---
 
-### Sensitive-Filename Staging Gate (unconditional, V-SEC-11)
+## Carry Staged Artifacts (unconditional, ADR-021 D2)
 
-Applies to **every** execution mode and plan track — no branch skips it. Runs immediately before
-every `git add` inside step 6, independent of and prior to `V-SEC-03`'s review-time content scan.
-A stray secret-shaped file created inside an approved Touch-Path is a filename problem, not a
-content problem — this gate catches it before the file ever reaches a diff, at which point the
-only remedy left is key rotation, not a fix commit.
+Referenced from step 6 "Verify & Open PR" above (same reference-not-restate pattern as the
+Companion-doc sync bullet). Promotes artifacts staged at thinking time
+(`planner`/`investigator`, `blackhole-state.md` § Staging, ADR-021 D1) into their
+`documentation/` targets, committed inside this issue's own PR.
 
-*   **Pattern source (single canonical location, `V-INT-02`/`V-DRY-01`)**: before the first `git
-    add` of the session, locate `file-patterns.json` by trying two candidate paths in order —
-    neither is a copy, both resolve to the one canonical file #447 ships:
-    1. `.claude/hooks/patterns/file-patterns.json` (resolves on `.claude`-marketplace and
-       Gemini-family installs, which receive the compiled `hooks/` tree).
-    2. `templates/hooks/pretooluse/patterns/file-patterns.json`, repo-root-relative (resolves on
-       any install that vendors blackhole's full source tree — including this repo's own
-       dogfooding install — since it is the hand-authored SSOT, always present there).
-    Read the file's `sensitiveFiles[]` array only (`blockedSystemPaths`/`pathTraversal` belong to
-    #447's own Bash/Write-Edit interception, not this check). Do not restate, paste, or re-derive
-    any pattern from that array anywhere in this file.
-*   **Match rule**: for every path about to be staged, test it against every entry in
-    `sensitiveFiles[]` by constructing `new RegExp(entry.pattern, entry.flags)` and testing the
-    candidate path — regex match against `pattern`+`flags`, not a glob match (the shared file is
-    JS-regex-source data, not glob strings). Any match: exclude that path from `git add` — never
-    `git add -A`/`git add .` blindly over an unfiltered file list.
-*   **Report, never silent** — every exclusion is reported both ways:
-    - **To the orchestrator**: one `new_findings[]` row — `vcode: "V-SEC-11"`, `severity:
-      "BLOCK"`, `file`: the excluded path, `summary`: matched pattern `id` + one-line context
-      (e.g. "matched pattern id `env-suffixed` — excluded from staging, not committed").
-    - **In the PR description**: one line per exclusion, `Sensitive-Filename Exclusion: <path>
-      (matched <pattern>) — not staged` — same PR-body-artifact convention as the Reuse Check
-      entry, produced even though nothing reached the diff (the negative result — "this file
-      never appeared" — is exactly the audit trail needed to confirm the gate ran).
-    A match excluded but not reported in *both* places is the failure this gate exists to
-    prevent — the exclusion is worthless if nobody downstream learns a secret-shaped file almost
-    shipped.
-*   **Absent-pattern-file fallback (defensive, no bypass)**: if **neither** candidate path
-    resolves — a mis-wired `depends_on`, or an isolated install with neither the `hooks/` tree nor
-    a vendored source checkout — do **not** invent, restate, or fall back to a second bespoke
-    pattern list. Stop before the first `git add`, return `status: "blocked"`, and log one
-    `new_findings[]` row (`vcode: "V-SEC-11"`, `severity: "BLOCK"`, `summary`: "shared
-    sensitive-filename pattern file not found at either candidate path — implementation halted
-    before staging") so the orchestrator can distinguish a dependency-wiring bug from a known
-    cross-target limitation instead of the worker silently shipping unprotected.
+*   **Gate**: `docs_governance.enabled` and `docs_governance.write_governance` both resolve
+    `true` (absent config block ⇒ both default `true` per `config-template.md`; an explicit
+    `false` on either ⇒ this entire section is inert — skip, do not read the manifest).
+*   **Read**: `.blackhole/staged/<issue>/manifest.json` at the absolute repo-root staging path
+    the orchestrator passed at spawn time. Absent file ⇒ no-op, nothing was staged for this
+    issue.
+*   **Defensive shape guard** (runtime-scoped, distinct from #482's future CI-time schema
+    check — see plan Design Decisions): `jq empty` for JSON validity, then per-entry: `route`,
+    `sub_mode`, `produced_by`, `declared_at`, `staged_path`, `target_path`, `target_kind` all
+    present; `target_kind` ∈ `{new_file, append_row}`. A malformed entry is skipped (not fatal
+    to the rest): log a `new_findings[]` row (`kind: bug`) citing the manifest path and the
+    offending entry's index, and continue with the remaining well-formed entries.
+*   **Branch on `target_kind`** — distinct copy semantics per entry:
+    - `new_file`, `produced_by: planner` (design route) → copy `staged_path` → `target_path`
+      **verbatim**. `planner.md` §4.8 already renders the ADR in the target doc-governance
+      schema via `detect-doc-schema.sh` at staging time — no rewrite needed.
+    - `new_file`, `produced_by: investigator` (analyze/investigate routes) → apply the
+      **frontmatter rewrite mapping** below before writing to `target_path`. Apply
+      search-before-write first: if an existing doc at the target directory already covers the
+      same concern, update it in place (bump `last_updated`, preserve its original `created`)
+      instead of creating a duplicate.
+    - `append_row` (any `produced_by`) → read the staged row fragment; check `target_path`
+      (e.g. `documentation/decisions/INDEX.md`) for an existing row with the same discriminator
+      (ADR number/slug) first — **idempotency guard** against a duplicate row on implementer
+      re-spawn. Append only if absent.
+*   **Frontmatter rewrite mapping** (investigator `new_file` entries only — working-note
+    schema → `doc-governance.md` lifecycle schema):
+
+    | Source key | Target key | Rule |
+    |---|---|---|
+    | `sub_mode` | `type` | `analyze` → `type: analysis`; `investigate` → `type: analysis` (`doc-governance.md`'s `type` enum has no dedicated "investigation" value; reusing the closest existing member avoids inventing a new enum value for one route — `V-INT-03`/`V-YAGNI-01`) |
+    | *(computed)* | `status` | Always `current` — a freshly promoted evidence doc is never `deprecated`/`archived` at carry time |
+    | `manifest entries[].declared_at` (date part) | `created` | Preserves *when the evidence was gathered*, not when it was later committed — historically accurate |
+    | *(computed, today's date)* | `last_updated` | Carry-commit date — the most recent edit to the file |
+    | *(computed)* | `review_trigger` | `"on file change"` — the doc's staleness trigger is the source code it describes changing |
+    | `issue` | `issue` *(retained, non-schema key)* | `doc-governance.md` requires `type`/`status` present; it does not forbid additional keys. Campaign provenance is worth keeping |
+    | `confidence` | `confidence` *(retained, non-schema key)* | Provenance: the agent's self-assessed confidence at note-writing time |
+    | `computed_at_revision` | `computed_at_revision` *(retained, non-schema key)* | Provenance: which `route.revision` the evidence was computed against |
+    | — | `related` | Omitted — the schema's `related` expects doc paths, not issue numbers; `issue` (above) already carries the campaign link |
+    | — | `supersedes` | Omitted unless the search-before-write step above found a doc to supersede — then set per `doc-governance.md` § Supersede-on-Overwrite |
+
+*   **Commit**: carried files land in the same PR (same commit as the code change, or a
+    dedicated `docs: promote staged artifacts for issue #N` commit within the same PR) — never
+    a separate PR, never an orchestrator write.
+*   **PR-body record** (mirrors the Reuse Check Gate pattern — falsifiable, produced even on
+    the negative case): one line per carried artifact, `Carried Artifact: <target_path>
+    (<target_kind>, from <route>)`, or `Carried Artifacts: none (no manifest for this issue)`
+    when nothing was staged. No new `worker-schemas.md` return field — the PR-body record is
+    the falsifiable evidence.
+*   **Do not delete** `.blackhole/staged/<issue>/` after carrying — it remains as campaign
+    state so a future reviewer audit (#468) has stable data to diff against, and so a resumed
+    session after interruption can re-derive what was already carried via the idempotency
+    guards above.
 
 ---
 

@@ -125,8 +125,8 @@ at escalation — never overlapping for one issue), so there is no lost-update r
 ### Not implemented by this section
 
 - The **carry-step** that copies staged artifacts into their `documentation/` targets and commits
-  them inside the PR is a separate deliverable (D2, tracked issue #467) — this section only makes
-  staging possible.
+  them inside the PR is implemented at `implementer.md` § Carry Staged Artifacts (D2) — this
+  section only documents the manifest shape that step consumes.
 - The **reviewer audit** that diffs the staged manifest against the PR to detect a declared but
   never-carried artifact is a separate deliverable (D4, tracked issue #468) — this section only
   documents the manifest shape that audit will consume.

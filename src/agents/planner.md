@@ -294,8 +294,9 @@ The artifact consolidates 8 ordered subsections:
       (`blackhole-state.md` § Staging (ADR-021 D1)). Append both entries to
       `.blackhole/staged/<issue>/manifest.json` per that section's schema. This is staging, not a
       commit inside the issue's own PR — no branch exists yet at Phase 2 (ADR-021 D1); the
-      implementer's carry-step (#467, not implemented here) is what later copies the staged files
-      into `documentation/` and commits them. No orchestrator file write, no draft/final flip.
+      implementer's carry-step (`implementer.md` § Carry Staged Artifacts, ADR-021 D2) is what
+      later copies the staged files into `documentation/` and commits them. No orchestrator file
+      write, no draft/final flip.
       Return `status: "ready"` in the worker JSON with `track: "design"` — the `ready`/`blocked`
       worker-JSON contract shape itself is unchanged; `V-INT-01` rides in the existing `findings`
       array, no new required field.
@@ -341,8 +342,9 @@ The artifact consolidates 8 ordered subsections:
       write and manifest append as the `ready` branch above — no orchestrator file write
       (orchestrator is `disallowedTools: [Write, Edit, Delete]`), no draft/final flip. This is
       staging, not a commit inside the issue's own PR — no branch exists yet at Phase 2 (ADR-021
-      D1); the implementer's carry-step (#467, not implemented here) commits the staged files once
-      the PR branch exists. Return `status: "ready"`, `track: "design"` in the worker JSON —
+      D1); the implementer's carry-step (`implementer.md` § Carry Staged Artifacts, ADR-021 D2)
+      commits the staged files once the PR branch exists. Return `status: "ready"`,
+      `track: "design"` in the worker JSON —
       identical shape to the `ready` branch above, so no downstream consumer needs a new case.
 
 ### 5. Brainstorm Track (ADR-010 D3)
