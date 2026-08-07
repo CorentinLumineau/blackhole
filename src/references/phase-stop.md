@@ -10,7 +10,7 @@ turn without replacing any of them (`SKILL.md` § Five-phase lifecycle is unaffe
 | Tier | Trigger keywords | Behavior |
 |------|-------------------|----------|
 | `stop` (drain, **default**) | `stop`, `pause`, `drain the campaign` | Stop dispatching new work. Let every in-flight worker run to its natural return. Persist returns exactly as a normal turn would. Checkpoint, then report. |
-| `stop --abandon` | `stop --abandon`, `abandon`, `kill`, `abort`, `force stop` — **never** a bare "stop now" (reserved: #479's future `stop --now` partial-flush tier is a different mechanism entirely; see Design Decision below) | Kill every in-flight worker immediately (today's improvised behavior, now explicit and opt-in only). Reset each killed worker's queue entry, run the worktree dirty-check, run drift heal, checkpoint, report. |
+| `stop --abandon` | `stop --abandon`, `abandon`, `kill`, `abort`, `force stop` — **never** a bare "stop now" (reserved: #479's future `stop --now` partial-flush tier is a different mechanism entirely) | Kill every in-flight worker immediately (today's improvised behavior, now explicit and opt-in only). Reset each killed worker's queue entry, run the worktree dirty-check, run drift heal, checkpoint, report. |
 
 No third tier ships here. `stop --now` (partial-result flush) is #479, blocked on this issue.
 
