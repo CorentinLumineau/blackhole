@@ -10,7 +10,8 @@
  * the I/O boundary in utils/hook-event-log.js.
  */
 
-const { loadBashPatterns, matchFirst } = require('./utils/pattern-loader');
+const { loadBashPatterns } = require('./utils/pattern-loader');
+const { matchFirstIgnoringNonExecutingText } = require('./utils/bash-context');
 const {
   readHookInput,
   denyAndRecord,
@@ -40,7 +41,7 @@ const main = () => {
     return;
   }
 
-  const blocked = matchFirst(command, patterns.blockPatterns);
+  const blocked = matchFirstIgnoringNonExecutingText(command, patterns.blockPatterns);
   if (blocked) {
     denyAndRecord({
       hook: HOOK,
@@ -52,7 +53,7 @@ const main = () => {
     return;
   }
 
-  const flagged = matchFirst(command, patterns.warnPatterns);
+  const flagged = matchFirstIgnoringNonExecutingText(command, patterns.warnPatterns);
   if (flagged) {
     warnAndRecord({
       hook: HOOK,
