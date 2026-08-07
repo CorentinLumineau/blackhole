@@ -1,4 +1,5 @@
 ---
+type: adr
 tracking_initiative: blackhole-kaizen-hunt
 status: accepted
 scope: orchestration

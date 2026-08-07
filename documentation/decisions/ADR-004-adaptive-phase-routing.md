@@ -1,4 +1,5 @@
 ---
+type: adr
 tracking_initiative: blackhole-adaptive-routing
 status: accepted
 scope: orchestration
