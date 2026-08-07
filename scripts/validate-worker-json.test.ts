@@ -470,7 +470,7 @@ describe('validateWorker reviewer', () => {
     expectValid('reviewer', 'reviewer-complete-empty.json'));
   test('invalid missing findings', () =>
     expectInvalid('reviewer', 'reviewer-missing-findings.json'));
-  test('valid V-DOC-02/04 finding', () =>
+  test('valid V-DOCSYNC-01 finding', () =>
     expectValid('reviewer', 'reviewer-complete-vdoc-finding.json'));
   test('valid V-ADA-01 finding', () =>
     expectValid('reviewer', 'reviewer-complete-vada-finding.json'));

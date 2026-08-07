@@ -4,8 +4,10 @@ import {
   findRowCountMismatch,
   extractAgentRosterTableNames,
   findReadmeAgentCountMismatch,
+  findVcodeNamespaceDrift,
 } from './checks/ground-truth.check.ts';
 import { AGENT_NAMES } from './lib/build/facts.ts';
+import { read } from './checks/check-utils.ts';
 
 // V-GROUND-01 (ADR-007 T3/R1′): two-sided facts-conformance — an independent filesystem scan is
 // compared against build.ts's § facts declaration, never collapsed onto one derivation (the
@@ -101,5 +103,66 @@ describe('findReadmeAgentCountMismatch', () => {
   test('names the expected count when the README has no agent-count mention at all', () => {
     const mismatch = findReadmeAgentCountMismatch('no such mention here', 8);
     expect(mismatch).toContain('8 agent prompts');
+  });
+});
+
+// ADR-021 D5 (issue #495): structural pin against reintroducing the retired V-DOC-02/04 /
+// V-DOC-05 ids, or dropping/duplicating either replacement id, in blackhole-vcodes.md's table.
+describe('findVcodeNamespaceDrift', () => {
+  test('names the retired id when a row still carries V-DOC-02/04', () => {
+    const content = [
+      '| Code | Rule | Severity |',
+      '|------|------|----------|',
+      '| V-DOC-02/04 | Public-API and design docs updates in the same PR | BLOCK |',
+      '| V-DOCFACT-01 | prose fact check | WARN |',
+    ].join('\n');
+
+    const mismatch = findVcodeNamespaceDrift(content);
+    expect(mismatch).not.toBeNull();
+    expect(mismatch).toContain('V-DOC-02/04');
+  });
+
+  test('names the retired id when a row still carries a bare V-DOC-05', () => {
+    const content = [
+      '| Code | Rule | Severity |',
+      '|------|------|----------|',
+      '| V-DOCSYNC-01 | docs sync | BLOCK |',
+      '| V-DOC-05 | prose fact check | WARN |',
+    ].join('\n');
+
+    const mismatch = findVcodeNamespaceDrift(content);
+    expect(mismatch).not.toBeNull();
+    expect(mismatch).toContain('V-DOC-05');
+  });
+
+  test('names the missing replacement id when V-DOCSYNC-01 is absent', () => {
+    const content = [
+      '| Code | Rule | Severity |',
+      '|------|------|----------|',
+      '| V-DOCFACT-01 | prose fact check | WARN |',
+    ].join('\n');
+
+    const mismatch = findVcodeNamespaceDrift(content);
+    expect(mismatch).not.toBeNull();
+    expect(mismatch).toContain('V-DOCSYNC-01');
+  });
+
+  test('names the duplicated replacement id when V-DOCFACT-01 appears twice', () => {
+    const content = [
+      '| Code | Rule | Severity |',
+      '|------|------|----------|',
+      '| V-DOCSYNC-01 | docs sync | BLOCK |',
+      '| V-DOCFACT-01 | prose fact check | WARN |',
+      '| V-DOCFACT-01 | duplicate row | WARN |',
+    ].join('\n');
+
+    const mismatch = findVcodeNamespaceDrift(content);
+    expect(mismatch).not.toBeNull();
+    expect(mismatch).toContain('V-DOCFACT-01');
+  });
+
+  test('returns null for the current real blackhole-vcodes.md content', () => {
+    const vcodes = read('src/references/blackhole-vcodes.md');
+    expect(findVcodeNamespaceDrift(vcodes)).toBeNull();
   });
 });

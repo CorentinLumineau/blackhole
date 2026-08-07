@@ -32,9 +32,9 @@ longer definitions (token cost, drift). Persist every finding to
 | V-INT-01/03/04 | Follow conventions at touchpoints; no third variant of a solved concern | WARN |
 | V-FIX-01 | Fixes address the root cause, documented — never the symptom | BLOCK |
 | V-PARETO-01 | No >3× complexity for marginal gain | WARN |
-| V-PARETO-02 | Pareto scoring & gating: Priority = Gain * (11 - Effort) must be >= 30 to create an issue, and ready issues are sorted by Priority descending | BLOCK |
-| V-DOC-02/04 | Public-API and design docs updates in the same PR | BLOCK |
-| V-DOC-05 | Documentation prose asserts a factual or arithmetic claim contradicted by repo-checkable evidence (counts, ratios, file paths, issue/ADR states) | WARN |
+| V-PARETO-02 | Pareto scoring & gating: Priority = Gain * (11 - Effort) must be >= 30 to create an issue, and ready issues are sorted by Priority descending — diverges from mercure's V-PARETO-02 (gold-plating / polish without user value, MEDIUM); kept per ADR-021 D5 because renumbering the 9-file SSOT heading is disproportionate; mercure's meaning, if ever adopted here, takes a fresh unused code | BLOCK |
+| V-DOCSYNC-01 | Public-API and design docs updates in the same PR | BLOCK |
+| V-DOCFACT-01 | Documentation prose asserts a factual or arithmetic claim contradicted by repo-checkable evidence (counts, ratios, file paths, issue/ADR states) | WARN |
 | V-RULE-01 | Diff violates a recorded active-status owner ruling in product-principles.md (documentation/reference/) | BLOCK |
 | V-ADA-01 | `ARCHITECTURE.md` absent at project root/package (remedy: create from template) | WARN |
 | V-ADA-02 | `documentation/decisions/INDEX.md` missing an Accepted ADR added in this diff (remedy: append INDEX row) | WARN |

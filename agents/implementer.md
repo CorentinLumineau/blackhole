@@ -52,7 +52,7 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
     *   **KISS (Keep It Simple)**: Prefer simple implementations. Do not add speculative abstractions or empty wrapper functions (`V-KISS-03`).
     *   **YAGNI (You Aren't Gonna Need It)**: Only build what is needed to close the issue; reject speculative features.
 6.  **Verify & Open PR**:
-    *   **Companion-doc sync (`V-DOC-02/04`)**: If this diff touches the
+    *   **Companion-doc sync (`V-DOCSYNC-01`)**: If this diff touches the
         public-API/schema/config surface (`reviewer.md` §1's `V-API-01`
         definition — public interfaces, configurations, or database schemas),
         update the docs describing that surface (API docs, ARCHITECTURE.md

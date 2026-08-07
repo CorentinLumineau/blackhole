@@ -2,7 +2,7 @@
   "status": "complete",
   "findings": [
     {
-      "vcode": "V-DOC-02/04",
+      "vcode": "V-DOCSYNC-01",
       "severity": "BLOCK",
       "file": "src/api/routes.ts",
       "line": 12,
