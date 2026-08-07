@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
-import { CLAUDE_DISTRIBUTION_ROOT, DISTRIBUTION_ROOT } from '../lib/build/paths.ts';
+import { CLAUDE_DISTRIBUTION_ROOT, CLAUDE_NATIVE_ROOT, DISTRIBUTION_ROOT } from '../lib/build/paths.ts';
 import { runFullBuildOnce } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — hooks.check.ts: PreToolUse safety-gate shape in every shipped plugin bundle
@@ -13,8 +13,11 @@ import { runFullBuildOnce } from '../lib/check-common.ts';
 // files here, at `bun run scripts/verify.ts` time, is the gate that stops that from shipping.
 // Weakening or removing this check invalidates that argument — see the plan's Execution Strategy.
 
-/** Every bundle root that must ship the hooks/ tree. Both are consumer install surfaces. */
-export const HOOK_BUNDLE_ROOTS = [DISTRIBUTION_ROOT, CLAUDE_DISTRIBUTION_ROOT];
+/** Every bundle root that must ship the hooks/ tree. `DISTRIBUTION_ROOT` and
+ * `CLAUDE_DISTRIBUTION_ROOT` are consumer install surfaces; `CLAUDE_NATIVE_ROOT` (issue #472) is
+ * the maintainer-only repo-root native target — not a consumer install surface, but the one this
+ * repo's own campaign runs from, so it must ship the same hooks/ tree too. */
+export const HOOK_BUNDLE_ROOTS = [DISTRIBUTION_ROOT, CLAUDE_DISTRIBUTION_ROOT, CLAUDE_NATIVE_ROOT];
 
 /** Matchers hooks.json must wire under PreToolUse. Bash covers destructive commands; Write|Edit
  * covers system-path, traversal, and outside-worktree writes. */
