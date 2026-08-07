@@ -129,14 +129,14 @@ comes from `planner` and `investigator` never running for the same issue in the 
 (design-track `planner` runs in Phase 2; `analyze`/`investigate` `investigator` runs in Phase 1 or
 at escalation — never overlapping for one issue), so there is no lost-update race to close.
 
-### Not implemented by this section
+### Consumers of this section's manifest schema
 
 - The **carry-step** that copies staged artifacts into their `documentation/` targets and commits
   them inside the PR is implemented at `implementer.md` § Carry Staged Artifacts (D2) — this
   section only documents the manifest shape that step consumes.
 - The **reviewer audit** that diffs the staged manifest against the PR to detect a declared but
-  never-carried artifact is a separate deliverable (D4, tracked issue #468) — this section only
-  documents the manifest shape that audit will consume.
+  never-carried artifact is **not implemented by this section** — it is a separate deliverable
+  (D4, tracked issue #468) that will consume the manifest shape this section documents.
 
 ## Ledger obligations
 
