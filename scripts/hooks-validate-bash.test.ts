@@ -284,3 +284,72 @@ describe('validate-bash-command.js — evasion-fix negative controls (review rou
     });
   }
 });
+
+// Non-executing-text negative controls (#488): round 2's boundary-character widening (F-00058,
+// `85a90f4`) is a context-blind whole-string regex match, so it also matches a destructive
+// command's text when that text merely appears inside a `#` comment or a quoted argument to a
+// print-only sink (`echo`/`printf`) that never executes it. These 12 cases (3 exact
+// reviewer-verified repros + a 3-pattern x 3-context generalized matrix) must all be allowed
+// silently. Every case here was proven, by direct execution against the unmodified
+// bash-patterns.json regexes (see .blackhole/plans/issue-488.md Root-Cause Decision Record), to
+// currently match a blockPatterns entry — i.e. these are true regression tests, not vacuous ones.
+describe('validate-bash-command.js — non-executing-text negative controls (#488)', () => {
+  const EXACT_REPROS: string[] = [
+    '# (rm -rf /)',
+    '# `rm -rf /`',
+    "echo '(chmod 777 /)'",
+  ];
+
+  for (const command of EXACT_REPROS) {
+    test(`\`${command}\` (exact reviewer repro) is still allowed silently`, async () => {
+      await withTempGitRepo('blackhole-hook-evasion-', async (repo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(repo)).toEqual([]);
+      });
+    });
+  }
+
+  const NON_EXECUTING_MATRIX: Array<{ label: string; command: string }> = [
+    { label: 'comment, root', command: '# (rm -rf /)' },
+    { label: 'single-quoted echo argument, root', command: "echo '(rm -rf /)'" },
+    { label: 'double-quoted echo argument, root', command: 'echo "(rm -rf /)"' },
+    { label: 'comment, home', command: '# (rm -rf ~)' },
+    { label: 'single-quoted echo argument, home', command: "echo '(rm -rf ~)'" },
+    { label: 'double-quoted echo argument, home', command: 'echo "(rm -rf ~)"' },
+    { label: 'comment, chmod', command: '# (chmod 777 /)' },
+    { label: 'single-quoted echo argument, chmod', command: "echo '(chmod 777 /)'" },
+    { label: 'double-quoted echo argument, chmod', command: 'echo "(chmod 777 /)"' },
+  ];
+
+  for (const { label, command } of NON_EXECUTING_MATRIX) {
+    test(`${label}: \`${command}\` is still allowed silently`, async () => {
+      await withTempGitRepo('blackhole-hook-evasion-', async (repo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(repo)).toEqual([]);
+      });
+    });
+  }
+});
+
+// Must-still-deny regression check (#488): the investigation's rejected "mask all quotes"
+// alternative was proven by execution to silently stop blocking these three shell-invocation
+// forms, which genuinely execute their quoted argument (unlike echo/printf, which only print it).
+// The chosen echo/printf-scoped classifier must keep denying all three.
+describe('validate-bash-command.js — must-still-deny regression (#488)', () => {
+  const MUST_STILL_DENY: string[] = ['bash -c "rm -rf /"', "sh -c 'rm -rf /'", 'eval "rm -rf /"'];
+
+  for (const command of MUST_STILL_DENY) {
+    test(`\`${command}\` is still denied (rm-rf-root)`, async () => {
+      await withTempGitRepo('blackhole-hook-evasion-', async (repo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+        expect(result.exitCode).toBe(2);
+
+        const events = readHookEvents(repo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ tier: 'block', pattern_id: 'rm-rf-root' });
+      });
+    });
+  }
+});
