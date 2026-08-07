@@ -81,6 +81,14 @@ Before ledger append, deduplicate on `(vcode, file, line, issue_ref)` per `findi
 
 `review-aggregate.ts` performs exact-key dedup with severity merge (`BLOCK` > `WARN` > `NOTE`/`INFO`); orchestrator performs the same key check at write time.
 
+**Recheck exclusion (issue #485)**: a same-key collision is **not** merged when the prior
+finding's ledger `id` appears in the reviewer's `recheck[]` with `verdict: fixed` — that prior
+finding is excluded from the collision set entirely before the exact-key dedup above runs, so a
+new finding sharing its key is always a fresh row, never a silent merge that discards its
+summary. This closes the failure mode where a genuinely distinct regression at the same
+`file:line` as an already-fixed prior finding had its description dropped in favor of the stale,
+already-fixed text.
+
 ## Review iteration budget
 
 Tracked on queue entry as `review_iteration` (integer, default 0).
@@ -162,7 +170,13 @@ already-named prior findings, not a fresh implementation.
    existing severity → action mapping and LGTM gate apply unchanged.
 6. **LGTM interaction**: recheck mode's LGTM condition is unchanged from the definition above —
    it still requires all `recheck` entries `verdict: fixed` AND zero unresolved `BLOCK` rows in
-   `findings`, not a separate weaker gate.
+   `findings`, not a separate weaker gate. `review-aggregate.ts` now excludes a
+   `recheck`-resolved prior finding (§ Dedup key, issue #485) from `blockers_count` before this
+   condition is evaluated — this is *why* "zero unresolved BLOCK rows in `findings`" is met once
+   every named finding is genuinely fixed, not despite it. When a `recheck[]` `finding_id` cannot
+   be linked to any prior finding's ledger `id`, the linkage failure is surfaced in
+   `unresolved_recheck` (`worker-schemas.md` § Review aggregate) and `lgtm` is forced `false` —
+   never a silent pass.
 7. **Independent spec-drift check (GAP-2 remedy, every recheck pass)**: in addition to the
    fix-commit-scoped verification above, the reviewer performs one lightweight, full-diff
    comparison of the PR's current cumulative state against the plan's Objective + Task
@@ -199,6 +213,10 @@ bun run scripts/review-aggregate.ts \
   [--pr-ref <P>] \
   [--prior-file <ledger-rows.json>]
 ```
+
+`--prior-file` rows must include each finding's ledger `id` (issue #485) — without it, a
+`recheck[]` `verdict: fixed` entry naming that finding cannot resolve, and it surfaces in
+`unresolved_recheck` (fail-loud) instead of silently applying the § Dedup key recheck exclusion.
 
 Output schema: `worker-schemas.md` § Review aggregate.
 

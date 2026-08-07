@@ -1,5 +1,11 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { aggregateReview, paretoPriority, type Finding } from './review-aggregate';
+
+const root = path.resolve(import.meta.dirname, '..');
+const scriptPath = path.join(root, 'scripts/review-aggregate.ts');
 
 const baseFinding = (overrides: Partial<Finding> = {}): Finding => ({
   vcode: 'V-KISS-03',
@@ -9,6 +15,21 @@ const baseFinding = (overrides: Partial<Finding> = {}): Finding => ({
   summary: 'issue',
   ...overrides,
 });
+
+async function runReviewAggregateCli(args: string[]) {
+  const proc = Bun.spawn({
+    cmd: ['bun', 'run', scriptPath, ...args],
+    stdout: 'pipe',
+    stderr: 'pipe',
+    cwd: root,
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  return { exitCode, stdout, stderr };
+}
 
 describe('aggregateReview', () => {
   test('empty findings → lgtm true, approved', () => {
@@ -420,5 +441,177 @@ describe('confidence bounds clamping/validation (round-1 review fix)', () => {
     expect(result.findings[0].severity).toBe('BLOCK');
     expect(result.findings[0].summary).toBe('non-numeric confidence');
     expect(result.blockers_count).toBe(1);
+  });
+});
+
+describe('recheck-aware dedup and lgtm (issue #485)', () => {
+  test('same-key collision with a recheck-fixed prior finding never merges — new finding survives as its own row (issue #485)', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [
+          baseFinding({
+            vcode: 'V-SEC-02',
+            severity: 'BLOCK',
+            file: 'src/a.ts',
+            line: 42,
+            summary: 'regression: command-substitution spellings evade blockPatterns',
+          }),
+        ],
+        recheck: [
+          {
+            finding_id: 'F-00046',
+            verdict: 'fixed',
+            evidence: 'commit 94ca81a addressed the round-1 finding',
+          },
+        ],
+      },
+      issueRef: '470',
+      priorFindings: [
+        baseFinding({
+          id: 'F-00046',
+          vcode: 'V-SEC-02',
+          severity: 'BLOCK',
+          file: 'src/a.ts',
+          line: 42,
+          issue_ref: '470',
+          summary: 'evaded by four idiomatic spellings of its own headline case',
+        }),
+      ],
+    });
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].summary).toBe(
+      'regression: command-substitution spellings evade blockPatterns',
+    );
+    expect(result.blockers_count).toBe(1);
+  });
+
+  test('all recheck-named prior findings resolved and reviewer reports none → lgtm true, zero blockers (issue #485)', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [],
+        recheck: [
+          { finding_id: 'F-00046', verdict: 'fixed', evidence: 'fixed in 94ca81a' },
+          { finding_id: 'F-00058', verdict: 'fixed', evidence: 'fixed in 94ca81a' },
+        ],
+      },
+      issueRef: '470',
+      priorFindings: [
+        baseFinding({ id: 'F-00046', severity: 'BLOCK', file: 'src/a.ts', line: 42 }),
+        baseFinding({ id: 'F-00058', severity: 'BLOCK', file: 'src/b.ts', line: 7 }),
+      ],
+    });
+
+    expect(result.blockers_count).toBe(0);
+    expect(result.lgtm).toBe(true);
+    expect(result.findings).toHaveLength(0);
+  });
+
+  test('recheck entry names a finding_id with no matching prior id → surfaced in unresolved_recheck, lgtm forced false (issue #485)', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [],
+        recheck: [
+          { finding_id: 'F-99999', verdict: 'fixed', evidence: 'claimed fixed, no linkage' },
+        ],
+      },
+      issueRef: '470',
+      priorFindings: [],
+    });
+
+    expect(result.unresolved_recheck).toHaveLength(1);
+    expect(result.unresolved_recheck[0].finding_id).toBe('F-99999');
+    expect(result.lgtm).toBe(false);
+  });
+});
+
+describe('review-aggregate CLI', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-aggregate-cli-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('unresolved recheck entry prints the fail-loud stderr line (issue #485)', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    const priorFile = path.join(tmpDir, 'prior.json');
+    fs.writeFileSync(
+      reviewerFile,
+      JSON.stringify({
+        status: 'complete',
+        findings: [],
+        recheck: [
+          { finding_id: 'F-99999', verdict: 'fixed', evidence: 'claimed fixed, no linkage' },
+        ],
+      }),
+      'utf-8',
+    );
+    fs.writeFileSync(priorFile, JSON.stringify([]), 'utf-8');
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      '470',
+      '--prior-file',
+      priorFile,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(
+      '1 unresolved_recheck entry — see the "unresolved_recheck" field in stdout output',
+    );
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.unresolved_recheck).toHaveLength(1);
+    expect(parsed.lgtm).toBe(false);
+  });
+
+  test('resolved recheck entry prints no fail-loud stderr line', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    const priorFile = path.join(tmpDir, 'prior.json');
+    fs.writeFileSync(
+      reviewerFile,
+      JSON.stringify({
+        status: 'complete',
+        findings: [],
+        recheck: [{ finding_id: 'F-00046', verdict: 'fixed', evidence: 'fixed in 94ca81a' }],
+      }),
+      'utf-8',
+    );
+    fs.writeFileSync(
+      priorFile,
+      JSON.stringify([
+        {
+          id: 'F-00046',
+          vcode: 'V-SEC-02',
+          severity: 'BLOCK',
+          file: 'src/a.ts',
+          line: 42,
+          summary: 'prior finding',
+        },
+      ]),
+      'utf-8',
+    );
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      '470',
+      '--prior-file',
+      priorFile,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.unresolved_recheck).toHaveLength(0);
   });
 });
