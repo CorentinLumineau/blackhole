@@ -1,6 +1,7 @@
 import { readJsonFile } from './lib/fs.ts';
 
 export type Finding = {
+  id?: string;
   vcode: string;
   severity: string;
   file: string;
@@ -13,9 +14,22 @@ export type Finding = {
   locations?: { file: string; line: number }[];
 };
 
+export type RecheckEntry = {
+  finding_id: string;
+  verdict: 'fixed' | 'not_fixed';
+  evidence: string;
+};
+
+export type UnresolvedRecheckEntry = {
+  finding_id: string;
+  verdict: string;
+  reason: string;
+};
+
 export type ReviewerInput = {
   status: 'complete' | 'error';
   findings: Finding[];
+  recheck?: RecheckEntry[];
   error?: string;
 };
 
@@ -31,6 +45,7 @@ export type AggregateOutput = {
   blockers_count: number;
   lgtm: boolean;
   pareto_candidates: ParetoCandidate[];
+  unresolved_recheck: UnresolvedRecheckEntry[];
   error?: string;
 };
 
@@ -117,6 +132,37 @@ export function applyConfidenceGate(findings: Finding[]): Finding[] {
     });
 }
 
+/**
+ * Excludes a prior finding from the collision set when the reviewer's
+ * `recheck[]` names it `verdict: fixed` via the ledger `id` (Option 2,
+ * issue #485) — the same "recognize a prior pass's artifact, don't
+ * re-collide with it" idempotency pattern as `LOW_CONFIDENCE_CAVEAT_RE`
+ * above, applied to a second signal. A `recheck` entry whose `finding_id`
+ * matches no prior finding's `id` is fail-loud, not silently ignored
+ * (Option 4 fallback): it is returned in `unresolved`, and the caller
+ * forces `lgtm: false` when `unresolved` is non-empty.
+ */
+function resolveRecheckExclusions(
+  prior: Finding[],
+  recheck: RecheckEntry[],
+): { resolvedPrior: Finding[]; unresolved: UnresolvedRecheckEntry[] } {
+  const fixedIds = new Set(
+    recheck.filter((r) => r.verdict === 'fixed').map((r) => r.finding_id),
+  );
+  const matchedIds = new Set(
+    prior.filter((f) => f.id && fixedIds.has(f.id)).map((f) => f.id!),
+  );
+  const unresolved = [...fixedIds]
+    .filter((id) => !matchedIds.has(id))
+    .map((finding_id) => ({
+      finding_id,
+      verdict: 'fixed',
+      reason: 'no prior finding matched finding_id — linkage could not be resolved',
+    }));
+  const resolvedPrior = prior.filter((f) => !f.id || !matchedIds.has(f.id));
+  return { resolvedPrior, unresolved };
+}
+
 export function dedupeFindings(findings: Finding[]): Finding[] {
   const byKey = new Map<string, Finding>();
 
@@ -184,17 +230,23 @@ export function aggregateReview(input: {
       blockers_count: 0,
       lgtm: false,
       pareto_candidates: [],
+      unresolved_recheck: [],
       error: input.reviewer.error ?? 'reviewer error',
     };
   }
 
   const stamped = stampIssueRef(input.reviewer.findings, input.issueRef);
   const prior = input.priorFindings ?? [];
-  const gated = applyConfidenceGate([...prior, ...stamped]);
+  const { resolvedPrior, unresolved } = resolveRecheckExclusions(
+    prior,
+    input.reviewer.recheck ?? [],
+  );
+  const gated = applyConfidenceGate([...resolvedPrior, ...stamped]);
   const deduped = dedupeFindings(gated);
   const findings = sortFindings(deduped);
   const blockers_count = findings.filter((f) => f.severity === 'BLOCK').length;
-  const lgtm = input.reviewer.status === 'complete' && blockers_count === 0;
+  const lgtm =
+    input.reviewer.status === 'complete' && blockers_count === 0 && unresolved.length === 0;
   const status = lgtm ? 'approved' : 'changes_requested';
 
   return {
@@ -203,6 +255,7 @@ export function aggregateReview(input: {
     blockers_count,
     lgtm,
     pareto_candidates: buildParetoCandidates(findings),
+    unresolved_recheck: unresolved,
   };
 }
 
@@ -273,6 +326,11 @@ if (import.meta.main) {
       issueRef,
       priorFindings,
     });
+    if (result.unresolved_recheck.length > 0) {
+      console.error(
+        `${result.unresolved_recheck.length} unresolved_recheck entr${result.unresolved_recheck.length === 1 ? 'y' : 'ies'} — see the "unresolved_recheck" field in stdout output`,
+      );
+    }
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -587,6 +587,10 @@ fix commits resolved it:
 - `evidence` — a short concrete pointer (e.g. `file:line` + what changed) showing why the
   finding is judged fixed or not — not a restatement of the original finding summary.
 
+`--prior-file` rows passed to `review-aggregate.ts` must carry the ledger `id` field (issue
+#485) for a `recheck[]` `verdict: fixed` entry to resolve against them; a missing or mismatched
+`id` surfaces in `unresolved_recheck` above, not silently.
+
 ### Rulings ledger (read-input)
 
 `reviewer.md` § 19 "Owner-Ruling Violation Audit" reads `documentation/reference/
@@ -804,7 +808,8 @@ Orchestrator invokes after `reviewer` completes. Not a worker agent — determin
   "findings": [],
   "blockers_count": 0,
   "lgtm": true,
-  "pareto_candidates": []
+  "pareto_candidates": [],
+  "unresolved_recheck": []
 }
 ```
 
@@ -815,6 +820,7 @@ Orchestrator invokes after `reviewer` completes. Not a worker agent — determin
 | `blockers_count` | number | yes |
 | `lgtm` | boolean | yes |
 | `pareto_candidates` | `{ summary, priority, file }[]` | yes (may be empty) |
+| `unresolved_recheck` | `{ finding_id, verdict, reason }[]` | yes (may be empty) — issue #485: a `recheck[]` `verdict: fixed` entry whose `finding_id` could not be linked to any prior finding's ledger `id`; non-empty forces `lgtm: false` |
 | `error` | string | when `status: error` |
 
 CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>]`

@@ -51,6 +51,11 @@ fixed-in-pr → resolved (after merge)
 deferred → resolved    (when deferred issue merges — optional cleanup)
 ```
 
+A `recheck[]` `verdict: fixed` prior row (issue #485) transitions `open → resolved` before the
+orchestrator runs § Write protocol step 3's dedup check for the current append batch — this is
+what keeps that check's `open`/`deferred` status filter (step 3, above) from silently absorbing
+a new, distinct finding sharing the resolved row's key.
+
 ## Write protocol
 
 1. **Initialize** if missing:
@@ -65,11 +70,15 @@ deferred → resolved    (when deferred issue merges — optional cleanup)
 jq empty .blackhole/findings-ledger.json
 ```
 
-3. **Dedup** before append — key `(vcode, file, line, issue_ref)`:
+3. **Dedup** before append — key `(vcode, file, line, issue_ref)`, scoped to `open`/`deferred`
+   rows only (issue #485: a `resolved` row — e.g. one whose `recheck[]` verdict came back
+   `fixed`, see § Status transitions below — must never suppress append of a new, distinct
+   finding that happens to share its key; this is the write-time counterpart to
+   `review-aggregate.ts`'s in-memory recheck exclusion, `review-core.md` § Dedup key):
 
 ```bash
 jq --arg v "V-DRY-01" --arg f "lib/foo.ts" --argjson l 42 --argjson i 298 \
-  'any(.findings[]; .vcode == $v and .file == $f and .line == $l and .issue_ref == $i)' \
+  'any(.findings[]; .vcode == $v and .file == $f and .line == $l and .issue_ref == $i and (.status == "open" or .status == "deferred"))' \
   .blackhole/findings-ledger.json
 ```
 

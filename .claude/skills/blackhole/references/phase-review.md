@@ -13,6 +13,8 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - [ ] Security-mode PR → confirm merge-gate validator (V-SEC-08) before LGTM
 - [ ] Run scripts/review-aggregate.ts on reviewer JSON
 - [ ] Aggregate output → ledger append (phase: review)
+  - [ ] Issue #485: before appending, transition any prior ledger row named `fixed` in the aggregate's consumed `recheck[]` to `status: resolved` (see findings-ledger.md § Status transitions), so the write-time dedup check (findings-ledger.md § Write protocol step 3) never silently absorbs the new, distinct finding sharing that row's key
+  - [ ] Issue #485: if `unresolved_recheck` (worker-schemas.md § Review aggregate) is non-empty, do not silently proceed as a normal changes_requested iteration — surface it to the coordinator via the existing blocked-iteration/escalation path (review-core.md § Review iteration budget)
 - [ ] V-ADA-01/V-ADA-05 findings: before append, dedup by (vcode, file) ignoring issue_ref — skip append if an open/deferred row already exists for that (vcode, file) under any issue_ref (see findings-ledger.md).
 - [ ] BLOCK → increment review_iteration; back to phase implement (see review-core iteration budget)
 - [ ] review_iteration >= 4 → escalate to coordinator (AskQuestion)
