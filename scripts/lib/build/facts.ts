@@ -111,4 +111,27 @@ export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
  * array. `verify.ts` warns (does not fail) on a mismatch, so this is the sole place the
  * expectation is declared — never restate it as a literal at any consumption site.
  */
-export const EXPECTED_CHECK_COUNT = 36;
+export const EXPECTED_CHECK_COUNT = 44;
+
+/**
+ * Doc-tree health thresholds (issue #462, ADR-021 D6 Scope 1) — declared exactly once here per
+ * this file's SSOT convention above, consumed by `scripts/checks/doc-health.check.ts`
+ * (V-DOCHEALTH-03) and cited by name — never restated as an inline numeric literal — in
+ * `src/references/doc-governance.md`'s `## Doc-Tree Health Signal` section prose.
+ * `verify.doc-health.test.ts` independently parses that compiled prose's stated numbers and
+ * diffs them against this export, the same "declared once, independently verified" discipline
+ * `V-GROUND-01` uses above.
+ */
+export type DocHealthThresholds = {
+  singleDocLineCeiling: number;
+  rootIndexRowCeiling: number;
+  treeSizeAdvisory: number;
+  deprecationWindowDays: number;
+};
+
+export const DOC_HEALTH_THRESHOLDS: DocHealthThresholds = {
+  singleDocLineCeiling: 400,
+  rootIndexRowCeiling: 200,
+  treeSizeAdvisory: 500,
+  deprecationWindowDays: 90,
+};

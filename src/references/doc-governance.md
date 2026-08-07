@@ -73,6 +73,62 @@ shape:
 
 Enforced by `scripts/checks/adr-status.check.ts`.
 
+## Doc-Tree Health Signal
+
+Scope split (ADR-021 D6): this section is the **Scope-1** enforcer — blackhole's own
+`documentation/` tree, checked unconditionally by `bun run verify`
+(`scripts/checks/doc-health.check.ts`) and **not** gated by `docs_governance.write_governance`
+(the everything-else in this file governs Scope 2 — writes the campaign makes into a *consumer*
+repo's `documentation/` tree, which is gated). **Scope-2** enforcement — the reviewer judgment
+audit for consumer-repo trees (supersession-chain coherence, no new V-codes) — is a sibling
+concern tracked separately (issue #464), not implemented by this section.
+
+Four thresholds, numeric values declared once in `scripts/lib/build/facts.ts`'s
+`DOC_HEALTH_THRESHOLDS` export (Numeric-fact SSOT — never restated as an inline literal in the
+check or here without citing that export):
+
+- A single doc past the **400-line single-doc ceiling** is oversized. `INDEX.md` files are
+  exempt — they have their own row ceiling below instead.
+- The root `documentation/INDEX.md` past the **200-row root-INDEX ceiling** means the entry
+  point costs more to read than the answer it points to.
+- The tree past the **500-file tree-size advisory** is a signal only — a large tree that is
+  well-tiered into per-folder indexes is still healthy.
+- A doc marked `status: deprecated` whose `last_updated` exceeds the **90-day deprecation window**
+  is a candidate for archival.
+
+All four are advisory (`ok: true` always, per `V-DOCHEALTH-03`) — mirrors mercure's own framing
+for this exact signal, which likewise has no CI-blocking equivalent, surfacing instead through a
+session-start hook rather than a hard gate.
+
+## INDEX.md Maintenance
+
+The root `documentation/INDEX.md` is a single-file index of every live doc in blackhole's own
+tree, in the same 5-column schema documentation/decisions/INDEX.md already uses in production:
+
+```markdown
+| path | summary | type | status | review_trigger |
+|------|---------|------|--------|----------------|
+| audits/foo.md | One-line summary | audit | current | on release |
+```
+
+Row `path` values are **relative to `documentation/`** (e.g. `decisions/ADR-021-....md`,
+`audits/foo.md`) — distinct from `documentation/decisions/INDEX.md`'s own convention of bare
+filenames relative to its own directory (a per-folder index, unambiguous within one folder
+alone; the root index spans many folders and needs the folder-prefixed form).
+
+Owning agent: **`implementer`** — no new agent is minted for this obligation; it reuses
+`implementer`'s existing ADR-021 D2 carry-step role (the mechanism that already writes
+staged/derived documentation artifacts into the tree). Every doc under `documentation/` needs a
+corresponding row (`V-DOCHEALTH-02`, blocking), and every row needs to resolve to a file that
+still exists (`V-DOCHEALTH-01`, blocking) — both enforced unconditionally by
+`scripts/checks/doc-health.check.ts` regardless of `docs_governance.write_governance`, per the
+Scope-1/Scope-2 split above.
+
+This obligation is stated as rule text only as of this section landing — the carry-step's actual
+INDEX-upsert wiring for artifacts staged outside the ADR/design route (e.g. `investigator`'s
+`analyze`/`investigate` sub-modes) is a residual gap tracked as a fast-follow, not yet closed by
+any agent's numbered steps.
+
 ## Repo Convention Precedence
 
 When the target consumer repo already documents its own frontmatter/lifecycle convention for
