@@ -1,5 +1,11 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { aggregateReview, paretoPriority, type Finding } from './review-aggregate';
+
+const root = path.resolve(import.meta.dirname, '..');
+const scriptPath = path.join(root, 'scripts/review-aggregate.ts');
 
 const baseFinding = (overrides: Partial<Finding> = {}): Finding => ({
   vcode: 'V-KISS-03',
@@ -9,6 +15,21 @@ const baseFinding = (overrides: Partial<Finding> = {}): Finding => ({
   summary: 'issue',
   ...overrides,
 });
+
+async function runReviewAggregateCli(args: string[]) {
+  const proc = Bun.spawn({
+    cmd: ['bun', 'run', scriptPath, ...args],
+    stdout: 'pipe',
+    stderr: 'pipe',
+    cwd: root,
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  return { exitCode, stdout, stderr };
+}
 
 describe('aggregateReview', () => {
   test('empty findings → lgtm true, approved', () => {
@@ -504,5 +525,93 @@ describe('recheck-aware dedup and lgtm (issue #485)', () => {
     expect(result.unresolved_recheck).toHaveLength(1);
     expect(result.unresolved_recheck[0].finding_id).toBe('F-99999');
     expect(result.lgtm).toBe(false);
+  });
+});
+
+describe('review-aggregate CLI', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-aggregate-cli-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('unresolved recheck entry prints the fail-loud stderr line (issue #485)', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    const priorFile = path.join(tmpDir, 'prior.json');
+    fs.writeFileSync(
+      reviewerFile,
+      JSON.stringify({
+        status: 'complete',
+        findings: [],
+        recheck: [
+          { finding_id: 'F-99999', verdict: 'fixed', evidence: 'claimed fixed, no linkage' },
+        ],
+      }),
+      'utf-8',
+    );
+    fs.writeFileSync(priorFile, JSON.stringify([]), 'utf-8');
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      '470',
+      '--prior-file',
+      priorFile,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(
+      '1 unresolved_recheck entry — see the "unresolved_recheck" field in stdout output',
+    );
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.unresolved_recheck).toHaveLength(1);
+    expect(parsed.lgtm).toBe(false);
+  });
+
+  test('resolved recheck entry prints no fail-loud stderr line', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    const priorFile = path.join(tmpDir, 'prior.json');
+    fs.writeFileSync(
+      reviewerFile,
+      JSON.stringify({
+        status: 'complete',
+        findings: [],
+        recheck: [{ finding_id: 'F-00046', verdict: 'fixed', evidence: 'fixed in 94ca81a' }],
+      }),
+      'utf-8',
+    );
+    fs.writeFileSync(
+      priorFile,
+      JSON.stringify([
+        {
+          id: 'F-00046',
+          vcode: 'V-SEC-02',
+          severity: 'BLOCK',
+          file: 'src/a.ts',
+          line: 42,
+          summary: 'prior finding',
+        },
+      ]),
+      'utf-8',
+    );
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      '470',
+      '--prior-file',
+      priorFile,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.unresolved_recheck).toHaveLength(0);
   });
 });
