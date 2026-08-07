@@ -49,7 +49,7 @@ Committed template: `.blackhole/config.json`
 | `docs_governance.companion_files` | no | Gates the V-ADA companion-file reviewer audit (default `true`); when `false`, that audit is inert regardless of `enabled` — live consumers: `src/agents/reviewer.md` § 10 "Companion-File Audit (`V-ADA-01/02/03/05/06/07`)", config-gated at `reviewer.md:69`, and `src/SKILL.md` Phase 0 step 2 "Companion-file scaffold", config-gated at `SKILL.md:42` |
 | `docs_governance.docs_impact_routing` | no | Gates the router `docs_impact` flag (`src/agents/router.md`, `src/references/orchestrator-delegation.md` § Route-derived dispatch, #177); default `true`; when `false` (or `docs_governance.enabled: false`), `docs_impact` resolves to its cautious default (`true`) regardless of computed value or confidence |
 | `docs_governance.write_governance` | no | Gates search-before-write/canonical-slug rules for consumer-repo writes (default `true`); when `false`, those rules are inert regardless of `enabled` — live consumers: `src/agents/implementer.md` (companion-doc update step, gated at `implementer.md:67`) and `src/agents/planner.md` (Standard Track Documentation Impact bullet, gated at `planner.md:65`) |
-| `docs_governance.severity_overrides` | no | Map of V-code → `BLOCK`\|`WARN`, keyed by docs-governance V-code; empty/absent = defaults apply. May only escalate a WARN-default docs-governance code to BLOCK — must never de-escalate the pre-existing `V-DOC-02`/`V-DOC-04` BLOCK severity |
+| `docs_governance.severity_overrides` | no | Map of V-code → `BLOCK`\|`WARN`, keyed by docs-governance V-code; empty/absent = defaults apply. May only escalate a WARN-default docs-governance code to BLOCK — must never de-escalate the pre-existing `V-DOCSYNC-01` BLOCK severity |
 | `kaizen` | no | Nested object gating the kaizen improvement-hunt loop (ADR-006): `enabled`, `kinds`, `trigger`, `loop_interval`, `min_priority`, `max_issues_per_wave`, `max_waves`; absent block = current behavior preserved (hunting is opt-in, see contract note below) |
 | `kaizen.enabled` | no | Kill switch for the whole `kaizen` block (default `false` — hunting is opt-in, unlike `docs_governance` which defaults `true`); when `false`, hunt dispatch never fires regardless of sub-field values |
 | `kaizen.kinds` | no | Array of hunt territory kinds to scan (default `["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity", "ux-coherence"]`); `retrospective`, `parity`, and `ux-coherence` are all included by default whenever `kaizen.enabled: true` |
@@ -86,7 +86,7 @@ preserved exactly. Any future issue that wires a dependent feature must check th
 `adaptive_routing` already imposes on router-agent routing.
 `docs_governance.severity_overrides` may only **escalate** a WARN-default
 docs-governance V-code to `BLOCK` per repo; it must never de-escalate the
-pre-existing `V-DOC-02`/`V-DOC-04` `BLOCK` severity.
+pre-existing `V-DOCSYNC-01` `BLOCK` severity.
 
 **`kaizen` contract note**: when the block is absent, or `kaizen.enabled` is
 `false`, the kaizen improvement-hunt loop (ADR-006) MUST be a no-op and

@@ -47,7 +47,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
   - `V-YAGNI-03` (Single-consumer abstractions)
   - `V-DRY-04` (Template copy-paste renames)
 - **Improvement Discoveries**: Audit the code for UX/UI polish, performance gains, test coverage gaps, and styling best practices. Log them as WARN findings with detailed summaries. Do not demand resolving them in the current PR (prevents `V-SCOPE-02` scope creep); the orchestrator will file them as new GitHub issues.
-- **Docs Currency (`V-DOC-02/04`)**: Reviewer must confirm any public-API/schema/config-surface change (§1's `V-API-01` surface) ships with a same-PR documentation update (`**/*.md`, `documentation/**`, or inline docstring); missing update is `BLOCK`.
+- **Docs Currency (`V-DOCSYNC-01`)**: Reviewer must confirm any public-API/schema/config-surface change (§1's `V-API-01` surface) ships with a same-PR documentation update (`**/*.md`, `documentation/**`, or inline docstring); missing update is `BLOCK`.
 - **Companion-File Audit (`V-ADA-01/02/03/05/06/07`)**: Reviewer must confirm ARCHITECTURE.md, decisions/INDEX.md currency, AGENTS.md, and conditional DESIGN.md per `reviewer.md` §10; gated by `docs_governance.companion_files`. All WARN.
 - **Visual Evidence Audit (`V-VIS-01/02`)**: Reviewer must confirm `visual_evidence[]` presence/declaration on UI-affecting PRs per `reviewer.md` §22; gated by `display_targets`.
 

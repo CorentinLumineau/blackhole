@@ -40,6 +40,34 @@ export const findRosterScanMismatch = (scanned: string[], declared: string[]): s
 export const findRowCountMismatch = (label: string, declared: number, actual: number): string | null =>
   declared === actual ? null : `${label}: declared ${declared}, found ${actual}`;
 
+// ADR-021 D5 (issue #495): V-DOC-02/04 and V-DOC-05 were renamed to V-DOCSYNC-01 and
+// V-DOCFACT-01 to free those ids for mercure's own V-DOC-* namespace. This pin stops the
+// retired ids from silently reappearing (a copy-pasted row, a bad merge) and stops either
+// replacement id from being dropped or duplicated — the same "never a boolean" named-mismatch
+// shape as findRosterScanMismatch/findRowCountMismatch above.
+export const RETIRED_VCODE_IDS = ['V-DOC-02/04', 'V-DOC-05'];
+export const REPLACEMENT_VCODE_IDS = ['V-DOCSYNC-01', 'V-DOCFACT-01'];
+
+export const findVcodeNamespaceDrift = (vcodesContent: string): string | null => {
+  // Same row line-start anchor as the row-count regex above (checkGroundTruth's `vcodeRows`) —
+  // do not introduce a second table-parsing regex (V-INT-02).
+  const codes = (vcodesContent.match(/^\| (\S[^|]*?) \|/gm) || []).map(
+    (line) => line.match(/^\| (\S[^|]*?) \|/)![1],
+  );
+
+  for (const retired of RETIRED_VCODE_IDS) {
+    if (codes.includes(retired)) return `retired id still present: ${retired}`;
+  }
+
+  for (const replacement of REPLACEMENT_VCODE_IDS) {
+    const count = codes.filter((c) => c === replacement).length;
+    if (count === 0) return `replacement id missing: ${replacement}`;
+    if (count > 1) return `replacement id duplicated (${count}x): ${replacement}`;
+  }
+
+  return null;
+};
+
 // V-GROUND-01: facts-conformance — independent filesystem scan of src/agents/,
 // src/references/phase-*.md, and blackhole-vcodes.md's row count, compared against build.ts's
 // § facts declaration. Never collapsed onto one derivation path (ADR-007 Rejected Alternatives:
@@ -60,6 +88,9 @@ const checkGroundTruth = (): CheckResult => {
   const vcodeRows = (vcodes.match(/^\| V-/gm) || []).length;
   const rowCountMismatch = findRowCountMismatch('vcode table rows', VCODE_TABLE_ROW_COUNT, vcodeRows);
   if (rowCountMismatch) errors.push(rowCountMismatch);
+
+  const namespaceDrift = findVcodeNamespaceDrift(vcodes);
+  if (namespaceDrift) errors.push(namespaceDrift);
 
   for (const ref of REQUIRED_REFERENCES) {
     if (!fs.existsSync(path.join(srcDir, 'references', ref))) errors.push(`missing reference: ${ref}`);

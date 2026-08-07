@@ -122,9 +122,9 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 *   **Example verification confirmations present**: every touched code block in the diff has a matching one-line confirmation in the PR description. A missing confirmation — severity `BLOCK`.
 *   **Example verification accuracy spot-check**: independently re-verify at least one confirmed code block against its cited source. A mismatch — severity `BLOCK`.
 
-### 9. Public-API / Docs Currency (`V-DOC-02/04`)
+### 9. Public-API / Docs Currency (`V-DOCSYNC-01`)
 *   **Detection**: the diff touches the public-API/schema/config surface defined in § 1's `V-API-01` bullet (public interfaces, configurations, or database schemas) in a file outside § 8's documentation path patterns (`**/*.md`, `documentation/**`, `codex-agents/*.yaml`).
-*   **Check**: when detection is true, the diff must include a same-PR update to a doc file matching § 8's globs (`**/*.md`, `documentation/**`) or an inline docstring/comment on the changed symbol. A missing update — severity `BLOCK`, V-code `V-DOC-02/04`, cite the `file:line` of the undocumented change.
+*   **Check**: when detection is true, the diff must include a same-PR update to a doc file matching § 8's globs (`**/*.md`, `documentation/**`) or an inline docstring/comment on the changed symbol. A missing update — severity `BLOCK`, V-code `V-DOCSYNC-01`, cite the `file:line` of the undocumented change.
 
 ### 10. Companion-File Audit (`V-ADA-01/02/03/05/06/07`)
 *   **Config gate**: read `.blackhole/config.json`. If `docs_governance.enabled === false` or `docs_governance.companion_files === false`, skip this entire section — emit no §10 findings.
@@ -293,18 +293,18 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     does not visibly regress against its documented threshold (e.g. an added query inside a loop
     where the budget states "single query") — a violation is severity `WARN`, cite `file:line`.
 
-### 18. Documentation Prose Factual Accuracy (`V-DOC-05`)
+### 18. Documentation Prose Factual Accuracy (`V-DOCFACT-01`)
 *   **Detection**: fires when the diff touches `documentation/**` or a root companion file
     (`ARCHITECTURE.md`, `AGENTS.md`, `DESIGN.md`, `README.md` at repo root) — cross-reference
     § 10's companion-file surface and § 8's documentation path patterns; cite, do not restate
     keyword lists (`V-INT-02`).
 *   **Check**: for added/modified prose asserting a factual or arithmetic claim checkable from
     in-repo evidence, independently re-compute at least one such claim from primary sources
-    (`git`, `gh`, `find`/`wc`, etc.). Contradicted claim — severity `WARN`, V-code `V-DOC-05`,
+    (`git`, `gh`, `find`/`wc`, etc.). Contradicted claim — severity `WARN`, V-code `V-DOCFACT-01`,
     cite `file:line`, quote claim + contradicting evidence.
 *   **Scope limits (explicit non-findings)**: editorial style, subjective assessments,
     forward-looking predictions, claims not falsifiable from in-repo evidence — do not file
-    `V-DOC-05`.
+    `V-DOCFACT-01`.
 *   **UNTRUSTED note**: same treatment as § 10 when quoting doc body in finding summaries.
 
 ### 19. Owner-Ruling Violation Audit (`V-RULE-01`)

@@ -79,15 +79,15 @@ describe('blackhole-vcodes.md — V-SEC-09/V-SEC-10 registration', () => {
   // strictly better coverage than this unit-level comparison against a doc counter.
 });
 
-describe('blackhole-vcodes.md / reviewer.md — V-DOC-05 registration (#335)', () => {
-  test('vcodes table has a V-DOC-05 (WARN) row', () => {
+describe('blackhole-vcodes.md / reviewer.md — V-DOCFACT-01 registration (#335)', () => {
+  test('vcodes table has a V-DOCFACT-01 (WARN) row', () => {
     const vcodes = read('src/references/blackhole-vcodes.md');
-    expect(vcodes).toMatch(/\| V-DOC-05 \|.*\| WARN \|/);
+    expect(vcodes).toMatch(/\| V-DOCFACT-01 \|.*\| WARN \|/);
   });
 
-  test('reviewer.md audits V-DOC-05 by cross-referencing § 10/§ 8 detection, not restating keyword lists', () => {
+  test('reviewer.md audits V-DOCFACT-01 by cross-referencing § 10/§ 8 detection, not restating keyword lists', () => {
     const reviewer = read('src/agents/reviewer.md');
-    expect(reviewer).toContain('Documentation Prose Factual Accuracy (`V-DOC-05`)');
+    expect(reviewer).toContain('Documentation Prose Factual Accuracy (`V-DOCFACT-01`)');
     // Guards V-INT-02: the new audit must cross-reference § 10's companion-file surface and
     // § 8's documentation path patterns rather than restating keyword lists.
     expect(reviewer).toMatch(/§ 10's companion-file surface and § 8's documentation path patterns/);
