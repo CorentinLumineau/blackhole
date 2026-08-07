@@ -51,9 +51,7 @@ export const REPLACEMENT_VCODE_IDS = ['V-DOCSYNC-01', 'V-DOCFACT-01'];
 export const findVcodeNamespaceDrift = (vcodesContent: string): string | null => {
   // Same row line-start anchor as the row-count regex above (checkGroundTruth's `vcodeRows`) —
   // do not introduce a second table-parsing regex (V-INT-02).
-  const codes = (vcodesContent.match(/^\| (\S[^|]*?) \|/gm) || []).map(
-    (line) => line.match(/^\| (\S[^|]*?) \|/)![1],
-  );
+  const codes = [...vcodesContent.matchAll(/^\| (\S[^|]*?) \|/gm)].map((m) => m[1]);
 
   for (const retired of RETIRED_VCODE_IDS) {
     if (codes.includes(retired)) return `retired id still present: ${retired}`;
