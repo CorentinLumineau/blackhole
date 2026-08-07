@@ -50,9 +50,8 @@ stop_kind: null
 ## In-flight workers
 
 - reviewer on #298 PR 42 (spawned turn 12, rulings_revision 7)
-- optional trailing tag, present only during/after a stop event (absent on a normal turn's
-  rows — non-breaking): reviewer on #298 PR 42 (spawned turn 12, rulings_revision 7)
-  `worker_state: killed`
+- implementer on #447 (spawned turn 12) `worker_state: killed` — the optional trailing tag,
+  present only during/after a stop event (absent on a normal turn's rows — non-breaking)
 
 ## Ready set
 
