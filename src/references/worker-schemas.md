@@ -765,7 +765,7 @@ message into a still-running worker", repo-wide).
 ```json
 {
   "flush_requested_at": "2026-08-10T18:00:00.000Z",
-  "grace_window_minutes": 5,
+  "grace_window_minutes": 20,
   "instruction": "stop_now"
 }
 ```
@@ -773,7 +773,7 @@ message into a still-running worker", repo-wide).
 | Field | Values | Notes |
 |-------|--------|-------|
 | `flush_requested_at` | ISO-8601 | when the orchestrator delivered the ask |
-| `grace_window_minutes` | `5` (fixed — `phase-stop.md` § `stop --now` tier step 2) | how long the worker has before the orchestrator falls back to killing it |
+| `grace_window_minutes` | `20` (fixed — `phase-stop.md` § `stop --now` tier step 2; matches `merge-gate.md`'s CI-wait cap, sized for a worker queued behind another campaign's `with-test-lock` holder) | how long the worker has before the orchestrator falls back to killing it |
 | `instruction` | `"stop_now"` (fixed) | distinguishes this message from ordinary chat feedback so a worker's own instructions can pattern-match on it |
 
 ### What the worker owes on receipt

@@ -66,7 +66,7 @@ invoked per-worker instead of campaign-wide.
 ### Signalling channel
 
 No new file-based side channel — and **not** `.blackhole/resume-request.json`
-(`worker-schemas.md` § SubagentStop resume hook). That channel is worker-written,
+(`hook-schemas.md` § SubagentStop resume hook). That channel is worker-written,
 orchestrator-read, and fires only *after* a worker has already stopped naturally; the ask this
 tier needs is the opposite direction and timing — orchestrator-written, worker-read, delivered
 to a worker still running (`V-INT-02`: reused where the shape fits, not forced where it does
@@ -83,11 +83,19 @@ them.
 1. **Ask** — for every worker in `## In-flight workers`, deliver the Flush Request
    (`worker-schemas.md` § Flush request) via the channel above, or skip straight to step 4 when
    no such channel exists on this harness.
-2. **Grace window** — wait up to 5 minutes, wall-clock, per worker, for either its natural
-   SubagentStop return or an explicit flush acknowledgment, whichever comes first. Checked via
-   the same detached-poll idiom already used for the CI-wait poller and the background barrier
-   (`orchestrator-runtime.md` § Background worker barrier; `merge-gate.md` § CI-wait poller
-   contract) — never a new polling mechanism, never a foreground sleep.
+2. **Grace window** — wait up to 20 minutes, wall-clock, per worker, for either its natural
+   SubagentStop return or an explicit flush acknowledgment, whichever comes first. 20 minutes is
+   not an arbitrary shortening of `merge-gate.md` § CI-wait poller contract's own 20-minute
+   cap — it is the same number, because the risk is the same shape: the ask cannot be processed
+   until the worker's current tool call returns, and that call may itself be queued behind
+   another campaign's `with-test-lock` holder on this machine
+   (`resource-frugal-testing.md` § Pre-Flight Gate — "expect to queue, never work around it"), a
+   wait neither the worker nor the orchestrator controls or can shorten. A tighter number risks
+   killing a fully cooperative worker mid-queue and discarding real, already-complete work —
+   exactly the outcome this tier exists to avoid. Checked via the same detached-poll idiom
+   already used for the CI-wait poller and the background barrier
+   (`orchestrator-runtime.md` § Background worker barrier) — never a new polling mechanism,
+   never a foreground sleep.
 3. **Cooperative return** — a worker that returns within its grace window is triaged exactly
    like a drain-tier natural return. Tag its `## In-flight workers` row `worker_state: drained`
    before removal (`checkpoint-protocol.md` § Fields — the value already exists in that field's
@@ -147,9 +155,12 @@ them.
   tier: the same file, `stop_kind` set per step 6 above, per-row `worker_state` distinguishing
   cooperative (`drained`) from fallen-through (`killed`) workers**)
 - [ ] Every worktree's branch has all commits pushed to its PR branch; any dirty worktree is
-  reported by path, never silently left (**`stop --now` tier: this is exactly the worker's
-  obligation 3 on receipt of the ask — `worker-schemas.md` § Flush request — the invariant and
-  the worker obligation are the same requirement seen from two sides**)
+  reported by path, never silently left (**`stop --now` tier: two paths, same as Invariant 1 —
+  a cooperative worker satisfies this directly via obligation 3 on receipt of the ask
+  (`worker-schemas.md` § Flush request) before it returns; an uncooperative worker's worktree is
+  covered by the `--abandon` tier's step 3 dirty-check (`recovery-protocol.md` §2 detection, §4
+  decision tree — cited, never restated), invoked per-worker by step 4 of the `stop --now`
+  sequence above, so a killed worker's partial commits are never silently left undetected**)
 - [ ] Background side-processes (the memory watchdog) are terminated, using the
   variable-indirection form so `pkill` does not kill its own wrapper shell (**`stop --now` tier:
   identical to `--abandon` tier — fires only if step 4's fallback actually killed a worker; a
