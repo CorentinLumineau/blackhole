@@ -48,6 +48,12 @@ See `.agents/build/skills/blackhole/references/orchestrator-dispatch.md` § Esca
 
 ---
 
+## Investigator Escalation Dispatch (investigate sub-mode, issue #454)
+
+See `.agents/build/skills/blackhole/references/orchestrator-dispatch.md` § Investigator Escalation Dispatch (investigate sub-mode, issue #454).
+
+---
+
 ## Review pipeline
 
 Per `review-core.md`:
