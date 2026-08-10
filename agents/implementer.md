@@ -156,9 +156,10 @@ statement of Scout Check; the Bugfix Gate below only points here, it does not re
 
 ### Bugfix Gate
 
-`task_type: bugfix` on a `track: quick` plan (stamped by `planner.md` § Quick Track's Bugfix
-classification note) activates this gate — x-fix parity. When the plan frontmatter does not carry
-`task_type: bugfix`, this subsection does not apply; step 3's default TDD mandate is unchanged.
+`task_type: bugfix` on any plan (stamped by `planner.md` § Quick Track's or § Standard Track's
+Bugfix classification bullet) activates this gate — x-fix parity. When the plan frontmatter does
+not carry `task_type: bugfix`, this subsection does not apply; step 3's default TDD mandate is
+unchanged.
 Scout Check (above) and step 7's Continuous Discovery are unconditional and apply the same
 whether or not this gate is active.
 
