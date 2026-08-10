@@ -96,7 +96,8 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     plan, emit a `## UI Interpretation Gate` section into the ordinary `plans/issue-N.md`
     containing an ASCII/HTML mockup plus a three-part `### Owner said` / `### I interpreted` /
     `### Open ambiguities` block (`### Owner said` quotes the owner's own words from the issue
-    verbatim, never paraphrased). Return `status: blocked`, `failing_checks:
+    verbatim, never paraphrased; the block's Why/Evidence framing follows `clarify-gates.md`
+    § Gate Content Contract (R-003), UI interpretation gate class). Return `status: blocked`, `failing_checks:
     ["ui_pending_approval"]`, and stamp `ui_gate: pending` in the plan's frontmatter (see Plan
     Output File Template below). This block is narrower than Design Track's unconditional block
     — it fires only on `route.ui: true` at non-`size:xs`, not on every Quick Track plan
@@ -147,7 +148,9 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     `size:xs` — same trigger and mechanics as Quick Track's UI Interpretation Gate bullet above,
     not a new heuristic shape (`V-INT-03`). When triggered, emit an ASCII/HTML mockup plus a
     three-part `### Owner said` / `### I interpreted` / `### Open ambiguities` block
-    (`### Owner said` quotes the owner's own words from the issue verbatim, never paraphrased),
+    (`### Owner said` quotes the owner's own words from the issue verbatim, never paraphrased;
+    same `clarify-gates.md` § Gate Content Contract (R-003) UI interpretation gate class as
+    Quick Track's bullet above),
     return `status: blocked`, `failing_checks: ["ui_pending_approval"]`, and stamp `ui_gate:
     pending` in the plan's frontmatter (see Plan Output File Template below). `size:xs` at
     `route.ui: true` is the sole exemption; every other size, or an unset/null size, is gated
@@ -268,7 +271,10 @@ The artifact consolidates 8 ordered subsections:
 7.  **Assumption Audit**: Key assumptions underpinning the Chosen option, each marked `✓`
     Validated / `~` Contestable / `◐` Blind spot / `✗` Incorrect, with a one-line note per
     assumption.
-8.  **Gate (ADR-010 D4 — config-gated, otherwise unchanged)**: When
+8.  **Gate (ADR-010 D4 — config-gated, otherwise unchanged)**: The design note MUST include a
+    `### What the owner needs to decide (R-003 executive summary)` block satisfying
+    `clarify-gates.md` § Gate Content Contract's four elements (`.blackhole/plans/issue-496-design.md`
+    § 8 is a worked example), regardless of the `status` outcome below. When
     `.blackhole/config.json` `autonomy.design_autonomy` is `true`, invoke
     `scripts/design-aggregate.ts` with the primary's weighted matrix (subsection 2/3), both
     critics' raw JSON (subsection 3), and the Refactoring Impact Analysis rows (subsection 6).

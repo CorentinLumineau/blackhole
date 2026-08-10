@@ -158,7 +158,11 @@ listing itself — is a degenerate 1-node cycle of the same class):
    issue's number; for cycles >2 nodes, name the next node in the cycle).
 3. Surface via the existing `AskQuestion` user gate (`coordinator.md` /
    `orchestrator.md`'s existing interactive-gate convention) — never silently
-   deadlock or auto-resolve a cycle.
+   deadlock or auto-resolve a cycle. Conforms to `clarify-gates.md` § Gate Content Contract
+   (R-003), merge escalation gate class: Why is that a merge-order cycle cannot resolve itself
+   — picking an edge to break is the owner's call; Evidence is the cycle's issue numbers and
+   their `merge_after`/`depends_on` edges (`coordinator.md`'s "Resolving Blockers" §
+   merge-order-cycle bullet presents the same edges — cross-referenced there, not restated).
 
 This step is consulted (by pointer) from `forge-sync.md`'s sync sequence — the
 algorithm lives here once; `forge-sync.md` does not duplicate it inline.

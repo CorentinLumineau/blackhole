@@ -38,6 +38,10 @@ Staging (ADR-021 D1) — not restated here.
 
 ## Plan approval gate
 
+Every `AskQuestion` row below (all except "Design track, autonomy gate ready") conforms to
+`clarify-gates.md` § Gate Content Contract (R-003) — plan approval and design approval gate
+classes.
+
 | Situation | Before implement |
 |-----------|------------------|
 | Clear AC from start, single PR, no product choices | May set `ready` (note waive in queue) |
