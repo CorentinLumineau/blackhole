@@ -9,7 +9,7 @@
 - [ ] git worktree prune (V-WORKTREE-01)
 - [ ] git worktree add <scratchpad>/wt-<issue> -b blackhole/issue-<issue> origin/main (V-BRANCH-03)
 - [ ] git -C <scratchpad>/wt-<issue> config push.default nothing (issue #516 — no bare `git push` can silently succeed)
-- [ ] Branch Tracking Sweep before this wave's dispatch (`orchestrator-dispatch.md` § Branch Tracking Sweep (issue #516))
+- [ ] Branch Tracking Sweep clean before this wave's dispatch → orchestrator-dispatch.md § Branch Tracking Sweep (issue #516)
 - [ ] install dependencies in worktree (e.g. `npm install`, `bun install`, etc.)
 - [ ] Spawn implementer worker (run_in_background: true)
 - [ ] Worker returns new_findings[] — orchestrator appends to ledger

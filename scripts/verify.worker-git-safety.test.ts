@@ -13,7 +13,7 @@ import { expectMarkersPresent, expectMarkersMissing } from './lib/marker-fixture
 
 const PHASE_IMPLEMENT_FIXTURE_FIXED = `
 - [ ] git -C <scratchpad>/wt-<issue> config push.default nothing (issue #516)
-- [ ] Branch Tracking Sweep before this wave's dispatch (\`orchestrator-dispatch.md\` § Branch Tracking Sweep (issue #516))
+- [ ] Branch Tracking Sweep clean before this wave's dispatch → orchestrator-dispatch.md § Branch Tracking Sweep (issue #516)
 
 ## Git operations must not depend on inherited cwd (issue #516)
 
