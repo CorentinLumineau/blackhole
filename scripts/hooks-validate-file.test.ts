@@ -430,24 +430,79 @@ describe('validate-file-changes.js', () => {
     });
   });
 
-  // Fail-open, per-check: outside a git context the worktree-containment sub-check cannot run,
-  // but the pattern-based system-path checks do not depend on git and must still fire.
-  test('fails open per-check: outside a git repo the system-path block still applies', async () => {
+  // #512: outside a git context, `allWorktreeRoots` has nothing to resolve, so the check falls
+  // back to bounding writes to the payload's own cwd subtree rather than skipping containment
+  // outright (the pre-#512 fail-open). The pattern-based system-path checks never depended on git
+  // and must still fire first, unaffected by the fallback.
+  test('#512: outside a git repo the system-path block still applies (no regression)', async () => {
     const nonRepo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-nogit-')));
     try {
       const blocked = await runPreToolUseHook(SCRIPT, writePayload('/etc/passwd'), nonRepo);
       expect(blocked.exitCode).toBe(2);
       expect(permissionReason(blocked.stdout)).toMatch(/system/i);
+    } finally {
+      fs.rmSync(nonRepo, { recursive: true, force: true });
+    }
+  });
 
-      // ...and an ordinary write is NOT denied just because containment was unresolvable.
+  // #512: outside a git context, a write inside the payload cwd's own subtree is the routine case
+  // (an agent working within its own session directory) and must not be denied just because
+  // containment could not be resolved from git.
+  test('#512: outside a git repo, a write inside the payload cwd subtree is bounded-allowed', async () => {
+    const nonRepo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-nogit-')));
+    try {
       const ordinary = await runPreToolUseHook(
         SCRIPT,
-        writePayload(path.join(nonRepo, 'foo.ts')),
+        writePayload(path.join(nonRepo, 'nested', 'foo.ts')),
         nonRepo,
       );
       expect(ordinary.exitCode).toBe(0);
-      expect(ordinary.stderr).toMatch(/worktree/i);
+      expect(ordinary.stdout.trim()).toBe('');
+      expect(ordinary.stderr).toMatch(/bounded fallback to cwd subtree/i);
+      expect(readHookEvents(nonRepo)).toEqual([]);
     } finally {
+      fs.rmSync(nonRepo, { recursive: true, force: true });
+    }
+  });
+
+  // #512: the residual gap this issue closes — outside a git context, a target that matches no
+  // denylist pattern but resolves outside the payload's own cwd subtree must now be denied rather
+  // than accepted as "anywhere on disk".
+  test('#512: outside a git repo, a write outside the payload cwd subtree is denied', async () => {
+    const nonRepo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-nogit-')));
+    const outside = path.join(fs.realpathSync(os.tmpdir()), `blackhole-512-outside-${process.pid}.ts`);
+    try {
+      const result = await runPreToolUseHook(SCRIPT, writePayload(outside), nonRepo);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/cwd/i);
+      expect(result.stderr).toMatch(/cwd/i);
+      // No git context means no destination dir to persist the event under — the deny still
+      // fires, but recording is a best-effort side channel that has nowhere to write (mirrors
+      // hook-event-log.js's recordEvent behavior for any other git-context-less denial).
+      expect(readHookEvents(nonRepo)).toEqual([]);
+    } finally {
+      fs.rmSync(nonRepo, { recursive: true, force: true });
+    }
+  });
+
+  // #512: a Write target that is itself a symlink escaping the payload cwd subtree, with no git
+  // context, must also be denied — the leaf-resolution fix from F-00048 applies to the cwd
+  // fallback bound exactly as it does to the worktree-root bound.
+  test('#512: outside a git repo, a symlinked write target escaping the cwd subtree is denied', async () => {
+    const nonRepo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-nogit-')));
+    const outsideTarget = path.join(fs.realpathSync(os.tmpdir()), `blackhole-512-symlink-target-${process.pid}.txt`);
+    fs.writeFileSync(outsideTarget, 'outside content');
+    const leaf = path.join(nonRepo, 'notes.txt');
+    fs.symlinkSync(outsideTarget, leaf);
+    try {
+      const result = await runPreToolUseHook(SCRIPT, writePayload(leaf), nonRepo);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionReason(result.stdout)).toMatch(/cwd/i);
+    } finally {
+      fs.rmSync(outsideTarget, { force: true });
       fs.rmSync(nonRepo, { recursive: true, force: true });
     }
   });
