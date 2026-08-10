@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 66;
+export const VCODE_TABLE_ROW_COUNT = 67;
 
 // § facts — value vocabularies (issue #320, ADR-007 R1′ extension). Closed sets of enum-shaped
 // strings that agent prose restates verbatim at many consumption sites, declared once here and
@@ -55,7 +55,7 @@ export const QUEUE_NOTES = [
 ];
 
 /** `kaizen.kinds` (V-VOCAB-01) — hunt territory kinds, canonical default per `config-template.md`. */
-export const HUNT_KINDS = ['quickwins', 'best-practices', 'coverage', 'refactor', 'bug', 'retrospective', 'parity', 'ux-coherence'];
+export const HUNT_KINDS = ['quickwins', 'best-practices', 'coverage', 'refactor', 'bug', 'retrospective', 'parity', 'ux-coherence', 'docs'];
 
 /** Platform build targets (V-VOCAB-01) — see `PLATFORM_TARGETS` above `type Target`; also the
  *  declared side of the scripts/**\/*.ts scan for any stray re-hardcoded copy of this array. */
