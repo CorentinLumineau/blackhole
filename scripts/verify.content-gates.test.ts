@@ -78,6 +78,41 @@ describe('parseSectionLineCounts (CHECK_TS_SECTION_PATTERN boundary)', () => {
       'const checkReal = (): CheckResult => {': 3,
     });
   });
+
+  // Issue #554: a check function exported for unit-testing (`export const checkFoo = ...`, the
+  // convention PR #550 introduced so split check functions can be tested individually) was
+  // invisible to the section boundary — the pattern anchored on `^const check` and never matched
+  // the `export ` prefix, so the whole file fell back to zero detected sections and the
+  // 68-LOC-per-section budget went silently unenforced.
+  test('matches an exported check function declaration', () => {
+    const content = [
+      'export const checkFoo = (): CheckResult => {',
+      '  return { id: "X", ok: true };',
+      '};',
+      'export const checkBar = (): CheckResult[] => {',
+      '  return [];',
+      '};',
+    ].join('\n');
+    expect(parseSectionLineCounts(content, CHECK_TS_SECTION_PATTERN)).toEqual({
+      'export const checkFoo = (): CheckResult => {': 3,
+      'export const checkBar = (): CheckResult[] => {': 3,
+    });
+  });
+
+  test('matches both exported and non-exported check declarations in the same file', () => {
+    const content = [
+      'const checkPrivate = (): CheckResult => {',
+      '  x;',
+      '};',
+      'export const checkPublic = (): CheckResult => {',
+      '  y;',
+      '};',
+    ].join('\n');
+    expect(parseSectionLineCounts(content, CHECK_TS_SECTION_PATTERN)).toEqual({
+      'const checkPrivate = (): CheckResult => {': 3,
+      'export const checkPublic = (): CheckResult => {': 3,
+    });
+  });
 });
 
 describe('resolveContentGateTargets', () => {
