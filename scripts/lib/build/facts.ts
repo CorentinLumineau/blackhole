@@ -114,7 +114,7 @@ export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
  * array. `verify.ts` warns (does not fail) on a mismatch, so this is the sole place the
  * expectation is declared — never restate it as a literal at any consumption site.
  */
-export const EXPECTED_CHECK_COUNT = 45;
+export const EXPECTED_CHECK_COUNT = 46;
 
 /**
  * Doc-tree health thresholds (issue #462, ADR-021 D6 Scope 1) — declared exactly once here per

@@ -5,6 +5,8 @@ import {
   extractAgentRosterTableNames,
   findReadmeAgentCountMismatch,
   findVcodeNamespaceDrift,
+  parseVcodeEnforcementSites,
+  findMissingEnforcementSites,
 } from './checks/ground-truth.check.ts';
 import { AGENT_NAMES } from './lib/build/facts.ts';
 import { read } from './checks/check-utils.ts';
@@ -164,5 +166,49 @@ describe('findVcodeNamespaceDrift', () => {
   test('returns null for the current real blackhole-vcodes.md content', () => {
     const vcodes = read('src/references/blackhole-vcodes.md');
     expect(findVcodeNamespaceDrift(vcodes)).toBeNull();
+  });
+});
+
+// Issue #508 (leg A of #438): `Primary enforcement site` column — every row must carry a
+// non-empty 4th cell. An explicit `none` sentinel counts as non-empty (leg B, issue #509,
+// resolves the six codes still marked `none` today) so leg A can go green before leg B lands.
+describe('parseVcodeEnforcementSites', () => {
+  test('extracts code and 4th-cell site for each V-code row, skipping header/separator rows', () => {
+    const content = [
+      '| Code | Rule | Severity | Primary enforcement site |',
+      '|------|------|----------|--------------------------|',
+      '| V-DRY-01 | No >10-line duplication | BLOCK | reviewer.md §3 |',
+      '| V-SEC-10 | grep false-positive check | WARN | none |',
+    ].join('\n');
+
+    expect(parseVcodeEnforcementSites(content)).toEqual([
+      { code: 'V-DRY-01', site: 'reviewer.md §3' },
+      { code: 'V-SEC-10', site: 'none' },
+    ]);
+  });
+});
+
+describe('findMissingEnforcementSites', () => {
+  test('returns empty array when every row has a non-empty site, including the literal "none" sentinel', () => {
+    const rows = [
+      { code: 'V-DRY-01', site: 'reviewer.md §3' },
+      { code: 'V-SEC-10', site: 'none' },
+    ];
+    expect(findMissingEnforcementSites(rows)).toEqual([]);
+  });
+
+  test('names the code whose 4th cell is empty', () => {
+    const rows = [
+      { code: 'V-DRY-01', site: 'reviewer.md §3' },
+      { code: 'V-CONFIG-01', site: '' },
+    ];
+    expect(findMissingEnforcementSites(rows)).toEqual(['V-CONFIG-01']);
+  });
+
+  test('the real blackhole-vcodes.md table has no row with an empty enforcement-site cell', () => {
+    const vcodes = read('src/references/blackhole-vcodes.md');
+    const rows = parseVcodeEnforcementSites(vcodes);
+    expect(rows.length).toBe(65);
+    expect(findMissingEnforcementSites(rows)).toEqual([]);
   });
 });

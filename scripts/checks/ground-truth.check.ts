@@ -140,6 +140,40 @@ const checkDocTables = (): CheckResult => {
   return { id: 'V-DOCTABLE-01', ok: true };
 };
 
+// Issue #508 (leg A of #438): `Primary enforcement site` column — row-cell parser reusing the
+// same `split('|').map(trim)` idiom as `adr-status.check.ts`'s `parseIndexStatusMap` and
+// `doc-health.check.ts`'s `parseRootIndexRows` (V-INT-01/V-INT-02: this is the third instance of
+// the idiom, not a fourth divergent pipe-table parser — see those two for the established shape).
+// Header/separator rows are skipped because their first cell never starts with `V-`.
+export const parseVcodeEnforcementSites = (vcodesContent: string): { code: string; site: string }[] => {
+  const rows: { code: string; site: string }[] = [];
+  for (const line of vcodesContent.split('\n')) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').map((c) => c.trim());
+    if (cells.length < 6) continue;
+    const code = cells[1];
+    if (!code.startsWith('V-')) continue;
+    rows.push({ code, site: cells[4] });
+  }
+  return rows;
+};
+
+// Leg A ships an explicit `none` sentinel for the six codes leg B (issue #509) has not yet
+// resolved — `none` is a non-empty string and therefore passes here by construction. Only a
+// truly blank 4th cell (missing column, or a row nobody filled in) fails.
+export const findMissingEnforcementSites = (rows: { code: string; site: string }[]): string[] =>
+  rows.filter((r) => !r.site).map((r) => r.code);
+
+// V-GROUND-02: every `blackhole-vcodes.md` row carries a non-empty `Primary enforcement site` cell.
+const checkVcodeEnforcementSites = (): CheckResult => {
+  const rows = parseVcodeEnforcementSites(read('src/references/blackhole-vcodes.md'));
+  const missing = findMissingEnforcementSites(rows);
+  if (missing.length) {
+    return { id: 'V-GROUND-02', ok: false, detail: `rows missing Primary enforcement site: ${missing.join(', ')}` };
+  }
+  return { id: 'V-GROUND-02', ok: true };
+};
+
 // ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
-export const runChecks = (): CheckResult[] => [checkGroundTruth(), checkDocTables()];
+export const runChecks = (): CheckResult[] => [checkGroundTruth(), checkDocTables(), checkVcodeEnforcementSites()];
