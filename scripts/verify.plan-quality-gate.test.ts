@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  EXECUTION_STRATEGY_HEADING,
   extractBacktickPaths,
+  findExecutionStrategyHeadingDrift,
   findMissingCriticalFiles,
   findVagueMitigations,
   PLAN_QUALITY_GATE_REQUIRED_MARKERS,
@@ -68,25 +70,25 @@ describe('findMissingCriticalFiles', () => {
 
 describe('findVagueMitigations', () => {
   test('a fixture plan with a vague mitigation is flagged', () => {
-    const section = '## Execution Strategy (Stop Conditions)\n- Monitor the migration for errors.\n';
+    const section = '## Execution Strategy & Stop Conditions\n- Monitor the migration for errors.\n';
     expect(findVagueMitigations(section)).toEqual(['- Monitor the migration for errors.']);
   });
 
   test('a fixture plan with a concrete stop condition is not flagged', () => {
     const section =
-      '## Execution Strategy (Stop Conditions)\n- If the generated migration lacks column X, abort.\n';
+      '## Execution Strategy & Stop Conditions\n- If the generated migration lacks column X, abort.\n';
     expect(findVagueMitigations(section)).toEqual([]);
   });
 
   test('a vague word paired with an explicit stop condition is not flagged', () => {
     const section =
-      '## Execution Strategy (Stop Conditions)\n- Watch for lock contention; if retries exceed 3, halt.\n';
+      '## Execution Strategy & Stop Conditions\n- Watch for lock contention; if retries exceed 3, halt.\n';
     expect(findVagueMitigations(section)).toEqual([]);
   });
 
   test('multiple bullets: only the vague one is returned', () => {
     const section = [
-      '## Execution Strategy (Stop Conditions)',
+      '## Execution Strategy & Stop Conditions',
       '- If schema migration lacks column X, abort.',
       '- Be careful with the rollout.',
       '- If lint fails, block the merge.',
@@ -102,7 +104,7 @@ describe('findVagueMitigations', () => {
     const bullet =
       '- Monitor the queue; if depth exceeds threshold sustained for more than five consecutive ' +
       'polling intervals across every shard in the cluster without any sign of drain, abort.';
-    const section = `## Execution Strategy (Stop Conditions)\n${bullet}\n`;
+    const section = `## Execution Strategy & Stop Conditions\n${bullet}\n`;
     expect(findVagueMitigations(section)).toEqual([]);
   });
 
@@ -128,5 +130,32 @@ describe('PLAN_QUALITY_GATE_REQUIRED_MARKERS grounding', () => {
 
   test('stale (pre-#459) planner.md fixture is missing both markers', () => {
     expectMarkersMissing(STALE, PLAN_QUALITY_GATE_REQUIRED_MARKERS);
+  });
+});
+
+// Issue #519 gap 3 — heading spelling drift: planner.md previously cited
+// "Execution Strategy (Stop Conditions)" while plan-template.md's actual heading is
+// "Execution Strategy & Stop Conditions" (the canonical form — it is literally what the
+// planner writes into every Standard Track plan file). Modeled on
+// PLAN_QUALITY_GATE_REQUIRED_MARKERS grounding above: fixture-in, drift-list-out.
+describe('findExecutionStrategyHeadingDrift', () => {
+  test('a planner.md fixture using the canonical heading has no drift', () => {
+    const fixture = `Scan every bullet under \`## ${EXECUTION_STRATEGY_HEADING}\` against the word list.`;
+    expect(findExecutionStrategyHeadingDrift(fixture)).toEqual([]);
+  });
+
+  test('a planner.md fixture using the stale parenthetical spelling is flagged', () => {
+    const fixture = 'Scan every bullet under `## Execution Strategy (Stop Conditions)` against the word list.';
+    expect(findExecutionStrategyHeadingDrift(fixture)).toEqual([
+      'Execution Strategy (Stop Conditions)',
+    ]);
+  });
+
+  test('a fixture with no Execution Strategy citation at all has no drift', () => {
+    expect(findExecutionStrategyHeadingDrift('## Critical Files\n...\n')).toEqual([]);
+  });
+
+  test('EXECUTION_STRATEGY_HEADING matches plan-template.md\'s actual heading text', () => {
+    expect(EXECUTION_STRATEGY_HEADING).toBe('Execution Strategy & Stop Conditions');
   });
 });

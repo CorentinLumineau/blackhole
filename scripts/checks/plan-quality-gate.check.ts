@@ -73,6 +73,19 @@ export const findVagueMitigations = (
 // documented nowhere a reviewer can audit.
 export const PLAN_QUALITY_GATE_REQUIRED_MARKERS = ['critical_files_exist', 'mitigation_concrete'];
 
+// Heading spelling drift guard (issue #519 gap 3): plan-template.md's actual Standard Track
+// heading is "Execution Strategy & Stop Conditions" — it is literally what the planner writes
+// into every generated plan file, making it the canonical spelling. planner.md's prose
+// previously cited a drifted "Execution Strategy (Stop Conditions)" parenthetical instead; a
+// hand-typed citation like that can drift again silently, so this folds into the same
+// V-PLANGATE-01 grounding check rather than minting a second CheckResult (facts.ts's
+// EXPECTED_CHECK_COUNT is out of scope for this fix, so the check count must not change).
+export const EXECUTION_STRATEGY_HEADING = 'Execution Strategy & Stop Conditions';
+const STALE_EXECUTION_STRATEGY_SPELLINGS = ['Execution Strategy (Stop Conditions)'];
+
+export const findExecutionStrategyHeadingDrift = (content: string): string[] =>
+  STALE_EXECUTION_STRATEGY_SPELLINGS.filter((stale) => content.includes(stale));
+
 const checkPlanQualityGateGrounding = (): CheckResult => {
   const plannerContent = read('src/agents/planner.md');
   const schemaContent = read('src/references/worker-schemas.md');
@@ -83,6 +96,9 @@ const checkPlanQualityGateGrounding = (): CheckResult => {
     ),
     ...findMissingGateMarkers(schemaContent, PLAN_QUALITY_GATE_REQUIRED_MARKERS).map(
       (m) => `worker-schemas.md missing "${m}"`
+    ),
+    ...findExecutionStrategyHeadingDrift(plannerContent).map(
+      (stale) => `planner.md uses stale heading spelling "${stale}" (canonical: "${EXECUTION_STRATEGY_HEADING}")`
     ),
   ];
 
