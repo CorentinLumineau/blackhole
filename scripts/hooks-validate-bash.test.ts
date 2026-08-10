@@ -284,3 +284,178 @@ describe('validate-bash-command.js — evasion-fix negative controls (review rou
     });
   }
 });
+
+// Non-executing-text negative controls (#488): round 2's boundary-character widening (F-00058,
+// `85a90f4`) is a context-blind whole-string regex match, so it also matches a destructive
+// command's text when that text merely appears inside a `#` comment or a quoted argument to a
+// print-only sink (`echo`/`printf`) that never executes it. These 12 cases (3 exact
+// reviewer-verified repros + a 3-pattern x 3-context generalized matrix) must all be allowed
+// silently. Every case here was proven, by direct execution against the unmodified
+// bash-patterns.json regexes (see .blackhole/plans/issue-488.md Root-Cause Decision Record), to
+// currently match a blockPatterns entry — i.e. these are true regression tests, not vacuous ones.
+describe('validate-bash-command.js — non-executing-text negative controls (#488)', () => {
+  const EXACT_REPROS: string[] = [
+    '# (rm -rf /)',
+    '# `rm -rf /`',
+    "echo '(chmod 777 /)'",
+  ];
+
+  for (const command of EXACT_REPROS) {
+    test(`\`${command}\` (exact reviewer repro) is still allowed silently`, async () => {
+      await withTempGitRepo('blackhole-hook-evasion-', async (repo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(repo)).toEqual([]);
+      });
+    });
+  }
+
+  const NON_EXECUTING_MATRIX: Array<{ label: string; command: string }> = [
+    { label: 'comment, root', command: '# (rm -rf /)' },
+    { label: 'single-quoted echo argument, root', command: "echo '(rm -rf /)'" },
+    { label: 'double-quoted echo argument, root', command: 'echo "(rm -rf /)"' },
+    { label: 'comment, home', command: '# (rm -rf ~)' },
+    { label: 'single-quoted echo argument, home', command: "echo '(rm -rf ~)'" },
+    { label: 'double-quoted echo argument, home', command: 'echo "(rm -rf ~)"' },
+    { label: 'comment, chmod', command: '# (chmod 777 /)' },
+    { label: 'single-quoted echo argument, chmod', command: "echo '(chmod 777 /)'" },
+    { label: 'double-quoted echo argument, chmod', command: 'echo "(chmod 777 /)"' },
+  ];
+
+  for (const { label, command } of NON_EXECUTING_MATRIX) {
+    test(`${label}: \`${command}\` is still allowed silently`, async () => {
+      await withTempGitRepo('blackhole-hook-evasion-', async (repo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(repo)).toEqual([]);
+      });
+    });
+  }
+});
+
+// Must-still-deny regression check (#488): the investigation's rejected "mask all quotes"
+// alternative was proven by execution to silently stop blocking these three shell-invocation
+// forms, which genuinely execute their quoted argument (unlike echo/printf, which only print it).
+// The chosen echo/printf-scoped classifier must keep denying all three.
+describe('validate-bash-command.js — must-still-deny regression (#488)', () => {
+  const MUST_STILL_DENY: string[] = ['bash -c "rm -rf /"', "sh -c 'rm -rf /'", 'eval "rm -rf /"'];
+
+  for (const command of MUST_STILL_DENY) {
+    test(`\`${command}\` is still denied (rm-rf-root)`, async () => {
+      await withTempGitRepo('blackhole-hook-evasion-', async (repo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+        expect(result.exitCode).toBe(2);
+
+        const events = readHookEvents(repo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ tier: 'block', pattern_id: 'rm-rf-root' });
+      });
+    });
+  }
+});
+
+// F-00082 (review round 2): round 2's context stripper (`computeMaskedSpans`) masked the *entire*
+// double-quoted argument to a print-only sink (echo/printf), on the false premise that double
+// quotes suppress everything inside them the way single quotes do. They do not — only single
+// quotes suppress command substitution; a `$(...)`, `` `...` ``, or `${...}` run nested inside a
+// double-quoted argument is text bash evaluates and executes before echo/printf ever sees the
+// result. Masking that run hid it from the matcher, reopening the exact F-00058 evasion class the
+// context stripper was built to close. A second, independent defect in the same dispatch
+// (bash-context.js:65): a quote character preceded by an unescaped backslash (`\"`) is not a real
+// quote to bash at all — the old dispatch opened a real quoted span on it anyway and masked
+// everything up to its own (also escaped, so never matching) closing quote, i.e. to end of string.
+//
+// Every shape below is proven twice: first that real bash (`bash -c`, harmless `echo MARKER`
+// inner) actually executes the nested command for that exact quoting shape — the technique that
+// caught this defect in the first place, kept permanent so a third oscillation on this component
+// cannot repeat "reasoned about the regex, didn't run it" — then that the hook denies the same
+// shape with a genuinely destructive inner command.
+const F00082_SHAPES: Array<{ label: string; build: (inner: string) => string; patternId: string }> = [
+  {
+    label: 'dollar-paren command substitution after echo (double-quoted), root',
+    build: (inner) => `echo "$(${inner})"`,
+    patternId: 'rm-rf-root',
+  },
+  {
+    label: 'dollar-paren command substitution after printf (double-quoted), root',
+    build: (inner) => `printf "$(${inner})"`,
+    patternId: 'rm-rf-root',
+  },
+  {
+    label: 'backtick command substitution after echo (double-quoted), root',
+    build: (inner) => `echo "\`${inner}\`"`,
+    patternId: 'rm-rf-root',
+  },
+  {
+    label: 'dollar-brace-wrapped dollar-paren after echo (double-quoted), root',
+    build: (inner) => `echo "\${X:-$(${inner})}"`,
+    patternId: 'rm-rf-root',
+  },
+  {
+    label: 'dollar-paren command substitution after echo (double-quoted), home',
+    build: (inner) => `echo "$(${inner})"`,
+    patternId: 'rm-rf-home',
+  },
+  {
+    label: 'escaped-quote dispatch bug: dollar-paren after echo, root',
+    build: (inner) => `echo \\"$(${inner})\\"`,
+    patternId: 'rm-rf-root',
+  },
+];
+
+const F00082_DESTRUCTIVE_INNER: Record<string, string> = {
+  'rm-rf-root': 'rm -rf /',
+  'rm-rf-home': 'rm -rf $HOME',
+};
+
+describe('validate-bash-command.js — F-00082 double-quote substitution evasion (review round 2)', () => {
+  const XCHECK_MARKER = 'BASH_XCHECK_MARKER_F00082';
+
+  for (const { label, build, patternId } of F00082_SHAPES) {
+    test(`${label}: real bash actually executes the nested command (harmless inner)`, async () => {
+      const command = build(`echo ${XCHECK_MARKER}`);
+      const proc = Bun.spawn({ cmd: ['bash', '-c', command], stdout: 'pipe', stderr: 'pipe' });
+      const [exitCode, stdout] = await Promise.all([
+        proc.exited,
+        new Response(proc.stdout).text(),
+      ]);
+
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain(XCHECK_MARKER);
+    });
+
+    test(`${label}: is denied (${patternId})`, async () => {
+      await withTempGitRepo('blackhole-hook-f00082-', async (repo) => {
+        const command = build(F00082_DESTRUCTIVE_INNER[patternId]);
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(repo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ tier: 'block', decision: 'deny', pattern_id: patternId });
+      });
+    });
+  }
+});
+
+// Negative controls (#488 follow-up): the F-00082 fix must not overreach — a bare `$` not followed
+// by `(` or `{` is plain variable interpolation, not a command substitution, and must stay inert
+// when handed to echo/printf exactly as before.
+describe('validate-bash-command.js — F-00082 fix does not overreach (negative controls)', () => {
+  const STILL_INERT: string[] = [
+    'echo "rm -rf $HOME is a bad idea"',
+    'echo "value: ${PRICE}"',
+  ];
+
+  for (const command of STILL_INERT) {
+    test(`\`${command}\` is still allowed silently — no real substitution present`, async () => {
+      await withTempGitRepo('blackhole-hook-f00082-', async (repo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(repo)).toEqual([]);
+      });
+    });
+  }
+});
