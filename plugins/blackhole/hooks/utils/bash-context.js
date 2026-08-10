@@ -33,6 +33,16 @@
  * matcher still sees them (`consumeDoubleQuotedPrintArg`). A quote character preceded by an
  * unescaped backslash (`\"`) is not a real quote to bash at all and never opens a span
  * (`isEscapedQuote`) — see that function's docstring for the round-2 dispatch bug this closes.
+ *
+ * (c) (#506) a heredoc body (`<<DELIM` / `<<-DELIM` through its terminator line) is never itself
+ * executed by bash — it is data bash assembles and hands to the receiving command's stdin, the
+ * same "described, not executed" relationship as (a)/(b) above. A **quoted** delimiter
+ * (`<<'EOF'`/`<<"EOF"`) additionally suppresses every expansion bash would otherwise run over the
+ * body, so the whole span is masked in full — same rule as a single-quoted print-only-sink
+ * argument. An **unquoted** delimiter (`<<EOF`) still undergoes parameter/command substitution, so
+ * only the literal surrounding text is masked and a nested `$(...)`/`` `...` ``/`${...}` run is
+ * left unmasked (`consumeHeredoc`, sharing `maskLiteralSpan` with (b)'s double-quoted case — same
+ * masking rule, different termination condition).
  */
 
 /** True when `word` is exactly `echo`/`printf`, or a path ending in `/echo` or `/printf`. */
@@ -115,28 +125,27 @@ const consumeBacktick = (command, openIdx) => {
 };
 
 /**
- * Consumes a double-quoted print-only-sink argument starting at `openIdx` (index of the opening
- * `"`), masking only its literal text. Double quotes suppress nothing bash still evaluates before
- * echo/printf sees the argument — an embedded `$(...)`, `` `...` ``, or `${...}` run is left fully
- * unmasked via `consumeBalanced`/`consumeBacktick` (F-00082 defect 1: only single quotes suppress
- * substitution; double quotes do not). Returns the index one past the closing `"` (or
- * `command.length` if unterminated).
+ * Masks a run of literal text as inert while leaving nested command/parameter substitutions
+ * (`$(...)`, `` `...` ``, `${...}`) unmasked, since bash evaluates — and, for the first two,
+ * executes — those regardless of what surrounding construct's literal text they sit inside.
+ * Scans forward from `start` until `isEnd(index)` is true for the current index, treating a
+ * backslash-escaped pair (`\X`) as two literal masked characters bash never re-examines for
+ * substitution or as an end condition (mirrors `isEscapedQuote`'s escape-parity reasoning at a
+ * single-character grain). Shared by `consumeDoubleQuotedPrintArg` (terminated by an unescaped
+ * `"`) and `consumeHeredoc`'s unquoted-body masking (terminated by a known end index, #506) —
+ * same masking rule, different termination condition (`V-INT-02`: one substitution-aware literal
+ * masker, not two). Returns the index at which `isEnd` first held (or `command.length`).
  */
-const consumeDoubleQuotedPrintArg = (command, openIdx, masked) => {
+const maskLiteralSpan = (command, start, isEnd, masked) => {
   const n = command.length;
-  masked[openIdx] = true;
-  let j = openIdx + 1;
-  while (j < n) {
+  let j = start;
+  while (j < n && !isEnd(j)) {
     const ch = command[j];
     if (ch === '\\' && j + 1 < n) {
       masked[j] = true;
       masked[j + 1] = true;
       j += 2;
       continue;
-    }
-    if (ch === '"') {
-      masked[j] = true;
-      return j + 1;
     }
     if (ch === '$' && command[j + 1] === '(') {
       j = consumeBalanced(command, j + 1, '(', ')');
@@ -157,18 +166,115 @@ const consumeDoubleQuotedPrintArg = (command, openIdx, masked) => {
 };
 
 /**
- * One boolean per character index of `command`, true where that index falls inside a `#` comment
- * or the literal-text portion of a print-only-sink's quoted argument. A comment starts at a `#`
- * only when it begins a new shell word (preceded by start-of-string or whitespace) and runs to the
- * next newline or the end of the string. A quote character preceded by an unescaped backslash
- * (`isEscapedQuote`) never opens a span at all — it is literal text to bash, left in its default
- * unmasked state exactly like the executing text around it. A genuine single-quoted span run to a
- * print-only sink is masked in full (single quotes suppress all substitution, unconditionally); a
- * genuine double-quoted span to a print-only sink masks only its literal text, leaving any nested
+ * Consumes a double-quoted print-only-sink argument starting at `openIdx` (index of the opening
+ * `"`), masking only its literal text via `maskLiteralSpan`. Double quotes suppress nothing bash
+ * still evaluates before echo/printf sees the argument — an embedded `$(...)`, `` `...` ``, or
+ * `${...}` run is left fully unmasked (F-00082 defect 1: only single quotes suppress
+ * substitution; double quotes do not). Returns the index one past the closing `"` (or
+ * `command.length` if unterminated).
+ */
+const consumeDoubleQuotedPrintArg = (command, openIdx, masked) => {
+  masked[openIdx] = true;
+  const n = command.length;
+  const j = maskLiteralSpan(command, openIdx + 1, (k) => command[k] === '"', masked);
+  if (j < n) {
+    masked[j] = true;
+    return j + 1;
+  }
+  return j;
+};
+
+/**
+ * Consumes a heredoc redirect (`<<`/`<<-`) starting at `startIdx` (index of the first `<`),
+ * masking its body per the delimiter word's quoting (#506, see module docstring (c)):
+ *   - **quoted** delimiter (`<<'EOF'` / `<<"EOF"`) — bash performs no expansion inside the body at
+ *     all, so the whole body is data handed to the receiving command untouched; mask it in full.
+ *   - **unquoted** delimiter (`<<EOF`) — bash still runs parameter/command substitution over the
+ *     body before handing it over, so only the literal text is masked; a nested
+ *     `$(...)`/`` `...` ``/`${...}` run stays unmasked via `maskLiteralSpan`.
+ * `<<-` strips leading tabs from each body line (and the terminator line) before the delimiter
+ * comparison only — masking itself never rewrites the command string, so those tabs stay part of
+ * whatever span they fall into. The terminator is a line whose content, after that optional strip,
+ * exactly equals the delimiter — a line that merely *contains* the delimiter text does not match,
+ * so a body line like "this mentions EOF but is not the terminator" does not end the heredoc.
+ * Sequential heredocs in one command are handled naturally: each call returns the index just past
+ * its own terminator line, so the caller's forward scan reaches the next `<<` on its own. Two
+ * heredocs sharing a single source line (an advanced, rarely-used shell form) are out of scope —
+ * only the first is recognized, matching this module's scope of the common authoring pattern
+ * (script bodies authored one heredoc per line) rather than full heredoc-queue parsing.
+ * Returns the index one past the terminator line, or `command.length` if the heredoc is never
+ * terminated (the remainder of the command is then treated as its body).
+ */
+const consumeHeredoc = (command, startIdx, masked) => {
+  const n = command.length;
+  let j = startIdx + 2;
+  const stripTabs = command[j] === '-';
+  if (stripTabs) j++;
+  while (j < n && (command[j] === ' ' || command[j] === '\t')) j++;
+
+  let quoted = false;
+  let delimiter = '';
+  if (command[j] === "'" || command[j] === '"') {
+    quoted = true;
+    const quote = command[j];
+    j++;
+    const start = j;
+    while (j < n && command[j] !== quote) j++;
+    delimiter = command.slice(start, j);
+    if (j < n) j++;
+  } else {
+    const start = j;
+    while (j < n && !/[\s;|&<>]/.test(command[j])) j++;
+    delimiter = command.slice(start, j);
+  }
+  if (!delimiter) return j;
+
+  const lineEnd = command.indexOf('\n', j);
+  if (lineEnd === -1) return n;
+  const bodyStart = lineEnd + 1;
+
+  const maskBody = (end) => {
+    if (quoted) {
+      for (let k = bodyStart; k < end; k++) masked[k] = true;
+    } else {
+      maskLiteralSpan(command, bodyStart, (k) => k >= end, masked);
+    }
+  };
+
+  let pos = bodyStart;
+  while (pos <= n) {
+    const nextNl = command.indexOf('\n', pos);
+    const lineTextEnd = nextNl === -1 ? n : nextNl;
+    const lineText = command.slice(pos, lineTextEnd);
+    const compareText = stripTabs ? lineText.replace(/^\t+/, '') : lineText;
+    if (compareText === delimiter) {
+      maskBody(pos);
+      return nextNl === -1 ? n : nextNl + 1;
+    }
+    if (nextNl === -1) break;
+    pos = nextNl + 1;
+  }
+
+  maskBody(n);
+  return n;
+};
+
+/**
+ * One boolean per character index of `command`, true where that index falls inside a `#` comment,
+ * the literal-text portion of a print-only-sink's quoted argument, or the masked portion of a
+ * heredoc body (#506, see module docstring (c)). A comment starts at a `#` only when it begins a
+ * new shell word (preceded by start-of-string or whitespace) and runs to the next newline or the
+ * end of the string. A quote character preceded by an unescaped backslash (`isEscapedQuote`) never
+ * opens a span at all — it is literal text to bash, left in its default unmasked state exactly
+ * like the executing text around it. A genuine single-quoted span run to a print-only sink is
+ * masked in full (single quotes suppress all substitution, unconditionally); a genuine
+ * double-quoted span to a print-only sink masks only its literal text, leaving any nested
  * `$(...)`, `` `...` ``, or `${...}` substitution unmasked via `consumeDoubleQuotedPrintArg`. A
- * quoted span to any other command is left entirely unmasked, as before. All span kinds skip their
- * own interior, so a `#` or quote character inside an already-open span is never reconsidered as
- * starting a new one.
+ * quoted span to any other command is left entirely unmasked, as before. A heredoc redirect
+ * (`<<`/`<<-`, distinguished from a `<<<` here-string, which this scanner leaves untouched) is
+ * consumed by `consumeHeredoc`, which applies the same quoted-vs-unquoted masking split. All span
+ * kinds skip their own interior, so a `#`, quote, or `<<` sequence inside an already-open span is
+ * never reconsidered as starting a new one.
  */
 const computeMaskedSpans = (command) => {
   const n = command.length;
@@ -223,6 +329,13 @@ const computeMaskedSpans = (command) => {
         for (let k = start; k < end; k++) masked[k] = true;
       }
       i = end;
+      currentWord = '';
+      continue;
+    }
+
+    if (ch === '<' && command[i + 1] === '<' && command[i + 2] !== '<') {
+      flushWord();
+      i = consumeHeredoc(command, i, masked);
       currentWord = '';
       continue;
     }

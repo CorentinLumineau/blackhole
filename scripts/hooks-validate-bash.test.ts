@@ -459,3 +459,124 @@ describe('validate-bash-command.js — F-00082 fix does not overreach (negative 
     });
   }
 });
+
+// Heredoc negative controls (#506): a heredoc body is data handed to the receiving command's
+// stdin, never text bash itself executes as a command — the exact same "non-executing text"
+// class `computeMaskedSpans` already carves out for `#` comments and echo/printf-argument quotes
+// (#488). Authoring a program via `python3 <<'PYEOF' ... PYEOF'` is the campaign's documented
+// workaround for jq quoting problems (progress-file Failed-Approaches log), so a body that merely
+// *contains* a block-pattern literal (e.g. `rm -rf /` inside a Python string) must not trip the
+// gate. Quoted-delimiter forms (`<<'EOF'`, `<<"EOF"`) suppress ALL expansion — the entire body,
+// including a literal `$(...)` run, is inert. Every case here was proven, by direct execution
+// against the unmodified bash-patterns.json regexes on the pre-fix `matchFirstIgnoringNonExecutingText`
+// (i.e. before this PR's bash-context.js changes), to currently match a blockPatterns entry.
+describe('validate-bash-command.js — heredoc non-executing-text negative controls (#506)', () => {
+  const QUOTED_DELIMITER_BODIES: Array<{ label: string; command: string }> = [
+    {
+      label: "single-quoted delimiter, literal rm -rf / in body",
+      command: "python3 <<'PYEOF'\nprint(\"rm -rf /\")\nPYEOF",
+    },
+    {
+      label: 'double-quoted delimiter, literal rm -rf / in body',
+      command: 'python3 <<"PYEOF"\nprint("rm -rf /")\nPYEOF',
+    },
+    {
+      label: 'single-quoted delimiter, literal chmod 777 / in body',
+      command: "cat <<'EOF'\nchmod 777 /\nEOF",
+    },
+    {
+      label: 'single-quoted delimiter, a command substitution in body is inert (no expansion at all)',
+      command: "cat <<'EOF'\n$(rm -rf /)\nEOF",
+    },
+  ];
+
+  for (const { label, command } of QUOTED_DELIMITER_BODIES) {
+    test(`${label}: is still allowed silently`, async () => {
+      await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(repo)).toEqual([]);
+      });
+    });
+  }
+
+  test('unquoted delimiter, literal rm -rf / (no substitution) in body is still allowed — unquoted heredocs expand, they do not execute plain text', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = 'cat <<EOF\nrm -rf /\nEOF';
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(repo)).toEqual([]);
+    });
+  });
+
+  test('<<- (tab-stripped) variant with an indented terminator and a benign body is allowed', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = "cat <<-'EOF'\n\t\tprint(\"rm -rf /\")\n\tEOF";
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(repo)).toEqual([]);
+    });
+  });
+
+  test('multiple heredocs in one command — both bodies are masked', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command =
+        "cat > /tmp/a.py <<'EOF'\nprint(\"rm -rf /\")\nEOF\ncat > /tmp/b.py <<'EOF'\nprint(\"chmod 777 /\")\nEOF";
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(repo)).toEqual([]);
+    });
+  });
+
+  test('a heredoc whose delimiter string appears inside the body (not alone on its own line) does not terminate early', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command =
+        "cat <<'EOF'\nthis line mentions EOF but is not the terminator\nrm -rf /\nEOF";
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(repo)).toEqual([]);
+    });
+  });
+});
+
+// Must-still-deny regression (#506): the heredoc fix must not weaken the gate for genuinely
+// executing text — a destructive command outside any heredoc, or a command substitution actually
+// evaluated inside an *unquoted* heredoc's body (bash still runs `$(...)`/`` `...` ``/`${...}`
+// substitutions over an unquoted heredoc before handing the result to the receiving command).
+describe('validate-bash-command.js — heredoc must-still-deny regression (#506)', () => {
+  test('a destructive command after a benign heredoc is still denied', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = "cat <<'EOF'\nhello world\nEOF\nrm -rf /";
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(2);
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ tier: 'block', pattern_id: 'rm-rf-root' });
+    });
+  });
+
+  test('unquoted heredoc containing $(rm -rf /) is still denied — bash executes the substitution', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = 'cat <<EOF\n$(rm -rf /)\nEOF';
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(2);
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ tier: 'block', pattern_id: 'rm-rf-root' });
+    });
+  });
+
+  test('unquoted heredoc containing a backtick command substitution is still denied', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = 'cat <<EOF\n`rm -rf /`\nEOF';
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(2);
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ tier: 'block', pattern_id: 'rm-rf-root' });
+    });
+  });
+});
