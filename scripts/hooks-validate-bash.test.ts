@@ -583,6 +583,20 @@ describe('validate-bash-command.js — heredoc non-executing-text negative contr
       expect(readHookEvents(repo)).toEqual([]);
     });
   });
+
+  // <<- (tab-stripped) combined with a backslash-quoted delimiter (round 2 review, explicitly
+  // named as a distinct row from plain `<<\EOF`): the dash and the backslash-quoting are
+  // independent — `stripTabs` only changes how the terminator line is compared, `quoted` only
+  // changes whether the body is masked and whether the delimiter itself has its backslash
+  // stripped before that comparison. Both must hold simultaneously.
+  test('a <<- backslash-quoted delimiter (<<-\\EOF) masks the body in full', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = 'cat <<-\\EOF\n\trm -rf /\n\tEOF';
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(repo)).toEqual([]);
+    });
+  });
 });
 
 // Must-still-deny regression (#506): the heredoc fix must not weaken the gate for genuinely
@@ -611,6 +625,21 @@ describe('validate-bash-command.js — heredoc must-still-deny regression (#506)
   test('a destructive command after a backslash-quoted-delimiter heredoc is still denied', async () => {
     await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
       const command = 'cat <<\\EOF\nhello world\nEOF\nrm -rf /';
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(2);
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ tier: 'block', pattern_id: 'rm-rf-root' });
+    });
+  });
+
+  // Same gate-bypass shape as the previous test, with the <<- (tab-stripped) variant combined
+  // with the backslash-quoted delimiter — the exact pairing named as a distinct row in review
+  // round 2's escalation table.
+  test('a destructive command after a <<- backslash-quoted-delimiter heredoc is still denied', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = 'cat <<-\\EOF\n\thello world\n\tEOF\nrm -rf /';
       const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
       expect(result.exitCode).toBe(2);
 
