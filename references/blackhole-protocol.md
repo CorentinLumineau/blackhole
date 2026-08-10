@@ -50,6 +50,7 @@ Playbooks: `references/phase-*.md`
 
 - **No direct commits to main**: Workers must checkout into dedicated, isolated git worktrees (`wt-<issue>`) and push to branches named `blackhole/issue-N` (`V-BRANCH-02`, `V-BRANCH-03`). Direct commits or force-pushes to `main`, `master`, or `release/*` are strictly blocked (`V-BRANCH-01`).
 - **Automated pruning**: The orchestrator must run `git worktree prune` and `git fetch --prune` at the start and end of every turn to clean up stale worktrees and local branches whose upstream PRs have merged (`V-WORKTREE-01`).
+- **Removal safety refusal**: Before any `git worktree remove` — mergeable-PR release, post-merge cleanup, or manual pruning alike — check `git -C <worktree> log @{u}..HEAD`. `git worktree remove` only refuses on a dirty working tree; it does not refuse on committed-but-unpushed history, so a merged PR does not by itself prove the worktree is safe to delete (local HEAD may have advanced past what the PR merged, e.g. a post-push rebase or a commit made after the last push). Non-empty output refuses the removal until that history is pushed or cherry-picked elsewhere. Full procedure and the stale-cleanup example: `recovery-protocol.md` §4 "Stale cleanup" row, §6(c).
 
 ## Merge & Linkage Gate (V-GIT)
 
