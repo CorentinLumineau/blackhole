@@ -536,6 +536,14 @@ describe('validateWorker investigator', () => {
   test('valid error', () => expectValid('investigator', 'investigator-error.json'));
   test('invalid error missing error field', () =>
     expectInvalid('investigator', 'investigator-error-missing-error-field.json'));
+  test('valid blocked with hypotheses_exhausted escalation_trigger', () =>
+    expectValid('investigator', 'investigator-blocked-hypotheses-exhausted.json'));
+  test('invalid blocked missing required escalation_trigger (always set on exhaustion, per investigator.md § Escalation)', () =>
+    expectInvalid('investigator', 'investigator-blocked-missing-escalation-trigger.json'));
+  test('invalid blocked escalation_trigger enum', () =>
+    expectInvalid('investigator', 'investigator-blocked-invalid-escalation-trigger.json'));
+  test('invalid blocked missing note_path', () =>
+    expectInvalid('investigator', 'investigator-blocked-missing-note-path.json'));
 });
 
 describe('extractWorkerJson', () => {

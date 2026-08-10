@@ -48,6 +48,12 @@ See `plugins/blackhole-claude/skills/blackhole/references/orchestrator-dispatch.
 
 ---
 
+## Investigator Escalation Dispatch (investigate sub-mode, issue #454)
+
+See `plugins/blackhole-claude/skills/blackhole/references/orchestrator-dispatch.md` § Investigator Escalation Dispatch (investigate sub-mode, issue #454).
+
+---
+
 ## Review pipeline
 
 Per `review-core.md`:

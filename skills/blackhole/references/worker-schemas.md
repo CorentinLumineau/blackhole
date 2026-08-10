@@ -443,7 +443,8 @@ first trigger it hits, it does not accumulate multiple in one session.
 **Consumer status**: `escalation_trigger` is now read by the orchestrator's escalation dispatch
 (`orchestrator-dispatch.md` § Escalation dispatch, #137) — an `implementer` returning `status: blocked`
 with this field set is routed to a direct `investigator` (`sub_mode: investigate`) spawn instead
-of a blind `implementer` re-spawn.
+of a blind `implementer` re-spawn. `investigator` also emits this field on `status: blocked`,
+reused rather than duplicated (`V-INT-03`) — see § Investigator below (issue #454).
 
 See `implementer.md` § Scout Check for the unconditional Improvement Record convention every
 implementer session produces (content spec stays there — `V-DRY`).
@@ -695,11 +696,12 @@ Analyze sub-mode example:
 
 | Field | Values | Required |
 |-------|--------|----------|
-| `status` | `complete` \| `error` | yes |
-| `note_path` | string | when `complete` |
-| `sub_mode` | `research` \| `investigate` \| `analyze` | when `complete` |
-| `confidence` | number 0-100 | when `complete` |
-| `computed_at_revision` | number (= `route.revision` at spawn time) | when `complete` |
+| `status` | `complete` \| `blocked` \| `error` | yes |
+| `note_path` | string | when `complete` or `blocked` |
+| `sub_mode` | `research` \| `investigate` \| `analyze` | when `complete` or `blocked` |
+| `confidence` | number 0-100 | when `complete` or `blocked` |
+| `computed_at_revision` | number (= `route.revision` at spawn time) | when `complete` or `blocked` |
+| `escalation_trigger` | `hypotheses_exhausted` | when `blocked` (`investigate` sub-mode's only blocked path) |
 | `error` | string | when `status: error` |
 
 ```json
@@ -723,6 +725,28 @@ Baselines). Full behavioral spec: `investigator.md` (not duplicated here).
 `plans/issue-N-investigation.md` (investigate sub-mode), or `plans/issue-N-analysis.md` (analyze
 sub-mode) — co-located with `plans/issue-N.md`, mirroring `planner.md`'s Design Track
 sibling-artifact convention (`plans/issue-N-design.md`).
+
+### `escalation_trigger` (required when `blocked` — `investigate` sub-mode only, issue #454)
+
+Shares the Implementer section's field/shape (`V-INT-03`). Always set to `hypotheses_exhausted`
+when the ranked hypothesis set — including the regenerated attempt (`investigator.md` §
+`investigate` sub-mode) — is fully refuted without a confirmed root cause; `note_path` is still
+present (the investigator always writes its note). The investigator never omits this field and
+never tracks its own escalation history — it reports exhaustion identically every time. Whether
+this is a first or bounded second exhaustion is orchestrator-side state, tracked solely via
+`queue.json` `notes` by `orchestrator-dispatch.md` § Investigator Escalation Dispatch, and never
+signaled through this field's presence or absence.
+
+```json
+{
+  "status": "blocked",
+  "note_path": "plans/issue-298-investigation.md",
+  "sub_mode": "investigate",
+  "confidence": 40,
+  "computed_at_revision": 2,
+  "escalation_trigger": "hypotheses_exhausted"
+}
+```
 
 ## Hunter (`hunter`)
 

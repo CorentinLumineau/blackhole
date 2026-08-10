@@ -39,6 +39,19 @@ Root-cause hunting via a ranked-hypothesis loop:
 - Delegate test execution to another agent/tool rather than asserting outcomes yourself — you
   gather and rank evidence, you do not execute fixes or assert unverified conclusions.
 
+**Escalation** (issue #454): when the regenerated ranked set (previous bullet) is *also* fully
+refuted without a confirmed root cause, still write the note (§ Note schema — Symptoms,
+tried hypotheses, and why each was refuted) and return `status: "blocked"`,
+`escalation_trigger: "hypotheses_exhausted"` instead of dead-ending on `status: "complete"`
+with a low-confidence guess. This reuses `escalation_trigger` — the same field
+`implementer.md` § Bugfix Gate already emits on `status: blocked` — rather than a parallel
+mechanism (`V-INT-03`); `worker-schemas.md` § `escalation_trigger` is the shared field
+definition. Whether this particular spawn is itself the escalated retry, and whether the
+bound on further escalation has been reached, is `orchestrator-dispatch.md` § Investigator
+Escalation Dispatch's decision, not yours — you report hypothesis-set exhaustion identically
+every time; you never track or infer your own escalation history (same discovering-not-deciding
+SRP boundary as § Role above).
+
 Promotion target: the investigation note is promoted to
 `documentation/investigations/{concern-slug}.md` per `artifact-contract.md`'s route table. Stage
 a copy at `.blackhole/staged/<issue>/{concern-slug}.md` via the same Bash heredoc + atomic `mv`
@@ -170,6 +183,19 @@ Analyze sub-mode example:
   "sub_mode": "analyze",
   "confidence": 75,
   "computed_at_revision": 1
+}
+```
+
+Blocked example (`investigate` sub-mode, hypothesis set exhausted — § Escalation above):
+
+```json
+{
+  "status": "blocked",
+  "note_path": "plans/issue-298-investigation.md",
+  "sub_mode": "investigate",
+  "confidence": 40,
+  "computed_at_revision": 2,
+  "escalation_trigger": "hypotheses_exhausted"
 }
 ```
 

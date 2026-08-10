@@ -79,6 +79,55 @@ root-cause investigation instead:
 See `worker-schemas.md` § `escalation_trigger` for the field this section consumes.
 
 
+## Investigator Escalation Dispatch (investigate sub-mode, issue #454)
+
+**Trigger condition**: `investigator` (`sub_mode: investigate`) returns `status: "blocked"`
+with `escalation_trigger: "hypotheses_exhausted"` set (`worker-schemas.md` §
+`escalation_trigger` — Investigator subsection; `investigator.md` § `investigate` sub-mode's
+Escalation subsection). Reuses the field `implementer.md` § Bugfix Gate already emits rather
+than a parallel mechanism (`V-INT-03`).
+
+The investigator never tracks its own escalation history — it reports hypothesis-set
+exhaustion identically on every spawn (§ Escalation dispatch above's discovering-vs-deciding
+SRP boundary applies here too). Bounding the escalation is entirely this dispatch's job,
+tracked in `queue.json` `notes` — no new schema field, reusing the existing free-form `notes`
+convention exactly as `checkpoint-protocol.md` § Blocked-Iteration Counter already does for
+its own escalation marker.
+
+1. **Bound check** (`blackhole-state.md` § Write protocol, atomic `.tmp` + `mv` read before
+   the mutation): read the issue's `queue.json` `notes`.
+   - **Absent `investigator-escalated`** → this is the issue's first hypothesis-exhaustion
+     report. Go to step 2.
+   - **Already contains `investigator-escalated`** → a second exhaustion has reached this
+     dispatch path. Go to step 3 (block) instead of escalating again — do not apply a second
+     tier bump even though `escalation_trigger` is set on this return; the bound is on
+     *escalation count*, not on whether the field happens to be present.
+2. **First escalation**: apply `model-routing.md` § Escalation rule — bump `investigator`'s
+   tier one step from its § Task-tier matrix base (`economy → standard`) for the next spawn,
+   same issue and role. In the same atomic write, set `notes: "investigator-escalated"`.
+   Re-spawn `investigator`, `sub_mode: investigate`, using the same spawn contract as
+   `phase-handle.md` § Investigator agent, at the bumped tier. This dispatch path stops here
+   for this turn — resume rule mirrors § Escalation dispatch above's step 3 (the re-spawned
+   investigator's note landing on disk is the `investigation-landed` re-route checkpoint
+   trigger; unchanged, not restated).
+
+   Note the deliberate divergence from `model-routing.md`'s own generic cap ("Cap at
+   premium"): that rule permits a role to be bumped repeatedly up the full tier ladder across
+   separate blocked returns. This dispatch path caps investigator's hypothesis-exhaustion
+   escalation at exactly one bump, by design (issue #454 AC) — a second exhaustion is treated
+   as evidence the issue needs a human, not a costlier model. The divergence is stated here
+   explicitly rather than left implicit (ADR-012 R6 — never silent).
+3. **Second exhaustion (blocking)**: set `status: "blocked"`, `notes:
+   "investigation-inconclusive"` (atomic write) and route through the existing HITL Blocker
+   Gate (`orchestrator.md` § Human-in-the-Loop (HITL) & Blocker Gating, "Blocker Gates" —
+   unchanged, no new gate mechanism) so the coordinator surfaces it via `AskQuestion` with the
+   investigator's note (both hypothesis sets and why each was refuted) as context.
+
+See `worker-schemas.md` § `escalation_trigger` (Investigator subsection) for the field this
+section consumes and `model-routing.md` § Escalation rule for the tier-bump mechanism this
+section applies with the narrower cap above.
+
+
 ## Design Autonomy Dispatch (ADR-010 D4)
 
 Amends § Route-derived dispatch step 4 (`needs_design: true`) — this section owns only the
