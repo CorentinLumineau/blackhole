@@ -228,8 +228,8 @@ increment, do not mark a dry wave, do not touch `hunt_state` at all. Re-evaluate
 5. **Watermark.** Update `hunt_state.kinds.<kind>` atomically in the same write: merge this
    wave's `territory.bands_scanned` into `bands_done`, increment `waves`, set
    `last_wave_at` to now. Same atomic write protocol as every other `hunt_state`/ledger
-   mutation (`blackhole-state.md` § Write protocol): `jq empty` validate, `.tmp` + `mv`,
-   bump `refreshed_at`.
+   mutation (`blackhole-state.md` § Write protocol): validate via `state-write-guard.ts`
+   (never `jq empty` alone), `.tmp` + `mv`, bump `refreshed_at`.
    - **Dry-wave counter.** `hunt_state.kinds.<kind>.dry_waves` (new, additive per-kind
      integer field): increment when this completed wave filed zero issues (step 3
      produced nothing above the gate); reset to `0` on any wave that files `>= 1` issue.

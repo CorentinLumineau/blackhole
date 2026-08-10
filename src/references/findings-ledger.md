@@ -67,8 +67,10 @@ a new, distinct finding sharing the resolved row's key.
 2. **Validate** before any read-dependent step:
 
 ```bash
-jq empty .blackhole/findings-ledger.json
+bun run scripts/lib/state-write-guard.ts --tmp .blackhole/findings-ledger.json --entity-key findings
 ```
+
+Never `jq empty` alone — `blackhole-state.md` § Write protocol.
 
 3. **Dedup** before append — key `(vcode, file, line, issue_ref)`, scoped to `open`/`deferred`
    rows only (issue #485: a `resolved` row — e.g. one whose `recheck[]` verdict came back
@@ -98,12 +100,15 @@ jq --arg v "V-ADA-01" --arg f "ARCHITECTURE.md" \
 
 See `phase-review.md` § Checklist for the orchestrator-side mechanism.
 
-4. **Append** — read-modify-write atomically (tmp + mv):
+4. **Append** — read-modify-write atomically (tmp + mv), validating the `.tmp` file before
+   install (`blackhole-state.md` § Write protocol):
 
 ```bash
 # Pseudocode: orchestrator builds JSON patch, writes via jq
 jq '.findings += [$new] | .next_id += 1 | .refreshed_at = (now | todate)' \
   .blackhole/findings-ledger.json > .blackhole/findings-ledger.json.tmp \
+  && bun run scripts/lib/state-write-guard.ts --tmp .blackhole/findings-ledger.json.tmp \
+       --live .blackhole/findings-ledger.json --entity-key findings \
   && mv .blackhole/findings-ledger.json.tmp .blackhole/findings-ledger.json
 ```
 
@@ -199,8 +204,9 @@ New top-level `routing_decisions` array (sibling to `findings`), with its own
 
 One entry appended per route computation/revision — **append-only, never mutated**, for
 human spot-audit. Same `.tmp` + `mv` atomic-write protocol as the `findings` write protocol
-above (validate with `jq empty`, then read-modify-write atomically, bumping
-`next_routing_id` and `refreshed_at`).
+above (validate with `state-write-guard.ts` — never `jq empty` alone, `blackhole-state.md`
+§ Write protocol — then read-modify-write atomically, bumping `next_routing_id` and
+`refreshed_at`).
 
 ## Hunt state (ADR-006)
 
@@ -241,8 +247,9 @@ watermark of hunt progress:
 
 `hunt_state` is a watermark, not a decision log: each key is read-modify-written in place as
 hunt waves complete, never appended to as a growing history. Same atomic write protocol as
-every other ledger mutation — `jq empty` validate, then read-modify-write via `.tmp` + `mv`,
-bumping `refreshed_at` (`blackhole-state.md` § Write protocol).
+every other ledger mutation — validate via `state-write-guard.ts` (never `jq empty` alone),
+then read-modify-write via `.tmp` + `mv`, bumping `refreshed_at` (`blackhole-state.md`
+§ Write protocol).
 
 **Consumer sweep**: no code under `scripts/` or `src/` currently switches/matches on the
 findings-ledger row's `phase` field (distinct from the unrelated queue-issue `IssuePhase` enum

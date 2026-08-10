@@ -106,7 +106,8 @@ Per `checkpoint-protocol.md` — **Turn-end checklist** (when any issue is `in-f
 
 ```
 - [ ] Any issue `status: in-flight` in queue.json?
-- [ ] jq empty on queue.json and findings-ledger.json
+- [ ] Validate queue.json and findings-ledger.json via `state-write-guard.ts` (never `jq empty`
+      alone — `blackhole-state.md` § Write protocol)
 - [ ] Persist queue.json → findings-ledger.json → campaign-checkpoint.md (never reorder)
 - [ ] campaign-checkpoint.md uses checkpoint-protocol.md template with YAML frontmatter
 - [ ] orchestrator_turn_id incremented (monotonic); post-recovery first turn increments per compaction recovery
