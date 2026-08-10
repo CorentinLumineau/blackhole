@@ -2,12 +2,15 @@ import { describe, expect, test } from 'bun:test';
 import {
   EXECUTION_STRATEGY_HEADING,
   extractBacktickPaths,
+  extractStandardTrackSection,
   findExecutionStrategyHeadingDrift,
   findMissingCriticalFiles,
   findVagueMitigations,
   PLAN_QUALITY_GATE_REQUIRED_MARKERS,
   PLAN_QUALITY_GATE_VAGUE_WORDS,
+  STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS,
 } from './checks/plan-quality-gate.check.ts';
+import { read } from './checks/check-utils.ts';
 import { expectMarkersMissing, expectMarkersPresent } from './lib/marker-fixture-test.ts';
 
 // Issue #459 — plan quality gate parity: critical-file existence (a Glob call) and
@@ -157,5 +160,63 @@ describe('findExecutionStrategyHeadingDrift', () => {
 
   test('EXECUTION_STRATEGY_HEADING matches plan-template.md\'s actual heading text', () => {
     expect(EXECUTION_STRATEGY_HEADING).toBe('Execution Strategy & Stop Conditions');
+  });
+});
+
+// Issue #533 — Standard Track bugfix-classification symmetry: reviewer.md §15's V-FIX-01 BLOCK
+// branch reads the plan frontmatter's `task_type: bugfix` field regardless of track, but only
+// Quick Track ever stamped it (planner.md's pre-#533 § Quick Track "Bugfix classification"
+// bullet had no Standard Track counterpart) — so the BLOCK could never fire on a Standard-track
+// bugfix, exactly the multi-file case where root-cause correctness matters most. Section-scoped
+// extraction (not a whole-file marker check) because Quick Track already carries this bullet's
+// text verbatim — a whole-file `findMissingGateMarkers` call would report "present" even if
+// Standard Track's own copy silently regressed.
+describe('extractStandardTrackSection', () => {
+  test('extracts only the text between the Standard Track and Skip Track headings', () => {
+    const fixture = [
+      '### 1. Quick Track',
+      'quick track prose',
+      '### 2. Standard Track',
+      'standard track prose',
+      '### 3. Skip Track',
+      'skip track prose',
+    ].join('\n');
+    const section = extractStandardTrackSection(fixture);
+    expect(section).toContain('standard track prose');
+    expect(section).not.toContain('quick track prose');
+    expect(section).not.toContain('skip track prose');
+  });
+
+  test('missing either boundary heading returns an empty string', () => {
+    expect(extractStandardTrackSection('no headings here')).toBe('');
+    expect(extractStandardTrackSection('### 2. Standard Track\nonly the start')).toBe('');
+  });
+});
+
+describe('STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS grounding', () => {
+  const FIXED = [
+    '### 2. Standard Track',
+    '*   **Bugfix classification**: ... stamp `task_type: bugfix` in the plan\'s frontmatter ...',
+    '### 3. Skip Track',
+  ].join('\n');
+  const STALE = [
+    '### 2. Standard Track',
+    '*   **Objective**: Issue summary and constraints.',
+    '### 3. Skip Track',
+  ].join('\n');
+
+  test('fixed planner.md fixture has both markers present in the Standard Track section', () => {
+    expectMarkersPresent(extractStandardTrackSection(FIXED), STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS);
+  });
+
+  test('stale (pre-#533) planner.md fixture is missing both markers in the Standard Track section', () => {
+    expectMarkersMissing(extractStandardTrackSection(STALE), STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS);
+  });
+
+  test('real planner.md Standard Track section carries the Bugfix classification bullet', () => {
+    const plannerContent = read('src/agents/planner.md');
+    const section = extractStandardTrackSection(plannerContent);
+    expect(section).not.toBe('');
+    expectMarkersPresent(section, STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS);
   });
 });
