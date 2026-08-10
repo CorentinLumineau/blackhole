@@ -20,9 +20,14 @@ repo-convention precedence.
 The write-capable worker commits the artifact **inside the issue's PR** — never as a
 separate write, never through the orchestrator:
 
-- the investigator or planner writes the artifact at thinking time (the note lands in the
-  same PR branch the route is already working);
-- the implementer carries the note into the PR branch when the route reaches implement.
+- the investigator or planner writes the artifact at thinking time, but no PR branch
+  exists yet at that point — the artifact is staged instead, to
+  `.blackhole/staged/<issue>/`, per [blackhole-state.md](blackhole-state.md) § Staging
+  (ADR-021 D1);
+- the implementer's Carry Staged Artifacts step copies each staged entry into its
+  `documentation/` target and commits it inside the issue's own PR once the route reaches
+  implement — see `implementer.md` § Carry Staged Artifacts for the copy/rewrite mechanics
+  (not restated here).
 
 The reviewer audits the artifact like code — [doc-governance.md](doc-governance.md)'s
 V-DOC-GOV-01..04 obligations and V-ADA-02 apply to it exactly as they apply to any other

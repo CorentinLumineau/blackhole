@@ -57,6 +57,11 @@ instructions: |
       *   **KISS (Keep It Simple)**: Prefer simple implementations. Do not add speculative abstractions or empty wrapper functions (`V-KISS-03`).
       *   **YAGNI (You Aren't Gonna Need It)**: Only build what is needed to close the issue; reject speculative features.
   6.  **Verify & Open PR**:
+      *   **Carry Staged Artifacts (`V-DOCSYNC-01`, ADR-021 D2)**: before opening the PR, run the
+          unconditional carry-step described in § Carry Staged Artifacts below — staged artifacts
+          for this issue are copied into their `documentation/` targets (frontmatter rewritten
+          where required) and committed inside this same PR, positioned before the commit/push
+          bullet below.
       *   **Companion-doc sync (`V-DOCSYNC-01`)**: If this diff touches the
           public-API/schema/config surface (`reviewer.md` §1's `V-API-01`
           definition — public interfaces, configurations, or database schemas),
@@ -268,6 +273,67 @@ instructions: |
       sensitive-filename pattern file not found at either candidate path — implementation halted
       before staging") so the orchestrator can distinguish a dependency-wiring bug from a known
       cross-target limitation instead of the worker silently shipping unprotected.
+
+  ## Carry Staged Artifacts (unconditional, ADR-021 D2)
+
+  Referenced from step 6 "Verify & Open PR" above (same reference-not-restate pattern as the
+  Companion-doc sync bullet). Promotes artifacts staged at thinking time
+  (`planner`/`investigator`, `blackhole-state.md` § Staging, ADR-021 D1) into their
+  `documentation/` targets, committed inside this issue's own PR.
+
+  *   **Gate**: `docs_governance.enabled` and `docs_governance.write_governance` both resolve
+      `true` (absent config block ⇒ both default `true` per `config-template.md`; an explicit
+      `false` on either ⇒ this entire section is inert — skip, do not read the manifest).
+  *   **Read**: `.blackhole/staged/<issue>/manifest.json` at the absolute repo-root staging path
+      the orchestrator passed at spawn time. Absent file ⇒ no-op, nothing was staged for this
+      issue.
+  *   **Defensive shape guard** (runtime-scoped, distinct from #482's future CI-time schema
+      check — see plan Design Decisions): `jq empty` for JSON validity, then per-entry: `route`,
+      `sub_mode`, `produced_by`, `declared_at`, `staged_path`, `target_path`, `target_kind` all
+      present; `target_kind` ∈ `{new_file, append_row}`. A malformed entry is skipped (not fatal
+      to the rest): log a `new_findings[]` row (`kind: bug`) citing the manifest path and the
+      offending entry's index, and continue with the remaining well-formed entries.
+  *   **Branch on `target_kind`** — distinct copy semantics per entry:
+      - `new_file`, `produced_by: planner` (design route) → copy `staged_path` → `target_path`
+        **verbatim**. `planner.md` §4.8 already renders the ADR in the target doc-governance
+        schema via `detect-doc-schema.sh` at staging time — no rewrite needed.
+      - `new_file`, `produced_by: investigator` (analyze/investigate routes) → apply the
+        **frontmatter rewrite mapping** below before writing to `target_path`. Apply
+        search-before-write first: if an existing doc at the target directory already covers the
+        same concern, update it in place (bump `last_updated`, preserve its original `created`)
+        instead of creating a duplicate.
+      - `append_row` (any `produced_by`) → read the staged row fragment; check `target_path`
+        (e.g. `documentation/decisions/INDEX.md`) for an existing row with the same discriminator
+        (ADR number/slug) first — **idempotency guard** against a duplicate row on implementer
+        re-spawn. Append only if absent.
+  *   **Frontmatter rewrite mapping** (investigator `new_file` entries only — working-note
+      schema → `doc-governance.md` lifecycle schema):
+
+      | Source key | Target key | Rule |
+      |---|---|---|
+      | `sub_mode` | `type` | `analyze` → `type: analysis`; `investigate` → `type: analysis` (`doc-governance.md`'s `type` enum has no dedicated "investigation" value; reusing the closest existing member avoids inventing a new enum value for one route — `V-INT-03`/`V-YAGNI-01`) |
+      | *(computed)* | `status` | Always `current` — a freshly promoted evidence doc is never `deprecated`/`archived` at carry time |
+      | `manifest entries[].declared_at` (date part) | `created` | Preserves *when the evidence was gathered*, not when it was later committed — historically accurate |
+      | *(computed, today's date)* | `last_updated` | Carry-commit date — the most recent edit to the file |
+      | *(computed)* | `review_trigger` | `"on file change"` — the doc's staleness trigger is the source code it describes changing |
+      | `issue` | `issue` *(retained, non-schema key)* | `doc-governance.md` requires `type`/`status` present; it does not forbid additional keys. Campaign provenance is worth keeping |
+      | `confidence` | `confidence` *(retained, non-schema key)* | Provenance: the agent's self-assessed confidence at note-writing time |
+      | `computed_at_revision` | `computed_at_revision` *(retained, non-schema key)* | Provenance: which `route.revision` the evidence was computed against |
+      | — | `related` | Omitted — the schema's `related` expects doc paths, not issue numbers; `issue` (above) already carries the campaign link |
+      | — | `supersedes` | Omitted unless the search-before-write step above found a doc to supersede — then set per `doc-governance.md` § Supersede-on-Overwrite |
+
+  *   **Commit**: carried files land in the same PR (same commit as the code change, or a
+      dedicated `docs: promote staged artifacts for issue #N` commit within the same PR) — never
+      a separate PR, never an orchestrator write.
+  *   **PR-body record** (mirrors the Reuse Check Gate pattern — falsifiable, produced even on
+      the negative case): one line per carried artifact, `Carried Artifact: <target_path>
+      (<target_kind>, from <route>)`, or `Carried Artifacts: none (no manifest for this issue)`
+      when nothing was staged. No new `worker-schemas.md` return field — the PR-body record is
+      the falsifiable evidence.
+  *   **Do not delete** `.blackhole/staged/<issue>/` after carrying — it remains as campaign
+      state so a future reviewer audit (#468) has stable data to diff against, and so a resumed
+      session after interruption can re-derive what was already carried via the idempotency
+      guards above.
 
   ---
 
