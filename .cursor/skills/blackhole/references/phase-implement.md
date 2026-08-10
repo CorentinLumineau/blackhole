@@ -8,6 +8,8 @@
 - [ ] queue.json: phase implement, status in-flight
 - [ ] git worktree prune (V-WORKTREE-01)
 - [ ] git worktree add <scratchpad>/wt-<issue> -b blackhole/issue-<issue> origin/main (V-BRANCH-03)
+- [ ] git -C <scratchpad>/wt-<issue> config push.default nothing (issue #516 — no bare `git push` can silently succeed)
+- [ ] Branch Tracking Sweep before this wave's dispatch (`orchestrator-dispatch.md` § Branch Tracking Sweep (issue #516))
 - [ ] install dependencies in worktree (e.g. `npm install`, `bun install`, etc.)
 - [ ] Spawn implementer worker (run_in_background: true)
 - [ ] Worker returns new_findings[] — orchestrator appends to ledger
@@ -30,12 +32,37 @@ relative to the **main clone repo root**, not the worktree checkout.
 - Implementers MUST read the plan via that absolute path — never assume a
   relative `.blackhole/plans/` path resolves from the worktree cwd.
 
+## Git operations must not depend on inherited cwd (issue #516)
+
+The 2026-08-10 turn-4 wave incident: the orchestrator's own session cwd silently drifted into a
+sibling worktree, and a worker recovered by running `git push -u` from that foreign worktree —
+setting upstream on the *wrong* branch. `push.default=simple` refusing a same-name-mismatched
+push is the only thing that stood between that and a direct push to `origin/main`. The campaign
+must not rely on a git default it never chose.
+
+- Every git command the orchestrator runs in this phase — worktree creation, pruning, branch
+  inspection — MUST target the worktree with an absolute `-C <path>` argument (the same
+  convention `recovery-protocol.md` already uses for its own dirty-worktree checks), never an
+  inherited `cwd`.
+- Immediately after `git worktree add`, run `git -C <scratchpad>/wt-<issue> config push.default
+  nothing`. This writes to the repo-shared `.git/config` (every linked worktree shares one `.git`
+  directory unless `--separate-git-dir` was used), so it only needs to take effect once per repo
+  — re-running it at every worktree creation is idempotent and keeps the mandate colocated with
+  the step that needs it. With `push.default=nothing` a bare `git push` errors immediately
+  (`fatal: You didn't specify any refspecs to push, and push.default is 'nothing'`) instead of
+  silently falling through to `simple`/`current` behavior — the protection no longer rests
+  solely on `push.default=simple`.
+- Pass the worktree's absolute path to the implementer worker in its 5-Field Delegation Contract
+  Tool Guidance field (below) — the worker must never guess that its own cwd is correct.
+- Before dispatching any wave, run the pre-dispatch sweep: `orchestrator-dispatch.md` § Branch
+  Tracking Sweep (issue #516).
+
 ## Worker prompt must include (5-Field Delegation Contract)
 
 1. **Objective**: Detailed issue goals and issue ref + UNTRUSTED-FORGE-DATA body.
 2. **Output format**: JSON return schema (below) + PR opened + Closes #N linkage.
 3. **Scope boundaries**: Touch-Paths restriction (`V-SCOPE-02`) + parallel branch exclusions.
-4. **Tool guidance**: Command pointers for running git, gh CLI, install, lint, and test commands within the worktree. Carry the `execution_mode` TDD-mandate branch matching the plan's `route.task_type` derivation (see below); when the plan frontmatter carries `task_type: bugfix` (Quick track), also carry the Bugfix Gate's Root-Cause Decision Record and escalation-trigger expectations (`implementer.md` § Bugfix Gate). Scout Check applies unconditionally to every execution mode and plan track, not gated by `task_type: bugfix` — see `implementer.md` § Scout Check. When `display_targets` is configured (non-empty) and the issue is UI-affecting (`route.ui`, or the frontend-detection keyword fallback), also carry the Visual Evidence Capture step (`implementer.md` § Visual Evidence Capture) — inert otherwise. Carry the Carry Staged Artifacts step unconditionally (`implementer.md` § Carry Staged Artifacts, ADR-021 D2) — gated inert only by `docs_governance.enabled`/`docs_governance.write_governance`, not by track or `task_type`.
+4. **Tool guidance**: Command pointers for running git, gh CLI, install, lint, and test commands within the worktree. Every git command MUST use `git -C <absolute worktree path>` — never rely on inherited cwd (issue #516); push MUST use an explicit refspec, `git -C <path> push origin <branch>:<branch>` — never `-u`, never bare (`implementer.md` § Explicit Git Targeting Gate). Carry the `execution_mode` TDD-mandate branch matching the plan's `route.task_type` derivation (see below); when the plan frontmatter carries `task_type: bugfix` (Quick track), also carry the Bugfix Gate's Root-Cause Decision Record and escalation-trigger expectations (`implementer.md` § Bugfix Gate). Scout Check applies unconditionally to every execution mode and plan track, not gated by `task_type: bugfix` — see `implementer.md` § Scout Check. When `display_targets` is configured (non-empty) and the issue is UI-affecting (`route.ui`, or the frontend-detection keyword fallback), also carry the Visual Evidence Capture step (`implementer.md` § Visual Evidence Capture) — inert otherwise. Carry the Carry Staged Artifacts step unconditionally (`implementer.md` § Carry Staged Artifacts, ADR-021 D2) — gated inert only by `docs_governance.enabled`/`docs_governance.write_governance`, not by track or `task_type`.
 5. **Stop condition**: PR opened, local lint/tests green, and branch pushed — staged artifacts for the issue are copied into their `documentation/` targets and committed in the PR (`implementer.md` § Carry Staged Artifacts, ADR-021 D2) — and, when the diff touches the public-API/schema/config surface within Touch-Paths, companion docs updated in the same PR (`V-DOCSYNC-01`, `implementer.md` step 6's Companion-doc sync bullet). Phase 0's companion-file scaffold (`SKILL.md` step 2) already creates the *root* `ARCHITECTURE.md`/`AGENTS.md`/`DESIGN.md` when absent, so this bullet only covers diff-triggered *updates* to already-existing companion docs, not initial creation. When the Visual Evidence Capture step triggered, a `visual_evidence[]` entry (captured or explicitly `unavailable`) is present in the worker JSON — a triggered, undeclared skip fails the reviewer's `V-VIS-01` audit (`reviewer.md` §22).
 Do not commit directly to main (`V-BRANCH-02`) or force-push (`V-BRANCH-01`).
 - Ledger pointer: read plan deferrals from findings-ledger.json
