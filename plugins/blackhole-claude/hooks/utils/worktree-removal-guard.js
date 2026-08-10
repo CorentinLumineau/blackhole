@@ -24,32 +24,130 @@
  * failure as "nothing unpushed" would silently allow every removal. `git push` still updates the
  * branch's remote-tracking ref opportunistically even without `-u` (git >= 1.8.4), so
  * `refs/remotes/origin/<branch>` is the reliable fallback comparison point once `@{u}` is absent.
+ *
+ * Matching detail (review round on #532's own PR): a plain `\bgit\s+worktree\s+remove\b` regex
+ * requires `git` and `worktree` to sit whitespace-adjacent, so ANY git global option between them
+ * — `-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=<path>` — bypassed detection entirely. That
+ * form is not exotic: #528/`0dc64ec` mandates `git -C <path> ...` campaign-wide, so the bypassing
+ * form is the one the campaign now *always* uses. This module instead walks tokens: find every
+ * unmasked, word-boundary-real `git` command word (`isCommandWordStart` below — not just any
+ * `\bgit\b` match, which also fires on the harmless "git" fragment inside `--git-dir=/x/.git`),
+ * skip recognized global options (`skipGitGlobalOptions`), and check whether `worktree remove`
+ * follows. The same walk also fixes a second bug: the original code inspected only the first
+ * match in a command and returned, so a second `git worktree remove` in a chained command
+ * (`cmd1 && cmd2`) was never checked. `evaluateWorktreeRemoval` now inspects every invocation
+ * found in the command and denies if ANY of them is unsafe.
  */
 
 const { execFileSync } = require('child_process');
 const path = require('path');
 const { computeMaskedSpans } = require('./bash-context');
 
-/** Matches a `git worktree remove` invocation and captures everything up to the next shell
- * separator (`;`, `|`, `&`, or newline) as its raw argument tail — scoped so a chained later
- * command is never swept into the argument list. */
-const WORKTREE_REMOVE_RE = /\bgit\s+worktree\s+remove\b([^;&|\n]*)/gi;
+/** Global git options that consume a separate following token as their value (`-C <path>`,
+ * `-c name=value`, `--git-dir <path>`, …) — distinct from the attached `--name=value` form, which
+ * `skipGitGlobalOptions` recognizes generically via the literal `=`. Not exhaustive against every
+ * long option `git --help` lists (`--exec-path`, `--namespace`, etc. are included; obscure ones
+ * are not) — a long option missing from this set that turns out to need a separate value would
+ * make the walk stop one token early and correctly fail to match `worktree remove`, never the
+ * other way around, so an incomplete set cannot create a false allow. */
+const GIT_GLOBAL_OPTIONS_WITH_VALUE = new Set([
+  '-C',
+  '-c',
+  '--git-dir',
+  '--work-tree',
+  '--namespace',
+  '--super-prefix',
+  '--exec-path',
+  '--config-env',
+]);
 
-/** First unmasked match of `WORKTREE_REMOVE_RE` in `command`, or null. Reuses
- * `computeMaskedSpans` directly (the same primitive `matchFirstIgnoringNonExecutingText` in
- * bash-context.js is built on) rather than that function itself, because this check needs the
- * match's captured tail — position and groups — and that function discards both, returning only
- * the matched pattern entry (`V-INT-02`: one masking primitive, two independent consumers). */
-const findWorktreeRemoveMatch = (command) => {
-  const masked = computeMaskedSpans(command);
-  WORKTREE_REMOVE_RE.lastIndex = 0;
-  let match = WORKTREE_REMOVE_RE.exec(command);
-  while (match !== null) {
-    if (!masked[match.index]) return match;
-    if (WORKTREE_REMOVE_RE.lastIndex === match.index) WORKTREE_REMOVE_RE.lastIndex += 1;
-    match = WORKTREE_REMOVE_RE.exec(command);
+/** Advances past a run of git global options starting at token index `start` (the token right
+ * after the leading `git`), returning the index of the first token that is not a recognized
+ * global option — the subcommand position, e.g. `worktree`. Any bare `--xxx` long flag not in
+ * `GIT_GLOBAL_OPTIONS_WITH_VALUE` is treated as taking no value (git's own dispatcher never
+ * treats a `--`-prefixed token before the subcommand as anything BUT a global option, so this
+ * cannot manufacture a false `worktree remove` match — it can only walk past an option this set
+ * does not separately track). Returns -1 when a value-taking option has no following token (the
+ * clause ends mid-option) — the caller treats that exactly like "not a worktree remove
+ * invocation here", not a match. */
+const skipGitGlobalOptions = (tokens, start) => {
+  let i = start;
+  while (i < tokens.length) {
+    const token = tokens[i];
+    if (token.startsWith('--') && token.includes('=')) {
+      i += 1;
+      continue;
+    }
+    if (GIT_GLOBAL_OPTIONS_WITH_VALUE.has(token)) {
+      if (i + 1 >= tokens.length) return -1;
+      i += 2;
+      continue;
+    }
+    if (token.startsWith('-')) {
+      i += 1;
+      continue;
+    }
+    break;
   }
-  return null;
+  return i;
+};
+
+/** True when the character immediately before `index` is a real shell word boundary — start of
+ * string, whitespace, or a command separator (`;`, `&`, `|`, `(`, newline) — not merely "any
+ * non-word character", which is all `\b` alone checks. `\bgit\b` also matches the "git" fragment
+ * inside `--git-dir=/main/.git` (preceded by `.`, a non-word char, so `\b` fires there too) —
+ * accepting that as a real command word is exactly the "denies by accident" bug flagged in
+ * review: it only happens to deny when a `--git-dir=` value happens to end in `.git`, and it
+ * would have made a genuine leading-`git`-with-global-options invocation match twice (once for
+ * real, once for the embedded fragment) rather than being the actual fix. */
+const isCommandWordStart = (command, index) => index === 0 || /[\s;&|(\n]/.test(command[index - 1]);
+
+const GIT_WORD_RE = /\bgit\b/g;
+
+/** Every index in `command` where a real (unmasked, real-word-boundary) `git` command word
+ * starts. */
+const findGitWordIndices = (command, masked) => {
+  const indices = [];
+  GIT_WORD_RE.lastIndex = 0;
+  let m = GIT_WORD_RE.exec(command);
+  while (m !== null) {
+    if (!masked[m.index] && isCommandWordStart(command, m.index)) indices.push(m.index);
+    if (GIT_WORD_RE.lastIndex === m.index) GIT_WORD_RE.lastIndex += 1;
+    m = GIT_WORD_RE.exec(command);
+  }
+  return indices;
+};
+
+/** The substring of `command` starting at `index` up to (not including) the next shell separator
+ * (`;`, `&`, `|`, newline), or to the end of the string — the same clause-scoping `[^;&|\n]*`
+ * used before, now applied per `git` occurrence rather than only to the first. */
+const clauseTailFrom = (command, index) => {
+  const rest = command.slice(index);
+  const sep = /[;&|\n]/.exec(rest);
+  return sep ? rest.slice(0, sep.index) : rest;
+};
+
+/**
+ * Every `git worktree remove` invocation in `command`, tolerant of global options between `git`
+ * and `worktree` (`-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=<path>`, combinations) and of
+ * more than one such invocation in a chained command. Each entry is `{ argTokens }` — the tokens
+ * following `remove` (flags and the path argument), ready for `parseWorktreeRemoveArgs`. Naive
+ * whitespace tokenization, matching this module's existing convention for the post-`remove` tail
+ * (a quoted path containing a literal space is not resolved either way — not a regression, the
+ * original code had the same limitation for that argument).
+ */
+const findWorktreeRemoveInvocations = (command) => {
+  const masked = computeMaskedSpans(command);
+  const invocations = [];
+  for (const gitIndex of findGitWordIndices(command, masked)) {
+    const tokens = clauseTailFrom(command, gitIndex).trim().split(/\s+/).filter(Boolean);
+    if (tokens[0] !== 'git') continue; // defensive: gitIndex is always a real word start
+    const subcommandIndex = skipGitGlobalOptions(tokens, 1);
+    if (subcommandIndex === -1) continue;
+    if (tokens[subcommandIndex] !== 'worktree' || tokens[subcommandIndex + 1] !== 'remove') continue;
+    invocations.push({ argTokens: tokens.slice(subcommandIndex + 2) });
+  }
+  return invocations;
 };
 
 /** True when `arg` is a literal path this hook can resolve without executing anything — no shell
@@ -59,15 +157,14 @@ const findWorktreeRemoveMatch = (command) => {
  * for a pattern file it cannot parse. */
 const isLiteralPathArg = (arg) => arg.length > 0 && !/[$`*?[\]{}]/.test(arg);
 
-/** Splits the raw argument tail after `git worktree remove` into `{ force, pathArg }`. `--force`
- * or `-f` may appear before or after the path. Anything else — a second flag, `--`, no path, more
+/** Splits the token array following `worktree remove` into `{ force, pathArg }`. `--force` or
+ * `-f` may appear before or after the path. Anything else — a second flag, `--`, no path, more
  * than one positional argument — leaves `pathArg` null, and the caller treats that exactly like a
  * dynamic argument: nothing static to verify, so refuse. */
-const parseWorktreeRemoveArgs = (tail) => {
-  const tokens = tail.trim().split(/\s+/).filter(Boolean);
+const parseWorktreeRemoveArgs = (argTokens) => {
   let force = false;
   const positional = [];
-  for (const token of tokens) {
+  for (const token of argTokens) {
     if (token === '--force' || token === '-f') {
       force = true;
     } else {
@@ -131,19 +228,11 @@ const checkUnpushedCommits = (worktreePath) => {
   return { status: 'clean' };
 };
 
-/**
- * Entry point for `validate-bash-command.js`. Returns null when `command` contains no unmasked
- * `git worktree remove` invocation (nothing to check). Otherwise returns a decision:
- * `{ tier: 'block', pattern_id, reason }` or `{ tier: 'allow' }`. Never `'warn'` — unpushed
- * history at removal time is not a "risky but sometimes legitimate" call (V-HOOK-02's
- * vocabulary); there is no legitimate reason to discard commits that exist nowhere else, so this
- * mirrors the static blockPatterns' philosophy (V-HOOK-01) rather than the warnPatterns' one.
- */
-const evaluateWorktreeRemoval = (command, cwd) => {
-  const match = findWorktreeRemoveMatch(command);
-  if (!match) return null;
-
-  const { force, pathArg } = parseWorktreeRemoveArgs(match[1]);
+/** Evaluates one `{ argTokens }` invocation against `cwd`, returning a block decision or null
+ * when this single invocation is safe (`clean`) — `evaluateWorktreeRemoval` below decides what
+ * "safe overall" means across every invocation in the command. */
+const evaluateOneInvocation = (argTokens, cwd) => {
+  const { force, pathArg } = parseWorktreeRemoveArgs(argTokens);
   if (!pathArg || !isLiteralPathArg(pathArg)) {
     return {
       tier: 'block',
@@ -172,6 +261,28 @@ const evaluateWorktreeRemoval = (command, cwd) => {
       reason: `Could not verify ${resolvedPath} has no unpushed commits (${result.detail}) — refusing rather than risk silent data loss`,
     };
   }
+  return null; // clean — this invocation alone does not block
+};
+
+/**
+ * Entry point for `validate-bash-command.js`. Returns null when `command` contains no
+ * `git worktree remove` invocation anywhere (nothing to check). Otherwise inspects EVERY
+ * invocation found (see `findWorktreeRemoveInvocations`'s docstring — a chained command can carry
+ * more than one) and returns a decision: `{ tier: 'block', pattern_id, reason }` for the first
+ * unsafe one found, or `{ tier: 'allow' }` only once every invocation in the command is safe.
+ * Never `'warn'` — unpushed history at removal time is not a "risky but sometimes legitimate"
+ * call (V-HOOK-02's vocabulary); there is no legitimate reason to discard commits that exist
+ * nowhere else, so this mirrors the static blockPatterns' philosophy (V-HOOK-01) rather than the
+ * warnPatterns' one.
+ */
+const evaluateWorktreeRemoval = (command, cwd) => {
+  const invocations = findWorktreeRemoveInvocations(command);
+  if (invocations.length === 0) return null;
+
+  for (const { argTokens } of invocations) {
+    const decision = evaluateOneInvocation(argTokens, cwd);
+    if (decision) return decision;
+  }
   return { tier: 'allow' };
 };
 
@@ -180,5 +291,7 @@ module.exports = {
   checkUnpushedCommits,
   parseWorktreeRemoveArgs,
   isLiteralPathArg,
-  findWorktreeRemoveMatch,
+  findWorktreeRemoveInvocations,
+  skipGitGlobalOptions,
+  isCommandWordStart,
 };

@@ -697,10 +697,12 @@ describe('validate-bash-command.js — heredoc must-still-deny regression (#506)
 // campaign's own worktree-creation convention (#516): the fixture never sets an upstream, so
 // every case below exercises the `@{u}`-less `refs/remotes/origin/<branch>` fallback, not the
 // `@{u}` happy path.
-const commitInWorktree = (worktree: string, args: string[]): void => {
-  const result = spawnSync('git', args, { cwd: worktree });
+// Named for what it does (run a git command in a given directory), not narrowed to "commit" —
+// the multi-invocation regression tests below reuse it for `worktree add/remove` and `push` too.
+const runGit = (cwd: string, args: string[]): void => {
+  const result = spawnSync('git', args, { cwd });
   if (result.status !== 0) {
-    throw new Error(`git ${args.join(' ')} failed in ${worktree}: ${result.stderr?.toString()}`);
+    throw new Error(`git ${args.join(' ')} failed in ${cwd}: ${result.stderr?.toString()}`);
   }
 };
 
@@ -730,8 +732,8 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
       async (mainRepo, worktree, push) => {
         push();
         fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
-        commitInWorktree(worktree, ['add', 'unpushed.txt']);
-        commitInWorktree(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
 
         const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
 
@@ -757,8 +759,8 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
       async (mainRepo, worktree, push) => {
         push();
         fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
-        commitInWorktree(worktree, ['add', 'unpushed.txt']);
-        commitInWorktree(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
 
         const result = await runPreToolUseHook(
           SCRIPT,
@@ -828,5 +830,175 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
       expect(result.exitCode).toBe(0);
       expect(readHookEvents(repo)).toEqual([]);
     });
+  });
+});
+
+// Review-round regression (#532 CHANGES_REQUIRED): the initial matcher required `git` and
+// `worktree` to sit whitespace-adjacent, so any git global option between them — exactly the
+// `-C <path>` form #528/`0dc64ec` now mandates campaign-wide — bypassed the guard entirely. It
+// also only inspected the first `git worktree remove` in a command, so a second target in a
+// chained command was unguarded. Both are fixed by scanning every unmasked `git` command word,
+// skipping recognized global options, and denying if ANY discovered invocation is unsafe.
+describe('validate-bash-command.js — worktree-removal guard global-option and multi-invocation regression (#532)', () => {
+  test('BLOCK 1: `git -C <path> worktree remove --force <target>` denies an unpushed target (global option before the subcommand)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-',
+      'blackhole/issue-c1',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`git -C ${mainRepo} worktree remove --force ${worktree}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-force-unpushed',
+        });
+      },
+    );
+  });
+
+  test('BLOCK 1 variant: `git --no-pager worktree remove <target>` (no-value global option) denies an unpushed target', async () => {
+    await withRemoteTrackedWorktree('blackhole-hook-wt-', 'blackhole/issue-c2', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`git --no-pager worktree remove ${worktree}`),
+        mainRepo,
+      );
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block' });
+    });
+  });
+
+  test('BLOCK 1 negative control: `--git-dir=<path>/gitdir` (does not end in `.git`) still correctly denies — not a coincidental substring match', async () => {
+    await withRemoteTrackedWorktree('blackhole-hook-wt-', 'blackhole/issue-c3', async (mainRepo, worktree) => {
+      const gitDir = path.join(mainRepo, '.git');
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`git --git-dir=${gitDir} worktree remove ${worktree}`),
+        mainRepo,
+      );
+
+      // The real leading `git` (preceded by nothing) is the one that must be recognized here —
+      // not the "git" substring inside "--git-dir=.../.git", which a word-boundary-only regex
+      // would also match by accident. isCommandWordStart excludes that fragment explicitly.
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+    });
+  });
+
+  test('allow: `git -C <path> worktree remove` on a clean, fully pushed target is still allowed', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-',
+      'blackhole/issue-c4',
+      async (mainRepo, worktree, push) => {
+        push();
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`git -C ${mainRepo} worktree remove ${worktree}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
+
+  test('BLOCK 2: a chained command with a clean first target and an unpushed second target denies — not just the first is checked', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-',
+      'blackhole/issue-c5a',
+      async (mainRepo, cleanWorktree, pushClean) => {
+        pushClean();
+
+        const dirtyWorktree = path.join(mainRepo, '.worktrees', 'blackhole-hook-wt-dirty');
+        runGit(mainRepo, [
+          'worktree',
+          'add',
+          '--no-track',
+          '--quiet',
+          '-b',
+          'blackhole/issue-c5b',
+          dirtyWorktree,
+          'HEAD',
+        ]);
+
+        try {
+          const result = await runPreToolUseHook(
+            SCRIPT,
+            bashPayload(`git worktree remove ${cleanWorktree} && git worktree remove ${dirtyWorktree}`),
+            mainRepo,
+          );
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+
+          const events = readHookEvents(mainRepo);
+          expect(events).toHaveLength(1);
+          expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block' });
+        } finally {
+          runGit(mainRepo, ['worktree', 'remove', '--force', dirtyWorktree]);
+        }
+      },
+    );
+  });
+
+  test('allow: a chained command where both targets are clean and fully pushed is allowed silently', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-',
+      'blackhole/issue-c6a',
+      async (mainRepo, firstWorktree, pushFirst) => {
+        pushFirst();
+
+        const secondWorktree = path.join(mainRepo, '.worktrees', 'blackhole-hook-wt-second');
+        runGit(mainRepo, [
+          'worktree',
+          'add',
+          '--no-track',
+          '--quiet',
+          '-b',
+          'blackhole/issue-c6b',
+          secondWorktree,
+          'HEAD',
+        ]);
+        runGit(mainRepo, ['push', '--quiet', 'origin', `HEAD:refs/heads/blackhole/issue-c6b`]);
+
+        try {
+          const result = await runPreToolUseHook(
+            SCRIPT,
+            bashPayload(`git worktree remove ${firstWorktree} && git worktree remove ${secondWorktree}`),
+            mainRepo,
+          );
+
+          expect(result.exitCode).toBe(0);
+          expect(result.stdout.trim()).toBe('');
+          expect(readHookEvents(mainRepo)).toEqual([]);
+        } finally {
+          runGit(mainRepo, ['worktree', 'remove', '--force', secondWorktree]);
+        }
+      },
+    );
   });
 });
