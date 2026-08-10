@@ -2,17 +2,19 @@ import { read, type CheckResult } from './check-utils.ts';
 import { findMissingGateMarkers } from '../lib/check-common.ts';
 
 // PM-028 (issue #306) — coverage-regression.check.ts (V-TEST-09): mercure parity adoption of the
-// coverage-regression gate. Validates three source artifacts carry the gate:
+// coverage-regression gate. Validates two source artifacts carry the gate:
 //   1. src/references/blackhole-vcodes.md holds the V-TEST-09 BLOCK row (exact row text, so the
 //      code, description, and BLOCK severity are all asserted in one substring match).
 //   2. src/agents/implementer.md § 6 "Verify & Open PR" carries the coverage-delta sub-step,
 //      reusing hunt/coverage.md's runner-detection heuristic (no invented runner invocation;
 //      no-runner degrades to a logged no-op, never a false pass).
-//   3. (issue #457) src/agents/reviewer.md carries § 23 Test Integrity Audit — the coverage-delta
-//      gate above catches the *number* regressing; it does not catch a diff that adds `.skip()`,
-//      removes an assertion, or loosens a validation rule without moving that number. Extends
-//      this same V-TEST-09 gate with a third source-file check rather than a parallel one
-//      (V-INT-02) — one CheckResult, three markers arrays.
+//
+// issue #457 originally bolted a third check onto this same module — src/agents/reviewer.md § 23
+// Test Integrity Audit — reusing V-TEST-09 to cover added skip markers, removed assertions, and
+// weakened validation. That reuse didn't hold semantically: § 23 is review-time diff-pattern
+// judgment, never a coverage number. Issue #518 split it back out into its own module,
+// test-integrity.check.ts, under its own code, V-TEST-10 — this file returns to its pre-#457
+// scope (vcodes row + implementer.md only).
 
 // The V-TEST-09 row, verbatim per issue #306's requested wording. Matching the full row (down to
 // the trailing "| BLOCK") asserts code + description + severity together — a bare ".includes('BLOCK')"
@@ -31,19 +33,6 @@ export const IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS = [
   'degrades to a logged no-op',
 ];
 
-// issue #457 — reviewer.md § 23 Test Integrity Audit markers: detection scope (added-lines-only,
-// diff-scoped per V-SCOPE-01), the three detected patterns (skip markers, removed assertions,
-// weakened validation), and the paired-severity rule (BLOCK only when the guard-weakening lands
-// in the same diff as the production change it covered; WARN otherwise).
-export const REVIEWER_TEST_INTEGRITY_REQUIRED_MARKERS = [
-  'Test Integrity Audit (`V-TEST-09`)',
-  'newly introduced by this diff',
-  'Removed assertions',
-  'Weakened validation rules',
-  'lands in the same diff as the production change',
-  'only newly-added lines count',
-];
-
 // Extracted so the missing-marker → error-string mapping is directly unit-testable without
 // needing to fake a stale real source file — the success-path integration test below always maps
 // over empty arrays (nothing missing in the real tree), which would otherwise leave this
@@ -57,15 +46,10 @@ const checkCoverageRegressionGate = (): CheckResult => {
     read('src/agents/implementer.md'),
     IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS,
   );
-  const reviewerMissing = findMissingGateMarkers(
-    read('src/agents/reviewer.md'),
-    REVIEWER_TEST_INTEGRITY_REQUIRED_MARKERS,
-  );
 
   const errors = [
     ...formatMissingMarkerErrors(vcodesMissing, 'blackhole-vcodes.md'),
     ...formatMissingMarkerErrors(implementerMissing, 'implementer.md'),
-    ...formatMissingMarkerErrors(reviewerMissing, 'reviewer.md'),
   ];
 
   if (errors.length) return { id: 'V-TEST-09', ok: false, detail: errors.join('; ') };
