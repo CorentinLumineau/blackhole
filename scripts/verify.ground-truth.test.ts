@@ -208,7 +208,7 @@ describe('findMissingEnforcementSites', () => {
   test('the real blackhole-vcodes.md table has no row with an empty enforcement-site cell', () => {
     const vcodes = read('src/references/blackhole-vcodes.md');
     const rows = parseVcodeEnforcementSites(vcodes);
-    expect(rows.length).toBe(65);
+    expect(rows.length).toBe(66);
     expect(findMissingEnforcementSites(rows)).toEqual([]);
   });
 });
