@@ -63,7 +63,8 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    skipped **and** `kaizen.enabled` is `true` **and** `kaizen.kinds` contains `ux-coherence`.
    Full contract: [templates/companion-files/README.md](../templates/companion-files/README.md).
 3. **State init** — `queue.json`, `findings-ledger.json`, `plans/`
-4. **Validate** — `jq empty` on both JSON files
+4. **Validate** — `bun run scripts/lib/state-write-guard.ts` on both JSON files (never `jq empty`
+   alone — `blackhole-state.md` § Write protocol)
 5. **Forge sync** — if `auto_sync` true (default): `gh auth status` then [forge-sync.md](references/forge-sync.md). Sandbox: `full_network`.
 6. **Dashboard** — open issues/PRs, new since sync, in-flight, LEDGER OPEN, ready set
 
