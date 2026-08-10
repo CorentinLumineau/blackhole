@@ -95,10 +95,35 @@ resolves absent or `false`, no staging write happens and no manifest entry is ap
       "staged_path": ".blackhole/staged/465/decisions-index-row.md",
       "target_path": "documentation/decisions/INDEX.md",
       "target_kind": "append_row"
+    },
+    {
+      "route": "analyze",
+      "sub_mode": "analyze",
+      "produced_by": "investigator",
+      "declared_at": "2026-08-06T17:40:00.000Z",
+      "staged_path": ".blackhole/staged/465/analysis-issue-465.md",
+      "target_path": "documentation/audits/analysis-issue-465.md",
+      "target_kind": "new_file"
+    },
+    {
+      "route": "analyze",
+      "sub_mode": "analyze",
+      "produced_by": "investigator",
+      "declared_at": "2026-08-06T17:40:00.000Z",
+      "staged_path": ".blackhole/staged/465/index-row.md",
+      "target_path": "documentation/INDEX.md",
+      "target_kind": "append_row"
     }
   ]
 }
 ```
+
+The `design` pair above stages an ADR body and its `documentation/decisions/INDEX.md` row
+(`planner.md` §4.8). The `analyze`/`investigate` pair stages an investigator-authored note and
+its **root** `documentation/INDEX.md` row (issue #490, ADR-021 D2) — same `new_file` +
+`append_row` two-entry shape, different producer and different target file. No new `route` or
+`target_kind` enum member was required for this second pair — both `analyze`/`investigate`
+(`route`) and `append_row` (`target_kind`) already existed in the schema below.
 
 | Field | Values | Notes |
 |---|---|---|
@@ -109,7 +134,7 @@ resolves absent or `false`, no staging write happens and no manifest entry is ap
 | `entries[].produced_by` | `planner` \| `investigator` | Which agent staged the artifact |
 | `entries[].declared_at` | ISO8601 | When the entry was staged |
 | `entries[].staged_path` | string | Repo-relative path under `.blackhole/staged/<issue>/` |
-| `entries[].target_path` | string | Repo-relative `documentation/` target, per `artifact-contract.md`'s route table |
+| `entries[].target_path` | string | Repo-relative `documentation/` target, per `artifact-contract.md`'s route table. For `target_kind: append_row` this is either `documentation/decisions/INDEX.md` (`design` route, `planner.md` §4.8) or `documentation/INDEX.md` (`analyze`/`investigate` routes, issue #490) — no new `route`/`target_kind` enum member required for either |
 | `entries[].target_kind` | `new_file` \| `append_row` | Tells the carry-step whether to copy a whole file or append a row fragment to an existing file (e.g. `INDEX.md`) |
 
 ### Write protocol extension

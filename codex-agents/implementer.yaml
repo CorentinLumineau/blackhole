@@ -304,8 +304,8 @@ instructions: |
         instead of creating a duplicate.
       - `append_row` (any `produced_by`) → read the staged row fragment; check `target_path`
         (e.g. `documentation/decisions/INDEX.md`) for an existing row with the same discriminator
-        (ADR number/slug) first — **idempotency guard** against a duplicate row on implementer
-        re-spawn. Append only if absent.
+        (the row's `path` column value) first — **idempotency guard** against a duplicate row on
+        implementer re-spawn. Append only if absent.
   *   **Frontmatter rewrite mapping** (investigator `new_file` entries only — working-note
       schema → `doc-governance.md` lifecycle schema):
 
