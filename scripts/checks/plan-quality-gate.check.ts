@@ -77,9 +77,9 @@ export const PLAN_QUALITY_GATE_REQUIRED_MARKERS = ['critical_files_exist', 'miti
 // heading is "Execution Strategy & Stop Conditions" — it is literally what the planner writes
 // into every generated plan file, making it the canonical spelling. planner.md's prose
 // previously cited a drifted "Execution Strategy (Stop Conditions)" parenthetical instead; a
-// hand-typed citation like that can drift again silently, so this folds into the same
-// V-PLANGATE-01 grounding check rather than minting a second CheckResult (facts.ts's
-// EXPECTED_CHECK_COUNT is out of scope for this fix, so the check count must not change).
+// hand-typed citation like that can drift again silently. Originally folded into V-PLANGATE-01
+// to avoid touching a locked facts.ts (issue #519); split into its own V-PLANGATE-02 CheckResult
+// once facts.ts unlocked (issue #534) — see checkExecutionStrategyHeadingGrounding below for why.
 export const EXECUTION_STRATEGY_HEADING = 'Execution Strategy & Stop Conditions';
 const STALE_EXECUTION_STRATEGY_SPELLINGS = ['Execution Strategy (Stop Conditions)'];
 
@@ -93,7 +93,9 @@ export const findExecutionStrategyHeadingDrift = (content: string): string[] =>
 // got the chance to carry the field, so the BLOCK could never fire there. Section-scoped
 // extraction, not a whole-file `findMissingGateMarkers` call: Quick Track already carries this
 // bullet's exact wording, so a whole-file check would report "present" even if Standard Track's
-// own copy silently regressed.
+// own copy silently regressed. Originally folded into V-PLANGATE-01 alongside the heading-drift
+// guard above (issue #533, same facts.ts-lock rationale); split into its own V-PLANGATE-03
+// CheckResult once facts.ts unlocked (issue #534) — see checkStandardTrackBugfixGrounding below.
 const STANDARD_TRACK_START_MARKER = '### 2. Standard Track';
 const STANDARD_TRACK_END_MARKER = '### 3. Skip Track';
 
@@ -109,10 +111,14 @@ export const STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS = [
   'stamp `task_type: bugfix`',
 ];
 
-const checkPlanQualityGateGrounding = (): CheckResult => {
+// V-PLANGATE-01 (issue #459): mercure-parity marker grounding — the two mechanical Plan Quality
+// Gate checks (`critical_files_exist`, `mitigation_concrete`) must stay documented in both
+// planner.md (where the planner performs them) and worker-schemas.md (where their
+// `failing_checks` values are contracted). Same shape as design-track.check.ts's V-DESIGN-02:
+// one concern, grounded across two files that must agree — not split further (V-KISS-01).
+export const checkPlanQualityGateGrounding = (): CheckResult => {
   const plannerContent = read('src/agents/planner.md');
   const schemaContent = read('src/references/worker-schemas.md');
-  const standardTrackSection = extractStandardTrackSection(plannerContent);
 
   const errors = [
     ...findMissingGateMarkers(plannerContent, PLAN_QUALITY_GATE_REQUIRED_MARKERS).map(
@@ -121,18 +127,57 @@ const checkPlanQualityGateGrounding = (): CheckResult => {
     ...findMissingGateMarkers(schemaContent, PLAN_QUALITY_GATE_REQUIRED_MARKERS).map(
       (m) => `worker-schemas.md missing "${m}"`
     ),
-    ...findExecutionStrategyHeadingDrift(plannerContent).map(
-      (stale) => `planner.md uses stale heading spelling "${stale}" (canonical: "${EXECUTION_STRATEGY_HEADING}")`
-    ),
-    ...findMissingGateMarkers(standardTrackSection, STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS).map(
-      (m) => `planner.md Standard Track section missing "${m}" (V-FIX-01 BLOCK cannot fire on Standard-track bugfixes without this stamp)`
-    ),
   ];
 
   if (errors.length) return { id: 'V-PLANGATE-01', ok: false, detail: errors.join('; ') };
   return { id: 'V-PLANGATE-01', ok: true };
 };
 
+// V-PLANGATE-02 (issue #519 gap 3, split out by #534): planner.md's prose citation of the
+// Standard Track heading must stay the canonical spelling — see the heading-drift guard comment
+// above for why this is a distinct regression class from V-PLANGATE-01's marker presence check
+// (a spelling drift, not a missing marker).
+export const checkExecutionStrategyHeadingGrounding = (): CheckResult => {
+  const plannerContent = read('src/agents/planner.md');
+  const drift = findExecutionStrategyHeadingDrift(plannerContent);
+
+  if (drift.length) {
+    return {
+      id: 'V-PLANGATE-02',
+      ok: false,
+      detail: drift
+        .map((stale) => `planner.md uses stale heading spelling "${stale}" (canonical: "${EXECUTION_STRATEGY_HEADING}")`)
+        .join('; '),
+    };
+  }
+  return { id: 'V-PLANGATE-02', ok: true };
+};
+
+// V-PLANGATE-03 (issue #533, split out by #534): planner.md's Standard Track section must carry
+// the bugfix-classification stamp — see the section-scoped-extraction comment above for why this
+// is a distinct regression class from V-PLANGATE-01/02 (a track-symmetry gap, not a marker
+// presence or spelling concern).
+export const checkStandardTrackBugfixGrounding = (): CheckResult => {
+  const plannerContent = read('src/agents/planner.md');
+  const standardTrackSection = extractStandardTrackSection(plannerContent);
+  const missing = findMissingGateMarkers(standardTrackSection, STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS);
+
+  if (missing.length) {
+    return {
+      id: 'V-PLANGATE-03',
+      ok: false,
+      detail: missing
+        .map((m) => `planner.md Standard Track section missing "${m}" (V-FIX-01 BLOCK cannot fire on Standard-track bugfixes without this stamp)`)
+        .join('; '),
+    };
+  }
+  return { id: 'V-PLANGATE-03', ok: true };
+};
+
 // ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
-export const runChecks = (): CheckResult[] => [checkPlanQualityGateGrounding()];
+export const runChecks = (): CheckResult[] => [
+  checkPlanQualityGateGrounding(),
+  checkExecutionStrategyHeadingGrounding(),
+  checkStandardTrackBugfixGrounding(),
+];
