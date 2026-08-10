@@ -2,149 +2,16 @@
 
 Structured JSON contracts for campaign worker agents. The orchestrator validates worker output against these shapes before mutating state.
 
-Optional: consumers may install the Cursor SubagentStop hook below for machine-enforced structural validation at subagent handoff.
+Optional: consumers may install the Cursor SubagentStop hook documented in [`hook-schemas.md`](hook-schemas.md) for machine-enforced structural validation at subagent handoff.
 
 On a harness with a native orchestration primitive (Pattern C, see
 [claude-code-native.md](claude-code-native.md)), a `schema:` option on the fan-out tool call can
 mechanically enforce these same contracts at the tool-call layer — the JSON shapes below are the
 schema source, unchanged. This complements, not replaces, the SubagentStop hook / `validate-worker-json.ts`
-path documented below for harnesses without a native fan-out primitive.
+path documented in [`hook-schemas.md`](hook-schemas.md) for harnesses without a native fan-out primitive.
 
-## SubagentStop hook (Cursor)
-
-**Install:** Merge the `hooks` block from [`templates/hooks/subagent-stop-validate.json`](../../templates/hooks/subagent-stop-validate.json) into your project's `.cursor/hooks.json`. Requires `bun` on `PATH`; hook `command` paths are relative to the repo root.
-
-**Behavior:** On `subagentStop`, when the hook `matcher` hits `planner`, `implementer`, `reviewer`, `router`, `investigator`, or `hunter`, Cursor runs `bun run scripts/validate-worker-json.ts --hook` with the stop payload on **stdin**. Non-zero exit blocks handoff (`failClosed: true`). Subagent stops with `status` `error` or `aborted`, or non-campaign subagents, pass through (exit `0`).
-
-**Extraction order:** Worker JSON is parsed from (1) a fenced ` ```json ` block in `summary`, (2) the last brace-balanced `{...}` object in `summary`, or (3) the tail of `agent_transcript_path` when readable.
-
-**Exit codes:** `0` = valid or pass-through; `1` = validation or JSON extraction failure; `2` = hook stdin JSON parse failure.
-
-### Orchestrator / harness fallback (non-Cursor)
-
-Harnesses without Cursor hooks can validate worker output before mutating `queue.json`:
-
-```bash
-# Full structural validation (preferred)
-bun run scripts/validate-worker-json.ts --role planner --file handoff.json
-bun run scripts/validate-worker-json.ts --role implementer --json '{"status":"complete",...}'
-
-# Quick spot-check only (not a substitute for full validation)
-jq -e '.status and .plan_path' handoff.json
-```
-
-Fixture pairs for each role live under [`fixtures/worker-json/`](../../fixtures/worker-json/). Validator implementation: [`scripts/validate-worker-json.ts`](../../scripts/validate-worker-json.ts).
-
-## SubagentStop resume hook (Cursor, #154)
-
-**Install:** Merge the `hooks` block from [`templates/hooks/subagent-stop-resume.json`](../../templates/hooks/subagent-stop-resume.json) **after** the validate hook entry in `.cursor/hooks.json`. Install guide: [`templates/hooks/README.md`](../../templates/hooks/README.md).
-
-**Behavior (Option C — hybrid):** On `subagentStop`, when the hook `matcher` hits `orchestrator`, `router`, `planner`, `implementer`, `reviewer`, or `investigator`, Cursor runs `bun run scripts/campaign-resume-signal.ts --hook` with the stop payload on **stdin**. The hook always evaluates resume gates first, then atomically upserts `.blackhole/resume-request.json`. Exit is always `0` (`failClosed: false`).
-
-| Stopping agent | `followup_message` | File write |
-|----------------|-------------------|------------|
-| `orchestrator` | **Yes** — coordinator doorbell only | `resume-request.json` when gates pass |
-| `router` / `planner` / `implementer` / `reviewer` / `investigator` | **No** | `resume-request.json` only when **stale barrier** detected |
-| Non-campaign subagents | No | No |
-| `status: error` / `aborted` | No | No |
-
-**Ordering rule:** validate hook entry **must** appear first in the `subagentStop` array.
-
-### Resume gates (all must pass)
-
-1. `.blackhole/queue.json` exists and parses as JSON.
-2. **Work remains:** at least one issue with `status: ready` or `status: in-flight`, or checkpoint `## Ready set` non-empty, or checkpoint `## In-flight workers` non-empty.
-3. **No user gate:** no issue `notes` matching `awaiting-user`, `awaiting-plan`, or `awaiting-design` while `status` is `blocked` or `in-flight`.
-4. **Orchestrator doorbell:** stdout `followup_message` emitted only when `subagent_type` resolves to `orchestrator` and file write succeeds.
-5. **Stale barrier (workers only):** checkpoint `## In-flight workers` has active entries **and** stopping worker JSON validates — writes file with `reason: stale_barrier`, no `followup_message`.
-
-Hook **must not** mutate `queue.json`, `findings-ledger.json`, or plan files.
-
-### `.blackhole/resume-request.json` schema
-
-```json
-{
-  "version": 1,
-  "requested_at": "2026-07-09T12:00:00.000Z",
-  "reason": "orchestrator_turn_complete",
-  "target": "coordinator",
-  "dedupe_key": "turn-12",
-  "coalesce_until": "2026-07-09T12:00:05.000Z",
-  "stopping_agent": "orchestrator",
-  "queue_refreshed_at": "2026-07-09T11:59:00.000Z",
-  "orchestrator_turn_id": 12
-}
-```
-
-| Field | Values | Required |
-|-------|--------|----------|
-| `version` | `1` | yes |
-| `requested_at` | ISO-8601 | yes |
-| `reason` | `orchestrator_turn_complete` \| `stale_barrier` | yes |
-| `target` | `coordinator` | yes |
-| `dedupe_key` | string | yes — `turn-{id}` or `stale-wave-{turn}-{issue-set-hash}` |
-| `coalesce_until` | ISO-8601 | yes — now + 5s; concurrent stops merge into one record |
-| `stopping_agent` | agent role string | yes |
-| `queue_refreshed_at` | string | yes |
-| `orchestrator_turn_id` | number \| null | when checkpoint present |
-
-**Write protocol:** read-modify-write via `.blackhole/resume-request.json.tmp` + `mv`. If existing record has `coalesce_until` in the future and same `dedupe_key`, refresh timestamp only (dedup). Coordinator **acks** by deleting the file or writing `{ "acked_at": ... }` after successful resume.
-
-**Doorbell message (orchestrator stop only):**
-
-```json
-{
-  "followup_message": "Blackhole: pending resume-request.json. Run coordinator turn flow — bun run status (full dashboard), then resume orchestrator with interrupt:false if work remains and queue is not user-blocked. Ack resume-request.json after resume."
-}
-```
-
-### Manual test runbook (WAVE spawn)
-
-| Step | Actor | Action | Expected |
-|------|-------|--------|----------|
-| 1 | maintainer | Merge validate + resume hook fragments into `.cursor/hooks.json` | Hooks tab shows both entries |
-| 2 | coordinator | Phase 0 + spawn orchestrator `run_in_background: true` | orchestrator live |
-| 3 | orchestrator | WAVE 0: spawn 2–4 `router` workers, barrier-wait, triage, turn-end | checkpoint workers empty |
-| 4 | orchestrator | END TURN with ready work remaining | `subagentStop` fires |
-| 5 | resume hook | writes `resume-request.json`, emits coordinator `followup_message` | file present; coordinator wakes |
-| 6 | coordinator | `bun run status` → full dashboard → resume orchestrator | next turn without user chat |
-| 7 | coordinator | delete/ack `resume-request.json` | file absent |
-| 8 | negative | set `notes: awaiting-plan-approval` on in-flight issue, repeat step 4 | hook exits 0, **no** file, **no** followup |
-
-```bash
-bun test scripts/campaign-resume-signal.test.ts
-# Manual: after orchestrator turn-end with work remaining:
-test -f .blackhole/resume-request.json && jq -e '.target == "coordinator"' .blackhole/resume-request.json
-```
-
-Fixtures: [`fixtures/resume-signal/`](../../fixtures/resume-signal/). Implementation: [`scripts/campaign-resume-signal.ts`](../../scripts/campaign-resume-signal.ts).
-
-## PreToolUse hook events (`.blackhole/hook-events/`, #447)
-
-**Install:** shipped, never merged by hand — `bun run build` copies [`templates/hooks/pretooluse/`](../../templates/hooks/pretooluse/hooks.json) into `plugins/blackhole/hooks/`, `plugins/blackhole-claude/hooks/`, and (as a side effect of the shared `compileGeminiTree` call site) `.agents/build/hooks/`, so a marketplace install wires `PreToolUse` for `Bash` and `Write|Edit` with no consumer action. Each bundle reads pattern data from its own `hooks/patterns/`; the canonical SSOT — and the path every other install form resolves, since those vendor the repo source — is repo-root `templates/hooks/pretooluse/patterns/`. Deliberately literal, not `.agents/build`-relative: only these three roots receive the tree, so a per-target placeholder would render a path that does not exist on the other five generated copies of this file (root `references/`, `skills/blackhole/references/`, `.cursor/skills/blackhole/references/`, `.claude/skills/blackhole/references/`, `codex-skills/blackhole/references/`).
-
-**Behavior:** two tiers, because an unattended worker has nobody to ask. A **block** match (destructive command, system path, `../` traversal, write resolving outside the worktree) prints `{"hookSpecificOutput":{"permissionDecision":"deny", ...}}`, writes the reason to **stderr** (the field the harness's exit-2 blocking-error contract feeds back to the calling model), and exits `2`. A **warn** match (sensitive filename, force push, registry publish, destructive SQL) prints the same `hookSpecificOutput.permissionDecision: "allow"` shape plus a `systemMessage`, and exits `0`. No match: exit `0`, no output, no record. Patterns are data — adding one is a JSON edit, never a code change.
-
-**Failure split:** *fail-closed* on pattern-load failure — a validator that cannot parse its pattern data cannot tell safe from dangerous, so it denies. That is only safe to ship because `scripts/checks/hooks.check.ts` (`V-HOOKWIRE-01` / `V-HOOKPAT-01`) validates both pattern files at `bun run scripts/verify.ts` time. *Fail-open, per-check* on plumbing failure — outside a git context only the worktree-containment sub-check is skipped (stderr warning); the git-independent pattern checks still run.
-
-### `.blackhole/hook-events/<event-id>.json` schema
-
-One file per event, written by non-agent code into the **main clone** (resolved via `git rev-parse --git-common-dir`, so every linked worktree lands in one directory). Filenames are `<iso-ts>-<pid>-<rand>.json` — unique by construction, so concurrent worktrees never race; unlike `resume-request.json` no read-modify-write merge is needed at write time.
-
-| Field | Values | Required |
-|-------|--------|----------|
-| `version` | `1` | yes |
-| `recorded_at` | ISO-8601 | yes |
-| `hook` | `validate-bash-command` \| `validate-file-changes` | yes |
-| `tool` | `Bash` \| `Write` \| `Edit` | yes |
-| `decision` | `deny` \| `allow` | yes |
-| `tier` | `block` \| `warn` | yes |
-| `pattern_id` | matched entry's `id`, or `outside-worktree` \| `pattern-load-failure` \| `hook-input-parse-failure` | yes |
-| `reason` | human-readable refusal/flag text | yes |
-| `worktree` | absolute worktree root of the calling process, or `null` | yes |
-| `detail` | matched command or file path — credential literals masked, ≤300 chars | yes |
-
-**Orchestrator consumption:** Triage step 1b ([`orchestrator-runtime.md`](orchestrator-runtime.md) § Triage) globs the directory before validating worker return JSON, resolves `issue_ref` by matching `worktree` against `queue.json`'s in-flight worktree paths, appends a `V-HOOK-01` (block) or `V-HOOK-02` (warn) row with `phase: "implement"` through the ledger's existing write protocol, then deletes the ingested file. Written from outside the agent process, a refusal the worker never mentions in its own return JSON is still on the record — that defeats an uncooperative worker's *silence*, not its filesystem access: a worker with Bash access to the main clone could still delete or overwrite its own event file before Triage ingests it. Globbing before validating the return JSON narrows that window; it does not close it.
+See [`hook-schemas.md`](hook-schemas.md) for the Cursor SubagentStop validate/resume hook
+install specs and the PreToolUse `.blackhole/hook-events/` schema (split out, issue #473).
 
 ## Planner (`planner`)
 
@@ -330,7 +197,7 @@ Returned by the Design Track's two critique-only sub-invocations described in `p
 (Adversarial Evaluation) — **not** a new agent identity: still `subagent_type: planner`, no
 `disallowedTools`/matcher change to the SubagentStop hook. Extracted from the sub-invocation's
 final plain-text response using the same fenced-block-first / brace-balanced-fallback order
-documented above (SubagentStop hook, `worker-schemas.md:17`).
+documented in `hook-schemas.md` (SubagentStop hook § Extraction order, `hook-schemas.md:11`).
 
 ```json
 {

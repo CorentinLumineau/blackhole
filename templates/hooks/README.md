@@ -32,4 +32,4 @@ Validate must appear **first** in the `subagentStop` array so worker JSON is val
 }
 ```
 
-See [`src/references/worker-schemas.md`](../../src/references/worker-schemas.md) for resume contract, gates, and manual test runbook.
+See [`src/references/hook-schemas.md`](../../src/references/hook-schemas.md) for resume contract, gates, and manual test runbook.
