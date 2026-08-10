@@ -8,6 +8,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - [ ] queue.json: phase review
 - [ ] Spawn reviewer to perform PR audit
 - [ ] Route check: read route.security_review_required (+ confidence gate) → enrich reviewer prompt with security-mode audit (see review-core.md § Security-mode review)
+- [ ] Security-mode PR whose primary reviewer returned 1+ `V-SEC-*` findings → stamp each with a temporary `id` and dispatch a second, independent `reviewer` instance in verification mode at `standard` tier (see review-core.md § Independent security verification, issue #439); pass its `verification[]` output to review-aggregate.ts via `--verification-file`
 - [ ] Route check: read route.plan_mode → scope plan-conformance audit to quick/full; skip → compensating no-API-surface check (see review-core.md § Skip-PR compensating control)
 - [ ] Recheck check: read recheck-mode trigger (review_iteration >= 1, no new touch-paths, no new BLOCK surface — see review-core.md § Recheck mode) → when satisfied, dispatch reviewer in recheck mode against the fix commits only, instead of a full-diff audit
 - [ ] Security-mode PR → confirm merge-gate validator (V-SEC-08) before LGTM

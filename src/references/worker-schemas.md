@@ -430,6 +430,9 @@ UI-affecting diff with `display_targets` configured is `V-VIS-01` (BLOCK); a dec
   ],
   "recheck": [
     { "finding_id": "F-00042", "verdict": "fixed", "evidence": "L.128 now validates input before query" }
+  ],
+  "verification": [
+    { "finding_id": "V1", "verdict": "refuted", "evidence": "input is validated at L.40 — exploit path not reproducible" }
   ]
 }
 ```
@@ -440,6 +443,7 @@ UI-affecting diff with `display_targets` configured is `V-VIS-01` (BLOCK); a dec
 | `findings` | finding[] | yes (empty array = no issues found) |
 | `error` | string | when `status: error` |
 | `recheck` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in recheck mode (`review-core.md` § Recheck mode); absent/omitted for a normal full-audit review |
+| `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent security verification mode (`review-core.md` § Independent security verification, `reviewer.md` § 24); absent/omitted for every other dispatch |
 
 ### `recheck` (optional — recheck-mode fast path, issue #214)
 
@@ -458,6 +462,29 @@ fix commits resolved it:
 `--prior-file` rows passed to `review-aggregate.ts` must carry the ledger `id` field (issue
 #485) for a `recheck[]` `verdict: fixed` entry to resolve against them; a missing or mismatched
 `id` surfaces in `unresolved_recheck` above, not silently.
+
+### `verification` (optional — independent security verification mode, issue #439)
+
+Carries one entry per stamped `V-SEC-*` finding the reviewer was dispatched to independently
+judge (`review-core.md` § Independent security verification, `reviewer.md` § 24) — a sibling
+shape to `recheck` above, distinct meaning: `recheck` verifies whether a fix commit resolved a
+*prior, ledgered* finding; `verification` verifies whether a *fresh, same-pass* finding
+independently holds up.
+
+- `finding_id` — the temporary, review-pass-scoped id (e.g. `V1`, `V2`, ...) the orchestrator
+  stamped onto the finding before including it in this dispatch's prompt — not a ledger
+  `F-NNNNN` id (none exists yet at this point in the pipeline; see `review-core.md` §
+  Independent security verification step 3).
+- `verdict` — `confirmed` \| `refuted`. `refuted` downgrades the matching `BLOCK` finding to
+  `WARN` before `applyConfidenceGate`/`dedupeFindings` run (`scripts/review-aggregate.ts`'s
+  exported `applyVerificationDowngrades`) — it never excludes the finding outright, unlike
+  `recheck`'s `fixed` verdict; a `confirmed` verdict, or a `finding_id` with no match among the
+  primary's stamped findings, is a no-op.
+- `evidence` — a concrete pointer showing what was checked and why the exploit path did or did
+  not hold — not a restatement of the original finding's summary.
+
+Passed to `review-aggregate.ts` via `--verification-file` (see § Review aggregate below) as a
+plain JSON array — distinct from `--prior-file`'s ledger-row shape.
 
 ### Rulings ledger (read-input)
 
@@ -714,7 +741,12 @@ Orchestrator invokes after `reviewer` completes. Not a worker agent — determin
 | `unresolved_recheck` | `{ finding_id, verdict, reason }[]` | yes (may be empty) — issue #485: a `recheck[]` `verdict: fixed` entry whose `finding_id` could not be linked to any prior finding's ledger `id`; non-empty forces `lgtm: false` |
 | `error` | string | when `status: error` |
 
-CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>]`
+CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>]`
+
+`--verification-file` (issue #439, § `verification` above) points to the independent security
+verification spawn's own `verification[]` array, serialized as a plain JSON array — omitted
+entirely on every review pass that is not a security-mode PR's verification spawn, with no
+change to `AggregateOutput`'s shape either way.
 
 ## Design aggregate (`scripts/design-aggregate.ts`)
 
