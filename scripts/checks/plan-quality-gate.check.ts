@@ -86,9 +86,33 @@ const STALE_EXECUTION_STRATEGY_SPELLINGS = ['Execution Strategy (Stop Conditions
 export const findExecutionStrategyHeadingDrift = (content: string): string[] =>
   STALE_EXECUTION_STRATEGY_SPELLINGS.filter((stale) => content.includes(stale));
 
+// Issue #533 — Standard Track bugfix-classification symmetry: reviewer.md §15's V-FIX-01 BLOCK
+// branch reads the plan frontmatter's `task_type: bugfix` field regardless of track, but only
+// Quick Track's own "Bugfix classification" bullet ever stamped it — a Standard Track bugfix
+// plan (the multi-file/logic case where root-cause correctness carries the highest risk) never
+// got the chance to carry the field, so the BLOCK could never fire there. Section-scoped
+// extraction, not a whole-file `findMissingGateMarkers` call: Quick Track already carries this
+// bullet's exact wording, so a whole-file check would report "present" even if Standard Track's
+// own copy silently regressed.
+const STANDARD_TRACK_START_MARKER = '### 2. Standard Track';
+const STANDARD_TRACK_END_MARKER = '### 3. Skip Track';
+
+export const extractStandardTrackSection = (content: string): string => {
+  const start = content.indexOf(STANDARD_TRACK_START_MARKER);
+  const end = content.indexOf(STANDARD_TRACK_END_MARKER);
+  if (start === -1 || end === -1 || end <= start) return '';
+  return content.slice(start, end);
+};
+
+export const STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS = [
+  'Bugfix classification',
+  'stamp `task_type: bugfix`',
+];
+
 const checkPlanQualityGateGrounding = (): CheckResult => {
   const plannerContent = read('src/agents/planner.md');
   const schemaContent = read('src/references/worker-schemas.md');
+  const standardTrackSection = extractStandardTrackSection(plannerContent);
 
   const errors = [
     ...findMissingGateMarkers(plannerContent, PLAN_QUALITY_GATE_REQUIRED_MARKERS).map(
@@ -99,6 +123,9 @@ const checkPlanQualityGateGrounding = (): CheckResult => {
     ),
     ...findExecutionStrategyHeadingDrift(plannerContent).map(
       (stale) => `planner.md uses stale heading spelling "${stale}" (canonical: "${EXECUTION_STRATEGY_HEADING}")`
+    ),
+    ...findMissingGateMarkers(standardTrackSection, STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS).map(
+      (m) => `planner.md Standard Track section missing "${m}" (V-FIX-01 BLOCK cannot fire on Standard-track bugfixes without this stamp)`
     ),
   ];
 

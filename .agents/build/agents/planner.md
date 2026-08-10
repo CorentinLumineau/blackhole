@@ -135,6 +135,10 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     this route, planner gains zero new tracks). When no analysis note exists, fall back to
     independent codebase discovery, unchanged from current behavior.
 *   **Database/API Schema Changes**: Detailed schema baselines (`V-API-01`).
+*   **Bugfix classification**: When `route.task_type` is `bugfix`, or (no `route` object) the
+    issue is self-evidently a bug fix — route-first, content-fallback, same pattern as Quick
+    Track's own bullet and Design Track subsection 1 (`V-INT-03`) — stamp `task_type: bugfix` in
+    the frontmatter (Plan Output File Template below), activating `implementer.md`'s Bugfix Gate.
 *   **Threat Model (`## Threat Model`, conditional)**: Trigger — the issue's resolved
     `route.security_review_required` (post confidence-gate, the same value `review-core.md` §
     Security-mode review already consumes) is `true`; when no `route` object exists (today's
