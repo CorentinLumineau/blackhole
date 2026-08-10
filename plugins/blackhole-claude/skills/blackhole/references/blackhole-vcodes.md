@@ -6,9 +6,9 @@ longer definitions (token cost, drift). Persist every finding to
 
 | Code | Rule | Severity | Primary enforcement site |
 |------|------|----------|--------------------------|
-| V-SOLID-01/03 | Single responsibility; substitutability | BLOCK | reviewer.md §3 (V-SOLID-01); none — V-SOLID-03 (#509) |
+| V-SOLID-01/03 | Single responsibility; substitutability | BLOCK | reviewer.md §3 (V-SOLID-01, V-SOLID-03 — SOLID & DRY Compliance) |
 | V-DRY-01 | No >10-line duplication | BLOCK | reviewer.md §3 |
-| V-DRY-02/03 | 3–10-line duplication; repeated magic values | WARN | reviewer.md §3 (V-DRY-02, Output Format example); none — V-DRY-03 (#509) |
+| V-DRY-02/03 | 3–10-line duplication; repeated magic values | WARN | reviewer.md §3 (V-DRY-02, V-DRY-03 — SOLID & DRY Compliance) |
 | V-KISS-01 / V-YAGNI-01 | No over-abstraction; no speculative features | BLOCK | reviewer.md §12 (Suggestion Proportionality Gate) |
 | V-KISS-03 | No empty scaffolding | WARN | reviewer.md §3 (Anti-Slop Audit) |
 | V-YAGNI-03 | No single-consumer abstractions | WARN | reviewer.md §3 (Anti-Slop Audit) |
@@ -26,11 +26,11 @@ longer definitions (token cost, drift). Persist every finding to
 | V-SEC-07 | Adversarial re-verification — each security finding independently re-checked before it can block merge | WARN | review-core.md § Security-mode review (adversarial re-verification) |
 | V-SEC-08 | Security findings artifact must structurally validate before merge when security_review_required: true | BLOCK | review-core.md § LGTM definition (merge-gate validator) |
 | V-SEC-09 | Local-analyze confidence-boost scan may only raise security_review_required — a clean/absent scan must never lower an already-true value | BLOCK | router.md (local_analyze confidence-boost raise-only rule) |
-| V-SEC-10 | Local-analyze grep matches must pass the one-line false-positive verification (comment/fixture/string-literal check) before counting toward a raise | WARN | none |
-| V-SEC-11 | Sensitive-filename staged before commit — a path matching the shared file-write pattern set (owned by #447) reached `git add` without a refusal + ledger log; independent of `V-SEC-03`'s content scan | BLOCK | none |
+| V-SEC-10 | Local-analyze grep matches must pass the one-line false-positive verification (comment/fixture/string-literal check) before counting toward a raise | WARN | router.md § Local-analyze confidence-boost mechanism (False-positive verification, steps 1-4) |
+| V-SEC-11 | Sensitive-filename staged before commit — a path matching the shared file-write pattern set (owned by #447) reached `git add` without a refusal + ledger log; independent of `V-SEC-03`'s content scan | BLOCK | reviewer.md §4 (Security Checks — Sensitive-Filename Staging Audit) |
 | V-INT-02 | NEVER reimplement an existing utility | BLOCK | reviewer.md §5 (Integration Coherence) |
 | V-INT-01/03/04 | Follow conventions at touchpoints; no third variant of a solved concern | WARN | reviewer.md §5 (Integration Coherence) |
-| V-FIX-01 | Fixes address the root cause, documented — never the symptom | BLOCK | none |
+| V-FIX-01 | Fixes address the root cause, documented — never the symptom | BLOCK | reviewer.md §15 (Decision Record Audit — root-cause escalation) |
 | V-PARETO-01 | No >3× complexity for marginal gain | WARN | reviewer.md §12 (Suggestion Proportionality Gate) |
 | V-PARETO-02 | Pareto scoring & gating: Priority = Gain * (11 - Effort) must be >= 30 to create an issue, and ready issues are sorted by Priority descending — diverges from mercure's V-PARETO-02 (gold-plating / polish without user value, MEDIUM); kept per ADR-021 D5 because renumbering the 9-file SSOT heading is disproportionate; mercure's meaning, if ever adopted here, takes a fresh unused code | BLOCK | reviewer.md §6 (Improvement Discoveries & Pareto scoring) |
 | V-DOCSYNC-01 | Public-API and design docs updates in the same PR | BLOCK | reviewer.md §9 (Public-API / Docs Currency) |
@@ -45,7 +45,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-DOC-GOV-02 | Doc under `documentation/` missing lifecycle frontmatter (`type`, `status`) | WARN | doc-governance.md § Lifecycle Frontmatter |
 | V-DOC-GOV-03 | Doc filename uses a date-stamp suffix instead of the canonical `{concern-slug}.md` naming (ADR files exempt) | WARN | doc-governance.md § Canonical Naming |
 | V-DOC-GOV-04 | Doc content substantially replaced without `supersedes:` link or `status: deprecated` on the prior version | WARN | doc-governance.md § Supersede-on-Overwrite |
-| V-CONFIG-01 | New config/env keys follow established naming, registered | WARN | none |
+| V-CONFIG-01 | New config/env keys follow established naming, registered | WARN | reviewer.md §5 (Integration Coherence — Config/env key naming) |
 | V-SCOPE-01 | No refactoring untouched code | WARN | reviewer.md §12 (Suggestion Proportionality Gate) |
 | V-SCOPE-02 | Touch-Paths violation — files modified outside plan scope | WARN | reviewer.md §1 (5-Field Contract & Plan Compliance) |
 | V-SCOPE-03 | Missing/underestimated blast-radius — a Standard-track plan with 3+ affected consumers lacks a `## Dependency Blast-Radius` section | WARN | reviewer.md §1 (5-Field Contract & Plan Compliance) |

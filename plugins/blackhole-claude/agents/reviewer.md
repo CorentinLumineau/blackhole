@@ -60,7 +60,12 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 ### 3. Code Quality & Conventions
 *   **SOLID & DRY Compliance**:
     *   No duplicated code blocks >10 lines (`V-DRY-01`).
-    *   Single Responsibility Principle (SRP) followed (functions/classes have only one reason to change).
+    *   Single Responsibility Principle (SRP) followed (functions/classes have only one reason to change) (`V-SOLID-01`).
+    *   Liskov Substitution followed — no override/subclass narrows a base type's accepted
+        inputs, widens the exceptions it throws, or otherwise breaks a caller's ability to
+        substitute the subtype without knowing the difference (`V-SOLID-03`).
+    *   3–10-line duplication left unextracted (`V-DRY-02`, `WARN`) and repeated magic
+        values/constants left unnamed (`V-DRY-03`, `WARN`) flagged for cleanup, not blocked.
 *   **Anti-Slop Audit**:
     *   `V-KISS-03` (Empty scaffolding): Reject empty catch blocks, pass-through helper functions, or empty boilerplate scaffolding.
     *   `V-YAGNI-03` (Single-consumer abstraction): Reject interfaces or factories designed for only a single class/implementation.
@@ -72,6 +77,24 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 ### 4. Security Checks
 *   No hardcoded secrets, API keys, or credentials (`V-SEC-03/04`).
 *   Verify proper input validation is implemented.
+*   **Sensitive-Filename Staging Audit (`V-SEC-11`, `BLOCK`)**: independently recompute the
+    implementer's Sensitive-Filename Staging Gate (`implementer.md` § Sensitive-Filename
+    Staging Gate) rather than trusting its self-report. Resolve `file-patterns.json` via the
+    same two-candidate path order that gate uses (`plugins/blackhole-claude/hooks/patterns/file-patterns.json`,
+    then `templates/hooks/pretooluse/patterns/file-patterns.json` repo-root-relative — cited, not
+    restated, `V-INT-02`), then test every file path actually present in the PR diff against
+    each `sensitiveFiles[]` entry (`new RegExp(entry.pattern, entry.flags)` match against the
+    path, not a glob match). Evidence that satisfies this check:
+    - A `sensitiveFiles[]` match found among the diff's files — a sensitive-shaped file was
+      actually committed — is `BLOCK` regardless of any PR-body exclusion claim (a failed
+      exclusion is worse than an undeclared one).
+    - Cross-check every `Sensitive-Filename Exclusion: <path> (matched <pattern>) — not staged`
+      line the PR body claims against the actual diff file list: a path listed as excluded but
+      still present in the diff is itself `BLOCK` (the exclusion claim is false).
+    - Neither candidate pattern-file path resolving is a gap in the implementer's own gate, not
+      this audit — confirm the PR body/worker JSON carries the `new_findings[]` row
+      `implementer.md`'s Absent-pattern-file fallback mandates for that case; a missing row when
+      no exclusion lines are present either — `BLOCK` (the gate may have silently no-opped).
 
 ### 5. Integration Coherence
 *   `V-INT-02` (No utility re-implementation): Reject code that reimplements existing utilities.
@@ -104,6 +127,13 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
         neighbourhood for the established convention (error handling, logging, validation, response
         shape) and audit the diff against what the scan finds. This mirrors mercure `x-review`'s
         live-search fallback; absence of a plan conventions table never means the audit is waived.
+*   **Config/env key naming (`V-CONFIG-01`, `WARN`)**: a new config key or environment variable
+    introduced by the diff follows the naming convention the plan's Codebase Conventions table
+    documents for config, or — absent a documented convention — the same live-grep fallback as
+    `V-INT-01/03/04` above applied to the touched config surface (e.g. `.blackhole/config.json`'s
+    existing key casing/grouping, `config-template.md`'s documented schema, or the target repo's
+    own `.env.example`/config-schema file). A newly introduced key that breaks the established
+    casing/prefix/grouping convention with no documented rationale — `WARN`, cite `file:line`.
 
 ### 6. Improvement Discoveries & Pareto scoring (`V-PARETO-02`)
 *   Identify opportunities for improvements (UX/UI polish, performance gains, styling best practices, or test coverage gaps).
@@ -150,7 +180,7 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     the diff itself.
 *   **Checklist**:
     *   No finding recommends an abstraction layer (interface, factory, strategy) for a single
-        current consumer (`V-YAGNI-01`).
+        current consumer (`V-KISS-01`, `V-YAGNI-01`).
     *   No finding recommends speculative "future-proofing" not required by the diff
         (`V-YAGNI-01`).
     *   Each finding's proposed remediation complexity is proportionate to the problem — flag
@@ -246,11 +276,21 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     `decision_records[]` array carries a row with the matching `kind` (`root-cause` \|
     `refactor` \| `reuse` \| `improvement` respectively, per `worker-schemas.md` §
     `decision_records[]`).
-*   **Finding on gap (`V-DECISION-01`, `WARN`, repo-local — not yet in `blackhole-vcodes.md`)**:
-    a PR-body heading with no corresponding `decision_records[]` row is a WARN-severity finding
-    — the decision was made and documented in the PR, but never banked to
-    `documentation/reference/decision-log.md`, so it will be lost the moment the PR is merged
-    and the branch is deleted.
+*   **Root-cause escalation (`V-FIX-01`, `BLOCK`)**: when the plan frontmatter carries
+    `task_type: bugfix`, the Cross-check above applies at `BLOCK` severity for the `root-cause`
+    kind specifically, not the generic `V-DECISION-01` WARN below — a fix's root-cause
+    justification is the correctness gate the code's rule text names ("fixes address the root
+    cause, documented"), not a documentation-banking nicety. `BLOCK` when either: (a) a
+    Root-Cause Decision Record heading is present in the PR body with no matching
+    `decision_records[]` row carrying `kind: root-cause` (`implementer.md` § Bugfix Gate's
+    unconditional Root-Cause Verification gate), or (b) `task_type: bugfix` is present and no
+    Root-Cause Decision Record heading appears in the PR body at all — the gate never ran.
+*   **Finding on gap, all other kinds (`V-DECISION-01`, `WARN`, repo-local — not yet in
+    `blackhole-vcodes.md`)**: a PR-body heading of any other kind (`refactor`, `reuse`,
+    `improvement`) — or a `root-cause` heading when `task_type` is not `bugfix` — with no
+    corresponding `decision_records[]` row is a WARN-severity finding — the decision was made
+    and documented in the PR, but never banked to `documentation/reference/decision-log.md`, so
+    it will be lost the moment the PR is merged and the branch is deleted.
 *   **Non-goal**: this audit never checks the *content* of `decision_records[]` rows against
     the PR-body prose (that would require semantic comparison) — only presence/absence per
     `kind`.
