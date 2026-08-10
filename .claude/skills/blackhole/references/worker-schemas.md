@@ -745,6 +745,75 @@ reads but never overrides:
 
 CLI: `bun run scripts/design-aggregate.ts --input-file <path>`
 
+## Flush request (`stop --now`, the ask — leg A, issue #491)
+
+Not a worker-authored JSON return — the reverse direction: what the orchestrator sends to a
+still-running worker when the `stop --now` tier fires (`phase-stop.md` § `stop --now` tier).
+Delivered via the harness's live worker-message channel where the fan-out primitive keeps a
+spawned worker addressable while running (`phase-stop.md` § Signalling channel); on a harness
+without that capability there is nothing to send and the worker is treated as uncooperative
+immediately (§ Uncooperative fallback below).
+
+**Not the `.blackhole/resume-request.json` shape** (`hook-schemas.md` § SubagentStop resume
+hook): that channel is worker-written, orchestrator-read, and fires only *after* a worker has
+already stopped naturally. This request is the opposite direction and timing — orchestrator-
+written, worker-read, delivered to a worker that is still running. Reusing its shape would mean
+writing a file no running worker is polling for, so this is a new, purpose-fit message rather
+than a repurposed file (`V-INT-02` — Reuse Check: none found, first occurrence of "push a
+message into a still-running worker", repo-wide).
+
+```json
+{
+  "flush_requested_at": "2026-08-10T18:00:00.000Z",
+  "grace_window_minutes": 20,
+  "instruction": "stop_now"
+}
+```
+
+| Field | Values | Notes |
+|-------|--------|-------|
+| `flush_requested_at` | ISO-8601 | when the orchestrator delivered the ask |
+| `grace_window_minutes` | `20` (fixed — `phase-stop.md` § `stop --now` tier step 2; matches `merge-gate.md`'s CI-wait cap, sized for a worker queued behind another campaign's `with-test-lock` holder) | how long the worker has before the orchestrator falls back to killing it |
+| `instruction` | `"stop_now"` (fixed) | distinguishes this message from ordinary chat feedback so a worker's own instructions can pattern-match on it |
+
+### What the worker owes on receipt
+
+Binding on every worker role (`planner`, `implementer`, `reviewer`, `router`, `investigator`,
+`hunter`) — a protocol obligation, not a per-role schema field, so it is stated once here
+instead of duplicated in each role's section above (`V-DRY-01`):
+
+1. **Stop starting new work** — no new sub-task, no file the worker had not already begun
+   touching before the ask arrived.
+2. **Do not finish the current unit of work either** — this is what distinguishes `--now` from
+   drain (`phase-stop.md` § Drain tier): drain lets the in-flight unit complete naturally,
+   `--now` cuts at the worker's current position regardless of whether that unit is done.
+3. **Commit and push whatever is already changed**, even if incomplete or broken — a partial
+   push the orchestrator can see beats clean work it loses. This directly narrows what issue
+   #524's worktree-removal guard has to catch: a worker that reliably pushes on request leaves
+   less unpushed history behind (cited, not duplicated — #524 owns the orchestrator-side removal
+   check itself).
+4. **State plainly what is done and what is not**, in whatever channel the worker's natural
+   return already uses. An inaccurate "done" costs more than an accurate "half" — a
+   completion-honesty obligation, not a schema requirement; the structured shape a flush report
+   actually takes is leg B's (#492) job, out of scope here.
+5. **Return through the normal stop path** — the harness's own SubagentStop event, not a special
+   exit. `stop --now` changes what the worker does before stopping, not how it stops.
+
+### Uncooperative fallback
+
+A worker is uncooperative when either: the harness provides no live message channel to a
+running worker at all (nothing was ever asked), or `grace_window_minutes` elapses with no
+return. Both resolve identically — the orchestrator falls back to `--abandon` tier semantics
+(`phase-stop.md` § `--abandon` tier, cited not restated) for that worker only; sibling workers
+that did cooperate are unaffected.
+
+### Non-goal for this issue (leg B boundary)
+
+No JSON envelope is defined here for what a flushed worker's *return* looks like structurally —
+a partial `status`, how it differs from `complete` / `blocked` / `error` — that shape and its
+orchestrator-side ingest/validation is #492's deliverable. This section documents only the ask;
+the response stays whatever shape the worker's role already returns today until #492 lands.
+
 ## Orchestrator validation
 
 Before ledger append or phase transition:
