@@ -185,78 +185,160 @@ const consumeDoubleQuotedPrintArg = (command, openIdx, masked) => {
 };
 
 /**
- * Consumes a heredoc redirect (`<<`/`<<-`) starting at `startIdx` (index of the first `<`),
- * masking its body per the delimiter word's quoting (#506, see module docstring (c)):
- *   - **quoted** delimiter (`<<'EOF'` / `<<"EOF"`) — bash performs no expansion inside the body at
- *     all, so the whole body is data handed to the receiving command untouched; mask it in full.
+ * Parses one heredoc operator's delimiter word starting at `wordStart` (the index right after the
+ * `<<`/`<<-` and any inbetween whitespace have already been skipped), bounded by `scanEnd` (never
+ * reads past the end of the operator's own source line). Returns `{ quoted, delimiter, end }`.
+ * `quoted` is true whenever ANY character of the delimiter word is quoted — a full `'...'`/`"..."`
+ * span, or a lone backslash-escaped character in an otherwise bare word (`<<\EOF`) — per POSIX:
+ * quoting anywhere in the word disables all expansion in the body and the delimiter used for
+ * comparison is the word AFTER quote removal (so `\EOF` compares against a plain "EOF" terminator
+ * line, not a literal "\EOF" one). Getting this wrong is not merely cosmetic: a delimiter that
+ * still contains its backslash never matches a real "EOF" terminator line, so the heredoc looks
+ * unterminated and the fallback swallows every following command as body — an under-block, not
+ * just a missed over-block fix.
+ */
+const parseHeredocDelimiter = (command, wordStart, scanEnd) => {
+  let p = wordStart;
+  if (command[p] === "'" || command[p] === '"') {
+    const quote = command[p];
+    p++;
+    const start = p;
+    while (p < scanEnd && command[p] !== quote) p++;
+    const delimiter = command.slice(start, p);
+    if (p < scanEnd) p++;
+    return { quoted: true, delimiter, end: p };
+  }
+  let quoted = false;
+  let delimiter = '';
+  while (p < scanEnd && !/[\s;|&<>]/.test(command[p])) {
+    if (command[p] === '\\' && p + 1 < scanEnd) {
+      quoted = true;
+      delimiter += command[p + 1];
+      p += 2;
+      continue;
+    }
+    delimiter += command[p];
+    p++;
+  }
+  return { quoted, delimiter, end: p };
+};
+
+/**
+ * Collects every heredoc operator (`<<`/`<<-` and its delimiter) appearing on the same source
+ * line as `startIdx` (the index of the first `<`), in left-to-right order (#506 review round 2:
+ * `cmd <<'A' <<'B'` queues body A then body B, both starting only after the WHOLE line ends — a
+ * single-operator-per-call design that jumps straight from the first delimiter to end-of-line
+ * skips the second operator's text entirely, leaving body B unmasked and scanned as if it were
+ * ordinary command text). Quoted spans elsewhere on the line (e.g. a quoted argument in a
+ * pipeline segment after the heredoc redirects) are skipped whole so a literal `<<` inside one is
+ * never mistaken for a real operator. Returns `{ specs, lineEnd, firstOperatorEnd }`: each spec is
+ * `{ quoted, delimiter, stripTabs }`; `lineEnd` is the line's terminating `\n` index, or
+ * `command.length` if the line has no trailing newline (no room for any heredoc body);
+ * `firstOperatorEnd` is the index right after the very first `<<` token's own delimiter parse —
+ * used by the caller as a minimal, non-destructive skip distance when that first token turns out
+ * to be malformed (empty delimiter) and `specs` ends up empty, so a degenerate `<<` never causes
+ * real command text later on the same line to be skipped wholesale.
+ */
+const collectHeredocOperatorsOnLine = (command, startIdx) => {
+  const n = command.length;
+  const rawLineEnd = command.indexOf('\n', startIdx);
+  const scanEnd = rawLineEnd === -1 ? n : rawLineEnd;
+  const specs = [];
+  let firstOperatorEnd = null;
+  let k = startIdx;
+  while (k < scanEnd) {
+    const ch = command[k];
+    if (ch === '<' && command[k + 1] === '<' && command[k + 2] !== '<') {
+      let p = k + 2;
+      const stripTabs = command[p] === '-';
+      if (stripTabs) p++;
+      while (p < scanEnd && (command[p] === ' ' || command[p] === '\t')) p++;
+      const { quoted, delimiter, end } = parseHeredocDelimiter(command, p, scanEnd);
+      if (firstOperatorEnd === null) firstOperatorEnd = end;
+      if (delimiter) specs.push({ quoted, delimiter, stripTabs });
+      k = end;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      let p = k + 1;
+      while (p < scanEnd && command[p] !== quote) {
+        if (quote === '"' && command[p] === '\\' && p + 1 < scanEnd) p += 2;
+        else p++;
+      }
+      k = p < scanEnd ? p + 1 : p;
+      continue;
+    }
+    k++;
+  }
+  return { specs, lineEnd: scanEnd, firstOperatorEnd: firstOperatorEnd ?? startIdx + 2 };
+};
+
+/**
+ * Consumes every heredoc redirect on the source line starting at `startIdx` (index of the first
+ * `<`), masking each body per its own delimiter's quoting (#506, see module docstring (c)):
+ *   - **quoted** delimiter (`<<'EOF'` / `<<"EOF"` / `<<\EOF` — see `parseHeredocDelimiter`) —
+ *     bash performs no expansion inside the body at all, so the whole body is data handed to the
+ *     receiving command untouched; mask it in full.
  *   - **unquoted** delimiter (`<<EOF`) — bash still runs parameter/command substitution over the
  *     body before handing it over, so only the literal text is masked; a nested
  *     `$(...)`/`` `...` ``/`${...}` run stays unmasked via `maskLiteralSpan`.
  * `<<-` strips leading tabs from each body line (and the terminator line) before the delimiter
  * comparison only — masking itself never rewrites the command string, so those tabs stay part of
  * whatever span they fall into. The terminator is a line whose content, after that optional strip,
- * exactly equals the delimiter — a line that merely *contains* the delimiter text does not match,
- * so a body line like "this mentions EOF but is not the terminator" does not end the heredoc.
- * Sequential heredocs in one command are handled naturally: each call returns the index just past
- * its own terminator line, so the caller's forward scan reaches the next `<<` on its own. Two
- * heredocs sharing a single source line (an advanced, rarely-used shell form) are out of scope —
- * only the first is recognized, matching this module's scope of the common authoring pattern
- * (script bodies authored one heredoc per line) rather than full heredoc-queue parsing.
- * Returns the index one past the terminator line, or `command.length` if the heredoc is never
- * terminated (the remainder of the command is then treated as its body).
+ * exactly equals the delimiter — a line that merely *contains* the delimiter text does not match
+ * (nor does one with trailing whitespace after the delimiter), so a body line like "this mentions
+ * EOF but is not the terminator" or "EOF " does not end the heredoc.
+ * Multiple heredocs are handled both sequentially (one per line — the ordinary case, each call's
+ * return value is the caller's next scan position, so subsequent `<<` operators on later lines
+ * are found naturally) and when queued on a single shared line (`collectHeredocOperatorsOnLine`):
+ * all of that line's bodies are consumed here, in order, before returning.
+ * Returns the index one past the last consumed heredoc's terminator line, or `command.length` if
+ * a heredoc in the queue is never terminated (everything after it becomes body, and no later
+ * queued heredoc on the same line can have a body of its own — there is no more input left).
  */
 const consumeHeredoc = (command, startIdx, masked) => {
   const n = command.length;
-  let j = startIdx + 2;
-  const stripTabs = command[j] === '-';
-  if (stripTabs) j++;
-  while (j < n && (command[j] === ' ' || command[j] === '\t')) j++;
+  const { specs, lineEnd, firstOperatorEnd } = collectHeredocOperatorsOnLine(command, startIdx);
+  // A malformed/empty-delimiter first token (e.g. bare `<<` followed immediately by a separator)
+  // skips only its own operator text, not the whole line — real command text later on the same
+  // line (`cmd <<  ; rm -rf /`) must remain visible to the matcher, not silently swallowed.
+  if (specs.length === 0) return firstOperatorEnd;
+  if (lineEnd >= n) return n;
 
-  let quoted = false;
-  let delimiter = '';
-  if (command[j] === "'" || command[j] === '"') {
-    quoted = true;
-    const quote = command[j];
-    j++;
-    const start = j;
-    while (j < n && command[j] !== quote) j++;
-    delimiter = command.slice(start, j);
-    if (j < n) j++;
-  } else {
-    const start = j;
-    while (j < n && !/[\s;|&<>]/.test(command[j])) j++;
-    delimiter = command.slice(start, j);
-  }
-  if (!delimiter) return j;
+  let pos = lineEnd + 1;
+  for (const spec of specs) {
+    const bodyStart = pos;
+    const maskBody = (end) => {
+      if (spec.quoted) {
+        for (let k = bodyStart; k < end; k++) masked[k] = true;
+      } else {
+        maskLiteralSpan(command, bodyStart, (k) => k >= end, masked);
+      }
+    };
 
-  const lineEnd = command.indexOf('\n', j);
-  if (lineEnd === -1) return n;
-  const bodyStart = lineEnd + 1;
-
-  const maskBody = (end) => {
-    if (quoted) {
-      for (let k = bodyStart; k < end; k++) masked[k] = true;
-    } else {
-      maskLiteralSpan(command, bodyStart, (k) => k >= end, masked);
+    let terminatorFound = false;
+    while (pos <= n) {
+      const nextNl = command.indexOf('\n', pos);
+      const lineTextEnd = nextNl === -1 ? n : nextNl;
+      const lineText = command.slice(pos, lineTextEnd);
+      const compareText = spec.stripTabs ? lineText.replace(/^\t+/, '') : lineText;
+      if (compareText === spec.delimiter) {
+        maskBody(pos);
+        pos = nextNl === -1 ? n : nextNl + 1;
+        terminatorFound = true;
+        break;
+      }
+      if (nextNl === -1) break;
+      pos = nextNl + 1;
     }
-  };
 
-  let pos = bodyStart;
-  while (pos <= n) {
-    const nextNl = command.indexOf('\n', pos);
-    const lineTextEnd = nextNl === -1 ? n : nextNl;
-    const lineText = command.slice(pos, lineTextEnd);
-    const compareText = stripTabs ? lineText.replace(/^\t+/, '') : lineText;
-    if (compareText === delimiter) {
-      maskBody(pos);
-      return nextNl === -1 ? n : nextNl + 1;
+    if (!terminatorFound) {
+      maskBody(n);
+      return n;
     }
-    if (nextNl === -1) break;
-    pos = nextNl + 1;
   }
-
-  maskBody(n);
-  return n;
+  return pos;
 };
 
 /**

@@ -537,6 +537,52 @@ describe('validate-bash-command.js — heredoc non-executing-text negative contr
       expect(readHookEvents(repo)).toEqual([]);
     });
   });
+
+  // Round 2 review regression: TWO heredoc operators on the SAME source line
+  // (`cmd <<'A' <<'B'`) queue two bodies in the order the operators appear — bash reads body A up
+  // to its own terminator, then immediately continues with body B up to its own terminator. A
+  // single-operator-per-call consumer that jumps straight from the first delimiter to
+  // end-of-line, finds body A, and returns right after body A's terminator SKIPS the second
+  // operator entirely: the caller's forward scan never revisits the ` <<'B'` text still sitting
+  // earlier on that already-consumed line, so body B's content is left to be scanned as ordinary
+  // (unmasked) command text — an over-block on a case both delimiters are quoted and should be
+  // fully inert.
+  test('two quoted heredocs on the same line — both bodies are fully masked', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = "cmd <<'A' <<'B'\nrm -rf /\nA\nrm -rf /\nB";
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(repo)).toEqual([]);
+    });
+  });
+
+  // Delimiter-line trailing whitespace (round 2 review, accepted-behavior pin): bash requires an
+  // EXACT match for the terminator line — "EOF " (trailing space) does not terminate the heredoc,
+  // so the "EOF " line and everything after it up to a real terminator (or end of input) is still
+  // body. Pinned here so this stays intentional, not incidental.
+  test('a delimiter line with trailing whitespace does not terminate the heredoc — the "EOF " line is still body', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = "cat <<'EOF'\nrm -rf /\nEOF \nEOF";
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(repo)).toEqual([]);
+    });
+  });
+
+  // Backslash-quoted delimiter (round 2 review, accepted-behavior pin): POSIX treats ANY quoting
+  // within the delimiter word — including a bare backslash escape with no surrounding quote marks
+  // — as quoting the whole delimiter, disabling expansion exactly like `<<'EOF'`. `<<\EOF` must
+  // therefore be masked in full, identically to `<<'EOF'`, and (critically) the terminator match
+  // must still fire on a plain "EOF" line so a real command placed AFTER the heredoc is not
+  // swallowed into an artificially "unterminated" body.
+  test('a backslash-quoted delimiter (<<\\EOF) masks the body in full, just like <<\'EOF\'', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = 'cat <<\\EOF\nrm -rf /\nEOF';
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(repo)).toEqual([]);
+    });
+  });
 });
 
 // Must-still-deny regression (#506): the heredoc fix must not weaken the gate for genuinely
@@ -547,6 +593,39 @@ describe('validate-bash-command.js — heredoc must-still-deny regression (#506)
   test('a destructive command after a benign heredoc is still denied', async () => {
     await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
       const command = "cat <<'EOF'\nhello world\nEOF\nrm -rf /";
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(2);
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ tier: 'block', pattern_id: 'rm-rf-root' });
+    });
+  });
+
+  // Companion to the backslash-quoted-delimiter pin above: a naive delimiter parse that fails to
+  // strip the backslash (comparing the terminator line against a literal "\EOF" instead of "EOF")
+  // never finds a match, falls into the unterminated-heredoc fallback, and swallows everything to
+  // end-of-string — including a genuinely executing command placed AFTER the real "EOF"
+  // terminator line. That would be a silent under-block introduced by the heredoc fix itself, not
+  // merely a missed over-block fix; this is the sharpest regression test in the suite.
+  test('a destructive command after a backslash-quoted-delimiter heredoc is still denied', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = 'cat <<\\EOF\nhello world\nEOF\nrm -rf /';
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      expect(result.exitCode).toBe(2);
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ tier: 'block', pattern_id: 'rm-rf-root' });
+    });
+  });
+
+  // Companion to the two-heredocs-on-one-line fix: if the SECOND heredoc on a line is unquoted,
+  // its body still undergoes substitution and a real $(...) inside it must still be caught, even
+  // though the first (quoted) heredoc's body on the same line is fully inert.
+  test('two heredocs on the same line, second one unquoted with $(rm -rf /) — still denied', async () => {
+    await withTempGitRepo('blackhole-hook-heredoc-', async (repo) => {
+      const command = "cmd <<'A' <<B\nharmless\nA\n$(rm -rf /)\nB";
       const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
       expect(result.exitCode).toBe(2);
 
