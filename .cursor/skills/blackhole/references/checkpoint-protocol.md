@@ -18,7 +18,10 @@ On every orchestrator turn end, persist in this order:
 2. `findings-ledger.json` (atomic tmp + mv)
 3. `campaign-checkpoint.md` (when in-flight work exists)
 
-Never write checkpoint before queue and ledger are valid (`jq empty` on both).
+Never write checkpoint before queue and ledger are valid — validate both with
+`scripts/lib/state-write-guard.ts`'s `validateStateWrite()`, never `jq empty` (it exits 0 on a
+zero-byte file, so it cannot detect an absent/truncated write; full incident writeup:
+`blackhole-state.md` § Write protocol).
 
 ## Turn ID rules
 
@@ -74,7 +77,7 @@ After context loss or session restart:
 
 1. Read `campaign-checkpoint.md` if present; else infer from `queue.json`
 2. Run forge sync (`forge-sync.md`)
-3. Validate `jq empty` on queue + ledger
+3. Validate queue + ledger with `validateStateWrite()` (see § Write order above — never `jq empty`)
 4. Resume in-flight issues at their `phase` — do not re-spawn completed work
 4b. If an in-flight issue has an associated `wt-<issue>` and the worktree is dirty (or stash contains recovery tags), **pause implementer respawn** and follow [recovery-protocol.md](recovery-protocol.md) before continuing
 5. Increment `orchestrator_turn_id` on first post-recovery turn
@@ -86,8 +89,8 @@ On a harness offering a native run journal or `resumeFromRunId`-style mechanism 
 crash-recovery layer for the background-safe fan-out phase only. It never substitutes for this
 file's cross-harness SSOT: `.blackhole/campaign-checkpoint.md` plus `queue.json` and
 `findings-ledger.json` remain the source of truth for resume regardless of harness or pattern.
-Resuming from a harness journal still requires re-validating those files (`jq empty` + phase
-inference per § Compaction recovery above) before continuing.
+Resuming from a harness journal still requires re-validating those files (`validateStateWrite()` +
+phase inference per § Compaction recovery above) before continuing.
 
 ## Fields
 
