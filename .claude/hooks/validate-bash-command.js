@@ -12,6 +12,7 @@
 
 const { loadBashPatterns } = require('./utils/pattern-loader');
 const { matchFirstIgnoringNonExecutingText } = require('./utils/bash-context');
+const { evaluateWorktreeRemoval } = require('./utils/worktree-removal-guard');
 const {
   readHookInput,
   denyAndRecord,
@@ -32,12 +33,16 @@ const main = () => {
   }
   const tool = input.tool_name || 'Bash';
   const command = (input.tool_input && input.tool_input.command) || '';
+  // The tool call's own working directory (harness-supplied on the payload) rather than the hook
+  // process's own process.cwd() — see hook-event-log.js's `git` docstring for why (#507). Needed
+  // here to resolve a relative `git worktree remove` path argument.
+  const cwd = input.cwd || process.cwd();
 
   let patterns;
   try {
     patterns = loadBashPatterns();
   } catch (error) {
-    failClosed({ hook: HOOK, tool, error });
+    failClosed({ hook: HOOK, tool, error, cwd });
     return;
   }
 
@@ -48,6 +53,21 @@ const main = () => {
       tool,
       pattern_id: blocked.id,
       reason: blocked.reason,
+      detail: command,
+    });
+    return;
+  }
+
+  // Dynamic check (#532): whether a `git worktree remove` is safe depends on the pushed state of
+  // the target worktree's branch, which no static pattern can see — see
+  // worktree-removal-guard.js's module docstring.
+  const worktreeRemoval = evaluateWorktreeRemoval(command, cwd);
+  if (worktreeRemoval && worktreeRemoval.tier === 'block') {
+    denyAndRecord({
+      hook: HOOK,
+      tool,
+      pattern_id: worktreeRemoval.pattern_id,
+      reason: worktreeRemoval.reason,
       detail: command,
     });
     return;

@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawnSync } from 'child_process';
 import {
   PRETOOLUSE_HOOKS_DIR,
   readHookEvents,
   runPreToolUseHook,
+  withRemoteTrackedWorktree,
   withTempGitRepo,
 } from './lib/test-fixtures.ts';
 
@@ -685,6 +687,146 @@ describe('validate-bash-command.js — heredoc must-still-deny regression (#506)
       const events = readHookEvents(repo);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({ tier: 'block', pattern_id: 'rm-rf-root' });
+    });
+  });
+});
+
+// Dynamic worktree-removal guard (#532): `git worktree remove` only refuses on a dirty working
+// tree, never on committed-but-unpushed history — the gap that lost a real commit (F-00117)
+// before #526 closed it with prose alone. This makes the check mechanical. `--no-track` is this
+// campaign's own worktree-creation convention (#516): the fixture never sets an upstream, so
+// every case below exercises the `@{u}`-less `refs/remotes/origin/<branch>` fallback, not the
+// `@{u}` happy path.
+const commitInWorktree = (worktree: string, args: string[]): void => {
+  const result = spawnSync('git', args, { cwd: worktree });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(' ')} failed in ${worktree}: ${result.stderr?.toString()}`);
+  }
+};
+
+describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
+  test('deny: a branch that was never pushed at all is refused (unverifiable, not silently allowed)', async () => {
+    await withRemoteTrackedWorktree('blackhole-hook-wt-', 'blackhole/issue-1', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/verify/i);
+
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        decision: 'deny',
+        tier: 'block',
+        pattern_id: 'worktree-remove-unverifiable',
+      });
+    });
+  });
+
+  test('deny: a branch pushed, then advanced by a further local commit, is refused', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-',
+      'blackhole/issue-2',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        commitInWorktree(worktree, ['add', 'unpushed.txt']);
+        commitInWorktree(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-unpushed',
+        });
+      },
+    );
+  });
+
+  test('deny: --force does not bypass the check — same unpushed branch, force flag included', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-',
+      'blackhole/issue-3',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        commitInWorktree(worktree, ['add', 'unpushed.txt']);
+        commitInWorktree(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`git worktree remove --force ${worktree}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-force-unpushed',
+        });
+      },
+    );
+  });
+
+  test('allow: a branch fully pushed with no further local commits is removed silently', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-',
+      'blackhole/issue-4',
+      async (mainRepo, worktree, push) => {
+        push();
+
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
+
+  test('deny: an unresolvable (variable) path argument cannot be verified, so it is refused', async () => {
+    await withTempGitRepo('blackhole-hook-wt-', async (repo) => {
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload('git worktree remove "$WT_PATH"'),
+        repo,
+      );
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        decision: 'deny',
+        tier: 'block',
+        pattern_id: 'worktree-remove-unresolvable-path',
+      });
+    });
+  });
+
+  test('non-executing text: a comment mentioning `git worktree remove` is still allowed silently', async () => {
+    await withTempGitRepo('blackhole-hook-wt-', async (repo) => {
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload('# git worktree remove /tmp/somewhere'),
+        repo,
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(repo)).toEqual([]);
     });
   });
 });
