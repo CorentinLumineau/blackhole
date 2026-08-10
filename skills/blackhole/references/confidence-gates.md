@@ -66,7 +66,10 @@ issue thread is the audit surface, not a live chat):
 - **composite < threshold** → at most 2 `[NEEDS CLARIFICATION]` markers if the ambiguity is
   deferrable (the issue proceeds to plan, and the markers block before implement — the
   existing planner marker convention). Otherwise `status: blocked` + `AskQuestion` (today's
-  behavior, unchanged).
+  behavior, unchanged) — the resulting question's Why element must disclose the composite
+  score, the threshold, and that this is a **threshold rule** flip (the score fell below
+  `autonomy.confidence_threshold`, not a considered judgment that the cautious default is
+  correct), per `clarify-gates.md` § Gate Content Contract (R-003)'s confidence-gate addendum.
 
 ## Never-Bypass List
 

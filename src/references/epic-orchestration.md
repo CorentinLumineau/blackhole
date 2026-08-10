@@ -48,11 +48,13 @@ Blocked by #N (if any)
 ## 3. PO gate (design sign-off)
 
 Set parent `notes: awaiting-plan-approval` and surface to coordinator.
-Conforms to `clarify-gates.md` § AskQuestion payload contract.
+Conforms to `clarify-gates.md` § Gate Content Contract (R-003) — split sign-off gate class.
 
 ```
 AskQuestion:
 **Decision:** Approve the epic split (or request changes) before implementation begins.
+
+**Why this gate fired:** Epic #<N> is too large for one comfortable, reviewable PR (`epic-orchestration.md` § 1 detect-epic trigger) and has been decomposed into child issues that need sign-off before any child enters the pipeline.
 
 **Evidence:** Epic #<N> decomposed into 3 children:
 - #A — <title / concern>
@@ -60,8 +62,8 @@ AskQuestion:
 - #C — <title / concern>
 
 **Options:**
-- **Approve as-is** — unblocks wave scheduling; children enter the normal handle → plan → implement pipeline.
-- **Request changes** — re-split required; parent stays blocked until the revised child set is approved.
+- **Approve as-is** — unblocks wave scheduling; children enter the normal handle → plan → implement pipeline. Strongest case: the split follows the documented triggers and each child is independently reviewable now.
+- **Request changes** — re-split required; parent stays blocked until the revised child set is approved. Strongest case: a wrong seam here compounds across every child PR — one extra review cycle is cheaper than unwinding 3 merged children later.
 ```
 
 Do **not** spawn any `planner` or `implementer` workers for children

@@ -19,7 +19,7 @@ to **any** size label, not only `size:l` / `size:xl`.
 
 - Single-file bug with clear AC and one test
 - Docs-only change in one directory
-- User explicitly wants one PR (confirm via AskQuestion)
+- User explicitly wants one PR (confirm via AskQuestion — carries `clarify-gates.md` § Gate Content Contract (R-003)'s Evidence: the "do not split" trigger that applies plus the estimated single-PR size)
 
 ## Child issue template
 
@@ -55,7 +55,9 @@ Labels: target `size:s` or `size:m`. If child still too large → split again in
 During **plan** or **implement**, if scope expands:
 
 1. Stop implement worker if not yet merged
-2. AskQuestion — user confirms split vs continue single PR
+2. AskQuestion — user confirms split vs continue single PR, per `clarify-gates.md` § Gate
+   Content Contract (R-003) (split sign-off gate class): Evidence names the specific § Split
+   triggers row that fired plus the estimated PR size/domain count.
 3. File children; move remaining work to child issues
 4. Ledger any findings; defer to new issues as needed
 

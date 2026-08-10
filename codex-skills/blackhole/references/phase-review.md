@@ -17,7 +17,11 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
   - [ ] Issue #485: if `unresolved_recheck` (worker-schemas.md § Review aggregate) is non-empty, do not silently proceed as a normal changes_requested iteration — surface it to the coordinator via the existing blocked-iteration/escalation path (review-core.md § Review iteration budget)
 - [ ] V-ADA-01/V-ADA-05 findings: before append, dedup by (vcode, file) ignoring issue_ref — skip append if an open/deferred row already exists for that (vcode, file) under any issue_ref (see findings-ledger.md).
 - [ ] BLOCK → increment review_iteration; back to phase implement (see review-core iteration budget)
-- [ ] review_iteration >= 4 → escalate to coordinator (AskQuestion)
+- [ ] review_iteration >= 4 → escalate to coordinator (`AskQuestion`, review-iteration
+  escalation gate class per `clarify-gates.md` § Gate Content Contract (R-003)): What — the
+  PR/issue and its current BLOCK finding; Why — 4 failed review iterations against the
+  iteration budget; Evidence — the finding ids still open, from the ledger; Options —
+  continue iterating / accept and defer / manual fix, each with its consequence.
 - [ ] WARN → fix in PR OR defer (file issue + ledger deferred_to_issue)
 - [ ] Docs-only PR (determined by `reviewer.md` §8's plan-first detection — file-extension match is a no-plan fallback only, not restated here) → orchestrator direct review, still run review-aggregate.ts
 - [ ] LGTM (aggregate lgtm: true) → proceed to phase loop (merge)
