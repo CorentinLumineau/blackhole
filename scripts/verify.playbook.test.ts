@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
-  checkGateContentContract,
   findHarnessTokenLeaks,
   runChecks,
   validatePhaseNames,
@@ -237,49 +236,16 @@ describe('validateSkillModes (V-SKILL-01 — #372)', () => {
   });
 });
 
-describe('checkGateContentContract (V-GATECONTENT-01 — #483)', () => {
-  test('pass: SSOT heading present and every gate-owning file references the contract', () => {
-    const clarifyGates = '## Gate Content Contract (R-003)\n\nfailure-mode prose.';
-    const gateFiles = {
-      'src/references/phase-plan.md': 'Conforms to Gate Content Contract (R-003).',
-      'src/agents/planner.md': 'See Gate Content Contract.',
-    };
-    const result = checkGateContentContract(clarifyGates, gateFiles);
-    expect(result).toEqual({ id: 'V-GATECONTENT-01', ok: true });
-  });
-
-  test('regression: cross-reference removed from one gate-owning file names that file', () => {
-    const clarifyGates = '## Gate Content Contract (R-003)\n\nfailure-mode prose.';
-    const gateFiles = {
-      'src/references/phase-plan.md': 'Conforms to Gate Content Contract (R-003).',
-      'src/agents/planner.md': 'No cross-reference here.',
-    };
-    const result = checkGateContentContract(clarifyGates, gateFiles);
-    expect(result.ok).toBe(false);
-    expect(result.id).toBe('V-GATECONTENT-01');
-    expect(result.detail).toContain('src/agents/planner.md');
-  });
-
-  test('regression: missing SSOT heading is named in detail', () => {
-    const clarifyGates = 'No heading here.';
-    const gateFiles = { 'src/references/phase-plan.md': 'Conforms to Gate Content Contract (R-003).' };
-    const result = checkGateContentContract(clarifyGates, gateFiles);
-    expect(result.ok).toBe(false);
-    expect(result.detail).toContain('clarify-gates.md');
-  });
-});
-
 describe('playbook runChecks() against the real tree', () => {
-  test('returns six CheckResult entries in expected order', () => {
+  test('returns five CheckResult entries in expected order', () => {
     const results = runChecks();
-    expect(results).toHaveLength(6);
+    expect(results).toHaveLength(5);
     expect(results.map((r) => r.id)).toEqual([
       'V-PHASE-01',
       'V-VCODE-01',
       'V-PLAN-01',
       'V-SKILL-01',
       'V-HARNESS-01',
-      'V-GATECONTENT-01',
     ]);
   });
 
