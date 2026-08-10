@@ -276,6 +276,28 @@ only remedy left is key rotation, not a fix commit.
     before staging") so the orchestrator can distinguish a dependency-wiring bug from a known
     cross-target limitation instead of the worker silently shipping unprotected.
 
+### Explicit Git Targeting Gate (unconditional, issue #516)
+
+Applies to **every** execution mode and plan track — no branch skips it. The session's process
+cwd can silently drift to a sibling worktree, and campaign branches can end up mis-tracked at
+creation independent of any drift — see `phase-implement.md` § "Git operations must not depend
+on inherited cwd" for the incident write-up and confirmed root cause. Every git command in this
+session MUST name its target explicitly rather than trust the inherited cwd.
+
+*   **`-C` on every git command**: `git -C <absolute worktree path> <cmd>` — the worktree path is
+    the one the orchestrator passed at spawn time (`phase-implement.md` § "Plan artifact paths
+    (worktree rule)" convention, and its new § "Git operations must not depend on inherited cwd"
+    section). Never a bare `git <cmd>` that trusts the process cwd.
+*   **Explicit refspec on push, never `-u`, never bare**: `git -C <path> push origin
+    <branch>:<branch>`. A bare `git push` or `git push -u` risks setting or reading upstream
+    tracking against whatever branch the (possibly wrong) cwd happens to be on — exactly the
+    class of failure `phase-implement.md`'s incident write-up describes.
+*   **Post-push verification (mandatory before `status: complete`)**: run `git -C <path>
+    ls-remote origin refs/heads/<branch>` and compare its SHA against `git -C <path> rev-parse
+    HEAD`. A mismatch means the push landed on the wrong branch or the wrong remote — stop, do
+    not claim `status: complete`; return `status: blocked` instead and report the mismatch as a
+    finding.
+
 ## Carry Staged Artifacts (unconditional, ADR-021 D2)
 
 Referenced from step 6 "Verify & Open PR" above (same reference-not-restate pattern as the
@@ -354,11 +376,14 @@ Root-Cause Verification gate and the `refactor-strict`/`docs-only` gates above. 
 
 **Delivery-boundary evidence** (GAP-3): before any `status: complete` claim that names a
 delivery fact — "branch pushed", "PR opened", "worktree clean" — the RUN/READ/VERIFY steps
-above must be backed by the corresponding command, not narrative: `git status --porcelain`
-(empty output confirms worktree clean), an unpushed-commit check against the upstream branch
-(zero confirms fully pushed), and the forge PR-state lookup already used elsewhere in this
-workflow (confirms the PR is open). These three claims belong to the same evidence-gated set
-as tests/build/lint — never asserted from what was *intended* to run.
+above must be backed by the corresponding command, not narrative: `git -C <path> status
+--porcelain` (empty output confirms worktree clean), the Explicit Git Targeting Gate's `git -C
+<path> ls-remote origin refs/heads/<branch>` vs. `git -C <path> rev-parse HEAD` check (a SHA
+match confirms fully and correctly pushed — issue #516, stronger than an upstream-tracking
+check since upstream tracking is exactly what can be corrupted), and the forge PR-state lookup
+already used elsewhere in this workflow (confirms the PR is open). These three claims belong to
+the same evidence-gated set as tests/build/lint — never asserted from what was *intended* to
+run.
 
 Steps 1-4 MUST produce artifacts (command + quoted output). Step 5 is only permitted after
 1-4 succeed. If any step is skipped, do not return `status: complete` — either produce real

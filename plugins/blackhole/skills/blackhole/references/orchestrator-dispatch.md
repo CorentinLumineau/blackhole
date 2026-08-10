@@ -1,3 +1,51 @@
+## Branch Tracking Sweep (issue #516)
+
+Runs at the same cadence as the turn-start worktree/branch hygiene step already documented in
+`orchestrator.md` § Git & Worktree Hygiene (`git worktree prune` / `git fetch --prune`) — this
+section adds the sweep that step did not previously run, closing the gap the 2026-08-10 turn-4
+wave incident exposed: campaign branches left tracking `origin/main` instead of their own remote
+branch, one bare `git push` away from a direct push to a protected branch
+(`V-BRANCH-01`/`V-BRANCH-02`). Confirmed root cause (reproduced independently): `git worktree
+add -b <branch> origin/main` sets that upstream by default on every branch it creates — a
+foreign-worktree `git push -u` (the original 2026-08-10 incident write-up) is a real but
+*separate*, compounding failure mode, not the primary one. `phase-implement.md` § "Git
+operations must not depend on inherited cwd" now passes `--no-track` at creation, which prevents
+the mis-tracking outright for every branch created after that change lands. This sweep remains
+the safety net — for branches created before the fix, and for any path that reaches `git
+worktree add` without the `--no-track` flag.
+
+Before spawning any wave of workers, sweep every local `blackhole/issue-*` branch for upstream
+corruption:
+
+```bash
+git for-each-ref --format='%(refname:short)|%(upstream:short)' refs/heads/blackhole/ \
+  | awk -F'|' '$2 == "origin/main" || $2 == "origin/master" {print $1}'
+```
+
+Any branch name printed by this sweep tracks a protected branch instead of its own remote
+branch — dispatch MUST NOT proceed for that issue until it is repaired:
+
+1. If `origin/<branch>` already exists (the worker already pushed once under the corrupted
+   tracking): `git branch --set-upstream-to=origin/<branch> <branch>` repairs the pointer
+   without touching history.
+2. If `origin/<branch>` does not exist yet: the next push must use the explicit-refspec form
+   (`git -C <path> push origin <branch>:<branch>`, never `-u`) per `implementer.md` §
+   Explicit Git Targeting Gate — this both creates the correct remote branch and avoids
+   repeating the corruption. This is a two-pass self-heal, not a one-shot fix: this sweep pass
+   only stops the corruption from getting worse (the wrong upstream is still set locally); the
+   actual `--set-upstream-to` repair from case 1 above lands on the *next* sweep, once
+   `origin/<branch>` exists. Correct given the sweep runs every wave, but worth stating
+   explicitly rather than leaving the reader to infer it.
+3. Log the repair in `findings-ledger.json` (`kind: bug`) — no existing V-code cleanly names
+   "branch upstream tracking corrupted"; `orchestrator.md`'s existing `V-BRANCH-04` citation sits
+   next to `git worktree prune`/`git fetch --prune` with no formal definition in
+   `blackhole-vcodes.md`, so this section does not assume it covers this case. Flag for a
+   dedicated code rather than silently reusing an undefined one.
+
+This sweep is the check that the protection against pushing to `main` does not rest solely on
+`push.default=simple` (issue #516 AC) — a corrupted branch is caught here even if every other
+mandate in this issue is somehow bypassed.
+
 ## Brainstorm dispatch precedence (ADR-010 D3)
 
 Referenced from § Route-derived dispatch step 2.5 above (identical shape to the `docs_impact`
