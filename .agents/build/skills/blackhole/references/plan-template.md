@@ -67,6 +67,15 @@ obligations, gated by `docs_governance.write_governance`.
 
 ## Sprint Contract
 ...
+
+## [Standard Only] Quality Gate Results
+| Check | Result |
+|---|---|
+| `touch_paths_declared` | PASS \| FAIL |
+| `schema_baseline` | PASS \| FAIL |
+| `ac_mapping` | PASS \| FAIL |
+| `critical_files_exist` | PASS \| FAIL |
+| `mitigation_concrete` | PASS \| FAIL |
 ```
 
 ### Skip Track file template

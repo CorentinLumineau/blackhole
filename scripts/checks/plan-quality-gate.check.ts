@@ -1,0 +1,81 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { root, read, type CheckResult } from './check-utils.ts';
+import { findMissingGateMarkers } from '../lib/check-common.ts';
+
+// Issue #459 — plan quality gate parity (mercure `x-plan`'s 8-check gate; blackhole already
+// enforces 2 as blocking: `ac_mapping`, Codebase Conventions). Adds the two mechanical checks
+// named in the issue: critical-file existence (a Glob call) and vague-mitigation concreteness
+// (a stated word list). The planner agent performs both itself at plan time — it holds the
+// Glob/Read tools this module does not — so this file's role is (a) give the two checks a
+// deterministic, fixture-testable reference form and (b) ground planner.md's Step 8 prose
+// against silent drift, same split as design-track.check.ts's template check vs. its
+// marker-grounding check (V-INT-01: reuses that established pattern, no new shape).
+
+// Extracts backtick-quoted paths from a markdown bullet list — the convention Touch-Paths and
+// Critical Files both already use in plan output.
+export const extractBacktickPaths = (sectionContent: string): string[] =>
+  [...sectionContent.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+
+// Pure — `exists` is injected so fixtures never touch the real filesystem (a fixture plan naming
+// a nonexistent file is flagged without needing one to actually be absent from disk); defaults
+// to a real repo-root-relative existence check for production use.
+export const findMissingCriticalFiles = (
+  criticalFilesSection: string,
+  exists: (filePath: string) => boolean = (p) => fs.existsSync(path.join(root, p))
+): string[] => extractBacktickPaths(criticalFilesSection).filter((p) => !exists(p));
+
+// mercure's own vague-mitigation vocabulary ("monitor", "be careful", "watch for") — the
+// "stated word list" the issue requires, so the planner checks a fixed list rather than an
+// ad hoc judgment call each time.
+export const PLAN_QUALITY_GATE_VAGUE_WORDS = [
+  'monitor',
+  'watch for',
+  'keep an eye on',
+  'be careful',
+  'check periodically',
+];
+
+// A bullet naming a vague-word phrase is non-actionable UNLESS it also pairs the phrase with a
+// testable "if X then abort/halt/stop/block/revert" stop condition — e.g. "watch for lock
+// contention; if retries exceed 3, halt" is concrete despite naming "watch for".
+const STOP_CONDITION_PATTERN = /\bif\b.{0,80}\b(abort|halt|stop|block|revert)\b/i;
+
+export const findVagueMitigations = (
+  mitigationSection: string,
+  wordList: string[] = PLAN_QUALITY_GATE_VAGUE_WORDS
+): string[] =>
+  mitigationSection
+    .split('\n')
+    .filter((line) => /^\s*[-*]/.test(line))
+    .filter((line) => {
+      const lower = line.toLowerCase();
+      return wordList.some((w) => lower.includes(w)) && !STOP_CONDITION_PATTERN.test(line);
+    });
+
+// Grounding check (regression guard, same shape as design-track.check.ts's V-DESIGN-02):
+// planner.md Step 8 and worker-schemas.md's Plan quality gate checks list must both still name
+// the two new failing_checks values — a silent prose drop would leave this mechanical parity
+// documented nowhere a reviewer can audit.
+export const PLAN_QUALITY_GATE_REQUIRED_MARKERS = ['critical_files_exist', 'mitigation_concrete'];
+
+const checkPlanQualityGateGrounding = (): CheckResult => {
+  const plannerContent = read('src/agents/planner.md');
+  const schemaContent = read('src/references/worker-schemas.md');
+
+  const errors = [
+    ...findMissingGateMarkers(plannerContent, PLAN_QUALITY_GATE_REQUIRED_MARKERS).map(
+      (m) => `planner.md missing "${m}"`
+    ),
+    ...findMissingGateMarkers(schemaContent, PLAN_QUALITY_GATE_REQUIRED_MARKERS).map(
+      (m) => `worker-schemas.md missing "${m}"`
+    ),
+  ];
+
+  if (errors.length) return { id: 'V-PLANGATE-01', ok: false, detail: errors.join('; ') };
+  return { id: 'V-PLANGATE-01', ok: true };
+};
+
+// ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
+// contract (pure, no side effects, glob-discovered by scripts/verify.ts).
+export const runChecks = (): CheckResult[] => [checkPlanQualityGateGrounding()];
