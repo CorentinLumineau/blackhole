@@ -538,8 +538,8 @@ describe('validateWorker investigator', () => {
     expectInvalid('investigator', 'investigator-error-missing-error-field.json'));
   test('valid blocked with hypotheses_exhausted escalation_trigger', () =>
     expectValid('investigator', 'investigator-blocked-hypotheses-exhausted.json'));
-  test('valid blocked bounded (no escalation_trigger — second exhaustion)', () =>
-    expectValid('investigator', 'investigator-blocked-bounded.json'));
+  test('invalid blocked missing required escalation_trigger (always set on exhaustion, per investigator.md § Escalation)', () =>
+    expectInvalid('investigator', 'investigator-blocked-missing-escalation-trigger.json'));
   test('invalid blocked escalation_trigger enum', () =>
     expectInvalid('investigator', 'investigator-blocked-invalid-escalation-trigger.json'));
   test('invalid blocked missing note_path', () =>

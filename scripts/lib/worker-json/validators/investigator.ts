@@ -21,16 +21,15 @@ function validateInvestigatorCoreFields(data: Record<string, unknown>, errors: s
   requireField(errors, data, 'computed_at_revision', isNumber, 'number');
 }
 
-// `escalation_trigger` is optional even on `blocked` — absent on the bounded second
-// exhaustion (investigator.md § `investigate` sub-mode Escalation), present only on the
-// first hypothesis-set exhaustion that the orchestrator escalates.
+// `escalation_trigger` is always present on `blocked` — the investigator sets it identically
+// on every hypothesis-set exhaustion and never tracks its own escalation history
+// (investigator.md § `investigate` sub-mode Escalation). Whether the orchestrator escalates
+// again or blocks the issue is state it alone tracks via `queue.json` notes, invisible here
+// (`orchestrator-dispatch.md` § Investigator Escalation Dispatch).
 function validateInvestigatorBlockedFields(data: Record<string, unknown>, errors: string[]): void {
-  if ('escalation_trigger' in data) {
-    if (!isString(data.escalation_trigger)) {
-      errors.push('escalation_trigger: expected string');
-    } else {
-      pushEnumError(errors, 'escalation_trigger', data.escalation_trigger, ESCALATION_TRIGGERS);
-    }
+  requireField(errors, data, 'escalation_trigger', isString, 'string');
+  if (isString(data.escalation_trigger)) {
+    pushEnumError(errors, 'escalation_trigger', data.escalation_trigger, ESCALATION_TRIGGERS);
   }
 }
 

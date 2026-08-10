@@ -701,7 +701,7 @@ Analyze sub-mode example:
 | `sub_mode` | `research` \| `investigate` \| `analyze` | when `complete` or `blocked` |
 | `confidence` | number 0-100 | when `complete` or `blocked` |
 | `computed_at_revision` | number (= `route.revision` at spawn time) | when `complete` or `blocked` |
-| `escalation_trigger` | `hypotheses_exhausted` | no, optional — only meaningful on `status: blocked` |
+| `escalation_trigger` | `hypotheses_exhausted` | when `blocked` (`investigate` sub-mode's only blocked path) |
 | `error` | string | when `status: error` |
 
 ```json
@@ -726,14 +726,16 @@ Baselines). Full behavioral spec: `investigator.md` (not duplicated here).
 sub-mode) — co-located with `plans/issue-N.md`, mirroring `planner.md`'s Design Track
 sibling-artifact convention (`plans/issue-N-design.md`).
 
-### `escalation_trigger` (optional — `investigate` sub-mode only, issue #454)
+### `escalation_trigger` (required when `blocked` — `investigate` sub-mode only, issue #454)
 
-Shares the Implementer section's field/shape (`V-INT-03`). Set to `hypotheses_exhausted` when the
-ranked hypothesis set — including the regenerated attempt (`investigator.md` § `investigate`
-sub-mode) — is fully refuted without a confirmed root cause; `note_path` is still present (the
-investigator always writes its note). **Absent** on a second, bounded exhaustion — only
-`orchestrator-dispatch.md` § Investigator Escalation Dispatch tracks escalation history, reading
-absence as "do not escalate again" and routing to the HITL Blocker Gate instead.
+Shares the Implementer section's field/shape (`V-INT-03`). Always set to `hypotheses_exhausted`
+when the ranked hypothesis set — including the regenerated attempt (`investigator.md` §
+`investigate` sub-mode) — is fully refuted without a confirmed root cause; `note_path` is still
+present (the investigator always writes its note). The investigator never omits this field and
+never tracks its own escalation history — it reports exhaustion identically every time. Whether
+this is a first or bounded second exhaustion is orchestrator-side state, tracked solely via
+`queue.json` `notes` by `orchestrator-dispatch.md` § Investigator Escalation Dispatch, and never
+signaled through this field's presence or absence.
 
 ```json
 {
