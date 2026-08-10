@@ -9,7 +9,7 @@ Campaign protocol state lives **only** under `.blackhole/*`:
 - `findings-ledger.json` — V-code findings
 - `plans/<issue>.md` — plan artifacts
 - `staged/<issue>/` — durable artifact staging area (see § Staging (ADR-021 D1) below)
-- `archive/` — rotated ledger snapshots
+- `archive/` — rotated ledger snapshots and pre-mutation `queue.json` snapshots
 
 The following are **not** blackhole protocol state:
 
@@ -30,17 +30,37 @@ Mutations to `.blackhole/queue.json` and
 | `findings-ledger.json` | V-code findings (gitignored) |
 | `plans/<issue>.md` | Plan artifacts (gitignored) |
 | `staged/<issue>/manifest.json` | Durable artifact staging manifest (gitignored, see § Staging (ADR-021 D1)) |
-| `archive/` | Rotated ledger snapshots (gitignored) |
+| `archive/` | Rotated ledger snapshots and pre-mutation `queue.json` snapshots (gitignored) |
 
 Full schemas: `plugins/blackhole-claude/skills/blackhole/references/findings-ledger.md`,
 `queue-dag.md`.
 
 ## Write protocol
 
-1. Validate before read-dependent logic: `jq empty <file>`
-2. Read-modify-write via `.tmp` + `mv` (atomic)
-3. Bump `refreshed_at` on every mutation
-4. Idempotency: dedup ledger by `(vcode, file, line, issue_ref)` before append
+**`jq empty <file>` is never sufficient as a write guard on its own — do not reintroduce it as a
+simplification.** It exits 0 on a zero-byte file: it detects malformed JSON, not *absent* JSON.
+Issue #489 traced a real incident to exactly this gap — a heredoc-authored `jq` program failed to
+compile, the shell redirect had already truncated the `.tmp` file to 0 bytes before `jq` ran,
+`jq empty` on that 0-byte file exited 0, and the empty file was atomically installed over live
+`queue.json`, losing all 98 issue entries. `findings-ledger.json` was untouched only because that
+mutation happened not to run in the same incident.
+
+1. Snapshot the live file to `archive/<file>-<timestamp>.json` before mutating it (queue and
+   ledger alike) — recovery must never depend on a scratchpad `.tmp` file surviving by luck.
+2. Write the candidate output to `<file>.tmp`.
+3. Validate the `.tmp` file with `scripts/lib/state-write-guard.ts`'s `validateStateWrite()`
+   (queue.json's `entityKey` is `issues`, the ledger's is `findings`) before installing it. The
+   guard fails closed on any of:
+   - the `.tmp` file is empty (0 bytes) — the case `jq empty` cannot catch
+   - malformed JSON — the one case `jq empty` does catch
+   - the required top-level entity key (`issues`/`findings`) is absent
+   - the entity count is lower than the live file's, unless the caller passes `allowShrink: true`
+     for a legitimate reduction (an issue removed, a ledger rotated to `archive/`) — even with
+     `allowShrink`, a collapse to exactly zero is always refused; a declared shrink is not a
+     declared wipe
+4. Only on a passing validation, atomically install: `mv <file>.tmp <file>`.
+5. Bump `refreshed_at` on every mutation.
+6. Idempotency: dedup ledger by `(vcode, file, line, issue_ref)` before append.
 
 ## Single-writer invariant
 
