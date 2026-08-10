@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import {
@@ -114,6 +115,28 @@ export const withTempGitRepo = async <T>(
     fs.rmSync(dir, { recursive: true, force: true });
   }
 };
+
+/** Same lifecycle as withTempGitRepo, but also creates a linked worktree off an initial empty
+ * commit (`git worktree add` needs a valid commit-ish to check out) and hands both paths to `fn`.
+ * Exists for #507's cross-worktree containment coverage: the fix under test is that a target
+ * inside the linked worktree is in-bounds even when the hook's own resolution cwd is the main
+ * clone, so the fixture needs a real second worktree sharing the same `.git`, not just a second
+ * temp dir. */
+export const withLinkedWorktree = async <T>(
+  prefix: string,
+  fn: (mainRepo: string, worktree: string) => Promise<T>,
+): Promise<T> =>
+  withTempGitRepo(prefix, async (mainRepo) => {
+    spawnSync('git', ['commit', '--allow-empty', '--quiet', '-m', 'init'], { cwd: mainRepo });
+    const worktree = path.join(fs.realpathSync(os.tmpdir()), `${prefix}wt-${process.pid}-${Date.now()}`);
+    spawnSync('git', ['worktree', 'add', '--detach', '--quiet', worktree], { cwd: mainRepo });
+    try {
+      return await fn(mainRepo, fs.realpathSync(worktree));
+    } finally {
+      spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+      fs.rmSync(worktree, { recursive: true, force: true });
+    }
+  });
 
 export const readHookEvents = (repoRoot: string): Record<string, unknown>[] => {
   const dir = path.join(repoRoot, '.blackhole', 'hook-events');

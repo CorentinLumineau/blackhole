@@ -52,23 +52,52 @@ const redact = (text) =>
     .replace(SECRET_SPACE, (_match, flag, quote) => `${flag} ${quote}***${quote}`)
     .slice(0, MAX_DETAIL_CHARS);
 
-const git = (args) =>
-  execFileSync('git', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+/** `cwd` defaults to `process.cwd()` at every call site below rather than here, because the right
+ * default is "the hook process's own cwd" ONLY when nothing better is known — and the PreToolUse
+ * payload's own `cwd` field (the tool call's actual working directory) is better when present.
+ * The hook process's `process.cwd()` reflects wherever the harness happened to spawn the hook
+ * subprocess from, which is not necessarily where the tool call is targeting: a worker operating
+ * in a linked worktree can still have its hook subprocess spawned with the main clone as cwd,
+ * which used to make every one of that worker's own worktree writes look "outside" (#507,
+ * F-00087). Callers resolve `input.cwd || process.cwd()` once in `main()` and thread it through. */
+const git = (args, cwd) =>
+  execFileSync('git', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], cwd }).trim();
 
-/** Worktree root of the calling process, or null outside a git context. */
-const worktreeRoot = () => {
+/** Worktree root of `cwd` (see the `git` docstring above for why `cwd` — not always
+ * `process.cwd()` — is the right resolution point), or null outside a git context. */
+const worktreeRoot = (cwd = process.cwd()) => {
   try {
-    return git(['rev-parse', '--show-toplevel']);
+    return git(['rev-parse', '--show-toplevel'], cwd);
   } catch {
     return null;
   }
 };
 
-/** Main clone root. `--git-common-dir` points at the shared .git even from a linked worktree, so
- * every worker's events land in the one directory the orchestrator polls. */
-const mainCloneRoot = () => {
+/** Main clone root, resolved from `cwd`. `--git-common-dir` points at the shared .git even from a
+ * linked worktree, so every worker's events land in the one directory the orchestrator polls. */
+const mainCloneRoot = (cwd = process.cwd()) => {
   try {
-    return path.dirname(path.resolve(process.cwd(), git(['rev-parse', '--git-common-dir'])));
+    return path.dirname(path.resolve(cwd, git(['rev-parse', '--git-common-dir'], cwd)));
+  } catch {
+    return null;
+  }
+};
+
+/** Every worktree in the repo family `cwd` belongs to — the main clone plus every linked
+ * worktree (`git worktree list --porcelain`), resolved from `cwd` for the same reason
+ * `worktreeRoot`/`mainCloneRoot` are. `validate-file-changes.js`'s containment check treats a
+ * target as in-bounds when it falls under ANY of these roots, not just whichever one the hook
+ * process happens to be sitting in — the actual #507 fix; `worktreeRoot` alone only ever answers
+ * "which single worktree is `cwd` in", which is exactly the question that produced the bug. Null
+ * outside a git context, mirroring the other two resolvers above. */
+const allWorktreeRoots = (cwd = process.cwd()) => {
+  try {
+    const listing = git(['worktree', 'list', '--porcelain'], cwd);
+    const roots = listing
+      .split('\n')
+      .filter((line) => line.startsWith('worktree '))
+      .map((line) => line.slice('worktree '.length));
+    return roots.length > 0 ? roots : null;
   } catch {
     return null;
   }
@@ -82,7 +111,8 @@ const mainCloneRoot = () => {
 const readHookInput = () => JSON.parse(fs.readFileSync(0, 'utf-8') || '{}');
 
 const recordEvent = (event) => {
-  const destRoot = mainCloneRoot();
+  const cwd = event.cwd || process.cwd();
+  const destRoot = mainCloneRoot(cwd);
   if (!destRoot) {
     console.error(`[blackhole-hook] no git context — ${event.tier} event not recorded (${event.pattern_id})`);
     return;
@@ -96,7 +126,7 @@ const recordEvent = (event) => {
     tier: event.tier,
     pattern_id: event.pattern_id,
     reason: redact(event.reason),
-    worktree: worktreeRoot(),
+    worktree: worktreeRoot(cwd),
     detail: redact(event.detail),
   };
   try {
@@ -163,7 +193,7 @@ const allowSilently = () => process.exit(0);
  * prevent. Same helper for both failure sites — pattern load (main() below) and stdin parse
  * (readHookInput's caller, above) — distinguished only by `patternId`/`label` so the record and
  * the stderr message say which one actually failed. */
-const failClosed = ({ hook, tool, error, patternId = 'pattern-load-failure', label = 'pattern data' }) => {
+const failClosed = ({ hook, tool, error, patternId = 'pattern-load-failure', label = 'pattern data', cwd }) => {
   console.error(`[blackhole-hook] ${hook}: ${label} could not be loaded — ${error.message}`);
   denyAndRecord({
     hook,
@@ -171,6 +201,7 @@ const failClosed = ({ hook, tool, error, patternId = 'pattern-load-failure', lab
     pattern_id: patternId,
     reason: `${hook}: ${label} could not be loaded, refusing the call`,
     detail: error.message,
+    cwd,
   });
 };
 
@@ -178,6 +209,7 @@ module.exports = {
   redact,
   worktreeRoot,
   mainCloneRoot,
+  allWorktreeRoots,
   readHookInput,
   recordEvent,
   denyAndRecord,

@@ -6,6 +6,7 @@ import {
   PRETOOLUSE_HOOKS_DIR,
   readHookEvents,
   runPreToolUseHook,
+  withLinkedWorktree,
   withTempGitRepo,
 } from './lib/test-fixtures.ts';
 
@@ -162,6 +163,56 @@ describe('validate-file-changes.js', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout.trim()).toBe('');
       expect(readHookEvents(repo)).toEqual([]);
+    });
+  });
+
+  // #507: the hook process's own process.cwd() is wherever the harness happened to spawn it from
+  // (typically the main clone, regardless of which worktree a worker is actually operating in),
+  // so resolving containment from it treats every sibling worktree as "outside" and denies a
+  // worker's own legitimate writes into its worktree (F-00087). The payload's `cwd` field names
+  // the tool call's actual working directory; the fix widens containment to every worktree of
+  // that repo family (`git worktree list`), not just the one the hook process happens to sit in.
+  test('#507: a Write into a linked worktree is allowed when the payload cwd is the main clone', async () => {
+    await withLinkedWorktree('blackhole-hook-507-', async (mainRepo, worktree) => {
+      const target = path.join(worktree, 'src', 'foo.ts');
+      const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
+
+      // Hook process spawned with cwd = mainRepo — reproduces the pre-fix bug exactly: the hook
+      // process's own process.cwd() is the main clone, not the worktree the target lives in.
+      const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  // Regression guard for the widened check: a target outside BOTH the main clone and its linked
+  // worktree must still be denied — the fix must not turn the boundary into "anything reachable".
+  test('#507: a Write outside every worktree of the repo family is still denied', async () => {
+    await withLinkedWorktree('blackhole-hook-507-', async (mainRepo) => {
+      const outside = path.join(fs.realpathSync(os.tmpdir()), `blackhole-507-outside-${process.pid}.ts`);
+      const payload = { tool_name: 'Write', tool_input: { file_path: outside, content: 'x' }, cwd: mainRepo };
+
+      const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionReason(result.stdout)).toMatch(/outside/i);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+    });
+  });
+
+  // #507 AC3: when the payload carries no `cwd` field at all (older harness versions, or a direct
+  // manual invocation), the hook must fall back to the hook process's own process.cwd() rather
+  // than crashing or silently skipping containment.
+  test('#507: payload without a cwd field falls back to the hook process cwd', async () => {
+    await withLinkedWorktree('blackhole-hook-507-', async (mainRepo, worktree) => {
+      const target = path.join(worktree, 'src', 'foo.ts');
+      const result = await runPreToolUseHook(SCRIPT, writePayload(target), worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
     });
   });
 
