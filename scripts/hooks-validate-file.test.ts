@@ -506,4 +506,19 @@ describe('validate-file-changes.js', () => {
       fs.rmSync(nonRepo, { recursive: true, force: true });
     }
   });
+
+  // #512 follow-up: the cwd fallback bound is only as narrow as `cwd` itself. A session whose
+  // cwd resolves to a bare temp root is no narrower than accepting everything — the same hole
+  // #510/F-00088 closed for `scratchpad_dir`, reusing `isAcceptableScratchpadDir` rather than a
+  // second breadth check. Must be refused, not silently trusted as a containment root.
+  test('#512: outside a git repo, a cwd resolving to a bare temp root is too broad to trust as a fallback bound', async () => {
+    const bareTmp = fs.realpathSync(os.tmpdir());
+    const target = path.join(bareTmp, `blackhole-512-broad-${process.pid}.ts`);
+
+    const result = await runPreToolUseHook(SCRIPT, writePayload(target), bareTmp);
+
+    expect(result.exitCode).toBe(2);
+    expect(permissionDecision(result.stdout)).toBe('deny');
+    expect(permissionReason(result.stdout)).toMatch(/too broad/i);
+  });
 });

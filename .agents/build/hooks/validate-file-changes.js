@@ -17,6 +17,7 @@ const {
   readHookInput,
   allWorktreeRoots,
   isUnderRoot,
+  isAcceptableScratchpadDir,
   denyAndRecord,
   warnAndRecord,
   allowSilently,
@@ -108,17 +109,34 @@ const main = () => {
       });
       return;
     }
-  } else if (filePath && !isUnderRoot(filePath, cwd)) {
-    denyAndRecord({
-      hook: HOOK,
-      tool,
-      pattern_id: 'outside-cwd-fallback',
-      reason: `No git context resolved for containment — write target resolves outside the tool call's own cwd (${cwd})`,
-      detail: filePath,
-      cwd,
-    });
-    return;
-  } else {
+  } else if (filePath) {
+    // The cwd fallback bound is only as good as `cwd` itself: a session whose cwd resolves to
+    // `/`, `$HOME`, or a bare temp root is no narrower than no bound at all — the exact hole
+    // #510/F-00088 closed for `scratchpad_dir`. Reuses that same breadth check (`V-INT-02`)
+    // rather than writing a second one; a cwd that fails it is treated as no bound being
+    // available, not as a bound to trust, so the write is refused rather than silently accepted.
+    if (!isAcceptableScratchpadDir(cwd)) {
+      denyAndRecord({
+        hook: HOOK,
+        tool,
+        pattern_id: 'cwd-fallback-too-broad',
+        reason: `No git context resolved for containment, and the tool call's own cwd (${cwd}) is too broad to trust as a fallback root`,
+        detail: filePath,
+        cwd,
+      });
+      return;
+    }
+    if (!isUnderRoot(filePath, cwd)) {
+      denyAndRecord({
+        hook: HOOK,
+        tool,
+        pattern_id: 'outside-cwd-fallback',
+        reason: `No git context resolved for containment — write target resolves outside the tool call's own cwd (${cwd})`,
+        detail: filePath,
+        cwd,
+      });
+      return;
+    }
     console.error(
       `[blackhole-hook] ${HOOK}: no git worktree resolved — bounded fallback to cwd subtree (${cwd}) for ${filePath}`,
     );
