@@ -121,6 +121,15 @@ resolves absent or `false`, no staging write happens and no manifest entry is ap
       "target_kind": "append_row"
     },
     {
+      "route": "design",
+      "sub_mode": null,
+      "produced_by": "planner",
+      "declared_at": "2026-08-06T17:55:00.000Z",
+      "staged_path": ".blackhole/staged/465/architecture-active-constraint.md",
+      "target_path": "ARCHITECTURE.md",
+      "target_kind": "append_row"
+    },
+    {
       "route": "analyze",
       "sub_mode": "analyze",
       "produced_by": "investigator",
@@ -142,24 +151,28 @@ resolves absent or `false`, no staging write happens and no manifest entry is ap
 }
 ```
 
-The `design` pair above stages an ADR body and its `documentation/decisions/INDEX.md` row
-(`planner.md` §4.8). The `analyze`/`investigate` pair stages an investigator-authored note and
-its **root** `documentation/INDEX.md` row (issue #490, ADR-021 D2) — same `new_file` +
-`append_row` two-entry shape, different producer and different target file. No new `route` or
-`target_kind` enum member was required for this second pair — both `analyze`/`investigate`
-(`route`) and `append_row` (`target_kind`) already existed in the schema below.
+The `design` triple above stages an ADR body, its `documentation/decisions/INDEX.md` row, and
+(when the Cross-Cutting Heuristic promotes a finding, `planner.md` §4.8 Trigger A) an
+`ARCHITECTURE.md` `## Active Constraints` bullet — issue #474. The `analyze`/`investigate` pair
+stages an investigator-authored note and its **root** `documentation/INDEX.md` row (issue #490,
+ADR-021 D2) — same `new_file` + `append_row` shape, different producer and different target
+file. `planner.md` Step 4 Trigger B stages the analogous `ARCHITECTURE.md` entry for the
+`analyze`/`investigate` route (not shown above for brevity — same shape as the `design`-route
+`ARCHITECTURE.md` entry, with `route: "analyze"`, `sub_mode: "analyze"`, `produced_by:
+"planner"`). No new `route` or `target_kind` enum member was required for any of these — every
+value used already existed in the schema below.
 
 | Field | Values | Notes |
 |---|---|---|
 | `issue` | number | Matches the `<issue>` directory name |
 | `updated_at` | ISO8601 | Bumped on every append |
 | `entries[].route` | `analyze` \| `investigate` \| `design` \| `brainstorm` | Matches `artifact-contract.md`'s route→artifact table; `brainstorm` is reserved for schema completeness — it is **not** populated yet (brainstorm already has its own working `.blackhole/plans/issue-N-brainstorm.md` → docs-only-implementer mechanism, untouched here) |
-| `entries[].sub_mode` | `research` \| `investigate` \| `analyze` \| `null` | Set by `investigator` entries (`research` never appears — it has no `documentation/` target); `null` for `planner`/design entries |
+| `entries[].sub_mode` | `research` \| `investigate` \| `analyze` \| `null` | Set by `investigator` entries (`research` never appears — it has no `documentation/` target); also set to `"analyze"` by `planner`'s Step 4 Trigger B entries (issue #474), since those derive from an investigator analyze note even though `planner` stages them; `null` for `planner`/design entries otherwise (the ADR/INDEX/Trigger-A rows) |
 | `entries[].produced_by` | `planner` \| `investigator` | Which agent staged the artifact |
 | `entries[].declared_at` | ISO8601 | When the entry was staged |
 | `entries[].staged_path` | string | Repo-relative path under `.blackhole/staged/<issue>/` |
-| `entries[].target_path` | string | Repo-relative `documentation/` target, per `artifact-contract.md`'s route table. For `target_kind: append_row` this is either `documentation/decisions/INDEX.md` (`design` route, `planner.md` §4.8) or `documentation/INDEX.md` (`analyze`/`investigate` routes, issue #490) — no new `route`/`target_kind` enum member required for either |
-| `entries[].target_kind` | `new_file` \| `append_row` | Tells the carry-step whether to copy a whole file or append a row fragment to an existing file (e.g. `INDEX.md`) |
+| `entries[].target_path` | string | Repo-relative target path. Usually under `documentation/`, per `artifact-contract.md`'s route table. For `target_kind: append_row` this is `documentation/decisions/INDEX.md` (`design` route, `planner.md` §4.8), `documentation/INDEX.md` (`analyze`/`investigate` routes, issue #490), or `ARCHITECTURE.md` **at the repo root** — not under `documentation/` — for the Active Constraints append (`design`/`analyze` routes, `planner.md` §4.8 Trigger A / Step 4 Trigger B, issue #474) |
+| `entries[].target_kind` | `new_file` \| `append_row` | Tells the carry-step whether to copy a whole file or append a row fragment to an existing file (e.g. `INDEX.md`) or bullet list (`ARCHITECTURE.md` `## Active Constraints`) |
 
 ### Write protocol extension
 
@@ -179,6 +192,14 @@ at escalation — never overlapping for one issue), so there is no lost-update r
 - The **reviewer audit** that diffs the staged manifest against the PR to detect a declared but
   never-carried artifact is **not implemented by this section** — it is a separate deliverable
   (D4, tracked issue #468) that will consume the manifest shape this section documents.
+- **Residual gap (issue #474 follow-up)**: `implementer.md` § Carry Staged Artifacts' documented
+  `append_row` idempotency guard keys off "the row's `path` column value" — a table-row
+  assumption that does not generalize to the `ARCHITECTURE.md` `## Active Constraints` bullet
+  target added above, which has no table or `path` column. The natural discriminator there is
+  the `(ADR-{NNN})` / `(analyze: issue #N)` citation suffix `planner.md`'s own near-duplicate
+  check (§4.8 Trigger A / Step 4 Trigger B) already uses. This section documents the manifest
+  shape only; closing the carry-step's discriminator gap for this target is `implementer.md`'s
+  responsibility, not re-implemented here.
 
 ## Ledger obligations
 

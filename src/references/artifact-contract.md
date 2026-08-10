@@ -15,6 +15,12 @@ repo-convention precedence.
 | design (auto-approved or human-approved) | `documentation/decisions/ADR-{NNN}-{slug}.md` + `documentation/decisions/INDEX.md` row — schema (both the INDEX row shape and the ADR frontmatter shape) follows [doc-governance.md](doc-governance.md) § Repo Convention Precedence's detection |
 | investigate | `documentation/investigations/{concern-slug}.md` |
 
+**Cross-cutting side artifact**: independent of the primary artifact above, `planner.md` §4.8
+Trigger A (`design` route) and Step 4 Trigger B (seeded from an `analyze` note, any track) may
+additionally stage an `ARCHITECTURE.md` `## Active Constraints` bullet through the identical
+staging mechanism below — `target_path: "ARCHITECTURE.md"` at the repo root, rather than under
+`documentation/` (ADR-012 E3, issue #474; schema: `blackhole-state.md` § Staging).
+
 ## Delivery mechanism — who writes, who approves
 
 The write-capable worker commits the artifact **inside the issue's PR** — never as a
