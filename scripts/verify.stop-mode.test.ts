@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { read } from './checks/check-utils.ts';
 import { assertNoOrphanedInFlight, checkStopModeWiring, runChecks } from './checks/stop-mode.check.ts';
 
 // Issue #478 — stop mode: drain default + --abandon tier (#476 leg A).
@@ -52,5 +53,36 @@ describe('runChecks()', () => {
     const results = runChecks();
     expect(results).toHaveLength(1);
     expect(results[0].id).toBe('V-STOP-02');
+  });
+});
+
+// Issue #491 — stop --now leg A: worker-side cooperation protocol. checkStopModeWiring() is
+// extended (not a new check function — EXPECTED_CHECK_COUNT stays 47) to also verify the third
+// tier's static wiring: phase-stop.md documents the tier and cites worker-schemas.md for the
+// ask; worker-schemas.md documents the ask itself; `flushed` (if phase-stop.md mentions it at
+// all) only appears inside the leg-B (#492) reservation sentence.
+describe('checkStopModeWiring() — stop --now leg A wiring (issue #491)', () => {
+  test('phase-stop.md documents the stop --now tier and cites worker-schemas.md for the ask', () => {
+    const phaseStop = read('src/references/phase-stop.md');
+    expect(phaseStop).toContain('stop --now');
+    expect(phaseStop).toContain('worker-schemas.md');
+  });
+
+  test('worker-schemas.md documents the Flush request (the ask), not the partial-return response', () => {
+    const workerSchemas = read('src/references/worker-schemas.md');
+    expect(workerSchemas).toContain('Flush request');
+  });
+
+  test('phase-stop.md never mentions `flushed` without the leg-B (#492) reservation note', () => {
+    const phaseStop = read('src/references/phase-stop.md');
+    if (phaseStop.includes('flushed')) {
+      expect(phaseStop).toMatch(/flushed[\s\S]{0,80}#492/);
+    }
+  });
+
+  test('checkStopModeWiring() still returns ok: true once the stop --now tier lands', () => {
+    const result = checkStopModeWiring();
+    expect(result.detail ?? '').toBe('');
+    expect(result.ok).toBe(true);
   });
 });

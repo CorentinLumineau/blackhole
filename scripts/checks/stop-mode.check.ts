@@ -29,6 +29,7 @@ export const checkStopModeWiring = (): CheckResult => {
   const skill = read('src/SKILL.md');
   const phaseStop = read('src/references/phase-stop.md');
   const checkpoint = read('src/references/checkpoint-protocol.md');
+  const workerSchemas = read('src/references/worker-schemas.md');
   const errors: string[] = [];
 
   if (!skill.includes('phase-stop.md')) errors.push('SKILL.md missing phase-stop.md citation');
@@ -43,6 +44,21 @@ export const checkStopModeWiring = (): CheckResult => {
   }
   if (checkpoint.includes('flushed') && !/flushed[\s\S]{0,80}#479/.test(checkpoint)) {
     errors.push('checkpoint-protocol.md emits `flushed` without the leg-B reservation note');
+  }
+
+  // Issue #491 — stop --now leg A: worker-side ask wiring. Extends this existing check rather
+  // than adding a new one, since scripts/lib/build/facts.ts's EXPECTED_CHECK_COUNT is frozen.
+  if (!phaseStop.includes('stop --now')) {
+    errors.push('phase-stop.md missing the stop --now tier');
+  }
+  if (!phaseStop.includes('worker-schemas.md')) {
+    errors.push('phase-stop.md missing worker-schemas.md citation for the flush ask');
+  }
+  if (!workerSchemas.includes('Flush request')) {
+    errors.push('worker-schemas.md missing the Flush request section');
+  }
+  if (phaseStop.includes('flushed') && !/flushed[\s\S]{0,80}#492/.test(phaseStop)) {
+    errors.push('phase-stop.md emits `flushed` without the leg-B (#492) reservation note');
   }
 
   if (errors.length) return { id: 'V-STOP-02', ok: false, detail: errors.join('; ') };
