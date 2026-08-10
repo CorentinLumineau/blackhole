@@ -440,7 +440,7 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     `.only(`, `it.todo(`, `test.todo(`, `xit(`, `xdescribe(` (JS/TS — Jest/Mocha/bun:test);
     `@pytest.mark.skip`, `@pytest.mark.skipif(`, `@unittest.skip`, `pytest.skip(`,
     `self.skipTest(` (Python); `@Disabled`, `@Ignore` (JUnit); `t.Skip(`, `t.Skipf(`,
-    `t.SkipNow()` (Go); `pending`, `xit(`, `xcontext`, `skip:` (RSpec) — scan the diff's added
+    `t.SkipNow()` (Go); `pending`, `xit `, `xit(`, `xcontext`, `skip:` (RSpec) — scan the diff's added
     (`+`) lines only, never context or pre-existing lines (`V-SCOPE-01`), for a skip/disable/
     exclusive marker newly introduced by this diff. A marker on a *removed* (`-`) line is a fix,
     not a violation — only additions count. A stated reason (even one sentence — a comment on the
@@ -458,14 +458,22 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     check; judge the diff's self-documentation, not the change's desirability.
 *   **Severity logic — test-to-source linking heuristic**: `BLOCK` only when a decidable link
     exists between the weakened guard and a production change in the same diff — the test file's
-    name maps to a production file by the repo's stem-pairing convention (`foo.test.ts` ↔
-    `foo.ts`, `foo_test.go` ↔ `foo.go`, `test_foo.py` / `foo_test.py` ↔ `foo.py`, `foo_spec.rb` ↔
-    `foo.rb`, and language-equivalent variants), and that paired production file also carries a
-    non-comment, non-formatting-only change in this diff. `WARN` in every other case — no
-    decidable pairing found (integration/E2E suite, non-1:1 test layout, co-located test
-    directory with no stem match, or the paired file untouched) — same vacuous-gate discipline as
-    §§16/21/22: without a structured anchor to check against, this gate never guesses upward to
-    `BLOCK`.
+    name maps to a production file by the repo's stem-pairing convention. The common case is a
+    shared stem with a swapped suffix (`foo.test.ts` ↔ `foo.ts`, `foo_test.go` ↔ `foo.go`,
+    `test_foo.py` / `foo_test.py` ↔ `foo.py`, `foo_spec.rb` ↔ `foo.rb`, and language-equivalent
+    variants) — but the convention is repo-local, not universal: some repos pair by prefix and
+    directory instead of a bare suffix swap (e.g. this repo's own
+    `scripts/verify.<concern>.test.ts` ↔ `scripts/checks/<concern>.check.ts`, which strips a
+    `verify.` prefix, swaps `.test.ts` for `.check.ts`, and moves from `scripts/` into
+    `scripts/checks/`). Derive the pairing from the diff's neighboring files: if 2+ other test
+    files already in the same directory follow a consistent prefix/suffix/directory
+    transformation to their production counterpart, apply that same transformation here — do not
+    fall through to `WARN` just because the pair doesn't match the four generic examples above.
+    A production file paired this way also needs a non-comment, non-formatting-only change in
+    this diff to trigger `BLOCK`. `WARN` in every other case — no decidable pairing found
+    (integration/E2E suite, genuinely non-1:1 test layout, no consistent neighboring convention
+    to derive from, or the paired file untouched) — same vacuous-gate discipline as §§16/21/22:
+    without a structured anchor to check against, this gate never guesses upward to `BLOCK`.
 *   **Diff-scoped only (`V-SCOPE-01`)**: a skip marker, thin assertion, or loose validation
     already present before this diff — visible only on context/unchanged lines — is never
     flagged; only newly-added lines count. This mirrors § 13's "never re-litigate" discipline.
