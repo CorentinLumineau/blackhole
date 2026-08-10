@@ -471,7 +471,11 @@ describe('renderConfigSummary', () => {
     expect(out).toContain('**Merge mode:** unset (bootstrap-blocking)');
     expect(out).toContain('**Parallel max:** 4');
     expect(out).toContain('**Kaizen:** disabled');
-    expect(out).toContain('**Docs governance:** enabled');
+    // Absent `docs_governance` block resolves to disabled — the SSOT default
+    // (config-template.md's `docs_governance.enabled` row, issue #477). This is the
+    // dedicated absent-block pin: distinct from the explicit-true and explicit-false
+    // cases covered by the two tests below.
+    expect(out).toContain('**Docs governance:** disabled');
     expect(out).toContain('**Incident mode:** disabled');
     expect(out).toContain('**Worker model policy:** cost-optimized');
     expect(out).toContain('**Auto-sync:** on');
@@ -500,6 +504,15 @@ describe('renderConfigSummary', () => {
     expect(out).toContain('**Worker model policy:** quality-first');
     expect(out).toContain('**Auto-sync:** off');
     expect(out).toContain('**Adaptive routing:** off');
+  });
+
+  // Explicit-true leg (issue #477): pinned separately from the absent-block case above so a
+  // future regression that flips the SSOT default back to "on" is caught even if someone edits
+  // this leg's assertion in isolation.
+  test('renders explicitly-enabled docs_governance as enabled', () => {
+    const out = renderConfigSummary({ docs_governance: { enabled: true } });
+
+    expect(out).toContain('**Docs governance:** enabled');
   });
 
   // V-DRY-01 regression guard: the summary must not grow a second scope-label formatter that

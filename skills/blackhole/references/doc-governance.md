@@ -6,10 +6,11 @@ alwaysApply: false
 
 # Doc Governance
 
-Gated by `docs_governance.write_governance`: inert when `.blackhole/config.json`
-`docs_governance.enabled === false` or `docs_governance.write_governance === false`. Every
-obligation below is advisory (`V-DOC-GOV-01..04`) — see `blackhole-vcodes.md` for enforcement
-weight.
+Gated by `docs_governance.write_governance`: inert when `docs_governance.enabled` does
+not resolve to `true` (absent `docs_governance` block, absent `enabled` field, or
+explicit `enabled: false` — SSOT: `config-template.md`'s `docs_governance.enabled` row,
+issue #477) or `docs_governance.write_governance === false`. Every obligation below is
+advisory (`V-DOC-GOV-01..04`) — see `blackhole-vcodes.md` for enforcement weight.
 
 ## Search-Before-Write
 
