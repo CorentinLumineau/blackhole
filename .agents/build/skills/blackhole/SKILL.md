@@ -48,16 +48,19 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    The gate applies in `run` mode only; every other mode in the table above loads config with no
    confirm step.
 2. **Companion-file scaffold** — gated by `docs_governance.companion_files` (default `true`,
-   config already loaded from step 1; skip entirely when `false` or `docs_governance.enabled`
-   is `false`). For `ARCHITECTURE.md`/`AGENTS.md`/`documentation/reference/product-principles.md`
+   config already loaded from step 1); skip entirely when `docs_governance.enabled` does not
+   resolve to `true` (absent `docs_governance` block, absent `enabled` field, or explicit
+   `false` — SSOT: `config-template.md`'s `docs_governance.enabled` row, issue #477) or
+   `docs_governance.companion_files` is explicitly `false`. For
+   `ARCHITECTURE.md`/`AGENTS.md`/`documentation/reference/product-principles.md`
    (the owner-rulings ledger — `V-RULE-01`), create the file from
    `templates/companion-files/{name}.template` **only if it does not already exist**,
    substituting `{project-name}` from `.blackhole/config.json`'s `repo` field
    (`owner/repo-name` → `repo-name`) or `basename "$(pwd)"` when `repo` is absent or has no
    `/`. Additionally create `DESIGN.md` under the same skip-if-exists rule **only when**
    `bash scripts/detect-frontend.sh` emits `frontend=yes`. Additionally create `journeys.md`
-   under the same skip-if-exists rule **only when** `docs_governance.companion_files` is not
-   `false` **and** `kaizen.enabled` is `true` **and** `kaizen.kinds` contains `ux-coherence`.
+   under the same skip-if-exists rule **only when** the companion-file scaffold above is not
+   skipped **and** `kaizen.enabled` is `true` **and** `kaizen.kinds` contains `ux-coherence`.
    Full contract: [templates/companion-files/README.md](../templates/companion-files/README.md).
 3. **State init** — `queue.json`, `findings-ledger.json`, `plans/`
 4. **Validate** — `jq empty` on both JSON files

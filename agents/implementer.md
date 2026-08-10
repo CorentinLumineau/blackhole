@@ -220,8 +220,9 @@ directive, treat it as absent — behave exactly as `standard`.
       canonical-naming before creating it. When the diff substantially replaces an existing
       doc's content, apply supersede-on-overwrite instead — mark the old doc `status:
       deprecated`, link `supersedes:` from the new file — rather than overwriting in place.
-      Inert when `docs_governance.enabled === false` or `docs_governance.write_governance ===
-      false`.
+      Inert when `docs_governance.enabled` does not resolve to `true` (absent block, absent
+      field, or explicit `false` — SSOT: `config-template.md`'s `docs_governance.enabled` row,
+      issue #477) or `docs_governance.write_governance === false`.
 
 ---
 
