@@ -6,13 +6,19 @@ import { findMissingGateMarkers } from '../lib/check-common.ts';
 // V-GITSAFE-01: cwd-independent git operations (issue #516) — the 2026-08-10 turn-4 wave
 // incident showed the orchestrator's and a worker's session cwd can silently drift into a
 // sibling worktree, and a recovery `git push -u` run from the wrong cwd corrupted upstream
-// tracking on three campaign branches. This check pins the three-file hardening: the
-// orchestrator's own worktree-creation/dispatch playbook (`phase-implement.md`), the
-// implementer worker's own mandate (`implementer.md`), and the pre-dispatch sweep
-// (`orchestrator-dispatch.md`).
+// tracking on three campaign branches. Confirmed root cause (by reproduction): `git worktree
+// add -b <branch> origin/main` sets that upstream by default on every branch it creates,
+// independent of cwd drift — `--no-track` prevents it. This check pins the three-file
+// hardening: the orchestrator's own worktree-creation/dispatch playbook (`phase-implement.md`),
+// the implementer worker's own mandate (`implementer.md`), and the pre-dispatch sweep
+// (`orchestrator-dispatch.md`). It also pins that `push.default` is scoped with `--worktree`
+// (never the shared repo config) — a repo-wide leak of that setting into the owner's main
+// clone was caught live during this issue's own review.
 
 export const PHASE_IMPLEMENT_REQUIRED_MARKERS = [
-  'git -C <scratchpad>/wt-<issue> config push.default nothing',
+  'git worktree add --no-track',
+  'config extensions.worktreeConfig true',
+  'config --worktree push.default nothing',
   '## Git operations must not depend on inherited cwd (issue #516)',
   'Branch Tracking Sweep (issue #516)',
 ];

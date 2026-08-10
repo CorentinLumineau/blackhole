@@ -12,7 +12,9 @@ import { expectMarkersPresent, expectMarkersMissing } from './lib/marker-fixture
 // shape (three files instead of two, one aggregate CheckResult).
 
 const PHASE_IMPLEMENT_FIXTURE_FIXED = `
-- [ ] git -C <scratchpad>/wt-<issue> config push.default nothing (issue #516)
+- [ ] git worktree add --no-track <scratchpad>/wt-<issue> -b blackhole/issue-<issue> origin/main
+- [ ] git -C <scratchpad>/wt-<issue> config extensions.worktreeConfig true (one-time per repo)
+- [ ] git -C <scratchpad>/wt-<issue> config --worktree push.default nothing (issue #516)
 - [ ] Branch Tracking Sweep clean before this wave's dispatch → orchestrator-dispatch.md § Branch Tracking Sweep (issue #516)
 
 ## Git operations must not depend on inherited cwd (issue #516)
