@@ -45,9 +45,12 @@ export const parseSectionLineCounts = (
 
 // Second boundary pattern (issue #323): every current `scripts/checks/*.check.ts` check function
 // is declared in this exact style — `const check<Name> = (): CheckResult => {` or `(): CheckResult[]
-// => {` — verified by grep against all 32 current check functions with zero exceptions. Widen
-// (documented, tested) rather than silently skip a function that drifts from this convention.
-export const CHECK_TS_SECTION_PATTERN = /^const check\w+\s*=\s*\(\):\s*CheckResult(\[\])?\s*=>\s*\{/;
+// => {`, optionally `export`ed (issue #554: PR #550 started exporting split check functions so
+// they can be unit-tested individually, and the unadorned pattern silently detected zero sections
+// in those files — the whole file's 68-LOC-per-section budget went unenforced instead of failing
+// loud). Widen (documented, tested) rather than silently skip a function that drifts from this
+// convention.
+export const CHECK_TS_SECTION_PATTERN = /^(export )?const check\w+\s*=\s*\(\):\s*CheckResult(\[\])?\s*=>\s*\{/;
 const MARKDOWN_SECTION_PATTERN = /^## /;
 
 const boundaryPatternFor = (target: string): RegExp =>
