@@ -321,10 +321,20 @@ Companion-doc sync bullet). Promotes artifacts staged at thinking time
       search-before-write first: if an existing doc at the target directory already covers the
       same concern, update it in place (bump `last_updated`, preserve its original `created`)
       instead of creating a duplicate.
-    - `append_row` (any `produced_by`) → read the staged row fragment; check `target_path`
-      (e.g. `documentation/decisions/INDEX.md`) for an existing row with the same discriminator
-      (the row's `path` column value) first — **idempotency guard** against a duplicate row on
-      implementer re-spawn. Append only if absent.
+    - `append_row` (any `produced_by`) → read the staged fragment; check `target_path` for an
+      existing entry with the same discriminator first — **idempotency guard** against a
+      duplicate entry on implementer re-spawn. Append only if absent. The discriminator depends
+      on the target's shape (issue #557 — the guard was originally written against the two
+      pipe-table consumers only and could not dedup a bullet-list target):
+      - Pipe-table targets (`documentation/decisions/INDEX.md`, `documentation/INDEX.md`) — the
+        row's `path` column value.
+      - `target_path === "ARCHITECTURE.md"` (bullet-list target, `## Active Constraints`) — the
+        citation suffix, the mandatory trailing `(ADR-{NNN})` or `(analyze: issue #N)`
+        attribution `planner.md` appends to every constraint bullet. This is the same
+        discriminator `planner.md`'s own near-duplicate check already uses (§ Workflow &
+        Planning Steps step 4) — reused, not reinvented (`V-INT-02`). Extract the staged
+        fragment's trailing parenthetical and skip the append if a live bullet under
+        `## Active Constraints` already ends with the same suffix.
 *   **Frontmatter rewrite mapping** (investigator `new_file` entries only — working-note
     schema → `doc-governance.md` lifecycle schema):
 
