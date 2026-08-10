@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 65;
+export const VCODE_TABLE_ROW_COUNT = 66;
 
 // § facts — value vocabularies (issue #320, ADR-007 R1′ extension). Closed sets of enum-shaped
 // strings that agent prose restates verbatim at many consumption sites, declared once here and
@@ -119,7 +119,7 @@ export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
  * array. `verify.ts` warns (does not fail) on a mismatch, so this is the sole place the
  * expectation is declared — never restate it as a literal at any consumption site.
  */
-export const EXPECTED_CHECK_COUNT = 49;
+export const EXPECTED_CHECK_COUNT = 50;
 
 /**
  * Doc-tree health thresholds (issue #462, ADR-021 D6 Scope 1) — declared exactly once here per
