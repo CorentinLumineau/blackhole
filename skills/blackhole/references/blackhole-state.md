@@ -55,15 +55,19 @@ mutation happened not to run in the same incident.
 1. Snapshot the live file to `archive/<file>-<timestamp>.json` before mutating it (queue and
    ledger alike) — recovery must never depend on a scratchpad `.tmp` file surviving by luck.
 2. Write the candidate output to `<file>.tmp`.
-3. Validate the `.tmp` file with `scripts/lib/state-write-guard.ts`'s `validateStateWrite()`
-   (queue.json's `entityKey` is `issues`, the ledger's is `findings`) before installing it. The
-   guard fails closed on any of:
+3. Validate the `.tmp` file before installing it:
+   ```
+   bun run scripts/lib/state-write-guard.ts --tmp <file>.tmp --live <file> --entity-key <key> [--allow-shrink]
+   ```
+   `<key>` is `issues` for queue.json, `findings` for the ledger. Exit code is the contract: `0`
+   validation passed, safe to install; `1` refused (reason on stderr); `2` malformed usage. The
+   guard fails closed (exit `1`) on any of:
    - the `.tmp` file is empty (0 bytes) — the case `jq empty` cannot catch
    - malformed JSON — the one case `jq empty` does catch
    - the required top-level entity key (`issues`/`findings`) is absent
-   - the entity count is lower than the live file's, unless the caller passes `allowShrink: true`
+   - the entity count is lower than the live file's, unless the caller passes `--allow-shrink`
      for a legitimate reduction (an issue removed, a ledger rotated to `archive/`) — even with
-     `allowShrink`, a collapse to exactly zero is always refused; a declared shrink is not a
+     `--allow-shrink`, a collapse to exactly zero is always refused; a declared shrink is not a
      declared wipe
 4. Only on a passing validation, atomically install: `mv <file>.tmp <file>`.
 5. Bump `refreshed_at` on every mutation.
@@ -206,10 +210,9 @@ Fix drift before spawning workers.
 
 - Run `git worktree prune` and `git fetch --prune` before creating a new worktree or branch.
 - Before removing a worktree — post-merge cleanup included, not only the mergeable-release
-  boundary — refuse when `git -C <worktree> log @{u}..HEAD` is non-empty: `git worktree remove`
-  only refuses on a dirty tree, not on unpushed history, so a merged PR alone does not prove
-  nothing local is still unpushed. Full guard and rationale: `blackhole-protocol.md` § Branch &
-  Worktree Hygiene; procedure: `recovery-protocol.md` §4/§6(c).
+  boundary — check `git -C <worktree> log @{u}..HEAD` is empty. Full guard, rationale, and
+  procedure: `blackhole-protocol.md` § Branch & Worktree Hygiene (Removal safety refusal);
+  `recovery-protocol.md` §4/§6(c).
 - Verify worktree directories are clean and removed from disk after worker tasks finish. Do not leave orphaned worktree directories in the scratchpad.
 
 Note: `config.json`'s `docs_governance` block is a kill switch for companion-file,

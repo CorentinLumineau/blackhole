@@ -79,3 +79,64 @@ export const validateStateWrite = ({
 
   return { ok: true };
 };
+
+// Issue #543 — CLI entrypoint so `blackhole-state.md` § Write protocol can cite a runnable
+// command instead of a bare function name. Exit codes let a caller branch on the outcome:
+//   0 — validation passed, safe to install the .tmp file over live state
+//   1 — validation refused; the reason is printed to stderr
+//   2 — malformed CLI usage (missing required flags)
+function parseCliArgs(argv: string[]): {
+  tmp?: string;
+  live?: string;
+  entityKey?: string;
+  allowShrink: boolean;
+} {
+  let tmp: string | undefined;
+  let live: string | undefined;
+  let entityKey: string | undefined;
+  let allowShrink = false;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--tmp' && argv[i + 1]) {
+      tmp = argv[++i];
+    } else if (arg === '--live' && argv[i + 1]) {
+      live = argv[++i];
+    } else if (arg === '--entity-key' && argv[i + 1]) {
+      entityKey = argv[++i];
+    } else if (arg === '--allow-shrink') {
+      allowShrink = true;
+    }
+  }
+
+  return { tmp, live, entityKey, allowShrink };
+}
+
+function main(): number {
+  const { tmp, live, entityKey, allowShrink } = parseCliArgs(process.argv.slice(2));
+
+  if (!tmp || !entityKey) {
+    console.error(
+      'Usage: bun run scripts/lib/state-write-guard.ts --tmp <path> --entity-key <key> [--live <path>] [--allow-shrink]',
+    );
+    return 2;
+  }
+
+  const result = validateStateWrite({
+    tmpPath: tmp,
+    livePath: live ?? null,
+    entityKey,
+    allowShrink,
+  });
+
+  if (!result.ok) {
+    console.error(result.reason);
+    return 1;
+  }
+
+  return 0;
+}
+
+if (import.meta.main) {
+  process.exit(main());
+}
