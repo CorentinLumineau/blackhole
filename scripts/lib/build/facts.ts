@@ -81,7 +81,9 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // hand-edit these numbers to make a failing check pass — split the file/section, or accept that
 // growing past the seeded ceiling is the violation being reported. Agent-file rows measured at
 // #323 implementation time (base: blackhole/issue-327, post-#322 split, post-#320 vocabularies);
-// `scripts/checks/*.check.ts` row re-measured at #336 (post build.check.ts domain split):
+// `scripts/checks/*.check.ts` row re-measured at #336 (post build.check.ts domain split);
+// `src/references/hook-schemas.md` row added at #473 (new file split out of worker-schemas.md —
+// worker-schemas.md's own row is left unchanged, never raised, per that issue):
 //
 // | File / class                       | Metric              | Measured | × 1.2 seed |
 // |-------------------------------------|---------------------|---------:|-----------:|
@@ -91,6 +93,8 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // | src/agents/planner.md                | total file LOC       | 593      | 712        |
 // | src/references/worker-schemas.md     | max `##` section LOC | 149      | 179        |
 // | src/references/worker-schemas.md     | total file LOC       | 765      | 918        |
+// | src/references/hook-schemas.md       | max `##` section LOC | 84       | 101        |
+// | src/references/hook-schemas.md       | total file LOC       | 139      | 167        |
 // | scripts/checks/*.check.ts            | max `check*()` fn LOC | 56      | 68         |
 // | scripts/checks/*.check.ts            | max single file LOC   | 181     | 218        |
 // | scripts/lib/build/*.ts               | max single file LOC   | 239     | 287        |
@@ -101,6 +105,7 @@ export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
   'src/agents/orchestrator.md': { maxSectionLoc: 18, maxFileLoc: 185 },
   'src/agents/planner.md': { maxSectionLoc: 350, maxFileLoc: 712 },
   'src/references/worker-schemas.md': { maxSectionLoc: 179, maxFileLoc: 918 },
+  'src/references/hook-schemas.md': { maxSectionLoc: 101, maxFileLoc: 167 },
   'scripts/checks/*.check.ts': { maxSectionLoc: 68, maxFileLoc: 218 },
   'scripts/lib/build/*.ts': { maxSectionLoc: 68, maxFileLoc: 287 },
 };

@@ -146,12 +146,13 @@ describe('findContentGateViolations', () => {
 });
 
 describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positives)', () => {
-  test('covers exactly the 5 declared keys', () => {
+  test('covers exactly the 6 declared keys', () => {
     expect(Object.keys(CONTENT_GATE_BUDGETS).sort()).toEqual(
       [
         'src/agents/orchestrator.md',
         'src/agents/planner.md',
         'src/references/worker-schemas.md',
+        'src/references/hook-schemas.md',
         'scripts/checks/*.check.ts',
         'scripts/lib/build/*.ts',
       ].sort(),
