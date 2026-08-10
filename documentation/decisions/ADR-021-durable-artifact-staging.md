@@ -3,7 +3,7 @@ type: adr
 status: accepted
 review_trigger: "on mercure release"
 created: 2026-08-06
-last_updated: 2026-08-06
+last_updated: 2026-08-10
 related:
   - documentation/audits/documentation-framework-alignment.md
   - documentation/decisions/ADR-010-autonomous-thinking-routes.md
@@ -189,6 +189,8 @@ equivalent is `x-docs restructure`; blackhole's is a filed issue the campaign th
 | `artifact-contract.md` | Route→artifact table; staging-area delivery mechanism | Modified — adds plan + review rows, rewrites § Delivery mechanism |
 | `.blackhole/staged/<issue>/` | Thinking-time artifact landing zone | New |
 | `planner.md`, `investigator.md` | Write to staging, not `documentation/` | Modified |
+| `planner.md` §4.8 Trigger A | Design Track ADR-promotion gate — stages the Cross-Cutting Heuristic's `ARCHITECTURE.md` `## Active Constraints` bullet append as an `append_row` manifest entry instead of writing it directly | Modified (issue #474) |
+| `planner.md` Step 4 Trigger B | Unconditional pre-track-resolution seed from an investigator `analyze` note — stages the same `ARCHITECTURE.md` `## Active Constraints` bullet append as an `append_row` manifest entry instead of writing it directly | Modified (issue #474) |
 | `phase-implement.md` Stop condition | Commit staged artifacts for the issue | Modified |
 | `implementer.md` | Copy-and-commit step | Modified |
 | `blackhole-vcodes.md` | `V-AUTO-02` → BLOCK; 2 renumbers; 1 documented divergence | Modified |
