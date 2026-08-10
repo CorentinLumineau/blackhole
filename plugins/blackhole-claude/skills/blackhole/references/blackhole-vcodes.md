@@ -24,7 +24,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-SEC-01/02 | No injection; no auth bypass | BLOCK | reviewer.md §4 (Security Checks) |
 | V-SEC-03/04 | No hardcoded secrets; no XSS | BLOCK | reviewer.md §4 (Security Checks) |
 | V-SEC-06 | Every security finding carries a concrete attack scenario | BLOCK | review-core.md § Security-mode review (exploitability gate) |
-| V-SEC-07 | Adversarial re-verification — each security finding independently re-checked before it can block merge | WARN | review-core.md § Security-mode review (adversarial re-verification) |
+| V-SEC-07 | Adversarial re-verification — each security finding independently re-checked before it can block merge | WARN | review-core.md § Independent security verification (second, independent `reviewer` spawn — issue #439) |
 | V-SEC-08 | Security findings artifact must structurally validate before merge when security_review_required: true | BLOCK | review-core.md § LGTM definition (merge-gate validator) |
 | V-SEC-09 | Local-analyze confidence-boost scan may only raise security_review_required — a clean/absent scan must never lower an already-true value | BLOCK | router.md (local_analyze confidence-boost raise-only rule) |
 | V-SEC-10 | Local-analyze grep matches must pass the one-line false-positive verification (comment/fixture/string-literal check) before counting toward a raise | WARN | router.md § Local-analyze confidence-boost mechanism (False-positive verification, steps 1-4) |
