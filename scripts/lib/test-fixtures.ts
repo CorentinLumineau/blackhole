@@ -121,14 +121,24 @@ export const withTempGitRepo = async <T>(
  * Exists for #507's cross-worktree containment coverage: the fix under test is that a target
  * inside the linked worktree is in-bounds even when the hook's own resolution cwd is the main
  * clone, so the fixture needs a real second worktree sharing the same `.git`, not just a second
- * temp dir. */
+ * temp dir.
+ *
+ * The worktree nests under `<mainRepo>/.worktrees/` by default — this repo's own convention
+ * (`.worktrees/wt-N`) and one of the two roots `allWorktreeRoots` accepts by construction
+ * (#510/F-00088: only worktrees nested under the main clone or under a configured
+ * `scratchpad_dir` are trusted, never every registered worktree unconditionally). Pass
+ * `parentDir` to place the worktree elsewhere — under a caller-supplied `scratchpad_dir`, or
+ * fully outside both accepted roots — for tests exercising that boundary directly. */
 export const withLinkedWorktree = async <T>(
   prefix: string,
   fn: (mainRepo: string, worktree: string) => Promise<T>,
+  parentDir?: (mainRepo: string) => string,
 ): Promise<T> =>
   withTempGitRepo(prefix, async (mainRepo) => {
     spawnSync('git', ['commit', '--allow-empty', '--quiet', '-m', 'init'], { cwd: mainRepo });
-    const worktree = path.join(fs.realpathSync(os.tmpdir()), `${prefix}wt-${process.pid}-${Date.now()}`);
+    const parent = parentDir ? parentDir(mainRepo) : path.join(mainRepo, '.worktrees');
+    fs.mkdirSync(parent, { recursive: true });
+    const worktree = path.join(parent, `${prefix}wt-${process.pid}-${Date.now()}`);
     spawnSync('git', ['worktree', 'add', '--detach', '--quiet', worktree], { cwd: mainRepo });
     try {
       return await fn(mainRepo, fs.realpathSync(worktree));
@@ -137,6 +147,16 @@ export const withLinkedWorktree = async <T>(
       fs.rmSync(worktree, { recursive: true, force: true });
     }
   });
+
+/** Writes `<mainRepo>/.blackhole/config.json`. `allWorktreeRoots` reads this file to widen
+ * accepted worktree roots to a configured `scratchpad_dir` (#510/F-00088) — tests exercising that
+ * boundary write a minimal config through this one helper rather than hand-rolling the file shape
+ * at each call site. */
+export const writeCampaignConfig = (mainRepo: string, config: Record<string, unknown>): void => {
+  const dir = path.join(mainRepo, '.blackhole');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
+};
 
 export const readHookEvents = (repoRoot: string): Record<string, unknown>[] => {
   const dir = path.join(repoRoot, '.blackhole', 'hook-events');

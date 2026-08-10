@@ -11,12 +11,11 @@
  * a worse outcome than a flagged-but-permitted write.
  */
 
-const fs = require('fs');
-const path = require('path');
 const { loadFilePatterns, matchFirst } = require('./utils/pattern-loader');
 const {
   readHookInput,
   allWorktreeRoots,
+  isUnderRoot,
   denyAndRecord,
   warnAndRecord,
   allowSilently,
@@ -25,37 +24,13 @@ const {
 
 const HOOK = 'validate-file-changes';
 
-/** Realpath of the nearest existing ancestor of `p` — `p` itself if it already exists (following
- * it through if it is itself a symlink), otherwise the nearest parent that does. Containment has
- * to be decided on resolved paths (temp dirs and home directories are routinely symlinks), and
- * that includes the leaf: `ln -s ~/.ssh/authorized_keys ./notes.txt` then a Write to `notes.txt`
- * must resolve through that symlink too, not just through a symlinked ancestor directory — passing
- * the target path itself (not its dirname) is what makes `fs.realpathSync` see it. `../` is
- * already refused before this runs, so an ancestor inside the worktree implies the target is
- * inside it too, for the common case where the target does not exist yet. */
-const resolveExistingAncestor = (p) => {
-  let current = path.resolve(p);
-  for (;;) {
-    try {
-      return fs.realpathSync(current);
-    } catch {
-      const parent = path.dirname(current);
-      if (parent === current) return current;
-      current = parent;
-    }
-  }
-};
-
-/** True when `filePath` resolves inside ANY of `roots` — the main clone plus every linked
- * worktree of the same repo family (see `allWorktreeRoots`'s docstring for why "any", not just
- * the one worktree the hook process happens to be sitting in). */
-const isInsideAnyRoot = (filePath, roots) => {
-  const anchor = resolveExistingAncestor(path.resolve(filePath));
-  return roots.some((root) => {
-    const realRoot = resolveExistingAncestor(root);
-    return anchor === realRoot || anchor.startsWith(realRoot + path.sep);
-  });
-};
+/** True when `filePath` resolves inside ANY of `roots` — the main clone plus every accepted
+ * linked worktree of the same repo family (see `allWorktreeRoots`'s docstring for why "any", not
+ * just the one worktree the hook process happens to be sitting in, and for how the root set
+ * itself is narrowed — #510). Reuses `isUnderRoot`'s realpath-based containment check rather than
+ * re-deriving it (`V-INT-02`) — the same resolution `allWorktreeRoots` uses to compare
+ * `scratchpad_dir` against discovered roots. */
+const isInsideAnyRoot = (filePath, roots) => roots.some((root) => isUnderRoot(filePath, root));
 
 const main = () => {
   let input;

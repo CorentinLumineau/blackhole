@@ -23,6 +23,7 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
@@ -83,13 +84,91 @@ const mainCloneRoot = (cwd = process.cwd()) => {
   }
 };
 
-/** Every worktree in the repo family `cwd` belongs to — the main clone plus every linked
- * worktree (`git worktree list --porcelain`), resolved from `cwd` for the same reason
- * `worktreeRoot`/`mainCloneRoot` are. `validate-file-changes.js`'s containment check treats a
+/** Realpath of the nearest existing ancestor of `p` — `p` itself if it already exists (following
+ * it through if it is itself a symlink), otherwise the nearest parent that does. Containment has
+ * to be decided on resolved paths (temp dirs and home directories are routinely symlinks), and
+ * that includes the leaf: `ln -s ~/.ssh/authorized_keys ./notes.txt` then a Write to `notes.txt`
+ * must resolve through that symlink too, not just through a symlinked ancestor directory — passing
+ * the target path itself (not its dirname) is what makes `fs.realpathSync` see it. Shared by
+ * `validate-file-changes.js`'s leaf-containment check and `allWorktreeRoots`'s root filter below
+ * (#510) — one resolution path for both sides of every containment comparison (`V-INT-02`). */
+const resolveExistingAncestor = (p) => {
+  let current = path.resolve(p);
+  for (;;) {
+    try {
+      return fs.realpathSync(current);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return current;
+      current = parent;
+    }
+  }
+};
+
+/** True when `candidate` resolves inside (or as) `root`, both realpath'd through
+ * `resolveExistingAncestor` first — the comparison must run on resolved paths on both sides, since
+ * either one may traverse a symlink (`/tmp` itself is a symlink on some systems). */
+const isUnderRoot = (candidate, root) => {
+  const realCandidate = resolveExistingAncestor(candidate);
+  const realRoot = resolveExistingAncestor(root);
+  return realCandidate === realRoot || realCandidate.startsWith(realRoot + path.sep);
+};
+
+/** `scratchpad_dir` values broad enough to defeat the worktree-root filter below would silently
+ * re-open the exact bypass the filter exists to close (#510/F-00088): `/`, the user's home
+ * directory, or a bare system temp root (`/tmp`, `/var/tmp`, `os.tmpdir()`) all sit above
+ * directories a worker does not control, so accepting one of them as `scratchpad_dir` is no
+ * narrower than accepting every registered worktree unconditionally. Requires an absolute path
+ * with at least two non-empty segments, distinct from $HOME and from the known bare temp roots. */
+const BARE_TEMP_DIRS = new Set(['/tmp', '/var/tmp', os.tmpdir()].map((p) => path.resolve(p)));
+
+const isAcceptableScratchpadDir = (value) => {
+  if (typeof value !== 'string' || value.length === 0 || !path.isAbsolute(value)) return false;
+  const resolved = path.resolve(value);
+  const segments = resolved.split(path.sep).filter(Boolean);
+  if (segments.length < 2) return false;
+  if (BARE_TEMP_DIRS.has(resolved)) return false;
+  const home = process.env.HOME;
+  if (home && resolved === path.resolve(home)) return false;
+  return true;
+};
+
+/** Reads and validates `scratchpad_dir` from `<mainClone>/.blackhole/config.json`. Returns null —
+ * never throws, never falls back to an unvalidated value — on every degradation: file absent,
+ * unreadable, malformed JSON, key absent, or a value `isAcceptableScratchpadDir` rejects. Callers
+ * treat null exactly like "no configured scratchpad" and narrow to main-clone-only containment;
+ * failing OPEN here (trusting an unreadable or overly-broad config) would silently re-widen the
+ * allow-list #510/F-00088 exists to narrow. */
+const readScratchpadDir = (mainClone) => {
+  let value;
+  try {
+    const raw = fs.readFileSync(path.join(mainClone, '.blackhole', 'config.json'), 'utf-8');
+    value = JSON.parse(raw).scratchpad_dir;
+  } catch {
+    return null;
+  }
+  if (value === undefined) return null;
+  if (!isAcceptableScratchpadDir(value)) {
+    console.error(
+      `[blackhole-hook] .blackhole/config.json scratchpad_dir ${JSON.stringify(value)} is too broad to trust for worktree containment — falling back to main-clone-only`,
+    );
+    return null;
+  }
+  return value;
+};
+
+/** Worktree roots this repo family's containment check trusts, resolved from `cwd` for the same
+ * reason `worktreeRoot`/`mainCloneRoot` are (#507). NOT every worktree `git worktree list
+ * --porcelain` reports — `git worktree add` is ungated (no bash-pattern blocks it), so trusting
+ * every *registered* worktree unconditionally let one such call permanently widen the
+ * Write/Edit containment allow-list to an arbitrary directory (#510/F-00088). Narrowed here to
+ * worktrees nested under the main clone, or nested under a validated `scratchpad_dir` from
+ * `<mainClone>/.blackhole/config.json` — the documented location for worker worktrees (e.g.
+ * `/tmp/blackhole-campaign/wt-42`). `validate-file-changes.js`'s containment check treats a
  * target as in-bounds when it falls under ANY of these roots, not just whichever one the hook
- * process happens to be sitting in — the actual #507 fix; `worktreeRoot` alone only ever answers
- * "which single worktree is `cwd` in", which is exactly the question that produced the bug. Null
- * outside a git context, mirroring the other two resolvers above. */
+ * process happens to be sitting in. Null outside a git context, mirroring the other two
+ * resolvers above; an empty (but non-null) array means git resolved fine but no root passed the
+ * filter, which correctly denies rather than falling open. */
 const allWorktreeRoots = (cwd = process.cwd()) => {
   try {
     const listing = git(['worktree', 'list', '--porcelain'], cwd);
@@ -97,7 +176,13 @@ const allWorktreeRoots = (cwd = process.cwd()) => {
       .split('\n')
       .filter((line) => line.startsWith('worktree '))
       .map((line) => line.slice('worktree '.length));
-    return roots.length > 0 ? roots : null;
+    if (roots.length === 0) return null;
+    const mainClone = mainCloneRoot(cwd);
+    if (!mainClone) return null;
+    const scratchpadDir = readScratchpadDir(mainClone);
+    return roots.filter(
+      (root) => isUnderRoot(root, mainClone) || (scratchpadDir !== null && isUnderRoot(root, scratchpadDir)),
+    );
   } catch {
     return null;
   }
@@ -210,6 +295,10 @@ module.exports = {
   worktreeRoot,
   mainCloneRoot,
   allWorktreeRoots,
+  resolveExistingAncestor,
+  isUnderRoot,
+  isAcceptableScratchpadDir,
+  readScratchpadDir,
   readHookInput,
   recordEvent,
   denyAndRecord,

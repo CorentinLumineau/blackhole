@@ -8,6 +8,7 @@ import {
   runPreToolUseHook,
   withLinkedWorktree,
   withTempGitRepo,
+  writeCampaignConfig,
 } from './lib/test-fixtures.ts';
 
 // Behavioral contract for the Write|Edit PreToolUse gate (#447). Covers the three block classes
@@ -214,6 +215,172 @@ describe('validate-file-changes.js', () => {
       expect(result.stdout.trim()).toBe('');
       expect(readHookEvents(mainRepo)).toEqual([]);
     });
+  });
+
+  // #510/F-00088: `allWorktreeRoots` used to trust every worktree `git worktree list --porcelain`
+  // reported unconditionally — `git worktree add` is ungated (no bash-pattern blocks it), so one
+  // such call from inside a legitimate worktree permanently widened the Write/Edit containment
+  // allow-list to an arbitrary directory. Orchestrator-reproduced: a worktree registered under an
+  // unrelated parent dir (neither nested under the main clone nor under a configured
+  // `scratchpad_dir`) must now be excluded from the root set, so a Write into it is denied. This
+  // is the missing deny-side test F-00089 flagged — the pre-fix behavior allowed this exact case.
+  test('#510: a worktree registered outside the main clone and outside scratchpad_dir is denied', async () => {
+    const evilParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-510-evil-${process.pid}-${Date.now()}`);
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-510-',
+        async (mainRepo, evilWorktree) => {
+          const target = path.join(evilWorktree, 'pwned.ts');
+          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: evilWorktree };
+          const result = await runPreToolUseHook(SCRIPT, payload, evilWorktree);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+          expect(permissionReason(result.stdout)).toMatch(/outside/i);
+          expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+        },
+        () => evilParent,
+      );
+    } finally {
+      fs.rmSync(evilParent, { recursive: true, force: true });
+    }
+  });
+
+  // #510 property 2: a worktree nested under the campaign's configured `scratchpad_dir` (the
+  // documented location for worker worktrees, e.g. `/tmp/blackhole-campaign/wt-42`) is accepted,
+  // not just worktrees nested under the main clone. The hook process is spawned from `mainRepo`
+  // while the payload names the scratchpad worktree as `cwd` — proving `scratchpad_dir` is read
+  // via `mainCloneRoot(payload.cwd)`, not the hook process's own `process.cwd()` (property 7).
+  test('#510: a worktree nested under configured scratchpad_dir is accepted', async () => {
+    const scratchpad = path.join(fs.realpathSync(os.tmpdir()), `blackhole-510-scratch-${process.pid}-${Date.now()}`);
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-510-',
+        async (mainRepo, worktree) => {
+          const target = path.join(worktree, 'src', 'foo.ts');
+          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+          const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+
+          expect(result.exitCode).toBe(0);
+          expect(result.stdout.trim()).toBe('');
+          expect(readHookEvents(mainRepo)).toEqual([]);
+        },
+        (mainRepo) => {
+          writeCampaignConfig(mainRepo, { scratchpad_dir: scratchpad });
+          return scratchpad;
+        },
+      );
+    } finally {
+      fs.rmSync(scratchpad, { recursive: true, force: true });
+    }
+  });
+
+  // #510 property 6: the scratchpad_dir value is realpath'd through the same resolution as every
+  // other containment comparison — a symlinked scratchpad_dir must still accept a worktree
+  // created under its real target, not just under the literal symlink path.
+  test('#510: a symlinked scratchpad_dir is resolved through realpath before comparison', async () => {
+    const realScratchpad = path.join(
+      fs.realpathSync(os.tmpdir()),
+      `blackhole-510-scratch-real-${process.pid}-${Date.now()}`,
+    );
+    const scratchpadLink = path.join(
+      fs.realpathSync(os.tmpdir()),
+      `blackhole-510-scratch-link-${process.pid}-${Date.now()}`,
+    );
+    fs.mkdirSync(realScratchpad, { recursive: true });
+    fs.symlinkSync(realScratchpad, scratchpadLink);
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-510-',
+        async (mainRepo, worktree) => {
+          const target = path.join(worktree, 'src', 'foo.ts');
+          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+          const result = await runPreToolUseHook(SCRIPT, payload, worktree);
+
+          expect(result.exitCode).toBe(0);
+          expect(result.stdout.trim()).toBe('');
+        },
+        (mainRepo) => {
+          // Config names the symlink; the worktree is created under the real target directory
+          // git resolves and reports — the two must still be recognized as the same root.
+          writeCampaignConfig(mainRepo, { scratchpad_dir: scratchpadLink });
+          return realScratchpad;
+        },
+      );
+    } finally {
+      fs.rmSync(scratchpadLink, { force: true });
+      fs.rmSync(realScratchpad, { recursive: true, force: true });
+    }
+  });
+
+  // #510 property 4: a malformed .blackhole/config.json must fall back to main-clone-only
+  // containment, never fall open to trusting an unparseable value's worktree anyway.
+  test('#510: malformed .blackhole/config.json falls back to main-clone-only (fail closed)', async () => {
+    const scratchpad = path.join(fs.realpathSync(os.tmpdir()), `blackhole-510-scratch-${process.pid}-${Date.now()}`);
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-510-',
+        async (mainRepo, worktree) => {
+          fs.mkdirSync(path.join(mainRepo, '.blackhole'), { recursive: true });
+          fs.writeFileSync(path.join(mainRepo, '.blackhole', 'config.json'), '{ not json');
+
+          const target = path.join(worktree, 'src', 'foo.ts');
+          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+          const result = await runPreToolUseHook(SCRIPT, payload, worktree);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionReason(result.stdout)).toMatch(/outside/i);
+        },
+        () => scratchpad,
+      );
+    } finally {
+      fs.rmSync(scratchpad, { recursive: true, force: true });
+    }
+  });
+
+  // #510 property 4: a config.json that parses fine but carries no scratchpad_dir key must also
+  // fall back to main-clone-only, not silently trust the worktree anyway.
+  test('#510: .blackhole/config.json without scratchpad_dir falls back to main-clone-only', async () => {
+    const scratchpad = path.join(fs.realpathSync(os.tmpdir()), `blackhole-510-scratch-${process.pid}-${Date.now()}`);
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-510-',
+        async (mainRepo, worktree) => {
+          writeCampaignConfig(mainRepo, { repo: 'owner/name' });
+
+          const target = path.join(worktree, 'src', 'foo.ts');
+          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+          const result = await runPreToolUseHook(SCRIPT, payload, worktree);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionReason(result.stdout)).toMatch(/outside/i);
+        },
+        () => scratchpad,
+      );
+    } finally {
+      fs.rmSync(scratchpad, { recursive: true, force: true });
+    }
+  });
+
+  // #510 property 5: a bare system temp dir as scratchpad_dir would accept a worktree created
+  // almost anywhere under it — exactly the F-00088 hole reopened through config instead of
+  // through an ungated `git worktree add`. Must be rejected, falling back to main-clone-only.
+  test('#510: an overly-broad scratchpad_dir ("/tmp") is rejected, falling back to main-clone-only', async () => {
+    await withLinkedWorktree(
+      'blackhole-hook-510-',
+      async (mainRepo, worktree) => {
+        const target = path.join(worktree, 'src', 'foo.ts');
+        const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+        const result = await runPreToolUseHook(SCRIPT, payload, worktree);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionReason(result.stdout)).toMatch(/outside/i);
+      },
+      (mainRepo) => {
+        writeCampaignConfig(mainRepo, { scratchpad_dir: fs.realpathSync(os.tmpdir()) });
+        return fs.realpathSync(os.tmpdir());
+      },
+    );
   });
 
   test('fails closed: an unparseable file-patterns.json denies even an ordinary write', async () => {
