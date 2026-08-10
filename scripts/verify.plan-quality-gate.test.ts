@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  checkExecutionStrategyHeadingGrounding,
+  checkPlanQualityGateGrounding,
+  checkStandardTrackBugfixGrounding,
   EXECUTION_STRATEGY_HEADING,
   extractBacktickPaths,
   extractStandardTrackSection,
@@ -8,6 +11,7 @@ import {
   findVagueMitigations,
   PLAN_QUALITY_GATE_REQUIRED_MARKERS,
   PLAN_QUALITY_GATE_VAGUE_WORDS,
+  runChecks,
   STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS,
 } from './checks/plan-quality-gate.check.ts';
 import { read } from './checks/check-utils.ts';
@@ -218,5 +222,48 @@ describe('STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS grounding', () => {
     const section = extractStandardTrackSection(plannerContent);
     expect(section).not.toBe('');
     expectMarkersPresent(section, STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS);
+  });
+});
+
+// Issue #534 — split the single V-PLANGATE-01 CheckResult (which had folded in the heading-drift
+// guard and the Standard Track bugfix marker check purely to avoid touching a locked facts.ts)
+// into three CheckResults: V-PLANGATE-01 keeps the two-file marker-grounding concern (same shape
+// as design-track.check.ts's V-DESIGN-02), V-PLANGATE-02 is the heading-spelling-drift concern,
+// V-PLANGATE-03 is the Standard Track track-symmetry concern. Each is now independently
+// pass/fail instead of one aggregate string conflating three unrelated regression classes — the
+// same overload shape #518 had to unpick from V-TEST-09.
+describe('checkPlanQualityGateGrounding() against the real src/ files', () => {
+  test('returns ok: true — planner.md and worker-schemas.md both carry the required markers', () => {
+    const result = checkPlanQualityGateGrounding();
+    expect(result.id).toBe('V-PLANGATE-01');
+    expect(result.detail ?? '').toBe('');
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe('checkExecutionStrategyHeadingGrounding() against the real src/ files', () => {
+  test('returns ok: true — planner.md uses the canonical heading spelling', () => {
+    const result = checkExecutionStrategyHeadingGrounding();
+    expect(result.id).toBe('V-PLANGATE-02');
+    expect(result.detail ?? '').toBe('');
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe('checkStandardTrackBugfixGrounding() against the real src/ files', () => {
+  test('returns ok: true — planner.md Standard Track section carries the bugfix stamp', () => {
+    const result = checkStandardTrackBugfixGrounding();
+    expect(result.id).toBe('V-PLANGATE-03');
+    expect(result.detail ?? '').toBe('');
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe('runChecks()', () => {
+  test('returns exactly three CheckResults, one per split concern, all passing', () => {
+    const results = runChecks();
+    expect(results).toHaveLength(3);
+    expect(results.map((r) => r.id)).toEqual(['V-PLANGATE-01', 'V-PLANGATE-02', 'V-PLANGATE-03']);
+    expect(results.every((r) => r.ok)).toBe(true);
   });
 });
