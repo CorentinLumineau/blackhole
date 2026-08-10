@@ -1,0 +1,81 @@
+import * as fs from 'fs';
+import { readJsonFile } from './fs.ts';
+
+// Issue #489 — the write-protocol guard `blackhole-state.md` § Write protocol prescribes before
+// every atomic install of a `.tmp` file over `queue.json`/`findings-ledger.json`. Replaces the
+// bare `jq empty <file>` guard, which exits 0 on a zero-byte file: it detects malformed JSON,
+// not *absent* JSON. A heredoc-authored `jq` program that failed to compile left a 0-byte `.tmp`
+// file (shell redirects truncate before the command runs); `jq empty` passed it, and the
+// campaign's entire `queue.json` (98 issue entries) was silently overwritten. This is the SSOT
+// both the protocol doc and any script call site reference (V-INT-02, one definition).
+
+export type StateWriteGuardResult = { ok: true } | { ok: false; reason: string };
+
+export type StateWriteGuardParams = {
+  /** The `.tmp` file about to be installed over `livePath`. */
+  tmpPath: string;
+  /** The live file `tmpPath` would replace, or `null`/a non-existent path for a first write. */
+  livePath: string | null;
+  /** Top-level key whose entries are counted — `issues` for queue.json, `findings` for the ledger. */
+  entityKey: string;
+  /** Explicit escape hatch for a legitimate shrink (an issue removed, a ledger rotated to
+   *  archive/). Widens the non-regression check to allow a smaller-but-non-zero count; it never
+   *  waives the zero-entity refusal below — a declared shrink is not a declared wipe. */
+  allowShrink?: boolean;
+};
+
+const countEntities = (parsed: unknown, entityKey: string): number | null => {
+  if (typeof parsed !== 'object' || parsed === null || !(entityKey in parsed)) return null;
+  const value = (parsed as Record<string, unknown>)[entityKey];
+  if (Array.isArray(value)) return value.length;
+  if (typeof value === 'object' && value !== null) return Object.keys(value).length;
+  return null;
+};
+
+export const validateStateWrite = ({
+  tmpPath,
+  livePath,
+  entityKey,
+  allowShrink = false,
+}: StateWriteGuardParams): StateWriteGuardResult => {
+  // Non-trivial size — the guard `jq empty` cannot express. A 0-byte file is refused outright,
+  // before it is even handed to a JSON parser.
+  if (fs.statSync(tmpPath).size === 0) {
+    return { ok: false, reason: `${tmpPath} is empty (0 bytes) — refusing to install over live state` };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = readJsonFile(tmpPath, tmpPath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: `malformed JSON: ${message}` };
+  }
+
+  const tmpCount = countEntities(parsed, entityKey);
+  if (tmpCount === null) {
+    return { ok: false, reason: `${tmpPath} is missing the required "${entityKey}" key or it is not an object/array` };
+  }
+
+  const liveExists = livePath !== null && fs.existsSync(livePath);
+  if (!liveExists) return { ok: true };
+
+  const liveParsed = readJsonFile(livePath as string, livePath as string);
+  const liveCount = countEntities(liveParsed, entityKey);
+  if (liveCount === null) return { ok: true }; // live file itself is structurally degenerate — nothing to regress against
+
+  // A full collapse to zero is refused even when the caller declared a shrink: the escape hatch
+  // covers "one fewer issue", not "every issue gone at once" — the exact incident shape.
+  if (tmpCount === 0 && liveCount > 0) {
+    return { ok: false, reason: `${entityKey} count would collapse to zero (was ${liveCount}) — refusing even with allowShrink` };
+  }
+
+  if (tmpCount < liveCount && !allowShrink) {
+    return {
+      ok: false,
+      reason: `${entityKey} count would regress from ${liveCount} to ${tmpCount} — pass allowShrink to confirm a deliberate removal`,
+    };
+  }
+
+  return { ok: true };
+};
