@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import {
@@ -113,6 +114,48 @@ export const withTempGitRepo = async <T>(
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+};
+
+/** Same lifecycle as withTempGitRepo, but also creates a linked worktree off an initial empty
+ * commit (`git worktree add` needs a valid commit-ish to check out) and hands both paths to `fn`.
+ * Exists for #507's cross-worktree containment coverage: the fix under test is that a target
+ * inside the linked worktree is in-bounds even when the hook's own resolution cwd is the main
+ * clone, so the fixture needs a real second worktree sharing the same `.git`, not just a second
+ * temp dir.
+ *
+ * The worktree nests under `<mainRepo>/.worktrees/` by default — this repo's own convention
+ * (`.worktrees/wt-N`) and one of the two roots `allWorktreeRoots` accepts by construction
+ * (#510/F-00088: only worktrees nested under the main clone or under a configured
+ * `scratchpad_dir` are trusted, never every registered worktree unconditionally). Pass
+ * `parentDir` to place the worktree elsewhere — under a caller-supplied `scratchpad_dir`, or
+ * fully outside both accepted roots — for tests exercising that boundary directly. */
+export const withLinkedWorktree = async <T>(
+  prefix: string,
+  fn: (mainRepo: string, worktree: string) => Promise<T>,
+  parentDir?: (mainRepo: string) => string,
+): Promise<T> =>
+  withTempGitRepo(prefix, async (mainRepo) => {
+    spawnSync('git', ['commit', '--allow-empty', '--quiet', '-m', 'init'], { cwd: mainRepo });
+    const parent = parentDir ? parentDir(mainRepo) : path.join(mainRepo, '.worktrees');
+    fs.mkdirSync(parent, { recursive: true });
+    const worktree = path.join(parent, `${prefix}wt-${process.pid}-${Date.now()}`);
+    spawnSync('git', ['worktree', 'add', '--detach', '--quiet', worktree], { cwd: mainRepo });
+    try {
+      return await fn(mainRepo, fs.realpathSync(worktree));
+    } finally {
+      spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+      fs.rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
+/** Writes `<mainRepo>/.blackhole/config.json`. `allWorktreeRoots` reads this file to widen
+ * accepted worktree roots to a configured `scratchpad_dir` (#510/F-00088) — tests exercising that
+ * boundary write a minimal config through this one helper rather than hand-rolling the file shape
+ * at each call site. */
+export const writeCampaignConfig = (mainRepo: string, config: Record<string, unknown>): void => {
+  const dir = path.join(mainRepo, '.blackhole');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
 };
 
 export const readHookEvents = (repoRoot: string): Record<string, unknown>[] => {
