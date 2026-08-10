@@ -46,7 +46,9 @@ or agent has since edited.
 
 `DESIGN.md` is created only when both of these hold:
 
-1. `docs_governance.companion_files` is not `false` in `.blackhole/config.json`
+1. `docs_governance.enabled` resolves to `true` (absent block or explicit `false` skips this —
+   SSOT: `config-template.md`'s `docs_governance.enabled` row, issue #477) and
+   `docs_governance.companion_files` is not `false` in `.blackhole/config.json`
    (the same config gate that wraps this entire scaffold step).
 2. `bash scripts/detect-frontend.sh` emits `frontend=yes` on the target repo.
 
@@ -60,7 +62,9 @@ Unlike every other companion file, `journeys.md` is not gated on universal scaff
 (`ARCHITECTURE.md`/`AGENTS.md`/`product-principles.md`) or on frontend detection
 (`DESIGN.md`). It is created only when **all three** hold:
 
-1. `docs_governance.companion_files` is not `false` in `.blackhole/config.json` (the same
+1. `docs_governance.enabled` resolves to `true` (absent block or explicit `false` skips this —
+   SSOT: `config-template.md`'s `docs_governance.enabled` row, issue #477) and
+   `docs_governance.companion_files` is not `false` in `.blackhole/config.json` (the same
    config gate that wraps this entire scaffold step).
 2. `kaizen.enabled` is `true`.
 3. `kaizen.kinds` contains `ux-coherence`.

@@ -127,7 +127,7 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 *   **Check**: when detection is true, the diff must include a same-PR update to a doc file matching § 8's globs (`**/*.md`, `documentation/**`) or an inline docstring/comment on the changed symbol. A missing update — severity `BLOCK`, V-code `V-DOCSYNC-01`, cite the `file:line` of the undocumented change.
 
 ### 10. Companion-File Audit (`V-ADA-01/02/03/05/06/07`)
-*   **Config gate**: read `.blackhole/config.json`. If `docs_governance.enabled === false` or `docs_governance.companion_files === false`, skip this entire section — emit no §10 findings.
+*   **Config gate**: read `.blackhole/config.json`. Skip this entire section — emit no §10 findings — when `docs_governance.enabled` does not resolve to `true` (absent block, absent field, or explicit `false` — SSOT: `config-template.md`'s `docs_governance.enabled` row, issue #477) or `docs_governance.companion_files === false`.
 *   **`ARCHITECTURE.md` presence (`V-ADA-01`)**: repo root (and, if a monorepo signal is present per the package-detection keywords below, each detected package root) missing `ARCHITECTURE.md` — severity `WARN`.
 *   **Decisions index currency (`V-ADA-02`)**: the diff adds or modifies a `documentation/decisions/ADR-*.md` file whose frontmatter/body marks it `Accepted`, without a same-diff row added to `documentation/decisions/INDEX.md` — severity `WARN`. A row in **either** schema detected by `scripts/detect-doc-schema.sh` (mercure's 4-column `| ADR | Title | Status | Date |` or blackhole's own 5-column `| path | summary | type | status | review_trigger |`, cited as cross-reference, not invoked) satisfies the check — only a genuinely missing row, in neither shape, referencing the new ADR trips `V-ADA-02`.
 *   **`DESIGN.md` presence (`V-ADA-03`)**: the diff touches a file matching the frontend-detection keywords (framework deps in `package.json`; `.tsx`/`.vue`/`.svelte`/`.jsx` extensions; `src/components/`, `app/components/`, `apps/web/`, `pages/`, `views/`, `public/`; Tailwind/PostCSS/Vite/Next/Nuxt config files; root `index.html` — same signal set as `scripts/detect-frontend.sh`, cited as cross-reference, not invoked) and `DESIGN.md` is absent — severity `WARN`.
@@ -308,9 +308,10 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 *   **UNTRUSTED note**: same treatment as § 10 when quoting doc body in finding summaries.
 
 ### 19. Owner-Ruling Violation Audit (`V-RULE-01`)
-*   **Config gate**: read `.blackhole/config.json`. If `docs_governance.enabled === false` or
-    `docs_governance.companion_files === false`, skip this entire section — emit no §19
-    findings.
+*   **Config gate**: read `.blackhole/config.json`. Skip this entire section — emit no §19
+    findings — when `docs_governance.enabled` does not resolve to `true` (absent block, absent
+    field, or explicit `false` — SSOT: `config-template.md`'s `docs_governance.enabled` row,
+    issue #477) or `docs_governance.companion_files === false`.
 *   **Detection**: `documentation/reference/product-principles.md` present in the reviewed
     repo. Absent file — emit no §19 findings (vacuous gate, same discipline as §§16/17).
 *   **Check**: the diff contradicts an `active`-status ruling's `Interpretation` field (never
