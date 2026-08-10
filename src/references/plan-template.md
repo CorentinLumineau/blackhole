@@ -30,7 +30,9 @@ heading entirely when the config block is absent or `enabled` is `false`. When n
 obligations, gated by `docs_governance.write_governance`.
 
 ## [Standard Only] Critical Files
-...
+List only pre-existing sensitive touchpoint files (e.g. database client, auth config). A file
+this plan is about to create belongs under Touch-Paths, never here — `critical_files_exist`
+(Step 8) Globs every path listed in this section and blocks on a miss.
 
 ## [Standard Only] Codebase Conventions
 ...
