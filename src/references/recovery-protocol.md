@@ -56,7 +56,7 @@ When ambiguous overlaps occur (one file matches multiple issues), escalate to co
 | All dirty files map to **one** issue `#N` and worktree is `wt-N` | **Resume** — clean staging if needed, re-spawn implementer |
 | Dirty files map to **multiple** issues, changes are **uncommitted** only | **Split** — per-issue partial stash or `git add -p` by touch_paths; park non-target files in stash tagged `recovery-issue-<N>`; one issue at a time |
 | Dirty files map to multiple issues but include **commits** on wrong branch | **Cherry-pick** — identify commits per issue (`git log --oneline`), cherry-pick onto correct `blackhole/issue-N` branches in correct worktrees |
-| Unmappable files, corrupted state, or wrong base branch | **Abort** — `git stash push -u -m "recovery-abort-wt-<issue> <ISO8601>"` or discard if user approves; `git worktree remove --force`; reset queue issue to `ready` / re-plan |
+| Unmappable files, corrupted state, or wrong base branch | **Abort** — `git stash push -u -m "recovery-abort-wt-<issue> <ISO8601>"` or discard if user approves; check for unpushed commits before removal exactly as §6(c) — `--force` bypasses git's own dirty-tree refusal, not this check; `git worktree remove --force`; reset queue issue to `ready` / re-plan |
 | Worktree branch PR already merged | **Stale cleanup** — see Example (c); check for unpushed commits before removal; no cherry-pick unless unmerged commits remain |
 
 Enforcement gates: `V-BRANCH-02`, `V-WORKTREE-01`, `V-SCOPE-02`.
@@ -120,6 +120,17 @@ Pop stash in the correct `wt-<issue>`; spawn implementers one wave at a time, re
 `git worktree remove` only refuses on a dirty working tree — it does not refuse on
 committed-but-unpushed history. A merged PR proves the *pushed* commits landed; it says nothing
 about commits made in the worktree after the last push (a post-push rebase, a follow-up commit).
+
+Mechanized (#532): a PreToolUse hook (`templates/hooks/pretooluse/utils/worktree-removal-guard.js`)
+now enforces this automatically for every `git worktree remove` call — including with `--force`,
+which bypasses git's own dirty-tree refusal but not this check — denying it (V-HOOK-01) when the
+target worktree's branch carries commits its remote does not have. The manual check below is what
+the hook runs; use it directly when investigating outside a Bash tool call the hook intercepts.
+When the worktree's branch has no upstream configured (`--no-track`, this campaign's own
+worktree-creation convention — #516), `@{u}` below has nothing to resolve; the hook falls back to
+comparing against `refs/remotes/origin/<branch>` instead, which a normal `git push` keeps current
+even without `-u`.
+
 Check first:
 
 ```bash

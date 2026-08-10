@@ -148,6 +148,47 @@ export const withLinkedWorktree = async <T>(
     }
   });
 
+/** Same lifecycle as `withLinkedWorktree`, but the linked worktree checks out a real `branch`
+ * (not detached HEAD) created with `--no-track`, and `mainRepo` carries a bare `origin` remote
+ * to push it to — built for the worktree-removal guard (#532), which needs to distinguish a
+ * worktree whose branch has been pushed from one that has not. `fn` receives
+ * `(mainRepo, worktree, push)`, where `push()` pushes the worktree's current HEAD to `origin` via
+ * an explicit refspec (never `-u`) — mirroring this campaign's own `--no-track` worktree
+ * convention (#516), the exact case the guard's `@{u}`-less fallback exists for. */
+export const withRemoteTrackedWorktree = async <T>(
+  prefix: string,
+  branch: string,
+  fn: (mainRepo: string, worktree: string, push: () => void) => Promise<T>,
+): Promise<T> =>
+  withTempGitRepo(prefix, async (mainRepo) => {
+    spawnSync('git', ['commit', '--allow-empty', '--quiet', '-m', 'init'], { cwd: mainRepo });
+
+    const bareRemote = makeTempDir(`${prefix}origin-`);
+    spawnSync('git', ['init', '--quiet', '--bare', bareRemote]);
+    spawnSync('git', ['remote', 'add', 'origin', bareRemote], { cwd: mainRepo });
+    spawnSync('git', ['push', '--quiet', 'origin', 'HEAD:refs/heads/main'], { cwd: mainRepo });
+
+    const parent = path.join(mainRepo, '.worktrees');
+    fs.mkdirSync(parent, { recursive: true });
+    const worktree = path.join(parent, `${prefix}wt-${process.pid}-${Date.now()}`);
+    spawnSync(
+      'git',
+      ['worktree', 'add', '--no-track', '--quiet', '-b', branch, worktree, 'HEAD'],
+      { cwd: mainRepo },
+    );
+    const push = (): void => {
+      spawnSync('git', ['push', '--quiet', 'origin', `HEAD:refs/heads/${branch}`], { cwd: worktree });
+    };
+
+    try {
+      return await fn(mainRepo, fs.realpathSync(worktree), push);
+    } finally {
+      spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+      fs.rmSync(worktree, { recursive: true, force: true });
+      fs.rmSync(bareRemote, { recursive: true, force: true });
+    }
+  });
+
 /** Writes `<mainRepo>/.blackhole/config.json`. `allWorktreeRoots` reads this file to widen
  * accepted worktree roots to a configured `scratchpad_dir` (#510/F-00088) — tests exercising that
  * boundary write a minimal config through this one helper rather than hand-rolling the file shape
