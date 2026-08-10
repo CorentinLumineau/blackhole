@@ -178,6 +178,11 @@ Fix drift before spawning workers.
 ## Worktree & Branch obligations
 
 - Run `git worktree prune` and `git fetch --prune` before creating a new worktree or branch.
+- Before removing a worktree — post-merge cleanup included, not only the mergeable-release
+  boundary — refuse when `git -C <worktree> log @{u}..HEAD` is non-empty: `git worktree remove`
+  only refuses on a dirty tree, not on unpushed history, so a merged PR alone does not prove
+  nothing local is still unpushed. Full guard and rationale: `blackhole-protocol.md` § Branch &
+  Worktree Hygiene; procedure: `recovery-protocol.md` §4/§6(c).
 - Verify worktree directories are clean and removed from disk after worker tasks finish. Do not leave orphaned worktree directories in the scratchpad.
 
 Note: `config.json`'s `docs_governance` block is a kill switch for companion-file,

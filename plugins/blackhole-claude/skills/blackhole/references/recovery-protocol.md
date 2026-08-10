@@ -57,7 +57,7 @@ When ambiguous overlaps occur (one file matches multiple issues), escalate to co
 | Dirty files map to **multiple** issues, changes are **uncommitted** only | **Split** — per-issue partial stash or `git add -p` by touch_paths; park non-target files in stash tagged `recovery-issue-<N>`; one issue at a time |
 | Dirty files map to multiple issues but include **commits** on wrong branch | **Cherry-pick** — identify commits per issue (`git log --oneline`), cherry-pick onto correct `blackhole/issue-N` branches in correct worktrees |
 | Unmappable files, corrupted state, or wrong base branch | **Abort** — `git stash push -u -m "recovery-abort-wt-<issue> <ISO8601>"` or discard if user approves; `git worktree remove --force`; reset queue issue to `ready` / re-plan |
-| Worktree branch PR already merged | **Stale cleanup** — see Example (c); no cherry-pick |
+| Worktree branch PR already merged | **Stale cleanup** — see Example (c); check for unpushed commits before removal; no cherry-pick unless unmerged commits remain |
 
 Enforcement gates: `V-BRANCH-02`, `V-WORKTREE-01`, `V-SCOPE-02`.
 
@@ -115,13 +115,27 @@ Pop stash in the correct `wt-<issue>`; spawn implementers one wave at a time, re
 
 `gh pr view` shows PR for `blackhole/issue-11` merged; `wt-11` still exists.
 
-**Action — Abort/cleanup:**
+**Action — check before removing, then Abort/cleanup:**
+
+`git worktree remove` only refuses on a dirty working tree — it does not refuse on
+committed-but-unpushed history. A merged PR proves the *pushed* commits landed; it says nothing
+about commits made in the worktree after the last push (a post-push rebase, a follow-up commit).
+Check first:
+
+```bash
+git -C <scratchpad>/wt-11 log @{u}..HEAD
+```
+
+- **Non-empty** — refuse the removal. Cherry-pick the missing commits onto a fresh branch (the
+  commits stay reachable by SHA as long as the worktree/branch still exists) before removing the
+  worktree, then re-open or update the issue's PR if the missing work is still needed.
+- **Empty** — safe to remove:
 
 ```bash
 git worktree remove <scratchpad>/wt-11
 ```
 
-Prune branch; set queue `#11` `phase: done`. Do **not** cherry-pick unless unmerged commits remain on branch (then cherry-pick to new branch only if issue still open).
+Prune branch; set queue `#11` `phase: done`.
 
 ### (d) Research/investigation artifact missing
 
