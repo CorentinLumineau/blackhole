@@ -74,7 +74,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-HUNT-01 | Kaizen issue filed from a finding without a `CONFIRMED` verification pass | BLOCK | hunter.md (CONFIRMED verification gate) |
 | V-HUNT-02 | Hunt wave filed more than `max_issues_per_wave` issues, or filed below `min_priority` | WARN | hunter.md (filing caps) |
 | V-AUTO-01 | Autonomous design proceeds without a `design-aggregate.ts` verdict artifact | BLOCK | scripts/design-aggregate.ts + planner.md §4.8 |
-| V-AUTO-02 | Thinking-route artifact missing from PR when the route fired | WARN | investigator.md (promotion self-check) |
+| V-AUTO-02 | Thinking-route artifact staged but not carried into the PR — route declared an artifact and none reached the PR; a route that declared nothing is unaffected | BLOCK | reviewer.md §25 (Staged Artifact Carry Audit) |
 | V-VIS-01 | UI-affecting diff with display_targets configured but no visual_evidence declared — silent skip | BLOCK | reviewer.md §22 (Visual Evidence Audit) |
 | V-VIS-02 | visual_evidence[] present with a declared capture_status: unavailable entry — non-blocking, never silent | WARN | reviewer.md §22 (Visual Evidence Audit) |
 | V-HOOK-01 | PreToolUse hook denied a destructive/unsafe Bash or Write/Edit call; the `.blackhole/hook-events/` record must be ingested into findings-ledger.json before the issue advances past implement | BLOCK | orchestrator-runtime.md § Triage step 1b |
