@@ -21,10 +21,17 @@ export const assertNoOrphanedInFlight = (
   return { id: 'V-STOP-01', ok: true };
 };
 
+// `flushed` is a real, emitted value as of issue #492 (leg B) — every mention in
+// checkpoint-protocol.md/phase-stop.md must cite #492 nearby, so the value's legitimizing issue
+// stays discoverable at the point of use (this replaces the pre-#492 invariant, which required a
+// "still reserved, do not emit" disclaimer instead). Shared between both files' checks below
+// (`V-DRY-01`) — the two invariants are structurally identical since #492 landed.
+export const findUncitedFlushedMention = (content: string): boolean =>
+  content.includes('flushed') && !/flushed[\s\S]{0,80}#492/.test(content);
+
 // V-STOP-02: static conformance — SKILL.md cites phase-stop.md; phase-stop.md cites
 // recovery-protocol.md §9 by reference (never restates its heal-actions steps);
-// checkpoint-protocol.md declares the three fields this mode owns; `flushed` (if present at all)
-// only appears inside the explicit leg-B reservation sentence.
+// checkpoint-protocol.md declares the three fields this mode owns.
 export const checkStopModeWiring = (): CheckResult => {
   const skill = read('src/SKILL.md');
   const phaseStop = read('src/references/phase-stop.md');
@@ -42,8 +49,8 @@ export const checkStopModeWiring = (): CheckResult => {
   for (const field of ['stopped_by', 'stop_kind', 'worker_state']) {
     if (!checkpoint.includes(field)) errors.push(`checkpoint-protocol.md missing ${field} field`);
   }
-  if (checkpoint.includes('flushed') && !/flushed[\s\S]{0,80}#479/.test(checkpoint)) {
-    errors.push('checkpoint-protocol.md emits `flushed` without the leg-B reservation note');
+  if (findUncitedFlushedMention(checkpoint)) {
+    errors.push('checkpoint-protocol.md emits `flushed` without citing issue #492');
   }
 
   // Issue #491 — stop --now leg A: worker-side ask wiring. Extends this existing check rather
@@ -57,8 +64,8 @@ export const checkStopModeWiring = (): CheckResult => {
   if (!workerSchemas.includes('Flush request')) {
     errors.push('worker-schemas.md missing the Flush request section');
   }
-  if (phaseStop.includes('flushed') && !/flushed[\s\S]{0,80}#492/.test(phaseStop)) {
-    errors.push('phase-stop.md emits `flushed` without the leg-B (#492) reservation note');
+  if (findUncitedFlushedMention(phaseStop)) {
+    errors.push('phase-stop.md emits `flushed` without citing issue #492');
   }
 
   if (errors.length) return { id: 'V-STOP-02', ok: false, detail: errors.join('; ') };

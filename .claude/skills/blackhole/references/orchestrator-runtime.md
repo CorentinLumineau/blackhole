@@ -51,9 +51,51 @@ For each completed worker:
    construct the full `routing_decisions` row from its returned JSON before appending: assign
    `id` from `next_routing_id`, `issue_ref` from spawn context, `created_at` = now, and copy
    `route`, `trigger`, and `local_analyze` verbatim from the return (`worker-schemas.md` §
-   Router).
+   Router). **Exception**: a completed worker returning `status: partial`
+   (`worker-schemas.md` § Partial result) skips this per-role branch entirely — see §
+   Partial-result ingest below.
 4. Remove the worker from `## In-flight workers`.
 5. **Idempotency:** if the artifact already satisfies the gate before spawn (e.g. `route{}` present, plan file on disk, PR open), skip re-spawn and advance phase. When checkpoint lists workers as active but artifacts already landed, run `recovery-protocol.md` §9 drift heal at turn start (`detectArtifactDrift`) — do not re-spawn completed workers when artifacts match the current revision.
+
+### Partial-result ingest (`status: partial`, `stop --now` leg B, issue #492)
+
+Applies instead of step 3's normal per-role mutation branch, still serially, one worker at a
+time (`blackhole-state.md` § Single-writer invariant, unchanged):
+
+1. **Phase**: leave `queue.json`'s `phase` at `partial_result.phase_reached` — never advance on
+   a partial return, however much work looks done.
+2. **Status & notes**: set `status: blocked`, `notes:` the string built by
+   `scripts/lib/worker-json/partial-ingest.ts`'s `buildPartialFlushNotes()` — reusing the
+   existing free-form `notes` convention (`queue-dag.md`), same pattern as
+   `awaiting-ruling-recheck`/`blocked-escalated:Permanent:<reason>`, not a new queue schema
+   field. `status: blocked` is a scheduling label ("needs a human or a resumed worker"), not a
+   claim about the work.
+3. **Worktree safety**: `worktree_disposition: dirty-uncommitted` never authorizes worktree
+   removal — `blackhole-protocol.md` § Branch & Worktree Hygiene's dirty-check refusal applies
+   unchanged. `pushed` leaves the worktree eligible for the same mergeable-release conditions
+   as any other worktree; a partial branch with no open PR simply never meets them yet.
+4. **Never drop**: append `new_findings` (if any) exactly as any other return would
+   (`blackhole-protocol.md` § Never drop findings does not suspend for a partial return).
+5. **Resume**: the next turn that dispatches this issue reads the `notes` string from step 2,
+   re-spawns the same role at `phase_reached`, and briefs it with `work_done`/`work_remaining`
+   verbatim in the 5-Field Delegation Contract's Objective field — the same
+   Failed-Approaches-entries convention already used to avoid re-attempting dead ends (§ Error
+   Classification above, cited not restated) — so the resumed worker continues instead of
+   restarting from zero.
+
+### Interaction with the Unverified-claim hold (#204) and Sprint Contract hold (#309)
+
+Both holds key on `status: complete` specifically, not any other value — a `status: partial`
+return never claims completion, so neither hold can fire on it. See `phase-implement.md` §§
+Unverified-claim hold, Sprint Contract hold for each hold's own stated trigger; this is the
+direct consequence of that trigger, not a bypass by omission. The gap that would otherwise open
+— a worker dodging both holds' evidence bar by returning `partial` instead of an
+under-verified `complete` — is closed structurally:
+`scripts/validate-worker-json.ts` requires `partial_result.work_done`/`work_remaining`
+non-empty (`worker-schemas.md` § Partial result), and step 1 above's phase-freeze means the
+issue re-enters the very same phase's `complete`-time gate (evidence, Sprint Contract) on its
+next genuine completion — #204 and #309 are deferred past a partial return, never permanently
+bypassed.
 
 ### Turn-end gate
 

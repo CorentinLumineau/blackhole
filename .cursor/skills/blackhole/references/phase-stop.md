@@ -96,20 +96,25 @@ them.
    already used for the CI-wait poller and the background barrier
    (`orchestrator-runtime.md` § Background worker barrier) — never a new polling mechanism,
    never a foreground sleep.
-3. **Cooperative return** — a worker that returns within its grace window is triaged exactly
-   like a drain-tier natural return. Tag its `## In-flight workers` row `worker_state: drained`
-   before removal (`checkpoint-protocol.md` § Fields — the value already exists in that field's
-   enum; this tier is the first to exercise it).
+3. **Cooperative return** — a worker that returns within its grace window is triaged by its
+   actual `status` (`worker-schemas.md` § Partial result, issue #492): a genuine
+   `complete`/`ready` return is triaged like a drain-tier natural return, tag its `## In-flight
+   workers` row `worker_state: drained`; a `status: partial` return runs
+   `orchestrator-runtime.md` § Triage's Partial-result ingest procedure instead, tag
+   `worker_state: flushed` (`checkpoint-protocol.md` § Fields — both values already exist in
+   that field's enum; this tier is the first to exercise either).
 4. **Uncooperative fallback** — a worker that does not return within its grace window, or that
    was never reachable (no channel on this harness), falls back to `--abandon` tier semantics —
    kill, reset, dirty-check, drift heal (steps 1-4 of the `--abandon` tier above, cited not
    restated) — for that worker alone. Sibling workers that did cooperate are unaffected: this is
    a per-worker fallback, not an escalation to killing everyone.
 5. **Run the Exit Invariants checklist** (below), verified explicitly for this tier.
-6. **Checkpoint**: `stopped_by: user`; `stop_kind: killed` if any worker fell through to step 4,
-   else `stop_kind: drained` — reusing the two values this mode already ships
-   (`checkpoint-protocol.md` § Checkpoint template), introducing no third value. `flushed` stays
-   reserved for #492 and is never emitted by this issue's implementation.
+6. **Checkpoint**: `stopped_by: user`; a three-way priority, worst case wins first —
+   `stop_kind: killed` if any worker fell through to step 4; else `stop_kind: flushed` if any
+   cooperative worker returned `status: partial` (issue #492 — the common case, since
+   `stop --now` exists to interrupt unfinished work); else `stop_kind: drained` if every
+   cooperative return was a genuine `complete`/`ready` (the edge case leg A left open)
+   (`checkpoint-protocol.md` § Checkpoint template).
 7. **Report** per Exit Invariant 6, additionally naming which workers cooperated and which were
    abandoned — the resumer needs this: an abandoned worker's worktree may hold a partial,
    possibly-broken push per `worker-schemas.md` § Flush request obligation 3.
@@ -142,18 +147,22 @@ them.
   satisfied by construction via step 3 above; `--abandon` tier: satisfied by step 2's direct
   reset, cross-checked by step 4's `recovery-protocol.md` §9 drift-heal pass — cited, never
   restated; **`stop --now` tier: satisfied by the same two paths, dispatched per worker — a
-  cooperative worker's entry clears via drain-tier triage (reused at step 3 above), an
-  uncooperative worker's entry clears via the `--abandon` tier's step 2, invoked per-worker by
-  step 4 above**)
+  cooperative worker's entry clears via drain-tier triage or the Partial-result ingest
+  procedure (reused at step 3 above), an uncooperative worker's entry clears via the
+  `--abandon` tier's step 2, invoked per-worker by step 4 above; a `flushed` entry clears via
+  the Partial-result ingest procedure specifically (`orchestrator-runtime.md` § Triage,
+  issue #492)**)
 - [ ] Every worker return received before the boundary is persisted to the ledger — the
   never-drop rule does not suspend during a stop (**`stop --now` tier: a cooperative worker's
-  flush return is a worker return like any other and is persisted the same way; an
-  uncooperative worker has no return to persist — its pushed worktree, per obligation 3 below,
-  is the artifact of record instead**)
+  flush return is a worker return like any other and is persisted the same way — a flushed
+  return's `work_done`/`work_remaining` (not fresh `evidence`) is the persisted record,
+  issue #492; an uncooperative worker has no return to persist — its pushed worktree, per
+  obligation 3 below, is the artifact of record instead**)
 - [ ] `.blackhole/campaign-checkpoint.md` written per `checkpoint-protocol.md`, naming what was
   in flight, what was killed vs drained, and what the next dispatch should be (**`stop --now`
-  tier: the same file, `stop_kind` set per step 6 above, per-row `worker_state` distinguishing
-  cooperative (`drained`) from fallen-through (`killed`) workers**)
+  tier: the same file, `stop_kind` set per step 6 above — now a real, emitted `flushed` value
+  alongside `drained`/`killed` (issue #492) — per-row `worker_state` distinguishing cooperative
+  (`drained`), flushed (`flushed`), and fallen-through (`killed`) workers**)
 - [ ] Every worktree's branch has all commits pushed to its PR branch; any dirty worktree is
   reported by path, never silently left (**`stop --now` tier: two paths, same as Invariant 1 —
   a cooperative worker satisfies this directly via obligation 3 on receipt of the ask
@@ -166,16 +175,16 @@ them.
   identical to `--abandon` tier — fires only if step 4's fallback actually killed a worker; a
   fully-cooperative `stop --now` never touches the watchdog, same as drain**)
 - [ ] The report states the exact command to resume and what will happen first (**`stop --now`
-  tier: additionally names which workers cooperated vs. were abandoned, per step 7 above — the
-  resumer needs to know which issues may carry a partial push**)
+  tier: additionally names which workers cooperated, flushed a partial result, or were
+  abandoned, per step 7 above — the resumer needs to know which issues may carry a partial push
+  (`worker_state: drained` \| `flushed` \| `killed`, issue #492)**)
 
 ## Checkpoint fields this mode owns
 
 See `checkpoint-protocol.md` § Fields: `stopped_by`, `stop_kind` (frontmatter), `worker_state`
-(per-row, `## In-flight workers`). `stop_kind` values: `drained` | `killed` | `null` — the
-`stop --now` tier reuses both non-null values (§ `stop --now` tier step 6 above), introducing no
-third value. **`flushed` is reserved for #492 (leg B) — do not emit it from this issue's
-implementation.**
+(per-row, `## In-flight workers`). `stop_kind` values now `drained` \| `killed` \| `flushed` \|
+`null`; `worker_state` values now `drained` \| `flushed` \| `killed`. `flushed` is emitted per
+step 6's priority rule above (issue #492 — no longer reserved).
 
 ## Non-goal
 
@@ -184,6 +193,7 @@ chat-relay/mode-trigger machinery as `run`, `status`, `handle #N`, `stop`, `stop
 etc. (`SKILL.md` § Modes) — no new channel for *invoking* the mode. What is new is the ask
 inside `stop --now` (§ `stop --now` tier above), and it reuses the harness's existing live-worker
 addressability where the fan-out primitive provides one, rather than inventing a file-based side
-channel. The partial-result response schema and its orchestrator-side ingest are #492's job, not
-this issue's.
+channel. The partial-result response schema and its orchestrator-side ingest now live at
+`worker-schemas.md` § Partial result and `orchestrator-runtime.md` § Partial-result ingest
+(issue #492) — this section's non-goal was scoped to leg A (#491) only.
 <!-- GENERATED by scripts/build.ts from src/references/phase-stop.md — do not hand-edit -->

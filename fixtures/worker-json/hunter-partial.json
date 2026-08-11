@@ -1,0 +1,10 @@
+{
+  "status": "partial",
+  "phase_reached": "handle",
+  "partial_result": {
+    "work_done": "Scanned two of the four declared bands for this wave.",
+    "work_remaining": "Scan the remaining bands and verify candidate findings.",
+    "worktree_disposition": "clean",
+    "branch": null
+  }
+}

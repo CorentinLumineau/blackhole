@@ -1,0 +1,10 @@
+{
+  "status": "partial",
+  "phase_reached": "handle",
+  "partial_result": {
+    "work_done": "Gathered evidence for two of the three candidate hypotheses.",
+    "work_remaining": "Test the third hypothesis and write the note file.",
+    "worktree_disposition": "clean",
+    "branch": null
+  }
+}

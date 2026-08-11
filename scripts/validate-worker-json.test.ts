@@ -229,6 +229,9 @@ describe('validateWorker planner', () => {
     });
     expect(errors.some((e) => e.includes('ruling_conflicts[0]') && e.includes('object'))).toBe(true);
   });
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('planner', 'planner-partial.json'));
 });
 
 describe('validateWorker implementer', () => {
@@ -258,6 +261,13 @@ describe('validateWorker implementer', () => {
     expectInvalid('implementer', 'implementer-complete-missing-evidence.json'));
   test('invalid empty evidence on complete', () =>
     expectInvalid('implementer', 'implementer-complete-empty-evidence.json'));
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('implementer', 'implementer-partial.json'));
+  test('invalid partial missing work_done', () =>
+    expectInvalid('implementer', 'implementer-partial-missing-work-done.json'));
+  test('invalid partial missing branch when worktree_disposition is pushed', () =>
+    expectInvalid('implementer', 'implementer-partial-missing-branch-when-pushed.json'));
 });
 
 describe('validateWorker implementer decision_records[] (ADR-012 E4)', () => {
@@ -476,6 +486,9 @@ describe('validateWorker reviewer', () => {
     expectValid('reviewer', 'reviewer-complete-vada-finding.json'));
   test('valid V-SPEC-01 finding', () =>
     expectValid('reviewer', 'reviewer-complete-vspec-block-finding.json'));
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('reviewer', 'reviewer-partial.json'));
 });
 
 describe('validateWorker router', () => {
@@ -492,6 +505,9 @@ describe('validateWorker router', () => {
   test('invalid missing ui field', () =>
     expectInvalid('router', 'router-routed-missing-ui.json'));
   test('valid routed with ui: true', () => expectValid('router', 'router-routed-ui-true.json'));
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('router', 'router-partial.json'));
 });
 
 describe('validateWorker hunter', () => {
@@ -515,6 +531,9 @@ describe('validateWorker hunter', () => {
     expectInvalid('hunter', 'hunter-complete-invalid-verification.json'));
   test('invalid complete missing territory', () =>
     expectInvalid('hunter', 'hunter-complete-missing-territory.json'));
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('hunter', 'hunter-partial.json'));
 });
 
 describe('validateWorker investigator', () => {
@@ -544,6 +563,9 @@ describe('validateWorker investigator', () => {
     expectInvalid('investigator', 'investigator-blocked-invalid-escalation-trigger.json'));
   test('invalid blocked missing note_path', () =>
     expectInvalid('investigator', 'investigator-blocked-missing-note-path.json'));
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('investigator', 'investigator-partial.json'));
 });
 
 describe('extractWorkerJson', () => {

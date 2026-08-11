@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { read } from './checks/check-utils.ts';
-import { assertNoOrphanedInFlight, checkStopModeWiring, runChecks } from './checks/stop-mode.check.ts';
+import {
+  assertNoOrphanedInFlight,
+  checkStopModeWiring,
+  findUncitedFlushedMention,
+  runChecks,
+} from './checks/stop-mode.check.ts';
 
 // Issue #478 — stop mode: drain default + --abandon tier (#476 leg A).
 // V-STOP-01: pure invariant — no queue.json in-flight entry names a worker outside the
@@ -57,10 +62,9 @@ describe('runChecks()', () => {
 });
 
 // Issue #491 — stop --now leg A: worker-side cooperation protocol. checkStopModeWiring() is
-// extended (not a new check function — EXPECTED_CHECK_COUNT stays 47) to also verify the third
+// extended (not a new check function — EXPECTED_CHECK_COUNT stays 53) to also verify the third
 // tier's static wiring: phase-stop.md documents the tier and cites worker-schemas.md for the
-// ask; worker-schemas.md documents the ask itself; `flushed` (if phase-stop.md mentions it at
-// all) only appears inside the leg-B (#492) reservation sentence.
+// ask; worker-schemas.md documents the ask itself.
 describe('checkStopModeWiring() — stop --now leg A wiring (issue #491)', () => {
   test('phase-stop.md documents the stop --now tier and cites worker-schemas.md for the ask', () => {
     const phaseStop = read('src/references/phase-stop.md');
@@ -73,16 +77,36 @@ describe('checkStopModeWiring() — stop --now leg A wiring (issue #491)', () =>
     expect(workerSchemas).toContain('Flush request');
   });
 
-  test('phase-stop.md never mentions `flushed` without the leg-B (#492) reservation note', () => {
-    const phaseStop = read('src/references/phase-stop.md');
-    if (phaseStop.includes('flushed')) {
-      expect(phaseStop).toMatch(/flushed[\s\S]{0,80}#492/);
-    }
-  });
-
   test('checkStopModeWiring() still returns ok: true once the stop --now tier lands', () => {
     const result = checkStopModeWiring();
     expect(result.detail ?? '').toBe('');
     expect(result.ok).toBe(true);
+  });
+});
+
+// Issue #492 — stop --now leg B: `flushed` is now a real, emitted value (no longer reserved).
+// findUncitedFlushedMention() replaces the pre-#492 "reservation note" invariant with a
+// "citation" invariant — every `flushed` mention must cite #492 nearby.
+describe('findUncitedFlushedMention() (issue #492)', () => {
+  test('flags a `flushed` mention with no nearby #492 citation', () => {
+    expect(findUncitedFlushedMention('stop_kind: `flushed` | `killed` | `null`')).toBe(true);
+  });
+
+  test('does not flag a `flushed` mention that cites #492 within 80 characters', () => {
+    expect(findUncitedFlushedMention('`flushed` is a real value now (issue #492)')).toBe(false);
+  });
+
+  test('does not flag content with no `flushed` mention at all', () => {
+    expect(findUncitedFlushedMention('stop_kind: `drained` | `killed` | `null`')).toBe(false);
+  });
+
+  test('flags a `flushed` mention whose #492 citation is more than 80 characters away', () => {
+    const farCitation = `flushed${'x'.repeat(90)}#492`;
+    expect(findUncitedFlushedMention(farCitation)).toBe(true);
+  });
+
+  test('checkpoint-protocol.md and phase-stop.md both cite #492 near every `flushed` mention', () => {
+    expect(findUncitedFlushedMention(read('src/references/checkpoint-protocol.md'))).toBe(false);
+    expect(findUncitedFlushedMention(read('src/references/phase-stop.md'))).toBe(false);
   });
 });

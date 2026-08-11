@@ -846,6 +846,57 @@ a partial `status`, how it differs from `complete` / `blocked` / `error` — tha
 orchestrator-side ingest/validation is #492's deliverable. This section documents only the ask;
 the response stays whatever shape the worker's role already returns today until #492 lands.
 
+## Partial result (`status: partial`, `stop --now` leg B, issue #492)
+
+A worker's answer to the Flush Request (§ Flush request above) — the response shape that
+section deliberately left undefined. `status: partial` is now a valid value on every role's
+status enum (`planner`, `implementer`, `reviewer`, `router`, `investigator`, `hunter`) via one
+shared `PARTIAL_STATUS` constant appended to each role's enum array
+(`scripts/lib/worker-json/constants.ts`) — composed onto each role's existing return shape,
+never a parallel schema (`V-DRY-01`, the issue's own framing: "a partial result is not a
+smaller complete result").
+
+```json
+{
+  "status": "partial",
+  "phase_reached": "implement",
+  "partial_result": {
+    "work_done": "Implemented the endpoint and its unit tests; PR not yet opened.",
+    "work_remaining": "Open PR, run lint, write PR description.",
+    "worktree_disposition": "pushed",
+    "branch": "blackhole/issue-492"
+  }
+}
+```
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `status` | `partial` | yes |
+| `phase_reached` | `handle` \| `plan` \| `implement` \| `review` (`queue-dag.md`'s phase enum, reused) | yes |
+| `partial_result.work_done` | non-empty string | yes |
+| `partial_result.work_remaining` | non-empty string | yes |
+| `partial_result.worktree_disposition` | `pushed` \| `clean` \| `dirty-uncommitted` | yes |
+| `partial_result.branch` | string \| `null` | required when `worktree_disposition: pushed`, else `null` |
+
+**Not a smaller `complete`.** `evidence` and `sprint_contract_status`/`ac_results[]` (§§ above)
+stay absent — both hold conditions key on `status: complete` specifically
+(`phase-implement.md` §§ Unverified-claim hold, Sprint Contract hold), which a partial return
+never claims. The honesty bar is narrative (`work_done`/`work_remaining` non-empty,
+structurally enforced by `scripts/validate-worker-json.ts`), deliberately weaker than
+`evidence`'s `{command,result}` pair: a worker mid-flush inside its 20-minute grace window
+(`phase-stop.md` § `stop --now` tier step 2) cannot always re-run verification before
+returning.
+
+**`worktree_disposition: dirty-uncommitted`** names the genuinely-incomplete case the issue
+calls out — the Flush Request's obligation 3 ("commit and push whatever is already changed")
+was not satisfiable in the grace window. It never authorizes worktree removal:
+`blackhole-protocol.md` § Branch & Worktree Hygiene's dirty-check refusal applies exactly as to
+any other dirty tree.
+
+**Consumer**: `orchestrator-runtime.md` § Triage's Partial-result ingest procedure — queue
+phase never advances past `phase_reached`; disposition and branch are recorded via the
+existing free-form `notes` convention (`queue-dag.md`), never a new queue schema field.
+
 ## Orchestrator validation
 
 Before ledger append or phase transition:
