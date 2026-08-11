@@ -43,14 +43,24 @@ export const parseSectionLineCounts = (
   return sections;
 };
 
-// Second boundary pattern (issue #323): every current `scripts/checks/*.check.ts` check function
-// is declared in this exact style — `const check<Name> = (): CheckResult => {` or `(): CheckResult[]
-// => {`, optionally `export`ed (issue #554: PR #550 started exporting split check functions so
-// they can be unit-tested individually, and the unadorned pattern silently detected zero sections
-// in those files — the whole file's 68-LOC-per-section budget went unenforced instead of failing
-// loud). Widen (documented, tested) rather than silently skip a function that drifts from this
-// convention.
-export const CHECK_TS_SECTION_PATTERN = /^(export )?const check\w+\s*=\s*\(\):\s*CheckResult(\[\])?\s*=>\s*\{/;
+// Second boundary pattern: anchors on the one invariant every `scripts/checks/*.check.ts` check
+// function declaration actually shares — a top-level `check<Name>` const assigned via `(`,
+// optionally `export`ed — without also requiring the closing `): CheckResult => {` signature
+// shape to appear on the same line. That stronger requirement silently detected zero sections for
+// any declaration whose signature wraps (a multi-line parameter list) or that is expression-bodied
+// (no trailing `{`), leaving the whole file's 68-LOC-per-section budget unenforced instead of
+// failing loud (issue #562, generalizing #554's exported-declaration fix the same way).
+export const CHECK_TS_SECTION_PATTERN = /^(export )?const check\w+\s*=\s*\(/;
+
+// A `.check.ts` target with zero detected sections has nothing for its section-LOC budget to
+// measure — `findContentGateViolations` reports no error even though the file's check functions
+// are completely unenforced. Scoped to `.check.ts` targets only: `scripts/lib/build/*.ts` is
+// legitimately section-less under the markdown boundary pattern (no `##` headers in TS) and must
+// not false-positive (issue #562).
+export const checkZeroSections = (target: string, sections: Record<string, number>): string | null =>
+  target.endsWith('.check.ts') && Object.keys(sections).length === 0
+    ? `${target} — zero check-function sections detected; CHECK_TS_SECTION_PATTERN matched nothing, so its section-LOC budget is silently unenforced`
+    : null;
 const MARKDOWN_SECTION_PATTERN = /^## /;
 
 const boundaryPatternFor = (target: string): RegExp =>
@@ -103,6 +113,8 @@ const checkContentGate = (): CheckResult => {
       const content = read(target);
       const sections = parseSectionLineCounts(content, boundaryPatternFor(target));
       const totalLoc = splitLines(content).length;
+      const zeroSectionsViolation = checkZeroSections(target, sections);
+      if (zeroSectionsViolation) errors.push(zeroSectionsViolation);
       errors.push(...findContentGateViolations(target, sections, totalLoc, budget));
     }
   }

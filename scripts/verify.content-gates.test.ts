@@ -5,6 +5,7 @@ import {
   parseSectionLineCounts,
   findContentGateViolations,
   resolveContentGateTargets,
+  checkZeroSections,
   CHECK_TS_SECTION_PATTERN,
 } from './checks/content-gates.check.ts';
 import { CONTENT_GATE_BUDGETS } from './lib/build/facts.ts';
@@ -112,6 +113,53 @@ describe('parseSectionLineCounts (CHECK_TS_SECTION_PATTERN boundary)', () => {
       'const checkPrivate = (): CheckResult => {': 3,
       'export const checkPublic = (): CheckResult => {': 3,
     });
+  });
+
+  // Issue #562: gate-content-contract.check.ts's checkGateContentContract spans its parameter
+  // list across three lines (`export const checkGateContentContract = (` / params / `):
+  // CheckResult => {`), so the boundary pattern's requirement to match the closing signature
+  // shape on the same declaration line never fires — the file falls back to zero detected
+  // sections, same failure mode as issue #554.
+  test('matches a check declaration whose parameter list spans multiple lines', () => {
+    const content = [
+      'export const checkFoo = (',
+      '  param: string,',
+      '): CheckResult => {',
+      '  return { id: "X", ok: true };',
+      '};',
+    ].join('\n');
+    expect(parseSectionLineCounts(content, CHECK_TS_SECTION_PATTERN)).toEqual({
+      'export const checkFoo = (': 5,
+    });
+  });
+
+  // Issue #562: checkpoint.check.ts's checkCheckpointAlignment (and two checks in
+  // codex-build.check.ts) are expression-bodied arrows with no trailing `{` on the declaration
+  // line — another zero-detected-sections instance found during planning, not in the issue text.
+  test('matches an expression-bodied check declaration with no trailing brace', () => {
+    const content = ['const checkFoo = (): CheckResult =>', '  helper(1, 2);'].join('\n');
+    expect(parseSectionLineCounts(content, CHECK_TS_SECTION_PATTERN)).toEqual({
+      'const checkFoo = (): CheckResult =>': 2,
+    });
+  });
+});
+
+describe('checkZeroSections', () => {
+  // Issue #562: a `.check.ts` file with zero detected sections passes its budget gate silently
+  // — there is nothing to measure, so `findContentGateViolations` reports no error even though
+  // the file's check functions are completely unenforced. Fail loud instead.
+  test('reports a violation naming the target when a .check.ts file detects zero sections', () => {
+    const violation = checkZeroSections('scripts/checks/fake.check.ts', {});
+    expect(violation).not.toBeNull();
+    expect(violation).toContain('scripts/checks/fake.check.ts');
+  });
+
+  test('does not fire when sections were detected', () => {
+    expect(checkZeroSections('scripts/checks/fake.check.ts', { 'const checkFoo = (': 3 })).toBeNull();
+  });
+
+  test('does not fire for a non-.check.ts target with zero sections (e.g. markdown boundary)', () => {
+    expect(checkZeroSections('src/agents/orchestrator.md', {})).toBeNull();
   });
 });
 
