@@ -744,6 +744,7 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
       expect(result.exitCode).toBe(2);
       expect(permissionDecision(result.stdout)).toBe('deny');
       expect(permissionReason(result.stdout)).toMatch(/verify/i);
+      expect(permissionReason(result.stdout)).toMatch(/refs\/pull/i);
 
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
@@ -838,6 +839,30 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
 
       expect(result.exitCode).toBe(2);
       expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/literal absolute path/i);
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        decision: 'deny',
+        tier: 'block',
+        pattern_id: 'worktree-remove-unresolvable-path',
+      });
+    });
+  });
+
+  test('deny: a literal path followed by a trailing 2>&1 redirect is denied as unresolvable — documented limitation, remedy in the message', async () => {
+    await withTempGitRepo('blackhole-hook-wt-', async (repo) => {
+      const target = path.join(repo, 'nonexistent-target');
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`git worktree remove ${target} 2>&1`),
+        repo,
+      );
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/no trailing redirect/i);
 
       const events = readHookEvents(repo);
       expect(events).toHaveLength(1);

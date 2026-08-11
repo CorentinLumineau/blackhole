@@ -56,7 +56,7 @@ When ambiguous overlaps occur (one file matches multiple issues), escalate to co
 | All dirty files map to **one** issue `#N` and worktree is `wt-N` | **Resume** — clean staging if needed, re-spawn implementer |
 | Dirty files map to **multiple** issues, changes are **uncommitted** only | **Split** — per-issue partial stash or `git add -p` by touch_paths; park non-target files in stash tagged `recovery-issue-<N>`; one issue at a time |
 | Dirty files map to multiple issues but include **commits** on wrong branch | **Cherry-pick** — identify commits per issue (`git log --oneline`), cherry-pick onto correct `blackhole/issue-N` branches in correct worktrees |
-| Unmappable files, corrupted state, or wrong base branch | **Abort** — `git stash push -u -m "recovery-abort-wt-<issue> <ISO8601>"` or discard if user approves; check for unpushed commits before removal exactly as §6(c) — `--force` bypasses git's own dirty-tree refusal, not this check; `git worktree remove --force`; reset queue issue to `ready` / re-plan |
+| Unmappable files, corrupted state, or wrong base branch | **Abort** — `git stash push -u -m "recovery-abort-wt-<issue> <ISO8601>"` or discard if user approves; check for unpushed commits before removal exactly as §6(c) — `--force` bypasses git's own dirty-tree refusal, not this check; `git worktree remove --force` (§6(c) for the exact standalone/literal-path form); reset queue issue to `ready` / re-plan |
 | Worktree branch PR already merged | **Stale cleanup** — see Example (c); check for unpushed commits before removal; no cherry-pick unless unmerged commits remain |
 
 Enforcement gates: `V-BRANCH-02`, `V-WORKTREE-01`, `V-SCOPE-02`.
@@ -130,6 +130,10 @@ When the worktree's branch has no upstream configured (`--no-track`, this campai
 worktree-creation convention — #516), `@{u}` below has nothing to resolve; the hook falls back to
 comparing against `refs/remotes/origin/<branch>` instead, which a normal `git push` keeps current
 even without `-u`.
+
+The hook can only verify a call it can parse statically — see `blackhole-protocol.md` § Branch &
+Worktree Hygiene for the full standalone/literal-path requirement and the unverifiable-branch
+remedy (#551); the example below already satisfies it.
 
 Check first:
 

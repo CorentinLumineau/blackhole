@@ -249,9 +249,10 @@ here).
 
 - Run `git worktree prune` and `git fetch --prune` before creating a new worktree or branch.
 - Before removing a worktree — post-merge cleanup included, not only the mergeable-release
-  boundary — check `git -C <worktree> log @{u}..HEAD` is empty. Full guard, rationale, and
-  procedure: `blackhole-protocol.md` § Branch & Worktree Hygiene (Removal safety refusal);
-  `recovery-protocol.md` §4/§6(c).
+  boundary — check `git -C <worktree> log @{u}..HEAD` is empty, then issue the removal itself as a
+  standalone command with a literal absolute path (no variable, no chained call, no trailing
+  redirect). Full guard, rationale, and procedure: `blackhole-protocol.md` § Branch & Worktree
+  Hygiene (Removal safety refusal); `recovery-protocol.md` §4/§6(c).
 - Verify worktree directories are clean and removed from disk after worker tasks finish. Do not leave orphaned worktree directories in the scratchpad.
 
 Note: `config.json`'s `docs_governance` block is a kill switch for companion-file,

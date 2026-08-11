@@ -238,7 +238,11 @@ const evaluateOneInvocation = (argTokens, cwd) => {
       tier: 'block',
       pattern_id: 'worktree-remove-unresolvable-path',
       reason:
-        'git worktree remove target could not be resolved statically (missing, dynamic, or multiple arguments) — cannot verify unpushed commits before removal',
+        'git worktree remove target could not be resolved statically (missing, dynamic, or multiple ' +
+        'arguments) — cannot verify unpushed commits before removal. Remedy: re-run as a standalone ' +
+        'command with exactly one literal absolute path (no shell variable, no glob, no chained ' +
+        '&&/; call) and no trailing redirect — a bare & inside 2>&1 or similar is parsed as a second ' +
+        'argument.',
     };
   }
 
@@ -258,7 +262,14 @@ const evaluateOneInvocation = (argTokens, cwd) => {
     return {
       tier: 'block',
       pattern_id: 'worktree-remove-unverifiable',
-      reason: `Could not verify ${resolvedPath} has no unpushed commits (${result.detail}) — refusing rather than risk silent data loss`,
+      reason:
+        `Could not verify ${resolvedPath} has no unpushed commits (${result.detail}) — refusing rather ` +
+        `than risk silent data loss. Remedy: if this is a pushed PR branch this worktree checked out ` +
+        `under a local name that doesn't match its own remote branch name, fetch its head into the ` +
+        `tracking ref this check falls back to, then retry: git fetch origin refs/pull/<PR>/head:` +
+        `refs/remotes/origin/<branch> (GitHub retains PR head refs permanently, so this gives a true ` +
+        `answer instead of bypassing the check). A branch that was genuinely never pushed anywhere ` +
+        `has no non-destructive fix — push it first.`,
     };
   }
   return null; // clean — this invocation alone does not block
