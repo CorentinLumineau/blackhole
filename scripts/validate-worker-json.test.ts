@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   extractFromHookInput,
+  extractLastAssistantText,
   extractWorkerJson,
   readTranscriptTail,
   resolveRole,
@@ -659,6 +660,51 @@ describe('readTranscriptTail', () => {
   });
 });
 
+describe('extractLastAssistantText', () => {
+  const jsonlLine = (obj: unknown) => JSON.stringify(obj);
+
+  test('returns the last assistant text block from a well-formed JSONL transcript', () => {
+    const routeJson = { status: 'complete', route: { task_type: 'bugfix' } };
+    const fencedText = '```json\n' + JSON.stringify(routeJson, null, 2) + '\n```';
+    const tail = [
+      jsonlLine({ type: 'user', message: { content: [{ type: 'text', text: 'go' }] } }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: 'thinking...' }] } }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash' }] } }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: fencedText }] } }),
+    ].join('\n');
+
+    expect(extractLastAssistantText(tail)).toBe(fencedText);
+  });
+
+  test('skips a byte-tail-truncated leading line that fails JSON.parse', () => {
+    const goodText = 'the real last assistant turn';
+    const tail = [
+      '"truncated": true, "message": {broken', // truncated leading line from a byte-tail read
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: goodText }] } }),
+    ].join('\n');
+
+    expect(extractLastAssistantText(tail)).toBe(goodText);
+  });
+
+  test('returns null when the transcript has no assistant lines', () => {
+    const tail = [
+      jsonlLine({ type: 'user', message: { content: [{ type: 'text', text: 'go' }] } }),
+      jsonlLine({ type: 'system', message: { content: [] } }),
+    ].join('\n');
+
+    expect(extractLastAssistantText(tail)).toBeNull();
+  });
+
+  test('returns null when the last assistant line has only tool_use content (no text)', () => {
+    const tail = [
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: 'earlier turn' }] } }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash' }] } }),
+    ].join('\n');
+
+    expect(extractLastAssistantText(tail)).toBeNull();
+  });
+});
+
 describe('extractFromHookInput', () => {
   let tmpDir: string;
 
@@ -985,5 +1031,92 @@ describe('validate-worker-json CLI mode', () => {
     const result = await runValidateWorkerCli(['--role', 'hunter', '--json', payload]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('error');
+  });
+});
+
+describe('recover-transcript CLI mode', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-worker-json-recover-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const jsonlLine = (obj: unknown) => JSON.stringify(obj);
+  const writeTranscript = (name: string, lines: string[]) => {
+    const filePath = path.join(tmpDir, name);
+    fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
+    return filePath;
+  };
+
+  test('valid transcript + matching role prints the exact validated JSON object, exit 0', async () => {
+    const routerJson = readFixture('router-routed.json');
+    const fencedText = '```json\n' + JSON.stringify(routerJson) + '\n```';
+    const transcriptPath = writeTranscript('router-good.jsonl', [
+      jsonlLine({ type: 'user', message: { content: [{ type: 'text', text: 'go' }] } }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: fencedText }] } }),
+    ]);
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      transcriptPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toEqual(routerJson);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('transcript path does not exist exits 1 with non-empty stderr', async () => {
+    const missingPath = path.join(tmpDir, 'does-not-exist.jsonl');
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      missingPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.trim()).not.toBe('');
+  });
+
+  test('transcript has no assistant JSON exits 1 with non-empty stderr', async () => {
+    const transcriptPath = writeTranscript('router-no-json.jsonl', [
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: 'no structured output here' }] } }),
+    ]);
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      transcriptPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.trim()).not.toBe('');
+  });
+
+  test('extracted JSON failing role-schema validation exits 1 and lists validation errors', async () => {
+    const incompleteRoute = { status: 'routed', route: { needs_split: false } };
+    const fencedText = '```json\n' + JSON.stringify(incompleteRoute) + '\n```';
+    const transcriptPath = writeTranscript('router-invalid.jsonl', [
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: fencedText }] } }),
+    ]);
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      transcriptPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('task_type');
   });
 });

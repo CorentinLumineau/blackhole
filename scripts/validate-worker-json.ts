@@ -1,12 +1,19 @@
 import * as fs from 'fs';
 import { extractWorkerJson, parseJsonObject } from './lib/worker-json/extract.ts';
 import { resolveRole } from './lib/worker-json/resolve-role.ts';
-import { readTranscriptTail } from './lib/worker-json/transcript.ts';
+import { extractLastAssistantText, readTranscriptTail } from './lib/worker-json/transcript.ts';
 import type { HookInput, Role } from './lib/worker-json/types.ts';
 import { extractFromHookInput, validateWorker } from './lib/worker-json/validate.ts';
 
 export type { HookInput, Role } from './lib/worker-json/types.ts';
-export { extractFromHookInput, extractWorkerJson, readTranscriptTail, resolveRole, validateWorker };
+export {
+  extractFromHookInput,
+  extractLastAssistantText,
+  extractWorkerJson,
+  readTranscriptTail,
+  resolveRole,
+  validateWorker,
+};
 
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -75,6 +82,7 @@ function parseCliArgs(argv: string[]) {
   let role: Role | null = null;
   let file: string | null = null;
   let json: string | null = null;
+  let recoverTranscript: string | null = null;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -86,10 +94,12 @@ function parseCliArgs(argv: string[]) {
       file = argv[++i];
     } else if (arg === '--json' && argv[i + 1]) {
       json = argv[++i];
+    } else if (arg === '--recover-transcript' && argv[i + 1]) {
+      recoverTranscript = argv[++i];
     }
   }
 
-  return { hook, role, file, json };
+  return { hook, role, file, json, recoverTranscript };
 }
 
 function runCli(role: Role, payload: unknown): number {
@@ -101,9 +111,48 @@ function runCli(role: Role, payload: unknown): number {
   return 0;
 }
 
+/**
+ * Recovers a worker's return JSON from its own persisted Claude Code subagent
+ * transcript when the return never reached the orchestrator (`recovery-protocol.md`
+ * §10). Fails loudly at every step — a missing transcript, a text-less final
+ * turn, an unparsable extraction, or a schema-invalid recovered payload are all
+ * reported to stderr and exit non-zero, never silently treated as "worker
+ * produced nothing".
+ */
+function runRecoverTranscript(role: Role, transcriptPath: string): number {
+  const tail = readTranscriptTail(transcriptPath, 200_000);
+  if (tail === null) {
+    console.error(`transcript not found or unreadable: ${transcriptPath}`);
+    return 1;
+  }
+
+  const text = extractLastAssistantText(tail);
+  if (text === null) {
+    console.error('no assistant message found in transcript');
+    return 1;
+  }
+
+  let workerJson: unknown;
+  try {
+    workerJson = extractWorkerJson(text);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+
+  const errors = validateWorker(role, workerJson);
+  if (errors.length > 0) {
+    printValidationErrors(errors);
+    return 1;
+  }
+
+  console.log(JSON.stringify(workerJson));
+  return 0;
+}
+
 async function main() {
   const argv = process.argv.slice(2);
-  const { hook, role, file, json } = parseCliArgs(argv);
+  const { hook, role, file, json, recoverTranscript } = parseCliArgs(argv);
 
   if (hook || (argv.length === 0 && !process.stdin.isTTY)) {
     process.exit(await runHook());
@@ -112,9 +161,14 @@ async function main() {
   if (!role) {
     console.error(
       'Usage: bun run scripts/validate-worker-json.ts --hook\n' +
-        '       bun run scripts/validate-worker-json.ts --role <planner|implementer|reviewer|router|investigator|hunter> (--file <path> | --json <string>)',
+        '       bun run scripts/validate-worker-json.ts --role <planner|implementer|reviewer|router|investigator|hunter> (--file <path> | --json <string>)\n' +
+        '       bun run scripts/validate-worker-json.ts --role <role> --recover-transcript <path>',
     );
     process.exit(1);
+  }
+
+  if (recoverTranscript && !file && !json) {
+    process.exit(runRecoverTranscript(role, recoverTranscript));
   }
 
   let payload: unknown;

@@ -31,6 +31,14 @@ full matrix: `references/model-routing.md`).
 Do **not** read `model:` from agent markdown frontmatter (`V-AGENT-01`). On
 `escalation_trigger` blocked returns, bump one tier on the next respawn for that role (cap `premium`).
 
+**Deterministic spawn name (mandatory)**: every background `Agent` spawn for a campaign worker
+(`router`, `planner`, `implementer`, `reviewer`, `investigator`, `hunter`) MUST pass an explicit
+`name: "<role>-<issue-number>"` — matching the existing `## In-flight workers` row convention
+`"<role> on #<issue>"` in `checkpoint-protocol.md` § In-flight workers (no new field there). This
+is what makes a worker's Claude Code subagent transcript deterministically locatable at recovery
+time (`agent-a<name>-*.jsonl`, `recovery-protocol.md` §10) — an undiscoverable transcript is an
+undiscoverable return.
+
 ### Route-derived dispatch (ADR-004 step 3)
 
 Before spawning `planner`, derive its spawn directive from the issue's `queue.json`

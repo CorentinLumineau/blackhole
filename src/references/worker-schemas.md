@@ -924,6 +924,10 @@ After a background worker batch barrier completes (`orchestrator-runtime.md` § 
    and advances normally (`orchestrator.md` § Human-in-the-Loop (HITL) & Blocker Gating, Ruling
    Re-Check Gate).
 
+**Missing return (recoverable):** when a worker signals completion but no return arrives, see
+`orchestrator-runtime.md` § Background worker barrier → Triage and `recovery-protocol.md` §10 —
+never collapse into "worker returned nothing to report."
+
 The SubagentStop **validate** hook checks JSON at handoff; the **resume** hook (#154) automates the outer coordinator loop via `resume-request.json` and an orchestrator→coordinator doorbell only. Inner-loop continuity remains the orchestrator in-turn `Await` barrier (#151) — worker stops do not inject `followup_message` to the orchestrator.
 
 ### Blocked-iteration escalation (orchestrator → coordinator)
