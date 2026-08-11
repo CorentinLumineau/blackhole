@@ -260,3 +260,24 @@ dedup, `[Kaizen]` issue filing via `filing.md`'s template, `max_issues_per_wave`
 `hunt_state` watermark write, and all four stop conditions — territory exhausted, `max_waves`,
 3 dry waves, gated-batch mid-flight no-op): see `phase-loop.md` § Kaizen hunt dispatch (single
 source, not duplicated here).
+
+## Spawn-Time Touch-Paths Amendment (issue #603)
+
+Closes the gap where an orchestrator-authorized Touch-Paths change lives only in the ephemeral
+spawn prompt: the reviewer audits the diff against the durable plan artifact
+(`.blackhole/plans/issue-N.md`), which never learned about it, and correctly reports `V-SCOPE-02`
+against a change the orchestrator itself authorized (concrete instance: PR #602 / issue #573).
+
+**Trigger**: the orchestrator is about to authorize, in a worker's spawn prompt, a Touch-Paths
+change that diverges from the plan's declared `## Touch-Paths` section — either widening it
+(a path added beyond the list) or narrowing it (a path removed from the list).
+
+**Procedure**: before spawning, append a dated `## Scope Amendments` entry to
+`.blackhole/plans/issue-N.md` — create the section on first use — via the same atomic `.tmp` +
+`mv` write already governing that file (`blackhole-state.md` § Write protocol). Exact entry
+format, the `widen`/`narrow` vocabulary, and a worked example: `plan-template.md` § Scope
+Amendments (not restated here — `V-DRY-01`).
+
+**The spawn prompt alone is never sufficient authorization.** An unamended spawn-time Touch-Paths
+change is exactly the case `V-SCOPE-02` is meant to catch, and correctly does — the amendment
+above is what closes the gap, not a reason to treat the spawn prompt as self-authorizing.
