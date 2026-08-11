@@ -3,7 +3,7 @@ type: reference
 status: current
 review_trigger: "on check-utils.ts or scripts/checks/*.check.ts import change"
 created: 2026-07-26
-last_updated: 2026-08-07
+last_updated: 2026-08-11
 related:
   - scripts/checks/check-utils.ts
   - scripts/verify.ts
@@ -28,11 +28,16 @@ This note is the consumer graph for `V-SCOPE-03` planning — update it when imp
 `runChecks(): CheckResult[]`, and aggregates results. Any change to the `CheckResult` shape
 is **BREAKING** for all rows below.
 
-## `CheckResult` consumers (24 modules)
+## `CheckResult` consumers (29 modules)
 
 All paths are repo-relative. Imports verified against `main` at issue #410; refreshed at issue
 #462 (added `hooks.check.ts`, `stop-mode.check.ts` — both landed on `main` since #410 and were
-missing from this table — plus this issue's own `doc-health.check.ts`).
+missing from this table — plus that issue's own `doc-health.check.ts`); refreshed again at issue
+#498 (added `claude-native-settings.check.ts`, `gate-content-contract.check.ts`,
+`plan-quality-gate.check.ts`, `test-integrity.check.ts`, `worker-git-safety.check.ts` — five
+modules that had landed on `main` since #462 and were missing here; also corrected this table's
+own hand-maintained counts and `check-utils.ts`'s header comment, which had independently
+drifted from each other and from this table).
 
 | Consumer | Imports from `check-utils.ts` | Role |
 |----------|-------------------------------|------|
@@ -42,6 +47,7 @@ missing from this table — plus this issue's own `doc-health.check.ts`).
 | `scripts/checks/build.check.ts` | `root`, `CheckResult` | Build output parity checks |
 | `scripts/checks/checkpoint.check.ts` | `read`, `CheckResult` | Checkpoint protocol checks |
 | `scripts/checks/claude-dist.check.ts` | `root`, `CheckResult` | Claude marketplace dist checks |
+| `scripts/checks/claude-native-settings.check.ts` | `root`, `CheckResult` | Claude native settings checks |
 | `scripts/checks/codex-build.check.ts` | `root`, `CheckResult` | Codex build output checks |
 | `scripts/checks/companion-docs.check.ts` | `read`, `CheckResult` | Companion documentation checks |
 | `scripts/checks/config-gate.check.ts` | `read`, `CheckResult` | Config gate marker checks |
@@ -49,19 +55,23 @@ missing from this table — plus this issue's own `doc-health.check.ts`).
 | `scripts/checks/coverage-regression.check.ts` | `read`, `CheckResult` | Coverage regression gate checks |
 | `scripts/checks/design-track.check.ts` | `read`, `CheckResult` | Design-track gate checks |
 | `scripts/checks/doc-health.check.ts` | `root`, `CheckResult` | Doc-tree health + INDEX.md integrity checks |
+| `scripts/checks/gate-content-contract.check.ts` | `read`, `CheckResult` | R-003 Gate Content Contract checks |
 | `scripts/checks/gemini-build.check.ts` | `root`, `read`, `CheckResult` | Gemini build output checks |
 | `scripts/checks/ground-truth.check.ts` | `root`, `read`, `CheckResult` | Ground-truth / SSOT checks |
 | `scripts/checks/hooks.check.ts` | `root`, `CheckResult` | PreToolUse hook gate checks |
 | `scripts/checks/links.check.ts` | `root`, `read`, `CheckResult` | Markdown link integrity checks |
 | `scripts/checks/parity-matrix.check.ts` | `root`, `CheckResult` | Platform parity matrix checks |
+| `scripts/checks/plan-quality-gate.check.ts` | `root`, `read`, `CheckResult` | Plan quality gate checks |
 | `scripts/checks/playbook.check.ts` | `root`, `read`, `CheckResult` | Playbook / phase doc checks |
 | `scripts/checks/schema.check.ts` | `root`, `read`, `CheckResult` | JSON schema checks |
 | `scripts/checks/single-writer.check.ts` | `read`, `CheckResult` | Single-writer invariant checks |
 | `scripts/checks/stop-mode.check.ts` | `read`, `CheckResult` | Campaign stop-mode gate checks |
+| `scripts/checks/test-integrity.check.ts` | `read`, `CheckResult` | Test integrity checks |
 | `scripts/checks/vocabulary.check.ts` | `root`, `CheckResult` | Vocabulary / naming checks |
+| `scripts/checks/worker-git-safety.check.ts` | `read`, `CheckResult` | Worker git safety checks |
 | `scripts/verify.ts` | `CheckResult` (type only) | Thin runner — `runVerifyChecks()`, exit-code helpers |
 
-**Count:** 23 `*.check.ts` domain modules + `verify.ts` = **24** direct `CheckResult` consumers.
+**Count:** 28 `*.check.ts` domain modules + `verify.ts` = **29** direct `CheckResult` consumers.
 
 ## `root`-only consumer (no `CheckResult`)
 
@@ -84,11 +94,11 @@ Changes to `root` resolution affect every check module above **plus** `check-com
 | Change | Classification | Affected consumers |
 |--------|----------------|-------------------|
 | Add optional field to `CheckResult` | TRANSPARENT (if optional) | Type-only; runtime unchanged |
-| Rename / remove `CheckResult` field | BREAKING | All 24 direct consumers + verify output formatting |
+| Rename / remove `CheckResult` field | BREAKING | All 29 direct consumers + verify output formatting |
 | Change `runChecks()` return type away from `CheckResult[]` | BREAKING | `verify.ts` + every `*.check.ts` |
 | Move `CheckResult` to another module | BREAKING | All import sites (grep `check-utils`) |
-| Change `root` path resolution | BREAKING | All 23 checks + `check-common.ts` |
-| Change `read()` encoding or path join | BREAKING | 13 modules importing `read` (see table) |
+| Change `root` path resolution | BREAKING | All 28 checks + `check-common.ts` |
+| Change `read()` encoding or path join | BREAKING | Modules importing `read()` — see the `Imports` column in the consumer table above |
 
 **Overall blast radius:** HIGH — `CheckResult` is the shared verify wire format across the
 entire `scripts/checks/` domain split (ADR-007 T5/R2').

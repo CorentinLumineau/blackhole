@@ -65,6 +65,10 @@ export const evaluateCanonicalNaming = (docsDir: string): CheckResult => {
     : { id: 'V-DOC-GOV-03', ok: true };
 };
 
+// Issue #498 (F-00036 disposition shape): near-duplicate is adr-status.check.ts's
+// parseIndexStatusMap (same 5-column INDEX.md schema/technique) — not parity-matrix.check.ts's
+// splitRow (different technique/schema). Left inline: Touch-Paths cover only this file, and a
+// single-consumer extraction would be V-YAGNI-03. Revisit via a fast-follow scoped to both files.
 // Root-INDEX row parser (shared by V-DOCHEALTH-01/02/03) — the same 5-column schema already in
 // production at documentation/decisions/INDEX.md (`path | summary | type | status |
 // review_trigger`), row paths relative to documentation/ itself (Codebase Conventions).
