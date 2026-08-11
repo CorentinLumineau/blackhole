@@ -4,7 +4,7 @@ skill: x-analyze
 status: draft
 review_trigger: "on mercure release"
 created: 2026-08-06
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 target: "blackhole alignment with mercure's documentation/ framework and enforcement model"
 related:
   - documentation/audits/mercure-parity-matrix.md
@@ -135,10 +135,10 @@ An earlier draft of this audit credited the design route with full parity, on th
 the planner writes the ADR directly (`planner.md:273-333`) rather than relying on the carry step.
 That is wrong, and the reason matters for the remedy.
 
-`planner.md:288-291` instructs the planner to "promote this design note into
+`planner.md:288-291` instructed the planner to "promote this design note into
 `documentation/decisions/ADR-{NNN}-{slug}.md` plus the `documentation/decisions/INDEX.md` row
 ... **commit the ADR inside the issue's own PR** — no orchestrator file write, no draft/final
-flip, merge is the approval."
+flip, merge was the approval."
 
 But the planner runs in **Phase 2**, and Phase 2 has no worktree, no branch, and no PR:
 
