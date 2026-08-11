@@ -55,6 +55,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - **Docs Currency (`V-DOCSYNC-01`)**: Reviewer must confirm any public-API/schema/config-surface change (§1's `V-API-01` surface) ships with a same-PR documentation update (`**/*.md`, `documentation/**`, or inline docstring); missing update is `BLOCK`.
 - **Companion-File Audit (`V-ADA-01/02/03/05/06/07`)**: Reviewer must confirm ARCHITECTURE.md, decisions/INDEX.md currency, AGENTS.md, and conditional DESIGN.md per `reviewer.md` §10; gated by `docs_governance.companion_files`. All WARN.
 - **Visual Evidence Audit (`V-VIS-01/02`)**: Reviewer must confirm `visual_evidence[]` presence/declaration on UI-affecting PRs per `reviewer.md` §22; gated by `display_targets`.
+- **Staged Artifact Carry Audit (`V-AUTO-02`, BLOCK)**: Reviewer must independently diff the issue's staged manifest against what the PR actually carried per `reviewer.md` §25; gated by `docs_governance.write_governance`.
 
 ## Gating
 
