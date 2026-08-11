@@ -307,11 +307,19 @@ Companion-doc sync bullet). Promotes artifacts staged at thinking time
     the orchestrator passed at spawn time. Absent file ⇒ no-op, nothing was staged for this
     issue.
 *   **Defensive shape guard** (runtime-scoped, distinct from #482's future CI-time schema
-    check — see plan Design Decisions): `jq empty` for JSON validity, then per-entry: `route`,
-    `sub_mode`, `produced_by`, `declared_at`, `staged_path`, `target_path`, `target_kind` all
-    present; `target_kind` ∈ `{new_file, append_row}`. A malformed entry is skipped (not fatal
-    to the rest): log a `new_findings[]` row (`kind: bug`) citing the manifest path and the
-    offending entry's index, and continue with the remaining well-formed entries.
+    check): the **Read** step above already treats an absent manifest as a no-op. A manifest
+    that **exists but is zero-byte or fails to parse as JSON** is a distinct case (issue #558)
+    — it means a staging write was attempted and failed, so treating it identically to "nothing
+    staged" would silently drop staged artifacts. Never `jq empty` to tell the two apart — see
+    `blackhole-state.md` § Write protocol for the general absent-vs-zero-byte class this
+    reuses. On zero-byte/unparseable: log a `new_findings[]` row (`kind: bug`) citing the
+    manifest path, skip the carry for this issue this run, and stop — there is no per-entry
+    validation to run against unparsed JSON. Otherwise, proceed to the existing per-entry field
+    validation unchanged: `route`, `sub_mode`, `produced_by`, `declared_at`, `staged_path`,
+    `target_path`, `target_kind` all present; `target_kind` ∈ `{new_file, append_row}`. A
+    malformed entry is skipped (not fatal to the rest): log a `new_findings[]` row (`kind: bug`)
+    citing the manifest path and the offending entry's index, and continue with the remaining
+    well-formed entries.
 *   **Branch on `target_kind`** — distinct copy semantics per entry:
     - `new_file`, `produced_by: planner` (design route) → copy `staged_path` → `target_path`
       **verbatim**. `planner.md` §4.8 already renders the ADR in the target doc-governance
