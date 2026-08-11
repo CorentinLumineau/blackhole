@@ -4,11 +4,13 @@ import * as path from 'path';
 import {
   parseSectionLineCounts,
   findContentGateViolations,
+  findContentGateWarnings,
   resolveContentGateTargets,
   checkZeroSections,
   CHECK_TS_SECTION_PATTERN,
+  runChecks,
 } from './checks/content-gates.check.ts';
-import { CONTENT_GATE_BUDGETS } from './lib/build/facts.ts';
+import { CONTENT_GATE_BUDGETS, CONTENT_GATE_WARN_RATIO } from './lib/build/facts.ts';
 
 // V-CONTENTGATE-01 (ADR-007 T6/R3′, generalized issue #323): declared-budget section/file-size
 // gate. Inline fixtures cover the parser, the glob-class resolver, and the violation-finding
@@ -228,6 +230,76 @@ describe('findContentGateViolations', () => {
   });
 });
 
+describe('findContentGateWarnings', () => {
+  test('warns on a section between 85% and 100% of maxSectionLoc (exclusive of over-budget)', () => {
+    // 45/50 = 90%, above the 85% warnRatio and at/under the 50-LOC budget.
+    const warnings = findContentGateWarnings(
+      'some/file.md',
+      { '## Nearly Full': 45 },
+      10,
+      { maxSectionLoc: 50, maxFileLoc: 1000 },
+      0.85,
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('some/file.md');
+    expect(warnings[0]).toContain('## Nearly Full');
+    expect(warnings[0]).toContain('45');
+    expect(warnings[0]).toContain('50');
+  });
+
+  test('does not warn below the warnRatio threshold', () => {
+    // 40/50 = 80%, below the 85% warnRatio.
+    const warnings = findContentGateWarnings(
+      'some/file.md',
+      { '## Plenty Of Room': 40 },
+      10,
+      { maxSectionLoc: 50, maxFileLoc: 1000 },
+      0.85,
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  test('does not double-report a section already over budget (V-CONTENTGATE-01 owns that case)', () => {
+    // 55/50 = 110%, already a hard violation — findContentGateWarnings must stay silent on it.
+    const warnings = findContentGateWarnings(
+      'some/file.md',
+      { '## Already Over': 55 },
+      10,
+      { maxSectionLoc: 50, maxFileLoc: 1000 },
+      0.85,
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  test('still warns exactly at 100% of budget (the "landed at the ceiling" shape)', () => {
+    // 50/50 = 100%, passes the hard gate (loc > budget is the violation condition) but should
+    // still surface as an advisory warning — this is the planner.md-at-350 shape from the issue.
+    const warnings = findContentGateWarnings(
+      'some/file.md',
+      { '## Exactly At Ceiling': 50 },
+      10,
+      { maxSectionLoc: 50, maxFileLoc: 1000 },
+      0.85,
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('## Exactly At Ceiling');
+  });
+
+  test('also checks the whole-file LOC against maxFileLoc, same threshold rules', () => {
+    const warnings = findContentGateWarnings(
+      'some/file.md',
+      {},
+      90,
+      { maxSectionLoc: 1000, maxFileLoc: 100 },
+      0.85,
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('whole file');
+    expect(warnings[0]).toContain('90');
+    expect(warnings[0]).toContain('100');
+  });
+});
+
 describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positives)', () => {
   test('covers exactly the 6 declared keys', () => {
     expect(Object.keys(CONTENT_GATE_BUDGETS).sort()).toEqual(
@@ -259,5 +331,28 @@ describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positi
     }
 
     expect(allErrors).toEqual([]);
+  });
+
+  test('runChecks() returns both V-CONTENTGATE-01 (unaffected hard gate) and V-CONTENTGATE-02 (advisory)', () => {
+    // Operationalizes the plan's "Hard-gate regression" stop condition as a permanent test: the
+    // hard gate must stay green (issue #545 is additive-only, AC #3 forbids any budget change),
+    // and the new advisory check must report the near-ceiling files identified in the plan's
+    // Claims Verified table (issue #545 AC #4) as a living, re-run-every-CI assertion.
+    const results = runChecks();
+    expect(results).toHaveLength(2);
+
+    const hard = results.find((r) => r.id === 'V-CONTENTGATE-01');
+    expect(hard).toBeDefined();
+    expect(hard?.ok).toBe(true);
+
+    const warn = results.find((r) => r.id === 'V-CONTENTGATE-02');
+    expect(warn).toBeDefined();
+    expect(warn?.ok).toBe(true);
+    expect(warn?.detail).toBeDefined();
+    expect(warn?.detail?.length).toBeGreaterThan(0);
+  });
+
+  test('CONTENT_GATE_WARN_RATIO is the derived 85% threshold', () => {
+    expect(CONTENT_GATE_WARN_RATIO).toBe(0.85);
   });
 });

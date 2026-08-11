@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
-import { CONTENT_GATE_BUDGETS, type ContentGateBudget } from '../lib/build/facts.ts';
+import { CONTENT_GATE_BUDGETS, CONTENT_GATE_WARN_RATIO, type ContentGateBudget } from '../lib/build/facts.ts';
 
 // ADR-007 T5/R2' — content-gates.check.ts: declared-budget section/file-size gate (split from
 // the former catch-all check file, issue #322; generalized from a single hardcoded file to a
@@ -105,8 +105,9 @@ export const findContentGateViolations = (
   return errors;
 };
 
-const checkContentGate = (): CheckResult => {
+const checkContentGate = (): CheckResult[] => {
   const errors: string[] = [];
+  const warnings: string[] = [];
 
   for (const [pattern, budget] of Object.entries(CONTENT_GATE_BUDGETS)) {
     for (const target of resolveContentGateTargets(pattern)) {
@@ -116,13 +117,47 @@ const checkContentGate = (): CheckResult => {
       const zeroSectionsViolation = checkZeroSections(target, sections);
       if (zeroSectionsViolation) errors.push(zeroSectionsViolation);
       errors.push(...findContentGateViolations(target, sections, totalLoc, budget));
+      warnings.push(...findContentGateWarnings(target, sections, totalLoc, budget, CONTENT_GATE_WARN_RATIO));
     }
   }
 
-  if (errors.length) return { id: 'V-CONTENTGATE-01', ok: false, detail: errors.join('; ') };
-  return { id: 'V-CONTENTGATE-01', ok: true };
+  const hard: CheckResult = errors.length
+    ? { id: 'V-CONTENTGATE-01', ok: false, detail: errors.join('; ') }
+    : { id: 'V-CONTENTGATE-01', ok: true };
+  const warn: CheckResult = { id: 'V-CONTENTGATE-02', ok: true, ...(warnings.length ? { detail: warnings.join('; ') } : {}) };
+
+  return [hard, warn];
+};
+
+// V-CONTENTGATE-02 (issue #545): advisory companion to findContentGateViolations — flags a
+// section or whole file that has crossed `warnRatio` of its budget. Deliberately mirrors
+// findContentGateViolations's signature (plus `warnRatio`) rather than sharing an accumulator
+// with it: a target already over budget is findContentGateViolations's case to report, and this
+// function's `<= budget` upper bound keeps the two from double-reporting the same target.
+// Declared after checkContentGate (not before, alongside findContentGateViolations) so it lands
+// inside checkContentGate's own CHECK_TS_SECTION_PATTERN section rather than growing
+// checkZeroSections's — `find...` functions don't match the `check\w+` boundary pattern
+// themselves, so they're absorbed into whichever check-section precedes them in the file.
+export const findContentGateWarnings = (
+  target: string,
+  sections: Record<string, number>,
+  totalLoc: number,
+  budget: ContentGateBudget,
+  warnRatio: number,
+): string[] => {
+  const warnings: string[] = [];
+  const pctOf = (loc: number, max: number) => Math.round((loc / max) * 100);
+  for (const [header, loc] of Object.entries(sections)) {
+    if (loc >= budget.maxSectionLoc * warnRatio && loc <= budget.maxSectionLoc) {
+      warnings.push(`${target} — ${header}: ${loc}/${budget.maxSectionLoc} LOC (${pctOf(loc, budget.maxSectionLoc)}% of section budget)`);
+    }
+  }
+  if (totalLoc >= budget.maxFileLoc * warnRatio && totalLoc <= budget.maxFileLoc) {
+    warnings.push(`${target} — whole file: ${totalLoc}/${budget.maxFileLoc} LOC (${pctOf(totalLoc, budget.maxFileLoc)}% of file budget)`);
+  }
+  return warnings;
 };
 
 // ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
-export const runChecks = (): CheckResult[] => [checkContentGate()];
+export const runChecks = (): CheckResult[] => checkContentGate();
