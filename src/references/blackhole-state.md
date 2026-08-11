@@ -38,6 +38,7 @@ Mutations to `.blackhole/queue.json` and
 | `plans/<issue>.md` | Plan artifacts (gitignored) |
 | `staged/<issue>/manifest.json` | Durable artifact staging manifest (gitignored, see § Staging (ADR-021 D1)) |
 | `archive/` | Rotated ledger snapshots and pre-mutation `queue.json` snapshots (gitignored) |
+| `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
 
 Full schemas: `{{AGENT_DIR}}/skills/blackhole/references/findings-ledger.md`,
 `queue-dag.md`.
@@ -226,6 +227,22 @@ at escalation — never overlapping for one issue), so there is no lost-update r
 `forge-sync.md`). Never ask the user to run sync. Runs at: Phase 0 bootstrap,
 start of every orchestrator turn, Phase 5 loop, before parallel batch scheduling.
 Fix drift before spawning workers.
+
+## Doc-Health Signal
+
+Same cadence as § Sync above — start of every orchestrator turn. Scope-1 only
+(`doc-governance.md` § Doc-Tree Health Signal): blackhole's own `documentation/` tree, not a
+consumer repo's.
+
+Existence-gated: when `scripts/checks/doc-health.check.ts` exists at repo root (blackhole
+self-hosting its own campaign), refresh `.blackhole/doc-health.json` via
+`bun run scripts/doc-health-signal.ts`; absent, this step is inert — no error, no attempted
+invocation (Scope-2 for consumer repos is issue #464, deferred).
+
+`doc_debt: "yes"` is visibility only: no ledger append, no phase gate. `V-DOCHEALTH-03` stays
+advisory. Full rationale for this turn-start mechanism over a literal `SessionStart` hook:
+`doc-governance.md` § Doc-Tree Health Signal, "Always-On Channel" (`V-DOC-05` — not restated
+here).
 
 ## Worktree & Branch obligations
 

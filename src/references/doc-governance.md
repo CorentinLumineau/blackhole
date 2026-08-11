@@ -101,6 +101,24 @@ All four are advisory (`ok: true` always, per `V-DOCHEALTH-03`) — mirrors merc
 for this exact signal, which likewise has no CI-blocking equivalent, surfacing instead through a
 session-start hook rather than a hard gate.
 
+### Always-On Channel (issue #499)
+
+Determination: **Reading 2 (a real gap), verified.** Before this landed, nothing read this
+signal anywhere — `doc-health.check.ts` (PR #494 / issue #462) delivered detection, but no
+agent prompt or protocol step consumed it, at turn start or otherwise.
+
+The fix is not a literal port of mercure's `SessionStart` hook: blackhole's orchestrator is one
+continuous session looped across many turns, not mercure's per-invocation Claude Code CLI
+session, so a `SessionStart` hook would fire once per orchestrator *session* rather than once
+per *turn* — under-delivering the "every phase sees documentation debt" guarantee the signal
+exists for. Instead, `blackhole-state.md` § Doc-Health Signal wires the refresh into the same
+per-turn cadence § Sync already uses for forge reconciliation — a markdown-instructed protocol
+step, not a Claude-Code-native hook, achieving the equivalent cadence with a primitive this repo
+already has.
+
+Scope boundary restated in one sentence: this channel only ever refreshes blackhole's own
+Scope-1 `documentation/` tree; Scope-2 (a consumer repo's tree) is issue #464, deferred.
+
 ## INDEX.md Maintenance
 
 The root `documentation/INDEX.md` is a single-file index of every live doc in blackhole's own
