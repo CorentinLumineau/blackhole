@@ -38,10 +38,11 @@ The contract assumes a PR branch exists at thinking time. It does not.
 | `phase-implement.md:10` | `git worktree add <scratchpad>/wt-<issue> -b blackhole/issue-<issue>` is a **Phase 3** item |
 | `phase-implement.md:26-28` | States explicitly that the plan file is **not** in the worktree working directory |
 
-The planner and investigator run in Phase 2. `planner.md:288-291` instructs the planner to
-"commit the ADR inside the issue's own PR" — an instruction that cannot be followed, because at
-that moment there is no branch and no PR. A Phase-2 agent writing to `documentation/` writes into
-the repo root's working tree, on the target branch.
+The planner and investigator run in Phase 2. `planner.md:288-291` (baseline prior to PR #475;
+see D1 below) instructed the planner to "commit the ADR inside the issue's own PR" — an
+instruction that could not be followed, because at that moment there was no branch and no PR. A
+Phase-2 agent writing to `documentation/` writes into the repo root's working tree, on the target
+branch.
 
 `artifact-contract.md:18-26` names the intended bridge — "the implementer carries the note into
 the PR branch when the route reaches implement" — but `phase-implement.md:33-40`'s 5-field
@@ -314,10 +315,11 @@ The residual volume objection stands and is answered by the D6-first sequencing 
 than by rejecting B's rule.
 
 **Mechanism 2 — Early worktree** (considered under the chosen approach). Create the worktree at
-Phase 2 so thinking-time agents commit directly, making `planner.md:288-291` literally true with
-no carry-step. *Rejected*: it holds a branch lock across the plan→implement boundary and orphans
-a worktree whenever a plan blocks — a live failure mode under the existing worktree-hygiene
-rules, traded for the removal of one copy step.
+Phase 2 so thinking-time agents commit directly, which would have made the pre-#475 baseline
+instruction (`planner.md:288-291`) literally executable with no carry-step. *Rejected*: it holds
+a branch lock across the plan→implement boundary and orphans a worktree whenever a plan blocks —
+a live failure mode under the existing worktree-hygiene rules, traded for the removal of one copy
+step.
 
 ## Post-acceptance amendments
 
@@ -402,4 +404,4 @@ what was known when.
 - ADR-013 — mercure parity program; `documentation/audits/mercure-parity-matrix.md`
 - `src/references/artifact-contract.md:11-37`
 - `src/references/phase-plan.md:17`; `src/references/phase-implement.md:10,26-40`
-- `src/agents/planner.md:288-291`; `src/agents/investigator.md:30-35,77-79`
+- `src/agents/planner.md:288-291` (baseline prior to PR #475); `src/agents/investigator.md:30-35,77-79`
