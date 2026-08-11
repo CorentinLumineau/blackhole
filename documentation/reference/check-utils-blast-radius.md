@@ -28,7 +28,7 @@ This note is the consumer graph for `V-SCOPE-03` planning — update it when imp
 `runChecks(): CheckResult[]`, and aggregates results. Any change to the `CheckResult` shape
 is **BREAKING** for all rows below.
 
-## `CheckResult` consumers (29 modules)
+## `CheckResult` consumers (30 modules)
 
 All paths are repo-relative. Imports verified against `main` at issue #410; refreshed at issue
 #462 (added `hooks.check.ts`, `stop-mode.check.ts` — both landed on `main` since #410 and were
@@ -37,7 +37,13 @@ missing from this table — plus that issue's own `doc-health.check.ts`); refres
 `plan-quality-gate.check.ts`, `test-integrity.check.ts`, `worker-git-safety.check.ts` — five
 modules that had landed on `main` since #462 and were missing here; also corrected this table's
 own hand-maintained counts and `check-utils.ts`'s header comment, which had independently
-drifted from each other and from this table).
+drifted from each other and from this table); refreshed again at #570 (added
+`queue-coherence.check.ts` — this issue's own new module — plus `jq-empty-guard.check.ts`,
+landed at #558 and missing from this table independently of #570's own addition; re-measured the
+count via the `rg` command in § Maintenance rather than hand-incrementing, per that section's own
+instruction. `vcode-severity-sync.check.ts`/`vcode-citation.check.ts` — #567/#565's own new
+modules — are not yet in this table: those two checks are held back pending a content decision
+outside this PR's scope, see #567/#565).
 
 | Consumer | Imports from `check-utils.ts` | Role |
 |----------|-------------------------------|------|
@@ -59,10 +65,12 @@ drifted from each other and from this table).
 | `scripts/checks/gemini-build.check.ts` | `root`, `read`, `CheckResult` | Gemini build output checks |
 | `scripts/checks/ground-truth.check.ts` | `root`, `read`, `CheckResult` | Ground-truth / SSOT checks |
 | `scripts/checks/hooks.check.ts` | `root`, `CheckResult` | PreToolUse hook gate checks |
+| `scripts/checks/jq-empty-guard.check.ts` | `root`, `CheckResult` | `jq empty`-as-sufficient-guard prescription checks |
 | `scripts/checks/links.check.ts` | `root`, `read`, `CheckResult` | Markdown link integrity checks |
 | `scripts/checks/parity-matrix.check.ts` | `root`, `CheckResult` | Platform parity matrix checks |
 | `scripts/checks/plan-quality-gate.check.ts` | `root`, `read`, `CheckResult` | Plan quality gate checks |
 | `scripts/checks/playbook.check.ts` | `root`, `read`, `CheckResult` | Playbook / phase doc checks |
+| `scripts/checks/queue-coherence.check.ts` | `root`, `CheckResult` | Live `.blackhole/queue.json` coherence checks |
 | `scripts/checks/schema.check.ts` | `root`, `read`, `CheckResult` | JSON schema checks |
 | `scripts/checks/single-writer.check.ts` | `read`, `CheckResult` | Single-writer invariant checks |
 | `scripts/checks/stop-mode.check.ts` | `read`, `CheckResult` | Campaign stop-mode gate checks |
@@ -71,7 +79,7 @@ drifted from each other and from this table).
 | `scripts/checks/worker-git-safety.check.ts` | `read`, `CheckResult` | Worker git safety checks |
 | `scripts/verify.ts` | `CheckResult` (type only) | Thin runner — `runVerifyChecks()`, exit-code helpers |
 
-**Count:** 28 `*.check.ts` domain modules + `verify.ts` = **29** direct `CheckResult` consumers.
+**Count:** 30 `*.check.ts` domain modules + `verify.ts` = **31** direct `CheckResult` consumers.
 
 ## `root`-only consumer (no `CheckResult`)
 
@@ -94,10 +102,10 @@ Changes to `root` resolution affect every check module above **plus** `check-com
 | Change | Classification | Affected consumers |
 |--------|----------------|-------------------|
 | Add optional field to `CheckResult` | TRANSPARENT (if optional) | Type-only; runtime unchanged |
-| Rename / remove `CheckResult` field | BREAKING | All 29 direct consumers + verify output formatting |
+| Rename / remove `CheckResult` field | BREAKING | All 31 direct consumers + verify output formatting |
 | Change `runChecks()` return type away from `CheckResult[]` | BREAKING | `verify.ts` + every `*.check.ts` |
 | Move `CheckResult` to another module | BREAKING | All import sites (grep `check-utils`) |
-| Change `root` path resolution | BREAKING | All 28 checks + `check-common.ts` |
+| Change `root` path resolution | BREAKING | All 30 checks + `check-common.ts` |
 | Change `read()` encoding or path join | BREAKING | Modules importing `read()` — see the `Imports` column in the consumer table above |
 
 **Overall blast radius:** HIGH — `CheckResult` is the shared verify wire format across the
