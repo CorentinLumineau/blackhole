@@ -8,7 +8,7 @@ import {
   parseVcodeEnforcementSites,
   findMissingEnforcementSites,
 } from './checks/ground-truth.check.ts';
-import { AGENT_NAMES } from './lib/build/facts.ts';
+import { AGENT_NAMES, VCODE_TABLE_ROW_COUNT } from './lib/build/facts.ts';
 import { read } from './checks/check-utils.ts';
 
 // V-GROUND-01 (ADR-007 T3/R1′): two-sided facts-conformance — an independent filesystem scan is
@@ -208,7 +208,7 @@ describe('findMissingEnforcementSites', () => {
   test('the real blackhole-vcodes.md table has no row with an empty enforcement-site cell', () => {
     const vcodes = read('src/references/blackhole-vcodes.md');
     const rows = parseVcodeEnforcementSites(vcodes);
-    expect(rows.length).toBe(67);
+    expect(rows.length).toBe(VCODE_TABLE_ROW_COUNT);
     expect(findMissingEnforcementSites(rows)).toEqual([]);
   });
 });
