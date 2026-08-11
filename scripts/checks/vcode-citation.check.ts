@@ -9,21 +9,11 @@ import { parseVcodeTableRows, walkMdFilesAbs } from '../lib/check-common.ts';
 // fourth divergent pipe-table parser — see that function's header comment for the other three
 // precedents.
 
-// Three named, individually-cited, removable exemptions (not a blanket allow-list — a growing
-// allow-list would defeat the check, per the issue's own AC). All three are section-resolves-fine,
-// code-string-absent (V-CITE-02) cases, each tracked by a real issue — delete the entry when its
-// issue resolves the underlying drift:
-//   - V-SEC-10: router.md's cited section exists but never spells out the literal string.
-//     Tracked at #564.
-//   - V-AUTO-01: both cited files exist; `planner.md §4.8` is a two-level prose subsection
-//     number, not a literal heading, so it falls to the whole-file fallback tier (see
-//     resolveSection's caller below) — the literal string still never appears in either file.
-//     Tracked at #588.
-//   - V-TEST-09: its cited heading (`implementer.md § Verification Evidence Gate`) resolves
-//     fine, but the code is never mentioned in that section's body — the real mention lives at
-//     implementer.md:81, an unrelated earlier step ("Coverage-regression gate" under step 6).
-//     The citation points at the wrong section entirely. Tracked at #587.
-export const KNOWN_CITATION_EXEMPTIONS = ['V-SEC-10' /* #564 */, 'V-AUTO-01' /* #588 */, 'V-TEST-09' /* #587 */];
+// #564/#587/#588 closed the three original section-resolves-fine, code-string-absent
+// (V-CITE-02) near-misses this array once held (V-SEC-10, V-AUTO-01, V-TEST-09 respectively).
+// The mechanism stays — a named, individually-cited, removable exemption list, never a blanket
+// allow-list — for whichever genuine future case needs it.
+export const KNOWN_CITATION_EXEMPTIONS: string[] = [];
 
 type Segment = { file: string; sectionRef: string | null };
 
