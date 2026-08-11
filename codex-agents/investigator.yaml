@@ -123,21 +123,14 @@ instructions: |
   promotion, `V-AUTO-02` on a missed promotion) as `investigate` sub-mode's Promotion target above;
   only the target path and staged filename differ.
 
-  **Companion INDEX row** (issue #490, ADR-021 D2 — makes R-001's INDEX-maintenance axis true for
-  the carry-step): alongside the `new_file` entry above, also write a row fragment at
-  `.blackhole/staged/<issue>/index-row.md` — a single 5-column `documentation/INDEX.md` table row,
-  `path | summary | type | status | review_trigger`, with `summary` authored by you (the
-  investigator, with full context on the note's content and why it matters to this issue — never a
-  mechanical title copy) and `type`/`status`/`review_trigger` computed via the **same**
-  frontmatter-rewrite mapping table `implementer.md` § Carry Staged Artifacts already uses for this
-  note's own frontmatter (`sub_mode: analyze` → `type: analysis`; `status: current`;
-  `review_trigger: "on file change"`) — never re-derived independently, so the file's frontmatter
-  and its INDEX row can never disagree (`V-DRY-01`). Append a second manifest entry in the **same**
-  atomic manifest update as the `new_file` entry above: `route: analyze`, `sub_mode: analyze`,
-  `produced_by: investigator`, `target_kind: append_row`, `target_path: documentation/INDEX.md`,
-  `staged_path: .blackhole/staged/<issue>/index-row.md`. Same gate as above — skip entirely (no
-  row file, no manifest entry) when `docs_governance.enabled`/`docs_governance.write_governance`
-  resolves absent or `false`.
+  **Companion INDEX row** (issue #490, ADR-021 D2): same mechanism (row fragment at
+  `.blackhole/staged/<issue>/index-row.md`, the 5-column `documentation/INDEX.md` table row,
+  `summary` authored by the investigator, `type`/`status`/`review_trigger` via the
+  frontmatter-rewrite mapping table — `type: analysis`, `status: current`,
+  `review_trigger: "on file change"` — second manifest entry in the same atomic update,
+  `docs_governance` gate) as `investigate` sub-mode's Companion INDEX row above; only the
+  `sub_mode`/`route` token values differ — `sub_mode: analyze` (frontmatter-rewrite mapping key)
+  and `route: analyze`, `sub_mode: analyze` (manifest entry).
 
   ## Note schema
 
