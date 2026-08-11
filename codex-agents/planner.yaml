@@ -299,7 +299,7 @@ instructions: |
       critics' raw JSON (subsection 3), and the Refactoring Impact Analysis rows (subsection 6).
       The planner reads the script's returned `status`.
       **The planner MUST NOT substitute its own judgment** for it — the script is the sole source
-      of the verdict, never the planner's own read of the artifact's substance:
+      of the verdict, never the planner's own read of the artifact's substance — skipping the invocation is a `V-AUTO-01` BLOCK finding:
       - `status: "ready"` (from `design-aggregate.ts`) → before writing, run
         `scripts/detect-doc-schema.sh` (repo-convention-precedence detection, ADR-012 E1) against
         both target artifacts: `index` mode on `documentation/decisions/INDEX.md`, `frontmatter`

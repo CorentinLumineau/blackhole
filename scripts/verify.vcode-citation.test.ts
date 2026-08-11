@@ -150,10 +150,18 @@ describe('scanVcodeCitations (fixtures)', () => {
   test('exemption: a named-exempted code with an absent string is skipped, not reported', () => {
     const filePath = makeFixtureFile('fixture.md', '## 1. First\n\nNo code mentioned here at all.\n');
     const idx = new Map([['fixture.md', filePath]]);
-    const exemptedCode = KNOWN_CITATION_EXEMPTIONS[0];
-    const scan = scanVcodeCitations([{ code: exemptedCode, site: 'fixture.md §1' }], idx);
-    expect(scan.unresolved).toEqual([]);
-    expect(scan.codeAbsent).toEqual([]);
+    // Production content is empty by design (see the check's own header comment) — push a
+    // throwaway fixture code onto the live array to exercise the exemption mechanism itself,
+    // then always pop it back off so this test never leaves production state mutated.
+    const exemptedCode = 'V-FAKE-EXEMPT';
+    KNOWN_CITATION_EXEMPTIONS.push(exemptedCode);
+    try {
+      const scan = scanVcodeCitations([{ code: exemptedCode, site: 'fixture.md §1' }], idx);
+      expect(scan.unresolved).toEqual([]);
+      expect(scan.codeAbsent).toEqual([]);
+    } finally {
+      KNOWN_CITATION_EXEMPTIONS.pop();
+    }
   });
 });
 
@@ -185,13 +193,11 @@ describe('runChecks (live-tree assertion)', () => {
     expect(resolution?.ok).toBe(true);
   });
 
-  test('V-CITE-02 has exactly the three named exemptions as near-misses, nothing more', () => {
+  test('V-CITE-02 is clean on the live tree with an empty exemption list — #564/#587/#588 closed the last three near-misses', () => {
     const results = runChecks();
     const coverage = results.find((r) => r.id === 'V-CITE-02');
     expect(coverage).toBeDefined();
-    // The exemption list itself must stay at exactly the three named codes — an exploding
-    // allow-list would defeat the check even if every individual entry is "justified" on its own.
-    expect(KNOWN_CITATION_EXEMPTIONS).toHaveLength(3);
-    expect(KNOWN_CITATION_EXEMPTIONS).toEqual(['V-SEC-10', 'V-AUTO-01', 'V-TEST-09']);
+    expect(coverage?.ok).toBe(true);
+    expect(KNOWN_CITATION_EXEMPTIONS).toEqual([]);
   });
 });

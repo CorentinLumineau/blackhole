@@ -152,7 +152,9 @@ re-read that one line only and classify it as `comment`, `fixture`, `string-lite
    precedes the match on the line, and at least one of the same quote character follows it.
 4. **`real`**: none of the above apply.
 
-Only `real` classifications count toward a raise.
+Only `real` classifications count toward a raise. A candidate match counted toward a raise
+without passing this one-line classification is a `V-SEC-10` WARN finding — record it against
+the ledger.
 
 **Monotonicity formula — the only legal formula**:
 
