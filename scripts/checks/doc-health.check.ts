@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseMdFrontmatter, parseFrontmatterFields } from '../lib/build/content.ts';
-import { walkMdFilesAbs } from '../lib/check-common.ts';
+import { parseIndexTableRows, walkMdFilesAbs } from '../lib/check-common.ts';
 import { DOC_HEALTH_THRESHOLDS } from '../lib/build/facts.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
@@ -65,27 +65,13 @@ export const evaluateCanonicalNaming = (docsDir: string): CheckResult => {
     : { id: 'V-DOC-GOV-03', ok: true };
 };
 
-// Issue #498 (F-00036 disposition shape): near-duplicate is adr-status.check.ts's
-// parseIndexStatusMap (same 5-column INDEX.md schema/technique) — not parity-matrix.check.ts's
-// splitRow (different technique/schema). Left inline: Touch-Paths cover only this file, and a
-// single-consumer extraction would be V-YAGNI-03. Revisit via a fast-follow scoped to both files.
+// Issue #573: shared with adr-status.check.ts via parseIndexTableRows (check-common.ts).
 // Root-INDEX row parser (shared by V-DOCHEALTH-01/02/03) — the same 5-column schema already in
 // production at documentation/decisions/INDEX.md (`path | summary | type | status |
 // review_trigger`), row paths relative to documentation/ itself (Codebase Conventions).
 export type RootIndexRow = { path: string; summary: string; type: string; status: string; reviewTrigger: string };
 
-export const parseRootIndexRows = (content: string): RootIndexRow[] => {
-  const rows: RootIndexRow[] = [];
-  for (const line of content.split('\n')) {
-    if (!line.trim().startsWith('|')) continue;
-    const cells = line.split('|').map((c) => c.trim());
-    if (cells.length < 6) continue;
-    const p = cells[1];
-    if (!p || p.toLowerCase() === 'path' || /^:?-+:?$/.test(p)) continue;
-    rows.push({ path: p, summary: cells[2], type: cells[3], status: cells[4], reviewTrigger: cells[5] });
-  }
-  return rows;
-};
+export const parseRootIndexRows = parseIndexTableRows;
 
 // Idempotent row-append primitive (issue #490, ADR-021 D2 carry-step) — built on
 // parseRootIndexRows above (V-INT-02). Guards a duplicate row on implementer re-spawn.

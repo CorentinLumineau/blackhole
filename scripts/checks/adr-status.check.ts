@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseMdFrontmatter } from '../lib/build/content.ts';
+import { parseIndexTableRows } from '../lib/check-common.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
 // ADR-007 T5/R2' — adr-status.check.ts: matches verify.adr-status.test.ts.
@@ -42,18 +43,15 @@ export const extractBodyStatusLeadingToken = (content: string): string | null =>
   return tokenMatch ? tokenMatch[1] : null;
 };
 
-// V-ADR-02: parse `documentation/decisions/INDEX.md`'s `| path | summary | type | status |
-// review_trigger |` table into a `filename -> status cell` map. Header/separator rows are
-// skipped because their first cell never starts with `ADR-`.
+// V-ADR-02: keyed by bare ADR filename (documentation/decisions/INDEX.md's own convention,
+// distinct from the root INDEX.md's folder-prefixed paths — see check-common.ts's
+// parseIndexTableRows for the shared row-parsing contract). The ADR- prefix filter is this
+// caller's content filter, not part of the shared row shape.
 export const parseIndexStatusMap = (indexContent: string): Map<string, string> => {
   const rows = new Map<string, string>();
-  for (const line of indexContent.split('\n')) {
-    if (!line.trim().startsWith('|')) continue;
-    const cells = line.split('|').map((c) => c.trim());
-    if (cells.length < 6) continue;
-    const filename = cells[1];
-    if (!filename.startsWith('ADR-')) continue;
-    rows.set(filename, cells[4]);
+  for (const row of parseIndexTableRows(indexContent)) {
+    if (!row.path.startsWith('ADR-')) continue;
+    rows.set(row.path, row.status);
   }
   return rows;
 };
