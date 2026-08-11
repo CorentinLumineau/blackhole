@@ -63,6 +63,7 @@ When `status: blocked`, `failing_checks` lists failed items:
 - `schema_baseline` — API/schema changes specified for standard track (`V-API-01`)
 - `tdd_tasks` — TDD baseline and failing-test tasks present (`V-TEST-01/02`)
 - `ac_mapping` — acceptance criteria mapped to tasks; sibling mechanical checks `critical_files_exist` / `mitigation_concrete` — Critical Files Glob-miss and Execution Strategy vague-mitigation (Standard track only, mercure `x-plan` parity, issue #459)
+- `ac_sweep_conflict` / `ac_sweep_scope` — advisory-only `## Task Breakdown` findings (sweep-to-zero AC vs. retain-instruction token overlap; sweep AC missing a scope path/exemption clause) — surface only as `## Quality Gate Results` `ADVISORY: <finding>` rows, never in `failing_checks` (issue #575)
 - `clarification_limit` — at most 2 `[NEEDS CLARIFICATION]` markers
 - `base_commit` — `plan_base_commit` stamped in frontmatter
 - `design_pending_approval` — design track artifact produced at `plan_path`; blocked pending the

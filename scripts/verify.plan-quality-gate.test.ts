@@ -5,13 +5,17 @@ import {
   checkStandardTrackBugfixGrounding,
   EXECUTION_STRATEGY_HEADING,
   extractBacktickPaths,
+  extractQuotedBranches,
   extractStandardTrackSection,
   findExecutionStrategyHeadingDrift,
   findMissingCriticalFiles,
+  findSweepRetainConflicts,
+  findUnscopedSweepACs,
   findVagueMitigations,
   PLAN_QUALITY_GATE_REQUIRED_MARKERS,
   PLAN_QUALITY_GATE_VAGUE_WORDS,
   runChecks,
+  splitTaskBreakdownBullets,
   STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS,
 } from './checks/plan-quality-gate.check.ts';
 import { read } from './checks/check-utils.ts';
@@ -121,11 +125,98 @@ describe('findVagueMitigations', () => {
   });
 });
 
+// A sweep-to-zero AC's grep pattern quotes its `\|`-alternation branches in backticks (e.g.
+// `` `grep -rn "commit the ADR\|planner\.md:288-291" documentation/` ``) — extractQuotedBranches
+// pulls those branches out so the overlap check below can test each against other tasks' text.
+describe('extractQuotedBranches', () => {
+  test('splits a backtick grep command\'s quoted alternation on the literal \\|', () => {
+    const line = '`grep -rn "commit the ADR\\|planner\\.md:288-291" documentation/`';
+    expect(extractQuotedBranches(line)).toEqual(['commit the ADR', 'planner\\.md:288-291']);
+  });
+
+  test('a line with no quoted span returns []', () => {
+    expect(extractQuotedBranches('no quotes here')).toEqual([]);
+  });
+});
+
+describe('splitTaskBreakdownBullets', () => {
+  test('splits a Task Breakdown section into per-task label/text pairs', () => {
+    const section = [
+      '## Task Breakdown',
+      '1. **First task** — do the first thing.',
+      '2. **Second task** — do the second thing.',
+    ].join('\n');
+    const tasks = splitTaskBreakdownBullets(section);
+    expect(tasks.map((t) => t.label)).toEqual(['First task', 'Second task']);
+    expect(tasks[0].text).toContain('do the first thing');
+    expect(tasks[0].text).not.toContain('Second task');
+  });
+
+  test('a section with no numbered tasks returns []', () => {
+    expect(splitTaskBreakdownBullets('## Task Breakdown\nno tasks here\n')).toEqual([]);
+  });
+});
+
+describe('findSweepRetainConflicts', () => {
+  const CONFLICT_FIXTURE = [
+    '## Task Breakdown',
+    '1. **Sweep stale references** — **AC**: `grep -rn "commit the ADR\\|planner\\.md:288-291" documentation/` returns zero remaining matches.',
+    '2. **Update PR checklist** — retain the quoted sentence "commit the ADR inside the issue\'s own PR" verbatim.',
+  ].join('\n');
+
+  test('a sweep-to-zero AC overlapping a same-plan retain instruction is flagged', () => {
+    expect(findSweepRetainConflicts(CONFLICT_FIXTURE)).toEqual([
+      { sweepTask: 'Sweep stale references', retainTask: 'Update PR checklist', token: 'commit the ADR' },
+    ]);
+  });
+
+  test('a sweep-shaped AC with no retain instruction anywhere returns []', () => {
+    const section = [
+      '## Task Breakdown',
+      '1. **Sweep stale references** — **AC**: `grep -rn "commit the ADR" documentation/` returns zero remaining matches.',
+    ].join('\n');
+    expect(findSweepRetainConflicts(section)).toEqual([]);
+  });
+
+  test('a sweep-shaped AC and an unrelated retain instruction (no token overlap) returns []', () => {
+    const section = [
+      '## Task Breakdown',
+      '1. **Sweep stale references** — **AC**: `grep -rn "commit the ADR" documentation/` returns zero remaining matches.',
+      '2. **Update changelog** — retain the quoted sentence "release notes stay untouched" verbatim.',
+    ].join('\n');
+    expect(findSweepRetainConflicts(section)).toEqual([]);
+  });
+});
+
+describe('findUnscopedSweepACs', () => {
+  test('a sweep-to-zero AC with no scope path and no exemption clause is flagged', () => {
+    const section = [
+      '## Task Breakdown',
+      '1. **Sweep stale references** — **AC**: search returns zero remaining matches.',
+    ].join('\n');
+    expect(findUnscopedSweepACs(section)).toEqual(['Sweep stale references']);
+  });
+
+  test('a sweep-to-zero AC carrying both a backtick path and "no exemptions" is not flagged', () => {
+    const section = [
+      '## Task Breakdown',
+      '1. **Sweep stale references** — **AC**: `grep -rn "foo" bar/` returns zero remaining matches under `documentation/`, no exemptions.',
+    ].join('\n');
+    expect(findUnscopedSweepACs(section)).toEqual([]);
+  });
+});
+
 describe('PLAN_QUALITY_GATE_REQUIRED_MARKERS grounding', () => {
+  test('carries exactly the four documented markers', () => {
+    expect(PLAN_QUALITY_GATE_REQUIRED_MARKERS.length).toBe(4);
+  });
+
   const FIXED = `
 8. **Verify Quality Gate**: ...
    * **Critical-file existence** (\`critical_files_exist\`): Glob every path.
    * **Mitigation concreteness** (\`mitigation_concrete\`): scan against the word list.
+   * **Sweep/retain overlap** (\`ac_sweep_conflict\`): advisory, never blocking.
+   * **Unscoped sweep** (\`ac_sweep_scope\`): advisory, never blocking.
 `;
   const STALE = `
 8. **Verify Quality Gate**: Ensure all Touch-Paths are declared explicitly.
