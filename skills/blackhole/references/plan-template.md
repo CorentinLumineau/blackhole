@@ -78,6 +78,8 @@ this plan is about to create belongs under Touch-Paths, never here — `critical
 | `ac_mapping` | PASS \| FAIL |
 | `critical_files_exist` | PASS \| FAIL |
 | `mitigation_concrete` | PASS \| FAIL |
+| `ac_sweep_conflict` | PASS \| ADVISORY |
+| `ac_sweep_scope` | PASS \| ADVISORY |
 ```
 
 ### Skip Track file template

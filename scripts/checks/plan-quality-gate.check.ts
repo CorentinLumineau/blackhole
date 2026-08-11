@@ -67,11 +67,46 @@ export const findVagueMitigations = (
       return wordList.some((w) => lower.includes(w)) && !hasConcreteStopCondition(line);
     });
 
+// Issue #575 — plan-time AC-satisfiability heuristics (advisory-only, no CheckResult/runChecks entry).
+export const splitTaskBreakdownBullets = (section: string): Array<{ label: string; text: string }> => {
+  const starts = [...section.matchAll(/^\d+\.\s+\*\*(.+?)\*\*/gm)];
+  return starts.map((m, i) => ({ label: m[1], text: section.slice(m.index!, starts[i + 1]?.index ?? section.length) }));
+};
+export const extractQuotedBranches = (line: string): string[] => {
+  const quoted = line.match(/"([^"]+)"/);
+  return quoted ? quoted[1].split('\\|') : [];
+};
+const SWEEP_ZERO_PATTERN = /zero (remaining )?matches/i;
+const RETAIN_PATTERN = /\bretain\b/i;
+const EXEMPTION_PATTERN = /\b(except|excluding|exempt)\b|no exemptions/i;
+// Live #481 instance (issue #575); advisory only — Design Decision § 2, plans/issue-575.md.
+export const findSweepRetainConflicts = (section: string): Array<{ sweepTask: string; retainTask: string; token: string }> => {
+  const tasks = splitTaskBreakdownBullets(section);
+  const conflicts: Array<{ sweepTask: string; retainTask: string; token: string }> = [];
+  for (const sweep of tasks) {
+    if (!SWEEP_ZERO_PATTERN.test(sweep.text)) continue;
+    const cmd = sweep.text.match(/`[^`]*"[^"]+"[^`]*`/);
+    if (!cmd) continue;
+    const branches = extractQuotedBranches(cmd[0]);
+    for (const retain of tasks) {
+      if (retain === sweep || !RETAIN_PATTERN.test(retain.text)) continue;
+      const token = branches.find((b) => retain.text.includes(b));
+      if (token) conflicts.push({ sweepTask: sweep.label, retainTask: retain.label, token });
+    }
+  }
+  return conflicts;
+};
+export const findUnscopedSweepACs = (section: string): string[] => // V-INT-02: reuses extractBacktickPaths
+  splitTaskBreakdownBullets(section)
+    .filter((t) => SWEEP_ZERO_PATTERN.test(t.text))
+    .filter((t) => !(extractBacktickPaths(t.text).length && EXEMPTION_PATTERN.test(t.text)))
+    .map((t) => t.label);
+
 // Grounding check (regression guard, same shape as design-track.check.ts's V-DESIGN-02):
 // planner.md Step 8 and worker-schemas.md's Plan quality gate checks list must both still name
 // the two new failing_checks values — a silent prose drop would leave this mechanical parity
 // documented nowhere a reviewer can audit.
-export const PLAN_QUALITY_GATE_REQUIRED_MARKERS = ['critical_files_exist', 'mitigation_concrete'];
+export const PLAN_QUALITY_GATE_REQUIRED_MARKERS = ['critical_files_exist', 'mitigation_concrete', 'ac_sweep_conflict', 'ac_sweep_scope'];
 
 // Heading spelling drift guard (issue #519 gap 3): plan-template.md's actual Standard Track
 // heading is "Execution Strategy & Stop Conditions" — it is literally what the planner writes
