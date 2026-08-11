@@ -125,9 +125,9 @@ describe('findVagueMitigations', () => {
   });
 });
 
-// Issue #575 — plan-time AC-satisfiability heuristics. Live #481 instance: a sweep-to-zero AC's
-// grep pattern (`` `grep -rn "commit the ADR\|planner\.md:288-291" documentation/` ``) textually
-// overlapped a same-plan "retain" instruction quoting "commit the ADR inside the issue's own PR".
+// A sweep-to-zero AC's grep pattern quotes its `\|`-alternation branches in backticks (e.g.
+// `` `grep -rn "commit the ADR\|planner\.md:288-291" documentation/` ``) — extractQuotedBranches
+// pulls those branches out so the overlap check below can test each against other tasks' text.
 describe('extractQuotedBranches', () => {
   test('splits a backtick grep command\'s quoted alternation on the literal \\|', () => {
     const line = '`grep -rn "commit the ADR\\|planner\\.md:288-291" documentation/`';

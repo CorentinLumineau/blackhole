@@ -67,7 +67,7 @@ export const findVagueMitigations = (
       return wordList.some((w) => lower.includes(w)) && !hasConcreteStopCondition(line);
     });
 
-// Issue #575 — plan-time AC-satisfiability heuristics (advisory-only, no CheckResult/runChecks entry).
+// Plan-time AC-satisfiability heuristics (advisory-only, no CheckResult/runChecks entry).
 export const splitTaskBreakdownBullets = (section: string): Array<{ label: string; text: string }> => {
   const starts = [...section.matchAll(/^\d+\.\s+\*\*(.+?)\*\*/gm)];
   return starts.map((m, i) => ({ label: m[1], text: section.slice(m.index!, starts[i + 1]?.index ?? section.length) }));
@@ -79,7 +79,7 @@ export const extractQuotedBranches = (line: string): string[] => {
 const SWEEP_ZERO_PATTERN = /zero (remaining )?matches/i;
 const RETAIN_PATTERN = /\bretain\b/i;
 const EXEMPTION_PATTERN = /\b(except|excluding|exempt)\b|no exemptions/i;
-// Live #481 instance (issue #575); advisory only — Design Decision § 2, plans/issue-575.md.
+// Advisory only: accepts false positives by design — a blocking version risks rejecting valid plans, and the confirmed instance count is one.
 export const findSweepRetainConflicts = (section: string): Array<{ sweepTask: string; retainTask: string; token: string }> => {
   const tasks = splitTaskBreakdownBullets(section);
   const conflicts: Array<{ sweepTask: string; retainTask: string; token: string }> = [];
