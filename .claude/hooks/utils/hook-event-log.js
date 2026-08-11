@@ -195,12 +195,23 @@ const allWorktreeRoots = (cwd = process.cwd()) => {
  * and turn it into `failClosed`, never let it fall through to an allow. */
 const readHookInput = () => JSON.parse(fs.readFileSync(0, 'utf-8') || '{}');
 
+/** `BLACKHOLE_HOOK_EVENT_DIR` makes the durable-record sink explicit and inspectable instead of
+ * solely inferred from `cwd`'s git resolution (#604): when set, it is the sink outright and
+ * `mainCloneRoot` is never consulted, so no git context is required at all. Unset (the harness's
+ * normal path), behavior is byte-for-byte the pre-existing `mainCloneRoot(cwd)` resolution below. */
 const recordEvent = (event) => {
   const cwd = event.cwd || process.cwd();
-  const destRoot = mainCloneRoot(cwd);
-  if (!destRoot) {
-    console.error(`[blackhole-hook] no git context — ${event.tier} event not recorded (${event.pattern_id})`);
-    return;
+  const override = process.env.BLACKHOLE_HOOK_EVENT_DIR;
+  let dir;
+  if (override) {
+    dir = override;
+  } else {
+    const destRoot = mainCloneRoot(cwd);
+    if (!destRoot) {
+      console.error(`[blackhole-hook] no git context — ${event.tier} event not recorded (${event.pattern_id})`);
+      return;
+    }
+    dir = path.join(destRoot, '.blackhole', 'hook-events');
   }
   const payload = {
     version: 1,
@@ -215,7 +226,6 @@ const recordEvent = (event) => {
     detail: redact(event.detail),
   };
   try {
-    const dir = path.join(destRoot, '.blackhole', 'hook-events');
     fs.mkdirSync(dir, { recursive: true });
     const unique = `${payload.recorded_at.replace(/[:.]/g, '-')}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
     fs.writeFileSync(path.join(dir, `${unique}.json`), `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');

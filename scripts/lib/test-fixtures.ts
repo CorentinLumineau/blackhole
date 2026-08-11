@@ -76,12 +76,17 @@ export const PRETOOLUSE_HOOKS_DIR = path.join(root, 'templates', 'hooks', 'preto
 export type HookRunResult = { exitCode: number; stdout: string; stderr: string };
 
 /** Runs a PreToolUse hook script with `payload` on stdin. `hooksDir` is overridable so a suite can
- * point at a corrupted copy of the tree and exercise the fail-closed pattern-load path. */
+ * point at a corrupted copy of the tree and exercise the fail-closed pattern-load path.
+ * `eventDir`, when passed, is threaded through as `BLACKHOLE_HOOK_EVENT_DIR` so a suite can pin
+ * the durable-record sink explicitly instead of relying on `cwd`'s git resolution (#604) —
+ * omitted, the spawn's env is built exactly as before, so none of the existing call sites change
+ * behavior. */
 export const runPreToolUseHook = async (
   script: string,
   payload: unknown,
   cwd: string,
   hooksDir: string = PRETOOLUSE_HOOKS_DIR,
+  eventDir?: string,
 ): Promise<HookRunResult> => {
   const proc = Bun.spawn({
     cmd: ['bun', 'run', path.join(hooksDir, script)],
@@ -89,6 +94,7 @@ export const runPreToolUseHook = async (
     stdout: 'pipe',
     stderr: 'pipe',
     cwd,
+    ...(eventDir ? { env: { ...process.env, BLACKHOLE_HOOK_EVENT_DIR: eventDir } } : {}),
   });
   const [exitCode, stdout, stderr] = await Promise.all([
     proc.exited,

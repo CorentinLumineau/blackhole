@@ -9,6 +9,7 @@ import {
   withRemoteTrackedWorktree,
   withTempGitRepo,
 } from './lib/test-fixtures.ts';
+import { makeTempDir } from './lib/fs.ts';
 
 // Behavioral contract for the Bash PreToolUse gate (#447). One representative command per tier,
 // exercised through the real script so the pattern data, the decision protocol, and the durable
@@ -54,6 +55,35 @@ describe('validate-bash-command.js', () => {
         worktree: repo,
       });
       expect(events[0].detail).toContain('rm -rf /');
+    });
+  });
+
+  test('BLACKHOLE_HOOK_EVENT_DIR redirects the durable record away from the repo (#604)', async () => {
+    await withTempGitRepo('blackhole-hook-bash-', async (repo) => {
+      const sinkDir = makeTempDir('blackhole-hook-sink-');
+      try {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload('rm -rf /'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          sinkDir,
+        );
+
+        // The block decision is unaffected by where the record lands.
+        expect(result.exitCode).toBe(2);
+
+        // Nothing landed under the cwd-resolvable location...
+        expect(readHookEvents(repo)).toEqual([]);
+
+        // ...it landed directly under the override sink instead.
+        const sinkFiles = fs.readdirSync(sinkDir);
+        expect(sinkFiles).toHaveLength(1);
+        const recorded = JSON.parse(fs.readFileSync(path.join(sinkDir, sinkFiles[0]), 'utf-8'));
+        expect(recorded).toMatchObject({ tier: 'block', pattern_id: 'rm-rf-root' });
+      } finally {
+        fs.rmSync(sinkDir, { recursive: true, force: true });
+      }
     });
   });
 
