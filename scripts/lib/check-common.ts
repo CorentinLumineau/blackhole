@@ -60,3 +60,27 @@ export const listFiles = (dir: string, ext = '.md'): string[] => {
   if (!fs.existsSync(full)) return [];
   return fs.readdirSync(full).filter((f) => f.endsWith(ext));
 };
+
+// Issue #570/#567/#565 batch: `blackhole-vcodes.md`'s `| Code | Rule | Severity | Primary
+// enforcement site |` table is already parsed three times in this codebase — adr-status.check.ts's
+// parseIndexStatusMap and doc-health.check.ts's parseRootIndexRows (INDEX.md's 5-column schema),
+// and ground-truth.check.ts's parseVcodeEnforcementSites (this exact table, but only extracting
+// {code, site} for V-GROUND-02). Rather than a 4th/5th divergent parser, this is the one shared
+// {code, severity, site}[] extraction both vcode-severity-sync.check.ts and vcode-citation.check.ts
+// consume (V-INT-02). Same row idiom as the three precedents: skip non-`|`-leading lines; split on
+// `|` and trim; the first data cell's `V-` prefix discriminates a real row from header/separator
+// rows (whose first cell is `Code`/`:---:` and never starts with `V-`).
+export const parseVcodeTableRows = (
+  vcodesContent: string,
+): { code: string; severity: string; site: string }[] => {
+  const rows: { code: string; severity: string; site: string }[] = [];
+  for (const line of vcodesContent.split('\n')) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').map((c) => c.trim());
+    if (cells.length < 6) continue;
+    const code = cells[1];
+    if (!code.startsWith('V-')) continue;
+    rows.push({ code, severity: cells[3], site: cells[4] });
+  }
+  return rows;
+};
