@@ -21,6 +21,25 @@ ui_gate: pending | approved | null
 - `file/path/A.ts`
 - `file/path/B.tsx`
 
+## Scope Amendments
+Appended by the orchestrator, not authored by the planner during Step 7 — the orchestrator
+appends one line here, before spawning, whenever it authorizes a Touch-Paths change in a
+worker's spawn prompt that diverges from this plan's declared `## Touch-Paths` (procedure:
+`orchestrator-dispatch.md` § Spawn-Time Touch-Paths Amendment). Omit the heading entirely until
+the first amendment. Format, one line per amendment, newest last:
+
+```
+- <date> — widen|narrow — `<path>` — <one-sentence reason>
+```
+
+`widen` = a path added beyond the plan's original Touch-Paths list; `narrow` = a path removed
+from it. Worked example (PR #602 / issue #573):
+
+```
+- 2026-08-05 — widen — `scripts/checks/ground-truth.check.ts` — stale decision-record comment
+  needed a same-PR fix alongside the touched check it documents.
+```
+
 ## [If docs_governance.enabled] Documentation Impact
 List companion/consumer docs the Touch-Paths affect — e.g. `ARCHITECTURE.md`, `DESIGN.md`,
 `documentation/decisions/INDEX.md`, or a specific consumer doc/README — or write
