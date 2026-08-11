@@ -3,7 +3,7 @@ type: adr
 status: accepted
 review_trigger: "on mercure release"
 created: 2026-08-06
-last_updated: 2026-08-10
+last_updated: 2026-08-11
 related:
   - documentation/audits/documentation-framework-alignment.md
   - documentation/decisions/ADR-010-autonomous-thinking-routes.md

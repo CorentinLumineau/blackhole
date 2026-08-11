@@ -4,7 +4,7 @@ skill: x-analyze
 status: draft
 review_trigger: "on mercure release"
 created: 2026-08-06
-last_updated: 2026-08-06
+last_updated: 2026-08-11
 target: "blackhole alignment with mercure's documentation/ framework and enforcement model"
 related:
   - documentation/audits/mercure-parity-matrix.md
