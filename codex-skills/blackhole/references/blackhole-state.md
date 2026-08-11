@@ -191,16 +191,15 @@ at escalation — never overlapping for one issue), so there is no lost-update r
   them inside the PR is implemented at `implementer.md` § Carry Staged Artifacts (D2) — this
   section only documents the manifest shape that step consumes.
 - The **reviewer audit** that diffs the staged manifest against the PR to detect a declared but
-  never-carried artifact is **not implemented by this section** — it is a separate deliverable
-  (D4, tracked issue #468) that will consume the manifest shape this section documents.
-- **Residual gap (issue #474 follow-up)**: `implementer.md` § Carry Staged Artifacts' documented
-  `append_row` idempotency guard keys off "the row's `path` column value" — a table-row
-  assumption that does not generalize to the `ARCHITECTURE.md` `## Active Constraints` bullet
-  target added above, which has no table or `path` column. The natural discriminator there is
-  the `(ADR-{NNN})` / `(analyze: issue #N)` citation suffix `planner.md`'s own near-duplicate
-  check (§4.8 Trigger A / Step 4 Trigger B) already uses. This section documents the manifest
-  shape only; closing the carry-step's discriminator gap for this target is `implementer.md`'s
-  responsibility, not re-implemented here.
+  never-carried artifact is implemented at `reviewer.md` §25 (Staged Artifact Carry Audit,
+  `V-AUTO-02`, BLOCK) — this section only documents the manifest shape that audit consumes.
+- **Resolved gap (issue #474 follow-up, closed by #557)**: `implementer.md` § Carry Staged
+  Artifacts' `append_row` idempotency guard originally keyed off "the row's `path` column
+  value" — a table-row assumption that did not generalize to the `ARCHITECTURE.md`
+  `## Active Constraints` bullet target added above, which has no table or `path` column.
+  `implementer.md` now dedups that target by the `(ADR-{NNN})` / `(analyze: issue #N)` citation
+  suffix `planner.md`'s own near-duplicate check (§4.8 Trigger A / Step 4 Trigger B) already
+  uses — reused, not reinvented.
 
 ## Ledger obligations
 
