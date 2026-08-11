@@ -8,6 +8,17 @@ Every worker subagent prompt you write MUST explicitly declare these 5 fields:
 4.  **Tool Guidance**: Specific commands to execute (e.g., project test and lint commands). **Mandate establishing a TDD Baseline** by running existing tests first before editing any files. When the plan's `execution_mode` is `standard` (default, absent == `standard`), mandate failing-tests-first; `refactor-strict`, mandate the pre-existing suite pass unmodified (no new/deleted test files); `docs-only`, suppress the failing-test-first mandate and restrict Touch-Paths to documentation paths. Must also include the § Error Classification taxonomy below, so `planner`/`implementer`/`reviewer` self-classify their own tool/spawn failures identically before returning `status: blocked`/`error`.
 5.  **Stop Condition**: Criteria for task completion. **Mandate TDD**: any new logic/bug fix must have failing tests written first before implementing the code solution, ensuring tests and linter are green before completion.
 
+**No inline return-JSON skeletons**: field 2 (Output Format) states which fields this spawn
+needs filled and what to classify — it never restates the return schema's shape, field names,
+or enum values as a literal JSON skeleton. Cite the SSOT instead: `worker-schemas.md § <Role>`
+(e.g. `worker-schemas.md § Router`). An inlined skeleton is a second source that can drift from
+the SSOT silently, and the worker faithfully follows whichever one it was given, wrong or not —
+a turn-8 brief inlined `"status": "complete"` for a `router` spawn (`complete` is not a member
+of `ROUTE_STATUSES`), and 7 of 8 routers correctly followed the brief into a schema-invalid
+return; the one compliant router was then "corrected" into the invalid value on re-route. This
+rule constrains *brief construction* only, never the return schema's own field set — a future
+field addition (e.g. #613's proposed `rationale`) is unaffected.
+
 ### Worker spawn model
 
 Read `.blackhole/config.json` → `worker_model_policy` (default `cost-optimized` when absent;

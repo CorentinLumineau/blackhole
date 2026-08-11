@@ -81,6 +81,8 @@ longer definitions (token cost, drift). Persist every finding to
 | V-VIS-02 | visual_evidence[] present with a declared capture_status: unavailable entry — non-blocking, never silent | WARN | reviewer.md §22 (Visual Evidence Audit) |
 | V-HOOK-01 | PreToolUse hook denied a destructive/unsafe Bash or Write/Edit call; the `.blackhole/hook-events/` record must be ingested into findings-ledger.json before the issue advances past implement | BLOCK | orchestrator-runtime.md § Triage step 1b |
 | V-HOOK-02 | PreToolUse hook flagged a risky-but-allowed call for review — sensitive-file write, force push, registry publish, destructive SQL | WARN | orchestrator-runtime.md § Triage step 1b |
+| V-BRIEF-01 | A worker return — direct, transcript-recovered, or resend-recovered — was applied to `queue.json`/`findings-ledger.json` without first passing `scripts/validate-worker-json.ts`, across any arrival path | BLOCK | orchestrator-runtime.md § Triage |
+| V-BRIEF-02 | A spawn-brief-adjacent doc (`src/agents/*.md`, `src/references/*.md`, excluding `worker-schemas.md`) inlines a literal `"status": "<value>"` skeleton in a fenced JSON block whose value is outside the resolved role's status enum | WARN | scripts/checks/inline-schema-drift.check.ts |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.
