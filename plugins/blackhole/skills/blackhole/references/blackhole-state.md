@@ -175,6 +175,8 @@ value used already existed in the schema below.
 | `entries[].target_path` | string | Repo-relative target path. Usually under `documentation/`, per `artifact-contract.md`'s route table. For `target_kind: append_row` this is `documentation/decisions/INDEX.md` (`design` route, `planner.md` §4.8), `documentation/INDEX.md` (`analyze`/`investigate` routes, issue #490), or `ARCHITECTURE.md` **at the repo root** — not under `documentation/` — for the Active Constraints append (`design`/`analyze` routes, `planner.md` §4.8 Trigger A / Step 4 Trigger B, issue #474) |
 | `entries[].target_kind` | `new_file` \| `append_row` | Tells the carry-step whether to copy a whole file or append a row fragment to an existing file (e.g. `INDEX.md`) or bullet list (`ARCHITECTURE.md` `## Active Constraints`) |
 
+Enforced by `scripts/checks/staging-schema.check.ts`.
+
 ### Write protocol extension
 
 Same atomic `.tmp` + `mv` read-modify-write as § Write protocol above, applied to
