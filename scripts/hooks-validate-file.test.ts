@@ -522,3 +522,38 @@ describe('validate-file-changes.js', () => {
     expect(permissionReason(result.stdout)).toMatch(/too broad/i);
   });
 });
+
+// Uncaught-exception fail-open regression (#580): a non-string `file_path` reaches
+// `hook-event-log.js`'s `resolveExistingAncestor` (line 96, `path.resolve(p)`, reached via
+// `isUnderRoot`←`isInsideAnyRoot` from the worktree-containment check at main() line 101) and
+// throws a `TypeError` outside every existing try/catch. Before this fix, that fell through to
+// bun's default exit 1 — the wrapper's (claude-native-settings.ts) fail-OPEN condition,
+// converting what should be a refusal into a silent allow of the V-SEC-11 gate. Every non-string
+// shape is exercised, not just the investigation note's `number` repro
+// (.blackhole/plans/issue-580-investigation.md), to prove the fix closes the defect class rather
+// than one type.
+describe('validate-file-changes.js — uncaught validator crash fails closed, not open (#580)', () => {
+  const NON_STRING_FILE_PATH: unknown[] = [12345, ['a'], {}, true];
+
+  for (const filePath of NON_STRING_FILE_PATH) {
+    test(`a non-string file_path (${JSON.stringify(filePath)}) reaching the worktree-containment check fails closed, not open`, async () => {
+      await withTempGitRepo('blackhole-hook-580-', async (repo) => {
+        const payload = { tool_name: 'Write', tool_input: { file_path: filePath, content: 'x' } };
+        const result = await runPreToolUseHook(SCRIPT, payload, repo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(repo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          hook: 'validate-file-changes',
+          tool: 'Write',
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'uncaught-validator-error',
+        });
+      });
+    });
+  }
+});

@@ -50,6 +50,7 @@ const buildCommand = (script: string): string => {
     'mkdir -p "$CLAUDE_PROJECT_DIR/.blackhole/hook-events" 2>/dev/null',
     `printf '{"version":1,"recorded_at":"%s","hook":"${hookName}","decision":"allow","tier":"error","pattern_id":"hook-exec-failure","reason":"validator process exited %s before producing a decision"}\\n' \\`,
     '  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" > "$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json" 2>/dev/null',
+    `echo "[blackhole-hook] ${hookName}: validator process exited $code before producing a decision — call allowed (fail-open); see .blackhole/hook-events/" >&2`,
     'exit 0',
   ].join('\n');
 };
