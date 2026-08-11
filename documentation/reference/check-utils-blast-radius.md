@@ -28,7 +28,7 @@ This note is the consumer graph for `V-SCOPE-03` planning — update it when imp
 `runChecks(): CheckResult[]`, and aggregates results. Any change to the `CheckResult` shape
 is **BREAKING** for all rows below.
 
-## `CheckResult` consumers (30 modules)
+## `CheckResult` consumers (32 modules)
 
 All paths are repo-relative. Imports verified against `main` at issue #410; refreshed at issue
 #462 (added `hooks.check.ts`, `stop-mode.check.ts` — both landed on `main` since #410 and were
@@ -38,12 +38,12 @@ missing from this table — plus that issue's own `doc-health.check.ts`); refres
 modules that had landed on `main` since #462 and were missing here; also corrected this table's
 own hand-maintained counts and `check-utils.ts`'s header comment, which had independently
 drifted from each other and from this table); refreshed again at #570 (added
-`queue-coherence.check.ts` — this issue's own new module — plus `jq-empty-guard.check.ts`,
-landed at #558 and missing from this table independently of #570's own addition; re-measured the
-count via the `rg` command in § Maintenance rather than hand-incrementing, per that section's own
-instruction. `vcode-severity-sync.check.ts`/`vcode-citation.check.ts` — #567/#565's own new
-modules — are not yet in this table: those two checks are held back pending a content decision
-outside this PR's scope, see #567/#565).
+`queue-coherence.check.ts` plus `jq-empty-guard.check.ts`, landed at #558 and missing from this
+table independently of #570's own addition; re-measured the count via the `rg` command in §
+Maintenance rather than hand-incrementing, per that section's own instruction — merged as PR
+#590); refreshed again at #567/#565 (added `vcode-severity-sync.check.ts` and
+`vcode-citation.check.ts` — this pair's own new modules, split into a follow-up PR after #590
+merged, per the batching grant's own "split into two PRs" escape hatch).
 
 | Consumer | Imports from `check-utils.ts` | Role |
 |----------|-------------------------------|------|
@@ -75,11 +75,13 @@ outside this PR's scope, see #567/#565).
 | `scripts/checks/single-writer.check.ts` | `read`, `CheckResult` | Single-writer invariant checks |
 | `scripts/checks/stop-mode.check.ts` | `read`, `CheckResult` | Campaign stop-mode gate checks |
 | `scripts/checks/test-integrity.check.ts` | `read`, `CheckResult` | Test integrity checks |
+| `scripts/checks/vcode-citation.check.ts` | `root`, `read`, `CheckResult` | `blackhole-vcodes.md` enforcement-site citation checks |
+| `scripts/checks/vcode-severity-sync.check.ts` | `root`, `CheckResult` | `blackhole-vcodes.md` severity-restatement sync checks |
 | `scripts/checks/vocabulary.check.ts` | `root`, `CheckResult` | Vocabulary / naming checks |
 | `scripts/checks/worker-git-safety.check.ts` | `read`, `CheckResult` | Worker git safety checks |
 | `scripts/verify.ts` | `CheckResult` (type only) | Thin runner — `runVerifyChecks()`, exit-code helpers |
 
-**Count:** 30 `*.check.ts` domain modules + `verify.ts` = **31** direct `CheckResult` consumers.
+**Count:** 32 `*.check.ts` domain modules + `verify.ts` = **33** direct `CheckResult` consumers.
 
 ## `root`-only consumer (no `CheckResult`)
 
@@ -102,10 +104,10 @@ Changes to `root` resolution affect every check module above **plus** `check-com
 | Change | Classification | Affected consumers |
 |--------|----------------|-------------------|
 | Add optional field to `CheckResult` | TRANSPARENT (if optional) | Type-only; runtime unchanged |
-| Rename / remove `CheckResult` field | BREAKING | All 31 direct consumers + verify output formatting |
+| Rename / remove `CheckResult` field | BREAKING | All 33 direct consumers + verify output formatting |
 | Change `runChecks()` return type away from `CheckResult[]` | BREAKING | `verify.ts` + every `*.check.ts` |
 | Move `CheckResult` to another module | BREAKING | All import sites (grep `check-utils`) |
-| Change `root` path resolution | BREAKING | All 30 checks + `check-common.ts` |
+| Change `root` path resolution | BREAKING | All 32 checks + `check-common.ts` |
 | Change `read()` encoding or path join | BREAKING | Modules importing `read()` — see the `Imports` column in the consumer table above |
 
 **Overall blast radius:** HIGH — `CheckResult` is the shared verify wire format across the
