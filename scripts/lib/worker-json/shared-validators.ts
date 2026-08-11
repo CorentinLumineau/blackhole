@@ -1,4 +1,11 @@
-import { AC_VERDICTS, CAPTURE_STATUSES, DECISION_RECORD_KINDS, SEVERITIES } from './constants.ts';
+import {
+  AC_VERDICTS,
+  CAPTURE_STATUSES,
+  DECISION_RECORD_KINDS,
+  PARTIAL_PHASES,
+  SEVERITIES,
+  WORKTREE_DISPOSITIONS,
+} from './constants.ts';
 import {
   isNonEmptyString,
   isNumber,
@@ -133,4 +140,44 @@ export function validateVisualEvidenceEntry(entry: unknown, path: string): strin
 
 export function validateVisualEvidenceArray(value: unknown, path: string): string[] {
   return validateArrayOf(value, path, validateVisualEvidenceEntry);
+}
+
+// Issue #492 — stop --now leg B: shared `status: partial` payload shape, dispatched identically
+// by all six role validators (`worker-schemas.md` § Partial result). Mirrors the array-of-strings
+// return style of `validateAcResultsArray`/`validateVisualEvidenceArray` above rather than a
+// per-role reimplementation (`V-DRY-01`).
+export function validatePartialResult(data: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+
+  requireField(errors, data, 'phase_reached', isString, 'string');
+  if (isString(data.phase_reached)) {
+    pushEnumError(errors, 'phase_reached', data.phase_reached, PARTIAL_PHASES);
+  }
+
+  if (!('partial_result' in data)) {
+    errors.push('partial_result: required');
+    return errors;
+  }
+  if (!isObject(data.partial_result)) {
+    errors.push('partial_result: expected object');
+    return errors;
+  }
+
+  const partialResult = data.partial_result;
+  const resultErrors: string[] = [];
+  requireField(resultErrors, partialResult, 'work_done', isNonEmptyString, 'non-empty string');
+  requireField(resultErrors, partialResult, 'work_remaining', isNonEmptyString, 'non-empty string');
+  requireField(resultErrors, partialResult, 'worktree_disposition', isString, 'string');
+  if (isString(partialResult.worktree_disposition)) {
+    pushEnumError(resultErrors, 'worktree_disposition', partialResult.worktree_disposition, WORKTREE_DISPOSITIONS);
+  }
+
+  if (partialResult.worktree_disposition === 'pushed') {
+    requireField(resultErrors, partialResult, 'branch', isNonEmptyString, 'non-empty string');
+  } else if ('branch' in partialResult && partialResult.branch !== null) {
+    resultErrors.push('branch: expected null when worktree_disposition is not "pushed"');
+  }
+
+  errors.push(...resultErrors.map((error) => `partial_result.${error}`));
+  return errors;
 }

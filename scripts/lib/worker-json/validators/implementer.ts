@@ -18,6 +18,7 @@ import {
 import {
   validateAcResultsArray,
   validateDecisionRecordsArray,
+  validatePartialResult,
   validateVisualEvidenceArray,
 } from '../shared-validators.ts';
 
@@ -112,6 +113,12 @@ export function validateImplementer(data: unknown): string[] {
 
   if (data.status === 'blocked') {
     validateImplementerBlockedFields(data, errors);
+  }
+
+  // Issue #492 — stop --now leg B: a completed worker's answer to the Flush Request
+  // (`worker-schemas.md` § Partial result), structurally exclusive with `complete`/`blocked`.
+  if (data.status === 'partial') {
+    errors.push(...validatePartialResult(data));
   }
 
   validateImplementerOptionalFields(data, errors);

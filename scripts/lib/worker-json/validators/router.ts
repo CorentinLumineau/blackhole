@@ -8,6 +8,7 @@ import {
   pushEnumError,
   requireField,
 } from '../predicates.ts';
+import { validatePartialResult } from '../shared-validators.ts';
 
 export function validateRoute(route: unknown, path: string): string[] {
   const errors: string[] = [];
@@ -79,6 +80,9 @@ export function validateRouter(data: unknown): string[] {
     }
   } else if (data.status === 'error') {
     requireField(errors, data, 'error', isString, 'string');
+  } else if (data.status === 'partial') {
+    // Issue #492 — stop --now leg B (`worker-schemas.md` § Partial result).
+    errors.push(...validatePartialResult(data));
   }
 
   return errors;

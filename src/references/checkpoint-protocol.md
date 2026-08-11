@@ -101,8 +101,8 @@ phase inference per § Compaction recovery above) before continuing.
 | `review_iteration` | `queue.json` issues.* | Per-issue review loop counter |
 | `in_flight_workers` | checkpoint body | Active worker spawns for resume |
 | `stopped_by` | checkpoint frontmatter | Who requested the stop — `user` \| `null` (`phase-stop.md`) |
-| `stop_kind` | checkpoint frontmatter | `drained` \| `killed` \| `null` — which `phase-stop.md` tier ran (`flushed` is reserved for #479's future partial-flush tier — not a valid value of this field until leg B ships) |
-| `worker_state` | `## In-flight workers` row, stop-event-only | `drained` \| `killed` — tags a killed worker's row before removal (`phase-stop.md` § `--abandon` tier); absent on a normal turn's rows |
+| `stop_kind` | checkpoint frontmatter | `drained` \| `killed` \| `flushed` (issue #492) \| `null` — which `phase-stop.md` tier ran; `flushed` (issue #492) is emitted per that file's `stop --now` tier step 6 priority rule |
+| `worker_state` | `## In-flight workers` row, stop-event-only | `drained` \| `flushed` (issue #492) \| `killed` — tags a stopped worker's row before removal per `phase-stop.md`'s § `stop --now` tier step 3 (`flushed`, issue #492) and § `--abandon` tier (`killed`); absent on a normal turn's rows |
 
 ## Failed-Approaches Log
 

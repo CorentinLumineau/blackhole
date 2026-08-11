@@ -1,0 +1,10 @@
+{
+  "status": "partial",
+  "phase_reached": "implement",
+  "partial_result": {
+    "work_done": "Implemented the endpoint and its unit tests; PR not yet opened.",
+    "work_remaining": "Open PR, run lint, write PR description.",
+    "worktree_disposition": "pushed",
+    "branch": "blackhole/issue-492"
+  }
+}

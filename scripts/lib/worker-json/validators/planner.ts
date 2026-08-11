@@ -17,7 +17,7 @@ import {
   pushEnumError,
   requireField,
 } from '../predicates.ts';
-import { validateArrayOf } from '../shared-validators.ts';
+import { validateArrayOf, validatePartialResult } from '../shared-validators.ts';
 
 // Issue #422 — ruling watermark + phase-gate re-validation. `R-NNN` is #417's stable per-ruling
 // citation handle, never the kebab slug.
@@ -189,6 +189,9 @@ export function validatePlanner(data: unknown): string[] {
     validatePlannerReadyFields(data, errors);
   } else if (data.status === 'blocked') {
     validatePlannerBlockedFields(data, errors);
+  } else if (data.status === 'partial') {
+    // Issue #492 — stop --now leg B (`worker-schemas.md` § Partial result).
+    errors.push(...validatePartialResult(data));
   }
 
   return errors;
