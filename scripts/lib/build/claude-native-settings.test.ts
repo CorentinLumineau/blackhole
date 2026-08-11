@@ -171,7 +171,7 @@ const bashCommand = (): string => {
 const runWrapperWithStubExit = (
   projectDir: string,
   stubExitCode: number,
-): { exitCode: number | null } => {
+): { exitCode: number | null; stderr: string } => {
   const hooksDir = path.join(projectDir, '.claude', 'hooks');
   fs.mkdirSync(hooksDir, { recursive: true });
   fs.writeFileSync(
@@ -184,7 +184,7 @@ const runWrapperWithStubExit = (
     stdout: 'pipe',
     stderr: 'pipe',
   });
-  return { exitCode: proc.exitCode };
+  return { exitCode: proc.exitCode, stderr: proc.stderr.toString() };
 };
 
 const hookEventFiles = (projectDir: string): Record<string, unknown>[] => {
@@ -196,29 +196,33 @@ const hookEventFiles = (projectDir: string): Record<string, unknown>[] => {
 };
 
 describe('AC-4d/4e — exit-code discrimination through the real generated command', () => {
-  test('stub exit 0 (allow): wrapper exits 0, no hook-exec-error record', () => {
+  test('stub exit 0 (allow): wrapper exits 0, no hook-exec-error record, no fail-open notice on stderr', () => {
     withTempDir('blackhole-claude-wrapper-', (dir) => {
-      const { exitCode } = runWrapperWithStubExit(dir, 0);
+      const { exitCode, stderr } = runWrapperWithStubExit(dir, 0);
       expect(exitCode).toBe(0);
       expect(hookEventFiles(dir)).toEqual([]);
+      // The fail-open stderr notice belongs to the non-0/2 fallback branch only — a legitimate
+      // allow must never print it (issue #580 § Execution Strategy stop condition).
+      expect(stderr).not.toMatch(/fail-open/i);
     });
   });
 
-  test('stub exit 2 (deliberate deny): wrapper exits 2 verbatim, no hook-exec-error record', () => {
+  test('stub exit 2 (deliberate deny): wrapper exits 2 verbatim, no hook-exec-error record, no fail-open notice on stderr', () => {
     withTempDir('blackhole-claude-wrapper-', (dir) => {
-      const { exitCode } = runWrapperWithStubExit(dir, 2);
+      const { exitCode, stderr } = runWrapperWithStubExit(dir, 2);
       expect(exitCode).toBe(2);
       // A real deny is the validator's own decision, recorded by hook-event-log.js's
       // denyAndRecord inside the stub in production — the stub here is bare `process.exit(2)`,
       // so no event is expected from THIS wrapper layer; the wrapper's job is only to pass the
       // exit code through unmodified, which is the assertion above.
       expect(hookEventFiles(dir)).toEqual([]);
+      expect(stderr).not.toMatch(/fail-open/i);
     });
   });
 
-  test('stub exit 1 (crash before decision): wrapper degrades to allow (exit 0), one error record', () => {
+  test('stub exit 1 (crash before decision): wrapper degrades to allow (exit 0), one error record, fail-open notice on stderr', () => {
     withTempDir('blackhole-claude-wrapper-', (dir) => {
-      const { exitCode } = runWrapperWithStubExit(dir, 1);
+      const { exitCode, stderr } = runWrapperWithStubExit(dir, 1);
       expect(exitCode).toBe(0);
       const events = hookEventFiles(dir);
       expect(events).toHaveLength(1);
@@ -228,12 +232,13 @@ describe('AC-4d/4e — exit-code discrimination through the real generated comma
         pattern_id: 'hook-exec-failure',
         hook: 'validate-bash-command',
       });
+      expect(stderr).toMatch(/fail-open/i);
     });
   });
 
-  test('stub exit 127 (missing binary / bad path): wrapper degrades to allow (exit 0), one error record', () => {
+  test('stub exit 127 (missing binary / bad path): wrapper degrades to allow (exit 0), one error record, fail-open notice on stderr', () => {
     withTempDir('blackhole-claude-wrapper-', (dir) => {
-      const { exitCode } = runWrapperWithStubExit(dir, 127);
+      const { exitCode, stderr } = runWrapperWithStubExit(dir, 127);
       expect(exitCode).toBe(0);
       const events = hookEventFiles(dir);
       expect(events).toHaveLength(1);
@@ -243,6 +248,7 @@ describe('AC-4d/4e — exit-code discrimination through the real generated comma
         pattern_id: 'hook-exec-failure',
         hook: 'validate-bash-command',
       });
+      expect(stderr).toMatch(/fail-open/i);
     });
   });
 });

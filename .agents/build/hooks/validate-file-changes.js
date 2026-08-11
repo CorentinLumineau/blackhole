@@ -158,4 +158,18 @@ const main = () => {
   allowSilently();
 };
 
-main();
+// Top-level catch-all (#580): everything above this point is wrapped in `main()`'s own
+// synchronous call graph, but two `try/catch` blocks only cover JSON-parse and pattern-load
+// failures — an uncaught exception anywhere else (e.g. a non-string `file_path` reaching
+// hook-event-log.js's `resolveExistingAncestor`, the V-SEC-11 enforcement path) used to fall
+// through to the process boundary, which the wrapper (claude-native-settings.ts) treats as
+// "validator could not run" and converts to an ALLOW. Routing every uncaught exception through
+// the same `failClosed()` the two existing checks already use closes that class rather than
+// patching individual crash sites — see .blackhole/plans/issue-580.md's Root-Cause Decision
+// Record.
+try {
+  main();
+} catch (error) {
+  console.error(`[blackhole-hook] ${HOOK}: uncaught error in validator logic — ${error.stack}`);
+  failClosed({ hook: HOOK, tool: 'Write', error, patternId: 'uncaught-validator-error', label: 'validator logic' });
+}

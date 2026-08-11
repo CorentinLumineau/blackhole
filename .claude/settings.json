@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun run \"$CLAUDE_PROJECT_DIR/.claude/hooks/validate-bash-command.js\"\ncode=$?\nif [ \"$code\" = \"0\" ] || [ \"$code\" = \"2\" ]; then exit \"$code\"; fi\nmkdir -p \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events\" 2>/dev/null\nprintf '{\"version\":1,\"recorded_at\":\"%s\",\"hook\":\"validate-bash-command\",\"decision\":\"allow\",\"tier\":\"error\",\"pattern_id\":\"hook-exec-failure\",\"reason\":\"validator process exited %s before producing a decision\"}\\n' \\\n  \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" > \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json\" 2>/dev/null\nexit 0",
+            "command": "bun run \"$CLAUDE_PROJECT_DIR/.claude/hooks/validate-bash-command.js\"\ncode=$?\nif [ \"$code\" = \"0\" ] || [ \"$code\" = \"2\" ]; then exit \"$code\"; fi\nmkdir -p \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events\" 2>/dev/null\nprintf '{\"version\":1,\"recorded_at\":\"%s\",\"hook\":\"validate-bash-command\",\"decision\":\"allow\",\"tier\":\"error\",\"pattern_id\":\"hook-exec-failure\",\"reason\":\"validator process exited %s before producing a decision\"}\\n' \\\n  \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" > \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json\" 2>/dev/null\necho \"[blackhole-hook] validate-bash-command: validator process exited $code before producing a decision — call allowed (fail-open); see .blackhole/hook-events/\" >&2\nexit 0",
             "timeout": 5
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun run \"$CLAUDE_PROJECT_DIR/.claude/hooks/validate-file-changes.js\"\ncode=$?\nif [ \"$code\" = \"0\" ] || [ \"$code\" = \"2\" ]; then exit \"$code\"; fi\nmkdir -p \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events\" 2>/dev/null\nprintf '{\"version\":1,\"recorded_at\":\"%s\",\"hook\":\"validate-file-changes\",\"decision\":\"allow\",\"tier\":\"error\",\"pattern_id\":\"hook-exec-failure\",\"reason\":\"validator process exited %s before producing a decision\"}\\n' \\\n  \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" > \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json\" 2>/dev/null\nexit 0",
+            "command": "bun run \"$CLAUDE_PROJECT_DIR/.claude/hooks/validate-file-changes.js\"\ncode=$?\nif [ \"$code\" = \"0\" ] || [ \"$code\" = \"2\" ]; then exit \"$code\"; fi\nmkdir -p \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events\" 2>/dev/null\nprintf '{\"version\":1,\"recorded_at\":\"%s\",\"hook\":\"validate-file-changes\",\"decision\":\"allow\",\"tier\":\"error\",\"pattern_id\":\"hook-exec-failure\",\"reason\":\"validator process exited %s before producing a decision\"}\\n' \\\n  \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$code\" > \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json\" 2>/dev/null\necho \"[blackhole-hook] validate-file-changes: validator process exited $code before producing a decision — call allowed (fail-open); see .blackhole/hook-events/\" >&2\nexit 0",
             "timeout": 5
           }
         ]

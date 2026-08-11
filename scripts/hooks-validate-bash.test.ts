@@ -1002,3 +1002,37 @@ describe('validate-bash-command.js — worktree-removal guard global-option and 
     );
   });
 });
+
+// Uncaught-exception fail-open regression (#580): a non-string `cwd` reaches
+// `worktree-removal-guard.js`'s unguarded `path.resolve(cwd, pathArg)` (line 245, reached via
+// `evaluateWorktreeRemoval`) and throws a `TypeError` outside every existing try/catch in
+// `main()`. Before this fix, that uncaught exception fell through to bun's default exit 1 —
+// exactly the wrapper's (claude-native-settings.ts) fail-OPEN condition, converting what should
+// be a refusal into a silent allow. Every non-string shape is exercised, not just the
+// investigation note's `number` repro (.blackhole/plans/issue-580-investigation.md), to prove the
+// fix closes the defect class rather than one type.
+describe('validate-bash-command.js — uncaught validator crash fails closed, not open (#580)', () => {
+  const NON_STRING_CWD: unknown[] = [12345, ['a'], {}, true];
+
+  for (const cwd of NON_STRING_CWD) {
+    test(`a non-string cwd (${JSON.stringify(cwd)}) reaching the worktree-removal guard fails closed, not open`, async () => {
+      await withTempGitRepo('blackhole-hook-580-', async (repo) => {
+        const payload = { tool_name: 'Bash', tool_input: { command: 'git worktree remove foo' }, cwd };
+        const result = await runPreToolUseHook(SCRIPT, payload, repo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(repo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          hook: 'validate-bash-command',
+          tool: 'Bash',
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'uncaught-validator-error',
+        });
+      });
+    });
+  }
+});
