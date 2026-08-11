@@ -62,14 +62,14 @@ export const listFiles = (dir: string, ext = '.md'): string[] => {
 };
 
 // Issue #570/#567/#565 batch: `blackhole-vcodes.md`'s `| Code | Rule | Severity | Primary
-// enforcement site |` table is already parsed three times in this codebase — adr-status.check.ts's
-// parseIndexStatusMap and doc-health.check.ts's parseRootIndexRows (INDEX.md's 5-column schema),
-// and ground-truth.check.ts's parseVcodeEnforcementSites (this exact table, but only extracting
-// {code, site} for V-GROUND-02). Rather than a 4th/5th divergent parser, this is the one shared
-// {code, severity, site}[] extraction both vcode-severity-sync.check.ts and vcode-citation.check.ts
-// consume (V-INT-02). Same row idiom as the three precedents: skip non-`|`-leading lines; split on
-// `|` and trim; the first data cell's `V-` prefix discriminates a real row from header/separator
-// rows (whose first cell is `Code`/`:---:` and never starts with `V-`).
+// enforcement site |` table needs one shared {code, severity, site}[] extraction — consumed by
+// both vcode-severity-sync.check.ts and vcode-citation.check.ts — rather than two divergent
+// parsers (V-INT-02). Same split('|').map(trim) + length-guard row idiom as parseIndexTableRows
+// below (this table's row shape differs, the technique doesn't) and ground-truth.check.ts's
+// parseVcodeEnforcementSites (this exact table, narrower {code, site} extraction for
+// V-GROUND-02): skip non-`|`-leading lines; split on `|` and trim; the first data cell's `V-`
+// prefix discriminates a real row from header/separator rows (whose first cell is `Code`/`:---:`
+// and never starts with `V-`).
 export const parseVcodeTableRows = (
   vcodesContent: string,
 ): { code: string; severity: string; site: string }[] => {
@@ -81,6 +81,30 @@ export const parseVcodeTableRows = (
     const code = cells[1];
     if (!code.startsWith('V-')) continue;
     rows.push({ code, severity: cells[3], site: cells[4] });
+  }
+  return rows;
+};
+
+// Issue #573 (#498 deferral): `documentation/**/INDEX.md`'s 5-column `| path | summary | type |
+// status | review_trigger |` schema is parsed by two near-identical call sites —
+// doc-health.check.ts's parseRootIndexRows (root documentation/INDEX.md, folder-prefixed path)
+// and adr-status.check.ts's parseIndexStatusMap (documentation/decisions/INDEX.md, bare ADR
+// filename in the same column position). Same split('|').map(trim) + length-guard idiom as
+// parseVcodeTableRows above (V-INT-02) — the row-splitting *technique* is shared; the path
+// column's *interpretation* is not (folder-prefixed vs. bare filename) and stays with each
+// caller. Header/separator rows are skipped by the generic 'path' header value and the
+// dash-only separator pattern — both live INDEX.md files use the literal 'path' header cell.
+export const parseIndexTableRows = (
+  content: string,
+): { path: string; summary: string; type: string; status: string; reviewTrigger: string }[] => {
+  const rows: { path: string; summary: string; type: string; status: string; reviewTrigger: string }[] = [];
+  for (const line of content.split('\n')) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').map((c) => c.trim());
+    if (cells.length < 6) continue;
+    const p = cells[1];
+    if (!p || p.toLowerCase() === 'path' || /^:?-+:?$/.test(p)) continue;
+    rows.push({ path: p, summary: cells[2], type: cells[3], status: cells[4], reviewTrigger: cells[5] });
   }
   return rows;
 };

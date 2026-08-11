@@ -141,10 +141,10 @@ const checkDocTables = (): CheckResult => {
 };
 
 // Issue #508 (leg A of #438): `Primary enforcement site` column — row-cell parser reusing the
-// same `split('|').map(trim)` idiom as `adr-status.check.ts`'s `parseIndexStatusMap` and
-// `doc-health.check.ts`'s `parseRootIndexRows` (V-INT-01/V-INT-02: this is the third instance of
-// the idiom, not a fourth divergent pipe-table parser — see those two for the established shape).
-// Header/separator rows are skipped because their first cell never starts with `V-`.
+// same `split('|').map(trim)` idiom as `check-common.ts`'s `parseIndexTableRows` (issue #573
+// consolidated the prior `adr-status.check.ts`/`doc-health.check.ts` duplicate pair into that
+// shared helper; V-INT-01/V-INT-02 — not a divergent pipe-table parser). Header/separator rows
+// are skipped because their first cell never starts with `V-`.
 export const parseVcodeEnforcementSites = (vcodesContent: string): { code: string; site: string }[] => {
   const rows: { code: string; site: string }[] = [];
   for (const line of vcodesContent.split('\n')) {
