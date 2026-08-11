@@ -374,9 +374,9 @@ Companion-doc sync bullet). Promotes artifacts staged at thinking time
     when nothing was staged. No new `worker-schemas.md` return field — the PR-body record is
     the falsifiable evidence.
 *   **Do not delete** `.blackhole/staged/<issue>/` after carrying — it remains as campaign
-    state so a future reviewer audit (#468) has stable data to diff against, and so a resumed
-    session after interruption can re-derive what was already carried via the idempotency
-    guards above.
+    state so the reviewer audit (`reviewer.md` §25, `V-AUTO-02`) has stable data to diff
+    against, and so a resumed session after interruption can re-derive what was already carried
+    via the idempotency guards above.
 
 ---
 
