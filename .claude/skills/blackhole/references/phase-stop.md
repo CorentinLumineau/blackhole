@@ -101,8 +101,8 @@ them.
    `complete`/`ready` return is triaged like a drain-tier natural return, tag its `## In-flight
    workers` row `worker_state: drained`; a `status: partial` return runs
    `orchestrator-runtime.md` § Triage's Partial-result ingest procedure instead, tag
-   `worker_state: flushed` (`checkpoint-protocol.md` § Fields — both values already exist in
-   that field's enum; this tier is the first to exercise either).
+   `worker_state: flushed` (issue #492; `checkpoint-protocol.md` § Fields — both values already
+   exist in that field's enum; this tier is the first to exercise either).
 4. **Uncooperative fallback** — a worker that does not return within its grace window, or that
    was never reachable (no channel on this harness), falls back to `--abandon` tier semantics —
    kill, reset, dirty-check, drift heal (steps 1-4 of the `--abandon` tier above, cited not
@@ -149,20 +149,20 @@ them.
   restated; **`stop --now` tier: satisfied by the same two paths, dispatched per worker — a
   cooperative worker's entry clears via drain-tier triage or the Partial-result ingest
   procedure (reused at step 3 above), an uncooperative worker's entry clears via the
-  `--abandon` tier's step 2, invoked per-worker by step 4 above; a `flushed` entry clears via
-  the Partial-result ingest procedure specifically (`orchestrator-runtime.md` § Triage,
-  issue #492)**)
+  `--abandon` tier's step 2, invoked per-worker by step 4 above; a `flushed` (issue #492) entry
+  clears via the Partial-result ingest procedure specifically (`orchestrator-runtime.md` §
+  Triage)**)
 - [ ] Every worker return received before the boundary is persisted to the ledger — the
   never-drop rule does not suspend during a stop (**`stop --now` tier: a cooperative worker's
-  flush return is a worker return like any other and is persisted the same way — a flushed
-  return's `work_done`/`work_remaining` (not fresh `evidence`) is the persisted record,
-  issue #492; an uncooperative worker has no return to persist — its pushed worktree, per
-  obligation 3 below, is the artifact of record instead**)
+  flush (issue #492) return is a worker return like any other and is persisted the same way —
+  its `work_done`/`work_remaining` (not fresh `evidence`) is the persisted record; an
+  uncooperative worker has no return to persist — its pushed worktree, per obligation 3 below,
+  is the artifact of record instead**)
 - [ ] `.blackhole/campaign-checkpoint.md` written per `checkpoint-protocol.md`, naming what was
   in flight, what was killed vs drained, and what the next dispatch should be (**`stop --now`
-  tier: the same file, `stop_kind` set per step 6 above — now a real, emitted `flushed` value
-  alongside `drained`/`killed` (issue #492) — per-row `worker_state` distinguishing cooperative
-  (`drained`), flushed (`flushed`), and fallen-through (`killed`) workers**)
+  tier: the same file, `stop_kind` set per step 6 above — now a real, emitted `flushed` (issue
+  #492) value alongside `drained`/`killed` — per-row `worker_state` distinguishing cooperative
+  (`drained`), flushed (`flushed`, issue #492), and fallen-through (`killed`) workers**)
 - [ ] Every worktree's branch has all commits pushed to its PR branch; any dirty worktree is
   reported by path, never silently left (**`stop --now` tier: two paths, same as Invariant 1 —
   a cooperative worker satisfies this directly via obligation 3 on receipt of the ask
@@ -175,16 +175,16 @@ them.
   identical to `--abandon` tier — fires only if step 4's fallback actually killed a worker; a
   fully-cooperative `stop --now` never touches the watchdog, same as drain**)
 - [ ] The report states the exact command to resume and what will happen first (**`stop --now`
-  tier: additionally names which workers cooperated, flushed a partial result, or were
-  abandoned, per step 7 above — the resumer needs to know which issues may carry a partial push
-  (`worker_state: drained` \| `flushed` \| `killed`, issue #492)**)
+  tier: additionally names which workers cooperated, flushed (issue #492) a partial result, or
+  were abandoned, per step 7 above — the resumer needs to know which issues may carry a partial
+  push (`worker_state: drained` \| `flushed` (#492) \| `killed`)**)
 
 ## Checkpoint fields this mode owns
 
 See `checkpoint-protocol.md` § Fields: `stopped_by`, `stop_kind` (frontmatter), `worker_state`
-(per-row, `## In-flight workers`). `stop_kind` values now `drained` \| `killed` \| `flushed` \|
-`null`; `worker_state` values now `drained` \| `flushed` \| `killed`. `flushed` is emitted per
-step 6's priority rule above (issue #492 — no longer reserved).
+(per-row, `## In-flight workers`). `stop_kind` values now `drained` \| `killed` \| `flushed`
+(issue #492) \| `null`; `worker_state` values now `drained` \| `flushed` (issue #492) \|
+`killed` — emitted per step 6's priority rule above, no longer reserved.
 
 ## Non-goal
 

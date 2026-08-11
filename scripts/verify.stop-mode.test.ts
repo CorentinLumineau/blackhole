@@ -86,7 +86,11 @@ describe('checkStopModeWiring() — stop --now leg A wiring (issue #491)', () =>
 
 // Issue #492 — stop --now leg B: `flushed` is now a real, emitted value (no longer reserved).
 // findUncitedFlushedMention() replaces the pre-#492 "reservation note" invariant with a
-// "citation" invariant — every `flushed` mention must cite #492 nearby.
+// "citation" invariant — EVERY `flushed` mention must cite #492 nearby. This is a universal
+// check (iterates every occurrence, each re-checked against its own citation window), not an
+// existential one (a single whole-file `.test()` that a lone cited mention would satisfy while
+// leaving other, uncited mentions undetected — the exact defect a prior version of this helper
+// had).
 describe('findUncitedFlushedMention() (issue #492)', () => {
   test('flags a `flushed` mention with no nearby #492 citation', () => {
     expect(findUncitedFlushedMention('stop_kind: `flushed` | `killed` | `null`')).toBe(true);
@@ -103,6 +107,16 @@ describe('findUncitedFlushedMention() (issue #492)', () => {
   test('flags a `flushed` mention whose #492 citation is more than 80 characters away', () => {
     const farCitation = `flushed${'x'.repeat(90)}#492`;
     expect(findUncitedFlushedMention(farCitation)).toBe(true);
+  });
+
+  test('flags content with one cited and one uncited `flushed` mention (universal, not existential)', () => {
+    const mixed = '`flushed` is a real value now (issue #492). Later, `flushed` appears again with no citation.';
+    expect(findUncitedFlushedMention(mixed)).toBe(true);
+  });
+
+  test('does not flag content where every `flushed` mention has its own nearby #492 citation', () => {
+    const allCited = '`flushed` (issue #492) appears here. Later, `flushed` (issue #492) appears again.';
+    expect(findUncitedFlushedMention(allCited)).toBe(false);
   });
 
   test('checkpoint-protocol.md and phase-stop.md both cite #492 near every `flushed` mention', () => {

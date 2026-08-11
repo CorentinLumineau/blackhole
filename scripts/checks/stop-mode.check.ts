@@ -21,13 +21,27 @@ export const assertNoOrphanedInFlight = (
   return { id: 'V-STOP-01', ok: true };
 };
 
-// `flushed` is a real, emitted value as of issue #492 (leg B) — every mention in
+// `flushed` is a real, emitted value as of issue #492 (leg B) — EVERY mention in
 // checkpoint-protocol.md/phase-stop.md must cite #492 nearby, so the value's legitimizing issue
 // stays discoverable at the point of use (this replaces the pre-#492 invariant, which required a
 // "still reserved, do not emit" disclaimer instead). Shared between both files' checks below
 // (`V-DRY-01`) — the two invariants are structurally identical since #492 landed.
-export const findUncitedFlushedMention = (content: string): boolean =>
-  content.includes('flushed') && !/flushed[\s\S]{0,80}#492/.test(content);
+//
+// Universal, not existential: an `.exec()`-driven scan over every `flushed` occurrence, each
+// re-checked against its own 80-char citation window — never a single whole-file `.test()`,
+// which would pass on one cited mention while leaving nine stray uncited ones undetected
+// (the exact failure mode this guard exists to catch, once `flushed` stopped being reserved).
+const FLUSHED_CITATION_WINDOW = 80;
+
+export const findUncitedFlushedMention = (content: string): boolean => {
+  const flushedRe = /flushed/g;
+  let match: RegExpExecArray | null;
+  while ((match = flushedRe.exec(content))) {
+    const window = content.slice(match.index, match.index + 'flushed'.length + FLUSHED_CITATION_WINDOW);
+    if (!window.includes('#492')) return true;
+  }
+  return false;
+};
 
 // V-STOP-02: static conformance — SKILL.md cites phase-stop.md; phase-stop.md cites
 // recovery-protocol.md §9 by reference (never restates its heal-actions steps);
