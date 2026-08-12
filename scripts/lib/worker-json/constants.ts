@@ -36,6 +36,7 @@ export const HUNTER_VERIFICATIONS = ['CONFIRMED', 'STALE'] as const;
 export const SUB_MODES = ['research', 'investigate', 'analyze'] as const;
 export const BRAINSTORM_CHILDREN_CAP = 5;
 export const CAPTURE_STATUSES = ['captured', 'unavailable'] as const;
+export const COMPANION_REPAIR_VCODES = ['V-ADA-01', 'V-ADA-05'] as const;
 export const RULING_DISPOSITIONS = ['close', 'amend', 'proceed'] as const;
 
 export const ROLE_FROM_TYPE: Record<string, Role> = {

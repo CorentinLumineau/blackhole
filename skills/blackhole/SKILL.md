@@ -68,6 +68,9 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    under the same skip-if-exists rule **only when** the companion-file scaffold above is not
    skipped **and** `kaizen.enabled` is `true` **and** `kaizen.kinds` contains `ux-coherence`.
    Full contract: [templates/companion-files/README.md](../templates/companion-files/README.md).
+   Initial creation runs here at bootstrap; implement-time repair of absent/broken root
+   companions is `implementer.md` § Companion-file Sync (`companion-file-sync.md`) — no
+   duplicate scaffold logic in this step.
 3. **State init** — `queue.json`, `findings-ledger.json`, `plans/`
 4. **Validate** — `bun run scripts/lib/state-write-guard.ts` on both JSON files (never `jq empty`
    alone — `blackhole-state.md` § Write protocol)

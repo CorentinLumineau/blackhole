@@ -51,6 +51,13 @@ fixed-in-pr → resolved (after merge)
 deferred → resolved    (when deferred issue merges — optional cleanup)
 ```
 
+**`companion_repairs[]` consumer** (issue #453): on an implementer `status: complete`, the
+orchestrator matches each `companion_repairs[]` row's `(vcode, file)` against open/deferred
+ledger rows using the **V-ADA-01/V-ADA-05 dedup** rule below (ignore `issue_ref`). For each
+match: set `status: fixed-in-pr`, `pr_ref` from the worker's PR, append
+`companion-repair: <action>` to `summary`. Unmatched rows are no-ops (repair without a prior
+ledger finding is valid).
+
 A `recheck[]` `verdict: fixed` prior row (issue #485) transitions `open → resolved` before the
 orchestrator runs § Write protocol step 3's dedup check for the current append batch — this is
 what keeps that check's `open`/`deferred` status filter (step 3, above) from silently absorbing

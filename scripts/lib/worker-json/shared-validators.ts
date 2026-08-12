@@ -1,6 +1,7 @@
 import {
   AC_VERDICTS,
   CAPTURE_STATUSES,
+  COMPANION_REPAIR_VCODES,
   DECISION_RECORD_KINDS,
   PARTIAL_PHASES,
   SEVERITIES,
@@ -140,6 +141,28 @@ export function validateVisualEvidenceEntry(entry: unknown, path: string): strin
 
 export function validateVisualEvidenceArray(value: unknown, path: string): string[] {
   return validateArrayOf(value, path, validateVisualEvidenceEntry);
+}
+
+export function validateCompanionRepairEntry(entry: unknown, path: string): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(entry)) {
+    errors.push(`${path}: expected object`);
+    return errors;
+  }
+
+  requireField(errors, entry, 'vcode', isString, 'string');
+  if (isString(entry.vcode)) {
+    pushEnumError(errors, 'vcode', entry.vcode, COMPANION_REPAIR_VCODES);
+  }
+  requireField(errors, entry, 'file', isNonEmptyString, 'non-empty string');
+  requireField(errors, entry, 'action', isNonEmptyString, 'non-empty string');
+
+  return errors.map((error) => `${path}.${error}`);
+}
+
+export function validateCompanionRepairsArray(value: unknown, path: string): string[] {
+  return validateArrayOf(value, path, validateCompanionRepairEntry);
 }
 
 // Issue #492 — stop --now leg B: shared `status: partial` payload shape, dispatched identically
