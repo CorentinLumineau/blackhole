@@ -231,7 +231,8 @@ consumer repo's.
 Existence-gated: when `scripts/checks/doc-health.check.ts` exists at repo root (blackhole
 self-hosting its own campaign), refresh `.blackhole/doc-health.json` via
 `bun run scripts/doc-health-signal.ts`; absent, this step is inert — no error, no attempted
-invocation (Scope-2 for consumer repos is issue #464, deferred).
+invocation. Scope-2 (a consumer repo's tree) is enforced at review time by `reviewer.md` §27
+(Doc-Governance Judgment Audit).
 
 `doc_debt: "yes"` is visibility only: no ledger append, no phase gate. `V-DOCHEALTH-03` stays
 advisory. Full rationale for this turn-start mechanism over a literal `SessionStart` hook:
