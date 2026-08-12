@@ -7,6 +7,9 @@ longer definitions (token cost, drift). Persist every finding to
 | Code | Rule | Severity | Primary enforcement site |
 |------|------|----------|--------------------------|
 | V-SOLID-01/03 | Single responsibility; substitutability | BLOCK | reviewer.md §3 (V-SOLID-01, V-SOLID-03 — SOLID & DRY Compliance) |
+| V-SOLID-02 | Open/Closed — existing code modified (switch/if-else on type tag edited per variant) instead of extended | BLOCK | reviewer.md §3 (V-SOLID-02 — SOLID & DRY Compliance) |
+| V-SOLID-04 | Interface Segregation — interface/abstract class forces stub/no-op members implementers never use | WARN | reviewer.md §3 (V-SOLID-04 — SOLID & DRY Compliance; mercure MEDIUM; kept WARN here per #441 precedent — ISP is structural quality, deferrable, not autonomous-merge-blocking like OCP/DIP churn) |
+| V-SOLID-05 | Dependency Inversion — module instantiates a concrete dependency directly instead of an injected abstraction | BLOCK | reviewer.md §3 (V-SOLID-05 — SOLID & DRY Compliance) |
 | V-DRY-01 | No >10-line duplication | BLOCK | reviewer.md §3 |
 | V-DRY-02/03 | 3–10-line duplication; repeated magic values | WARN | reviewer.md §3 (V-DRY-02, V-DRY-03 — SOLID & DRY Compliance) |
 | V-KISS-01 / V-YAGNI-01 | No over-abstraction; no speculative features | BLOCK | reviewer.md §12 (Suggestion Proportionality Gate) |

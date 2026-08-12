@@ -64,6 +64,18 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     *   Liskov Substitution followed — no override/subclass narrows a base type's accepted
         inputs, widens the exceptions it throws, or otherwise breaks a caller's ability to
         substitute the subtype without knowing the difference (`V-SOLID-03`).
+    *   Open/Closed Principle (`V-SOLID-02`) — flag switch/if-else chains branching on a type
+        tag that must be edited for every new variant when extension is viable; cross-reference
+        `hunt/best-practices.md` § Scan heuristics (OCP trigger), do not restate the calibration
+        table (`V-INT-02`).
+    *   Interface Segregation (`V-SOLID-04`, `WARN`) — flag interfaces/abstract classes with
+        >7 methods where implementers stub or no-op unused members. Cross-reference
+        `hunt/best-practices.md` § Scan heuristics (ISP trigger); do not restate the calibration
+        table (`V-INT-02`).
+    *   Dependency Inversion (`V-SOLID-05`) — flag direct concrete instantiation (e.g.
+        `new ConcreteClient()`) inside business logic instead of constructor/parameter injection
+        of an abstraction; cross-reference `hunt/best-practices.md` § Scan heuristics (DIP
+        trigger), do not restate the calibration table (`V-INT-02`).
     *   3–10-line duplication left unextracted (`V-DRY-02`, `WARN`) and repeated magic
         values/constants left unnamed (`V-DRY-03`, `WARN`) flagged for cleanup, not blocked.
 *   **Anti-Slop Audit**:

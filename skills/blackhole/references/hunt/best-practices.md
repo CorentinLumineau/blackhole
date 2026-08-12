@@ -7,14 +7,17 @@ Scan heuristics, calibration table, and scoring rule for the `best-practices` hu
 ## Scan heuristics
 
 A `best-practices` wave checks each touched-or-scanned file against concrete, mechanical
-triggers for the four SOLID principles this campaign enforces plus DRY, KISS, and YAGNI —
-never a vague "looks bad" impression:
+triggers for the five SOLID principles (SRP, OCP, LSP, ISP, DIP) this campaign enforces plus
+DRY, KISS, and YAGNI — never a vague "looks bad" impression:
 
 - **SRP (Single Responsibility)** — a class/file exceeds 300 lines, OR exposes more than 10
   methods, OR visibly mixes unrelated concerns (e.g. persistence + business logic + I/O in
   one module).
 - **OCP (Open/Closed)** — a switch statement or if/else chain branches on a type tag, and
   that chain must be edited every time a new variant is added.
+- **LSP (Liskov Substitution)** — a subclass/override narrows accepted inputs, widens thrown
+  exceptions, or otherwise breaks a caller's ability to substitute the subtype without knowing
+  the difference.
 - **ISP (Interface Segregation)** — an interface or abstract base class exposes more than 7
   methods, forcing implementers to stub or no-op members they don't use.
 - **DIP (Dependency Inversion)** — a module imports and instantiates a concrete class
