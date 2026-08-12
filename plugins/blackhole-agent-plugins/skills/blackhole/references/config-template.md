@@ -20,7 +20,7 @@ Committed template: `.blackhole/config.json`
   "adaptive_routing": true,
   "router_confidence_thresholds": { "split": 70, "design": 70, "plan_mode": 70, "security": 70, "docs": 70, "brainstorm": 70, "analysis": 70, "ui": 70 },
   "docs_governance": { "enabled": true, "companion_files": true, "docs_impact_routing": true, "write_governance": true, "severity_overrides": {} },
-  "kaizen": { "enabled": false, "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity", "ux-coherence", "docs", "backlog", "ci", "deps"], "trigger": "on-empty", "loop_interval": 5, "min_priority": 30, "max_issues_per_wave": 10, "max_waves": 6 },
+  "kaizen": { "enabled": false, "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity", "ux-coherence", "docs", "backlog", "ci", "deps", "perf"], "trigger": "on-empty", "loop_interval": 5, "min_priority": 30, "max_issues_per_wave": 10, "max_waves": 6 },
   "incident_mode": { "enabled": false, "parallel_max_override": 1, "pause_discovery": true },
   "autonomy": { "confidence_threshold": 80, "design_dominance_delta": 30, "design_autonomy": true, "analyze_routing": true, "brainstorm_routing": false, "never_bypass": ["destructive", "credentials", "epic-go-no-go"] },
   "worker_model_policy": "cost-optimized",
@@ -53,10 +53,10 @@ Committed template: `.blackhole/config.json`
 | `docs_governance.severity_overrides` | no | Map of V-code → `BLOCK`\|`WARN`, keyed by docs-governance V-code; empty/absent = defaults apply. May only escalate a WARN-default docs-governance code to BLOCK — must never de-escalate the pre-existing `V-DOCSYNC-01` BLOCK severity |
 | `kaizen` | no | Nested object gating the kaizen improvement-hunt loop (ADR-006): `enabled`, `kinds`, `trigger`, `loop_interval`, `min_priority`, `max_issues_per_wave`, `max_waves`; absent block = current behavior preserved (hunting is opt-in, see contract note below) |
 | `kaizen.enabled` | no | Kill switch for the whole `kaizen` block (default `false` — hunting is opt-in, unlike `docs_governance` which defaults `true`); when `false`, hunt dispatch never fires regardless of sub-field values |
-| `kaizen.kinds` | no | Array of hunt territory kinds to scan (default `["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity", "ux-coherence", "docs", "backlog", "ci", "deps"]`); `retrospective`, `parity`, `ux-coherence`, `docs`, `backlog`, `ci`, and `deps` are all included by default whenever `kaizen.enabled: true` |
+| `kaizen.kinds` | no | Array of hunt territory kinds to scan (default `["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity", "ux-coherence", "docs", "backlog", "ci", "deps", "perf"]`); `retrospective`, `parity`, `ux-coherence`, `docs`, `backlog`, `ci`, `deps`, and `perf` are all included by default whenever `kaizen.enabled: true` |
 | `kaizen.trigger` | no | `on-empty` \| `every-n-loops` \| `manual` (default `on-empty`) — when the Phase-5 loop dispatches a hunt wave |
 | `kaizen.loop_interval` | no | Number of Phase-5 loop iterations between hunt waves when `trigger: every-n-loops` (default `5`) |
-| `kaizen.min_priority` | no | Minimum `Priority = Gain * (11 - Effort)` a finding must clear to be filed as an issue (default `30`, matching the `V-PARETO-03` BLOCK floor); may only be **raised** above `30`, never lowered below the `V-PARETO-03` threshold |
+| `kaizen.min_priority` | no | Minimum `Priority = Gain * (11 - Effort)` a finding must clear to be filed as an issue (default `30`, matching the `V-PARETO-02` BLOCK floor); may only be **raised** above `30`, never lowered below the `V-PARETO-02` threshold |
 | `kaizen.max_issues_per_wave` | no | Cap on issues filed per hunt wave (default `10`) — exceeding it is `V-HUNT-02` (WARN) |
 | `kaizen.max_waves` | no | Cap on total hunt waves per kind before it is marked exhausted (default `6`) |
 | `incident_mode` | no | Nested object gating the campaign-wide incident posture (`orchestrator-runtime.md` § Incident Mode): `enabled`, `parallel_max_override`, `pause_discovery`; absent block = current behavior preserved (incident mode is a rare, deliberately-armed emergency posture, opt-in like `kaizen`, see contract note below) |
@@ -128,7 +128,7 @@ pre-existing `V-DOCSYNC-01` `BLOCK` severity.
 `false`, the kaizen improvement-hunt loop (ADR-006) MUST be a no-op and
 current behavior is preserved exactly — no hunt wave dispatches, no hunter
 agent spawns, `hunt_state` is never written. `kaizen.min_priority` may only be
-**raised** above its default of `30`, never lowered below the `V-PARETO-03`
+**raised** above its default of `30`, never lowered below the `V-PARETO-02`
 `BLOCK` threshold. This is the same obligation `docs_governance.enabled` and
 `adaptive_routing` already impose on their respective features.
 
