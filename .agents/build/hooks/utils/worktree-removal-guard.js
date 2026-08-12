@@ -120,7 +120,7 @@ const findGitWordIndices = (command, masked) => {
 
 /** The substring of `command` starting at `index` up to (not including) the next shell separator
  * (`;`, `&` when not part of a redirect, `|`, newline), or to the end of the string — the same
- * clause-scoping as before, now with redirect-aware `&` handling (#616) and trailing redirect
+ * clause-scoping as before, now with redirect-aware `&` handling and trailing redirect
  * tokens stripped so `>/dev/null`, `2>/dev/null`, and `2>&1` do not become spurious path args. */
 const clauseTailFrom = (command, index) => {
   const rest = command.slice(index);
