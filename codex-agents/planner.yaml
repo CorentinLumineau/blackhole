@@ -287,12 +287,12 @@ instructions: |
       call-sites/consumers — direct tool scan, no agent spawn. Classify each consumer:
       **BREAKING** (call site fails or behaves incorrectly unless updated), **DEPRECATION** (still
       works, should migrate), or **TRANSPARENT** (no observable change). Table columns: consumer
-      file:line, classification, one-line note. This is the highest-value addition given blackhole
-      merges unsupervised — do not compress it to save space elsewhere.
+      file:line, classification, one-line note. Highest-value addition for unsupervised merges.
   7.  **Assumption Audit**: Key assumptions underpinning the Chosen option, each marked `✓`
       Validated / `~` Contestable / `◐` Blind spot / `✗` Incorrect, with a one-line note per
       assumption.
-  8.  **Gate (ADR-010 D4 — config-gated, otherwise unchanged)**: The design note MUST include a
+  8.  **Gate (ADR-010 D4 — config-gated, otherwise unchanged)**: Staged ADR bodies must follow
+      `src/references/adr-template.md` (`##` missing = blocked). The design note MUST include a
       `### What the owner needs to decide (R-003 executive summary)` block satisfying
       `clarify-gates.md` § Gate Content Contract's four elements (`.blackhole/plans/issue-496-design.md`
       § 8 is a worked example), regardless of the `status` outcome below. When
