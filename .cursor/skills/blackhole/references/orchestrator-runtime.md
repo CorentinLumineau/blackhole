@@ -89,8 +89,9 @@ For each completed worker (case A, or case B after a successful recovery):
    return computed data, and the orchestrator alone applies it. For each completed `router`,
    construct the full `routing_decisions` row from its returned JSON before appending: assign
    `id` from `next_routing_id`, `issue_ref` from spawn context, `created_at` = now, and copy
-   `route`, `trigger`, and `local_analyze` verbatim from the return (`worker-schemas.md` §
-   Router). **Exception**: a completed worker returning `status: partial`
+   `route`, `trigger`, `local_analyze`, and `rationale` (when present on the return) verbatim
+   from the return (`worker-schemas.md` § Router). **Exception**: a completed worker returning
+   `status: partial`
    (`worker-schemas.md` § Partial result) skips this per-role branch entirely — see §
    Partial-result ingest below.
 4. Remove the worker from `## In-flight workers`.

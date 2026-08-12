@@ -175,6 +175,7 @@ New top-level `routing_decisions` array (sibling to `findings`), with its own
         "security_review_required_raised": true,
         "plan_mode_confidence_boosted": false
       },
+      "rationale": "plan_mode confidence 55 is below threshold 70; cautious full plan_mode default applies pending local-analyze scan.",
       "created_at": "2026-07-04T12:00:00.000Z"
     }
   ]
@@ -189,6 +190,7 @@ New top-level `routing_decisions` array (sibling to `findings`), with its own
 | `issue_ref` | number | Parent campaign issue |
 | `trigger` | `initial` \| `clarify-resolved` \| `research-landed` \| `investigation-landed` \| `analysis-landed` | Matches the ADR's four re-route checkpoints plus the initial pass |
 | `route` | object | Same shape as `queue.json` issue `route` object — see `queue-dag.md` `### \`route\` object` |
+| `rationale` | string \| absent | Copied verbatim from the router return when present; omitted on historical rows predating this field |
 | `local_analyze` | object \| `null` | ADR-004 step 5b confidence-boost scan record; `null` when the scan did not trigger (confidence already ≥ threshold, or the row predates this mechanism) |
 | `local_analyze.triggered` | boolean | Always `true` when the object is non-null |
 | `local_analyze.reason` | string | Human-readable trigger justification (which confidence score, threshold) |

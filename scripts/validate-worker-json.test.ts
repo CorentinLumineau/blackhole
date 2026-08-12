@@ -517,6 +517,12 @@ describe('validateWorker router', () => {
     expectValid('router', 'router-routed.json'));
   test('invalid rationale exceeds maximum length', () =>
     expectInvalid('router', 'router-routed-rationale-too-long.json'));
+  test('invalid rationale wrong type (number)', () =>
+    expectInvalid('router', 'router-routed-rationale-type-confusion-number.json'));
+  test('invalid rationale wrong type (null)', () =>
+    expectInvalid('router', 'router-routed-rationale-type-confusion-null.json'));
+  test('invalid rationale whitespace-only', () =>
+    expectInvalid('router', 'router-routed-rationale-whitespace.json'));
 });
 
 describe('validateWorker hunter', () => {
