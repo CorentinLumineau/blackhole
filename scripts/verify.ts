@@ -62,9 +62,9 @@ export async function runVerifyMain(options?: { checksDir?: string }): Promise<n
   return exitCodeFromVerifyResults(results);
 }
 
-const main = async () => {
-  process.exit(await runVerifyMain());
-};
+export async function main(options?: { checksDir?: string }): Promise<void> {
+  process.exit(await runVerifyMain(options));
+}
 
 if (import.meta.main) {
   await main();

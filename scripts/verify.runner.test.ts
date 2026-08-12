@@ -6,11 +6,22 @@ import {
   exitCodeFromVerifyResults,
   formatVerifyResultLine,
   formatVerifySummary,
+  main,
   runVerifyChecks,
   runVerifyMain,
   warnOnCheckCountMismatch,
 } from './verify';
 import { makeTempDir } from './lib/fs.ts';
+
+const root = path.resolve(import.meta.dirname, '..');
+const verifyScriptPath = path.join(root, 'scripts', 'verify.ts');
+
+class ProcessExitError extends Error {
+  constructor(readonly code: number | undefined) {
+    super(`process.exit(${code})`);
+    this.name = 'ProcessExitError';
+  }
+}
 
 let tempDir: string;
 
@@ -200,3 +211,70 @@ describe('runVerifyMain', () => {
     warnSpy.mockRestore();
   });
 });
+
+describe('main() CLI', () => {
+  test('calls process.exit(0) when all discovered checks pass', async () => {
+    const dir = makeChecksDir();
+    writeStubCheck(
+      dir,
+      'a.check.ts',
+      'export function runChecks() { return [{ id: "A", ok: true }]; }',
+    );
+
+    const exitSpy = spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new ProcessExitError(code);
+    }) as never);
+    const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
+    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(main({ checksDir: dir })).rejects.toMatchObject({ code: 0 });
+
+    exitSpy.mockRestore();
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  test('calls process.exit(1) when any discovered check fails', async () => {
+    const dir = makeChecksDir();
+    writeStubCheck(
+      dir,
+      'fail.check.ts',
+      'export function runChecks() { return [{ id: "FAIL", ok: false }]; }',
+    );
+
+    const exitSpy = spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new ProcessExitError(code);
+    }) as never);
+    const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
+    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(main({ checksDir: dir })).rejects.toMatchObject({ code: 1 });
+
+    exitSpy.mockRestore();
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+});
+
+async function runVerifyCli(): Promise<{ exitCode: number; stdout: string }> {
+  const proc = Bun.spawn({
+    cmd: ['bun', 'run', verifyScriptPath],
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [exitCode, stdout] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+  ]);
+  return { exitCode, stdout };
+}
+
+describe('verify.ts CLI subprocess', () => {
+  test('exits 0 and prints the verify header when run as a script', async () => {
+    const result = await runVerifyCli();
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toStartWith('blackhole verify');
+  });
+});
+
