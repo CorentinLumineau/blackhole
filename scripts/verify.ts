@@ -37,23 +37,34 @@ export function warnOnCheckCountMismatch(results: CheckResult[], expected: numbe
   }
 }
 
-const main = async () => {
+export function formatVerifyResultLine(r: CheckResult): string {
+  const icon = r.ok ? '✓' : '✗';
+  return `  ${icon} ${r.id}${r.detail ? ` — ${r.detail}` : ''}`;
+}
+
+export function formatVerifySummary(results: CheckResult[]): string {
+  const failed = results.filter((r) => !r.ok).length;
+  return `\n${results.length - failed}/${results.length} checks passed`;
+}
+
+export async function runVerifyMain(options?: { checksDir?: string }): Promise<number> {
   console.log('blackhole verify\n');
 
-  const results = await runVerifyChecks();
+  const results = await runVerifyChecks(options);
   warnOnCheckCountMismatch(results, EXPECTED_CHECK_COUNT);
 
-  let failed = 0;
   for (const r of results) {
-    const icon = r.ok ? '✓' : '✗';
-    console.log(`  ${icon} ${r.id}${r.detail ? ` — ${r.detail}` : ''}`);
-    if (!r.ok) failed++;
+    console.log(formatVerifyResultLine(r));
   }
 
-  console.log(`\n${results.length - failed}/${results.length} checks passed`);
+  console.log(formatVerifySummary(results));
 
-  process.exit(exitCodeFromVerifyResults(results));
-};
+  return exitCodeFromVerifyResults(results);
+}
+
+export async function main(options?: { checksDir?: string }): Promise<void> {
+  process.exit(await runVerifyMain(options));
+}
 
 if (import.meta.main) {
   await main();
