@@ -14,21 +14,46 @@ Configured in `.blackhole/config.json`:
 
 When the field is absent, treat as `cost-optimized`.
 
+| `worker_effort_policy` | Behavior |
+|------------------------|----------|
+| `cost-optimized` | **Default when field is present.** Resolve reasoning effort per spawn from the resolved task tier (folded into § Harness tier ladders below). |
+| `inherit` | Omit effort parameters — workers inherit the parent session's reasoning depth (mirror `worker_model_policy: inherit` for model). |
+
+When the field is absent, tier-folded effort defaults apply under `cost-optimized` semantics
+(same as model policy absent-field behavior).
+
+**Disambiguation:** *reasoning effort* in this document is spawn-time inference depth /
+thinking budget on the harness. It is **not** the `effort` field in `worker-schemas.md`
+discovery findings, which scores implementation cost for `V-PARETO-02` priority
+(`Priority = Gain * (11 - Effort)`). Grep for `effort` alone is misleading — always check
+context.
+
 ## Resolution algorithm
 
 Before every worker spawn:
 
-1. Read `worker_model_policy` from `.blackhole/config.json`.
-2. If `inherit` → omit `model`.
-3. If `cost-optimized`:
+1. Read `worker_model_policy` and `worker_effort_policy` from `.blackhole/config.json`.
+2. If `worker_model_policy` is `inherit` → omit `model`.
+3. If `worker_model_policy` is `cost-optimized`:
    1. Determine **task tier** from § Task-tier matrix (role + route + escalation signals).
    2. Pick the **first** slug in the harness § Tier ladder for that tier that the harness
       accepts on spawn.
    3. Never read `model:` from agent markdown (`V-AGENT-01`).
+4. If `worker_effort_policy` is `inherit` (or model policy is `inherit` and effort policy is
+   absent) → omit harness-native effort parameters; session inheritance applies.
+5. If `worker_effort_policy` is `cost-optimized` (or absent — same semantics):
+   1. **Effort follows the resolved tier** from step 3 — read the `Default effort (harness-native)`
+      and `Rationale` columns for that tier row in § Harness tier ladders. No second pass, no
+      separate bump table.
+   2. Apply harness-native effort control surfaces per ladder notes (slug suffix, spawn field,
+      or session inheritance where no override exists).
 
 **Escalation rule:** when a worker returns `status: blocked` with `escalation_trigger`, the
 *next* spawn for the same issue and role bumps one tier (`economy → standard → premium`). Cap
-at `premium`; do not escalate past harness top tier.
+at `premium`; do not escalate past harness top tier. Effort follows the bumped tier automatically.
+
+**Stability note (Q3):** effort defaults are **not portable** across harnesses — each ladder
+documents harness-native control surfaces. Do not assume a shared effort enum.
 
 ## Task-tier matrix
 
@@ -65,57 +90,87 @@ Apply after base tier. Take the **maximum** tier when multiple rows match.
 
 `economy` < `standard` < `premium` (cheapest capable → most capable).
 
+### Logical effort defaults (tier-folded)
+
+Effort is resolved from the **same tier** as model — one resolution pass only.
+
+| Tier | Logical effort | Rationale |
+|------|----------------|-----------|
+| `economy` | low / minimal | Classification and read-only scans; errors are cheap to retry |
+| `standard` | medium / balanced | Default workhorse — planning, TDD, review |
+| `premium` | high / max | Security review, design, XL implementation — correctness over token cost |
+
 ## Harness tier ladders
 
 Each tier lists slugs **cheapest first** within the tier. Pick the first slug the harness
-accepts.
+accepts. **Default effort** and **Rationale** are folded per row — not a separate table.
 
 {{#cursor}}
 ### Cursor
 
-| Tier | Model slugs (cheapest → most capable within tier) |
-|------|---------------------------------------------------|
-| `economy` | `composer-2.5-fast`, `grok-4.5-fast-xhigh` |
-| `standard` | `composer-2.5`, `claude-sonnet-5-thinking-high`, `gpt-5.5-medium` |
-| `premium` | `gpt-5.3-codex`, `claude-opus-4-8-thinking-high` |
+Cursor exposes effort via model slug suffixes (`-thinking-high`, `-xhigh`) or bracket syntax
+`model: …[effort=high]` ([Model parameters](https://docs.cursor.com/context/rules-for-ai#model-parameters)).
+The spawn footer records **logical effort** even when effort is implicit in the slug.
+
+| Tier | Model slugs (cheapest → most capable) | Default effort (harness-native) | Rationale |
+|------|---------------------------------------|----------------------------------|-----------|
+| `economy` | `composer-2.5-fast`, `grok-4.5-fast-xhigh` | low (`-fast` slugs; no thinking suffix) | Classification scans; retry cost is low |
+| `standard` | `composer-2.5`, `claude-sonnet-5-thinking-high`, `gpt-5.5-medium` | medium (`-thinking-high` / balanced tier) | Default workhorse spawns |
+| `premium` | `gpt-5.3-codex`, `claude-opus-4-8-thinking-high` | high (`-thinking-high` / max within tier) | Security, design, XL — correctness over cost |
 
 Pass resolved slug on `Task` `model` when policy is `cost-optimized`.
 {{/cursor}}
 {{#claude}}
 ### Claude Code
 
-| Tier | Model families (cheapest → most capable within tier) |
-|------|--------------------------------------------------------|
-| `economy` | Haiku (latest) |
-| `standard` | Sonnet (latest) |
-| `premium` | Opus (latest) |
+Session and subagent frontmatter can set extended thinking depth
+([#67647](https://github.com/anthropics/claude-code/issues/67647),
+[#64706](https://github.com/anthropics/claude-code/issues/64706)). **Documented limitation:**
+the Workflow tool's `agent()` call cannot pin effort today
+([#68042](https://github.com/anthropics/claude-code/issues/68042)) — pin via tier family
+selection and document logical effort in the spawn footer.
+
+| Tier | Model families (cheapest → most capable) | Default effort (harness-native) | Rationale |
+|------|------------------------------------------|----------------------------------|-----------|
+| `economy` | Haiku (latest) | low (minimal extended thinking) | Read-only / classification |
+| `standard` | Sonnet (latest) | medium (balanced thinking) | Planning, TDD, review |
+| `premium` | Opus (latest) | high (extended thinking enabled) | Security, design, XL |
 
 Use harness-native identifiers; prefer latest version in each family.
 {{/claude}}
 {{#codex}}
 ### Codex CLI
 
-| Tier | Model families (cheapest → most capable within tier) |
-|------|--------------------------------------------------------|
-| `economy` | mini / fast variants |
-| `standard` | GPT-5 (latest) |
-| `premium` | GPT-5 Codex (latest) |
+Codex exposes `reasoning_effort` on spawn where applicable
+([#26948](https://github.com/openai/codex/issues/26948)). When overriding per-turn, set
+`fork_turns: "none"` per [#32031](https://github.com/openai/codex/issues/32031).
+
+| Tier | Model families (cheapest → most capable) | Default effort (harness-native) | Rationale |
+|------|------------------------------------------|----------------------------------|-----------|
+| `economy` | mini / fast variants | low (`reasoning_effort: low` or harness minimum) | Cheap scans |
+| `standard` | GPT-5 (latest) | medium (`reasoning_effort: medium`) | Default workhorse |
+| `premium` | GPT-5 Codex (latest) | high (`reasoning_effort: high`) | Security / XL correctness |
 {{/codex}}
 {{#gemini}}
 ### Antigravity / Gemini
 
-| Tier | Model families (cheapest → most capable within tier) |
-|------|--------------------------------------------------------|
-| `economy` | Gemini Flash (latest) |
-| `standard` | Gemini Pro (latest) |
-| `premium` | Gemini Ultra / highest thinking tier |
+Premium tier maps to the highest thinking tier available; no separate effort parameter on spawn.
+
+| Tier | Model families (cheapest → most capable) | Default effort (harness-native) | Rationale |
+|------|------------------------------------------|----------------------------------|-----------|
+| `economy` | Gemini Flash (latest) | low (default thinking) | Classification |
+| `standard` | Gemini Pro (latest) | medium (balanced thinking) | Default workhorse |
+| `premium` | Gemini Ultra / highest thinking tier | high (max thinking tier) | Security, design, XL |
 {{/gemini}}
 {{#skills}}
 ### skills.sh / generic
 
 No fixed slug list. Map `economy` / `standard` / `premium` to the installing harness's
-documented cheap / mid / top reasoning tiers. When the harness exposes no model override,
-`inherit` semantics apply automatically.
+documented cheap / mid / top reasoning tiers.
+
+**Effort policy:** `inherit` (session) — same fallback as model when the harness exposes no
+model override (`model-routing.md` § `skills.sh` inherit semantics). **Unverified** until a
+harness integration test exists; do not assume portable effort tokens.
 {{/skills}}
 
 ## Orchestrator integration
@@ -124,6 +179,8 @@ When spawning workers, the orchestrator must pass **both**:
 
 1. **Track directive** (existing ADR-004 § Route-derived dispatch) — e.g. `track: design`
 2. **Resolved `model`** (this doc) — from task-tier matrix + harness ladder
+3. **Resolved effort** (when `worker_effort_policy` is `cost-optimized` or absent) — from the
+   same tier row's `Default effort` column; omit when `inherit`
 
 `planner` spawns: tier derives from `track` + `route{}` flags, not from implementer defaults.
 `implementer` / `reviewer` spawns: tier derives from role + security/size/review_iteration.
@@ -132,44 +189,50 @@ Log the resolved tier in the spawn prompt footer (orchestrator scratchpad only �
 `queue.json`) for cost audit:
 
 ```
-MODEL_TIER: standard | slug: claude-sonnet-5-thinking-high
+MODEL_TIER: standard | slug: claude-sonnet-5-thinking-high | effort: medium
 ```
 
 ## Workflow-tool enforcement
 
 On a harness fan-out via a native deterministic orchestration primitive (Pattern C, capability C1
 — see [claude-code-native.md](claude-code-native.md)), every `agent()` call in the fan-out script
-**MUST** pin both `agentType` and `model` explicitly. Background execution does not inherit the
-session model — an unpinned call silently defaults away from the cheapest-capable tier this doc
-specifies.
+**MUST** pin both `agentType` and `model` explicitly, and **effort where the harness exposes it**
+on the spawn surface. Background execution does not inherit the session model — an unpinned call
+silently defaults away from the cheapest-capable tier this doc specifies. On Claude Code,
+`agent()` cannot set effort ([#68042](https://github.com/anthropics/claude-code/issues/68042)) —
+pin model family per tier and record logical effort in the footer.
 
 Per-agentType pin table — maps the **existing** tiers from § Task-tier matrix above, no new tier
 and no alternate formula:
 
-| `agentType` | Tier |
-|---|---|
-| `router` | `economy` |
-| `investigator` | `economy` |
-| `planner` (`track: quick` or `track: standard`) | `standard` |
-| `implementer` | `standard` |
-| `reviewer` | `standard` |
-| `hunter` | `standard` |
-| `planner` (`track: design`) | `premium` |
-| security / `size:xl` bump (per § Route-derived tier bumps) | `premium` |
+| `agentType` | Tier | Effort (logical) |
+|---|---|---|
+| `router` | `economy` | low |
+| `investigator` | `economy` | low |
+| `planner` (`track: quick` or `track: standard`) | `standard` | medium |
+| `implementer` | `standard` | medium |
+| `reviewer` | `standard` | medium |
+| `hunter` | `standard` | medium |
+| `planner` (`track: design`) | `premium` | high |
+| security / `size:xl` bump (per § Route-derived tier bumps) | `premium` | high |
 
 This table is a pin-time restatement of § Task-tier matrix / § Harness tier ladders above, not a
-second source — resolve the tier from those tables first, then pin the resolved `model` on the
-`agent()` call.
+second source — resolve the tier from those tables first, then pin the resolved `model` (and
+harness-native effort when exposed) on the `agent()` call.
 
 ## Spawn checklist
 
 ```
 - [ ] Read worker_model_policy (default: cost-optimized)
-- [ ] If inherit → omit model
+- [ ] Read worker_effort_policy (default: cost-optimized when absent)
+- [ ] If inherit (model) → omit model
+- [ ] If inherit (effort) → omit effort parameters
 - [ ] Else resolve task tier from role + track + route{} + escalation bumps
 - [ ] Pick cheapest slug in harness ladder for that tier
-- [ ] Classification agents (router, investigator) → economy unless escalated
-- [ ] Design planner → premium; skip planner → economy; implementer → standard (+ bumps)
+- [ ] Apply tier-folded default effort from same ladder row (cost-optimized effort policy)
+- [ ] Classification agents (router, investigator) → economy / low unless escalated
+- [ ] Design planner → premium / high; skip planner → economy / low; implementer → standard / medium (+ bumps)
+- [ ] Log MODEL_TIER footer with slug and logical effort on one line
 ```
 
 See `orchestrator-delegation.md` § Worker spawn model and `campaign-prompt.md` § Coordinator usage.

@@ -71,7 +71,7 @@ scheduling.
 
 | Capability | Claude Code mapping |
 |---|---|
-| C1 | The `Workflow` tool's deterministic fan-out (`parallel()` / `pipeline()`), per the escalation matrix in `mercure-agent-delegation.md` § Workflow vs. Agent — pin `agentType` and `model` on every `agent()` call (see `model-routing.md` § Workflow-tool enforcement) |
+| C1 | The `Workflow` tool's deterministic fan-out (`parallel()` / `pipeline()`), per the escalation matrix in `mercure-agent-delegation.md` § Workflow vs. Agent — pin `agentType` and `model` on every `agent()` call, and effort where the harness exposes it (see `model-routing.md` § Workflow-tool enforcement; Claude Code `agent()` cannot pin effort — #68042) |
 | C2 | Background-agent completion/idle notifications |
 | C3 | The `AskUserQuestion` tool, used in the foreground main chat |
 | C4 | Dedicated per-issue git worktrees (`wt-<issue>`), per `blackhole-protocol.md` § Branch & Worktree Hygiene |
