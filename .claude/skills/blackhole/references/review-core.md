@@ -103,6 +103,10 @@ Increment `review_iteration` after each aggregate run that returns `changes_requ
 
 Reset `review_iteration` to 0 when PR merges or issue returns to plan phase.
 
+CI-genuine failures diagnosed per `ci-diagnosis.md` (after transient retries are
+exhausted) consume the same `review_iteration` counter and escalation table above — not a
+separate CI-fix budget.
+
 ## Security-mode review (ADR-004 step 8)
 
 1. **Trigger**: read `route.security_review_required` from the issue's `queue.json` entry
