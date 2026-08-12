@@ -56,7 +56,8 @@ against real repo state — a plausible-sounding but unread suspicion is `STALE`
    (`queue.json`'s `route{}` object, ADR-004 — `needs_analysis`/`needs_brainstorm`/
    `needs_design`/`needs_investigation`) indicate a thinking-route that
    [../artifact-contract.md](../artifact-contract.md)'s Route → artifact table requires a
-   `documentation/` artifact for, confirm the artifact exists at the documented path **and**
+   `documentation/` artifact for (including unconditional `plan` and `review` rows per ADR-021
+   D3, issue #445), confirm the artifact exists at the documented path **and**
    landed in that issue's own merged PR (not added later in an unrelated PR, not missing
    entirely). **Gated**: only runs when `docs_governance.enabled &&
    docs_governance.write_governance` (absent block/`false` ⇒ this heuristic is inapplicable

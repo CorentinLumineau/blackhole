@@ -154,6 +154,24 @@ resolves absent or `false`, no staging write happens and no manifest entry is ap
       "staged_path": ".blackhole/staged/465/index-row.md",
       "target_path": "documentation/INDEX.md",
       "target_kind": "append_row"
+    },
+    {
+      "route": "plan",
+      "sub_mode": null,
+      "produced_by": "planner",
+      "declared_at": "2026-08-06T17:58:00.000Z",
+      "staged_path": ".blackhole/staged/465/plan-durable-artifact-staging.md",
+      "target_path": "documentation/plans/plan-durable-artifact-staging.md",
+      "target_kind": "new_file"
+    },
+    {
+      "route": "review",
+      "sub_mode": null,
+      "produced_by": "implementer",
+      "declared_at": "2026-08-12T18:00:00.000Z",
+      "staged_path": ".blackhole/staged/465/review-durable-artifact-staging.md",
+      "target_path": "documentation/reviews/review-durable-artifact-staging.md",
+      "target_kind": "new_file"
     }
   ]
 }
@@ -167,16 +185,18 @@ ADR-021 D2) — same `new_file` + `append_row` shape, different producer and dif
 file. `planner.md` Step 4 Trigger B stages the analogous `ARCHITECTURE.md` entry for the
 `analyze`/`investigate` route (not shown above for brevity — same shape as the `design`-route
 `ARCHITECTURE.md` entry, with `route: "analyze"`, `sub_mode: "analyze"`, `produced_by:
-"planner"`). No new `route` or `target_kind` enum member was required for any of these — every
-value used already existed in the schema below.
+"planner"`). The `plan` pair (issue #445, ADR-021 D3) stages the durable plan body and its root
+`documentation/INDEX.md` row; the `review` entry is staged by `implementer` at merge-readiness
+from `findings-ledger.json`, not by `reviewer` (ADR-021 A2). `plan` and `review` extend the
+`route` enum; `implementer` extends `produced_by` — see the field table below.
 
 | Field | Values | Notes |
 |---|---|---|
 | `issue` | number | Matches the `<issue>` directory name |
 | `updated_at` | ISO8601 | Bumped on every append |
-| `entries[].route` | `analyze` \| `investigate` \| `design` \| `brainstorm` | Matches `artifact-contract.md`'s route→artifact table; `brainstorm` is reserved for schema completeness — it is **not** populated yet (brainstorm already has its own working `.blackhole/plans/issue-N-brainstorm.md` → docs-only-implementer mechanism, untouched here) |
-| `entries[].sub_mode` | `research` \| `investigate` \| `analyze` \| `null` | Set by `investigator` entries (`research` never appears — it has no `documentation/` target); also set to `"analyze"` by `planner`'s Step 4 Trigger B entries (issue #474), since those derive from an investigator analyze note even though `planner` stages them; `null` for `planner`/design entries otherwise (the ADR/INDEX/Trigger-A rows) |
-| `entries[].produced_by` | `planner` \| `investigator` | Which agent staged the artifact |
+| `entries[].route` | `analyze` \| `investigate` \| `design` \| `brainstorm` \| `plan` \| `review` | Matches `artifact-contract.md`'s route→artifact table; `brainstorm` is reserved for schema completeness — it is **not** populated yet (brainstorm already has its own working `.blackhole/plans/issue-N-brainstorm.md` → docs-only-implementer mechanism, untouched here); `plan` and `review` are ADR-021 D3 durable promotion routes (issue #445) |
+| `entries[].sub_mode` | `research` \| `investigate` \| `analyze` \| `null` | Set by `investigator` entries (`research` never appears — it has no `documentation/` target); also set to `"analyze"` by `planner`'s Step 4 Trigger B entries (issue #474), since those derive from an investigator analyze note even though `planner` stages them; `null` for `planner`/design/plan/review entries otherwise |
+| `entries[].produced_by` | `planner` \| `investigator` \| `implementer` | Which agent staged the artifact; `implementer` is review-artifact-only (generated at merge-readiness per ADR-021 A2, issue #445) |
 | `entries[].declared_at` | ISO8601 | When the entry was staged |
 | `entries[].staged_path` | string | Repo-relative path under `.blackhole/staged/<issue>/` |
 | `entries[].target_path` | string | Repo-relative target path. Usually under `documentation/`, per `artifact-contract.md`'s route table. For `target_kind: append_row` this is `documentation/decisions/INDEX.md` (`design` route, `planner.md` §4.8), `documentation/INDEX.md` (`analyze`/`investigate` routes, issue #490), or `ARCHITECTURE.md` **at the repo root** — not under `documentation/` — for the Active Constraints append (`design`/`analyze` routes, `planner.md` §4.8 Trigger A / Step 4 Trigger B, issue #474) |

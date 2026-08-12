@@ -25,7 +25,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
   continue iterating / accept and defer / manual fix, each with its consequence.
 - [ ] WARN → fix in PR OR defer (file issue + ledger deferred_to_issue)
 - [ ] Docs-only PR (determined by `reviewer.md` §8's plan-first detection — file-extension match is a no-plan fallback only, not restated here) → orchestrator direct review, still run review-aggregate.ts
-- [ ] LGTM (aggregate lgtm: true) → proceed to phase loop (merge)
+- [ ] LGTM (aggregate lgtm: true) → proceed to phase loop (merge); review durable artifact promotion runs at merge step 2.5 (`phase-loop.md`, `implementer.md` § Promote Review Artifact) — not during this phase
 - [ ] Write campaign-checkpoint.md per checkpoint-protocol.md
 ```
 

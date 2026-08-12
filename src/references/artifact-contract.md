@@ -14,6 +14,8 @@ repo-convention precedence.
 | brainstorm | `documentation/brainstorms/{concern-slug}.md` |
 | design (auto-approved or human-approved) | `documentation/decisions/ADR-{NNN}-{slug}.md` + `documentation/decisions/INDEX.md` row — schema (both the INDEX row shape and the ADR frontmatter shape) follows [doc-governance.md](doc-governance.md) § Repo Convention Precedence's detection |
 | investigate | `documentation/investigations/{concern-slug}.md` |
+| plan | `documentation/plans/plan-{concern-slug}.md` (or `documentation/plans/{concern-slug}.md` when the issue title already carries a `Plan` prefix — see `scripts/lib/concern-slug.ts`) + root `documentation/INDEX.md` row — **unconditional** on every issue that reaches Phase 2 plan (Quick, Standard, Skip rationale records included) |
+| review | `documentation/reviews/review-{concern-slug}.md` + root `documentation/INDEX.md` row — **unconditional** at merge-readiness; body synthesized from `findings-ledger.json` rows for `issue_ref`, not reviewer prose (ADR-021 A2) |
 
 **Cross-cutting side artifact**: independent of the primary artifact above, `planner.md` §4.8
 Trigger A (`design` route) and Step 4 Trigger B (seeded from an `analyze` note, any track) may

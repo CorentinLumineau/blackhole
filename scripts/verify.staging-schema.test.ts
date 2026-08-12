@@ -18,7 +18,8 @@ import {
 
 const FIELD_TABLE = `| Field | Values | Notes |
 |---|---|---|
-| \`entries[].route\` | \`analyze\` \\| \`investigate\` \\| \`design\` \\| \`brainstorm\` | Matches the route table |
+| \`entries[].route\` | \`analyze\` \\| \`investigate\` \\| \`design\` \\| \`brainstorm\` \\| \`plan\` \\| \`review\` | Matches the route table |
+| \`entries[].produced_by\` | \`planner\` \\| \`investigator\` \\| \`implementer\` | Producer agent |
 | \`entries[].sub_mode\` | \`research\` \\| \`investigate\` \\| \`analyze\` \\| \`null\` | Set by investigator entries |
 | \`issue\` | number | Matches the issue directory name |
 `;
@@ -28,7 +29,7 @@ describe('parseManifestFieldTable', () => {
     const rows = parseManifestFieldTable(FIELD_TABLE);
     const route = rows.find((r) => r.field === 'entries[].route');
     expect(route).toBeDefined();
-    expect(route!.enumValues).toEqual(['analyze', 'investigate', 'design', 'brainstorm']);
+    expect(route!.enumValues).toEqual(['analyze', 'investigate', 'design', 'brainstorm', 'plan', 'review']);
   });
 
   test('parses a nullable-enum row, including the literal null token', () => {
@@ -48,7 +49,7 @@ describe('parseManifestFieldTable', () => {
   test('skips header and separator rows', () => {
     const rows = parseManifestFieldTable(FIELD_TABLE);
     expect(rows.some((r) => r.field === 'Field')).toBe(false);
-    expect(rows.length).toBe(3);
+    expect(rows.length).toBe(4);
   });
 });
 

@@ -1,0 +1,60 @@
+{
+  "refreshed_at": "2026-08-12T00:00:00.000Z",
+  "next_id": 10,
+  "findings": [
+    {
+      "id": "F-00001",
+      "vcode": "V-INT-04",
+      "severity": "HIGH",
+      "phase": "review",
+      "issue_ref": 445,
+      "pr_ref": 900,
+      "file": "scripts/foo.ts",
+      "line": 10,
+      "summary": "First iteration finding",
+      "status": "fixed-in-pr",
+      "created_at": "2026-08-10T12:00:00.000Z"
+    },
+    {
+      "id": "F-00002",
+      "vcode": "V-DRY-01",
+      "severity": "BLOCK",
+      "phase": "review",
+      "issue_ref": 445,
+      "pr_ref": 901,
+      "file": "scripts/bar.ts",
+      "line": 20,
+      "summary": "Second iteration blocker retained",
+      "status": "open",
+      "created_at": "2026-08-11T12:00:00.000Z",
+      "recheck": [{ "verdict": "not_fixed", "evidence": "still duplicated" }]
+    },
+    {
+      "id": "F-00003",
+      "vcode": "V-KISS-03",
+      "severity": "WARN",
+      "phase": "review",
+      "issue_ref": 445,
+      "pr_ref": 901,
+      "file": "scripts/baz.ts",
+      "line": 5,
+      "summary": "Fixed in final iteration",
+      "status": "fixed-in-pr",
+      "created_at": "2026-08-11T13:00:00.000Z",
+      "recheck": [{ "verdict": "fixed", "evidence": "removed branch" }]
+    },
+    {
+      "id": "F-00004",
+      "vcode": "V-TEST-01",
+      "severity": "WARN",
+      "phase": "plan",
+      "issue_ref": 445,
+      "pr_ref": null,
+      "file": "scripts/qux.ts",
+      "line": 1,
+      "summary": "Plan-phase finding excluded",
+      "status": "open",
+      "created_at": "2026-08-09T12:00:00.000Z"
+    }
+  ]
+}
