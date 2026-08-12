@@ -315,12 +315,16 @@ const allowSilently = () => process.exit(0);
  * (readHookInput's caller, above) — distinguished only by `patternId`/`label` so the record and
  * the stderr message say which one actually failed. */
 const failClosed = ({ hook, tool, error, patternId = 'pattern-load-failure', label = 'pattern data', cwd }) => {
-  console.error(`[blackhole-hook] ${hook}: ${label} could not be loaded — ${error.message}`);
+  const failurePhrase =
+    patternId === 'uncaught-validator-error'
+      ? `${label} threw while running`
+      : `${label} could not be loaded`;
+  console.error(`[blackhole-hook] ${hook}: ${failurePhrase} — ${error.message}`);
   denyAndRecord({
     hook,
     tool,
     pattern_id: patternId,
-    reason: `${hook}: ${label} could not be loaded, refusing the call`,
+    reason: `${hook}: ${failurePhrase}, refusing the call`,
     detail: error.message,
     cwd,
   });
