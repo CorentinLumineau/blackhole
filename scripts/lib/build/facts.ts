@@ -98,12 +98,18 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // | scripts/checks/*.check.ts            | max `check*()` fn LOC | 56      | 68         |
 // | scripts/checks/*.check.ts            | max single file LOC   | 181     | 218        |
 // | scripts/lib/build/*.ts               | max single file LOC   | 239     | 287        |
+// | src/agents/reviewer.md               | max `##` section LOC | 670      | 804        |
+// | src/agents/reviewer.md               | total file LOC       | 751      | 902        |
+// | src/agents/implementer.md            | max `##` section LOC | 309      | 371        |
+// | src/agents/implementer.md            | total file LOC       | 629      | 755        |
 //
 export type ContentGateBudget = { maxSectionLoc: number; maxFileLoc: number };
 
 export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
   'src/agents/orchestrator.md': { maxSectionLoc: 18, maxFileLoc: 185 },
   'src/agents/planner.md': { maxSectionLoc: 350, maxFileLoc: 712 },
+  'src/agents/reviewer.md': { maxSectionLoc: 804, maxFileLoc: 902 },
+  'src/agents/implementer.md': { maxSectionLoc: 371, maxFileLoc: 755 },
   'src/references/worker-schemas.md': { maxSectionLoc: 179, maxFileLoc: 950 },
   'src/references/hook-schemas.md': { maxSectionLoc: 101, maxFileLoc: 167 },
   'scripts/checks/*.check.ts': { maxSectionLoc: 68, maxFileLoc: 218 },
