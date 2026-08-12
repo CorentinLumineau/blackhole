@@ -37,6 +37,12 @@ Claude Code, Cursor, Antigravity, Codex CLI, and the `skills.sh` registry.
 
 # Cursor / Antigravity (Multitask Mode)
 @coordinator run the campaign
+
+# Cursor — skill shorthand
+/blackhole run
+
+# Sync forge and show backlog dashboard
+@blackhole status
 ```
 
 That's it. The coordinator bootstraps `.blackhole/` state, syncs your forge's open issues, spawns
@@ -89,7 +95,7 @@ Full detail: [Adaptive Routing § Human-in-the-loop](documentation/architecture/
 | Platform | Invoke command |
 |----------|----------------|
 | **Claude Code** | `/goal run blackhole until empty` |
-| **Cursor** | `@coordinator run the campaign` or `/blackhole` |
+| **Cursor** | `@coordinator run the campaign` or `/blackhole run` |
 | **Antigravity** | `@coordinator run the campaign` or `antigravity run /blackhole` |
 | **Codex CLI** | `/goal run blackhole until empty` or `@blackhole status` |
 | **skills.sh** | `npx skills add CorentinLumineau/blackhole --skill blackhole -y`, then attach `blackhole` |
