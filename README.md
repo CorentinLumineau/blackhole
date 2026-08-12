@@ -96,7 +96,7 @@ Full detail: [Adaptive Routing § Human-in-the-loop](documentation/architecture/
 |----------|----------------|
 | **Claude Code** | `/goal run blackhole until empty` |
 | **Cursor** | `@coordinator run the campaign` or `/blackhole run` |
-| **Antigravity** | `@coordinator run the campaign` or `antigravity run /blackhole` |
+| **Antigravity** | `@coordinator run the campaign` or `antigravity run /blackhole run` |
 | **Codex CLI** | `/goal run blackhole until empty` or `@blackhole status` |
 | **skills.sh** | `npx skills add CorentinLumineau/blackhole --skill blackhole -y`, then attach `blackhole` |
 
