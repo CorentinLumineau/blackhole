@@ -102,12 +102,6 @@ const readTemplate = (repoRoot: string, name: string): string => {
   return fs.readFileSync(file, 'utf-8');
 };
 
-const writeSkipIfAbsent = (targetPath: string, content: string): boolean => {
-  if (fs.existsSync(targetPath)) return false;
-  fs.writeFileSync(targetPath, content, 'utf-8');
-  return true;
-};
-
 export const needsArchitectureRepair = (repoRoot: string, diffPaths: string[]): boolean => {
   const archPath = path.join(repoRoot, 'ARCHITECTURE.md');
   if (fs.existsSync(archPath)) return false;
