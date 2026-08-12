@@ -50,19 +50,48 @@ const FM = (fields: Record<string, string>): string =>
 // (a) V-DOC-GOV-02 — lifecycle frontmatter presence
 // ---------------------------------------------------------------------------
 describe('findMissingFrontmatter (V-DOC-GOV-02)', () => {
-  test('flags a doc missing type or status', () => {
+  test('flags a doc missing any required lifecycle field', () => {
     const files = [
-      { relPath: 'foo.md', hasType: true, hasStatus: false },
-      { relPath: 'bar.md', hasType: false, hasStatus: true },
-      { relPath: 'clean.md', hasType: true, hasStatus: true },
+      { relPath: 'foo.md', hasType: true, hasStatus: false, hasReviewTrigger: true, hasCreated: true, hasLastUpdated: true },
+      { relPath: 'bar.md', hasType: false, hasStatus: true, hasReviewTrigger: true, hasCreated: true, hasLastUpdated: true },
+      {
+        relPath: 'baz.md',
+        hasType: true,
+        hasStatus: true,
+        hasReviewTrigger: false,
+        hasCreated: true,
+        hasLastUpdated: true,
+      },
+      {
+        relPath: 'clean.md',
+        hasType: true,
+        hasStatus: true,
+        hasReviewTrigger: true,
+        hasCreated: true,
+        hasLastUpdated: true,
+      },
     ];
-    expect(findMissingFrontmatter(files)).toEqual(['foo.md', 'bar.md']);
+    expect(findMissingFrontmatter(files)).toEqual(['foo.md', 'bar.md', 'baz.md']);
   });
 
   test('excludes INDEX.md and milestones/_archived/** even when missing frontmatter', () => {
     const files = [
-      { relPath: 'INDEX.md', hasType: false, hasStatus: false },
-      { relPath: 'milestones/_archived/old.md', hasType: false, hasStatus: false },
+      {
+        relPath: 'INDEX.md',
+        hasType: false,
+        hasStatus: false,
+        hasReviewTrigger: false,
+        hasCreated: false,
+        hasLastUpdated: false,
+      },
+      {
+        relPath: 'milestones/_archived/old.md',
+        hasType: false,
+        hasStatus: false,
+        hasReviewTrigger: false,
+        hasCreated: false,
+        hasLastUpdated: false,
+      },
     ];
     expect(findMissingFrontmatter(files)).toEqual([]);
   });

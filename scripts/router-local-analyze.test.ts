@@ -240,3 +240,28 @@ describe('blackhole-vcodes.md / planner.md / reviewer.md — V-THREAT-01 registr
     expect(reviewer).toMatch(/Not security-mode, or plan track is not quick — no finding/);
   });
 });
+
+describe('blackhole-vcodes.md — documentation alignment registration (#446)', () => {
+  const vcodes = () => read('src/references/blackhole-vcodes.md');
+
+  test.each(['V-DOC-01', 'V-DOC-03', 'V-DOC-05', 'V-DOC-06', 'V-ADA-04', 'V-ADR-01', 'V-ADR-02', 'V-ADR-03'])(
+    'registers %s with a WARN row',
+    (code) => {
+      expect(vcodes()).toMatch(new RegExp(`\\| ${code} \\|.*\\| WARN \\|`));
+    },
+  );
+
+  test('V-DOC-GOV-02 row requires all five lifecycle frontmatter fields', () => {
+    const row = vcodes().split('\n').find((line) => line.startsWith('| V-DOC-GOV-02 |'));
+    expect(row).toBeDefined();
+    expect(row).toContain('review_trigger');
+    expect(row).toContain('created');
+    expect(row).toContain('last_updated');
+  });
+
+  test('product-principles template uses retired ruling status enum', () => {
+    const template = read('templates/companion-files/product-principles.md.template');
+    expect(template).toContain('active | superseded | retired');
+    expect(template).not.toContain('retracted');
+  });
+});

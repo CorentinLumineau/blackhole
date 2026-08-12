@@ -124,17 +124,16 @@ describe('findVcodeNamespaceDrift', () => {
     expect(mismatch).toContain('V-DOC-02/04');
   });
 
-  test('names the retired id when a row still carries a bare V-DOC-05', () => {
+  test('reclaims V-DOC-05 for comment-discipline rationale duplication (#446)', () => {
     const content = [
       '| Code | Rule | Severity |',
       '|------|------|----------|',
       '| V-DOCSYNC-01 | docs sync | BLOCK |',
-      '| V-DOC-05 | prose fact check | WARN |',
+      '| V-DOC-05 | Rationale duplicated across definition/interface/call-site/test | WARN |',
+      '| V-DOCFACT-01 | prose fact check | WARN |',
     ].join('\n');
 
-    const mismatch = findVcodeNamespaceDrift(content);
-    expect(mismatch).not.toBeNull();
-    expect(mismatch).toContain('V-DOC-05');
+    expect(findVcodeNamespaceDrift(content)).toBeNull();
   });
 
   test('names the missing replacement id when V-DOCSYNC-01 is absent', () => {

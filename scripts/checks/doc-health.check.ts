@@ -28,22 +28,42 @@ const collectDocFiles = (docsDir: string): DocFile[] =>
     content: fs.readFileSync(abs, 'utf-8'),
   }));
 
-// V-DOC-GOV-02 (reused): lifecycle frontmatter (`type:`/`status:`) present on every doc,
-// excluding INDEX.md and documentation/milestones/_archived/**.
-export const findMissingFrontmatter = (files: { relPath: string; hasType: boolean; hasStatus: boolean }[]): string[] =>
+// V-DOC-GOV-02 (reused): lifecycle frontmatter (`type`/`status`/`review_trigger`/`created`/
+// `last_updated`) present on every doc, excluding INDEX.md and documentation/milestones/_archived/**.
+export type FrontmatterPresence = {
+  relPath: string;
+  hasType: boolean;
+  hasStatus: boolean;
+  hasReviewTrigger: boolean;
+  hasCreated: boolean;
+  hasLastUpdated: boolean;
+};
+
+const lifecycleFrontmatterComplete = (f: FrontmatterPresence): boolean =>
+  f.hasType && f.hasStatus && f.hasReviewTrigger && f.hasCreated && f.hasLastUpdated;
+
+export const findMissingFrontmatter = (files: FrontmatterPresence[]): string[] =>
   files
     .filter((f) => !isIndexFile(f.relPath) && !isArchivedMilestone(f.relPath))
-    .filter((f) => !f.hasType || !f.hasStatus)
+    .filter((f) => !lifecycleFrontmatterComplete(f))
     .map((f) => f.relPath);
 
 export const evaluateFrontmatterPresence = (docsDir: string): CheckResult => {
-  const files = collectDocFiles(docsDir).map((f) => {
-    const fm = parseFrontmatterFields(parseMdFrontmatter(f.content).frontmatter);
-    return { relPath: f.relPath, hasType: !!fm.type, hasStatus: !!fm.status };
-  });
-  const missing = findMissingFrontmatter(files);
+  const missing = findMissingFrontmatter(
+    collectDocFiles(docsDir).map((f) => {
+      const fm = parseFrontmatterFields(parseMdFrontmatter(f.content).frontmatter);
+      return {
+        relPath: f.relPath,
+        hasType: !!fm.type,
+        hasStatus: !!fm.status,
+        hasReviewTrigger: !!fm.review_trigger,
+        hasCreated: !!fm.created,
+        hasLastUpdated: !!fm.last_updated,
+      };
+    }),
+  );
   return missing.length
-    ? { id: 'V-DOC-GOV-02', ok: true, detail: `missing type/status frontmatter: ${missing.join(', ')}` }
+    ? { id: 'V-DOC-GOV-02', ok: true, detail: `missing lifecycle frontmatter: ${missing.join(', ')}` }
     : { id: 'V-DOC-GOV-02', ok: true };
 };
 
@@ -172,25 +192,11 @@ export const evaluateDocTreeHealth = (docsDir: string): CheckResult => {
   return details.length ? { id: 'V-DOCHEALTH-03', ok: true, detail: details.join('; ') } : { id: 'V-DOCHEALTH-03', ok: true };
 };
 
-const checkFrontmatterPresence = (): CheckResult => {
-  return evaluateFrontmatterPresence(DOCS_DIR);
-};
-
-const checkCanonicalNaming = (): CheckResult => {
-  return evaluateCanonicalNaming(DOCS_DIR);
-};
-
-const checkIndexDangling = (): CheckResult => {
-  return evaluateIndexDangling(DOCS_DIR);
-};
-
-const checkOrphanFiles = (): CheckResult => {
-  return evaluateOrphanFiles(DOCS_DIR);
-};
-
-const checkDocTreeHealth = (): CheckResult => {
-  return evaluateDocTreeHealth(DOCS_DIR);
-};
+const checkFrontmatterPresence = (): CheckResult => evaluateFrontmatterPresence(DOCS_DIR);
+const checkCanonicalNaming = (): CheckResult => evaluateCanonicalNaming(DOCS_DIR);
+const checkIndexDangling = (): CheckResult => evaluateIndexDangling(DOCS_DIR);
+const checkOrphanFiles = (): CheckResult => evaluateOrphanFiles(DOCS_DIR);
+const checkDocTreeHealth = (): CheckResult => evaluateDocTreeHealth(DOCS_DIR);
 
 // ADR-007 T5/R2': domain entrypoint — see adr-status.check.ts's runChecks doc comment for the
 // shared contract (pure, no side effects, glob-discovered by scripts/verify.ts).
