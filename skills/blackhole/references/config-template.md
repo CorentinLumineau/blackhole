@@ -69,10 +69,43 @@ Committed template: `.blackhole/config.json`
 | `autonomy.analyze_routing` | no | Gates the router's `needs_analysis` autonomous dispatch to the investigator `analyze` sub-mode (default `true`); when `false`, analyze routing is inert |
 | `autonomy.brainstorm_routing` | no | Gates the router's `needs_brainstorm` autonomous dispatch to the planner `track: brainstorm` (default `false` — terminal-closure pin, ADR-010 D3); when `false`, brainstorm routing is inert |
 | `autonomy.never_bypass` | no | Array of categorical triggers that always force human escalation regardless of confidence score (default `["destructive", "credentials", "epic-go-no-go"]`); see [confidence-gates.md](confidence-gates.md) |
+| `autonomy.mode` | no | Campaign-wide autonomy posture override (e.g. `full` — agent decides design approvals, split sign-offs, plan waivers, and BLOCK remedies without a human gate); absent = per-sub-field `autonomy.*` defaults apply |
+| `autonomy.granted_at` | no | ISO date when `autonomy.mode` (or a broader autonomy grant) was recorded by the owner/coordinator |
+| `autonomy.granted_by` | no | Freeform provenance for who granted the autonomy override (e.g. `owner (turn-4 chat)`) |
+| `autonomy.scope` | no | Human-readable description of what the autonomy grant covers for this campaign |
+| `autonomy.note` | no | Freeform note on how the autonomy grant interacts with other config (e.g. `merge_mode`) |
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 | `merge_mode` | **yes at bootstrap** | `"immediate"` \| `"gated-batch"` (ADR-005) \| `"leave-open"` (ADR-006) — **no default** (ruling R-002, `documentation/reference/product-principles.md`): an absent or invalid value is a bootstrap-blocking condition, not a silent fallback; see the contract note below. `immediate`: each PR merges as soon as it reaches LGTM. `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one PR at a time in `merge_after` dependency order; see `merge-gate.md`. `leave-open`: blackhole never merges — every PR is driven to LGTM and left open for human review/merge; an LGTM'd open PR counts as *delivered* for campaign-complete purposes; `merged_by: blackhole` is never set for these issues; `fixed-in-pr` ledger rows stay `fixed-in-pr` until the human merge is later observed by a sync; see `phase-loop.md` § Merge protocol and `merge-gate.md` |
 | `display_targets` | no | Array of viewport widths in px (e.g. `[412, 700, 2560]`) to capture visual evidence at for UI-affecting PRs (ADR-018); absent or empty (default) ⇒ both the implementer's capture step and the reviewer's Visual Evidence Audit are no-ops |
+| `wave_scheduling` | no | Nested object recording campaign-specific wave-scheduling policy and owner-granted exceptions; absent block = default orchestrator scheduling (no hot-file cap, no batched-checks exception) |
+| `wave_scheduling.shard_by_touch_path` | no | When `true`, shard parallel workers by declared touch-path overlap to reduce merge/rebase collisions on shared files |
+| `wave_scheduling.hot_files_max_one_per_wave` | no | Array of repo-relative paths that may have at most one in-flight worker per wave (hot-file lock) |
+| `wave_scheduling.rationale` | no | Human-readable rationale for the `wave_scheduling` settings (audit trail for owner decisions) |
+| `wave_scheduling.batched_checks_pr` | no | Owner-granted exception allowing one PR to implement several `scripts/checks/*.check.ts` modules with a single `EXPECTED_CHECK_COUNT` bump |
+| `wave_scheduling.batched_checks_pr.allowed` | no | When `true`, the batched-checks PR exception is active for this campaign |
+| `wave_scheduling.batched_checks_pr.granted_at` | no | ISO date when the batched-checks exception was granted |
+| `wave_scheduling.batched_checks_pr.granted_by` | no | Freeform provenance for who granted the batched-checks exception |
+| `wave_scheduling.batched_checks_pr.rule` | no | Normative rule text describing what the batched-checks exception permits |
+| `wave_scheduling.batched_checks_pr.rationale` | no | Human-readable rationale for granting the batched-checks exception |
+| `wave_scheduling.batched_checks_pr.constraints` | no | Array of constraints the batched PR must satisfy (e.g. independent modules, shared theme, live verify for count bump) |
+| `resource_policy` | no | Nested object recording campaign-specific resource/fan-out overrides and mitigations; absent block = default resource posture |
+| `resource_policy.fan_out_override` | no | Freeform note when `parallel_max` exceeds a documented workstation cap and the owner has accepted the risk |
+| `resource_policy.mitigations` | no | Array of mitigations applied alongside a fan-out override (e.g. test-lock serialization, memory watchdog, scoped searches) |
+| `resource_policy.testlock_carveout` | no | Owner-granted exception allowing this repo's `build`/`verify`/`test` to run without the global `with-test-lock` wrapper |
+| `resource_policy.testlock_carveout.allowed` | no | When `true`, the test-lock carveout is active for this repo/campaign |
+| `resource_policy.testlock_carveout.granted_at` | no | ISO date when the test-lock carveout was granted |
+| `resource_policy.testlock_carveout.granted_by` | no | Freeform provenance for who granted the test-lock carveout |
+| `resource_policy.testlock_carveout.scope` | no | Human-readable scope of the carveout (which repos/commands it covers) |
+| `resource_policy.testlock_carveout.rationale` | no | Human-readable rationale for granting the test-lock carveout |
+| `resource_policy.testlock_carveout.conditions` | no | Array of conditions workers must honor while the carveout is active (e.g. memory self-gate, serial heavy commands) |
+| `resource_policy.carveout_recorded_at` | no | ISO8601 timestamp when the resource-policy carveout block was last recorded |
+| `stop_budget_cleared_at` | no | ISO8601 timestamp when the campaign stop-budget gate was cleared by the owner/coordinator (audit trail) |
+| `issue_484_disposition` | no | Campaign-specific disposition record for issue #484 (or analogous parked-issue pin); absent block = no special disposition |
+| `issue_484_disposition.status` | no | Disposition status (e.g. `parked` — never dispatch, campaign drains around it) |
+| `issue_484_disposition.reaffirmed_at` | no | ISO date when the disposition was last reaffirmed |
+| `issue_484_disposition.by` | no | Freeform provenance for who reaffirmed the disposition |
+| `issue_484_disposition.note` | no | Human-readable note on how the disposition affects campaign scope (e.g. excluded from "until empty") |
 
 **`docs_governance` contract note**: when the block is absent, or
 `docs_governance.enabled` resolves to anything other than the literal `true` (absent
