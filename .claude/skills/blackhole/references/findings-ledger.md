@@ -51,6 +51,18 @@ fixed-in-pr → resolved (after merge)
 deferred → resolved    (when deferred issue merges — optional cleanup)
 ```
 
+**`companion_repairs[]` consumer** (issue #453): on an implementer `status: complete`, the
+orchestrator matches each `companion_repairs[]` row's `(vcode, file)` against open/deferred
+ledger rows using the **V-ADA-01/V-ADA-05 dedup** rule below (ignore `issue_ref`). For each
+match: set `status: fixed-in-pr`, `pr_ref` from the worker's PR, append
+`companion-repair: <action>` to `summary`. Unmatched rows are no-ops (repair without a prior
+ledger finding is valid).
+
+A `recheck[]` `verdict: fixed` prior row (issue #485) transitions `open → resolved` before the
+orchestrator runs § Write protocol step 3's dedup check for the current append batch — this is
+what keeps that check's `open`/`deferred` status filter (step 3, above) from silently absorbing
+a new, distinct finding sharing the resolved row's key.
+
 ## Write protocol
 
 1. **Initialize** if missing:
@@ -62,14 +74,20 @@ deferred → resolved    (when deferred issue merges — optional cleanup)
 2. **Validate** before any read-dependent step:
 
 ```bash
-jq empty .blackhole/findings-ledger.json
+bun run scripts/lib/state-write-guard.ts --tmp .blackhole/findings-ledger.json --entity-key findings
 ```
 
-3. **Dedup** before append — key `(vcode, file, line, issue_ref)`:
+Never `jq empty` alone — `blackhole-state.md` § Write protocol.
+
+3. **Dedup** before append — key `(vcode, file, line, issue_ref)`, scoped to `open`/`deferred`
+   rows only (issue #485: a `resolved` row — e.g. one whose `recheck[]` verdict came back
+   `fixed`, see § Status transitions below — must never suppress append of a new, distinct
+   finding that happens to share its key; this is the write-time counterpart to
+   `review-aggregate.ts`'s in-memory recheck exclusion, `review-core.md` § Dedup key):
 
 ```bash
 jq --arg v "V-DRY-01" --arg f "lib/foo.ts" --argjson l 42 --argjson i 298 \
-  'any(.findings[]; .vcode == $v and .file == $f and .line == $l and .issue_ref == $i)' \
+  'any(.findings[]; .vcode == $v and .file == $f and .line == $l and .issue_ref == $i and (.status == "open" or .status == "deferred"))' \
   .blackhole/findings-ledger.json
 ```
 
@@ -89,12 +107,15 @@ jq --arg v "V-ADA-01" --arg f "ARCHITECTURE.md" \
 
 See `phase-review.md` § Checklist for the orchestrator-side mechanism.
 
-4. **Append** — read-modify-write atomically (tmp + mv):
+4. **Append** — read-modify-write atomically (tmp + mv), validating the `.tmp` file before
+   install (`blackhole-state.md` § Write protocol):
 
 ```bash
 # Pseudocode: orchestrator builds JSON patch, writes via jq
 jq '.findings += [$new] | .next_id += 1 | .refreshed_at = (now | todate)' \
   .blackhole/findings-ledger.json > .blackhole/findings-ledger.json.tmp \
+  && bun run scripts/lib/state-write-guard.ts --tmp .blackhole/findings-ledger.json.tmp \
+       --live .blackhole/findings-ledger.json --entity-key findings \
   && mv .blackhole/findings-ledger.json.tmp .blackhole/findings-ledger.json
 ```
 
@@ -161,6 +182,7 @@ New top-level `routing_decisions` array (sibling to `findings`), with its own
         "security_review_required_raised": true,
         "plan_mode_confidence_boosted": false
       },
+      "rationale": "plan_mode confidence 55 is below threshold 70; cautious full plan_mode default applies pending local-analyze scan.",
       "created_at": "2026-07-04T12:00:00.000Z"
     }
   ]
@@ -175,6 +197,7 @@ New top-level `routing_decisions` array (sibling to `findings`), with its own
 | `issue_ref` | number | Parent campaign issue |
 | `trigger` | `initial` \| `clarify-resolved` \| `research-landed` \| `investigation-landed` \| `analysis-landed` | Matches the ADR's four re-route checkpoints plus the initial pass |
 | `route` | object | Same shape as `queue.json` issue `route` object — see `queue-dag.md` `### \`route\` object` |
+| `rationale` | string \| absent | Copied verbatim from the router return when present; omitted on historical rows predating this field |
 | `local_analyze` | object \| `null` | ADR-004 step 5b confidence-boost scan record; `null` when the scan did not trigger (confidence already ≥ threshold, or the row predates this mechanism) |
 | `local_analyze.triggered` | boolean | Always `true` when the object is non-null |
 | `local_analyze.reason` | string | Human-readable trigger justification (which confidence score, threshold) |
@@ -190,8 +213,9 @@ New top-level `routing_decisions` array (sibling to `findings`), with its own
 
 One entry appended per route computation/revision — **append-only, never mutated**, for
 human spot-audit. Same `.tmp` + `mv` atomic-write protocol as the `findings` write protocol
-above (validate with `jq empty`, then read-modify-write atomically, bumping
-`next_routing_id` and `refreshed_at`).
+above (validate with `state-write-guard.ts` — never `jq empty` alone, `blackhole-state.md`
+§ Write protocol — then read-modify-write atomically, bumping `next_routing_id` and
+`refreshed_at`).
 
 ## Hunt state (ADR-006)
 
@@ -232,8 +256,9 @@ watermark of hunt progress:
 
 `hunt_state` is a watermark, not a decision log: each key is read-modify-written in place as
 hunt waves complete, never appended to as a growing history. Same atomic write protocol as
-every other ledger mutation — `jq empty` validate, then read-modify-write via `.tmp` + `mv`,
-bumping `refreshed_at` (`blackhole-state.md` § Write protocol).
+every other ledger mutation — validate via `state-write-guard.ts` (never `jq empty` alone),
+then read-modify-write via `.tmp` + `mv`, bumping `refreshed_at` (`blackhole-state.md`
+§ Write protocol).
 
 **Consumer sweep**: no code under `scripts/` or `src/` currently switches/matches on the
 findings-ledger row's `phase` field (distinct from the unrelated queue-issue `IssuePhase` enum

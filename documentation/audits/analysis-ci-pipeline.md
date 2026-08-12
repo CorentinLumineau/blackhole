@@ -4,6 +4,7 @@ skill: x-analyze
 created: 2026-07-22
 target: "CI pipelines (.github/workflows/verify.yml, release.yml)"
 status: draft
+review_trigger: "on ADR acceptance"
 ---
 
 # CI Pipeline Optimization Analysis

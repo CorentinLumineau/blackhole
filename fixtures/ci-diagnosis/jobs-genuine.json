@@ -1,0 +1,21 @@
+{
+  "jobs": [
+    {
+      "id": 1001,
+      "name": "test",
+      "conclusion": "failure",
+      "run_id": 9001,
+      "steps": [
+        { "name": "Checkout", "conclusion": "success", "number": 1 },
+        { "name": "Run tests", "conclusion": "failure", "number": 2 }
+      ]
+    },
+    {
+      "id": 1002,
+      "name": "Vercel Preview",
+      "conclusion": "failure",
+      "run_id": 9001,
+      "steps": []
+    }
+  ]
+}

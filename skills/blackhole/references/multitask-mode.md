@@ -42,7 +42,7 @@ do not use built-in `subagent_type` enums as a stand-in.
 
 | DO | DON'T |
 |----|-------|
-| `Task` + attach `.cursor/agents/bc-<agent>.md` + `run_in_background: true` + role-appropriate prompt + per-task `model` when `worker_model_policy: cost-optimized` | `subagent_type: generalPurpose` (or any built-in enum) instead of a bc-* agent file |
+| `Task` + attach `.cursor/agents/bc-<agent>.md` + `run_in_background: true` + role-appropriate prompt + per-task `model` when `worker_model_policy: cost-optimized` + tier-folded effort when `worker_effort_policy: cost-optimized` (or absent) | `subagent_type: generalPurpose` (or any built-in enum) instead of a bc-* agent file |
 
 | Role | Agent file |
 |------|------------|
@@ -50,13 +50,15 @@ do not use built-in `subagent_type` enums as a stand-in.
 | Orchestrator (background) | `.cursor/agents/orchestrator.md` |
 | Workers | `.cursor/agents/planner.md`, `.cursor/agents/implementer.md`, `.cursor/agents/reviewer.md` |
 
-Spawn prompt text, model policy, and mis-spawn hazard detail: `campaign-prompt.md` § Coordinator usage; `model-routing.md`.
+Spawn prompt text, model/effort policy, and mis-spawn hazard detail: `campaign-prompt.md` § Coordinator usage; `model-routing.md`.
 
 ## Coordinator MUST NOT
 
 - Implement features, review PRs, or merge
 - Resume orchestrator on every worker completion — on Cursor, neither the coordinator nor the orchestrator receives per-worker idle notifications after ending a turn; the **orchestrator** must barrier-wait for its own background worker batch **in-turn** before turn-end
-- Use `interrupt: true` except user "stop now" or safety-critical policy
+- Use `interrupt: true` except the explicit `stop --abandon` tier or safety-critical policy — see
+  `phase-stop.md`. A bare `stop` (drain, default) is relayed as a normal resume message
+  (`interrupt: false`), never a hard kill.
 - Spawn a second orchestrator while first is live
 - Re-paste full campaign-prompt on routine resume — only user message
 - Spawn the orchestrator via built-in `subagent_type` enums — see mis-spawn hazard in `campaign-prompt.md` § Coordinator usage

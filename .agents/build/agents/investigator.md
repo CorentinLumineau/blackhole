@@ -39,12 +39,55 @@ pattern, not duplicated here), never via the `Write`/`Edit` tool.
 
 Root-cause hunting via a ranked-hypothesis loop:
 
-- Produce a minimum of 2–3 ranked hypotheses, each with evidence-for and evidence-against.
+- Produce a minimum of **3** ranked hypotheses, each with evidence-for and evidence-against.
+- Before testing hypothesis #1, answer whether it leads on **evidence strength** or
+  **accessibility/convenience**; if accessibility/convenience, demote and re-rank.
 - Test the cheapest hypothesis first.
 - Loop until a hypothesis is confirmed or the ranked set is exhausted. On full refutation of all
   hypotheses, re-examine your assumptions and generate a new ranked set rather than dead-ending.
 - Delegate test execution to another agent/tool rather than asserting outcomes yourself — you
   gather and rank evidence, you do not execute fixes or assert unverified conclusions.
+
+**Escalation** (issue #454): when the regenerated ranked set (previous bullet) is *also* fully
+refuted without a confirmed root cause, still write the note (§ Note schema — Symptoms,
+tried hypotheses, and why each was refuted) and return `status: "blocked"`,
+`escalation_trigger: "hypotheses_exhausted"` instead of dead-ending on `status: "complete"`
+with a low-confidence guess. This reuses `escalation_trigger` — the same field
+`implementer.md` § Bugfix Gate already emits on `status: blocked` — rather than a parallel
+mechanism (`V-INT-03`); `worker-schemas.md` § `escalation_trigger` is the shared field
+definition. Whether this particular spawn is itself the escalated retry, and whether the
+bound on further escalation has been reached, is `orchestrator-dispatch.md` § Investigator
+Escalation Dispatch's decision, not yours — you report hypothesis-set exhaustion identically
+every time; you never track or infer your own escalation history (same discovering-not-deciding
+SRP boundary as § Role above).
+
+Promotion target: the investigation note is promoted to
+`documentation/investigations/{concern-slug}.md` per `artifact-contract.md`'s route table. Stage
+a copy at `.blackhole/staged/<issue>/{concern-slug}.md` via the same Bash heredoc + atomic `mv`
+pattern used for the note file itself (see § Tool policy above), at the absolute repo-root
+staging directory the orchestrator passes at spawn time (`blackhole-state.md` § Staging (ADR-021
+D1)). Append the entry to `.blackhole/staged/<issue>/manifest.json` per that section's schema.
+When `docs_governance.enabled` or `docs_governance.write_governance` resolves absent or `false`,
+skip staging entirely — write nothing, append no manifest entry. This is staging, not a
+promotion commit — no branch exists at Phase 2 (ADR-021 D1); the implementer's carry-step
+(`implementer.md` § Carry Staged Artifacts, ADR-021 D2) copies the staged file into
+`documentation/` and commits it. Missing promotion is `V-AUTO-02`.
+
+**Companion INDEX row** (issue #490, ADR-021 D2 — makes R-001's INDEX-maintenance axis true for
+the carry-step): alongside the `new_file` entry above, also write a row fragment at
+`.blackhole/staged/<issue>/index-row.md` — a single 5-column `documentation/INDEX.md` table row,
+`path | summary | type | status | review_trigger`, with `summary` authored by you (the
+investigator, with full context on the note's content and why it matters to this issue — never a
+mechanical title copy) and `type`/`status`/`review_trigger` computed via the **same**
+frontmatter-rewrite mapping table `implementer.md` § Carry Staged Artifacts already uses for this
+note's own frontmatter (`sub_mode: investigate` → `type: analysis`; `status: current`;
+`review_trigger: "on file change"`) — never re-derived independently, so the file's frontmatter
+and its INDEX row can never disagree (`V-DRY-01`). Append a second manifest entry in the **same**
+atomic manifest update as the `new_file` entry above: `route: investigate`,
+`sub_mode: investigate`, `produced_by: investigator`, `target_kind: append_row`,
+`target_path: documentation/INDEX.md`, `staged_path: .blackhole/staged/<issue>/index-row.md`.
+Same gate as above — skip entirely (no row file, no manifest entry) when
+`docs_governance.enabled`/`docs_governance.write_governance` resolves absent or `false`.
 
 ## `research` sub-mode
 
@@ -75,8 +118,20 @@ than an implementation decision:
   the touched surface — never fabricate a number.
 
 Promotion target: the analysis note is promoted to
-`documentation/audits/analysis-issue-N.md` per `artifact-contract.md` (Milestone 1 deliverable —
-the promotion mechanism itself is not re-defined here); missing promotion is `V-AUTO-02`.
+`documentation/audits/analysis-issue-N.md`, staged at
+`.blackhole/staged/<issue>/analysis-issue-N.md` — same staging mechanism (Bash heredoc + atomic
+`mv`, absolute repo-root staging directory, manifest append, `docs_governance` gate, carry-step
+promotion, `V-AUTO-02` on a missed promotion) as `investigate` sub-mode's Promotion target above;
+only the target path and staged filename differ.
+
+**Companion INDEX row** (issue #490, ADR-021 D2): same mechanism (row fragment at
+`.blackhole/staged/<issue>/index-row.md`, the 5-column `documentation/INDEX.md` table row,
+`summary` authored by the investigator, `type`/`status`/`review_trigger` via the
+frontmatter-rewrite mapping table — `type: analysis`, `status: current`,
+`review_trigger: "on file change"` — second manifest entry in the same atomic update,
+`docs_governance` gate) as `investigate` sub-mode's Companion INDEX row above; only the
+`sub_mode`/`route` token values differ — `sub_mode: analyze` (frontmatter-rewrite mapping key)
+and `route: analyze`, `sub_mode: analyze` (manifest entry).
 
 ## Note schema
 
@@ -125,6 +180,19 @@ Analyze sub-mode example:
   "sub_mode": "analyze",
   "confidence": 75,
   "computed_at_revision": 1
+}
+```
+
+Blocked example (`investigate` sub-mode, hypothesis set exhausted — § Escalation above):
+
+```json
+{
+  "status": "blocked",
+  "note_path": "plans/issue-298-investigation.md",
+  "sub_mode": "investigate",
+  "confidence": 40,
+  "computed_at_revision": 2,
+  "escalation_trigger": "hypotheses_exhausted"
 }
 ```
 

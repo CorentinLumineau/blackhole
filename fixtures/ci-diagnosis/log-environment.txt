@@ -1,0 +1,4 @@
+2026-08-12T10:00:00.0000000Z ##[group]Setup Node
+2026-08-12T10:00:01.0000000Z npm ERR! code ETIMEDOUT
+2026-08-12T10:00:01.1000000Z npm ERR! network timeout while fetching registry.npmjs.org
+2026-08-12T10:00:02.0000000Z ##[endgroup]

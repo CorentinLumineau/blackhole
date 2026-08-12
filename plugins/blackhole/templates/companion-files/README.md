@@ -46,7 +46,9 @@ or agent has since edited.
 
 `DESIGN.md` is created only when both of these hold:
 
-1. `docs_governance.companion_files` is not `false` in `.blackhole/config.json`
+1. `docs_governance.enabled` resolves to `true` (absent block or explicit `false` skips this —
+   SSOT: `config-template.md`'s `docs_governance.enabled` row, issue #477) and
+   `docs_governance.companion_files` is not `false` in `.blackhole/config.json`
    (the same config gate that wraps this entire scaffold step).
 2. `bash scripts/detect-frontend.sh` emits `frontend=yes` on the target repo.
 
@@ -60,7 +62,9 @@ Unlike every other companion file, `journeys.md` is not gated on universal scaff
 (`ARCHITECTURE.md`/`AGENTS.md`/`product-principles.md`) or on frontend detection
 (`DESIGN.md`). It is created only when **all three** hold:
 
-1. `docs_governance.companion_files` is not `false` in `.blackhole/config.json` (the same
+1. `docs_governance.enabled` resolves to `true` (absent block or explicit `false` skips this —
+   SSOT: `config-template.md`'s `docs_governance.enabled` row, issue #477) and
+   `docs_governance.companion_files` is not `false` in `.blackhole/config.json` (the same
    config gate that wraps this entire scaffold step).
 2. `kaizen.enabled` is `true`.
 3. `kaizen.kinds` contains `ux-coherence`.
@@ -75,6 +79,12 @@ treats a still-`status: template` file as **not yet ground truth** and no-ops fo
 (logged, not failed) rather than auditing against placeholder content — the owner must replace
 the template's example `## Job:` section with real, owner-approved core user jobs and flip
 `status` to `current` before the journeys heuristic audits normally.
+
+## Implement-time sync (Phase 5.5)
+
+`src/references/companion-file-sync.md` performs the same `{project-name}` template
+substitution as this scaffold step, but only on diff-scoped triggers during implement
+(`implementer.md` § Companion-file Sync). Phase 0 remains bootstrap-only for initial creation.
 
 ## Full contract
 

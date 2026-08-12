@@ -196,7 +196,9 @@ const checkClaudeCodeNativeNeutrality = (): CheckResult => {
 };
 
 // ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
-// contract (pure, no side effects, glob-discovered by scripts/verify.ts).
+// contract (pure, no side effects, glob-discovered by scripts/verify.ts). V-GATECONTENT-01
+// (checkGateContentContract) moved to gate-content-contract.check.ts (issue #535) — extracted to
+// create headroom under the shared content-gate budget rather than raise it.
 export const runChecks = (): CheckResult[] => [
   checkPhaseNames(),
   checkVcodeReferences(),

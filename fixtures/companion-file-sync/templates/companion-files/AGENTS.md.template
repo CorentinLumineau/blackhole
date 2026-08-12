@@ -1,0 +1,40 @@
+# Agents: {project-name}
+
+> Root behavioral config. Symlinked from CLAUDE.md.
+> Claude Code loads this file on every session at the project root.
+
+## Root Agent
+
+<!--
+  Explains the symlink convention. AGENTS.md IS CLAUDE.md (per ADR-055).
+  When Claude Code loads CLAUDE.md at session start, it loads this content.
+  Editing CLAUDE.md edits this file; editing this file edits CLAUDE.md.
+-->
+
+`AGENTS.md` at the project root is a symlink to `CLAUDE.md`. Claude Code reads `CLAUDE.md`
+on every session start as global session context. Project-level behavioral directives,
+domain expertise reminders, and always-on conventions belong in `CLAUDE.md` — they appear
+here by symlink.
+
+## Agent Declarations
+
+<!--
+  Project-level behavioral rules and reminders that apply across every session.
+  Example: "Always treat user-provided IDs as untrusted input." or
+  "When generating SQL, follow the team's snake_case column convention."
+  Keep this section concise — verbose directives belong in dedicated rule files.
+-->
+
+- {Declaration 1 — short, actionable directive}
+
+## Package Agents (Monorepo)
+
+<!--
+  One row per monorepo package. Populated by x-setup on monorepo init.
+  Each package directory has its own AGENTS.md (real file, not a symlink) with
+  package-scoped behavioral rules.
+-->
+
+| Package | AGENTS.md | Scope |
+|---------|-----------|-------|
+| — | — | (Add one row per package; populated by x-setup on monorepo init) |

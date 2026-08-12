@@ -1,0 +1,13 @@
+{
+  "jobs": [
+    {
+      "id": 2001,
+      "name": "build",
+      "conclusion": "failure",
+      "run_id": 9002,
+      "steps": [
+        { "name": "Setup Node", "conclusion": "failure", "number": 1 }
+      ]
+    }
+  ]
+}

@@ -134,6 +134,15 @@ is a deprecated no-op alias kept for one release. For a global install:
 ln -s /path/to/blackhole/plugins/blackhole ~/.gemini/config/plugins/blackhole
 ```
 
+### agent-plugins.org (skills-only shell)
+Target F ships a portable **skill surface only** at `plugins/blackhole-agent-plugins/` — root
+`plugin.json` (agent-plugins.org v1.0.0 schema) plus `skills/blackhole/{SKILL.md,references/}`.
+The eight campaign agents and protocol rules are **not** portable under the current spec; install
+Cursor, Claude Code, Codex, or Antigravity paths above for the full campaign harness (ADR-021).
+```bash
+bun run build   # emits the bundle when plugins/blackhole-agent-plugins/ is git-tracked
+```
+
 ### Codex CLI
 Codex outputs are committed in-repo — no local build needed to install:
 ```bash
@@ -172,6 +181,7 @@ bun run install:verify   # read-only workstation install audit (Cursor/Claude/Ge
 |-------|---------|------|
 | Source | `src/` | Edit here — the only edit surface |
 | Build outputs | `.cursor/`, `.claude/`, `skills/`, `codex-*`, `.agents/build/`, `plugins/` | Generated — `bun run build`, never hand-edit |
+| agent-plugins.org bundle | `plugins/blackhole-agent-plugins/` | Portable skills-only shell (ADR-021) — `plugin.json` + skill subtree only; git-tracked opt-in |
 | Claude marketplace bundle | `plugins/blackhole-claude/` | Isolated, redistributable Claude Code plugin — ships `agents/` unlike the Gemini bundle (ADR-009); `marketplace.json` `source` points here |
 | Maintainer-only Claude content | `.claude/` (repo root) | Auto-discovered locally, never redistributed — freed up by the bundle split (ADR-009, issue #262) |
 | Campaign runtime | `.blackhole/` (`queue.json`, `findings-ledger.json`, `config.json`, `plans/`) | Live state, gitignored, sole protocol SSOT |

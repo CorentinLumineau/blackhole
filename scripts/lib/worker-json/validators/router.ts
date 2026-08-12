@@ -8,6 +8,7 @@ import {
   pushEnumError,
   requireField,
 } from '../predicates.ts';
+import { validatePartialResult } from '../shared-validators.ts';
 
 export function validateRoute(route: unknown, path: string): string[] {
   const errors: string[] = [];
@@ -77,8 +78,22 @@ export function validateRouter(data: unknown): string[] {
     if (isString(data.trigger)) {
       pushEnumError(errors, 'trigger', data.trigger, TRIGGERS);
     }
+    if ('rationale' in data) {
+      if (!isString(data.rationale)) {
+        errors.push('rationale: expected string');
+      } else {
+        if (data.rationale.trim().length === 0) {
+          errors.push('rationale: must be non-empty after trim');
+        } else if (data.rationale.length > 500) {
+          errors.push('rationale: exceeds maximum length 500');
+        }
+      }
+    }
   } else if (data.status === 'error') {
     requireField(errors, data, 'error', isString, 'string');
+  } else if (data.status === 'partial') {
+    // Issue #492 — stop --now leg B (`worker-schemas.md` § Partial result).
+    errors.push(...validatePartialResult(data));
   }
 
   return errors;

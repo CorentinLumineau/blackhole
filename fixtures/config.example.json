@@ -17,11 +17,11 @@
     "companion_files": true,
     "docs_impact_routing": true,
     "write_governance": true,
-    "severity_overrides": { "V-ADA-01": "BLOCK" }
+    "severity_overrides": { "V-DOC-GOV-01": "BLOCK" }
   },
   "kaizen": {
     "enabled": false,
-    "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity", "ux-coherence"],
+    "kinds": ["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity", "ux-coherence", "docs", "backlog", "ci", "deps", "perf"],
     "trigger": "on-empty",
     "loop_interval": 5,
     "min_priority": 30,

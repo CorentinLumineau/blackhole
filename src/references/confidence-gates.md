@@ -59,14 +59,20 @@ Compared against a single composite threshold: `autonomy.confidence_threshold`, 
 Two bands only — no interactive multi-turn interview loop (blackhole runs autonomously; the
 issue thread is the audit surface, not a live chat):
 
-- **composite ≥ threshold** → proceed. The reformulated understanding is posted as an **issue
-  comment** — this is the audit trail and the asynchronous veto surface. The user can
-  intervene via chat, `merge_hold`, or closing the PR; the orchestrator does not wait for a
-  response before continuing.
+- **composite ≥ threshold** → proceed. The planner populates `reformulation` (`understood`,
+  `assumed`, `if_wrong`) on `status: ready` for `quick`/`standard` tracks (`worker-schemas.md`
+  § Reformulation (async veto surface)); the orchestrator formats it via
+  `scripts/lib/reformulation-surface.ts` `formatReformulationComment()` and posts it as an
+  **issue comment** (`phase-plan.md` § Reformulation posting) — this is the audit trail and the
+  asynchronous veto surface. The user can intervene via chat, `merge_hold`, or closing the PR;
+  the orchestrator does not wait for a response before continuing.
 - **composite < threshold** → at most 2 `[NEEDS CLARIFICATION]` markers if the ambiguity is
   deferrable (the issue proceeds to plan, and the markers block before implement — the
   existing planner marker convention). Otherwise `status: blocked` + `AskQuestion` (today's
-  behavior, unchanged).
+  behavior, unchanged) — the resulting question's Why element must disclose the composite
+  score, the threshold, and that this is a **threshold rule** flip (the score fell below
+  `autonomy.confidence_threshold`, not a considered judgment that the cautious default is
+  correct), per `clarify-gates.md` § Gate Content Contract (R-003)'s confidence-gate addendum.
 
 ## Never-Bypass List
 

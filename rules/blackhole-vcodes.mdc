@@ -10,70 +10,96 @@ Restate this table in every implementation and review agent prompt. Do not paste
 longer definitions (token cost, drift). Persist every finding to
 `findings-ledger.json`.
 
-| Code | Rule | Severity |
-|------|------|----------|
-| V-SOLID-01/03 | Single responsibility; substitutability | BLOCK |
-| V-DRY-01 | No >10-line duplication | BLOCK |
-| V-DRY-02/03 | 3–10-line duplication; repeated magic values | WARN |
-| V-KISS-01 / V-YAGNI-01 | No over-abstraction; no speculative features | BLOCK |
-| V-KISS-03 | No empty scaffolding | WARN |
-| V-YAGNI-03 | No single-consumer abstractions | WARN |
-| V-DRY-04 | No copy-paste templates with trivial renames | WARN |
-| V-PAT-01 | God Object — class/module with 7+ responsibilities or >300 lines (see `hunt/best-practices.md` SRP heuristic, `hunt/refactor.md` god-module cluster) | BLOCK |
-| V-PAT-02 | Circular dependency between modules | BLOCK |
-| V-PAT-03 | Missing error-handling pattern — bare catch / swallowed errors (see `hunt/bug.md`) | BLOCK |
-| V-PAT-04 | Anti-pattern usage — singleton abuse, service locator | WARN |
-| V-TEST-01/02 | All new logic tested, tests FIRST | BLOCK |
-| V-TEST-05 | Meaningful assertions (not existence checks) | WARN |
-| V-TEST-09 | Coverage regression on changed files — line/function coverage vs. pre-change baseline must not drop | BLOCK |
-| V-SEC-01/02 | No injection; no auth bypass | BLOCK |
-| V-SEC-03/04 | No hardcoded secrets; no XSS | BLOCK |
-| V-SEC-06 | Every security finding carries a concrete attack scenario | BLOCK |
-| V-SEC-07 | Adversarial re-verification — each security finding independently re-checked before it can block merge | WARN |
-| V-SEC-08 | Security findings artifact must structurally validate before merge when security_review_required: true | BLOCK |
-| V-SEC-09 | Local-analyze confidence-boost scan may only raise security_review_required — a clean/absent scan must never lower an already-true value | BLOCK |
-| V-SEC-10 | Local-analyze grep matches must pass the one-line false-positive verification (comment/fixture/string-literal check) before counting toward a raise | WARN |
-| V-INT-02 | NEVER reimplement an existing utility | BLOCK |
-| V-INT-01/03/04 | Follow conventions at touchpoints; no third variant of a solved concern | WARN |
-| V-FIX-01 | Fixes address the root cause, documented — never the symptom | BLOCK |
-| V-PARETO-01 | No >3× complexity for marginal gain | WARN |
-| V-PARETO-02 | Pareto scoring & gating: Priority = Gain * (11 - Effort) must be >= 30 to create an issue, and ready issues are sorted by Priority descending | BLOCK |
-| V-DOC-02/04 | Public-API and design docs updates in the same PR | BLOCK |
-| V-DOC-05 | Documentation prose asserts a factual or arithmetic claim contradicted by repo-checkable evidence (counts, ratios, file paths, issue/ADR states) | WARN |
-| V-RULE-01 | Diff violates a recorded active-status owner ruling in product-principles.md (documentation/reference/) | BLOCK |
-| V-ADA-01 | `ARCHITECTURE.md` absent at project root/package (remedy: create from template) | WARN |
-| V-ADA-02 | `documentation/decisions/INDEX.md` missing an Accepted ADR added in this diff (remedy: append INDEX row) | WARN |
-| V-ADA-03 | `DESIGN.md` absent when diff touches a detected frontend/UI project (remedy: flag) | WARN |
-| V-ADA-05/06/07 | `AGENTS.md` absent at root, new monorepo package missing `AGENTS.md`, or package `AGENTS.md` unindexed at root (remedy: flag) | WARN |
-| V-UX-01 | Information overload on a UI-touching diff — flat field dumps, >~7-column dumps with no grouping/drill-down, everything-expanded-by-default, buried primary info, or deprecated data at equal prominence, instead of tiered at-a-glance/summary/detail/raw disclosure | WARN |
-| V-DOC-GOV-01 | New doc created under `documentation/` without a search-before-write check (duplicate-concern risk) | WARN |
-| V-DOC-GOV-02 | Doc under `documentation/` missing lifecycle frontmatter (`type`, `status`) | WARN |
-| V-DOC-GOV-03 | Doc filename uses a date-stamp suffix instead of the canonical `{concern-slug}.md` naming (ADR files exempt) | WARN |
-| V-DOC-GOV-04 | Doc content substantially replaced without `supersedes:` link or `status: deprecated` on the prior version | WARN |
-| V-CONFIG-01 | New config/env keys follow established naming, registered | WARN |
-| V-SCOPE-01 | No refactoring untouched code | WARN |
-| V-SCOPE-02 | Touch-Paths violation — files modified outside plan scope | WARN |
-| V-SCOPE-03 | Missing/underestimated blast-radius — a Standard-track plan with 3+ affected consumers lacks a `## Dependency Blast-Radius` section | WARN |
-| V-API-01 | API contract drift — public interface diverges from plan | BLOCK |
-| V-THREAT-01 | Threat Model — a Quick-track change with `route.security_review_required` proceeded without the plan-time threat escalation check / track escalation | BLOCK |
-| V-THREAT-02 | Threat Model — every HIGH/CRITICAL-severity threat has mitigation status 'Mitigated' | BLOCK |
-| V-THREAT-03 | Threat Model — all six STRIDE categories evaluated (Spoofing, Tampering, Repudiation, Info Disclosure, DoS, Elevation of Privilege) | WARN |
-| V-UI-01 | UI Interpretation Gate — a `route.ui: true`, non-`size:xs` issue merged with `ui_gate` absent or `pending` (not `approved`) in the plan frontmatter | BLOCK |
-| V-PERF-01 | Performance Budget — no N+1 queries, unindexed sorts, sync I/O in hot path, full-table scans, or unbounded pagination for a budgeted component | BLOCK |
-| V-PERF-02 | Performance Budget — diff touching a budgeted component does not regress against its documented threshold | WARN |
-| V-BRANCH-01 | Force-push to protected branches (main, master, release/*) | BLOCK |
-| V-BRANCH-02 | Direct commit to main/master without review and approval | BLOCK |
-| V-BRANCH-03 | Branch name does not match blackhole/issue-N convention | WARN |
-| V-WORKTREE-01 | Worktree leak — failed to clean up temporary directories | BLOCK |
-| V-GIT-01 | PR created without Closes #N issue linkage in description | BLOCK |
-| V-MERGE-01 | drift-reconciled merge with merged_by:blackhole present — step 0 bypassed | BLOCK |
-| V-MERGE-02 | drift-reconciled merge with merged_by absent — external bypass of hold/merge_after | WARN |
-| V-HUNT-01 | Kaizen issue filed from a finding without a `CONFIRMED` verification pass | BLOCK |
-| V-HUNT-02 | Hunt wave filed more than `max_issues_per_wave` issues, or filed below `min_priority` | WARN |
-| V-AUTO-01 | Autonomous design proceeds without a `design-aggregate.ts` verdict artifact | BLOCK |
-| V-AUTO-02 | Thinking-route artifact missing from PR when the route fired | WARN |
-| V-VIS-01 | UI-affecting diff with display_targets configured but no visual_evidence declared — silent skip | BLOCK |
-| V-VIS-02 | visual_evidence[] present with a declared capture_status: unavailable entry — non-blocking, never silent | WARN |
+| Code | Rule | Severity | Primary enforcement site |
+|------|------|----------|--------------------------|
+| V-SOLID-01/03 | Single responsibility; substitutability | BLOCK | reviewer.md §3 (V-SOLID-01, V-SOLID-03 — SOLID & DRY Compliance) |
+| V-SOLID-02 | Open/Closed — existing code modified (switch/if-else on type tag edited per variant) instead of extended | BLOCK | reviewer.md §3 (V-SOLID-02 — SOLID & DRY Compliance) |
+| V-SOLID-04 | Interface Segregation — interface/abstract class forces stub/no-op members implementers never use | WARN | reviewer.md §3 (V-SOLID-04 — SOLID & DRY Compliance; mercure MEDIUM; kept WARN here per #441 precedent — ISP is structural quality, deferrable, not autonomous-merge-blocking like OCP/DIP churn) |
+| V-SOLID-05 | Dependency Inversion — module instantiates a concrete dependency directly instead of an injected abstraction | BLOCK | reviewer.md §3 (V-SOLID-05 — SOLID & DRY Compliance) |
+| V-DRY-01 | No >10-line duplication | BLOCK | reviewer.md §3 |
+| V-DRY-02/03 | 3–10-line duplication; repeated magic values | WARN | reviewer.md §3 (V-DRY-02, V-DRY-03 — SOLID & DRY Compliance) |
+| V-KISS-01 / V-YAGNI-01 | No over-abstraction; no speculative features | BLOCK | reviewer.md §12 (Suggestion Proportionality Gate) |
+| V-KISS-02 | Deep nesting (>4 levels) in changed functions | WARN | reviewer.md §3 (Anti-Slop Audit) |
+| V-KISS-03 | No empty scaffolding | WARN | reviewer.md §3 (Anti-Slop Audit) |
+| V-YAGNI-02 | Premature optimization without measured hot-path evidence | WARN | reviewer.md §3 (Anti-Slop Audit) |
+| V-YAGNI-03 | No single-consumer abstractions | WARN | reviewer.md §3 (Anti-Slop Audit) |
+| V-DRY-04 | No copy-paste templates with trivial renames | WARN | reviewer.md §3 (Anti-Slop Audit) |
+| V-PAT-01 | God Object — class/module with 7+ responsibilities or >300 lines (see `hunt/best-practices.md` SRP heuristic, `hunt/refactor.md` god-module cluster) | BLOCK | reviewer.md §3 (Design Pattern Review) |
+| V-PAT-02 | Circular dependency between modules | BLOCK | reviewer.md §3 (Design Pattern Review) |
+| V-PAT-03 | Missing error-handling pattern — bare catch / swallowed errors (see `hunt/bug.md`) | BLOCK | reviewer.md §3 (Design Pattern Review) |
+| V-PAT-04 | Anti-pattern usage — singleton abuse, service locator | WARN | reviewer.md §3 (Design Pattern Review) |
+| V-TEST-01/02 | All new logic tested, tests FIRST | BLOCK | reviewer.md §2 (TDD & Testing Baselines) |
+| V-TEST-05 | Meaningful assertions (not existence checks) | WARN | reviewer.md §2 (TDD & Testing Baselines) |
+| V-TEST-09 | Coverage regression on changed files — line/function coverage vs. pre-change baseline must not drop | BLOCK | implementer.md § Refactoring & Implementation Workflow (Coverage-regression gate, step 6) |
+| V-TEST-10 | Test integrity — a diff adds a test-skip marker, removes an assertion with no replacement, or loosens a validation rule with no stated reason; review-time diff-pattern judgment, distinct from V-TEST-09's measurable coverage-delta metric | BLOCK | reviewer.md §23 (Test Integrity Audit) |
+| V-SEC-01/02 | No injection; no auth bypass | BLOCK | reviewer.md §4 (Security Checks) |
+| V-SEC-03/04 | No hardcoded secrets; no XSS | BLOCK | reviewer.md §4 (Security Checks) |
+| V-SEC-06 | Every security finding carries a concrete attack scenario | BLOCK | review-core.md § Security-mode review (exploitability gate) |
+| V-SEC-07 | Adversarial re-verification — each security finding independently re-checked before it can block merge | WARN | review-core.md § Independent security verification (second, independent `reviewer` spawn — issue #439) |
+| V-SEC-08 | Security findings artifact must structurally validate before merge when security_review_required: true | BLOCK | review-core.md § LGTM definition (merge-gate validator) |
+| V-SEC-09 | Local-analyze confidence-boost scan may only raise security_review_required — a clean/absent scan must never lower an already-true value | BLOCK | router.md (local_analyze confidence-boost raise-only rule) |
+| V-SEC-10 | Local-analyze grep matches must pass the one-line false-positive verification (comment/fixture/string-literal check) before counting toward a raise | WARN | router.md § Local-analyze confidence-boost mechanism (False-positive verification, steps 1-4) |
+| V-SEC-11 | Sensitive-filename staged before commit — a path matching the shared file-write pattern set (owned by #447) reached `git add` without a refusal + ledger log; independent of `V-SEC-03`'s content scan | BLOCK | reviewer.md §4 (Security Checks — Sensitive-Filename Staging Audit) |
+| V-INT-02 | NEVER reimplement an existing utility | BLOCK | reviewer.md §5 (Integration Coherence) |
+| V-INT-01/03/04 | Follow conventions at touchpoints; no third variant of a solved concern | WARN | reviewer.md §5 (Integration Coherence) |
+| V-FIX-01 | Fixes address the root cause, documented — never the symptom | BLOCK | reviewer.md §15 (Decision Record Audit — root-cause escalation) |
+| V-PARETO-01 | No >3× complexity for marginal gain | WARN | reviewer.md §12 (Suggestion Proportionality Gate) |
+| V-PARETO-02 | Improvement discovery label + Priority formula SSOT for hunt scoring: Priority = Gain * (11 - Effort) — diverges from mercure's V-PARETO-02 (gold-plating / polish without user value, MEDIUM); kept per ADR-021 D5 because renumbering the 9-file SSOT heading is disproportionate; mercure's meaning, if ever adopted here, takes a fresh unused code | WARN | reviewer.md §6 (Improvement Discoveries & Pareto scoring) |
+| V-PARETO-03 | Pareto filing gate: Priority = Gain * (11 - Effort) must be >= 30 to file an issue; ready issues are sorted by Priority descending | BLOCK | scripts/checks/pareto-filing-gate.check.ts |
+| V-DOCSYNC-01 | Public-API and design docs updates in the same PR | BLOCK | reviewer.md §9 (Public-API / Docs Currency) |
+| V-DOC-01 | Public-exported symbol added or modified without a docstring/JSDoc on that symbol | WARN | reviewer.md §9 (Public-API / Docs Currency — docstring check) |
+| V-DOCFACT-01 | Documentation prose asserts a factual or arithmetic claim contradicted by repo-checkable evidence (counts, ratios, file paths, issue/ADR states) | WARN | reviewer.md §18 (Documentation Prose Factual Accuracy) |
+| V-RULE-01 | Diff violates a recorded active-status owner ruling in product-principles.md (documentation/reference/) | BLOCK | reviewer.md §19 (Owner-Ruling Violation Audit) |
+| V-ADA-01 | `ARCHITECTURE.md` absent at project root/package (remedy: create from template) | BLOCK | reviewer.md §10 (Companion-File Audit) |
+| V-ADA-02 | `documentation/decisions/INDEX.md` missing an Accepted ADR added in this diff (remedy: append INDEX row) | WARN | reviewer.md §10 (Companion-File Audit) |
+| V-ADA-03 | `DESIGN.md` absent when diff touches a detected frontend/UI project (remedy: flag) | WARN | reviewer.md §10 (Companion-File Audit) |
+| V-ADA-04 | `DESIGN.md` token staleness — diff introduces visual/design token changes without updating relevant `DESIGN.md` frontmatter blocks | WARN | reviewer.md §10 (Companion-File Audit — DESIGN.md token staleness) |
+| V-ADA-05/06/07 | `AGENTS.md` absent at root, new monorepo package missing `AGENTS.md`, or package `AGENTS.md` unindexed at root (remedy: flag) | WARN | reviewer.md §10 (Companion-File Audit) |
+| V-ADA-08 | Superseded ADR INDEX lifecycle and deprecated-doc archive gap — INDEX `status`, supersession citation, deprecated docs past archival window without `status: archived` curation (`doc-governance.md` § Supersede-on-Overwrite) | WARN | scripts/checks/adr-status.check.ts |
+| V-UX-01 | Information overload on a UI-touching diff — flat field dumps, >~7-column dumps with no grouping/drill-down, everything-expanded-by-default, buried primary info, or deprecated data at equal prominence, instead of tiered at-a-glance/summary/detail/raw disclosure | WARN | reviewer.md §14 (Information-Hierarchy Audit) |
+| V-DOC-GOV-01 | New doc created under `documentation/` without a search-before-write check (duplicate-concern risk) — kept at WARN, diverging from mercure's HIGH; reviewer judgment audit at §27 supplies the enforcement site (`doc-governance.md` § Search-Before-Write); a campaign wanting stricter protection can escalate via `docs_governance.severity_overrides` | WARN | reviewer.md §27 (Doc-Governance Judgment Audit) |
+| V-DOC-GOV-02 | Doc under `documentation/` missing any required lifecycle frontmatter (`type`, `status`, `review_trigger`, `created`, `last_updated`) — `doc-governance.md` § Lifecycle Frontmatter | WARN | reviewer.md §27 (Doc-Governance Judgment Audit) |
+| V-DOC-GOV-03 | Doc filename uses a date-stamp suffix instead of the canonical `{concern-slug}.md` naming (ADR files exempt) — `doc-governance.md` § Canonical Naming | WARN | reviewer.md §27 (Doc-Governance Judgment Audit) |
+| V-DOC-GOV-04 | Doc content substantially replaced without `supersedes:` link or `status: deprecated` on the prior version — `doc-governance.md` § Supersede-on-Overwrite | WARN | reviewer.md §27 (Doc-Governance Judgment Audit) |
+| V-DOC-04 | Doc-tree structural staleness — a `documentation/INDEX.md` (or per-folder index) row whose `path` resolves to no existing file, or a doc's `supersedes:` frontmatter value resolving to no file or to a file not marked `status: deprecated`; tree-wide, not diff-scoped (folder-reorg tracking deferred until the tree tiers) | BLOCK | hunt/docs.md (`docs` kaizen hunt kind) |
+| V-DOC-03 | Broken internal documentation link — added/modified markdown under `documentation/` references a path that does not resolve in the live tree | WARN | reviewer.md §27 (Doc-Governance Judgment Audit — broken link check) |
+| V-DOC-05 | Rationale duplicated across a definition/interface/call-site/test (four copies drift four ways — the canonical site is where the concept is defined; other sites must reference it by symbol name, not restate it) | WARN | reviewer.md §26 (Comment Discipline Audit) |
+| V-DOC-06 | Incident archaeology in source comments — issue/PR number, "found by review of X", or change-history prose embedded in a comment (a regression test may carry its issue number in the **function name** only) | WARN | reviewer.md §26 (Comment Discipline Audit) |
+| V-DOC-07 | Comment-to-code ratio advisory — added comment lines exceed ~40% of a diff's added lines; informational only, never escalates past WARN and never blocks | WARN | reviewer.md §26 (Comment Discipline Audit) |
+| V-ADR-01 | ADR frontmatter `status:` is not a bare enum token in `{accepted, superseded, deprecated}` (exact case) | WARN | scripts/checks/adr-status.check.ts |
+| V-ADR-02 | ADR `documentation/decisions/INDEX.md` `status` column disagrees with the ADR file's frontmatter `status:` | WARN | scripts/checks/adr-status.check.ts |
+| V-ADR-03 | ADR in-body `## Status` leading token disagrees with frontmatter `status:` (case-insensitive; section absence is not a failure) | WARN | scripts/checks/adr-status.check.ts |
+| V-CONFIG-01 | New config/env keys follow established naming, registered | WARN | reviewer.md §5 (Integration Coherence — Config/env key naming) |
+| V-CONFIG-02 | New `.blackhole/config.json` keys registered in config-template.md | WARN | scripts/checks/config-registration.check.ts |
+| V-SCOPE-01 | No refactoring untouched code | WARN | reviewer.md §12 (Suggestion Proportionality Gate) |
+| V-SCOPE-02 | Touch-Paths violation — files modified outside plan scope | WARN | reviewer.md §1 (5-Field Contract & Plan Compliance) |
+| V-SCOPE-03 | Missing/underestimated blast-radius — a Standard-track plan with 3+ affected consumers lacks a `## Dependency Blast-Radius` section | WARN | reviewer.md §1 (5-Field Contract & Plan Compliance) |
+| V-API-01 | API contract drift — public interface diverges from plan | BLOCK | reviewer.md §1 (5-Field Contract & Plan Compliance) |
+| V-THREAT-01 | Threat Model — a Quick-track change with `route.security_review_required` proceeded without the plan-time threat escalation check / track escalation | BLOCK | reviewer.md §16 (Threat Model Audit) |
+| V-THREAT-02 | Threat Model — every HIGH/CRITICAL-severity threat has mitigation status 'Mitigated' | BLOCK | reviewer.md §16 (Threat Model Audit) |
+| V-THREAT-03 | Threat Model — all six STRIDE categories evaluated (Spoofing, Tampering, Repudiation, Info Disclosure, DoS, Elevation of Privilege) | WARN | reviewer.md §16 (Threat Model Audit) |
+| V-UI-01 | UI Interpretation Gate — a `route.ui: true`, non-`size:xs` issue merged with `ui_gate` absent or `pending` (not `approved`) in the plan frontmatter | BLOCK | reviewer.md §21 (UI Interpretation Gate Audit) |
+| V-PERF-01 | Performance Budget — no N+1 queries, unindexed sorts, sync I/O in hot path, full-table scans, or unbounded pagination for a budgeted component | BLOCK | reviewer.md §17 (Performance Budget Audit) |
+| V-PERF-02 | Performance Budget — diff touching a budgeted component does not regress against its documented threshold | WARN | reviewer.md §17 (Performance Budget Audit) |
+| V-BRANCH-01 | Force-push to protected branches (main, master, release/*) | BLOCK | phase-review.md (pre-merge gate) |
+| V-BRANCH-02 | Direct commit to main/master without review and approval | BLOCK | reviewer.md §7 (PR & Git Hygiene) |
+| V-BRANCH-03 | Branch name does not match blackhole/issue-N convention | WARN | phase-implement.md (worktree/branch creation checklist) |
+| V-WORKTREE-01 | Worktree leak — failed to clean up temporary directories | BLOCK | orchestrator.md (turn-start prune step) |
+| V-GIT-01 | PR created without Closes #N issue linkage in description | BLOCK | reviewer.md §7 (PR & Git Hygiene) |
+| V-CI-01 | Required CI check failed after transient retries; failing-step log retrieved; routed to implementer fix loop | BLOCK | ci-diagnosis.md |
+| V-MERGE-01 | drift-reconciled merge with merged_by:blackhole present — step 0 bypassed | BLOCK | merge-gate.md §3 |
+| V-MERGE-02 | drift-reconciled merge with merged_by absent — external bypass of hold/merge_after | WARN | merge-gate.md §3 |
+| V-HUNT-01 | Kaizen issue filed from a finding without a `CONFIRMED` verification pass | BLOCK | hunter.md (CONFIRMED verification gate) |
+| V-HUNT-02 | Hunt wave filed more than `max_issues_per_wave` issues, or filed below `min_priority` | WARN | hunter.md (filing caps) |
+| V-AUTO-01 | Autonomous design proceeds without a `design-aggregate.ts` verdict artifact | BLOCK | scripts/design-aggregate.ts + planner.md §4.8 |
+| V-AUTO-02 | Thinking-route artifact staged but not carried into the PR — route declared an artifact and none reached the PR; a route that declared nothing is unaffected | BLOCK | reviewer.md §25 (Staged Artifact Carry Audit) |
+| V-VIS-01 | UI-affecting diff with display_targets configured but no visual_evidence declared — silent skip | BLOCK | reviewer.md §22 (Visual Evidence Audit) |
+| V-VIS-02 | visual_evidence[] present with a declared capture_status: unavailable entry — non-blocking, never silent | WARN | reviewer.md §22 (Visual Evidence Audit) |
+| V-HOOK-01 | PreToolUse hook denied a destructive/unsafe Bash or Write/Edit call; the `.blackhole/hook-events/` record must be ingested into findings-ledger.json before the issue advances past implement | BLOCK | orchestrator-runtime.md § Triage step 1b |
+| V-HOOK-02 | PreToolUse hook flagged a risky-but-allowed call for review — sensitive-file write, force push, registry publish, destructive SQL | WARN | orchestrator-runtime.md § Triage step 1b |
+| V-HOOK-03 | PreToolUse hook validator process failed before producing a decision and the call was allowed (fail-open); the `.blackhole/hook-events/` record must be ingested into findings-ledger.json | BLOCK | orchestrator-runtime.md § Triage step 1b |
+| V-BRIEF-01 | A worker return — direct, transcript-recovered, or resend-recovered — was applied to `queue.json`/`findings-ledger.json` without first passing `scripts/validate-worker-json.ts`, across any arrival path | BLOCK | orchestrator-runtime.md § Triage |
+| V-BRIEF-02 | A spawn-brief-adjacent doc (`src/agents/*.md`, `src/references/*.md`, excluding `worker-schemas.md`) inlines a literal `"status": "<value>"` skeleton in a fenced JSON block whose value is outside the resolved role's status enum | WARN | scripts/checks/inline-schema-drift.check.ts |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.

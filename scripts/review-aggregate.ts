@@ -1,6 +1,7 @@
 import { readJsonFile } from './lib/fs.ts';
 
 export type Finding = {
+  id?: string;
   vcode: string;
   severity: string;
   file: string;
@@ -13,9 +14,39 @@ export type Finding = {
   locations?: { file: string; line: number }[];
 };
 
+export type RecheckEntry = {
+  finding_id: string;
+  verdict: 'fixed' | 'not_fixed';
+  evidence: string;
+};
+
+// Sibling shape to RecheckEntry, distinct meaning (issue #439, V-SEC-07): a recheck
+// verdict resolves whether a *prior, already-ledgered* finding was fixed by a later
+// commit; a verification verdict resolves whether a security-mode primary reviewer's
+// *fresh, same-pass* finding survives an independent second reviewer's attempt to
+// disprove it. Kept as its own type — not a repurposing of RecheckEntry, which already
+// has a fixed meaning tied to fix-verification (review-core.md § Recheck mode).
+export type VerificationEntry = {
+  finding_id: string;
+  verdict: 'confirmed' | 'refuted';
+  evidence: string;
+};
+
+export type UnresolvedRecheckEntry = {
+  finding_id: string;
+  verdict: string;
+  reason: string;
+};
+
 export type ReviewerInput = {
   status: 'complete' | 'error';
   findings: Finding[];
+  recheck?: RecheckEntry[];
+  // Present only on the raw JSON a verification spawn (review-core.md § Independent
+  // security verification) returns — never on a primary reviewer's own output. Read by
+  // the orchestrator and passed to aggregateReview's separate `verification` input
+  // below, not consumed from this field directly by aggregateReview itself.
+  verification?: VerificationEntry[];
   error?: string;
 };
 
@@ -31,6 +62,7 @@ export type AggregateOutput = {
   blockers_count: number;
   lgtm: boolean;
   pareto_candidates: ParetoCandidate[];
+  unresolved_recheck: UnresolvedRecheckEntry[];
   error?: string;
 };
 
@@ -117,6 +149,67 @@ export function applyConfidenceGate(findings: Finding[]): Finding[] {
     });
 }
 
+/**
+ * Excludes a prior finding from the collision set when the reviewer's
+ * `recheck[]` names it `verdict: fixed` via the ledger `id` — the same
+ * "recognize a prior pass's artifact, don't re-collide with it" idempotency
+ * pattern as `LOW_CONFIDENCE_CAVEAT_RE` above, applied to a second signal.
+ * Exclusion happens before dedup and before the LGTM computation, so a
+ * recheck-fixed finding never collides with or suppresses a fresh one at the
+ * same file:line. A `recheck` entry whose `finding_id` matches no prior
+ * finding's `id` is fail-loud, not silently dropped: it is returned in
+ * `unresolved`, and the caller forces `lgtm: false` when `unresolved` is
+ * non-empty — an unresolvable linkage must escalate, never pass silently.
+ */
+function resolveRecheckExclusions(
+  prior: Finding[],
+  recheck: RecheckEntry[],
+): { resolvedPrior: Finding[]; unresolved: UnresolvedRecheckEntry[] } {
+  const fixedIds = new Set(
+    recheck.filter((r) => r.verdict === 'fixed').map((r) => r.finding_id),
+  );
+  const matchedIds = new Set(
+    prior.filter((f) => f.id && fixedIds.has(f.id)).map((f) => f.id!),
+  );
+  const unresolved = [...fixedIds]
+    .filter((id) => !matchedIds.has(id))
+    .map((finding_id) => ({
+      finding_id,
+      verdict: 'fixed',
+      reason: 'no prior finding matched finding_id — linkage could not be resolved',
+    }));
+  const resolvedPrior = prior.filter((f) => !f.id || !matchedIds.has(f.id));
+  return { resolvedPrior, unresolved };
+}
+
+/**
+ * Downgrades a primary finding when the independent verification spawn (V-SEC-07,
+ * issue #439) returns `verdict: 'refuted'` for its `finding_id` — mirrors
+ * `resolveRecheckExclusions`'s pre-dedup special-casing of a named `finding_id`, but
+ * downgrades rather than excludes: an independently-unreproducible finding stays
+ * visible at `WARN` (a paper trail) instead of vanishing, since "could not reproduce"
+ * is weaker evidence than "confirmed fixed in a later commit" (recheck's own exclusion
+ * case). Only `BLOCK` findings are downgraded (to `WARN`, same one-tier step
+ * `applyConfidenceGate` already uses below) — a `confirmed` verdict, or an unmatched
+ * `finding_id`, is a no-op.
+ */
+function applyVerificationDowngrades(
+  findings: Finding[],
+  verification: VerificationEntry[],
+): Finding[] {
+  const refutedIds = new Set(
+    verification.filter((v) => v.verdict === 'refuted').map((v) => v.finding_id),
+  );
+  if (refutedIds.size === 0) {
+    return findings;
+  }
+  return findings.map((finding) =>
+    finding.severity === 'BLOCK' && finding.id !== undefined && refutedIds.has(finding.id)
+      ? { ...finding, severity: 'WARN' }
+      : finding,
+  );
+}
+
 export function dedupeFindings(findings: Finding[]): Finding[] {
   const byKey = new Map<string, Finding>();
 
@@ -176,6 +269,11 @@ export function aggregateReview(input: {
   reviewer: ReviewerInput;
   issueRef: string;
   priorFindings?: Finding[];
+  // The independent verification spawn's own `verification[]` array (issue #439,
+  // V-SEC-07), extracted by the caller from that separate spawn's returned JSON — not
+  // read from `input.reviewer.verification`, which is reserved for the raw shape of
+  // that spawn's own output, never the primary reviewer's.
+  verification?: VerificationEntry[];
 }): AggregateOutput {
   if (input.reviewer.status === 'error') {
     return {
@@ -184,17 +282,26 @@ export function aggregateReview(input: {
       blockers_count: 0,
       lgtm: false,
       pareto_candidates: [],
+      unresolved_recheck: [],
       error: input.reviewer.error ?? 'reviewer error',
     };
   }
 
   const stamped = stampIssueRef(input.reviewer.findings, input.issueRef);
+  const verified = input.verification?.length
+    ? applyVerificationDowngrades(stamped, input.verification)
+    : stamped;
   const prior = input.priorFindings ?? [];
-  const gated = applyConfidenceGate([...prior, ...stamped]);
+  const { resolvedPrior, unresolved } = resolveRecheckExclusions(
+    prior,
+    input.reviewer.recheck ?? [],
+  );
+  const gated = applyConfidenceGate([...resolvedPrior, ...verified]);
   const deduped = dedupeFindings(gated);
   const findings = sortFindings(deduped);
   const blockers_count = findings.filter((f) => f.severity === 'BLOCK').length;
-  const lgtm = input.reviewer.status === 'complete' && blockers_count === 0;
+  const lgtm =
+    input.reviewer.status === 'complete' && blockers_count === 0 && unresolved.length === 0;
   const status = lgtm ? 'approved' : 'changes_requested';
 
   return {
@@ -203,6 +310,7 @@ export function aggregateReview(input: {
     blockers_count,
     lgtm,
     pareto_candidates: buildParetoCandidates(findings),
+    unresolved_recheck: unresolved,
   };
 }
 
@@ -211,6 +319,7 @@ function parseArgs(argv: string[]): {
   issueRef?: string;
   prRef?: string;
   priorFile?: string;
+  verificationFile?: string;
 } {
   const out: ReturnType<typeof parseArgs> = {};
   for (let i = 2; i < argv.length; i++) {
@@ -223,6 +332,8 @@ function parseArgs(argv: string[]): {
       out.prRef = argv[++i];
     } else if (arg === '--prior-file' && argv[i + 1]) {
       out.priorFile = argv[++i];
+    } else if (arg === '--verification-file' && argv[i + 1]) {
+      out.verificationFile = argv[++i];
     }
   }
   return out;
@@ -243,12 +354,26 @@ function isFindingArray(value: unknown): value is Finding[] {
   return Array.isArray(value);
 }
 
+function isVerificationEntryArray(value: unknown): value is VerificationEntry[] {
+  return (
+    Array.isArray(value) &&
+    value.every((entry) => {
+      if (typeof entry !== 'object' || entry === null) return false;
+      const obj = entry as Record<string, unknown>;
+      return (
+        typeof obj.finding_id === 'string' &&
+        (obj.verdict === 'confirmed' || obj.verdict === 'refuted')
+      );
+    })
+  );
+}
+
 if (import.meta.main) {
-  const { reviewerFile, issueRef, priorFile } = parseArgs(process.argv);
+  const { reviewerFile, issueRef, priorFile, verificationFile } = parseArgs(process.argv);
 
   if (!reviewerFile || !issueRef) {
     console.error(
-      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>]',
+      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>]',
     );
     process.exit(1);
   }
@@ -268,11 +393,28 @@ if (import.meta.main) {
       priorFindings = priorRaw;
     }
 
+    let verification: VerificationEntry[] | undefined;
+    if (verificationFile) {
+      const verificationRaw = readJsonFile(verificationFile, 'verification file');
+      if (!isVerificationEntryArray(verificationRaw)) {
+        throw new Error(
+          'verification file: expected JSON array of { finding_id, verdict, evidence }',
+        );
+      }
+      verification = verificationRaw;
+    }
+
     const result = aggregateReview({
       reviewer: reviewerRaw,
       issueRef,
       priorFindings,
+      verification,
     });
+    if (result.unresolved_recheck.length > 0) {
+      console.error(
+        `${result.unresolved_recheck.length} unresolved_recheck entr${result.unresolved_recheck.length === 1 ? 'y' : 'ies'} — see the "unresolved_recheck" field in stdout output`,
+      );
+    }
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -4,10 +4,13 @@ import * as path from 'path';
 import {
   parseSectionLineCounts,
   findContentGateViolations,
+  findContentGateWarnings,
   resolveContentGateTargets,
+  checkZeroSections,
   CHECK_TS_SECTION_PATTERN,
+  runChecks,
 } from './checks/content-gates.check.ts';
-import { CONTENT_GATE_BUDGETS } from './lib/build/facts.ts';
+import { CONTENT_GATE_BUDGETS, CONTENT_GATE_WARN_RATIO } from './lib/build/facts.ts';
 
 // V-CONTENTGATE-01 (ADR-007 T6/R3′, generalized issue #323): declared-budget section/file-size
 // gate. Inline fixtures cover the parser, the glob-class resolver, and the violation-finding
@@ -78,6 +81,88 @@ describe('parseSectionLineCounts (CHECK_TS_SECTION_PATTERN boundary)', () => {
       'const checkReal = (): CheckResult => {': 3,
     });
   });
+
+  // Issue #554: a check function exported for unit-testing (`export const checkFoo = ...`, the
+  // convention PR #550 introduced so split check functions can be tested individually) was
+  // invisible to the section boundary — the pattern anchored on `^const check` and never matched
+  // the `export ` prefix, so the whole file fell back to zero detected sections and the
+  // 68-LOC-per-section budget went silently unenforced.
+  test('matches an exported check function declaration', () => {
+    const content = [
+      'export const checkFoo = (): CheckResult => {',
+      '  return { id: "X", ok: true };',
+      '};',
+      'export const checkBar = (): CheckResult[] => {',
+      '  return [];',
+      '};',
+    ].join('\n');
+    expect(parseSectionLineCounts(content, CHECK_TS_SECTION_PATTERN)).toEqual({
+      'export const checkFoo = (): CheckResult => {': 3,
+      'export const checkBar = (): CheckResult[] => {': 3,
+    });
+  });
+
+  test('matches both exported and non-exported check declarations in the same file', () => {
+    const content = [
+      'const checkPrivate = (): CheckResult => {',
+      '  x;',
+      '};',
+      'export const checkPublic = (): CheckResult => {',
+      '  y;',
+      '};',
+    ].join('\n');
+    expect(parseSectionLineCounts(content, CHECK_TS_SECTION_PATTERN)).toEqual({
+      'const checkPrivate = (): CheckResult => {': 3,
+      'export const checkPublic = (): CheckResult => {': 3,
+    });
+  });
+
+  // Issue #562: gate-content-contract.check.ts's checkGateContentContract spans its parameter
+  // list across three lines (`export const checkGateContentContract = (` / params / `):
+  // CheckResult => {`), so the boundary pattern's requirement to match the closing signature
+  // shape on the same declaration line never fires — the file falls back to zero detected
+  // sections, same failure mode as issue #554.
+  test('matches a check declaration whose parameter list spans multiple lines', () => {
+    const content = [
+      'export const checkFoo = (',
+      '  param: string,',
+      '): CheckResult => {',
+      '  return { id: "X", ok: true };',
+      '};',
+    ].join('\n');
+    expect(parseSectionLineCounts(content, CHECK_TS_SECTION_PATTERN)).toEqual({
+      'export const checkFoo = (': 5,
+    });
+  });
+
+  // Issue #562: checkpoint.check.ts's checkCheckpointAlignment (and two checks in
+  // codex-build.check.ts) are expression-bodied arrows with no trailing `{` on the declaration
+  // line — another zero-detected-sections instance found during planning, not in the issue text.
+  test('matches an expression-bodied check declaration with no trailing brace', () => {
+    const content = ['const checkFoo = (): CheckResult =>', '  helper(1, 2);'].join('\n');
+    expect(parseSectionLineCounts(content, CHECK_TS_SECTION_PATTERN)).toEqual({
+      'const checkFoo = (): CheckResult =>': 2,
+    });
+  });
+});
+
+describe('checkZeroSections', () => {
+  // Issue #562: a `.check.ts` file with zero detected sections passes its budget gate silently
+  // — there is nothing to measure, so `findContentGateViolations` reports no error even though
+  // the file's check functions are completely unenforced. Fail loud instead.
+  test('reports a violation naming the target when a .check.ts file detects zero sections', () => {
+    const violation = checkZeroSections('scripts/checks/fake.check.ts', {});
+    expect(violation).not.toBeNull();
+    expect(violation).toContain('scripts/checks/fake.check.ts');
+  });
+
+  test('does not fire when sections were detected', () => {
+    expect(checkZeroSections('scripts/checks/fake.check.ts', { 'const checkFoo = (': 3 })).toBeNull();
+  });
+
+  test('does not fire for a non-.check.ts target with zero sections (e.g. markdown boundary)', () => {
+    expect(checkZeroSections('src/agents/orchestrator.md', {})).toBeNull();
+  });
 });
 
 describe('resolveContentGateTargets', () => {
@@ -145,13 +230,84 @@ describe('findContentGateViolations', () => {
   });
 });
 
+describe('findContentGateWarnings', () => {
+  test('warns on a section between 85% and 100% of maxSectionLoc (exclusive of over-budget)', () => {
+    // 45/50 = 90%, above the 85% warnRatio and at/under the 50-LOC budget.
+    const warnings = findContentGateWarnings(
+      'some/file.md',
+      { '## Nearly Full': 45 },
+      10,
+      { maxSectionLoc: 50, maxFileLoc: 1000 },
+      0.85,
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('some/file.md');
+    expect(warnings[0]).toContain('## Nearly Full');
+    expect(warnings[0]).toContain('45');
+    expect(warnings[0]).toContain('50');
+  });
+
+  test('does not warn below the warnRatio threshold', () => {
+    // 40/50 = 80%, below the 85% warnRatio.
+    const warnings = findContentGateWarnings(
+      'some/file.md',
+      { '## Plenty Of Room': 40 },
+      10,
+      { maxSectionLoc: 50, maxFileLoc: 1000 },
+      0.85,
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  test('does not double-report a section already over budget (V-CONTENTGATE-01 owns that case)', () => {
+    // 55/50 = 110%, already a hard violation — findContentGateWarnings must stay silent on it.
+    const warnings = findContentGateWarnings(
+      'some/file.md',
+      { '## Already Over': 55 },
+      10,
+      { maxSectionLoc: 50, maxFileLoc: 1000 },
+      0.85,
+    );
+    expect(warnings).toEqual([]);
+  });
+
+  test('still warns exactly at 100% of budget (the "landed at the ceiling" shape)', () => {
+    // 50/50 = 100%, passes the hard gate (loc > budget is the violation condition) but should
+    // still surface as an advisory warning — this is the planner.md-at-350 shape from the issue.
+    const warnings = findContentGateWarnings(
+      'some/file.md',
+      { '## Exactly At Ceiling': 50 },
+      10,
+      { maxSectionLoc: 50, maxFileLoc: 1000 },
+      0.85,
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('## Exactly At Ceiling');
+  });
+
+  test('also checks the whole-file LOC against maxFileLoc, same threshold rules', () => {
+    const warnings = findContentGateWarnings(
+      'some/file.md',
+      {},
+      90,
+      { maxSectionLoc: 1000, maxFileLoc: 100 },
+      0.85,
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('whole file');
+    expect(warnings[0]).toContain('90');
+    expect(warnings[0]).toContain('100');
+  });
+});
+
 describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positives)', () => {
-  test('covers exactly the 5 declared keys', () => {
+  test('covers exactly the 6 declared keys', () => {
     expect(Object.keys(CONTENT_GATE_BUDGETS).sort()).toEqual(
       [
         'src/agents/orchestrator.md',
         'src/agents/planner.md',
         'src/references/worker-schemas.md',
+        'src/references/hook-schemas.md',
         'scripts/checks/*.check.ts',
         'scripts/lib/build/*.ts',
       ].sort(),
@@ -175,5 +331,28 @@ describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positi
     }
 
     expect(allErrors).toEqual([]);
+  });
+
+  test('runChecks() returns both V-CONTENTGATE-01 (unaffected hard gate) and V-CONTENTGATE-02 (advisory)', () => {
+    // Operationalizes the plan's "Hard-gate regression" stop condition as a permanent test: the
+    // hard gate must stay green (issue #545 is additive-only, AC #3 forbids any budget change),
+    // and the new advisory check must report the near-ceiling files identified in the plan's
+    // Claims Verified table (issue #545 AC #4) as a living, re-run-every-CI assertion.
+    const results = runChecks();
+    expect(results).toHaveLength(2);
+
+    const hard = results.find((r) => r.id === 'V-CONTENTGATE-01');
+    expect(hard).toBeDefined();
+    expect(hard?.ok).toBe(true);
+
+    const warn = results.find((r) => r.id === 'V-CONTENTGATE-02');
+    expect(warn).toBeDefined();
+    expect(warn?.ok).toBe(true);
+    expect(warn?.detail).toBeDefined();
+    expect(warn?.detail?.length).toBeGreaterThan(0);
+  });
+
+  test('CONTENT_GATE_WARN_RATIO is the derived 85% threshold', () => {
+    expect(CONTENT_GATE_WARN_RATIO).toBe(0.85);
   });
 });

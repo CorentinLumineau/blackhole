@@ -40,6 +40,32 @@ export const findRosterScanMismatch = (scanned: string[], declared: string[]): s
 export const findRowCountMismatch = (label: string, declared: number, actual: number): string | null =>
   declared === actual ? null : `${label}: declared ${declared}, found ${actual}`;
 
+// ADR-021 D5 (issue #495): V-DOC-02/04 was renamed to V-DOCSYNC-01 and V-DOCFACT-01 to free
+// those ids for mercure's own V-DOC-* namespace. V-DOC-05 was likewise retired in #495, then
+// reclaimed for mercure's comment-discipline rationale rule in #446 — only V-DOC-02/04 stays
+// pinned here. This pin stops the retired ids from silently reappearing (a copy-pasted row, a bad
+// merge) and stops either replacement id from being dropped or duplicated.
+export const RETIRED_VCODE_IDS = ['V-DOC-02/04'];
+export const REPLACEMENT_VCODE_IDS = ['V-DOCSYNC-01', 'V-DOCFACT-01'];
+
+export const findVcodeNamespaceDrift = (vcodesContent: string): string | null => {
+  // Same row line-start anchor as the row-count regex above (checkGroundTruth's `vcodeRows`) —
+  // do not introduce a second table-parsing regex (V-INT-02).
+  const codes = [...vcodesContent.matchAll(/^\| (\S[^|]*?) \|/gm)].map((m) => m[1]);
+
+  for (const retired of RETIRED_VCODE_IDS) {
+    if (codes.includes(retired)) return `retired id still present: ${retired}`;
+  }
+
+  for (const replacement of REPLACEMENT_VCODE_IDS) {
+    const count = codes.filter((c) => c === replacement).length;
+    if (count === 0) return `replacement id missing: ${replacement}`;
+    if (count > 1) return `replacement id duplicated (${count}x): ${replacement}`;
+  }
+
+  return null;
+};
+
 // V-GROUND-01: facts-conformance — independent filesystem scan of src/agents/,
 // src/references/phase-*.md, and blackhole-vcodes.md's row count, compared against build.ts's
 // § facts declaration. Never collapsed onto one derivation path (ADR-007 Rejected Alternatives:
@@ -60,6 +86,9 @@ const checkGroundTruth = (): CheckResult => {
   const vcodeRows = (vcodes.match(/^\| V-/gm) || []).length;
   const rowCountMismatch = findRowCountMismatch('vcode table rows', VCODE_TABLE_ROW_COUNT, vcodeRows);
   if (rowCountMismatch) errors.push(rowCountMismatch);
+
+  const namespaceDrift = findVcodeNamespaceDrift(vcodes);
+  if (namespaceDrift) errors.push(namespaceDrift);
 
   for (const ref of REQUIRED_REFERENCES) {
     if (!fs.existsSync(path.join(srcDir, 'references', ref))) errors.push(`missing reference: ${ref}`);
@@ -111,6 +140,40 @@ const checkDocTables = (): CheckResult => {
   return { id: 'V-DOCTABLE-01', ok: true };
 };
 
+// Issue #508 (leg A of #438): `Primary enforcement site` column — row-cell parser reusing the
+// same `split('|').map(trim)` idiom as `check-common.ts`'s `parseIndexTableRows` (issue #573
+// consolidated the prior `adr-status.check.ts`/`doc-health.check.ts` duplicate pair into that
+// shared helper; V-INT-01/V-INT-02 — not a divergent pipe-table parser). Header/separator rows
+// are skipped because their first cell never starts with `V-`.
+export const parseVcodeEnforcementSites = (vcodesContent: string): { code: string; site: string }[] => {
+  const rows: { code: string; site: string }[] = [];
+  for (const line of vcodesContent.split('\n')) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').map((c) => c.trim());
+    if (cells.length < 6) continue;
+    const code = cells[1];
+    if (!code.startsWith('V-')) continue;
+    rows.push({ code, site: cells[4] });
+  }
+  return rows;
+};
+
+// Leg A ships an explicit `none` sentinel for the six codes leg B (issue #509) has not yet
+// resolved — `none` is a non-empty string and therefore passes here by construction. Only a
+// truly blank 4th cell (missing column, or a row nobody filled in) fails.
+export const findMissingEnforcementSites = (rows: { code: string; site: string }[]): string[] =>
+  rows.filter((r) => !r.site).map((r) => r.code);
+
+// V-GROUND-02: every `blackhole-vcodes.md` row carries a non-empty `Primary enforcement site` cell.
+const checkVcodeEnforcementSites = (): CheckResult => {
+  const rows = parseVcodeEnforcementSites(read('src/references/blackhole-vcodes.md'));
+  const missing = findMissingEnforcementSites(rows);
+  if (missing.length) {
+    return { id: 'V-GROUND-02', ok: false, detail: `rows missing Primary enforcement site: ${missing.join(', ')}` };
+  }
+  return { id: 'V-GROUND-02', ok: true };
+};
+
 // ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
-export const runChecks = (): CheckResult[] => [checkGroundTruth(), checkDocTables()];
+export const runChecks = (): CheckResult[] => [checkGroundTruth(), checkDocTables(), checkVcodeEnforcementSites()];

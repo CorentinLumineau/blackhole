@@ -19,6 +19,19 @@ export const copyTemplatesDir = (destRoot: string) => {
   fs.cpSync(src, dest, { recursive: true });
 };
 
+/** Copies templates/hooks/pretooluse/ (repo root, not src/) into destRoot's own hooks/ subtree —
+ * the PreToolUse safety gate a consumer install needs before an unattended worker can run a
+ * destructive command (#447). Same verbatim-copy shape as copyTemplatesDir above and for the same
+ * reason: the payload is raw JSON/JS, which processFile's markdown pass would corrupt. Only
+ * templates/hooks/pretooluse/ is copied — templates/hooks/'s other entries are Cursor
+ * `.cursor/hooks.json` fragments, merged by hand into a consumer's own file, not shipped as a
+ * plugin hooks tree. */
+export const copyHooksDir = (destRoot: string) => {
+  const src = path.join(templatesDir, 'hooks', 'pretooluse');
+  if (!fs.existsSync(src)) return;
+  fs.cpSync(src, path.join(destRoot, 'hooks'), { recursive: true });
+};
+
 /**
  * Compiles a full plugin tree — agents? + rules + SKILL.md + references + templates — for a
  * given platform `target` (default 'gemini', preserving every existing call site's behavior
@@ -63,6 +76,7 @@ export const compileGeminiTree = (
     target
   );
   copyTemplatesDir(destRoot);
+  copyHooksDir(destRoot);
 };
 
 export const writeGeminiManifest = (destPath: string, manifest: Record<string, unknown>) => {

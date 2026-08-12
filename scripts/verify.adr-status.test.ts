@@ -1,21 +1,21 @@
 import { describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   ADR_STATUS_ENUM,
+  extractAdrNumber,
   extractBodyStatusLeadingToken,
   extractFrontmatterStatus,
+  extractSupersessionCitation,
   findAdrIndexMismatches,
+  findAdrNumberingCollisions,
   findBodyStatusMismatches,
   findInvalidAdrStatuses,
+  findSupersededLifecycleViolations,
   parseIndexStatusMap,
 } from './checks/adr-status.check.ts';
 
-// Issue #324: declares and enforces the ADR-specific `status` enum
-// (`accepted | superseded | deprecated`) across three surfaces — frontmatter (V-ADR-01),
-// documentation/decisions/INDEX.md (V-ADR-02), and the in-body `## Status` section carried by
-// 6/14 ADRs (V-ADR-03, discovered during #321's review, ledger F-00006). Modeled on
-// verify.design-track.test.ts / verify.single-writer.test.ts's synthetic-fixture shape — pure
-// helper functions are imported and exercised directly, independent of runChecks() reading real
-// repo files.
+// Issue #324: ADR status enum across frontmatter, INDEX, and body § Status (V-ADR-01..03).
 
 const FRONTMATTER_ACCEPTED = `---
 type: adr
@@ -173,5 +173,80 @@ describe('findBodyStatusMismatches (V-ADR-03)', () => {
       { filename: 'ADR-012-y.md', frontmatterStatus: 'accepted', bodyLeadingToken: 'Accepted' },
     ];
     expect(findBodyStatusMismatches(files)).toEqual([]);
+  });
+});
+
+describe('extractSupersessionCitation (V-ADA-08)', () => {
+  test('reads superseded_by frontmatter', () => {
+    const content = `---
+status: superseded
+superseded_by: ADR-003
+---
+`;
+    expect(extractSupersessionCitation(content)).toBe('ADR-003');
+  });
+
+  test('reads supersedes ADR reference', () => {
+    const content = `---
+status: accepted
+supersedes: ADR-002
+---
+`;
+    expect(extractSupersessionCitation(content)).toBe('ADR-002');
+  });
+
+  test('fixture superseded-without-citation returns null', () => {
+    const fixture = fs.readFileSync(
+      path.join(import.meta.dirname, '..', 'fixtures', 'adr-status', 'superseded-without-citation.md'),
+      'utf-8',
+    );
+    expect(extractSupersessionCitation(fixture)).toBeNull();
+  });
+});
+
+describe('findSupersededLifecycleViolations (V-ADA-08)', () => {
+  test('passes when INDEX and citation agree', () => {
+    const files = [
+      {
+        filename: 'ADR-002-synthesizer-extraction.md',
+        frontmatterStatus: 'superseded',
+        indexStatus: 'superseded',
+        supersessionCitation: 'ADR-003',
+      },
+    ];
+    expect(findSupersededLifecycleViolations(files)).toEqual([]);
+  });
+
+  test('fails superseded without citation', () => {
+    const files = [
+      {
+        filename: 'ADR-999-fixture.md',
+        frontmatterStatus: 'superseded',
+        indexStatus: 'superseded',
+        supersessionCitation: null,
+      },
+    ];
+    expect(findSupersededLifecycleViolations(files)).toEqual(['ADR-999-fixture.md']);
+  });
+});
+
+describe('findAdrNumberingCollisions', () => {
+  test('duplicate ADR-009 fixture numbers fail', () => {
+    const fixture = JSON.parse(
+      fs.readFileSync(path.join(import.meta.dirname, '..', 'fixtures', 'adr-status', 'duplicate-numbering.json'), 'utf-8'),
+    ) as { filenames: string[] };
+    const numbers = fixture.filenames.map((f) => extractAdrNumber(f)).filter((n): n is number => n !== null);
+    const { duplicates } = findAdrNumberingCollisions(numbers);
+    expect(duplicates).toEqual([9]);
+  });
+
+  test('live tree has no duplicate numbers', () => {
+    const decisionsDir = path.join(import.meta.dirname, '..', 'documentation', 'decisions');
+    const numbers = fs
+      .readdirSync(decisionsDir)
+      .filter((f) => /^ADR-\d+-.*\.md$/.test(f))
+      .map((f) => extractAdrNumber(f))
+      .filter((n): n is number => n !== null);
+    expect(findAdrNumberingCollisions(numbers).duplicates).toEqual([]);
   });
 });

@@ -1,0 +1,10 @@
+{
+  "status": "partial",
+  "phase_reached": "plan",
+  "partial_result": {
+    "work_done": "Drafted the Touch-Paths and Codebase Conventions sections.",
+    "work_remaining": "Finish the Task Breakdown and Sprint Contract sections.",
+    "worktree_disposition": "clean",
+    "branch": null
+  }
+}
