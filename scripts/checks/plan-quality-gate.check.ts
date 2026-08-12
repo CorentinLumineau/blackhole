@@ -2,6 +2,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
 import { findMissingGateMarkers } from '../lib/check-common.ts';
+import {
+  extractBacktickPaths as extractBacktickPathsFromLib,
+} from '../lib/plan-touch-path-ssot-pairs.ts';
+
+export { findTouchPathSsotGaps, TOUCH_PATH_SSOT_PAIRS } from '../lib/plan-touch-path-ssot-pairs.ts';
 
 // Issue #459 — plan quality gate parity (mercure `x-plan`'s 8-check gate; blackhole already
 // enforces 2 as blocking: `ac_mapping`, Codebase Conventions). Adds the two mechanical checks
@@ -12,17 +17,9 @@ import { findMissingGateMarkers } from '../lib/check-common.ts';
 // against silent drift, same split as design-track.check.ts's template check vs. its
 // marker-grounding check (V-INT-01: reuses that established pattern, no new shape).
 
-// Critical Files bullets often mix a real path with inline V-code citations or command names in
-// backticks (e.g. "`src/lib/db.ts` — requires `V-SEC-03` review and `npm audit`") — only the
-// first token is a path. A token counts as path-shaped when it has no whitespace AND either
-// contains a `/` or ends in a file extension; a bare identifier or a multi-word command is not.
-const looksLikeFilePath = (token: string): boolean =>
-  !/\s/.test(token) && (token.includes('/') || /\.[A-Za-z0-9]+$/.test(token));
-
-// Extracts backtick-quoted paths from a markdown bullet list — the convention Touch-Paths and
-// Critical Files both already use in plan output.
-export const extractBacktickPaths = (sectionContent: string): string[] =>
-  [...sectionContent.matchAll(/`([^`]+)`/g)].map((m) => m[1]).filter(looksLikeFilePath);
+// V-INT-02: path extraction lives in plan-touch-path-ssot-pairs.ts; re-exported here for
+// existing callers (findMissingCriticalFiles, findUnscopedSweepACs, fixture tests).
+export const extractBacktickPaths = extractBacktickPathsFromLib;
 
 // Pure — `exists` is injected so fixtures never touch the real filesystem (a fixture plan naming
 // a nonexistent file is flagged without needing one to actually be absent from disk); defaults
@@ -106,7 +103,7 @@ export const findUnscopedSweepACs = (section: string): string[] => // V-INT-02: 
 // planner.md Step 8 and worker-schemas.md's Plan quality gate checks list must both still name
 // the two new failing_checks values — a silent prose drop would leave this mechanical parity
 // documented nowhere a reviewer can audit.
-export const PLAN_QUALITY_GATE_REQUIRED_MARKERS = ['critical_files_exist', 'mitigation_concrete', 'ac_sweep_conflict', 'ac_sweep_scope'];
+export const PLAN_QUALITY_GATE_REQUIRED_MARKERS = ['critical_files_exist', 'mitigation_concrete', 'ac_sweep_conflict', 'ac_sweep_scope', 'touch_paths_ssot_gap'];
 
 // Heading spelling drift guard (issue #519 gap 3): plan-template.md's actual Standard Track
 // heading is "Execution Strategy & Stop Conditions" — it is literally what the planner writes

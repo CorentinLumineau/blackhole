@@ -10,10 +10,12 @@ import {
   findExecutionStrategyHeadingDrift,
   findMissingCriticalFiles,
   findSweepRetainConflicts,
+  findTouchPathSsotGaps,
   findUnscopedSweepACs,
   findVagueMitigations,
   PLAN_QUALITY_GATE_REQUIRED_MARKERS,
   PLAN_QUALITY_GATE_VAGUE_WORDS,
+  TOUCH_PATH_SSOT_PAIRS,
   runChecks,
   splitTaskBreakdownBullets,
   STANDARD_TRACK_BUGFIX_REQUIRED_MARKERS,
@@ -206,9 +208,77 @@ describe('findUnscopedSweepACs', () => {
   });
 });
 
+describe('findTouchPathSsotGaps', () => {
+  const VCODE_606_TOUCH_PATHS = [
+    '## Touch-Paths',
+    '- `src/references/blackhole-vcodes.md`',
+    '- `src/agents/reviewer.md`',
+  ].join('\n');
+  const VCODE_606_BODY = [
+    '## Task Steps',
+    '1. Mint two new V-code rows in blackhole-vcodes.md and update reviewer citations.',
+  ].join('\n');
+
+  test('#606 shape: vcode row-mint without facts.ts companion is flagged', () => {
+    const gaps = findTouchPathSsotGaps(VCODE_606_TOUCH_PATHS, VCODE_606_BODY);
+    expect(gaps.length).toBeGreaterThanOrEqual(1);
+    expect(gaps.some((g) => g.missingPath === 'scripts/lib/build/facts.ts')).toBe(true);
+    expect(gaps.find((g) => g.missingPath === 'scripts/lib/build/facts.ts')?.reason).toMatch(
+      /VCODE_TABLE_ROW_COUNT/
+    );
+    expect(gaps.find((g) => g.missingPath === 'scripts/lib/build/facts.ts')?.reason).toMatch(
+      /V-GROUND-01/
+    );
+  });
+
+  test('companion already declared returns []', () => {
+    const touchPaths = [
+      '## Touch-Paths',
+      '- `src/references/blackhole-vcodes.md`',
+      '- `src/agents/reviewer.md`',
+      '- `scripts/lib/build/facts.ts`',
+    ].join('\n');
+    expect(findTouchPathSsotGaps(touchPaths, VCODE_606_BODY)).toEqual([]);
+  });
+
+  test('wording-only vcodes edit (no row-add language) returns []', () => {
+    const touchPaths = '## Touch-Paths\n- `src/references/blackhole-vcodes.md`\n';
+    const body = '## Task Steps\n1. Update V-TEST-01 severity wording in blackhole-vcodes.md only.\n';
+    expect(findTouchPathSsotGaps(touchPaths, body)).toEqual([]);
+  });
+
+  test('new check module in Touch-Paths without facts.ts is flagged', () => {
+    const touchPaths = '## Touch-Paths\n- `scripts/checks/foo.check.ts`\n';
+    const body = '## Task Steps\n1. Implement foo.check.ts.\n';
+    const gaps = findTouchPathSsotGaps(touchPaths, body);
+    expect(gaps).toEqual([
+      {
+        missingPath: 'scripts/lib/build/facts.ts',
+        reason: expect.stringContaining('EXPECTED_CHECK_COUNT'),
+      },
+    ]);
+  });
+
+  test('new check module with facts.ts declared returns []', () => {
+    const touchPaths = [
+      '## Touch-Paths',
+      '- `scripts/checks/foo.check.ts`',
+      '- `scripts/lib/build/facts.ts`',
+    ].join('\n');
+    const body = '## Task Steps\n1. Implement foo.check.ts.\n';
+    expect(findTouchPathSsotGaps(touchPaths, body)).toEqual([]);
+  });
+
+  test('TOUCH_PATH_SSOT_PAIRS documents exactly two relationships', () => {
+    expect(TOUCH_PATH_SSOT_PAIRS).toHaveLength(2);
+    expect(TOUCH_PATH_SSOT_PAIRS[0].constant).toBe('VCODE_TABLE_ROW_COUNT');
+    expect(TOUCH_PATH_SSOT_PAIRS[1].constant).toBe('EXPECTED_CHECK_COUNT');
+  });
+});
+
 describe('PLAN_QUALITY_GATE_REQUIRED_MARKERS grounding', () => {
-  test('carries exactly the four documented markers', () => {
-    expect(PLAN_QUALITY_GATE_REQUIRED_MARKERS.length).toBe(4);
+  test('carries exactly the five documented markers', () => {
+    expect(PLAN_QUALITY_GATE_REQUIRED_MARKERS.length).toBe(5);
   });
 
   const FIXED = `
@@ -217,6 +287,7 @@ describe('PLAN_QUALITY_GATE_REQUIRED_MARKERS grounding', () => {
    * **Mitigation concreteness** (\`mitigation_concrete\`): scan against the word list.
    * **Sweep/retain overlap** (\`ac_sweep_conflict\`): advisory, never blocking.
    * **Unscoped sweep** (\`ac_sweep_scope\`): advisory, never blocking.
+   * **Touch-Paths SSOT gaps** (\`touch_paths_ssot_gap\`): advisory, never blocking.
 `;
   const STALE = `
 8. **Verify Quality Gate**: Ensure all Touch-Paths are declared explicitly.

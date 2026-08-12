@@ -99,6 +99,7 @@ this plan is about to create belongs under Touch-Paths, never here — `critical
 | `mitigation_concrete` | PASS \| FAIL |
 | `ac_sweep_conflict` | PASS \| ADVISORY |
 | `ac_sweep_scope` | PASS \| ADVISORY |
+| `touch_paths_ssot_gap` | PASS \| ADVISORY |
 ```
 
 ### Skip Track file template
