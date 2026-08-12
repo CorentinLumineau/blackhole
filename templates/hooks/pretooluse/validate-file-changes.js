@@ -18,6 +18,7 @@ const {
   allWorktreeRoots,
   isUnderRoot,
   isAcceptableScratchpadDir,
+  readAssignedWorktreeRoot,
   denyAndRecord,
   warnAndRecord,
   allowSilently,
@@ -96,14 +97,17 @@ const main = () => {
   // can legitimately happen outside git entirely, so an unresolvable git root is "no worktree
   // bound available", not "highest risk" — cwd is a real, present bound to fall back to instead of
   // treating the call as maximally suspicious.
-  const roots = allWorktreeRoots(cwd);
+  const assignedRoot = readAssignedWorktreeRoot(cwd);
+  const roots = assignedRoot ? [assignedRoot] : allWorktreeRoots(cwd);
   if (roots) {
     if (filePath && !isInsideAnyRoot(filePath, roots)) {
       denyAndRecord({
         hook: HOOK,
         tool,
-        pattern_id: 'outside-worktree',
-        reason: `Write target resolves outside every known worktree root (${roots.join(', ')})`,
+        pattern_id: assignedRoot ? 'outside-assigned-worktree' : 'outside-worktree',
+        reason: assignedRoot
+          ? `Write target resolves outside the assigned worktree root (${assignedRoot})`
+          : `Write target resolves outside every known worktree root (${roots.join(', ')})`,
         detail: filePath,
         cwd,
       });

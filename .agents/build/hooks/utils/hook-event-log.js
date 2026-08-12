@@ -195,6 +195,32 @@ const allWorktreeRoots = (cwd = process.cwd()) => {
  * and turn it into `failClosed`, never let it fall through to an allow. */
 const readHookInput = () => JSON.parse(fs.readFileSync(0, 'utf-8') || '{}');
 
+/** `BLACKHOLE_ASSIGNED_WORKTREE` narrows Write/Edit containment to a single assigned worktree
+ * when set by the orchestrator at implementer spawn (#620). Unset, empty, unresolvable, or not a
+ * registered member of `allWorktreeRoots(cwd)` → null (stderr notice, fail-open to today's
+ * all-roots containment). Mirrors the `BLACKHOLE_HOOK_EVENT_DIR` override shape from #604. */
+const readAssignedWorktreeRoot = (cwd = process.cwd()) => {
+  const raw = process.env.BLACKHOLE_ASSIGNED_WORKTREE;
+  if (typeof raw !== 'string' || raw.trim().length === 0) return null;
+  const resolved = path.resolve(raw.trim());
+  const familyRoots = allWorktreeRoots(cwd);
+  if (!familyRoots) {
+    console.error(
+      `[blackhole-hook] BLACKHOLE_ASSIGNED_WORKTREE set but no git context — falling back to all-worktree containment`,
+    );
+    return null;
+  }
+  const realResolved = resolveExistingAncestor(resolved);
+  const match = familyRoots.find((root) => resolveExistingAncestor(root) === realResolved);
+  if (!match) {
+    console.error(
+      `[blackhole-hook] BLACKHOLE_ASSIGNED_WORKTREE ${JSON.stringify(resolved)} is not a registered family worktree — falling back to all-worktree containment`,
+    );
+    return null;
+  }
+  return realResolved;
+};
+
 /** `BLACKHOLE_HOOK_EVENT_DIR` makes the durable-record sink explicit and inspectable instead of
  * solely inferred from `cwd`'s git resolution (#604): when set, it is the sink outright and
  * `mainCloneRoot` is never consulted, so no git context is required at all. Unset (the harness's
@@ -309,6 +335,7 @@ module.exports = {
   isUnderRoot,
   isAcceptableScratchpadDir,
   readScratchpadDir,
+  readAssignedWorktreeRoot,
   readHookInput,
   recordEvent,
   denyAndRecord,

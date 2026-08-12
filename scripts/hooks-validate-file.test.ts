@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -381,6 +382,99 @@ describe('validate-file-changes.js', () => {
         return fs.realpathSync(os.tmpdir());
       },
     );
+  });
+
+  // #620: when BLACKHOLE_ASSIGNED_WORKTREE is set to a registered family worktree, containment
+  // narrows to that single root — writes inside it are allowed, writes to the main clone or a
+  // sibling worktree are denied with outside-assigned-worktree. Unset or invalid env → fail-open
+  // to today's all-roots containment (no regression for orchestrator / non-campaign sessions).
+  test('#620: assigned worktree env allows writes inside the assigned root only', async () => {
+    await withLinkedWorktree('blackhole-hook-620-', async (mainRepo, worktree) => {
+      const inside = path.join(worktree, 'src', 'foo.ts');
+      const payload = { tool_name: 'Write', tool_input: { file_path: inside, content: 'x' }, cwd: worktree };
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('#620: assigned worktree env denies a write to the main clone', async () => {
+    await withLinkedWorktree('blackhole-hook-620-', async (mainRepo, worktree) => {
+      const target = path.join(mainRepo, 'src', 'main-only.ts');
+      const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionReason(result.stdout)).toMatch(/assigned worktree/i);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({
+        tier: 'block',
+        pattern_id: 'outside-assigned-worktree',
+      });
+    });
+  });
+
+  test('#620: assigned worktree env denies a write to a sibling worktree', async () => {
+    await withLinkedWorktree('blackhole-hook-620-', async (mainRepo, worktree1) => {
+      const siblingParent = path.join(mainRepo, '.worktrees');
+      const worktree2 = path.join(siblingParent, `blackhole-hook-620-sibling-${process.pid}`);
+      spawnSync('git', ['worktree', 'add', '--detach', '--quiet', worktree2], { cwd: mainRepo });
+      const sibling = fs.realpathSync(worktree2);
+      try {
+        const target = path.join(sibling, 'sibling.ts');
+        const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree1 };
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          payload,
+          worktree1,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree1,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({
+          tier: 'block',
+          pattern_id: 'outside-assigned-worktree',
+        });
+      } finally {
+        spawnSync('git', ['worktree', 'remove', '--force', worktree2], { cwd: mainRepo });
+        fs.rmSync(worktree2, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test('#620: without assigned worktree env, main-clone writes remain allowed (fail-open baseline)', async () => {
+    await withLinkedWorktree('blackhole-hook-620-', async (mainRepo, worktree) => {
+      const target = path.join(mainRepo, 'src', 'main-only.ts');
+      const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+      const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('#620: garbage assigned worktree env falls open to all-roots containment', async () => {
+    await withLinkedWorktree('blackhole-hook-620-', async (mainRepo, worktree) => {
+      const target = path.join(mainRepo, 'src', 'main-only.ts');
+      const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+      const garbage = path.join(fs.realpathSync(os.tmpdir()), `blackhole-620-garbage-${process.pid}`);
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        payload,
+        mainRepo,
+        PRETOOLUSE_HOOKS_DIR,
+        undefined,
+        garbage,
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
   });
 
   test('fails closed: an unparseable file-patterns.json denies even an ordinary write', async () => {

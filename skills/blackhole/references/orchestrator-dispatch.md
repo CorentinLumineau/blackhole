@@ -176,6 +176,28 @@ section consumes and `model-routing.md` § Escalation rule for the tier-bump mec
 section applies with the narrower cap above.
 
 
+## Implementer assigned-write-root env (issue #620)
+
+**Scope:** every `implementer` spawn only — not `planner`, `reviewer`, `orchestrator`, or
+`coordinator`. The orchestrator and coordinator sessions must **not** set this variable; they
+legitimately Write/Edit the main clone (especially `.blackhole/` campaign state).
+
+**Contract:** at implementer spawn, export the issue worktree's absolute path before any
+Write/Edit tool call in that session:
+
+```bash
+export BLACKHOLE_ASSIGNED_WORKTREE='<absolute wt-<N> path>'
+```
+
+The 5-Field Delegation Contract's Tool Guidance must list this `export` as the **first** shell
+command in the session (same POSIX inheritance model as other `BLACKHOLE_*` hook env overrides
+from #604). `validate-file-changes.js` reads it via `readAssignedWorktreeRoot(cwd)` in
+`hook-event-log.js`: when set and the path is a registered member of `allWorktreeRoots(cwd)`,
+containment narrows to `[assignedRoot]` only — writes to the main clone or a sibling worktree
+are denied (`outside-assigned-worktree`, block tier). When unset, empty, or not a registered
+family worktree: **fail open** to today's `allWorktreeRoots` behaviour (stderr notice, no deny).
+
+
 ## CI Failure Diagnosis Dispatch
 
 **Trigger condition**: `phase-loop.md` § Merge protocol step 2 sub-bullet 4 — CI remains red
