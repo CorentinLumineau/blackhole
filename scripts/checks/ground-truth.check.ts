@@ -40,12 +40,12 @@ export const findRosterScanMismatch = (scanned: string[], declared: string[]): s
 export const findRowCountMismatch = (label: string, declared: number, actual: number): string | null =>
   declared === actual ? null : `${label}: declared ${declared}, found ${actual}`;
 
-// ADR-021 D5 (issue #495): V-DOC-02/04 and V-DOC-05 were renamed to V-DOCSYNC-01 and
-// V-DOCFACT-01 to free those ids for mercure's own V-DOC-* namespace. This pin stops the
-// retired ids from silently reappearing (a copy-pasted row, a bad merge) and stops either
-// replacement id from being dropped or duplicated — the same "never a boolean" named-mismatch
-// shape as findRosterScanMismatch/findRowCountMismatch above.
-export const RETIRED_VCODE_IDS = ['V-DOC-02/04', 'V-DOC-05'];
+// ADR-021 D5 (issue #495): V-DOC-02/04 was renamed to V-DOCSYNC-01 and V-DOCFACT-01 to free
+// those ids for mercure's own V-DOC-* namespace. V-DOC-05 was likewise retired in #495, then
+// reclaimed for mercure's comment-discipline rationale rule in #446 — only V-DOC-02/04 stays
+// pinned here. This pin stops the retired ids from silently reappearing (a copy-pasted row, a bad
+// merge) and stops either replacement id from being dropped or duplicated.
+export const RETIRED_VCODE_IDS = ['V-DOC-02/04'];
 export const REPLACEMENT_VCODE_IDS = ['V-DOCSYNC-01', 'V-DOCFACT-01'];
 
 export const findVcodeNamespaceDrift = (vcodesContent: string): string | null => {

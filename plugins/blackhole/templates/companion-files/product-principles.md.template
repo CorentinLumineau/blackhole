@@ -16,14 +16,14 @@ rulings_revision: 1
   `reviewer` BLOCKs a diff that contradicts an `active`-status ruling (V-RULE-01).
 
   Append protocol: assign the next sequential `Id` (never reused/renumbered, even when a
-  ruling is later superseded/retracted), and increment the frontmatter `rulings_revision`
+  ruling is later superseded/retired), and increment the frontmatter `rulings_revision`
   counter by exactly 1 for every append or status edit.
 -->
 
 ## Ruling: {short-kebab-slug}
 
 - **Id**: R-001
-- **Status**: active | superseded | retracted
+- **Status**: active | superseded | retired
 - **Date**: {YYYY-MM-DD}
 - **Source**: chat | issue #N comment | clarify-gate answer
 - **Verbatim**: > "{owner's exact words, unedited}"

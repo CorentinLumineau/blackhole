@@ -6,6 +6,29 @@ no route writes a `documentation/` artifact, no reviewer audits one; see
 [doc-governance.md](doc-governance.md) for the kill switch), honoring search-before-write and
 repo-convention precedence.
 
+## Canonical folder taxonomy
+
+Eleven folders under a consumer repo's `documentation/` tree — created on first write, never
+pre-seeded as empty placeholders:
+
+| Folder | Typical `type` values | Primary routes / notes |
+|--------|----------------------|------------------------|
+| `audits/` | `analysis` | `analyze` route |
+| `brainstorms/` | `brainstorm` | `brainstorm` route |
+| `decisions/` | `adr` | `design` route (+ per-folder `INDEX.md`) |
+| `investigations/` | `analysis` | `investigate` route |
+| `plans/` | `plan` | `plan` route (ADR-021 D3) |
+| `reviews/` | `review` | `review` route (ADR-021 D3) |
+| `assessments/` | `analysis`, `reference` | feasibility / go-no-go notes (mercure parity) |
+| `runbooks/` | `runbook` | operational procedures (mercure parity) |
+| `architecture/` | `reference` | long-form narratives paired with root `ARCHITECTURE.md` |
+| `reference/` | `reference` | owner rulings (`product-principles.md`), stable lookup docs |
+| `milestones/` | `reference`, `plan` | initiative tracking; `_archived/` holds curated deprecated docs |
+
+Root `documentation/INDEX.md` indexes every live doc across these folders (see
+[doc-governance.md](doc-governance.md) § INDEX.md Maintenance). `decisions/` keeps its own
+per-folder `INDEX.md` with ADR-specific column conventions.
+
 ## Route → artifact table
 
 | Route | Artifact |

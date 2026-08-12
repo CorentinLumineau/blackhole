@@ -41,8 +41,17 @@ related: [<path>, ...]      # optional
 ---
 ```
 
-`type` and `status` are required (their absence is `V-DOC-GOV-02`); `supersedes` and
-`related` are optional.
+| Field | Required | Notes |
+|-------|----------|-------|
+| `type` | Yes | Drives folder placement and search heuristics |
+| `status` | Yes | `current` = live; `deprecated` = superseded but kept for traceability; `archived` = historical only |
+| `supersedes` | Conditional | Required when replacing an existing doc's content with a different approach |
+| `review_trigger` | Yes | What event obliges a re-read; agents use this when touching related code |
+| `created` / `last_updated` | Yes | ISO dates; `last_updated` mirrors meaningful content edits, not whitespace |
+| `related` | No | Cross-references for graph navigation |
+
+All five lifecycle keys (`type`, `status`, `review_trigger`, `created`, `last_updated`) are
+required — any absence is `V-DOC-GOV-02`. `supersedes` and `related` remain optional.
 
 ## Supersede-on-Overwrite
 
@@ -50,6 +59,14 @@ When a diff substantively replaces a doc's content with a different approach (no
 update to the same approach): mark the old doc `status: deprecated` and leave it in place —
 never delete it — then create or update the new doc with `supersedes: <path-to-old-doc>` in
 its frontmatter. Skipping this on a substantive replacement is `V-DOC-GOV-04`.
+
+**Archival terminus (curate-equivalent)**: both docs remain indexed while the old doc is
+`status: deprecated`. When `last_updated` on a deprecated doc exceeds the deprecation window
+in `DOC_HEALTH_THRESHOLDS` (`scripts/lib/build/facts.ts`, currently 90 days — issue #442),
+transition it to `status: archived`, update its root `documentation/INDEX.md` row to match, and
+move the file under `documentation/milestones/_archived/` (preserving its concern slug).
+Deprecated docs that never cross the window stay in place — archival is a deliberate curate
+step, not an automatic delete.
 
 ## ADR Status Enum
 

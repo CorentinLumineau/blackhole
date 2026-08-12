@@ -3,7 +3,14 @@ import { read, type CheckResult } from './check-utils.ts';
 // ADR-007 T5/R2' — companion-docs.check.ts: matches verify.companion-docs.test.ts.
 
 // V-ADADOC-01: blackhole-vcodes.md documents the V-ADA family; reviewer.md documents Companion-File Audit
-export const COMPANION_FILE_REQUIRED_VCODES = ['V-ADA-01', 'V-ADA-02', 'V-ADA-03', 'V-ADA-05/06/07'];
+export const COMPANION_FILE_REQUIRED_VCODES = [
+  'V-ADA-01',
+  'V-ADA-02',
+  'V-ADA-03',
+  'V-ADA-04',
+  'V-ADA-05/06/07',
+  'V-ADA-08',
+];
 
 export const findMissingCompanionVcodes = (
   content: string,
