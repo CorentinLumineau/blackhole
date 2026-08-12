@@ -56,7 +56,7 @@ Committed template: `.blackhole/config.json`
 | `kaizen.kinds` | no | Array of hunt territory kinds to scan (default `["quickwins", "best-practices", "coverage", "refactor", "bug", "retrospective", "parity", "ux-coherence", "docs", "backlog", "ci", "deps", "perf"]`); `retrospective`, `parity`, `ux-coherence`, `docs`, `backlog`, `ci`, `deps`, and `perf` are all included by default whenever `kaizen.enabled: true` |
 | `kaizen.trigger` | no | `on-empty` \| `every-n-loops` \| `manual` (default `on-empty`) — when the Phase-5 loop dispatches a hunt wave |
 | `kaizen.loop_interval` | no | Number of Phase-5 loop iterations between hunt waves when `trigger: every-n-loops` (default `5`) |
-| `kaizen.min_priority` | no | Minimum `Priority = Gain * (11 - Effort)` a finding must clear to be filed as an issue (default `30`, matching the `V-PARETO-03` BLOCK floor); may only be **raised** above `30`, never lowered below the `V-PARETO-03` threshold |
+| `kaizen.min_priority` | no | Minimum `Priority = Gain * (11 - Effort)` a finding must clear to be filed as an issue (default `30`, matching the `V-PARETO-02` Priority formula SSOT); may only be **raised** above `30`, never lowered below the `V-PARETO-02` threshold |
 | `kaizen.max_issues_per_wave` | no | Cap on issues filed per hunt wave (default `10`) — exceeding it is `V-HUNT-02` (WARN) |
 | `kaizen.max_waves` | no | Cap on total hunt waves per kind before it is marked exhausted (default `6`) |
 | `incident_mode` | no | Nested object gating the campaign-wide incident posture (`orchestrator-runtime.md` § Incident Mode): `enabled`, `parallel_max_override`, `pause_discovery`; absent block = current behavior preserved (incident mode is a rare, deliberately-armed emergency posture, opt-in like `kaizen`, see contract note below) |
@@ -128,8 +128,7 @@ pre-existing `V-DOCSYNC-01` `BLOCK` severity.
 `false`, the kaizen improvement-hunt loop (ADR-006) MUST be a no-op and
 current behavior is preserved exactly — no hunt wave dispatches, no hunter
 agent spawns, `hunt_state` is never written. `kaizen.min_priority` may only be
-**raised** above its default of `30`, never lowered below the `V-PARETO-03`
-`BLOCK` threshold. This is the same obligation `docs_governance.enabled` and
+**raised** above its default of `30`, never lowered below the `V-PARETO-02` threshold. This is the same obligation `docs_governance.enabled` and
 `adaptive_routing` already impose on their respective features.
 
 **`incident_mode` contract note**: when the block is absent, or
