@@ -152,13 +152,6 @@ describe('mergeClaudeSettingsHooks — file I/O contract', () => {
   });
 });
 
-// AC-4d/4e — the ERROR-outcome contract, exercised through the real generated shell command
-// (not just static string assertions above). A stub stands in for validate-bash-command.js and
-// exits 0, 2, 1, 127 in turn; the wrapper's own exit code must equal the stub's for 0/2 (a
-// legitimate allow/deny must never be swallowed) and must equal 0 for anything else (an infra
-// hiccup degrades to allow rather than stalling the caller), recording exactly one hook-exec-error
-// event for the two non-0/2 cases.
-
 const bashCommand = (): string => {
   const merged = computeMergedSettings({}) as {
     hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] };
@@ -168,18 +161,42 @@ const bashCommand = (): string => {
   return entry.hooks[0].command;
 };
 
+const initGitRepo = (projectDir: string): void => {
+  Bun.spawnSync({ cmd: ['git', 'init', '--quiet'], cwd: projectDir });
+  Bun.spawnSync({
+    cmd: ['git', 'config', 'user.email', 'test@example.com'],
+    cwd: projectDir,
+  });
+  Bun.spawnSync({ cmd: ['git', 'config', 'user.name', 'test'], cwd: projectDir });
+  fs.writeFileSync(path.join(projectDir, 'README'), 'fixture\n');
+  Bun.spawnSync({ cmd: ['git', 'add', 'README'], cwd: projectDir });
+  Bun.spawnSync({ cmd: ['git', 'commit', '--quiet', '-m', 'init'], cwd: projectDir });
+};
+
+const fileChangesCommand = (): string => {
+  const merged = computeMergedSettings({}) as {
+    hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] };
+  };
+  const entry = merged.hooks.PreToolUse.find((e) => e.matcher === 'Write|Edit');
+  if (!entry) throw new Error('test setup: no Write|Edit matcher in computeMergedSettings({})');
+  return entry.hooks[0].command;
+};
+
 const runWrapperWithStubExit = (
   projectDir: string,
   stubExitCode: number,
+  command: string = bashCommand(),
+  stubScript = 'validate-bash-command.js',
 ): { exitCode: number | null; stderr: string } => {
+  initGitRepo(projectDir);
   const hooksDir = path.join(projectDir, '.claude', 'hooks');
   fs.mkdirSync(hooksDir, { recursive: true });
   fs.writeFileSync(
-    path.join(hooksDir, 'validate-bash-command.js'),
+    path.join(hooksDir, stubScript),
     `process.exit(${stubExitCode});\n`,
   );
   const proc = Bun.spawnSync({
-    cmd: ['bash', '-c', bashCommand()],
+    cmd: ['bash', '-c', command],
     env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
     stdout: 'pipe',
     stderr: 'pipe',
@@ -195,14 +212,30 @@ const hookEventFiles = (projectDir: string): Record<string, unknown>[] => {
     .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')) as Record<string, unknown>);
 };
 
+const assertFailOpenRecord = (
+  dir: string,
+  events: Record<string, unknown>[],
+  hook: string,
+  tool: string | null,
+): void => {
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({
+    tier: 'error',
+    decision: 'allow',
+    pattern_id: 'hook-exec-failure',
+    hook,
+    tool,
+  });
+  expect(events[0].worktree).toBe(fs.realpathSync(dir));
+  expect(String(events[0].detail).length).toBeGreaterThan(0);
+};
+
 describe('AC-4d/4e — exit-code discrimination through the real generated command', () => {
   test('stub exit 0 (allow): wrapper exits 0, no hook-exec-error record, no fail-open notice on stderr', () => {
     withTempDir('blackhole-claude-wrapper-', (dir) => {
       const { exitCode, stderr } = runWrapperWithStubExit(dir, 0);
       expect(exitCode).toBe(0);
       expect(hookEventFiles(dir)).toEqual([]);
-      // The fail-open stderr notice belongs to the non-0/2 fallback branch only — a legitimate
-      // allow must never print it (issue #580 § Execution Strategy stop condition).
       expect(stderr).not.toMatch(/fail-open/i);
     });
   });
@@ -211,44 +244,33 @@ describe('AC-4d/4e — exit-code discrimination through the real generated comma
     withTempDir('blackhole-claude-wrapper-', (dir) => {
       const { exitCode, stderr } = runWrapperWithStubExit(dir, 2);
       expect(exitCode).toBe(2);
-      // A real deny is the validator's own decision, recorded by hook-event-log.js's
-      // denyAndRecord inside the stub in production — the stub here is bare `process.exit(2)`,
-      // so no event is expected from THIS wrapper layer; the wrapper's job is only to pass the
-      // exit code through unmodified, which is the assertion above.
       expect(hookEventFiles(dir)).toEqual([]);
       expect(stderr).not.toMatch(/fail-open/i);
     });
   });
 
-  test('stub exit 1 (crash before decision): wrapper degrades to allow (exit 0), one error record, fail-open notice on stderr', () => {
-    withTempDir('blackhole-claude-wrapper-', (dir) => {
-      const { exitCode, stderr } = runWrapperWithStubExit(dir, 1);
-      expect(exitCode).toBe(0);
-      const events = hookEventFiles(dir);
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        tier: 'error',
-        decision: 'allow',
-        pattern_id: 'hook-exec-failure',
-        hook: 'validate-bash-command',
+  test('stub exit 1 or 127: fail-open with schema-complete error record', () => {
+    for (const code of [1, 127]) {
+      withTempDir('blackhole-claude-wrapper-', (dir) => {
+        const { exitCode, stderr } = runWrapperWithStubExit(dir, code);
+        expect(exitCode).toBe(0);
+        assertFailOpenRecord(dir, hookEventFiles(dir), 'validate-bash-command', 'Bash');
+        expect(JSON.stringify(hookEventFiles(dir)[0])).not.toMatch(/stdin|password|secret/i);
+        expect(stderr).toMatch(/fail-open/i);
       });
-      expect(stderr).toMatch(/fail-open/i);
-    });
+    }
   });
 
-  test('stub exit 127 (missing binary / bad path): wrapper degrades to allow (exit 0), one error record, fail-open notice on stderr', () => {
+  test('file-changes hook stub exit 1: error record has tool null, worktree, and detail', () => {
     withTempDir('blackhole-claude-wrapper-', (dir) => {
-      const { exitCode, stderr } = runWrapperWithStubExit(dir, 127);
+      const { exitCode } = runWrapperWithStubExit(
+        dir,
+        1,
+        fileChangesCommand(),
+        'validate-file-changes.js',
+      );
       expect(exitCode).toBe(0);
-      const events = hookEventFiles(dir);
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        tier: 'error',
-        decision: 'allow',
-        pattern_id: 'hook-exec-failure',
-        hook: 'validate-bash-command',
-      });
-      expect(stderr).toMatch(/fail-open/i);
+      assertFailOpenRecord(dir, hookEventFiles(dir), 'validate-file-changes', null);
     });
   });
 });

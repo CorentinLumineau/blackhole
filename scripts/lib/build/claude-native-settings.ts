@@ -41,15 +41,22 @@ const MATCHERS: MatcherSpec[] = [
  * stdin/command data — so this fallback never needs to reimplement hook-event-log.js's
  * `redact()` in shell (V-INT-02); the two "process ran" decision paths reuse `redact()` unchanged.
  */
-const buildCommand = (script: string): string => {
-  const hookName = script.replace(/\.js$/, '');
+const buildCommand = (spec: MatcherSpec): string => {
+  const hookName = spec.script.replace(/\.js$/, '');
+  const toolField = spec.matcher === 'Bash' ? 'tool: "Bash",' : 'tool: null,';
   return [
-    `bun run "$CLAUDE_PROJECT_DIR/.claude/hooks/${script}"`,
+    `bun run "$CLAUDE_PROJECT_DIR/.claude/hooks/${spec.script}"`,
     'code=$?',
     'if [ "$code" = "0" ] || [ "$code" = "2" ]; then exit "$code"; fi',
     'mkdir -p "$CLAUDE_PROJECT_DIR/.blackhole/hook-events" 2>/dev/null',
-    `printf '{"version":1,"recorded_at":"%s","hook":"${hookName}","decision":"allow","tier":"error","pattern_id":"hook-exec-failure","reason":"validator process exited %s before producing a decision"}\\n' \\`,
-    '  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code" > "$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json" 2>/dev/null',
+    'worktree="$(git -C "$CLAUDE_PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"',
+    'jq -n \\',
+    '  --arg recorded_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \\',
+    `  --arg hook "${hookName}" \\`,
+    '  --arg code "$code" \\',
+    '  --arg worktree "$worktree" \\',
+    `  '{version: 1, recorded_at: $recorded_at, hook: $hook, ${toolField} decision: "allow", tier: "error", pattern_id: "hook-exec-failure", reason: ("validator process exited " + $code + " before producing a decision"), worktree: (if $worktree == "" then null else $worktree end), detail: ("process exit code " + $code)}' \\`,
+    '  > "$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json" 2>/dev/null',
     `echo "[blackhole-hook] ${hookName}: validator process exited $code before producing a decision — call allowed (fail-open); see .blackhole/hook-events/" >&2`,
     'exit 0',
   ].join('\n');
@@ -57,7 +64,7 @@ const buildCommand = (script: string): string => {
 
 const blackholeEntry = (spec: MatcherSpec): PreToolUseEntry & { matcher: string; hooks: HookCommand[] } => ({
   matcher: spec.matcher,
-  hooks: [{ type: 'command', command: buildCommand(spec.script), timeout: 5 }],
+  hooks: [{ type: 'command', command: buildCommand(spec), timeout: 5 }],
 });
 
 /** True when `entry` is blackhole's own PreToolUse entry for `spec` — identified by a stable
