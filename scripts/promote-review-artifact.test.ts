@@ -68,5 +68,6 @@ describe('promote-review-artifact CLI', () => {
     const code = await proc.exited;
     expect(code).toBe(0);
     expect(fs.existsSync(path.join(outDir, 'review.md'))).toBe(true);
+    fs.rmSync(outDir, { recursive: true, force: true });
   });
 });
