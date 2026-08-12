@@ -171,8 +171,8 @@ export function createGhRunner(): GhRunner {
     async getJobLog(jobId, repo) {
       return ghText(['api', `repos/${repo}/actions/jobs/${jobId}/logs`]);
     },
-    async getFailedRunLog(runId) {
-      return ghText(['run', 'view', String(runId), '--log-failed']);
+    async getFailedRunLog(runId, repo) {
+      return ghText(['run', 'view', String(runId), '--repo', repo, '--log-failed']);
     },
   };
 }

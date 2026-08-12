@@ -1,8 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
   classifyStepLogs,
+  createGhRunner,
   diagnoseCi,
   isolateStepLog,
   isVercelPreviewCheck,
@@ -134,6 +136,29 @@ describe('diagnoseCi with fixture gh runner', () => {
     const result = await diagnoseCi(42, 'owner/repo', envRunner);
     expect(result.classification).toBe('environment');
     expect(result.step_logs[0].stepName).toBe('Setup Node');
+  });
+});
+
+describe('createGhRunner', () => {
+  let spawnSyncSpy: ReturnType<typeof spyOn<typeof childProcess, 'spawnSync'>>;
+
+  afterEach(() => {
+    spawnSyncSpy?.mockRestore();
+  });
+
+  test('getFailedRunLog passes --repo to gh run view', async () => {
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
+      status: 0,
+      stdout: 'failed step output',
+      stderr: '',
+    });
+
+    const runner = createGhRunner();
+    const log = await runner.getFailedRunLog(9001, 'owner/repo');
+
+    expect(log).toBe('failed step output');
+    const runViewArgs = spawnSyncSpy.mock.calls.find((call) => call[1]?.[0] === 'run')?.[1];
+    expect(runViewArgs).toEqual(['run', 'view', '9001', '--repo', 'owner/repo', '--log-failed']);
   });
 });
 
