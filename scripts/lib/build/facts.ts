@@ -55,7 +55,7 @@ export const QUEUE_NOTES = [
 ];
 
 /** `kaizen.kinds` (V-VOCAB-01) — hunt territory kinds, canonical default per `config-template.md`. */
-export const HUNT_KINDS = ['quickwins', 'best-practices', 'coverage', 'refactor', 'bug', 'retrospective', 'parity', 'ux-coherence', 'docs', 'backlog', 'ci', 'deps'];
+export const HUNT_KINDS = ['quickwins', 'best-practices', 'coverage', 'refactor', 'bug', 'retrospective', 'parity', 'ux-coherence', 'docs', 'backlog', 'ci', 'deps', 'perf'];
 
 /** Platform build targets (V-VOCAB-01) — see `PLATFORM_TARGETS` above `type Target`; also the
  *  declared side of the scripts/**\/*.ts scan for any stray re-hardcoded copy of this array. */
