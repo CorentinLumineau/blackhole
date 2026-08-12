@@ -80,6 +80,12 @@ treats a still-`status: template` file as **not yet ground truth** and no-ops fo
 the template's example `## Job:` section with real, owner-approved core user jobs and flip
 `status` to `current` before the journeys heuristic audits normally.
 
+## Implement-time sync (Phase 5.5)
+
+`src/references/companion-file-sync.md` performs the same `{project-name}` template
+substitution as this scaffold step, but only on diff-scoped triggers during implement
+(`implementer.md` § Companion-file Sync). Phase 0 remains bootstrap-only for initial creation.
+
 ## Full contract
 
 See `src/SKILL.md` Phase 0's "Companion-file scaffold" step for the exact

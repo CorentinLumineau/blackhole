@@ -476,6 +476,45 @@ describe('validateWorker implementer visual_evidence[] (issue #420)', () => {
   });
 });
 
+describe('validateWorker implementer companion_repairs[] (issue #453)', () => {
+  const baseComplete = {
+    status: 'complete',
+    pr_number: 453,
+    branch: 'blackhole/issue-453',
+    tests_passed: true,
+    touch_paths_honored: true,
+    evidence: { command: 'bun test scripts/companion-file-sync.test.ts', result: '8 pass, 0 fail' },
+  };
+
+  test('accepts valid companion_repairs[]', () => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      companion_repairs: [
+        {
+          vcode: 'V-ADA-01',
+          file: 'ARCHITECTURE.md',
+          action: 'created from templates/companion-files/ARCHITECTURE.md.template',
+        },
+      ],
+    });
+    expect(errors).toEqual([]);
+  });
+
+  test('rejects invalid vcode in companion_repairs[]', () => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      companion_repairs: [{ vcode: 'V-ADA-03', file: 'DESIGN.md', action: 'noop' }],
+    });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes('vcode'))).toBe(true);
+  });
+
+  test('accepts implementer JSON without companion_repairs (backward compatible)', () => {
+    const errors = validateWorker('implementer', { ...baseComplete });
+    expect(errors).toEqual([]);
+  });
+});
+
 describe('validateWorker reviewer', () => {
   test('valid empty findings', () =>
     expectValid('reviewer', 'reviewer-complete-empty.json'));

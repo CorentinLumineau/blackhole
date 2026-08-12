@@ -17,6 +17,7 @@ import {
 } from '../predicates.ts';
 import {
   validateAcResultsArray,
+  validateCompanionRepairsArray,
   validateDecisionRecordsArray,
   validatePartialResult,
   validateVisualEvidenceArray,
@@ -93,6 +94,10 @@ function validateImplementerOptionalFields(data: Record<string, unknown>, errors
 
   if ('visual_evidence' in data && data.visual_evidence !== undefined) {
     errors.push(...validateVisualEvidenceArray(data.visual_evidence, 'visual_evidence'));
+  }
+
+  if ('companion_repairs' in data && data.companion_repairs !== undefined) {
+    errors.push(...validateCompanionRepairsArray(data.companion_repairs, 'companion_repairs'));
   }
 }
 

@@ -270,6 +270,7 @@ below).
 | `sprint_contract_status` | `PASS` \| `PARTIAL` \| `N/A` | no, optional — Standard track only |
 | `ac_results` | ac-result[] (see below) | no, optional — required non-empty when `sprint_contract_status` is present and not `N/A` |
 | `visual_evidence` | visual-evidence[] (see below) | no, optional — additive, config-gated by `display_targets` |
+| `companion_repairs` | `{ vcode, file, action }[]` (issue #453) | no, optional — see `companion-file-sync.md` § Ledger contract |
 
 ### `execution_mode` (optional — ADR-004)
 
