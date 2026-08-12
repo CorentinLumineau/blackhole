@@ -1,4 +1,4 @@
-// Issue #615 — advisory Touch-Paths completeness heuristic: flags documented trigger→companion
+// Advisory Touch-Paths completeness heuristic: flags documented trigger→companion
 // SSOT pairs (V-code row mint → facts.ts / new check module → facts.ts) when the companion path
 // is missing from ## Touch-Paths. Pure finder; never a failing_checks entry (#575 precedent).
 

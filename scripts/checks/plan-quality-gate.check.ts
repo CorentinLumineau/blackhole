@@ -17,7 +17,7 @@ export { findTouchPathSsotGaps, TOUCH_PATH_SSOT_PAIRS } from '../lib/plan-touch-
 // against silent drift, same split as design-track.check.ts's template check vs. its
 // marker-grounding check (V-INT-01: reuses that established pattern, no new shape).
 
-// V-INT-02 (#615): path extraction lives in plan-touch-path-ssot-pairs.ts; re-exported here for
+// V-INT-02: path extraction lives in plan-touch-path-ssot-pairs.ts; re-exported here for
 // existing callers (findMissingCriticalFiles, findUnscopedSweepACs, fixture tests).
 export const extractBacktickPaths = extractBacktickPathsFromLib;
 
