@@ -61,6 +61,12 @@ Track `review_iteration` on queue entries. Increment after each `changes_request
 
 ---
 
+## CI Failure Diagnosis
+
+After transient CI retries are exhausted, red required checks are diagnosed per `ci-diagnosis.md` (orchestrator-inline `scripts/ci-diagnosis.ts` run — not a worker spawn).
+
+---
+
 ## Wave scheduling
 
 Per `queue-dag.md` Step 4: compute execution waves via topological sort on `depends_on` before batch selection. Log `WAVE <N>` before spawning workers.

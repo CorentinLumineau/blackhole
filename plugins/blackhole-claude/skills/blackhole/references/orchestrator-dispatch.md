@@ -176,6 +176,19 @@ section consumes and `model-routing.md` § Escalation rule for the tier-bump mec
 section applies with the narrower cap above.
 
 
+## CI Failure Diagnosis Dispatch
+
+**Trigger condition**: `phase-loop.md` § Merge protocol step 2 sub-bullet 4 — CI remains red
+after the transient 2-retry cap (`merge-gate.md` § CI-wait poller Reclassification path reaches
+Permanent).
+
+**Dispatch**: orchestrator-inline, **not** a worker spawn — run
+`bun run scripts/ci-diagnosis.ts --pr <n>` foreground, then apply `ci-diagnosis.md` § Fix-loop
+routing (ledger `V-CI-01` append, `queue.json` → `phase: implement`, `review_iteration += 1`,
+STOP merge steps 3–5). Full classification taxonomy, environment repair rerun, and implementer
+spawn framing: `ci-diagnosis.md`.
+
+
 ## Design Autonomy Dispatch (ADR-010 D4)
 
 Amends § Route-derived dispatch step 4 (`needs_design: true`) — this section owns only the

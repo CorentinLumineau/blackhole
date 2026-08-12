@@ -34,7 +34,9 @@ protocol step 2's, unchanged.
 - **Reclassification**: governed entirely by `phase-loop.md` step 2's rules
   (`cancelled` → rerun once; "Base branch was modified" → re-fetch + retry
   once; 2-retry cap → `orchestrator-runtime.md` § Error Classification) — not
-  restated here.
+  restated here. After the 2-retry cap, still-red Permanent CI is diagnosed per
+  `ci-diagnosis.md` (failing-step logs, environment/genuine classification,
+  implementer fix-loop routing via `V-CI-01`).
 
 ## 1. `mergeEligible(issue) -> bool`
 

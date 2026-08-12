@@ -69,6 +69,10 @@
       clean green/red CI result, reclassify per `orchestrator-runtime.md` § Error
       Classification (Transient → Permanent path) — do not restate that
       table here.
+   4. **Still-red Permanent**: when CI remains red after the 2-retry cap and
+      transient classes are exhausted, invoke `ci-diagnosis.md` — fetch
+      failing-step logs, classify, and route per that doc's fix-loop protocol.
+      Do not advance to merge step 3 until diagnosis resolves or escalates.
 3. Run the project's build command in main clone (if applicable)
 4. `gh pr merge --squash` (use `&&` only, never `;`) — immediately after this
    command succeeds, in the **same** atomic `queue.json` write that sets
