@@ -637,6 +637,8 @@ describe('validate-file-changes.js — uncaught validator crash fails closed, no
 
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).not.toMatch(/could not be loaded/i);
+        expect(permissionReason(result.stdout)).toMatch(/threw while running/i);
 
         const events = readHookEvents(repo);
         expect(events).toHaveLength(1);
