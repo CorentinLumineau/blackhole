@@ -174,7 +174,7 @@ x-reviewer, x-tester, x-debugger, x-explorer, x-refactorer, x-doc-writer, x-depl
 | GAP-3 | **Delivery-boundary hardening** (G7): Verification Evidence Gate covers test/build claims, not "branch pushed + PR open + worktree clean" | parity audit G7/R6 | MEDIUM |
 | GAP-4 | **Ledger never-drop across campaign generations** (G8): consumer-repo failure mode (16 unpersisted review-aggregate JSONs) | parity audit G8 | MEDIUM |
 | GAP-5 | **Cross-issue retrospective** (G5): `retrospective` hunt kind may be the remedy — unconfirmed; no ADR closes G5 | parity audit G5; hunt/retrospective.md | LOW-MEDIUM |
-| GAP-6 | ~~x-security-audit exploitability-methodology depth vs blackhole V-SEC-06..10 — unconfirmed~~ **RESOLVED 2026-08-06 → `partial`**: the meta-methodology is ported *and extended* (V-SEC-06..10). Named residual: every code fires only inside diff-scoped PR review — no proactive full-codebase sweep, no CWE/attack-signature layer | § 5d | ~~UNKNOWN~~ MEDIUM |
+| GAP-6 | ~~x-security-audit exploitability-methodology depth vs blackhole V-SEC-06..10 — unconfirmed~~ **RESOLVED 2026-08-06 → `partial`**: the meta-methodology is ported *and extended* (V-SEC-06..10). Named residual: every code fires only inside diff-scoped PR review — no proactive full-codebase sweep, no cross-run recall state; attack-signature layer landed (`src/references/security-attack-signatures.md`, #458) | § 5d | ~~UNKNOWN~~ MEDIUM |
 | GAP-7 | ~~~65 mercure skill domains never swept — unknown-unknowns~~ **CLOSED 2026-08-06** — superseded by the § 5 sweep: all named families swept (`security-*` 5, `delivery-*` 3, `data-*` 2, `quality-*` 3, `operations-*` 2, `code-*` 4, `compliance-*` 1, `vcs-*` 3, `meta-*` 3, `diagram-*` 1) plus surfaces GAP-7 did not name (14 hooks, the `mcp-context` server, `scripts/`, `templates/`) | § 5 | ~~UNKNOWN~~ CLOSED |
 | GAP-8 | **Sprint Contract / machine-verifiable acceptance criteria**: mercure Plan Check 1 BLOCKING + x-implement step 17 verification; blackhole Standard track has Sprint Contract but no BLOCKING acceptance-criteria gate documented at plan time | agent B §1 vs agent C planner summary | MEDIUM (verify first) |
 | GAP-9 | **V-ASSET family** (agent-asset drift/ripple): blackhole relies on `verify.ts` checks + ground-truth SSOT; no per-diff V-ASSET audit | agent A table; agent C refs | LOW (partially N/A — evaluate) |
@@ -276,7 +276,7 @@ Gain: north-star `high`→8, `medium`→6, `low`→3. Effort: xs=1, s=3, m=5, l=
 | 48 | **V-SOLID-02/04/05 absent** (OCP/ISP/DIP). Blackhole ships `V-SOLID-01/03` only; OCP and DIP are HIGH/BLOCK upstream, and modify-instead-of-extend is a recurring pattern in autonomous churn | mercure `v-codes-quality.md:8-11`; confirms PM-001's `adapted` | #455 |
 | 48 | **Confidence-gate reformulation is declared but unwired.** `confidence-gates.md:62-65` justifies skipping live confirmation by asserting the reformulation is posted as "the asynchronous veto surface" — no `create_comment` exists on that path and no planner `status: ready` schema carries the content | mercure `interview/references/reformulation-templates.md` | #456 |
 | 48 | **Regression detection is coverage-delta only.** `V-TEST-09` is fully ported and blocking, but no reviewer section detects newly-added `.skip()`/`@Disabled`, removed assertions, or weakened validation | mercure regression checklist | #457 |
-| 48 | **No attack-signature layer.** The security *meta*-methodology is ported and stronger, but carries no CWE IDs and no per-category grep patterns (injection strings, permissive CORS, IDOR ownership-check absence, weak hashes) | mercure `security-owasp`; **this is GAP-6's residual** | #458 |
+| 48 | ~~**No attack-signature layer.**~~ **Attack-signature layer landed** (`src/references/security-attack-signatures.md`, #458). Residual: proactive full-codebase sweep and cross-run recall state remain open | mercure `security-owasp`; GAP-6 signature residual closed | #458 (closed) |
 | 48 | **Plan quality gate is 2-of-8.** Only `ac_mapping` and Codebase Conventions block. Absent entirely: critical-file existence (a Glob check), dependency completeness, risk-mitigation concreteness (vague-language flag), boundary-condition coverage | mercure `x-plan` 8-check gate | #459 |
 | ~30 | **Batched `xs` completion sweep** (9 items): plan-staleness advisory (`plan_base_commit` stamped but never consumed), anchoring-bias self-check, `V-CONFIG-02` registration, `V-ADA-08` archive lifecycle, ADR numbering-collision detection, ADR authoring template, run the target repo's setup script at worktree creation, hypothesis floor 2→3, `V-KISS-02`/`V-YAGNI-02` | various | #460 |
 
@@ -322,8 +322,10 @@ PM-025's `adapted` — the unconditional Reuse Check Gate covers the intent in e
 `V-SEC-06/07/08/09/10` confirm the exploitability gate, adversarial re-verification and structured
 findings validation are ported **and extended** beyond mercure. The residual is precise: every one
 of them fires **only inside diff-scoped PR review**. There is no proactive full-codebase sweep
-(unlike bug/refactor/coverage hunts), no cross-run recall state, and no concrete CWE/attack-pattern
-signature layer. GAP-6 moves `UNKNOWN` → `partial` with those three named residuals.
+(unlike bug/refactor/coverage hunts) and no cross-run recall state. The CWE/attack-signature
+reference layer landed in `src/references/security-attack-signatures.md` (#458) — diff-scoped
+grep patterns cited by security-mode review, with `V-SEC-06` unchanged. GAP-6 moves `UNKNOWN` →
+`partial` with two named residuals (proactive sweep, cross-run recall).
 
 ### 5e. Intentionally excluded — 53 mechanisms
 

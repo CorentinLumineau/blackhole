@@ -118,9 +118,10 @@ separate CI-fix budget.
    threshold, treat as `true` (cautious default, matches `orchestrator-delegation.md`'s own stated
    note verbatim).
 3. **Mechanism**: single `reviewer` spawn — when the gate resolves `true`, the Reviewer
-   prompt requirements (below) gain an additional block: a diff-scoped exploitability
-   audit, self-contained instructions (not a vendored import), scoped to the PR's changed
-   lines only.
+   prompt requirements (below) gain an additional block: a diff-scoped attack-signature
+   scan citing `src/references/security-attack-signatures.md` by repo-relative path.
+   Apply only patterns whose matching constructs appear on changed lines in the PR diff —
+   do not restate signature rows inline in the prompt.
 4. **Exploitability gate (`V-SEC-06`)**: cross-reference only — see
    `blackhole-vcodes.md`'s existing row. Every security finding must carry a concrete
    attack scenario (who/what/result); findings without one are downgraded to
@@ -286,7 +287,8 @@ Every `reviewer` delegation MUST include:
 3. Full V-code audit checklist from `codex-skills/blackhole/references/blackhole-vcodes.md`
 4. Output format per `worker-schemas.md` reviewer contract
 5. When Security-mode review's trigger (above) resolves `true`, the diff-scoped
-   exploitability audit instructions (§ Security-mode review, step 3).
+   attack-signature scan per `src/references/security-attack-signatures.md` (§ Security-mode
+   review, step 3) — cite by path; do not restate patterns inline.
 
 ## Aggregate invocation
 

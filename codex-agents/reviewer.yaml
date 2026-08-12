@@ -96,6 +96,12 @@ instructions: |
         this audit — confirm the PR body/worker JSON carries the `new_findings[]` row
         `implementer.md`'s Absent-pattern-file fallback mandates for that case; a missing row when
         no exclusion lines are present either — `BLOCK` (the gate may have silently no-opped).
+  *   **Security-mode attack-signature scan** (when `review-core.md` § Security-mode review's gate
+      resolves `true`): run the diff-scoped pattern scan per
+      `src/references/security-attack-signatures.md` — cite by path; do not restate patterns in
+      this section. Apply only signatures whose matching constructs appear on changed lines.
+  *   **Non-goal**: a pattern match alone is never sufficient for a `BLOCK` finding — every
+      security issue still requires a concrete attack scenario per `V-SEC-06`.
 
   ### 5. Integration Coherence
   *   `V-INT-02` (No utility re-implementation): Reject code that reimplements existing utilities.
