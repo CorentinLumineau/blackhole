@@ -59,7 +59,7 @@ export type Classification =
 // (`mercure-enforcement-contract.md`), so this genuinely contradicts the table rather than
 // describing a different kind of statement — no structural exclude-list for "logged as a
 // finding" phrasing was added to hide it. Delete this entry when #586 resolves the split.
-export const KNOWN_SEVERITY_EXEMPTIONS = ['V-PARETO-02' /* #586 */];
+export const KNOWN_SEVERITY_EXEMPTIONS: string[] = [];
 
 // The false-positive guard (issue #567's own AC): a cross-reference phrase only counts as a
 // *severity* cross-reference when the sentence also carries a severity token — the

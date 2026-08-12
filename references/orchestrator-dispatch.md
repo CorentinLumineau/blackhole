@@ -290,7 +290,7 @@ section does not duplicate that content; it owns only the `hunter` spawn contrac
 Model tier: `standard` (§ Worker spawn model above; `model-routing.md`'s `hunter` row is the
 SSOT for the rationale).
 
-Filing/dedup/watermark mechanics (V-PARETO-02 gate + bug severity floor, ledger idempotency
+Filing/dedup/watermark mechanics (V-PARETO-03 gate + bug severity floor, ledger idempotency
 dedup, `[Kaizen]` issue filing via `filing.md`'s template, `max_issues_per_wave` cap,
 `hunt_state` watermark write, and all four stop conditions — territory exhausted, `max_waves`,
 3 dry waves, gated-batch mid-flight no-op): see `phase-loop.md` § Kaizen hunt dispatch (single

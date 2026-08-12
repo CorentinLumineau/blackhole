@@ -11,7 +11,7 @@ read-only, `prj-mercure-sync`'s sole write privilege per ADR-013 D1 single-write
 `mercure-parity-surface.md` + the matrix's own job, run by the maintainer skill, not a
 per-campaign hunt wave). `parity` is a pure additive extension: it reuses every existing
 kaizen mechanism verbatim — the `V-HUNT-01` `CONFIRMED` verification gate, `V-PARETO-02`
-scoring, per-wave caps, ledger idempotency dedup, and the `hunt_state` watermark
+scoring formula (`V-PARETO-03` filing gate), per-wave caps, ledger idempotency dedup, and the `hunt_state` watermark
 (`territory.bands_scanned` / `bands_done`). It introduces no new scoring formula, no new
 ledger field, no new finding schema, and no change to `V-HUNT-01`/`V-HUNT-02` gating logic —
 every candidate passes through the existing CONFIRMED verification pass (`hunter.md` §

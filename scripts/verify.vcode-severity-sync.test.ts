@@ -65,10 +65,14 @@ describe('findSeverityMismatches (V-SEVSYNC-01)', () => {
   });
 
   test('exemption: a named-exempted code with a real mismatch is skipped, not reported', () => {
-    const exemptedCode = KNOWN_SEVERITY_EXEMPTIONS[0];
+    const exemptedCode = 'V-FAKE-EXEMPT';
     const exemptedSevMap = new Map([[exemptedCode, 'BLOCK']]);
     const sentences = toSentences(`*   **Fake Check (\`${exemptedCode}\`)**: a violation — severity \`WARN\`.`);
+    const original = [...KNOWN_SEVERITY_EXEMPTIONS];
+    KNOWN_SEVERITY_EXEMPTIONS.push(exemptedCode);
     expect(findSeverityMismatches(sentences, exemptedSevMap)).toEqual([]);
+    KNOWN_SEVERITY_EXEMPTIONS.length = 0;
+    KNOWN_SEVERITY_EXEMPTIONS.push(...original);
   });
 });
 
@@ -157,16 +161,15 @@ describe('runChecks (live-tree assertion)', () => {
     expect(crossRef?.ok).toBe(true);
   });
 
-  // V-PARETO-02 (reviewer.md:140 vs blackhole-vcodes.md:42, #586) is real drift, exempted via
-  // KNOWN_SEVERITY_EXEMPTIONS — see that export's own comment for the full rationale. With the
-  // exemption in place, the live tree is clean.
-  test('V-SEVSYNC-01 (literal sync) is clean on the live tree with the one named exemption applied', () => {
+  // #586 resolved the V-PARETO-02 split — KNOWN_SEVERITY_EXEMPTIONS is now empty and the live
+  // tree is clean without any named exemption.
+  test('V-SEVSYNC-01 (literal sync) is clean on the live tree with no named exemptions', () => {
     const results = runChecks();
     const literal = results.find((r) => r.id === 'V-SEVSYNC-01');
     expect(literal?.ok).toBe(true);
   });
 
-  test('exactly one named severity exemption, and it is V-PARETO-02', () => {
-    expect(KNOWN_SEVERITY_EXEMPTIONS).toEqual(['V-PARETO-02']);
+  test('no named severity exemptions remain after the V-PARETO-02 split (#586)', () => {
+    expect(KNOWN_SEVERITY_EXEMPTIONS).toEqual([]);
   });
 });

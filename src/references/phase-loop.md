@@ -203,7 +203,7 @@ increment, do not mark a dry wave, do not touch `hunt_state` at all. Re-evaluate
    forge issues (title/`file:line` match) — a `CONFIRMED` finding matching an existing ledger
    row or an already-open `[Kaizen]` issue for the same `file:line` is dropped before gating,
    never re-filed.
-3. **Gate + file.** Apply `V-PARETO-02` (`Priority = Gain * (11 - Effort) >= 30`) plus the bug
+3. **Gate + file.** Apply `V-PARETO-03` (`Priority = Gain * (11 - Effort) >= 30`) plus the bug
    severity floor: a `kind: bug` finding with `severity: BLOCK` or `severity: HIGH` always
    files regardless of computed Priority (severity-term reconciliation — the hunter's shipped
    `worker-schemas.md` contract has no `CRITICAL` tier; `severity: BLOCK` stands in for the

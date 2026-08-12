@@ -87,7 +87,7 @@ new `CRITICAL` tier, and it does not introduce a `retrospective`-specific severi
 way `bug.md` does. A `retrospective` finding's `severity` reflects how systemically the
 underlying pattern threatens the codebase (e.g. `HIGH` for a god-module cluster with 20+
 consumers, `MEDIUM` for a moderate touch-path hotspot); it goes through the normal
-`V-PARETO-02` gate like every kind other than `bug`'s severity-floor exception (precedent:
+`V-PARETO-03` gate like every kind other than `bug`'s severity-floor exception (precedent:
 `src/references/hunt/bug.md` § Severity-term reconciliation note).
 
 ## Finding file/line convention

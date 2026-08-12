@@ -53,7 +53,7 @@ ADR's 'CRITICAL'"; precedent for this kind of label reconciliation: `filing.md`'
 
 A `CONFIRMED` bug finding with `severity: BLOCK` or `severity: HIGH` **always files**,
 bypassing the `Priority >= 30` gate. `severity: MEDIUM`/`severity: LOW` findings go through
-the normal `V-PARETO-02` gate like every other kind. This file documents the input rule the
+the normal `V-PARETO-03` gate like every other kind. This file documents the input rule the
 hunter uses when scoring a bug finding; the floor's actual enforcement at filing time lives
 in `phase-loop.md` § Kaizen hunt dispatch step 3 (already shipped, unchanged, out of this
 file's scope) — this reference does not re-implement or duplicate that dispatch logic.
