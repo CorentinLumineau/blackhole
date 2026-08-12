@@ -80,21 +80,25 @@ export type HookRunResult = { exitCode: number; stdout: string; stderr: string }
  * `eventDir`, when passed, is threaded through as `BLACKHOLE_HOOK_EVENT_DIR` so a suite can pin
  * the durable-record sink explicitly instead of relying on `cwd`'s git resolution (#604) —
  * omitted, the spawn's env is built exactly as before, so none of the existing call sites change
- * behavior. */
+ * behavior. `assignedWorktree`, when passed, is threaded as `BLACKHOLE_ASSIGNED_WORKTREE` (#620). */
 export const runPreToolUseHook = async (
   script: string,
   payload: unknown,
   cwd: string,
   hooksDir: string = PRETOOLUSE_HOOKS_DIR,
   eventDir?: string,
+  assignedWorktree?: string,
 ): Promise<HookRunResult> => {
+  const extraEnv: Record<string, string> = {};
+  if (eventDir) extraEnv.BLACKHOLE_HOOK_EVENT_DIR = eventDir;
+  if (assignedWorktree) extraEnv.BLACKHOLE_ASSIGNED_WORKTREE = assignedWorktree;
   const proc = Bun.spawn({
     cmd: ['bun', 'run', path.join(hooksDir, script)],
     stdin: new Blob([JSON.stringify(payload)]),
     stdout: 'pipe',
     stderr: 'pipe',
     cwd,
-    ...(eventDir ? { env: { ...process.env, BLACKHOLE_HOOK_EVENT_DIR: eventDir } } : {}),
+    ...(Object.keys(extraEnv).length > 0 ? { env: { ...process.env, ...extraEnv } } : {}),
   });
   const [exitCode, stdout, stderr] = await Promise.all([
     proc.exited,
