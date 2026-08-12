@@ -9,6 +9,7 @@
 | audits/analysis-blackhole-mercure-synergy.md | Synergy analysis identifying mercure parity gaps blackhole should close | analysis | draft | on ADR acceptance |
 | audits/analysis-blackhole-routing-reuse-visibility.md | Routing visibility and Reuse Check gate analysis feeding ADR-008 | analysis | draft | on ADR acceptance |
 | audits/analysis-ci-pipeline.md | CI pipeline analysis for the blackhole build and verify toolchain | analysis | draft | on ADR acceptance |
+| audits/analysis-issue-450.md | Pre-plan architecture analysis mapping the merge-conflict gap to phase-loop/merge-gate module boundaries and existing blocker/ledger conventions | analysis | current | on file change |
 | audits/architecture-coherence.md | Architecture coherence audit across agents, skills, and reference files | analysis | current | on release |
 | audits/autonomous-workflow-parity.md | Autonomous workflow parity audit against mercure's thinking-route coverage | analysis | draft | on ADR acceptance |
 | audits/build-tree-install-resolution.md | Build-tree install resolution audit for the multi-target build pipeline | analysis | current | on release |

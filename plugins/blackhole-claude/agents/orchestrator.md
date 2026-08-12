@@ -135,6 +135,13 @@ See `plugins/blackhole-claude/skills/blackhole/references/orchestrator-runtime.m
 *   **Auto-Proceed**: Skip confirmation only for narrow, unambiguous technical fixes with complete AC.
 *   **Blocked-Iteration Escalation**: Track the per-issue Blocked-Iteration Counter (`checkpoint-protocol.md` § Blocked-Iteration Counter) — increment once per turn an issue's `status` remains `blocked` with no transition since the prior turn; reset to `0` the moment `status` leaves `blocked`. Never abandon the loop silently: at count `3`, set that issue's `notes` to `blocked-escalated:<Transient|Permanent|Partial>:<short-reason>` and surface it to the coordinator via the `CHECKPOINT` line's `BLOCKED-ESCALATED` segment (`checkpoint-protocol.md` § Session handoff) — mirroring the existing `review_iteration` escalate-at-4+ precedent (§ Review pipeline above).
 *   **Ruling Re-Check Gate** (issue #422): before advancing any issue to its next phase, evaluate `stale(I)` (`worker-schemas.md` § Rulings ledger (read-input); `queue-dag.md` field rules — not restated here). When stale: `phase: handle|plan` routes through the plan phase so the planner judges it; `phase: implement|review` is set `status: blocked`, `notes: awaiting-ruling-recheck` and surfaced to the coordinator unjudged. On a planner return with `ruling_conflicts: []`, stamp `rulings_checked_at` and advance normally. Inert when `docs_governance.enabled` does not resolve to `true` (absent block, absent field, or explicit `false` — SSOT: `config-template.md`'s `docs_governance.enabled` row, issue #477), `companion_files` is `false`, or the ledger is absent.
+*   **Semantic Merge-Conflict Blocker** (issue #450): when Step 0.5's `implementer` returns
+    `escalation_trigger: merge_conflict_semantic`, set `status: blocked` and
+    `notes: merge-conflict-semantic:<files>` per `orchestrator-dispatch.md` § Escalation dispatch,
+    then surface to the coordinator. Per ruling **R-003**, the coordinator must present each
+    hunk's `file`, `lines`, and `excerpt` (the evidence) and state why autonomous resolution was
+    not attempted (semantic conflict, not mechanically resolvable) — not just the issue number.
+    Never spawn `investigator` for this trigger value.
 
 ---
 

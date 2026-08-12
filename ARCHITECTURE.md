@@ -328,6 +328,10 @@ co-located `*.test.ts`.
 - Backlog hygiene (duplicate open issues, stale referents, low-information enrichment) must run through the `backlog` kaizen hunt kind and its orchestrator enrichment pass — not ad-hoc scripts or retrospective heuristics. (ADR-022 backlog hunt)
 - Each V-code carries exactly one severity and one semantic rule; overloaded codes must split by
   minting a fresh identifier rather than renumbering established SSOT headings (ADR-024 v-pareto split)
+- Before squash-merge, detect CONFLICTING PRs and classify each conflict hunk mechanical vs
+  semantic against the explicit rule in merge-conflict-protocol.md — never restate procedures
+  inline in consumers; semantic hunks block with conflict_hunks[] surfaced to the owner
+  (ADR-023)
 
 ---
 

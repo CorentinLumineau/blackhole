@@ -273,6 +273,10 @@ describe('validateWorker implementer', () => {
     expectInvalid('implementer', 'implementer-blocked-bad-escalation-trigger.json'));
   test('invalid escalation_trigger type confusion', () =>
     expectInvalid('implementer', 'implementer-blocked-escalation-trigger-type-confusion.json'));
+  test('valid blocked with merge_conflict_semantic', () =>
+    expectValid('implementer', 'implementer-blocked-merge-conflict.json'));
+  test('invalid merge_conflict_semantic missing conflict_hunks', () =>
+    expectInvalid('implementer', 'implementer-blocked-merge-conflict-missing-hunks.json'));
   test('invalid missing evidence on complete', () =>
     expectInvalid('implementer', 'implementer-complete-missing-evidence.json'));
   test('invalid empty evidence on complete', () =>
