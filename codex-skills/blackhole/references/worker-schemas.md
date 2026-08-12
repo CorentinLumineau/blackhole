@@ -533,7 +533,8 @@ product-principles.md` (the owner-rulings ledger) when present, gated by
     "revision": 1
   },
   "trigger": "initial",
-  "local_analyze": null
+  "local_analyze": null,
+  "rationale": "plan_mode confidence 55 is below threshold 70; cautious full plan_mode default applies pending local-analyze scan."
 }
 ```
 
@@ -543,6 +544,7 @@ product-principles.md` (the owner-rulings ledger) when present, gated by
 | `route` | object | when `routed` (`null` when `error`) |
 | `trigger` | `initial` \| `clarify-resolved` \| `research-landed` \| `investigation-landed` \| `analysis-landed` | when `routed` |
 | `local_analyze` | object \| `null` | when `routed` (`null` when `error`, or when the confidence-boost mechanism did not trigger) |
+| `rationale` | string (≤500 chars, non-empty when present) | no — when any `route.confidence.<flag>` is below its threshold; orchestrator copies verbatim into `routing_decisions` |
 | `error` | string | when `status: error` |
 
 `route`'s own field names, enum values, and types are frozen — see `queue-dag.md` § `route`
