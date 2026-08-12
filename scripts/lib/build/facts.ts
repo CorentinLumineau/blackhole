@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 80;
+export const VCODE_TABLE_ROW_COUNT = 81;
 
 // § facts — value vocabularies (issue #320, ADR-007 R1′ extension). Closed sets of enum-shaped
 // strings that agent prose restates verbatim at many consumption sites, declared once here and
