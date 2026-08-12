@@ -109,6 +109,22 @@ describe('blackhole-vcodes.md / reviewer.md — V-UX-01 registration (#271)', ()
   });
 });
 
+describe('blackhole-vcodes.md / reviewer.md — V-SOLID-02/04/05 registration (#455)', () => {
+  test('vcodes table has V-SOLID-02 (BLOCK), V-SOLID-04 (WARN), and V-SOLID-05 (BLOCK) rows', () => {
+    const vcodes = read('src/references/blackhole-vcodes.md');
+    expect(vcodes).toMatch(/\| V-SOLID-02 \|.*\| BLOCK \|/);
+    expect(vcodes).toMatch(/\| V-SOLID-04 \|.*\| WARN \|/);
+    expect(vcodes).toMatch(/\| V-SOLID-05 \|.*\| BLOCK \|/);
+  });
+
+  test('reviewer.md §3 SOLID audit cites each new V-SOLID code', () => {
+    const reviewer = read('src/agents/reviewer.md');
+    expect(reviewer).toContain('(`V-SOLID-02`)');
+    expect(reviewer).toContain('(`V-SOLID-04`, `WARN`)');
+    expect(reviewer).toContain('(`V-SOLID-05`)');
+  });
+});
+
 describe('blackhole-vcodes.md — V-AUTO-01/V-AUTO-02 registration', () => {
   test('vcodes table has V-AUTO-01 (BLOCK) and V-AUTO-02 (BLOCK) rows', () => {
     const vcodes = read('src/references/blackhole-vcodes.md');
