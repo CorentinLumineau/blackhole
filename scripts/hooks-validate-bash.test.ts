@@ -851,7 +851,7 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
     });
   });
 
-  test('deny: a literal path followed by a trailing 2>&1 redirect is denied as unresolvable — documented limitation, remedy in the message', async () => {
+  test('deny: a literal path followed by a trailing 2>&1 redirect resolves the path and denies as unverifiable — #616 fixed behaviour', async () => {
     await withTempGitRepo('blackhole-hook-wt-', async (repo) => {
       const target = path.join(repo, 'nonexistent-target');
       const result = await runPreToolUseHook(
@@ -862,16 +862,88 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
 
       expect(result.exitCode).toBe(2);
       expect(permissionDecision(result.stdout)).toBe('deny');
-      expect(permissionReason(result.stdout)).toMatch(/no trailing redirect/i);
+      expect(permissionReason(result.stdout)).toMatch(/verify/i);
 
       const events = readHookEvents(repo);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
         decision: 'deny',
         tier: 'block',
-        pattern_id: 'worktree-remove-unresolvable-path',
+        pattern_id: 'worktree-remove-unverifiable',
       });
     });
+  });
+
+  test.each([
+    ['2>&1', (worktree: string) => `git worktree remove ${worktree} 2>&1`],
+    ['>/dev/null', (worktree: string) => `git worktree remove ${worktree} >/dev/null`],
+    ['2>/dev/null', (worktree: string) => `git worktree remove ${worktree} 2>/dev/null`],
+    [
+      '&>file',
+      (worktree: string, repo: string) =>
+        `git worktree remove ${worktree} &>${path.join(repo, 'wt.log')}`,
+    ],
+  ])(
+    'allow: a fully pushed clean worktree with trailing %s redirect is removed silently — #616',
+    async (label, buildCommand) => {
+      await withRemoteTrackedWorktree(
+        'blackhole-hook-wt-',
+        `blackhole/issue-616-${label.replace(/[^a-z0-9]+/gi, '-')}`,
+        async (mainRepo, worktree, push) => {
+          push();
+
+          const command =
+            label === '&>file'
+              ? (buildCommand as (w: string, r: string) => string)(worktree, mainRepo)
+              : (buildCommand as (w: string) => string)(worktree);
+
+          const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+
+          expect(result.exitCode).toBe(0);
+          expect(result.stdout.trim()).toBe('');
+          expect(readHookEvents(mainRepo)).toEqual([]);
+        },
+      );
+    },
+  );
+
+  test('deny: chained remove A && remove B with trailing 2>&1 still denies — multi-invocation fail-closed (#616 negative control)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-',
+      'blackhole/issue-616-chain-a',
+      async (mainRepo, cleanWorktree, pushClean) => {
+        pushClean();
+
+        const dirtyWorktree = path.join(mainRepo, '.worktrees', 'blackhole-hook-wt-dirty-616');
+        runGit(mainRepo, [
+          'worktree',
+          'add',
+          '--no-track',
+          '--quiet',
+          '-b',
+          'blackhole/issue-616-chain-b',
+          dirtyWorktree,
+          'HEAD',
+        ]);
+
+        try {
+          const result = await runPreToolUseHook(
+            SCRIPT,
+            bashPayload(`git worktree remove ${cleanWorktree} && git worktree remove ${dirtyWorktree} 2>&1`),
+            mainRepo,
+          );
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+
+          const events = readHookEvents(mainRepo);
+          expect(events).toHaveLength(1);
+          expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block' });
+        } finally {
+          runGit(mainRepo, ['worktree', 'remove', '--force', dirtyWorktree]);
+        }
+      },
+    );
   });
 
   test('non-executing text: a comment mentioning `git worktree remove` is still allowed silently', async () => {

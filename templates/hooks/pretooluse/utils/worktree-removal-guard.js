@@ -119,12 +119,35 @@ const findGitWordIndices = (command, masked) => {
 };
 
 /** The substring of `command` starting at `index` up to (not including) the next shell separator
- * (`;`, `&`, `|`, newline), or to the end of the string — the same clause-scoping `[^;&|\n]*`
- * used before, now applied per `git` occurrence rather than only to the first. */
+ * (`;`, `&` when not part of a redirect, `|`, newline), or to the end of the string — the same
+ * clause-scoping as before, now with redirect-aware `&` handling and trailing redirect
+ * tokens stripped so `>/dev/null`, `2>/dev/null`, and `2>&1` do not become spurious path args. */
 const clauseTailFrom = (command, index) => {
   const rest = command.slice(index);
-  const sep = /[;&|\n]/.exec(rest);
-  return sep ? rest.slice(0, sep.index) : rest;
+  let end = rest.length;
+  for (let i = 0; i < rest.length; i++) {
+    const ch = rest[i];
+    if (ch === ';' || ch === '|' || ch === '\n') {
+      end = i;
+      break;
+    }
+    if (ch === '&') {
+      const prev = i > 0 ? rest[i - 1] : '';
+      const next = i + 1 < rest.length ? rest[i + 1] : '';
+      if (prev === '>') continue; // 2>&1, >&, >>&
+      if (next === '>') continue; // &>file, &>>file
+      end = i; // &&, bare background &, or other non-redirect &
+      break;
+    }
+  }
+  let clause = rest.slice(0, end).trimEnd();
+  // Strip one or more trailing shell redirects (2>&1, >/dev/null, 2>/dev/null, &>file, …).
+  const TRAILING_REDIRECT_RE =
+    /\s+(?:2>&1|>&\d*|>>?[^\s;&|]+|\d>>?[^\s;&|]+|&>>?[^\s;&|]+)\s*$/;
+  while (TRAILING_REDIRECT_RE.test(clause)) {
+    clause = clause.replace(TRAILING_REDIRECT_RE, '').trimEnd();
+  }
+  return clause;
 };
 
 /**
@@ -241,8 +264,7 @@ const evaluateOneInvocation = (argTokens, cwd) => {
         'git worktree remove target could not be resolved statically (missing, dynamic, or multiple ' +
         'arguments) — cannot verify unpushed commits before removal. Remedy: re-run as a standalone ' +
         'command with exactly one literal absolute path (no shell variable, no glob, no chained ' +
-        '&&/; call) and no trailing redirect — a bare & inside 2>&1 or similar is parsed as a second ' +
-        'argument.',
+        '&&/; call).',
     };
   }
 
