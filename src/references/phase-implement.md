@@ -152,7 +152,20 @@ In worktree:
 <lint-command> && <test-command>
 ```
 
-Build runs in **main clone** after merge prep (not in worktree).
+When the diff touches `src/` or anything that regenerates committed build-output trees
+(`.cursor/`, `.claude/`, `skills/`, `codex-*`, `.agents/build/`, etc.), run the full gate in
+this order **before opening the PR**:
+
+```bash
+bun run build
+# commit source + regenerated output together
+bun run verify
+```
+
+`V-BUILD-01` (`scripts/checks/build.check.ts`) runs inside `bun run verify` and calls
+`detectBuildOutputDrift` on `git status --porcelain`. Staged-but-uncommitted build output still
+reads as dirty porcelain, so verify fails with a false BLOCK if build output is not committed
+before verify. Commit source and regenerated mirrors in one commit, then verify.
 
 ## Recovery (mixed worktrees)
 

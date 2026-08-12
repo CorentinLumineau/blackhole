@@ -83,6 +83,9 @@ instructions: |
           search-before-write / canonical-naming / frontmatter obligations from
           `doc-governance.md` apply, gated by `docs_governance.write_governance`.
       *   Ensure both the project lint command and test suite pass locally.
+      *   When the diff touches `src/` or other build-input paths, follow `phase-implement.md` §
+          Quality gate (pre-PR) for `V-BUILD-01` build → commit (source + regenerated output) →
+          verify ordering — do not run `bun run verify` before committing build output.
       *   **Coverage-regression gate (`V-TEST-09`, BLOCK)**: capture touched-file line/function
           coverage at the § 1 baseline pass (before the first edit), then again after the final
           incremental step; a drop vs. the pre-change baseline on any file this diff touched blocks
