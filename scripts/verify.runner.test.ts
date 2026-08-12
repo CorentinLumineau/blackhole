@@ -4,7 +4,10 @@ import * as path from 'path';
 import {
   discoverCheckModules,
   exitCodeFromVerifyResults,
+  formatVerifyResultLine,
+  formatVerifySummary,
   runVerifyChecks,
+  runVerifyMain,
   warnOnCheckCountMismatch,
 } from './verify';
 import { makeTempDir } from './lib/fs.ts';
@@ -99,6 +102,101 @@ describe('warnOnCheckCountMismatch', () => {
     expect(warnSpy.mock.calls[0]?.[0]).toContain('2');
     expect(warnSpy.mock.calls[0]?.[0]).toContain('1');
 
+    warnSpy.mockRestore();
+  });
+});
+
+describe('formatVerifyResultLine', () => {
+  test('renders pass and fail icons with optional detail', () => {
+    expect(formatVerifyResultLine({ id: 'A', ok: true })).toBe('  ✓ A');
+    expect(formatVerifyResultLine({ id: 'B', ok: false, detail: 'broken' })).toBe(
+      '  ✗ B — broken',
+    );
+  });
+});
+
+describe('formatVerifySummary', () => {
+  test('counts passed checks and formats summary line', () => {
+    expect(
+      formatVerifySummary([
+        { id: 'A', ok: true },
+        { id: 'B', ok: false },
+      ]),
+    ).toBe('\n1/2 checks passed');
+  });
+});
+
+describe('runVerifyMain', () => {
+  test('returns 0 and prints header, discovered checks, and summary on happy path', async () => {
+    const dir = makeChecksDir();
+    writeStubCheck(
+      dir,
+      'a.check.ts',
+      'export function runChecks() { return [{ id: "A", ok: true }]; }',
+    );
+
+    const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
+    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const exitCode = await runVerifyMain({ checksDir: dir });
+
+    expect(exitCode).toBe(0);
+    expect(logSpy.mock.calls.map((call) => call[0])).toEqual([
+      'blackhole verify\n',
+      '  ✓ A',
+      '\n1/1 checks passed',
+    ]);
+    expect(warnSpy).toHaveBeenCalled();
+
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  test('returns 1 when any discovered check fails', async () => {
+    const dir = makeChecksDir();
+    writeStubCheck(
+      dir,
+      'fail.check.ts',
+      'export function runChecks() { return [{ id: "FAIL", ok: false, detail: "boom" }]; }',
+    );
+
+    const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
+    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const exitCode = await runVerifyMain({ checksDir: dir });
+
+    expect(exitCode).toBe(1);
+    expect(logSpy.mock.calls.map((call) => call[0])).toContain('  ✗ FAIL — boom');
+    expect(logSpy.mock.calls.map((call) => call[0])).toContain('\n0/1 checks passed');
+
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  test('discovers and runs multiple stub checks in sorted filename order', async () => {
+    const dir = makeChecksDir();
+    writeStubCheck(
+      dir,
+      'z.check.ts',
+      'export function runChecks() { return [{ id: "Z", ok: true }]; }',
+    );
+    writeStubCheck(
+      dir,
+      'a.check.ts',
+      'export function runChecks() { return [{ id: "A", ok: true }]; }',
+    );
+
+    const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
+    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await runVerifyMain({ checksDir: dir });
+
+    const resultLines = logSpy.mock.calls
+      .map((call) => call[0])
+      .filter((line) => typeof line === 'string' && line.startsWith('  ✓'));
+    expect(resultLines).toEqual(['  ✓ A', '  ✓ Z']);
+
+    logSpy.mockRestore();
     warnSpy.mockRestore();
   });
 });
