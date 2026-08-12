@@ -59,10 +59,13 @@ Compared against a single composite threshold: `autonomy.confidence_threshold`, 
 Two bands only — no interactive multi-turn interview loop (blackhole runs autonomously; the
 issue thread is the audit surface, not a live chat):
 
-- **composite ≥ threshold** → proceed. The reformulated understanding is posted as an **issue
-  comment** — this is the audit trail and the asynchronous veto surface. The user can
-  intervene via chat, `merge_hold`, or closing the PR; the orchestrator does not wait for a
-  response before continuing.
+- **composite ≥ threshold** → proceed. The planner populates `reformulation` (`understood`,
+  `assumed`, `if_wrong`) on `status: ready` for `quick`/`standard` tracks (`worker-schemas.md`
+  § Reformulation (async veto surface)); the orchestrator formats it via
+  `scripts/lib/reformulation-surface.ts` `formatReformulationComment()` and posts it as an
+  **issue comment** (`phase-plan.md` § Reformulation posting) — this is the audit trail and the
+  asynchronous veto surface. The user can intervene via chat, `merge_hold`, or closing the PR;
+  the orchestrator does not wait for a response before continuing.
 - **composite < threshold** → at most 2 `[NEEDS CLARIFICATION]` markers if the ambiguity is
   deferrable (the issue proceeds to plan, and the markers block before implement — the
   existing planner marker convention). Otherwise `status: blocked` + `AskQuestion` (today's

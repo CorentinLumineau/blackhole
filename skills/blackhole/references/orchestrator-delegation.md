@@ -118,19 +118,26 @@ order — each step is a hard gate over the ones below it:
    Brainstorm dispatch precedence).
 
 **Planner gate (always enforced — never bypassed, including `plan_mode: skip`):** Do
-**not** spawn `implementer` until **both** conditions are met:
+**not** spawn `implementer` until **all** conditions are met:
 
 1. Plan artifact exists on disk at `{repo_root}/.blackhole/plans/issue-N.md`
 2. Planner worker JSON returned `status: ready` (not `blocked`)
-3. **`route.ui: true` condition (ADR-017, additional independent requirement — not an
-   alternative to 1–2)**: when the issue's resolved `route.ui` is `true`, the plan file's
+3. **Reformulation posted (issue #456)** — when `track` is `quick` or `standard`, planner JSON
+   includes a valid `reformulation` object and the orchestrator has posted
+   `formatReformulationComment(reformulation)` to the issue thread via
+   `gh issue comment <issue_number> --body "$(cat <<'EOF' ... EOF)"` before implement spawn
+   (`phase-plan.md` § Reformulation posting; `confidence-gates.md` § Async Two-Band Mapping).
+   Skip when `track: skip|design|brainstorm`, when `status: blocked`, or when `reformulation`
+   fails validation. Vacuously satisfied for exempt tracks.
+4. **`route.ui: true` condition (ADR-017, additional independent requirement — not an
+   alternative to 1–3)**: when the issue's resolved `route.ui` is `true`, the plan file's
    frontmatter at `{repo_root}/.blackhole/plans/issue-N.md` must also carry `ui_gate:
-   approved`. A `route.ui: true` issue must satisfy conditions 1, 2, **and** condition 3,
-   all three, before `implementer` dispatch — this is a conjunction, never an `OR`
-   substitute for 1–2. Covers the case where the planner under-runs the UI screen (e.g.
+   approved`. A `route.ui: true` issue must satisfy conditions 1, 2, 3, **and** condition 4,
+   all four, before `implementer` dispatch — this is a conjunction, never an `OR`
+   substitute for 1–3. Covers the case where the planner under-runs the UI screen (e.g.
    a stale `route.ui` classification, or a planner bug): even a `status: ready` plan
    without the approved stamp refuses dispatch. `route.ui: false`, or no `route` object
-   — condition 3 is vacuously satisfied (no additional requirement).
+   — condition 4 is vacuously satisfied (no additional requirement).
 
 **Explicit skip exception (ADR-004):** (i) when `route.plan_mode: skip` selected the
 `planner` `skip` track, this gate is satisfied by the skip track's own deliverable — a
