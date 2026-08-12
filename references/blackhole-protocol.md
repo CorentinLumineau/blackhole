@@ -67,7 +67,7 @@ section only applies when a campaign has explicitly opted in.
 - **Verification before filing**: Every hunt-origin finding must pass a `CONFIRMED`
   verification re-check before it may be filed as an issue. Filing from an unverified
   finding is a BLOCK violation (`V-HUNT-01`).
-- **Pareto + bug-severity-floor gate**: Filing follows the same `V-PARETO-02` scoring
+- **Pareto + bug-severity-floor gate**: Filing follows the same `V-PARETO-03` gate
   (`Priority = Gain * (11 - Effort) >= min_priority`) as every other discovery, plus a
   floor override — a `kind: bug` finding with `severity: BLOCK` or `HIGH` always files
   regardless of computed Priority.
