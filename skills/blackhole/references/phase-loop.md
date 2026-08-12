@@ -85,6 +85,14 @@ proceed to step 1 unchanged. Bypassed under `merge_mode: leave-open`.
       transient classes are exhausted, invoke `ci-diagnosis.md` — fetch
       failing-step logs, classify, and route per that doc's fix-loop protocol.
       Do not advance to merge step 3 until diagnosis resolves or escalates.
+2.5. **Review artifact promotion (ADR-021 D3, issue #445)** — when `docs_governance.enabled`
+   and `docs_governance.write_governance` both resolve `true`, spawn `implementer` (or run the
+   promotion inline when the harness has no subagent) per `implementer.md` § Promote Review
+   Artifact: run `scripts/promote-review-artifact.ts`, carry staged `route: review` entries into
+   `documentation/reviews/` + `documentation/INDEX.md`, commit and push on the PR branch. If
+   promotion fails to land `documentation/reviews/review-{slug}.md` in the PR, **STOP** — do not
+   call `gh pr merge`. Inert when either governance flag is `false`. Bypassed under
+   `merge_mode: leave-open`.
 3. Run the project's build command in main clone (if applicable)
 4. `gh pr merge --squash` (use `&&` only, never `;`) — immediately after this
    command succeeds, in the **same** atomic `queue.json` write that sets

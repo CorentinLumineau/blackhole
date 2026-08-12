@@ -20,7 +20,8 @@ concern. If a match exists, update it in place — do not create a new file (`V-
 
 ## Canonical Naming
 
-One file per concern, named `{concern-slug}.md` — never date-stamped. The sole exemption is
+One file per concern, named `{concern-slug}.md` — never date-stamped. Slug derivation SSOT:
+`scripts/lib/concern-slug.ts` (`deriveConcernSlug`, `planTargetPath`, `reviewTargetPath`). The sole exemption is
 ADR files, which keep their sequential identifier: `ADR-{NNN}-{slug}.md`. A filename with a
 `-YYYY-MM-DD` suffix is the trigger condition for `V-DOC-GOV-03`.
 

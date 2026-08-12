@@ -17,6 +17,7 @@ import { read, type CheckResult } from './check-utils.ts';
 const blackholeStateDoc = 'src/references/blackhole-state.md';
 const plannerDoc = 'src/agents/planner.md';
 const investigatorDoc = 'src/agents/investigator.md';
+const implementerDoc = 'src/agents/implementer.md';
 
 export type ManifestFieldRow = { field: string; enumValues: string[] | null };
 
@@ -158,6 +159,7 @@ const checkProducerConformance = (): CheckResult => {
   const literals: ProducerLiteral[] = [
     ...extractProducerFieldValueLiterals(read(plannerDoc)).map((l) => ({ ...l, source: plannerDoc })),
     ...extractProducerFieldValueLiterals(read(investigatorDoc)).map((l) => ({ ...l, source: investigatorDoc })),
+    ...extractProducerFieldValueLiterals(read(implementerDoc)).map((l) => ({ ...l, source: implementerDoc })),
   ];
 
   const violations = findProducerEnumViolations(literals, rows);

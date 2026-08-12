@@ -546,6 +546,12 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     under the "New findings" bullet above still passes through §§11–12 unchanged.
 
 ### 25. Staged Artifact Carry Audit (`V-AUTO-02`)
+*   **`route: review` scope note (ADR-021 D3, issue #445)**: §25 audits thinking-time routes
+    (`plan`, `design`, `analyze`, `investigate`, `brainstorm`) declared in the manifest before
+    merge-readiness. `route: review` entries are appended **after** LGTM by `implementer` at
+    merge step 2.5 — they are enforced by `merge-gate.md` § Review artifact presence gate and
+    `phase-loop.md` step 2.5, not by this audit pass. Do not expect `route: review` rows in the
+    manifest during the review-phase spawn.
 *   **Why this replaces the producer self-check**: `V-AUTO-02` previously enforced only via
     `investigator.md`'s own promotion self-check — the same agent staging the artifact judging
     whether it later got carried, with no independent verification. This section makes the

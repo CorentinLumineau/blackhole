@@ -1,0 +1,8 @@
+{
+  "targetPath": "documentation/reviews/review-durable-plan-and-review-artifact-promotion.md",
+  "slug": "durable-plan-and-review-artifact-promotion",
+  "markdown": "---\ntype: review\nstatus: current\nreview_trigger: \"on file change\"\ncreated: 2026-08-12\nlast_updated: 2026-08-12\nissue: 445\n---\n\n# Review: `blackhole/issue-445` (deadbee)\n\n**Verdict: CHANGES REQUESTED** — 1 BLOCK, 0 WARN at merge-readiness.\n\nDiff: PR #901, branch `blackhole/issue-445`.\n\n## Quality gates — campaign review aggregate\n\n| Gate | Result |\n|---|---|\n| Findings ledger | 2 BLOCK/WARN row(s) for issue #445 |\n\n## Findings\n\n| # | file:line | V-code | Severity | Finding |\n|---|---|---|---|---|\n| 1 | `scripts/bar.ts:20` | V-DRY-01 | **BLOCK** | Second iteration blocker retained |\n| 2 | `scripts/foo.ts:10` | V-INT-04 | **HIGH** | First iteration finding |\n",
+  "indexRow": "| reviews/review-durable-plan-and-review-artifact-promotion.md | Review artifact for issue #445 (CHANGES REQUESTED) | review | current | on file change |",
+  "verdict": "CHANGES REQUESTED",
+  "findingsCount": 2
+}

@@ -374,6 +374,9 @@ Companion-doc sync bullet). Promotes artifacts staged at thinking time
     citing the manifest path and the offending entry's index, and continue with the remaining
     well-formed entries.
 *   **Branch on `target_kind`** — distinct copy semantics per entry:
+    - `new_file`, `produced_by: planner`, `route: plan` → copy `staged_path` → `target_path`
+      **verbatim** (ADR-021 D3, issue #445). The planner already rendered durable lifecycle
+      frontmatter at staging time — no rewrite needed.
     - `new_file`, `produced_by: planner` (design route) → copy `staged_path` → `target_path`
       **verbatim**. `planner.md` §4.8 already renders the ADR in the target doc-governance
       schema via `detect-doc-schema.sh` at staging time — no rewrite needed.
@@ -424,6 +427,26 @@ Companion-doc sync bullet). Promotes artifacts staged at thinking time
     state so the reviewer audit (`reviewer.md` §25, `V-AUTO-02`) has stable data to diff
     against, and so a resumed session after interruption can re-derive what was already carried
     via the idempotency guards above.
+
+## Promote Review Artifact (ADR-021 D3, issue #445)
+
+Invoked at **merge-readiness** (after LGTM and CI-green, before `gh pr merge`) — **not** at initial
+PR open. The `reviewer` never authors this artifact (`reviewer.md` `disallowedTools: [Write, Edit,
+Delete]` — ADR-021 A2).
+
+*   **Gate**: identical kill switch to § Carry Staged Artifacts — both `docs_governance.enabled`
+    and `docs_governance.write_governance` must resolve `true`; otherwise skip entirely (zero
+    `route: review` manifest entries, zero promotion spawn).
+*   **Run**: `bun run scripts/promote-review-artifact.ts --ledger <ledger> --issue <N> --title
+    "<title>" --pr <P> --branch <branch> --head <sha> --out-dir .blackhole/staged/<issue>/` —
+    renderer SSOT: `scripts/lib/promote-review-artifact.ts` (ledger rows for `issue_ref`, final
+    iteration selection, `recheck[]` resolution per plan).
+*   **Stage**: write CLI outputs (`review.md`, `index-row.md`) under `.blackhole/staged/<issue>/`
+    and append manifest entries (`route: "review"`, `produced_by: "implementer"`, `sub_mode: null`,
+    `target_kind: "new_file"` + companion `append_row` for `documentation/INDEX.md`).
+*   **Carry**: run the § Carry Staged Artifacts branches for the new entries; commit and push on the
+    PR branch before merge proceeds (`phase-loop.md` § Merge protocol step 2.5).
+*   **PR-body record**: `Promoted Review Artifact: <target_path> (from ledger issue #N)`.
 
 ## Companion-file Sync (Phase 5.5, V-ADA auto-repair)
 

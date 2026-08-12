@@ -244,6 +244,25 @@ state: the next orchestrator turn picks up `mergeEligible()` evaluation
 exactly where it left off (predecessors already merged stay resolved), with
 no rollback logic required for the PRs that already landed.
 
+## 5. Review artifact presence gate (ADR-021 D3, issue #445)
+
+When `docs_governance.enabled` and `docs_governance.write_governance` both resolve `true`, an
+LGTM'd issue's PR must contain the promoted review artifact before `mergeEligible(issue)` may
+proceed to `phase-loop.md` step 4 (`gh pr merge`):
+
+```
+function reviewArtifactPresent(issue, pr_diff_paths, config):
+    if config.docs_governance.enabled != true: return true
+    if config.docs_governance.write_governance != true: return true
+    expected = deriveReviewTargetPath(issue.title, issue.number)  # scripts/lib/concern-slug.ts
+    return expected in pr_diff_paths
+```
+
+Mechanical check: `rg 'documentation/reviews/review-'` on the PR file list, or
+`git diff --name-only origin/<base>...HEAD | grep documentation/reviews/`. Absence is a **hard
+stop** at merge step 2.5 — same class as a missing plan manifest declaration at implement time
+(`implementer.md` § Carry Staged Artifacts). Inert when either governance flag is `false`.
+
 ## Edge cases
 
 | Scenario | Resolution |
