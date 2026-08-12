@@ -18,6 +18,7 @@ import {
 import {
   validateAcResultsArray,
   validateCompanionRepairsArray,
+  validateConflictHunksArray,
   validateDecisionRecordsArray,
   validatePartialResult,
   validateVisualEvidenceArray,
@@ -50,6 +51,13 @@ function validateImplementerBlockedFields(data: Record<string, unknown>, errors:
       errors.push('escalation_trigger: expected string');
     } else {
       pushEnumError(errors, 'escalation_trigger', data.escalation_trigger, ESCALATION_TRIGGERS);
+      if (data.escalation_trigger === 'merge_conflict_semantic') {
+        if (!Array.isArray(data.conflict_hunks) || data.conflict_hunks.length === 0) {
+          errors.push(
+            'conflict_hunks: required non-empty array when escalation_trigger is merge_conflict_semantic',
+          );
+        }
+      }
     }
   }
 }
@@ -98,6 +106,10 @@ function validateImplementerOptionalFields(data: Record<string, unknown>, errors
 
   if ('companion_repairs' in data && data.companion_repairs !== undefined) {
     errors.push(...validateCompanionRepairsArray(data.companion_repairs, 'companion_repairs'));
+  }
+
+  if ('conflict_hunks' in data && data.conflict_hunks !== undefined) {
+    errors.push(...validateConflictHunksArray(data.conflict_hunks, 'conflict_hunks'));
   }
 }
 

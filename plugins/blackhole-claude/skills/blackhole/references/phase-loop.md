@@ -18,10 +18,11 @@
 ## Merge protocol
 
 **Trigger, per `config.json.merge_mode`** (checklist line "LGTM AND
-`mergeEligible(issue)`? → merge PR"):
+`mergeEligible(issue)`? → merge PR`):
 - `"immediate"`: apply steps 0-5 below to each LGTM'd issue
-  individually, as encountered.
+  individually, as encountered. Step 0.5 runs between step 0 and step 1.
 - `"gated-batch"`: do **not** apply steps 0-5 issue-by-issue as encountered.
+  Step 0.5 runs between step 0 and step 1 within § 4's per-issue loop.
   Instead, once `merge-gate.md` § 1 Condition 3 is satisfied for the whole
   in-scope set (every sibling LGTM'd), run `merge-gate.md` § 4's sequential
   batch procedure — it internally invokes steps 0-5 below, once per issue, in
@@ -29,8 +30,8 @@
   duplicate § 4's ordering/persistence logic here; this section owns only the
   per-PR merge mechanics § 4 calls into.
 - `"leave-open"` (ADR-006): do **not** apply steps 0-5 to these issues at
-  all — no `mergeEligible(issue)` call, no `gh pr merge` (see `merge-gate.md`'s
-  bypass note). Once `review-core.md`'s `isLgtm(issue)` is true, treat the
+  all — no `mergeEligible(issue)` call, no `gh pr merge`, no Step 0.5 (see
+  `merge-gate.md`'s bypass note). Once `review-core.md`'s `isLgtm(issue)` is true, treat the
   issue as delivered for campaign-complete purposes only: annotate
   `queue.json`'s `notes` field (not `status`/`phase`) — e.g.
   `"delivered-at-LGTM (leave-open) — awaiting human merge"` — and leave the PR
@@ -43,6 +44,17 @@
    do not proceed to step 1 for this issue (leave it `in-flight`; re-evaluated
    next turn). This step is binding wherever this section is cited or
    delegated — never skip it to reach step 1 directly.
+
+**Step 0.5 — Rebase & Conflict Preflight** (issue #450): after step 0 passes and before step 1,
+run `merge-conflict-protocol.md` § Trigger — Step 0.5. When `gh pr view <n> --json
+mergeStateStatus,mergeable` reports `mergeable == "CONFLICTING"`, delegate to an `implementer`
+spawn per `merge-conflict-protocol.md` § Worker delegation; on `status: complete`, continue to
+step 1 with the rebased HEAD; on `status: blocked` with `escalation_trigger:
+merge_conflict_semantic`, route per `orchestrator-dispatch.md` § Escalation dispatch and **STOP**
+this issue's merge for the turn. When `mergeable == "MERGEABLE"` (or an unfamiliar
+`mergeStateStatus` — conservative default per `merge-conflict-protocol.md` § Edge cases),
+proceed to step 1 unchanged. Bypassed under `merge_mode: leave-open`.
+
 1. `gh pr view <n> --json headRefOid` equals local HEAD
 2. CI-wait: a detached background poll, never a foreground agent sleep. `gh pr
    checks <n>` must reach green (except Vercel preview — expected fail), but

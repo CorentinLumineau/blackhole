@@ -1,8 +1,8 @@
 ## Error Classification (Transient / Permanent / Partial-Corruption)
 
 This section is the **single source** for campaign tool/spawn failure classification —
-`recovery-protocol.md` and `worker-schemas.md` cross-reference it, they do not restate the
-table.
+`recovery-protocol.md`, `merge-conflict-protocol.md`, and `worker-schemas.md` cross-reference it,
+they do not restate the table.
 
 | Class | Examples | Action |
 |-------|----------|--------|

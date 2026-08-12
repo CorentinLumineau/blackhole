@@ -165,6 +165,25 @@ export function validateCompanionRepairsArray(value: unknown, path: string): str
   return validateArrayOf(value, path, validateCompanionRepairEntry);
 }
 
+export function validateConflictHunkEntry(entry: unknown, path: string): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(entry)) {
+    errors.push(`${path}: expected object`);
+    return errors;
+  }
+
+  requireField(errors, entry, 'file', isNonEmptyString, 'non-empty string');
+  requireField(errors, entry, 'lines', isNonEmptyString, 'non-empty string');
+  requireField(errors, entry, 'excerpt', isNonEmptyString, 'non-empty string');
+
+  return errors.map((error) => `${path}.${error}`);
+}
+
+export function validateConflictHunksArray(value: unknown, path: string): string[] {
+  return validateArrayOf(value, path, validateConflictHunkEntry);
+}
+
 // Issue #492 — stop --now leg B: shared `status: partial` payload shape, dispatched identically
 // by all six role validators (`worker-schemas.md` § Partial result). Mirrors the array-of-strings
 // return style of `validateAcResultsArray`/`validateVisualEvidenceArray` above rather than a

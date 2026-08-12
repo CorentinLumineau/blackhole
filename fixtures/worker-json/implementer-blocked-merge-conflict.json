@@ -1,0 +1,11 @@
+{
+  "status": "blocked",
+  "escalation_trigger": "merge_conflict_semantic",
+  "conflict_hunks": [
+    {
+      "file": "scripts/lib/worker-json/constants.ts",
+      "lines": "19-21",
+      "excerpt": "<<<<<<< HEAD\nexport const ESCALATION_TRIGGERS = ['failed_attempts'];\n=======\nexport const ESCALATION_TRIGGERS = ['failed_attempts', 'touch_paths_overrun'];\n>>>>>>> blackhole/issue-450"
+    }
+  ]
+}

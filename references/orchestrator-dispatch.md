@@ -98,9 +98,24 @@ Blocker Gate mechanism (§ Human-in-the-Loop (HITL) & Blocker Gating below), unc
 ## Escalation dispatch (implementer → investigator)
 
 **Trigger condition**: `implementer` returns `status: blocked` with `escalation_trigger` set
-(`failed_attempts` or `touch_paths_overrun` — `worker-schemas.md` § `escalation_trigger`). Do
-**not** re-spawn `implementer` and do not treat this as a generic worker error — route to
-root-cause investigation instead:
+(`failed_attempts`, `touch_paths_overrun`, or `merge_conflict_semantic` —
+`worker-schemas.md` § `escalation_trigger`).
+
+**`merge_conflict_semantic` branch** (issue #450): when `escalation_trigger ===
+'merge_conflict_semantic'`, route to the HITL Blocker Gate (`orchestrator.md` §
+Human-in-the-Loop (HITL) & Blocker Gating) — **do not** spawn `investigator`:
+
+1. **`queue.json` mutation** (Bash/`jq`, atomic `.tmp` + `mv` write per `blackhole-state.md` §
+   Write protocol): set `status: blocked`, `notes: "merge-conflict-semantic:<file1>,<file2>,..."`
+   where the file list is derived from the returned `conflict_hunks[].file` values
+   (comma-joined, repo-relative paths).
+2. **Surface to coordinator**: hand the full `conflict_hunks[]` payload for presentation per
+   ruling **R-003** (`coordinator.md` § Chat Feedback Intake Protocol step 2).
+3. **Resume rule**: coordinator clears `status`/`notes` after owner resolution; orchestrator
+   resumes merge pipeline from Step 0.5 on the next turn — unchanged single-writer invariant.
+
+For `failed_attempts` or `touch_paths_overrun` only — do **not** re-spawn `implementer` and do
+not treat this as a generic worker error — route to root-cause investigation instead:
 
 1. **`queue.json` mutation** (Bash/`jq`, atomic `.tmp` + `mv` write per `blackhole-state.md` §
    Write protocol): set `phase: implement`, `status: blocked`,

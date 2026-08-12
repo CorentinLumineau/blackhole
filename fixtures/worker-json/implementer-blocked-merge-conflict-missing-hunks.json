@@ -1,0 +1,4 @@
+{
+  "status": "blocked",
+  "escalation_trigger": "merge_conflict_semantic"
+}

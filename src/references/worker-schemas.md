@@ -258,7 +258,7 @@ below).
 | `touch_paths_honored` | boolean | when `complete` |
 | `execution_mode` | `standard` \| `refactor-strict` \| `docs-only` | no, optional — absent defaults to `standard` |
 | `task_type` | `feature` \| `bugfix` \| `refactor` \| `docs` | no, optional |
-| `escalation_trigger` | `failed_attempts` \| `touch_paths_overrun` | no, optional — only meaningful on `status: blocked` |
+| `escalation_trigger` | `failed_attempts` \| `touch_paths_overrun` \| `merge_conflict_semantic` | no, optional — only meaningful on `status: blocked` |
 | `evidence` | object `{ command: string, result: string }` | yes when `status: complete`; absent when `blocked`/`error` |
 | `new_findings` | finding[] | no |
 | `filed_issues` | number[] | no |
@@ -267,6 +267,7 @@ below).
 | `ac_results` | ac-result[] (see below) | no, optional — required non-empty when `sprint_contract_status` is present and not `N/A` |
 | `visual_evidence` | visual-evidence[] (see below) | no, optional — additive, config-gated by `display_targets` |
 | `companion_repairs` | `{ vcode, file, action }[]` (issue #453) | no, optional — see `companion-file-sync.md` § Ledger contract |
+| `conflict_hunks` | conflict-hunk[] (see below) | when `merge_conflict_semantic` |
 
 ### `execution_mode` (optional — ADR-004)
 
@@ -293,29 +294,27 @@ Mirrors the plan frontmatter's `task_type: bugfix` stamp (`planner.md` § Quick 
 implementer's Bugfix Gate applies. Values reuse `TASK_TYPES` verbatim
 (`scripts/validate-worker-json.ts:21`): `feature` \| `bugfix` \| `refactor` \| `docs`.
 
-**Non-goal for this issue**: no orchestrator/router logic computes or passes `route.task_type`
-to implementer at spawn time yet — this field is documentation of future intent, not a behavior
-claim about the current codebase, mirroring `execution_mode`'s own disclaimer above.
+**Non-goal**: no orchestrator/router logic computes or passes `route.task_type` to implementer at
+spawn time yet — documentation of future intent, mirroring `execution_mode` above.
 
 ### `escalation_trigger` (optional — ADR-004)
 
-Signals why an implementer session stopped and returned `status: blocked` for one of the Bugfix
-Gate's two escalation triggers (`implementer.md` § Bugfix Gate): `failed_attempts` (2 distinct
-failed fix attempts) or `touch_paths_overrun` (fix needs 3+ files beyond the plan's declared
-Touch-Paths). Single-valued (unlike the array-shaped `failing_checks`) — the worker stops at the
-first trigger it hits, it does not accumulate multiple in one session.
+`failed_attempts` \| `touch_paths_overrun` (Bugfix Gate) \| `merge_conflict_semantic` (Conflict
+Resolution Gate — requires non-empty `conflict_hunks[]` below). Single-valued. Consumers:
+`orchestrator-dispatch.md` § Escalation dispatch — `merge_conflict_semantic` → HITL, never
+`investigator`.
 
-**Consumer status**: `escalation_trigger` is now read by the orchestrator's escalation dispatch
-(`orchestrator-dispatch.md` § Escalation dispatch, #137) — an `implementer` returning `status: blocked`
-with this field set is routed to a direct `investigator` (`sub_mode: investigate`) spawn instead
-of a blind `implementer` re-spawn. `investigator` also emits this field on `status: blocked`,
-reused rather than duplicated (`V-INT-03`) — see § Investigator below (issue #454).
+### `conflict_hunks[]` (optional — issue #450)
 
-See `implementer.md` § Scout Check for the unconditional Improvement Record convention every
-implementer session produces (content spec stays there — `V-DRY`).
+Required when `escalation_trigger === "merge_conflict_semantic"`.
 
-See `implementer.md` § Reuse Check Gate for the unconditional `Reuse Check:` PR-body entry every
-implementer session produces (verified by `reviewer.md` § 5 — content spec stays there, `V-DRY`).
+| Field | Type |
+|-------|------|
+| `file` | string |
+| `lines` | string |
+| `excerpt` | string |
+
+See `implementer.md` § Scout Check / § Reuse Check Gate (`V-DRY`).
 
 ### Rulings ledger (read-input)
 
