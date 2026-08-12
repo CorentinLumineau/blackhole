@@ -8,6 +8,8 @@ import {
   DISTRIBUTION_ROOT,
   GEMINI_TARGET_DIRS,
   CODEX_TARGET_DIRS,
+  AGENT_PLUGINS_DISTRIBUTION_ROOT,
+  AGENT_PLUGINS_TARGET_DIRS,
   DEPRECATED_BUILD_FLAGS,
 } from './paths.ts';
 
@@ -39,7 +41,7 @@ const args = new Set(process.argv.slice(2));
 // 1. Resolve deprecated-flag warnings and decide which targets build this run.
 export const determineBuildTargets = (
   cliArgs: Set<string> = args
-): { buildGemini: boolean; buildCodex: boolean } => {
+): { buildGemini: boolean; buildCodex: boolean; buildAgentPlugins: boolean } => {
   for (const flag of DEPRECATED_BUILD_FLAGS) {
     if (cliArgs.has(flag)) {
       console.error(
@@ -51,6 +53,7 @@ export const determineBuildTargets = (
 
   const geminiTracked = isTargetTracked(root, GEMINI_TARGET_DIRS);
   const codexTracked = isTargetTracked(root, CODEX_TARGET_DIRS);
+  const agentPluginsTracked = isTargetTracked(root, AGENT_PLUGINS_TARGET_DIRS);
   if (!geminiTracked) {
     console.error(
       '[build] gemini build targets are not tracked in git — gemini output dirs will be skipped until git-tracked.'
@@ -61,15 +64,21 @@ export const determineBuildTargets = (
       '[build] codex build targets are not tracked in git — codex output dirs will be skipped until git-tracked.'
     );
   }
+  if (!agentPluginsTracked) {
+    console.error(
+      '[build] agent-plugins build targets are not tracked in git — agent-plugins output dirs will be skipped until git-tracked.'
+    );
+  }
 
   // Tracked ⇒ built (ADR-007 T2/R5′). Deprecated CLI flags are ignored for gating — only
   // git tracking decides whether gemini/codex targets compile (deprecation notice above).
   const buildGemini = geminiTracked;
   const buildCodex = codexTracked;
-  return { buildGemini, buildCodex };
+  const buildAgentPlugins = agentPluginsTracked;
+  return { buildGemini, buildCodex, buildAgentPlugins };
 };
 
-export const cleanBuildDirectories = (buildGemini: boolean, buildCodex: boolean) => {
+export const cleanBuildDirectories = (buildGemini: boolean, buildCodex: boolean, buildAgentPlugins: boolean) => {
   console.log('Cleaning existing build directories...');
   cleanDir(path.join(root, 'rules'));
   cleanDir(path.join(root, 'agents'));
@@ -98,6 +107,9 @@ export const cleanBuildDirectories = (buildGemini: boolean, buildCodex: boolean)
     cleanDir(path.join(root, AGENTS_BUILD_ROOT));
     cleanDir(path.join(root, '.gemini-plugin'));
     cleanDir(path.join(root, DISTRIBUTION_ROOT));
+  }
+  if (buildAgentPlugins) {
+    cleanDir(path.join(root, AGENT_PLUGINS_DISTRIBUTION_ROOT));
   }
   if (buildCodex) {
     cleanDir(path.join(root, 'codex-agents'));

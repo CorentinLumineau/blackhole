@@ -9,11 +9,12 @@ import {
   compileGeminiTargets,
   generateClaudePluginManifests,
   compileCodexTarget,
+  compileAgentPluginsTarget,
 } from './lib/build/targets.ts';
 
 const main = () => {
-  const { buildGemini, buildCodex } = determineBuildTargets();
-  cleanBuildDirectories(buildGemini, buildCodex);
+  const { buildGemini, buildCodex, buildAgentPlugins } = determineBuildTargets();
+  cleanBuildDirectories(buildGemini, buildCodex, buildAgentPlugins);
   compileSkillsTarget();
   compileCursorTarget();
   compileClaudeNativeTarget();
@@ -21,6 +22,7 @@ const main = () => {
   compileGeminiTargets(buildGemini);
   generateClaudePluginManifests(claudeDistRoot);
   compileCodexTarget(buildCodex);
+  compileAgentPluginsTarget(buildAgentPlugins);
 
   console.log('Build compilation completed successfully!');
 };

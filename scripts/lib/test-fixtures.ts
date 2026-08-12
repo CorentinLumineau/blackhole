@@ -7,8 +7,14 @@ import {
   buildCodexMarketplace,
   buildCodexPluginManifest,
   buildGeminiPluginManifest,
+  buildAgentPluginsManifest,
 } from './build/manifests.ts';
 import { compileCodexTree, compileGeminiTree, writeGeminiManifest } from './build/trees.ts';
+import { compileAgentPluginsSkillTree } from './build/targets.ts';
+import {
+  AGENT_PLUGINS_DISTRIBUTION_AGENT_DIR,
+  AGENT_PLUGINS_DISTRIBUTION_VCODES,
+} from './build/paths.ts';
 import { root } from './build/paths.ts';
 import { makeTempDir } from './fs.ts';
 
@@ -44,6 +50,19 @@ export const populateGeminiDistributionTree = (
   } = opts;
   compileGeminiTree(destRoot, pluginSubdir, vcodesSubpath, { includeAgents, target });
   writeGeminiManifest(path.join(destRoot, 'plugin.json'), buildGeminiPluginManifest('1.0.0'));
+};
+
+
+export const populateAgentPluginsTree = (destRoot: string): void => {
+  compileAgentPluginsSkillTree(
+    destRoot,
+    AGENT_PLUGINS_DISTRIBUTION_AGENT_DIR,
+    AGENT_PLUGINS_DISTRIBUTION_VCODES,
+  );
+  writeGeminiManifest(
+    path.join(destRoot, 'plugin.json'),
+    buildAgentPluginsManifest('1.0.0'),
+  );
 };
 
 export const populateCodexFixtureTree = (destRoot: string): void => {

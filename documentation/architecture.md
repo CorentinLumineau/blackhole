@@ -32,6 +32,7 @@ flowchart LR
         O4[codex-agents/ codex-skills/<br/>.codex-plugin/ codex-marketplace.json]
         O5[".agents/build/ + .gemini-plugin/<br/>(bun run build --gemini)"]
         O6["plugins/blackhole/<br/>(bun run build --gemini)"]
+        O7["plugins/blackhole-agent-plugins/<br/>(git-tracked opt-in)"]
     end
 
     SRC --> BUILD --> O1
@@ -40,6 +41,7 @@ flowchart LR
     BUILD --> O4
     BUILD -. "--gemini flag only" .-> O5
     BUILD -. "--gemini flag only" .-> O6
+    BUILD -. "git-tracked opt-in" .-> O7
 
     subgraph RUNTIME["Gitignored runtime — not build output"]
         direction TB
@@ -66,6 +68,7 @@ should be hand-edited directly — changes made there are overwritten on the nex
 | `.claude/` + `.claude-plugin/` (`plugin.json`, `marketplace.json`) | Claude Code | Claude Code plugin + marketplace manifest | Edit via `src/` only — never hand-edit. |
 | `codex-agents/` + `codex-skills/` + `.codex-plugin/` + `codex-marketplace.json` | Codex CLI | Codex plugin + marketplace manifest | Edit via `src/` only — never hand-edit. |
 | `.agents/build/` + `.gemini-plugin/` | Antigravity / Gemini (workspace) | Workspace customization (`@coordinator` / Multitask Mode); `.gemini-plugin/plugin.json` mirrors marketplace metadata | Edit via `src/` only — never hand-edit. |
+| `plugins/blackhole-agent-plugins/` | agent-plugins.org (distribution) | Portable skills-only shell — root `plugin.json` (agent-plugins schema) + `skills/blackhole/{SKILL.md,references/}`; no `agents/`, `rules/`, or `mcp.json` (ADR-021, issue #484). Full campaign harness remains on vendor targets B–E. | Edit via `src/` only — never hand-edit. |
 | `plugins/blackhole/` | Antigravity / Gemini (distribution) | Redistributable plugin bundle — co-located `plugin.json` + `skills/` + `rules/`, no `agents/` (AC4: not part of the plugin schema) | Edit via `src/` only — never hand-edit. |
 
 ## Build & verify

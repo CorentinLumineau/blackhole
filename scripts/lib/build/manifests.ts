@@ -2,6 +2,18 @@ import * as path from 'path';
 import { projectIdentity } from '../../project-identity.ts';
 import { CLAUDE_DISTRIBUTION_ROOT } from './paths.ts';
 
+export const AGENT_PLUGINS_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
+
+export const buildAgentPluginsManifest = (pkgVersion: string) => ({
+  $schema: AGENT_PLUGINS_SCHEMA,
+  name: projectIdentity.name,
+  description: projectIdentity.description,
+  version: pkgVersion,
+  author: { name: 'blackhole contributors' },
+  license: 'Apache-2.0',
+  keywords: [projectIdentity.name, 'agent-plugins', ...projectIdentity.keywordsBase],
+});
+
 export const buildGeminiPluginManifest = (pkgVersion: string) => ({
   $schema: 'https://antigravity.google/schemas/v1/plugin.json',
   name: projectIdentity.name,

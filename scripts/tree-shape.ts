@@ -1,6 +1,24 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './lib/fs.ts';
+import { AGENT_PLUGINS_SCHEMA } from './lib/build/manifests.ts';
+
+/** agent-plugins.org `name` field pattern (plugin.schema.json v1.0.0). */
+export const AGENT_PLUGINS_NAME_PATTERN =
+  /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
+
+const AGENT_PLUGINS_MANIFEST_KEYS = new Set([
+  '$schema',
+  'name',
+  'version',
+  'description',
+  'author',
+  'homepage',
+  'repository',
+  'license',
+  'keywords',
+  'extensions',
+]);
 
 // Single source of truth for "what does a valid compiled plugin tree look like" — consumed by
 // both scripts/build.ts (build-time, throw-on-invalid) and scripts/verify.ts (post-hoc,
@@ -73,6 +91,62 @@ export const geminiWorkspaceTreeErrors = (
   errors.push(
     ...validatePluginTreeShape(destRoot, null, { treePrefix: `${label}/`, manifest: '' }, rulesList)
   );
+  return errors;
+};
+
+/** agent-plugins.org distribution bundle (issue #484) — skills-only shell: root plugin.json with
+ * agent-plugins `$schema`, `skills/blackhole/{SKILL.md,references/}`, and no agents/, rules/, or
+ * mcp.json at bundle root. Deliberately separate from distributionTreeErrors (Gemini rules/) and
+ * claudeDistributionTreeErrors (requires agents/). */
+export const agentPluginsManifestErrors = (manifestPath: string): string[] => {
+  const errors: string[] = [];
+  if (!fs.existsSync(manifestPath)) {
+    errors.push('missing plugin.json');
+    return errors;
+  }
+  try {
+    const manifest = readJsonFile(manifestPath, manifestPath) as Record<string, unknown>;
+    if (manifest.$schema !== AGENT_PLUGINS_SCHEMA) {
+      errors.push(`plugin.json $schema must be ${AGENT_PLUGINS_SCHEMA}`);
+    }
+    if (!manifest.name || typeof manifest.name !== 'string') {
+      errors.push('plugin.json missing name');
+    } else if (!AGENT_PLUGINS_NAME_PATTERN.test(manifest.name)) {
+      errors.push('plugin.json name fails agent-plugins pattern');
+    }
+    for (const key of Object.keys(manifest)) {
+      if (!AGENT_PLUGINS_MANIFEST_KEYS.has(key)) {
+        errors.push(`plugin.json unexpected key ${key}`);
+      }
+    }
+  } catch {
+    errors.push('plugin.json invalid JSON');
+  }
+  return errors;
+};
+
+export const agentPluginsTreeErrors = (destRoot: string, manifestPath: string): string[] => {
+  const errors: string[] = [...agentPluginsManifestErrors(manifestPath)];
+
+  const skillPath = path.join(destRoot, 'skills', 'blackhole', 'SKILL.md');
+  if (!fs.existsSync(skillPath)) {
+    errors.push('missing skills/blackhole/SKILL.md');
+  }
+
+  const refsDir = path.join(destRoot, 'skills', 'blackhole', 'references');
+  if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
+    errors.push('missing or empty skills/blackhole/references/');
+  }
+
+  for (const forbidden of ['agents', 'rules']) {
+    if (fs.existsSync(path.join(destRoot, forbidden))) {
+      errors.push(`forbidden ${forbidden}/ at bundle root`);
+    }
+  }
+  if (fs.existsSync(path.join(destRoot, 'mcp.json'))) {
+    errors.push('forbidden mcp.json at bundle root');
+  }
+
   return errors;
 };
 
