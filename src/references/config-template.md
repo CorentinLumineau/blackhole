@@ -24,6 +24,7 @@ Committed template: `.blackhole/config.json`
   "incident_mode": { "enabled": false, "parallel_max_override": 1, "pause_discovery": true },
   "autonomy": { "confidence_threshold": 80, "design_dominance_delta": 30, "design_autonomy": true, "analyze_routing": true, "brainstorm_routing": false, "never_bypass": ["destructive", "credentials", "epic-go-no-go"] },
   "worker_model_policy": "cost-optimized",
+  "worker_effort_policy": "cost-optimized",
   "entry_mode": "multitask",
   "display_targets": []
 }
@@ -75,6 +76,7 @@ Committed template: `.blackhole/config.json`
 | `autonomy.scope` | no | Human-readable description of what the autonomy grant covers for this campaign |
 | `autonomy.note` | no | Freeform note on how the autonomy grant interacts with other config (e.g. `merge_mode`) |
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
+| `worker_effort_policy` | no | `cost-optimized` (default when field present) — per-spawn reasoning effort folded into the resolved task tier (`model-routing.md` § Harness tier ladders); `inherit` — omit effort parameters, session inheritance (mirror `worker_model_policy: inherit`). When absent, tier-folded effort defaults apply under `cost-optimized` semantics |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 | `merge_mode` | **yes at bootstrap** | `"immediate"` \| `"gated-batch"` (ADR-005) \| `"leave-open"` (ADR-006) — **no default** (ruling R-002, `documentation/reference/product-principles.md`): an absent or invalid value is a bootstrap-blocking condition, not a silent fallback; see the contract note below. `immediate`: each PR merges as soon as it reaches LGTM. `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one PR at a time in `merge_after` dependency order; see `merge-gate.md`. `leave-open`: blackhole never merges — every PR is driven to LGTM and left open for human review/merge; an LGTM'd open PR counts as *delivered* for campaign-complete purposes; `merged_by: blackhole` is never set for these issues; `fixed-in-pr` ledger rows stay `fixed-in-pr` until the human merge is later observed by a sync; see `phase-loop.md` § Merge protocol and `merge-gate.md` |
 | `display_targets` | no | Array of viewport widths in px (e.g. `[412, 700, 2560]`) to capture visual evidence at for UI-affecting PRs (ADR-018); absent or empty (default) ⇒ both the implementer's capture step and the reviewer's Visual Evidence Audit are no-ops |
