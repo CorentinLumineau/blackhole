@@ -226,6 +226,18 @@ increment, do not mark a dry wave, do not touch `hunt_state` at all. Re-evaluate
    - Findings **below** the gate (Priority < 30 and not a bug-severity-floor override) are
      set `status: archived` in the ledger — never filed, per the identical below-floor rule
      § Continuous Discovery of Improvements already applies.
+   - **Backlog low-info enrichment pass** (`kind: backlog` only, after the step-3 filing loop
+     above completes for this wave, before step 4): for each `CONFIRMED` low-information finding
+     from heuristic 3 in `hunt/backlog.md` (`file: "issue:<number>"`, `line: 0`) that survived
+     dedup, the orchestrator (not the hunter) appends a forge comment and mirrors a queue note so
+     Handle/confidence gates have material on the next turn — still on the same kaizen turn, before
+     § Next batch step 2 builds the ready set:
+     1. Post `gh issue comment <number> --body "<!-- blackhole:enrichment -->\n<structured draft from finding rationale>"` — the HTML comment delimiter makes re-runs idempotent (skip if an existing comment already contains `<!-- blackhole:enrichment -->`).
+     2. Append a one-line summary to `queue.json` `issues.<number>.notes` via the normal write
+        protocol (`blackhole-state.md` § Write protocol) when the issue is already in the queue;
+        issues not yet ingested rely on the forge comment alone until the next forge sync.
+     Duplicate and stale-referent backlog findings follow the ordinary `[Kaizen]` filing path above;
+     only low-info findings use this enrichment pass instead of (or in addition to) filing.
 4. **Cap.** File at most `kaizen.max_issues_per_wave` issues this wave. Excess `CONFIRMED`,
    above-floor findings stay `status: open` in the ledger — never dropped, never
    silently archived — to be filed in a future wave once the cap resets.

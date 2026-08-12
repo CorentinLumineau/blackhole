@@ -325,6 +325,7 @@ co-located `*.test.ts`.
 - No issue may advance past a phase transition while its `queue.json` `rulings_checked_at`
   watermark trails the owner-rulings ledger's `rulings_revision` — it is re-judged by the planner
   or quarantined at the background-worker barrier first. (ADR-020)
+- Backlog hygiene (duplicate open issues, stale referents, low-information enrichment) must run through the `backlog` kaizen hunt kind and its orchestrator enrichment pass — not ad-hoc scripts or retrospective heuristics. (ADR-022)
 
 ---
 
