@@ -6,6 +6,7 @@ import {
   distributionTreeErrors,
   claudeDistributionTreeErrors,
   codexTreeErrors,
+  agentPluginsTreeErrors,
 } from '../../tree-shape.ts';
 import {
   AGENT_NAMES,
@@ -26,14 +27,19 @@ import {
   CLAUDE_DISTRIBUTION_AGENT_DIR,
   CLAUDE_DISTRIBUTION_VCODES,
   CLAUDE_NATIVE_ROOT,
+  AGENT_PLUGINS_DISTRIBUTION_ROOT,
+  AGENT_PLUGINS_DISTRIBUTION_AGENT_DIR,
+  AGENT_PLUGINS_DISTRIBUTION_VCODES,
 } from './paths.ts';
 import { processFile, compileFolder } from './content.ts';
+
 import {
   buildGeminiPluginManifest,
   buildCodexPluginManifest,
   buildCodexMarketplace,
   buildClaudePluginManifest,
   buildClaudeMarketplace,
+  buildAgentPluginsManifest,
 } from './manifests.ts';
 import { compileGeminiTree, compileCodexTree, copyHooksDir, writeGeminiManifest } from './trees.ts';
 import { mergeClaudeSettingsHooks } from './claude-native-settings.ts';
@@ -242,4 +248,38 @@ export const compileCodexTarget = (buildCodex: boolean) => {
 
   const codexMarketplaceJson = buildCodexMarketplace();
   fs.writeFileSync(path.join(root, 'codex-marketplace.json'), JSON.stringify(codexMarketplaceJson, null, 2), 'utf-8');
+};
+
+/** Skill + references only for agent-plugins.org — no rules/, templates/, agents/, or hooks/. */
+export const compileAgentPluginsSkillTree = (
+  destRoot: string,
+  agentDir: string,
+  rulesPath: string
+) => {
+  processFile(
+    path.join(srcDir, 'SKILL.md'),
+    path.join(destRoot, 'skills', 'blackhole', 'SKILL.md'),
+    agentDir,
+    rulesPath,
+    'skills'
+  );
+  compileFolder(
+    'references',
+    path.join(destRoot, 'skills', 'blackhole', 'references'),
+    agentDir,
+    rulesPath,
+    'skills'
+  );
+};
+
+// 10. Compile Target F: agent-plugins.org distribution bundle (issue #484) — opt-in via git tracking
+export const compileAgentPluginsTarget = (buildAgentPlugins: boolean) => {
+  if (!buildAgentPlugins) return;
+  console.log('Compiling Target F (agent-plugins.org distribution bundle — plugins/blackhole-agent-plugins/)...');
+  const destRoot = path.join(root, AGENT_PLUGINS_DISTRIBUTION_ROOT);
+  compileAgentPluginsSkillTree(destRoot, AGENT_PLUGINS_DISTRIBUTION_AGENT_DIR, AGENT_PLUGINS_DISTRIBUTION_VCODES);
+  const manifest = buildAgentPluginsManifest(version);
+  writeGeminiManifest(path.join(destRoot, 'plugin.json'), manifest);
+  const errors = agentPluginsTreeErrors(destRoot, path.join(destRoot, 'plugin.json'));
+  if (errors.length) throw new Error(errors.join('; '));
 };

@@ -1,0 +1,78 @@
+# Hunt Kind: Coverage
+
+Scan heuristics, calibration table, and scoring rule for the `coverage` hunt kind
+(`kaizen.kinds`, `config-template.md`). Ported from `x-analyze`'s coverage-gap audit
+(ADR-006 § Hunt kinds).
+
+## Scan heuristics
+
+1. **Detect the test runner.** Inspect the project (package manifest, config files, CI
+   config) for a recognizable test runner (e.g. `bun test`, `jest`, `vitest`, `pytest`,
+   `go test`). If none is detected, see § No-runner degradation below — do not guess or
+   invent a runner invocation.
+2. **Run coverage** using the detected runner's coverage mode.
+3. **Band the gaps by criticality**, not by raw percentage alone — a 75%-covered auth path
+   matters more than a 75%-covered CLI formatter:
+
+   | Band | Criticality | Territory (illustrative — reason from the actual codebase, not a fixed list) | Coverage threshold |
+   |------|-------------|----------------------------------------------------------------------------|---------------------|
+   | P1 | Critical | Auth, payments, input validation, error handling | < 80% |
+   | P2 | High | Core business logic, data-mutation paths | < 70% |
+   | P3 | Medium | Supporting utilities, internal helpers | < 60% |
+   | P4 | Low | Peripheral code (CLI wrappers, logging, formatting) | < 50% |
+
+   The P1 definition (auth/payments/validation/error-handling) is the issue's own fixed
+   wording; P2–P4's territory examples are illustrative guidance for classifying everything
+   else by descending criticality, not a literal enumeration — a hunter agent judges which
+   band a given file/module belongs to from what it actually does.
+4. **Reference the testing pyramid** (70% unit / 20% integration / 10% E2E) when suggesting
+   a fix direction for a gap: prefer recommending unit tests for low-level, high-fan-in
+   logic and reserve integration/E2E suggestions for gaps that are inherently cross-boundary
+   (a gap in a payment-gateway adapter, for instance, may need an integration test rather
+   than another unit test).
+
+Every finding is read-verified before it is reported: the hunter re-reads the cited
+`file:line` and only reports `CONFIRMED` findings (`worker-schemas.md` § Hunter).
+
+## Calibration table
+
+`gain` is **derived from the criticality band**, not freely assigned (ADR-006 § Scoring
+model item 2) — this is the one hunt kind whose `gain` input is a direct band mapping rather
+than a heuristic judgment call:
+
+| Band | Gain range | Effort range | Worked example |
+|------|------------|---------------|-----------------|
+| P1 | 9–10 | 3–6 | Auth login-validation function at 62% coverage (external-service mocking needed) → gain 10, effort 4 → Priority 10 × (11 − 4) = 10 × 7 = 70 (strong candidate) |
+| P2 | 7–8 | 2–5 | Order-total calculation logic at 68% coverage → gain 8, effort 3 → Priority 8 × (11 − 3) = 8 × 8 = 64 (strong candidate) |
+| P3 | 4–6 | 2–4 | Date-formatting utility at 55% coverage → gain 5, effort 2 → Priority 5 × (11 − 2) = 5 × 9 = 45 (moderate) |
+| P4 | 1–3 | 1–3 | CLI help-text formatter at 40% coverage → gain 2, effort 1 → Priority 2 × (11 − 1) = 2 × 10 = 20 (below the floor — archived, never filed; low-criticality gaps often do not clear `V-PARETO-02`) |
+
+`effort` still reflects the actual work to close the gap (mocking depth, fixture setup,
+number of branches to cover) within the band's range — it is not band-derived like `gain`.
+Both fields remain 1–10, matching the hunter output contract (`worker-schemas.md` §
+Hunter, Finding shape).
+
+## No-runner degradation
+
+If step 1 detects **no test runner**, the wave degrades to a **logged no-op** — it is
+explicitly **not** a failure, and it is **not** an empty `CONFIRMED` findings list to be
+read as "coverage is fine." The wave note must say plainly that no runner was found and no
+coverage analysis ran.
+
+This distinction matters for the orchestrator's dry-wave counting: ADR-006's stop condition
+("3 consecutive waves filing zero issues → territory exhausted") is about *waves that ran
+and genuinely found nothing to file*. A degraded, non-running wave (no runner detected) must
+not be conflated with a dry wave — a repo that later adds a test runner should get a fresh
+`coverage` wave, not one that was already counted toward exhaustion by a runner-less no-op.
+
+## Scoring — V-PARETO-02 SSOT
+
+`Priority = Gain * (11 - Effort)`; a finding must score `>= 30` to be filed as an issue, and
+ready issues are sorted by Priority descending (`src/references/blackhole-vcodes.md`,
+`V-PARETO-02`). This is the **only** scoring formula for the `coverage` kind — no alternate
+or per-kind formula is introduced; the band-derived `gain` mapping above is an input
+semantic under the one formula (ADR-006 § Scoring model item 2), not a second formula. The
+calibration table anchors this kind's `gain`/`effort` inputs to the shared 1–10 scale
+(ADR-006 § Scoring model verdict: "the formula is sound and stays unchanged as the single
+SSOT").
+<!-- GENERATED by scripts/build.ts from src/references/hunt/coverage.md — do not hand-edit -->
