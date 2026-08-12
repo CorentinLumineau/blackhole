@@ -21,7 +21,12 @@ install specs and the PreToolUse `.blackhole/hook-events/` schema (split out, is
   "plan_path": "plans/issue-298.md",
   "track": "standard",
   "failing_checks": [],
-  "clarification_markers": 0
+  "clarification_markers": 0,
+  "reformulation": {
+    "understood": "What the planner understood the issue requires.",
+    "assumed": "Assumptions taken to proceed without live confirmation.",
+    "if_wrong": "What would change if an assumption is wrong — enough for an owner veto."
+  }
 }
 ```
 
@@ -32,18 +37,9 @@ install specs and the PreToolUse `.blackhole/hook-events/` schema (split out, is
 | `track` | `quick` \| `standard` \| `skip` \| `design` \| `brainstorm` | when `ready`, or when `blocked` and caller knows the track |
 | `failing_checks` | string[] | when `blocked` |
 | `clarification_markers` | number | when `ready` or `blocked` |
+| `reformulation` | object — `reformulation.understood`, `reformulation.assumed`, `reformulation.if_wrong` (each non-empty string) | when `status: ready` and `track` is `quick` or `standard` — async veto surface; orchestrator posts per `phase-plan.md` § Reformulation posting (`confidence-gates.md`); absent when `blocked`; exempt for `skip`/`design`/`brainstorm` |
 | `rulings_checked_at` | number | no — present only when the ledger was read |
-| `ruling_conflicts` | `ruling_conflict[]` | no — defaults to `[]`; required (possibly empty) when `rulings_checked_at` is present — see § Rulings ledger (read-input) below |
-
-```json
-{
-  "status": "ready",
-  "plan_path": ".blackhole/plans/issue-298.md",
-  "track": "skip",
-  "failing_checks": [],
-  "clarification_markers": 0
-}
-```
+| `ruling_conflicts` | `ruling_conflict[]` | no — defaults to `[]`; required (possibly empty) when `rulings_checked_at` is present — see § Rulings ledger (planner read-input) below |
 
 ```json
 {

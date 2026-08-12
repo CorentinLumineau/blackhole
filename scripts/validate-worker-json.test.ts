@@ -39,6 +39,12 @@ const makeBrainstormChildren = (count: number) =>
     effort: 3,
   }));
 
+const sampleReformulation = {
+  understood: 'What the planner understood the issue requires.',
+  assumed: 'Assumptions taken to proceed without live confirmation.',
+  if_wrong: 'What would change if an assumption is wrong.',
+};
+
 describe('validateWorker planner', () => {
   test('valid ready', () => expectValid('planner', 'planner-ready.json'));
   test('valid blocked', () => expectValid('planner', 'planner-blocked.json'));
@@ -51,6 +57,8 @@ describe('validateWorker planner', () => {
   test('invalid ready with design track', () =>
     expectInvalid('planner', 'planner-ready-invalid-design-track.json'));
   test('valid ready skip', () => expectValid('planner', 'planner-ready-skip.json'));
+  test('invalid ready missing reformulation on standard track', () =>
+    expectInvalid('planner', 'planner-ready-missing-reformulation.json'));
   test('valid blocked design', () => expectValid('planner', 'planner-blocked-design.json'));
   test('invalid blocked design missing plan_path', () =>
     expectInvalid('planner', 'planner-blocked-design-missing-plan-path.json'));
@@ -138,6 +146,7 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
       ruling_conflicts: [],
     });
@@ -151,6 +160,7 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
     });
     expect(errors.some((e) => e.includes('ruling_conflicts'))).toBe(true);
@@ -163,6 +173,7 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
       ruling_conflicts: [
         {
@@ -182,6 +193,7 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
       ruling_conflicts: [
         {
@@ -194,13 +206,14 @@ describe('validateWorker planner', () => {
     expect(errors.some((e) => e.includes('suggested_disposition'))).toBe(true);
   });
 
-  test('valid ready with neither rulings_checked_at nor ruling_conflicts (backward compatibility)', () => {
+  test('valid ready with neither rulings_checked_at nor ruling_conflicts', () => {
     const errors = validateWorker('planner', {
       status: 'ready',
       plan_path: '.blackhole/plans/issue-298.md',
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
     });
     expect(errors).toEqual([]);
   });
@@ -212,6 +225,7 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
       ruling_conflicts: 'not-an-array',
     });
@@ -225,6 +239,7 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
       ruling_conflicts: ['R-007'],
     });

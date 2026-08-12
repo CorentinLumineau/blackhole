@@ -452,9 +452,20 @@ instructions: |
     "plan_path": "plans/issue-298.md",
     "track": "standard",
     "failing_checks": [],
-    "clarification_markers": 0
+    "clarification_markers": 0,
+    "reformulation": {
+      "understood": "What the planner understood the issue requires.",
+      "assumed": "Assumptions taken to proceed without live confirmation.",
+      "if_wrong": "What would change in the plan or implementation if an assumption is wrong."
+    }
   }
   ```
+
+  On `status: ready` for `quick` or `standard` tracks, populate all three `reformulation.*`
+  strings (`reformulation.understood`, `reformulation.assumed`, `reformulation.if_wrong`) before
+  returning JSON — the orchestrator posts them as the async veto surface (`confidence-gates.md`,
+  `phase-plan.md` § Reformulation posting). Omit `reformulation` on `status: blocked` and on
+  `skip`, `design`, and `brainstorm` ready returns.
 
   When the rulings ledger was read (issue #422 — both fields optional, `worker-schemas.md` §
   Rulings ledger (read-input)):

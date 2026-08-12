@@ -17,6 +17,7 @@ import {
   pushEnumError,
   requireField,
 } from '../predicates.ts';
+import { validateReformulation } from '../../reformulation-surface.ts';
 import { validateArrayOf, validatePartialResult } from '../shared-validators.ts';
 
 // Issue #422 — ruling watermark + phase-gate re-validation. `R-NNN` is #417's stable per-ruling
@@ -143,6 +144,7 @@ function validatePlannerReadyFields(data: Record<string, unknown>, errors: strin
   }
   requireField(errors, data, 'clarification_markers', isNumber, 'number');
   validateRulingConflicts(data, errors);
+  validateReformulation(data, { status: 'ready', track: isString(data.track) ? data.track : undefined }, errors);
 }
 
 function validatePlannerBlockedDesignFields(data: Record<string, unknown>, errors: string[]): void {
@@ -172,6 +174,11 @@ function validatePlannerBlockedFields(data: Record<string, unknown>, errors: str
     }
   }
   validateRulingConflicts(data, errors);
+  validateReformulation(
+    data,
+    { status: 'blocked', track: isString(data.track) ? data.track : undefined },
+    errors,
+  );
 }
 
 export function validatePlanner(data: unknown): string[] {
