@@ -2,9 +2,8 @@
 
 Shared issue-body template and priority bands used by the orchestrator when it files a
 `CONFIRMED` hunt finding as a forge issue (ADR-006 § Orchestrator hunt dispatch). Every hunt
-kind (`quickwins.md`, `best-practices.md`, `coverage.md`, and the not-yet-in-scope
-`refactor`/`bug` kinds of #202) files through this one template — kinds do not each invent
-their own issue-body shape.
+kind in `kaizen.kinds` files through this one template — kinds do not each invent their own
+issue-body shape.
 
 ## Issue-body template
 
