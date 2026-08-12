@@ -15,7 +15,7 @@ Campaign protocol state (queue, ledger, plans) lives only under `.blackhole/` �
 
 ## Skill namespace
 
-**`blackhole`** — modes: `run`, `status`, `handle`, `plan`, `implement`, `review`, `campaign-audit`
+**`blackhole`** — modes: `run`, `status`, `handle`, `plan`, `implement`, `review`, `hunt [kind]`, `campaign-audit`
 
 Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/blackhole/SKILL.md`](.cursor/skills/blackhole/SKILL.md) (Cursor), or [`codex-skills/blackhole/SKILL.md`](codex-skills/blackhole/SKILL.md) (Codex).
 
@@ -30,7 +30,7 @@ Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/blackhole/SKIL
 | `implementer` | TDD implementation in isolated worktrees | Spawned by the orchestrator's Implement phase against an approved plan |
 | `reviewer` | PR quality and plan-conformance audit | Spawned by the orchestrator's Review phase against an open PR |
 | `investigator` | Evidence-gathering for router re-route checkpoints | Handle spawns `investigator` for `research` when `route.needs_research`, or `investigate` when `route.needs_investigation` |
-| `hunter` | Read-only kaizen improvement scanner (ADR-006) | Spawned for one hunt wave of one kind (`quickwins`, `best-practices`, `coverage`, `refactor`, `bug`) per spawn during a kaizen campaign |
+| `hunter` | Read-only kaizen improvement scanner (ADR-006) | Spawned for one hunt wave of one kind (`quickwins`, `best-practices`, `coverage`, `refactor`, `bug`, `retrospective`, `parity`, `ux-coherence`, `docs`, `backlog`, `ci`, `deps`, `perf`) per spawn during a kaizen campaign |
 
 ## Installation
 
