@@ -87,14 +87,14 @@ export function buildCreateArgsWithCampaignLabel(
   return args;
 }
 
-function resolveConfigPath(): string {
+export function resolveConfigPath(): string {
   if (process.env.CAMPAIGN_CONFIG) {
     return process.env.CAMPAIGN_CONFIG;
   }
   return path.join(process.cwd(), DEFAULT_CONFIG_PATH);
 }
 
-function loadConfig(): CampaignConfig {
+export function loadConfig(): CampaignConfig {
   const configPath = resolveConfigPath();
   return readJsonFile(configPath, configPath) as CampaignConfig;
 }
