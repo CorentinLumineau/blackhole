@@ -12,6 +12,7 @@
 - [ ] git -C <scratchpad>/wt-<issue> config --worktree push.default nothing (issue #516 — scoped to this worktree only; no bare `git push` can silently succeed here)
 - [ ] Branch Tracking Sweep clean before this wave's dispatch → orchestrator-dispatch.md § Branch Tracking Sweep (issue #516)
 - [ ] install dependencies in worktree (e.g. `npm install`, `bun install`, etc.)
+- [ ] Target-repo setup (existence-gated allowlist — first present wins; see § Target-repo setup below)
 - [ ] Spawn implementer worker (run_in_background: true)
 - [ ] Worker returns new_findings[] — orchestrator appends to ledger
 - [ ] Worker returns companion_repairs[] — orchestrator matches (vcode, file) against open/deferred V-ADA-01/V-ADA-05 ledger rows and sets fixed-in-pr (findings-ledger.md § Status transitions)
@@ -33,6 +34,22 @@ relative to the **main clone repo root**, not the worktree checkout.
   `<PLAN_CONTEXT>` (e.g. `/path/to/repo/.blackhole/plans/issue-11.md`).
 - Implementers MUST read the plan via that absolute path — never assume a
   relative `.blackhole/plans/` path resolves from the worktree cwd.
+
+## Target-repo setup at worktree creation
+
+After dependency install, before spawning the implementer — existence-gated steps in order (stop
+on first present; absence of all three is a no-op, e.g. blackhole self-host has no setup script):
+
+1. `./scripts/setup.sh` from the worktree root — max **120s**; non-zero exit → worker spawn
+   blocked, `notes: setup-failed`.
+2. Else `bun run setup` when `package.json` defines `scripts.setup` — same timeout and failure
+   semantics.
+3. Else `bun run postinstall` when `package.json` defines `scripts.postinstall` — same timeout
+   and failure semantics.
+
+**Allowlist only** — no arbitrary script paths. On timeout → `status: blocked`, `notes:
+setup-timeout`. **Log truncation**: pass only exit code and the last 20 lines of setup output to
+campaign notes; redact secret-shaped lines before logging (`V-SEC`).
 
 ## Git operations must not depend on inherited cwd (issue #516)
 

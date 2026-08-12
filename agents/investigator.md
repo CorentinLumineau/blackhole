@@ -32,7 +32,9 @@ pattern, not duplicated here), never via the `Write`/`Edit` tool.
 
 Root-cause hunting via a ranked-hypothesis loop:
 
-- Produce a minimum of 2–3 ranked hypotheses, each with evidence-for and evidence-against.
+- Produce a minimum of **3** ranked hypotheses, each with evidence-for and evidence-against.
+- Before testing hypothesis #1, answer whether it leads on **evidence strength** or
+  **accessibility/convenience**; if accessibility/convenience, demote and re-rank.
 - Test the cheapest hypothesis first.
 - Loop until a hypothesis is confirmed or the ranked set is exhausted. On full refutation of all
   hypotheses, re-examine your assumptions and generate a new ranked set rather than dead-ending.

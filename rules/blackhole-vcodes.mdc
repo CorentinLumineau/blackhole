@@ -19,7 +19,9 @@ longer definitions (token cost, drift). Persist every finding to
 | V-DRY-01 | No >10-line duplication | BLOCK | reviewer.md §3 |
 | V-DRY-02/03 | 3–10-line duplication; repeated magic values | WARN | reviewer.md §3 (V-DRY-02, V-DRY-03 — SOLID & DRY Compliance) |
 | V-KISS-01 / V-YAGNI-01 | No over-abstraction; no speculative features | BLOCK | reviewer.md §12 (Suggestion Proportionality Gate) |
+| V-KISS-02 | Deep nesting (>4 levels) in changed functions | WARN | reviewer.md §3 (Anti-Slop Audit) |
 | V-KISS-03 | No empty scaffolding | WARN | reviewer.md §3 (Anti-Slop Audit) |
+| V-YAGNI-02 | Premature optimization without measured hot-path evidence | WARN | reviewer.md §3 (Anti-Slop Audit) |
 | V-YAGNI-03 | No single-consumer abstractions | WARN | reviewer.md §3 (Anti-Slop Audit) |
 | V-DRY-04 | No copy-paste templates with trivial renames | WARN | reviewer.md §3 (Anti-Slop Audit) |
 | V-PAT-01 | God Object — class/module with 7+ responsibilities or >300 lines (see `hunt/best-practices.md` SRP heuristic, `hunt/refactor.md` god-module cluster) | BLOCK | reviewer.md §3 (Design Pattern Review) |
@@ -48,6 +50,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-RULE-01 | Diff violates a recorded active-status owner ruling in product-principles.md (documentation/reference/) | BLOCK | reviewer.md §19 (Owner-Ruling Violation Audit) |
 | V-ADA-01 | `ARCHITECTURE.md` absent at project root/package (remedy: create from template) | BLOCK | reviewer.md §10 (Companion-File Audit) |
 | V-ADA-02 | `documentation/decisions/INDEX.md` missing an Accepted ADR added in this diff (remedy: append INDEX row) | WARN | reviewer.md §10 (Companion-File Audit) |
+| V-ADA-08 | Superseded ADR INDEX lifecycle — INDEX `status` and supersession citation | WARN | scripts/checks/adr-status.check.ts |
 | V-ADA-03 | `DESIGN.md` absent when diff touches a detected frontend/UI project (remedy: flag) | WARN | reviewer.md §10 (Companion-File Audit) |
 | V-ADA-05/06/07 | `AGENTS.md` absent at root, new monorepo package missing `AGENTS.md`, or package `AGENTS.md` unindexed at root (remedy: flag) | WARN | reviewer.md §10 (Companion-File Audit) |
 | V-UX-01 | Information overload on a UI-touching diff — flat field dumps, >~7-column dumps with no grouping/drill-down, everything-expanded-by-default, buried primary info, or deprecated data at equal prominence, instead of tiered at-a-glance/summary/detail/raw disclosure | WARN | reviewer.md §14 (Information-Hierarchy Audit) |
@@ -59,6 +62,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-DOC-05/06 | Rationale duplicated across a definition/interface/call-site/test (four copies drift four ways — the canonical site is where the concept is defined; other sites must reference it by symbol name, not restate it), or an issue/PR number, "found by review of X", or change-history prose embedded in a source comment (a regression test may carry its issue number in the **function name** only) | WARN | reviewer.md §26 (Comment Discipline Audit) |
 | V-DOC-07 | Comment-to-code ratio advisory — added comment lines exceed ~40% of a diff's added lines; informational only, never escalates past WARN and never blocks | WARN | reviewer.md §26 (Comment Discipline Audit) |
 | V-CONFIG-01 | New config/env keys follow established naming, registered | WARN | reviewer.md §5 (Integration Coherence — Config/env key naming) |
+| V-CONFIG-02 | New `.blackhole/config.json` keys registered in config-template.md | WARN | scripts/checks/config-registration.check.ts |
 | V-SCOPE-01 | No refactoring untouched code | WARN | reviewer.md §12 (Suggestion Proportionality Gate) |
 | V-SCOPE-02 | Touch-Paths violation — files modified outside plan scope | WARN | reviewer.md §1 (5-Field Contract & Plan Compliance) |
 | V-SCOPE-03 | Missing/underestimated blast-radius — a Standard-track plan with 3+ affected consumers lacks a `## Dependency Blast-Radius` section | WARN | reviewer.md §1 (5-Field Contract & Plan Compliance) |
