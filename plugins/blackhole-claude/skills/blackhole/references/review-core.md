@@ -81,6 +81,14 @@ Before ledger append, deduplicate on `(vcode, file, line, issue_ref)` per `findi
 
 `review-aggregate.ts` performs exact-key dedup with severity merge (`BLOCK` > `WARN` > `NOTE`/`INFO`); orchestrator performs the same key check at write time.
 
+**Recheck exclusion (issue #485)**: a same-key collision is **not** merged when the prior
+finding's ledger `id` appears in the reviewer's `recheck[]` with `verdict: fixed` — that prior
+finding is excluded from the collision set entirely before the exact-key dedup above runs, so a
+new finding sharing its key is always a fresh row, never a silent merge that discards its
+summary. This closes the failure mode where a genuinely distinct regression at the same
+`file:line` as an already-fixed prior finding had its description dropped in favor of the stale,
+already-fixed text.
+
 ## Review iteration budget
 
 Tracked on queue entry as `review_iteration` (integer, default 0).
@@ -95,6 +103,10 @@ Increment `review_iteration` after each aggregate run that returns `changes_requ
 
 Reset `review_iteration` to 0 when PR merges or issue returns to plan phase.
 
+CI-genuine failures diagnosed per `ci-diagnosis.md` (after transient retries are
+exhausted) consume the same `review_iteration` counter and escalation table above — not a
+separate CI-fix budget.
+
 ## Security-mode review (ADR-004 step 8)
 
 1. **Trigger**: read `route.security_review_required` from the issue's `queue.json` entry
@@ -106,20 +118,103 @@ Reset `review_iteration` to 0 when PR merges or issue returns to plan phase.
    threshold, treat as `true` (cautious default, matches `orchestrator-delegation.md`'s own stated
    note verbatim).
 3. **Mechanism**: single `reviewer` spawn — when the gate resolves `true`, the Reviewer
-   prompt requirements (below) gain an additional block: a diff-scoped exploitability
-   audit, self-contained instructions (not a vendored import), scoped to the PR's changed
-   lines only.
+   prompt requirements (below) gain an additional block: a diff-scoped attack-signature
+   scan citing `src/references/security-attack-signatures.md` by repo-relative path.
+   Apply only patterns whose matching constructs appear on changed lines in the PR diff —
+   do not restate signature rows inline in the prompt.
 4. **Exploitability gate (`V-SEC-06`)**: cross-reference only — see
    `blackhole-vcodes.md`'s existing row. Every security finding must carry a concrete
    attack scenario (who/what/result); findings without one are downgraded to
    `NOTE`/INFO-equivalent, never `BLOCK`.
-5. **Adversarial re-verification (`V-SEC-07`)**: the same single spawn's prompt instructs
-   a second, self-adversarial check per finding before inclusion — attempt to disprove the
-   exploit path; default to reject (omit or downgrade) if not demonstrable.
+5. **Adversarial re-verification (`V-SEC-07`)**: the primary spawn's prompt still
+   instructs a self-adversarial first pass per finding before inclusion (attempt to
+   disprove the exploit path; default to reject — omit or downgrade — if not
+   demonstrable). This alone does not satisfy `V-SEC-07`'s literal wording ("each
+   security finding **independently** re-checked") — a reviewer grading its own
+   homework is not independent re-verification. § Independent security verification
+   below is the structural mechanism that closes that gap; this step's self-check is a
+   cheap first filter that runs regardless, not a substitute for it.
 6. **Merge-gate validator (`V-SEC-08`)**: before merge on a security-mode PR, the
    orchestrator confirms every `V-SEC-06`/`V-SEC-07`-tagged finding in the reviewer's
    output carries a populated attack-scenario field — documented manual gate, mirroring
    `V-GIT-01`'s own script-free treatment exactly.
+
+## Independent security verification (`V-SEC-07`, issue #439)
+
+Structural mechanism that makes `V-SEC-07`'s "independently re-checked" promise literally
+true, rather than the primary spawn's own self-adversarial check (§ Security-mode review
+step 5) grading its own homework. Scoped narrowly — see ADR-003, unchanged: this is a
+second call of the existing `reviewer` component, not a new agent role or a reinstated
+LLM aggregation hop.
+
+1. **Trigger**: same gate as § Security-mode review step 1/2 (`route.security_review_required`
+   resolved `true`, including the confidence-gate cautious default) — no new detection
+   logic. When the trigger does not fire, no verification spawn runs; the pipeline is
+   unchanged from before this section existed.
+2. **Scope**: fires only when the primary spawn's returned `findings[]` includes at least
+   one `V-SEC-*`-vcode entry. Zero `V-SEC-*` findings from the primary pass → no
+   verification spawn (nothing to independently re-check).
+3. **Id-stamping (orchestrator step, before spawn)**: the primary's `findings[]` do not yet
+   carry a ledger `id` at review time (ledger `F-NNNNN` ids are assigned at append, after
+   aggregation) — the recheck mechanism's own ids only exist because `recheck[]` matches
+   against *prior*, already-ledgered findings. Here there is no prior ledger row yet, so
+   the orchestrator stamps each `V-SEC-*` finding in the primary's output with a
+   review-pass-scoped temporary `id` (e.g. `V1`, `V2`, ... — any stable, unique string;
+   the exact scheme does not matter as long as it is unique within this pass) before
+   including that finding in the verification spawn's prompt. These temporary ids exist
+   only to let the verification spawn's `verification[]` entries reference back to the
+   findings they judge — they are discarded once the eventual ledger append assigns
+   permanent `F-NNNNN` ids, and never collide with those (disjoint namespaces, one
+   review-pass-scoped and throwaway, one ledger-scoped and durable).
+4. **Mechanism**: after the primary `reviewer` spawn returns and step 2's scope check
+   passes, spawn a **second, independent `reviewer` instance** — same agent identity, no
+   new role (`V-INT-02`). Its prompt carries only the stamped `V-SEC-*` findings
+   (`{finding_id, vcode, severity, file, line, summary}` — not the full diff, not the
+   primary's reasoning trace, not the rest of the primary's `findings[]`) plus an
+   instruction to attempt to disprove each one (reproduce or refute the attack scenario).
+   Process independence — a separate context window, seeing only the narrowed finding
+   list — is what "independently re-checked" means here, not organizational independence
+   (a different agent identity, which would cost the same without a clearer benefit).
+5. **Model tier**: `standard` (sonnet) — explicitly **not** the `premium` tier
+   `model-routing.md`'s `route.security_review_required: true` bump row gives the primary
+   security-mode `reviewer` spawn. That bump row governs the primary spawn (an
+   open-ended exploitability audit over the full diff); the verification spawn
+   documented here is a distinct, second dispatch this section governs directly, not a
+   second instance of the generic route-derived `reviewer` bump. Disproving a short,
+   already-scoped list of named findings is narrower and more mechanical than the
+   primary's audit, so cheapest-capable discipline argues for `standard` here — a
+   deliberate divergence, not an oversight, and the authoritative statement of this
+   spawn's tier (`model-routing.md` is unaffected — it continues to describe only the
+   primary spawn's tier resolution).
+6. **Output**: the verification spawn returns the same `ReviewerInput`-shaped envelope
+   every `reviewer` dispatch does, with `findings: []` in the ordinary case (it is not
+   running a full audit) and a `verification[]` array — one entry per stamped finding it
+   was given — `{finding_id, verdict: "confirmed" | "refuted", evidence}`
+   (`worker-schemas.md` § Reviewer). This is a **sibling** field to `recheck[]`, not a
+   repurposing of it — `recheck[]` already has a fixed meaning tied to fix-verification
+   (§ Recheck mode above) and stays untouched by this mechanism. In the rare case the
+   verification spawn's own narrow scan surfaces a genuinely new finding of its own
+   (not one of the stamped findings it was asked to judge), it reports that via the
+   ordinary `findings[]` array — merged into aggregation the same way any other
+   already-known finding is, via `--prior-file` (§ Aggregate invocation below), so no new
+   aggregation code is needed for that rare case (`dedupeFindings`'s existing
+   severity-max merge already composes across chained `priorFindings` inputs).
+7. **Aggregation**: the orchestrator passes the verification spawn's `verification[]`
+   array to `scripts/review-aggregate.ts` via `--verification-file` (§ Aggregate
+   invocation below). `aggregateReview`'s exported `applyVerificationDowngrades` runs
+   before `applyConfidenceGate`/`dedupeFindings`: a `refuted` verdict downgrades its
+   matching `BLOCK` finding to `WARN` (never lower, and never applied to a non-`BLOCK`
+   finding); a `confirmed` verdict, or a `finding_id` with no match among the primary's
+   stamped findings, is a no-op. This mirrors — in mechanism only, not effect — how
+   `resolveRecheckExclusions` already special-cases a named `finding_id` before the
+   general dedup path: recheck *excludes* a prior finding entirely (because "fixed" means
+   the code no longer has the defect), verification *downgrades* rather than excludes
+   (because "could not independently reproduce" is weaker evidence than "confirmed fixed
+   by a later commit" — the finding stays visible as a paper trail instead of vanishing).
+8. **What this does not do**: it does not run on non-security-mode PRs, does not touch
+   Standard/Design-track PRs without a security finding, does not reinstate a
+   synthesizer, and does not supersede ADR-003 — see that ADR's own Revisit condition,
+   unchanged by this section (§ Revisit condition below).
 
 ## Skip-PR compensating control (ADR-004 step 8)
 
@@ -162,7 +257,13 @@ already-named prior findings, not a fresh implementation.
    existing severity → action mapping and LGTM gate apply unchanged.
 6. **LGTM interaction**: recheck mode's LGTM condition is unchanged from the definition above —
    it still requires all `recheck` entries `verdict: fixed` AND zero unresolved `BLOCK` rows in
-   `findings`, not a separate weaker gate.
+   `findings`, not a separate weaker gate. `review-aggregate.ts` now excludes a
+   `recheck`-resolved prior finding (§ Dedup key, issue #485) from `blockers_count` before this
+   condition is evaluated — this is *why* "zero unresolved BLOCK rows in `findings`" is met once
+   every named finding is genuinely fixed, not despite it. When a `recheck[]` `finding_id` cannot
+   be linked to any prior finding's ledger `id`, the linkage failure is surfaced in
+   `unresolved_recheck` (`worker-schemas.md` § Review aggregate) and `lgtm` is forced `false` —
+   never a silent pass.
 7. **Independent spec-drift check (GAP-2 remedy, every recheck pass)**: in addition to the
    fix-commit-scoped verification above, the reviewer performs one lightweight, full-diff
    comparison of the PR's current cumulative state against the plan's Objective + Task
@@ -186,7 +287,8 @@ Every `reviewer` delegation MUST include:
 3. Full V-code audit checklist from `plugins/blackhole-claude/rules/blackhole-vcodes.md`
 4. Output format per `worker-schemas.md` reviewer contract
 5. When Security-mode review's trigger (above) resolves `true`, the diff-scoped
-   exploitability audit instructions (§ Security-mode review, step 3).
+   attack-signature scan per `src/references/security-attack-signatures.md` (§ Security-mode
+   review, step 3) — cite by path; do not restate patterns inline.
 
 ## Aggregate invocation
 
@@ -197,8 +299,19 @@ bun run scripts/review-aggregate.ts \
   --reviewer-file <path> \
   --issue-ref <N> \
   [--pr-ref <P>] \
-  [--prior-file <ledger-rows.json>]
+  [--prior-file <ledger-rows.json>] \
+  [--verification-file <verification-entries.json>]
 ```
+
+`--prior-file` rows must include each finding's ledger `id` (issue #485) — without it, a
+`recheck[]` `verdict: fixed` entry naming that finding cannot resolve, and it surfaces in
+`unresolved_recheck` (fail-loud) instead of silently applying the § Dedup key recheck exclusion.
+
+`--verification-file` (issue #439, § Independent security verification above) is a plain JSON
+array of `{finding_id, verdict, evidence}` — the verification spawn's own `verification[]`
+output, not a ledger row shape. Present only when the security-mode verification spawn ran;
+absent for every other review pass, with no behavior change (`applyVerificationDowngrades` is a
+no-op on an empty/absent array).
 
 Output schema: `worker-schemas.md` § Review aggregate.
 

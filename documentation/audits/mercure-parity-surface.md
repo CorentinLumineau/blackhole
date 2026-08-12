@@ -3,14 +3,17 @@ type: research
 status: current
 review_trigger: "on ADR acceptance"
 created: 2026-07-20
-last_updated: 2026-07-20
+last_updated: 2026-08-06
 related:
   - documentation/brainstorms/mercure-parity-program.md
   - documentation/audits/autonomous-workflow-parity.md
   - documentation/audits/mercure-companion-files-gap-analysis.md
   - documentation/audits/mercure-sync.md
+  - documentation/audits/mercure-parity-matrix.md
+  - documentation/audits/documentation-framework-alignment.md
   - documentation/decisions/ADR-011-implement-time-accretion-control.md
   - documentation/decisions/ADR-012-shared-artifact-substrate.md
+  - documentation/decisions/ADR-013-mercure-parity-program.md
 ---
 
 # Research: Mercure Parity Surface — Evidence Base
@@ -33,6 +36,15 @@ machinery (no V-THREAT/V-PERF at all), spec-drift-at-merge, delivery-boundary ha
 durability across campaign generations, and **~65 mercure skill domains never swept** by any sync
 run. Recommended matrix granularity: **mechanism-cluster rows (~70)**, not per-V-code (96, drift
 burden) nor per-domain (too coarse to verify).
+
+> **Sweep 2 (2026-08-06) — GAP-7 closed.** The "~65 unswept domains" above are no longer unswept.
+> A nine-way parallel sweep against mercure v9.11.0 classified **273 mechanisms** across every
+> surface — 79 skills, 11 agents, 19 rules + 11 rule-references, 14 hooks, `scripts/`,
+> `servers/mcp-context/`, `templates/` — with each gap claim independently re-checked by an
+> adversarial verifier. Result: **43% ported, 18% partial, 19% intentionally excluded, 20% gap**.
+> The headline is that the residual gaps are not quality-enforcement gaps (blackhole matches or
+> exceeds mercure on 47 of 91 rule mechanisms) but **unattended-safety and unattended-recovery**
+> gaps. Full results: § 5 below. GAP-6 resolved to `partial` with a named residual: § 5d.
 
 ## 1. Mercure Enforcement Surface (inventory)
 
@@ -162,8 +174,8 @@ x-reviewer, x-tester, x-debugger, x-explorer, x-refactorer, x-doc-writer, x-depl
 | GAP-3 | **Delivery-boundary hardening** (G7): Verification Evidence Gate covers test/build claims, not "branch pushed + PR open + worktree clean" | parity audit G7/R6 | MEDIUM |
 | GAP-4 | **Ledger never-drop across campaign generations** (G8): consumer-repo failure mode (16 unpersisted review-aggregate JSONs) | parity audit G8 | MEDIUM |
 | GAP-5 | **Cross-issue retrospective** (G5): `retrospective` hunt kind may be the remedy — unconfirmed; no ADR closes G5 | parity audit G5; hunt/retrospective.md | LOW-MEDIUM |
-| GAP-6 | **x-security-audit exploitability-methodology depth** vs blackhole V-SEC-06..10 — unconfirmed equivalence | mercure-sync.md next-pick suggestion | UNKNOWN |
-| GAP-7 | **~65 mercure skill domains never swept** — unknown-unknowns (security-*, delivery-*, data-*, quality-observability, operations-*, code-*, compliance-*, vcs-*) | mercure-sync.md coverage table | UNKNOWN |
+| GAP-6 | ~~x-security-audit exploitability-methodology depth vs blackhole V-SEC-06..10 — unconfirmed~~ **RESOLVED 2026-08-06 → `partial`**: the meta-methodology is ported *and extended* (V-SEC-06..10). Named residual: every code fires only inside diff-scoped PR review — no proactive full-codebase sweep, no cross-run recall state; attack-signature layer landed (`src/references/security-attack-signatures.md`, #458) | § 5d | ~~UNKNOWN~~ MEDIUM |
+| GAP-7 | ~~~65 mercure skill domains never swept — unknown-unknowns~~ **CLOSED 2026-08-06** — superseded by the § 5 sweep: all named families swept (`security-*` 5, `delivery-*` 3, `data-*` 2, `quality-*` 3, `operations-*` 2, `code-*` 4, `compliance-*` 1, `vcs-*` 3, `meta-*` 3, `diagram-*` 1) plus surfaces GAP-7 did not name (14 hooks, the `mcp-context` server, `scripts/`, `templates/`) | § 5 | ~~UNKNOWN~~ CLOSED |
 | GAP-8 | **Sprint Contract / machine-verifiable acceptance criteria**: mercure Plan Check 1 BLOCKING + x-implement step 17 verification; blackhole Standard track has Sprint Contract but no BLOCKING acceptance-criteria gate documented at plan time | agent B §1 vs agent C planner summary | MEDIUM (verify first) |
 | GAP-9 | **V-ASSET family** (agent-asset drift/ripple): blackhole relies on `verify.ts` checks + ground-truth SSOT; no per-diff V-ASSET audit | agent A table; agent C refs | LOW (partially N/A — evaluate) |
 | GAP-10 | **Consumer-repo artifact breadth**: runbooks, investigations, assessments, reviews folders — blackhole's artifact-contract covers route-artifacts + decisions + reference; full 13-folder taxonomy not adopted | agent B §6 vs artifact-contract.md | MEDIUM (D1 input) |
@@ -219,6 +231,178 @@ rather than a standalone ADR.
 3. **Verify-before-build** on GAP-5/6/8/9 rows — each has a plausible existing remedy; confirm
    status before filing implementation issues (V-HUNT-01 discipline applies).
 
+## 5. Sweep 2 — full-surface classification (2026-08-06)
+
+Nine parallel read-only sweeps against mercure **v9.11.0** (`~/Documents/Git/ai/mercure/mercure-plugin`),
+each gap/partial claim re-checked by an independent adversarial verifier instructed to refute it.
+273 mechanisms classified. This section is the itemized successor to GAP-7.
+
+**Judgment criterion.** Mercure is an interactive, human-driven plugin; blackhole is an autonomous
+backlog-clearing engine with on-need HITL. "Mercure has X, blackhole does not" is therefore not
+automatically a gap — § 5e records 53 mechanisms as *decisions*, not oversights.
+
+### 5a. Coverage by surface
+
+| Surface | mechanisms | ported | partial | excluded | gap |
+|---|---:|---:|---:|---:|---:|
+| APEX core skills (x-analyze/plan/implement/review/review-loop/fix/refactor/troubleshoot) | 47 | 19 | 11 | 8 | 9 |
+| Discovery / design / meta skills | 21 | 6 | 3 | 8 | 4 |
+| Forge-git skills (git-issue/pr/ci/commit/cleanup/release) | 21 | 9 | 3 | 3 | 6 |
+| Infra / behavioral skills (headless-runner, interview, error-recovery, initiative) | 19 | 10 | 3 | 5 | 1 |
+| Domain knowledge packs (`code-*`, `data-*`, `security-*`, `vcs-*`, `meta-*`, …) | 23 | 5 | 5 | 9 | 4 |
+| Agent fleet (11 mercure vs 8 blackhole) | 15 | 7 | 2 | 2 | 4 |
+| `rules/` + `rules/references/` (V-code SSOT, behavioral rules) | 91 | 47 | 14 | 13 | 17 |
+| `hooks/` (14 `.js` + `hooks.json`) | 23 | 11 | 3 | 4 | 5 |
+| `scripts/` + `servers/mcp-context/` + `templates/` | 13 | 4 | 4 | 1 | 4 |
+| **Total** | **273** | **118 (43%)** | **48 (18%)** | **53 (19%)** | **54 (20%)** |
+
+54 raw gap claims deduplicate to **38 distinct gaps**; 26 clear the `V-PARETO-02` floor
+(`Priority = Gain × (11 − Effort) ≥ 30`).
+
+### 5b. Confirmed gaps — filed slate
+
+Gain: north-star `high`→8, `medium`→6, `low`→3. Effort: xs=1, s=3, m=5, l=8, xl=10.
+
+| Pri | Gap | Evidence | Filed |
+|---:|---|---|---|
+| 64 | **No PreToolUse safety gate on an unattended worker.** Neither plugin target ships a `hooks.json`; an implementer holds full Bash/Write for hours with zero interception on `rm -rf`, `curl\|sh`, `mkfs`, or writes to `.env`/`*.pem`/system paths | mercure `hooks/validate-bash-command.js`, `validate-file-changes.js`, `hooks.json:30-50`; blackhole: verified absent under `plugins/*` and `.claude-plugin/` | #447 |
+| 60 | **No sensitive-file exclusion before staging.** `V-SEC-03` scans secrets *in code at review time*; nothing stops a worker `git add`-ing a stray `.env` it created inside an approved Touch-Path | mercure `git-commit/references/grouping-rules.md § Sensitive File Patterns` | #448 |
+| 56 | **No comment-discipline audit.** No check for rationale duplicated across definition/interface/call-site/test, issue-number archaeology in source, or comment-to-code ratio. Many independent worker sessions, none aware of the others' comment style | mercure `rules/references/comment-discipline.md`, V-DOC-05/06/07. Needs fresh codes — blackhole's `V-DOC-05` slot is occupied (see #441) | #449 |
+| 48 | **No rebase / merge-conflict protocol.** `grep -ri rebase src/` returns zero hits; `phase-loop.md` runs `gh pr merge --squash` directly, so a real conflict falls into the generic Permanent-error path and stalls that issue indefinitely. Parallel waves against a moving base make this recurring | mercure `git-ci/references/mode-resolve.md § B` | #450 |
+| 48 | **No CI-failure diagnosis.** `merge-gate.md:21-29` is a bare `gh pr checks` poll; `phase-loop.md` retries two named transient classes then reports-and-skips. Red CI is the most common autonomous blocker and has no self-diagnosis path | mercure `git-ci/mode-resolve.md § A.1-A.5`; `mcp-context` `get_failing_step_logs`, `list_failing_jobs` | #451 |
+| 48 | **No backlog-hygiene sweep.** Blackhole dedups issues against its own queue, never two open issues against each other. All 8 hunt kinds scan **code**; none scans the **backlog** — a structural omission for a "cleaner backlog" north star | mercure `git-issue/references/mode-triage.md` Phases 2-4 | #452 |
+| 48 | **Companion-file findings are never repaired.** V-ADA is WARN-only from a read-only reviewer; the only Write-capable agent has no `template`/auto-repair path. A warning nobody reads is a no-op | mercure `x-implement/references/companion-file-sync.md` | #453 |
+| 48 | **investigator cannot escalate.** implementer's Bugfix Gate emits `escalation_trigger: failed_attempts` to drive `model-routing.md`'s tier bump; investigator's return schema has no equivalent, so a hard investigation loops at economy tier | mercure `x-debugger.md:283-287` | #454 |
+| 48 | **V-SOLID-02/04/05 absent** (OCP/ISP/DIP). Blackhole ships `V-SOLID-01/03` only; OCP and DIP are HIGH/BLOCK upstream, and modify-instead-of-extend is a recurring pattern in autonomous churn | mercure `v-codes-quality.md:8-11`; confirms PM-001's `adapted` | #455 |
+| 48 | **Confidence-gate reformulation is declared but unwired.** `confidence-gates.md:62-65` justifies skipping live confirmation by asserting the reformulation is posted as "the asynchronous veto surface" — no `create_comment` exists on that path and no planner `status: ready` schema carries the content | mercure `interview/references/reformulation-templates.md` | #456 |
+| 48 | **Regression detection is coverage-delta only.** `V-TEST-09` is fully ported and blocking, but no reviewer section detects newly-added `.skip()`/`@Disabled`, removed assertions, or weakened validation | mercure regression checklist | #457 |
+| 48 | ~~**No attack-signature layer.**~~ **Attack-signature layer landed** (`src/references/security-attack-signatures.md`, #458). Residual: proactive full-codebase sweep and cross-run recall state remain open | mercure `security-owasp`; GAP-6 signature residual closed | #458 (closed) |
+| 48 | **Plan quality gate is 2-of-8.** Only `ac_mapping` and Codebase Conventions block. Absent entirely: critical-file existence (a Glob check), dependency completeness, risk-mitigation concreteness (vague-language flag), boundary-condition coverage | mercure `x-plan` 8-check gate | #459 |
+| ~30 | **Batched `xs` completion sweep** (9 items): plan-staleness advisory (`plan_base_commit` stamped but never consumed), anchoring-bias self-check, `V-CONFIG-02` registration, `V-ADA-08` archive lifecycle, ADR numbering-collision detection, ADR authoring template, run the target repo's setup script at worktree creation, hypothesis floor 2→3, `V-KISS-02`/`V-YAGNI-02` | various | #460 |
+
+**Held, above the line but not filed** — economy-tier model routing (36: planner pre-discovery
+sub-call + reviewer quick-scan for `size:xs`); dependency freshness/vulnerability gate (36); EDD
+for generative output (36); UX accessibility/axe-core hunt (36); pre-plan security domain in
+`analyze` (36); library-selection external-evidence grounding (36); V-code restatement conformance
+(36); gitleaks + GPG policy (36); Edge Cases plan section (PM-048, 36); V-ARCH-01/02 (PM-013, 32).
+Cut line is 36 rather than 30 because the live backlog would otherwise exceed the point at which
+`parallel_max` scheduling compounds with the duplicate-detection gap this sweep just found.
+
+**Not filed, deliberately** — doc-tree health signal is issue #442; `assessments/`/`runbooks/`
+folders are `documentation-framework-alignment.md` § 8's explicit create-on-first-write deferral;
+`documentation/investigations/` (PM-055) was **refuted**, not a gap.
+
+**Recommend re-scoping before the next slate** — the proactive full-codebase security hunt scores
+24 at effort `l`, but scoped to reuse the existing hunt-wave machinery it lands at 48 and closes
+GAP-6 outright.
+
+### 5c. Partially ported — named residuals
+
+| Pri | Mechanism | What is missing on the blackhole side |
+|---:|---|---|
+| 48 | Forge-data trust boundary on the **routing** surface | `router.md` has **zero** `UNTRUSTED-FORGE-DATA` fences yet derives the whole `route{}` object — feeding the confidence kernel and `autonomy.*` — from issue title/body/labels. Issue #345 is merged and the fence reached 5 other files; **router.md was missed** (verified 2026-08-06). Reopen or file follow-up (PM-084) |
+| 36 | Pre-commit secret scanning + commit provenance | No gitleaks-equivalent pre-stage content scan; no GPG signing policy for worker commits. Both matter more when commits are never eyeballed |
+| 36 | V-code restatement conformance | `ground-truth.check.ts` checks row count on the central table; nothing checks whether an agent's hand-restated subset still matches the SSOT. This is the unguarded cost of the deliberate manual-restatement choice |
+| 36 | UX hunt — technical accessibility axis | Structural/product coherence is real (#421, 106 verified defects); automated WCAG/axe-core auditing and Lighthouse scoring have no counterpart |
+| 36 | Pre-plan `analyze` domains | 3 of mercure's 5. No security domain and no proactive SOLID/quality pass — both run reactively at review time only |
+| 36 | Library-selection evidence grounding | `design-rubric.md` has the trade-off scoring shape; nothing fetches README/adoption/download signal, so numbers feeding a BLOCK-adjacent decision are unsourced |
+| 30 | AskQuestion payload content contract | Triggers fully specified (#346 merged); Interview-Gate What/Where/How/Scope dimensions still not itemized in the payload (PM-083) |
+| 30 | Hypothesis floor | investigator says "2-3 ranked hypotheses"; mercure's hard floor is 3. A floor of 2 is a weaker bar against the exact failure both mechanisms exist to prevent |
+| 30 | Conventional-commit format for worker commits | `implementer.md:83` enforces `Closes #N` only; zero `type(scope)` enforcement anywhere in agent instructions. The repo follows it by human habit, nothing in the automation does |
+| 30 | Pre-commit coherence gate | `scripts/verify.ts` runs in CI only — a coherence failure is caught one round-trip late |
+| ≤24 | post-edit format/typecheck feedback timing; cross-agent V-code ownership matrix; doc *structure* completeness; V-PARETO-03; V-WORKTREE-02; 3-tier spec-violation severity; 70/20/10 pyramid; coupling metrics; non-Claude model map; forge response caching | Below the filing floor; documented for the matrix |
+
+**Two partial claims were refuted and should be recorded as ported**: `x-refactorer` zero-regression
+(`implementer.md:188-201` `refactor-strict` is *per-step* baseline/test/`git reset --hard`, finer
+than mercure's session-level guarantee) and the Hard Choice Protocol (PM-068's `covered` beats
+PM-025's `adapted` — the unconditional Reuse Check Gate covers the intent in every execution mode).
+
+### 5d. GAP-6 resolution
+
+`V-SEC-06/07/08/09/10` confirm the exploitability gate, adversarial re-verification and structured
+findings validation are ported **and extended** beyond mercure. The residual is precise: every one
+of them fires **only inside diff-scoped PR review**. There is no proactive full-codebase sweep
+(unlike bug/refactor/coverage hunts) and no cross-run recall state. The CWE/attack-signature
+reference layer landed in `src/references/security-attack-signatures.md` (#458) — diff-scoped
+grep patterns cited by security-mode review, with `V-SEC-06` unchanged. GAP-6 moves `UNKNOWN` →
+`partial` with two named residuals (proactive sweep, cross-run recall).
+
+### 5e. Intentionally excluded — 53 mechanisms
+
+Recorded as **decisions**, so the question stops recurring.
+
+- **Live-human-in-a-chat-turn UX (16).** `x-ask`, `x-help`, `x-prompt`, `mode-explain`, `mode-debug`,
+  scope-choice prompts, `EnterPlanMode`, the 10-rule Output Style, `efficient-output`, Register
+  Awareness, Design Challenge Protocol, Steelmanning, interview research-loop, risk-tier
+  skip-friction, Task materialization, statusline install. *Each serves a human reading or typing
+  in a live session; blackhole's only human surface is an infrequent async blocker message.*
+- **Granularity mismatch — the unit of work is the issue (7).** Focus Gate, Team orchestration,
+  plan orchestration-strategy, 5-dimensional review scoring, cross-agent synthesis, two-agent PR
+  review split, merge-strategy selection. *One worker per issue, always worktree-isolated, always
+  squash-merged; cross-issue parallelism is owned by `queue-dag.md`. The reviewer split is ADR-003's
+  documented deferral with a stated revisit condition (tracked as #439).*
+- **Serves a need this architecture does not have (9).** Headless `AUTO_MODE` bypass (blackhole is
+  headless unconditionally), ActionMan bot polling (the reviewer *is* the review), V-WORKTREE-03
+  release-on-mergeable (single-orchestrator topology), V-GIT-02 return-to-base-branch, V-EXT /
+  V-CHAIN (fixed 8-agent set with an Accretion Guard), V-DELEG-01 (the 5-field contract is
+  structural), MEMORY.md integration (breaks 5-target portability), bundled MCP-server install.
+- **Out of scope for a backlog-clearing engine (10).** `x-deployer`, incident response, SRE ops,
+  observability, audit compliance, CI/CD + infrastructure delivery, data persistence + messaging,
+  identity/access, API design, mermaid diagramming, semver/changelog derivation — the last being
+  `coordinator.md:185`'s explicit refusal of autonomous release timing, itself a north-star HITL
+  carve-out.
+- **Deliberate counter-choice (5+).** The 27-pack knowledge architecture itself, rejected by
+  `blackhole-vcodes.md`'s "restate this table… do not paste longer definitions (token cost,
+  drift)" — depth traded for fan-out cost. Plus `x-create` self-modification (agents are
+  human-authored in `src/`, compiled), `x-setup` bootstrap, `x-archive` narratives, Context Anxiety
+  countermeasures, git-hook auto-install into a target repo (V-SCOPE-02), `tests/` placement.
+
+Cross-forge (Gitea/`tea`) support is recorded as a **scope decision to ratify**, not a gap —
+`config-template.md:37` declares github-only as a v1 choice.
+
+### 5f. Matrix reconciliation
+
+Per `mercure-parity-matrix.md`'s single-writer rule (`prj-mercure-sync` writes; a self-audit files
+an issue and does not edit the matrix), this sweep filed reconciliation issue **#461** rather than editing
+rows. Summary of what it must apply:
+
+- **Stale — flip to `covered`**: PM-003 (#308 merged, `V-PAT-01..04` at `reviewer.md:68-70`),
+  PM-011 + PM-046 (#310 merged), PM-050 (#311 merged).
+- **Stale — flip to `adapted` with residual**: PM-052 (#309 merged; reviewer §1 consumption of
+  `ac_results[]` remains conditional), PM-083 (#346 merged; Interview-Gate dimensions unitemized).
+- **Re-verify, do not flip**: PM-084 — #345 merged but `router.md` still has zero fences.
+- **Contradicted**: PM-055 `gap` → `covered` (`artifact-contract.md:16` already routes
+  `investigate → documentation/investigations/`, enforced by V-AUTO-02; the missing folder is lazy
+  creation and pre-seeding it would violate V-KISS-03). PM-075 re-score 30 → 3 (the mechanism it
+  gestures at is `xl`, not effort 5).
+- **Reconcile internal contradiction**: PM-025 (`adapted`) vs PM-068 (`covered`) describe the same
+  mechanism.
+- **New rows (16)**: the hooks layer as a whole (5 mechanisms), rebase/conflict protocol, CI-failure
+  diagnosis, backlog hygiene, comment-discipline doctrine, companion-file auto-repair, conventional
+  commits for workers, sensitive-file + secret-scan + GPG, dependency vulnerability gate, EDD,
+  model-tier economy paths, investigator escalation, OWASP/CWE signature layer, cross-forge scope
+  decision, V-VIS-01/02 (landed via #427/ADR-018, no row), V-ADA-09 ↔ V-RULE-01 mapping.
+- PM-054..PM-066 are the category error already identified by
+  `documentation-framework-alignment.md` § 2 — cross-reference, do not re-derive here.
+
+That seven `in-flight` rows went stale is itself the defect that audit's § 5 documented; this sweep
+independently re-confirms nothing schedules the self-audit meant to catch it (issue #442).
+
+### 5g. Method and corrections
+
+Nine sweeps → per-bucket adversarial verification → synthesis. Every gap/partial claim was handed
+to a verifier instructed to refute it and to default to refutation under uncertainty; corrected
+verdicts replaced the original claim before ranking.
+
+Claims spot-checked by hand after synthesis, all upheld: absence of `hooks.json` in both plugin
+targets, zero `rebase` occurrences under `src/`, zero `UNTRUSTED-FORGE-DATA` in `router.md`,
+`V-PAT-01..04` present at `reviewer.md:68-70`.
+
+**One synthesis error was caught and corrected**: the sweep reported `V-KISS-01` and `V-YAGNI-01`
+as absent. They are present at `rules/blackhole-vcodes.mdc:18` at BLOCK severity. Only `V-KISS-02`
+(deep nesting) and `V-YAGNI-02` (premature optimization) are missing, both MEDIUM upstream — the
+item was demoted from a standalone issue into the batched `xs` sweep in § 5b.
+
 ## Sources
 
 - Agent A inventory: mercure `rules/references/v-codes-*.md`, `mercure-quality-audit-criteria.md`,
@@ -229,3 +413,7 @@ rather than a standalone ADR.
   M0–M5, three prior audits.
 - Direct reads: `documentation/decisions/ADR-012-shared-artifact-substrate.md`,
   `.claude/skills/prj-mercure-sync/SKILL.md`.
+- **Sweep 2 (§ 5)**: mercure v9.11.0 working tree — `skills/` (79), `agents/` (11), `rules/` (19) +
+  `rules/references/` (11), `hooks/` (14 `.js` + `hooks.json`), `scripts/`, `servers/mcp-context/`,
+  `templates/`. Blackhole side: `src/agents/*.md`, `src/references/**` (34 + `hunt/`),
+  `rules/*.mdc`, `scripts/checks/*.check.ts`, `documentation/decisions/` (ADR-001..021).

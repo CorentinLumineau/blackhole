@@ -18,7 +18,10 @@ On every orchestrator turn end, persist in this order:
 2. `findings-ledger.json` (atomic tmp + mv)
 3. `campaign-checkpoint.md` (when in-flight work exists)
 
-Never write checkpoint before queue and ledger are valid (`jq empty` on both).
+Never write checkpoint before queue and ledger are valid — validate both with
+`scripts/lib/state-write-guard.ts`'s `validateStateWrite()`, never `jq empty` (it exits 0 on a
+zero-byte file, so it cannot detect an absent/truncated write; full incident writeup:
+`blackhole-state.md` § Write protocol).
 
 ## Turn ID rules
 
@@ -35,6 +38,8 @@ Path: `.blackhole/campaign-checkpoint.md`
 refreshed_at: 2026-07-05T00:00:00.000Z
 orchestrator_turn_id: 12
 last_completed_phase: review
+stopped_by: null
+stop_kind: null
 ---
 
 # Campaign Checkpoint
@@ -48,6 +53,8 @@ last_completed_phase: review
 ## In-flight workers
 
 - reviewer on #298 PR 42 (spawned turn 12, rulings_revision 7)
+- implementer on #447 (spawned turn 12) `worker_state: killed` — the optional trailing tag,
+  present only during/after a stop event (absent on a normal turn's rows — non-breaking)
 
 ## Ready set
 
@@ -70,7 +77,7 @@ After context loss or session restart:
 
 1. Read `campaign-checkpoint.md` if present; else infer from `queue.json`
 2. Run forge sync (`forge-sync.md`)
-3. Validate `jq empty` on queue + ledger
+3. Validate queue + ledger with `validateStateWrite()` (see § Write order above — never `jq empty`)
 4. Resume in-flight issues at their `phase` — do not re-spawn completed work
 4b. If an in-flight issue has an associated `wt-<issue>` and the worktree is dirty (or stash contains recovery tags), **pause implementer respawn** and follow [recovery-protocol.md](recovery-protocol.md) before continuing
 5. Increment `orchestrator_turn_id` on first post-recovery turn
@@ -82,8 +89,8 @@ On a harness offering a native run journal or `resumeFromRunId`-style mechanism 
 crash-recovery layer for the background-safe fan-out phase only. It never substitutes for this
 file's cross-harness SSOT: `.blackhole/campaign-checkpoint.md` plus `queue.json` and
 `findings-ledger.json` remain the source of truth for resume regardless of harness or pattern.
-Resuming from a harness journal still requires re-validating those files (`jq empty` + phase
-inference per § Compaction recovery above) before continuing.
+Resuming from a harness journal still requires re-validating those files (`validateStateWrite()` +
+phase inference per § Compaction recovery above) before continuing.
 
 ## Fields
 
@@ -93,6 +100,9 @@ inference per § Compaction recovery above) before continuing.
 | `last_completed_phase` | checkpoint frontmatter | Last phase fully completed for primary in-flight issue |
 | `review_iteration` | `queue.json` issues.* | Per-issue review loop counter |
 | `in_flight_workers` | checkpoint body | Active worker spawns for resume |
+| `stopped_by` | checkpoint frontmatter | Who requested the stop — `user` \| `null` (`phase-stop.md`) |
+| `stop_kind` | checkpoint frontmatter | `drained` \| `killed` \| `flushed` (issue #492) \| `null` — which `phase-stop.md` tier ran; `flushed` (issue #492) is emitted per that file's `stop --now` tier step 6 priority rule |
+| `worker_state` | `## In-flight workers` row, stop-event-only | `drained` \| `flushed` (issue #492) \| `killed` — tags a stopped worker's row before removal per `phase-stop.md`'s § `stop --now` tier step 3 (`flushed`, issue #492) and § `--abandon` tier (`killed`); absent on a normal turn's rows |
 
 ## Failed-Approaches Log
 

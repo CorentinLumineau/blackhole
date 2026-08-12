@@ -80,6 +80,8 @@ outside `Touch-Paths`; reviewers audit against them (`V-SCOPE-02`).
 3. Set `prompt` to the campaign-prompt body above (verbatim).
 4. When `.blackhole/config.json` `worker_model_policy` is `cost-optimized` (default), resolve
    `model` per spawn from `model-routing.md` (role/track/route tier — not one model for all).
+   When `worker_effort_policy` is `cost-optimized` or absent, resolve reasoning effort from the
+   same tier row (`model-routing.md` § Harness tier ladders); omit effort parameters when `inherit`.
 5. Do **not** set `subagent_type` to a built-in enum (`generalPurpose`, `explore`,
    `shell`, etc.) — that spawns a generic subagent without blackhole bindings.
 
@@ -88,8 +90,8 @@ outside `Touch-Paths`; reviewers audit against them (`V-SCOPE-02`).
 Same rule: attach the matching `.cursor/agents/bc-<role>.md` file
 (`.cursor/agents/planner.md`, `.cursor/agents/implementer.md`,
 `.cursor/agents/reviewer.md`). Do not substitute built-in `subagent_type`
-enums or free-text role names without the agent file. Apply `worker_model_policy` from
-`model-routing.md` (see `orchestrator-delegation.md` § Worker spawn model).
+enums or free-text role names without the agent file. Apply `worker_model_policy` and
+`worker_effort_policy` from `model-routing.md` (see `orchestrator-delegation.md` § Worker spawn model).
 
 **Mis-spawn hazard:**
 

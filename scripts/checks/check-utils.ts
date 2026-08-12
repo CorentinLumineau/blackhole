@@ -1,5 +1,5 @@
 // Shared verify primitives — `CheckResult` wire type, repo `root`, and `read()` helper.
-// Dependency blast-radius (21 direct consumers): documentation/reference/check-utils-blast-radius.md
+// Dependency blast-radius (29 direct consumers): documentation/reference/check-utils-blast-radius.md
 import * as fs from 'fs';
 import * as path from 'path';
 

@@ -1,4 +1,5 @@
 ---
+type: adr
 status: accepted
 scope: orchestration
 supersedes: partial (removes ADR-010's opt-in invariant; completes ADR-012's "autonomy default flip sequenced last")

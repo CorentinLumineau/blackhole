@@ -26,15 +26,42 @@ Before promoting an issue from **handle → plan** or **plan → implement**:
 proceed after handle; `size:xs` with ambiguity still blocks on `status: blocked`,
 `notes: awaiting-user-clarification`.
 
-## AskQuestion payload contract
+## Gate Content Contract (R-003)
 
-Every blocked clarification question must be **self-contained**: answerable by a
-human who has **no session scrollback** — only the question text, the issue body,
-and queue state. Blackhole's async HITL seam (`status: blocked` +
-`notes: awaiting-user-clarification`) has no implicit context to fall back on;
-the question itself must carry everything needed to decide.
+**Failure mode** (owner ruling R-003, `documentation/reference/product-principles.md`): an issue
+number, a V-code, and a confidence score are labels for context the owner does not have loaded —
+never a substitute for it. A gate the owner cannot evaluate is not a gate; it is a rubber stamp
+with an audit trail.
 
-Each `AskQuestion` payload must include all three elements:
+Every user-facing `AskQuestion` gate must be preceded by an **Executive Summary** carrying all
+four elements:
+
+| Element | Requirement |
+|---------|-------------|
+| **What** | The subject in substance, not by identifier — what is actually being decided. |
+| **Why** | What triggered the gate — categorical signal, sub-threshold confidence, detected cycle, escalation budget exhausted. |
+| **Evidence** | `file:line` citations or the named mechanism that produced the gate. |
+| **per-option consequence** | What each option costs and what happens next — including the strongest case for the option not recommended (composes with, never duplicates, the existing Design Challenge Protocol counter-case posture). |
+
+**Confidence-gate addendum**: a question triggered by `confidence-gates.md`'s two-band mapping
+must disclose in its Why element that the composite score fell below
+`autonomy.confidence_threshold` — a **threshold rule**, not a considered judgment that the
+cautious default is correct. The owner is overriding a heuristic, not a conclusion.
+
+Binds all seven gate classes, each detailed in its owning file:
+
+| Gate class | Owning file |
+|------------|-------------|
+| clarify | `clarify-gates.md` (this file) |
+| split sign-off | `issue-splitting.md`, `epic-orchestration.md` |
+| plan approval | `phase-plan.md` |
+| design approval | `phase-plan.md` |
+| UI interpretation | `planner.md` |
+| merge escalation | `merge-gate.md` |
+| review-iteration escalation | `phase-review.md` |
+
+The Executive Summary is layered on top of — never a replacement for — the existing payload
+mechanics: every `AskQuestion` payload must still include all three wire elements:
 
 | Element | Requirement |
 |---------|-------------|

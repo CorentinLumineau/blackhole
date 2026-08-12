@@ -17,7 +17,10 @@ import {
 } from '../predicates.ts';
 import {
   validateAcResultsArray,
+  validateCompanionRepairsArray,
+  validateConflictHunksArray,
   validateDecisionRecordsArray,
+  validatePartialResult,
   validateVisualEvidenceArray,
 } from '../shared-validators.ts';
 
@@ -48,6 +51,13 @@ function validateImplementerBlockedFields(data: Record<string, unknown>, errors:
       errors.push('escalation_trigger: expected string');
     } else {
       pushEnumError(errors, 'escalation_trigger', data.escalation_trigger, ESCALATION_TRIGGERS);
+      if (data.escalation_trigger === 'merge_conflict_semantic') {
+        if (!Array.isArray(data.conflict_hunks) || data.conflict_hunks.length === 0) {
+          errors.push(
+            'conflict_hunks: required non-empty array when escalation_trigger is merge_conflict_semantic',
+          );
+        }
+      }
     }
   }
 }
@@ -93,6 +103,14 @@ function validateImplementerOptionalFields(data: Record<string, unknown>, errors
   if ('visual_evidence' in data && data.visual_evidence !== undefined) {
     errors.push(...validateVisualEvidenceArray(data.visual_evidence, 'visual_evidence'));
   }
+
+  if ('companion_repairs' in data && data.companion_repairs !== undefined) {
+    errors.push(...validateCompanionRepairsArray(data.companion_repairs, 'companion_repairs'));
+  }
+
+  if ('conflict_hunks' in data && data.conflict_hunks !== undefined) {
+    errors.push(...validateConflictHunksArray(data.conflict_hunks, 'conflict_hunks'));
+  }
 }
 
 export function validateImplementer(data: unknown): string[] {
@@ -112,6 +130,12 @@ export function validateImplementer(data: unknown): string[] {
 
   if (data.status === 'blocked') {
     validateImplementerBlockedFields(data, errors);
+  }
+
+  // Issue #492 — stop --now leg B: a completed worker's answer to the Flush Request
+  // (`worker-schemas.md` § Partial result), structurally exclusive with `complete`/`blocked`.
+  if (data.status === 'partial') {
+    errors.push(...validatePartialResult(data));
   }
 
   validateImplementerOptionalFields(data, errors);

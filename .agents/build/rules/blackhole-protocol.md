@@ -51,6 +51,9 @@ Playbooks: `.agents/build/skills/blackhole/references/phase-*.md`
 
 - **No direct commits to main**: Workers must checkout into dedicated, isolated git worktrees (`wt-<issue>`) and push to branches named `blackhole/issue-N` (`V-BRANCH-02`, `V-BRANCH-03`). Direct commits or force-pushes to `main`, `master`, or `release/*` are strictly blocked (`V-BRANCH-01`).
 - **Automated pruning**: The orchestrator must run `git worktree prune` and `git fetch --prune` at the start and end of every turn to clean up stale worktrees and local branches whose upstream PRs have merged (`V-WORKTREE-01`).
+- **Removal safety refusal**: Before any `git worktree remove` — mergeable-PR release, post-merge cleanup, or manual pruning alike — check `git -C <worktree> log @{u}..HEAD`. `git worktree remove` only refuses on a dirty working tree; it does not refuse on committed-but-unpushed history, so a merged PR does not by itself prove the worktree is safe to delete (local HEAD may have advanced past what the PR merged, e.g. a post-push rebase or a commit made after the last push). Non-empty output refuses the removal until that history is pushed or cherry-picked elsewhere. Full procedure and the stale-cleanup example: `recovery-protocol.md` §4 "Stale cleanup" row, §6(c).
+- **Static resolvability requirement** (#551): a PreToolUse hook (`worktree-removal-guard.js`, #532) enforces the safety refusal above mechanically, but it can only verify a call it can parse statically. Issue `git worktree remove <literal-absolute-path>` (`--force` if needed) as its own standalone command: one positional argument, no shell variable, no glob, no chained `&&`/`;` call, and no trailing redirect — a bare `&` inside `2>&1` (or similar) is parsed as a second positional argument and the call is refused as unresolvable even though the path itself was literal. When the refusal is instead `worktree-remove-unverifiable` on a pushed PR branch checked out under a local name that doesn't match its remote branch name, fetch its head into the tracking ref the check falls back to: `git fetch origin refs/pull/<PR>/head:refs/remotes/origin/<branch>`. A branch genuinely never pushed anywhere has no non-destructive fix — push it first.
+- **`rm -rf` on a worktree directory — decision recorded (#551)**: not guarded by this hook. Telling a worktree directory apart from any other path needs the same dynamic `git worktree list` resolution `checkUnpushedCommits` already performs — a static `bash-patterns.json` regex can't do it. Extending the guard to intercept `rm -rf <worktree>` the same way is real, scoped work (still `V-HOOK-01`, no new V-code), deferred to a follow-up issue.
 
 ## Merge & Linkage Gate (V-GIT)
 
@@ -65,7 +68,7 @@ section only applies when a campaign has explicitly opted in.
 - **Verification before filing**: Every hunt-origin finding must pass a `CONFIRMED`
   verification re-check before it may be filed as an issue. Filing from an unverified
   finding is a BLOCK violation (`V-HUNT-01`).
-- **Pareto + bug-severity-floor gate**: Filing follows the same `V-PARETO-02` scoring
+- **Pareto + bug-severity-floor gate**: Filing follows the same `V-PARETO-03` gate
   (`Priority = Gain * (11 - Effort) >= min_priority`) as every other discovery, plus a
   floor override — a `kind: bug` finding with `severity: BLOCK` or `HIGH` always files
   regardless of computed Priority.

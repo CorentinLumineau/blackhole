@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
-import { CONTENT_GATE_BUDGETS, type ContentGateBudget } from '../lib/build/facts.ts';
+import { CONTENT_GATE_BUDGETS, CONTENT_GATE_WARN_RATIO, type ContentGateBudget } from '../lib/build/facts.ts';
 
 // ADR-007 T5/R2' — content-gates.check.ts: declared-budget section/file-size gate (split from
 // the former catch-all check file, issue #322; generalized from a single hardcoded file to a
@@ -43,11 +43,24 @@ export const parseSectionLineCounts = (
   return sections;
 };
 
-// Second boundary pattern (issue #323): every current `scripts/checks/*.check.ts` check function
-// is declared in this exact style — `const check<Name> = (): CheckResult => {` or `(): CheckResult[]
-// => {` — verified by grep against all 32 current check functions with zero exceptions. Widen
-// (documented, tested) rather than silently skip a function that drifts from this convention.
-export const CHECK_TS_SECTION_PATTERN = /^const check\w+\s*=\s*\(\):\s*CheckResult(\[\])?\s*=>\s*\{/;
+// Second boundary pattern: anchors on the one invariant every `scripts/checks/*.check.ts` check
+// function declaration actually shares — a top-level `check<Name>` const assigned via `(`,
+// optionally `export`ed — without also requiring the closing `): CheckResult => {` signature
+// shape to appear on the same line. That stronger requirement silently detected zero sections for
+// any declaration whose signature wraps (a multi-line parameter list) or that is expression-bodied
+// (no trailing `{`), leaving the whole file's 68-LOC-per-section budget unenforced instead of
+// failing loud (issue #562, generalizing #554's exported-declaration fix the same way).
+export const CHECK_TS_SECTION_PATTERN = /^(export )?const check\w+\s*=\s*\(/;
+
+// A `.check.ts` target with zero detected sections has nothing for its section-LOC budget to
+// measure — `findContentGateViolations` reports no error even though the file's check functions
+// are completely unenforced. Scoped to `.check.ts` targets only: `scripts/lib/build/*.ts` is
+// legitimately section-less under the markdown boundary pattern (no `##` headers in TS) and must
+// not false-positive (issue #562).
+export const checkZeroSections = (target: string, sections: Record<string, number>): string | null =>
+  target.endsWith('.check.ts') && Object.keys(sections).length === 0
+    ? `${target} — zero check-function sections detected; CHECK_TS_SECTION_PATTERN matched nothing, so its section-LOC budget is silently unenforced`
+    : null;
 const MARKDOWN_SECTION_PATTERN = /^## /;
 
 const boundaryPatternFor = (target: string): RegExp =>
@@ -92,22 +105,59 @@ export const findContentGateViolations = (
   return errors;
 };
 
-const checkContentGate = (): CheckResult => {
+const checkContentGate = (): CheckResult[] => {
   const errors: string[] = [];
+  const warnings: string[] = [];
 
   for (const [pattern, budget] of Object.entries(CONTENT_GATE_BUDGETS)) {
     for (const target of resolveContentGateTargets(pattern)) {
       const content = read(target);
       const sections = parseSectionLineCounts(content, boundaryPatternFor(target));
       const totalLoc = splitLines(content).length;
+      const zeroSectionsViolation = checkZeroSections(target, sections);
+      if (zeroSectionsViolation) errors.push(zeroSectionsViolation);
       errors.push(...findContentGateViolations(target, sections, totalLoc, budget));
+      warnings.push(...findContentGateWarnings(target, sections, totalLoc, budget, CONTENT_GATE_WARN_RATIO));
     }
   }
 
-  if (errors.length) return { id: 'V-CONTENTGATE-01', ok: false, detail: errors.join('; ') };
-  return { id: 'V-CONTENTGATE-01', ok: true };
+  const hard: CheckResult = errors.length
+    ? { id: 'V-CONTENTGATE-01', ok: false, detail: errors.join('; ') }
+    : { id: 'V-CONTENTGATE-01', ok: true };
+  const warn: CheckResult = { id: 'V-CONTENTGATE-02', ok: true, ...(warnings.length ? { detail: warnings.join('; ') } : {}) };
+
+  return [hard, warn];
+};
+
+// V-CONTENTGATE-02 (issue #545): advisory companion to findContentGateViolations — flags a
+// section or whole file that has crossed `warnRatio` of its budget. Deliberately mirrors
+// findContentGateViolations's signature (plus `warnRatio`) rather than sharing an accumulator
+// with it: a target already over budget is findContentGateViolations's case to report, and this
+// function's `<= budget` upper bound keeps the two from double-reporting the same target.
+// Declared after checkContentGate (not before, alongside findContentGateViolations) so it lands
+// inside checkContentGate's own CHECK_TS_SECTION_PATTERN section rather than growing
+// checkZeroSections's — `find...` functions don't match the `check\w+` boundary pattern
+// themselves, so they're absorbed into whichever check-section precedes them in the file.
+export const findContentGateWarnings = (
+  target: string,
+  sections: Record<string, number>,
+  totalLoc: number,
+  budget: ContentGateBudget,
+  warnRatio: number,
+): string[] => {
+  const warnings: string[] = [];
+  const pctOf = (loc: number, max: number) => Math.round((loc / max) * 100);
+  for (const [header, loc] of Object.entries(sections)) {
+    if (loc >= budget.maxSectionLoc * warnRatio && loc <= budget.maxSectionLoc) {
+      warnings.push(`${target} — ${header}: ${loc}/${budget.maxSectionLoc} LOC (${pctOf(loc, budget.maxSectionLoc)}% of section budget)`);
+    }
+  }
+  if (totalLoc >= budget.maxFileLoc * warnRatio && totalLoc <= budget.maxFileLoc) {
+    warnings.push(`${target} — whole file: ${totalLoc}/${budget.maxFileLoc} LOC (${pctOf(totalLoc, budget.maxFileLoc)}% of file budget)`);
+  }
+  return warnings;
 };
 
 // ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
-export const runChecks = (): CheckResult[] => [checkContentGate()];
+export const runChecks = (): CheckResult[] => checkContentGate();

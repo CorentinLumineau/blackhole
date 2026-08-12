@@ -38,6 +38,8 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 | `implement #N` | `implement #N` | Orchestrator — phase 3 only |
 | `review #N` | `review #N` | Orchestrator — phase 4 only |
 | `hunt [kind]` | `hunt`, `hunt <kind>` | Orchestrator — manual kaizen wave (`kaizen.trigger: manual`, or any time regardless of trigger) |
+| `stop` (drain, default) | `stop`, `pause`, `drain the campaign` | Orchestrator (foreground, Pattern C/A) or Coordinator relay → orchestrator (Pattern B) — see `phase-stop.md` |
+| `stop --abandon` | `stop --abandon`, `abandon`, `kill`, `abort`, `force stop` | Orchestrator/Coordinator, explicit opt-in only — see `phase-stop.md` |
 | `campaign-audit` | `audit`, `campaign audit` | Read-only protocol conformance check |
 
 ## Phase 0: Bootstrap (ALL modes)
@@ -52,19 +54,26 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    The gate applies in `run` mode only; every other mode in the table above loads config with no
    confirm step.
 2. **Companion-file scaffold** — gated by `docs_governance.companion_files` (default `true`,
-   config already loaded from step 1; skip entirely when `false` or `docs_governance.enabled`
-   is `false`). For `ARCHITECTURE.md`/`AGENTS.md`/`documentation/reference/product-principles.md`
+   config already loaded from step 1); skip entirely when `docs_governance.enabled` does not
+   resolve to `true` (absent `docs_governance` block, absent `enabled` field, or explicit
+   `false` — SSOT: `config-template.md`'s `docs_governance.enabled` row, issue #477) or
+   `docs_governance.companion_files` is explicitly `false`. For
+   `ARCHITECTURE.md`/`AGENTS.md`/`documentation/reference/product-principles.md`
    (the owner-rulings ledger — `V-RULE-01`), create the file from
    `templates/companion-files/{name}.template` **only if it does not already exist**,
    substituting `{project-name}` from `.blackhole/config.json`'s `repo` field
    (`owner/repo-name` → `repo-name`) or `basename "$(pwd)"` when `repo` is absent or has no
    `/`. Additionally create `DESIGN.md` under the same skip-if-exists rule **only when**
    `bash scripts/detect-frontend.sh` emits `frontend=yes`. Additionally create `journeys.md`
-   under the same skip-if-exists rule **only when** `docs_governance.companion_files` is not
-   `false` **and** `kaizen.enabled` is `true` **and** `kaizen.kinds` contains `ux-coherence`.
+   under the same skip-if-exists rule **only when** the companion-file scaffold above is not
+   skipped **and** `kaizen.enabled` is `true` **and** `kaizen.kinds` contains `ux-coherence`.
    Full contract: [templates/companion-files/README.md](../templates/companion-files/README.md).
+   Initial creation runs here at bootstrap; implement-time repair of absent/broken root
+   companions is `implementer.md` § Companion-file Sync (`companion-file-sync.md`) — no
+   duplicate scaffold logic in this step.
 3. **State init** — `queue.json`, `findings-ledger.json`, `plans/`
-4. **Validate** — `jq empty` on both JSON files
+4. **Validate** — `bun run scripts/lib/state-write-guard.ts` on both JSON files (never `jq empty`
+   alone — `blackhole-state.md` § Write protocol)
 5. **Forge sync** — if `auto_sync` true (default): `gh auth status` then [forge-sync.md](references/forge-sync.md). Sandbox: `full_network`.
 6. **Dashboard** — open issues/PRs, new since sync, in-flight, LEDGER OPEN, ready set
 
@@ -135,6 +144,10 @@ Read-only conformance check (`campaign-audit`):
 | F-DRIFT-01 | declaration vs independent-scan conformance — see `build.ts` § facts |
 | F-DOCS-01 | Companion files present (`ARCHITECTURE.md`, `AGENTS.md`) / `documentation/decisions/INDEX.md` current on consumer repo — a row in either schema `scripts/detect-doc-schema.sh` detects (mercure or blackhole) counts as current (read-only, report only) |
 | F-HUNT-01 | Kaizen hunt conformance (read-only, report only): (a) `hunt_state` watermark internally consistent — each kind key exists in `kaizen.kinds`, `waves <= kaizen.max_waves`, `exhausted` forced `true` once `waves` or `dry_waves` hits its stop threshold; (b) sample hunt-origin filed issues (ledger `phase: hunt` rows with `deferred_to_issue` set) — re-read the cited `file:line` against the issue's Verbatim-code excerpt, flag drift as STALE-since-filing (does not roll back); (c) cumulative filed-issue count per kind does not exceed `waves(kind) * kaizen.max_issues_per_wave` (upper-bound cap sanity check) |
+| F-PARITY-01 | Forge/queue parity (read-only, report only; descoped from #570 because `bun run verify` is offline-only): fetch open, campaign-scoped forge issues via the same `bun scripts/forge-scope.ts list-args`-scoped `gh issue list --state open --json number,labels --limit 200` call `forge-sync.md` §2/§4/§9 already use (`V-INT-02` — no second scope-filter implementation), then diff both directions against `queue.json`: (a) an in-scope open forge issue with no matching `queue.json` entry is a finding; (b) a `queue.json` entry whose `status` is not `merged`/`closed` (the terminal set `queue-dag.md` already defines) and whose forge issue is closed or absent from the fetch is a finding. On `gh auth status` failure or a failed list call, report "parity unchecked — forge unavailable" — never a silent clean pass. |
+| F-STALECITE-01 | Stale-issue-citation scan (read-only, report only, advisory): grep `src/**/*.md` for lines carrying both an `#NNN` reference and an open-framing marker on the same line — `future`, `not implemented`, `tracked issue`, `residual gap`, `deferred to` (case-insensitive) — then resolve each candidate `#NNN`'s forge state (`gh issue view N --json state`; reuse `F-PARITY-01`'s fetch when both codes run in the same audit pass rather than a second `gh` call) and report every candidate whose issue is CLOSED. A bare `#NNN` with no marker on the same line never fires — e.g. a `(ADR-NNN, #NNN)`-style attribution, or `doc-governance.md`'s own still-open `#464` citation ("tracked separately (issue #464)" — contains the `tracked` marker but #464 is open, so it correctly does not fire). Worked positive fixtures (pre-#583-fix text, `git show a90ac60^`): `blackhole-state.md`'s "not implemented by this section... (D4, tracked issue #468)" and "issue #474 follow-up" residual-gap bullet, and `implementer.md`'s "a future reviewer audit (#468)" — all three closed by #468/#557 and correctly fire against the pre-fix text. On `gh auth status` failure or a failed `gh issue view` call for any candidate, report "stale-citation scan unchecked — forge unavailable" — never a silent clean pass. |
+| F-STOP-01 | `queue.json` contains no `in-flight` entry naming a worker outside the currently-running set (`scripts/checks/stop-mode.check.ts`'s `assertNoOrphanedInFlight` — a pure invariant unit-tested in `scripts/verify.stop-mode.test.ts`; the guarantee is satisfied by construction via the drain/abandon procedures in `phase-stop.md`, not scanned by `bun run verify`) |
+| F-STAGE-01 | ADR-021 D1 staging contract self-consistency and producer conformance — `.blackhole/staged/<issue>/manifest.json`'s field names and enum values never silently drift between `blackhole-state.md` § Staging's own JSON example/field table and the `planner`/`investigator` producer prompts (`scripts/checks/staging-schema.check.ts`, `V-STAGE-01`/`V-STAGE-02`, scanned by `bun run verify`) |
 
 Do not modify code during audit — report only.
 

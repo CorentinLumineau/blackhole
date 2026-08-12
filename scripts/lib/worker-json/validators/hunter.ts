@@ -14,7 +14,7 @@ import {
   pushEnumError,
   requireField,
 } from '../predicates.ts';
-import { validateArrayOf } from '../shared-validators.ts';
+import { validateArrayOf, validatePartialResult } from '../shared-validators.ts';
 
 function validateHunterFinding(finding: unknown, path: string): string[] {
   const errors: string[] = [];
@@ -71,6 +71,13 @@ export function validateHunter(data: unknown): string[] {
   requireField(errors, data, 'status', isString, 'string');
   if (isString(data.status)) {
     pushEnumError(errors, 'status', data.status, HUNTER_STATUSES);
+  }
+
+  // Issue #492 — stop --now leg B: `partial` skips the `kind`/`findings` shape entirely
+  // (`worker-schemas.md` § Partial result — not a smaller `complete`).
+  if (data.status === 'partial') {
+    errors.push(...validatePartialResult(data));
+    return errors;
   }
 
   requireField(errors, data, 'kind', isNonEmptyString, 'non-empty string');

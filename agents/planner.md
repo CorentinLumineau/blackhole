@@ -28,18 +28,53 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
    3's existing "no codebase analysis" carve-out for that track. For each finding in the note's
    Architecture Coherence section, apply the same Cross-Cutting Heuristic as §4.8's Trigger A
    (Breadth / Enforcement stakes / Foreclosure, score ≥2/3 to promote — see §4.8 for the full
-   3-question wording, not restated here). For each qualifying finding: if `## Active
-   Constraints` is empty, append `- {constraint} (analyze: issue #N)` unconditionally; if it
-   already carries bullets (from a prior Trigger A or Trigger B write), first check for a
-   near-duplicate — same citation already present, or ≥80% text overlap with an existing bullet
-   — and skip the append if found. The `(analyze: issue #N)` attribution suffix is mandatory.
+   3-question wording, not restated here). For each qualifying finding: check the **live**
+   `ARCHITECTURE.md` for a near-duplicate — same citation already present, or ≥80% text overlap
+   with an existing bullet (from a prior Trigger A or Trigger B write) — and skip if found;
+   otherwise **stage** (never write directly — no branch exists yet at Phase 2, ADR-021 D1) the
+   bullet `- {constraint} (analyze: issue #N)` at
+   `.blackhole/staged/<issue>/architecture-active-constraint-{n}.md` via Bash heredoc + atomic
+   `mv`, and append a manifest entry (`route: "analyze"`, `sub_mode: "analyze"`, `produced_by:
+   "planner"`, `target_path: "ARCHITECTURE.md"`, `target_kind: "append_row"` —
+   `blackhole-state.md` § Staging) to `.blackhole/staged/<issue>/manifest.json`, gated by
+   `docs_governance.enabled`/`docs_governance.write_governance` (absent or `false` ⇒ skip
+   entirely, same kill switch as §4.8's design-route staging). The implementer's carry-step
+   (`implementer.md` § Carry Staged Artifacts) commits the appended bullet inside the issue's own
+   PR once the route reaches implement. The `(analyze: issue #N)` attribution suffix is
+   mandatory.
 5. **Verify Pareto Gating**: Estimate **Gain (1-10)** and **Effort (1-10)** for the planned implementation. Calculate $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$. If $\text{Priority} < 30$, halt planning, set the issue to low ROI, and recommend archival in the queue findings.
 6. **Enforce V-codes (Plan-time checks)**:
    * `V-INT-02`: Do not plan utility re-implementations.
    * `V-KISS-01`: Keep the design minimal. Avoid premature abstractions.
    * `V-YAGNI-01`: No speculative features or unused generic classes.
-7. **Generate Plan Sections**: Write the plan file to `plans/<issue>.md`. Use the Marker Convention to highlight human-in-the-loop clarifications.
-8. **Verify Quality Gate**: Ensure all Touch-Paths are declared explicitly (`V-SCOPE-02`) and schema baseline changes are fully specified (`V-API-01`). **Standard track only** — additionally verify every `## Task Breakdown` item carries a machine-verifiable acceptance criterion (`ac_mapping`, `worker-schemas.md` § Plan quality gate checks): if any task lacks one, add `ac_mapping` to `failing_checks` and return `status: blocked` rather than `ready`. This closes a documented-but-unenforced schema value (`worker-schemas.md` § Plan quality gate checks names `ac_mapping` as a valid `failing_checks` entry with no prior producing step).
+7. **Generate Plan Sections**: Write the plan file to `plans/<issue>.md`. Use the Marker Convention to highlight human-in-the-loop clarifications. When authoring a sweep/grep-to-zero AC, state its scope path and an exemption clause (even "no exemptions") inline.
+   **Durable plan staging (ADR-021 D3, issue #445)** — after writing `.blackhole/plans/issue-N.md`,
+   when `docs_governance.enabled` and `docs_governance.write_governance` both resolve `true`
+   (absent or `false` on either ⇒ skip entirely — no staging write, no manifest entry), on **every
+   track including Skip**:
+   1. Run `scripts/detect-doc-schema.sh index documentation/INDEX.md` (repo-convention precedence,
+      `doc-governance.md` § Repo Convention Precedence) before emitting the INDEX row fragment.
+   2. Render a durable plan body at `.blackhole/staged/<issue>/plan-{slug}.md` (filename from
+      `scripts/lib/concern-slug.ts`'s `planTargetPath`) via Bash heredoc + atomic `mv`. Strip
+      campaign-only frontmatter keys from the working plan copy: `plan_base_commit`, `track`,
+      `task_type`, `threat_screen_passed`, `ui_gate`. Add lifecycle frontmatter per
+      `doc-governance.md` § Lifecycle Frontmatter (`type: plan`, `status: current`,
+      `review_trigger`, `created`, `last_updated`).
+   3. Stage the INDEX row fragment at `.blackhole/staged/<issue>/plan-index-row.md` (5-column
+      blackhole schema or mercure schema per step 1 detection — never write directly to
+      `documentation/plans/` or `documentation/INDEX.md`).
+   4. Append manifest entries (`route: "plan"`, `produced_by: "planner"`, `sub_mode: null`,
+      `target_kind: "new_file"` for the plan body + `target_kind: "append_row"` for the INDEX row)
+      to `.blackhole/staged/<issue>/manifest.json` per `blackhole-state.md` § Staging write
+      protocol. Never commit into `documentation/` — the implementer carry-step owns delivery.
+8. **Verify Quality Gate**: Ensure all Touch-Paths are declared explicitly (`V-SCOPE-02`) and schema baseline changes are fully specified (`V-API-01`). **Standard track only** — additionally verify every `## Task Breakdown` item carries a machine-verifiable acceptance criterion (`ac_mapping`, `worker-schemas.md` § Plan quality gate checks): if any task lacks one, add `ac_mapping` to `failing_checks` and return `status: blocked` rather than `ready`. This closes a documented-but-unenforced schema value (`worker-schemas.md` § Plan quality gate checks names `ac_mapping` as a valid `failing_checks` entry with no prior producing step). **Two more mechanical checks (issue #459, mercure `x-plan` parity — same tier as `ac_mapping`)**:
+   * **Critical-file existence** (`critical_files_exist`): Glob every backtick-quoted path listed under `## Critical Files`. A path that resolves to zero matches is a miss — add `critical_files_exist` to `failing_checks` and block. `## Critical Files` names only **pre-existing** sensitive touchpoints (see § Plan Complexity Tracks & Sections, Standard Track's Critical Files bullet) — a file the plan is about to *create* belongs under Touch-Paths instead, never here, or this check spuriously blocks it.
+   * **Mitigation concreteness** (`mitigation_concrete`): scan every bullet under `## Execution Strategy & Stop Conditions` against this word list — "monitor", "watch for", "keep an eye on", "be careful", "check periodically" — a bullet naming one of these without pairing it to a testable "if X then abort/halt/stop/revert" stop condition is non-actionable; add `mitigation_concrete` to `failing_checks` and block.
+   * **Section-presence gating, not track-gating (mercure parity, issue #459 AC3)**: both checks trigger on whether their source section — `## Critical Files` or `## Execution Strategy & Stop Conditions` — is actually present in this plan's output, never on the track name directly. Today only the Standard Track template carries either heading (§ Plan Complexity Tracks & Sections), so both checks are inert on every Quick Track plan — not because Quick Track is exempted, but because a Quick Track plan never emits either heading. This is the deliberate reading of AC3's mercure-parity "advisory on Quick": advisory means *evaluated only when the section is applicable*, not *always skipped on that track*. If Quick Track's template is ever extended to carry `## Critical Files` or `## Execution Strategy & Stop Conditions`, both checks activate automatically with the same blocking semantics as Standard Track — no separate Quick-track wiring is needed. Design Track's own unconditional `design_pending_approval` block (§ Design Track) already blocks regardless of these two checks' applicability, so it needs no separate wiring either.
+   * **Display, never silent**: write a `## Quality Gate Results` section into the Standard Track plan (Plan Output File Template) listing every check evaluated this step — `touch_paths_declared`, `schema_baseline`, `ac_mapping`, `critical_files_exist`, `mitigation_concrete` — each marked PASS or FAIL. Never compute a failing check and set `status: blocked` without the matching visible row.
+   * **Revision, not abandonment**: a failing check here returns the plan `status: blocked` for revision via the existing plan-approval loop (`phase-plan.md` § Plan approval gate) — it never blocks or abandons the issue itself.
+   * **AC-satisfiability heuristics (issue #575, advisory only — never `failing_checks`, never blocks)**: `ac_sweep_conflict` flags a `## Task Breakdown` sweep-to-zero AC whose grep/search pattern textually overlaps a same-plan "retain" instruction, citing both task labels and the overlapping token; `ac_sweep_scope` flags a sweep-to-zero AC stating neither a scope path nor an exemption clause. Both surface only as `ADVISORY: <finding>` rows in `## Quality Gate Results`.
+   * **Touch-Paths SSOT completeness (advisory only — never `failing_checks`, never blocks)**: `touch_paths_ssot_gap` — run `findTouchPathSsotGaps` (`scripts/lib/plan-touch-path-ssot-pairs.ts`) on `## Touch-Paths` plus task text (`## Task Steps` on Quick Track, `## Task Breakdown` on Standard). When findings are non-empty on Quick Track, emit an optional `## Touch-Paths Completeness Advisory` section (one bullet per gap) so companion omissions are visible before implement; on Standard Track surface as `ADVISORY: <finding>` rows in `## Quality Gate Results` instead. Prefer flagging over silence when row-add or new-check-module language is ambiguous.
 
 ---
 
@@ -91,7 +126,8 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     plan, emit a `## UI Interpretation Gate` section into the ordinary `plans/issue-N.md`
     containing an ASCII/HTML mockup plus a three-part `### Owner said` / `### I interpreted` /
     `### Open ambiguities` block (`### Owner said` quotes the owner's own words from the issue
-    verbatim, never paraphrased). Return `status: blocked`, `failing_checks:
+    verbatim, never paraphrased; the block's Why/Evidence framing follows `clarify-gates.md`
+    § Gate Content Contract (R-003), UI interpretation gate class). Return `status: blocked`, `failing_checks:
     ["ui_pending_approval"]`, and stamp `ui_gate: pending` in the plan's frontmatter (see Plan
     Output File Template below). This block is narrower than Design Track's unconditional block
     — it fires only on `route.ui: true` at non-`size:xs`, not on every Quick Track plan
@@ -111,7 +147,7 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     existing one), note whether search-before-write was considered — confirm no existing doc
     already covers the concern — per `doc-governance.md`, gated by
     `docs_governance.write_governance`.
-*   **Critical Files**: Highly sensitive touchpoint files (e.g. database client, auth config) requiring extra care.
+*   **Critical Files**: Highly sensitive **pre-existing** touchpoint files (e.g. database client, auth config) requiring extra care. Step 8's `critical_files_exist` check Globs every path listed here and blocks on a miss — a file the plan is about to *create* never belongs here; list it under Touch-Paths instead, where no existence check applies.
 *   **Codebase Conventions**: Existing patterns to follow (e.g. Drizzle query style, tailwind version).
     When `plans/issue-N-analysis.md` exists (produced by `investigator`'s `analyze` sub-mode),
     use its conventions catalog as the source for this section's rows instead of independently
@@ -122,6 +158,10 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     this route, planner gains zero new tracks). When no analysis note exists, fall back to
     independent codebase discovery, unchanged from current behavior.
 *   **Database/API Schema Changes**: Detailed schema baselines (`V-API-01`).
+*   **Bugfix classification**: When `route.task_type` is `bugfix`, or (no `route` object) the
+    issue is self-evidently a bug fix — route-first, content-fallback, same pattern as Quick
+    Track's own bullet and Design Track subsection 1 (`V-INT-03`) — stamp `task_type: bugfix` in
+    the frontmatter (Plan Output File Template below), activating `implementer.md`'s Bugfix Gate.
 *   **Threat Model (`## Threat Model`, conditional)**: Trigger — the issue's resolved
     `route.security_review_required` (post confidence-gate, the same value `review-core.md` §
     Security-mode review already consumes) is `true`; when no `route` object exists (today's
@@ -142,7 +182,9 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     `size:xs` — same trigger and mechanics as Quick Track's UI Interpretation Gate bullet above,
     not a new heuristic shape (`V-INT-03`). When triggered, emit an ASCII/HTML mockup plus a
     three-part `### Owner said` / `### I interpreted` / `### Open ambiguities` block
-    (`### Owner said` quotes the owner's own words from the issue verbatim, never paraphrased),
+    (`### Owner said` quotes the owner's own words from the issue verbatim, never paraphrased;
+    same `clarify-gates.md` § Gate Content Contract (R-003) UI interpretation gate class as
+    Quick Track's bullet above),
     return `status: blocked`, `failing_checks: ["ui_pending_approval"]`, and stamp `ui_gate:
     pending` in the plan's frontmatter (see Plan Output File Template below). `size:xs` at
     `route.ui: true` is the sole exemption; every other size, or an unset/null size, is gated
@@ -170,7 +212,7 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
     6 (consumer file:line, classification, one-line note). Below 3 affected consumers, omit
     the section entirely — no `## Dependency Blast-Radius` heading, no placeholder — same
     conditional-omission discipline as Threat Model and Performance Budget above.
-*   **Execution Strategy (Stop Conditions)**: Scoped risk-mitigation rules (e.g. "if schema generated migration lacks column X, abort").
+*   **Execution Strategy & Stop Conditions**: Scoped risk-mitigation rules (e.g. "if schema generated migration lacks column X, abort").
 *   **Sprint Contract**: Restates, in one place, the per-task acceptance criteria already
     attached to each `## Task Breakdown` item (`— **AC**: <condition>`, see Plan Output File
     Template below) — not a substitute for them. The blanket "all tests and linters pass"
@@ -258,35 +300,48 @@ The artifact consolidates 8 ordered subsections:
     call-sites/consumers — direct tool scan, no agent spawn. Classify each consumer:
     **BREAKING** (call site fails or behaves incorrectly unless updated), **DEPRECATION** (still
     works, should migrate), or **TRANSPARENT** (no observable change). Table columns: consumer
-    file:line, classification, one-line note. This is the highest-value addition given blackhole
-    merges unsupervised — do not compress it to save space elsewhere.
+    file:line, classification, one-line note. Highest-value addition for unsupervised merges.
 7.  **Assumption Audit**: Key assumptions underpinning the Chosen option, each marked `✓`
     Validated / `~` Contestable / `◐` Blind spot / `✗` Incorrect, with a one-line note per
     assumption.
-8.  **Gate (ADR-010 D4 — config-gated, otherwise unchanged)**: When
+8.  **Gate (ADR-010 D4 — config-gated, otherwise unchanged)**: Staged ADR bodies must follow
+    `src/references/adr-template.md` (`##` missing = blocked). The design note MUST include a
+    `### What the owner needs to decide (R-003 executive summary)` block satisfying
+    `clarify-gates.md` § Gate Content Contract's four elements (`.blackhole/plans/issue-496-design.md`
+    § 8 is a worked example), regardless of the `status` outcome below. When
     `.blackhole/config.json` `autonomy.design_autonomy` is `true`, invoke
     `scripts/design-aggregate.ts` with the primary's weighted matrix (subsection 2/3), both
     critics' raw JSON (subsection 3), and the Refactoring Impact Analysis rows (subsection 6).
     The planner reads the script's returned `status`.
     **The planner MUST NOT substitute its own judgment** for it — the script is the sole source
-    of the verdict, never the planner's own read of the artifact's substance:
+    of the verdict, never the planner's own read of the artifact's substance — skipping the invocation is a `V-AUTO-01` BLOCK finding:
     - `status: "ready"` (from `design-aggregate.ts`) → before writing, run
       `scripts/detect-doc-schema.sh` (repo-convention-precedence detection, ADR-012 E1) against
       both target artifacts: `index` mode on `documentation/decisions/INDEX.md`, `frontmatter`
-      mode on an existing sibling ADR file if one exists. Emit the new ADR's frontmatter and its
+      mode on an existing sibling ADR file if one exists. Render the new ADR's frontmatter and its
       `documentation/decisions/INDEX.md` row in the detected schema per
       `doc-governance.md` § Repo Convention Precedence's three-outcome contract; on
-      `schema=ambiguous` for either artifact, emit in blackhole's own schema and include a
+      `schema=ambiguous` for either artifact, render in blackhole's own schema and include a
       `V-INT-01` WARN finding (citing the offending `file:line`) in the same worker JSON return.
-      Then promote this design note into `documentation/decisions/ADR-{NNN}-{slug}.md` plus the
-      `documentation/decisions/INDEX.md` row, per the `artifact-contract.md` delivery mechanism
-      (ADR-010 D5): commit the ADR inside the issue's own PR — no orchestrator file write, no
-      draft/final flip, merge is the approval. Return `status: "ready"` in the worker JSON with
-      `track: "design"` — the `ready`/`blocked` worker-JSON contract shape itself is unchanged;
-      `V-INT-01` rides in the existing `findings` array, no new required field.
+      Then, when `docs_governance.enabled` and `docs_governance.write_governance` both resolve
+      present and `true` (absent or `false` on either ⇒ skip staging entirely — write nothing,
+      append no manifest entry), stage the rendered ADR body at
+      `.blackhole/staged/<issue>/ADR-{NNN}-{slug}.md` and the INDEX row fragment at
+      `.blackhole/staged/<issue>/decisions-index-row.md`, via Bash heredoc + atomic `mv`, at the
+      absolute repo-root staging directory the orchestrator passes at spawn time
+      (`blackhole-state.md` § Staging (ADR-021 D1)). Append both entries to
+      `.blackhole/staged/<issue>/manifest.json` per that section's schema. This is staging, not a
+      commit inside the issue's own PR — no branch exists yet at Phase 2 (ADR-021 D1); the
+      implementer's carry-step (`implementer.md` § Carry Staged Artifacts, ADR-021 D2) is what
+      later copies the staged files into `documentation/` and commits them. No orchestrator file
+      write, no draft/final flip.
+      Return `status: "ready"` in the worker JSON with `track: "design"` — the `ready`/`blocked`
+      worker-JSON contract shape itself is unchanged; `V-INT-01` rides in the existing `findings`
+      array, no new required field.
 
-      **Cross-Cutting Heuristic (ADR-012 E3, Trigger A)**: in the **same PR/commit** as the ADR
-      + INDEX row above, apply this 3-question test to the ADR's Decision section:
+      **Cross-Cutting Heuristic (ADR-012 E3, Trigger A)**: apply this 3-question test to the
+      ADR's Decision section, using the same staging mechanism as the ADR + INDEX row above (no
+      direct `ARCHITECTURE.md` write — no branch exists yet at Phase 2, ADR-021 D1):
       1. **Breadth** — Does the constraint govern ≥2 independent subsystems/modules/agents, not
          one file or one feature?
       2. **Enforcement stakes** — Would violating it corrupt shared state, break a protocol
@@ -295,14 +350,13 @@ The artifact consolidates 8 ordered subsections:
       3. **Foreclosure** — Does it rule out an entire *category* of future implementation
          approaches for that surface, rather than prescribing today's preferred implementation
          detail?
-      Score ≥2/3 YES → append one bullet to `ARCHITECTURE.md` `## Active Constraints`:
-      `- {constraint, one sentence, imperative} (ADR-{NNN})`. The `(ADR-{NNN})` attribution
-      suffix is mandatory — it is the primary pollution mitigation for this section, giving a
-      human pruning it later a citation to check rather than bare prose to second-guess. Score
-      ≤1/3 → do not append; the constraint stays local to the ADR's own Decision text. This
-      write is committed inside the same PR as the ADR file and INDEX row (ADR-010 "merge =
-      approval" — no agent process runs at merge time). The `status: "ready"`/`"blocked"`
-      worker-JSON contract shape is unchanged by this append — no new required field.
+      Score ≥2/3 YES → stage the bullet `- {constraint, one sentence, imperative} (ADR-{NNN})` at
+      `.blackhole/staged/<issue>/architecture-active-constraint.md` and append a manifest entry
+      (`target_path: "ARCHITECTURE.md"`, `target_kind: "append_row"` — `blackhole-state.md` §
+      Staging) alongside the ADR/INDEX entries. The `(ADR-{NNN})` suffix is mandatory — the
+      primary pollution mitigation, giving a future pruner a citation to check. Score ≤1/3 → do
+      not append; the constraint stays local to the ADR's Decision text. The `status:
+      "ready"`/`"blocked"` worker-JSON contract shape is unchanged — no new required field.
     - `status: "blocked"` (from `design-aggregate.ts`), **or** the config gate is off or the
       `autonomy` block is absent → return `status: "blocked"` exactly as today: unconditional,
       no confidence bypass, the same code path the block has always used. The full analytical
@@ -316,14 +370,20 @@ The artifact consolidates 8 ordered subsections:
       on-disk `.blackhole/plans/issue-N-design.md` **verbatim**: no re-analysis, no
       re-invocation of `design-aggregate.ts`, no blind-critic re-spawn. Run
       `scripts/detect-doc-schema.sh` exactly as the `ready` branch above (same
-      repo-convention-precedence detection, ADR-012 E1) and emit
+      repo-convention-precedence detection, ADR-012 E1) and render
       `documentation/decisions/ADR-{NNN}-{slug}.md` plus the matching
-      `documentation/decisions/INDEX.md` row in the detected schema. Both committed inside the
-      issue's own PR — no orchestrator file write (orchestrator is `disallowedTools: [Write,
-      Edit, Delete]`), no draft/final flip; merge is the approval (`artifact-contract.md` §
-      Delivery mechanism, ADR-010 D5). Return `status: "ready"`, `track: "design"` in the
-      worker JSON — identical shape to the `ready` branch above, so no downstream consumer
-      needs a new case.
+      `documentation/decisions/INDEX.md` row in the detected schema. When `docs_governance.enabled`
+      and `docs_governance.write_governance` both resolve present and `true` (absent or `false` on
+      either ⇒ skip staging entirely — write nothing, append no manifest entry), stage both at
+      `.blackhole/staged/<issue>/ADR-{NNN}-{slug}.md` and
+      `.blackhole/staged/<issue>/decisions-index-row.md` via the same Bash heredoc + atomic `mv`
+      write and manifest append as the `ready` branch above — no orchestrator file write
+      (orchestrator is `disallowedTools: [Write, Edit, Delete]`), no draft/final flip. This is
+      staging, not a commit inside the issue's own PR — no branch exists yet at Phase 2 (ADR-021
+      D1); the implementer's carry-step (`implementer.md` § Carry Staged Artifacts, ADR-021 D2)
+      commits the staged files once the PR branch exists. Return `status: "ready"`,
+      `track: "design"` in the worker JSON —
+      identical shape to the `ready` branch above, so no downstream consumer needs a new case.
 
 ### 5. Brainstorm Track (ADR-010 D3)
 

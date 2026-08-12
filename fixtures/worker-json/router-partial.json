@@ -1,0 +1,10 @@
+{
+  "status": "partial",
+  "phase_reached": "handle",
+  "partial_result": {
+    "work_done": "Classified needs_split, needs_clarification, and needs_research.",
+    "work_remaining": "Classify the remaining route{} flags and compute confidence scores.",
+    "worktree_disposition": "clean",
+    "branch": null
+  }
+}

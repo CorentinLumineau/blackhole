@@ -83,3 +83,13 @@ filesystem write is its own note file. Deciding (routing) vs. discovering (evide
 is a real SRP boundary (ADR-004 Trade-offs table) that Handle's dispatch respects: this section
 documents the spawn point and trigger relationship only, not a decision-making role for
 `investigator`.
+
+**Blocked return (issue #454)**: an `investigate` sub-mode spawn that exhausts its ranked
+hypothesis set does not land a `research-landed`-style trigger — it returns `status: "blocked"`
+instead of `"complete"` (`worker-schemas.md` § `escalation_trigger` — Investigator subsection).
+That return is consumed by `orchestrator-dispatch.md` § Investigator Escalation Dispatch, not by
+this section's note-landing trigger.
+
+For the `analyze` and `investigate` sub-mode cases, the orchestrator also passes
+`.blackhole/staged/<issue>/` as an absolute repo-root path per `blackhole-state.md` § Staging
+(ADR-021 D1) — not restated here.

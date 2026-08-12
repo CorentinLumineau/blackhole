@@ -56,8 +56,8 @@ When ambiguous overlaps occur (one file matches multiple issues), escalate to co
 | All dirty files map to **one** issue `#N` and worktree is `wt-N` | **Resume** — clean staging if needed, re-spawn implementer |
 | Dirty files map to **multiple** issues, changes are **uncommitted** only | **Split** — per-issue partial stash or `git add -p` by touch_paths; park non-target files in stash tagged `recovery-issue-<N>`; one issue at a time |
 | Dirty files map to multiple issues but include **commits** on wrong branch | **Cherry-pick** — identify commits per issue (`git log --oneline`), cherry-pick onto correct `blackhole/issue-N` branches in correct worktrees |
-| Unmappable files, corrupted state, or wrong base branch | **Abort** — `git stash push -u -m "recovery-abort-wt-<issue> <ISO8601>"` or discard if user approves; `git worktree remove --force`; reset queue issue to `ready` / re-plan |
-| Worktree branch PR already merged | **Stale cleanup** — see Example (c); no cherry-pick |
+| Unmappable files, corrupted state, or wrong base branch | **Abort** — `git stash push -u -m "recovery-abort-wt-<issue> <ISO8601>"` or discard if user approves; check for unpushed commits before removal exactly as §6(c) — `--force` bypasses git's own dirty-tree refusal, not this check; `git worktree remove --force` (§6(c) for the exact standalone/literal-path form); reset queue issue to `ready` / re-plan |
+| Worktree branch PR already merged | **Stale cleanup** — see Example (c); check for unpushed commits before removal; no cherry-pick unless unmerged commits remain |
 
 Enforcement gates: `V-BRANCH-02`, `V-WORKTREE-01`, `V-SCOPE-02`.
 
@@ -115,13 +115,42 @@ Pop stash in the correct `wt-<issue>`; spawn implementers one wave at a time, re
 
 `gh pr view` shows PR for `blackhole/issue-11` merged; `wt-11` still exists.
 
-**Action — Abort/cleanup:**
+**Action — check before removing, then Abort/cleanup:**
+
+`git worktree remove` only refuses on a dirty working tree — it does not refuse on
+committed-but-unpushed history. A merged PR proves the *pushed* commits landed; it says nothing
+about commits made in the worktree after the last push (a post-push rebase, a follow-up commit).
+
+Mechanized (#532): a PreToolUse hook (`templates/hooks/pretooluse/utils/worktree-removal-guard.js`)
+now enforces this automatically for every `git worktree remove` call — including with `--force`,
+which bypasses git's own dirty-tree refusal but not this check — denying it (V-HOOK-01) when the
+target worktree's branch carries commits its remote does not have. The manual check below is what
+the hook runs; use it directly when investigating outside a Bash tool call the hook intercepts.
+When the worktree's branch has no upstream configured (`--no-track`, this campaign's own
+worktree-creation convention — #516), `@{u}` below has nothing to resolve; the hook falls back to
+comparing against `refs/remotes/origin/<branch>` instead, which a normal `git push` keeps current
+even without `-u`.
+
+The hook can only verify a call it can parse statically — see `blackhole-protocol.md` § Branch &
+Worktree Hygiene for the full standalone/literal-path requirement and the unverifiable-branch
+remedy (#551); the example below already satisfies it.
+
+Check first:
+
+```bash
+git -C <scratchpad>/wt-11 log @{u}..HEAD
+```
+
+- **Non-empty** — refuse the removal. Cherry-pick the missing commits onto a fresh branch (the
+  commits stay reachable by SHA as long as the worktree/branch still exists) before removing the
+  worktree, then re-open or update the issue's PR if the missing work is still needed.
+- **Empty** — safe to remove:
 
 ```bash
 git worktree remove <scratchpad>/wt-11
 ```
 
-Prune branch; set queue `#11` `phase: done`. Do **not** cherry-pick unless unmerged commits remain on branch (then cherry-pick to new branch only if issue still open).
+Prune branch; set queue `#11` `phase: done`.
 
 ### (d) Research/investigation artifact missing
 
@@ -243,3 +272,51 @@ skip spawn when artifact + target phase already satisfied (`heal.skipSpawn` from
 
 Does not fix #151 root cause (coordinator/orchestrator wake); complements #152 docs and
 optional #154 prevention.
+
+## §10 Dropped worker return recovery
+
+Bidirectional cross-reference: `orchestrator-runtime.md` § Background worker barrier → Triage
+specifies the three-case distinction (return arrived / worker signaled completion but no return
+/ neither arrived) and the recovery ladder this section documents the evidence for — that section
+is the enforcement site, this section is the record.
+
+### §10.1 Failure signature (issue #566)
+
+Observed twice in the same campaign, both read-only `router` batches, both `run_in_background:
+true`: **8/8** returns lost turn 7, **7/7** lost turn 8. A per-worker idle/completion
+notification (`idleReason: "available"`) arrived for every spawn in both waves — the harness
+correctly knew each agent had finished. Only the return **payload** was missing. This rules out a
+liveness or notification failure and confirms completion and return-delivery are independent
+channels (`orchestrator-runtime.md` § Triage, Three-case distinction).
+
+### §10.2 The three retrieval paths, and their observed outcomes
+
+| # | Path | Observed outcome |
+|---|------|-------------------|
+| 1 | Task-completion notification payload | **Never carries the return.** Delivers a bare idle/completion signal only — notification and return are independent channels, not a fallback pair |
+| 2 | Mailbox / `SendMessage` re-request, addressed by the worker's spawn name | **Cannot recover a dropped return** — re-uses the same delivery channel that failed. Re-requesting a dropped return: **0/7** in the turn-8 dropped-return batch (every agent re-emitted correct JSON; delivery failed again). Instructing a **live** worker to perform new work: succeeds (turn 8: `impl-482` rebase report and `impl-592` WARN response both arrived). Go to rung 3 for recovery; use rung 2 only to message a live worker |
+| 3 | On-disk transcript read (`~/.claude/projects/<project-slug>/<session-id>/subagents/agent-a<name>-*.jsonl`) | **Reliable when `$CLAUDE_CODE_SESSION_ID` is set.** Recovered all 7 route objects verbatim in the turn-8 recurrence, including two agents that had emitted their JSON twice (once originally, once on a rung-2 re-request) — both copies identical and correct. The workers were never at fault; only delivery was |
+
+**Caveat on path 3**: the `agent-a<name>-*.jsonl` path shape is an **undocumented Claude Code
+harness internal, not a public contract**. If it stops matching after a harness upgrade, the glob
+returns empty and there is **no automated recovery path** — rung 2 cannot substitute for dropped
+returns (see rung 2 above). Repair the glob pattern (file a fast-follow issue) rather than leaning
+on rung 2. Path 3 requires no new agent
+capability: `router`, `reviewer`, `hunter`, and `investigator` are all `disallowedTools: [Write,
+Edit, Delete]` by design, and this path is an orchestrator-side read of a file the harness itself
+already durably persists — it never requires relaxing that boundary.
+
+### §10.3 Recovery ladder
+
+The concrete two-rung procedure (glob + `scripts/validate-worker-json.ts --recover-transcript`,
+then `SendMessage` re-request) is specified once, at its enforcement site:
+`orchestrator-runtime.md` § Background worker barrier → Triage, "Recovery ladder (case B only,
+stop at first success)" — not restated here.
+
+### §10.4 Terminal case — both rungs fail
+
+When rung 1 (transcript recovery) and rung 2 (`SendMessage` re-request) both fail for a worker:
+classify **Permanent** (`orchestrator-runtime.md` § Error Classification), append an entry to the
+existing Failed-Approaches Log (`checkpoint-protocol.md` § Failed-Approaches Log) naming the
+worker and both failed recovery attempts, tag `notes: lost-respawned`, and re-spawn the worker
+fresh — never leave the issue silently stuck `in-flight` past this point.

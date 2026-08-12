@@ -27,6 +27,7 @@ import { cleanDir, isTargetTracked, determineBuildTargets } from './lib/build/cl
 import {
   GEMINI_TARGET_DIRS,
   CODEX_TARGET_DIRS,
+  AGENT_PLUGINS_TARGET_DIRS,
   DEPRECATED_BUILD_FLAGS,
   CLAUDE_DISTRIBUTION_ROOT,
   CLAUDE_DISTRIBUTION_AGENT_DIR,
@@ -764,20 +765,20 @@ describe('bun run build — tracked ⇒ built-by-default (ADR-007 T2)', () => {
     expect(new Set(DEPRECATED_BUILD_FLAGS)).toEqual(new Set(['--gemini', '--all', '--no-codex']));
   });
 
-  test('determineBuildTargets uses tracking-only gating — deprecated flags do not change buildGemini/buildCodex when all targets are tracked', () => {
-    expect(isTargetTracked(root, GEMINI_TARGET_DIRS)).toBe(true);
-    expect(isTargetTracked(root, CODEX_TARGET_DIRS)).toBe(true);
+  test('determineBuildTargets uses tracking-only gating — deprecated flags do not change target booleans', () => {
+    const expected = {
+      buildGemini: isTargetTracked(root, GEMINI_TARGET_DIRS),
+      buildCodex: isTargetTracked(root, CODEX_TARGET_DIRS),
+      buildAgentPlugins: isTargetTracked(root, AGENT_PLUGINS_TARGET_DIRS),
+    };
 
     const baseline = determineBuildTargets(new Set());
-    expect(baseline).toEqual({ buildGemini: true, buildCodex: true });
+    expect(baseline).toEqual(expected);
 
     for (const flag of DEPRECATED_BUILD_FLAGS) {
-      expect(determineBuildTargets(new Set([flag]))).toEqual({ buildGemini: true, buildCodex: true });
+      expect(determineBuildTargets(new Set([flag]))).toEqual(expected);
     }
-    expect(determineBuildTargets(new Set([...DEPRECATED_BUILD_FLAGS]))).toEqual({
-      buildGemini: true,
-      buildCodex: true,
-    });
+    expect(determineBuildTargets(new Set([...DEPRECATED_BUILD_FLAGS]))).toEqual(expected);
   });
 });
 

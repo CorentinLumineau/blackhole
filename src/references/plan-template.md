@@ -21,6 +21,25 @@ ui_gate: pending | approved | null
 - `file/path/A.ts`
 - `file/path/B.tsx`
 
+## Scope Amendments
+Appended by the orchestrator, not authored by the planner during Step 7 — the orchestrator
+appends one line here, before spawning, whenever it authorizes a Touch-Paths change in a
+worker's spawn prompt that diverges from this plan's declared `## Touch-Paths` (procedure:
+`orchestrator-dispatch.md` § Spawn-Time Touch-Paths Amendment). Omit the heading entirely until
+the first amendment. Format, one line per amendment, newest last:
+
+```
+- <date> — widen|narrow — `<path>` — <one-sentence reason>
+```
+
+`widen` = a path added beyond the plan's original Touch-Paths list; `narrow` = a path removed
+from it. Worked example (PR #602 / issue #573):
+
+```
+- 2026-08-05 — widen — `scripts/checks/ground-truth.check.ts` — stale decision-record comment
+  needed a same-PR fix alongside the touched check it documents.
+```
+
 ## [If docs_governance.enabled] Documentation Impact
 List companion/consumer docs the Touch-Paths affect — e.g. `ARCHITECTURE.md`, `DESIGN.md`,
 `documentation/decisions/INDEX.md`, or a specific consumer doc/README — or write
@@ -30,7 +49,9 @@ heading entirely when the config block is absent or `enabled` is `false`. When n
 obligations, gated by `docs_governance.write_governance`.
 
 ## [Standard Only] Critical Files
-...
+List only pre-existing sensitive touchpoint files (e.g. database client, auth config). A file
+this plan is about to create belongs under Touch-Paths, never here — `critical_files_exist`
+(Step 8) Globs every path listed in this section and blocks on a miss.
 
 ## [Standard Only] Codebase Conventions
 ...
@@ -67,6 +88,18 @@ obligations, gated by `docs_governance.write_governance`.
 
 ## Sprint Contract
 ...
+
+## [Standard Only] Quality Gate Results
+| Check | Result |
+|---|---|
+| `touch_paths_declared` | PASS \| FAIL |
+| `schema_baseline` | PASS \| FAIL |
+| `ac_mapping` | PASS \| FAIL |
+| `critical_files_exist` | PASS \| FAIL |
+| `mitigation_concrete` | PASS \| FAIL |
+| `ac_sweep_conflict` | PASS \| ADVISORY |
+| `ac_sweep_scope` | PASS \| ADVISORY |
+| `touch_paths_ssot_gap` | PASS \| ADVISORY |
 ```
 
 ### Skip Track file template

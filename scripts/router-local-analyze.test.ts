@@ -79,15 +79,15 @@ describe('blackhole-vcodes.md — V-SEC-09/V-SEC-10 registration', () => {
   // strictly better coverage than this unit-level comparison against a doc counter.
 });
 
-describe('blackhole-vcodes.md / reviewer.md — V-DOC-05 registration (#335)', () => {
-  test('vcodes table has a V-DOC-05 (WARN) row', () => {
+describe('blackhole-vcodes.md / reviewer.md — V-DOCFACT-01 registration (#335)', () => {
+  test('vcodes table has a V-DOCFACT-01 (WARN) row', () => {
     const vcodes = read('src/references/blackhole-vcodes.md');
-    expect(vcodes).toMatch(/\| V-DOC-05 \|.*\| WARN \|/);
+    expect(vcodes).toMatch(/\| V-DOCFACT-01 \|.*\| WARN \|/);
   });
 
-  test('reviewer.md audits V-DOC-05 by cross-referencing § 10/§ 8 detection, not restating keyword lists', () => {
+  test('reviewer.md audits V-DOCFACT-01 by cross-referencing § 10/§ 8 detection, not restating keyword lists', () => {
     const reviewer = read('src/agents/reviewer.md');
-    expect(reviewer).toContain('Documentation Prose Factual Accuracy (`V-DOC-05`)');
+    expect(reviewer).toContain('Documentation Prose Factual Accuracy (`V-DOCFACT-01`)');
     // Guards V-INT-02: the new audit must cross-reference § 10's companion-file surface and
     // § 8's documentation path patterns rather than restating keyword lists.
     expect(reviewer).toMatch(/§ 10's companion-file surface and § 8's documentation path patterns/);
@@ -109,11 +109,82 @@ describe('blackhole-vcodes.md / reviewer.md — V-UX-01 registration (#271)', ()
   });
 });
 
+describe('blackhole-vcodes.md / reviewer.md — V-SOLID-02/04/05 registration (#455)', () => {
+  test('vcodes table has V-SOLID-02 (BLOCK), V-SOLID-04 (WARN), and V-SOLID-05 (BLOCK) rows', () => {
+    const vcodes = read('src/references/blackhole-vcodes.md');
+    expect(vcodes).toMatch(/\| V-SOLID-02 \|.*\| BLOCK \|/);
+    expect(vcodes).toMatch(/\| V-SOLID-04 \|.*\| WARN \|/);
+    expect(vcodes).toMatch(/\| V-SOLID-05 \|.*\| BLOCK \|/);
+  });
+
+  test('reviewer.md §3 SOLID audit cites each new V-SOLID code', () => {
+    const reviewer = read('src/agents/reviewer.md');
+    expect(reviewer).toContain('(`V-SOLID-02`)');
+    expect(reviewer).toContain('(`V-SOLID-04`, `WARN`)');
+    expect(reviewer).toContain('(`V-SOLID-05`)');
+  });
+});
+
 describe('blackhole-vcodes.md — V-AUTO-01/V-AUTO-02 registration', () => {
-  test('vcodes table has V-AUTO-01 (BLOCK) and V-AUTO-02 (WARN) rows', () => {
+  test('vcodes table has V-AUTO-01 (BLOCK) and V-AUTO-02 (BLOCK) rows', () => {
     const vcodes = read('src/references/blackhole-vcodes.md');
     expect(vcodes).toMatch(/\| V-AUTO-01 \|.*\| BLOCK \|/);
-    expect(vcodes).toMatch(/\| V-AUTO-02 \|.*\| WARN \|/);
+    expect(vcodes).toMatch(/\| V-AUTO-02 \|.*\| BLOCK \|/);
+  });
+
+  test('V-AUTO-02 row names reviewer.md §25 as its enforcement site', () => {
+    const vcodes = read('src/references/blackhole-vcodes.md');
+    const row = vcodes.split('\n').find((line) => line.startsWith('| V-AUTO-02 |'));
+    expect(row).toBeDefined();
+    expect(row).toContain('reviewer.md §25');
+  });
+});
+
+describe('reviewer.md — §25 Staged Artifact Carry Audit content (ADR-021 D4, #468)', () => {
+  const reviewer = read('src/agents/reviewer.md');
+
+  test('has a numbered §25 heading naming V-AUTO-02', () => {
+    expect(reviewer).toMatch(/### 25\. Staged Artifact Carry Audit.*V-AUTO-02/);
+  });
+
+  test('states V-AUTO-02 severity as its own literal BLOCK token, not a cross-reference', () => {
+    // Guards the #441-class defect: a severity raised in blackhole-vcodes.md must be restated
+    // literally at its enforcement site, never inferred by pointing at a sibling section/code.
+    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
+    expect(section.length).toBeGreaterThan(0);
+    expect(section).toMatch(/`V-AUTO-02`[^\n]*`BLOCK`|`BLOCK`[^\n]*`V-AUTO-02`/);
+  });
+
+  test('re-checks docs_governance.write_governance directly from config, not inferred from manifest absence', () => {
+    expect(reviewer).toContain('docs_governance.write_governance');
+    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
+    expect(section).toMatch(/docs_governance\.enabled/);
+    expect(section).toMatch(/docs_governance\.write_governance/);
+  });
+
+  test('treats an absent/empty manifest as a vacuous gate — a route that declared nothing is unaffected', () => {
+    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
+    expect(section).toMatch(/vacuous/i);
+    expect(section).toMatch(/declared nothing/i);
+  });
+
+  test('branches per-entry on new_file vs append_row target_kind', () => {
+    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
+    expect(section).toContain('new_file');
+    expect(section).toContain('append_row');
+  });
+
+  test('reuses the ARCHITECTURE.md citation-suffix discriminator from ac80755/implementer.md, not a reinvented one', () => {
+    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
+    expect(section).toMatch(/ac80755/);
+    expect(section).toMatch(/citation suffix/);
+  });
+
+  test('surfaces an undecidable manifest shape rather than silently passing it', () => {
+    // Guards the #562/#564/#565/#580 defect class named in the delegation: a BLOCK-severity
+    // audit that cannot evaluate a case must say so, never treat it as "carried".
+    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
+    expect(section).toMatch(/undecidable|cannot (be )?evaluat/i);
   });
 });
 
@@ -167,5 +238,30 @@ describe('blackhole-vcodes.md / planner.md / reviewer.md — V-THREAT-01 registr
     expect(reviewer).toMatch(/review-core\.md.*Security-mode\s+review/);
     // Conditional-omission fallback must be present, mirroring V-THREAT-02/03's discipline.
     expect(reviewer).toMatch(/Not security-mode, or plan track is not quick — no finding/);
+  });
+});
+
+describe('blackhole-vcodes.md — documentation alignment registration (#446)', () => {
+  const vcodes = () => read('src/references/blackhole-vcodes.md');
+
+  test.each(['V-DOC-01', 'V-DOC-03', 'V-DOC-05', 'V-DOC-06', 'V-ADA-04', 'V-ADR-01', 'V-ADR-02', 'V-ADR-03'])(
+    'registers %s with a WARN row',
+    (code) => {
+      expect(vcodes()).toMatch(new RegExp(`\\| ${code} \\|.*\\| WARN \\|`));
+    },
+  );
+
+  test('V-DOC-GOV-02 row requires all five lifecycle frontmatter fields', () => {
+    const row = vcodes().split('\n').find((line) => line.startsWith('| V-DOC-GOV-02 |'));
+    expect(row).toBeDefined();
+    expect(row).toContain('review_trigger');
+    expect(row).toContain('created');
+    expect(row).toContain('last_updated');
+  });
+
+  test('product-principles template uses retired ruling status enum', () => {
+    const template = read('templates/companion-files/product-principles.md.template');
+    expect(template).toContain('active | superseded | retired');
+    expect(template).not.toContain('retracted');
   });
 });

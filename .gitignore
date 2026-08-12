@@ -2,8 +2,8 @@ node_modules/
 .blackhole/
 .bc-campaign/
 .DS_Store
-dist/
-build/
+/dist/
+/build/
 *.log
 
 # Ignore ephemeral handoff dirs and workspace plugin symlinks under .agents/

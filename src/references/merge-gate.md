@@ -34,7 +34,9 @@ protocol step 2's, unchanged.
 - **Reclassification**: governed entirely by `phase-loop.md` step 2's rules
   (`cancelled` → rerun once; "Base branch was modified" → re-fetch + retry
   once; 2-retry cap → `orchestrator-runtime.md` § Error Classification) — not
-  restated here.
+  restated here. After the 2-retry cap, still-red Permanent CI is diagnosed per
+  `ci-diagnosis.md` (failing-step logs, environment/genuine classification,
+  implementer fix-loop routing via `V-CI-01`).
 
 ## 1. `mergeEligible(issue) -> bool`
 
@@ -91,8 +93,8 @@ for the predecessor-closed deadlock class. All entries must resolve; an empty
 
 ### Condition 3 — gated-batch sibling wait
 
-Only evaluated when `config.json.merge_mode == "gated-batch"` (default
-`"immediate"` skips this condition entirely — the loop above never enters the
+Only evaluated when `config.json.merge_mode == "gated-batch"` (`"immediate"`
+skips this condition entirely — the loop above never enters the
 `if` body, so immediate-mode campaigns pay zero extra cost). "Siblings" means
 every `queue.json` issue matching the campaign's configured scope
 (`scope_milestone` / `scope_labels`) **and** not already `closed` or `merged`,
@@ -158,7 +160,11 @@ listing itself — is a degenerate 1-node cycle of the same class):
    issue's number; for cycles >2 nodes, name the next node in the cycle).
 3. Surface via the existing `AskQuestion` user gate (`coordinator.md` /
    `orchestrator.md`'s existing interactive-gate convention) — never silently
-   deadlock or auto-resolve a cycle.
+   deadlock or auto-resolve a cycle. Conforms to `clarify-gates.md` § Gate Content Contract
+   (R-003), merge escalation gate class: Why is that a merge-order cycle cannot resolve itself
+   — picking an edge to break is the owner's call; Evidence is the cycle's issue numbers and
+   their `merge_after`/`depends_on` edges (`coordinator.md`'s "Resolving Blockers" §
+   merge-order-cycle bullet presents the same edges — cross-referenced there, not restated).
 
 This step is consulted (by pointer) from `forge-sync.md`'s sync sequence — the
 algorithm lives here once; `forge-sync.md` does not duplicate it inline.
@@ -237,6 +243,25 @@ merge` call as one batch — is what turns a mid-batch failure into a resumable
 state: the next orchestrator turn picks up `mergeEligible()` evaluation
 exactly where it left off (predecessors already merged stay resolved), with
 no rollback logic required for the PRs that already landed.
+
+## 5. Review artifact presence gate (ADR-021 D3, issue #445)
+
+When `docs_governance.enabled` and `docs_governance.write_governance` both resolve `true`, an
+LGTM'd issue's PR must contain the promoted review artifact before `mergeEligible(issue)` may
+proceed to `phase-loop.md` step 4 (`gh pr merge`):
+
+```
+function reviewArtifactPresent(issue, pr_diff_paths, config):
+    if config.docs_governance.enabled != true: return true
+    if config.docs_governance.write_governance != true: return true
+    expected = deriveReviewTargetPath(issue.title, issue.number)  # scripts/lib/concern-slug.ts
+    return expected in pr_diff_paths
+```
+
+Mechanical check: `rg 'documentation/reviews/review-'` on the PR file list, or
+`git diff --name-only origin/<base>...HEAD | grep documentation/reviews/`. Absence is a **hard
+stop** at merge step 2.5 — same class as a missing plan manifest declaration at implement time
+(`implementer.md` § Carry Staged Artifacts). Inert when either governance flag is `false`.
 
 ## Edge cases
 

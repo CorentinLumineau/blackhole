@@ -1,0 +1,10 @@
+{
+  "workflow_runs": [
+    {
+      "id": 9001,
+      "name": "CI",
+      "head_sha": "abc123def456",
+      "conclusion": "failure"
+    }
+  ]
+}

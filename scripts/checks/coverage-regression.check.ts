@@ -8,6 +8,13 @@ import { findMissingGateMarkers } from '../lib/check-common.ts';
 //   2. src/agents/implementer.md § 6 "Verify & Open PR" carries the coverage-delta sub-step,
 //      reusing hunt/coverage.md's runner-detection heuristic (no invented runner invocation;
 //      no-runner degrades to a logged no-op, never a false pass).
+//
+// issue #457 originally bolted a third check onto this same module — src/agents/reviewer.md § 23
+// Test Integrity Audit — reusing V-TEST-09 to cover added skip markers, removed assertions, and
+// weakened validation. That reuse didn't hold semantically: § 23 is review-time diff-pattern
+// judgment, never a coverage number. Issue #518 split it back out into its own module,
+// test-integrity.check.ts, under its own code, V-TEST-10 — this file returns to its pre-#457
+// scope (vcodes row + implementer.md only).
 
 // The V-TEST-09 row, verbatim per issue #306's requested wording. Matching the full row (down to
 // the trailing "| BLOCK") asserts code + description + severity together — a bare ".includes('BLOCK')"
@@ -26,6 +33,13 @@ export const IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS = [
   'degrades to a logged no-op',
 ];
 
+// Extracted so the missing-marker → error-string mapping is directly unit-testable without
+// needing to fake a stale real source file — the success-path integration test below always maps
+// over empty arrays (nothing missing in the real tree), which would otherwise leave this
+// formatting step permanently unexercised.
+export const formatMissingMarkerErrors = (missing: string[], sourceFile: string): string[] =>
+  missing.map((m) => `${sourceFile} missing "${m}"`);
+
 const checkCoverageRegressionGate = (): CheckResult => {
   const vcodesMissing = findMissingGateMarkers(read('src/references/blackhole-vcodes.md'), VCODES_TEST09_REQUIRED_MARKERS);
   const implementerMissing = findMissingGateMarkers(
@@ -34,8 +48,8 @@ const checkCoverageRegressionGate = (): CheckResult => {
   );
 
   const errors = [
-    ...vcodesMissing.map((m) => `blackhole-vcodes.md missing "${m}"`),
-    ...implementerMissing.map((m) => `implementer.md missing "${m}"`),
+    ...formatMissingMarkerErrors(vcodesMissing, 'blackhole-vcodes.md'),
+    ...formatMissingMarkerErrors(implementerMissing, 'implementer.md'),
   ];
 
   if (errors.length) return { id: 'V-TEST-09', ok: false, detail: errors.join('; ') };
