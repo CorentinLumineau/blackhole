@@ -14,6 +14,7 @@
 - [ ] Ruling re-check evaluated before the phase transition (issue #422 — `orchestrator.md` § Ruling Re-Check Gate)
 - [ ] Plan artifact exists: `{repo_root}/.blackhole/plans/issue-N.md`
 - [ ] Planner JSON `status: ready` — do NOT spawn implementer if `blocked`
+- [ ] Reformulation posting (issue #456) — when planner JSON validates with `status: ready` and `track` is `quick` or `standard`, format `reformulation` via `scripts/lib/reformulation-surface.ts` `formatReformulationComment()` and post to the issue thread before implement spawn: `gh issue comment <issue_number> --body "$(cat <<'EOF' ... EOF)"` (skip when `status: blocked`, `track: skip|design|brainstorm`, or `reformulation` fails validation — treat as validation failure, do not advance). See `confidence-gates.md` § Async Two-Band Mapping.
 - [ ] queue.json: phase implement, status ready OR blocked (awaiting-plan-approval)
 ```
 
@@ -21,6 +22,25 @@
 
 See [worker-schemas.md](worker-schemas.md) planner contract. On `status: blocked`, set queue `notes: awaiting-user-clarification` or `awaiting-plan-approval` per failing checks, or `awaiting-design-approval` when `track: design` (`failing_checks` includes `design_pending_approval`) — and also, regardless of track, when `failing_checks` includes `ui_pending_approval` (ADR-017; no new `QUEUE_NOTES` token — `awaiting-design-approval` is reused for both the design-track block and the plan-time UI gate block). Independently of `status`, a non-empty `ruling_conflicts[]` on the planner return sets `notes: awaiting-ruling-recheck` instead of advancing the phase (issue #422 — `worker-schemas.md` § Rulings ledger (read-input); `orchestrator.md` § Ruling Re-Check Gate).
 See [multitask-mode.md](multitask-mode.md) § Claude Code harness notes for how to verify a blocked/idle worker's status without chat polling.
+
+## Reformulation posting
+
+On the confidence-gate proceed path (`track: quick` or `track: standard`, `status: ready`,
+valid `reformulation` per `worker-schemas.md` § Reformulation (async veto surface)), the
+orchestrator posts the formatted understanding to the issue thread **before** spawning
+`implementer`:
+
+```bash
+gh issue comment <issue_number> --body "$(cat <<'EOF'
+<output of formatReformulationComment(reformulation)>
+EOF
+)"
+```
+
+Do not post when `status: blocked`, when `track` is `skip`, `design`, or `brainstorm`, or when
+`reformulation` is missing or fails validation — validation failure blocks phase advance.
+No `queue.json` field; this is a forge side-effect only (`confidence-gates.md` § Async Two-Band
+Mapping).
 
 ## Route-derived planner spawn (ADR-004)
 
@@ -32,7 +52,15 @@ against `router_confidence_thresholds`). Zero-regression guarantee: absent/void 
 or `adaptive_routing: false`, preserves today's exact behavior — no explicit directive,
 planner self-assesses Quick/Standard unchanged.
 
+For the `track: design` and `resume_context: design_approved` spawn cases, the orchestrator
+passes `.blackhole/staged/<issue>/` as an absolute repo-root path per `blackhole-state.md` §
+Staging (ADR-021 D1) — not restated here.
+
 ## Plan approval gate
+
+Every `AskQuestion` row below (all except "Design track, autonomy gate ready") conforms to
+`clarify-gates.md` § Gate Content Contract (R-003) — plan approval and design approval gate
+classes.
 
 | Situation | Before implement |
 |-----------|------------------|

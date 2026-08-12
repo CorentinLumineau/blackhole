@@ -1,8 +1,8 @@
 ## Error Classification (Transient / Permanent / Partial-Corruption)
 
 This section is the **single source** for campaign tool/spawn failure classification —
-`recovery-protocol.md` and `worker-schemas.md` cross-reference it, they do not restate the
-table.
+`recovery-protocol.md`, `merge-conflict-protocol.md`, and `worker-schemas.md` cross-reference it,
+they do not restate the table.
 
 | Class | Examples | Action |
 |-------|----------|--------|
@@ -36,9 +36,49 @@ orchestrator that has already ended its turn.
 
 ### Triage (idempotent)
 
-For each completed worker:
+**Three-case distinction (issue #566)**: a worker's completion/idle notification and its return
+payload are **independent channels** — a batch can deliver every completion signal while
+delivering zero payloads (observed empirically: 7 idle notifications for 7 `router` spawns, 0
+returns). Never treat notification receipt as evidence a return arrived. Before running step 1
+below, classify each worker into exactly one of:
 
-1. Parse and validate return JSON (`scripts/validate-worker-json.ts` or harness hook output) — see `worker-schemas.md` § Orchestrator validation and § Barrier triage.
+- **(A) Return arrived** — the normal case; proceed to step 1 unchanged.
+- **(B) Worker signaled completion (idle/available notification or harness completion signal)
+  but no return payload arrived** — run the Recovery ladder below; on success, treat the
+  recovered JSON identically to case A and proceed to step 1. Never collapse this case into
+  "worker returned nothing to report."
+- **(C) Neither signal arrived** — the worker is still genuinely in-flight; attempt no recovery;
+  the Barrier above keeps waiting.
+
+**Recovery ladder (case B only, stop at first success)**:
+
+1. If `$CLAUDE_CODE_SESSION_ID` is set in the orchestrator's Bash environment, glob
+   `~/.claude/projects/*/$CLAUDE_CODE_SESSION_ID/subagents/agent-a<name>-*.jsonl`, where `<name>`
+   is the exact spawn `name` this worker was given (`orchestrator-delegation.md` § Worker spawn
+   model, deterministic spawn name). On more than one match, take the most recently modified; on
+   a tied or unavailable `mtime`, abort this rung and fall through to rung 2 rather than risk
+   applying a stale prior-turn return. Run `bun run scripts/validate-worker-json.ts
+   --recover-transcript <path> --role <role>`. Exit `0` → parse stdout as the recovered return
+   JSON, tag `notes: recovered-via-transcript`, done. If `$CLAUDE_CODE_SESSION_ID` is unset —
+   skip this rung entirely (a harness-capability check, not a fault) and go straight to rung 2.
+2. On rung 1's absence or failure (unset env var, empty glob, or the script's non-zero exit for
+   any reason — missing file, no assistant text, extraction failure, schema-validation failure)
+   — **do not retry the same transcript file.** `SendMessage` the worker by its spawn `name`
+   asking it to re-emit its final status JSON verbatim; wait for the next idle/completion signal;
+   retry rung 1 once against any new transcript content. On success, tag `notes:
+   recovered-via-resend`.
+3. If both rungs fail, classify **Permanent** (§ Error Classification above), append a
+   Failed-Approaches entry (`checkpoint-protocol.md` § Failed-Approaches Log) naming the worker
+   and both failed recovery attempts, tag `notes: lost-respawned`, and re-spawn the worker fresh
+   rather than loop — never leave the issue silently stuck `in-flight` past this point.
+
+Full retrieval-path table and observed outcomes: `recovery-protocol.md` §10 — cross-referenced,
+not restated here.
+
+For each completed worker (case A, or case B after a successful recovery):
+
+1. Parse and validate return JSON (`scripts/validate-worker-json.ts` or harness hook output) — see `worker-schemas.md` § Orchestrator validation and § Barrier triage. This validation is unconditional across every arrival path — direct return (case A), transcript-recovered (Recovery ladder rung 1), and resend-recovered (rung 2): the orchestrator never applies a worker's JSON to `queue.json`/`findings-ledger.json` from a hand-extracted or otherwise unvalidated payload (`V-BRIEF-01`, BLOCK).
+1b. **Hook event ingestion** (issue #447): glob `.blackhole/hook-events/*.json` **before** validating this worker's return JSON — a PreToolUse refusal is written by non-agent code precisely because the worker's own report cannot be relied on to mention it. Invoke `scripts/lib/hook-event-triage.ts` (`ingestHookEvents`) to perform the mechanical ingest: for each event, resolve `issue_ref` by matching its `worktree` field against `queue.json`'s in-flight `worktree` paths, append a `V-HOOK-01` (`tier: block`), `V-HOOK-02` (`tier: warn`), or `V-HOOK-03` (`tier: error` — wrapper fail-open / `hook-exec-failure`) findings-ledger row with `phase: "implement"` via the dedup-then-append protocol (`findings-ledger.md` § Write protocol — never re-derived here), then delete the ingested file. Event schema: `hook-schemas.md` § PreToolUse hook events. An event whose `worktree` matches no in-flight issue is still appended, with `issue_ref: null` — never dropped.
 2. **Ruling-revision quarantine** (issue #422, gated by `docs_governance.enabled`/`companion_files`): before applying this worker's mutations, compare its recorded spawn-time `rulings_revision` (step 2 above) against the ledger's current `rulings_revision`. On mismatch — **quarantine**: do not advance the phase; set `status: blocked`, `notes: awaiting-ruling-recheck`; add the issue to the coordinator's conflict list instead of applying the worker's normal mutations (step 3 below).
 3. Apply queue/ledger mutations per role, **serially, one completed worker at a time** — even
    though the batch itself ran in parallel, the orchestrator never parallelizes the
@@ -49,10 +89,53 @@ For each completed worker:
    return computed data, and the orchestrator alone applies it. For each completed `router`,
    construct the full `routing_decisions` row from its returned JSON before appending: assign
    `id` from `next_routing_id`, `issue_ref` from spawn context, `created_at` = now, and copy
-   `route`, `trigger`, and `local_analyze` verbatim from the return (`worker-schemas.md` §
-   Router).
+   `route`, `trigger`, `local_analyze`, and `rationale` (when present on the return) verbatim
+   from the return (`worker-schemas.md` § Router). **Exception**: a completed worker returning
+   `status: partial`
+   (`worker-schemas.md` § Partial result) skips this per-role branch entirely — see §
+   Partial-result ingest below.
 4. Remove the worker from `## In-flight workers`.
 5. **Idempotency:** if the artifact already satisfies the gate before spawn (e.g. `route{}` present, plan file on disk, PR open), skip re-spawn and advance phase. When checkpoint lists workers as active but artifacts already landed, run `recovery-protocol.md` §9 drift heal at turn start (`detectArtifactDrift`) — do not re-spawn completed workers when artifacts match the current revision.
+
+### Partial-result ingest (`status: partial`, `stop --now` leg B, issue #492)
+
+Applies instead of step 3's normal per-role mutation branch, still serially, one worker at a
+time (`blackhole-state.md` § Single-writer invariant, unchanged):
+
+1. **Phase**: leave `queue.json`'s `phase` at `partial_result.phase_reached` — never advance on
+   a partial return, however much work looks done.
+2. **Status & notes**: set `status: blocked`, `notes:` the string built by
+   `scripts/lib/worker-json/partial-ingest.ts`'s `buildPartialFlushNotes()` — reusing the
+   existing free-form `notes` convention (`queue-dag.md`), same pattern as
+   `awaiting-ruling-recheck`/`blocked-escalated:Permanent:<reason>`, not a new queue schema
+   field. `status: blocked` is a scheduling label ("needs a human or a resumed worker"), not a
+   claim about the work.
+3. **Worktree safety**: `worktree_disposition: dirty-uncommitted` never authorizes worktree
+   removal — `blackhole-protocol.md` § Branch & Worktree Hygiene's dirty-check refusal applies
+   unchanged. `pushed` leaves the worktree eligible for the same mergeable-release conditions
+   as any other worktree; a partial branch with no open PR simply never meets them yet.
+4. **Never drop**: append `new_findings` (if any) exactly as any other return would
+   (`blackhole-protocol.md` § Never drop findings does not suspend for a partial return).
+5. **Resume**: the next turn that dispatches this issue reads the `notes` string from step 2,
+   re-spawns the same role at `phase_reached`, and briefs it with `work_done`/`work_remaining`
+   verbatim in the 5-Field Delegation Contract's Objective field — the same
+   Failed-Approaches-entries convention already used to avoid re-attempting dead ends (§ Error
+   Classification above, cited not restated) — so the resumed worker continues instead of
+   restarting from zero.
+
+### Interaction with the Unverified-claim hold (#204) and Sprint Contract hold (#309)
+
+Both holds key on `status: complete` specifically, not any other value — a `status: partial`
+return never claims completion, so neither hold can fire on it. See `phase-implement.md` §§
+Unverified-claim hold, Sprint Contract hold for each hold's own stated trigger; this is the
+direct consequence of that trigger, not a bypass by omission. The gap that would otherwise open
+— a worker dodging both holds' evidence bar by returning `partial` instead of an
+under-verified `complete` — is closed structurally:
+`scripts/validate-worker-json.ts` requires `partial_result.work_done`/`work_remaining`
+non-empty (`worker-schemas.md` § Partial result), and step 1 above's phase-freeze means the
+issue re-enters the very same phase's `complete`-time gate (evidence, Sprint Contract) on its
+next genuine completion — #204 and #309 are deferred past a partial return, never permanently
+bypassed.
 
 ### Turn-end gate
 

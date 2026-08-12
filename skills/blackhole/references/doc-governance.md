@@ -6,10 +6,11 @@ alwaysApply: false
 
 # Doc Governance
 
-Gated by `docs_governance.write_governance`: inert when `.blackhole/config.json`
-`docs_governance.enabled === false` or `docs_governance.write_governance === false`. Every
-obligation below is advisory (`V-DOC-GOV-01..04`) — see `blackhole-vcodes.md` for enforcement
-weight.
+Gated by `docs_governance.write_governance`: inert when `docs_governance.enabled` does
+not resolve to `true` (absent `docs_governance` block, absent `enabled` field, or
+explicit `enabled: false` — SSOT: `config-template.md`'s `docs_governance.enabled` row,
+issue #477) or `docs_governance.write_governance === false`. Every obligation below is
+advisory (`V-DOC-GOV-01..04`) — see `blackhole-vcodes.md` for enforcement weight.
 
 ## Search-Before-Write
 
@@ -19,7 +20,8 @@ concern. If a match exists, update it in place — do not create a new file (`V-
 
 ## Canonical Naming
 
-One file per concern, named `{concern-slug}.md` — never date-stamped. The sole exemption is
+One file per concern, named `{concern-slug}.md` — never date-stamped. Slug derivation SSOT:
+`scripts/lib/concern-slug.ts` (`deriveConcernSlug`, `planTargetPath`, `reviewTargetPath`). The sole exemption is
 ADR files, which keep their sequential identifier: `ADR-{NNN}-{slug}.md`. A filename with a
 `-YYYY-MM-DD` suffix is the trigger condition for `V-DOC-GOV-03`.
 
@@ -39,8 +41,17 @@ related: [<path>, ...]      # optional
 ---
 ```
 
-`type` and `status` are required (their absence is `V-DOC-GOV-02`); `supersedes` and
-`related` are optional.
+| Field | Required | Notes |
+|-------|----------|-------|
+| `type` | Yes | Drives folder placement and search heuristics |
+| `status` | Yes | `current` = live; `deprecated` = superseded but kept for traceability; `archived` = historical only |
+| `supersedes` | Conditional | Required when replacing an existing doc's content with a different approach |
+| `review_trigger` | Yes | What event obliges a re-read; agents use this when touching related code |
+| `created` / `last_updated` | Yes | ISO dates; `last_updated` mirrors meaningful content edits, not whitespace |
+| `related` | No | Cross-references for graph navigation |
+
+All five lifecycle keys (`type`, `status`, `review_trigger`, `created`, `last_updated`) are
+required — any absence is `V-DOC-GOV-02`. `supersedes` and `related` remain optional.
 
 ## Supersede-on-Overwrite
 
@@ -48,6 +59,14 @@ When a diff substantively replaces a doc's content with a different approach (no
 update to the same approach): mark the old doc `status: deprecated` and leave it in place —
 never delete it — then create or update the new doc with `supersedes: <path-to-old-doc>` in
 its frontmatter. Skipping this on a substantive replacement is `V-DOC-GOV-04`.
+
+**Archival terminus (curate-equivalent)**: both docs remain indexed while the old doc is
+`status: deprecated`. When `last_updated` on a deprecated doc exceeds the deprecation window
+in `DOC_HEALTH_THRESHOLDS` (`scripts/lib/build/facts.ts`, currently 90 days — issue #442),
+transition it to `status: archived`, update its root `documentation/INDEX.md` row to match, and
+move the file under `documentation/milestones/_archived/` (preserving its concern slug).
+Deprecated docs that never cross the window stay in place — archival is a deliberate curate
+step, not an automatic delete.
 
 ## ADR Status Enum
 
@@ -72,6 +91,81 @@ shape:
   failure.
 
 Enforced by `scripts/checks/adr-status.check.ts`.
+
+## Doc-Tree Health Signal
+
+Scope split (ADR-021 D6): this section is the **Scope-1** enforcer — blackhole's own
+`documentation/` tree, checked unconditionally by `bun run verify`
+(`scripts/checks/doc-health.check.ts`) and **not** gated by `docs_governance.write_governance`
+(the everything-else in this file governs Scope 2 — writes the campaign makes into a *consumer*
+repo's `documentation/` tree, which is gated). **Scope-2** enforcement — the reviewer judgment
+audit for consumer-repo trees (supersession-chain coherence, `V-DOC-GOV-01..04`) — is the sibling
+section `reviewer.md` §27 (Doc-Governance Judgment Audit), not implemented by this section.
+
+Four thresholds, numeric values declared once in `scripts/lib/build/facts.ts`'s
+`DOC_HEALTH_THRESHOLDS` export (Numeric-fact SSOT — never restated as an inline literal in the
+check or here without citing that export):
+
+- A single doc past the **400-line single-doc ceiling** is oversized. `INDEX.md` files are
+  exempt — they have their own row ceiling below instead.
+- The root `documentation/INDEX.md` past the **200-row root-INDEX ceiling** means the entry
+  point costs more to read than the answer it points to.
+- The tree past the **500-file tree-size advisory** is a signal only — a large tree that is
+  well-tiered into per-folder indexes is still healthy.
+- A doc marked `status: deprecated` whose `last_updated` exceeds the **90-day deprecation window**
+  is a candidate for archival.
+
+All four are advisory (`ok: true` always, per `V-DOCHEALTH-03`) — mirrors mercure's own framing
+for this exact signal, which likewise has no CI-blocking equivalent, surfacing instead through a
+session-start hook rather than a hard gate.
+
+### Always-On Channel (issue #499)
+
+Determination: **Reading 2 (a real gap), verified.** Before this landed, nothing read this
+signal anywhere — `doc-health.check.ts` (PR #494 / issue #462) delivered detection, but no
+agent prompt or protocol step consumed it, at turn start or otherwise.
+
+The fix is not a literal port of mercure's `SessionStart` hook: blackhole's orchestrator is one
+continuous session looped across many turns, not mercure's per-invocation Claude Code CLI
+session, so a `SessionStart` hook would fire once per orchestrator *session* rather than once
+per *turn* — under-delivering the "every phase sees documentation debt" guarantee the signal
+exists for. Instead, `blackhole-state.md` § Doc-Health Signal wires the refresh into the same
+per-turn cadence § Sync already uses for forge reconciliation — a markdown-instructed protocol
+step, not a Claude-Code-native hook, achieving the equivalent cadence with a primitive this repo
+already has.
+
+Scope boundary restated in one sentence: this channel only ever refreshes blackhole's own
+Scope-1 `documentation/` tree; Scope-2 (a consumer repo's tree) is enforced at review time by
+`reviewer.md` §27 (Doc-Governance Judgment Audit).
+
+## INDEX.md Maintenance
+
+The root `documentation/INDEX.md` is a single-file index of every live doc in blackhole's own
+tree, in the same 5-column schema documentation/decisions/INDEX.md already uses in production:
+
+```markdown
+| path | summary | type | status | review_trigger |
+|------|---------|------|--------|----------------|
+| audits/foo.md | One-line summary | audit | current | on release |
+```
+
+Row `path` values are **relative to `documentation/`** (e.g. `decisions/ADR-021-....md`,
+`audits/foo.md`) — distinct from `documentation/decisions/INDEX.md`'s own convention of bare
+filenames relative to its own directory (a per-folder index, unambiguous within one folder
+alone; the root index spans many folders and needs the folder-prefixed form).
+
+Owning agent: **`implementer`** — no new agent is minted for this obligation; it reuses
+`implementer`'s existing ADR-021 D2 carry-step role (the mechanism that already writes
+staged/derived documentation artifacts into the tree). Every doc under `documentation/` needs a
+corresponding row (`V-DOCHEALTH-02`, blocking), and every row needs to resolve to a file that
+still exists (`V-DOCHEALTH-01`, blocking) — both enforced unconditionally by
+`scripts/checks/doc-health.check.ts` regardless of `docs_governance.write_governance`, per the
+Scope-1/Scope-2 split above.
+
+This obligation is stated as rule text only as of this section landing — the carry-step's actual
+INDEX-upsert wiring for artifacts staged outside the ADR/design route (e.g. `investigator`'s
+`analyze`/`investigate` sub-modes) is a residual gap tracked as a fast-follow, not yet closed by
+any agent's numbered steps.
 
 ## Repo Convention Precedence
 

@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run \"$CLAUDE_PROJECT_DIR/.claude/hooks/validate-bash-command.js\"\ncode=$?\nif [ \"$code\" = \"0\" ] || [ \"$code\" = \"2\" ]; then exit \"$code\"; fi\nmkdir -p \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events\" 2>/dev/null\nworktree=\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --show-toplevel 2>/dev/null || true)\"\njq -n \\\n  --arg recorded_at \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \\\n  --arg hook \"validate-bash-command\" \\\n  --arg code \"$code\" \\\n  --arg worktree \"$worktree\" \\\n  '{version: 1, recorded_at: $recorded_at, hook: $hook, tool: \"Bash\", decision: \"allow\", tier: \"error\", pattern_id: \"hook-exec-failure\", reason: (\"validator process exited \" + $code + \" before producing a decision\"), worktree: (if $worktree == \"\" then null else $worktree end), detail: (\"process exit code \" + $code)}' \\\n  > \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json\" 2>/dev/null\necho \"[blackhole-hook] validate-bash-command: validator process exited $code before producing a decision — call allowed (fail-open); see .blackhole/hook-events/\" >&2\nexit 0",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run \"$CLAUDE_PROJECT_DIR/.claude/hooks/validate-file-changes.js\"\ncode=$?\nif [ \"$code\" = \"0\" ] || [ \"$code\" = \"2\" ]; then exit \"$code\"; fi\nmkdir -p \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events\" 2>/dev/null\nworktree=\"$(git -C \"$CLAUDE_PROJECT_DIR\" rev-parse --show-toplevel 2>/dev/null || true)\"\njq -n \\\n  --arg recorded_at \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \\\n  --arg hook \"validate-file-changes\" \\\n  --arg code \"$code\" \\\n  --arg worktree \"$worktree\" \\\n  '{version: 1, recorded_at: $recorded_at, hook: $hook, tool: null, decision: \"allow\", tier: \"error\", pattern_id: \"hook-exec-failure\", reason: (\"validator process exited \" + $code + \" before producing a decision\"), worktree: (if $worktree == \"\" then null else $worktree end), detail: (\"process exit code \" + $code)}' \\\n  > \"$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json\" 2>/dev/null\necho \"[blackhole-hook] validate-file-changes: validator process exited $code before producing a decision — call allowed (fail-open); see .blackhole/hook-events/\" >&2\nexit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

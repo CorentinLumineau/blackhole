@@ -1,5 +1,7 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
+import { spawnSync } from 'child_process';
 import {
   buildClaudePluginManifest,
   buildCodexMarketplace,
@@ -7,10 +9,12 @@ import {
   buildGeminiPluginManifest,
 } from './build/manifests.ts';
 import { compileCodexTree, compileGeminiTree, writeGeminiManifest } from './build/trees.ts';
+import { root } from './build/paths.ts';
 import { makeTempDir } from './fs.ts';
 
-// ADR-007 R6 — shared bun:test fixture kit for distribution-tree population and temp-dir lifecycle.
-// Delegates to lib/build compile/manifest functions; never reimplements makeTempDir (V-INT-02).
+// ADR-007 R6 — shared bun:test fixture kit: distribution-tree population, temp-dir lifecycle, and
+// (since #447) the PreToolUse hook subprocess harness. Delegates to lib/build compile/manifest
+// functions; never reimplements makeTempDir (V-INT-02).
 
 export const withTempDir = <T>(prefix: string, fn: (dir: string) => T): T => {
   const dir = makeTempDir(prefix);
@@ -60,6 +64,157 @@ export const populateCodexFixtureTree = (destRoot: string): void => {
     JSON.stringify(buildCodexMarketplace(), null, 2),
     'utf-8',
   );
+};
+
+// PreToolUse hook fixture kit (#447). The two validators under templates/hooks/pretooluse/ ship
+// verbatim (no src/ compile pass), so their behavioral suites exercise the real script through a
+// subprocess with hook-shaped stdin — the idiom already established by validate-worker-json's
+// --hook tests. Both suites share this one spawn/temp-repo path rather than duplicating it.
+
+export const PRETOOLUSE_HOOKS_DIR = path.join(root, 'templates', 'hooks', 'pretooluse');
+
+export type HookRunResult = { exitCode: number; stdout: string; stderr: string };
+
+/** Runs a PreToolUse hook script with `payload` on stdin. `hooksDir` is overridable so a suite can
+ * point at a corrupted copy of the tree and exercise the fail-closed pattern-load path.
+ * `eventDir`, when passed, is threaded through as `BLACKHOLE_HOOK_EVENT_DIR` so a suite can pin
+ * the durable-record sink explicitly instead of relying on `cwd`'s git resolution (#604) —
+ * omitted, the spawn's env is built exactly as before, so none of the existing call sites change
+ * behavior. `assignedWorktree`, when passed, is threaded as `BLACKHOLE_ASSIGNED_WORKTREE` (#620). */
+export const runPreToolUseHook = async (
+  script: string,
+  payload: unknown,
+  cwd: string,
+  hooksDir: string = PRETOOLUSE_HOOKS_DIR,
+  eventDir?: string,
+  assignedWorktree?: string,
+): Promise<HookRunResult> => {
+  const extraEnv: Record<string, string> = {};
+  if (eventDir) extraEnv.BLACKHOLE_HOOK_EVENT_DIR = eventDir;
+  if (assignedWorktree) extraEnv.BLACKHOLE_ASSIGNED_WORKTREE = assignedWorktree;
+  const proc = Bun.spawn({
+    cmd: ['bun', 'run', path.join(hooksDir, script)],
+    stdin: new Blob([JSON.stringify(payload)]),
+    stdout: 'pipe',
+    stderr: 'pipe',
+    cwd,
+    ...(Object.keys(extraEnv).length > 0 ? { env: { ...process.env, ...extraEnv } } : {}),
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  return { exitCode, stdout, stderr };
+};
+
+/** Async temp-dir lifecycle over a real git repo. The hook event logger resolves its output
+ * directory through `git rev-parse`, so an un-initialized temp dir would exercise only the
+ * fail-open path and never the durable-record contract. The path is realpath'd because git
+ * reports resolved paths, and the suites compare worktree containment against it. Separate from
+ * withTempDir above because that one's `finally` fires before an async `fn` settles. */
+export const withTempGitRepo = async <T>(
+  prefix: string,
+  fn: (dir: string) => Promise<T>,
+): Promise<T> => {
+  const dir = fs.realpathSync(makeTempDir(prefix));
+  try {
+    spawnSync('git', ['init', '--quiet'], { cwd: dir });
+    return await fn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+/** Same lifecycle as withTempGitRepo, but also creates a linked worktree off an initial empty
+ * commit (`git worktree add` needs a valid commit-ish to check out) and hands both paths to `fn`.
+ * Exists for #507's cross-worktree containment coverage: the fix under test is that a target
+ * inside the linked worktree is in-bounds even when the hook's own resolution cwd is the main
+ * clone, so the fixture needs a real second worktree sharing the same `.git`, not just a second
+ * temp dir.
+ *
+ * The worktree nests under `<mainRepo>/.worktrees/` by default — this repo's own convention
+ * (`.worktrees/wt-N`) and one of the two roots `allWorktreeRoots` accepts by construction
+ * (#510/F-00088: only worktrees nested under the main clone or under a configured
+ * `scratchpad_dir` are trusted, never every registered worktree unconditionally). Pass
+ * `parentDir` to place the worktree elsewhere — under a caller-supplied `scratchpad_dir`, or
+ * fully outside both accepted roots — for tests exercising that boundary directly. */
+export const withLinkedWorktree = async <T>(
+  prefix: string,
+  fn: (mainRepo: string, worktree: string) => Promise<T>,
+  parentDir?: (mainRepo: string) => string,
+): Promise<T> =>
+  withTempGitRepo(prefix, async (mainRepo) => {
+    spawnSync('git', ['commit', '--allow-empty', '--quiet', '-m', 'init'], { cwd: mainRepo });
+    const parent = parentDir ? parentDir(mainRepo) : path.join(mainRepo, '.worktrees');
+    fs.mkdirSync(parent, { recursive: true });
+    const worktree = path.join(parent, `${prefix}wt-${process.pid}-${Date.now()}`);
+    spawnSync('git', ['worktree', 'add', '--detach', '--quiet', worktree], { cwd: mainRepo });
+    try {
+      return await fn(mainRepo, fs.realpathSync(worktree));
+    } finally {
+      spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+      fs.rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
+/** Same lifecycle as `withLinkedWorktree`, but the linked worktree checks out a real `branch`
+ * (not detached HEAD) created with `--no-track`, and `mainRepo` carries a bare `origin` remote
+ * to push it to — built for the worktree-removal guard (#532), which needs to distinguish a
+ * worktree whose branch has been pushed from one that has not. `fn` receives
+ * `(mainRepo, worktree, push)`, where `push()` pushes the worktree's current HEAD to `origin` via
+ * an explicit refspec (never `-u`) — mirroring this campaign's own `--no-track` worktree
+ * convention (#516), the exact case the guard's `@{u}`-less fallback exists for. */
+export const withRemoteTrackedWorktree = async <T>(
+  prefix: string,
+  branch: string,
+  fn: (mainRepo: string, worktree: string, push: () => void) => Promise<T>,
+): Promise<T> =>
+  withTempGitRepo(prefix, async (mainRepo) => {
+    spawnSync('git', ['commit', '--allow-empty', '--quiet', '-m', 'init'], { cwd: mainRepo });
+
+    const bareRemote = makeTempDir(`${prefix}origin-`);
+    spawnSync('git', ['init', '--quiet', '--bare', bareRemote]);
+    spawnSync('git', ['remote', 'add', 'origin', bareRemote], { cwd: mainRepo });
+    spawnSync('git', ['push', '--quiet', 'origin', 'HEAD:refs/heads/main'], { cwd: mainRepo });
+
+    const parent = path.join(mainRepo, '.worktrees');
+    fs.mkdirSync(parent, { recursive: true });
+    const worktree = path.join(parent, `${prefix}wt-${process.pid}-${Date.now()}`);
+    spawnSync(
+      'git',
+      ['worktree', 'add', '--no-track', '--quiet', '-b', branch, worktree, 'HEAD'],
+      { cwd: mainRepo },
+    );
+    const push = (): void => {
+      spawnSync('git', ['push', '--quiet', 'origin', `HEAD:refs/heads/${branch}`], { cwd: worktree });
+    };
+
+    try {
+      return await fn(mainRepo, fs.realpathSync(worktree), push);
+    } finally {
+      spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+      fs.rmSync(worktree, { recursive: true, force: true });
+      fs.rmSync(bareRemote, { recursive: true, force: true });
+    }
+  });
+
+/** Writes `<mainRepo>/.blackhole/config.json`. `allWorktreeRoots` reads this file to widen
+ * accepted worktree roots to a configured `scratchpad_dir` (#510/F-00088) — tests exercising that
+ * boundary write a minimal config through this one helper rather than hand-rolling the file shape
+ * at each call site. */
+export const writeCampaignConfig = (mainRepo: string, config: Record<string, unknown>): void => {
+  const dir = path.join(mainRepo, '.blackhole');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
+};
+
+export const readHookEvents = (repoRoot: string): Record<string, unknown>[] => {
+  const dir = path.join(repoRoot, '.blackhole', 'hook-events');
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')) as Record<string, unknown>);
 };
 
 export const populateClaudeFixtureTree = (destRoot: string): void => {

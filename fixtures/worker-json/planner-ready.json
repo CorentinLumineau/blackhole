@@ -3,5 +3,10 @@
   "plan_path": ".blackhole/plans/issue-18.md",
   "track": "standard",
   "failing_checks": [],
-  "clarification_markers": 0
+  "clarification_markers": 0,
+  "reformulation": {
+    "understood": "Implement the confidence-gate async veto surface on the planner proceed path.",
+    "assumed": "Orchestrator posts a formatted issue comment before implement spawn; skip/design/brainstorm tracks stay exempt.",
+    "if_wrong": "Keep validator enforcement only and file a follow-up to wire orchestrator posting."
+  }
 }

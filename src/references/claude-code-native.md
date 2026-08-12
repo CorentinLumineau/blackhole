@@ -71,7 +71,7 @@ scheduling.
 
 | Capability | Claude Code mapping |
 |---|---|
-| C1 | The `Workflow` tool's deterministic fan-out (`parallel()` / `pipeline()`), per the escalation matrix in `mercure-agent-delegation.md` § Workflow vs. Agent — pin `agentType` and `model` on every `agent()` call (see `model-routing.md` § Workflow-tool enforcement) |
+| C1 | The `Workflow` tool's deterministic fan-out (`parallel()` / `pipeline()`), per the escalation matrix in `mercure-agent-delegation.md` § Workflow vs. Agent — pin `agentType` and `model` on every `agent()` call, and effort where the harness exposes it (see `model-routing.md` § Workflow-tool enforcement; Claude Code `agent()` cannot pin effort — #68042) |
 | C2 | Background-agent completion/idle notifications |
 | C3 | The `AskUserQuestion` tool, used in the foreground main chat |
 | C4 | Dedicated per-issue git worktrees (`wt-<issue>`), per `blackhole-protocol.md` § Branch & Worktree Hygiene |
@@ -96,7 +96,8 @@ On a harness offering a native run journal or `resumeFromRunId`-style mechanism,
 **supplementary** crash-recovery layer for the background-safe fan-out phase only. It never
 replaces the cross-harness SSOT: `.blackhole/campaign-checkpoint.md` plus `queue.json` and
 `findings-ledger.json` remain the source of truth for resume on every harness, Pattern B or
-Pattern C. Resuming from a harness journal still requires re-validating those files (`jq empty` +
+Pattern C. Resuming from a harness journal still requires re-validating those files
+(`state-write-guard.ts` — never `jq empty` alone, `blackhole-state.md` § Write protocol — plus
 phase inference) per [checkpoint-protocol.md](checkpoint-protocol.md) § Compaction recovery before
 continuing — a harness journal is a convenience for locating the last run, not a substitute for
 that validation.

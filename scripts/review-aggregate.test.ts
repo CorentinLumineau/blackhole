@@ -1,5 +1,11 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { aggregateReview, paretoPriority, type Finding } from './review-aggregate';
+
+const root = path.resolve(import.meta.dirname, '..');
+const scriptPath = path.join(root, 'scripts/review-aggregate.ts');
 
 const baseFinding = (overrides: Partial<Finding> = {}): Finding => ({
   vcode: 'V-KISS-03',
@@ -9,6 +15,21 @@ const baseFinding = (overrides: Partial<Finding> = {}): Finding => ({
   summary: 'issue',
   ...overrides,
 });
+
+async function runReviewAggregateCli(args: string[]) {
+  const proc = Bun.spawn({
+    cmd: ['bun', 'run', scriptPath, ...args],
+    stdout: 'pipe',
+    stderr: 'pipe',
+    cwd: root,
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  return { exitCode, stdout, stderr };
+}
 
 describe('aggregateReview', () => {
   test('empty findings → lgtm true, approved', () => {
@@ -37,11 +58,11 @@ describe('aggregateReview', () => {
     expect(result.findings).toHaveLength(1);
   });
 
-  test('V-DOC-02/04 BLOCK finding → dedups and gates like any other BLOCK vcode', () => {
+  test('V-DOCSYNC-01 BLOCK finding → dedups and gates like any other BLOCK vcode', () => {
     const result = aggregateReview({
       reviewer: {
         status: 'complete',
-        findings: [baseFinding({ severity: 'BLOCK', vcode: 'V-DOC-02/04' })],
+        findings: [baseFinding({ severity: 'BLOCK', vcode: 'V-DOCSYNC-01' })],
       },
       issueRef: '46',
     });
@@ -49,7 +70,7 @@ describe('aggregateReview', () => {
     expect(result.lgtm).toBe(false);
     expect(result.blockers_count).toBe(1);
     expect(result.findings).toHaveLength(1);
-    expect(result.findings[0].vcode).toBe('V-DOC-02/04');
+    expect(result.findings[0].vcode).toBe('V-DOCSYNC-01');
   });
 
   test('dedup keeps highest severity for same key', () => {
@@ -420,5 +441,327 @@ describe('confidence bounds clamping/validation (round-1 review fix)', () => {
     expect(result.findings[0].severity).toBe('BLOCK');
     expect(result.findings[0].summary).toBe('non-numeric confidence');
     expect(result.blockers_count).toBe(1);
+  });
+});
+
+describe('recheck-aware dedup and lgtm (issue #485)', () => {
+  test('same-key collision with a recheck-fixed prior finding never merges — new finding survives as its own row (issue #485)', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [
+          baseFinding({
+            vcode: 'V-SEC-02',
+            severity: 'BLOCK',
+            file: 'src/a.ts',
+            line: 42,
+            summary: 'regression: command-substitution spellings evade blockPatterns',
+          }),
+        ],
+        recheck: [
+          {
+            finding_id: 'F-00046',
+            verdict: 'fixed',
+            evidence: 'commit 94ca81a addressed the round-1 finding',
+          },
+        ],
+      },
+      issueRef: '470',
+      priorFindings: [
+        baseFinding({
+          id: 'F-00046',
+          vcode: 'V-SEC-02',
+          severity: 'BLOCK',
+          file: 'src/a.ts',
+          line: 42,
+          issue_ref: '470',
+          summary: 'evaded by four idiomatic spellings of its own headline case',
+        }),
+      ],
+    });
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].summary).toBe(
+      'regression: command-substitution spellings evade blockPatterns',
+    );
+    expect(result.blockers_count).toBe(1);
+  });
+
+  test('all recheck-named prior findings resolved and reviewer reports none → lgtm true, zero blockers (issue #485)', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [],
+        recheck: [
+          { finding_id: 'F-00046', verdict: 'fixed', evidence: 'fixed in 94ca81a' },
+          { finding_id: 'F-00058', verdict: 'fixed', evidence: 'fixed in 94ca81a' },
+        ],
+      },
+      issueRef: '470',
+      priorFindings: [
+        baseFinding({ id: 'F-00046', severity: 'BLOCK', file: 'src/a.ts', line: 42 }),
+        baseFinding({ id: 'F-00058', severity: 'BLOCK', file: 'src/b.ts', line: 7 }),
+      ],
+    });
+
+    expect(result.blockers_count).toBe(0);
+    expect(result.lgtm).toBe(true);
+    expect(result.findings).toHaveLength(0);
+  });
+
+  test('recheck entry names a finding_id with no matching prior id → surfaced in unresolved_recheck, lgtm forced false (issue #485)', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [],
+        recheck: [
+          { finding_id: 'F-99999', verdict: 'fixed', evidence: 'claimed fixed, no linkage' },
+        ],
+      },
+      issueRef: '470',
+      priorFindings: [],
+    });
+
+    expect(result.unresolved_recheck).toHaveLength(1);
+    expect(result.unresolved_recheck[0].finding_id).toBe('F-99999');
+    expect(result.lgtm).toBe(false);
+  });
+});
+
+describe('independent verification downgrades (V-SEC-07, issue #439)', () => {
+  test('refuted verdict downgrades a matching BLOCK finding to WARN before the confidence gate runs', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [
+          baseFinding({
+            id: 'V1',
+            vcode: 'V-SEC-02',
+            severity: 'BLOCK',
+            summary: 'possible auth bypass',
+          }),
+        ],
+      },
+      issueRef: '439',
+      verification: [
+        { finding_id: 'V1', verdict: 'refuted', evidence: 'could not reproduce — input is validated at L.40' },
+      ],
+    });
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('WARN');
+    expect(result.blockers_count).toBe(0);
+  });
+
+  test('confirmed verdict leaves the finding severity unchanged', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [
+          baseFinding({
+            id: 'V1',
+            vcode: 'V-SEC-02',
+            severity: 'BLOCK',
+            summary: 'confirmed auth bypass',
+          }),
+        ],
+      },
+      issueRef: '439',
+      verification: [
+        { finding_id: 'V1', verdict: 'confirmed', evidence: 'reproduced via curl -X POST ...' },
+      ],
+    });
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('BLOCK');
+    expect(result.blockers_count).toBe(1);
+  });
+
+  test('refuted verdict on a non-BLOCK finding is a no-op (never raises severity)', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [
+          baseFinding({ id: 'V2', vcode: 'V-SEC-04', severity: 'WARN', summary: 'possible XSS' }),
+        ],
+      },
+      issueRef: '439',
+      verification: [{ finding_id: 'V2', verdict: 'refuted', evidence: 'not exploitable' }],
+    });
+
+    expect(result.findings[0].severity).toBe('WARN');
+  });
+
+  test('verification entry naming a finding_id absent from this pass is a no-op, does not throw', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [baseFinding({ id: 'V1', vcode: 'V-SEC-02', severity: 'BLOCK' })],
+      },
+      issueRef: '439',
+      verification: [{ finding_id: 'V99', verdict: 'refuted', evidence: 'unrelated' }],
+    });
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].severity).toBe('BLOCK');
+  });
+
+  test('no verification array present → behavior unchanged from before this feature', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [baseFinding({ id: 'V1', vcode: 'V-SEC-02', severity: 'BLOCK' })],
+      },
+      issueRef: '439',
+    });
+
+    expect(result.findings[0].severity).toBe('BLOCK');
+    expect(result.blockers_count).toBe(1);
+  });
+
+  test('refuted downgrade composes with the confidence gate — downgraded WARN still gets no caveat above confidence 80', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [
+          baseFinding({ id: 'V1', vcode: 'V-SEC-02', severity: 'BLOCK', confidence: 90 }),
+        ],
+      },
+      issueRef: '439',
+      verification: [{ finding_id: 'V1', verdict: 'refuted', evidence: 'not reproducible' }],
+    });
+
+    expect(result.findings[0].severity).toBe('WARN');
+    expect(result.findings[0].summary).not.toMatch(/low-confidence/);
+  });
+});
+
+describe('review-aggregate CLI', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-aggregate-cli-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('unresolved recheck entry prints the fail-loud stderr line (issue #485)', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    const priorFile = path.join(tmpDir, 'prior.json');
+    fs.writeFileSync(
+      reviewerFile,
+      JSON.stringify({
+        status: 'complete',
+        findings: [],
+        recheck: [
+          { finding_id: 'F-99999', verdict: 'fixed', evidence: 'claimed fixed, no linkage' },
+        ],
+      }),
+      'utf-8',
+    );
+    fs.writeFileSync(priorFile, JSON.stringify([]), 'utf-8');
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      '470',
+      '--prior-file',
+      priorFile,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(
+      '1 unresolved_recheck entry — see the "unresolved_recheck" field in stdout output',
+    );
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.unresolved_recheck).toHaveLength(1);
+    expect(parsed.lgtm).toBe(false);
+  });
+
+  test('resolved recheck entry prints no fail-loud stderr line', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    const priorFile = path.join(tmpDir, 'prior.json');
+    fs.writeFileSync(
+      reviewerFile,
+      JSON.stringify({
+        status: 'complete',
+        findings: [],
+        recheck: [{ finding_id: 'F-00046', verdict: 'fixed', evidence: 'fixed in 94ca81a' }],
+      }),
+      'utf-8',
+    );
+    fs.writeFileSync(
+      priorFile,
+      JSON.stringify([
+        {
+          id: 'F-00046',
+          vcode: 'V-SEC-02',
+          severity: 'BLOCK',
+          file: 'src/a.ts',
+          line: 42,
+          summary: 'prior finding',
+        },
+      ]),
+      'utf-8',
+    );
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      '470',
+      '--prior-file',
+      priorFile,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.unresolved_recheck).toHaveLength(0);
+  });
+
+  test('--verification-file downgrades a refuted BLOCK finding via the CLI (issue #439)', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    const verificationFile = path.join(tmpDir, 'verification.json');
+    fs.writeFileSync(
+      reviewerFile,
+      JSON.stringify({
+        status: 'complete',
+        findings: [
+          {
+            id: 'V1',
+            vcode: 'V-SEC-02',
+            severity: 'BLOCK',
+            file: 'src/a.ts',
+            line: 42,
+            summary: 'possible auth bypass',
+          },
+        ],
+      }),
+      'utf-8',
+    );
+    fs.writeFileSync(
+      verificationFile,
+      JSON.stringify([{ finding_id: 'V1', verdict: 'refuted', evidence: 'not reproducible' }]),
+      'utf-8',
+    );
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      '439',
+      '--verification-file',
+      verificationFile,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.findings).toHaveLength(1);
+    expect(parsed.findings[0].severity).toBe('WARN');
+    expect(parsed.blockers_count).toBe(0);
   });
 });

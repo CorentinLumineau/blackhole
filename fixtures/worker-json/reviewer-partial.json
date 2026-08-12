@@ -1,0 +1,10 @@
+{
+  "status": "partial",
+  "phase_reached": "review",
+  "partial_result": {
+    "work_done": "Completed the SOLID/DRY and security audits.",
+    "work_remaining": "Run the Integration Coherence and Documentation Governance audits.",
+    "worktree_disposition": "clean",
+    "branch": null
+  }
+}

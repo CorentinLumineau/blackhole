@@ -3,6 +3,7 @@ import {
   runChecks,
   VCODES_TEST09_REQUIRED_MARKERS,
   IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS,
+  formatMissingMarkerErrors,
 } from './checks/coverage-regression.check.ts';
 import { expectMarkersMissing, expectMarkersPresent } from './lib/marker-fixture-test.ts';
 
@@ -11,6 +12,10 @@ import { expectMarkersMissing, expectMarkersPresent } from './lib/marker-fixture
 // tests guard that (a) blackhole-vcodes.md carries the V-TEST-09 BLOCK row and (b) implementer.md § 6
 // carries the coverage-delta sub-step reusing hunt/coverage.md's runner detection. Modeled on
 // verify.single-writer.test.ts's findMissingGateMarkers usage (required-markers-present shape).
+//
+// Issue #457 temporarily bolted a third check onto this module (reviewer.md § 23 Test Integrity
+// Audit, reusing V-TEST-09). Issue #518 split that back out into verify.test-integrity.test.ts
+// under its own code, V-TEST-10 — this file returns to its pre-#457 scope.
 
 // A fixed vcodes fixture (row present) vs. a stale one (pre-adoption table, no V-TEST-09 row).
 const VCODES_FIXTURE_FIXED = `
@@ -60,6 +65,19 @@ describe('IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS', () => {
 
   test('stale implementer.md fixture (lint+test only, no coverage gate) is missing all markers', () => {
     expectMarkersMissing(IMPLEMENTER_FIXTURE_STALE, IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS);
+  });
+});
+
+describe('formatMissingMarkerErrors', () => {
+  test('maps each missing marker to a "<sourceFile> missing \\"<marker>\\"" string', () => {
+    expect(formatMissingMarkerErrors(['a', 'b'], 'reviewer.md')).toEqual([
+      'reviewer.md missing "a"',
+      'reviewer.md missing "b"',
+    ]);
+  });
+
+  test('returns an empty array when nothing is missing', () => {
+    expect(formatMissingMarkerErrors([], 'reviewer.md')).toEqual([]);
   });
 });
 

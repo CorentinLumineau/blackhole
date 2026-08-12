@@ -8,10 +8,21 @@ Every worker subagent prompt you write MUST explicitly declare these 5 fields:
 4.  **Tool Guidance**: Specific commands to execute (e.g., project test and lint commands). **Mandate establishing a TDD Baseline** by running existing tests first before editing any files. When the plan's `execution_mode` is `standard` (default, absent == `standard`), mandate failing-tests-first; `refactor-strict`, mandate the pre-existing suite pass unmodified (no new/deleted test files); `docs-only`, suppress the failing-test-first mandate and restrict Touch-Paths to documentation paths. Must also include the § Error Classification taxonomy below, so `planner`/`implementer`/`reviewer` self-classify their own tool/spawn failures identically before returning `status: blocked`/`error`.
 5.  **Stop Condition**: Criteria for task completion. **Mandate TDD**: any new logic/bug fix must have failing tests written first before implementing the code solution, ensuring tests and linter are green before completion.
 
+**No inline return-JSON skeletons**: field 2 (Output Format) states which fields this spawn
+needs filled and what to classify — it never restates the return schema's shape, field names,
+or enum values as a literal JSON skeleton. Cite the SSOT instead: `worker-schemas.md § <Role>`
+(e.g. `worker-schemas.md § Router`). An inlined skeleton is a second source that can drift from
+the SSOT silently, and the worker faithfully follows whichever one it was given, wrong or not —
+a turn-8 brief inlined `"status": "complete"` for a `router` spawn (`complete` is not a member
+of `ROUTE_STATUSES`), and 7 of 8 routers correctly followed the brief into a schema-invalid
+return; the one compliant router was then "corrected" into the invalid value on re-route. This
+rule constrains *brief construction* only, never the return schema's own field set — a future
+field addition (e.g. #613's proposed `rationale`) is unaffected.
+
 ### Worker spawn model
 
-Read `.blackhole/config.json` → `worker_model_policy` (default `cost-optimized` when absent;
-full matrix: `references/model-routing.md`).
+Read `.blackhole/config.json` → `worker_model_policy` and `worker_effort_policy` (defaults
+`cost-optimized` when absent; full matrix: `references/model-routing.md`).
 
 `Task` / subagent spawns must align **model cost to task**, not use one tier for every role:
 
@@ -20,16 +31,19 @@ full matrix: `references/model-routing.md`).
 | `cost-optimized` | Resolve per spawn: `economy` / `standard` / `premium` from role + track + `route{}` signals, then pass the **cheapest capable** harness slug for that tier. |
 | `inherit` | Omit `model` — workers inherit the parent session's harness default (v0.6.1 behavior). |
 
-**Task-tier examples (cost-optimized):**
-
-| Spawn | Typical tier |
-|-------|----------------|
-| `router`, `investigator` (investigate), `planner` skip | `economy` |
-| `planner` quick/standard, `reviewer`, `orchestrator`, `implementer` (default), `hunter` | `standard` |
-| `planner` design, `implementer` + security/`size:xl`, `reviewer` at high `review_iteration` | `premium` |
+**Task-tier examples (cost-optimized):** see `model-routing.md` § Task-tier matrix and § Harness
+tier ladders for model slug and tier-folded effort defaults — do not duplicate ladder rows here.
 
 Do **not** read `model:` from agent markdown frontmatter (`V-AGENT-01`). On
 `escalation_trigger` blocked returns, bump one tier on the next respawn for that role (cap `premium`).
+
+**Deterministic spawn name (mandatory)**: every background `Agent` spawn for a campaign worker
+(`router`, `planner`, `implementer`, `reviewer`, `investigator`, `hunter`) MUST pass an explicit
+`name: "<role>-<issue-number>"` — matching the existing `## In-flight workers` row convention
+`"<role> on #<issue>"` in `checkpoint-protocol.md` § In-flight workers (no new field there). This
+is what makes a worker's Claude Code subagent transcript deterministically locatable at recovery
+time (`agent-a<name>-*.jsonl`, `recovery-protocol.md` §10) — an undiscoverable transcript is an
+undiscoverable return.
 
 ### Route-derived dispatch (ADR-004 step 3)
 
@@ -63,10 +77,12 @@ order — each step is a hard gate over the ones below it:
    is `true`; its dispatch is out of scope for this step (#98). `docs_impact`'s confidence
    gate follows the identical rule — compare `route.confidence.docs` against
    `router_confidence_thresholds.docs` (default 70); below threshold, **or** when
-   `.blackhole/config.json` `docs_governance.enabled` or `docs_governance.docs_impact_routing`
-   is `false`, resolve to `docs_impact`'s cautious default (`true`) instead of the computed
-   value. Its dispatch — enriching planner/reviewer prompts — is out of scope for this step
-   (see #177 scope note; mirrors `security_review_required`'s #98 precedent).
+   `.blackhole/config.json` `docs_governance.enabled` does not resolve to `true` (absent block,
+   absent field, or explicit `false` — SSOT: `config-template.md`'s `docs_governance.enabled`
+   row, issue #477) or `docs_governance.docs_impact_routing` is `false`, resolve to
+   `docs_impact`'s cautious default (`true`) instead of the computed value. Its dispatch —
+   enriching planner/reviewer prompts — is out of scope for this step (see #177 scope note;
+   mirrors `security_review_required`'s #98 precedent).
 4. **`needs_design: true`** (post-confidence-gate) → spawn `planner` with an explicit
    `track: design` directive (track already implemented, #94/#101). See
    `phase-plan.md` § Plan approval gate, "Design track (ADR-004)" row, and § Design
@@ -97,19 +113,26 @@ order — each step is a hard gate over the ones below it:
    Brainstorm dispatch precedence).
 
 **Planner gate (always enforced — never bypassed, including `plan_mode: skip`):** Do
-**not** spawn `implementer` until **both** conditions are met:
+**not** spawn `implementer` until **all** conditions are met:
 
 1. Plan artifact exists on disk at `{repo_root}/.blackhole/plans/issue-N.md`
 2. Planner worker JSON returned `status: ready` (not `blocked`)
-3. **`route.ui: true` condition (ADR-017, additional independent requirement — not an
-   alternative to 1–2)**: when the issue's resolved `route.ui` is `true`, the plan file's
+3. **Reformulation posted (issue #456)** — when `track` is `quick` or `standard`, planner JSON
+   includes a valid `reformulation` object and the orchestrator has posted
+   `formatReformulationComment(reformulation)` to the issue thread via
+   `gh issue comment <issue_number> --body "$(cat <<'EOF' ... EOF)"` before implement spawn
+   (`phase-plan.md` § Reformulation posting; `confidence-gates.md` § Async Two-Band Mapping).
+   Skip when `track: skip|design|brainstorm`, when `status: blocked`, or when `reformulation`
+   fails validation. Vacuously satisfied for exempt tracks.
+4. **`route.ui: true` condition (ADR-017, additional independent requirement — not an
+   alternative to 1–3)**: when the issue's resolved `route.ui` is `true`, the plan file's
    frontmatter at `{repo_root}/.blackhole/plans/issue-N.md` must also carry `ui_gate:
-   approved`. A `route.ui: true` issue must satisfy conditions 1, 2, **and** condition 3,
-   all three, before `implementer` dispatch — this is a conjunction, never an `OR`
-   substitute for 1–2. Covers the case where the planner under-runs the UI screen (e.g.
+   approved`. A `route.ui: true` issue must satisfy conditions 1, 2, 3, **and** condition 4,
+   all four, before `implementer` dispatch — this is a conjunction, never an `OR`
+   substitute for 1–3. Covers the case where the planner under-runs the UI screen (e.g.
    a stale `route.ui` classification, or a planner bug): even a `status: ready` plan
    without the approved stamp refuses dispatch. `route.ui: false`, or no `route` object
-   — condition 3 is vacuously satisfied (no additional requirement).
+   — condition 4 is vacuously satisfied (no additional requirement).
 
 **Explicit skip exception (ADR-004):** (i) when `route.plan_mode: skip` selected the
 `planner` `skip` track, this gate is satisfied by the skip track's own deliverable — a
@@ -143,6 +166,13 @@ artifact from which Touch-Paths and Conventions are extracted.
 
 This preamble is binding: implementers must not edit outside Touch-Paths;
 reviewers audit against them (`V-SCOPE-02`).
+
+**Merge-readiness review promotion (ADR-021 D3, issue #445):** when an issue reaches LGTM and
+`phase-loop.md` § Merge protocol step 2.5 applies (governance on, not `leave-open`), spawn
+`implementer` with a 5-Field contract whose Objective is solely `implementer.md` § Promote Review
+Artifact — Touch-Paths limited to `documentation/reviews/`, `documentation/INDEX.md`, and
+`.blackhole/staged/<issue>/` staging writes. The reviewer spawn contract is unchanged; review
+artifacts are never authored during the review phase.
 
 Worker return schemas: `references/worker-schemas.md`.
 <!-- GENERATED by scripts/build.ts from src/references/orchestrator-delegation.md — do not hand-edit -->

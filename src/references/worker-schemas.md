@@ -2,122 +2,16 @@
 
 Structured JSON contracts for campaign worker agents. The orchestrator validates worker output against these shapes before mutating state.
 
-Optional: consumers may install the Cursor SubagentStop hook below for machine-enforced structural validation at subagent handoff.
+Optional: consumers may install the Cursor SubagentStop hook documented in [`hook-schemas.md`](hook-schemas.md) for machine-enforced structural validation at subagent handoff.
 
 On a harness with a native orchestration primitive (Pattern C, see
 [claude-code-native.md](claude-code-native.md)), a `schema:` option on the fan-out tool call can
 mechanically enforce these same contracts at the tool-call layer — the JSON shapes below are the
 schema source, unchanged. This complements, not replaces, the SubagentStop hook / `validate-worker-json.ts`
-path documented below for harnesses without a native fan-out primitive.
+path documented in [`hook-schemas.md`](hook-schemas.md) for harnesses without a native fan-out primitive.
 
-## SubagentStop hook (Cursor)
-
-**Install:** Merge the `hooks` block from [`templates/hooks/subagent-stop-validate.json`](../../templates/hooks/subagent-stop-validate.json) into your project's `.cursor/hooks.json`. Requires `bun` on `PATH`; hook `command` paths are relative to the repo root.
-
-**Behavior:** On `subagentStop`, when the hook `matcher` hits `planner`, `implementer`, `reviewer`, `router`, `investigator`, or `hunter`, Cursor runs `bun run scripts/validate-worker-json.ts --hook` with the stop payload on **stdin**. Non-zero exit blocks handoff (`failClosed: true`). Subagent stops with `status` `error` or `aborted`, or non-campaign subagents, pass through (exit `0`).
-
-**Extraction order:** Worker JSON is parsed from (1) a fenced ` ```json ` block in `summary`, (2) the last brace-balanced `{...}` object in `summary`, or (3) the tail of `agent_transcript_path` when readable.
-
-**Exit codes:** `0` = valid or pass-through; `1` = validation or JSON extraction failure; `2` = hook stdin JSON parse failure.
-
-### Orchestrator / harness fallback (non-Cursor)
-
-Harnesses without Cursor hooks can validate worker output before mutating `queue.json`:
-
-```bash
-# Full structural validation (preferred)
-bun run scripts/validate-worker-json.ts --role planner --file handoff.json
-bun run scripts/validate-worker-json.ts --role implementer --json '{"status":"complete",...}'
-
-# Quick spot-check only (not a substitute for full validation)
-jq -e '.status and .plan_path' handoff.json
-```
-
-Fixture pairs for each role live under [`fixtures/worker-json/`](../../fixtures/worker-json/). Validator implementation: [`scripts/validate-worker-json.ts`](../../scripts/validate-worker-json.ts).
-
-## SubagentStop resume hook (Cursor, #154)
-
-**Install:** Merge the `hooks` block from [`templates/hooks/subagent-stop-resume.json`](../../templates/hooks/subagent-stop-resume.json) **after** the validate hook entry in `.cursor/hooks.json`. Install guide: [`templates/hooks/README.md`](../../templates/hooks/README.md).
-
-**Behavior (Option C — hybrid):** On `subagentStop`, when the hook `matcher` hits `orchestrator`, `router`, `planner`, `implementer`, `reviewer`, or `investigator`, Cursor runs `bun run scripts/campaign-resume-signal.ts --hook` with the stop payload on **stdin**. The hook always evaluates resume gates first, then atomically upserts `.blackhole/resume-request.json`. Exit is always `0` (`failClosed: false`).
-
-| Stopping agent | `followup_message` | File write |
-|----------------|-------------------|------------|
-| `orchestrator` | **Yes** — coordinator doorbell only | `resume-request.json` when gates pass |
-| `router` / `planner` / `implementer` / `reviewer` / `investigator` | **No** | `resume-request.json` only when **stale barrier** detected |
-| Non-campaign subagents | No | No |
-| `status: error` / `aborted` | No | No |
-
-**Ordering rule:** validate hook entry **must** appear first in the `subagentStop` array.
-
-### Resume gates (all must pass)
-
-1. `.blackhole/queue.json` exists and parses as JSON.
-2. **Work remains:** at least one issue with `status: ready` or `status: in-flight`, or checkpoint `## Ready set` non-empty, or checkpoint `## In-flight workers` non-empty.
-3. **No user gate:** no issue `notes` matching `awaiting-user`, `awaiting-plan`, or `awaiting-design` while `status` is `blocked` or `in-flight`.
-4. **Orchestrator doorbell:** stdout `followup_message` emitted only when `subagent_type` resolves to `orchestrator` and file write succeeds.
-5. **Stale barrier (workers only):** checkpoint `## In-flight workers` has active entries **and** stopping worker JSON validates — writes file with `reason: stale_barrier`, no `followup_message`.
-
-Hook **must not** mutate `queue.json`, `findings-ledger.json`, or plan files.
-
-### `.blackhole/resume-request.json` schema
-
-```json
-{
-  "version": 1,
-  "requested_at": "2026-07-09T12:00:00.000Z",
-  "reason": "orchestrator_turn_complete",
-  "target": "coordinator",
-  "dedupe_key": "turn-12",
-  "coalesce_until": "2026-07-09T12:00:05.000Z",
-  "stopping_agent": "orchestrator",
-  "queue_refreshed_at": "2026-07-09T11:59:00.000Z",
-  "orchestrator_turn_id": 12
-}
-```
-
-| Field | Values | Required |
-|-------|--------|----------|
-| `version` | `1` | yes |
-| `requested_at` | ISO-8601 | yes |
-| `reason` | `orchestrator_turn_complete` \| `stale_barrier` | yes |
-| `target` | `coordinator` | yes |
-| `dedupe_key` | string | yes — `turn-{id}` or `stale-wave-{turn}-{issue-set-hash}` |
-| `coalesce_until` | ISO-8601 | yes — now + 5s; concurrent stops merge into one record |
-| `stopping_agent` | agent role string | yes |
-| `queue_refreshed_at` | string | yes |
-| `orchestrator_turn_id` | number \| null | when checkpoint present |
-
-**Write protocol:** read-modify-write via `.blackhole/resume-request.json.tmp` + `mv`. If existing record has `coalesce_until` in the future and same `dedupe_key`, refresh timestamp only (dedup). Coordinator **acks** by deleting the file or writing `{ "acked_at": ... }` after successful resume.
-
-**Doorbell message (orchestrator stop only):**
-
-```json
-{
-  "followup_message": "Blackhole: pending resume-request.json. Run coordinator turn flow — bun run status (full dashboard), then resume orchestrator with interrupt:false if work remains and queue is not user-blocked. Ack resume-request.json after resume."
-}
-```
-
-### Manual test runbook (WAVE spawn)
-
-| Step | Actor | Action | Expected |
-|------|-------|--------|----------|
-| 1 | maintainer | Merge validate + resume hook fragments into `.cursor/hooks.json` | Hooks tab shows both entries |
-| 2 | coordinator | Phase 0 + spawn orchestrator `run_in_background: true` | orchestrator live |
-| 3 | orchestrator | WAVE 0: spawn 2–4 `router` workers, barrier-wait, triage, turn-end | checkpoint workers empty |
-| 4 | orchestrator | END TURN with ready work remaining | `subagentStop` fires |
-| 5 | resume hook | writes `resume-request.json`, emits coordinator `followup_message` | file present; coordinator wakes |
-| 6 | coordinator | `bun run status` → full dashboard → resume orchestrator | next turn without user chat |
-| 7 | coordinator | delete/ack `resume-request.json` | file absent |
-| 8 | negative | set `notes: awaiting-plan-approval` on in-flight issue, repeat step 4 | hook exits 0, **no** file, **no** followup |
-
-```bash
-bun test scripts/campaign-resume-signal.test.ts
-# Manual: after orchestrator turn-end with work remaining:
-test -f .blackhole/resume-request.json && jq -e '.target == "coordinator"' .blackhole/resume-request.json
-```
-
-Fixtures: [`fixtures/resume-signal/`](../../fixtures/resume-signal/). Implementation: [`scripts/campaign-resume-signal.ts`](../../scripts/campaign-resume-signal.ts).
+See [`hook-schemas.md`](hook-schemas.md) for the Cursor SubagentStop validate/resume hook
+install specs and the PreToolUse `.blackhole/hook-events/` schema (split out, issue #473).
 
 ## Planner (`planner`)
 
@@ -127,7 +21,12 @@ Fixtures: [`fixtures/resume-signal/`](../../fixtures/resume-signal/). Implementa
   "plan_path": "plans/issue-298.md",
   "track": "standard",
   "failing_checks": [],
-  "clarification_markers": 0
+  "clarification_markers": 0,
+  "reformulation": {
+    "understood": "What the planner understood the issue requires.",
+    "assumed": "Assumptions taken to proceed without live confirmation.",
+    "if_wrong": "What would change if an assumption is wrong — enough for an owner veto."
+  }
 }
 ```
 
@@ -138,18 +37,9 @@ Fixtures: [`fixtures/resume-signal/`](../../fixtures/resume-signal/). Implementa
 | `track` | `quick` \| `standard` \| `skip` \| `design` \| `brainstorm` | when `ready`, or when `blocked` and caller knows the track |
 | `failing_checks` | string[] | when `blocked` |
 | `clarification_markers` | number | when `ready` or `blocked` |
+| `reformulation` | object — `reformulation.understood`, `reformulation.assumed`, `reformulation.if_wrong` (each non-empty string) | when `status: ready` and `track` is `quick` or `standard` — async veto surface; orchestrator posts per `phase-plan.md` § Reformulation posting (`confidence-gates.md`); absent when `blocked`; exempt for `skip`/`design`/`brainstorm` |
 | `rulings_checked_at` | number | no — present only when the ledger was read |
-| `ruling_conflicts` | `ruling_conflict[]` | no — defaults to `[]`; required (possibly empty) when `rulings_checked_at` is present — see § Rulings ledger (read-input) below |
-
-```json
-{
-  "status": "ready",
-  "plan_path": ".blackhole/plans/issue-298.md",
-  "track": "skip",
-  "failing_checks": [],
-  "clarification_markers": 0
-}
-```
+| `ruling_conflicts` | `ruling_conflict[]` | no — defaults to `[]`; required (possibly empty) when `rulings_checked_at` is present — see § Rulings ledger (planner read-input) below |
 
 ```json
 {
@@ -168,7 +58,8 @@ When `status: blocked`, `failing_checks` lists failed items:
 - `touch_paths_declared` — Touch-Paths section present (`V-SCOPE-02`)
 - `schema_baseline` — API/schema changes specified for standard track (`V-API-01`)
 - `tdd_tasks` — TDD baseline and failing-test tasks present (`V-TEST-01/02`)
-- `ac_mapping` — acceptance criteria mapped to tasks
+- `ac_mapping` — acceptance criteria mapped to tasks; sibling mechanical checks `critical_files_exist` / `mitigation_concrete` — Critical Files Glob-miss and Execution Strategy vague-mitigation (Standard track only, mercure `x-plan` parity, issue #459)
+- `ac_sweep_conflict` / `ac_sweep_scope` / `touch_paths_ssot_gap` — advisory-only plan-time heuristics (sweep/retain overlap, unscoped sweep AC, Touch-Paths SSOT gaps via `findTouchPathSsotGaps`) — `ADVISORY:` rows or Quick Track `## Touch-Paths Completeness Advisory`; never `failing_checks` (#575)
 - `clarification_limit` — at most 2 `[NEEDS CLARIFICATION]` markers
 - `base_commit` — `plan_base_commit` stamped in frontmatter
 - `design_pending_approval` — design track artifact produced at `plan_path`; blocked pending the
@@ -303,7 +194,7 @@ Returned by the Design Track's two critique-only sub-invocations described in `p
 (Adversarial Evaluation) — **not** a new agent identity: still `subagent_type: planner`, no
 `disallowedTools`/matcher change to the SubagentStop hook. Extracted from the sub-invocation's
 final plain-text response using the same fenced-block-first / brace-balanced-fallback order
-documented above (SubagentStop hook, `worker-schemas.md:17`).
+documented in `hook-schemas.md` (SubagentStop hook § Extraction order, `hook-schemas.md:11`).
 
 ```json
 {
@@ -367,7 +258,7 @@ below).
 | `touch_paths_honored` | boolean | when `complete` |
 | `execution_mode` | `standard` \| `refactor-strict` \| `docs-only` | no, optional — absent defaults to `standard` |
 | `task_type` | `feature` \| `bugfix` \| `refactor` \| `docs` | no, optional |
-| `escalation_trigger` | `failed_attempts` \| `touch_paths_overrun` | no, optional — only meaningful on `status: blocked` |
+| `escalation_trigger` | `failed_attempts` \| `touch_paths_overrun` \| `merge_conflict_semantic` | no, optional — only meaningful on `status: blocked` |
 | `evidence` | object `{ command: string, result: string }` | yes when `status: complete`; absent when `blocked`/`error` |
 | `new_findings` | finding[] | no |
 | `filed_issues` | number[] | no |
@@ -375,6 +266,8 @@ below).
 | `sprint_contract_status` | `PASS` \| `PARTIAL` \| `N/A` | no, optional — Standard track only |
 | `ac_results` | ac-result[] (see below) | no, optional — required non-empty when `sprint_contract_status` is present and not `N/A` |
 | `visual_evidence` | visual-evidence[] (see below) | no, optional — additive, config-gated by `display_targets` |
+| `companion_repairs` | `{ vcode, file, action }[]` (issue #453) | no, optional — see `companion-file-sync.md` § Ledger contract |
+| `conflict_hunks` | conflict-hunk[] (see below) | when `merge_conflict_semantic` |
 
 ### `execution_mode` (optional — ADR-004)
 
@@ -401,28 +294,27 @@ Mirrors the plan frontmatter's `task_type: bugfix` stamp (`planner.md` § Quick 
 implementer's Bugfix Gate applies. Values reuse `TASK_TYPES` verbatim
 (`scripts/validate-worker-json.ts:21`): `feature` \| `bugfix` \| `refactor` \| `docs`.
 
-**Non-goal for this issue**: no orchestrator/router logic computes or passes `route.task_type`
-to implementer at spawn time yet — this field is documentation of future intent, not a behavior
-claim about the current codebase, mirroring `execution_mode`'s own disclaimer above.
+**Non-goal**: no orchestrator/router logic computes or passes `route.task_type` to implementer at
+spawn time yet — documentation of future intent, mirroring `execution_mode` above.
 
 ### `escalation_trigger` (optional — ADR-004)
 
-Signals why an implementer session stopped and returned `status: blocked` for one of the Bugfix
-Gate's two escalation triggers (`implementer.md` § Bugfix Gate): `failed_attempts` (2 distinct
-failed fix attempts) or `touch_paths_overrun` (fix needs 3+ files beyond the plan's declared
-Touch-Paths). Single-valued (unlike the array-shaped `failing_checks`) — the worker stops at the
-first trigger it hits, it does not accumulate multiple in one session.
+`failed_attempts` \| `touch_paths_overrun` (Bugfix Gate) \| `merge_conflict_semantic` (Conflict
+Resolution Gate — requires non-empty `conflict_hunks[]` below). Single-valued. Consumers:
+`orchestrator-dispatch.md` § Escalation dispatch — `merge_conflict_semantic` → HITL, never
+`investigator`.
 
-**Consumer status**: `escalation_trigger` is now read by the orchestrator's escalation dispatch
-(`orchestrator-dispatch.md` § Escalation dispatch, #137) — an `implementer` returning `status: blocked`
-with this field set is routed to a direct `investigator` (`sub_mode: investigate`) spawn instead
-of a blind `implementer` re-spawn.
+### `conflict_hunks[]` (optional — issue #450)
 
-See `implementer.md` § Scout Check for the unconditional Improvement Record convention every
-implementer session produces (content spec stays there — `V-DRY`).
+Required when `escalation_trigger === "merge_conflict_semantic"`.
 
-See `implementer.md` § Reuse Check Gate for the unconditional `Reuse Check:` PR-body entry every
-implementer session produces (verified by `reviewer.md` § 5 — content spec stays there, `V-DRY`).
+| Field | Type |
+|-------|------|
+| `file` | string |
+| `lines` | string |
+| `excerpt` | string |
+
+See `implementer.md` § Scout Check / § Reuse Check Gate (`V-DRY`).
 
 ### Rulings ledger (read-input)
 
@@ -535,6 +427,9 @@ UI-affecting diff with `display_targets` configured is `V-VIS-01` (BLOCK); a dec
   ],
   "recheck": [
     { "finding_id": "F-00042", "verdict": "fixed", "evidence": "L.128 now validates input before query" }
+  ],
+  "verification": [
+    { "finding_id": "V1", "verdict": "refuted", "evidence": "input is validated at L.40 — exploit path not reproducible" }
   ]
 }
 ```
@@ -545,6 +440,7 @@ UI-affecting diff with `display_targets` configured is `V-VIS-01` (BLOCK); a dec
 | `findings` | finding[] | yes (empty array = no issues found) |
 | `error` | string | when `status: error` |
 | `recheck` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in recheck mode (`review-core.md` § Recheck mode); absent/omitted for a normal full-audit review |
+| `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent security verification mode (`review-core.md` § Independent security verification, `reviewer.md` § 24); absent/omitted for every other dispatch |
 
 ### `recheck` (optional — recheck-mode fast path, issue #214)
 
@@ -559,6 +455,33 @@ fix commits resolved it:
   `recheck`.
 - `evidence` — a short concrete pointer (e.g. `file:line` + what changed) showing why the
   finding is judged fixed or not — not a restatement of the original finding summary.
+
+`--prior-file` rows passed to `review-aggregate.ts` must carry the ledger `id` field (issue
+#485) for a `recheck[]` `verdict: fixed` entry to resolve against them; a missing or mismatched
+`id` surfaces in `unresolved_recheck` above, not silently.
+
+### `verification` (optional — independent security verification mode, issue #439)
+
+Carries one entry per stamped `V-SEC-*` finding the reviewer was dispatched to independently
+judge (`review-core.md` § Independent security verification, `reviewer.md` § 24) — a sibling
+shape to `recheck` above, distinct meaning: `recheck` verifies whether a fix commit resolved a
+*prior, ledgered* finding; `verification` verifies whether a *fresh, same-pass* finding
+independently holds up.
+
+- `finding_id` — the temporary, review-pass-scoped id (e.g. `V1`, `V2`, ...) the orchestrator
+  stamped onto the finding before including it in this dispatch's prompt — not a ledger
+  `F-NNNNN` id (none exists yet at this point in the pipeline; see `review-core.md` §
+  Independent security verification step 3).
+- `verdict` — `confirmed` \| `refuted`. `refuted` downgrades the matching `BLOCK` finding to
+  `WARN` before `applyConfidenceGate`/`dedupeFindings` run (`scripts/review-aggregate.ts`'s
+  exported `applyVerificationDowngrades`) — it never excludes the finding outright, unlike
+  `recheck`'s `fixed` verdict; a `confirmed` verdict, or a `finding_id` with no match among the
+  primary's stamped findings, is a no-op.
+- `evidence` — a concrete pointer showing what was checked and why the exploit path did or did
+  not hold — not a restatement of the original finding's summary.
+
+Passed to `review-aggregate.ts` via `--verification-file` (see § Review aggregate below) as a
+plain JSON array — distinct from `--prior-file`'s ledger-row shape.
 
 ### Rulings ledger (read-input)
 
@@ -606,7 +529,8 @@ product-principles.md` (the owner-rulings ledger) when present, gated by
     "revision": 1
   },
   "trigger": "initial",
-  "local_analyze": null
+  "local_analyze": null,
+  "rationale": "plan_mode confidence 55 is below threshold 70; cautious full plan_mode default applies pending local-analyze scan."
 }
 ```
 
@@ -616,6 +540,7 @@ product-principles.md` (the owner-rulings ledger) when present, gated by
 | `route` | object | when `routed` (`null` when `error`) |
 | `trigger` | `initial` \| `clarify-resolved` \| `research-landed` \| `investigation-landed` \| `analysis-landed` | when `routed` |
 | `local_analyze` | object \| `null` | when `routed` (`null` when `error`, or when the confidence-boost mechanism did not trigger) |
+| `rationale` | string (≤500 chars, non-empty when present) | no — when any `route.confidence.<flag>` is below its threshold; orchestrator copies verbatim into `routing_decisions` |
 | `error` | string | when `status: error` |
 
 `route`'s own field names, enum values, and types are frozen — see `queue-dag.md` § `route`
@@ -664,11 +589,12 @@ Analyze sub-mode example:
 
 | Field | Values | Required |
 |-------|--------|----------|
-| `status` | `complete` \| `error` | yes |
-| `note_path` | string | when `complete` |
-| `sub_mode` | `research` \| `investigate` \| `analyze` | when `complete` |
-| `confidence` | number 0-100 | when `complete` |
-| `computed_at_revision` | number (= `route.revision` at spawn time) | when `complete` |
+| `status` | `complete` \| `blocked` \| `error` | yes |
+| `note_path` | string | when `complete` or `blocked` |
+| `sub_mode` | `research` \| `investigate` \| `analyze` | when `complete` or `blocked` |
+| `confidence` | number 0-100 | when `complete` or `blocked` |
+| `computed_at_revision` | number (= `route.revision` at spawn time) | when `complete` or `blocked` |
+| `escalation_trigger` | `hypotheses_exhausted` | when `blocked` (`investigate` sub-mode's only blocked path) |
 | `error` | string | when `status: error` |
 
 ```json
@@ -692,6 +618,28 @@ Baselines). Full behavioral spec: `investigator.md` (not duplicated here).
 `plans/issue-N-investigation.md` (investigate sub-mode), or `plans/issue-N-analysis.md` (analyze
 sub-mode) — co-located with `plans/issue-N.md`, mirroring `planner.md`'s Design Track
 sibling-artifact convention (`plans/issue-N-design.md`).
+
+### `escalation_trigger` (required when `blocked` — `investigate` sub-mode only, issue #454)
+
+Shares the Implementer section's field/shape (`V-INT-03`). Always set to `hypotheses_exhausted`
+when the ranked hypothesis set — including the regenerated attempt (`investigator.md` §
+`investigate` sub-mode) — is fully refuted without a confirmed root cause; `note_path` is still
+present (the investigator always writes its note). The investigator never omits this field and
+never tracks its own escalation history — it reports exhaustion identically every time. Whether
+this is a first or bounded second exhaustion is orchestrator-side state, tracked solely via
+`queue.json` `notes` by `orchestrator-dispatch.md` § Investigator Escalation Dispatch, and never
+signaled through this field's presence or absence.
+
+```json
+{
+  "status": "blocked",
+  "note_path": "plans/issue-298-investigation.md",
+  "sub_mode": "investigate",
+  "confidence": 40,
+  "computed_at_revision": 2,
+  "escalation_trigger": "hypotheses_exhausted"
+}
+```
 
 ## Hunter (`hunter`)
 
@@ -777,7 +725,8 @@ Orchestrator invokes after `reviewer` completes. Not a worker agent — determin
   "findings": [],
   "blockers_count": 0,
   "lgtm": true,
-  "pareto_candidates": []
+  "pareto_candidates": [],
+  "unresolved_recheck": []
 }
 ```
 
@@ -788,9 +737,15 @@ Orchestrator invokes after `reviewer` completes. Not a worker agent — determin
 | `blockers_count` | number | yes |
 | `lgtm` | boolean | yes |
 | `pareto_candidates` | `{ summary, priority, file }[]` | yes (may be empty) |
+| `unresolved_recheck` | `{ finding_id, verdict, reason }[]` | yes (may be empty) — issue #485: a `recheck[]` `verdict: fixed` entry whose `finding_id` could not be linked to any prior finding's ledger `id`; non-empty forces `lgtm: false` |
 | `error` | string | when `status: error` |
 
-CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>]`
+CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>]`
+
+`--verification-file` (issue #439, § `verification` above) points to the independent security
+verification spawn's own `verification[]` array, serialized as a plain JSON array — omitted
+entirely on every review pass that is not a security-mode PR's verification spawn, with no
+change to `AggregateOutput`'s shape either way.
 
 ## Design aggregate (`scripts/design-aggregate.ts`)
 
@@ -821,6 +776,126 @@ reads but never overrides:
 
 CLI: `bun run scripts/design-aggregate.ts --input-file <path>`
 
+## Flush request (`stop --now`, the ask — leg A, issue #491)
+
+Not a worker-authored JSON return — the reverse direction: what the orchestrator sends to a
+still-running worker when the `stop --now` tier fires (`phase-stop.md` § `stop --now` tier).
+Delivered via the harness's live worker-message channel where the fan-out primitive keeps a
+spawned worker addressable while running (`phase-stop.md` § Signalling channel); on a harness
+without that capability there is nothing to send and the worker is treated as uncooperative
+immediately (§ Uncooperative fallback below).
+
+**Not the `.blackhole/resume-request.json` shape** (`hook-schemas.md` § SubagentStop resume
+hook): that channel is worker-written, orchestrator-read, and fires only *after* a worker has
+already stopped naturally. This request is the opposite direction and timing — orchestrator-
+written, worker-read, delivered to a worker that is still running. Reusing its shape would mean
+writing a file no running worker is polling for, so this is a new, purpose-fit message rather
+than a repurposed file (`V-INT-02` — Reuse Check: none found, first occurrence of "push a
+message into a still-running worker", repo-wide).
+
+```json
+{
+  "flush_requested_at": "2026-08-10T18:00:00.000Z",
+  "grace_window_minutes": 20,
+  "instruction": "stop_now"
+}
+```
+
+| Field | Values | Notes |
+|-------|--------|-------|
+| `flush_requested_at` | ISO-8601 | when the orchestrator delivered the ask |
+| `grace_window_minutes` | `20` (fixed — `phase-stop.md` § `stop --now` tier step 2; matches `merge-gate.md`'s CI-wait cap, sized for a worker queued behind another campaign's `with-test-lock` holder) | how long the worker has before the orchestrator falls back to killing it |
+| `instruction` | `"stop_now"` (fixed) | distinguishes this message from ordinary chat feedback so a worker's own instructions can pattern-match on it |
+
+### What the worker owes on receipt
+
+Binding on every worker role (`planner`, `implementer`, `reviewer`, `router`, `investigator`,
+`hunter`) — a protocol obligation, not a per-role schema field, so it is stated once here
+instead of duplicated in each role's section above (`V-DRY-01`):
+
+1. **Stop starting new work** — no new sub-task, no file the worker had not already begun
+   touching before the ask arrived.
+2. **Do not finish the current unit of work either** — this is what distinguishes `--now` from
+   drain (`phase-stop.md` § Drain tier): drain lets the in-flight unit complete naturally,
+   `--now` cuts at the worker's current position regardless of whether that unit is done.
+3. **Commit and push whatever is already changed**, even if incomplete or broken — a partial
+   push the orchestrator can see beats clean work it loses. This directly narrows what issue
+   #524's worktree-removal guard has to catch: a worker that reliably pushes on request leaves
+   less unpushed history behind (cited, not duplicated — #524 owns the orchestrator-side removal
+   check itself).
+4. **State plainly what is done and what is not**, in whatever channel the worker's natural
+   return already uses. An inaccurate "done" costs more than an accurate "half" — a
+   completion-honesty obligation, not a schema requirement; the structured shape a flush report
+   actually takes is leg B's (#492) job, out of scope here.
+5. **Return through the normal stop path** — the harness's own SubagentStop event, not a special
+   exit. `stop --now` changes what the worker does before stopping, not how it stops.
+
+### Uncooperative fallback
+
+A worker is uncooperative when either: the harness provides no live message channel to a
+running worker at all (nothing was ever asked), or `grace_window_minutes` elapses with no
+return. Both resolve identically — the orchestrator falls back to `--abandon` tier semantics
+(`phase-stop.md` § `--abandon` tier, cited not restated) for that worker only; sibling workers
+that did cooperate are unaffected.
+
+### Non-goal for this issue (leg B boundary)
+
+No JSON envelope is defined here for what a flushed worker's *return* looks like structurally —
+a partial `status`, how it differs from `complete` / `blocked` / `error` — that shape and its
+orchestrator-side ingest/validation is #492's deliverable. This section documents only the ask;
+the response stays whatever shape the worker's role already returns today until #492 lands.
+
+## Partial result (`status: partial`, `stop --now` leg B, issue #492)
+
+A worker's answer to the Flush Request (§ Flush request above) — the response shape that
+section deliberately left undefined. `status: partial` is now a valid value on every role's
+status enum (`planner`, `implementer`, `reviewer`, `router`, `investigator`, `hunter`) via one
+shared `PARTIAL_STATUS` constant appended to each role's enum array
+(`scripts/lib/worker-json/constants.ts`) — composed onto each role's existing return shape,
+never a parallel schema (`V-DRY-01`, the issue's own framing: "a partial result is not a
+smaller complete result").
+
+```json
+{
+  "status": "partial",
+  "phase_reached": "implement",
+  "partial_result": {
+    "work_done": "Implemented the endpoint and its unit tests; PR not yet opened.",
+    "work_remaining": "Open PR, run lint, write PR description.",
+    "worktree_disposition": "pushed",
+    "branch": "blackhole/issue-492"
+  }
+}
+```
+
+| Field | Values | Required |
+|-------|--------|----------|
+| `status` | `partial` | yes |
+| `phase_reached` | `handle` \| `plan` \| `implement` \| `review` (`queue-dag.md`'s phase enum, reused) | yes |
+| `partial_result.work_done` | non-empty string | yes |
+| `partial_result.work_remaining` | non-empty string | yes |
+| `partial_result.worktree_disposition` | `pushed` \| `clean` \| `dirty-uncommitted` | yes |
+| `partial_result.branch` | string \| `null` | required when `worktree_disposition: pushed`, else `null` |
+
+**Not a smaller `complete`.** `evidence` and `sprint_contract_status`/`ac_results[]` (§§ above)
+stay absent — both hold conditions key on `status: complete` specifically
+(`phase-implement.md` §§ Unverified-claim hold, Sprint Contract hold), which a partial return
+never claims. The honesty bar is narrative (`work_done`/`work_remaining` non-empty,
+structurally enforced by `scripts/validate-worker-json.ts`), deliberately weaker than
+`evidence`'s `{command,result}` pair: a worker mid-flush inside its 20-minute grace window
+(`phase-stop.md` § `stop --now` tier step 2) cannot always re-run verification before
+returning.
+
+**`worktree_disposition: dirty-uncommitted`** names the genuinely-incomplete case the issue
+calls out — the Flush Request's obligation 3 ("commit and push whatever is already changed")
+was not satisfiable in the grace window. It never authorizes worktree removal:
+`blackhole-protocol.md` § Branch & Worktree Hygiene's dirty-check refusal applies exactly as to
+any other dirty tree.
+
+**Consumer**: `orchestrator-runtime.md` § Triage's Partial-result ingest procedure — queue
+phase never advances past `phase_reached`; disposition and branch are recorded via the
+existing free-form `notes` convention (`queue-dag.md`), never a new queue schema field.
+
 ## Orchestrator validation
 
 Before ledger append or phase transition:
@@ -847,6 +922,10 @@ After a background worker batch barrier completes (`orchestrator-runtime.md` § 
    phase; an empty `ruling_conflicts[]` alongside `rulings_checked_at` stamps the queue watermark
    and advances normally (`orchestrator.md` § Human-in-the-Loop (HITL) & Blocker Gating, Ruling
    Re-Check Gate).
+
+**Missing return (recoverable):** when a worker signals completion but no return arrives, see
+`orchestrator-runtime.md` § Background worker barrier → Triage and `recovery-protocol.md` §10 —
+never collapse into "worker returned nothing to report."
 
 The SubagentStop **validate** hook checks JSON at handoff; the **resume** hook (#154) automates the outer coordinator loop via `resume-request.json` and an orchestrator→coordinator doorbell only. Inner-loop continuity remains the orchestrator in-turn `Await` barrier (#151) — worker stops do not inject `followup_message` to the orchestrator.
 

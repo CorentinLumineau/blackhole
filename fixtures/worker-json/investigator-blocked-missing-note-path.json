@@ -1,0 +1,7 @@
+{
+  "status": "blocked",
+  "sub_mode": "investigate",
+  "confidence": 40,
+  "computed_at_revision": 2,
+  "escalation_trigger": "hypotheses_exhausted"
+}

@@ -78,10 +78,28 @@ describe('artifact-contract.md — route → artifact table', () => {
 
   const contract = read('src/references/artifact-contract.md');
 
-  test.each(['analyze', 'brainstorm', 'design', 'investigate'])(
+  test.each(['analyze', 'brainstorm', 'design', 'investigate', 'plan', 'review'])(
     'documents the %s route',
     (routeName) => {
       expect(contract).toContain(routeName);
     }
   );
+
+  const CANONICAL_DOC_FOLDERS = [
+    'audits/',
+    'brainstorms/',
+    'decisions/',
+    'investigations/',
+    'plans/',
+    'reviews/',
+    'assessments/',
+    'runbooks/',
+    'architecture/',
+    'reference/',
+    'milestones/',
+  ];
+
+  test.each(CANONICAL_DOC_FOLDERS)('declares canonical folder %s', (folder) => {
+    expect(contract).toContain(folder);
+  });
 });

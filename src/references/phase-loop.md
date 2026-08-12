@@ -18,10 +18,11 @@
 ## Merge protocol
 
 **Trigger, per `config.json.merge_mode`** (checklist line "LGTM AND
-`mergeEligible(issue)`? → merge PR"):
-- `"immediate"` (default): apply steps 0-5 below to each LGTM'd issue
-  individually, as encountered.
+`mergeEligible(issue)`? → merge PR`):
+- `"immediate"`: apply steps 0-5 below to each LGTM'd issue
+  individually, as encountered. Step 0.5 runs between step 0 and step 1.
 - `"gated-batch"`: do **not** apply steps 0-5 issue-by-issue as encountered.
+  Step 0.5 runs between step 0 and step 1 within § 4's per-issue loop.
   Instead, once `merge-gate.md` § 1 Condition 3 is satisfied for the whole
   in-scope set (every sibling LGTM'd), run `merge-gate.md` § 4's sequential
   batch procedure — it internally invokes steps 0-5 below, once per issue, in
@@ -29,8 +30,8 @@
   duplicate § 4's ordering/persistence logic here; this section owns only the
   per-PR merge mechanics § 4 calls into.
 - `"leave-open"` (ADR-006): do **not** apply steps 0-5 to these issues at
-  all — no `mergeEligible(issue)` call, no `gh pr merge` (see `merge-gate.md`'s
-  bypass note). Once `review-core.md`'s `isLgtm(issue)` is true, treat the
+  all — no `mergeEligible(issue)` call, no `gh pr merge`, no Step 0.5 (see
+  `merge-gate.md`'s bypass note). Once `review-core.md`'s `isLgtm(issue)` is true, treat the
   issue as delivered for campaign-complete purposes only: annotate
   `queue.json`'s `notes` field (not `status`/`phase`) — e.g.
   `"delivered-at-LGTM (leave-open) — awaiting human merge"` — and leave the PR
@@ -43,6 +44,17 @@
    do not proceed to step 1 for this issue (leave it `in-flight`; re-evaluated
    next turn). This step is binding wherever this section is cited or
    delegated — never skip it to reach step 1 directly.
+
+**Step 0.5 — Rebase & Conflict Preflight** (issue #450): after step 0 passes and before step 1,
+run `merge-conflict-protocol.md` § Trigger — Step 0.5. When `gh pr view <n> --json
+mergeStateStatus,mergeable` reports `mergeable == "CONFLICTING"`, delegate to an `implementer`
+spawn per `merge-conflict-protocol.md` § Worker delegation; on `status: complete`, continue to
+step 1 with the rebased HEAD; on `status: blocked` with `escalation_trigger:
+merge_conflict_semantic`, route per `orchestrator-dispatch.md` § Escalation dispatch and **STOP**
+this issue's merge for the turn. When `mergeable == "MERGEABLE"` (or an unfamiliar
+`mergeStateStatus` — conservative default per `merge-conflict-protocol.md` § Edge cases),
+proceed to step 1 unchanged. Bypassed under `merge_mode: leave-open`.
+
 1. `gh pr view <n> --json headRefOid` equals local HEAD
 2. CI-wait: a detached background poll, never a foreground agent sleep. `gh pr
    checks <n>` must reach green (except Vercel preview — expected fail), but
@@ -69,6 +81,18 @@
       clean green/red CI result, reclassify per `orchestrator-runtime.md` § Error
       Classification (Transient → Permanent path) — do not restate that
       table here.
+   4. **Still-red Permanent**: when CI remains red after the 2-retry cap and
+      transient classes are exhausted, invoke `ci-diagnosis.md` — fetch
+      failing-step logs, classify, and route per that doc's fix-loop protocol.
+      Do not advance to merge step 3 until diagnosis resolves or escalates.
+2.5. **Review artifact promotion (ADR-021 D3, issue #445)** — when `docs_governance.enabled`
+   and `docs_governance.write_governance` both resolve `true`, spawn `implementer` (or run the
+   promotion inline when the harness has no subagent) per `implementer.md` § Promote Review
+   Artifact: run `scripts/promote-review-artifact.ts`, carry staged `route: review` entries into
+   `documentation/reviews/` + `documentation/INDEX.md`, commit and push on the PR branch. If
+   promotion fails to land `documentation/reviews/review-{slug}.md` in the PR, **STOP** — do not
+   call `gh pr merge`. Inert when either governance flag is `false`. Bypassed under
+   `merge_mode: leave-open`.
 3. Run the project's build command in main clone (if applicable)
 4. `gh pr merge --squash` (use `&&` only, never `;`) — immediately after this
    command succeeds, in the **same** atomic `queue.json` write that sets
@@ -199,7 +223,7 @@ increment, do not mark a dry wave, do not touch `hunt_state` at all. Re-evaluate
    forge issues (title/`file:line` match) — a `CONFIRMED` finding matching an existing ledger
    row or an already-open `[Kaizen]` issue for the same `file:line` is dropped before gating,
    never re-filed.
-3. **Gate + file.** Apply `V-PARETO-02` (`Priority = Gain * (11 - Effort) >= 30`) plus the bug
+3. **Gate + file.** Apply `V-PARETO-03` (`Priority = Gain * (11 - Effort) >= 30`) plus the bug
    severity floor: a `kind: bug` finding with `severity: BLOCK` or `severity: HIGH` always
    files regardless of computed Priority (severity-term reconciliation — the hunter's shipped
    `worker-schemas.md` contract has no `CRITICAL` tier; `severity: BLOCK` stands in for the
@@ -222,14 +246,26 @@ increment, do not mark a dry wave, do not touch `hunt_state` at all. Re-evaluate
    - Findings **below** the gate (Priority < 30 and not a bug-severity-floor override) are
      set `status: archived` in the ledger — never filed, per the identical below-floor rule
      § Continuous Discovery of Improvements already applies.
+   - **Backlog low-info enrichment pass** (`kind: backlog` only, after the step-3 filing loop
+     above completes for this wave, before step 4): for each `CONFIRMED` low-information finding
+     from heuristic 3 in `hunt/backlog.md` (`file: "issue:<number>"`, `line: 0`) that survived
+     dedup, the orchestrator (not the hunter) appends a forge comment and mirrors a queue note so
+     Handle/confidence gates have material on the next turn — still on the same kaizen turn, before
+     § Next batch step 2 builds the ready set:
+     1. Post `gh issue comment <number> --body "<!-- blackhole:enrichment -->\n<structured draft from finding rationale>"` — the HTML comment delimiter makes re-runs idempotent (skip if an existing comment already contains `<!-- blackhole:enrichment -->`).
+     2. Append a one-line summary to `queue.json` `issues.<number>.notes` via the normal write
+        protocol (`blackhole-state.md` § Write protocol) when the issue is already in the queue;
+        issues not yet ingested rely on the forge comment alone until the next forge sync.
+     Duplicate and stale-referent backlog findings follow the ordinary `[Kaizen]` filing path above;
+     only low-info findings use this enrichment pass instead of (or in addition to) filing.
 4. **Cap.** File at most `kaizen.max_issues_per_wave` issues this wave. Excess `CONFIRMED`,
    above-floor findings stay `status: open` in the ledger — never dropped, never
    silently archived — to be filed in a future wave once the cap resets.
 5. **Watermark.** Update `hunt_state.kinds.<kind>` atomically in the same write: merge this
    wave's `territory.bands_scanned` into `bands_done`, increment `waves`, set
    `last_wave_at` to now. Same atomic write protocol as every other `hunt_state`/ledger
-   mutation (`blackhole-state.md` § Write protocol): `jq empty` validate, `.tmp` + `mv`,
-   bump `refreshed_at`.
+   mutation (`blackhole-state.md` § Write protocol): validate via `state-write-guard.ts`
+   (never `jq empty` alone), `.tmp` + `mv`, bump `refreshed_at`.
    - **Dry-wave counter.** `hunt_state.kinds.<kind>.dry_waves` (new, additive per-kind
      integer field): increment when this completed wave filed zero issues (step 3
      produced nothing above the gate); reset to `0` on any wave that files `>= 1` issue.

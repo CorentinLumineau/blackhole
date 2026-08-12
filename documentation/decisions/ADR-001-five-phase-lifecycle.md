@@ -1,4 +1,5 @@
 ---
+type: adr
 tracking_initiative: backlog-campaign-v2
 status: accepted
 scope: orchestration

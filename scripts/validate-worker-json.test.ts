@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   extractFromHookInput,
+  extractLastAssistantText,
   extractWorkerJson,
   readTranscriptTail,
   resolveRole,
@@ -38,6 +39,12 @@ const makeBrainstormChildren = (count: number) =>
     effort: 3,
   }));
 
+const sampleReformulation = {
+  understood: 'What the planner understood the issue requires.',
+  assumed: 'Assumptions taken to proceed without live confirmation.',
+  if_wrong: 'What would change if an assumption is wrong.',
+};
+
 describe('validateWorker planner', () => {
   test('valid ready', () => expectValid('planner', 'planner-ready.json'));
   test('valid blocked', () => expectValid('planner', 'planner-blocked.json'));
@@ -50,6 +57,8 @@ describe('validateWorker planner', () => {
   test('invalid ready with design track', () =>
     expectInvalid('planner', 'planner-ready-invalid-design-track.json'));
   test('valid ready skip', () => expectValid('planner', 'planner-ready-skip.json'));
+  test('invalid ready missing reformulation on standard track', () =>
+    expectInvalid('planner', 'planner-ready-missing-reformulation.json'));
   test('valid blocked design', () => expectValid('planner', 'planner-blocked-design.json'));
   test('invalid blocked design missing plan_path', () =>
     expectInvalid('planner', 'planner-blocked-design-missing-plan-path.json'));
@@ -137,6 +146,7 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
       ruling_conflicts: [],
     });
@@ -150,6 +160,7 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
     });
     expect(errors.some((e) => e.includes('ruling_conflicts'))).toBe(true);
@@ -162,6 +173,7 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
       ruling_conflicts: [
         {
@@ -181,6 +193,7 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
       ruling_conflicts: [
         {
@@ -193,13 +206,14 @@ describe('validateWorker planner', () => {
     expect(errors.some((e) => e.includes('suggested_disposition'))).toBe(true);
   });
 
-  test('valid ready with neither rulings_checked_at nor ruling_conflicts (backward compatibility)', () => {
+  test('valid ready with neither rulings_checked_at nor ruling_conflicts', () => {
     const errors = validateWorker('planner', {
       status: 'ready',
       plan_path: '.blackhole/plans/issue-298.md',
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
     });
     expect(errors).toEqual([]);
   });
@@ -211,6 +225,7 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
       ruling_conflicts: 'not-an-array',
     });
@@ -224,11 +239,15 @@ describe('validateWorker planner', () => {
       track: 'standard',
       failing_checks: [],
       clarification_markers: 0,
+      reformulation: sampleReformulation,
       rulings_checked_at: 7,
       ruling_conflicts: ['R-007'],
     });
     expect(errors.some((e) => e.includes('ruling_conflicts[0]') && e.includes('object'))).toBe(true);
   });
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('planner', 'planner-partial.json'));
 });
 
 describe('validateWorker implementer', () => {
@@ -254,10 +273,21 @@ describe('validateWorker implementer', () => {
     expectInvalid('implementer', 'implementer-blocked-bad-escalation-trigger.json'));
   test('invalid escalation_trigger type confusion', () =>
     expectInvalid('implementer', 'implementer-blocked-escalation-trigger-type-confusion.json'));
+  test('valid blocked with merge_conflict_semantic', () =>
+    expectValid('implementer', 'implementer-blocked-merge-conflict.json'));
+  test('invalid merge_conflict_semantic missing conflict_hunks', () =>
+    expectInvalid('implementer', 'implementer-blocked-merge-conflict-missing-hunks.json'));
   test('invalid missing evidence on complete', () =>
     expectInvalid('implementer', 'implementer-complete-missing-evidence.json'));
   test('invalid empty evidence on complete', () =>
     expectInvalid('implementer', 'implementer-complete-empty-evidence.json'));
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('implementer', 'implementer-partial.json'));
+  test('invalid partial missing work_done', () =>
+    expectInvalid('implementer', 'implementer-partial-missing-work-done.json'));
+  test('invalid partial missing branch when worktree_disposition is pushed', () =>
+    expectInvalid('implementer', 'implementer-partial-missing-branch-when-pushed.json'));
 });
 
 describe('validateWorker implementer decision_records[] (ADR-012 E4)', () => {
@@ -465,17 +495,59 @@ describe('validateWorker implementer visual_evidence[] (issue #420)', () => {
   });
 });
 
+describe('validateWorker implementer companion_repairs[] (issue #453)', () => {
+  const baseComplete = {
+    status: 'complete',
+    pr_number: 453,
+    branch: 'blackhole/issue-453',
+    tests_passed: true,
+    touch_paths_honored: true,
+    evidence: { command: 'bun test scripts/companion-file-sync.test.ts', result: '8 pass, 0 fail' },
+  };
+
+  test('accepts valid companion_repairs[]', () => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      companion_repairs: [
+        {
+          vcode: 'V-ADA-01',
+          file: 'ARCHITECTURE.md',
+          action: 'created from templates/companion-files/ARCHITECTURE.md.template',
+        },
+      ],
+    });
+    expect(errors).toEqual([]);
+  });
+
+  test('rejects invalid vcode in companion_repairs[]', () => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      companion_repairs: [{ vcode: 'V-ADA-03', file: 'DESIGN.md', action: 'noop' }],
+    });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.includes('vcode'))).toBe(true);
+  });
+
+  test('accepts implementer JSON without companion_repairs (backward compatible)', () => {
+    const errors = validateWorker('implementer', { ...baseComplete });
+    expect(errors).toEqual([]);
+  });
+});
+
 describe('validateWorker reviewer', () => {
   test('valid empty findings', () =>
     expectValid('reviewer', 'reviewer-complete-empty.json'));
   test('invalid missing findings', () =>
     expectInvalid('reviewer', 'reviewer-missing-findings.json'));
-  test('valid V-DOC-02/04 finding', () =>
+  test('valid V-DOCSYNC-01 finding', () =>
     expectValid('reviewer', 'reviewer-complete-vdoc-finding.json'));
   test('valid V-ADA-01 finding', () =>
     expectValid('reviewer', 'reviewer-complete-vada-finding.json'));
   test('valid V-SPEC-01 finding', () =>
     expectValid('reviewer', 'reviewer-complete-vspec-block-finding.json'));
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('reviewer', 'reviewer-partial.json'));
 });
 
 describe('validateWorker router', () => {
@@ -492,6 +564,23 @@ describe('validateWorker router', () => {
   test('invalid missing ui field', () =>
     expectInvalid('router', 'router-routed-missing-ui.json'));
   test('valid routed with ui: true', () => expectValid('router', 'router-routed-ui-true.json'));
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('router', 'router-partial.json'));
+
+  // Issue #613 — optional rationale on status: routed
+  test('valid routed with optional rationale', () =>
+    expectValid('router', 'router-routed-with-rationale.json'));
+  test('valid routed without rationale (backward compatible)', () =>
+    expectValid('router', 'router-routed.json'));
+  test('invalid rationale exceeds maximum length', () =>
+    expectInvalid('router', 'router-routed-rationale-too-long.json'));
+  test('invalid rationale wrong type (number)', () =>
+    expectInvalid('router', 'router-routed-rationale-type-confusion-number.json'));
+  test('invalid rationale wrong type (null)', () =>
+    expectInvalid('router', 'router-routed-rationale-type-confusion-null.json'));
+  test('invalid rationale whitespace-only', () =>
+    expectInvalid('router', 'router-routed-rationale-whitespace.json'));
 });
 
 describe('validateWorker hunter', () => {
@@ -515,6 +604,9 @@ describe('validateWorker hunter', () => {
     expectInvalid('hunter', 'hunter-complete-invalid-verification.json'));
   test('invalid complete missing territory', () =>
     expectInvalid('hunter', 'hunter-complete-missing-territory.json'));
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('hunter', 'hunter-partial.json'));
 });
 
 describe('validateWorker investigator', () => {
@@ -536,6 +628,17 @@ describe('validateWorker investigator', () => {
   test('valid error', () => expectValid('investigator', 'investigator-error.json'));
   test('invalid error missing error field', () =>
     expectInvalid('investigator', 'investigator-error-missing-error-field.json'));
+  test('valid blocked with hypotheses_exhausted escalation_trigger', () =>
+    expectValid('investigator', 'investigator-blocked-hypotheses-exhausted.json'));
+  test('invalid blocked missing required escalation_trigger (always set on exhaustion, per investigator.md § Escalation)', () =>
+    expectInvalid('investigator', 'investigator-blocked-missing-escalation-trigger.json'));
+  test('invalid blocked escalation_trigger enum', () =>
+    expectInvalid('investigator', 'investigator-blocked-invalid-escalation-trigger.json'));
+  test('invalid blocked missing note_path', () =>
+    expectInvalid('investigator', 'investigator-blocked-missing-note-path.json'));
+
+  // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
+  test('valid partial', () => expectValid('investigator', 'investigator-partial.json'));
 });
 
 describe('extractWorkerJson', () => {
@@ -626,6 +729,51 @@ describe('readTranscriptTail', () => {
     const missingPath = path.join(tmpDir, 'does-not-exist.txt');
 
     expect(readTranscriptTail(missingPath)).toBeNull();
+  });
+});
+
+describe('extractLastAssistantText', () => {
+  const jsonlLine = (obj: unknown) => JSON.stringify(obj);
+
+  test('returns the last assistant text block from a well-formed JSONL transcript', () => {
+    const routeJson = { status: 'complete', route: { task_type: 'bugfix' } };
+    const fencedText = '```json\n' + JSON.stringify(routeJson, null, 2) + '\n```';
+    const tail = [
+      jsonlLine({ type: 'user', message: { content: [{ type: 'text', text: 'go' }] } }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: 'thinking...' }] } }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash' }] } }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: fencedText }] } }),
+    ].join('\n');
+
+    expect(extractLastAssistantText(tail)).toBe(fencedText);
+  });
+
+  test('skips a byte-tail-truncated leading line that fails JSON.parse', () => {
+    const goodText = 'the real last assistant turn';
+    const tail = [
+      '"truncated": true, "message": {broken', // truncated leading line from a byte-tail read
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: goodText }] } }),
+    ].join('\n');
+
+    expect(extractLastAssistantText(tail)).toBe(goodText);
+  });
+
+  test('returns null when the transcript has no assistant lines', () => {
+    const tail = [
+      jsonlLine({ type: 'user', message: { content: [{ type: 'text', text: 'go' }] } }),
+      jsonlLine({ type: 'system', message: { content: [] } }),
+    ].join('\n');
+
+    expect(extractLastAssistantText(tail)).toBeNull();
+  });
+
+  test('returns null when the last assistant line has only tool_use content (no text)', () => {
+    const tail = [
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: 'earlier turn' }] } }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash' }] } }),
+    ].join('\n');
+
+    expect(extractLastAssistantText(tail)).toBeNull();
   });
 });
 
@@ -955,5 +1103,92 @@ describe('validate-worker-json CLI mode', () => {
     const result = await runValidateWorkerCli(['--role', 'hunter', '--json', payload]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('error');
+  });
+});
+
+describe('recover-transcript CLI mode', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-worker-json-recover-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const jsonlLine = (obj: unknown) => JSON.stringify(obj);
+  const writeTranscript = (name: string, lines: string[]) => {
+    const filePath = path.join(tmpDir, name);
+    fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
+    return filePath;
+  };
+
+  test('valid transcript + matching role prints the exact validated JSON object, exit 0', async () => {
+    const routerJson = readFixture('router-routed.json');
+    const fencedText = '```json\n' + JSON.stringify(routerJson) + '\n```';
+    const transcriptPath = writeTranscript('router-good.jsonl', [
+      jsonlLine({ type: 'user', message: { content: [{ type: 'text', text: 'go' }] } }),
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: fencedText }] } }),
+    ]);
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      transcriptPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toEqual(routerJson);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('transcript path does not exist exits 1 with non-empty stderr', async () => {
+    const missingPath = path.join(tmpDir, 'does-not-exist.jsonl');
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      missingPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.trim()).not.toBe('');
+  });
+
+  test('transcript has no assistant JSON exits 1 with non-empty stderr', async () => {
+    const transcriptPath = writeTranscript('router-no-json.jsonl', [
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: 'no structured output here' }] } }),
+    ]);
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      transcriptPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.trim()).not.toBe('');
+  });
+
+  test('extracted JSON failing role-schema validation exits 1 and lists validation errors', async () => {
+    const incompleteRoute = { status: 'routed', route: { needs_split: false } };
+    const fencedText = '```json\n' + JSON.stringify(incompleteRoute) + '\n```';
+    const transcriptPath = writeTranscript('router-invalid.jsonl', [
+      jsonlLine({ type: 'assistant', message: { content: [{ type: 'text', text: fencedText }] } }),
+    ]);
+
+    const result = await runValidateWorkerCli([
+      '--recover-transcript',
+      transcriptPath,
+      '--role',
+      'router',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('task_type');
   });
 });
