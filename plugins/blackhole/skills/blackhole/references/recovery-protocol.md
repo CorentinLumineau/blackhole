@@ -294,13 +294,14 @@ channels (`orchestrator-runtime.md` § Triage, Three-case distinction).
 | # | Path | Observed outcome |
 |---|------|-------------------|
 | 1 | Task-completion notification payload | **Never carries the return.** Delivers a bare idle/completion signal only — notification and return are independent channels, not a fallback pair |
-| 2 | Mailbox / `SendMessage` re-request, addressed by the worker's spawn name | **Not guaranteed.** Succeeded once, failed once (0/7) in the same session — treat strictly as the second rung, never the sole recovery path |
+| 2 | Mailbox / `SendMessage` re-request, addressed by the worker's spawn name | **Cannot recover a dropped return** — re-uses the same delivery channel that failed. Re-requesting a dropped return: **0/7** in the turn-8 dropped-return batch (every agent re-emitted correct JSON; delivery failed again). Instructing a **live** worker to perform new work: succeeds (turn 8: `impl-482` rebase report and `impl-592` WARN response both arrived). Go to rung 3 for recovery; use rung 2 only to message a live worker |
 | 3 | On-disk transcript read (`~/.claude/projects/<project-slug>/<session-id>/subagents/agent-a<name>-*.jsonl`) | **Reliable when `$CLAUDE_CODE_SESSION_ID` is set.** Recovered all 7 route objects verbatim in the turn-8 recurrence, including two agents that had emitted their JSON twice (once originally, once on a rung-2 re-request) — both copies identical and correct. The workers were never at fault; only delivery was |
 
 **Caveat on path 3**: the `agent-a<name>-*.jsonl` path shape is an **undocumented Claude Code
 harness internal, not a public contract**. If it stops matching after a harness upgrade, the glob
-returns empty and rung 1 no-ops safely into the `SendMessage` fallback (rung 2) — file a
-fast-follow issue rather than hand-patching the glob pattern. Path 3 requires no new agent
+returns empty and there is **no automated recovery path** — rung 2 cannot substitute for dropped
+returns (see rung 2 above). Repair the glob pattern (file a fast-follow issue) rather than leaning
+on rung 2. Path 3 requires no new agent
 capability: `router`, `reviewer`, `hunter`, and `investigator` are all `disallowedTools: [Write,
 Edit, Delete]` by design, and this path is an orchestrator-side read of a file the harness itself
 already durably persists — it never requires relaxing that boundary.
