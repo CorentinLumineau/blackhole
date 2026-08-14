@@ -112,8 +112,9 @@ export const needsAgentsSymlinkRepair = (repoRoot: string): boolean => {
   const agentsPath = path.join(repoRoot, 'AGENTS.md');
   if (!fs.existsSync(agentsPath)) return true;
   const stat = fs.lstatSync(agentsPath);
-  if (stat.isFile() && !stat.isSymbolicLink()) return true;
-  if (!stat.isSymbolicLink()) return true;
+  // A distinct regular file (or any other non-symlink entry, e.g. a directory) is not our
+  // repair target — only an absent AGENTS.md or a symlink pointing away from CLAUDE.md is.
+  if (!stat.isSymbolicLink()) return false;
   const target = fs.readlinkSync(agentsPath);
   const resolved = path.isAbsolute(target)
     ? target
@@ -138,9 +139,17 @@ export const createArchitectureFromTemplate = (
 };
 
 export const repairAgentsSymlink = (repoRoot: string, projectName: string): CompanionRepair[] => {
-  const repairs: CompanionRepair[] = [];
   const claudePath = path.join(repoRoot, 'CLAUDE.md');
   const agentsPath = path.join(repoRoot, 'AGENTS.md');
+
+  // A distinct regular file (or any other non-symlink entry) is not our repair target — bail
+  // out before any write so a skipped repair is a true no-op, not a partial
+  // CLAUDE.md-created-but-AGENTS.md-untouched state.
+  if (fs.existsSync(agentsPath) && !fs.lstatSync(agentsPath).isSymbolicLink()) {
+    return [];
+  }
+
+  const repairs: CompanionRepair[] = [];
 
   if (!fs.existsSync(claudePath)) {
     const content = substituteProjectName(readTemplate(repoRoot, 'AGENTS.md'), projectName);
@@ -153,19 +162,14 @@ export const repairAgentsSymlink = (repoRoot: string, projectName: string): Comp
   }
 
   if (fs.existsSync(agentsPath)) {
-    const stat = fs.lstatSync(agentsPath);
-    if (stat.isSymbolicLink()) {
-      const target = fs.readlinkSync(agentsPath);
-      const resolved = path.isAbsolute(target)
-        ? target
-        : path.resolve(path.dirname(agentsPath), target);
-      if (path.normalize(resolved) === path.normalize(claudePath)) {
-        return repairs;
-      }
-      fs.unlinkSync(agentsPath);
-    } else {
-      fs.unlinkSync(agentsPath);
+    const target = fs.readlinkSync(agentsPath);
+    const resolved = path.isAbsolute(target)
+      ? target
+      : path.resolve(path.dirname(agentsPath), target);
+    if (path.normalize(resolved) === path.normalize(claudePath)) {
+      return repairs;
     }
+    fs.unlinkSync(agentsPath);
   }
 
   fs.symlinkSync('CLAUDE.md', agentsPath);
