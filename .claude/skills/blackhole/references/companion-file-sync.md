@@ -50,11 +50,11 @@ Helper: `needsArchitectureRepair(repoRoot, diffPaths)` in `scripts/lib/companion
 `templates/companion-files/ARCHITECTURE.md.template` → `ARCHITECTURE.md` with
 `{project-name}` substitution. **Never overwrite** an existing file.
 
-### Root `V-ADA-05` — `AGENTS.md` absent or not a valid `CLAUDE.md` symlink
+### Root `V-ADA-05` — `AGENTS.md` absent or a symlink not pointing at `CLAUDE.md`
 
 | Predicate | Rule |
 |-----------|------|
-| File state | Root `AGENTS.md` absent, a regular file, or a symlink whose resolved target is not `CLAUDE.md` |
+| File state | Root `AGENTS.md` absent, or a symlink whose resolved target is not `CLAUDE.md` — a regular, non-symlink `AGENTS.md` is left untouched (not repaired) |
 | Diff scope | At least one staged path matches an **agent-surface** prefix (below) |
 
 **Agent-surface prefixes**:
@@ -66,10 +66,11 @@ Helper: `needsArchitectureRepair(repoRoot, diffPaths)` in `scripts/lib/companion
 Helper: `needsAgentsSymlinkRepair(repoRoot)` for file state; agent-surface diff check is
 combined in `runCompanionFileSync`.
 
-**Repair**: `repairAgentsSymlink` — ensure `CLAUDE.md` exists (from
+**Repair**: `repairAgentsSymlink` — a distinct regular (non-symlink) `AGENTS.md` is left
+untouched (returns `[]`, no writes). Otherwise, ensure `CLAUDE.md` exists (from
 `templates/companion-files/AGENTS.md.template` if absent, skip-if-exists), then replace
-`AGENTS.md` with symlink `AGENTS.md` → `CLAUDE.md` (remove broken symlink or regular file
-first). Symlink only — no copy fallback.
+`AGENTS.md` with symlink `AGENTS.md` → `CLAUDE.md` (remove a broken symlink first). Symlink
+only — no copy fallback.
 
 ## Out of scope (this reference)
 

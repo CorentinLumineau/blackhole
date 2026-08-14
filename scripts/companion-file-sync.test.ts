@@ -108,10 +108,28 @@ describe('companion-file-sync repairs', () => {
     }
   });
 
-  test('broken AGENTS.md + agent-surface diff creates CLAUDE.md and symlink', () => {
+  test('regular-file AGENTS.md is left untouched — not repaired even with agent-surface diff', () => {
     const repo = makeFixtureRepo();
     try {
       fs.writeFileSync(path.join(repo, 'AGENTS.md'), 'stale regular file\n', 'utf-8');
+      expect(needsAgentsSymlinkRepair(repo)).toBe(false);
+      const { repairs } = runCompanionFileSync(repo, ['src/agents/implementer.md']);
+      expect(repairs.some((r) => r.file === 'CLAUDE.md')).toBe(false);
+      expect(repairs.some((r) => r.file === 'AGENTS.md')).toBe(false);
+      const stat = fs.lstatSync(path.join(repo, 'AGENTS.md'));
+      expect(stat.isSymbolicLink()).toBe(false);
+      expect(fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf-8')).toBe('stale regular file\n');
+      expect(fs.existsSync(path.join(repo, 'CLAUDE.md'))).toBe(false);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('broken symlink AGENTS.md + agent-surface diff still creates CLAUDE.md and re-symlinks', () => {
+    const repo = makeFixtureRepo();
+    try {
+      fs.writeFileSync(path.join(repo, 'other-target.md'), 'not claude\n', 'utf-8');
+      fs.symlinkSync('other-target.md', path.join(repo, 'AGENTS.md'));
       expect(needsAgentsSymlinkRepair(repo)).toBe(true);
       const { repairs } = runCompanionFileSync(repo, ['src/agents/implementer.md']);
       expect(repairs.some((r) => r.file === 'CLAUDE.md')).toBe(true);
