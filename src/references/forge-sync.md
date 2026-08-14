@@ -271,6 +271,50 @@ gh issue create --title "..." --body "..." \
 It also adds `issue_labels.campaign` when present and not already listed in `scope_labels`
 (so new issues remain discoverable without duplicating labels).
 
+## Campaign Comment Identity Marker (issue #685)
+
+Every forge comment the campaign posts — issue or PR thread, `gh issue comment` or
+`gh pr comment` alike (a PR's conversation tab is an issue thread under GitHub's own data model,
+so one convention covers both) — MUST embed an HTML-comment marker matching the `<!-- blackhole:`
+prefix somewhere in its body: `<!-- blackhole:<purpose> -->`. The prefix alone is the
+campaign-identity discriminator; the `<purpose>` suffix is free-form and may double as a
+purpose-specific idempotency marker, exactly as `<!-- blackhole:enrichment -->` already does
+(`phase-loop.md` § Kaizen hunt dispatch, Backlog low-info enrichment pass).
+
+This is the canonical, single-source definition of "a comment authored by the campaign" —
+`reviewer.md` §28 (`V-GITFIX-01`) cites this section rather than restating the rule. A comment
+lacking the prefix is never attributed to the campaign by any downstream audit — it reads as a
+human comment or the review bot's own comment by definition.
+
+**Marker alone is necessary, not sufficient — anchor to the author field too.** The prefix is a
+substring, and GitHub's blockquote-reply feature reproduces a quoted comment's raw markdown
+verbatim, invisible HTML comments included. A human (or the review bot) quoting a campaign
+comment inside a reply reproduces the `<!-- blackhole:` prefix without being the campaign — the
+marker alone cannot tell a genuine campaign comment from a quote of one. Correct attribution
+requires **both**, conjunctively:
+
+1. The comment's **author field** (from `get_pr_activity` / the forge API — every comment record
+   carries one) identifies the account the campaign itself is authenticated as — the same `gh`
+   identity every `gh issue comment`/`gh pr comment` call in this document executes as (`gh auth
+   status`, § 1 Auth check).
+2. The comment body contains the `<!-- blackhole:` prefix.
+
+A comment whose body contains the prefix but whose author is not the campaign's own account — the
+blockquote-reply case above — does **not** satisfy the discriminator, regardless of prefix
+presence. The author field is the authority a quote cannot forge; the marker remains the
+mechanical, purpose-carrying half of the discriminator, but it is anchored, not standalone.
+
+Sites that stamp this marker today:
+
+| Site | Purpose marker |
+|------|-----------------|
+| `phase-loop.md` § Kaizen hunt dispatch (Backlog low-info enrichment pass) | `<!-- blackhole:enrichment -->` |
+| `phase-plan.md` § Reformulation posting | `<!-- blackhole:reformulation -->` |
+| `epic-orchestration.md` § 6 Parent closure | `<!-- blackhole:epic-complete -->` |
+
+Any new campaign comment-posting site MUST stamp a `<!-- blackhole:<purpose> -->` marker at
+introduction time — this table is the audit trail, keep it in sync.
+
 ## UNTRUSTED-FORGE-DATA
 
 When passing issue bodies to worker prompts, wrap:
