@@ -342,7 +342,10 @@ Recorded as **decisions**, so the question stops recurring.
   squash-merged; cross-issue parallelism is owned by `queue-dag.md`. The reviewer split is ADR-003's
   documented deferral with a stated revisit condition (tracked as #439).*
 - **Serves a need this architecture does not have (9).** Headless `AUTO_MODE` bypass (blackhole is
-  headless unconditionally), ActionMan bot polling (the reviewer *is* the review), V-WORKTREE-03
+  headless unconditionally), ActionMan bot polling (the reviewer *is* the review — narrowed, not
+  reversed, by ADR-026/PM-085: this exclusion is about the command surface only; ADR-026 respects
+  a *consumer* repo's independently-installed ActionMan/workclaude pipeline without adding one),
+  V-WORKTREE-03
   release-on-mergeable (single-orchestrator topology), V-GIT-02 return-to-base-branch, V-EXT /
   V-CHAIN (fixed 8-agent set with an Accretion Guard), V-DELEG-01 (the 5-field contract is
   structural), MEMORY.md integration (breaks 5-target portability), bundled MCP-server install.

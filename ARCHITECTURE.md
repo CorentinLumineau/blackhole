@@ -332,6 +332,9 @@ co-located `*.test.ts`.
   semantic against the explicit rule in merge-conflict-protocol.md — never restate procedures
   inline in consumers; semantic hunks block with conflict_hunks[] surfaced to the owner
   (ADR-023)
+- Campaign implementers must never delegate a PR fix back to an external review bot (e.g.
+  posting `/git-fix-pr` when ActionMan/workclaude is installed on the consumer forge) — findings
+  are applied in-process and the bot's verdict is re-checked on the new HEAD SHA. (ADR-026)
 
 ---
 
@@ -340,3 +343,4 @@ co-located `*.test.ts`.
 | Package | Path | Responsibility |
 |---------|------|-----------------|
 | — | — | Single-package repo — not a monorepo. `src/` compiles to multiple *platform targets* (see §1), not multiple independently-versioned packages. |
+

@@ -3,8 +3,8 @@ type: reference
 status: current
 review_trigger: "on new ruling"
 created: 2026-08-06
-last_updated: 2026-08-06
-rulings_revision: 4
+last_updated: 2026-08-14
+rulings_revision: 5
 ---
 
 # Product Principles: blackhole
@@ -121,3 +121,27 @@ rulings_revision: 4
 | Date | Conflict | Disposition |
 |------|----------|-------------|
 | 2026-08-06 | The #476 split gate presented issue number + `confidence.split 62 < 70` with no summary of what #476 was, why the gate fired, or what each option cost | **accepted** — owner chose the split anyway, but on the recommendation rather than on the evidence. Re-presented immediately afterward with the full picture and an explicit offer to reverse; ruling filed as #483 so the gate contract is fixed in the product, not just in this session's conduct |
+
+## Ruling: campaign-implements-actionman-reviews
+
+- **Id**: R-004
+- **Status**: active
+- **Date**: 2026-08-14
+- **Source**: chat (issue #677 owner-ruling comment)
+- **Verbatim**: > "resolve PRs in the campaign; ActionMan reviews; campaign implements."
+- **Interpretation**: when a consumer forge has ActionMan/workclaude (or an equivalent
+  `ai-review:*`-labeling pipeline) installed, the campaign drives every PR to merge-ready
+  **in-process** — applying the bot's findings itself, pushing, and re-checking the bot's
+  verdict on the new HEAD SHA. The campaign must **never** post `/git-fix-pr` or any other
+  slash comment that asks the bot to implement fixes on its behalf; that would delegate the
+  campaign's own job back to the reviewer, defeating the point of running a campaign at all.
+  Merge-**readiness** (C1 pipeline verdict when detected + C2 no conflict + C3 CI green) is
+  independent of `merge_mode`; who clicks merge on a ready PR is not (`leave-open` → human;
+  `immediate`/`gated-batch` → blackhole). This narrows, but does not reverse, the prior
+  parity-audit verdict that ActionMan bot polling was "N/A for blackhole" — that verdict was
+  about a user-invocable command surface (mercure's `git-pr fix`), which blackhole still has no
+  equivalent of; it did not anticipate a *consumer* repo running ActionMan independently of
+  blackhole's own review.
+- **Related**: issue #677; `documentation/decisions/ADR-026-actionman-workclaude-merge-ready-gate.md`;
+  `documentation/audits/mercure-parity-matrix.md` PM-085 (command-surface N/A verdict, narrowed
+  not reversed by this ruling); `src/references/merge-gate.md`; `src/references/phase-loop.md`
