@@ -97,14 +97,19 @@ Apply the 5-field delegation contract (`orchestrator.md`) to every worker spawn.
 Close the parent epic when **all** children reach `phase: done` (PRs merged):
 
 ```
-gh issue comment <parent> --body "All children merged. Epic complete."
+gh issue comment <parent> --body "<!-- blackhole:epic-complete -->
+All children merged. Epic complete."
 gh issue close <parent>
 ```
+
+The `<!-- blackhole:epic-complete -->` marker stamps this as a campaign-authored comment
+(`forge-sync.md` § Campaign Comment Identity Marker).
 
 Update `queue.json`: parent `phase: done`, `status: merged`.
 
 If a child is deferred or archived, add a comment on the parent explaining what
-was left out and why, then close the parent anyway.
+was left out and why (stamped with the same `<!-- blackhole:epic-complete -->` marker), then
+close the parent anyway.
 
 ---
 
