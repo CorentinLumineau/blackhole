@@ -125,6 +125,21 @@ describe('companion-file-sync repairs', () => {
     }
   });
 
+  test('directory-shaped AGENTS.md is left untouched — not repaired even with agent-surface diff', () => {
+    const repo = makeFixtureRepo();
+    try {
+      fs.mkdirSync(path.join(repo, 'AGENTS.md'));
+      expect(needsAgentsSymlinkRepair(repo)).toBe(false);
+      const repairs = repairAgentsSymlink(repo, 'my-project');
+      expect(repairs).toEqual([]);
+      const stat = fs.lstatSync(path.join(repo, 'AGENTS.md'));
+      expect(stat.isDirectory()).toBe(true);
+      expect(fs.existsSync(path.join(repo, 'CLAUDE.md'))).toBe(false);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   test('broken symlink AGENTS.md + agent-surface diff still creates CLAUDE.md and re-symlinks', () => {
     const repo = makeFixtureRepo();
     try {
