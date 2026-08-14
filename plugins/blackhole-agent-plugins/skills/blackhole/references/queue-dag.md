@@ -8,6 +8,10 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 {
   "refreshed_at": "2026-07-04T12:00:00.000Z",
   "campaign_started_at": "2026-07-04T10:00:00.000Z",
+  "pipeline_detection": {
+    "actionman_workclaude": false,
+    "checked_at": "2026-07-04T12:00:00.000Z"
+  },
   "user_queue_order": [301, 298, 275],
   "issues": {
     "298": {
@@ -30,6 +34,14 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 ```
 
 ### Field rules
+
+**Root-level fields** (siblings of `refreshed_at`/`campaign_started_at`, not per-issue):
+
+| Field | Values | Notes |
+|-------|--------|-------|
+| `pipeline_detection` | `{ actionman_workclaude: boolean, checked_at: ISO8601 }` \| absent | Optional (ADR-026); absent ≡ `{ actionman_workclaude: false, checked_at: null }`. Cached campaign-level detection of an installed ActionMan/workclaude review pipeline on the consumer forge, refreshed once per turn by `forge-sync.md`'s sync sequence — never re-derived per PR. `merge-gate.md` §6 `pipelineVerdict()` reads this cached flag to decide whether its C1 check applies at all |
+
+**Per-issue fields** (`issues.<n>.*`):
 
 | Field | Values | Notes |
 |-------|--------|-------|

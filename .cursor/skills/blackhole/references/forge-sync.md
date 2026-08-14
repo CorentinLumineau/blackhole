@@ -132,6 +132,28 @@ For each issue with `merge_hold: true` or an unresolved `merge_after` entry, run
 duplicate the reconciliation or attribution algorithm here (`merge-gate.md` § 3
 owns both the detection and the `V-MERGE-01`/`V-MERGE-02` attribution rule in full).
 
+### 5.6 ActionMan/workclaude pipeline detection (ADR-026 D1)
+
+Every turn, scan the repo's label set for an `ai-review:` prefix (reuse the `list_labels` MCP
+tool / `gh label list` — no new forge primitive):
+
+```bash
+gh label list --json name | jq '[.[] | select(.name | startswith("ai-review:"))] | length > 0'
+```
+
+Cache the boolean at `queue.json`'s **root** level (`queue-dag.md` Field rules):
+
+```json
+"pipeline_detection": { "actionman_workclaude": true, "checked_at": "2026-08-14T12:00:00.000Z" }
+```
+
+A repo-wide `ai-review:` label existing (not necessarily applied to this specific PR) is the
+detection proxy — a label set is created once ActionMan/workclaude posts its first verdict on
+any PR, so this stays a single cheap per-turn call rather than a per-PR scan. Per-PR verdict
+checks (`merge-gate.md` §6 `pipelineVerdict()`) read this cached flag rather than re-deriving
+detection per PR — when `false`, the C1 pipeline-verdict check is skipped entirely (two-criteria
+run: C2 + C3 only).
+
 ### 6. Parse dependencies from issue body
 
 Patterns (case-insensitive):
