@@ -687,13 +687,18 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     rules). `false` or absent — skip this entire section, emit no §28 findings; the campaign
     cannot have delegated to a pipeline that was never detected as installed.
 *   **Detection**: when the gate is `true`, scan the PR's own comment thread (`get_pr_activity`
-    MCP tool — reused, not a second forge-read primitive, `V-INT-02`) for a comment carrying the
-    campaign identity marker (`forge-sync.md` § Campaign Comment Identity Marker — the
-    `<!-- blackhole:` prefix; mechanical substring match, not identity inference) whose body also
+    MCP tool — reused, not a second forge-read primitive, `V-INT-02`) for a comment satisfying
+    **both** conjunctive conditions of the campaign identity discriminator (`forge-sync.md` §
+    Campaign Comment Identity Marker — cited, not restated): (1) the comment's **author field**
+    identifies the campaign's own authenticated account, and (2) the comment body contains the
+    `<!-- blackhole:` prefix. Only once both hold does the audit evaluate whether the body also
     contains `/git-fix-pr` or any other slash-command pattern that addresses the review bot by
     name and asks it to act (e.g. `/git-fix-actionman-prs`, an `@actionman` mention paired with an
-    imperative verb). A comment without the marker is never attributed to the campaign — it reads
-    as a human comment or the review bot's own comment by definition, out of scope for this audit.
+    imperative verb). A comment failing either condition is never attributed to the campaign —
+    this explicitly includes a human or bot reply that **quotes** a campaign comment (GitHub's
+    blockquote-reply feature reproduces the quoted markdown, marker included, under the replier's
+    own author field): the marker is present but the author field is not the campaign's, so
+    condition (1) fails and the comment is out of scope for this audit.
 *   **Finding**: any match — `V-GITFIX-01`, severity `BLOCK`, cite the comment's `file` as the PR
     comment-thread identifier (`pr:<n>#comment:<id>` when an id is available, else `pr:<n>`) and
     `line: 0`; `summary` quotes the offending comment text.
