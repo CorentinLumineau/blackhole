@@ -32,10 +32,14 @@ orchestrator posts the formatted understanding to the issue thread **before** sp
 
 ```bash
 gh issue comment <issue_number> --body "$(cat <<'EOF'
+<!-- blackhole:reformulation -->
 <output of formatReformulationComment(reformulation)>
 EOF
 )"
 ```
+
+The `<!-- blackhole:reformulation -->` marker stamps this as a campaign-authored comment
+(`forge-sync.md` § Campaign Comment Identity Marker).
 
 Do not post when `status: blocked`, when `track` is `skip`, `design`, or `brainstorm`, or when
 `reformulation` is missing or fails validation — validation failure blocks phase advance.
