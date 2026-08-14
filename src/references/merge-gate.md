@@ -7,11 +7,16 @@ this doc is consulted from that section's own **step 0** as a single delegated
 precondition (`mergeEligible(issue)` — `false` stops the protocol before step 1),
 never inlined and never satisfied merely by citation from a different heading.
 
-**`merge_mode: leave-open` bypass note** (ADR-006): for issues under this
-mode, `mergeEligible(issue)` is never invoked at all — `phase-loop.md`'s
-Merge protocol trigger paragraph bypasses steps 0-5 entirely for these
-issues. This is a **bypass**, not a new eligibility condition; do not add a
-fourth numbered condition to `mergeEligible()` below for `leave-open`.
+**`merge_mode: leave-open` bypass note** (ADR-006, narrowed by ADR-026 D5): for issues under
+this mode, `mergeEligible(issue)` is never invoked at all, and the campaign never calls
+`gh pr merge` — `phase-loop.md`'s Merge protocol trigger paragraph bypasses `mergeEligible()`'s
+three **admin-scheduling** conditions (`merge_hold`, `merge_after`, gated-batch sibling wait) and
+the terminal merge call for these issues. This is a **bypass**, not a new eligibility condition;
+do not add a fourth numbered condition to `mergeEligible()` below for `leave-open`. It no longer
+means Step 0.5/0.6/1 are skipped: those three steps are PR-quality signals (no conflict, pipeline
+verdict, CI green) a human merge actor still benefits from, not admin scheduling, and now run for
+`leave-open` PRs too as a merge-readiness dry run with no `gh pr merge` call at the end
+(`phase-loop.md` § Merge protocol, `leave-open` branch).
 
 Consumes `queue.json`'s `merge_hold` / `merge_after` fields (see `queue-dag.md`
 Field rules) and `config.json`'s `merge_mode` field (see `config-template.md`).
@@ -222,6 +227,16 @@ and cannot reverse the merge. This single detection point (§3) is the sole
 trigger for both `V-MERGE-01` and `V-MERGE-02` — they are not two separate
 checks, only two attributions of the same drift observation.
 
+**Restack on observed human merge (ADR-026 D6):** when this section observes a `leave-open`
+externally-observed merge (the carve-out branch above), rescan the campaign's other open PRs and
+re-run Step 0.5's existing conflict preflight (`merge-conflict-protocol.md` § Trigger — Step 0.5)
+against `main`'s new HEAD for each. A PR that would now conflict against the freshly-merged
+`main` is restacked by spawning `implementer` in conflict-resolution mode
+(`merge-conflict-protocol.md` § Worker delegation) — the identical mechanism Step 0.5 already
+uses; no new resolution mechanism is added here. This closes the gap where a `leave-open` PR
+merging externally could silently stack a conflict onto sibling PRs that no scheduled Step 0.5
+run would discover until their own merge attempt.
+
 ## 4. Gated-batch merge execution — one PR at a time
 
 Once Condition 3 (§1) has been satisfied for all in-scope issues (every
@@ -263,6 +278,61 @@ Mechanical check: `rg 'documentation/reviews/review-'` on the PR file list, or
 stop** at merge step 2.5 — same class as a missing plan manifest declaration at implement time
 (`implementer.md` § Carry Staged Artifacts). Inert when either governance flag is `false`.
 
+## 6. `pipelineVerdict(pr, queue) -> "lgtm" | "needs_changes" | "not_detected"` (ADR-026 D2)
+
+Merge-readiness is independent of `merge_mode`; who merges is not (`merge_mode` names only the
+merge **actor** — `phase-loop.md` § Merge protocol's trigger paragraph). This function is C1 of
+the 3-criteria merge-ready gate (C1 pipeline verdict, C2 no conflict — Step 0.5, C3 CI green —
+step 1); it is invoked from `phase-loop.md`'s Merge protocol as a new discrete **Step 0.6**,
+between the existing Step 0.5 conflict preflight and step 1's CI-wait — mirroring the Step 0.5
+precedent exactly (ADR-023 added a new discrete step for C2 rather than a 4th `mergeEligible()`
+condition; C1 follows the same shape, never a fourth `mergeEligible()` condition).
+
+```
+function pipelineVerdict(pr, queue):
+    if not queue.pipeline_detection.actionman_workclaude:
+        return "not_detected"
+
+    labels = getPrLabels(pr)                    # current PR labels, live read
+    head_sha = pr.headRefOid                     # current HEAD, re-checked after every push
+
+    if any(label matches "ai-review:LGTM" AND label.applied_at_sha == head_sha for label in labels):
+        return "lgtm"
+    if any(label matches "ai-review:(NEEDS_CHANGES|CRITICAL_ISSUES)" for label in labels):
+        return "needs_changes"
+    return "not_detected"   # pipeline installed but hasn't verdicted this HEAD yet
+```
+
+Checked against the PR's **current HEAD SHA** — a stale `LGTM` label from a prior SHA does not
+count; the verdict is re-checked after every push. `not_detected` is also the result when the
+pipeline is installed (`queue.pipeline_detection.actionman_workclaude: true`) but has not yet
+posted any verdict on the current HEAD — the merge protocol treats this the same as "no pipeline"
+for this turn (proceeds to Step 1) and re-checks next turn; it does not block indefinitely on a
+bot that has not run yet.
+
+### Fix-loop routing on `needs_changes`
+
+When Step 0.6 returns `needs_changes`, the orchestrator routes exactly like `ci-diagnosis.md`'s
+existing CI-genuine-failure path — the identical `review_iteration` counter and escalation table
+(`review-core.md` § Review iteration budget), a third consumer of an existing mechanism, never a
+parallel counter (`V-INT-02`/`V-DRY-01`):
+
+1. **`queue.json`**: set `phase: implement`, `status: ready`, `review_iteration += 1` for the
+   issue.
+2. **STOP** merge protocol steps 1–5 for this turn — do not attempt `gh pr merge`.
+3. **Spawn implementer** on the next scheduling pass with the pipeline's comment content as the
+   Objective — apply the findings via the implementer's existing standard workflow (never a
+   bot-invoking slash comment, see `implementer.md` § ActionMan/Workclaude Discipline).
+
+| `review_iteration` | Action |
+|---------------------|--------|
+| 1–3 | Auto-fix via implementer → re-check `pipelineVerdict()` on the new HEAD |
+| 4+ | Escalate to coordinator (`AskQuestion`) |
+| Hard ceiling: 5 | Stop auto-fix; require human triage |
+
+`lgtm` and `not_detected` both proceed to step 1 unchanged (two-criteria run when
+`not_detected`).
+
 ## Edge cases
 
 | Scenario | Resolution |
@@ -276,12 +346,15 @@ stop** at merge step 2.5 — same class as a missing plan manifest declaration a
 | PR merged externally while `merge_hold: true` (or `merge_after` unresolved), no `merged_by` marker | § 3 detects via `gh pr view --json state,mergedAt` on the next forge-sync; `merged_by` absent → logs `V-MERGE-02` WARN (external bypass) — audit only, the merge cannot be undone |
 | PR merged while ineligible AND `merged_by: blackhole` marker present | § 3 detects the same way; `merged_by` present proves blackhole's own step 0 was bypassed; logs `V-MERGE-01` BLOCK instead of `V-MERGE-02` |
 | `leave-open` PR merged externally after LGTM | Reconciled normally via forge-sync's generic externally-observed-merge path — no `V-MERGE-01`/`V-MERGE-02` logged (designed path, not drift; see § 3's `leave-open` carve-out) |
+| Pipeline installed (`pipeline_detection.actionman_workclaude: true`) but has not yet verdicted the current HEAD SHA | `pipelineVerdict()` returns `not_detected` for this turn (§ 6) — proceeds to step 1 same as a genuinely undetected pipeline; re-checked next turn, never blocks indefinitely on a bot that has not run |
+| `leave-open` PR under the merge-readiness dry run (§ Bypass note) | Step 0.5/0.6/1 (C2/C1/C3) all run; on all-green, `phase-loop.md`'s `mergeReady(issue)` (C1+C2+C3) gates the "delivered-at-LGTM" annotation together with `isLgtm(issue)` — no `gh pr merge` call regardless of outcome |
 
 ## Consulted by
 
 - `phase-loop.md` § Merge protocol, **step 0** — hard `mergeEligible(issue)` stop-gate before step 1, not merely a checklist reference one heading away.
 - `phase-loop.md` § Merge protocol's **trigger** paragraph — when `merge_mode: gated-batch`, invokes **§ 4** (this doc) instead of applying steps 0-5 issue-by-issue; § 4 internally calls back into steps 0-5 per issue.
-- `forge-sync.md` — cycle detection (§ 2) and drift reconciliation (§ 3), run every turn at the sync boundary.
+- `phase-loop.md` § Merge protocol, **Step 0.6** — hard `pipelineVerdict(pr, queue)` (§ 6) check between Step 0.5 and step 1.
+- `forge-sync.md` — cycle detection (§ 2), drift reconciliation (§ 3), and pipeline detection (§ 5.6, feeds § 6).
 - `orchestrator.md` Phase 5 — pointer reference only, no inline logic.
 
 None of these three files duplicate the algorithm above inline — they cite this

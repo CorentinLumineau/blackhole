@@ -20,25 +20,34 @@
 **Trigger, per `config.json.merge_mode`** (checklist line "LGTM AND
 `mergeEligible(issue)`? → merge PR`):
 - `"immediate"`: apply steps 0-5 below to each LGTM'd issue
-  individually, as encountered. Step 0.5 runs between step 0 and step 1.
+  individually, as encountered. Step 0.5 and Step 0.6 run between step 0 and step 1, in that
+  order.
 - `"gated-batch"`: do **not** apply steps 0-5 issue-by-issue as encountered.
-  Step 0.5 runs between step 0 and step 1 within § 4's per-issue loop.
+  Step 0.5 and Step 0.6 run between step 0 and step 1 within § 4's per-issue loop.
   Instead, once `merge-gate.md` § 1 Condition 3 is satisfied for the whole
   in-scope set (every sibling LGTM'd), run `merge-gate.md` § 4's sequential
   batch procedure — it internally invokes steps 0-5 below, once per issue, in
   topological `merge_after` order, persisting `queue.json` after each. Do not
   duplicate § 4's ordering/persistence logic here; this section owns only the
   per-PR merge mechanics § 4 calls into.
-- `"leave-open"` (ADR-006): do **not** apply steps 0-5 to these issues at
-  all — no `mergeEligible(issue)` call, no `gh pr merge`, no Step 0.5 (see
-  `merge-gate.md`'s bypass note). Once `review-core.md`'s `isLgtm(issue)` is true, treat the
-  issue as delivered for campaign-complete purposes only: annotate
-  `queue.json`'s `notes` field (not `status`/`phase`) — e.g.
+- `"leave-open"` (ADR-006, narrowed by ADR-026 D5): do **not** call
+  `mergeEligible(issue)` and never call `gh pr merge` for these issues (see
+  `merge-gate.md`'s bypass note — the three **admin-scheduling** conditions and the terminal
+  merge call are bypassed, not the PR-quality steps). Step 0.5 (C2 no conflict), Step 0.6 (C1
+  pipeline verdict), and step 1 (C3 CI green) **do** run for `leave-open` PRs, as a
+  merge-readiness dry run with no `gh pr merge` call at the end. Once `review-core.md`'s
+  `isLgtm(issue)` is true **and** `mergeReady(issue)` is true (a small helper composing
+  C1+C2+C3 — `isLgtm(issue) AND pipelineVerdict(pr, queue) != "needs_changes" AND
+  mergeStateStatus != "CONFLICTING" AND ci_green`, distinct from `mergeEligible()` which stays
+  scoped to admin scheduling), treat the issue as delivered for campaign-complete purposes only:
+  annotate `queue.json`'s `notes` field (not `status`/`phase`) — e.g.
   `"delivered-at-LGTM (leave-open) — awaiting human merge"` — and leave the PR
-  open. The actual external merge is picked up later by the normal
+  open. Before this narrowing, a `leave-open` PR could be annotated "delivered" while carrying an
+  unresolved merge conflict or red CI, because Step 0.5/0.6/1 were never reached at all under the
+  old unconditional bypass. The actual external merge is picked up later by the normal
   forge-sync externally-observed-merge reconciliation path (unchanged,
   generic — no new logic needed here beyond citing it; see `merge-gate.md` §
-  3).
+  3, including its D6 sibling-restack sub-step).
 
 0. Evaluate `merge-gate.md` § 1 `mergeEligible(issue)`. If `false`, **STOP** —
    do not proceed to step 1 for this issue (leave it `in-flight`; re-evaluated
@@ -53,7 +62,17 @@ step 1 with the rebased HEAD; on `status: blocked` with `escalation_trigger:
 merge_conflict_semantic`, route per `orchestrator-dispatch.md` § Escalation dispatch and **STOP**
 this issue's merge for the turn. When `mergeable == "MERGEABLE"` (or an unfamiliar
 `mergeStateStatus` — conservative default per `merge-conflict-protocol.md` § Edge cases),
-proceed to step 1 unchanged. Bypassed under `merge_mode: leave-open`.
+proceed to step 1 unchanged. **Runs for `merge_mode: leave-open` too** (ADR-026 D5), as part of
+that mode's merge-readiness dry run (see the `leave-open` branch above) — no longer bypassed;
+only `mergeEligible(issue)`'s three admin-scheduling conditions and the terminal `gh pr merge`
+call are.
+
+**Step 0.6 — Pipeline Verdict Check** (issue #677, ADR-026): after Step 0.5 passes and before
+step 1, run `merge-gate.md` § 6 `pipelineVerdict(pr, queue)`. On `"needs_changes"`, follow that
+section's Fix-loop routing (route to `phase: implement`, `review_iteration += 1`, spawn
+`implementer`, **STOP** this issue's merge for the turn). On `"lgtm"` or `"not_detected"`,
+continue to step 1 unchanged. **Runs for `merge_mode: leave-open` too**, as part of that mode's
+merge-readiness dry run (same D5 narrowing as Step 0.5 above).
 
 1. `gh pr view <n> --json headRefOid` equals local HEAD
 2. CI-wait: a detached background poll, never a foreground agent sleep. `gh pr

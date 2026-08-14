@@ -80,6 +80,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-BRANCH-03 | Branch name does not match blackhole/issue-N convention | WARN | phase-implement.md (worktree/branch creation checklist) |
 | V-WORKTREE-01 | Worktree leak — failed to clean up temporary directories | BLOCK | orchestrator.md (turn-start prune step) |
 | V-GIT-01 | PR created without Closes #N issue linkage in description | BLOCK | reviewer.md §7 (PR & Git Hygiene) |
+| V-GITFIX-01 | Campaign posted a bot-invoking slash comment (e.g. `/git-fix-pr`) delegating a PR fix back to an installed ActionMan/workclaude review pipeline instead of applying findings in-process | BLOCK | reviewer.md §28 (ActionMan/Workclaude Discipline Audit) |
 | V-CI-01 | Required CI check failed after transient retries; failing-step log retrieved; routed to implementer fix loop | BLOCK | ci-diagnosis.md |
 | V-MERGE-01 | drift-reconciled merge with merged_by:blackhole present — step 0 bypassed | BLOCK | merge-gate.md §3 |
 | V-MERGE-02 | drift-reconciled merge with merged_by absent — external bypass of hold/merge_after | WARN | merge-gate.md §3 |
