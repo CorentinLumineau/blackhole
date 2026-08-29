@@ -13,7 +13,7 @@ describe('Pattern C-lite (#694)', () => {
 
   test('ADR-027 exists for design amendment', () => {
     expect(
-      fs.existsSync(path.join(root, 'documentation/decisions/ADR-027-cursor-pattern-c-lite.md')),
+      fs.existsSync(path.join(root, 'documentation/decisions/ADR-028-cursor-pattern-c-lite.md')),
     ).toBe(true);
   });
 });

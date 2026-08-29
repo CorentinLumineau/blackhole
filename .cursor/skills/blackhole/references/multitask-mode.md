@@ -129,7 +129,7 @@ coordinator hop — same foreground state ownership as Pattern C in `claude-code
 Pattern B remains the **required fallback** when either C2 or C3 is absent. Cloud sessions
 without `CreateGoal` use coordinator + background orchestrator unchanged.
 
-See `documentation/decisions/ADR-027-cursor-pattern-c-lite.md` for the design amendment.
+See `documentation/decisions/ADR-028-cursor-pattern-c-lite.md` for the design amendment.
 
 ## User starting the campaign
 

@@ -5,7 +5,7 @@ created: 2026-08-29
 last_updated: 2026-08-29
 ---
 
-# ADR-027: Cursor Pattern C-lite and Cloud goal mapping
+# ADR-028: Cursor Pattern C-lite and Cloud goal mapping
 
 ## Context
 
