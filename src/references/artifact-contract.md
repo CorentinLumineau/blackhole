@@ -39,6 +39,7 @@ per-folder `INDEX.md` with ADR-specific column conventions.
 | investigate | `documentation/investigations/{concern-slug}.md` |
 | plan | `documentation/plans/plan-{concern-slug}.md` (or `documentation/plans/{concern-slug}.md` when the issue title already carries a `Plan` prefix — see `scripts/lib/concern-slug.ts`) + root `documentation/INDEX.md` row — **unconditional** on every issue that reaches Phase 2 plan (Quick, Standard, Skip rationale records included) |
 | review | `documentation/reviews/review-{concern-slug}.md` + root `documentation/INDEX.md` row — **unconditional** at merge-readiness; body synthesized from `findings-ledger.json` rows for `issue_ref`, not reviewer prose (ADR-021 A2) |
+| runbook (docs_impact / ops touch-paths) | Patch an **existing** `documentation/runbooks/*.md` when one covers the concern (search-before-write); otherwise extend the closest ops runbook in the same PR — never `runbook-issue-N.md` one-offs. Root `documentation/INDEX.md` row on first create. Trigger: `route.docs_impact: true` **or** Touch-Paths intersect ops surfaces (`.github/workflows/**`, `.devlocal/**`, `scripts/ci-*.sh`, e2e runner scripts) per `scripts/lib/ops-touch-paths.ts` |
 
 **Cross-cutting side artifact**: independent of the primary artifact above, `planner.md` §4.8
 Trigger A (`design` route) and Step 4 Trigger B (seeded from an `analyze` note, any track) may

@@ -1,0 +1,15 @@
+{
+  "issue": 689,
+  "updated_at": "2026-08-29T18:00:00.000Z",
+  "entries": [
+    {
+      "route": "runbook",
+      "sub_mode": null,
+      "produced_by": "planner",
+      "declared_at": "2026-08-29T17:55:00.000Z",
+      "staged_path": ".blackhole/staged/689/ci-pipeline-runbook.md",
+      "target_path": "documentation/runbooks/ci-pipeline.md",
+      "target_kind": "append_row"
+    }
+  ]
+}
