@@ -3,7 +3,8 @@
 Use this verbatim (fill session handoff if resuming) when the **coordinator**
 spawns or resumes the `orchestrator` subagent.
 
-Cursor has no `/goal` command — this prompt replaces it.
+Cursor entry: detect session primitives per `claude-code-native.md` Cursor appendix — `/goal` or
+`CreateGoal` when present; Pattern B (`coordinator` → background `orchestrator`) when not.
 
 ```
 Implement ALL open issues on the forge until zero open issues and zero open
