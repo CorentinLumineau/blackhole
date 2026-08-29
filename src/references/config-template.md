@@ -32,9 +32,9 @@ Committed template: `.blackhole/config.json`
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `repo` | yes | `owner/name` for `gh` |
+| `repo` | yes | `owner/name` for the configured forge backend |
 | `target_branch` | yes | Merge target (usually `main`) |
-| `forge` | yes | `github` (only supported v1) |
+| `forge` | yes | `github` \| `gitea` \| `gitlab` (v2 — see ADR-027). Default `github`. When unset at bootstrap, infer from `git remote get-url origin`; explicit value always wins. Mismatch between configured `forge` and detected origin host **must** fail bootstrap loudly (never silently fall back to `github` on a non-GitHub origin). Backend CLIs: `gh` (GitHub), `tea` (Gitea), `glab` (GitLab). Detection/validation implementation: #682 |
 | `parallel_max` | no | Max parallel workers (default 4) |
 | `scratchpad_dir` | no | Parent dir for git worktrees |
 | `size_label_prefix` | no | Label prefix for size tags (default `size:`) |
