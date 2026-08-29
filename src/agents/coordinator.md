@@ -67,6 +67,10 @@ entered is `run`, then before spawning or resuming the orchestrator:
 - Print the current campaign config by running `bun run status config-summary`
   (`renderConfigSummary` in `scripts/campaign-status.ts`) — run that command,
   do not hand-format a summary here.
+- **Fail closed on docs_governance drift**: if any orchestrator/campaign spawn text you are
+  about to send (or resume with) states `write_governance` on/off differently from the
+  `**Docs governance.write_governance:**` line in that `config-summary` output, **STOP** —
+  re-run `config-summary`, copy those lines verbatim into the spawn body, then proceed.
 - Then `AskQuestion`: "Proceed with this config (default)" | "Reconfigure".
 - On **Proceed** — steps 1-6 stay skipped, now as an explicit user-confirmed
   skip rather than a silent one; continue to the `bun run doctor` preflight

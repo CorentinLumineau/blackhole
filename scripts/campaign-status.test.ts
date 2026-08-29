@@ -513,6 +513,27 @@ describe('renderConfigSummary', () => {
     const out = renderConfigSummary({ docs_governance: { enabled: true } });
 
     expect(out).toContain('**Docs governance:** enabled');
+    expect(out).toContain('**Docs governance.companion_files:** enabled');
+    expect(out).toContain('**Docs governance.docs_impact_routing:** enabled');
+    expect(out).toContain('**Docs governance.write_governance:** enabled');
+  });
+
+  test('renders docs_governance subflags when enabled with write_governance false', () => {
+    const out = renderConfigSummary({
+      docs_governance: { enabled: true, write_governance: false, companion_files: true, docs_impact_routing: false },
+    });
+
+    expect(out).toContain('**Docs governance:** enabled');
+    expect(out).toContain('**Docs governance.companion_files:** enabled');
+    expect(out).toContain('**Docs governance.docs_impact_routing:** disabled');
+    expect(out).toContain('**Docs governance.write_governance:** disabled');
+  });
+
+  test('omits docs_governance subflags when the block is disabled', () => {
+    const out = renderConfigSummary({ docs_governance: { enabled: false, write_governance: true } });
+
+    expect(out).toContain('**Docs governance:** disabled');
+    expect(out).not.toContain('write_governance');
   });
 
   // V-DRY-01 regression guard: the summary must not grow a second scope-label formatter that
