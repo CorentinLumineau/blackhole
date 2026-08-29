@@ -13,6 +13,13 @@
 /plugin install blackhole@blackhole-marketplace
 ```
 
+## Forge backends
+
+Campaign forge integration supports **GitHub** (`gh`), **Gitea** (`tea`), and **GitLab** (`glab`).
+Set `.blackhole/config.json` → `"forge"` to `github`, `gitea`, or `gitlab`, or omit it to
+auto-detect from `git remote origin`. Run `bun run doctor` to verify CLI auth for the active
+backend. See [ADR-027](documentation/decisions/ADR-027-forge-adapter-interface.md).
+
 ## References
 
 - Agent roster and triggers: [AGENTS.md](AGENTS.md)

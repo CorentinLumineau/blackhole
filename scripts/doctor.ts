@@ -2,7 +2,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
-import { runGh } from './lib/forge-adapter/cli.ts';
+import { checkForgeAuthSync } from './lib/forge-doctor.ts';
+import { resolveForgeForRepo } from './lib/forge-detection.ts';
+import type { ForgeType } from './lib/forge-adapter/types.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { AGENT_NAMES } from './lib/build/facts.ts';
 
@@ -68,6 +70,9 @@ export function shouldRunGhAuth(config: Record<string, unknown>): boolean {
   if (config.auto_sync === false) return false;
   return true;
 }
+
+/** @deprecated alias — use shouldRunGhAuth; checks forge CLI auth for any backend */
+export const shouldRunForgeAuth = shouldRunGhAuth;
 
 export function checkStaleGlobalSkill(homeDir: string): DoctorCheck {
   for (const name of LEGACY_SKILL_NAMES) {
@@ -179,25 +184,42 @@ function checkConfigValid(configPath: string): DoctorCheck {
   return { id: 'D-CONFIG-02', severity: 'BLOCK', ok: true };
 }
 
+function checkForgeResolution(
+  repoRoot: string,
+  config: Record<string, unknown>,
+): DoctorCheck {
+  const forgeField = typeof config.forge === 'string' ? config.forge : undefined;
+  const resolved = resolveForgeForRepo(repoRoot, forgeField);
+  if (!resolved.ok) {
+    return { id: 'D-FORGE-01', severity: 'BLOCK', ok: false, detail: resolved.detail };
+  }
+  return {
+    id: 'D-FORGE-01',
+    severity: 'BLOCK',
+    ok: true,
+    detail: `forge=${resolved.forge} (${resolved.source})`,
+  };
+}
+
+function runForgeAuthCheck(forge: ForgeType): DoctorCheck {
+  const status = checkForgeAuthSync(forge);
+  if (!status.ok) {
+    return { id: 'D-GH-01', severity: 'BLOCK', ok: false, detail: status.detail };
+  }
+  return { id: 'D-GH-01', severity: 'BLOCK', ok: true, detail: status.host ?? undefined };
+}
+
 function runGhAuth(): DoctorCheck {
-  const gh = runGh(['auth', 'status']);
-
-  if (gh.error?.code === 'ENOENT') {
-    return {
-      id: 'D-GH-01',
-      severity: 'BLOCK',
-      ok: false,
-      detail: 'GitHub CLI not found — install GitHub CLI and run `gh auth login`',
-    };
+  const configPath = resolveConfigPath(root);
+  const config = readJsonFile(configPath, configPath) as Record<string, unknown>;
+  const resolved = resolveForgeForRepo(
+    root,
+    typeof config.forge === 'string' ? config.forge : undefined,
+  );
+  if (!resolved.ok) {
+    return { id: 'D-GH-01', severity: 'BLOCK', ok: false, detail: resolved.detail };
   }
-
-  if (gh.status !== 0) {
-    const detail =
-      gh.stderr?.trim() || gh.stdout?.trim() || 'gh auth status failed — run `gh auth login`';
-    return { id: 'D-GH-01', severity: 'BLOCK', ok: false, detail };
-  }
-
-  return { id: 'D-GH-01', severity: 'BLOCK', ok: true };
+  return runForgeAuthCheck(resolved.forge);
 }
 
 function printCheck(check: DoctorCheck): void {
@@ -220,7 +242,10 @@ export function runDoctorChecks(repoRoot: string = root): DoctorCheck[] {
 
     if (checks[checks.length - 1].ok) {
       const config = readJsonFile(configPath, configPath) as Record<string, unknown>;
-      if (shouldRunGhAuth(config)) {
+      checks.push(
+        checkForgeResolution(repoRoot, config),
+      );
+      if (shouldRunGhAuth(config) && checks[checks.length - 1].ok) {
         checks.push(runGhAuth());
       }
     }
