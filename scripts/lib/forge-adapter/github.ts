@@ -283,11 +283,3 @@ export class GitHubForgeAdapter implements ForgeAdapter {
 export function createGitHubAdapter(repo: string): GitHubForgeAdapter {
   return new GitHubForgeAdapter(repo);
 }
-
-export function createForgeAdapter(config: ForgeAdapterConfig): ForgeAdapter {
-  const forge = config.forge ?? 'github';
-  if (forge !== 'github') {
-    throw new Error(`forge adapter backend "${forge}" not implemented yet — use github (#680/#681)`);
-  }
-  return createGitHubAdapter(config.repo);
-}
