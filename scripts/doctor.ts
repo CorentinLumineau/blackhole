@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
+import { runGh } from './lib/forge-adapter/cli.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { AGENT_NAMES } from './lib/build/facts.ts';
 
@@ -179,12 +180,9 @@ function checkConfigValid(configPath: string): DoctorCheck {
 }
 
 function runGhAuth(): DoctorCheck {
-  const gh = spawnSync('gh', ['auth', 'status'], {
-    stdio: 'pipe',
-    encoding: 'utf-8',
-  });
+  const gh = runGh(['auth', 'status']);
 
-  if (gh.error && (gh.error as NodeJS.ErrnoException).code === 'ENOENT') {
+  if (gh.error?.code === 'ENOENT') {
     return {
       id: 'D-GH-01',
       severity: 'BLOCK',
