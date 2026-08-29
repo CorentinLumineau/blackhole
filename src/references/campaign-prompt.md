@@ -3,7 +3,8 @@
 Use this verbatim (fill session handoff if resuming) when the **coordinator**
 spawns or resumes the `orchestrator` subagent.
 {{#cursor}}
-Cursor has no `/goal` command — this prompt replaces it.
+Cursor entry: detect session primitives per `claude-code-native.md` Cursor appendix — `/goal` or
+`CreateGoal` when present; Pattern B (`coordinator` → background `orchestrator`) when not.
 {{/cursor}}
 {{#claude}}
 Use when not invoking the orchestrator via native `/goal`.

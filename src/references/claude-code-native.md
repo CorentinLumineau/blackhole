@@ -83,11 +83,20 @@ trigger conditions, fall back to the `Agent` tool with the same in-turn barrier 
 B already documents.
 {{/claude}}
 {{#cursor}}
-### Cursor / OpenCode
+### Cursor (desktop, Cloud, CLI)
 
-No native C1/C3 primitive on this harness today. Use Pattern B
-([multitask-mode.md](multitask-mode.md)) in full — coordinator + background orchestrator, Agent-
-tool (`Task`) fan-out with the in-turn wave barrier.
+Detect session primitives — never bake-time "this harness cannot" claims (issue #691).
+
+| Capability | Cursor mapping |
+|---|---|
+| C1 | `Task` with `run_in_background: true` + in-turn barrier (same mechanics as Pattern B; optional Pattern C-lite when C2+C3 also present — see `multitask-mode.md`) |
+| C2 | Desktop/CLI: user-typed `/goal run blackhole until empty` when the slash command is visible; Cloud: `CreateGoal` **only when attached to the session schema**; else Pattern B coordinator + Subscriptions/Automations |
+| C3 | Host-injected `AskQuestion` / ACP `cursor/ask_question` when present in the tool schema; else lettered inline options in chat + `status: blocked` + end turn (valid backend — not a failure mode) |
+| C4 | Dedicated per-issue git worktrees (`wt-<issue>`), per `blackhole-protocol.md` § Branch & Worktree Hygiene |
+
+**C3 gate model routing (Cursor only):** bootstrap/clarify/split/plan-approval spawns prefer models with the question picker (Composer / Claude / GPT) over Grok when configurable — see `model-routing.md`.
+
+When C2+C3 are both detected, the main chat **may** orchestrate directly (Pattern C-lite) using `Task` fan-out; Pattern B (coordinator + background orchestrator) remains the fallback when either primitive is absent.
 {{/cursor}}
 
 ## Resume path
