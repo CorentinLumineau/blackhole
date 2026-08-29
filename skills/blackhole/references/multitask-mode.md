@@ -113,6 +113,24 @@ not that a worker batch finished. Coordinator idle = orchestrator turn ended (re
 outer loop). Worker completion = orchestrator must have already barrier-waited in-turn
 before ending its turn.
 
+## Cursor Pattern C-lite (opt-in, issue #694)
+
+When the session exposes **both** C2 (native loop: `/goal`, `CreateGoal`, or
+Subscriptions) **and** C3 (`AskQuestion` or accepted inline fallback per
+`clarify-gates.md` § C3 adapter), the **main chat may act as orchestrator** without a
+coordinator hop — same foreground state ownership as Pattern C in `claude-code-native.md`.
+
+| Primitive | Pattern C-lite behavior |
+|-----------|-------------------------|
+| Fan-out | `Task` + `run_in_background` + in-turn barrier (identical to Pattern B mechanics) |
+| Gates | Native picker when present; inline lettered C3 when not |
+| Loop | User `/goal` on desktop/CLI; Cloud `CreateGoal` when attached; else Pattern B |
+
+Pattern B remains the **required fallback** when either C2 or C3 is absent. Cloud sessions
+without `CreateGoal` use coordinator + background orchestrator unchanged.
+
+See `documentation/decisions/ADR-027-cursor-pattern-c-lite.md` for the design amendment.
+
 ## User starting the campaign
 
 Say any of:
