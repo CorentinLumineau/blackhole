@@ -1,7 +1,20 @@
 # Clarify Gates — when to AskQuestion (all issue sizes)
 
 User is **always** the source of truth for direction. Sync is automatic;
-**clarification is not** — use `AskQuestion` when in doubt.
+**clarification is not** — use the host question channel when in doubt (see § C3 adapter below).
+
+## C3 adapter (harness-neutral, issue #693)
+
+Never instruct the model to call a question tool that is absent from the session schema.
+
+| If the session exposes | Coordinator / orchestrator does |
+|------------------------|--------------------------------|
+| Cursor `AskQuestion` or ACP `cursor/ask_question` | Call it with the Gate Content Contract (R-003) payload |
+| Claude `AskUserQuestion` | Unchanged — foreground Pattern C gate |
+| Neither (Grok without picker, headless) | Lettered inline options in chat, `status: blocked`, end turn — **valid C3 backend**, not a failure |
+
+Do not paraphrase gate outcomes when the native picker is available. When only inline C3 is
+available, still emit the full Executive Summary before the lettered options.
 
 > [confidence-gates.md](confidence-gates.md) is the escalation mechanism (ADR-014: autonomy
 > is always active, no master switch) — the categorical triggers below are preserved and feed

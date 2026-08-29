@@ -120,6 +120,11 @@ The spawn footer records **logical effort** even when effort is implicit in the 
 
 Pass resolved slug on `Task` `model` when policy is `cost-optimized`.
 
+**Gate-turn preference (issue #693):** bootstrap, clarify, split sign-off, and plan-approval spawns
+on Cursor should resolve to `standard` tier minimum and prefer `composer-2.5`, Claude, or GPT
+slugs over Grok — Grok sessions often lack the `AskQuestion` picker; inline C3 still works but is
+a weaker gate UX.
+
 ## Orchestrator integration
 
 When spawning workers, the orchestrator must pass **both**:
