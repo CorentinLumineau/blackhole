@@ -4,9 +4,12 @@ import * as path from 'path';
 import { readJsonFile } from './lib/fs.ts';
 import { renderReviewMarkdown, type LedgerFile } from './lib/promote-review-artifact.ts';
 
+// Consumer worktrees: run via plugin root, not consumer cwd —
+//   bun run --cwd <plugin-root> scripts/promote-review-artifact.ts --ledger <consumer>/.blackhole/findings-ledger.json ...
+// or: scripts/consumer-promote-review.sh (sets --cwd from vendor/blackhole or BLACKHOLE_PLUGIN_ROOT)
 function usage(): never {
   console.error(
-    'Usage: bun run scripts/promote-review-artifact.ts --ledger <path> --issue <N> --title <title> --pr <P> --branch <name> --head <sha> [--out-dir <dir>]',
+    'Usage: bun run --cwd <plugin-root> scripts/promote-review-artifact.ts --ledger <path> --issue <N> --title <title> --pr <P> --branch <name> --head <sha> [--out-dir <dir>]',
   );
   process.exit(2);
 }

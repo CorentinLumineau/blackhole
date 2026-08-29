@@ -110,7 +110,9 @@ merge-readiness dry run (same D5 narrowing as Step 0.5 above).
    Artifact: run `scripts/promote-review-artifact.ts`, carry staged `route: review` entries into
    `documentation/reviews/` + `documentation/INDEX.md`, commit and push on the PR branch. If
    promotion fails to land `documentation/reviews/review-{slug}.md` in the PR, **STOP** — do not
-   call `gh pr merge`. Inert when either governance flag is `false`. Bypassed under
+   call `gh pr merge`. Before merge (including consumer `merge-pr.sh` / Pattern B paths), run
+   `bun run scripts/check-review-artifact.ts` with the PR diff file list and staged manifest —
+   exit non-zero blocks merge the same way (`merge-gate.md` §5). Inert when either governance flag is `false`. Bypassed under
    `merge_mode: leave-open`.
 3. Run the project's build command in main clone (if applicable)
 4. `gh pr merge --squash` (use `&&` only, never `;`) — immediately after this
