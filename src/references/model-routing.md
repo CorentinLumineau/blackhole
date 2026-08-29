@@ -119,6 +119,11 @@ The spawn footer records **logical effort** even when effort is implicit in the 
 | `premium` | `gpt-5.3-codex`, `claude-opus-4-8-thinking-high` | high (`-thinking-high` / max within tier) | Security, design, XL — correctness over cost |
 
 Pass resolved slug on `Task` `model` when policy is `cost-optimized`.
+
+**Gate-turn preference (issue #693):** bootstrap, clarify, split sign-off, and plan-approval spawns
+on Cursor should resolve to `standard` tier minimum and prefer `composer-2.5`, Claude, or GPT
+slugs over Grok — Grok sessions often lack the `AskQuestion` picker; inline C3 still works but is
+a weaker gate UX.
 {{/cursor}}
 {{#claude}}
 ### Claude Code
