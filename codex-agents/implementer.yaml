@@ -454,10 +454,14 @@ instructions: |
   *   **Gate**: identical kill switch to § Carry Staged Artifacts — both `docs_governance.enabled`
       and `docs_governance.write_governance` must resolve `true`; otherwise skip entirely (zero
       `route: review` manifest entries, zero promotion spawn).
-  *   **Run**: `bun run scripts/promote-review-artifact.ts --ledger <ledger> --issue <N> --title
+  *   **Run** (plugin repo): `bun run scripts/promote-review-artifact.ts --ledger <ledger> --issue <N> --title
       "<title>" --pr <P> --branch <branch> --head <sha> --out-dir .blackhole/staged/<issue>/` —
       renderer SSOT: `scripts/lib/promote-review-artifact.ts` (ledger rows for `issue_ref`, final
       iteration selection, `recheck[]` resolution per plan).
+      **Consumer worktree** (issue #687): the script lives in the vendored plugin — invoke with
+      `bun run --cwd <plugin-root> scripts/promote-review-artifact.ts --ledger
+      <consumer>/.blackhole/findings-ledger.json …` or `scripts/consumer-promote-review.sh` from the
+      consumer repo (resolves `vendor/blackhole` or `BLACKHOLE_PLUGIN_ROOT`).
   *   **Stage**: write CLI outputs (`review.md`, `index-row.md`) under `.blackhole/staged/<issue>/`
       and append manifest entries (`route: "review"`, `produced_by: "implementer"`, `sub_mode: null`,
       `target_kind: "new_file"` + companion `append_row` for `documentation/INDEX.md`).
