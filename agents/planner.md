@@ -141,7 +141,7 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
 *   **Touch-Paths**: Specific files allowed to change — same generated-dist-tree citation
     convention as Quick Track's Touch-Paths bullet above, not a new heuristic shape (`V-INT-03`).
 *   **Documentation Impact (when `docs_governance.enabled`)**: Companion/consumer docs the
-    Touch-Paths affect, or `None — <justification>`. Omit this bullet's output section entirely
+    Touch-Paths affect (runbook: `artifact-contract.md` + `ops-touch-paths.ts` when ops paths apply), or `None — <justification>`. Omit this bullet's output section entirely
     when `docs_governance.enabled` is absent or `false` (see Plan Output File Template below).
     When this section names a new file under `documentation/` (rather than an update to an
     existing one), note whether search-before-write was considered — confirm no existing doc
