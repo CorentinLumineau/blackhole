@@ -51,6 +51,23 @@ only when something is genuinely ambiguous or architecturally significant.
 
 Full platform-specific setup: [Installation Paths](#-installation-paths).
 
+### Multi-forge campaigns (GitHub, Gitea, GitLab)
+
+Blackhole's forge adapter (ADR-027) supports three backends via their native CLIs:
+
+| `config.json` `forge` | CLI | Auth setup |
+|----------------------|-----|------------|
+| `github` (default) | [`gh`](https://cli.github.com/) | `gh auth login` |
+| `gitea` | [`tea`](https://gitea.com/gitea/tea) | `tea login add` |
+| `gitlab` | [`glab`](https://gitlab.com/gitlab-org/cli) | `glab auth login` |
+
+Set `"forge"` explicitly in `.blackhole/config.json`, or omit it to auto-detect from
+`git remote get-url origin`. A mismatch between the configured `forge` and the detected origin
+host **fails bootstrap loudly** — this prevents a `gh` session authenticated to github.com from
+silently targeting a Gitea-hosted repo.
+
+Run `bun run doctor` to verify the configured backend's CLI is installed and authenticated.
+
 ---
 
 ## What it actually does
