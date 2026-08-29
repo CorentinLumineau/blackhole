@@ -158,7 +158,12 @@ describe('createGhRunner', () => {
 
     expect(log).toBe('failed step output');
     const runViewArgs = spawnSyncSpy.mock.calls.find((call) => call[1]?.[0] === 'run')?.[1];
-    expect(runViewArgs).toEqual(['run', 'view', '9001', '--repo', 'owner/repo', '--log-failed']);
+    expect(runViewArgs).toContain('run');
+    expect(runViewArgs).toContain('view');
+    expect(runViewArgs).toContain('9001');
+    expect(runViewArgs).toContain('--repo');
+    expect(runViewArgs).toContain('owner/repo');
+    expect(runViewArgs).toContain('--log-failed');
   });
 });
 

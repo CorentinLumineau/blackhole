@@ -1,4 +1,4 @@
-import { spawnSync } from 'child_process';
+import { createGitHubAdapter } from './lib/forge-adapter/index.ts';
 
 export type GhStep = {
   name: string;
@@ -127,52 +127,28 @@ export function classifyStepLogs(stepLogs: StepLog[]): 'genuine' | 'environment'
   return 'genuine';
 }
 
-function ghJson<T>(args: string[]): T {
-  const result = spawnSync('gh', args, { encoding: 'utf-8' });
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || `gh ${args.join(' ')} failed`);
-  }
-  return JSON.parse(result.stdout) as T;
-}
-
-function ghText(args: string[]): string {
-  const result = spawnSync('gh', args, { encoding: 'utf-8' });
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || `gh ${args.join(' ')} failed`);
-  }
-  return result.stdout;
-}
-
-export function createGhRunner(): GhRunner {
+export function createGhRunner(repo?: string): GhRunner {
+  const adapter = createGitHubAdapter(repo ?? '');
   return {
-    async getPrHeadSha(pr, repo) {
-      const data = ghJson<{ headRefOid: string }>([
-        'pr',
-        'view',
-        String(pr),
-        '--repo',
-        repo,
-        '--json',
-        'headRefOid',
-      ]);
-      return data.headRefOid;
+    async getPrHeadSha(pr, repoName) {
+      const gh = repoName ? createGitHubAdapter(repoName) : adapter;
+      return gh.getPrHeadSha(pr);
     },
-    async listWorkflowRuns(sha, repo) {
-      const data = ghJson<{
-        workflow_runs: { id: number; name: string; head_sha: string; conclusion: string | null }[];
-      }>(['api', `repos/${repo}/actions/runs?head_sha=${sha}&per_page=20`]);
-      return data.workflow_runs;
+    async listWorkflowRuns(sha, repoName) {
+      const gh = repoName ? createGitHubAdapter(repoName) : adapter;
+      return gh.listWorkflowRuns(sha);
     },
-    async listJobs(runId, repo) {
-      const endpoint = `repos/${repo}/actions/runs/${runId}/jobs?per_page=100`;
-      const data = ghJson<{ jobs: GhJob[] }>(['api', endpoint]);
-      return data.jobs;
+    async listJobs(runId, repoName) {
+      const gh = repoName ? createGitHubAdapter(repoName) : adapter;
+      return gh.listWorkflowJobs(runId);
     },
-    async getJobLog(jobId, repo) {
-      return ghText(['api', `repos/${repo}/actions/jobs/${jobId}/logs`]);
+    async getJobLog(jobId, repoName) {
+      const gh = repoName ? createGitHubAdapter(repoName) : adapter;
+      return gh.getJobLog(jobId);
     },
-    async getFailedRunLog(runId, repo) {
-      return ghText(['run', 'view', String(runId), '--repo', repo, '--log-failed']);
+    async getFailedRunLog(runId, repoName) {
+      const gh = repoName ? createGitHubAdapter(repoName) : adapter;
+      return gh.getFailedRunLog(runId);
     },
   };
 }
@@ -272,14 +248,12 @@ function parseArgs(argv: string[]): { pr: number; repo: string } {
   }
 
   if (!repo) {
-    const remote = spawnSync('gh', ['repo', 'view', '--json', 'nameWithOwner'], {
-      encoding: 'utf-8',
-    });
-    if (remote.status !== 0) {
+    try {
+      repo = createGitHubAdapter('').resolveDefaultRepo();
+    } catch {
       console.error('Could not resolve default repo; pass --repo owner/name');
       process.exit(1);
     }
-    repo = (JSON.parse(remote.stdout) as { nameWithOwner: string }).nameWithOwner;
   }
 
   return { pr, repo };
