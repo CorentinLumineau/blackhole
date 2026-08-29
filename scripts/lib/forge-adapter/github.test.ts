@@ -88,8 +88,10 @@ describe('createForgeAdapter', () => {
     expect(adapter.repo).toBe('o/r');
   });
 
-  test('rejects unimplemented forge backends', async () => {
+  test('rejects unsupported forge backends', async () => {
     const { createForgeAdapter } = await import('./index.ts');
-    expect(() => createForgeAdapter({ repo: 'o/r', forge: 'gitlab' })).toThrow(/not implemented/);
+    expect(() => createForgeAdapter({ repo: 'o/r', forge: 'bitbucket' as 'github' })).toThrow(
+      /unsupported forge/,
+    );
   });
 });
