@@ -90,6 +90,6 @@ describe('createForgeAdapter', () => {
 
   test('rejects unimplemented forge backends', async () => {
     const { createForgeAdapter } = await import('./index.ts');
-    expect(() => createForgeAdapter({ repo: 'o/r', forge: 'gitea' })).toThrow(/not implemented/);
+    expect(() => createForgeAdapter({ repo: 'o/r', forge: 'gitlab' })).toThrow(/not implemented/);
   });
 });
