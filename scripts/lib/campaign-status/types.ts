@@ -69,7 +69,12 @@ export type ConfigSummaryInput = {
   merge_mode?: string;
   parallel_max?: number;
   kaizen?: { enabled?: boolean };
-  docs_governance?: { enabled?: boolean };
+  docs_governance?: {
+    enabled?: boolean;
+    companion_files?: boolean;
+    docs_impact_routing?: boolean;
+    write_governance?: boolean;
+  };
   incident_mode?: { enabled?: boolean };
   worker_model_policy?: string;
   auto_sync?: boolean;

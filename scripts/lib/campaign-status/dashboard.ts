@@ -163,6 +163,13 @@ export function renderConfigSummary(config: ConfigSummaryInput): string {
     // Absent block, absent field, or explicit `false` all render "disabled" — SSOT:
     // config-template.md's `docs_governance.enabled` row (issue #477).
     `**Docs governance:** ${enabledLabel(config.docs_governance?.enabled, false)}`,
+    ...(config.docs_governance?.enabled
+      ? [
+          `**Docs governance.companion_files:** ${enabledLabel(config.docs_governance.companion_files, true)}`,
+          `**Docs governance.docs_impact_routing:** ${enabledLabel(config.docs_governance.docs_impact_routing, true)}`,
+          `**Docs governance.write_governance:** ${enabledLabel(config.docs_governance.write_governance, true)}`,
+        ]
+      : []),
     `**Incident mode:** ${enabledLabel(config.incident_mode?.enabled, false)}`,
     `**Worker model policy:** ${config.worker_model_policy ?? 'cost-optimized'}`,
     `**Auto-sync:** ${onOff(config.auto_sync, true)} · **Adaptive routing:** ${onOff(config.adaptive_routing, true)}`,

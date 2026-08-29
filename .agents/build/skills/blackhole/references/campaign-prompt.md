@@ -25,6 +25,11 @@ Clarify and split (ALL issue sizes):
 - Split into child issues when not one comfortable reviewable PR — not only epics
 - Get user sign-off on plan before implement workers when scope was unclear
 
+Docs governance spawn contract (binding when `docs_governance.enabled` resolves true):
+- Run `bun run status config-summary` and copy every `Docs governance*` line from that output
+  verbatim into SESSION_HANDOFF / orchestrator spawn text — never paraphrase on/off.
+- Never restate `write_governance` (or sibling subflags) from memory or coordinator prose.
+
 <SESSION_HANDOFF if resuming — else omit>
 ```
 
