@@ -11,10 +11,9 @@ finish/run the backlog campaign, follow this protocol.
 
 ## Entry
 {{#cursor}}
-- **No `/goal`** — use Multitask Mode: `coordinator` → spawns
-  `orchestrator` in background
+- **Entry (detect-don't-assume):** `@coordinator run the campaign` **or** `/goal run blackhole until empty` when `/goal` is visible; on Cloud, `CreateGoal` when attached to the session schema — else Pattern B (`coordinator` → background `orchestrator`)
 - Skill: `{{AGENT_DIR}}/skills/blackhole/SKILL.md`
-- Flow: `{{AGENT_DIR}}/skills/blackhole/references/multitask-mode.md`
+- Flow: `{{AGENT_DIR}}/skills/blackhole/references/multitask-mode.md` · native mapping: `claude-code-native.md` Cursor appendix
 {{/cursor}}
 {{#claude}}
 - **Use `/goal`** or Multitask Mode: `coordinator` → spawns
