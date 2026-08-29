@@ -78,8 +78,11 @@ dispatch is additionally gated by `autonomy.analyze_routing`
 produces the note — the checkpoint re-validation itself (`router` re-invoked, `route.revision`
 bumped) is entirely `router.md`'s job, not duplicated here.
 
-**Scope note**: `investigator` never mutates `queue.json` or `findings-ledger.json` — its only
-filesystem write is its own note file. Deciding (routing) vs. discovering (evidence-gathering)
+**Scope note**: `investigator` never mutates `queue.json` or `findings-ledger.json` — its
+filesystem writes are its note file under `.blackhole/plans/` (working copy) **and**, when
+`docs_governance.write_governance` resolves `true`, staged durable artifacts under
+`.blackhole/staged/<issue>/` per `investigator.md` § Promotion target (issue #690 — same carry
+path as plans). Deciding (routing) vs. discovering (evidence-gathering)
 is a real SRP boundary (ADR-004 Trade-offs table) that Handle's dispatch respects: this section
 documents the spawn point and trigger relationship only, not a decision-making role for
 `investigator`.

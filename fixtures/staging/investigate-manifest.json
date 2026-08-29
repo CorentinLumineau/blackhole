@@ -1,0 +1,24 @@
+{
+  "issue": 690,
+  "updated_at": "2026-08-29T18:00:00.000Z",
+  "entries": [
+    {
+      "route": "investigate",
+      "sub_mode": "investigate",
+      "produced_by": "investigator",
+      "declared_at": "2026-08-29T17:40:00.000Z",
+      "staged_path": ".blackhole/staged/690/display-currency-reload-staleness.md",
+      "target_path": "documentation/investigations/display-currency-reload-staleness.md",
+      "target_kind": "new_file"
+    },
+    {
+      "route": "investigate",
+      "sub_mode": "investigate",
+      "produced_by": "investigator",
+      "declared_at": "2026-08-29T17:40:00.000Z",
+      "staged_path": ".blackhole/staged/690/index-row.md",
+      "target_path": "documentation/INDEX.md",
+      "target_kind": "append_row"
+    }
+  ]
+}
