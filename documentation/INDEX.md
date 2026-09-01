@@ -4,7 +4,7 @@
 |------|---------|------|--------|----------------|
 | architecture.md | Architecture entry point pointing to the durable ARCHITECTURE.md narrative | reference | current | on build target change |
 | architecture/adaptive-routing.md | Adaptive phase routing architecture — router-agent flag contract and re-route checkpoints | architecture | current | on ADR-004 amendment |
-| architecture/retrospective-blackhole.md | Architectural retrospective of blackhole against SOLID and coupling taxonomy | retrospective | draft | on major version release |
+| architecture/retrospective-blackhole.md | Architectural retrospective of blackhole (v0.21.0) — governance measured in lines while the system accretes in concerns; 14-metric dashboard, verified findings, remediation blueprint | retrospective | draft | on major version release |
 | audits/analysis-blackhole-adaptive-phase-routing.md | Comparative analysis of blackhole's fixed pipeline against mercure's x-auto router | analysis | draft | on ADR acceptance |
 | audits/analysis-blackhole-mercure-synergy.md | Synergy analysis identifying mercure parity gaps blackhole should close | analysis | draft | on ADR acceptance |
 | audits/analysis-blackhole-routing-reuse-visibility.md | Routing visibility and Reuse Check gate analysis feeding ADR-008 | analysis | draft | on ADR acceptance |
@@ -26,6 +26,7 @@
 | plans/adr-006-kaizen-hunt-campaign.md | Implementation campaign plan for ADR-006 kaizen hunt | plan | current | on ADR acceptance |
 | plans/plan-adr-007-drift-proof-toolchain-reseating.md | Implementation plan for ADR-007's drift-proof toolchain re-seating blueprint | plan | current | on ADR acceptance |
 | plans/plan-campaign-config-confirmation-gate.md | Plan for the campaign config confirmation gate at bootstrap preflight | plan | current | on ADR acceptance or Bootstrap preflight change |
+| plans/plan-retrospective-v0.21.0-remediation.md | Work breakdown and dependency graph for the v0.21.0 retrospective's 22 remediation items (one issue each) | plan | current | on ADR acceptance |
 | plans/plan-pr-merge-gate-dependency-ordering.md | Implementation plan for ADR-005's PR merge-gate and dependency ordering | plan | current | on file change |
 | plans/plan-routing-visibility-reuse-gate.md | Implementation plan for dashboard routing visibility and the implementer Reuse Check gate | plan | current | on ADR acceptance |
 | plans/story-driven-conformance.md | Plan for story-driven conformance across the campaign's issue lifecycle | plan | current | on ADR acceptance or kaizen hunt-kind change |
