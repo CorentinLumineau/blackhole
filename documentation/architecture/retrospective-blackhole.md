@@ -3,276 +3,207 @@ type: retrospective
 skill: x-rearchitect
 status: draft
 created: 2026-07-06
-last_updated: 2026-07-24
-supersedes: "prior revision of this file (2026-07-11, v0.10.0 / ADR-001..006 — preserved in git history)"
+last_updated: 2026-09-01
+supersedes: "prior revision of this file (2026-07-24, v0.16.0 / ADR-001..014 — preserved in git history)"
 target: blackhole
 related:
+  - documentation/plans/plan-retrospective-v0.21.0-remediation.md
   - documentation/decisions/ADR-007-drift-proof-toolchain-reseating.md
-  - documentation/decisions/ADR-009-claude-marketplace-bundle-isolation.md
-  - documentation/decisions/ADR-011-implement-time-accretion-control.md
-  - documentation/decisions/ADR-012-shared-artifact-substrate.md
-  - documentation/decisions/ADR-013-mercure-parity-program.md
-  - documentation/decisions/ADR-014-autonomy-default-only-mode.md
+  - documentation/decisions/ADR-021-durable-artifact-staging.md
+  - documentation/decisions/ADR-023-merge-conflict-preflight.md
+  - documentation/decisions/ADR-025-agent-plugins-skills-only-shell.md
+  - documentation/audits/build-tree-install-resolution.md
 review_trigger: "on major version release"
 ---
 
-# Architectural Retrospective — blackhole (v0.16.0)
+# Architectural Retrospective — blackhole (v0.21.0)
 
-Full 8-phase retrospective (`x-rearchitect`, default mode) at `7bc0eb6`, v0.16.0. Refreshes the
-2026-07-11 revision, which covered v0.10.0 / ADR-001..006 and predates ADR-007..014.
+Full 8-phase retrospective (`x-rearchitect`, default mode) at `9274fbc`, v0.21.0. Refreshes the
+2026-07-24 revision (v0.16.0, ADR-001..014). Since then: 227 commits, ADR-015..027, six minor
+releases. Method: 8 parallel subsystem auditors, every HIGH/MEDIUM finding re-derived by two
+independent refuters (one re-measuring by a different path, one steelmanning the current design
+against the ADRs), a completeness critic, then a 3-critic adversarial pass on the redesign.
+57 + 6 agents; 24 findings tested, 17 confirmed as stated, 7 narrowed or downgraded, 0 fully
+refuted. Remediation is tracked in `documentation/plans/plan-retrospective-v0.21.0-remediation.md`.
 
-**Fresh verification evidence (this session):** `bun run verify` → 30/30 checks passed;
-`bun test` → 550 pass / 0 fail, 1064 assertions, 29 files, 3.11s.
-
-**Baseline inputs:** `ARCHITECTURE.md` § Active Constraints; ADR-001..014;
-`documentation/decisions/INDEX.md`; full git history (289 commits, 2026-07-04 → 2026-07-22).
+**Fresh verification evidence (this session).** Clean checkout of `origin/main` @ `9274fbc`:
+`bun run verify` → **74/74 checks passed**; `bun test` → **1521 pass / 2 fail** (the two
+`validate-file-changes.js` #510/#512 tests, which assume `os.tmpdir()` is not under a broad root
+— they fail on macOS where it resolves to `/private/var/folders/...`; pre-existing on main). In
+the maintainer working tree the same commands read 69/74 and 1517/6 — every extra failure is an
+untracked or gitignored local file (a stray duplicate `ADR-021-agent-plugins-skills-only-shell.md`
+identical to ADR-025, an unindexed `reference/journeys.md` template, and
+`.blackhole/config.json`'s `router_confidence_thresholds.*` sub-keys).
 
 ---
 
 ## Executive Summary
 
-The architecture's load-bearing assumptions still hold, and ADR-007 — which this document's
-predecessor motivated — worked. `verify.ts` went from 979 LOC / 24 heterogeneous checks to a
-**48-LOC glob runner**; `ground-truth.md` went from a drift-prone literal counter to a 19-line
-prose pointer; the agent roster now has a two-sided declaration/scan check (`V-GROUND-01`) and has
-not drifted since.
-
-The dominant remaining finding is not a new defect class — it is that **ADR-007's remedies were
-applied at instance granularity, not class granularity**. Four independent symptoms measured in
-this retrospective trace to that single root cause, and one of them has already shipped as a real
-defect (ADR-012 Finding 3b: `awaiting-design-approval` recognized by `phase-plan.md`, absent from
-`queue-dag.md`'s enum, unrecognized by `coordinator.md` — a broken resumption path).
+Every remedy the v0.16.0 retrospective proposed has shipped: `V-VOCAB-01` guards the value
+vocabularies, `core.check.ts` is gone (39 domain files now), the content gate is a budget map,
+`PLATFORM_TARGETS` lives in `§ facts`, `plan-template.md` was extracted. They worked at the
+address they were pointed at. The architecture then kept growing at a different address.
 
 | | |
 |---|---|
-| **Biggest insight** | The `§ facts` + two-sided-verification mechanism is excellent and under-applied. It guards 7 declarations (roster, phases, playbooks, rules, required refs, 2 counters). It guards **zero** of the 5 protocol *value vocabularies* that agent prose actually restates 8–12 times each. |
-| **Biggest improvement available** | Extend `§ facts` + `V-GROUND-01` from "structural facts" to "closed vocabularies". ~60 LOC of declarations, one generalized check. Closes the defect class that produced ADR-012 F3b. |
-| **Biggest honest trade-off** | 88.4% of tracked repo content is build output (7.60× byte duplication, 6.39× change amplification). This is **load-bearing, not accidental** — it is what makes `/plugin marketplace add <repo>` a zero-build-step install. It should be measured before it is touched, not "fixed". |
+| **Biggest insight** | Governance here is measured in *lines*, but the system accretes in *concerns*. The content gate cannot see a concern, so 14 governance ADRs landed as 27 new `###` sections in one reviewer prompt (2 → 29 sections, 354 → 778 LOC), 11 gates in one implementer prompt (338 → 645 LOC), and the gate re-seeded itself at ×1.2 of each already-grown file. The repo's one working plugin seam — `hunt/<kind>.md` selected by a `kind` directive, zero edits to `hunter.md` per kind — was never reused for reviewer or implementer concerns. |
+| **Biggest improvement available** | Give the two accreting agents a compile-time module seam (one file per audit/gate, inlined into one compiled prompt by a generic `{{INCLUDE}}` primitive), and replace the LOC gate with a module-count gate cross-checked against the V-code table. Extension becomes "add one file + one table row". Sequenced behind two cheap fixes the critics required: no mode-variant agent files, and named (not positional) section citations. |
+| **Biggest honest trade-off** | 645 of 1,173 tracked files (55.0%) and 90.0% of tracked bytes are build output (8.97× byte duplication, 8.13× change amplification, up from 7.60× / 6.39×). This remains load-bearing for zero-build-step installs and is now mitigated by ADR-023's conflict preflight. It is not proposed for change; only its plumbing (3 signature breaks per new target) and its stale map (`documentation/architecture.md` tree table, wrong since before v0.16.0) are. |
 
 ---
 
 ## Phase 1 — Current Architecture Audit
 
-### Component inventory
+### Component inventory (v0.16.0 → v0.21.0)
 
-| Area | Files | LOC | Note |
+| Area | Files | LOC | Δ since v0.16.0 |
 |---|---:|---:|---|
-| `src/agents/*.md` | 8 | 2,506 | coordinator, orchestrator, planner, implementer, reviewer, router, investigator, hunter |
-| `src/references/*.md` | 30 | 4,594 | protocol rulebook + phase playbooks |
-| `src/references/hunt/*.md` | 8 | 701 | ADR-006 kaizen kind playbooks |
-| `src/SKILL.md` | 1 | 141 | skill entry |
-| `scripts/*.ts` (prod) | 24 | 6,133 | build, verify runner, 8 check domains, validators, status, release |
-| `scripts/*.test.ts` | 29 | 6,709 | 1.09 : 1 test-to-prod LOC ratio |
-| **Tracked total** | **672** | — | of which **410 (61.0%) is build output** |
+| `src/agents/*.md` | 8 | 3,082 | reviewer 354→778, implementer 338→645, orchestrator 508→180 (split, #408), planner 593→467 |
+| `src/references/**.md` | 55 | 9,053 | worker-schemas 765→940, merge-gate 265→363, phase-loop 249→309; 14 hunt kinds |
+| `src/` total | 64 | 12,299 | +55% LOC; backtick cross-references 621 → **1,293** (150 distinct targets) |
+| `scripts/*.ts` prod / test | — | 13,522 / 18,071 | checks 8 files/30 → **39 files/74**; `facts.ts` 42 commits (#1 hotspot) |
+| `documentation/` | 69 | — | 28 ADRs (+13); 8 docs over the 400-line ceiling; 11 missing lifecycle frontmatter |
+| Tracked total | **1,173** | — | build output **645 (55.0%)**, 9 committed trees, 7,315,430 bytes vs 815,160 in `src/` |
 
-### Coupling map (Ca = fan-in, Ce = fan-out, by basename reference across `src/**.md`)
+### Coupling map (fan-in by backtick citation across `src/**.md`)
 
-| Component | Ca | Ce | Reading |
-|---|---:|---:|---|
-| `references/worker-schemas.md` | 23 | 14 | Highest fan-in — the schema catalog is the protocol's true contract surface |
-| `agents/orchestrator.md` | 20 | 21 | The hub. Highest combined coupling; deliberate (ADR-007 R3′) |
-| `references/config-template.md` | 17 | 12 | Every config-gated feature reads it |
-| `references/blackhole-vcodes.md` | 15 | 3 | Healthy: high fan-in, near-zero fan-out (a leaf vocabulary) |
-| `references/queue-dag.md` | 14 | 10 | State schema |
-| `references/blackhole-state.md` | 13 | 7 | Write protocol |
-| `references/hunt/parity.md` | 0 | 14 | Not an orphan — reached via `kaizen.kinds`, not a file link (see Phase 2) |
+| Target | Ca | Reading |
+|---|---:|---|
+| `worker-schemas.md` | 102 | The contract surface; 940/950 of its budget; ADR-007's own ">700 LOC" watch item tripped |
+| `implementer.md` | 61 | An agent file cited as a reference — its gates are protocol, not persona |
+| `phase-loop.md` | 49 | Loop playbook, 309 LOC |
+| `blackhole-state.md` | 42 | Write protocol — healthy hub |
+| `config-template.md` | 38 | Every config-gated feature reads it (81 key rows) |
+| `reviewer.md` | 35 | 62 of 89 V-codes name it as primary enforcement site |
 
-Total cross-references in `src/**.md`: **506 backtick path citations**, ΣCa = **321**.
-`V-LINK-01` verifies every one of them resolves — a genuinely strong seam.
+Per-spawn read closure (depth-1 citations from the agent file, plus rules): orchestrator
+**17 files / 4,752 LOC / ~82k tokens**; reviewer **17 files / 5,492 LOC / ~95k tokens**. ADR-007
+R3′ rejected splitting `orchestrator.md` to avoid "×3–4 context fetches per turn"; #408 split it
+anyway and the closure is now 17 files.
 
 ### Change amplification
 
-Measured over the last 40 non-merge commits, restricted to the 15 that touched `src/`:
+Last 40 non-merge commits touching `src/`: **142 `src/` file-changes → 1,155 build-output
+file-changes = 8.13×** (v0.16.0: 6.39×). `blackhole-vcodes.md` exists in 14 tracked copies,
+`doc-governance.md` in 14, `SKILL.md` in 12. Nine `chore: sync build outputs` commits since
+v0.16.0; ADR-023 documents four PRs needing manual rebase in one session.
 
-```
-src files changed = 44        build-output files changed = 281        ratio = 6.39×
-avg files per commit (last 20 non-merge) = 17.8
-```
+### SOLID compliance (evidence-scored, 1–5; threshold is the repo's own `V-PAT-01`: >300 LOC or 7+ responsibilities)
 
-The transform producing that 6.39× is a **single token substitution**.
-`diff src/agents/orchestrator.md .claude/agents/orchestrator.md` differs only in `{{AGENT_DIR}}` →
-`.claude` on 6 lines, plus an appended `<!-- GENERATED -->` banner. Six near-identical ~32 KB
-copies of `orchestrator.md` are tracked.
+| Component | SRP | OCP | LSP | ISP | DIP | Evidence |
+|---|:-:|:-:|:-:|:-:|:-:|---|
+| `reviewer.md` | **1** | **2** | 4 | **2** | 4 | 778 LOC, 29 `###` audits under one `##`; extension = edit the shared file; §24 verification mode is handed the full 89-row checklist it is told to ignore |
+| `implementer.md` | **2** | 3 | 5 | 4 | 3 | 645 LOC, 14 responsibility blocks; 3 unrelated `###` nested under `## Companion-file Sync` |
+| orchestrator + `orchestrator-*.md` | 3 | 4 | 4 | 3 | 4 | 12/21 sections are pure pointers; the 3 split-off files (714 LOC) have no content-gate entry; 1 genuine A↔B citation cycle (HITL ↔ escalation dispatch) |
+| `facts.ts` + `scripts/checks/` | 3 | 3 | 5 | 4 | 4 | `verify.ts` is a true glob runner; `EXPECTED_CHECK_COUNT` is a derived rollup declared as a fact (2-line bump in ~30 of 42 commits, WARN-only); 21/39 check files hold one check |
+| `worker-schemas.md` ↔ validators | **2** | 4 | 5 | **2** | 3 | No field-parity check; Router example JSON omits 4 fields `router.ts` requires; `campaign-status/types.ts` `Route` omits `ui`, `needs_brainstorm`, `needs_analysis`, `docs_impact` |
+| build targets / trees | 4 | **2** | 4 | 4 | 3 | New target = 14 files + 3 breaking signatures (positional booleans, `clean.ts:81`); tree table stale since before v0.16.0; 3 trees still "Unknown" |
+| config gating | **2** | **2** | 3 | 3 | **2** | 81 key rows; `docs_governance.` at 101 sites/23 files; the resolution clause copy-pasted 8×, one copy already drifted (`reviewer.md:566`) |
+| documentation governance | 3 | 3 | **2** | 4 | 4 | 3 ADR shapes coexist (`adr-template.md` 5 headings unenforced vs `design-track.check.ts` 8 headings enforced); `decision-log.md` appended once (4 rows) then silent for 152 commits, `last_updated` never bumped |
 
-```
-src bytes = 460,937        build-output bytes = 3,502,507        duplication = 7.60×
-88.4% of tracked content is derived
-```
-
-### Hotspots (commit count, all history)
-
-| File | Commits | Status |
-|---|---:|---|
-| `scripts/build.ts` | 48 | Expected — the compiler and the `§ facts` SSOT |
-| `scripts/verify.ts` | 39 | **Resolved.** Now 48 LOC; churn predates ADR-007 R2′ |
-| `src/references/ground-truth.md` | 32 | **Resolved.** Now a 19-line prose pointer (ADR-007 R1′) |
-| `src/references/worker-schemas.md` | 31 | Live — tracks every worker contract change |
-| `src/references/config-template.md` | 24 | Live — grows one block per config-gated ADR |
-
-Zero `TODO`/`FIXME`/`HACK` markers across `src/` and `scripts/`.
-
-### SOLID compliance (evidence-scored)
-
-Threshold applied is blackhole's own `V-PAT-01`: **>300 LOC or 7+ responsibilities**.
-
-| Component | LOC | Responsibilities | Verdict |
-|---|---:|---:|---|
-| `scripts/checks/core.check.ts` | 837 | 15 checks | **SRP violation.** 55% of all checks, 62% of all check LOC, in one file |
-| `src/agents/planner.md` | 593 | ~10 logic sections + a 130-line inline output template | **SRP violation** |
-| `src/agents/orchestrator.md` | 508 | 18 `##` sections | **SRP violation — deliberately retained** (ADR-007 R3′) |
-| `src/references/worker-schemas.md` | 765 | 12 schemas | Borderline: cohesive *as a catalog*; 12 reasons to change |
-| `scripts/validate-worker-json.ts` | 822 | 12 validators | Borderline: matched pair with the above |
-| `scripts/build.ts` | 747 | 5 compile fns + facts + 3 manifests | Cohesive as "the compiler"; acceptable |
-| `src/agents/reviewer.md` | 354 | 2 sections | Clean — LOC-only trip |
-
-**6 modules exceed both limbs of `V-PAT-01`; 6 more trip the LOC limb alone.**
-
-Note the asymmetry worth naming: the module that *enforces* `V-PAT-01` (`core.check.ts`) exceeds
-it by 2.8× on LOC and 2.1× on responsibilities.
+**Strengths confirmed by the auditors (steelman).** Single-writer invariant; 5-Field Delegation
+Contract uniformly applied; `verify.ts` registry-free; `check-utils.ts` (Ca 38) is a stable
+10-LOC primitive, not a hub; error taxonomy defined once; hunt kinds are a genuine OCP seam;
+`V-CONTENTGATE-02`'s 0.85 ratio derived from measured PR deltas; ADR-009/025 ran adversarial
+evaluation before adding targets; hook JS is byte-identical across all 5 trees (a critic's
+suspicion, refuted by md5).
 
 ---
 
 ## Phase 2 — Root Cause Analysis
 
-### The single root cause
-
-> **Remediation was applied to the instance that hurt, not to the class it belonged to.**
-
-ADR-007 correctly diagnosed two accidental patterns — *facts restated at consumption sites* and
-*accretion surfaces without extension seams* — and built excellent machinery for both. It then
-scoped each remedy to the specific artifact that had drifted.
-
-### Pain point matrix
+The v0.16.0 root cause was *remediation at instance, not class, granularity*. That was fixed. The
+v0.21.0 root causes are one level up: the **class of thing governed** is wrong.
 
 | # | Symptom (measured) | Root design decision | Classification | SOLID |
 |---|---|---|---|---|
-| 1 | 5 protocol vocabularies restated 8–12× each with **zero** verify coverage | `§ facts` was populated with the *structural* facts that had drifted (roster, phases, files, counts) — value enums were never added | Missing validation | SRP (process) |
-| 2 | `core.check.ts` = 837 LOC / 15 checks; other 7 domains average 118 LOC / 2.1 checks | ADR-007 R2′ decomposed by *test taxonomy*, and named one domain `core` — a catch-all name always becomes the sink | Wrong granularity | SRP |
-| 3 | `V-CONTENTGATE-01` budgets new sections in exactly **one file** (`orchestrator.md`), and only *new* ones — the grandfathered 130-LOC "5-Field Delegation Contract" is exempt | ADR-007 R3′ built the gate for the file that was accreting at the time | Missing validation | OCP |
-| 4 | Platform target names hardcoded across **8 production script files** (`build.ts`, `checks/build.check.ts`, `checks/core.check.ts`, `release.ts`, `tree-shape.ts`, `doctor.ts`, `install-verify.ts`, `verify.ts`) + ~8 test files | `Target` is a TS union local to `build.ts`; `§ facts` declares the roster and the phases but not the targets | Coupling violation | OCP |
+| RC-A | Content gate warns on **18** targets at 86–100% of budget; `reviewer.md` budget seeded at 804/902 *after* it doubled; 21/39 check files hold one check (`gate-content-contract.check.ts` split "to create headroom", by its own header); #408 hollowed `orchestrator.md` to satisfy a 185-LOC ceiling | The only anti-accretion mechanism measures LOC per `##`/file. It is blind to `###` units, ratchets upward at re-seed, and reshapes module boundaries as a side effect | Wrong granularity | SRP |
+| RC-B | 14 ADRs → 27 new reviewer sections + 11 implementer gates + 32 V-code rows; adding a governance concern touches 2–5 files; `hunt/<kind>.md` seam (1 file + 1 config entry, zero `hunter.md` edits) never reused | No module seam at the two hubs where concerns land; "fits the reviewer's existing per-PR contract" (ADR-021:172) was locally true every time and cumulatively false | Missing interface | OCP |
+| RC-C | Carry Staged Artifacts = 81 LOC of prose-executed heredoc + `mv`; its two siblings in the same file are `bun run` one-liners; `plan-quality-gate.check.ts` has tested functions reachable from neither `verify` nor the planner; decision-log append never bumps `last_updated` | ADR-003's precedent (LLM step → deterministic script) has no rule stating when it applies, so it is applied per issue, not per class | Missing validation (process) | SRP / DIP |
+| RC-D | `EXPECTED_CHECK_COUNT` bumped in ~30 of 42 `facts.ts` commits; route field set in 4 representations with no shape check; tree table stale; 3 ADR shapes | ADR-007 R1′ (declared once, verified two-sidedly) was applied to *enums and rosters*, never to *shapes* (field sets, heading sets, tree sets); a derived rollup was declared as a fact | Missing validation | DIP |
+| RC-E | #408 reversed ADR-007 R3′ knowingly — recorded only in gitignored `.blackhole/plans/issue-366.md` with "do not amend ADR-007"; ADR-007's worker-schemas watch item tripped on both axes, no revisit; #328's 3 "Unknown" trees unresolved for 227 commits; `decision-log.md` silent | Decisions and revisits have no trigger wired to the metrics the ADRs themselves name; the durable decision path is write-only | Missing validation (process) | — |
+| RC-F | 8.97× byte duplication, 8.13× amplification, 9 trees | **Deliberate** (ADR-007 R5′, ADR-009, ADR-025), mitigated by ADR-023. Not a root cause. Only the positional-boolean plumbing and the stale map are accidental | Deliberate trade-off | — |
 
-### Vocabulary exposure — the measured detail behind row 1
+**Materialized cost.** RC-D already ships defects: `worker-schemas.md`'s Router example omits
+`needs_brainstorm`, `route.ui`, `confidence.brainstorm`, `confidence.ui` that `router.ts:21-51`
+requires unconditionally; the same drift class produced ADR-012 F3b at v0.16.0. RC-E already
+shipped an undocumented reversal of an accepted ADR decision.
 
-| Vocabulary | Values | `src/**.md` restatement sites | `§ facts` decl | Verify check |
-|---|---:|---:|:---:|:---:|
-| Agent roster | 8 | — | ✅ `AGENT_NAMES` | ✅ `V-GROUND-01` |
-| Phase names | 5 | — | ✅ `PHASE_NAMES` | ✅ `V-PHASE-01` |
-| V-code row count | 57 | — | ✅ `VCODE_TABLE_ROW_COUNT` | ✅ `V-GROUND-01` |
-| **Queue `status`** | 4 | **12** | ❌ | ❌ |
-| **Queue `notes`** | 4+ | **10** | ❌ | ❌ |
-| **`kaizen.kinds`** | 7 | **5** | ❌ | ❌ |
-| **Platform targets** | 5 | 8 (scripts) | ❌ | ❌ |
-| **ADR `status`** | declared 3, observed 5 | 14 ADRs + INDEX | ❌ | ❌ |
-
-### Materialized cost — this is not hypothetical
-
-**ADR-012 Finding 3b** documents a shipped defect caused precisely by row 1: `phase-plan.md` sets
-`notes: awaiting-design-approval`; `coordinator.md:185` recognized only three other values;
-`queue-dag.md:39`'s enum omitted it entirely. Result: a human-approved design could not resume.
-Three files, one vocabulary, no check — and the campaign silently lost work.
-
-**ADR status drift**, measured this session, is the same defect one layer up:
-
-| ADR | Frontmatter | INDEX.md | Reality |
-|---|---|---|---|
-| ADR-008 | `current` | `Accepted` | Vocabulary mismatch only |
-| **ADR-011** | `current` | **`Proposed`** | **Shipped** — accretion gates live in `implementer.md` |
-| **ADR-012** | `current` | **`Proposed`** | **Shipped** — `V-WRITE-01`, `V-DESIGN-01/02` pass in CI |
-| **ADR-013** | `current` | **`Proposed`** | **Shipped** — `parity-matrix.check.ts` / `V-PMATRIX-01` passes in CI |
-
-Observed status values across 14 ADR files: `Accepted` (6), `accepted` (3), `current` (4),
-`superseded` (1); INDEX.md adds a fifth, `Proposed`. The repo's own
-`.claude/rules/doc-governance.md` declares the enum as `current | deprecated | archived`.
-Nothing enforces it, so all three spellings coexist and three shipped ADRs read as unbuilt.
-
-### What is *not* a root cause (steelmanned)
-
-- **The 6.39× amplification is not accretion.** It is the cost of a zero-build-step install
-  contract. `/plugin marketplace add <repo>` resolves a git ref directly; there is no release
-  pipeline the consumer must run. Committed output + a CI "build is in sync" gate makes the
-  duplication *verified*, which is categorically different from hand-maintained duplication.
-- **`orchestrator.md`'s 18 sections are a considered choice, not neglect.** ADR-007 R3′ rejected
-  the split on the grounds that it converts intra-file cohesion into cross-file references
-  without reducing total concepts. That reasoning still holds at 508 LOC.
-- **Within-`src` DRY is genuinely strong.** Only 10 distinct >45-char lines recur across 3+ files
-  out of 7,942 total — a **0.13%** duplicated-line ratio.
+**Refuter corrections applied** (7 findings narrowed): the "2–5 file extension cost" is governed
+reactively by the content gate, so it is a design gap, not neglect; only 1 of 3 claimed citation
+cycles is genuine; `VCODE_TABLE_ROW_COUNT` is legitimately two-sided — only
+`EXPECTED_CHECK_COUNT` is a derived rollup; ADR-007's watch item *is* budgeted (940/950) — what
+is missing is the revisit the ADR promised, not a ceiling; the config-gate clause repetition
+follows a documented SSOT-plus-local-delta convention and is a MEDIUM enforcement gap; ADR-014's
+residual per-site gating is that same convention, not relocated coupling; the decision log was
+exercised once, not never.
 
 ---
 
 ## Phase 3 — Redesign Blueprint
 
-Same language, same runtime, same feature set, same distribution contract (per Critical Rules 1
-and 4). The blueprint is deliberately *small*: the architecture is sound, so the proposal
-generalizes existing seams rather than replacing them.
+Same runtime, same distribution contract, 100% parity. ADR-007's binding rejections stay binding:
+no generation-in-place of hand-authored files, no single-source derivation for both sides of a
+drift check, no central check registry, no build cache.
 
 ### Assumption audit — current architecture
 
 | Assumption | Marker | Evidence |
 |---|---|---|
-| One `src/` tree can serve 5 heterogeneous agent hosts | ✓ Validated | 5 targets shipping; the only body transform is a `{{AGENT_DIR}}` substitution |
-| Committed build output is required for zero-step install | ~ Contestable | True for the Claude marketplace path; **unmeasured** for the flat registry and `.agents/build/` |
-| Two-sided verification beats single-source generation | ✓ Validated | ADR-007's critic panel rejected generation with repo-grounded evidence; roster has not drifted since |
-| Facts that drift are structural (rosters, counts, filenames) | ⚡ Oversimplified | The defect that actually shipped (ADR-012 F3b) was a **value enum**, not a structural fact |
-| A per-file content gate controls accretion | ◐ Blind spot | It controls accretion *in the gated file*. `core.check.ts` grew to 837 LOC ungated |
-| Decomposing by test taxonomy yields balanced domains | ✗ Incorrect | It yielded 1 × 837 LOC and 7 × ~118 LOC |
+| One `src/` tree serves all hosts through one 1:1 compile path | ✓ Validated | `compileFolder` is uniform across 7 target functions; 9 trees ship |
+| A LOC budget per file controls accretion | ✗ Incorrect | 18 targets at ceiling; the gate re-seeds; concerns, not lines, are what accrete |
+| Splitting an agent file costs context fetches per turn (ADR-007 R3′) | ~ Contestable | True for runtime pointers (orchestrator: 17-file closure); false for compile-time inlining, which ADR-007 never evaluated |
+| Facts that drift are enums and rosters | ⚡ Oversimplified | The live defects are *shapes*: route field sets, ADR heading sets, tree sets |
+| "Fits the reviewer's per-PR contract" is a sufficient placement test | ◐ Blind spot | Locally true 14 times; produced a 29-section God object by the repo's own V-PAT-01 |
+| Committed build output is required for zero-build-step install | ✓ Validated (marketplace trees) / ~ Contestable (Gemini: README still says `bun run build` before `ln -s`; 3 trees "Unknown") | `build-tree-install-resolution.md` |
 
-### Proposed changes
+### Proposals (post-critic revision)
 
-**R1 — Protocol Vocabulary registry (highest ROI).** Extend `build.ts § facts` with the closed
-vocabularies: `QUEUE_STATUSES`, `QUEUE_NOTES`, `HUNT_KINDS`, `BUILD_TARGETS`, `ADR_STATUSES`.
-Generalize `V-GROUND-01`'s two-sided pattern into one check that, per vocabulary, scans `src/**.md`
-for members of the declared set and fails when a consumption site uses a value absent from the
-declaration. **Preserves** the two separately-fallible derivations the ADR-007 critics required —
-this extends the accepted mechanism, it does not re-propose the rejected single-source generation.
+| # | Proposal | Closes | Critic-driven change |
+|---|---|---|---|
+| P1 | **Audit-module seam for the reviewer.** `src/references/audits/<NN>-<slug>.md`, one per audit (29 today), frontmatter `vcodes: [...]`. `reviewer.md` becomes a ~150-LOC shell with one `{{INCLUDE:audits/*}}` marker. A **generic** include primitive in `content.ts`'s `processFile` (alongside the existing `{{AGENT_DIR}}`/`{{VCODES_PATH}}`/`{{#host}}` markers) inlines modules into **one** compiled `reviewer.md` on every target — the LLM still reads one file. Citations switch to `reviewer.md § <Name>`, which `vcode-citation.check.ts` already parses; numbering is append-only. `V-AUDIT-01`: every V-code naming the reviewer maps to exactly one module and vice versa. Modules are build inputs, declared in a `BUILD_INPUT_ONLY_DIRS` fact and two-sidedly checked absent from every tree | RC-A, RC-B | Dropped mode-variant files (`reviewer-verify.md`) — they collide with `AGENT_NAMES` tree-shape counts and reproduce the shape issue #439 rejected; ISP fix is a per-mode branch in `review-core.md`'s prompt requirements instead. Dropped `trigger:` frontmatter (YAGNI once variants are gone). Token cost per default spawn is **unchanged**; the win is source modularity and extension cost |
+| P2 | **Same seam for implementer gates** (`src/references/gates/`), *after* P3 reduces Carry Staged Artifacts to its judgment residual | RC-A, RC-B | Sequenced behind P3 (critics: P2 and P3 restructured the same 81 lines with no reconciliation) |
+| P3 | **Mechanical-vs-judgment rule** (one sentence in `blackhole-protocol.md`) + scripts for the three prose procedures: `carry-staged-artifacts.ts`, a `plan-quality-gate` CLI the planner invokes, `decision-log-append.ts`; `V-PROSE-01` WARN on heredocs writing under `documentation/` inside agent prose | RC-C | — |
+| P4 | **Shape-level two-sided checks.** `V-SHAPE-01` route fields across `router.ts`, `worker-schemas.md` example, `queue-dag.md` table; narrow projections (`campaign-status/types.ts`) carry a declared `omits:` allowlist. `V-TREE-01` trees vs `architecture.md` table vs README stanzas. `ADR_SHAPES` (classic-5 / design-track-8) checked by `adr-status.check.ts`. Retire `EXPECTED_CHECK_COUNT` including its string-literal consumer `TOUCH_PATH_SSOT_PAIRS[1]` | RC-D | Allowlist added (critic: raw symmetric difference false-positives on an intentionally narrow type); second consumer found by critic |
+| P5 | **Content gate v3**: glob-class budgets for all agent/reference files with a grandfather allowlist carrying a sunset ADR; `V-CONTENTGATE-03` — raising a budget requires an INDEX row | RC-A | Interim: add the three `orchestrator-*.md` files to the map now |
+| P6 | **Config-gate resolution SSOT**: one `resolution:` line per block in `config-template.md`; `V-GATE-02` fails the clause anywhere else; parent-key coverage in `config-registration.check.ts` | RC-B | — |
+| P7 | **Named-flags build plumbing** (`{gemini, codex, agentPlugins}` object) + one ADR resolving the 3 "Unknown" trees | RC-F (accidental part) | — |
+| P8 | **Revisit triggers**: `ADR_WATCH_ITEMS` in `§ facts` → `V-WATCH-01`; supersession recorded via the ADR-021 D2 carry-step, with **two** detection legs — a declared `supersedes_adr:` field *and* a phrase scan of `src/`/`documentation/` diffs for "supersedes/reverses ADR-N" | RC-E | Second leg added (critic: a self-disclosure gate reproduces exactly the #408 non-detection) |
 
-**R2 — Split `core.check.ts` along its actual concerns.** The glob-discovery seam from ADR-007 R2′
-already makes new domain files free (no registry, no registration). Split 15 checks into
-`agents.check.ts`, `schema.check.ts`, `links.check.ts`, `content-gates.check.ts`, retiring the
-catch-all name. Mechanical; tests are already per-domain.
+### Adversarial evaluation — what the redesign introduces
 
-**R3 — Generalize the content gate to a budget map.** Replace `V-CONTENTGATE-01`'s hardcoded
-`orchestrator.md` scope with a declared `{file → {maxSectionLoc, maxFileLoc}}` table covering
-`orchestrator.md`, `planner.md`, `worker-schemas.md`, and `scripts/checks/*.check.ts`. Seed each
-threshold at *current + 20%* so it ratchets rather than blocking on day one.
-
-**R4 — Export `BUILD_TARGETS` from `§ facts`** and have `doctor.ts`, `install-verify.ts`,
-`release.ts`, `tree-shape.ts`, and the two check domains import it instead of hardcoding names.
-
-**R5 — Extract `planner.md`'s 130-line inline output template** to
-`src/references/plan-template.md`, following the pointer-section pattern `orchestrator.md`'s newer
-sections already use.
-
-**R6 — Measure before touching the build-output model.** Determine, per committed tree, which
-install path actually resolves it. Only then decide whether any tree can stop being tracked.
-
-### Adversarial self-critique
-
-Applied to the blueprint above, before comparison.
-
-| Proposal | Strongest objection | Resolution |
+| Finding (critic) | Severity | Resolution |
 |---|---|---|
-| **A generic `TargetDescriptor` abstraction** (considered, **rejected**) | The 5 targets are genuinely heterogeneous — codex emits YAML on a different agent schema, claude emits two manifests, cursor strips frontmatter, skills is a flat mirror. A descriptor with 6 policy knobs covering 5 targets, each needing an escape hatch, is **V-KISS-01 / V-YAGNI-01** — worse than 5 explicit functions | **Dropped.** Narrowed to R4: share the *name list*, keep the 5 compile functions explicit. `build.ts` is cohesive; the pain is in the 8 files that hardcode names, not in the compiler |
-| R1 vocabulary registry | Grows `§ facts` and adds a maintenance obligation at 5 more sites | Accepted. The obligation is already being paid — in silent defects instead of CI failures. A failing check is strictly cheaper than ADR-012 F3b |
-| R3 budget map | A badly-calibrated budget becomes a nag that trains contributors to raise the number | Mitigated by ratchet seeding (current + 20%), not absolute thresholds |
-| R6 (build-output model) | Dropping any tracked tree could silently break an install path | Which is exactly why R6 is scoped as **measurement only**. Proposing the change without the per-tree evidence would be guessing |
-| Blueprint overall | "This is maintenance, not a redesign" | Correct, and that is the finding. A retrospective whose honest output is *"the architecture is sound; generalize four seams"* should say so rather than manufacture a rewrite |
+| Fan-in assembly has no primitive; per-target special-casing would break the uniform compile path | CRITICAL | Generic marker in `processFile`, applied to any agent on every target; `hunt/`-style module dir |
+| Mode-variant files collide with `AGENT_NAMES` roster checks and #439's rejected shape | CRITICAL | Dropped; one compiled reviewer per target |
+| Positional `§N` citations (62 rows, 80+ in-body refs) break on insertion | NOTABLE | Named-section citations (parser already supports them) + append-only numbering |
+| P1 does not reduce default-dispatch token cost | NOTABLE | Claim withdrawn; scoped to source modularity |
+| `V-SHAPE-01` false-positives on `campaign-status/types.ts` | NOTABLE | Declared `omits:` allowlist |
+| `EXPECTED_CHECK_COUNT` has a second string-literal consumer | NOTABLE | In scope of the retirement |
+| `V-ADR-06` self-disclosure gate mirrors the #408 failure — #408 never declared anything | NOTABLE | Phrase-scan second leg over diffs, plus a `docs` hunt band over local plan files for "do not amend / reversal" near an `ADR-NNN` |
+| P2/P3 overlap on one section | NOTABLE | Sequenced P3 → P2 |
+| Assembled shells are a new `src/`-level provenance category ADR-007's panel never ruled on | NOTABLE | Not asserted in-bounds here; ADR-028 (design track, `design-aggregate.ts` verdict) must rule on many-authored → one-generated explicitly |
+| `V-SHAPE-01` needs a fourth ad hoc parser over prose sources | NOTABLE | Staged: TS ↔ TS first (`router.ts` vs `types.ts` + allowlist), prose example and `queue-dag.md` table second |
+| Absolute line-number citations (`reviewer.md:133`, `:51`, `:130`) break on any edit | MINOR | Rewritten to named sections in the migration |
+
+Overall critic assessment: root causes confirmed against the code; P4–P8 are low-risk hardening
+of the existing two-sided discipline; P1/P2 carry real build-pipeline risk and are gated behind a
+design-track ADR.
 
 ---
 
 ## Phase 4 — SOLID Comparison
 
-| Principle | Current | Redesigned | Delta |
-|---|---|---|---|
-| **SRP** | 6 modules with >300 LOC **and** 7+ responsibilities | 4 (`orchestrator.md` deliberate; `worker-schemas.md` + `validate-worker-json.ts` cohesive catalog pair; `build.ts` compiler) | **−2**, both mechanical (R2, R5) |
-| **OCP** | New platform target ⇒ edit 8 production + ~8 test files | 1 facts entry + 1 compile fn + 1 manifest builder | **−6 production files** |
-| **LSP** | N/A — no inheritance hierarchies. All 8 check domains already satisfy a uniform `runChecks(): CheckResult[]` contract | Unchanged | 0 |
-| **ISP** | Strong. `verify.ts` (48 LOC) depends only on the glob contract, not on any check's internals | Unchanged | 0 |
-| **DIP** | Mixed. Checks depend on the concrete `§ facts` module — correct (it *is* the abstraction). But 8 scripts depend on hardcoded target string literals | R4 routes all target knowledge through `§ facts` | **8 → 1** literal dependency site |
+| Principle | Current | Redesigned | Delta | Marker |
+|---|---|---|---|---|
+| **SRP** | 10 `src/**.md` files >300 LOC; 2 agent files trip both V-PAT-01 limbs (reviewer 29 resp., implementer 14) | Reviewer/implementer shells ~150/200 LOC; catalogs (`worker-schemas.md`) and playbooks unchanged | **−2** God objects | ✓ |
+| **OCP** | New audit concern: 2–5 files; new target: 14 files + 3 breaks; new config feature: template row + N hand-written sites | 2 files / ~8 files + 0 breaks / template row + 1-line cites | **−3 / −6 / same count, cheaper sites** | ✓ |
+| **LSP** | All 39 check files satisfy `runChecks()`; all agent files compile 1:1 | Unchanged — the include marker is applied inside the same 1:1 path | 0 | ✓ |
+| **ISP** | Verification mode receives the full 89-row checklist | Per-mode prompt requirements in `review-core.md` | fixed | ✓ |
+| **DIP** | Consumers depend on `§ facts` (correct) but 4 route representations depend on nothing shared | `V-SHAPE-01` binds them; `EXPECTED_CHECK_COUNT` gone | **4 → 1 unguarded** | ~ (allowlist calibration) |
 
-Assumption markers on the redesign itself: R1 ✓ Validated (extends a mechanism with a proven
-track record); R2 ✓ Validated (seam exists, cost is near zero); R3 ~ Contestable (threshold
-calibration is a judgement call); R4 ✓ Validated; R6 ◐ Blind spot **by construction** — it is
-scoped as measurement precisely because the answer is unknown.
+Redesign blind spot by construction: P7's tree decision is scoped as an ADR because the answer
+is unknown (◐).
 
 ---
 
@@ -280,142 +211,98 @@ scoped as measurement precisely because the answer is unknown.
 
 | Layer | Current | Redesigned | Note |
 |---|---|---|---|
-| Build output vs source | 7.60× (88.4% derived) | 7.60× — **unchanged** | Load-bearing; R6 measures, does not change |
-| Within `src/**.md` | 10 recurring lines / 7,942 = **0.13%** | ~0.08% | Pareto formula (8 files) + hunt scoring bands (4 files) |
-| Protocol vocabularies | 5 undeclared, restated 8–12× each | 0 undeclared | R1 — the material DRY win |
-| Target name literals | 8 production files | 1 | R4 |
+| Build output vs source | 8.97× (90.0% derived) | 8.97× | Deliberate; ADR-023 mitigates the rebase cost |
+| Within `src/**.md` (>45-char lines in ≥3 files) | 32 / 12,299 = **0.26%** (v0.16.0: 0.13%) | ~0.15% | P6 removes 8 gate-clause copies; P3 removes prose/TS duplicate checks |
+| Route vocabulary representations | 4, unchecked | 3 exhaustive + 1 declared projection, checked | P4 |
+| Behavioral truth restated | CI-diagnosis in 3 files; HITL/escalation split across 2 with mutual pointers | 1 owner each | P5 budgets + P8 |
 
-Single-source-of-truth proposals, with generation method:
-
-| Duplicated value | Proposed SSOT | Enforcement |
-|---|---|---|
-| Queue `status` / `notes` enums | `build.ts § facts` | Generalized two-sided `V-GROUND-01` scan |
-| `kaizen.kinds` | `build.ts § facts` | Same |
-| Platform target names | `build.ts § facts` | Import, not restatement |
-| ADR `status` enum | `.claude/rules/doc-governance.md` (already declares it) | New check: frontmatter ∈ enum **and** INDEX row == frontmatter |
-| `Priority = Gain * (11 - Effort)` (8 files) | `blackhole-vcodes.md` `V-PARETO-02` row | Pointer sections — **below Pareto threshold, deferred** (see appendix) |
+Single-source proposals: route fields → `router.ts` `requireField` set (scan) vs prose (scan);
+tree set → `paths.ts` vs docs (scan); ADR shape → `ADR_SHAPES` fact vs headings (scan); gate
+resolution → `config-template.md` `resolution:` line vs prose (scan). None is generated from the
+other — each pair keeps two separately fallible derivations, per ADR-007.
 
 ---
 
 ## Phase 6 — Scalability Assessment
 
-| Scenario | Current behaviour | Bottleneck | Redesigned | Complexity |
+| Scenario | Current | Bottleneck | Redesigned | Complexity |
 |---|---|---|---|---|
-| **Agents ×3** (8 → 24) | `AGENT_NAMES` + `V-GROUND-01` absorb the roster; but ~18 `src` files and 7 scripts mention each agent by name | Per-agent prose references | Unchanged — inherent to prose-defined agents | O(n) files, O(n) prose sites |
-| **References ×3** (38 → 114) | `V-LINK-01` scales freely; `cleanDir` full regeneration, no cache | Build wall-clock, currently trivial | Unchanged | O(n) |
-| **Platform targets 5 → 15** | 8 production files edited per target; tracked output grows 7.60× per target | **OCP violation compounds linearly** | R4 collapses to ~3 sites/target | O(n) → O(1) *coordination*, O(n) content |
-| **Team 1 → 5** | Cognitive load is genuinely low: entry chain `CLAUDE.md`(19) → `AGENTS.md`(45) → `SKILL.md`(141) → protocol(134) + state(92) + vcodes(75) = **506 lines** | Reviewing 6.39× amplified diffs — a reviewer must skip generated hunks by hand | R6 measures; no change proposed without evidence | Review cost O(6.39n) |
+| Governance concerns ×3 (29 → ~90 audits) | Reviewer prompt ~2,300 LOC in one file; gate re-seeds | Human authoring of one file | 90 module files, one assembled prompt; prompt volume is the inherent cost | O(n) source, O(n) prompt — inherent |
+| Targets 9 → 27 trees | 14 files + 3 breaks each; amplification grows linearly | Plumbing signatures | ~8 files, 0 breaks | O(n) content (deliberate), O(1) coordination |
+| Team 1 → 5 | Entry chain 955 LOC; reviewer closure ~95k tokens; 8.13× diffs to review | Reviewing generated hunks | Unchanged; ADR-023 protocol absorbs conflicts | O(8n) review cost — deliberate |
+| Checks 74 → 220 | Glob runner scales; `EXPECTED_CHECK_COUNT` bumps 3× as often | Counter churn | Counter retired | O(1) |
 
-The single-writer invariant (`blackhole-state.md`, `V-WRITE-01`) is the architecture's best
-scalability decision: parallel workers, serial orchestrator-applied mutations. It closes the
-lost-update race without `flock` or CAS, and it holds at any worker count.
+The single-writer invariant remains the best scalability decision in the system and is untouched.
 
 ---
 
 ## Phase 7 — Future-Proofing
 
-| Scenario | Breaking-change surface (current) | Redesigned | Extension feasibility |
+| Scenario | Breaking surface (current) | Redesigned | Feasibility |
 |---|---:|---:|---|
-| New platform target | 8 prod + ~8 test files | 3 prod files | Poor → Good |
-| Agent-host API break (e.g. frontmatter schema) | 1 compile fn + 1 manifest builder | Same | **Already good** — the transform is isolated in `build.ts` |
-| New agent | ~25 files mention an existing agent name (18 `src`, 7 `scripts`) | ~18 (`scripts` side resolves via `§ facts`) | Fair |
-| New verify check | **1 file** — glob auto-discovery, no registry | Same | **Excellent** (ADR-007 R2′) |
-| New governance rule / V-code | 1 vocabulary row + reviewer section; `V-VCODE-01` verifies referencing | Same | Good |
-| New config-gated feature | 1 `config-template.md` block + gate sites | Same, + declared block names | Fair |
+| New governance concern | 2–5 files (reviewer, vcodes, worker-schemas, review-core, facts) | 2 | Poor → Good |
+| New platform target | 14 files, 3 signature breaks | ~8, 0 | Fair → Good |
+| Host API break (frontmatter schema) | 1 compile fn + 1 manifest builder | Same | Already good |
+| New agent | 23–51 `src` files mention an existing agent by name | Same | Fair (inherent to prose agents) |
+| New verify check | 1 file (+1 counter bump) | 1 file | Excellent → Excellent |
+| ADR decision reversal | Undetectable (RC-E) | 2 detection legs + watch items | None → Fair |
 
-**Extension points today: 7** (`§ facts` declarations) **+ glob check discovery + `V-LINK-01`.**
-**Redesigned: 12** declarations, same seams.
-
-**Portability**: 410 / 672 tracked files (61.0%) are platform-specific — but **zero** of the 47
-`src/` files are. Platform coupling is entirely confined to generated output and to the 8 scripts
-R4 addresses. The agent-agnostic constraint in `ARCHITECTURE.md` § Active Constraints holds.
+Extension points: **13 `§ facts` declarations + 3 seams** (glob checks, hunt kinds, `V-LINK-01`)
+today → **15 declarations + 5 seams** (audits/, gates/). Portability: 0% of `src/` is
+host-specific (harness conditionals are build-time, 31 sites in 6 files; the `skills.sh` branch of
+`model-routing.md` is self-declared "Unverified" — a completeness-critic gap filed as R-20).
 
 ### Phase 7.5 — V-ADA-02 exit gate
 
-`documentation/decisions/INDEX.md` has a row for **all 14 ADRs** — no missing entries.
-**However**, 4 rows carry a status contradicting the ADR's own frontmatter, and 3 of those
-(ADR-011, ADR-012, ADR-013) read `Proposed` for decisions that are shipped and CI-enforced.
-Flagged **V-ADA-02 (MEDIUM / WARN)** — filed as an issue rather than silently corrected here, per
-the never-drop-findings protocol.
+All 28 tracked ADRs have a matching `documentation/decisions/INDEX.md` row. The only mismatch is
+the **untracked** `ADR-021-agent-plugins-skills-only-shell.md` (a duplicate of ADR-025 under the
+wrong number, caught by `V-ADR-05`) — a working-tree stray to delete, not an index gap. **V-ADA-02:
+pass.** Note: `ARCHITECTURE.md` §3.2 still says "Five markdown-defined agents" (there are eight).
 
 ---
 
 ## Phase 8 — Quantitative Dashboard
 
-| # | Metric | Current | Redesigned | Delta | Principle |
+| # | Metric | Current (v0.21.0) | Redesigned | Delta | Principle |
 |---|---|---|---|---|---|
-| 1 | Total tracked files | 672 | 672 | 0 | Simplicity |
-| 2 | Total LOC (`src` md / `scripts` prod) | 7,942 / 6,133 | ~8,000 / ~6,100 | +58 / −33 | Simplicity |
-| 3 | Cross-reference count (`src`) | 506 citations, ΣCa 321 | ~506 | 0 | DRY |
-| 4 | Duplication ratio — build output | 7.60× (88.4% derived) | 7.60× | 0 *(deliberate)* | DRY |
-| 5 | Duplication ratio — within `src` | 0.13% | 0.08% | −0.05pp | DRY |
-| 6 | SRP violations (>300 LOC **and** 7+ resp.) | 6 | 4 | **−2** | SRP |
-| 7 | OCP violations (new-target edit surface) | 8 prod files | 1 | **−7** | OCP |
-| 8 | Change amplification | 6.39× | 6.39× | 0 *(deliberate)* | Coupling |
-| 9 | Cognitive load (entry chain) | 506 lines | 506 lines | 0 | Accessibility |
-| 10 | Breaking-change surface (new platform) | 16 files (8 prod + 8 test) | 3 prod + ~3 test | **−10** | Future-proof |
-| 11 | Extension points | 7 decls + 2 seams | 12 decls + 2 seams | **+5** | OCP |
-| 12 | Platform coupling | 410/672 = 61.0% *(0% of `src`)* | 61.0% *(0% of `src`)* | 0 | Portability |
-| 13 | Time-to-add-agent | 25 files | 18 files | **−7** | Developer XP |
-| 14 | Audit drift risk | **5 unguarded vocabularies**, 4 live ADR-status mismatches, 2 manual counters (two-sided ✓) | 0 unguarded, 0 mismatches, 2 counters | **−5 / −4** | Integrity |
+| 1 | Total tracked files | 1,173 | ~1,215 (+~42 source modules, build output ±0) | +42 | Simplicity |
+| 2 | Total LOC (`src` md / `scripts` prod) | 12,299 / 13,522 | ~12,250 / ~14,000 | −50 / +480 | Simplicity |
+| 3 | Cross-references (`src`) | 1,293 citations, 150 targets | ~1,250 | −40 | DRY |
+| 4 | Duplication ratio — build output | 8.97× (90.0% derived) | 8.97× | 0 *(deliberate)* | DRY |
+| 5 | Duplication ratio — within `src` | 0.26% | ~0.15% | −0.11 pp | DRY |
+| 6 | SRP violations (>300 LOC **and** 7+ resp.) | 5 (reviewer, implementer, planner, worker-schemas, orchestrator-dispatch) | 2 (catalog + dispatch) | **−3** | SRP |
+| 7 | OCP violations (edit surface: concern / target / config feature) | 2–5 / 14 / ~23 | 2 / ~8 / ~23 (1-line cites) | **−3 / −6** | OCP |
+| 8 | Change amplification | 8.13× | 8.13× | 0 *(deliberate)* | Coupling |
+| 9 | Cognitive load (entry chain / reviewer closure) | 955 LOC / ~95k tokens | 955 / ~95k | 0 | Accessibility |
+| 10 | Breaking-change surface (new target) | 14 files, 3 breaks | ~8, 0 | **−6 / −3** | Future-proof |
+| 11 | Extension points | 13 decls + 3 seams | 15 decls + 5 seams | **+4** | OCP |
+| 12 | Platform coupling | 645/1,173 = 55.0% *(0% of `src`)* | 55.0% | 0 | Portability |
+| 13 | Time-to-add-audit / -target | 2–5 files / 14 | 2 / ~8 | **−3 / −6** | Developer XP |
+| 14 | Audit drift risk | 4 unguarded shapes, 1 derived counter, 2 unwired watch items, 18 gate targets ≥85%, 1 undetectable reversal class | 0 shapes, 0 counters, watch items wired, allowlisted grandfathers, 2 detection legs | **−4 / −1 / −2** | Integrity |
 
 ---
 
 ## Appendix — Top 5 by effort-to-impact
 
-Scored with the repo's own `V-PARETO-02` formula, `Priority = Gain × (11 − Effort)`, filed at ≥ 30.
+`Priority = Gain × (11 − Effort)`, filed at ≥ 30 (`V-PARETO-03`). Full list, dependencies and
+issue numbers: `documentation/plans/plan-retrospective-v0.21.0-remediation.md`.
 
-| Rank | Change | Gain | Effort | Priority | Why |
-|---:|---|---:|---:|---:|---|
-| 1 | **R1** — Protocol Vocabulary registry + generalized two-sided check | 9 | 4 | **63** | Closes the class that shipped ADR-012 F3b; 5 vocabularies, ~44 restatement sites |
-| 2 | Fix `INDEX.md` status rows (ADR-011/012/013 read `Proposed`, are shipped) | 6 | 1 | **60** | V-ADA-02; ~10 minutes; three ADRs currently read as unbuilt |
-| 3 | **R2** — Split `core.check.ts` (837 LOC / 15 checks) | 7 | 3 | **56** | The glob seam already makes this free; retires the catch-all sink |
-| 4 | **R3** — Generalize `V-CONTENTGATE-01` to a budget map | 7 | 4 | **49** | The gate that exists for one file is why the *other* files accreted |
-| 5 | ADR `status` enum enforcement (5 observed values, 3 declared) | 6 | 3 | **48** | Same root cause, one governance layer up |
+| Rank | Change | Gain | Effort | Priority |
+|---:|---|---:|---:|---:|
+| 1 | R-05 `V-SHAPE-01` route field parity + fix the Router example JSON and `types.ts` | 8 | 3 | **64** |
+| 2 | R-02 Budget the three `orchestrator-*.md` files (interim, before content gate v3) | 6 | 1 | **60** |
+| 3 | R-03 Fix the stale tree table and "five agents" in the architecture docs | 6 | 1 | **60** |
+| 4 | R-07 `ADR_WATCH_ITEMS` + `V-WATCH-01` (ADR-007's worker-schemas item first) | 6 | 2 | **54** |
+| 5 | R-09 Record #408's reversal as an ADR-007 amendment; supersession rule with two legs | 6 | 2 | **54** |
 
-Also above threshold and filed: **R5** plan-template extraction (Gain 5, Effort 3, **40**);
-`ARCHITECTURE.md` § 9 staleness (Gain 4, Effort 1, **40**); **R4** target-name centralization
-(Gain 6, Effort 5, **36**); **R6** build-output tree measurement (Gain 7, Effort 6, **35**).
+Also filed (≥ 30): R-01 retire `EXPECTED_CHECK_COUNT` (50), R-06 per-mode reviewer prompt
+requirements (50), R-10 `carry-staged-artifacts.ts` (49), R-16 gate-resolution SSOT (48),
+R-13 audit-module seam ADR + include primitive (45), R-14 implementer gates (42), R-15 content gate
+v3 (42), R-18 tree-registry ADR (42), R-08 ADR shapes (40), R-11 plan-quality CLI (40), R-12
+decision-log script (40), R-17 named-flags plumbing + `V-TREE-01` (40), R-19 worker-schemas
+orchestrator-side relocation (36), R-20 `skills.sh` harness-branch test (32).
 
-Below threshold, retained `open`, never dropped: `Priority = Gain × (11 − Effort)` restated in
-8 files + hunt scoring bands in 4 — Gain 3, Effort 3, **Priority 24**. Drift risk is low
-(ADR-006 fixed the formula); revisit if it changes.
-
----
-
-## Correction (2026-07-24, post-review)
-
-The build-output file count originally published in this document was **wrong**, and the error was
-caught by the campaign this retrospective produced — specifically by `impl-328`, which was told to
-derive the baseline independently rather than copy it, and returned a different number.
-
-| Metric | Originally published | First correction | **Final** |
-|---|---|---|---|
-| Build-output files | 414 (61.6%) | 409 (60.9%) | **410 (61.0%)** |
-| Build-output bytes | 3,522,601 | 3,495,265 | **3,502,507** |
-| Byte duplication | 7.64× | 7.58× | **7.60×** |
-| Derived share of tracked content | 88.4% | 88.3% | **88.4%** |
-
-**Cause**: the original classifier matched everything under `.claude/`, sweeping in five
-maintainer-only files that are not build output at all —
-`.claude/progress.md`, `.claude/initiatives/_registry.json`,
-`.claude/skills/prj-create-release/` (2 files), and `.claude/skills/prj-mercure-sync/SKILL.md`.
-
-Those five are precisely the *maintainer-only local content* class that **ADR-009** exists to
-separate from the shipped plugin surface — an ADR cited elsewhere in this very document. The
-measurement conflated the two categories the decision was written to keep apart.
-
-None of the document's conclusions change: the argument rests on the order of magnitude
-(≈61% of files, ≈88% of bytes, ~7.6× duplication), not on the third significant figure. The
-correction is recorded rather than silently applied because a retrospective that asserts measured
-figures should show when its own measurements were revised.
-
-**Second correction, same section.** The first correction over-corrected: excluding the five
-maintainer-only files was right, but the classifier also **missed** the repo-root `SKILL.md`,
-which is genuine build output — it carries the `<!-- GENERATED by scripts/build.ts from
-src/SKILL.md -->` banner. The original path pattern matched directory prefixes only, so a
-generated file at the repository root fell through it.
-
-Net: the first published figure was over by 5, the first correction under by 1. **410 (61.0%)**
-is the settled count, reconciled with `documentation/audits/build-tree-install-resolution.md`,
-which reached it independently and held its ground when this document disagreed.
+Below threshold, retained open, never dropped: `worker-schemas.md` per-role split (ADR-007 rejected
+it; the watch-item revisit R-19 supersedes the question), the `Priority` formula restated in 8
+files (24, unchanged from v0.16.0), and the two macOS-tmpdir hook tests (filed as a bug, not a
+remediation item).
