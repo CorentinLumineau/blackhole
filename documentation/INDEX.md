@@ -54,3 +54,4 @@
 | reviews/review-chore-content-gates-budget-orchestrator-runtime-dispatch-delegation-md-split-off.md | Review artifact for issue #705 (LGTM) | review | current | on file change |
 | plans/plan-discovery-main-is-red-on-the-full-test-suite-742-changed-prose-to-verified-while.md | Fix for the stale `unverified` assertion in `verify.model-routing-effort.test.ts` that drifted from #742's correctly-shipped "Verified" citation, turning `main` red | plan | current | on file change |
 | reviews/review-discovery-main-is-red-on-the-full-test-suite-742-changed-prose-to-verified-while.md | Review artifact for issue #746 (LGTM) | review | current | on file change |
+| plans/plan-feat-scripts-decision-log-append-ts-bumps-last-updated-silent-log-doc-health-sig.md | R-12: decision-log-append.ts script (dedup by pr/kind, bumps last_updated) + doc-health-signal.ts decision_log_silent_prs advisory | plan | current | on ADR acceptance |
