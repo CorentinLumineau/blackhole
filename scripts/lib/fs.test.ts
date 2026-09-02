@@ -189,7 +189,7 @@ describe('readJsonFile', () => {
     try {
       const filePath = path.join(dir, 'data.json');
       fs.writeFileSync(filePath, JSON.stringify({ a: 1, b: 'two' }));
-      expect(readJsonFile(filePath, 'test file')).toEqual({ a: 999, b: 'two' });
+      expect(readJsonFile(filePath, 'test file')).toEqual({ a: 1, b: 'two' });
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
