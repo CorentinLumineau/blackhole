@@ -1,5 +1,6 @@
 // Mirrors the `route` object SSOT — `queue-dag.md` § `route` object. Field names and enum
 // values are frozen there; this type must not rename or add fields (V-INT-01 / V-DRY-01).
+// omits: needs_brainstorm, needs_analysis, docs_impact, ui, confidence.docs, confidence.brainstorm, confidence.analysis, confidence.ui — not read by campaign-status.ts's current consumers (V-SHAPE-01 declared narrowing).
 export type Route = {
   needs_split?: boolean;
   needs_clarification?: boolean;
