@@ -62,10 +62,18 @@ describe('model-routing.md — reasoning effort (issue #469)', () => {
     expect(content).toMatch(/not portable|per-harness|harness-native/i);
   });
 
-  test('documents skills.sh/generic as inherit with unverified flag', () => {
+  test('documents skills.sh/generic effort policy as inherit, backed by a live build.test.ts citation (issue #746)', () => {
     const skillsBlock = content.match(/\{\{#skills\}\}([\s\S]*?)\{\{\/skills\}\}/)?.[1] ?? '';
     expect(skillsBlock).toMatch(/inherit/i);
-    expect(skillsBlock).toMatch(/unverified/i);
+    expect(skillsBlock).not.toMatch(/unverified/i);
+    expect(skillsBlock).toMatch(/scripts\/build\.test\.ts/);
+    expect(skillsBlock).toMatch(/applyPlatformConditionals/);
+
+    // The citation must resolve to real, currently-existing coverage, not just a claim in
+    // prose: the cited build.test.ts test must still exist and still target 'skills'.
+    const buildTestContent = fs.readFileSync(path.join(root, 'scripts/build.test.ts'), 'utf-8');
+    expect(buildTestContent).toMatch(/skills target resolves model-routing\.md/);
+    expect(buildTestContent).toContain("'skills'");
   });
 });
 
