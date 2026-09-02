@@ -12,7 +12,7 @@ import {
   writeCampaignConfig,
 } from './lib/test-fixtures.ts';
 
-// Behavioral contract for the Write|Edit PreToolUse gate (#447). Covers the three block classes
+// Behavioral contract for the Write|Edit PreToolUse gate. Covers the three block classes
 // (system path, path traversal, outside-worktree) plus the sensitive-filename warn tier, which is
 // deliberately NOT a block: a coarse filename regex has real false-positive risk, and stalling an
 // unattended worker on `.env.example` is worse than recording the write and letting it proceed.
@@ -25,7 +25,7 @@ const writePayload = (filePath: string, toolName = 'Write') => ({
   tool_use_id: 'toolu_447_file',
 });
 
-/** Structured stdout contract the PreToolUse harness reads (review round 1, F-00052):
+/** Structured stdout contract the PreToolUse harness reads:
  * `hookSpecificOutput.permissionDecision`, not a top-level `decision` field. Mirrored verbatim in
  * hooks-validate-bash.test.ts rather than hoisted to lib/test-fixtures.ts — both suites assert
  * against the same two-line shape, but that shared file is outside this fix round's Touch-Paths. */
@@ -42,7 +42,7 @@ describe('validate-file-changes.js', () => {
       expect(result.exitCode).toBe(2);
       expect(permissionDecision(result.stdout)).toBe('deny');
       expect(permissionReason(result.stdout)).toMatch(/system/i);
-      // Exit 2 feeds stderr (not stdout) back to the calling model (F-00052).
+      // Exit 2 feeds stderr (not stdout) back to the calling model.
       expect(result.stderr).toMatch(/system/i);
 
       const events = readHookEvents(repo);
@@ -88,7 +88,7 @@ describe('validate-file-changes.js', () => {
     });
   });
 
-  // F-00048 (review round 1): containment used to resolve only the target's *dirname*, so a
+  // Containment used to resolve only the target's *dirname*, so a
   // symlink at the leaf itself was never followed — `ln -s ~/.ssh/authorized_keys ./notes.txt`
   // then a Write to `notes.txt` passed every check. The leaf must be resolved too when it already
   // exists.
@@ -168,10 +168,10 @@ describe('validate-file-changes.js', () => {
     });
   });
 
-  // #507: the hook process's own process.cwd() is wherever the harness happened to spawn it from
+  // The hook process's own process.cwd() is wherever the harness happened to spawn it from
   // (typically the main clone, regardless of which worktree a worker is actually operating in),
   // so resolving containment from it treats every sibling worktree as "outside" and denies a
-  // worker's own legitimate writes into its worktree (F-00087). The payload's `cwd` field names
+  // worker's own legitimate writes into its worktree. The payload's `cwd` field names
   // the tool call's actual working directory; the fix widens containment to every worktree of
   // that repo family (`git worktree list`), not just the one the hook process happens to sit in.
   test('#507: a Write into a linked worktree is allowed when the payload cwd is the main clone', async () => {
@@ -204,7 +204,7 @@ describe('validate-file-changes.js', () => {
     });
   });
 
-  // #507 AC3: when the payload carries no `cwd` field at all (older harness versions, or a direct
+  // When the payload carries no `cwd` field at all (older harness versions, or a direct
   // manual invocation), the hook must fall back to the hook process's own process.cwd() rather
   // than crashing or silently skipping containment.
   test('#507: payload without a cwd field falls back to the hook process cwd', async () => {
@@ -218,13 +218,12 @@ describe('validate-file-changes.js', () => {
     });
   });
 
-  // #510/F-00088: `allWorktreeRoots` used to trust every worktree `git worktree list --porcelain`
+  // `allWorktreeRoots` used to trust every worktree `git worktree list --porcelain`
   // reported unconditionally — `git worktree add` is ungated (no bash-pattern blocks it), so one
   // such call from inside a legitimate worktree permanently widened the Write/Edit containment
   // allow-list to an arbitrary directory. Orchestrator-reproduced: a worktree registered under an
   // unrelated parent dir (neither nested under the main clone nor under a configured
-  // `scratchpad_dir`) must now be excluded from the root set, so a Write into it is denied. This
-  // is the missing deny-side test F-00089 flagged — the pre-fix behavior allowed this exact case.
+  // `scratchpad_dir`) must now be excluded from the root set, so a Write into it is denied.
   test('#510: a worktree registered outside the main clone and outside scratchpad_dir is denied', async () => {
     const evilParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-510-evil-${process.pid}-${Date.now()}`);
     try {
@@ -247,7 +246,7 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // #510 property 2: a worktree nested under the campaign's configured `scratchpad_dir` (the
+  // property 2: a worktree nested under the campaign's configured `scratchpad_dir` (the
   // documented location for worker worktrees, e.g. `/tmp/blackhole-campaign/wt-42`) is accepted,
   // not just worktrees nested under the main clone. The hook process is spawned from `mainRepo`
   // while the payload names the scratchpad worktree as `cwd` — proving `scratchpad_dir` is read
@@ -276,7 +275,7 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // #510 property 6: the scratchpad_dir value is realpath'd through the same resolution as every
+  // property 6: the scratchpad_dir value is realpath'd through the same resolution as every
   // other containment comparison — a symlinked scratchpad_dir must still accept a worktree
   // created under its real target, not just under the literal symlink path.
   test('#510: a symlinked scratchpad_dir is resolved through realpath before comparison', async () => {
@@ -314,7 +313,7 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // #510 property 4: a malformed .blackhole/config.json must fall back to main-clone-only
+  // property 4: a malformed .blackhole/config.json must fall back to main-clone-only
   // containment, never fall open to trusting an unparseable value's worktree anyway.
   test('#510: malformed .blackhole/config.json falls back to main-clone-only (fail closed)', async () => {
     const scratchpad = path.join(fs.realpathSync(os.tmpdir()), `blackhole-510-scratch-${process.pid}-${Date.now()}`);
@@ -339,7 +338,7 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // #510 property 4: a config.json that parses fine but carries no scratchpad_dir key must also
+  // property 4: a config.json that parses fine but carries no scratchpad_dir key must also
   // fall back to main-clone-only, not silently trust the worktree anyway.
   test('#510: .blackhole/config.json without scratchpad_dir falls back to main-clone-only', async () => {
     const scratchpad = path.join(fs.realpathSync(os.tmpdir()), `blackhole-510-scratch-${process.pid}-${Date.now()}`);
@@ -363,8 +362,8 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // #510 property 5: a bare system temp dir as scratchpad_dir would accept a worktree created
-  // almost anywhere under it — exactly the F-00088 hole reopened through config instead of
+  // property 5: a bare system temp dir as scratchpad_dir would accept a worktree created
+  // almost anywhere under it — the same failure reopened through config instead of
   // through an ungated `git worktree add`. Must be rejected, falling back to main-clone-only.
   test('#510: an overly-broad scratchpad_dir ("/tmp") is rejected, falling back to main-clone-only', async () => {
     await withLinkedWorktree(
@@ -384,7 +383,7 @@ describe('validate-file-changes.js', () => {
     );
   });
 
-  // #714: BARE_TEMP_DIRS is built with path.resolve() (no symlink resolution), so a bare temp
+  // BARE_TEMP_DIRS is built with path.resolve() (no symlink resolution), so a bare temp
   // root reached only through a symlinked ancestor evades classification — the same defect that
   // makes os.tmpdir() (/var/folders/... on darwin, realpath /private/var/folders/...) slip past
   // the check on macOS. Reproduced portably here via a fresh symlink whose target is the
@@ -414,7 +413,7 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // #620: when BLACKHOLE_ASSIGNED_WORKTREE is set to a registered family worktree, containment
+  // When BLACKHOLE_ASSIGNED_WORKTREE is set to a registered family worktree, containment
   // narrows to that single root — writes inside it are allowed, writes to the main clone or a
   // sibling worktree are denied with outside-assigned-worktree. Unset or invalid env → fail-open
   // to today's all-roots containment (no regression for orchestrator / non-campaign sessions).
@@ -525,7 +524,7 @@ describe('validate-file-changes.js', () => {
     });
   });
 
-  // F-00051 (review round 1): a malformed stdin payload used to be swallowed into `{}`, which
+  // A malformed stdin payload used to be swallowed into `{}`, which
   // reads as "no file_path" and allows silently. Bypasses runPreToolUseHook (which only ever
   // emits valid JSON) to put genuinely malformed text on stdin; not extracted to
   // lib/test-fixtures.ts because this fix round's Touch-Paths do not include that shared file.
@@ -554,9 +553,9 @@ describe('validate-file-changes.js', () => {
     });
   });
 
-  // #512: outside a git context, `allWorktreeRoots` has nothing to resolve, so the check falls
+  // Outside a git context, `allWorktreeRoots` has nothing to resolve, so the check falls
   // back to bounding writes to the payload's own cwd subtree rather than skipping containment
-  // outright (the pre-#512 fail-open). The pattern-based system-path checks never depended on git
+  // outright. The pattern-based system-path checks never depended on git
   // and must still fire first, unaffected by the fallback.
   test('#512: outside a git repo the system-path block still applies (no regression)', async () => {
     const nonRepo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-nogit-')));
@@ -569,7 +568,7 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // #512: outside a git context, a write inside the payload cwd's own subtree is the routine case
+  // Outside a git context, a write inside the payload cwd's own subtree is the routine case
   // (an agent working within its own session directory) and must not be denied just because
   // containment could not be resolved from git.
   test('#512: outside a git repo, a write inside the payload cwd subtree is bounded-allowed', async () => {
@@ -589,7 +588,7 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // #512: the residual gap this issue closes — outside a git context, a target that matches no
+  // Outside a git context, a target that matches no
   // denylist pattern but resolves outside the payload's own cwd subtree must now be denied rather
   // than accepted as "anywhere on disk".
   test('#512: outside a git repo, a write outside the payload cwd subtree is denied', async () => {
@@ -611,8 +610,8 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // #512: a Write target that is itself a symlink escaping the payload cwd subtree, with no git
-  // context, must also be denied — the leaf-resolution fix from F-00048 applies to the cwd
+  // A Write target that is itself a symlink escaping the payload cwd subtree, with no git
+  // context, must also be denied — the same leaf-resolution handling applies to the cwd
   // fallback bound exactly as it does to the worktree-root bound.
   test('#512: outside a git repo, a symlinked write target escaping the cwd subtree is denied', async () => {
     const nonRepo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-nogit-')));
@@ -631,10 +630,11 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // #512 follow-up: the cwd fallback bound is only as narrow as `cwd` itself. A session whose
-  // cwd resolves to a bare temp root is no narrower than accepting everything — the same hole
-  // #510/F-00088 closed for `scratchpad_dir`, reusing `isAcceptableScratchpadDir` rather than a
-  // second breadth check. Must be refused, not silently trusted as a containment root.
+  // The cwd fallback bound is only as narrow as `cwd` itself. A session whose
+  // cwd resolves to a bare temp root is no narrower than accepting everything — the same
+  // breadth check already applied to `scratchpad_dir`, reusing `isAcceptableScratchpadDir`
+  // rather than a second breadth check. Must be refused, not silently trusted as a
+  // containment root.
   test('#512: outside a git repo, a cwd resolving to a bare temp root is too broad to trust as a fallback bound', async () => {
     const bareTmp = fs.realpathSync(os.tmpdir());
     const target = path.join(bareTmp, `blackhole-512-broad-${process.pid}.ts`);
@@ -647,15 +647,14 @@ describe('validate-file-changes.js', () => {
   });
 });
 
-// Uncaught-exception fail-open regression (#580): a non-string `file_path` reaches
+// Uncaught-exception fail-open regression: a non-string `file_path` reaches
 // `hook-event-log.js`'s `resolveExistingAncestor` (line 96, `path.resolve(p)`, reached via
 // `isUnderRoot`←`isInsideAnyRoot` from the worktree-containment check at main() line 101) and
-// throws a `TypeError` outside every existing try/catch. Before this fix, that fell through to
-// bun's default exit 1 — the wrapper's (claude-native-settings.ts) fail-OPEN condition,
-// converting what should be a refusal into a silent allow of the V-SEC-11 gate. Every non-string
-// shape is exercised, not just the investigation note's `number` repro
-// (.blackhole/plans/issue-580-investigation.md), to prove the fix closes the defect class rather
-// than one type.
+// throws a `TypeError` outside every existing try/catch. An uncaught exception here falls
+// through to bun's default exit 1 — the wrapper's (claude-native-settings.ts) fail-OPEN
+// condition — converting what should be a refusal into a silent allow of the V-SEC-11 gate.
+// Every non-string shape is exercised, not just one, to prove the fix closes the defect class
+// rather than a single type.
 describe('validate-file-changes.js — uncaught validator crash fails closed, not open (#580)', () => {
   const NON_STRING_FILE_PATH: unknown[] = [12345, ['a'], {}, true];
 

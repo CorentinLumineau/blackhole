@@ -64,3 +64,4 @@
 | reviews/review-feat-planner-plan-quality-gate-cli-invoked-at-plan-time.md | Review artifact for issue #716 (LGTM) | review | current | on file change |
 | plans/plan-feat-checks-v-shape-01-route-field-set-parity-router-validator-status-type-schem.md | V-SHAPE-01 route field-set parity check across router validator, status type, schema example, queue-dag | plan | current | on ADR acceptance |
 | reviews/review-feat-checks-v-shape-01-route-field-set-parity-router-validator-status-type-schem.md | Review artifact for issue #708 (LGTM) | review | current | on file change |
+| reviews/review-docs-tests-strip-issue-finding-id-citations-from-hooks-validate-file-test-commen.md | Review artifact for issue #736 (LGTM) | review | current | on file change |
