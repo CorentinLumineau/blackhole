@@ -36,4 +36,5 @@
 | reference/product-principles.md | Owner-rulings ledger of durable product preferences binding on future diffs | reference | current | on new ruling |
 | reviews/release-v0.13.1-to-head-audit.md | Release audit covering all changes from v0.13.1 to HEAD | review | current | on release |
 | reviews/review-campaign-config-confirmation-gate.md | Review of the campaign config confirmation gate implementation | review | current | on ADR-015 change |
+| reviews/review-docs-architecture-fix-stale-committed-trees-table-and-five-agents-in-the-archite.md | Review artifact for issue #706 (LGTM) | review | current | on file change |
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
