@@ -40,6 +40,7 @@
 | reviews/release-v0.13.1-to-head-audit.md | Release audit covering all changes from v0.13.1 to HEAD | review | current | on release |
 | reviews/review-campaign-config-confirmation-gate.md | Review of the campaign config confirmation gate implementation | review | current | on ADR-015 change |
 | reviews/review-docs-architecture-fix-stale-committed-trees-table-and-five-agents-in-the-archite.md | Review artifact for issue #706 (LGTM) | review | current | on file change |
+| reviews/review-docs-review-core-per-dispatch-mode-reviewer-prompt-requirements-verification-mod.md | Review artifact for issue #709 (LGTM) | review | current | on file change |
 | reviews/review-fix-hooks-validate-file-changes-js-510-512-tests-fail-on-macos-os-tmpdir-under-p.md | Review artifact for issue #714 (LGTM, one deferred WARN) | review | current | on file change |
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
 | reviews/review-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Review artifact for issue #704 (LGTM) | review | current | on file change |
