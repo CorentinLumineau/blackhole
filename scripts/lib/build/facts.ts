@@ -102,7 +102,17 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // | src/agents/reviewer.md               | total file LOC       | 751      | 902        |
 // | src/agents/implementer.md            | max `##` section LOC | 309      | 371        |
 // | src/agents/implementer.md            | total file LOC       | 629      | 755        |
+// | src/references/orchestrator-dispatch.md   | max `##` section LOC | 49  | 59         |
+// | src/references/orchestrator-dispatch.md   | total file LOC       | 333 | 400        |
+// | src/references/orchestrator-runtime.md    | max `##` section LOC | 130 | 156        |
+// | src/references/orchestrator-runtime.md    | total file LOC       | 202 | 243        |
+// | src/references/orchestrator-delegation.md | max `##` section LOC | 177 | 213        |
+// | src/references/orchestrator-delegation.md | total file LOC       | 177 | 213        |
 //
+// (orchestrator-delegation.md's single `## 5-Field Delegation Contract` heading sits on line 1,
+// so its one section spans the whole file — max-section and total-file LOC are numerically
+// equal; expected, not a measurement bug. All three rows above re-measured at issue #705
+// implementation time, base commit `a9026b3c`; unchanged from #703's landing-commit numbers.)
 export type ContentGateBudget = { maxSectionLoc: number; maxFileLoc: number };
 
 export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
@@ -114,6 +124,9 @@ export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
   'src/references/hook-schemas.md': { maxSectionLoc: 101, maxFileLoc: 167 },
   'scripts/checks/*.check.ts': { maxSectionLoc: 68, maxFileLoc: 218 },
   'scripts/lib/build/*.ts': { maxSectionLoc: 68, maxFileLoc: 287 },
+  'src/references/orchestrator-dispatch.md': { maxSectionLoc: 59, maxFileLoc: 400 },
+  'src/references/orchestrator-runtime.md': { maxSectionLoc: 156, maxFileLoc: 243 },
+  'src/references/orchestrator-delegation.md': { maxSectionLoc: 213, maxFileLoc: 213 },
 };
 
 // V-CONTENTGATE-02 (issue #545) — advisory companion to V-CONTENTGATE-01's hard gate. The hard

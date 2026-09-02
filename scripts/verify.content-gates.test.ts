@@ -301,7 +301,7 @@ describe('findContentGateWarnings', () => {
 });
 
 describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positives)', () => {
-  test('covers exactly the 8 declared keys', () => {
+  test('covers exactly the 11 declared keys', () => {
     expect(Object.keys(CONTENT_GATE_BUDGETS).sort()).toEqual(
       [
         'src/agents/orchestrator.md',
@@ -310,6 +310,9 @@ describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positi
         'src/agents/implementer.md',
         'src/references/worker-schemas.md',
         'src/references/hook-schemas.md',
+        'src/references/orchestrator-dispatch.md',
+        'src/references/orchestrator-runtime.md',
+        'src/references/orchestrator-delegation.md',
         'scripts/checks/*.check.ts',
         'scripts/lib/build/*.ts',
       ].sort(),
