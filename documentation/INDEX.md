@@ -47,3 +47,4 @@
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
 | reviews/review-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Review artifact for issue #704 (LGTM) | review | current | on file change |
 | reviews/review-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Review artifact for issue #728 (LGTM, 2 deferred WARN) | review | current | on file change |
+| reviews/review-fix-config-registration-parent-key-coverage-for-nested-config-blocks-router-conf.md | Review artifact for issue #707 (LGTM, 1 deferred WARN) | review | current | on file change |
