@@ -42,6 +42,8 @@ protocol step 2's, unchanged.
   restated here. After the 2-retry cap, still-red Permanent CI is diagnosed per
   `ci-diagnosis.md` (failing-step logs, environment/genuine classification,
   implementer fix-loop routing via `V-CI-01`).
+- **Coverage**: the polled CI run's `verify` job includes `bun test` (`verify.yml`'s
+  "Run test suite" step, issue #747) — C3 "CI green" already covers the full suite.
 
 ## 1. `mergeEligible(issue) -> bool`
 
