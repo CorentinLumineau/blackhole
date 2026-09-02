@@ -33,12 +33,14 @@
 | plans/story-driven-conformance.md | Plan for story-driven conformance across the campaign's issue lifecycle | plan | current | on ADR acceptance or kaizen hunt-kind change |
 | plans/plan-docs-architecture-fix-stale-committed-trees-table-and-five-agents-in-the-archite.md | Plan — fix stale committed-target-trees table and "five agents" claim in the architecture maps (issue #706, R-03) | plan | current | on release |
 | plans/plan-fix-hooks-validate-file-changes-js-510-512-tests-fail-on-macos-os-tmpdir-under-p.md | Bugfix plan fixing hook-event-log.js's symlink-unaware `BARE_TEMP_DIRS` broad-root check (issue #714, R-21) — closes #510/#512 macOS test failures without weakening the guard | plan | current | on file change |
+| plans/plan-docs-review-core-per-dispatch-mode-reviewer-prompt-requirements-verification-mod.md | Plan for issue #709 (R-06): per-dispatch-mode reviewer prompt requirements table reconciling review-core.md's universal checklist claim with reviewer.md §13/§24's narrower scopes | plan | current | on file change |
 | reference/check-utils-blast-radius.md | Blast-radius reference for shared check-utils.ts consumers across scripts/checks | reference | current | on check-utils.ts or scripts/checks/*.check.ts import change |
 | reference/decision-log.md | Running decision log of Hard Choice / Bugfix / Refactoring decision records | reference | current | on file change |
 | reference/product-principles.md | Owner-rulings ledger of durable product preferences binding on future diffs | reference | current | on new ruling |
 | reviews/release-v0.13.1-to-head-audit.md | Release audit covering all changes from v0.13.1 to HEAD | review | current | on release |
 | reviews/review-campaign-config-confirmation-gate.md | Review of the campaign config confirmation gate implementation | review | current | on ADR-015 change |
 | reviews/review-docs-architecture-fix-stale-committed-trees-table-and-five-agents-in-the-archite.md | Review artifact for issue #706 (LGTM) | review | current | on file change |
+| reviews/review-docs-review-core-per-dispatch-mode-reviewer-prompt-requirements-verification-mod.md | Review artifact for issue #709 (LGTM) | review | current | on file change |
 | reviews/review-fix-hooks-validate-file-changes-js-510-512-tests-fail-on-macos-os-tmpdir-under-p.md | Review artifact for issue #714 (LGTM, one deferred WARN) | review | current | on file change |
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
 | reviews/review-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Review artifact for issue #704 (LGTM) | review | current | on file change |

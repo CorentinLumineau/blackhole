@@ -280,15 +280,21 @@ already-named prior findings, not a fresh implementation.
 
 ## Reviewer prompt requirements
 
-Every `reviewer` delegation MUST include:
+Every `reviewer` delegation MUST include a dispatch mode (`full` / `security-mode` /
+`recheck` / `verification`) and output format per `worker-schemas.md` reviewer contract. The
+remaining inputs are dispatch-mode-dependent, not universal — `reviewer.md` §13 (Recheck) and
+§24 (Verification) narrow the checklist and diff scope by design; this table is their
+citation target, not a restatement each mode must independently reconcile against.
 
-1. PR number + diff summary
-2. Plan Touch-Paths and schema baseline
-3. Full V-code audit checklist from `plugins/blackhole-agent-plugins/skills/blackhole/references/blackhole-vcodes.md`
-4. Output format per `worker-schemas.md` reviewer contract
-5. When Security-mode review's trigger (above) resolves `true`, the diff-scoped
-   attack-signature scan per `src/references/security-attack-signatures.md` (§ Security-mode
-   review, step 3) — cite by path; do not restate patterns inline.
+| Mode | PR diff scope | Touch-Paths + schema baseline | Full V-code checklist (`plugins/blackhole-agent-plugins/skills/blackhole/references/blackhole-vcodes.md`, §§1–23) | Findings input | Attack-signature scan |
+|------|----------------|-------------------------------|------------------------------------------------------|------------------|-------------------------|
+| Full (ordinary dispatch) | Whole PR diff | Yes | Yes | — | — |
+| Security-mode (§ Security-mode review, `route.security_review_required` resolved `true`) | Whole PR diff | Yes | Yes | — | Yes — diff-scoped, `src/references/security-attack-signatures.md` (cite by path; do not restate patterns inline) |
+| Recheck (§ Recheck mode, `reviewer.md` §13) | Fix commits only, plus one full-diff Objective Fulfillment comparison (GAP-2 remedy) | Yes | No — scoped to fix commits' changed lines; §§1–10 not re-run against the whole diff | Prior findings `{finding_id, summary}[]` | — |
+| Verification (§ Independent security verification, `reviewer.md` §24) | Never the full PR diff | — | No — §§1–23 not run | Stamped findings `{finding_id, vcode, severity, file, line, summary}[]` | — |
+
+Full and security-mode differ only in the attack-signature-scan column — security-mode is the
+primary full-audit dispatch with that one addition, not a fifth independent mode.
 
 ## Aggregate invocation
 
