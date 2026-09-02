@@ -528,6 +528,20 @@ describe('validateWorker implementer companion_repairs[] (issue #453)', () => {
     expect(errors.some((e) => e.includes('vcode'))).toBe(true);
   });
 
+  test('accepts V-ADA-09 in companion_repairs[] (issue #728)', () => {
+    const errors = validateWorker('implementer', {
+      ...baseComplete,
+      companion_repairs: [
+        {
+          vcode: 'V-ADA-09',
+          file: 'documentation/INDEX.md',
+          action: 'appended reference/journeys.md row to documentation/INDEX.md',
+        },
+      ],
+    });
+    expect(errors).toEqual([]);
+  });
+
   test('accepts implementer JSON without companion_repairs (backward compatible)', () => {
     const errors = validateWorker('implementer', { ...baseComplete });
     expect(errors).toEqual([]);

@@ -58,9 +58,13 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    substituting `{project-name}` from `.blackhole/config.json`'s `repo` field
    (`owner/repo-name` → `repo-name`) or `basename "$(pwd)"` when `repo` is absent or has no
    `/`. Additionally create `DESIGN.md` under the same skip-if-exists rule **only when**
-   `bash scripts/detect-frontend.sh` emits `frontend=yes`. Additionally create `journeys.md`
-   under the same skip-if-exists rule **only when** the companion-file scaffold above is not
-   skipped **and** `kaizen.enabled` is `true` **and** `kaizen.kinds` contains `ux-coherence`.
+   `bash scripts/detect-frontend.sh` emits `frontend=yes`. Additionally create
+   `documentation/reference/journeys.md` under the same skip-if-exists rule **only when** the
+   companion-file scaffold above is not skipped **and** `kaizen.enabled` is `true` **and**
+   `kaizen.kinds` contains `ux-coherence`. When created (not skipped), run
+   `bun run scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index` to
+   upsert its `documentation/INDEX.md` row (idempotent; no-op when `documentation/INDEX.md`
+   does not yet exist in the target repo).
    Full contract: [templates/companion-files/README.md](../templates/companion-files/README.md).
    Initial creation runs here at bootstrap; implement-time repair of absent/broken root
    companions is `implementer.md` § Companion-file Sync (`companion-file-sync.md`) — no

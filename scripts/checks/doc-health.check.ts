@@ -89,17 +89,15 @@ export const evaluateCanonicalNaming = (docsDir: string): CheckResult => {
 // Root-INDEX row parser (shared by V-DOCHEALTH-01/02/03) — the same 5-column schema already in
 // production at documentation/decisions/INDEX.md (`path | summary | type | status |
 // review_trigger`), row paths relative to documentation/ itself (Codebase Conventions).
-export type RootIndexRow = { path: string; summary: string; type: string; status: string; reviewTrigger: string };
-
 export const parseRootIndexRows = parseIndexTableRows;
 
-// Idempotent row-append primitive (issue #490, ADR-021 D2 carry-step) — built on
-// parseRootIndexRows above (V-INT-02). Guards a duplicate row on implementer re-spawn.
-export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow): { content: string; appended: boolean } => {
-  if (parseRootIndexRows(indexContent).some((r) => r.path === row.path)) return { content: indexContent, appended: false };
-  const line = `| ${row.path} | ${row.summary} | ${row.type} | ${row.status} | ${row.reviewTrigger} |`;
-  return { content: `${indexContent}${indexContent.endsWith('\n') ? '' : '\n'}${line}\n`, appended: true };
-};
+// Issue #728 (V-INT-02 Decision Record 3): `RootIndexRow` and `appendIndexRowIfAbsent` now
+// live in check-common.ts — companion-file-sync.ts (scripts/lib/) needed this same primitive
+// and could not import it from this *.check.ts module (check-common.ts's own documented import
+// direction). Re-exported here so this module's public surface, and verify.doc-health.test.ts's
+// existing import path, are unchanged.
+export { appendIndexRowIfAbsent } from '../lib/check-common.ts';
+export type { RootIndexRow } from '../lib/check-common.ts';
 
 // V-DOCHEALTH-01 (new, blocking): every INDEX.md row resolves to an existing file.
 export const findDanglingIndexRows = (indexPaths: string[], existingRelPaths: Set<string>): string[] =>

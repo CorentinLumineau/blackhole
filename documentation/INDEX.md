@@ -26,6 +26,7 @@
 | plans/adr-006-kaizen-hunt-campaign.md | Implementation campaign plan for ADR-006 kaizen hunt | plan | current | on ADR acceptance |
 | plans/plan-adr-007-drift-proof-toolchain-reseating.md | Implementation plan for ADR-007's drift-proof toolchain re-seating blueprint | plan | current | on ADR acceptance |
 | plans/plan-campaign-config-confirmation-gate.md | Plan for the campaign config confirmation gate at bootstrap preflight | plan | current | on ADR acceptance or Bootstrap preflight change |
+| plans/plan-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Implementation plan for closing the Phase-0 journeys.md companion-scaffold INDEX gap and correcting its documented target path (issue #728) | plan | current | on file change |
 | plans/plan-retrospective-v0.21.0-remediation.md | Work breakdown and dependency graph for the v0.21.0 retrospective's 22 remediation items (one issue each) | plan | current | on ADR acceptance |
 | plans/plan-pr-merge-gate-dependency-ordering.md | Implementation plan for ADR-005's PR merge-gate and dependency ordering | plan | current | on file change |
 | plans/plan-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Implementation plan for issue #704 (R-01) — retire the derived `EXPECTED_CHECK_COUNT` counter and its new-check-module Touch-Paths trigger | plan | current | on file change |

@@ -18,7 +18,7 @@ what each template is for and the substitution/skip rules the scaffold follows.
 | `AGENTS.md.template` | `AGENTS.md` | Repo root — behavioral config, symlinked from `CLAUDE.md` |
 | `DESIGN.md.template` | `DESIGN.md` | Repo root — visual design tokens, frontend-only |
 | `product-principles.md.template` | `documentation/reference/product-principles.md` | Owner-rulings ledger — unconditional, not frontend-gated, same skip-if-exists treatment as `ARCHITECTURE.md`/`AGENTS.md` |
-| `journeys.md.template` | `journeys.md` | Repo root — hunt-kind-gated: `kaizen.enabled && kaizen.kinds` includes `ux-coherence`, the first companion file activated by a hunt kind rather than project structure or frontend detection |
+| `journeys.md.template` | `documentation/reference/journeys.md` | `documentation/reference/` — hunt-kind-gated: `kaizen.enabled && kaizen.kinds` includes `ux-coherence`, the first companion file activated by a hunt kind rather than project structure or frontend detection |
 | `package-AGENTS.md.template` | *(reference only)* | Per-package `AGENTS.md` — not auto-instantiated |
 | `package-ARCHITECTURE.md.template` | *(reference only)* | Per-package `ARCHITECTURE.md` — not auto-instantiated |
 
@@ -72,6 +72,12 @@ Unlike every other companion file, `journeys.md` is not gated on universal scaff
 This triple gate keeps a hunt-kind-scoped artifact from being written into every consumer
 repo's scaffold regardless of whether that repo has opted into the kind that reads it
 (`src/references/hunt/ux-coherence.md` § Scan heuristics, journeys heuristic).
+
+Creating `documentation/reference/journeys.md` under `documentation/` means `doc-health.check.ts`'s
+`V-DOCHEALTH-02` requires it to have a `documentation/INDEX.md` row — the scaffold upserts that
+row automatically: at bootstrap via `--upsert-journeys-index`, and at implement-time (for a
+`journeys.md` created by an older campaign build) via `runCompanionFileSync`'s unconditional
+check. No manual `documentation/INDEX.md` edit is needed.
 
 The instantiated `journeys.md` ships with frontmatter `status: template` and an
 `<!-- STATUS: unfilled template ... -->` sentinel comment. The `ux-coherence` journeys band

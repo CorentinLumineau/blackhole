@@ -1,9 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './fs.ts';
+import { appendIndexRowIfAbsent, type RootIndexRow } from './check-common.ts';
 
 export type CompanionRepair = {
-  vcode: 'V-ADA-01' | 'V-ADA-05';
+  vcode: 'V-ADA-01' | 'V-ADA-05' | 'V-ADA-09';
   file: string;
   action: string;
 };
@@ -181,6 +182,49 @@ export const repairAgentsSymlink = (repoRoot: string, projectName: string): Comp
   return repairs;
 };
 
+// Issue #728 — `journeys.md.template` carries the `documentation/`-tree lifecycle frontmatter
+// shape (see `templates/companion-files/journeys.md.template`), unlike any other root companion
+// file, because it targets `documentation/reference/journeys.md`, not the repo root
+// (`templates/companion-files/README.md`'s "Repo root" claim was the stale doc this issue
+// corrects — see Decision Record 1). `doc-health.check.ts`'s V-DOCHEALTH-02 walks
+// `documentation/` and requires a `documentation/INDEX.md` row for every doc it finds there.
+export const JOURNEYS_DOC_REL_PATH = path.join('documentation', 'reference', 'journeys.md');
+
+const JOURNEYS_INDEX_ROW: RootIndexRow = {
+  path: 'reference/journeys.md',
+  summary: 'User-journey inventory the ux-coherence hunt kind audits core-job coverage against',
+  type: 'reference',
+  status: 'template',
+  reviewTrigger: 'on ADR acceptance',
+};
+
+const rootIndexPath = (repoRoot: string): string => path.join(repoRoot, 'documentation', 'INDEX.md');
+
+// Unconditional — unlike needsArchitectureRepair/needsAgentsSymlinkRepair, this repair carries
+// no diff-path predicate. It only ever fires when `journeys.md` already exists on disk, so it
+// is purely additive and self-limiting: there is no drive-by-creation risk to gate against
+// (Codebase Conventions, Task Breakdown step 5).
+export const needsJourneysIndexRepair = (repoRoot: string): boolean => {
+  if (!fs.existsSync(path.join(repoRoot, JOURNEYS_DOC_REL_PATH))) return false;
+  const indexPath = rootIndexPath(repoRoot);
+  if (!fs.existsSync(indexPath)) return false;
+  const { appended } = appendIndexRowIfAbsent(fs.readFileSync(indexPath, 'utf-8'), JOURNEYS_INDEX_ROW);
+  return appended;
+};
+
+export const repairJourneysIndexRow = (repoRoot: string): CompanionRepair | null => {
+  if (!needsJourneysIndexRepair(repoRoot)) return null;
+  const indexPath = rootIndexPath(repoRoot);
+  const { content, appended } = appendIndexRowIfAbsent(fs.readFileSync(indexPath, 'utf-8'), JOURNEYS_INDEX_ROW);
+  if (!appended) return null;
+  fs.writeFileSync(indexPath, content, 'utf-8');
+  return {
+    vcode: 'V-ADA-09',
+    file: path.join('documentation', 'INDEX.md'),
+    action: 'appended reference/journeys.md row to documentation/INDEX.md',
+  };
+};
+
 export const runCompanionFileSync = (
   repoRoot: string,
   diffPaths: string[],
@@ -197,6 +241,9 @@ export const runCompanionFileSync = (
     repairs.push(...repairAgentsSymlink(repoRoot, projectName));
   }
 
+  const journeysRepair = repairJourneysIndexRow(repoRoot);
+  if (journeysRepair) repairs.push(journeysRepair);
+
   return { repairs };
 };
 
@@ -207,29 +254,47 @@ export const readDiffFile = (diffFilePath: string): string[] =>
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith('#'));
 
-function parseCliArgs(argv: string[]): { repoRoot: string | null; diffFile: string | null } {
+function parseCliArgs(argv: string[]): { repoRoot: string | null; diffFile: string | null; upsertJourneysIndex: boolean } {
   let repoRoot: string | null = null;
   let diffFile: string | null = null;
+  let upsertJourneysIndex = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--repo-root' && argv[i + 1]) {
       repoRoot = argv[++i];
     } else if (arg === '--diff-file' && argv[i + 1]) {
       diffFile = argv[++i];
+    } else if (arg === '--upsert-journeys-index') {
+      upsertJourneysIndex = true;
     }
   }
-  return { repoRoot, diffFile };
+  return { repoRoot, diffFile, upsertJourneysIndex };
 }
 
 if (import.meta.main) {
-  const { repoRoot, diffFile } = parseCliArgs(process.argv.slice(2));
-  if (!repoRoot || !diffFile) {
+  const { repoRoot, diffFile, upsertJourneysIndex } = parseCliArgs(process.argv.slice(2));
+  if (!repoRoot) {
     console.error(
-      'Usage: bun run scripts/lib/companion-file-sync.ts --repo-root <path> --diff-file <paths.txt>',
+      'Usage: bun run scripts/lib/companion-file-sync.ts --repo-root <path> --diff-file <paths.txt>\n' +
+        '   or: bun run scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index',
     );
     process.exit(2);
   }
-  const diffPaths = readDiffFile(diffFile);
-  const result = runCompanionFileSync(path.resolve(repoRoot), diffPaths);
-  console.log(JSON.stringify(result, null, 2));
+  if (upsertJourneysIndex) {
+    // Bootstrap-time path (src/SKILL.md Phase 0 step 2, issue #728): repo-root only, no
+    // --diff-file — this repair is unconditional (see runCompanionFileSync), so it needs no
+    // diff-path predicate to decide whether to fire.
+    const repair = repairJourneysIndexRow(path.resolve(repoRoot));
+    console.log(JSON.stringify({ repairs: repair ? [repair] : [] }, null, 2));
+  } else if (diffFile) {
+    const diffPaths = readDiffFile(diffFile);
+    const result = runCompanionFileSync(path.resolve(repoRoot), diffPaths);
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.error(
+      'Usage: bun run scripts/lib/companion-file-sync.ts --repo-root <path> --diff-file <paths.txt>\n' +
+        '   or: bun run scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index',
+    );
+    process.exit(2);
+  }
 }

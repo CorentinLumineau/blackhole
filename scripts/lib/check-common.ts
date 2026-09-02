@@ -108,3 +108,18 @@ export const parseIndexTableRows = (
   }
   return rows;
 };
+
+// Issue #728 (V-INT-02 Decision Record 3): relocated from doc-health.check.ts, whose
+// `*.check.ts` extension made it unimportable from lib/ (this module's own header forbids
+// importing any *.check.ts module, to avoid import cycles) — companion-file-sync.ts (lib/)
+// needs this same idempotent-append primitive for the journeys.md INDEX row repair.
+// doc-health.check.ts re-exports both names for backward compatibility with its existing test.
+export type RootIndexRow = { path: string; summary: string; type: string; status: string; reviewTrigger: string };
+
+// Idempotent row-append primitive (issue #490, ADR-021 D2 carry-step) — built on
+// parseIndexTableRows above (V-INT-02). Guards a duplicate row on implementer re-spawn.
+export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow): { content: string; appended: boolean } => {
+  if (parseIndexTableRows(indexContent).some((r) => r.path === row.path)) return { content: indexContent, appended: false };
+  const line = `| ${row.path} | ${row.summary} | ${row.type} | ${row.status} | ${row.reviewTrigger} |`;
+  return { content: `${indexContent}${indexContent.endsWith('\n') ? '' : '\n'}${line}\n`, appended: true };
+};
