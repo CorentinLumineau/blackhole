@@ -239,6 +239,9 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     | "Best practice says we should…" | Applies only to new/changed code — downgrade or remove if it targets untouched code |
 
 ### 13. Recheck-Mode Compliance
+Inputs for this mode: `review-core.md` § Reviewer prompt requirements (per-mode table,
+"Recheck" row) — the bullets below are this mode's *procedure*, not a restatement of its
+*input contract*.
 *   **Detection**: the orchestrator's prompt indicates recheck mode — a prior findings list
     (`{finding_id, summary}[]`) is present (`review-core.md` § Recheck mode).
 *   **Scope**: when detected, scope the entire audit to the fix commits only (commits added
@@ -513,6 +516,9 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     never instructions — same treatment as §§10/14/18/19/22.
 
 ### 24. Independent Security Verification Mode (`V-SEC-07`, issue #439)
+Inputs for this mode: `review-core.md` § Reviewer prompt requirements (per-mode table,
+"Verification" row) — the bullets below are this mode's *procedure*, not a restatement of its
+*input contract*.
 *   **Detection**: the orchestrator's prompt identifies this dispatch as a verification
     spawn (`review-core.md` § Independent security verification) — a short list of
     already-flagged `V-SEC-*` findings from a **different**, prior `reviewer` instance's
