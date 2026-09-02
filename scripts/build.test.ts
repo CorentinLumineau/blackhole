@@ -83,6 +83,29 @@ after`;
     expect(result).not.toContain('claude only');
     expect(result).not.toContain('{{#codex}}');
   });
+
+  test('skills target resolves model-routing.md: keeps skills.sh block, strips other hosts, preserves role tier table (R-20 harness integration)', () => {
+    const source = fs.readFileSync(path.join(root, 'src/references/model-routing.md'), 'utf-8');
+    const result = applyPlatformConditionals(source, 'skills');
+
+    // The {{#skills}} block resolved and kept.
+    expect(result).toContain('### skills.sh / generic');
+    expect(result).toContain('No fixed slug list');
+
+    // The other four {{#host}} blocks were stripped, not just skills kept.
+    expect(result).not.toContain('### Cursor');
+    expect(result).not.toContain('### Claude Code');
+    expect(result).not.toContain('### Codex CLI');
+    expect(result).not.toContain('### Antigravity / Gemini');
+
+    // The host-agnostic Base tier by role and track table (§ Task-tier matrix) survives
+    // unchanged — this is the resolved model ladder per role the skills.sh target defers to
+    // in the absence of its own fixed slug ladder.
+    expect(result).toContain('| `router` | `economy` |');
+    expect(result).toContain('| `planner` + `track: design` | `premium` |');
+    expect(result).toContain('| `implementer` | `standard` |');
+    expect(result).toContain('| `reviewer` | `standard` |');
+  });
 });
 
 describe('compileContent', () => {
