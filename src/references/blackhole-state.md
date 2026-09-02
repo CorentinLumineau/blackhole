@@ -229,6 +229,11 @@ at escalation — never overlapping for one issue), so there is no lost-update r
   `implementer.md` now dedups that target by the `(ADR-{NNN})` / `(analyze: issue #N)` citation
   suffix `planner.md`'s own near-duplicate check (§4.8 Trigger A / Step 4 Trigger B) already
   uses — reused, not reinvented.
+- **Mechanized (issue #715, R-10)**: the carry-step's shape guard, `target_kind` dispatch,
+  9-row frontmatter rewrite, and both `append_row` dedup discriminators above are implemented at
+  `scripts/carry-staged-artifacts.ts` / `scripts/lib/carry-staged-artifacts.ts` — `implementer.md`
+  § Carry Staged Artifacts now states only the search-before-write judgment and the invocation
+  line, not the mechanical logic itself.
 
 ## Ledger obligations
 

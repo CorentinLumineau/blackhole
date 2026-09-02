@@ -368,70 +368,39 @@ instructions: |
   Referenced from step 6 "Verify & Open PR" above (same reference-not-restate pattern as the
   Companion-doc sync bullet). Promotes artifacts staged at thinking time
   (`planner`/`investigator`, `blackhole-state.md` § Staging, ADR-021 D1) into their
-  `documentation/` targets, committed inside this issue's own PR.
+  `documentation/` targets, committed inside this issue's own PR. The manifest shape guard,
+  `target_kind` dispatch, 9-row frontmatter rewrite mapping, and `append_row` dedup for both
+  discriminator shapes are mechanized by `scripts/carry-staged-artifacts.ts` (issue #715, R-10) —
+  this section states only what the script does not decide.
 
   *   **Gate**: `docs_governance.enabled` and `docs_governance.write_governance` both resolve
       `true` (absent config block ⇒ both default `true` per `config-template.md`; an explicit
-      `false` on either ⇒ this entire section is inert — skip, do not read the manifest).
-  *   **Read**: `.blackhole/staged/<issue>/manifest.json` at the absolute repo-root staging path
-      the orchestrator passed at spawn time. Absent file ⇒ no-op, nothing was staged for this
-      issue.
-  *   **Defensive shape guard** (runtime-scoped, distinct from #482's future CI-time schema
-      check): the **Read** step above already treats an absent manifest as a no-op. A manifest
-      that **exists but is zero-byte or fails to parse as JSON** is a distinct case (issue #558)
-      — it means a staging write was attempted and failed, so treating it identically to "nothing
-      staged" would silently drop staged artifacts. Never `jq empty` to tell the two apart — see
-      `blackhole-state.md` § Write protocol for the general absent-vs-zero-byte class this
-      reuses. On zero-byte/unparseable: log a `new_findings[]` row (`kind: bug`) citing the
-      manifest path, skip the carry for this issue this run, and stop — there is no per-entry
-      validation to run against unparsed JSON. Otherwise, proceed to the existing per-entry field
-      validation unchanged: `route`, `sub_mode`, `produced_by`, `declared_at`, `staged_path`,
-      `target_path`, `target_kind` all present; `target_kind` ∈ `{new_file, append_row}`. A
-      malformed entry is skipped (not fatal to the rest): log a `new_findings[]` row (`kind: bug`)
-      citing the manifest path and the offending entry's index, and continue with the remaining
-      well-formed entries.
-  *   **Branch on `target_kind`** — distinct copy semantics per entry:
-      - `new_file`, `produced_by: planner`, `route: plan` → copy `staged_path` → `target_path`
-        **verbatim** (ADR-021 D3, issue #445). The planner already rendered durable lifecycle
-        frontmatter at staging time — no rewrite needed.
-      - `new_file`, `produced_by: planner` (design route) → copy `staged_path` → `target_path`
-        **verbatim**. `planner.md` §4.8 already renders the ADR in the target doc-governance
-        schema via `detect-doc-schema.sh` at staging time — no rewrite needed.
-      - `new_file`, `produced_by: investigator` (analyze/investigate routes) → apply the
-        **frontmatter rewrite mapping** below before writing to `target_path`. Apply
-        search-before-write first: if an existing doc at the target directory already covers the
-        same concern, update it in place (bump `last_updated`, preserve its original `created`)
-        instead of creating a duplicate.
-      - `append_row` (any `produced_by`) → read the staged fragment; check `target_path` for an
-        existing entry with the same discriminator first — **idempotency guard** against a
-        duplicate entry on implementer re-spawn. Append only if absent. The discriminator depends
-        on the target's shape (issue #557 — the guard was originally written against the two
-        pipe-table consumers only and could not dedup a bullet-list target):
-        - Pipe-table targets (`documentation/decisions/INDEX.md`, `documentation/INDEX.md`) — the
-          row's `path` column value.
-        - `target_path === "ARCHITECTURE.md"` (bullet-list target, `## Active Constraints`) — the
-          citation suffix, the mandatory trailing `(ADR-{NNN})` or `(analyze: issue #N)`
-          attribution `planner.md` appends to every constraint bullet. This is the same
-          discriminator `planner.md`'s own near-duplicate check already uses (§ Workflow &
-          Planning Steps step 4) — reused, not reinvented (`V-INT-02`). Extract the staged
-          fragment's trailing parenthetical and skip the append if a live bullet under
-          `## Active Constraints` already ends with the same suffix.
-  *   **Frontmatter rewrite mapping** (investigator `new_file` entries only — working-note
-      schema → `doc-governance.md` lifecycle schema):
-
-      | Source key | Target key | Rule |
-      |---|---|---|
-      | `sub_mode` | `type` | `analyze` → `type: analysis`; `investigate` → `type: analysis` (`doc-governance.md`'s `type` enum has no dedicated "investigation" value; reusing the closest existing member avoids inventing a new enum value for one route — `V-INT-03`/`V-YAGNI-01`) |
-      | *(computed)* | `status` | Always `current` — a freshly promoted evidence doc is never `deprecated`/`archived` at carry time |
-      | `manifest entries[].declared_at` (date part) | `created` | Preserves *when the evidence was gathered*, not when it was later committed — historically accurate |
-      | *(computed, today's date)* | `last_updated` | Carry-commit date — the most recent edit to the file |
-      | *(computed)* | `review_trigger` | `"on file change"` — the doc's staleness trigger is the source code it describes changing |
-      | `issue` | `issue` *(retained, non-schema key)* | `doc-governance.md` requires `type`/`status` present; it does not forbid additional keys. Campaign provenance is worth keeping |
-      | `confidence` | `confidence` *(retained, non-schema key)* | Provenance: the agent's self-assessed confidence at note-writing time |
-      | `computed_at_revision` | `computed_at_revision` *(retained, non-schema key)* | Provenance: which `route.revision` the evidence was computed against |
-      | — | `related` | Omitted — the schema's `related` expects doc paths, not issue numbers; `issue` (above) already carries the campaign link |
-      | — | `supersedes` | Omitted unless the search-before-write step above found a doc to supersede — then set per `doc-governance.md` § Supersede-on-Overwrite |
-
+      `false` on either ⇒ this entire section is inert — skip, do not invoke the script).
+  *   **Search-before-write** (investigator `new_file` entries only — the one live-repo judgment
+      the script cannot make): before the script writes a rewritten doc to `target_path`, check
+      whether an existing doc at the target directory already covers the same concern; if so,
+      update it in place (bump `last_updated`, preserve its original `created`) instead of letting
+      the script create a duplicate.
+  *   **Invoke**: `bun run scripts/carry-staged-artifacts.ts --manifest
+      .blackhole/staged/<issue>/manifest.json --repo-root <this worktree's absolute path>` —
+      prints the carried target paths as JSON. Absent manifest ⇒ `[]`, exit 0 (nothing was staged
+      for this issue). A manifest that **exists but is zero-byte or fails to parse as JSON** exits
+      1 — distinct from absent (issue #558): it means a staging write was attempted and failed, so
+      treating it identically to "nothing staged" would silently drop staged artifacts. On exit 1,
+      log a `new_findings[]` row (`kind: bug`) citing the manifest path and skip the carry for this
+      issue this run — the script itself never writes to the ledger. A malformed individual entry
+      (missing field, out-of-enum `target_kind`) is reported on stderr and skipped without failing
+      the run; log each such line as its own `new_findings[]` row (`kind: bug`).
+  *   **What the script dispatches** (ported verbatim from this section's pre-#715 prose, not
+      restated here): `new_file` entries copy verbatim except an investigator analyze/investigate
+      note, which gets the 9-row frontmatter rewrite (working-note schema → `doc-governance.md`
+      lifecycle schema); `append_row` entries dedup idempotently on two discriminator shapes — the
+      pipe-table row's `path` column value for `documentation/decisions/INDEX.md` /
+      `documentation/INDEX.md`, and, when `target_path === "ARCHITECTURE.md"` (bullet-list
+      target, `## Active Constraints`), the citation suffix — the mandatory trailing
+      `(ADR-{NNN})` or `(analyze: issue #N)` attribution `planner.md` appends to every constraint
+      bullet, the same discriminator `planner.md`'s own near-duplicate check already uses (§
+      Workflow & Planning Steps step 4) — reused, not reinvented (`V-INT-02`).
   *   **Commit**: carried files land in the same PR (same commit as the code change, or a
       dedicated `docs: promote staged artifacts for issue #N` commit within the same PR) — never
       a separate PR, never an orchestrator write.
@@ -443,7 +412,7 @@ instructions: |
   *   **Do not delete** `.blackhole/staged/<issue>/` after carrying — it remains as campaign
       state so the reviewer audit (`reviewer.md` §25, `V-AUTO-02`) has stable data to diff
       against, and so a resumed session after interruption can re-derive what was already carried
-      via the idempotency guards above.
+      via the script's idempotent dedup.
 
   ## Promote Review Artifact (ADR-021 D3, issue #445)
 
