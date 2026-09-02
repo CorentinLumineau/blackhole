@@ -1,5 +1,4 @@
 import * as path from 'path';
-import { EXPECTED_CHECK_COUNT } from './lib/build/facts.ts';
 import { type CheckResult } from './checks/check-utils.ts';
 
 // ADR-007 T5/R2': verify.ts is a thin runner — glob-discovers scripts/checks/*.check.ts (sorted,
@@ -31,12 +30,6 @@ export function exitCodeFromVerifyResults(results: CheckResult[]): number {
   return results.some((r) => !r.ok) ? 1 : 0;
 }
 
-export function warnOnCheckCountMismatch(results: CheckResult[], expected: number): void {
-  if (results.length !== expected) {
-    console.warn(`Warning: expected ${expected} checks, ran ${results.length}`);
-  }
-}
-
 export function formatVerifyResultLine(r: CheckResult): string {
   const icon = r.ok ? '✓' : '✗';
   return `  ${icon} ${r.id}${r.detail ? ` — ${r.detail}` : ''}`;
@@ -51,7 +44,6 @@ export async function runVerifyMain(options?: { checksDir?: string }): Promise<n
   console.log('blackhole verify\n');
 
   const results = await runVerifyChecks(options);
-  warnOnCheckCountMismatch(results, EXPECTED_CHECK_COUNT);
 
   for (const r of results) {
     console.log(formatVerifyResultLine(r));

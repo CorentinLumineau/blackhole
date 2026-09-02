@@ -28,6 +28,7 @@
 | plans/plan-campaign-config-confirmation-gate.md | Plan for the campaign config confirmation gate at bootstrap preflight | plan | current | on ADR acceptance or Bootstrap preflight change |
 | plans/plan-retrospective-v0.21.0-remediation.md | Work breakdown and dependency graph for the v0.21.0 retrospective's 22 remediation items (one issue each) | plan | current | on ADR acceptance |
 | plans/plan-pr-merge-gate-dependency-ordering.md | Implementation plan for ADR-005's PR merge-gate and dependency ordering | plan | current | on file change |
+| plans/plan-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Implementation plan for issue #704 (R-01) — retire the derived `EXPECTED_CHECK_COUNT` counter and its new-check-module Touch-Paths trigger | plan | current | on file change |
 | plans/plan-routing-visibility-reuse-gate.md | Implementation plan for dashboard routing visibility and the implementer Reuse Check gate | plan | current | on ADR acceptance |
 | plans/story-driven-conformance.md | Plan for story-driven conformance across the campaign's issue lifecycle | plan | current | on ADR acceptance or kaizen hunt-kind change |
 | reference/check-utils-blast-radius.md | Blast-radius reference for shared check-utils.ts consumers across scripts/checks | reference | current | on check-utils.ts or scripts/checks/*.check.ts import change |

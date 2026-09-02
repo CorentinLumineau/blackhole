@@ -62,9 +62,9 @@ describe('runChecks()', () => {
 });
 
 // Issue #491 — stop --now leg A: worker-side cooperation protocol. checkStopModeWiring() is
-// extended (not a new check function — EXPECTED_CHECK_COUNT stays 53) to also verify the third
-// tier's static wiring: phase-stop.md documents the tier and cites worker-schemas.md for the
-// ask; worker-schemas.md documents the ask itself.
+// extended (not a new check function) to also verify the third tier's static wiring:
+// phase-stop.md documents the tier and cites worker-schemas.md for the ask; worker-schemas.md
+// documents the ask itself.
 describe('checkStopModeWiring() — stop --now leg A wiring (issue #491)', () => {
   test('phase-stop.md documents the stop --now tier and cites worker-schemas.md for the ask', () => {
     const phaseStop = read('src/references/phase-stop.md');

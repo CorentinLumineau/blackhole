@@ -247,32 +247,9 @@ describe('findTouchPathSsotGaps', () => {
     expect(findTouchPathSsotGaps(touchPaths, body)).toEqual([]);
   });
 
-  test('new check module in Touch-Paths without facts.ts is flagged', () => {
-    const touchPaths = '## Touch-Paths\n- `scripts/checks/foo.check.ts`\n';
-    const body = '## Task Steps\n1. Implement foo.check.ts.\n';
-    const gaps = findTouchPathSsotGaps(touchPaths, body);
-    expect(gaps).toEqual([
-      {
-        missingPath: 'scripts/lib/build/facts.ts',
-        reason: expect.stringContaining('EXPECTED_CHECK_COUNT'),
-      },
-    ]);
-  });
-
-  test('new check module with facts.ts declared returns []', () => {
-    const touchPaths = [
-      '## Touch-Paths',
-      '- `scripts/checks/foo.check.ts`',
-      '- `scripts/lib/build/facts.ts`',
-    ].join('\n');
-    const body = '## Task Steps\n1. Implement foo.check.ts.\n';
-    expect(findTouchPathSsotGaps(touchPaths, body)).toEqual([]);
-  });
-
-  test('TOUCH_PATH_SSOT_PAIRS documents exactly two relationships', () => {
-    expect(TOUCH_PATH_SSOT_PAIRS).toHaveLength(2);
+  test('TOUCH_PATH_SSOT_PAIRS documents exactly one relationship', () => {
+    expect(TOUCH_PATH_SSOT_PAIRS).toHaveLength(1);
     expect(TOUCH_PATH_SSOT_PAIRS[0].constant).toBe('VCODE_TABLE_ROW_COUNT');
-    expect(TOUCH_PATH_SSOT_PAIRS[1].constant).toBe('EXPECTED_CHECK_COUNT');
   });
 });
 

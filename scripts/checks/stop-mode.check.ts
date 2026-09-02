@@ -68,7 +68,7 @@ export const checkStopModeWiring = (): CheckResult => {
   }
 
   // Issue #491 — stop --now leg A: worker-side ask wiring. Extends this existing check rather
-  // than adding a new one, since scripts/lib/build/facts.ts's EXPECTED_CHECK_COUNT is frozen.
+  // than adding a new one.
   if (!phaseStop.includes('stop --now')) {
     errors.push('phase-stop.md missing the stop --now tier');
   }

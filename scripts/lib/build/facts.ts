@@ -142,17 +142,6 @@ export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
 export const CONTENT_GATE_WARN_RATIO = 0.85;
 
 /**
- * Total check count across every `scripts/checks/*.check.ts` domain file (ADR-007 T5/R2′:
- * `verify.ts` is a thin runner that glob-discovers these files — there is no central registry).
- * Bump this alongside any change to a domain file's `runChecks()` array — either adding a new
- * `scripts/checks/{domain}.check.ts` file (new domain, its own `runChecks()` contributing its
- * count), or adding/removing an individual check inside an existing domain's `runChecks()`
- * array. `verify.ts` warns (does not fail) on a mismatch, so this is the sole place the
- * expectation is declared — never restate it as a literal at any consumption site.
- */
-export const EXPECTED_CHECK_COUNT = 73;
-
-/**
  * Doc-tree health thresholds (issue #462, ADR-021 D6 Scope 1) — declared exactly once here per
  * this file's SSOT convention above, consumed by `scripts/checks/doc-health.check.ts`
  * (V-DOCHEALTH-03) and cited by name — never restated as an inline numeric literal — in
