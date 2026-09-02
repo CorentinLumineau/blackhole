@@ -61,3 +61,4 @@
 | reviews/review-discovery-promote-review-artifact-ts-counts-deferred-ledger-rows-toward-the-revi.md | Review artifact for issue #737 (LGTM) | review | current | on file change |
 | reviews/review-discovery-ci-never-runs-the-test-suite-bun-test-is-absent-from-every-workflow-so.md | Review artifact for issue #747 (LGTM, 1 deferred WARN, 1 fixed inline) | review | current | on file change |
 | plans/plan-feat-planner-plan-quality-gate-cli-invoked-at-plan-time-retire-the-duplicated-pr.md | Wire scripts/checks/plan-quality-gate.check.ts's exported checks into a plan-time CLI planner.md invokes (R-11) | plan | current | on ADR acceptance |
+| reviews/review-feat-planner-plan-quality-gate-cli-invoked-at-plan-time.md | Review artifact for issue #716 (LGTM) | review | current | on file change |
