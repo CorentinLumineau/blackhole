@@ -22,7 +22,7 @@ using isolated git worktrees and a project-local JSON state ledger.
 ```
 backlog-campaign/
 ├── src/                  # EDIT SURFACE — only hand-edited source (agents, skills, rules, references)
-│   ├── agents/           # coordinator, orchestrator, planner, implementer, reviewer (markdown)
+│   ├── agents/           # coordinator, orchestrator, router, planner, implementer, reviewer, investigator, hunter (markdown)
 │   ├── references/       # protocol docs: blackhole-protocol, blackhole-state, phase-*, forge-sync, ...
 │   └── SKILL.md          # blackhole skill entry (source)
 ├── scripts/              # Bun/TypeScript build, verify, doctor, release, campaign-status tooling
@@ -102,10 +102,12 @@ keeping one authored copy of each skill/agent/rule instead of five hand-maintain
 
 ### 3.2. Campaign agent roster (`src/agents/*.md`)
 
-**Purpose**: Five markdown-defined agents implementing the backlog loop — `coordinator` (user
+**Purpose**: Eight markdown-defined agents implementing the backlog loop — `coordinator` (user
 intake/blocker routing), `orchestrator` (five-phase loop + worker scheduling + forge sync),
-`planner` (touch-paths + plan artifacts), `implementer` (TDD in isolated worktrees), `reviewer`
-(PR quality + plan-conformance audit).
+`router` (issue classification into the `route{}` object, ADR-004), `planner` (touch-paths +
+plan artifacts), `implementer` (TDD in isolated worktrees), `reviewer` (PR quality +
+plan-conformance audit), `investigator` (evidence-gathering for router re-route checkpoints),
+`hunter` (read-only kaizen improvement scanner, ADR-006).
 
 **Technologies**: Markdown agent-definition format, consumed natively by each compiled target
 (Claude Code subagents, Cursor custom agents, Codex agent YAML, Gemini/Antigravity agents).

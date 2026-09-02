@@ -30,6 +30,7 @@
 | plans/plan-pr-merge-gate-dependency-ordering.md | Implementation plan for ADR-005's PR merge-gate and dependency ordering | plan | current | on file change |
 | plans/plan-routing-visibility-reuse-gate.md | Implementation plan for dashboard routing visibility and the implementer Reuse Check gate | plan | current | on ADR acceptance |
 | plans/story-driven-conformance.md | Plan for story-driven conformance across the campaign's issue lifecycle | plan | current | on ADR acceptance or kaizen hunt-kind change |
+| plans/plan-docs-architecture-fix-stale-committed-trees-table-and-five-agents-in-the-archite.md | Plan — fix stale committed-target-trees table and "five agents" claim in the architecture maps (issue #706, R-03) | plan | current | on release |
 | reference/check-utils-blast-radius.md | Blast-radius reference for shared check-utils.ts consumers across scripts/checks | reference | current | on check-utils.ts or scripts/checks/*.check.ts import change |
 | reference/decision-log.md | Running decision log of Hard Choice / Bugfix / Refactoring decision records | reference | current | on file change |
 | reference/product-principles.md | Owner-rulings ledger of durable product preferences binding on future diffs | reference | current | on new ruling |
