@@ -48,3 +48,5 @@
 | reviews/review-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Review artifact for issue #704 (LGTM) | review | current | on file change |
 | reviews/review-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Review artifact for issue #728 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-fix-config-registration-parent-key-coverage-for-nested-config-blocks-router-conf.md | Review artifact for issue #707 (LGTM, 1 deferred WARN) | review | current | on file change |
+| plans/plan-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | skills.sh-target integration test for model-routing.md's per-role tier resolution, closing the self-declared Unverified note | plan | current | on ADR acceptance |
+| reviews/review-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | Review artifact for issue #713 (LGTM) | review | current | on file change |

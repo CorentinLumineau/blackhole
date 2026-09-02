@@ -174,8 +174,9 @@ No fixed slug list. Map `economy` / `standard` / `premium` to the installing har
 documented cheap / mid / top reasoning tiers.
 
 **Effort policy:** `inherit` (session) — same fallback as model when the harness exposes no
-model override (`model-routing.md` § `skills.sh` inherit semantics). **Unverified** until a
-harness integration test exists; do not assume portable effort tokens.
+model override (`model-routing.md` § `skills.sh` inherit semantics). **Verified** by
+`scripts/build.test.ts`'s `applyPlatformConditionals` `skills`-target model-ladder test; do not
+assume portable effort tokens beyond the generic tier mapping it checks.
 {{/skills}}
 
 ## Orchestrator integration
