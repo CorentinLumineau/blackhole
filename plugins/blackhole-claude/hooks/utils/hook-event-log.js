@@ -119,15 +119,18 @@ const isUnderRoot = (candidate, root) => {
  * directory, or a bare system temp root (`/tmp`, `/var/tmp`, `os.tmpdir()`) all sit above
  * directories a worker does not control, so accepting one of them as `scratchpad_dir` is no
  * narrower than accepting every registered worktree unconditionally. Requires an absolute path
- * with at least two non-empty segments, distinct from $HOME and from the known bare temp roots. */
-const BARE_TEMP_DIRS = new Set(['/tmp', '/var/tmp', os.tmpdir()].map((p) => path.resolve(p)));
+ * with at least two non-empty segments, distinct from $HOME and from the known bare temp roots.
+ * `path.resolve` does not follow symlinks, so this set is built with `resolveExistingAncestor`
+ * instead — a bare temp root reached only through a symlinked ancestor (darwin's `/var` →
+ * `/private/var`, or any workstation-local alias) must still classify as broad. */
+const BARE_TEMP_DIRS = new Set(['/tmp', '/var/tmp', os.tmpdir()].map((p) => resolveExistingAncestor(p)));
 
 const isAcceptableScratchpadDir = (value) => {
   if (typeof value !== 'string' || value.length === 0 || !path.isAbsolute(value)) return false;
   const resolved = path.resolve(value);
   const segments = resolved.split(path.sep).filter(Boolean);
   if (segments.length < 2) return false;
-  if (BARE_TEMP_DIRS.has(resolved)) return false;
+  if (BARE_TEMP_DIRS.has(resolveExistingAncestor(value))) return false;
   const home = process.env.HOME;
   if (home && resolved === path.resolve(home)) return false;
   return true;

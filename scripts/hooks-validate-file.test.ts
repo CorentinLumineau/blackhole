@@ -384,6 +384,36 @@ describe('validate-file-changes.js', () => {
     );
   });
 
+  // #714: BARE_TEMP_DIRS is built with path.resolve() (no symlink resolution), so a bare temp
+  // root reached only through a symlinked ancestor evades classification — the same defect that
+  // makes os.tmpdir() (/var/folders/... on darwin, realpath /private/var/folders/...) slip past
+  // the check on macOS. Reproduced portably here via a fresh symlink whose target is the
+  // worker's own realpath'd temp root, so the failure is observable on Linux CI too.
+  test('#714: a scratchpad_dir reaching a bare temp root only through a symlinked ancestor is rejected', async () => {
+    const tmpRoot = fs.realpathSync(os.tmpdir());
+    const symlinkedAlias = path.join(tmpRoot, `blackhole-714-alias-${process.pid}-${Date.now()}`);
+    fs.symlinkSync(tmpRoot, symlinkedAlias, 'dir');
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-714-',
+        async (mainRepo, worktree) => {
+          const target = path.join(worktree, 'src', 'foo.ts');
+          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+          const result = await runPreToolUseHook(SCRIPT, payload, worktree);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionReason(result.stdout)).toMatch(/outside/i);
+        },
+        (mainRepo) => {
+          writeCampaignConfig(mainRepo, { scratchpad_dir: symlinkedAlias });
+          return symlinkedAlias;
+        },
+      );
+    } finally {
+      fs.rmSync(symlinkedAlias, { force: true });
+    }
+  });
+
   // #620: when BLACKHOLE_ASSIGNED_WORKTREE is set to a registered family worktree, containment
   // narrows to that single root — writes inside it are allowed, writes to the main clone or a
   // sibling worktree are denied with outside-assigned-worktree. Unset or invalid env → fail-open
