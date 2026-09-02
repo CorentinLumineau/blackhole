@@ -110,8 +110,8 @@ export const collectDeclaredSupersessionViolations = (repoRoot: string): { issue
 // the *prose announcement* form a reversal is actually written in (e.g. "intentionally
 // supersedes ADR-007"), not the structured field. `[^.\n]*?` bounds the gap to one sentence so
 // an unrelated ADR mention later in a long line/paragraph is never swept in. `(?<!V-)` right
-// before the capture excludes this check's own vcode id (`V-ADR-06` reads as "ADR-06" to a
-// naive `ADR-\d+` match) — a vcode name is never itself an ADR document reference.
+// before the capture excludes this check's own vcode id, same rationale as links.check.ts's
+// ADR-reference scan — see that file's comment on its `(?<!V-)ADR-(\d+)` match.
 const PHRASE_SCAN_SOURCE = String.raw`\b(?:supersedes|reverses|contrary to|do not amend)\b(?!:)[^.\n]*?(?<!V-)(ADR-\d+)`;
 
 export const extractPhraseScanCitations = (content: string): { line: number; adr: string }[] => {
