@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { evaluateDocTreeHealth } from './checks/doc-health.check.ts';
 import { root } from './checks/check-utils.ts';
+import { parseDecisionLogIds } from './decision-log-append.ts';
+import { readJsonFile } from './lib/fs.ts';
 
 // Issue #499 (ADR-021 D6 residual) — the always-on-channel half of the Scope-1 doc-tree health
 // signal. `doc-health.check.ts` (PR #494 / issue #462) delivered detection; nothing read it
@@ -16,15 +18,40 @@ export type DocHealthSignal = {
   refreshed_at: string;
   doc_debt: 'yes' | 'no';
   detail: string | null;
+  decision_log_silent_prs: number;
 };
 
-export const computeDocHealthSignal = (docsDir: string, now: Date = new Date()): DocHealthSignal => {
+type QueueJsonShape = { issues?: Record<string, { status?: string; pr?: number | null }> };
+
+// Issue #717 (R-12) — advisory count of merged PRs whose decisions never reached
+// decision-log.md's Records table, additive to doc_debt/detail (Execution Strategy item 3: this
+// must never change their derivation). Existence-gated no-op on either file missing, matching
+// evaluateIndexDangling/evaluateOrphanFiles' idiom — a decision log predates most campaigns and
+// a missing queue.json is a valid state outside the campaign runtime, not a hard error.
+export const computeDecisionLogSilentPrs = (decisionLogPath: string, queueJsonPath: string): number => {
+  if (!fs.existsSync(decisionLogPath) || !fs.existsSync(queueJsonPath)) return 0;
+  const loggedIds = parseDecisionLogIds(fs.readFileSync(decisionLogPath, 'utf-8'));
+  const queue = readJsonFile(queueJsonPath, queueJsonPath) as QueueJsonShape;
+  let silent = 0;
+  for (const issue of Object.values(queue.issues ?? {})) {
+    if (issue.status === 'merged' && typeof issue.pr === 'number' && !loggedIds.has(issue.pr)) silent++;
+  }
+  return silent;
+};
+
+export const computeDocHealthSignal = (
+  docsDir: string,
+  now: Date = new Date(),
+  queueJsonPath = '',
+): DocHealthSignal => {
   const result = evaluateDocTreeHealth(docsDir);
+  const decisionLogPath = path.join(docsDir, 'reference/decision-log.md');
   return {
     version: 1,
     refreshed_at: now.toISOString(),
     doc_debt: result.detail ? 'yes' : 'no',
     detail: result.detail ?? null,
+    decision_log_silent_prs: computeDecisionLogSilentPrs(decisionLogPath, queueJsonPath),
   };
 };
 
@@ -43,9 +70,12 @@ export const writeDocHealthSignalAtomic = (campaignDir: string, signal: DocHealt
 function main(): void {
   const docsDir = path.join(root, 'documentation');
   const campaignDir = path.join(root, '.blackhole');
-  const signal = computeDocHealthSignal(docsDir);
+  const queueJsonPath = path.join(campaignDir, 'queue.json');
+  const signal = computeDocHealthSignal(docsDir, new Date(), queueJsonPath);
   writeDocHealthSignalAtomic(campaignDir, signal);
-  console.log(`doc_debt=${signal.doc_debt}${signal.detail ? ` detail=${signal.detail}` : ''}`);
+  console.log(
+    `doc_debt=${signal.doc_debt}${signal.detail ? ` detail=${signal.detail}` : ''} decision_log_silent_prs=${signal.decision_log_silent_prs}`,
+  );
 }
 
 if (import.meta.main) {
