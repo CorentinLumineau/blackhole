@@ -59,3 +59,4 @@
 | plans/plan-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Script the carry-staged-artifacts implementer step into a CLI+lib pair | plan | current | on ADR acceptance |
 | reviews/review-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Review artifact for issue #715 (LGTM) | review | current | on file change |
 | reviews/review-discovery-promote-review-artifact-ts-counts-deferred-ledger-rows-toward-the-revi.md | Review artifact for issue #737 (LGTM) | review | current | on file change |
+| reviews/review-discovery-ci-never-runs-the-test-suite-bun-test-is-absent-from-every-workflow-so.md | Review artifact for issue #747 (LGTM, 1 deferred WARN, 1 fixed inline) | review | current | on file change |
