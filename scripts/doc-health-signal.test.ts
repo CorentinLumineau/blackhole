@@ -31,7 +31,7 @@ const FM = (fields: Record<string, string>): string =>
     .join('\n')}\n---\n\n# Fixture\n`;
 
 describe('computeDocHealthSignal', () => {
-  test('a clean fixture tree yields doc_debt: no, detail: null', () => {
+  test('a clean fixture tree yields doc_debt: no, detail: null, decision_log_silent_prs: 0', () => {
     withFixtureDir((dir) => {
       write(dir, 'audits/foo.md', FM({ type: 'audit', status: 'current' }));
       const signal = computeDocHealthSignal(dir, new Date('2026-08-11T00:00:00.000Z'));
@@ -40,7 +40,45 @@ describe('computeDocHealthSignal', () => {
         refreshed_at: '2026-08-11T00:00:00.000Z',
         doc_debt: 'no',
         detail: null,
+        decision_log_silent_prs: 0,
       });
+    });
+  });
+
+  // Issue #717 (R-12) — advisory signal for a decision-log that goes silent: merged PRs whose
+  // decisions never landed. Missing queue.json is existence-gated (Codebase Convention), never
+  // a discovered case's regression of doc_debt/detail (Execution Strategy item 3).
+  test('decision_log_silent_prs counts merged queue.json PRs absent from decision-log.md', () => {
+    withFixtureDir((dir) => {
+      write(
+        dir,
+        'reference/decision-log.md',
+        FM({ type: 'reference', status: 'current', last_updated: '2026-07-20' }) +
+          '\n## Records\n\n| PR/Issue | Kind | Touch Paths | Decision | Why |\n|---|---|---|---|---|\n| 100 | approach | a.ts | did a thing | why |\n',
+      );
+      const queueJsonPath = path.join(dir, 'fixture-queue.json');
+      fs.writeFileSync(
+        queueJsonPath,
+        JSON.stringify({
+          issues: {
+            '10': { status: 'merged', pr: 100 },
+            '11': { status: 'merged', pr: 200 },
+            '12': { status: 'ready', pr: null },
+          },
+        }),
+      );
+      const signal = computeDocHealthSignal(dir, new Date('2026-08-11T00:00:00.000Z'), queueJsonPath);
+      expect(signal.decision_log_silent_prs).toBe(1);
+      expect(signal.doc_debt).toBe('no');
+      expect(signal.detail).toBe(null);
+    });
+  });
+
+  test('a missing queue.json path yields decision_log_silent_prs: 0 without throwing (existence-gated no-op)', () => {
+    withFixtureDir((dir) => {
+      const missingQueueJsonPath = path.join(dir, 'does-not-exist.json');
+      expect(() => computeDocHealthSignal(dir, new Date(), missingQueueJsonPath)).not.toThrow();
+      expect(computeDocHealthSignal(dir, new Date(), missingQueueJsonPath).decision_log_silent_prs).toBe(0);
     });
   });
 
@@ -75,6 +113,7 @@ describe('writeDocHealthSignalAtomic', () => {
         refreshed_at: '2026-08-11T00:00:00.000Z',
         doc_debt: 'no',
         detail: null,
+        decision_log_silent_prs: 0,
       };
       writeDocHealthSignalAtomic(dir, signal);
       const target = path.join(dir, 'doc-health.json');
@@ -91,12 +130,14 @@ describe('writeDocHealthSignalAtomic', () => {
         refreshed_at: '2026-08-11T00:00:00.000Z',
         doc_debt: 'yes',
         detail: 'audits/big.md over ceiling',
+        decision_log_silent_prs: 0,
       });
       const second: DocHealthSignal = {
         version: 1,
         refreshed_at: '2026-08-11T00:05:00.000Z',
         doc_debt: 'no',
         detail: null,
+        decision_log_silent_prs: 0,
       };
       writeDocHealthSignalAtomic(dir, second);
       const target = path.join(dir, 'doc-health.json');
@@ -114,6 +155,7 @@ describe('writeDocHealthSignalAtomic', () => {
         refreshed_at: '2026-08-11T00:00:00.000Z',
         doc_debt: 'no',
         detail: null,
+        decision_log_silent_prs: 0,
       });
       expect(fs.existsSync(path.join(campaignDir, 'doc-health.json'))).toBe(true);
     });

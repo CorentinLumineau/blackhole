@@ -130,6 +130,11 @@ All four are advisory (`ok: true` always, per `V-DOCHEALTH-03`) — mirrors merc
 for this exact signal, which likewise has no CI-blocking equivalent, surfacing instead through a
 session-start hook rather than a hard gate.
 
+A fifth field, `decision_log_silent_prs` (issue #717, R-12), counts merged `queue.json` issues
+whose PR number never appears in `documentation/reference/decision-log.md`'s Records table —
+the signal a hand-appended, never-bumped log gave no way to notice. Same advisory-only framing
+as `doc_debt` (`blackhole-state.md` § Doc-Health Signal, not restated here — V-DRY-01).
+
 ### Always-On Channel (issue #499)
 
 Determination: **Reading 2 (a real gap), verified.** Before this landed, nothing read this

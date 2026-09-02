@@ -98,9 +98,7 @@ See `.agents/build/skills/blackhole/references/phase-stop.md`.
 
 Invoked as part of § Background worker barrier → Triage step 2's per-role ledger mutations, for the `implementer` role only — never a separate barrier phase.
 
-For each completed `implementer` worker carrying a non-empty `decision_records[]`, the orchestrator — and only the orchestrator, serially, one worker at a time, after the parallel batch has fully barriered — appends one row per array entry to `documentation/reference/decision-log.md`, using the same read-modify-write-via-`.tmp`+`mv` atomic-write protocol as `queue.json`/`findings-ledger.json` (`blackhole-state.md` § Write protocol).
-
-Row-to-table-column mapping: copy `pr`/`issue`, `kind`, `touch_paths` (joined with `, `), `decision`, `why` verbatim into the log's `## Records` table row — no field transformation.
+For each completed `implementer` worker carrying a non-empty `decision_records[]`, the orchestrator — and only the orchestrator, serially, one worker at a time, post-barrier — invokes `bun scripts/decision-log-append.ts --log <worktree>/documentation/reference/decision-log.md --records-file <path>` against that worker's own still-open worktree, never the main clone (which cannot commit to `main`, `V-BRANCH-02`), then `git -C <worktree> add`/`commit`/`push` the result onto that worker's own PR branch — the rows ride along in the PR they document. If that worktree was already released, skip the append and flag it for a manual follow-up rather than writing to the main clone.
 
 Rotation trigger (500-row threshold, `_archive/` destination) is documented in `documentation/reference/decision-log.md` § Rotation, not re-specified here (`V-DRY`).
 
