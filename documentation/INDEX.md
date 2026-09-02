@@ -63,3 +63,4 @@
 | plans/plan-feat-planner-plan-quality-gate-cli-invoked-at-plan-time-retire-the-duplicated-pr.md | Wire scripts/checks/plan-quality-gate.check.ts's exported checks into a plan-time CLI planner.md invokes (R-11) | plan | current | on ADR acceptance |
 | reviews/review-feat-planner-plan-quality-gate-cli-invoked-at-plan-time.md | Review artifact for issue #716 (LGTM) | review | current | on file change |
 | plans/plan-feat-checks-v-shape-01-route-field-set-parity-router-validator-status-type-schem.md | V-SHAPE-01 route field-set parity check across router validator, status type, schema example, queue-dag | plan | current | on ADR acceptance |
+| reviews/review-feat-checks-v-shape-01-route-field-set-parity-router-validator-status-type-schem.md | Review artifact for issue #708 (LGTM) | review | current | on file change |
