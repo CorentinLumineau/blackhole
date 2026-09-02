@@ -65,3 +65,4 @@
 | plans/plan-feat-checks-v-shape-01-route-field-set-parity-router-validator-status-type-schem.md | V-SHAPE-01 route field-set parity check across router validator, status type, schema example, queue-dag | plan | current | on ADR acceptance |
 | reviews/review-feat-checks-v-shape-01-route-field-set-parity-router-validator-status-type-schem.md | Review artifact for issue #708 (LGTM) | review | current | on file change |
 | reviews/review-docs-tests-strip-issue-finding-id-citations-from-hooks-validate-file-test-commen.md | Review artifact for issue #736 (LGTM) | review | current | on file change |
+| plans/plan-feat-governance-record-408-s-reversal-of-adr-007-r3-supersession-rule-with-decla.md | Plan — record #408's undisclosed reversal of ADR-007 R3′ as a dated amendment; add a declared `supersedes_adr` field, a two-legged `V-ADR-06` check, and a `docs` hunt band for the same undisclosed-reversal shape (issue #712, R-09) | plan | current | on release |
