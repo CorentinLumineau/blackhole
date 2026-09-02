@@ -70,6 +70,9 @@ See [review-core.md](review-core.md) for severity mapping, LGTM definition, and 
 Never merge on a direct commit to main (`V-BRANCH-02`) or if force-pushing occurred (`V-BRANCH-01`).
 Never merge on errored review — empty findings from failed agent is not LGTM.
 
+CI's green signal already covers the full `bun test` suite (`verify.yml`'s "Run test suite"
+step, issue #747) — reviewers may keep citing CI instead of running tests locally.
+
 ## Ledger before turn end
 
 All aggregate findings appended to `findings-ledger.json` with `pr_ref` set.
