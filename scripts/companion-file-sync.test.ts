@@ -9,7 +9,9 @@ import {
   isDocOnlyMarkdownDiff,
   needsAgentsSymlinkRepair,
   needsArchitectureRepair,
+  needsJourneysIndexRepair,
   repairAgentsSymlink,
+  repairJourneysIndexRow,
   resolveProjectName,
   runCompanionFileSync,
 } from './lib/companion-file-sync.ts';
@@ -166,6 +168,95 @@ describe('companion-file-sync repairs', () => {
       expect(needsAgentsSymlinkRepair(repo)).toBe(false);
       const repairs = repairAgentsSymlink(repo, 'my-project');
       expect(repairs).toEqual([]);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('companion-file-sync journeys index repair (issue #728)', () => {
+  const journeysRelPath = path.join('documentation', 'reference', 'journeys.md');
+  const indexRelPath = path.join('documentation', 'INDEX.md');
+  const indexHeader = '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
+
+  const writeJourneysDoc = (repo: string): void => {
+    fs.mkdirSync(path.join(repo, 'documentation', 'reference'), { recursive: true });
+    fs.writeFileSync(path.join(repo, journeysRelPath), '---\ntype: reference\nstatus: template\n---\n\n# User Journeys\n', 'utf-8');
+  };
+
+  const writeIndex = (repo: string, extraRows = ''): void => {
+    fs.mkdirSync(path.join(repo, 'documentation'), { recursive: true });
+    fs.writeFileSync(path.join(repo, indexRelPath), `${indexHeader}${extraRows}`, 'utf-8');
+  };
+
+  test('creates the reference/journeys.md row when journeys.md and INDEX.md both exist and the row is absent', () => {
+    const repo = makeFixtureRepo();
+    try {
+      writeJourneysDoc(repo);
+      writeIndex(repo);
+      expect(needsJourneysIndexRepair(repo)).toBe(true);
+      const repair = repairJourneysIndexRow(repo);
+      expect(repair).toEqual({
+        vcode: 'V-ADA-09',
+        file: indexRelPath,
+        action: 'appended reference/journeys.md row to documentation/INDEX.md',
+      });
+      const content = fs.readFileSync(path.join(repo, indexRelPath), 'utf-8');
+      expect(content).toContain('reference/journeys.md');
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('a second call is idempotent — no duplicate row, returns null', () => {
+    const repo = makeFixtureRepo();
+    try {
+      writeJourneysDoc(repo);
+      writeIndex(repo);
+      const first = repairJourneysIndexRow(repo);
+      expect(first).not.toBeNull();
+      expect(needsJourneysIndexRepair(repo)).toBe(false);
+      const second = repairJourneysIndexRow(repo);
+      expect(second).toBeNull();
+      const content = fs.readFileSync(path.join(repo, indexRelPath), 'utf-8');
+      const occurrences = content.split('reference/journeys.md').length - 1;
+      expect(occurrences).toBe(1);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('no-op when documentation/reference/journeys.md is absent', () => {
+    const repo = makeFixtureRepo();
+    try {
+      writeIndex(repo);
+      expect(needsJourneysIndexRepair(repo)).toBe(false);
+      expect(repairJourneysIndexRow(repo)).toBeNull();
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('no-op when documentation/INDEX.md is absent', () => {
+    const repo = makeFixtureRepo();
+    try {
+      writeJourneysDoc(repo);
+      expect(needsJourneysIndexRepair(repo)).toBe(false);
+      expect(repairJourneysIndexRow(repo)).toBeNull();
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('runCompanionFileSync self-heals an existing journeys.md unconditionally, without a diff-path predicate', () => {
+    const repo = makeFixtureRepo();
+    try {
+      writeJourneysDoc(repo);
+      writeIndex(repo);
+      const { repairs } = runCompanionFileSync(repo, ['documentation/foo.md']);
+      expect(repairs.some((r) => r.vcode === 'V-ADA-09')).toBe(true);
+      const content = fs.readFileSync(path.join(repo, indexRelPath), 'utf-8');
+      expect(content).toContain('reference/journeys.md');
     } finally {
       fs.rmSync(repo, { recursive: true, force: true });
     }
