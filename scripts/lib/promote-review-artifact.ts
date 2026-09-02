@@ -40,6 +40,7 @@ export type ReviewPromotionOutput = {
   markdown: string;
   indexRow: string;
   verdict: 'LGTM' | 'CHANGES REQUESTED';
+  /** Count of blocking findings only — deferred rows are excluded. */
   findingsCount: number;
 };
 
