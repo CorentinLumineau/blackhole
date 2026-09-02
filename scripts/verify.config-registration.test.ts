@@ -22,6 +22,18 @@ describe('parseConfigTemplateKeys', () => {
     expect(keys.has('repo')).toBe(true);
     expect(keys.has('docs_governance.enabled')).toBe(true);
   });
+
+  test('registers a parent row\'s named sub-keys via a (sub-keys: ...) marker', () => {
+    const snippet = `
+| Field | Required | Description |
+|-------|----------|-------------|
+| router_confidence_thresholds | no | Per-flag thresholds (sub-keys: split, design) |
+`;
+    const keys = parseConfigTemplateKeys(snippet);
+    expect(keys.has('router_confidence_thresholds')).toBe(true);
+    expect(keys.has('router_confidence_thresholds.split')).toBe(true);
+    expect(keys.has('router_confidence_thresholds.design')).toBe(true);
+  });
 });
 
 describe('flattenConfigKeys', () => {
@@ -43,6 +55,21 @@ describe('findUnregisteredConfigKeys (V-CONFIG-02)', () => {
     const templateKeys = parseConfigTemplateKeys(TEMPLATE_SNIPPET);
     const configKeys = flattenConfigKeys({ repo: 'o/r' });
     expect(findUnregisteredConfigKeys(configKeys, templateKeys)).toEqual([]);
+  });
+
+  test('a sub-key not named in the parent row marker still fails', () => {
+    const snippet = `
+| Field | Required | Description |
+|-------|----------|-------------|
+| router_confidence_thresholds | no | Per-flag thresholds (sub-keys: split, design) |
+`;
+    const templateKeys = parseConfigTemplateKeys(snippet);
+    const configKeys = flattenConfigKeys({
+      router_confidence_thresholds: { split: 70, undocumented_leaf: 1 },
+    });
+    expect(findUnregisteredConfigKeys(configKeys, templateKeys)).toEqual([
+      'router_confidence_thresholds.undocumented_leaf',
+    ]);
   });
 });
 
@@ -70,5 +97,22 @@ describe('runChecks live tree', () => {
   test('live config-template.md parses to a non-empty key set', () => {
     const keys = parseConfigTemplateKeys(read('src/references/config-template.md'));
     expect(keys.size).toBeGreaterThan(10);
+  });
+
+  test('live template registers every documented router_confidence_thresholds sub-key', () => {
+    const templateKeys = parseConfigTemplateKeys(read('src/references/config-template.md'));
+    const configKeys = flattenConfigKeys({
+      router_confidence_thresholds: {
+        split: 70,
+        design: 70,
+        plan_mode: 70,
+        security: 70,
+        docs: 70,
+        brainstorm: 70,
+        analysis: 70,
+        ui: 70,
+      },
+    });
+    expect(findUnregisteredConfigKeys(configKeys, templateKeys)).toEqual([]);
   });
 });

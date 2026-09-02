@@ -35,6 +35,7 @@
 | plans/plan-docs-architecture-fix-stale-committed-trees-table-and-five-agents-in-the-archite.md | Plan — fix stale committed-target-trees table and "five agents" claim in the architecture maps (issue #706, R-03) | plan | current | on release |
 | plans/plan-fix-hooks-validate-file-changes-js-510-512-tests-fail-on-macos-os-tmpdir-under-p.md | Bugfix plan fixing hook-event-log.js's symlink-unaware `BARE_TEMP_DIRS` broad-root check (issue #714, R-21) — closes #510/#512 macOS test failures without weakening the guard | plan | current | on file change |
 | plans/plan-docs-review-core-per-dispatch-mode-reviewer-prompt-requirements-verification-mod.md | Plan for issue #709 (R-06): per-dispatch-mode reviewer prompt requirements table reconciling review-core.md's universal checklist claim with reviewer.md §13/§24's narrower scopes | plan | current | on file change |
+| plans/plan-fix-config-registration-parent-key-coverage-for-nested-config-blocks-router-conf.md | Bugfix plan for V-CONFIG-02 nested-block leaf coverage — parent-row `(sub-keys: ...)` marker convention for `router_confidence_thresholds` | plan | current | on file change |
 | reference/check-utils-blast-radius.md | Blast-radius reference for shared check-utils.ts consumers across scripts/checks | reference | current | on check-utils.ts or scripts/checks/*.check.ts import change |
 | reference/decision-log.md | Running decision log of Hard Choice / Bugfix / Refactoring decision records | reference | current | on file change |
 | reference/product-principles.md | Owner-rulings ledger of durable product preferences binding on future diffs | reference | current | on new ruling |
@@ -46,3 +47,4 @@
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
 | reviews/review-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Review artifact for issue #704 (LGTM) | review | current | on file change |
 | reviews/review-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Review artifact for issue #728 (LGTM, 2 deferred WARN) | review | current | on file change |
+| reviews/review-fix-config-registration-parent-key-coverage-for-nested-config-blocks-router-conf.md | Review artifact for issue #707 (LGTM, 1 deferred WARN) | review | current | on file change |
