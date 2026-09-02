@@ -1,9 +1,8 @@
 import { read, type CheckResult } from './check-utils.ts';
 
-// Issue #708 — route-shape.check.ts: keeps the `route` object's field set consistent between
-// its enforced-truth declaration site (router.ts's `requireField` calls) and a deliberately
-// narrower consumer type (`campaign-status/types.ts`'s `Route`), closing the same defect class
-// as ADR-012 F3b — nothing before this compared these two sides.
+// route-shape.check.ts: keeps the `route` object's field set consistent between its
+// enforced-truth declaration site (router.ts's `requireField` calls) and a deliberately
+// narrower consumer type (`campaign-status/types.ts`'s `Route`).
 //
 // V-SHAPE-01: a `route`/`route.confidence` leaf key required by `validateRoute` (router.ts)
 // but absent from `Route` (types.ts), with no matching `// omits:` allowlist entry on that

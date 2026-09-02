@@ -8,9 +8,10 @@ import {
 } from './checks/route-shape.check.ts';
 import { read } from './checks/check-utils.ts';
 
-// Fixture-backed drift cases, inline (not under a `scripts/fixtures/route-shape/` directory —
-// that path is not a declared Touch-Path for issue #708; only the six files it lists may be
-// touched, so these strings stand in for what would otherwise be fixture files).
+// Fixture-backed drift cases, inline rather than under a `scripts/fixtures/route-shape/`
+// directory: the repo's fixture convention lives at the repo-root `fixtures/` path, and
+// `config-registration.check.ts`'s own test likewise inlines its snippet strings rather than
+// reaching for a fixtures directory.
 
 const ROUTER_SNIPPET = `
 export function validateRoute(route: unknown, path: string): string[] {
