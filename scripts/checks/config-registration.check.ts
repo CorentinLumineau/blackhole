@@ -6,8 +6,17 @@ import { read, root, type CheckResult } from './check-utils.ts';
 //
 // V-CONFIG-02: keys present in committed `.blackhole/config.json` must appear in
 // `config-template.md`'s field table (dot-path notation for nested keys).
+//
+// Nested-block registration convention (issue #707): a nested config block is registered
+// either as one `Field` row per leaf (e.g. `docs_governance.enabled`) or as a single parent
+// row whose Description cell ends with a `(sub-keys: a, b, c)` marker — each named leaf is
+// then registered as `<parent>.<leaf>`. `router_confidence_thresholds` uses the marker form;
+// `docs_governance`/`kaizen`/`incident_mode`/`autonomy` keep the per-leaf-row form and are
+// unaffected by this marker.
 
 const stripCell = (cell: string): string => cell.replace(/^`+|`+$/g, '').trim();
+
+const SUB_KEYS_MARKER = /\(sub-keys:\s*([^)]+)\)/;
 
 export const parseConfigTemplateKeys = (content: string): Set<string> => {
   const keys = new Set<string>();
@@ -21,7 +30,17 @@ export const parseConfigTemplateKeys = (content: string): Set<string> => {
     if (inTable && line.startsWith('|')) {
       const cols = line.split('|').map((c) => c.trim());
       const field = cols[1] ? stripCell(cols[1]) : '';
-      if (field && field !== 'Field') keys.add(field);
+      if (field && field !== 'Field') {
+        keys.add(field);
+        const description = cols[3] ?? '';
+        const marker = description.match(SUB_KEYS_MARKER);
+        if (marker) {
+          for (const subKey of marker[1].split(',')) {
+            const cleaned = stripCell(subKey);
+            if (cleaned) keys.add(`${field}.${cleaned}`);
+          }
+        }
+      }
     } else if (inTable && line.trim() && !line.startsWith('|')) {
       break;
     }
