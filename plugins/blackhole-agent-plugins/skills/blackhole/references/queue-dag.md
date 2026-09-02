@@ -64,6 +64,7 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 
 ### `route` object (optional — ADR-004)
 
+<!-- shape: exhaustive -->
 ```json
 "route": {
   "needs_split": false,
