@@ -164,3 +164,18 @@ phased-migration threshold; single-campaign delivery is safe.
 - ADR-003 — deterministic scripts over LLM agents (pattern this ADR extends to drift detection)
 - ADR-006 — kaizen hunt (hunt/ precedent correctly scoped to exclusive consumption)
 - Campaign telemetry 2026-07-10/11 — issues #216/#226/#228 (walkers), #199/#234 (count literals), #219/#224/#245 (counter drift), PR #225 (formula drift)
+
+## Post-acceptance amendments
+
+- **2026-09-02 — R3′ reversed (#712, recording #408).** #408 split `orchestrator.md` into
+  modal files, reversing R3′'s "no file split" decision and the corresponding rejected
+  alternative above — recorded at the time only in a gitignored plan file
+  (`.blackhole/plans/issue-366.md`, "intentionally supersedes ADR-007 R3′" /
+  "do not amend ADR-007"), never here or in `documentation/decisions/INDEX.md`. Retroactively
+  accepted on the condition R3′ itself already implied for growth (a budgeted ceiling, not an
+  unbounded split): the split-off files (`orchestrator-dispatch.md`,
+  `orchestrator-runtime.md`, `orchestrator-delegation.md`) are budgeted in
+  `CONTENT_GATE_BUDGETS` (`scripts/lib/build/facts.ts`, re-measured at #705). See
+  `retrospective-blackhole.md` § RC-E for why this went undetected for 227 commits, and
+  `scripts/checks/adr-supersession.check.ts` (`V-ADR-06`) for the check this issue adds so a
+  future reversal of this kind is self-disclosing.

@@ -10,6 +10,7 @@ track: quick | standard
 task_type: bugfix | null
 threat_screen_passed: true | null
 ui_gate: pending | approved | null
+supersedes_adr: [ADR-NNN, ...] | null  # set when this plan knowingly reverses an accepted ADR decision — triggers V-ADR-06 leg 1
 ---
 
 # Plan - Issue #<Number>

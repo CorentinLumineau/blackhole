@@ -408,6 +408,16 @@ this section states only what the script does not decide.
     state so the reviewer audit (`reviewer.md` §25, `V-AUTO-02`) has stable data to diff
     against, and so a resumed session after interruption can re-derive what was already carried
     via the script's idempotent dedup.
+*   **Declared-ADR-supersession stamping** (`V-ADR-06` leg 1, independent of the manifest.json
+    branch above — `supersedes_adr` is read directly from the plan's own frontmatter, already
+    available via `<PLAN_CONTEXT>`, never staged). When the plan's `supersedes_adr` is
+    non-empty, before opening the PR: for each named `ADR-NNN`, append one dated bullet to that
+    ADR's `## Post-acceptance amendments` section (create the section at file end if absent),
+    citing this issue number and a one-sentence reason drawn from the plan's Objective; then
+    update that ADR's `documentation/decisions/INDEX.md` summary cell with a short "amended —
+    see § Post-acceptance amendments" clause. **Idempotency**: skip an ADR whose amendments
+    section already cites this issue number — re-spawn safe, same discriminator shape as the
+    `append_row` guard above.
 
 ## Promote Review Artifact (ADR-021 D3, issue #445)
 

@@ -182,4 +182,20 @@ describe('findAdrCrossReferenceErrors', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test('a V-ADR-NN vcode id mention is not mistaken for an ADR document reference', () => {
+    const dir = makeTempDir('blackhole-verify-adr-link-test');
+    try {
+      const decisionsDir = path.join(dir, 'documentation', 'decisions');
+      fs.mkdirSync(decisionsDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(decisionsDir, 'ADR-007-example.md'),
+        '# ADR-007: Example\n\nSee scripts/checks/adr-supersession.check.ts (V-ADR-06).\n',
+      );
+
+      expect(findAdrCrossReferenceErrors(dir)).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

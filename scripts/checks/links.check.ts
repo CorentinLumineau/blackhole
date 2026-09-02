@@ -123,7 +123,9 @@ export const findAdrCrossReferenceErrors = (
       }
     }
 
-    for (const m of content.matchAll(/ADR-(\d+)/g)) {
+    // `(?<!V-)` excludes a `V-ADR-NN` vcode id (e.g. `V-ADR-06`) — its own trailing digits read
+    // as an "ADR-NN" reference to a naive scan, but a vcode name is never an ADR document link.
+    for (const m of content.matchAll(/(?<!V-)ADR-(\d+)/g)) {
       const num = m[1];
       if (externalAdrRefs.has(num) || localAdrNumbers.has(num)) continue;
       errors.push(`${rel}: inline mention of ADR-${num} does not resolve to a local documentation/decisions/ADR-${num}-*.md file`);

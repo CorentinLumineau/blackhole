@@ -8,10 +8,12 @@ import * as path from 'path';
 // chains). Mirrors `scripts/kaizen-parity-kind.test.ts`'s and
 // `scripts/kaizen-ux-coherence-kind.test.ts`'s structure (kind name swapped): a 9th hunt kind,
 // pure additive extension — no new scoring formula, no new ledger field, no new orchestrator/
-// hunter/`hunt_state` mechanic. Unlike `parity`/`ux-coherence`, this kind's calibration table
-// always assigns `severity: BLOCK` — the vcode it enforces (`V-DOC-04`) is declared `BLOCK` in
-// `blackhole-vcodes.md` with no severity range, matching the design decision in
-// `.blackhole/plans/issue-496-design.md` § Decision C.
+// hunter/`hunt_state` mechanic. Unlike `parity`/`ux-coherence`, heuristics 1–2's calibration
+// rows always assign `severity: BLOCK` — the vcode they enforce (`V-DOC-04`) is declared
+// `BLOCK` in `blackhole-vcodes.md` with no severity range, matching the design decision in
+// `.blackhole/plans/issue-496-design.md` § Decision C. Heuristic 3 enforces a different,
+// WARN-severity vcode (`V-ADR-06`), so it never assigns `BLOCK` — same convention
+// `parity`/`ux-coherence` already use for their own non-BLOCK vcodes.
 
 const root = path.resolve(import.meta.dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
@@ -83,7 +85,7 @@ describe('src/references/hunt/docs.md — kind reference file', () => {
     expect(section).toMatch(/deferred|out of scope/i);
   });
 
-  test('calibration table always assigns severity BLOCK, matching V-DOC-04 (no severity range)', () => {
+  test('heuristics 1-2 (V-DOC-04) always assign severity BLOCK; heuristic 3 (V-ADR-06) never does', () => {
     const content = read(filePath);
 
     const sectionMatch = content.match(/## Calibration table\n([\s\S]*?)(\n## |$)/);
@@ -95,7 +97,11 @@ describe('src/references/hunt/docs.md — kind reference file', () => {
       .filter((line) => !line.includes('| Heuristic |')); // skip the header row
     expect(tableRows.length).toBeGreaterThan(0);
     for (const row of tableRows) {
-      expect(row).toContain('BLOCK');
+      if (row.includes('Undisclosed local reversal')) {
+        expect(row).not.toContain('BLOCK');
+      } else {
+        expect(row).toContain('BLOCK');
+      }
     }
   });
 
