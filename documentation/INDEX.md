@@ -51,3 +51,4 @@
 | plans/plan-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | skills.sh-target integration test for model-routing.md's per-role tier resolution, closing the self-declared Unverified note | plan | current | on ADR acceptance |
 | reviews/review-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | Review artifact for issue #713 (LGTM) | review | current | on file change |
 | plans/plan-chore-content-gates-budget-orchestrator-runtime-dispatch-delegation-md-split-off.md | Content-gate budget rows for the three orchestrator split-off files, seeded at measured × 1.2 | plan | current | on ADR acceptance |
+| reviews/review-chore-content-gates-budget-orchestrator-runtime-dispatch-delegation-md-split-off.md | Review artifact for issue #705 (LGTM) | review | current | on file change |
