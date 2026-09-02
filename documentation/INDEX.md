@@ -57,3 +57,4 @@
 | plans/plan-feat-scripts-decision-log-append-ts-bumps-last-updated-silent-log-doc-health-sig.md | R-12: decision-log-append.ts script (dedup by pr/kind, bumps last_updated) + doc-health-signal.ts decision_log_silent_prs advisory | plan | current | on ADR acceptance |
 | reviews/review-feat-scripts-decision-log-append-ts-bumps-last-updated-silent-log-doc-health-sig.md | Review artifact for issue #717 (LGTM) | review | current | on file change |
 | plans/plan-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Script the carry-staged-artifacts implementer step into a CLI+lib pair | plan | current | on ADR acceptance |
+| reviews/review-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Review artifact for issue #715 (LGTM) | review | current | on file change |
