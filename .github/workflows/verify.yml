@@ -42,6 +42,11 @@ jobs:
           git config --global user.email "ci@blackhole.local"
           git config --global user.name "blackhole-ci"
 
+      # Must run before "Run build" below: scripts/verify.hooks.test.ts reads the git-tracked
+      # bundle trees straight off disk, with no build self-invocation, to assert the committed
+      # mirrors match their sources. A build earlier in this same job would silently regenerate
+      # a stale mirror before that assertion runs, turning it into a tautology that passes
+      # whether or not the committed output is actually in sync.
       - name: Run test suite
         run: bun run test
 
