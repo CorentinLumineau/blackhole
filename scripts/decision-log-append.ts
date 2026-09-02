@@ -61,9 +61,16 @@ export const appendDecisionRecords = (
     throw new Error('decision-log-append: malformed decision-log.md — frontmatter has no last_updated field');
   }
 
-  const seen = new Set<string>();
+  // Dedup identity is "already present in the log body when this call started" — never mutated
+  // during the loop below. Two records sharing one (pr, kind) key can arrive in the same batch
+  // (one worker completion legitimately emits several decisions for the same PR) and must both
+  // land; only a key already committed to the log on a prior run is a duplicate (issue #717
+  // review finding: mutating this set mid-loop silently dropped the second same-batch record —
+  // cross-run idempotency still holds because a second pass over the same batch re-derives this
+  // set from the now-updated body, which already contains every row the first pass appended).
+  const existingKeys = new Set<string>();
   for (const row of parseRecordsTableRows(body)) {
-    for (const m of row.prIssueCell.match(/\d+/g) ?? []) seen.add(`${m}:${row.kind}`);
+    for (const m of row.prIssueCell.match(/\d+/g) ?? []) existingKeys.add(`${m}:${row.kind}`);
   }
 
   let appended = 0;
@@ -72,11 +79,10 @@ export const appendDecisionRecords = (
   for (const r of records) {
     const id = r.pr ?? r.issue;
     const key = `${id}:${r.kind}`;
-    if (seen.has(key)) {
+    if (existingKeys.has(key)) {
       skipped++;
       continue;
     }
-    seen.add(key);
     appended++;
     const touchPaths = escapeCell(r.touch_paths.join(', '));
     newLines.push(`| ${id} | ${r.kind} | ${touchPaths} | ${escapeCell(r.decision)} | ${escapeCell(r.why)} |`);

@@ -48,6 +48,39 @@ describe('appendDecisionRecords', () => {
     expect(content).toContain('| 745 | approach | scripts/foo.ts | Did the thing | Because reasons |');
   });
 
+  // Review finding (issue #717, V-TEST-01): the dedup Set was mutated mid-loop, so two records
+  // sharing one (pr, kind) key in the SAME batch collided with each other and the second was
+  // silently dropped — even with entirely different decision/why text. This PR's own return
+  // carried exactly this shape (two {pr: 750, kind: "approach"} records), so it's the fixture.
+  test('two records with the same (pr, kind) key but different text in one call both append, in order', () => {
+    const worktreeDecision = rowFor({
+      pr: 750,
+      kind: 'approach',
+      touch_paths: ['src/agents/orchestrator.md'],
+      decision: 'Write into the worker\'s own worktree',
+      why: 'Needs zero changes to implementer.md',
+    });
+    const touchPathsDecision = rowFor({
+      pr: 750,
+      kind: 'approach',
+      touch_paths: ['scripts/decision-log-append.ts'],
+      decision: 'No backtick-wrapping on touch_paths',
+      why: 'Matches the documented no-transformation spec',
+    });
+    const { content, appended, skipped } = appendDecisionRecords(
+      FIXTURE_LOG,
+      [worktreeDecision, touchPathsDecision],
+      '2026-09-02',
+    );
+    expect(appended).toBe(2);
+    expect(skipped).toBe(0);
+    const worktreeIdx = content.indexOf("Write into the worker's own worktree");
+    const touchPathsIdx = content.indexOf('No backtick-wrapping on touch_paths');
+    expect(worktreeIdx).toBeGreaterThan(-1);
+    expect(touchPathsIdx).toBeGreaterThan(-1);
+    expect(worktreeIdx).toBeLessThan(touchPathsIdx);
+  });
+
   test('a second append with the same (pr, kind) pair is skipped, but last_updated still bumps and row count is unchanged', () => {
     const first = appendDecisionRecords(FIXTURE_LOG, [rowFor()], '2026-09-02');
     const second = appendDecisionRecords(first.content, [rowFor()], '2026-09-03');
