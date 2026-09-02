@@ -11,11 +11,11 @@ export { findTouchPathSsotGaps, TOUCH_PATH_SSOT_PAIRS } from '../lib/plan-touch-
 // Issue #459 — plan quality gate parity (mercure `x-plan`'s 8-check gate; blackhole already
 // enforces 2 as blocking: `ac_mapping`, Codebase Conventions). Adds the two mechanical checks
 // named in the issue: critical-file existence (a Glob call) and vague-mitigation concreteness
-// (a stated word list). The planner agent performs both itself at plan time — it holds the
-// Glob/Read tools this module does not — so this file's role is (a) give the two checks a
-// deterministic, fixture-testable reference form and (b) ground planner.md's Step 8 prose
-// against silent drift, same split as design-track.check.ts's template check vs. its
-// marker-grounding check (V-INT-01: reuses that established pattern, no new shape).
+// (a stated word list). This module exports pure detection functions only; the CLI wrapper
+// `scripts/plan-quality-gate.ts` (issue #716) runs them against real fs/argv, and the planner
+// agent invokes that CLI at plan time instead of re-deriving the checks in prose. This file's
+// role stays (a) a deterministic, fixture-testable reference form and (b) grounding planner.md's
+// Step 8 prose against silent drift, same split as design-track.check.ts's own template check.
 
 // V-INT-02: path extraction lives in plan-touch-path-ssot-pairs.ts; re-exported here for
 // existing callers (findMissingCriticalFiles, findUnscopedSweepACs, fixture tests).
