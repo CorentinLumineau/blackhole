@@ -58,3 +58,4 @@
 | reviews/review-feat-scripts-decision-log-append-ts-bumps-last-updated-silent-log-doc-health-sig.md | Review artifact for issue #717 (LGTM) | review | current | on file change |
 | plans/plan-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Script the carry-staged-artifacts implementer step into a CLI+lib pair | plan | current | on ADR acceptance |
 | reviews/review-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Review artifact for issue #715 (LGTM) | review | current | on file change |
+| reviews/review-discovery-promote-review-artifact-ts-counts-deferred-ledger-rows-toward-the-revi.md | Review artifact for issue #737 (LGTM) | review | current | on file change |

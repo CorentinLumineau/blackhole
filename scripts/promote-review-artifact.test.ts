@@ -10,6 +10,18 @@ const fixtureLedger = JSON.parse(
     'utf-8',
   ),
 );
+const deferredOnlyLedger = JSON.parse(
+  fs.readFileSync(
+    path.join(root, 'fixtures/promote-review-artifact/deferred-only-ledger.json'),
+    'utf-8',
+  ),
+);
+const deferredMultiLedger = JSON.parse(
+  fs.readFileSync(
+    path.join(root, 'fixtures/promote-review-artifact/deferred-multi-ledger.json'),
+    'utf-8',
+  ),
+);
 
 describe('selectReviewFindings', () => {
   test('omits recheck-fixed and fixed-in-pr rows; retains not_fixed', () => {
@@ -37,6 +49,37 @@ describe('renderReviewMarkdown', () => {
     expect(out.markdown).not.toContain('V-KISS-03');
     expect(out.targetPath).toContain('documentation/reviews/review-');
     expect(out.indexRow).toContain('| reviews/');
+  });
+
+  test('a single deferred row does not flip the verdict to CHANGES REQUESTED', () => {
+    const out = renderReviewMarkdown({
+      issueNumber: 706,
+      issueTitle: 'Deferred-only ledger regression',
+      prNumber: 732,
+      branchName: 'blackhole/issue-706',
+      headSha: 'deadbeefcafebabe',
+      ledger: deferredOnlyLedger,
+      today: '2026-08-12',
+    });
+
+    expect(out.verdict).toBe('LGTM');
+    expect(out.markdown).toContain('V-GROUND-01');
+  });
+
+  test('multiple deferred rows do not flip the verdict; each stays visible in disclosure', () => {
+    const out = renderReviewMarkdown({
+      issueNumber: 717,
+      issueTitle: 'Deferred-multi ledger regression',
+      prNumber: 750,
+      branchName: 'blackhole/issue-717',
+      headSha: 'deadbeefcafebabe',
+      ledger: deferredMultiLedger,
+      today: '2026-08-12',
+    });
+
+    expect(out.verdict).toBe('LGTM');
+    expect(out.markdown).toContain('scripts/lib/promote-review-artifact.ts:30');
+    expect(out.markdown).toContain('scripts/lib/concern-slug.ts:8');
   });
 });
 
