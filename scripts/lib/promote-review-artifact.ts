@@ -15,6 +15,7 @@ export type LedgerFinding = {
   line: number;
   summary: string;
   status: string;
+  deferred_to_issue?: number | null;
   created_at?: string;
   recheck?: RecheckEntry[];
 };
@@ -112,21 +113,42 @@ export function renderReviewMarkdown(input: ReviewPromotionInput): ReviewPromoti
   const slug = deriveConcernSlug(input.issueTitle, input.issueNumber);
   const targetPath = reviewTargetPath(input.issueTitle, input.issueNumber);
   const today = input.today ?? new Date().toISOString().slice(0, 10);
-  const blockers = findings.filter((f) => f.severity === 'BLOCK').length;
-  const warns = findings.filter((f) => f.severity === 'WARN').length;
+  // A deferred finding is filed as its own issue and is non-blocking by definition — it must
+  // stay visible for disclosure but never count toward the verdict (issue #737).
+  const blocking = findings.filter((f) => f.status !== 'deferred');
+  const deferred = findings.filter((f) => f.status === 'deferred');
+  const blockers = blocking.filter((f) => f.severity === 'BLOCK').length;
+  const warns = blocking.filter((f) => f.severity === 'WARN').length;
   const verdict: 'LGTM' | 'CHANGES REQUESTED' = blockers > 0 || warns > 0 ? 'CHANGES REQUESTED' : 'LGTM';
 
   const findingsTable =
-    findings.length === 0
+    blocking.length === 0
       ? '_No BLOCK/WARN findings at merge-readiness._\n'
       : [
           '| # | file:line | V-code | Severity | Finding |',
           '|---|---|---|---|---|',
-          ...findings.map(
+          ...blocking.map(
             (f, i) =>
               `| ${i + 1} | \`${f.file}:${f.line}\` | ${f.vcode} | **${f.severity}** | ${f.summary.replace(/\|/g, '\\|')} |`,
           ),
         ].join('\n');
+
+  const deferredTable =
+    deferred.length === 0
+      ? ''
+      : `\n### Deferred (not counted toward verdict)\n\n${[
+          '| # | file:line | V-code | Severity | Finding | Deferred to |',
+          '|---|---|---|---|---|---|',
+          ...deferred.map(
+            (f, i) =>
+              `| ${i + 1} | \`${f.file}:${f.line}\` | ${f.vcode} | ${f.severity} | ${f.summary.replace(/\|/g, '\\|')} | ${f.deferred_to_issue != null ? `#${f.deferred_to_issue}` : '—'} |`,
+          ),
+        ].join('\n')}\n`;
+
+  const ledgerRow =
+    deferred.length > 0
+      ? `${blocking.length} BLOCK/WARN row(s) for issue #${input.issueNumber}, ${deferred.length} deferred`
+      : `${blocking.length} BLOCK/WARN row(s) for issue #${input.issueNumber}`;
 
   const markdown = `---
 type: review
@@ -147,12 +169,12 @@ Diff: PR #${input.prNumber}, branch \`${input.branchName}\`.
 
 | Gate | Result |
 |---|---|
-| Findings ledger | ${findings.length} BLOCK/WARN row(s) for issue #${input.issueNumber} |
+| Findings ledger | ${ledgerRow} |
 
 ## Findings
 
 ${findingsTable}
-`;
+${deferredTable}`;
 
   const indexRow = renderIndexRow(
     targetPath,
@@ -165,6 +187,6 @@ ${findingsTable}
     markdown,
     indexRow,
     verdict,
-    findingsCount: findings.length,
+    findingsCount: blocking.length,
   };
 }

@@ -1,0 +1,20 @@
+{
+  "refreshed_at": "2026-08-12T00:00:00.000Z",
+  "next_id": 5,
+  "findings": [
+    {
+      "id": "F-00001",
+      "vcode": "V-GROUND-01",
+      "severity": "WARN",
+      "phase": "review",
+      "issue_ref": 706,
+      "pr_ref": 732,
+      "file": "scripts/lib/review-aggregate.ts",
+      "line": 12,
+      "summary": "Deferred to follow-up issue",
+      "status": "deferred",
+      "deferred_to_issue": 704,
+      "created_at": "2026-08-12T00:00:00.000Z"
+    }
+  ]
+}
