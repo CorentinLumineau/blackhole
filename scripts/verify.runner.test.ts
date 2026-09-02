@@ -9,7 +9,6 @@ import {
   main,
   runVerifyChecks,
   runVerifyMain,
-  warnOnCheckCountMismatch,
 } from './verify';
 import { makeTempDir } from './lib/fs.ts';
 
@@ -103,20 +102,6 @@ describe('exitCodeFromVerifyResults', () => {
   });
 });
 
-describe('warnOnCheckCountMismatch', () => {
-  test('warns with expected and actual counts when they differ', () => {
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
-
-    warnOnCheckCountMismatch([{ id: 'A', ok: true }], 2);
-
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0]?.[0]).toContain('2');
-    expect(warnSpy.mock.calls[0]?.[0]).toContain('1');
-
-    warnSpy.mockRestore();
-  });
-});
-
 describe('formatVerifyResultLine', () => {
   test('renders pass and fail icons with optional detail', () => {
     expect(formatVerifyResultLine({ id: 'A', ok: true })).toBe('  ✓ A');
@@ -147,7 +132,6 @@ describe('runVerifyMain', () => {
     );
 
     const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
 
     const exitCode = await runVerifyMain({ checksDir: dir });
 
@@ -157,10 +141,8 @@ describe('runVerifyMain', () => {
       '  ✓ A',
       '\n1/1 checks passed',
     ]);
-    expect(warnSpy).toHaveBeenCalled();
 
     logSpy.mockRestore();
-    warnSpy.mockRestore();
   });
 
   test('returns 1 when any discovered check fails', async () => {
@@ -172,7 +154,6 @@ describe('runVerifyMain', () => {
     );
 
     const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
 
     const exitCode = await runVerifyMain({ checksDir: dir });
 
@@ -181,7 +162,6 @@ describe('runVerifyMain', () => {
     expect(logSpy.mock.calls.map((call) => call[0])).toContain('\n0/1 checks passed');
 
     logSpy.mockRestore();
-    warnSpy.mockRestore();
   });
 
   test('discovers and runs multiple stub checks in sorted filename order', async () => {
@@ -198,7 +178,6 @@ describe('runVerifyMain', () => {
     );
 
     const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
 
     await runVerifyMain({ checksDir: dir });
 
@@ -208,7 +187,6 @@ describe('runVerifyMain', () => {
     expect(resultLines).toEqual(['  ✓ A', '  ✓ Z']);
 
     logSpy.mockRestore();
-    warnSpy.mockRestore();
   });
 });
 
@@ -225,13 +203,11 @@ describe('main() CLI', () => {
       throw new ProcessExitError(code);
     }) as never);
     const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
 
     await expect(main({ checksDir: dir })).rejects.toMatchObject({ code: 0 });
 
     exitSpy.mockRestore();
     logSpy.mockRestore();
-    warnSpy.mockRestore();
   });
 
   test('calls process.exit(1) when any discovered check fails', async () => {
@@ -246,13 +222,11 @@ describe('main() CLI', () => {
       throw new ProcessExitError(code);
     }) as never);
     const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
-    const warnSpy = spyOn(console, 'warn').mockImplementation(() => undefined);
 
     await expect(main({ checksDir: dir })).rejects.toMatchObject({ code: 1 });
 
     exitSpy.mockRestore();
     logSpy.mockRestore();
-    warnSpy.mockRestore();
   });
 });
 

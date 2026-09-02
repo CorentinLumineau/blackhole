@@ -84,7 +84,7 @@ Committed template: `.blackhole/config.json`
 | `wave_scheduling.shard_by_touch_path` | no | When `true`, shard parallel workers by declared touch-path overlap to reduce merge/rebase collisions on shared files |
 | `wave_scheduling.hot_files_max_one_per_wave` | no | Array of repo-relative paths that may have at most one in-flight worker per wave (hot-file lock) |
 | `wave_scheduling.rationale` | no | Human-readable rationale for the `wave_scheduling` settings (audit trail for owner decisions) |
-| `wave_scheduling.batched_checks_pr` | no | Owner-granted exception allowing one PR to implement several `scripts/checks/*.check.ts` modules with a single `EXPECTED_CHECK_COUNT` bump |
+| `wave_scheduling.batched_checks_pr` | no | Owner-granted exception allowing one PR to implement several `scripts/checks/*.check.ts` modules together |
 | `wave_scheduling.batched_checks_pr.allowed` | no | When `true`, the batched-checks PR exception is active for this campaign |
 | `wave_scheduling.batched_checks_pr.granted_at` | no | ISO date when the batched-checks exception was granted |
 | `wave_scheduling.batched_checks_pr.granted_by` | no | Freeform provenance for who granted the batched-checks exception |
