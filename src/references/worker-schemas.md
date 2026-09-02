@@ -58,7 +58,7 @@ When `status: blocked`, `failing_checks` lists failed items:
 - `touch_paths_declared` — Touch-Paths section present (`V-SCOPE-02`)
 - `schema_baseline` — API/schema changes specified for standard track (`V-API-01`)
 - `tdd_tasks` — TDD baseline and failing-test tasks present (`V-TEST-01/02`)
-- `ac_mapping` — acceptance criteria mapped to tasks; sibling mechanical checks `critical_files_exist` / `mitigation_concrete` — Critical Files Glob-miss and Execution Strategy vague-mitigation (Standard track only, mercure `x-plan` parity, issue #459)
+- `ac_mapping` — acceptance criteria mapped to tasks; sibling mechanical checks `critical_files_exist` / `mitigation_concrete` — Critical Files Glob-miss and Execution Strategy vague-mitigation (Standard track only, mercure `x-plan` parity, issue #459); all three computed by `bun run scripts/plan-quality-gate.ts --plan-file <path>` (issue #716), copied verbatim into `failing_checks`
 - `ac_sweep_conflict` / `ac_sweep_scope` / `touch_paths_ssot_gap` — advisory-only plan-time heuristics (sweep/retain overlap, unscoped sweep AC, Touch-Paths SSOT gaps via `findTouchPathSsotGaps`) — `ADVISORY:` rows or Quick Track `## Touch-Paths Completeness Advisory`; never `failing_checks` (#575)
 - `clarification_limit` — at most 2 `[NEEDS CLARIFICATION]` markers
 - `base_commit` — `plan_base_commit` stamped in frontmatter
