@@ -261,11 +261,12 @@ state: the next orchestrator turn picks up `mergeEligible()` evaluation
 exactly where it left off (predecessors already merged stay resolved), with
 no rollback logic required for the PRs that already landed.
 
-## 5. Review artifact presence gate (ADR-021 D3, issue #445)
+## 5. Review artifact presence + content gate (ADR-021 D3, issue #445; content check issue #806)
 
 When `docs_governance.enabled` and `docs_governance.write_governance` both resolve `true`, an
-LGTM'd issue's PR must contain the promoted review artifact before `mergeEligible(issue)` may
-proceed to `phase-loop.md` step 4 (`gh pr merge`):
+LGTM'd issue's PR must contain the promoted review artifact, and that artifact's content must
+agree with the live findings ledger, before `mergeEligible(issue)` may proceed to
+`phase-loop.md` step 4 (`gh pr merge`):
 
 ```
 function reviewArtifactPresent(issue, pr_diff_paths, config):
@@ -275,10 +276,27 @@ function reviewArtifactPresent(issue, pr_diff_paths, config):
     return expected in pr_diff_paths
 ```
 
-Mechanical check: `rg 'documentation/reviews/review-'` on the PR file list, or
-`git diff --name-only origin/<base>...HEAD | grep documentation/reviews/`. Absence is a **hard
-stop** at merge step 2.5 — same class as a missing plan manifest declaration at implement time
-(`implementer.md` § Carry Staged Artifacts). Inert when either governance flag is `false`.
+Presence alone is existence-only and does not catch a committed artifact whose content has
+drifted from the ledger (wrong verdict, a dropped `### Deferred` section — PR #773's actual
+failure mode). `mergeReadinessForReviewPromotion()`
+(`scripts/lib/merge-gate/review-artifact.ts`) therefore also runs
+`reviewArtifactContentMatchesLedger()` once presence has already passed: it re-renders the
+expected markdown via `renderReviewMarkdown()` (`scripts/lib/promote-review-artifact.ts:112`), a
+pure function of the findings ledger — an input the promoter does not control, unlike the
+manifest-based check this replaced (`manifestHasReviewRoute` was removed outright, issue #806:
+it verified an input the party being checked itself wrote). The committed file's own `created:`
+frontmatter date is extracted and passed back in as the re-render's `today` override, so a
+cross-midnight gap between promotion and verification never causes a spurious mismatch — the
+only two things that can differ are actual content.
+
+Mechanical check: `bun run scripts/check-review-artifact.ts --config <abs> --issue <N> --title
+<title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head <sha> --repo-root
+<abs> --diff-file <abs paths.txt>` — every path-shaped flag must be absolute
+(`path.isAbsolute()`), or the CLI exits `2` with its usage message (issue #806 AC4; sidesteps the
+#798 cwd-relative-resolution hazard class rather than sequencing behind it). Failure (missing
+file, or content mismatch against the ledger re-render) is a **hard stop** at merge step 2.5 —
+same class as a missing plan manifest declaration at implement time (`implementer.md` § Carry
+Staged Artifacts). Inert when either governance flag is `false`.
 
 ## 6. `pipelineVerdict(pr, queue) -> "lgtm" | "needs_changes" | "not_detected"` (ADR-026 D2)
 
