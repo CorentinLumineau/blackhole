@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  findExhaustiveMarkerBlocks,
   findRouteShapeDrift,
+  parseExhaustiveRouteKeys,
   parseOmitsAllowlist,
   parseRequireFieldKeys,
   parseRouteTypeKeys,
@@ -140,11 +142,172 @@ describe('findRouteShapeDrift (V-SHAPE-01)', () => {
   });
 });
 
+// Exhaustive-marker leg fixtures (issue #762) — the second V-SHAPE-01 leg parses
+// `<!-- shape: exhaustive -->`-marked fenced ```json blocks and asserts their embedded `route`
+// object's leaf-key set matches ROUTER_SNIPPET's required keys exactly (no omits allowlist).
+
+// Full-payload shape, mirrors worker-schemas.md's example: `route` nested under a top-level object.
+const EXHAUSTIVE_DOC_FULL_PAYLOAD = `
+## Router (\`router\`)
+
+<!-- shape: exhaustive -->
+\`\`\`json
+{
+  "status": "routed",
+  "route": {
+    "needs_split": false,
+    "task_type": "bugfix",
+    "body_hash": "abc",
+    "confidence": { "split": 95, "design": 80, "security": 90 }
+  },
+  "trigger": "initial"
+}
+\`\`\`
+`;
+
+// Bare-fragment shape, mirrors queue-dag.md's example: the fenced block's body is a bare
+// `"route": { ... }` fragment — not valid JSON on its own.
+const EXHAUSTIVE_DOC_BARE_FRAGMENT = `
+### \`route\` object
+
+<!-- shape: exhaustive -->
+\`\`\`json
+"route": {
+  "needs_split": false,
+  "task_type": "bugfix",
+  "body_hash": "abc",
+  "confidence": { "split": 95, "design": 80, "security": 90 }
+}
+\`\`\`
+`;
+
+// Same as EXHAUSTIVE_DOC_FULL_PAYLOAD, minus the required `task_type` key.
+const EXHAUSTIVE_DOC_MISSING_FIELD = `
+## Router (\`router\`)
+
+<!-- shape: exhaustive -->
+\`\`\`json
+{
+  "status": "routed",
+  "route": {
+    "needs_split": false,
+    "body_hash": "abc",
+    "confidence": { "split": 95, "design": 80, "security": 90 }
+  },
+  "trigger": "initial"
+}
+\`\`\`
+`;
+
+// Same as EXHAUSTIVE_DOC_FULL_PAYLOAD, plus an undeclared `stray_field` — an "exhaustive" doc
+// example must not carry an extra field either (no omits allowlist applies to this leg).
+const EXHAUSTIVE_DOC_EXTRA_FIELD = `
+## Router (\`router\`)
+
+<!-- shape: exhaustive -->
+\`\`\`json
+{
+  "status": "routed",
+  "route": {
+    "needs_split": false,
+    "task_type": "bugfix",
+    "body_hash": "abc",
+    "stray_field": true,
+    "confidence": { "split": 95, "design": 80, "security": 90 }
+  },
+  "trigger": "initial"
+}
+\`\`\`
+`;
+
+// A marker with no following fenced JSON block — nothing to compare, not itself a drift.
+const EXHAUSTIVE_DOC_NO_BLOCK = `
+<!-- shape: exhaustive -->
+Some prose with no fenced JSON block following.
+`;
+
+describe('findExhaustiveMarkerBlocks', () => {
+  test('pairs the marker line with the following fenced JSON block body (full-payload shape)', () => {
+    const blocks = findExhaustiveMarkerBlocks(EXHAUSTIVE_DOC_FULL_PAYLOAD);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].markerLine).toBe(4);
+    expect(blocks[0].body).toContain('"route"');
+  });
+
+  test('pairs the marker line with the following fenced JSON block body (bare-fragment shape)', () => {
+    const blocks = findExhaustiveMarkerBlocks(EXHAUSTIVE_DOC_BARE_FRAGMENT);
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].markerLine).toBe(4);
+    expect(blocks[0].body).toContain('"route": {');
+  });
+
+  test('a marker with no following fenced JSON block returns []', () => {
+    expect(findExhaustiveMarkerBlocks(EXHAUSTIVE_DOC_NO_BLOCK)).toEqual([]);
+  });
+});
+
+describe('parseExhaustiveRouteKeys', () => {
+  test('extracts the same leaf-key set as parseRequireFieldKeys(ROUTER_SNIPPET) — full-payload shape', () => {
+    const expected = parseRequireFieldKeys(ROUTER_SNIPPET);
+    const blocks = findExhaustiveMarkerBlocks(EXHAUSTIVE_DOC_FULL_PAYLOAD);
+    const keys = parseExhaustiveRouteKeys(blocks[0].body);
+    expect(keys).toEqual(expected);
+  });
+
+  test('extracts the same leaf-key set as parseRequireFieldKeys(ROUTER_SNIPPET) — bare-fragment shape', () => {
+    const expected = parseRequireFieldKeys(ROUTER_SNIPPET);
+    const blocks = findExhaustiveMarkerBlocks(EXHAUSTIVE_DOC_BARE_FRAGMENT);
+    const keys = parseExhaustiveRouteKeys(blocks[0].body);
+    expect(keys).toEqual(expected);
+  });
+
+  test('returns null on an unparseable body', () => {
+    expect(parseExhaustiveRouteKeys('not json at all {{{')).toBeNull();
+  });
+});
+
+describe('checkExhaustiveMarkerParity (V-SHAPE-01, second leg)', () => {
+  test('reports missing-field drift', () => {
+    const routerKeys = parseRequireFieldKeys(ROUTER_SNIPPET);
+    const blocks = findExhaustiveMarkerBlocks(EXHAUSTIVE_DOC_MISSING_FIELD);
+    const docKeys = parseExhaustiveRouteKeys(blocks[0].body);
+    expect(docKeys).not.toBeNull();
+    const drift = findRouteShapeDrift(routerKeys, docKeys as Set<string>, new Set());
+    expect(drift).toContain('task_type');
+  });
+
+  test('reports extra-field drift (no omits allowlist applies to this leg)', () => {
+    const routerKeys = parseRequireFieldKeys(ROUTER_SNIPPET);
+    const blocks = findExhaustiveMarkerBlocks(EXHAUSTIVE_DOC_EXTRA_FIELD);
+    const docKeys = parseExhaustiveRouteKeys(blocks[0].body);
+    expect(docKeys).not.toBeNull();
+    const drift = findRouteShapeDrift(routerKeys, docKeys as Set<string>, new Set());
+    expect(drift).toContain('stray_field');
+  });
+
+  test('no false positive against the full-payload shape', () => {
+    const routerKeys = parseRequireFieldKeys(ROUTER_SNIPPET);
+    const blocks = findExhaustiveMarkerBlocks(EXHAUSTIVE_DOC_FULL_PAYLOAD);
+    const docKeys = parseExhaustiveRouteKeys(blocks[0].body);
+    expect(docKeys).not.toBeNull();
+    expect(findRouteShapeDrift(routerKeys, docKeys as Set<string>, new Set())).toEqual([]);
+  });
+
+  test('no false positive against the bare-fragment shape', () => {
+    const routerKeys = parseRequireFieldKeys(ROUTER_SNIPPET);
+    const blocks = findExhaustiveMarkerBlocks(EXHAUSTIVE_DOC_BARE_FRAGMENT);
+    const docKeys = parseExhaustiveRouteKeys(blocks[0].body);
+    expect(docKeys).not.toBeNull();
+    expect(findRouteShapeDrift(routerKeys, docKeys as Set<string>, new Set())).toEqual([]);
+  });
+});
+
 describe('runChecks live tree', () => {
-  test('V-SHAPE-01 passes against the live router.ts / types.ts pair', () => {
+  test('V-SHAPE-01 passes against the live router.ts / types.ts pair, both legs', () => {
     const results = runChecks();
-    const row = results.find((r) => r.id === 'V-SHAPE-01');
-    expect(row?.ok).toBe(true);
+    const rows = results.filter((r) => r.id === 'V-SHAPE-01');
+    expect(rows.length).toBe(2);
+    expect(rows.every((r) => r.ok === true)).toBe(true);
   });
 
   test('live router.ts parses to a non-empty required-key set', () => {
