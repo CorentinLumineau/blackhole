@@ -74,3 +74,5 @@
 | reviews/review-discovery-findings-ledger-json-is-schema-drifted-at-scale-162-286-string-issue-r.md | Review artifact for issue #754 (LGTM) | review | current | on file change |
 | reviews/review-discovery-carry-staged-artifacts-ts-writes-manifest-supplied-paths-with-no-repo.md | Review artifact for issue #752 (LGTM) | review | current | on file change |
 | reviews/review-discovery-design-track-critics-score-against-adr-bodies-without-reading-post-acc.md | Review artifact for issue #775 (LGTM) | review | current | on file change |
+| plans/plan-discovery-bash-pretooluse-guards-miss-every-path-qualified-invocation-usr-bin-gi.md | Bugfix plan fixing `worktree-removal-guard.js`'s `isCommandWordStart` predicate to recognize path-qualified `git` invocations (`/usr/bin/git`) without reopening the `--git-dir=/x/.git` fragment false positive it was introduced to reject (issue #774) | plan | current | on file change |
+| reviews/review-discovery-bash-pretooluse-guards-miss-every-path-qualified-invocation-usr-bin-gi.md | Review artifact for issue #774 (LGTM) | review | current | on file change |

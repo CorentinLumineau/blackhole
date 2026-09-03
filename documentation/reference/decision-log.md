@@ -3,7 +3,7 @@ type: reference
 status: current
 review_trigger: "on file change"
 created: 2026-07-20
-last_updated: 2026-09-02
+last_updated: 2026-09-03
 related:
   - documentation/decisions/ADR-012-shared-artifact-substrate.md
 ---
@@ -48,3 +48,6 @@ itself is never deleted, only trimmed.
 | 744 | reuse | `documentation/reviews/review-chore-content-gates-…md` | Added the `review-aggregate.ts` gate row alongside the generator's single ledger row | Every merged artifact (#706, #709, #713, #714) carries both rows; shipping the generator's bare output would have made this a fifth format variant at an established touchpoint |
 | 751 | root-cause | `scripts/verify.model-routing-effort.test.ts` | #742 correctly replaced the "Unverified" note with a citation; the assertion in another file was outside its Touch-Paths and went stale | The prose is the intended end state, so the test was wrong, not the doc — a revert would have been the symptom fix |
 | 751 | approach | `scripts/verify.model-routing-effort.test.ts` | Cross-file guard (prose names the cited test; the cited test still exists there) over a `/verified/i` word swap | A word swap passes on any prose containing "Verified", including a lie or a citation to a deleted test; the guard fails if either side drifts — proven by breaking each side in turn |
+| 786 | root-cause | templates/hooks/pretooluse/utils/worktree-removal-guard.js | Added isPathQualifiedGitWordStart, ORed into findGitWordIndices, rather than widening isCommandWordStart's predecessor class to include '/' | isCommandWordStart's [\s;&\|(\n] class excluded '/', so a path-qualified git word was discarded and evaluateWorktreeRemoval returned null — fail-open. Widening the class would newly admit the --git-dir=/x/git fragment; the new predicate walks back to the real token boundary with an '=' crossing check instead |
+| 786 | reuse | templates/hooks/pretooluse/utils/worktree-removal-guard.js | No reusable predicate found repo-wide; isCommandWordStart left untouched and extended by OR rather than modified | First occurrence of a path-qualified command-word predicate in the tree; extending by OR keeps the existing predicate's contract intact for its other caller |
+| 786 | improvement | templates/hooks/pretooluse/utils/worktree-removal-guard.js | Restated findGitWordIndices' docstring to cover path-qualified tokens | Scout Check within the diff boundary; the existing docstring described only the shell-separator case and would have read as contradicting the new predicate |
