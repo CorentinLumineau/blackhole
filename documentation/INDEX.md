@@ -107,6 +107,7 @@
 | reviews/review-fix-merge-gate-review-artifact-content-verification-against-live-ledger.md | Review artifact for issue #806 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-fix-orchestrator-refresh-main-clone-from-origin-main-post-merge-and-turn-start.md | Review artifact for issue #792 (LGTM, 1 deferred WARN) | review | current | on file change |
 | reviews/review-fix-plan-template-generalize-facts-ts-literal-bump-prohibition.md | Review artifact for issue #769 (LGTM) | review | current | on file change |
+| reviews/review-fix-promote-review-artifact-byte-order-safe-sort-comparator.md | Review artifact for issue #791 (LGTM, 0 deferred WARN) | review | current | on file change |
 | reviews/review-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Review artifact for issue #728 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
 | reviews/review-record-408-s-reversal-of-adr-007-r3-supersession-rule-with-declared-phrase-scan.md | Review artifact for issue #712 (LGTM) | review | current | on file change |
