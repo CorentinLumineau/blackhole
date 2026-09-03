@@ -164,6 +164,15 @@ Row `path` values are **relative to `documentation/`** (e.g. `decisions/ADR-021-
 filenames relative to its own directory (a per-folder index, unambiguous within one folder
 alone; the root index spans many folders and needs the folder-prefixed form).
 
+**Row order (issue #743)**: both `documentation/INDEX.md` and `documentation/decisions/INDEX.md`
+insert rows in path-sorted order, not append/chronological order — the shared
+`appendIndexRowIfAbsent` primitive (`scripts/lib/check-common.ts`) rebuilds the row block as
+`[...existingRows, newRow].sort((a, b) => a.path.localeCompare(b.path))` on every insert, so
+concurrent carry/promotion PRs touching the same file land their new rows at different offsets
+instead of the same anchor line. Since ADR filenames are zero-padded to a fixed 3-digit width,
+path order and ADR-sequence order coincide for the decisions index — no separate ordering rule
+is needed for that file.
+
 Owning agent: **`implementer`** — no new agent is minted for this obligation; it reuses
 `implementer`'s existing ADR-021 D2 carry-step role (the mechanism that already writes
 staged/derived documentation artifacts into the tree). Every doc under `documentation/` needs a

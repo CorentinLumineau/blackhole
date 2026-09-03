@@ -116,10 +116,55 @@ export const parseIndexTableRows = (
 // doc-health.check.ts re-exports both names for backward compatibility with its existing test.
 export type RootIndexRow = { path: string; summary: string; type: string; status: string; reviewTrigger: string };
 
-// Idempotent row-append primitive (issue #490, ADR-021 D2 carry-step) — built on
-// parseIndexTableRows above (V-INT-02). Guards a duplicate row on implementer re-spawn.
+const renderIndexRowLine = (row: RootIndexRow): string =>
+  `| ${row.path} | ${row.summary} | ${row.type} | ${row.status} | ${row.reviewTrigger} |`;
+
+// Byte-order (UTF-16 code-unit) comparator, deliberately not String.prototype.localeCompare —
+// localeCompare uses the runtime's default-locale ICU collation, which can diverge from byte
+// order on real path shapes (e.g. case variants, "_" vs "-") and is not guaranteed identical
+// across machines/Node builds. The sorted-insert guarantee this file exists to provide only
+// holds if two machines compute the same position for the same row, so the comparator must not
+// depend on locale.
+const byPathByteOrder = (a: RootIndexRow, b: RootIndexRow): number => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+
+// Idempotent, path-sorted row-insert primitive (issue #490, ADR-021 D2 carry-step; sorted
+// insert per issue #743). Built on parseIndexTableRows above (V-INT-02). Guards a duplicate row
+// on implementer re-spawn, then rebuilds the entire row block in path order — [...existing,
+// new].sort(...) — rather than appending at the end, so concurrent carry/promotion PRs land
+// their new rows at different offsets instead of the same anchor line (the guaranteed-collision
+// failure mode this issue closes). Separator-row detection reuses the same `/^:?-+:?$/` idiom
+// parseIndexTableRows uses, so a summary field containing "---" is never misdetected as the
+// table header.
 export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow): { content: string; appended: boolean } => {
   if (parseIndexTableRows(indexContent).some((r) => r.path === row.path)) return { content: indexContent, appended: false };
-  const line = `| ${row.path} | ${row.summary} | ${row.type} | ${row.status} | ${row.reviewTrigger} |`;
-  return { content: `${indexContent}${indexContent.endsWith('\n') ? '' : '\n'}${line}\n`, appended: true };
+
+  const lines = indexContent.split('\n');
+  let separatorIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').map((c) => c.trim());
+    if (cells.length >= 2 && /^:?-+:?$/.test(cells[1])) {
+      separatorIdx = i;
+      break;
+    }
+  }
+
+  // No parseable table (e.g. a fresh/malformed doc with no header separator) — fall back to
+  // plain append-at-end, same behavior as before this change.
+  if (separatorIdx === -1) {
+    const line = renderIndexRowLine(row);
+    return { content: `${indexContent}${indexContent.endsWith('\n') ? '' : '\n'}${line}\n`, appended: true };
+  }
+
+  // The contiguous block of `|`-prefixed lines immediately following the separator is the row
+  // block; everything after it (blank lines, trailing content) is left untouched.
+  let blockEnd = separatorIdx + 1;
+  while (blockEnd < lines.length && lines[blockEnd].trim().startsWith('|')) blockEnd++;
+
+  const sortedRows = [...parseIndexTableRows(indexContent), row].sort(byPathByteOrder);
+  const sortedLines = sortedRows.map(renderIndexRowLine);
+
+  const rebuilt = [...lines.slice(0, separatorIdx + 1), ...sortedLines, ...lines.slice(blockEnd)].join('\n');
+  return { content: rebuilt, appended: true };
 };

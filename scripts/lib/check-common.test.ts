@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { findMissingGateMarkers, parseIndexTableRows, parseVcodeTableRows } from './check-common.ts';
+import { appendIndexRowIfAbsent, findMissingGateMarkers, parseIndexTableRows, parseVcodeTableRows } from './check-common.ts';
 
 describe('findMissingGateMarkers', () => {
   test('returns the subset of required markers absent from content', () => {
@@ -83,5 +83,114 @@ describe('parseIndexTableRows', () => {
       status: 'current',
       reviewTrigger: 'on release',
     });
+  });
+});
+
+// Issue #743: appendIndexRowIfAbsent inserts each row in path-sorted position instead of
+// appending at the end, so concurrent carry/promotion PRs touching the same INDEX.md land at
+// different offsets and merge cleanly in the common case. Built on parseIndexTableRows above
+// (V-INT-02) for row enumeration.
+describe('appendIndexRowIfAbsent — sorted insert', () => {
+  const HEADER = `| path | summary | type | status | review_trigger |
+|------|---------|------|--------|----------------|
+`;
+
+  const row = (p: string) => ({
+    path: p,
+    summary: `Summary for ${p}`,
+    type: 'audit',
+    status: 'current',
+    reviewTrigger: 'on release',
+  });
+
+  const rowLine = (r: ReturnType<typeof row>) =>
+    `| ${r.path} | ${r.summary} | ${r.type} | ${r.status} | ${r.reviewTrigger} |`;
+
+  test('(a) insert into an empty table lands the single row correctly', () => {
+    const result = appendIndexRowIfAbsent(`# Doc Index\n\n${HEADER}`, row('audits/b.md'));
+    expect(result.appended).toBe(true);
+    expect(parseIndexTableRows(result.content)).toEqual([row('audits/b.md')]);
+  });
+
+  test('(b) insert a row that sorts before an existing row lands it first', () => {
+    const content = `# Doc Index\n\n${HEADER}${rowLine(row('audits/m.md'))}\n`;
+    const result = appendIndexRowIfAbsent(content, row('audits/a.md'));
+    expect(result.appended).toBe(true);
+    expect(parseIndexTableRows(result.content).map((r) => r.path)).toEqual([
+      'audits/a.md',
+      'audits/m.md',
+    ]);
+  });
+
+  test('(c) insert a row that sorts between two existing rows lands it in the middle, neighbors unchanged', () => {
+    const content = `# Doc Index\n\n${HEADER}${rowLine(row('audits/a.md'))}\n${rowLine(row('audits/z.md'))}\n`;
+    const result = appendIndexRowIfAbsent(content, row('audits/m.md'));
+    expect(result.appended).toBe(true);
+    const rows = parseIndexTableRows(result.content);
+    expect(rows.map((r) => r.path)).toEqual(['audits/a.md', 'audits/m.md', 'audits/z.md']);
+    // Neighbor rows are byte-identical to their original line, not just semantically equal.
+    expect(result.content).toContain(rowLine(row('audits/a.md')));
+    expect(result.content).toContain(rowLine(row('audits/z.md')));
+  });
+
+  test('(d) insert a row that sorts after all existing rows lands it last (parity with old append)', () => {
+    const content = `# Doc Index\n\n${HEADER}${rowLine(row('audits/a.md'))}\n`;
+    const result = appendIndexRowIfAbsent(content, row('audits/z.md'));
+    expect(result.appended).toBe(true);
+    expect(parseIndexTableRows(result.content).map((r) => r.path)).toEqual([
+      'audits/a.md',
+      'audits/z.md',
+    ]);
+  });
+
+  test('(e) idempotent — re-running the same insert on its own output is a no-op', () => {
+    const content = `# Doc Index\n\n${HEADER}${rowLine(row('audits/a.md'))}\n`;
+    const first = appendIndexRowIfAbsent(content, row('audits/m.md'));
+    expect(first.appended).toBe(true);
+
+    const second = appendIndexRowIfAbsent(first.content, row('audits/m.md'));
+    expect(second.appended).toBe(false);
+    expect(second.content).toBe(first.content);
+  });
+
+  test('(f) a 4-row full-resort case rebuilds the entire block in sorted order, not just local neighbors', () => {
+    // Existing rows are deliberately out of path order (simulates the pre-migration
+    // append/chronological files described in the plan's Decision Record).
+    const content = `# Doc Index\n\n${HEADER}${rowLine(row('audits/z.md'))}\n${rowLine(row('audits/a.md'))}\n${rowLine(row('audits/n.md'))}\n`;
+    const result = appendIndexRowIfAbsent(content, row('audits/g.md'));
+    expect(result.appended).toBe(true);
+    expect(parseIndexTableRows(result.content).map((r) => r.path)).toEqual([
+      'audits/a.md',
+      'audits/g.md',
+      'audits/n.md',
+      'audits/z.md',
+    ]);
+  });
+
+  test('(h) sorts by byte order, not locale-collation — a "_" vs "-" case distinguishes them', () => {
+    // "-" (U+002D) < "_" (U+005F) in byte/UTF-16-code-unit order, so
+    // "audits/review-fix.md" sorts before "audits/review_fix.md". The runtime's default-locale
+    // localeCompare disagrees (ICU collation treats "_" and "-" as near-equivalent separators
+    // and falls back to case/other tie-breaks), which would put them in the opposite order —
+    // exactly the cross-machine nondeterminism this comparator must avoid (mixed-case and
+    // underscored paths already exist in-tree, e.g. `milestones/_archived/`).
+    const content = `# Doc Index\n\n${HEADER}${rowLine(row('audits/review-fix.md'))}\n`;
+    const result = appendIndexRowIfAbsent(content, row('audits/review_fix.md'));
+    expect(result.appended).toBe(true);
+    expect(parseIndexTableRows(result.content).map((r) => r.path)).toEqual([
+      'audits/review-fix.md',
+      'audits/review_fix.md',
+    ]);
+  });
+
+  test('(g) content with no parseable table still appends at the end rather than throwing', () => {
+    const content = '# No table here\n\nJust prose.\n';
+    let result: ReturnType<typeof appendIndexRowIfAbsent> | undefined;
+    expect(() => {
+      result = appendIndexRowIfAbsent(content, row('audits/a.md'));
+    }).not.toThrow();
+    expect(result?.appended).toBe(true);
+    expect(result?.content.startsWith(content)).toBe(true);
+    expect(result?.content).toContain(rowLine(row('audits/a.md')));
   });
 });
