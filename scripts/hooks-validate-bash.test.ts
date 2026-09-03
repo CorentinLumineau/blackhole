@@ -1548,6 +1548,93 @@ describe('validate-bash-command.js — worktree-removal guard path-qualified git
   );
 });
 
+// Executable-spelling bypass (#788): the guard's detection stage compared the leading token
+// against the exact literal `'git'` string, so ANY shell-accepted spelling other than the bare
+// literal token — a backslash escape, a quoted form, or adjacent-quote concatenation — produced
+// zero detected invocations and let `git worktree remove` proceed with no unpushed-commit check
+// at all. Each case below is denied on a never-pushed branch exactly like the bare `git
+// worktree remove` form (line ~740) — proving the spelling itself makes no difference to
+// detection, not just that "something" got denied.
+describe('validate-bash-command.js — worktree-removal guard executable-spelling bypass (#788)', () => {
+  test.each([
+    ['backslash-escaped', (worktree: string) => `\\git worktree remove ${worktree}`],
+    ['double-quoted', (worktree: string) => `"git" worktree remove ${worktree}`],
+    ['single-quoted', (worktree: string) => `'git' worktree remove ${worktree}`],
+    ['double-quoted path-qualified', (worktree: string) => `"/usr/bin/git" worktree remove ${worktree}`],
+    ['adjacent-quote concatenation', (worktree: string) => `g""it worktree remove ${worktree}`],
+  ])('deny: %s spelling of the git executable is still detected, not silently bypassed', async (label, buildCommand) => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-788-',
+      `blackhole/issue-788-${label.replace(/[^a-z0-9]+/gi, '-')}`,
+      async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(buildCommand(worktree)), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/verify/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-unverifiable',
+        });
+      },
+    );
+  });
+
+  // Negative control for the new tokens[0]-normalization step: an argument whose basename is
+  // coincidentally `git` (no `.git` suffix, unlike the existing #774 negative control) must not
+  // be misread as a second, phantom invocation. The normalization only ever applies to a clause's
+  // own first token, so an option VALUE — never a candidate executable — can't trigger it no
+  // matter what its basename is.
+  test('allow: `--git-dir=/x/git` (basename coincidentally "git", no `.git` suffix) forms no phantom invocation', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-788-',
+      'blackhole/issue-788-git-dir-basename',
+      async (mainRepo, worktree, push) => {
+        push();
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`git --git-dir=/x/git worktree remove ${worktree}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
+
+  // Execution Strategy step 2: `$(which git)` / env-var indirection. The executable position
+  // itself is dynamic (a command substitution or a bare `$VAR` reference) and cannot be resolved
+  // statically — per the module's existing "cannot verify, must refuse" posture, this must never
+  // be silently allowed, whether resolved as a git invocation or refused outright as
+  // unresolvable.
+  test.each([
+    ['command substitution', (worktree: string) => `$(which git) worktree remove ${worktree}`],
+    ['env-var indirection', (worktree: string) => `GIT=/usr/bin/git $GIT worktree remove ${worktree}`],
+  ])('deny: %s executable indirection is never silently allowed', async (_label, buildCommand) => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-788-',
+      `blackhole/issue-788-${_label.replace(/[^a-z0-9]+/gi, '-')}`,
+      async (mainRepo, worktree, push) => {
+        push();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(buildCommand(worktree)), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block' });
+      },
+    );
+  });
+});
+
 // Uncaught-exception fail-open regression (#580): a non-string `cwd` reaches
 // `worktree-removal-guard.js`'s unguarded `path.resolve(cwd, pathArg)` (line 245, reached via
 // `evaluateWorktreeRemoval`) and throws a `TypeError` outside every existing try/catch in

@@ -33,14 +33,34 @@
  * requires `git` and `worktree` to sit whitespace-adjacent, so ANY git global option between them
  * — `-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=<path>` — bypassed detection entirely. That
  * form is not exotic: #528/`0dc64ec` mandates `git -C <path> ...` campaign-wide, so the bypassing
- * form is the one the campaign now *always* uses. This module instead walks tokens: find every
- * unmasked, word-boundary-real `git` command word (`isCommandWordStart` below — not just any
- * `\bgit\b` match, which also fires on the harmless "git" fragment inside `--git-dir=/x/.git`),
- * skip recognized global options (`skipGitGlobalOptions`), and check whether `worktree remove`
- * follows. The same walk also fixes a second bug: the original code inspected only the first
- * match in a command and returned, so a second `git worktree remove` in a chained command
- * (`cmd1 && cmd2`) was never checked. `evaluateWorktreeRemoval` now inspects every invocation
- * found in the command and denies if ANY of them is unsafe.
+ * form is the one the campaign now *always* uses. This module instead walks CLAUSE STARTS
+ * (`findClauseStartIndices` below — the position right after `;`, a non-redirect `&`, `|`, `(`,
+ * or a newline, never plain whitespace, which only ever separates two tokens of the SAME clause):
+ * at each clause's own first token, normalize it (`normalizeShellWord`) and compare its basename
+ * against `git`, then skip recognized global options (`skipGitGlobalOptions`) and check whether
+ * `worktree remove` follows. Restricting the executable search to a clause's first token — never
+ * any later token — is what makes an argument like `--git-dir=/x/git` (basename coincidentally
+ * `git`) impossible to mistake for a second invocation, with no per-argument exemption needed.
+ * The same walk also fixes a second bug: the original code inspected only the first match in a
+ * command and returned, so a second `git worktree remove` in a chained command (`cmd1 && cmd2`)
+ * was never checked. `evaluateWorktreeRemoval` now inspects every invocation found in the command
+ * and denies if ANY of them is unsafe.
+ *
+ * #788: the exact-literal comparison this walk used to make against a clause's first token — was
+ * it the 5-character string `'git'`? — was the actual bypass: `\git`, `"git"`, `'git'`,
+ * `"/usr/bin/git"`, and `g""it` are five different literal strings that are all the same
+ * executable to bash, so all five failed that comparison and produced zero detected invocations.
+ * `normalizeShellWord` replaces it with a normalize-then-basename-compare step that reconstructs
+ * what bash's own quote-removal would produce (concatenating adjacent quoted/unquoted/escaped
+ * fragments, e.g. `g""it` -> `git`) before the basename comparison — one code path covering every
+ * spelling, not a growing list of predecessor-character exemptions. A clause's first token whose
+ * executable position is itself dynamic (`$(...)`, a backtick, or a bare `$VAR`/`${VAR}`
+ * reference — `normalizeShellWord`'s `dynamic: true` result) can never be resolved statically;
+ * `$(which git)` / `GIT=... $GIT` indirection is refused outright via
+ * `worktree-remove-unresolvable-path` rather than silently allowed, following the same
+ * "cannot verify, must refuse" posture as an unresolvable path argument. A leading `NAME=value`
+ * assignment (or a run of them) is skipped before the executable check, matching how bash itself
+ * reads `GIT_AUTHOR_NAME=foo git worktree remove x` — the assignment is not the executable.
  */
 
 const { execFileSync } = require('child_process');
@@ -98,56 +118,126 @@ const skipGitGlobalOptions = (tokens, start) => {
 
 /** True when the character immediately before `index` is a real shell word boundary — start of
  * string, whitespace, or a command separator (`;`, `&`, `|`, `(`, newline) — not merely "any
- * non-word character", which is all `\b` alone checks. `\bgit\b` also matches the "git" fragment
- * inside `--git-dir=/main/.git` (preceded by `.`, a non-word char, so `\b` fires there too) —
- * accepting that as a real command word is exactly the "denies by accident" bug flagged in
- * review: it only happens to deny when a `--git-dir=` value happens to end in `.git`, and it
- * would have made a genuine leading-`git`-with-global-options invocation match twice (once for
- * real, once for the embedded fragment) rather than being the actual fix. */
+ * non-word character". Used below only as a defensive assertion that a clause-start index really
+ * is one (`findClauseStartIndices` guarantees this by construction), not as the primary detection
+ * mechanism — see that function's docstring for why scanning for `git`-shaped substrings directly
+ * (this predicate's original #532 role) cannot cover every executable spelling (#788). */
 const isCommandWordStart = (command, index) => index === 0 || /[\s;&|(\n]/.test(command[index - 1]);
 
-/** True when a `git` word match at `index` is a path-qualified real invocation — the "git" in
- * `/usr/bin/git` or `./git` — rather than a fragment embedded in an `=`-attached option value,
- * the "git" in `--git-dir=/main/.git`. `isCommandWordStart` above rejects both alike, because a
- * `/` is no more a shell word boundary than the `.` it was written to exclude; that is the
- * fail-open this predicate closes. The distinguishing signal is position, not merely "preceded by
- * a slash": walk backward from the character before `index` (which must be `/`, or this is not
- * path-qualified at all) to the nearest real command-word boundary. Reaching that boundary
- * without crossing `=` means the whole path token starts at a genuine command position — accept.
- * Crossing `=` first means the path lives inside an attached option value (`--flag=/some/path`) —
- * reject, preserving the fragment exclusion isCommandWordStart was introduced for. A `git` that
- * is merely an interior path segment (`-C /home/user/git/repo`) is admitted here but cannot form
- * an invocation: its clause tail begins `git/repo`, which findWorktreeRemoveInvocations' token
- * check below discards. */
-const isPathQualifiedGitWordStart = (command, index) => {
-  if (index === 0 || command[index - 1] !== '/') return false;
-  let i = index - 1;
-  while (i > 0 && !/[\s;&|(\n]/.test(command[i - 1])) {
-    if (command[i - 1] === '=') return false;
-    i -= 1;
-  }
-  return true;
-};
-
-const GIT_WORD_RE = /\bgit\b/g;
-
-/** Every index in `command` where a real (unmasked) `git` command word starts — either at a shell
- * word boundary or at the end of a path-qualified executable token. */
-const findGitWordIndices = (command, masked) => {
+/** Every position in `command` that begins a new clause: index 0 (after any leading whitespace),
+ * and the first non-whitespace, unmasked position following each unmasked clause separator (`;`,
+ * a non-redirect `&`, `|`, `(`, or newline). Deliberately narrower than `isCommandWordStart`'s own
+ * boundary set: plain whitespace also appears there, but whitespace alone separates two tokens of
+ * the SAME clause (an argument, never a new command) — admitting it here would let an argument
+ * like `--git-dir=/x/git` (basename coincidentally `git`, no `.git` suffix) be misread as a
+ * second invocation, the exact collision a plain "any word start" scan would reintroduce.
+ * Restricting the executable-word search below to a clause's own first token makes that collision
+ * impossible by construction, with no per-argument exemption list needed. A separator inside a
+ * quoted string is not distinguished from a real one here — the same naive, quote-unaware
+ * limitation `clauseTailFrom` below already has for the clause tail it returns; this only affects
+ * where a clause is judged to START, the mirror image of that pre-existing, accepted limitation.
+ */
+const findClauseStartIndices = (command, masked) => {
+  const n = command.length;
   const indices = [];
-  GIT_WORD_RE.lastIndex = 0;
-  let m = GIT_WORD_RE.exec(command);
-  while (m !== null) {
-    if (
-      !masked[m.index] &&
-      (isCommandWordStart(command, m.index) || isPathQualifiedGitWordStart(command, m.index))
-    ) {
-      indices.push(m.index);
+
+  const skipToStart = (from) => {
+    let i = from;
+    while (i < n && (masked[i] || /\s/.test(command[i]))) i += 1;
+    if (i < n) indices.push(i);
+    return i;
+  };
+
+  let i = skipToStart(0);
+  while (i < n) {
+    if (masked[i]) {
+      i += 1;
+      continue;
     }
-    if (GIT_WORD_RE.lastIndex === m.index) GIT_WORD_RE.lastIndex += 1;
-    m = GIT_WORD_RE.exec(command);
+    const ch = command[i];
+    if (ch === ';' || ch === '|' || ch === '\n' || ch === '(') {
+      i = skipToStart(i + 1);
+      continue;
+    }
+    if (ch === '&') {
+      const prev = i > 0 ? command[i - 1] : '';
+      const next = i + 1 < n ? command[i + 1] : '';
+      if (prev === '>' || next === '>') {
+        i += 1; // 2>&1, >&, &>file, … — a redirect, not a clause separator
+        continue;
+      }
+      i = skipToStart(command[i + 1] === '&' ? i + 2 : i + 1);
+      continue;
+    }
+    i += 1;
   }
   return indices;
+};
+
+/** Reconstructs the literal text bash's own quote-removal would produce from `word`, concatenating
+ * adjacent quoted/unquoted/escaped fragments exactly as bash does — `g""it` -> `git`, `\git` ->
+ * `git`, `"/usr/bin/git"` -> `/usr/bin/git`. This is the normalize-then-basename-compare step that
+ * replaces the old exact `tokens[0] !== 'git'` comparison (#788): one code path covering every
+ * measured bypass spelling, not a growing list of predecessor-character exemptions. Cannot resolve
+ * a `$(...)`, backtick, `${...}`, or bare `$VAR` reference statically — returns
+ * `{ text: null, dynamic: true }` for those (a single-quoted `$`/backtick is never dynamic: single
+ * quotes suppress all substitution, so it never reaches the top-level `$`/backtick check below). */
+const normalizeShellWord = (word) => {
+  let text = '';
+  let i = 0;
+  const n = word.length;
+  while (i < n) {
+    const ch = word[i];
+    if (ch === '\\' && i + 1 < n) {
+      text += word[i + 1];
+      i += 2;
+      continue;
+    }
+    if (ch === "'") {
+      const close = word.indexOf("'", i + 1);
+      const end = close === -1 ? n : close;
+      text += word.slice(i + 1, end);
+      i = end + 1;
+      continue;
+    }
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < n && word[j] !== '"') {
+        if (word[j] === '\\' && j + 1 < n) {
+          text += word[j + 1];
+          j += 2;
+          continue;
+        }
+        if (word[j] === '$' || word[j] === '`') return { text: null, dynamic: true };
+        text += word[j];
+        j += 1;
+      }
+      i = j + 1;
+      continue;
+    }
+    if (ch === '$' || ch === '`') return { text: null, dynamic: true };
+    text += ch;
+    i += 1;
+  }
+  return { text, dynamic: false };
+};
+
+/** True when `token` is a leading `NAME=value` environment-variable assignment — the shape bash
+ * itself treats as a prefix to the command it precedes, never as the command itself
+ * (`GIT_AUTHOR_NAME=foo git worktree remove x` invokes `git`, not `GIT_AUTHOR_NAME=foo`). */
+const isEnvAssignmentToken = (token) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(token);
+
+/** True when `tokens`, from `fromIndex` on, contains `worktree` immediately followed by `remove`
+ * — the bounded "looks-dynamic + worktree/remove tokens present" heuristic (Execution Strategy
+ * step 2) for an executable position that could not be resolved statically. Narrow by
+ * construction: it only ever fires alongside a dynamic executable token (checked by the caller),
+ * so it cannot turn an ordinary command that merely mentions these two words into a denial on its
+ * own. */
+const containsWorktreeRemoveTokens = (tokens, fromIndex) => {
+  for (let i = fromIndex; i < tokens.length - 1; i++) {
+    if (tokens[i] === 'worktree' && tokens[i + 1] === 'remove') return true;
+  }
+  return false;
 };
 
 /** The substring of `command` starting at `index` up to (not including) the next shell separator
@@ -184,20 +274,39 @@ const clauseTailFrom = (command, index) => {
 
 /**
  * Every `git worktree remove` invocation in `command`, tolerant of global options between `git`
- * and `worktree` (`-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=<path>`, combinations) and of
- * more than one such invocation in a chained command. Each entry is `{ argTokens }` — the tokens
- * following `remove` (flags and the path argument), ready for `parseWorktreeRemoveArgs`. Naive
- * whitespace tokenization, matching this module's existing convention for the post-`remove` tail
- * (a quoted path containing a literal space is not resolved either way — not a regression, the
- * original code had the same limitation for that argument).
+ * and `worktree` (`-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=<path>`, combinations), of more
+ * than one such invocation in a chained command, and of leading `NAME=value` assignments before
+ * the executable. Each entry is either `{ argTokens }` — the tokens following `remove` (flags and
+ * the path argument), ready for `parseWorktreeRemoveArgs` — or `{ unresolvableExecutable: true }`
+ * when the executable position itself could not be resolved statically (#788 Execution Strategy
+ * step 2). Naive whitespace tokenization for everything after the executable token, matching this
+ * module's existing convention for the post-`remove` tail (a quoted path containing a literal
+ * space is not resolved either way — not a regression, the original code had the same limitation
+ * for that argument).
  */
 const findWorktreeRemoveInvocations = (command) => {
   const masked = computeMaskedSpans(command);
   const invocations = [];
-  for (const gitIndex of findGitWordIndices(command, masked)) {
-    const tokens = clauseTailFrom(command, gitIndex).trim().split(/\s+/).filter(Boolean);
-    if (tokens[0] !== 'git') continue; // defensive: gitIndex is always a real word start
-    const subcommandIndex = skipGitGlobalOptions(tokens, 1);
+  for (const clauseStart of findClauseStartIndices(command, masked)) {
+    if (!isCommandWordStart(command, clauseStart)) continue; // defensive: clause starts are always real word starts
+    const tokens = clauseTailFrom(command, clauseStart).trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) continue;
+
+    let execIndex = 0;
+    while (execIndex < tokens.length && isEnvAssignmentToken(tokens[execIndex])) execIndex += 1;
+    if (execIndex >= tokens.length) continue;
+
+    const { text: executable, dynamic } = normalizeShellWord(tokens[execIndex]);
+
+    if (dynamic) {
+      if (containsWorktreeRemoveTokens(tokens, execIndex + 1)) {
+        invocations.push({ unresolvableExecutable: true });
+      }
+      continue;
+    }
+    if (!executable || path.basename(executable) !== 'git') continue;
+
+    const subcommandIndex = skipGitGlobalOptions(tokens, execIndex + 1);
     if (subcommandIndex === -1) continue;
     if (tokens[subcommandIndex] !== 'worktree' || tokens[subcommandIndex + 1] !== 'remove') continue;
     invocations.push({ argTokens: tokens.slice(subcommandIndex + 2) });
@@ -391,6 +500,23 @@ const GITHUB_RETAINS_PR_HEADS_NOTE =
 const NEVER_PUSHED_ANYWHERE_SUFFIX =
   'was genuinely never pushed anywhere has no non-destructive fix — push it first.';
 
+/** Block decision for a `{ unresolvableExecutable: true }` invocation (#788 Execution Strategy
+ * step 2) — a `$(...)`, backtick, or `$VAR`/`${VAR}` executable position sitting immediately
+ * before literal `worktree remove` tokens. Reuses `worktree-remove-unresolvable-path`'s shape
+ * (block tier, same "cannot verify, must refuse" posture) rather than inventing a second
+ * "can't tell" outcome — the guard already has one refusal for "this cannot be verified
+ * statically", and the reason it cannot be verified (a dynamic path vs. a dynamic executable)
+ * does not change what the caller must do about it. */
+const unresolvableExecutableDecision = () => ({
+  tier: 'block',
+  pattern_id: 'worktree-remove-unresolvable-path',
+  reason:
+    'git worktree remove executable could not be resolved statically (command substitution or ' +
+    'environment-variable indirection) — cannot confirm this is git, or rule it out, before ' +
+    'removal. Remedy: re-run as a standalone command naming the literal `git` executable (no ' +
+    '$(...), backticks, or $VAR indirection).',
+});
+
 /** Evaluates one `{ argTokens }` invocation against `cwd`, returning a block decision or null
  * when this single invocation is safe (`clean`) — `evaluateWorktreeRemoval` below decides what
  * "safe overall" means across every invocation in the command. */
@@ -488,8 +614,10 @@ const evaluateWorktreeRemoval = (command, cwd) => {
   const invocations = findWorktreeRemoveInvocations(command);
   if (invocations.length === 0) return null;
 
-  for (const { argTokens } of invocations) {
-    const decision = evaluateOneInvocation(argTokens, cwd);
+  for (const invocation of invocations) {
+    const decision = invocation.unresolvableExecutable
+      ? unresolvableExecutableDecision()
+      : evaluateOneInvocation(invocation.argTokens, cwd);
     if (decision) return decision;
   }
   return { tier: 'allow' };
@@ -505,5 +633,6 @@ module.exports = {
   findWorktreeRemoveInvocations,
   skipGitGlobalOptions,
   isCommandWordStart,
-  isPathQualifiedGitWordStart,
+  findClauseStartIndices,
+  normalizeShellWord,
 };
