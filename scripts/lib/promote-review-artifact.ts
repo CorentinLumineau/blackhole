@@ -100,7 +100,7 @@ export function selectReviewFindings(
   return [...byKey.values()].sort((a, b) => {
     const rankDiff = (SEVERITY_RANK[b.severity] ?? 0) - (SEVERITY_RANK[a.severity] ?? 0);
     if (rankDiff !== 0) return rankDiff;
-    return a.file.localeCompare(b.file);
+    return a.file < b.file ? -1 : a.file > b.file ? 1 : 0;
   });
 }
 

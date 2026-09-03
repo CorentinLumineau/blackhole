@@ -1,0 +1,32 @@
+{
+  "refreshed_at": "2026-09-03T00:00:00.000Z",
+  "next_id": 3,
+  "findings": [
+    {
+      "id": "F-00001",
+      "vcode": "V-DOC-01",
+      "severity": "BLOCK",
+      "phase": "review",
+      "issue_ref": 791,
+      "pr_ref": 900,
+      "file": "scripts/apple_file.ts",
+      "line": 1,
+      "summary": "Placeholder finding on apple_file.ts",
+      "status": "open",
+      "created_at": "2026-09-03T00:00:00.000Z"
+    },
+    {
+      "id": "F-00002",
+      "vcode": "V-DOC-01",
+      "severity": "BLOCK",
+      "phase": "review",
+      "issue_ref": 791,
+      "pr_ref": 900,
+      "file": "scripts/Zeta.ts",
+      "line": 1,
+      "summary": "Placeholder finding on Zeta.ts",
+      "status": "open",
+      "created_at": "2026-09-03T00:00:00.000Z"
+    }
+  ]
+}
