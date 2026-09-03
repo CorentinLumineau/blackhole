@@ -28,12 +28,23 @@ const openWarnLedger = JSON.parse(
     'utf-8',
   ),
 );
+const caseAndUnderscoreLedger = JSON.parse(
+  fs.readFileSync(
+    path.join(root, 'fixtures/promote-review-artifact/case-and-underscore-ledger.json'),
+    'utf-8',
+  ),
+);
 
 describe('selectReviewFindings', () => {
   test('omits recheck-fixed and fixed-in-pr rows; retains not_fixed', () => {
     const selected = selectReviewFindings(fixtureLedger, 445, 901);
     const ids = selected.map((f) => f.id).sort();
     expect(ids).toEqual(['F-00002']);
+  });
+
+  test('sorts by byte order, not locale collation (case + underscore, issue #791)', () => {
+    const selected = selectReviewFindings(caseAndUnderscoreLedger, 791, 900);
+    expect(selected.map((f) => f.file)).toEqual(['scripts/Zeta.ts', 'scripts/apple_file.ts']);
   });
 });
 
