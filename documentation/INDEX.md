@@ -95,6 +95,7 @@
 | reviews/review-feat-checks-enforce-shape-exhaustive-markers-via-v-shape-01-second-leg.md | Review artifact for issue #762 (LGTM) | review | current | on file change |
 | reviews/review-feat-checks-v-gate-02-gate-resolution-citations-v-prose-01-mechanical-vs-judgmen.md | Review artifact for issue #723 (LGTM) | review | current | on file change |
 | reviews/review-feat-checks-v-shape-01-route-field-set-parity-router-validator-status-type-schem.md | Review artifact for issue #708 (LGTM) | review | current | on file change |
+| reviews/review-feat-findings-ledger-deferred-finding-reconciliation-on-target-closure.md | Review artifact for issue #809 (LGTM, 0 deferred WARN) | review | current | on file change |
 | reviews/review-feat-planner-plan-quality-gate-cli-invoked-at-plan-time.md | Review artifact for issue #716 (LGTM) | review | current | on file change |
 | reviews/review-feat-reviewer-plugin-cache-version-bump-gate-drift-signal.md | Review artifact for issue #800 (LGTM) | review | current | undefined |
 | reviews/review-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Review artifact for issue #715 (LGTM) | review | current | on file change |
