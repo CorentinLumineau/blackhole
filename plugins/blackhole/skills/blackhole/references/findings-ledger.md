@@ -40,6 +40,8 @@ Path: `.blackhole/findings-ledger.json` (gitignored at runtime).
 | `pr_ref` | number \| null | Set when PR exists |
 | `status` | `open` \| `fixed-in-pr` \| `deferred` \| `resolved` | See state machine |
 | `deferred_to_issue` | number \| null | **Required** when `status: deferred` |
+| `reconciled_at` | ISO timestamp \| absent | Set the turn the reconciliation check/triage script transitions a `deferred` row off its terminal state (issue #809) — **recorded, not inferred at read time**. Absent means never reconciled |
+| `reconciliation_rule` | `closed-pr-title-match` \| `closed-pr-body-match` \| `manual-triage` \| absent | Which reproducible rule (issue #809, `scripts/triage-deferred-findings.ts`) classified the transition; `manual-triage` covers rows where the automated title/body match was ambiguous and a human confirmed the outcome |
 
 ### id shape & next-id computation
 
@@ -74,8 +76,37 @@ open → fixed-in-pr     (addressed in current PR, pre-merge)
 open → deferred        (filed as new issue — deferred_to_issue required)
 open → resolved        (fixed without deferral, or superseded)
 fixed-in-pr → resolved (after merge)
-deferred → resolved    (when deferred issue merges — optional cleanup)
+deferred → resolved    (when deferred issue closes AND the work shipped — mandatory, not optional;
+                         set reconciled_at + reconciliation_rule, issue #809)
+deferred → open        (deferred_to_issue closed WITHOUT the work shipping — reopened into the
+                         normal open-finding flow rather than left permanently invisible behind a
+                         closed issue; set reconciled_at + reconciliation_rule, issue #809)
 ```
+
+**Reconciliation (issue #809)**: nothing previously reconciled a `deferred` finding once its
+`deferred_to_issue` target closed — the ledger's never-drop invariant was enforced at filing time
+(§ Write protocol step 5) but not at closure time. `scripts/checks/deferred-reconciliation.check.ts`
+(`V-DEFER-01`, advisory — see `blackhole-vcodes.md`) surfaces every `deferred` row whose target has
+closed (`queue.json` status `merged`/`closed`, or the target is absent from `queue.json` entirely —
+an "untracked" category) with no `reconciled_at` set, at the same per-turn cadence as forge sync
+(`forge-sync.md` § Native auto-sync). `scripts/triage-deferred-findings.ts` is the one-time
+migration that classifies the existing backlog via a reproducible rule (closed via a merged PR
+whose title/body references the finding's `vcode`/`file` → `resolved`; every other closed-target
+row → reopened to `open`, flagged `manual-triage` for human confirmation).
+
+### Known limitation: prose-only sub-deferrals are not mechanically detected
+
+A deferral recorded only as prose inside an issue body, a PR description, or a rule-file decision
+record — with no `deferred_to_issue` field anywhere — cannot be found by grepping
+`findings-ledger.json`, because the ledger has no row to examine in the first place. Detecting
+this shape would require full-text NLP/semantic search across every closed issue's body and every
+merged PR's description looking for deferral-shaped language ("deferred to", "follow-up issue",
+"tracked separately") with no structured anchor — explicitly out of scope
+(`V-KISS-01`/`V-YAGNI-01`: no speculative NLP pipeline for a problem with no current reproducible
+trigger). Worked example: issue `#551` recorded such a prose-only sub-deferral in its own body/PR
+with no `deferred_to_issue` field pointing at it; the gap went unnoticed for 3 weeks until
+independently rediscovered and re-filed as `#803`. This plan does not solve that shape — it is
+**not mechanically detected**, documented here as a known, accepted limitation.
 
 **`companion_repairs[]` consumer** (issue #453): on an implementer `status: complete`, the
 orchestrator matches each `companion_repairs[]` row's `(vcode, file)` against open/deferred
