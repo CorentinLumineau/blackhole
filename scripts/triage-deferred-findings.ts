@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawnSync } from 'child_process';
 import { root } from './checks/check-utils.ts';
 import { validateStateWrite } from './lib/state-write-guard.ts';
+import { runGhJson } from './lib/forge-adapter/cli.ts';
 
 // Issue #809 — one-time migration/triage of `findings-ledger.json`'s existing `deferred`
 // backlog: reconciles every `deferred` row whose `deferred_to_issue` target has closed with no
@@ -147,15 +147,14 @@ export const triageFindings = (
 };
 
 // The one, scoped `gh` call this script makes — only for a target absent from `queueIssues`
-// entirely. Any failure (auth, rate limit, issue truly gone) returns `null`, which
-// `resolveClosureInfo` turns into `{ kind: 'unreachable' }` and `triageFindings` turns into an
-// immediate run abort — see the Stop Condition note above.
+// entirely. Routed through `runGhJson` (the sole allowed `gh` spawn site, `forge-adapter/cli.ts`
+// — V-FORGE-01) rather than spawning the CLI directly in this file. Any failure (auth, rate
+// limit, issue truly gone) returns `null`, which `resolveClosureInfo` turns into
+// `{ kind: 'unreachable' }` and `triageFindings` turns into an immediate run abort — see the
+// Stop Condition note above.
 export const fetchUntrackedIssue = (n: number): FetchedIssue | null => {
-  const result = spawnSync('gh', ['issue', 'view', String(n), '--json', 'state,closedAt,title,body'], { encoding: 'utf-8' });
-  if (result.error || result.status !== 0) return null;
   try {
-    const parsed = JSON.parse(result.stdout);
-    return { state: parsed.state, title: parsed.title, body: parsed.body };
+    return runGhJson<FetchedIssue>(['issue', 'view', String(n), '--json', 'state,closedAt,title,body']);
   } catch {
     return null;
   }
