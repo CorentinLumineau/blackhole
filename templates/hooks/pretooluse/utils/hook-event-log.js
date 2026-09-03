@@ -167,11 +167,25 @@ const readScratchpadDir = (mainClone) => {
  * Write/Edit containment allow-list to an arbitrary directory (#510/F-00088). Narrowed here to
  * worktrees nested under the main clone, or nested under a validated `scratchpad_dir` from
  * `<mainClone>/.blackhole/config.json` — the documented location for worker worktrees (e.g.
- * `/tmp/blackhole-campaign/wt-42`). `validate-file-changes.js`'s containment check treats a
- * target as in-bounds when it falls under ANY of these roots, not just whichever one the hook
- * process happens to be sitting in. Null outside a git context, mirroring the other two
- * resolvers above; an empty (but non-null) array means git resolved fine but no root passed the
- * filter, which correctly denies rather than falling open. */
+ * `/tmp/blackhole-campaign/wt-42`) — **plus, unconditionally, `cwd`'s own resolved git toplevel**
+ * (#729): a non-campaign interactive session sitting in any worktree of this repo family must be
+ * able to Write/Edit within its own worktree even when that worktree is registered neither under
+ * the main clone nor under `scratchpad_dir` (e.g. a worktree created via a bare `git worktree
+ * add <elsewhere>`). This is no broader than the trust the no-git-context fallback in
+ * `validate-file-changes.js` already extends to `cwd` unconditionally (#512) — #510/F-00088's
+ * actual invariant (a session cannot write into a worktree that is neither its own cwd nor
+ * nested under a trusted root) is unaffected; see the split #510/#729 regression tests in
+ * `scripts/hooks-validate-file.test.ts`. Also admits `BLACKHOLE_SCRATCHPAD_DIR` (#729) — an
+ * opt-in override for the Claude Code harness's own per-session scratchpad directory, which is
+ * never a git worktree and so never appears in `git worktree list` output at all — validated
+ * through the same `isAcceptableScratchpadDir` breadth check `scratchpad_dir` already uses
+ * (V-INT-02), read once per call, admitted only when explicitly set and valid (no silent
+ * auto-detection of the harness's undocumented-internal `/tmp/claude-<uid>/...` shape). Mirrors
+ * the `BLACKHOLE_HOOK_EVENT_DIR` / `BLACKHOLE_ASSIGNED_WORKTREE` env-var precedent. Null outside
+ * a git context, mirroring the other two resolvers above; an empty (but non-null) array means
+ * git resolved fine but no root passed the filter, which correctly denies rather than falling
+ * open. `validate-file-changes.js`'s containment check treats a target as in-bounds when it
+ * falls under ANY of the roots returned here. */
 const allWorktreeRoots = (cwd = process.cwd()) => {
   try {
     const listing = git(['worktree', 'list', '--porcelain'], cwd);
@@ -183,9 +197,21 @@ const allWorktreeRoots = (cwd = process.cwd()) => {
     const mainClone = mainCloneRoot(cwd);
     if (!mainClone) return null;
     const scratchpadDir = readScratchpadDir(mainClone);
-    return roots.filter(
+    const filtered = roots.filter(
       (root) => isUnderRoot(root, mainClone) || (scratchpadDir !== null && isUnderRoot(root, scratchpadDir)),
     );
+
+    const cwdRoot = worktreeRoot(cwd);
+    const withCwd =
+      cwdRoot && !filtered.some((root) => resolveExistingAncestor(root) === resolveExistingAncestor(cwdRoot))
+        ? [...filtered, cwdRoot]
+        : filtered;
+
+    const envScratchpad = process.env.BLACKHOLE_SCRATCHPAD_DIR;
+    if (typeof envScratchpad === 'string' && envScratchpad.length > 0 && isAcceptableScratchpadDir(envScratchpad)) {
+      return [...withCwd, envScratchpad];
+    }
+    return withCwd;
   } catch {
     return null;
   }

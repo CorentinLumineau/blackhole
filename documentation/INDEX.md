@@ -45,6 +45,7 @@
 | plans/plan-fix-hooks-validate-file-changes-js-510-512-tests-fail-on-macos-os-tmpdir-under-p.md | Bugfix plan fixing hook-event-log.js's symlink-unaware `BARE_TEMP_DIRS` broad-root check (issue #714, R-21) — closes #510/#512 macOS test failures without weakening the guard | plan | current | on file change |
 | plans/plan-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Implementation plan for closing the Phase-0 journeys.md companion-scaffold INDEX gap and correcting its documented target path (issue #728) | plan | current | on file change |
 | plans/plan-pr-merge-gate-dependency-ordering.md | Implementation plan for ADR-005's PR merge-gate and dependency ordering | plan | current | on file change |
+| plans/plan-pretooluse-outside-worktree-guard-denies-every-write-edit-in-non-campaign-intera.md | Standard-track plan for issue #729 -- union cwd own git toplevel into the PreToolUse write-containment root set plus an opt-in BLACKHOLE_SCRATCHPAD_DIR override, closing the outside-worktree false-deny for non-campaign interactive sessions | plan | current | on file change |
 | plans/plan-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Implementation plan for issue #704 (R-01) — retire the derived `EXPECTED_CHECK_COUNT` counter and its new-check-module Touch-Paths trigger | plan | current | on file change |
 | plans/plan-retrospective-v0.21.0-remediation.md | Work breakdown and dependency graph for the v0.21.0 retrospective's 22 remediation items (one issue each) | plan | current | on ADR acceptance |
 | plans/plan-routing-visibility-reuse-gate.md | Implementation plan for dashboard routing visibility and the implementer Reuse Check gate | plan | current | on ADR acceptance |
@@ -82,6 +83,7 @@
 | reviews/review-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Review artifact for issue #715 (LGTM) | review | current | on file change |
 | reviews/review-feat-scripts-decision-log-append-ts-bumps-last-updated-silent-log-doc-health-sig.md | Review artifact for issue #717 (LGTM) | review | current | on file change |
 | reviews/review-fix-config-registration-parent-key-coverage-for-nested-config-blocks-router-conf.md | Review artifact for issue #707 (LGTM, 1 deferred WARN) | review | current | on file change |
+| reviews/review-fix-hooks-admit-cwd-s-own-worktree-and-opt-in-scratchpad-dir-in-outside-worktree.md | Review artifact for issue #729 (LGTM) | review | current | on file change |
 | reviews/review-fix-hooks-validate-file-changes-js-510-512-tests-fail-on-macos-os-tmpdir-under-p.md | Review artifact for issue #714 (LGTM, one deferred WARN) | review | current | on file change |
 | reviews/review-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Review artifact for issue #728 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
