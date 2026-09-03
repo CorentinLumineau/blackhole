@@ -91,6 +91,7 @@
 | reviews/review-fix-hooks-extend-assigned-worktree-write-containment-to-bash-file-write-commands.md | Review artifact for issue #804 (LGTM) | review | current | on file change |
 | reviews/review-fix-hooks-normalize-then-basename-compare-closes-worktree-remove-executable-spel.md | Review artifact for issue #788 (LGTM) | review | current | on file change |
 | reviews/review-fix-hooks-validate-file-changes-js-510-512-tests-fail-on-macos-os-tmpdir-under-p.md | Review artifact for issue #714 (LGTM, one deferred WARN) | review | current | on file change |
+| reviews/review-fix-merge-gate-review-artifact-content-verification-against-live-ledger.md | Review artifact for issue #806 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Review artifact for issue #728 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
 | reviews/review-record-408-s-reversal-of-adr-007-r3-supersession-rule-with-declared-phrase-scan.md | Review artifact for issue #712 (LGTM) | review | current | on file change |
