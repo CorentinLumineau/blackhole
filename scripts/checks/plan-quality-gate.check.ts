@@ -98,7 +98,9 @@ export const findUnscopedSweepACs = (section: string): string[] => // V-INT-02: 
     .filter((t) => SWEEP_ZERO_PATTERN.test(t.text))
     .filter((t) => !(extractBacktickPaths(t.text).length && EXEMPTION_PATTERN.test(t.text)))
     .map((t) => t.label);
-
+// Issue #769 — advisory: a plan-time facts.ts literal bump drifts stale; require live re-derivation.
+const FACTS_LITERAL_BUMP_PATTERN = /\bfrom\s+`?(\d+)`?\s+to\s+`?(\d+)`?\b/i, SCREAMING_SNAKE_CASE_PATTERN = /\b([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\b/;
+export const findFactsLiteralBumps = (section: string) => splitTaskBreakdownBullets(section).flatMap((t) => { const b = t.text.match(FACTS_LITERAL_BUMP_PATTERN), c = t.text.match(SCREAMING_SNAKE_CASE_PATTERN); return b && c ? [{ task: t.label, constant: c[1], from: b[1], to: b[2] }] : []; });
 // Grounding check (regression guard, same shape as design-track.check.ts's V-DESIGN-02):
 // planner.md Step 8 and worker-schemas.md's Plan quality gate checks list must both still name
 // the two new failing_checks values — a silent prose drop would leave this mechanical parity
