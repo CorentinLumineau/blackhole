@@ -258,7 +258,8 @@ below).
 | `touch_paths_honored` | boolean | when `complete` |
 | `execution_mode` | `standard` \| `refactor-strict` \| `docs-only` | no, optional — absent defaults to `standard` |
 | `task_type` | `feature` \| `bugfix` \| `refactor` \| `docs` | no, optional |
-| `escalation_trigger` | `failed_attempts` \| `touch_paths_overrun` \| `merge_conflict_semantic` | no, optional — only meaningful on `status: blocked` |
+| `escalation_trigger` | `failed_attempts` \| `touch_paths_overrun` \| `merge_conflict_semantic` \| `environmental_blocker` | no, optional — only meaningful on `status: blocked` |
+| `blocked_step` | string | no, optional — only meaningful when `escalation_trigger === "environmental_blocker"` |
 | `evidence` | object `{ command: string, result: string }` | yes when `status: complete`; absent when `blocked`/`error` |
 | `new_findings` | finding[] | no |
 | `filed_issues` | number[] | no |
@@ -299,10 +300,7 @@ spawn time yet — documentation of future intent, mirroring `execution_mode` ab
 
 ### `escalation_trigger` (optional — ADR-004)
 
-`failed_attempts` \| `touch_paths_overrun` (Bugfix Gate) \| `merge_conflict_semantic` (Conflict
-Resolution Gate — requires non-empty `conflict_hunks[]` below). Single-valued. Consumers:
-`orchestrator-dispatch.md` § Escalation dispatch — `merge_conflict_semantic` → HITL, never
-`investigator`.
+`failed_attempts` \| `touch_paths_overrun` (Bugfix Gate) \| `merge_conflict_semantic` (Conflict Resolution Gate — requires non-empty `conflict_hunks[]`) \| `environmental_blocker` (delivery-boundary command failed for an infrastructure/environment reason, not a code defect — see `blocked_step` below). Single-valued. Consumers: `orchestrator-dispatch.md` § Escalation dispatch — never `investigator` for either.
 
 ### `conflict_hunks[]` (optional — issue #450)
 
@@ -315,6 +313,9 @@ Required when `escalation_trigger === "merge_conflict_semantic"`.
 | `excerpt` | string |
 
 See `implementer.md` § Scout Check / § Reuse Check Gate (`V-DRY`).
+
+### `blocked_step` (optional — string, `environmental_blocker` only)
+Contrast with `conflict_hunks[]` above: optional, never required, even for its own trigger value.
 
 ### Rulings ledger (read-input)
 
