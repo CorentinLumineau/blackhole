@@ -119,6 +119,14 @@ export type RootIndexRow = { path: string; summary: string; type: string; status
 const renderIndexRowLine = (row: RootIndexRow): string =>
   `| ${row.path} | ${row.summary} | ${row.type} | ${row.status} | ${row.reviewTrigger} |`;
 
+// Byte-order (UTF-16 code-unit) comparator, deliberately not String.prototype.localeCompare —
+// localeCompare uses the runtime's default-locale ICU collation, which can diverge from byte
+// order on real path shapes (e.g. case variants, "_" vs "-") and is not guaranteed identical
+// across machines/Node builds. The sorted-insert guarantee this file exists to provide only
+// holds if two machines compute the same position for the same row, so the comparator must not
+// depend on locale.
+const byPathByteOrder = (a: RootIndexRow, b: RootIndexRow): number => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+
 // Idempotent, path-sorted row-insert primitive (issue #490, ADR-021 D2 carry-step; sorted
 // insert per issue #743). Built on parseIndexTableRows above (V-INT-02). Guards a duplicate row
 // on implementer re-spawn, then rebuilds the entire row block in path order — [...existing,
@@ -154,7 +162,7 @@ export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow):
   let blockEnd = separatorIdx + 1;
   while (blockEnd < lines.length && lines[blockEnd].trim().startsWith('|')) blockEnd++;
 
-  const sortedRows = [...parseIndexTableRows(indexContent), row].sort((a, b) => a.path.localeCompare(b.path));
+  const sortedRows = [...parseIndexTableRows(indexContent), row].sort(byPathByteOrder);
   const sortedLines = sortedRows.map(renderIndexRowLine);
 
   const rebuilt = [...lines.slice(0, separatorIdx + 1), ...sortedLines, ...lines.slice(blockEnd)].join('\n');

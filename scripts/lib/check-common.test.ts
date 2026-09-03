@@ -167,6 +167,22 @@ describe('appendIndexRowIfAbsent — sorted insert', () => {
     ]);
   });
 
+  test('(h) sorts by byte order, not locale-collation — a "_" vs "-" case distinguishes them', () => {
+    // "-" (U+002D) < "_" (U+005F) in byte/UTF-16-code-unit order, so
+    // "audits/review-fix.md" sorts before "audits/review_fix.md". The runtime's default-locale
+    // localeCompare disagrees (ICU collation treats "_" and "-" as near-equivalent separators
+    // and falls back to case/other tie-breaks), which would put them in the opposite order —
+    // exactly the cross-machine nondeterminism this comparator must avoid (mixed-case and
+    // underscored paths already exist in-tree, e.g. `milestones/_archived/`).
+    const content = `# Doc Index\n\n${HEADER}${rowLine(row('audits/review-fix.md'))}\n`;
+    const result = appendIndexRowIfAbsent(content, row('audits/review_fix.md'));
+    expect(result.appended).toBe(true);
+    expect(parseIndexTableRows(result.content).map((r) => r.path)).toEqual([
+      'audits/review-fix.md',
+      'audits/review_fix.md',
+    ]);
+  });
+
   test('(g) content with no parseable table still appends at the end rather than throwing', () => {
     const content = '# No table here\n\nJust prose.\n';
     let result: ReturnType<typeof appendIndexRowIfAbsent> | undefined;
