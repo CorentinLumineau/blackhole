@@ -334,7 +334,7 @@ The artifact consolidates 8 ordered subsections:
     Validated / `~` Contestable / `◐` Blind spot / `✗` Incorrect, with a one-line note per
     assumption.
 8.  **Gate (ADR-010 D4 — config-gated, otherwise unchanged)**: Staged ADR bodies must follow
-    `src/references/adr-template.md` (`##` missing = blocked). The design note MUST include a
+    `src/references/adr-template.md`'s `designTrack` shape (`ADR_SHAPES` in `facts.ts`; `##` missing = blocked). The design note MUST include a
     `### What the owner needs to decide (R-003 executive summary)` block satisfying
     `clarify-gates.md` § Gate Content Contract's four elements (`.blackhole/plans/issue-496-design.md`
     § 8 is a worked example), regardless of the `status` outcome below. When

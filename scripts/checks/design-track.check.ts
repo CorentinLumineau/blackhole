@@ -1,22 +1,16 @@
 import { read, type CheckResult } from './check-utils.ts';
 import { findMissingGateMarkers } from '../lib/check-common.ts';
+import { ADR_SHAPES } from '../lib/build/facts.ts';
 
 // ADR-007 T5/R2' — design-track.check.ts: matches verify.design-track.test.ts.
 
 // V-DESIGN-01: Design Track template in plan-template.md declares all 8 required section
 // headings. Issue #325 extracted the Plan Output File Template (all 3 sub-templates, including
 // the Design Track template this check validates) verbatim out of planner.md into
-// src/references/plan-template.md, leaving a thin pointer section in planner.md.
-export const DESIGN_TRACK_REQUIRED_HEADINGS = [
-  '## Requirements Framing',
-  '## Options + Trade-off Matrix',
-  '## Adversarial Evaluation',
-  '## Component Decomposition',
-  '## Design Principles Validation',
-  '## Refactoring Impact Analysis',
-  '## Assumption Audit',
-  '## Gate',
-];
+// src/references/plan-template.md, leaving a thin pointer section in planner.md. Issue #711:
+// the heading list itself now lives in `ADR_SHAPES.designTrack` (facts.ts SSOT) — this export
+// is an unchanged-value re-export, not a restatement.
+export const DESIGN_TRACK_REQUIRED_HEADINGS = ADR_SHAPES.designTrack;
 
 export const findMissingDesignTrackHeadings = (
   content: string,
