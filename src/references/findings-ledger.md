@@ -119,6 +119,10 @@ jq '.findings += [$new] | .next_id += 1 | .refreshed_at = (now | todate)' \
   && mv .blackhole/findings-ledger.json.tmp .blackhole/findings-ledger.json
 ```
 
+`$new`'s `issue_ref`/`pr_ref` are copied verbatim from `review-aggregate.ts`'s stamped output
+(`review-core.md` § Aggregate invocation) — never re-typed or re-derived by hand at append time
+(V-LEDGER-01, `scripts/checks/ledger-schema.check.ts`).
+
 5. **Deferral** — never set `status: deferred` without filing issue first:
 
 ```bash

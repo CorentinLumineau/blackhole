@@ -744,6 +744,10 @@ Orchestrator invokes after `reviewer` completes. Not a worker agent — determin
 | `unresolved_recheck` | `{ finding_id, verdict, reason }[]` | yes (may be empty) — issue #485: a `recheck[]` `verdict: fixed` entry whose `finding_id` could not be linked to any prior finding's ledger `id`; non-empty forces `lgtm: false` |
 | `error` | string | when `status: error` |
 
+Each `findings[]` entry additionally carries `issue_ref: number` and `pr_ref: number | null`
+stamped by the script (issue #754) — never present on the raw `reviewer` input's Finding shape
+above, only on this aggregator's stamped output.
+
 CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>]`
 
 `--verification-file` (issue #439, § `verification` above) points to the independent security

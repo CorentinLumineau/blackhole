@@ -313,6 +313,11 @@ bun run scripts/review-aggregate.ts \
 `recheck[]` `verdict: fixed` entry naming that finding cannot resolve, and it surfaces in
 `unresolved_recheck` (fail-loud) instead of silently applying the § Dedup key recheck exclusion.
 
+`--pr-ref`, when passed, is stamped as `pr_ref` (number) onto every finding lacking its own
+`pr_ref` (issue #754) — previously accepted by the CLI but silently dropped before reaching the
+script's output. Omitted, or a finding that already carries its own `pr_ref`, resolves to
+`pr_ref: null` per that finding, never `undefined`.
+
 `--verification-file` (issue #439, § Independent security verification above) is a plain JSON
 array of `{finding_id, verdict, evidence}` — the verification spawn's own `verification[]`
 output, not a ledger row shape. Present only when the security-mode verification spawn ran;
