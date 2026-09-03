@@ -5,11 +5,13 @@
  * validate-file-changes.js — PreToolUse gate for the Write and Edit tools.
  *
  * Blocked: system paths, `../` traversal, and any target resolving outside every worktree of the
- * calling repo family (the main clone plus its linked worktrees — #507), or — outside a git
- * context — outside the payload's own `cwd` subtree (#512, see the containment block below for
- * the decision record). Recorded-but-allowed: sensitive filenames. That split is deliberate — a
- * coarse filename regex has real false-positive risk (`.env.example`), and stalling an unattended
- * worker with nobody watching to unblock it is a worse outcome than a flagged-but-permitted write.
+ * calling repo family (the main clone plus its linked worktrees, plus the payload's own `cwd`
+ * worktree and an opt-in `BLACKHOLE_SCRATCHPAD_DIR` — #507/#729, see `allWorktreeRoots`'s
+ * docstring in `utils/hook-event-log.js` for the full root set), or — outside a git context —
+ * outside the payload's own `cwd` subtree (#512, see the containment block below for the decision
+ * record). Recorded-but-allowed: sensitive filenames. That split is deliberate — a coarse
+ * filename regex has real false-positive risk (`.env.example`), and stalling an unattended worker
+ * with nobody watching to unblock it is a worse outcome than a flagged-but-permitted write.
  */
 
 const { loadFilePatterns, matchFirst } = require('./utils/pattern-loader');
