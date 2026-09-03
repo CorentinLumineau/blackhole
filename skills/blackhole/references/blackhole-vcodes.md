@@ -106,6 +106,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-SHAPE-01 | route field-set parity — router.ts's `validateRoute` `requireField` keys vs. `campaign-status/types.ts`'s `Route` type keys diverge without a declared `omits:` allowlist entry on `Route`'s header comment (undeclared drift in either direction). The `<!-- shape: exhaustive -->` markers in `worker-schemas.md`/`queue-dag.md` are declared intent for a future companion check, not yet enforced here — tracked as issue #762 | WARN | scripts/checks/route-shape.check.ts |
 | V-LEDGER-01 | `.blackhole/findings-ledger.json` row whose `issue_ref` is not a number or null, whose `pr_ref` is not a number or null (when present), or that still carries a legacy `pr` key instead of `pr_ref` | BLOCK | scripts/checks/ledger-schema.check.ts |
 | V-WATCH-01 | ADR-declared revisit threshold (file/section LOC) tripped — `ADR_WATCH_ITEMS` row over its declared threshold; advisory, never blocks | WARN | scripts/checks/adr-watch.check.ts |
+| V-PLUGIN-01 | Plugin cache version-bump gate — a diff touching `templates/hooks/**` without also changing `package.json`'s `version` field in the same diff (installed Claude Code plugin cache is version-keyed, not content-addressed — ADR-030) | BLOCK | reviewer.md §29 (Plugin Cache Version-Bump Audit) |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.

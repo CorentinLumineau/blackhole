@@ -53,6 +53,20 @@ Playbooks: `plugins/blackhole-agent-plugins/skills/blackhole/references/phase-*.
 - **Removal safety refusal**: Before any `git worktree remove` — mergeable-PR release, post-merge cleanup, or manual pruning alike — check `git -C <worktree> log @{u}..HEAD`. `git worktree remove` only refuses on a dirty working tree; it does not refuse on committed-but-unpushed history, so a merged PR does not by itself prove the worktree is safe to delete (local HEAD may have advanced past what the PR merged, e.g. a post-push rebase or a commit made after the last push). Non-empty output refuses the removal until that history is pushed or cherry-picked elsewhere. Full procedure and the stale-cleanup example: `recovery-protocol.md` §4 "Stale cleanup" row, §6(c).
 - **Static resolvability requirement** (#551): a PreToolUse hook (`worktree-removal-guard.js`, #532) enforces the safety refusal above mechanically, but it can only verify a call it can parse statically. Issue `git worktree remove <literal-absolute-path>` (`--force` if needed) as its own standalone command: one positional argument, no shell variable, no glob, no chained `&&`/`;` call, and no trailing redirect — a bare `&` inside `2>&1` (or similar) is parsed as a second positional argument and the call is refused as unresolvable even though the path itself was literal. When the refusal is instead `worktree-remove-unverifiable` on a pushed PR branch checked out under a local name that doesn't match its remote branch name, fetch its head into the tracking ref the check falls back to: `git fetch origin refs/pull/<PR>/head:refs/remotes/origin/<branch>`. A branch genuinely never pushed anywhere has no non-destructive fix — push it first.
 - **`rm -rf` on a worktree directory — decision recorded (#551)**: not guarded by this hook. Telling a worktree directory apart from any other path needs the same dynamic `git worktree list` resolution `checkUnpushedCommits` already performs — a static `bash-patterns.json` regex can't do it. Extending the guard to intercept `rm -rf <worktree>` the same way is real, scoped work (still `V-HOOK-01`, no new V-code), deferred to a follow-up issue.
+- **Installed plugin cache refresh (#800, ADR-030)**: the Claude Code plugin cache
+  (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/...`) is **version-keyed, not
+  content-addressed** — a merged fix to `templates/hooks/**` ships inert to every existing
+  installation until the version is bumped and the plugin is reinstalled (confirmed empirically:
+  issue #800's three merged hook fixes, #761/#774/#777, were absent from the installed copy while
+  both it and the repo build reported the identical version string). Refresh path: bump
+  `package.json`'s `version` → `bun run build` (regenerates all 5 version-carrying manifests,
+  `.claude-plugin/plugin.json` included) → `/plugin marketplace update <name>` → reinstall the
+  plugin. Same-version reinstall's cache-refresh semantics are undocumented by the platform
+  (`.blackhole/plans/issue-800-research.md` § Assumption Audit) — when in doubt, use the
+  documented unconditional fallback instead: `rm -rf ~/.claude/plugins/cache`, restart Claude
+  Code, then reinstall. See `templates/hooks/pretooluse/README.md` for the hooks-specific version
+  of this same procedure, and `blackhole-state.md` § Plugin-Drift Signal for the advisory
+  detection mechanism that surfaces a stale installed copy.
 
 ## Merge & Linkage Gate (V-GIT)
 

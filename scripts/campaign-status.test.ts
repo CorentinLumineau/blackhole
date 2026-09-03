@@ -11,6 +11,7 @@ import {
   parseCheckpointFrontmatter,
   parseStatusArgs,
   renderConfigSummary,
+  renderPluginDriftWarning,
   renderRouteChain,
   type Route,
 } from './campaign-status';
@@ -553,6 +554,50 @@ describe('renderConfigSummary', () => {
         scope: { labels: config.scope_labels },
       }),
     ).toContain(expected);
+  });
+});
+
+// Issue #800 (ADR-030) — dashboard surfacing for the plugin-cache drift signal. Three cases,
+// proving the surfacing neither silently claims drift where none was observed (absent-cache,
+// hash-match) nor silently omits a real mismatch (hash-mismatch).
+describe('renderPluginDriftWarning', () => {
+  test('warns when the installed plugin cache content diverges from the repo build', () => {
+    const out = renderPluginDriftWarning({
+      version: 1,
+      refreshed_at: '2026-09-03T00:00:00.000Z',
+      installed_version: '0.21.0',
+      installed_present: true,
+      hooks_hash_match: false,
+    });
+    expect(out).toMatch(/plugin.drift/i);
+  });
+
+  test('stays silent when no plugin cache is installed', () => {
+    const out = renderPluginDriftWarning({
+      version: 1,
+      refreshed_at: '2026-09-03T00:00:00.000Z',
+      installed_version: '0.21.0',
+      installed_present: false,
+      hooks_hash_match: null,
+    });
+    expect(out).not.toMatch(/plugin.drift/i);
+    expect(out).toBe('');
+  });
+
+  test('stays silent when the installed cache matches the repo build', () => {
+    const out = renderPluginDriftWarning({
+      version: 1,
+      refreshed_at: '2026-09-03T00:00:00.000Z',
+      installed_version: '0.21.0',
+      installed_present: true,
+      hooks_hash_match: true,
+    });
+    expect(out).not.toMatch(/plugin.drift/i);
+    expect(out).toBe('');
+  });
+
+  test('stays silent when no signal has been written yet', () => {
+    expect(renderPluginDriftWarning(null)).toBe('');
   });
 });
 

@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "blackhole",
   "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "author": {
     "name": "blackhole contributors"
   },
