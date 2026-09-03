@@ -13,6 +13,7 @@ confirm before syncing.
 |---------|--------|
 | Phase 0 bootstrap (all skill modes) | Full sync |
 | Start of every orchestrator turn | Full sync |
+| Start of every orchestrator turn (after sync) | Run V-DEFER-01 reconciliation check |
 | Phase 5 loop (before ready set) | Full sync |
 | Session resume / handoff | Full sync |
 | Any agent using `queue.json` for scheduling | Sync first if `refreshed_at` older than current turn |
