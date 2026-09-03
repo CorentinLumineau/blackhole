@@ -331,10 +331,7 @@ describe('isCarryTargetAllowed — carry target allowlist (issue #784 AC1)', () 
     ['scripts/foo.ts', false],
     ['src/agents/planner.md', false],
     ['.claude/settings.json', false],
-    // Traversal bypass (F-00380, V-SEC-01): the allowlist tested the raw string while
-    // containment tested the resolved path — a target_path could pass both by spelling its way
-    // back out of `documentation/` via `..` segments. The predicate must normalize before the
-    // prefix/equality test, not merely check a literal prefix.
+    // Traversal forms `isCarryTargetAllowed` must still reject — see its own doc comment for why.
     ['documentation/../package.json', false],
     ['documentation/../.github/workflows/verify.yml', false],
     ['documentation/./../package.json', false],
