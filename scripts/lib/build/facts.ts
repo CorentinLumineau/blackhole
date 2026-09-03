@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 92;
+export const VCODE_TABLE_ROW_COUNT = 93;
 
 // § facts — value vocabularies (issue #320, ADR-007 R1′ extension). Closed sets of enum-shaped
 // strings that agent prose restates verbatim at many consumption sites, declared once here and
@@ -117,10 +117,10 @@ export type ContentGateBudget = { maxSectionLoc: number; maxFileLoc: number };
 
 export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
   'src/agents/orchestrator.md': { maxSectionLoc: 18, maxFileLoc: 185 },
-  'src/agents/planner.md': { maxSectionLoc: 350, maxFileLoc: 712 },
+  'src/agents/planner.md': { maxSectionLoc: 380, maxFileLoc: 712 },
   'src/agents/reviewer.md': { maxSectionLoc: 804, maxFileLoc: 902 },
   'src/agents/implementer.md': { maxSectionLoc: 371, maxFileLoc: 755 },
-  'src/references/worker-schemas.md': { maxSectionLoc: 179, maxFileLoc: 950 },
+  'src/references/worker-schemas.md': { maxSectionLoc: 179, maxFileLoc: 970 },
   'src/references/hook-schemas.md': { maxSectionLoc: 101, maxFileLoc: 167 },
   'scripts/checks/*.check.ts': { maxSectionLoc: 68, maxFileLoc: 218 },
   'scripts/lib/build/*.ts': { maxSectionLoc: 68, maxFileLoc: 287 },

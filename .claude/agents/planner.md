@@ -266,6 +266,11 @@ The artifact consolidates 8 ordered subsections:
     Each option gets one row in a trade-off matrix; columns are chosen per-decision from
     {Complexity, Maintainability, Risk, Effort, Reversibility, Consistency-with-existing-pattern}
     — pick 3-5 relevant columns, do not force all six for every decision (`V-KISS-02`).
+    **ADR citation check (issue #775)**: before citing an ADR's precedent as decisive evidence
+    for an option, read its `## Post-acceptance amendments` section, if present, and either
+    quote the amendment or drop the citation (closes the #719 stale-citation failure). Record
+    each citation as `{adr, option, amendment_acknowledged}` for the `design-aggregate.ts`
+    invocation input (subsection 3/§4.8).
 3.  **Adversarial Evaluation (via multiplicity, no 8th agent — blind critics, ADR-010 D4)**:
     After drafting Options + Trade-off Matrix + a provisional Chosen, spawn **2 additional
     parallel `Agent` tool calls** with `subagent_type: planner` — the 2-invocation multiplicity
@@ -280,7 +285,13 @@ The artifact consolidates 8 ordered subsections:
       plus `findings` (each tagged `discriminating` or `domain-inherent`, with a severity) —
       **not** free-text critique. Invocation A and B remain independent scorers; there is no
       assigned "attack primary" / "steelman rejected" split under blind scoring — both critics
-      score every option against the same fixed rubric, independently.
+      score every option against the same fixed rubric, independently. **ADR citation check
+      applies here too, independently (issue #775)**: critics score independently and cannot
+      rely on the primary planner having done it — a `findings[].note` citing an ADR must first
+      read that ADR's `## Post-acceptance amendments` section and either acknowledge the
+      amendment or drop the citation. Each critic returns `adr_citations[]` alongside
+      `per_option_scores`/`findings`, same `{adr, option, amendment_acknowledged}` shape as the
+      primary's (`worker-schemas.md` § Design Track Critic).
     Both invocations run in **critique-only mode**, verbatim as before: they MUST NOT write any
     file (no `plans/issue-N-design*.md` of their own) and MUST NOT spawn further `planner`
     invocations (recursion guard — multiplicity is capped at 2, not open-ended). They return
@@ -317,8 +328,9 @@ The artifact consolidates 8 ordered subsections:
     § 8 is a worked example), regardless of the `status` outcome below. When
     `.blackhole/config.json` `autonomy.design_autonomy` is `true`, invoke
     `scripts/design-aggregate.ts` with the primary's weighted matrix (subsection 2/3), both
-    critics' raw JSON (subsection 3), and the Refactoring Impact Analysis rows (subsection 6).
-    The planner reads the script's returned `status`.
+    critics' raw JSON (subsection 3), the Refactoring Impact Analysis rows (subsection 6), and
+    `primary.adr_citations` plus each critic's `adr_citations` (subsection 2/3) as the input's
+    ADR-citation gate data. The planner reads the script's returned `status`.
     **The planner MUST NOT substitute its own judgment** for it — the script is the sole source
     of the verdict, never the planner's own read of the artifact's substance — skipping the invocation is a `V-AUTO-01` BLOCK finding:
     - `status: "ready"` (from `design-aggregate.ts`) → before writing, run
@@ -374,7 +386,17 @@ The artifact consolidates 8 ordered subsections:
       directive; **never** self-selected, **never** inferred by re-invoking
       `design-aggregate.ts` or by re-reading the design note's substance) → promote the
       on-disk `.blackhole/plans/issue-N-design.md` **verbatim**: no re-analysis, no
-      re-invocation of `design-aggregate.ts`, no blind-critic re-spawn. Run
+      re-invocation of `design-aggregate.ts`, no blind-critic re-spawn. **ADR staleness guard
+      (`V-ADR-07`, issue #775)** — first step of this branch, before promotion, since this is the
+      one moment a stale citation could reach a PR without any scoring pass re-checking it:
+      extract every `ADR-\d+` reference from the on-disk design note's body (same regex idiom
+      `adr-supersession.check.ts`'s phrase-scan leg uses), and for each, run
+      `git -C <main-clone> diff --name-only <plan_base_commit>..HEAD --
+      documentation/decisions/ADR-{N}-*.md` — the same `git diff --name-only` idiom as
+      `implementer.md`'s Plan Drift Check, substituting the cited-ADR path for a Touch-Path
+      glob. A drifted ADR appends a `V-ADR-07` WARN finding to `findings[]` naming it and
+      recommending re-validation — **advisory only**: it never blocks promotion and never
+      re-invokes `design-aggregate.ts` or a blind-critic re-spawn. Then run
       `scripts/detect-doc-schema.sh` exactly as the `ready` branch above (same
       repo-convention-precedence detection, ADR-012 E1) and render
       `documentation/decisions/ADR-{NNN}-{slug}.md` plus the matching
