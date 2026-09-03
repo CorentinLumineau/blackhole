@@ -375,13 +375,14 @@ const checkUnpushedCommits = (worktreePath) => {
 };
 
 /**
- * Shared prose for a `status: 'unknown'` refusal below — the detached-HEAD and named-branch
- * outcomes share an identical opening clause and closing clause and differ only in the remedy
- * paragraph between them.
+ * Shared prose for a `status: 'unknown'` refusal below — the dirty-worktree, detached-HEAD and
+ * named-branch outcomes share an identical opening clause and closing clause and differ only in
+ * what could not be verified (`claim`) and the remedy paragraph appended after this by the
+ * caller.
  */
-const unverifiableRefusalOpener = (resolvedPath, detail) =>
-  `Could not verify ${resolvedPath} has no unpushed commits (${detail}) — refusing rather ` +
-  `than risk silent data loss.`;
+const unverifiableRefusalOpener = (resolvedPath, claim, detail) =>
+  `Could not verify ${resolvedPath} ${claim} (${detail}) — refusing rather than risk silent ` +
+  `data loss.`;
 
 const GITHUB_RETAINS_PR_HEADS_NOTE =
   '(GitHub retains PR head refs permanently, so this gives a true answer instead of bypassing the ' +
@@ -411,14 +412,24 @@ const evaluateOneInvocation = (argTokens, cwd) => {
 
   if (force) {
     const dirty = checkDirtyWorktree(resolvedPath);
-    if (dirty.status !== 'clean') {
+    if (dirty.status === 'dirty') {
       return {
         tier: 'block',
         pattern_id: 'worktree-remove-force-dirty',
         reason:
-          dirty.status === 'dirty'
-            ? `Worktree at ${resolvedPath} has uncommitted or untracked changes (${dirty.detail}) that --force would discard permanently. Remedy: commit or stash the changes, or run 'git clean' deliberately first if they are genuinely disposable.`
-            : `Could not verify ${resolvedPath} is clean (${dirty.detail}) — refusing rather than risk silent data loss.`,
+          `Worktree at ${resolvedPath} has uncommitted or untracked changes (${dirty.detail}) that ` +
+          `--force would discard permanently. Remedy: commit or stash the changes, or run 'git ` +
+          `clean' deliberately first if they are genuinely disposable.`,
+      };
+    }
+    if (dirty.status === 'unknown') {
+      return {
+        tier: 'block',
+        pattern_id: 'worktree-remove-force-unreadable',
+        reason:
+          `${unverifiableRefusalOpener(resolvedPath, 'is clean', dirty.detail)} Remedy: confirm ` +
+          `the path exists and is a valid git worktree (not already removed, moved, or corrupted), ` +
+          `then retry.`,
       };
     }
   }
@@ -440,7 +451,7 @@ const evaluateOneInvocation = (argTokens, cwd) => {
         tier: 'block',
         pattern_id: 'worktree-remove-detached-unreachable',
         reason:
-          `${unverifiableRefusalOpener(resolvedPath, result.detail)} This worktree's HEAD is detached ` +
+          `${unverifiableRefusalOpener(resolvedPath, 'has no unpushed commits', result.detail)} This worktree's HEAD is detached ` +
           `and not reachable from any known remote-tracking ref. Remedy: fetch a ref that contains this ` +
           `commit (e.g. its PR head) into a remote-tracking ref, then retry: git fetch origin ` +
           `refs/pull/<PR>/head:refs/remotes/origin/<name> ${GITHUB_RETAINS_PR_HEADS_NOTE}. A commit that ` +
@@ -451,7 +462,7 @@ const evaluateOneInvocation = (argTokens, cwd) => {
       tier: 'block',
       pattern_id: 'worktree-remove-unverifiable',
       reason:
-        `${unverifiableRefusalOpener(resolvedPath, result.detail)} Remedy: if this is a pushed PR ` +
+        `${unverifiableRefusalOpener(resolvedPath, 'has no unpushed commits', result.detail)} Remedy: if this is a pushed PR ` +
         `branch this worktree checked out under a local name that doesn't match its own remote ` +
         `branch name, fetch its head into the tracking ref this check falls back to, then retry: ` +
         `git fetch origin refs/pull/<PR>/head:refs/remotes/origin/<branch> ${GITHUB_RETAINS_PR_HEADS_NOTE}. ` +
