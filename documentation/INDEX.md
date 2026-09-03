@@ -77,6 +77,7 @@
 | reviews/review-discovery-worktree-removal-guard-allows-force-on-a-dirty-worktree-uncommitted-wo.md | Review artifact for issue #777 (LGTM) | review | current | on file change |
 | reviews/review-discovery-worktree-removal-guard-fails-closed-on-every-detached-head-review-work.md | Review artifact for issue #761 (LGTM) | review | current | on file change |
 | reviews/review-docs-architecture-fix-stale-committed-trees-table-and-five-agents-in-the-archite.md | Review artifact for issue #706 (LGTM) | review | current | on file change |
+| reviews/review-docs-decision-log-record-steady-state-baseline-for-decision-log-silent-prs.md | Review artifact for issue #767 (LGTM) | review | current | on file change |
 | reviews/review-docs-review-core-per-dispatch-mode-reviewer-prompt-requirements-verification-mod.md | Review artifact for issue #709 (LGTM) | review | current | on file change |
 | reviews/review-docs-tests-strip-issue-finding-id-citations-from-hooks-validate-file-test-commen.md | Review artifact for issue #736 (LGTM) | review | current | on file change |
 | reviews/review-feat-checks-adr-watch-items-fact-v-watch-01-advisory-adr-007-s-worker-schemas-re.md | Review artifact for issue #710 (LGTM) | review | current | on file change |
