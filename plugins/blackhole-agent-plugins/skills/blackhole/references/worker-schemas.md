@@ -300,7 +300,7 @@ spawn time yet — documentation of future intent, mirroring `execution_mode` ab
 
 ### `escalation_trigger` (optional — ADR-004)
 
-`failed_attempts` \| `touch_paths_overrun` (Bugfix Gate) \| `merge_conflict_semantic` (Conflict Resolution Gate — requires `conflict_hunks[]`) \| `environmental_blocker` (delivery-boundary command failed for an infrastructure/environment reason, not a code defect — see `blocked_step` below). Single-valued. Consumers: `orchestrator-dispatch.md` § Escalation dispatch — never `investigator` for either.
+`failed_attempts` \| `touch_paths_overrun` (Bugfix Gate) \| `merge_conflict_semantic` (Conflict Resolution Gate — requires non-empty `conflict_hunks[]`) \| `environmental_blocker` (delivery-boundary command failed for an infrastructure/environment reason, not a code defect — see `blocked_step` below). Single-valued. Consumers: `orchestrator-dispatch.md` § Escalation dispatch — never `investigator` for either.
 
 ### `conflict_hunks[]` (optional — issue #450)
 
