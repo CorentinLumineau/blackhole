@@ -4,8 +4,8 @@ import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { fetchForgeCounts } from './lib/campaign-status/forge.ts';
-import { readJsonFile } from './lib/fs.ts';
 import { loadCampaignState } from './lib/campaign-status/state.ts';
+import { readJsonFile } from './lib/fs.ts';
 import type { PluginDriftSignal } from './plugin-drift-signal.ts';
 
 export { parseCheckpointFrontmatter } from './lib/campaign-status/checkpoint.ts';
