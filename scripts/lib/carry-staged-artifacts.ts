@@ -3,6 +3,7 @@ import * as path from 'path';
 import { appendIndexRowIfAbsent, parseIndexTableRows, type RootIndexRow } from './check-common.ts';
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { readJsonFile } from './fs.ts';
+import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
 
 // Issue #715 (R-10) — mechanizes the mechanical two-thirds of `implementer.md` § Carry Staged
 // Artifacts: the manifest shape guard, `target_kind` dispatch, the 9-row frontmatter rewrite
@@ -276,6 +277,18 @@ export const carryManifest = (
       continue;
     }
 
+    // Allowlist (issue #784 AC1): containment alone leaves every in-repo path writable —
+    // `package.json`, `.github/workflows/*.yml`, `.git/hooks/*` all pass `isWithinRoot` and reach
+    // an unconditional write below. Entry-scoped, same as the containment checks above: joins
+    // `skipped` and the rest of the manifest still carries.
+    if (!isCarryTargetAllowed(entry.target_path)) {
+      skipped.push({
+        index,
+        reason: `target_path "${entry.target_path}" is outside the carry allowlist (documentation/** or root ARCHITECTURE.md)`,
+      });
+      continue;
+    }
+
     // Named, non-bare failure (never a raw ENOENT — `readJsonFile`'s convention,
     // `scripts/lib/fs.ts:53-60`): a declared staged_path that does not resolve under
     // stagingRoot is always fatal, distinguishable from a validation-level skip.
@@ -288,9 +301,19 @@ export const carryManifest = (
     if (entry.target_kind === 'new_file') {
       const raw = fs.readFileSync(stagedAbs, 'utf-8');
       const content = decideCopyMode(entry) === 'rewrite' ? rewriteInvestigatorFrontmatter(raw, entry, today) : raw;
-      fs.mkdirSync(path.dirname(targetAbs), { recursive: true });
-      fs.writeFileSync(targetAbs, content);
-      carriedPaths.push(entry.target_path);
+      // Write-step FS errors (issue #784 AC2/AC3) are entry-scoped, not invocation-scoped — a
+      // worktree-shaped `.git` (ENOTDIR) or any other write failure skips this one entry instead
+      // of throwing and denying the rest of the manifest. Distinct from the "declared staged_path
+      // absent" throw above, which stays fatal — it signals a broken invocation, not adversarial
+      // entry content.
+      try {
+        fs.mkdirSync(path.dirname(targetAbs), { recursive: true });
+        fs.writeFileSync(targetAbs, content);
+        carriedPaths.push(entry.target_path);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${message}` });
+      }
       continue;
     }
 
@@ -301,9 +324,14 @@ export const carryManifest = (
         ? appendConstraintBulletIfAbsent(existing, fragment)
         : appendPipeTableRowIfAbsent(existing, fragment);
     if (result.appended) {
-      fs.mkdirSync(path.dirname(targetAbs), { recursive: true });
-      fs.writeFileSync(targetAbs, result.content);
-      carriedPaths.push(entry.target_path);
+      try {
+        fs.mkdirSync(path.dirname(targetAbs), { recursive: true });
+        fs.writeFileSync(targetAbs, result.content);
+        carriedPaths.push(entry.target_path);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${message}` });
+      }
     }
   }
 

@@ -429,7 +429,11 @@ this section states only what the script does not decide.
     target, `## Active Constraints`), the citation suffix — the mandatory trailing
     `(ADR-{NNN})` or `(analyze: issue #N)` attribution `planner.md` appends to every constraint
     bullet, the same discriminator `planner.md`'s own near-duplicate check already uses (§
-    Workflow & Planning Steps step 4) — reused, not reinvented (`V-INT-02`).
+    Workflow & Planning Steps step 4) — reused, not reinvented (`V-INT-02`); `target_path` is
+    constrained to an allowlist (`documentation/**` and root `ARCHITECTURE.md` — issue #784
+    AC1), and every write-step filesystem failure skips that one entry with a reason rather than
+    throwing, so neither an out-of-allowlist target nor a write error ever denies the rest of the
+    manifest.
 *   **Commit**: carried files land in the same PR (same commit as the code change, or a
     dedicated `docs: promote staged artifacts for issue #N` commit within the same PR) — never
     a separate PR, never an orchestrator write.

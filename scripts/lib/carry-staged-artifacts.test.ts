@@ -14,6 +14,7 @@ import {
   validateEntries,
   type Manifest,
 } from './carry-staged-artifacts.ts';
+import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
 
 // Issue #715 (R-10) — mechanizes implementer.md § Carry Staged Artifacts' manifest shape guard,
 // target_kind dispatch, 9-row frontmatter rewrite, and append_row dedup for both discriminator
@@ -320,6 +321,30 @@ describe('carryManifest — two-root resolution (opts.stagingRoot, issue #760)',
   });
 });
 
+describe('isCarryTargetAllowed — carry target allowlist (issue #784 AC1)', () => {
+  test.each([
+    ['documentation/plans/plan-x.md', true],
+    ['ARCHITECTURE.md', true],
+    ['package.json', false],
+    ['.github/workflows/verify.yml', false],
+    ['.git/hooks/pre-commit', false],
+    ['scripts/foo.ts', false],
+    ['src/agents/planner.md', false],
+    ['.claude/settings.json', false],
+    // Traversal forms `isCarryTargetAllowed` must still reject — see its own doc comment for why.
+    ['documentation/../package.json', false],
+    ['documentation/../.github/workflows/verify.yml', false],
+    ['documentation/./../package.json', false],
+    ['documentation/../../etc/passwd', false],
+    // Characterization: legitimate `..` segments that stay inside documentation/ (or resolve to
+    // it) must keep carrying — normalize, don't reject `..` outright.
+    ['documentation/a/../b.md', true],
+    ['./documentation/x.md', true],
+  ])('isCarryTargetAllowed(%s) === %s', (targetPath, expected) => {
+    expect(isCarryTargetAllowed(targetPath)).toBe(expected);
+  });
+});
+
 describe('carryManifest — path containment (issue #752)', () => {
   const baseEntry = {
     route: 'plan',
@@ -344,11 +369,15 @@ describe('carryManifest — path containment (issue #752)', () => {
   };
 
   // repoRoot/stagingRoot are nested one level inside the fixture dir so a `..` escape lands
-  // somewhere the fixture still owns and cleans up, rather than in the bare OS tmpdir.
+  // somewhere the fixture still owns and cleans up, rather than in the bare OS tmpdir. `.git` is
+  // a real directory (clone-shaped), not the worktree's `.git` file — the shape the AC1
+  // allowlist test for `.git/hooks/pre-commit` (issue #784) needs to reach a write path that
+  // would have been possible pre-fix.
   const withRoots = (fn: (dir: string, repoRoot: string) => void): void =>
     withTempDir('carry-containment', (dir) => {
       const repoRoot = path.join(dir, 'repo');
       fs.mkdirSync(repoRoot);
+      fs.mkdirSync(path.join(repoRoot, '.git'));
       fn(dir, repoRoot);
     });
 
@@ -402,19 +431,25 @@ describe('carryManifest — path containment (issue #752)', () => {
     });
   });
 
-  test('an absolute-looking target_path stays contained under repoRoot and carries', () => {
-    // Regression guard for the corrected expectation recorded in `.blackhole/plans/issue-752.md`
-    // § Design Rulings: `path.join(root, '/etc/passwd')` is `<root>/etc/passwd` — `path.join`,
-    // unlike `path.resolve`, does not treat a later absolute segment as an anchor reset — so this
-    // input never escapes and must keep carrying. Do not flip this assertion to a skip.
+  test('an absolute-looking target_path stays contained under repoRoot but is skipped by the allowlist', () => {
+    // Was a "keeps carrying" regression guard for the corrected expectation recorded in
+    // `.blackhole/plans/issue-752.md` § Design Rulings: `path.join(root, '/etc/passwd')` is
+    // `<root>/etc/passwd` — `path.join`, unlike `path.resolve`, does not treat a later absolute
+    // segment as an anchor reset — so this input never escapes `repoRoot`, and that containment
+    // property still holds unchanged. Issue #784's AC1 allowlist now supersedes it: containment
+    // alone was never sufficient to make a target_path *safe to write*, which is the whole
+    // premise of #784 — `/etc/passwd` is neither `documentation/**` nor `ARCHITECTURE.md`, so it
+    // must be skipped, not carried.
     withRoots((_dir, repoRoot) => {
       writeStaged(repoRoot, baseEntry.staged_path);
 
       const outcome = carryManifest(manifestOf({ target_path: '/etc/passwd' }), repoRoot);
 
-      expect(outcome.skippedEntries).toEqual([]);
-      expect(outcome.carriedPaths).toEqual(['/etc/passwd']);
-      expect(fs.existsSync(path.join(repoRoot, 'etc', 'passwd'))).toBe(true);
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.reason).toContain('/etc/passwd');
+      expect(outcome.skippedEntries[0]!.reason).toContain('allowlist');
+      expect(fs.existsSync(path.join(repoRoot, 'etc', 'passwd'))).toBe(false);
     });
   });
 
@@ -453,6 +488,171 @@ describe('carryManifest — path containment (issue #752)', () => {
       expect(outcome.skippedEntries[0]!.index).toBe(0);
       expect(fs.existsSync(path.join(dir, 'escape.md'))).toBe(false);
       expect(fs.existsSync(path.join(repoRoot, baseEntry.target_path))).toBe(true);
+    });
+  });
+
+  test('a target_path of "package.json" is contained under repoRoot but rejected by the allowlist (issue #784 AC1)', () => {
+    withRoots((_dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+
+      const outcome = carryManifest(manifestOf({ target_path: 'package.json' }), repoRoot);
+
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.reason).toContain('package.json');
+      expect(outcome.skippedEntries[0]!.reason).toContain('allowlist');
+      expect(fs.existsSync(path.join(repoRoot, 'package.json'))).toBe(false);
+    });
+  });
+
+  test('a target_path of ".github/workflows/verify.yml" is contained under repoRoot but rejected by the allowlist (issue #784 AC1)', () => {
+    withRoots((_dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+
+      const outcome = carryManifest(
+        manifestOf({ target_path: '.github/workflows/verify.yml' }),
+        repoRoot,
+      );
+
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.reason).toContain('.github/workflows/verify.yml');
+      expect(outcome.skippedEntries[0]!.reason).toContain('allowlist');
+      expect(fs.existsSync(path.join(repoRoot, '.github', 'workflows', 'verify.yml'))).toBe(false);
+    });
+  });
+
+  test('a target_path of ".git/hooks/pre-commit" under a clone-shaped repoRoot (real .git dir) is rejected by the allowlist, not merely by ENOTDIR (issue #784 AC1)', () => {
+    // withRoots makes `.git` a real directory (clone shape), so pre-fix this write path was
+    // reachable and would have succeeded — unlike the worktree shape (`.git` as a file), which
+    // the pre-fix code already accidentally blocked via ENOTDIR. The allowlist must reject this
+    // target_path outright, independent of the filesystem shape underneath it.
+    withRoots((_dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+
+      const outcome = carryManifest(manifestOf({ target_path: '.git/hooks/pre-commit' }), repoRoot);
+
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.reason).toContain('.git/hooks/pre-commit');
+      expect(outcome.skippedEntries[0]!.reason).toContain('allowlist');
+      expect(fs.existsSync(path.join(repoRoot, '.git', 'hooks', 'pre-commit'))).toBe(false);
+    });
+  });
+
+  test('a target_path of "documentation/../package.json" is skipped and a pre-existing package.json is left untouched (F-00380, V-SEC-01)', () => {
+    // The traversal-bypass regression: `startsWith('documentation/')` on the raw string admits
+    // this input (containment then admits it too, since path.join(repoRoot, 'documentation/../package.json')
+    // genuinely resolves inside repoRoot) unless the allowlist predicate itself normalizes first.
+    withRoots((_dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+      const realPackageJson = path.join(repoRoot, 'package.json');
+      fs.writeFileSync(realPackageJson, JSON.stringify({ name: 'real' }, null, 2));
+
+      const outcome = carryManifest(manifestOf({ target_path: 'documentation/../package.json' }), repoRoot);
+
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.reason).toContain('documentation/../package.json');
+      expect(outcome.skippedEntries[0]!.reason).toContain('allowlist');
+      expect(fs.readFileSync(realPackageJson, 'utf-8')).not.toContain('PWNED');
+    });
+  });
+
+  test('a target_path of "documentation/../.github/workflows/verify.yml" is skipped and no workflow file is written (F-00380, V-SEC-01)', () => {
+    withRoots((_dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+
+      const outcome = carryManifest(
+        manifestOf({ target_path: 'documentation/../.github/workflows/verify.yml' }),
+        repoRoot,
+      );
+
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.reason).toContain(
+        'documentation/../.github/workflows/verify.yml',
+      );
+      expect(outcome.skippedEntries[0]!.reason).toContain('allowlist');
+      expect(fs.existsSync(path.join(repoRoot, '.github', 'workflows', 'verify.yml'))).toBe(false);
+    });
+  });
+
+  test('a target_path of "documentation/a/../b.md" (legitimate .. that stays inside documentation/) still carries — the allowlist normalizes, it does not reject all ".."', () => {
+    withRoots((_dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+
+      const outcome = carryManifest(manifestOf({ target_path: 'documentation/a/../b.md' }), repoRoot);
+
+      expect(outcome.skippedEntries).toEqual([]);
+      expect(outcome.carriedPaths).toEqual(['documentation/a/../b.md']);
+      expect(fs.existsSync(path.join(repoRoot, 'documentation', 'b.md'))).toBe(true);
+    });
+  });
+});
+
+describe('carryManifest — write-step failures are skipped, never fatal to the rest of the manifest (issue #784 AC2/AC3)', () => {
+  const baseEntry = {
+    route: 'plan',
+    sub_mode: null,
+    produced_by: 'planner',
+    declared_at: '2026-08-06T17:58:00.000Z',
+    staged_path: '.blackhole/staged/1/plan-x.md',
+    target_path: 'documentation/x.md',
+    target_kind: 'new_file' as const,
+  };
+
+  test('a documentation/ target that hits ENOTDIR (documentation pre-created as a plain file) is skipped, and an unrelated ARCHITECTURE.md entry still carries', () => {
+    withTempDir('carry-write-failure', (repoRoot) => {
+      // Force ENOTDIR: `documentation` exists as a plain file, so mkdirSync(recursive) for
+      // `documentation/x.md`'s parent directory fails — independent of the now-allowlist-blocked
+      // `.git/hooks` vector, this exercises the write-step try/catch directly (AC3).
+      fs.writeFileSync(path.join(repoRoot, 'documentation'), 'not a directory');
+
+      const failingStagedAbs = path.join(repoRoot, baseEntry.staged_path);
+      fs.mkdirSync(path.dirname(failingStagedAbs), { recursive: true });
+      fs.writeFileSync(failingStagedAbs, '---\ntype: plan\nstatus: current\n---\n# Plan\n');
+
+      const architectureStagedRel = '.blackhole/staged/1/architecture-active-constraint.md';
+      const architectureStagedAbs = path.join(repoRoot, architectureStagedRel);
+      fs.writeFileSync(
+        architectureStagedAbs,
+        '- Never write directly to queue.json from a worker (ADR-021)',
+      );
+      fs.writeFileSync(path.join(repoRoot, 'ARCHITECTURE.md'), '# ARCHITECTURE\n\n## Active Constraints\n');
+
+      const manifest: Manifest = {
+        issue: 1,
+        updated_at: 'x',
+        entries: [
+          { ...baseEntry },
+          {
+            ...baseEntry,
+            staged_path: architectureStagedRel,
+            target_path: 'ARCHITECTURE.md',
+            target_kind: 'append_row',
+          },
+        ],
+      };
+
+      const outcome = carryManifest(manifest, repoRoot);
+
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.index).toBe(0);
+      expect(outcome.skippedEntries[0]!.reason).toContain('documentation/x.md');
+      expect(outcome.skippedEntries[0]!.reason).toContain('write failed');
+      expect(outcome.carriedPaths).toEqual(['ARCHITECTURE.md']);
+      expect(fs.readFileSync(path.join(repoRoot, 'ARCHITECTURE.md'), 'utf-8')).toContain('(ADR-021)');
+    });
+  });
+
+  test('the "declared staged_path absent" case still throws — write-step try/catch does not swallow it', () => {
+    withTempDir('carry-staging-root', (stagingDir) => {
+      withTempDir('carry-repo-root', (repoRoot) => {
+        const manifest: Manifest = { issue: 1, updated_at: 'x', entries: [baseEntry] };
+
+        expect(() => carryManifest(manifest, repoRoot, { stagingRoot: stagingDir })).toThrow();
+      });
     });
   });
 });
