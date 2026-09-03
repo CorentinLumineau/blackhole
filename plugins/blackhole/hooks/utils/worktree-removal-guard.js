@@ -102,16 +102,44 @@ const skipGitGlobalOptions = (tokens, start) => {
  * real, once for the embedded fragment) rather than being the actual fix. */
 const isCommandWordStart = (command, index) => index === 0 || /[\s;&|(\n]/.test(command[index - 1]);
 
+/** True when a `git` word match at `index` is a path-qualified real invocation — the "git" in
+ * `/usr/bin/git` or `./git` — rather than a fragment embedded in an `=`-attached option value,
+ * the "git" in `--git-dir=/main/.git`. `isCommandWordStart` above rejects both alike, because a
+ * `/` is no more a shell word boundary than the `.` it was written to exclude; that is the
+ * fail-open this predicate closes. The distinguishing signal is position, not merely "preceded by
+ * a slash": walk backward from the character before `index` (which must be `/`, or this is not
+ * path-qualified at all) to the nearest real command-word boundary. Reaching that boundary
+ * without crossing `=` means the whole path token starts at a genuine command position — accept.
+ * Crossing `=` first means the path lives inside an attached option value (`--flag=/some/path`) —
+ * reject, preserving the fragment exclusion isCommandWordStart was introduced for. A `git` that
+ * is merely an interior path segment (`-C /home/user/git/repo`) is admitted here but cannot form
+ * an invocation: its clause tail begins `git/repo`, which findWorktreeRemoveInvocations' token
+ * check below discards. */
+const isPathQualifiedGitWordStart = (command, index) => {
+  if (index === 0 || command[index - 1] !== '/') return false;
+  let i = index - 1;
+  while (i > 0 && !/[\s;&|(\n]/.test(command[i - 1])) {
+    if (command[i - 1] === '=') return false;
+    i -= 1;
+  }
+  return true;
+};
+
 const GIT_WORD_RE = /\bgit\b/g;
 
-/** Every index in `command` where a real (unmasked, real-word-boundary) `git` command word
- * starts. */
+/** Every index in `command` where a real (unmasked) `git` command word starts — either at a shell
+ * word boundary or at the end of a path-qualified executable token. */
 const findGitWordIndices = (command, masked) => {
   const indices = [];
   GIT_WORD_RE.lastIndex = 0;
   let m = GIT_WORD_RE.exec(command);
   while (m !== null) {
-    if (!masked[m.index] && isCommandWordStart(command, m.index)) indices.push(m.index);
+    if (
+      !masked[m.index] &&
+      (isCommandWordStart(command, m.index) || isPathQualifiedGitWordStart(command, m.index))
+    ) {
+      indices.push(m.index);
+    }
     if (GIT_WORD_RE.lastIndex === m.index) GIT_WORD_RE.lastIndex += 1;
     m = GIT_WORD_RE.exec(command);
   }
@@ -409,4 +437,5 @@ module.exports = {
   findWorktreeRemoveInvocations,
   skipGitGlobalOptions,
   isCommandWordStart,
+  isPathQualifiedGitWordStart,
 };
