@@ -111,9 +111,14 @@ merge-readiness dry run (same D5 narrowing as Step 0.5 above).
    `documentation/reviews/` + `documentation/INDEX.md`, commit and push on the PR branch. If
    promotion fails to land `documentation/reviews/review-{slug}.md` in the PR, **STOP** — do not
    call `gh pr merge`. Before merge (including consumer `merge-pr.sh` / Pattern B paths), run
-   `bun run scripts/check-review-artifact.ts` with the PR diff file list and staged manifest —
-   exit non-zero blocks merge the same way (`merge-gate.md` §5). Inert when either governance flag is `false`. Bypassed under
-   `merge_mode: leave-open`.
+   `bun run scripts/check-review-artifact.ts --config <abs> --issue <N> --title <title> --ledger
+   <abs findings-ledger.json> --pr <P> --branch <branch> --head <sha> --repo-root <abs>
+   --diff-file <abs paths.txt>` — every path-shaped flag must be an absolute path (issue #806
+   AC4; a relative path exits `2` with the usage message rather than resolving against
+   whatever cwd happens to be active). This re-renders the expected review markdown from the
+   live findings ledger and diffs it against the committed file, not just checking it exists
+   (`merge-gate.md` §5) — exit non-zero blocks merge the same way. Inert when either governance
+   flag is `false`. Bypassed under `merge_mode: leave-open`.
 3. Run the project's build command in main clone (if applicable)
 4. `gh pr merge --squash` (use `&&` only, never `;`) — immediately after this
    command succeeds, in the **same** atomic `queue.json` write that sets
