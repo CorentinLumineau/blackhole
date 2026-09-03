@@ -1,0 +1,33 @@
+{
+  "refreshed_at": "2026-08-12T00:00:00.000Z",
+  "next_id": 291,
+  "findings": [
+    {
+      "id": "F-00289",
+      "vcode": "V-DOC-06",
+      "severity": "WARN",
+      "phase": "review",
+      "issue_ref": 747,
+      "pr_ref": 753,
+      "file": "scripts/lib/promote-review-artifact.ts",
+      "line": 12,
+      "summary": "Incident archaeology in a source comment",
+      "status": "deferred",
+      "deferred_to_issue": 736,
+      "created_at": "2026-08-12T00:00:00.000Z"
+    },
+    {
+      "id": "F-00290",
+      "vcode": "V-DOC-01",
+      "severity": "WARN",
+      "phase": "review",
+      "issue_ref": 747,
+      "pr_ref": 753,
+      "file": "scripts/lib/promote-review-artifact.ts",
+      "line": 47,
+      "summary": "Public-exported symbol added without a docstring",
+      "status": "open",
+      "created_at": "2026-08-12T00:00:00.000Z"
+    }
+  ]
+}

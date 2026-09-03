@@ -22,6 +22,12 @@ const deferredMultiLedger = JSON.parse(
     'utf-8',
   ),
 );
+const openWarnLedger = JSON.parse(
+  fs.readFileSync(
+    path.join(root, 'fixtures/promote-review-artifact/open-warn-ledger.json'),
+    'utf-8',
+  ),
+);
 
 describe('selectReviewFindings', () => {
   test('omits recheck-fixed and fixed-in-pr rows; retains not_fixed', () => {
@@ -80,6 +86,24 @@ describe('renderReviewMarkdown', () => {
     expect(out.verdict).toBe('LGTM');
     expect(out.markdown).toContain('scripts/lib/promote-review-artifact.ts:30');
     expect(out.markdown).toContain('scripts/lib/concern-slug.ts:8');
+  });
+
+  test('an open WARN with zero BLOCK renders LGTM but stays visible in disclosure (issue #757)', () => {
+    const out = renderReviewMarkdown({
+      issueNumber: 747,
+      issueTitle: 'Open-warn verdict regression',
+      prNumber: 753,
+      branchName: 'blackhole/issue-747',
+      headSha: 'deadbeefcafebabe',
+      ledger: openWarnLedger,
+      today: '2026-08-12',
+    });
+
+    expect(out.verdict).toBe('LGTM');
+    expect(out.markdown).toContain('**Verdict: LGTM** — 0 BLOCK, 1 WARN at merge-readiness.');
+    expect(out.markdown).toContain('V-DOC-01');
+    expect(out.markdown).toContain('### Deferred (not counted toward verdict)');
+    expect(out.markdown).toContain('V-DOC-06');
   });
 });
 

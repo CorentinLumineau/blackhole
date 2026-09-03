@@ -120,7 +120,7 @@ export function renderReviewMarkdown(input: ReviewPromotionInput): ReviewPromoti
   const deferred = findings.filter((f) => f.status === 'deferred');
   const blockers = blocking.filter((f) => f.severity === 'BLOCK').length;
   const warns = blocking.filter((f) => f.severity === 'WARN').length;
-  const verdict: 'LGTM' | 'CHANGES REQUESTED' = blockers > 0 || warns > 0 ? 'CHANGES REQUESTED' : 'LGTM';
+  const verdict: 'LGTM' | 'CHANGES REQUESTED' = blockers > 0 ? 'CHANGES REQUESTED' : 'LGTM';
 
   const findingsTable =
     blocking.length === 0
