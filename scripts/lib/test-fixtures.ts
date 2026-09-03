@@ -127,6 +127,33 @@ export const runPreToolUseHook = async (
   return { exitCode, stdout, stderr };
 };
 
+/** Runs a git setup/action step and throws immediately on failure — `result.error` first
+ * (spawn-itself failure, e.g. `git` not on PATH), then a non-zero exit `status` (git ran but
+ * reported a failure) — so a silently swallowed git failure can no longer leave a fixture
+ * proceeding against a repo that isn't in the state the caller believes (#756/#747: a masked
+ * `git commit` failure surfaced only as an unrelated downstream `fs.realpathSync` ENOENT).
+ * Named, signature and message shape reused verbatim from `hooks-validate-bash.test.ts`'s own
+ * `runGit` (V-INT-01/V-INT-02); `encoding: 'utf-8'` makes `stderr` a plain string. */
+export const runGit = (cwd: string, args: string[]): void => {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf-8' });
+  if (result.error) {
+    throw new Error(`git ${args.join(' ')} failed in ${cwd}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(' ')} failed in ${cwd}: ${result.stderr}`);
+  }
+};
+
+// Cleanup calls run inside a `finally` block, where an in-flight test failure may already be
+// propagating — throwing here would replace that real failure with a cleanup error instead of
+// surfacing it, so this warns instead of using `runGit`.
+const warnGitCleanup = (cwd: string, args: string[]): void => {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf-8' });
+  if (result.error || result.status !== 0) {
+    console.error(`git ${args.join(' ')} cleanup failed in ${cwd}: ${result.error?.message ?? result.stderr}`);
+  }
+};
+
 /** Async temp-dir lifecycle over a real git repo. The hook event logger resolves its output
  * directory through `git rev-parse`, so an un-initialized temp dir would exercise only the
  * fail-open path and never the durable-record contract. The path is realpath'd because git
@@ -138,7 +165,7 @@ export const withTempGitRepo = async <T>(
 ): Promise<T> => {
   const dir = fs.realpathSync(makeTempDir(prefix));
   try {
-    spawnSync('git', ['init', '--quiet'], { cwd: dir });
+    runGit(dir, ['init', '--quiet']);
     return await fn(dir);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -164,15 +191,15 @@ export const withLinkedWorktree = async <T>(
   parentDir?: (mainRepo: string) => string,
 ): Promise<T> =>
   withTempGitRepo(prefix, async (mainRepo) => {
-    spawnSync('git', ['commit', '--allow-empty', '--quiet', '-m', 'init'], { cwd: mainRepo });
+    runGit(mainRepo, ['commit', '--allow-empty', '--quiet', '-m', 'init']);
     const parent = parentDir ? parentDir(mainRepo) : path.join(mainRepo, '.worktrees');
     fs.mkdirSync(parent, { recursive: true });
     const worktree = path.join(parent, `${prefix}wt-${process.pid}-${Date.now()}`);
-    spawnSync('git', ['worktree', 'add', '--detach', '--quiet', worktree], { cwd: mainRepo });
+    runGit(mainRepo, ['worktree', 'add', '--detach', '--quiet', worktree]);
     try {
       return await fn(mainRepo, fs.realpathSync(worktree));
     } finally {
-      spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+      warnGitCleanup(mainRepo, ['worktree', 'remove', '--force', worktree]);
       fs.rmSync(worktree, { recursive: true, force: true });
     }
   });
@@ -190,29 +217,25 @@ export const withRemoteTrackedWorktree = async <T>(
   fn: (mainRepo: string, worktree: string, push: () => void) => Promise<T>,
 ): Promise<T> =>
   withTempGitRepo(prefix, async (mainRepo) => {
-    spawnSync('git', ['commit', '--allow-empty', '--quiet', '-m', 'init'], { cwd: mainRepo });
+    runGit(mainRepo, ['commit', '--allow-empty', '--quiet', '-m', 'init']);
 
     const bareRemote = makeTempDir(`${prefix}origin-`);
-    spawnSync('git', ['init', '--quiet', '--bare', bareRemote]);
-    spawnSync('git', ['remote', 'add', 'origin', bareRemote], { cwd: mainRepo });
-    spawnSync('git', ['push', '--quiet', 'origin', 'HEAD:refs/heads/main'], { cwd: mainRepo });
+    runGit(bareRemote, ['init', '--quiet', '--bare', bareRemote]);
+    runGit(mainRepo, ['remote', 'add', 'origin', bareRemote]);
+    runGit(mainRepo, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
 
     const parent = path.join(mainRepo, '.worktrees');
     fs.mkdirSync(parent, { recursive: true });
     const worktree = path.join(parent, `${prefix}wt-${process.pid}-${Date.now()}`);
-    spawnSync(
-      'git',
-      ['worktree', 'add', '--no-track', '--quiet', '-b', branch, worktree, 'HEAD'],
-      { cwd: mainRepo },
-    );
+    runGit(mainRepo, ['worktree', 'add', '--no-track', '--quiet', '-b', branch, worktree, 'HEAD']);
     const push = (): void => {
-      spawnSync('git', ['push', '--quiet', 'origin', `HEAD:refs/heads/${branch}`], { cwd: worktree });
+      runGit(worktree, ['push', '--quiet', 'origin', `HEAD:refs/heads/${branch}`]);
     };
 
     try {
       return await fn(mainRepo, fs.realpathSync(worktree), push);
     } finally {
-      spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+      warnGitCleanup(mainRepo, ['worktree', 'remove', '--force', worktree]);
       fs.rmSync(worktree, { recursive: true, force: true });
       fs.rmSync(bareRemote, { recursive: true, force: true });
     }
