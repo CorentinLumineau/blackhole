@@ -69,3 +69,4 @@
 | reviews/review-record-408-s-reversal-of-adr-007-r3-supersession-rule-with-declared-phrase-scan.md | Review artifact for issue #712 (LGTM) | review | current | on file change |
 | reviews/review-chore-land-the-16-stranded-decision-log-md-rows-sitting-uncommitted-in-the-main.md | Review artifact for issue #749 (LGTM) | review | current | on file change |
 | reviews/review-discovery-carry-staged-artifacts-resolves-staged-path-and-target-path-against-on.md | Review artifact for issue #760 (LGTM) | review | current | on file change |
+| reviews/review-discovery-escalation-trigger-enum-has-no-environmental-blocker-value-so-an-egres.md | Review artifact for issue #763 (LGTM) | review | current | on file change |

@@ -1,0 +1,5 @@
+{
+  "status": "blocked",
+  "escalation_trigger": "environmental_blocker",
+  "blocked_step": 123
+}

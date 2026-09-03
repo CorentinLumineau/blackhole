@@ -98,8 +98,8 @@ Blocker Gate mechanism (§ Human-in-the-Loop (HITL) & Blocker Gating below), unc
 ## Escalation dispatch (implementer → investigator)
 
 **Trigger condition**: `implementer` returns `status: blocked` with `escalation_trigger` set
-(`failed_attempts`, `touch_paths_overrun`, or `merge_conflict_semantic` —
-`worker-schemas.md` § `escalation_trigger`).
+(`failed_attempts`, `touch_paths_overrun`, `merge_conflict_semantic`, or
+`environmental_blocker` — `worker-schemas.md` § `escalation_trigger`).
 
 **`merge_conflict_semantic` branch** (issue #450): when `escalation_trigger ===
 'merge_conflict_semantic'`, route to the HITL Blocker Gate (`orchestrator.md` §
@@ -113,6 +113,18 @@ Human-in-the-Loop (HITL) & Blocker Gating) — **do not** spawn `investigator`:
    ruling **R-003** (`coordinator.md` § Chat Feedback Intake Protocol step 2).
 3. **Resume rule**: coordinator clears `status`/`notes` after owner resolution; orchestrator
    resumes merge pipeline from Step 0.5 on the next turn — unchanged single-writer invariant.
+
+**`environmental_blocker` branch** (issue #763): work already complete and verified — only a
+delivery-boundary command failed on network/DNS/forge/registry unavailability. **Do not spawn
+`investigator`** — no code to root-cause:
+
+1. **`queue.json` mutation**: set `status: blocked`,
+   `notes: "environmental-blocker:<blocked_step or 'unspecified'>"` (`blackhole-state.md` §
+   Write protocol).
+2. **Re-spawn `implementer` directly** — retry the blocked delivery step only, no TDD re-run.
+3. **Backstop**: classify `Transient` per `orchestrator-runtime.md` § Error Classification; the
+   existing Blocked-Iteration Counter (`checkpoint-protocol.md`) auto-escalates after 3
+   consecutive `blocked` turns to the same HITL path `merge_conflict_semantic` reaches directly.
 
 For `failed_attempts` or `touch_paths_overrun` only — do **not** re-spawn `implementer` and do
 not treat this as a generic worker error — route to root-cause investigation instead:

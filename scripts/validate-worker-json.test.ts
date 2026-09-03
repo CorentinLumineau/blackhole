@@ -277,6 +277,12 @@ describe('validateWorker implementer', () => {
     expectValid('implementer', 'implementer-blocked-merge-conflict.json'));
   test('invalid merge_conflict_semantic missing conflict_hunks', () =>
     expectInvalid('implementer', 'implementer-blocked-merge-conflict-missing-hunks.json'));
+  test('valid blocked with environmental_blocker', () =>
+    expectValid('implementer', 'implementer-blocked-environmental-blocker.json'));
+  test('valid blocked with environmental_blocker no blocked_step', () =>
+    expectValid('implementer', 'implementer-blocked-environmental-blocker-no-step.json'));
+  test('invalid environmental_blocker blocked_step type confusion', () =>
+    expectInvalid('implementer', 'implementer-blocked-environmental-blocker-bad-step-type.json'));
   test('invalid missing evidence on complete', () =>
     expectInvalid('implementer', 'implementer-complete-missing-evidence.json'));
   test('invalid empty evidence on complete', () =>

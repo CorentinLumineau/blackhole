@@ -79,6 +79,10 @@ function validateImplementerOptionalFields(data: Record<string, unknown>, errors
     errors.push('filed_issues: expected number[]');
   }
 
+  if ('blocked_step' in data && data.blocked_step !== undefined && !isString(data.blocked_step)) {
+    errors.push('blocked_step: expected string');
+  }
+
   if ('decision_records' in data && data.decision_records !== undefined) {
     errors.push(...validateDecisionRecordsArray(data.decision_records, 'decision_records'));
   }
