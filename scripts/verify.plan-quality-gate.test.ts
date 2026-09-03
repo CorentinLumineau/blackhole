@@ -8,6 +8,7 @@ import {
   extractQuotedBranches,
   extractStandardTrackSection,
   findExecutionStrategyHeadingDrift,
+  findFactsLiteralBumps,
   findMissingCriticalFiles,
   findSweepRetainConflicts,
   findTouchPathSsotGaps,
@@ -205,6 +206,42 @@ describe('findUnscopedSweepACs', () => {
       '1. **Sweep stale references** — **AC**: `grep -rn "foo" bar/` returns zero remaining matches under `documentation/`, no exemptions.',
     ].join('\n');
     expect(findUnscopedSweepACs(section)).toEqual([]);
+  });
+});
+
+// Issue #769 — a plan's Task Breakdown bullet that freezes a `facts.ts` `§ facts` value (e.g.
+// `VCODE_TABLE_ROW_COUNT`) as a literal-arithmetic pair ("from `89` to `90`") reproduces every
+// time a `V-` row is added, since the count keeps moving between plan time and implement time.
+// Advisory-only, same ungrounded shape as findSweepRetainConflicts/findUnscopedSweepACs above.
+describe('findFactsLiteralBumps', () => {
+  test('a bullet naming a SCREAMING_SNAKE_CASE constant plus a frozen "from X to Y" bump is flagged with the constant and both numbers', () => {
+    const section = [
+      '## Task Breakdown',
+      '1. **Bump the row count** — bump `VCODE_TABLE_ROW_COUNT` (currently `89`) in `facts.ts` from `89` to `90`.',
+    ].join('\n');
+    expect(findFactsLiteralBumps(section)).toEqual([
+      { task: 'Bump the row count', constant: 'VCODE_TABLE_ROW_COUNT', from: '89', to: '90' },
+    ]);
+  });
+
+  test('a bullet naming a live re-derivation instruction is not flagged', () => {
+    const section = [
+      '## Task Breakdown',
+      '1. **Bump the row count** — read the live count via `parseVcodeTableRows`, then declare `count + 1`.',
+    ].join('\n');
+    expect(findFactsLiteralBumps(section)).toEqual([]);
+  });
+
+  test('an unrelated "from X to Y" phrase with no SCREAMING_SNAKE_CASE constant token is not flagged', () => {
+    const section = [
+      '## Task Breakdown',
+      '1. **Renumber tasks** — renumber the remaining tasks from 3 to 5.',
+    ].join('\n');
+    expect(findFactsLiteralBumps(section)).toEqual([]);
+  });
+
+  test('empty section returns []', () => {
+    expect(findFactsLiteralBumps('## Task Breakdown\nno tasks here\n')).toEqual([]);
   });
 });
 
