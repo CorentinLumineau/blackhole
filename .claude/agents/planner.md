@@ -15,6 +15,13 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
 
 ## Workflow & Planning Steps
 
+**Staging scope** (issue #782 near-miss): every staging obligation named below (Steps 4 and 7,
+and Design Track §8) targets a route that already has a live `documentation/` target per
+`artifact-contract.md`'s Route → artifact table — the SSOT for which routes are stageable. Never
+generalize the staging mechanism to a route absent from that table, and never stage a `sub_mode`
+entry whose value is `research`: `blackhole-state.md` § Staging states explicitly that `research`
+has no `documentation/` target.
+
 1. **Verify Base Commit**: Run `git rev-parse HEAD` to capture the current repository baseline. Stamp this as `plan_base_commit` in the plan's YAML frontmatter.
 2. **Assess Complexity Track**: Determine the correct planning track based on the issue scope:
    * **Quick**: Simple bugs, styling fixes, or documentation updates.
@@ -49,6 +56,12 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
    (`implementer.md` § Carry Staged Artifacts) commits the appended bullet inside the issue's own
    PR once the route reaches implement. The `(analyze: issue #N)` attribution suffix is
    mandatory.
+
+   **Manifest write is mandatory, not narration** (issue #782): staging the bullet file above
+   without also completing this manifest append — or narrating the staging in the plan body
+   without executing it — does not satisfy ADR-021 D3 and leaves `V-AUTO-02` unable to detect
+   the gap. Before returning `status`, confirm the entry exists on disk (e.g. `grep -q '"route":
+   "analyze"' .blackhole/staged/<issue>/manifest.json`).
 5. **Verify Pareto Gating**: Estimate **Gain (1-10)** and **Effort (1-10)** for the planned implementation. Calculate $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$. If $\text{Priority} < 30$, halt planning, set the issue to low ROI, and recommend archival in the queue findings.
 6. **Enforce V-codes (Plan-time checks)**:
    * `V-INT-02`: Do not plan utility re-implementations.
@@ -74,6 +87,12 @@ The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you 
       `target_kind: "new_file"` for the plan body + `target_kind: "append_row"` for the INDEX row)
       to `.blackhole/staged/<issue>/manifest.json` per `blackhole-state.md` § Staging write
       protocol. Never commit into `documentation/` — the implementer carry-step owns delivery.
+   5. **Manifest write is mandatory, not narration** (issue #782): completing steps 2-3 (the plan
+      body and INDEX row files) without this manifest append — or describing staged artifacts in
+      the plan document's prose without executing step 4 — does not satisfy ADR-021 D3 and
+      leaves `V-AUTO-02` unable to detect the gap. Before returning `status`, confirm both
+      entries are present on disk (e.g. `grep -c '"route": "plan"'
+      .blackhole/staged/<issue>/manifest.json` returns `2`).
 8. **Verify Quality Gate**: Ensure all Touch-Paths are declared explicitly (`V-SCOPE-02`) and schema baseline changes are fully specified (`V-API-01`). **Standard track only** — run `bun run scripts/plan-quality-gate.ts --plan-file <path-to-this-plan>` (issue #716) and copy its `{ac_mapping, critical_files_exist, mitigation_concrete}` result directly into `failing_checks`/the `## Quality Gate Results` PASS/FAIL rows below, rather than re-deriving any of the three checks by hand:
    * **What the CLI computes**: `ac_mapping` — every `## Task Breakdown` item carries a machine-verifiable acceptance criterion (this closes a documented-but-unenforced schema value — `worker-schemas.md` § Plan quality gate checks names all three as valid `failing_checks` entries with no prior producing step before issue #716). `critical_files_exist` — every backtick-quoted path listed under `## Critical Files` resolves on disk; `## Critical Files` names only **pre-existing** sensitive touchpoints (see § Plan Complexity Tracks & Sections, Standard Track's Critical Files bullet) — a file the plan is about to *create* belongs under Touch-Paths instead, never here, or this check spuriously blocks it. `mitigation_concrete` — every bullet under `## Execution Strategy & Stop Conditions` pairs a vague-mitigation phrase (fixed word list: `scripts/checks/plan-quality-gate.check.ts`'s `PLAN_QUALITY_GATE_VAGUE_WORDS`, not restated here) to a testable "if X then abort/halt/stop/revert" stop condition. A `false` value for any key adds that key to `failing_checks` and returns `status: blocked` rather than `ready`.
    * **Section-presence gating, not track-gating (mercure parity, issue #459 AC3)**: both checks trigger on whether their source section — `## Critical Files` or `## Execution Strategy & Stop Conditions` — is actually present in this plan's output, never on the track name directly. Today only the Standard Track template carries either heading (§ Plan Complexity Tracks & Sections), so both checks are inert on every Quick Track plan — not because Quick Track is exempted, but because a Quick Track plan never emits either heading. This is the deliberate reading of AC3's mercure-parity "advisory on Quick": advisory means *evaluated only when the section is applicable*, not *always skipped on that track*. If Quick Track's template is ever extended to carry `## Critical Files` or `## Execution Strategy & Stop Conditions`, both checks activate automatically with the same blocking semantics as Standard Track — no separate Quick-track wiring is needed. Design Track's own unconditional `design_pending_approval` block (§ Design Track) already blocks regardless of these two checks' applicability, so it needs no separate wiring either.
@@ -348,11 +367,15 @@ The artifact consolidates 8 ordered subsections:
       `.blackhole/staged/<issue>/decisions-index-row.md`, via Bash heredoc + atomic `mv`, at the
       absolute repo-root staging directory the orchestrator passes at spawn time
       (`blackhole-state.md` § Staging (ADR-021 D1)). Append both entries to
-      `.blackhole/staged/<issue>/manifest.json` per that section's schema. This is staging, not a
-      commit inside the issue's own PR — no branch exists yet at Phase 2 (ADR-021 D1); the
-      implementer's carry-step (`implementer.md` § Carry Staged Artifacts, ADR-021 D2) is what
-      later copies the staged files into `documentation/` and commits them. No orchestrator file
-      write, no draft/final flip.
+      `.blackhole/staged/<issue>/manifest.json` per that section's schema. **Manifest write is
+      mandatory, not narration** (issue #782): rendering the artifacts without this append — or
+      narrating the staging without executing it — does not satisfy ADR-021 D3 and leaves
+      `V-AUTO-02` unable to detect the gap; confirm both entries exist on disk before returning
+      `status: "ready"`. This is staging, not a commit inside the
+      issue's own PR — no branch exists yet at Phase 2 (ADR-021 D1); the implementer's carry-step
+      (`implementer.md` § Carry Staged Artifacts, ADR-021 D2) is what later copies the staged
+      files into `documentation/` and commits them. No orchestrator file write, no draft/final
+      flip.
       Return `status: "ready"` in the worker JSON with `track: "design"` — the `ready`/`blocked`
       worker-JSON contract shape itself is unchanged; `V-INT-01` rides in the existing `findings`
       array, no new required field.
@@ -405,7 +428,10 @@ The artifact consolidates 8 ordered subsections:
       either ⇒ skip staging entirely — write nothing, append no manifest entry), stage both at
       `.blackhole/staged/<issue>/ADR-{NNN}-{slug}.md` and
       `.blackhole/staged/<issue>/decisions-index-row.md` via the same Bash heredoc + atomic `mv`
-      write and manifest append as the `ready` branch above — no orchestrator file write
+      write and manifest append as the `ready` branch above. **Manifest write is mandatory, not
+      narration** (issue #782): promoting the design note verbatim does not satisfy ADR-021 D3 on
+      its own — this append must still execute in this same spawn, and its absence leaves
+      `V-AUTO-02` unable to detect the gap. No orchestrator file write
       (orchestrator is `disallowedTools: [Write, Edit, Delete]`), no draft/final flip. This is
       staging, not a commit inside the issue's own PR — no branch exists yet at Phase 2 (ADR-021
       D1); the implementer's carry-step (`implementer.md` § Carry Staged Artifacts, ADR-021 D2)
