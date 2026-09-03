@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   aggregateDesign,
+  resolveAdrAmendmentTruth,
+  type AdrCitation,
   type ColumnScore,
   type ColumnWeights,
   type CriticScore,
@@ -9,6 +13,7 @@ import {
   type PrimaryDesignInput,
   type RefactoringImpactRow,
 } from './design-aggregate';
+import { withTempDir } from './lib/test-fixtures.ts';
 
 // Single-column weight set (weight 100 on "Risk") — keeps weighted_total == raw score so
 // dominance-percentage math in fixtures is easy to reason about and verify by hand.
@@ -238,6 +243,78 @@ describe('aggregateDesign — refactoring impact', () => {
   });
 });
 
+describe('aggregateDesign — ADR citation gate (issue #775, V-ADR-06 reader)', () => {
+  // has_amendment is a resolved-ground-truth field the CLI layer attaches via
+  // resolveAdrAmendmentTruth (see the describe block below) — set directly here so these cases
+  // exercise the pure gate logic in aggregateDesign without touching the filesystem.
+  const citation = (overrides: Partial<AdrCitation> = {}): AdrCitation => ({
+    adr: 'ADR-007',
+    option: 'Option A',
+    amendment_acknowledged: false,
+    has_amendment: true,
+    ...overrides,
+  });
+
+  test('primary cites an amended ADR without acknowledging it → blocked, unverified-adr-citation', () => {
+    const result = aggregateDesign(
+      baseInput({ primary: basePrimaryInput({ adr_citations: [citation()] }) }),
+    );
+    expect(result.status).toBe('blocked');
+    expect(result.reasons).toEqual(['unverified-adr-citation']);
+  });
+
+  test('either critic cites an amended ADR without acknowledging it → blocked, unverified-adr-citation', () => {
+    const result = aggregateDesign(
+      baseInput({
+        critics: [baseCriticScore({ adr_citations: [citation()] }), baseCriticScore()],
+      }),
+    );
+    expect(result.status).toBe('blocked');
+    expect(result.reasons).toEqual(['unverified-adr-citation']);
+  });
+
+  test('an acknowledged citation to an amended ADR does not block', () => {
+    const result = aggregateDesign(
+      baseInput({
+        primary: basePrimaryInput({ adr_citations: [citation({ amendment_acknowledged: true })] }),
+      }),
+    );
+    expect(result.status).toBe('ready');
+    expect(result.reasons).toEqual([]);
+  });
+
+  test('a citation to a non-amended ADR never blocks, regardless of amendment_acknowledged', () => {
+    const result = aggregateDesign(
+      baseInput({
+        primary: basePrimaryInput({
+          adr_citations: [citation({ has_amendment: false, amendment_acknowledged: false })],
+        }),
+      }),
+    );
+    expect(result.status).toBe('ready');
+    expect(result.reasons).toEqual([]);
+  });
+
+  test('a malformed adr_citations[] entry is caught by validateInput as malformed-input', () => {
+    const result = aggregateDesign(
+      baseInput({
+        primary: basePrimaryInput({
+          adr_citations: [{ adr: 'ADR-007' } as unknown as AdrCitation],
+        }),
+      }),
+    );
+    expect(result.status).toBe('blocked');
+    expect(result.reasons).toEqual(['malformed-input']);
+  });
+
+  test('absent adr_citations on both primary and critics behaves exactly as before this change', () => {
+    const result = aggregateDesign(baseInput());
+    expect(result.status).toBe('ready');
+    expect(result.reasons).toEqual([]);
+    expect(result.winner).toBe('Option A');
+  });
+});
+
 describe('aggregateDesign — malformed/missing input (fail-safe default)', () => {
   test('only 1 of 2 critics returned → blocked, fail-safe default', () => {
     const result = aggregateDesign(baseInput({ critics: [baseCriticScore()] }));
@@ -345,5 +422,76 @@ describe('aggregateDesign — scorer_results shape', () => {
       expect(r.winner).toBe('Option A');
       expect(r.margin).toBeCloseTo(40, 5);
     }
+  });
+});
+
+// AMENDED_ADR / UNAMENDED_ADR fixtures mirror verify.adr-supersession.test.ts's own fixtures —
+// resolveAdrAmendmentTruth is a thin CLI-layer wrapper around the same
+// hasPostAcceptanceAmendmentSection export that file already tests against these bodies.
+const AMENDED_ADR = `---\ntype: adr\nstatus: accepted\n---\n\n# ADR-007: Fixture\n\n## Post-acceptance amendments\n\n- 2026-09-02 — #712 reverses R3′.\n`;
+const UNAMENDED_ADR = `---\ntype: adr\nstatus: accepted\n---\n\n# ADR-007: Fixture\n`;
+
+describe('resolveAdrAmendmentTruth (CLI-layer ground-truth resolver)', () => {
+  test('resolves has_amendment: true for a cited ADR carrying the amendments section', () => {
+    withTempDir('design-aggregate-', (dir) => {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'ADR-007-fixture.md'), AMENDED_ADR);
+
+      const input = baseInput({
+        primary: basePrimaryInput({
+          adr_citations: [{ adr: 'ADR-007', option: 'Option A', amendment_acknowledged: false }],
+        }),
+      });
+      const resolved = resolveAdrAmendmentTruth(input, dir);
+      expect(resolved.primary.adr_citations).toEqual([
+        { adr: 'ADR-007', option: 'Option A', amendment_acknowledged: false, has_amendment: true },
+      ]);
+    });
+  });
+
+  test('resolves has_amendment: false for a cited ADR without the amendments section', () => {
+    withTempDir('design-aggregate-', (dir) => {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'ADR-007-fixture.md'), UNAMENDED_ADR);
+
+      const input = baseInput({
+        primary: basePrimaryInput({
+          adr_citations: [{ adr: 'ADR-007', option: 'Option A', amendment_acknowledged: false }],
+        }),
+      });
+      const resolved = resolveAdrAmendmentTruth(input, dir);
+      expect(resolved.primary.adr_citations?.[0].has_amendment).toBe(false);
+    });
+  });
+
+  test('an unresolvable ADR reference fails open — has_amendment: false, never blocks (Design Decision 3)', () => {
+    withTempDir('design-aggregate-', (dir) => {
+      const input = baseInput({
+        primary: basePrimaryInput({
+          adr_citations: [{ adr: 'ADR-999', option: 'Option A', amendment_acknowledged: false }],
+        }),
+      });
+      const resolved = resolveAdrAmendmentTruth(input, dir);
+      expect(resolved.primary.adr_citations?.[0].has_amendment).toBe(false);
+      expect(aggregateDesign(resolved).status).toBe('ready');
+    });
+  });
+
+  test('resolves citations on both critics independently of the primary', () => {
+    withTempDir('design-aggregate-', (dir) => {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'ADR-007-fixture.md'), AMENDED_ADR);
+
+      const input = baseInput({
+        critics: [
+          baseCriticScore({
+            adr_citations: [{ adr: 'ADR-007', option: 'Option A', amendment_acknowledged: false }],
+          }),
+          baseCriticScore(),
+        ],
+      });
+      const resolved = resolveAdrAmendmentTruth(input, dir);
+      expect(resolved.critics[0].adr_citations?.[0].has_amendment).toBe(true);
+    });
   });
 });

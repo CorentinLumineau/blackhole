@@ -209,6 +209,9 @@ documented in `hook-schemas.md` (SubagentStop hook § Extraction order, `hook-sc
       "severity": "CRITICAL",
       "note": "Option A introduces an unreviewed auth bypass under concurrent writes"
     }
+  ],
+  "adr_citations": [
+    { "adr": "ADR-007", "option": "Option A", "amendment_acknowledged": true }
   ]
 }
 ```
@@ -217,6 +220,7 @@ documented in `hook-schemas.md` (SubagentStop hook § Extraction order, `hook-sc
 |-------|--------|----------|
 | `per_option_scores` | `{ [option]: { [column]: number } }` — one entry per option in the primary's provisional trade-off matrix (stripped of the primary's Chosen field before spawn), scored 1-5 against `design-rubric.md`'s fixed columns/weights for this decision's type | yes |
 | `findings` | `{ option, tag, severity, note }[]` | yes (empty array = no findings) |
+| `adr_citations` | `{ adr, option, amendment_acknowledged }[]` — one entry per ADR a `findings[].note` cites as evidence (`planner.md` §4.3's ADR citation check, issue #775); critics score independently and cannot rely on the primary planner having done this check | no (omit when no finding cites an ADR) |
 
 ### Finding shape (Design Track Critic)
 
@@ -778,11 +782,17 @@ reads but never overrides:
 |-------|--------|----------|
 | `status` | `ready` \| `blocked` | yes |
 | `winner` | string \| `null` — the winning option name when `ready`; always `null` when `blocked` | yes |
-| `reasons` | `("dominance" \| "disagreement" \| "critical-finding" \| "breaking-consumer" \| "malformed-input")[]` — every failed condition, `[]` when `ready` | yes |
+| `reasons` | `("dominance" \| "disagreement" \| "critical-finding" \| "breaking-consumer" \| "unverified-adr-citation" \| "malformed-input")[]` — every failed condition, `[]` when `ready` | yes |
 | `scorer_results` | `{ scorer: "primary" \| "critic_a" \| "critic_b", winner: string \| null, margin: number \| null }[]` — `[]` on `malformed-input` (scoring never ran) | yes |
 | `detail` | string | when a `malformed-input` reason needs a human-readable diagnostic |
 
-CLI: `bun run scripts/design-aggregate.ts --input-file <path>`
+`unverified-adr-citation` (issue #775) fires when any declared `adr_citations[]` entry — primary
+or either critic — names an ADR whose ground-truth `has_amendment` (resolved from the live ADR
+tree by the CLI entrypoint's `resolveAdrAmendmentTruth`, never self-reported) is `true` while
+`amendment_acknowledged` is `false`. No new V-code — same convention as the four other reasons,
+none of which carry one either.
+
+CLI: `bun run scripts/design-aggregate.ts --input-file <path> [--repo-root <path>]`
 
 ## Flush request (`stop --now`, the ask — leg A, issue #491)
 
