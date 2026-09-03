@@ -3,6 +3,24 @@
 Required skeleton for Design Track staged ADRs (`planner.md` §4.8). Every section below must
 appear as a `##` heading in the staged body — a missing section blocks the plan (`status: blocked`).
 
+## Two Shapes
+
+`ADR_SHAPES` (`scripts/lib/build/facts.ts`) declares two heading skeletons, checked advisorily
+against every tracked ADR by `scripts/checks/adr-shape.check.ts` (`V-ADR-08`):
+
+- **`classic`** (5 headings, documented below) — a narrative decision record: one problem, one
+  chosen approach, the rejected alternatives, the consequences. Use this shape for an ordinary
+  architectural decision.
+- **`designTrack`** (8 headings: `## Requirements Framing`, `## Options + Trade-off Matrix`,
+  `## Adversarial Evaluation`, `## Component Decomposition`, `## Design Principles Validation`,
+  `## Refactoring Impact Analysis`, `## Assumption Audit`, `## Gate`) — the deeper, plan-track-gated
+  design note `planner.md` §4.8's Design Track produces, carrying its own trade-off matrix,
+  adversarial critic evaluation, and gate outcome. Use this shape when the ADR *is* a Design
+  Track plan artifact, not a standalone narrative record.
+
+A shape matches when every one of its required headings is present verbatim; extra headings are
+allowed. The check is advisory (`ok: true` always) — it never blocks `bun run verify`.
+
 ## Status
 
 One line: bare enum token (`accepted`, `superseded`, or `deprecated`) or evidence-bearing prose

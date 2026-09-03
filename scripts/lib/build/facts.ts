@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 97;
+export const VCODE_TABLE_ROW_COUNT = 98;
 
 // § facts — ADR revisit watch items (issue #710). A declared-fact / independent-scan pair, the
 // same shape `VCODE_TABLE_ROW_COUNT`/`CONTENT_GATE_BUDGETS`/`DOC_HEALTH_THRESHOLDS` already use:
@@ -217,4 +217,29 @@ export const DOC_HEALTH_THRESHOLDS: DocHealthThresholds = {
   rootIndexRowCeiling: 200,
   treeSizeAdvisory: 500,
   deprecationWindowDays: 90,
+};
+
+/**
+ * ADR heading shapes (issue #711) — declared exactly once here per this file's SSOT convention,
+ * consumed by `scripts/checks/design-track.check.ts` (`designTrack`, re-exported unchanged as
+ * `DESIGN_TRACK_REQUIRED_HEADINGS`) and `scripts/checks/adr-shape.check.ts` (both shapes, for its
+ * advisory heading-conformance scan over `documentation/decisions/ADR-*.md`). `classic` is
+ * `src/references/adr-template.md`'s 5-heading narrative-decision skeleton; `designTrack` is
+ * `planner.md` §4.8's 8-heading plan-track-gated design-note skeleton. Never restate either list
+ * as an inline literal at a consumption site.
+ */
+export type AdrShapes = { classic: string[]; designTrack: string[] };
+
+export const ADR_SHAPES: AdrShapes = {
+  classic: ['## Status', '## Context', '## Decision', '## Alternatives Considered', '## Consequences'],
+  designTrack: [
+    '## Requirements Framing',
+    '## Options + Trade-off Matrix',
+    '## Adversarial Evaluation',
+    '## Component Decomposition',
+    '## Design Principles Validation',
+    '## Refactoring Impact Analysis',
+    '## Assumption Audit',
+    '## Gate',
+  ],
 };
