@@ -109,5 +109,6 @@
 | reviews/review-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Review artifact for issue #728 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
 | reviews/review-record-408-s-reversal-of-adr-007-r3-supersession-rule-with-declared-phrase-scan.md | Review artifact for issue #712 (LGTM) | review | current | on file change |
+| reviews/review-refactor-build-named-flags-plumbing-for-build-targets-v-tree-01-tree-registry-ch.md | Review artifact for issue #724 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Review artifact for issue #704 (LGTM) | review | current | on file change |
 | reviews/review-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | Review artifact for issue #713 (LGTM) | review | current | on file change |
