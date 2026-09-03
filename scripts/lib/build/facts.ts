@@ -28,7 +28,49 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 93;
+export const VCODE_TABLE_ROW_COUNT = 94;
+
+// § facts — ADR revisit watch items (issue #710). A declared-fact / independent-scan pair, the
+// same shape `VCODE_TABLE_ROW_COUNT`/`CONTENT_GATE_BUDGETS`/`DOC_HEALTH_THRESHOLDS` already use:
+// each row names a threshold an accepted ADR promised to revisit at, checked independently by
+// `scripts/checks/adr-watch.check.ts` (V-WATCH-01) against the live file — never derived from
+// that same scan. Gives ADR-007's rejected-alternatives revisit trigger ("revisit
+// `worker-schemas.md` at >700 LOC or any role section >80 LOC") and ADR-021 A3's Stop-condition
+// density warning a machine-checkable home instead of tripping silently. Advisory only (`ok:
+// true` always) — see the check module for why this must never block.
+export type AdrWatchMetric = 'file_loc' | 'section_loc' | 'section_count';
+
+export type AdrWatchItem = {
+  adr: string;
+  file: string;
+  metric: AdrWatchMetric;
+  threshold: number;
+  note: string;
+};
+
+export const ADR_WATCH_ITEMS: AdrWatchItem[] = [
+  {
+    adr: 'ADR-007',
+    file: 'src/references/worker-schemas.md',
+    metric: 'file_loc',
+    threshold: 700,
+    note: "Rejected-alternatives revisit trigger; reports the ADR-007 threshold independently of CONTENT_GATE_BUDGETS' own ratcheted ceiling (#492), so the original number stays visible even after the budget was raised.",
+  },
+  {
+    adr: 'ADR-007',
+    file: 'src/references/worker-schemas.md',
+    metric: 'section_loc',
+    threshold: 80,
+    note: 'Any single ## role-contract section over 80 LOC — the per-role half of the same rejected-alternatives trigger.',
+  },
+  {
+    adr: 'ADR-021',
+    file: 'src/references/phase-implement.md',
+    metric: 'section_loc',
+    threshold: 15,
+    note: '(A3, Stop-condition density) "## Worker prompt must include (5-Field Delegation Contract)" is ~10 LOC today and already flagged as dense; 15 gives one clause of headroom before a future extension should split rather than grow it further.',
+  },
+];
 
 // § facts — value vocabularies (issue #320, ADR-007 R1′ extension). Closed sets of enum-shaped
 // strings that agent prose restates verbatim at many consumption sites, declared once here and
