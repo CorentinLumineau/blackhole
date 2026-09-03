@@ -790,9 +790,9 @@ describe('bun run build — tracked ⇒ built-by-default (ADR-007 T2)', () => {
 
   test('determineBuildTargets uses tracking-only gating — deprecated flags do not change target booleans', () => {
     const expected = {
-      buildGemini: isTargetTracked(root, GEMINI_TARGET_DIRS),
-      buildCodex: isTargetTracked(root, CODEX_TARGET_DIRS),
-      buildAgentPlugins: isTargetTracked(root, AGENT_PLUGINS_TARGET_DIRS),
+      gemini: isTargetTracked(root, GEMINI_TARGET_DIRS),
+      codex: isTargetTracked(root, CODEX_TARGET_DIRS),
+      agentPlugins: isTargetTracked(root, AGENT_PLUGINS_TARGET_DIRS),
     };
 
     const baseline = determineBuildTargets(new Set());

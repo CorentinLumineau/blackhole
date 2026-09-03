@@ -41,7 +41,7 @@ const args = new Set(process.argv.slice(2));
 // 1. Resolve deprecated-flag warnings and decide which targets build this run.
 export const determineBuildTargets = (
   cliArgs: Set<string> = args
-): { buildGemini: boolean; buildCodex: boolean; buildAgentPlugins: boolean } => {
+): { gemini: boolean; codex: boolean; agentPlugins: boolean } => {
   for (const flag of DEPRECATED_BUILD_FLAGS) {
     if (cliArgs.has(flag)) {
       console.error(
@@ -72,13 +72,10 @@ export const determineBuildTargets = (
 
   // Tracked ⇒ built (ADR-007 T2/R5′). Deprecated CLI flags are ignored for gating — only
   // git tracking decides whether gemini/codex targets compile (deprecation notice above).
-  const buildGemini = geminiTracked;
-  const buildCodex = codexTracked;
-  const buildAgentPlugins = agentPluginsTracked;
-  return { buildGemini, buildCodex, buildAgentPlugins };
+  return { gemini: geminiTracked, codex: codexTracked, agentPlugins: agentPluginsTracked };
 };
 
-export const cleanBuildDirectories = (buildGemini: boolean, buildCodex: boolean, buildAgentPlugins: boolean) => {
+export const cleanBuildDirectories = (targets: { gemini: boolean; codex: boolean; agentPlugins: boolean }) => {
   console.log('Cleaning existing build directories...');
   cleanDir(path.join(root, 'rules'));
   cleanDir(path.join(root, 'agents'));
@@ -103,15 +100,15 @@ export const cleanBuildDirectories = (buildGemini: boolean, buildCodex: boolean,
   // above, not gated behind the Gemini/Codex tracked-target opt-in flags: it is the redistributable
   // form of the always-built repo-root .claude/ Target C, not an optional bonus target.
   cleanDir(path.join(root, CLAUDE_DISTRIBUTION_ROOT));
-  if (buildGemini) {
+  if (targets.gemini) {
     cleanDir(path.join(root, AGENTS_BUILD_ROOT));
     cleanDir(path.join(root, '.gemini-plugin'));
     cleanDir(path.join(root, DISTRIBUTION_ROOT));
   }
-  if (buildAgentPlugins) {
+  if (targets.agentPlugins) {
     cleanDir(path.join(root, AGENT_PLUGINS_DISTRIBUTION_ROOT));
   }
-  if (buildCodex) {
+  if (targets.codex) {
     cleanDir(path.join(root, 'codex-agents'));
     cleanDir(path.join(root, 'codex-skills'));
     cleanDir(path.join(root, '.codex-plugin'));
@@ -119,7 +116,7 @@ export const cleanBuildDirectories = (buildGemini: boolean, buildCodex: boolean,
   if (fs.existsSync(path.join(root, 'SKILL.md'))) {
     fs.unlinkSync(path.join(root, 'SKILL.md'));
   }
-  if (buildCodex && fs.existsSync(path.join(root, 'codex-marketplace.json'))) {
+  if (targets.codex && fs.existsSync(path.join(root, 'codex-marketplace.json'))) {
     fs.unlinkSync(path.join(root, 'codex-marketplace.json'));
   }
 };
