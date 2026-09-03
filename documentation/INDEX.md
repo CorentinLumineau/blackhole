@@ -70,3 +70,4 @@
 | reviews/review-chore-land-the-16-stranded-decision-log-md-rows-sitting-uncommitted-in-the-main.md | Review artifact for issue #749 (LGTM) | review | current | on file change |
 | reviews/review-discovery-carry-staged-artifacts-resolves-staged-path-and-target-path-against-on.md | Review artifact for issue #760 (LGTM) | review | current | on file change |
 | reviews/review-discovery-escalation-trigger-enum-has-no-environmental-blocker-value-so-an-egres.md | Review artifact for issue #763 (LGTM) | review | current | on file change |
+| reviews/review-discovery-worktree-removal-guard-fails-closed-on-every-detached-head-review-work.md | Review artifact for issue #761 (LGTM) | review | current | on file change |
