@@ -77,9 +77,9 @@ order — each step is a hard gate over the ones below it:
    is `true`; its dispatch is out of scope for this step (#98). `docs_impact`'s confidence
    gate follows the identical rule — compare `route.confidence.docs` against
    `router_confidence_thresholds.docs` (default 70); below threshold, **or** when
-   `.blackhole/config.json` `docs_governance.enabled` does not resolve to `true` (absent block,
-   absent field, or explicit `false` — SSOT: `config-template.md`'s `docs_governance.enabled`
-   row, issue #477) or `docs_governance.docs_impact_routing` is `false`, resolve to
+   `.blackhole/config.json` `docs_governance.enabled` does not resolve to `true` (per
+   `config-template.md` § `docs_governance` resolution — cautious default wins) or
+   `docs_governance.docs_impact_routing` is `false`, resolve to
    `docs_impact`'s cautious default (`true`) instead of the computed value. Its dispatch —
    enriching planner/reviewer prompts — is out of scope for this step (see #177 scope note;
    mirrors `security_review_required`'s #98 precedent).

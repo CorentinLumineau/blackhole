@@ -75,6 +75,7 @@ Playbooks: `{{AGENT_DIR}}/skills/blackhole/references/phase-*.md`
 - One PR per issue; coordinator never implements or merges
 - Review: `reviewer` → `scripts/review-aggregate.ts` → ledger (see `review-core.md`)
 - File new issues for discoveries (bugs, refactors, quick wins)
+- A step whose output is a pure function of files or JSON is a `bun run scripts/<name>.ts` invocation; prose holds only judgment (ADR-003).
 
 ## Branch & Worktree Hygiene (V-BRANCH, V-WORKTREE)
 

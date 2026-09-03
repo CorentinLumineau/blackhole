@@ -66,6 +66,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-DOC-05 | Rationale duplicated across a definition/interface/call-site/test (four copies drift four ways — the canonical site is where the concept is defined; other sites must reference it by symbol name, not restate it) | WARN | reviewer.md §26 (Comment Discipline Audit) |
 | V-DOC-06 | Incident archaeology in source comments — issue/PR number, "found by review of X", or change-history prose embedded in a comment (a regression test may carry its issue number in the **function name** only) | WARN | reviewer.md §26 (Comment Discipline Audit) |
 | V-DOC-07 | Comment-to-code ratio advisory — added comment lines exceed ~40% of a diff's added lines; informational only, never escalates past WARN and never blocks | WARN | reviewer.md §26 (Comment Discipline Audit) |
+| V-PROSE-01 | A fenced code block in `src/agents/*.md` contains a `cat <<` heredoc that writes (directly or via `mv`) into `documentation/` or `.blackhole/staged/` — such steps are a pure function of files/JSON and belong in a `scripts/<name>.ts` invocation, not agent prose (ADR-003) | WARN | scripts/checks/prose-heredoc.check.ts |
 | V-ADR-01 | ADR frontmatter `status:` is not a bare enum token in `{accepted, superseded, deprecated}` (exact case) | WARN | scripts/checks/adr-status.check.ts |
 | V-ADR-02 | ADR `documentation/decisions/INDEX.md` `status` column disagrees with the ADR file's frontmatter `status:` | WARN | scripts/checks/adr-status.check.ts |
 | V-ADR-03 | ADR in-body `## Status` leading token disagrees with frontmatter `status:` (case-insensitive; section absence is not a failure) | WARN | scripts/checks/adr-status.check.ts |
@@ -73,6 +74,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-ADR-07 | A Design Track `resume_context: design_approved` promotion cites an ADR whose file changed on `main` since the plan's `plan_base_commit` — the verdict being promoted verbatim may have reasoned about a since-superseded rule; advisory only, does not block promotion | WARN | planner.md §4.8 Gate — `resume_context: design_approved` branch |
 | V-CONFIG-01 | New config/env keys follow established naming, registered | WARN | reviewer.md §5 (Integration Coherence — Config/env key naming) |
 | V-CONFIG-02 | New `.blackhole/config.json` keys registered in config-template.md | WARN | scripts/checks/config-registration.check.ts |
+| V-GATE-02 | Gate-resolution clause restated outside its config-template.md `**Resolution**` sentence instead of cited by reference | WARN | scripts/checks/gate-resolution-citation.check.ts |
 | V-SCOPE-01 | No refactoring untouched code | WARN | reviewer.md §12 (Suggestion Proportionality Gate) |
 | V-SCOPE-02 | Touch-Paths violation — files modified outside plan scope | WARN | reviewer.md §1 (5-Field Contract & Plan Compliance) |
 | V-SCOPE-03 | Missing/underestimated blast-radius — a Standard-track plan with 3+ affected consumers lacks a `## Dependency Blast-Radius` section | WARN | reviewer.md §1 (5-Field Contract & Plan Compliance) |
