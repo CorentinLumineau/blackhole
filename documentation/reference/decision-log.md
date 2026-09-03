@@ -23,6 +23,34 @@ When this table exceeds 500 rows, the orchestrator moves the oldest rows to
 `findings-ledger.json` archive convention (`src/references/blackhole-state.md`). This file
 itself is never deleted, only trimmed.
 
+## Known Baseline (decision_log_silent_prs)
+
+`decision_log_silent_prs` (`scripts/doc-health-signal.ts`) counts merged PRs whose number never
+appears in the Records table below. As of issue #767 the count is ~168/173 merged issues — this
+is expected steady-state, not a live defect. Two structural, non-defect causes dominate it:
+
+- **Pre-mechanism history (structurally silent, permanent)**: this file and the orchestrator's
+  append step did not exist before commit `ca1f6a1d` (2026-07-20, issue #421/#422). Every merged
+  issue that landed before that date has no mechanism it could have hit — it is unrecoverable
+  history, not a gap to close.
+- **A closed six-week implementation gap (2026-07-20 → 2026-09-02)**: the append mechanism was
+  documented (`src/agents/orchestrator.md` § Decision Record Append) from `ca1f6a1d` onward, but
+  the invocable script, `scripts/decision-log-append.ts`, was not written until commit
+  `2fe253e9` (2026-09-02, issue #750). Any `decision_records[]` a worker returned in that window
+  had no automated path into this log. Issue #749 / PR #770 (commit `221e7030`) already recovered
+  the 17 rows that survived in an uncommitted working-tree file from that window; anything else
+  from that window that was never persisted to disk is permanently unrecoverable — there is
+  nothing further to retroactively "fix" for it.
+
+Since `2fe253e9` landed the mechanism has run again — PR #810's rows landed via commit
+`2e51e674` — confirming the wiring works going forward. The current count is therefore the
+expected floor from this point on; it will never shrink (history is unrecoverable). The only
+thing worth watching is **growth past this floor after 2026-09-02**: a future merged PR whose
+implementer worker returned a non-empty `decision_records[]` that still fails to reach this log
+would indicate the wiring broke again. This does not change the signal's existing advisory
+framing (`V-DOCHEALTH-03`: `doc_debt` stays advisory, no ledger append, no phase gate) — it only
+records why the number is what it is, so the question is not re-litigated on every turn.
+
 ## Records
 
 | PR/Issue | Kind | Touch Paths | Decision | Why |
