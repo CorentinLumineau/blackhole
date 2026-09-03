@@ -66,6 +66,7 @@
 | reviews/review-docs-architecture-fix-stale-committed-trees-table-and-five-agents-in-the-archite.md | Review artifact for issue #706 (LGTM) | review | current | on file change |
 | reviews/review-docs-review-core-per-dispatch-mode-reviewer-prompt-requirements-verification-mod.md | Review artifact for issue #709 (LGTM) | review | current | on file change |
 | reviews/review-docs-tests-strip-issue-finding-id-citations-from-hooks-validate-file-test-commen.md | Review artifact for issue #736 (LGTM) | review | current | on file change |
+| reviews/review-feat-checks-adr-watch-items-fact-v-watch-01-advisory-adr-007-s-worker-schemas-re.md | Review artifact for issue #710 (LGTM) | review | current | on file change |
 | reviews/review-feat-checks-v-shape-01-route-field-set-parity-router-validator-status-type-schem.md | Review artifact for issue #708 (LGTM) | review | current | on file change |
 | reviews/review-feat-planner-plan-quality-gate-cli-invoked-at-plan-time.md | Review artifact for issue #716 (LGTM) | review | current | on file change |
 | reviews/review-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Review artifact for issue #715 (LGTM) | review | current | on file change |
