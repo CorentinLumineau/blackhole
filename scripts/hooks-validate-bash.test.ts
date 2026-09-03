@@ -1042,6 +1042,49 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
       }
     });
   });
+
+  test('deny: the refs/remotes/-only scope is deliberate — a commit reachable from a local branch but no remote-tracking ref is still refused (#761)', async () => {
+    await withTempGitRepo('blackhole-hook-wt-detached-local-branch-', async (mainRepo) => {
+      runGit(mainRepo, ['commit', '--allow-empty', '--quiet', '-m', 'init']);
+
+      const parent = path.join(mainRepo, '.worktrees');
+      fs.mkdirSync(parent, { recursive: true });
+      const worktree = path.join(parent, `blackhole-hook-wt-detached-local-branch-${process.pid}-${Date.now()}`);
+      runGit(mainRepo, ['worktree', 'add', '--detach', '--quiet', worktree, 'HEAD']);
+
+      fs.writeFileSync(path.join(worktree, 'local-only.txt'), 'never pushed\n');
+      runGit(worktree, ['add', 'local-only.txt']);
+      runGit(worktree, ['commit', '--quiet', '-m', 'local only commit']);
+      const sha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: worktree }).stdout.toString().trim();
+
+      // checkDetachedReachability (worktree-removal-guard.js) deliberately checks refs/remotes/
+      // only, never refs/heads/ — see its docstring for the argument. Pointing a local branch at
+      // this exact commit, with no remote-tracking ref anywhere, is the case that argument is
+      // about: it must not count as "known-pushed". Unlike the deny test above (reachable from no
+      // ref at all), this asserts the narrower, deliberate property — a scope literal accidentally
+      // widened to include refs/heads/ flips this case to allow while leaving the no-ref-at-all
+      // case unaffected, which is exactly why it needs its own test.
+      runGit(mainRepo, ['branch', 'keeper', sha]);
+
+      try {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-detached-unreachable',
+        });
+      } finally {
+        spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+        fs.rmSync(worktree, { recursive: true, force: true });
+      }
+    });
+  });
 });
 
 // Review-round regression (#532 CHANGES_REQUIRED): the initial matcher required `git` and

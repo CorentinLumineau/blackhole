@@ -305,6 +305,22 @@ const checkUnpushedCommits = (worktreePath) => {
   return { status: 'clean' };
 };
 
+/**
+ * Shared prose for a `status: 'unknown'` refusal below — the detached-HEAD and named-branch
+ * outcomes share an identical opening clause and closing clause and differ only in the remedy
+ * paragraph between them.
+ */
+const unverifiableRefusalOpener = (resolvedPath, detail) =>
+  `Could not verify ${resolvedPath} has no unpushed commits (${detail}) — refusing rather ` +
+  `than risk silent data loss.`;
+
+const GITHUB_RETAINS_PR_HEADS_NOTE =
+  '(GitHub retains PR head refs permanently, so this gives a true answer instead of bypassing the ' +
+  'check)';
+
+const NEVER_PUSHED_ANYWHERE_SUFFIX =
+  'was genuinely never pushed anywhere has no non-destructive fix — push it first.';
+
 /** Evaluates one `{ argTokens }` invocation against `cwd`, returning a block decision or null
  * when this single invocation is safe (`clean`) — `evaluateWorktreeRemoval` below decides what
  * "safe overall" means across every invocation in the command. */
@@ -340,26 +356,23 @@ const evaluateOneInvocation = (argTokens, cwd) => {
         tier: 'block',
         pattern_id: 'worktree-remove-detached-unreachable',
         reason:
-          `Could not verify ${resolvedPath} has no unpushed commits (${result.detail}) — refusing rather ` +
-          `than risk silent data loss. This worktree's HEAD is detached and not reachable from any known ` +
-          `remote-tracking ref. Remedy: fetch a ref that contains this commit (e.g. its PR head) into a ` +
-          `remote-tracking ref, then retry: git fetch origin refs/pull/<PR>/head:refs/remotes/origin/<name> ` +
-          `(GitHub retains PR head refs permanently, so this gives a true answer instead of bypassing the ` +
-          `check). A commit that was genuinely never pushed anywhere has no non-destructive fix — push it ` +
-          `first.`,
+          `${unverifiableRefusalOpener(resolvedPath, result.detail)} This worktree's HEAD is detached ` +
+          `and not reachable from any known remote-tracking ref. Remedy: fetch a ref that contains this ` +
+          `commit (e.g. its PR head) into a remote-tracking ref, then retry: git fetch origin ` +
+          `refs/pull/<PR>/head:refs/remotes/origin/<name> ${GITHUB_RETAINS_PR_HEADS_NOTE}. A commit that ` +
+          NEVER_PUSHED_ANYWHERE_SUFFIX,
       };
     }
     return {
       tier: 'block',
       pattern_id: 'worktree-remove-unverifiable',
       reason:
-        `Could not verify ${resolvedPath} has no unpushed commits (${result.detail}) — refusing rather ` +
-        `than risk silent data loss. Remedy: if this is a pushed PR branch this worktree checked out ` +
-        `under a local name that doesn't match its own remote branch name, fetch its head into the ` +
-        `tracking ref this check falls back to, then retry: git fetch origin refs/pull/<PR>/head:` +
-        `refs/remotes/origin/<branch> (GitHub retains PR head refs permanently, so this gives a true ` +
-        `answer instead of bypassing the check). A branch that was genuinely never pushed anywhere ` +
-        `has no non-destructive fix — push it first.`,
+        `${unverifiableRefusalOpener(resolvedPath, result.detail)} Remedy: if this is a pushed PR ` +
+        `branch this worktree checked out under a local name that doesn't match its own remote ` +
+        `branch name, fetch its head into the tracking ref this check falls back to, then retry: ` +
+        `git fetch origin refs/pull/<PR>/head:refs/remotes/origin/<branch> ${GITHUB_RETAINS_PR_HEADS_NOTE}. ` +
+        `A branch that ` +
+        NEVER_PUSHED_ANYWHERE_SUFFIX,
     };
   }
   return null; // clean — this invocation alone does not block
