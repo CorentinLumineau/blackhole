@@ -49,8 +49,7 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    confirm step.
 2. **Companion-file scaffold** — gated by `docs_governance.companion_files` (default `true`,
    config already loaded from step 1); skip entirely when `docs_governance.enabled` does not
-   resolve to `true` (absent `docs_governance` block, absent `enabled` field, or explicit
-   `false` — SSOT: `config-template.md`'s `docs_governance.enabled` row, issue #477) or
+   resolve to `true` (per `config-template.md` § `docs_governance` resolution — no scaffold) or
    `docs_governance.companion_files` is explicitly `false`. For
    `ARCHITECTURE.md`/`AGENTS.md`/`documentation/reference/product-principles.md`
    (the owner-rulings ledger — `V-RULE-01`), create the file from

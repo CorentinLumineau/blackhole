@@ -177,7 +177,7 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 *   **Docstring check (`V-DOC-01`, `WARN`)**: when detection is true, every newly exported public symbol (function, class, type, or module boundary) added or modified in the diff must carry a docstring/JSDoc on that symbol. A public symbol with no docstring — severity `WARN`, cite `file:line`.
 
 ### 10. Companion-File Audit (`V-ADA-01/02/03/04/05/06/07/08`)
-*   **Config gate**: read `.blackhole/config.json`. Skip this entire section — emit no §10 findings — when `docs_governance.enabled` does not resolve to `true` (absent block, absent field, or explicit `false` — SSOT: `config-template.md`'s `docs_governance.enabled` row, issue #477) or `docs_governance.companion_files === false`.
+*   **Config gate**: read `.blackhole/config.json`. Skip this entire section — emit no §10 findings — when `docs_governance.enabled` does not resolve to `true` (per `config-template.md` § `docs_governance` resolution — no findings) or `docs_governance.companion_files === false`.
 *   **`ARCHITECTURE.md` presence (`V-ADA-01`)**: repo root (and, if a monorepo signal is present per the package-detection keywords below, each detected package root) missing `ARCHITECTURE.md` — severity `BLOCK`.
 *   **Decisions index currency (`V-ADA-02`)**: the diff adds or modifies a `documentation/decisions/ADR-*.md` file whose frontmatter/body marks it `Accepted`, without a same-diff row added to `documentation/decisions/INDEX.md` — severity `WARN`. A row in **either** schema detected by `scripts/detect-doc-schema.sh` (mercure's 4-column `| ADR | Title | Status | Date |` or blackhole's own 5-column `| path | summary | type | status | review_trigger |`, cited as cross-reference, not invoked) satisfies the check — only a genuinely missing row, in neither shape, referencing the new ADR trips `V-ADA-02`.
 *   **`DESIGN.md` presence (`V-ADA-03`)**: the diff touches a file matching the frontend-detection keywords (framework deps in `package.json`; `.tsx`/`.vue`/`.svelte`/`.jsx` extensions; `src/components/`, `app/components/`, `apps/web/`, `pages/`, `views/`, `public/`; Tailwind/PostCSS/Vite/Next/Nuxt config files; root `index.html` — same signal set as `scripts/detect-frontend.sh`, cited as cross-reference, not invoked) and `DESIGN.md` is absent — severity `WARN`.
@@ -377,9 +377,9 @@ Inputs for this mode: `review-core.md` § Reviewer prompt requirements (per-mode
 
 ### 19. Owner-Ruling Violation Audit (`V-RULE-01`)
 *   **Config gate**: read `.blackhole/config.json`. Skip this entire section — emit no §19
-    findings — when `docs_governance.enabled` does not resolve to `true` (absent block, absent
-    field, or explicit `false` — SSOT: `config-template.md`'s `docs_governance.enabled` row,
-    issue #477) or `docs_governance.companion_files === false`.
+    findings — when `docs_governance.enabled` does not resolve to `true` (per
+    `config-template.md` § `docs_governance` resolution — no findings) or
+    `docs_governance.companion_files === false`.
 *   **Detection**: `documentation/reference/product-principles.md` present in the reviewed
     repo. Absent file — emit no §19 findings (vacuous gate, same discipline as §§16/17).
 *   **Check**: the diff contradicts an `active`-status ruling's `Interpretation` field (never
@@ -562,8 +562,8 @@ Inputs for this mode: `review-core.md` § Reviewer prompt requirements (per-mode
 *   **Config gate**: read `.blackhole/config.json` directly — never inferred from manifest
     absence, since a switched-off gate must never produce a false `BLOCK`. Skip this entire
     section — emit no §25 findings — when `docs_governance.enabled` does not resolve to `true`
-    (absent block, absent field, or explicit `false` — SSOT: `config-template.md`'s
-    `docs_governance.enabled` row) or `docs_governance.write_governance === false`. This is the
+    (per `config-template.md` § `docs_governance` resolution — nothing to audit) or
+    `docs_governance.write_governance === false`. This is the
     identical two-flag gate `implementer.md` § Carry Staged Artifacts uses to decide whether to
     promote anything in the first place — governance-off means "nothing to audit," never
     "everything failed."
@@ -652,9 +652,8 @@ Inputs for this mode: `review-core.md` § Reviewer prompt requirements (per-mode
     Finding file/line convention — same citation-suffix discipline, not duplicated inline.
 *   **Config gate**: read `.blackhole/config.json` directly — never inferred from an absent diff.
     Skip this entire section — emit no §27 findings — when `docs_governance.enabled` does not
-    resolve to `true` (absent block, absent field, or explicit `false` — SSOT:
-    `config-template.md`'s `docs_governance.enabled` row, issue #477) or
-    `docs_governance.write_governance === false`. Identical two-flag gate to §25 (`implementer.md`
+    resolve to `true` (per `config-template.md` § `docs_governance` resolution — nothing to
+    audit) or `docs_governance.write_governance === false`. Identical two-flag gate to §25 (`implementer.md`
     § Carry Staged Artifacts) — governance-off means "nothing to audit," never "everything failed."
 *   **Detection (diff-scoped trigger)**: fires when the PR diff adds, modifies, renames, or deletes
     any file under `documentation/` in the reviewed repo. No `documentation/` paths in the diff →

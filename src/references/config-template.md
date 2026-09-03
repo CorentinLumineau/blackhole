@@ -80,7 +80,7 @@ Committed template: `.blackhole/config.json`
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 | `merge_mode` | **yes at bootstrap** | `"immediate"` \| `"gated-batch"` (ADR-005) \| `"leave-open"` (ADR-006) — **no default** (ruling R-002, `documentation/reference/product-principles.md`): an absent or invalid value is a bootstrap-blocking condition, not a silent fallback; see the contract note below. `immediate`: each PR merges as soon as it reaches LGTM. `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one PR at a time in `merge_after` dependency order; see `merge-gate.md`. `leave-open`: blackhole never merges — every PR is driven to LGTM and left open for human review/merge; an LGTM'd open PR counts as *delivered* for campaign-complete purposes; `merged_by: blackhole` is never set for these issues; `fixed-in-pr` ledger rows stay `fixed-in-pr` until the human merge is later observed by a sync; see `phase-loop.md` § Merge protocol and `merge-gate.md` |
 | `display_targets` | no | Array of viewport widths in px (e.g. `[412, 700, 2560]`) to capture visual evidence at for UI-affecting PRs (ADR-018); absent or empty (default) ⇒ both the implementer's capture step and the reviewer's Visual Evidence Audit are no-ops |
-| `wave_scheduling` | no | Nested object recording campaign-specific wave-scheduling policy and owner-granted exceptions; absent block = default orchestrator scheduling (no hot-file cap, no batched-checks exception) |
+| `wave_scheduling` | no | Nested object recording campaign-specific wave-scheduling policy and owner-granted exceptions. **Resolution**: absent block ⇒ default orchestrator scheduling (no hot-file cap, no batched-checks exception) |
 | `wave_scheduling.shard_by_touch_path` | no | When `true`, shard parallel workers by declared touch-path overlap to reduce merge/rebase collisions on shared files |
 | `wave_scheduling.hot_files_max_one_per_wave` | no | Array of repo-relative paths that may have at most one in-flight worker per wave (hot-file lock) |
 | `wave_scheduling.rationale` | no | Human-readable rationale for the `wave_scheduling` settings (audit trail for owner decisions) |
@@ -91,7 +91,7 @@ Committed template: `.blackhole/config.json`
 | `wave_scheduling.batched_checks_pr.rule` | no | Normative rule text describing what the batched-checks exception permits |
 | `wave_scheduling.batched_checks_pr.rationale` | no | Human-readable rationale for granting the batched-checks exception |
 | `wave_scheduling.batched_checks_pr.constraints` | no | Array of constraints the batched PR must satisfy (e.g. independent modules, shared theme, live verify for count bump) |
-| `resource_policy` | no | Nested object recording campaign-specific resource/fan-out overrides and mitigations; absent block = default resource posture |
+| `resource_policy` | no | Nested object recording campaign-specific resource/fan-out overrides and mitigations. **Resolution**: absent block ⇒ default resource posture |
 | `resource_policy.fan_out_override` | no | Freeform note when `parallel_max` exceeds a documented workstation cap and the owner has accepted the risk |
 | `resource_policy.mitigations` | no | Array of mitigations applied alongside a fan-out override (e.g. test-lock serialization, memory watchdog, scoped searches) |
 | `resource_policy.testlock_carveout` | no | Owner-granted exception allowing this repo's `build`/`verify`/`test` to run without the global `with-test-lock` wrapper |
@@ -103,15 +103,16 @@ Committed template: `.blackhole/config.json`
 | `resource_policy.testlock_carveout.conditions` | no | Array of conditions workers must honor while the carveout is active (e.g. memory self-gate, serial heavy commands) |
 | `resource_policy.carveout_recorded_at` | no | ISO8601 timestamp when the resource-policy carveout block was last recorded |
 | `stop_budget_cleared_at` | no | ISO8601 timestamp when the campaign stop-budget gate was cleared by the owner/coordinator (audit trail) |
-| `issue_484_disposition` | no | Campaign-specific disposition record for issue #484 (or analogous parked-issue pin); absent block = no special disposition |
+| `issue_484_disposition` | no | Campaign-specific disposition record for issue #484 (or analogous parked-issue pin). **Resolution**: absent block ⇒ no special disposition |
 | `issue_484_disposition.status` | no | Disposition status (e.g. `parked` — never dispatch, campaign drains around it) |
 | `issue_484_disposition.reaffirmed_at` | no | ISO date when the disposition was last reaffirmed |
 | `issue_484_disposition.by` | no | Freeform provenance for who reaffirmed the disposition |
 | `issue_484_disposition.note` | no | Human-readable note on how the disposition affects campaign scope (e.g. excluded from "until empty") |
 
-**`docs_governance` contract note**: when the block is absent, or
-`docs_governance.enabled` resolves to anything other than the literal `true` (absent
-field or explicit `false` — see the SSOT row above), every dependent feature (reviewer
+**`docs_governance` contract note**: **Resolution**: absent block, absent field, or explicit
+`false` ⇒ inert. When the block is absent, or
+`docs_governance.enabled` resolves to anything other than the literal `true` (see the SSOT row
+above), every dependent feature (reviewer
 V-ADA companion-file audit, router `docs_impact` flag, write-governance remedies —
 `docs_impact`'s dispatch consumer is `src/references/orchestrator-delegation.md` §
 Route-derived dispatch (#177); the reviewer companion-file audit's consumer is
@@ -124,14 +125,16 @@ preserved exactly. Any future issue that wires a dependent feature must check th
 docs-governance V-code to `BLOCK` per repo; it must never de-escalate the
 pre-existing `V-DOCSYNC-01` `BLOCK` severity.
 
-**`kaizen` contract note**: when the block is absent, or `kaizen.enabled` is
+**`kaizen` contract note**: **Resolution**: absent block, or `kaizen.enabled` explicitly `false`
+⇒ inert. When the block is absent, or `kaizen.enabled` is
 `false`, the kaizen improvement-hunt loop (ADR-006) MUST be a no-op and
 current behavior is preserved exactly — no hunt wave dispatches, no hunter
 agent spawns, `hunt_state` is never written. `kaizen.min_priority` may only be
 **raised** above its default of `30`, never lowered below the `V-PARETO-02` threshold. This is the same obligation `docs_governance.enabled` and
 `adaptive_routing` already impose on their respective features.
 
-**`incident_mode` contract note**: when the block is absent, or
+**`incident_mode` contract note**: **Resolution**: absent block, or `incident_mode.enabled`
+explicitly `false` ⇒ inert. When the block is absent, or
 `incident_mode.enabled` is `false`, the incident-mode posture (`orchestrator-runtime.md` §
 Incident Mode) MUST be a no-op and current behavior is preserved exactly — no
 `parallel_max` override, no strict `migration_slot` enforcement beyond the
@@ -139,7 +142,9 @@ existing baseline rule, no pausing of `phase-loop.md` § Continuous Discovery of
 Improvements. This is the same obligation `docs_governance.enabled` and
 `kaizen.enabled` already impose on their respective features.
 
-**`autonomy` contract note**: autonomy is unconditionally active (ADR-014) — there is no master
+**`autonomy` contract note**: **Resolution**: never inert as a whole (ADR-014) — absent block or
+an unset sub-field falls back to that sub-field's own default; there is no master off switch.
+Autonomy is unconditionally active — there is no master
 switch and no "off" state for the block as a whole. The confidence-gate kernel
 ([confidence-gates.md](confidence-gates.md)) always runs its composite math. When the block is
 absent, or an individual sub-field is unset, that sub-field's own default applies
@@ -149,7 +154,8 @@ absent, or an individual sub-field is unset, that sub-field's own default applie
 own feature's *dispatch* (design tier, analyze routing, brainstorm routing), never the kernel
 itself.
 
-**`merge_mode` contract note**: this is the one field that deliberately breaks the
+**`merge_mode` contract note**: **Resolution**: no default (ruling R-002) — absent or invalid ⇒
+bootstrap-blocking, never a silent fallback. This is the one field that deliberately breaks the
 "absent block/field = current behavior preserved" pattern every contract note above follows —
 `merge_mode` has **no default** (ruling R-002, `documentation/reference/product-principles.md`).
 An absent or invalid value is a bootstrap-blocking condition: `coordinator.md` § Bootstrap
@@ -160,7 +166,8 @@ renders an explicit `unset (bootstrap-blocking)` sentinel rather than silently r
 described in the field table row above — this note governs only what happens when the field is
 missing, not the three values' runtime behavior.
 
-**`display_targets` contract note**: when the array is absent or empty, the visual evidence
+**`display_targets` contract note**: **Resolution**: absent or empty array ⇒ inert (visual
+evidence gate is a no-op end to end). When the array is absent or empty, the visual evidence
 gate (ADR-018) is a no-op end to end — the implementer's Visual Evidence Capture step never
 runs and the reviewer's Visual Evidence Audit never fires, and current behavior is preserved
 exactly. This is the same discipline `docs_governance`/`kaizen`/`incident_mode` already impose
