@@ -6,6 +6,7 @@ import {
   PRETOOLUSE_HOOKS_DIR,
   readHookEvents,
   runPreToolUseHook,
+  withLinkedWorktree,
   withRemoteTrackedWorktree,
   withTempGitRepo,
 } from './lib/test-fixtures.ts';
@@ -1581,4 +1582,163 @@ describe('validate-bash-command.js — uncaught validator crash fails closed, no
       });
     });
   }
+});
+
+// #804: an implementer worker began editing files in the shared main-clone checkout via Bash
+// (`sed -i`, heredocs, `cat >`) instead of its assigned worktree — #620's assigned-worktree
+// containment covers Write/Edit only, with zero containment for Bash file-write commands.
+// bash-write-target-guard.js (ADR-029) closes that gap. Every test here sets
+// BLACKHOLE_ASSIGNED_WORKTREE (except the fail-open parity test) — with it unset, this whole
+// check is a no-op (see the last test in this block).
+describe('validate-bash-command.js — bash write-target worktree containment (#804, ADR-029)', () => {
+  const bashPayloadAt = (command: string, cwd: string) => ({
+    tool_name: 'Bash',
+    tool_input: { command },
+    tool_use_id: 'toolu_804_bash',
+    cwd,
+  });
+
+  test('#804: a plain `>` redirect targeting the main clone is denied (the literal shape of #804)', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const target = path.join(mainRepo, 'foo.txt');
+      const payload = bashPayloadAt(`echo x > ${target}`, worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/assigned worktree/i);
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        hook: 'validate-bash-command',
+        tool: 'Bash',
+        tier: 'block',
+        pattern_id: 'bash-outside-assigned-worktree',
+      });
+    });
+  });
+
+  test('#804: a plain `>` redirect targeting the assigned worktree itself is allowed (the check is not overbroad)', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const target = path.join(worktree, 'foo.txt');
+      const payload = bashPayloadAt(`echo x > ${target}`, worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('#804: `sed -i` editing a main-clone file in place is denied', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const target = path.join(mainRepo, 'config.json');
+      const payload = bashPayloadAt(`sed -i 's/a/b/' ${target}`, worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({
+        tier: 'block',
+        pattern_id: 'bash-outside-assigned-worktree',
+      });
+    });
+  });
+
+  test('#804: `cp` with a destination outside the assigned root is denied', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const src = path.join(worktree, 'src.txt');
+      const dest = path.join(mainRepo, 'dest.txt');
+      const payload = bashPayloadAt(`cp ${src} ${dest}`, worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({
+        tier: 'block',
+        pattern_id: 'bash-outside-assigned-worktree',
+      });
+    });
+  });
+
+  test('#804: `cp` with a relative destination inside cwd is allowed even when the read-only source lives outside the assigned root', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const src = path.join(mainRepo, 'src.txt');
+      const payload = bashPayloadAt(`cp ${src} dest.txt`, worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('#804: `tee -a` appending to a main-clone file is denied', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const target = path.join(mainRepo, 'log.txt');
+      const payload = bashPayloadAt(`tee -a ${target} <<< "x"`, worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({
+        tier: 'block',
+        pattern_id: 'bash-outside-assigned-worktree',
+      });
+    });
+  });
+
+  test('#804: a heredoc\'s real redirect target outside the assigned root is denied, and a decoy ">" inside the quoted-delimiter body is not treated as a second target', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const target = path.join(mainRepo, 'file.txt');
+      const command = `cat <<'EOF' > ${target}\nfake target: > /somewhere/else\nEOF`;
+      const payload = bashPayloadAt(command, worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(2);
+      // Exactly one event: the decoy `>` inside the masked heredoc body must never surface as a
+      // second, independently-evaluated target.
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        tier: 'block',
+        pattern_id: 'bash-outside-assigned-worktree',
+      });
+    });
+  });
+
+  test('#804: a print-only-sink echo argument containing literal ">" text is not treated as a write target', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const payload = bashPayloadAt('echo "docs say: cmd > /somewhere/outside"', worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('#804: a write-shaped-but-statically-unresolvable command (`python3 -c`) is allowed but recorded as a warn, never a silent allow', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const payload = bashPayloadAt(`python3 -c "open('/tmp/x','w').write('y')"`, worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(permissionDecision(result.stdout)).toBe('allow');
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        tier: 'warn',
+        pattern_id: 'bash-write-target-unresolvable',
+      });
+    });
+  });
+
+  test('#804: without BLACKHOLE_ASSIGNED_WORKTREE set, a bash write target outside the worktree is not denied by this check (fail-open parity with #620)', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const target = path.join(mainRepo, 'foo.txt');
+      const payload = bashPayloadAt(`echo x > ${target}`, worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
 });

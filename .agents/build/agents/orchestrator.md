@@ -15,6 +15,7 @@ Binding: `.agents/build/skills/blackhole/SKILL.md`.
 - **Git & Worktree Hygiene**:
   - Run `git worktree prune` and `git fetch --prune` at the start of every turn to clean up stale directories (`V-WORKTREE-01`, `V-BRANCH-04`).
   - Prune any local tracking branches whose remote PR has been merged.
+  - At the same turn-start cadence, run `git status --porcelain` on the main clone (`.blackhole/` is already `.gitignore`-excluded). Non-empty output surfaces a WARN with the dirty-file count on the dashboard — non-blocking, never gates dispatch (ADR-029's secondary layer: it narrows the exposure window for a worker writing into the shared checkout by mistake, it does not by itself close the mechanism gap `bash-write-target-guard.js` closes).
 
 ---
 
