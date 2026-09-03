@@ -27,6 +27,7 @@
 | plans/plan-adr-007-drift-proof-toolchain-reseating.md | Implementation plan for ADR-007's drift-proof toolchain re-seating blueprint | plan | current | on ADR acceptance |
 | plans/plan-campaign-config-confirmation-gate.md | Plan for the campaign config confirmation gate at bootstrap preflight | plan | current | on ADR acceptance or Bootstrap preflight change |
 | plans/plan-chore-content-gates-budget-orchestrator-runtime-dispatch-delegation-md-split-off.md | Content-gate budget rows for the three orchestrator split-off files, seeded at measured × 1.2 | plan | current | on ADR acceptance |
+| plans/plan-discovery-17-decision-log-records-for-732-751-sit-uncommitted-in-main-working-tr.md | Steady-state decision on `decision_log_silent_prs`: pre-mechanism history plus a closed 2026-07-20→2026-09-02 implementation gap, not a live defect | plan | current | on file change |
 | plans/plan-discovery-bash-pretooluse-guards-miss-every-path-qualified-invocation-usr-bin-gi.md | Bugfix plan fixing `worktree-removal-guard.js`'s `isCommandWordStart` predicate to recognize path-qualified `git` invocations (`/usr/bin/git`) without reopening the `--git-dir=/x/.git` fragment false positive it was introduced to reject (issue #774) | plan | current | on file change |
 | plans/plan-discovery-carry-staged-artifacts-containment-stops-at-reporoot-so-an-in-repo-tar.md | Constrains carry-staged-artifacts.ts's target_path to an allowlist (documentation/**, root ARCHITECTURE.md) and converts write-step failures to per-entry skips, closing the arbitrary-code-execution vector in issue #784 | plan | current | on file change |
 | plans/plan-discovery-check-review-artifact-verifies-a-manifest-written-by-the-party-being-c.md | Fix check-review-artifact.ts's circular manifest leg with a ledger re-render content check | plan | current | on file change |
@@ -77,6 +78,7 @@
 | reviews/review-discovery-worktree-removal-guard-allows-force-on-a-dirty-worktree-uncommitted-wo.md | Review artifact for issue #777 (LGTM) | review | current | on file change |
 | reviews/review-discovery-worktree-removal-guard-fails-closed-on-every-detached-head-review-work.md | Review artifact for issue #761 (LGTM) | review | current | on file change |
 | reviews/review-docs-architecture-fix-stale-committed-trees-table-and-five-agents-in-the-archite.md | Review artifact for issue #706 (LGTM) | review | current | on file change |
+| reviews/review-docs-decision-log-record-steady-state-baseline-for-decision-log-silent-prs.md | Review artifact for issue #767 (LGTM) | review | current | on file change |
 | reviews/review-docs-review-core-per-dispatch-mode-reviewer-prompt-requirements-verification-mod.md | Review artifact for issue #709 (LGTM) | review | current | on file change |
 | reviews/review-docs-tests-strip-issue-finding-id-citations-from-hooks-validate-file-test-commen.md | Review artifact for issue #736 (LGTM) | review | current | on file change |
 | reviews/review-feat-checks-adr-watch-items-fact-v-watch-01-advisory-adr-007-s-worker-schemas-re.md | Review artifact for issue #710 (LGTM) | review | current | on file change |
