@@ -194,19 +194,38 @@ export const appendPipeTableRowIfAbsent = (
  * Runs the full carry: shape guard already applied by the caller (`loadManifest`) → validate →
  * dispatch per entry. Returns carried target paths (manifest order) and skipped-entry reasons
  * for the caller to log as `new_findings[]` — this function never writes to the ledger itself.
+ *
+ * Two-root resolution (issue #760): `staged_path` and `target_path` never share a tree in an
+ * implementer's actual working environment — `staged_path` lives under the gitignored,
+ * main-clone-only `.blackhole/` (`blackhole-state.md` § Staging), while `target_path` must land
+ * in the worktree checked out for the PR. `opts.stagingRoot` (default `repoRoot`, matching the
+ * existing `opts.today` optional-parameter shape) resolves `staged_path` only — `target_path`
+ * always resolves against `repoRoot`, since that is where the PR branch lives.
  */
 export const carryManifest = (
   manifest: Manifest,
   repoRoot: string,
-  opts: { today?: string } = {},
+  opts: { today?: string; stagingRoot?: string } = {},
 ): CarryOutcome => {
   const today = opts.today ?? new Date().toISOString().slice(0, 10);
-  const { valid, skipped } = validateEntries(manifest.entries ?? []);
+  const stagingRoot = opts.stagingRoot ?? repoRoot;
+  const entries = manifest.entries ?? [];
+  const { valid, skipped } = validateEntries(entries);
   const carriedPaths: string[] = [];
 
   for (const entry of valid) {
-    const stagedAbs = path.join(repoRoot, entry.staged_path);
+    const stagedAbs = path.join(stagingRoot, entry.staged_path);
     const targetAbs = path.join(repoRoot, entry.target_path);
+
+    // Named, non-bare failure (never a raw ENOENT — `readJsonFile`'s convention,
+    // `scripts/lib/fs.ts:53-60`): a declared staged_path that does not resolve under
+    // stagingRoot is always fatal, distinguishable from a validation-level skip.
+    if (!fs.existsSync(stagedAbs)) {
+      const index = entries.indexOf(entry);
+      throw new Error(
+        `carryManifest: entries[${index}].staged_path "${entry.staged_path}" not found under stagingRoot ${stagingRoot} (repoRoot ${repoRoot})`,
+      );
+    }
 
     if (entry.target_kind === 'new_file') {
       const raw = fs.readFileSync(stagedAbs, 'utf-8');

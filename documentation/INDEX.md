@@ -68,4 +68,5 @@
 | plans/plan-feat-governance-record-408-s-reversal-of-adr-007-r3-supersession-rule-with-decla.md | Plan — record #408's undisclosed reversal of ADR-007 R3′ as a dated amendment; add a declared `supersedes_adr` field, a two-legged `V-ADR-06` check, and a `docs` hunt band for the same undisclosed-reversal shape (issue #712, R-09) | plan | current | on release |
 | reviews/review-record-408-s-reversal-of-adr-007-r3-supersession-rule-with-declared-phrase-scan.md | Review artifact for issue #712 (LGTM) | review | current | on file change |
 | reviews/review-chore-land-the-16-stranded-decision-log-md-rows-sitting-uncommitted-in-the-main.md | Review artifact for issue #749 (LGTM) | review | current | on file change |
+| reviews/review-discovery-carry-staged-artifacts-resolves-staged-path-and-target-path-against-on.md | Review artifact for issue #760 (LGTM) | review | current | on file change |
 | reviews/review-discovery-escalation-trigger-enum-has-no-environmental-blocker-value-so-an-egres.md | Review artifact for issue #763 (LGTM) | review | current | on file change |

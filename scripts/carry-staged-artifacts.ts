@@ -5,11 +5,13 @@ import { carryManifest, loadManifest } from './lib/carry-staged-artifacts.ts';
 // `implementer.md` § Carry Staged Artifacts before opening the PR; see that section for the
 // gate/invocation contract this wraps.
 function usage(): never {
-  console.error('Usage: bun run scripts/carry-staged-artifacts.ts --manifest <path> --repo-root <path>');
+  console.error(
+    'Usage: bun run scripts/carry-staged-artifacts.ts --manifest <path> --repo-root <path> [--staging-root <path>]',
+  );
   process.exit(2);
 }
 
-function parseArgs(argv: string[]): { manifestPath: string; repoRoot: string } {
+function parseArgs(argv: string[]): { manifestPath: string; repoRoot: string; stagingRoot?: string } {
   const args: Record<string, string> = {};
   for (let i = 2; i < argv.length; i += 2) {
     const key = argv[i];
@@ -18,11 +20,11 @@ function parseArgs(argv: string[]): { manifestPath: string; repoRoot: string } {
     args[key.slice(2)] = value;
   }
   if (!args.manifest || !args['repo-root']) usage();
-  return { manifestPath: args.manifest!, repoRoot: args['repo-root']! };
+  return { manifestPath: args.manifest!, repoRoot: args['repo-root']!, stagingRoot: args['staging-root'] };
 }
 
 function main(): void {
-  const { manifestPath, repoRoot } = parseArgs(process.argv);
+  const { manifestPath, repoRoot, stagingRoot } = parseArgs(process.argv);
 
   let manifest: ReturnType<typeof loadManifest>;
   try {
@@ -38,11 +40,28 @@ function main(): void {
     return;
   }
 
-  const outcome = carryManifest(manifest, repoRoot);
+  let outcome: ReturnType<typeof carryManifest>;
+  try {
+    outcome = carryManifest(manifest, repoRoot, { stagingRoot });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`carry-staged-artifacts: ${message}`);
+    process.exit(1);
+  }
+
   for (const skipped of outcome.skippedEntries) {
     console.error(`carry-staged-artifacts: skipped entries[${skipped.index}]: ${skipped.reason}`);
   }
   process.stdout.write(`${JSON.stringify(outcome.carriedPaths)}\n`);
+
+  // A manifest that resolves and has entries but carries literally nothing (every entry
+  // failed validation) is indistinguishable on stdout alone from "nothing staged" — exit 1 so
+  // the caller (`implementer.md` § Carry Staged Artifacts) cannot silently read it as success.
+  // A *partial* skip alongside a partial carry (the line-99 test's precedent, issue #715) is
+  // still progress and stays exit 0.
+  if (outcome.skippedEntries.length > 0 && outcome.carriedPaths.length === 0) {
+    process.exit(1);
+  }
 }
 
 if (import.meta.main) {
