@@ -1204,6 +1204,31 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
     });
   });
 
+  test('deny: --force on a nonexistent path is refused as unreadable, not folded into the dirty pattern_id (review round on #777)', async () => {
+    await withTempGitRepo('blackhole-hook-wt-777-unreadable-', async (repo) => {
+      const target = path.join(repo, 'nonexistent-target');
+
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`git worktree remove --force ${target}`),
+        repo,
+      );
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/verify/i);
+      expect(permissionReason(result.stdout)).toMatch(/remedy/i);
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        decision: 'deny',
+        tier: 'block',
+        pattern_id: 'worktree-remove-force-unreadable',
+      });
+    });
+  });
+
   test('allow: a fully pushed, clean worktree with no unpushed commits is still removed silently with --force (#777 retained-behavior control)', async () => {
     await withRemoteTrackedWorktree(
       'blackhole-hook-wt-dirty-',
