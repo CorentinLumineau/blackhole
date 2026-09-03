@@ -10,13 +10,17 @@
  * text can see — it requires actually shelling out to `git log` against the worktree in question.
  * That is why this lives in its own module rather than as another `bash-patterns.json` entry.
  *
- * `git worktree remove` (with or without `--force`) refuses on a dirty working tree but NOT on
- * committed-but-unpushed history (`blackhole-protocol.md` § Branch & Worktree Hygiene,
- * `recovery-protocol.md` §6(c)) — the orchestrator lost a real commit this way (F-00117) before
- * that gap was closed with prose alone (#526). This module makes the check mechanical: it denies
- * the removal (V-HOOK-01) when the worktree's branch carries commits its remote does not have,
- * for `--force` exactly as for a plain removal — `--force` already bypasses git's own dirty-tree
- * refusal, so it is the one removal path with no native safety net at all (issue #532 item 1).
+ * `git worktree remove` refuses on a dirty working tree (uncommitted or untracked changes) by
+ * default — git's own native check. `--force` bypasses that refusal, which is why this module
+ * adds a mechanical `git status --porcelain` check of its own, gated on `force` (issue #777):
+ * the one removal path with no native safety net at all (issue #532 item 1) now gets one here
+ * instead. Neither form of the command refuses on committed-but-unpushed history
+ * (`blackhole-protocol.md` § Branch & Worktree Hygiene, `recovery-protocol.md` §6(c)) — the
+ * orchestrator lost a real commit this way (F-00117) before that gap was closed with prose
+ * alone (#526). This module makes both checks mechanical: it denies the removal (V-HOOK-01)
+ * when the worktree's branch carries commits its remote does not have, for `--force` exactly
+ * as for a plain removal, and it denies a `--force` removal separately when the working tree
+ * itself is unclean.
  *
  * `@{u}` is not enough on its own: this campaign creates worktrees with `--no-track` and pushes
  * by an explicit refspec, never `-u` (#516) — so "no upstream configured" is the ROUTINE case for
@@ -282,6 +286,43 @@ const checkDetachedReachability = (worktreePath) => {
 };
 
 /**
+ * Resolves whether `worktreePath`'s working tree has uncommitted or untracked changes — the
+ * state a single `--force` bypasses at the git level (`git help worktree`: "Only clean
+ * worktrees (no untracked files and no modification in tracked files) can be removed...
+ * remove refuses to remove an unclean worktree unless --force is used"). Runs `git status
+ * --porcelain` in its default mode (untracked files included, not `--untracked-files=no`):
+ * a single `--force` discards untracked-only dirt exactly as it discards tracked
+ * modifications, so excluding untracked files here would make this check strictly narrower
+ * than the git behavior it exists to backstop (issue #777).
+ *
+ * Three outcomes:
+ *  - `{ status: 'dirty', detail }` — porcelain output is non-empty. Deny.
+ *  - `{ status: 'clean' }` — porcelain output is empty. Allow (falls through to
+ *    checkUnpushedCommits/checkDetachedReachability).
+ *  - `{ status: 'unknown', detail }` — could not run `git status` (bad path, not a repo at
+ *    that path). Deny — fail-closed, same posture as checkUnpushedCommits's own 'unknown'
+ *    outcome. Reuses the same `pattern_id` as the confirmed-dirty case rather than minting a
+ *    second one: this outcome names the same risk (cannot confirm the worktree is safe to
+ *    discard), just from a different cause, and the issue's own AC1 asks for exactly one new
+ *    `pattern_id` for this check — the `reason` string still carries the specific cause.
+ */
+const checkDirtyWorktree = (worktreePath) => {
+  let porcelain;
+  try {
+    porcelain = git(['-C', worktreePath, 'status', '--porcelain'], worktreePath);
+  } catch (error) {
+    return {
+      status: 'unknown',
+      detail: `could not run git status in ${worktreePath} (${error.message})`,
+    };
+  }
+  if (porcelain) {
+    return { status: 'dirty', detail: porcelain.split('\n').slice(0, 5).join('; ') };
+  }
+  return { status: 'clean' };
+};
+
+/**
  * Resolves whether `worktreePath`'s current branch carries commits its remote does not have.
  * Three outcomes:
  *  - `{ status: 'unpushed', detail }` — HEAD has commits the remote lacks. Deny.
@@ -334,13 +375,14 @@ const checkUnpushedCommits = (worktreePath) => {
 };
 
 /**
- * Shared prose for a `status: 'unknown'` refusal below — the detached-HEAD and named-branch
- * outcomes share an identical opening clause and closing clause and differ only in the remedy
- * paragraph between them.
+ * Shared prose for a `status: 'unknown'` refusal below — the dirty-worktree, detached-HEAD and
+ * named-branch outcomes share an identical opening clause and closing clause and differ only in
+ * what could not be verified (`claim`) and the remedy paragraph appended after this by the
+ * caller.
  */
-const unverifiableRefusalOpener = (resolvedPath, detail) =>
-  `Could not verify ${resolvedPath} has no unpushed commits (${detail}) — refusing rather ` +
-  `than risk silent data loss.`;
+const unverifiableRefusalOpener = (resolvedPath, claim, detail) =>
+  `Could not verify ${resolvedPath} ${claim} (${detail}) — refusing rather than risk silent ` +
+  `data loss.`;
 
 const GITHUB_RETAINS_PR_HEADS_NOTE =
   '(GitHub retains PR head refs permanently, so this gives a true answer instead of bypassing the ' +
@@ -367,6 +409,31 @@ const evaluateOneInvocation = (argTokens, cwd) => {
   }
 
   const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(cwd, pathArg);
+
+  if (force) {
+    const dirty = checkDirtyWorktree(resolvedPath);
+    if (dirty.status === 'dirty') {
+      return {
+        tier: 'block',
+        pattern_id: 'worktree-remove-force-dirty',
+        reason:
+          `Worktree at ${resolvedPath} has uncommitted or untracked changes (${dirty.detail}) that ` +
+          `--force would discard permanently. Remedy: commit or stash the changes, or run 'git ` +
+          `clean' deliberately first if they are genuinely disposable.`,
+      };
+    }
+    if (dirty.status === 'unknown') {
+      return {
+        tier: 'block',
+        pattern_id: 'worktree-remove-force-unreadable',
+        reason:
+          `${unverifiableRefusalOpener(resolvedPath, 'is clean', dirty.detail)} Remedy: confirm ` +
+          `the path exists and is a valid git worktree (not already removed, moved, or corrupted), ` +
+          `then retry.`,
+      };
+    }
+  }
+
   const result = checkUnpushedCommits(resolvedPath);
 
   if (result.status === 'unpushed') {
@@ -384,7 +451,7 @@ const evaluateOneInvocation = (argTokens, cwd) => {
         tier: 'block',
         pattern_id: 'worktree-remove-detached-unreachable',
         reason:
-          `${unverifiableRefusalOpener(resolvedPath, result.detail)} This worktree's HEAD is detached ` +
+          `${unverifiableRefusalOpener(resolvedPath, 'has no unpushed commits', result.detail)} This worktree's HEAD is detached ` +
           `and not reachable from any known remote-tracking ref. Remedy: fetch a ref that contains this ` +
           `commit (e.g. its PR head) into a remote-tracking ref, then retry: git fetch origin ` +
           `refs/pull/<PR>/head:refs/remotes/origin/<name> ${GITHUB_RETAINS_PR_HEADS_NOTE}. A commit that ` +
@@ -395,7 +462,7 @@ const evaluateOneInvocation = (argTokens, cwd) => {
       tier: 'block',
       pattern_id: 'worktree-remove-unverifiable',
       reason:
-        `${unverifiableRefusalOpener(resolvedPath, result.detail)} Remedy: if this is a pushed PR ` +
+        `${unverifiableRefusalOpener(resolvedPath, 'has no unpushed commits', result.detail)} Remedy: if this is a pushed PR ` +
         `branch this worktree checked out under a local name that doesn't match its own remote ` +
         `branch name, fetch its head into the tracking ref this check falls back to, then retry: ` +
         `git fetch origin refs/pull/<PR>/head:refs/remotes/origin/<branch> ${GITHUB_RETAINS_PR_HEADS_NOTE}. ` +
@@ -432,6 +499,7 @@ module.exports = {
   evaluateWorktreeRemoval,
   checkUnpushedCommits,
   checkDetachedReachability,
+  checkDirtyWorktree,
   parseWorktreeRemoveArgs,
   isLiteralPathArg,
   findWorktreeRemoveInvocations,
