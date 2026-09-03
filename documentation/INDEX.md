@@ -57,6 +57,7 @@
 | reviews/review-chore-content-gates-budget-orchestrator-runtime-dispatch-delegation-md-split-off.md | Review artifact for issue #705 (LGTM) | review | current | on file change |
 | reviews/review-chore-land-the-16-stranded-decision-log-md-rows-sitting-uncommitted-in-the-main.md | Review artifact for issue #749 (LGTM) | review | current | on file change |
 | reviews/review-discovery-bash-pretooluse-guards-miss-every-path-qualified-invocation-usr-bin-gi.md | Review artifact for issue #774 (LGTM) | review | current | on file change |
+| reviews/review-discovery-carry-staged-artifacts-containment-stops-at-reporoot-so-an-in-repo-tar.md | Review artifact for issue #784 (LGTM) | review | current | on file change |
 | reviews/review-discovery-carry-staged-artifacts-resolves-staged-path-and-target-path-against-on.md | Review artifact for issue #760 (LGTM) | review | current | on file change |
 | reviews/review-discovery-carry-staged-artifacts-ts-writes-manifest-supplied-paths-with-no-repo.md | Review artifact for issue #752 (LGTM) | review | current | on file change |
 | reviews/review-discovery-ci-never-runs-the-test-suite-bun-test-is-absent-from-every-workflow-so.md | Review artifact for issue #747 (LGTM, 1 deferred WARN, 1 fixed inline) | review | current | on file change |
