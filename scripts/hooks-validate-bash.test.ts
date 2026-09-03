@@ -1085,6 +1085,144 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
       }
     });
   });
+
+  // #777: --force bypasses git's own native dirty-tree refusal, and until now nothing in this
+  // module backstopped it — a dirty worktree removed with --force silently discarded uncommitted
+  // or untracked work. These four tests exercise the new checkDirtyWorktree check: denied for a
+  // tracked modification, denied for untracked-only dirt (AC3), denied uniformly on the detached
+  // path with the same pattern_id (AC1), and — the retained-behavior control — still allowed when
+  // the worktree is genuinely clean.
+  test("deny: --force does not bypass a tracked-file modification — the file's own docstring contradiction this fix corrects (#777)", async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-dirty-',
+      'blackhole/issue-777-dirty-tracked',
+      async (mainRepo, worktree, push) => {
+        fs.writeFileSync(path.join(worktree, 'tracked.txt'), 'v1\n');
+        runGit(worktree, ['add', 'tracked.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'add tracked file']);
+        push();
+        fs.writeFileSync(path.join(worktree, 'tracked.txt'), 'v2 — modified, not committed\n');
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`git worktree remove --force ${worktree}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/uncommitted|untracked/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-force-dirty',
+        });
+      },
+    );
+  });
+
+  test('deny: untracked-only dirt (no modified tracked files) also denies — exactly the case a git diff-based check would miss (#777 AC3)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-dirty-',
+      'blackhole/issue-777-dirty-untracked',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'untracked.txt'), 'never added\n');
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`git worktree remove --force ${worktree}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/uncommitted|untracked/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-force-dirty',
+        });
+      },
+    );
+  });
+
+  test('deny: a detached HEAD reachable from a remote-tracking ref (the #761 allow case) still denies when dirty — the new check runs uniformly on both paths (#777 AC1)', async () => {
+    await withTempGitRepo('blackhole-hook-wt-777-pr9-dirty-', async (mainRepo) => {
+      runGit(mainRepo, ['commit', '--allow-empty', '--quiet', '-m', 'init']);
+
+      const bareRemote = makeTempDir('blackhole-hook-wt-777-pr9-dirty-origin-');
+      spawnSync('git', ['init', '--quiet', '--bare', bareRemote]);
+      runGit(mainRepo, ['remote', 'add', 'origin', bareRemote]);
+      runGit(mainRepo, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+
+      runGit(mainRepo, ['checkout', '--quiet', '-b', 'throwaway']);
+      fs.writeFileSync(path.join(mainRepo, 'pr.txt'), 'pr head\n');
+      runGit(mainRepo, ['add', 'pr.txt']);
+      runGit(mainRepo, ['commit', '--quiet', '-m', 'pr commit']);
+      const sha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: mainRepo }).stdout.toString().trim();
+      runGit(mainRepo, ['push', '--quiet', 'origin', 'HEAD:refs/heads/pr-9']);
+      runGit(mainRepo, ['checkout', '--quiet', 'main']);
+      runGit(mainRepo, ['branch', '-D', 'throwaway']);
+      runGit(mainRepo, ['fetch', '--quiet', 'origin', 'refs/heads/pr-9:refs/remotes/origin/pr-9']);
+
+      const parent = path.join(mainRepo, '.worktrees');
+      fs.mkdirSync(parent, { recursive: true });
+      const worktree = path.join(parent, `blackhole-hook-wt-777-pr9-dirty-${process.pid}-${Date.now()}`);
+      runGit(mainRepo, ['worktree', 'add', '--detach', '--quiet', worktree, sha]);
+      fs.writeFileSync(path.join(worktree, 'untracked.txt'), 'never added\n');
+
+      try {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`git worktree remove --force ${worktree}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).not.toMatch(/detached/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-force-dirty',
+        });
+      } finally {
+        spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+        fs.rmSync(worktree, { recursive: true, force: true });
+        fs.rmSync(bareRemote, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test('allow: a fully pushed, clean worktree with no unpushed commits is still removed silently with --force (#777 retained-behavior control)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-dirty-',
+      'blackhole/issue-777-clean-force',
+      async (mainRepo, worktree, push) => {
+        push();
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`git worktree remove --force ${worktree}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
 });
 
 // Review-round regression (#532 CHANGES_REQUIRED): the initial matcher required `git` and
