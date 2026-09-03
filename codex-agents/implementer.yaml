@@ -382,15 +382,23 @@ instructions: |
       update it in place (bump `last_updated`, preserve its original `created`) instead of letting
       the script create a duplicate.
   *   **Invoke**: `bun run scripts/carry-staged-artifacts.ts --manifest
-      .blackhole/staged/<issue>/manifest.json --repo-root <this worktree's absolute path>` —
-      prints the carried target paths as JSON. Absent manifest ⇒ `[]`, exit 0 (nothing was staged
+      {repo_root}/.blackhole/staged/<issue>/manifest.json --repo-root <this worktree's absolute
+      path> --staging-root {repo_root}` — `{repo_root}` is the same main-clone absolute path
+      already established for the plan file (§ "Plan artifact paths (worktree rule)"); `staged_path`
+      entries live only in the main clone (`blackhole-state.md` § Staging), never in the worktree,
+      so `--staging-root` must point there while `--repo-root` stays the worktree (issue #760).
+      Prints the carried target paths as JSON. Absent manifest ⇒ `[]`, exit 0 (nothing was staged
       for this issue). A manifest that **exists but is zero-byte or fails to parse as JSON** exits
       1 — distinct from absent (issue #558): it means a staging write was attempted and failed, so
       treating it identically to "nothing staged" would silently drop staged artifacts. On exit 1,
       log a `new_findings[]` row (`kind: bug`) citing the manifest path and skip the carry for this
       issue this run — the script itself never writes to the ledger. A malformed individual entry
       (missing field, out-of-enum `target_kind`) is reported on stderr and skipped without failing
-      the run; log each such line as its own `new_findings[]` row (`kind: bug`).
+      the run; log each such line as its own `new_findings[]` row (`kind: bug`). A declared
+      `staged_path` missing under `--staging-root` also exits 1 — the message names both roots and
+      the entry index, never a bare ENOENT — fails loudly instead of the pre-#760 silent-`[]` bug
+      when a relative manifest path happened to resolve against the wrong cwd; log it the same way
+      as the zero-byte case above.
   *   **What the script dispatches** (ported verbatim from this section's pre-#715 prose, not
       restated here): `new_file` entries copy verbatim except an investigator analyze/investigate
       note, which gets the 9-row frontmatter rewrite (working-note schema → `doc-governance.md`

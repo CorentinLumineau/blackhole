@@ -227,6 +227,11 @@ at escalation — never overlapping for one issue), so there is no lost-update r
   `scripts/carry-staged-artifacts.ts` / `scripts/lib/carry-staged-artifacts.ts` — `implementer.md`
   § Carry Staged Artifacts now states only the search-before-write judgment and the invocation
   line, not the mechanical logic itself.
+- **Two-root resolution (issue #760)**: the carry-step resolves each entry's `staged_path`
+  against `--staging-root` (default `--repo-root` when omitted) and `target_path` always against
+  `--repo-root` — this manifest's own fields are unchanged (both remain repo-relative strings);
+  only the CLI's read-time root differs from its write-time root, since `staged_path` lives in
+  the main clone and `target_path` must land in the PR worktree.
 
 ## Ledger obligations
 

@@ -131,3 +131,97 @@ describe('carry-staged-artifacts CLI — end to end', () => {
     expect(stderr).toContain('entries[0]');
   });
 });
+
+describe('carry-staged-artifacts CLI — --staging-root (issue #760)', () => {
+  const manifestFor = (stagedRel: string, targetPath: string) => ({
+    issue: 1,
+    updated_at: '2026-08-06T18:00:00.000Z',
+    entries: [
+      {
+        route: 'plan',
+        sub_mode: null,
+        produced_by: 'planner',
+        declared_at: '2026-08-06T17:58:00.000Z',
+        staged_path: stagedRel,
+        target_path: targetPath,
+        target_kind: 'new_file',
+      },
+    ],
+  });
+
+  test('--staging-root resolves staged_path from a distinct dir; target still lands under --repo-root', async () => {
+    const manifestDir = makeTempDir('carry-cli-manifest');
+    const stagingDir = makeTempDir('carry-cli-staging');
+    const repoRootDir = makeTempDir('carry-cli-repo-root');
+    try {
+      const stagedRel = '.blackhole/staged/1/plan-x.md';
+      fs.mkdirSync(path.join(stagingDir, path.dirname(stagedRel)), { recursive: true });
+      fs.writeFileSync(path.join(stagingDir, stagedRel), '# Plan\n');
+
+      const manifest = manifestFor(stagedRel, 'documentation/plans/plan-x.md');
+      const manifestPath = path.join(manifestDir, 'manifest.json');
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+
+      const proc = run([
+        '--manifest',
+        manifestPath,
+        '--repo-root',
+        repoRootDir,
+        '--staging-root',
+        stagingDir,
+      ]);
+      const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+      expect(code).toBe(0);
+      expect(JSON.parse(stdout)).toEqual(['documentation/plans/plan-x.md']);
+      expect(fs.existsSync(path.join(repoRootDir, 'documentation/plans/plan-x.md'))).toBe(true);
+    } finally {
+      fs.rmSync(manifestDir, { recursive: true, force: true });
+      fs.rmSync(stagingDir, { recursive: true, force: true });
+      fs.rmSync(repoRootDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a declared staged_path absent under --staging-root exits 1 and names both roots plus the entry index on stderr, never a bare ENOENT', async () => {
+    const stagingDir = makeTempDir('carry-cli-staging');
+    const repoRootDir = makeTempDir('carry-cli-repo-root');
+    try {
+      const stagedRel = '.blackhole/staged/1/plan-x.md'; // deliberately never written under stagingDir
+      const manifest = manifestFor(stagedRel, 'documentation/plans/plan-x.md');
+      const manifestPath = path.join(dir, 'manifest.json');
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+
+      const proc = run([
+        '--manifest',
+        manifestPath,
+        '--repo-root',
+        repoRootDir,
+        '--staging-root',
+        stagingDir,
+      ]);
+      const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+      expect(code).toBe(1);
+      expect(stderr).toContain(repoRootDir);
+      expect(stderr).toContain(stagingDir);
+      expect(stderr).toContain('entries[0]');
+      expect(stderr).not.toMatch(/^\s*Error: ENOENT/m);
+    } finally {
+      fs.rmSync(stagingDir, { recursive: true, force: true });
+      fs.rmSync(repoRootDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a manifest whose every entry is malformed carries nothing and exits 1 — distinguishable from the absent-manifest case', async () => {
+    const manifest = {
+      issue: 1,
+      updated_at: '2026-08-06T18:00:00.000Z',
+      entries: [{ route: 'plan', sub_mode: null, produced_by: 'planner', declared_at: 'x' }], // missing staged_path/target_path/target_kind
+    };
+    const manifestPath = path.join(dir, 'manifest.json');
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+
+    const proc = run(['--manifest', manifestPath, '--repo-root', dir]);
+    const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+    expect(code).toBe(1);
+    expect(JSON.parse(stdout)).toEqual([]);
+  });
+});

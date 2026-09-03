@@ -268,3 +268,54 @@ describe('carryManifest — end-to-end against the blackhole-state.md § Staging
     });
   });
 });
+
+describe('carryManifest — two-root resolution (opts.stagingRoot, issue #760)', () => {
+  const baseEntry = {
+    route: 'plan',
+    sub_mode: null,
+    produced_by: 'planner',
+    declared_at: '2026-08-06T17:58:00.000Z',
+    staged_path: '.blackhole/staged/1/plan-x.md',
+    target_path: 'documentation/plans/plan-x.md',
+    target_kind: 'new_file' as const,
+  };
+
+  test('opts.stagingRoot, when given, resolves staged_path — target_path still resolves against repoRoot', () => {
+    withTempDir('carry-staging-root', (stagingDir) => {
+      withTempDir('carry-repo-root', (repoRoot) => {
+        const stagedAbs = path.join(stagingDir, baseEntry.staged_path);
+        fs.mkdirSync(path.dirname(stagedAbs), { recursive: true });
+        fs.writeFileSync(stagedAbs, '---\ntype: plan\nstatus: current\n---\n# Plan\n');
+
+        const manifest: Manifest = { issue: 1, updated_at: 'x', entries: [baseEntry] };
+        const outcome = carryManifest(manifest, repoRoot, { stagingRoot: stagingDir });
+
+        expect(outcome.skippedEntries).toHaveLength(0);
+        expect(outcome.carriedPaths).toEqual([baseEntry.target_path]);
+        expect(fs.existsSync(path.join(repoRoot, baseEntry.target_path))).toBe(true);
+      });
+    });
+  });
+
+  test('a declared staged_path absent under stagingRoot throws a named error citing both roots, the staged_path, and the entry index', () => {
+    withTempDir('carry-staging-root', (stagingDir) => {
+      withTempDir('carry-repo-root', (repoRoot) => {
+        // Deliberately never write the staged file under stagingDir.
+        const manifest: Manifest = { issue: 1, updated_at: 'x', entries: [baseEntry] };
+
+        let thrown: unknown;
+        try {
+          carryManifest(manifest, repoRoot, { stagingRoot: stagingDir });
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(Error);
+        const message = thrown instanceof Error ? thrown.message : String(thrown);
+        expect(message).toContain(repoRoot);
+        expect(message).toContain(stagingDir);
+        expect(message).toContain(baseEntry.staged_path);
+        expect(message).toContain('entries[0]');
+      });
+    });
+  });
+});
