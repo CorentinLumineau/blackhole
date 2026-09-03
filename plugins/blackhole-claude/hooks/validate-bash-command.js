@@ -13,6 +13,7 @@
 const { loadBashPatterns } = require('./utils/pattern-loader');
 const { matchFirstIgnoringNonExecutingText } = require('./utils/bash-context');
 const { evaluateWorktreeRemoval } = require('./utils/worktree-removal-guard');
+const { evaluateBashWriteTargets } = require('./utils/bash-write-target-guard');
 const {
   readHookInput,
   denyAndRecord,
@@ -68,6 +69,32 @@ const main = () => {
       tool,
       pattern_id: worktreeRemoval.pattern_id,
       reason: worktreeRemoval.reason,
+      detail: command,
+    });
+    return;
+  }
+
+  // Dynamic check (#804/ADR-029): extends #620's assigned-worktree write containment
+  // (`validate-file-changes.js`, Write/Edit only) to Bash file-write commands — see
+  // bash-write-target-guard.js's module docstring. No-op when BLACKHOLE_ASSIGNED_WORKTREE is
+  // unset (byte-identical to today).
+  const writeTarget = evaluateBashWriteTargets(command, cwd);
+  if (writeTarget && writeTarget.tier === 'block') {
+    denyAndRecord({
+      hook: HOOK,
+      tool,
+      pattern_id: writeTarget.pattern_id,
+      reason: writeTarget.reason,
+      detail: command,
+    });
+    return;
+  }
+  if (writeTarget && writeTarget.tier === 'warn') {
+    warnAndRecord({
+      hook: HOOK,
+      tool,
+      pattern_id: writeTarget.pattern_id,
+      reason: writeTarget.reason,
       detail: command,
     });
     return;

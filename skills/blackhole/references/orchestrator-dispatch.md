@@ -223,6 +223,10 @@ from #604). `validate-file-changes.js` reads it via `readAssignedWorktreeRoot(cw
 containment narrows to `[assignedRoot]` only — writes to the main clone or a sibling worktree
 are denied (`outside-assigned-worktree`, block tier). When unset, empty, or not a registered
 family worktree: **fail open** to today's `allWorktreeRoots` behaviour (stderr notice, no deny).
+The same env var also narrows `validate-bash-command.js`'s Bash file-write-target check (issue
+#804, ADR-029) to `[assignedRoot]` — a resolvable write target outside it denies
+(`bash-outside-assigned-worktree`); see `hook-schemas.md`'s `pattern_id` table for the full
+contract.
 
 
 ## CI Failure Diagnosis Dispatch
