@@ -160,6 +160,11 @@ after reading checkpoint and forge sync:
    `route.body_hash` no longer matches; drift advances without re-run when artifacts match
    the current revision and are not stale.
 3. Inspect worktrees per `recovery-protocol.md` §2.
+4. Refresh the advisory plugin-cache drift signal (issue #800, ADR-030): run
+   `bun run scripts/plugin-drift-signal.ts`, existence-gated on `scripts/plugin-drift-signal.ts`
+   being present (a consumer repo without the script simply has nothing to run — no error).
+   Surfaced on the `bun run status` dashboard when it reports content drift; full mechanism:
+   `blackhole-state.md` § Plugin-Drift Signal.
 
 **MUST** complete `recovery-protocol.md` §5 orchestrator checklist before spawning
 `implementer` when any in-flight issue has a dirty worktree or recovery stash. Do not spawn

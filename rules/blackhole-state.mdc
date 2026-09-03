@@ -276,6 +276,31 @@ advisory. Full rationale for this turn-start mechanism over a literal `SessionSt
 `doc-governance.md` § Doc-Tree Health Signal, "Always-On Channel" (`V-DOC-05` — not restated
 here).
 
+## Plugin-Drift Signal
+
+Same cadence as § Sync above — start of every orchestrator turn
+(`orchestrator-runtime.md` § Session resume & recovery, step 4). Advisory-only, mechanism 2 of
+the composite fix for issue #800 (ADR-030) — mechanism 1 is the diff-content reviewer BLOCK gate
+`V-PLUGIN-01` (`src/agents/reviewer.md` § 29). This signal covers the residual gap mechanism 1
+cannot see: a PR correctly bumps `package.json`'s version, but nobody ever runs the manual
+republish+reinstall step afterward, leaving an installed Claude Code plugin cache copy stale
+while reporting the same version string as the repo build (the cache is version-keyed, not
+content-addressed — `blackhole-protocol.md` § Branch & Worktree Hygiene).
+
+Existence-gated: when `scripts/plugin-drift-signal.ts` exists at repo root (blackhole
+self-hosting its own campaign), refresh `.blackhole/plugin-drift.json` via
+`bun run scripts/plugin-drift-signal.ts`; absent, this step is inert — no error, no attempted
+invocation. The signal hashes the installed cache's `hooks/` tree
+(`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/hooks/`) and compares it against the
+repo's own build target (`.claude/hooks/`), via `scripts/lib/plugin-drift.ts`'s
+`computePluginDrift`.
+
+`hooks_hash_match: false` surfaces as a warning line on the `bun run status` dashboard
+(`scripts/campaign-status.ts`'s `renderPluginDriftWarning`) — visibility only, no ledger append,
+no phase gate. An absent installed cache (`installed_present: false`) and a matching hash both
+render silently, matching mechanism 1's diff-only enforcement: this signal never blocks anything
+by itself.
+
 ## Worktree & Branch obligations
 
 - Run `git worktree prune` and `git fetch --prune` before creating a new worktree or branch.
