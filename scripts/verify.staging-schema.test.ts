@@ -2,8 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import {
   extractManifestExampleJson,
   extractProducerFieldValueLiterals,
+  findForbiddenSubModeLiterals,
   findManifestExampleEnumViolations,
   findManifestFieldNameMismatch,
+  findMissingMandatoryPairing,
   findProducerEnumViolations,
   parseManifestFieldTable,
   runChecks,
@@ -152,13 +154,98 @@ describe('findProducerEnumViolations (V-STAGE-02)', () => {
   });
 });
 
-describe('runChecks (real tree)', () => {
-  test('returns exactly V-STAGE-01 and V-STAGE-02, in that order', () => {
-    const results = runChecks();
-    expect(results.map((r) => r.id)).toEqual(['V-STAGE-01', 'V-STAGE-02']);
+// Issue #782: pins the mandatory-pairing prose callout to each producer staging-obligation
+// site (V-STAGE-03) and forbids the one documented enum-valid-but-target-less literal,
+// `sub_mode: "research"` (V-STAGE-04) — see .blackhole/plans/issue-782.md for the full
+// root-cause writeup (non-uniform execution of a present instruction, not an absent one).
+
+describe('findMissingMandatoryPairing (V-STAGE-03)', () => {
+  const anchors = ['ANCHOR_A', 'ANCHOR_B', 'ANCHOR_C', 'ANCHOR_D'];
+  const phrase = 'does not satisfy ADR-021 D3';
+
+  test('all anchors present, each followed by the phrase before the next anchor — []', () => {
+    const content = [
+      'prefix',
+      'ANCHOR_A ... does not satisfy ADR-021 D3 ...',
+      'ANCHOR_B ... does not satisfy ADR-021 D3 ...',
+      'ANCHOR_C ... does not satisfy ADR-021 D3 ...',
+      'ANCHOR_D ... does not satisfy ADR-021 D3 ...',
+      'suffix',
+    ].join('\n');
+    expect(findMissingMandatoryPairing(content, anchors, phrase)).toEqual([]);
   });
 
-  test('both checks pass against the current, unmodified tree', () => {
+  test("one anchor's window is missing the phrase — array of length 1 naming that anchor", () => {
+    const content = [
+      'prefix',
+      'ANCHOR_A ... does not satisfy ADR-021 D3 ...',
+      'ANCHOR_B ... no callout here at all ...',
+      'ANCHOR_C ... does not satisfy ADR-021 D3 ...',
+      'ANCHOR_D ... does not satisfy ADR-021 D3 ...',
+      'suffix',
+    ].join('\n');
+    const missing = findMissingMandatoryPairing(content, anchors, phrase);
+    expect(missing.length).toBe(1);
+    expect(missing[0]).toContain('ANCHOR_B');
+  });
+
+  test('an anchor string absent from the content entirely — "anchor not found: ..."', () => {
+    const content = [
+      'ANCHOR_A ... does not satisfy ADR-021 D3 ...',
+      'ANCHOR_C ... does not satisfy ADR-021 D3 ...',
+      'ANCHOR_D ... does not satisfy ADR-021 D3 ...',
+    ].join('\n');
+    const missing = findMissingMandatoryPairing(content, anchors, phrase);
+    expect(missing.length).toBe(1);
+    expect(missing[0]).toContain('anchor not found');
+    expect(missing[0]).toContain('ANCHOR_B');
+  });
+
+  test('document-order windowing: a later anchor\'s phrase must not satisfy an earlier anchor', () => {
+    // ANCHOR_A's window is [posA, posB) — it has no phrase in that span, so it must be
+    // flagged missing even though the phrase does appear later, inside ANCHOR_B's own
+    // window [posB, EOF). A naive fixed-size or anchor-array-order window could wrongly
+    // let ANCHOR_B's phrase satisfy ANCHOR_A.
+    const twoAnchors = ['ANCHOR_A', 'ANCHOR_B'];
+    const content = 'prefix ANCHOR_A middle ANCHOR_B suffix does not satisfy ADR-021 D3 end';
+    const missing = findMissingMandatoryPairing(content, twoAnchors, phrase);
+    expect(missing.length).toBe(1);
+    expect(missing[0]).toContain('ANCHOR_A');
+    expect(missing.join(' ')).not.toContain('ANCHOR_B');
+  });
+});
+
+describe('findForbiddenSubModeLiterals (V-STAGE-04)', () => {
+  test('a `sub_mode: "research"` literal is flagged, naming the source and value', () => {
+    const literals = [{ field: 'sub_mode', value: 'research', source: 'planner.md' }];
+    const findings = findForbiddenSubModeLiterals(literals);
+    expect(findings.length).toBe(1);
+    expect(findings[0]).toContain('planner.md');
+    expect(findings[0]).toContain('research');
+  });
+
+  test('sub_mode values other than research, and unrelated route literals, pass — []', () => {
+    const literals = [
+      { field: 'sub_mode', value: 'analyze', source: 'planner.md' },
+      { field: 'sub_mode', value: 'investigate', source: 'investigator.md' },
+      { field: 'sub_mode', value: 'null', source: 'implementer.md' },
+      { field: 'route', value: 'analyze', source: 'planner.md' },
+    ];
+    expect(findForbiddenSubModeLiterals(literals)).toEqual([]);
+  });
+
+  test('an empty literals array passes — []', () => {
+    expect(findForbiddenSubModeLiterals([])).toEqual([]);
+  });
+});
+
+describe('runChecks (real tree)', () => {
+  test('returns exactly V-STAGE-01 through V-STAGE-04, in that order', () => {
+    const results = runChecks();
+    expect(results.map((r) => r.id)).toEqual(['V-STAGE-01', 'V-STAGE-02', 'V-STAGE-03', 'V-STAGE-04']);
+  });
+
+  test('all four checks pass against the current, unmodified tree', () => {
     const results = runChecks();
     for (const r of results) {
       expect(r.ok).toBe(true);

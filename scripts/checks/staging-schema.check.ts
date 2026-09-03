@@ -154,19 +154,65 @@ export const findProducerEnumViolations = (literals: ProducerLiteral[], rows: Ma
   return violations;
 };
 
+// Shared by V-STAGE-02 and V-STAGE-04 — both scan the 3 producer docs for literal declarations.
+const collectProducerLiterals = (): ProducerLiteral[] => [
+  ...extractProducerFieldValueLiterals(read(plannerDoc)).map((l) => ({ ...l, source: plannerDoc })),
+  ...extractProducerFieldValueLiterals(read(investigatorDoc)).map((l) => ({ ...l, source: investigatorDoc })),
+  ...extractProducerFieldValueLiterals(read(implementerDoc)).map((l) => ({ ...l, source: implementerDoc })),
+];
+
 const checkProducerConformance = (): CheckResult => {
   const rows = parseManifestFieldTable(read(blackholeStateDoc));
-  const literals: ProducerLiteral[] = [
-    ...extractProducerFieldValueLiterals(read(plannerDoc)).map((l) => ({ ...l, source: plannerDoc })),
-    ...extractProducerFieldValueLiterals(read(investigatorDoc)).map((l) => ({ ...l, source: investigatorDoc })),
-    ...extractProducerFieldValueLiterals(read(implementerDoc)).map((l) => ({ ...l, source: implementerDoc })),
-  ];
-
-  const violations = findProducerEnumViolations(literals, rows);
+  const violations = findProducerEnumViolations(collectProducerLiterals(), rows);
   if (violations.length) return { id: 'V-STAGE-02', ok: false, detail: violations.join('; ') };
   return { id: 'V-STAGE-02', ok: true };
 };
 
+// Issue #782: the manifest-write instruction is present at every staging-obligation site — the
+// gap is non-uniform execution, not an absent instruction (plan § Verified prerequisite state).
+// V-STAGE-03 pins a mandatory-pairing phrase to each site; V-STAGE-04 forbids the one
+// enum-valid-but-target-less literal, `sub_mode: "research"` (`blackhole-state.md:198`).
+
+const STAGING_OBLIGATION_ANCHORS = [
+  'Seed Active Constraints from analyze note',
+  'Durable plan staging (ADR-021 D3, issue #445)',
+  '`status: "ready"` (from `design-aggregate.ts`) →',
+  '`resume_context: design_approved`',
+];
+const MANDATORY_PAIRING_PHRASE = 'does not satisfy ADR-021 D3';
+
+// For each anchor, assert the phrase appears between it and the *next* anchor by document
+// position (not array order/fixed window) — a later anchor's phrase can't satisfy an earlier one.
+export const findMissingMandatoryPairing = (content: string, anchors: string[], phrase: string): string[] => {
+  const positions = anchors.map((anchor) => ({ anchor, index: content.indexOf(anchor) })).sort((a, b) => a.index - b.index);
+  const missing: string[] = [];
+  positions.forEach(({ anchor, index }, i) => {
+    if (index === -1) return void missing.push(`anchor not found: ${anchor}`);
+    const nextIndex = positions.slice(i + 1).find((p) => p.index !== -1)?.index ?? content.length;
+    if (!content.slice(index, nextIndex).includes(phrase)) missing.push(`missing "${phrase}" after anchor: ${anchor}`);
+  });
+  return missing;
+};
+
+const checkStagingInstructionPairing = (): CheckResult => {
+  const missing = findMissingMandatoryPairing(read(plannerDoc), STAGING_OBLIGATION_ANCHORS, MANDATORY_PAIRING_PHRASE);
+  return missing.length ? { id: 'V-STAGE-03', ok: false, detail: missing.join('; ') } : { id: 'V-STAGE-03', ok: true };
+};
+
+// Every `route` enum value already has a target row (even `brainstorm`, per
+// blackhole-state.md:197), so route validity is fully covered by V-STAGE-02 already — only
+// `sub_mode: "research"` needs this narrower guard (plan § Route-conditionality constraint).
+export const findForbiddenSubModeLiterals = (literals: ProducerLiteral[]): string[] =>
+  literals
+    .filter((l) => l.field === 'sub_mode' && l.value === 'research')
+    .map((l) => `${l.source}: sub_mode: "research" has no documentation/ target (blackhole-state.md:198)`);
+
+const checkNoResearchStaging = (): CheckResult => {
+  const findings = findForbiddenSubModeLiterals(collectProducerLiterals());
+  if (findings.length) return { id: 'V-STAGE-04', ok: false, detail: findings.join('; ') };
+  return { id: 'V-STAGE-04', ok: true };
+};
+
 // ADR-007 T5/R2': domain entrypoint — see adr-status.check.ts's runChecks doc comment for the
 // shared contract (pure, no side effects, glob-discovered by scripts/verify.ts).
-export const runChecks = (): CheckResult[] => [checkManifestSelfConsistency(), checkProducerConformance()];
+export const runChecks = (): CheckResult[] => [checkManifestSelfConsistency(), checkProducerConformance(), checkStagingInstructionPairing(), checkNoResearchStaging()];
