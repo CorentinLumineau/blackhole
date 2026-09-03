@@ -331,6 +331,18 @@ describe('isCarryTargetAllowed — carry target allowlist (issue #784 AC1)', () 
     ['scripts/foo.ts', false],
     ['src/agents/planner.md', false],
     ['.claude/settings.json', false],
+    // Traversal bypass (F-00380, V-SEC-01): the allowlist tested the raw string while
+    // containment tested the resolved path — a target_path could pass both by spelling its way
+    // back out of `documentation/` via `..` segments. The predicate must normalize before the
+    // prefix/equality test, not merely check a literal prefix.
+    ['documentation/../package.json', false],
+    ['documentation/../.github/workflows/verify.yml', false],
+    ['documentation/./../package.json', false],
+    ['documentation/../../etc/passwd', false],
+    // Characterization: legitimate `..` segments that stay inside documentation/ (or resolve to
+    // it) must keep carrying — normalize, don't reject `..` outright.
+    ['documentation/a/../b.md', true],
+    ['./documentation/x.md', true],
   ])('isCarryTargetAllowed(%s) === %s', (targetPath, expected) => {
     expect(isCarryTargetAllowed(targetPath)).toBe(expected);
   });
@@ -528,6 +540,56 @@ describe('carryManifest — path containment (issue #752)', () => {
       expect(outcome.skippedEntries[0]!.reason).toContain('.git/hooks/pre-commit');
       expect(outcome.skippedEntries[0]!.reason).toContain('allowlist');
       expect(fs.existsSync(path.join(repoRoot, '.git', 'hooks', 'pre-commit'))).toBe(false);
+    });
+  });
+
+  test('a target_path of "documentation/../package.json" is skipped and a pre-existing package.json is left untouched (F-00380, V-SEC-01)', () => {
+    // The traversal-bypass regression: `startsWith('documentation/')` on the raw string admits
+    // this input (containment then admits it too, since path.join(repoRoot, 'documentation/../package.json')
+    // genuinely resolves inside repoRoot) unless the allowlist predicate itself normalizes first.
+    withRoots((_dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+      const realPackageJson = path.join(repoRoot, 'package.json');
+      fs.writeFileSync(realPackageJson, JSON.stringify({ name: 'real' }, null, 2));
+
+      const outcome = carryManifest(manifestOf({ target_path: 'documentation/../package.json' }), repoRoot);
+
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.reason).toContain('documentation/../package.json');
+      expect(outcome.skippedEntries[0]!.reason).toContain('allowlist');
+      expect(fs.readFileSync(realPackageJson, 'utf-8')).not.toContain('PWNED');
+    });
+  });
+
+  test('a target_path of "documentation/../.github/workflows/verify.yml" is skipped and no workflow file is written (F-00380, V-SEC-01)', () => {
+    withRoots((_dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+
+      const outcome = carryManifest(
+        manifestOf({ target_path: 'documentation/../.github/workflows/verify.yml' }),
+        repoRoot,
+      );
+
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.reason).toContain(
+        'documentation/../.github/workflows/verify.yml',
+      );
+      expect(outcome.skippedEntries[0]!.reason).toContain('allowlist');
+      expect(fs.existsSync(path.join(repoRoot, '.github', 'workflows', 'verify.yml'))).toBe(false);
+    });
+  });
+
+  test('a target_path of "documentation/a/../b.md" (legitimate .. that stays inside documentation/) still carries — the allowlist normalizes, it does not reject all ".."', () => {
+    withRoots((_dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+
+      const outcome = carryManifest(manifestOf({ target_path: 'documentation/a/../b.md' }), repoRoot);
+
+      expect(outcome.skippedEntries).toEqual([]);
+      expect(outcome.carriedPaths).toEqual(['documentation/a/../b.md']);
+      expect(fs.existsSync(path.join(repoRoot, 'documentation', 'b.md'))).toBe(true);
     });
   });
 });
