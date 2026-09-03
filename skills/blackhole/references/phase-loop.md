@@ -127,6 +127,19 @@ merge-readiness dry run (same D5 narrowing as Step 0.5 above).
    `V-MERGE-02` attribution relies on; `status: in-flight` alone does not
    indicate blackhole itself performed the merge and must not be used for
    attribution).
+4.5. **Main-clone freshness refresh (issue #792, mandatory)**: immediately after step 4
+   succeeds, run `git fetch origin main && git merge --ff-only origin/main` in the
+   orchestrator's own main clone. `.blackhole/` is fully `.gitignore`-excluded
+   (`.gitignore:2`), so this fast-forward has no path to conflict with campaign state; the one
+   remaining hazard is a dirty **tracked** file, against which `--ff-only` fails closed
+   (non-zero exit, no merge attempted) rather than corrupting anything. Treat a non-zero exit
+   as a blocker: resolve it via the existing turn-start `git status --porcelain` dirty-check
+   (`orchestrator.md` § Git & Worktree Hygiene) before continuing this issue's post-merge work
+   or dispatching further this turn. This closes the exact gap that caused issue #792's
+   incident — a stale main clone silently disagreeing with a reviewer's independent check
+   right after a merge — for every facts-read that follows: this turn's remaining
+   `bun run scripts/plan-quality-gate.ts` reads, the next issue's build-in-main-clone (step 3),
+   and the plugin-drift-signal scan at the next turn start.
 5. Post-merge: migration apply if schema PR; deploy verify per runbook
 
 ## Ledger cleanup on merge

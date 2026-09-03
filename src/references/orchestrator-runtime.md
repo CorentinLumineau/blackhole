@@ -152,15 +152,30 @@ Per `merge-gate.md` § 1: before merging an LGTM'd issue's PR, evaluate `mergeEl
 On **every orchestrator turn start** (including compaction recovery and session resume),
 after reading checkpoint and forge sync:
 
-1. Run `recovery-protocol.md` **§9** artifact-vs-queue drift heal for all
+1. **Main-clone freshness refresh, turn-start safety net (issue #792)**: run
+   `git fetch origin main && git merge --ff-only origin/main` in the orchestrator's own main
+   clone, before any of steps 2-5 below run. `.blackhole/` is fully `.gitignore`-excluded, so
+   this cannot conflict with campaign state; `--ff-only` fails closed (non-zero exit, no merge
+   attempted) on a dirty tracked-file working tree. Treat a non-zero exit as a blocker: resolve
+   it via the turn-start `git status --porcelain` dirty-check (`orchestrator.md` § Git &
+   Worktree Hygiene) before proceeding with this turn's recovery sequence. This runs **first**
+   in this list, ahead of step 5's plugin-drift-signal scan specifically, because that scan
+   compares plugin-cache content against the live tree — the analysis note's highest-risk,
+   unmitigated call site (a stale live tree makes a real drift look absent, or an absent drift
+   look present). This step is a secondary net alongside `phase-loop.md`'s post-merge refresh
+   (Merge protocol step 4.5): the post-merge refresh closes the window opened by blackhole's own
+   merges; this step additionally bounds staleness to at most one turn's worth of drift from any
+   other cause (e.g. a human push to the shared branch mid-campaign, or the very first turn
+   before any merge has happened yet).
+2. Run `recovery-protocol.md` **§9** artifact-vs-queue drift heal for all
    `status: in-flight` issues — **before** Wave scheduling and **before** any `Task` spawn.
    Use `scripts/recovery-drift.ts` (`detectArtifactDrift`) to detect drift; apply heal
    mutations (clear stale notes/checkpoint rows, advance phase) before spawning workers.
-2. Cross-link **§8** (staleness) and **§9** (drift): staleness forces re-route when
+3. Cross-link **§8** (staleness) and **§9** (drift): staleness forces re-route when
    `route.body_hash` no longer matches; drift advances without re-run when artifacts match
    the current revision and are not stale.
-3. Inspect worktrees per `recovery-protocol.md` §2.
-4. Refresh the advisory plugin-cache drift signal (issue #800, ADR-030): run
+4. Inspect worktrees per `recovery-protocol.md` §2.
+5. Refresh the advisory plugin-cache drift signal (issue #800, ADR-030): run
    `bun run scripts/plugin-drift-signal.ts`, existence-gated on `scripts/plugin-drift-signal.ts`
    being present (a consumer repo without the script simply has nothing to run — no error).
    Surfaced on the `bun run status` dashboard when it reports content drift; full mechanism:
