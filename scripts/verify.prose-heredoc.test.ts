@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { findHeredocDocWrites, runChecks } from './checks/prose-heredoc.check.ts';
 
-// Issue-718: R-10 (#715, merged) replaced every literal fenced `cat <<` heredoc doc-write in
-// agent prose with a script invocation. This is the mechanical enforcement that a tenth one
-// never sneaks back in — a step whose output is a pure function of files/JSON belongs in a
-// `scripts/<name>.ts` invocation, not agent prose (ADR-003).
+// A step whose output is a pure function of files/JSON belongs in a `scripts/<name>.ts`
+// invocation, not agent prose (ADR-003) — this is the mechanical enforcement that a literal
+// fenced `cat <<` heredoc doc-write never sneaks back into agent prose.
 
 describe('findHeredocDocWrites', () => {
   test('same-line cat <<EOF > documentation/foo.md inside a fence flags the cat << line', () => {

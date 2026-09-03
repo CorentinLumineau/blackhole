@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { findDuplicatedResolutionClauses, runChecks } from './checks/gate-resolution-citation.check.ts';
 
-// Issue #723: nine call sites across six files copy-pasted `config-template.md`'s
-// gate-resolution clause verbatim instead of citing it by reference, and one of the nine
-// (reviewer.md §25) already silently drifted (dropped its `, issue #477` suffix). This check
+// Every call site must cite `config-template.md`'s gate-resolution clause by reference
+// rather than copy-pasting it verbatim — a duplicated copy can silently drift from the
+// original. This check
 // scans for the duplicated clause pattern outside its one canonical home so a tenth copy fails
 // `bun run verify` by name instead of drifting again.
 

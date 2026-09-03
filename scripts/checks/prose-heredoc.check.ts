@@ -1,11 +1,9 @@
 import { read, type CheckResult } from './check-utils.ts';
 import { listFiles } from '../lib/check-common.ts';
 
-// R-12b (ADR-003) — a step whose output is a pure function of files or JSON belongs in a
-// `scripts/<name>.ts` invocation, not agent prose. R-10 (#715, merged) replaced the last
-// literal fenced `cat <<` heredoc doc-write in agent prose with a script invocation
-// (`scripts/carry-staged-artifacts.ts`); this check keeps that absence enforced instead of
-// incidental — a fenced code block in `src/agents/*.md` containing a `cat <<` heredoc that
+// A step whose output is a pure function of files or JSON belongs in a `scripts/<name>.ts`
+// invocation, not agent prose (ADR-003) — this check keeps that absence enforced instead of
+// incidental: a fenced code block in `src/agents/*.md` containing a `cat <<` heredoc that
 // writes (directly or via `mv`) into `documentation/` or `.blackhole/staged/` is flagged.
 
 const CAT_HEREDOC = /cat\s*<</;
