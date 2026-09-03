@@ -78,6 +78,7 @@
 | reviews/review-feat-checks-adr-watch-items-fact-v-watch-01-advisory-adr-007-s-worker-schemas-re.md | Review artifact for issue #710 (LGTM) | review | current | on file change |
 | reviews/review-feat-checks-v-shape-01-route-field-set-parity-router-validator-status-type-schem.md | Review artifact for issue #708 (LGTM) | review | current | on file change |
 | reviews/review-feat-planner-plan-quality-gate-cli-invoked-at-plan-time.md | Review artifact for issue #716 (LGTM) | review | current | on file change |
+| reviews/review-feat-reviewer-plugin-cache-version-bump-gate-drift-signal.md | Review artifact for issue #800 (LGTM) | review | current | undefined |
 | reviews/review-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Review artifact for issue #715 (LGTM) | review | current | on file change |
 | reviews/review-feat-scripts-decision-log-append-ts-bumps-last-updated-silent-log-doc-health-sig.md | Review artifact for issue #717 (LGTM) | review | current | on file change |
 | reviews/review-fix-config-registration-parent-key-coverage-for-nested-config-blocks-router-conf.md | Review artifact for issue #707 (LGTM, 1 deferred WARN) | review | current | on file change |
