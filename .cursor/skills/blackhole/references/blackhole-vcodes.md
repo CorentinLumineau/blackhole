@@ -103,6 +103,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-BRIEF-01 | A worker return — direct, transcript-recovered, or resend-recovered — was applied to `queue.json`/`findings-ledger.json` without first passing `scripts/validate-worker-json.ts`, across any arrival path | BLOCK | orchestrator-runtime.md § Triage |
 | V-BRIEF-02 | A spawn-brief-adjacent doc (`src/agents/*.md`, `src/references/*.md`, excluding `worker-schemas.md`) inlines a literal `"status": "<value>"` skeleton in a fenced JSON block whose value is outside the resolved role's status enum | WARN | scripts/checks/inline-schema-drift.check.ts |
 | V-SHAPE-01 | route field-set parity — router.ts's `validateRoute` `requireField` keys vs. `campaign-status/types.ts`'s `Route` type keys diverge without a declared `omits:` allowlist entry on `Route`'s header comment (undeclared drift in either direction). The `<!-- shape: exhaustive -->` markers in `worker-schemas.md`/`queue-dag.md` are declared intent for a future companion check, not yet enforced here — tracked as issue #762 | WARN | scripts/checks/route-shape.check.ts |
+| V-LEDGER-01 | `.blackhole/findings-ledger.json` row whose `issue_ref` is not a number or null, whose `pr_ref` is not a number or null (when present), or that still carries a legacy `pr` key instead of `pr_ref` | BLOCK | scripts/checks/ledger-schema.check.ts |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.

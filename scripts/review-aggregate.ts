@@ -7,7 +7,8 @@ export type Finding = {
   file: string;
   line: number;
   summary: string;
-  issue_ref?: string;
+  issue_ref?: number;
+  pr_ref?: number | null;
   gain?: number;
   effort?: number;
   confidence?: number;
@@ -81,10 +82,20 @@ function severityRank(severity: string): number {
   return SEVERITY_RANK[severity] ?? 0;
 }
 
-function stampIssueRef(findings: Finding[], issueRef: string): Finding[] {
+function stampIssueRef(findings: Finding[], issueRef: number): Finding[] {
   return findings.map((finding) => ({
     ...finding,
     issue_ref: finding.issue_ref ?? issueRef,
+  }));
+}
+
+// Mirrors stampIssueRef's "own value wins" shape — see that function's own comment for the
+// dedup-key rationale this stamping order preserves (issue #754, V-FIX-01 leg 2: `--pr-ref` was
+// already CLI-parsed but silently dropped before reaching this stamping step).
+function stampPrRef(findings: Finding[], prRef: number | null): Finding[] {
+  return findings.map((finding) => ({
+    ...finding,
+    pr_ref: finding.pr_ref ?? prRef,
   }));
 }
 
@@ -267,7 +278,8 @@ function sortFindings(findings: Finding[]): Finding[] {
 
 export function aggregateReview(input: {
   reviewer: ReviewerInput;
-  issueRef: string;
+  issueRef: number;
+  prRef?: number | null;
   priorFindings?: Finding[];
   // The independent verification spawn's own `verification[]` array (issue #439,
   // V-SEC-07), extracted by the caller from that separate spawn's returned JSON — not
@@ -287,7 +299,8 @@ export function aggregateReview(input: {
     };
   }
 
-  const stamped = stampIssueRef(input.reviewer.findings, input.issueRef);
+  const stampedIssueRef = stampIssueRef(input.reviewer.findings, input.issueRef);
+  const stamped = stampPrRef(stampedIssueRef, input.prRef ?? null);
   const verified = input.verification?.length
     ? applyVerificationDowngrades(stamped, input.verification)
     : stamped;
@@ -369,13 +382,28 @@ function isVerificationEntryArray(value: unknown): value is VerificationEntry[] 
 }
 
 if (import.meta.main) {
-  const { reviewerFile, issueRef, priorFile, verificationFile } = parseArgs(process.argv);
+  const { reviewerFile, issueRef, prRef, priorFile, verificationFile } = parseArgs(process.argv);
 
   if (!reviewerFile || !issueRef) {
     console.error(
       'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>]',
     );
     process.exit(1);
+  }
+
+  const issueRefNum = Number(issueRef);
+  if (!Number.isInteger(issueRefNum)) {
+    console.error(`--issue-ref must be an integer, got: ${issueRef}`);
+    process.exit(1);
+  }
+
+  let prRefNum: number | null = null;
+  if (prRef !== undefined) {
+    prRefNum = Number(prRef);
+    if (!Number.isInteger(prRefNum)) {
+      console.error(`--pr-ref must be an integer, got: ${prRef}`);
+      process.exit(1);
+    }
   }
 
   try {
@@ -406,7 +434,8 @@ if (import.meta.main) {
 
     const result = aggregateReview({
       reviewer: reviewerRaw,
-      issueRef,
+      issueRef: issueRefNum,
+      prRef: prRefNum,
       priorFindings,
       verification,
     });

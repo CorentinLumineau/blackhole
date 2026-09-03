@@ -71,3 +71,4 @@
 | reviews/review-discovery-carry-staged-artifacts-resolves-staged-path-and-target-path-against-on.md | Review artifact for issue #760 (LGTM) | review | current | on file change |
 | reviews/review-discovery-escalation-trigger-enum-has-no-environmental-blocker-value-so-an-egres.md | Review artifact for issue #763 (LGTM) | review | current | on file change |
 | reviews/review-discovery-worktree-removal-guard-fails-closed-on-every-detached-head-review-work.md | Review artifact for issue #761 (LGTM) | review | current | on file change |
+| reviews/review-discovery-findings-ledger-json-is-schema-drifted-at-scale-162-286-string-issue-r.md | Review artifact for issue #754 (LGTM) | review | current | on file change |

@@ -35,7 +35,7 @@ describe('aggregateReview', () => {
   test('empty findings → lgtm true, approved', () => {
     const result = aggregateReview({
       reviewer: { status: 'complete', findings: [] },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.status).toBe('approved');
     expect(result.lgtm).toBe(true);
@@ -50,7 +50,7 @@ describe('aggregateReview', () => {
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', vcode: 'V-SCOPE-02' })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.status).toBe('changes_requested');
     expect(result.lgtm).toBe(false);
@@ -64,7 +64,7 @@ describe('aggregateReview', () => {
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', vcode: 'V-DOCSYNC-01' })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.status).toBe('changes_requested');
     expect(result.lgtm).toBe(false);
@@ -82,7 +82,7 @@ describe('aggregateReview', () => {
           baseFinding({ severity: 'BLOCK', summary: 'high' }),
         ],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].severity).toBe('BLOCK');
@@ -96,7 +96,7 @@ describe('aggregateReview', () => {
         status: 'complete',
         findings: [baseFinding({ line: 20, severity: 'WARN' })],
       },
-      issueRef: '46',
+      issueRef: 46,
       priorFindings: [baseFinding({ line: 10, severity: 'BLOCK' })],
     });
     expect(result.findings).toHaveLength(2);
@@ -128,7 +128,7 @@ describe('aggregateReview', () => {
           }),
         ],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.pareto_candidates).toHaveLength(2);
     expect(result.pareto_candidates[0].summary).toBe('high priority');
@@ -141,12 +141,12 @@ describe('aggregateReview', () => {
       reviewer: {
         status: 'complete',
         findings: [
-          baseFinding({ vcode: 'V-ADA-01', severity: 'WARN', issue_ref: '47' }),
+          baseFinding({ vcode: 'V-ADA-01', severity: 'WARN', issue_ref: 47 }),
         ],
       },
-      issueRef: '46',
+      issueRef: 46,
       priorFindings: [
-        baseFinding({ vcode: 'V-ADA-01', severity: 'WARN', issue_ref: '46' }),
+        baseFinding({ vcode: 'V-ADA-01', severity: 'WARN', issue_ref: 46 }),
       ],
     });
     expect(result.findings).toHaveLength(2);
@@ -155,12 +155,52 @@ describe('aggregateReview', () => {
   test('reviewer status error → aggregate error', () => {
     const result = aggregateReview({
       reviewer: { status: 'error', error: 'audit failed', findings: [] },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.status).toBe('error');
     expect(result.lgtm).toBe(false);
     expect(result.error).toBe('audit failed');
     expect(result.findings).toEqual([]);
+  });
+});
+
+describe('issue_ref / pr_ref stamping (issue #754)', () => {
+  test('issueRef: 46 (number) stamps issue_ref: 46 (number, not string) onto a finding with no own issue_ref', () => {
+    const result = aggregateReview({
+      reviewer: { status: 'complete', findings: [baseFinding()] },
+      issueRef: 46,
+    });
+    expect(result.findings[0].issue_ref).toBe(46);
+    expect(typeof result.findings[0].issue_ref).toBe('number');
+  });
+
+  test('prRef: 99 stamps pr_ref: 99 (number) onto every finding lacking its own pr_ref', () => {
+    const result = aggregateReview({
+      reviewer: { status: 'complete', findings: [baseFinding(), baseFinding({ line: 20 })] },
+      issueRef: 46,
+      prRef: 99,
+    });
+    expect(result.findings.every((f) => f.pr_ref === 99)).toBe(true);
+  });
+
+  test('prRef absent (undefined) stamps pr_ref: null, never undefined', () => {
+    const result = aggregateReview({
+      reviewer: { status: 'complete', findings: [baseFinding()] },
+      issueRef: 46,
+    });
+    expect(result.findings[0].pr_ref).toBeNull();
+  });
+
+  test('a finding that already carries its own pr_ref is left unchanged by stampPrRef', () => {
+    const result = aggregateReview({
+      reviewer: {
+        status: 'complete',
+        findings: [baseFinding({ pr_ref: 55 })],
+      },
+      issueRef: 46,
+      prRef: 99,
+    });
+    expect(result.findings[0].pr_ref).toBe(55);
   });
 });
 
@@ -177,7 +217,7 @@ describe('confidence gate', () => {
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', confidence: 49 })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(0);
     expect(result.blockers_count).toBe(0);
@@ -189,7 +229,7 @@ describe('confidence gate', () => {
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', confidence: 65 })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].severity).toBe('WARN');
@@ -203,7 +243,7 @@ describe('confidence gate', () => {
         status: 'complete',
         findings: [baseFinding({ severity: 'WARN', confidence: 55, summary: 'low priority issue' })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].severity).toBe('WARN');
@@ -217,7 +257,7 @@ describe('confidence gate', () => {
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', confidence: 81, summary: 'high confidence issue' })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].severity).toBe('BLOCK');
@@ -231,7 +271,7 @@ describe('confidence gate', () => {
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', summary: 'no confidence field' })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].severity).toBe('BLOCK');
@@ -255,7 +295,7 @@ describe('confidence gate', () => {
           }),
         ],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].file).toBe('src/primary.ts');
@@ -291,7 +331,7 @@ describe('confidence gate', () => {
           }),
         ],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.pareto_candidates).toHaveLength(2);
     expect(result.pareto_candidates[0].summary).toBe('high priority');
@@ -307,7 +347,7 @@ describe('confidence band boundary (round-1 review fix — passthrough is strict
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', confidence: 80, summary: 'boundary issue' })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].severity).toBe('WARN');
@@ -321,7 +361,7 @@ describe('confidence band boundary (round-1 review fix — passthrough is strict
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', confidence: 81, summary: 'clean pass' })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].severity).toBe('BLOCK');
@@ -337,7 +377,7 @@ describe('confidence gate idempotency (round-1 review fix — re-running must no
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', confidence: 65, summary: 'flaky check' })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
 
     expect(first.findings).toHaveLength(1);
@@ -345,7 +385,7 @@ describe('confidence gate idempotency (round-1 review fix — re-running must no
 
     const second = aggregateReview({
       reviewer: { status: 'complete', findings: [] },
-      issueRef: '46',
+      issueRef: 46,
       priorFindings: first.findings,
     });
 
@@ -363,18 +403,18 @@ describe('confidence gate idempotency (round-1 review fix — re-running must no
         status: 'complete',
         findings: [baseFinding({ severity: 'WARN', confidence: 55, summary: 'stable check' })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
 
     const second = aggregateReview({
       reviewer: { status: 'complete', findings: [] },
-      issueRef: '46',
+      issueRef: 46,
       priorFindings: first.findings,
     });
 
     const third = aggregateReview({
       reviewer: { status: 'complete', findings: [] },
-      issueRef: '46',
+      issueRef: 46,
       priorFindings: second.findings,
     });
 
@@ -389,7 +429,7 @@ describe('confidence caveat interpolates actual confidence value (round-1 review
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', confidence: 62, summary: 'interpolation check' })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings[0].summary).toContain('confidence 62');
     expect(result.findings[0].summary).not.toContain('confidence 50-80');
@@ -403,7 +443,7 @@ describe('confidence bounds clamping/validation (round-1 review fix)', () => {
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', confidence: -20 })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(0);
     expect(result.blockers_count).toBe(0);
@@ -415,7 +455,7 @@ describe('confidence bounds clamping/validation (round-1 review fix)', () => {
         status: 'complete',
         findings: [baseFinding({ severity: 'BLOCK', confidence: 150, summary: 'clamped high' })],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].severity).toBe('BLOCK');
@@ -435,7 +475,7 @@ describe('confidence bounds clamping/validation (round-1 review fix)', () => {
           }),
         ],
       },
-      issueRef: '46',
+      issueRef: 46,
     });
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].severity).toBe('BLOCK');
@@ -466,7 +506,7 @@ describe('recheck-aware dedup and lgtm (issue #485)', () => {
           },
         ],
       },
-      issueRef: '470',
+      issueRef: 470,
       priorFindings: [
         baseFinding({
           id: 'F-00046',
@@ -474,7 +514,7 @@ describe('recheck-aware dedup and lgtm (issue #485)', () => {
           severity: 'BLOCK',
           file: 'src/a.ts',
           line: 42,
-          issue_ref: '470',
+          issue_ref: 470,
           summary: 'evaded by four idiomatic spellings of its own headline case',
         }),
       ],
@@ -497,7 +537,7 @@ describe('recheck-aware dedup and lgtm (issue #485)', () => {
           { finding_id: 'F-00058', verdict: 'fixed', evidence: 'fixed in 94ca81a' },
         ],
       },
-      issueRef: '470',
+      issueRef: 470,
       priorFindings: [
         baseFinding({ id: 'F-00046', severity: 'BLOCK', file: 'src/a.ts', line: 42 }),
         baseFinding({ id: 'F-00058', severity: 'BLOCK', file: 'src/b.ts', line: 7 }),
@@ -518,7 +558,7 @@ describe('recheck-aware dedup and lgtm (issue #485)', () => {
           { finding_id: 'F-99999', verdict: 'fixed', evidence: 'claimed fixed, no linkage' },
         ],
       },
-      issueRef: '470',
+      issueRef: 470,
       priorFindings: [],
     });
 
@@ -542,7 +582,7 @@ describe('independent verification downgrades (V-SEC-07, issue #439)', () => {
           }),
         ],
       },
-      issueRef: '439',
+      issueRef: 439,
       verification: [
         { finding_id: 'V1', verdict: 'refuted', evidence: 'could not reproduce — input is validated at L.40' },
       ],
@@ -566,7 +606,7 @@ describe('independent verification downgrades (V-SEC-07, issue #439)', () => {
           }),
         ],
       },
-      issueRef: '439',
+      issueRef: 439,
       verification: [
         { finding_id: 'V1', verdict: 'confirmed', evidence: 'reproduced via curl -X POST ...' },
       ],
@@ -585,7 +625,7 @@ describe('independent verification downgrades (V-SEC-07, issue #439)', () => {
           baseFinding({ id: 'V2', vcode: 'V-SEC-04', severity: 'WARN', summary: 'possible XSS' }),
         ],
       },
-      issueRef: '439',
+      issueRef: 439,
       verification: [{ finding_id: 'V2', verdict: 'refuted', evidence: 'not exploitable' }],
     });
 
@@ -598,7 +638,7 @@ describe('independent verification downgrades (V-SEC-07, issue #439)', () => {
         status: 'complete',
         findings: [baseFinding({ id: 'V1', vcode: 'V-SEC-02', severity: 'BLOCK' })],
       },
-      issueRef: '439',
+      issueRef: 439,
       verification: [{ finding_id: 'V99', verdict: 'refuted', evidence: 'unrelated' }],
     });
 
@@ -612,7 +652,7 @@ describe('independent verification downgrades (V-SEC-07, issue #439)', () => {
         status: 'complete',
         findings: [baseFinding({ id: 'V1', vcode: 'V-SEC-02', severity: 'BLOCK' })],
       },
-      issueRef: '439',
+      issueRef: 439,
     });
 
     expect(result.findings[0].severity).toBe('BLOCK');
@@ -627,7 +667,7 @@ describe('independent verification downgrades (V-SEC-07, issue #439)', () => {
           baseFinding({ id: 'V1', vcode: 'V-SEC-02', severity: 'BLOCK', confidence: 90 }),
         ],
       },
-      issueRef: '439',
+      issueRef: 439,
       verification: [{ finding_id: 'V1', verdict: 'refuted', evidence: 'not reproducible' }],
     });
 
@@ -763,5 +803,101 @@ describe('review-aggregate CLI', () => {
     expect(parsed.findings).toHaveLength(1);
     expect(parsed.findings[0].severity).toBe('WARN');
     expect(parsed.blockers_count).toBe(0);
+  });
+
+  test('--issue-ref not-a-number exits non-zero with a stated reason (issue #754)', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    fs.writeFileSync(reviewerFile, JSON.stringify({ status: 'complete', findings: [] }), 'utf-8');
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      'not-a-number',
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/issue-ref/i);
+  });
+
+  test('--issue-ref 46 coerces to the number 46 in the stamped output (issue #754)', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    fs.writeFileSync(
+      reviewerFile,
+      JSON.stringify({ status: 'complete', findings: [baseFinding()] }),
+      'utf-8',
+    );
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      '46',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.findings[0].issue_ref).toBe(46);
+    expect(typeof parsed.findings[0].issue_ref).toBe('number');
+  });
+
+  test('--pr-ref not-a-number exits non-zero with a stated reason (issue #754)', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    fs.writeFileSync(reviewerFile, JSON.stringify({ status: 'complete', findings: [] }), 'utf-8');
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      '46',
+      '--pr-ref',
+      'not-a-number',
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/pr-ref/i);
+  });
+
+  test('--pr-ref omitted resolves to pr_ref: null, not undefined (issue #754)', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    fs.writeFileSync(
+      reviewerFile,
+      JSON.stringify({ status: 'complete', findings: [baseFinding()] }),
+      'utf-8',
+    );
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      '46',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.findings[0].pr_ref).toBeNull();
+  });
+
+  test('--pr-ref 99 stamps pr_ref: 99 (number) via the CLI (issue #754)', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    fs.writeFileSync(
+      reviewerFile,
+      JSON.stringify({ status: 'complete', findings: [baseFinding()] }),
+      'utf-8',
+    );
+
+    const result = await runReviewAggregateCli([
+      '--reviewer-file',
+      reviewerFile,
+      '--issue-ref',
+      '46',
+      '--pr-ref',
+      '99',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.findings[0].pr_ref).toBe(99);
+    expect(typeof parsed.findings[0].pr_ref).toBe('number');
   });
 });
