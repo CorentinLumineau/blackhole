@@ -76,6 +76,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-CONFIG-01 | New config/env keys follow established naming, registered | WARN | reviewer.md §5 (Integration Coherence — Config/env key naming) |
 | V-CONFIG-02 | New `.blackhole/config.json` keys registered in config-template.md | WARN | scripts/checks/config-registration.check.ts |
 | V-GATE-02 | Gate-resolution clause restated outside its config-template.md `**Resolution**` sentence instead of cited by reference | WARN | scripts/checks/gate-resolution-citation.check.ts |
+| V-TREE-01 | Committed target tree drift — paths.ts's COMMITTED_TARGET_TREES diverges from documentation/architecture.md § Committed target trees or README § Installation Paths, named per-doc | WARN | scripts/checks/tree-registry.check.ts |
 | V-SCOPE-01 | No refactoring untouched code | WARN | reviewer.md §12 (Suggestion Proportionality Gate) |
 | V-SCOPE-02 | Touch-Paths violation — files modified outside plan scope | WARN | reviewer.md §1 (5-Field Contract & Plan Compliance) |
 | V-SCOPE-03 | Missing/underestimated blast-radius — a Standard-track plan with 3+ affected consumers lacks a `## Dependency Blast-Radius` section | WARN | reviewer.md §1 (5-Field Contract & Plan Compliance) |

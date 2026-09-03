@@ -45,3 +45,20 @@ export const GEMINI_TARGET_DIRS = [AGENTS_BUILD_ROOT, '.gemini-plugin', DISTRIBU
 export const CODEX_TARGET_DIRS = ['codex-agents', 'codex-skills', '.codex-plugin'];
 export const AGENT_PLUGINS_TARGET_DIRS = [AGENT_PLUGINS_DISTRIBUTION_ROOT];
 export const DEPRECATED_BUILD_FLAGS = ['--gemini', '--all', '--no-codex'] as const;
+
+/** One row per committed build-target tree documented in `documentation/architecture.md` §
+ * Committed target trees and (partially) `README.md` § Installation Paths — the SSOT
+ * `scripts/checks/tree-registry.check.ts` (V-TREE-01) diffs against both docs' live prose to
+ * catch the class of drift issue #706 fixed by hand (a target tree unmentioned in either doc). */
+export type CommittedTargetTree = { id: string; paths: string[] };
+
+export const COMMITTED_TARGET_TREES: CommittedTargetTree[] = [
+  { id: 'skills-registry', paths: ['skills/', 'agents/', 'references/', 'rules/'] },
+  { id: 'cursor', paths: ['.cursor/'] },
+  { id: 'claude-native', paths: [`${CLAUDE_NATIVE_ROOT}/`] },
+  { id: 'claude-marketplace', paths: ['.claude-plugin/', `${CLAUDE_DISTRIBUTION_ROOT}/`] },
+  { id: 'codex', paths: [...CODEX_TARGET_DIRS.map((d) => `${d}/`), 'codex-marketplace.json'] },
+  { id: 'gemini-workspace', paths: [`${AGENTS_BUILD_ROOT}/`, '.gemini-plugin/'] },
+  { id: 'agent-plugins', paths: AGENT_PLUGINS_TARGET_DIRS.map((d) => `${d}/`) },
+  { id: 'gemini-distribution', paths: [`${DISTRIBUTION_ROOT}/`] },
+];

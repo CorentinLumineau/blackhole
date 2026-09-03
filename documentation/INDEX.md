@@ -56,6 +56,7 @@
 | plans/plan-orchestrator-resolves-repo-facts-from-the-working-checkout-which-is-often-not-th.md | Protocol fix: mandatory post-merge + turn-start main-clone freshness refresh so orchestrator repo-facts reads never operate on a stale checkout | plan | current | on file change |
 | plans/plan-pr-merge-gate-dependency-ordering.md | Implementation plan for ADR-005's PR merge-gate and dependency ordering | plan | current | on file change |
 | plans/plan-pretooluse-outside-worktree-guard-denies-every-write-edit-in-non-campaign-intera.md | Standard-track plan for issue #729 -- union cwd own git toplevel into the PreToolUse write-containment root set plus an opt-in BLACKHOLE_SCRATCHPAD_DIR override, closing the outside-worktree false-deny for non-campaign interactive sessions | plan | current | on file change |
+| plans/plan-refactor-build-named-flags-plumbing-for-build-targets-v-tree-01-tree-registry-ch.md | Named-flags plumbing for `determineBuildTargets`/`cleanBuildDirectories` plus the new `V-TREE-01` committed-target-tree drift check (R-17) | plan | current | on file change |
 | plans/plan-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Implementation plan for issue #704 (R-01) — retire the derived `EXPECTED_CHECK_COUNT` counter and its new-check-module Touch-Paths trigger | plan | current | on file change |
 | plans/plan-retrospective-v0.21.0-remediation.md | Work breakdown and dependency graph for the v0.21.0 retrospective's 22 remediation items (one issue each) | plan | current | on ADR acceptance |
 | plans/plan-routing-visibility-reuse-gate.md | Implementation plan for dashboard routing visibility and the implementer Reuse Check gate | plan | current | on ADR acceptance |
@@ -108,5 +109,6 @@
 | reviews/review-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Review artifact for issue #728 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
 | reviews/review-record-408-s-reversal-of-adr-007-r3-supersession-rule-with-declared-phrase-scan.md | Review artifact for issue #712 (LGTM) | review | current | on file change |
+| reviews/review-refactor-build-named-flags-plumbing-for-build-targets-v-tree-01-tree-registry-ch.md | Review artifact for issue #724 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Review artifact for issue #704 (LGTM) | review | current | on file change |
 | reviews/review-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | Review artifact for issue #713 (LGTM) | review | current | on file change |
