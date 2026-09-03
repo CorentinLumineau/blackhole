@@ -1633,6 +1633,32 @@ describe('validate-bash-command.js — worktree-removal guard executable-spellin
       },
     );
   });
+
+  // A dynamic-executable invocation is only caught by `containsWorktreeRemoveTokens` scanning the
+  // raw subcommand tokens for a literal `worktree`/`remove` pair. A quoted or escaped subcommand
+  // token evades that literal comparison exactly the way a quoted/escaped executable token used to
+  // evade the executable comparison above — the same normalize-then-compare step must apply to
+  // both.
+  test.each([
+    ['quoted remove', (worktree: string) => `$(which git) worktree "remove" ${worktree}`],
+    ['escaped remove', (worktree: string) => `$(which git) worktree remo\\ve ${worktree}`],
+  ])('deny: %s subcommand token under executable indirection is still detected', async (_label, buildCommand) => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-788-',
+      `blackhole/issue-788-${_label.replace(/[^a-z0-9]+/gi, '-')}`,
+      async (mainRepo, worktree, push) => {
+        push();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(buildCommand(worktree)), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block' });
+      },
+    );
+  });
 });
 
 // Uncaught-exception fail-open regression (#580): a non-string `cwd` reaches

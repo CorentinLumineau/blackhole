@@ -46,15 +46,12 @@
  * was never checked. `evaluateWorktreeRemoval` now inspects every invocation found in the command
  * and denies if ANY of them is unsafe.
  *
- * #788: the exact-literal comparison this walk used to make against a clause's first token — was
- * it the 5-character string `'git'`? — was the actual bypass: `\git`, `"git"`, `'git'`,
- * `"/usr/bin/git"`, and `g""it` are five different literal strings that are all the same
- * executable to bash, so all five failed that comparison and produced zero detected invocations.
- * `normalizeShellWord` replaces it with a normalize-then-basename-compare step that reconstructs
- * what bash's own quote-removal would produce (concatenating adjacent quoted/unquoted/escaped
- * fragments, e.g. `g""it` -> `git`) before the basename comparison — one code path covering every
- * spelling, not a growing list of predecessor-character exemptions. A clause's first token whose
- * executable position is itself dynamic (`$(...)`, a backtick, or a bare `$VAR`/`${VAR}`
+ * A clause's first token is normalized via `normalizeShellWord` — reconstructing what bash's own
+ * quote-removal would produce (concatenating adjacent quoted/unquoted/escaped fragments, e.g.
+ * `g""it` -> `git`) — before its basename is compared against `git`: one code path covering every
+ * literal spelling (`\git`, `"git"`, `'git'`, `"/usr/bin/git"`, `g""it`, …), not a growing list of
+ * per-spelling exemptions. A clause's first token whose executable position is itself dynamic
+ * (`$(...)`, a backtick, or a bare `$VAR`/`${VAR}`
  * reference — `normalizeShellWord`'s `dynamic: true` result) can never be resolved statically;
  * `$(which git)` / `GIT=... $GIT` indirection is refused outright via
  * `worktree-remove-unresolvable-path` rather than silently allowed, following the same
@@ -229,13 +226,21 @@ const isEnvAssignmentToken = (token) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(token);
 
 /** True when `tokens`, from `fromIndex` on, contains `worktree` immediately followed by `remove`
  * — the bounded "looks-dynamic + worktree/remove tokens present" heuristic (Execution Strategy
- * step 2) for an executable position that could not be resolved statically. Narrow by
- * construction: it only ever fires alongside a dynamic executable token (checked by the caller),
- * so it cannot turn an ordinary command that merely mentions these two words into a denial on its
- * own. */
+ * step 2) for an executable position that could not be resolved statically. Each candidate token
+ * is normalized via `normalizeShellWord` before comparison — the same normalize-then-compare
+ * discipline applied to the executable token itself — so a quoted or escaped spelling (`"remove"`,
+ * `remo\ve`) is detected exactly like the literal form; a token whose own normalization is dynamic
+ * (`$(...)`, a backtick, `$VAR`) never matches, since dynamic text can't equal a literal string.
+ * Narrow by construction: it only ever fires alongside a dynamic executable token (checked by the
+ * caller), so it cannot turn an ordinary command that merely mentions these two words into a
+ * denial on its own. */
 const containsWorktreeRemoveTokens = (tokens, fromIndex) => {
   for (let i = fromIndex; i < tokens.length - 1; i++) {
-    if (tokens[i] === 'worktree' && tokens[i + 1] === 'remove') return true;
+    const first = normalizeShellWord(tokens[i]);
+    if (first.dynamic || first.text !== 'worktree') continue;
+    const second = normalizeShellWord(tokens[i + 1]);
+    if (second.dynamic || second.text !== 'remove') continue;
+    return true;
   }
   return false;
 };
