@@ -319,3 +319,140 @@ describe('carryManifest — two-root resolution (opts.stagingRoot, issue #760)',
     });
   });
 });
+
+describe('carryManifest — path containment (issue #752)', () => {
+  const baseEntry = {
+    route: 'plan',
+    sub_mode: null,
+    produced_by: 'planner',
+    declared_at: '2026-08-06T17:58:00.000Z',
+    staged_path: '.blackhole/staged/1/plan-x.md',
+    target_path: 'documentation/plans/plan-x.md',
+    target_kind: 'new_file' as const,
+  };
+
+  const manifestOf = (overrides: Partial<typeof baseEntry>): Manifest => ({
+    issue: 1,
+    updated_at: 'x',
+    entries: [{ ...baseEntry, ...overrides }],
+  });
+
+  const writeStaged = (root: string, relPath: string): void => {
+    const abs = path.join(root, relPath);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, '---\ntype: plan\nstatus: current\n---\n# Plan\n');
+  };
+
+  // repoRoot/stagingRoot are nested one level inside the fixture dir so a `..` escape lands
+  // somewhere the fixture still owns and cleans up, rather than in the bare OS tmpdir.
+  const withRoots = (fn: (dir: string, repoRoot: string) => void): void =>
+    withTempDir('carry-containment', (dir) => {
+      const repoRoot = path.join(dir, 'repo');
+      fs.mkdirSync(repoRoot);
+      fn(dir, repoRoot);
+    });
+
+  test('a target_path escaping repoRoot via ".." is skipped with a containment reason, and nothing is written outside repoRoot', () => {
+    withRoots((dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+
+      const outcome = carryManifest(manifestOf({ target_path: '../escape.md' }), repoRoot);
+
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.index).toBe(0);
+      expect(outcome.skippedEntries[0]!.reason).toContain('target_path');
+      expect(outcome.skippedEntries[0]!.reason).toContain(repoRoot);
+      expect(fs.existsSync(path.join(dir, 'escape.md'))).toBe(false);
+    });
+  });
+
+  test('a staged_path escaping stagingRoot via ".." is skipped on containment grounds, not merely because the file is absent', () => {
+    withRoots((dir, repoRoot) => {
+      const stagingRoot = path.join(dir, 'staging');
+      fs.mkdirSync(stagingRoot);
+      // A real, readable file outside stagingRoot: the read must be refused for escaping its
+      // root, which the existing absent-staged-file throw would never catch.
+      fs.writeFileSync(path.join(dir, 'secret.md'), '# secret\n');
+
+      const outcome = carryManifest(manifestOf({ staged_path: '../secret.md' }), repoRoot, { stagingRoot });
+
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.index).toBe(0);
+      expect(outcome.skippedEntries[0]!.reason).toContain('staged_path');
+      expect(outcome.skippedEntries[0]!.reason).toContain(stagingRoot);
+      expect(fs.existsSync(path.join(repoRoot, baseEntry.target_path))).toBe(false);
+    });
+  });
+
+  test('a lexically-contained target_path is still rejected when an intermediate directory is a symlink pointing out of repoRoot', () => {
+    withRoots((dir, repoRoot) => {
+      const outside = path.join(dir, 'outside');
+      fs.mkdirSync(outside);
+      fs.symlinkSync(outside, path.join(repoRoot, 'documentation'));
+      writeStaged(repoRoot, baseEntry.staged_path);
+
+      const outcome = carryManifest(manifestOf({}), repoRoot);
+
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.reason).toContain('target_path');
+      expect(fs.existsSync(path.join(outside, 'plans', 'plan-x.md'))).toBe(false);
+    });
+  });
+
+  test('an absolute-looking target_path stays contained under repoRoot and carries', () => {
+    // Regression guard for the corrected expectation recorded in `.blackhole/plans/issue-752.md`
+    // § Design Rulings: `path.join(root, '/etc/passwd')` is `<root>/etc/passwd` — `path.join`,
+    // unlike `path.resolve`, does not treat a later absolute segment as an anchor reset — so this
+    // input never escapes and must keep carrying. Do not flip this assertion to a skip.
+    withRoots((_dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+
+      const outcome = carryManifest(manifestOf({ target_path: '/etc/passwd' }), repoRoot);
+
+      expect(outcome.skippedEntries).toEqual([]);
+      expect(outcome.carriedPaths).toEqual(['/etc/passwd']);
+      expect(fs.existsSync(path.join(repoRoot, 'etc', 'passwd'))).toBe(true);
+    });
+  });
+
+  test('a root-level ARCHITECTURE.md append_row target is inside repoRoot and keeps carrying', () => {
+    withRoots((_dir, repoRoot) => {
+      const stagedRel = '.blackhole/staged/1/architecture-active-constraint.md';
+      const stagedAbs = path.join(repoRoot, stagedRel);
+      fs.mkdirSync(path.dirname(stagedAbs), { recursive: true });
+      fs.writeFileSync(stagedAbs, '- Never write directly to queue.json from a worker (ADR-021)');
+      fs.writeFileSync(path.join(repoRoot, 'ARCHITECTURE.md'), '# ARCHITECTURE\n\n## Active Constraints\n');
+
+      const outcome = carryManifest(
+        manifestOf({ staged_path: stagedRel, target_path: 'ARCHITECTURE.md', target_kind: 'append_row' }),
+        repoRoot,
+      );
+
+      expect(outcome.skippedEntries).toEqual([]);
+      expect(outcome.carriedPaths).toEqual(['ARCHITECTURE.md']);
+      expect(fs.readFileSync(path.join(repoRoot, 'ARCHITECTURE.md'), 'utf-8')).toContain('(ADR-021)');
+    });
+  });
+
+  test('an escaping entry does not stop the rest of the manifest from carrying', () => {
+    withRoots((dir, repoRoot) => {
+      writeStaged(repoRoot, baseEntry.staged_path);
+      const manifest: Manifest = {
+        issue: 1,
+        updated_at: 'x',
+        entries: [{ ...baseEntry, target_path: '../escape.md' }, { ...baseEntry }],
+      };
+
+      const outcome = carryManifest(manifest, repoRoot);
+
+      expect(outcome.carriedPaths).toEqual([baseEntry.target_path]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.index).toBe(0);
+      expect(fs.existsSync(path.join(dir, 'escape.md'))).toBe(false);
+      expect(fs.existsSync(path.join(repoRoot, baseEntry.target_path))).toBe(true);
+    });
+  });
+});

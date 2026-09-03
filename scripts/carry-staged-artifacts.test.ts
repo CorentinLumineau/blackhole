@@ -225,3 +225,48 @@ describe('carry-staged-artifacts CLI — --staging-root (issue #760)', () => {
     expect(JSON.parse(stdout)).toEqual([]);
   });
 });
+
+describe('carry-staged-artifacts CLI — path containment (issue #752)', () => {
+  test('an entry whose target_path escapes --repo-root is reported on stderr, never written, and does not block the remaining entry', async () => {
+    // repoRoot nests inside the fixture dir so the `..` escape target stays under the temp tree.
+    const repoRoot = path.join(dir, 'repo');
+    fs.mkdirSync(repoRoot);
+    const stagedRel = '.blackhole/staged/1/plan-x.md';
+    fs.mkdirSync(path.join(repoRoot, path.dirname(stagedRel)), { recursive: true });
+    fs.writeFileSync(path.join(repoRoot, stagedRel), '# Plan\n');
+
+    const entry = (targetPath: string) => ({
+      route: 'plan',
+      sub_mode: null,
+      produced_by: 'planner',
+      declared_at: '2026-08-06T17:58:00.000Z',
+      staged_path: stagedRel,
+      target_path: targetPath,
+      target_kind: 'new_file',
+    });
+    const manifestPath = path.join(dir, 'manifest.json');
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        issue: 1,
+        updated_at: '2026-08-06T18:00:00.000Z',
+        entries: [entry('../escape.md'), entry('documentation/plans/plan-x.md')],
+      }),
+    );
+
+    const proc = run(['--manifest', manifestPath, '--repo-root', repoRoot]);
+    const [code, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout)).toEqual(['documentation/plans/plan-x.md']);
+    expect(stderr).toContain('entries[0]');
+    expect(stderr).toContain('target_path');
+    expect(stderr).toContain(repoRoot);
+    expect(fs.existsSync(path.join(dir, 'escape.md'))).toBe(false);
+    expect(fs.existsSync(path.join(repoRoot, 'documentation/plans/plan-x.md'))).toBe(true);
+  });
+});

@@ -191,9 +191,52 @@ export const appendPipeTableRowIfAbsent = (
 };
 
 /**
+ * Realpath of the nearest existing ancestor of `p` — `p` itself when it already exists (resolved
+ * through, if it is itself a symlink), otherwise the nearest parent that does. A `new_file`
+ * target routinely does not exist yet, so a bare `fs.realpathSync` would throw, while any
+ * intermediate directory on the way to it may be a symlink pointing out of the root — the walk-up
+ * is what lets the containment comparison below run on resolved paths in both cases.
+ *
+ * Same algorithm as the identically-named helper in
+ * `templates/hooks/pretooluse/utils/hook-event-log.js`, re-implemented rather than imported: that
+ * tree is CommonJS mirrored verbatim into the per-platform hook dists and shares no build target
+ * with this Bun/ESM module tree, so there is no import path between them.
+ */
+const resolveExistingAncestor = (p: string): string => {
+  let current = path.resolve(p);
+  for (;;) {
+    try {
+      return fs.realpathSync(current);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return current;
+      current = parent;
+    }
+  }
+};
+
+/** True when `candidate` resolves inside (or as) `root`, both sides resolved through
+ * `resolveExistingAncestor` first — either side may traverse a symlink (an OS tmpdir routinely
+ * is one), so a raw `path.resolve` + `startsWith` comparison decides containment on unresolved
+ * strings and misses exactly the symlinked-ancestor case. */
+const isWithinRoot = (candidate: string, root: string): boolean => {
+  const realCandidate = resolveExistingAncestor(candidate);
+  const realRoot = resolveExistingAncestor(root);
+  return realCandidate === realRoot || realCandidate.startsWith(realRoot + path.sep);
+};
+
+/**
  * Runs the full carry: shape guard already applied by the caller (`loadManifest`) → validate →
  * dispatch per entry. Returns carried target paths (manifest order) and skipped-entry reasons
  * for the caller to log as `new_findings[]` — this function never writes to the ledger itself.
+ *
+ * Path containment (issue #752): a manifest entry's `staged_path`/`target_path` are free JSON
+ * text written by an LLM producer whose context includes untrusted forge issue bodies, and
+ * nothing upstream forces them through `concern-slug.ts`'s sanitizer. Each is therefore bounded
+ * against its own root before any `fs` call touches it. A violation is entry-scoped adversarial
+ * content — the same class as a malformed field, so it joins the `skipped` array and the rest of
+ * the manifest still carries — deliberately not the fatal throw below, which signals a broken
+ * invocation and so invalidates every entry's result at once.
  *
  * Two-root resolution (issue #760): `staged_path` and `target_path` never share a tree in an
  * implementer's actual working environment — `staged_path` lives under the gitignored,
@@ -214,14 +257,29 @@ export const carryManifest = (
   const carriedPaths: string[] = [];
 
   for (const entry of valid) {
+    const index = entries.indexOf(entry);
     const stagedAbs = path.join(stagingRoot, entry.staged_path);
     const targetAbs = path.join(repoRoot, entry.target_path);
+
+    if (!isWithinRoot(stagedAbs, stagingRoot)) {
+      skipped.push({
+        index,
+        reason: `staged_path "${entry.staged_path}" resolves outside stagingRoot ${stagingRoot}`,
+      });
+      continue;
+    }
+    if (!isWithinRoot(targetAbs, repoRoot)) {
+      skipped.push({
+        index,
+        reason: `target_path "${entry.target_path}" resolves outside repoRoot ${repoRoot}`,
+      });
+      continue;
+    }
 
     // Named, non-bare failure (never a raw ENOENT — `readJsonFile`'s convention,
     // `scripts/lib/fs.ts:53-60`): a declared staged_path that does not resolve under
     // stagingRoot is always fatal, distinguishable from a validation-level skip.
     if (!fs.existsSync(stagedAbs)) {
-      const index = entries.indexOf(entry);
       throw new Error(
         `carryManifest: entries[${index}].staged_path "${entry.staged_path}" not found under stagingRoot ${stagingRoot} (repoRoot ${repoRoot})`,
       );
