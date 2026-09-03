@@ -1730,6 +1730,46 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     });
   });
 
+  // F-00402 (PR #818 review fix-loop): `isLiteralPathArg` never excluded bash tilde (`~`)
+  // expansion, so a target like `~/foo.txt` was classified "literal" and resolved via
+  // `path.resolve(cwd, '~/foo.txt')` — Node never performs shell-level `~` expansion, so the
+  // resolved path was a nonexistent `<cwd>/~/foo.txt`. `isUnderRoot`'s ancestor-walk then climbed
+  // that nonexistent path back up through ENOENT until it landed on the assigned root itself,
+  // which trivially satisfied "in bounds" and silently allowed the command — while bash would
+  // actually write against the real `$HOME` at runtime. This must warn+record instead.
+  test('#804/F-00402: a `~`-prefixed redirect target is never silently allowed — it warns and records as unresolvable', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const payload = bashPayloadAt('echo x > ~/foo.txt', worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(permissionDecision(result.stdout)).toBe('allow');
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        tier: 'warn',
+        pattern_id: 'bash-write-target-unresolvable',
+      });
+    });
+  });
+
+  test('#804/F-00402: `cp` into a `~`-prefixed destination is never silently allowed — it warns and records as unresolvable', async () => {
+    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+      const src = path.join(worktree, 'src.txt');
+      const payload = bashPayloadAt(`cp ${src} ~/dest.txt`, worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(permissionDecision(result.stdout)).toBe('allow');
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        tier: 'warn',
+        pattern_id: 'bash-write-target-unresolvable',
+      });
+    });
+  });
+
   test('#804: without BLACKHOLE_ASSIGNED_WORKTREE set, a bash write target outside the worktree is not denied by this check (fail-open parity with #620)', async () => {
     await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
       const target = path.join(mainRepo, 'foo.txt');

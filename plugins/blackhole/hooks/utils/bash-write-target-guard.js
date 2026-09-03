@@ -250,6 +250,22 @@ const findCopyMoveTargets = (tokens) => {
   return [];
 };
 
+/** `isLiteralPathArg` (from `worktree-removal-guard.js`) excludes shell metacharacters that make a
+ * target dynamic (`$`, `` ` ``, `*`, `?`, `[`, `]`, `{`, `}`) but not bash tilde (`~`) expansion —
+ * a target like `~/foo.txt` passes it as "literal," yet `path.resolve(cwd, target)` never performs
+ * that expansion (it is a shell-level substitution, not a filesystem one), so the resolved path
+ * becomes a nonexistent `<cwd>/~/foo.txt`. `isUnderRoot`'s ancestor-walk then climbs that path back
+ * up through ENOENT until it lands on the assigned root itself, which trivially reads as "in
+ * bounds" — a silent allow for a command that actually writes against the real `$HOME` at runtime.
+ * This module cannot reliably resolve `$HOME` for the shell that will eventually run the command
+ * (a worktree-spawned implementer's environment is not guaranteed to match), so a `~`-prefixed
+ * target is routed to the `warn`/`bash-write-target-unresolvable` tier instead — the same treatment
+ * already given to `python3 -c`/`awk`/etc. Scoped to this module's own new usage only:
+ * `worktree-removal-guard.js`'s pre-existing `isLiteralPathArg` call is unaffected (see that
+ * module's own containment check, which fails closed on an unresolvable path rather than allowing
+ * it — a different, non-silent-allow failure mode, tracked separately rather than fixed here). */
+const isResolvableLiteralTarget = (raw) => isLiteralPathArg(raw) && !raw.startsWith('~');
+
 /** True when one clause's leading command word is a write-shaped command this module cannot
  * resolve statically (see `UNRESOLVABLE_WRITE_COMMANDS`'s docstring). */
 const hasUnresolvableCommand = (tokens) => {
@@ -285,7 +301,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
   let unresolvable = false;
 
   for (const raw of findRedirectTargets(visible)) {
-    if (isLiteralPathArg(raw)) literalTargets.push(raw);
+    if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
     else unresolvable = true;
   }
 
@@ -294,7 +310,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
     if (tokens.length === 0) continue;
 
     for (const raw of [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens)]) {
-      if (isLiteralPathArg(raw)) literalTargets.push(raw);
+      if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
       else unresolvable = true;
     }
 

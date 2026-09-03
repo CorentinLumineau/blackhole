@@ -1,5 +1,8 @@
 ---
+type: adr
 status: accepted
+created: 2026-09-03
+last_updated: 2026-09-03
 ---
 
 # ADR-029: Extend assigned-worktree write containment to Bash file-write commands
