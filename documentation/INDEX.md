@@ -58,6 +58,7 @@
 | reviews/review-discovery-ci-never-runs-the-test-suite-bun-test-is-absent-from-every-workflow-so.md | Review artifact for issue #747 (LGTM, 1 deferred WARN, 1 fixed inline) | review | current | on file change |
 | reviews/review-discovery-design-track-critics-score-against-adr-bodies-without-reading-post-acc.md | Review artifact for issue #775 (LGTM) | review | current | on file change |
 | reviews/review-discovery-escalation-trigger-enum-has-no-environmental-blocker-value-so-an-egres.md | Review artifact for issue #763 (LGTM) | review | current | on file change |
+| reviews/review-discovery-every-campaign-pr-conflicts-on-documentation-index-md-the-carry-step-a.md | Review artifact for issue #743 (LGTM) | review | current | on file change |
 | reviews/review-discovery-findings-ledger-json-is-schema-drifted-at-scale-162-286-string-issue-r.md | Review artifact for issue #754 (LGTM) | review | current | on file change |
 | reviews/review-discovery-main-is-red-on-the-full-test-suite-742-changed-prose-to-verified-while.md | Review artifact for issue #746 (LGTM) | review | current | on file change |
 | reviews/review-discovery-promote-review-artifact-ts-counts-deferred-ledger-rows-toward-the-revi.md | Review artifact for issue #737 (LGTM) | review | current | on file change |
