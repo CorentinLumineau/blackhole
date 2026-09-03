@@ -202,19 +202,73 @@ const git = (args, cwd) =>
   execFileSync('git', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], cwd }).trim();
 
 /**
+ * Resolves whether a detached-HEAD `worktreePath` is safe to remove — the reachability rung
+ * `checkUnpushedCommits` falls into below when there is no branch name to compare at all (#761).
+ * A review worktree (`phase-review.md`) is *always* detached by construction — `git worktree add
+ * --no-track origin/<branch>` is rejected outright by git, so `--detach` is the only way to check
+ * out a PR head — so this is the routine shape of every review worktree, not an edge case.
+ *
+ * Deliberately checks `refs/remotes/` only, never `refs/heads/`: `checkUnpushedCommits`'s
+ * named-branch path immediately below never treats "some other local branch also points here" as
+ * proof of "pushed" — only a remote-tracking ref counts. Accepting `refs/heads/` containment here
+ * would make a detached worktree *more* permissive than a named-branch worktree in the identical
+ * repo state (HEAD reachable only from another local branch, never pushed) — an inconsistency in
+ * the guard's own safety bar, not a generalization of it. Both paths must ask the identical
+ * question: "is this commit known-pushed?"
+ *
+ * Two outcomes:
+ *  - `{ status: 'clean' }` — HEAD is reachable from at least one `refs/remotes/` ref. Allow.
+ *  - `{ status: 'unknown', detached: true, detail }` — HEAD could not be resolved, or is reachable
+ *    from no remote-tracking ref at all (never pushed anywhere). Deny — fail-closed exactly as
+ *    the named-branch path below.
+ */
+const checkDetachedReachability = (worktreePath) => {
+  let sha;
+  try {
+    sha = git(['-C', worktreePath, 'rev-parse', 'HEAD'], worktreePath);
+  } catch (error) {
+    return { status: 'unknown', detached: true, detail: `could not resolve HEAD in ${worktreePath} (${error.message})` };
+  }
+
+  let containingRemotes;
+  try {
+    containingRemotes = git(
+      ['-C', worktreePath, 'for-each-ref', '--contains', sha, '--format=%(refname)', 'refs/remotes/'],
+      worktreePath,
+    );
+  } catch (error) {
+    return {
+      status: 'unknown',
+      detached: true,
+      detail: `could not check remote-tracking refs containing ${sha} in ${worktreePath} (${error.message})`,
+    };
+  }
+  if (containingRemotes) {
+    return { status: 'clean' };
+  }
+  return {
+    status: 'unknown',
+    detached: true,
+    detail: `${sha} in ${worktreePath} is not reachable from any refs/remotes/ ref`,
+  };
+};
+
+/**
  * Resolves whether `worktreePath`'s current branch carries commits its remote does not have.
  * Three outcomes:
  *  - `{ status: 'unpushed', detail }` — HEAD has commits the remote lacks. Deny.
  *  - `{ status: 'clean' }` — HEAD matches (or is behind) the remote. Allow.
- *  - `{ status: 'unknown', detail }` — could not be determined: bad path, detached HEAD, or the
- *    branch was never pushed at all (no `@{u}` AND no matching `refs/remotes/origin/<branch>`).
- *    Deny. This deliberately diverges from `validate-file-changes.js`'s "fail-open, per-check"
- *    convention for its git-containment sub-check: that convention is safe because a Write/Edit
- *    call can legitimately happen outside any git context at all, so skipping a git-dependent
- *    sub-check there degrades to "the other, git-independent checks still ran". A
- *    `git worktree remove` call is *always* in a git context by definition — an unresolvable
- *    state here is not "check inapplicable", it is exactly the highest-risk case this guard
- *    exists to catch (a branch that was never pushed anywhere is, by definition, 100% unpushed).
+ *  - `{ status: 'unknown', detail }` — could not be determined: bad path, or the branch was never
+ *    pushed at all (no `@{u}` AND no matching `refs/remotes/origin/<branch>`). Deny. This
+ *    deliberately diverges from `validate-file-changes.js`'s "fail-open, per-check" convention
+ *    for its git-containment sub-check: that convention is safe because a Write/Edit call can
+ *    legitimately happen outside any git context at all, so skipping a git-dependent sub-check
+ *    there degrades to "the other, git-independent checks still ran". A `git worktree remove`
+ *    call is *always* in a git context by definition — an unresolvable state here is not "check
+ *    inapplicable", it is exactly the highest-risk case this guard exists to catch (a branch that
+ *    was never pushed anywhere is, by definition, 100% unpushed). A detached HEAD (no branch name
+ *    at all) is delegated to `checkDetachedReachability` above rather than treated as
+ *    unconditionally unknown (#761).
  */
 const checkUnpushedCommits = (worktreePath) => {
   let branch;
@@ -224,7 +278,7 @@ const checkUnpushedCommits = (worktreePath) => {
     return { status: 'unknown', detail: `could not resolve HEAD in ${worktreePath} (${error.message})` };
   }
   if (!branch || branch === 'HEAD') {
-    return { status: 'unknown', detail: `${worktreePath} is in detached HEAD state` };
+    return checkDetachedReachability(worktreePath);
   }
 
   let upstream = null;
@@ -281,6 +335,20 @@ const evaluateOneInvocation = (argTokens, cwd) => {
     };
   }
   if (result.status === 'unknown') {
+    if (result.detached) {
+      return {
+        tier: 'block',
+        pattern_id: 'worktree-remove-detached-unreachable',
+        reason:
+          `Could not verify ${resolvedPath} has no unpushed commits (${result.detail}) — refusing rather ` +
+          `than risk silent data loss. This worktree's HEAD is detached and not reachable from any known ` +
+          `remote-tracking ref. Remedy: fetch a ref that contains this commit (e.g. its PR head) into a ` +
+          `remote-tracking ref, then retry: git fetch origin refs/pull/<PR>/head:refs/remotes/origin/<name> ` +
+          `(GitHub retains PR head refs permanently, so this gives a true answer instead of bypassing the ` +
+          `check). A commit that was genuinely never pushed anywhere has no non-destructive fix — push it ` +
+          `first.`,
+      };
+    }
     return {
       tier: 'block',
       pattern_id: 'worktree-remove-unverifiable',
@@ -322,6 +390,7 @@ const evaluateWorktreeRemoval = (command, cwd) => {
 module.exports = {
   evaluateWorktreeRemoval,
   checkUnpushedCommits,
+  checkDetachedReachability,
   parseWorktreeRemoveArgs,
   isLiteralPathArg,
   findWorktreeRemoveInvocations,

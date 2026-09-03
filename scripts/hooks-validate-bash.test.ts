@@ -958,6 +958,90 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
       expect(readHookEvents(repo)).toEqual([]);
     });
   });
+
+  // #761: a detached HEAD reaching checkUnpushedCommits used to return status: 'unknown'
+  // immediately, never attempting verification — but a review worktree is detached BY
+  // CONSTRUCTION (git worktree add --detach is the only way to check out a PR head), so the
+  // guard failed closed on the routine case. These two tests exercise the reachability rung
+  // (checkDetachedReachability) added to fix that: allow when HEAD is reachable from a
+  // remote-tracking ref, deny (with its own detached-specific remedy) when it is not.
+  test('allow: a detached HEAD reachable from a remote-tracking ref is removed silently — the review-worktree case (#761)', async () => {
+    await withTempGitRepo('blackhole-hook-wt-detached-', async (mainRepo) => {
+      runGit(mainRepo, ['commit', '--allow-empty', '--quiet', '-m', 'init']);
+
+      const bareRemote = makeTempDir('blackhole-hook-wt-detached-origin-');
+      spawnSync('git', ['init', '--quiet', '--bare', bareRemote]);
+      runGit(mainRepo, ['remote', 'add', 'origin', bareRemote]);
+      runGit(mainRepo, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+
+      // Commit on a throwaway local branch, push it to origin as a PR head, then delete the
+      // local branch — the commit is reachable ONLY via refs/remotes/origin/pr-9 from this point
+      // on, never via any local branch. This is what proves the refs/remotes/-only design
+      // decision (plan Design Decision 3), not merely "is reachable from something".
+      runGit(mainRepo, ['checkout', '--quiet', '-b', 'throwaway']);
+      fs.writeFileSync(path.join(mainRepo, 'pr.txt'), 'pr head\n');
+      runGit(mainRepo, ['add', 'pr.txt']);
+      runGit(mainRepo, ['commit', '--quiet', '-m', 'pr commit']);
+      const sha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: mainRepo }).stdout.toString().trim();
+      runGit(mainRepo, ['push', '--quiet', 'origin', 'HEAD:refs/heads/pr-9']);
+      runGit(mainRepo, ['checkout', '--quiet', 'main']);
+      runGit(mainRepo, ['branch', '-D', 'throwaway']);
+      runGit(mainRepo, ['fetch', '--quiet', 'origin', 'refs/heads/pr-9:refs/remotes/origin/pr-9']);
+
+      const parent = path.join(mainRepo, '.worktrees');
+      fs.mkdirSync(parent, { recursive: true });
+      const worktree = path.join(parent, `blackhole-hook-wt-detached-${process.pid}-${Date.now()}`);
+      runGit(mainRepo, ['worktree', 'add', '--detach', '--quiet', worktree, sha]);
+
+      try {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      } finally {
+        spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+        fs.rmSync(worktree, { recursive: true, force: true });
+        fs.rmSync(bareRemote, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test('deny: a genuinely unreachable detached HEAD is refused, with a detached-specific remedy', async () => {
+    await withTempGitRepo('blackhole-hook-wt-detached-deny-', async (mainRepo) => {
+      runGit(mainRepo, ['commit', '--allow-empty', '--quiet', '-m', 'init']);
+
+      const parent = path.join(mainRepo, '.worktrees');
+      fs.mkdirSync(parent, { recursive: true });
+      const worktree = path.join(parent, `blackhole-hook-wt-detached-deny-${process.pid}-${Date.now()}`);
+      runGit(mainRepo, ['worktree', 'add', '--detach', '--quiet', worktree, 'HEAD']);
+
+      fs.writeFileSync(path.join(worktree, 'local-only.txt'), 'never pushed\n');
+      runGit(worktree, ['add', 'local-only.txt']);
+      runGit(worktree, ['commit', '--quiet', '-m', 'local only commit']);
+
+      try {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/detached/i);
+        expect(permissionReason(result.stdout)).toMatch(/reachable/i);
+        expect(permissionReason(result.stdout)).not.toMatch(/doesn't match its own remote branch name/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-detached-unreachable',
+        });
+      } finally {
+        spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+        fs.rmSync(worktree, { recursive: true, force: true });
+      }
+    });
+  });
 });
 
 // Review-round regression (#532 CHANGES_REQUIRED): the initial matcher required `git` and
