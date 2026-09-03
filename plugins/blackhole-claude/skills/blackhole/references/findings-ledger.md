@@ -41,6 +41,32 @@ Path: `.blackhole/findings-ledger.json` (gitignored at runtime).
 | `status` | `open` \| `fixed-in-pr` \| `deferred` \| `resolved` | See state machine |
 | `deferred_to_issue` | number \| null | **Required** when `status: deferred` |
 
+### id shape & next-id computation
+
+This repo's live ledger keeps `id` as a zero-padded `F-NNNNN` string for every row (verified
+2026-09-03: `jq '[.findings[].id] | map(type) | unique' .blackhole/findings-ledger.json` →
+`["string"]`, 408/408 rows, issue #796). A ledger inherited from a pre-migration schema (seen
+on a consumer repo) may instead mix `F-NNNNN` strings with bare numeric ids in the same
+`findings[]` array — `(.findings | map(.id) | max) + 1` breaks on that mix, since `jq`'s
+`max` over mixed string/number types does not produce a usable numeric counter. Use a
+shape-tolerant expression instead:
+
+```bash
+jq '(.findings | map(.id | if type == "string" then (ltrimstr("F-") | tonumber) else . end) | max) + 1' \
+  .blackhole/findings-ledger.json
+```
+
+Re-pad the result back to `F-NNNNN` before writing the new row:
+
+```bash
+jq -n --argjson n <next-id> '"F-" + (("00000" + ($n | tostring))[-5:])'
+```
+
+Do not migrate a mixed ledger's ids in place to close this gap — rewriting hundreds of live
+rows mid-campaign is higher-risk than computing `next_id` with the expression above (issue
+#796). If a consumer ledger's ids are ever intentionally normalized, that is a separate,
+explicitly-scoped migration issue, not a side effect of this doc fix.
+
 ### Status transitions
 
 ```

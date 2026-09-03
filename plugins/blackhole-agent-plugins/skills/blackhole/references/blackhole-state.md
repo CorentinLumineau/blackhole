@@ -53,6 +53,24 @@ mutation happened not to run in the same incident.
    ```
    bun run scripts/lib/state-write-guard.ts --tmp <file>.tmp --live <file> --entity-key <key> [--allow-shrink]
    ```
+
+   **Consumer-repo invocation** (issue #796): `scripts/lib/state-write-guard.ts` does not
+   resolve from a consumer repo's root — it lives inside the vendored plugin, not the consumer's
+   own `scripts/` tree. Resolve the plugin root the same way
+   `scripts/consumer-promote-review.sh` already does for `promote-review-artifact.ts`
+   (`implementer.md` § Promote Review Artifact): `BLACKHOLE_PLUGIN_ROOT` env var, else
+   `vendor/blackhole`, else `node_modules/blackhole`. From a consumer repo:
+
+   ```bash
+   bun run --cwd "${BLACKHOLE_PLUGIN_ROOT:-vendor/blackhole}" scripts/lib/state-write-guard.ts \
+     --tmp <consumer-repo-abs-path>.tmp --live <consumer-repo-abs-path> --entity-key <key>
+   ```
+
+   A bare `scripts/lib/state-write-guard.ts` path invoked from a consumer repo's root will not
+   resolve (`Module not found` — same failure class as issue #798). See
+   `queue-dag.md`'s `--entity-key` shape note above for the array-vs-object detail this
+   resolution note does not restate (V-DRY-01).
+
    `<key>` is `issues` for queue.json, `findings` for the ledger. Exit code is the contract: `0`
    validation passed, safe to install; `1` refused (reason on stderr); `2` malformed usage. The
    guard fails closed (exit `1`) on any of:

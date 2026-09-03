@@ -33,6 +33,17 @@ Path: `.blackhole/queue.json` (gitignored at runtime).
 }
 ```
 
+### `--entity-key` shape note (issue #796)
+
+`queue.json`'s `issues` is a **keyed object** (`{"298": {...}, ...}`), while
+`findings-ledger.json`'s `findings` is an **array**. `state-write-guard.ts`'s `--entity-key`
+flag already handles both shapes generically — `countEntities()` branches on
+`Array.isArray(value)` vs. `Object.keys(value).length` internally
+(`scripts/lib/state-write-guard.ts`) — so `--entity-key issues` and `--entity-key findings`
+take the identical CLI invocation shape; no separate jq idiom or invocation form is needed
+per file. This note exists only because that generic handling is not obvious from the flag
+name alone.
+
 ### Field rules
 
 **Root-level fields** (siblings of `refreshed_at`/`campaign_started_at`, not per-issue):
