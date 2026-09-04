@@ -112,6 +112,7 @@
 | reviews/review-fix-hooks-extend-assigned-worktree-write-containment-to-bash-file-write-commands.md | Review artifact for issue #804 (LGTM) | review | current | on file change |
 | reviews/review-fix-hooks-normalize-then-basename-compare-closes-worktree-remove-executable-spel.md | Review artifact for issue #788 (LGTM) | review | current | on file change |
 | reviews/review-fix-hooks-validate-file-changes-js-510-512-tests-fail-on-macos-os-tmpdir-under-p.md | Review artifact for issue #714 (LGTM, one deferred WARN) | review | current | on file change |
+| reviews/review-fix-hooks-validate-upstream-branch-identity-before-trusting-u-in-checkunpushedco.md | Review artifact for issue #781 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-fix-merge-gate-review-artifact-content-verification-against-live-ledger.md | Review artifact for issue #806 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-fix-orchestrator-refresh-main-clone-from-origin-main-post-merge-and-turn-start.md | Review artifact for issue #792 (LGTM, 1 deferred WARN) | review | current | on file change |
 | reviews/review-fix-plan-template-generalize-facts-ts-literal-bump-prohibition.md | Review artifact for issue #769 (LGTM) | review | current | on file change |
