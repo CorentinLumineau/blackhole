@@ -156,11 +156,10 @@ export const findProducerEnumViolations = (literals: ProducerLiteral[], rows: Ma
 };
 
 // Used by V-STAGE-02 — scans the 3 producer docs for literal declarations.
-const collectProducerLiterals = (): ProducerLiteral[] => [
-  ...extractProducerFieldValueLiterals(read(plannerDoc)).map((l) => ({ ...l, source: plannerDoc })),
-  ...extractProducerFieldValueLiterals(read(investigatorDoc)).map((l) => ({ ...l, source: investigatorDoc })),
-  ...extractProducerFieldValueLiterals(readComposedAgentDoc(implementerDoc)).map((l) => ({ ...l, source: implementerDoc })),
-];
+const collectProducerLiterals = (): ProducerLiteral[] =>
+  [plannerDoc, investigatorDoc, implementerDoc].flatMap((source) =>
+    extractProducerFieldValueLiterals(readComposedAgentDoc(source)).map((l) => ({ ...l, source })),
+  );
 
 const checkProducerConformance = (): CheckResult => {
   const rows = parseManifestFieldTable(read(blackholeStateDoc));
