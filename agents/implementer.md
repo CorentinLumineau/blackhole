@@ -100,6 +100,13 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
         § No-runner degradation) — do not invent a runner invocation; when no test runner is
         detected the gate degrades to a logged no-op (never a false pass, per § No-runner
         degradation), and the completion note must say plainly that no runner was found.
+        Coverage is structurally **unmeasurable** for any file under `templates/hooks/**` — those
+        modules execute only inside a subprocess spawned by `runPreToolUseHook`
+        (`scripts/hooks-validate-file.test.ts`), so `bun test --coverage` never instruments them;
+        when the diff's only changed source lives under that path, this gate MUST be reported as
+        `unmeasurable`, never `pass`. An `unmeasurable` report must state what was verified
+        instead — e.g. the end-to-end behavioral test-case count for the affected hook before and
+        after the change (citing that hook's own test file) — never an empty field.
     *   **Pre-staging sensitive-filename check (`V-SEC-11`, BLOCK)**: before this or any earlier
         `git add` in the session, run the unconditional gate below — it must see every path
         about to be staged.

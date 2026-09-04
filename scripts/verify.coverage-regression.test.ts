@@ -40,6 +40,9 @@ const IMPLEMENTER_FIXTURE_FIXED = `
         \`hunt/coverage.md\`'s runner-detection heuristic (§ Scan heuristics step 1 + § No-runner
         degradation) — do not invent a runner invocation; when no runner is detected the gate
         degrades to a logged no-op (never a false pass, per § No-runner degradation).
+        Coverage is structurally **unmeasurable** for any file under \`templates/hooks/**\` —
+        when the diff's only changed source lives under that path, this gate MUST be reported as
+        \`unmeasurable\`, never \`pass\`, with real evidence of what was verified instead.
 `;
 
 const IMPLEMENTER_FIXTURE_STALE = `
