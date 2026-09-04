@@ -4,9 +4,13 @@ import { carryManifest, loadManifest } from './lib/carry-staged-artifacts.ts';
 // Issue #715 (R-10) — CLI entrypoint for the ADR-021 D2 carry-step mechanization. Invoked from
 // `implementer.md` § Carry Staged Artifacts before opening the PR; see that section for the
 // gate/invocation contract this wraps.
+// Issue #798: the caller MUST also pass Bun's own `--cwd <abs repo-root>` flag (before the
+// script path, matching `--repo-root`) — this pins *module resolution* (this script's own
+// `./lib/...` imports) to the same tree `--repo-root` operates on, which no CLI argument here
+// can do on its own.
 function usage(): never {
   console.error(
-    'Usage: bun run scripts/carry-staged-artifacts.ts --manifest <path> --repo-root <path> [--staging-root <path>]',
+    'Usage: bun run --cwd <abs repo-root> scripts/carry-staged-artifacts.ts --manifest <path> --repo-root <path> [--staging-root <path>]',
   );
   process.exit(2);
 }

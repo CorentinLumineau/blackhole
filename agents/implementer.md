@@ -414,12 +414,14 @@ this section states only what the script does not decide.
     whether an existing doc at the target directory already covers the same concern; if so,
     update it in place (bump `last_updated`, preserve its original `created`) instead of letting
     the script create a duplicate.
-*   **Invoke**: `bun run scripts/carry-staged-artifacts.ts --manifest
-    {repo_root}/.blackhole/staged/<issue>/manifest.json --repo-root <this worktree's absolute
-    path> --staging-root {repo_root}` — `{repo_root}` is the same main-clone absolute path
-    already established for the plan file (§ "Plan artifact paths (worktree rule)"); `staged_path`
-    entries live only in the main clone (`blackhole-state.md` § Staging), never in the worktree,
-    so `--staging-root` must point there while `--repo-root` stays the worktree (issue #760).
+*   **Invoke**: `bun run --cwd <this worktree's absolute path> scripts/carry-staged-artifacts.ts
+    --manifest {repo_root}/.blackhole/staged/<issue>/manifest.json --repo-root <this worktree's
+    absolute path> --staging-root {repo_root}` — `--cwd` MUST equal `--repo-root` (issue #798 —
+    pins module resolution to the worktree, the same tree the CLI operates on). `{repo_root}` is
+    the same main-clone absolute path already established for the plan file (§ "Plan artifact
+    paths (worktree rule)"); `staged_path` entries live only in the main clone (`blackhole-state.md`
+    § Staging), never in the worktree, so `--staging-root` must point there while `--repo-root`
+    (and `--cwd`) stay the worktree (issue #760).
     Prints the carried target paths as JSON. Absent manifest ⇒ `[]`, exit 0 (nothing was staged
     for this issue). A manifest that **exists but is zero-byte or fails to parse as JSON** exits
     1 — distinct from absent (issue #558): it means a staging write was attempted and failed, so
@@ -494,10 +496,12 @@ Delete]` — ADR-021 A2).
 *   **Verify (issue #806)**: merge-readiness never trusts the staged manifest for this — a
     manifest entry is written by the same party (`implementer`) the check exists to verify, so
     `check-review-artifact.ts` no longer reads it at all (`manifestHasReviewRoute` was removed
-    outright). Before merge, run `bun run scripts/check-review-artifact.ts --config <abs> --issue
-    <N> --title "<title>" --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head
-    <sha> --repo-root <abs> --diff-file <abs paths.txt>` — every path-shaped flag must be
-    absolute, or the CLI exits `2` with its usage message. It re-renders the expected review
+    outright). Before merge, run `bun run --cwd <abs repo-root> scripts/check-review-artifact.ts
+    --config <abs> --issue <N> --title "<title>" --ledger <abs findings-ledger.json> --pr <P>
+    --branch <branch> --head <sha> --repo-root <abs repo-root> --diff-file <abs paths.txt>` —
+    `--cwd` MUST equal `--repo-root` (issue #798 — pins module resolution to the same tree the
+    CLI operates on). Every path-shaped flag must be absolute, or the CLI exits `2` with its
+    usage message. It re-renders the expected review
     markdown from the live findings ledger (`renderReviewMarkdown`) and diffs it against the
     committed file (`merge-gate.md` §5), not merely checking the file exists.
 *   **PR-body record**: `Promoted Review Artifact: <target_path> (from ledger issue #N)`.
@@ -512,8 +516,9 @@ when the diff trigger predicates in `companion-file-sync.md` are true.
     first `git add` — collect the list of paths about to be staged.
 *   **Run**:
     ```bash
-    bun run scripts/lib/companion-file-sync.ts --repo-root <worktree-abs> --diff-file <paths.txt>
+    bun run --cwd <worktree-abs> scripts/lib/companion-file-sync.ts --repo-root <worktree-abs> --diff-file <paths.txt>
     ```
+    `--cwd` MUST equal `--repo-root` (issue #798 — pins module resolution to the worktree).
     Templates are read from `templates/companion-files/` per `companion-file-sync.md` — never
     inlined in the agent prompt.
 *   **Apply** only repairs the CLI reports as needed; stage repair files in the **same PR** as the
