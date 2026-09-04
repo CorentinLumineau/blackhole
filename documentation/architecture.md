@@ -82,17 +82,18 @@ should be hand-edited directly — changes made there are overwritten on the nex
 | `skills/`, root `agents/`, `references/`, `rules/` | skills.sh (flat registry) | skills.sh marketplace | Edit via `src/` only — never hand-edit. |
 | `.cursor/` | Cursor | Cursor IDE agent/rules/skills loader | Edit via `src/` only — never hand-edit. |
 | `.claude/` | Claude Code | maintainer-local, not an install path (ADR-009) — auto-discovered only when this repo itself is opened in Claude Code, never redistributed | Edit via `src/` only — never hand-edit. |
-| `.claude-plugin/` (`plugin.json`, `marketplace.json`) + `plugins/blackhole-claude/` | Claude Code | Claude Code marketplace install (`/plugin marketplace add` + `/plugin install`) — `marketplace.json`'s `source` resolves to `plugins/blackhole-claude/`, the isolated bundle that ships `agents/` (ADR-009) | Edit via `src/` only — never hand-edit. |
-| `codex-agents/` + `codex-skills/` + `.codex-plugin/` + `codex-marketplace.json` | Codex CLI | Codex plugin + marketplace manifest | Edit via `src/` only — never hand-edit. |
-| `.agents/build/` + `.gemini-plugin/` | Antigravity / Gemini (workspace) | Workspace customization (`@coordinator` / Multitask Mode); `.gemini-plugin/plugin.json` mirrors marketplace metadata | Edit via `src/` only — never hand-edit. |
+| `.claude-plugin/` (`plugin.json`, `marketplace.json`) + `plugins/blackhole-claude/` | Claude Code | Claude Code marketplace install (`/plugin marketplace add` + `/plugin install`) — `marketplace.json`'s `source` resolves to `plugins/blackhole-claude/`, the isolated bundle that ships `agents/` (ADR-009). The root `plugin.json` beside it is **maintainer-surface**: an install-trace shows it never reaches the installed plugin, and it is retained for the release version-parity gate (ADR-038) | Edit via `src/` only — never hand-edit. |
+| `codex-agents/` + `codex-skills/` + `.codex-plugin/` + `codex-marketplace.json` | Codex CLI | Codex plugin + marketplace manifest — the marketplace `source` is the repository itself, so all four ship together. `.codex-plugin/plugin.json`'s `skills` key resolves `codex-skills/`; `codex-agents/` is **shipped-unreferenced** — delivered by the same install, referenced by no manifest, kept (ADR-038) | Edit via `src/` only — never hand-edit. |
+| `.agents/build/` + `.gemini-plugin/` | Antigravity / Gemini (workspace) | Workspace customization (`@coordinator` / Multitask Mode); `.gemini-plugin/plugin.json` mirrors marketplace metadata and is **maintainer-surface** — it sits outside the `plugins/blackhole` symlink the Antigravity install targets, so no consumer install reaches it (ADR-038) | Edit via `src/` only — never hand-edit. |
 | `plugins/blackhole-agent-plugins/` | agent-plugins.org (distribution) | Portable skills-only shell — root `plugin.json` (agent-plugins schema) + `skills/blackhole/{SKILL.md,references/}`; no `agents/`, `rules/`, or `mcp.json` (ADR-021, issue #484). Full campaign harness remains on vendor targets B–E. | Edit via `src/` only — never hand-edit. |
 | `plugins/blackhole/` | Antigravity / Gemini (distribution) | Redistributable plugin bundle — co-located `plugin.json` + `skills/` + `rules/`, no `agents/` (AC4: not part of the plugin schema) | Edit via `src/` only — never hand-edit. |
 
 ## Build & verify
 
 ```bash
-bun run build            # compiles src/ -> Cursor, Claude, skills.sh, Codex targets
-bun run build --gemini   # also compiles the Antigravity/Gemini target
+bun run build            # compiles src/ -> every git-tracked target: Cursor, Claude, skills.sh,
+                         # Codex, Antigravity/Gemini (tracked ⇒ built by default, ADR-007 T2;
+                         # --gemini/--all/--no-codex are deprecated no-op aliases)
 bun run verify           # validates plugin coherence across all compiled targets
 ```
 
