@@ -172,7 +172,7 @@ duplicate code is written, not after the PR is opened.
       — the rule-of-three threshold fired (3+ hits).
     The entry is produced even when nothing is found (the negative result is the audit trail).
     Also append this entry as a `decision_records[]` row with `kind: "reuse"` in the return
-    JSON — see `worker-schemas.md` § `decision_records[]` for the row shape.
+    JSON — see `implementer-schemas.md` § `decision_records[]` for the row shape.
 *   **On overlap ambiguity**: if a search surfaces a candidate that overlaps but does not cleanly
     fit (different signature/behaviour needed), do not silently duplicate logic nor force an
     ill-fitting reuse — stop and report per the plan's Stop Conditions.
@@ -207,7 +207,7 @@ statement of Scout Check; the Bugfix Gate below only points here, it does not re
 *   If the touched code is already clean, record "no improvement needed — code already clean" —
     the reviewer verifies the entry's presence, not a forced change.
 *   Also append this Improvement Record as a `decision_records[]` row with `kind: "improvement"`
-    in the return JSON — see `worker-schemas.md` § `decision_records[]` for the row shape.
+    in the return JSON — see `implementer-schemas.md` § `decision_records[]` for the row shape.
 *   The diff boundary (`V-SCOPE-01`) — not the execution mode or `task_type` — is the sole
     discriminator between this section and step 7's Continuous Discovery.
 
@@ -227,7 +227,7 @@ whether or not this gate is active.
     the PR description. No code path skips this when `task_type: bugfix` is present — same
     "no bypass" shape as `planner.md`'s Design Track `needs_design` gate. Also append this
     Decision Record as a `decision_records[]` row with `kind: "root-cause"` in the return JSON —
-    see `worker-schemas.md` § `decision_records[]` for the row shape.
+    see `implementer-schemas.md` § `decision_records[]` for the row shape.
 *   **Escalation triggers**: after 2 distinct failed fix attempts within the session (a fix
     applied, tests still failing, tried again, tests still failing) — stop; do not attempt a third
     approach. Return `status: blocked`, `escalation_trigger: "failed_attempts"`. If the fix has
@@ -265,7 +265,7 @@ this section documents the worker-side git mechanics and return shape, not the a
 *   **Semantic escalation**: on any semantic hunk after both attempts are exhausted (or on a
     genuine semantic conflict on Attempt 1), `git rebase --abort` (or `cherry-pick --abort`),
     return `status: blocked`, `escalation_trigger: "merge_conflict_semantic"`, and a non-empty
-    `conflict_hunks[]` (`worker-schemas.md` § `conflict_hunks[]`) — never a silent partial state.
+    `conflict_hunks[]` (`implementer-schemas.md` § `conflict_hunks[]`) — never a silent partial state.
 
 ---
 
@@ -285,7 +285,7 @@ directive, treat it as absent — behave exactly as `standard`.
       Decision Record (deep vs. shallow restructuring choice, coupling-impact assessment),
       recorded in the PR description — same "no bypass" shape, reusing the Bugfix Gate's
       Decision-Record mechanism above. Also append this Decision Record as a `decision_records[]`
-      row with `kind: "refactor"` in the return JSON — see `worker-schemas.md` §
+      row with `kind: "refactor"` in the return JSON — see `implementer-schemas.md` §
       `decision_records[]` for the row shape.
     - **Per-step commit/rollback**: extends step 4's "Incremental Implementation" cadence
       (unchanged step granularity) — each incremental change is tested **and committed** before
@@ -460,7 +460,7 @@ this section states only what the script does not decide.
 *   **PR-body record** (mirrors the Reuse Check Gate pattern — falsifiable, produced even on
     the negative case): one line per carried artifact, `Carried Artifact: <target_path>
     (<target_kind>, from <route>)`, or `Carried Artifacts: none (no manifest for this issue)`
-    when nothing was staged. No new `worker-schemas.md` return field — the PR-body record is
+    when nothing was staged. No new `implementer-schemas.md` return field — the PR-body record is
     the falsifiable evidence.
 *   **Do not delete** `.blackhole/staged/<issue>/` after carrying — it remains as campaign
     state so the reviewer audit (`reviewer.md` §25, `V-AUTO-02`) has stable data to diff
@@ -615,7 +615,7 @@ blackhole ships no browser driver (`V-INT-02`); the worktree already has depende
 (`phase-implement.md` checklist). Commit each viewport-clipped (not full-page) screenshot under
 `documentation/reviews/visual-evidence/issue-<N>/<target>px-<route-slug>-<state>.png` and link
 it in the PR body. Emit one `visual_evidence[]` entry per capture with `target`, `path`,
-`route`, and `state` set (`worker-schemas.md` § `visual_evidence[]`).
+`route`, and `state` set (`implementer-schemas.md` § `visual_evidence[]`).
 
 **Capture failure**: when no runnable Playwright/dev-server stack exists, emit a
 `capture_status: "unavailable"` entry with an explicit `note` stating why —
@@ -678,7 +678,7 @@ escalation triggers above; `blocked_step` (optional) may accompany `environmenta
 session (Reuse Check Gate, Scout Check, Bugfix Gate Root-Cause Verification, Refactoring
 Verification) — populating your own return JSON's `decision_records[]` is your only
 obligation; you never write `documentation/reference/decision-log.md` yourself, the
-orchestrator does that serially post-barrier (`worker-schemas.md` § `decision_records[]`).
+orchestrator does that serially post-barrier (`implementer-schemas.md` § `decision_records[]`).
 
 `sprint_contract_status` / `ac_results[]` (optional) carry the Sprint Contract closure gate's
 aggregate verdict and per-AC rows on a Standard-track plan — content spec lives in this
