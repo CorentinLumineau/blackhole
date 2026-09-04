@@ -4,8 +4,9 @@ import { VERIFICATION_MODES } from '../lib/worker-json/constants.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
 // V-LEDGER-01 (issue #754) — rejects a `.blackhole/findings-ledger.json` row whose `issue_ref`
-// is not `number | null`, whose `pr_ref` is not `number | null`, or that still carries a legacy
-// `pr` key — the backstop for every ledger-append path `review-aggregate.ts`'s writer fix
+// is not `number | null`, whose `pr_ref` is not `number | null`, that still carries a legacy
+// `pr` key, or whose `verification_mode` (ADR-036, issue #815) falls outside `VERIFICATION_MODES`
+// — the backstop for every ledger-append path `review-aggregate.ts`'s writer fix
 // (Task 1) doesn't reach: kaizen/hunt findings and freehand orchestrator appends. `BLOCK`, not
 // `WARN` like `queue-coherence.check.ts` — this PR's own migration (Task 2) clears the live
 // ledger to zero drifted rows, so there is no unfixable historical debt for a BLOCK verdict to
