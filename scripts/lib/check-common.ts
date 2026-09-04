@@ -109,11 +109,11 @@ export const parseIndexTableRows = (
   return rows;
 };
 
-// Issue #728 (V-INT-02 Decision Record 3): relocated from doc-health.check.ts, whose
-// `*.check.ts` extension made it unimportable from lib/ (this module's own header forbids
-// importing any *.check.ts module, to avoid import cycles) — companion-file-sync.ts (lib/)
-// needs this same idempotent-append primitive for the journeys.md INDEX row repair.
-// doc-health.check.ts re-exports both names for backward compatibility with its existing test.
+// Lives here rather than in doc-health.check.ts: a `*.check.ts` extension makes a module
+// unimportable from lib/ (this module's own header forbids importing any *.check.ts module, to
+// avoid import cycles), and companion-file-sync.ts (lib/) needs this same idempotent-append
+// primitive for the journeys.md INDEX row repair. doc-health.check.ts re-exports both names, so
+// its own importers keep working.
 export type RootIndexRow = { path: string; summary: string; type: string; status: string; reviewTrigger: string };
 
 // Issue #811 (ADR-031 Phase 1): exported for reuse by scripts/lib/doc-index-generate.ts, which

@@ -35,8 +35,7 @@ jobs:
 
       # Several bun:test fixtures (scripts/lib/test-fixtures.ts) run `git commit` against a
       # throwaway repo to seed worktree/hook-guard scenarios; a runner with no global git
-      # identity fails that commit with "Author identity unknown", never surfaced before this
-      # workflow existed because CI never ran the suite (issue #747).
+      # identity fails that commit with "Author identity unknown".
       - name: Configure git identity (test fixtures)
         run: |
           git config --global user.email "ci@blackhole.local"

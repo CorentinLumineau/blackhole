@@ -4,8 +4,8 @@ import * as path from 'path';
 import { makeTempDir } from './lib/fs.ts';
 import { checkLedgerSchema, findLedgerSchemaDrift } from './checks/ledger-schema.check.ts';
 
-// V-LEDGER-01 (issue #754) — the AC-named fixture: a string issue_ref row and a "pr"-keyed row
-// must both be reported, by id, in one failing check run.
+// V-LEDGER-01 — a string issue_ref row and a "pr"-keyed row must both be reported, by id, in
+// one failing check run.
 
 describe('findLedgerSchemaDrift', () => {
   test('a string issue_ref row and a "pr"-keyed row both fail, both named', () => {

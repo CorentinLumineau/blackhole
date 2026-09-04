@@ -64,10 +64,10 @@ export const appendDecisionRecords = (
   // Dedup identity is "already present in the log body when this call started" — never mutated
   // during the loop below. Two records sharing one (pr, kind) key can arrive in the same batch
   // (one worker completion legitimately emits several decisions for the same PR) and must both
-  // land; only a key already committed to the log on a prior run is a duplicate (issue #717
-  // review finding: mutating this set mid-loop silently dropped the second same-batch record —
-  // cross-run idempotency still holds because a second pass over the same batch re-derives this
-  // set from the now-updated body, which already contains every row the first pass appended).
+  // land; only a key already committed to the log on a prior run is a duplicate. Mutating this
+  // set mid-loop would silently drop the second same-batch record. Cross-run idempotency still
+  // holds: a second pass over the same batch re-derives this set from the now-updated body,
+  // which already contains every row the first pass appended.
   const existingKeys = new Set<string>();
   for (const row of parseRecordsTableRows(body)) {
     for (const m of row.prIssueCell.match(/\d+/g) ?? []) existingKeys.add(`${m}:${row.kind}`);
