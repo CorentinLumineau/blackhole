@@ -115,6 +115,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-PLUGIN-01 | Plugin cache version-bump gate — a diff touching `templates/hooks/**` without also changing `package.json`'s `version` field in the same diff (installed Claude Code plugin cache is version-keyed, not content-addressed — ADR-030) | BLOCK | reviewer.md §29 (Plugin Cache Version-Bump Audit) |
 | V-CWDPIN-01 | A documented bun run invocation of check-review-artifact.ts, carry-staged-artifacts.ts, or scripts/lib/companion-file-sync.ts omits a --cwd pin matching its --repo-root value | BLOCK | scripts/checks/cwd-pin-guard.check.ts |
 | V-INCLUDE-01 | A directory declared in `BUILD_INPUT_ONLY_DIRS` appears in any compiled tree, or a `{{INCLUDE:<dir>/*}}` target directory is undeclared | BLOCK | scripts/checks/build-input-dirs.check.ts |
+| V-UNFALSIFIABLE-01 | A newly introduced check/gate/control mechanism does not demonstrate it can fail — no evidence the failing input was run against it (red-before-green), it does not name its environment or fails silently rather than loudly when its inputs are absent, or the party producing its input is the same party the control checks (circular) | BLOCK | reviewer.md §31 (Unfalsifiable-Control Checklist) |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.
