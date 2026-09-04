@@ -4,7 +4,7 @@ Every worker subagent prompt you write MUST explicitly declare these 5 fields:
 
 1.  **Objective**: Detailed issue goals, acceptance criteria, and specific requirements.
 2.  **Output Format**: Deliverables (e.g. branch pushed, PR opened).
-3.  **Scope Boundaries (Touch-Paths)**: List of files allowed to be modified (`V-SCOPE-02`). Restrict changes strictly to these.
+3.  **Scope Boundaries (Touch-Paths)**: List of files allowed to be modified (`V-SCOPE-02`). Restrict changes strictly to these. Exclusions that keep a worker off territory a sibling PR is holding follow § Contended-path exclusions below — they are derived from that PR's file list, never prosed as a bare directory.
 4.  **Tool Guidance**: Specific commands to execute (e.g., project test and lint commands). **Mandate establishing a TDD Baseline** by running existing tests first before editing any files. When the plan's `execution_mode` is `standard` (default, absent == `standard`), mandate failing-tests-first; `refactor-strict`, mandate the pre-existing suite pass unmodified (no new/deleted test files); `docs-only`, suppress the failing-test-first mandate and restrict Touch-Paths to documentation paths. Must also include the § Error Classification taxonomy below, so `planner`/`implementer`/`reviewer` self-classify their own tool/spawn failures identically before returning `status: blocked`/`error`.
 5.  **Stop Condition**: Criteria for task completion. **Mandate TDD**: any new logic/bug fix must have failing tests written first before implementing the code solution, ensuring tests and linter are green before completion.
 
@@ -18,6 +18,29 @@ of `ROUTE_STATUSES`), and 7 of 8 routers correctly followed the brief into a sch
 return; the one compliant router was then "corrected" into the invalid value on re-route. This
 rule constrains *brief construction* only, never the return schema's own field set — a future
 field addition (e.g. #613's proposed `rationale`) is unaffected.
+
+### Contended-path exclusions
+
+When a parallel batch puts two workers near the same territory, field 3's exclusion is
+**derived, not prosed**: read the contended PR's own file list (`gh pr view <n> --json files`, or
+the configured backend's equivalent) and carry those paths into the contract verbatim. Three rules
+separate a real conflict guard from a manufactured coverage gap:
+
+1. **Paths, never bare directories.** The hazard is two workers editing the same *file*; a
+   directory-scoped embargo over-applies to every sibling file while doing nothing extra for the
+   contended one.
+2. **New files under a contended directory are permitted** — state this explicitly, every time. A
+   file that exists on neither branch has no conflict risk, and the only home for a new module's
+   test is usually the very directory the contended test file sits in.
+3. **A directory-level embargo carries its exception in the same sentence**: "do not modify
+   existing files under `<dir>`; new files there are fine" — never a bare "stay out of `<dir>`".
+
+The failure this prevents is silent and arrives as *absence*, not as an error: a worker that obeys
+a directory-scoped embargo ships a new module with no direct test and accurately says so, and the
+disclosure reads as a caveat rather than a defect. Sibling issues whose declared `touch_paths`
+globs already collide never reach this point — `queue-dag.md` § Step 3 — Conflict filter defers
+one of them instead. An exclusion that narrows the plan's own `## Touch-Paths` is a scope change
+like any other: amend the plan per `orchestrator-dispatch.md` § Spawn-Time Touch-Paths Amendment.
 
 ### Worker spawn model
 
