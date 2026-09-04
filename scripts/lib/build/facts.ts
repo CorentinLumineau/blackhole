@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 103;
+export const VCODE_TABLE_ROW_COUNT = 104;
 
 // § facts — build-input-only directories (ADR-034, issue #719). A declared-fact / independent-
 // scan pair, the same shape VCODE_TABLE_ROW_COUNT/CONTENT_GATE_BUDGETS/DOC_HEALTH_THRESHOLDS
