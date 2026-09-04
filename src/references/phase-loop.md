@@ -34,7 +34,8 @@
   `mergeEligible(issue)` and never call `gh pr merge` for these issues (see
   `merge-gate.md`'s bypass note — the three **admin-scheduling** conditions and the terminal
   merge call are bypassed, not the PR-quality steps). Step 0.5 (C2 no conflict), Step 0.6 (C1
-  pipeline verdict), and step 1 (C3 CI green) **do** run for `leave-open` PRs, as a
+  pipeline verdict), Step 0.7 (stacked-child tip capture, `merge-gate.md` § 7), and step 1 (C3 CI
+  green) **do** run for `leave-open` PRs, as a
   merge-readiness dry run with no `gh pr merge` call at the end. Once `review-core.md`'s
   `isLgtm(issue)` is true **and** `mergeReady(issue)` is true (a small helper composing
   C1+C2+C3 — `isLgtm(issue) AND pipelineVerdict(pr, queue) != "needs_changes" AND
@@ -73,6 +74,16 @@ section's Fix-loop routing (route to `phase: implement`, `review_iteration += 1`
 `implementer`, **STOP** this issue's merge for the turn). On `"lgtm"` or `"not_detected"`,
 continue to step 1 unchanged. **Runs for `merge_mode: leave-open` too**, as part of that mode's
 merge-readiness dry run (same D5 narrowing as Step 0.5 above).
+
+**Step 0.7 — Stacked-child tip capture check** (issue #794): after Step 0.6 passes and before step
+1, run `merge-gate.md` § 7's `stack-repair.ts repair` **without** `--apply`, with this issue as
+`--parent-issue`. Exit 0 with no children listed means this PR is nobody's parent — continue to
+step 1 unchanged. Exit non-zero means at least one open child has no recorded `parent_tip_sha`:
+**STOP** this issue's merge for the turn and capture the missing tip (`merge-gate.md` § 7's
+`capture --apply`) first. The ordering is the whole point — the `--onto` boundary is recoverable
+only while the parent branch still exists, and no amount of care at repair time recovers what the
+merge destroyed. **Runs for `merge_mode: leave-open` too**: a human's merge deletes the boundary
+exactly as blackhole's would.
 
 1. `gh pr view <n> --json headRefOid` equals local HEAD
 2. CI-wait: a detached background poll, never a foreground agent sleep. `gh pr
@@ -142,6 +153,15 @@ merge-readiness dry run (same D5 narrowing as Step 0.5 above).
    right after a merge — for every facts-read that follows: this turn's remaining
    `bun run scripts/plan-quality-gate.ts` reads, the next issue's build-in-main-clone (step 3),
    and the plugin-drift-signal scan at the next turn start.
+4.6. **Stacked-child repair (issue #794, mandatory whenever Step 0.7 listed children)**: after 4.5's
+   main-clone refresh, run `merge-gate.md` § 7's `stack-repair.ts repair --apply` once per open
+   child, each with `--child-issue <N>` and `--repo-root` set to that child's own worktree. Until
+   this runs, every child PR is `mergeable: false` and displaying the just-merged parent's files as
+   its own, so a reviewer reading it is reading a diff that is not the child's work. A non-zero
+   exit is a blocker for that child — annotate its `queue.json` `notes` and leave it for the next
+   turn; it is never a post-merge step to skip past because the parent already landed. **Runs for
+   `merge_mode: leave-open` too**, triggered by the externally-observed merge that `merge-gate.md`
+   § 3's carve-out reconciles, alongside that section's D6 sibling restack.
 5. Post-merge: migration apply if schema PR; deploy verify per runbook
 
 ## Ledger cleanup on merge
