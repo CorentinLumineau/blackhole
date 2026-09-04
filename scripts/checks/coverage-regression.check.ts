@@ -31,6 +31,9 @@ export const IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS = [
   'capture touched-file line/function',
   "hunt/coverage.md`'s runner-detection heuristic",
   'degrades to a logged no-op',
+  'unmeasurable',
+  '`templates/hooks/**`',
+  'never `pass`',
 ];
 
 // Extracted so the missing-marker → error-string mapping is directly unit-testable without
