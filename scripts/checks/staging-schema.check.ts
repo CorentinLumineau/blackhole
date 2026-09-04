@@ -1,4 +1,5 @@
 import { read, type CheckResult } from './check-utils.ts';
+import { readComposedAgentDoc } from '../lib/check-common.ts';
 
 // Issue #482: pins the ADR-021 D1 durable-artifact staging contract —
 // `.blackhole/staged/<issue>/manifest.json`'s field names and enum values, documented in
@@ -158,7 +159,7 @@ export const findProducerEnumViolations = (literals: ProducerLiteral[], rows: Ma
 const collectProducerLiterals = (): ProducerLiteral[] => [
   ...extractProducerFieldValueLiterals(read(plannerDoc)).map((l) => ({ ...l, source: plannerDoc })),
   ...extractProducerFieldValueLiterals(read(investigatorDoc)).map((l) => ({ ...l, source: investigatorDoc })),
-  ...extractProducerFieldValueLiterals(read(implementerDoc)).map((l) => ({ ...l, source: implementerDoc })),
+  ...extractProducerFieldValueLiterals(readComposedAgentDoc(implementerDoc)).map((l) => ({ ...l, source: implementerDoc })),
 ];
 
 const checkProducerConformance = (): CheckResult => {
