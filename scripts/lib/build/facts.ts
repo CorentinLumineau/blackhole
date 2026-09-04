@@ -43,7 +43,7 @@ export const VCODE_TABLE_ROW_COUNT = 108;
 // (ADR-007's binding rejection of single-source derivation for a drift check). `hunt/` is
 // deliberately NOT an entry here, since `hunt/` modules are fetched at runtime and must still
 // ship (ADR-034 Decision point 3).
-export const BUILD_INPUT_ONLY_DIRS: string[] = ['references/gates'];
+export const BUILD_INPUT_ONLY_DIRS: string[] = ['references/gates', 'references/audits'];
 
 /**
  * `.md` module count of `src/references/gates/` — the implementer's gate modules, inlined into
@@ -55,6 +55,16 @@ export const BUILD_INPUT_ONLY_DIRS: string[] = ['references/gates'];
  * directory (`ground-truth.check.ts`), never derived from this constant.
  */
 export const IMPLEMENTER_GATE_MODULE_COUNT = 15;
+
+/**
+ * Number of reviewer audit modules under `src/references/audits/` (V-AUDIT-01). Declared side of
+ * a declared-fact / independent-scan pair, the same shape `VCODE_TABLE_ROW_COUNT` uses: the
+ * scanned side is `scripts/checks/audit-modules.check.ts` listing the directory. Replaces the
+ * former `CONTENT_GATE_BUDGETS['src/agents/reviewer.md']` row — after the ADR-034 seam the
+ * reviewer's growth unit is "one more module", not "N more lines in one section", so the fact
+ * that has to be consciously bumped when an audit is added is a module count, not a LOC ceiling.
+ */
+export const REVIEWER_AUDIT_MODULE_COUNT = 32;
 
 // § facts — ADR revisit watch items (issue #710). A declared-fact / independent-scan pair, the
 // same shape `VCODE_TABLE_ROW_COUNT`/`CONTENT_GATE_BUDGETS`/`DOC_HEALTH_THRESHOLDS` already use:

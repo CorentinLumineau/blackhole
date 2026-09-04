@@ -15,9 +15,17 @@ import { root, srcDir } from './paths.ts';
 // (V-INCLUDE-01 leg B) shares this exact pattern rather than maintaining a second copy (V-DRY-01).
 export const INCLUDE_MARKER = /\{\{INCLUDE:([^}<>]+?)\/\*\}\}/g;
 
+// A module's own YAML frontmatter is module metadata for the checks that read the directory
+// (`vcodes:`/`section:`), never prose the compiled agent should carry: inlined verbatim it would
+// render mid-document as a stray horizontal rule plus key/value noise. `parseMdFrontmatter`
+// returns `{frontmatter: '', body: content}` for a module with none, so a frontmatter-less module
+// is inlined byte-identically — the pre-existing behavior.
+const moduleBody = (raw: string): string => parseMdFrontmatter(raw).body;
+
 // Expands every {{INCLUDE:<dir>/*}} marker in `content` by inlining the .md files under
 // `srcDir/<dir>` in lexical filename order (ADR-034 Decision point 5 — append-only NN- prefixed
-// module numbering sorts correctly as plain strings). `extraSources`, when passed, accumulates
+// module numbering sorts correctly as plain strings), each stripped of its own frontmatter
+// (`moduleBody`). `extraSources`, when passed, accumulates
 // each inlined file's src/-relative path in expansion order so processFile can extend the
 // generated-footer marker with every real input (ADR-034 "Provenance" — no compiled file may
 // under-report its inputs). Fails loudly (thrown error) rather than expanding to an empty string
@@ -39,7 +47,7 @@ export const expandIncludes = (
       );
     }
     for (const f of files) extraSources.push(path.relative(root, f).split(path.sep).join('/'));
-    return files.map((f) => fs.readFileSync(f, 'utf-8')).join('\n');
+    return files.map((f) => moduleBody(fs.readFileSync(f, 'utf-8'))).join('\n');
   });
 
 // Strip Cursor-only MDC frontmatter (--- globs: / alwaysApply: ---) for non-Cursor targets.
