@@ -289,11 +289,14 @@ frontmatter date is extracted and passed back in as the re-render's `today` over
 cross-midnight gap between promotion and verification never causes a spurious mismatch — the
 only two things that can differ are actual content.
 
-Mechanical check: `bun run scripts/check-review-artifact.ts --config <abs> --issue <N> --title
-<title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head <sha> --repo-root
-<abs> --diff-file <abs paths.txt>` — every path-shaped flag must be absolute
-(`path.isAbsolute()`), or the CLI exits `2` with its usage message (issue #806 AC4; sidesteps the
-#798 cwd-relative-resolution hazard class rather than sequencing behind it). Failure (missing
+Mechanical check: `bun run --cwd <abs repo-root> scripts/check-review-artifact.ts --config <abs>
+--issue <N> --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head
+<sha> --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--cwd` MUST equal `--repo-root`
+(issue #798 — pins the entry file and every transitive relative import to the tree named by
+`--repo-root`, closing the cwd-vs-repo-root module-resolution divergence rather than only
+detecting it). Every path-shaped flag must be absolute (`path.isAbsolute()`), or the CLI exits
+`2` with its usage message (issue #806 AC4; sidesteps the #798 cwd-relative-*argument*-resolution
+hazard class rather than sequencing behind it). Failure (missing
 file, or content mismatch against the ledger re-render) is a **hard stop** at merge step 2.5 —
 same class as a missing plan manifest declaration at implement time (`implementer.md` § Carry
 Staged Artifacts). Inert when either governance flag is `false`.

@@ -113,6 +113,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-WATCH-01 | ADR-declared revisit threshold (file/section LOC) tripped — `ADR_WATCH_ITEMS` row over its declared threshold; advisory, never blocks | WARN | scripts/checks/adr-watch.check.ts |
 | V-DEFER-01 | A `deferred` finding's `deferred_to_issue` target has closed (`queue.json` status `merged`/`closed`, or the target is absent from `queue.json` entirely — "untracked") with no `reconciled_at` recorded yet; advisory, never blocks | WARN | scripts/checks/deferred-reconciliation.check.ts |
 | V-PLUGIN-01 | Plugin cache version-bump gate — a diff touching `templates/hooks/**` without also changing `package.json`'s `version` field in the same diff (installed Claude Code plugin cache is version-keyed, not content-addressed — ADR-030) | BLOCK | reviewer.md §29 (Plugin Cache Version-Bump Audit) |
+| V-CWDPIN-01 | A documented bun run invocation of check-review-artifact.ts, carry-staged-artifacts.ts, or scripts/lib/companion-file-sync.ts omits a --cwd pin matching its --repo-root value | BLOCK | scripts/checks/cwd-pin-guard.check.ts |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.

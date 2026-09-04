@@ -111,11 +111,13 @@ merge-readiness dry run (same D5 narrowing as Step 0.5 above).
    `documentation/reviews/` + `documentation/INDEX.md`, commit and push on the PR branch. If
    promotion fails to land `documentation/reviews/review-{slug}.md` in the PR, **STOP** — do not
    call `gh pr merge`. Before merge (including consumer `merge-pr.sh` / Pattern B paths), run
-   `bun run scripts/check-review-artifact.ts --config <abs> --issue <N> --title <title> --ledger
-   <abs findings-ledger.json> --pr <P> --branch <branch> --head <sha> --repo-root <abs>
-   --diff-file <abs paths.txt>` — every path-shaped flag must be an absolute path (issue #806
-   AC4; a relative path exits `2` with the usage message rather than resolving against
-   whatever cwd happens to be active). This re-renders the expected review markdown from the
+   `bun run --cwd <abs repo-root> scripts/check-review-artifact.ts --config <abs> --issue <N>
+   --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head <sha>
+   --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--cwd` MUST equal `--repo-root`
+   (issue #798 — pins module resolution to the same tree the CLI operates on). Every path-shaped
+   flag must be an absolute path (issue #806 AC4; a relative path exits `2` with the usage
+   message rather than resolving against whatever cwd happens to be active). This re-renders the
+   expected review markdown from the
    live findings ledger and diffs it against the committed file, not just checking it exists
    (`merge-gate.md` §5) — exit non-zero blocks merge the same way. Inert when either governance
    flag is `false`. Bypassed under `merge_mode: leave-open`.
