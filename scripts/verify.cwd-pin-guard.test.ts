@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { findMissingCwdPin, runChecks } from './checks/cwd-pin-guard.check.ts';
+import { findMissingCwdPin, runChecks, sweepTargets } from './checks/cwd-pin-guard.check.ts';
 
 // Regression guard for issue #798: `bun run scripts/<name>.ts` resolves the entry file and every
 // transitive relative `./lib/...` import against the process cwd, not against any `--repo-root`
@@ -74,5 +74,29 @@ describe('cwd-pin-guard runChecks() against the real src/ tree', () => {
     // On failure, surface which file:line lacks a --cwd pin rather than a bare `false`.
     expect(result.detail ?? '').toBe('');
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('cwd-pin-guard sweep scope', () => {
+  test('sweeps root src/SKILL.md alongside the src/agents and src/references directories', () => {
+    const targets = sweepTargets();
+    expect(targets).toContain('src/SKILL.md');
+    expect(targets).toContain('src/agents/implementer.md');
+    expect(targets).toContain('src/references/companion-file-sync.md');
+  });
+
+  test('stays non-recursive — src/references/hunt/*.md is outside the declared scope', () => {
+    expect(sweepTargets().some((target) => target.startsWith('src/references/hunt/'))).toBe(false);
+  });
+
+  test('flags the bootstrap-scaffold companion-file-sync.ts invocation shape when unpinned', () => {
+    const bad = '   `bun run scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index` to';
+    expect(findMissingCwdPin(bad, 'src/SKILL.md')).toEqual(['src/SKILL.md:1']);
+  });
+
+  test('does not flag the bootstrap-scaffold invocation once --cwd matches --repo-root', () => {
+    const good =
+      '   `bun run --cwd <path> scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index` to';
+    expect(findMissingCwdPin(good, 'src/SKILL.md')).toEqual([]);
   });
 });

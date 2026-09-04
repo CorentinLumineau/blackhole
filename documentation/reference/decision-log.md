@@ -4,7 +4,7 @@ summary: "Running decision log of Hard Choice / Bugfix / Refactoring decision re
 status: current
 review_trigger: "on file change"
 created: 2026-07-20
-last_updated: 2026-09-03
+last_updated: 2026-09-04
 related:
   - documentation/decisions/ADR-012-shared-artifact-substrate.md
 ---
@@ -84,3 +84,6 @@ records why the number is what it is, so the question is not re-litigated on eve
 | 810 | root-cause | scripts/lib/carry-staged-artifacts.ts | Normalized target_path before the allowlist comparison, matching containment's existing normalize-before-compare against repoRoot | Containment normalized the path before comparing against repoRoot; the allowlist did not normalize before comparing against documentation/**. Two gates, two different representations of the same path — that mismatch, not either gate individually, was the vulnerability |
 | 810 | reuse | scripts/lib/carry-target-allowlist.ts | New scripts/lib/carry-target-allowlist.ts modeled on ops-touch-paths.ts's named-glob-array + boolean-predicate shape | Reuse check found no existing carry-target-allowlist primitive (repo-wide grep returned 5 unrelated hits) — first occurrence of this concern |
 | 810 | improvement | scripts/lib/carry-staged-artifacts.test.ts | Flipped the stale /etc/passwd 'keeps carrying' assertion whose comment explicitly warned against flipping it, and rewrote the comment to record that AC1's allowlist supersedes it | Scout Check within the diff boundary; containment still holds, it was simply never sufficient on its own to make a path safe to write |
+| 851 | root-cause | src/SKILL.md, scripts/checks/cwd-pin-guard.check.ts | Two defects: the SKILL.md invocation omitted the --cwd pin, and the guard's sweep scope never read root src/SKILL.md; fixed both via an explicit SWEEP_FILES unioned by an exported sweepTargets() | Pinning the call site alone leaves the blind spot; a recursive walk silently pulls in the deliberately excluded hunt/*.md; an explicit, exported scope is assertable rather than inferred from the verdict |
+| 851 | reuse | scripts/checks/cwd-pin-guard.check.ts | Reused findMissingCwdPin as the single unpinned-invocation detector, plus listFiles/read from check-common and check-utils | The scope extension feeds the existing matcher new targets rather than adding a second matcher |
+| 851 | improvement | scripts/checks/cwd-pin-guard.check.ts | No improvement needed; read() throwing on an absent SWEEP_FILES entry was kept deliberately | A missing sweep target must fail loudly rather than degrade to a silent pass — the property this fix restores |

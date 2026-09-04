@@ -61,7 +61,7 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    `documentation/reference/journeys.md` under the same skip-if-exists rule **only when** the
    companion-file scaffold above is not skipped **and** `kaizen.enabled` is `true` **and**
    `kaizen.kinds` contains `ux-coherence`. When created (not skipped), run
-   `bun run scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index` to
+   `bun run --cwd <path> scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index` to
    upsert its `documentation/INDEX.md` row (idempotent; no-op when `documentation/INDEX.md`
    does not yet exist in the target repo).
    Full contract: [templates/companion-files/README.md](../templates/companion-files/README.md).
