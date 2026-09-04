@@ -63,6 +63,15 @@ function validateImplementerBlockedFields(data: Record<string, unknown>, errors:
 }
 
 function validateImplementerOptionalFields(data: Record<string, unknown>, errors: string[]): void {
+  // `pr` is legitimate one level down, inside a decision_records[] row, so the near-miss reads
+  // as plausible at the top level. Diagnose it by name instead of letting the payload fail with
+  // a bare `pr_number: required` (implementer-schemas.md § `pr_number`).
+  if ('pr' in data) {
+    errors.push(
+      'pr: unknown field — the canonical top-level PR number is `pr_number` (`decision_records[].pr` is the separate nested field)',
+    );
+  }
+
   if ('task_type' in data) {
     if (!isString(data.task_type)) {
       errors.push('task_type: expected string');

@@ -276,6 +276,12 @@ below).
 | `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent security verification mode (`review-core.md` § Independent security verification, `reviewer.md` § 24); absent/omitted for every other dispatch |
 | `verification_legs` | `{direction, mode, evidence}[]` | optional — ADR-036 (issue #815); a clean/negative investigation leg that produced no `Finding` object |
 
+The reviewer return declares no PR-number field — the PR under review is the dispatch's own
+input, not something the reviewer reports back. Where a worker contract does carry one, the
+canonical top-level spelling is `pr_number`, defined once in
+[`implementer-schemas.md`](implementer-schemas.md) § `pr_number` and cited here rather than
+restated.
+
 ### `recheck` (optional — recheck-mode fast path, issue #214)
 
 Carries one entry per prior finding named in the recheck-mode prompt, verifying whether the
