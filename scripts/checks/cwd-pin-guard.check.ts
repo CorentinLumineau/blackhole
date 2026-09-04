@@ -47,15 +47,22 @@ export const findMissingCwdPin = (content: string, label: string): string[] => {
   return violations;
 };
 
-// Sweep scope: `src/agents/*.md` + `src/references/*.md` only — non-recursive, per the plan's
-// declared scope. `src/SKILL.md` and `src/references/hunt/*.md` are deliberately excluded (not
-// exempted from an otherwise-matching pattern): they sit outside the declared sweep path.
+// Sweep scope: `src/agents/*.md` + `src/references/*.md` (non-recursive) plus the root
+// `src/SKILL.md`, which documents its own bootstrap-time invocation and so carries the same
+// class of call site. `src/references/hunt/*.md` stays deliberately excluded (not exempted from
+// an otherwise-matching pattern): it sits outside the declared sweep path.
 const SWEEP_DIRS = ['src/agents', 'src/references'];
+const SWEEP_FILES = ['src/SKILL.md'];
+
+// Exported so the sweep's own scope is assertable, not just its verdict: a scope that silently
+// stops covering a file would otherwise still report `ok: true`.
+export const sweepTargets = (): string[] => [
+  ...SWEEP_DIRS.flatMap((dir) => listFiles(dir).map((file) => `${dir}/${file}`)),
+  ...SWEEP_FILES,
+];
 
 const checkCwdPinGuard = (): CheckResult => {
-  const violations = SWEEP_DIRS.flatMap((dir) =>
-    listFiles(dir).flatMap((file) => findMissingCwdPin(read(`${dir}/${file}`), `${dir}/${file}`)),
-  );
+  const violations = sweepTargets().flatMap((target) => findMissingCwdPin(read(target), target));
   if (violations.length) return { id: 'V-CWDPIN-01', ok: false, detail: violations.join('; ') };
   return { id: 'V-CWDPIN-01', ok: true };
 };
