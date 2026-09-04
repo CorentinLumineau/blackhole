@@ -107,6 +107,7 @@
 | reviews/review-feat-findings-ledger-deferred-finding-reconciliation-on-target-closure.md | Review artifact for issue #809 (LGTM, 0 deferred WARN) | review | current | on file change |
 | reviews/review-feat-planner-plan-quality-gate-cli-invoked-at-plan-time.md | Review artifact for issue #716 (LGTM) | review | current | on file change |
 | reviews/review-feat-reviewer-plugin-cache-version-bump-gate-drift-signal.md | Review artifact for issue #800 (LGTM) | review | current | on file change |
+| reviews/review-feat-reviewer-v-test-11-unfalsifiable-test-check-adr-032.md | Review artifact for issue #795 (LGTM) | review | current | on file change |
 | reviews/review-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Review artifact for issue #715 (LGTM) | review | current | on file change |
 | reviews/review-feat-scripts-decision-log-append-ts-bumps-last-updated-silent-log-doc-health-sig.md | Review artifact for issue #717 (LGTM) | review | current | on file change |
 | reviews/review-fix-config-registration-parent-key-coverage-for-nested-config-blocks-router-conf.md | Review artifact for issue #707 (LGTM, 1 deferred WARN) | review | current | on file change |
