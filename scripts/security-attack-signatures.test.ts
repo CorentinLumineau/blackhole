@@ -6,8 +6,9 @@ import * as path from 'path';
 // compact CWE/pattern table cannot silently shrink between releases.
 
 const root = path.resolve(import.meta.dirname, '..');
+const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
 const filePath = 'src/references/security-attack-signatures.md';
-const content = fs.readFileSync(path.join(root, filePath), 'utf-8');
+const content = read(filePath);
 
 const REQUIRED_HEADINGS = [
   '## Injection',
@@ -85,13 +86,10 @@ describe('security-mode wiring cites the reference file', () => {
     expect(reviewCore).not.toContain('not a vendored import');
   });
 
-  test('reviewer.md § 4 cites security-attack-signatures.md once', () => {
-    const reviewer = fs.readFileSync(path.join(root, 'src/agents/reviewer.md'), 'utf-8');
-    const section4Match = reviewer.match(/### 4\. Security Checks\n([\s\S]*?)\n### 5\./);
-    expect(section4Match).not.toBeNull();
-    const section4 = section4Match![1];
-    const matches = section4.match(/security-attack-signatures\.md/g) ?? [];
+  test('reviewer.md § Security Checks cites security-attack-signatures.md once', () => {
+    const securityChecks = read('src/references/audits/04-security-checks.md');
+    const matches = securityChecks.match(/security-attack-signatures\.md/g) ?? [];
     expect(matches.length).toBe(1);
-    expect(section4).toContain('V-SEC-06');
+    expect(securityChecks).toContain('V-SEC-06');
   });
 });
