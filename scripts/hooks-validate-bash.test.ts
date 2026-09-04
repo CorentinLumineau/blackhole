@@ -1479,7 +1479,7 @@ describe('validate-bash-command.js — worktree-removal guard global-option and 
 
 // Path-qualified `git` invocation (#774): the guard's command-word predicate accepted a `git`
 // match only when a shell separator preceded it, so `/usr/bin/git worktree remove <path>` was
-// discarded before `findWorktreeRemoveInvocations` ever saw it and the removal ran with no
+// discarded before `findRemovalInvocations` ever saw it and the removal ran with no
 // unpushed-commit check at all — a fail-open on the guard, not a missed warning. The widened
 // predicate must admit the path-qualified form without re-admitting the `--git-dir=` fragment
 // class the original predicate exists to exclude, so both directions are pinned below.
@@ -1712,6 +1712,259 @@ describe('validate-bash-command.js — worktree-removal guard executable-spellin
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
         expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block' });
+      },
+    );
+  });
+});
+
+// rm-shaped removal of a registered worktree (#803). `git worktree remove` is guarded on four
+// counts, and every one of them raised the incentive to reach for the one removal path that was
+// guarded on none: a recursive `rm` straight at the worktree directory. Detection cannot be a
+// bash-patterns.json entry — telling a worktree directory apart from any other path needs the same
+// dynamic `git worktree list` resolution the guard already performs, which no static regex over the
+// command text can do. Both directions below are load-bearing: a recursive rm at a registered
+// linked worktree runs the SAME checks as `git worktree remove`, and a recursive rm at anything
+// else keeps behaving exactly as it did (the over-tightening risk, and the one that matters —
+// `rm -rf` on ordinary paths is routine).
+describe('validate-bash-command.js — rm-shaped worktree removal (#803)', () => {
+  test('deny: `rm -rf <worktree>` on a branch with unpushed commits is refused, like git worktree remove', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-unpushed',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`rm -rf ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'rm-worktree-unpushed',
+        });
+      },
+    );
+  });
+
+  test('deny: `rm -rf <worktree>` on a worktree with untracked-only dirt is refused — a recursive rm has no native dirty-tree refusal at all', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-dirty',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'untracked.txt'), 'never added\n');
+
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`rm -rf ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/uncommitted|untracked/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'rm-worktree-dirty',
+        });
+      },
+    );
+  });
+
+  // Spelling coverage adopts #788's answer for `git` rather than inventing a parallel one: the
+  // clause's first token is normalized (`normalizeShellWord`) and its basename compared, so every
+  // literal spelling of `rm` is one code path. The recursive flag is likewise matched across its
+  // combined, reversed, split and long forms.
+  test.each([
+    ['-fr reversed flag cluster', (worktree: string) => `rm -fr ${worktree}`],
+    ['--recursive --force long form', (worktree: string) => `rm --recursive --force ${worktree}`],
+    ['split -r -f flags', (worktree: string) => `rm -r -f ${worktree}`],
+    ['path-qualified /bin/rm', (worktree: string) => `/bin/rm -rf ${worktree}`],
+    ['backslash-escaped rm', (worktree: string) => `\\rm -rf ${worktree}`],
+    ['double-quoted rm', (worktree: string) => `"rm" -rf ${worktree}`],
+  ])('deny: %s targeting a never-pushed worktree is still detected', async (label, buildCommand) => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      `blackhole/issue-803-${label.replace(/[^a-z0-9]+/gi, '-')}`,
+      async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(buildCommand(worktree)), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/verify/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'rm-worktree-unverifiable',
+        });
+      },
+    );
+  });
+
+  test('deny: a chained `cd <repo> && rm -rf <worktree>` is checked at its own clause, not only the first', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-chained',
+      async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`cd ${mainRepo} && rm -rf ${worktree}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block' });
+      },
+    );
+  });
+
+  test('deny: a worktree in second positional position (`rm -rf <ordinary> <worktree>`) is still found', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-second-positional',
+      async (mainRepo, worktree) => {
+        const ordinary = path.join(mainRepo, 'build-output');
+        fs.mkdirSync(ordinary, { recursive: true });
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`rm -rf ${ordinary} ${worktree}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block' });
+      },
+    );
+  });
+
+  // AC2 — the over-tightening direction. Each case below is a recursive rm that must keep behaving
+  // exactly as it did before this guard existed: allowed silently, with no durable event.
+  test('allow: `rm -rf <ordinary directory>` inside the repo is untouched — the over-tightening control', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-ordinary',
+      async (mainRepo, worktree) => {
+        const ordinary = path.join(mainRepo, 'node_modules');
+        fs.mkdirSync(ordinary, { recursive: true });
+        fs.writeFileSync(path.join(ordinary, 'junk.txt'), 'disposable\n');
+        // The worktree exists and was never pushed — proving the allow below comes from the
+        // target not being a worktree, not from there being nothing unsafe in the repo at all.
+        expect(fs.existsSync(worktree)).toBe(true);
+
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`rm -rf ${ordinary}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
+
+  test('allow: `rm -rf <subdirectory of a worktree>` is untouched — removing files inside a worktree is not removing the worktree', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-subdir',
+      async (mainRepo, worktree) => {
+        const inside = path.join(worktree, 'dist');
+        fs.mkdirSync(inside, { recursive: true });
+
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`rm -rf ${inside}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
+
+  test('allow: `rm -rf <main working tree>` is untouched — `git worktree remove` refuses a main worktree outright, so there is no check to mirror', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-main-worktree',
+      async (mainRepo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`rm -rf ${mainRepo}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
+
+  test('allow: a non-recursive `rm -f <worktree>` is untouched — it cannot remove a directory in the first place', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-non-recursive',
+      async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`rm -f ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
+
+  test('allow: `rm -rf "$WT"` is untouched — a dynamic target cannot be shown to be a worktree, and refusing every one would be the over-tightening AC2 forbids', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-dynamic',
+      async (mainRepo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload('rm -rf "$WT"'), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
+
+  test('allow: a comment mentioning `rm -rf <worktree>` is non-executing text and stays allowed', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-comment',
+      async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`# rm -rf ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
+
+  test('allow: a fully pushed, clean worktree is removable by rm exactly as by `git worktree remove` — the parity control', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-clean',
+      async (mainRepo, worktree, push) => {
+        push();
+
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`rm -rf ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
       },
     );
   });

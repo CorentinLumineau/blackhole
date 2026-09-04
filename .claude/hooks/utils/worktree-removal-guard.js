@@ -64,9 +64,29 @@
  * "cannot verify, must refuse" posture as an unresolvable path argument. A leading `NAME=value`
  * assignment (or a run of them) is skipped before the executable check, matching how bash itself
  * reads `GIT_AUTHOR_NAME=foo git worktree remove x` — the assignment is not the executable.
+ *
+ * A recursive `rm` straight at the worktree directory reaches the same destruction by a different
+ * spelling, and until #803 it was the one removal path guarded on nothing at all — so every
+ * refusal class above raised the incentive to use it. It is recognized by the same clause walk and
+ * the same `normalizeShellWord` basename comparison, and once its target resolves to a registered
+ * LINKED worktree (`isRegisteredLinkedWorktree`) it runs the identical check functions, never a
+ * second copy of them. Two asymmetries against the `git worktree remove` path are deliberate, both
+ * for the same reason — an `rm` argument is an ordinary path until proven otherwise, where a `git
+ * worktree remove` argument is a worktree by the command's own declaration:
+ *   - The dirty-tree check always applies (`RM_REMOVAL_SHAPE.checkDirty`), not only under a force
+ *     flag: `rm -r` has no native refusal for git to bypass, making it strictly weaker than a
+ *     plain `git worktree remove`.
+ *   - A target that cannot be resolved statically (`$VAR`, a glob, a command substitution) or
+ *     whose worktree registration cannot be read is ALLOWED, the opposite of the fail-closed
+ *     posture every check below takes. Refusing what cannot be verified is right when the command
+ *     is already known to target a worktree; applied to `rm` it would attach a new refusal to
+ *     every `rm -rf "$dir"` in the repo, which is the over-tightening this guard must not
+ *     introduce (issue #803 AC2). The residual bypass — a recursive rm whose worktree target is
+ *     spelled dynamically — is accepted knowingly, and pinned by its own regression test.
  */
 
 const { execFileSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const { computeMaskedSpans } = require('./bash-context');
 
@@ -284,18 +304,25 @@ const clauseTailFrom = (command, index) => {
 };
 
 /**
- * Every `git worktree remove` invocation in `command`, tolerant of global options between `git`
- * and `worktree` (`-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=<path>`, combinations), of more
- * than one such invocation in a chained command, and of leading `NAME=value` assignments before
- * the executable. Each entry is either `{ argTokens }` — the tokens following `remove` (flags and
- * the path argument), ready for `parseWorktreeRemoveArgs` — or `{ unresolvableExecutable: true }`
- * when the executable position itself could not be resolved statically (#788 Execution Strategy
- * step 2). Naive whitespace tokenization for everything after the executable token, matching this
- * module's existing convention for the post-`remove` tail (a quoted path containing a literal
- * space is not resolved either way — not a regression, the original code had the same limitation
- * for that argument).
+ * Every worktree-removing invocation in `command`, in either spelling this guard covers. For the
+ * `git worktree remove` spelling the walk is tolerant of global options between `git` and
+ * `worktree` (`-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=<path>`, combinations), of more than
+ * one such invocation in a chained command, and of leading `NAME=value` assignments before the
+ * executable. Each entry is one of:
+ *   - `{ kind: 'git', argTokens }` — the tokens following `remove` (flags and the path argument),
+ *     ready for `parseWorktreeRemoveArgs`.
+ *   - `{ kind: 'git', unresolvableExecutable: true }` — the executable position itself could not
+ *     be resolved statically (#788 Execution Strategy step 2).
+ *   - `{ kind: 'rm', argTokens }` — the tokens following an `rm` executable, ready for
+ *     `parseRmRemovalArgs`. Emitted for EVERY `rm` clause, recursive or not and whatever its
+ *     target: whether it removes a registered worktree is a question only
+ *     `evaluateRmInvocation` can answer, since it needs the resolved path.
+ * Naive whitespace tokenization for everything after the executable token, matching this module's
+ * existing convention for the post-`remove` tail (a quoted path containing a literal space is not
+ * resolved either way — not a regression, the original code had the same limitation for that
+ * argument).
  */
-const findWorktreeRemoveInvocations = (command) => {
+const findRemovalInvocations = (command) => {
   const masked = computeMaskedSpans(command);
   const invocations = [];
   for (const clauseStart of findClauseStartIndices(command, masked)) {
@@ -311,16 +338,23 @@ const findWorktreeRemoveInvocations = (command) => {
 
     if (dynamic) {
       if (containsWorktreeRemoveTokens(tokens, execIndex + 1)) {
-        invocations.push({ unresolvableExecutable: true });
+        invocations.push({ kind: 'git', unresolvableExecutable: true });
       }
       continue;
     }
-    if (!executable || path.basename(executable) !== 'git') continue;
+    if (!executable) continue;
+
+    const basename = path.basename(executable);
+    if (basename === 'rm') {
+      invocations.push({ kind: 'rm', argTokens: tokens.slice(execIndex + 1) });
+      continue;
+    }
+    if (basename !== 'git') continue;
 
     const subcommandIndex = skipGitGlobalOptions(tokens, execIndex + 1);
     if (subcommandIndex === -1) continue;
     if (tokens[subcommandIndex] !== 'worktree' || tokens[subcommandIndex + 1] !== 'remove') continue;
-    invocations.push({ argTokens: tokens.slice(subcommandIndex + 2) });
+    invocations.push({ kind: 'git', argTokens: tokens.slice(subcommandIndex + 2) });
   }
   return invocations;
 };
@@ -350,8 +384,99 @@ const parseWorktreeRemoveArgs = (argTokens) => {
   return { force, pathArg: positional[0] };
 };
 
+/** Splits the token array following an `rm` executable into `{ recursive, positional }`. Only the
+ * recursive flag is extracted, in every spelling that enables it (`-r`, `-R`, any cluster
+ * containing one such as `-rf`/`-fr`/`-rv`, a split `-r -f`, and the long `--recursive`): without
+ * it `rm` cannot remove a directory at all, so a non-recursive call can never remove a worktree
+ * and is left alone. `-f` is deliberately NOT tracked — unlike `git worktree remove`'s `--force`
+ * it gates nothing here (see `RM_REMOVAL_SHAPE`). Every token is put through `normalizeShellWord`
+ * first, the same discipline the executable token gets, so a quoted or escaped flag or path is
+ * read exactly like its bare spelling. Unlike `parseWorktreeRemoveArgs` this keeps EVERY
+ * positional argument rather than requiring exactly one: `rm -rf a b c` is an ordinary shape, and
+ * a worktree among several targets must still be found. A token whose own normalization is
+ * dynamic is dropped rather than refused — see the module docstring on why this path allows what
+ * it cannot resolve. */
+const parseRmRemovalArgs = (argTokens) => {
+  let recursive = false;
+  const positional = [];
+  let afterDoubleDash = false;
+  for (const rawToken of argTokens) {
+    const { text, dynamic } = normalizeShellWord(rawToken);
+    if (dynamic) continue;
+    if (afterDoubleDash) {
+      positional.push(text);
+      continue;
+    }
+    if (text === '--') {
+      afterDoubleDash = true;
+      continue;
+    }
+    if (text.startsWith('--')) {
+      if (text === '--recursive') recursive = true;
+      continue;
+    }
+    if (text.startsWith('-') && text.length > 1) {
+      if (/[rR]/.test(text.slice(1))) recursive = true;
+      continue;
+    }
+    positional.push(text);
+  }
+  return { recursive, positional };
+};
+
 const git = (args, cwd) =>
   execFileSync('git', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], cwd }).trim();
+
+/** The canonical form of `candidate` for comparing a command's path argument against a path `git
+ * worktree list` printed: trailing slashes dropped, symlinks resolved when the path exists. Falls
+ * back to the trimmed string when it does not — an unresolvable target cannot match a registered
+ * worktree either way, so the fallback only ever produces a non-match. */
+const canonicalPath = (candidate) => {
+  const trimmed = candidate.replace(/\/+$/, '') || '/';
+  try {
+    return fs.realpathSync(trimmed);
+  } catch {
+    return trimmed;
+  }
+};
+
+/**
+ * True when `resolvedPath` is a registered LINKED worktree — the exact set `git worktree remove`
+ * itself can target, resolved the only way it can be (`git worktree list --porcelain`; this is
+ * why the whole module exists outside `bash-patterns.json`). The listing is taken from the target
+ * path itself, not from `cwd`, so a worktree belonging to a repo the caller is not standing in is
+ * still recognized; `cwd` is only the spawn directory, which must be a real one.
+ *
+ * The main working tree is excluded — it is `git worktree list`'s documented first entry, and
+ * `git worktree remove` refuses it outright ("is a main working tree"), so there is no check to
+ * mirror for it. Including it would instead attach a brand-new refusal to `rm -rf <any clone
+ * root>`, exactly the over-tightening this must not introduce. A path INSIDE a worktree is not the
+ * worktree either: removing files under it is not removing it.
+ *
+ * `allWorktreeRoots` (hook-event-log.js) is deliberately not reused despite running the same git
+ * command: its own docstring records that it is NOT every registered worktree but a narrowed
+ * containment-trust list (main-clone- and scratchpad-nested only), because trusting an arbitrary
+ * registered worktree there would widen a write allow-list (#510/F-00088). Reusing it here would
+ * invert that narrowing into an under-detection — a worktree it filters out would be silently
+ * removable — so the two ask genuinely different questions of the same output.
+ *
+ * Fail-OPEN by design, the opposite posture to every check below: anything unresolvable (path
+ * gone, not a git repo, git unavailable) is reported as "not a worktree". See the module docstring.
+ */
+const isRegisteredLinkedWorktree = (resolvedPath, cwd) => {
+  let listing;
+  try {
+    listing = git(['-C', resolvedPath, 'worktree', 'list', '--porcelain'], cwd);
+  } catch {
+    return false;
+  }
+  const registered = listing
+    .split('\n')
+    .filter((line) => line.startsWith('worktree '))
+    .map((line) => line.slice('worktree '.length));
+  const target = canonicalPath(resolvedPath);
+  return registered.slice(1).some((root) => canonicalPath(root) === target);
+};
 
 /**
  * Resolves whether a detached-HEAD `worktreePath` is safe to remove — the reachability rung
@@ -535,9 +660,107 @@ const unresolvableExecutableDecision = () => ({
     '$(...), backticks, or $VAR indirection).',
 });
 
-/** Evaluates one `{ argTokens }` invocation against `cwd`, returning a block decision or null
- * when this single invocation is safe (`clean`) — `evaluateWorktreeRemoval` below decides what
- * "safe overall" means across every invocation in the command. */
+/** The pattern ids and the two prose clauses that differ between the removal spellings this guard
+ * covers. Everything else — the check functions run, the order they run in, the resolved path they
+ * run against — is shared, so the durable event still distinguishes a refused `git worktree
+ * remove` from a refused `rm -rf` without a ledger reader having to parse the recorded command. */
+const gitRemovalShape = (force) => ({
+  checkDirty: force,
+  dirtyId: 'worktree-remove-force-dirty',
+  dirtyDiscardClause: 'that --force would discard permanently',
+  dirtyUnknownId: 'worktree-remove-force-unreadable',
+  unpushedId: force ? 'worktree-remove-force-unpushed' : 'worktree-remove-unpushed',
+  unpushedNote: force ? "; --force also bypasses git's own dirty-tree refusal" : '',
+  detachedId: 'worktree-remove-detached-unreachable',
+  unverifiableId: 'worktree-remove-unverifiable',
+});
+
+/** `checkDirty` is unconditionally true here, with no force flag gating it: `rm -r` has no native
+ * dirty-tree refusal for a force flag to bypass, which makes it strictly weaker than even a plain
+ * `git worktree remove`. Gating the check on `-f` would leave `rm -r <dirty worktree>` — which
+ * destroys the same work — unguarded. */
+const RM_REMOVAL_SHAPE = {
+  checkDirty: true,
+  dirtyId: 'rm-worktree-dirty',
+  dirtyDiscardClause: 'that a recursive rm would discard permanently',
+  dirtyUnknownId: 'rm-worktree-unreadable',
+  unpushedId: 'rm-worktree-unpushed',
+  unpushedNote: '; a recursive rm performs none of the checks git worktree remove performs',
+  detachedId: 'rm-worktree-detached-unreachable',
+  unverifiableId: 'rm-worktree-unverifiable',
+};
+
+/** Runs the guard's three check functions against an already-resolved worktree path, returning a
+ * block decision or null when this path is safe. The single place either removal spelling reaches
+ * a verdict: the decision logic exists once and `shape` supplies only the pattern ids and prose
+ * that legitimately differ, so the two spellings cannot drift into two different safety bars. */
+const evaluateResolvedWorktree = (resolvedPath, shape) => {
+  if (shape.checkDirty) {
+    const dirty = checkDirtyWorktree(resolvedPath);
+    if (dirty.status === 'dirty') {
+      return {
+        tier: 'block',
+        pattern_id: shape.dirtyId,
+        reason:
+          `Worktree at ${resolvedPath} has uncommitted or untracked changes (${dirty.detail}) ` +
+          `${shape.dirtyDiscardClause}. Remedy: commit or stash the changes, or run 'git ` +
+          `clean' deliberately first if they are genuinely disposable.`,
+      };
+    }
+    if (dirty.status === 'unknown') {
+      return {
+        tier: 'block',
+        pattern_id: shape.dirtyUnknownId,
+        reason:
+          `${unverifiableRefusalOpener(resolvedPath, 'is clean', dirty.detail)} Remedy: confirm ` +
+          `the path exists and is a valid git worktree (not already removed, moved, or corrupted), ` +
+          `then retry.`,
+      };
+    }
+  }
+
+  const result = checkUnpushedCommits(resolvedPath);
+
+  if (result.status === 'unpushed') {
+    return {
+      tier: 'block',
+      pattern_id: shape.unpushedId,
+      reason:
+        `Worktree at ${resolvedPath} has commits not on its remote (${result.detail}) — removal would discard them permanently` +
+        shape.unpushedNote,
+    };
+  }
+  if (result.status === 'unknown') {
+    if (result.detached) {
+      return {
+        tier: 'block',
+        pattern_id: shape.detachedId,
+        reason:
+          `${unverifiableRefusalOpener(resolvedPath, 'has no unpushed commits', result.detail)} This worktree's HEAD is detached ` +
+          `and not reachable from any known remote-tracking ref. Remedy: fetch a ref that contains this ` +
+          `commit (e.g. its PR head) into a remote-tracking ref, then retry: git fetch origin ` +
+          `refs/pull/<PR>/head:refs/remotes/origin/<name> ${GITHUB_RETAINS_PR_HEADS_NOTE}. A commit that ` +
+          NEVER_PUSHED_ANYWHERE_SUFFIX,
+      };
+    }
+    return {
+      tier: 'block',
+      pattern_id: shape.unverifiableId,
+      reason:
+        `${unverifiableRefusalOpener(resolvedPath, 'has no unpushed commits', result.detail)} Remedy: if this is a pushed PR ` +
+        `branch this worktree checked out under a local name that doesn't match its own remote ` +
+        `branch name, fetch its head into the tracking ref this check falls back to, then retry: ` +
+        `git fetch origin refs/pull/<PR>/head:refs/remotes/origin/<branch> ${GITHUB_RETAINS_PR_HEADS_NOTE}. ` +
+        `A branch that ` +
+        NEVER_PUSHED_ANYWHERE_SUFFIX,
+    };
+  }
+  return null; // clean — this invocation alone does not block
+};
+
+/** Evaluates one `git worktree remove` invocation's `{ argTokens }` against `cwd`, returning a
+ * block decision or null when this single invocation is safe (`clean`) — `evaluateWorktreeRemoval`
+ * below decides what "safe overall" means across every invocation in the command. */
 const evaluateOneInvocation = (argTokens, cwd) => {
   const { force, pathArg } = parseWorktreeRemoveArgs(argTokens);
   if (!pathArg || !isLiteralPathArg(pathArg)) {
@@ -553,89 +776,51 @@ const evaluateOneInvocation = (argTokens, cwd) => {
   }
 
   const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(cwd, pathArg);
+  return evaluateResolvedWorktree(resolvedPath, gitRemovalShape(force));
+};
 
-  if (force) {
-    const dirty = checkDirtyWorktree(resolvedPath);
-    if (dirty.status === 'dirty') {
-      return {
-        tier: 'block',
-        pattern_id: 'worktree-remove-force-dirty',
-        reason:
-          `Worktree at ${resolvedPath} has uncommitted or untracked changes (${dirty.detail}) that ` +
-          `--force would discard permanently. Remedy: commit or stash the changes, or run 'git ` +
-          `clean' deliberately first if they are genuinely disposable.`,
-      };
-    }
-    if (dirty.status === 'unknown') {
-      return {
-        tier: 'block',
-        pattern_id: 'worktree-remove-force-unreadable',
-        reason:
-          `${unverifiableRefusalOpener(resolvedPath, 'is clean', dirty.detail)} Remedy: confirm ` +
-          `the path exists and is a valid git worktree (not already removed, moved, or corrupted), ` +
-          `then retry.`,
-      };
-    }
-  }
+/** Evaluates one `rm` clause's `{ argTokens }` against `cwd`, returning a block decision for the
+ * first of its targets that is an unsafe registered worktree, or null. Three gates stand between
+ * an ordinary `rm` and any check at all — no recursive flag, no statically resolvable target, or
+ * a target that is not a registered linked worktree — each of which returns "nothing to check"
+ * rather than a refusal, which is what keeps `rm -rf` on ordinary paths exactly as it was. */
+const evaluateRmInvocation = (argTokens, cwd) => {
+  const { recursive, positional } = parseRmRemovalArgs(argTokens);
+  if (!recursive) return null;
 
-  const result = checkUnpushedCommits(resolvedPath);
-
-  if (result.status === 'unpushed') {
-    return {
-      tier: 'block',
-      pattern_id: force ? 'worktree-remove-force-unpushed' : 'worktree-remove-unpushed',
-      reason:
-        `Worktree at ${resolvedPath} has commits not on its remote (${result.detail}) — removal would discard them permanently` +
-        (force ? "; --force also bypasses git's own dirty-tree refusal" : ''),
-    };
+  for (const pathArg of positional) {
+    if (!isLiteralPathArg(pathArg)) continue;
+    const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(cwd, pathArg);
+    if (!isRegisteredLinkedWorktree(resolvedPath, cwd)) continue;
+    const decision = evaluateResolvedWorktree(resolvedPath, RM_REMOVAL_SHAPE);
+    if (decision) return decision;
   }
-  if (result.status === 'unknown') {
-    if (result.detached) {
-      return {
-        tier: 'block',
-        pattern_id: 'worktree-remove-detached-unreachable',
-        reason:
-          `${unverifiableRefusalOpener(resolvedPath, 'has no unpushed commits', result.detail)} This worktree's HEAD is detached ` +
-          `and not reachable from any known remote-tracking ref. Remedy: fetch a ref that contains this ` +
-          `commit (e.g. its PR head) into a remote-tracking ref, then retry: git fetch origin ` +
-          `refs/pull/<PR>/head:refs/remotes/origin/<name> ${GITHUB_RETAINS_PR_HEADS_NOTE}. A commit that ` +
-          NEVER_PUSHED_ANYWHERE_SUFFIX,
-      };
-    }
-    return {
-      tier: 'block',
-      pattern_id: 'worktree-remove-unverifiable',
-      reason:
-        `${unverifiableRefusalOpener(resolvedPath, 'has no unpushed commits', result.detail)} Remedy: if this is a pushed PR ` +
-        `branch this worktree checked out under a local name that doesn't match its own remote ` +
-        `branch name, fetch its head into the tracking ref this check falls back to, then retry: ` +
-        `git fetch origin refs/pull/<PR>/head:refs/remotes/origin/<branch> ${GITHUB_RETAINS_PR_HEADS_NOTE}. ` +
-        `A branch that ` +
-        NEVER_PUSHED_ANYWHERE_SUFFIX,
-    };
-  }
-  return null; // clean — this invocation alone does not block
+  return null;
 };
 
 /**
- * Entry point for `validate-bash-command.js`. Returns null when `command` contains no
- * `git worktree remove` invocation anywhere (nothing to check). Otherwise inspects EVERY
- * invocation found (see `findWorktreeRemoveInvocations`'s docstring — a chained command can carry
- * more than one) and returns a decision: `{ tier: 'block', pattern_id, reason }` for the first
- * unsafe one found, or `{ tier: 'allow' }` only once every invocation in the command is safe.
- * Never `'warn'` — unpushed history at removal time is not a "risky but sometimes legitimate"
- * call (V-HOOK-02's vocabulary); there is no legitimate reason to discard commits that exist
- * nowhere else, so this mirrors the static blockPatterns' philosophy (V-HOOK-01) rather than the
- * warnPatterns' one.
+ * Entry point for `validate-bash-command.js`. Returns null when `command` contains no worktree-
+ * removing invocation in either spelling (nothing to check). Otherwise inspects EVERY invocation
+ * found (see `findRemovalInvocations`'s docstring — a chained command can carry more than one)
+ * and returns a decision: `{ tier: 'block', pattern_id, reason }` for the first unsafe one found,
+ * or `{ tier: 'allow' }` once none of them is unsafe. Never `'warn'` — unpushed history at removal
+ * time is not a "risky but sometimes legitimate" call (V-HOOK-02's vocabulary); there is no
+ * legitimate reason to discard commits that exist nowhere else, so this mirrors the static
+ * blockPatterns' philosophy (V-HOOK-01) rather than the warnPatterns' one.
  */
 const evaluateWorktreeRemoval = (command, cwd) => {
-  const invocations = findWorktreeRemoveInvocations(command);
+  const invocations = findRemovalInvocations(command);
   if (invocations.length === 0) return null;
 
   for (const invocation of invocations) {
-    const decision = invocation.unresolvableExecutable
-      ? unresolvableExecutableDecision()
-      : evaluateOneInvocation(invocation.argTokens, cwd);
+    let decision;
+    if (invocation.kind === 'rm') {
+      decision = evaluateRmInvocation(invocation.argTokens, cwd);
+    } else if (invocation.unresolvableExecutable) {
+      decision = unresolvableExecutableDecision();
+    } else {
+      decision = evaluateOneInvocation(invocation.argTokens, cwd);
+    }
     if (decision) return decision;
   }
   return { tier: 'allow' };
@@ -647,8 +832,10 @@ module.exports = {
   checkDetachedReachability,
   checkDirtyWorktree,
   parseWorktreeRemoveArgs,
+  parseRmRemovalArgs,
   isLiteralPathArg,
-  findWorktreeRemoveInvocations,
+  isRegisteredLinkedWorktree,
+  findRemovalInvocations,
   skipGitGlobalOptions,
   isCommandWordStart,
   findClauseStartIndices,
