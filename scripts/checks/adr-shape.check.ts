@@ -9,6 +9,12 @@ import { root, type CheckResult } from './check-utils.ts';
 // always: the corpus predates both shapes — most existing ADRs match neither exactly (see
 // `.blackhole/plans/issue-711.md` Execution Strategy item 6) — so a blocking version would fail
 // `bun run verify` for the bulk of the pre-existing tree with no code change of their own.
+//
+// Advisory **by decision, not by omission** (issue #741): raising it to blocking needs either a
+// frozen grandfather allowlist — the `V-CONTENTGATE-03` precedent (issue #722) has not landed,
+// so building one here would stand up a second, parallel exemption mechanism (V-INT-04) — or a
+// backfill of the ~23 non-conforming ADRs, which is a separate initiative. Revisit once #722
+// lands; until then do not "fix" this into `ok: false`.
 
 const decisionsDir = path.join(root, 'documentation', 'decisions');
 

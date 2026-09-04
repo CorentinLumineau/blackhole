@@ -111,6 +111,15 @@ shape:
 
 Enforced by `scripts/checks/adr-status.check.ts`.
 
+### ADR Shape Conformance — advisory by decision
+
+`V-ADR-08` (`scripts/checks/adr-shape.check.ts`) classifies every ADR against `ADR_SHAPES`
+(`scripts/lib/build/facts.ts`) and stays advisory **by decision, not by omission** (issue #741).
+Blocking needs either a frozen grandfather allowlist — the `V-CONTENTGATE-03` precedent (issue
+#722) has not landed, so one built here would be a second, parallel exemption mechanism
+(`V-INT-04`) — or a backfill of the ~23 non-conforming ADRs, a separate initiative. Revisit once
+#722 lands; until then a new ADR may drift as freely as an old one, and that cost is accepted.
+
 ## Doc-Tree Health Signal
 
 Scope split (ADR-021 D6): this section is the **Scope-1** enforcer — blackhole's own
