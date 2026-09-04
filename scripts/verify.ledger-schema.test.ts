@@ -44,6 +44,28 @@ describe('findLedgerSchemaDrift', () => {
     const drift = findLedgerSchemaDrift(findings);
     expect(drift).toHaveLength(2);
   });
+
+  // ADR-036 (issue #815) — verification_mode enum check on ledgered rows.
+  test('a verification_mode outside the enum is reported as drift', () => {
+    const findings = [{ id: 'F-6', issue_ref: 100, verification_mode: 'guessed' }];
+    const drift = findLedgerSchemaDrift(findings);
+    expect(drift).toHaveLength(1);
+    expect(drift[0]).toContain('F-6');
+    expect(drift[0]).toContain('verification_mode');
+  });
+
+  test('a verification_mode of "executed" or "reasoned" is not drift', () => {
+    const findings = [
+      { id: 'F-7', issue_ref: 100, verification_mode: 'executed' },
+      { id: 'F-8', issue_ref: 100, verification_mode: 'reasoned' },
+    ];
+    expect(findLedgerSchemaDrift(findings)).toEqual([]);
+  });
+
+  test('a row with verification_mode key entirely absent is not reported as drift', () => {
+    const findings = [{ id: 'F-9', issue_ref: 100 }];
+    expect(findLedgerSchemaDrift(findings)).toEqual([]);
+  });
 });
 
 describe('checkLedgerSchema (file-absent SKIP and live read)', () => {

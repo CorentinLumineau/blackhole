@@ -33,6 +33,11 @@ export const PARTIAL_PHASES = ['handle', 'plan', 'implement', 'review'] as const
 export const WORKTREE_DISPOSITIONS = ['pushed', 'clean', 'dirty-uncommitted'] as const;
 export const HUNTER_SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'BLOCK'] as const;
 export const HUNTER_VERIFICATIONS = ['CONFIRMED', 'STALE'] as const;
+// ADR-036 — disambiguated from the two existing `verification`-named shapes above
+// (`HUNTER_VERIFICATIONS` and the reviewer's own `verification[]` recheck array): whether a
+// finding or a `verification_legs[]` entry was backed by a probe/test that actually ran
+// (`executed`) or by static analysis / code-reading only (`reasoned`).
+export const VERIFICATION_MODES = ['executed', 'reasoned'] as const;
 export const SUB_MODES = ['research', 'investigate', 'analyze'] as const;
 export const BRAINSTORM_CHILDREN_CAP = 5;
 export const CAPTURE_STATUSES = ['captured', 'unavailable'] as const;

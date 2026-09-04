@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { VERIFICATION_MODES } from '../lib/worker-json/constants.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
 // V-LEDGER-01 (issue #754) — rejects a `.blackhole/findings-ledger.json` row whose `issue_ref`
@@ -21,6 +22,7 @@ type LedgerRow = {
   issue_ref?: unknown;
   pr_ref?: unknown;
   pr?: unknown;
+  verification_mode?: unknown;
 };
 
 const isNumberOrNull = (value: unknown): boolean => typeof value === 'number' || value === null;
@@ -44,6 +46,15 @@ export const findLedgerSchemaDrift = (findings: unknown[]): string[] => {
     }
     if ('pr' in row) {
       violations.push(`${id}: carries legacy "pr" key instead of "pr_ref"`);
+    }
+    // ADR-036 (issue #815) — verification_mode enum check; absent key is never drift.
+    if (
+      'verification_mode' in row &&
+      !(VERIFICATION_MODES as readonly string[]).includes(row.verification_mode as string)
+    ) {
+      violations.push(
+        `${id}: verification_mode is ${JSON.stringify(row.verification_mode)} (expected "executed"|"reasoned")`,
+      );
     }
   }
 

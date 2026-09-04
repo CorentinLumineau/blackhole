@@ -35,6 +35,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-SEC-09 | Local-analyze confidence-boost scan may only raise security_review_required — a clean/absent scan must never lower an already-true value | BLOCK | router.md (local_analyze confidence-boost raise-only rule) |
 | V-SEC-10 | Local-analyze grep matches must pass the one-line false-positive verification (comment/fixture/string-literal check) before counting toward a raise | WARN | router.md § Local-analyze confidence-boost mechanism (False-positive verification, steps 1-4) |
 | V-SEC-11 | Sensitive-filename staged before commit — a path matching the shared file-write pattern set (owned by #447) reached `git add` without a refusal + ledger log; independent of `V-SEC-03`'s content scan | BLOCK | reviewer.md §4 (Security Checks — Sensitive-Filename Staging Audit) |
+| V-SEC-12 | Merge-gate surfacing — on a security-mode PR, any `verification_legs[]` entry with `mode: "reasoned"` is surfaced (never auto-blocked) at the merge decision | WARN | review-core.md § Security-mode review (merge-gate step, mirrors V-SEC-08) |
 | V-INT-02 | NEVER reimplement an existing utility | BLOCK | reviewer.md §5 (Integration Coherence) |
 | V-INT-01/03/04 | Follow conventions at touchpoints; no third variant of a solved concern | WARN | reviewer.md §5 (Integration Coherence) |
 | V-FIX-01 | Fixes address the root cause, documented — never the symptom | BLOCK | reviewer.md §15 (Decision Record Audit — root-cause escalation) |

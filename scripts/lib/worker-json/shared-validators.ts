@@ -5,6 +5,7 @@ import {
   DECISION_RECORD_KINDS,
   PARTIAL_PHASES,
   SEVERITIES,
+  VERIFICATION_MODES,
   WORKTREE_DISPOSITIONS,
 } from './constants.ts';
 import {
@@ -53,6 +54,13 @@ export function validateFinding(finding: unknown, path: string): string[] {
   if (finding.vcode === 'V-PARETO-02') {
     requireField(errors, finding, 'gain', isNumber, 'number');
     requireField(errors, finding, 'effort', isNumber, 'number');
+  }
+
+  // ADR-036 (issue #815) — optional: absence means "no claim made" (backward compatible).
+  if ('verification_mode' in finding && isString(finding.verification_mode)) {
+    pushEnumError(errors, `${path}.verification_mode`, finding.verification_mode, VERIFICATION_MODES);
+  } else if ('verification_mode' in finding) {
+    errors.push(`${path}.verification_mode: expected string`);
   }
 
   return errors;
@@ -141,6 +149,34 @@ export function validateVisualEvidenceEntry(entry: unknown, path: string): strin
 
 export function validateVisualEvidenceArray(value: unknown, path: string): string[] {
   return validateArrayOf(value, path, validateVisualEvidenceEntry);
+}
+
+// ADR-036 (issue #815) — a clean/negative investigation leg (one that produces no `Finding`
+// object) gets a structural home to disclose its verification basis into, sibling to
+// `recheck[]`/`verification[]` (`worker-schemas.md` § Reviewer). Deliberately not named
+// `verification` — that name is already claimed twice in this codebase for different meanings
+// (the reviewer's own `verification[]` recheck array and `hunter`'s per-finding
+// `CONFIRMED`/`STALE` field).
+export function validateVerificationLegEntry(entry: unknown, path: string): string[] {
+  const errors: string[] = [];
+
+  if (!isObject(entry)) {
+    errors.push(`${path}: expected object`);
+    return errors;
+  }
+
+  requireField(errors, entry, 'direction', isNonEmptyString, 'non-empty string');
+  requireField(errors, entry, 'mode', isString, 'string');
+  if (isString(entry.mode)) {
+    pushEnumError(errors, 'mode', entry.mode, VERIFICATION_MODES);
+  }
+  requireField(errors, entry, 'evidence', isNonEmptyString, 'non-empty string');
+
+  return errors.map((error) => `${path}.${error}`);
+}
+
+export function validateVerificationLegsArray(value: unknown, path: string): string[] {
+  return validateArrayOf(value, path, validateVerificationLegEntry);
 }
 
 export function validateCompanionRepairEntry(entry: unknown, path: string): string[] {

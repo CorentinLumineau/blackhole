@@ -33,6 +33,7 @@ LGTM requires **all** of:
 2. `scripts/review-aggregate.ts` returned `lgtm: true` and `blockers_count === 0`
 3. No unresolved BLOCK rows in ledger for this issue/PR
 4. When the Security-mode review gate resolved `true` for this PR, the merge-gate validator (`V-SEC-08`) passes — no unresolved `BLOCK` security finding without a populated attack-scenario field. Not applicable when the gate resolved `false` or `route` was absent.
+5. When the Security-mode review gate resolved `true` for this PR, any `verification_legs[]` entry with `mode: "reasoned"` has been surfaced to the merge decision (`V-SEC-12`) — visible, not blocking. Not applicable when the gate resolved `false` or `route` was absent.
 
 ## Pareto scoring
 
@@ -138,6 +139,12 @@ separate CI-fix budget.
    orchestrator confirms every `V-SEC-06`/`V-SEC-07`-tagged finding in the reviewer's
    output carries a populated attack-scenario field — documented manual gate, mirroring
    `V-GIT-01`'s own script-free treatment exactly.
+7. **Reasoned-verification surfacing (`V-SEC-12`)**: before merge on a security-mode PR, the
+   orchestrator surfaces (never blocks on) any `verification_legs[]` entry with
+   `mode: "reasoned"` at the merge decision point — documented manual gate, same script-free
+   treatment as `V-GIT-01`/`V-SEC-08`. This never authorizes bypassing `with-test-lock`; it
+   only makes an existing reasoned-verification disclosure visible where it was previously
+   buried in free prose.
 
 ## Independent security verification (`V-SEC-07`, issue #439)
 

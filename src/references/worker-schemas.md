@@ -427,7 +427,8 @@ UI-affecting diff with `display_targets` configured is `V-VIS-01` (BLOCK); a dec
       "severity": "BLOCK",
       "file": "src/db/client.ts",
       "line": 42,
-      "summary": "Empty catch block in query wrapper"
+      "summary": "Empty catch block in query wrapper",
+      "verification_mode": "executed"
     }
   ],
   "recheck": [
@@ -435,6 +436,9 @@ UI-affecting diff with `display_targets` configured is `V-VIS-01` (BLOCK); a dec
   ],
   "verification": [
     { "finding_id": "V1", "verdict": "refuted", "evidence": "input is validated at L.40 — exploit path not reproducible" }
+  ],
+  "verification_legs": [
+    { "direction": "Authorization bypass via role param tampering", "mode": "reasoned", "evidence": "Read role-check middleware; no probe run — with-test-lock was contended" }
   ]
 }
 ```
@@ -446,6 +450,7 @@ UI-affecting diff with `display_targets` configured is `V-VIS-01` (BLOCK); a dec
 | `error` | string | when `status: error` |
 | `recheck` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in recheck mode (`review-core.md` § Recheck mode); absent/omitted for a normal full-audit review |
 | `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent security verification mode (`review-core.md` § Independent security verification, `reviewer.md` § 24); absent/omitted for every other dispatch |
+| `verification_legs` | `{direction, mode, evidence}[]` | optional — ADR-036 (issue #815); a clean/negative investigation leg that produced no `Finding` object |
 
 ### `recheck` (optional — recheck-mode fast path, issue #214)
 
@@ -488,6 +493,10 @@ independently holds up.
 Passed to `review-aggregate.ts` via `--verification-file` (see § Review aggregate below) as a
 plain JSON array — distinct from `--prior-file`'s ledger-row shape.
 
+### `verification_legs` (optional — executed vs. reasoned disclosure, ADR-036 / issue #815)
+
+A JSON home for a **clean/negative investigation leg** (checked something, found no `Finding`) — not named `verification`, already used twice (the array above, `hunter`'s `CONFIRMED`/`STALE` field). Fields: `direction`, `mode` (`executed` \| `reasoned`), `evidence` (for `reasoned`, why execution was unavailable, e.g. `with-test-lock` contention). Never grounds to bypass `with-test-lock`. See `reviewer.md` § 32 / `review-core.md` § Security-mode review (`V-SEC-12`).
+
 ### Rulings ledger (read-input)
 
 `reviewer.md` § 19 "Owner-Ruling Violation Audit" reads `documentation/reference/
@@ -506,11 +515,14 @@ product-principles.md` (the owner-rulings ledger) when present, gated by
   "line": 42,
   "summary": "Description",
   "gain": 7,
-  "effort": 2
+  "effort": 2,
+  "verification_mode": "executed"
 }
 ```
 
 `gain` and `effort` required only for `V-PARETO-02` findings.
+
+`verification_mode` (optional — `executed` \| `reasoned`, ADR-036 / issue #815): execution vs. reasoning-only basis; absence means no claim made.
 
 ## Router (`router`)
 

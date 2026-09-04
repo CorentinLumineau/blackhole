@@ -1,0 +1,11 @@
+{
+  "status": "complete",
+  "findings": [],
+  "verification_legs": [
+    {
+      "direction": "Authorization bypass via role param tampering",
+      "mode": "reasoned",
+      "evidence": "Read role-check middleware; no probe run because the auth harness requires with-test-lock, which was contended for this session."
+    }
+  ]
+}
