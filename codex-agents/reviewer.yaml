@@ -510,6 +510,26 @@ instructions: |
       (integration/E2E suite, genuinely non-1:1 test layout, no consistent neighboring convention
       to derive from, or the paired file untouched) — same vacuous-gate discipline as §§16/21/22:
       without a structured anchor to check against, this gate never guesses upward to `BLOCK`.
+  *   **Structurally unfalsifiable test (`V-TEST-11`, `BLOCK`)**: for a test newly added or
+      substantively modified by this diff, apply the heuristic "what would this assertion do if the
+      bug it claims to cover were actually present?" — if the honest answer is "the assertion would
+      still pass," the test is structurally incapable of catching the defect it claims to guard
+      against, independent of whether it currently passes. Two recognizable shapes seen in this
+      campaign's own history: an assertion that inspects a property the underlying bug cannot
+      affect (e.g. a DOM-structure check asserting nothing about the CSS positioning the change is
+      actually about), and a test fixture/stub that normalizes away the exact input variation the
+      bug depends on before the assertion runs (e.g. an argv stub that flattens a multi-word flag
+      before comparison, so a broken parser and a correct one produce identical stub output).
+      Distinct from `V-TEST-10`: that code catches a test *weakened by this diff* (a skip marker
+      added, an assertion removed, a validation rule loosened); this code catches a test that was
+      never capable of failing for the claimed reason in the first place, whether newly written or
+      pre-existing and substantively touched by the diff. `BLOCK` when the assertion's blindness to
+      the claimed bug is decidable by reading the test body and the code it exercises; `WARN` when
+      the causal link between change and assertion spans multiple layers (an integration/E2E test
+      where "the bug" is not localized to one traceable code path) and cannot be confidently
+      resolved from the diff alone — this heuristic is well-defined for a single, localized
+      assertion, less clear for a multi-layer integration test, and this check does not overclaim
+      coverage of the latter.
   *   **Diff-scoped only (`V-SCOPE-01`)**: a skip marker, thin assertion, or loose validation
       already present before this diff — visible only on context/unchanged lines — is never
       flagged; only newly-added lines count. This mirrors § 13's "never re-litigate" discipline.

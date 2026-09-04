@@ -66,6 +66,7 @@
 | plans/plan-refactor-build-named-flags-plumbing-for-build-targets-v-tree-01-tree-registry-ch.md | Named-flags plumbing for `determineBuildTargets`/`cleanBuildDirectories` plus the new `V-TREE-01` committed-target-tree drift check (R-17) | plan | current | on file change |
 | plans/plan-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Implementation plan for issue #704 (R-01) — retire the derived `EXPECTED_CHECK_COUNT` counter and its new-check-module Touch-Paths trigger | plan | current | on file change |
 | plans/plan-retrospective-v0.21.0-remediation.md | Work breakdown and dependency graph for the v0.21.0 retrospective's 22 remediation items (one issue each) | plan | current | on ADR acceptance |
+| plans/plan-review-phase-accepts-the-worker-s-self-report-as-evidence-independent-re-verific.md | Design Track note for issue #795 — review phase self-report trust gap; unanimous critic pick (Option B, mechanical V-TEST-11 unfalsifiable-test check) over the primary's broader unconditional-mandate recommendation (Gate: blocked on dominance+disagreement, owner-approved override to the critics' verdict as ADR-032) | plan | current | on file change |
 | plans/plan-routing-visibility-reuse-gate.md | Implementation plan for dashboard routing visibility and the implementer Reuse Check gate | plan | current | on ADR acceptance |
 | plans/plan-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | skills.sh-target integration test for model-routing.md's per-role tier resolution, closing the self-declared Unverified note | plan | current | on ADR acceptance |
 | plans/story-driven-conformance.md | Plan for story-driven conformance across the campaign's issue lifecycle | plan | current | on ADR acceptance or kaizen hunt-kind change |
@@ -106,6 +107,7 @@
 | reviews/review-feat-findings-ledger-deferred-finding-reconciliation-on-target-closure.md | Review artifact for issue #809 (LGTM, 0 deferred WARN) | review | current | on file change |
 | reviews/review-feat-planner-plan-quality-gate-cli-invoked-at-plan-time.md | Review artifact for issue #716 (LGTM) | review | current | on file change |
 | reviews/review-feat-reviewer-plugin-cache-version-bump-gate-drift-signal.md | Review artifact for issue #800 (LGTM) | review | current | on file change |
+| reviews/review-feat-reviewer-v-test-11-unfalsifiable-test-check-adr-032.md | Review artifact for issue #795 (LGTM) | review | current | on file change |
 | reviews/review-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Review artifact for issue #715 (LGTM) | review | current | on file change |
 | reviews/review-feat-scripts-decision-log-append-ts-bumps-last-updated-silent-log-doc-health-sig.md | Review artifact for issue #717 (LGTM) | review | current | on file change |
 | reviews/review-fix-config-registration-parent-key-coverage-for-nested-config-blocks-router-conf.md | Review artifact for issue #707 (LGTM, 1 deferred WARN) | review | current | on file change |
