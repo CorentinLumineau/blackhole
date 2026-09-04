@@ -4,7 +4,7 @@ summary: "Running decision log of Hard Choice / Bugfix / Refactoring decision re
 status: current
 review_trigger: "on file change"
 created: 2026-07-20
-last_updated: 2026-09-03
+last_updated: 2026-09-04
 related:
   - documentation/decisions/ADR-012-shared-artifact-substrate.md
 ---
@@ -84,3 +84,5 @@ records why the number is what it is, so the question is not re-litigated on eve
 | 810 | root-cause | scripts/lib/carry-staged-artifacts.ts | Normalized target_path before the allowlist comparison, matching containment's existing normalize-before-compare against repoRoot | Containment normalized the path before comparing against repoRoot; the allowlist did not normalize before comparing against documentation/**. Two gates, two different representations of the same path — that mismatch, not either gate individually, was the vulnerability |
 | 810 | reuse | scripts/lib/carry-target-allowlist.ts | New scripts/lib/carry-target-allowlist.ts modeled on ops-touch-paths.ts's named-glob-array + boolean-predicate shape | Reuse check found no existing carry-target-allowlist primitive (repo-wide grep returned 5 unrelated hits) — first occurrence of this concern |
 | 810 | improvement | scripts/lib/carry-staged-artifacts.test.ts | Flipped the stale /etc/passwd 'keeps carrying' assertion whose comment explicitly warned against flipping it, and rewrote the comment to record that AC1's allowlist supersedes it | Scout Check within the diff boundary; containment still holds, it was simply never sufficient on its own to make a path safe to write |
+| 857 | reuse | scripts/merge-base-guard.ts, scripts/lib/merge-gate/merge-base.ts | None found — first occurrence of PR-base assertion / post-merge landing verification; built as a lib/CLI pair mirroring merge-gate/review-artifact.ts + check-review-artifact.ts | Repo-wide search for baseRefName returned zero hits; the merge-gate lib/CLI pair is the established local idiom, so the new code follows its usage()/parseArgs shape and exit-code contract rather than inventing a third variant |
+| 857 | improvement | src/references/phase-loop.md, src/references/queue-dag.md | Step 4.6 and the merged_into row each state why the field is not written by step 4, instead of editing step 4's adjacent merged_by sentence | Keeps the touched text self-explanatory without editing untouched prose a sibling worker (#794) is concurrently in (V-SCOPE-01) |
