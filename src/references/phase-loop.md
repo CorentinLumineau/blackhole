@@ -74,6 +74,15 @@ section's Fix-loop routing (route to `phase: implement`, `review_iteration += 1`
 continue to step 1 unchanged. **Runs for `merge_mode: leave-open` too**, as part of that mode's
 merge-readiness dry run (same D5 narrowing as Step 0.5 above).
 
+**Step 0.7 — Merge-Base Assertion**: after Step 0.6 passes and before step 1, read the PR's base
+(`gh pr view <n> --json baseRefName`) and run `merge-gate.md` § 7's pre-merge check. On exit `1`,
+**STOP** this issue's merge for the turn and report the refusal reason verbatim — the campaign
+never merges into a branch it cannot name. A stacked merge is opted into by passing
+`--stacked-into <branch>`, which must name the PR's actual base; the opt-in is per-merge and
+deliberately has no `queue.json`/`config.json` home, so it cannot be set once and forgotten.
+**Runs for `merge_mode: leave-open` too**, as part of that mode's merge-readiness dry run (same
+D5 narrowing as Step 0.5 above).
+
 1. `gh pr view <n> --json headRefOid` equals local HEAD
 2. CI-wait: a detached background poll, never a foreground agent sleep. `gh pr
    checks <n>` must reach green (except Vercel preview — expected fail), but
@@ -142,6 +151,17 @@ merge-readiness dry run (same D5 narrowing as Step 0.5 above).
    right after a merge — for every facts-read that follows: this turn's remaining
    `bun run scripts/plan-quality-gate.ts` reads, the next issue's build-in-main-clone (step 3),
    and the plugin-drift-signal scan at the next turn start.
+4.6. **Post-merge landing verification (mandatory)**: after 4.5's fetch, run `merge-gate.md`
+   § 7's post-merge check against the branch Step 0.7 asserted. On exit `0`, write that branch
+   to the issue's `merged_into` (`queue-dag.md` Field rules) — the field records a *verified*
+   landing, which is why step 4, whose write only knows the merge was attempted, does not set
+   it. On exit `1` the issue is terminal for the turn: leave `merged_into` absent (a `merged`
+   row without it reads as an unverified landing, never as a base-ref one), set `notes` to
+   `merge-landing-unverified:#<PR>@<branch>`, do not advance to `done`, and report it. A grep
+   miss on the base branch is proof the merge did not land there, and the script has already
+   spent the entire replication-lag retry budget before returning, so nothing remains to
+   attribute the miss to. Bypassed under `merge_mode: leave-open`, which never calls
+   `gh pr merge` at all.
 5. Post-merge: migration apply if schema PR; deploy verify per runbook
 
 ## Ledger cleanup on merge

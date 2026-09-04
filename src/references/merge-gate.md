@@ -356,6 +356,44 @@ parallel counter (`V-INT-02`/`V-DRY-01`):
 `lgtm` and `not_detected` both proceed to step 1 unchanged (two-criteria run when
 `not_detected`).
 
+## 7. Merge-base assertion — `baseRefMatches(pr, config)` + landing verification
+
+Merge eligibility decides *whether* a PR may merge; until this section, nothing decided *what it
+merges into*. A stacked PR — base a sibling feature branch — produced output indistinguishable
+from a merge onto the campaign base, and `queue.json` then recorded a landing that never reached
+`target_branch`. Stacking stays legitimate; the silence around it does not.
+
+**Pre-merge assertion** (`phase-loop.md` § Merge protocol **Step 0.7**). Read the PR's
+`baseRefName` and require it to equal `config.json`'s `target_branch`. A different base proceeds
+only under an explicit stacked-merge opt-in **naming the branch being landed into**; an opt-in
+naming any other branch, and an unreadable `baseRefName`, both refuse. Refusal is a hard **STOP**
+for the turn, the same class as § 5's review-artifact stop — no V-code and no ledger row of its
+own.
+
+**Post-merge landing verification** (`phase-loop.md` § Merge protocol **step 4.6**). A
+`git log <target_branch> --grep=#<PR>` miss is proof the merge did not land there, never evidence
+of replication lag. The tolerance for lag is spent as a bounded retry budget inside the script,
+and its exhaustion is terminal: the orchestrator is left no verdict meaning "tolerate the miss".
+
+Mechanical check for both halves (ADR-003 — the judgment is above, the arithmetic is not here):
+
+```
+bun run --cwd <abs repo-root> scripts/merge-base-guard.ts --mode pre-merge --base-ref <baseRefName> --target-branch <target_branch> [--stacked-into <branch>]
+bun run --cwd <abs repo-root> scripts/merge-base-guard.ts --mode post-merge --pr <N> --target-branch <target_branch> --repo-root <abs repo-root> [--attempts <N>] [--interval-ms <N>]
+```
+
+Exit `0` proceed, `1` refuse (reason on stderr), `2` malformed usage — the same exit-code
+contract `state-write-guard.ts` already uses (`blackhole-state.md` § Write protocol). Retry
+defaults are 3 attempts 20 s apart, each preceded by its own `git fetch origin <target_branch>`,
+so a retry can actually change the answer. `scripts/lib/merge-gate/merge-base.ts` holds the
+assertion, the subject match, and the loop.
+
+**Recording where it landed.** `merged_into` (`queue-dag.md` Field rules) is written by step 4.6
+once the landing is *verified*, not by step 4, which knows only that the merge was attempted.
+`mergedIntoVerdict()` reports `base` / `other` / `unknown`; an absent value is `unknown`, never
+inferred as the base ref, so neither a failed verification nor a row predating the field is
+mistaken for a verified base-ref landing.
+
 ## Edge cases
 
 | Scenario | Resolution |
@@ -371,12 +409,18 @@ parallel counter (`V-INT-02`/`V-DRY-01`):
 | `leave-open` PR merged externally after LGTM | Reconciled normally via forge-sync's generic externally-observed-merge path — no `V-MERGE-01`/`V-MERGE-02` logged (designed path, not drift; see § 3's `leave-open` carve-out) |
 | Pipeline installed (`pipeline_detection.actionman_workclaude: true`) but has not yet verdicted the current HEAD SHA | `pipelineVerdict()` returns `not_detected` for this turn (§ 6) — proceeds to step 1 same as a genuinely undetected pipeline; re-checked next turn, never blocks indefinitely on a bot that has not run |
 | `leave-open` PR under the merge-readiness dry run (§ Bypass note) | Step 0.5/0.6/1 (C2/C1/C3) all run; on all-green, `phase-loop.md`'s `mergeReady(issue)` (C1+C2+C3) gates the "delivered-at-LGTM" annotation together with `isLgtm(issue)` — no `gh pr merge` call regardless of outcome |
+| PR base is a sibling feature branch, no stacked-merge opt-in | Step 0.7 refuses (§ 7) — hard STOP for the turn, naming both the PR's base and `target_branch`; re-evaluated next turn once the base is corrected or an opt-in is declared |
+| PR base is a sibling feature branch, opt-in names that same branch | Step 0.7 proceeds (§ 7); step 4.6 verifies against that branch and records it in `merged_into`, so `merged` on this row is never read as a base-ref landing |
+| Post-merge `git log <target_branch> --grep=#<PR>` finds nothing after the retry budget | Terminal (§ 7, step 4.6) — the merge did not land on the base ref; never reclassified as replication lag, `merged_into` stays absent, and the issue does not advance to `done` |
+| `merged_into` absent on an older `merged` row | `mergedIntoVerdict()` reports `unknown`, not `base` — an unverified landing stays visibly unverified rather than being backfilled by assumption |
 
 ## Consulted by
 
 - `phase-loop.md` § Merge protocol, **step 0** — hard `mergeEligible(issue)` stop-gate before step 1, not merely a checklist reference one heading away.
 - `phase-loop.md` § Merge protocol's **trigger** paragraph — when `merge_mode: gated-batch`, invokes **§ 4** (this doc) instead of applying steps 0-5 issue-by-issue; § 4 internally calls back into steps 0-5 per issue.
 - `phase-loop.md` § Merge protocol, **Step 0.6** — hard `pipelineVerdict(pr, queue)` (§ 6) check between Step 0.5 and step 1.
+- `phase-loop.md` § Merge protocol, **Step 0.7** — hard pre-merge base assertion (§ 7) between Step 0.6 and step 1.
+- `phase-loop.md` § Merge protocol, **step 4.6** — post-merge landing verification (§ 7) after step 4.5's fetch.
 - `forge-sync.md` — cycle detection (§ 2), drift reconciliation (§ 3), and pipeline detection (§ 5.6, feeds § 6).
 - `orchestrator.md` Phase 5 — pointer reference only, no inline logic.
 

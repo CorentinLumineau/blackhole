@@ -73,6 +73,7 @@
       "milestone": "v0.4.0",
       "labels": ["blackhole/backlog", "size:s"],
       "merged_by": "blackhole",
+      "merged_into": "main",
       "blocks": [],
       "worktree": null,
       "pr": 40,
@@ -81,7 +82,7 @@
       "size": "s",
       "epic_parent": null,
       "review_iteration": 0,
-      "notes": "fixture: demonstrates merged_by attribution for V-MERGE-01/02"
+      "notes": "fixture: demonstrates merged_by attribution for V-MERGE-01/02 and a verified merged_into landing"
     }
   }
 }
