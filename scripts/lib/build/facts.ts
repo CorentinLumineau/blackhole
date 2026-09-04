@@ -28,7 +28,23 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 102;
+export const VCODE_TABLE_ROW_COUNT = 103;
+
+// § facts — build-input-only directories (ADR-034, issue #719). A declared-fact / independent-
+// scan pair, the same shape VCODE_TABLE_ROW_COUNT/CONTENT_GATE_BUDGETS/DOC_HEALTH_THRESHOLDS
+// already use: each entry names a directory under `src/` (path relative to `srcDir`, e.g.
+// `references/<module-set>`) whose `.md` files are build inputs consumed only via a
+// `{{INCLUDE:<dir>/*}}` marker (scripts/lib/build/content.ts `expandIncludes`) — never mirrored
+// into a compiled output tree. `compileFolder` skips any file under a declared entry;
+// `scripts/checks/build-input-dirs.check.ts` (V-INCLUDE-01) independently scans the 9
+// `src/references/**`-shaped compiled reference trees to verify none of them leaked a declared
+// entry, and separately verifies every `{{INCLUDE:<dir>/*}}` marker in `src/agents/**`/
+// `src/references/**` names a directory declared here — neither side is derived from the other
+// (ADR-007's binding rejection of single-source derivation for a drift check). Empty today: no
+// production agent adopts the marker in issue #719 (that migration is #720/#721, gated on this
+// primitive landing) — `hunt/` is deliberately NOT an entry here, since `hunt/` modules are
+// fetched at runtime and must still ship (ADR-034 Decision point 3).
+export const BUILD_INPUT_ONLY_DIRS: string[] = [];
 
 // § facts — ADR revisit watch items (issue #710). A declared-fact / independent-scan pair, the
 // same shape `VCODE_TABLE_ROW_COUNT`/`CONTENT_GATE_BUDGETS`/`DOC_HEALTH_THRESHOLDS` already use:

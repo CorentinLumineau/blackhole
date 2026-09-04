@@ -4,7 +4,7 @@ summary: "Architecture entry point pointing to the durable ARCHITECTURE.md narra
 status: current
 review_trigger: "on build target change"
 created: 2026-07-06
-last_updated: 2026-09-02
+last_updated: 2026-09-04
 ---
 
 # Architecture — Repository Map
@@ -56,6 +56,21 @@ ephemeral `.agents/orchestrator|worker_*|explorer_*` handoff dirs is produced by
 `scripts/build.ts`, and neither is a build artifact you regenerate — they are live
 campaign state, gitignored, and governed by their own write protocol (see
 [Complementary docs](#complementary-docs) below).
+
+## Include-marker seam (ADR-034)
+
+`scripts/lib/build/content.ts`'s `processFile` supports one generic build-time composition
+primitive: a shell source file (e.g. `src/agents/reviewer.md`) may carry a
+`{{INCLUDE:<dir>/*}}` marker naming a directory under `src/` whose `.md` files get inlined, in
+lexical filename order, before any other compile step runs. The named directory is declared in
+`BUILD_INPUT_ONLY_DIRS` (`scripts/lib/build/facts.ts`): its files are build inputs only, skipped
+by `compileFolder`, and independently checked absent from all 9 `src/references/**`-shaped
+compiled reference trees by `V-INCLUDE-01`
+(`scripts/checks/build-input-dirs.check.ts`) — while the composed shell still lands as exactly
+one file on each of the 6 agent output trees, at zero extra runtime context-fetch cost to the
+agent. No production agent adopts the marker yet; see
+[`documentation/decisions/ADR-034-audit-module-seam.md`](decisions/ADR-034-audit-module-seam.md)
+for the full decision record and its rejected alternatives.
 
 ## Committed target trees
 
