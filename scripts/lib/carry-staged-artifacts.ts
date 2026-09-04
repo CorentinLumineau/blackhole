@@ -97,17 +97,19 @@ export const validateEntries = (
 export type CopyMode = 'verbatim' | 'rewrite';
 
 /**
- * `new_file` copy-mode decision. The sole rewrite case is an investigator analyze/investigate
- * note — every other producer/route (`planner`+plan, `planner`+design, `implementer`+review, and
- * any future route that follows the same shape) already rendered the target doc-governance
- * schema at staging time and is copied verbatim (`implementer.md` § Carry Staged Artifacts).
+ * `new_file` copy-mode decision. The rewrite cases are investigator `analyze`/`investigate`/
+ * `research` notes (ADR-033 added `research`) — every other producer/route (`planner`+plan,
+ * `planner`+design, `implementer`+review, and any future route that follows the same shape)
+ * already rendered the target doc-governance schema at staging time and is copied verbatim
+ * (`implementer.md` § Carry Staged Artifacts).
  */
 export const decideCopyMode = (entry: { produced_by: string; sub_mode: string | null }): CopyMode =>
-  entry.produced_by === 'investigator' && (entry.sub_mode === 'analyze' || entry.sub_mode === 'investigate')
+  entry.produced_by === 'investigator' &&
+  (entry.sub_mode === 'analyze' || entry.sub_mode === 'investigate' || entry.sub_mode === 'research')
     ? 'rewrite'
     : 'verbatim';
 
-const SUB_MODE_TO_TYPE: Record<string, string> = { analyze: 'analysis', investigate: 'analysis' };
+const SUB_MODE_TO_TYPE: Record<string, string> = { analyze: 'analysis', investigate: 'analysis', research: 'research' };
 const PASSTHROUGH_FRONTMATTER_KEYS = ['issue', 'confidence', 'computed_at_revision'] as const;
 
 /**

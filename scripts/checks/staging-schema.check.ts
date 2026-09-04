@@ -154,7 +154,7 @@ export const findProducerEnumViolations = (literals: ProducerLiteral[], rows: Ma
   return violations;
 };
 
-// Shared by V-STAGE-02 and V-STAGE-04 — both scan the 3 producer docs for literal declarations.
+// Used by V-STAGE-02 — scans the 3 producer docs for literal declarations.
 const collectProducerLiterals = (): ProducerLiteral[] => [
   ...extractProducerFieldValueLiterals(read(plannerDoc)).map((l) => ({ ...l, source: plannerDoc })),
   ...extractProducerFieldValueLiterals(read(investigatorDoc)).map((l) => ({ ...l, source: investigatorDoc })),
@@ -170,8 +170,7 @@ const checkProducerConformance = (): CheckResult => {
 
 // Issue #782: the manifest-write instruction is present at every staging-obligation site — the
 // gap is non-uniform execution, not an absent instruction (plan § Verified prerequisite state).
-// V-STAGE-03 pins a mandatory-pairing phrase to each site; V-STAGE-04 forbids the one
-// enum-valid-but-target-less literal, `sub_mode: "research"` (`blackhole-state.md:198`).
+// V-STAGE-03 pins a mandatory-pairing phrase to each site.
 
 const STAGING_OBLIGATION_ANCHORS = [
   'Seed Active Constraints from analyze note',
@@ -199,20 +198,6 @@ const checkStagingInstructionPairing = (): CheckResult => {
   return missing.length ? { id: 'V-STAGE-03', ok: false, detail: missing.join('; ') } : { id: 'V-STAGE-03', ok: true };
 };
 
-// Every `route` enum value already has a target row (even `brainstorm`, per
-// blackhole-state.md:197), so route validity is fully covered by V-STAGE-02 already — only
-// `sub_mode: "research"` needs this narrower guard (plan § Route-conditionality constraint).
-export const findForbiddenSubModeLiterals = (literals: ProducerLiteral[]): string[] =>
-  literals
-    .filter((l) => l.field === 'sub_mode' && l.value === 'research')
-    .map((l) => `${l.source}: sub_mode: "research" has no documentation/ target (blackhole-state.md:198)`);
-
-const checkNoResearchStaging = (): CheckResult => {
-  const findings = findForbiddenSubModeLiterals(collectProducerLiterals());
-  if (findings.length) return { id: 'V-STAGE-04', ok: false, detail: findings.join('; ') };
-  return { id: 'V-STAGE-04', ok: true };
-};
-
 // ADR-007 T5/R2': domain entrypoint — see adr-status.check.ts's runChecks doc comment for the
 // shared contract (pure, no side effects, glob-discovered by scripts/verify.ts).
-export const runChecks = (): CheckResult[] => [checkManifestSelfConsistency(), checkProducerConformance(), checkStagingInstructionPairing(), checkNoResearchStaging()];
+export const runChecks = (): CheckResult[] => [checkManifestSelfConsistency(), checkProducerConformance(), checkStagingInstructionPairing()];
