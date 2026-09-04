@@ -5,12 +5,12 @@ import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { readJsonFile } from './fs.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
 
-// Issue #715 (R-10) — mechanizes the mechanical two-thirds of `implementer.md` § Carry Staged
-// Artifacts: the manifest shape guard, `target_kind` dispatch, the 9-row frontmatter rewrite
-// mapping (investigator `new_file` entries), and `append_row` dedup for both discriminator
-// shapes. Ported verbatim from the prose — no new behavior invented. Search-before-write (the
-// one live-repo judgment the prose keeps) is deliberately NOT here — `implementer.md`'s shrunk
-// prose states it as the agent's own responsibility around this script's invocation.
+// Mechanizes the mechanical two-thirds of `implementer.md` § Carry Staged Artifacts: the
+// manifest shape guard, `target_kind` dispatch, the 9-row frontmatter rewrite mapping
+// (investigator `new_file` entries), and `append_row` dedup for both discriminator shapes. That
+// prose is the specification — this module implements it and invents no behavior beyond it.
+// Search-before-write (the one live-repo judgment the prose keeps) is deliberately NOT here:
+// `implementer.md` states it as the agent's own responsibility around this script's invocation.
 
 export type ManifestEntry = {
   route: string;
@@ -241,7 +241,7 @@ const isWithinRoot = (candidate: string, root: string): boolean => {
  * the manifest still carries — deliberately not the fatal throw below, which signals a broken
  * invocation and so invalidates every entry's result at once.
  *
- * Two-root resolution (issue #760): `staged_path` and `target_path` never share a tree in an
+ * Two-root resolution: `staged_path` and `target_path` never share a tree in an
  * implementer's actual working environment — `staged_path` lives under the gitignored,
  * main-clone-only `.blackhole/` (`blackhole-state.md` § Staging), while `target_path` must land
  * in the worktree checked out for the PR. `opts.stagingRoot` (default `repoRoot`, matching the

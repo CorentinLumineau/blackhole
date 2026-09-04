@@ -4,18 +4,18 @@ import { readJsonFile } from './lib/fs.ts';
 import { validateStateWrite } from './lib/state-write-guard.ts';
 import type { LedgerFinding } from './lib/promote-review-artifact.ts';
 
-// Issue #754 (V-FIX-01) — one-shot normalization of the live findings-ledger.json's
-// `issue_ref`/`pr_ref` schema drift (see the plan's Objective for the three documented
-// shapes: string issue_ref, legacy `pr` key, string pr_ref). Idempotent: re-running against an
-// already-clean ledger reports `changed: 0`. Not wired into `bun run verify` — see
-// `ledger-schema.check.ts` for the recurring regression gate this migration is not.
+// One-shot normalization of the live findings-ledger.json's `issue_ref`/`pr_ref` schema drift,
+// across its three documented shapes: string issue_ref, legacy `pr` key, string pr_ref.
+// Idempotent: re-running against an already-clean ledger reports `changed: 0`. Not wired into
+// `bun run verify` — see `ledger-schema.check.ts` for the recurring regression gate this
+// migration is not.
 //
 // Deliberately out of scope (not touched, not thrown on): a row whose `issue_ref`/`pr_ref` key
-// is entirely absent. 27 live rows — kaizen/hunt and plan/handle-phase freehand appends that
-// never went through `review-aggregate.ts`'s stamping pipeline — carry no `pr_ref` key at all.
-// That is a distinct, undocumented shape from the three this issue names, not a drifted value
-// to coerce; treating "absent" as "already correct" keeps the migration scoped to the issue's
-// own evidence instead of silently inventing a `pr_ref: null` the source data never asserted.
+// is entirely absent. Kaizen/hunt and plan/handle-phase freehand appends that never went through
+// `review-aggregate.ts`'s stamping pipeline carry no `pr_ref` key at all. That is a distinct,
+// undocumented shape from the three named above, not a drifted value to coerce; treating
+// "absent" as "already correct" keeps the migration scoped to observed evidence instead of
+// silently inventing a `pr_ref: null` the source data never asserted.
 
 type RawFinding = Record<string, unknown>;
 
