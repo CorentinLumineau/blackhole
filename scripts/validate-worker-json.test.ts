@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -1228,5 +1228,103 @@ describe('recover-transcript CLI mode', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('task_type');
+  });
+});
+
+describe('--enum-source CLI flag', () => {
+  const widenedVcode = 'V-ADA-99';
+  const widenedFixture = path.join(
+    fixturesDir,
+    'implementer-complete-companion-repair-widened-vcode.json',
+  );
+  let widenedRoot: string;
+
+  // Stands in for a PR worktree whose branch widens a worker-JSON enum: a real copy of the
+  // validator tree, rewritten so `COMPANION_REPAIR_VCODES` carries a code the checked-in tree
+  // does not know. Copied rather than checked in as a second static tree so it can never drift
+  // from the validators it is supposed to mirror.
+  beforeAll(() => {
+    widenedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'validate-worker-json-enum-source-'));
+    fs.cpSync(path.join(root, 'scripts/lib'), path.join(widenedRoot, 'scripts/lib'), {
+      recursive: true,
+    });
+    const constantsPath = path.join(widenedRoot, 'scripts/lib/worker-json/constants.ts');
+    const original = fs.readFileSync(constantsPath, 'utf-8');
+    const widened = original.replace(
+      /export const COMPANION_REPAIR_VCODES = \[[^\]]*\]/,
+      (match) => `${match.slice(0, -1)}, '${widenedVcode}']`,
+    );
+    expect(widened).not.toBe(original);
+    expect(widened).toContain(widenedVcode);
+    fs.writeFileSync(constantsPath, widened, 'utf-8');
+  });
+
+  afterAll(() => {
+    fs.rmSync(widenedRoot, { recursive: true, force: true });
+  });
+
+  test('enum-widening payload is rejected against the default (validator-own) tree', async () => {
+    const result = await runValidateWorkerCli(['--role', 'implementer', '--file', widenedFixture]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      `companion_repairs[0].vcode: invalid enum value "${widenedVcode}"`,
+    );
+  });
+
+  test('same payload is accepted when --enum-source names the widened tree', async () => {
+    const result = await runValidateWorkerCli([
+      '--role',
+      'implementer',
+      '--file',
+      widenedFixture,
+      '--enum-source',
+      widenedRoot,
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.trim()).toBe('');
+  });
+
+  test('--enum-source naming the repo root itself rejects the same payload', async () => {
+    const result = await runValidateWorkerCli([
+      '--role',
+      'implementer',
+      '--file',
+      widenedFixture,
+      '--enum-source',
+      root,
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      `companion_repairs[0].vcode: invalid enum value "${widenedVcode}"`,
+    );
+  });
+
+  test('--enum-source does not waive non-enum validation errors', async () => {
+    const result = await runValidateWorkerCli([
+      '--role',
+      'implementer',
+      '--file',
+      path.join(fixturesDir, 'implementer-complete-missing-evidence.json'),
+      '--enum-source',
+      widenedRoot,
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('evidence');
+  });
+
+  test('--enum-source naming a tree with no validator exits 2 and names the resolved path', async () => {
+    const missingRoot = path.join(widenedRoot, 'no-such-worktree');
+    const result = await runValidateWorkerCli([
+      '--role',
+      'implementer',
+      '--file',
+      widenedFixture,
+      '--enum-source',
+      missingRoot,
+    ]);
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain(
+      path.join(missingRoot, 'scripts/lib/worker-json/validate.ts'),
+    );
   });
 });
