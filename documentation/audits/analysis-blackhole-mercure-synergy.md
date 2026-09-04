@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Synergy analysis identifying mercure parity gaps blackhole should close"
 skill: x-analyze
 created: 2026-07-22
 target: "blackhole ↔ mercure autonomous-parity synergy"

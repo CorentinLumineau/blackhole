@@ -2,6 +2,7 @@
 issue: #769
 supersedes_adr: null
 type: plan
+summary: "Generalizes the plan-authoring rule against freezing a live-derived `facts.ts` count (e.g. `VCODE_TABLE_ROW_COUNT`) as a plan-time literal; adds the `findFactsLiteralBumps` advisory detector and corrects the 3 still-live stale plans (#711, #724, #719)"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

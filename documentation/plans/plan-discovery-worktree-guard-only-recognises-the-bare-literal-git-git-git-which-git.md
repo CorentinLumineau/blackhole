@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Standard-track plan for issue #788 — normalize-then-basename-compare fix closing 5 measured spelling bypasses (\\git, \"git\", 'git', \"/usr/bin/git\", g\"\"it) in worktree-removal-guard.js, plus a bounded refusal for $(which git)/env-var indirection"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

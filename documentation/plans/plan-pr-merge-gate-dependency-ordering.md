@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Implementation plan for ADR-005's PR merge-gate and dependency ordering"
 status: current
 tracking_initiative: none
 track: standard

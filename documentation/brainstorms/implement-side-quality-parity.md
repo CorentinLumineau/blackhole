@@ -1,5 +1,6 @@
 ---
 type: brainstorm
+summary: "Early exploration of implement-side quality parity with mercure, superseded by later ADRs"
 status: deprecated
 review_trigger: "on ADR acceptance"
 created: 2026-07-20

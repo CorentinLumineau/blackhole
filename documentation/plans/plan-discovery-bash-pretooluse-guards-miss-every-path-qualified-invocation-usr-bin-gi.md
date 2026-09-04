@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Bugfix plan fixing `worktree-removal-guard.js`'s `isCommandWordStart` predicate to recognize path-qualified `git` invocations (`/usr/bin/git`) without reopening the `--git-dir=/x/.git` fragment false positive it was introduced to reject (issue #774)"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

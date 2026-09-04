@@ -1,5 +1,6 @@
 ---
 type: reference
+summary: "Running decision log of Hard Choice / Bugfix / Refactoring decision records"
 status: current
 review_trigger: "on file change"
 created: 2026-07-20

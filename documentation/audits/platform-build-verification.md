@@ -1,5 +1,6 @@
 ---
 type: audit
+summary: "Platform build verification audit for generated distribution targets"
 status: current
 review_trigger: "on release"
 created: 2026-07-06

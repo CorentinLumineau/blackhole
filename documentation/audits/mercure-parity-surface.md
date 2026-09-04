@@ -1,5 +1,6 @@
 ---
 type: research
+summary: "Survey of the mercure surface blackhole parity work targets"
 status: current
 review_trigger: "on ADR acceptance"
 created: 2026-07-20

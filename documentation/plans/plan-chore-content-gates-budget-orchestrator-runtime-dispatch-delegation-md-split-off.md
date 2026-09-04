@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Content-gate budget rows for the three orchestrator split-off files, seeded at measured × 1.2"
 status: current
 review_trigger: "on ADR acceptance"
 created: 2026-09-02

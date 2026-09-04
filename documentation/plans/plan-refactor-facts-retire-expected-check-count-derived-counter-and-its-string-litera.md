@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Implementation plan for issue #704 (R-01) — retire the derived `EXPECTED_CHECK_COUNT` counter and its new-check-module Touch-Paths trigger"
 status: current
 review_trigger: "on file change"
 created: 2026-09-02

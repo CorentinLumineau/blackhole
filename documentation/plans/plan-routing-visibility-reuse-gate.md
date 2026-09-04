@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Implementation plan for dashboard routing visibility and the implementer Reuse Check gate"
 status: current
 created: 2026-07-13
 last_updated: 2026-07-13

@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Documents the `gh pr edit` classic-Projects GraphQL failure and the `gh api -X PATCH` REST workaround at `implementer.md`'s PR-open/edit step (issue #813)"
 status: current
 review_trigger: on file change
 created: 2026-09-03

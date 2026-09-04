@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Bugfix plan for V-CONFIG-02 nested-block leaf coverage — parent-row `(sub-keys: ...)` marker convention for `router_confidence_thresholds`"
 status: current
 review_trigger: "on file change"
 created: 2026-09-02

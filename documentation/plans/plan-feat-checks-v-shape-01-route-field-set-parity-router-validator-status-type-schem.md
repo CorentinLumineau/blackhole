@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "V-SHAPE-01 route field-set parity check across router validator, status type, schema example, queue-dag"
 status: current
 review_trigger: "on ADR acceptance"
 created: 2026-09-02

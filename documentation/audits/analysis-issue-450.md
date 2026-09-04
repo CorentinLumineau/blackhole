@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Pre-plan architecture analysis mapping the merge-conflict gap to phase-loop/merge-gate module boundaries and existing blocker/ledger conventions"
 status: current
 created: 2026-08-12
 last_updated: 2026-08-12

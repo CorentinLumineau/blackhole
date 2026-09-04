@@ -1,5 +1,6 @@
 ---
 type: brainstorm
+summary: "Brainstorm scoping the multi-milestone mercure parity program"
 skill: x-brainstorm
 status: current
 review_trigger: "on ADR acceptance"

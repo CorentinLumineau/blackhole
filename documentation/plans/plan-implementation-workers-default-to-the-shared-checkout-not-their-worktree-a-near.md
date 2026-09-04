@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Design Track note for issue #804 — root cause confirmed as a Bash-tool gap in #620's existing assigned-worktree write containment (Write/Edit only); unanimous 3/3 scorer pick for extending it to Bash (Gate: blocked on dominance margin only, owner-approved as ADR-029)"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

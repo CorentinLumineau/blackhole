@@ -2,15 +2,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseMdFrontmatter, parseFrontmatterFields } from '../lib/build/content.ts';
 import { parseIndexTableRows, walkMdFilesAbs } from '../lib/check-common.ts';
+import { buildDocIndexRows, renderDocIndexTable } from '../lib/doc-index-generate.ts';
 import { DOC_HEALTH_THRESHOLDS } from '../lib/build/facts.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
 // Issue #462 (ADR-021 D6 Scope 1) — doc-health.check.ts: matches verify.doc-health.test.ts.
-// Delivers owner ruling R-001 (documentation/reference/product-principles.md): brings
-// blackhole's own documentation/ tree to parity with the two obligations mercure's doc
-// governance has that blackhole's Scope-1 (this repo) enforcement lacked — INDEX.md upkeep
-// (V-DOCHEALTH-01/02) and the doc-tree health signal (V-DOCHEALTH-03) — plus reuses the two
-// existing WARN-severity V-DOC-GOV codes for lifecycle frontmatter and canonical naming.
+// Delivers owner ruling R-001: INDEX.md upkeep (V-DOCHEALTH-01/02), the doc-tree health signal
+// (V-DOCHEALTH-03), and reuse of the two existing WARN V-DOC-GOV codes (frontmatter, naming).
 
 const DOCS_DIR = path.join(root, 'documentation');
 
@@ -20,16 +18,14 @@ const isIndexFile = (relPath: string): boolean => path.basename(relPath) === 'IN
 const isArchivedMilestone = (relPath: string): boolean => relPath.startsWith('milestones/_archived/');
 const isDecisionsDoc = (relPath: string): boolean => relPath.startsWith('decisions/');
 
-// Walks `docsDir` (a fixture dir in tests, DOCS_DIR in production) for every *.md file, reusing
-// the shared tree-walker (V-INT-02) rather than re-implementing recursion here.
+// Walks `docsDir` (fixture in tests, DOCS_DIR in production) via the shared tree-walker (V-INT-02).
 const collectDocFiles = (docsDir: string): DocFile[] =>
   walkMdFilesAbs(docsDir).map((abs) => ({
     relPath: path.relative(docsDir, abs).split(path.sep).join('/'),
     content: fs.readFileSync(abs, 'utf-8'),
   }));
 
-// V-DOC-GOV-02 (reused): lifecycle frontmatter (`type`/`status`/`review_trigger`/`created`/
-// `last_updated`) present on every doc, excluding INDEX.md and documentation/milestones/_archived/**.
+// V-DOC-GOV-02 (reused): lifecycle frontmatter present on every doc, excluding INDEX.md/milestones/_archived/**.
 export type FrontmatterPresence = {
   relPath: string;
   hasType: boolean;
@@ -85,17 +81,12 @@ export const evaluateCanonicalNaming = (docsDir: string): CheckResult => {
     : { id: 'V-DOC-GOV-03', ok: true };
 };
 
-// Issue #573: shared with adr-status.check.ts via parseIndexTableRows (check-common.ts).
-// Root-INDEX row parser (shared by V-DOCHEALTH-01/02/03) — the same 5-column schema already in
-// production at documentation/decisions/INDEX.md (`path | summary | type | status |
-// review_trigger`), row paths relative to documentation/ itself (Codebase Conventions).
+// Issue #573: shared root-INDEX row parser (V-DOCHEALTH-01/02/03), reused by adr-status.check.ts.
 export const parseRootIndexRows = parseIndexTableRows;
 
-// Issue #728 (V-INT-02 Decision Record 3): `RootIndexRow` and `appendIndexRowIfAbsent` now
-// live in check-common.ts — companion-file-sync.ts (scripts/lib/) needed this same primitive
-// and could not import it from this *.check.ts module (check-common.ts's own documented import
-// direction). Re-exported here so this module's public surface, and verify.doc-health.test.ts's
-// existing import path, are unchanged.
+// Issue #728 (V-INT-02): `RootIndexRow`/`appendIndexRowIfAbsent` moved to check-common.ts (this
+// module can't be imported by companion-file-sync.ts, a lib/ module) — re-exported so this
+// module's public surface is unchanged.
 export { appendIndexRowIfAbsent } from '../lib/check-common.ts';
 export type { RootIndexRow } from '../lib/check-common.ts';
 
@@ -115,8 +106,7 @@ export const evaluateIndexDangling = (docsDir: string): CheckResult => {
 };
 
 // V-DOCHEALTH-02 (new, blocking): every doc has a corresponding INDEX.md row, excluding
-// decisions/** (governed by its own per-folder INDEX.md + adr-status.check.ts), INDEX.md
-// files, and documentation/milestones/_archived/**.
+// decisions/** (own per-folder INDEX.md), INDEX.md files, and milestones/_archived/**.
 export const findOrphanDocs = (allRelPaths: string[], indexPaths: Set<string>): string[] =>
   allRelPaths
     .filter((p) => !isIndexFile(p) && !isDecisionsDoc(p) && !isArchivedMilestone(p))
@@ -134,10 +124,9 @@ export const evaluateOrphanFiles = (docsDir: string): CheckResult => {
     : { id: 'V-DOCHEALTH-02', ok: true };
 };
 
-// V-DOCHEALTH-03 (new, advisory — never blocking, mirrors mercure's own framing for this exact
-// signal): aggregated doc-tree health — single-doc line ceiling, root-INDEX row ceiling,
-// tree-size advisory, deprecation window. Thresholds imported from facts.ts (Numeric-fact SSOT
-// — never hardcoded here).
+// V-DOCHEALTH-03 (new, advisory — never blocking, mirrors mercure's own framing): aggregated
+// doc-tree health — line ceiling, row ceiling, tree-size advisory, deprecation window.
+// Thresholds from facts.ts (Numeric-fact SSOT — never hardcoded here).
 export const findOversizedDocs = (files: { relPath: string; lineCount: number }[], ceiling: number): string[] =>
   files.filter((f) => !isIndexFile(f.relPath) && f.lineCount > ceiling).map((f) => f.relPath);
 
@@ -190,11 +179,32 @@ export const evaluateDocTreeHealth = (docsDir: string): CheckResult => {
   return details.length ? { id: 'V-DOCHEALTH-03', ok: true, detail: details.join('; ') } : { id: 'V-DOCHEALTH-03', ok: true };
 };
 
+// Issue #811 (ADR-031 Phase 1): advisory round-trip parity signal, sibling of evaluateDocTreeHealth
+// above (same V-DOCHEALTH-03 umbrella — no new V-code, V-KISS-01/V-YAGNI-01). Reuses
+// buildDocIndexRows/renderDocIndexTable (doc-index-generate.ts); Phase 2 (#832) flips this to blocking.
+export const evaluateGeneratedIndexParity = (docsDir: string): CheckResult => {
+  const indexAbs = path.join(docsDir, 'INDEX.md');
+  if (!fs.existsSync(indexAbs)) return { id: 'V-DOCHEALTH-03', ok: true };
+  const committedRows = parseRootIndexRows(fs.readFileSync(indexAbs, 'utf-8'));
+  const generatedRows = buildDocIndexRows(docsDir);
+  if (renderDocIndexTable(committedRows) === renderDocIndexTable(generatedRows)) return { id: 'V-DOCHEALTH-03', ok: true };
+
+  const committedByPath = new Map(committedRows.map((r) => [r.path, r]));
+  const generatedByPath = new Map(generatedRows.map((r) => [r.path, r]));
+  const differing = [...new Set([...committedByPath.keys(), ...generatedByPath.keys()])].filter((p) => {
+    const c = committedByPath.get(p);
+    const g = generatedByPath.get(p);
+    return !c || !g || c.summary !== g.summary || c.type !== g.type || c.status !== g.status || c.reviewTrigger !== g.reviewTrigger;
+  });
+  return { id: 'V-DOCHEALTH-03', ok: true, detail: `generated documentation/INDEX.md differs from committed for: ${differing.join(', ')}` };
+};
+
 const checkFrontmatterPresence = (): CheckResult => evaluateFrontmatterPresence(DOCS_DIR);
 const checkCanonicalNaming = (): CheckResult => evaluateCanonicalNaming(DOCS_DIR);
 const checkIndexDangling = (): CheckResult => evaluateIndexDangling(DOCS_DIR);
 const checkOrphanFiles = (): CheckResult => evaluateOrphanFiles(DOCS_DIR);
 const checkDocTreeHealth = (): CheckResult => evaluateDocTreeHealth(DOCS_DIR);
+const checkGeneratedIndexParity = (): CheckResult => evaluateGeneratedIndexParity(DOCS_DIR);
 
 // ADR-007 T5/R2': domain entrypoint — see adr-status.check.ts's runChecks doc comment for the
 // shared contract (pure, no side effects, glob-discovered by scripts/verify.ts).
@@ -204,4 +214,5 @@ export const runChecks = (): CheckResult[] => [
   checkIndexDangling(),
   checkOrphanFiles(),
   checkDocTreeHealth(),
+  checkGeneratedIndexParity(),
 ];

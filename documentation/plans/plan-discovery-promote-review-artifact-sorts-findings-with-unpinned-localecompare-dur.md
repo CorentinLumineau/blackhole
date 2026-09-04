@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Plan: fix unpinned localeCompare in promote-review-artifact.ts (issue #791)"
 status: current
 review_trigger: "on implementation"
 created: 2026-09-03

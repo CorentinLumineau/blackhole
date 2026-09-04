@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Comparative analysis of blackhole's fixed pipeline against mercure's x-auto router"
 status: draft
 review_trigger: "on ADR acceptance"
 created: 2026-07-07

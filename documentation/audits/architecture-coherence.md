@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Architecture coherence audit across agents, skills, and reference files"
 status: current
 review_trigger: "on release"
 created: 2026-07-06

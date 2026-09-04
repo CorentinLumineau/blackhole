@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Fix for planner.md's staging-manifest wording gap (issue #782): mandatory-pairing callout at all 4 producer-route sites plus a V-STAGE-03 source-level regression guard"
 status: current
 review_trigger: on ADR-021 amendment
 created: 2026-09-03

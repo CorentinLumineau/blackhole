@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Plan for reconciling `findings-ledger.json` deferred findings whose `deferred_to_issue` target has closed — new terminal-state transitions, a V-DEFER-01 advisory check, and a one-time backlog triage"
 status: current
 review_trigger: "on implementation"
 created: 2026-09-03

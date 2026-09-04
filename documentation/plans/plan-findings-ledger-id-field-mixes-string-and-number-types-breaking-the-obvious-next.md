@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Documents the shape-tolerant next-id jq expression for findings-ledger.json's mixed-shape id field, the queue.json/findings-ledger.json --entity-key array-vs-object asymmetry, and the consumer-repo BLACKHOLE_PLUGIN_ROOT resolution for state-write-guard.ts"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

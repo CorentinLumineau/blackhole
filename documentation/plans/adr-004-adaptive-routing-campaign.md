@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Implementation campaign plan for ADR-004 adaptive phase routing"
 status: current
 review_trigger: "on ADR acceptance"
 created: 2026-07-07

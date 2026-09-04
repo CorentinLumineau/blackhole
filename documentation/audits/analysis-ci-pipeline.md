@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "CI pipeline analysis for the blackhole build and verify toolchain"
 skill: x-analyze
 created: 2026-07-22
 target: "CI pipelines (.github/workflows/verify.yml, release.yml)"

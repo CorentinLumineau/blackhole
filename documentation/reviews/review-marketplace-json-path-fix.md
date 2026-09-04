@@ -1,5 +1,6 @@
 ---
 type: review
+summary: "Review of the marketplace.json path fix"
 skill: x-review
 status: final
 created: 2026-07-06

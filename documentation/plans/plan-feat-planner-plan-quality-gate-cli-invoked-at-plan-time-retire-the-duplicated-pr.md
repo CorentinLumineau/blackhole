@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Wire scripts/checks/plan-quality-gate.check.ts's exported checks into a plan-time CLI planner.md invokes (R-11)"
 status: current
 review_trigger: "on ADR acceptance"
 created: 2026-09-02

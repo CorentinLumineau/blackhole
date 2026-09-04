@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Design Track note for issue #800 — installed Claude Code plugin cache is version-keyed not content-addressed, so three merged hook security fixes shipped inert; recommends a reviewer version-bump BLOCK gate plus an advisory content-hash drift signal (Gate: blocked pending human sign-off)"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

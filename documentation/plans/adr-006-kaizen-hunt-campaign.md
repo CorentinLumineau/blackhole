@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Implementation campaign plan for ADR-006 kaizen hunt"
 status: current
 review_trigger: "on ADR acceptance"
 created: 2026-07-10

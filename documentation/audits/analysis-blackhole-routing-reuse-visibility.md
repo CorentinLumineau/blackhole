@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Routing visibility and Reuse Check gate analysis feeding ADR-008"
 skill: x-analyze
 created: 2026-07-13
 target: "blackhole plugin — V-INT reuse enforcement, routing status visibility, wave monitoring"

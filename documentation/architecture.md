@@ -1,5 +1,6 @@
 ---
 type: reference
+summary: "Architecture entry point pointing to the durable ARCHITECTURE.md narrative"
 status: current
 review_trigger: "on build target change"
 created: 2026-07-06

@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Steady-state decision on `decision_log_silent_prs`: pre-mechanism history plus a closed 2026-07-20→2026-09-02 implementation gap, not a live defect"
 status: current
 issue: #767
 review_trigger: "on file change"

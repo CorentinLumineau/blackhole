@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Implementation plan for closing the Phase-0 journeys.md companion-scaffold INDEX gap and correcting its documented target path (issue #728)"
 status: current
 review_trigger: "on file change"
 created: 2026-09-02

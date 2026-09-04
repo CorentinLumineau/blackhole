@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Fix for the stale `unverified` assertion in `verify.model-routing-effort.test.ts` that drifted from #742's correctly-shipped \"Verified\" citation, turning `main` red"
 status: current
 review_trigger: "on file change"
 created: 2026-09-02

@@ -1,5 +1,6 @@
 ---
 type: reference
+summary: "Blast-radius reference for shared check-utils.ts consumers across scripts/checks"
 status: current
 review_trigger: "on check-utils.ts or scripts/checks/*.check.ts import change"
 created: 2026-07-26

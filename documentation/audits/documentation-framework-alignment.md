@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Documentation-framework alignment audit that identified the gaps this issue closes"
 skill: x-analyze
 status: draft
 review_trigger: "on mercure release"

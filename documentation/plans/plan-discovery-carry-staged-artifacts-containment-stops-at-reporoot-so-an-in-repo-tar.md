@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Constrains carry-staged-artifacts.ts's target_path to an allowlist (documentation/**, root ARCHITECTURE.md) and converts write-step failures to per-entry skips, closing the arbitrary-code-execution vector in issue #784"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03
