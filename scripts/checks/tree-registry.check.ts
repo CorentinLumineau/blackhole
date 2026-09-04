@@ -46,6 +46,17 @@ export const findMissingTrees = (
   return missing;
 };
 
+/** Assembles the advisory `detail` string from the two per-doc missing-tree lists, or
+ * `undefined` when both docs cover every tree. Exported as a pure helper for the same reason
+ * `extractMarkdownSection` and `findMissingTrees` are: the clean live repo never exercises the
+ * drift branch, so it would otherwise only ever be covered by a real drift. */
+export const formatTreeRegistryDetail = (missingArch: string[], missingReadme: string[]): string | undefined => {
+  const parts: string[] = [];
+  if (missingArch.length) parts.push(`architecture.md missing: ${missingArch.join(', ')}`);
+  if (missingReadme.length) parts.push(`README.md missing: ${missingReadme.join(', ')}`);
+  return parts.length ? parts.join('; ') : undefined;
+};
+
 export const checkTreeRegistry = (): CheckResult => {
   const archSection = extractMarkdownSection(read('documentation/architecture.md'), 'Committed target trees');
   const readmeSection = extractMarkdownSection(read('README.md'), 'Installation Paths');
@@ -56,13 +67,8 @@ export const checkTreeRegistry = (): CheckResult => {
     exclude: ['claude-native'],
   });
 
-  if (!missingArch.length && !missingReadme.length) return { id: 'V-TREE-01', ok: true };
-
-  const parts: string[] = [];
-  if (missingArch.length) parts.push(`architecture.md missing: ${missingArch.join(', ')}`);
-  if (missingReadme.length) parts.push(`README.md missing: ${missingReadme.join(', ')}`);
-
-  return { id: 'V-TREE-01', ok: true, detail: parts.join('; ') };
+  const detail = formatTreeRegistryDetail(missingArch, missingReadme);
+  return detail ? { id: 'V-TREE-01', ok: true, detail } : { id: 'V-TREE-01', ok: true };
 };
 
 export const runChecks = (): CheckResult[] => [checkTreeRegistry()];
