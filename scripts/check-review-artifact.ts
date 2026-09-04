@@ -7,14 +7,17 @@ import type { LedgerFile } from './lib/promote-review-artifact.ts';
 
 function usage(): never {
   console.error(
-    'Usage: bun run scripts/check-review-artifact.ts --config <abs .blackhole/config.json> --issue <N> --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head <sha> --repo-root <abs repo root> --diff-file <abs paths.txt>',
+    'Usage: bun run --cwd <abs repo root> scripts/check-review-artifact.ts --config <abs .blackhole/config.json> --issue <N> --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head <sha> --repo-root <abs repo root> --diff-file <abs paths.txt>',
   );
   process.exit(2);
 }
 
 const REQUIRED_KEYS = ['config', 'issue', 'title', 'ledger', 'pr', 'branch', 'head', 'repo-root', 'diff-file'];
 // Every path-shaped flag must be absolute (issue #806 AC4) — sidesteps the cwd-relative
-// resolution hazard class documented for #798 rather than sequencing behind it.
+// *argument*-resolution hazard class documented for #798 rather than sequencing behind it.
+// #798 also requires every caller to pass Bun's own `--cwd <abs repo root>` flag (before the
+// script path, matching `--repo-root`) — that pins *module resolution* (this script's own
+// `./lib/...` imports) to the same tree, which no CLI argument here can do on its own.
 const ABSOLUTE_PATH_KEYS = ['config', 'ledger', 'repo-root', 'diff-file'];
 
 function parseArgs(argv: string[]) {

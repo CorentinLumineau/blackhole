@@ -20,8 +20,10 @@ Inert when `docs_governance.enabled` does not resolve to `true` or
    staged.
 2. Run:
    ```bash
-   bun run scripts/lib/companion-file-sync.ts --repo-root <worktree-abs> --diff-file <paths.txt>
+   bun run --cwd <worktree-abs> scripts/lib/companion-file-sync.ts --repo-root <worktree-abs> --diff-file <paths.txt>
    ```
+   `--cwd` MUST equal `--repo-root` (issue #798 — pins module resolution to the worktree, the
+   same tree the CLI operates on).
 3. Stage and commit any files the CLI created/repaired in the **same PR** as the triggering diff.
 4. PR body: one `Companion-file repair:` line per repair (`vcode`, `file`, `action`).
 5. Return JSON `companion_repairs[]` — one `{ vcode, file, action }` row per repair performed.
