@@ -9,6 +9,11 @@ export type CompanionRepair = {
   action: string;
 };
 
+// Issue #766: the root companion file set, named once so consumers (e.g. V-ADR-06 leg 2's
+// undisclosed-reversal scan in adr-supersession.check.ts) have one place to look instead of
+// re-deriving the set from this file's separate per-file literals below.
+export const ROOT_COMPANION_MD_FILES = ['ARCHITECTURE.md', 'AGENTS.md', 'README.md'] as const;
+
 /** Code-surface prefixes — see `src/references/companion-file-sync.md` § Triggers. */
 const CODE_SURFACE_PREFIXES = [
   'src/',

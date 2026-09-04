@@ -13,6 +13,7 @@ import {
   repairAgentsSymlink,
   repairJourneysIndexRow,
   resolveProjectName,
+  ROOT_COMPANION_MD_FILES,
   runCompanionFileSync,
 } from './lib/companion-file-sync.ts';
 
@@ -38,6 +39,12 @@ const makeFixtureRepo = (): string => {
 };
 
 describe('companion-file-sync helpers', () => {
+  // Issue #766, Task 1 AC — the single named export other consumers (V-ADR-06 leg 2) import
+  // instead of re-deriving the root companion file set from this file's per-function literals.
+  test('ROOT_COMPANION_MD_FILES names exactly the three root companion files', () => {
+    expect(ROOT_COMPANION_MD_FILES).toEqual(['ARCHITECTURE.md', 'AGENTS.md', 'README.md']);
+  });
+
   test('isDocOnlyMarkdownDiff is true only for documentation markdown paths', () => {
     expect(isDocOnlyMarkdownDiff(['documentation/foo.md'])).toBe(true);
     expect(isDocOnlyMarkdownDiff(['documentation/foo.md', 'documentation/bar.md'])).toBe(true);

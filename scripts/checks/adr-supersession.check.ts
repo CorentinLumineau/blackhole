@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseMdFrontmatter, parseFrontmatterFields } from '../lib/build/content.ts';
 import { walkMdFilesAbs } from '../lib/check-common.ts';
+import { ROOT_COMPANION_MD_FILES } from '../lib/companion-file-sync.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
 // adr-supersession.check.ts: V-ADR-06. Two legs closing the RC-E self-disclosure gap — an ADR
@@ -135,13 +136,21 @@ export const findPhraseScanViolations = (
 const toPosixRel = (from: string, to: string): string => path.relative(from, to).split(path.sep).join('/');
 
 // `src/**/*.md` + `documentation/**/*.md`, excluding `documentation/decisions/` (the AC's own
-// exclusion — that folder's ADR/INDEX prose legitimately discusses reversals of itself).
+// exclusion — that folder's ADR/INDEX prose legitimately discusses reversals of itself), plus
+// the root companion files (`ROOT_COMPANION_MD_FILES`) as an explicit, non-recursive list —
+// issue #766. Explicit, not a repo-root walk: a repo-root walk would recurse into every
+// generated build-output tree (`.claude/`, `.cursor/`, `plugins/`, `skills/`, `codex-*`,
+// `.agents/build/`) and re-match each dist copy of every `src/**/*.md` file.
 export const collectPhraseScanViolations = (repoRoot: string): PhraseScanCitation[] => {
   const srcDir = path.join(repoRoot, 'src');
   const docsDir = path.join(repoRoot, 'documentation');
+  const rootCompanionFiles = ROOT_COMPANION_MD_FILES.map((name) => path.join(repoRoot, name)).filter((f) =>
+    fs.existsSync(f),
+  );
   const files = [
     ...walkMdFilesAbs(srcDir),
     ...walkMdFilesAbs(docsDir).filter((f) => !toPosixRel(docsDir, f).startsWith('decisions/')),
+    ...rootCompanionFiles,
   ];
 
   const decisionsDir = path.join(repoRoot, 'documentation', 'decisions');

@@ -224,6 +224,37 @@ describe('collectPhraseScanViolations (leg 2, filesystem-backed)', () => {
       expect(collectPhraseScanViolations(dir)).toEqual([]);
     });
   });
+
+  // Issue #766: root companion files (ARCHITECTURE.md, AGENTS.md, README.md) sit outside both
+  // src/**/*.md and documentation/**/*.md, so pre-fix they are never scanned at all — this test
+  // must fail against the pre-fix collectPhraseScanViolations (no violation returned).
+  test('an undisclosed reversal in root ARCHITECTURE.md is scanned', () => {
+    withTempDir('adr-supersession-', (dir) => {
+      fs.mkdirSync(path.join(dir, 'documentation', 'decisions'), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, 'ARCHITECTURE.md'),
+        'This constraint intentionally supersedes ADR-007 without a recorded amendment.',
+      );
+      fs.writeFileSync(path.join(dir, 'documentation', 'decisions', 'ADR-007-fixture.md'), UNAMENDED_ADR);
+      const violations = collectPhraseScanViolations(dir);
+      expect(violations).toEqual([{ relPath: 'ARCHITECTURE.md', line: 1, adr: 'ADR-007' }]);
+    });
+  });
+
+  // Proves the explicit-file-list approach (not a repo-root walk) — a build-output dist copy of
+  // ARCHITECTURE.md under .claude/ must not be double-counted alongside the root original.
+  test('a .claude/ dist copy of ARCHITECTURE.md is not double-counted', () => {
+    withTempDir('adr-supersession-', (dir) => {
+      fs.mkdirSync(path.join(dir, 'documentation', 'decisions'), { recursive: true });
+      fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+      const phrase = 'This constraint intentionally supersedes ADR-007 without a recorded amendment.';
+      fs.writeFileSync(path.join(dir, 'ARCHITECTURE.md'), phrase);
+      fs.writeFileSync(path.join(dir, '.claude', 'ARCHITECTURE.md'), phrase);
+      fs.writeFileSync(path.join(dir, 'documentation', 'decisions', 'ADR-007-fixture.md'), UNAMENDED_ADR);
+      const violations = collectPhraseScanViolations(dir);
+      expect(violations).toEqual([{ relPath: 'ARCHITECTURE.md', line: 1, adr: 'ADR-007' }]);
+    });
+  });
 });
 
 describe('checkAdrSupersession / runChecks (V-ADR-06, live tree)', () => {
