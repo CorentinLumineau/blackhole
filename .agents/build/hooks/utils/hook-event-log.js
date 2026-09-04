@@ -125,15 +125,41 @@ const isUnderRoot = (candidate, root) => {
  * `/private/var`, or any workstation-local alias) must still classify as broad. */
 const BARE_TEMP_DIRS = new Set(['/tmp', '/var/tmp', os.tmpdir()].map((p) => resolveExistingAncestor(p)));
 
+/** Breadth of one already-resolved reading of a candidate root: too few segments to name anything
+ * a worker controls, a bare temp root, or $HOME (compared both lexically and through realpath,
+ * since a home directory is itself routinely a symlink). */
+const isTooBroadRoot = (candidate) => {
+  if (candidate.split(path.sep).filter(Boolean).length < 2) return true;
+  if (BARE_TEMP_DIRS.has(candidate)) return true;
+  const home = process.env.HOME;
+  return Boolean(home) && (candidate === path.resolve(home) || candidate === resolveExistingAncestor(home));
+};
+
+/** Breadth is judged on BOTH readings of `value` — the lexically resolved path and the
+ * realpath-resolved one — and the value is accepted only when neither is broad. Containment
+ * compares roots through `resolveExistingAncestor` (`isUnderRoot`), so a check reading only the
+ * literal value decides breadth for a different directory than the one the root actually spans:
+ * a narrow-looking `<scratch>/link` symlinked at $HOME passes lexically and then admits the whole
+ * home subtree. Judging both readings keeps the breadth check and the containment comparison
+ * talking about the same directory, on every leg that reaches this predicate. */
 const isAcceptableScratchpadDir = (value) => {
   if (typeof value !== 'string' || value.length === 0 || !path.isAbsolute(value)) return false;
-  const resolved = path.resolve(value);
-  const segments = resolved.split(path.sep).filter(Boolean);
-  if (segments.length < 2) return false;
-  if (BARE_TEMP_DIRS.has(resolveExistingAncestor(value))) return false;
-  const home = process.env.HOME;
-  if (home && resolved === path.resolve(home)) return false;
-  return true;
+  return !isTooBroadRoot(path.resolve(value)) && !isTooBroadRoot(resolveExistingAncestor(value));
+};
+
+/** A scratchpad directory is admitted as a containment root only when it also exists on disk.
+ * Containment comparisons run through `resolveExistingAncestor`, which walks up to the deepest
+ * *existing* ancestor — so a stale or never-created value would be compared as (and therefore
+ * trust every sibling under) that ancestor instead of itself, re-widening the allow-list
+ * `isAcceptableScratchpadDir` exists to narrow. Applied to both scratchpad legs below — the
+ * configured `scratchpad_dir` and the `BLACKHOLE_SCRATCHPAD_DIR` override — so neither can drift
+ * into trusting a parent directory it never named. */
+const isExistingDirectory = (value) => {
+  try {
+    return fs.statSync(value).isDirectory();
+  } catch {
+    return false;
+  }
 };
 
 /** Reads and validates `scratchpad_dir` from `<mainClone>/.blackhole/config.json`. Returns null —
@@ -167,7 +193,18 @@ const readScratchpadDir = (mainClone) => {
  * Write/Edit containment allow-list to an arbitrary directory (#510/F-00088). Narrowed here to
  * worktrees nested under the main clone, or nested under a validated `scratchpad_dir` from
  * `<mainClone>/.blackhole/config.json` — the documented location for worker worktrees (e.g.
- * `/tmp/blackhole-campaign/wt-42`) — **plus, unconditionally, `cwd`'s own resolved git toplevel**
+ * `/tmp/blackhole-campaign/wt-42`) — **plus that validated `scratchpad_dir` itself**, so a target
+ * placed directly at the scratchpad root (a probe script, a shared coordination file) is in-bounds
+ * rather than denied for sitting in none of the `wt-*` subdirectories: the directory already
+ * passed the same `isAcceptableScratchpadDir` breadth check that makes its nested worktrees
+ * trustworthy, and `isExistingDirectory` keeps a never-created value from collapsing onto its
+ * parent. Being a member of this set, the scratchpad root also satisfies
+ * `readAssignedWorktreeRoot`'s membership test, so `BLACKHOLE_ASSIGNED_WORKTREE` may now name it
+ * — an assignment that spans every worktree beneath it rather than narrowing to one. That grants
+ * no permission the unset case does not already grant (an unrecognized value falls open to this
+ * same full root set), but it does forfeit the single-worktree narrowing the override exists to
+ * provide, so the orchestrator must keep assigning a specific worktree, never the scratchpad root
+ * — **plus, unconditionally, `cwd`'s own resolved git toplevel**
  * (#729): a non-campaign interactive session sitting in any worktree of this repo family must be
  * able to Write/Edit within its own worktree even when that worktree is registered neither under
  * the main clone nor under `scratchpad_dir` (e.g. a worktree created via a bare `git worktree
@@ -179,8 +216,9 @@ const readScratchpadDir = (mainClone) => {
  * opt-in override for the Claude Code harness's own per-session scratchpad directory, which is
  * never a git worktree and so never appears in `git worktree list` output at all — validated
  * through the same `isAcceptableScratchpadDir` breadth check `scratchpad_dir` already uses
- * (V-INT-02), read once per call, admitted only when explicitly set and valid (no silent
- * auto-detection of the harness's undocumented-internal `/tmp/claude-<uid>/...` shape). Mirrors
+ * (V-INT-02) and the same `isExistingDirectory` guard, read once per call, admitted only when
+ * explicitly set, valid and existing (no silent auto-detection of the harness's
+ * undocumented-internal `/tmp/claude-<uid>/...` shape). Mirrors
  * the `BLACKHOLE_HOOK_EVENT_DIR` / `BLACKHOLE_ASSIGNED_WORKTREE` env-var precedent. Null outside
  * a git context, mirroring the other two resolvers above; an empty (but non-null) array means
  * git resolved fine but no root passed the filter, which correctly denies rather than falling
@@ -200,15 +238,22 @@ const allWorktreeRoots = (cwd = process.cwd()) => {
     const filtered = roots.filter(
       (root) => isUnderRoot(root, mainClone) || (scratchpadDir !== null && isUnderRoot(root, scratchpadDir)),
     );
+    const withScratchpad =
+      scratchpadDir !== null && isExistingDirectory(scratchpadDir) ? [...filtered, scratchpadDir] : filtered;
 
     const cwdRoot = worktreeRoot(cwd);
     const withCwd =
-      cwdRoot && !filtered.some((root) => resolveExistingAncestor(root) === resolveExistingAncestor(cwdRoot))
-        ? [...filtered, cwdRoot]
-        : filtered;
+      cwdRoot && !withScratchpad.some((root) => resolveExistingAncestor(root) === resolveExistingAncestor(cwdRoot))
+        ? [...withScratchpad, cwdRoot]
+        : withScratchpad;
 
     const envScratchpad = process.env.BLACKHOLE_SCRATCHPAD_DIR;
-    if (typeof envScratchpad === 'string' && envScratchpad.length > 0 && isAcceptableScratchpadDir(envScratchpad)) {
+    if (
+      typeof envScratchpad === 'string' &&
+      envScratchpad.length > 0 &&
+      isAcceptableScratchpadDir(envScratchpad) &&
+      isExistingDirectory(envScratchpad)
+    ) {
       return [...withCwd, envScratchpad];
     }
     return withCwd;

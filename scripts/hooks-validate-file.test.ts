@@ -453,6 +453,219 @@ describe('validate-file-changes.js', () => {
     }
   });
 
+  // A Write target placed directly at the campaign's configured `scratchpad_dir` — a probe
+  // script, a shared coordination file, anything not inside one specific worktree subdirectory —
+  // must be accepted: the directory as a whole already passed the same `isAcceptableScratchpadDir`
+  // breadth check that makes its nested worktrees trustworthy, so admitting it is no broader than
+  // the nested-worktree trust already granted. `cwd` is deliberately the MAIN clone, so an allow
+  // here can only come from scratchpad-root trust, never from the cwd-worktree trust above.
+  test('#839: a Write directly at the configured scratchpad_dir root is accepted', async () => {
+    const scratchpad = path.join(fs.realpathSync(os.tmpdir()), `blackhole-839-scratch-${process.pid}-${Date.now()}`);
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-839-',
+        async (mainRepo) => {
+          const target = path.join(scratchpad, 'probe.sh');
+          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
+          const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+
+          expect(result.exitCode).toBe(0);
+          expect(result.stdout.trim()).toBe('');
+          expect(readHookEvents(mainRepo)).toEqual([]);
+        },
+        (mainRepo) => {
+          writeCampaignConfig(mainRepo, { scratchpad_dir: scratchpad });
+          return scratchpad;
+        },
+      );
+    } finally {
+      fs.rmSync(scratchpad, { recursive: true, force: true });
+    }
+  });
+
+  // The negative control for the case above: trusting the scratchpad root must not degrade into
+  // trusting its neighbourhood. A sibling directory of the configured scratchpad stays denied.
+  test('#839: with scratchpad_dir configured, a Write under an unrelated directory is still denied', async () => {
+    const scratchpad = path.join(fs.realpathSync(os.tmpdir()), `blackhole-839-scratch-${process.pid}-${Date.now()}`);
+    const unrelated = path.join(fs.realpathSync(os.tmpdir()), `blackhole-839-unrelated-${process.pid}-${Date.now()}`);
+    fs.mkdirSync(unrelated, { recursive: true });
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-839-',
+        async (mainRepo) => {
+          const target = path.join(unrelated, 'probe.sh');
+          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
+          const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+          expect(permissionReason(result.stdout)).toMatch(/outside/i);
+          expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+        },
+        (mainRepo) => {
+          writeCampaignConfig(mainRepo, { scratchpad_dir: scratchpad });
+          return scratchpad;
+        },
+      );
+    } finally {
+      fs.rmSync(unrelated, { recursive: true, force: true });
+      fs.rmSync(scratchpad, { recursive: true, force: true });
+    }
+  });
+
+  // Behavioral guard for `isExistingDirectory` (see its docstring for why a never-created
+  // scratchpad directory would otherwise be trusted as its parent): a configured value that does
+  // not exist on disk must not be admitted, however narrow the breadth check finds it.
+  test('#839: a configured scratchpad_dir that does not exist on disk is not admitted as a containment root', async () => {
+    const parent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-839-ghost-${process.pid}-${Date.now()}`);
+    fs.mkdirSync(parent, { recursive: true });
+    const neverCreated = path.join(parent, 'scratch');
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-839-',
+        async (mainRepo) => {
+          const target = path.join(parent, 'sibling.ts');
+          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
+          const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+          expect(permissionReason(result.stdout)).toMatch(/outside/i);
+        },
+        (mainRepo) => {
+          writeCampaignConfig(mainRepo, { scratchpad_dir: neverCreated });
+          return path.join(mainRepo, '.worktrees');
+        },
+      );
+    } finally {
+      fs.rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  // Same existence requirement on the env-override leg, which is admitted as a root the same way
+  // — one predicate, both legs, so neither can drift into trusting a parent it never named.
+  test('#839: BLACKHOLE_SCRATCHPAD_DIR pointing at a directory that does not exist is not admitted as a containment root', async () => {
+    const parent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-839-env-ghost-${process.pid}-${Date.now()}`);
+    fs.mkdirSync(parent, { recursive: true });
+    const neverCreated = path.join(parent, 'scratch');
+    try {
+      await withLinkedWorktree('blackhole-hook-839-', async (mainRepo, worktree) => {
+        const target = path.join(parent, 'sibling.ts');
+        const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          payload,
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          neverCreated,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/outside/i);
+      });
+    } finally {
+      fs.rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  /** Runs `fn` with `process.env.HOME` pointed at `home`, restoring it unconditionally.
+   * `isAcceptableScratchpadDir` compares against $HOME, and the two symlink cases below need a
+   * home directory the fixture controls rather than the real one, whose own path may already be
+   * denied by an unrelated system-path pattern. `runPreToolUseHook` forwards `process.env` to the
+   * subprocess only when it is given an override to merge in; with no override the spawn inherits
+   * the real environ, which does not carry a mutation made to `process.env` — so both cases below
+   * pass one (the config leg pins the event sink it would have resolved to anyway). */
+  const withHome = async <T>(home: string, fn: () => Promise<T>): Promise<T> => {
+    const previous = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      return await fn();
+    } finally {
+      if (previous === undefined) delete process.env.HOME;
+      else process.env.HOME = previous;
+    }
+  };
+
+  // A scratchpad value whose breadth is invisible until its symlinks are followed: the literal
+  // path is a narrow-looking directory under the temp root, but it resolves to $HOME. Containment
+  // compares resolved paths (`isUnderRoot`), so a breadth check reading only the literal value
+  // admits a root that trusts the whole home subtree — the two must judge the same directory.
+  test('#839: a scratchpad_dir symlinked to $HOME is not admitted as a containment root', async () => {
+    const stamp = `${process.pid}-${Date.now()}`;
+    const fakeHome = path.join(fs.realpathSync(os.tmpdir()), `blackhole-839-home-${stamp}`);
+    const scratchpadLink = path.join(fs.realpathSync(os.tmpdir()), `blackhole-839-home-link-${stamp}`);
+    fs.mkdirSync(fakeHome, { recursive: true });
+    fs.symlinkSync(fakeHome, scratchpadLink);
+    try {
+      await withHome(fakeHome, () =>
+        withLinkedWorktree(
+          'blackhole-hook-839-',
+          async (mainRepo) => {
+            const target = path.join(fakeHome, '.ssh', 'authorized_keys');
+            const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
+            const result = await runPreToolUseHook(
+              SCRIPT,
+              payload,
+              mainRepo,
+              PRETOOLUSE_HOOKS_DIR,
+              path.join(mainRepo, '.blackhole', 'hook-events'),
+            );
+
+            expect(result.exitCode).toBe(2);
+            expect(permissionDecision(result.stdout)).toBe('deny');
+            expect(permissionReason(result.stdout)).toMatch(/outside/i);
+            expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+          },
+          (mainRepo) => {
+            writeCampaignConfig(mainRepo, { scratchpad_dir: scratchpadLink });
+            return path.join(mainRepo, '.worktrees');
+          },
+        ),
+      );
+    } finally {
+      fs.rmSync(scratchpadLink, { force: true });
+      fs.rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
+  // Same symlinked-breadth case on the env-override leg, which reaches the same predicate — one
+  // breadth check, both legs, so neither can be widened by a value the other would reject.
+  test('#839: BLACKHOLE_SCRATCHPAD_DIR symlinked to $HOME is not admitted as a containment root', async () => {
+    const stamp = `${process.pid}-${Date.now()}`;
+    const fakeHome = path.join(fs.realpathSync(os.tmpdir()), `blackhole-839-env-home-${stamp}`);
+    const scratchpadLink = path.join(fs.realpathSync(os.tmpdir()), `blackhole-839-env-home-link-${stamp}`);
+    fs.mkdirSync(fakeHome, { recursive: true });
+    fs.symlinkSync(fakeHome, scratchpadLink);
+    try {
+      await withHome(fakeHome, () =>
+        withLinkedWorktree('blackhole-hook-839-', async (mainRepo, worktree) => {
+          const target = path.join(fakeHome, '.ssh', 'authorized_keys');
+          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+          const result = await runPreToolUseHook(
+            SCRIPT,
+            payload,
+            worktree,
+            PRETOOLUSE_HOOKS_DIR,
+            undefined,
+            undefined,
+            scratchpadLink,
+          );
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+          expect(permissionReason(result.stdout)).toMatch(/outside/i);
+          expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+        }),
+      );
+    } finally {
+      fs.rmSync(scratchpadLink, { force: true });
+      fs.rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
   // When BLACKHOLE_ASSIGNED_WORKTREE is set to a registered family worktree, containment
   // narrows to that single root — writes inside it are allowed, writes to the main clone or a
   // sibling worktree are denied with outside-assigned-worktree. Unset or invalid env → fail-open

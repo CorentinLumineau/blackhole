@@ -4,7 +4,7 @@ summary: "Running decision log of Hard Choice / Bugfix / Refactoring decision re
 status: current
 review_trigger: "on file change"
 created: 2026-07-20
-last_updated: 2026-09-03
+last_updated: 2026-09-04
 related:
   - documentation/decisions/ADR-012-shared-artifact-substrate.md
 ---
@@ -84,3 +84,6 @@ records why the number is what it is, so the question is not re-litigated on eve
 | 810 | root-cause | scripts/lib/carry-staged-artifacts.ts | Normalized target_path before the allowlist comparison, matching containment's existing normalize-before-compare against repoRoot | Containment normalized the path before comparing against repoRoot; the allowlist did not normalize before comparing against documentation/**. Two gates, two different representations of the same path — that mismatch, not either gate individually, was the vulnerability |
 | 810 | reuse | scripts/lib/carry-target-allowlist.ts | New scripts/lib/carry-target-allowlist.ts modeled on ops-touch-paths.ts's named-glob-array + boolean-predicate shape | Reuse check found no existing carry-target-allowlist primitive (repo-wide grep returned 5 unrelated hits) — first occurrence of this concern |
 | 810 | improvement | scripts/lib/carry-staged-artifacts.test.ts | Flipped the stale /etc/passwd 'keeps carrying' assertion whose comment explicitly warned against flipping it, and rewrote the comment to record that AC1's allowlist supersedes it | Scout Check within the diff boundary; containment still holds, it was simply never sufficient on its own to make a path safe to write |
+| 853 | root-cause | templates/hooks/pretooluse/utils/hook-event-log.js | allWorktreeRoots() used the validated scratchpad_dir only as a filter predicate, never as a member of the returned root set; admit it (and the BLACKHOLE_SCRATCHPAD_DIR leg) as a root gated on isExistingDirectory | Widening cwd-trust to cwd's parent is unbounded, an env opt-in cannot fix the documented config path, and admitting scratchpad_dir unconditionally lets a never-created value collapse onto its parent via resolveExistingAncestor and trust every sibling there |
+| 853 | reuse | templates/hooks/pretooluse/utils/hook-event-log.js | None found — first occurrence of an 'existing directory' trust predicate; reused hook-event-log.js's local try/catch arrow-predicate idiom, one predicate serving both scratchpad legs | The six statSync/isDirectory hits repo-wide are directory-walker recursion guards, a different concern, and the standalone hooks JS cannot import scripts/lib/*.ts |
+| 853 | improvement | templates/hooks/pretooluse/utils/hook-event-log.js | Refreshed allWorktreeRoots's docstring to name the scratchpad root and its existence guard; kept the seemingly redundant isUnderRoot(root, scratchpadDir) filter clause | readAssignedWorktreeRoot matches BLACKHOLE_ASSIGNED_WORKTREE against exact members of this list, so dropping nested worktrees would break assigned-worktree narrowing |
