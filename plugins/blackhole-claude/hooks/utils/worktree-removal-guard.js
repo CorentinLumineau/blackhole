@@ -28,6 +28,12 @@
  * failure as "nothing unpushed" would silently allow every removal. `git push` still updates the
  * branch's remote-tracking ref opportunistically even without `-u` (git >= 1.8.4), so
  * `refs/remotes/origin/<branch>` is the reliable fallback comparison point once `@{u}` is absent.
+ * A *resolvable* `@{u}` is also not automatically trustworthy: it is validated against the branch
+ * name before use (its remote-tracking path must end in `/<branch>`), because a misconfigured or
+ * stale upstream can resolve to a DIFFERENT branch's remote-tracking ref and produce a false
+ * `'unpushed'` verdict on a branch that is actually fully pushed under its own name (#781). A
+ * mistracked `@{u}` falls back to the same `refs/remotes/origin/<branch>` ref as the "no upstream"
+ * case above.
  *
  * Matching detail (review round on #532's own PR): a plain `\bgit\s+worktree\s+remove\b` regex
  * requires `git` and `worktree` to sit whitespace-adjacent, so ANY git global option between them
@@ -472,7 +478,14 @@ const checkUnpushedCommits = (worktreePath) => {
     // an error by itself. Fall back to the branch's remote-tracking ref below.
   }
 
-  const compareRef = upstream || `refs/remotes/origin/${branch}`;
+  // A resolvable `@{u}` is not sufficient on its own: it may point at a DIFFERENT branch's
+  // remote-tracking ref (misconfigured or stale tracking config), which would compare HEAD
+  // against the wrong history and produce a false 'unpushed' verdict on a branch that is
+  // actually fully pushed under its own name (#781). Trust `upstream` only when its own
+  // remote-tracking path segment names this branch; otherwise fall back to the constructed
+  // ref exactly as when no upstream is configured at all.
+  const upstreamTracksThisBranch = upstream !== null && upstream.endsWith(`/${branch}`);
+  const compareRef = upstreamTracksThisBranch ? upstream : `refs/remotes/origin/${branch}`;
   let unpushed;
   try {
     unpushed = git(['-C', worktreePath, 'log', '--oneline', `${compareRef}..HEAD`], worktreePath);
