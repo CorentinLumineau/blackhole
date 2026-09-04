@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -9,6 +9,8 @@ import {
   buildCodexAgentYaml,
   serializeCodexAgentYaml,
   generatedMarkerLine,
+  expandIncludes,
+  compileFolder,
 } from './lib/build/content.ts';
 import {
   buildGeminiPluginManifest,
@@ -23,6 +25,7 @@ import {
   writeGeminiManifest,
   compileCodexTree,
 } from './lib/build/trees.ts';
+import { compileAgentPluginsSkillTree } from './lib/build/targets.ts';
 import { cleanDir, isTargetTracked, determineBuildTargets } from './lib/build/clean.ts';
 import {
   GEMINI_TARGET_DIRS,
@@ -32,8 +35,10 @@ import {
   CLAUDE_DISTRIBUTION_ROOT,
   CLAUDE_DISTRIBUTION_AGENT_DIR,
   CLAUDE_DISTRIBUTION_VCODES,
+  AGENT_PLUGINS_DISTRIBUTION_AGENT_DIR,
+  AGENT_PLUGINS_DISTRIBUTION_VCODES,
 } from './lib/build/paths.ts';
-import { AGENT_NAMES, PLATFORM_TARGETS } from './lib/build/facts.ts';
+import { AGENT_NAMES, PLATFORM_TARGETS, BUILD_INPUT_ONLY_DIRS } from './lib/build/facts.ts';
 import { projectIdentity } from './project-identity.ts';
 import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
 
@@ -105,6 +110,137 @@ after`;
     expect(result).toContain('| `planner` + `track: design` | `premium` |');
     expect(result).toContain('| `implementer` | `standard` |');
     expect(result).toContain('| `reviewer` | `standard` |');
+  });
+});
+
+// ADR-034 T1 — expandIncludes: the {{INCLUDE:<dir>/*}} build-time include-marker primitive.
+// Fixture module directories live transiently under the real src/references/ tree (same
+// established convention as the "cleanDir(.claude/skills)" sentinel test below) rather than an
+// injected base-dir override, since expandIncludes always resolves a marker's <dir> relative to
+// the real srcDir — that resolution rule is the behavior under test, not an implementation detail
+// to bypass. Every fixture directory is removed in afterEach even on assertion failure.
+describe('expandIncludes (ADR-034 T1)', () => {
+  const fixtureModulesRel = 'references/__fixture_expand_includes__';
+  const fixtureModulesAbs = path.join(root, 'src', fixtureModulesRel);
+  const fakeShellPath = path.join(root, 'src/agents/__fixture_shell__.md');
+
+  afterEach(() => {
+    fs.rmSync(fixtureModulesAbs, { recursive: true, force: true });
+  });
+
+  test('(a) expands a two-file fixture directory in lexical order, consuming the marker', () => {
+    fs.mkdirSync(fixtureModulesAbs, { recursive: true });
+    fs.writeFileSync(path.join(fixtureModulesAbs, '01-first.md'), 'FIRST BODY');
+    fs.writeFileSync(path.join(fixtureModulesAbs, '02-second.md'), 'SECOND BODY');
+
+    const shell = `before\n{{INCLUDE:${fixtureModulesRel}/*}}\nafter`;
+    const result = expandIncludes(shell, fakeShellPath);
+
+    expect(result).not.toContain('{{INCLUDE:');
+    expect(result).toContain('before');
+    expect(result).toContain('after');
+    const firstIdx = result.indexOf('FIRST BODY');
+    const secondIdx = result.indexOf('SECOND BODY');
+    expect(firstIdx).toBeGreaterThan(-1);
+    expect(secondIdx).toBeGreaterThan(firstIdx);
+  });
+
+  test('(b) returns content byte-identically when no marker is present', () => {
+    const content = 'plain content with no markers\nsecond line';
+    expect(expandIncludes(content, fakeShellPath)).toBe(content);
+  });
+
+  test('(c) throws rather than expanding to empty for a non-existent directory or one with zero .md files', () => {
+    expect(() =>
+      expandIncludes(`{{INCLUDE:references/__does_not_exist__/*}}`, fakeShellPath)
+    ).toThrow();
+
+    fs.mkdirSync(fixtureModulesAbs, { recursive: true });
+    fs.writeFileSync(path.join(fixtureModulesAbs, 'notes.txt'), 'not markdown');
+    expect(() =>
+      expandIncludes(`{{INCLUDE:${fixtureModulesRel}/*}}`, fakeShellPath)
+    ).toThrow();
+  });
+
+  test('(d) a module body starting with "---" does not corrupt parseMdFrontmatter on the shell file', () => {
+    fs.mkdirSync(fixtureModulesAbs, { recursive: true });
+    fs.writeFileSync(
+      path.join(fixtureModulesAbs, '01-mod.md'),
+      '---\nnot real frontmatter\n---\nmodule body'
+    );
+
+    const shell = `---\nname: test-agent\ndescription: test\n---\n\nBody\n{{INCLUDE:${fixtureModulesRel}/*}}\n`;
+    const expanded = expandIncludes(shell, fakeShellPath);
+    const { frontmatter, body } = parseMdFrontmatter(expanded);
+    expect(frontmatter).toContain('name: test-agent');
+    expect(body).toContain('module body');
+  });
+
+  test('(e) a module platform-conditional block is stripped on non-cursor targets and kept on cursor, proving expansion precedes applyPlatformConditionals', () => {
+    fs.mkdirSync(fixtureModulesAbs, { recursive: true });
+    fs.writeFileSync(
+      path.join(fixtureModulesAbs, '01-mod.md'),
+      '{{#cursor}}cursor only{{/cursor}}\nshared text'
+    );
+
+    const shell = `before\n{{INCLUDE:${fixtureModulesRel}/*}}\nafter`;
+    const expanded = expandIncludes(shell, fakeShellPath);
+    // Still raw at this point — proves expansion ran without also resolving platform blocks.
+    expect(expanded).toContain('{{#cursor}}cursor only{{/cursor}}');
+
+    expect(applyPlatformConditionals(expanded, 'cursor')).toContain('cursor only');
+    expect(applyPlatformConditionals(expanded, 'gemini')).not.toContain('cursor only');
+  });
+
+  test('extraSources accumulator receives the resolved module paths in expansion order', () => {
+    fs.mkdirSync(fixtureModulesAbs, { recursive: true });
+    fs.writeFileSync(path.join(fixtureModulesAbs, '01-first.md'), 'FIRST');
+    fs.writeFileSync(path.join(fixtureModulesAbs, '02-second.md'), 'SECOND');
+
+    const extraSources: string[] = [];
+    expandIncludes(`{{INCLUDE:${fixtureModulesRel}/*}}`, fakeShellPath, extraSources);
+    expect(extraSources).toEqual([
+      `src/${fixtureModulesRel}/01-first.md`,
+      `src/${fixtureModulesRel}/02-second.md`,
+    ]);
+  });
+});
+
+// ADR-034 T2 — BUILD_INPUT_ONLY_DIRS + compileFolder exclusion. Mutates the real (empty-by-
+// default) BUILD_INPUT_ONLY_DIRS array for the duration of one test, restored in `finally` —
+// safe because bun:test runs tests within one file sequentially (no test.concurrent here) and
+// the array is only mutated by this describe block.
+describe('BUILD_INPUT_ONLY_DIRS + compileFolder exclusion (ADR-034 T2)', () => {
+  test('compileFolder skips every file under a declared build-input-only subdirectory but emits every other file', () => {
+    const fixtureRel = 'references/__fixture_build_input_only__';
+    const fixtureAbs = path.join(root, 'src', fixtureRel);
+    const destRoot = makeTempDir();
+    fs.mkdirSync(fixtureAbs, { recursive: true });
+    fs.writeFileSync(path.join(fixtureAbs, '01-mod.md'), 'fixture module body');
+    BUILD_INPUT_ONLY_DIRS.push(fixtureRel);
+
+    try {
+      compileFolder('references', destRoot, '', 'references/blackhole-vcodes.md', 'skills');
+
+      expect(fs.existsSync(path.join(destRoot, '__fixture_build_input_only__'))).toBe(false);
+      // A real, unrelated reference file still compiles normally.
+      expect(fs.existsSync(path.join(destRoot, 'blackhole-vcodes.md'))).toBe(true);
+    } finally {
+      const idx = BUILD_INPUT_ONLY_DIRS.indexOf(fixtureRel);
+      if (idx !== -1) BUILD_INPUT_ONLY_DIRS.splice(idx, 1);
+      fs.rmSync(fixtureAbs, { recursive: true, force: true });
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('an empty BUILD_INPUT_ONLY_DIRS (today\'s real declaration) excludes nothing', () => {
+    const destRoot = makeTempDir();
+    try {
+      compileFolder('references', destRoot, '', 'references/blackhole-vcodes.md', 'skills');
+      expect(fs.existsSync(path.join(destRoot, 'blackhole-vcodes.md'))).toBe(true);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
   });
 });
 
@@ -539,6 +675,24 @@ describe('generatedMarkerLine', () => {
       '# GENERATED by scripts/build.ts from src/agents/coordinator.md — do not hand-edit'
     );
   });
+
+  // ADR-034 T3 — extraSources: the footer must under-report zero real inputs.
+  test('a no-extra-sources call is byte-identical to today\'s exact string', () => {
+    expect(generatedMarkerLine('src/SKILL.md', 'html', [])).toBe(
+      '<!-- GENERATED by scripts/build.ts from src/SKILL.md — do not hand-edit -->'
+    );
+  });
+
+  test('two extra sources are both named in the footer', () => {
+    expect(
+      generatedMarkerLine('src/agents/reviewer.md', 'html', [
+        'src/references/reviewer-audits/01-solid.md',
+        'src/references/reviewer-audits/02-security.md',
+      ])
+    ).toBe(
+      '<!-- GENERATED by scripts/build.ts from src/agents/reviewer.md (includes: src/references/reviewer-audits/01-solid.md, src/references/reviewer-audits/02-security.md) — do not hand-edit -->'
+    );
+  });
 });
 
 describe('generated-file marker', () => {
@@ -653,6 +807,101 @@ describe('generated-file marker', () => {
       expect(frontmatter.length).toBeGreaterThan(0);
       expect(frontmatter).toContain('name: coordinator');
     } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+// ADR-034 T6 — fixture agent, end-to-end across every target. A throwaway two-module fixture
+// agent, compiled through the real pipeline (real src/agents/, src/references/ trees — same
+// "temporarily place a fixture under real src/, clean up in finally" convention as the
+// "cleanDir(.claude/skills)" sentinel test below) into temp destRoots only, never a real
+// destination. Fixture names are prefixed `__fixture_` and never collide with AGENT_NAMES or a
+// real reference-tree subdirectory (§ Execution Strategy — Fixture isolation).
+describe('fixture agent — end-to-end across every target (ADR-034 T6)', () => {
+  test('a two-module fixture agent lands as exactly one file per agent on each of the 6 agent trees, both modules inlined, and the fixture module directory is absent from all 9 reference trees', () => {
+    const fixtureAgentName = '__fixture_include_agent__';
+    const fixtureModulesRel = 'references/__fixture_include_modules__';
+    const fixtureAgentPath = path.join(root, 'src', 'agents', `${fixtureAgentName}.md`);
+    const fixtureModulesAbs = path.join(root, 'src', fixtureModulesRel);
+    const destRoot = makeTempDir();
+
+    fs.mkdirSync(fixtureModulesAbs, { recursive: true });
+    fs.writeFileSync(path.join(fixtureModulesAbs, '01-alpha.md'), 'ALPHA MODULE BODY');
+    fs.writeFileSync(path.join(fixtureModulesAbs, '02-beta.md'), 'BETA MODULE BODY');
+    fs.writeFileSync(
+      fixtureAgentPath,
+      `---\nname: ${fixtureAgentName}\ndescription: ADR-034 T6 fixture agent\npermissionMode: default\ndisallowedTools: []\n---\n\n{{INCLUDE:${fixtureModulesRel}/*}}\n`
+    );
+    BUILD_INPUT_ONLY_DIRS.push(fixtureModulesRel);
+
+    try {
+      // The 6 agent output trees (targets.ts).
+      compileFolder('agents', path.join(destRoot, '1-skills', 'agents'), '', 'references/blackhole-vcodes.md', 'skills', true);
+      compileFolder('agents', path.join(destRoot, '2-cursor', 'agents'), '.cursor', '.cursor/rules/blackhole-vcodes.mdc', 'cursor', true);
+      compileFolder('agents', path.join(destRoot, '3-claude-native', 'agents'), '.claude', '.claude/rules/blackhole-vcodes.md', 'claude', true);
+      compileGeminiTree(
+        path.join(destRoot, '4-claude-marketplace'),
+        'plugins/blackhole-claude',
+        'plugins/blackhole-claude/rules/blackhole-vcodes.md',
+        { includeAgents: true, target: 'claude' }
+      );
+      compileGeminiTree(path.join(destRoot, '5-gemini-workspace'), '.agents/build', '.agents/build/rules/blackhole-vcodes.md');
+      compileCodexTree(path.join(destRoot, '6-codex'), 'codex-skills', 'codex-skills/blackhole/references/blackhole-vcodes.md');
+
+      const agentTreeFiles = [
+        { label: 'skills.sh', path: path.join(destRoot, '1-skills', 'agents', `${fixtureAgentName}.md`) },
+        { label: 'cursor', path: path.join(destRoot, '2-cursor', 'agents', `${fixtureAgentName}.md`) },
+        { label: 'claude-native', path: path.join(destRoot, '3-claude-native', 'agents', `${fixtureAgentName}.md`) },
+        { label: 'claude-marketplace', path: path.join(destRoot, '4-claude-marketplace', 'agents', `${fixtureAgentName}.md`) },
+        { label: 'gemini-workspace', path: path.join(destRoot, '5-gemini-workspace', 'agents', `${fixtureAgentName}.md`) },
+        { label: 'codex', path: path.join(destRoot, '6-codex', 'codex-agents', `${fixtureAgentName}.yaml`) },
+      ];
+
+      for (const { label, path: p } of agentTreeFiles) {
+        expect(fs.existsSync(p), `${label}: expected exactly one compiled fixture agent file at ${p}`).toBe(true);
+        const content = fs.readFileSync(p, 'utf-8');
+        expect(content, `${label}: missing ALPHA module body`).toContain('ALPHA MODULE BODY');
+        expect(content, `${label}: missing BETA module body`).toContain('BETA MODULE BODY');
+      }
+
+      // The 9 reference trees — one representative compileFolder('references', ...)/tree call
+      // per distinct wiring shape in targets.ts. Cursor's two reference-tree copies
+      // (skills/blackhole/references and .cursor/skills/blackhole/references) are the same
+      // compileFolder call made twice with identical arguments in compileCursorTarget, so testing
+      // one exercises the same code path as both — this omits no genuinely distinct wiring.
+      compileFolder('references', path.join(destRoot, 'r1-skills'), '', 'references/blackhole-vcodes.md', 'skills');
+      compileFolder('references', path.join(destRoot, 'r2-cursor'), '.cursor', '.cursor/rules/blackhole-vcodes.mdc', 'cursor');
+      compileFolder('references', path.join(destRoot, 'r3-claude-native'), '.claude', '.claude/rules/blackhole-vcodes.md', 'claude');
+      compileGeminiTree(path.join(destRoot, 'r4-gemini-dist'), 'plugins/blackhole', 'plugins/blackhole/rules/blackhole-vcodes.md', { includeAgents: false });
+      compileAgentPluginsSkillTree(
+        path.join(destRoot, 'r5-agent-plugins'),
+        AGENT_PLUGINS_DISTRIBUTION_AGENT_DIR,
+        AGENT_PLUGINS_DISTRIBUTION_VCODES
+      );
+
+      const referenceTreeChecks = [
+        { label: 'skills.sh references', dir: path.join(destRoot, 'r1-skills') },
+        { label: 'cursor references (both copies share this wiring)', dir: path.join(destRoot, 'r2-cursor') },
+        { label: 'claude-native references', dir: path.join(destRoot, 'r3-claude-native') },
+        { label: 'claude-marketplace references', dir: path.join(destRoot, '4-claude-marketplace', 'skills', 'blackhole', 'references') },
+        { label: 'gemini-workspace references', dir: path.join(destRoot, '5-gemini-workspace', 'skills', 'blackhole', 'references') },
+        { label: 'gemini-distribution references', dir: path.join(destRoot, 'r4-gemini-dist', 'skills', 'blackhole', 'references') },
+        { label: 'codex references', dir: path.join(destRoot, '6-codex', 'codex-skills', 'blackhole', 'references') },
+        { label: 'agent-plugins.org references', dir: path.join(destRoot, 'r5-agent-plugins', 'skills', 'blackhole', 'references') },
+      ];
+
+      for (const { label, dir } of referenceTreeChecks) {
+        expect(
+          fs.existsSync(path.join(dir, '__fixture_include_modules__')),
+          `${label}: fixture module directory leaked into a compiled reference tree`
+        ).toBe(false);
+      }
+    } finally {
+      const idx = BUILD_INPUT_ONLY_DIRS.indexOf(fixtureModulesRel);
+      if (idx !== -1) BUILD_INPUT_ONLY_DIRS.splice(idx, 1);
+      fs.rmSync(fixtureAgentPath, { force: true });
+      fs.rmSync(fixtureModulesAbs, { recursive: true, force: true });
       fs.rmSync(destRoot, { recursive: true, force: true });
     }
   });
