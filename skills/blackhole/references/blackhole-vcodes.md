@@ -32,6 +32,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-TEST-05 | Meaningful assertions (not existence checks) | WARN | reviewer.md §2 (TDD & Testing Baselines) |
 | V-TEST-09 | Coverage regression on changed files — line/function coverage vs. pre-change baseline must not drop | BLOCK | implementer.md § Refactoring & Implementation Workflow (Coverage-regression gate, step 6) + reviewer.md §30 (reporting-accuracy backstop) |
 | V-TEST-10 | Test integrity — a diff adds a test-skip marker, removes an assertion with no replacement, or loosens a validation rule with no stated reason; review-time diff-pattern judgment, distinct from V-TEST-09's measurable coverage-delta metric | BLOCK | reviewer.md §23 (Test Integrity Audit) |
+| V-TEST-11 | Structurally unfalsifiable test — a test newly added or substantively touched by the diff whose own assertion could not fail even if the bug it claims to cover were present (e.g. asserting a property the bug cannot affect, or a fixture that normalizes away the exact input variation the bug depends on); review-time diff-pattern judgment, distinct from V-TEST-10's skip/removed-assertion/weakened-validation patterns | BLOCK | reviewer.md §23 (Test Integrity Audit) |
 | V-SEC-01/02 | No injection; no auth bypass | BLOCK | reviewer.md §4 (Security Checks) |
 | V-SEC-03/04 | No hardcoded secrets; no XSS | BLOCK | reviewer.md §4 (Security Checks) |
 | V-SEC-06 | Every security finding carries a concrete attack scenario | BLOCK | review-core.md § Security-mode review (exploitability gate) |
