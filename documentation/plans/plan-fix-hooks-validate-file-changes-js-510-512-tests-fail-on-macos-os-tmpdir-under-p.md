@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Bugfix plan fixing hook-event-log.js's symlink-unaware `BARE_TEMP_DIRS` broad-root check (issue #714, R-21) — closes #510/#512 macOS test failures without weakening the guard"
 status: current
 review_trigger: "on file change"
 created: 2026-09-02

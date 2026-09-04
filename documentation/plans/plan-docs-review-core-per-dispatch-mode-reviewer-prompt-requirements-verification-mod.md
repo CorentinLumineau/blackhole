@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Plan for issue #709 (R-06): per-dispatch-mode reviewer prompt requirements table reconciling review-core.md's universal checklist claim with reviewer.md §13/§24's narrower scopes"
 status: current
 review_trigger: "on file change"
 created: 2026-09-02

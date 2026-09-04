@@ -1,5 +1,6 @@
 ---
 type: review
+summary: "Review artifact for issue #736 (LGTM)"
 status: current
 review_trigger: "on file change"
 created: 2026-09-02

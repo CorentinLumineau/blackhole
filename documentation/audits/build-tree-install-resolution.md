@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Build-tree install resolution audit for the multi-target build pipeline"
 status: current
 created: 2026-07-24
 last_updated: 2026-07-24

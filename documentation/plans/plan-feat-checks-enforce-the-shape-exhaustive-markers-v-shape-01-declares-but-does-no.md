@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Plan for issue #762 — enforce the `<!-- shape: exhaustive -->` V-SHAPE-01 marker leg in route-shape.check.ts"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

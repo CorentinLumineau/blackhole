@@ -116,7 +116,10 @@ export const parseIndexTableRows = (
 // doc-health.check.ts re-exports both names for backward compatibility with its existing test.
 export type RootIndexRow = { path: string; summary: string; type: string; status: string; reviewTrigger: string };
 
-const renderIndexRowLine = (row: RootIndexRow): string =>
+// Issue #811 (ADR-031 Phase 1): exported for reuse by scripts/lib/doc-index-generate.ts, which
+// needs the identical row-render shape and sort order the root-INDEX carry-step already
+// produces — no second sort/render implementation (V-INT-02).
+export const renderIndexRowLine = (row: RootIndexRow): string =>
   `| ${row.path} | ${row.summary} | ${row.type} | ${row.status} | ${row.reviewTrigger} |`;
 
 // Byte-order (UTF-16 code-unit) comparator, deliberately not String.prototype.localeCompare —
@@ -125,7 +128,7 @@ const renderIndexRowLine = (row: RootIndexRow): string =>
 // across machines/Node builds. The sorted-insert guarantee this file exists to provide only
 // holds if two machines compute the same position for the same row, so the comparator must not
 // depend on locale.
-const byPathByteOrder = (a: RootIndexRow, b: RootIndexRow): number => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+export const byPathByteOrder = (a: RootIndexRow, b: RootIndexRow): number => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 
 // Idempotent, path-sorted row-insert primitive (issue #490, ADR-021 D2 carry-step; sorted
 // insert per issue #743). Built on parseIndexTableRows above (V-INT-02). Guards a duplicate row

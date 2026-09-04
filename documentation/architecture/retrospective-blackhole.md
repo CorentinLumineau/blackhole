@@ -1,5 +1,6 @@
 ---
 type: retrospective
+summary: "Architectural retrospective of blackhole (v0.21.0) — governance measured in lines while the system accretes in concerns; 14-metric dashboard, verified findings, remediation blueprint"
 skill: x-rearchitect
 status: draft
 created: 2026-07-06

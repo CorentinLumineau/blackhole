@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Plan — record #408's undisclosed reversal of ADR-007 R3′ as a dated amendment; add a declared `supersedes_adr` field, a two-legged `V-ADR-06` check, and a `docs` hunt band for the same undisclosed-reversal shape (issue #712, R-09)"
 status: current
 review_trigger: "on release"
 created: 2026-09-02

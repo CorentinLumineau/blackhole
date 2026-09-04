@@ -1,5 +1,6 @@
 ---
 type: reference
+summary: "Owner-rulings ledger of durable product preferences binding on future diffs"
 status: current
 review_trigger: "on new ruling"
 created: 2026-08-06

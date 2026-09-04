@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Gap analysis of mercure companion-file (V-ADA) protocol coverage in blackhole"
 status: current
 review_trigger: on protocol change
 created: 2026-07-10

@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Declares ADR_SHAPES (classic-5 / design-track-8) and checks tracked ADR headings against either"
 status: current
 review_trigger: "on ADR acceptance"
 created: 2026-09-02

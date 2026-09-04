@@ -1,5 +1,6 @@
 ---
 type: reference
+summary: "Mechanism-by-mechanism parity matrix between mercure and blackhole"
 status: current
 review_trigger: "on release"
 created: 2026-07-20

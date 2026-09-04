@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "skills.sh-target integration test for model-routing.md's per-role tier resolution, closing the self-declared Unverified note"
 status: current
 review_trigger: "on ADR acceptance"
 created: 2026-09-02

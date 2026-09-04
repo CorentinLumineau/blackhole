@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Implementation plan for ADR-007's drift-proof toolchain re-seating blueprint"
 status: current
 task_type: feature
 track: standard

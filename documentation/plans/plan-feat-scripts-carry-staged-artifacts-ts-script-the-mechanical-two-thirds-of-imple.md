@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Script the carry-staged-artifacts implementer step into a CLI+lib pair"
 status: current
 review_trigger: "on ADR acceptance"
 created: 2026-09-02

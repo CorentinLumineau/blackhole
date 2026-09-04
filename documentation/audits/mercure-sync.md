@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Mercure sync audit tracking upstream skill/agent drift"
 status: current
 review_trigger: "on mercure release"
 created: 2026-07-14

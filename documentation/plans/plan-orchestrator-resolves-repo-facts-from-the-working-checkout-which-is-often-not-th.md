@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Protocol fix: mandatory post-merge + turn-start main-clone freshness refresh so orchestrator repo-facts reads never operate on a stale checkout"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Named-flags plumbing for `determineBuildTargets`/`cleanBuildDirectories` plus the new `V-TREE-01` committed-target-tree drift check (R-17)"
 status: current
 review_trigger: "on file change"
 created: 2026-09-02

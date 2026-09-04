@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Scope map of every campaign protocol call site that reads repo facts (config, source, docs) from the orchestrator's own long-lived main-clone checkout with no freshness precondition — cites the implementer's fresh-worktree-at-creation convention as the closest existing mechanism (structurally different, not directly reusable), flags the plugin-drift-signal and plan-quality-gate call sites as highest-risk, and confirms `.blackhole/`'s full `.gitignore` exclusion makes a routine `git fetch && git merge --ff-only origin/main` refresh safe"
 status: current
 created: 2026-09-03
 last_updated: 2026-09-03

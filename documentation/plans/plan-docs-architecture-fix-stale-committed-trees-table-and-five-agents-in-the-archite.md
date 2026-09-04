@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Plan — fix stale committed-target-trees table and \"five agents\" claim in the architecture maps (issue #706, R-03)"
 status: current
 review_trigger: "on release"
 created: 2026-09-02

@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Bugfix plan closing the gap where `worktree-removal-guard.js` checks unpushed commits under `--force` but never checks working-tree cleanliness — a mechanical `git status --porcelain` check gated on `force`, covering both the named-branch and detached paths (issue #777)"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

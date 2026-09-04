@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Fix check-review-artifact.ts's circular manifest leg with a ledger re-render content check"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   appendIndexRowIfAbsent,
+  evaluateGeneratedIndexParity,
   evaluateIndexDangling,
   evaluateOrphanFiles,
   findDanglingIndexRows,
@@ -325,13 +326,14 @@ describe('runChecks against a fixture tree lacking INDEX.md', () => {
 // Execution Strategy #3.
 // ---------------------------------------------------------------------------
 describe('runChecks (real repo, structural shape)', () => {
-  test('returns exactly the 5 contract CheckResults, all non-blocking on the current tree', () => {
+  test('returns exactly the 6 contract CheckResults, all non-blocking on the current tree', () => {
     const results = runChecks();
     expect(results.map((r) => r.id)).toEqual([
       'V-DOC-GOV-02',
       'V-DOC-GOV-03',
       'V-DOCHEALTH-01',
       'V-DOCHEALTH-02',
+      'V-DOCHEALTH-03',
       'V-DOCHEALTH-03',
     ]);
     expect(results.every((r) => r.ok)).toBe(true);
@@ -366,5 +368,54 @@ describe('doc-governance.md threshold prose matches facts.ts DOC_HEALTH_THRESHOL
     const content = fs.readFileSync(path.join(root, 'src/references/doc-governance.md'), 'utf-8');
     expect(content).toContain('## Doc-Tree Health Signal');
     expect(content).toContain('## INDEX.md Maintenance');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (h) Issue #811 (ADR-031 Phase 1, Task 10/11) — evaluateGeneratedIndexParity: advisory-only
+// (never blocking in Phase 1) parity signal folded into the existing V-DOCHEALTH-03 umbrella,
+// a sibling of evaluateDocTreeHealth. Reuses buildDocIndexRows/renderDocIndexTable — no
+// re-implemented diff logic.
+// ---------------------------------------------------------------------------
+describe('evaluateGeneratedIndexParity (V-DOCHEALTH-03, advisory)', () => {
+  test('ok:true with no detail when generated output matches committed INDEX.md', () => {
+    withFixtureDir((dir) => {
+      write(
+        dir,
+        'audits/foo.md',
+        FM({ type: 'audit', status: 'current', summary: JSON.stringify('An audit doc'), review_trigger: JSON.stringify('on release') })
+      );
+      write(
+        dir,
+        'INDEX.md',
+        '# Documentation Index\n\n| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n| audits/foo.md | An audit doc | audit | current | on release |\n'
+      );
+      expect(evaluateGeneratedIndexParity(dir)).toEqual({ id: 'V-DOCHEALTH-03', ok: true });
+    });
+  });
+
+  test('ok:true (never blocking) with a detail naming the differing path when mismatched', () => {
+    withFixtureDir((dir) => {
+      write(
+        dir,
+        'audits/foo.md',
+        FM({ type: 'audit', status: 'current', summary: JSON.stringify('The correct summary'), review_trigger: JSON.stringify('on release') })
+      );
+      write(
+        dir,
+        'INDEX.md',
+        '# Documentation Index\n\n| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n| audits/foo.md | A stale summary | audit | current | on release |\n'
+      );
+      const result = evaluateGeneratedIndexParity(dir);
+      expect(result.ok).toBe(true);
+      expect(result.detail).toContain('audits/foo.md');
+    });
+  });
+
+  test('SKIP (ok:true, no detail) when INDEX.md is absent', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'audits/foo.md', FM({ type: 'audit', status: 'current' }));
+      expect(evaluateGeneratedIndexParity(dir)).toEqual({ id: 'V-DOCHEALTH-03', ok: true });
+    });
   });
 });

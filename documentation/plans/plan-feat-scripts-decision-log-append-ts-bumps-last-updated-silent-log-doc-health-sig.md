@@ -1,6 +1,7 @@
 ---
 issue: #717
 type: plan
+summary: "R-12: decision-log-append.ts script (dedup by pr/kind, bumps last_updated) + doc-health-signal.ts decision_log_silent_prs advisory"
 status: current
 review_trigger: "on ADR acceptance"
 created: 2026-09-02

@@ -307,6 +307,7 @@ co-located `*.test.ts`.
 ---
 
 ## Active Constraints
+- `documentation/INDEX.md` is a generated build artifact — never hand-append a row to it; add a `summary:` frontmatter field to the doc instead and let the generator produce the row (ADR-031)
 - Assigned-worktree write containment (`BLACKHOLE_ASSIGNED_WORKTREE`) must cover every tool surface a worker can write through — `Write`/`Edit` and `Bash` alike — never only the dedicated file-editing tools (ADR-029)
 - Any PR touching `templates/hooks/**` must also bump `package.json`'s version in the same diff — the installed Claude Code plugin cache is version-keyed, not content-addressed, so an unbumped hook change ships inert to every existing installation (ADR-030)
 

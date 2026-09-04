@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Standard-track plan for issue #729 -- union cwd own git toplevel into the PreToolUse write-containment root set plus an opt-in BLACKHOLE_SCRATCHPAD_DIR override, closing the outside-worktree false-deny for non-campaign interactive sessions"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

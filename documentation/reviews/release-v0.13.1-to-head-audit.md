@@ -1,5 +1,6 @@
 ---
 type: review
+summary: "Release audit covering all changes from v0.13.1 to HEAD"
 status: current
 review_trigger: "on release"
 created: 2026-07-16

@@ -1,5 +1,6 @@
 ---
 type: research
+summary: "Cloudflare @cloudflare/ci free-tier viability for blackhole CI"
 status: current
 review_trigger: "on release"
 created: 2026-08-12

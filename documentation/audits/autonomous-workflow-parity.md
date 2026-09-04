@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Autonomous workflow parity audit against mercure's thinking-route coverage"
 skill: x-analyze
 status: draft
 review_trigger: "on ADR acceptance"

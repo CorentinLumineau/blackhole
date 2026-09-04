@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Adds throwing/warn-only git-status checks to test-fixtures.ts so a failed setup step names itself instead of surfacing as a downstream assertion failure"
 status: current
 review_trigger: "on file change"
 created: 2026-09-03

@@ -1,5 +1,6 @@
 ---
 type: review
+summary: "Review of the campaign config confirmation gate implementation"
 status: current
 review_trigger: "on ADR-015 change"
 created: 2026-07-26

@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Work breakdown and dependency graph for the v0.21.0 retrospective's 22 remediation items (one issue each)"
 status: current
 created: 2026-09-01
 last_updated: 2026-09-01

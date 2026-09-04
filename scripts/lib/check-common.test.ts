@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { appendIndexRowIfAbsent, findMissingGateMarkers, parseIndexTableRows, parseVcodeTableRows } from './check-common.ts';
+import {
+  appendIndexRowIfAbsent,
+  byPathByteOrder,
+  findMissingGateMarkers,
+  parseIndexTableRows,
+  parseVcodeTableRows,
+  renderIndexRowLine,
+} from './check-common.ts';
 
 describe('findMissingGateMarkers', () => {
   test('returns the subset of required markers absent from content', () => {
@@ -192,5 +199,44 @@ describe('appendIndexRowIfAbsent — sorted insert', () => {
     expect(result?.appended).toBe(true);
     expect(result?.content.startsWith(content)).toBe(true);
     expect(result?.content).toContain(rowLine(row('audits/a.md')));
+  });
+});
+
+// Issue #811 (ADR-031 Phase 1, Task 1/2): `byPathByteOrder` and `renderIndexRowLine` were
+// private helpers inside appendIndexRowIfAbsent's implementation above; the new generator
+// (scripts/lib/doc-index-generate.ts) needs to reuse the exact same comparator and row-render
+// logic rather than re-implementing a second sort/render (V-INT-02). These tests assert the
+// exported behavior matches what appendIndexRowIfAbsent already exercises indirectly above.
+describe('byPathByteOrder (exported)', () => {
+  const row = (p: string) => ({ path: p, summary: '', type: 'audit', status: 'current', reviewTrigger: 'on release' });
+
+  test('sorts by byte order on the path field', () => {
+    const rows = [row('audits/z.md'), row('audits/a.md'), row('audits/m.md')];
+    expect(rows.sort(byPathByteOrder).map((r) => r.path)).toEqual(['audits/a.md', 'audits/m.md', 'audits/z.md']);
+  });
+
+  test('returns 0 for equal paths, negative when a < b, positive when a > b', () => {
+    expect(byPathByteOrder(row('a.md'), row('a.md'))).toBe(0);
+    expect(byPathByteOrder(row('a.md'), row('b.md'))).toBeLessThan(0);
+    expect(byPathByteOrder(row('b.md'), row('a.md'))).toBeGreaterThan(0);
+  });
+
+  test('sorts by byte order, not locale-collation, on "-" vs "_"', () => {
+    const rows = [row('audits/review_fix.md'), row('audits/review-fix.md')];
+    expect(rows.sort(byPathByteOrder).map((r) => r.path)).toEqual(['audits/review-fix.md', 'audits/review_fix.md']);
+  });
+});
+
+describe('renderIndexRowLine (exported)', () => {
+  test('renders the exact "| p | s | t | st | rt |" line shape', () => {
+    const row = { path: 'audits/foo.md', summary: 'Some audit', type: 'audit', status: 'current', reviewTrigger: 'on release' };
+    expect(renderIndexRowLine(row)).toBe('| audits/foo.md | Some audit | audit | current | on release |');
+  });
+
+  test('output round-trips through parseIndexTableRows', () => {
+    const row = { path: 'audits/foo.md', summary: 'Some audit', type: 'audit', status: 'current', reviewTrigger: 'on release' };
+    const line = renderIndexRowLine(row);
+    const header = '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
+    expect(parseIndexTableRows(`${header}${line}\n`)).toEqual([row]);
   });
 });

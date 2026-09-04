@@ -1,5 +1,6 @@
 ---
 type: architecture
+summary: "Adaptive phase routing architecture — router-agent flag contract and re-route checkpoints"
 status: current
 review_trigger: "on ADR-004 amendment"
 created: 2026-07-08

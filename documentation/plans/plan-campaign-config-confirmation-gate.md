@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Plan for the campaign config confirmation gate at bootstrap preflight"
 status: current
 review_trigger: "on ADR acceptance or Bootstrap preflight change"
 created: 2026-07-26

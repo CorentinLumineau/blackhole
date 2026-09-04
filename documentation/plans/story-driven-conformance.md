@@ -1,5 +1,6 @@
 ---
 type: plan
+summary: "Plan for story-driven conformance across the campaign's issue lifecycle"
 status: current
 review_trigger: "on ADR acceptance or kaizen hunt-kind change"
 created: 2026-07-24

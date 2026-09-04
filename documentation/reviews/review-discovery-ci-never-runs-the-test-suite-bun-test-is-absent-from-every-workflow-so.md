@@ -1,5 +1,6 @@
 ---
 type: review
+summary: "Review artifact for issue #747 (LGTM, 1 deferred WARN, 1 fixed inline)"
 status: current
 review_trigger: "on file change"
 created: 2026-09-02
