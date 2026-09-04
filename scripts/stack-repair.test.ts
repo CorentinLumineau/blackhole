@@ -198,6 +198,76 @@ describe('repair CLI (queue-driven, no forge access)', () => {
   });
 });
 
+describe('capture CLI (against a real repository, no forge access)', () => {
+  let repo: string;
+  const queuePath = () => `${repo}/queue.json`;
+  const readIssue = () => JSON.parse(fs.readFileSync(queuePath(), 'utf-8')).issues['301'];
+  const captureArgs = (extra: string[] = []) => [
+    'capture',
+    '--queue',
+    queuePath(),
+    '--repo-root',
+    repo,
+    '--child-issue',
+    '301',
+    '--parent-issue',
+    '298',
+    ...extra,
+  ];
+
+  beforeAll(() => {
+    repo = makeTempDir('blackhole-stack-capture');
+    const git = (...args: string[]) => spawnSync('git', ['-C', repo, ...args], { encoding: 'utf-8' });
+    git('init', '-q', '-b', 'main', '.');
+    git('config', 'user.email', 'campaign@example.invalid');
+    git('config', 'user.name', 'campaign');
+    fs.writeFileSync(`${repo}/base.txt`, 'base\n');
+    git('add', '-A');
+    git('commit', '-qm', 'base');
+    git('checkout', '-qb', childBranchFor(298));
+    fs.writeFileSync(`${repo}/parent.txt`, 'p\n');
+    git('add', '-A');
+    git('commit', '-qm', 'parent work');
+    git('checkout', '-q', 'main');
+  });
+
+  afterAll(() => {
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  const writeQueue = () =>
+    fs.writeFileSync(
+      queuePath(),
+      JSON.stringify({ refreshed_at: '2026-09-04T00:00:00.000Z', issues: { '301': { status: 'ready', pr: 43 } } }, null, 2),
+    );
+
+  test('a dry run resolves the parent tip and writes nothing', () => {
+    writeQueue();
+    expect(main(captureArgs())).toBe(0);
+    expect(readIssue().parent_tip_sha).toBeUndefined();
+  });
+
+  test('--apply records stacked_on and the 40-char parent tip on the child entry', () => {
+    writeQueue();
+    expect(main(captureArgs(['--apply']))).toBe(0);
+    const issue = readIssue();
+    expect(issue.stacked_on).toBe(298);
+    expect(issue.parent_tip_sha).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  test('an unresolvable parent branch exits 1 instead of recording a null boundary', () => {
+    writeQueue();
+    expect(main(captureArgs(['--parent-branch', 'blackhole/issue-does-not-exist', '--apply']))).toBe(1);
+    expect(readIssue().parent_tip_sha).toBeUndefined();
+  });
+
+  test('a child absent from the queue exits 1 rather than inventing an entry', () => {
+    writeQueue();
+    const args = captureArgs(['--apply']).map((a) => (a === '301' ? '999' : a));
+    expect(main(args)).toBe(1);
+  });
+});
+
 // A real repository standing in for the observed incident: a multi-commit parent branch,
 // a child branched off its tip, and a squash-merge that collapses the parent into one commit
 // whose patch-id matches none of the originals. Everything below is measured, not asserted from
