@@ -125,23 +125,28 @@ const isUnderRoot = (candidate, root) => {
  * `/private/var`, or any workstation-local alias) must still classify as broad. */
 const BARE_TEMP_DIRS = new Set(['/tmp', '/var/tmp', os.tmpdir()].map((p) => resolveExistingAncestor(p)));
 
-const isAcceptableScratchpadDir = (value) => {
-  if (typeof value !== 'string' || value.length === 0 || !path.isAbsolute(value)) return false;
-  const resolved = path.resolve(value);
-  const segments = resolved.split(path.sep).filter(Boolean);
-  if (segments.length < 2) return false;
-  if (BARE_TEMP_DIRS.has(resolveExistingAncestor(value))) return false;
+/** Breadth of one already-resolved reading of a candidate root: too few segments to name anything
+ * a worker controls, a bare temp root, or $HOME (compared both lexically and through realpath,
+ * since a home directory is itself routinely a symlink). */
+const isTooBroadRoot = (candidate) => {
+  if (candidate.split(path.sep).filter(Boolean).length < 2) return true;
+  if (BARE_TEMP_DIRS.has(candidate)) return true;
   const home = process.env.HOME;
-  if (home && resolved === path.resolve(home)) return false;
-  return true;
+  return Boolean(home) && (candidate === path.resolve(home) || candidate === resolveExistingAncestor(home));
 };
 
-/** Reads and validates `scratchpad_dir` from `<mainClone>/.blackhole/config.json`. Returns null —
- * never throws, never falls back to an unvalidated value — on every degradation: file absent,
- * unreadable, malformed JSON, key absent, or a value `isAcceptableScratchpadDir` rejects. Callers
- * treat null exactly like "no configured scratchpad" and narrow to main-clone-only containment;
- * failing OPEN here (trusting an unreadable or overly-broad config) would silently re-widen the
- * allow-list #510/F-00088 exists to narrow. */
+/** Breadth is judged on BOTH readings of `value` — the lexically resolved path and the
+ * realpath-resolved one — and the value is accepted only when neither is broad. Containment
+ * compares roots through `resolveExistingAncestor` (`isUnderRoot`), so a check reading only the
+ * literal value decides breadth for a different directory than the one the root actually spans:
+ * a narrow-looking `<scratch>/link` symlinked at $HOME passes lexically and then admits the whole
+ * home subtree. Judging both readings keeps the breadth check and the containment comparison
+ * talking about the same directory, on every leg that reaches this predicate. */
+const isAcceptableScratchpadDir = (value) => {
+  if (typeof value !== 'string' || value.length === 0 || !path.isAbsolute(value)) return false;
+  return !isTooBroadRoot(path.resolve(value)) && !isTooBroadRoot(resolveExistingAncestor(value));
+};
+
 /** A scratchpad directory is admitted as a containment root only when it also exists on disk.
  * Containment comparisons run through `resolveExistingAncestor`, which walks up to the deepest
  * *existing* ancestor — so a stale or never-created value would be compared as (and therefore
@@ -157,6 +162,12 @@ const isExistingDirectory = (value) => {
   }
 };
 
+/** Reads and validates `scratchpad_dir` from `<mainClone>/.blackhole/config.json`. Returns null —
+ * never throws, never falls back to an unvalidated value — on every degradation: file absent,
+ * unreadable, malformed JSON, key absent, or a value `isAcceptableScratchpadDir` rejects. Callers
+ * treat null exactly like "no configured scratchpad" and narrow to main-clone-only containment;
+ * failing OPEN here (trusting an unreadable or overly-broad config) would silently re-widen the
+ * allow-list #510/F-00088 exists to narrow. */
 const readScratchpadDir = (mainClone) => {
   let value;
   try {
@@ -187,7 +198,13 @@ const readScratchpadDir = (mainClone) => {
  * rather than denied for sitting in none of the `wt-*` subdirectories: the directory already
  * passed the same `isAcceptableScratchpadDir` breadth check that makes its nested worktrees
  * trustworthy, and `isExistingDirectory` keeps a never-created value from collapsing onto its
- * parent — **plus, unconditionally, `cwd`'s own resolved git toplevel**
+ * parent. Being a member of this set, the scratchpad root also satisfies
+ * `readAssignedWorktreeRoot`'s membership test, so `BLACKHOLE_ASSIGNED_WORKTREE` may now name it
+ * — an assignment that spans every worktree beneath it rather than narrowing to one. That grants
+ * no permission the unset case does not already grant (an unrecognized value falls open to this
+ * same full root set), but it does forfeit the single-worktree narrowing the override exists to
+ * provide, so the orchestrator must keep assigning a specific worktree, never the scratchpad root
+ * — **plus, unconditionally, `cwd`'s own resolved git toplevel**
  * (#729): a non-campaign interactive session sitting in any worktree of this repo family must be
  * able to Write/Edit within its own worktree even when that worktree is registered neither under
  * the main clone nor under `scratchpad_dir` (e.g. a worktree created via a bare `git worktree
