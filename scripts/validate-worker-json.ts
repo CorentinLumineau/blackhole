@@ -1,4 +1,9 @@
 import * as fs from 'fs';
+import {
+  ENUM_SOURCE_MISSING_VALUE_ERROR,
+  resolveValidateWorker,
+  type ValidateWorkerFn,
+} from './lib/worker-json/enum-source.ts';
 import { extractWorkerJson, parseJsonObject } from './lib/worker-json/extract.ts';
 import { resolveRole } from './lib/worker-json/resolve-role.ts';
 import { extractLastAssistantText, readTranscriptTail } from './lib/worker-json/transcript.ts';
@@ -6,12 +11,14 @@ import type { HookInput, Role } from './lib/worker-json/types.ts';
 import { extractFromHookInput, validateWorker } from './lib/worker-json/validate.ts';
 
 export type { HookInput, Role } from './lib/worker-json/types.ts';
+export type { ValidateWorkerFn } from './lib/worker-json/enum-source.ts';
 export {
   extractFromHookInput,
   extractLastAssistantText,
   extractWorkerJson,
   readTranscriptTail,
   resolveRole,
+  resolveValidateWorker,
   validateWorker,
 };
 
@@ -29,7 +36,7 @@ function printValidationErrors(errors: string[]) {
   }
 }
 
-async function runHook(): Promise<number> {
+async function runHook(validate: ValidateWorkerFn): Promise<number> {
   let raw: string;
   try {
     raw = await readStdin();
@@ -68,7 +75,7 @@ async function runHook(): Promise<number> {
     return 1;
   }
 
-  const errors = validateWorker(role, workerJson);
+  const errors = validate(role, workerJson);
   if (errors.length > 0) {
     printValidationErrors(errors);
     return 1;
@@ -83,6 +90,7 @@ function parseCliArgs(argv: string[]) {
   let file: string | null = null;
   let json: string | null = null;
   let recoverTranscript: string | null = null;
+  let enumSource: string | null = null;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -96,14 +104,20 @@ function parseCliArgs(argv: string[]) {
       json = argv[++i];
     } else if (arg === '--recover-transcript' && argv[i + 1]) {
       recoverTranscript = argv[++i];
+    } else if (arg === '--enum-source') {
+      const value = argv[++i];
+      if (!value) {
+        throw new Error(ENUM_SOURCE_MISSING_VALUE_ERROR);
+      }
+      enumSource = value;
     }
   }
 
-  return { hook, role, file, json, recoverTranscript };
+  return { hook, role, file, json, recoverTranscript, enumSource };
 }
 
-function runCli(role: Role, payload: unknown): number {
-  const errors = validateWorker(role, payload);
+function runCli(validate: ValidateWorkerFn, role: Role, payload: unknown): number {
+  const errors = validate(role, payload);
   if (errors.length > 0) {
     printValidationErrors(errors);
     return 1;
@@ -119,7 +133,11 @@ function runCli(role: Role, payload: unknown): number {
  * reported to stderr and exit non-zero, never silently treated as "worker
  * produced nothing".
  */
-function runRecoverTranscript(role: Role, transcriptPath: string): number {
+function runRecoverTranscript(
+  validate: ValidateWorkerFn,
+  role: Role,
+  transcriptPath: string,
+): number {
   const tail = readTranscriptTail(transcriptPath, 200_000);
   if (tail === null) {
     console.error(`transcript not found or unreadable: ${transcriptPath}`);
@@ -140,7 +158,7 @@ function runRecoverTranscript(role: Role, transcriptPath: string): number {
     return 1;
   }
 
-  const errors = validateWorker(role, workerJson);
+  const errors = validate(role, workerJson);
   if (errors.length > 0) {
     printValidationErrors(errors);
     return 1;
@@ -152,23 +170,42 @@ function runRecoverTranscript(role: Role, transcriptPath: string): number {
 
 async function main() {
   const argv = process.argv.slice(2);
-  const { hook, role, file, json, recoverTranscript } = parseCliArgs(argv);
+
+  let args: ReturnType<typeof parseCliArgs>;
+  try {
+    args = parseCliArgs(argv);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(2);
+  }
+  const { hook, role, file, json, recoverTranscript, enumSource } = args;
+
+  let validate: ValidateWorkerFn;
+  try {
+    validate = await resolveValidateWorker(enumSource);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(2);
+  }
 
   if (hook || (argv.length === 0 && !process.stdin.isTTY)) {
-    process.exit(await runHook());
+    process.exit(await runHook(validate));
   }
 
   if (!role) {
     console.error(
       'Usage: bun run scripts/validate-worker-json.ts --hook\n' +
         '       bun run scripts/validate-worker-json.ts --role <planner|implementer|reviewer|router|investigator|hunter> (--file <path> | --json <string>)\n' +
-        '       bun run scripts/validate-worker-json.ts --role <role> --recover-transcript <path>',
+        '       bun run scripts/validate-worker-json.ts --role <role> --recover-transcript <path>\n' +
+        '       add --enum-source <tree root> to any of the above to read the role schema enums\n' +
+        '       from that tree instead of this one — role resolution stays local (exit 2 when the\n' +
+        '       named tree holds no validator module, or when the flag carries no value)',
     );
     process.exit(1);
   }
 
   if (recoverTranscript && !file && !json) {
-    process.exit(runRecoverTranscript(role, recoverTranscript));
+    process.exit(runRecoverTranscript(validate, role, recoverTranscript));
   }
 
   let payload: unknown;
@@ -186,7 +223,7 @@ async function main() {
     process.exit(1);
   }
 
-  process.exit(runCli(role, payload));
+  process.exit(runCli(validate, role, payload));
 }
 
 if (import.meta.main) {

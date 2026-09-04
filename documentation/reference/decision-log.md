@@ -4,7 +4,7 @@ summary: "Running decision log of Hard Choice / Bugfix / Refactoring decision re
 status: current
 review_trigger: "on file change"
 created: 2026-07-20
-last_updated: 2026-09-03
+last_updated: 2026-09-04
 related:
   - documentation/decisions/ADR-012-shared-artifact-substrate.md
 ---
@@ -84,3 +84,5 @@ records why the number is what it is, so the question is not re-litigated on eve
 | 810 | root-cause | scripts/lib/carry-staged-artifacts.ts | Normalized target_path before the allowlist comparison, matching containment's existing normalize-before-compare against repoRoot | Containment normalized the path before comparing against repoRoot; the allowlist did not normalize before comparing against documentation/**. Two gates, two different representations of the same path — that mismatch, not either gate individually, was the vulnerability |
 | 810 | reuse | scripts/lib/carry-target-allowlist.ts | New scripts/lib/carry-target-allowlist.ts modeled on ops-touch-paths.ts's named-glob-array + boolean-predicate shape | Reuse check found no existing carry-target-allowlist primitive (repo-wide grep returned 5 unrelated hits) — first occurrence of this concern |
 | 810 | improvement | scripts/lib/carry-staged-artifacts.test.ts | Flipped the stale /etc/passwd 'keeps carrying' assertion whose comment explicitly warned against flipping it, and rewrote the comment to record that AC1's allowlist supersedes it | Scout Check within the diff boundary; containment still holds, it was simply never sufficient on its own to make a path safe to write |
+| 854 | reuse | scripts/lib/worker-json/enum-source.ts, scripts/validate-worker-json.ts | No existing utility loads a role validator from a caller-named tree; wrote resolveValidateWorker as the first occurrence using scripts/verify.ts's await import(<absolute path>) idiom; kept the 22-site `error instanceof Error` idiom rather than extracting a helper | A new loader wrapper would be a second variant of a solved concern, and extracting the error-message helper would touch ~15 files outside Touch-Paths (V-SCOPE-02) — filed as a finding instead |
+| 854 | improvement | scripts/validate-worker-json.ts, scripts/lib/worker-json/enum-source.ts | No improvement needed — the touched functions are single-purpose and follow the file's conventions | The only repeated idiom inside the diff boundary is the repo-wide error-message pattern, deferred as out of scope rather than half-extracted in one file |
