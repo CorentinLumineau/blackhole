@@ -1,5 +1,9 @@
 import * as fs from 'fs';
-import { resolveValidateWorker, type ValidateWorkerFn } from './lib/worker-json/enum-source.ts';
+import {
+  ENUM_SOURCE_MISSING_VALUE_ERROR,
+  resolveValidateWorker,
+  type ValidateWorkerFn,
+} from './lib/worker-json/enum-source.ts';
 import { extractWorkerJson, parseJsonObject } from './lib/worker-json/extract.ts';
 import { resolveRole } from './lib/worker-json/resolve-role.ts';
 import { extractLastAssistantText, readTranscriptTail } from './lib/worker-json/transcript.ts';
@@ -100,8 +104,12 @@ function parseCliArgs(argv: string[]) {
       json = argv[++i];
     } else if (arg === '--recover-transcript' && argv[i + 1]) {
       recoverTranscript = argv[++i];
-    } else if (arg === '--enum-source' && argv[i + 1]) {
-      enumSource = argv[++i];
+    } else if (arg === '--enum-source') {
+      const value = argv[++i];
+      if (!value) {
+        throw new Error(ENUM_SOURCE_MISSING_VALUE_ERROR);
+      }
+      enumSource = value;
     }
   }
 
@@ -162,7 +170,15 @@ function runRecoverTranscript(
 
 async function main() {
   const argv = process.argv.slice(2);
-  const { hook, role, file, json, recoverTranscript, enumSource } = parseCliArgs(argv);
+
+  let args: ReturnType<typeof parseCliArgs>;
+  try {
+    args = parseCliArgs(argv);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(2);
+  }
+  const { hook, role, file, json, recoverTranscript, enumSource } = args;
 
   let validate: ValidateWorkerFn;
   try {
@@ -181,8 +197,9 @@ async function main() {
       'Usage: bun run scripts/validate-worker-json.ts --hook\n' +
         '       bun run scripts/validate-worker-json.ts --role <planner|implementer|reviewer|router|investigator|hunter> (--file <path> | --json <string>)\n' +
         '       bun run scripts/validate-worker-json.ts --role <role> --recover-transcript <path>\n' +
-        '       add --enum-source <tree root> to any of the above to read the role enums from that\n' +
-        '       tree instead of this one (exit 2 when it holds no validator module)',
+        '       add --enum-source <tree root> to any of the above to read the role schema enums\n' +
+        '       from that tree instead of this one — role resolution stays local (exit 2 when the\n' +
+        '       named tree holds no validator module, or when the flag carries no value)',
     );
     process.exit(1);
   }

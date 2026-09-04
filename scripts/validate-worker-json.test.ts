@@ -1327,4 +1327,34 @@ describe('--enum-source CLI flag', () => {
       path.join(missingRoot, 'scripts/lib/worker-json/validate.ts'),
     );
   });
+
+  // A flag whose value never arrived must not be indistinguishable from a run that never
+  // named a tree at all: falling through to the local enums would accept-or-reject the
+  // payload against the wrong tree while reporting nothing about the unusable flag.
+  test('--enum-source with an empty value exits 2 instead of validating against the local tree', async () => {
+    const result = await runValidateWorkerCli([
+      '--role',
+      'implementer',
+      '--file',
+      widenedFixture,
+      '--enum-source',
+      '',
+    ]);
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain('--enum-source');
+    expect(result.stderr).not.toContain(`invalid enum value "${widenedVcode}"`);
+  });
+
+  test('a trailing bare --enum-source exits 2 instead of validating against the local tree', async () => {
+    const result = await runValidateWorkerCli([
+      '--role',
+      'implementer',
+      '--file',
+      widenedFixture,
+      '--enum-source',
+    ]);
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain('--enum-source');
+    expect(result.stderr).not.toContain(`invalid enum value "${widenedVcode}"`);
+  });
 });
