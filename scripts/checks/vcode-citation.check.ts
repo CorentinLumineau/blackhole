@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
-import { parseVcodeTableRows, walkMdFilesAbs } from '../lib/check-common.ts';
+import { expandVcodeTableKey, parseVcodeTableRows, vcodeFamily, walkMdFilesAbs } from '../lib/check-common.ts';
 
 // Issue #565 — vcode-citation.check.ts: resolves every `blackhole-vcodes.md` row's `Primary
 // enforcement site` cell to an actual file + section, and asserts the row's code appears inside
@@ -172,9 +172,38 @@ const checkVcodeCitationCoverage = (scan: ScanResult): CheckResult =>
     ? { id: 'V-CITE-02', ok: false, detail: `code string absent at cited site: ${scan.codeAbsent.join(', ')}` }
     : { id: 'V-CITE-02', ok: true };
 
+// Reverse direction of the two legs above, which resolve documented rows to real sites and so
+// say nothing about ids a check emits that the table never got. Scoped to families the table
+// already owns: `scripts/checks/*.check.ts` also emits check-internal result ids in namespaces
+// the campaign table never claimed (`V-QUEUE-*`, `V-PARETOGATE-*`, `V-CITE-*` itself), which are
+// verify-run identifiers, not campaign V-codes. An id minted *inside* a documented family is the
+// real failure — that is where next-free-number ambiguity and reviewer invisibility bite.
+export const parseEmittedVcodeIds = (checkContent: string): string[] =>
+  [...checkContent.matchAll(/id: '(V-[A-Z0-9-]+)'/g)].map((m) => m[1]);
+
+export const findUndocumentedEmittedCodes = (documented: string[], checkFiles: { file: string; content: string }[]): string[] => {
+  const codes = new Set(documented);
+  const families = new Set(documented.map(vcodeFamily));
+  const found = checkFiles.flatMap(({ file, content }) =>
+    parseEmittedVcodeIds(content).filter((c) => !codes.has(c) && families.has(vcodeFamily(c))).map((c) => `${c} (${file})`));
+  return [...new Set(found)].sort();
+};
+
+// V-CITE-03: every emitted id in a table-owned family has a `blackhole-vcodes.md` row.
+const checkEmittedCodeCoverage = (): CheckResult => {
+  const dir = path.join(root, 'scripts/checks');
+  const checkFiles = fs.readdirSync(dir).filter((f) => f.endsWith('.check.ts'))
+    .map((f) => ({ file: f, content: fs.readFileSync(path.join(dir, f), 'utf-8') }));
+  const documented = parseVcodeTableRows(read('src/references/blackhole-vcodes.md')).flatMap((r) => expandVcodeTableKey(r.code));
+  const undocumented = findUndocumentedEmittedCodes(documented, checkFiles);
+  return undocumented.length
+    ? { id: 'V-CITE-03', ok: false, detail: `emitted check id with no vcodes-table row: ${undocumented.join(', ')}` }
+    : { id: 'V-CITE-03', ok: true };
+};
+
 // ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
 export const runChecks = (): CheckResult[] => {
   const scan = buildScan();
-  return [checkVcodeCitationResolution(scan), checkVcodeCitationCoverage(scan)];
+  return [checkVcodeCitationResolution(scan), checkVcodeCitationCoverage(scan), checkEmittedCodeCoverage()];
 };

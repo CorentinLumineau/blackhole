@@ -2,15 +2,21 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { makeTempDir } from './lib/fs.ts';
+import { expandVcodeTableKey, parseVcodeTableRows, vcodeFamily } from './lib/check-common.ts';
 import {
   KNOWN_CITATION_EXEMPTIONS,
   buildCitationFileIndex,
   codeAppearsIn,
+  findUndocumentedEmittedCodes,
   parseCitationCell,
+  parseEmittedVcodeIds,
   resolveSection,
   runChecks,
   scanVcodeCitations,
 } from './checks/vcode-citation.check.ts';
+
+const readFixtureText = (name: string): string =>
+  fs.readFileSync(path.join(import.meta.dir, '..', 'fixtures', 'vcode-citation', name), 'utf-8');
 
 // Issue #565 — vcode-citation.check.ts: resolves every blackhole-vcodes.md row's `Primary
 // enforcement site` cell to a real file + section, and asserts the row's code appears inside
@@ -199,5 +205,85 @@ describe('runChecks (live-tree assertion)', () => {
     expect(coverage).toBeDefined();
     expect(coverage?.ok).toBe(true);
     expect(KNOWN_CITATION_EXEMPTIONS).toEqual([]);
+  });
+});
+
+// Leg B — reverse-direction coverage: every `V-…` id emitted by a `scripts/checks/*.check.ts`
+// module, in a code family `blackhole-vcodes.md` already owns, must have a table row (V-CITE-03).
+
+describe('vcodeFamily', () => {
+  test('strips the trailing numeric suffix', () => {
+    expect(vcodeFamily('V-ADR-04')).toBe('V-ADR');
+  });
+
+  test('keeps multi-segment family names intact', () => {
+    expect(vcodeFamily('V-DOC-GOV-02')).toBe('V-DOC-GOV');
+  });
+});
+
+describe('expandVcodeTableKey', () => {
+  test('a plain single-code key expands to itself', () => {
+    expect(expandVcodeTableKey('V-ADR-01')).toEqual(['V-ADR-01']);
+  });
+
+  test('a slash-bundled key carries the family across bare numeric continuations', () => {
+    expect(expandVcodeTableKey('V-ADA-05/06/07')).toEqual(['V-ADA-05', 'V-ADA-06', 'V-ADA-07']);
+  });
+
+  test('a key bundling two different families expands each whole code', () => {
+    expect(expandVcodeTableKey('V-KISS-01 / V-YAGNI-01')).toEqual(['V-KISS-01', 'V-YAGNI-01']);
+  });
+
+  test('a non-code key expands to nothing', () => {
+    expect(expandVcodeTableKey('Code')).toEqual([]);
+  });
+});
+
+describe('parseEmittedVcodeIds', () => {
+  test('extracts every `id: \'V-…\'` literal, in source order', () => {
+    const source = readFixtureText('emitted-undocumented.check.ts.fixture');
+    expect(parseEmittedVcodeIds(source)).toEqual(['V-FAKE-01', 'V-FAKE-02', 'V-OTHER-01']);
+  });
+
+  test('a module emitting no V-code ids yields an empty list', () => {
+    expect(parseEmittedVcodeIds("const x = { id: 'not-a-vcode' };")).toEqual([]);
+  });
+});
+
+describe('findUndocumentedEmittedCodes (fixtures)', () => {
+  const documented = (): string[] =>
+    parseVcodeTableRows(readFixtureText('vcodes-table-snippet.md')).flatMap((r) => expandVcodeTableKey(r.code));
+
+  const emitted = (): { file: string; content: string }[] => [
+    { file: 'fixture.check.ts', content: readFixtureText('emitted-undocumented.check.ts.fixture') },
+  ];
+
+  test('the fixture table expands its bundled key into whole codes', () => {
+    expect(documented()).toEqual(['V-FAKE-01', 'V-BUNDLE-01', 'V-BUNDLE-02']);
+  });
+
+  test('known-bad: an id emitted in a documented family with no table row is reported with its file', () => {
+    expect(findUndocumentedEmittedCodes(documented(), emitted())).toEqual(['V-FAKE-02 (fixture.check.ts)']);
+  });
+
+  test('known-good: adding the missing row silences the report', () => {
+    expect(findUndocumentedEmittedCodes([...documented(), 'V-FAKE-02'], emitted())).toEqual([]);
+  });
+
+  test('an emitted id in a family the table never claimed is ignored, not reported', () => {
+    expect(findUndocumentedEmittedCodes(documented(), emitted())).not.toContain('V-OTHER-01 (fixture.check.ts)');
+  });
+
+  test('no documented rows at all means no family is owned, so nothing is reported', () => {
+    expect(findUndocumentedEmittedCodes([], emitted())).toEqual([]);
+  });
+});
+
+describe('runChecks — V-CITE-03 (live tree)', () => {
+  test('every emitted id in a documented family has a blackhole-vcodes.md row', () => {
+    const coverage = runChecks().find((r) => r.id === 'V-CITE-03');
+    expect(coverage).toBeDefined();
+    expect(coverage?.detail ?? '').toBe('');
+    expect(coverage?.ok).toBe(true);
   });
 });
