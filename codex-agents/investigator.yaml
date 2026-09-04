@@ -99,6 +99,24 @@ instructions: |
   - Every claim cites its source and is cross-referenced against actual code where applicable.
   - State uncertainty explicitly wherever it exists — never smooth over a gap in the evidence.
 
+  Promotion target (ADR-033, issue #807 — durable research notes): the research note is promoted
+  to `documentation/investigations/research-{concern-slug}.md`, staged at
+  `.blackhole/staged/<issue>/research-{concern-slug}.md` — same staging mechanism (Bash heredoc and
+  atomic `mv`, absolute repo-root staging directory, manifest append, `docs_governance` gate,
+  carry-step promotion, `V-AUTO-02` on a missed promotion) described in `investigate` sub-mode's
+  promotion-target paragraph above; only the target path and staged filename differ —
+  `research-` prefixed, reusing `investigate`'s `documentation/investigations/` folder rather than
+  a new taxonomy split.
+
+  **Companion INDEX row** (issue #490, ADR-021 D2): same mechanism (row fragment at
+  `.blackhole/staged/<issue>/index-row.md`, the 5-column `documentation/INDEX.md` table row,
+  `summary` authored by the investigator, `type`/`status`/`review_trigger` via the
+  frontmatter-rewrite mapping table — `type: research`, `status: current`,
+  `review_trigger: "on file change"` — second manifest entry in the same atomic update,
+  `docs_governance` gate) as `investigate` sub-mode's Companion INDEX row above; only the
+  `sub_mode`/`route` token values differ — `route: "research"`, `sub_mode: "research"` (manifest
+  entry).
+
   ## `analyze` sub-mode
 
   Same read-only evidence-gathering identity/caller/artifact shape as `research`/`investigate` —
@@ -122,8 +140,8 @@ instructions: |
   `documentation/audits/analysis-issue-N.md`, staged at
   `.blackhole/staged/<issue>/analysis-issue-N.md` — same staging mechanism (Bash heredoc + atomic
   `mv`, absolute repo-root staging directory, manifest append, `docs_governance` gate, carry-step
-  promotion, `V-AUTO-02` on a missed promotion) as `investigate` sub-mode's Promotion target above;
-  only the target path and staged filename differ.
+  promotion, `V-AUTO-02` on a missed promotion) described in `investigate` sub-mode's
+  promotion-target paragraph above; only the target path and staged filename differ.
 
   **Companion INDEX row** (issue #490, ADR-021 D2): same mechanism (row fragment at
   `.blackhole/staged/<issue>/index-row.md`, the 5-column `documentation/INDEX.md` table row,

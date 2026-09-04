@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import {
   extractManifestExampleJson,
   extractProducerFieldValueLiterals,
-  findForbiddenSubModeLiterals,
   findManifestExampleEnumViolations,
   findManifestFieldNameMismatch,
   findMissingMandatoryPairing,
@@ -155,9 +154,8 @@ describe('findProducerEnumViolations (V-STAGE-02)', () => {
 });
 
 // Issue #782: pins the mandatory-pairing prose callout to each producer staging-obligation
-// site (V-STAGE-03) and forbids the one documented enum-valid-but-target-less literal,
-// `sub_mode: "research"` (V-STAGE-04) — see .blackhole/plans/issue-782.md for the full
-// root-cause writeup (non-uniform execution of a present instruction, not an absent one).
+// site (V-STAGE-03) — see .blackhole/plans/issue-782.md for the full root-cause writeup
+// (non-uniform execution of a present instruction, not an absent one).
 
 describe('findMissingMandatoryPairing (V-STAGE-03)', () => {
   const anchors = ['ANCHOR_A', 'ANCHOR_B', 'ANCHOR_C', 'ANCHOR_D'];
@@ -215,37 +213,13 @@ describe('findMissingMandatoryPairing (V-STAGE-03)', () => {
   });
 });
 
-describe('findForbiddenSubModeLiterals (V-STAGE-04)', () => {
-  test('a `sub_mode: "research"` literal is flagged, naming the source and value', () => {
-    const literals = [{ field: 'sub_mode', value: 'research', source: 'planner.md' }];
-    const findings = findForbiddenSubModeLiterals(literals);
-    expect(findings.length).toBe(1);
-    expect(findings[0]).toContain('planner.md');
-    expect(findings[0]).toContain('research');
-  });
-
-  test('sub_mode values other than research, and unrelated route literals, pass — []', () => {
-    const literals = [
-      { field: 'sub_mode', value: 'analyze', source: 'planner.md' },
-      { field: 'sub_mode', value: 'investigate', source: 'investigator.md' },
-      { field: 'sub_mode', value: 'null', source: 'implementer.md' },
-      { field: 'route', value: 'analyze', source: 'planner.md' },
-    ];
-    expect(findForbiddenSubModeLiterals(literals)).toEqual([]);
-  });
-
-  test('an empty literals array passes — []', () => {
-    expect(findForbiddenSubModeLiterals([])).toEqual([]);
-  });
-});
-
 describe('runChecks (real tree)', () => {
-  test('returns exactly V-STAGE-01 through V-STAGE-04, in that order', () => {
+  test('returns exactly V-STAGE-01 through V-STAGE-03, in that order', () => {
     const results = runChecks();
-    expect(results.map((r) => r.id)).toEqual(['V-STAGE-01', 'V-STAGE-02', 'V-STAGE-03', 'V-STAGE-04']);
+    expect(results.map((r) => r.id)).toEqual(['V-STAGE-01', 'V-STAGE-02', 'V-STAGE-03']);
   });
 
-  test('all four checks pass against the current, unmodified tree', () => {
+  test('all three checks pass against the current, unmodified tree', () => {
     const results = runChecks();
     for (const r of results) {
       expect(r.ok).toBe(true);

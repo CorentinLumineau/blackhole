@@ -113,6 +113,10 @@ describe('decideCopyMode — new_file per produced_by/sub_mode combination', () 
   test('implementer + review route → verbatim (already rendered at staging time, same default as the planner routes — issue #715 out-of-scope note: #737/#738)', () => {
     expect(decideCopyMode({ produced_by: 'implementer', sub_mode: null })).toBe('verbatim');
   });
+
+  test('investigator + research sub_mode → rewrite (ADR-033)', () => {
+    expect(decideCopyMode({ produced_by: 'investigator', sub_mode: 'research' })).toBe('rewrite');
+  });
 });
 
 describe('rewriteInvestigatorFrontmatter — the 9-row mapping table (working-note schema → doc-governance.md lifecycle schema)', () => {
@@ -166,6 +170,15 @@ describe('rewriteInvestigatorFrontmatter — the 9-row mapping table (working-no
       'documentation/audits/prior-note.md',
     );
     expect(out).toContain('supersedes: documentation/audits/prior-note.md');
+  });
+
+  test('research sub_mode maps to type: research (ADR-033 — durable research notes, distinct from analysis)', () => {
+    const out = rewriteInvestigatorFrontmatter(
+      staged.replace('sub_mode: analyze', 'sub_mode: research'),
+      { sub_mode: 'research', declared_at: '2026-08-06T17:40:00.000Z' },
+      '2026-08-12',
+    );
+    expect(out).toContain('type: research');
   });
 });
 
