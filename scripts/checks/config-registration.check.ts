@@ -7,7 +7,7 @@ import { read, root, type CheckResult } from './check-utils.ts';
 // V-CONFIG-02: keys present in committed `.blackhole/config.json` must appear in
 // `config-template.md`'s field table (dot-path notation for nested keys).
 //
-// Nested-block registration convention (issue #707): a nested config block is registered
+// Nested-block registration convention: a nested config block is registered
 // either as one `Field` row per leaf (e.g. `docs_governance.enabled`) or as a single parent
 // row whose Description cell ends with a `(sub-keys: a, b, c)` marker — each named leaf is
 // then registered as `<parent>.<leaf>`. `router_confidence_thresholds` uses the marker form;

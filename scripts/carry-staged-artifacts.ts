@@ -61,8 +61,7 @@ function main(): void {
   // A manifest that resolves and has entries but carries literally nothing (every entry
   // failed validation) is indistinguishable on stdout alone from "nothing staged" — exit 1 so
   // the caller (`implementer.md` § Carry Staged Artifacts) cannot silently read it as success.
-  // A *partial* skip alongside a partial carry (the line-99 test's precedent, issue #715) is
-  // still progress and stays exit 0.
+  // A *partial* skip alongside a partial carry is still progress and stays exit 0.
   if (outcome.skippedEntries.length > 0 && outcome.carriedPaths.length === 0) {
     process.exit(1);
   }
