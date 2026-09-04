@@ -1249,6 +1249,62 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
       },
     );
   });
+
+  test("allow: a branch whose @{u} points at a different branch's remote-tracking ref, but whose own refs/remotes/origin/<branch> contains HEAD, is removed silently (#781)", async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-',
+      'blackhole/issue-781a',
+      async (mainRepo, worktree, push) => {
+        // A branch forked from the same commit as origin/main with zero further commits can't
+        // distinguish compareRef choices — both origin/main and the branch's own remote-tracking
+        // ref would show an empty diff either way. One committed-and-pushed change is needed so
+        // origin/main..HEAD is genuinely non-empty (the false-'unpushed' shape), while the
+        // branch's own refs/remotes/origin/<branch>..HEAD is empty (truly caught up) — this is
+        // what makes the mistracked-upstream case observably different from the correct one.
+        fs.writeFileSync(path.join(worktree, 'feature.txt'), 'feature work\n');
+        runGit(worktree, ['add', 'feature.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'feature commit']);
+        push();
+        runGit(mainRepo, ['fetch', '--quiet', 'origin', 'main']);
+        runGit(worktree, ['branch', '--set-upstream-to=origin/main', 'blackhole/issue-781a']);
+
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
+
+  test('deny: a branch with genuinely unpushed commits is still denied even when its @{u} is mistracked onto a different branch (#781)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-',
+      'blackhole/issue-781b',
+      async (mainRepo, worktree, push) => {
+        push();
+        runGit(mainRepo, ['fetch', '--quiet', 'origin', 'main']);
+        runGit(worktree, ['branch', '--set-upstream-to=origin/main', 'blackhole/issue-781b']);
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-unpushed',
+        });
+      },
+    );
+  });
 });
 
 // Review-round regression (#532 CHANGES_REQUIRED): the initial matcher required `git` and
