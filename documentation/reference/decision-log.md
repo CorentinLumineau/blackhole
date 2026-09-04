@@ -4,7 +4,7 @@ summary: "Running decision log of Hard Choice / Bugfix / Refactoring decision re
 status: current
 review_trigger: "on file change"
 created: 2026-07-20
-last_updated: 2026-09-03
+last_updated: 2026-09-04
 related:
   - documentation/decisions/ADR-012-shared-artifact-substrate.md
 ---
@@ -84,3 +84,5 @@ records why the number is what it is, so the question is not re-litigated on eve
 | 810 | root-cause | scripts/lib/carry-staged-artifacts.ts | Normalized target_path before the allowlist comparison, matching containment's existing normalize-before-compare against repoRoot | Containment normalized the path before comparing against repoRoot; the allowlist did not normalize before comparing against documentation/**. Two gates, two different representations of the same path — that mismatch, not either gate individually, was the vulnerability |
 | 810 | reuse | scripts/lib/carry-target-allowlist.ts | New scripts/lib/carry-target-allowlist.ts modeled on ops-touch-paths.ts's named-glob-array + boolean-predicate shape | Reuse check found no existing carry-target-allowlist primitive (repo-wide grep returned 5 unrelated hits) — first occurrence of this concern |
 | 810 | improvement | scripts/lib/carry-staged-artifacts.test.ts | Flipped the stale /etc/passwd 'keeps carrying' assertion whose comment explicitly warned against flipping it, and rewrote the comment to record that AC1's allowlist supersedes it | Scout Check within the diff boundary; containment still holds, it was simply never sufficient on its own to make a path safe to write |
+| 860 | reuse | scripts/stack-repair.ts, scripts/lib/campaign-status/types.ts | None found — first occurrence of stacked-PR tip capture and --onto repair; reused validateStateWrite, runGh (sole gh spawn site, V-FORGE-01), makeTempDir and triage-deferred-findings.ts's dry-run-by-default CLI shape | Repo-wide grep for rebase --onto / parent_tip / stacked_on returned zero prior implementations; the four utilities already cover state writes, forge calls, temp dirs and the CLI idiom |
+| 860 | improvement | scripts/lib/campaign-status/types.ts | Added the one-line queue-dag.md § Field rules citation to QueueIssue, matching the sibling Route type | Both types now name where their field semantics are frozen |
