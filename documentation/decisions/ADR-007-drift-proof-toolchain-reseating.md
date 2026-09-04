@@ -179,3 +179,23 @@ phased-migration threshold; single-campaign delivery is safe.
   `retrospective-blackhole.md` § RC-E for why this went undetected for 227 commits, and
   `scripts/checks/adr-supersession.check.ts` (`V-ADR-06`) for the check this issue adds so a
   future reversal of this kind is self-disclosing.
+- **2026-09-04 — R-19 item 1 accepted with expiry (#802, recording #710, ADR-037).**
+  `worker-schemas.md`'s pre-split whole-file LOC (970, 1.39x the 700-LOC `ADR_WATCH_ITEMS`
+  revisit trigger) is accepted as-is rather than raised or split independently. Zero growth
+  confirmed since filing; the file's near-hard-ceiling proximity (970 lines, 100% of
+  `CONTENT_GATE_BUDGETS.maxFileLoc=970` at this decision's base commit) is substantially relieved
+  by item 2's Implementer-section extraction landing in the same change (post-split 794 lines,
+  ~81.9% of that same 970-line reference ceiling). Expiry: revisit when `worker-schemas.md` next
+  approaches 850 lines, or at the next `ADR_WATCH_ITEMS` audit, whichever comes first. See
+  `scripts/checks/adr-watch.check.ts` (`V-WATCH-01`).
+- **2026-09-04 — R-19 item 2: `worker-schemas.md` § Implementer split (#802, recording #710,
+  ADR-037).** Extracted the `## Implementer (`implementer`)` role-contract section (179 LOC,
+  100% of the then-hard `CONTENT_GATE_BUDGETS.maxSectionLoc=179` ceiling) to a new
+  `src/references/implementer-schemas.md`, mirroring `#473`'s `hook-schemas.md` extraction.
+  Updated in the same change: `CONTENT_GATE_BUDGETS` (new row for the extracted file,
+  re-measured/tightened row for `worker-schemas.md`), `ADR_WATCH_ITEMS` item 2 (re-pointed to
+  the new file, threshold unchanged at 80), `inline-schema-drift.check.ts`'s
+  `EXCLUDED_REFERENCE_FILES`, `verify.content-gates.test.ts`'s 11→12 key assertion, and the four
+  stale prose citations in `implementer.md` (lines 535/645/686/689 as of this decision). Logged
+  here as a disclosed decision record, even though `#473`'s own precedent split was not itself
+  recorded this way, closing the same under-disclosure gap this issue exists to prevent.

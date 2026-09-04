@@ -74,17 +74,17 @@ export const ADR_WATCH_ITEMS: AdrWatchItem[] = [
   },
   {
     adr: 'ADR-007',
-    file: 'src/references/worker-schemas.md',
+    file: 'src/references/implementer-schemas.md',
     metric: 'section_loc',
     threshold: 80,
-    note: 'Any single ## role-contract section over 80 LOC — the per-role half of the same rejected-alternatives trigger.',
+    note: 'Any single ## role-contract section over 80 LOC — the per-role half of the same rejected-alternatives trigger. Re-pointed from worker-schemas.md to this file (issue #802) after the Implementer section moved here; the threshold itself is untouched by where the role contract lives.',
   },
   {
     adr: 'ADR-021',
     file: 'src/references/phase-implement.md',
     metric: 'section_loc',
-    threshold: 15,
-    note: '(A3, Stop-condition density) "## Worker prompt must include (5-Field Delegation Contract)" is ~10 LOC today and already flagged as dense; 15 gives one clause of headroom before a future extension should split rather than grow it further.',
+    threshold: 59,
+    note: '(A3, Stop-condition density) measures the whole file\'s largest `##` section, not any one section by name — recalibrated (issue #802) to 59 = ceil(49 × 1.2), the same seeding convention CONTENT_GATE_BUDGETS uses, against the file\'s observed 12-49 LOC section-size range.',
   },
 ];
 
@@ -178,7 +178,8 @@ export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
   'src/agents/planner.md': { maxSectionLoc: 380, maxFileLoc: 712 },
   'src/agents/reviewer.md': { maxSectionLoc: 804, maxFileLoc: 902 },
   'src/agents/implementer.md': { maxSectionLoc: 371, maxFileLoc: 755 },
-  'src/references/worker-schemas.md': { maxSectionLoc: 179, maxFileLoc: 970 },
+  'src/references/worker-schemas.md': { maxSectionLoc: 210, maxFileLoc: 953 },
+  'src/references/implementer-schemas.md': { maxSectionLoc: 214, maxFileLoc: 219 },
   'src/references/hook-schemas.md': { maxSectionLoc: 101, maxFileLoc: 167 },
   'scripts/checks/*.check.ts': { maxSectionLoc: 68, maxFileLoc: 218 },
   'scripts/lib/build/*.ts': { maxSectionLoc: 68, maxFileLoc: 287 },
