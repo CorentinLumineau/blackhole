@@ -568,6 +568,24 @@ describe('validateWorker reviewer', () => {
 
   // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
   test('valid partial', () => expectValid('reviewer', 'reviewer-partial.json'));
+
+  // ADR-036 (issue #815) — verification_mode on the shared Finding shape.
+  test('valid finding with verification_mode: executed', () =>
+    expectValid('reviewer', 'reviewer-complete-verification-mode-executed.json'));
+  test('invalid finding with verification_mode outside the enum', () =>
+    expectInvalid('reviewer', 'reviewer-invalid-verification-mode-bad-enum.json'));
+  test('finding with no verification_mode key still validates (backward compatible)', () =>
+    expectValid('reviewer', 'reviewer-complete-vada-finding.json'));
+
+  // ADR-036 (issue #815) — top-level verification_legs[] array.
+  test('valid verification_legs entry', () =>
+    expectValid('reviewer', 'reviewer-complete-verification-legs.json'));
+  test('invalid verification_legs entry missing evidence', () =>
+    expectInvalid('reviewer', 'reviewer-invalid-verification-legs-missing-evidence.json'));
+  test('absence of verification_legs entirely still validates', () => {
+    expectValid('reviewer', 'reviewer-complete-empty.json');
+    expectValid('reviewer', 'reviewer-partial.json');
+  });
 });
 
 describe('validateWorker router', () => {

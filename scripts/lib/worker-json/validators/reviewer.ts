@@ -1,6 +1,10 @@
 import { REVIEWER_STATUSES } from '../constants.ts';
 import { isObject, isString, pushEnumError, requireField } from '../predicates.ts';
-import { validateFindingsArray, validatePartialResult } from '../shared-validators.ts';
+import {
+  validateFindingsArray,
+  validatePartialResult,
+  validateVerificationLegsArray,
+} from '../shared-validators.ts';
 
 export function validateReviewer(data: unknown): string[] {
   const errors: string[] = [];
@@ -24,6 +28,11 @@ export function validateReviewer(data: unknown): string[] {
     errors.push('findings: required');
   } else {
     errors.push(...validateFindingsArray(data.findings, 'findings'));
+  }
+
+  // ADR-036 (issue #815) — sibling to recheck[]/verification[], optional.
+  if ('verification_legs' in data) {
+    errors.push(...validateVerificationLegsArray(data.verification_legs, 'verification_legs'));
   }
 
   if (data.status === 'error') {

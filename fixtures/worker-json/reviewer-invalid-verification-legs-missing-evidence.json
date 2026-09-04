@@ -1,0 +1,10 @@
+{
+  "status": "complete",
+  "findings": [],
+  "verification_legs": [
+    {
+      "direction": "Authorization bypass via role param tampering",
+      "mode": "reasoned"
+    }
+  ]
+}

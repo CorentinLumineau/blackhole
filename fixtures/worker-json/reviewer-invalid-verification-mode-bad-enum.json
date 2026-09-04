@@ -1,0 +1,13 @@
+{
+  "status": "complete",
+  "findings": [
+    {
+      "vcode": "V-SEC-01",
+      "severity": "BLOCK",
+      "file": "src/auth.ts",
+      "line": 42,
+      "summary": "SQL injection via unsanitized query param",
+      "verification_mode": "guessed"
+    }
+  ]
+}

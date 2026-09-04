@@ -1,10 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { VERIFICATION_MODES } from '../lib/worker-json/constants.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
 // V-LEDGER-01 (issue #754) — rejects a `.blackhole/findings-ledger.json` row whose `issue_ref`
-// is not `number | null`, whose `pr_ref` is not `number | null`, or that still carries a legacy
-// `pr` key — the backstop for every ledger-append path `review-aggregate.ts`'s writer fix
+// is not `number | null`, whose `pr_ref` is not `number | null`, that still carries a legacy
+// `pr` key, or whose `verification_mode` (ADR-036, issue #815) falls outside `VERIFICATION_MODES`
+// — the backstop for every ledger-append path `review-aggregate.ts`'s writer fix
 // (Task 1) doesn't reach: kaizen/hunt findings and freehand orchestrator appends. `BLOCK`, not
 // `WARN` like `queue-coherence.check.ts` — this PR's own migration (Task 2) clears the live
 // ledger to zero drifted rows, so there is no unfixable historical debt for a BLOCK verdict to
@@ -21,6 +23,7 @@ type LedgerRow = {
   issue_ref?: unknown;
   pr_ref?: unknown;
   pr?: unknown;
+  verification_mode?: unknown;
 };
 
 const isNumberOrNull = (value: unknown): boolean => typeof value === 'number' || value === null;
@@ -44,6 +47,15 @@ export const findLedgerSchemaDrift = (findings: unknown[]): string[] => {
     }
     if ('pr' in row) {
       violations.push(`${id}: carries legacy "pr" key instead of "pr_ref"`);
+    }
+    // ADR-036 (issue #815) — verification_mode enum check; absent key is never drift.
+    if (
+      'verification_mode' in row &&
+      !(VERIFICATION_MODES as readonly string[]).includes(row.verification_mode as string)
+    ) {
+      violations.push(
+        `${id}: verification_mode is ${JSON.stringify(row.verification_mode)} (expected "executed"|"reasoned")`,
+      );
     }
   }
 
