@@ -141,7 +141,12 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // #323 implementation time (base: blackhole/issue-327, post-#322 split, post-#320 vocabularies);
 // `scripts/checks/*.check.ts` row re-measured at #336 (post build.check.ts domain split);
 // `src/references/hook-schemas.md` row added at #473 (new file split out of worker-schemas.md —
-// worker-schemas.md's own row is left unchanged, never raised, per that issue):
+// worker-schemas.md's own row is left unchanged, never raised, per that issue);
+// `src/references/orchestrator-handoff.md` row added at #726 (new file split out of
+// worker-schemas.md's Flush-request/Orchestrator-validation sections — worker-schemas.md's own
+// `maxFileLoc` is re-measured and lowered to match its post-split size, per that issue's
+// re-measure-never-hand-freeze convention; `maxSectionLoc` stays 210, unchanged, since the
+// post-split largest section (175 LOC) does not exceed it):
 //
 // | File / class                       | Metric              | Measured | × 1.2 seed |
 // |-------------------------------------|---------------------|---------:|-----------:|
@@ -149,10 +154,12 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // | src/agents/orchestrator.md           | total file LOC       | 153      | 185        |
 // | src/agents/planner.md                | max `##` section LOC | 291      | 350        |
 // | src/agents/planner.md                | total file LOC       | 593      | 712        |
-// | src/references/worker-schemas.md     | max `##` section LOC | 149      | 179        |
-// | src/references/worker-schemas.md     | total file LOC       | 937 (#492)| 950 (#492)|
+// | src/references/worker-schemas.md     | max `##` section LOC | 175 (#726)| 210       |
+// | src/references/worker-schemas.md     | total file LOC       | 682 (#726)| 819 (#726)|
 // | src/references/hook-schemas.md       | max `##` section LOC | 84       | 101        |
 // | src/references/hook-schemas.md       | total file LOC       | 139      | 167        |
+// | src/references/orchestrator-handoff.md | max `##` section LOC | 69 (#726) | 83 (#726) |
+// | src/references/orchestrator-handoff.md | total file LOC       | 118 (#726)| 142 (#726)|
 // | scripts/checks/*.check.ts            | max `check*()` fn LOC | 56      | 68         |
 // | scripts/checks/*.check.ts            | max single file LOC   | 181     | 218        |
 // | scripts/lib/build/*.ts               | max single file LOC   | 239     | 287        |
@@ -178,9 +185,10 @@ export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
   'src/agents/planner.md': { maxSectionLoc: 380, maxFileLoc: 712 },
   'src/agents/reviewer.md': { maxSectionLoc: 804, maxFileLoc: 902 },
   'src/agents/implementer.md': { maxSectionLoc: 371, maxFileLoc: 755 },
-  'src/references/worker-schemas.md': { maxSectionLoc: 210, maxFileLoc: 953 },
+  'src/references/worker-schemas.md': { maxSectionLoc: 210, maxFileLoc: 819 },
   'src/references/implementer-schemas.md': { maxSectionLoc: 214, maxFileLoc: 219 },
   'src/references/hook-schemas.md': { maxSectionLoc: 101, maxFileLoc: 167 },
+  'src/references/orchestrator-handoff.md': { maxSectionLoc: 83, maxFileLoc: 142 },
   'scripts/checks/*.check.ts': { maxSectionLoc: 68, maxFileLoc: 218 },
   'scripts/lib/build/*.ts': { maxSectionLoc: 68, maxFileLoc: 287 },
   'src/references/orchestrator-dispatch.md': { maxSectionLoc: 59, maxFileLoc: 400 },

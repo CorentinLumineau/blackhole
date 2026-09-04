@@ -50,7 +50,7 @@ export const checkStopModeWiring = (): CheckResult => {
   const skill = read('src/SKILL.md');
   const phaseStop = read('src/references/phase-stop.md');
   const checkpoint = read('src/references/checkpoint-protocol.md');
-  const workerSchemas = read('src/references/worker-schemas.md');
+  const orchestratorHandoff = read('src/references/orchestrator-handoff.md');
   const errors: string[] = [];
 
   if (!skill.includes('phase-stop.md')) errors.push('SKILL.md missing phase-stop.md citation');
@@ -72,11 +72,11 @@ export const checkStopModeWiring = (): CheckResult => {
   if (!phaseStop.includes('stop --now')) {
     errors.push('phase-stop.md missing the stop --now tier');
   }
-  if (!phaseStop.includes('worker-schemas.md')) {
-    errors.push('phase-stop.md missing worker-schemas.md citation for the flush ask');
+  if (!phaseStop.includes('orchestrator-handoff.md')) {
+    errors.push('phase-stop.md missing orchestrator-handoff.md citation for the flush ask');
   }
-  if (!workerSchemas.includes('Flush request')) {
-    errors.push('worker-schemas.md missing the Flush request section');
+  if (!orchestratorHandoff.includes('Flush request')) {
+    errors.push('orchestrator-handoff.md missing the Flush request section');
   }
   if (findUncitedFlushedMention(phaseStop)) {
     errors.push('phase-stop.md emits `flushed` without citing issue #492');

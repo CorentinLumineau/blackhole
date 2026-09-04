@@ -63,18 +63,20 @@ describe('runChecks()', () => {
 
 // Issue #491 — stop --now leg A: worker-side cooperation protocol. checkStopModeWiring() is
 // extended (not a new check function) to also verify the third tier's static wiring:
-// phase-stop.md documents the tier and cites worker-schemas.md for the ask; worker-schemas.md
-// documents the ask itself.
+// phase-stop.md documents the tier and cites orchestrator-handoff.md for the ask;
+// orchestrator-handoff.md documents the ask itself (relocated from worker-schemas.md by
+// issue #726 — the section describes what the orchestrator asks of a worker, not a worker
+// return schema).
 describe('checkStopModeWiring() — stop --now leg A wiring (issue #491)', () => {
-  test('phase-stop.md documents the stop --now tier and cites worker-schemas.md for the ask', () => {
+  test('phase-stop.md documents the stop --now tier and cites orchestrator-handoff.md for the ask', () => {
     const phaseStop = read('src/references/phase-stop.md');
     expect(phaseStop).toContain('stop --now');
-    expect(phaseStop).toContain('worker-schemas.md');
+    expect(phaseStop).toContain('orchestrator-handoff.md');
   });
 
-  test('worker-schemas.md documents the Flush request (the ask), not the partial-return response', () => {
-    const workerSchemas = read('src/references/worker-schemas.md');
-    expect(workerSchemas).toContain('Flush request');
+  test('orchestrator-handoff.md documents the Flush request (the ask), not the partial-return response', () => {
+    const orchestratorHandoff = read('src/references/orchestrator-handoff.md');
+    expect(orchestratorHandoff).toContain('Flush request');
   });
 
   test('checkStopModeWiring() still returns ok: true once the stop --now tier lands', () => {
