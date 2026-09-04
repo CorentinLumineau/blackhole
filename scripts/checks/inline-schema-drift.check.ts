@@ -24,7 +24,7 @@ const REFERENCES_DIR = path.join(root, 'src', 'references');
 
 // worker-schemas.md IS the return-JSON SSOT the no-inline-schema rule tells every other doc to
 // cite — every enum example inside it is definitionally not drift.
-const EXCLUDED_REFERENCE_FILES = new Set(['worker-schemas.md']);
+const EXCLUDED_REFERENCE_FILES = new Set(['worker-schemas.md', 'implementer-schemas.md']);
 
 const ROLE_STATUS_MAP: Record<Role, readonly string[]> = {
   planner: PLANNER_STATUSES,

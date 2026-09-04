@@ -396,6 +396,17 @@ Had they arrived on time, A1 and A2 would have been design inputs rather than am
 findings are recorded here rather than folded silently into the decision text, so the ADR shows
 what was known when.
 
+- **2026-09-04 — A3's watch threshold recalibrated (#802, recording #710).** `phase-implement.md`'s
+  `ADR_WATCH_ITEMS` entry (A3, Stop-condition density) is raised from 15 to 59 LOC
+  (`ceil(49 × 1.2)`, the same seeding convention `CONTENT_GATE_BUDGETS` uses), recalibrated
+  against the file's observed 12-49 LOC section-size range — the original 15-LOC ceiling sat
+  below nearly every section in the file and was tripping on `## Git operations must not depend
+  on inherited cwd` (49 LOC, issue #516) rather than the section A3's own note named. The item's
+  `note` field is rewritten to describe `measureAdrWatchItem`'s actual whole-file-max-`##`-section
+  semantics instead of naming `"## Worker prompt must include"` specifically, which is no longer
+  the section driving the trip. This coexists with, and does not replace, A1-A4 above. See
+  `scripts/checks/adr-watch.check.ts` (`V-WATCH-01`).
+
 ## References
 
 - `documentation/audits/documentation-framework-alignment.md` — source audit, §3.1 root cause
