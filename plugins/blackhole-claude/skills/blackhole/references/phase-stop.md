@@ -16,7 +16,7 @@ Five-phase lifecycle is unaffected).
 
 This issue (#491, leg A of #479) ships the `stop --now` worker-side ask above. The partial-result
 response schema and the orchestrator's ingest of a flushed return are #492's job (leg B) — see
-`worker-schemas.md` § Flush request for the exact boundary.
+`orchestrator-handoff.md` § Flush request for the exact boundary.
 
 ## Drain tier — sequence
 
@@ -70,7 +70,7 @@ No new file-based side channel — and **not** `.blackhole/resume-request.json`
 orchestrator-read, and fires only *after* a worker has already stopped naturally; the ask this
 tier needs is the opposite direction and timing — orchestrator-written, worker-read, delivered
 to a worker still running (`V-INT-02`: reused where the shape fits, not forced where it does
-not — see `worker-schemas.md` § Flush request for the full Reuse Check). The ask is instead
+not — see `orchestrator-handoff.md` § Flush request for the full Reuse Check). The ask is instead
 delivered via the harness's own live-worker message relay, on a harness whose fan-out primitive
 keeps a spawned worker addressable while running — demonstrated live at campaign turn 4
 (2026-08-10), where a running `implementer` was asked mid-edit to finish only its in-flight
@@ -81,7 +81,7 @@ every worker is uncooperative by construction and step 4 below fires immediately
 them.
 
 1. **Ask** — for every worker in `## In-flight workers`, deliver the Flush Request
-   (`worker-schemas.md` § Flush request) via the channel above, or skip straight to step 4 when
+   (`orchestrator-handoff.md` § Flush request) via the channel above, or skip straight to step 4 when
    no such channel exists on this harness.
 2. **Grace window** — wait up to 20 minutes, wall-clock, per worker, for either its natural
    SubagentStop return or an explicit flush acknowledgment, whichever comes first. 20 minutes is
@@ -117,7 +117,7 @@ them.
    (`checkpoint-protocol.md` § Checkpoint template).
 7. **Report** per Exit Invariant 6, additionally naming which workers cooperated and which were
    abandoned — the resumer needs this: an abandoned worker's worktree may hold a partial,
-   possibly-broken push per `worker-schemas.md` § Flush request obligation 3.
+   possibly-broken push per `orchestrator-handoff.md` § Flush request obligation 3.
 
 ## `--abandon` tier — sequence
 
@@ -166,7 +166,7 @@ them.
 - [ ] Every worktree's branch has all commits pushed to its PR branch; any dirty worktree is
   reported by path, never silently left (**`stop --now` tier: two paths, same as Invariant 1 —
   a cooperative worker satisfies this directly via obligation 3 on receipt of the ask
-  (`worker-schemas.md` § Flush request) before it returns; an uncooperative worker's worktree is
+  (`orchestrator-handoff.md` § Flush request) before it returns; an uncooperative worker's worktree is
   covered by the `--abandon` tier's step 3 dirty-check (`recovery-protocol.md` §2 detection, §4
   decision tree — cited, never restated), invoked per-worker by step 4 of the `stop --now`
   sequence above, so a killed worker's partial commits are never silently left undetected**)

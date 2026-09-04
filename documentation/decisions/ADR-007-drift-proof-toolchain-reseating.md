@@ -199,3 +199,28 @@ phased-migration threshold; single-campaign delivery is safe.
   stale prose citations in `implementer.md` (lines 535/645/686/689 as of this decision). Logged
   here as a disclosed decision record, even though `#473`'s own precedent split was not itself
   recorded this way, closing the same under-disclosure gap this issue exists to prevent.
+- **2026-09-04 — R-19 disposition: `worker-schemas.md` § Flush request / § Orchestrator
+  validation split (#726, recording R-19's own named target).** Item 1's accept-with-expiry
+  above (#802) settled only the whole-file LOC pressure; item 2 (#802) was a *different*
+  extraction (the Implementer role-contract section). Neither addressed R-19's own named
+  content: the `## Flush request` (69 LOC) and `## Orchestrator validation` (+ `### Barrier
+  triage`, `### Blocked-iteration escalation`, 42 LOC) sections, which describe what the
+  *orchestrator* does before and after a worker's turn, not a worker return schema — the same
+  SRP/content-ownership argument `hook-schemas.md` (#473) and `implementer-schemas.md` (#802)
+  were extracted for, independent of any LOC number. The `ADR_WATCH_ITEMS` `file_loc: 700` trip
+  on `worker-schemas.md` (794 pre-split LOC) was independently active at filing time. Extracted
+  both sections verbatim (111 combined LOC, byte-for-byte diff-verified) to a new
+  `src/references/orchestrator-handoff.md` — named for the shared orchestrator↔worker handoff
+  concern rather than `flush-request.md` (the issue's literal fallback name), since the second
+  section is not about flush requests. Post-split: `worker-schemas.md` 682 LOC (clears the
+  700-LOC `ADR_WATCH_ITEMS` trigger), `orchestrator-handoff.md` 118 LOC (max section 69 LOC).
+  Updated in the same change: `CONTENT_GATE_BUDGETS` (new row for the extracted file;
+  `worker-schemas.md`'s `maxFileLoc` re-measured/lowered to 819, `maxSectionLoc` left at 210
+  since the post-split largest section, 175 LOC, does not exceed it), `verify.content-gates.
+  test.ts`'s 12→13 key assertion, `scripts/checks/stop-mode.check.ts` and
+  `scripts/verify.stop-mode.test.ts` (re-pointed from `worker-schemas.md` to
+  `orchestrator-handoff.md` for the Flush-request presence check), and the stale prose
+  citations in `phase-stop.md` (×5) and `orchestrator-runtime.md` (×1).
+  `inline-schema-drift.check.ts`'s `EXCLUDED_REFERENCE_FILES` verified as needing no edit — the
+  moved content has no role-named heading immediately preceding a `"status"`-bearing JSON
+  block.
