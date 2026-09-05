@@ -1,16 +1,26 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { read } from './checks/check-utils.ts';
 import {
   parseSectionLineCounts,
   findContentGateViolations,
   findContentGateWarnings,
   resolveContentGateTargets,
   checkZeroSections,
+  findUncitedGrandfatherAdrs,
+  boundaryPatternFor,
   CHECK_TS_SECTION_PATTERN,
+  H3_SECTION_PATTERN,
   runChecks,
 } from './checks/content-gates.check.ts';
-import { CONTENT_GATE_BUDGETS, CONTENT_GATE_WARN_RATIO } from './lib/build/facts.ts';
+import {
+  CONTENT_GATE_BUDGETS,
+  CONTENT_GATE_BOUNDARY_UNITS,
+  CONTENT_GATE_GRANDFATHERED,
+  CONTENT_GATE_WARN_RATIO,
+  type ContentGateBudget,
+} from './lib/build/facts.ts';
 
 // V-CONTENTGATE-01 (ADR-007 T6/R3′, generalized issue #323): declared-budget section/file-size
 // gate. Inline fixtures cover the parser, the glob-class resolver, and the violation-finding
@@ -300,51 +310,126 @@ describe('findContentGateWarnings', () => {
   });
 });
 
+describe('boundaryPatternFor (per-file `###` unit, issue #722)', () => {
+  test('a `.check.ts` target keeps the check-function boundary', () => {
+    expect(boundaryPatternFor('scripts/checks/agents.check.ts')).toBe(CHECK_TS_SECTION_PATTERN);
+  });
+
+  test('a markdown target with no declared unit keeps the `##` boundary', () => {
+    expect(boundaryPatternFor('src/agents/hunter.md').source).toBe('^## ');
+  });
+
+  test('a markdown target declared `###` in CONTENT_GATE_BOUNDARY_UNITS gets the `###` boundary', () => {
+    const declared = Object.keys(CONTENT_GATE_BOUNDARY_UNITS);
+    expect(declared.length).toBeGreaterThan(0);
+    for (const file of declared) expect(boundaryPatternFor(file)).toBe(H3_SECTION_PATTERN);
+  });
+
+  test('the `###` unit ends a section at the next `##` OR `###`, so a `###` section never spans a `##`', () => {
+    const content = ['## A', '### A1', 'x', '## B', 'y', 'z'].join('\n');
+    expect(parseSectionLineCounts(content, H3_SECTION_PATTERN)).toEqual({
+      '## A': 1,
+      '### A1': 2,
+      '## B': 3,
+    });
+  });
+});
+
+describe('findUncitedGrandfatherAdrs (V-CONTENTGATE-03, issue #722)', () => {
+  const cls: ContentGateBudget = { maxSectionLoc: 100, maxFileLoc: 200 };
+  const classBudgets = new Map([['src/agents/fake.md', cls]]);
+  const INDEX_ROW = '| ADR-007-drift-proof-toolchain-reseating.md | s | adr | accepted | on protocol change |';
+  const entry = (over: Partial<{ sunset_adr: string; ceiling: ContentGateBudget }> = {}) => ({
+    file: 'src/agents/fake.md',
+    ceiling: { maxSectionLoc: 100, maxFileLoc: 400 },
+    sunset_adr: 'ADR-007',
+    ...over,
+  });
+
+  test('stays silent for an entry citing an indexed ADR whose ceiling really exceeds its class', () => {
+    expect(findUncitedGrandfatherAdrs([entry()], classBudgets, INDEX_ROW)).toEqual([]);
+  });
+
+  test('warns when sunset_adr names an ADR with no documentation/decisions/INDEX.md row', () => {
+    const warnings = findUncitedGrandfatherAdrs([entry({ sunset_adr: 'ADR-999' })], classBudgets, INDEX_ROW);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('ADR-999');
+    expect(warnings[0]).toContain('src/agents/fake.md');
+  });
+
+  test('warns when sunset_adr is not ADR-NNN-shaped', () => {
+    const warnings = findUncitedGrandfatherAdrs([entry({ sunset_adr: 'see the plan' })], classBudgets, INDEX_ROW);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('see the plan');
+  });
+
+  test('warns when a class-budget raise has swallowed the grandfathered ceiling on both metrics', () => {
+    const warnings = findUncitedGrandfatherAdrs(
+      [entry({ ceiling: { maxSectionLoc: 90, maxFileLoc: 180 } })],
+      classBudgets,
+      INDEX_ROW,
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('no longer exceeds');
+  });
+
+  test('warns when the entry names a file no glob class covers', () => {
+    const warnings = findUncitedGrandfatherAdrs([entry({})], new Map(), INDEX_ROW);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('no CONTENT_GATE_BUDGETS glob class');
+  });
+});
+
 describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positives)', () => {
-  test('covers exactly the 11 declared keys', () => {
+  test('is keyed by glob class only — exactly the 5 declared classes, no per-file key', () => {
     expect(Object.keys(CONTENT_GATE_BUDGETS).sort()).toEqual(
       [
-        'src/agents/orchestrator.md',
-        'src/agents/planner.md',
-        'src/references/worker-schemas.md',
-        'src/references/implementer-schemas.md',
-        'src/references/hook-schemas.md',
-        'src/references/orchestrator-handoff.md',
-        'src/references/orchestrator-dispatch.md',
-        'src/references/orchestrator-runtime.md',
-        'src/references/orchestrator-delegation.md',
+        'src/agents/*.md',
+        'src/references/*.md',
+        'src/references/hunt/*.md',
         'scripts/checks/*.check.ts',
         'scripts/lib/build/*.ts',
       ].sort(),
     );
+    for (const key of Object.keys(CONTENT_GATE_BUDGETS)) expect(key).toContain('*');
   });
 
-  test('every covered file/glob passes its budget against the current repo state', () => {
+  test('every grandfather entry cites an indexed ADR and really exceeds its class ceiling', () => {
     const root = path.resolve(import.meta.dirname, '..');
+    const classBudgets = new Map<string, ContentGateBudget>();
+    for (const [pattern, budget] of Object.entries(CONTENT_GATE_BUDGETS)) {
+      for (const target of resolveContentGateTargets(pattern)) classBudgets.set(target, budget);
+    }
+    const index = fs.readFileSync(path.join(root, 'documentation/decisions/INDEX.md'), 'utf-8');
+    expect(findUncitedGrandfatherAdrs(CONTENT_GATE_GRANDFATHERED, classBudgets, index)).toEqual([]);
+    expect(CONTENT_GATE_GRANDFATHERED.length).toBeGreaterThan(0);
+  });
+
+  test('every covered file/glob passes its budget (class ceiling, or its grandfather ceiling)', () => {
+    const root = path.resolve(import.meta.dirname, '..');
+    const grandfathered = new Map(CONTENT_GATE_GRANDFATHERED.map((g) => [g.file, g.ceiling]));
     const allErrors: string[] = [];
 
-    for (const [pattern, budget] of Object.entries(CONTENT_GATE_BUDGETS)) {
+    for (const [pattern, classBudget] of Object.entries(CONTENT_GATE_BUDGETS)) {
       const targets = resolveContentGateTargets(pattern);
       expect(targets.length).toBeGreaterThan(0);
       for (const target of targets) {
-        const content = fs.readFileSync(path.join(root, target), 'utf-8');
-        const boundaryPattern = target.endsWith('.check.ts') ? CHECK_TS_SECTION_PATTERN : /^## /;
-        const sections = parseSectionLineCounts(content, boundaryPattern);
+        const content = read(target);
+        const sections = parseSectionLineCounts(content, boundaryPatternFor(target));
         const totalLoc = content.split('\n').filter((_, i, arr) => !(i === arr.length - 1 && arr[i] === '')).length;
-        allErrors.push(...findContentGateViolations(target, sections, totalLoc, budget));
+        allErrors.push(...findContentGateViolations(target, sections, totalLoc, grandfathered.get(target) ?? classBudget));
       }
     }
 
     expect(allErrors).toEqual([]);
   });
 
-  test('runChecks() returns both V-CONTENTGATE-01 (unaffected hard gate) and V-CONTENTGATE-02 (advisory)', () => {
+  test('runChecks() returns the hard gate, the advisory ratio warning, and the exception audit', () => {
     // Operationalizes the plan's "Hard-gate regression" stop condition as a permanent test: the
-    // hard gate must stay green (issue #545 is additive-only, AC #3 forbids any budget change),
-    // and the new advisory check must report the near-ceiling files identified in the plan's
-    // Claims Verified table (issue #545 AC #4) as a living, re-run-every-CI assertion.
+    // hard gate must stay green, the near-ceiling advisory must keep reporting, and the
+    // grandfather-exception audit must be clean against the live declarations.
     const results = runChecks();
-    expect(results).toHaveLength(2);
+    expect(results).toHaveLength(3);
 
     const hard = results.find((r) => r.id === 'V-CONTENTGATE-01');
     expect(hard).toBeDefined();
@@ -355,6 +440,11 @@ describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positi
     expect(warn?.ok).toBe(true);
     expect(warn?.detail).toBeDefined();
     expect(warn?.detail?.length).toBeGreaterThan(0);
+
+    const audit = results.find((r) => r.id === 'V-CONTENTGATE-03');
+    expect(audit).toBeDefined();
+    expect(audit?.ok).toBe(true);
+    expect(audit?.detail).toBeUndefined();
   });
 
   test('CONTENT_GATE_WARN_RATIO is the derived 85% threshold', () => {
