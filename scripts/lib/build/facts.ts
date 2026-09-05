@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 108;
+export const VCODE_TABLE_ROW_COUNT = 109;
 
 // § facts — build-input-only directories (ADR-034, issue #719). A declared-fact / independent-
 // scan pair, the same shape VCODE_TABLE_ROW_COUNT/CONTENT_GATE_BUDGETS/DOC_HEALTH_THRESHOLDS
@@ -156,7 +156,10 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // worker-schemas.md's Flush-request/Orchestrator-validation sections — worker-schemas.md's own
 // `maxFileLoc` is re-measured and lowered to match its post-split size, per that issue's
 // re-measure-never-hand-freeze convention; `maxSectionLoc` stays 210, unchanged, since the
-// post-split largest section (175 LOC) does not exceed it):
+// post-split largest section (175 LOC) does not exceed it); `src/agents/reviewer.md`'s row is
+// retired under ADR-034 — its checklist is no longer prose in that file but a directory of audit
+// modules composed by a `{{INCLUDE:<dir>/*}}` marker, so the fact worth declaring about it is
+// `REVIEWER_AUDIT_MODULE_COUNT` above, not a LOC ceiling on a 124-line shell:
 //
 // | File / class                       | Metric              | Measured | × 1.2 seed |
 // |-------------------------------------|---------------------|---------:|-----------:|
@@ -173,8 +176,6 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // | scripts/checks/*.check.ts            | max `check*()` fn LOC | 56      | 68         |
 // | scripts/checks/*.check.ts            | max single file LOC   | 181     | 218        |
 // | scripts/lib/build/*.ts               | max single file LOC   | 239     | 287        |
-// | src/agents/reviewer.md               | max `##` section LOC | 670      | 804        |
-// | src/agents/reviewer.md               | total file LOC       | 751      | 902        |
 // | src/agents/implementer.md            | max `##` section LOC | 309      | 371        |
 // | src/agents/implementer.md            | total file LOC       | 629      | 755        |
 // | src/references/orchestrator-dispatch.md   | max `##` section LOC | 49  | 59         |
@@ -193,7 +194,6 @@ export type ContentGateBudget = { maxSectionLoc: number; maxFileLoc: number };
 export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
   'src/agents/orchestrator.md': { maxSectionLoc: 18, maxFileLoc: 185 },
   'src/agents/planner.md': { maxSectionLoc: 380, maxFileLoc: 712 },
-  'src/agents/reviewer.md': { maxSectionLoc: 804, maxFileLoc: 902 },
   'src/agents/implementer.md': { maxSectionLoc: 371, maxFileLoc: 755 },
   'src/references/worker-schemas.md': { maxSectionLoc: 210, maxFileLoc: 819 },
   'src/references/implementer-schemas.md': { maxSectionLoc: 214, maxFileLoc: 219 },
