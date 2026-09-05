@@ -7,9 +7,11 @@ import {
   findVcodeNamespaceDrift,
   parseVcodeEnforcementSites,
   findMissingEnforcementSites,
+  runChecks,
 } from './checks/ground-truth.check.ts';
-import { AGENT_NAMES, VCODE_TABLE_ROW_COUNT } from './lib/build/facts.ts';
+import { AGENT_NAMES, IMPLEMENTER_GATE_MODULE_COUNT, VCODE_TABLE_ROW_COUNT } from './lib/build/facts.ts';
 import { read } from './checks/check-utils.ts';
+import { listFiles } from './lib/check-common.ts';
 
 // V-GROUND-01 (ADR-007 T3/R1′): two-sided facts-conformance — an independent filesystem scan is
 // compared against build.ts's § facts declaration, never collapsed onto one derivation (the
@@ -209,5 +211,21 @@ describe('findMissingEnforcementSites', () => {
     const rows = parseVcodeEnforcementSites(vcodes);
     expect(rows.length).toBe(VCODE_TABLE_ROW_COUNT);
     expect(findMissingEnforcementSites(rows)).toEqual([]);
+  });
+});
+
+// The three check functions this module exports are only reachable through `runChecks` — the
+// helpers above are unit-tested in isolation, but the assembly that decides which of them run
+// against the live tree was not exercised at all, so a declared fact wired into the wrong
+// comparison would pass every test here and still fail `bun run verify`.
+describe('runChecks live tree', () => {
+  test('all three checks pass against the live repo', () => {
+    const results = runChecks();
+    expect(results.map((r) => r.id)).toEqual(['V-GROUND-01', 'V-DOCTABLE-01', 'V-GROUND-02']);
+    for (const r of results) expect(r, `${r.id}: ${r.detail ?? ''}`).toMatchObject({ ok: true });
+  });
+
+  test('IMPLEMENTER_GATE_MODULE_COUNT matches the live src/references/gates/ directory scan', () => {
+    expect(listFiles('src/references/gates').length).toBe(IMPLEMENTER_GATE_MODULE_COUNT);
   });
 });

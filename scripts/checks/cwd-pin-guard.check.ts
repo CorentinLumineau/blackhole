@@ -1,4 +1,4 @@
-import { listFiles } from '../lib/check-common.ts';
+import { buildInputModuleDirs, listFiles } from '../lib/check-common.ts';
 import { read, type CheckResult } from './check-utils.ts';
 
 // Issue #798 — cwd-pin-guard.check.ts: matches verify.cwd-pin-guard.test.ts.
@@ -49,15 +49,19 @@ export const findMissingCwdPin = (content: string, label: string): string[] => {
 
 // Sweep scope: `src/agents/*.md` + `src/references/*.md` (non-recursive) plus the root
 // `src/SKILL.md`, which documents its own bootstrap-time invocation and so carries the same
-// class of call site. `src/references/hunt/*.md` stays deliberately excluded (not exempted from
-// an otherwise-matching pattern): it sits outside the declared sweep path.
+// class of call site, and every declared build-input-only module directory (ADR-034), whose
+// files are agent instruction text that merely lives in its own file. `src/references/hunt/*.md`
+// stays deliberately excluded (not exempted from an otherwise-matching pattern): it sits outside
+// the declared sweep path.
 const SWEEP_DIRS = ['src/agents', 'src/references'];
 const SWEEP_FILES = ['src/SKILL.md'];
 
 // Exported so the sweep's own scope is assertable, not just its verdict: a scope that silently
 // stops covering a file would otherwise still report `ok: true`.
 export const sweepTargets = (): string[] => [
-  ...SWEEP_DIRS.flatMap((dir) => listFiles(dir).map((file) => `${dir}/${file}`)),
+  ...[...SWEEP_DIRS, ...buildInputModuleDirs()].flatMap((dir) =>
+    listFiles(dir).map((file) => `${dir}/${file}`),
+  ),
   ...SWEEP_FILES,
 ];
 

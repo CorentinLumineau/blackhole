@@ -92,8 +92,8 @@ describe('REFERENCE_TREE_ROOTS', () => {
 });
 
 describe('runChecks live tree (V-INCLUDE-01)', () => {
-  test('passes against the live repo — BUILD_INPUT_ONLY_DIRS is empty, no production consumer yet (issue #719)', () => {
-    expect(BUILD_INPUT_ONLY_DIRS).toEqual([]);
+  test('passes against the live repo — implementer.md is the production consumer (issue #721)', () => {
+    expect(BUILD_INPUT_ONLY_DIRS).toEqual(['references/gates']);
     const results = runChecks();
     expect(results.length).toBe(1);
     expect(results[0].id).toBe('V-INCLUDE-01');

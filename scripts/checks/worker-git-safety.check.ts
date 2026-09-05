@@ -1,5 +1,5 @@
 import { read, type CheckResult } from './check-utils.ts';
-import { findMissingGateMarkers } from '../lib/check-common.ts';
+import { findMissingGateMarkers, readComposedAgentDoc } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — worker-git-safety.check.ts: matches verify.worker-git-safety.test.ts.
 
@@ -41,7 +41,7 @@ const checkWorkerGitSafety = (): CheckResult => {
     PHASE_IMPLEMENT_REQUIRED_MARKERS,
   );
   const implementerMissing = findMissingGateMarkers(
-    read('src/agents/implementer.md'),
+    readComposedAgentDoc('src/agents/implementer.md'),
     IMPLEMENTER_REQUIRED_MARKERS,
   );
   const orchestratorDispatchMissing = findMissingGateMarkers(

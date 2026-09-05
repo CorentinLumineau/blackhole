@@ -3,6 +3,7 @@ import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
 import {
   AGENT_NAMES,
+  IMPLEMENTER_GATE_MODULE_COUNT,
   PHASE_PLAYBOOK_FILES,
   REQUIRED_REFERENCES,
   VCODE_TABLE_ROW_COUNT,
@@ -89,6 +90,13 @@ const checkGroundTruth = (): CheckResult => {
 
   const namespaceDrift = findVcodeNamespaceDrift(vcodes);
   if (namespaceDrift) errors.push(namespaceDrift);
+
+  const gateModuleMismatch = findRowCountMismatch(
+    'implementer gate modules',
+    IMPLEMENTER_GATE_MODULE_COUNT,
+    listFiles('src/references/gates').length,
+  );
+  if (gateModuleMismatch) errors.push(gateModuleMismatch);
 
   for (const ref of REQUIRED_REFERENCES) {
     if (!fs.existsSync(path.join(srcDir, 'references', ref))) errors.push(`missing reference: ${ref}`);

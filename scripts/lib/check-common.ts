@@ -1,9 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
-import { root } from '../checks/check-utils.ts';
+import { root, read } from '../checks/check-utils.ts';
 import { walkFilesAbs } from './fs.ts';
-import { PLATFORM_TARGETS } from './build/facts.ts';
+import { expandIncludes } from './build/content.ts';
+import { BUILD_INPUT_ONLY_DIRS, PLATFORM_TARGETS } from './build/facts.ts';
 
 // ADR-007 R6 / issue #375 — shared cross-domain check helpers extracted from domain
 // *.check.ts modules so checks no longer act as an informal shared library (V-INT-02).
@@ -15,6 +16,21 @@ import { PLATFORM_TARGETS } from './build/facts.ts';
 // gate-marker checks — one definition, ADR-007 R6/V-INT-02 (no local reimplementation).
 export const findMissingGateMarkers = (content: string, required: string[]): string[] =>
   required.filter((marker) => !content.includes(marker));
+
+// ADR-034: an agent shell composes its body from `{{INCLUDE:<dir>/*}}` modules at build time, so
+// a marker-presence scan that reads the shell alone sees only the shell and passes vacuously the
+// moment a gate moves into a module. Returns what the compiled agent actually contains — the
+// same expansion `processFile` performs — so every such scan keeps its pre-seam surface. A file
+// with no marker is returned unchanged, so this is safe for any agent doc.
+export const readComposedAgentDoc = (rel: string): string =>
+  expandIncludes(read(rel), path.join(root, rel));
+
+// ADR-034: the repo-relative form (`src/<dir>`) of every declared build-input-only module
+// directory, for a prose sweep whose declared scope is "agent instruction text". A sweep over
+// `src/agents`/`src/references` alone stops covering a gate the moment it becomes a module;
+// unlike `readComposedAgentDoc` above, this keeps each module's own file:line coordinates, which
+// a violation-reporting sweep needs.
+export const buildInputModuleDirs = (): string[] => BUILD_INPUT_ONLY_DIRS.map((dir) => `src/${dir}`);
 
 // Platform-conditional-leak scan (V-GEMINI-01/V-CODEX-04): compiled output for `activeTarget`
 // must contain no unresolved {{#<platform>}} marker for any *other* platform — a leaked marker
