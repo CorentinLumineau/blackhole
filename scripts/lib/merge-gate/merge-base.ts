@@ -1,8 +1,9 @@
-// merge-gate.md § 7 — the mechanical half of the merge-base gate. Everything here is a pure
+// merge-gate.md § 8 — the mechanical half of the merge-base gate. Everything here is a pure
 // function of its arguments (the subprocess call that reads git lives in the CLI wrapper), so
 // the base assertion and the post-merge landing verdict are decided by code, never by an
 // orchestrator's judgement about whether a miss "is probably fetch lag".
 
+/** Outcome of `assertPreMergeBase`: `ok: false` always carries the `reason` shown to the operator. */
 export type BaseAssertion = { ok: boolean; reason?: string };
 
 /**
@@ -56,6 +57,10 @@ export function landedOnBranch(gitLogOutput: string, prNumber: number): boolean 
   return new RegExp(String.raw`(?<!\d)#${prNumber}(?!\d)`).test(gitLogOutput);
 }
 
+/**
+ * One attempt's landing verdict. `retry` means only that budget remains, never that a miss is
+ * tolerable — the loop ends on `verified` or `failed`, and there is no fourth value.
+ */
 export type PostMergeVerdict = 'verified' | 'retry' | 'failed';
 
 /**
@@ -80,6 +85,8 @@ export function classifyPostMergeVerification(opts: {
 /**
  * Bounded retry loop around `classifyPostMergeVerification`. `readLog` and `wait` are injected
  * so the loop itself stays pure and testable; the CLI supplies the real `git` read and sleep.
+ * A `readLog` that throws propagates untouched: only a returned string is a reading of the
+ * branch, so an unreadable branch must not reach the verdict as an empty log would.
  */
 export function verifyPostMergeLanding(opts: {
   prNumber: number;
@@ -107,6 +114,10 @@ export function verifyPostMergeLanding(opts: {
   }
 }
 
+/**
+ * Three-way reading of a `merged` row's `merged_into`: the campaign base, some other branch, or
+ * nothing recorded. `unknown` is a distinct answer, not a default that collapses into `base`.
+ */
 export type MergedIntoVerdict = 'base' | 'other' | 'unknown';
 
 /**

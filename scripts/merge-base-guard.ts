@@ -14,6 +14,21 @@ function usage(): never {
   process.exit(2);
 }
 
+// Exit 3, distinct from 1: nothing was learned about the landing at all. A git call that fails
+// says where the merge went no more than it says where it did not, so collapsing it into either
+// verdict manufactures evidence — `merge-gate.md` § 8 promotes both of those to proof.
+class VerificationUnavailable extends Error {}
+
+function unavailable(reason: string): never {
+  throw new VerificationUnavailable(reason);
+}
+
+// spawnSync reports a signal kill or an unspawnable binary as a null status, which is not 0 and
+// so is refused here alongside an ordinary non-zero exit.
+function requireOk(result: { status: number | null }, what: string): void {
+  if (result.status !== 0) unavailable(`${what} failed (exit ${result.status ?? 'signal'})`);
+}
+
 function parseArgs(argv: string[]): Record<string, string> {
   const args: Record<string, string> = {};
   for (let i = 2; i < argv.length; i += 2) {
@@ -59,6 +74,23 @@ function positiveInt(raw: string | undefined, fallback: number): number {
   return value;
 }
 
+// Separates "the merge landed somewhere else" (exit 1) from "the check never ran" (exit 3);
+// `verifyPostMergeLanding` deliberately knows nothing about subprocesses, so the classification
+// happens here, at the only layer that spawns git.
+function runVerification(
+  opts: Parameters<typeof verifyPostMergeLanding>[0],
+): ReturnType<typeof verifyPostMergeLanding> {
+  try {
+    return verifyPostMergeLanding(opts);
+  } catch (error) {
+    if (error instanceof VerificationUnavailable) {
+      console.error(`merge-base-guard: verification could not run — ${error.message}`);
+      process.exit(3);
+    }
+    throw error;
+  }
+}
+
 function runPostMerge(args: Record<string, string>): void {
   const branch = args['target-branch'];
   const repoRoot = args['repo-root'];
@@ -69,7 +101,7 @@ function runPostMerge(args: Record<string, string>): void {
   const maxAttempts = positiveInt(args.attempts, 3);
   const intervalMs = positiveInt(args['interval-ms'], 20_000);
 
-  const result = verifyPostMergeLanding({
+  const result = runVerification({
     prNumber,
     targetBranch: branch,
     maxAttempts,
@@ -77,13 +109,14 @@ function runPostMerge(args: Record<string, string>): void {
     readLog: () => {
       // Re-fetched every attempt: replication delay is the only reason a retry could change the
       // answer, so a run that never re-reads the remote would make the retry budget meaningless.
-      git(repoRoot, ['fetch', 'origin', branch]);
+      // A fetch that fails ends the run here rather than spending the rest of the budget
+      // re-reading a local ref nothing refreshed.
+      requireOk(git(repoRoot, ['fetch', 'origin', branch]), `git fetch origin ${branch} in ${repoRoot}`);
       const ref = resolveBranchRef(repoRoot, branch);
-      if (ref === null) {
-        console.error(`merge-base-guard: branch ${branch} does not resolve in ${repoRoot}`);
-        process.exit(1);
-      }
-      return git(repoRoot, ['log', ref, '-F', `--grep=#${prNumber}`, '--format=%H %s']).stdout ?? '';
+      if (ref === null) unavailable(`branch ${branch} does not resolve in ${repoRoot}`);
+      const log = git(repoRoot, ['log', ref, '-F', `--grep=#${prNumber}`, '--format=%H %s']);
+      requireOk(log, `git log ${ref} in ${repoRoot}`);
+      return log.stdout ?? '';
     },
     wait: (ms) => Bun.sleepSync(ms),
   });

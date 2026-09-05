@@ -149,6 +149,26 @@ describe('verifyPostMergeLanding', () => {
     expect(result.reason).toContain('#793');
     expect(result.reason).toContain('main');
   });
+
+  test('a readLog failure propagates instead of being read as an empty log', () => {
+    // An empty return is a clean miss; a throw is the caller's signal that nothing was read at
+    // all. Swallowing the second into the first is what let a failed fetch become a verdict.
+    let attempts = 0;
+    expect(() =>
+      verifyPostMergeLanding({
+        prNumber: 793,
+        targetBranch: 'main',
+        maxAttempts: 3,
+        intervalMs: 1,
+        readLog: () => {
+          attempts += 1;
+          throw new Error('git fetch origin main failed (exit 128)');
+        },
+        wait: () => {},
+      }),
+    ).toThrow('exit 128');
+    expect(attempts).toBe(1);
+  });
 });
 
 describe('mergedIntoVerdict', () => {
