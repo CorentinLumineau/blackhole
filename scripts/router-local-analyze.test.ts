@@ -89,12 +89,15 @@ describe('blackhole-vcodes.md / reviewer.md — V-DOCFACT-01 registration (#335)
     expect(vcodes).toMatch(/\| V-DOCFACT-01 \|.*\| WARN \|/);
   });
 
-  test('reviewer.md audits V-DOCFACT-01 by cross-referencing § 10/§ 8 detection, not restating keyword lists', () => {
+  test('reviewer.md audits V-DOCFACT-01 by cross-referencing the companion-file and docs-only detection, not restating keyword lists', () => {
     const reviewer = read('src/agents/reviewer.md');
     expect(reviewer).toContain('Documentation Prose Factual Accuracy (`V-DOCFACT-01`)');
-    // Guards V-INT-02: the new audit must cross-reference § 10's companion-file surface and
-    // § 8's documentation path patterns rather than restating keyword lists.
-    expect(reviewer).toMatch(/§ 10's companion-file surface and § 8's documentation path patterns/);
+    // Guards V-INT-02: the new audit must cross-reference § Companion-File Audit's companion-file
+    // surface and § Docs-Only Execution Mode Compliance's documentation path patterns rather than
+    // restating keyword lists.
+    expect(reviewer).toContain(
+      "§ Companion-File Audit's companion-file surface and § Docs-Only Execution Mode Compliance's documentation path patterns",
+    );
   });
 });
 
@@ -104,12 +107,12 @@ describe('blackhole-vcodes.md / reviewer.md — V-UX-01 registration (#271)', ()
     expect(vcodes).toMatch(/\| V-UX-01 \|.*\| WARN \|/);
   });
 
-  test('reviewer.md audits V-UX-01 by reusing § 10\'s V-ADA-03 detection, not reimplementing it', () => {
+  test('reviewer.md audits V-UX-01 by reusing the companion-file V-ADA-03 detection, not reimplementing it', () => {
     const reviewer = read('src/agents/reviewer.md');
     expect(reviewer).toContain('Information-Hierarchy Audit (`V-UX-01`)');
-    // Guards V-INT-02: the new audit must cross-reference § 10's frontend-detection keyword
+    // Guards V-INT-02: the new audit must cross-reference § Companion-File Audit's frontend-detection keyword
     // set rather than restating or reimplementing it.
-    expect(reviewer).toMatch(/frontend-detection keyword set as § 10's `V-ADA-03` bullet/);
+    expect(reviewer).toContain('frontend-detection keyword set as § Companion-File Audit\'s `V-ADA-03` bullet');
   });
 });
 
@@ -136,11 +139,11 @@ describe('blackhole-vcodes.md — V-AUTO-01/V-AUTO-02 registration', () => {
     expect(vcodes).toMatch(/\| V-AUTO-02 \|.*\| BLOCK \|/);
   });
 
-  test('V-AUTO-02 row names reviewer.md §25 as its enforcement site', () => {
+  test('V-AUTO-02 row names the reviewer Staged Artifact Carry Audit as its enforcement site', () => {
     const vcodes = read('src/references/blackhole-vcodes.md');
     const row = vcodes.split('\n').find((line) => line.startsWith('| V-AUTO-02 |'));
     expect(row).toBeDefined();
-    expect(row).toContain('reviewer.md §25');
+    expect(row).toContain('reviewer.md § Staged Artifact Carry Audit');
   });
 });
 

@@ -113,7 +113,7 @@ Scope split (ADR-021 D6): this section is the **Scope-1** enforcer — blackhole
 (the everything-else in this file governs Scope 2 — writes the campaign makes into a *consumer*
 repo's `documentation/` tree, which is gated). **Scope-2** enforcement — the reviewer judgment
 audit for consumer-repo trees (supersession-chain coherence, `V-DOC-GOV-01..04`) — is the sibling
-section `reviewer.md` §27 (Doc-Governance Judgment Audit), not implemented by this section.
+section `reviewer.md` § Doc-Governance Judgment Audit (Doc-Governance Judgment Audit), not implemented by this section.
 
 Four thresholds, numeric values declared once in `scripts/lib/build/facts.ts`'s
 `DOC_HEALTH_THRESHOLDS` export (Numeric-fact SSOT — never restated as an inline literal in the
@@ -154,7 +154,7 @@ already has.
 
 Scope boundary restated in one sentence: this channel only ever refreshes blackhole's own
 Scope-1 `documentation/` tree; Scope-2 (a consumer repo's tree) is enforced at review time by
-`reviewer.md` §27 (Doc-Governance Judgment Audit).
+`reviewer.md` § Doc-Governance Judgment Audit (Doc-Governance Judgment Audit).
 
 ## INDEX.md Maintenance
 

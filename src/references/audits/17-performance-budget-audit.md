@@ -4,8 +4,8 @@ vcodes: [V-PERF-01, V-PERF-02]
 ---
 ### Performance Budget Audit (`V-PERF-01/02`)
 *   **Detection**: read the plan file at `PLAN_ABSOLUTE_PATH` (from `<PLAN_CONTEXT>`, the same
-    field § 8's Docs-Only detection already reads) for a `## Performance Budget` heading listing
-    budgeted components. Absent heading — emit no §17 findings (vacuous gate; mirrors mercure's
+    field § Docs-Only Execution Mode Compliance's Docs-Only detection already reads) for a `## Performance Budget` heading listing
+    budgeted components. Absent heading — emit no § Performance Budget Audit findings (vacuous gate; mirrors mercure's
     own "runs when the plan includes a `## Performance Budget` section" gate exactly).
 *   **Anti-pattern check (`V-PERF-01`, `BLOCK`)**: when the heading is present, the diff touching
     a listed component introduces no N+1 query, unindexed sort, sync I/O in a hot path,

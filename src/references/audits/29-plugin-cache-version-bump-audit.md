@@ -11,8 +11,8 @@ vcodes: [V-PLUGIN-01]
     the fix: it reads only diff content, never installed/local plugin-cache state.
 *   **Trigger**: the diff touches any path under `templates/hooks/**` — the whole hooks source
     subtree, not narrowed to a single subdirectory, so a future in-tree reorganization stays
-    covered without a glob edit. No `templates/hooks/**` path in the diff — emit no §29 findings
-    (vacuous gate, same discipline as §§16/17/19/20).
+    covered without a glob edit. No `templates/hooks/**` path in the diff — emit no § Plugin Cache Version-Bump Audit findings
+    (vacuous gate, same discipline as the other conditionally-scoped audits).
 *   **Pass condition**: `package.json`'s `version` field differs between the PR's base and head
     revisions — read the actual field via JSON parse on both revisions, never a text-pattern
     match on the diff (unspoofable by an unrelated version-like string appearing elsewhere in the

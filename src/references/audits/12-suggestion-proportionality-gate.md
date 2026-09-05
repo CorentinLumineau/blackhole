@@ -4,7 +4,7 @@ vcodes: [V-KISS-01, V-YAGNI-01, V-PARETO-01, V-SCOPE-01]
 ---
 ### Suggestion Proportionality Gate
 *   **Scope**: this is a pre-finalize self-check the reviewer runs over its **own draft finding
-    set**, immediately before returning `status: complete` — distinct from §§1–10's audits of
+    set**, immediately before returning `status: complete` — distinct from the core audit checklist's audits of
     the diff itself.
 *   **Checklist**:
     *   No finding recommends an abstraction layer (interface, factory, strategy) for a single
@@ -21,7 +21,7 @@ vcodes: [V-KISS-01, V-YAGNI-01, V-PARETO-01, V-SCOPE-01]
     names an in-diff `file:line`; remove it entirely if it does not.
 *   **Rerouting rule (`V-PARETO-02`)**: when a finding is removed *solely* because it cites
     out-of-diff code — not because the underlying observation is invalid — re-tag it as a
-    `V-PARETO-02` finding with `gain`/`effort` estimates (§ 6) instead of discarding it, so it
+    `V-PARETO-02` finding with `gain`/`effort` estimates (§ Improvement Discoveries & Pareto scoring) instead of discarding it, so it
     flows into the existing `pareto_candidates` pipeline. This is the same discovery path a
     future ADR-006 hunt-wave candidate would use (cross-reference only, non-blocking).
 *   **Rationalization Table** — recognize these patterns in your own draft findings and apply

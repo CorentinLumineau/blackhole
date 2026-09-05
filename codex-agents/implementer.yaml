@@ -81,7 +81,7 @@ instructions: |
           where required) and committed inside this same PR, positioned before the commit/push
           bullet below.
       *   **Companion-doc sync (`V-DOCSYNC-01`)**: If this diff touches the
-          public-API/schema/config surface (`reviewer.md` §1's `V-API-01`
+          public-API/schema/config surface (`reviewer.md` § 5-Field Contract & Plan Compliance's `V-API-01`
           definition — public interfaces, configurations, or database schemas),
           update the docs describing that surface (API docs, ARCHITECTURE.md
           sections, README usage, or an inline docstring/comment) in the same
@@ -462,7 +462,7 @@ instructions: |
       when nothing was staged. No new `worker-schemas.md` return field — the PR-body record is
       the falsifiable evidence.
   *   **Do not delete** `.blackhole/staged/<issue>/` after carrying — it remains as campaign
-      state so the reviewer audit (`reviewer.md` §25, `V-AUTO-02`) has stable data to diff
+      state so the reviewer audit (`reviewer.md` § Staged Artifact Carry Audit, `V-AUTO-02`) has stable data to diff
       against, and so a resumed session after interruption can re-derive what was already carried
       via the script's idempotent dedup.
   *   **Declared-ADR-supersession stamping** (`V-ADR-06` leg 1, independent of the manifest.json
@@ -514,7 +514,7 @@ instructions: |
   ## Companion-file Sync (Phase 5.5, V-ADA auto-repair)
 
   Gated by `docs_governance.enabled === true` and `docs_governance.companion_files !== false`
-  (same gate shape as `reviewer.md` §10). Unconditional within that gate for every execution mode
+  (same gate shape as `reviewer.md` § Companion-File Audit). Unconditional within that gate for every execution mode
   when the diff trigger predicates in `companion-file-sync.md` are true.
 
   *   **When**: after incremental implementation, **before** the Sensitive-Filename Staging Gate's
@@ -593,7 +593,7 @@ instructions: |
   plan did not produce (`V-SCOPE-01`). Record the per-AC table in the PR description (one row per
   `ac_results[]` entry: criterion \| check \| result \| verdict) — the same "artifact lives in the
   PR body" pattern already used by the Reuse Check and Improvement Record above — so `reviewer.md`
-  § 1 Objective Fulfillment can consume the structured verdicts instead of re-judging AC
+  § 5-Field Contract & Plan Compliance's Objective Fulfillment can consume the structured verdicts instead of re-judging AC
   narratively. This extends the 5-step gate above; it does not replace the single `evidence`
   {command,result} pair used for the overall test/build/lint claim.
 
@@ -605,7 +605,7 @@ instructions: |
 
   **Detection**: `route.ui` (from `<PLAN_CONTEXT>`) resolved `true` for this issue; when
   `route.ui` is absent/unresolved, fall back to the frontend-detection keyword SSOT
-  (`scripts/detect-frontend.sh`, cited by `reviewer.md` §§10/14, not restated, `V-INT-02`).
+  (`scripts/detect-frontend.sh`, cited by `reviewer.md` § Companion-File Audit and § Information-Hierarchy Audit, not restated, `V-INT-02`).
   Neither signal fires — skip this subsection, emit no `visual_evidence[]` field.
 
   **Capture**: when both gates pass, after the Verification Evidence Gate's lint/test pass, run
@@ -620,7 +620,7 @@ instructions: |
   `capture_status: "unavailable"` entry with an explicit `note` stating why —
   never silently skipped (R5). A capture failure is **never** a `status: blocked` return on this
   basis alone; it is a declared, non-blocking-at-implement outcome that the reviewer's Visual
-  Evidence Audit (`reviewer.md` §22) turns into a `V-VIS-02` WARN finding, not a stalled campaign.
+  Evidence Audit (`reviewer.md` § Visual Evidence Audit) turns into a `V-VIS-02` WARN finding, not a stalled campaign.
 
   ### Context-Anxiety Countermeasures
 
