@@ -92,8 +92,8 @@ describe('REFERENCE_TREE_ROOTS', () => {
 });
 
 describe('runChecks live tree (V-INCLUDE-01)', () => {
-  test('passes against the live repo with the reviewer audit modules as the first production consumer', () => {
-    expect(BUILD_INPUT_ONLY_DIRS).toEqual(['references/audits']);
+  test('passes against the live repo with the reviewer audit and implementer gate modules as production consumers', () => {
+    expect(BUILD_INPUT_ONLY_DIRS).toEqual(['references/audits', 'references/gates']);
     const results = runChecks();
     expect(results.length).toBe(1);
     expect(results[0].id).toBe('V-INCLUDE-01');

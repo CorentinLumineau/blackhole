@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { readComposedAgentDoc } from './lib/check-common.ts';
 
 // Issue #557 — the ADR-021 D2 carry-step's `append_row` idempotency guard
 // (implementer.md § Carry Staged Artifacts) was documented as keying off "the row's `path`
@@ -65,7 +66,7 @@ const FIXTURE_ARCHITECTURE = `# ARCHITECTURE
 
 describe('implementer.md — ARCHITECTURE.md append_row branch (spec text, issue #557)', () => {
   const carrySection = (() => {
-    const implementer = read('src/agents/implementer.md');
+    const implementer = readComposedAgentDoc('src/agents/implementer.md');
     const section = implementer.split('## Carry Staged Artifacts')[1]?.split('\n## ')[0] ?? '';
     return section;
   })();
