@@ -59,7 +59,7 @@ their surfacing before dedup:
 | `50–80` | Reported with an explicit caveat in `summary`; **never** `BLOCK` — downgraded to `WARN` |
 | `< 50` | Suppressed entirely — dropped before dedup, never `BLOCK`/high-severity |
 
-`reviewer.md` §11 documents the *behavioral policy* the LLM reviewer self-applies (score +
+`reviewer.md` § Confidence-Based Finding Filtering & Consolidation documents the *behavioral policy* the LLM reviewer self-applies (score +
 suppress + caveat); `scripts/review-aggregate.ts`'s exported `applyConfidenceGate` is the
 deterministic backstop that mechanically re-enforces the same band boundaries even if the
 reviewer mis-scores — it runs after the prior/new finding merge and before `dedupeFindings`, so
@@ -274,8 +274,8 @@ already-named prior findings, not a fresh implementation.
 7. **Independent spec-drift check (GAP-2 remedy, every recheck pass)**: in addition to the
    fix-commit-scoped verification above, the reviewer performs one lightweight, full-diff
    comparison of the PR's current cumulative state against the plan's Objective + Task
-   Breakdown — the same comparison `reviewer.md:51`'s Objective Fulfillment check performs on a
-   fresh full review. This is **not** a re-run of the full §§1-10 checklist, and **not** a
+   Breakdown — the same comparison `reviewer.md` § 5-Field Contract & Plan Compliance's Objective Fulfillment check performs on a
+   fresh full review. This is **not** a re-run of the full core audit checklist, and **not** a
    re-litigation of already-approved code quality/style findings outside the fix commits (rule 3
    above is unchanged — this is a distinct axis: requirement satisfaction, not code quality).
    Any requirement the cumulative diff no longer satisfies — including one a fix commit
@@ -289,16 +289,16 @@ already-named prior findings, not a fresh implementation.
 
 Every `reviewer` delegation MUST include a dispatch mode (`full` / `security-mode` /
 `recheck` / `verification`) and output format per `worker-schemas.md` reviewer contract. The
-remaining inputs are dispatch-mode-dependent, not universal — `reviewer.md` §13 (Recheck) and
-§24 (Verification) narrow the checklist and diff scope by design; this table is their
+remaining inputs are dispatch-mode-dependent, not universal — `reviewer.md` § Recheck-Mode Compliance (Recheck) and
+§ Independent Security Verification Mode (Verification) narrow the checklist and diff scope by design; this table is their
 citation target, not a restatement each mode must independently reconcile against.
 
-| Mode | PR diff scope | Touch-Paths + schema baseline | Full V-code checklist (`codex-skills/blackhole/references/blackhole-vcodes.md`, §§1–23) | Findings input | Attack-signature scan |
+| Mode | PR diff scope | Touch-Paths + schema baseline | Full V-code checklist (`codex-skills/blackhole/references/blackhole-vcodes.md`, every audit module) | Findings input | Attack-signature scan |
 |------|----------------|-------------------------------|------------------------------------------------------|------------------|-------------------------|
 | Full (ordinary dispatch) | Whole PR diff | Yes | Yes | — | — |
 | Security-mode (§ Security-mode review, `route.security_review_required` resolved `true`) | Whole PR diff | Yes | Yes | — | Yes — diff-scoped, `src/references/security-attack-signatures.md` (cite by path; do not restate patterns inline) |
-| Recheck (§ Recheck mode, `reviewer.md` §13) | Fix commits only, plus one full-diff Objective Fulfillment comparison (GAP-2 remedy) | Yes | No — scoped to fix commits' changed lines; §§1–10 not re-run against the whole diff | Prior findings `{finding_id, summary}[]` | — |
-| Verification (§ Independent security verification, `reviewer.md` §24) | Never the full PR diff | — | No — §§1–23 not run | Stamped findings `{finding_id, vcode, severity, file, line, summary}[]` | — |
+| Recheck (§ Recheck mode, `reviewer.md` § Recheck-Mode Compliance) | Fix commits only, plus one full-diff Objective Fulfillment comparison (GAP-2 remedy) | Yes | No — scoped to fix commits' changed lines; the core audit checklist is not re-run against the whole diff | Prior findings `{finding_id, summary}[]` | — |
+| Verification (§ Independent security verification, `reviewer.md` § Independent Security Verification Mode) | Never the full PR diff | — | No — no audit module is run | Stamped findings `{finding_id, vcode, severity, file, line, summary}[]` | — |
 
 Full and security-mode differ only in the attack-signature-scan column — security-mode is the
 primary full-audit dispatch with that one addition, not a fifth independent mode.
@@ -337,11 +337,11 @@ Output schema: `worker-schemas.md` § Review aggregate.
 
 Orchestrator may perform direct review for docs-only PRs, but must still run `review-aggregate.ts` on findings before ledger append.
 
-When the orchestrator performs this direct review (bypassing a `reviewer` spawn), it must apply `reviewer.md` § 8 (Docs-Only Execution Mode Compliance)'s checks itself before running `review-aggregate.ts` — severity `BLOCK` on any check failure. See `reviewer.md` § 8 for the check definitions; not restated here.
+When the orchestrator performs this direct review (bypassing a `reviewer` spawn), it must apply `reviewer.md` § Docs-Only Execution Mode Compliance (Docs-Only Execution Mode Compliance)'s checks itself before running `review-aggregate.ts` — severity `BLOCK` on any check failure. See `reviewer.md` § Docs-Only Execution Mode Compliance for the check definitions; not restated here.
 
 ## Suggestion Proportionality Gate
 
-`reviewer.md` §12 defines a pre-finalize self-check the reviewer applies to its own draft
+`reviewer.md` § Suggestion Proportionality Gate defines a pre-finalize self-check the reviewer applies to its own draft
 findings — before returning `status: complete` — catching gold-plating (speculative
 abstractions, disproportionate remediation complexity) and out-of-diff drift in the reviewer's
 own suggestions. Unlike confidence-filtering (above), there is no deterministic script backstop

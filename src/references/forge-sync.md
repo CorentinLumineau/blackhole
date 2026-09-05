@@ -283,7 +283,7 @@ purpose-specific idempotency marker, exactly as `<!-- blackhole:enrichment -->` 
 (`phase-loop.md` § Kaizen hunt dispatch, Backlog low-info enrichment pass).
 
 This is the canonical, single-source definition of "a comment authored by the campaign" —
-`reviewer.md` §28 (`V-GITFIX-01`) cites this section rather than restating the rule. A comment
+`reviewer.md` § ActionMan/Workclaude Discipline Audit (`V-GITFIX-01`) cites this section rather than restating the rule. A comment
 lacking the prefix is never attributed to the campaign by any downstream audit — it reads as a
 human comment or the review bot's own comment by definition.
 

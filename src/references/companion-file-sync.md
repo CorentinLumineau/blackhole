@@ -12,7 +12,7 @@ Phase 0 step 2: `{project-name}` from `.blackhole/config.json` `repo` (`owner/re
 ## Config gate
 
 Inert when `docs_governance.enabled` does not resolve to `true` or
-`docs_governance.companion_files === false` — same gate shape as `reviewer.md` §10.
+`docs_governance.companion_files === false` — same gate shape as `reviewer.md` § Companion-File Audit.
 
 ## Procedure (implementer)
 

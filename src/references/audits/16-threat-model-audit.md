@@ -14,14 +14,14 @@ vcodes: [V-THREAT-01, V-THREAT-02, V-THREAT-03]
     Standard). Not security-mode, or plan track is not quick — no finding (conditional-omission
     fallback, same discipline as V-THREAT-02/03 below).
 *   **Detection**: read the plan file at `PLAN_ABSOLUTE_PATH` (from `<PLAN_CONTEXT>`, the same
-    field § 8's Docs-Only detection already reads) for a `## Threat Model` heading. Absent
-    heading — emit no §16 findings (vacuous gate; mirrors mercure's own "runs when the plan
+    field § Docs-Only Execution Mode Compliance's Docs-Only detection already reads) for a `## Threat Model` heading. Absent
+    heading — emit no § Threat Model Audit findings (vacuous gate; mirrors mercure's own "runs when the plan
     includes a `## Threat Model` section" gate exactly — no false-negative risk if the planner
     hasn't produced the section for this plan, since there is nothing to audit against).
 *   **Mitigation completeness (`V-THREAT-02`, `BLOCK`)**: when the heading is present, every
     STRIDE row marked severity `Critical` or `High` must carry mitigation status `Mitigated`. A
     `Critical`/`High` row with status `Accepted Risk` or `Open` — severity `BLOCK`, cite the
-    plan file's row (plan-conformance audit, same class as § 1's Objective Fulfillment check,
+    plan file's row (plan-conformance audit, same class as § 5-Field Contract & Plan Compliance's Objective Fulfillment check,
     which already cites plan content rather than diff lines).
 *   **STRIDE completeness (`V-THREAT-03`, `WARN`)**: all six STRIDE categories (Spoofing,
     Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege)

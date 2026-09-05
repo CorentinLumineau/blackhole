@@ -24,9 +24,9 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     `V-SEC-01/02`, `V-TEST-01/02`, `V-PAT-01`, and every other row marked BLOCK in
     `blackhole-vcodes.md`) is fixed by the V-code table — never by how polished the PR looks,
     how small the diff is, or how much time pressure the campaign is under. This section governs
-    every BLOCK-severity check in §§1–10; it is distinct from § 12's Rationalization Table, which
-    guards the opposite direction (the reviewer's own over-scoped findings against untouched
-    code) — do not conflate the two.
+    every BLOCK-severity check in the core audit checklist; it is distinct from § Suggestion
+    Proportionality Gate's Rationalization Table, which guards the opposite direction (the
+    reviewer's own over-scoped findings against untouched code) — do not conflate the two.
 *   **Anti-rationalization table** — recognize these excuses in your own drafting and apply the
     stated reality before writing a finding's `severity` field:
 
@@ -35,12 +35,13 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     | "The PR looks mostly fine overall." | Review is checklist-driven, not impression-driven. A single confirmed `V-SEC-01`/`V-SOLID-01` finding stays `BLOCK` regardless of the rest of the diff's polish. |
     | "It's just a small change." | Diff size is not a V-code input. A one-line change that introduces a `V-SEC-02` auth bypass is exactly as `BLOCK` as a thousand-line one. |
     | "Tests mostly pass." | `V-TEST-01/02` is `BLOCK` if *any* new logic is untested or tests were not written first — partial coverage does not average out to a pass. |
-    | "I'll just score it under 50 confidence." | § 11's confidence bands gate genuine uncertainty, not inconvenience. A finding that is statically confirmable from the diff alone (§ 11's confidence-raising signal (b)) does not qualify for the `<50` suppression band or the `50–80` downgrade band — scoring it there to dodge this Iron Law is itself a violation of this section. |
-    | "The user/campaign seems in a hurry." | Time pressure is never listed as a confidence-lowering signal in § 11 and is not a valid input to severity at all. |
-*   **Interaction with § 11**: this Iron Law and § 11's confidence-based filtering are not in
-    tension — they compose. § 11 exists to keep genuinely uncertain findings from being
+    | "I'll just score it under 50 confidence." | § Confidence-Based Finding Filtering & Consolidation's confidence bands gate genuine uncertainty, not inconvenience. A finding that is statically confirmable from the diff alone (§ Confidence-Based Finding Filtering & Consolidation's confidence-raising signal (b)) does not qualify for the `<50` suppression band or the `50–80` downgrade band — scoring it there to dodge this Iron Law is itself a violation of this section. |
+    | "The user/campaign seems in a hurry." | Time pressure is never listed as a confidence-lowering signal in § Confidence-Based Finding Filtering & Consolidation and is not a valid input to severity at all. |
+*   **Interaction with § Confidence-Based Finding Filtering & Consolidation**: this Iron Law and
+    that section's confidence-based filtering are not in tension — they compose. § Confidence-Based
+    Finding Filtering & Consolidation exists to keep genuinely uncertain findings from being
     over-reported as `BLOCK`; it is not an escape hatch for downgrading a finding that already
-    meets § 11's own confidence-raising signals (known anti-pattern signature, statically
+    meets its own confidence-raising signals (known anti-pattern signature, statically
     confirmable from the diff, multiple independent indicators). Before recording any severity
     below what the `blackhole-vcodes.md` table assigns, cite the concrete evidence (a specific
     `file:line`, or the absence of the pattern) that justifies it — an unsubstantiated downgrade
@@ -108,15 +109,15 @@ Return JSON matching `worker-schemas.md` reviewer contract:
 ```
 
 The `recheck` array is optional — included only when the reviewer was dispatched in recheck
-mode (§ 13); absent for a normal full-audit review.
+mode (§ Recheck-Mode Compliance); absent for a normal full-audit review.
 
 The `verification` array is optional — included only when the reviewer was dispatched in
-independent security verification mode (§ 24); absent for every other dispatch, including a
-normal security-mode full audit. `findings` is typically `[]` in this mode (see § 24's "New
+independent security verification mode (§ Independent Security Verification Mode); absent for every other dispatch, including a
+normal security-mode full audit. `findings` is typically `[]` in this mode (see § Independent Security Verification Mode's "New
 findings (rare)" bullet for the exception).
 
 `verification_mode` (on a finding) and `verification_legs` (top-level) are both optional
-(ADR-036, § 32) — disclosing executed-vs-reasoned basis for a finding and for a clean leg
+(ADR-036, § Executed vs. Reasoned Verification Disclosure) — disclosing executed-vs-reasoned basis for a finding and for a clean leg
 respectively. Neither authorizes bypassing `with-test-lock`.
 
 On audit failure (cannot read PR, missing plan), return `{ "status": "error", "findings": [], "error": "..." }`.

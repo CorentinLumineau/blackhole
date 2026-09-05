@@ -54,6 +54,6 @@ Quick/Skip/Design/Brainstorm tracks always resolve `N/A`, this gate never invent
 plan did not produce (`V-SCOPE-01`). Record the per-AC table in the PR description (one row per
 `ac_results[]` entry: criterion \| check \| result \| verdict) — the same "artifact lives in the
 PR body" pattern already used by the Reuse Check and Improvement Record above — so `reviewer.md`
-§ 1 Objective Fulfillment can consume the structured verdicts instead of re-judging AC
+§ 5-Field Contract & Plan Compliance's Objective Fulfillment can consume the structured verdicts instead of re-judging AC
 narratively. This extends the 5-step gate above; it does not replace the single `evidence`
 {command,result} pair used for the overall test/build/lint claim.

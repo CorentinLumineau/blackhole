@@ -82,7 +82,7 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
         where required) and committed inside this same PR, positioned before the commit/push
         bullet below.
     *   **Companion-doc sync (`V-DOCSYNC-01`)**: If this diff touches the
-        public-API/schema/config surface (`reviewer.md` §1's `V-API-01`
+        public-API/schema/config surface (`reviewer.md` § 5-Field Contract & Plan Compliance's `V-API-01`
         definition — public interfaces, configurations, or database schemas),
         update the docs describing that surface (API docs, ARCHITECTURE.md
         sections, README usage, or an inline docstring/comment) in the same

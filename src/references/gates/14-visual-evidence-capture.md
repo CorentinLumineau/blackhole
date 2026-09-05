@@ -6,7 +6,7 @@ behavior preserved exactly (`config-template.md`'s `display_targets` contract no
 
 **Detection**: `route.ui` (from `<PLAN_CONTEXT>`) resolved `true` for this issue; when
 `route.ui` is absent/unresolved, fall back to the frontend-detection keyword SSOT
-(`scripts/detect-frontend.sh`, cited by `reviewer.md` §§10/14, not restated, `V-INT-02`).
+(`scripts/detect-frontend.sh`, cited by `reviewer.md` § Companion-File Audit and § Information-Hierarchy Audit, not restated, `V-INT-02`).
 Neither signal fires — skip this subsection, emit no `visual_evidence[]` field.
 
 **Capture**: when both gates pass, after the Verification Evidence Gate's lint/test pass, run
@@ -21,4 +21,4 @@ it in the PR body. Emit one `visual_evidence[]` entry per capture with `target`,
 `capture_status: "unavailable"` entry with an explicit `note` stating why —
 never silently skipped (R5). A capture failure is **never** a `status: blocked` return on this
 basis alone; it is a declared, non-blocking-at-implement outcome that the reviewer's Visual
-Evidence Audit (`reviewer.md` §22) turns into a `V-VIS-02` WARN finding, not a stalled campaign.
+Evidence Audit (`reviewer.md` § Visual Evidence Audit) turns into a `V-VIS-02` WARN finding, not a stalled campaign.

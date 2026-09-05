@@ -13,7 +13,7 @@ vcodes: [V-INT-01, V-INT-02, V-INT-03, V-INT-04, V-CONFIG-01]
     A missing entry (in any of the three forms) is severity `BLOCK` (`V-INT-02`) — the proactive
     gate was skipped.
     Spot-check accuracy: independently re-verify at least one `Reuse Check: reusing <name>` claim
-    against the cited `file:line`, mirroring § 8's Drift-Check accuracy spot-check.
+    against the cited `file:line`, mirroring § Docs-Only Execution Mode Compliance's Drift-Check accuracy spot-check.
 *   **Negative-claim spot-check (`none found` claims, BLOCK if refuted)**: do not take a
     `Reuse Check: none found` claim at face value — independently re-verify at least one such
     claim per PR with your own repo-wide grep for the stated concern. A refuted claim (your grep

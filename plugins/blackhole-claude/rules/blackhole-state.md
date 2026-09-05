@@ -231,7 +231,7 @@ at escalation — never overlapping for one issue), so there is no lost-update r
   them inside the PR is implemented at `implementer.md` § Carry Staged Artifacts (D2) — this
   section only documents the manifest shape that step consumes.
 - The **reviewer audit** that diffs the staged manifest against the PR to detect a declared but
-  never-carried artifact is implemented at `reviewer.md` §25 (Staged Artifact Carry Audit,
+  never-carried artifact is implemented at `reviewer.md` § Staged Artifact Carry Audit (Staged Artifact Carry Audit,
   `V-AUTO-02`, BLOCK) — this section only documents the manifest shape that audit consumes.
 - **Resolved gap (issue #474 follow-up, closed by #557)**: `implementer.md` § Carry Staged
   Artifacts' `append_row` idempotency guard originally keyed off "the row's `path` column
@@ -279,7 +279,7 @@ consumer repo's.
 Existence-gated: when `scripts/checks/doc-health.check.ts` exists at repo root (blackhole
 self-hosting its own campaign), refresh `.blackhole/doc-health.json` via
 `bun run scripts/doc-health-signal.ts`; absent, this step is inert — no error, no attempted
-invocation. Scope-2 (a consumer repo's tree) is enforced at review time by `reviewer.md` §27
+invocation. Scope-2 (a consumer repo's tree) is enforced at review time by `reviewer.md` § Doc-Governance Judgment Audit
 (Doc-Governance Judgment Audit).
 
 `doc_debt: "yes"` is visibility only: no ledger append, no phase gate. `V-DOCHEALTH-03` stays
@@ -292,7 +292,7 @@ here).
 Same cadence as § Sync above — start of every orchestrator turn
 (`orchestrator-runtime.md` § Session resume & recovery, step 4). Advisory-only, mechanism 2 of
 the composite fix for issue #800 (ADR-030) — mechanism 1 is the diff-content reviewer BLOCK gate
-`V-PLUGIN-01` (`src/agents/reviewer.md` § 29). This signal covers the residual gap mechanism 1
+`V-PLUGIN-01` (`src/agents/reviewer.md` § Plugin Cache Version-Bump Audit). This signal covers the residual gap mechanism 1
 cannot see: a PR correctly bumps `package.json`'s version, but nobody ever runs the manual
 republish+reinstall step afterward, leaving an installed Claude Code plugin cache copy stale
 while reporting the same version string as the repo build (the cache is version-keyed, not
