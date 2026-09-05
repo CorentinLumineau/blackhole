@@ -23,7 +23,7 @@ related:
 
 | Mode | Score / Metric | Rating | Top Issue |
 |------|----------------|--------|-----------|
-| Coverage | 83.5% lines / 83.1% funcs (2,000 pass, 1 fail, 1 skip) | Good | `validate-worker-json.ts` at 5% lines guards V-BRIEF-01 and is effectively untested as a CLI |
+| Coverage | 83.5% lines / 83.1% funcs (2,000 pass, 1 fail, 1 skip) | Good | Gitea/GitLab forge adapters thin-tested; subprocess-tested guards under-report (bun coverage blind spot) |
 | Best Practices | SOLID 77% / Quality 74% | Fair | DRY 58%: five copies of the quoted-span skip loop across the security-gate hook utils |
 | UX | IA 58% | Needs improvement | Dashboard has no health verdict, all 9 sections expanded, forge failure rendered as `0 open PRs` |
 
@@ -45,8 +45,7 @@ Priority gaps (Pareto):
 
 | Priority | File | Lines % | Why it matters | Suggested test |
 |----------|------|---------|----------------|----------------|
-| P1 | `scripts/validate-worker-json.ts` | 5.2 | The V-BRIEF-01 gate every worker return must pass; only the lib under it is tested | CLI test: pipe each role fixture through `--hook` and assert exit code + stderr |
-| P1 | `scripts/lib/state-write-guard.ts` | 48.4 | Data-loss guard for `queue.json` / ledger (issue #489); lines 88-136 (the CLI main + shrink path) uncovered | zero-byte, malformed, shrink-without-flag, shrink-to-zero-with-flag cases via the CLI |
+| P1 (reporting) | `scripts/validate-worker-json.ts` (5.2), `scripts/lib/state-write-guard.ts` (48.4) | — | **Not a real gap**: both are exercised through subprocess spawns (`validate-worker-json.test.ts`, 14 spawn sites — closed #369 / PR #387; `state-write-guard.test.ts`). Bun's coverage does not follow child processes, so the two guards that protect campaign state read as the least-covered files in the repo | Either import-and-call the CLI `main` in-process for coverage, or annotate the blind spot in the coverage report so nobody re-files this |
 | P2 | `scripts/lib/forge-adapter/{gitea,gitlab,github}.ts` | 32 / 28 / 47 | Adapter interface (ADR-027) — Gitea/GitLab PR, label and check paths untested; `gitlab.ts:201-212` returns a single synthetic "pipeline" check where the others return per-check rows | table-driven test over the three adapters with a fake CLI runner |
 | P2 | `scripts/lib/forge-adapter/{tea-cli,glab-cli}.ts`, `scripts/lib/forge-doctor.ts` | 14 / 14 / 7 | `bun run doctor` is the documented way to verify forge auth | one test per CLI wrapper |
 | P2 | `scripts/lib/build/targets.ts` | 18 | Generates the 5 version-carrying manifests and all dist trees | golden-tree test (the `tree-shape` test covers shape, not content) |
@@ -113,7 +112,7 @@ No web UI surfaces in scope. Surfaces audited: `bun run status` dashboard (`scri
 | # | Severity | Mode(s) | File:Line | Issue | Effort |
 |---|----------|---------|-----------|-------|--------|
 | 1 | HIGH | best-practices, coverage `[multi-mode]` | `templates/hooks/pretooluse/utils/*` | Five divergent copies of the quote-skip rule and three clause splitters in the security gates; a bypass fixed in one copy stays open in the others | M |
-| 2 | HIGH | coverage | `scripts/validate-worker-json.ts`, `scripts/lib/state-write-guard.ts` | The two guards that protect campaign state are the least-tested code in the repo | M |
+| 2 | MEDIUM | coverage | `scripts/lib/forge-adapter/{gitea,gitlab}.ts` (3 tests each) | Gitea/GitLab adapters are thin-tested and `gitlab.ts:201-212` diverges from the per-check shape; subprocess-tested guards read as 5% / 48% because bun coverage ignores child processes | M |
 | 3 | HIGH | coverage | `scripts/campaign-resume-signal.test.ts:325` | Suite is red on any root runner for an environmental reason | S |
 | 4 | MEDIUM | best-practices, ux `[multi-mode]` | `forge.ts:26-28`, `gitea.ts:216`, `gitlab.ts:213`, `hook-event-log.js:215`, `campaign-resume-signal.ts:149` | The same swallow-and-degrade pattern in five places turns forge/git failures into "nothing to do" | S |
 | 5 | MEDIUM | ux | `dashboard.ts:200-227` | The orchestrator reads this every turn; no verdict, no caps | S |
@@ -129,7 +128,7 @@ No web UI surfaces in scope. Surfaces audited: `bun run status` dashboard (`scri
 
 ### Planned Improvements (1-4 hours)
 1. Extract `templates/hooks/pretooluse/utils/shell-lexer.js` (`skipQuotedSpan`, `splitClauses`, `tokenize`) consumed by the three guards (#1) -- effort: M
-2. CLI tests for `validate-worker-json.ts --hook` and `state-write-guard.ts` covering the refuse paths (#2) -- effort: M
+2. Table-driven forge-adapter tests over the three backends with a fake CLI runner; decide whether CLI `main`s are called in-process so coverage stops under-reporting (#2) -- effort: M
 3. A `verify` check forbidding bare `JSON.parse(fs.readFileSync` outside `lib/fs.ts`, same shape as `jq-empty-guard.check.ts`; lift `stack-repair.ts:186` `parseFlags` into `lib/` (#6, best-practices #6) -- effort: S
 
 ## Suggested Next Steps
