@@ -57,7 +57,7 @@ name alone.
 | Field | Values | Notes |
 |-------|--------|-------|
 | `phase` | `handle` \| `plan` \| `implement` \| `review` \| `done` | Current lifecycle phase |
-| `status` | `blocked` \| `ready` \| `in-flight` \| `merged` \| `closed` | Scheduling state |
+| `status` | `blocked` \| `ready` \| `in-flight` \| `merged` \| `closed` | Scheduling state. `merged` alone does not say *which* branch the PR landed on — that is `merged_into` below, and only a row carrying it has a verified base-ref landing |
 | `review_iteration` | number | Review loop counter (default 0); see `review-core.md` |
 | `notes` | string \| null | e.g. `awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, `awaiting-ruling-recheck`, `merge-conflict-semantic:<file1>,<file2>`, `overlap with #N` |
 | `depends_on` | number[] | Issue numbers that must be merged/closed first; bidirectional sync with forge issue bodies via [forge-sync.md](forge-sync.md) §6.5 write-back |
@@ -68,6 +68,7 @@ name alone.
 | `milestone` | string \| null | Optional (ADR-005); the issue's forge milestone **title** (not number), synced from forge every turn (`forge-sync.md` § 5 — never hand-edited). Consumed by `merge-gate.md` § 1 Condition 3 for gated-batch scope matching against `config.json`'s `scope_milestone` |
 | `labels` | string[] | Optional (ADR-005, default `[]`); the issue's forge label names, synced from forge every turn (`forge-sync.md` § 5 — never hand-edited). Consumed by `merge-gate.md` § 1 Condition 3 for gated-batch scope matching against `config.json`'s `scope_labels` |
 | `merged_by` | `"blackhole"` \| absent | Optional (ADR-005); set **only** by `phase-loop.md` § Merge protocol step 4, in the same atomic write that sets `status: merged` — a causal marker meaning "blackhole's own orchestrator executed this merge." Absent (not `false` — absent) means "not merged by blackhole in this session" (either not merged at all, or merged by an external actor). This is the sole signal `merge-gate.md` § 3 uses to attribute `V-MERGE-01` vs `V-MERGE-02` — deliberately **not** `status: in-flight`, which reflects concurrent worker activity unrelated to who called `gh pr merge` |
+| `merged_into` | string \| absent | Optional; the branch the PR was **verified** to have landed on, written by `phase-loop.md` § Merge protocol **step 4.7** after `merge-gate.md` § 8's post-merge check passes — never by step 4, which knows only that the merge was attempted. Absent means *unverified*, never "the base ref": a stacked merge that legitimately landed on a sibling branch records that branch here, and a landing verification that failed records nothing, so neither is mistaken for the other. `mergedIntoVerdict()` (`scripts/lib/merge-gate/merge-base.ts`) reports the three-way `base`/`other`/`unknown` result |
 | `blocks` | number[] | Inverse index (optional, for display) |
 | `migration_slot` | boolean | True if issue owns schema migration |
 | `touch_paths` | string[] | Glob patterns for conflict detection |
@@ -151,7 +152,7 @@ are unaffected). One-time backfill, run before that turn's Step 2 Ready-set comp
 blocked → ready        (dependencies satisfied, user gate cleared)
 ready → in-flight      (worker spawned)
 in-flight → ready      (review found BLOCK — back to implement, still in-flight until worker ends)
-in-flight → merged     (PR merged, issue closed)
+in-flight → merged     (PR merged, issue closed; landing branch recorded in merged_into)
 * → closed             (superseded, duplicate, or wontfix)
 ```
 
