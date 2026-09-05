@@ -40,11 +40,21 @@ export const VCODE_TABLE_ROW_COUNT = 105;
 // `src/references/**`-shaped compiled reference trees to verify none of them leaked a declared
 // entry, and separately verifies every `{{INCLUDE:<dir>/*}}` marker in `src/agents/**`/
 // `src/references/**` names a directory declared here — neither side is derived from the other
-// (ADR-007's binding rejection of single-source derivation for a drift check). Empty today: no
-// production agent adopts the marker in issue #719 (that migration is #720/#721, gated on this
-// primitive landing) — `hunt/` is deliberately NOT an entry here, since `hunt/` modules are
-// fetched at runtime and must still ship (ADR-034 Decision point 3).
-export const BUILD_INPUT_ONLY_DIRS: string[] = [];
+// (ADR-007's binding rejection of single-source derivation for a drift check). `hunt/` is
+// deliberately NOT an entry here, since `hunt/` modules are fetched at runtime and must still
+// ship (ADR-034 Decision point 3).
+export const BUILD_INPUT_ONLY_DIRS: string[] = ['references/gates'];
+
+/**
+ * `.md` module count of `src/references/gates/` — the implementer's gate modules, inlined into
+ * `src/agents/implementer.md` by its `{{INCLUDE:references/gates/*}}` marker. Replaces that
+ * file's former `CONTENT_GATE_BUDGETS` row: once the gates live in one module each, a whole-file
+ * LOC ceiling on the shell measures nothing an author can act on, whereas the module count is
+ * the shape a reviewer checks — a new gate is a new file, never an edit that grows a section.
+ * Declared side of a V-GROUND-01 pair; the scan side is an independent `listFiles` of the
+ * directory (`ground-truth.check.ts`), never derived from this constant.
+ */
+export const IMPLEMENTER_GATE_MODULE_COUNT = 15;
 
 // § facts — ADR revisit watch items (issue #710). A declared-fact / independent-scan pair, the
 // same shape `VCODE_TABLE_ROW_COUNT`/`CONTENT_GATE_BUDGETS`/`DOC_HEALTH_THRESHOLDS` already use:
@@ -165,8 +175,9 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // | scripts/lib/build/*.ts               | max single file LOC   | 239     | 287        |
 // | src/agents/reviewer.md               | max `##` section LOC | 670      | 804        |
 // | src/agents/reviewer.md               | total file LOC       | 751      | 902        |
-// | src/agents/implementer.md            | max `##` section LOC | 309      | 371        |
-// | src/agents/implementer.md            | total file LOC       | 629      | 755        |
+// (`src/agents/implementer.md` held rows here — max `##` section LOC 309/371, total file LOC
+// 629/755 — until issue #721 moved its 15 gates to `src/references/gates/` behind the ADR-034
+// include seam; `IMPLEMENTER_GATE_MODULE_COUNT` above is the declared fact that replaced them.)
 // | src/references/orchestrator-dispatch.md   | max `##` section LOC | 49  | 59         |
 // | src/references/orchestrator-dispatch.md   | total file LOC       | 333 | 400        |
 // | src/references/orchestrator-runtime.md    | max `##` section LOC | 130 | 156        |
@@ -184,7 +195,6 @@ export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
   'src/agents/orchestrator.md': { maxSectionLoc: 18, maxFileLoc: 185 },
   'src/agents/planner.md': { maxSectionLoc: 380, maxFileLoc: 712 },
   'src/agents/reviewer.md': { maxSectionLoc: 804, maxFileLoc: 902 },
-  'src/agents/implementer.md': { maxSectionLoc: 371, maxFileLoc: 755 },
   'src/references/worker-schemas.md': { maxSectionLoc: 210, maxFileLoc: 819 },
   'src/references/implementer-schemas.md': { maxSectionLoc: 214, maxFileLoc: 219 },
   'src/references/hook-schemas.md': { maxSectionLoc: 101, maxFileLoc: 167 },

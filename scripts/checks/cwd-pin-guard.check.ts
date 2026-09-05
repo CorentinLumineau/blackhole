@@ -1,4 +1,4 @@
-import { listFiles } from '../lib/check-common.ts';
+import { buildInputModuleDirs, listFiles } from '../lib/check-common.ts';
 import { read, type CheckResult } from './check-utils.ts';
 
 // Issue #798 — cwd-pin-guard.check.ts: matches verify.cwd-pin-guard.test.ts.
@@ -48,12 +48,14 @@ export const findMissingCwdPin = (content: string, label: string): string[] => {
 };
 
 // Sweep scope: `src/agents/*.md` + `src/references/*.md` only — non-recursive, per the plan's
-// declared scope. `src/SKILL.md` and `src/references/hunt/*.md` are deliberately excluded (not
-// exempted from an otherwise-matching pattern): they sit outside the declared sweep path.
+// declared scope — plus every declared build-input-only module directory (ADR-034), whose files
+// are agent instruction text that merely lives in its own file. `src/SKILL.md` and
+// `src/references/hunt/*.md` are deliberately excluded (not exempted from an otherwise-matching
+// pattern): they sit outside the declared sweep path.
 const SWEEP_DIRS = ['src/agents', 'src/references'];
 
 const checkCwdPinGuard = (): CheckResult => {
-  const violations = SWEEP_DIRS.flatMap((dir) =>
+  const violations = [...SWEEP_DIRS, ...buildInputModuleDirs()].flatMap((dir) =>
     listFiles(dir).flatMap((file) => findMissingCwdPin(read(`${dir}/${file}`), `${dir}/${file}`)),
   );
   if (violations.length) return { id: 'V-CWDPIN-01', ok: false, detail: violations.join('; ') };

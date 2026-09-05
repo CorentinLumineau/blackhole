@@ -67,7 +67,7 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
 3.  **TDD (Test-Driven Development)**:
     *   Write tests first (`V-TEST-02`). Any new logic or bug fix must be covered by a corresponding test (`V-TEST-01`).
     *   Enforce test quality: write meaningful assertions; do not just check variable existence (`V-TEST-05`).
-    *   Follow the **Execution Mode** branch below — see `### Execution Mode` for the mode-conditional variant of this step.
+    *   Follow the **Execution Mode** branch below — see § Execution Mode for the mode-conditional variant of this step.
 4.  **Incremental Implementation**:
     *   Apply logic changes step-by-step.
     *   Run the project's test suite after each incremental step. Stop immediately if any test fails, rollback, and diagnose.
@@ -142,7 +142,7 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
 
 ---
 
-### Reuse Check Gate (unconditional)
+## Reuse Check Gate (unconditional)
 
 Applies to **every** execution mode and plan track — the proactive V-INT-02 counterpart to the
 reviewer's reactive audit. Shifts reuse enforcement left: catch a re-implementation *before* the
@@ -172,14 +172,14 @@ duplicate code is written, not after the PR is opened.
       — the rule-of-three threshold fired (3+ hits).
     The entry is produced even when nothing is found (the negative result is the audit trail).
     Also append this entry as a `decision_records[]` row with `kind: "reuse"` in the return
-    JSON — see `worker-schemas.md` § `decision_records[]` for the row shape.
+    JSON — see `implementer-schemas.md` § `decision_records[]` for the row shape.
 *   **On overlap ambiguity**: if a search surfaces a candidate that overlaps but does not cleanly
     fit (different signature/behaviour needed), do not silently duplicate logic nor force an
     ill-fitting reuse — stop and report per the plan's Stop Conditions.
 
 ---
 
-### Plan Drift Check (conditional)
+## Plan Drift Check (conditional)
 
 When the plan frontmatter carries `plan_base_commit`, before opening the PR:
 
@@ -193,7 +193,7 @@ When the plan frontmatter carries `plan_base_commit`, before opening the PR:
 
 ---
 
-### Scout Check (unconditional)
+## Scout Check (unconditional)
 
 Applies to **every** execution mode and plan track — leave the code you touch better than you
 found it, bounded strictly by the diff boundary (`V-SCOPE-01`). This is the single canonical
@@ -207,13 +207,13 @@ statement of Scout Check; the Bugfix Gate below only points here, it does not re
 *   If the touched code is already clean, record "no improvement needed — code already clean" —
     the reviewer verifies the entry's presence, not a forced change.
 *   Also append this Improvement Record as a `decision_records[]` row with `kind: "improvement"`
-    in the return JSON — see `worker-schemas.md` § `decision_records[]` for the row shape.
+    in the return JSON — see `implementer-schemas.md` § `decision_records[]` for the row shape.
 *   The diff boundary (`V-SCOPE-01`) — not the execution mode or `task_type` — is the sole
     discriminator between this section and step 7's Continuous Discovery.
 
 ---
 
-### Bugfix Gate
+## Bugfix Gate
 
 `task_type: bugfix` on any plan (stamped by `planner.md` § Quick Track's or § Standard Track's
 Bugfix classification bullet) activates this gate — x-fix parity. When the plan frontmatter does
@@ -227,7 +227,7 @@ whether or not this gate is active.
     the PR description. No code path skips this when `task_type: bugfix` is present — same
     "no bypass" shape as `planner.md`'s Design Track `needs_design` gate. Also append this
     Decision Record as a `decision_records[]` row with `kind: "root-cause"` in the return JSON —
-    see `worker-schemas.md` § `decision_records[]` for the row shape.
+    see `implementer-schemas.md` § `decision_records[]` for the row shape.
 *   **Escalation triggers**: after 2 distinct failed fix attempts within the session (a fix
     applied, tests still failing, tried again, tests still failing) — stop; do not attempt a third
     approach. Return `status: blocked`, `escalation_trigger: "failed_attempts"`. If the fix has
@@ -239,7 +239,7 @@ whether or not this gate is active.
 
 ---
 
-### Conflict Resolution Gate
+## Conflict Resolution Gate
 
 Orchestrator Step 0.5 (`merge-conflict-protocol.md` § Trigger — Step 0.5) spawns the
 `implementer` in conflict-resolution mode when a PR is `CONFLICTING` against `main` before merge.
@@ -265,11 +265,11 @@ this section documents the worker-side git mechanics and return shape, not the a
 *   **Semantic escalation**: on any semantic hunk after both attempts are exhausted (or on a
     genuine semantic conflict on Attempt 1), `git rebase --abort` (or `cherry-pick --abort`),
     return `status: blocked`, `escalation_trigger: "merge_conflict_semantic"`, and a non-empty
-    `conflict_hunks[]` (`worker-schemas.md` § `conflict_hunks[]`) — never a silent partial state.
+    `conflict_hunks[]` (`implementer-schemas.md` § `conflict_hunks[]`) — never a silent partial state.
 
 ---
 
-### Execution Mode
+## Execution Mode
 
 `execution_mode` (`standard` \| `refactor-strict` \| `docs-only`) branches step 3's TDD
 mandate. When the orchestrator's spawn prompt does not carry an `execution_mode`
@@ -285,7 +285,7 @@ directive, treat it as absent — behave exactly as `standard`.
       Decision Record (deep vs. shallow restructuring choice, coupling-impact assessment),
       recorded in the PR description — same "no bypass" shape, reusing the Bugfix Gate's
       Decision-Record mechanism above. Also append this Decision Record as a `decision_records[]`
-      row with `kind: "refactor"` in the return JSON — see `worker-schemas.md` §
+      row with `kind: "refactor"` in the return JSON — see `implementer-schemas.md` §
       `decision_records[]` for the row shape.
     - **Per-step commit/rollback**: extends step 4's "Incremental Implementation" cadence
       (unchanged step granularity) — each incremental change is tested **and committed** before
@@ -316,7 +316,7 @@ directive, treat it as absent — behave exactly as `standard`.
 
 ---
 
-### Sensitive-Filename Staging Gate (unconditional, V-SEC-11)
+## Sensitive-Filename Staging Gate (unconditional, V-SEC-11)
 
 Applies to **every** execution mode and plan track — no branch skips it. Runs immediately before
 every `git add` inside step 6, independent of and prior to `V-SEC-03`'s review-time content scan.
@@ -360,7 +360,7 @@ only remedy left is key rotation, not a fix commit.
     before staging") so the orchestrator can distinguish a dependency-wiring bug from a known
     cross-target limitation instead of the worker silently shipping unprotected.
 
-### Explicit Git Targeting Gate (unconditional, issue #516)
+## Explicit Git Targeting Gate (unconditional, issue #516)
 
 Applies to **every** execution mode and plan track — no branch skips it. The session's process
 cwd can silently drift to a sibling worktree, and campaign branches can end up mis-tracked at
@@ -382,7 +382,7 @@ session MUST name its target explicitly rather than trust the inherited cwd.
     not claim `status: complete`; return `status: blocked` instead and report the mismatch as a
     finding.
 
-### Environmental Blocker Escalation (unconditional, issue #763)
+## Environmental Blocker Escalation (unconditional, issue #763)
 
 Applies to **every** execution mode and plan track, not gated on `task_type: bugfix` — contrast
 with the Bugfix Gate's `failed_attempts`/`touch_paths_overrun`, which are `task_type:
@@ -460,7 +460,7 @@ this section states only what the script does not decide.
 *   **PR-body record** (mirrors the Reuse Check Gate pattern — falsifiable, produced even on
     the negative case): one line per carried artifact, `Carried Artifact: <target_path>
     (<target_kind>, from <route>)`, or `Carried Artifacts: none (no manifest for this issue)`
-    when nothing was staged. No new `worker-schemas.md` return field — the PR-body record is
+    when nothing was staged. No new `implementer-schemas.md` return field — the PR-body record is
     the falsifiable evidence.
 *   **Do not delete** `.blackhole/staged/<issue>/` after carrying — it remains as campaign
     state so the reviewer audit (`reviewer.md` §25, `V-AUTO-02`) has stable data to diff
@@ -538,7 +538,7 @@ Full trigger tables, ledger contract, and helper names: `src/references/companio
 
 ---
 
-### Verification Evidence Gate
+## Verification Evidence Gate
 
 Unconditional — no code path skips this, same "no bypass" shape as the Bugfix Gate's
 Root-Cause Verification gate and the `refactor-strict`/`docs-only` gates above. Before any
@@ -598,7 +598,7 @@ PR body" pattern already used by the Reuse Check and Improvement Record above �
 narratively. This extends the 5-step gate above; it does not replace the single `evidence`
 {command,result} pair used for the overall test/build/lint claim.
 
-### Visual Evidence Capture (conditional)
+## Visual Evidence Capture (conditional)
 
 **Config gate**: read `.blackhole/config.json`. If `display_targets` is absent or an empty
 array, skip this subsection entirely — no capture, no `visual_evidence[]` field, current
@@ -615,7 +615,7 @@ blackhole ships no browser driver (`V-INT-02`); the worktree already has depende
 (`phase-implement.md` checklist). Commit each viewport-clipped (not full-page) screenshot under
 `documentation/reviews/visual-evidence/issue-<N>/<target>px-<route-slug>-<state>.png` and link
 it in the PR body. Emit one `visual_evidence[]` entry per capture with `target`, `path`,
-`route`, and `state` set (`worker-schemas.md` § `visual_evidence[]`).
+`route`, and `state` set (`implementer-schemas.md` § `visual_evidence[]`).
 
 **Capture failure**: when no runnable Playwright/dev-server stack exists, emit a
 `capture_status: "unavailable"` entry with an explicit `note` stating why —
@@ -623,7 +623,7 @@ never silently skipped (R5). A capture failure is **never** a `status: blocked` 
 basis alone; it is a declared, non-blocking-at-implement outcome that the reviewer's Visual
 Evidence Audit (`reviewer.md` §22) turns into a `V-VIS-02` WARN finding, not a stalled campaign.
 
-### Context-Anxiety Countermeasures
+## Context-Anxiety Countermeasures
 
 When in the second half of a complex implementation:
 
@@ -678,7 +678,7 @@ escalation triggers above; `blocked_step` (optional) may accompany `environmenta
 session (Reuse Check Gate, Scout Check, Bugfix Gate Root-Cause Verification, Refactoring
 Verification) — populating your own return JSON's `decision_records[]` is your only
 obligation; you never write `documentation/reference/decision-log.md` yourself, the
-orchestrator does that serially post-barrier (`worker-schemas.md` § `decision_records[]`).
+orchestrator does that serially post-barrier (`implementer-schemas.md` § `decision_records[]`).
 
 `sprint_contract_status` / `ac_results[]` (optional) carry the Sprint Contract closure gate's
 aggregate verdict and per-AC rows on a Standard-track plan — content spec lives in this
@@ -687,4 +687,4 @@ document's Verification Evidence Gate § Sprint Contract closure above (`V-DRY`)
 with no `— **AC**:` markers.
 
 See `implementer-schemas.md` § Implementer for the full field table.
-<!-- GENERATED by scripts/build.ts from src/agents/implementer.md — do not hand-edit -->
+<!-- GENERATED by scripts/build.ts from src/agents/implementer.md (includes: src/references/gates/01-reuse-check-gate.md, src/references/gates/02-plan-drift-check.md, src/references/gates/03-scout-check.md, src/references/gates/04-bugfix-gate.md, src/references/gates/05-conflict-resolution-gate.md, src/references/gates/06-execution-mode.md, src/references/gates/07-sensitive-filename-staging-gate.md, src/references/gates/08-explicit-git-targeting-gate.md, src/references/gates/09-environmental-blocker-escalation.md, src/references/gates/10-carry-staged-artifacts.md, src/references/gates/11-promote-review-artifact.md, src/references/gates/12-companion-file-sync.md, src/references/gates/13-verification-evidence-gate.md, src/references/gates/14-visual-evidence-capture.md, src/references/gates/15-context-anxiety-countermeasures.md) — do not hand-edit -->
