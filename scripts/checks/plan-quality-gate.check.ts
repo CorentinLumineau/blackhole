@@ -120,7 +120,8 @@ const STALE_EXECUTION_STRATEGY_SPELLINGS = ['Execution Strategy (Stop Conditions
 export const findExecutionStrategyHeadingDrift = (content: string): string[] =>
   STALE_EXECUTION_STRATEGY_SPELLINGS.filter((stale) => content.includes(stale));
 
-// Issue #533 — Standard Track bugfix-classification symmetry: reviewer.md §15's V-FIX-01 BLOCK
+// Issue #533 — Standard Track bugfix-classification symmetry: reviewer.md § Decision Record
+// Audit's V-FIX-01 BLOCK
 // branch reads the plan frontmatter's `task_type: bugfix` field regardless of track, but only
 // Quick Track's own "Bugfix classification" bullet ever stamped it — a Standard Track bugfix
 // plan (the multi-file/logic case where root-cause correctness carries the highest risk) never

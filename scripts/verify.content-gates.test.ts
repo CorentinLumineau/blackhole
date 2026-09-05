@@ -301,12 +301,11 @@ describe('findContentGateWarnings', () => {
 });
 
 describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positives)', () => {
-  test('covers exactly the 13 declared keys', () => {
+  test('covers exactly the 12 declared keys', () => {
     expect(Object.keys(CONTENT_GATE_BUDGETS).sort()).toEqual(
       [
         'src/agents/orchestrator.md',
         'src/agents/planner.md',
-        'src/agents/reviewer.md',
         'src/agents/implementer.md',
         'src/references/worker-schemas.md',
         'src/references/implementer-schemas.md',

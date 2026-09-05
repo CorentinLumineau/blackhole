@@ -97,7 +97,7 @@ heuristic shape). Classify `true` if the issue's expected diff touches a UI/fron
 reuse the V-ADA-04 keyword SSOT (`scripts/detect-frontend.sh`'s detection steps — framework deps
 in `package.json`, `.tsx`/`.vue`/`.svelte`/`.jsx` extensions, `src/components/`/`app/components/`-
 style directories, Tailwind/Vite/Next config files — cited as cross-reference per
-`reviewer.md:133`'s identical citation, never re-inlined, `V-DRY-01`) against issue prose and any
+`reviewer.md` § Companion-File Audit's identical citation, never re-inlined, `V-DRY-01`) against issue prose and any
 declared `touch_paths` globs; classify `false` otherwise. Cautious default
 on low confidence (`confidence.ui < router_confidence_thresholds.ui`, default 70): **`true`** —
 matches the existing cautious-default precedent for `needs_design`/`security_review_required`/

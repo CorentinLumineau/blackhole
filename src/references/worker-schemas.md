@@ -273,7 +273,7 @@ below).
 | `findings` | finding[] | yes (empty array = no issues found) |
 | `error` | string | when `status: error` |
 | `recheck` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in recheck mode (`review-core.md` § Recheck mode); absent/omitted for a normal full-audit review |
-| `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent security verification mode (`review-core.md` § Independent security verification, `reviewer.md` § 24); absent/omitted for every other dispatch |
+| `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent security verification mode (`review-core.md` § Independent security verification, `reviewer.md` § Independent Security Verification Mode); absent/omitted for every other dispatch |
 | `verification_legs` | `{direction, mode, evidence}[]` | optional — ADR-036 (issue #815); a clean/negative investigation leg that produced no `Finding` object |
 
 ### `recheck` (optional — recheck-mode fast path, issue #214)
@@ -297,7 +297,7 @@ fix commits resolved it:
 ### `verification` (optional — independent security verification mode, issue #439)
 
 Carries one entry per stamped `V-SEC-*` finding the reviewer was dispatched to independently
-judge (`review-core.md` § Independent security verification, `reviewer.md` § 24) — a sibling
+judge (`review-core.md` § Independent security verification, `reviewer.md` § Independent Security Verification Mode) — a sibling
 shape to `recheck` above, distinct meaning: `recheck` verifies whether a fix commit resolved a
 *prior, ledgered* finding; `verification` verifies whether a *fresh, same-pass* finding
 independently holds up.
@@ -319,11 +319,11 @@ plain JSON array — distinct from `--prior-file`'s ledger-row shape.
 
 ### `verification_legs` (optional — executed vs. reasoned disclosure, ADR-036 / issue #815)
 
-A JSON home for a **clean/negative investigation leg** (checked something, found no `Finding`) — not named `verification`, already used twice (the array above, `hunter`'s `CONFIRMED`/`STALE` field). Fields: `direction`, `mode` (`executed` \| `reasoned`), `evidence` (for `reasoned`, why execution was unavailable, e.g. `with-test-lock` contention). Never grounds to bypass `with-test-lock`. See `reviewer.md` § 32 / `review-core.md` § Security-mode review (`V-SEC-12`).
+A JSON home for a **clean/negative investigation leg** (checked something, found no `Finding`) — not named `verification`, already used twice (the array above, `hunter`'s `CONFIRMED`/`STALE` field). Fields: `direction`, `mode` (`executed` \| `reasoned`), `evidence` (for `reasoned`, why execution was unavailable, e.g. `with-test-lock` contention). Never grounds to bypass `with-test-lock`. See `reviewer.md` § Executed vs. Reasoned Verification Disclosure / `review-core.md` § Security-mode review (`V-SEC-12`).
 
 ### Rulings ledger (read-input)
 
-`reviewer.md` § 19 "Owner-Ruling Violation Audit" reads `documentation/reference/
+`reviewer.md` § Owner-Ruling Violation Audit "Owner-Ruling Violation Audit" reads `documentation/reference/
 product-principles.md` (the owner-rulings ledger) when present, gated by
 `docs_governance.companion_files`. A diff contradicting an `active`-status ruling's
 `Interpretation` field surfaces as a normal `findings[]` entry with `vcode: "V-RULE-01"`,

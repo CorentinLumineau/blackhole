@@ -50,7 +50,7 @@ Selects which TDD-mandate variant governs the implementer's session:
 - `docs-only` — failing-test-first mandate suppressed; Touch-Paths restricted to
   documentation paths. Also gates a Staleness/Drift-Check Table and per-code-block example
   verification (content spec stays in `implementer.md` § Execution Mode `docs-only` gate —
-  `V-DRY`), audited by `reviewer.md` § 8.
+  `V-DRY`), audited by `reviewer.md` § Docs-Only Execution Mode Compliance.
 
 **Non-goal for this issue**: no orchestrator/agent logic computes or passes
 `execution_mode` yet — that derivation from `route.task_type` (`feature`/`bugfix` →
@@ -158,7 +158,7 @@ fixtures — `V-TEST-09`).
 
 **Consumer**: `phase-implement.md` § Unverified-claim hold treats `sprint_contract_status !==
 PASS` (when present, Standard track) as an additional hold condition alongside the existing
-missing-`evidence` check. `reviewer.md` § 1 Objective Fulfillment consumes the PR-body per-AC
+missing-`evidence` check. `reviewer.md` § 5-Field Contract & Plan Compliance's Objective Fulfillment consumes the PR-body per-AC
 table instead of re-judging AC narratively when present.
 
 ### `visual_evidence[]` (optional — issue #420)

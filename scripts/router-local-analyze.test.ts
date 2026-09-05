@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { expandIncludes } from './lib/build/content.ts';
 
 // Guards the ADR-004 step 5b safety invariant: the local-analyze confidence-boost
 // mechanism's security_review_required update must be a monotonic union
@@ -11,7 +12,10 @@ import * as path from 'path';
 // union formula for an overwrite assignment.
 
 const root = path.resolve(import.meta.dirname, '..');
-const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf-8');
+// Expands `{{INCLUDE:<dir>/*}}` (ADR-034) so a reviewer.md assertion keeps measuring the agent's
+// whole compiled prose, not just what stayed in the shell file.
+const read = (rel: string) =>
+  expandIncludes(fs.readFileSync(path.join(root, rel), 'utf-8'), path.join(root, rel));
 
 describe('router.md local-analyze monotonicity invariant', () => {
   const router = read('src/agents/router.md');
@@ -85,12 +89,15 @@ describe('blackhole-vcodes.md / reviewer.md — V-DOCFACT-01 registration (#335)
     expect(vcodes).toMatch(/\| V-DOCFACT-01 \|.*\| WARN \|/);
   });
 
-  test('reviewer.md audits V-DOCFACT-01 by cross-referencing § 10/§ 8 detection, not restating keyword lists', () => {
+  test('reviewer.md audits V-DOCFACT-01 by cross-referencing the companion-file and docs-only detection, not restating keyword lists', () => {
     const reviewer = read('src/agents/reviewer.md');
     expect(reviewer).toContain('Documentation Prose Factual Accuracy (`V-DOCFACT-01`)');
-    // Guards V-INT-02: the new audit must cross-reference § 10's companion-file surface and
-    // § 8's documentation path patterns rather than restating keyword lists.
-    expect(reviewer).toMatch(/§ 10's companion-file surface and § 8's documentation path patterns/);
+    // Guards V-INT-02: the new audit must cross-reference § Companion-File Audit's companion-file
+    // surface and § Docs-Only Execution Mode Compliance's documentation path patterns rather than
+    // restating keyword lists.
+    expect(reviewer).toContain(
+      "§ Companion-File Audit's companion-file surface and § Docs-Only Execution Mode Compliance's documentation path patterns",
+    );
   });
 });
 
@@ -100,12 +107,12 @@ describe('blackhole-vcodes.md / reviewer.md — V-UX-01 registration (#271)', ()
     expect(vcodes).toMatch(/\| V-UX-01 \|.*\| WARN \|/);
   });
 
-  test('reviewer.md audits V-UX-01 by reusing § 10\'s V-ADA-03 detection, not reimplementing it', () => {
+  test('reviewer.md audits V-UX-01 by reusing the companion-file V-ADA-03 detection, not reimplementing it', () => {
     const reviewer = read('src/agents/reviewer.md');
     expect(reviewer).toContain('Information-Hierarchy Audit (`V-UX-01`)');
-    // Guards V-INT-02: the new audit must cross-reference § 10's frontend-detection keyword
+    // Guards V-INT-02: the new audit must cross-reference § Companion-File Audit's frontend-detection keyword
     // set rather than restating or reimplementing it.
-    expect(reviewer).toMatch(/frontend-detection keyword set as § 10's `V-ADA-03` bullet/);
+    expect(reviewer).toContain('frontend-detection keyword set as § Companion-File Audit\'s `V-ADA-03` bullet');
   });
 });
 
@@ -132,50 +139,46 @@ describe('blackhole-vcodes.md — V-AUTO-01/V-AUTO-02 registration', () => {
     expect(vcodes).toMatch(/\| V-AUTO-02 \|.*\| BLOCK \|/);
   });
 
-  test('V-AUTO-02 row names reviewer.md §25 as its enforcement site', () => {
+  test('V-AUTO-02 row names the reviewer Staged Artifact Carry Audit as its enforcement site', () => {
     const vcodes = read('src/references/blackhole-vcodes.md');
     const row = vcodes.split('\n').find((line) => line.startsWith('| V-AUTO-02 |'));
     expect(row).toBeDefined();
-    expect(row).toContain('reviewer.md §25');
+    expect(row).toContain('reviewer.md § Staged Artifact Carry Audit');
   });
 });
 
-describe('reviewer.md — §25 Staged Artifact Carry Audit content (ADR-021 D4, #468)', () => {
-  const reviewer = read('src/agents/reviewer.md');
+describe('reviewer.md — § Staged Artifact Carry Audit content (ADR-021 D4, #468)', () => {
+  const section = read('src/references/audits/25-staged-artifact-carry-audit.md');
+  const reviewer = section;
 
-  test('has a numbered §25 heading naming V-AUTO-02', () => {
-    expect(reviewer).toMatch(/### 25\. Staged Artifact Carry Audit.*V-AUTO-02/);
+  test('has a named Staged Artifact Carry Audit heading naming V-AUTO-02', () => {
+    expect(reviewer).toMatch(/### Staged Artifact Carry Audit.*V-AUTO-02/);
   });
 
   test('states V-AUTO-02 severity as its own literal BLOCK token, not a cross-reference', () => {
     // Guards the #441-class defect: a severity raised in blackhole-vcodes.md must be restated
     // literally at its enforcement site, never inferred by pointing at a sibling section/code.
-    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
     expect(section.length).toBeGreaterThan(0);
     expect(section).toMatch(/`V-AUTO-02`[^\n]*`BLOCK`|`BLOCK`[^\n]*`V-AUTO-02`/);
   });
 
   test('re-checks docs_governance.write_governance directly from config, not inferred from manifest absence', () => {
     expect(reviewer).toContain('docs_governance.write_governance');
-    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
     expect(section).toMatch(/docs_governance\.enabled/);
     expect(section).toMatch(/docs_governance\.write_governance/);
   });
 
   test('treats an absent/empty manifest as a vacuous gate — a route that declared nothing is unaffected', () => {
-    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
     expect(section).toMatch(/vacuous/i);
     expect(section).toMatch(/declared nothing/i);
   });
 
   test('branches per-entry on new_file vs append_row target_kind', () => {
-    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
     expect(section).toContain('new_file');
     expect(section).toContain('append_row');
   });
 
   test('reuses the ARCHITECTURE.md citation-suffix discriminator from ac80755/implementer.md, not a reinvented one', () => {
-    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
     expect(section).toMatch(/ac80755/);
     expect(section).toMatch(/citation suffix/);
   });
@@ -183,7 +186,6 @@ describe('reviewer.md — §25 Staged Artifact Carry Audit content (ADR-021 D4, 
   test('surfaces an undecidable manifest shape rather than silently passing it', () => {
     // Guards the #562/#564/#565/#580 defect class named in the delegation: a BLOCK-severity
     // audit that cannot evaluate a case must say so, never treat it as "carried".
-    const section = reviewer.split('### 25. Staged Artifact Carry Audit')[1]?.split('## Output Format')[0] ?? '';
     expect(section).toMatch(/undecidable|cannot (be )?evaluat/i);
   });
 });
