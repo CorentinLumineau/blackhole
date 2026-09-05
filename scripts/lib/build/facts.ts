@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 109;
+export const VCODE_TABLE_ROW_COUNT = 112;
 
 // § facts — build-input-only directories (ADR-034, issue #719). A declared-fact / independent-
 // scan pair, the same shape VCODE_TABLE_ROW_COUNT/CONTENT_GATE_BUDGETS/DOC_HEALTH_THRESHOLDS
@@ -57,13 +57,12 @@ export const REVIEWER_AUDIT_MODULE_COUNT = 32;
 
 /**
  * `.md` module count of `src/references/gates/` — the implementer's gate modules, inlined into
- * `src/agents/implementer.md` by its `{{INCLUDE:<dir>/*}}` marker naming `references/gates`
- * (written with the angle-bracket placeholder, never the concrete directory: `INCLUDE_MARKER`
- * would otherwise expand this very comment when `check-utils.ts`'s `read` loads this file).
- * Replaces that
- * file's former `CONTENT_GATE_BUDGETS` row: once the gates live in one module each, a whole-file
- * LOC ceiling on the shell measures nothing an author can act on, whereas the module count is
- * the shape a reviewer checks — a new gate is a new file, never an edit that grows a section.
+ * `src/agents/implementer.md` by its `{{INCLUDE:<dir>/*}}` marker naming `references/gates`. That
+ * marker is written with the angle-bracket placeholder, never the concrete directory, since
+ * `INCLUDE_MARKER` would otherwise expand this comment when `check-utils.ts`'s `read` loads this
+ * file. Replaces that file's former `CONTENT_GATE_BUDGETS` row: once the gates live in one module
+ * each, a whole-file LOC ceiling on the shell measures nothing an author can act on, whereas the
+ * module count is what a reviewer checks — a new gate is a new file, not a section that grew.
  * Declared side of a V-GROUND-01 pair; the scan side is an independent `listFiles` of the
  * directory (`ground-truth.check.ts`), never derived from this constant.
  */
@@ -151,97 +150,105 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // `accepted | superseded | deprecated` enum). Keeping both would have been a V-INT-03 "third
 // variant of a solved concern" — see `scripts/checks/vocabulary.check.ts`'s header comment.
 
-// § facts — content-gate budgets (issue #323, ADR-007 T6/R3′ extension). Generalizes
-// V-CONTENTGATE-01 from a single hardcoded file (orchestrator.md, new-sections-only) to a
-// declared `{file/glob -> {maxSectionLoc, maxFileLoc}}` map — closing the same instance-vs-class
-// gap #320 closed for value vocabularies. A key with a trailing `*` (e.g.
-// `scripts/checks/*.check.ts`) is a glob class: every file in that directory matching the
-// suffix after the `*` is covered automatically, so a future domain file needs zero map edits.
-// Each budget is seeded at *current measured value (at issue #323's landing commit) × 1.2*,
-// rounded up — the gate ratchets from today's shape rather than blocking on day one. Do not
-// hand-edit these numbers to make a failing check pass — split the file/section, or accept that
-// growing past the seeded ceiling is the violation being reported. Agent-file rows measured at
-// #323 implementation time (base: blackhole/issue-327, post-#322 split, post-#320 vocabularies);
-// `scripts/checks/*.check.ts` row re-measured at #336 (post build.check.ts domain split);
-// `src/references/hook-schemas.md` row added at #473 (new file split out of worker-schemas.md —
-// worker-schemas.md's own row is left unchanged, never raised, per that issue);
-// `src/references/orchestrator-handoff.md` row added at #726 (new file split out of
-// worker-schemas.md's Flush-request/Orchestrator-validation sections — worker-schemas.md's own
-// `maxFileLoc` is re-measured and lowered to match its post-split size, per that issue's
-// re-measure-never-hand-freeze convention; `maxSectionLoc` stays 210, unchanged, since the
-// post-split largest section (175 LOC) does not exceed it); `src/agents/reviewer.md`'s row is
-// retired under ADR-034 — its checklist is no longer prose in that file but a directory of audit
-// modules composed by a `{{INCLUDE:<dir>/*}}` marker, so the fact worth declaring about it is
-// `REVIEWER_AUDIT_MODULE_COUNT` above, not a LOC ceiling on a 124-line shell:
+// § facts — content-gate budgets, v3 (ADR-007 T6/R3′ extension). V-CONTENTGATE-01 measures two
+// things per target: the largest section (boundary unit per `CONTENT_GATE_BOUNDARY_UNITS` below)
+// and the whole file. Keys are **glob classes only** — one ceiling per class, never a per-file
+// row. A per-file map let every file negotiate its own number, which is how a size gate turns
+// into a ratchet; a file that does not fit its class is not handed a bigger class ceiling, it is
+// recorded in `CONTENT_GATE_GRANDFATHERED` below against the ADR whose completion retires it.
 //
-// | File / class                       | Metric              | Measured | × 1.2 seed |
-// |-------------------------------------|---------------------|---------:|-----------:|
-// | src/agents/orchestrator.md           | max `##` section LOC | 15       | 18         |
-// | src/agents/orchestrator.md           | total file LOC       | 153      | 185        |
-// | src/agents/planner.md                | max `##` section LOC | 291      | 350        |
-// | src/agents/planner.md                | total file LOC       | 593      | 712        |
-// | src/references/worker-schemas.md     | max `##` section LOC | 175 (#726)| 210       |
-// | src/references/worker-schemas.md     | total file LOC       | 682 (#726)| 819 (#726)|
-// | src/references/hook-schemas.md       | max `##` section LOC | 84       | 101        |
-// | src/references/hook-schemas.md       | total file LOC       | 139      | 167        |
-// | src/references/orchestrator-handoff.md | max `##` section LOC | 69 (#726) | 83 (#726) |
-// | src/references/orchestrator-handoff.md | total file LOC       | 118 (#726)| 142 (#726)|
-// | scripts/checks/*.check.ts            | max `check*()` fn LOC | 56      | 68         |
-// | scripts/checks/*.check.ts            | max single file LOC   | 181     | 218        |
-// | scripts/lib/build/*.ts               | max single file LOC   | 239     | 287        |
-// (`src/agents/implementer.md` held rows here — max `##` section LOC 309/371, total file LOC
-// 629/755 — until issue #721 moved its 15 gates to `src/references/gates/` behind the ADR-034
-// include seam; `IMPLEMENTER_GATE_MODULE_COUNT` above is the declared fact that replaced them.)
-// | src/references/orchestrator-dispatch.md   | max `##` section LOC | 49  | 59         |
-// | src/references/orchestrator-dispatch.md   | total file LOC       | 333 | 400        |
-// | src/references/orchestrator-runtime.md    | max `##` section LOC | 130 | 156        |
-// | src/references/orchestrator-runtime.md    | total file LOC       | 202 | 243        |
-// | src/references/orchestrator-delegation.md | max `##` section LOC | 177 | 213        |
-// | src/references/orchestrator-delegation.md | total file LOC       | 177 | 213        |
+// Class ceilings are seeded at *largest measured non-grandfathered value in the class × 1.2*,
+// rounded up — the same seeding convention the pre-v3 per-file rows used, applied to the class:
 //
-// (orchestrator-delegation.md's single `## 5-Field Delegation Contract` heading sits on line 1,
-// so its one section spans the whole file — max-section and total-file LOC are numerically
-// equal; expected, not a measurement bug. All three rows above re-measured at issue #705
-// implementation time, base commit `a9026b3c`; unchanged from #703's landing-commit numbers.)
+// | Glob class                | Metric      | Measured (largest non-grandfathered) | × 1.2 seed  |
+// |---------------------------|-------------|-------------------------------------:|------------:|
+// | src/agents/*.md           | section LOC | 155 (coordinator.md)                 | 186         |
+// | src/agents/*.md           | file LOC    | 269 (router.md)                      | 323         |
+// | src/references/*.md       | section LOC | 222 (forge-sync.md)                  | 267         |
+// | src/references/*.md       | file LOC    | 386 (merge-gate.md)                  | 464         |
+// | src/references/hunt/*.md  | section LOC |  60 (backlog.md)                     |  72         |
+// | src/references/hunt/*.md  | file LOC    | 156 (ci.md)                          | 188         |
+// | scripts/checks/*.check.ts | section LOC |  56                                  |  68 (kept)  |
+// | scripts/checks/*.check.ts | file LOC    | 181                                  | 218 (kept)  |
+// | scripts/lib/build/*.ts    | file LOC    | 239                                  | 287 (kept)  |
+//
+// The two `scripts/**` classes were already glob-keyed before v3, so their numbers are carried
+// over verbatim — v3 raises no ceiling anywhere. Targets are measured as the compiled tree sees
+// them, i.e. after `check-utils.ts`'s `read` expands the include markers, so an agent shell is
+// measured with its modules inlined rather than shrinking to nothing behind the seam.
+//
+// Seven pre-v3 per-file rows dissolve into their class ceiling here (`src/agents/orchestrator.md`
+// and six `src/references/*.md` files); each was a ×1.2 seed of one file's own size, precisely the
+// instance-level negotiation this map replaces, so their effective ceiling rises to the class
+// value. That relaxation is the declared cost of one-ceiling-per-class; the compensating tightening
+// is coverage — all 8 `src/agents/*.md`, all 43 `src/references/*.md` and all 14 `hunt/*.md` files
+// are gated now, where 9 named files were before. Do not hand-edit any of these numbers to make a
+// failing check pass: split the file, or split the section.
 export type ContentGateBudget = { maxSectionLoc: number; maxFileLoc: number };
 
 export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
-  'src/agents/orchestrator.md': { maxSectionLoc: 18, maxFileLoc: 185 },
-  'src/agents/planner.md': { maxSectionLoc: 380, maxFileLoc: 712 },
-  'src/references/worker-schemas.md': { maxSectionLoc: 210, maxFileLoc: 819 },
-  'src/references/implementer-schemas.md': { maxSectionLoc: 214, maxFileLoc: 219 },
-  'src/references/hook-schemas.md': { maxSectionLoc: 101, maxFileLoc: 167 },
-  'src/references/orchestrator-handoff.md': { maxSectionLoc: 83, maxFileLoc: 142 },
+  'src/agents/*.md': { maxSectionLoc: 186, maxFileLoc: 323 },
+  'src/references/*.md': { maxSectionLoc: 267, maxFileLoc: 464 },
+  'src/references/hunt/*.md': { maxSectionLoc: 72, maxFileLoc: 188 },
   'scripts/checks/*.check.ts': { maxSectionLoc: 68, maxFileLoc: 218 },
   'scripts/lib/build/*.ts': { maxSectionLoc: 68, maxFileLoc: 287 },
-  'src/references/orchestrator-dispatch.md': { maxSectionLoc: 59, maxFileLoc: 400 },
-  'src/references/orchestrator-runtime.md': { maxSectionLoc: 156, maxFileLoc: 243 },
-  'src/references/orchestrator-delegation.md': { maxSectionLoc: 213, maxFileLoc: 213 },
 };
 
-// V-CONTENTGATE-02 (issue #545) — advisory companion to V-CONTENTGATE-01's hard gate. The hard
-// gate is binary: a file/section passes right up to its ceiling and fails one line past it, so
-// three files have now landed exactly at their ceiling in this campaign, each forcing an
-// unplanned, same-PR extraction on whoever happened to file the next change. This ratio, applied
-// to both `maxSectionLoc` and `maxFileLoc`, warns (never blocks — `ok: true` always, same
-// established shape as `queue-coherence.check.ts`, issue #570) once a target crosses 85% of its
-// budget, surfacing exhaustion several PRs before the hard gate blocks instead of only at the
-// exact moment it does. Does not raise, lower, or otherwise touch any `CONTENT_GATE_BUDGETS`
-// value (AC #3) — this is a second, read-only threshold over the same measurements.
+// Per-file section-boundary unit. A markdown target's section is a `##` heading by default; a
+// file declared here is measured with `###` as the unit instead, where a section ends at the
+// next `##` *or* `###`. Declared per file rather than per class because the unit is an authoring
+// property of one document: `reviewer.md`'s audits and `planner.md`'s tracks are `###` items
+// under a single `##` umbrella, so a `##` measurement reports one 800-line "section" naming
+// nothing an author can act on. `scripts/checks/*.check.ts` keeps its check-function boundary,
+// which is not a heading unit and is therefore not expressible here.
+export const CONTENT_GATE_BOUNDARY_UNITS: Record<string, '###'> = {
+  'src/agents/reviewer.md': '###',
+  'src/agents/planner.md': '###',
+};
+
+// § facts — content-gate grandfather allowlist (V-CONTENTGATE-03). Every file measuring above its
+// glob class's ceiling when v3 landed, each against the ADR whose completion retires the entry.
+// This list is the only legal way to exceed a class ceiling: raising a class ceiling to absorb
+// one oversized file is exactly what v3 exists to stop, and `content-gates.check.ts`'s exception
+// audit warns when an entry's ceiling has stopped exceeding its class — the shape such a raise
+// leaves behind — or cites an ADR with no `documentation/decisions/INDEX.md` row.
+//
+// A `ceiling` is the file's pre-v3 declared ceiling where it had one, carried over verbatim and
+// never raised, and *measured × 1.2* where it had none — the same seeding convention the class
+// table above uses.
+export type ContentGateGrandfather = { file: string; ceiling: ContentGateBudget; sunset_adr: string };
+
+export const CONTENT_GATE_GRANDFATHERED: ContentGateGrandfather[] = [
+  // Both shells had their pre-v3 rows retired under the include seam: their growth unit is "one
+  // more module", tracked by `REVIEWER_AUDIT_MODULE_COUNT` / `IMPLEMENTER_GATE_MODULE_COUNT`
+  // above. The entries retire when that module-count fact fully replaces LOC for these two.
+  { file: 'src/agents/reviewer.md', ceiling: { maxSectionLoc: 89, maxFileLoc: 1076 }, sunset_adr: 'ADR-034' },
+  { file: 'src/agents/implementer.md', ceiling: { maxSectionLoc: 105, maxFileLoc: 827 }, sunset_adr: 'ADR-034' },
+  // Pre-v3 per-file ceilings, carried over verbatim.
+  { file: 'src/agents/planner.md', ceiling: { maxSectionLoc: 380, maxFileLoc: 712 }, sunset_adr: 'ADR-007' },
+  { file: 'src/references/worker-schemas.md', ceiling: { maxSectionLoc: 210, maxFileLoc: 819 }, sunset_adr: 'ADR-007' },
+  // Never per-file-declared; over its class ceiling since the include seam added a second
+  // module-count fact to it. Pinned to `build.test.ts`'s `MAX_BUILD_MODULE_LOC` rather than seeded
+  // ×1.2, so this file answers to one ceiling instead of a looser second one (V-DRY-03).
+  { file: 'scripts/lib/build/facts.ts', ceiling: { maxSectionLoc: 68, maxFileLoc: 300 }, sunset_adr: 'ADR-007' },
+];
+
+// V-CONTENTGATE-02 (issue #545) — advisory companion to V-CONTENTGATE-01's hard gate, which is
+// binary: a target passes right up to its ceiling and fails one line past it, forcing an
+// unplanned same-PR extraction on whoever files the next change. Applied to both `maxSectionLoc`
+// and `maxFileLoc`, this ratio warns (never blocks — `ok: true` always, the same shape as
+// `queue-coherence.check.ts`) once a target crosses 85% of its budget, surfacing exhaustion
+// several PRs early. It is read-only over the same measurements: it raises no ceiling.
 //
 // 0.85 is derived from real single-PR growth, not hand-picked: scoped `git log --numstat` history
-// (issue #545 Claims Verified row 11) over the files nearest their ceiling found the largest
-// *normal* (non-initial-creation, non-large-refactor) single-commit net LOC addition was +69
-// lines to worker-schemas.md (7.3% of its 950-LOC budget), +30 lines to playbook.check.ts (13.8%
-// of the 218-LOC glob-class budget), and +27 lines to planner.md's tightest section (7.7% of its
-// 350-LOC budget). 15% remaining headroom covers all three with margin.
-//
-// Alternatives considered and rejected: (1) raise the ceilings — forbidden outright by AC #3; (2)
-// reserve headroom automatically when a file lands at/near its ceiling — disproportionate
-// complexity for a problem that three unplanned-but-beneficial extractions already show is
-// tolerable once surfaced early (V-PARETO-01/V-KISS-01); (3) accept the binary gate as intended
-// — rejected because, measured at this decision's base commit, four real files sit within 5% of
-// their ceiling, meaning exhaustion is already the common case, not a rare edge.
+// over the files nearest their ceiling found the largest *normal* (non-initial-creation,
+// non-large-refactor) single-commit net addition was +69 lines to worker-schemas.md (7.3% of its
+// then-950-LOC budget), +30 to playbook.check.ts (13.8% of the 218-LOC glob-class budget), and
+// +27 to planner.md's tightest section (7.7% of its then-350-LOC budget) — 15% remaining headroom
+// covers all three with margin. Rejected alternatives: raising the ceilings (forbidden by that
+// issue's AC); auto-reserving headroom when a file lands near its ceiling (disproportionate,
+// V-PARETO-01/V-KISS-01); and keeping the gate purely binary (four files then sat within 5% of
+// their ceiling, so exhaustion was already the common case rather than a rare edge).
 export const CONTENT_GATE_WARN_RATIO = 0.85;
 
 /**
