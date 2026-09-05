@@ -16,6 +16,8 @@ export type Route = {
   revision?: number;
 };
 
+// Narrow view of `queue.json`'s per-issue entry — field names and semantics are frozen in
+// `queue-dag.md` § Field rules; this type reads a subset and never renames or redefines one.
 export type QueueIssue = {
   title?: string;
   phase?: string;
@@ -25,6 +27,8 @@ export type QueueIssue = {
   depends_on?: number[];
   size?: string;
   review_iteration?: number;
+  stacked_on?: number | null;
+  parent_tip_sha?: string | null;
   route?: Route;
 };
 

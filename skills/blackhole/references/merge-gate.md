@@ -356,6 +356,67 @@ parallel counter (`V-INT-02`/`V-DRY-01`):
 `lgtm` and `not_detected` both proceed to step 1 unchanged (two-criteria run when
 `not_detected`).
 
+## 7. Stacked-child tip capture and post-merge repair (issue #794)
+
+A squash-merging repo collapses a parent PR into one commit, so a child PR stacked on that parent
+shares no history with the base ref the moment the parent lands: the child goes `mergeable: false`
+while its own diff silently absorbs the parent's files, and a reviewer opening it sees work that is
+already on the base branch. The repair is **not** `git rebase <base>` on the child — that replays
+the parent's commits too and reproduces the identical wrong diff — but a retarget followed by
+`git rebase --onto <base> <parent-tip> <child>`. `<parent-tip>` is only knowable *before* the
+parent merges, which is why this section owns an obligation at stack-creation time and not only at
+merge time.
+
+Both obligations are mechanized by `scripts/stack-repair.ts`; only the judgment lives here.
+
+**At stack creation** — whenever an issue's PR is opened against a sibling issue's branch instead
+of `config.target_branch` — record `stacked_on` + `parent_tip_sha` on the child's `queue.json`
+entry (`queue-dag.md` Field rules) and surface the squash-merge warning:
+
+```
+bun run --cwd <abs repo-root> scripts/stack-repair.ts capture --queue <abs queue.json> \
+  --repo-root <abs repo-root> --child-issue <N> --parent-issue <M> --repo-slug <owner/repo> --apply
+```
+
+Dry-run without `--apply`. The write goes through `blackhole-state.md` § Write protocol's
+state-write-guard and belongs to the orchestrator alone (§ Single-writer invariant) — a worker
+never runs it with `--apply`. The warning it prints is graded: a repo that also allows merge
+commits has an escape hatch for this stack, a squash-only repo does not.
+
+**Around the parent's merge** — `phase-loop.md` Step 0.7 confirms every open child's tip is
+recorded *before* step 4 merges, and its step 4.6 runs the repair per child afterwards:
+
+```
+bun run --cwd <abs child worktree> scripts/stack-repair.ts repair --queue <abs queue.json> \
+  --repo-root <abs child worktree> --repo-slug <owner/repo> --base <target branch> \
+  --parent-issue <M> [--child-issue <N> --apply]
+```
+
+Planning is a read over `queue.json`, so a dry run covers every child at once; `--apply` is
+per-child and requires `--child-issue`, because the rebase checks the child branch out and so
+`--repo-root` must be that child's own worktree (`wt-<child>`), never the main clone.
+
+Three things the script refuses rather than guesses, each a case where proceeding would look like
+success:
+
+- a child with no recorded `parent_tip_sha` — the boundary is gone and no local recipe recovers it;
+- a recorded tip that is not an ancestor of the child branch — `--onto` would replay the wrong
+  commit range;
+- a retarget whose read-back `base.ref` does not equal the base. The PATCH's exit status is not
+  evidence that it applied, so the base is always read back. The retarget uses the REST form
+  (`gh api -X PATCH repos/{owner}/{repo}/pulls/{N} -f base=<base>`), never `gh pr edit --base`,
+  which on a repo with classic Projects enabled exits from a GraphQL deprecation before applying
+  anything — the same CLI limitation `implementer.md` § Verify & Open PR already records for
+  PR-body edits.
+
+Repair success is measured, not assumed: the child's changed-file count against the base after the
+rebase must equal the count from the recorded parent tip to the child head measured before it —
+the same number the PR showed while its base was still the parent branch.
+
+Asserting the PR base before merging, and verifying the base branch afterwards, are a separate
+concern (the merge-base assertion work, issue #793) — cited here, not restated. This section owns
+only the stacked *children* of a merging parent.
+
 ## Edge cases
 
 | Scenario | Resolution |
@@ -370,6 +431,8 @@ parallel counter (`V-INT-02`/`V-DRY-01`):
 | PR merged while ineligible AND `merged_by: blackhole` marker present | § 3 detects the same way; `merged_by` present proves blackhole's own step 0 was bypassed; logs `V-MERGE-01` BLOCK instead of `V-MERGE-02` |
 | `leave-open` PR merged externally after LGTM | Reconciled normally via forge-sync's generic externally-observed-merge path — no `V-MERGE-01`/`V-MERGE-02` logged (designed path, not drift; see § 3's `leave-open` carve-out) |
 | Pipeline installed (`pipeline_detection.actionman_workclaude: true`) but has not yet verdicted the current HEAD SHA | `pipelineVerdict()` returns `not_detected` for this turn (§ 6) — proceeds to step 1 same as a genuinely undetected pipeline; re-checked next turn, never blocks indefinitely on a bot that has not run |
+| Parent PR about to merge with an open stacked child whose `parent_tip_sha` was never recorded | `phase-loop.md` Step 0.7's dry run exits non-zero and **STOPS** that issue's merge for the turn (§ 7) — the boundary is still recoverable while the parent branch exists and is not afterwards |
+| Parent PR merges with no open stacked children | § 7's repair is a no-op — Step 0.7 and step 4.6 both exit 0 immediately, no forge or git call made |
 | `leave-open` PR under the merge-readiness dry run (§ Bypass note) | Step 0.5/0.6/1 (C2/C1/C3) all run; on all-green, `phase-loop.md`'s `mergeReady(issue)` (C1+C2+C3) gates the "delivered-at-LGTM" annotation together with `isLgtm(issue)` — no `gh pr merge` call regardless of outcome |
 
 ## Consulted by
@@ -377,6 +440,7 @@ parallel counter (`V-INT-02`/`V-DRY-01`):
 - `phase-loop.md` § Merge protocol, **step 0** — hard `mergeEligible(issue)` stop-gate before step 1, not merely a checklist reference one heading away.
 - `phase-loop.md` § Merge protocol's **trigger** paragraph — when `merge_mode: gated-batch`, invokes **§ 4** (this doc) instead of applying steps 0-5 issue-by-issue; § 4 internally calls back into steps 0-5 per issue.
 - `phase-loop.md` § Merge protocol, **Step 0.6** — hard `pipelineVerdict(pr, queue)` (§ 6) check between Step 0.5 and step 1.
+- `phase-loop.md` § Merge protocol, **Step 0.7** and **step 4.6** — stacked-child tip capture check before the merge and `--onto` repair after it (§ 7).
 - `forge-sync.md` — cycle detection (§ 2), drift reconciliation (§ 3), and pipeline detection (§ 5.6, feeds § 6).
 - `orchestrator.md` Phase 5 — pointer reference only, no inline logic.
 
