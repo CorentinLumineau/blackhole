@@ -20,10 +20,10 @@
 **Trigger, per `config.json.merge_mode`** (checklist line "LGTM AND
 `mergeEligible(issue)`? → merge PR`):
 - `"immediate"`: apply steps 0-5 below to each LGTM'd issue
-  individually, as encountered. Step 0.5 and Step 0.6 run between step 0 and step 1, in that
+  individually, as encountered. Steps 0.5 through 0.8 run between step 0 and step 1, in that
   order.
 - `"gated-batch"`: do **not** apply steps 0-5 issue-by-issue as encountered.
-  Step 0.5 and Step 0.6 run between step 0 and step 1 within § 4's per-issue loop.
+  Steps 0.5 through 0.8 run between step 0 and step 1 within § 4's per-issue loop.
   Instead, once `merge-gate.md` § 1 Condition 3 is satisfied for the whole
   in-scope set (every sibling LGTM'd), run `merge-gate.md` § 4's sequential
   batch procedure — it internally invokes steps 0-5 below, once per issue, in
@@ -34,7 +34,8 @@
   `mergeEligible(issue)` and never call `gh pr merge` for these issues (see
   `merge-gate.md`'s bypass note — the three **admin-scheduling** conditions and the terminal
   merge call are bypassed, not the PR-quality steps). Step 0.5 (C2 no conflict), Step 0.6 (C1
-  pipeline verdict), and step 1 (C3 CI green) **do** run for `leave-open` PRs, as a
+  pipeline verdict), Step 0.7 (stacked-child tip capture, `merge-gate.md` § 7), Step 0.8 (merge-base
+  assertion, `merge-gate.md` § 8), and step 1 (C3 CI green) **do** run for `leave-open` PRs, as a
   merge-readiness dry run with no `gh pr merge` call at the end. Once `review-core.md`'s
   `isLgtm(issue)` is true **and** `mergeReady(issue)` is true (a small helper composing
   C1+C2+C3 — `isLgtm(issue) AND pipelineVerdict(pr, queue) != "needs_changes" AND
@@ -74,8 +75,18 @@ section's Fix-loop routing (route to `phase: implement`, `review_iteration += 1`
 continue to step 1 unchanged. **Runs for `merge_mode: leave-open` too**, as part of that mode's
 merge-readiness dry run (same D5 narrowing as Step 0.5 above).
 
-**Step 0.7 — Merge-Base Assertion**: after Step 0.6 passes and before step 1, read the PR's base
-(`gh pr view <n> --json baseRefName`) and run `merge-gate.md` § 7's pre-merge check. On exit `1`,
+**Step 0.7 — Stacked-child tip capture check** (issue #794): after Step 0.6 passes and before step
+1, run `merge-gate.md` § 7's `stack-repair.ts repair` **without** `--apply`, with this issue as
+`--parent-issue`. Exit 0 with no children listed means this PR is nobody's parent — continue to
+step 1 unchanged. Exit non-zero means at least one open child has no recorded `parent_tip_sha`:
+**STOP** this issue's merge for the turn and capture the missing tip (`merge-gate.md` § 7's
+`capture --apply`) first. The ordering is the whole point — the `--onto` boundary is recoverable
+only while the parent branch still exists, and no amount of care at repair time recovers what the
+merge destroyed. **Runs for `merge_mode: leave-open` too**: a human's merge deletes the boundary
+exactly as blackhole's would.
+
+**Step 0.8 — Merge-Base Assertion**: after Step 0.7 passes and before step 1, read the PR's base
+(`gh pr view <n> --json baseRefName`) and run `merge-gate.md` § 8's pre-merge check. On exit `1`,
 **STOP** this issue's merge for the turn and report the refusal reason verbatim — the campaign
 never merges into a branch it cannot name. A stacked merge is opted into by passing
 `--stacked-into <branch>`, which must name the PR's actual base; the opt-in is per-merge and
@@ -151,17 +162,30 @@ D5 narrowing as Step 0.5 above).
    right after a merge — for every facts-read that follows: this turn's remaining
    `bun run scripts/plan-quality-gate.ts` reads, the next issue's build-in-main-clone (step 3),
    and the plugin-drift-signal scan at the next turn start.
-4.6. **Post-merge landing verification (mandatory)**: after 4.5's fetch, run `merge-gate.md`
-   § 7's post-merge check against the branch Step 0.7 asserted. On exit `0`, write that branch
-   to the issue's `merged_into` (`queue-dag.md` Field rules) — the field records a *verified*
-   landing, which is why step 4, whose write only knows the merge was attempted, does not set
-   it. On exit `1` the issue is terminal for the turn: leave `merged_into` absent (a `merged`
-   row without it reads as an unverified landing, never as a base-ref one), set `notes` to
-   `merge-landing-unverified:#<PR>@<branch>`, do not advance to `done`, and report it. A grep
+4.6. **Stacked-child repair (issue #794, mandatory whenever Step 0.7 listed children)**: after 4.5's
+   main-clone refresh, run `merge-gate.md` § 7's `stack-repair.ts repair --apply` once per open
+   child, each with `--child-issue <N>` and `--repo-root` set to that child's own worktree. Until
+   this runs, every child PR is `mergeable: false` and displaying the just-merged parent's files as
+   its own, so a reviewer reading it is reading a diff that is not the child's work. A non-zero
+   exit is a blocker for that child — annotate its `queue.json` `notes` and leave it for the next
+   turn; it is never a post-merge step to skip past because the parent already landed. **Runs for
+   `merge_mode: leave-open` too**, triggered by the externally-observed merge that `merge-gate.md`
+   § 3's carve-out reconciles, alongside that section's D6 sibling restack.
+4.7. **Post-merge landing verification (mandatory)**: after 4.6's stacked-child repair, run
+   `merge-gate.md` § 8's post-merge check against the branch Step 0.8 asserted. On exit `0`, write
+   that branch to the issue's `merged_into` (`queue-dag.md` Field rules) — the field records a
+   *verified* landing, which is why step 4, whose write only knows the merge was attempted, does
+   not set it. On exit `1` the issue is terminal for the turn: leave `merged_into` absent (a
+   `merged` row without it reads as an unverified landing, never as a base-ref one), set `notes`
+   to `merge-landing-unverified:#<PR>@<branch>`, do not advance to `done`, and report it. A grep
    miss on the base branch is proof the merge did not land there, and the script has already
    spent the entire replication-lag retry budget before returning, so nothing remains to
-   attribute the miss to. Bypassed under `merge_mode: leave-open`, which never calls
-   `gh pr merge` at all.
+   attribute the miss to. Exit `3` is the separate *verification could not run* class (§ 8): the
+   git fetch or log failed, or the branch resolves to no ref, so nothing was learned about the
+   landing at all — same terminal handling, `notes` set to
+   `merge-landing-uncheckable:#<PR>@<branch>` instead, and the reported reason names the
+   transport failure rather than the branch. Bypassed under `merge_mode: leave-open`, which never
+   calls `gh pr merge` at all.
 5. Post-merge: migration apply if schema PR; deploy verify per runbook
 
 ## Ledger cleanup on merge
