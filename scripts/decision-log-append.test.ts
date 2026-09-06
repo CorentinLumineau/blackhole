@@ -478,3 +478,94 @@ describe('documentation/reference/decision-log.md structural integrity (issue #9
     expect(findRecordsTableViolations(content)).toEqual([]);
   });
 });
+
+// Issue #950 — appendDecisionRecords had two opposite failure modes on a malformed
+// decision_records[] payload: a record missing both pr and issue silently wrote a literal
+// `| undefined | ...` row (appended=1, exit 0 — no signal); a record missing touch_paths
+// crashed with an uncontrolled TypeError instead of a named validation error. Fix wires the
+// already-existing validateDecisionRecordsArray (scripts/lib/worker-json/shared-validators.ts)
+// into appendDecisionRecords, run once over the full batch before any row is built.
+describe('appendDecisionRecords — shape validation (issue #950 regression guard)', () => {
+  test('a record with neither pr nor issue throws naming decision_records[0] and the missing id field', () => {
+    const bad = { kind: 'approach', touch_paths: ['scripts/foo.ts'], decision: 'x', why: 'y' } as unknown as DecisionRecordRow;
+    expect(() => appendDecisionRecords(FIXTURE_LOG, [bad], '2026-09-06')).toThrow(/decision_records\[0\]/);
+    expect(() => appendDecisionRecords(FIXTURE_LOG, [bad], '2026-09-06')).toThrow(/pr\/issue|pr or issue/);
+  });
+
+  test('a record using `files` instead of `touch_paths` throws naming decision_records[0] and touch_paths', () => {
+    const bad = { pr: 950, kind: 'approach', files: ['scripts/foo.ts'], decision: 'x', why: 'y' } as unknown as DecisionRecordRow;
+    expect(() => appendDecisionRecords(FIXTURE_LOG, [bad], '2026-09-06')).toThrow(/decision_records\[0\]/);
+    expect(() => appendDecisionRecords(FIXTURE_LOG, [bad], '2026-09-06')).toThrow(/touch_paths/);
+  });
+
+  test('no partial validation — a batch with 2 valid records followed by 1 invalid record throws, not a partial write', () => {
+    const valid1 = rowFor({ pr: 951, kind: 'approach' });
+    const valid2 = rowFor({ pr: 952, kind: 'approach' });
+    const invalid = { kind: 'approach', touch_paths: ['scripts/foo.ts'], decision: 'x', why: 'y' } as unknown as DecisionRecordRow;
+    expect(() => appendDecisionRecords(FIXTURE_LOG, [valid1, valid2, invalid], '2026-09-06')).toThrow();
+  });
+
+  test('invariance — a batch of N well-formed, mutually-distinct records appends exactly N rows and nothing else', () => {
+    const before = FIXTURE_LOG.split('\n').filter((l) => l.trim().startsWith('|')).length;
+    const records = [
+      rowFor({ pr: 960, kind: 'approach' }),
+      rowFor({ pr: 961, kind: 'refactor' }),
+      rowFor({ pr: 962, kind: 'reuse' }),
+    ];
+    const { content, appended, skipped } = appendDecisionRecords(FIXTURE_LOG, records, '2026-09-06');
+    expect(appended).toBe(3);
+    expect(skipped).toBe(0);
+    const after = content.split('\n').filter((l) => l.trim().startsWith('|')).length;
+    expect(after - before).toBe(3);
+  });
+});
+
+describe('decision-log-append CLI — shape validation (issue #950 regression guard)', () => {
+  const root = path.resolve(import.meta.dirname);
+  const scriptPath = path.join(root, 'decision-log-append.ts');
+  const run = (args: string[]) =>
+    Bun.spawn(['bun', 'run', scriptPath, ...args], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+
+  let dir: string;
+
+  beforeEach(() => {
+    dir = makeTempDir('decision-log-append-cli-shape');
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('a record with neither pr nor issue exits non-zero and not 2, names decision_records[0], and leaves --log untouched', async () => {
+    const recordsFile = path.join(dir, 'records.json');
+    fs.writeFileSync(
+      recordsFile,
+      JSON.stringify({ decision_records: [{ kind: 'approach', touch_paths: ['scripts/foo.ts'], decision: 'x', why: 'y' }] }),
+    );
+    const logFile = path.join(dir, 'decision-log.md');
+    fs.writeFileSync(logFile, FIXTURE_LOG);
+    const proc = run(['--records-file', recordsFile, '--log', logFile]);
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    expect(code).not.toBe(0);
+    expect(code).not.toBe(2);
+    expect(stderr).toContain('decision_records[0]');
+    expect(fs.readFileSync(logFile, 'utf-8')).toBe(FIXTURE_LOG);
+  });
+
+  test('a record using `files` instead of `touch_paths` exits non-zero and not 2, names decision_records[0] and touch_paths, and leaves --log untouched', async () => {
+    const recordsFile = path.join(dir, 'records.json');
+    fs.writeFileSync(
+      recordsFile,
+      JSON.stringify({ decision_records: [{ pr: 950, kind: 'approach', files: ['scripts/foo.ts'], decision: 'x', why: 'y' }] }),
+    );
+    const logFile = path.join(dir, 'decision-log.md');
+    fs.writeFileSync(logFile, FIXTURE_LOG);
+    const proc = run(['--records-file', recordsFile, '--log', logFile]);
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    expect(code).not.toBe(0);
+    expect(code).not.toBe(2);
+    expect(stderr).toContain('decision_records[0]');
+    expect(stderr).toContain('touch_paths');
+    expect(fs.readFileSync(logFile, 'utf-8')).toBe(FIXTURE_LOG);
+  });
+});

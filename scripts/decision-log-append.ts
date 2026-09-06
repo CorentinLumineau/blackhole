@@ -4,6 +4,7 @@ import { findTableBlock } from './lib/check-common.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { root } from './checks/check-utils.ts';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
+import { validateDecisionRecordsArray } from './lib/worker-json/shared-validators.ts';
 
 // Issue #717 (R-12) — replaces the hand-append path documented in `orchestrator.md` § Decision
 // Record Append, which never bumped `last_updated` (frozen at 2026-07-20 across 6+ hand-appended
@@ -15,6 +16,7 @@ import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 // (`scripts/lib/check-common.ts`) — see `merge-conflict-protocol.md` § Sorted insert for the
 // canonical write-up of why this changes the merge outcome, not just row cosmetics.
 
+// Accepted record shape: src/references/implementer-schemas.md § decision_records[].
 export type DecisionRecordRow = {
   pr?: number;
   issue?: number;
@@ -171,6 +173,15 @@ export const appendDecisionRecords = (
   records: DecisionRecordRow[],
   today: string = new Date().toISOString().slice(0, 10),
 ): { content: string; appended: number; skipped: number } => {
+  // Issue #950 — validate the whole batch's shape before any row is built. Reuses the
+  // already-existing validateDecisionRecordsArray (shared-validators.ts) rather than a second
+  // validator (V-INT-02); mirrors assertNoEmbeddedNewline's reject-loudly convention below,
+  // extended here from cell content to record shape.
+  const shapeErrors = validateDecisionRecordsArray(records, 'decision_records');
+  if (shapeErrors.length > 0) {
+    throw new Error(`decision-log-append: invalid decision_records — ${shapeErrors.join('; ')}`);
+  }
+
   const { frontmatter, body } = parseMdFrontmatter(logContent);
   const fm = parseFrontmatterFields(frontmatter);
   if (!('last_updated' in fm)) {
