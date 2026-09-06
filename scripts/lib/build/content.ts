@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { INSTRUCTIONS_MARKER } from '../../tree-shape.ts';
 import { walkFilesAbs } from '../fs.ts';
-import { BUILD_INPUT_ONLY_DIRS, PLATFORM_TARGETS, type Target } from './facts.ts';
+import { BUILD_INPUT_ONLY_DIRS, INCLUDE_MARKER_SITES, PLATFORM_TARGETS, type Target } from './facts.ts';
 import { root, srcDir } from './paths.ts';
 
 // ADR-034: {{INCLUDE:<dir>/*}} build-time include marker. `<dir>` is resolved relative to
@@ -31,12 +31,27 @@ const moduleBody = (raw: string): string => parseMdFrontmatter(raw).body;
 // under-report its inputs). Fails loudly (thrown error) rather than expanding to an empty string
 // when the named directory is missing or has zero .md files — a silent empty expansion would
 // delete an agent's compiled content behind a green build.
+//
+// ADR-039 (issue #882): expansion is scoped to a declared marker site — `content` is returned
+// unchanged, marker(s) and all, unless `srcPath` resolves (repo-root-relative, POSIX) to an
+// entry in `siteList`. This is what makes a real directory name in an illustrative doc comment
+// (e.g. facts.ts's own prose, or a doc under documentation/) inert prose rather than a directive:
+// before this gate, `read()`'s unconditional call meant *any* file `read()` reached was a
+// potential expansion site. `siteList` defaults to the production INCLUDE_MARKER_SITES fact; the
+// parameter exists only so scripts/build.test.ts's ADR-034 T1 fixtures — which exercise this
+// primitive against a throwaway shell path outside the two real sites — can declare their own
+// fixture site without mutating the production fact (mirrors `extraSources`'s own
+// test-injectable-with-production-default convention on this same function).
 export const expandIncludes = (
   content: string,
   srcPath: string,
-  extraSources: string[] = []
-): string =>
-  content.replace(INCLUDE_MARKER, (_match, dirRel: string) => {
+  extraSources: string[] = [],
+  siteList: string[] = INCLUDE_MARKER_SITES
+): string => {
+  const relToRoot = path.relative(root, srcPath).split(path.sep).join('/');
+  if (!siteList.includes(relToRoot)) return content;
+
+  return content.replace(INCLUDE_MARKER, (_match, dirRel: string) => {
     const dirAbs = path.join(srcDir, dirRel);
     const files = fs.existsSync(dirAbs)
       ? walkFilesAbs(dirAbs).filter((f) => f.endsWith('.md')).sort()
@@ -49,6 +64,7 @@ export const expandIncludes = (
     for (const f of files) extraSources.push(path.relative(root, f).split(path.sep).join('/'));
     return files.map((f) => moduleBody(fs.readFileSync(f, 'utf-8'))).join('\n');
   });
+};
 
 // Strip Cursor-only MDC frontmatter (--- globs: / alwaysApply: ---) for non-Cursor targets.
 // The frontmatter block is kept as-is for Cursor; for Claude and skills.sh it is removed entirely

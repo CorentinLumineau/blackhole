@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 112;
+export const VCODE_TABLE_ROW_COUNT = 113;
 
 // § facts — build-input-only directories (ADR-034, issue #719). A declared-fact / independent-
 // scan pair, the same shape VCODE_TABLE_ROW_COUNT/CONTENT_GATE_BUDGETS/DOC_HEALTH_THRESHOLDS
@@ -45,14 +45,24 @@ export const VCODE_TABLE_ROW_COUNT = 112;
 // ship (ADR-034 Decision point 3).
 export const BUILD_INPUT_ONLY_DIRS: string[] = ['references/gates', 'references/audits'];
 
+// § facts — declared {{INCLUDE:<dir>/*}} marker sites (ADR-039, issue #882), repo-root-relative
+// POSIX paths. Sibling registry to BUILD_INPUT_ONLY_DIRS on an adjacent axis: that one names
+// where a marker's *target* directory may live; this names where a marker may *appear*.
+// `expandIncludes` (content.ts) expands only when `srcPath` resolves to an entry here — every
+// other file, including a doc comment illustrating the syntax with a real dir name, comes back
+// unchanged. `build-input-dirs.check.ts`'s V-INCLUDE-02 independently scans `src/**` for a live
+// marker outside a declared site, and for a declared site missing its marker — neither side
+// derived from the other. The two entries are the only agent shells composing from modules today.
+export const INCLUDE_MARKER_SITES: string[] = ['src/agents/reviewer.md', 'src/agents/implementer.md'];
+
 /**
  * `.md` module count of `src/references/gates/` — the implementer's gate modules, inlined into
- * `src/agents/implementer.md` by its `references/gates` INCLUDE marker (quoted without `{{...}}`
- * here since `check-utils.ts`'s `read()` would expand a literal one and corrupt this file's own
- * LOC). Replaces the former `CONTENT_GATE_BUDGETS` row: once the gates live in one module each, a
- * LOC ceiling measures nothing an author can act on, whereas the module count is the shape a
- * reviewer checks. Declared side of a V-GROUND-01 pair; the scan side is an independent
- * `listFiles` of the directory, never derived from this constant.
+ * `src/agents/implementer.md` by its `references/gates` INCLUDE marker (real name safe to quote:
+ * ADR-039's declared-site gate means `read()` never expands outside `INCLUDE_MARKER_SITES`, and
+ * this file isn't one). Replaces the former `CONTENT_GATE_BUDGETS` row: once the gates live in
+ * one module each, a LOC ceiling measures nothing an author can act on, whereas the module count
+ * is the shape a reviewer checks. Declared side of a V-GROUND-01 pair; scan side is an
+ * independent `listFiles` of the directory, never derived from this constant.
  */
 export const IMPLEMENTER_GATE_MODULE_COUNT = 15;
 
@@ -170,18 +180,10 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // | scripts/checks/*.check.ts | file LOC    | 181                                  | 218 (kept)  |
 // | scripts/lib/build/*.ts    | file LOC    | 239                                  | 287 (kept)  |
 //
-// The two `scripts/**` classes were already glob-keyed before v3, so their numbers are carried
-// over verbatim — v3 raises no ceiling anywhere. Targets are measured as the compiled tree sees
-// them, i.e. after `check-utils.ts`'s `read` expands the include markers, so an agent shell is
-// measured with its modules inlined rather than shrinking to nothing behind the seam.
-//
-// Seven pre-v3 per-file rows dissolve into their class ceiling here (`src/agents/orchestrator.md`
-// and six `src/references/*.md` files); each was a ×1.2 seed of one file's own size, precisely the
-// instance-level negotiation this map replaces, so their effective ceiling rises to the class
-// value. That relaxation is the declared cost of one-ceiling-per-class; the compensating tightening
-// is coverage — all 8 `src/agents/*.md`, all 43 `src/references/*.md` and all 14 `hunt/*.md` files
-// are gated now, where 9 named files were before. Do not hand-edit any of these numbers to make a
-// failing check pass: split the file, or split the section.
+// Targets are measured as the compiled tree sees them — after `check-utils.ts`'s `read` expands
+// include markers — so an agent shell is measured with its modules inlined, not shrunk to nothing
+// behind the seam. Pre-v3 per-file rows dissolved into their class ceiling on this cutover; do
+// not hand-edit any of these numbers to make a failing check pass — split the file or the section.
 export type ContentGateBudget = { maxSectionLoc: number; maxFileLoc: number };
 
 export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {

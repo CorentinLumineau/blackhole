@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
 import { walkMdFilesAbs } from '../lib/check-common.ts';
-import { BUILD_INPUT_ONLY_DIRS } from '../lib/build/facts.ts';
+import { BUILD_INPUT_ONLY_DIRS, INCLUDE_MARKER_SITES } from '../lib/build/facts.ts';
 import { INCLUDE_MARKER } from '../lib/build/content.ts';
 import {
   AGENTS_BUILD_ROOT,
@@ -77,6 +77,50 @@ export const findUndeclaredIncludeMarkers = (
   return undeclared;
 };
 
+// ADR-039 (issue #882) — V-INCLUDE-02: two-sided verification for the INCLUDE_MARKER_SITES
+// allowlist that gates expandIncludes itself (as opposed to V-INCLUDE-01 above, which gates a
+// marker's *target* directory). Same Leg A/B shape, applied to "where a marker may appear":
+//   Leg A: every declared site must exist on disk and carry at least one marker — a declared
+//   site that lost its marker (or was never created) is dead configuration nobody would notice.
+//   Leg B: every live marker under src/** must sit at a declared site — an undeclared marker
+//   site is exactly the gap this issue closes: a doc comment or prose reference that would
+//   otherwise depend on unenforced comment-writing discipline instead of a mechanical boundary.
+
+// Leg A: a declared site absent from `siteFiles` (i.e. absent on disk) or carrying zero markers.
+export const findSitesMissingMarker = (
+  siteFiles: { path: string; content: string }[],
+  declaredSites: string[]
+): string[] => {
+  const byPath = new Map(siteFiles.map((f) => [f.path, f.content]));
+  const missing: string[] = [];
+  for (const site of declaredSites) {
+    const content = byPath.get(site);
+    if (content === undefined) {
+      missing.push(`${site}: declared site does not exist`);
+      continue;
+    }
+    if ([...content.matchAll(INCLUDE_MARKER)].length === 0) {
+      missing.push(`${site}: declared site carries no {{INCLUDE:<dir>/*}} marker`);
+    }
+  }
+  return missing;
+};
+
+// Leg B: any file carrying a marker whose path is not in the declared set.
+export const findMarkersAtUndeclaredSites = (
+  files: { path: string; content: string }[],
+  declaredSites: string[]
+): string[] => {
+  const declared = new Set(declaredSites);
+  const undeclared: string[] = [];
+  for (const { path: filePath, content } of files) {
+    if ([...content.matchAll(INCLUDE_MARKER)].length > 0 && !declared.has(filePath)) {
+      undeclared.push(`${filePath}: carries a {{INCLUDE:<dir>/*}} marker but is not a declared INCLUDE_MARKER_SITES entry`);
+    }
+  }
+  return undeclared;
+};
+
 const checkBuildInputDirs = (): CheckResult => {
   const treeRoots = REFERENCE_TREE_ROOTS.map((rel) => path.join(root, rel));
   const leaks = findLeakedBuildInputDirs(BUILD_INPUT_ONLY_DIRS, treeRoots);
@@ -93,6 +137,24 @@ const checkBuildInputDirs = (): CheckResult => {
     : { id: 'V-INCLUDE-01', ok: true };
 };
 
+const checkIncludeMarkerSites = (): CheckResult => {
+  const siteFiles = INCLUDE_MARKER_SITES.filter((site) => fs.existsSync(path.join(root, site))).map(
+    (site) => ({ path: site, content: fs.readFileSync(path.join(root, site), 'utf-8') })
+  );
+  const missingMarker = findSitesMissingMarker(siteFiles, INCLUDE_MARKER_SITES);
+
+  const scanFiles = walkMdFilesAbs(path.join(root, 'src')).map((f) => ({
+    path: path.relative(root, f).split(path.sep).join('/'),
+    content: fs.readFileSync(f, 'utf-8'),
+  }));
+  const undeclared = findMarkersAtUndeclaredSites(scanFiles, INCLUDE_MARKER_SITES);
+
+  const errors = [...missingMarker, ...undeclared];
+  return errors.length
+    ? { id: 'V-INCLUDE-02', ok: false, detail: errors.join('; ') }
+    : { id: 'V-INCLUDE-02', ok: true };
+};
+
 // ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
 // contract (pure, no side effects, glob-discovered by scripts/verify.ts).
-export const runChecks = (): CheckResult[] => [checkBuildInputDirs()];
+export const runChecks = (): CheckResult[] => [checkBuildInputDirs(), checkIncludeMarkerSites()];
