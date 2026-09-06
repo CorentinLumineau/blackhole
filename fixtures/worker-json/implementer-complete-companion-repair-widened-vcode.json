@@ -1,0 +1,21 @@
+{
+  "status": "complete",
+  "pr_number": 999,
+  "branch": "blackhole/issue-999",
+  "tests_passed": true,
+  "touch_paths_honored": true,
+  "execution_mode": "standard",
+  "evidence": {
+    "command": "bun test scripts/companion-file-sync.test.ts",
+    "result": "42 pass, 0 fail"
+  },
+  "companion_repairs": [
+    {
+      "vcode": "V-ADA-99",
+      "file": "ARCHITECTURE.md",
+      "action": "created from template"
+    }
+  ],
+  "new_findings": [],
+  "filed_issues": []
+}
