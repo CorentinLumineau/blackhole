@@ -228,11 +228,10 @@ const isWithinRoot = (candidate: string, root: string): boolean => {
   return realCandidate === realRoot || realCandidate.startsWith(realRoot + path.sep);
 };
 
-// Shared write step (issue #903) for both the `new_file` and `append_row` branches below —
-// identical mkdir/write/catch shape, differing only in the content variable written. Never
-// throws; a write failure is entry-scoped adversarial/environmental content (issue #784 AC2/AC3),
-// not a broken invocation, so it resolves to `{ ok: false }` for the caller to push onto
-// `skipped` rather than denying the rest of the manifest.
+// Shared write step for both the `new_file` and `append_row` branches below — identical
+// mkdir/write/catch shape, differing only in the content variable written. Never throws: it
+// resolves to `{ ok: false }` and the caller pushes onto `skipped`. See the `new_file` call site
+// for why a write failure is entry-scoped rather than fatal.
 const writeCarryTarget = (
   targetAbs: string,
   content: string,
