@@ -103,13 +103,38 @@ function renderFiledSection(filed: ReturnType<typeof discoveryFilings>): string[
   return lines;
 }
 
-function renderLedgerOpenSection(findings: LedgerFinding[]): string[] {
-  const openFindings = findings.filter((f) => f.status === 'open');
+// ADR-042 (issue #893) — severity rank for the open-section sort below: BLOCK before WARN
+// before NOTE, anything else last.
+const LEDGER_SEVERITY_RANK: Record<string, number> = { BLOCK: 0, WARN: 1, NOTE: 2 };
+const ledgerSeverityRank = (severity?: string): number => LEDGER_SEVERITY_RANK[severity ?? ''] ?? 3;
+
+// Recency key for the sort's tiebreak: last_seen_at when present (a hook-derived row bumped by
+// a repeat), else created_at, else 0 (sorts last within its severity tier rather than throwing).
+const ledgerRecencyKey = (f: LedgerFinding): number => {
+  const ts = f.last_seen_at ?? f.created_at;
+  if (!ts) return 0;
+  const parsed = Date.parse(ts);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+// Exported: issue #893 Task 2(d)/(e) unit-test this directly, not only through formatDashboard.
+export function renderLedgerOpenSection(findings: LedgerFinding[]): string[] {
+  const openFindings = findings
+    .filter((f) => f.status === 'open')
+    .slice()
+    .sort((a, b) => {
+      const rankDiff = ledgerSeverityRank(a.severity) - ledgerSeverityRank(b.severity);
+      if (rankDiff !== 0) return rankDiff;
+      return ledgerRecencyKey(b) - ledgerRecencyKey(a);
+    });
   if (openFindings.length === 0) return [];
   const lines: string[] = ['### Ledger open'];
   for (const f of openFindings.slice(0, 10)) {
+    const occSuffix = f.occurrences != null ? ` ×${f.occurrences}` : '';
+    const issueSuffix = f.issue_ref != null ? ` (#${f.issue_ref})` : '';
+    const seenSuffix = f.last_seen_at ? ` (last seen ${f.last_seen_at})` : '';
     lines.push(
-      `- **${f.id ?? '?'}** \`${f.vcode}\` ${f.severity} — ${f.summary ?? ''}${f.issue_ref != null ? ` (#${f.issue_ref})` : ''}`,
+      `- **${f.id ?? '?'}** \`${f.vcode}\` ${f.severity} — ${f.summary ?? ''}${occSuffix}${issueSuffix}${seenSuffix}`,
     );
   }
   if (openFindings.length > 10) {
