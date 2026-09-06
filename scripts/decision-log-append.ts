@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { parseMdFrontmatter, parseFrontmatterFields } from './lib/build/content.ts';
-import { findTableBlock } from './lib/check-common.ts';
+import { assertNoEmbeddedNewline, findTableBlock } from './lib/check-common.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { root } from './checks/check-utils.ts';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
@@ -27,22 +27,6 @@ export type DecisionRecordRow = {
 };
 
 const escapeCell = (s: string): string => s.replace(/\|/g, '\\|');
-
-// escapeCell above escapes `|` only, so a cell value carrying a real embedded
-// newline/carriage-return (e.g. a JSON string whose `\n` escape became a
-// literal newline before reaching this function) is written verbatim, splitting the row across
-// two physical lines. findTableBlock (scripts/lib/check-common.ts) then treats the orphaned tail
-// as "outside the table", so every insert made afterward silently corrupts further. Reject,
-// don't escape: throw as soon as the first bad field is found, before any output is built, so
-// `main()` never reaches `fs.writeFileSync`. Convention
-// (message shape, exit-code split from `usage()`'s 2) is documented here so the same guard shape
-// can be applied to the INDEX table's parser's own silent-continuation-skip idiom in
-// check-common.ts — a single consumer today, so no shared module is extracted (V-YAGNI-03).
-const assertNoEmbeddedNewline = (value: string, id: number | string, field: string): void => {
-  if (/[\r\n]/.test(value)) {
-    throw new Error(`decision-log-append: record ${id} field "${field}" contains an embedded newline/carriage-return character`);
-  }
-};
 
 type RecordsTableRow = { prIssueCell: string; kind: string };
 
