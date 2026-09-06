@@ -1,25 +1,20 @@
 #!/usr/bin/env bun
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildDocIndexRows, renderDocIndexTable } from './lib/doc-index-generate.ts';
+import { buildDocIndexRows, renderDocIndexTable, renderFullIndexFile } from './lib/doc-index-generate.ts';
 import { root } from './checks/check-utils.ts';
 
 // Issue #811 (ADR-031 Phase 1, Task 6) — thin CLI wrapper over doc-index-generate.ts. Default
 // invocation prints the full generated markdown table (header + separator + rendered rows) to
 // stdout. `--check` diffs the generated table's row block against the committed
-// documentation/INDEX.md's row block and exits 1 on mismatch, 0 on match. Not yet wired into
-// `bun run verify` — that blocking-gate wiring is Phase 2 (issue #832); Phase 1 only proves the
-// tool is correct via manual invocation and the advisory doc-health.check.ts signal.
+// documentation/INDEX.md's row block and exits 1 on mismatch, 0 on match — a standalone manual
+// tool, distinct from `bun run verify`'s own V-DOCHEALTH-01/02/04 gate (doc-health.check.ts,
+// glob-discovered independently). Issue #832 (ADR-031 Phase 2, Task 5) hoisted the
+// table-rendering logic into doc-index-generate.ts's `renderFullIndexFile` — this file's own
+// local `renderFullTable`/`HEADER` retired in favor of it.
 
 const DOCS_DIR = path.join(root, 'documentation');
 const INDEX_PATH = path.join(DOCS_DIR, 'INDEX.md');
-
-const HEADER = '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|';
-
-function renderFullTable(): string {
-  const rows = buildDocIndexRows(DOCS_DIR);
-  return `${HEADER}\n${renderDocIndexTable(rows)}\n`;
-}
 
 function runCheck(): number {
   const generated = renderDocIndexTable(buildDocIndexRows(DOCS_DIR));
@@ -54,7 +49,7 @@ function main(): void {
   if (process.argv.includes('--check')) {
     process.exit(runCheck());
   }
-  process.stdout.write(renderFullTable());
+  process.stdout.write(renderFullIndexFile(DOCS_DIR));
 }
 
 if (import.meta.main) {

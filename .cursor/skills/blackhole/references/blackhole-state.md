@@ -194,16 +194,8 @@ writing agent (`planner`, `investigator`), not left to individual judgment.
       "declared_at": "2026-08-06T17:40:00.000Z",
       "staged_path": ".blackhole/staged/465/analysis-issue-465.md",
       "target_path": "documentation/audits/analysis-issue-465.md",
-      "target_kind": "new_file"
-    },
-    {
-      "route": "analyze",
-      "sub_mode": "analyze",
-      "produced_by": "investigator",
-      "declared_at": "2026-08-06T17:40:00.000Z",
-      "staged_path": ".blackhole/staged/465/index-row.md",
-      "target_path": "documentation/INDEX.md",
-      "target_kind": "append_row"
+      "target_kind": "new_file",
+      "summary": "Evidence pass for issue #465's durable artifact staging design"
     },
     {
       "route": "plan",
@@ -212,7 +204,8 @@ writing agent (`planner`, `investigator`), not left to individual judgment.
       "declared_at": "2026-08-06T17:58:00.000Z",
       "staged_path": ".blackhole/staged/465/plan-durable-artifact-staging.md",
       "target_path": "documentation/plans/plan-durable-artifact-staging.md",
-      "target_kind": "new_file"
+      "target_kind": "new_file",
+      "summary": "Implementation plan for durable artifact staging (ADR-021)"
     },
     {
       "route": "review",
@@ -229,16 +222,18 @@ writing agent (`planner`, `investigator`), not left to individual judgment.
 
 The `design` triple above stages an ADR body, its `documentation/decisions/INDEX.md` row, and
 (when the Cross-Cutting Heuristic promotes a finding, `planner.md` §4.8 Trigger A) an
-`ARCHITECTURE.md` `## Active Constraints` bullet — issue #474. The `analyze`/`investigate` pair
-stages an investigator-authored note and its **root** `documentation/INDEX.md` row (issue #490,
-ADR-021 D2) — same `new_file` + `append_row` shape, different producer and different target
-file. `planner.md` Step 4 Trigger B stages the analogous `ARCHITECTURE.md` entry for the
-`analyze`/`investigate` route (not shown above for brevity — same shape as the `design`-route
-`ARCHITECTURE.md` entry, with `route: "analyze"`, `sub_mode: "analyze"`, `produced_by:
-"planner"`). The `plan` pair (issue #445, ADR-021 D3) stages the durable plan body and its root
-`documentation/INDEX.md` row; the `review` entry is staged by `implementer` at merge-readiness
-from `findings-ledger.json`, not by `reviewer` (ADR-021 A2). `plan` and `review` extend the
-`route` enum; `implementer` extends `produced_by` — see the field table below.
+`ARCHITECTURE.md` `## Active Constraints` bullet — issue #474. The `analyze`/`investigate` entry
+stages an investigator-authored note carrying its own `summary` field directly on the `new_file`
+entry (issue #832, ADR-031 Phase 2) — the root **documentation/INDEX.md** row is reproduced
+automatically at carry time from that field rather than hand-appended from a paired staged
+`append_row` fragment (the pre-#832 shape retired issue #490/ADR-021 D2 introduced). `planner.md`
+Step 4 Trigger B stages the analogous `ARCHITECTURE.md` entry for the `analyze`/`investigate`
+route (not shown above for brevity — same shape as the `design`-route `ARCHITECTURE.md` entry,
+with `route: "analyze"`, `sub_mode: "analyze"`, `produced_by: "planner"`). The `plan` entry
+(issue #445, ADR-021 D3) stages the durable plan body with its own `summary` field the same way;
+the `review` entry is staged by `implementer` at merge-readiness from `findings-ledger.json`, not
+by `reviewer` (ADR-021 A2). `plan` and `review` extend the `route` enum; `implementer` extends
+`produced_by` — see the field table below.
 
 | Field | Values | Notes |
 |---|---|---|
@@ -249,8 +244,9 @@ from `findings-ledger.json`, not by `reviewer` (ADR-021 A2). `plan` and `review`
 | `entries[].produced_by` | `planner` \| `investigator` \| `implementer` | Which agent staged the artifact; `implementer` is review-artifact-only (generated at merge-readiness per ADR-021 A2, issue #445) |
 | `entries[].declared_at` | ISO8601 | When the entry was staged |
 | `entries[].staged_path` | string | Repo-relative path under `.blackhole/staged/<issue>/` |
-| `entries[].target_path` | string | Repo-relative target path. Usually under `documentation/`, per `artifact-contract.md`'s route table. For `target_kind: append_row` this is `documentation/decisions/INDEX.md` (`design` route, `planner.md` §4.8), `documentation/INDEX.md` (`analyze`/`investigate` routes, issue #490), or `ARCHITECTURE.md` **at the repo root** — not under `documentation/` — for the Active Constraints append (`design`/`analyze` routes, `planner.md` §4.8 Trigger A / Step 4 Trigger B, issue #474) |
-| `entries[].target_kind` | `new_file` \| `append_row` | Tells the carry-step whether to copy a whole file or append a row fragment to an existing file (e.g. `INDEX.md`) or bullet list (`ARCHITECTURE.md` `## Active Constraints`) |
+| `entries[].target_path` | string | Repo-relative target path. Usually under `documentation/`, per `artifact-contract.md`'s route table. For `target_kind: append_row` this is `documentation/decisions/INDEX.md` (`design` route, `planner.md` §4.8) or `ARCHITECTURE.md` **at the repo root** — not under `documentation/` — for the Active Constraints append (`design`/`analyze` routes, `planner.md` §4.8 Trigger A / Step 4 Trigger B, issue #474). `documentation/INDEX.md` is no longer a valid `append_row` target for any route (issue #832, ADR-031 Phase 2) — the root index is regenerated automatically at carry time instead |
+| `entries[].target_kind` | `new_file` \| `append_row` | Tells the carry-step whether to copy a whole file or append a row fragment to an existing file (`documentation/decisions/INDEX.md`) or bullet list (`ARCHITECTURE.md` `## Active Constraints`) |
+| `entries[].summary` | string, optional | Set on a `new_file` entry in place of the retired paired root-INDEX `append_row` entry (issue #832, ADR-031 Phase 2) — `rewriteInvestigatorFrontmatter` writes it onto the promoted investigator note's own frontmatter; a `plan`-route entry's plan body already carries its own `summary` in lifecycle frontmatter, so this field mirrors that value rather than introducing a second source of truth. `documentation/INDEX.md`'s row for the promoted doc is then reproduced automatically from this frontmatter field at carry time (`doc-index-generate.ts`'s `buildDocIndexRows`) |
 
 Enforced by `scripts/checks/staging-schema.check.ts`.
 

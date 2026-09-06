@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Investigation for issue #893: the PreToolUse fail-open (`hook-exec-failure`) contract is confirmed live on current `main`, its 2026-08-12 storm best-explained by a concurrent-merge resource-contention spike (unconfirmed), the `CLAUDE_PROJECT_DIR` sink-hole (ADR-041) is not reachable in this campaign's subagent topology, and `ingestHookEvents`'s per-file dedup key would append ~338 new BLOCK-severity ledger rows on a naive first run over the 388-event backlog"
 status: current
 created: 2026-09-06
 last_updated: 2026-09-06

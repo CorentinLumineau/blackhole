@@ -1,5 +1,6 @@
 ---
 type: research
+summary: "Claude Code hooks docs confirm no cross-hook denial signal exists (PermissionDenied is auto-mode-classifier-only); issue #919's clean-pattern_id/confident-attribution ACs are not reliably deliverable as written — a Stop-time transcript heuristic is the only buildable path, with real false-positive/negative risk"
 status: current
 created: 2026-09-06
 last_updated: 2026-09-06

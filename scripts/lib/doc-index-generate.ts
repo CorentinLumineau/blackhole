@@ -51,3 +51,45 @@ export const buildDocIndexRows = (docsDir: string): RootIndexRow[] => {
 };
 
 export const renderDocIndexTable = (rows: RootIndexRow[]): string => rows.map(renderIndexRowLine).join('\n');
+
+// Issue #832 (ADR-031 Phase 2, Task 5) — hoisted from scripts/generate-doc-index.ts's former
+// local `renderFullTable`/`HEADER` (title row + separator row + generated rows), so both the CLI
+// and the carry-time auto-regeneration (carry-staged-artifacts.ts, Task 7) call one shared
+// renderer rather than two (V-INT-02/V-DRY-01). Callers overwriting the whole
+// documentation/INDEX.md file are responsible for the document's own leading `# Documentation
+// Index` heading + blank line, which this function does not include (this renders the table
+// portion only, exactly matching the CLI's pre-existing default output).
+const INDEX_TABLE_HEADER =
+  '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|';
+
+export const renderFullIndexFile = (docsDir: string): string =>
+  `${INDEX_TABLE_HEADER}\n${renderDocIndexTable(buildDocIndexRows(docsDir))}\n`;
+
+// Issue #832 (ADR-031 Phase 2) — the one shared diff `doc-health.check.ts`'s V-DOCHEALTH-01/02/04
+// checks all consume, computed once against the same `RootIndexRow[]` shape both the committed
+// table (`parseRootIndexRows`) and the generator (`buildDocIndexRows`) already produce, rather
+// than three separate comparisons of the same two arrays (V-DRY-01/V-INT-02). `dangling` = a
+// committed row whose path has no corresponding generated row (the file no longer exists, or was
+// never eligible per `isExcludedPath`); `orphan` = a generated row with no corresponding
+// committed row (a doc with no INDEX.md entry); `stale` = a path present on both sides whose
+// `summary`/`type`/`status`/`reviewTrigger` content differs — the round-trip-parity duty
+// `evaluateGeneratedIndexParity` (Phase 1, advisory) retired in favor of this blocking bucket.
+export type DocIndexDiff = { dangling: string[]; orphan: string[]; stale: string[] };
+
+export const diffDocIndexRows = (committed: RootIndexRow[], generated: RootIndexRow[]): DocIndexDiff => {
+  const committedByPath = new Map(committed.map((r) => [r.path, r]));
+  const generatedByPath = new Map(generated.map((r) => [r.path, r]));
+
+  const dangling = committed.map((r) => r.path).filter((p) => !generatedByPath.has(p));
+  const orphan = generated.map((r) => r.path).filter((p) => !committedByPath.has(p));
+  const stale = committed
+    .map((r) => r.path)
+    .filter((p) => generatedByPath.has(p))
+    .filter((p) => {
+      const c = committedByPath.get(p)!;
+      const g = generatedByPath.get(p)!;
+      return c.summary !== g.summary || c.type !== g.type || c.status !== g.status || c.reviewTrigger !== g.reviewTrigger;
+    });
+
+  return { dangling, orphan, stale };
+};

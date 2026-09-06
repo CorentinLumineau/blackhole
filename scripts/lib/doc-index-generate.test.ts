@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildDocIndexRows, renderDocIndexTable } from './doc-index-generate.ts';
+import { execFileSync } from 'child_process';
+import { buildDocIndexRows, diffDocIndexRows, renderDocIndexTable, renderFullIndexFile } from './doc-index-generate.ts';
 import { byPathByteOrder, renderIndexRowLine } from './check-common.ts';
 import { makeTempDir } from './fs.ts';
 
@@ -142,5 +143,78 @@ describe('renderDocIndexTable', () => {
 
   test('renders an empty string for zero rows', () => {
     expect(renderDocIndexTable([])).toBe('');
+  });
+});
+
+describe('diffDocIndexRows (issue #832, ADR-031 Phase 2)', () => {
+  const row = (path: string, summary: string): { path: string; summary: string; type: string; status: string; reviewTrigger: string } => ({
+    path,
+    summary,
+    type: 'audit',
+    status: 'current',
+    reviewTrigger: 'on release',
+  });
+
+  test('a committed-only path is dangling', () => {
+    const diff = diffDocIndexRows([row('audits/gone.md', 's')], []);
+    expect(diff).toEqual({ dangling: ['audits/gone.md'], orphan: [], stale: [] });
+  });
+
+  test('a generated-only path is orphan', () => {
+    const diff = diffDocIndexRows([], [row('audits/new.md', 's')]);
+    expect(diff).toEqual({ dangling: [], orphan: ['audits/new.md'], stale: [] });
+  });
+
+  test('a path on both sides with identical content is neither dangling, orphan, nor stale', () => {
+    const diff = diffDocIndexRows([row('audits/foo.md', 's')], [row('audits/foo.md', 's')]);
+    expect(diff).toEqual({ dangling: [], orphan: [], stale: [] });
+  });
+
+  test('a path on both sides with a differing summary is stale', () => {
+    const diff = diffDocIndexRows([row('audits/foo.md', 'old')], [row('audits/foo.md', 'new')]);
+    expect(diff).toEqual({ dangling: [], orphan: [], stale: ['audits/foo.md'] });
+  });
+
+  test('a path on both sides with a differing type/status/reviewTrigger is also stale', () => {
+    const committed = row('audits/foo.md', 's');
+    const generated = { ...row('audits/foo.md', 's'), status: 'deprecated' };
+    const diff = diffDocIndexRows([committed], [generated]);
+    expect(diff.stale).toEqual(['audits/foo.md']);
+  });
+
+  test('mixed: one dangling, one orphan, one stale, one clean — all classified independently', () => {
+    const diff = diffDocIndexRows(
+      [row('audits/gone.md', 's'), row('audits/stale.md', 'old'), row('audits/clean.md', 's')],
+      [row('audits/new.md', 's'), row('audits/stale.md', 'new'), row('audits/clean.md', 's')]
+    );
+    expect(diff).toEqual({
+      dangling: ['audits/gone.md'],
+      orphan: ['audits/new.md'],
+      stale: ['audits/stale.md'],
+    });
+  });
+});
+
+describe('renderFullIndexFile (issue #832, Task 5 — hoisted from generate-doc-index.ts)', () => {
+  test('renders the table header + separator + generated rows, matching renderDocIndexTable output', () => {
+    withFixtureDir((dir) => {
+      write(
+        dir,
+        'audits/foo.md',
+        doc({ type: 'audit', summary: JSON.stringify('An audit doc'), status: 'current', review_trigger: JSON.stringify('on release') })
+      );
+      const expected =
+        '| path | summary | type | status | review_trigger |\n' +
+        '|------|---------|------|--------|----------------|\n' +
+        `${renderDocIndexTable(buildDocIndexRows(dir))}\n`;
+      expect(renderFullIndexFile(dir)).toBe(expected);
+    });
+  });
+
+  test('output matches the CLI\'s own (no-flag) stdout for the same docsDir', () => {
+    const cliPath = path.join(import.meta.dir, '..', 'generate-doc-index.ts');
+    const docsDir = path.join(import.meta.dir, '..', '..', 'documentation');
+    const cliOutput = execFileSync('bun', ['run', cliPath], { encoding: 'utf-8' });
+    expect(cliOutput).toBe(renderFullIndexFile(docsDir));
   });
 });

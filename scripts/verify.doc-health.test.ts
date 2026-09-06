@@ -3,15 +3,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   appendIndexRowIfAbsent,
-  evaluateGeneratedIndexParity,
   evaluateIndexDangling,
   evaluateOrphanFiles,
+  evaluateStaleIndexContent,
   findDanglingIndexRows,
   findDateStampedFilenames,
   findMissingFrontmatter,
   findOrphanDocs,
   findOversizedDocs,
   findStaleDeprecatedDocs,
+  findStaleIndexRows,
   isRootIndexRowCeilingExceeded,
   isTreeSizeAdvisoryExceeded,
   parseRootIndexRows,
@@ -216,37 +217,35 @@ describe('appendIndexRowIfAbsent (ADR-021 D2 carry-step row-append)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// (c) V-DOCHEALTH-01 — dangling INDEX.md rows (blocking)
+// (c) V-DOCHEALTH-01 — dangling INDEX.md rows (blocking). Issue #832 (ADR-031 Phase 2)
+// retargets this primitive onto the shared `DocIndexDiff` shape (doc-index-generate.ts) — the
+// exclusion behavior (decisions/**, INDEX.md, milestones/_archived/**) now lives entirely in
+// `buildDocIndexRows`'s own walk and is covered by doc-index-generate.test.ts, not restated here.
 // ---------------------------------------------------------------------------
 describe('findDanglingIndexRows (V-DOCHEALTH-01)', () => {
-  test('flags a row whose file does not exist on disk', () => {
-    const existing = new Set(['audits/foo.md']);
-    expect(findDanglingIndexRows(['audits/foo.md', 'audits/missing.md'], existing)).toEqual(['audits/missing.md']);
+  test('is the diff\'s own dangling bucket', () => {
+    const diff = { dangling: ['audits/missing.md'], orphan: [], stale: [] };
+    expect(findDanglingIndexRows(diff)).toEqual(['audits/missing.md']);
   });
 
-  test('a fully-resolved INDEX.md passes', () => {
-    const existing = new Set(['audits/foo.md', 'plans/bar.md']);
-    expect(findDanglingIndexRows(['audits/foo.md', 'plans/bar.md'], existing)).toEqual([]);
+  test('empty when the diff has no dangling paths', () => {
+    const diff = { dangling: [], orphan: [], stale: [] };
+    expect(findDanglingIndexRows(diff)).toEqual([]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// (d) V-DOCHEALTH-02 — orphan files (blocking)
+// (d) V-DOCHEALTH-02 — orphan files (blocking). Same retarget as (c) above.
 // ---------------------------------------------------------------------------
 describe('findOrphanDocs (V-DOCHEALTH-02)', () => {
-  test('flags a file with no INDEX.md row', () => {
-    const indexed = new Set(['audits/foo.md']);
-    expect(findOrphanDocs(['audits/foo.md', 'audits/orphan.md'], indexed)).toEqual(['audits/orphan.md']);
+  test('is the diff\'s own orphan bucket', () => {
+    const diff = { dangling: [], orphan: ['audits/orphan.md'], stale: [] };
+    expect(findOrphanDocs(diff)).toEqual(['audits/orphan.md']);
   });
 
-  test('excludes INDEX.md itself and decisions/** (governed by its own per-folder INDEX.md)', () => {
-    const indexed = new Set<string>();
-    expect(findOrphanDocs(['INDEX.md', 'decisions/ADR-001-x.md'], indexed)).toEqual([]);
-  });
-
-  test('excludes milestones/_archived/**', () => {
-    const indexed = new Set<string>();
-    expect(findOrphanDocs(['milestones/_archived/old.md'], indexed)).toEqual([]);
+  test('empty when the diff has no orphan paths', () => {
+    const diff = { dangling: [], orphan: [], stale: [] };
+    expect(findOrphanDocs(diff)).toEqual([]);
   });
 });
 
@@ -334,7 +333,7 @@ describe('runChecks (real repo, structural shape)', () => {
       'V-DOCHEALTH-01',
       'V-DOCHEALTH-02',
       'V-DOCHEALTH-03',
-      'V-DOCHEALTH-03',
+      'V-DOCHEALTH-04',
     ]);
     expect(results.every((r) => r.ok)).toBe(true);
   });
@@ -372,13 +371,13 @@ describe('doc-governance.md threshold prose matches facts.ts DOC_HEALTH_THRESHOL
 });
 
 // ---------------------------------------------------------------------------
-// (h) Issue #811 (ADR-031 Phase 1, Task 10/11) — evaluateGeneratedIndexParity: advisory-only
-// (never blocking in Phase 1) parity signal folded into the existing V-DOCHEALTH-03 umbrella,
-// a sibling of evaluateDocTreeHealth. Reuses buildDocIndexRows/renderDocIndexTable — no
-// re-implemented diff logic.
+// (h) Issue #832 (ADR-031 Phase 2) — evaluateStaleIndexContent: the round-trip parity signal
+// retired from evaluateGeneratedIndexParity (Phase 1, advisory-only) is retargeted into a new
+// blocking V-DOCHEALTH-04 check, sharing one diff (`diffDocIndexRows`, doc-index-generate.ts)
+// with the retargeted V-DOCHEALTH-01/02 checks below rather than a second comparison (V-INT-02).
 // ---------------------------------------------------------------------------
-describe('evaluateGeneratedIndexParity (V-DOCHEALTH-03, advisory)', () => {
-  test('ok:true with no detail when generated output matches committed INDEX.md', () => {
+describe('evaluateStaleIndexContent (V-DOCHEALTH-04, blocking)', () => {
+  test('ok:true when generated output matches committed INDEX.md', () => {
     withFixtureDir((dir) => {
       write(
         dir,
@@ -390,11 +389,11 @@ describe('evaluateGeneratedIndexParity (V-DOCHEALTH-03, advisory)', () => {
         'INDEX.md',
         '# Documentation Index\n\n| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n| audits/foo.md | An audit doc | audit | current | on release |\n'
       );
-      expect(evaluateGeneratedIndexParity(dir)).toEqual({ id: 'V-DOCHEALTH-03', ok: true });
+      expect(evaluateStaleIndexContent(dir)).toEqual({ id: 'V-DOCHEALTH-04', ok: true });
     });
   });
 
-  test('ok:true (never blocking) with a detail naming the differing path when mismatched', () => {
+  test('ok:false with a detail naming the differing path when the frontmatter summary diverges from the committed row', () => {
     withFixtureDir((dir) => {
       write(
         dir,
@@ -406,16 +405,72 @@ describe('evaluateGeneratedIndexParity (V-DOCHEALTH-03, advisory)', () => {
         'INDEX.md',
         '# Documentation Index\n\n| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n| audits/foo.md | A stale summary | audit | current | on release |\n'
       );
-      const result = evaluateGeneratedIndexParity(dir);
-      expect(result.ok).toBe(true);
+      const result = evaluateStaleIndexContent(dir);
+      expect(result.ok).toBe(false);
+      expect(result.id).toBe('V-DOCHEALTH-04');
       expect(result.detail).toContain('audits/foo.md');
     });
   });
 
-  test('SKIP (ok:true, no detail) when INDEX.md is absent', () => {
+  test('SKIP (ok:true) when INDEX.md is absent', () => {
     withFixtureDir((dir) => {
       write(dir, 'audits/foo.md', FM({ type: 'audit', status: 'current' }));
-      expect(evaluateGeneratedIndexParity(dir)).toEqual({ id: 'V-DOCHEALTH-03', ok: true });
+      expect(evaluateStaleIndexContent(dir)).toEqual({ id: 'V-DOCHEALTH-04', ok: true });
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (i) Regression coverage for the V-DOCHEALTH-01/02 retarget (issue #832) — the fixture-dir
+// level `evaluate*` functions must still fire under the same real conditions as before the
+// diff-based retarget, not only at the pure-array `find*` unit level above.
+// ---------------------------------------------------------------------------
+describe('evaluateIndexDangling / evaluateOrphanFiles retarget regression (issue #832)', () => {
+  test('V-DOCHEALTH-01 still fires on a committed row pointing at a deleted file', () => {
+    withFixtureDir((dir) => {
+      write(
+        dir,
+        'audits/foo.md',
+        FM({ type: 'audit', status: 'current', summary: JSON.stringify('s'), review_trigger: JSON.stringify('on release') })
+      );
+      write(
+        dir,
+        'INDEX.md',
+        '# Documentation Index\n\n| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n| audits/foo.md | s | audit | current | on release |\n| audits/deleted.md | gone | audit | current | on release |\n'
+      );
+      const result = evaluateIndexDangling(dir);
+      expect(result.ok).toBe(false);
+      expect(result.detail).toContain('audits/deleted.md');
+    });
+  });
+
+  test('V-DOCHEALTH-02 still fires on a file with no INDEX.md row', () => {
+    withFixtureDir((dir) => {
+      write(
+        dir,
+        'audits/foo.md',
+        FM({ type: 'audit', status: 'current', summary: JSON.stringify('s'), review_trigger: JSON.stringify('on release') })
+      );
+      write(
+        dir,
+        'audits/unindexed.md',
+        FM({ type: 'audit', status: 'current', summary: JSON.stringify('u'), review_trigger: JSON.stringify('on release') })
+      );
+      write(
+        dir,
+        'INDEX.md',
+        '# Documentation Index\n\n| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n| audits/foo.md | s | audit | current | on release |\n'
+      );
+      const result = evaluateOrphanFiles(dir);
+      expect(result.ok).toBe(false);
+      expect(result.detail).toContain('audits/unindexed.md');
+    });
+  });
+});
+
+describe('findStaleIndexRows (V-DOCHEALTH-04 primitive)', () => {
+  test('flags a path present in both sides whose content differs on any of the four compared fields', () => {
+    const diff = { dangling: [], orphan: [], stale: ['audits/foo.md'] };
+    expect(findStaleIndexRows(diff)).toEqual(['audits/foo.md']);
   });
 });

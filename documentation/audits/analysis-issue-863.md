@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Pre-plan evidence pass on issue #863's shared-shell-lexer extraction: catalogues the 5 quote-skip-loop copies and 3 clause splitters across the three PreToolUse guards, shows the quote-skip half is a safe uniform parameterization while the clause-splitter half hides a real, currently-untested quote-awareness divergence between `bash-write-target-guard.js` and `worktree-removal-guard.js` that a naive \"retrofit to the newer guard\" reading of the fix direction would regress silently"
 status: current
 created: 2026-09-06
 last_updated: 2026-09-06
