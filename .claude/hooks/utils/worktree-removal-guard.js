@@ -194,34 +194,47 @@ const skipGitGlobalOptions = (tokens, start) => {
 };
 
 /** True when the character immediately before `index` is a real shell word boundary — start of
- * string, whitespace, or a command separator (`;`, `&`, `|`, `(`, newline) — not merely "any
- * non-word character". Used below only as a defensive assertion that a clause-start index really
- * is one (`findClauseStartIndices` guarantees this by construction), not as the primary detection
- * mechanism — see that function's docstring for why scanning for `git`-shaped substrings directly
- * (this predicate's original #532 role) cannot cover every executable spelling (#788). */
-const isCommandWordStart = (command, index) => index === 0 || /[\s;&|(\n]/.test(command[index - 1]);
+ * string, whitespace, or a command separator (`;`, `&`, `|`, `(`, `{`, `}`, newline) — not merely
+ * "any non-word character". Used below only as a defensive assertion that a clause-start index
+ * really is one (`findClauseStartIndices` guarantees this by construction), not as the primary
+ * detection mechanism — see that function's docstring for why scanning for `git`-shaped substrings
+ * directly (this predicate's original #532 role) cannot cover every executable spelling (#788). */
+const isCommandWordStart = (command, index) => index === 0 || /[\s;&|(){}\n]/.test(command[index - 1]);
 
 /** Every position in `command` that begins a new clause: index 0 (after any leading whitespace),
  * and the first non-whitespace, unmasked position following each unmasked clause separator (`;`,
- * a non-redirect `&`, `|`, `(`, or newline). Deliberately narrower than `isCommandWordStart`'s own
- * boundary set: plain whitespace also appears there, but whitespace alone separates two tokens of
- * the SAME clause (an argument, never a new command) — admitting it here would let an argument
- * like `--git-dir=/x/git` (basename coincidentally `git`, no `.git` suffix) be misread as a
- * second invocation, the exact collision a plain "any word start" scan would reintroduce.
- * Restricting the executable-word search below to a clause's own first token makes that collision
- * impossible by construction, with no per-argument exemption list needed. A separator inside a
- * quoted string is not distinguished from a real one here — the same naive, quote-unaware
- * limitation `clauseTailFrom` below already has for the clause tail it returns; this only affects
- * where a clause is judged to START, the mirror image of that pre-existing, accepted limitation.
+ * a non-redirect `&`, `|`, `(`, a whitespace-bounded `{`/`}` brace-group reserved word (F-00064,
+ * see below), or newline). Deliberately narrower than `isCommandWordStart`'s own boundary set:
+ * plain whitespace also appears there, but whitespace alone separates two tokens of the SAME
+ * clause (an argument, never a new command) — admitting it here would let an argument like
+ * `--git-dir=/x/git` (basename coincidentally `git`, no `.git` suffix) be misread as a second
+ * invocation, the exact collision a plain "any word start" scan would reintroduce. Restricting the
+ * executable-word search below to a clause's own first token makes that collision impossible by
+ * construction, with no per-argument exemption list needed. A separator inside a quoted string is
+ * not distinguished from a real one here — the same naive, quote-unaware limitation
+ * `clauseTailFrom` below already has for the clause tail it returns; this only affects where a
+ * clause is judged to START, the mirror image of that pre-existing, accepted limitation.
+ *
+ * `{` opens a brace group — `{ cmd1; cmd2; }` — exactly the way `(` opens a subshell, so it
+ * triggers the same `skipToStart` a clause boundary does. It is recognized ONLY when it is itself
+ * a whitespace-bounded reserved word (preceded by a real word boundary per `isCommandWordStart`,
+ * and followed by whitespace) — real bash syntax already requires both, since `{` must be its own
+ * token to open a group. This is what keeps it from colliding with `${VAR}` parameter expansion
+ * (there `{` is preceded by `$`, never whitespace) or a `file{a,b}` brace expansion (there `{` is
+ * preceded by a word character, and followed by none): neither is whitespace-adjacent, so neither
+ * is ever mistaken for a group-open. `}` closes a brace group and is recognized the mirror way —
+ * preceded by whitespace, the same requirement real bash syntax imposes on it (`{ cmd; }` needs
+ * that trailing space; `{ cmd;}` is itself a syntax error) — which excludes it from `${VAR}` and
+ * `{a,b}` the same way.
  *
  * Returns `{ index, precededByOr }` entries rather than bare indices (F-00059): `precededByOr` is
  * true only when the separator immediately before this clause is `||`, distinguished here from a
  * single `|` (an ordinary pipe) exactly the way `&&` is already distinguished from a single `&`
  * below — a two-character lookahead at the boundary, not a growing exemption list. Every other
- * separator (`;`, `\n`, `(`, `&`, `&&`, a lone `|`) is reported as `precededByOr: false`, including
- * the very first clause (nothing precedes it). `findRemovalInvocations` is the only reader of this
- * field, and only for a `cd` clause — see its docstring for why `||` alone needs this and `&&`/`;`
- * do not.
+ * separator (`;`, `\n`, `(`, `{`, `}`, `&`, `&&`, a lone `|`) is reported as `precededByOr: false`,
+ * including the very first clause (nothing precedes it). `findRemovalInvocations` is the only
+ * reader of this field, and only for a `cd` clause — see its docstring for why `||` alone needs
+ * this and `&&`/`;` do not.
  */
 const findClauseStartIndices = (command, masked) => {
   const n = command.length;
@@ -242,6 +255,14 @@ const findClauseStartIndices = (command, masked) => {
     }
     const ch = command[i];
     if (ch === ';' || ch === '\n' || ch === '(') {
+      i = skipToStart(i + 1, false);
+      continue;
+    }
+    if (ch === '{' && isCommandWordStart(command, i) && /\s/.test(command[i + 1] ?? '')) {
+      i = skipToStart(i + 1, false);
+      continue;
+    }
+    if (ch === '}' && i > 0 && /\s/.test(command[i - 1])) {
       i = skipToStart(i + 1, false);
       continue;
     }
@@ -387,6 +408,15 @@ const clauseTailFrom = (command, index) => {
       end = i;
       break;
     }
+    if (ch === '}' && i > 0 && /\s/.test(rest[i - 1])) {
+      // A brace group's closing `}` (F-00064), the `}` counterpart to `)` above: guarded on a
+      // preceding whitespace character — the same structural requirement real bash syntax already
+      // imposes on this reserved word (`findClauseStartIndices`'s docstring) — so it never
+      // truncates a `${VAR}` parameter expansion or a `file{a,b}` brace expansion, neither of
+      // which has whitespace before its own `}`.
+      end = i;
+      break;
+    }
     if (ch === '&') {
       const prev = i > 0 ? rest[i - 1] : '';
       const next = i + 1 < rest.length ? rest[i + 1] : '';
@@ -472,6 +502,79 @@ const resolveAgainstBase = (text, base) => (path.isAbsolute(text) ? text : path.
  * resolution must not be lost. Either way this can only ever ADD candidates, never silently narrow
  * the set to something an ordinary non-`||` command would already have produced — the same
  * no-new-false-block guarantee `resolveCdTarget`'s dynamic-`cd` fallback already had.
+ *
+ * A SIXTH case (F-00064/F-00065, PR #880 round 3) is the root cause the first five cases were each
+ * one symptom of: `findRemovalInvocations` only ever inspected a clause's OWN first token
+ * (`tokens[execIndex]`, right after any `NAME=value` prefixes) as the candidate `cd`/`rm`/`git`.
+ * Any other leading word abandoned the whole clause without looking further — so `{ cd <parent> &&
+ * rm -rf <basename>; }` (a brace group; `{` was not yet a recognized clause separator) and `eval
+ * "cd <parent> && rm -rf <basename>"` (the executable position is textually `eval`, not `cd`) both
+ * silently allowed. The fix is deliberately NOT a wrapper name list (`eval`, `command`, `env`,
+ * `nohup`, `time`, `builtin`, …): that is the same losing shape as the discriminator blocklist PR
+ * #854 abandoned after five iterations — it requires enumerating every wrapper, and the next
+ * unlisted one reopens the hole. Instead the walk inverts its own default: when the token at the
+ * current cursor is not itself `cd`/`rm`/`git` (and not a dynamic executable position), it no
+ * longer abandons the clause — it advances the cursor by one token and tries again, treating the
+ * unrecognized word as a possible transparent wrapper rather than as proof there is nothing here.
+ * This is closed by construction: an unlisted wrapper is just another token the walk scans past,
+ * not a gap in a list. The scan is bounded and terminates the instant it finds `cd`, `rm`, a
+ * dynamic executable position, or a CERTAIN `git` (the clause's own first token) whose subcommand
+ * check runs to completion, matched or not — once any of those is identified, the tokens after it
+ * are that command's OWN arguments, not a second command to keep hunting through (so a `git commit
+ * -m "git worktree remove /x"` clause still stops cleanly at `commit`, never re-scanning into the
+ * commit message text for a second, spurious match). An UNCERTAIN `git` (found only after skipping
+ * unrecognized leading tokens) whose subcommand ISN'T `worktree remove` is the one case the walk
+ * does NOT stop at: it resumes scanning instead, because at an uncertain position the walk cannot
+ * even be sure `git` is the executable rather than some other command's plain argument (`sudo -u
+ * git rm -rf <worktree>` — `git` here is a username, `-u`'s value, not a command) — stopping there
+ * would let a coincidental token hide the real `rm` that follows, the identical under-detection
+ * this whole fix exists to close, one token later.
+ *
+ * This generality creates one asymmetry the walk must account for: a `cd`/`rm`/`git` match found at
+ * the clause's own first token (cursor 0, after any env-assignment prefix) is CERTAIN to run if the
+ * clause runs at all — the same guarantee cases 1-5 above already relied on. A match found only
+ * after skipping ≥1 unrecognized leading token is UNCERTAIN, because this walk cannot tell a
+ * genuine transparent wrapper (`nohup rm -rf x` really does run `rm`) from an ordinary command whose
+ * own arguments merely contain the literal words `cd <path>` (`echo "cd /tmp"` prints text; it does
+ * not change directory — and its quoted argument is not masked here the way it would be for
+ * `bash-patterns.json`'s regex matcher, so the token walk sees `"cd` and `/tmp"` as ordinary
+ * whitespace-split tokens). An uncertain `rm`/`git` match is evaluated exactly like a certain one —
+ * finding one to check can only ADD scrutiny a real removal might need, never remove it, so treating
+ * it as fully real is safe in the direction this guard already favors (over-tighten, never
+ * under-detect). An uncertain `cd` match is different: trusting it to REPLACE the tracked cwd
+ * candidate set the way a certain `cd` does could make a later removal resolve against a directory
+ * the shell never actually stood in (the `echo` case above), silently losing track of the real one —
+ * an under-detection this guard must not introduce. So an uncertain `cd` match's resolved target is
+ * UNIONED into the existing candidate set instead, the identical never-narrow discipline case 5
+ * above already applies to a `||`-guarded `cd`: the prior candidates are never discarded, only
+ * possibly widened, so a real removal at the original, correct cwd is never missed even when the
+ * "wrapper" preceding the `cd` turns out to have been an ordinary print/data command all along.
+ *
+ * Two smaller, mechanical fixes travel with the same round: `{` and `}` join `(`/`)`/`;`/`|`/newline
+ * as clause boundaries in `findClauseStartIndices` (so a brace group decomposes into its own
+ * clauses at all) and in `clauseTailFrom` (so a brace group's closing `}` cannot ride into a
+ * clause's own trailing token the same way an unhandled `)` once could, F-00058). Both are guarded
+ * on whitespace immediately before `{`/`}` (and whitespace immediately after `{`) — the same
+ * structural requirement real bash syntax already imposes on a brace-group reserved word — so
+ * neither collides with `${VAR}` parameter expansion or a `file{a,b}` brace expansion, where the
+ * brace is never whitespace-adjacent. And `parseWorktreeRemoveArgs` now runs every token through
+ * `normalizeShellWord` before classifying it, the same discipline `parseRmRemovalArgs` already had:
+ * previously it kept a `git worktree remove` positional argument's RAW token text, so `eval`'s
+ * unmasked, not-quote-aware tokenization could leave the eval string's own dangling closing quote
+ * attached to the path argument (`somepath"`) — accepted as "literal" by `isLiteralPathArg` (whose
+ * exclusion set did not cover quote characters either — now fixed there too, as defense in depth,
+ * the same belt-and-suspenders pattern already applied to `(`/`)` there) and then resolved to a path
+ * that exists nowhere, denying only by accident through the unrelated `worktree-remove-unverifiable`
+ * fallback rather than by actually verifying anything.
+ *
+ * A widened `resolutionCwds` set (UNCERTAIN `cd` unions included) exposed the same "denies by
+ * accident, not by verification" defect one level up, in how `evaluateOneInvocation` merged
+ * multiple candidates: it returned the FIRST non-null decision found, so an earlier candidate that
+ * simply does not exist (`worktree-remove-unverifiable` — nothing there to verify) could win over a
+ * LATER candidate that resolves to a real, confirmed-unsafe registered worktree, reporting the
+ * wrong `pattern_id` for a correct-by-coincidence block. `evaluateOneInvocation` now tries every
+ * candidate and prefers a CONFIRMED-unsafe verdict (`isConfirmedUnsafeDecision`) over a
+ * cannot-verify one, regardless of which candidate produced which — see that function's docstring.
  */
 const findRemovalInvocations = (command, cwd) => {
   const masked = computeMaskedSpans(command);
@@ -482,70 +585,122 @@ const findRemovalInvocations = (command, cwd) => {
     const tokens = clauseTailFrom(command, clauseStart).trim().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) continue;
 
-    let execIndex = 0;
-    while (execIndex < tokens.length && isEnvAssignmentToken(tokens[execIndex])) execIndex += 1;
-    if (execIndex >= tokens.length) continue;
+    let cursor = 0;
+    while (cursor < tokens.length && isEnvAssignmentToken(tokens[cursor])) cursor += 1;
+    if (cursor >= tokens.length) continue;
 
-    const { text: executable, dynamic } = normalizeShellWord(tokens[execIndex]);
-    const resolutionCwds = cwdCandidates;
+    // The clause's own first token (post-assignments) is a CERTAIN executable position — it runs
+    // if the clause runs at all, the same guarantee every earlier fix case relied on. Any position
+    // reached only by scanning past ≥1 unrecognized leading token is UNCERTAIN — this walk cannot
+    // tell a genuine transparent wrapper from an ordinary command whose own arguments merely
+    // contain the literal words `cd <path>` (see the module docstring's SIXTH case).
+    const certainCursor = cursor;
 
-    if (dynamic) {
-      if (containsWorktreeRemoveTokens(tokens, execIndex + 1)) {
-        invocations.push({ kind: 'git', unresolvableExecutable: true, resolutionCwds });
+    while (cursor < tokens.length) {
+      const { text: executable, dynamic } = normalizeShellWord(tokens[cursor]);
+      const resolutionCwds = cwdCandidates;
+
+      if (dynamic) {
+        if (containsWorktreeRemoveTokens(tokens, cursor + 1)) {
+          invocations.push({ kind: 'git', unresolvableExecutable: true, resolutionCwds });
+        }
+        break; // a dynamic executable position is terminal — nothing further to resolve here
       }
-      continue;
-    }
-    if (!executable) continue;
-
-    const basename = path.basename(executable);
-
-    if (basename === 'cd') {
-      const text = extractCdTargetText(tokens.slice(execIndex + 1));
-      if (text === null) {
-        cwdCandidates = precededByOr ? [...new Set([...cwdCandidates, cwd])] : [cwd];
-      } else {
-        const resolved = cwdCandidates.map((base) => resolveAgainstBase(text, base));
-        cwdCandidates = precededByOr ? [...new Set([...cwdCandidates, ...resolved])] : [...new Set(resolved)];
+      if (!executable) {
+        cursor += 1; // an empty-normalized token (e.g. a stray `""`) — keep scanning past it
+        continue;
       }
-      continue;
-    }
 
-    if (basename === 'rm') {
-      invocations.push({ kind: 'rm', argTokens: tokens.slice(execIndex + 1), resolutionCwds });
-      continue;
-    }
-    if (basename !== 'git') continue;
+      const basename = path.basename(executable);
+      const isUncertain = cursor > certainCursor;
 
-    const subcommandIndex = skipGitGlobalOptions(tokens, execIndex + 1);
-    if (subcommandIndex === -1) continue;
-    if (tokens[subcommandIndex] !== 'worktree' || tokens[subcommandIndex + 1] !== 'remove') continue;
-    invocations.push({ kind: 'git', argTokens: tokens.slice(subcommandIndex + 2), resolutionCwds });
+      if (basename === 'cd') {
+        const text = extractCdTargetText(tokens.slice(cursor + 1));
+        if (isUncertain) {
+          // Uncertain match: UNION only, never replace — a spurious wrapper misread can only add
+          // a candidate, never lose track of the real one (module docstring, SIXTH case).
+          if (text !== null) {
+            const resolved = cwdCandidates.map((base) => resolveAgainstBase(text, base));
+            cwdCandidates = [...new Set([...cwdCandidates, ...resolved])];
+          }
+        } else if (text === null) {
+          cwdCandidates = precededByOr ? [...new Set([...cwdCandidates, cwd])] : [cwd];
+        } else {
+          const resolved = cwdCandidates.map((base) => resolveAgainstBase(text, base));
+          cwdCandidates = precededByOr ? [...new Set([...cwdCandidates, ...resolved])] : [...new Set(resolved)];
+        }
+        break; // `cd`'s own remaining tokens are its target/flags, not a second command to scan
+      }
+
+      if (basename === 'rm') {
+        invocations.push({ kind: 'rm', argTokens: tokens.slice(cursor + 1), resolutionCwds });
+        break; // `rm`'s own remaining tokens are its arguments, not a second command to scan
+      }
+
+      if (basename === 'git') {
+        const subcommandIndex = skipGitGlobalOptions(tokens, cursor + 1);
+        if (subcommandIndex !== -1 && tokens[subcommandIndex] === 'worktree' && tokens[subcommandIndex + 1] === 'remove') {
+          invocations.push({ kind: 'git', argTokens: tokens.slice(subcommandIndex + 2), resolutionCwds });
+          break; // identified `git worktree remove` — its own tail is the path argument, not a second command
+        }
+        if (!isUncertain) break; // a CERTAIN `git` that isn't `worktree remove` — its own args are not a second command
+        // An UNCERTAIN `git` that isn't `worktree remove` might not even be the executable at all —
+        // e.g. `sudo -u git rm -rf <worktree>`, where `git` is a flag's VALUE (a username), not a
+        // command. Stopping here would let the wrapper walk itself hide the real `rm` that follows.
+        // Keep scanning rather than let a coincidental token stand in for "nothing here" (same
+        // "not yet found, not proven absent" discipline the whole walk applies to leading tokens).
+        cursor += 1;
+        continue;
+      }
+
+      // Unrecognized token — possibly a transparent wrapper (`eval`, `command`, `env`, `nohup`,
+      // `time`, `builtin`, or one not yet named): keep scanning rather than abandoning the clause
+      // (F-00064/F-00065, module docstring SIXTH case).
+      cursor += 1;
+    }
   }
   return invocations;
 };
 
 /** True when `arg` is a literal path this hook can resolve without executing anything — no shell
- * variable (`$VAR`, `${VAR}`), command substitution (`$(...)`, `` `...` ``), glob metacharacter, or
- * parenthesis. A dynamic argument cannot be resolved by static inspection, so the unpushed-commit
- * check below has nothing to run against — same "cannot verify, must refuse" posture
- * pattern-loader.js takes for a pattern file it cannot parse. `(`/`)` are rejected here as defense
- * in depth (F-00058): after `clauseTailFrom`'s own fix, an unmasked `)` can no longer reach a token
- * via that path at all, but a path argument built any other way (e.g. a future tokenizer change)
- * should not silently treat a stray paren as an ordinary path character either. */
-const isLiteralPathArg = (arg) => arg.length > 0 && !/[$`*?[\]{}()]/.test(arg);
+ * variable (`$VAR`, `${VAR}`), command substitution (`$(...)`, `` `...` ``), glob metacharacter,
+ * parenthesis, or quote character. A dynamic argument cannot be resolved by static inspection, so
+ * the unpushed-commit check below has nothing to run against — same "cannot verify, must refuse"
+ * posture pattern-loader.js takes for a pattern file it cannot parse. `(`/`)` are rejected here as
+ * defense in depth (F-00058): after `clauseTailFrom`'s own fix, an unmasked `)` can no longer reach
+ * a token via that path at all, but a path argument built any other way (e.g. a future tokenizer
+ * change) should not silently treat a stray paren as an ordinary path character either. `'`/`"` are
+ * rejected the same way, for the same reason (F-00064/F-00065, PR #880 round 3): after
+ * `parseWorktreeRemoveArgs`'s own fix (below), a genuine quote character can no longer reach this
+ * argument through that path either — an `eval "..."` argument's dangling closing quote is now
+ * stripped by `normalizeShellWord` before it ever gets here — but a stray quote reaching
+ * `isLiteralPathArg` any other way should not be silently accepted as an ordinary path character;
+ * no real filesystem path ever legitimately contains one. */
+const isLiteralPathArg = (arg) => arg.length > 0 && !/['"$`*?[\]{}()]/.test(arg);
 
 /** Splits the token array following `worktree remove` into `{ force, pathArg }`. `--force` or
  * `-f` may appear before or after the path. Anything else — a second flag, `--`, no path, more
- * than one positional argument — leaves `pathArg` null, and the caller treats that exactly like a
- * dynamic argument: nothing static to verify, so refuse. */
+ * than one positional argument, or a token whose own normalization is dynamic — leaves `pathArg`
+ * null, and the caller treats that exactly like a dynamic argument: nothing static to verify, so
+ * refuse. Every token is run through `normalizeShellWord` first (F-00064/F-00065, PR #880 round 3)
+ * — the same discipline `parseRmRemovalArgs` already had, previously missing here: a raw,
+ * unnormalized token kept a literal quote character that belongs to a SURROUNDING construct, not
+ * to the path itself — e.g. `eval "cd <parent> && git worktree remove <basename>"`, whose unmasked,
+ * not-quote-aware clause tokenization (bash-context.js's deliberate exception for `eval`'s own
+ * argument) can leave the eval string's dangling closing quote attached as `<basename>"`.
+ * Normalizing strips it the same way it already strips one from an ordinary escaped or quoted
+ * spelling (`"/abs/path"`, `/abs/pa\th`), rather than accepting the mangled result as "literal" and
+ * denying only by accident when it fails to resolve anywhere. */
 const parseWorktreeRemoveArgs = (argTokens) => {
   let force = false;
   const positional = [];
-  for (const token of argTokens) {
-    if (token === '--force' || token === '-f') {
+  for (const rawToken of argTokens) {
+    const { text, dynamic } = normalizeShellWord(rawToken);
+    if (dynamic) return { force, pathArg: null };
+    if (text === '--force' || text === '-f') {
       force = true;
     } else {
-      positional.push(token);
+      positional.push(text);
     }
   }
   if (positional.length !== 1) return { force, pathArg: null };
@@ -926,14 +1081,33 @@ const evaluateResolvedWorktree = (resolvedPath, shape) => {
   return null; // clean — this invocation alone does not block
 };
 
+/** True when `decision` is a CONFIRMED-unsafe verdict (`shape.dirtyId`/`shape.unpushedId`) rather
+ * than a "cannot verify" one (`shape.dirtyUnknownId`/`shape.detachedId`/`shape.unverifiableId`) —
+ * `evaluateOneInvocation`'s multi-candidate merge below uses this to prefer a genuinely-confirmed
+ * problem over a same-invocation candidate that merely failed to resolve at all. */
+const isConfirmedUnsafeDecision = (decision, shape) =>
+  decision.pattern_id === shape.dirtyId || decision.pattern_id === shape.unpushedId;
+
 /** Evaluates one `git worktree remove` invocation's `{ argTokens }` against `resolutionCwds` — the
- * invocation's own tracked SET of candidate cwds (`findRemovalInvocations`'s `cd` simulation, plural
- * since F-00059: a `||`-guarded `cd` earlier in the command can leave more than one directory
- * plausible), not necessarily just the harness's original `cwd` — returning a block decision or
- * null when EVERY candidate resolution is safe (`clean`). Tries each candidate base only until a
- * relative `pathArg` resolves to a path already tried (an absolute `pathArg` resolves to the same
- * path regardless of base, so it is only ever tried once). `evaluateWorktreeRemoval` below decides
- * what "safe overall" means across every invocation in the command. */
+ * invocation's own tracked SET of candidate cwds (`findRemovalInvocations`'s `cd` simulation,
+ * plural since F-00059: a `||`-guarded `cd`, or now an UNCERTAIN wrapper-scanned `cd`, F-00064/
+ * F-00065, can leave more than one directory plausible), not necessarily just the harness's
+ * original `cwd` — returning a block decision or null when EVERY candidate resolution is safe
+ * (`clean`). Tries each candidate base only until a relative `pathArg` resolves to a path already
+ * tried (an absolute `pathArg` resolves to the same path regardless of base, so it is only ever
+ * tried once). `evaluateWorktreeRemoval` below decides what "safe overall" means across every
+ * invocation in the command.
+ *
+ * The merge across candidates does NOT stop at the first non-null decision (pre-F-00064/F-00065):
+ * an earlier candidate that merely fails to resolve to anything real (`unverifiable`/`detached`) is
+ * a fallback, not a verdict — checking only it and stopping there, ahead of a LATER candidate that
+ * resolves to a real, CONFIRMED-unsafe registered worktree, would report the wrong `pattern_id` for
+ * a reason that happens to be correct by coincidence, the exact defect class this round closes for
+ * `parseWorktreeRemoveArgs`'s own quote handling. So every candidate is tried; a confirmed-unsafe
+ * decision (`isConfirmedUnsafeDecision`) returns immediately (the most specific, actionable verdict
+ * available), and only once none exists does the walk fall back to the first "cannot verify"
+ * decision it found along the way — still fail-closed, but for the right reason when a better one
+ * is available. */
 const evaluateOneInvocation = (argTokens, resolutionCwds) => {
   const { force, pathArg } = parseWorktreeRemoveArgs(argTokens);
   if (!pathArg || !isLiteralPathArg(pathArg)) {
@@ -950,14 +1124,17 @@ const evaluateOneInvocation = (argTokens, resolutionCwds) => {
 
   const shape = gitRemovalShape(force);
   const tried = new Set();
+  let fallback = null;
   for (const base of resolutionCwds) {
     const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(base, pathArg);
     if (tried.has(resolvedPath)) continue;
     tried.add(resolvedPath);
     const decision = evaluateResolvedWorktree(resolvedPath, shape);
-    if (decision) return decision;
+    if (!decision) continue; // this candidate resolves clean — every OTHER candidate still needs checking
+    if (isConfirmedUnsafeDecision(decision, shape)) return decision;
+    fallback = fallback ?? decision;
   }
-  return null;
+  return fallback;
 };
 
 /** Evaluates one `rm` clause's `{ argTokens }`, resolving any relative positional argument against

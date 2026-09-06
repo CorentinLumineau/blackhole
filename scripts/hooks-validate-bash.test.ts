@@ -2267,6 +2267,365 @@ describe('validate-bash-command.js — rm-shaped worktree removal (#803)', () =>
   });
 });
 
+// F-00064/F-00065 (review round 3 on PR #880): `findRemovalInvocations` only ever inspected a
+// clause's OWN first token as the candidate `cd`/`rm`/`git` — any other leading word abandoned
+// the whole clause. A brace group (`{` was not yet a recognized clause separator) and `eval`
+// (the executable position is textually `eval`, not `cd`/`rm`/`git`) both silently allowed the
+// identical F-00043 shape through a different spelling. The fix is a generic wrapper-token walk,
+// not an enumerated wrapper list — these tests assert both the specific holes and the walk's
+// generality against wrappers never explicitly named in the fix.
+describe('validate-bash-command.js — worktree-removal guard generic wrapper walk (#803, F-00064/F-00065)', () => {
+  test('deny: `{ cd <parent> && rm -rf <basename>; }` is checked against the real target (F-00064)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-brace-rm',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const parent = path.dirname(worktree);
+        const basename = path.basename(worktree);
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`{ cd ${parent} && rm -rf ${basename}; }`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'rm-worktree-unpushed',
+        });
+      },
+    );
+  });
+
+  // Parity leg: same brace-group shape, `git worktree remove` spelling.
+  test('deny: `{ cd <parent> && git worktree remove <basename>; }` reaches the same verdict as the `rm` spelling (F-00064 parity)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-brace-git',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const parent = path.dirname(worktree);
+        const basename = path.basename(worktree);
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`{ cd ${parent} && git worktree remove ${basename}; }`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-unpushed',
+        });
+      },
+    );
+  });
+
+  // Over-tightening control: an ordinary brace-group cleanup of a non-worktree path must stay
+  // allowed — proving the `{`/`}` boundary fix does not attach a new refusal to `{ cd <dir> &&
+  // rm -rf <ordinary>; }` generally.
+  test('allow: `{ cd <dir> && rm -rf <ordinary>; }` stays allowed — the brace-group fix does not over-tighten', async () => {
+    await withTempGitRepo('blackhole-hook-bash-', async (mainRepo) => {
+      const ordinary = path.join(mainRepo, 'build-output');
+      fs.mkdirSync(ordinary, { recursive: true });
+
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`{ cd ${mainRepo} && rm -rf build-output; }`),
+        mainRepo,
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('deny: `eval "cd <parent> && rm -rf <basename>"` is checked against the real target (F-00065)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-eval-rm',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const parent = path.dirname(worktree);
+        const basename = path.basename(worktree);
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`eval "cd ${parent} && rm -rf ${basename}"`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'rm-worktree-unpushed',
+        });
+      },
+    );
+  });
+
+  // Parity leg, AND the quote-handling regression (F-00065 second defect): before the fix, the
+  // eval string's dangling closing quote rode into `pathArg` as `<basename>"`, which resolved
+  // nowhere and denied only by accident through `worktree-remove-unverifiable` rather than by
+  // actually verifying anything. Asserting `pattern_id: 'worktree-remove-unpushed'` here (not
+  // `worktree-remove-unverifiable`) proves the path was resolved correctly, not coincidentally
+  // refused.
+  test('deny: `eval "cd <parent> && git worktree remove <basename>"` reaches the same verdict as the `rm` spelling, verifying the real path (F-00065 parity + quote fix)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-eval-git',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const parent = path.dirname(worktree);
+        const basename = path.basename(worktree);
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`eval "cd ${parent} && git worktree remove ${basename}"`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-unpushed',
+        });
+      },
+    );
+  });
+
+  // Generality probes: none of these wrapper words appear anywhere in the fix (no enumerated
+  // list) — each must still be caught by the same generic cursor-advance walk.
+  const WRAPPER_PROBES: Array<{ label: string; build: (parent: string, basename: string) => string }> = [
+    { label: '`command cd <parent> && rm -rf <basename>`', build: (p, b) => `command cd ${p} && rm -rf ${b}` },
+    { label: '`env cd <parent> && rm -rf <basename>`', build: (p, b) => `env cd ${p} && rm -rf ${b}` },
+    { label: '`builtin cd <parent> && rm -rf <basename>`', build: (p, b) => `builtin cd ${p} && rm -rf ${b}` },
+    { label: '`\\cd <parent> && rm -rf <basename>` (leading backslash)', build: (p, b) => `\\cd ${p} && rm -rf ${b}` },
+  ];
+
+  for (const [i, { label, build }] of WRAPPER_PROBES.entries()) {
+    test(`deny: ${label} — the walk is generic, not a wrapper list`, async () => {
+      await withRemoteTrackedWorktree(
+        'blackhole-hook-wt-803-',
+        `blackhole/issue-803-wrapper-${i}`,
+        async (mainRepo, worktree, push) => {
+          push();
+          fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+          runGit(worktree, ['add', 'unpushed.txt']);
+          runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+          const parent = path.dirname(worktree);
+          const basename = path.basename(worktree);
+
+          const result = await runPreToolUseHook(SCRIPT, bashPayload(build(parent, basename)), mainRepo);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+          expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+          const events = readHookEvents(mainRepo);
+          expect(events).toHaveLength(1);
+          expect(events[0]).toMatchObject({
+            decision: 'deny',
+            tier: 'block',
+            pattern_id: 'rm-worktree-unpushed',
+          });
+        },
+      );
+    });
+  }
+
+  // `nohup`/`time` wrap `rm` directly in a single clause with no `cd` at all — before the fix,
+  // the leading wrapper word made the walk abandon the clause before ever seeing `rm`, so the
+  // removal was never checked at all (not merely resolved against the wrong cwd).
+  const DIRECT_WRAPPER_PROBES: Array<{ label: string; build: (worktree: string) => string }> = [
+    { label: '`nohup rm -rf <worktree>`', build: (wt) => `nohup rm -rf ${wt}` },
+    { label: '`time rm -rf <worktree>`', build: (wt) => `time rm -rf ${wt}` },
+  ];
+
+  for (const [i, { label, build }] of DIRECT_WRAPPER_PROBES.entries()) {
+    test(`deny: ${label} — a wrapped \`rm\` with no \`cd\` is still checked`, async () => {
+      await withRemoteTrackedWorktree(
+        'blackhole-hook-wt-803-',
+        `blackhole/issue-803-direct-wrapper-${i}`,
+        async (mainRepo, worktree, push) => {
+          push();
+          fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+          runGit(worktree, ['add', 'unpushed.txt']);
+          runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+          const result = await runPreToolUseHook(SCRIPT, bashPayload(build(worktree)), mainRepo);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+          expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+          const events = readHookEvents(mainRepo);
+          expect(events).toHaveLength(1);
+          expect(events[0]).toMatchObject({
+            decision: 'deny',
+            tier: 'block',
+            pattern_id: 'rm-worktree-unpushed',
+          });
+        },
+      );
+    });
+  }
+
+  // A flag VALUE that happens to read `git` (a username, not the executable) must not hide the
+  // real `rm` that follows it: before this fix, an UNCERTAIN `git` match whose subcommand check
+  // failed stopped the whole scan — `sudo -u git rm -rf <worktree>` was never checked at all,
+  // because the walk mistook the `-u` flag's value for a `git` invocation and gave up once
+  // `git`'s own next token (`rm`) wasn't `worktree`.
+  test('deny: `sudo -u git rm -rf <worktree>` is still checked — a flag value reading `git` does not hide the real `rm`', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-sudo-git-flag-value',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`sudo -u git rm -rf ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'rm-worktree-unpushed',
+        });
+      },
+    );
+  });
+
+  // Parity control for the multi-candidate merge fix: a `cd` wrapper-scanned as uncertain leaves
+  // an ORIGINAL (wrong) candidate ahead of the correct one in `resolutionCwds`. Before the merge
+  // fix, `evaluateOneInvocation` returned the FIRST non-null decision — the wrong candidate's
+  // `worktree-remove-unverifiable` (nothing there to verify) — instead of the later, correct
+  // candidate's confirmed `worktree-remove-unpushed`. Both spellings must report the SAME,
+  // confirmed reason regardless of which candidate happens to be tried first.
+  test('deny: `command cd <parent> && git worktree remove <basename>` reports the confirmed reason, not a coincidental one (multi-candidate merge)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-wrapper-git-merge',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const parent = path.dirname(worktree);
+        const basename = path.basename(worktree);
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`command cd ${parent} && git worktree remove ${basename}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-unpushed',
+        });
+      },
+    );
+  });
+
+  // Over-tightening control for the wrapper walk itself: `echo` is not a transparent wrapper — it
+  // prints its argument rather than executing it — so a command that merely mentions `cd`/`rm` in
+  // an echoed string must stay allowed. This is the concrete case the UNION-not-replace `cd`
+  // semantics exist to protect: even if the walk misreads `echo "cd /tmp"` as a `cd`, the ORIGINAL
+  // cwd stays a candidate too, so a real, correctly-resolved `rm` target is never missed.
+  test('allow: `echo "cd /tmp" && rm -rf <ordinary>` stays allowed — echo is not a transparent wrapper', async () => {
+    await withTempGitRepo('blackhole-hook-bash-', async (mainRepo) => {
+      const ordinary = path.join(mainRepo, 'build-output');
+      fs.mkdirSync(ordinary, { recursive: true });
+
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`echo "cd /tmp" && cd ${mainRepo} && rm -rf build-output`),
+        mainRepo,
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  // Must-still-allow controls carried over from the F-00043/F-00058 fix rounds — the generic walk
+  // must not regress any of these ordinary idioms.
+  test('allow: `cd "$BUILD_DIR" && rm -rf dist` stays allowed — a dynamic `cd` target is not tracked, by design', async () => {
+    await withTempGitRepo('blackhole-hook-bash-', async (mainRepo) => {
+      const dist = path.join(mainRepo, 'dist');
+      fs.mkdirSync(dist, { recursive: true });
+
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('cd "$BUILD_DIR" && rm -rf dist'), mainRepo);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+});
+
 // Uncaught-exception fail-open regression (#580): a non-string `cwd` reaches
 // `worktree-removal-guard.js`'s unguarded `path.resolve(cwd, pathArg)` (line 245, reached via
 // `evaluateWorktreeRemoval`) and throws a `TypeError` outside every existing try/catch in
