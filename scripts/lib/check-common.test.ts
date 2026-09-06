@@ -232,6 +232,122 @@ describe('appendIndexRowIfAbsent — sorted insert', () => {
     expect(result?.content.startsWith(content)).toBe(true);
     expect(result?.content).toContain(rowLine(row('audits/a.md')));
   });
+
+  // Issue #871 Defect 1: the naive `line.split('|')` used by parseIndexTableRows does not
+  // respect GFM's `\|` escape, so a pre-existing row with an escaped pipe in its summary cell
+  // misparses into an extra cell, shifting every later column right by one and dropping the
+  // final `review_trigger` cell. Re-rendering that misparsed row from its shifted fields then
+  // corrupts a row this operation never intended to touch. Byte-for-byte survival of untouched
+  // rows is the fix; this fixture pins the exact corrupted output unfixed code produces.
+  test('(i) a pre-existing row with an escaped pipe survives byte-for-byte (Defect 1)', () => {
+    const escapedRow = '| decisions/ADR-025-validation-idiom.md | `string \\| null` | adr | current | on ADR acceptance |';
+    const content = `# Doc Index\n\n${HEADER}${escapedRow}\n`;
+    const result = appendIndexRowIfAbsent(content, row('plans/unrelated.md'));
+    expect(result.appended).toBe(true);
+    expect(result.content).toContain(escapedRow);
+    expect(result.content).not.toContain('string \\ | null');
+  });
+
+  // Issue #871 Defect 2: when some rows are rendered as bare paths and others as
+  // self-referential markdown links (`[path](path)`, mercure schema per a target repo's own
+  // convention), raw byte-order comparison sorts `[` (0x5B) ahead of every lowercase path
+  // segment (`a`-`z` start at 0x61) — bracket-wrapped rows cluster before bare-path rows
+  // regardless of the two paths' true alphabetical order. Canonicalizing the path extraction
+  // (unwrapping the markdown link before comparing) restores true path order.
+  test('(j) a markdown-link-wrapped row sorts by its unwrapped path, not raw byte order (Defect 2)', () => {
+    const linkRow = '| [plans/zzz.md](plans/zzz.md) | Zzz summary | plan | current | on release |';
+    const content = `# Doc Index\n\n${HEADER}${linkRow}\n`;
+    const result = appendIndexRowIfAbsent(content, row('audits/a.md'));
+    expect(result.appended).toBe(true);
+    expect(parseIndexTableRows(result.content).map((r) => r.path)).toEqual([
+      'audits/a.md',
+      '[plans/zzz.md](plans/zzz.md)',
+    ]);
+  });
+
+  // Issue #871 idempotency check: the dedup guard (line ~210) must canonicalize the same way
+  // the sort key does, or a row already present in link-wrapped form is not recognized as
+  // present when the bare-path equivalent is offered — the carry-step would then double-insert
+  // it on a re-spawn against a repo using mercure's link-wrapped rendering convention.
+  test('(k) a row already present in link-wrapped form is not re-inserted when offered bare (Defect 2 dedup)', () => {
+    const linkRow = '| [plans/zzz.md](plans/zzz.md) | Zzz summary | plan | current | on release |';
+    const content = `# Doc Index\n\n${HEADER}${linkRow}\n`;
+    const result = appendIndexRowIfAbsent(content, row('plans/zzz.md'));
+    expect(result.appended).toBe(false);
+    expect(result.content).toBe(content);
+  });
+
+  // An excluded-character href group (`[^)]*`) cannot span a literal `)` inside the href
+  // itself, so a self-referential link whose path contains parens (e.g. `notes(final).md`) is
+  // never unwrapped at all — the dedup guard and sort key then compare the whole bracketed
+  // markdown instead of the underlying path, reintroducing a double-insert/mis-sort failure.
+  // Table-driven over the degenerate matrix that surfaces this, so the regression can't slip
+  // back in silently.
+  test.each([
+    // [label, existing row's raw path-cell text, offered path expected to canonicalize to
+    //  the same string (so appendIndexRowIfAbsent must treat it as already present)]
+    ['text differs from href — href wins', '[abc](def)', 'def'],
+    ['nested brackets in link text — unparseable, falls back to raw text', '[[a]](x)', '[[a]](x)'],
+    ['unclosed bracket — unparseable, falls back to raw text', '[abc', '[abc'],
+    ['bare path containing a bracket, not link-shaped — falls back to raw text', 'abc[def].md', 'abc[def].md'],
+    ['empty link — both groups empty, canonicalizes to the empty string', '[]()', ''],
+    ['bare path with parens, not link-shaped — falls back to raw text', 'docs/report(v2).md', 'docs/report(v2).md'],
+    [
+      'self-referential link whose path contains parens (the reported regression)',
+      '[docs/notes(final).md](docs/notes(final).md)',
+      'docs/notes(final).md',
+    ],
+  ])('canonicalizes %s', (_label, existingCell, offeredPath) => {
+    const content = `# Doc Index\n\n${HEADER}| ${existingCell} | Summary | ref | current | quarterly |\n`;
+    const result = appendIndexRowIfAbsent(content, row(offeredPath));
+    expect(result.appended).toBe(false);
+    expect(result.content).toBe(content);
+  });
+
+  // Same case as the table above, isolated as its own test so the red-before-green evidence
+  // is unambiguous: against the pre-fix regex (`[^)]*` for the href group) this fails because
+  // the parenthetical href is never unwrapped, so `appended` comes back `true` and a duplicate
+  // row is inserted alongside the original instead of being recognized as the same path.
+  test('a parenthetical self-referential link is recognized as a duplicate of its bare path (regression)', () => {
+    const linkRow = '| [docs/notes(final).md](docs/notes(final).md) | Notes | ref | current | quarterly |';
+    const content = `# Doc Index\n\n${HEADER}${linkRow}\n`;
+    const result = appendIndexRowIfAbsent(content, row('docs/notes(final).md'));
+    expect(result.appended).toBe(false);
+    expect(result.content).toBe(content);
+  });
+
+  // Mirrors test (j) above but with a parenthetical path: the link-wrapped row must sort by
+  // its unwrapped path ('docs/notes(final).md'), landing between 'audits/z.md' and
+  // 'plans/aaa.md' — not by its raw bracket text (which would sort before every bare path,
+  // since '[' is 0x5B, ahead of the lowercase range).
+  test('a parenthetical self-referential link sorts by its unwrapped path, not raw byte order', () => {
+    const linkRow = '[docs/notes(final).md](docs/notes(final).md)';
+    const content = `# Doc Index\n\n${HEADER}${rowLine(row('audits/z.md'))}\n${rowLine(row('plans/aaa.md'))}\n`;
+    const withLink = appendIndexRowIfAbsent(content, row(linkRow));
+    expect(withLink.appended).toBe(true);
+
+    const result = appendIndexRowIfAbsent(withLink.content, row('docs/mmm.md'));
+    expect(result.appended).toBe(true);
+    expect(parseIndexTableRows(result.content).map((r) => r.path)).toEqual([
+      'audits/z.md',
+      'docs/mmm.md',
+      linkRow,
+      'plans/aaa.md',
+    ]);
+  });
+
+  // Judgment call on the `[]()` empty-link degenerate case (both groups empty, per the matrix
+  // above): two distinct empty-link rows would canonicalize to the same "" path and the second
+  // would be treated as a duplicate of the first. An empty markdown link is not a shape any
+  // real INDEX.md row-generator produces (every row carries a non-empty repo-relative path —
+  // `doc-governance.md` § Lifecycle Frontmatter), so this is accepted as a non-issue rather
+  // than special-cased: fixing it would add a rejection path for a malformed input the schema
+  // already rules out, for a case that cannot occur in practice (YAGNI).
+  test('two distinct empty-link rows would collide on canonicalization, by design (documented, not fixed)', () => {
+    const content = `# Doc Index\n\n${HEADER}| []() | First | ref | current | quarterly |\n`;
+    const result = appendIndexRowIfAbsent(content, row(''));
+    expect(result.appended).toBe(false);
+  });
 });
 
 // Issue #811 (ADR-031 Phase 1, Task 1/2): `byPathByteOrder` and `renderIndexRowLine` were

@@ -199,15 +199,49 @@ export const findTableBlock = (lines: string[]): { separatorIdx: number; blockEn
   return { separatorIdx, blockEnd };
 };
 
+// A repo may render the same INDEX.md path two different ways — blackhole's own bare-path
+// form, or mercure's self-referential markdown-link form (`[path](path)`, per a target repo's
+// own convention — `doc-governance.md` § Repo Convention Precedence). Strips the link wrapper
+// so both forms compare by the same underlying path string. The href group is greedy (`(.*)`),
+// not an excluded-character class, because a repo-relative path can itself contain a literal
+// `)` (e.g. `notes(final).md`); the `$` anchor is what makes greedy safe, forcing the match to
+// the link's actual closing paren rather than the first one encountered — an excluded-character
+// class stops at that first `)` and fails to match such a path at all, silently falling through
+// to the "not a link" branch below. Anchored `^...$` so a non-link cell that merely contains a
+// literal `[`/`]`/`)` character is returned unchanged rather than partial-matched.
+const canonicalIndexPath = (cell: string): string => {
+  const trimmed = cell.trim();
+  const link = trimmed.match(/^\[([^\]]*)\]\((.*)\)$/);
+  return link ? link[2] : trimmed;
+};
+
+// Extracts a row line's path cell directly from raw text — `line.split('|')[1]` trimmed —
+// rather than via parseIndexTableRows's full-row reconstruction, so a later cell's GFM-escaped
+// pipe (`\|`) can never shift this column. Safe even then, because a repo-relative path never
+// itself contains a literal `|` character — the first two `|` delimiters in any row line always
+// bound exactly the path column no matter what a later cell contains. Canonicalized via
+// canonicalIndexPath so a link-wrapped and bare rendering of the same path compare equal for
+// both dedup and sort.
+const rowPathFromRawLine = (line: string): string => canonicalIndexPath(line.split('|')[1] ?? '');
+
 // Idempotent, path-sorted row-insert primitive (issue #490, ADR-021 D2 carry-step; sorted
-// insert per issue #743). Built on parseIndexTableRows above (V-INT-02) and findTableBlock
-// above for row-block boundary detection. Guards a duplicate row on implementer re-spawn, then
-// rebuilds the entire row block in path order — [...existing, new].sort(...) — rather than
-// appending at the end, so concurrent carry/promotion PRs land their new rows at different
-// offsets instead of the same anchor line (the guaranteed-collision failure mode this issue
-// closes).
+// insert per issue #743). Built on findTableBlock above for row-block boundary detection.
+// Guards a duplicate row on implementer re-spawn, then rebuilds the entire row block in path
+// order — [...existing, new].sort(...) — rather than appending at the end, so concurrent
+// carry/promotion PRs land their new rows at different offsets instead of the same anchor line
+// (the guaranteed-collision failure mode this issue closes).
+//
+// Dedups and sorts via canonicalIndexPath / rowPathFromRawLine above, operating on raw
+// row-line text rather than parseIndexTableRows's field-level reconstruction, so an untouched
+// row survives byte-for-byte no matter what any of its cells contain. Same raw-line-preserving
+// technique as `decision-log-append.ts`'s `insertRecordRowsSorted` — reused, not reinvented
+// (V-INT-02); that function's own sort key (a numeric id, no rendering-style ambiguity) does
+// not generalize here, so `canonicalIndexPath` is new.
 export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow): { content: string; appended: boolean } => {
-  if (parseIndexTableRows(indexContent).some((r) => r.path === row.path)) return { content: indexContent, appended: false };
+  const canonicalNewPath = canonicalIndexPath(row.path);
+  if (parseIndexTableRows(indexContent).some((r) => canonicalIndexPath(r.path) === canonicalNewPath)) {
+    return { content: indexContent, appended: false };
+  }
 
   const lines = indexContent.split('\n');
   const { separatorIdx, blockEnd } = findTableBlock(lines);
@@ -219,8 +253,13 @@ export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow):
     return { content: `${indexContent}${indexContent.endsWith('\n') ? '' : '\n'}${line}\n`, appended: true };
   }
 
-  const sortedRows = [...parseIndexTableRows(indexContent), row].sort(byPathByteOrder);
-  const sortedLines = sortedRows.map(renderIndexRowLine);
+  const existingLines = lines.slice(separatorIdx + 1, blockEnd);
+  const newLine = renderIndexRowLine(row);
+  const sortedLines = [...existingLines, newLine].sort((a, b) => {
+    const pa = rowPathFromRawLine(a);
+    const pb = rowPathFromRawLine(b);
+    return pa < pb ? -1 : pa > pb ? 1 : 0;
+  });
 
   const rebuilt = [...lines.slice(0, separatorIdx + 1), ...sortedLines, ...lines.slice(blockEnd)].join('\n');
   return { content: rebuilt, appended: true };
