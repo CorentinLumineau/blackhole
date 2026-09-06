@@ -4,7 +4,7 @@ summary: "Blast-radius reference for shared check-utils.ts consumers across scri
 status: current
 review_trigger: "on check-utils.ts or scripts/checks/*.check.ts import change"
 created: 2026-07-26
-last_updated: 2026-09-06
+last_updated: 2026-09-07
 related:
   - scripts/checks/check-utils.ts
   - scripts/verify.ts
@@ -29,7 +29,7 @@ This note is the consumer graph for `V-SCOPE-03` planning — update it when imp
 `runChecks(): CheckResult[]`, and aggregates results. Any change to the `CheckResult` shape
 is **BREAKING** for all rows below.
 
-## `CheckResult` consumers (52 modules)
+## `CheckResult` consumers (57 modules)
 
 All paths are repo-relative. Imports verified against `main` at issue #410; refreshed at issue
 #462 (added `hooks.check.ts`, `stop-mode.check.ts` — both landed on `main` since #410 and were
@@ -55,7 +55,13 @@ against the live tree rather than trusting any of the three: 52 `*.check.ts` mod
 `reformulation-surface`, `route-shape`, `staging-schema`, `tree-registry`,
 `v-test09-hooks-claim`). These three numbers count three different, genuinely distinct sets (see
 § Maintenance for the count-by-count breakdown) — none of the three was "wrong" on its own terms,
-they were simply never reconciled against each other after each independent addition.
+they were simply never reconciled against each other after each independent addition; refreshed
+again at #945 (added `control-char.check.ts`; also found four pre-existing modules missing
+independently of #945's own addition — `argv-flags-adoption.check.ts`,
+`new-file-test-pairing.check.ts`, `read-json-file.check.ts`, `vcode-parity.check.ts` — landed on
+`main` since #882 and never added to this table; re-measured with the § Maintenance `rg`
+commands rather than hand-incrementing: 57 `*.check.ts` modules import from `check-utils.ts`
+today).
 
 | Consumer | Imports from `check-utils.ts` | Role |
 |----------|-------------------------------|------|
@@ -66,6 +72,7 @@ they were simply never reconciled against each other after each independent addi
 | `scripts/checks/agent-dir-citations.check.ts` | `root`, `CheckResult` | Agent-directory citation checks |
 | `scripts/checks/agent-plugins-build.check.ts` | `root`, `CheckResult` | agent-plugins.org build output checks |
 | `scripts/checks/agents.check.ts` | `root`, `read`, `CheckResult` | Agent prompt / gate-marker checks |
+| `scripts/checks/argv-flags-adoption.check.ts` | `read`, `CheckResult` | Argv-parsing shared-helper adoption checks |
 | `scripts/checks/audit-modules.check.ts` | `root`, `read`, `CheckResult` | Reviewer audit-module registry checks |
 | `scripts/checks/build-input-dirs.check.ts` | `root`, `CheckResult` | Build-input-only directory / INCLUDE-marker-site checks |
 | `scripts/checks/build.check.ts` | `root`, `CheckResult` | Build output parity checks |
@@ -77,6 +84,7 @@ they were simply never reconciled against each other after each independent addi
 | `scripts/checks/config-gate.check.ts` | `read`, `CheckResult` | Config gate marker checks |
 | `scripts/checks/config-registration.check.ts` | `read`, `root`, `CheckResult` | Config-key registration checks |
 | `scripts/checks/content-gates.check.ts` | `root`, `read`, `CheckResult` | Content gate marker checks |
+| `scripts/checks/control-char.check.ts` | `root`, `CheckResult` | Control-character source integrity checks |
 | `scripts/checks/coverage-regression.check.ts` | `read`, `CheckResult` | Coverage regression gate checks |
 | `scripts/checks/cwd-pin-guard.check.ts` | `read`, `CheckResult` | CLI `--cwd` pin checks |
 | `scripts/checks/deferred-reconciliation.check.ts` | `root`, `CheckResult` | Deferred-finding reconciliation checks |
@@ -92,12 +100,14 @@ they were simply never reconciled against each other after each independent addi
 | `scripts/checks/jq-empty-guard.check.ts` | `root`, `CheckResult` | `jq empty`-as-sufficient-guard prescription checks |
 | `scripts/checks/ledger-schema.check.ts` | `root`, `CheckResult` | Findings-ledger schema checks |
 | `scripts/checks/links.check.ts` | `root`, `read`, `CheckResult` | Markdown link integrity checks |
+| `scripts/checks/new-file-test-pairing.check.ts` | `read`, `CheckResult` | New-file test-pairing convention checks |
 | `scripts/checks/pareto-filing-gate.check.ts` | `root`, `read`, `CheckResult` | Pareto filing-gate checks |
 | `scripts/checks/parity-matrix.check.ts` | `root`, `CheckResult` | Platform parity matrix checks |
 | `scripts/checks/plan-quality-gate.check.ts` | `root`, `read`, `CheckResult` | Plan quality gate checks |
 | `scripts/checks/playbook.check.ts` | `root`, `read`, `CheckResult` | Playbook / phase doc checks |
 | `scripts/checks/prose-heredoc.check.ts` | `read`, `CheckResult` | Agent-prose heredoc checks |
 | `scripts/checks/queue-coherence.check.ts` | `root`, `CheckResult` | Live `.blackhole/queue.json` coherence checks |
+| `scripts/checks/read-json-file.check.ts` | `root`, `CheckResult` | Bare `JSON.parse`-of-`readFileSync` checks |
 | `scripts/checks/reformulation-surface.check.ts` | `read`, `root`, `CheckResult` | Reformulation-surface checks |
 | `scripts/checks/route-shape.check.ts` | `read`, `root`, `CheckResult` | Route field-set parity checks |
 | `scripts/checks/schema.check.ts` | `root`, `read`, `CheckResult` | JSON schema checks |
@@ -108,11 +118,12 @@ they were simply never reconciled against each other after each independent addi
 | `scripts/checks/tree-registry.check.ts` | `read`, `CheckResult` | Committed target-tree registry checks |
 | `scripts/checks/v-test09-hooks-claim.check.ts` | `read`, `CheckResult` | Hooks-only coverage-claim checks |
 | `scripts/checks/vcode-citation.check.ts` | `root`, `read`, `CheckResult` | `blackhole-vcodes.md` enforcement-site citation checks |
+| `scripts/checks/vcode-parity.check.ts` | `root`, `CheckResult` | Mercure V-code severity/staleness parity checks |
 | `scripts/checks/vcode-severity-sync.check.ts` | `root`, `CheckResult` | `blackhole-vcodes.md` severity-restatement sync checks |
 | `scripts/checks/vocabulary.check.ts` | `root`, `CheckResult` | Vocabulary / naming checks |
 | `scripts/checks/worker-git-safety.check.ts` | `read`, `CheckResult` | Worker git safety checks |
 
-**Count:** 52 `*.check.ts` domain modules + `verify.ts` = **53** direct `CheckResult` consumers.
+**Count:** 57 `*.check.ts` domain modules + `verify.ts` = **58** direct `CheckResult` consumers.
 
 ## `root`-only consumer (no `CheckResult`)
 
@@ -135,10 +146,10 @@ Changes to `root` resolution affect every check module above **plus** `check-com
 | Change | Classification | Affected consumers |
 |--------|----------------|-------------------|
 | Add optional field to `CheckResult` | TRANSPARENT (if optional) | Type-only; runtime unchanged |
-| Rename / remove `CheckResult` field | BREAKING | All 53 direct consumers + verify output formatting |
+| Rename / remove `CheckResult` field | BREAKING | All 58 direct consumers + verify output formatting |
 | Change `runChecks()` return type away from `CheckResult[]` | BREAKING | `verify.ts` + every `*.check.ts` |
 | Move `CheckResult` to another module | BREAKING | All import sites (grep `check-utils`) |
-| Change `root` path resolution | BREAKING | All 52 checks + `check-common.ts` |
+| Change `root` path resolution | BREAKING | All 57 checks + `check-common.ts` |
 | Change `read()` encoding or path join | BREAKING | Modules importing `read()` — see the `Imports` column in the consumer table above |
 
 **Overall blast radius:** HIGH — `CheckResult` is the shared verify wire format across the
@@ -158,16 +169,16 @@ reconciliation. Re-run all three and update every consumer of the corresponding 
 
 ```bash
 # 1. This table's own scope — *.check.ts domain modules + verify.ts (the "Count:" line above).
-rg -l "from ['\"].*check-utils" scripts/checks/*.check.ts scripts/verify.ts | wc -l   # 53
+rg -l "from ['\"].*check-utils" scripts/checks/*.check.ts scripts/verify.ts | wc -l   # 58
 
 # 2. Every scripts/ file (tests and utility scripts included) importing anything from
 #    check-utils.ts — a strict superset of #1. This is what check-utils.ts's own header
 #    comment ("Dependency blast-radius (N direct consumers)") should always match.
-rg -l "from ['\"].*check-utils" scripts --glob '!wt-*' | wc -l                        # 75
+rg -l "from ['\"].*check-utils" scripts --glob '!wt-*' | wc -l                        # 86
 
 # 3. Files anywhere under scripts/ that import the `read` symbol specifically — a subset of
 #    #2, orthogonal to #1 (a file can import `read` without being a *.check.ts module, e.g.
 #    scripts/lib/check-common.ts's readComposedAgentDoc).
 rg -l "from ['\"].*check-utils" scripts --glob '!wt-*' \
-  | xargs grep -lE "import\s*\{[^}]*\bread\b" | wc -l                              # 40
+  | xargs grep -lE "import\s*\{[^}]*\bread\b" | wc -l                              # 42
 ```

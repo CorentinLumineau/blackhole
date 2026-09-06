@@ -126,6 +126,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-ARGV-01 | A `scripts/**` CLI entrypoint on the closed 15-path allowlist (argv-parsing homogeneous `--flag value` sites) does not import `parseFlags`/`requireFlag` from `scripts/lib/argv-flags.ts` — a permanent regression guard against a future file reintroducing a hand-rolled parser at one of these paths, not a one-time migration check | BLOCK | scripts/checks/argv-flags-adoption.check.ts |
 | V-MPARITY-01 | V-code severity parity against mercure — a shared, non-allowlisted ID's mercure severity (tier-mapped CRITICAL/HIGH -> BLOCK, MEDIUM/LOW -> WARN) disagrees with blackhole's own severity in `documentation/audits/mercure-vcode-snapshot.json` vs `blackhole-vcodes.md` (issue #869) | WARN | scripts/checks/vcode-parity.check.ts |
 | V-MPARITY-02 | Vendored mercure V-code snapshot (`documentation/audits/mercure-vcode-snapshot.json`) staleness — `synced_at` older than `MERCURE_VCODE_SNAPSHOT_STALE_DAYS` (issue #869) | WARN | scripts/checks/vcode-parity.check.ts |
+| V-CTRLCHAR-01 | A tracked file contains a NUL byte or other always-illegal C0 control byte (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F, excluding tab/newline/CR), unless the path is declared `binary` in `.gitattributes` (issue #945 — PR #944's invisible-NUL shape) | BLOCK | scripts/checks/control-char.check.ts |
 
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.
