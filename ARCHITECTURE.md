@@ -310,6 +310,7 @@ co-located `*.test.ts`.
 - An `{{INCLUDE}}` marker is a directive only in a file declared in `INCLUDE_MARKER_SITES`;
   everywhere else — in every entry path into `expandIncludes`, including the build — it is inert
   prose, never a build-time or check-time expansion (ADR-039)
+- A shell-clause splitter's quote policy is a per-guard security decision, never a shared detail — `bash-write-target-guard.js`'s splitter must be quote-aware and `worktree-removal-guard.js`'s must be quote-unaware, each fail-closed for its own detection semantics, so the three PreToolUse clause splitters are never unified; only the uniform character-level primitives (`skipQuotedSpan`, `isRedirectAmpersand`) are shared, via `shell-lexer.js` (ADR-040)
 - An agent prompt may be authored as many files but must compile to exactly one file per agent
   on every tree — compose with `{{INCLUDE:<dir>/*}}` at build time, never by per-target assembly
   or runtime module fetching, and declare every module directory in `BUILD_INPUT_ONLY_DIRS`
