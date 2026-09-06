@@ -2,8 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { appendDecisionRecords, parseDecisionLogIds, type DecisionRecordRow } from './decision-log-append.ts';
+import {
+  appendDecisionRecords,
+  findRecordsTableViolations,
+  parseDecisionLogIds,
+  type DecisionRecordRow,
+} from './decision-log-append.ts';
 import { makeTempDir } from './lib/fs.ts';
+import { root } from './checks/check-utils.ts';
 
 // Issue #717 (R-12) — decision-log-append.ts replaces the hand-append path that keeps
 // forgetting to bump `last_updated` (frozen at 2026-07-20 across 6+ hand-appended rows this
@@ -338,5 +344,144 @@ describe('decision-log-append CLI — argv parsing', () => {
     expect(code).toBe(2);
     expect(stderr).toContain('Usage:');
     expect(fs.readFileSync(logFile, 'utf-8')).toBe(FIXTURE_LOG);
+  });
+});
+
+// Issue #940 — escapeCell (decision-log-append.ts:27) escapes `|` only. A cell value containing
+// a real embedded newline/carriage-return (origin: a JSON string whose `\n` escape became a
+// literal newline before reaching this function) was written verbatim, splitting the row across
+// two physical lines and corrupting the table for every insert made afterward (findTableBlock
+// treats the orphaned tail as "outside the table"). This guard rejects loudly instead.
+describe('appendDecisionRecords — embedded newline/carriage-return rejection (issue #940 regression guard)', () => {
+  test('throws naming the record id and field when decision contains an embedded newline', () => {
+    expect(() =>
+      appendDecisionRecords(FIXTURE_LOG, [rowFor({ pr: 940, decision: 'Contains a\nnewline' })], '2026-09-06'),
+    ).toThrow(/940/);
+    expect(() =>
+      appendDecisionRecords(FIXTURE_LOG, [rowFor({ pr: 940, decision: 'Contains a\nnewline' })], '2026-09-06'),
+    ).toThrow(/decision/);
+  });
+
+  test('throws naming the record id and field when why contains an embedded carriage return', () => {
+    expect(() =>
+      appendDecisionRecords(FIXTURE_LOG, [rowFor({ pr: 941, why: 'Contains a\rcarriage return' })], '2026-09-06'),
+    ).toThrow(/941/);
+    expect(() =>
+      appendDecisionRecords(FIXTURE_LOG, [rowFor({ pr: 941, why: 'Contains a\rcarriage return' })], '2026-09-06'),
+    ).toThrow(/why/);
+  });
+
+  test('throws when a touch_paths entry contains an embedded newline', () => {
+    expect(() =>
+      appendDecisionRecords(
+        FIXTURE_LOG,
+        [rowFor({ pr: 942, touch_paths: ['a.ts', 'b\nc.ts'] })],
+        '2026-09-06',
+      ),
+    ).toThrow(/942/);
+    expect(() =>
+      appendDecisionRecords(
+        FIXTURE_LOG,
+        [rowFor({ pr: 942, touch_paths: ['a.ts', 'b\nc.ts'] })],
+        '2026-09-06',
+      ),
+    ).toThrow(/touch_paths/);
+  });
+});
+
+// CLI-level coverage: reproduces the issue's own reported origin — a JSON string whose `\n`
+// escape sequence becomes a real newline once JSON.parse reads it back — and asserts the exit
+// code specifically (not just stderr text), distinguishing this from usage()'s exit code 2.
+describe('decision-log-append CLI — newline rejection (issue #940 regression guard)', () => {
+  const root = path.resolve(import.meta.dirname);
+  const scriptPath = path.join(root, 'decision-log-append.ts');
+  const run = (args: string[]) =>
+    Bun.spawn(['bun', 'run', scriptPath, ...args], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+
+  let dir: string;
+
+  beforeEach(() => {
+    dir = makeTempDir('decision-log-append-cli-newline');
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('a record whose decision field contains a real embedded newline exits non-zero, non-2, and leaves the log untouched', async () => {
+    const recordsFile = path.join(dir, 'records.json');
+    fs.writeFileSync(
+      recordsFile,
+      JSON.stringify({ decision_records: [rowFor({ pr: 940, decision: 'Contains a\nnewline' })] }),
+    );
+    const logFile = path.join(dir, 'decision-log.md');
+    fs.writeFileSync(logFile, FIXTURE_LOG);
+    const proc = run(['--records-file', recordsFile, '--log', logFile]);
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    expect(code).not.toBe(0);
+    expect(code).not.toBe(2);
+    expect(stderr).toContain('940');
+    expect(stderr).toContain('decision');
+    expect(fs.readFileSync(logFile, 'utf-8')).toBe(FIXTURE_LOG);
+  });
+});
+
+// Issue #940 — permanent structural regression check. findTableBlock's blockEnd (shared with
+// scripts/lib/check-common.ts, out of scope for this issue — see #941) stops at the first line
+// that doesn't start with `|`, treating an orphaned continuation line as "outside the table".
+// findRecordsTableViolations scans every line from the table's separator to end-of-file instead,
+// so this class of corruption is caught by `bun test` rather than silently merged again.
+describe('findRecordsTableViolations (issue #940 regression guard)', () => {
+  test('returns no violations for a well-formed, id-sorted table', () => {
+    const log = rowsLog([
+      { id: 10, kind: 'approach', decision: 'ten' },
+      { id: 50, kind: 'approach', decision: 'fifty' },
+      { id: 999, kind: 'approach', decision: 'nine-nine-nine' },
+    ]);
+    expect(findRecordsTableViolations(log)).toEqual([]);
+  });
+
+  test('flags an orphaned continuation line that does not start with "| <id> |"', () => {
+    const log = `---
+type: reference
+status: current
+review_trigger: "on file change"
+created: 2026-07-20
+last_updated: 2026-07-20
+---
+
+# Decision Log
+
+## Records
+
+| PR/Issue | Kind | Touch Paths | Decision | Why |
+|---|---|---|---|---|
+| 10 | approach | scripts/foo.ts | ten | because |
+| 20 | root-cause | scripts/bar.ts | Pin sha256(title + 
+ + body) as canonical | because |
+| 30 | approach | scripts/baz.ts | thirty | because |
+`;
+    const violations = findRecordsTableViolations(log);
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations.some((v) => v.includes('+ body) as canonical') || /line \d+/.test(v))).toBe(true);
+  });
+
+  test('flags non-monotonic ids even when every row is individually well-formed', () => {
+    const log = rowsLog([
+      { id: 929, kind: 'approach', decision: 'nine-two-nine' },
+      { id: 885, kind: 'approach', decision: 'eight-eight-five' },
+    ]);
+    const violations = findRecordsTableViolations(log);
+    expect(violations.length).toBeGreaterThan(0);
+  });
+});
+
+// Live-file checkpoint (Task 5 of the issue #940 plan): before the repair (Task 6), this test is
+// expected to FAIL, quoting the actual violations found against the corrupted file. After the
+// repair it must pass, and stay the permanent regression guard going forward.
+describe('documentation/reference/decision-log.md structural integrity (issue #940 regression guard)', () => {
+  test('the live Records table has no structural violations', () => {
+    const content = fs.readFileSync(path.join(root, 'documentation/reference/decision-log.md'), 'utf-8');
+    expect(findRecordsTableViolations(content)).toEqual([]);
   });
 });
