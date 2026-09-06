@@ -2,7 +2,7 @@
 
 Every worker subagent prompt you write MUST explicitly declare these 5 fields:
 
-1.  **Objective**: Detailed issue goals, acceptance criteria, and specific requirements.
+1.  **Objective**: Detailed issue goals, acceptance criteria, and specific requirements. When a plan's AC carries a `file:line` production-call-site citation (`planner.md` Step 6, `V-INT-03` — data-structure orientation citations), quote that citation **verbatim** in the dispatch — see § AC Citation Fidelity below.
 2.  **Output Format**: Deliverables (e.g. branch pushed, PR opened).
 3.  **Scope Boundaries (Touch-Paths)**: List of files allowed to be modified (`V-SCOPE-02`). Restrict changes strictly to these. Exclusions that keep a worker off territory a sibling PR is holding follow § Contended-path exclusions below — they are derived from that PR's file list, never prosed as a bare directory.
 4.  **Tool Guidance**: Specific commands to execute (e.g., project test and lint commands). **Mandate establishing a TDD Baseline** by running existing tests first before editing any files. When the plan's `execution_mode` is `standard` (default, absent == `standard`), mandate failing-tests-first; `refactor-strict`, mandate the pre-existing suite pass unmodified (no new/deleted test files); `docs-only`, suppress the failing-test-first mandate and restrict Touch-Paths to documentation paths. Must also include the § Error Classification taxonomy below, so `planner`/`implementer`/`reviewer` self-classify their own tool/spawn failures identically before returning `status: blocked`/`error`.
@@ -18,6 +18,26 @@ of `ROUTE_STATUSES`), and 7 of 8 routers correctly followed the brief into a sch
 return; the one compliant router was then "corrected" into the invalid value on re-route. This
 rule constrains *brief construction* only, never the return schema's own field set — a future
 field addition (e.g. #613's proposed `rationale`) is unaffected.
+
+### AC Citation Fidelity
+
+When a plan's AC cites a `file:line` production call site to justify a claim about a data
+structure's keys, values, or membership (`planner.md` Step 6, `V-INT-03`, issue #917), field 1
+carries that citation into the worker prompt **verbatim** — never re-paraphrased. This is the
+same discipline § Contended-path exclusions above already applies to Touch-Paths exclusions
+("derived, not prosed ... carry those paths into the contract verbatim"): a re-paraphrase can
+silently drift onto the wrong axis of the cited structure (its keys vs. its values, its
+declaration vs. its consumer) even when the plan's own citation was correct, because
+re-deriving the claim from the structure's name or doc comment reopens exactly the failure mode
+the citation exists to close.
+
+This is a copy obligation, not a second verification pass — the orchestrator does not re-check
+the citation's correctness (that judgment belongs to planning, `planner.md` Step 6); it only
+ensures the dispatch does not silently diverge from a citation the plan already got right.
+Issue #917's incident showed why this matters even when planner-side discipline exists: a
+dispatch that reproduces a plan's wrong claim word-for-word is not caught by a planner-only fix,
+because the orchestrator's own re-paraphrasing step is a second, independent place the same
+error can be introduced or preserved.
 
 ### Contended-path exclusions
 
