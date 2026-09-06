@@ -417,6 +417,61 @@ const computeMaskedSpans = (command) => {
 };
 
 /**
+ * An additive, independent pass computing a `boolean[]` the same length as
+ * `command`, `true` only at heredoc-body character positions — used by `worktree-removal-guard.js`
+ * to blank heredoc-body text out of the RAW clause text it extracts (`clauseTailFrom`), so a
+ * heredoc's prose can never contribute literal `worktree`/`remove` tokens to that guard's
+ * token-based detection. Reuses `consumeHeredoc`/`collectHeredocOperatorsOnLine`/
+ * `parseHeredocDelimiter`/`maskLiteralSpan`/`isEscapedQuote` verbatim (same masking rule as (c) in
+ * the module docstring above) — this function supplies only a different outer scan, never a
+ * second heredoc-boundary detector.
+ *
+ * That outer scan deliberately does NOT mirror `computeMaskedSpans`'s own quote handling: a
+ * non-print-sink double-quoted span is, in `computeMaskedSpans`, jumped over whole via
+ * `skipQuotedSpan` without ever being inspected for a nested heredoc — correct for THAT
+ * function's purpose (deciding what a general pattern-matcher should see as "executing text"),
+ * but it means a heredoc living inside a `$(...)` that itself sits inside a double-quoted
+ * argument (`"$(cat <<'EOF' … EOF)"`) is never reached: bash still
+ * evaluates and executes a `$(...)`/backtick/`${...}` nested in a double-quoted string, and a
+ * command substitution resets the parser to a fresh command context in which `<<DELIM` is once
+ * again real heredoc syntax. This scan therefore does NOT skip double-quoted spans at all — it
+ * falls through to plain character-by-character scanning through them, so the heredoc-operator
+ * check below still fires once it reaches the nested `<<`, wherever it sits. A genuine
+ * single-quoted span IS still skipped whole (`skipQuotedSpan`): single quotes never allow a
+ * subshell reset, so a literal `<<` there can never be real heredoc syntax. A `#` comment
+ * (unquoted, word-initial) is skipped the same way `computeMaskedSpans` skips one, to avoid
+ * mistaking commented-out heredoc-shaped text for a real operator.
+ */
+const computeHeredocBodyMask = (command) => {
+  const n = command.length;
+  const masked = new Array(n).fill(false);
+  let i = 0;
+
+  while (i < n) {
+    const ch = command[i];
+
+    if (ch === '#' && (i === 0 || /\s/.test(command[i - 1]))) {
+      while (i < n && command[i] !== '\n') i++;
+      continue;
+    }
+
+    if (ch === "'" && !isEscapedQuote(command, i)) {
+      i = skipQuotedSpan(command, i, n);
+      continue;
+    }
+
+    if (ch === '<' && command[i + 1] === '<' && command[i + 2] !== '<') {
+      i = consumeHeredoc(command, i, masked);
+      continue;
+    }
+
+    i++;
+  }
+
+  return masked;
+};
+
+/**
  * Context-aware sibling of `pattern-loader.js`'s `matchFirst`, scoped to `validate-bash-command.js`
  * only (see .blackhole/plans/issue-488.md Codebase Conventions for why this is not a change to
  * `matchFirst` itself). For each compiled pattern, repeatedly searches `command` and returns the
@@ -447,4 +502,4 @@ const matchFirstIgnoringNonExecutingText = (command, compiled) => {
   return null;
 };
 
-module.exports = { computeMaskedSpans, matchFirstIgnoringNonExecutingText };
+module.exports = { computeMaskedSpans, computeHeredocBodyMask, matchFirstIgnoringNonExecutingText };

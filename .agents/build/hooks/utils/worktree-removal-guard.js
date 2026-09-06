@@ -142,7 +142,7 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { computeMaskedSpans } = require('./bash-context');
+const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { isRedirectAmpersand } = require('./shell-lexer');
 
 /** Global git options that consume a separate following token as their value (`-C <path>`,
@@ -397,11 +397,18 @@ const containsWorktreeRemoveTokens = (tokens, fromIndex) => {
  * that legitimately follow a `$(...)` executable position in the SAME clause: `$(which git)
  * worktree remove <target>` is one clause whose first word happens to be a command substitution,
  * not two clauses split at that substitution's own closing paren (#788's executable-indirection
- * coverage — the two `)` roles look identical to a naive scan and must not be conflated). */
-const skipDollarParenSpan = (text, start) => {
+ * coverage — the two `)` roles look identical to a naive scan and must not be conflated).
+ *
+ * `heredocMasked`, when given, is `computeHeredocBodyMask`'s output aligned 1:1 with
+ * `text` (the caller slices the full-command array to match `text`'s own slice offset) — a
+ * position where it is `true` is skipped without counting toward paren depth, so prose
+ * parentheses inside a heredoc body (e.g. "(command substitution or environment-variable
+ * indirection)") can never perturb this naive counter into closing the span early or late. */
+const skipDollarParenSpan = (text, start, heredocMasked) => {
   let depth = 0;
   let i = start + 1; // the '(' immediately after '$'
   for (; i < text.length; i++) {
+    if (heredocMasked && heredocMasked[i]) continue;
     if (text[i] === '(') depth += 1;
     else if (text[i] === ')') {
       depth -= 1;
@@ -422,14 +429,25 @@ const skipDollarParenSpan = (text, start) => {
  * clause boundary, only a plain subshell-grouping `(...)`'s is. Naive and quote-unaware otherwise,
  * exactly like the other three separators this function already stops at — a literal `)` inside a
  * quoted argument is not distinguished from a real subshell close, the same accepted limitation
- * `;`/`|`/newline already have (see `findClauseStartIndices`'s docstring on this function). */
-const clauseTailFrom = (command, index) => {
+ * `;`/`|`/newline already have (see `findClauseStartIndices`'s docstring on this function).
+ *
+ * `heredocMasked`, when given, is `computeHeredocBodyMask`'s output over the FULL
+ * `command` string (not `rest` — this function slices it to `rest`'s own offset itself). Once
+ * `end` is found by the separator scan above — UNCHANGED by this parameter, so a real `;`/`&`/
+ * `|`/`)`/`\n` boundary is still found exactly where it always was, even one that happens to sit
+ * past a heredoc body — every heredoc-body character in the returned clause text is blanked to a
+ * single space before the trailing-redirect strip runs. This is what keeps a heredoc's prose
+ * (e.g. containing the literal words `worktree`/`remove`) from contributing tokens to
+ * `findRemovalInvocations`'s `.split(/\s+/)` token stream: those characters are spaces by the
+ * time this function returns, not merely excluded from the clause's own extent. */
+const clauseTailFrom = (command, index, heredocMasked) => {
   const rest = command.slice(index);
+  const heredocMaskedRest = heredocMasked ? heredocMasked.slice(index) : null;
   let end = rest.length;
   for (let i = 0; i < rest.length; i++) {
     const ch = rest[i];
     if (ch === '$' && rest[i + 1] === '(') {
-      i = skipDollarParenSpan(rest, i) - 1; // loop's own i++ lands just past the matched ')'
+      i = skipDollarParenSpan(rest, i, heredocMaskedRest) - 1; // loop's own i++ lands just past the matched ')'
       continue;
     }
     if (ch === ';' || ch === '|' || ch === '\n' || ch === ')') {
@@ -452,6 +470,13 @@ const clauseTailFrom = (command, index) => {
     }
   }
   let clause = rest.slice(0, end).trimEnd();
+  if (heredocMaskedRest) {
+    let blanked = '';
+    for (let i = 0; i < clause.length; i++) {
+      blanked += heredocMaskedRest[i] ? ' ' : clause[i];
+    }
+    clause = blanked;
+  }
   // Strip one or more trailing shell redirects (2>&1, >/dev/null, 2>/dev/null, &>file, …).
   const TRAILING_REDIRECT_RE =
     /\s+(?:2>&1|>&\d*|>>?[^\s;&|]+|\d>>?[^\s;&|]+|&>>?[^\s;&|]+)\s*$/;
@@ -603,11 +628,12 @@ const resolveAgainstBase = (text, base) => (path.isAbsolute(text) ? text : path.
  */
 const findRemovalInvocations = (command, cwd) => {
   const masked = computeMaskedSpans(command);
+  const heredocMasked = computeHeredocBodyMask(command);
   const invocations = [];
   let cwdCandidates = [cwd];
   for (const { index: clauseStart, precededByOr } of findClauseStartIndices(command, masked)) {
     if (!isCommandWordStart(command, clauseStart)) continue; // defensive: clause starts are always real word starts
-    const tokens = clauseTailFrom(command, clauseStart).trim().split(/\s+/).filter(Boolean);
+    const tokens = clauseTailFrom(command, clauseStart, heredocMasked).trim().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) continue;
 
     let cursor = 0;

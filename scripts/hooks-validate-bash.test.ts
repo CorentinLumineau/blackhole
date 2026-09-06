@@ -1088,6 +1088,60 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
     });
   });
 
+  // #895 REGRESSION LOCK, not a fix — see the PR description's Task 1 finding. The two tests
+  // above (#761) only exercise a detached HEAD pointing at a remote branch's OWN TIP. Issue #895
+  // reported a refusal for a worktree whose detached HEAD sat several commits BEHIND that tip;
+  // this rules out an off-by-one in `checkDetachedReachability`'s `git for-each-ref --contains
+  // <sha>` check, which must treat an ancestor commit as reachable exactly like the tip itself.
+  // This test is expected to (and does) pass on plan_base_commit with zero production-code
+  // changes: the live #895 refusal traced to a stale installed plugin cache, not this source
+  // (PR #776 already added `checkDetachedReachability`, merged before #895 was filed).
+  test('allow: a detached HEAD several commits behind a remote branch tip is still reachable — regression lock (#895)', async () => {
+    await withTempGitRepo('blackhole-hook-wt-detached-behind-', async (mainRepo) => {
+      runGit(mainRepo, ['commit', '--allow-empty', '--quiet', '-m', 'init']);
+
+      const bareRemote = makeTempDir('blackhole-hook-wt-detached-behind-origin-');
+      spawnSync('git', ['init', '--quiet', '--bare', bareRemote]);
+      runGit(mainRepo, ['remote', 'add', 'origin', bareRemote]);
+      runGit(mainRepo, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+
+      runGit(mainRepo, ['checkout', '--quiet', '-b', 'throwaway']);
+      const shas: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        fs.writeFileSync(path.join(mainRepo, `pr-895-${i}.txt`), `pr commit ${i}\n`);
+        runGit(mainRepo, ['add', `pr-895-${i}.txt`]);
+        runGit(mainRepo, ['commit', '--quiet', '-m', `pr commit ${i}`]);
+        shas.push(spawnSync('git', ['rev-parse', 'HEAD'], { cwd: mainRepo }).stdout.toString().trim());
+      }
+      // shas[0] is 2 commits BEHIND the branch tip (shas[2]) once pushed — an ancestor, not the tip.
+      const behindSha = shas[0];
+      runGit(mainRepo, ['push', '--quiet', 'origin', 'HEAD:refs/heads/pr-895']);
+      runGit(mainRepo, ['checkout', '--quiet', 'main']);
+      runGit(mainRepo, ['branch', '-D', 'throwaway']);
+      runGit(mainRepo, ['fetch', '--quiet', 'origin', 'refs/heads/pr-895:refs/remotes/origin/pr-895']);
+
+      const parent = path.join(mainRepo, '.worktrees');
+      fs.mkdirSync(parent, { recursive: true });
+      const worktree = path.join(
+        parent,
+        `blackhole-hook-wt-detached-behind-${process.pid}-${Date.now()}`,
+      );
+      runGit(mainRepo, ['worktree', 'add', '--detach', '--quiet', worktree, behindSha]);
+
+      try {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      } finally {
+        spawnSync('git', ['worktree', 'remove', '--force', worktree], { cwd: mainRepo });
+        fs.rmSync(worktree, { recursive: true, force: true });
+        fs.rmSync(bareRemote, { recursive: true, force: true });
+      }
+    });
+  });
+
   // #777: --force bypasses git's own native dirty-tree refusal, and until now nothing in this
   // module backstopped it — a dirty worktree removed with --force silently discarded uncommitted
   // or untracked work. These four tests exercise the new checkDirtyWorktree check: denied for a
@@ -2624,6 +2678,157 @@ describe('validate-bash-command.js — worktree-removal guard generic wrapper wa
       expect(result.stdout.trim()).toBe('');
       expect(readHookEvents(mainRepo)).toEqual([]);
     });
+  });
+});
+
+// issue #895, Problem 2: `clauseTailFrom`'s `$(...)`-swallowing helper (`skipDollarParenSpan`)
+// was naive character-by-character `(`/`)` depth counting with no awareness of a heredoc body
+// nested inside it, so `"$(cat <<'EOF' … EOF)"` pulled the ENTIRE heredoc body — including any
+// literal `worktree`/`remove` words in its prose — verbatim into the enclosing clause's token
+// stream, which `containsWorktreeRemoveTokens` then matched as a real invocation. Fixed by a new,
+// additive `computeHeredocBodyMask` export from `bash-context.js` (an independent pass reusing
+// its private heredoc-scanning helpers verbatim, not a second heredoc-boundary detector — see
+// that function's own docstring for why it must NOT skip double-quoted spans wholesale the way
+// `computeMaskedSpans` does), threaded through `skipDollarParenSpan` and `clauseTailFrom` only.
+// `findClauseStartIndices` — the actual quote-UNAWARE clause splitter ADR-040 protects — is
+// untouched by this fix; see the F-00065 describe block above, re-run unmodified as this fix's
+// own regression guard.
+describe('bash-context.js — computeHeredocBodyMask (#895)', () => {
+  // In-process require of the hook utility module, same convention as
+  // `hooks-validate-file.test.ts`'s `mainCloneRoot` unit tests (#889): a boolean-array-position
+  // assertion is not observable through the subprocess harness's exit-code/stderr surface, so a
+  // direct call into the (CommonJS, unbundled) module is the only way to assert it (V-INT-02:
+  // reuses the established in-process-require convention, does not invent a new one).
+  const bashContext = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-context.js'));
+
+  test('a quoted-delimiter heredoc body (<<\'EOF\') is masked in full', () => {
+    const command = "cat <<'EOF'\nsome text here\nEOF";
+    const masked: boolean[] = bashContext.computeHeredocBodyMask(command);
+    const bodyStart = command.indexOf('some text here');
+    const bodyEnd = command.indexOf('\nEOF', bodyStart);
+    for (let i = bodyStart; i < bodyEnd; i++) {
+      expect(masked[i]).toBe(true);
+    }
+    // The operator's own delimiter and the terminator line are not body text.
+    expect(masked[command.indexOf("<<'EOF'")]).toBe(false);
+    expect(masked[command.lastIndexOf('EOF')]).toBe(false);
+  });
+
+  test('an unquoted-delimiter heredoc body (<<EOF) masks literal text but leaves a nested $(...) unmasked', () => {
+    const command = 'cat <<EOF\nsome text $(echo hi) more text\nEOF';
+    const masked: boolean[] = bashContext.computeHeredocBodyMask(command);
+    const subStart = command.indexOf('$(echo hi)');
+    const subEnd = subStart + '$(echo hi)'.length;
+    for (let i = subStart; i < subEnd; i++) {
+      expect(masked[i]).toBe(false);
+    }
+    expect(masked[command.indexOf('some text')]).toBe(true);
+    expect(masked[command.indexOf('more text')]).toBe(true);
+  });
+
+  test('ordinary command text with no heredoc anywhere is unmasked throughout', () => {
+    const command = 'git worktree remove /some/path';
+    const masked: boolean[] = bashContext.computeHeredocBodyMask(command);
+    expect(masked.every((m: boolean) => m === false)).toBe(true);
+  });
+});
+
+describe('validate-bash-command.js — worktree-removal guard heredoc-body false positive (#895)', () => {
+  // Fixture (a), Task 4: wrongly-refused -> must-allow. Discriminates on: a dynamic-executable
+  // position (`"$(cat` normalizes as dynamic) whose fallback scan
+  // (`containsWorktreeRemoveTokens`) used to find an adjacent `worktree`/`remove` pair inside the
+  // heredoc's own prose. Denied with `pattern_id: worktree-remove-unresolvable-path` against
+  // plan_base_commit (verbatim red-state run captured in the PR description); allowed after the
+  // Task 2/3 fix (verbatim green-state run also captured there).
+  test('allow: a heredoc body nested inside a `$(...)` command-substitution argument no longer triggers a false worktree-remove refusal (#895)', async () => {
+    await withTempGitRepo('blackhole-hook-wt-895-', async (repo) => {
+      const command = "gh issue create --body \"$(cat <<'EOF'\nSee the git worktree remove docs for details\nEOF\n)\"";
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(repo)).toEqual([]);
+    });
+  });
+
+  // Fixture (b) — #506-shaped regression lock, NOT an #895 discriminator (fix round 1, PR #905
+  // review): the heredoc here and the removal it precedes sit in two different clauses, split by
+  // the newline that already ends the heredoc's own terminator line. `findClauseStartIndices`
+  // (pre-#895, unmodified by this diff) finds the removal's clause on its own; this diff's new
+  // `computeHeredocBodyMask` threading through `skipDollarParenSpan`/`clauseTailFrom` is never
+  // reached, because that threading only matters for a heredoc nested inside a `$(...)` still
+  // open in the SAME clause as the token scan. Kept as a plain "the heredoc fix doesn't weaken
+  // the guard for an adjacent real removal" lock, mirroring the `#506` must-still-deny shape
+  // above — see fixture (c) below for the test that actually exercises this diff's new code.
+  test('deny (#506-shaped lock): a genuine `git worktree remove` reachable after a heredoc terminator on the same command line is still detected', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-895-adj-',
+      'blackhole/issue-895-adjacent',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const command = `cat <<'EOF' > /tmp/blackhole-895-notes.txt\nunrelated text\nEOF\ngit worktree remove ${worktree}`;
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block' });
+      },
+    );
+  });
+
+  // Fixture (c) — the actual #895 discriminator (fix round 1, PR #905 review): a heredoc nested
+  // inside `$(...)` (same construct as fixture (a)), its prose carrying a deliberately UNBALANCED
+  // `(` (no matching `)`), followed by a genuine removal reachable via `&&` once the `$(...)`
+  // substitution closes. Proven by mutation (PR body has the verbatim revert-then-restore run):
+  // reverting `bash-context.js`/`worktree-removal-guard.js` to `16b99025` (pre-#895,
+  // `computeHeredocBodyMask` does not exist there) makes `findRemovalInvocations` return TWO
+  // invocations instead of one — the real `git worktree remove <target>` in clause 2, PLUS a
+  // spurious `{ unresolvableExecutable: true }` invocation for clause 1 — because
+  // `skipDollarParenSpan`'s naive `(`/`)` depth counter (no `heredocMasked` guard) counts the
+  // heredoc prose's stray `(` toward depth, never finds a matching `)` to return to depth 0, and
+  // so never closes the `$(...)` span; `clauseTailFrom`'s own scan for `&&` then never resumes
+  // outside that span and returns the WHOLE remainder of the command as clause 1's own un-blanked
+  // tail, whose raw token stream still carries the heredoc's own "worktree"/"remove" words. Both
+  // shapes deny (this worktree genuinely has unpushed commits either way), so exit code and
+  // `tier: 'block'` alone do NOT discriminate — the observable difference is WHICH denial reason
+  // wins: `evaluateWorktreeRemoval` returns the first invocation's truthy decision in array order,
+  // and clause 1 (the spurious one) is found before clause 2, so the old code denies with the
+  // WRONG, misleading reason (`worktree-remove-unresolvable-path` — "executable could not be
+  // resolved statically", which is not true of the real `git worktree remove <target>` at all)
+  // instead of the CORRECT one this diff restores (`worktree-remove-unpushed`, naming the real
+  // worktree's actual unpushed commit). `pattern_id` below pins the correct reason and is exactly
+  // what flips red/green.
+  test('deny: a genuine `git worktree remove` reachable via `&&` after a `$(...)`-nested heredoc closes is still detected (#895)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-895-nested-',
+      'blackhole/issue-895-nested',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const command = `echo "$(cat <<'EOF'\nnote: worktree remove needs the target path (see docs\nEOF\n)" && git worktree remove ${worktree}`;
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        // pattern_id is the discriminator (see comment above): the old, pre-#895 code denies via
+        // the spurious clause-1 invocation's `worktree-remove-unresolvable-path`, never reaching
+        // the real, correct `worktree-remove-unpushed` verdict for clause 2's actual target.
+        expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block', pattern_id: 'worktree-remove-unpushed' });
+      },
+    );
   });
 });
 
