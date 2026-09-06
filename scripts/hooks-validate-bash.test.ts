@@ -3506,11 +3506,61 @@ describe('validate-bash-command.js — main-clone git working-tree-mutation guar
 
       expect(result.exitCode).toBe(0);
       expect(permissionDecision(result.stdout)).toBe('allow');
+      // Review round on PR #925: `REASON_BY_PATTERN` was missing the `main-clone-stash` entry, so
+      // `permissionDecisionReason`/the recorded event's `reason` both resolved to the literal
+      // string "undefined" — decision, tier, and pattern_id were all correct, only the
+      // operator-facing text was broken. A `toMatchObject` on decision/tier/pattern_id alone
+      // (as this test originally did) cannot catch that; asserting the reason's shape directly
+      // closes the gap this specific regression exposed.
+      const reason = permissionReason(result.stdout);
+      expect(typeof reason).toBe('string');
+      expect(reason).not.toMatch(/^undefined\b/);
+      expect(reason!.length).toBeGreaterThan(0);
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({ decision: 'allow', tier: 'warn', pattern_id: 'main-clone-stash' });
+      expect(typeof events[0].reason).toBe('string');
+      expect(events[0].reason).not.toMatch(/^undefined\b/);
+      expect((events[0].reason as string).length).toBeGreaterThan(0);
     });
   });
+
+  // Closes the CLASS, not just this one instance (review round on PR #925): every `pattern_id`
+  // `classify()` in git-main-clone-guard.js can emit must resolve to a real `REASON_BY_PATTERN`
+  // entry, or `permissionDecisionReason` silently becomes the string "undefined" — exactly what
+  // happened for `main-clone-stash` above. This iterates the full emittable set (one live hook
+  // invocation per subcommand shape, all in the main clone) rather than spot-checking a single
+  // pattern id, so a future subcommand added to the tier table without a matching reason entry
+  // fails here immediately instead of shipping a broken operator-facing message.
+  const ALL_CLASSIFY_PATTERN_IDS: Array<[string, string]> = [
+    ['main-clone-clean', 'git clean -fd'],
+    ['main-clone-checkout-path', 'git checkout throwaway -- .'],
+    ['main-clone-restore', 'git restore .'],
+    ['main-clone-reset-destructive', 'git reset --hard'],
+    ['main-clone-apply', 'git apply patch.diff'],
+    ['main-clone-checkout-force', 'git checkout -f other-branch'],
+    ['main-clone-stash', 'git stash push -m x'],
+  ];
+
+  test.each(ALL_CLASSIFY_PATTERN_IDS)(
+    'every classify()-emittable pattern id has a non-empty, non-"undefined" reason: `%s`',
+    async (patternId, command) => {
+      await withLinkedWorktree('blackhole-hook-897-reason-', async (mainRepo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+
+        const reason = permissionReason(result.stdout);
+        expect(typeof reason).toBe('string');
+        expect(reason).not.toMatch(/^undefined\b/);
+        expect(reason!.length).toBeGreaterThan(0);
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0].pattern_id).toBe(patternId);
+        expect(typeof events[0].reason).toBe('string');
+        expect(events[0].reason).not.toMatch(/^undefined\b/);
+        expect((events[0].reason as string).length).toBeGreaterThan(0);
+      });
+    },
+  );
 
   // The orchestrator's own main-clone git vocabulary (design note § "The orchestrator exception
   // set is empty" — four recorded `git grep` sweeps found none of these commands anywhere in

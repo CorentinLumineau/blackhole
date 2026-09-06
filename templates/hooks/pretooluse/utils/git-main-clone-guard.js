@@ -118,6 +118,9 @@ const REASON_BY_PATTERN = {
   'main-clone-reset-destructive': `git reset --hard/--merge in the main clone would discard uncommitted and staged changes (commits alone survive via reflog). ${REMEDY}`,
   'main-clone-apply': `git apply/am in the main clone applies a patch directly to the working tree with no snapshot taken first. ${REMEDY}`,
   'main-clone-checkout-force': `A forced checkout/switch in the main clone bypasses git's own dirty-tree refusal and discards uncommitted changes. ${REMEDY}`,
+  'main-clone-stash': 'git stash in the main clone is recoverable (it persists in refs/stash, retrievable via ' +
+    "fsck --unreachable even after drop) — allowed and recorded rather than blocked, but worth a worker's own " +
+    'second look before it runs unattended.',
 };
 
 /** Resolves `repoOverride`/`resolutionCwds` (the same candidate set `worktree-removal-guard.js`
