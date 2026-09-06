@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterEach } from 'bun:test';
+import { describe, expect, test, beforeEach, afterEach, spyOn } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -12,7 +12,9 @@ import {
   hasUserGate,
   hasWorkRemaining,
   mergeResumeRequest,
+  readResumeRequest,
   resolveCampaignAgent,
+  workerArtifactsSatisfyGate,
   writeResumeRequestAtomic,
   type ResumeRequest,
 } from './campaign-resume-signal';
@@ -248,6 +250,60 @@ orchestrator_turn_id: 12
     writeResumeRequestAtomic(tmpDir, record);
     expect(fs.existsSync(path.join(tmpDir, 'resume-request.json'))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, 'resume-request.json.tmp'))).toBe(false);
+  });
+
+  // Issue #864: a corrupt queue.json used to drop the resume doorbell with no log — the
+  // campaign's own documented failure scenario. `action: 'none'` is the right outcome here
+  // (there is nothing readable to resume against), but it must be visible, not silent.
+  test('corrupt queue.json logs before falling back to action: none', () => {
+    fs.writeFileSync(path.join(tmpDir, 'queue.json'), '{ not valid json');
+    const consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const input = readFixture('hook-orchestrator-stop.json');
+      const result = evaluateResumeHook(input, tmpDir, new Date('2026-07-09T12:00:00.000Z'));
+
+      expect(result.action).toBe('none');
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0][0]).toMatch(/queue\.json unreadable/i);
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+});
+
+// Issue #864: these two catches used to swallow silently — a real gate failure (a malformed
+// worker summary, a corrupt resume-request.json) read exactly like the routine case ("no
+// artifacts yet", "no existing request") with no trail to tell them apart from the outside.
+describe('logged-swallow sites (#864)', () => {
+  test('workerArtifactsSatisfyGate logs before returning false on unparseable worker summary', () => {
+    const consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const input = { ...readFixture('hook-worker-stop.json'), summary: 'no worker JSON in here at all' };
+      const satisfied = workerArtifactsSatisfyGate(input, 'router');
+
+      expect(satisfied).toBe(false);
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0][0]).toMatch(/worker artifact gate check failed/i);
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  test('readResumeRequest logs before returning null on a corrupt resume-request.json', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'resume-signal-corrupt-'));
+    const filePath = path.join(tmpDir, 'resume-request.json');
+    fs.writeFileSync(filePath, '{ not valid json');
+    const consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const result = readResumeRequest(filePath);
+
+      expect(result).toBeNull();
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0][0]).toMatch(/resume-request\.json unreadable/i);
+    } finally {
+      consoleErrorSpy.mockRestore();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

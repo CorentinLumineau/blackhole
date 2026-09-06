@@ -987,3 +987,63 @@ describe('validate-file-changes.js — uncaught validator crash fails closed, no
     });
   }
 });
+
+// Issue #864: `allWorktreeRoots` used to map every git failure — "not a git repository" (the
+// routine case a session outside any repo produces, exit 128, covered by the #512 tests above)
+// AND any other, anomalous failure (git binary missing, a corrupted `.git`, a permissions error)
+// — onto the same `null` return, which the containment check reads as "no git context" and
+// bounds the write to the payload's own cwd instead of denying it outright. That is the wrong
+// bound for an anomalous failure: the check has no actual evidence the target is safe, only that
+// git could not be asked. The fix distinguishes the two: only the exit-128 "not a git repository"
+// case still returns null (fail-open to the #512 cwd bound, unchanged); anything else now
+// propagates and the hook fails closed instead. Simulated here by making `git` itself
+// unresolvable via `PATH`, which raises `ENOENT` (no `.status` at all, never 128) rather than a
+// git-emitted fatal exit — bypasses `runPreToolUseHook` (which does not expose a `PATH`
+// override) the same way the malformed-stdin test above does.
+describe('validate-file-changes.js — anomalous git failure fails closed, not open to cwd (#864)', () => {
+  test('git missing from PATH inside a real repo denies the write instead of falling back to the cwd bound', async () => {
+    await withTempGitRepo('blackhole-hook-864-', async (repo) => {
+      // A target outside the repo's own subtree — under the #512 cwd-fallback bound (the wrong
+      // outcome this fix removes) this exact target would be ALLOWED, since it resolves inside
+      // `repo` when treated as "no git context, bound to cwd". The pre-fix behavior for this test
+      // would therefore be exit 0 / no denial; the point of the assertion is that it must not be.
+      const target = path.join(repo, 'nested', 'foo.ts');
+      const bunOnlyPath = path.dirname(process.execPath);
+      // Pins the event sink explicitly (bypassing `recordEvent`'s own `mainCloneRoot(cwd)` call)
+      // so the recorded-event assertion below is not itself confounded by the same
+      // git-unavailable condition this test exists to exercise — `recordEvent` already treats an
+      // unresolvable main clone as "no git context, skip recording" (a separate, narrower
+      // swallow than #864's, out of this fix's five named sites) rather than failing closed.
+      const eventDir = path.join(repo, '.blackhole', 'hook-events');
+
+      const proc = Bun.spawn({
+        cmd: ['bun', 'run', path.join(PRETOOLUSE_HOOKS_DIR, SCRIPT)],
+        stdin: new Blob([JSON.stringify(writePayload(target))]),
+        stdout: 'pipe',
+        stderr: 'pipe',
+        cwd: repo,
+        env: { ...process.env, PATH: bunOnlyPath, BLACKHOLE_HOOK_EVENT_DIR: eventDir },
+      });
+      const [exitCode, stdout, stderr] = await Promise.all([
+        proc.exited,
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+
+      expect(exitCode).toBe(2);
+      expect(permissionDecision(stdout)).toBe('deny');
+      expect(permissionReason(stdout)).toMatch(/worktree containment resolution/i);
+      expect(stderr).toMatch(/ENOENT|not found/i);
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        hook: 'validate-file-changes',
+        tool: 'Write',
+        decision: 'deny',
+        tier: 'block',
+        pattern_id: 'worktree-root-resolution-failure',
+      });
+    });
+  });
+});

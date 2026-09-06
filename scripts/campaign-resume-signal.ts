@@ -146,7 +146,13 @@ export function workerArtifactsSatisfyGate(input: HookInput, role: Role): boolea
     const summary = input.summary ?? '';
     const workerJson = extractWorkerJson(summary);
     return validateWorker(role, workerJson).length === 0;
-  } catch {
+  } catch (error) {
+    // Issue #864: this used to swallow silently. A worker summary that fails to parse is a real
+    // gate failure (the stale-barrier resume never fires), not a routine "no artifacts yet" —
+    // log it so the campaign has a trail when the doorbell unexpectedly stays quiet.
+    console.error(
+      `resume hook: worker artifact gate check failed — ${error instanceof Error ? error.message : String(error)}`,
+    );
     return false;
   }
 }
@@ -186,7 +192,13 @@ export function readResumeRequest(filePath: string): ResumeRequest | null {
     const parsed = readJsonFile(filePath, filePath) as ResumeRequest;
     if (parsed.version !== 1) return null;
     return parsed;
-  } catch {
+  } catch (error) {
+    // Issue #864: a corrupt resume-request.json used to be indistinguishable from "no existing
+    // request" — mergeResumeRequest would then treat this write as the first one, silently
+    // discarding whatever coalescing state the corrupt file held. Log it so the loss is visible.
+    console.error(
+      `resume hook: existing resume-request.json unreadable at ${filePath} — ${error instanceof Error ? error.message : String(error)}`,
+    );
     return null;
   }
 }
@@ -265,7 +277,14 @@ export function evaluateResumeHook(
   let queue: QueueJson;
   try {
     queue = readJsonFile(queuePath, queuePath) as QueueJson;
-  } catch {
+  } catch (error) {
+    // Issue #864: a corrupt queue.json used to drop the resume doorbell with no trace — the
+    // campaign's own failure scenario ("a corrupt queue drops the resume doorbell with no log").
+    // `action: 'none'` here is legitimately correct (there is no readable queue to resume
+    // against), but it must never be silent.
+    console.error(
+      `resume hook: queue.json unreadable at ${queuePath} — ${error instanceof Error ? error.message : String(error)}`,
+    );
     return { action: 'none' };
   }
 
