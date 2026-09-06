@@ -6,7 +6,7 @@ import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dash
 import { fetchForgeCounts } from './lib/campaign-status/forge.ts';
 import { loadCampaignState } from './lib/campaign-status/state.ts';
 import { readJsonFile } from './lib/fs.ts';
-import type { PluginDriftSignal } from './plugin-drift-signal.ts';
+import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
 
 export { parseCheckpointFrontmatter } from './lib/campaign-status/checkpoint.ts';
 export {
@@ -34,18 +34,60 @@ export type {
   StatusMode,
 } from './lib/campaign-status/types.ts';
 
-// Issue #800 (ADR-030) — dashboard surfacing for the advisory plugin-cache drift signal
-// (mechanism 2 of the composite fix; mechanism 1 is `src/agents/reviewer.md`'s V-PLUGIN-01 PR
-// gate). Warns only on a confirmed content mismatch — a signal that hasn't been written yet, or
-// reports no installed cache, or reports a match, all render silently, matching
-// `.blackhole/plugin-drift.json`'s `hooks_hash_match: false` as the sole warning condition.
+// Issue #912 (ADR-044) — widens dashboard surfacing for the advisory plugin-cache drift signal
+// (mechanism 2 of ADR-030's composite fix; mechanism 1 is `src/agents/reviewer.md`'s V-PLUGIN-01
+// PR gate) from a single hash-match boolean to one line per non-clean registered source, plus a
+// line per `veto_pairs[]` entry. A foreign source of unverifiable provenance is NEVER clean —
+// it renders in the green fixture as well as the red one (ADR-044 § Falsifiability) — so a fully
+// silent render now means "every present source both resolves to a proven identity AND matches
+// origin/main", strictly narrower than the old "hash comparison happened to match" bar.
+function isCleanSource(s: PluginDriftSource): boolean {
+  if (s.outcome === 'no-baseline') return !s.present; // an absent/unregistered layer is not drift
+  if (s.outcome === 'version-differs-unproven') return false;
+  return s.relation_to_origin_main === 'identical';
+}
+
+function describeSourceState(s: PluginDriftSource): string {
+  if (s.outcome === 'no-baseline') return 'baseline: none (foreign or unverifiable provenance)';
+  if (s.outcome === 'version-differs-unproven') return 'version differs from the repo build, ordering unproven';
+  if (s.relation_to_origin_main === 'diverged') return 'diverged from origin/main';
+  if (s.relation_to_origin_main === 'older') return `${s.hook_commits_behind ?? '?'} hook-touching commit(s) behind origin/main`;
+  if (s.relation_to_origin_main === 'newer') return 'ahead of origin/main';
+  return 'ordering unavailable';
+}
+
+// ADR-044 § A-5 — the disclosure is unconditional: it appears whether the render is a warning
+// OR a fully clean signal. A clean render is exactly the case that needs qualifying (a fifth,
+// unscanned enforcement source can still be silently vetoing) — attaching the note only to the
+// warning path would repeat this issue's own founding error, a render asserting more confidence
+// than its evidence supports. `signal.scan_boundary` (not a restated copy) is the one canonical
+// text (`SCAN_BOUNDARY_NOTE`, `plugin-drift-signal.ts`) so the JSON field and this line can never
+// drift apart (V-DOC-05).
 export function renderPluginDriftWarning(signal: PluginDriftSignal | null): string {
-  if (!signal || signal.hooks_hash_match !== false) return '';
-  return (
-    '⚠ Plugin cache drift: the installed Claude Code plugin cache\'s hooks/ content differs ' +
-    'from this repo\'s build output (.blackhole/plugin-drift.json). See ' +
-    'src/references/blackhole-state.md § Plugin-Drift Signal for the refresh path.'
-  );
+  if (!signal) return '';
+  const nonClean = signal.sources.filter((s) => !isCleanSource(s));
+  const lines: string[] = [];
+
+  if (nonClean.length === 0 && signal.veto_pairs.length === 0) {
+    lines.push('✓ Plugin cache: every registered source within scan boundary is clean.');
+  } else {
+    lines.push(
+      '⚠ Plugin cache drift: at least one registered PreToolUse source is unverified or differs ' +
+        'from this repo\'s build output (.blackhole/plugin-drift.json). See ' +
+        'src/references/blackhole-state.md § Plugin-Drift Signal for the refresh path.',
+    );
+    for (const s of nonClean) {
+      lines.push(`  - layer ${s.layer} (${s.label}): ${describeSourceState(s)}`);
+    }
+    for (const pair of signal.veto_pairs) {
+      lines.push(
+        `  - veto: layer ${pair.older_layer} (${pair.older_label}) is ${pair.hook_commits_behind ?? '?'} hook-touching ` +
+          `commit(s) behind layer ${pair.newer_layer} (${pair.newer_label}) and can still override it (deny-wins)`,
+      );
+    }
+  }
+  lines.push(signal.scan_boundary);
+  return lines.join('\n');
 }
 
 function main() {

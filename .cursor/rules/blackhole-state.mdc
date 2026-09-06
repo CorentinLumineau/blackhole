@@ -336,19 +336,61 @@ republish+reinstall step afterward, leaving an installed Claude Code plugin cach
 while reporting the same version string as the repo build (the cache is version-keyed, not
 content-addressed — `blackhole-protocol.md` § Branch & Worktree Hygiene).
 
+**Widened scope (issue #912, ADR-044).** Claude Code composes PreToolUse hooks from every
+enabled source and merges them deny-wins, with no override — a signal built from one guessed
+installed-cache path can report "not installed" while a *different*, stale copy is actively
+vetoing calls the repo's own current code allows. The signal now enumerates every registered
+source instead of guessing one path, and asserts an ordering only where a resolvable commit SHA
+proves one:
+
+1. **Enumerate** (`scripts/lib/hook-sources.ts`) four settings layers plus every candidate row
+   in `~/.claude/plugins/installed_plugins.json`: project `.claude/settings.json` (resolves to
+   the repo's own build output, `origin_kind: repo-build`), `enabledPlugins` (resolves to one or
+   more installed-cache rows, `origin_kind: plugin-cache` — when more than one install row could
+   apply to this project, e.g. a project-scope row alongside a user-scope row, **all candidates
+   are reported and none is picked**; the scope-precedence rule is a reconstructed assumption,
+   never adjudicated), user `~/.claude/settings.json` and `.claude/settings.local.json`
+   (`origin_kind: foreign` — third-party or unrecognized automation).
+2. **Order** (`scripts/lib/hook-source-ordering.ts`) each present, SHA-bearing source against
+   `origin/main` via an injected git resolver (`merge-base --is-ancestor` run in **both**
+   directions), rendering exactly three distinct outcomes, none collapsed into "no drift":
+   *strict* (older / newer / identical / **diverged** — two installs off different branches, its
+   own state), *version-differs-ordering-unproven* (a version string with no resolvable SHA — the
+   majority consumer-repo topology, since a consumer has neither blackhole's commit history nor a
+   blackhole `origin/main`), and *no-baseline* (a foreign source — presence and deny-wins
+   participation only, rendered as its own state in the clean case **and** the drifted one).
+   `veto_pairs[]` names every pair where one source is provably older than another, since
+   deny-wins composition means an older source can still override a newer one.
+3. **Hash** (`scripts/lib/plugin-drift.ts`'s reused `hashDirectory`) each present directory-kind
+   source's content, feeding the `installed_present`/`hooks_hash_match` derived roll-up so
+   `renderPluginDriftWarning` keeps working: `hooks_hash_match` is `true` only when **every**
+   present plugin-cache candidate's content matches the repo build's — any one mismatch flips it
+   to `false` (the "prefer false positives" bias the design's binding constraints require).
+
 Existence-gated: when `scripts/plugin-drift-signal.ts` exists at repo root (blackhole
 self-hosting its own campaign), refresh `.blackhole/plugin-drift.json` via
 `bun run scripts/plugin-drift-signal.ts`; absent, this step is inert — no error, no attempted
-invocation. The signal hashes the installed cache's `hooks/` tree
-(`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/hooks/`) and compares it against the
-repo's own build target (`.claude/hooks/`), via `scripts/lib/plugin-drift.ts`'s
-`computePluginDrift`.
+invocation. The signal is schema `version: 2`, carrying `sources[]` (each with its enumeration,
+ordering, and content-hash fields merged) and `veto_pairs[]`.
 
-`hooks_hash_match: false` surfaces as a warning line on the `bun run status` dashboard
-(`scripts/campaign-status.ts`'s `renderPluginDriftWarning`) — visibility only, no ledger append,
-no phase gate. An absent installed cache (`installed_present: false`) and a matching hash both
-render silently, matching mechanism 1's diff-only enforcement: this signal never blocks anything
-by itself.
+`scripts/campaign-status.ts`'s `renderPluginDriftWarning` renders one line per non-clean source
+(never fully silent while a foreign source is registered — its unverifiable provenance never
+becomes clean, even after every SHA-bearing source matches) plus one line per `veto_pairs[]`
+entry — visibility only, no ledger append, no phase gate. The ordering leg is
+**effectively self-hosting-only**: in a consumer repo, blackhole's commit history is absent from
+the local object store and `origin/main` is a different project, so the signal renders
+`ordering_available: false` with a reason rather than guessing.
+
+**Scan-boundary disclosure (ADR-044 § A-5), unconditional.** Every source outside the four-layer
+scan (e.g. a plugin's own bundled settings registering a matcher this scan doesn't parse) stays
+invisible. The signal states this boundary in its own emitted output — a fixed `scan_boundary`
+field on the JSON signal (`SCAN_BOUNDARY_NOTE`, `plugin-drift-signal.ts`), printed by the CLI on
+its own line, and appended by `renderPluginDriftWarning` to **every** render, clean or not — so a
+clean render never reads as "the net is current". A fully clean render still surfaces a `✓
+Plugin cache: every registered source within scan boundary is clean.` line followed by the
+disclosure; a warning render appends the same disclosure after its per-source and `veto_pairs[]`
+lines. Whether a copy this scan cannot see actually issued a live denial is only ever observed at
+runtime, which is issue #919's scope, not this one's.
 
 ## Worktree & Branch obligations
 
