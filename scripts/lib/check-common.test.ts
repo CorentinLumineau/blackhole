@@ -442,13 +442,10 @@ describe('renderIndexRowLine (exported)', () => {
   });
 });
 
-// Issue #941: check-common.ts shares the exact silent-row-split class issue #940 fixed in
-// decision-log-append.ts (see that file's assertNoEmbeddedNewline definition-site comment) —
-// renderIndexRowLine wrote a pipe-table row with no check that a cell value carries an embedded
-// \n/\r, silently splitting the row across two physical lines. Guarding here covers both of this
-// file's row-construction paths (appendIndexRowIfAbsent's two write branches, plus
-// doc-index-generate.ts's direct calls) for free, since all of them render through this one
-// function.
+// See renderIndexRowLine's and assertNoEmbeddedNewline's definition-site comments
+// (check-common.ts:181, :191) for the guard's rationale. Locally new here: the three concrete
+// call shapes exercised — a bad `summary` field, a bad `path` field, and an
+// appendIndexRowIfAbsent offer carrying a bad field.
 describe('renderIndexRowLine — embedded newline/carriage-return rejection (issue #941)', () => {
   test('throws naming the field and the row path when summary contains an embedded newline', () => {
     const row = { path: 'audits/foo.md', summary: 'Contains a\nnewline', type: 'audit', status: 'current', reviewTrigger: 'on release' };
@@ -476,13 +473,10 @@ describe('renderIndexRowLine — embedded newline/carriage-return rejection (iss
   });
 });
 
-// Issue #941 leg 2: findPipeTableViolations is a passive, exported structural-violation check —
-// a sibling function built on the unmodified findTableBlock (see the invariance pin above) — that
-// reports a pipe-table row found after findTableBlock's own detected block end, the exact
-// signature of an already-corrupted table (mirrors decision-log-append.ts's
-// findRecordsTableViolations, issue #940). Schema-agnostic: it never inspects row content, only
-// "does a |-prefixed line appear past the block end", so one function serves both the INDEX
-// 5-column schema and the vcodes 4-column schema (V-DRY-01).
+// See findPipeTableViolations's definition-site comment (check-common.ts:307) for the detector's
+// rationale and residual scope. Locally new here: the two fixtures pinning its behavior — a
+// well-formed table plus ordinary trailing prose (clean), and a split-row shape mirroring the
+// live #940 incident (flagged).
 describe('findPipeTableViolations (issue #941 regression guard)', () => {
   test('returns [] for a well-formed table followed by ordinary trailing prose', () => {
     const content = `| Code | Rule | Severity | Primary enforcement site |
