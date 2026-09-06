@@ -195,26 +195,44 @@ export class GitLabForgeAdapter implements ForgeAdapter {
   // error propagate instead, matching `GitHubForgeAdapter.prChecks` (github.ts), which has never
   // caught here — the caller must fail closed on a rejected `prChecks()`, not treat it as a clean
   // check list (V-INT-01: one adapter behavior for the shared `ForgeAdapter` interface method).
+  //
+  // Issue #868: `glab ci status` wraps GitLab's `GetPipeline` — a single aggregate object, not a
+  // per-job array — so the old implementation could only ever synthesize one `{ name: 'pipeline' }`
+  // row regardless of how many jobs actually ran, violating the `ForgeAdapter` contract's
+  // per-check shape that `gitea.ts`/`github.ts` both honor (V-SOLID-03). Reading GitLab's public
+  // REST API directly via `glab api` (parallel to `runGhApiJson` in cli.ts) gives one row per real
+  // pipeline job instead.
   async prChecks(number: number): Promise<ForgeCheck[]> {
-    const pipeline = runGlabJson<{ status: string; detailed_status?: { group?: string } }>([
-      'ci',
-      'status',
-      ...this.repoFlag(),
-      '--mr',
-      String(number),
+    const project = encodeURIComponent(this.repo);
+    const pipelines = runGlabJson<Array<{ id: number }>>([
+      'api',
+      `projects/${project}/merge_requests/${number}/pipelines`,
     ]);
-    return [
-      {
-        name: 'pipeline',
-        status: pipeline.status === 'running' ? 'IN_PROGRESS' : 'COMPLETED',
-        conclusion:
-          pipeline.detailed_status?.group === 'success'
-            ? 'SUCCESS'
-            : pipeline.detailed_status?.group === 'failed'
-              ? 'FAILURE'
-              : null,
-      },
-    ];
+    if (pipelines.length === 0) return [];
+    const latest = pipelines.slice().sort((a, b) => b.id - a.id)[0];
+    const jobs = runGlabJson<Array<{ name: string; status: string }>>([
+      'api',
+      `projects/${project}/pipelines/${latest.id}/jobs`,
+    ]);
+    return jobs.map((job) => ({
+      name: job.name,
+      status:
+        job.status === 'running'
+          ? 'IN_PROGRESS'
+          : job.status === 'pending' || job.status === 'created'
+            ? 'QUEUED'
+            : 'COMPLETED',
+      conclusion:
+        job.status === 'success'
+          ? 'SUCCESS'
+          : job.status === 'failed'
+            ? 'FAILURE'
+            : job.status === 'canceled'
+              ? 'CANCELLED'
+              : job.status === 'skipped'
+                ? 'SKIPPED'
+                : null,
+    }));
   }
 }
 
