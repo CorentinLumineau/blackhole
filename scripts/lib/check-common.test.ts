@@ -3,15 +3,18 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   appendIndexRowIfAbsent,
+  assertNoEmbeddedNewline,
   byPathByteOrder,
   findAdrFileByNumber,
   findMissingGateMarkers,
+  findPipeTableViolations,
   findTableBlock,
   parseIndexTableRows,
   parseVcodeTableRows,
   renderIndexRowLine,
 } from './check-common.ts';
 import { withTempDir } from './test-fixtures.ts';
+import { root } from '../checks/check-utils.ts';
 
 describe('findMissingGateMarkers', () => {
   test('returns the subset of required markers absent from content', () => {
@@ -126,6 +129,20 @@ describe('findTableBlock', () => {
     const result = findTableBlock(lines);
     expect(result.separatorIdx).toBe(1);
     expect(result.blockEnd).toBe(lines.length);
+  });
+
+  // Issue #941 invariance pin — findPipeTableViolations (below) is a sibling function built on
+  // top of findTableBlock, not a modification of it. This is a regression pin, not a red/green
+  // TDD test: it re-runs the three well-formed fixtures above and asserts the exact same
+  // {separatorIdx, blockEnd} values those tests already pin, proving findTableBlock's own
+  // contract for a well-formed table is byte-for-byte unchanged by this plan.
+  test('issue #941: findTableBlock result is unchanged for well-formed tables (invariance pin)', () => {
+    expect(
+      findTableBlock(['# Doc', '', '| path | summary |', '|------|---------|', '| a.md | A |', '| b.md | B |', '', 'Trailing prose.']),
+    ).toEqual({ separatorIdx: 3, blockEnd: 6 });
+    expect(findTableBlock(['# Doc', '', 'Just prose, no table at all.'])).toEqual({ separatorIdx: -1, blockEnd: -1 });
+    const endOfFileLines = ['| path | summary |', '|------|---------|', '| a.md | A |', '| b.md | B |'];
+    expect(findTableBlock(endOfFileLines)).toEqual({ separatorIdx: 1, blockEnd: endOfFileLines.length });
   });
 });
 
@@ -422,6 +439,90 @@ describe('renderIndexRowLine (exported)', () => {
     const line = renderIndexRowLine(row);
     const header = '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
     expect(parseIndexTableRows(`${header}${line}\n`)).toEqual([row]);
+  });
+});
+
+// See renderIndexRowLine's and assertNoEmbeddedNewline's definition-site comments
+// (check-common.ts:181, :191) for the guard's rationale. Locally new here: the three concrete
+// call shapes exercised — a bad `summary` field, a bad `path` field, and an
+// appendIndexRowIfAbsent offer carrying a bad field.
+describe('renderIndexRowLine — embedded newline/carriage-return rejection (issue #941)', () => {
+  test('throws naming the field and the row path when summary contains an embedded newline', () => {
+    const row = { path: 'audits/foo.md', summary: 'Contains a\nnewline', type: 'audit', status: 'current', reviewTrigger: 'on release' };
+    expect(() => renderIndexRowLine(row)).toThrow(/summary/);
+    try {
+      renderIndexRowLine(row);
+      throw new Error('expected renderIndexRowLine to throw');
+    } catch (err) {
+      expect((err as Error).message).toContain('audits/foo.md');
+    }
+  });
+
+  test('throws naming the field when path contains an embedded carriage-return', () => {
+    const row = { path: 'audits/a\rb.md', summary: 'Fine', type: 'audit', status: 'current', reviewTrigger: 'on release' };
+    expect(() => renderIndexRowLine(row)).toThrow(/path/);
+  });
+
+  test('appendIndexRowIfAbsent throws rather than inserting a row with an embedded newline', () => {
+    const table = `| path | summary | type | status | review_trigger |
+|------|---------|------|--------|----------------|
+| audits/a.md | A | audit | current | on release |
+`;
+    const badRow = { path: 'audits/b.md', summary: 'Bad\nsummary', type: 'audit', status: 'current', reviewTrigger: 'on release' };
+    expect(() => appendIndexRowIfAbsent(table, badRow)).toThrow();
+  });
+});
+
+// See findPipeTableViolations's definition-site comment (check-common.ts:307) for the detector's
+// rationale and residual scope. Locally new here: the two fixtures pinning its behavior — a
+// well-formed table plus ordinary trailing prose (clean), and a split-row shape mirroring the
+// live #940 incident (flagged).
+describe('findPipeTableViolations (issue #941 regression guard)', () => {
+  test('returns [] for a well-formed table followed by ordinary trailing prose', () => {
+    const content = `| Code | Rule | Severity | Primary enforcement site |
+|------|------|----------|--------------------------|
+| V-FAKE-01 | Test rule one | BLOCK | fake.md §1 |
+| V-FAKE-02 | Test rule two | WARN | fake.md §2 |
+
+**BLOCK** = must fix before merge (or escalate to user with justification).
+**WARN** = fix or document deferral in PR and ledger.
+`;
+    expect(findPipeTableViolations(content)).toEqual([]);
+  });
+
+  test('flags a pipe-table row found after the detected block end (orphaned-continuation split)', () => {
+    // Shaped exactly like the live #940 incident: a row's middle cell is split by a raw \n
+    // across two physical lines, followed by at least one further well-formed row — the tail
+    // and the further row both land past findTableBlock's blockEnd.
+    const content = `| path | summary | type | status | review_trigger |
+|------|---------|------|--------|----------------|
+| audits/a.md | A
+split summary | audit | current | on release |
+| audits/b.md | B | audit | current | on release |
+`;
+    const violations = findPipeTableViolations(content);
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations.some((v) => v.includes('audits/b.md'))).toBe(true);
+  });
+});
+
+// Live-file regression guard (issue #941): asserts today's committed files carry zero pipe-table
+// structural corruption. Runs on every `bun test`, same "sufficient to catch recurrence" posture
+// #940 established for decision-log.md's own live-file test.
+describe('documentation/**/INDEX.md and blackhole-vcodes.md structural integrity (issue #941 regression guard)', () => {
+  test('documentation/INDEX.md has no orphaned pipe-table rows', () => {
+    const content = fs.readFileSync(path.join(root, 'documentation/INDEX.md'), 'utf-8');
+    expect(findPipeTableViolations(content)).toEqual([]);
+  });
+
+  test('documentation/decisions/INDEX.md has no orphaned pipe-table rows', () => {
+    const content = fs.readFileSync(path.join(root, 'documentation/decisions/INDEX.md'), 'utf-8');
+    expect(findPipeTableViolations(content)).toEqual([]);
+  });
+
+  test('src/references/blackhole-vcodes.md has no orphaned pipe-table rows', () => {
+    const content = fs.readFileSync(path.join(root, 'src/references/blackhole-vcodes.md'), 'utf-8');
+    expect(findPipeTableViolations(content)).toEqual([]);
   });
 });
 

@@ -168,11 +168,38 @@ export const parseIndexTableRows = (
 // its own importers keep working.
 export type RootIndexRow = { path: string; summary: string; type: string; status: string; reviewTrigger: string };
 
+// Issue #941: extracted from decision-log-append.ts's local function of the same name and
+// signature (issue #940) — that file's own carve-out for keeping it unexported was conditioned
+// on "exactly one call site" (V-YAGNI-03); renderIndexRowLine below is a second real production
+// consumer, so the guard moves here rather than being duplicated. escapeCell-style rendering
+// (decision-log-append.ts) escapes `|` only, so a cell value carrying a real embedded
+// newline/carriage-return (e.g. a JSON string whose `\n` escape became a literal newline before
+// reaching this function) is written verbatim, splitting a pipe-table row across two physical
+// lines. findTableBlock's blockEnd walk then treats the orphaned tail as "outside the table", so
+// every insert made afterward silently corrupts the table further. Reject, don't escape: throw
+// as soon as the first bad field is found, before any output is built.
+export const assertNoEmbeddedNewline = (value: string, id: number | string, field: string): void => {
+  if (/[\r\n]/.test(value)) {
+    throw new Error(`record ${id} field "${field}" contains an embedded newline/carriage-return character`);
+  }
+};
+
 // Issue #811 (ADR-031 Phase 1): exported for reuse by scripts/lib/doc-index-generate.ts, which
 // needs the identical row-render shape and sort order the root-INDEX carry-step already
 // produces — no second sort/render implementation (V-INT-02).
-export const renderIndexRowLine = (row: RootIndexRow): string =>
-  `| ${row.path} | ${row.summary} | ${row.type} | ${row.status} | ${row.reviewTrigger} |`;
+//
+// Issue #941: guarded by assertNoEmbeddedNewline (above) for all five fields before any output is
+// built — covers both of appendIndexRowIfAbsent's write branches below and
+// doc-index-generate.ts's direct calls, since every one of them renders through this one
+// function.
+export const renderIndexRowLine = (row: RootIndexRow): string => {
+  assertNoEmbeddedNewline(row.path, row.path, 'path');
+  assertNoEmbeddedNewline(row.summary, row.path, 'summary');
+  assertNoEmbeddedNewline(row.type, row.path, 'type');
+  assertNoEmbeddedNewline(row.status, row.path, 'status');
+  assertNoEmbeddedNewline(row.reviewTrigger, row.path, 'reviewTrigger');
+  return `| ${row.path} | ${row.summary} | ${row.type} | ${row.status} | ${row.reviewTrigger} |`;
+};
 
 // Byte-order (UTF-16 code-unit) comparator, deliberately not String.prototype.localeCompare —
 // localeCompare uses the runtime's default-locale ICU collation, which can diverge from byte
@@ -275,4 +302,39 @@ export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow):
 
   const rebuilt = [...lines.slice(0, separatorIdx + 1), ...sortedLines, ...lines.slice(blockEnd)].join('\n');
   return { content: rebuilt, appended: true };
+};
+
+// Issue #941 leg 2: passive, exported structural-violation check — mirrors
+// decision-log-append.ts's findRecordsTableViolations (issue #940), applied to any pipe table
+// findTableBlock can locate rather than one file's specific Records schema. Schema-agnostic
+// ("row found past the block" is the same signature for the INDEX.md 5-column schema and the
+// vcodes 4-column schema, V-DRY-01) and deliberately does not modify findTableBlock itself — see
+// the invariance pin in check-common.test.ts's findTableBlock describe block. Never wired into
+// any write path (same judgment #940 made and rejected for findRecordsTableViolations): the
+// guard above (assertNoEmbeddedNewline) is what prevents new corruption; this is what proves a
+// table is currently well-formed, exercised only by bun test.
+//
+// Deliberately more permissive than findRecordsTableViolations: an ordinary non-blank,
+// non-`|`-prefixed line after the block end (e.g. blackhole-vcodes.md's trailing
+// "**BLOCK** = ..." / "**WARN** = ..." legend prose) is not a violation and does not stop the
+// scan — only a resumed `|`-prefixed line is the tell-tale signature of an orphaned row
+// continuation. Residual, explicitly out of scope: a split on a table's last row produces no
+// further `|`-prefixed line and is therefore undetectable by this signature — the same class of
+// blind spot #940 accepted for findRecordsTableViolations.
+export const findPipeTableViolations = (content: string): string[] => {
+  const lines = content.split('\n');
+  const { separatorIdx, blockEnd } = findTableBlock(lines);
+  if (separatorIdx === -1) return [];
+
+  const violations: string[] = [];
+  for (let i = blockEnd; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '') continue;
+    if (line.trim().startsWith('|')) {
+      violations.push(
+        `line ${i + 1}: pipe-table row found after the table's detected block end (line ${blockEnd}) — likely an orphaned continuation of a row split by an embedded newline: ${line}`,
+      );
+    }
+  }
+  return violations;
 };
