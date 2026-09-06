@@ -459,13 +459,17 @@ describe('main() CLI entrypoint', () => {
       );
 
       // `process.exitCode` is a process-global — save/restore it so a forced non-zero code
-      // here never leaks into this test file's own exit status.
+      // here never leaks into this test file's own exit status. The `?? 0` is load-bearing:
+      // assigning `undefined` once the code has been set to a truthy value is a no-op in Bun,
+      // not a reset, so restoring a captured `undefined` would leave the process exiting 1 and
+      // make the suite's exit status disagree with its own "0 fail" summary. Only an explicit
+      // `0` clears it.
       const originalExitCode = process.exitCode;
       try {
         main({ validateStateWrite: () => ({ ok: false, reason: 'test-forced-refusal' }) });
         expect(process.exitCode).toBe(1);
       } finally {
-        process.exitCode = originalExitCode;
+        process.exitCode = originalExitCode ?? 0;
       }
 
       // The refusal must abort before the atomic rename — the live ledger is untouched and the
