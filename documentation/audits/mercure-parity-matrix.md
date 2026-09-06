@@ -4,7 +4,7 @@ summary: "Mechanism-by-mechanism parity matrix between mercure and blackhole"
 status: current
 review_trigger: "on release"
 created: 2026-07-20
-last_updated: 2026-08-10
+last_updated: 2026-09-07
 related:
   - documentation/decisions/ADR-013-mercure-parity-program.md
   - documentation/audits/mercure-parity-surface.md
@@ -140,7 +140,7 @@ reconcile into this matrix (issue #461).
 | PM-087 | protocol | Rebase / merge-conflict resolution protocol (mercure `git-ci/references/mode-resolve.md § B`) (mercure v9.11.0) | none — `grep -rli rebase src/` = 0 matches (re-confirmed 2026-08-10); `phase-loop.md` runs `gh pr merge --squash` directly, so a real conflict falls into the generic Permanent-error path and stalls the issue indefinitely; #450 | gap | 48 | 2026-08-10, mercure v9.11.0 |
 | PM-088 | protocol | CI-failure diagnosis — route non-transient failures through a fix loop with failing-step logs (mercure `git-ci/mode-resolve.md § A.1-A.5`; `mcp-context` `get_failing_step_logs`, `list_failing_jobs`) (mercure v9.11.0) | none — `src/references/merge-gate.md:21-29` is a bare `gh pr checks` poll; `phase-loop.md` retries two named transient classes then reports-and-skips, with no failing-step-log diagnosis path; #451 | gap | 48 | 2026-08-10, mercure v9.11.0 |
 | PM-089 | gate | Backlog-hygiene sweep — duplicate/stale-referent/low-info issue triage (mercure `git-issue/references/mode-triage.md` Phases 2-4) (mercure v9.11.0) | #452 merged — `src/references/hunt/backlog.md` (open-issue territory: duplicate Jaccard ≥ 0.55 + touch_path overlap, stale-referent Glob/Grep, low-info enrichment draft); `scripts/lib/build/facts.ts` `HUNT_KINDS`; `src/references/phase-loop.md` § Kaizen step 3 orchestrator enrichment pass (`<!-- blackhole:enrichment -->` comment + `queue.json` notes) | covered | — | 2026-08-12, mercure v9.11.0 |
-| PM-090 | checklist | Comment Discipline Audit — duplicated rationale across definition/interface/call-site/test, incident archaeology in comments, comment-to-code ratio, `V-DOC-05/06/07` (mercure `rules/references/comment-discipline.md`) (mercure v9.11.0) | none — no check for rationale duplication, issue-number archaeology in source comments, or comment-to-code ratio; blackhole's own `V-DOC-05` slot is occupied by a different mechanism (documentation-prose factual accuracy, see #441), so this needs fresh V-codes rather than a restatement; #449 | gap | 56 | 2026-08-10, mercure v9.11.0 |
+| PM-090 | checklist | Comment Discipline Audit — duplicated rationale across definition/interface/call-site/test, incident archaeology in comments, comment-to-code ratio, `V-DOC-05/06/07` (mercure `rules/references/comment-discipline.md`) (mercure v9.11.0) | `V-DOC-05`/`V-DOC-06`/`V-DOC-07` in `src/references/blackhole-vcodes.md`, enforced by `reviewer.md` § Comment Discipline Audit — stale-row correction, issue #869: the prior "none" verdict predates these three codes landing under their current, correct meaning (an earlier #441-era `V-DOC-05` collision has since resolved to `V-DOCFACT-01`) | covered |  | 2026-09-07, mercure v9.15.0, issue #869 |
 | PM-091 | gate | Companion-file auto-repair — write remedy for a stale/absent `ARCHITECTURE.md`/`DESIGN.md`/`AGENTS.md`, distinct from the read-only presence audit (mercure `x-implement/references/companion-file-sync.md`) (mercure v9.11.0) | none — `src/agents/reviewer.md:129-136` § 10 Companion-File Audit (`V-ADA-01/02/03/05/06/07`) is WARN-only from a read-only agent; the only Write-capable agent (`implementer`) has no template/auto-repair path, so a companion-file finding is never fixed, only flagged; #453 | gap | 48 | 2026-08-10, mercure v9.11.0 |
 | PM-092 | protocol | Conventional-commit format enforcement for worker commits, `{type}(scope): {description}` (mercure `vcs-conventional-commits`; `mercure-file-organization.md` "Commit format") (mercure v9.11.0) | none — `src/agents/implementer.md:91` enforces `Closes #N`/`Fixes #N` issue linkage only; zero `type(scope)` format enforcement anywhere in agent instructions, the repo follows it by human habit alone. Held below the `V-PARETO-02` filing cut-line (Priority 30 < 36, `mercure-parity-surface.md` § 5b) — not yet filed | gap | 30 | 2026-08-10, mercure v9.11.0 |
 | PM-093 | gate | Sensitive-file exclusion before staging + pre-commit secret scanning + GPG signing policy for worker commits (mercure `git-commit/references/grouping-rules.md § Sensitive File Patterns`; `security-git` skill) (mercure v9.11.0) | PARTIAL — sensitive-filename exclusion landed: `src/agents/implementer.md:234-277` § Sensitive-Filename Staging Gate, `V-SEC-11` (#448 merged, PR #500); no gitleaks-equivalent pre-stage content scan and no GPG signing policy for worker commits exist yet (held above the filing floor but not yet filed, Priority 36, `mercure-parity-surface.md` § 5c) | adapted | — | 2026-08-10, mercure v9.11.0 |
@@ -162,7 +162,8 @@ Pareto re-check on landing. Rows removed 2026-08-10 (issue #461) because their s
 away from `gap`/`in-flight`: `PM-003`, `PM-011`, `PM-046`, `PM-050` (→ `covered`), `PM-052`,
 `PM-083` (→ `adapted`), `PM-055` (→ `covered`, contradicted), `PM-097` (→ `covered`, #454 merged
 as `176b647` after this row was first drafted in this same PR — stale on arrival, caught in
-review before merge).
+review before merge). `PM-090` (→ `covered`, issue #869 — the row's "none" verdict was stale;
+`V-DOC-05/06/07` already implement this mechanism).
 
 | `PM-id` | Gain | Effort | Priority |
 |---|---|---|---|
@@ -180,7 +181,6 @@ review before merge).
 | `PM-084` | 6 | 4 | 42 |
 | `PM-087` | 6 | 3 | 48 |
 | `PM-088` | 6 | 3 | 48 |
-| `PM-090` | 7 | 3 | 56 |
 | `PM-091` | 6 | 3 | 48 |
 | `PM-092` | 5 | 5 | 30 |
 | `PM-094` | 4 | 2 | 36 |
