@@ -196,11 +196,11 @@ export class GitLabForgeAdapter implements ForgeAdapter {
   // caught here — the caller must fail closed on a rejected `prChecks()`, not treat it as a clean
   // check list (V-INT-01: one adapter behavior for the shared `ForgeAdapter` interface method).
   //
-  // Issue #868: `glab ci status` wraps GitLab's `GetPipeline` — a single aggregate object, not a
-  // per-job array — so the old implementation could only ever synthesize one `{ name: 'pipeline' }`
-  // row regardless of how many jobs actually ran, violating the `ForgeAdapter` contract's
-  // per-check shape that `gitea.ts`/`github.ts` both honor (V-SOLID-03). Reading GitLab's public
-  // REST API directly via `glab api` (parallel to `runGhApiJson` in cli.ts) gives one row per real
+  // `glab ci status` wraps GitLab's `GetPipeline` — a single aggregate object, not a per-job
+  // array — so synthesizing checks from it can only ever produce one `{ name: 'pipeline' }` row
+  // regardless of how many jobs actually ran, violating the `ForgeAdapter` contract's per-check
+  // shape that `gitea.ts`/`github.ts` both honor (V-SOLID-03). Reading GitLab's public REST API
+  // directly via `glab api` (parallel to `runGhApiJson` in cli.ts) gives one row per real
   // pipeline job instead.
   async prChecks(number: number): Promise<ForgeCheck[]> {
     const project = encodeURIComponent(this.repo);

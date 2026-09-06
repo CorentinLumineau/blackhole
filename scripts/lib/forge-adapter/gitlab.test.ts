@@ -85,8 +85,10 @@ describe('GitLabForgeAdapter', () => {
     runGlabJsonSpy = spyOn(glabCli, 'runGlabJson').mockImplementation((args: string[]) => {
       const endpoint = args[1] ?? '';
       if (endpoint === 'projects/group%2Fproject/merge_requests/9/pipelines') {
-        // Deliberately out of order — id 55 (older) listed after id 90 (newer).
-        return [{ id: 90 }, { id: 55 }];
+        // Array order and max-id disagree: id 55 (lower, but listed first) vs id 90 (the max,
+        // listed second). Only the jobs endpoint for the max id (90) is stubbed — a `pipelines[0]`
+        // regression would request pipeline 55's jobs instead and hit the throw below.
+        return [{ id: 55 }, { id: 90 }];
       }
       if (endpoint === 'projects/group%2Fproject/pipelines/90/jobs') {
         return [{ name: 'build', status: 'running' }];
@@ -97,6 +99,37 @@ describe('GitLabForgeAdapter', () => {
     const checks = await adapter.prChecks(9);
     expect(checks).toEqual([{ name: 'build', status: 'IN_PROGRESS', conclusion: null }]);
   });
+
+  // 100% line coverage on the status/conclusion ternary chain does not imply every branch ran —
+  // Bun's line coverage does not require branch coverage on a ternary chain. Exercise every
+  // GitLab job `status` value the mapping distinguishes, including the two statuses that share
+  // the QUEUED status mapping and the unrecognized-status fallthrough.
+  test.each([
+    ['pending', 'QUEUED', null],
+    ['created', 'QUEUED', null],
+    ['canceled', 'COMPLETED', 'CANCELLED'],
+    ['skipped', 'COMPLETED', 'SKIPPED'],
+    ['manual', 'COMPLETED', null],
+  ] as const)(
+    'prChecks maps GitLab job status %s to status %s / conclusion %s',
+    async (jobStatus, expectedStatus, expectedConclusion) => {
+      runGlabJsonSpy = spyOn(glabCli, 'runGlabJson').mockImplementation((args: string[]) => {
+        const endpoint = args[1] ?? '';
+        if (endpoint === 'projects/group%2Fproject/merge_requests/9/pipelines') {
+          return [{ id: 1 }];
+        }
+        if (endpoint === 'projects/group%2Fproject/pipelines/1/jobs') {
+          return [{ name: 'job', status: jobStatus }];
+        }
+        throw new Error('unexpected glab api call: ' + args.join(' '));
+      });
+      const adapter = new GitLabForgeAdapter('group/project');
+      const checks = await adapter.prChecks(9);
+      expect(checks).toEqual([
+        { name: 'job', status: expectedStatus, conclusion: expectedConclusion },
+      ]);
+    },
+  );
 
   test('prChecks returns an empty list when the MR has no pipeline yet', async () => {
     runGlabJsonSpy = spyOn(glabCli, 'runGlabJson').mockImplementation((args: string[]) => {

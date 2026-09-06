@@ -2,6 +2,26 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as childProcess from 'child_process';
 import { runGh, runGhApiJson, runGhApiText, runGhJson, runGhText } from './cli.ts';
 
+/**
+ * A minimal `child_process.spawnSync` return value shaped for the mocks below — status/stdout/
+ * stderr are the only fields any of these tests vary; `pid`/`output`/`signal` are constant
+ * filler `spawnSync` always returns but this suite never asserts on.
+ */
+function mockSpawnResult(
+  stdout: string,
+  status: number,
+  stderr = '',
+): ReturnType<typeof childProcess.spawnSync> {
+  return {
+    status,
+    stdout,
+    stderr,
+    pid: 1,
+    output: [],
+    signal: null,
+  } as unknown as ReturnType<typeof childProcess.spawnSync>;
+}
+
 describe('cli (gh)', () => {
   let spawnSyncSpy: ReturnType<typeof spyOn<typeof childProcess, 'spawnSync'>>;
 
@@ -10,14 +30,7 @@ describe('cli (gh)', () => {
   });
 
   test('runGh appends --repo when options.repo is given and --repo is absent', () => {
-    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
-      status: 0,
-      stdout: 'ok',
-      stderr: '',
-      pid: 1,
-      output: [],
-      signal: null,
-    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('ok', 0));
 
     runGh(['pr', 'view', '5'], { repo: 'owner/repo' });
 
@@ -29,14 +42,7 @@ describe('cli (gh)', () => {
   });
 
   test('runGh does not duplicate --repo when the caller already supplied it', () => {
-    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
-      status: 0,
-      stdout: 'ok',
-      stderr: '',
-      pid: 1,
-      output: [],
-      signal: null,
-    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('ok', 0));
 
     runGh(['pr', 'view', '5', '--repo', 'other/repo'], { repo: 'owner/repo' });
 
@@ -48,14 +54,7 @@ describe('cli (gh)', () => {
   });
 
   test('runGh omits --repo entirely when no options are given', () => {
-    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
-      status: 0,
-      stdout: 'ok',
-      stderr: '',
-      pid: 1,
-      output: [],
-      signal: null,
-    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('ok', 0));
 
     runGh(['auth', 'status']);
 
@@ -63,14 +62,7 @@ describe('cli (gh)', () => {
   });
 
   test('runGhJson parses stdout JSON and returns it', () => {
-    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
-      status: 0,
-      stdout: '{"number":5,"title":"pr"}',
-      stderr: '',
-      pid: 1,
-      output: [],
-      signal: null,
-    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('{"number":5,"title":"pr"}', 0));
 
     const row = runGhJson<{ number: number; title: string }>(['pr', 'view', '5'], {
       repo: 'owner/repo',
@@ -80,61 +72,26 @@ describe('cli (gh)', () => {
   });
 
   test('runGhJson throws with stderr on a non-zero exit', () => {
-    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
-      status: 1,
-      stdout: '',
-      stderr: 'connection refused',
-      pid: 1,
-      output: [],
-      signal: null,
-    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('', 1, 'connection refused'));
 
     expect(() => runGhJson(['pr', 'view', '5'])).toThrow('connection refused');
   });
 
   test('runGhJson falls back to stdout, then a generic message, when stderr is empty', () => {
-    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
-      status: 1,
-      stdout: 'partial output',
-      stderr: '',
-      pid: 1,
-      output: [],
-      signal: null,
-    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('partial output', 1));
 
     expect(() => runGhJson(['pr', 'view', '5'])).toThrow('partial output');
 
-    spawnSyncSpy.mockReturnValue({
-      status: 1,
-      stdout: '',
-      stderr: '',
-      pid: 1,
-      output: [],
-      signal: null,
-    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+    spawnSyncSpy.mockReturnValue(mockSpawnResult('', 1));
 
     expect(() => runGhJson(['pr', 'view', '5'])).toThrow('gh pr view 5 failed');
   });
 
   test('runGhText returns raw stdout on success and throws the same way on failure', () => {
-    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
-      status: 0,
-      stdout: 'comment posted',
-      stderr: '',
-      pid: 1,
-      output: [],
-      signal: null,
-    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('comment posted', 0));
     expect(runGhText(['pr', 'comment', '5'])).toBe('comment posted');
 
-    spawnSyncSpy.mockReturnValue({
-      status: 1,
-      stdout: '',
-      stderr: 'not found',
-      pid: 1,
-      output: [],
-      signal: null,
-    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+    spawnSyncSpy.mockReturnValue(mockSpawnResult('', 1, 'not found'));
     expect(() => runGhText(['pr', 'comment', '5'])).toThrow('not found');
   });
 
@@ -160,14 +117,7 @@ describe('cli (gh)', () => {
   });
 
   test('runGhApiJson wraps the endpoint in a gh api call and pins repo passthrough', () => {
-    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
-      status: 0,
-      stdout: '{"workflow_runs":[]}',
-      stderr: '',
-      pid: 1,
-      output: [],
-      signal: null,
-    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('{"workflow_runs":[]}', 0));
 
     const data = runGhApiJson<{ workflow_runs: unknown[] }>(
       'repos/owner/repo/actions/runs?head_sha=abc',
@@ -183,14 +133,7 @@ describe('cli (gh)', () => {
   });
 
   test('runGhApiText wraps the endpoint in a gh api call and returns raw text', () => {
-    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
-      status: 0,
-      stdout: 'raw log output',
-      stderr: '',
-      pid: 1,
-      output: [],
-      signal: null,
-    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('raw log output', 0));
 
     const log = runGhApiText('repos/owner/repo/actions/jobs/9/logs', { repo: 'owner/repo' });
 
