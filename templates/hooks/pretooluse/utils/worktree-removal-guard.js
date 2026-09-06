@@ -83,6 +83,20 @@
  *     every `rm -rf "$dir"` in the repo, which is the over-tightening this guard must not
  *     introduce (issue #803 AC2). The residual bypass — a recursive rm whose worktree target is
  *     spelled dynamically — is accepted knowingly, and pinned by its own regression test.
+ *
+ * A THIRD case looked like the same accepted bypass but was not: `cd <real-parent> && rm -rf
+ * <basename>`, a fully STATIC relative path, was resolved against the harness's pre-execution
+ * `cwd` rather than the `cd` destination the shell would actually be standing in when `rm` ran —
+ * so a literal, resolvable target was reported as "not a registered worktree" purely because it
+ * was resolved against the wrong directory (F-00043, review round on PR #880; the `git worktree
+ * remove` counterpart happened to fail closed on the same wrong resolution only because a
+ * nonexistent `-C` target makes every check function error out to `'unknown'`, not because it was
+ * actually verifying anything). `findRemovalInvocations` now simulates a resolvable `cd` between
+ * clauses of the SAME command (`resolveCdTarget`) and resolves each later invocation's relative
+ * argument against that tracked cwd instead. Only a `cd` whose own target is itself dynamic (or
+ * `cd -`, or bare `cd`) falls back to the original `cwd` — collapsing into the existing, accepted,
+ * regression-tested dynamic-target bypass immediately above, deliberately, so this fix cannot turn
+ * an ordinary `cd "$BUILD_DIR" && rm -rf dist` into a new false block.
  */
 
 const { execFileSync } = require('child_process');
@@ -304,17 +318,59 @@ const clauseTailFrom = (command, index) => {
 };
 
 /**
+ * Updates the effective cwd `findRemovalInvocations` tracks across a chained command's clauses,
+ * for one `cd` clause's argument tokens (everything after the `cd` executable itself). This is
+ * the fix for the fail-open reviewed on PR #880 (F-00043): a chained `cd <parent> && rm -rf
+ * <basename>` was resolved entirely against the harness-supplied `cwd` (the shell's
+ * *pre-execution* directory) — never against where the embedded `cd` actually lands — so a
+ * literal relative `rm` target sitting after a real `cd` was silently allowed even when it named
+ * a registered worktree with unpushed commits (`isRegisteredLinkedWorktree` saw a path that
+ * matched no registered worktree and reported "not a worktree", its own by-design fail-open
+ * posture for a target that genuinely cannot be resolved — except this one could be, the guard
+ * simply never tried).
+ *
+ * Returns the new effective cwd, or `null` when the `cd` target cannot be resolved statically:
+ * a dynamic argument ($VAR, $(...), a backtick), `cd -` (the previous-directory shorthand — this
+ * module does not track OLDPWD), or a bare `cd` with no argument at all (goes to $HOME, likewise
+ * not tracked). `null` is deliberately not a refusal by itself and not distinguished from "no `cd`
+ * happened yet": `findRemovalInvocations` falls back to the original harness `cwd` for any
+ * invocation downstream of a `null`, i.e. exactly today's (pre-fix) resolution — chosen
+ * deliberately so that a *dynamic* `cd` can never turn an ordinary `rm -rf <relative path>` into a
+ * new false block. That would be the same over-tightening `RM_REMOVAL_SHAPE`'s own docstring rules
+ * out for the `rm` path itself (issue #803 AC2): this guard can tell "the resolved target is not a
+ * registered worktree" from "the target's resolution is unknown", and only the FIRST is safe to
+ * leave silently allowed at scale — an unresolvable `cd` destination makes every later relative
+ * path in the same command exactly as unverifiable as a `$VAR` argument would, so it gets the same
+ * accepted, regression-tested residual bypass rather than a blanket new denial on ordinary cleanup
+ * commands that happen to `cd` through a variable first.
+ */
+const resolveCdTarget = (argTokens, currentCwd) => {
+  for (const rawToken of argTokens) {
+    const { text, dynamic } = normalizeShellWord(rawToken);
+    if (dynamic) return null;
+    if (text.startsWith('-') && text.length > 1) continue; // -L, -P, -e, … — flags, not the target
+    if (!text || text === '-') return null; // `cd -` (OLDPWD) or an empty target — not tracked
+    if (currentCwd === null) return path.isAbsolute(text) ? text : null;
+    return path.resolve(currentCwd, text);
+  }
+  return null; // bare `cd` with no positional argument at all — goes to $HOME, not tracked
+};
+
+/**
  * Every worktree-removing invocation in `command`, in either spelling this guard covers. For the
  * `git worktree remove` spelling the walk is tolerant of global options between `git` and
  * `worktree` (`-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=<path>`, combinations), of more than
  * one such invocation in a chained command, and of leading `NAME=value` assignments before the
- * executable. Each entry is one of:
- *   - `{ kind: 'git', argTokens }` — the tokens following `remove` (flags and the path argument),
- *     ready for `parseWorktreeRemoveArgs`.
- *   - `{ kind: 'git', unresolvableExecutable: true }` — the executable position itself could not
- *     be resolved statically (#788 Execution Strategy step 2).
- *   - `{ kind: 'rm', argTokens }` — the tokens following an `rm` executable, ready for
- *     `parseRmRemovalArgs`. Emitted for EVERY `rm` clause, recursive or not and whatever its
+ * executable. A `cd` clause earlier in the same command updates the effective cwd
+ * (`resolveCdTarget` above) that each later invocation's `resolutionCwd` field carries — the
+ * per-invocation resolution base a relative removal-path argument resolves against, which is `cwd`
+ * itself until (and unless) a resolvable `cd` clause changes it. Each entry is one of:
+ *   - `{ kind: 'git', argTokens, resolutionCwd }` — the tokens following `remove` (flags and the
+ *     path argument), ready for `parseWorktreeRemoveArgs`.
+ *   - `{ kind: 'git', unresolvableExecutable: true, resolutionCwd }` — the executable position
+ *     itself could not be resolved statically (#788 Execution Strategy step 2).
+ *   - `{ kind: 'rm', argTokens, resolutionCwd }` — the tokens following an `rm` executable, ready
+ *     for `parseRmRemovalArgs`. Emitted for EVERY `rm` clause, recursive or not and whatever its
  *     target: whether it removes a registered worktree is a question only
  *     `evaluateRmInvocation` can answer, since it needs the resolved path.
  * Naive whitespace tokenization for everything after the executable token, matching this module's
@@ -322,9 +378,10 @@ const clauseTailFrom = (command, index) => {
  * resolved either way — not a regression, the original code had the same limitation for that
  * argument).
  */
-const findRemovalInvocations = (command) => {
+const findRemovalInvocations = (command, cwd) => {
   const masked = computeMaskedSpans(command);
   const invocations = [];
+  let effectiveCwd = cwd;
   for (const clauseStart of findClauseStartIndices(command, masked)) {
     if (!isCommandWordStart(command, clauseStart)) continue; // defensive: clause starts are always real word starts
     const tokens = clauseTailFrom(command, clauseStart).trim().split(/\s+/).filter(Boolean);
@@ -335,18 +392,25 @@ const findRemovalInvocations = (command) => {
     if (execIndex >= tokens.length) continue;
 
     const { text: executable, dynamic } = normalizeShellWord(tokens[execIndex]);
+    const resolutionCwd = effectiveCwd === null ? cwd : effectiveCwd;
 
     if (dynamic) {
       if (containsWorktreeRemoveTokens(tokens, execIndex + 1)) {
-        invocations.push({ kind: 'git', unresolvableExecutable: true });
+        invocations.push({ kind: 'git', unresolvableExecutable: true, resolutionCwd });
       }
       continue;
     }
     if (!executable) continue;
 
     const basename = path.basename(executable);
+
+    if (basename === 'cd') {
+      effectiveCwd = resolveCdTarget(tokens.slice(execIndex + 1), effectiveCwd);
+      continue;
+    }
+
     if (basename === 'rm') {
-      invocations.push({ kind: 'rm', argTokens: tokens.slice(execIndex + 1) });
+      invocations.push({ kind: 'rm', argTokens: tokens.slice(execIndex + 1), resolutionCwd });
       continue;
     }
     if (basename !== 'git') continue;
@@ -354,7 +418,7 @@ const findRemovalInvocations = (command) => {
     const subcommandIndex = skipGitGlobalOptions(tokens, execIndex + 1);
     if (subcommandIndex === -1) continue;
     if (tokens[subcommandIndex] !== 'worktree' || tokens[subcommandIndex + 1] !== 'remove') continue;
-    invocations.push({ kind: 'git', argTokens: tokens.slice(subcommandIndex + 2) });
+    invocations.push({ kind: 'git', argTokens: tokens.slice(subcommandIndex + 2), resolutionCwd });
   }
   return invocations;
 };
@@ -758,10 +822,12 @@ const evaluateResolvedWorktree = (resolvedPath, shape) => {
   return null; // clean — this invocation alone does not block
 };
 
-/** Evaluates one `git worktree remove` invocation's `{ argTokens }` against `cwd`, returning a
- * block decision or null when this single invocation is safe (`clean`) — `evaluateWorktreeRemoval`
- * below decides what "safe overall" means across every invocation in the command. */
-const evaluateOneInvocation = (argTokens, cwd) => {
+/** Evaluates one `git worktree remove` invocation's `{ argTokens }` against `resolutionCwd` — the
+ * invocation's own tracked cwd (`findRemovalInvocations`'s `cd` simulation), not necessarily the
+ * harness's original `cwd` — returning a block decision or null when this single invocation is
+ * safe (`clean`). `evaluateWorktreeRemoval` below decides what "safe overall" means across every
+ * invocation in the command. */
+const evaluateOneInvocation = (argTokens, resolutionCwd) => {
   const { force, pathArg } = parseWorktreeRemoveArgs(argTokens);
   if (!pathArg || !isLiteralPathArg(pathArg)) {
     return {
@@ -775,23 +841,28 @@ const evaluateOneInvocation = (argTokens, cwd) => {
     };
   }
 
-  const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(cwd, pathArg);
+  const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(resolutionCwd, pathArg);
   return evaluateResolvedWorktree(resolvedPath, gitRemovalShape(force));
 };
 
-/** Evaluates one `rm` clause's `{ argTokens }` against `cwd`, returning a block decision for the
- * first of its targets that is an unsafe registered worktree, or null. Three gates stand between
- * an ordinary `rm` and any check at all — no recursive flag, no statically resolvable target, or
- * a target that is not a registered linked worktree — each of which returns "nothing to check"
- * rather than a refusal, which is what keeps `rm -rf` on ordinary paths exactly as it was. */
-const evaluateRmInvocation = (argTokens, cwd) => {
+/** Evaluates one `rm` clause's `{ argTokens }`, resolving any relative positional argument against
+ * `resolutionCwd` (the invocation's own tracked cwd — see `evaluateOneInvocation`'s docstring) and
+ * checking registration against `spawnCwd` (the harness's original, guaranteed-real `cwd`, needed
+ * only as a valid directory to spawn `git` from — `isRegisteredLinkedWorktree` targets the
+ * resolved path itself via `-C`, so this never needs to equal `resolutionCwd`). Returns a block
+ * decision for the first of its targets that is an unsafe registered worktree, or null. Three
+ * gates stand between an ordinary `rm` and any check at all — no recursive flag, no statically
+ * resolvable target, or a target that is not a registered linked worktree — each of which returns
+ * "nothing to check" rather than a refusal, which is what keeps `rm -rf` on ordinary paths exactly
+ * as it was. */
+const evaluateRmInvocation = (argTokens, resolutionCwd, spawnCwd) => {
   const { recursive, positional } = parseRmRemovalArgs(argTokens);
   if (!recursive) return null;
 
   for (const pathArg of positional) {
     if (!isLiteralPathArg(pathArg)) continue;
-    const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(cwd, pathArg);
-    if (!isRegisteredLinkedWorktree(resolvedPath, cwd)) continue;
+    const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(resolutionCwd, pathArg);
+    if (!isRegisteredLinkedWorktree(resolvedPath, spawnCwd)) continue;
     const decision = evaluateResolvedWorktree(resolvedPath, RM_REMOVAL_SHAPE);
     if (decision) return decision;
   }
@@ -809,17 +880,17 @@ const evaluateRmInvocation = (argTokens, cwd) => {
  * blockPatterns' philosophy (V-HOOK-01) rather than the warnPatterns' one.
  */
 const evaluateWorktreeRemoval = (command, cwd) => {
-  const invocations = findRemovalInvocations(command);
+  const invocations = findRemovalInvocations(command, cwd);
   if (invocations.length === 0) return null;
 
   for (const invocation of invocations) {
     let decision;
     if (invocation.kind === 'rm') {
-      decision = evaluateRmInvocation(invocation.argTokens, cwd);
+      decision = evaluateRmInvocation(invocation.argTokens, invocation.resolutionCwd, cwd);
     } else if (invocation.unresolvableExecutable) {
       decision = unresolvableExecutableDecision();
     } else {
-      decision = evaluateOneInvocation(invocation.argTokens, cwd);
+      decision = evaluateOneInvocation(invocation.argTokens, invocation.resolutionCwd);
     }
     if (decision) return decision;
   }
@@ -836,6 +907,7 @@ module.exports = {
   isLiteralPathArg,
   isRegisteredLinkedWorktree,
   findRemovalInvocations,
+  resolveCdTarget,
   skipGitGlobalOptions,
   isCommandWordStart,
   findClauseStartIndices,

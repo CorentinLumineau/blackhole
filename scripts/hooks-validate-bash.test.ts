@@ -1833,6 +1833,78 @@ describe('validate-bash-command.js — rm-shaped worktree removal (#803)', () =>
     );
   });
 
+  // F-00043 (review round on PR #880): the test above only ever exercised a chained `cd` whose
+  // target is the SAME directory the hook was already told is `cwd`, and whose `rm` target is
+  // already an absolute path — so it never actually depended on tracking the `cd` at all. This
+  // test isolates the real gap: a resolvable, LITERAL `cd` into the worktree's own parent,
+  // followed by a RELATIVE `rm -rf <basename>`, while the hook's own `cwd` (the harness's
+  // pre-execution directory) is deliberately something else entirely. Before the fix this resolved
+  // the relative target against the stale `cwd`, found no registered worktree there, and allowed
+  // the removal silently; after the fix it resolves against the `cd` destination instead.
+  test('deny: `cd <worktree parent> && rm -rf <basename>` is checked against the `cd` destination, not the stale hook cwd (F-00043)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-cd-relative-unpushed',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const parent = path.dirname(worktree);
+        const basename = path.basename(worktree);
+
+        // `cwd` here is `mainRepo` — NOT `parent` — standing in for the shell's real
+        // pre-execution directory before the command's own embedded `cd` runs.
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`cd ${parent} && rm -rf ${basename}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'rm-worktree-unpushed',
+        });
+      },
+    );
+  });
+
+  // The counterpart to F-00043 above: when the `cd` destination itself cannot be resolved
+  // statically, the guard must NOT start refusing every relative `rm -rf` that follows it — that
+  // would be exactly the over-tightening issue #803 AC2 forbids, now reachable through `cd`
+  // instead of directly through `rm`'s own argument. A dynamic `cd` collapses into the same
+  // accepted, already-regression-tested dynamic-target bypass (`allow: rm -rf "$WT"` above), by
+  // falling back to the original (here, correct) `cwd` — proving the fix does not turn ambiguity
+  // after a dynamic `cd` into a new refusal.
+  test('allow: `cd "$DEST" && rm -rf <basename>` stays allowed — a dynamic `cd` target falls back to the original cwd by design', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-cd-dynamic',
+      async (mainRepo) => {
+        const ordinary = path.join(mainRepo, 'build-output');
+        fs.mkdirSync(ordinary, { recursive: true });
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload('cd "$DEST" && rm -rf build-output'),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      },
+    );
+  });
+
   test('deny: a worktree in second positional position (`rm -rf <ordinary> <worktree>`) is still found', async () => {
     await withRemoteTrackedWorktree(
       'blackhole-hook-wt-803-',
