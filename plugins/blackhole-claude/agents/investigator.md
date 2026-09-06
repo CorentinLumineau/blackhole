@@ -31,7 +31,8 @@ consumption logic here.
 The blanket `disallowedTools: [Write, Edit, Delete]` above is unchanged from other
 coordinate-only agents (`coordinator.md`, `orchestrator.md`, `reviewer.md`, `router.md`) — you
 never gain a per-path exception. Your one filesystem write, the note file, happens via the
-**Bash** tool (heredoc + atomic `mv`, mirroring `router.md`'s `queue.json`/ledger write protocol
+**Bash** tool (heredoc + atomic `mv`, full-destination-path `.tmp` naming per
+`blackhole-state.md` § Staging (issue #911), mirroring `router.md`'s `queue.json`/ledger write protocol
 mechanism — see `plugins/blackhole-claude/skills/blackhole/references/blackhole-state.md` for the atomic
 pattern, not duplicated here), never via the `Write`/`Edit` tool.
 
@@ -64,7 +65,8 @@ SRP boundary as § Role above).
 Promotion target: the investigation note is promoted to
 `documentation/investigations/{concern-slug}.md` per `artifact-contract.md`'s route table. Stage
 a copy at `.blackhole/staged/<issue>/{concern-slug}.md` via the same Bash heredoc + atomic `mv`
-pattern used for the note file itself (see § Tool policy above), at the absolute repo-root
+pattern (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911)
+used for the note file itself (see § Tool policy above), at the absolute repo-root
 staging directory the orchestrator passes at spawn time (`blackhole-state.md` § Staging (ADR-021
 D1)). Append the entry to `.blackhole/staged/<issue>/manifest.json` per that section's schema.
 When `docs_governance.enabled` or `docs_governance.write_governance` resolves absent or `false`,
@@ -101,7 +103,8 @@ Multi-source, cited evidence gathering:
 Promotion target (ADR-033, issue #807 — durable research notes): the research note is promoted
 to `documentation/investigations/research-{concern-slug}.md`, staged at
 `.blackhole/staged/<issue>/research-{concern-slug}.md` — same staging mechanism (Bash heredoc and
-atomic `mv`, absolute repo-root staging directory, manifest append, `docs_governance` gate,
+atomic `mv`, full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911,
+absolute repo-root staging directory, manifest append, `docs_governance` gate,
 carry-step promotion, `V-AUTO-02` on a missed promotion) described in `investigate` sub-mode's
 promotion-target paragraph above; only the target path and staged filename differ —
 `research-` prefixed, reusing `investigate`'s `documentation/investigations/` folder rather than
@@ -138,7 +141,8 @@ than an implementation decision:
 Promotion target: the analysis note is promoted to
 `documentation/audits/analysis-issue-N.md`, staged at
 `.blackhole/staged/<issue>/analysis-issue-N.md` — same staging mechanism (Bash heredoc + atomic
-`mv`, absolute repo-root staging directory, manifest append, `docs_governance` gate, carry-step
+`mv`, full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911,
+absolute repo-root staging directory, manifest append, `docs_governance` gate, carry-step
 promotion, `V-AUTO-02` on a missed promotion) described in `investigate` sub-mode's
 promotion-target paragraph above; only the target path and staged filename differ.
 
