@@ -56,25 +56,31 @@ function renderReadySection(ready: IssueRow[]): string[] {
   ];
 }
 
-function renderRoutingSection(active: IssueRow[]): string[] {
+// Exported: matches the renderLedgerOpenSection precedent — dashboard.test.ts unit-tests the
+// SECTION_CAP overflow behavior directly rather than only through formatDashboard.
+export function renderRoutingSection(active: IssueRow[]): string[] {
   const routed = active.filter(({ issue }) => issue.route);
   if (routed.length === 0) return [];
+  const shown = routed.slice(0, SECTION_CAP);
   const lines: string[] = ['### Routing'];
-  for (const { num, issue } of routed) {
+  for (const { num, issue } of shown) {
     lines.push(`- **#${num}** ${issue.title ?? ''}`);
     lines.push(`  ${renderRouteChain(issue.route, issue.phase)}`);
   }
+  lines.push(...capOverflowLine(routed.length, shown.length));
   lines.push('');
   return lines;
 }
 
-function renderWavesSection(issues: Record<string, QueueIssue>): string[] {
+export function renderWavesSection(issues: Record<string, QueueIssue>): string[] {
   const { waves, unresolved } = computeWaves(issues);
   if (waves.length === 0 && unresolved.length === 0) return [];
+  const shown = waves.slice(0, SECTION_CAP);
   const lines: string[] = ['### Waves'];
-  waves.forEach((wave, i) => {
+  shown.forEach((wave, i) => {
     lines.push(`**Wave ${i}:** ${wave.map((n) => `#${n}`).join(', ')}`);
   });
+  lines.push(...capOverflowLine(waves.length, shown.length));
   if (unresolved.length > 0) {
     lines.push(`**Unresolved (dependency cycle):** ${unresolved.map((n) => `#${n}`).join(', ')}`);
   }
@@ -103,6 +109,15 @@ function renderFiledSection(filed: ReturnType<typeof discoveryFilings>): string[
   return lines;
 }
 
+// Shared cap idiom for the three list-rendering sections that can grow unbounded (Routing,
+// Waves, Ledger open): show the first SECTION_CAP entries, then point at the rest instead of
+// dumping them all — one behavior, one wording, reused at every call site (V-DRY-01 / V-INT-02).
+export const SECTION_CAP = 10;
+
+export function capOverflowLine(totalCount: number, shownCount: number): string[] {
+  return totalCount > shownCount ? [`- …and ${totalCount - shownCount} more`] : [];
+}
+
 // ADR-042 — severity rank for the open-section sort below: BLOCK before WARN
 // before NOTE, anything else last.
 const LEDGER_SEVERITY_RANK: Record<string, number> = { BLOCK: 0, WARN: 1, NOTE: 2 };
@@ -128,8 +143,9 @@ export function renderLedgerOpenSection(findings: LedgerFinding[]): string[] {
       return ledgerRecencyKey(b) - ledgerRecencyKey(a);
     });
   if (openFindings.length === 0) return [];
+  const shown = openFindings.slice(0, SECTION_CAP);
   const lines: string[] = ['### Ledger open'];
-  for (const f of openFindings.slice(0, 10)) {
+  for (const f of shown) {
     const occSuffix = f.occurrences != null ? ` ×${f.occurrences}` : '';
     const issueSuffix = f.issue_ref != null ? ` (#${f.issue_ref})` : '';
     const seenSuffix = f.last_seen_at ? ` (last seen ${f.last_seen_at})` : '';
@@ -137,9 +153,7 @@ export function renderLedgerOpenSection(findings: LedgerFinding[]): string[] {
       `- **${f.id ?? '?'}** \`${f.vcode}\` ${f.severity} — ${f.summary ?? ''}${occSuffix}${issueSuffix}${seenSuffix}`,
     );
   }
-  if (openFindings.length > 10) {
-    lines.push(`- …and ${openFindings.length - 10} more`);
-  }
+  lines.push(...capOverflowLine(openFindings.length, shown.length));
   lines.push('');
   return lines;
 }
@@ -201,6 +215,48 @@ export function renderConfigSummary(config: ConfigSummaryInput): string {
   ].join('\n');
 }
 
+export type QueueHealth = 'healthy' | 'stalled' | 'degraded';
+
+/**
+ * Queue health verdict for the dashboard's Counts block. Deliberately narrow: inputs are the
+ * three counts `formatDashboard()` already has in hand (forge availability, blocked count,
+ * in-flight count) — not plugin-drift or doc-health. Both of those are read and rendered
+ * elsewhere (`main()` calls `renderPluginDriftWarning()` after `formatDashboard()`, and
+ * `.blackhole/doc-health.json` is never read by `bun run status` at all), so folding either into
+ * this verdict would either add a file-read dependency `formatDashboard()` doesn't have today or
+ * assert something true about a signal this function cannot see. The label stays scoped to what
+ * it actually covers rather than reading as a summary that subsumes state it knows nothing about.
+ *
+ * Priority order is load-bearing: an unreachable forge means the counts below cannot be trusted,
+ * so `degraded` is checked first and overrides everything else regardless of blocked/in-flight.
+ */
+export function computeQueueHealth(input: {
+  forgeOk: boolean;
+  blockedCount: number;
+  inFlightCount: number;
+}): QueueHealth {
+  if (!input.forgeOk) return 'degraded';
+  if (input.blockedCount > 0 && input.inFlightCount === 0) return 'stalled';
+  return 'healthy';
+}
+
+const QUEUE_HEALTH_ICON: Record<QueueHealth, string> = {
+  healthy: '✓',
+  stalled: '⚠',
+  degraded: '✗',
+};
+
+export function renderQueueHealthLine(verdict: QueueHealth, blockedCount: number): string {
+  const label = verdict.toUpperCase();
+  if (verdict === 'stalled') {
+    return `**Queue health:** ${QUEUE_HEALTH_ICON[verdict]} ${label} (${blockedCount} blocked, none in-flight)`;
+  }
+  if (verdict === 'degraded') {
+    return `**Queue health:** ${QUEUE_HEALTH_ICON[verdict]} ${label} (forge unavailable)`;
+  }
+  return `**Queue health:** ${QUEUE_HEALTH_ICON[verdict]} ${label}`;
+}
+
 export function formatDashboard(opts: {
   scope?: CampaignScope;
   checkpoint: CheckpointMeta;
@@ -239,6 +295,12 @@ export function formatDashboard(opts: {
   lines.push(
     `**Ledger:** ${ledgerCounts.open} open (BLOCK ${ledgerCounts.block} · WARN ${ledgerCounts.warn} · NOTE ${ledgerCounts.note}) · ${ledgerCounts.deferred} deferred`,
   );
+  const queueHealth = computeQueueHealth({
+    forgeOk: forge.ok,
+    blockedCount: blocked.length,
+    inFlightCount: inFlight.length,
+  });
+  lines.push(renderQueueHealthLine(queueHealth, blocked.length));
   lines.push('');
 
   lines.push(...renderInFlightSection(inFlight));

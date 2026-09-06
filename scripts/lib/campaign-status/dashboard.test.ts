@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { renderLedgerOpenSection } from './dashboard.ts';
-import type { LedgerFinding } from './types.ts';
+import {
+  computeQueueHealth,
+  formatDashboard,
+  renderLedgerOpenSection,
+  renderRoutingSection,
+  renderWavesSection,
+} from './dashboard.ts';
+import type { IssueRow, LedgerFinding, QueueIssue } from './types.ts';
 
 // ADR-042 — Task 2(d)/(e): renderLedgerOpenSection gains occurrences/last_seen_at
 // rendering and a severity-then-recency sort. Both discriminate against `main`, where the
@@ -69,5 +75,100 @@ describe('renderLedgerOpenSection — occurrences, last_seen_at, sort', () => {
 
   test('no open findings renders nothing', () => {
     expect(renderLedgerOpenSection([{ id: 'F-1', vcode: 'V-X', severity: 'BLOCK', status: 'deferred' }])).toEqual([]);
+  });
+});
+
+// Issue #929 Task 2 — computeQueueHealth boundary matrix. Priority order is load-bearing:
+// !forgeOk overrides everything (counts cannot be trusted without the forge), then the
+// stalled check, then healthy as the fallback.
+describe('computeQueueHealth', () => {
+  test('forge unavailable → degraded, regardless of counts', () => {
+    expect(computeQueueHealth({ forgeOk: false, blockedCount: 0, inFlightCount: 0 })).toBe(
+      'degraded',
+    );
+    expect(computeQueueHealth({ forgeOk: false, blockedCount: 5, inFlightCount: 5 })).toBe(
+      'degraded',
+    );
+  });
+
+  test('forge available + blocked > 0 + in-flight = 0 → stalled', () => {
+    expect(computeQueueHealth({ forgeOk: true, blockedCount: 1, inFlightCount: 0 })).toBe(
+      'stalled',
+    );
+  });
+
+  test('inFlightCount 0→1 boundary flips stalled → healthy', () => {
+    expect(computeQueueHealth({ forgeOk: true, blockedCount: 1, inFlightCount: 0 })).toBe(
+      'stalled',
+    );
+    expect(computeQueueHealth({ forgeOk: true, blockedCount: 1, inFlightCount: 1 })).toBe(
+      'healthy',
+    );
+  });
+
+  test('blockedCount 1→0 boundary flips stalled → healthy', () => {
+    expect(computeQueueHealth({ forgeOk: true, blockedCount: 1, inFlightCount: 0 })).toBe(
+      'stalled',
+    );
+    expect(computeQueueHealth({ forgeOk: true, blockedCount: 0, inFlightCount: 0 })).toBe(
+      'healthy',
+    );
+  });
+
+  test('forge available + blocked = 0 + in-flight = 0 → healthy', () => {
+    expect(computeQueueHealth({ forgeOk: true, blockedCount: 0, inFlightCount: 0 })).toBe(
+      'healthy',
+    );
+  });
+});
+
+describe('formatDashboard — Queue health line', () => {
+  test('renders a **Queue health:** line', () => {
+    const out = formatDashboard({
+      checkpoint: { orchestrator_turn_id: 1 },
+      queue: { refreshed_at: '2026-09-06T00:00:00.000Z', issues: {} },
+      ledger: { findings: [] },
+      forge: { openIssues: 0, openPrs: 0, ok: true },
+    });
+
+    expect(out).toContain('**Queue health:**');
+  });
+});
+
+// Issue #929 Task 3 — Routing/Waves output caps, mirroring the existing 350-row
+// renderLedgerOpenSection cap test.
+describe('renderRoutingSection — section cap', () => {
+  test('350 routed issues render exactly SECTION_CAP (10) blocks plus one overflow line', () => {
+    const active: IssueRow[] = [];
+    for (let i = 1; i <= 350; i++) {
+      active.push({
+        num: i,
+        issue: { title: `Routed ${i}`, phase: 'plan', status: 'in-flight', route: {} },
+      });
+    }
+
+    const lines = renderRoutingSection(active);
+    const issueBlocks = lines.filter((l) => l.startsWith('- **#'));
+    expect(issueBlocks.length).toBe(10);
+    expect(lines).toContain('- …and 340 more');
+  });
+});
+
+describe('renderWavesSection — section cap', () => {
+  test('350-issue linear dependency chain renders exactly 10 Wave lines plus one overflow line', () => {
+    const issues: Record<string, QueueIssue> = {};
+    for (let i = 1; i <= 350; i++) {
+      issues[String(i)] = {
+        title: `Chain ${i}`,
+        phase: 'handle',
+        status: 'ready',
+        depends_on: i > 1 ? [i - 1] : [],
+      };
+    }
+
+    const lines = renderWavesSection(issues);
+    const waveLines = lines.filter((l) => l.startsWith('**Wave '));
+    expect(waveLines.length).toBe(10);
+    expect(lines).toContain('- …and 340 more');
   });
 });
