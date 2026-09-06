@@ -659,6 +659,41 @@ describe('carryManifest — write-step failures are skipped, never fatal to the 
     });
   });
 
+  test('an append_row target that hits ENOTDIR (documentation pre-created as a plain file) is skipped, never thrown (symmetric to the new_file case above, issue #903 characterization)', () => {
+    withTempDir('carry-write-failure-append-row', (repoRoot) => {
+      // Same ENOTDIR forcing as the new_file test above, but targeting the append_row branch's
+      // own try/catch (carry-staged-artifacts.ts:328-337) — previously unexercised for failure;
+      // the existing end-to-end ARCHITECTURE.md case only exercises append_row's success path.
+      fs.writeFileSync(path.join(repoRoot, 'documentation'), 'not a directory');
+
+      const stagedRel = '.blackhole/staged/1/index-row.md';
+      const stagedAbs = path.join(repoRoot, stagedRel);
+      fs.mkdirSync(path.dirname(stagedAbs), { recursive: true });
+      fs.writeFileSync(stagedAbs, '| documentation/INDEX.md | Staged row for issue 1 | analysis | current | on file change |');
+
+      const manifest: Manifest = {
+        issue: 1,
+        updated_at: 'x',
+        entries: [
+          {
+            ...baseEntry,
+            staged_path: stagedRel,
+            target_path: 'documentation/INDEX.md',
+            target_kind: 'append_row',
+          },
+        ],
+      };
+
+      const outcome = carryManifest(manifest, repoRoot);
+
+      expect(outcome.carriedPaths).toEqual([]);
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.index).toBe(0);
+      expect(outcome.skippedEntries[0]!.reason).toContain('documentation/INDEX.md');
+      expect(outcome.skippedEntries[0]!.reason).toContain('write failed');
+    });
+  });
+
   test('the "declared staged_path absent" case still throws — write-step try/catch does not swallow it', () => {
     withTempDir('carry-staging-root', (stagingDir) => {
       withTempDir('carry-repo-root', (repoRoot) => {

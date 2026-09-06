@@ -494,4 +494,49 @@ describe('resolveAdrAmendmentTruth (CLI-layer ground-truth resolver)', () => {
       expect(resolved.critics[0].adr_citations?.[0].has_amendment).toBe(true);
     });
   });
+
+  // Characterization tests for the private findAdrFileByNumber lookup, exercised indirectly
+  // through resolveAdrAmendmentTruth — pinned baseline before issue #903 extracts it into
+  // lib/check-common.ts (must reproduce all three cases unchanged).
+  test('a not-found ADR reference resolves has_amendment: false, never throws (findAdrFileByNumber characterization)', () => {
+    withTempDir('design-aggregate-', (dir) => {
+      const input = baseInput({
+        primary: basePrimaryInput({
+          adr_citations: [{ adr: 'ADR-042', option: 'Option A', amendment_acknowledged: false }],
+        }),
+      });
+      const resolved = resolveAdrAmendmentTruth(input, dir);
+      expect(resolved.primary.adr_citations?.[0].has_amendment).toBe(false);
+    });
+  });
+
+  test('prefix-match discriminator: ADR-007 resolves only ADR-007-foo.md, never ADR-0071-bar.md (findAdrFileByNumber characterization)', () => {
+    withTempDir('design-aggregate-', (dir) => {
+      fs.writeFileSync(path.join(dir, 'ADR-007-foo.md'), UNAMENDED_ADR);
+      fs.writeFileSync(path.join(dir, 'ADR-0071-bar.md'), AMENDED_ADR);
+
+      const input = baseInput({
+        primary: basePrimaryInput({
+          adr_citations: [{ adr: 'ADR-007', option: 'Option A', amendment_acknowledged: false }],
+        }),
+      });
+      const resolved = resolveAdrAmendmentTruth(input, dir);
+      // ADR-007-foo.md (UNAMENDED_ADR) must win — a naive .startsWith(adrRef)/.includes(adrRef)
+      // match would incorrectly resolve ADR-0071-bar.md (AMENDED_ADR) instead, flipping this to true.
+      expect(resolved.primary.adr_citations?.[0].has_amendment).toBe(false);
+    });
+  });
+
+  test('a missing decisionsDir resolves has_amendment: false, never an ENOENT throw (findAdrFileByNumber characterization)', () => {
+    withTempDir('design-aggregate-', (dir) => {
+      const missingDir = path.join(dir, 'does-not-exist');
+      const input = baseInput({
+        primary: basePrimaryInput({
+          adr_citations: [{ adr: 'ADR-007', option: 'Option A', amendment_acknowledged: false }],
+        }),
+      });
+      const resolved = resolveAdrAmendmentTruth(input, missingDir);
+      expect(resolved.primary.adr_citations?.[0].has_amendment).toBe(false);
+    });
+  });
 });

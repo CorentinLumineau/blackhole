@@ -184,6 +184,49 @@ describe('collectDeclaredSupersessionViolations (leg 1, filesystem-backed)', () 
       expect(collectDeclaredSupersessionViolations(dir)).toEqual([{ issueRef: '#712', adr: 'ADR-007' }]);
     });
   });
+
+  // Characterization tests for the private findAdrFileByNumber lookup, exercised indirectly
+  // through collectDeclaredSupersessionViolations — pinned baseline before issue #903 extracts
+  // it into lib/check-common.ts (must reproduce all three cases unchanged).
+  test('a not-found ADR reference produces a violation (undefined content), never throws (findAdrFileByNumber characterization)', () => {
+    withTempDir('adr-supersession-', (dir) => {
+      fs.mkdirSync(path.join(dir, '.blackhole', 'plans'), { recursive: true });
+      fs.mkdirSync(path.join(dir, 'documentation', 'decisions'), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, '.blackhole', 'plans', 'issue-712.md'),
+        `---\nissue: #712\nsupersedes_adr: [ADR-042]\n---\n`,
+      );
+      expect(collectDeclaredSupersessionViolations(dir)).toEqual([{ issueRef: '#712', adr: 'ADR-042' }]);
+    });
+  });
+
+  test('prefix-match discriminator: ADR-007 resolves only ADR-007-foo.md, never ADR-0071-bar.md (findAdrFileByNumber characterization)', () => {
+    withTempDir('adr-supersession-', (dir) => {
+      fs.mkdirSync(path.join(dir, '.blackhole', 'plans'), { recursive: true });
+      fs.mkdirSync(path.join(dir, 'documentation', 'decisions'), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, '.blackhole', 'plans', 'issue-712.md'),
+        `---\nissue: #712\nsupersedes_adr: [ADR-007]\n---\n`,
+      );
+      fs.writeFileSync(path.join(dir, 'documentation', 'decisions', 'ADR-007-foo.md'), AMENDED_ADR);
+      fs.writeFileSync(path.join(dir, 'documentation', 'decisions', 'ADR-0071-bar.md'), UNAMENDED_ADR);
+      // AMENDED_ADR (ADR-007-foo.md) cites #712 — must resolve with zero violations. A naive
+      // .startsWith(adrRef)/.includes(adrRef) match could instead resolve ADR-0071-bar.md
+      // (UNAMENDED_ADR, no citation), which would incorrectly report a violation.
+      expect(collectDeclaredSupersessionViolations(dir)).toEqual([]);
+    });
+  });
+
+  test('a missing documentation/decisions/ directory produces a violation, never an ENOENT throw (findAdrFileByNumber characterization)', () => {
+    withTempDir('adr-supersession-', (dir) => {
+      fs.mkdirSync(path.join(dir, '.blackhole', 'plans'), { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, '.blackhole', 'plans', 'issue-712.md'),
+        `---\nissue: #712\nsupersedes_adr: [ADR-007]\n---\n`,
+      );
+      expect(collectDeclaredSupersessionViolations(dir)).toEqual([{ issueRef: '#712', adr: 'ADR-007' }]);
+    });
+  });
 });
 
 describe('collectPhraseScanViolations (leg 2, filesystem-backed)', () => {

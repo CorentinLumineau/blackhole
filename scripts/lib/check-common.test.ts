@@ -1,13 +1,17 @@
 import { describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   appendIndexRowIfAbsent,
   byPathByteOrder,
+  findAdrFileByNumber,
   findMissingGateMarkers,
   findTableBlock,
   parseIndexTableRows,
   parseVcodeTableRows,
   renderIndexRowLine,
 } from './check-common.ts';
+import { withTempDir } from './test-fixtures.ts';
 
 describe('findMissingGateMarkers', () => {
   test('returns the subset of required markers absent from content', () => {
@@ -386,5 +390,31 @@ describe('renderIndexRowLine (exported)', () => {
     const line = renderIndexRowLine(row);
     const header = '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
     expect(parseIndexTableRows(`${header}${line}\n`)).toEqual([row]);
+  });
+});
+
+// Issue #903 — extracted from design-aggregate.ts / adr-supersession.check.ts (rule-of-two
+// duplicate, F-00097). Direct unit-test pin, alongside the indirect characterization tests
+// added at both call sites (design-aggregate.test.ts, verify.adr-supersession.test.ts).
+describe('findAdrFileByNumber', () => {
+  test('a not-found ADR reference resolves null, never throws', () => {
+    withTempDir('check-common-adr-', (dir) => {
+      expect(findAdrFileByNumber(dir, 'ADR-042')).toBeNull();
+    });
+  });
+
+  test('prefix-match discriminator: ADR-007 resolves only ADR-007-foo.md, never ADR-0071-bar.md', () => {
+    withTempDir('check-common-adr-', (dir) => {
+      fs.writeFileSync(path.join(dir, 'ADR-007-foo.md'), 'foo');
+      fs.writeFileSync(path.join(dir, 'ADR-0071-bar.md'), 'bar');
+      expect(findAdrFileByNumber(dir, 'ADR-007')).toBe(path.join(dir, 'ADR-007-foo.md'));
+    });
+  });
+
+  test('a missing decisionsDir resolves null, never an ENOENT throw', () => {
+    withTempDir('check-common-adr-', (dir) => {
+      const missingDir = path.join(dir, 'does-not-exist');
+      expect(findAdrFileByNumber(missingDir, 'ADR-007')).toBeNull();
+    });
   });
 });

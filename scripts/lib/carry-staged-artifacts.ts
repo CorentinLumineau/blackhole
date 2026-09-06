@@ -228,6 +228,25 @@ const isWithinRoot = (candidate: string, root: string): boolean => {
   return realCandidate === realRoot || realCandidate.startsWith(realRoot + path.sep);
 };
 
+// Shared write step (issue #903) for both the `new_file` and `append_row` branches below —
+// identical mkdir/write/catch shape, differing only in the content variable written. Never
+// throws; a write failure is entry-scoped adversarial/environmental content (issue #784 AC2/AC3),
+// not a broken invocation, so it resolves to `{ ok: false }` for the caller to push onto
+// `skipped` rather than denying the rest of the manifest.
+const writeCarryTarget = (
+  targetAbs: string,
+  content: string,
+): { ok: true } | { ok: false; message: string } => {
+  try {
+    fs.mkdirSync(path.dirname(targetAbs), { recursive: true });
+    fs.writeFileSync(targetAbs, content);
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, message };
+  }
+};
+
 /**
  * Runs the full carry: shape guard already applied by the caller (`loadManifest`) → validate →
  * dispatch per entry. Returns carried target paths (manifest order) and skipped-entry reasons
@@ -308,13 +327,11 @@ export const carryManifest = (
       // of throwing and denying the rest of the manifest. Distinct from the "declared staged_path
       // absent" throw above, which stays fatal — it signals a broken invocation, not adversarial
       // entry content.
-      try {
-        fs.mkdirSync(path.dirname(targetAbs), { recursive: true });
-        fs.writeFileSync(targetAbs, content);
+      const written = writeCarryTarget(targetAbs, content);
+      if (written.ok) {
         carriedPaths.push(entry.target_path);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${message}` });
+      } else {
+        skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${written.message}` });
       }
       continue;
     }
@@ -326,13 +343,11 @@ export const carryManifest = (
         ? appendConstraintBulletIfAbsent(existing, fragment)
         : appendPipeTableRowIfAbsent(existing, fragment);
     if (result.appended) {
-      try {
-        fs.mkdirSync(path.dirname(targetAbs), { recursive: true });
-        fs.writeFileSync(targetAbs, result.content);
+      const written = writeCarryTarget(targetAbs, result.content);
+      if (written.ok) {
         carriedPaths.push(entry.target_path);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${message}` });
+      } else {
+        skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${written.message}` });
       }
     }
   }

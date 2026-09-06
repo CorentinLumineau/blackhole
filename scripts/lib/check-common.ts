@@ -77,6 +77,23 @@ export const walkMdFilesAbs = (absDir: string): string[] =>
 export const walkMdFiles = (dir: string): string[] =>
   walkMdFilesAbs(path.join(root, dir)).map((f) => path.relative(root, f));
 
+// Issue #775 originally decided to keep this local to design-aggregate.ts rather than export it
+// from adr-supersession.check.ts, since both copies were only a trivial 3 lines. Issue #903
+// reverses that call now both copies are confirmed behaviourally identical (F-00097
+// investigation) and consolidates them here. Resolves an ADR reference (e.g. "ADR-007") to its
+// file under `decisionsDir` by prefix match on `${adrRef}-`, so "ADR-007" never accidentally
+// matches "ADR-0071-...". Returns `null` on no match or a missing `decisionsDir` — never throws.
+//
+// Correction (F-00097, V-DOCFACT-01): the comment this replaced claimed a third duplicate lived
+// in `links.check.ts`. That was false — that file resolves ADRs via a directory-listing Set
+// (`fs.readdirSync(...).filter(/^ADR-\d+-.*\.md$/)`), not a per-number lookup, and was never a
+// third copy of this function.
+export const findAdrFileByNumber = (decisionsDir: string, adrRef: string): string | null => {
+  if (!fs.existsSync(decisionsDir)) return null;
+  const found = fs.readdirSync(decisionsDir).find((f) => f.startsWith(`${adrRef}-`));
+  return found ? path.join(decisionsDir, found) : null;
+};
+
 export const listFiles = (dir: string, ext = '.md'): string[] => {
   const full = path.join(root, dir);
   if (!fs.existsSync(full)) return [];
