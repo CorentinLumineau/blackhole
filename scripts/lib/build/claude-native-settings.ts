@@ -43,6 +43,12 @@ const MATCHERS: MatcherSpec[] = [
  * enriches it with a timeout-vs-crash discriminator and a capped tail of the validator's own
  * stderr, so a collapsed hook-exec-failure class is still diagnosable — capped at 300 chars,
  * the same bound `hook-schemas.md` already documents for block/warn-tier `detail`.
+ *
+ * `agent_id`/`agent_type` (#907) are hardcoded `null` here rather than read off stdin: this
+ * wrapper never parses the payload it forwards (same "no stdin/command replay" posture as the
+ * paragraph above), so there is nothing to extract them from. `null` is the correct, permanent
+ * value for this one record type — not a temporary gap — keeping the schema uniform across both
+ * paths (`hook-event-log.js`'s `recordEvent` populates the real value on every other record).
  */
 const buildCommand = (spec: MatcherSpec): string => {
   const hookName = spec.script.replace(/\.js$/, '');
@@ -75,7 +81,7 @@ const buildCommand = (spec: MatcherSpec): string => {
     '  --arg worktree "$worktree" \\',
     '  --arg kind "$kind" \\',
     '  --arg stderr_tail "$stderr_tail" \\',
-    `  '{version: 1, recorded_at: $recorded_at, hook: $hook, ${toolField} decision: "allow", tier: "error", pattern_id: "hook-exec-failure", reason: ("validator process exited " + $code + " before producing a decision"), worktree: (if $worktree == "" then null else $worktree end), detail: ("process exit code " + $code + " (" + $kind + ")" + (if $stderr_tail == "" then "" else ": " + $stderr_tail end))}' \\`,
+    `  '{version: 2, recorded_at: $recorded_at, hook: $hook, ${toolField} decision: "allow", tier: "error", pattern_id: "hook-exec-failure", reason: ("validator process exited " + $code + " before producing a decision"), worktree: (if $worktree == "" then null else $worktree end), detail: ("process exit code " + $code + " (" + $kind + ")" + (if $stderr_tail == "" then "" else ": " + $stderr_tail end)), agent_id: null, agent_type: null}' \\`,
     '  > "$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json" 2>/dev/null',
     `echo "[blackhole-hook] ${hookName}: validator process exited $code before producing a decision — call allowed (fail-open); see .blackhole/hook-events/" >&2`,
     'exit 0',

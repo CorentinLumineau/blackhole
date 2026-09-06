@@ -58,6 +58,39 @@ describe('validate-file-changes.js', () => {
     });
   });
 
+  test('agent_id/agent_type on the stdin payload are recorded verbatim (#907, log-only)', async () => {
+    await withTempGitRepo('blackhole-hook-file-', async (repo) => {
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        { ...writePayload('/etc/passwd'), agent_id: 'a4b8b1b8c8ec516e1', agent_type: 'general-purpose' },
+        repo,
+      );
+
+      // Decision path is untouched by the new fields — same deny as the plain payload above.
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        agent_id: 'a4b8b1b8c8ec516e1',
+        agent_type: 'general-purpose',
+      });
+    });
+  });
+
+  test('agent_id/agent_type are recorded as null, not omitted, when absent from the payload (#907)', async () => {
+    await withTempGitRepo('blackhole-hook-file-', async (repo) => {
+      const result = await runPreToolUseHook(SCRIPT, writePayload('/etc/passwd'), repo);
+
+      expect(result.exitCode).toBe(2);
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toHaveProperty('agent_id', null);
+      expect(events[0]).toHaveProperty('agent_type', null);
+    });
+  });
+
   test('block tier: a `../` path traversal is denied before any other check', async () => {
     await withTempGitRepo('blackhole-hook-file-', async (repo) => {
       const result = await runPreToolUseHook(SCRIPT, writePayload('src/../../escape.ts'), repo);
