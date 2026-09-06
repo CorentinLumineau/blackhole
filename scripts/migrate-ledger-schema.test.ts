@@ -4,9 +4,9 @@ import * as path from 'path';
 import { makeTempDir } from './lib/fs.ts';
 import { migrateFindings, runMigration } from './migrate-ledger-schema.ts';
 
-// Issue #754 (V-FIX-01) — fixture-driven coverage for migrateFindings' three-way coercion
-// rule and runMigration's file protocol, isolated from the live .blackhole/findings-ledger.json
-// via makeTempDir (never touches real campaign state — Codebase Conventions).
+// Fixture-driven coverage for migrateFindings' three-way coercion rule and runMigration's file
+// protocol, isolated from the live .blackhole/findings-ledger.json via makeTempDir (never
+// touches real campaign state — Codebase Conventions).
 
 describe('migrateFindings', () => {
   test('string issue_ref coerces to a number, row counted as changed', () => {

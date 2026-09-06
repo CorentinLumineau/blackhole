@@ -3,20 +3,18 @@ import * as path from 'path';
 import { VERIFICATION_MODES } from '../lib/worker-json/constants.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
-// V-LEDGER-01 (issue #754) — rejects a `.blackhole/findings-ledger.json` row whose `issue_ref`
+// V-LEDGER-01 — rejects a `.blackhole/findings-ledger.json` row whose `issue_ref`
 // is not `number | null`, whose `pr_ref` is not `number | null`, that still carries a legacy
-// `pr` key, or whose `verification_mode` (ADR-036, issue #815) falls outside `VERIFICATION_MODES`
-// — the backstop for every ledger-append path `review-aggregate.ts`'s writer fix
-// (Task 1) doesn't reach: kaizen/hunt findings and freehand orchestrator appends. `BLOCK`, not
-// `WARN` like `queue-coherence.check.ts` — this PR's own migration (Task 2) clears the live
-// ledger to zero drifted rows, so there is no unfixable historical debt for a BLOCK verdict to
-// wedge the campaign against (plan Design Decision 5).
+// `pr` key, or whose `verification_mode` (ADR-036) falls outside `VERIFICATION_MODES`
+// — the backstop for every ledger-append path `review-aggregate.ts`'s stamping pipeline
+// doesn't reach: kaizen/hunt findings and freehand orchestrator appends. `BLOCK`, not
+// `WARN` like `queue-coherence.check.ts` — the live ledger carries zero drifted rows, so there
+// is no unfixable historical debt for a BLOCK verdict to wedge the campaign against.
 //
 // A row whose `pr_ref` key is entirely absent is not flagged — a distinct, undocumented shape
-// from the three this issue's writer fix and migration target (kaizen/hunt and plan/handle-phase
-// freehand appends that never went through the aggregator's stamping pipeline never had a PR to
-// reference in the first place). Only a *present* value that is neither `number` nor `null` is
-// drift.
+// from the three drifted ones above (kaizen/hunt and plan/handle-phase freehand appends that
+// never went through the aggregator's stamping pipeline never had a PR to reference in the
+// first place). Only a *present* value that is neither `number` nor `null` is drift.
 
 type LedgerRow = {
   id?: unknown;

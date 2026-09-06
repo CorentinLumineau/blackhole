@@ -268,7 +268,7 @@ describe('carryManifest — end-to-end against the blackhole-state.md § Staging
       expect(first.skippedEntries).toHaveLength(0);
 
       // append_row entries are the property that actually matters (a wave of implementer
-      // re-spawns must never re-append the same row/bullet, per issue #715's field evidence);
+      // re-spawns must never re-append the same row/bullet);
       // new_file entries are re-written every run by design (verbatim copies are byte-identical;
       // the investigator rewrite only refreshes last_updated), so they are excluded here.
       const appendRowTargets = exampleManifest.entries

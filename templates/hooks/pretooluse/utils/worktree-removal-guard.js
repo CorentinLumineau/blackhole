@@ -355,7 +355,7 @@ const git = (args, cwd) =>
 
 /**
  * Resolves whether a detached-HEAD `worktreePath` is safe to remove — the reachability rung
- * `checkUnpushedCommits` falls into below when there is no branch name to compare at all (#761).
+ * `checkUnpushedCommits` falls into below when there is no branch name to compare at all.
  * A review worktree (`phase-review.md`) is *always* detached by construction — `git worktree add
  * --no-track origin/<branch>` is rejected outright by git, so `--detach` is the only way to check
  * out a PR head — so this is the routine shape of every review worktree, not an edge case.

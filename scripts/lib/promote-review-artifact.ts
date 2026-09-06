@@ -115,7 +115,7 @@ export function renderReviewMarkdown(input: ReviewPromotionInput): ReviewPromoti
   const targetPath = reviewTargetPath(input.issueTitle, input.issueNumber);
   const today = input.today ?? new Date().toISOString().slice(0, 10);
   // A deferred finding is filed as its own issue and is non-blocking by definition — it must
-  // stay visible for disclosure but never count toward the verdict (issue #737).
+  // stay visible for disclosure but never count toward the verdict.
   const blocking = findings.filter((f) => f.status !== 'deferred');
   const deferred = findings.filter((f) => f.status === 'deferred');
   const blockers = blocking.filter((f) => f.severity === 'BLOCK').length;

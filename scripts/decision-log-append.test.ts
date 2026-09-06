@@ -48,10 +48,10 @@ describe('appendDecisionRecords', () => {
     expect(content).toContain('| 745 | approach | scripts/foo.ts | Did the thing | Because reasons |');
   });
 
-  // Review finding (issue #717, V-TEST-01): the dedup Set was mutated mid-loop, so two records
-  // sharing one (pr, kind) key in the SAME batch collided with each other and the second was
-  // silently dropped — even with entirely different decision/why text. This PR's own return
-  // carried exactly this shape (two {pr: 750, kind: "approach"} records), so it's the fixture.
+  // Guards the dedup Set against mid-loop mutation: two records sharing one (pr, kind) key in
+  // the SAME batch must not collide with each other, even with entirely different decision/why
+  // text. A single worker return carrying two {pr, kind}-identical records is the routine shape,
+  // so it is the fixture here.
   test('two records with the same (pr, kind) key but different text in one call both append, in order', () => {
     const worktreeDecision = rowFor({
       pr: 750,

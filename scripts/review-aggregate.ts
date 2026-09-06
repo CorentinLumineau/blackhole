@@ -90,8 +90,7 @@ function stampIssueRef(findings: Finding[], issueRef: number): Finding[] {
 }
 
 // Mirrors stampIssueRef's "own value wins" shape — see that function's own comment for the
-// dedup-key rationale this stamping order preserves (issue #754, V-FIX-01 leg 2: `--pr-ref` was
-// already CLI-parsed but silently dropped before reaching this stamping step).
+// dedup-key rationale this stamping order preserves.
 function stampPrRef(findings: Finding[], prRef: number | null): Finding[] {
   return findings.map((finding) => ({
     ...finding,
