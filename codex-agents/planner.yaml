@@ -47,7 +47,7 @@ instructions: |
      otherwise **stage** (never write directly — no branch exists yet at Phase 2, ADR-021 D1) the
      bullet `- {constraint} (analyze: issue #N)` at
      `.blackhole/staged/<issue>/architecture-active-constraint-{n}.md` via Bash heredoc + atomic
-     `mv`, and append a manifest entry (`route: "analyze"`, `sub_mode: "analyze"`, `produced_by:
+     `mv` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911), and append a manifest entry (`route: "analyze"`, `sub_mode: "analyze"`, `produced_by:
      "planner"`, `target_path: "ARCHITECTURE.md"`, `target_kind: "append_row"` —
      `blackhole-state.md` § Staging) to `.blackhole/staged/<issue>/manifest.json`, gated by
      `docs_governance.enabled`/`docs_governance.write_governance` (absent or `false` ⇒ skip
@@ -74,7 +74,7 @@ instructions: |
      1. Run `scripts/detect-doc-schema.sh index documentation/INDEX.md` (repo-convention precedence,
         `doc-governance.md` § Repo Convention Precedence) before emitting the INDEX row fragment.
      2. Render a durable plan body at `.blackhole/staged/<issue>/plan-{slug}.md` (filename from
-        `scripts/lib/concern-slug.ts`'s `planTargetPath`) via Bash heredoc + atomic `mv`. Strip
+        `scripts/lib/concern-slug.ts`'s `planTargetPath`) via Bash heredoc + atomic `mv` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911). Strip
         campaign-only frontmatter keys from the working plan copy: `plan_base_commit`, `track`,
         `task_type`, `threat_screen_passed`, `ui_gate`. Add lifecycle frontmatter per
         `doc-governance.md` § Lifecycle Frontmatter (`type: plan`, `status: current`,
@@ -363,7 +363,7 @@ instructions: |
         present and `true` (absent or `false` on either ⇒ skip staging entirely — write nothing,
         append no manifest entry), stage the rendered ADR body at
         `.blackhole/staged/<issue>/ADR-{NNN}-{slug}.md` and the INDEX row fragment at
-        `.blackhole/staged/<issue>/decisions-index-row.md`, via Bash heredoc + atomic `mv`, at the
+        `.blackhole/staged/<issue>/decisions-index-row.md`, via Bash heredoc + atomic `mv` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911), at the
         absolute repo-root staging directory the orchestrator passes at spawn time
         (`blackhole-state.md` § Staging (ADR-021 D1)). Append both entries to
         `.blackhole/staged/<issue>/manifest.json` per that section's schema. **Manifest write is
@@ -391,7 +391,7 @@ instructions: |
            approaches for that surface, rather than prescribing today's preferred implementation
            detail?
         Score ≥2/3 YES → stage the bullet `- {constraint, one sentence, imperative} (ADR-{NNN})` at
-        `.blackhole/staged/<issue>/architecture-active-constraint.md` and append a manifest entry
+        `.blackhole/staged/<issue>/architecture-active-constraint.md` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911) and append a manifest entry
         (`target_path: "ARCHITECTURE.md"`, `target_kind: "append_row"` — `blackhole-state.md` §
         Staging) alongside the ADR/INDEX entries. The `(ADR-{NNN})` suffix is mandatory — the
         primary pollution mitigation, giving a future pruner a citation to check. Score ≤1/3 → do
@@ -426,7 +426,7 @@ instructions: |
         and `docs_governance.write_governance` both resolve present and `true` (absent or `false` on
         either ⇒ skip staging entirely — write nothing, append no manifest entry), stage both at
         `.blackhole/staged/<issue>/ADR-{NNN}-{slug}.md` and
-        `.blackhole/staged/<issue>/decisions-index-row.md` via the same Bash heredoc + atomic `mv`
+        `.blackhole/staged/<issue>/decisions-index-row.md` via the same Bash heredoc + atomic `mv` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911)
         write and manifest append as the `ready` branch above. **Manifest write is mandatory, not
         narration** (issue #782): promoting the design note verbatim does not satisfy ADR-021 D3 on
         its own — this append must still execute in this same spawn, and its absence leaves

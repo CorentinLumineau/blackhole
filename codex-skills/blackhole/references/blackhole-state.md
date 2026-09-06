@@ -117,6 +117,35 @@ Gated by `docs_governance.enabled` / `docs_governance.write_governance`, "absent
 inert" — identical phrasing to `artifact-contract.md`'s existing kill switch: when either flag
 resolves absent or `false`, no staging write happens and no manifest entry is appended.
 
+**Scratch-file naming (issue #911)**: every heredoc-authored write under this staging
+convention — including the plan file itself (`{repo_root}/.blackhole/plans/issue-N.md`) —
+computes its full destination path first, writes the heredoc body to
+`<that-full-destination-path>.tmp`, then atomically `mv`s it into place. This makes
+cross-issue scratch-file collision impossible by construction, not by agent discipline: two
+concurrently running agents each resolve a destination already namespaced by issue
+(`.blackhole/staged/883/…` vs `.blackhole/staged/909/…`, or `plans/issue-883.md` vs
+`plans/issue-909.md`) — their `.tmp` intermediates can never share a path, unlike a generic,
+unnamespaced scratch name (a bare `/tmp/scratch.md` chosen by convention rather than derived
+from the destination — the failure this replaces). The `.tmp` suffix is
+**extension-suffixed** (`foo.md.tmp`), never **extension-replaced** (`foo.tmp.md`): a replaced
+suffix still ends in `.md` and would be picked up by any wholesale `*.md` directory glob — the
+same `<file>.tmp` convention § Write protocol above already uses for `queue.json`/
+`findings-ledger.json`, reused rather than reinvented (`V-INT-03`). No partial-write hazard:
+the one consumer that globs a staged tree wholesale,
+`scripts/checks/adr-supersession.check.ts`'s `fs.readdirSync(plansDir).filter(n =>
+n.endsWith('.md'))`, never matches a `<name>.md.tmp` file, and both
+`carry-staged-artifacts.ts` and the reviewer's Staged Artifact Carry Audit resolve
+`staged_path` from `manifest.json` entries directly, never by directory glob — a stray `.tmp`
+left by a dead or interrupted agent is inert everywhere.
+
+**Secondary control — content verification before `mv`**: this naming rule closes the
+*collision* failure mode (two agents choosing the same destination); it does not close a
+*content* failure mode where an agent resolves the wrong destination outright (e.g. a
+copy-paste error naming issue #883's directory while holding #909's content — same symptom,
+different cause). Before every such `mv` into `.blackhole/`, grep the `.tmp` file for its own
+issue number and for the absence of any other issue's number — a stated obligation on the
+writing agent (`planner`, `investigator`), not left to individual judgment.
+
 ### `.blackhole/staged/<issue>/manifest.json`
 
 ```json
