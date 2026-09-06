@@ -133,6 +133,22 @@ describe('findControlCharViolations — PR #944 reproduction (red-before-green, 
       expect(findControlCharViolations(repo)).toEqual([]);
     });
   });
+
+  test('a tracked file over the size cap is skipped without being read, even when it contains a NUL byte (F-00135)', async () => {
+    await withTempGitRepo('control-char-oversized-', async (repo) => {
+      // Real magnitude is impractical in a unit test; the cap is passed as an explicit
+      // parameter (same "parameterized for fixtures" convention as repoRoot) so the boundary
+      // is exercised deterministically at a tiny scale instead of allocating a genuinely huge
+      // file. This file is 20 bytes and would be flagged with no cap or a cap >= 20.
+      write(repo, 'oversized.ts', 'const x = "a\x00b";\n'); // 20 bytes, contains a NUL at offset 12
+      commitAll(repo, 'add file over the size cap');
+
+      // Below the file's actual size: skipped entirely, so the NUL is never seen.
+      expect(findControlCharViolations(repo, 10)).toEqual([]);
+      // At/above the file's actual size: read and flagged exactly as every other test expects.
+      expect(findControlCharViolations(repo, 20)).toEqual([{ file: 'oversized.ts', line: 1, byte: 0x00 }]);
+    });
+  });
 });
 
 describe('listTrackedFiles', () => {

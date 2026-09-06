@@ -21,12 +21,29 @@ import { root, type CheckResult } from './check-utils.ts';
 // Design Decision D2: raw-byte scanning (`fs.readFileSync(path)`, no encoding argument) — never
 // decoded-string scanning, which would silently replace an invalid multi-byte sequence elsewhere
 // in the file with U+FFFD rather than surfacing it.
+//
+// Threat Model DoS mitigation has two legs: an unreadable tracked path (dangling symlink,
+// submodule gitlink) is caught by try/catch around both `statSync` and `readFileSync` below; a
+// pathologically large tracked file is caught by the size cap below, checked via `statSync`
+// *before* `readFileSync` ever pulls the whole file into memory. Without the size cap, a
+// large-but-under-Node's-~2GB-buffer-limit tracked file would still memory-pressure
+// `bun run verify` even though it never throws (F-00135).
 
 // git ls-files / git check-attr output for this repo's tracked-file count is well under a
 // megabyte; this ceiling only guards against a pathological future tree, mirroring the DoS
 // mitigation in the Threat Model (a hang/crash from an oversized subprocess buffer, not from
 // per-file content).
 const GIT_SPAWN_MAX_BUFFER = 200 * 1024 * 1024;
+
+// The largest tracked file in this repo today is ~85KB (src/agents/reviewer.md's compiled
+// output). 10MB is ~120x that — comfortably above any plausible legitimate tracked source file
+// while still bounding the worst case of a single synchronous `readFileSync` call to a small,
+// fixed amount of memory. Accepted trade-off: a genuinely corrupted file padded past this cap
+// would evade detection, but padding a file to 10MB to hide one byte is conspicuous on its own
+// (large diffs draw review scrutiny exactly the way an invisible-binary diff does not) and is a
+// materially different attack shape than PR #944's — this check's threat model is silent
+// smuggling via invisibility, not bulk.
+const DEFAULT_MAX_SCANNED_FILE_BYTES = 10 * 1024 * 1024;
 
 export const listTrackedFiles = (repoRoot: string = root): string[] => {
   const result = spawnSync('git', ['ls-files', '-z'], {
@@ -88,7 +105,10 @@ export const scanBufferForControlChars = (buf: Buffer): ControlCharHit[] => {
 
 export type ControlCharViolation = { file: string; line: number; byte: number };
 
-export const findControlCharViolations = (repoRoot: string = root): ControlCharViolation[] => {
+export const findControlCharViolations = (
+  repoRoot: string = root,
+  maxFileBytes: number = DEFAULT_MAX_SCANNED_FILE_BYTES,
+): ControlCharViolation[] => {
   const tracked = listTrackedFiles(repoRoot);
   const exempted = findGitAttributeExemptions(repoRoot, tracked);
   const violations: ControlCharViolation[] = [];
@@ -96,12 +116,27 @@ export const findControlCharViolations = (repoRoot: string = root): ControlCharV
   for (const relPath of tracked) {
     if (exempted.has(relPath)) continue;
 
+    const abs = path.join(repoRoot, relPath);
+
+    let size: number;
+    try {
+      size = fs.statSync(abs).size;
+    } catch {
+      // DoS mitigation, unreadable-path leg (Threat Model): a dangling symlink, submodule
+      // gitlink, or other anomalous tracked path is skipped rather than failing the whole check.
+      continue;
+    }
+    if (size > maxFileBytes) {
+      // DoS mitigation, large-file leg (Threat Model, F-00135): skip before ever reading the
+      // file into memory — see DEFAULT_MAX_SCANNED_FILE_BYTES's comment for the threshold and
+      // the accepted trade-off.
+      continue;
+    }
+
     let buf: Buffer;
     try {
-      buf = fs.readFileSync(path.join(repoRoot, relPath));
+      buf = fs.readFileSync(abs);
     } catch {
-      // DoS mitigation (Threat Model): a dangling symlink, submodule gitlink, or other
-      // anomalous tracked path is skipped rather than failing the whole check.
       continue;
     }
 
