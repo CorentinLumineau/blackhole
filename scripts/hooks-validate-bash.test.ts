@@ -2722,6 +2722,20 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     });
   });
 
+  test("#804: 'sed -i' whose script contains a quoted ';' still resolves its real target (quote-policy pin)", async () => {
+    await withLinkedWorktree('blackhole-hook-804-quote-', async (mainRepo, worktree) => {
+      const target = path.join(mainRepo, 'config.json');
+      const payload = bashPayloadAt(`sed -i 's/a;b/c/' ${target}`, worktree);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({
+        tier: 'block',
+        pattern_id: 'bash-outside-assigned-worktree',
+      });
+    });
+  });
+
   test('#804: `cp` with a destination outside the assigned root is denied', async () => {
     await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
       const src = path.join(worktree, 'src.txt');

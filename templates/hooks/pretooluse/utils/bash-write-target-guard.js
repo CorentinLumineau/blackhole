@@ -35,6 +35,7 @@
 
 const path = require('path');
 const { computeMaskedSpans } = require('./bash-context');
+const { skipQuotedSpan, isRedirectAmpersand } = require('./shell-lexer');
 const { readAssignedWorktreeRoot, isUnderRoot } = require('./hook-event-log');
 const { isLiteralPathArg } = require('./worktree-removal-guard');
 
@@ -96,13 +97,7 @@ const tokenize = (text) => {
       continue;
     }
     if (ch === "'" || ch === '"') {
-      const quote = ch;
-      let j = i + 1;
-      while (j < n && text[j] !== quote) {
-        if (quote === '"' && text[j] === '\\' && j + 1 < n) j += 2;
-        else j++;
-      }
-      const end = j < n ? j + 1 : j;
+      const end = skipQuotedSpan(text, i, n);
       current += text.slice(i, end);
       i = end;
       continue;
@@ -120,7 +115,19 @@ const tokenize = (text) => {
  * redirect operator, never a clause separator. Quoted spans are walked whole so a separator
  * character inside a quote is never mistaken for a real one. Each clause is scanned independently
  * for its own leading command word (`tee`, `sed`, `cp`, `mv`, or an unresolvable-write command) so
- * a chained command's later clause is never mistaken for the first clause's own arguments. */
+ * a chained command's later clause is never mistaken for the first clause's own arguments.
+ *
+ * QUOTE POLICY: this splitter is quote-AWARE by requirement — `skipQuotedSpan` walks a quoted
+ * span whole, so a separator character sitting inside a quoted argument is never mistaken for a
+ * real clause boundary. This is load-bearing for this guard's own threat model: a quote-unaware
+ * splitter turns `sed -i 's/a;b/c/' <main-clone-path>` from one clause (real target: the main
+ * clone) into two, the second of which extracts no write target at all — deny becomes allow, the
+ * F-00034 incident class. Pinned by
+ * `scripts/hooks-validate-bash.test.ts`'s `#804: 'sed -i' whose script contains a quoted ';'
+ * still resolves its real target (quote-policy pin)` case. Do not make this quote-unaware to
+ * match `worktree-removal-guard.js`'s `findClauseStartIndices` — that guard needs the opposite
+ * policy for its own, equally load-bearing reason (see that function's own `QUOTE POLICY:` note).
+ */
 const splitClauses = (visible) => {
   const clauses = [];
   let current = '';
@@ -129,13 +136,7 @@ const splitClauses = (visible) => {
   while (i < n) {
     const ch = visible[i];
     if (ch === "'" || ch === '"') {
-      const quote = ch;
-      let j = i + 1;
-      while (j < n && visible[j] !== quote) {
-        if (quote === '"' && visible[j] === '\\' && j + 1 < n) j += 2;
-        else j++;
-      }
-      const end = j < n ? j + 1 : j;
+      const end = skipQuotedSpan(visible, i, n);
       current += visible.slice(i, end);
       i = end;
       continue;
@@ -147,9 +148,7 @@ const splitClauses = (visible) => {
       continue;
     }
     if (ch === '&') {
-      const prev = i > 0 ? visible[i - 1] : '';
-      const next = i + 1 < n ? visible[i + 1] : '';
-      if (prev === '>' || next === '>') {
+      if (isRedirectAmpersand(visible, i)) {
         current += ch;
         i++;
         continue;
