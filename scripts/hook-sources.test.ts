@@ -236,12 +236,19 @@ describe('orderHookSources', () => {
   test('fixture 2: two divergent commits render diverged, never a silent clean read', async () => {
     await withTempGitRepo('hook-order-fixture2-', async (repo) => {
       runGit(repo, ['commit', '--allow-empty', '--quiet', '-m', 'common ancestor']);
+      // Captured by sha, not by branch name — `withTempGitRepo`'s initial branch name depends on
+      // ambient `init.defaultBranch` (this workstation: "main"; a CI runner may default to
+      // "master" or leave it unset), so returning to the common ancestor via `checkout <sha>`
+      // (detached HEAD) rather than `checkout main` keeps this fixture hermetic (issue #912
+      // review round 1 — a CI-only failure on exactly this line).
+      const commonAncestorSha = spawnSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).stdout.trim();
+
       runGit(repo, ['checkout', '--quiet', '-b', 'branch-a']);
       writeFile(repo, '.claude/hooks/a.js', 'a');
       runGit(repo, ['commit', '--quiet', '-m', 'branch a commit']);
       const shaA = spawnSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).stdout.trim();
 
-      runGit(repo, ['checkout', '--quiet', 'main']);
+      runGit(repo, ['checkout', '--quiet', commonAncestorSha]);
       runGit(repo, ['checkout', '--quiet', '-b', 'branch-b']);
       writeFile(repo, '.claude/hooks/b.js', 'b');
       runGit(repo, ['commit', '--quiet', '-m', 'branch b commit']);
