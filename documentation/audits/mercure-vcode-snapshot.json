@@ -1,0 +1,457 @@
+{
+  "synced_at": "2026-09-06T22:17:16.774Z",
+  "mercure_version": "9.15.0",
+  "mercure_commit": "d4bfddf73a925b6d4b36e6478c48dc10b41d0480",
+  "source_files": [
+    "mercure-plugin/rules/references/v-codes-ada.md",
+    "mercure-plugin/rules/references/v-codes-architecture.md",
+    "mercure-plugin/rules/references/v-codes-delegation.md",
+    "mercure-plugin/rules/references/v-codes-doc-gov.md",
+    "mercure-plugin/rules/references/v-codes-quality.md",
+    "mercure-plugin/rules/references/v-codes-security.md",
+    "mercure-plugin/rules/references/v-codes-testing.md",
+    "mercure-plugin/rules/references/v-codes-ux.md"
+  ],
+  "codes": {
+    "V-ADA-01": {
+      "severity": "HIGH",
+      "description": "`ARCHITECTURE.md` absent (root or current package) — plan cannot reason about approach without it"
+    },
+    "V-ADA-02": {
+      "severity": "MEDIUM",
+      "description": "`documentation/decisions/INDEX.md` stale — ≥1 Accepted ADR not recorded in decisions/INDEX.md"
+    },
+    "V-ADA-03": {
+      "severity": "MEDIUM",
+      "description": "`DESIGN.md` absent in project with UI design scope"
+    },
+    "V-ADA-04": {
+      "severity": "MEDIUM",
+      "description": "`DESIGN.md` tokens out of sync with recent design decisions involving UI/visual changes"
+    },
+    "V-ADA-05": {
+      "severity": "HIGH",
+      "description": "Root `AGENTS.md→CLAUDE.md` symlink broken or absent"
+    },
+    "V-ADA-06": {
+      "severity": "MEDIUM",
+      "description": "Monorepo package directory missing `AGENTS.md` — package invisible to agent graph"
+    },
+    "V-ADA-07": {
+      "severity": "MEDIUM",
+      "description": "Sub-package `AGENTS.md` exists but not indexed in root \"Package Agents\" section"
+    },
+    "V-ADA-08": {
+      "severity": "MEDIUM",
+      "description": "ARCHIVE lifecycle gap — superseded ADR row in `documentation/decisions/INDEX.md` not updated to \"Superseded\" status, OR deprecated `DESIGN.md` token categories silently deleted instead of moved to a `## Deprecated Tokens` section (destroys traceability)"
+    },
+    "V-ADA-09": {
+      "severity": "HIGH",
+      "description": "Owner ruling absent or violated — compound trigger: (a) `documentation/reference/product-principles.md` absent when UI/frontend signals are present, mirroring the V-ADA-03/DESIGN.md existence check exactly and reusing the same V-ADA-04 Frontend Detection Keywords SSOT below (no new keyword list) — OR (b) diff violates an *active* recorded owner ruling in `product-principles.md`. Detection is hybrid: structured surface/keyword metadata captured at ruling-append time narrows which diffs are even considered, but the violation call itself is reviewer judgment, not a mechanical/regex match. x-review quotes the violated ruling verbatim in the finding and cites `R-NNN` when the ruling has an Id"
+    },
+    "V-INT-01": {
+      "severity": "MEDIUM",
+      "description": "Integration pattern divergence — new code uses different convention than established pattern at same touchpoint (validation library, error class, response helper, auth middleware)"
+    },
+    "V-INT-02": {
+      "severity": "HIGH",
+      "description": "Parallel implementation — code reimplements something that already exists as a codebase utility; creates two ways to do the same thing"
+    },
+    "V-INT-03": {
+      "severity": "MEDIUM",
+      "description": "Convention drift — new code establishes a new pattern variant that will require future migration"
+    },
+    "V-INT-04": {
+      "severity": "MEDIUM",
+      "description": "Pattern absent — new code at an integration touchpoint is missing a required convention from the Codebase Conventions catalog"
+    },
+    "V-API-01": {
+      "severity": "HIGH",
+      "description": "API contract drift — diff diverges from plan's `## API Contract` specification"
+    },
+    "V-API-02": {
+      "severity": "HIGH",
+      "description": "Undocumented breaking change — breaking API change not flagged as Breaking in plan"
+    },
+    "V-ARCH-01": {
+      "severity": "HIGH",
+      "description": "Approach violation — diff uses patterns from an approach explicitly rejected in the referenced ADR"
+    },
+    "V-ARCH-02": {
+      "severity": "MEDIUM",
+      "description": "Rejected pattern detected — diff contains an isolated element from a rejected ADR approach"
+    },
+    "V-PERF-01": {
+      "severity": "HIGH",
+      "description": "Performance anti-pattern detected — diff introduces N+1 query, unindexed sort, sync I/O in hot path, full-table scan, or unbounded pagination for a component listed in the plan's `## Performance Budget` section"
+    },
+    "V-PERF-02": {
+      "severity": "MEDIUM",
+      "description": "Performance regression risk — diff touches a component listed in the plan's `## Performance Budget` section without addressing the documented threshold"
+    },
+    "V-CONFIG-01": {
+      "severity": "MEDIUM",
+      "description": "Config key convention drift — new config key or env var does not follow the naming convention documented in the plan's Codebase Conventions section"
+    },
+    "V-CONFIG-02": {
+      "severity": "MEDIUM",
+      "description": "Config convention absent — new config key or env var introduced without being registered in the project's config convention entry in the Codebase Conventions section"
+    },
+    "V-ASSET-01": {
+      "severity": "HIGH",
+      "description": "Agent-asset drift — `.claude/rules/*.md`, `.claude/skills/**/*.md`, `.claude/agents/**/*.md`, `AGENTS.md`, or `CLAUDE.md` contains a file path or symbol name that does not resolve on disk"
+    },
+    "V-ASSET-02": {
+      "severity": "MEDIUM",
+      "description": "Accepted ADR references a file path that does not exist on disk"
+    },
+    "V-ASSET-03": {
+      "severity": "MEDIUM",
+      "description": "Plan touches public concepts (classes, modules, CLI verbs, config keys, external services) without `## Agent-Asset Ripple` section identifying affected agent-asset files"
+    },
+    "V-BRANCH-01": {
+      "severity": "CRITICAL",
+      "description": "Force-push to protected branch (main, master, develop, release/*)"
+    },
+    "V-BRANCH-02": {
+      "severity": "HIGH",
+      "description": "Commit directly to main/master without explicit approval"
+    },
+    "V-BRANCH-03": {
+      "severity": "MEDIUM",
+      "description": "Branch name does not match `feature-branch.N` convention"
+    },
+    "V-BRANCH-04": {
+      "severity": "LOW",
+      "description": "Stale local branch — merged or upstream gone"
+    },
+    "V-WORKTREE-01": {
+      "severity": "HIGH",
+      "description": "Worktree leak — stale worktree not cleaned after batch operation"
+    },
+    "V-WORKTREE-02": {
+      "severity": "MEDIUM",
+      "description": "Missing worktree-state.json persistence during worktree session"
+    },
+    "V-WORKTREE-03": {
+      "severity": "MEDIUM",
+      "description": "Worktree retains branch checkout lock after its PR reached mergeable state (CI green + `ai-review:LGTM` + no conflict) — see `mercure-worktree-hygiene.md` § Release on PR-Mergeable"
+    },
+    "V-GIT-01": {
+      "severity": "HIGH",
+      "description": "PR created without `Closes #N` issue linkage"
+    },
+    "V-GIT-02": {
+      "severity": "MEDIUM",
+      "description": "Failed to return to base branch after merge"
+    },
+    "V-FIX-01": {
+      "severity": "HIGH",
+      "description": "Fix applied without documented root cause analysis"
+    },
+    "V-CHOICE-01": {
+      "severity": "MEDIUM",
+      "description": "Non-trivial change without documented alternative consideration"
+    },
+    "V-SCOPE-01": {
+      "severity": "MEDIUM",
+      "description": "Improvement applied outside diff boundary"
+    },
+    "V-SCOPE-02": {
+      "severity": "MEDIUM",
+      "description": "Plan-task mismatch — implementation focus diverges from the plan's current active task"
+    },
+    "V-SCOPE-03": {
+      "severity": "MEDIUM",
+      "description": "Missing blast-radius — plan with 3+ affected consumers has no Dependency Blast-Radius section"
+    },
+    "V-EXT-01": {
+      "severity": "MEDIUM",
+      "description": "File-level extension event without declaration — PR modifies existing SKILL.md with a new `##` section, `argument-hint:` value, V-code reference, or `allowed-tools:` entry, but PR description lacks `## Extension Tax Declaration`"
+    },
+    "V-EXT-02": {
+      "severity": "MEDIUM",
+      "description": "Step-level accretion — a numbered step in SKILL.md exceeds 80 LOC, grows >50% in a single PR, or contains 4+ distinct conceptual gate patterns"
+    },
+    "V-CHAIN-01": {
+      "severity": "MEDIUM",
+      "description": "User-invocable workflow skill missing `## After Completion` section — every skill with `user-invocable: true` and `model:` frontmatter must end with an `## After Completion` section containing `AskUserQuestion` routing options. Exemptions: x-help (informational), 12 redirect stubs (no model: field), user-invocable: false skills"
+    },
+    "V-DOC-01": {
+      "severity": "MEDIUM",
+      "description": "Missing JSDoc/docstring on public API"
+    },
+    "V-DOC-02": {
+      "severity": "HIGH",
+      "description": "API docs don't match code signatures"
+    },
+    "V-DOC-03": {
+      "severity": "MEDIUM",
+      "description": "Broken internal documentation links"
+    },
+    "V-DOC-04": {
+      "severity": "HIGH",
+      "description": "Stale documentation — content contradicts current code, **or** a doc under `documentation/` no longer describes the structure it indexes (superseded chain unresolved, INDEX row pointing at a moved/split file, folder reorganized without its index following)"
+    },
+    "V-DOC-05": {
+      "severity": "MEDIUM",
+      "description": "Rationale duplicated across sites — same explanation restated at >1 location instead of one canonical site plus references"
+    },
+    "V-DOC-06": {
+      "severity": "MEDIUM",
+      "description": "Incident archaeology in code comment — issue/PR number, \"previously X\", or change narration embedded in source"
+    },
+    "V-DOC-07": {
+      "severity": "LOW",
+      "description": "Comment lines exceed 40% of added lines in the diff (advisory — never blocks)"
+    },
+    "V-DELEG-01": {
+      "severity": "MEDIUM",
+      "description": "Delegation contract incomplete — `subagent_type` call missing ≥1 of: output format, scope boundary, stop condition"
+    },
+    "V-DELEG-02": {
+      "severity": "MEDIUM",
+      "description": "Agent()/Workflow agent() call omits explicit model: — silently inherits session model instead of the declared cheapest-capable tier"
+    },
+    "V-DELEG-03": {
+      "severity": "MEDIUM",
+      "description": "Workflow call site without a declared Agent fallback — skill owns a Workflow script or trigger callout but no `> **Agent fallback:**` callout naming the Agent path (ADR-113)"
+    },
+    "V-DOC-GOV-01": {
+      "severity": "HIGH",
+      "description": "New doc created under `documentation/` without search-before-write check — duplicates an existing concern's canonical doc"
+    },
+    "V-DOC-GOV-02": {
+      "severity": "MEDIUM",
+      "description": "Doc under `documentation/` missing lifecycle frontmatter (no `type:` or `status:` field)"
+    },
+    "V-DOC-GOV-03": {
+      "severity": "MEDIUM",
+      "description": "Doc filename includes a date stamp (e.g. `-2026-05-11.md`), violating canonical-path convention (date belongs in frontmatter)"
+    },
+    "V-DOC-GOV-04": {
+      "severity": "MEDIUM",
+      "description": "Doc replaced with substantially different content but old version lacks `status: deprecated` OR new version lacks `supersedes:` link"
+    },
+    "V-SOLID-01": {
+      "severity": "CRITICAL",
+      "description": "SRP violation — class/module with multiple reasons to change"
+    },
+    "V-SOLID-02": {
+      "severity": "HIGH",
+      "description": "OCP violation — modification instead of extension"
+    },
+    "V-SOLID-03": {
+      "severity": "CRITICAL",
+      "description": "LSP violation — subtype breaks parent contract"
+    },
+    "V-SOLID-04": {
+      "severity": "MEDIUM",
+      "description": "ISP violation — fat interface forcing unnecessary implementations"
+    },
+    "V-SOLID-05": {
+      "severity": "HIGH",
+      "description": "DIP violation — high-level module depends on low-level details"
+    },
+    "V-DRY-01": {
+      "severity": "HIGH",
+      "description": "Significant code duplication (>10 lines identical)"
+    },
+    "V-DRY-02": {
+      "severity": "MEDIUM",
+      "description": "Duplicated logic with trivial variations"
+    },
+    "V-DRY-03": {
+      "severity": "MEDIUM",
+      "description": "Copy-paste with only names changed"
+    },
+    "V-DRY-04": {
+      "severity": "MEDIUM",
+      "description": "Template code with trivial variations (anti-slop)"
+    },
+    "V-KISS-01": {
+      "severity": "HIGH",
+      "description": "Unnecessary complexity where simpler solution exists"
+    },
+    "V-KISS-02": {
+      "severity": "MEDIUM",
+      "description": "Over-engineered abstraction for simple problem"
+    },
+    "V-KISS-03": {
+      "severity": "MEDIUM",
+      "description": "Boilerplate scaffolding with no business logic (anti-slop)"
+    },
+    "V-YAGNI-01": {
+      "severity": "HIGH",
+      "description": "Feature built for hypothetical future need"
+    },
+    "V-YAGNI-02": {
+      "severity": "MEDIUM",
+      "description": "Premature abstraction without 3+ consumers"
+    },
+    "V-YAGNI-03": {
+      "severity": "MEDIUM",
+      "description": "Premature abstraction with single consumer (anti-slop)"
+    },
+    "V-PAT-01": {
+      "severity": "CRITICAL",
+      "description": "God Object — class with 7+ responsibilities"
+    },
+    "V-PAT-02": {
+      "severity": "HIGH",
+      "description": "Circular dependency between modules"
+    },
+    "V-PAT-03": {
+      "severity": "HIGH",
+      "description": "Missing error handling pattern (bare catch, swallowed errors)"
+    },
+    "V-PAT-04": {
+      "severity": "MEDIUM",
+      "description": "Anti-pattern usage (singleton abuse, service locator)"
+    },
+    "V-PARETO-01": {
+      "severity": "MEDIUM",
+      "description": "Over-engineering beyond 80/20 scope"
+    },
+    "V-PARETO-02": {
+      "severity": "MEDIUM",
+      "description": "Gold-plating — polish without user value"
+    },
+    "V-PARETO-03": {
+      "severity": "HIGH",
+      "description": "Scope creep — implementing beyond stated requirements"
+    },
+    "V-SEC-01": {
+      "severity": "CRITICAL",
+      "description": "Injection — unsanitized input in SQL/NoSQL/OS commands"
+    },
+    "V-SEC-02": {
+      "severity": "CRITICAL",
+      "description": "Auth/authz bypass — missing or broken access control"
+    },
+    "V-SEC-03": {
+      "severity": "HIGH",
+      "description": "Hardcoded secrets — API keys, passwords, tokens in source"
+    },
+    "V-SEC-04": {
+      "severity": "HIGH",
+      "description": "Cross-site scripting — unsanitized output in HTML context"
+    },
+    "V-SEC-05": {
+      "severity": "MEDIUM",
+      "description": "Security misconfiguration — missing headers, unsafe eval, insecure defaults"
+    },
+    "V-SEC-06": {
+      "severity": "HIGH",
+      "description": "Exploitability gate — security finding reported without a concrete, demonstrated attack scenario (who/what/result); theoretical or defense-in-depth-only items"
+    },
+    "V-SEC-07": {
+      "severity": "MEDIUM",
+      "description": "Adversarial validation gap — security finding reported as confirmed without an independent pass that tried to disprove it"
+    },
+    "V-THREAT-01": {
+      "severity": "HIGH",
+      "description": "Missing threat model — plan for security-sensitive feature has no STRIDE analysis"
+    },
+    "V-THREAT-02": {
+      "severity": "HIGH",
+      "description": "Unmitigated threat — STRIDE analysis identified a threat with no documented mitigation"
+    },
+    "V-THREAT-03": {
+      "severity": "MEDIUM",
+      "description": "Threat model incomplete — not all six STRIDE categories analyzed"
+    },
+    "V-TEST-01": {
+      "severity": "CRITICAL",
+      "description": "No tests for changed code"
+    },
+    "V-TEST-02": {
+      "severity": "CRITICAL",
+      "description": "Production code written before failing test (TDD violation)"
+    },
+    "V-TEST-03": {
+      "severity": "HIGH",
+      "description": "Test coverage below project threshold on changed files"
+    },
+    "V-TEST-04": {
+      "severity": "HIGH",
+      "description": "Disabled or skipped tests without documented justification"
+    },
+    "V-TEST-05": {
+      "severity": "MEDIUM",
+      "description": "Missing edge case tests for boundary conditions"
+    },
+    "V-TEST-06": {
+      "severity": "MEDIUM",
+      "description": "Test assertions too weak (truthy checks instead of specific)"
+    },
+    "V-TEST-07": {
+      "severity": "HIGH",
+      "description": "Completion claimed without running tests (evidence violation)"
+    },
+    "V-TEST-08": {
+      "severity": "MEDIUM",
+      "description": "Testing pyramid imbalance (>50% E2E, <50% unit)"
+    },
+    "V-TEST-09": {
+      "severity": "HIGH",
+      "description": "Coverage regression on changed files — line/function coverage dropped vs. pre-change baseline"
+    },
+    "V-UX-01": {
+      "severity": "MEDIUM",
+      "description": "Information overload / no progressive disclosure — UI surfaces flat field dumps or fully-expanded views instead of tiered at-a-glance/summary/detail/raw disclosure"
+    },
+    "V-UX-01a": {
+      "severity": "MEDIUM",
+      "description": "Flat field dump — all fields rendered with equal visual weight, no primary metric (sub-classification of V-UX-01)"
+    },
+    "V-UX-01b": {
+      "severity": "MEDIUM",
+      "description": "No summarization above ~7 facts/columns — list/table exceeds ~7 visible fields without grouping or drill-down (sub-classification of V-UX-01)"
+    },
+    "V-UX-01c": {
+      "severity": "MEDIUM",
+      "description": "Everything expanded by default — accordions/sections/trees fully open on load (sub-classification of V-UX-01)"
+    },
+    "V-UX-01d": {
+      "severity": "MEDIUM",
+      "description": "Buried primary info — headline fact not the most visually prominent element (sub-classification of V-UX-01)"
+    },
+    "V-UX-01e": {
+      "severity": "MEDIUM",
+      "description": "Deprecated data at equal prominence — stale/historical data same visual weight as current (sub-classification of V-UX-01)"
+    },
+    "V-UX-02": {
+      "severity": "HIGH",
+      "description": "Horizontal-scrollbar overflow at a declared display target — `document.documentElement.scrollWidth > document.documentElement.clientWidth` measured live at a `DESIGN.md` `display_targets` viewport during `/x-review`'s Visual Evidence gate"
+    },
+    "V-UX-03": {
+      "severity": "MEDIUM",
+      "description": "Visual Evidence section missing from the review report, or present without its required unavailability statement when no runnable stack exists — the \"never silently skip\" reporting requirement"
+    },
+    "V-UX-04": {
+      "severity": "HIGH",
+      "description": "Accessibility baseline violation — mechanical Lighthouse accessibility category at captured routes: landmarks, heading outline, accessible name, keyboard-focusable controls, WCAG AA contrast; static hunt/analyze path (Grep+Read, no browser) covers the same landmark/heading/name subset on page-level documents"
+    },
+    "V-UX-04a": {
+      "severity": "MEDIUM",
+      "description": "Colour-only meaning — state, status, or category conveyed by colour alone; hybrid Lighthouse `use-of-color` plus screenshot judgment (sub-classification of V-UX-04)"
+    },
+    "V-UX-05": {
+      "severity": "HIGH",
+      "description": "Misleading data encoding — length-based bar/area without a zero baseline; magnitude shown without unit, period, or population; inconsistent precision within a column — reviewer judgment"
+    },
+    "V-UX-06": {
+      "severity": "MEDIUM",
+      "description": "Theme parity failure — content illegible, invisible or contrast-failing at the non-default colour scheme (fires only when DESIGN.md themes lists both light and dark)"
+    },
+    "V-UX-07": {
+      "severity": "MEDIUM",
+      "description": "Motion discipline — animation gates reading, or non-trivial motion lacks prefers-reduced-motion accommodation"
+    },
+    "V-UX-08": {
+      "severity": "MEDIUM",
+      "description": "Visual anti-slop — chrome added without meaning: nested cards, borders repairing hierarchy that spacing should carry, decorative gradients or glass, metric-box grid substituted for a composed relationship"
+    }
+  }
+}
