@@ -135,6 +135,26 @@ One file per event, written by non-agent code into the **main clone** (resolved 
 | `reason` | human-readable refusal/flag text | yes |
 | `worktree` | absolute worktree root of the calling process, or `null` | yes |
 | `detail` | matched command or file path — credential literals masked, ≤300 chars (`block`/`warn` tiers; the `error` tier is unredacted — see note below) | yes |
+| `agent_id` | the PreToolUse payload's own `agent_id` field verbatim, or `null` | yes |
+| `agent_type` | the PreToolUse payload's own `agent_type` field verbatim, or `null` | yes |
+
+`agent_id`/`agent_type` (#907, observability-only, no decision change) are the harness's own
+PreToolUse fields — present, per Anthropic's schema, only when the hook fires from within a
+subagent, absent on the main thread — recorded exactly as received so "absent" (`null`) is
+distinguishable from "not captured" (a key predating this schema addition would simply be
+missing). Confirmed present at runtime for a subagent-originated call, both anonymous and named
+(issue #907 investigation), but they are `.optional()` fields with no published Claude Code
+stability guarantee, so a missing or non-string value degrades to `null` rather than being passed
+through raw. **Never build decision logic on either field**: `agent_type` reflects the spawned
+`subagent_type` (its role), not the operator-chosen display `name` a `SendMessage`-addressable
+teammate is given, but that distinction is unverified across every harness version, and treating
+it as a stable identity/role key was exactly the mistake the #907 design note warned against.
+These two are recorded for human/dashboard observability only. No redaction: unlike the `error`
+tier's unredacted stderr tail (which carries arbitrary process output), `agent_id`/`agent_type`
+are short, harness-generated identifiers/labels, not free text that could embed a credential —
+the `redact()` masking `reason`/`detail` already receive is not needed here. The wrapper's own
+`hook-exec-failure` record (below) hardcodes both to `null`: that wrapper forwards stdin without
+parsing it, so it has nothing to extract them from — a permanent, not temporary, gap.
 
 `outside-cwd-fallback` and `cwd-fallback-too-broad` are the one pair of `pattern_id` values that never actually reach this file: both fire only when `allWorktreeRoots(cwd)` found no git context, and `recordEvent`'s own destination (`git rev-parse --git-common-dir` from that same `cwd`) needs exactly the git context that is absent — so the deny still happens (stderr + exit `2`), but there is nowhere to persist the record, same as the campaign's pre-existing no-git-context `/etc/passwd` deny. Triage (below) never sees these two; a consumer install running outside a repository is, by construction, outside Triage's `.blackhole/hook-events/` polling scope too.
 

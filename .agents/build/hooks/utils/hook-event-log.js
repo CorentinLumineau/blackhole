@@ -308,12 +308,41 @@ const allWorktreeRoots = (cwd = process.cwd()) => {
   return withCwd;
 };
 
+/** Captured once per process by `readHookInput` below and read back by `recordEvent`'s payload
+ * construction — module-scoped rather than threaded as a parameter through every `denyAndRecord`/
+ * `warnAndRecord` call site (there are nine across the two validators), which would touch every
+ * one of them for two fields neither validator's own decision logic ever inspects. Each hook
+ * script is a fresh `bun run` subprocess handling exactly one stdin payload, so there is no
+ * cross-request leakage to guard against. `null` until `readHookInput` runs (or when it never
+ * successfully parses stdin — `hook-input-parse-failure`), which is the correct "not captured"
+ * state for that path. */
+let lastAgentContext = { agent_id: null, agent_type: null };
+
+/** Anthropic's own PreToolUse schema (issue #907 design note, verified against the Claude Code
+ * binary): `agent_id`/`agent_type` are present only when the hook fires from within a subagent,
+ * absent on the main thread, and both `.optional()` with no published stability guarantee. Only a
+ * string is ever accepted — anything else (missing, wrong type) becomes `null`, never passed
+ * through raw, so a malformed or absent field always reads as "not captured" rather than leaking
+ * an unexpected shape into a durable, dashboard-rendered record. `agent_type` is an
+ * operator-chosen/harness-chosen label, not a verified role — recorded for observability only;
+ * nothing in this module (or its callers) branches on either field's value. */
+const captureAgentContext = (input) => {
+  lastAgentContext = {
+    agent_id: typeof input.agent_id === 'string' ? input.agent_id : null,
+    agent_type: typeof input.agent_type === 'string' ? input.agent_type : null,
+  };
+};
+
 /** Parses the hook-shaped JSON payload on stdin. Throws on malformed/unreadable input rather than
  * swallowing the failure into `{}` — an empty object reads as "no command, no file_path", which
  * both validators treat as a silent allow with zero record. That is exactly the failure mode this
  * gate exists to prevent, so callers wrap this the same way they wrap pattern-load failures: catch
  * and turn it into `failClosed`, never let it fall through to an allow. */
-const readHookInput = () => JSON.parse(fs.readFileSync(0, 'utf-8') || '{}');
+const readHookInput = () => {
+  const input = JSON.parse(fs.readFileSync(0, 'utf-8') || '{}');
+  captureAgentContext(input);
+  return input;
+};
 
 /** `BLACKHOLE_ASSIGNED_WORKTREE` narrows Write/Edit containment to a single assigned worktree
  * when set by the orchestrator at implementer spawn (#620). Unset, empty, unresolvable, or not a
@@ -415,6 +444,8 @@ const recordEvent = (event) => {
     reason: redact(event.reason),
     worktree: worktreeRoot(cwd),
     detail: redact(event.detail),
+    agent_id: lastAgentContext.agent_id,
+    agent_type: lastAgentContext.agent_type,
   };
   try {
     fs.mkdirSync(dir, { recursive: true });

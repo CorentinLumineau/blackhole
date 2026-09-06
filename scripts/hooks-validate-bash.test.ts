@@ -60,6 +60,57 @@ describe('validate-bash-command.js', () => {
     });
   });
 
+  test('agent_id/agent_type on the stdin payload are recorded verbatim (#907, log-only)', async () => {
+    await withTempGitRepo('blackhole-hook-bash-', async (repo) => {
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        { ...bashPayload('rm -rf /'), agent_id: 'a4b8b1b8c8ec516e1', agent_type: 'general-purpose' },
+        repo,
+      );
+
+      // Decision path is untouched by the new fields — same deny as the plain payload above.
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        agent_id: 'a4b8b1b8c8ec516e1',
+        agent_type: 'general-purpose',
+      });
+    });
+  });
+
+  test('agent_id/agent_type are recorded as null, not omitted, when absent from the payload (#907)', async () => {
+    await withTempGitRepo('blackhole-hook-bash-', async (repo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('rm -rf /'), repo);
+
+      expect(result.exitCode).toBe(2);
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      // Explicit null, so "absent" is distinguishable from "not captured" — a key missing
+      // entirely would read the same as a pre-#907 record to any downstream consumer.
+      expect(events[0]).toHaveProperty('agent_id', null);
+      expect(events[0]).toHaveProperty('agent_type', null);
+    });
+  });
+
+  test('a non-string agent_id/agent_type on the payload is recorded as null, not passed through (#907)', async () => {
+    await withTempGitRepo('blackhole-hook-bash-', async (repo) => {
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        { ...bashPayload('rm -rf /'), agent_id: 42, agent_type: { role: 'implementer' } },
+        repo,
+      );
+
+      expect(result.exitCode).toBe(2);
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toHaveProperty('agent_id', null);
+      expect(events[0]).toHaveProperty('agent_type', null);
+    });
+  });
+
   test('BLACKHOLE_HOOK_EVENT_DIR redirects the durable record away from the repo (#604)', async () => {
     await withTempGitRepo('blackhole-hook-bash-', async (repo) => {
       const sinkDir = makeTempDir('blackhole-hook-sink-');
