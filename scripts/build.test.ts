@@ -38,9 +38,10 @@ import {
   AGENT_PLUGINS_DISTRIBUTION_AGENT_DIR,
   AGENT_PLUGINS_DISTRIBUTION_VCODES,
 } from './lib/build/paths.ts';
-import { AGENT_NAMES, PLATFORM_TARGETS, BUILD_INPUT_ONLY_DIRS } from './lib/build/facts.ts';
+import { AGENT_NAMES, PLATFORM_TARGETS, BUILD_INPUT_ONLY_DIRS, INCLUDE_MARKER_SITES } from './lib/build/facts.ts';
 import { projectIdentity } from './project-identity.ts';
 import { makeTempDir as sharedMakeTempDir } from './lib/fs.ts';
+import { read } from './checks/check-utils.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -123,6 +124,11 @@ describe('expandIncludes (ADR-034 T1)', () => {
   const fixtureModulesRel = 'references/__fixture_expand_includes__';
   const fixtureModulesAbs = path.join(root, 'src', fixtureModulesRel);
   const fakeShellPath = path.join(root, 'src/agents/__fixture_shell__.md');
+  // ADR-039 (issue #882): expandIncludes now expands only at a declared site. These fixtures
+  // exercise the primitive against a throwaway shell path outside the two real sites, so they
+  // pass their own site list (the trailing `siteList` parameter) naming `fakeShellPath` itself,
+  // rather than mutating the production INCLUDE_MARKER_SITES fact for the duration of a test.
+  const fixtureSiteList = [path.relative(root, fakeShellPath).split(path.sep).join('/')];
 
   afterEach(() => {
     fs.rmSync(fixtureModulesAbs, { recursive: true, force: true });
@@ -134,7 +140,7 @@ describe('expandIncludes (ADR-034 T1)', () => {
     fs.writeFileSync(path.join(fixtureModulesAbs, '02-second.md'), 'SECOND BODY');
 
     const shell = `before\n{{INCLUDE:${fixtureModulesRel}/*}}\nafter`;
-    const result = expandIncludes(shell, fakeShellPath);
+    const result = expandIncludes(shell, fakeShellPath, [], fixtureSiteList);
 
     expect(result).not.toContain('{{INCLUDE:');
     expect(result).toContain('before');
@@ -152,13 +158,13 @@ describe('expandIncludes (ADR-034 T1)', () => {
 
   test('(c) throws rather than expanding to empty for a non-existent directory or one with zero .md files', () => {
     expect(() =>
-      expandIncludes(`{{INCLUDE:references/__does_not_exist__/*}}`, fakeShellPath)
+      expandIncludes(`{{INCLUDE:references/__does_not_exist__/*}}`, fakeShellPath, undefined, fixtureSiteList)
     ).toThrow();
 
     fs.mkdirSync(fixtureModulesAbs, { recursive: true });
     fs.writeFileSync(path.join(fixtureModulesAbs, 'notes.txt'), 'not markdown');
     expect(() =>
-      expandIncludes(`{{INCLUDE:${fixtureModulesRel}/*}}`, fakeShellPath)
+      expandIncludes(`{{INCLUDE:${fixtureModulesRel}/*}}`, fakeShellPath, undefined, fixtureSiteList)
     ).toThrow();
   });
 
@@ -170,7 +176,7 @@ describe('expandIncludes (ADR-034 T1)', () => {
     );
 
     const shell = `---\nname: test-agent\ndescription: test\n---\n\nBody\n{{INCLUDE:${fixtureModulesRel}/*}}\n`;
-    const expanded = expandIncludes(shell, fakeShellPath);
+    const expanded = expandIncludes(shell, fakeShellPath, [], fixtureSiteList);
     const { frontmatter, body } = parseMdFrontmatter(expanded);
     expect(frontmatter).toContain('name: test-agent');
     expect(body).toContain('module body');
@@ -184,7 +190,7 @@ describe('expandIncludes (ADR-034 T1)', () => {
     );
 
     const shell = `before\n{{INCLUDE:${fixtureModulesRel}/*}}\nafter`;
-    const expanded = expandIncludes(shell, fakeShellPath);
+    const expanded = expandIncludes(shell, fakeShellPath, [], fixtureSiteList);
     // Still raw at this point — proves expansion ran without also resolving platform blocks.
     expect(expanded).toContain('{{#cursor}}cursor only{{/cursor}}');
 
@@ -198,11 +204,80 @@ describe('expandIncludes (ADR-034 T1)', () => {
     fs.writeFileSync(path.join(fixtureModulesAbs, '02-second.md'), 'SECOND');
 
     const extraSources: string[] = [];
-    expandIncludes(`{{INCLUDE:${fixtureModulesRel}/*}}`, fakeShellPath, extraSources);
+    expandIncludes(`{{INCLUDE:${fixtureModulesRel}/*}}`, fakeShellPath, extraSources, fixtureSiteList);
     expect(extraSources).toEqual([
       `src/${fixtureModulesRel}/01-first.md`,
       `src/${fixtureModulesRel}/02-second.md`,
     ]);
+  });
+});
+
+// V-INCLUDE-02 (ADR-039, issue #882) gate: expandIncludes must expand only when `srcPath`
+// resolves to a declared INCLUDE_MARKER_SITES entry — every other path, including a doc comment
+// that merely illustrates the marker syntax with a real directory name, must come back unchanged
+// rather than depending on unenforced comment-writing discipline (the bug this issue closes).
+describe('expandIncludes declared-site gate (ADR-039, issue #882)', () => {
+  const fixtureModulesRel = 'references/__fixture_site_gate__';
+  const fixtureModulesAbs = path.join(root, 'src', fixtureModulesRel);
+  const declaredSitePath = path.join(root, 'src', 'agents', 'reviewer.md');
+  const undeclaredSitePath = path.join(root, 'src', 'agents', '__fixture_undeclared_site__.md');
+
+  afterEach(() => {
+    fs.rmSync(fixtureModulesAbs, { recursive: true, force: true });
+  });
+
+  test('expands when srcPath resolves to a declared marker site (src/agents/reviewer.md)', () => {
+    fs.mkdirSync(fixtureModulesAbs, { recursive: true });
+    fs.writeFileSync(path.join(fixtureModulesAbs, '01-mod.md'), 'SITE GATE MODULE BODY');
+
+    const shell = `before\n{{INCLUDE:${fixtureModulesRel}/*}}\nafter`;
+    const result = expandIncludes(shell, declaredSitePath);
+
+    expect(result).not.toContain('{{INCLUDE:');
+    expect(result).toContain('SITE GATE MODULE BODY');
+  });
+
+  test('no-ops when srcPath does not resolve to a declared marker site', () => {
+    fs.mkdirSync(fixtureModulesAbs, { recursive: true });
+    fs.writeFileSync(path.join(fixtureModulesAbs, '01-mod.md'), 'SITE GATE MODULE BODY');
+
+    const shell = `before\n{{INCLUDE:${fixtureModulesRel}/*}}\nafter`;
+    const result = expandIncludes(shell, undeclaredSitePath);
+
+    expect(result).toBe(shell);
+    expect(result).toContain('{{INCLUDE:');
+  });
+});
+
+// AC-2 (issue #882): read() must not expand a literal {{INCLUDE:<dir>/*}} marker sitting in a
+// doc comment of a file that is not itself a declared marker site — even when that file matches
+// a content-gates glob target (scripts/checks/*.check.ts) and even when the named directory is a
+// real, non-empty one (references/audits), so this test can't pass by accident of the directory
+// not existing.
+describe('read() does not expand a literal marker outside a declared site (issue #882 AC-2)', () => {
+  const fixtureRel = 'scripts/checks/__fixture_include_doc_comment__.check.ts';
+  const fixtureAbs = path.join(root, fixtureRel);
+
+  afterEach(() => {
+    fs.rmSync(fixtureAbs, { force: true });
+  });
+
+  test('a literal marker in a .ts doc comment under a content-gates glob is returned byte-identically, LOC unchanged', () => {
+    // references/audits is real and non-empty — if expansion fired here, this fixture's content
+    // would balloon far past its authored 2 lines, not stay byte-identical.
+    const auditsDir = path.join(root, 'src', 'references', 'audits');
+    expect(fs.existsSync(auditsDir)).toBe(true);
+    const audits = fs.readdirSync(auditsDir).filter((f) => f.endsWith('.md'));
+    expect(audits.length).toBeGreaterThan(0);
+
+    const raw = '// See {{INCLUDE:references/audits/*}} for the full audit list.\nexport const runChecks = () => [];\n';
+    fs.writeFileSync(fixtureAbs, raw, 'utf-8');
+
+    const result = read(fixtureRel);
+
+    expect(result).toBe(raw);
+    expect(result).toContain('{{INCLUDE:references/audits/*}}');
+    expect(result.split('\n').length).toBe(raw.split('\n').length);
   });
 });
 
@@ -834,6 +909,13 @@ describe('fixture agent — end-to-end across every target (ADR-034 T6)', () => 
       `---\nname: ${fixtureAgentName}\ndescription: ADR-034 T6 fixture agent\npermissionMode: default\ndisallowedTools: []\n---\n\n{{INCLUDE:${fixtureModulesRel}/*}}\n`
     );
     BUILD_INPUT_ONLY_DIRS.push(fixtureModulesRel);
+    // ADR-039 (issue #882): compileFolder->processFile->expandIncludes now expands only at a
+    // declared INCLUDE_MARKER_SITES entry. Same established "mutate the real array for this
+    // test, restore in finally" convention as BUILD_INPUT_ONLY_DIRS immediately above — the
+    // *committed* fact stays exactly the two production agent shells; this is a transient,
+    // in-memory addition for the lifetime of this one test.
+    const fixtureAgentRel = path.relative(root, fixtureAgentPath).split(path.sep).join('/');
+    INCLUDE_MARKER_SITES.push(fixtureAgentRel);
 
     try {
       // The 6 agent output trees (targets.ts).
@@ -900,6 +982,8 @@ describe('fixture agent — end-to-end across every target (ADR-034 T6)', () => 
     } finally {
       const idx = BUILD_INPUT_ONLY_DIRS.indexOf(fixtureModulesRel);
       if (idx !== -1) BUILD_INPUT_ONLY_DIRS.splice(idx, 1);
+      const siteIdx = INCLUDE_MARKER_SITES.indexOf(fixtureAgentRel);
+      if (siteIdx !== -1) INCLUDE_MARKER_SITES.splice(siteIdx, 1);
       fs.rmSync(fixtureAgentPath, { force: true });
       fs.rmSync(fixtureModulesAbs, { recursive: true, force: true });
       fs.rmSync(destRoot, { recursive: true, force: true });

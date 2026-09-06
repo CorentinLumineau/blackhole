@@ -6,10 +6,12 @@ import { makeTempDir } from './lib/fs.ts';
 import {
   findLeakedBuildInputDirs,
   findUndeclaredIncludeMarkers,
+  findSitesMissingMarker,
+  findMarkersAtUndeclaredSites,
   REFERENCE_TREE_ROOTS,
   runChecks,
 } from './checks/build-input-dirs.check.ts';
-import { BUILD_INPUT_ONLY_DIRS } from './lib/build/facts.ts';
+import { BUILD_INPUT_ONLY_DIRS, INCLUDE_MARKER_SITES } from './lib/build/facts.ts';
 
 // ADR-034 T4 — V-INCLUDE-01: two-sided verification (ADR-007's binding rejection of
 // single-source derivation). Leg A (findLeakedBuildInputDirs): the declared side
@@ -82,6 +84,55 @@ describe('findUndeclaredIncludeMarkers (V-INCLUDE-01, leg B)', () => {
   });
 });
 
+// V-INCLUDE-02 (ADR-039, issue #882) — two-sided verification for the declared
+// INCLUDE_MARKER_SITES allowlist that gates expandIncludes itself (as opposed to V-INCLUDE-01's
+// BUILD_INPUT_ONLY_DIRS, which gates a marker's *target* directory). Same Leg A/B shape as
+// V-INCLUDE-01 above, applied to "where a marker may appear" instead of "where it may point".
+
+describe('findSitesMissingMarker (V-INCLUDE-02, leg A)', () => {
+  test('a declared site with no marker fails and names the site', () => {
+    const siteFiles = [{ path: 'src/agents/reviewer.md', content: 'no marker in this shell' }];
+    const missing = findSitesMissingMarker(siteFiles, ['src/agents/reviewer.md']);
+    expect(missing.length).toBe(1);
+    expect(missing[0]).toContain('src/agents/reviewer.md');
+  });
+
+  test('a declared site absent from disk fails and says so', () => {
+    const missing = findSitesMissingMarker([], ['src/agents/__does_not_exist__.md']);
+    expect(missing.length).toBe(1);
+    expect(missing[0]).toContain('src/agents/__does_not_exist__.md');
+    expect(missing[0]).toContain('does not exist');
+  });
+
+  test('a declared site carrying a marker passes', () => {
+    const siteFiles = [{ path: 'src/agents/reviewer.md', content: '{{INCLUDE:references/audits/*}}' }];
+    expect(findSitesMissingMarker(siteFiles, ['src/agents/reviewer.md'])).toEqual([]);
+  });
+
+  test('an empty declared list is a no-op pass', () => {
+    expect(findSitesMissingMarker([], [])).toEqual([]);
+  });
+});
+
+describe('findMarkersAtUndeclaredSites (V-INCLUDE-02, leg B)', () => {
+  test('a marker at a file outside the declared set fails and names the file', () => {
+    const files = [{ path: 'src/agents/fake.md', content: 'body {{INCLUDE:references/audits/*}} more' }];
+    const undeclared = findMarkersAtUndeclaredSites(files, ['src/agents/reviewer.md']);
+    expect(undeclared.length).toBe(1);
+    expect(undeclared[0]).toContain('src/agents/fake.md');
+  });
+
+  test('a marker at a declared site passes', () => {
+    const files = [{ path: 'src/agents/reviewer.md', content: '{{INCLUDE:references/audits/*}}' }];
+    expect(findMarkersAtUndeclaredSites(files, ['src/agents/reviewer.md'])).toEqual([]);
+  });
+
+  test('no markers at all passes regardless of declared list', () => {
+    const files = [{ path: 'src/agents/fake.md', content: 'plain content, no markers' }];
+    expect(findMarkersAtUndeclaredSites(files, [])).toEqual([]);
+  });
+});
+
 describe('REFERENCE_TREE_ROOTS', () => {
   test('names exactly the 9 compiled reference-tree roots, all existing on disk (ADR-034)', () => {
     expect(REFERENCE_TREE_ROOTS.length).toBe(9);
@@ -91,12 +142,15 @@ describe('REFERENCE_TREE_ROOTS', () => {
   });
 });
 
-describe('runChecks live tree (V-INCLUDE-01)', () => {
+describe('runChecks live tree (V-INCLUDE-01, V-INCLUDE-02)', () => {
   test('passes against the live repo — implementer.md gates (issue #721) and reviewer audit modules are both production consumers', () => {
     expect(BUILD_INPUT_ONLY_DIRS).toEqual(['references/gates', 'references/audits']);
+    expect(INCLUDE_MARKER_SITES).toEqual(['src/agents/reviewer.md', 'src/agents/implementer.md']);
     const results = runChecks();
-    expect(results.length).toBe(1);
-    expect(results[0].id).toBe('V-INCLUDE-01');
-    expect(results[0].ok).toBe(true);
+    expect(results.length).toBe(2);
+    const v1 = results.find((r) => r.id === 'V-INCLUDE-01');
+    const v2 = results.find((r) => r.id === 'V-INCLUDE-02');
+    expect(v1?.ok).toBe(true);
+    expect(v2?.ok).toBe(true);
   });
 });

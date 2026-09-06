@@ -22,6 +22,12 @@ export const findMissingGateMarkers = (content: string, required: string[]): str
 // moment a gate moves into a module. Returns what the compiled agent actually contains — the
 // same expansion `processFile` performs — so every such scan keeps its pre-seam surface. A file
 // with no marker is returned unchanged, so this is safe for any agent doc.
+// ADR-039 (issue #882): `read(rel)` already expands any marker at a declared site, so the
+// `expandIncludes` call below is a provable no-op for a declared site (its expanded output has
+// no `{{INCLUDE:...}}` substring left to match) and an equally-inert no-op for a non-declared one
+// (the site gate itself returns the input unchanged). Do not delete either call on the strength
+// of this duplication alone — which of the two helpers should own composition is a separate,
+// deliberately deferred question (a rejected ADR-039 alternative's territory).
 export const readComposedAgentDoc = (rel: string): string =>
   expandIncludes(read(rel), path.join(root, rel));
 

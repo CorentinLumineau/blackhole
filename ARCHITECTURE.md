@@ -307,6 +307,9 @@ co-located `*.test.ts`.
 ---
 
 ## Active Constraints
+- An `{{INCLUDE}}` marker is a directive only in a file declared in `INCLUDE_MARKER_SITES`;
+  everywhere else — in every entry path into `expandIncludes`, including the build — it is inert
+  prose, never a build-time or check-time expansion (ADR-039)
 - An agent prompt may be authored as many files but must compile to exactly one file per agent
   on every tree — compose with `{{INCLUDE:<dir>/*}}` at build time, never by per-target assembly
   or runtime module fetching, and declare every module directory in `BUILD_INPUT_ONLY_DIRS`

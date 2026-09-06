@@ -323,7 +323,7 @@ reviewer appears in exactly one module's `vcodes:` and every listed code exists 
 **AC.** Gates (Reuse Check, Plan Drift, Scout, Bugfix, Conflict Resolution, Execution Mode,
 Sensitive-Filename, Git Targeting, Verification Evidence, Visual Evidence, Context-Anxiety, Carry
 residual, Promote, Companion-file Sync) become `src/references/gates/NN-<slug>.md`;
-`implementer.md` shell ≤ 250 LOC with persona, TDD loop, `{{INCLUDE:gates/*}}`, return format;
+`implementer.md` shell ≤ 250 LOC with persona, TDD loop, `{{INCLUDE:<dir>/*}}`, return format;
 the heading-nesting defect (three `###` under `## Companion-file Sync`) disappears; compiled
 output semantically unchanged; citations to `implementer.md § …` fixed; budget row replaced by a
 module count.
