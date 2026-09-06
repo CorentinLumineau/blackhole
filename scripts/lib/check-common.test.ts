@@ -3,6 +3,7 @@ import {
   appendIndexRowIfAbsent,
   byPathByteOrder,
   findMissingGateMarkers,
+  findTableBlock,
   parseIndexTableRows,
   parseVcodeTableRows,
   renderIndexRowLine,
@@ -90,6 +91,37 @@ describe('parseIndexTableRows', () => {
       status: 'current',
       reviewTrigger: 'on release',
     });
+  });
+});
+
+// Issue #887 (V-DRY-01 fix): findTableBlock is the schema-agnostic block-boundary primitive
+// shared by appendIndexRowIfAbsent below and decision-log-append.ts's insertRecordRowsSorted —
+// it never inspects row content, only table structure, so both row schemas can reuse it.
+describe('findTableBlock', () => {
+  test('locates the separator row and the row block in a normal table', () => {
+    const lines = [
+      '# Doc',
+      '',
+      '| path | summary |',
+      '|------|---------|',
+      '| a.md | A |',
+      '| b.md | B |',
+      '',
+      'Trailing prose.',
+    ];
+    expect(findTableBlock(lines)).toEqual({ separatorIdx: 3, blockEnd: 6 });
+  });
+
+  test('returns separatorIdx: -1 for content with no separator row', () => {
+    const lines = ['# Doc', '', 'Just prose, no table at all.'];
+    expect(findTableBlock(lines)).toEqual({ separatorIdx: -1, blockEnd: -1 });
+  });
+
+  test('a row block that runs to end-of-file reports blockEnd === lines.length', () => {
+    const lines = ['| path | summary |', '|------|---------|', '| a.md | A |', '| b.md | B |'];
+    const result = findTableBlock(lines);
+    expect(result.separatorIdx).toBe(1);
+    expect(result.blockEnd).toBe(lines.length);
   });
 });
 

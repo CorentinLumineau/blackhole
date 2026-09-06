@@ -96,6 +96,8 @@ For each completed `implementer` worker carrying a non-empty `decision_records[]
 
 Rotation trigger (500-row threshold, `_archive/` destination) is documented in `documentation/reference/decision-log.md` § Rotation, not re-specified here (`V-DRY`).
 
+The script inserts each new row in id-sorted position rather than at the table's tail — `merge-conflict-protocol.md` § Sorted insert owns the rationale and the merge-safety trade-offs, not re-specified here (`V-DRY`).
+
 ---
 
 ## Checkpoint protocol
