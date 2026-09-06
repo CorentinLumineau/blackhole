@@ -1,0 +1,174 @@
+import * as path from 'path';
+import { read, type CheckResult } from './check-utils.ts';
+import { findMissingGateMarkers } from '../lib/check-common.ts';
+
+// Review-time mechanical backstop for "new file, no test, weak rationalization accepted": gives
+// the reviewer a computable fact for whether a newly-added file has a decidable test-pairing
+// convention with no test at the derived path, regardless of *why* the test is missing.
+// No new V-code — this extends V-TEST-01/02 (src/references/audits/02-tdd-testing-baselines.md).
+//
+// Codifies, as a pure unit-tested function, the derivation
+// src/references/audits/23-test-integrity-audit.md § Severity logic — test-to-source linking
+// heuristic already documents as review-time prose: derive a source->test path transform from
+// 2+ existing sibling pairs sharing a directory; when fewer than 2 consistent pairs exist, never
+// escalate — this module returns no-op, not a false BLOCK signal.
+//
+// Two independent halves, same split as v-test09-hooks-claim.check.ts:
+//   1. deriveTestPairingConvention / findUnpairedNewSourceFiles — pure, PR-scoped detectors
+//      invoked by the CLI wrapper (scripts/new-file-test-pairing.ts). Structurally advisory-only
+//      (the CLI always reports `ok: true`) — a flagged file is a signal to look closer, never a
+//      substitute for, or downgrade of, the review-time judgment finding itself.
+//   2. checkNewFileTestPairingGrounding — a static grounding check verifying reviewer.md's Iron
+//      Law anti-rationalization row and module 02's backstop bullet are present, mirroring
+//      v-test09-hooks-claim.check.ts's checkReviewerHooksClaimAuditGrounding. Wired into
+//      runChecks() so verify.ts's glob-discovery is satisfied without needing PR-scoped input.
+
+export interface TestPairingConvention {
+  testDir: string;
+  /** Prefix prepended to the source stem on the test side, e.g. `'verify.'` or `''`. */
+  prefix: string;
+}
+
+const isTestFile = (p: string): boolean => p.endsWith('.test.ts');
+
+// Cross-directory stem: everything before the FIRST '.' in the basename. Strips a compound
+// extension wholesale (`foo.check.ts` -> `foo`) so a directory-move convention like this repo's
+// own `scripts/checks/<name>.check.ts` <-> `scripts/verify.<name>.test.ts` derives correctly.
+// Safe for this repo's kebab-case filenames, which never embed a literal '.' in the concern name
+// itself.
+const crossDirStem = (p: string): string => path.basename(p).split('.')[0];
+
+// Co-located stem: only the trailing '.ts' is stripped, so a compound extension like `.check.ts`
+// is preserved (`foo.check.ts` -> `foo.check`) — this is what lets the co-located fallback below
+// resolve `foo.check.ts` <-> `foo.check.test.ts` (this repo's own accepted legacy exception,
+// `pareto-filing-gate.check.ts` <-> `pareto-filing-gate.check.test.ts`) without needing to know
+// about that specific pair in advance.
+const colocatedStem = (p: string): string => path.basename(p).replace(/\.ts$/, '');
+
+const toPosix = (p: string): string => p.split(path.sep).join('/');
+
+// Returns the prefix a test file's basename carries relative to a candidate source stem, or
+// `null` when the test file's stem doesn't relate to it at all (neither an exact match nor a
+// `<prefix>.<stem>` shape).
+const matchPrefix = (testFile: string, stem: string): string | null => {
+  const base = path.basename(testFile);
+  if (!base.endsWith('.test.ts')) return null;
+  const stemFull = base.slice(0, -'.test.ts'.length);
+  if (stemFull === stem) return '';
+  if (stemFull.endsWith(`.${stem}`)) return stemFull.slice(0, stemFull.length - stem.length - 1) + '.';
+  return null;
+};
+
+// Derives the dominant test-pairing convention for `sourceDir` from the repo tree at the base
+// commit alone — no test execution, no diff content beyond file lists. Requires 2+ distinct
+// source files in `sourceDir` to resolve to test files sharing the same (testDir, prefix) shape;
+// a lone match, a tie between two equally-sized candidate shapes, or a directory with no existing
+// files at all all resolve to `null` ("no decidable convention") rather than guessing — same
+// discipline as module 23's own heuristic.
+export const deriveTestPairingConvention = (
+  sourceDir: string,
+  baseTreeFiles: string[],
+): TestPairingConvention | null => {
+  const sourceFiles = baseTreeFiles.filter((f) => path.dirname(toPosix(f)) === sourceDir && !isTestFile(f));
+  const testFiles = baseTreeFiles.filter(isTestFile);
+
+  // Nested by testDir then prefix (no joined-string key) so a directory or prefix value can
+  // never collide with, or need escaping against, a delimiter character.
+  const groups = new Map<string, Map<string, Set<string>>>();
+  for (const source of sourceFiles) {
+    const stem = crossDirStem(source);
+    for (const testFile of testFiles) {
+      const prefix = matchPrefix(testFile, stem);
+      if (prefix === null) continue;
+      const testDir = path.dirname(toPosix(testFile));
+      if (!groups.has(testDir)) groups.set(testDir, new Map());
+      const byPrefix = groups.get(testDir)!;
+      if (!byPrefix.has(prefix)) byPrefix.set(prefix, new Set());
+      byPrefix.get(prefix)!.add(source);
+    }
+  }
+
+  let best: { testDir: string; prefix: string; count: number } | null = null;
+  let tie = false;
+  for (const [testDir, byPrefix] of groups) {
+    for (const [prefix, matched] of byPrefix) {
+      if (matched.size < 2) continue;
+      if (!best || matched.size > best.count) {
+        best = { testDir, prefix, count: matched.size };
+        tie = false;
+      } else if (matched.size === best.count) {
+        tie = true;
+      }
+    }
+  }
+  if (!best || tie) return null;
+  return { testDir: best.testDir, prefix: best.prefix };
+};
+
+export const expectedTestPath = (sourceFile: string, convention: TestPairingConvention): string =>
+  toPosix(path.join(convention.testDir, `${convention.prefix}${crossDirStem(sourceFile)}.test.ts`));
+
+// Always-checked fallback alongside the derived directory convention: a same-directory
+// `<stem>.test.ts` sibling (stem including any compound extension) is valid pairing evidence
+// regardless of what the directory's dominant convention is. This is what keeps a legacy
+// co-located exception (one file pairing a different way than its 50+ neighbors) from being
+// false-flagged without hardcoding that specific file into the derivation.
+export const coLocatedTestPath = (sourceFile: string): string =>
+  toPosix(path.join(path.dirname(toPosix(sourceFile)), `${colocatedStem(sourceFile)}.test.ts`));
+
+// PR-scoped detector: which newly-added source files have a decidable test-pairing convention in
+// this repo (derived from `baseTreeFiles`) and no test at the derived or co-located path in
+// `touchedFiles`. Never flags a file whose directory has no decidable convention, and never
+// treats a newly-added test file itself as an unpaired source.
+export const findUnpairedNewSourceFiles = (
+  addedFiles: string[],
+  touchedFiles: string[],
+  baseTreeFiles: string[],
+): string[] => {
+  const touchedSet = new Set(touchedFiles.map(toPosix));
+  const conventionCache = new Map<string, TestPairingConvention | null>();
+  const unpaired: string[] = [];
+
+  for (const added of addedFiles) {
+    const addedPosix = toPosix(added);
+    if (isTestFile(addedPosix)) continue;
+
+    const dir = path.dirname(addedPosix);
+    if (!conventionCache.has(dir)) conventionCache.set(dir, deriveTestPairingConvention(dir, baseTreeFiles));
+    const convention = conventionCache.get(dir)!;
+    if (!convention) continue;
+
+    const expected = expectedTestPath(addedPosix, convention);
+    const coLocated = coLocatedTestPath(addedPosix);
+    if (!touchedSet.has(expected) && !touchedSet.has(coLocated)) unpaired.push(added);
+  }
+
+  return unpaired;
+};
+
+export const NEW_FILE_TEST_PAIRING_GROUNDING_MARKERS = [
+  'New-File Test-Pairing Backstop',
+  'scripts/new-file-test-pairing.ts',
+  '"The existing black-box/integration suite covers this indirectly."',
+];
+
+export const checkNewFileTestPairingGrounding = (): CheckResult => {
+  const missing = [
+    ...findMissingGateMarkers(read('src/agents/reviewer.md'), NEW_FILE_TEST_PAIRING_GROUNDING_MARKERS),
+    ...findMissingGateMarkers(read('src/references/audits/02-tdd-testing-baselines.md'), [
+      'New-File Test-Pairing Backstop',
+      'scripts/new-file-test-pairing.ts',
+    ]),
+  ];
+  if (missing.length) {
+    return { id: 'V-TEST-01', ok: false, detail: missing.map((m) => `missing "${m}"`).join('; ') };
+  }
+  return { id: 'V-TEST-01', ok: true };
+};
+
+// ADR-007 T5/R2': domain entrypoint — see agents.check.ts's runChecks doc comment for the shared
+// contract (pure, no side effects, glob-discovered by scripts/verify.ts). Only the grounding
+// check runs here — findUnpairedNewSourceFiles needs PR-scoped input (added/touched file lists,
+// the base-tree listing) that isn't available at verify-time; it's invoked directly by the CLI
+// wrapper instead.
+export const runChecks = (): CheckResult[] => [checkNewFileTestPairingGrounding()];

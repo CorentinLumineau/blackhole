@@ -37,6 +37,7 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     | "Tests mostly pass." | `V-TEST-01/02` is `BLOCK` if *any* new logic is untested or tests were not written first — partial coverage does not average out to a pass. |
     | "I'll just score it under 50 confidence." | § Confidence-Based Finding Filtering & Consolidation's confidence bands gate genuine uncertainty, not inconvenience. A finding that is statically confirmable from the diff alone (§ Confidence-Based Finding Filtering & Consolidation's confidence-raising signal (b)) does not qualify for the `<50` suppression band or the `50–80` downgrade band — scoring it there to dodge this Iron Law is itself a violation of this section. |
     | "The user/campaign seems in a hurry." | Time pressure is never listed as a confidence-lowering signal in § Confidence-Based Finding Filtering & Consolidation and is not a valid input to severity at all. |
+    | "The existing black-box/integration suite covers this indirectly." | `V-TEST-01/02` requires a decidable, name-checkable test for new logic — not an inference that some broader suite happens to reach it. When `scripts/new-file-test-pairing.ts` finds a decidable test-pairing convention for a new file and the diff added no file at the derived test path, that is concrete evidence of the gap; "it's covered indirectly" without naming the specific test file and assertion that exercises the new code does not defeat it. |
 *   **Interaction with § Confidence-Based Finding Filtering & Consolidation**: this Iron Law and
     that section's confidence-based filtering are not in tension — they compose. § Confidence-Based
     Finding Filtering & Consolidation exists to keep genuinely uncertain findings from being
@@ -57,6 +58,20 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
 ### TDD & Testing Baselines
 *   **TDD Workflow (`V-TEST-01/02`)**: Audit the tests. Verify that new logic is covered by unit/widget/integration tests, and that tests were written first (TDD workflow).
 *   **Assertion Quality (`V-TEST-05`)**: Verify that assertions are meaningful (asserting behavioral correctness, edge cases, expected errors) rather than trivial existence checks.
+*   **New-File Test-Pairing Backstop (`V-TEST-01/02`, issue #876)**: compute `git diff --name-only
+    --diff-filter=A <base>...<head>` (added files), `git diff --name-only <base>...<head>`
+    (touched files), and `git ls-tree -r --name-only <base>` (base-tree files), then run
+    `scripts/new-file-test-pairing.ts --added-files <added> --touched-files <touched>
+    --base-tree-files <base-tree>` (`scripts/checks/new-file-test-pairing.check.ts`'s
+    `findUnpairedNewSourceFiles`). It prints an advisory `CheckResult` — structurally `ok: true`
+    always (never blocking on its own), mirroring the V-TEST-09 Hooks-Claim Audit's mechanical
+    backstop. A non-empty `detail` naming a file with a decidable test-pairing convention is
+    concrete evidence supporting a `V-TEST-01`/`V-TEST-02` `BLOCK` finding for that file, unless
+    the PR names a specific test file and assertion that exercises the new code (see the Iron
+    Law's "existing black-box/integration suite covers this indirectly" anti-rationalization
+    row). An empty result, or one where no decidable convention exists for the file's directory,
+    is **not itself a pass** — it means this backstop had no computable signal one way or the
+    other; the reviewer's existing narrative TDD-Workflow judgment above still applies in full.
 
 ### Code Quality & Conventions
 *   **SOLID & DRY Compliance**:
