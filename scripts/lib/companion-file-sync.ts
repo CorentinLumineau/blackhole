@@ -260,6 +260,16 @@ export const readDiffFile = (diffFilePath: string): string[] =>
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith('#'));
 
+// Issue #878: --cwd-pinned per V-CWDPIN-01 (bun run scripts/<name>.ts resolves relative
+// ./lib/... imports against the process cwd, not --repo-root — see cwd-pin-guard.check.ts's
+// header comment for the full incident chain). Both `if (import.meta.main)` branches below
+// previously kept their own copy of this message, which is exactly the class of drift this
+// issue reports (one copy fixed, one left stale) — collapsed to a single definition so a future
+// change to the invocation form only needs one edit.
+const USAGE =
+  'Usage: bun run --cwd <path> scripts/lib/companion-file-sync.ts --repo-root <path> --diff-file <paths.txt>\n' +
+  '   or: bun run --cwd <path> scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index';
+
 function parseCliArgs(argv: string[]): { repoRoot: string | null; diffFile: string | null; upsertJourneysIndex: boolean } {
   const flags = parseFlags(argv);
   return {
@@ -272,10 +282,7 @@ function parseCliArgs(argv: string[]): { repoRoot: string | null; diffFile: stri
 if (import.meta.main) {
   const { repoRoot, diffFile, upsertJourneysIndex } = parseCliArgs(process.argv.slice(2));
   if (!repoRoot) {
-    console.error(
-      'Usage: bun run scripts/lib/companion-file-sync.ts --repo-root <path> --diff-file <paths.txt>\n' +
-        '   or: bun run scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index',
-    );
+    console.error(USAGE);
     process.exit(2);
   }
   if (upsertJourneysIndex) {
@@ -289,10 +296,7 @@ if (import.meta.main) {
     const result = runCompanionFileSync(path.resolve(repoRoot), diffPaths);
     console.log(JSON.stringify(result, null, 2));
   } else {
-    console.error(
-      'Usage: bun run scripts/lib/companion-file-sync.ts --repo-root <path> --diff-file <paths.txt>\n' +
-        '   or: bun run scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index',
-    );
+    console.error(USAGE);
     process.exit(2);
   }
 }
