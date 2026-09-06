@@ -337,7 +337,7 @@ Output schema: `worker-schemas.md` § Review aggregate.
 
 Orchestrator may perform direct review for docs-only PRs, but must still run `review-aggregate.ts` on findings before ledger append.
 
-When the orchestrator performs this direct review (bypassing a `reviewer` spawn), it must apply `reviewer.md` § Docs-Only Execution Mode Compliance (Docs-Only Execution Mode Compliance)'s checks itself before running `review-aggregate.ts` — severity `BLOCK` on any check failure. See `reviewer.md` § Docs-Only Execution Mode Compliance for the check definitions; not restated here.
+When the orchestrator performs this direct review (bypassing a `reviewer` spawn), it must apply `reviewer.md` § Docs-Only Execution Mode Compliance's checks itself before running `review-aggregate.ts` — severity `BLOCK` on any check failure. See `reviewer.md` § Docs-Only Execution Mode Compliance for the check definitions; not restated here.
 
 ## Suggestion Proportionality Gate
 

@@ -231,8 +231,8 @@ at escalation — never overlapping for one issue), so there is no lost-update r
   them inside the PR is implemented at `implementer.md` § Carry Staged Artifacts (D2) — this
   section only documents the manifest shape that step consumes.
 - The **reviewer audit** that diffs the staged manifest against the PR to detect a declared but
-  never-carried artifact is implemented at `reviewer.md` § Staged Artifact Carry Audit (Staged Artifact Carry Audit,
-  `V-AUTO-02`, BLOCK) — this section only documents the manifest shape that audit consumes.
+  never-carried artifact is implemented at `reviewer.md` § Staged Artifact Carry Audit
+  (`V-AUTO-02`, BLOCK) — this section only documents the manifest shape that audit consumes.
 - **Resolved gap (issue #474 follow-up, closed by #557)**: `implementer.md` § Carry Staged
   Artifacts' `append_row` idempotency guard originally keyed off "the row's `path` column
   value" — a table-row assumption that did not generalize to the `ARCHITECTURE.md`
@@ -279,8 +279,7 @@ consumer repo's.
 Existence-gated: when `scripts/checks/doc-health.check.ts` exists at repo root (blackhole
 self-hosting its own campaign), refresh `.blackhole/doc-health.json` via
 `bun run scripts/doc-health-signal.ts`; absent, this step is inert — no error, no attempted
-invocation. Scope-2 (a consumer repo's tree) is enforced at review time by `reviewer.md` § Doc-Governance Judgment Audit
-(Doc-Governance Judgment Audit).
+invocation. Scope-2 (a consumer repo's tree) is enforced at review time by `reviewer.md` § Doc-Governance Judgment Audit.
 
 `doc_debt: "yes"` is visibility only: no ledger append, no phase gate. `V-DOCHEALTH-03` stays
 advisory. Full rationale for this turn-start mechanism over a literal `SessionStart` hook:
