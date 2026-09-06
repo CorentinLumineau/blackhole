@@ -13,6 +13,7 @@
 const { loadBashPatterns } = require('./utils/pattern-loader');
 const { matchFirstIgnoringNonExecutingText } = require('./utils/bash-context');
 const { evaluateWorktreeRemoval } = require('./utils/worktree-removal-guard');
+const { evaluateGitMainCloneMutation } = require('./utils/git-main-clone-guard');
 const { evaluateBashWriteTargets } = require('./utils/bash-write-target-guard');
 const {
   readHookInput,
@@ -70,6 +71,32 @@ const main = () => {
       tool,
       pattern_id: worktreeRemoval.pattern_id,
       reason: worktreeRemoval.reason,
+      detail: command,
+    });
+    return;
+  }
+
+  // Dynamic check (#897/ADR-043): refuses a working-tree-mutating git subcommand (clean,
+  // checkout/restore of a pathspec, reset --hard/--merge, apply/am, a forced checkout/switch)
+  // whose effective repository is the main clone — see git-main-clone-guard.js's module
+  // docstring. Severity graded by recoverability; `git stash` warns rather than blocks.
+  const gitMainCloneMutation = evaluateGitMainCloneMutation(command, cwd);
+  if (gitMainCloneMutation && gitMainCloneMutation.tier === 'block') {
+    denyAndRecord({
+      hook: HOOK,
+      tool,
+      pattern_id: gitMainCloneMutation.pattern_id,
+      reason: gitMainCloneMutation.reason,
+      detail: command,
+    });
+    return;
+  }
+  if (gitMainCloneMutation && gitMainCloneMutation.tier === 'warn') {
+    warnAndRecord({
+      hook: HOOK,
+      tool,
+      pattern_id: gitMainCloneMutation.pattern_id,
+      reason: gitMainCloneMutation.reason,
       detail: command,
     });
     return;
