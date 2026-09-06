@@ -42,6 +42,8 @@ Path: `.blackhole/findings-ledger.json` (gitignored at runtime).
 | `deferred_to_issue` | number \| null | **Required** when `status: deferred` |
 | `reconciled_at` | ISO timestamp \| absent | Set the turn the reconciliation check/triage script transitions a `deferred` row off its terminal state (issue #809) — **recorded, not inferred at read time**. Absent means never reconciled |
 | `reconciliation_rule` | `closed-pr-title-match` \| `closed-pr-body-match` \| `manual-triage` \| absent | Which reproducible rule (issue #809, `scripts/triage-deferred-findings.ts`) classified the transition; `manual-triage` covers rows where the automated title/body match was ambiguous and a human confirmed the outcome |
+| `occurrences` | number \| absent | ADR-042 (issue #893) — hook-derived rows only (`V-HOOK-01`/`V-HOOK-02`/`V-HOOK-03`, written by `scripts/lib/hook-event-triage.ts`). Counts how many events collapsed into this class-identity row (`vcode`, `pattern_id`, `worktree`); absent on every non-hook row |
+| `last_seen_at` | ISO timestamp \| absent | ADR-042 (issue #893) — paired with `occurrences`: bumped every time a recurrence of the same class is ingested; absent on every non-hook row |
 
 ### id shape & next-id computation
 

@@ -9,7 +9,9 @@ Campaign protocol state lives **only** under `.blackhole/*`:
 - `findings-ledger.json` — V-code findings
 - `plans/<issue>.md` — plan artifacts
 - `staged/<issue>/` — durable artifact staging area (see § Staging (ADR-021 D1) below)
-- `archive/` — rotated ledger snapshots and pre-mutation `queue.json` snapshots
+- `archive/` — rotated ledger snapshots, pre-mutation `queue.json` snapshots, and (ADR-042,
+  issue #893) `hook-events-<turn-timestamp>/` — consumed PreToolUse hook-event files, moved
+  here rather than deleted once ingested
 
 The following are **not** blackhole protocol state:
 
@@ -31,6 +33,7 @@ Mutations to `.blackhole/queue.json` and
 | `plans/<issue>.md` | Plan artifacts (gitignored) |
 | `staged/<issue>/manifest.json` | Durable artifact staging manifest (gitignored, see § Staging (ADR-021 D1)) |
 | `archive/` | Rotated ledger snapshots and pre-mutation `queue.json` snapshots (gitignored) |
+| `archive/hook-events-<ts>/` | Consumed PreToolUse hook-event files, archived rather than deleted once ingested (gitignored, ADR-042/#893) |
 | `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
 
 Full schemas: `codex-skills/blackhole/references/findings-ledger.md`,

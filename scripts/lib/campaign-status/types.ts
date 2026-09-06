@@ -46,6 +46,11 @@ export type LedgerFinding = {
   summary?: string;
   deferred_to_issue?: number | null;
   issue_ref?: number | null;
+  // ADR-042 — hook-derived rows only: occurrence count and most-recent-arrival
+  // timestamp, plus the pre-existing created_at as a sort fallback when last_seen_at is absent.
+  occurrences?: number;
+  last_seen_at?: string;
+  created_at?: string;
 };
 
 export type LedgerJson = {
