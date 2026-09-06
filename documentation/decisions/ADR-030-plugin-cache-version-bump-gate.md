@@ -144,3 +144,17 @@ invoking the signal script. Re-running #774's 8-case probe through the actual ho
 (not the module directly) is explicitly deferred to a later phase, gated on a human running the
 documented refresh path first — not part of this ADR's delivered scope. Full task breakdown and
 per-task TDD acceptance criteria: `.blackhole/plans/issue-800.md` § Task Breakdown.
+
+## Post-acceptance amendments
+
+- **2026-09-06 — mechanism-2 scope widened (#912, recorded in ADR-044).** Mechanism 2's
+  *decision* — an advisory, existence-gated, content-hash session signal that never blocks — is
+  unchanged and is cited *for* ADR-044. What changed is its **scope**: `plugin-drift-signal.ts`
+  used to build exactly one installed-cache path from the repo's own `package.json` version and
+  report `installed_present: false` when that one guessed path didn't exist, even while a
+  different, stale plugin-cache copy was actively vetoing calls the repo's own current code
+  allows (Claude Code composes PreToolUse hooks from every enabled source deny-wins, with no
+  override). The signal now enumerates all four registered settings layers plus every candidate
+  `installed_plugins.json` row (`scripts/lib/hook-sources.ts`) and asserts an ordering only where
+  a resolvable commit SHA proves one (`scripts/lib/hook-source-ordering.ts`), never guessing from
+  a version string. Mechanism 1 (`V-PLUGIN-01`) and the advisory-not-gate posture are untouched.

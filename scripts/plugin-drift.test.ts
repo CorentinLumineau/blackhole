@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { computePluginDrift } from './lib/plugin-drift.ts';
 import { computeSignal, writePluginDriftSignalAtomic, type PluginDriftSignal } from './plugin-drift-signal.ts';
+import type { HookSource } from './lib/hook-sources.ts';
+import type { OrderingResult } from './lib/hook-source-ordering.ts';
 import { makeTempDir } from './lib/fs.ts';
 
 // Issue #800 (ADR-030) — plugin-drift.ts's computePluginDrift is the pure detector behind the
@@ -82,20 +84,78 @@ describe('computePluginDrift', () => {
   });
 });
 
+// Issue #912 (ADR-044) — `computeSignal` now composes enumerated sources + their ordering
+// verdict + per-source content hashes into schema v2, rather than hashing two bare directories
+// directly. A minimal single-source fixture exercises the composition and the derived
+// `installed_present`/`hooks_hash_match` roll-up without re-testing enumeration or ordering
+// themselves (covered in `hook-sources.test.ts`).
 describe('computeSignal', () => {
-  test('composes computePluginDrift with signal envelope fields', () => {
-    withFixtureDirs((installedDir, repoDir) => {
-      write(installedDir, 'hooks.json', 'same');
-      write(repoDir, 'hooks.json', 'same');
-      const signal = computeSignal(installedDir, repoDir, '0.21.0', new Date('2026-09-03T00:00:00.000Z'));
-      expect(signal).toEqual({
-        version: 1,
-        refreshed_at: '2026-09-03T00:00:00.000Z',
-        installed_version: '0.21.0',
-        installed_present: true,
-        hooks_hash_match: true,
-      });
-    });
+  const repoBuildSource: HookSource = {
+    layer: 1,
+    label: 'repo build',
+    origin_kind: 'repo-build',
+    resolved_path: '/repo/.claude/hooks',
+    present: true,
+    path_kind: 'directory',
+    version: null,
+    commit_sha: 'a'.repeat(40),
+  };
+  const cacheSource: HookSource = {
+    layer: 2,
+    label: 'plugin cache',
+    origin_kind: 'plugin-cache',
+    resolved_path: '/cache/hooks',
+    present: true,
+    path_kind: 'directory',
+    version: '0.21.0',
+    commit_sha: 'a'.repeat(40),
+  };
+  const identicalOrdering: OrderingResult = {
+    ordering_available: true,
+    unavailable_reason: null,
+    sources: [
+      { layer: 1, label: 'repo build', outcome: 'strict', relation_to_origin_main: 'identical', hook_commits_behind: 0 },
+      { layer: 2, label: 'plugin cache', outcome: 'strict', relation_to_origin_main: 'identical', hook_commits_behind: 0 },
+    ],
+    veto_pairs: [],
+  };
+
+  test('composes sources + ordering + content hashes into schema v2 with a matching roll-up', () => {
+    const signal = computeSignal(
+      [repoBuildSource, cacheSource],
+      identicalOrdering,
+      ['samehash', 'samehash'],
+      new Date('2026-09-03T00:00:00.000Z'),
+    );
+    expect(signal.version).toBe(2);
+    expect(signal.refreshed_at).toBe('2026-09-03T00:00:00.000Z');
+    expect(signal.installed_present).toBe(true);
+    expect(signal.hooks_hash_match).toBe(true);
+    expect(signal.sources).toHaveLength(2);
+    expect(signal.sources[1]).toMatchObject({ content_hash: 'samehash', outcome: 'strict', relation_to_origin_main: 'identical' });
+    expect(signal.veto_pairs).toEqual([]);
+  });
+
+  test('a content hash mismatch flips hooks_hash_match to false even when present', () => {
+    const signal = computeSignal([repoBuildSource, cacheSource], identicalOrdering, ['hashA', 'hashB']);
+    expect(signal.installed_present).toBe(true);
+    expect(signal.hooks_hash_match).toBe(false);
+  });
+
+  test('no present plugin-cache source yields installed_present: false, hooks_hash_match: null', () => {
+    const absentCache: HookSource = { ...cacheSource, present: false, path_kind: 'absent' };
+    const ordering: OrderingResult = {
+      ordering_available: true,
+      unavailable_reason: null,
+      sources: [
+        { layer: 1, label: 'repo build', outcome: 'strict', relation_to_origin_main: 'identical', hook_commits_behind: 0 },
+        { layer: 2, label: 'plugin cache', outcome: 'no-baseline', relation_to_origin_main: null, hook_commits_behind: null },
+      ],
+      veto_pairs: [],
+    };
+    const signal = computeSignal([repoBuildSource, absentCache], ordering, ['samehash', null]);
+    expect(signal.installed_present).toBe(false);
+    expect(signal.hooks_hash_match).toBeNull();
   });
 });
 
@@ -104,11 +164,14 @@ describe('writePluginDriftSignalAtomic', () => {
     const campaignDir = makeTempDir('plugin-drift-campaign');
     try {
       const signal: PluginDriftSignal = {
-        version: 1,
+        version: 2,
         refreshed_at: '2026-09-03T00:00:00.000Z',
-        installed_version: '0.21.0',
         installed_present: false,
         hooks_hash_match: null,
+        sources: [],
+        ordering_available: true,
+        ordering_unavailable_reason: null,
+        veto_pairs: [],
       };
       writePluginDriftSignalAtomic(campaignDir, signal);
       const target = path.join(campaignDir, 'plugin-drift.json');

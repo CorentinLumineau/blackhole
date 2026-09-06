@@ -15,6 +15,7 @@ import {
   renderRouteChain,
   type Route,
 } from './campaign-status';
+import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal';
 
 const fullRoute: Route = {
   needs_split: false,
@@ -570,42 +571,105 @@ describe('renderConfigSummary', () => {
   });
 });
 
-// Issue #800 (ADR-030) — dashboard surfacing for the plugin-cache drift signal. Three cases,
-// proving the surfacing neither silently claims drift where none was observed (absent-cache,
-// hash-match) nor silently omits a real mismatch (hash-mismatch).
+// Issue #912 (ADR-044) — dashboard surfacing widened from a single hash-match boolean to one
+// line per non-clean registered source plus `veto_pairs[]`. Proves the surfacing neither
+// silently claims drift where none was observed (a fully clean signal with no foreign sources)
+// nor silently omits a real mismatch (older/diverged sources, or a foreign source of
+// unverifiable provenance — which is NEVER clean, in the red fixture or the green one).
 describe('renderPluginDriftWarning', () => {
-  test('warns when the installed plugin cache content diverges from the repo build', () => {
-    const out = renderPluginDriftWarning({
-      version: 1,
-      refreshed_at: '2026-09-03T00:00:00.000Z',
-      installed_version: '0.21.0',
-      installed_present: true,
-      hooks_hash_match: false,
-    });
+  const cleanRepoBuild: PluginDriftSource = {
+    layer: 1,
+    label: 'project .claude/settings.json -> repo build output',
+    origin_kind: 'repo-build',
+    resolved_path: '/repo/.claude/hooks',
+    present: true,
+    path_kind: 'directory',
+    version: null,
+    commit_sha: 'a'.repeat(40),
+    content_hash: 'samehash',
+    outcome: 'strict',
+    relation_to_origin_main: 'identical',
+    hook_commits_behind: 0,
+  };
+  const foreignSource: PluginDriftSource = {
+    layer: 3,
+    label: 'user ~/.claude/settings.json matcher "*"',
+    origin_kind: 'foreign',
+    resolved_path: '/home/.orca/agent-hooks/claude-hook.sh',
+    present: true,
+    path_kind: 'file',
+    version: null,
+    commit_sha: null,
+    content_hash: null,
+    outcome: 'no-baseline',
+    relation_to_origin_main: null,
+    hook_commits_behind: null,
+  };
+  const staleCacheSource: PluginDriftSource = {
+    layer: 2,
+    label: 'enabledPlugins (user scope) -> blackhole@blackhole-marketplace',
+    origin_kind: 'plugin-cache',
+    resolved_path: '/cache/0.19.0/hooks',
+    present: true,
+    path_kind: 'directory',
+    version: '0.19.0',
+    commit_sha: 'b'.repeat(40),
+    content_hash: 'stalehash',
+    outcome: 'strict',
+    relation_to_origin_main: 'older',
+    hook_commits_behind: 17,
+  };
+  const absentLayer4: PluginDriftSource = {
+    layer: 4,
+    label: '.claude/settings.local.json (absent)',
+    origin_kind: 'foreign',
+    resolved_path: null,
+    present: false,
+    path_kind: 'absent',
+    version: null,
+    commit_sha: null,
+    content_hash: null,
+    outcome: 'no-baseline',
+    relation_to_origin_main: null,
+    hook_commits_behind: null,
+  };
+
+  const makeSignal = (sources: PluginDriftSource[], vetoPairs: PluginDriftSignal['veto_pairs'] = []): PluginDriftSignal => ({
+    version: 2,
+    refreshed_at: '2026-09-03T00:00:00.000Z',
+    installed_present: sources.some((s) => s.origin_kind === 'plugin-cache' && s.present),
+    hooks_hash_match: null,
+    sources,
+    ordering_available: true,
+    ordering_unavailable_reason: null,
+    veto_pairs: vetoPairs,
+  });
+
+  test('red state: renders one line per non-clean source, including the foreign baseline: none line', () => {
+    const out = renderPluginDriftWarning(
+      makeSignal([cleanRepoBuild, staleCacheSource, foreignSource, absentLayer4], [
+        { older_layer: 2, older_label: staleCacheSource.label, newer_layer: 1, newer_label: cleanRepoBuild.label, hook_commits_behind: 17 },
+      ]),
+    );
     expect(out).toMatch(/plugin.drift/i);
+    expect(out).toContain('layer 2');
+    expect(out).toContain('17 hook-touching commit(s) behind origin/main');
+    expect(out).toContain('layer 3');
+    expect(out).toContain('baseline: none');
+    expect(out).toContain('veto:');
+    expect(out).not.toContain('layer 4'); // absent, never-registered — not drift
   });
 
-  test('stays silent when no plugin cache is installed', () => {
-    const out = renderPluginDriftWarning({
-      version: 1,
-      refreshed_at: '2026-09-03T00:00:00.000Z',
-      installed_version: '0.21.0',
-      installed_present: false,
-      hooks_hash_match: null,
-    });
-    expect(out).not.toMatch(/plugin.drift/i);
-    expect(out).toBe('');
+  test('green state: renders only the foreign source line, never fully silent while it is registered', () => {
+    const out = renderPluginDriftWarning(makeSignal([cleanRepoBuild, foreignSource, absentLayer4]));
+    expect(out).toMatch(/plugin.drift/i);
+    expect(out).toContain('baseline: none');
+    expect(out).not.toContain('layer 1');
+    expect(out).not.toContain('veto:');
   });
 
-  test('stays silent when the installed cache matches the repo build', () => {
-    const out = renderPluginDriftWarning({
-      version: 1,
-      refreshed_at: '2026-09-03T00:00:00.000Z',
-      installed_version: '0.21.0',
-      installed_present: true,
-      hooks_hash_match: true,
-    });
-    expect(out).not.toMatch(/plugin.drift/i);
+  test('stays silent when every source is clean and no foreign source is registered', () => {
+    const out = renderPluginDriftWarning(makeSignal([cleanRepoBuild, absentLayer4]));
     expect(out).toBe('');
   });
 

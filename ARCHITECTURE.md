@@ -308,6 +308,7 @@ co-located `*.test.ts`.
 
 ## Active Constraints
 - A working-tree-mutating `git` subcommand whose effective repository is the main clone is refused regardless of which agent runs it — key the check on repo identity (`worktreeRoot === mainCloneRoot`, plus any `-C`/`--git-dir`/`--work-tree` override), never on `BLACKHOLE_ASSIGNED_WORKTREE`, which is unset for every Pattern C worker (ADR-043)
+- A drift or provenance signal must enumerate every registered enforcement source and assert an ordering only where a commit-graph ancestry proves one — an unverifiable, foreign, or unresolvable source is rendered as its own state, never collapsed into "no drift" (ADR-044)
 - An `{{INCLUDE}}` marker is a directive only in a file declared in `INCLUDE_MARKER_SITES`;
   everywhere else — in every entry path into `expandIncludes`, including the build — it is inert
   prose, never a build-time or check-time expansion (ADR-039)
