@@ -39,6 +39,22 @@ Structured JSON return contract for the `implementer` campaign worker agent. Spl
 | `companion_repairs` | `{ vcode, file, action }[]` (issue #453) | no, optional — see `companion-file-sync.md` § Ledger contract |
 | `conflict_hunks` | conflict-hunk[] (see below) | when `merge_conflict_semantic` |
 
+### `pr_number` — canonical top-level PR-number spelling (SSOT)
+
+`pr_number` is the one **top-level** spelling of a PR number across every worker return
+contract. `worker-schemas.md` cites this definition rather than restating it, so there is a
+single place to change if it ever moves.
+
+A top-level `pr` is **not** an accepted alias:
+`scripts/lib/worker-json/validators/implementer.ts` rejects it and names `pr_number` in the
+error, so the near-miss is diagnosed by name instead of surfacing as a bare `pr_number:
+required` that says nothing about the field actually supplied.
+
+The one level where `pr` is correct is **nested**, inside a `decision_records[]` row, where it
+means something different (which artifact the decision was recorded in) and pairs either-or
+with `issue` — see § `decision_records[]` below. One payload therefore legitimately carries
+both spellings at once; nesting level, not contract, decides which applies.
+
 ### `execution_mode` (optional — ADR-004)
 
 Selects which TDD-mandate variant governs the implementer's session:
@@ -116,7 +132,7 @@ existing PR-body text for that gate, never instead of it. Row shape:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `pr` | number | one of `pr` / `issue` required | PR number the decision was made in |
+| `pr` | number | one of `pr` / `issue` required | PR number the decision was made in — nested-only spelling; the top-level field is `pr_number` (§ `pr_number` above) |
 | `issue` | number | one of `pr` / `issue` required | issue number, when no PR exists yet |
 | `kind` | string (enum) | yes | `root-cause` \| `approach` \| `refactor` \| `improvement` \| `reuse` |
 | `touch_paths` | string[] | yes | files the decision governed |

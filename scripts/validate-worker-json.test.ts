@@ -288,6 +288,34 @@ describe('validateWorker implementer', () => {
   test('invalid empty evidence on complete', () =>
     expectInvalid('implementer', 'implementer-complete-empty-evidence.json'));
 
+  // `pr_number` is the canonical top-level spelling; top-level `pr` is not an accepted alias
+  // (implementer-schemas.md § `pr_number`).
+  test('invalid top-level pr instead of pr_number', () =>
+    expectInvalid('implementer', 'implementer-complete-legacy-pr-field.json'));
+  test('top-level pr error names pr_number as the canonical spelling', () => {
+    const errors = validateWorker('implementer', readFixture('implementer-complete-legacy-pr-field.json'));
+    expect(errors.some((e) => e.startsWith('pr:') && e.includes('pr_number'))).toBe(true);
+  });
+  test('top-level pr is rejected even alongside a valid pr_number', () => {
+    const data = { ...readFixture('implementer-complete.json'), pr: 42 };
+    expect(validateWorker('implementer', data).some((e) => e.startsWith('pr:'))).toBe(true);
+  });
+  test('nested decision_records[].pr stays valid — the rejection is top-level only', () => {
+    const data = {
+      ...readFixture('implementer-complete.json'),
+      decision_records: [
+        {
+          pr: 42,
+          kind: 'reuse',
+          touch_paths: ['scripts/lib/worker-json/validators/implementer.ts'],
+          decision: 'Reused the existing predicate helpers.',
+          why: 'No second variant of the same concern.',
+        },
+      ],
+    };
+    expect(validateWorker('implementer', data)).toEqual([]);
+  });
+
   // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
   test('valid partial', () => expectValid('implementer', 'implementer-partial.json'));
   test('invalid partial missing work_done', () =>
@@ -565,6 +593,11 @@ describe('validateWorker reviewer', () => {
     expectValid('reviewer', 'reviewer-complete-vada-finding.json'));
   test('valid V-SPEC-01 finding', () =>
     expectValid('reviewer', 'reviewer-complete-vspec-block-finding.json'));
+
+  // The reviewer contract declares no PR-number field; the canonical spelling is never the
+  // thing that rejects a reviewer payload (implementer-schemas.md § `pr_number`).
+  test('valid complete carrying the canonical pr_number spelling', () =>
+    expectValid('reviewer', 'reviewer-complete-pr-number.json'));
 
   // Issue #492 — stop --now leg B: status: partial (worker-schemas.md § Partial result)
   test('valid partial', () => expectValid('reviewer', 'reviewer-partial.json'));
