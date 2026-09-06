@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { carryManifest, loadManifest } from './lib/carry-staged-artifacts.ts';
-import { parseFlags } from './lib/argv-flags.ts';
+import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 
 // Issue #715 (R-10) — CLI entrypoint for the ADR-021 D2 carry-step mechanization. Invoked from
 // `implementer.md` § Carry Staged Artifacts before opening the PR; see that section for the
@@ -16,8 +16,14 @@ function usage(): never {
   process.exit(2);
 }
 
+// The original `for (i = 2; i += 2)` loop structurally rejected any token outside a clean
+// --key/value alternation, including an unrecognized flag — restored explicitly here since
+// parseFlags has no such structural check on its own.
+const KNOWN_KEYS = ['manifest', 'repo-root', 'staging-root'];
+
 function parseArgs(argv: string[]): { manifestPath: string; repoRoot: string; stagingRoot?: string } {
   const flags = parseFlags(argv.slice(2));
+  if (unknownFlagKeys(flags, KNOWN_KEYS).length > 0) usage();
   if (typeof flags.manifest !== 'string' || typeof flags['repo-root'] !== 'string') usage();
   return {
     manifestPath: flags.manifest as string,

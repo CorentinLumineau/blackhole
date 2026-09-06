@@ -4,7 +4,7 @@ import * as path from 'path';
 import { readJsonFile } from './lib/fs.ts';
 import { mergeReadinessForReviewPromotion } from './lib/merge-gate/review-artifact.ts';
 import type { LedgerFile } from './lib/promote-review-artifact.ts';
-import { parseFlags } from './lib/argv-flags.ts';
+import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 
 function usage(): never {
   console.error(
@@ -23,6 +23,11 @@ const ABSOLUTE_PATH_KEYS = ['config', 'ledger', 'repo-root', 'diff-file'];
 
 function parseArgs(argv: string[]) {
   const args = parseFlags(argv.slice(2));
+  // REQUIRED_KEYS is this file's complete flag set (no optional flags) — the original
+  // `for (i = 2; i += 2)` loop structurally rejected any token outside a clean --key/value
+  // alternation, including an unrecognized flag; restored explicitly since parseFlags has no
+  // such structural check on its own.
+  if (unknownFlagKeys(args, REQUIRED_KEYS).length > 0) usage();
   for (const key of REQUIRED_KEYS) {
     if (typeof args[key] !== 'string') usage();
   }

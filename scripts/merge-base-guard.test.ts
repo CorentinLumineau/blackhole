@@ -74,6 +74,22 @@ describe('merge-base-guard CLI — usage contract', () => {
     ]);
     expect(result.status).toBe(2);
   });
+
+  // Regression coverage: a complete, valid required-flag set alongside one unrecognized flag
+  // must still exit 2 — an unrecognized flag is malformed usage, not a value to silently drop.
+  test('exits 2 with usage when a valid pre-merge flag set carries one unrecognized flag', () => {
+    const result = runGuard([
+      '--mode',
+      'pre-merge',
+      '--base-ref',
+      'main',
+      '--target-branch',
+      'main',
+      '--bogus-flag',
+    ]);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('Usage:');
+  });
 });
 
 describe('merge-base-guard CLI — pre-merge mode', () => {

@@ -37,6 +37,15 @@ describe('carry-staged-artifacts CLI — argv parsing', () => {
     expect(code).toBe(2);
     expect(stderr).toContain('Usage:');
   });
+
+  // Regression coverage: a complete, valid required-flag set alongside one unrecognized flag
+  // must still exit 2 — an unrecognized flag is malformed usage, not a value to silently drop.
+  test('a valid required-flag set plus one unrecognized flag exits 2 with usage on stderr', async () => {
+    const proc = run(['--manifest', path.join(dir, 'missing.json'), '--repo-root', dir, '--bogus-flag']);
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('Usage:');
+  });
 });
 
 describe('carry-staged-artifacts CLI — manifest shape guard', () => {

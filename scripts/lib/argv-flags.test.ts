@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { parseFlags, requireFlag } from './argv-flags.ts';
+import { parseFlags, requireFlag, unknownFlagKeys } from './argv-flags.ts';
 
 describe('parseFlags', () => {
   test('a normal --flag value pair parses to a string value', () => {
@@ -42,5 +42,19 @@ describe('requireFlag', () => {
 
   test('throws when the flag is absent entirely', () => {
     expect(() => requireFlag({}, 'flag')).toThrow('missing required flag --flag');
+  });
+});
+
+describe('unknownFlagKeys', () => {
+  test('returns an empty array when every parsed key is known', () => {
+    expect(unknownFlagKeys({ a: '1', b: '2' }, ['a', 'b', 'c'])).toEqual([]);
+  });
+
+  test('returns the unrecognized keys, preserving Flags iteration order', () => {
+    expect(unknownFlagKeys({ a: '1', bogus: true, b: '2' }, ['a', 'b'])).toEqual(['bogus']);
+  });
+
+  test('an empty flags object has no unknown keys regardless of the known-key list', () => {
+    expect(unknownFlagKeys({}, ['a', 'b'])).toEqual([]);
   });
 });

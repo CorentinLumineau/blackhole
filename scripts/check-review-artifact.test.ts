@@ -136,6 +136,15 @@ describe('check-review-artifact CLI — absolute-path enforcement', () => {
     expect(stdout).toContain('ok');
   });
 
+  // Regression coverage: a complete, valid required-flag set alongside one unrecognized flag
+  // must still exit 2 — an unrecognized flag is malformed usage, not a value to silently drop.
+  test('a valid required-flag set plus one unrecognized flag exits 2 with usage on stderr', async () => {
+    const proc = run([...baseArgs(), '--bogus-flag']);
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('Usage:');
+  });
+
   test('all-absolute paths with drifted committed content exits 1', async () => {
     const committedFull = path.join(repoRoot, targetPath);
     fs.copyFileSync(path.join(fixturesDir, 'review-artifact-drifted.md'), committedFull);

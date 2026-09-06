@@ -148,4 +148,33 @@ describe('promote-review-artifact CLI', () => {
     expect(fs.existsSync(path.join(outDir, 'review.md'))).toBe(true);
     fs.rmSync(outDir, { recursive: true, force: true });
   });
+
+  // Regression coverage: a complete, valid required-flag set alongside one unrecognized flag
+  // must still exit 2 — an unrecognized flag is malformed usage, not a value to silently drop.
+  test('a valid required-flag set plus one unrecognized flag exits 2 with usage on stderr', async () => {
+    const proc = Bun.spawn(
+      [
+        'bun',
+        'run',
+        path.join(root, 'scripts/promote-review-artifact.ts'),
+        '--ledger',
+        path.join(root, 'fixtures/promote-review-artifact/multi-iteration-ledger.json'),
+        '--issue',
+        '445',
+        '--title',
+        'Durable plan and review artifact promotion',
+        '--pr',
+        '901',
+        '--branch',
+        'blackhole/issue-445',
+        '--head',
+        'deadbeefcafebabe',
+        '--bogus-flag',
+      ],
+      { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+    );
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('Usage:');
+  });
 });

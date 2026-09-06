@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { hasArgvFlagsImport, runChecks } from './checks/argv-flags-adoption.check.ts';
+import { hasArgvFlagsAdoptionInContent, hasArgvFlagsImport, runChecks } from './checks/argv-flags-adoption.check.ts';
 
 describe('hasArgvFlagsImport', () => {
   test('detects a single-name import of parseFlags', () => {
@@ -12,6 +12,34 @@ describe('hasArgvFlagsImport', () => {
 
   test('returns false for the deliberately non-migrated seed', () => {
     expect(hasArgvFlagsImport('scripts/stack-repair.ts')).toBe(false);
+  });
+});
+
+describe('hasArgvFlagsAdoptionInContent', () => {
+  test('true when both an import and a call are present', () => {
+    const content = `import { parseFlags } from './lib/argv-flags.ts';\nconst flags = parseFlags(argv);\n`;
+    expect(hasArgvFlagsAdoptionInContent(content)).toBe(true);
+  });
+
+  // The future-drift hole this content-level split closes: a file that imports the module but
+  // never actually calls it (keeps its own pre-existing hand-rolled loop) must not pass.
+  test('false when the import is present but neither function is ever called', () => {
+    const content = [
+      "import { parseFlags, requireFlag } from './lib/argv-flags.ts';",
+      "function parseArgs(argv: string[]) {",
+      "  const flags: Record<string, string> = {};",
+      "  for (let i = 0; i < argv.length; i++) {",
+      "    if (argv[i] === '--x' && argv[i + 1]) flags.x = argv[++i];",
+      "  }",
+      "  return flags;",
+      "}",
+    ].join('\n');
+    expect(hasArgvFlagsAdoptionInContent(content)).toBe(false);
+  });
+
+  test('false when a call is present but the import is missing', () => {
+    const content = `const flags = parseFlags(argv);\n`;
+    expect(hasArgvFlagsAdoptionInContent(content)).toBe(false);
   });
 });
 

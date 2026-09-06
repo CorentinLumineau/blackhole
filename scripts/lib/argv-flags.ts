@@ -36,3 +36,17 @@ export const requireFlag = (flags: Flags, name: string): string => {
   if (typeof value !== 'string') throw new Error(`missing required flag --${name}`);
   return value;
 };
+
+// A fixed-stride `for (i = 2; i < argv.length; i += 2)` loop structurally rejects any token
+// outside a clean --key/value alternation — including a syntactically fine but unrecognized
+// flag — by calling usage() as soon as the shape breaks. parseFlags has no such structural
+// check: an unrecognized token just becomes an unused Flags entry. Call sites that need the
+// old rejection back call this explicitly with their own known-key list and their own usage().
+// Optional, not folded into parseFlags itself, for the same reason exit-code selection stays
+// per-call-site (V-KISS-01): a lookahead-shape site that never rejected unknown flags before
+// this module existed must not gain new rejection behavior it never had (that would be an
+// undisclosed change in the opposite direction).
+export const unknownFlagKeys = (flags: Flags, knownKeys: string[]): string[] => {
+  const known = new Set(knownKeys);
+  return Object.keys(flags).filter((key) => !known.has(key));
+};

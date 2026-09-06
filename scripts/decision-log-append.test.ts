@@ -1,6 +1,7 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
+import * as path from 'path';
 import { appendDecisionRecords, parseDecisionLogIds, type DecisionRecordRow } from './decision-log-append.ts';
 import { makeTempDir } from './lib/fs.ts';
 
@@ -300,5 +301,42 @@ describe('appendDecisionRecords — real two-branch rebase (issue #874)', () => 
     git(repo, ['rebase', '--abort']);
 
     fs.rmSync(repo, { recursive: true, force: true });
+  });
+});
+
+// Issue #902 fix round — CLI argv-parsing coverage (previously untested by CLI spawn). Same
+// beforeEach/afterEach + makeTempDir/Bun.spawn convention as
+// scripts/carry-staged-artifacts.test.ts's CLI suite.
+describe('decision-log-append CLI — argv parsing', () => {
+  const root = path.resolve(import.meta.dirname);
+  const scriptPath = path.join(root, 'decision-log-append.ts');
+  const run = (args: string[]) =>
+    Bun.spawn(['bun', 'run', scriptPath, ...args], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+
+  let dir: string;
+
+  beforeEach(() => {
+    dir = makeTempDir('decision-log-append-cli');
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Regression coverage: a complete, valid required-flag set alongside one unrecognized flag
+  // must still exit 2 — an unrecognized flag is malformed usage, not a value to silently drop.
+  // `--log` is always pinned to a throwaway fixture here: were this test to regress to exit 0,
+  // main() would proceed to write a real file, and a bare `--records-file` with no `--log`
+  // would default to this repo's own live decision-log.md.
+  test('a valid --records-file/--log pair plus one unrecognized flag exits 2 with usage on stderr', async () => {
+    const recordsFile = path.join(dir, 'records.json');
+    fs.writeFileSync(recordsFile, JSON.stringify({ decision_records: [] }));
+    const logFile = path.join(dir, 'decision-log.md');
+    fs.writeFileSync(logFile, FIXTURE_LOG);
+    const proc = run(['--records-file', recordsFile, '--log', logFile, '--bogus-flag']);
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('Usage:');
+    expect(fs.readFileSync(logFile, 'utf-8')).toBe(FIXTURE_LOG);
   });
 });

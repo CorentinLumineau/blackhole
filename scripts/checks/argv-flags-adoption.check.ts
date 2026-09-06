@@ -29,11 +29,21 @@ const TARGET_SCRIPTS = [
   'scripts/validate-worker-json.ts',
 ];
 
-// Presence-only: an import of `parseFlags` and/or `requireFlag` from a module path ending in
-// `argv-flags` (relative import, any depth of `../`, with or without the `.ts` extension).
+// An import of `parseFlags` and/or `requireFlag` from a module path ending in `argv-flags`
+// (relative import, any depth of `../`, with or without the `.ts` extension).
 const IMPORT_REGEX = /import\s*\{[^}]*\b(parseFlags|requireFlag)\b[^}]*\}\s*from\s*['"][^'"]*argv-flags(?:\.ts)?['"]/;
 
-export const hasArgvFlagsImport = (target: string): boolean => IMPORT_REGEX.test(read(target));
+// An actual call to either function — the import alone is satisfiable by a file that imports
+// the module but keeps calling its own pre-existing hand-rolled loop (a future-drift hole, not
+// present in any of the 15 files today, but worth closing while cheap).
+const CALL_REGEX = /\b(parseFlags|requireFlag)\s*\(/;
+
+// Content-first predicate (same testability shape as cwd-pin-guard.check.ts's
+// findMissingCwdPin(content, label) — fixture strings, no throwaway file needed).
+export const hasArgvFlagsAdoptionInContent = (content: string): boolean =>
+  IMPORT_REGEX.test(content) && CALL_REGEX.test(content);
+
+export const hasArgvFlagsImport = (target: string): boolean => hasArgvFlagsAdoptionInContent(read(target));
 
 const checkArgvFlagsAdoption = (): CheckResult => {
   const violations = TARGET_SCRIPTS.filter((target) => !hasArgvFlagsImport(target));

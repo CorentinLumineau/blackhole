@@ -3,7 +3,7 @@ import { parseMdFrontmatter, parseFrontmatterFields } from './lib/build/content.
 import { findTableBlock } from './lib/check-common.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { root } from './checks/check-utils.ts';
-import { parseFlags } from './lib/argv-flags.ts';
+import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 
 // Issue #717 (R-12) — replaces the hand-append path documented in `orchestrator.md` § Decision
 // Record Append, which never bumped `last_updated` (frozen at 2026-07-20 across 6+ hand-appended
@@ -141,8 +141,14 @@ function usage(): never {
   process.exit(2);
 }
 
+// The original `for (i = 2; i += 2)` loop structurally rejected any token outside a clean
+// --key/value alternation, including an unrecognized flag — restored explicitly here since
+// parseFlags has no such structural check on its own.
+const KNOWN_KEYS = ['records-file', 'log'];
+
 function parseArgs(argv: string[]): { logPath: string; recordsFilePath: string } {
   const args = parseFlags(argv.slice(2));
+  if (unknownFlagKeys(args, KNOWN_KEYS).length > 0) usage();
   if (typeof args['records-file'] !== 'string') usage();
   return {
     logPath: typeof args.log === 'string' ? args.log : `${root}/documentation/reference/decision-log.md`,

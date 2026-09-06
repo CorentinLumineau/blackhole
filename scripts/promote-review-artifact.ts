@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './lib/fs.ts';
 import { renderReviewMarkdown, type LedgerFile } from './lib/promote-review-artifact.ts';
-import { parseFlags } from './lib/argv-flags.ts';
+import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 
 // Consumer worktrees: run via plugin root, not consumer cwd —
 //   bun run --cwd <plugin-root> scripts/promote-review-artifact.ts --ledger <consumer>/.blackhole/findings-ledger.json ...
@@ -15,8 +15,14 @@ function usage(): never {
   process.exit(2);
 }
 
+// The original `for (i = 2; i += 2)` loop structurally rejected any token outside a clean
+// --key/value alternation, including an unrecognized flag — restored explicitly here since
+// parseFlags has no such structural check on its own.
+const KNOWN_KEYS = ['ledger', 'issue', 'title', 'pr', 'branch', 'head', 'out-dir'];
+
 function parseArgs(argv: string[]) {
   const args = parseFlags(argv.slice(2));
+  if (unknownFlagKeys(args, KNOWN_KEYS).length > 0) usage();
   if (
     typeof args.ledger !== 'string' ||
     typeof args.issue !== 'string' ||
