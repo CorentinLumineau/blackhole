@@ -78,6 +78,20 @@ describe('plan-quality-gate CLI — argv parsing', () => {
     expect(code).toBe(2);
     expect(stderr).toContain('Usage:');
   });
+
+  test('missing --repo-root exits 2 with usage on stderr', async () => {
+    const proc = run(['--plan-file', '/dev/null']);
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('Usage:');
+  });
+
+  test('relative --repo-root exits 2 with usage on stderr', async () => {
+    const proc = run(['--plan-file', '/dev/null', '--repo-root', 'relative/path']);
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('Usage:');
+  });
 });
 
 describe('plan-quality-gate CLI — end to end', () => {
@@ -93,11 +107,14 @@ describe('plan-quality-gate CLI — end to end', () => {
 
   test('prints JSON with exactly the three boolean keys, all true for a clean fixture', async () => {
     const planPath = path.join(dir, 'plan.md');
+    // `fixture.txt` is created inside this test's own temp `dir` — hermetic, resolved against
+    // --repo-root, and no longer dependent on blackhole's real tree containing `package.json`.
+    fs.writeFileSync(path.join(dir, 'fixture.txt'), '');
     fs.writeFileSync(
       planPath,
       [
         '## Critical Files',
-        '- `package.json`',
+        '- `fixture.txt`',
         '## Execution Strategy & Stop Conditions',
         '- If lint fails, block the merge.',
         '## Task Breakdown',
@@ -105,7 +122,7 @@ describe('plan-quality-gate CLI — end to end', () => {
       ].join('\n')
     );
 
-    const proc = run(['--plan-file', planPath]);
+    const proc = run(['--plan-file', planPath, '--repo-root', dir]);
     const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
@@ -131,7 +148,7 @@ describe('plan-quality-gate CLI — end to end', () => {
       ].join('\n')
     );
 
-    const proc = run(['--plan-file', planPath]);
+    const proc = run(['--plan-file', planPath, '--repo-root', dir]);
     const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
     expect(code).toBe(0);
     const result = JSON.parse(stdout);
@@ -146,7 +163,7 @@ describe('plan-quality-gate CLI — end to end', () => {
     const planPath = path.join(dir, 'plan.md');
     fs.writeFileSync(planPath, '## Objective\nQuick track, no Standard-only sections.\n');
 
-    const proc = run(['--plan-file', planPath]);
+    const proc = run(['--plan-file', planPath, '--repo-root', dir]);
     const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
     expect(code).toBe(0);
     expect(JSON.parse(stdout)).toEqual({
@@ -154,5 +171,39 @@ describe('plan-quality-gate CLI — end to end', () => {
       critical_files_exist: true,
       mitigation_concrete: true,
     });
+  });
+});
+
+describe('plan-quality-gate CLI — --repo-root scoping (issue #891)', () => {
+  let planDir: string;
+  let repoRootDir: string;
+
+  beforeEach(() => {
+    planDir = makeTempDir('plan-quality-gate-plan');
+    repoRootDir = makeTempDir('plan-quality-gate-reporoot');
+  });
+
+  afterEach(() => {
+    fs.rmSync(planDir, { recursive: true, force: true });
+    fs.rmSync(repoRootDir, { recursive: true, force: true });
+  });
+
+  // Regression guard for the false-pass bug (issue #891): critical_files_exist must resolve
+  // plan-named paths against --repo-root, not against blackhole's own checkout. This path is
+  // guaranteed present in blackhole's tree (it is this very check module) and guaranteed absent
+  // from the fresh, empty repoRootDir standing in for the consumer repo — so the two trees
+  // genuinely disagree and a fixture that happened to exist in both could not catch this.
+  test('a critical file present in blackhole but absent from --repo-root is reported missing', async () => {
+    const planPath = path.join(planDir, 'plan.md');
+    fs.writeFileSync(
+      planPath,
+      ['## Critical Files', '- `scripts/checks/plan-quality-gate.check.ts`'].join('\n')
+    );
+
+    const proc = run(['--plan-file', planPath, '--repo-root', repoRootDir]);
+    const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+    expect(code).toBe(0);
+    const result = JSON.parse(stdout);
+    expect(result.critical_files_exist).toBe(false);
   });
 });

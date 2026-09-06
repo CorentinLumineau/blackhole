@@ -48,6 +48,17 @@ describe('findMissingCwdPin', () => {
     expect(findMissingCwdPin(good, 'fixture.md')).toEqual([]);
   });
 
+  test('flags a bare plan-quality-gate.ts invocation with no --cwd', () => {
+    const bad = 'run `bun run scripts/plan-quality-gate.ts --plan-file <path> --repo-root <path>`';
+    expect(findMissingCwdPin(bad, 'fixture.md')).toEqual(['fixture.md:1']);
+  });
+
+  test('does not flag a --cwd-pinned plan-quality-gate.ts invocation', () => {
+    const good =
+      'run `bun run --cwd <repo_root> scripts/plan-quality-gate.ts --plan-file <path> --repo-root <repo_root>`';
+    expect(findMissingCwdPin(good, 'fixture.md')).toEqual([]);
+  });
+
   test('ignores a mention of the script that is not a bun run invocation', () => {
     const mention = 'mechanized by `scripts/carry-staged-artifacts.ts` (issue #715, R-10)';
     expect(findMissingCwdPin(mention, 'fixture.md')).toEqual([]);
