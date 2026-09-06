@@ -414,8 +414,56 @@ rebase must equal the count from the recorded parent tip to the child head measu
 the same number the PR showed while its base was still the parent branch.
 
 Asserting the PR base before merging, and verifying the base branch afterwards, are a separate
-concern (the merge-base assertion work, issue #793) — cited here, not restated. This section owns
+concern — § 8 below, cited here and not restated. This section owns
 only the stacked *children* of a merging parent.
+
+## 8. `assertPreMergeBase(baseRefName, targetBranch, stackedInto)` + `verifyPostMergeLanding(pr, targetBranch)`
+
+Merge eligibility decides *whether* a PR may merge; until this section, nothing decided *what it
+merges into*. A stacked PR — base a sibling feature branch — produced output indistinguishable
+from a merge onto the campaign base, and `queue.json` then recorded a landing that never reached
+`target_branch`. Stacking stays legitimate; the silence around it does not. § 7 owns the stacked
+*children* of a merging parent; this section owns the base the merging PR itself lands on.
+
+**Pre-merge assertion** (`phase-loop.md` § Merge protocol **Step 0.8**). Read the PR's
+`baseRefName` and require it to equal `config.json`'s `target_branch`. A different base proceeds
+only under an explicit stacked-merge opt-in **naming the branch being landed into**; an opt-in
+naming any other branch, and an unreadable `baseRefName`, both refuse. Refusal is a hard **STOP**
+for the turn, the same class as § 5's review-artifact stop — no V-code and no ledger row of its
+own.
+
+**Post-merge landing verification** (`phase-loop.md` § Merge protocol **step 4.7**). A
+`git log <target_branch> --grep=#<PR>` miss is proof the merge did not land there, never evidence
+of replication lag. The tolerance for lag is spent as a bounded retry budget inside the script,
+and its exhaustion is terminal: the orchestrator is left no verdict meaning "tolerate the miss".
+
+Mechanical check for both halves (ADR-003 — the judgment is above, the arithmetic is not here):
+
+```
+bun run --cwd <abs repo-root> scripts/merge-base-guard.ts --mode pre-merge --base-ref <baseRefName> --target-branch <target_branch> [--stacked-into <branch>]
+bun run --cwd <abs repo-root> scripts/merge-base-guard.ts --mode post-merge --pr <N> --target-branch <target_branch> --repo-root <abs repo-root> [--attempts <N>] [--interval-ms <N>]
+```
+
+Exit `0` proceed, `1` refuse (reason on stderr), `2` malformed usage — the same exit-code
+contract `state-write-guard.ts` already uses (`blackhole-state.md` § Write protocol) — plus a
+fourth, `3`, which the state guard has no analogue for because it reads a file rather than a
+remote: **the verification could not be run at all**. A `git fetch` or `git log` that exits
+non-zero, and a `target_branch` that resolves to no ref, all report `3`. Keeping that case out
+of `1` is the whole point: a transport failure read as "the merge did not land there" would be
+promoted to proof by step 4.7, and read as `0` it would certify a landing nobody checked. `3` is
+terminal for the turn like `1`, but it says *re-run me*, not *the merge went somewhere else*.
+
+Retry defaults are 3 attempts 20 s apart, each preceded by its own
+`git fetch origin <target_branch>`, so a retry can actually change the answer; a failing fetch
+ends the run at once with `3` rather than spending the remaining budget re-reading a local ref
+the fetch never refreshed. `scripts/lib/merge-gate/merge-base.ts` holds the assertion, the
+subject match, and the loop.
+
+**Recording where it landed.** `merged_into` (`queue-dag.md` Field rules) is written by step 4.7
+once the landing is *verified*, not by step 4, which knows only that the merge was attempted.
+`mergedIntoVerdict()` reports `base` / `other` / `unknown`; an absent value is `unknown`, never
+inferred as the base ref, so neither a failed verification nor a row predating the field is
+mistaken for a verified base-ref landing.
 
 ## Edge cases
 
@@ -434,6 +482,11 @@ only the stacked *children* of a merging parent.
 | Parent PR about to merge with an open stacked child whose `parent_tip_sha` was never recorded | `phase-loop.md` Step 0.7's dry run exits non-zero and **STOPS** that issue's merge for the turn (§ 7) — the boundary is still recoverable while the parent branch exists and is not afterwards |
 | Parent PR merges with no open stacked children | § 7's repair is a no-op — Step 0.7 and step 4.6 both exit 0 immediately, no forge or git call made |
 | `leave-open` PR under the merge-readiness dry run (§ Bypass note) | Step 0.5/0.6/1 (C2/C1/C3) all run; on all-green, `phase-loop.md`'s `mergeReady(issue)` (C1+C2+C3) gates the "delivered-at-LGTM" annotation together with `isLgtm(issue)` — no `gh pr merge` call regardless of outcome |
+| PR base is a sibling feature branch, no stacked-merge opt-in | Step 0.8 refuses (§ 8) — hard STOP for the turn, naming both the PR's base and `target_branch`; re-evaluated next turn once the base is corrected or an opt-in is declared |
+| PR base is a sibling feature branch, opt-in names that same branch | Step 0.8 proceeds (§ 8); step 4.7 verifies against that branch and records it in `merged_into`, so `merged` on this row is never read as a base-ref landing |
+| Post-merge `git log <target_branch> --grep=#<PR>` finds nothing after the retry budget | Terminal (§ 8, step 4.7, exit `1`) — the merge did not land on the base ref; never reclassified as replication lag, `merged_into` stays absent, and the issue does not advance to `done` |
+| Post-merge `git fetch`/`git log` exits non-zero, or `target_branch` resolves to no ref | Exit `3` (§ 8, step 4.7) — reported as *verification could not run*, never as a miss and never as `ok`; `merged_into` stays absent and the issue does not advance to `done`, but the failure names the transport, not the landing |
+| `merged_into` absent on an older `merged` row | `mergedIntoVerdict()` reports `unknown`, not `base` — an unverified landing stays visibly unverified rather than being backfilled by assumption |
 
 ## Consulted by
 
@@ -441,6 +494,8 @@ only the stacked *children* of a merging parent.
 - `phase-loop.md` § Merge protocol's **trigger** paragraph — when `merge_mode: gated-batch`, invokes **§ 4** (this doc) instead of applying steps 0-5 issue-by-issue; § 4 internally calls back into steps 0-5 per issue.
 - `phase-loop.md` § Merge protocol, **Step 0.6** — hard `pipelineVerdict(pr, queue)` (§ 6) check between Step 0.5 and step 1.
 - `phase-loop.md` § Merge protocol, **Step 0.7** and **step 4.6** — stacked-child tip capture check before the merge and `--onto` repair after it (§ 7).
+- `phase-loop.md` § Merge protocol, **Step 0.8** — hard pre-merge base assertion (§ 8) between Step 0.7 and step 1.
+- `phase-loop.md` § Merge protocol, **step 4.7** — post-merge landing verification (§ 8) after step 4.6's stacked-child repair.
 - `forge-sync.md` — cycle detection (§ 2), drift reconciliation (§ 3), and pipeline detection (§ 5.6, feeds § 6).
 - `orchestrator.md` Phase 5 — pointer reference only, no inline logic.
 
