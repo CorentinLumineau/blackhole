@@ -194,6 +194,50 @@ const skipGitGlobalOptions = (tokens, start) => {
   return i;
 };
 
+/** The three git global options that change WHICH repository an invocation targets — distinct
+ * from `-c`/`--namespace`/etc., which change git's behavior within a repo, not which repo it is.
+ * A separate set from `GIT_GLOBAL_OPTIONS_WITH_VALUE` above (a subset of it) because this one
+ * drives `extractGitRepoOverride`'s value-capture, not `skipGitGlobalOptions`' skip-only walk. */
+const REPO_TARGETING_OPTIONS = new Set(['-C', '--git-dir', '--work-tree']);
+
+/** Reads the value of the LAST `-C` / `--git-dir` / `--work-tree` option (separate-token or
+ * `--name=value` form) in the git global-option run starting at `start` — the same option run
+ * `skipGitGlobalOptions` above walks, read additively rather than by modifying that function
+ * (ADR-043 § Decision part 3: `skipGitGlobalOptions` stays byte-identical, since the removal-path
+ * caller above never needed these values). `git-main-clone-guard.js` (#897) is this function's
+ * only consumer: `-C <path>` is the form this campaign's own protocol mandates for every git
+ * invocation (#528), so an effective-repo check keyed on `cwd` alone would misresolve exactly the
+ * commands that check actually needs to see. Returns `null` when none of the three appear —
+ * "no override", not "override to the empty string". Malformed input (a value-taking option with
+ * no following token) stops the walk and returns whatever was captured so far, mirroring
+ * `skipGitGlobalOptions`' own `-1` "clause ends mid-option" contract at the caller's expense, not
+ * a thrown error here. */
+const extractGitRepoOverride = (tokens, start) => {
+  let i = start;
+  let override = null;
+  while (i < tokens.length) {
+    const token = tokens[i];
+    if (token.startsWith('--') && token.includes('=')) {
+      const eq = token.indexOf('=');
+      if (REPO_TARGETING_OPTIONS.has(token.slice(0, eq))) override = token.slice(eq + 1);
+      i += 1;
+      continue;
+    }
+    if (GIT_GLOBAL_OPTIONS_WITH_VALUE.has(token)) {
+      if (i + 1 >= tokens.length) return override;
+      if (REPO_TARGETING_OPTIONS.has(token)) override = tokens[i + 1];
+      i += 2;
+      continue;
+    }
+    if (token.startsWith('-')) {
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  return override;
+};
+
 /** True when the character immediately before `index` is a real shell word boundary — start of
  * string, whitespace, or a command separator (`;`, `&`, `|`, `(`, `{`, `}`, newline) — not merely
  * "any non-word character". Used below only as a defensive assertion that a clause-start index
@@ -694,7 +738,24 @@ const findRemovalInvocations = (command, cwd) => {
           invocations.push({ kind: 'git', argTokens: tokens.slice(subcommandIndex + 2), resolutionCwds });
           break; // identified `git worktree remove` — its own tail is the path argument, not a second command
         }
-        if (!isUncertain) break; // a CERTAIN `git` that isn't `worktree remove` — its own args are not a second command
+        // ADR-043 (#897): a second subcommand match, admitted only from the CERTAIN executable
+        // position — an UNCERTAIN `git` (reached only by skipping unrecognized leading tokens,
+        // e.g. `gh pr comment --body "... git checkout -- ."`) never emits this invocation, so a
+        // PR comment quoting a destructive git command is not itself treated as one (design note
+        // § Adversarial Evaluation mitigation 2). The subcommand→tier decision itself is entirely
+        // git-main-clone-guard.js's — this walk hands over every non-"worktree remove" CERTAIN git
+        // subcommand unfiltered, so the one subcommand vocabulary stays single-sourced there.
+        if (!isUncertain && subcommandIndex !== -1) {
+          invocations.push({
+            kind: 'git-mutation',
+            subcommand: tokens[subcommandIndex],
+            argTokens: tokens.slice(subcommandIndex + 1),
+            repoOverride: extractGitRepoOverride(tokens, cursor + 1),
+            resolutionCwds,
+          });
+          break; // identified a git subcommand — its own tail is its arguments, not a second command
+        }
+        if (!isUncertain) break; // a CERTAIN `git` with an unparseable global-option run (subcommandIndex === -1)
         // An UNCERTAIN `git` that isn't `worktree remove` might not even be the executable at all —
         // e.g. `sudo -u git rm -rf <worktree>`, where `git` is a flag's VALUE (a username), not a
         // command. Stopping here would let the wrapper walk itself hide the real `rm` that follows.
@@ -1237,6 +1298,10 @@ const evaluateWorktreeRemoval = (command, cwd) => {
       decision = evaluateRmInvocation(invocation.argTokens, invocation.resolutionCwds, cwd);
     } else if (invocation.unresolvableExecutable) {
       decision = unresolvableExecutableDecision();
+    } else if (invocation.kind === 'git-mutation') {
+      // Owned by git-main-clone-guard.js (#897/ADR-043), not this removal policy — this walk is
+      // shared, but each `kind` it can emit belongs to exactly one policy consumer.
+      continue;
     } else {
       decision = evaluateOneInvocation(invocation.argTokens, invocation.resolutionCwds);
     }
@@ -1257,6 +1322,7 @@ module.exports = {
   findRemovalInvocations,
   extractCdTargetText,
   skipGitGlobalOptions,
+  extractGitRepoOverride,
   isCommandWordStart,
   findClauseStartIndices,
   normalizeShellWord,

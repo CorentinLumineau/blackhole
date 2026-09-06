@@ -1672,6 +1672,17 @@ describe('validate-bash-command.js — worktree-removal guard path-qualified git
   // (measured, 14/14). `bash-patterns.json` is outside this fix's Touch-Paths, so these cases
   // must show identical outcomes on both sides of the guard edit; they exist to stop a future
   // tightening of those regexes from silently reopening a bypass no test would have noticed.
+  //
+  // `git-reset-hard` and `git-clean-force` are deliberately NOT in this array (ADR-043 / #897,
+  // owner ruling): `withTempGitRepo`'s bare standalone repo is identity-indistinguishable from
+  // the main clone under `worktreeRoot(dir) === mainCloneRoot(dir)` — that equality holds for
+  // ANY non-linked-worktree checkout, not only the campaign's one designated main clone (see
+  // ADR-043 § Consequences (7)) — so running these two commands there now hits the new
+  // main-clone-mutation guard's block tier before ever reaching these static warnPatterns.
+  // Relocated below into a linked-worktree fixture, which the identity check CAN tell apart from
+  // a main clone, so the assertion these two rows make (tier `warn`, exit 0, for the
+  // path-qualification concern — orthogonal to repo identity) is preserved exactly, only the
+  // fixture location changed.
   const PATH_QUALIFIED_PATTERN_CASES: Array<[string, string, 'block' | 'warn']> = [
     ['rm-rf-root', '/usr/bin/rm -rf /', 'block'],
     ['rm-rf-home', '/bin/rm -rf ~/', 'block'],
@@ -1686,8 +1697,6 @@ describe('validate-bash-command.js — worktree-removal guard path-qualified git
     ['chmod-777-root', '/bin/chmod -R 777 /', 'block'],
     ['git-push-force', '/usr/bin/git push --force', 'warn'],
     ['git-push-force-refspec', '/usr/bin/git push origin +main', 'warn'],
-    ['git-reset-hard', '/usr/bin/git reset --hard', 'warn'],
-    ['git-clean-force', '/usr/bin/git clean -fd', 'warn'],
     ['npm-publish', '/usr/local/bin/npm publish', 'warn'],
     ['docker-prune', '/usr/bin/docker system prune', 'warn'],
   ];
@@ -1705,6 +1714,31 @@ describe('validate-bash-command.js — worktree-removal guard path-qualified git
         const events = readHookEvents(repo);
         expect(events).toHaveLength(1);
         expect(events[0]).toMatchObject({ tier, pattern_id: patternId });
+      });
+    },
+  );
+
+  // Relocated from PATH_QUALIFIED_PATTERN_CASES above (ADR-043 / #897, owner ruling): same
+  // assertion (tier `warn`, exit 0, path-qualified executable spelling still matches), same two
+  // commands, run in a linked worktree instead of a bare standalone repo so the new main-clone-
+  // mutation guard's identity check does not itself fire first.
+  const PATH_QUALIFIED_GIT_MUTATION_OVERLAP_CASES: Array<[string, string]> = [
+    ['git-reset-hard', '/usr/bin/git reset --hard'],
+    ['git-clean-force', '/usr/bin/git clean -fd'],
+  ];
+
+  test.each(PATH_QUALIFIED_GIT_MUTATION_OVERLAP_CASES)(
+    'pattern %s still fires on its path-qualified form in a linked worktree: `%s`',
+    async (patternId, command) => {
+      await withLinkedWorktree('blackhole-hook-774-worktree-', async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
+
+        expect(result.exitCode).toBe(0);
+        expect(permissionDecision(result.stdout)).toBe('allow');
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ tier: 'warn', pattern_id: patternId });
       });
     },
   );
@@ -3302,6 +3336,225 @@ describe('validate-bash-command.js — recordEvent never escapes failClosed, eve
       expect(permissionDecision(stdout)).toBe('deny');
       expect(stderr).toMatch(/hook input/i);
       expect(stderr).toMatch(/anomalous git failure/i);
+    });
+  });
+});
+
+// ADR-043 / issue #897: `bash-write-target-guard.js` has zero `git` vocabulary, so a
+// working-tree-mutating `git` command reaches the filesystem unexamined when its effective
+// repository is the main clone (F-00034: a reviewer ran `git checkout <PR-branch> -- .` in the
+// main clone and staged ~60 files over the user's uncommitted state). `git-main-clone-guard.js`
+// closes this by extending `findRemovalInvocations`'s existing clause walk with a second
+// subcommand match (`kind: 'git-mutation'`), then grading severity by recoverability: `clean`,
+// `checkout -- <path>`/`restore`, `reset --hard`/`--merge`, `apply`/`am`, and a forced
+// `checkout`/`switch` are never or only partially recoverable and block; `stash` is recoverable
+// via `refs/stash` and only warns. Identity is `worktreeRoot(dir) === mainCloneRoot(dir)` — the
+// same equality this tree already uses elsewhere to distinguish a primary checkout from a linked
+// worktree — never `BLACKHOLE_ASSIGNED_WORKTREE` (unset under Pattern C, per the design note's
+// Assumption A3). Every case below drives the real hook via `runPreToolUseHook` against a real
+// `withLinkedWorktree` fixture (a real main clone plus a real registered linked worktree sharing
+// one `.git`), per `V-UNFALSIFIABLE-01`.
+describe('validate-bash-command.js — main-clone git working-tree-mutation guard (#897, ADR-043)', () => {
+  test('F1: `git checkout throwaway -- .` in the main clone is denied — F-00034\'s exact shape', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('git checkout throwaway -- .'), mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block', pattern_id: 'main-clone-checkout-path' });
+    });
+  });
+
+  test('F2: the identical `git checkout throwaway -- .` in a linked worktree is allowed (R2)', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('git checkout throwaway -- .'), worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('F3: `git clean -fd` in the main clone is denied — the never-recoverable case', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('git clean -fd'), mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block', pattern_id: 'main-clone-clean' });
+    });
+  });
+
+  test('F4: `git reset --hard HEAD~1` in a linked worktree allows at block tier; the existing `git-reset-hard` warn still fires', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('git reset --hard HEAD~1'), worktree);
+
+      // `refactor-strict`'s mandated per-step `git reset --hard` must stay executable in a
+      // worktree — this new guard must not block it there. The existing static `git-reset-hard`
+      // warnPattern (unrelated to this guard) still fires, so the exit code is 0 and one warn
+      // event is recorded, not zero events.
+      expect(result.exitCode).toBe(0);
+      expect(permissionDecision(result.stdout)).toBe('allow');
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ tier: 'warn', pattern_id: 'git-reset-hard' });
+    });
+  });
+
+  test('F5: `git -C <worktree-abs> reset --hard` run from the main clone allows — `-C` retargets to the worktree', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git -C ${worktree} reset --hard`), mainRepo);
+
+      expect(result.exitCode).toBe(0);
+      const events = readHookEvents(mainRepo);
+      // The existing static `git-reset-hard` warnPattern is not `-C`-aware and still fires on the
+      // command string alone — this guard's own contribution is that it does NOT also deny.
+      expect(events.every((e) => e.pattern_id !== 'main-clone-reset-destructive')).toBe(true);
+    });
+  });
+
+  test('F6: `git -C <mainRepo-abs> clean -fd` run from the worktree denies — `-C` retargets into the main clone', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git -C ${mainRepo} clean -fd`), worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block', pattern_id: 'main-clone-clean' });
+    });
+  });
+
+  test('F7: a PR-comment string quoting `git checkout -- .` is allowed — negative control for UNCERTAIN-position over-tightening', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo) => {
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload('gh pr comment 1 --body "run git checkout -- . to reset"'),
+        mainRepo,
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('F8: an echoed/heredoc `git clean -fd` string is allowed — print-only-sink / heredoc masking negative control', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo) => {
+      const echoResult = await runPreToolUseHook(SCRIPT, bashPayload('echo "git clean -fd"'), mainRepo);
+      expect(echoResult.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+
+      const heredocResult = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload('cat <<EOF\ngit clean -fd\nEOF'),
+        mainRepo,
+      );
+      expect(heredocResult.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('F9a: `git clean -fd` in a repo with a corrupt GIT_DIR warns (not denies) — the identity wrap actually runs', async () => {
+    await withTempGitRepo('blackhole-hook-897-corrupt-', async (repo) => {
+      fs.rmSync(path.join(repo, '.git', 'HEAD'));
+      // `recordEvent` itself resolves its sink via `mainCloneRoot(cwd)` (#889) — the same
+      // corrupted repo makes THAT call anomalous too, so without a `CLAUDE_PROJECT_DIR` fallback
+      // the durable record has nowhere to land (see the #889 describe block above). Threading one
+      // through, exactly like that block's own "fallback sink" cases, is what lets this test
+      // observe the record at all rather than proving only the decision, not the durable trace.
+      const sinkDir = makeTempDir('blackhole-hook-897-corrupt-sink-');
+      try {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload('git clean -fd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          sinkDir,
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(permissionDecision(result.stdout)).toBe('allow');
+        const events = readHookEvents(sinkDir);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ decision: 'allow', tier: 'warn', pattern_id: 'main-clone-target-unresolvable' });
+      } finally {
+        fs.rmSync(sinkDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test('F9b: `git log --oneline` in the same corrupt-GIT_DIR repo is allowed with zero events — non-matching subcommand never reaches the identity read', async () => {
+    await withTempGitRepo('blackhole-hook-897-corrupt-', async (repo) => {
+      fs.rmSync(path.join(repo, '.git', 'HEAD'));
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('git log --oneline'), repo);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(repo)).toEqual([]);
+    });
+  });
+
+  test('F10: `git stash push -m x` in the main clone warns — recoverability grading is real, not uniform', async () => {
+    await withLinkedWorktree('blackhole-hook-897-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('git stash push -m x'), mainRepo);
+
+      expect(result.exitCode).toBe(0);
+      expect(permissionDecision(result.stdout)).toBe('allow');
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ decision: 'allow', tier: 'warn', pattern_id: 'main-clone-stash' });
+    });
+  });
+
+  // The orchestrator's own main-clone git vocabulary (design note § "The orchestrator exception
+  // set is empty" — four recorded `git grep` sweeps found none of these commands anywhere in
+  // src/, scripts/, templates/, or documentation/runbooks/ outside a worktree-scoped context) —
+  // none of it is in the recoverability table, so all of it must stay silently allowed in the
+  // main clone.
+  const ORCHESTRATOR_VOCABULARY = [
+    'git fetch',
+    'git worktree prune',
+    'git worktree list',
+    'git show HEAD',
+    'git merge-base HEAD HEAD',
+    'git rev-parse HEAD',
+    'git log --oneline -1',
+    'git grep -n foo',
+    'git clone --shared . /tmp/blackhole-897-clone-target',
+    'git diff',
+    'git ls-remote --heads origin',
+  ];
+
+  test.each(ORCHESTRATOR_VOCABULARY)(
+    'orchestrator vocabulary stays allowed in the main clone: `%s`',
+    async (command) => {
+      await withLinkedWorktree('blackhole-hook-897-vocab-', async (mainRepo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    },
+  );
+
+  // `git worktree remove` is the 11th orchestrator-vocabulary command, exercised separately
+  // because it is already governed by the pre-existing #532 removal-safety checks (dirty tree,
+  // unpushed history) — those checks perform their own real subprocess calls against the named
+  // worktree, so this needs a worktree that is genuinely safe to remove (pushed, clean), not the
+  // bare `withLinkedWorktree` fixture the other ten commands use as inert strings.
+  test('orchestrator vocabulary stays allowed in the main clone: `git worktree remove` on a pushed, clean worktree', async () => {
+    await withRemoteTrackedWorktree('blackhole-hook-897-vocab-', 'blackhole/issue-897-vocab', async (mainRepo, worktree, push) => {
+      push();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
     });
   });
 });

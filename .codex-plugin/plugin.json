@@ -1,6 +1,6 @@
 {
   "name": "blackhole",
-  "version": "0.21.9",
+  "version": "0.21.10",
   "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
   "author": {
     "name": "Corentin Lumineau",

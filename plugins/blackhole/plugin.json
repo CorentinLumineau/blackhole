@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "blackhole",
   "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
-  "version": "0.21.9",
+  "version": "0.21.10",
   "author": {
     "name": "blackhole contributors"
   },
