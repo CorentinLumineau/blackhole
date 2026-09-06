@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Audit-module seam — generic `{{INCLUDE:<dir>/*}}` primitive expanded in `processFile` before platform conditionals, one compiled file per agent on all 6 agent trees, module dirs declared build-input-only in `BUILD_INPUT_ONLY_DIRS` and two-sidedly checked absent from all 9 reference trees (`V-INCLUDE-01`), append-only module numbering, no mode-variant agent files, footer marker extended to enumerate all sources (`#720`'s byte-equivalence AC relaxed accordingly); many-authored→one-generated recorded as a new provenance shape adopted deliberately; owner ruling overrides a non-dominant `design-aggregate.ts` margin verdict (7.7%/27.1%/17.3% vs 30% threshold) per rubric-bias and build-vs-runtime-cost reasoning; runtime `hunt/`-style loading and per-target assembly rejected with blind-critic evidence (extends ADR-007)"
 status: accepted
 created: 2026-09-02
 last_updated: 2026-09-02

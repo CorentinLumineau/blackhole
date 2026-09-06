@@ -1,7 +1,11 @@
 ---
 type: adr
+summary: "Router-agent adaptive phase routing — single-pass flag contract with re-route checkpoints, flag-derived execution chain (amends ADR-001)"
 tracking_initiative: blackhole-adaptive-routing
 status: accepted
+review_trigger: "on protocol change"
+created: 2026-07-08
+last_updated: 2026-08-07
 scope: orchestration
 supersedes: partial (amends ADR-001, does not replace it)
 ---

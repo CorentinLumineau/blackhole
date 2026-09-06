@@ -1,6 +1,8 @@
 ---
 type: adr
+summary: "Extend #620's assigned-worktree write containment from `Write`/`Edit` to `Bash` file-write commands (new `bash-write-target-guard.js`, `bash-outside-assigned-worktree` BLOCK / `bash-write-target-unresolvable` WARN) — closes the confirmed mechanism gap behind issue #804's near-miss; unanimous 3/3 Design Track scorer pick, owner-delegated override of a pure dominance-margin block (no disagreement, no breaking consumer); plus a non-bundled Phase 0 dirty-shared-checkout WARN"
 status: accepted
+review_trigger: "on protocol change"
 created: 2026-09-03
 last_updated: 2026-09-03
 ---

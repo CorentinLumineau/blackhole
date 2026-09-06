@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Routine-resume campaign config confirmation gate — fourth trigger surface on the ADR-005/ADR-006 launch gate: print config + Proceed/Reconfigure on `run`-mode resume, documented at all four entry paths and enforced by `V-CONFGATE-01` (amends ADR-005, ADR-006)"
 status: accepted
 created: 2026-07-26
 last_updated: 2026-07-26

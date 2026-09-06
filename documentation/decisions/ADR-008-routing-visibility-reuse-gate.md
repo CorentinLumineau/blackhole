@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Dashboard routing/wave visibility + shift-left implementer Reuse Check gate + router re-triage rollout (builds on ADR-004)"
 status: accepted
 created: 2026-07-13
 last_updated: 2026-07-20

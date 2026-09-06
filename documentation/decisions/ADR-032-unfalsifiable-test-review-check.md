@@ -1,5 +1,10 @@
 ---
+type: adr
+summary: "Add `V-TEST-11` (structurally-unfalsifiable test detection) to reviewer.md's Test Integrity Audit — the one mechanically-detectable leg of issue #795's 4-leg proposal; owner-delegated override of a Design Track block where both blind critics independently rejected the primary's broader unconditional-verification mandate as recreating the same self-report-trust failure it exists to close"
 status: accepted
+review_trigger: "on protocol change"
+created: 2026-09-04
+last_updated: 2026-09-04
 ---
 
 # ADR-032: Add V-TEST-11 (structurally-unfalsifiable test detection) to the review checklist

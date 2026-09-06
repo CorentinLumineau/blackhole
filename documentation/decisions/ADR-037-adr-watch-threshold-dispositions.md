@@ -1,5 +1,10 @@
 ---
+type: adr
+summary: "Dispositions for the 3 ADR_WATCH_ITEMS trips R-19/V-WATCH-01 flagged: item 1 accept-with-expiry (worker-schemas.md file_loc, conditioned on item 2's split), item 2 split now (Implementer section, mirrors #473's hook-schemas.md extraction, 4 dependent surfaces enumerated), item 3 raise threshold + correct drifted justification note (phase-implement.md); item 1's disagreement (2-of-3 majority for Accept) resolved on its own terms, items 2-3 unanimous dominance-only overrides; orchestrator override under autonomy.mode:full"
 status: accepted
+review_trigger: "on ADR acceptance"
+created: 2026-09-04
+last_updated: 2026-09-04
 ---
 
 # ADR-037: Dispose of the three `ADR_WATCH_ITEMS` trips flagged by `V-WATCH-01` (R-19)

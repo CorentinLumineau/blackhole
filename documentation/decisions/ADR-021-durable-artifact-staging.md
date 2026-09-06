@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Durable artifact staging — repairs ADR-010 D5's unexecutable delivery mechanism (Phase 2 has no worktree/branch/PR, so the planner's `ready` branch had no PR into which it could deliver the ADR directly); thinking-time agents write to `.blackhole/staged/<issue>/` and the implementer copies-and-commits inside the PR via an extended Stop condition (no 6th delegation field); artifact set adds `plan` and `review` rows, **unconditional** — D3 amended same-day by owner ruling R-001 (mercure integration is a floor, not a target), superseding the original track-scaled rule; doc-tree volume reassigned to D6 health machinery, D6 sequenced as a hard prerequisite for D3; `V-AUTO-02` WARN→BLOCK scoped to declared-but-unpromoted; V-code collisions split by measured cost — renumber `V-DOC-02/04` (6 sites) and `V-DOC-05` (4 sites), keep `V-PARETO-02` (40 sites, 9 SSOT headings) with the divergence documented; doc-governance ownership split mechanical (`doc-health.check.ts`) vs judgment (`reviewer.md`), fleet stays at 8 agents"
 status: accepted
 review_trigger: "on mercure release"
 created: 2026-08-06

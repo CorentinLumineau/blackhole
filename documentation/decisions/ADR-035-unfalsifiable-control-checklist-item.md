@@ -1,5 +1,10 @@
 ---
+type: adr
+summary: "Six controls this session reported passing while structurally unable to fail (never wired / wired to wrong artifact / wired correctly but structurally blind); adds `reviewer.md` §31 + `V-UNFALSIFIABLE-01` checklist item firing only when a diff introduces a new check/gate/control, mirroring ADR-032/V-TEST-11's precedent; alternatives A (narrative-only, self-refuting per both critics) and C (broad retrospective audit, disproportionate per Pareto) rejected with unanimous 3/3 scorer evidence (design-aggregate.ts blocked on sub-30% margin only; orchestrator override under autonomy.mode:full)"
 status: accepted
+review_trigger: "on ADR acceptance"
+created: 2026-09-04
+last_updated: 2026-09-04
 ---
 
 # ADR-035: Add a `reviewer.md` checklist item requiring new controls to demonstrate they can fail

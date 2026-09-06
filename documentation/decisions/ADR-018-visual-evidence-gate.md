@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Visual evidence gate for UI-flagged PRs — implementer captures rendered screenshots at configured `display_targets` widths via the repo's own Playwright + dev stack, declares them (or an explicit capture-failure) as additive `visual_evidence[]`; reviewer §22 judges `captured` entries against `DESIGN.md` + the #417 rulings ledger, `V-VIS-01` (BLOCK, undeclared skip) / `V-VIS-02` (WARN, declared unavailability); config-gated by `display_targets`; owner-approved Option A, design-track script verdict superseded by explicit human approval (ADR-012 E2.3)"
 status: accepted
 created: 2026-07-29
 last_updated: 2026-07-29

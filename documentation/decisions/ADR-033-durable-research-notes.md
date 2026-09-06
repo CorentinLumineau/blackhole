@@ -1,5 +1,10 @@
 ---
+type: adr
+summary: "Durable `research` investigator sub-mode output — reuses `documentation/investigations/` (`research-{concern-slug}.md`), removes `staging-schema.check.ts`'s `V-STAGE-04` forbidding check; alternatives B (separate `documentation/research/` folder) and C (status quo, non-durable) rejected with unanimous 3/3 scorer evidence (design-aggregate.ts blocked on sub-30% margin + anticipated breaking-consumer; orchestrator override under autonomy.mode:full)"
 status: accepted
+review_trigger: "on ADR acceptance"
+created: 2026-09-04
+last_updated: 2026-09-04
 ---
 
 # ADR-033: Give the `research` investigator sub-mode a durable home in `documentation/investigations/`

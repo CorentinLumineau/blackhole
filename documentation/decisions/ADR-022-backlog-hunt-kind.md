@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Backlog kaizen hunt kind — open-issue duplicate/stale-referent/low-info triage closing mercure PM-089 (issue #452)"
 status: accepted
 created: 2026-08-12
 last_updated: 2026-08-12
