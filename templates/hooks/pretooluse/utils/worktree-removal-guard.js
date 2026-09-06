@@ -143,6 +143,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { computeMaskedSpans } = require('./bash-context');
+const { isRedirectAmpersand } = require('./shell-lexer');
 
 /** Global git options that consume a separate following token as their value (`-C <path>`,
  * `-c name=value`, `--git-dir <path>`, …) — distinct from the attached `--name=value` form, which
@@ -201,6 +202,23 @@ const skipGitGlobalOptions = (tokens, start) => {
  * directly (this predicate's original #532 role) cannot cover every executable spelling (#788). */
 const isCommandWordStart = (command, index) => index === 0 || /[\s;&|(){}\n]/.test(command[index - 1]);
 
+/** True when the `{` at `index` opens a whitespace-bounded brace group (`{ cmd1; cmd2; }`) rather
+ * than a `${VAR}` parameter expansion or the start of a `file{a,b}` brace expansion: preceded by
+ * a real word boundary (`isCommandWordStart`) and followed by whitespace, both of which real bash
+ * syntax already requires of a brace-group's own opening token. File-private: this predicate has
+ * a single consumer file (`findClauseStartIndices` below), so it is not exported from
+ * `shell-lexer.js` (V-YAGNI-03) even though it is one of three near-identical brace-boundary
+ * checks in this file — see `isBraceGroupClose` for the other two. */
+const isBraceGroupOpen = (command, index) =>
+  command[index] === '{' && isCommandWordStart(command, index) && /\s/.test(command[index + 1] ?? '');
+
+/** True when the `}` at `index` closes a brace group — preceded by whitespace, the mirror
+ * requirement real bash syntax imposes on a brace-group's own closing token (`{ cmd; }` needs
+ * that trailing space; `{ cmd;}` is a syntax error) — which excludes it from `${VAR}` and
+ * `{a,b}`, neither of which has whitespace before its own `}`. Shared by `findClauseStartIndices`
+ * and `clauseTailFrom` below, the other two of this file's three brace-boundary copies. */
+const isBraceGroupClose = (text, index) => text[index] === '}' && index > 0 && /\s/.test(text[index - 1]);
+
 /** Every position in `command` that begins a new clause: index 0 (after any leading whitespace),
  * and the first non-whitespace, unmasked position following each unmasked clause separator (`;`,
  * a non-redirect `&`, `|`, `(`, a whitespace-bounded `{`/`}` brace-group reserved word (F-00064,
@@ -235,6 +253,18 @@ const isCommandWordStart = (command, index) => index === 0 || /[\s;&|(){}\n]/.te
  * including the very first clause (nothing precedes it). `findRemovalInvocations` is the only
  * reader of this field, and only for a `cd` clause — see its docstring for why `||` alone needs
  * this and `&&`/`;` do not.
+ *
+ * QUOTE POLICY: this walk is quote-UNAWARE by requirement, not by omission — a separator
+ * character inside a quoted string is not distinguished from a real one (documented above and
+ * repeated on `clauseTailFrom` below). This is load-bearing for this guard's own threat model:
+ * `bash-context.js` deliberately does not mask `eval`'s quoted argument, so the `&&` inside
+ * `eval "cd <parent> && rm -rf <basename>"` stays a visible character, and only a quote-unaware
+ * splitter finds the `rm -rf` clause it hides — a quote-aware walk would skip that whole quoted
+ * span and never see it, reopening the F-00065 bypass. Pinned by
+ * `scripts/hooks-validate-bash.test.ts:2367`'s `deny: eval "cd <parent> && rm -rf <basename>" …
+ * (F-00065)` case. Do not make this quote-aware to match `bash-write-target-guard.js`'s
+ * `splitClauses` — that guard needs the opposite policy for its own, equally load-bearing reason
+ * (see that function's own `QUOTE POLICY:` note).
  */
 const findClauseStartIndices = (command, masked) => {
   const n = command.length;
@@ -258,11 +288,11 @@ const findClauseStartIndices = (command, masked) => {
       i = skipToStart(i + 1, false);
       continue;
     }
-    if (ch === '{' && isCommandWordStart(command, i) && /\s/.test(command[i + 1] ?? '')) {
+    if (isBraceGroupOpen(command, i)) {
       i = skipToStart(i + 1, false);
       continue;
     }
-    if (ch === '}' && i > 0 && /\s/.test(command[i - 1])) {
+    if (isBraceGroupClose(command, i)) {
       i = skipToStart(i + 1, false);
       continue;
     }
@@ -272,9 +302,7 @@ const findClauseStartIndices = (command, masked) => {
       continue;
     }
     if (ch === '&') {
-      const prev = i > 0 ? command[i - 1] : '';
-      const next = i + 1 < n ? command[i + 1] : '';
-      if (prev === '>' || next === '>') {
+      if (isRedirectAmpersand(command, i)) {
         i += 1; // 2>&1, >&, &>file, … — a redirect, not a clause separator
         continue;
       }
@@ -408,7 +436,7 @@ const clauseTailFrom = (command, index) => {
       end = i;
       break;
     }
-    if (ch === '}' && i > 0 && /\s/.test(rest[i - 1])) {
+    if (isBraceGroupClose(rest, i)) {
       // A brace group's closing `}` (F-00064), the `}` counterpart to `)` above: guarded on a
       // preceding whitespace character — the same structural requirement real bash syntax already
       // imposes on this reserved word (`findClauseStartIndices`'s docstring) — so it never
@@ -418,10 +446,7 @@ const clauseTailFrom = (command, index) => {
       break;
     }
     if (ch === '&') {
-      const prev = i > 0 ? rest[i - 1] : '';
-      const next = i + 1 < rest.length ? rest[i + 1] : '';
-      if (prev === '>') continue; // 2>&1, >&, >>&
-      if (next === '>') continue; // &>file, &>>file
+      if (isRedirectAmpersand(rest, i)) continue; // 2>&1, >&, &>file, &>>file, …
       end = i; // &&, bare background &, or other non-redirect &
       break;
     }

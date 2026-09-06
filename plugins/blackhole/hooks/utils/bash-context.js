@@ -45,6 +45,8 @@
  * masking rule, different termination condition).
  */
 
+const { skipQuotedSpan } = require('./shell-lexer');
+
 /** True when `word` is exactly `echo`/`printf`, or a path ending in `/echo` or `/printf`. */
 const isPrintOnlySink = (word) => /(^|\/)(echo|printf)$/.test(word);
 
@@ -88,13 +90,7 @@ const consumeBalanced = (command, openIdx, openChar, closeChar) => {
       continue;
     }
     if (ch === "'" || ch === '"') {
-      const quote = ch;
-      j++;
-      while (j < n && command[j] !== quote) {
-        if (quote === '"' && command[j] === '\\' && j + 1 < n) j += 2;
-        else j++;
-      }
-      j = j < n ? j + 1 : j;
+      j = skipQuotedSpan(command, j, n);
       continue;
     }
     if (ch === openChar) depth++;
@@ -260,13 +256,7 @@ const collectHeredocOperatorsOnLine = (command, startIdx) => {
       continue;
     }
     if (ch === "'" || ch === '"') {
-      const quote = ch;
-      let p = k + 1;
-      while (p < scanEnd && command[p] !== quote) {
-        if (quote === '"' && command[p] === '\\' && p + 1 < scanEnd) p += 2;
-        else p++;
-      }
-      k = p < scanEnd ? p + 1 : p;
+      k = skipQuotedSpan(command, k, scanEnd);
       continue;
     }
     k++;
@@ -394,16 +384,7 @@ const computeMaskedSpans = (command) => {
         continue;
       }
 
-      let j = i + 1;
-      if (quote === '"') {
-        while (j < n && command[j] !== '"') {
-          if (command[j] === '\\' && j + 1 < n) j += 2;
-          else j++;
-        }
-      } else {
-        while (j < n && command[j] !== "'") j++;
-      }
-      const end = j < n ? j + 1 : j;
+      const end = skipQuotedSpan(command, start, n);
       if (isPrintOnlySink(precedingWord)) {
         // Single-quoted: bash performs no substitution of any kind inside single quotes (not even
         // backslash-escaping), so the whole span is always inert to a print-only sink — unlike the
