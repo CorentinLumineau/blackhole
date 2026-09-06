@@ -86,7 +86,9 @@ export function validateDecisionRecord(record: unknown, path: string): string[] 
   requireField(errors, record, 'decision', isNonEmptyString, 'non-empty string');
   requireField(errors, record, 'why', isNonEmptyString, 'non-empty string');
 
-  if (!isNumber(record.pr) && !isNumber(record.issue)) {
+  const hasPr = isNumber(record.pr);
+  const hasIssue = isNumber(record.issue);
+  if (hasPr === hasIssue) {
     errors.push('pr/issue: exactly one of pr or issue is required');
   }
 

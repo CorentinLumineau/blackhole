@@ -374,6 +374,11 @@ describe('validateWorker implementer decision_records[] (ADR-012 E4)', () => {
       'decision_records[0]',
     ],
     [
+      'both pr and issue present',
+      { pr: 1, issue: 2, kind: 'root-cause', touch_paths: ['a.ts'], decision: 'd', why: 'w' },
+      'decision_records[0]',
+    ],
+    [
       'touch_paths not a string array',
       { pr: 1, kind: 'root-cause', touch_paths: 'src/x.ts', decision: 'd', why: 'w' },
       'touch_paths',

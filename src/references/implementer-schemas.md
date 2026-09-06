@@ -132,8 +132,8 @@ existing PR-body text for that gate, never instead of it. Row shape:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `pr` | number | one of `pr` / `issue` required | PR number the decision was made in — nested-only spelling; the top-level field is `pr_number` (§ `pr_number` above) |
-| `issue` | number | one of `pr` / `issue` required | issue number, when no PR exists yet |
+| `pr` | number | exactly one of `pr` / `issue` required | PR number the decision was made in — nested-only spelling; the top-level field is `pr_number` (§ `pr_number` above) |
+| `issue` | number | exactly one of `pr` / `issue` required | issue number, when no PR exists yet |
 | `kind` | string (enum) | yes | `root-cause` \| `approach` \| `refactor` \| `improvement` \| `reuse` |
 | `touch_paths` | string[] | yes | files the decision governed |
 | `decision` | string | yes | one line |
