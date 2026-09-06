@@ -8,11 +8,20 @@ import { readJsonFile } from '../lib/fs.ts';
 // Issue #869 (plan Design Decisions D1) — mechanizes V-code severity parity against mercure by
 // diffing blackhole's own src/references/blackhole-vcodes.md table against a vendored snapshot
 // of mercure's severity tables (documentation/audits/mercure-vcode-snapshot.json, produced by
-// scripts/lib/mercure-vcode-snapshot.ts). Advisory only (WARN, both codes) — the snapshot can
-// only assert "as of the last sync"; see `.blackhole/plans/issue-869-analysis.md` for why a live
-// cross-repo parse cannot be a `bun run verify` gate (CorentinLumineau/mercure is a private repo
-// with no cross-repo CI credential, and GitHub Actions would not forward one to a fork-triggered
-// pull_request run regardless).
+// scripts/lib/mercure-vcode-snapshot.ts).
+//
+// Advisory only, both codes, `ok: true` HARDCODED — the negative result never fires, findings
+// surface only via `detail`. This is load-bearing, not cosmetic: `scripts/verify.ts` has no
+// severity tiering (any non-passing result from any check fails the whole required `bun run
+// verify` CI job), and this repo's CI structurally cannot reach mercure to self-correct
+// (`.blackhole/plans/issue-869-analysis.md`:
+// CorentinLumineau/mercure is a private repo with no cross-repo CI credential, and GitHub Actions
+// does not forward one to a fork-triggered pull_request run regardless). A check whose second
+// data source can only be refreshed by a maintainer running `prj-mercure-sync` by hand must never
+// be able to block CI on staleness or a mismatch it cannot itself verify or fix — see the
+// "advisory contract" describe block in scripts/verify.vcode-parity.test.ts, and the same
+// established idiom in adr-watch.check.ts (V-WATCH-01) / deferred-reconciliation.check.ts
+// (V-DEFER-01), both of which hardcode `ok: true` for exactly this reason.
 //
 // File-absent SKIP is binding, same precedent as parity-matrix.check.ts's checkParityMatrix /
 // V-PMATRIX-01 (`if (!fs.existsSync(...)) return { ok: true }`): the snapshot only exists once a
@@ -72,25 +81,33 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 export const findSnapshotStaleness = (syncedAt: string, thresholdDays: number, now: Date): boolean =>
   now.getTime() - new Date(syncedAt).getTime() > thresholdDays * MS_PER_DAY;
 
-const checkVcodeParitySeverity = (mercureMap: Map<string, string>, blackholeSevMap: Map<string, string>): CheckResult => {
+// True advisory: `ok: true` always — same established idiom as adr-watch.check.ts's V-WATCH-01
+// and deferred-reconciliation.check.ts's V-DEFER-01. `scripts/verify.ts` has no severity
+// tiering (any ok:false fails the whole required `bun run verify` CI job), and this repo's own
+// CI structurally cannot reach mercure to self-correct a stale snapshot (private repo, no
+// cross-repo secret, no secrets on fork PRs — `.blackhole/plans/issue-869-analysis.md`). A
+// check whose second data source can only be refreshed by hand must never be able to block CI
+// on data it cannot itself verify or refresh — a mismatch or a stale snapshot is a maintenance
+// signal for `prj-mercure-sync`, not a correctness failure this diff can fix.
+export const checkVcodeParitySeverity = (mercureMap: Map<string, string>, blackholeSevMap: Map<string, string>): CheckResult => {
   const mismatches = findVcodeParityMismatches(mercureMap, blackholeSevMap, KNOWN_VCODE_PARITY_DIVERGENCES);
   if (mismatches.length === 0) return { id: 'V-MPARITY-01', ok: true };
   return {
     id: 'V-MPARITY-01',
-    ok: false,
+    ok: true,
     detail: mismatches
       .map((m) => `${m.code}: mercure ${m.mercureSeverity} (maps to ${m.mappedAction}) vs blackhole ${m.blackholeAction}`)
       .join('; '),
   };
 };
 
-const checkVcodeParityStaleness = (syncedAt: string): CheckResult => {
-  if (!findSnapshotStaleness(syncedAt, MERCURE_VCODE_SNAPSHOT_STALE_DAYS, new Date())) {
+export const checkVcodeParityStaleness = (syncedAt: string, now: Date = new Date()): CheckResult => {
+  if (!findSnapshotStaleness(syncedAt, MERCURE_VCODE_SNAPSHOT_STALE_DAYS, now)) {
     return { id: 'V-MPARITY-02', ok: true };
   }
   return {
     id: 'V-MPARITY-02',
-    ok: false,
+    ok: true,
     detail: `documentation/audits/mercure-vcode-snapshot.json synced_at (${syncedAt}) is older than ${MERCURE_VCODE_SNAPSHOT_STALE_DAYS} days — re-run scripts/lib/mercure-vcode-snapshot.ts`,
   };
 };

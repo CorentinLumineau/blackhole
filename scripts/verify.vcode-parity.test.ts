@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import {
   KNOWN_VCODE_PARITY_DIVERGENCES,
+  checkVcodeParitySeverity,
+  checkVcodeParityStaleness,
   findSnapshotStaleness,
   findVcodeParityMismatches,
   mapMercureSeverityToBlackholeAction,
@@ -78,6 +80,33 @@ describe('KNOWN_VCODE_PARITY_DIVERGENCES', () => {
   test('is seeded with exactly V-ADA-05 and V-DOC-GOV-01 (plan Design Decisions D1 — no other code needs suppression)', () => {
     expect(KNOWN_VCODE_PARITY_DIVERGENCES.map((d) => d.code).sort()).toEqual(['V-ADA-05', 'V-DOC-GOV-01']);
     for (const d of KNOWN_VCODE_PARITY_DIVERGENCES) expect(d.reason).toBeTruthy();
+  });
+});
+
+describe('advisory contract — V-MPARITY-01/02 must never return ok:false (team-lead review finding)', () => {
+  // scripts/verify.ts's exitCodeFromVerifyResults has no severity tiering: any ok:false from any
+  // check fails the whole `bun run verify`, which is a required CI job on every push and PR
+  // (verify.yml). This repo's own CI cannot reach mercure at all (private repo, no cross-repo
+  // secret, no secrets on fork PRs — .blackhole/plans/issue-869-analysis.md), so a check whose
+  // second data source is a maintainer-refreshed vendored snapshot must not be able to block CI
+  // on staleness it structurally cannot self-correct — a stale snapshot is a maintenance signal,
+  // not a correctness failure. Same established true-advisory idiom as adr-watch.check.ts's
+  // V-WATCH-01 and deferred-reconciliation.check.ts's V-DEFER-01 (both hardcode ok:true always).
+
+  test('checkVcodeParitySeverity returns ok:true even with a real, non-allowlisted mismatch present — detail still reports it', () => {
+    const mercureMap = new Map([['V-FAKE-01', 'HIGH']]);
+    const blackholeSevMap = new Map([['V-FAKE-01', 'WARN']]);
+    const result = checkVcodeParitySeverity(mercureMap, blackholeSevMap);
+    expect(result.ok).toBe(true);
+    expect(result.detail).toContain('V-FAKE-01');
+  });
+
+  test('checkVcodeParityStaleness returns ok:true even when the snapshot is stale — detail still reports it', () => {
+    const now = new Date('2026-09-07T00:00:00.000Z');
+    const staleSyncedAt = new Date('2026-06-01T00:00:00.000Z').toISOString(); // 98 days before now
+    const result = checkVcodeParityStaleness(staleSyncedAt, now);
+    expect(result.ok).toBe(true);
+    expect(result.detail).toContain('synced_at');
   });
 });
 
