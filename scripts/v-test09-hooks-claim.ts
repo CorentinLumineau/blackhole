@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import * as fs from 'fs';
 import { checkHooksOnlyClaimAdvisory } from './checks/v-test09-hooks-claim.check.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 // issue #787 — CLI entrypoint wrapping v-test09-hooks-claim.check.ts's checkHooksOnlyClaimAdvisory
 // pure detector against real changed-file/claim-text input on disk (mirrors plan-quality-gate.ts's
@@ -14,16 +15,11 @@ function usage(): never {
 }
 
 function parseCliArgs(argv: string[]): { filesFile: string | null; claimFile: string | null } {
-  let filesFile: string | null = null;
-  let claimFile: string | null = null;
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--files-file' && argv[i + 1]) {
-      filesFile = argv[++i];
-    } else if (argv[i] === '--claim-file' && argv[i + 1]) {
-      claimFile = argv[++i];
-    }
-  }
-  return { filesFile, claimFile };
+  const flags = parseFlags(argv);
+  return {
+    filesFile: typeof flags['files-file'] === 'string' ? flags['files-file'] : null,
+    claimFile: typeof flags['claim-file'] === 'string' ? flags['claim-file'] : null,
+  };
 }
 
 if (import.meta.main) {

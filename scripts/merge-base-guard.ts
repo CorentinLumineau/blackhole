@@ -5,6 +5,7 @@ import {
   assertPreMergeBase,
   verifyPostMergeLanding,
 } from './lib/merge-gate/merge-base.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 function usage(): never {
   console.error(
@@ -29,13 +30,16 @@ function requireOk(result: { status: number | null }, what: string): void {
   if (result.status !== 0) unavailable(`${what} failed (exit ${result.status ?? 'signal'})`);
 }
 
+// Every flag this file recognizes (--mode/--base-ref/--target-branch/--stacked-into/--pr/
+// --repo-root/--attempts/--interval-ms) expects a string value — none is boolean-only — so a
+// flag that parsed as boolean `true` (no string value, or its would-be value was itself another
+// flag) is dropped here rather than passed downstream; every caller below already treats an
+// absent key as "usage()" via its own `!args[key]` check.
 function parseArgs(argv: string[]): Record<string, string> {
+  const flags = parseFlags(argv.slice(2));
   const args: Record<string, string> = {};
-  for (let i = 2; i < argv.length; i += 2) {
-    const key = argv[i];
-    const value = argv[i + 1];
-    if (!key?.startsWith('--') || value === undefined) usage();
-    args[key.slice(2)] = value;
+  for (const [key, value] of Object.entries(flags)) {
+    if (typeof value === 'string') args[key] = value;
   }
   return args;
 }

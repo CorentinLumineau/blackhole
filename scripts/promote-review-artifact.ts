@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './lib/fs.ts';
 import { renderReviewMarkdown, type LedgerFile } from './lib/promote-review-artifact.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 // Consumer worktrees: run via plugin root, not consumer cwd —
 //   bun run --cwd <plugin-root> scripts/promote-review-artifact.ts --ledger <consumer>/.blackhole/findings-ledger.json ...
@@ -15,22 +16,24 @@ function usage(): never {
 }
 
 function parseArgs(argv: string[]) {
-  const args: Record<string, string> = {};
-  for (let i = 2; i < argv.length; i += 2) {
-    const key = argv[i];
-    const value = argv[i + 1];
-    if (!key?.startsWith('--') || value === undefined) usage();
-    args[key.slice(2)] = value;
-  }
-  if (!args.ledger || !args.issue || !args.title || !args.pr || !args.branch || !args.head) usage();
+  const args = parseFlags(argv.slice(2));
+  if (
+    typeof args.ledger !== 'string' ||
+    typeof args.issue !== 'string' ||
+    typeof args.title !== 'string' ||
+    typeof args.pr !== 'string' ||
+    typeof args.branch !== 'string' ||
+    typeof args.head !== 'string'
+  )
+    usage();
   return {
-    ledgerPath: args.ledger,
+    ledgerPath: args.ledger as string,
     issueNumber: Number(args.issue),
-    issueTitle: args.title,
+    issueTitle: args.title as string,
     prNumber: Number(args.pr),
-    branchName: args.branch,
-    headSha: args.head,
-    outDir: args['out-dir'],
+    branchName: args.branch as string,
+    headSha: args.head as string,
+    outDir: typeof args['out-dir'] === 'string' ? args['out-dir'] : undefined,
   };
 }
 

@@ -3,6 +3,7 @@ import { parseMdFrontmatter, parseFrontmatterFields } from './lib/build/content.
 import { findTableBlock } from './lib/check-common.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { root } from './checks/check-utils.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 // Issue #717 (R-12) — replaces the hand-append path documented in `orchestrator.md` § Decision
 // Record Append, which never bumped `last_updated` (frozen at 2026-07-20 across 6+ hand-appended
@@ -141,17 +142,11 @@ function usage(): never {
 }
 
 function parseArgs(argv: string[]): { logPath: string; recordsFilePath: string } {
-  const args: Record<string, string> = {};
-  for (let i = 2; i < argv.length; i += 2) {
-    const key = argv[i];
-    const value = argv[i + 1];
-    if (!key?.startsWith('--') || value === undefined) usage();
-    args[key.slice(2)] = value;
-  }
-  if (!args['records-file']) usage();
+  const args = parseFlags(argv.slice(2));
+  if (typeof args['records-file'] !== 'string') usage();
   return {
-    logPath: args.log ?? `${root}/documentation/reference/decision-log.md`,
-    recordsFilePath: args['records-file'],
+    logPath: typeof args.log === 'string' ? args.log : `${root}/documentation/reference/decision-log.md`,
+    recordsFilePath: args['records-file'] as string,
   };
 }
 

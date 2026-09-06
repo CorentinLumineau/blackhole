@@ -4,6 +4,7 @@ import { root } from './checks/check-utils.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { validateStateWrite } from './lib/state-write-guard.ts';
 import { runGhJson } from './lib/forge-adapter/cli.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 // Issue #809 — one-time migration/triage of `findings-ledger.json`'s existing `deferred`
 // backlog: reconciles every `deferred` row whose `deferred_to_issue` target has closed with no
@@ -162,15 +163,12 @@ export const fetchUntrackedIssue = (n: number): FetchedIssue | null => {
 };
 
 function parseCliArgs(argv: string[]): { dryRun: boolean; ledgerPath: string; queuePath: string } {
-  let dryRun = false;
-  let ledgerPath = path.join(root, '.blackhole', 'findings-ledger.json');
-  let queuePath = path.join(root, '.blackhole', 'queue.json');
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--dry-run') dryRun = true;
-    else if (argv[i] === '--ledger' && argv[i + 1]) ledgerPath = argv[++i];
-    else if (argv[i] === '--queue' && argv[i + 1]) queuePath = argv[++i];
-  }
-  return { dryRun, ledgerPath, queuePath };
+  const flags = parseFlags(argv);
+  return {
+    dryRun: flags['dry-run'] === true,
+    ledgerPath: typeof flags.ledger === 'string' ? flags.ledger : path.join(root, '.blackhole', 'findings-ledger.json'),
+    queuePath: typeof flags.queue === 'string' ? flags.queue : path.join(root, '.blackhole', 'queue.json'),
+  };
 }
 
 function main(): number {

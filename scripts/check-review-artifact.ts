@@ -4,6 +4,7 @@ import * as path from 'path';
 import { readJsonFile } from './lib/fs.ts';
 import { mergeReadinessForReviewPromotion } from './lib/merge-gate/review-artifact.ts';
 import type { LedgerFile } from './lib/promote-review-artifact.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 function usage(): never {
   console.error(
@@ -21,29 +22,23 @@ const REQUIRED_KEYS = ['config', 'issue', 'title', 'ledger', 'pr', 'branch', 'he
 const ABSOLUTE_PATH_KEYS = ['config', 'ledger', 'repo-root', 'diff-file'];
 
 function parseArgs(argv: string[]) {
-  const args: Record<string, string> = {};
-  for (let i = 2; i < argv.length; i += 2) {
-    const key = argv[i];
-    const value = argv[i + 1];
-    if (!key?.startsWith('--') || value === undefined) usage();
-    args[key.slice(2)] = value;
-  }
+  const args = parseFlags(argv.slice(2));
   for (const key of REQUIRED_KEYS) {
-    if (!args[key]) usage();
+    if (typeof args[key] !== 'string') usage();
   }
   for (const key of ABSOLUTE_PATH_KEYS) {
-    if (!path.isAbsolute(args[key]!)) usage();
+    if (!path.isAbsolute(args[key] as string)) usage();
   }
   return {
-    configPath: args.config!,
+    configPath: args.config as string,
     issueNumber: Number(args.issue),
-    issueTitle: args.title!,
-    ledgerPath: args.ledger!,
+    issueTitle: args.title as string,
+    ledgerPath: args.ledger as string,
     prNumber: Number(args.pr),
-    branchName: args.branch!,
-    headSha: args.head!,
-    repoRoot: args['repo-root']!,
-    diffFile: args['diff-file']!,
+    branchName: args.branch as string,
+    headSha: args.head as string,
+    repoRoot: args['repo-root'] as string,
+    diffFile: args['diff-file'] as string,
   };
 }
 

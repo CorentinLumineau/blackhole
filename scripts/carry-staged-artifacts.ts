@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { carryManifest, loadManifest } from './lib/carry-staged-artifacts.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 // Issue #715 (R-10) — CLI entrypoint for the ADR-021 D2 carry-step mechanization. Invoked from
 // `implementer.md` § Carry Staged Artifacts before opening the PR; see that section for the
@@ -16,15 +17,13 @@ function usage(): never {
 }
 
 function parseArgs(argv: string[]): { manifestPath: string; repoRoot: string; stagingRoot?: string } {
-  const args: Record<string, string> = {};
-  for (let i = 2; i < argv.length; i += 2) {
-    const key = argv[i];
-    const value = argv[i + 1];
-    if (!key?.startsWith('--') || value === undefined) usage();
-    args[key.slice(2)] = value;
-  }
-  if (!args.manifest || !args['repo-root']) usage();
-  return { manifestPath: args.manifest!, repoRoot: args['repo-root']!, stagingRoot: args['staging-root'] };
+  const flags = parseFlags(argv.slice(2));
+  if (typeof flags.manifest !== 'string' || typeof flags['repo-root'] !== 'string') usage();
+  return {
+    manifestPath: flags.manifest as string,
+    repoRoot: flags['repo-root'] as string,
+    stagingRoot: typeof flags['staging-root'] === 'string' ? flags['staging-root'] : undefined,
+  };
 }
 
 function main(): void {
