@@ -1905,6 +1905,231 @@ describe('validate-bash-command.js — rm-shaped worktree removal (#803)', () =>
     );
   });
 
+  // F-00058 (review round 2 on PR #880): the F-00043 shape above wrapped in a subshell —
+  // `(cd <parent> && rm -rf <basename>)` — an ordinary idiom for running cleanup without
+  // mutating the caller's own cwd, not an adversarial spelling. Before the fix, `clauseTailFrom`
+  // had no notion of `)` as a clause boundary, so the closing paren rode into `rm`'s own last
+  // token as `<basename>)`, which matched no registered worktree and was silently allowed.
+  test('deny: `(cd <worktree parent> && rm -rf <basename>)` is checked against the real target, not `<basename>)` (F-00058)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-subshell-rm',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const parent = path.dirname(worktree);
+        const basename = path.basename(worktree);
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`(cd ${parent} && rm -rf ${basename})`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'rm-worktree-unpushed',
+        });
+      },
+    );
+  });
+
+  // Parity leg of F-00058: the ORIGINAL bug was the two spellings disagreeing (`rm` fail-open,
+  // `git worktree remove` fail-closed) on the identical wrong resolution — assert the same
+  // command shape converges to the same verdict for both spellings, not just that `rm` denies.
+  test('deny: `(cd <worktree parent> && git worktree remove <basename>)` reaches the same verdict as the `rm` spelling (F-00058 parity)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-subshell-git',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const parent = path.dirname(worktree);
+        const basename = path.basename(worktree);
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`(cd ${parent} && git worktree remove ${basename})`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-unpushed',
+        });
+      },
+    );
+  });
+
+  // Over-tightening control for F-00058: an ordinary subshell cleanup targeting a directory that
+  // is not a registered worktree must stay allowed — proving the `)`-boundary fix only closes the
+  // paren-absorption gap and does not attach a new refusal to `(cd <dir> && rm -rf <ordinary>)`
+  // generally.
+  test('allow: `(cd <dir> && rm -rf <ordinary>)` stays allowed — the subshell fix does not over-tighten', async () => {
+    await withTempGitRepo('blackhole-hook-bash-', async (mainRepo) => {
+      const ordinary = path.join(mainRepo, 'build-output');
+      fs.mkdirSync(ordinary, { recursive: true });
+
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`(cd ${mainRepo} && rm -rf build-output)`),
+        mainRepo,
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  // F-00059 (review round 2 on PR #880): bash groups `A || B && C` as `(A || B) && C` — when the
+  // first `cd` succeeds, the second one never runs, and the shell is left standing in
+  // `<real-parent>` when `rm` runs. The pre-fix walk applied every `cd` clause in textual order
+  // with no model of `||` at all, resolving `rm`'s target against the bogus second `cd`'s
+  // destination instead and finding no registered worktree there.
+  test('deny: `cd <worktree parent> || cd <bogus> && rm -rf <basename>` is checked against every plausible cwd (F-00059)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-or-compound-rm',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const parent = path.dirname(worktree);
+        const basename = path.basename(worktree);
+        const bogus = path.join(mainRepo, 'nonexistent-dir');
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`cd ${parent} || cd ${bogus} && rm -rf ${basename}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'rm-worktree-unpushed',
+        });
+      },
+    );
+  });
+
+  // Parity leg of F-00059 — same `||`-compounded shape, `git worktree remove` spelling.
+  test('deny: `cd <worktree parent> || cd <bogus> && git worktree remove <basename>` reaches the same verdict as the `rm` spelling (F-00059 parity)', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-803-',
+      'blackhole/issue-803-or-compound-git',
+      async (mainRepo, worktree, push) => {
+        push();
+        fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+        runGit(worktree, ['add', 'unpushed.txt']);
+        runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+        const parent = path.dirname(worktree);
+        const basename = path.basename(worktree);
+        const bogus = path.join(mainRepo, 'nonexistent-dir');
+
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`cd ${parent} || cd ${bogus} && git worktree remove ${basename}`),
+          mainRepo,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/remote/i);
+
+        const events = readHookEvents(mainRepo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'worktree-remove-unpushed',
+        });
+      },
+    );
+  });
+
+  // Over-tightening control for F-00059: an ordinary `||`-guarded `cd` that never touches a
+  // worktree must stay allowed — proving the candidate-set widening only ever escalates to a
+  // block when one of the plausible cwds actually names an unsafe registered worktree.
+  test('allow: `cd <dir> || cd <other dir> && rm -rf <ordinary>` stays allowed — the `||` fix does not over-tighten', async () => {
+    await withTempGitRepo('blackhole-hook-bash-', async (mainRepo) => {
+      const ordinary = path.join(mainRepo, 'build-output');
+      fs.mkdirSync(ordinary, { recursive: true });
+      const otherDir = path.join(mainRepo, 'other-dir');
+      fs.mkdirSync(otherDir, { recursive: true });
+
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`cd ${mainRepo} || cd ${otherDir} && rm -rf build-output`),
+        mainRepo,
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  // Residual bypass #2 of 3 (F-00059's docstring): `cd -` (OLDPWD) is not tracked — collapses to
+  // the same accepted, regression-tested fallback as a dynamic `cd` target. Must stay allowed for
+  // an ordinary, non-worktree target.
+  test('allow: `cd - && rm -rf <ordinary>` stays allowed — `cd -` is not tracked, by design', async () => {
+    await withTempGitRepo('blackhole-hook-bash-', async (mainRepo) => {
+      const ordinary = path.join(mainRepo, 'build-output');
+      fs.mkdirSync(ordinary, { recursive: true });
+
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('cd - && rm -rf build-output'), mainRepo);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  // Residual bypass #3 of 3: a bare `cd` (goes to $HOME) is likewise not tracked.
+  test('allow: `cd && rm -rf <ordinary>` stays allowed — a bare `cd` target ($HOME) is not tracked, by design', async () => {
+    await withTempGitRepo('blackhole-hook-bash-', async (mainRepo) => {
+      const ordinary = path.join(mainRepo, 'build-output');
+      fs.mkdirSync(ordinary, { recursive: true });
+
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('cd && rm -rf build-output'), mainRepo);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe('');
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
   test('deny: a worktree in second positional position (`rm -rf <ordinary> <worktree>`) is still found', async () => {
     await withRemoteTrackedWorktree(
       'blackhole-hook-wt-803-',

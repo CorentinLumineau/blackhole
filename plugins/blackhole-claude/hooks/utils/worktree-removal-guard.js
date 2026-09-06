@@ -97,6 +97,46 @@
  * `cd -`, or bare `cd`) falls back to the original `cwd` — collapsing into the existing, accepted,
  * regression-tested dynamic-target bypass immediately above, deliberately, so this fix cannot turn
  * an ordinary `cd "$BUILD_DIR" && rm -rf dist` into a new false block.
+ *
+ * A FOURTH case surfaced on the same PR #880 review round (F-00058): `(cd <parent> && rm -rf
+ * <basename>)` — the identical fix-three shape wrapped in a subshell, an ordinary idiom for
+ * running cleanup without mutating the caller's own cwd, not an adversarial spelling. Before this
+ * fix, `clauseTailFrom` had no notion of `)` as a boundary at all, so the closing paren rode into
+ * the `rm` clause's own tail and became part of its last token — `wt-803)` rather than `wt-803` —
+ * which then matched no registered worktree and was silently allowed, the same asymmetry F-00043
+ * reported, just reached through a different command shape. `clauseTailFrom` now stops a clause's
+ * tail at the first unmasked `)`, exactly as it already does for `;`, `|`, and newline — a genuine
+ * parsing-model fix (a paren can no longer be absorbed into ANY clause's trailing token, not just
+ * this one shape), not an enumerated fix for this one spelling. `isLiteralPathArg` additionally
+ * rejects a literal `(`/`)` in a path argument as defense in depth, though after the
+ * `clauseTailFrom` fix no unmasked paren can reach a token via that path at all — see that
+ * function's docstring. Nested and `$(...)`-command-substitution parens get the same flat,
+ * non-balance-tracking treatment `(` already had as a clause-start trigger — no new asymmetry
+ * introduced between the two paren roles.
+ *
+ * A FIFTH case is control-flow-blind `cd` tracking itself: `cd <real-parent> || cd <anything> &&
+ * rm -rf <basename>` (F-00059). Bash groups `&&`/`||` left-to-right at equal precedence, so this
+ * is `(cd <real-parent> || cd <anything>) && rm -rf <basename>` — when the first `cd` succeeds,
+ * the second one never runs at all, and the shell is left standing in `<real-parent>` when `rm`
+ * runs. The pre-fix walk applied every `cd` clause in textual order with no model of `&&`/`||`/`;`
+ * at all, so it applied BOTH `cd`s unconditionally and resolved `rm`'s target against `<anything>`
+ * — a directory that was never actually the shell's cwd — finding no registered worktree there and
+ * allowing the removal. Which branch of a `||` a real shell takes is undecidable from static text
+ * alone (it depends on the exit status of a command this guard does not execute), so
+ * `findRemovalInvocations` does not attempt to resolve it. Instead it tracks a SET of candidate
+ * cwds rather than one: a `cd` clause immediately preceded by `||` unions its own resolved target
+ * into the running set alongside every cwd already tracked (the outcome if that `cd` never ran),
+ * rather than replacing it outright the way a `;`/`&&`/first-clause `cd` still does (those are
+ * never ambiguous — if an earlier command in a `&&` chain fails, the chain simply never reaches the
+ * dangerous final command at all, so there is nothing left to fear from the cwd it would have
+ * produced). `evaluateOneInvocation`/`evaluateRmInvocation` then resolve a relative removal target
+ * against EVERY candidate in the set and block if ANY of them names an unsafe registered worktree.
+ * This is deliberately narrower than a blanket "refuse whenever more than one `cd` could apply"
+ * rule: an ordinary `cmd1 && cd real && rm -rf x` still resolves to exactly one candidate (no `||`
+ * anywhere in it), so it is exactly as permissive as before. The ambiguity-widening fires only for
+ * a `||`-guarded `cd`, and even then only ever escalates to a block when one of the resulting
+ * candidates actually names a registered worktree with unsafe state — it can never turn an
+ * ordinary, worktree-unrelated `||`-guarded `cd` into a new false block.
  */
 
 const { execFileSync } = require('child_process');
@@ -173,27 +213,41 @@ const isCommandWordStart = (command, index) => index === 0 || /[\s;&|(\n]/.test(
  * quoted string is not distinguished from a real one here — the same naive, quote-unaware
  * limitation `clauseTailFrom` below already has for the clause tail it returns; this only affects
  * where a clause is judged to START, the mirror image of that pre-existing, accepted limitation.
+ *
+ * Returns `{ index, precededByOr }` entries rather than bare indices (F-00059): `precededByOr` is
+ * true only when the separator immediately before this clause is `||`, distinguished here from a
+ * single `|` (an ordinary pipe) exactly the way `&&` is already distinguished from a single `&`
+ * below — a two-character lookahead at the boundary, not a growing exemption list. Every other
+ * separator (`;`, `\n`, `(`, `&`, `&&`, a lone `|`) is reported as `precededByOr: false`, including
+ * the very first clause (nothing precedes it). `findRemovalInvocations` is the only reader of this
+ * field, and only for a `cd` clause — see its docstring for why `||` alone needs this and `&&`/`;`
+ * do not.
  */
 const findClauseStartIndices = (command, masked) => {
   const n = command.length;
-  const indices = [];
+  const clauses = [];
 
-  const skipToStart = (from) => {
+  const skipToStart = (from, precededByOr) => {
     let i = from;
     while (i < n && (masked[i] || /\s/.test(command[i]))) i += 1;
-    if (i < n) indices.push(i);
+    if (i < n) clauses.push({ index: i, precededByOr });
     return i;
   };
 
-  let i = skipToStart(0);
+  let i = skipToStart(0, false);
   while (i < n) {
     if (masked[i]) {
       i += 1;
       continue;
     }
     const ch = command[i];
-    if (ch === ';' || ch === '|' || ch === '\n' || ch === '(') {
-      i = skipToStart(i + 1);
+    if (ch === ';' || ch === '\n' || ch === '(') {
+      i = skipToStart(i + 1, false);
+      continue;
+    }
+    if (ch === '|') {
+      const isOr = command[i + 1] === '|';
+      i = skipToStart(isOr ? i + 2 : i + 1, isOr);
       continue;
     }
     if (ch === '&') {
@@ -203,12 +257,12 @@ const findClauseStartIndices = (command, masked) => {
         i += 1; // 2>&1, >&, &>file, … — a redirect, not a clause separator
         continue;
       }
-      i = skipToStart(command[i + 1] === '&' ? i + 2 : i + 1);
+      i = skipToStart(command[i + 1] === '&' ? i + 2 : i + 1, false);
       continue;
     }
     i += 1;
   }
-  return indices;
+  return clauses;
 };
 
 /** Reconstructs the literal text bash's own quote-removal would produce from `word`, concatenating
@@ -285,16 +339,51 @@ const containsWorktreeRemoveTokens = (tokens, fromIndex) => {
   return false;
 };
 
+/** Skips a `$(...)` command-substitution span starting at `text[start]` (the `$`), honoring
+ * nested `(...)`/`$(...)` by simple depth counting over `(`/`)` characters, and returns the index
+ * just past its matching closing `)` (or `text.length` if unterminated). Naive and quote-unaware,
+ * the same accepted limitation `clauseTailFrom` already has for the separators it stops at — a
+ * substitution containing a quoted `)` is not distinguished from a real one. Exists so
+ * `clauseTailFrom`'s `)`-boundary stop (F-00058, immediately below) does not ALSO swallow tokens
+ * that legitimately follow a `$(...)` executable position in the SAME clause: `$(which git)
+ * worktree remove <target>` is one clause whose first word happens to be a command substitution,
+ * not two clauses split at that substitution's own closing paren (#788's executable-indirection
+ * coverage — the two `)` roles look identical to a naive scan and must not be conflated). */
+const skipDollarParenSpan = (text, start) => {
+  let depth = 0;
+  let i = start + 1; // the '(' immediately after '$'
+  for (; i < text.length; i++) {
+    if (text[i] === '(') depth += 1;
+    else if (text[i] === ')') {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return text.length;
+};
+
 /** The substring of `command` starting at `index` up to (not including) the next shell separator
- * (`;`, `&` when not part of a redirect, `|`, newline), or to the end of the string — the same
+ * (`;`, `&` when not part of a redirect, `|`, `)`, newline), or to the end of the string — the same
  * clause-scoping as before, now with redirect-aware `&` handling and trailing redirect
- * tokens stripped so `>/dev/null`, `2>/dev/null`, and `2>&1` do not become spurious path args. */
+ * tokens stripped so `>/dev/null`, `2>/dev/null`, and `2>&1` do not become spurious path args.
+ * `)` stops a clause's tail exactly like `;`/`|`/newline already do (F-00058): a subshell's closing
+ * paren is not part of the clause it closes, so `(cd a && rm -rf b)` must not let a bare trailing
+ * `)` ride into `rm`'s own last token as `b)`. A `$(...)` span is skipped whole via
+ * `skipDollarParenSpan` before this check ever sees its interior — its own closing paren is not a
+ * clause boundary, only a plain subshell-grouping `(...)`'s is. Naive and quote-unaware otherwise,
+ * exactly like the other three separators this function already stops at — a literal `)` inside a
+ * quoted argument is not distinguished from a real subshell close, the same accepted limitation
+ * `;`/`|`/newline already have (see `findClauseStartIndices`'s docstring on this function). */
 const clauseTailFrom = (command, index) => {
   const rest = command.slice(index);
   let end = rest.length;
   for (let i = 0; i < rest.length; i++) {
     const ch = rest[i];
-    if (ch === ';' || ch === '|' || ch === '\n') {
+    if (ch === '$' && rest[i + 1] === '(') {
+      i = skipDollarParenSpan(rest, i) - 1; // loop's own i++ lands just past the matched ')'
+      continue;
+    }
+    if (ch === ';' || ch === '|' || ch === '\n' || ch === ')') {
       end = i;
       break;
     }
@@ -318,58 +407,46 @@ const clauseTailFrom = (command, index) => {
 };
 
 /**
- * Updates the effective cwd `findRemovalInvocations` tracks across a chained command's clauses,
- * for one `cd` clause's argument tokens (everything after the `cd` executable itself). This is
- * the fix for the fail-open reviewed on PR #880 (F-00043): a chained `cd <parent> && rm -rf
- * <basename>` was resolved entirely against the harness-supplied `cwd` (the shell's
- * *pre-execution* directory) — never against where the embedded `cd` actually lands — so a
- * literal relative `rm` target sitting after a real `cd` was silently allowed even when it named
- * a registered worktree with unpushed commits (`isRegisteredLinkedWorktree` saw a path that
- * matched no registered worktree and reported "not a worktree", its own by-design fail-open
- * posture for a target that genuinely cannot be resolved — except this one could be, the guard
- * simply never tried).
+ * Extracts one `cd` clause's own target text (everything after the `cd` executable itself),
+ * skipping leading flags (`-L`, `-P`, `-e`, …) — the base-independent half of what used to be
+ * `resolveCdTarget`, split out (F-00059) so `findRemovalInvocations` can resolve the SAME target
+ * text against more than one candidate base when a `||` makes which prior `cd` actually ran
+ * ambiguous (see that function's docstring).
  *
- * Returns the new effective cwd, or `null` when the `cd` target cannot be resolved statically:
- * a dynamic argument ($VAR, $(...), a backtick), `cd -` (the previous-directory shorthand — this
+ * Returns the literal target string, or `null` when the target cannot be tracked at all: a
+ * dynamic argument ($VAR, $(...), a backtick), `cd -` (the previous-directory shorthand — this
  * module does not track OLDPWD), or a bare `cd` with no argument at all (goes to $HOME, likewise
- * not tracked). `null` is deliberately not a refusal by itself and not distinguished from "no `cd`
- * happened yet": `findRemovalInvocations` falls back to the original harness `cwd` for any
- * invocation downstream of a `null`, i.e. exactly today's (pre-fix) resolution — chosen
- * deliberately so that a *dynamic* `cd` can never turn an ordinary `rm -rf <relative path>` into a
- * new false block. That would be the same over-tightening `RM_REMOVAL_SHAPE`'s own docstring rules
- * out for the `rm` path itself (issue #803 AC2): this guard can tell "the resolved target is not a
- * registered worktree" from "the target's resolution is unknown", and only the FIRST is safe to
- * leave silently allowed at scale — an unresolvable `cd` destination makes every later relative
- * path in the same command exactly as unverifiable as a `$VAR` argument would, so it gets the same
- * accepted, regression-tested residual bypass rather than a blanket new denial on ordinary cleanup
- * commands that happen to `cd` through a variable first.
+ * not tracked). `null` is deliberately not a refusal by itself: see `findRemovalInvocations` for
+ * how it collapses into the existing, accepted, regression-tested dynamic-`cd` bypass (issue #803
+ * AC2) — this split changes what a resolvable target fans out to, never what an unresolvable one
+ * falls back to.
  */
-const resolveCdTarget = (argTokens, currentCwd) => {
+const extractCdTargetText = (argTokens) => {
   for (const rawToken of argTokens) {
     const { text, dynamic } = normalizeShellWord(rawToken);
     if (dynamic) return null;
     if (text.startsWith('-') && text.length > 1) continue; // -L, -P, -e, … — flags, not the target
     if (!text || text === '-') return null; // `cd -` (OLDPWD) or an empty target — not tracked
-    if (currentCwd === null) return path.isAbsolute(text) ? text : null;
-    return path.resolve(currentCwd, text);
+    return text;
   }
   return null; // bare `cd` with no positional argument at all — goes to $HOME, not tracked
 };
+
+/** Resolves one `cd` target's literal `text` against one candidate `base` directory — an absolute
+ * target ignores `base` entirely, matching `cd`'s own semantics. */
+const resolveAgainstBase = (text, base) => (path.isAbsolute(text) ? text : path.resolve(base, text));
 
 /**
  * Every worktree-removing invocation in `command`, in either spelling this guard covers. For the
  * `git worktree remove` spelling the walk is tolerant of global options between `git` and
  * `worktree` (`-C <path>`, `-c k=v`, `--no-pager`, `--git-dir=<path>`, combinations), of more than
  * one such invocation in a chained command, and of leading `NAME=value` assignments before the
- * executable. A `cd` clause earlier in the same command updates the effective cwd
- * (`resolveCdTarget` above) that each later invocation's `resolutionCwd` field carries — the
- * per-invocation resolution base a relative removal-path argument resolves against, which is `cwd`
- * itself until (and unless) a resolvable `cd` clause changes it. Each entry is one of:
- *   - `{ kind: 'git', argTokens, resolutionCwd }` — the tokens following `remove` (flags and the
+ * executable. Each entry is one of:
+ *   - `{ kind: 'git', argTokens, resolutionCwds }` — the tokens following `remove` (flags and the
  *     path argument), ready for `parseWorktreeRemoveArgs`.
- *   - `{ kind: 'git', unresolvableExecutable: true, resolutionCwd }` — the executable position
+ *   - `{ kind: 'git', unresolvableExecutable: true, resolutionCwds }` — the executable position
  *     itself could not be resolved statically (#788 Execution Strategy step 2).
- *   - `{ kind: 'rm', argTokens, resolutionCwd }` — the tokens following an `rm` executable, ready
+ *   - `{ kind: 'rm', argTokens, resolutionCwds }` — the tokens following an `rm` executable, ready
  *     for `parseRmRemovalArgs`. Emitted for EVERY `rm` clause, recursive or not and whatever its
  *     target: whether it removes a registered worktree is a question only
  *     `evaluateRmInvocation` can answer, since it needs the resolved path.
@@ -377,12 +454,30 @@ const resolveCdTarget = (argTokens, currentCwd) => {
  * existing convention for the post-`remove` tail (a quoted path containing a literal space is not
  * resolved either way — not a regression, the original code had the same limitation for that
  * argument).
+ *
+ * `resolutionCwds` (plural, F-00059) is the SET of directories a relative removal-path argument
+ * might resolve against — `[cwd]` until (and unless) a `cd` clause earlier in the same command
+ * changes it. A `cd` NOT immediately preceded by `||` always runs if the walk reaches it at all
+ * (an earlier failed `&&`-chain link means the whole chain, including any dangerous removal later
+ * in it, never runs either — nothing left to track), so it REPLACES the tracked set with its own
+ * resolved target(s), exactly like the old single-value `effectiveCwd` did. A `cd` immediately
+ * preceded by `||` is genuinely ambiguous — bash's exit status decides whether it runs, and this
+ * guard does not execute anything to find out — so it instead UNIONS its resolved target(s) into
+ * the existing set: the prior candidates remain possible (this `cd` never ran) alongside the new
+ * one (it did). A `cd` whose own target cannot be resolved statically (dynamic, `cd -`, bare)
+ * collapses to the pre-F-00059 fallback: for a non-`||` `cd` the set resets to `[cwd]` outright
+ * (identical to the old `effectiveCwd = null` behavior); for a `||`-guarded `cd` the harness `cwd`
+ * is unioned in as a stand-in for "ran but landed somewhere unverifiable" rather than discarding
+ * the prior candidates, since the OTHER branch of the `||` may be the one that actually ran and its
+ * resolution must not be lost. Either way this can only ever ADD candidates, never silently narrow
+ * the set to something an ordinary non-`||` command would already have produced — the same
+ * no-new-false-block guarantee `resolveCdTarget`'s dynamic-`cd` fallback already had.
  */
 const findRemovalInvocations = (command, cwd) => {
   const masked = computeMaskedSpans(command);
   const invocations = [];
-  let effectiveCwd = cwd;
-  for (const clauseStart of findClauseStartIndices(command, masked)) {
+  let cwdCandidates = [cwd];
+  for (const { index: clauseStart, precededByOr } of findClauseStartIndices(command, masked)) {
     if (!isCommandWordStart(command, clauseStart)) continue; // defensive: clause starts are always real word starts
     const tokens = clauseTailFrom(command, clauseStart).trim().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) continue;
@@ -392,11 +487,11 @@ const findRemovalInvocations = (command, cwd) => {
     if (execIndex >= tokens.length) continue;
 
     const { text: executable, dynamic } = normalizeShellWord(tokens[execIndex]);
-    const resolutionCwd = effectiveCwd === null ? cwd : effectiveCwd;
+    const resolutionCwds = cwdCandidates;
 
     if (dynamic) {
       if (containsWorktreeRemoveTokens(tokens, execIndex + 1)) {
-        invocations.push({ kind: 'git', unresolvableExecutable: true, resolutionCwd });
+        invocations.push({ kind: 'git', unresolvableExecutable: true, resolutionCwds });
       }
       continue;
     }
@@ -405,12 +500,18 @@ const findRemovalInvocations = (command, cwd) => {
     const basename = path.basename(executable);
 
     if (basename === 'cd') {
-      effectiveCwd = resolveCdTarget(tokens.slice(execIndex + 1), effectiveCwd);
+      const text = extractCdTargetText(tokens.slice(execIndex + 1));
+      if (text === null) {
+        cwdCandidates = precededByOr ? [...new Set([...cwdCandidates, cwd])] : [cwd];
+      } else {
+        const resolved = cwdCandidates.map((base) => resolveAgainstBase(text, base));
+        cwdCandidates = precededByOr ? [...new Set([...cwdCandidates, ...resolved])] : [...new Set(resolved)];
+      }
       continue;
     }
 
     if (basename === 'rm') {
-      invocations.push({ kind: 'rm', argTokens: tokens.slice(execIndex + 1), resolutionCwd });
+      invocations.push({ kind: 'rm', argTokens: tokens.slice(execIndex + 1), resolutionCwds });
       continue;
     }
     if (basename !== 'git') continue;
@@ -418,17 +519,20 @@ const findRemovalInvocations = (command, cwd) => {
     const subcommandIndex = skipGitGlobalOptions(tokens, execIndex + 1);
     if (subcommandIndex === -1) continue;
     if (tokens[subcommandIndex] !== 'worktree' || tokens[subcommandIndex + 1] !== 'remove') continue;
-    invocations.push({ kind: 'git', argTokens: tokens.slice(subcommandIndex + 2), resolutionCwd });
+    invocations.push({ kind: 'git', argTokens: tokens.slice(subcommandIndex + 2), resolutionCwds });
   }
   return invocations;
 };
 
 /** True when `arg` is a literal path this hook can resolve without executing anything — no shell
- * variable (`$VAR`, `${VAR}`), command substitution (`$(...)`, `` `...` ``), or glob metacharacter.
- * A dynamic argument cannot be resolved by static inspection, so the unpushed-commit check below
- * has nothing to run against — same "cannot verify, must refuse" posture pattern-loader.js takes
- * for a pattern file it cannot parse. */
-const isLiteralPathArg = (arg) => arg.length > 0 && !/[$`*?[\]{}]/.test(arg);
+ * variable (`$VAR`, `${VAR}`), command substitution (`$(...)`, `` `...` ``), glob metacharacter, or
+ * parenthesis. A dynamic argument cannot be resolved by static inspection, so the unpushed-commit
+ * check below has nothing to run against — same "cannot verify, must refuse" posture
+ * pattern-loader.js takes for a pattern file it cannot parse. `(`/`)` are rejected here as defense
+ * in depth (F-00058): after `clauseTailFrom`'s own fix, an unmasked `)` can no longer reach a token
+ * via that path at all, but a path argument built any other way (e.g. a future tokenizer change)
+ * should not silently treat a stray paren as an ordinary path character either. */
+const isLiteralPathArg = (arg) => arg.length > 0 && !/[$`*?[\]{}()]/.test(arg);
 
 /** Splits the token array following `worktree remove` into `{ force, pathArg }`. `--force` or
  * `-f` may appear before or after the path. Anything else — a second flag, `--`, no path, more
@@ -822,12 +926,15 @@ const evaluateResolvedWorktree = (resolvedPath, shape) => {
   return null; // clean — this invocation alone does not block
 };
 
-/** Evaluates one `git worktree remove` invocation's `{ argTokens }` against `resolutionCwd` — the
- * invocation's own tracked cwd (`findRemovalInvocations`'s `cd` simulation), not necessarily the
- * harness's original `cwd` — returning a block decision or null when this single invocation is
- * safe (`clean`). `evaluateWorktreeRemoval` below decides what "safe overall" means across every
- * invocation in the command. */
-const evaluateOneInvocation = (argTokens, resolutionCwd) => {
+/** Evaluates one `git worktree remove` invocation's `{ argTokens }` against `resolutionCwds` — the
+ * invocation's own tracked SET of candidate cwds (`findRemovalInvocations`'s `cd` simulation, plural
+ * since F-00059: a `||`-guarded `cd` earlier in the command can leave more than one directory
+ * plausible), not necessarily just the harness's original `cwd` — returning a block decision or
+ * null when EVERY candidate resolution is safe (`clean`). Tries each candidate base only until a
+ * relative `pathArg` resolves to a path already tried (an absolute `pathArg` resolves to the same
+ * path regardless of base, so it is only ever tried once). `evaluateWorktreeRemoval` below decides
+ * what "safe overall" means across every invocation in the command. */
+const evaluateOneInvocation = (argTokens, resolutionCwds) => {
   const { force, pathArg } = parseWorktreeRemoveArgs(argTokens);
   if (!pathArg || !isLiteralPathArg(pathArg)) {
     return {
@@ -841,30 +948,43 @@ const evaluateOneInvocation = (argTokens, resolutionCwd) => {
     };
   }
 
-  const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(resolutionCwd, pathArg);
-  return evaluateResolvedWorktree(resolvedPath, gitRemovalShape(force));
+  const shape = gitRemovalShape(force);
+  const tried = new Set();
+  for (const base of resolutionCwds) {
+    const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(base, pathArg);
+    if (tried.has(resolvedPath)) continue;
+    tried.add(resolvedPath);
+    const decision = evaluateResolvedWorktree(resolvedPath, shape);
+    if (decision) return decision;
+  }
+  return null;
 };
 
 /** Evaluates one `rm` clause's `{ argTokens }`, resolving any relative positional argument against
- * `resolutionCwd` (the invocation's own tracked cwd — see `evaluateOneInvocation`'s docstring) and
- * checking registration against `spawnCwd` (the harness's original, guaranteed-real `cwd`, needed
- * only as a valid directory to spawn `git` from — `isRegisteredLinkedWorktree` targets the
- * resolved path itself via `-C`, so this never needs to equal `resolutionCwd`). Returns a block
- * decision for the first of its targets that is an unsafe registered worktree, or null. Three
- * gates stand between an ordinary `rm` and any check at all — no recursive flag, no statically
- * resolvable target, or a target that is not a registered linked worktree — each of which returns
- * "nothing to check" rather than a refusal, which is what keeps `rm -rf` on ordinary paths exactly
- * as it was. */
-const evaluateRmInvocation = (argTokens, resolutionCwd, spawnCwd) => {
+ * EVERY candidate in `resolutionCwds` (the invocation's own tracked cwd set — see
+ * `evaluateOneInvocation`'s docstring) and checking registration against `spawnCwd` (the harness's
+ * original, guaranteed-real `cwd`, needed only as a valid directory to spawn `git` from —
+ * `isRegisteredLinkedWorktree` targets the resolved path itself via `-C`, so this never needs to
+ * equal any entry of `resolutionCwds`). Returns a block decision for the first of its targets,
+ * under the first candidate base, that is an unsafe registered worktree, or null. Three gates
+ * stand between an ordinary `rm` and any check at all — no recursive flag, no statically resolvable
+ * target, or a target that is not a registered linked worktree — each of which returns "nothing to
+ * check" rather than a refusal, which is what keeps `rm -rf` on ordinary paths exactly as it was. */
+const evaluateRmInvocation = (argTokens, resolutionCwds, spawnCwd) => {
   const { recursive, positional } = parseRmRemovalArgs(argTokens);
   if (!recursive) return null;
 
   for (const pathArg of positional) {
     if (!isLiteralPathArg(pathArg)) continue;
-    const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(resolutionCwd, pathArg);
-    if (!isRegisteredLinkedWorktree(resolvedPath, spawnCwd)) continue;
-    const decision = evaluateResolvedWorktree(resolvedPath, RM_REMOVAL_SHAPE);
-    if (decision) return decision;
+    const tried = new Set();
+    for (const base of resolutionCwds) {
+      const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(base, pathArg);
+      if (tried.has(resolvedPath)) continue;
+      tried.add(resolvedPath);
+      if (!isRegisteredLinkedWorktree(resolvedPath, spawnCwd)) continue;
+      const decision = evaluateResolvedWorktree(resolvedPath, RM_REMOVAL_SHAPE);
+      if (decision) return decision;
+    }
   }
   return null;
 };
@@ -886,11 +1006,11 @@ const evaluateWorktreeRemoval = (command, cwd) => {
   for (const invocation of invocations) {
     let decision;
     if (invocation.kind === 'rm') {
-      decision = evaluateRmInvocation(invocation.argTokens, invocation.resolutionCwd, cwd);
+      decision = evaluateRmInvocation(invocation.argTokens, invocation.resolutionCwds, cwd);
     } else if (invocation.unresolvableExecutable) {
       decision = unresolvableExecutableDecision();
     } else {
-      decision = evaluateOneInvocation(invocation.argTokens, invocation.resolutionCwd);
+      decision = evaluateOneInvocation(invocation.argTokens, invocation.resolutionCwds);
     }
     if (decision) return decision;
   }
@@ -907,7 +1027,7 @@ module.exports = {
   isLiteralPathArg,
   isRegisteredLinkedWorktree,
   findRemovalInvocations,
-  resolveCdTarget,
+  extractCdTargetText,
   skipGitGlobalOptions,
   isCommandWordStart,
   findClauseStartIndices,
