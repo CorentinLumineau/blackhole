@@ -105,6 +105,24 @@ const resolveExistingAncestor = (p) => {
   }
 };
 
+/** True when a `.git` entry (directory for an ordinary clone, or a `gitdir:` file for a linked
+ * worktree/submodule) exists anywhere in `cwd`'s ancestor chain — a fact read straight off the
+ * filesystem, independent of anything git itself reports. `allWorktreeRoots` below trusts this,
+ * not git's exit code or stderr text, to tell "no repository here at all" apart from "a
+ * repository is here and something about reading it is broken" (issue #864): git's own fatal()
+ * bucket produces the identical exit code and message for both, so no amount of enumerating
+ * exit codes or message substrings can recover a distinction git itself never made on that path.
+ * A positive, independently-computed fact is the only thing that can. */
+const hasGitMarkerInAncestry = (cwd) => {
+  let current = path.resolve(cwd);
+  for (;;) {
+    if (fs.existsSync(path.join(current, '.git'))) return true;
+    const parent = path.dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
+};
+
 /** True when `candidate` resolves inside (or as) `root`, both realpath'd through
  * `resolveExistingAncestor` first — the comparison must run on resolved paths on both sides, since
  * either one may traverse a symlink (`/tmp` itself is a symlink on some systems). */
@@ -225,21 +243,29 @@ const readScratchpadDir = (mainClone) => {
  * open. `validate-file-changes.js`'s containment check treats a target as in-bounds when it
  * falls under ANY of the roots returned here.
  *
- * Throws — does not return null — when `git worktree list` fails for any reason OTHER than "not
- * a git repository" (issue #864). Null used to mean both "routine: no git context at all" (the
- * `git rev-parse`/`git worktree list` exit-128 fatal every non-repo cwd produces, e.g. `docs/`
- * before a repo exists) AND "anomalous: git is present but something is actually broken" (the git
- * binary missing, a corrupted `.git`, a permissions error), collapsing them into one fail-open
- * outcome even though only the first is safe to treat as "nothing to bound". Callers must
- * distinguish: catch the throw and fail closed (`failClosed`), the same posture already used for
- * a malformed hook payload or a pattern-load failure in this module — an unreadable containment
- * state must never fall back to the permissive cwd-bound path that null triggers below. */
+ * Throws — does not return null — when `git worktree list` fails and `hasGitMarkerInAncestry(cwd)`
+ * finds no `.git` anywhere above `cwd` (issue #864). A prior version of this function tried to
+ * make that same call by inspecting the failure itself — exit code 128, "not a git repository" in
+ * the (discarded) stderr — but git's own `fatal()` bucket collapses "no repository exists here"
+ * and "a repository exists but its `.git/HEAD` is missing, or `.git/config` is malformed, or the
+ * revision it needs can't be resolved" into the identical exit code and message: `is_git_
+ * directory()` treats an unreadable HEAD as disqualifying, so there is no substring or exit code
+ * that distinguishes routine absence from real corruption, because git itself never made that
+ * distinction on this path. No enumeration of failure shapes can fix that. The fix instead checks
+ * a fact independent of the failing call: does a `.git` entry exist anywhere in `cwd`'s ancestor
+ * chain? Absent → routine, nothing to bound, return null (fail-open to the #512 cwd-bound path
+ * below). Present → git is broken over a repository that is actually there, which is exactly the
+ * anomalous case callers must fail closed on, so the original error propagates untouched.
+ * Callers distinguish: catch the throw and fail closed (`failClosed`), the same posture already
+ * used for a malformed hook payload or a pattern-load failure in this module — an unreadable
+ * containment state must never fall back to the permissive cwd-bound path that null triggers
+ * below. */
 const allWorktreeRoots = (cwd = process.cwd()) => {
   let listing;
   try {
     listing = git(['worktree', 'list', '--porcelain'], cwd);
   } catch (error) {
-    if (error && error.status === 128) return null;
+    if (!hasGitMarkerInAncestry(cwd)) return null;
     throw error;
   }
   const roots = listing

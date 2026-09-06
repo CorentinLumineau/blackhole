@@ -989,17 +989,24 @@ describe('validate-file-changes.js — uncaught validator crash fails closed, no
 });
 
 // Issue #864: `allWorktreeRoots` used to map every git failure — "not a git repository" (the
-// routine case a session outside any repo produces, exit 128, covered by the #512 tests above)
-// AND any other, anomalous failure (git binary missing, a corrupted `.git`, a permissions error)
-// — onto the same `null` return, which the containment check reads as "no git context" and
-// bounds the write to the payload's own cwd instead of denying it outright. That is the wrong
-// bound for an anomalous failure: the check has no actual evidence the target is safe, only that
-// git could not be asked. The fix distinguishes the two: only the exit-128 "not a git repository"
-// case still returns null (fail-open to the #512 cwd bound, unchanged); anything else now
-// propagates and the hook fails closed instead. Simulated here by making `git` itself
-// unresolvable via `PATH`, which raises `ENOENT` (no `.status` at all, never 128) rather than a
-// git-emitted fatal exit — bypasses `runPreToolUseHook` (which does not expose a `PATH`
-// override) the same way the malformed-stdin test above does.
+// routine case a session outside any repo produces, covered by the #512 tests above) AND any
+// other, anomalous failure (git binary missing, a corrupted `.git`, a permissions error) — onto
+// the same `null` return, which the containment check reads as "no git context" and bounds the
+// write to the payload's own cwd instead of denying it outright. That is the wrong bound for an
+// anomalous failure: the check has no actual evidence the target is safe, only that git could not
+// be asked. A first attempt at fixing this special-cased exit code 128 ("not a git repository"),
+// but git's own `fatal()` bucket produces that identical exit code and message for BOTH "no
+// repository at all" and "a repository is here but its `.git/HEAD` is missing, or `.git/config`
+// is malformed, or a needed revision can't be resolved" — no exit code or message substring can
+// tell those apart, because git itself never makes that distinction on this path. The actual fix
+// checks a fact independent of the failing call instead: does a `.git` marker exist anywhere in
+// `cwd`'s ancestor chain (`hasGitMarkerInAncestry`)? Absent → routine, fail open to the #512 cwd
+// bound; present → git is broken over a repository that is really there, so the hook fails closed.
+// The first test below simulates the "no `.git` at all" shape by making `git` itself unresolvable
+// via `PATH`, which raises `ENOENT` (no exit code at all) — bypasses `runPreToolUseHook` (which
+// does not expose a `PATH` override) the same way the malformed-stdin test above does. The two
+// tests after it simulate "a `.git` IS there and git is genuinely broken" directly, by corrupting
+// a real repo's `.git` state before invoking the hook normally.
 describe('validate-file-changes.js — anomalous git failure fails closed, not open to cwd (#864)', () => {
   test('git missing from PATH inside a real repo denies the write instead of falling back to the cwd bound', async () => {
     await withTempGitRepo('blackhole-hook-864-', async (repo) => {
@@ -1034,6 +1041,64 @@ describe('validate-file-changes.js — anomalous git failure fails closed, not o
       expect(permissionDecision(stdout)).toBe('deny');
       expect(permissionReason(stdout)).toMatch(/worktree containment resolution/i);
       expect(stderr).toMatch(/ENOENT|not found/i);
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        hook: 'validate-file-changes',
+        tool: 'Write',
+        decision: 'deny',
+        tier: 'block',
+        pattern_id: 'worktree-root-resolution-failure',
+      });
+    });
+  });
+
+  // The ENOENT case above is the one shape `error.status` can actually distinguish (no `.status`
+  // at all, since `execFileSync` never spawned a git process). It is not the shape the finding
+  // that reopened this issue was about: a REAL repository whose git-managed state has gone
+  // corrupt fails with `git`'s generic exit 128 — the exact same exit code and message a routine
+  // "no repository at all" cwd produces (`is_git_directory()` conflates "missing" and "unreadable"
+  // HEAD on this path; see `hasGitMarkerInAncestry`'s docstring). These two cases are why the fix
+  // no longer inspects the failing call's exit code at all — it checks a `.git` marker on disk
+  // instead, which is present in both cases below and absent in none of the #512 routine cases.
+  test('a real repo with .git/HEAD removed denies the write instead of falling back to the cwd bound', async () => {
+    await withTempGitRepo('blackhole-hook-864-head-', async (repo) => {
+      fs.rmSync(path.join(repo, '.git', 'HEAD'));
+
+      const target = path.join(repo, 'nested', 'foo.ts');
+      const eventDir = path.join(repo, '.blackhole', 'hook-events');
+      const result = await runPreToolUseHook(SCRIPT, writePayload(target), repo, PRETOOLUSE_HOOKS_DIR, eventDir);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/worktree containment resolution/i);
+      expect(result.stderr).toMatch(/git worktree list/i);
+
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        hook: 'validate-file-changes',
+        tool: 'Write',
+        decision: 'deny',
+        tier: 'block',
+        pattern_id: 'worktree-root-resolution-failure',
+      });
+    });
+  });
+
+  test('a real repo with a malformed .git/config denies the write instead of falling back to the cwd bound', async () => {
+    await withTempGitRepo('blackhole-hook-864-config-', async (repo) => {
+      fs.appendFileSync(path.join(repo, '.git', 'config'), 'this is not a valid config line\n');
+
+      const target = path.join(repo, 'nested', 'foo.ts');
+      const eventDir = path.join(repo, '.blackhole', 'hook-events');
+      const result = await runPreToolUseHook(SCRIPT, writePayload(target), repo, PRETOOLUSE_HOOKS_DIR, eventDir);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/worktree containment resolution/i);
+      expect(result.stderr).toMatch(/git worktree list/i);
 
       const events = readHookEvents(repo);
       expect(events).toHaveLength(1);
