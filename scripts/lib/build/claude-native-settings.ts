@@ -81,7 +81,7 @@ const buildCommand = (spec: MatcherSpec): string => {
     '  --arg worktree "$worktree" \\',
     '  --arg kind "$kind" \\',
     '  --arg stderr_tail "$stderr_tail" \\',
-    `  '{version: 1, recorded_at: $recorded_at, hook: $hook, ${toolField} decision: "allow", tier: "error", pattern_id: "hook-exec-failure", reason: ("validator process exited " + $code + " before producing a decision"), worktree: (if $worktree == "" then null else $worktree end), detail: ("process exit code " + $code + " (" + $kind + ")" + (if $stderr_tail == "" then "" else ": " + $stderr_tail end)), agent_id: null, agent_type: null}' \\`,
+    `  '{version: 2, recorded_at: $recorded_at, hook: $hook, ${toolField} decision: "allow", tier: "error", pattern_id: "hook-exec-failure", reason: ("validator process exited " + $code + " before producing a decision"), worktree: (if $worktree == "" then null else $worktree end), detail: ("process exit code " + $code + " (" + $kind + ")" + (if $stderr_tail == "" then "" else ": " + $stderr_tail end)), agent_id: null, agent_type: null}' \\`,
     '  > "$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json" 2>/dev/null',
     `echo "[blackhole-hook] ${hookName}: validator process exited $code before producing a decision — call allowed (fail-open); see .blackhole/hook-events/" >&2`,
     'exit 0',

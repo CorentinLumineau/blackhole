@@ -142,13 +142,21 @@ One file per event, written by non-agent code into the **main clone** (resolved 
 PreToolUse fields — present, per Anthropic's schema, only when the hook fires from within a
 subagent, absent on the main thread — recorded exactly as received so "absent" (`null`) is
 distinguishable from "not captured" (a key predating this schema addition would simply be
-missing). Confirmed present at runtime for a subagent-originated call, both anonymous and named
-(issue #907 investigation), but they are `.optional()` fields with no published Claude Code
-stability guarantee, so a missing or non-string value degrades to `null` rather than being passed
-through raw. **Never build decision logic on either field**: `agent_type` reflects the spawned
-`subagent_type` (its role), not the operator-chosen display `name` a `SendMessage`-addressable
-teammate is given, but that distinction is unverified across every harness version, and treating
-it as a stable identity/role key was exactly the mistake the #907 design note warned against.
+missing). Confirmed present at runtime, but only for one population: a bare `Agent`-tool subagent
+spawned under one-shot headless `claude -p` (anonymous and named alike). For the population issue
+#907 actually depends on — an in-process, `SendMessage`-addressable Pattern C teammate — neither
+field has ever been observed on the wire; this recording exists precisely so a real
+`in_process_teammate` event can settle it. The `*.meta.json` evidence available for that
+population points the other way: a named teammate's own metadata carries two separate fields,
+`agentType` (the operator-chosen display name) and `customAgentType` (the role), while this
+payload exposes only one `agent_type` string of unconfirmed origin (`.blackhole/plans/issue-907-design.md`
+critic B, from `impl-903`/`fix-880-i3`/`review-896-2`/`rv-900`). On top of that population gap,
+both fields are `.optional()` with no published Claude Code stability guarantee, so a missing or
+non-string value degrades to `null` rather than being passed through raw. **Never build decision
+logic on either field**: whether `agent_type` reflects the spawned `subagent_type` (its role) or
+the operator-chosen teammate `name` is unresolved for the population that matters, and treating
+either reading as a stable identity/role key was exactly the mistake the #907 design note warned
+against.
 These two are recorded for human/dashboard observability only. No redaction: unlike the `error`
 tier's unredacted stderr tail (which carries arbitrary process output), `agent_id`/`agent_type`
 are short, harness-generated identifiers/labels, not free text that could embed a credential —

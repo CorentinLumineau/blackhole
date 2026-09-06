@@ -170,7 +170,7 @@ definition of done is `bun test` and `bun run verify` green with no new findings
 | Check | Result |
 |---|---|
 | `touch_paths_declared` | PASS — declared, with the option-conditional split stated explicitly. |
-| `schema_baseline` | PASS — no schema change beyond the `.blackhole/hook-events/` record `version` bump in task 3, specified there. |
+| `schema_baseline` | PASS — the only schema change is the `.blackhole/hook-events/` record `version` bump specified in task 3. Correction (post-merge): the initial #907 PR implemented task 3's `agent_id`/`agent_type` fields but shipped without the `version` bump this row cites; the #918 follow-up PR landed the bump (`version: 2`) and corrected the `hook-schemas.md` overclaim, closing task 3 fully. |
 | `ac_mapping` | PASS — all 7 `## Task Breakdown` items carry a machine-verifiable `— **AC**`. |
 | `critical_files_exist` | PASS — all four listed paths resolve on `origin/main`. |
 | `mitigation_concrete` | PASS — all five `## Execution Strategy & Stop Conditions` bullets pair a condition to an abort/halt/revert/stop action. |

@@ -434,7 +434,7 @@ const recordEvent = (event) => {
     }
   }
   const payload = {
-    version: 1,
+    version: 2,
     recorded_at: new Date().toISOString(),
     hook: event.hook,
     tool: event.tool,
