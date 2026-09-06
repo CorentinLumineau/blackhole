@@ -652,6 +652,12 @@ describe('validateWorker router', () => {
     expectInvalid('router', 'router-routed-rationale-type-confusion-null.json'));
   test('invalid rationale whitespace-only', () =>
     expectInvalid('router', 'router-routed-rationale-whitespace.json'));
+
+  // Issue #885 — #868's real stored body_hash was 63 characters, the only
+  // non-64-character value in the queue; validateRoute checked only isString
+  // and let it through. This fixture carries that exact real value.
+  test('invalid body_hash wrong length (issue #868 real corrupted value)', () =>
+    expectInvalid('router', 'router-routed-invalid-body-hash-shape.json'));
 });
 
 describe('validateWorker hunter', () => {

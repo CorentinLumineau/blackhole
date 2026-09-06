@@ -374,7 +374,7 @@ product-principles.md` (the owner-rulings ledger) when present, gated by
     "docs_impact": false,
     "ui": false,
     "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90, "docs": 85, "brainstorm": 20, "analysis": 70, "ui": 85 },
-    "body_hash": "<sha of issue title+body at classification time>",
+    "body_hash": "<sha256 hex digest — see queue-dag.md § body_hash algorithm for the exact convention>",
     "computed_at_phase": "handle",
     "revision": 1
   },

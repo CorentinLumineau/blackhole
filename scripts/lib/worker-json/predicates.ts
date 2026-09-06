@@ -38,6 +38,13 @@ export function isConfidenceScore(value: unknown): value is number {
   return isNumber(value) && value >= 0 && value <= 100;
 }
 
+// Issue #885 — 64-character lowercase hex sha256 digest shape. Domain-specific
+// rather than a generic `isSha256Hex` (V-YAGNI-03): `body_hash` is its only
+// consumer today. See `queue-dag.md` § `body_hash` algorithm for the convention.
+export function isBodyHash(value: unknown): value is string {
+  return isString(value) && /^[0-9a-f]{64}$/.test(value);
+}
+
 export function pushEnumError(errors: string[], field: string, value: unknown, allowed: readonly string[]) {
   if (!allowed.includes(String(value))) {
     errors.push(`${field}: invalid enum value "${String(value)}" (expected ${allowed.join('|')})`);

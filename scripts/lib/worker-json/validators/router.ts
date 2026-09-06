@@ -1,5 +1,6 @@
 import { PLAN_MODES, ROUTE_STATUSES, TASK_TYPES, TRIGGERS } from '../constants.ts';
 import {
+  isBodyHash,
   isBoolean,
   isConfidenceScore,
   isNumber,
@@ -50,7 +51,7 @@ export function validateRoute(route: unknown, path: string): string[] {
     }
   }
 
-  requireField(errors, route, 'body_hash', isString, 'string');
+  requireField(errors, route, 'body_hash', isBodyHash, '64-character lowercase hex sha256 digest');
   requireField(errors, route, 'computed_at_phase', isString, 'string');
   requireField(errors, route, 'revision', isNumber, 'number');
 
