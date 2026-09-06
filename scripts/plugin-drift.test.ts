@@ -192,6 +192,7 @@ describe('writePluginDriftSignalAtomic', () => {
         ordering_available: true,
         ordering_unavailable_reason: null,
         veto_pairs: [],
+        scan_boundary: 'test scan boundary note',
       };
       writePluginDriftSignalAtomic(campaignDir, signal);
       const target = path.join(campaignDir, 'plugin-drift.json');

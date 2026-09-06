@@ -372,11 +372,18 @@ becomes clean, even after every SHA-bearing source matches) plus one line per `v
 entry — visibility only, no ledger append, no phase gate. The ordering leg is
 **effectively self-hosting-only**: in a consumer repo, blackhole's commit history is absent from
 the local object store and `origin/main` is a different project, so the signal renders
-`ordering_available: false` with a reason rather than guessing. Every source outside the
-four-layer scan (e.g. a plugin's own bundled settings registering a matcher this scan doesn't
-parse) stays invisible — the signal states this scan boundary in its own output, so a clean
-render never reads as "the net is current"; that observation is only ever made at runtime,
-which is issue #919's scope, not this one's.
+`ordering_available: false` with a reason rather than guessing.
+
+**Scan-boundary disclosure (ADR-044 § A-5), unconditional.** Every source outside the four-layer
+scan (e.g. a plugin's own bundled settings registering a matcher this scan doesn't parse) stays
+invisible. The signal states this boundary in its own emitted output — a fixed `scan_boundary`
+field on the JSON signal (`SCAN_BOUNDARY_NOTE`, `plugin-drift-signal.ts`), printed by the CLI on
+its own line, and appended by `renderPluginDriftWarning` to **every** render, clean or not — so a
+clean render never reads as "the net is current". A fully clean render still surfaces a `✓
+Plugin cache: every registered source within scan boundary is clean.` line followed by the
+disclosure; a warning render appends the same disclosure after its per-source and `veto_pairs[]`
+lines. Whether a copy this scan cannot see actually issued a live denial is only ever observed at
+runtime, which is issue #919's scope, not this one's.
 
 ## Worktree & Branch obligations
 

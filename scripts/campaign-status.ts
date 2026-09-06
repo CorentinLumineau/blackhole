@@ -56,25 +56,37 @@ function describeSourceState(s: PluginDriftSource): string {
   return 'ordering unavailable';
 }
 
+// ADR-044 § A-5 — the disclosure is unconditional: it appears whether the render is a warning
+// OR a fully clean signal. A clean render is exactly the case that needs qualifying (a fifth,
+// unscanned enforcement source can still be silently vetoing) — attaching the note only to the
+// warning path would repeat this issue's own founding error, a render asserting more confidence
+// than its evidence supports. `signal.scan_boundary` (not a restated copy) is the one canonical
+// text (`SCAN_BOUNDARY_NOTE`, `plugin-drift-signal.ts`) so the JSON field and this line can never
+// drift apart (V-DOC-05).
 export function renderPluginDriftWarning(signal: PluginDriftSignal | null): string {
   if (!signal) return '';
   const nonClean = signal.sources.filter((s) => !isCleanSource(s));
-  if (nonClean.length === 0 && signal.veto_pairs.length === 0) return '';
+  const lines: string[] = [];
 
-  const lines = [
-    '⚠ Plugin cache drift: at least one registered PreToolUse source is unverified or differs ' +
-      'from this repo\'s build output (.blackhole/plugin-drift.json). See ' +
-      'src/references/blackhole-state.md § Plugin-Drift Signal for the refresh path.',
-  ];
-  for (const s of nonClean) {
-    lines.push(`  - layer ${s.layer} (${s.label}): ${describeSourceState(s)}`);
-  }
-  for (const pair of signal.veto_pairs) {
+  if (nonClean.length === 0 && signal.veto_pairs.length === 0) {
+    lines.push('✓ Plugin cache: every registered source within scan boundary is clean.');
+  } else {
     lines.push(
-      `  - veto: layer ${pair.older_layer} (${pair.older_label}) is ${pair.hook_commits_behind ?? '?'} hook-touching ` +
-        `commit(s) behind layer ${pair.newer_layer} (${pair.newer_label}) and can still override it (deny-wins)`,
+      '⚠ Plugin cache drift: at least one registered PreToolUse source is unverified or differs ' +
+        'from this repo\'s build output (.blackhole/plugin-drift.json). See ' +
+        'src/references/blackhole-state.md § Plugin-Drift Signal for the refresh path.',
     );
+    for (const s of nonClean) {
+      lines.push(`  - layer ${s.layer} (${s.label}): ${describeSourceState(s)}`);
+    }
+    for (const pair of signal.veto_pairs) {
+      lines.push(
+        `  - veto: layer ${pair.older_layer} (${pair.older_label}) is ${pair.hook_commits_behind ?? '?'} hook-touching ` +
+          `commit(s) behind layer ${pair.newer_layer} (${pair.newer_label}) and can still override it (deny-wins)`,
+      );
+    }
   }
+  lines.push(signal.scan_boundary);
   return lines.join('\n');
 }
 

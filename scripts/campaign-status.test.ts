@@ -15,7 +15,7 @@ import {
   renderRouteChain,
   type Route,
 } from './campaign-status';
-import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal';
+import { SCAN_BOUNDARY_NOTE, type PluginDriftSignal, type PluginDriftSource } from './plugin-drift-signal';
 
 const fullRoute: Route = {
   needs_split: false,
@@ -643,6 +643,7 @@ describe('renderPluginDriftWarning', () => {
     ordering_available: true,
     ordering_unavailable_reason: null,
     veto_pairs: vetoPairs,
+    scan_boundary: SCAN_BOUNDARY_NOTE,
   });
 
   test('red state: renders one line per non-clean source, including the foreign baseline: none line', () => {
@@ -658,6 +659,7 @@ describe('renderPluginDriftWarning', () => {
     expect(out).toContain('baseline: none');
     expect(out).toContain('veto:');
     expect(out).not.toContain('layer 4'); // absent, never-registered — not drift
+    expect(out).toContain(SCAN_BOUNDARY_NOTE); // ADR-044 § A-5 — disclosed on every render
   });
 
   test('green state: renders only the foreign source line, never fully silent while it is registered', () => {
@@ -666,11 +668,19 @@ describe('renderPluginDriftWarning', () => {
     expect(out).toContain('baseline: none');
     expect(out).not.toContain('layer 1');
     expect(out).not.toContain('veto:');
+    expect(out).toContain(SCAN_BOUNDARY_NOTE); // ADR-044 § A-5 — disclosed on every render
   });
 
-  test('stays silent when every source is clean and no foreign source is registered', () => {
+  // ADR-044 § A-5 — the scan-boundary disclosure is unconditional: this is the fixture where it
+  // matters MOST, since a fully clean render is exactly the case that can misread as "the net is
+  // current" when a fifth, unscanned enforcement source is silently vetoing. The old behavior
+  // (return '' here) would have attached the disclosure only to the warning path — the natural
+  // mistake this test exists to catch.
+  test('a fully clean signal still discloses the scan boundary, never a bare empty string', () => {
     const out = renderPluginDriftWarning(makeSignal([cleanRepoBuild, absentLayer4]));
-    expect(out).toBe('');
+    expect(out).not.toBe('');
+    expect(out).toContain(SCAN_BOUNDARY_NOTE);
+    expect(out).not.toMatch(/plugin.drift:/i); // no warning framing — this is the clean path
   });
 
   test('stays silent when no signal has been written yet', () => {

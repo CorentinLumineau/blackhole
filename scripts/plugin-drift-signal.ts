@@ -23,6 +23,21 @@ import { projectIdentity } from './project-identity.ts';
 const MARKETPLACE_NAME = 'blackhole-marketplace';
 const BLACKHOLE_REMOTE_MARKER = 'corentinlumineau/blackhole';
 
+// ADR-044 § Assumption Audit A-5 — "an enabled plugin whose own bundled settings register a
+// matcher the scan does not parse stays invisible... the signal states its own scan boundary in
+// its output so a clean render never reads as 'the net is current'". This is the ONE canonical
+// site for that disclosure text (V-DOC-05) — `renderPluginDriftWarning` (`campaign-status.ts`)
+// imports it rather than restating it, so the JSON field and the dashboard line can never drift
+// apart. Emitted unconditionally, on both a clean and a non-clean render — a fully clean signal
+// is exactly the case this note exists to qualify (the founding defect this issue fixes was a
+// signal asserting more confidence than its evidence supported).
+export const SCAN_BOUNDARY_NOTE =
+  'Scan boundary: enumerates project .claude/settings.json, enabledPlugins ' +
+  '(installed_plugins.json), user ~/.claude/settings.json, and .claude/settings.local.json ' +
+  'only. A clean render means nothing within this scan differs — not that no PreToolUse ' +
+  'enforcement source anywhere is stale (a plugin\'s own bundled settings registering an ' +
+  'unparsed matcher stays invisible to this scan).';
+
 export type PluginDriftSource = HookSource & {
   content_hash: string | null;
   outcome: OrderingOutcomeKind;
@@ -44,6 +59,8 @@ export type PluginDriftSignal = {
   ordering_available: boolean;
   ordering_unavailable_reason: string | null;
   veto_pairs: VetoPair[];
+  /** ADR-044 § A-5 disclosure — see `SCAN_BOUNDARY_NOTE`. Always populated, clean render or not. */
+  scan_boundary: string;
 };
 
 export const hashForSource = (source: HookSource): string | null => {
@@ -96,6 +113,7 @@ export function computeSignal(
     ordering_available: ordering.ordering_available,
     ordering_unavailable_reason: ordering.unavailable_reason,
     veto_pairs: ordering.veto_pairs,
+    scan_boundary: SCAN_BOUNDARY_NOTE,
   };
 }
 
@@ -183,6 +201,7 @@ function main(): void {
     `installed_present=${signal.installed_present} hooks_hash_match=${signal.hooks_hash_match} ` +
       `ordering_available=${signal.ordering_available} veto_pairs=${signal.veto_pairs.length}`,
   );
+  console.log(signal.scan_boundary);
 }
 
 if (import.meta.main) {
