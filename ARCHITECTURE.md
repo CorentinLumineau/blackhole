@@ -307,6 +307,7 @@ co-located `*.test.ts`.
 ---
 
 ## Active Constraints
+- A working-tree-mutating `git` subcommand whose effective repository is the main clone is refused regardless of which agent runs it — key the check on repo identity (`worktreeRoot === mainCloneRoot`, plus any `-C`/`--git-dir`/`--work-tree` override), never on `BLACKHOLE_ASSIGNED_WORKTREE`, which is unset for every Pattern C worker (ADR-043)
 - An `{{INCLUDE}}` marker is a directive only in a file declared in `INCLUDE_MARKER_SITES`;
   everywhere else — in every entry path into `expandIncludes`, including the build — it is inert
   prose, never a build-time or check-time expansion (ADR-039)
