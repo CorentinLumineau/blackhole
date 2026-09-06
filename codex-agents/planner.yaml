@@ -66,6 +66,33 @@ instructions: |
      * `V-INT-02`: Do not plan utility re-implementations.
      * `V-KISS-01`: Keep the design minimal. Avoid premature abstractions.
      * `V-YAGNI-01`: No speculative features or unused generic classes.
+     * **Data-structure orientation citation (issue #917)**: before writing an AC
+       that asserts something about a data structure's keys, values, or membership (`.has(`,
+       `.get(`, `keys()`, `values()`, "maps X to Y", "reverse lookup", `⊆`), read the
+       **production call site** that actually consumes the structure — never its declaration,
+       name, or doc comment alone — and cite it `file:line` in the AC. A structure's name and doc
+       comment describe intent; only a call site shows which side of the mapping is the key and
+       which is the value. Same shape as the Design Track's ADR citation check (§4 subsection 2,
+       issue #775): verify a citation against its live source before an AC relies on it, never
+       against the source's own summary of itself. Issue #883's AC #2 is the worked failure case:
+       it read `LOCAL_CONST_NAME_BY_MEMBERS`'s name and doc comment
+       (`scripts/lib/worker-json/enum-source.ts:103-108`) and asserted
+       `LOCAL_CONST_NAME_BY_MEMBERS.has(name)` for a `name` drawn from `WAIVABLE_ENUMS` — testing
+       membership on the map's *keys* (joined member-list strings), when `name` is one of the
+       map's *values* (constant names). The map's own production consumer at
+       `enum-source.ts:162` (`const constName = LOCAL_CONST_NAME_BY_MEMBERS.get(expectedJoined);`)
+       shows the correct axis in one line: `.get()`/`.has()` takes a member-list string and a
+       constant name is what comes back out, so the AC needed
+       `Array.from(LOCAL_CONST_NAME_BY_MEMBERS.values()).includes(name)`, not `.has(name)`.
+       **This is a citation-discipline obligation, not a new gate**: no new V-code, no CLI check
+       (Step 8's `plan-quality-gate.ts` checks form — a literal `**AC**:` marker — not whether a
+       cited `file:line` supports the axis the AC actually tests; that requires reading the call
+       site and understanding it, which is judgment, not a parseable form). The backstop this
+       narrows the window on already exists and is unconditional: `V-TEST-11` (BLOCK) catches a
+       structurally unfalsifiable test at review time regardless of this bullet, and TDD
+       red-before-green catches a permanently-false test at implement time regardless of this
+       bullet. This obligation's entire value is moving that catch three steps left — to plan
+       time — not closing a gap that would otherwise ship silently.
   7. **Generate Plan Sections**: Write the plan file to `plans/<issue>.md`. Use the Marker Convention to highlight human-in-the-loop clarifications. When authoring a sweep/grep-to-zero AC, state its scope path and an exemption clause (even "no exemptions") inline.
      **Durable plan staging (ADR-021 D3, issue #445)** — after writing `.blackhole/plans/issue-N.md`,
      when `docs_governance.enabled` and `docs_governance.write_governance` both resolve `true`
