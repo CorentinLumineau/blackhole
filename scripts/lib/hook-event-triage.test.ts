@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { withTempDir } from './test-fixtures.ts';
-import { ingestHookEvents, main } from './hook-event-triage.ts';
+import { archiveConsumedFiles, ingestHookEvents, main } from './hook-event-triage.ts';
 import { root } from '../checks/check-utils.ts';
 
 // ADR-042 — finding identity is per-class `(vcode, pattern_id, worktree)`, not
@@ -46,7 +46,7 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
         findings: [] as [],
       };
 
-      const { ingested, ledger: updated } = ingestHookEvents({
+      const { ingested, ledger: updated, consumedFiles } = ingestHookEvents({
         repoRoot,
         queueIssues: {
           '598': { status: 'in-flight', worktree },
@@ -55,7 +55,9 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
       });
 
       expect(ingested).toBe(1);
-      expect(fs.existsSync(eventFile)).toBe(false);
+      // Issue #909 — ingestHookEvents is now filesystem-side-effect-free with respect to the
+      // consumed event file; it still exists until archiveConsumedFiles is called explicitly.
+      expect(fs.existsSync(eventFile)).toBe(true);
       expect(updated.findings).toHaveLength(1);
       expect(updated.findings[0]).toMatchObject({
         vcode: 'V-HOOK-03',
@@ -69,7 +71,10 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
       expect(updated.findings[0].last_seen_at).toBeTruthy();
       expect(updated.findings[0].summary).toContain('process exit code 1');
 
+      archiveConsumedFiles({ repoRoot, consumedFiles });
+
       // Archived, not unlinked (ADR-042 item 4).
+      expect(fs.existsSync(eventFile)).toBe(false);
       const archiveRoot = path.join(repoRoot, '.blackhole', 'archive');
       const archiveDirs = fs.readdirSync(archiveRoot).filter((d) => d.startsWith('hook-events-'));
       expect(archiveDirs.length).toBe(1);
@@ -275,7 +280,12 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
         'utf-8',
       );
 
-      ingestHookEvents({ repoRoot, queueIssues: {}, ledger: { refreshed_at: '', next_id: 1, findings: [] } });
+      const { consumedFiles } = ingestHookEvents({
+        repoRoot,
+        queueIssues: {},
+        ledger: { refreshed_at: '', next_id: 1, findings: [] },
+      });
+      archiveConsumedFiles({ repoRoot, consumedFiles });
 
       expect(fs.existsSync(path.join(eventsDir, 'd.json'))).toBe(false);
       const archiveRoot = path.join(repoRoot, '.blackhole', 'archive');
@@ -307,6 +317,58 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
       expect(updated.findings).toHaveLength(1);
       // the malformed file is left in place — never archived, never deleted
       expect(fs.existsSync(path.join(eventsDir, 'broken.json'))).toBe(true);
+    });
+  });
+
+  // Task 3 — Issue #909 crash-recovery proof: a crash between the ledger install and archiving
+  // must inflate the occurrence count on the next run, not lose the event. Constructed directly
+  // via the exported primitives (ingestHookEvents + archiveConsumedFiles) rather than by forcing
+  // main() to throw mid-flight — see the plan's "no new deps parameter on main()" design decision.
+  test('Task 3 — a crash between ledger install and archiving inflates occurrences, not loses the event', () => {
+    withTempDir('hook-triage-', (repoRoot) => {
+      const eventsDir = path.join(repoRoot, '.blackhole', 'hook-events');
+      fs.mkdirSync(eventsDir, { recursive: true });
+      const eventFile = path.join(eventsDir, 'crash-recovery.json');
+      fs.writeFileSync(
+        eventFile,
+        JSON.stringify({ tier: 'warn', pattern_id: 'force-push', reason: 'force push detected', worktree: null }),
+        'utf-8',
+      );
+
+      // Step 1: first ingest. The event is tier-mapped and counted, but — this is the assertion
+      // that is red on current `main` — the file must still be sitting in eventsDir, because
+      // ingestHookEvents no longer archives as a side effect of computing the ledger update.
+      const first = ingestHookEvents({
+        repoRoot,
+        queueIssues: {},
+        ledger: { refreshed_at: '', next_id: 1, findings: [] },
+      });
+      expect(first.ingested).toBe(1);
+      expect(first.ledger.findings[0].occurrences).toBe(1);
+      expect(fs.existsSync(eventFile)).toBe(true);
+
+      // Step 2: persist the ledger for real (simulating "the ledger install succeeded") but
+      // deliberately skip archiveConsumedFiles (simulating "then it crashed").
+      const campaignDir = path.join(repoRoot, '.blackhole');
+      const ledgerPath = path.join(campaignDir, 'findings-ledger.json');
+      fs.writeFileSync(ledgerPath, JSON.stringify(first.ledger, null, 2));
+
+      // Step 3: next run's fresh ingest finds the still-present event file and re-ingests it —
+      // visible as an inflated occurrence count on the same class row, not a second row and not
+      // silence.
+      const second = ingestHookEvents({ repoRoot, queueIssues: {}, ledger: first.ledger });
+      expect(second.ingested).toBe(1);
+      expect(second.ledger.findings).toHaveLength(1);
+      expect(second.ledger.findings[0].occurrences).toBe(2);
+
+      // Step 4: archiving for real closes the window — the file leaves eventsDir and lands
+      // under .blackhole/archive/hook-events-<ts>/.
+      archiveConsumedFiles({ repoRoot, consumedFiles: second.consumedFiles });
+      expect(fs.existsSync(eventFile)).toBe(false);
+      const archiveRoot = path.join(campaignDir, 'archive');
+      const archiveDirs = fs.readdirSync(archiveRoot).filter((d) => d.startsWith('hook-events-'));
+      expect(archiveDirs.length).toBeGreaterThan(0);
+      expect(fs.readdirSync(path.join(archiveRoot, archiveDirs[0]))).toContain('crash-recovery.json');
     });
   });
 
@@ -476,6 +538,11 @@ describe('main() CLI entrypoint', () => {
       // rejected .tmp file is cleaned up, not left behind.
       expect(fs.readFileSync(ledgerPath, 'utf-8')).toBe(originalLedgerContent);
       expect(fs.existsSync(`${ledgerPath}.tmp`)).toBe(false);
+      // Issue #909 — archiving must not happen ahead of a successful ledger install: a guard
+      // refusal is the deterministic in-process stand-in for "the process died before the
+      // ledger install" (main() never reaches fs.renameSync(tmpPath, ledgerPath) either way),
+      // so the event file must still be sitting here, un-archived, for the next run to re-ingest.
+      expect(fs.existsSync(path.join(eventsDir, 'guard-refusal-event.json'))).toBe(true);
     });
   });
 });

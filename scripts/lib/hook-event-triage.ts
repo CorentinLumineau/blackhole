@@ -114,12 +114,12 @@ export const ingestHookEvents = ({
   repoRoot: string;
   queueIssues: Record<string, QueueIssueForTriage>;
   ledger: FindingsLedger;
-}): { ingested: number; ledger: FindingsLedger } => {
+}): { ingested: number; ledger: FindingsLedger; consumedFiles: string[] } => {
   const eventsDir = path.join(repoRoot, '.blackhole', 'hook-events');
-  if (!fs.existsSync(eventsDir)) return { ingested: 0, ledger };
+  if (!fs.existsSync(eventsDir)) return { ingested: 0, ledger, consumedFiles: [] };
 
   const eventFiles = fs.readdirSync(eventsDir).filter((f) => f.endsWith('.json'));
-  if (eventFiles.length === 0) return { ingested: 0, ledger };
+  if (eventFiles.length === 0) return { ingested: 0, ledger, consumedFiles: [] };
 
   // Clone every row so an in-place occurrence bump never mutates the caller's ledger object.
   const findings = ledger.findings.map((f) => ({ ...f }));
@@ -131,11 +131,11 @@ export const ingestHookEvents = ({
   let nextId = ledger.next_id;
   let ingested = 0;
   const now = new Date().toISOString();
-  // ADR-042 item 4 — archive-then-delete: a consumed event is moved, never unlinked, so it
-  // survives even after its ledger row collapses into a class-level occurrence count. One
-  // archive directory per ingest run.
-  const archiveDir = path.join(repoRoot, '.blackhole', 'archive', `hook-events-${Date.now()}`);
-  let archiveDirEnsured = false;
+  // Issue #909 — persist-then-archive (Option 1): this function is filesystem-side-effect-free
+  // with respect to the consumed event files. It only records which files were tier-mapped;
+  // archiveConsumedFiles() below performs the actual fs.renameSync, called by main() strictly
+  // after the ledger update it computes here has been durably installed.
+  const consumedFiles: string[] = [];
 
   for (const filename of eventFiles) {
     const filePath = path.join(eventsDir, filename);
@@ -186,15 +186,11 @@ export const ingestHookEvents = ({
       byKey.set(key, candidate);
     }
 
-    if (!archiveDirEnsured) {
-      fs.mkdirSync(archiveDir, { recursive: true });
-      archiveDirEnsured = true;
-    }
-    fs.renameSync(filePath, path.join(archiveDir, filename));
+    consumedFiles.push(filePath);
     ingested += 1;
   }
 
-  if (ingested === 0) return { ingested: 0, ledger };
+  if (ingested === 0) return { ingested: 0, ledger, consumedFiles: [] };
 
   return {
     ingested,
@@ -204,7 +200,29 @@ export const ingestHookEvents = ({
       next_id: nextId,
       findings,
     },
+    consumedFiles,
   };
+};
+
+/**
+ * Archive-then-delete (ADR-042 item 4): move each consumed hook-event file into a fresh
+ * `.blackhole/archive/hook-events-<ts>/` directory, never unlinked. Split out from
+ * `ingestHookEvents` (issue #909, Option 1 — persist-then-archive) so archiving can be deferred
+ * until strictly after the ledger update it accompanies has been durably installed.
+ */
+export const archiveConsumedFiles = ({
+  repoRoot,
+  consumedFiles,
+}: {
+  repoRoot: string;
+  consumedFiles: string[];
+}): void => {
+  if (consumedFiles.length === 0) return;
+  const archiveDir = path.join(repoRoot, '.blackhole', 'archive', `hook-events-${Date.now()}`);
+  fs.mkdirSync(archiveDir, { recursive: true });
+  for (const filePath of consumedFiles) {
+    fs.renameSync(filePath, path.join(archiveDir, path.basename(filePath)));
+  }
 };
 
 // CLI entrypoint — existence-gated turn-start trigger
@@ -232,7 +250,7 @@ export function main(deps: { validateStateWrite: typeof validateStateWrite } = {
     : {};
   const ledger = readJsonFile(ledgerPath, ledgerPath) as FindingsLedger;
 
-  const { ingested, ledger: updated } = ingestHookEvents({ repoRoot: root, queueIssues, ledger });
+  const { ingested, ledger: updated, consumedFiles } = ingestHookEvents({ repoRoot: root, queueIssues, ledger });
   if (ingested === 0) {
     console.log('hook-event-triage: no hook events to ingest');
     return;
@@ -254,6 +272,12 @@ export function main(deps: { validateStateWrite: typeof validateStateWrite } = {
   }
 
   fs.renameSync(tmpPath, ledgerPath);
+  // Issue #909, Option 1 (persist-then-archive): archiving runs only after the ledger install
+  // above has succeeded. A crash between this line and archiveConsumedFiles() leaves the event
+  // file(s) in place — the next run re-ingests and inflates `occurrences` by one, a visible,
+  // bounded, self-correcting cost, versus archiving first and losing the finding forever if the
+  // process dies before this rename.
+  archiveConsumedFiles({ repoRoot: root, consumedFiles });
   console.log(`hook-event-triage: ingested ${ingested} event(s) into ${updated.findings.length} total findings`);
 }
 
