@@ -168,7 +168,17 @@ parsing it, so it has nothing to extract them from — a permanent, not temporar
 
 `outside-assigned-worktree` fires when `BLACKHOLE_ASSIGNED_WORKTREE` is set to a registered family worktree and the Write/Edit target resolves outside that single assigned root (#620). When the env var is unset, empty, or not a registered family worktree, containment falls back to `allWorktreeRoots(cwd)` unchanged — the same fail-open degradation as an invalid `scratchpad_dir` in #510.
 
-`outside-worktree`'s root set (#729) always includes the payload's own `cwd` worktree — nested under the main clone/`scratchpad_dir` or not — plus, when set and valid (same breadth check as `scratchpad_dir`), an opt-in `BLACKHOLE_SCRATCHPAD_DIR` naming the harness's own per-session scratchpad directory.
+`outside-worktree`'s root set (#729) is `allWorktreeRoots()`'s union of five members: every
+registered worktree nested under the main clone; every registered worktree nested under a
+validated `scratchpad_dir` (the campaign's own `.blackhole/config.json` value, breadth-checked
+via the same check `scratchpad_dir` uses elsewhere in this file); `scratchpad_dir` itself,
+admitted only when `isExistingDirectory()` confirms it is still present on disk — a target
+sitting directly at the scratchpad root, not just inside one of its `wt-*` subdirectories, is
+in-bounds; the payload's own `cwd` worktree, always included when not already covered by the
+three roots above (#729); and, when set and valid (same breadth and existence checks as
+`scratchpad_dir`), an opt-in `BLACKHOLE_SCRATCHPAD_DIR` env var — a distinct mechanism from
+the config `scratchpad_dir` above, naming the harness's own per-session scratchpad directory,
+which is never a git worktree and so never appears in `git worktree list` output at all.
 
 `bash-outside-assigned-worktree` and `bash-write-target-unresolvable` (issue #804, ADR-029) extend `outside-assigned-worktree`'s containment to the `Bash` tool: `validate-bash-command.js`'s `bash-write-target-guard.js` extracts common file-write-target shapes (`>`, `>>`, `&>`, `tee [-a]`, `sed -i[.suffix]`, `cp`, `mv`, heredoc targets) from the command string and, when `BLACKHOLE_ASSIGNED_WORKTREE` is set, checks each resolvable target against that same single root. A resolvable target outside the assigned root denies (`bash-outside-assigned-worktree`, block tier); a write-shaped command whose target cannot be resolved statically (a dynamic argument, or a command like `python3 -c`/`perl -i`/`awk`/`dd`/`rsync` whose write behavior cannot be determined from the command string alone) is allowed but recorded (`bash-write-target-unresolvable`, warn tier) — never a silent allow. Unset, empty, or not a registered family worktree: fail open, byte-identical to today (same #620 degradation `outside-assigned-worktree` already documents).
 
