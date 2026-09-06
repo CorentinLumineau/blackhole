@@ -163,7 +163,14 @@ const warnGitCleanup = (cwd: string, args: string[]): void => {
  * directory through `git rev-parse`, so an un-initialized temp dir would exercise only the
  * fail-open path and never the durable-record contract. The path is realpath'd because git
  * reports resolved paths, and the suites compare worktree containment against it. Separate from
- * withTempDir above because that one's `finally` fires before an async `fn` settles. */
+ * withTempDir above because that one's `finally` fires before an async `fn` settles.
+ *
+ * The repo-local identity below is pinned rather than left to ambient global git config
+ * (#881): a temp dir under the OS tmp root inherits no repo-local `user.email`/`user.name`, so
+ * without this any `git commit` a caller (or a helper built on this one, e.g.
+ * `withLinkedWorktree`) makes into it fails with "Author identity unknown" on a machine with no
+ * global identity configured — silently dropping coverage for every test built on this fixture.
+ * Literal values reused from `stack-repair.test.ts`'s own temp-repo identity pin (V-INT-02). */
 export const withTempGitRepo = async <T>(
   prefix: string,
   fn: (dir: string) => Promise<T>,
@@ -171,6 +178,8 @@ export const withTempGitRepo = async <T>(
   const dir = fs.realpathSync(makeTempDir(prefix));
   try {
     runGit(dir, ['init', '--quiet']);
+    runGit(dir, ['config', 'user.email', 'campaign@example.invalid']);
+    runGit(dir, ['config', 'user.name', 'campaign']);
     return await fn(dir);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
