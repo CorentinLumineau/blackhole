@@ -4,17 +4,19 @@ import { read, type CheckResult } from './check-utils.ts';
 // Issue #798 — cwd-pin-guard.check.ts: matches verify.cwd-pin-guard.test.ts.
 // `bun run scripts/<name>.ts` resolves the entry file and every transitive relative `./lib/...`
 // import against the process cwd, not against any `--repo-root`/`--config`/`--ledger` argument
-// value — so a documented invocation of one of the three scripts below that omits `--cwd` risks
+// value — so a documented invocation of one of the scripts below that omits `--cwd` risks
 // silently running stale/divergent library code when cwd and --repo-root point at different
 // trees (concrete incident: PR #790 / issue #743, traced in
 // `.blackhole/plans/issue-798-investigation.md`). Every documented invocation is pinned via
 // `bun run --cwd <target-root> scripts/<name>.ts ...` (`--cwd` immediately after `bun run`,
-// before the script path) — this check pins the class, not just the three sites fixed for #798.
+// before the script path) — this check pins the class, not just the three sites fixed for #798
+// (widened to a fourth, `scripts/plan-quality-gate.ts`, by issue #891).
 
 const TARGET_SCRIPTS = [
   'scripts/check-review-artifact.ts',
   'scripts/carry-staged-artifacts.ts',
   'scripts/lib/companion-file-sync.ts',
+  'scripts/plan-quality-gate.ts',
 ];
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import * as fs from 'fs';
+import * as path from 'path';
 import {
   findMissingCriticalFiles,
   findVagueMitigations,
@@ -35,29 +36,39 @@ export const extractSection = (content: string, heading: string): string => {
 };
 
 function usage(): never {
-  console.error('Usage: bun run scripts/plan-quality-gate.ts --plan-file <path>');
+  console.error(
+    'Usage: bun run --cwd <abs repo-root> scripts/plan-quality-gate.ts --plan-file <path> --repo-root <abs repo-root>'
+  );
   process.exit(2);
 }
 
-function parseCliArgs(argv: string[]): { planFile: string | null } {
+function parseCliArgs(argv: string[]): { planFile: string | null; repoRoot: string | null } {
   let planFile: string | null = null;
+  let repoRoot: string | null = null;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--plan-file' && argv[i + 1]) {
       planFile = argv[++i];
+    } else if (argv[i] === '--repo-root' && argv[i + 1]) {
+      repoRoot = argv[++i];
     }
   }
-  return { planFile };
+  return { planFile, repoRoot };
 }
 
 if (import.meta.main) {
-  const { planFile } = parseCliArgs(process.argv.slice(2));
+  const { planFile, repoRoot } = parseCliArgs(process.argv.slice(2));
   if (!planFile) usage();
+  // Required and absolute — same convention as check-review-artifact.ts's ABSOLUTE_PATH_KEYS
+  // (issue #806 AC4). A silent default to blackhole's own checkout is exactly the false-pass
+  // bug this flag exists to close (issue #891), so there is no fallback here.
+  if (!repoRoot || !path.isAbsolute(repoRoot)) usage();
 
   const content = fs.readFileSync(planFile, 'utf-8');
+  const exists = (p: string) => fs.existsSync(path.join(repoRoot, p));
   const result = {
     ac_mapping: findMissingAcMapping(extractSection(content, 'Task Breakdown')).length === 0,
     critical_files_exist:
-      findMissingCriticalFiles(extractSection(content, 'Critical Files')).length === 0,
+      findMissingCriticalFiles(extractSection(content, 'Critical Files'), exists).length === 0,
     mitigation_concrete:
       findVagueMitigations(extractSection(content, 'Execution Strategy & Stop Conditions')).length === 0,
   };
