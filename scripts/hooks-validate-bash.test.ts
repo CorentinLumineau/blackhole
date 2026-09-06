@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import {
@@ -2871,6 +2872,180 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       expect(result.exitCode).toBe(0);
       expect(result.stdout.trim()).toBe('');
       expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+});
+
+const ROOT_RM_COMMAND = ['rm', '-rf', '/'].join(' ');
+
+// `recordEvent`'s `mainCloneRoot(cwd)` call used to swallow an anomalous git failure into the
+// same `null` the routine "outside any repository" case returns, so a durable record was silently
+// dropped in both cases — even for a BLOCK-tier decision the deny survives (the decision and the
+// record are independent, per `denyAndRecord`'s ordering), but nothing lands where the
+// orchestrator's Triage step looks. These integration tests exercise the fix's git-independent
+// `CLAUDE_PROJECT_DIR` fallback sink end to end through the real subprocess, complementing the
+// direct `mainCloneRoot` unit tests in `hooks-validate-file.test.ts`.
+describe('validate-bash-command.js — anomalous git failure falls back to CLAUDE_PROJECT_DIR, never silently drops the record (#889)', () => {
+  test('a corrupted repo with CLAUDE_PROJECT_DIR set: the deny survives and the record lands in the fallback sink', async () => {
+    await withTempGitRepo('blackhole-hook-889-fallback-', async (repo) => {
+      fs.rmSync(path.join(repo, '.git', 'HEAD'));
+      const sinkDir = makeTempDir('blackhole-hook-889-sink-');
+      try {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(ROOT_RM_COMMAND),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          sinkDir,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+
+        // Nothing landed under the corrupted repo's own (unresolvable) location...
+        expect(fs.existsSync(path.join(repo, '.blackhole', 'hook-events'))).toBe(false);
+
+        // ...it landed in the CLAUDE_PROJECT_DIR fallback sink instead.
+        const events = readHookEvents(sinkDir);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          hook: 'validate-bash-command',
+          decision: 'deny',
+          tier: 'block',
+          pattern_id: 'rm-rf-root',
+        });
+
+        // The amendment: the anomalous branch is loud regardless of the outcome, naming which
+        // sink tier was used, so a fallback success is never a *silent* success.
+        expect(result.stderr).toMatch(/anomalous git failure/i);
+        expect(result.stderr).toMatch(/fallback/i);
+      } finally {
+        fs.rmSync(sinkDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test('a corrupted repo with CLAUDE_PROJECT_DIR unset: the deny survives, nothing is recorded anywhere, and stderr is distinguishably anomalous', async () => {
+    await withTempGitRepo('blackhole-hook-889-dropped-', async (repo) => {
+      fs.rmSync(path.join(repo, '.git', 'HEAD'));
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(ROOT_RM_COMMAND), repo);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(readHookEvents(repo)).toEqual([]);
+
+      // Distinguishable from the routine "no git context" message the next test pins — an
+      // operator (or a log scan) must be able to tell "there was nothing to record here" apart
+      // from "something is actually broken and the record was lost".
+      expect(result.stderr).toMatch(/anomalous git failure/i);
+      expect(result.stderr).not.toMatch(/no git context/i);
+    });
+  });
+
+  test('outside any repository (routine, not anomalous): behavior is byte-identical to today — regression guard', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-889-none-'));
+    try {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(ROOT_RM_COMMAND), dir);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(result.stderr).toMatch(/no git context.*not recorded/i);
+      expect(fs.existsSync(path.join(dir, '.blackhole', 'hook-events'))).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('WARN tier in a corrupted repo with the fallback available: the allow survives and the record lands in the fallback sink', async () => {
+    await withTempGitRepo('blackhole-hook-889-warn-fallback-', async (repo) => {
+      fs.rmSync(path.join(repo, '.git', 'HEAD'));
+      const sinkDir = makeTempDir('blackhole-hook-889-warn-sink-');
+      try {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload('git push --force origin main'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          sinkDir,
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(permissionDecision(result.stdout)).toBe('allow');
+
+        const events = readHookEvents(sinkDir);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ decision: 'allow', tier: 'warn', pattern_id: 'git-push-force' });
+      } finally {
+        fs.rmSync(sinkDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test('the fallback-sink record redacts a credential literal exactly like the primary sink does', async () => {
+    await withTempGitRepo('blackhole-hook-889-redact-', async (repo) => {
+      fs.rmSync(path.join(repo, '.git', 'HEAD'));
+      const sinkDir = makeTempDir('blackhole-hook-889-redact-sink-');
+      try {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayload(`${ROOT_RM_COMMAND} Bearer abcdefgh1234`),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          sinkDir,
+        );
+
+        expect(result.exitCode).toBe(2);
+        const events = readHookEvents(sinkDir);
+        expect(events).toHaveLength(1);
+        const detail = String(events[0].detail);
+        expect(detail).toContain('***');
+        expect(detail).not.toContain('abcdefgh1234');
+      } finally {
+        fs.rmSync(sinkDir, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
+// Pins `recordEvent`'s never-throw invariant — the T1 mitigation whose full mechanism is
+// documented at its definition in `hook-event-log.js`; not restated here.
+//
+// Locally new: this drives `failClosed` — the same recovery path a pattern-load or stdin-parse
+// failure already uses — through a corrupted repo, so the `mainCloneRoot(cwd)` call is guaranteed
+// to hit the anomalous branch on the very same event `failClosed` is trying to record. The
+// assertion is on the process exit code rather than a mock, exercised end to end through the real
+// subprocess, because the failure this guards against is observable only there: an escaping throw
+// exits 1, and exit 1 is what the wrapper reads as "validator could not run". Exit 2 is the deny.
+describe('validate-bash-command.js — recordEvent never escapes failClosed, even under a corrupted repo (#889)', () => {
+  test('malformed stdin + a corrupted repo still denies with exit 2, not 1', async () => {
+    await withTempGitRepo('blackhole-hook-889-failclosed-', async (repo) => {
+      fs.rmSync(path.join(repo, '.git', 'HEAD'));
+      const proc = Bun.spawn({
+        cmd: ['bun', 'run', path.join(PRETOOLUSE_HOOKS_DIR, SCRIPT)],
+        stdin: new Blob(['{ this is not json']),
+        stdout: 'pipe',
+        stderr: 'pipe',
+        cwd: repo,
+      });
+      const [exitCode, stdout, stderr] = await Promise.all([
+        proc.exited,
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+
+      expect(exitCode).toBe(2);
+      expect(permissionDecision(stdout)).toBe('deny');
+      expect(stderr).toMatch(/hook input/i);
+      expect(stderr).toMatch(/anomalous git failure/i);
     });
   });
 });

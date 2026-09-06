@@ -102,7 +102,10 @@ export type HookRunResult = { exitCode: number; stdout: string; stderr: string }
  * behavior. `assignedWorktree`, when passed, is threaded as `BLACKHOLE_ASSIGNED_WORKTREE` (#620).
  * `scratchpadDirEnv`, when passed, is threaded as `BLACKHOLE_SCRATCHPAD_DIR` (#729) — the opt-in
  * override that admits the harness's own per-session scratchpad directory as a trusted
- * containment root even when it is not a registered git worktree at all. */
+ * containment root even when it is not a registered git worktree at all. `claudeProjectDir`, when
+ * passed, is threaded as `CLAUDE_PROJECT_DIR` — the git-independent fallback sink `recordEvent`
+ * consults on an anomalous `mainCloneRoot` failure; omitted, the spawn's env is built exactly as
+ * before, so none of the existing call sites change behavior. */
 export const runPreToolUseHook = async (
   script: string,
   payload: unknown,
@@ -111,11 +114,13 @@ export const runPreToolUseHook = async (
   eventDir?: string,
   assignedWorktree?: string,
   scratchpadDirEnv?: string,
+  claudeProjectDir?: string,
 ): Promise<HookRunResult> => {
   const extraEnv: Record<string, string> = {};
   if (eventDir) extraEnv.BLACKHOLE_HOOK_EVENT_DIR = eventDir;
   if (assignedWorktree) extraEnv.BLACKHOLE_ASSIGNED_WORKTREE = assignedWorktree;
   if (scratchpadDirEnv) extraEnv.BLACKHOLE_SCRATCHPAD_DIR = scratchpadDirEnv;
+  if (claudeProjectDir) extraEnv.CLAUDE_PROJECT_DIR = claudeProjectDir;
   const proc = Bun.spawn({
     cmd: ['bun', 'run', path.join(hooksDir, script)],
     stdin: new Blob([JSON.stringify(payload)]),
