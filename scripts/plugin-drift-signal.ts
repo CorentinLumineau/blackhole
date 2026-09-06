@@ -46,7 +46,7 @@ export type PluginDriftSignal = {
   veto_pairs: VetoPair[];
 };
 
-const hashForSource = (source: HookSource): string | null => {
+export const hashForSource = (source: HookSource): string | null => {
   if (!source.present || source.resolved_path === null) return null;
   if (source.path_kind === 'directory') return hashDirectory(source.resolved_path);
   if (source.path_kind === 'file' && fs.existsSync(source.resolved_path)) {
@@ -113,7 +113,7 @@ export const writePluginDriftSignalAtomic = (campaignDir: string, signal: Plugin
 
 // Real git access for the CLI only — the pure ordering module (`hook-source-ordering.ts`) never
 // shells to git itself; every fixture/test drives it through an injected resolver instead.
-function createRealGitResolver(repoRoot: string): GitResolver {
+export function createRealGitResolver(repoRoot: string): GitResolver {
   const git = (args: string[]) => spawnSync('git', ['-C', repoRoot, ...args], { encoding: 'utf-8' });
   return {
     isVerifiedBlackholeClone: () => {
@@ -133,7 +133,7 @@ function createRealGitResolver(repoRoot: string): GitResolver {
   };
 }
 
-function readRepoHeadSha(repoRoot: string): string | null {
+export function readRepoHeadSha(repoRoot: string): string | null {
   const r = spawnSync('git', ['-C', repoRoot, 'rev-parse', 'HEAD'], { encoding: 'utf-8' });
   return r.status === 0 ? r.stdout.trim() : null;
 }

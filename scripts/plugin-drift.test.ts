@@ -1,11 +1,20 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawnSync } from 'child_process';
 import { computePluginDrift } from './lib/plugin-drift.ts';
-import { computeSignal, writePluginDriftSignalAtomic, type PluginDriftSignal } from './plugin-drift-signal.ts';
+import {
+  computeSignal,
+  writePluginDriftSignalAtomic,
+  createRealGitResolver,
+  readRepoHeadSha,
+  hashForSource,
+  type PluginDriftSignal,
+} from './plugin-drift-signal.ts';
 import type { HookSource } from './lib/hook-sources.ts';
 import type { OrderingResult } from './lib/hook-source-ordering.ts';
 import { makeTempDir } from './lib/fs.ts';
+import { withTempGitRepo, runGit } from './lib/test-fixtures.ts';
 
 // Issue #800 (ADR-030) — plugin-drift.ts's computePluginDrift is the pure detector behind the
 // advisory session-start signal (mechanism 2 of the composite fix): the installed Claude Code
@@ -32,6 +41,17 @@ const write = (dir: string, relPath: string, content: string): void => {
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, content);
 };
+
+const baseSource = (): HookSource => ({
+  layer: 1,
+  label: 'test source',
+  origin_kind: 'repo-build',
+  resolved_path: null,
+  present: true,
+  path_kind: 'absent',
+  version: null,
+  commit_sha: null,
+});
 
 describe('computePluginDrift', () => {
   // Test A — no installed cache directory at all. If the function defaulted
@@ -181,5 +201,104 @@ describe('writePluginDriftSignalAtomic', () => {
     } finally {
       fs.rmSync(campaignDir, { recursive: true, force: true });
     }
+  });
+});
+
+// Issue #912 (ADR-044) — per-source content hashing. A single-file source (source 3's shape:
+// one script inside a directory of unrelated files) must never be walked as a directory.
+describe('hashForSource', () => {
+  test('absent source yields null', () => {
+    expect(hashForSource({ ...baseSource(), present: false, path_kind: 'absent' })).toBeNull();
+  });
+
+  test('directory-kind source is hashed via hashDirectory', () => {
+    const dir = makeTempDir('plugin-drift-signal-hash-dir-');
+    try {
+      fs.writeFileSync(path.join(dir, 'a.js'), 'content');
+      const hash = hashForSource({ ...baseSource(), resolved_path: dir, path_kind: 'directory' });
+      expect(hash).not.toBeNull();
+      expect(hash).toHaveLength(64);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('file-kind source is hashed by its own content, not as a directory', () => {
+    const dir = makeTempDir('plugin-drift-signal-hash-file-');
+    try {
+      const filePath = path.join(dir, 'claude-hook.sh');
+      fs.writeFileSync(filePath, 'echo hi');
+      const hash = hashForSource({ ...baseSource(), resolved_path: filePath, path_kind: 'file' });
+      expect(hash).not.toBeNull();
+      expect(hash).toHaveLength(64);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('file-kind source whose path no longer exists yields null', () => {
+    expect(hashForSource({ ...baseSource(), resolved_path: '/does/not/exist.sh', path_kind: 'file' })).toBeNull();
+  });
+});
+
+// Issue #912 (ADR-044) — the CLI's real-git wiring. Exercised against a real temp repo (V-INT-02,
+// same `withTempGitRepo`/`runGit` idiom `hooks-validate-bash.test.ts` established) rather than
+// mocked, since these functions' entire job is shelling out to git correctly.
+describe('readRepoHeadSha', () => {
+  test('returns the checked-out commit sha', async () => {
+    await withTempGitRepo('plugin-drift-signal-head-', async (repo) => {
+      runGit(repo, ['commit', '--allow-empty', '--quiet', '-m', 'init']);
+      const expected = spawnSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).stdout.trim();
+      expect(readRepoHeadSha(repo)).toBe(expected);
+    });
+  });
+
+  test('returns null outside a git repository', () => {
+    const dir = makeTempDir('plugin-drift-signal-not-a-repo');
+    try {
+      expect(readRepoHeadSha(dir)).toBeNull();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('createRealGitResolver', () => {
+  test('isVerifiedBlackholeClone is true only for a remote matching CorentinLumineau/blackhole', async () => {
+    await withTempGitRepo('plugin-drift-signal-clone-', async (repo) => {
+      const bareRemote = makeTempDir('plugin-drift-signal-clone-origin-');
+      try {
+        spawnSync('git', ['init', '--quiet', '--bare', bareRemote]);
+        runGit(repo, ['remote', 'add', 'origin', bareRemote]);
+        expect(createRealGitResolver(repo).isVerifiedBlackholeClone()).toBe(false);
+
+        runGit(repo, ['remote', 'set-url', 'origin', 'https://github.com/CorentinLumineau/blackhole.git']);
+        expect(createRealGitResolver(repo).isVerifiedBlackholeClone()).toBe(true);
+      } finally {
+        fs.rmSync(bareRemote, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test('originMainSha, shaResolves, isAncestor and hookCommitsBehindOriginMain resolve against a real repo', async () => {
+    await withTempGitRepo('plugin-drift-signal-resolver-', async (repo) => {
+      runGit(repo, ['commit', '--allow-empty', '--quiet', '-m', 'init']);
+      const rootSha = spawnSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf-8' }).stdout.trim();
+      fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
+      fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'a.js'), 'one');
+      runGit(repo, ['add', '.claude/hooks/a.js']);
+      runGit(repo, ['commit', '--quiet', '-m', 'hook change']);
+      // Simulate `origin/main` without a real remote — a local branch of that name resolves the
+      // same `git rev-parse origin/main` call the resolver makes.
+      runGit(repo, ['branch', 'origin/main']);
+
+      const resolver = createRealGitResolver(repo);
+      const originMain = resolver.originMainSha();
+      expect(originMain).not.toBeNull();
+      expect(resolver.shaResolves(rootSha)).toBe(true);
+      expect(resolver.shaResolves('0'.repeat(40))).toBe(false);
+      expect(resolver.isAncestor(rootSha, originMain as string)).toBe(true);
+      expect(resolver.hookCommitsBehindOriginMain(rootSha)).toBe(1);
+    });
   });
 });
