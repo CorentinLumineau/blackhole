@@ -3,6 +3,7 @@ import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
 import { CLAUDE_DISTRIBUTION_ROOT, CLAUDE_NATIVE_ROOT, DISTRIBUTION_ROOT } from '../lib/build/paths.ts';
 import { runFullBuildOnce } from '../lib/check-common.ts';
+import { readJsonFile } from '../lib/fs.ts';
 
 // ADR-007 T5/R2' — hooks.check.ts: PreToolUse safety-gate shape in every shipped plugin bundle
 // (#447) — matches scripts/verify.hooks.test.ts.
@@ -40,8 +41,7 @@ type PatternEntry = { id?: unknown; pattern?: unknown; flags?: unknown; reason?:
 type HookCommand = { type?: unknown; command?: unknown };
 type PreToolUseEntry = { matcher?: unknown; hooks?: HookCommand[] };
 
-const readJson = (abs: string): Record<string, unknown> =>
-  JSON.parse(fs.readFileSync(abs, 'utf-8')) as Record<string, unknown>;
+const readJson = (abs: string): Record<string, unknown> => readJsonFile(abs, abs) as Record<string, unknown>;
 
 /** hooks.json wiring for one bundle: present, parseable, both matchers covered, and every matcher
  * dispatching to a command script that actually exists in the bundle. An entry with an empty

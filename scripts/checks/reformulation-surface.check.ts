@@ -4,8 +4,8 @@ import {
   REFORMULATION_FIELD_IF_WRONG,
   REFORMULATION_FIELD_UNDERSTOOD,
 } from '../lib/reformulation-surface.ts';
-import * as fs from 'fs';
 import * as path from 'path';
+import { readJsonFile } from '../lib/fs.ts';
 
 // Issue #456 — V-REFORM-01: confidence-gate proceed-path reformulation surface is documented,
 // validated, and wired for orchestrator posting.
@@ -35,7 +35,7 @@ export const checkReformulationSurface = (): CheckResult => {
   }
 
   const fixturePath = path.join(root, 'fixtures/worker-json/planner-ready.json');
-  const data = JSON.parse(fs.readFileSync(fixturePath, 'utf-8')) as Record<string, unknown>;
+  const data = readJsonFile(fixturePath, fixturePath) as Record<string, unknown>;
   const reformulation = data.reformulation;
   if (!reformulation || typeof reformulation !== 'object') {
     missing.push('planner-ready.json: missing reformulation object');

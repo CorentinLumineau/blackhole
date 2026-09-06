@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
+import { readJsonFile } from '../lib/fs.ts';
 import { AGENT_YAML_FILES } from '../lib/build/facts.ts';
 import { codexTreeErrors, hasInstructionsBlock } from '../tree-shape.ts';
 import { leakedPlatformConditionalMarkers, runFullBuildOnce, walkMdFilesAbs } from '../lib/check-common.ts';
@@ -32,7 +33,7 @@ export const evaluateCodexManifest = (rootDir: string): string[] => {
     manifestErrors.push('missing .codex-plugin/plugin.json');
   } else {
     try {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      const manifest = readJsonFile(manifestPath, manifestPath);
       for (const key of ['name', 'interface', 'skills', 'version']) {
         if (!manifest[key]) manifestErrors.push(`plugin.json missing ${key}`);
       }
@@ -46,7 +47,7 @@ export const evaluateCodexManifest = (rootDir: string): string[] => {
   const marketplacePath = path.join(rootDir, 'codex-marketplace.json');
   if (fs.existsSync(marketplacePath)) {
     try {
-      const marketplace = JSON.parse(fs.readFileSync(marketplacePath, 'utf-8'));
+      const marketplace = readJsonFile(marketplacePath, marketplacePath);
       if (marketplace.plugins?.[0]?.source?.source !== 'git') {
         manifestErrors.push('codex-marketplace.json must use git source format');
       }

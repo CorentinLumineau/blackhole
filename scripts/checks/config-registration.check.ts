@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { read, root, type CheckResult } from './check-utils.ts';
+import { readJsonFile } from '../lib/fs.ts';
 
 // ADR-007 T5/R2' — config-registration.check.ts: matches verify.config-registration.test.ts.
 //
@@ -71,7 +72,7 @@ const checkConfigRegistration = (): CheckResult => {
   if (!fs.existsSync(configPath)) {
     return { id: 'V-CONFIG-02', ok: true };
   }
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
+  const config = readJsonFile(configPath, configPath) as Record<string, unknown>;
   const unregistered = findUnregisteredConfigKeys(flattenConfigKeys(config), templateKeys);
   if (unregistered.length) {
     return {

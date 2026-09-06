@@ -141,7 +141,7 @@ export const ingestHookEvents = ({
     const filePath = path.join(eventsDir, filename);
     let event: HookEvent;
     try {
-      event = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as HookEvent;
+      event = readJsonFile(filePath, filePath) as HookEvent;
     } catch {
       continue;
     }

@@ -16,7 +16,7 @@ import {
   AGENT_PLUGINS_DISTRIBUTION_VCODES,
 } from './build/paths.ts';
 import { root } from './build/paths.ts';
-import { makeTempDir } from './fs.ts';
+import { makeTempDir, readJsonFile } from './fs.ts';
 
 // ADR-007 R6 — shared bun:test fixture kit: distribution-tree population, temp-dir lifecycle, and
 // (since #447) the PreToolUse hook subprocess harness. Delegates to lib/build compile/manifest
@@ -275,7 +275,7 @@ export const readHookEvents = (repoRoot: string): Record<string, unknown>[] => {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
-    .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')) as Record<string, unknown>);
+    .map((f) => readJsonFile(path.join(dir, f), path.join(dir, f)) as Record<string, unknown>);
 };
 
 export const populateClaudeFixtureTree = (destRoot: string): void => {

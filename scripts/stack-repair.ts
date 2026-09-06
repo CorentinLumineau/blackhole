@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import { spawnSync } from 'child_process';
 import { validateStateWrite } from './lib/state-write-guard.ts';
+import { readJsonFile } from './lib/fs.ts';
 import { runGh } from './lib/forge-adapter/cli.ts';
 
 // Stacked-PR tip capture and post-merge `--onto` repair. A squash-merged parent rewrites its
@@ -166,7 +167,7 @@ const revParse = (repoRoot: string, rev: string): string | null => {
 const isAncestor = (repoRoot: string, ancestor: string, descendant: string): boolean =>
   runGit(['-C', repoRoot, 'merge-base', '--is-ancestor', ancestor, descendant]).ok;
 
-const readQueue = (queuePath: string): QueueJson => JSON.parse(fs.readFileSync(queuePath, 'utf-8')) as QueueJson;
+const readQueue = (queuePath: string): QueueJson => readJsonFile(queuePath, queuePath) as QueueJson;
 
 const writeQueue = (queuePath: string, queue: QueueJson): string | null => {
   const updated = { ...queue, refreshed_at: new Date().toISOString() };

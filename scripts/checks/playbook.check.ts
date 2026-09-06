@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
+import { readJsonFile } from '../lib/fs.ts';
 import { PHASE_NAMES, PHASE_PLAYBOOK_FILES } from '../lib/build/facts.ts';
 import { walkMdFilesAbs } from '../lib/check-common.ts';
 
@@ -83,7 +84,7 @@ export const validatePlanArtifacts = (
 
   let queue: { issues?: Record<string, { phase?: string; status?: string }> };
   try {
-    queue = JSON.parse(fs.readFileSync(queueFile, 'utf-8'));
+    queue = readJsonFile(queueFile, queueFile);
   } catch {
     return { id: 'V-PLAN-01', ok: false, detail: `${path.relative(rootDir, queueFile)}: invalid JSON` };
   }

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { VERIFICATION_MODES } from '../lib/worker-json/constants.ts';
 import { root, type CheckResult } from './check-utils.ts';
+import { readJsonFile } from '../lib/fs.ts';
 
 // V-LEDGER-01 — rejects a `.blackhole/findings-ledger.json` row whose `issue_ref`
 // is not `number | null`, whose `pr_ref` is not `number | null`, that still carries a legacy
@@ -68,7 +69,7 @@ export const checkLedgerSchema = (ledgerFile: string): CheckResult => {
     return { id: 'V-LEDGER-01', ok: true };
   }
 
-  const ledger: { findings?: unknown[] } = JSON.parse(fs.readFileSync(ledgerFile, 'utf-8'));
+  const ledger: { findings?: unknown[] } = readJsonFile(ledgerFile, ledgerFile) as { findings?: unknown[] };
   const violations = findLedgerSchemaDrift(ledger.findings ?? []);
 
   if (violations.length > 0) {
