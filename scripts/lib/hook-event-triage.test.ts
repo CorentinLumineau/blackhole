@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { withTempDir } from './test-fixtures.ts';
 import { ingestHookEvents } from './hook-event-triage.ts';
+import { root } from '../checks/check-utils.ts';
 
 // ADR-042 (issue #893) — finding identity is per-class `(vcode, pattern_id, worktree)`, not
 // per-event-filename. Every fixture below constructs its expected `file` the same way the
@@ -246,6 +247,30 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
     });
   });
 
+  test('a malformed event file is skipped (JSON parse failure) without aborting the batch', () => {
+    withTempDir('hook-triage-', (repoRoot) => {
+      const eventsDir = path.join(repoRoot, '.blackhole', 'hook-events');
+      fs.mkdirSync(eventsDir, { recursive: true });
+      fs.writeFileSync(path.join(eventsDir, 'broken.json'), '{ not valid json', 'utf-8');
+      fs.writeFileSync(
+        path.join(eventsDir, 'ok.json'),
+        JSON.stringify({ tier: 'warn', pattern_id: 'force-push', reason: 'force push detected', worktree: null }),
+        'utf-8',
+      );
+
+      const { ingested, ledger: updated } = ingestHookEvents({
+        repoRoot,
+        queueIssues: {},
+        ledger: { refreshed_at: '', next_id: 1, findings: [] },
+      });
+
+      expect(ingested).toBe(1);
+      expect(updated.findings).toHaveLength(1);
+      // the malformed file is left in place — never archived, never deleted
+      expect(fs.existsSync(path.join(eventsDir, 'broken.json'))).toBe(true);
+    });
+  });
+
   // Task 3 AC / Sprint Contract — the mechanical never-drop proof: replaying the measured live
   // backlog tally (227 error / 115 block / 50 warn = 392) must collapse to ≤15 rows while the
   // summed `occurrences` across those rows equals the input event count exactly.
@@ -299,6 +324,79 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
       expect(updated.findings.length).toBeLessThanOrEqual(15);
       const totalOccurrences = updated.findings.reduce((sum, f) => sum + (f.occurrences ?? 0), 0);
       expect(totalOccurrences).toBe(392);
+    });
+  });
+});
+
+// Task 8 — the `main()` CLI entrypoint the turn-start step invokes. Runs against THIS repo's
+// own worktree root (main() resolves `root` the same way plugin-drift-signal.ts/
+// doc-health-signal.ts do — relative to the running script's own location, never `process.cwd`),
+// so every test creates its own `.blackhole/` here and removes it in `finally` — guarded by an
+// upfront assertion that no `.blackhole/` already exists, so a test never clobbers real state.
+describe('main() CLI entrypoint', () => {
+  const campaignDir = path.join(root, '.blackhole');
+
+  const withCampaignDir = (fn: () => void): void => {
+    expect(fs.existsSync(campaignDir)).toBe(false);
+    try {
+      fn();
+    } finally {
+      fs.rmSync(campaignDir, { recursive: true, force: true });
+    }
+  };
+
+  test('no findings-ledger.json: logs and exits 0 without creating .blackhole/', () => {
+    withCampaignDir(() => {
+      const proc = Bun.spawnSync({
+        cmd: ['bun', 'run', 'scripts/lib/hook-event-triage.ts'],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      expect(proc.exitCode).toBe(0);
+      expect(proc.stdout.toString()).toContain('nothing to ingest into');
+      expect(fs.existsSync(campaignDir)).toBe(false);
+    });
+  });
+
+  test('ledger + hook events present: ingests, archives the event, writes the ledger through the guard', () => {
+    withCampaignDir(() => {
+      fs.mkdirSync(campaignDir, { recursive: true });
+      const ledgerPath = path.join(campaignDir, 'findings-ledger.json');
+      fs.writeFileSync(
+        ledgerPath,
+        JSON.stringify({ refreshed_at: '', next_id: 1, findings: [] }, null, 2),
+      );
+      const eventsDir = path.join(campaignDir, 'hook-events');
+      fs.mkdirSync(eventsDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(eventsDir, 'cli-test-event.json'),
+        JSON.stringify({ tier: 'warn', pattern_id: 'force-push', reason: 'force push detected', worktree: null }),
+        'utf-8',
+      );
+
+      const proc = Bun.spawnSync({
+        cmd: ['bun', 'run', 'scripts/lib/hook-event-triage.ts'],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+
+      expect(proc.exitCode).toBe(0);
+      expect(proc.stdout.toString()).toContain('ingested 1 event');
+      expect(fs.existsSync(path.join(eventsDir, 'cli-test-event.json'))).toBe(false);
+
+      const updated = JSON.parse(fs.readFileSync(ledgerPath, 'utf-8'));
+      expect(updated.findings).toHaveLength(1);
+      expect(updated.findings[0].vcode).toBe('V-HOOK-02');
+      expect(updated.findings[0].occurrences).toBe(1);
+
+      const archiveRoot = path.join(campaignDir, 'archive');
+      const archiveDirs = fs.readdirSync(archiveRoot).filter((d) => d.startsWith('hook-events-'));
+      expect(archiveDirs.length).toBeGreaterThan(0);
+      // one snapshot of the pre-ingest ledger, plus the archived event directory
+      const ledgerSnapshots = fs.readdirSync(archiveRoot).filter((d) => d.startsWith('findings-ledger-'));
+      expect(ledgerSnapshots.length).toBeGreaterThan(0);
     });
   });
 });
