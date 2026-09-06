@@ -20,8 +20,7 @@ describe('findBareJsonParseBypasses', () => {
     expect(findBareJsonParseBypasses(good, 'fixture.ts')).toEqual([]);
   });
 
-  // BARE_PARSE_RE matches raw line text, so a comment or string literal that merely contains the
-  // flagged token sequence would otherwise produce a false BLOCK on a green tree.
+  // Covers stripCommentsAndStrings's comment-truncation branch.
   test('does not flag a bare-parse token sequence inside a // comment', () => {
     const commented = [
       'const load = (p: string) => {',
