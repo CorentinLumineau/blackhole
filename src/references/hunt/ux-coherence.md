@@ -42,7 +42,7 @@ suspicion is `STALE`/not reported.
    intent: cross-check against `DESIGN.md` (visual/structural tokens) and, when
    `documentation/reference/product-principles.md` exists, against every `active`-status ruling
    in it (`V-RULE-01`'s read-input contract — this kind reads the ledger the same way
-   `reviewer.md` §19 does, but as a hunt-time input, not a merge gate). Concrete gap shapes:
+   `reviewer.md` § Owner-Ruling Violation Audit does, but as a hunt-time input, not a merge gate). Concrete gap shapes:
    a feature living in a structurally unrelated surface (e.g. a monthly routine as a sidebar of
    an unrelated diagram editor), a dead/unreachable component family, or a surface whose content
    contradicts an `active` ruling. **Gated**: when

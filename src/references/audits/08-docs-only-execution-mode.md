@@ -1,0 +1,11 @@
+---
+section: Docs-Only Execution Mode Compliance
+vcodes: []
+---
+### Docs-Only Execution Mode Compliance
+*   **Detection (plan-first precedence)**: (a) if the plan artifact at `PLAN_ABSOLUTE_PATH` (from `<PLAN_CONTEXT>`) declares `execution_mode: docs-only` in its frontmatter, or the queue entry's `route.task_type` is `docs`, treat the PR as docs-only — this declared signal is authoritative; (b) **only when no plan artifact exists** for the PR under review, fall back to the file-extension heuristic: every file in the PR diff matches a documentation path pattern (`**/*.md`, `documentation/**`, `codex-agents/*.yaml`) — the last is `bun run build`'s generated Codex mirror of `src/agents/*.md` (never hand-edited), so a diff limited to it plus its `.md` source is still docs-only in spirit; (c) otherwise — a plan exists but declares neither signal — do NOT treat the PR as docs-only, regardless of file extensions. This is the same signal § 5-Field Contract & Plan Compliance's Touch-Paths audit already computes. When true, apply this section *in addition to* § 5-Field Contract & Plan Compliance (never in place of it).
+*   **Docs-as-source vs. docs-only note**: a diff limited to `.md`/`.yaml` files does not by itself mean a docs-only *change* — in a docs-as-source repo like this one, markdown/YAML prose (agent/skill/rule definitions) IS the product, so ordinary protocol-content PRs land in `standard` execution mode with a normal PR body and never trigger the Drift-Check Table gate merely for touching prose files.
+*   **Drift-Check Table present**: the PR description contains a Drift-Check Table (one row per touched doc claim, per `implementer.md` § Execution Mode `docs-only` gate). Missing table — severity `BLOCK`.
+*   **Drift-Check Table accuracy spot-check**: sample at least one row's "Current code state" claim against the actually-cited current source. A misrepresented row — severity `BLOCK`, note the correct state in the finding.
+*   **Example verification confirmations present**: every touched code block in the diff has a matching one-line confirmation in the PR description. A missing confirmation — severity `BLOCK`.
+*   **Example verification accuracy spot-check**: independently re-verify at least one confirmed code block against its cited source. A mismatch — severity `BLOCK`.

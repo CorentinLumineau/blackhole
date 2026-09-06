@@ -3,7 +3,8 @@ import { walkMdFiles } from '../lib/check-common.ts';
 
 // Issue #723 — config-template.md's gate-resolution clause ("absent block, absent field, or
 // explicit `false`") was copy-pasted verbatim at 9 call sites across 6 files instead of being
-// cited by reference, and one copy (reviewer.md §25) already silently drifted (dropped its
+// cited by reference, and one copy (reviewer.md § Staged Artifact Carry Audit) already silently
+// drifted (dropped its
 // `, issue #477` suffix). This scans src/ for the duplicated clause pattern outside its one
 // canonical home (config-template.md) so a tenth copy fails by name instead of drifting again.
 

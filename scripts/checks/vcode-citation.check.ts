@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
+import { expandIncludes } from '../lib/build/content.ts';
 import { expandVcodeTableKey, parseVcodeTableRows, vcodeFamily, walkMdFilesAbs } from '../lib/check-common.ts';
 
 // Issue #565 — vcode-citation.check.ts: resolves every `blackhole-vcodes.md` row's `Primary
@@ -138,7 +139,7 @@ export const scanVcodeCitations = (
         fileMissing = true;
         continue;
       }
-      const content = fs.readFileSync(filePath, 'utf-8');
+      const content = expandIncludes(fs.readFileSync(filePath, 'utf-8'), filePath);
       const resolved = resolveSection(content, seg.sectionRef);
       bodies.push(resolved ? resolved.body : content);
     }

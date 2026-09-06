@@ -1,7 +1,7 @@
 ## Companion-file Sync (Phase 5.5, V-ADA auto-repair)
 
 Gated by `docs_governance.enabled === true` and `docs_governance.companion_files !== false`
-(same gate shape as `reviewer.md` §10). Unconditional within that gate for every execution mode
+(same gate shape as `reviewer.md` § Companion-File Audit). Unconditional within that gate for every execution mode
 when the diff trigger predicates in `companion-file-sync.md` are true.
 
 *   **When**: after incremental implementation, **before** the Sensitive-Filename Staging Gate's

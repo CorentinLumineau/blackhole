@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 108;
+export const VCODE_TABLE_ROW_COUNT = 109;
 
 // § facts — build-input-only directories (ADR-034, issue #719). A declared-fact / independent-
 // scan pair, the same shape VCODE_TABLE_ROW_COUNT/CONTENT_GATE_BUDGETS/DOC_HEALTH_THRESHOLDS
@@ -43,18 +43,28 @@ export const VCODE_TABLE_ROW_COUNT = 108;
 // (ADR-007's binding rejection of single-source derivation for a drift check). `hunt/` is
 // deliberately NOT an entry here, since `hunt/` modules are fetched at runtime and must still
 // ship (ADR-034 Decision point 3).
-export const BUILD_INPUT_ONLY_DIRS: string[] = ['references/gates'];
+export const BUILD_INPUT_ONLY_DIRS: string[] = ['references/gates', 'references/audits'];
 
 /**
  * `.md` module count of `src/references/gates/` — the implementer's gate modules, inlined into
- * `src/agents/implementer.md` by its `{{INCLUDE:references/gates/*}}` marker. Replaces that
- * file's former `CONTENT_GATE_BUDGETS` row: once the gates live in one module each, a whole-file
- * LOC ceiling on the shell measures nothing an author can act on, whereas the module count is
- * the shape a reviewer checks — a new gate is a new file, never an edit that grows a section.
- * Declared side of a V-GROUND-01 pair; the scan side is an independent `listFiles` of the
- * directory (`ground-truth.check.ts`), never derived from this constant.
+ * `src/agents/implementer.md` by its `references/gates` INCLUDE marker (quoted without `{{...}}`
+ * here since `check-utils.ts`'s `read()` would expand a literal one and corrupt this file's own
+ * LOC). Replaces the former `CONTENT_GATE_BUDGETS` row: once the gates live in one module each, a
+ * LOC ceiling measures nothing an author can act on, whereas the module count is the shape a
+ * reviewer checks. Declared side of a V-GROUND-01 pair; the scan side is an independent
+ * `listFiles` of the directory, never derived from this constant.
  */
 export const IMPLEMENTER_GATE_MODULE_COUNT = 15;
+
+/**
+ * Number of reviewer audit modules under `src/references/audits/` (V-AUDIT-01). Declared side of
+ * a declared-fact / independent-scan pair, the same shape `VCODE_TABLE_ROW_COUNT` uses: the
+ * scanned side is `scripts/checks/audit-modules.check.ts` listing the directory. Replaces the
+ * former `CONTENT_GATE_BUDGETS['src/agents/reviewer.md']` row — after the ADR-034 seam the
+ * reviewer's growth unit is "one more module", not "N more lines in one section", so the fact
+ * that has to be consciously bumped when an audit is added is a module count, not a LOC ceiling.
+ */
+export const REVIEWER_AUDIT_MODULE_COUNT = 32;
 
 // § facts — ADR revisit watch items (issue #710). A declared-fact / independent-scan pair, the
 // same shape `VCODE_TABLE_ROW_COUNT`/`CONTENT_GATE_BUDGETS`/`DOC_HEALTH_THRESHOLDS` already use:
@@ -173,11 +183,8 @@ export type Target = (typeof PLATFORM_TARGETS)[number];
 // | scripts/checks/*.check.ts            | max `check*()` fn LOC | 56      | 68         |
 // | scripts/checks/*.check.ts            | max single file LOC   | 181     | 218        |
 // | scripts/lib/build/*.ts               | max single file LOC   | 239     | 287        |
-// | src/agents/reviewer.md               | max `##` section LOC | 670      | 804        |
-// | src/agents/reviewer.md               | total file LOC       | 751      | 902        |
-// (`src/agents/implementer.md` held rows here — max `##` section LOC 309/371, total file LOC
-// 629/755 — until issue #721 moved its 15 gates to `src/references/gates/` behind the ADR-034
-// include seam; `IMPLEMENTER_GATE_MODULE_COUNT` above is the declared fact that replaced them.)
+// (reviewer.md [670/804, 751/902] and implementer.md [309/371, 629/755] held rows here until
+// #720/#721 moved their checklist/gates behind the ADR-034 include seam — replaced above.)
 // | src/references/orchestrator-dispatch.md   | max `##` section LOC | 49  | 59         |
 // | src/references/orchestrator-dispatch.md   | total file LOC       | 333 | 400        |
 // | src/references/orchestrator-runtime.md    | max `##` section LOC | 130 | 156        |
@@ -194,7 +201,6 @@ export type ContentGateBudget = { maxSectionLoc: number; maxFileLoc: number };
 export const CONTENT_GATE_BUDGETS: Record<string, ContentGateBudget> = {
   'src/agents/orchestrator.md': { maxSectionLoc: 18, maxFileLoc: 185 },
   'src/agents/planner.md': { maxSectionLoc: 380, maxFileLoc: 712 },
-  'src/agents/reviewer.md': { maxSectionLoc: 804, maxFileLoc: 902 },
   'src/references/worker-schemas.md': { maxSectionLoc: 210, maxFileLoc: 819 },
   'src/references/implementer-schemas.md': { maxSectionLoc: 214, maxFileLoc: 219 },
   'src/references/hook-schemas.md': { maxSectionLoc: 101, maxFileLoc: 167 },

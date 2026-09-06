@@ -24,7 +24,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
   iteration budget; Evidence — the finding ids still open, from the ledger; Options —
   continue iterating / accept and defer / manual fix, each with its consequence.
 - [ ] WARN → fix in PR OR defer (file issue + ledger deferred_to_issue)
-- [ ] Docs-only PR (determined by `reviewer.md` §8's plan-first detection — file-extension match is a no-plan fallback only, not restated here) → orchestrator direct review, still run review-aggregate.ts
+- [ ] Docs-only PR (determined by `reviewer.md` § Docs-Only Execution Mode Compliance's plan-first detection — file-extension match is a no-plan fallback only, not restated here) → orchestrator direct review, still run review-aggregate.ts
 - [ ] LGTM (aggregate lgtm: true) → proceed to phase loop (merge); review durable artifact promotion runs at merge step 2.5 (`phase-loop.md`, `implementer.md` § Promote Review Artifact) — not during this phase
 - [ ] Write campaign-checkpoint.md per checkpoint-protocol.md
 ```
@@ -52,10 +52,10 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
   - `V-YAGNI-03` (Single-consumer abstractions)
   - `V-DRY-04` (Template copy-paste renames)
 - **Improvement Discoveries**: Audit the code for UX/UI polish, performance gains, test coverage gaps, and styling best practices. Log them as WARN findings with detailed summaries. Do not demand resolving them in the current PR (prevents `V-SCOPE-02` scope creep); the orchestrator will file them as new GitHub issues.
-- **Docs Currency (`V-DOCSYNC-01`)**: Reviewer must confirm any public-API/schema/config-surface change (§1's `V-API-01` surface) ships with a same-PR documentation update (`**/*.md`, `documentation/**`, or inline docstring); missing update is `BLOCK`.
-- **Companion-File Audit (`V-ADA-01/02/03/05/06/07`)**: Reviewer must confirm ARCHITECTURE.md, decisions/INDEX.md currency, AGENTS.md, and conditional DESIGN.md per `reviewer.md` §10; gated by `docs_governance.companion_files`. All WARN.
-- **Visual Evidence Audit (`V-VIS-01/02`)**: Reviewer must confirm `visual_evidence[]` presence/declaration on UI-affecting PRs per `reviewer.md` §22; gated by `display_targets`.
-- **Staged Artifact Carry Audit (`V-AUTO-02`, BLOCK)**: Reviewer must independently diff the issue's staged manifest against what the PR actually carried per `reviewer.md` §25; gated by `docs_governance.write_governance`.
+- **Docs Currency (`V-DOCSYNC-01`)**: Reviewer must confirm any public-API/schema/config-surface change (`reviewer.md` § 5-Field Contract & Plan Compliance's `V-API-01` surface) ships with a same-PR documentation update (`**/*.md`, `documentation/**`, or inline docstring); missing update is `BLOCK`.
+- **Companion-File Audit (`V-ADA-01/02/03/05/06/07`)**: Reviewer must confirm ARCHITECTURE.md, decisions/INDEX.md currency, AGENTS.md, and conditional DESIGN.md per `reviewer.md` § Companion-File Audit; gated by `docs_governance.companion_files`. All WARN.
+- **Visual Evidence Audit (`V-VIS-01/02`)**: Reviewer must confirm `visual_evidence[]` presence/declaration on UI-affecting PRs per `reviewer.md` § Visual Evidence Audit; gated by `display_targets`.
+- **Staged Artifact Carry Audit (`V-AUTO-02`, BLOCK)**: Reviewer must independently diff the issue's staged manifest against what the PR actually carried per `reviewer.md` § Staged Artifact Carry Audit; gated by `docs_governance.write_governance`.
 
 ## Gating
 

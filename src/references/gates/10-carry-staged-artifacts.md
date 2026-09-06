@@ -59,7 +59,7 @@ this section states only what the script does not decide.
     when nothing was staged. No new `implementer-schemas.md` return field — the PR-body record is
     the falsifiable evidence.
 *   **Do not delete** `.blackhole/staged/<issue>/` after carrying — it remains as campaign
-    state so the reviewer audit (`reviewer.md` §25, `V-AUTO-02`) has stable data to diff
+    state so the reviewer audit (`reviewer.md` § Staged Artifact Carry Audit, `V-AUTO-02`) has stable data to diff
     against, and so a resumed session after interruption can re-derive what was already carried
     via the script's idempotent dedup.
 *   **Declared-ADR-supersession stamping** (`V-ADR-06` leg 1, independent of the manifest.json

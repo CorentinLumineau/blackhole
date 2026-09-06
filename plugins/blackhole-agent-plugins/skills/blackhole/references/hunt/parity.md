@@ -65,7 +65,7 @@ against real repo state — a plausible-sounding but unread suspicion is `STALE`
 2. **Frontmatter governance** (per `PM-019`). For any `documentation/` file created or touched
    in a merged PR, confirm required lifecycle frontmatter (`type`, `status` at minimum, per
    [doc-governance.md](../doc-governance.md)) is present and well-formed. **Gated**: only runs
-   when `docs_governance.enabled && docs_governance.companion_files` (mirrors `reviewer.md` §10's
+   when `docs_governance.enabled && docs_governance.companion_files` (mirrors `reviewer.md` § Companion-File Audit's
    own gating for the same underlying obligation).
 3. **Enforcement evidence in PR bodies** (per `PM-029`). For a merged PR whose issue passed
    through the `review` phase (`queue.json` `phase` field history, `queue-dag.md`), confirm
