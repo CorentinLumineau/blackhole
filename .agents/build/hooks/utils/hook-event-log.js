@@ -75,12 +75,20 @@ const worktreeRoot = (cwd = process.cwd()) => {
 };
 
 /** Main clone root, resolved from `cwd`. `--git-common-dir` points at the shared .git even from a
- * linked worktree, so every worker's events land in the one directory the orchestrator polls. */
+ * linked worktree, so every worker's events land in the one directory the orchestrator polls.
+ *
+ * Routine-vs-anomalous discrimination on failure mirrors `allWorktreeRoots` below exactly — see
+ * that function's own docstring for why git's `fatal()` bucket collapses "no repository here"
+ * and "a repository is here but broken" into the identical exit code and message, and why
+ * `hasGitMarkerInAncestry` (not the failing call itself) is the only fact that can tell them
+ * apart. Absent → routine, return `null`; present → anomalous, propagate the original error so
+ * callers fail closed instead of silently dropping what depends on this root. */
 const mainCloneRoot = (cwd = process.cwd()) => {
   try {
     return path.dirname(path.resolve(cwd, git(['rev-parse', '--git-common-dir'], cwd)));
-  } catch {
-    return null;
+  } catch (error) {
+    if (!hasGitMarkerInAncestry(cwd)) return null;
+    throw error;
   }
 };
 
@@ -339,7 +347,31 @@ const readAssignedWorktreeRoot = (cwd = process.cwd()) => {
 /** `BLACKHOLE_HOOK_EVENT_DIR` makes the durable-record sink explicit and inspectable instead of
  * solely inferred from `cwd`'s git resolution (#604): when set, it is the sink outright and
  * `mainCloneRoot` is never consulted, so no git context is required at all. Unset (the harness's
- * normal path), behavior is byte-for-byte the pre-existing `mainCloneRoot(cwd)` resolution below. */
+ * normal path), behavior is byte-for-byte the pre-existing `mainCloneRoot(cwd)` resolution below
+ * on every non-throwing path.
+ *
+ * `mainCloneRoot(cwd)` now throws instead of returning `null` on an anomalous (not merely
+ * "outside any repository") git failure. This function's own `try/catch` around that call is
+ * load-bearing, not incidental: `recordEvent` is called from `denyAndRecord` *before* `emit()`
+ * runs, and `denyAndRecord` is itself the recovery path `failClosed` calls on a crash — so a
+ * throw escaping here would propagate out of `denyAndRecord`, be caught by the validator's
+ * top-level catch-all, get routed back through `failClosed` → `denyAndRecord` → this function a
+ * second time, throw again with nothing left to catch it, and exit the process with a non-0/2
+ * code that the harness wrapper (`claude-native-settings.ts`) treats as "validator could not
+ * run" and converts to an ALLOW — turning an intended refusal into the exact bypass this module
+ * exists to prevent. Recording must stay best-effort; the decision must never be (see the module
+ * docstring at the top of this file).
+ *
+ * On the anomalous branch, before giving up, this falls back to `process.env.CLAUDE_PROJECT_DIR`
+ * (accepted only when absolute and an existing directory — `isExistingDirectory` above, not
+ * re-derived) as a git-independent sink: the same directory the generated hook wrapper
+ * (`claude-native-settings.ts`) already writes its own `hook-exec-failure` records to, so Triage
+ * already polls it. Deliberately does NOT fire on the routine "no git context" branch below —
+ * behavior outside a repository stays byte-identical to today. Whether or not that fallback is
+ * available (or, if available, actually succeeds at the write below), the anomalous branch always
+ * emits one stderr line naming the underlying git error and which sink tier was used
+ * (`fallback` or `dropped`) — a fallback write that succeeds silently would be exactly as
+ * unobservable to an operator as today's silent drop, which defeats the point of fixing this. */
 const recordEvent = (event) => {
   const cwd = event.cwd || process.cwd();
   const override = process.env.BLACKHOLE_HOOK_EVENT_DIR;
@@ -347,12 +379,30 @@ const recordEvent = (event) => {
   if (override) {
     dir = override;
   } else {
-    const destRoot = mainCloneRoot(cwd);
-    if (!destRoot) {
+    let destRoot;
+    let anomalous;
+    try {
+      destRoot = mainCloneRoot(cwd);
+    } catch (error) {
+      anomalous = error;
+    }
+    if (anomalous) {
+      const projectDir = process.env.CLAUDE_PROJECT_DIR;
+      const fallbackAvailable =
+        typeof projectDir === 'string' && path.isAbsolute(projectDir) && isExistingDirectory(projectDir);
+      console.error(
+        `[blackhole-hook] anomalous git failure resolving main-clone root — ${anomalous.message} (sink: ${
+          fallbackAvailable ? `fallback → ${projectDir}` : 'dropped'
+        })`,
+      );
+      if (!fallbackAvailable) return;
+      dir = path.join(projectDir, '.blackhole', 'hook-events');
+    } else if (!destRoot) {
       console.error(`[blackhole-hook] no git context — ${event.tier} event not recorded (${event.pattern_id})`);
       return;
+    } else {
+      dir = path.join(destRoot, '.blackhole', 'hook-events');
     }
-    dir = path.join(destRoot, '.blackhole', 'hook-events');
   }
   const payload = {
     version: 1,

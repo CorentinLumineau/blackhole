@@ -1112,3 +1112,43 @@ describe('validate-file-changes.js — anomalous git failure fails closed, not o
     });
   });
 });
+
+// `mainCloneRoot` (hook-event-log.js:79) used to map every git failure onto the same `null`
+// return that `recordEvent` reads as "no git context, nothing to record" — collapsing the
+// routine case (no repository here at all) into the anomalous one (a repository is here and git
+// itself is broken), the same conflation `allWorktreeRoots` had before its own fix above. These
+// are direct unit tests of `mainCloneRoot` itself, called in-process through a `require()` of the
+// hook module (the module ships CommonJS, unbundled, and exports the function under test — no
+// other suite needs a non-subprocess call into it yet), rather than through the subprocess
+// harness the rest of this file uses: the discrimination under test is a return-vs-throw contract
+// on one function, which a subprocess boundary can only observe indirectly through exit codes and
+// stderr text — exactly the ambiguity `hasGitMarkerInAncestry`'s own docstring above says cannot
+// be recovered from a failing git call. Reuses `hasGitMarkerInAncestry`
+// (`allWorktreeRoots:263-272`), never re-derives the discrimination (V-INT-02).
+describe('mainCloneRoot — routine absence vs. anomalous git failure (#889)', () => {
+  const hookEventLog = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+
+  test('a real repo with .git/HEAD removed throws instead of returning null', async () => {
+    await withTempGitRepo('blackhole-hook-889-head-', async (repo) => {
+      fs.rmSync(path.join(repo, '.git', 'HEAD'));
+      expect(() => hookEventLog.mainCloneRoot(repo)).toThrow();
+    });
+  });
+
+  test('a directory with no .git anywhere in its ancestry returns null', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-889-none-'));
+    try {
+      expect(hookEventLog.mainCloneRoot(dir)).toBeNull();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a healthy repo resolves its own root, and a linked worktree resolves the main clone, not itself', async () => {
+    await withLinkedWorktree('blackhole-hook-889-healthy-', async (mainRepo, worktree) => {
+      const realMain = fs.realpathSync(mainRepo);
+      expect(hookEventLog.mainCloneRoot(mainRepo)).toBe(realMain);
+      expect(hookEventLog.mainCloneRoot(worktree)).toBe(realMain);
+    });
+  });
+});
