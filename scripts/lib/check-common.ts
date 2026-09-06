@@ -164,18 +164,16 @@ export const renderIndexRowLine = (row: RootIndexRow): string =>
 // depend on locale.
 export const byPathByteOrder = (a: RootIndexRow, b: RootIndexRow): number => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 
-// Idempotent, path-sorted row-insert primitive (issue #490, ADR-021 D2 carry-step; sorted
-// insert per issue #743). Built on parseIndexTableRows above (V-INT-02). Guards a duplicate row
-// on implementer re-spawn, then rebuilds the entire row block in path order — [...existing,
-// new].sort(...) — rather than appending at the end, so concurrent carry/promotion PRs land
-// their new rows at different offsets instead of the same anchor line (the guaranteed-collision
-// failure mode this issue closes). Separator-row detection reuses the same `/^:?-+:?$/` idiom
-// parseIndexTableRows uses, so a summary field containing "---" is never misdetected as the
-// table header.
-export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow): { content: string; appended: boolean } => {
-  if (parseIndexTableRows(indexContent).some((r) => r.path === row.path)) return { content: indexContent, appended: false };
-
-  const lines = indexContent.split('\n');
+// Locates a pipe-table's header-separator line and the contiguous block of `|`-prefixed row
+// lines that follows it, in a raw line array. Schema-agnostic — it never inspects row content,
+// only table structure (`/^:?-+:?$/` on the second cell marks the separator; a row block is the
+// run of `|`-prefixed lines immediately after it) — so it is shared, not reimplemented, by
+// every row-schema-specific rebuild that needs the same block boundary:
+// `appendIndexRowIfAbsent` below (5-column INDEX.md rows) and `decision-log-append.ts`'s
+// `insertRecordRowsSorted` (5-column Records-table rows, a different schema entirely — V-DRY-01,
+// issue #887 review). `separatorIdx: -1` signals no parseable table was found; `blockEnd` is
+// meaningless in that case and callers must not read it.
+export const findTableBlock = (lines: string[]): { separatorIdx: number; blockEnd: number } => {
   let separatorIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -187,17 +185,33 @@ export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow):
     }
   }
 
+  if (separatorIdx === -1) return { separatorIdx: -1, blockEnd: -1 };
+
+  let blockEnd = separatorIdx + 1;
+  while (blockEnd < lines.length && lines[blockEnd].trim().startsWith('|')) blockEnd++;
+
+  return { separatorIdx, blockEnd };
+};
+
+// Idempotent, path-sorted row-insert primitive (issue #490, ADR-021 D2 carry-step; sorted
+// insert per issue #743). Built on parseIndexTableRows above (V-INT-02) and findTableBlock
+// above for row-block boundary detection. Guards a duplicate row on implementer re-spawn, then
+// rebuilds the entire row block in path order — [...existing, new].sort(...) — rather than
+// appending at the end, so concurrent carry/promotion PRs land their new rows at different
+// offsets instead of the same anchor line (the guaranteed-collision failure mode this issue
+// closes).
+export const appendIndexRowIfAbsent = (indexContent: string, row: RootIndexRow): { content: string; appended: boolean } => {
+  if (parseIndexTableRows(indexContent).some((r) => r.path === row.path)) return { content: indexContent, appended: false };
+
+  const lines = indexContent.split('\n');
+  const { separatorIdx, blockEnd } = findTableBlock(lines);
+
   // No parseable table (e.g. a fresh/malformed doc with no header separator) — fall back to
   // plain append-at-end, same behavior as before this change.
   if (separatorIdx === -1) {
     const line = renderIndexRowLine(row);
     return { content: `${indexContent}${indexContent.endsWith('\n') ? '' : '\n'}${line}\n`, appended: true };
   }
-
-  // The contiguous block of `|`-prefixed lines immediately following the separator is the row
-  // block; everything after it (blank lines, trailing content) is left untouched.
-  let blockEnd = separatorIdx + 1;
-  while (blockEnd < lines.length && lines[blockEnd].trim().startsWith('|')) blockEnd++;
 
   const sortedRows = [...parseIndexTableRows(indexContent), row].sort(byPathByteOrder);
   const sortedLines = sortedRows.map(renderIndexRowLine);

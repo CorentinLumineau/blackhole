@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { parseMdFrontmatter, parseFrontmatterFields } from './lib/build/content.ts';
+import { findTableBlock } from './lib/check-common.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { root } from './checks/check-utils.ts';
 
@@ -54,22 +55,16 @@ const recordSortKey = (prIssueCell: string): number => Number(prIssueCell.match(
 // Rebuilds the Records row block in id-sorted order — `[...existingRowLines,
 // ...newLines].sort(...)` — instead of appending `newLines` at the tail, mirroring
 // `appendIndexRowIfAbsent`'s rebuild-the-block technique (`scripts/lib/check-common.ts`, issue
-// #743). Operates on raw row-line text rather than re-rendering rows from parsed fields, so an
-// existing row's exact formatting (including any `\|`-escaped cell content) survives untouched.
-// Only called when `newLines` is non-empty — a dedup-only call leaves `body` untouched, same as
-// before this change.
+// #743). Row-block boundary detection is `findTableBlock` (`scripts/lib/check-common.ts`,
+// V-DRY-01, issue #887 review) — shared, since locating the block is schema-agnostic even
+// though this file's row schema (5-column Records table) differs from INDEX.md's. Operates on
+// raw row-line text rather than re-rendering rows from parsed fields, so an existing row's exact
+// formatting (including any `\|`-escaped cell content) survives untouched. Only called when
+// `newLines` is non-empty — a dedup-only call leaves `body` untouched, same as before this
+// change.
 const insertRecordRowsSorted = (body: string, newLines: string[]): string => {
   const lines = body.split('\n');
-  let separatorIdx = -1;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.trim().startsWith('|')) continue;
-    const cells = line.split('|').map((c) => c.trim());
-    if (cells.length >= 2 && /^:?-+:?$/.test(cells[1])) {
-      separatorIdx = i;
-      break;
-    }
-  }
+  const { separatorIdx, blockEnd } = findTableBlock(lines);
 
   // No parseable table header (e.g. a fresh/malformed doc) — fall back to plain append-at-end,
   // same behavior as before this change. decision-log.md always ships with the Records table
@@ -77,9 +72,6 @@ const insertRecordRowsSorted = (body: string, newLines: string[]): string => {
   if (separatorIdx === -1) {
     return `${body}${body.endsWith('\n') ? '' : '\n'}${newLines.join('\n')}\n`;
   }
-
-  let blockEnd = separatorIdx + 1;
-  while (blockEnd < lines.length && lines[blockEnd].trim().startsWith('|')) blockEnd++;
 
   const existingRowLines = lines.slice(separatorIdx + 1, blockEnd);
   const sortedRowLines = [...existingRowLines, ...newLines].sort((a, b) => recordSortKey(a) - recordSortKey(b));
