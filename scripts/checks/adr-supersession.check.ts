@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseMdFrontmatter, parseFrontmatterFields } from '../lib/build/content.ts';
-import { walkMdFilesAbs } from '../lib/check-common.ts';
+import { findAdrFileByNumber, walkMdFilesAbs } from '../lib/check-common.ts';
 import { ROOT_COMPANION_MD_FILES } from '../lib/companion-file-sync.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
@@ -65,12 +65,6 @@ export const findDeclaredSupersessionViolations = (
     }
   }
   return violations;
-};
-
-const findAdrFileByNumber = (decisionsDir: string, adrRef: string): string | null => {
-  if (!fs.existsSync(decisionsDir)) return null;
-  const found = fs.readdirSync(decisionsDir).find((f) => f.startsWith(`${adrRef}-`));
-  return found ? path.join(decisionsDir, found) : null;
 };
 
 // Absent `.blackhole/plans/` (a fresh, non-self-hosting checkout, or this worktree before any

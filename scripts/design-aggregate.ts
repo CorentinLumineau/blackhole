@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './lib/fs.ts';
 import { hasPostAcceptanceAmendmentSection } from './checks/adr-supersession.check.ts';
+import { findAdrFileByNumber } from './lib/check-common.ts';
 
 // ADR-010 D4 — deterministic Design Track verdict script. Same shape as review-aggregate.ts
 // (ADR-003): pure aggregateDesign(input) core, typed I/O, CLI entrypoint reading via the shared
@@ -308,18 +309,6 @@ export function aggregateDesign(input: DesignAggregateInput): DesignAggregateOut
     reasons,
     scorer_results: scorerResults,
   };
-}
-
-// Design Decision 1 (issue #775) — a trivial 3-line duplicate of
-// adr-supersession.check.ts's own findAdrFileByNumber, kept local rather than exported from
-// that file. The issue scopes V-ADR-06's own detection logic Out; this keeps that file's diff
-// at zero while still reusing its one substantive export, hasPostAcceptanceAmendmentSection
-// (Codebase Conventions table). The codebase already tolerates this exact small duplicate twice
-// (adr-supersession.check.ts, links.check.ts) without flagging it as DRY debt.
-function findAdrFileByNumber(decisionsDir: string, adrRef: string): string | null {
-  if (!fs.existsSync(decisionsDir)) return null;
-  const found = fs.readdirSync(decisionsDir).find((f) => f.startsWith(`${adrRef}-`));
-  return found ? path.join(decisionsDir, found) : null;
 }
 
 /**

@@ -77,6 +77,18 @@ export const walkMdFilesAbs = (absDir: string): string[] =>
 export const walkMdFiles = (dir: string): string[] =>
   walkMdFilesAbs(path.join(root, dir)).map((f) => path.relative(root, f));
 
+// Resolves an ADR reference (e.g. "ADR-007") to its file under `decisionsDir` by prefix match on
+// `${adrRef}-`. The trailing hyphen is load-bearing: without it "ADR-007" also matches
+// "ADR-0071-...". Returns `null` on no match or a missing `decisionsDir` — never throws.
+//
+// `links.check.ts` resolves ADRs by a directory-listing Set rather than a per-number lookup, so it
+// is not a consumer of this function.
+export const findAdrFileByNumber = (decisionsDir: string, adrRef: string): string | null => {
+  if (!fs.existsSync(decisionsDir)) return null;
+  const found = fs.readdirSync(decisionsDir).find((f) => f.startsWith(`${adrRef}-`));
+  return found ? path.join(decisionsDir, found) : null;
+};
+
 export const listFiles = (dir: string, ext = '.md'): string[] => {
   const full = path.join(root, dir);
   if (!fs.existsSync(full)) return [];
