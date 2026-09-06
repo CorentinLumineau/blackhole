@@ -56,6 +56,57 @@ remaining conflict markers); if any hunk in the file is semantic, the file — a
 whole rebase attempt — cannot be `git add`ed clean. Capture the semantic hunks' content (`file`,
 line range, verbatim conflict-marker excerpt) before aborting.
 
+## Sorted insert (structural fix, distinct from the classification rule above)
+
+Classification item 3 above tells a worker how to *resolve* a pure two-sided-insertion conflict
+once it happens. Sorted insert instead reduces how often it happens at all, for one specific
+append-only shape: a table whose new rows carry a value (a path, an id) that varies row to row.
+Rebuilding the row block in sorted-by-that-value order on every write — instead of appending at
+the tail — lands two concurrent branches' new rows at *different* offsets in the file whenever
+their sort keys fall into *different gaps* between existing rows, so the branches no longer both
+modify the same anchor line. Two ids landing in the *same* gap still race for that one anchor —
+the separation this buys is per-gap, not universal.
+
+Two production consumers, same technique, different keys and different primitives (V-INT-02 —
+the row-splitting *idiom* is shared, the parse/render functions are not, because the two files'
+column schemas differ):
+
+- `documentation/INDEX.md` and `documentation/decisions/INDEX.md` — sorted by path
+  (`appendIndexRowIfAbsent`/`byPathByteOrder`, `scripts/lib/check-common.ts`, issue #743). See
+  `doc-governance.md` § INDEX.md Maintenance, "Row order (issue #743)" for that consumer's
+  write-up.
+- `documentation/reference/decision-log.md`'s Records table — sorted by the numeric id in the
+  PR/Issue cell (`insertRecordRowsSorted`/`recordSortKey`, `scripts/decision-log-append.ts`,
+  issue #874). Both are byte-order comparators (plain numeric/string comparison, never
+  `localeCompare`) — the guarantee only holds if every machine computes the same position for
+  the same row, which a locale-dependent collation cannot promise.
+
+**This is not a complete fix for decision-log.md specifically.** Two new rows still race for the
+same anchor line whenever their sort keys fall into the *same* gap of the existing table — sorting
+only separates rows that land in different gaps. The campaign processes issues roughly by
+priority, not by ascending issue number, so a given wave's open PRs typically bank decision
+records whose ids are scattered across many different gaps in the existing range (most of the
+observed issue #874 conflicts were exactly this shape), and sorted insert resolves those cleanly.
+The gap every id eventually lands in past the table's current maximum — the tail — is the one gap
+every future id shares, so the residual case is concretely: two concurrent branches whose new ids
+both exceed every id already in the table. That case is narrower than the pre-fix baseline (it
+needs both ids to be the campaign's two highest in flight, not merely two ids that differ) and it
+is already classification item 3 above — mechanical, not semantic — so it still resolves for free
+once flagged.
+
+**Do not extend either technique — sorted insert or a `merge=union` `.gitattributes` driver — to
+a table where a row can be *modified* in place, only to one where rows are only ever added.**
+`decision-log.md` itself is a caution about applying a whole-file rule at the wrong granularity:
+the Records table is append-only, but the file's own frontmatter `last_updated:` field is
+modify-in-place — every write bumps it to the run date. A `merge=union` entry for this file was
+evaluated as a second leg and rejected for exactly that reason: `merge=union` applies to the
+whole file, and on a rebase where two branches ran on different calendar dates, it would union
+the two conflicting `last_updated:` lines into two literal `last_updated:` keys in one frontmatter
+block instead of a visible conflict — silent corruption is a worse failure mode than the
+mechanical conflict it would occasionally replace. Sorted insert avoids this because the script
+that performs it is region-aware (it only ever rebuilds the row block; the frontmatter field is
+a separate regex replace) — a git merge driver is not.
+
 ## Attempt strategy — cap 2 (reuses `orchestrator-runtime.md` § Error Classification's existing
 2-retry-then-reclassify convention; no new configurable threshold)
 

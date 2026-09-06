@@ -7,6 +7,11 @@ import { root } from './checks/check-utils.ts';
 // Record Append, which never bumped `last_updated` (frozen at 2026-07-20 across 6+ hand-appended
 // rows this turn — nothing noticed a silent log). This script is the sole write path: it appends
 // rows, dedups, and bumps the frontmatter field itself so the two can no longer drift apart.
+//
+// Sorted insert (issue #874): the Records table below is rebuilt in id-sorted order on every
+// insert, the same structural fix #743 gave the INDEX.md files' `appendIndexRowIfAbsent`
+// (`scripts/lib/check-common.ts`) — see `merge-conflict-protocol.md` § Sorted insert for the
+// canonical write-up of why this changes the merge outcome, not just row cosmetics.
 
 export type DecisionRecordRow = {
   pr?: number;
@@ -36,6 +41,50 @@ const parseRecordsTableRows = (body: string): RecordsTableRow[] => {
     rows.push({ prIssueCell, kind: cells[2] });
   }
   return rows;
+};
+
+// Numeric sort key for a Records row: the first digit run in its PR/Issue cell — `"745"` -> 745,
+// the historical compound-id shape `"PR #428 / #421"` -> 428. New rows minted by this script
+// always carry a single id, so the compound shape only ever appears in pre-#874 rows. Byte-order
+// style comparator (plain numeric subtraction, no locale collation) for the same reason
+// `byPathByteOrder` (`scripts/lib/check-common.ts`) avoids `localeCompare`: two machines must
+// compute the same position for the same row.
+const recordSortKey = (prIssueCell: string): number => Number(prIssueCell.match(/\d+/)?.[0] ?? 0);
+
+// Rebuilds the Records row block in id-sorted order — `[...existingRowLines,
+// ...newLines].sort(...)` — instead of appending `newLines` at the tail, mirroring
+// `appendIndexRowIfAbsent`'s rebuild-the-block technique (`scripts/lib/check-common.ts`, issue
+// #743). Operates on raw row-line text rather than re-rendering rows from parsed fields, so an
+// existing row's exact formatting (including any `\|`-escaped cell content) survives untouched.
+// Only called when `newLines` is non-empty — a dedup-only call leaves `body` untouched, same as
+// before this change.
+const insertRecordRowsSorted = (body: string, newLines: string[]): string => {
+  const lines = body.split('\n');
+  let separatorIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').map((c) => c.trim());
+    if (cells.length >= 2 && /^:?-+:?$/.test(cells[1])) {
+      separatorIdx = i;
+      break;
+    }
+  }
+
+  // No parseable table header (e.g. a fresh/malformed doc) — fall back to plain append-at-end,
+  // same behavior as before this change. decision-log.md always ships with the Records table
+  // header, so this path is defensive, not expected to run in production.
+  if (separatorIdx === -1) {
+    return `${body}${body.endsWith('\n') ? '' : '\n'}${newLines.join('\n')}\n`;
+  }
+
+  let blockEnd = separatorIdx + 1;
+  while (blockEnd < lines.length && lines[blockEnd].trim().startsWith('|')) blockEnd++;
+
+  const existingRowLines = lines.slice(separatorIdx + 1, blockEnd);
+  const sortedRowLines = [...existingRowLines, ...newLines].sort((a, b) => recordSortKey(a) - recordSortKey(b));
+
+  return [...lines.slice(0, separatorIdx + 1), ...sortedRowLines, ...lines.slice(blockEnd)].join('\n');
 };
 
 // Exported for doc-health-signal.ts's `decision_log_silent_prs` computation (V-INT-02) — every
@@ -89,9 +138,7 @@ export const appendDecisionRecords = (
   }
 
   const newFrontmatter = frontmatter.replace(/^last_updated:.*$/m, `last_updated: ${today}`);
-  const bumpedBody = newLines.length
-    ? `${body}${body.endsWith('\n') ? '' : '\n'}${newLines.join('\n')}\n`
-    : body;
+  const bumpedBody = newLines.length ? insertRecordRowsSorted(body, newLines) : body;
 
   return { content: `---\n${newFrontmatter}\n---\n${bumpedBody}`, appended, skipped };
 };
