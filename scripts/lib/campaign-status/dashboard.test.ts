@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { renderLedgerOpenSection } from './dashboard.ts';
 import type { LedgerFinding } from './types.ts';
 
-// ADR-042 (issue #893) — Task 2(d)/(e): renderLedgerOpenSection gains occurrences/last_seen_at
+// ADR-042 — Task 2(d)/(e): renderLedgerOpenSection gains occurrences/last_seen_at
 // rendering and a severity-then-recency sort. Both discriminate against `main`, where the
 // function neither references either field nor sorts its input at all.
 

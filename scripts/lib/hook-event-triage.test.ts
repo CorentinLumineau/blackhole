@@ -2,13 +2,16 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { withTempDir } from './test-fixtures.ts';
-import { ingestHookEvents } from './hook-event-triage.ts';
+import { ingestHookEvents, main } from './hook-event-triage.ts';
 import { root } from '../checks/check-utils.ts';
 
-// ADR-042 (issue #893) — finding identity is per-class `(vcode, pattern_id, worktree)`, not
+// ADR-042 — finding identity is per-class `(vcode, pattern_id, worktree)`, not
 // per-event-filename. Every fixture below constructs its expected `file` the same way the
-// implementation does (`.blackhole/hook-events/<pattern_id>/<worktree-key>`), never a literal
-// event filename.
+// implementation does (`.blackhole/hook-events/<len>:<pattern_id>/<worktree-key>`, netstring
+// length-prefixed so a `pattern_id` containing `/` can never collide with the separator), never
+// a literal event filename.
+const classId = (patternId: string, worktreeKey: string): string =>
+  `.blackhole/hook-events/${patternId.length}:${patternId}/${worktreeKey}`;
 
 describe('ingestHookEvents — Triage 1b round-trip', () => {
   test('tier error ingests as V-HOOK-03, resolves issue_ref, archives (not deletes) the hook-event file', () => {
@@ -59,7 +62,7 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
         severity: 'BLOCK',
         phase: 'implement',
         issue_ref: 598,
-        file: `.blackhole/hook-events/hook-exec-failure/${resolvedWorktree}`,
+        file: classId('hook-exec-failure', resolvedWorktree),
         line: 0,
         occurrences: 1,
       });
@@ -122,7 +125,7 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
             phase: 'implement',
             issue_ref: null,
             pr_ref: null,
-            file: '.blackhole/hook-events/denied-rm-rf/no-worktree',
+            file: classId('denied-rm-rf', 'no-worktree'),
             line: 0,
             summary: 'prior',
             status: 'open',
@@ -200,7 +203,7 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
             phase: 'implement',
             issue_ref: null,
             pr_ref: null,
-            file: '.blackhole/hook-events/system-path/no-worktree',
+            file: classId('system-path', 'no-worktree'),
             line: 0,
             summary: 'prior',
             status: 'deferred',
@@ -222,6 +225,42 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
       const deferredRow = updated.findings.find((f) => f.id === 'F-00004');
       expect(deferredRow?.status).toBe('deferred');
       expect(deferredRow?.occurrences).toBe(3);
+    });
+  });
+
+  // Fix round 1 (PR #908, item 2) — a raw `/` join let two distinct (pattern_id, worktree)
+  // pairs collapse onto the identical class-identity string: pattern_id "foo/" + worktree
+  // `null` and pattern_id "foo" + worktree "/no-worktree" both produced
+  // ".blackhole/hook-events/foo//no-worktree". The netstring length prefix on `pattern_id`
+  // disambiguates them, so the two events below must land as two separate rows, not one
+  // dedup-collapsed row with occurrences: 2.
+  test('a pattern_id containing "/" cannot collide with a distinct pattern_id/worktree pair', () => {
+    withTempDir('hook-triage-', (repoRoot) => {
+      const eventsDir = path.join(repoRoot, '.blackhole', 'hook-events');
+      fs.mkdirSync(eventsDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(eventsDir, 'slash-pattern.json'),
+        JSON.stringify({ tier: 'block', pattern_id: 'foo/', reason: 'first', worktree: null }),
+        'utf-8',
+      );
+      fs.writeFileSync(
+        path.join(eventsDir, 'sentinel-worktree.json'),
+        JSON.stringify({ tier: 'block', pattern_id: 'foo', reason: 'second', worktree: '/no-worktree' }),
+        'utf-8',
+      );
+
+      const { ingested, ledger: updated } = ingestHookEvents({
+        repoRoot,
+        queueIssues: {},
+        ledger: { refreshed_at: '', next_id: 1, findings: [] },
+      });
+
+      expect(ingested).toBe(2);
+      expect(updated.findings).toHaveLength(2);
+      const files = updated.findings.map((f) => f.file);
+      expect(new Set(files).size).toBe(2);
+      expect(files).toContain(classId('foo/', 'no-worktree'));
+      expect(files).toContain(classId('foo', '/no-worktree'));
     });
   });
 
@@ -397,6 +436,42 @@ describe('main() CLI entrypoint', () => {
       // one snapshot of the pre-ingest ledger, plus the archived event directory
       const ledgerSnapshots = fs.readdirSync(archiveRoot).filter((d) => d.startsWith('findings-ledger-'));
       expect(ledgerSnapshots.length).toBeGreaterThan(0);
+    });
+  });
+
+  // Fix round 1 (PR #908, item 1) — the write-guard-refusal branch was previously unexercised:
+  // no test confirmed `main()` aborts before `fs.renameSync` when `validateStateWrite` returns
+  // `ok: false`. The real write-protocol flow only ever grows the findings count, so a genuine
+  // rejection can't be manufactured through real inputs; called in-process (not via
+  // `Bun.spawnSync` like the two tests above) so a stub can be injected for `deps.validateStateWrite`.
+  test('write guard refuses: does not install the tmp file, removes it, and exits non-zero', () => {
+    withCampaignDir(() => {
+      fs.mkdirSync(campaignDir, { recursive: true });
+      const ledgerPath = path.join(campaignDir, 'findings-ledger.json');
+      const originalLedgerContent = JSON.stringify({ refreshed_at: '', next_id: 1, findings: [] }, null, 2);
+      fs.writeFileSync(ledgerPath, originalLedgerContent);
+      const eventsDir = path.join(campaignDir, 'hook-events');
+      fs.mkdirSync(eventsDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(eventsDir, 'guard-refusal-event.json'),
+        JSON.stringify({ tier: 'warn', pattern_id: 'force-push', reason: 'force push detected', worktree: null }),
+        'utf-8',
+      );
+
+      // `process.exitCode` is a process-global — save/restore it so a forced non-zero code
+      // here never leaks into this test file's own exit status.
+      const originalExitCode = process.exitCode;
+      try {
+        main({ validateStateWrite: () => ({ ok: false, reason: 'test-forced-refusal' }) });
+        expect(process.exitCode).toBe(1);
+      } finally {
+        process.exitCode = originalExitCode;
+      }
+
+      // The refusal must abort before the atomic rename — the live ledger is untouched and the
+      // rejected .tmp file is cleaned up, not left behind.
+      expect(fs.readFileSync(ledgerPath, 'utf-8')).toBe(originalLedgerContent);
+      expect(fs.existsSync(`${ledgerPath}.tmp`)).toBe(false);
     });
   });
 });

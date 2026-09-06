@@ -24,7 +24,7 @@ export type LedgerFinding = {
   deferred_to_issue: number | null;
   created_at: string;
   resolved_at: string | null;
-  // ADR-042 (issue #893) — hook-derived rows only: how many events collapsed into this row,
+  // ADR-042 — hook-derived rows only: how many events collapsed into this row,
   // and when the most recent one arrived. Optional/additive — findLedgerSchemaDrift never
   // rejects an unknown key (ledger-schema.check.ts:35).
   occurrences?: number;
@@ -86,13 +86,18 @@ export const resolveIssueRefFromWorktree = (
 
 const formatFindingId = (nextId: number): string => `F-${String(nextId).padStart(5, '0')}`;
 
-// Owner-ruled finding identity (ADR-042, issue #893): `(vcode, pattern_id, worktree)`, not
+// Owner-ruled finding identity (ADR-042): `(vcode, pattern_id, worktree)`, not
 // `(hook, pattern_id)` and not the originating event's filename. This is a synthetic identity
 // string, not a filesystem path — `<worktree-key>` is the resolved worktree root, or the
-// literal `no-worktree` when the event carries none.
+// literal `no-worktree` when the event carries none. `pattern_id` is length-prefixed
+// (netstring-style, `<len>:<pattern_id>`) ahead of the separator so a `pattern_id` containing a
+// literal `/` can never be mistaken for the pattern_id/worktree-key boundary — e.g. pattern_id
+// "foo/" + worktree `null` and pattern_id "foo" + worktree "/no-worktree" would otherwise both
+// collapse to "foo//no-worktree". The length prefix leaves `worktree-key` itself untouched and
+// readable in the ledger.
 const classIdentityFile = (patternId: string, worktree: string | null | undefined): string => {
   const worktreeKey = worktree ? resolveWorktreePath(worktree) : 'no-worktree';
-  return `.blackhole/hook-events/${patternId}/${worktreeKey}`;
+  return `.blackhole/hook-events/${patternId.length}:${patternId}/${worktreeKey}`;
 };
 
 /**
@@ -202,13 +207,17 @@ export const ingestHookEvents = ({
   };
 };
 
-// CLI entrypoint (issue #893, Task 8) — existence-gated turn-start trigger
+// CLI entrypoint — existence-gated turn-start trigger
 // (orchestrator-runtime.md § Session resume & recovery step 6) invokes this script directly,
 // mirroring doc-health-signal.ts / plugin-drift-signal.ts's existence-gated,
 // fully-recomputed-every-turn idiom. Unlike those two, this script mutates
 // findings-ledger.json, so it goes through the full write protocol (blackhole-state.md §
 // Write protocol): snapshot to archive/, write .tmp, validateStateWrite, atomic rename.
-function main(): void {
+// `deps.validateStateWrite` defaults to the real guard; a test can inject a stub that forces
+// `{ ok: false }` to exercise the refusal branch (fs.renameSync must never run, exit code must
+// be non-zero) without needing a genuinely guard-rejecting ledger — the real write-protocol
+// flow only ever grows the findings count, so a real rejection cannot be manufactured here.
+export function main(deps: { validateStateWrite: typeof validateStateWrite } = { validateStateWrite }): void {
   const campaignDir = path.join(root, '.blackhole');
   const ledgerPath = path.join(campaignDir, 'findings-ledger.json');
   const queuePath = path.join(campaignDir, 'queue.json');
@@ -236,7 +245,7 @@ function main(): void {
   const tmpPath = `${ledgerPath}.tmp`;
   fs.writeFileSync(tmpPath, `${JSON.stringify(updated, null, 2)}\n`);
 
-  const guardResult = validateStateWrite({ tmpPath, livePath: ledgerPath, entityKey: 'findings' });
+  const guardResult = deps.validateStateWrite({ tmpPath, livePath: ledgerPath, entityKey: 'findings' });
   if (!guardResult.ok) {
     fs.rmSync(tmpPath, { force: true });
     console.error(`hook-event-triage: write guard refused install — ${guardResult.reason}`);

@@ -39,7 +39,7 @@ const MATCHERS: MatcherSpec[] = [
  *
  * The record carries no stdin/command replay — this fallback never needs to reimplement
  * hook-event-log.js's `redact()` in shell (V-INT-02); the two "process ran" decision paths
- * reuse `redact()` unchanged. `detail` is no longer the bare exit code: ADR-042 (issue #893)
+ * reuse `redact()` unchanged. `detail` is no longer the bare exit code: ADR-042
  * enriches it with a timeout-vs-crash discriminator and a capped tail of the validator's own
  * stderr, so a collapsed hook-exec-failure class is still diagnosable — capped at 300 chars,
  * the same bound `hook-schemas.md` already documents for block/warn-tier `detail`.
@@ -48,7 +48,7 @@ const buildCommand = (spec: MatcherSpec): string => {
   const hookName = spec.script.replace(/\.js$/, '');
   const toolField = spec.matcher === 'Bash' ? 'tool: "Bash",' : 'tool: null,';
   return [
-    // ADR-042 item 5 (issue #893) — capture the validator's own stderr to a temp file rather
+    // ADR-042 item 5 — capture the validator's own stderr to a temp file rather
     // than `output=$(cmd 2>&1)`: a combined-output capture would also swallow the process's
     // *stdout* (the hookSpecificOutput JSON the 0/2 paths must still emit for Claude Code to
     // read), which a plain command substitution does not let pass through. `trap ... EXIT`

@@ -309,3 +309,24 @@ rendered summary, not the dedup key, is what distinguishes `validate-bash-comman
 from `validate-file-changes` fail-opens sharing a worktree. Reducing the *probability* of the
 next fail-open (adapting the wrapper's `timeout: 5`, retry-on-exec-failure) remains out of
 scope, to be filed separately — this ADR is detection-and-visibility only.
+
+## Post-acceptance amendments
+
+- **2026-09-06 (issue #893, PR #908, fix round 1)** — Item 5's decision text describes capturing
+  the validator subprocess's *combined* output (`output=$(bun run ... 2>&1); code=$?`). The
+  shipped implementation (`scripts/lib/build/claude-native-settings.ts`) diverges deliberately:
+  it captures **stderr only**, to a temp file (`2>"$stderr_tmp"`), leaving stdout to pass through
+  untouched. A combined `2>&1` capture would also swallow the validator's *stdout* — the
+  `hookSpecificOutput` JSON the 0/2 (allow/deny) exit paths must still emit for Claude Code to
+  read — silently breaking the allow/deny contract on every invocation, not only on the
+  fail-open path this ADR addresses. This divergence is correct and is not reverted; a reader
+  implementing from the ADR body alone should follow the code, not the literal decision text.
+- **2026-09-06 (issue #893, PR #908, fix round 1)** — The wrapper's elapsed-time computation
+  (`start_s`/`end_s`, used for the timeout-vs-crash discriminator in `detail`) uses `date +%s`
+  (whole seconds), not `date +%s%N` (nanoseconds). BSD/macOS `date` has no `%N` conversion; using
+  it inside the arithmetic expansion `end_s - start_s` would leave a literal `N` in the value and
+  abort the script. Whole-second granularity is coarse but sufficient to discriminate a
+  near-the-5s-hook-timeout kill from an instant crash. (The unrelated, pre-existing
+  `hook-exec-error-$(date +%s%N).json` output *filename* still uses `%s%N` for uniqueness; on
+  BSD/macOS this degrades to a literal trailing `N` rather than nanosecond precision, which is
+  harmless for a filename and out of scope for this amendment.)

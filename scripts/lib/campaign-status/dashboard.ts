@@ -103,7 +103,7 @@ function renderFiledSection(filed: ReturnType<typeof discoveryFilings>): string[
   return lines;
 }
 
-// ADR-042 (issue #893) — severity rank for the open-section sort below: BLOCK before WARN
+// ADR-042 — severity rank for the open-section sort below: BLOCK before WARN
 // before NOTE, anything else last.
 const LEDGER_SEVERITY_RANK: Record<string, number> = { BLOCK: 0, WARN: 1, NOTE: 2 };
 const ledgerSeverityRank = (severity?: string): number => LEDGER_SEVERITY_RANK[severity ?? ''] ?? 3;
@@ -117,7 +117,7 @@ const ledgerRecencyKey = (f: LedgerFinding): number => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-// Exported: issue #893 Task 2(d)/(e) unit-test this directly, not only through formatDashboard.
+// Exported: ADR-042 Task 2(d)/(e) unit-test this directly, not only through formatDashboard.
 export function renderLedgerOpenSection(findings: LedgerFinding[]): string[] {
   const openFindings = findings
     .filter((f) => f.status === 'open')
