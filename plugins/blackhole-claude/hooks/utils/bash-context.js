@@ -417,7 +417,7 @@ const computeMaskedSpans = (command) => {
 };
 
 /**
- * A new, additive, independent pass (issue #895) computing a `boolean[]` the same length as
+ * An additive, independent pass computing a `boolean[]` the same length as
  * `command`, `true` only at heredoc-body character positions — used by `worktree-removal-guard.js`
  * to blank heredoc-body text out of the RAW clause text it extracts (`clauseTailFrom`), so a
  * heredoc's prose can never contribute literal `worktree`/`remove` tokens to that guard's
@@ -431,7 +431,7 @@ const computeMaskedSpans = (command) => {
  * `skipQuotedSpan` without ever being inspected for a nested heredoc — correct for THAT
  * function's purpose (deciding what a general pattern-matcher should see as "executing text"),
  * but it means a heredoc living inside a `$(...)` that itself sits inside a double-quoted
- * argument (`"$(cat <<'EOF' … EOF)"`, issue #895's exact repro) is never reached: bash still
+ * argument (`"$(cat <<'EOF' … EOF)"`) is never reached: bash still
  * evaluates and executes a `$(...)`/backtick/`${...}` nested in a double-quoted string, and a
  * command substitution resets the parser to a fresh command context in which `<<DELIM` is once
  * again real heredoc syntax. This scan therefore does NOT skip double-quoted spans at all — it

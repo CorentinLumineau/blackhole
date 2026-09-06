@@ -399,7 +399,7 @@ const containsWorktreeRemoveTokens = (tokens, fromIndex) => {
  * not two clauses split at that substitution's own closing paren (#788's executable-indirection
  * coverage — the two `)` roles look identical to a naive scan and must not be conflated).
  *
- * `heredocMasked` (issue #895), when given, is `computeHeredocBodyMask`'s output aligned 1:1 with
+ * `heredocMasked`, when given, is `computeHeredocBodyMask`'s output aligned 1:1 with
  * `text` (the caller slices the full-command array to match `text`'s own slice offset) — a
  * position where it is `true` is skipped without counting toward paren depth, so prose
  * parentheses inside a heredoc body (e.g. "(command substitution or environment-variable
@@ -431,16 +431,15 @@ const skipDollarParenSpan = (text, start, heredocMasked) => {
  * quoted argument is not distinguished from a real subshell close, the same accepted limitation
  * `;`/`|`/newline already have (see `findClauseStartIndices`'s docstring on this function).
  *
- * `heredocMasked` (issue #895), when given, is `computeHeredocBodyMask`'s output over the FULL
+ * `heredocMasked`, when given, is `computeHeredocBodyMask`'s output over the FULL
  * `command` string (not `rest` — this function slices it to `rest`'s own offset itself). Once
  * `end` is found by the separator scan above — UNCHANGED by this parameter, so a real `;`/`&`/
  * `|`/`)`/`\n` boundary is still found exactly where it always was, even one that happens to sit
  * past a heredoc body — every heredoc-body character in the returned clause text is blanked to a
- * single space before the trailing-redirect strip runs. This is what actually fixes #895: a
- * heredoc's prose (e.g. containing the literal words `worktree`/`remove`) can no longer
- * contribute tokens to `findRemovalInvocations`'s `.split(/\s+/)` token stream, because those
- * characters are spaces by the time this function returns, not because they were ever excluded
- * from the clause's own extent. */
+ * single space before the trailing-redirect strip runs. This is what keeps a heredoc's prose
+ * (e.g. containing the literal words `worktree`/`remove`) from contributing tokens to
+ * `findRemovalInvocations`'s `.split(/\s+/)` token stream: those characters are spaces by the
+ * time this function returns, not merely excluded from the clause's own extent. */
 const clauseTailFrom = (command, index, heredocMasked) => {
   const rest = command.slice(index);
   const heredocMaskedRest = heredocMasked ? heredocMasked.slice(index) : null;
