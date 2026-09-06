@@ -59,9 +59,10 @@ const main = () => {
     return;
   }
 
-  // Dynamic check (#532): whether a `git worktree remove` is safe depends on the pushed state of
-  // the target worktree's branch, which no static pattern can see — see
-  // worktree-removal-guard.js's module docstring.
+  // Dynamic check (#532, extended to rm-shaped removal in #803): whether removing a worktree is
+  // safe depends on the pushed state of the target worktree's branch — and, for an `rm`, on
+  // whether the target is a registered worktree at all — neither of which a static pattern can
+  // see. See worktree-removal-guard.js's module docstring.
   const worktreeRemoval = evaluateWorktreeRemoval(command, cwd);
   if (worktreeRemoval && worktreeRemoval.tier === 'block') {
     denyAndRecord({
