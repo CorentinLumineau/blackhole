@@ -85,6 +85,24 @@ export const parseVcodeTableRows = (
   return rows;
 };
 
+// The code *family* a `V-…` id belongs to — everything ahead of its numeric suffix, so
+// multi-segment names (`V-DOC-GOV-02` -> `V-DOC-GOV`) survive intact. Ownership of a family is
+// what tells a campaign V-code apart from a check-internal result id; see
+// vcode-citation.check.ts's `findUndocumentedEmittedCodes` for the judgment that consumes it.
+export const vcodeFamily = (code: string): string => code.replace(/-\d+$/, '');
+
+// One `blackhole-vcodes.md` row key can bundle several codes (`V-ADA-05/06/07`, `V-KISS-01 /
+// V-YAGNI-01`). Expands a key into whole codes, carrying the last seen family across bare
+// numeric continuations, so callers reasoning about individual codes never see a half-code.
+export const expandVcodeTableKey = (key: string): string[] => {
+  let family = '';
+  return key.split(/[/,\s]+/).filter(Boolean).flatMap((part) => {
+    const whole = part.match(/^(V-[A-Z-]*[A-Z])-\d+$/);
+    if (whole) family = whole[1];
+    return whole ? [part] : /^\d+$/.test(part) && family ? [`${family}-${part}`] : [];
+  });
+};
+
 // Issue #573 (#498 deferral): `documentation/**/INDEX.md`'s 5-column `| path | summary | type |
 // status | review_trigger |` schema is parsed by two near-identical call sites —
 // doc-health.check.ts's parseRootIndexRows (root documentation/INDEX.md, folder-prefixed path)

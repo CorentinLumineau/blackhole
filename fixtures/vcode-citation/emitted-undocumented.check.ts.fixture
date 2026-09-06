@@ -1,0 +1,14 @@
+// Known-bad fixture for the vcode-citation leg-B scan (never loaded as a module — the `.fixture`
+// suffix keeps it out of every `*.ts` glob). Emits three ids:
+//   V-FAKE-01  — documented in vcodes-table-snippet.md, must not be reported
+//   V-FAKE-02  — same family as a documented code, no row: the violation this leg exists for
+//   V-OTHER-01 — a family the table never claimed (a check-internal result id), must be ignored
+import { type CheckResult } from './check-utils.ts';
+
+const checkDocumented = (): CheckResult => ({ id: 'V-FAKE-01', ok: true });
+
+const checkUndocumented = (): CheckResult => ({ id: 'V-FAKE-02', ok: false, detail: 'minted with no table row' });
+
+const checkInternalNamespace = (): CheckResult => ({ id: 'V-OTHER-01', ok: true });
+
+export const runChecks = (): CheckResult[] => [checkDocumented(), checkUndocumented(), checkInternalNamespace()];
