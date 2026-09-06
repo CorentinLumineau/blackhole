@@ -3,9 +3,9 @@ import * as fs from 'fs';
 import { findUnpairedNewSourceFiles } from './checks/new-file-test-pairing.check.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 
-// Issue #876 — CLI entrypoint wrapping new-file-test-pairing.check.ts's
-// findUnpairedNewSourceFiles pure detector against real added/touched/base-tree file lists on
-// disk (mirrors v-test09-hooks-claim.ts's CLI-over-pure-detectors split — invoked from
+// CLI entrypoint wrapping new-file-test-pairing.check.ts's findUnpairedNewSourceFiles pure
+// detector against real added/touched/base-tree file lists on disk (mirrors
+// v-test09-hooks-claim.ts's CLI-over-pure-detectors split — invoked from
 // src/references/audits/02-tdd-testing-baselines.md's "New-File Test-Pairing Backstop" bullet).
 // Advisory-only: `ok` is always `true`; a non-empty `detail` is a signal to look closer, never a
 // substitute for the reviewer's own V-TEST-01/02 judgment.

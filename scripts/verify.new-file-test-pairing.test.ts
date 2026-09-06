@@ -8,16 +8,15 @@ import {
 } from './checks/new-file-test-pairing.check.ts';
 import { expectMarkersMissing, expectMarkersPresent } from './lib/marker-fixture-test.ts';
 
-// Issue #876 (follow-up to #805/PR #850) — review-time mechanical backstop for "new file, no
-// test, weak rationalization accepted." #850 already fixed the production-side cause; this
-// module gives the reviewer a computable fact instead of a remembered judgment. See
+// Review-time mechanical backstop for "new file, no test, weak rationalization accepted": gives
+// the reviewer a computable fact instead of a remembered judgment. See
 // src/references/audits/23-test-integrity-audit.md § Severity logic — test-to-source linking
 // heuristic for the prose this module codifies (derive the pairing from 2+ existing sibling
 // pairs in the same directory; never guess upward when no consistent transform is derivable).
 
-// V-UNFALSIFIABLE-01 (plan § Falsifiability): this issue is about a control that failed to
-// fire — the #805 shape below must be shown flagged (red before the detector exists, green
-// after) rather than assumed to work. Both fixtures ship permanently, not deleted after
+// V-UNFALSIFIABLE-01: a control that has never been observed failing on its target shape is not
+// known to work — the fixtures below must be shown flagged (red before the detector exists,
+// green after) rather than assumed to work. Both fixtures ship permanently, not deleted after
 // implementation.
 
 const SIBLING_BASE_TREE = [

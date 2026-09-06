@@ -3,8 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { makeTempDir } from './lib/fs.ts';
 
-// Issue #876 — the CLI wrapping new-file-test-pairing.check.ts's findUnpairedNewSourceFiles
-// against real file-list input on disk (mirrors plan-quality-gate.test.ts's argv/file-IO split).
+// The CLI wrapping new-file-test-pairing.check.ts's findUnpairedNewSourceFiles against real
+// file-list input on disk (mirrors plan-quality-gate.test.ts's argv/file-IO split).
 
 const scriptPath = path.join(path.resolve(import.meta.dirname), 'new-file-test-pairing.ts');
 
