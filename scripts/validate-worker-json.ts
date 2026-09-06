@@ -9,6 +9,7 @@ import { resolveRole } from './lib/worker-json/resolve-role.ts';
 import { extractLastAssistantText, readTranscriptTail } from './lib/worker-json/transcript.ts';
 import type { HookInput, Role } from './lib/worker-json/types.ts';
 import { extractFromHookInput, validateWorker } from './lib/worker-json/validate.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 export type { HookInput, Role } from './lib/worker-json/types.ts';
 export type { ValidateWorkerFn } from './lib/worker-json/enum-source.ts';
@@ -85,35 +86,26 @@ async function runHook(validate: ValidateWorkerFn): Promise<number> {
 }
 
 function parseCliArgs(argv: string[]) {
-  let hook = false;
-  let role: Role | null = null;
-  let file: string | null = null;
-  let json: string | null = null;
-  let recoverTranscript: string | null = null;
-  let enumSource: string | null = null;
+  const flags = parseFlags(argv);
 
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--hook') {
-      hook = true;
-    } else if (arg === '--role' && argv[i + 1]) {
-      role = argv[++i] as Role;
-    } else if (arg === '--file' && argv[i + 1]) {
-      file = argv[++i];
-    } else if (arg === '--json' && argv[i + 1]) {
-      json = argv[++i];
-    } else if (arg === '--recover-transcript' && argv[i + 1]) {
-      recoverTranscript = argv[++i];
-    } else if (arg === '--enum-source') {
-      const value = argv[++i];
-      if (!value) {
-        throw new Error(ENUM_SOURCE_MISSING_VALUE_ERROR);
-      }
-      enumSource = value;
-    }
+  // A flag whose value never arrived (bare trailing `--enum-source`, or immediately followed by
+  // another flag name) must not be indistinguishable from a run that never named a tree at all
+  // — falling through to the local enums would accept-or-reject against the wrong tree while
+  // reporting nothing about the unusable flag. An explicit empty string (`''`) is rejected the
+  // same way.
+  const enumSourceRaw = flags['enum-source'];
+  if (enumSourceRaw === true || enumSourceRaw === '') {
+    throw new Error(ENUM_SOURCE_MISSING_VALUE_ERROR);
   }
 
-  return { hook, role, file, json, recoverTranscript, enumSource };
+  return {
+    hook: flags.hook === true,
+    role: typeof flags.role === 'string' ? (flags.role as Role) : null,
+    file: typeof flags.file === 'string' ? flags.file : null,
+    json: typeof flags.json === 'string' ? flags.json : null,
+    recoverTranscript: typeof flags['recover-transcript'] === 'string' ? flags['recover-transcript'] : null,
+    enumSource: typeof enumSourceRaw === 'string' ? enumSourceRaw : null,
+  };
 }
 
 function runCli(validate: ValidateWorkerFn, role: Role, payload: unknown): number {

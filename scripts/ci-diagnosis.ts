@@ -1,4 +1,5 @@
 import { createGitHubAdapter } from './lib/forge-adapter/index.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 export type GhStep = {
   name: string;
@@ -229,18 +230,9 @@ export async function diagnoseCi(
 }
 
 function parseArgs(argv: string[]): { pr: number; repo: string } {
-  let pr: number | null = null;
-  let repo = '';
-
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === '--pr' && argv[i + 1]) {
-      pr = Number(argv[i + 1]);
-      i += 1;
-    } else if (argv[i] === '--repo' && argv[i + 1]) {
-      repo = argv[i + 1];
-      i += 1;
-    }
-  }
+  const flags = parseFlags(argv);
+  const pr = typeof flags.pr === 'string' ? Number(flags.pr) : null;
+  let repo = typeof flags.repo === 'string' ? flags.repo : '';
 
   if (!pr || Number.isNaN(pr)) {
     console.error('Usage: bun run scripts/ci-diagnosis.ts --pr <n> [--repo owner/name]');

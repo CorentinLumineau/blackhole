@@ -1,4 +1,5 @@
 import { readJsonFile } from './lib/fs.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 export type Finding = {
   id?: string;
@@ -333,22 +334,14 @@ function parseArgs(argv: string[]): {
   priorFile?: string;
   verificationFile?: string;
 } {
-  const out: ReturnType<typeof parseArgs> = {};
-  for (let i = 2; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--reviewer-file' && argv[i + 1]) {
-      out.reviewerFile = argv[++i];
-    } else if (arg === '--issue-ref' && argv[i + 1]) {
-      out.issueRef = argv[++i];
-    } else if (arg === '--pr-ref' && argv[i + 1]) {
-      out.prRef = argv[++i];
-    } else if (arg === '--prior-file' && argv[i + 1]) {
-      out.priorFile = argv[++i];
-    } else if (arg === '--verification-file' && argv[i + 1]) {
-      out.verificationFile = argv[++i];
-    }
-  }
-  return out;
+  const flags = parseFlags(argv.slice(2));
+  return {
+    reviewerFile: typeof flags['reviewer-file'] === 'string' ? flags['reviewer-file'] : undefined,
+    issueRef: typeof flags['issue-ref'] === 'string' ? flags['issue-ref'] : undefined,
+    prRef: typeof flags['pr-ref'] === 'string' ? flags['pr-ref'] : undefined,
+    priorFile: typeof flags['prior-file'] === 'string' ? flags['prior-file'] : undefined,
+    verificationFile: typeof flags['verification-file'] === 'string' ? flags['verification-file'] : undefined,
+  };
 }
 
 function isReviewerInput(value: unknown): value is ReviewerInput {

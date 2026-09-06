@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './fs.ts';
 import { appendIndexRowIfAbsent, type RootIndexRow } from './check-common.ts';
+import { parseFlags } from './argv-flags.ts';
 
 export type CompanionRepair = {
   vcode: 'V-ADA-01' | 'V-ADA-05' | 'V-ADA-09';
@@ -260,20 +261,12 @@ export const readDiffFile = (diffFilePath: string): string[] =>
     .filter((line) => line.length > 0 && !line.startsWith('#'));
 
 function parseCliArgs(argv: string[]): { repoRoot: string | null; diffFile: string | null; upsertJourneysIndex: boolean } {
-  let repoRoot: string | null = null;
-  let diffFile: string | null = null;
-  let upsertJourneysIndex = false;
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--repo-root' && argv[i + 1]) {
-      repoRoot = argv[++i];
-    } else if (arg === '--diff-file' && argv[i + 1]) {
-      diffFile = argv[++i];
-    } else if (arg === '--upsert-journeys-index') {
-      upsertJourneysIndex = true;
-    }
-  }
-  return { repoRoot, diffFile, upsertJourneysIndex };
+  const flags = parseFlags(argv);
+  return {
+    repoRoot: typeof flags['repo-root'] === 'string' ? flags['repo-root'] : null,
+    diffFile: typeof flags['diff-file'] === 'string' ? flags['diff-file'] : null,
+    upsertJourneysIndex: flags['upsert-journeys-index'] === true,
+  };
 }
 
 if (import.meta.main) {

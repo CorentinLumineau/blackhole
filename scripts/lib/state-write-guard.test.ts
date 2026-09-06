@@ -292,4 +292,41 @@ describe('state-write-guard CLI', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // Regression coverage: neither the hand-rolled `parseCliArgs` loop this guards against nor
+  // any of its scripts/** siblings checks whether the token immediately following a flag is
+  // itself another flag. `--entity-key --live <path>` silently binds `entityKey = '--live'`,
+  // then resumes scanning past `<path>` without ever recognizing it as `--live`'s value — so
+  // `--live` and its path are dropped entirely and the resulting error names the wrong flag.
+  // Before the fix: entityKey mis-binds to the string '--live', the entity-count lookup then
+  // fails on the wrong key, exit 1, stderr says `"--live" key` is missing.
+  // After adopting scripts/lib/argv-flags.ts's parseFlags: a flag immediately followed by
+  // another flag name binds boolean `true` instead of swallowing the next flag's name, so
+  // `--entity-key` is left with no string value at all, and the CLI takes its ordinary
+  // missing-required-flag path (exit 2, Usage message) rather than proceeding with a corrupted
+  // key.
+  test('BUG #902: --entity-key immediately followed by --live must not swallow --live as its value', async () => {
+    const dir = makeTempDir('state-guard-cli-mispairing');
+    try {
+      const livePath = path.join(dir, 'queue.json');
+      fs.writeFileSync(livePath, JSON.stringify({ issues: { '1': {} } }));
+
+      const tmpPath = path.join(dir, 'queue.json.tmp');
+      fs.writeFileSync(tmpPath, JSON.stringify({ issues: { '1': {}, '2': {} } }));
+
+      const result = await runStateWriteGuardCli([
+        '--tmp', tmpPath,
+        '--entity-key', '--live', livePath,
+      ]);
+
+      // Correct behavior: `--entity-key` got no string value (its would-be value was itself a
+      // flag), so the CLI must fail on the ordinary missing-required-flag path — never on a
+      // downstream lookup against the wrongly-bound key `--live`.
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toMatch(/Usage/);
+      expect(result.stderr).not.toMatch(/"--live" key/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

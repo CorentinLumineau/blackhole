@@ -6,6 +6,7 @@ import {
   findVagueMitigations,
   splitTaskBreakdownBullets,
 } from './checks/plan-quality-gate.check.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 // Issue #716 (R-11) — CLI entrypoint wrapping plan-quality-gate.check.ts's exported pure
 // detectors against a real plan file on disk. Invoked from `planner.md` Step 8 in place of the
@@ -43,16 +44,11 @@ function usage(): never {
 }
 
 function parseCliArgs(argv: string[]): { planFile: string | null; repoRoot: string | null } {
-  let planFile: string | null = null;
-  let repoRoot: string | null = null;
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--plan-file' && argv[i + 1]) {
-      planFile = argv[++i];
-    } else if (argv[i] === '--repo-root' && argv[i + 1]) {
-      repoRoot = argv[++i];
-    }
-  }
-  return { planFile, repoRoot };
+  const flags = parseFlags(argv);
+  return {
+    planFile: typeof flags['plan-file'] === 'string' ? flags['plan-file'] : null,
+    repoRoot: typeof flags['repo-root'] === 'string' ? flags['repo-root'] : null,
+  };
 }
 
 if (import.meta.main) {

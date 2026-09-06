@@ -14,6 +14,7 @@ import {
   type Role,
 } from './validate-worker-json';
 import { readJsonFile } from './lib/fs.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 export type CampaignAgent =
   | 'orchestrator'
@@ -380,22 +381,12 @@ async function runHook(campaignDir: string): Promise<number> {
 }
 
 function parseCliArgs(argv: string[]) {
-  let hook = false;
-  let campaignDir: string | null = null;
-  let inputFile: string | null = null;
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--hook') {
-      hook = true;
-    } else if (arg === '--campaign-dir' && argv[i + 1]) {
-      campaignDir = argv[++i];
-    } else if (arg === '--input' && argv[i + 1]) {
-      inputFile = argv[++i];
-    }
-  }
-
-  return { hook, campaignDir, inputFile };
+  const flags = parseFlags(argv);
+  return {
+    hook: flags.hook === true,
+    campaignDir: typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : null,
+    inputFile: typeof flags.input === 'string' ? flags.input : null,
+  };
 }
 
 async function main() {

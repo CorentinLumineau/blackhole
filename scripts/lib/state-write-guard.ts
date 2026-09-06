@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { readJsonFile } from './fs.ts';
+import { parseFlags } from './argv-flags.ts';
 
 // Issue #489 — the write-protocol guard `blackhole-state.md` § Write protocol prescribes before
 // every atomic install of a `.tmp` file over `queue.json`/`findings-ledger.json`. Replaces the
@@ -91,25 +92,13 @@ function parseCliArgs(argv: string[]): {
   entityKey?: string;
   allowShrink: boolean;
 } {
-  let tmp: string | undefined;
-  let live: string | undefined;
-  let entityKey: string | undefined;
-  let allowShrink = false;
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--tmp' && argv[i + 1]) {
-      tmp = argv[++i];
-    } else if (arg === '--live' && argv[i + 1]) {
-      live = argv[++i];
-    } else if (arg === '--entity-key' && argv[i + 1]) {
-      entityKey = argv[++i];
-    } else if (arg === '--allow-shrink') {
-      allowShrink = true;
-    }
-  }
-
-  return { tmp, live, entityKey, allowShrink };
+  const flags = parseFlags(argv);
+  return {
+    tmp: typeof flags.tmp === 'string' ? flags.tmp : undefined,
+    live: typeof flags.live === 'string' ? flags.live : undefined,
+    entityKey: typeof flags['entity-key'] === 'string' ? flags['entity-key'] : undefined,
+    allowShrink: flags['allow-shrink'] === true,
+  };
 }
 
 function main(): number {

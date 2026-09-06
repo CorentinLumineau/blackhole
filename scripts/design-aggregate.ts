@@ -3,6 +3,7 @@ import * as path from 'path';
 import { readJsonFile } from './lib/fs.ts';
 import { hasPostAcceptanceAmendmentSection } from './checks/adr-supersession.check.ts';
 import { findAdrFileByNumber } from './lib/check-common.ts';
+import { parseFlags } from './lib/argv-flags.ts';
 
 // ADR-010 D4 — deterministic Design Track verdict script. Same shape as review-aggregate.ts
 // (ADR-003): pure aggregateDesign(input) core, typed I/O, CLI entrypoint reading via the shared
@@ -342,16 +343,11 @@ export function resolveAdrAmendmentTruth(
 }
 
 function parseArgs(argv: string[]): { inputFile?: string; repoRoot?: string } {
-  const out: ReturnType<typeof parseArgs> = {};
-  for (let i = 2; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--input-file' && argv[i + 1]) {
-      out.inputFile = argv[++i];
-    } else if (arg === '--repo-root' && argv[i + 1]) {
-      out.repoRoot = argv[++i];
-    }
-  }
-  return out;
+  const flags = parseFlags(argv.slice(2));
+  return {
+    inputFile: typeof flags['input-file'] === 'string' ? flags['input-file'] : undefined,
+    repoRoot: typeof flags['repo-root'] === 'string' ? flags['repo-root'] : undefined,
+  };
 }
 
 function isDesignAggregateInput(value: unknown): value is DesignAggregateInput {
