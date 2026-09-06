@@ -3,9 +3,9 @@
 
 /**
  * shell-lexer.js — the uniform, pure shell-scanning primitives that `bash-context.js`,
- * `bash-write-target-guard.js` and `worktree-removal-guard.js` each reimplemented independently
- * (issue #863). Extracted here: `skipQuotedSpan` (5 near-identical copies) and
- * `isRedirectAmpersand` (3 copies). Pure string scanning only — no `fs`, no `child_process`, no
+ * `bash-write-target-guard.js` and `worktree-removal-guard.js` each reimplemented independently.
+ * Extracted here: `skipQuotedSpan` (5 near-identical copies) and `isRedirectAmpersand` (3
+ * copies). Pure string scanning only — no `fs`, no `child_process`, no
  * `require` of any sibling module — every one of these three guards is a pre-execution safety
  * gate and this module sits underneath all three at once, so it stays trivially auditable on its
  * own.
@@ -70,22 +70,4 @@ const isRedirectAmpersand = (text, i) => {
   return prev === '>' || next === '>';
 };
 
-/**
- * Read-only vocabulary naming the characters that act as clause/token separators somewhere across
- * these guards. Each splitter selects its own subset — this constant does not imply any one of
- * them handles all of them, and is not itself consumed as shared control-flow logic (each
- * splitter's own separator handling stays inline, since the three treat these characters
- * differently by design — see the module docstring above).
- */
-const SEPARATORS = Object.freeze({
-  SEMICOLON: ';',
-  PIPE: '|',
-  NEWLINE: '\n',
-  AMPERSAND: '&',
-  PAREN_OPEN: '(',
-  PAREN_CLOSE: ')',
-  BRACE_OPEN: '{',
-  BRACE_CLOSE: '}',
-});
-
-module.exports = { skipQuotedSpan, isRedirectAmpersand, SEPARATORS };
+module.exports = { skipQuotedSpan, isRedirectAmpersand };
