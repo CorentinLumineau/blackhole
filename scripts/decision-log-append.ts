@@ -26,6 +26,22 @@ export type DecisionRecordRow = {
 
 const escapeCell = (s: string): string => s.replace(/\|/g, '\\|');
 
+// escapeCell above escapes `|` only, so a cell value carrying a real embedded
+// newline/carriage-return (e.g. a JSON string whose `\n` escape became a
+// literal newline before reaching this function) is written verbatim, splitting the row across
+// two physical lines. findTableBlock (scripts/lib/check-common.ts) then treats the orphaned tail
+// as "outside the table", so every insert made afterward silently corrupts further. Reject,
+// don't escape: throw as soon as the first bad field is found, before any output is built, so
+// `main()` never reaches `fs.writeFileSync`. Convention
+// (message shape, exit-code split from `usage()`'s 2) is documented here so the same guard shape
+// can be applied to the INDEX table's parser's own silent-continuation-skip idiom in
+// check-common.ts — a single consumer today, so no shared module is extracted (V-YAGNI-03).
+const assertNoEmbeddedNewline = (value: string, id: number | string, field: string): void => {
+  if (/[\r\n]/.test(value)) {
+    throw new Error(`decision-log-append: record ${id} field "${field}" contains an embedded newline/carriage-return character`);
+  }
+};
+
 type RecordsTableRow = { prIssueCell: string; kind: string };
 
 // Row-splitting technique shared with parseIndexTableRows/parseVcodeTableRows
@@ -92,6 +108,64 @@ export const parseDecisionLogIds = (logContent: string): Set<number> => {
   return ids;
 };
 
+// Permanent structural regression check. findTableBlock's blockEnd (above,
+// scripts/lib/check-common.ts) stops at the first line that doesn't start with `|` — correct for
+// its own job of locating a contiguous row block to rebuild on insert, but exactly the blind spot
+// that lets an embedded-newline-split row's orphaned tail sail past detection: every insert made
+// after such a corruption lands treats the tail as "outside the table" and appends past it. This
+// function instead scans every non-blank line from the table separator to end-of-body, so a
+// violation anywhere past the first orphaned line is still reported. Exported for the live-file
+// regression test in scripts/decision-log-append.test.ts, which runs on every `bun test` — kept
+// as a local export here rather than a new scripts/checks/*.check.ts module since this file's
+// own test suite already covers it and the table schema is specific to this one file.
+//
+// Check (a) below deliberately checks only "does the line start with `|`" rather than requiring
+// a purely-numeric id cell immediately after it: the live decision-log.md still carries four
+// legacy `| PR #428 / #421 | ...` compound-id rows that are well-formed but not
+// digit-first — recordSortKey (below) already tolerates this shape for sorting, and this check
+// must not manufacture a false violation against data this file's own established convention
+// accepts.
+export const findRecordsTableViolations = (logContent: string): string[] => {
+  const { body } = parseMdFrontmatter(logContent);
+  const lines = body.split('\n');
+  const { separatorIdx } = findTableBlock(lines);
+  if (separatorIdx === -1) return [];
+
+  const violations: string[] = [];
+  let lastId = -Infinity;
+  for (let i = separatorIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '') continue;
+    const lineNum = i + 1;
+
+    if (!line.startsWith('|')) {
+      violations.push(
+        `line ${lineNum}: does not start with "|" — likely an orphaned continuation of a row split by an embedded newline: ${line}`,
+      );
+      continue;
+    }
+
+    // 5-column table's minimum raw split count: a full `| a | b | c | d | e |` row splits into
+    // 7 segments (leading + trailing empty strings around the 5 populated cells) — the same
+    // numeric floor parseRecordsTableRows already applies via its own `cells.length < 6` check,
+    // adjusted here for the leading/trailing empty segments a full split produces.
+    const segments = line.split('|');
+    if (segments.length < 7) {
+      violations.push(`line ${lineNum}: row has fewer than 5 columns (raw split yielded ${segments.length} segments): ${line}`);
+      continue;
+    }
+
+    const id = recordSortKey(segments[1].trim());
+    if (id < lastId) {
+      violations.push(`line ${lineNum}: id ${id} is out of order — appears after id ${lastId}`);
+    } else {
+      lastId = id;
+    }
+  }
+
+  return violations;
+};
+
 export const appendDecisionRecords = (
   logContent: string,
   records: DecisionRecordRow[],
@@ -126,7 +200,11 @@ export const appendDecisionRecords = (
       continue;
     }
     appended++;
-    const touchPaths = escapeCell(r.touch_paths.join(', '));
+    const joinedTouchPaths = r.touch_paths.join(', ');
+    assertNoEmbeddedNewline(joinedTouchPaths, id, 'touch_paths');
+    assertNoEmbeddedNewline(r.decision, id, 'decision');
+    assertNoEmbeddedNewline(r.why, id, 'why');
+    const touchPaths = escapeCell(joinedTouchPaths);
     newLines.push(`| ${id} | ${r.kind} | ${touchPaths} | ${escapeCell(r.decision)} | ${escapeCell(r.why)} |`);
   }
 
