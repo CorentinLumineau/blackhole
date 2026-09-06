@@ -26,16 +26,16 @@ export type DecisionRecordRow = {
 
 const escapeCell = (s: string): string => s.replace(/\|/g, '\\|');
 
-// Issue #940 — escapeCell above escapes `|` only, so a cell value carrying a real embedded
-// newline/carriage-return (the issue's reported origin: a JSON string whose `\n` escape became a
-// literal newline before reaching this function) was written verbatim, splitting the row across
+// escapeCell above escapes `|` only, so a cell value carrying a real embedded
+// newline/carriage-return (e.g. a JSON string whose `\n` escape became a
+// literal newline before reaching this function) is written verbatim, splitting the row across
 // two physical lines. findTableBlock (scripts/lib/check-common.ts) then treats the orphaned tail
-// as "outside the table", so every insert made afterward silently corrupted further. Reject,
+// as "outside the table", so every insert made afterward silently corrupts further. Reject,
 // don't escape: throw as soon as the first bad field is found, before any output is built, so
-// `main()` never reaches `fs.writeFileSync` (`## Design Decision`, issue #940 plan). Convention
-// (message shape, exit-code split from `usage()`'s 2) is documented here for issue #941 to
-// mirror against check-common.ts's own silent-continuation-skip idiom — a single consumer today,
-// so no shared module is extracted (V-YAGNI-03).
+// `main()` never reaches `fs.writeFileSync`. Convention
+// (message shape, exit-code split from `usage()`'s 2) is documented here so the same guard shape
+// can be applied to the INDEX table's parser's own silent-continuation-skip idiom in
+// check-common.ts — a single consumer today, so no shared module is extracted (V-YAGNI-03).
 const assertNoEmbeddedNewline = (value: string, id: number | string, field: string): void => {
   if (/[\r\n]/.test(value)) {
     throw new Error(`decision-log-append: record ${id} field "${field}" contains an embedded newline/carriage-return character`);
@@ -108,20 +108,20 @@ export const parseDecisionLogIds = (logContent: string): Set<number> => {
   return ids;
 };
 
-// Issue #940 — permanent structural regression check. findTableBlock's blockEnd (above,
+// Permanent structural regression check. findTableBlock's blockEnd (above,
 // scripts/lib/check-common.ts) stops at the first line that doesn't start with `|` — correct for
 // its own job of locating a contiguous row block to rebuild on insert, but exactly the blind spot
-// that let an embedded-newline-split row's orphaned tail sail past detection: every insert made
-// after the corruption landed treated the tail as "outside the table" and appended past it. This
+// that lets an embedded-newline-split row's orphaned tail sail past detection: every insert made
+// after such a corruption lands treats the tail as "outside the table" and appends past it. This
 // function instead scans every non-blank line from the table separator to end-of-body, so a
 // violation anywhere past the first orphaned line is still reported. Exported for the live-file
-// regression test in scripts/decision-log-append.test.ts (runs on every `bun test` — see the
-// issue #940 plan's `## Design Decision` for why this is a local export rather than a new
-// scripts/checks/*.check.ts module).
+// regression test in scripts/decision-log-append.test.ts, which runs on every `bun test` — kept
+// as a local export here rather than a new scripts/checks/*.check.ts module since this file's
+// own test suite already covers it and the table schema is specific to this one file.
 //
 // Check (a) below deliberately checks only "does the line start with `|`" rather than requiring
 // a purely-numeric id cell immediately after it: the live decision-log.md still carries four
-// legacy `| PR #428 / #421 | ...` compound-id rows (pre-#874) that are well-formed but not
+// legacy `| PR #428 / #421 | ...` compound-id rows that are well-formed but not
 // digit-first — recordSortKey (below) already tolerates this shape for sorting, and this check
 // must not manufacture a false violation against data this file's own established convention
 // accepts.

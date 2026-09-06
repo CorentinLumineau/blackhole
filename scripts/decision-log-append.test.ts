@@ -9,7 +9,7 @@ import {
   type DecisionRecordRow,
 } from './decision-log-append.ts';
 import { makeTempDir } from './lib/fs.ts';
-import { root } from './checks/check-utils.ts';
+import { root as repoRoot } from './checks/check-utils.ts';
 
 // Issue #717 (R-12) — decision-log-append.ts replaces the hand-append path that keeps
 // forgetting to bump `last_updated` (frozen at 2026-07-20 across 6+ hand-appended rows this
@@ -347,11 +347,8 @@ describe('decision-log-append CLI — argv parsing', () => {
   });
 });
 
-// Issue #940 — escapeCell (decision-log-append.ts:27) escapes `|` only. A cell value containing
-// a real embedded newline/carriage-return (origin: a JSON string whose `\n` escape became a
-// literal newline before reaching this function) was written verbatim, splitting the row across
-// two physical lines and corrupting the table for every insert made afterward (findTableBlock
-// treats the orphaned tail as "outside the table"). This guard rejects loudly instead.
+// Covers assertNoEmbeddedNewline (decision-log-append.ts) — see its definition-site comment for
+// why this rejects rather than silently escaping.
 describe('appendDecisionRecords — embedded newline/carriage-return rejection (issue #940 regression guard)', () => {
   test('throws naming the record id and field when decision contains an embedded newline', () => {
     expect(() =>
@@ -426,11 +423,8 @@ describe('decision-log-append CLI — newline rejection (issue #940 regression g
   });
 });
 
-// Issue #940 — permanent structural regression check. findTableBlock's blockEnd (shared with
-// scripts/lib/check-common.ts, out of scope for this issue — see #941) stops at the first line
-// that doesn't start with `|`, treating an orphaned continuation line as "outside the table".
-// findRecordsTableViolations scans every line from the table's separator to end-of-file instead,
-// so this class of corruption is caught by `bun test` rather than silently merged again.
+// Covers findRecordsTableViolations (decision-log-append.ts) — see its definition-site comment
+// for why it scans to end-of-body instead of relying on findTableBlock's blockEnd.
 describe('findRecordsTableViolations (issue #940 regression guard)', () => {
   test('returns no violations for a well-formed, id-sorted table', () => {
     const log = rowsLog([
@@ -463,7 +457,7 @@ last_updated: 2026-07-20
 `;
     const violations = findRecordsTableViolations(log);
     expect(violations.length).toBeGreaterThan(0);
-    expect(violations.some((v) => v.includes('+ body) as canonical') || /line \d+/.test(v))).toBe(true);
+    expect(violations.some((v) => v.includes('does not start with'))).toBe(true);
   });
 
   test('flags non-monotonic ids even when every row is individually well-formed', () => {
@@ -476,12 +470,11 @@ last_updated: 2026-07-20
   });
 });
 
-// Live-file checkpoint (Task 5 of the issue #940 plan): before the repair (Task 6), this test is
-// expected to FAIL, quoting the actual violations found against the corrupted file. After the
-// repair it must pass, and stay the permanent regression guard going forward.
+// Permanent regression guard against the live Records table drifting out of structural
+// well-formedness (see findRecordsTableViolations's definition-site comment).
 describe('documentation/reference/decision-log.md structural integrity (issue #940 regression guard)', () => {
   test('the live Records table has no structural violations', () => {
-    const content = fs.readFileSync(path.join(root, 'documentation/reference/decision-log.md'), 'utf-8');
+    const content = fs.readFileSync(path.join(repoRoot, 'documentation/reference/decision-log.md'), 'utf-8');
     expect(findRecordsTableViolations(content)).toEqual([]);
   });
 });
