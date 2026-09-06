@@ -1,5 +1,5 @@
 import { read, type CheckResult } from './check-utils.ts';
-import { listFiles } from '../lib/check-common.ts';
+import { buildInputModuleDirs, listFiles } from '../lib/check-common.ts';
 
 // A step whose output is a pure function of files or JSON belongs in a `scripts/<name>.ts`
 // invocation, not agent prose (ADR-003) — this check keeps that absence enforced instead of
@@ -40,10 +40,17 @@ export const findHeredocDocWrites = (mdContent: string): number[] => {
   return hits;
 };
 
+// Default scope is `src/agents/*.md` plus every declared build-input-only module directory
+// (ADR-034) — a gate whose prose moved into its own module is still agent prose.
+export const agentProseFiles = (): Record<string, string> =>
+  Object.fromEntries(
+    ['src/agents', ...buildInputModuleDirs()].flatMap((dir) =>
+      listFiles(dir).map((f) => [`${dir}/${f}`, read(`${dir}/${f}`)] as const),
+    ),
+  );
+
 export const checkProseHeredocInAgentProse = (
-  files: Record<string, string> = Object.fromEntries(
-    listFiles('src/agents').map((f) => [`src/agents/${f}`, read(`src/agents/${f}`)]),
-  ),
+  files: Record<string, string> = agentProseFiles(),
 ): CheckResult => {
   const allHits: string[] = [];
   for (const [file, content] of Object.entries(files)) {

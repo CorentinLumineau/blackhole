@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseMdFrontmatter } from '../lib/build/content.ts';
 import { root, read, type CheckResult } from './check-utils.ts';
-import { findMissingGateMarkers } from '../lib/check-common.ts';
+import { findMissingGateMarkers, readComposedAgentDoc } from '../lib/check-common.ts';
 
 // ADR-007 T5/R2' — agents.check.ts: agent roster frontmatter, tool-policy, delegation-contract,
 // and gate-marker checks (split from the former catch-all check file, issue #322).
@@ -142,8 +142,8 @@ export const REVIEWER_PROPORTIONALITY_REQUIRED_MARKERS = [
 ];
 
 const checkGateContentAssertions = (): CheckResult => {
-  const implementerContent = read('src/agents/implementer.md');
-  const reviewerContent = read('src/agents/reviewer.md');
+  const implementerContent = readComposedAgentDoc('src/agents/implementer.md');
+  const reviewerContent = readComposedAgentDoc('src/agents/reviewer.md');
 
   const implementerMissing = findMissingGateMarkers(implementerContent, IMPLEMENTER_GATE_REQUIRED_MARKERS);
   const reviewerMissing = findMissingGateMarkers(reviewerContent, REVIEWER_PROPORTIONALITY_REQUIRED_MARKERS);

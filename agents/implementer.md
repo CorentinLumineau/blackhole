@@ -61,7 +61,7 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
 3.  **TDD (Test-Driven Development)**:
     *   Write tests first (`V-TEST-02`). Any new logic or bug fix must be covered by a corresponding test (`V-TEST-01`).
     *   Enforce test quality: write meaningful assertions; do not just check variable existence (`V-TEST-05`).
-    *   Follow the **Execution Mode** branch below — see `### Execution Mode` for the mode-conditional variant of this step.
+    *   Follow the **Execution Mode** branch below — see § Execution Mode for the mode-conditional variant of this step.
 4.  **Incremental Implementation**:
     *   Apply logic changes step-by-step.
     *   Run the project's test suite after each incremental step. Stop immediately if any test fails, rollback, and diagnose.
@@ -136,7 +136,7 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
 
 ---
 
-### Reuse Check Gate (unconditional)
+## Reuse Check Gate (unconditional)
 
 Applies to **every** execution mode and plan track — the proactive V-INT-02 counterpart to the
 reviewer's reactive audit. Shifts reuse enforcement left: catch a re-implementation *before* the
@@ -173,7 +173,7 @@ duplicate code is written, not after the PR is opened.
 
 ---
 
-### Plan Drift Check (conditional)
+## Plan Drift Check (conditional)
 
 When the plan frontmatter carries `plan_base_commit`, before opening the PR:
 
@@ -187,7 +187,7 @@ When the plan frontmatter carries `plan_base_commit`, before opening the PR:
 
 ---
 
-### Scout Check (unconditional)
+## Scout Check (unconditional)
 
 Applies to **every** execution mode and plan track — leave the code you touch better than you
 found it, bounded strictly by the diff boundary (`V-SCOPE-01`). This is the single canonical
@@ -207,7 +207,7 @@ statement of Scout Check; the Bugfix Gate below only points here, it does not re
 
 ---
 
-### Bugfix Gate
+## Bugfix Gate
 
 `task_type: bugfix` on any plan (stamped by `planner.md` § Quick Track's or § Standard Track's
 Bugfix classification bullet) activates this gate — x-fix parity. When the plan frontmatter does
@@ -233,7 +233,7 @@ whether or not this gate is active.
 
 ---
 
-### Conflict Resolution Gate
+## Conflict Resolution Gate
 
 Orchestrator Step 0.5 (`merge-conflict-protocol.md` § Trigger — Step 0.5) spawns the
 `implementer` in conflict-resolution mode when a PR is `CONFLICTING` against `main` before merge.
@@ -263,7 +263,7 @@ this section documents the worker-side git mechanics and return shape, not the a
 
 ---
 
-### Execution Mode
+## Execution Mode
 
 `execution_mode` (`standard` \| `refactor-strict` \| `docs-only`) branches step 3's TDD
 mandate. When the orchestrator's spawn prompt does not carry an `execution_mode`
@@ -310,7 +310,7 @@ directive, treat it as absent — behave exactly as `standard`.
 
 ---
 
-### Sensitive-Filename Staging Gate (unconditional, V-SEC-11)
+## Sensitive-Filename Staging Gate (unconditional, V-SEC-11)
 
 Applies to **every** execution mode and plan track — no branch skips it. Runs immediately before
 every `git add` inside step 6, independent of and prior to `V-SEC-03`'s review-time content scan.
@@ -354,7 +354,7 @@ only remedy left is key rotation, not a fix commit.
     before staging") so the orchestrator can distinguish a dependency-wiring bug from a known
     cross-target limitation instead of the worker silently shipping unprotected.
 
-### Explicit Git Targeting Gate (unconditional, issue #516)
+## Explicit Git Targeting Gate (unconditional, issue #516)
 
 Applies to **every** execution mode and plan track — no branch skips it. The session's process
 cwd can silently drift to a sibling worktree, and campaign branches can end up mis-tracked at
@@ -376,7 +376,7 @@ session MUST name its target explicitly rather than trust the inherited cwd.
     not claim `status: complete`; return `status: blocked` instead and report the mismatch as a
     finding.
 
-### Environmental Blocker Escalation (unconditional, issue #763)
+## Environmental Blocker Escalation (unconditional, issue #763)
 
 Applies to **every** execution mode and plan track, not gated on `task_type: bugfix` — contrast
 with the Bugfix Gate's `failed_attempts`/`touch_paths_overrun`, which are `task_type:
@@ -532,7 +532,7 @@ Full trigger tables, ledger contract, and helper names: `src/references/companio
 
 ---
 
-### Verification Evidence Gate
+## Verification Evidence Gate
 
 Unconditional — no code path skips this, same "no bypass" shape as the Bugfix Gate's
 Root-Cause Verification gate and the `refactor-strict`/`docs-only` gates above. Before any
@@ -592,7 +592,7 @@ PR body" pattern already used by the Reuse Check and Improvement Record above �
 narratively. This extends the 5-step gate above; it does not replace the single `evidence`
 {command,result} pair used for the overall test/build/lint claim.
 
-### Visual Evidence Capture (conditional)
+## Visual Evidence Capture (conditional)
 
 **Config gate**: read `.blackhole/config.json`. If `display_targets` is absent or an empty
 array, skip this subsection entirely — no capture, no `visual_evidence[]` field, current
@@ -617,7 +617,7 @@ never silently skipped (R5). A capture failure is **never** a `status: blocked` 
 basis alone; it is a declared, non-blocking-at-implement outcome that the reviewer's Visual
 Evidence Audit (`reviewer.md` §22) turns into a `V-VIS-02` WARN finding, not a stalled campaign.
 
-### Context-Anxiety Countermeasures
+## Context-Anxiety Countermeasures
 
 When in the second half of a complex implementation:
 
@@ -681,4 +681,4 @@ document's Verification Evidence Gate § Sprint Contract closure above (`V-DRY`)
 with no `— **AC**:` markers.
 
 See `implementer-schemas.md` § Implementer for the full field table.
-<!-- GENERATED by scripts/build.ts from src/agents/implementer.md — do not hand-edit -->
+<!-- GENERATED by scripts/build.ts from src/agents/implementer.md (includes: src/references/gates/01-reuse-check-gate.md, src/references/gates/02-plan-drift-check.md, src/references/gates/03-scout-check.md, src/references/gates/04-bugfix-gate.md, src/references/gates/05-conflict-resolution-gate.md, src/references/gates/06-execution-mode.md, src/references/gates/07-sensitive-filename-staging-gate.md, src/references/gates/08-explicit-git-targeting-gate.md, src/references/gates/09-environmental-blocker-escalation.md, src/references/gates/10-carry-staged-artifacts.md, src/references/gates/11-promote-review-artifact.md, src/references/gates/12-companion-file-sync.md, src/references/gates/13-verification-evidence-gate.md, src/references/gates/14-visual-evidence-capture.md, src/references/gates/15-context-anxiety-countermeasures.md) — do not hand-edit -->

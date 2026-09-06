@@ -1,5 +1,5 @@
 import { read, type CheckResult } from './check-utils.ts';
-import { findMissingGateMarkers } from '../lib/check-common.ts';
+import { findMissingGateMarkers, readComposedAgentDoc } from '../lib/check-common.ts';
 
 // PM-028 (issue #306) — coverage-regression.check.ts (V-TEST-09): mercure parity adoption of the
 // coverage-regression gate. Validates two source artifacts carry the gate:
@@ -46,7 +46,7 @@ export const formatMissingMarkerErrors = (missing: string[], sourceFile: string)
 const checkCoverageRegressionGate = (): CheckResult => {
   const vcodesMissing = findMissingGateMarkers(read('src/references/blackhole-vcodes.md'), VCODES_TEST09_REQUIRED_MARKERS);
   const implementerMissing = findMissingGateMarkers(
-    read('src/agents/implementer.md'),
+    readComposedAgentDoc('src/agents/implementer.md'),
     IMPLEMENTER_COVERAGE_GATE_REQUIRED_MARKERS,
   );
 
