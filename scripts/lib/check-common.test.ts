@@ -276,6 +276,78 @@ describe('appendIndexRowIfAbsent — sorted insert', () => {
     expect(result.appended).toBe(false);
     expect(result.content).toBe(content);
   });
+
+  // An excluded-character href group (`[^)]*`) cannot span a literal `)` inside the href
+  // itself, so a self-referential link whose path contains parens (e.g. `notes(final).md`) is
+  // never unwrapped at all — the dedup guard and sort key then compare the whole bracketed
+  // markdown instead of the underlying path, reintroducing a double-insert/mis-sort failure.
+  // Table-driven over the degenerate matrix that surfaces this, so the regression can't slip
+  // back in silently.
+  test.each([
+    // [label, existing row's raw path-cell text, offered path expected to canonicalize to
+    //  the same string (so appendIndexRowIfAbsent must treat it as already present)]
+    ['text differs from href — href wins', '[abc](def)', 'def'],
+    ['nested brackets in link text — unparseable, falls back to raw text', '[[a]](x)', '[[a]](x)'],
+    ['unclosed bracket — unparseable, falls back to raw text', '[abc', '[abc'],
+    ['bare path containing a bracket, not link-shaped — falls back to raw text', 'abc[def].md', 'abc[def].md'],
+    ['empty link — both groups empty, canonicalizes to the empty string', '[]()', ''],
+    ['bare path with parens, not link-shaped — falls back to raw text', 'docs/report(v2).md', 'docs/report(v2).md'],
+    [
+      'self-referential link whose path contains parens (the reported regression)',
+      '[docs/notes(final).md](docs/notes(final).md)',
+      'docs/notes(final).md',
+    ],
+  ])('canonicalizes %s', (_label, existingCell, offeredPath) => {
+    const content = `# Doc Index\n\n${HEADER}| ${existingCell} | Summary | ref | current | quarterly |\n`;
+    const result = appendIndexRowIfAbsent(content, row(offeredPath));
+    expect(result.appended).toBe(false);
+    expect(result.content).toBe(content);
+  });
+
+  // Same case as the table above, isolated as its own test so the red-before-green evidence
+  // is unambiguous: against the pre-fix regex (`[^)]*` for the href group) this fails because
+  // the parenthetical href is never unwrapped, so `appended` comes back `true` and a duplicate
+  // row is inserted alongside the original instead of being recognized as the same path.
+  test('a parenthetical self-referential link is recognized as a duplicate of its bare path (regression)', () => {
+    const linkRow = '| [docs/notes(final).md](docs/notes(final).md) | Notes | ref | current | quarterly |';
+    const content = `# Doc Index\n\n${HEADER}${linkRow}\n`;
+    const result = appendIndexRowIfAbsent(content, row('docs/notes(final).md'));
+    expect(result.appended).toBe(false);
+    expect(result.content).toBe(content);
+  });
+
+  // Mirrors test (j) above but with a parenthetical path: the link-wrapped row must sort by
+  // its unwrapped path ('docs/notes(final).md'), landing between 'audits/z.md' and
+  // 'plans/aaa.md' — not by its raw bracket text (which would sort before every bare path,
+  // since '[' is 0x5B, ahead of the lowercase range).
+  test('a parenthetical self-referential link sorts by its unwrapped path, not raw byte order', () => {
+    const linkRow = '[docs/notes(final).md](docs/notes(final).md)';
+    const content = `# Doc Index\n\n${HEADER}${rowLine(row('audits/z.md'))}\n${rowLine(row('plans/aaa.md'))}\n`;
+    const withLink = appendIndexRowIfAbsent(content, row(linkRow));
+    expect(withLink.appended).toBe(true);
+
+    const result = appendIndexRowIfAbsent(withLink.content, row('docs/mmm.md'));
+    expect(result.appended).toBe(true);
+    expect(parseIndexTableRows(result.content).map((r) => r.path)).toEqual([
+      'audits/z.md',
+      'docs/mmm.md',
+      linkRow,
+      'plans/aaa.md',
+    ]);
+  });
+
+  // Judgment call on the `[]()` empty-link degenerate case (both groups empty, per the matrix
+  // above): two distinct empty-link rows would canonicalize to the same "" path and the second
+  // would be treated as a duplicate of the first. An empty markdown link is not a shape any
+  // real INDEX.md row-generator produces (every row carries a non-empty repo-relative path —
+  // `doc-governance.md` § Lifecycle Frontmatter), so this is accepted as a non-issue rather
+  // than special-cased: fixing it would add a rejection path for a malformed input the schema
+  // already rules out, for a case that cannot occur in practice (YAGNI).
+  test('two distinct empty-link rows would collide on canonicalization, by design (documented, not fixed)', () => {
+    const content = `# Doc Index\n\n${HEADER}| []() | First | ref | current | quarterly |\n`;
+    const result = appendIndexRowIfAbsent(content, row(''));
+    expect(result.appended).toBe(false);
+  });
 });
 
 // Issue #811 (ADR-031 Phase 1, Task 1/2): `byPathByteOrder` and `renderIndexRowLine` were
