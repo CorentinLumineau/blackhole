@@ -232,6 +232,50 @@ describe('appendIndexRowIfAbsent — sorted insert', () => {
     expect(result?.content.startsWith(content)).toBe(true);
     expect(result?.content).toContain(rowLine(row('audits/a.md')));
   });
+
+  // Issue #871 Defect 1: the naive `line.split('|')` used by parseIndexTableRows does not
+  // respect GFM's `\|` escape, so a pre-existing row with an escaped pipe in its summary cell
+  // misparses into an extra cell, shifting every later column right by one and dropping the
+  // final `review_trigger` cell. Re-rendering that misparsed row from its shifted fields then
+  // corrupts a row this operation never intended to touch. Byte-for-byte survival of untouched
+  // rows is the fix; this fixture pins the exact corrupted output unfixed code produces.
+  test('(i) a pre-existing row with an escaped pipe survives byte-for-byte (Defect 1)', () => {
+    const escapedRow = '| decisions/ADR-025-validation-idiom.md | `string \\| null` | adr | current | on ADR acceptance |';
+    const content = `# Doc Index\n\n${HEADER}${escapedRow}\n`;
+    const result = appendIndexRowIfAbsent(content, row('plans/unrelated.md'));
+    expect(result.appended).toBe(true);
+    expect(result.content).toContain(escapedRow);
+    expect(result.content).not.toContain('string \\ | null');
+  });
+
+  // Issue #871 Defect 2: when some rows are rendered as bare paths and others as
+  // self-referential markdown links (`[path](path)`, mercure schema per a target repo's own
+  // convention), raw byte-order comparison sorts `[` (0x5B) ahead of every lowercase path
+  // segment (`a`-`z` start at 0x61) — bracket-wrapped rows cluster before bare-path rows
+  // regardless of the two paths' true alphabetical order. Canonicalizing the path extraction
+  // (unwrapping the markdown link before comparing) restores true path order.
+  test('(j) a markdown-link-wrapped row sorts by its unwrapped path, not raw byte order (Defect 2)', () => {
+    const linkRow = '| [plans/zzz.md](plans/zzz.md) | Zzz summary | plan | current | on release |';
+    const content = `# Doc Index\n\n${HEADER}${linkRow}\n`;
+    const result = appendIndexRowIfAbsent(content, row('audits/a.md'));
+    expect(result.appended).toBe(true);
+    expect(parseIndexTableRows(result.content).map((r) => r.path)).toEqual([
+      'audits/a.md',
+      '[plans/zzz.md](plans/zzz.md)',
+    ]);
+  });
+
+  // Issue #871 idempotency check: the dedup guard (line ~210) must canonicalize the same way
+  // the sort key does, or a row already present in link-wrapped form is not recognized as
+  // present when the bare-path equivalent is offered — the carry-step would then double-insert
+  // it on a re-spawn against a repo using mercure's link-wrapped rendering convention.
+  test('(k) a row already present in link-wrapped form is not re-inserted when offered bare (Defect 2 dedup)', () => {
+    const linkRow = '| [plans/zzz.md](plans/zzz.md) | Zzz summary | plan | current | on release |';
+    const content = `# Doc Index\n\n${HEADER}${linkRow}\n`;
+    const result = appendIndexRowIfAbsent(content, row('plans/zzz.md'));
+    expect(result.appended).toBe(false);
+    expect(result.content).toBe(content);
+  });
 });
 
 // Issue #811 (ADR-031 Phase 1, Task 1/2): `byPathByteOrder` and `renderIndexRowLine` were
