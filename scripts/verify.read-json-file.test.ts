@@ -19,6 +19,26 @@ describe('findBareJsonParseBypasses', () => {
     const good = "const load = (p: string) => readJsonFile(p, p);";
     expect(findBareJsonParseBypasses(good, 'fixture.ts')).toEqual([]);
   });
+
+  // BARE_PARSE_RE matches raw line text, so a comment or string literal that merely contains the
+  // flagged token sequence would otherwise produce a false BLOCK on a green tree.
+  test('does not flag a bare-parse token sequence inside a // comment', () => {
+    const commented = [
+      'const load = (p: string) => {',
+      "  // JSON.parse(fs.readFileSync(p, 'utf-8')) — do not do this, use readJsonFile",
+      '};',
+    ].join('\n');
+    expect(findBareJsonParseBypasses(commented, 'fixture.ts')).toEqual([]);
+  });
+
+  test('does not flag a bare-parse token sequence inside a string literal', () => {
+    const stringLiteral = [
+      'const load = (p: string) => {',
+      '  const example = "JSON.parse(fs.readFileSync(p, \'utf-8\'))";',
+      '};',
+    ].join('\n');
+    expect(findBareJsonParseBypasses(stringLiteral, 'fixture.ts')).toEqual([]);
+  });
 });
 
 describe('read-json-file runChecks() against the real scripts/ tree', () => {

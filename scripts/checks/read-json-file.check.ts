@@ -22,13 +22,51 @@ const scriptsDir = path.join(root, 'scripts');
 // synthetic string for their own coverage, not as a real call site.
 const EXEMPT_REL_PATH = 'scripts/lib/fs.ts';
 
+// BARE_PARSE_RE matches raw text, so a `//` comment or a string literal that merely contains the
+// flagged token sequence would otherwise produce a false BLOCK on a green tree. This walks a
+// single line's characters, tracking string state (with backslash-escape handling) and comment
+// state, and emits only the code portion — the flagged shape can then only match a genuine call
+// expression. Accepted, stated gaps: no cross-line tracking of an unterminated `/* ...` block
+// comment (it is truncated to end-of-line, not carried into the next line), and no resolution of
+// `${...}` template-literal interpolation — both already sit outside this check's pre-existing
+// line-by-line design, so this scrubber does not add new debt on top of it.
+export const stripCommentsAndStrings = (line: string): string => {
+  let out = '';
+  let inString: '"' | "'" | '`' | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const next = line[i + 1];
+    if (inString) {
+      if (ch === '\\') {
+        i++; // skip the escaped character — it can never end the string early
+        continue;
+      }
+      if (ch === inString) inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      inString = ch;
+      continue;
+    }
+    if (ch === '/' && next === '/') break; // line comment — rest of the line is not code
+    if (ch === '/' && next === '*') {
+      const close = line.indexOf('*/', i + 2);
+      if (close === -1) break; // unterminated on this line — treated as running to end-of-line
+      i = close + 1;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+};
+
 // Splits `content` into lines and flags every line matching the bare-parse shape, returning
 // `label:lineNumber` locations — same per-line scan shape as `findBareJqEmptyPrescriptions`.
 export const findBareJsonParseBypasses = (content: string, label: string): string[] => {
   const lines = content.split('\n');
   const violations: string[] = [];
   lines.forEach((line, idx) => {
-    if (BARE_PARSE_RE.test(line)) violations.push(`${label}:${idx + 1}`);
+    if (BARE_PARSE_RE.test(stripCommentsAndStrings(line))) violations.push(`${label}:${idx + 1}`);
   });
   return violations;
 };
