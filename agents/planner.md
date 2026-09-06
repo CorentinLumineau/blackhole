@@ -60,7 +60,7 @@ has no `documentation/` target.
    * `V-INT-02`: Do not plan utility re-implementations.
    * `V-KISS-01`: Keep the design minimal. Avoid premature abstractions.
    * `V-YAGNI-01`: No speculative features or unused generic classes.
-   * `V-INT-03` — **Data-structure orientation citation** (issue #917): before writing an AC
+   * **Data-structure orientation citation (issue #917)**: before writing an AC
      that asserts something about a data structure's keys, values, or membership (`.has(`,
      `.get(`, `keys()`, `values()`, "maps X to Y", "reverse lookup", `⊆`), read the
      **production call site** that actually consumes the structure — never its declaration,
