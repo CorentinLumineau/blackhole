@@ -4,7 +4,7 @@ import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { fetchForgeCounts } from './lib/campaign-status/forge.ts';
-import { loadCampaignState } from './lib/campaign-status/state.ts';
+import { CampaignNotFoundError, loadCampaignState } from './lib/campaign-status/state.ts';
 import { readJsonFile } from './lib/fs.ts';
 import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
 
@@ -93,8 +93,21 @@ export function renderPluginDriftWarning(signal: PluginDriftSignal | null): stri
 function main() {
   const { mode, campaignDir, skipGh } = parseStatusArgs(process.argv.slice(2));
 
-  const { config, queue, ledger, checkpoint, checkpointBody } =
-    loadCampaignState(campaignDir);
+  let state: ReturnType<typeof loadCampaignState>;
+  try {
+    state = loadCampaignState(campaignDir);
+  } catch (error) {
+    // "No campaign here" is a normal, expected state (fresh checkout, wrong --campaign-dir) —
+    // print the message and exit 0 (falling off main() already does; no process.exit needed).
+    // Anything else (e.g. a corrupt config.json) rethrows uncaught, preserving today's
+    // crash-with-stack-trace behavior — AC 2 requires the two cases stay distinguishable.
+    if (error instanceof CampaignNotFoundError) {
+      console.log(error.message);
+      return;
+    }
+    throw error;
+  }
+  const { config, queue, ledger, checkpoint, checkpointBody } = state;
 
   // The routine-resume confirmation gate (coordinator.md § Bootstrap preflight) prints only
   // this — no forge call, no queue/ledger rendering.

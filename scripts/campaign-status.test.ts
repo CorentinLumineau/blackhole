@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as childProcess from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { root } from './checks/check-utils.ts';
 import {
   computeWaves,
   countLedgerByStatus,
@@ -817,5 +821,43 @@ describe('parseStatusArgs', () => {
 
   test('an unknown subcommand is not silently treated as the dashboard', () => {
     expect(() => parseStatusArgs(['bogus-command'])).toThrow(/bogus-command/);
+  });
+});
+
+describe('main() CLI entrypoint — no campaign directory', () => {
+  test('missing campaign dir: names the directory, exits 0, no stack trace on stderr', () => {
+    const missingDir = path.join(os.tmpdir(), `blackhole-issue928-missing-${Date.now()}`);
+    expect(fs.existsSync(missingDir)).toBe(false);
+    const proc = Bun.spawnSync({
+      cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--campaign-dir', missingDir, '--no-gh'],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const stdout = proc.stdout.toString();
+    // stderr emptiness is the falsifiable check — an uncaught throw still emits stack-frame
+    // lines on stderr even when stdout also carries text, so stdout content alone can't tell
+    // "handled cleanly" from "crashed but happened to log something first".
+    expect(proc.stderr.toString()).toBe('');
+    expect(proc.exitCode).toBe(0);
+    expect(stdout).toContain(missingDir);
+    expect(stdout.toLowerCase()).toContain('no campaign');
+  });
+
+  test('malformed config.json: stays an error, distinguishable from the absent-directory case (AC 2)', () => {
+    const campaignDir = path.join(os.tmpdir(), `blackhole-issue928-corrupt-${Date.now()}`);
+    fs.mkdirSync(campaignDir, { recursive: true });
+    fs.writeFileSync(path.join(campaignDir, 'config.json'), '{ not valid json', 'utf-8');
+    try {
+      const proc = Bun.spawnSync({
+        cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--campaign-dir', campaignDir, '--no-gh'],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      expect(proc.exitCode).not.toBe(0);
+    } finally {
+      fs.rmSync(campaignDir, { recursive: true, force: true });
+    }
   });
 });
