@@ -225,7 +225,7 @@ New top-level `routing_decisions` array (sibling to `findings`), with its own
         "plan_mode": "quick",
         "security_review_required": false,
         "confidence": { "split": 95, "design": 80, "plan_mode": 70, "security": 90 },
-        "body_hash": "<sha>",
+        "body_hash": "<sha256 hex digest — see queue-dag.md § body_hash algorithm for the exact convention>",
         "computed_at_phase": "handle",
         "revision": 1
       },

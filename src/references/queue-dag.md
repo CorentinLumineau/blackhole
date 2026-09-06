@@ -115,9 +115,43 @@ name alone.
 | `docs_impact` | boolean | Would select planner/reviewer docs-impact enrichment (dispatch out of scope — computed and confidence-gated only; see #177) |
 | `ui` | boolean | Content-derived, same shape as `docs_impact` (`router.md` § `ui` classification, ADR-017); cautious default `true` on low confidence. Gates the planner's UI Interpretation Gate (`ui_pending_approval`) and the orchestrator's implement-dispatch refusal for unapproved UI changes — see `orchestrator-delegation.md` § Planner gate |
 | `confidence` | object `{ split, design, plan_mode, security, docs, brainstorm, analysis, ui }`, each 0-100 | Per-flag confidence; low confidence resolves to that flag's cautious default (`needs_split → true`, `plan_mode → full`, `security_review_required → true`, `needs_design → true`, `docs_impact → true`, `needs_brainstorm → true`, `needs_analysis → true` for `size:l`+ or `needs_design: true` issues, else `false`, `ui → true`) |
-| `body_hash` | string | sha of issue title+body at classification time; staleness marker |
+| `body_hash` | string | sha256 hex digest of issue title+body at classification time; staleness marker — see § body_hash algorithm below for the exact convention |
 | `computed_at_phase` | `handle` \| `plan` \| `implement` \| `review` | Phase at which this route was computed |
 | `revision` | number | Bumped on every re-route; never retroactively changes already-executed chain steps |
+
+#### `body_hash` algorithm (canonical, issue #885)
+
+Sampling 5 routed issues with unchanged bodies found two live conventions in the wild —
+`sha256(title + "\n" + body)` and `sha256(title + "\n\n" + body)` — because this section
+previously said only "sha of issue title+body". This subsection pins the convention to
+exactly one algorithm; every other placeholder site (`worker-schemas.md`,
+`findings-ledger.md`, `router.md`, `recovery-protocol.md` §8) cites this section by
+reference instead of restating it (`V-DOC-05`).
+
+**Canonical definition**: `sha256(title + "\n" + body)`, UTF-8 bytes, no further
+normalization (no trim, no CRLF conversion). This matches the majority live sample (3 of 5)
+plus the pre-corruption value of `#868`'s stored `body_hash`.
+
+**Canonical implementation**: `computeBodyHash(title, body)` in `scripts/lib/body-hash.ts`.
+`scripts/compute-body-hash.ts` is its CLI wrapper — the copy-pasteable recipe for router
+agents (Bash-only tool access) and for `recovery-protocol.md` §8's recompute step:
+
+```bash
+echo '{"title": "Example Issue", "body": "This is the body."}' | bun run scripts/compute-body-hash.ts
+```
+
+**Worked example**:
+
+| Field | Value |
+|-------|-------|
+| `title` | `Example Issue` |
+| `body` | `This is the body.` |
+| Concatenation | `Example Issue\nThis is the body.` (31 UTF-8 bytes, one `\n`) |
+| `body_hash` | `31fe5c60c8773642b8cee437c596be10923a2bce4d24aa932d3f58d6f2d73a6e` |
+
+Verified independently with `shasum -a 256` and Python `hashlib` before being pinned here.
+`scripts/lib/body-hash.test.ts` pins this exact worked example as a mechanized regression
+guard against future drift.
 
 **Consumer status** (per-flag, updated as ADR-004 steps land): `plan_mode`, `needs_split`,
 and `needs_design` are now read by orchestrator dispatch (`orchestrator-delegation.md` §

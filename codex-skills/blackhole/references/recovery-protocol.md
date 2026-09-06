@@ -190,8 +190,9 @@ compaction recovery, or a fresh orchestrator turn picking up an issue with an ex
 `route` — before dispatching *any* worker (planner, investigator, or implementer) for
 that issue, verify the route is not stale:
 
-1. Recompute the current issue body hash (title + body, same hash function the router
-   uses at classification time — router ships in issue #95).
+1. Recompute the current issue body hash via `scripts/compute-body-hash.ts` (or
+   `computeBodyHash` directly, `scripts/lib/body-hash.ts`) — see `queue-dag.md` §
+   `body_hash` algorithm for the exact convention.
 2. Compare to `route.body_hash`.
 3. Check whether a research or investigation artifact for this issue
    (`issue-N-research.md` / `issue-N-investigation.md`, investigator ships in issue #96)
