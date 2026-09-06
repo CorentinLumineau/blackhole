@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './fs.ts';
-import { appendIndexRowIfAbsent, type RootIndexRow } from './check-common.ts';
 import { parseFlags } from './argv-flags.ts';
+import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 
 export type CompanionRepair = {
   vcode: 'V-ADA-01' | 'V-ADA-05' | 'V-ADA-09';
@@ -193,41 +193,38 @@ export const repairAgentsSymlink = (repoRoot: string, projectName: string): Comp
 // file, because it targets `documentation/reference/journeys.md`, not the repo root
 // (`templates/companion-files/README.md`'s "Repo root" claim was the stale doc this issue
 // corrects — see Decision Record 1). `doc-health.check.ts`'s V-DOCHEALTH-02 walks
-// `documentation/` and requires a `documentation/INDEX.md` row for every doc it finds there.
+// `documentation/` and requires a `documentation/INDEX.md` row for every doc it finds there —
+// issue #832 (ADR-031 Phase 2) retired the hand-appended row in favor of automatic regeneration
+// from the doc's own `summary` frontmatter, so this repair now backfills that field directly on
+// `journeys.md` (the row itself is reproduced automatically at carry time) instead of appending
+// a row fragment to `documentation/INDEX.md`.
 export const JOURNEYS_DOC_REL_PATH = path.join('documentation', 'reference', 'journeys.md');
 
-const JOURNEYS_INDEX_ROW: RootIndexRow = {
-  path: 'reference/journeys.md',
-  summary: 'User-journey inventory the ux-coherence hunt kind audits core-job coverage against',
-  type: 'reference',
-  status: 'template',
-  reviewTrigger: 'on ADR acceptance',
-};
-
-const rootIndexPath = (repoRoot: string): string => path.join(repoRoot, 'documentation', 'INDEX.md');
+const JOURNEYS_SUMMARY = 'User-journey inventory the ux-coherence hunt kind audits core-job coverage against';
 
 // Unconditional — unlike needsArchitectureRepair/needsAgentsSymlinkRepair, this repair carries
 // no diff-path predicate. It only ever fires when `journeys.md` already exists on disk, so it
 // is purely additive and self-limiting: there is no drive-by-creation risk to gate against
 // (Codebase Conventions, Task Breakdown step 5).
-export const needsJourneysIndexRepair = (repoRoot: string): boolean => {
-  if (!fs.existsSync(path.join(repoRoot, JOURNEYS_DOC_REL_PATH))) return false;
-  const indexPath = rootIndexPath(repoRoot);
-  if (!fs.existsSync(indexPath)) return false;
-  const { appended } = appendIndexRowIfAbsent(fs.readFileSync(indexPath, 'utf-8'), JOURNEYS_INDEX_ROW);
-  return appended;
+export const needsJourneysSummaryRepair = (repoRoot: string): boolean => {
+  const journeysPath = path.join(repoRoot, JOURNEYS_DOC_REL_PATH);
+  if (!fs.existsSync(journeysPath)) return false;
+  const fields = parseFrontmatterFields(parseMdFrontmatter(fs.readFileSync(journeysPath, 'utf-8')).frontmatter);
+  return !fields.summary;
 };
 
-export const repairJourneysIndexRow = (repoRoot: string): CompanionRepair | null => {
-  if (!needsJourneysIndexRepair(repoRoot)) return null;
-  const indexPath = rootIndexPath(repoRoot);
-  const { content, appended } = appendIndexRowIfAbsent(fs.readFileSync(indexPath, 'utf-8'), JOURNEYS_INDEX_ROW);
-  if (!appended) return null;
-  fs.writeFileSync(indexPath, content, 'utf-8');
+export const repairJourneysSummary = (repoRoot: string): CompanionRepair | null => {
+  if (!needsJourneysSummaryRepair(repoRoot)) return null;
+  const journeysPath = path.join(repoRoot, JOURNEYS_DOC_REL_PATH);
+  const { frontmatter, body } = parseMdFrontmatter(fs.readFileSync(journeysPath, 'utf-8'));
+  const lines = frontmatter.split('\n');
+  const typeIdx = lines.findIndex((l) => l.startsWith('type:'));
+  lines.splice(typeIdx === -1 ? 0 : typeIdx + 1, 0, `summary: ${JSON.stringify(JOURNEYS_SUMMARY)}`);
+  fs.writeFileSync(journeysPath, `---\n${lines.join('\n')}\n---\n${body}`, 'utf-8');
   return {
     vcode: 'V-ADA-09',
-    file: path.join('documentation', 'INDEX.md'),
-    action: 'appended reference/journeys.md row to documentation/INDEX.md',
+    file: JOURNEYS_DOC_REL_PATH,
+    action: 'backfilled summary frontmatter on documentation/reference/journeys.md',
   };
 };
 
@@ -247,7 +244,7 @@ export const runCompanionFileSync = (
     repairs.push(...repairAgentsSymlink(repoRoot, projectName));
   }
 
-  const journeysRepair = repairJourneysIndexRow(repoRoot);
+  const journeysRepair = repairJourneysSummary(repoRoot);
   if (journeysRepair) repairs.push(journeysRepair);
 
   return { repairs };
@@ -289,7 +286,7 @@ if (import.meta.main) {
     // Bootstrap-time path (src/SKILL.md Phase 0 step 2, issue #728): repo-root only, no
     // --diff-file — this repair is unconditional (see runCompanionFileSync), so it needs no
     // diff-path predicate to decide whether to fire.
-    const repair = repairJourneysIndexRow(path.resolve(repoRoot));
+    const repair = repairJourneysSummary(path.resolve(repoRoot));
     console.log(JSON.stringify({ repairs: repair ? [repair] : [] }, null, 2));
   } else if (diffFile) {
     const diffPaths = readDiffFile(diffFile);

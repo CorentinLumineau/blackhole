@@ -101,7 +101,8 @@ describe('carry-staged-artifacts CLI — end to end', () => {
     const proc = run(['--manifest', manifestPath, '--repo-root', dir]);
     const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
     expect(code).toBe(0);
-    expect(JSON.parse(stdout)).toEqual(['documentation/plans/plan-x.md']);
+    // + documentation/INDEX.md — auto-regenerated (issue #832, ADR-031 Phase 2).
+    expect(JSON.parse(stdout)).toEqual(['documentation/plans/plan-x.md', 'documentation/INDEX.md']);
     expect(fs.existsSync(path.join(dir, 'documentation/plans/plan-x.md'))).toBe(true);
   });
 
@@ -136,7 +137,8 @@ describe('carry-staged-artifacts CLI — end to end', () => {
       new Response(proc.stderr).text(),
     ]);
     expect(code).toBe(0);
-    expect(JSON.parse(stdout)).toEqual(['documentation/plans/plan-x.md']);
+    // + documentation/INDEX.md — auto-regenerated (issue #832, ADR-031 Phase 2).
+    expect(JSON.parse(stdout)).toEqual(['documentation/plans/plan-x.md', 'documentation/INDEX.md']);
     expect(stderr).toContain('entries[0]');
   });
 });
@@ -181,7 +183,8 @@ describe('carry-staged-artifacts CLI — --staging-root (issue #760)', () => {
       ]);
       const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
       expect(code).toBe(0);
-      expect(JSON.parse(stdout)).toEqual(['documentation/plans/plan-x.md']);
+      // + documentation/INDEX.md — auto-regenerated (issue #832, ADR-031 Phase 2).
+      expect(JSON.parse(stdout)).toEqual(['documentation/plans/plan-x.md', 'documentation/INDEX.md']);
       expect(fs.existsSync(path.join(repoRootDir, 'documentation/plans/plan-x.md'))).toBe(true);
     } finally {
       fs.rmSync(manifestDir, { recursive: true, force: true });
@@ -271,7 +274,8 @@ describe('carry-staged-artifacts CLI — path containment (issue #752)', () => {
     ]);
 
     expect(code).toBe(0);
-    expect(JSON.parse(stdout)).toEqual(['documentation/plans/plan-x.md']);
+    // + documentation/INDEX.md — auto-regenerated (issue #832, ADR-031 Phase 2).
+    expect(JSON.parse(stdout)).toEqual(['documentation/plans/plan-x.md', 'documentation/INDEX.md']);
     expect(stderr).toContain('entries[0]');
     expect(stderr).toContain('target_path');
     expect(stderr).toContain(repoRoot);

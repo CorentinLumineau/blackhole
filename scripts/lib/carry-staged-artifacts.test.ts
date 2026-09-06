@@ -15,6 +15,7 @@ import {
   type Manifest,
 } from './carry-staged-artifacts.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
+import { parseIndexTableRows } from './check-common.ts';
 
 // Issue #715 (R-10) — mechanizes implementer.md § Carry Staged Artifacts' manifest shape guard,
 // target_kind dispatch, 9-row frontmatter rewrite, and append_row dedup for both discriminator
@@ -180,6 +181,24 @@ describe('rewriteInvestigatorFrontmatter — the 9-row mapping table (working-no
     );
     expect(out).toContain('type: research');
   });
+
+  test('issue #832 (ADR-031 Phase 2, Task 7c): a summary on the entry is written as a JSON-quoted scalar', () => {
+    const out = rewriteInvestigatorFrontmatter(
+      staged,
+      { sub_mode: 'analyze', declared_at: '2026-08-06T17:40:00.000Z', summary: 'The evidence pass summary' },
+      '2026-08-12',
+    );
+    expect(out).toContain('summary: "The evidence pass summary"');
+  });
+
+  test('no summary line is written when the entry carries no summary field', () => {
+    const out = rewriteInvestigatorFrontmatter(
+      staged,
+      { sub_mode: 'analyze', declared_at: '2026-08-06T17:40:00.000Z' },
+      '2026-08-12',
+    );
+    expect(out).not.toContain('summary:');
+  });
 });
 
 describe('append_row dedup — pipe-table discriminator (row path column value)', () => {
@@ -264,7 +283,11 @@ describe('carryManifest — end-to-end against the blackhole-state.md § Staging
       fs.writeFileSync(path.join(repoRoot, 'ARCHITECTURE.md'), '# ARCHITECTURE\n\n## Active Constraints\n');
 
       const first = carryManifest(exampleManifest, repoRoot, { today: '2026-08-12' });
-      expect(first.carriedPaths).toHaveLength(exampleManifest.entries.length);
+      // +1: the auto-regenerated documentation/INDEX.md (issue #832, ADR-031 Phase 2) — carrying
+      // the analyze/plan/review new_file entries into documentation/ (excluding decisions/**)
+      // triggers one root-index regeneration in addition to the manifest's own declared entries.
+      expect(first.carriedPaths).toHaveLength(exampleManifest.entries.length + 1);
+      expect(first.carriedPaths).toContain('documentation/INDEX.md');
       expect(first.skippedEntries).toHaveLength(0);
 
       // append_row entries are the property that actually matters (a wave of implementer
@@ -279,6 +302,116 @@ describe('carryManifest — end-to-end against the blackhole-state.md § Staging
         expect(second.carriedPaths).not.toContain(target);
       }
       expect(second.skippedEntries).toHaveLength(0);
+    });
+  });
+});
+
+describe('carryManifest — root documentation/INDEX.md append_row retirement (issue #832, ADR-031 Phase 2, Task 7)', () => {
+  test('an append_row entry with target_path "documentation/INDEX.md" is skipped, never written, reason names the retirement', () => {
+    withTempDir('carry-index-append-retired', (repoRoot) => {
+      const stagedRel = '.blackhole/staged/1/index-row.md';
+      const stagedAbs = path.join(repoRoot, stagedRel);
+      fs.mkdirSync(path.dirname(stagedAbs), { recursive: true });
+      fs.writeFileSync(stagedAbs, '| documentation/audits/foo.md | s | analysis | current | on file change |');
+      fs.mkdirSync(path.join(repoRoot, 'documentation'), { recursive: true });
+      fs.writeFileSync(path.join(repoRoot, 'documentation', 'INDEX.md'), '# Documentation Index\n\n| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n');
+
+      const manifest: Manifest = {
+        issue: 1,
+        updated_at: 'x',
+        entries: [
+          {
+            route: 'analyze',
+            sub_mode: 'analyze',
+            produced_by: 'investigator',
+            declared_at: '2026-08-06T17:40:00.000Z',
+            staged_path: stagedRel,
+            target_path: 'documentation/INDEX.md',
+            target_kind: 'append_row',
+          },
+        ],
+      };
+
+      const outcome = carryManifest(manifest, repoRoot);
+
+      expect(outcome.carriedPaths).not.toContain('documentation/INDEX.md');
+      expect(outcome.skippedEntries).toHaveLength(1);
+      expect(outcome.skippedEntries[0]!.reason).toContain('regenerated automatically');
+      expect(fs.readFileSync(path.join(repoRoot, 'documentation', 'INDEX.md'), 'utf-8')).not.toContain(
+        'documentation/audits/foo.md',
+      );
+    });
+  });
+
+  test('carrying a new_file investigator entry with a summary writes it into the promoted note\'s frontmatter', () => {
+    withTempDir('carry-investigator-summary', (repoRoot) => {
+      const stagedRel = '.blackhole/staged/1/analysis-issue-1.md';
+      const stagedAbs = path.join(repoRoot, stagedRel);
+      fs.mkdirSync(path.dirname(stagedAbs), { recursive: true });
+      fs.writeFileSync(stagedAbs, '---\nissue: 1\nsub_mode: analyze\nconfidence: 80\ncomputed_at_revision: 1\n---\n# Note\n\nbody\n');
+
+      const manifest: Manifest = {
+        issue: 1,
+        updated_at: 'x',
+        entries: [
+          {
+            route: 'analyze',
+            sub_mode: 'analyze',
+            produced_by: 'investigator',
+            declared_at: '2026-08-06T17:40:00.000Z',
+            staged_path: stagedRel,
+            target_path: 'documentation/audits/analysis-issue-1.md',
+            target_kind: 'new_file',
+            summary: 'X',
+          },
+        ],
+      };
+
+      const outcome = carryManifest(manifest, repoRoot, { today: '2026-08-12' });
+
+      expect(outcome.carriedPaths).toContain('documentation/audits/analysis-issue-1.md');
+      const promoted = fs.readFileSync(path.join(repoRoot, 'documentation/audits/analysis-issue-1.md'), 'utf-8');
+      expect(promoted).toContain('summary: "X"');
+    });
+  });
+
+  test('the same carry also regenerates documentation/INDEX.md, whose row for that path shows the summary', () => {
+    withTempDir('carry-investigator-summary-index', (repoRoot) => {
+      const stagedRel = '.blackhole/staged/1/analysis-issue-1.md';
+      const stagedAbs = path.join(repoRoot, stagedRel);
+      fs.mkdirSync(path.dirname(stagedAbs), { recursive: true });
+      fs.writeFileSync(stagedAbs, '---\nissue: 1\nsub_mode: analyze\nconfidence: 80\ncomputed_at_revision: 1\n---\n# Note\n\nbody\n');
+      fs.mkdirSync(path.join(repoRoot, 'documentation'), { recursive: true });
+      fs.writeFileSync(path.join(repoRoot, 'documentation', 'INDEX.md'), '# Documentation Index\n\n| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n');
+
+      const manifest: Manifest = {
+        issue: 1,
+        updated_at: 'x',
+        entries: [
+          {
+            route: 'analyze',
+            sub_mode: 'analyze',
+            produced_by: 'investigator',
+            declared_at: '2026-08-06T17:40:00.000Z',
+            staged_path: stagedRel,
+            target_path: 'documentation/audits/analysis-issue-1.md',
+            target_kind: 'new_file',
+            summary: 'X',
+          },
+        ],
+      };
+
+      const outcome = carryManifest(manifest, repoRoot, { today: '2026-08-12' });
+
+      expect(outcome.carriedPaths).toContain('documentation/INDEX.md');
+      const indexContent = fs.readFileSync(path.join(repoRoot, 'documentation', 'INDEX.md'), 'utf-8');
+      expect(indexContent.startsWith('# Documentation Index\n\n')).toBe(true);
+      const rows = parseIndexTableRows(indexContent);
+      // Root INDEX rows are folder-prefixed relative to documentation/ (blackhole-state.md
+      // convention), matching what buildDocIndexRows produces for this fixture.
+      expect(rows.map((r) => r.path)).toContain('audits/analysis-issue-1.md');
+      const matched = rows.find((r) => r.path === 'audits/analysis-issue-1.md');
+      expect(matched?.summary).toBe('X');
     });
   });
 });
@@ -305,7 +438,9 @@ describe('carryManifest — two-root resolution (opts.stagingRoot, issue #760)',
         const outcome = carryManifest(manifest, repoRoot, { stagingRoot: stagingDir });
 
         expect(outcome.skippedEntries).toHaveLength(0);
-        expect(outcome.carriedPaths).toEqual([baseEntry.target_path]);
+        // + documentation/INDEX.md — the entry's target_path is under documentation/ (not
+        // decisions/**), so it triggers auto-regeneration (issue #832, ADR-031 Phase 2).
+        expect(outcome.carriedPaths).toEqual([baseEntry.target_path, 'documentation/INDEX.md']);
         expect(fs.existsSync(path.join(repoRoot, baseEntry.target_path))).toBe(true);
       });
     });
@@ -496,7 +631,9 @@ describe('carryManifest — path containment (issue #752)', () => {
 
       const outcome = carryManifest(manifest, repoRoot);
 
-      expect(outcome.carriedPaths).toEqual([baseEntry.target_path]);
+      // + documentation/INDEX.md — auto-regenerated because the surviving entry's target_path
+      // is under documentation/ (issue #832, ADR-031 Phase 2).
+      expect(outcome.carriedPaths).toEqual([baseEntry.target_path, 'documentation/INDEX.md']);
       expect(outcome.skippedEntries).toHaveLength(1);
       expect(outcome.skippedEntries[0]!.index).toBe(0);
       expect(fs.existsSync(path.join(dir, 'escape.md'))).toBe(false);
@@ -598,7 +735,8 @@ describe('carryManifest — path containment (issue #752)', () => {
       const outcome = carryManifest(manifestOf({ target_path: 'documentation/a/../b.md' }), repoRoot);
 
       expect(outcome.skippedEntries).toEqual([]);
-      expect(outcome.carriedPaths).toEqual(['documentation/a/../b.md']);
+      // + documentation/INDEX.md — auto-regenerated (issue #832, ADR-031 Phase 2).
+      expect(outcome.carriedPaths).toEqual(['documentation/a/../b.md', 'documentation/INDEX.md']);
       expect(fs.existsSync(path.join(repoRoot, 'documentation', 'b.md'))).toBe(true);
     });
   });
@@ -664,12 +802,18 @@ describe('carryManifest — write-step failures are skipped, never fatal to the 
       // Same ENOTDIR forcing as the new_file test above, but targeting the append_row branch's
       // own try/catch (carry-staged-artifacts.ts:328-337) — previously unexercised for failure;
       // the existing end-to-end ARCHITECTURE.md case only exercises append_row's success path.
+      // Retargeted from `documentation/INDEX.md` to `documentation/decisions/INDEX.md` (issue
+      // #832, ADR-031 Phase 2): the former is no longer a live append_row target — it is skipped
+      // before the write step is ever reached, so it can no longer exercise this failure path.
       fs.writeFileSync(path.join(repoRoot, 'documentation'), 'not a directory');
 
-      const stagedRel = '.blackhole/staged/1/index-row.md';
+      const stagedRel = '.blackhole/staged/1/decisions-index-row.md';
       const stagedAbs = path.join(repoRoot, stagedRel);
       fs.mkdirSync(path.dirname(stagedAbs), { recursive: true });
-      fs.writeFileSync(stagedAbs, '| documentation/INDEX.md | Staged row for issue 1 | analysis | current | on file change |');
+      fs.writeFileSync(
+        stagedAbs,
+        '| ADR-021-durable-artifact-staging.md | Staged row for issue 1 | adr | accepted | on protocol change |',
+      );
 
       const manifest: Manifest = {
         issue: 1,
@@ -678,7 +822,7 @@ describe('carryManifest — write-step failures are skipped, never fatal to the 
           {
             ...baseEntry,
             staged_path: stagedRel,
-            target_path: 'documentation/INDEX.md',
+            target_path: 'documentation/decisions/INDEX.md',
             target_kind: 'append_row',
           },
         ],
@@ -689,7 +833,7 @@ describe('carryManifest — write-step failures are skipped, never fatal to the 
       expect(outcome.carriedPaths).toEqual([]);
       expect(outcome.skippedEntries).toHaveLength(1);
       expect(outcome.skippedEntries[0]!.index).toBe(0);
-      expect(outcome.skippedEntries[0]!.reason).toContain('documentation/INDEX.md');
+      expect(outcome.skippedEntries[0]!.reason).toContain('documentation/decisions/INDEX.md');
       expect(outcome.skippedEntries[0]!.reason).toContain('write failed');
     });
   });

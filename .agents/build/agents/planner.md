@@ -100,26 +100,28 @@ has no `documentation/` target.
    (absent or `false` on either ⇒ skip entirely — no staging write, no manifest entry), on **every
    track including Skip**:
    1. Run `scripts/detect-doc-schema.sh index documentation/INDEX.md` (repo-convention precedence,
-      `doc-governance.md` § Repo Convention Precedence) before emitting the INDEX row fragment.
+      `doc-governance.md` § Repo Convention Precedence) before rendering the plan body's
+      lifecycle frontmatter.
    2. Render a durable plan body at `.blackhole/staged/<issue>/plan-{slug}.md` (filename from
       `scripts/lib/concern-slug.ts`'s `planTargetPath`) via Bash heredoc + atomic `mv` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911). Strip
       campaign-only frontmatter keys from the working plan copy: `plan_base_commit`, `track`,
       `task_type`, `threat_screen_passed`, `ui_gate`. Add lifecycle frontmatter per
-      `doc-governance.md` § Lifecycle Frontmatter (`type: plan`, `status: current`,
-      `review_trigger`, `created`, `last_updated`).
-   3. Stage the INDEX row fragment at `.blackhole/staged/<issue>/plan-index-row.md` (5-column
-      blackhole schema or mercure schema per step 1 detection — never write directly to
-      `documentation/plans/` or `documentation/INDEX.md`).
-   4. Append manifest entries (`route: "plan"`, `produced_by: "planner"`, `sub_mode: null`,
-      `target_kind: "new_file"` for the plan body + `target_kind: "append_row"` for the INDEX row)
-      to `.blackhole/staged/<issue>/manifest.json` per `blackhole-state.md` § Staging write
-      protocol. Never commit into `documentation/` — the implementer carry-step owns delivery.
-   5. **Manifest write is mandatory, not narration** (issue #782): completing steps 2-3 (the plan
-      body and INDEX row files) without this manifest append — or describing staged artifacts in
-      the plan document's prose without executing step 4 — does not satisfy ADR-021 D3 and
-      leaves `V-AUTO-02` unable to detect the gap. Before returning `status`, confirm both
-      entries are present on disk (e.g. `grep -c '"route": "plan"'
-      .blackhole/staged/<issue>/manifest.json` returns `2`).
+      `doc-governance.md` § Lifecycle Frontmatter (`type: plan`, `summary`, `status: current`,
+      `review_trigger`, `created`, `last_updated`) — `summary` is the plan's own one-line
+      description (`objective`, JSON-quoted), authored directly on the plan body's frontmatter
+      rather than staged as a second `documentation/INDEX.md` row fragment (issue #832, ADR-031
+      Phase 2 — supersedes the paired staged `append_row` INDEX-row fragment issue #445
+      introduced): the row is reproduced automatically at carry time from this field.
+   3. Append one manifest entry (`route: "plan"`, `produced_by: "planner"`, `sub_mode: null`,
+      `target_kind: "new_file"` for the plan body) to `.blackhole/staged/<issue>/manifest.json`
+      per `blackhole-state.md` § Staging write protocol. Never commit into `documentation/` — the
+      implementer carry-step owns delivery.
+   4. **Manifest write is mandatory, not narration** (issue #782): completing step 2 (the plan
+      body file) without this manifest append — or describing the staged artifact in the plan
+      document's prose without executing step 3 — does not satisfy ADR-021 D3 and leaves
+      `V-AUTO-02` unable to detect the gap. Before returning `status`, confirm the entry is
+      present on disk (e.g. `grep -c '"route": "plan"' .blackhole/staged/<issue>/manifest.json`
+      returns `1`).
 8. **Verify Quality Gate**: Ensure all Touch-Paths are declared explicitly (`V-SCOPE-02`) and schema baseline changes are fully specified (`V-API-01`). **Standard track only** — run `bun run --cwd <repo_root> scripts/plan-quality-gate.ts --plan-file <path-to-this-plan> --repo-root <repo_root>` (issue #716; `--repo-root` required as of issue #891 — resolves `critical_files_exist` against the consumer repo `<repo_root>` names, not blackhole's own checkout) and copy its `{ac_mapping, critical_files_exist, mitigation_concrete}` result directly into `failing_checks`/the `## Quality Gate Results` PASS/FAIL rows below, rather than re-deriving any of the three checks by hand:
    * **What the CLI computes**: `ac_mapping` — every `## Task Breakdown` item carries a machine-verifiable acceptance criterion (this closes a documented-but-unenforced schema value — `worker-schemas.md` § Plan quality gate checks names all three as valid `failing_checks` entries with no prior producing step before issue #716). `critical_files_exist` — every backtick-quoted path listed under `## Critical Files` resolves on disk; `## Critical Files` names only **pre-existing** sensitive touchpoints (see § Plan Complexity Tracks & Sections, Standard Track's Critical Files bullet) — a file the plan is about to *create* belongs under Touch-Paths instead, never here, or this check spuriously blocks it. `mitigation_concrete` — every bullet under `## Execution Strategy & Stop Conditions` pairs a vague-mitigation phrase (fixed word list: `scripts/checks/plan-quality-gate.check.ts`'s `PLAN_QUALITY_GATE_VAGUE_WORDS`, not restated here) to a testable "if X then abort/halt/stop/revert" stop condition. A `false` value for any key adds that key to `failing_checks` and returns `status: blocked` rather than `ready`.
    * **Section-presence gating, not track-gating (mercure parity, issue #459 AC3)**: both checks trigger on whether their source section — `## Critical Files` or `## Execution Strategy & Stop Conditions` — is actually present in this plan's output, never on the track name directly. Today only the Standard Track template carries either heading (§ Plan Complexity Tracks & Sections), so both checks are inert on every Quick Track plan — not because Quick Track is exempted, but because a Quick Track plan never emits either heading. This is the deliberate reading of AC3's mercure-parity "advisory on Quick": advisory means *evaluated only when the section is applicable*, not *always skipped on that track*. If Quick Track's template is ever extended to carry `## Critical Files` or `## Execution Strategy & Stop Conditions`, both checks activate automatically with the same blocking semantics as Standard Track — no separate Quick-track wiring is needed. Design Track's own unconditional `design_pending_approval` block (§ Design Track) already blocks regardless of these two checks' applicability, so it needs no separate wiring either.

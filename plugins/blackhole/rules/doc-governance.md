@@ -181,10 +181,30 @@ Row `path` values are **relative to `documentation/`** (e.g. `decisions/ADR-021-
 filenames relative to its own directory (a per-folder index, unambiguous within one folder
 alone; the root index spans many folders and needs the folder-prefixed form).
 
-**Row order (issue #743)**: both `documentation/INDEX.md` and `documentation/decisions/INDEX.md`
-insert rows in path-sorted order, not append/chronological order — the shared
-`appendIndexRowIfAbsent` primitive (`scripts/lib/check-common.ts`) rebuilds the row block as
-`[...existingRows, newRow].sort((a, b) => a.path.localeCompare(b.path))` on every insert, so
+**Generated, not hand-appended (issue #832, ADR-031 Phase 2)**: the root `documentation/INDEX.md`
+is a **purely generated artifact** — every row is derived from its own doc's frontmatter
+(`summary`/`type`/`status`/`review_trigger`), never hand-appended from a staged row fragment.
+`scripts/lib/doc-index-generate.ts`'s `buildDocIndexRows` walks `documentation/` (excluding
+`decisions/**`, `milestones/_archived/**`, and `INDEX.md` itself) and reads each doc's
+frontmatter directly; `renderFullIndexFile` renders the resulting table, sorted by
+`byPathByteOrder` (path order, not append/chronological order — the same sort a hand-appended
+insert used to apply per-row, now applied once to the whole tree). The implementer carry-step
+(`implementer.md` § Carry Staged Artifacts) calls this regenerator and overwrites
+`documentation/INDEX.md` wholesale whenever it carries a `new_file` entry into `documentation/`
+(excluding `decisions/**`) — mirroring this repo's own build-target pattern (regenerate the whole
+artifact from source, never patch it incrementally). A producer that wants a correct row need
+only author `summary` on the doc's own frontmatter (or on the staging manifest's `new_file` entry
+for an investigator note — the carry-step writes it onto the promoted note's frontmatter); there
+is no second staged row file and no `append_row` manifest entry for this file to author.
+`bun run scripts/generate-doc-index.ts --check` (wired into `bun run verify` as
+`V-DOCHEALTH-01`/`V-DOCHEALTH-02`/`V-DOCHEALTH-04`, all blocking) fails the build the moment the
+committed file and the live tree's frontmatter disagree, so there is no drift window for a
+hand-edit to introduce.
+
+**Row order (issue #743) — `documentation/decisions/INDEX.md` only**: that file (untouched by
+the generation mechanism above) still inserts rows in path-sorted order via the shared
+`appendIndexRowIfAbsent` primitive (`scripts/lib/check-common.ts`), which rebuilds the row block
+as `[...existingRows, newRow].sort((a, b) => a.path.localeCompare(b.path))` on every insert, so
 concurrent carry/promotion PRs touching the same file land their new rows at different offsets
 instead of the same anchor line. Since ADR filenames are zero-padded to a fixed 3-digit width,
 path order and ADR-sequence order coincide for the decisions index — no separate ordering rule
@@ -192,16 +212,19 @@ is needed for that file.
 
 Owning agent: **`implementer`** — no new agent is minted for this obligation; it reuses
 `implementer`'s existing ADR-021 D2 carry-step role (the mechanism that already writes
-staged/derived documentation artifacts into the tree). Every doc under `documentation/` needs a
-corresponding row (`V-DOCHEALTH-02`, blocking), and every row needs to resolve to a file that
-still exists (`V-DOCHEALTH-01`, blocking) — both enforced unconditionally by
+staged/derived documentation artifacts into the tree, and now also regenerates the root index as
+a byproduct of that same carry pass). Every doc under `documentation/` needs a corresponding row
+(`V-DOCHEALTH-02`, blocking), every row needs to resolve to a file that still exists
+(`V-DOCHEALTH-01`, blocking), and every row present on both sides must match its doc's own
+frontmatter content (`V-DOCHEALTH-04`, blocking) — all three enforced unconditionally by
 `scripts/checks/doc-health.check.ts` regardless of `docs_governance.write_governance`, per the
 Scope-1/Scope-2 split above.
 
-This obligation is stated as rule text only as of this section landing — the carry-step's actual
-INDEX-upsert wiring for artifacts staged outside the ADR/design route (e.g. `investigator`'s
-`analyze`/`investigate` sub-modes) is a residual gap tracked as a fast-follow, not yet closed by
-any agent's numbered steps.
+The carry-step's INDEX-upsert wiring for artifacts staged outside the ADR/design route (e.g.
+`investigator`'s `analyze`/`investigate`/`research` sub-modes, and `planner`'s durable plan
+staging) — previously a residual gap tracked as a fast-follow — is closed as of issue #832: those
+producers author `summary` directly on their `new_file` manifest entry instead of staging a
+second root-INDEX row fragment.
 
 ## Repo Convention Precedence
 

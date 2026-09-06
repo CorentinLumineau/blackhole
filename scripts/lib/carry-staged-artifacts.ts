@@ -4,6 +4,7 @@ import { appendIndexRowIfAbsent, parseIndexTableRows, type RootIndexRow } from '
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { readJsonFile } from './fs.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
+import { renderFullIndexFile } from './doc-index-generate.ts';
 
 // Mechanizes the mechanical two-thirds of `implementer.md` § Carry Staged Artifacts: the
 // manifest shape guard, `target_kind` dispatch, the 9-row frontmatter rewrite mapping
@@ -20,6 +21,10 @@ export type ManifestEntry = {
   staged_path: string;
   target_path: string;
   target_kind: string;
+  // Issue #832 (ADR-031 Phase 2, Task 7c): optional — authored directly on a `new_file` entry
+  // (investigator notes, durable plans) in place of the retired paired `append_row` root-INDEX
+  // entry. `rewriteInvestigatorFrontmatter` writes it onto the promoted note when present.
+  summary?: string;
   [key: string]: unknown;
 };
 
@@ -113,15 +118,18 @@ const SUB_MODE_TO_TYPE: Record<string, string> = { analyze: 'analysis', investig
 const PASSTHROUGH_FRONTMATTER_KEYS = ['issue', 'confidence', 'computed_at_revision'] as const;
 
 /**
- * The 9-row frontmatter rewrite mapping (`implementer.md` § Carry Staged Artifacts) — the
- * investigator working-note schema (`investigator.md` § Note schema) rewritten into the
- * `doc-governance.md` lifecycle schema. `related`/`supersedes` are omitted unless a caller
- * supplies `supersedes` (a search-before-write result — the one step this function does not
- * itself decide).
+ * The frontmatter rewrite mapping (`implementer.md` § Carry Staged Artifacts) — the investigator
+ * working-note schema (`investigator.md` § Note schema) rewritten into the `doc-governance.md`
+ * lifecycle schema. `related`/`supersedes` are omitted unless a caller supplies `supersedes` (a
+ * search-before-write result — the one step this function does not itself decide). Issue #832
+ * (ADR-031 Phase 2, Task 7c): `summary` is written as a JSON-quoted scalar (same convention as
+ * `review_trigger`) when the caller's entry carries one — the field the generator
+ * (`doc-index-generate.ts`'s `buildDocIndexRows`) reads to reproduce this note's root INDEX.md
+ * row automatically, in place of the retired paired `append_row` staging entry.
  */
 export const rewriteInvestigatorFrontmatter = (
   stagedContent: string,
-  entry: { sub_mode: string | null; declared_at: string },
+  entry: { sub_mode: string | null; declared_at: string; summary?: string },
   today: string,
   supersedes?: string,
 ): string => {
@@ -132,6 +140,7 @@ export const rewriteInvestigatorFrontmatter = (
 
   const lines = [
     `type: ${type}`,
+    ...(entry.summary !== undefined ? [`summary: ${JSON.stringify(entry.summary)}`] : []),
     'status: current',
     `created: ${created}`,
     `last_updated: ${today}`,
@@ -276,6 +285,11 @@ export const carryManifest = (
   const entries = manifest.entries ?? [];
   const { valid, skipped } = validateEntries(entries);
   const carriedPaths: string[] = [];
+  // Issue #832 (ADR-031 Phase 2, Task 7b): set when this run carried a `new_file` entry into the
+  // root documentation/ tree (excluding decisions/**, governed by its own per-folder INDEX.md) —
+  // the trigger to auto-regenerate documentation/INDEX.md once, after the loop, instead of the
+  // retired per-entry `append_row` staging convention.
+  let regenerateRootIndex = false;
 
   for (const entry of valid) {
     const index = entries.indexOf(entry);
@@ -329,9 +343,24 @@ export const carryManifest = (
       const written = writeCarryTarget(targetAbs, content);
       if (written.ok) {
         carriedPaths.push(entry.target_path);
+        if (entry.target_path.startsWith('documentation/') && !entry.target_path.startsWith('documentation/decisions/')) {
+          regenerateRootIndex = true;
+        }
       } else {
         skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${written.message}` });
       }
+      continue;
+    }
+
+    // Issue #832 (ADR-031 Phase 2, Task 7a): root documentation/INDEX.md row appends are
+    // retired — the row is reproduced automatically from the promoted doc's own frontmatter
+    // (see `regenerateRootIndex` below) rather than hand-appended from a paired staged fragment.
+    // `documentation/decisions/INDEX.md` and `ARCHITECTURE.md` append_row entries are unaffected.
+    if (entry.target_path === 'documentation/INDEX.md') {
+      skipped.push({
+        index,
+        reason: 'root documentation/INDEX.md row appends are retired — regenerated automatically (ADR-031 Phase 2, issue #832)',
+      });
       continue;
     }
 
@@ -348,6 +377,23 @@ export const carryManifest = (
       } else {
         skipped.push({ index, reason: `write failed for target_path "${entry.target_path}": ${written.message}` });
       }
+    }
+  }
+
+  // Issue #832 (ADR-031 Phase 2, Task 7b): auto-regenerate documentation/INDEX.md once, after the
+  // per-entry loop, instead of the retired per-route `append_row` staging convention. Preserves
+  // whatever the file's own leading title block already says (never invents/duplicates the
+  // heading text here) — only the generated table portion (`renderFullIndexFile`) is replaced.
+  if (regenerateRootIndex) {
+    const indexAbs = path.join(repoRoot, 'documentation', 'INDEX.md');
+    const titleBlock = fs.existsSync(indexAbs)
+      ? `${fs.readFileSync(indexAbs, 'utf-8').split('\n').slice(0, 2).join('\n')}\n`
+      : '# Documentation Index\n\n';
+    const written = writeCarryTarget(indexAbs, `${titleBlock}${renderFullIndexFile(path.join(repoRoot, 'documentation'))}`);
+    if (written.ok) {
+      carriedPaths.push('documentation/INDEX.md');
+    } else {
+      skipped.push({ index: -1, reason: `write failed for target_path "documentation/INDEX.md": ${written.message}` });
     }
   }
 
