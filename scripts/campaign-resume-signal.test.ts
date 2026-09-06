@@ -374,11 +374,39 @@ describe('runHook CLI fail-open', () => {
       path.join(tmpDir, 'campaign-checkpoint.md'),
       readTextFixture('checkpoint-with-work.md'),
     );
-    fs.chmodSync(tmpDir, 0o555);
+    // Pre-create writeResumeRequestAtomic's `.tmp` sibling as a directory so its
+    // fs.writeFileSync(tmp, ...) hits EISDIR — a file-type mismatch the kernel enforces
+    // unconditionally, unlike the chmod(0o555) permission check below, which uid 0
+    // bypasses entirely (issue #866). `resume-request.json` itself is left untouched, so
+    // assertFailOpen's existsSync check still holds.
+    fs.mkdirSync(path.join(tmpDir, 'resume-request.json.tmp'));
 
     const hookInput = JSON.stringify(readFixture('hook-orchestrator-stop.json'));
     const result = await runHookCli(hookInput, tmpDir);
     assertFailOpen(result, tmpDir);
     expect(result.stderr).toContain('resume hook error:');
   });
+
+  // Non-root-only companion to the uid-independent test above: chmod(0o555) is a no-op
+  // for uid 0, so this variant would silently take the wrong branch under a root runner
+  // (issue #866) — kept for its own coverage of the permission-denied path specifically.
+  test.skipIf(typeof process.getuid === 'function' && process.getuid() === 0)(
+    'top-level catch exits 0 without doorbell or resume-request.json (permission-denied, non-root)',
+    async () => {
+      fs.writeFileSync(
+        path.join(tmpDir, 'queue.json'),
+        JSON.stringify(readFixture('queue-work-remaining.json'), null, 2),
+      );
+      fs.writeFileSync(
+        path.join(tmpDir, 'campaign-checkpoint.md'),
+        readTextFixture('checkpoint-with-work.md'),
+      );
+      fs.chmodSync(tmpDir, 0o555);
+
+      const hookInput = JSON.stringify(readFixture('hook-orchestrator-stop.json'));
+      const result = await runHookCli(hookInput, tmpDir);
+      assertFailOpen(result, tmpDir);
+      expect(result.stderr).toContain('resume hook error:');
+    },
+  );
 });
