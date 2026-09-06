@@ -74,24 +74,35 @@ untouched (returns `[]`, no writes). Otherwise, ensure `CLAUDE.md` exists (from
 `AGENTS.md` with symlink `AGENTS.md` → `CLAUDE.md` (remove a broken symlink first). Symlink
 only — no copy fallback.
 
-### `V-ADA-09` — root `documentation/INDEX.md` missing a row for `journeys.md`
+### `V-ADA-09` — `documentation/reference/journeys.md` missing `summary:` frontmatter
 
 | Predicate | Rule |
 |-----------|------|
-| File state | `documentation/reference/journeys.md` exists and `documentation/INDEX.md` exists and has no row for `reference/journeys.md` |
+| File state | `documentation/reference/journeys.md` exists and its frontmatter has no `summary:` field |
 | Diff scope | none — unconditional, purely additive, see Codebase Conventions |
 
 Unlike `V-ADA-01`/`V-ADA-05`, this repair carries no diff-path predicate: it only ever fires
 when `journeys.md` already exists on disk, so it cannot cause a drive-by file creation (issue
 #728).
 
-Helper: `needsJourneysIndexRepair(repoRoot)` for file state; `repairJourneysIndexRow(repoRoot)`
-appends the row via `appendIndexRowIfAbsent` (`scripts/lib/check-common.ts`).
+Helper: `needsJourneysSummaryRepair(repoRoot)` for file state; `repairJourneysSummary(repoRoot)`
+backfills the field directly on `journeys.md`'s own frontmatter. Issue #832 (ADR-031 Phase 2)
+retired the earlier hand-appended-row mechanism this section used to describe — the root
+`documentation/INDEX.md` row for `journeys.md` is now reproduced automatically at carry time
+from this `summary` field, so the repair no longer touches `documentation/INDEX.md` at all.
 
-**Repair**: `repairJourneysIndexRow` — appends a `reference/journeys.md` row
-(`type: reference`, `status: template`, `reviewTrigger: on ADR acceptance`) to
-`documentation/INDEX.md`. No-op (returns `null`) when `journeys.md` is absent, when
-`documentation/INDEX.md` is absent, or when the row already exists.
+**Repair**: `repairJourneysSummary` — inserts a `summary: "..."` line into `journeys.md`'s
+frontmatter immediately after its `type:` line. No-op (returns `null`) when `journeys.md` is
+absent or already carries a `summary:` field.
+
+**CLI flag naming note**: the bootstrap-time invocation (`src/SKILL.md` Phase 0 step 2) still
+spells this flag `--upsert-journeys-index` — the name predates issue #832 and was not renamed
+alongside the behavior change. It calls the same `repairJourneysSummary` function described
+above, not an index-row upsert. Renaming the flag is a CLI surface change reaching
+`scripts/lib/companion-file-sync.ts`, `src/SKILL.md` and its generated mirrors,
+`templates/companion-files/README.md` and its mirrors, and
+`scripts/verify.cwd-pin-guard.test.ts` — out of scope for this docs-only fix (issue #947);
+left as a documented mismatch rather than silently implied to match current behavior.
 
 ## Out of scope (this reference)
 
@@ -100,7 +111,8 @@ appends the row via `appendIndexRowIfAbsent` (`scripts/lib/check-common.ts`).
 - `V-ADA-02` INDEX append (Carry Staged Artifacts)
 - Monorepo per-package `ARCHITECTURE.md` / `AGENTS.md` auto-walk
 - `journeys.md`'s own *creation* stays bootstrap-only (`src/SKILL.md` Phase 0 step 2), never
-  implement-time — only the INDEX row repair above runs at implement-time
+  implement-time — only the summary-frontmatter repair above runs at implement-time (also
+  reachable at bootstrap via the `--upsert-journeys-index` CLI flag, see naming note above)
 
 ## Ledger contract
 
