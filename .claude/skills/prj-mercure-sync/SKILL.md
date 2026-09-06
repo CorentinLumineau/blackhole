@@ -133,6 +133,13 @@ Trigger: a new mercure release lands above the watermark.
    `max_issues_per_run`, deduped against open issues and matrix `in-flight` refs.
 10. **Bump the watermark** to the latest version covered by this run, and **append a run-log
     entry** to `documentation/audits/mercure-sync.md`.
+11. **Refresh the vendored V-code parity snapshot** (issue #869) on the same cadence as this
+    sweep: run `bun run scripts/lib/mercure-vcode-snapshot.ts --mercure-root <local mercure
+    clone path>` to regenerate `documentation/audits/mercure-vcode-snapshot.json`, then review
+    `scripts/checks/vcode-parity.check.ts`'s `V-MPARITY-01` output (`bun run verify`) for any new,
+    non-allowlisted severity disagreement — apply the Adoption Lens v2 disposition (document via
+    `KNOWN_VCODE_PARITY_DIVERGENCES`, or file an issue) to whatever it finds, exactly like any
+    other Lens v2 verdict from this sweep.
 
 ### Backlog mode
 

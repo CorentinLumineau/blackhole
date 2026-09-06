@@ -28,7 +28,10 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 118;
+export const VCODE_TABLE_ROW_COUNT = 120;
+
+/** Vendored mercure V-code snapshot staleness window in days (V-MPARITY-02, issue #869). */
+export const MERCURE_VCODE_SNAPSHOT_STALE_DAYS = 90;
 
 // § facts — build-input-only directories (ADR-034, issue #719). A declared-fact / independent-
 // scan pair, the same shape VCODE_TABLE_ROW_COUNT/CONTENT_GATE_BUDGETS/DOC_HEALTH_THRESHOLDS
@@ -58,8 +61,7 @@ export const INCLUDE_MARKER_SITES: string[] = ['src/agents/reviewer.md', 'src/ag
 /**
  * `.md` module count of `src/references/gates/` — the implementer's gate modules, inlined into
  * `src/agents/implementer.md` by its `references/gates` INCLUDE marker (real name safe to quote:
- * ADR-039's declared-site gate means `read()` never expands outside `INCLUDE_MARKER_SITES`, and
- * this file isn't one). Replaces the former `CONTENT_GATE_BUDGETS` row: once the gates live in
+ * ADR-039's declared-site gate means `read()` never expands outside `INCLUDE_MARKER_SITES`, and this file isn't one). Replaces the former `CONTENT_GATE_BUDGETS` row: once the gates live in
  * one module each, a LOC ceiling measures nothing an author can act on, whereas the module count
  * is the shape a reviewer checks. Declared side of a V-GROUND-01 pair; scan side is an
  * independent `listFiles` of the directory, never derived from this constant.
@@ -124,13 +126,11 @@ export const ADR_WATCH_ITEMS: AdrWatchItem[] = [
 // scan — same two-separately-fallible-derivations discipline as V-GROUND-01 above).
 
 /** `queue.json` `issues.<n>.status` (V-VOCAB-01) — canonical enum per `queue-dag.md`'s field-rules
- *  table. Scanned narrowly (lines mentioning both `phase` and `status:`) to avoid colliding with
- *  the differently-shaped worker-JSON `status` vocabulary that shares the same field name. */
+ *  table. Scanned narrowly (lines mentioning both `phase` and `status:`) to avoid colliding with the differently-shaped worker-JSON `status` vocabulary that shares the same field name. */
 export const QUEUE_STATUSES = ['blocked', 'ready', 'in-flight', 'merged', 'closed'];
 
 /** `queue.json` `issues.<n>.notes`' closed kebab-token gate-value subset (V-VOCAB-01) — the class
- *  of value that caused ADR-012 Finding 3b (`awaiting-design-approval` restated in one file,
- *  omitted from two others' enums). `notes` also carries open, parameterized free text (e.g.
+ *  of value that caused ADR-012 Finding 3b (`awaiting-design-approval` restated in one file, omitted from two others' enums). `notes` also carries open, parameterized free text (e.g.
  *  `overlap with #N`) that is out of scope for a closed-set check by design. */
 export const QUEUE_NOTES = [
   'awaiting-user-clarification',
