@@ -1,5 +1,6 @@
 ---
 type: analysis
+summary: "Cross-repo coupling-cost analysis for mechanizing V-code parity against mercure: mercure already exposes a stable 3-column markdown table + a `--emit-severity-map` JSON emitter, but blackhole's PR-gating CI has no access to mercure at all (private repo, no cross-repo secret, and GitHub Actions would not forward one to fork-triggered `pull_request` runs regardless) — ruling out a live-parse gate and favoring the vendored-snapshot convention `mercure-parity-matrix.md`/`prj-mercure-sync` already use."
 status: current
 created: 2026-09-06
 last_updated: 2026-09-06
