@@ -105,6 +105,24 @@ const resolveExistingAncestor = (p) => {
   }
 };
 
+/** True when a `.git` entry (directory for an ordinary clone, or a `gitdir:` file for a linked
+ * worktree/submodule) exists anywhere in `cwd`'s ancestor chain — a fact read straight off the
+ * filesystem, independent of anything git itself reports. `allWorktreeRoots` below trusts this,
+ * not git's exit code or stderr text, to tell "no repository here at all" apart from "a
+ * repository is here and something about reading it is broken" (issue #864): git's own fatal()
+ * bucket produces the identical exit code and message for both, so no amount of enumerating
+ * exit codes or message substrings can recover a distinction git itself never made on that path.
+ * A positive, independently-computed fact is the only thing that can. */
+const hasGitMarkerInAncestry = (cwd) => {
+  let current = path.resolve(cwd);
+  for (;;) {
+    if (fs.existsSync(path.join(current, '.git'))) return true;
+    const parent = path.dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
+};
+
 /** True when `candidate` resolves inside (or as) `root`, both realpath'd through
  * `resolveExistingAncestor` first — the comparison must run on resolved paths on both sides, since
  * either one may traverse a symlink (`/tmp` itself is a symlink on some systems). */
@@ -223,43 +241,63 @@ const readScratchpadDir = (mainClone) => {
  * a git context, mirroring the other two resolvers above; an empty (but non-null) array means
  * git resolved fine but no root passed the filter, which correctly denies rather than falling
  * open. `validate-file-changes.js`'s containment check treats a target as in-bounds when it
- * falls under ANY of the roots returned here. */
+ * falls under ANY of the roots returned here.
+ *
+ * Throws — does not return null — when `git worktree list` fails and `hasGitMarkerInAncestry(cwd)`
+ * finds no `.git` anywhere above `cwd` (issue #864). A prior version of this function tried to
+ * make that same call by inspecting the failure itself — exit code 128, "not a git repository" in
+ * the (discarded) stderr — but git's own `fatal()` bucket collapses "no repository exists here"
+ * and "a repository exists but its `.git/HEAD` is missing, or `.git/config` is malformed, or the
+ * revision it needs can't be resolved" into the identical exit code and message: `is_git_
+ * directory()` treats an unreadable HEAD as disqualifying, so there is no substring or exit code
+ * that distinguishes routine absence from real corruption, because git itself never made that
+ * distinction on this path. No enumeration of failure shapes can fix that. The fix instead checks
+ * a fact independent of the failing call: does a `.git` entry exist anywhere in `cwd`'s ancestor
+ * chain? Absent → routine, nothing to bound, return null (fail-open to the #512 cwd-bound path
+ * below). Present → git is broken over a repository that is actually there, which is exactly the
+ * anomalous case callers must fail closed on, so the original error propagates untouched.
+ * Callers distinguish: catch the throw and fail closed (`failClosed`), the same posture already
+ * used for a malformed hook payload or a pattern-load failure in this module — an unreadable
+ * containment state must never fall back to the permissive cwd-bound path that null triggers
+ * below. */
 const allWorktreeRoots = (cwd = process.cwd()) => {
+  let listing;
   try {
-    const listing = git(['worktree', 'list', '--porcelain'], cwd);
-    const roots = listing
-      .split('\n')
-      .filter((line) => line.startsWith('worktree '))
-      .map((line) => line.slice('worktree '.length));
-    if (roots.length === 0) return null;
-    const mainClone = mainCloneRoot(cwd);
-    if (!mainClone) return null;
-    const scratchpadDir = readScratchpadDir(mainClone);
-    const filtered = roots.filter(
-      (root) => isUnderRoot(root, mainClone) || (scratchpadDir !== null && isUnderRoot(root, scratchpadDir)),
-    );
-    const withScratchpad =
-      scratchpadDir !== null && isExistingDirectory(scratchpadDir) ? [...filtered, scratchpadDir] : filtered;
-
-    const cwdRoot = worktreeRoot(cwd);
-    const withCwd =
-      cwdRoot && !withScratchpad.some((root) => resolveExistingAncestor(root) === resolveExistingAncestor(cwdRoot))
-        ? [...withScratchpad, cwdRoot]
-        : withScratchpad;
-
-    const envScratchpad = process.env.BLACKHOLE_SCRATCHPAD_DIR;
-    if (
-      typeof envScratchpad === 'string' &&
-      envScratchpad.length > 0 &&
-      isAcceptableScratchpadDir(envScratchpad) &&
-      isExistingDirectory(envScratchpad)
-    ) {
-      return [...withCwd, envScratchpad];
-    }
-    return withCwd;
-  } catch {
-    return null;
+    listing = git(['worktree', 'list', '--porcelain'], cwd);
+  } catch (error) {
+    if (!hasGitMarkerInAncestry(cwd)) return null;
+    throw error;
   }
+  const roots = listing
+    .split('\n')
+    .filter((line) => line.startsWith('worktree '))
+    .map((line) => line.slice('worktree '.length));
+  if (roots.length === 0) return null;
+  const mainClone = mainCloneRoot(cwd);
+  if (!mainClone) return null;
+  const scratchpadDir = readScratchpadDir(mainClone);
+  const filtered = roots.filter(
+    (root) => isUnderRoot(root, mainClone) || (scratchpadDir !== null && isUnderRoot(root, scratchpadDir)),
+  );
+  const withScratchpad =
+    scratchpadDir !== null && isExistingDirectory(scratchpadDir) ? [...filtered, scratchpadDir] : filtered;
+
+  const cwdRoot = worktreeRoot(cwd);
+  const withCwd =
+    cwdRoot && !withScratchpad.some((root) => resolveExistingAncestor(root) === resolveExistingAncestor(cwdRoot))
+      ? [...withScratchpad, cwdRoot]
+      : withScratchpad;
+
+  const envScratchpad = process.env.BLACKHOLE_SCRATCHPAD_DIR;
+  if (
+    typeof envScratchpad === 'string' &&
+    envScratchpad.length > 0 &&
+    isAcceptableScratchpadDir(envScratchpad) &&
+    isExistingDirectory(envScratchpad)
+  ) {
+    return [...withCwd, envScratchpad];
+  }
+  return withCwd;
 };
 
 /** Parses the hook-shaped JSON payload on stdin. Throws on malformed/unreadable input rather than
@@ -272,7 +310,10 @@ const readHookInput = () => JSON.parse(fs.readFileSync(0, 'utf-8') || '{}');
 /** `BLACKHOLE_ASSIGNED_WORKTREE` narrows Write/Edit containment to a single assigned worktree
  * when set by the orchestrator at implementer spawn (#620). Unset, empty, unresolvable, or not a
  * registered member of `allWorktreeRoots(cwd)` → null (stderr notice, fail-open to today's
- * all-roots containment). Mirrors the `BLACKHOLE_HOOK_EVENT_DIR` override shape from #604. */
+ * all-roots containment). Mirrors the `BLACKHOLE_HOOK_EVENT_DIR` override shape from #604.
+ * Propagates `allWorktreeRoots`'s throw on an anomalous (non-"not a git repository") git failure
+ * rather than catching it — this function does not itself swallow anything; the caller (same
+ * `failClosed` posture as every other call site below) decides how to react. */
 const readAssignedWorktreeRoot = (cwd = process.cwd()) => {
   const raw = process.env.BLACKHOLE_ASSIGNED_WORKTREE;
   if (typeof raw !== 'string' || raw.trim().length === 0) return null;

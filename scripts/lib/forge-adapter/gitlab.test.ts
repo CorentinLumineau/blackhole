@@ -42,6 +42,17 @@ describe('GitLabForgeAdapter', () => {
     expect(prs[0].number).toBe(4);
     expect(prs[0].headRefName).toBe('feature');
   });
+
+  // Issue #864: `prChecks` used to swallow any `glab ci status` failure into `[]` —
+  // indistinguishable from "no pipeline configured". A caller reading an empty array as "nothing
+  // failing" would let a merge proceed on a CI read it never actually got.
+  test('prChecks propagates a glab CLI failure instead of returning an empty check list', async () => {
+    runGlabJsonSpy = spyOn(glabCli, 'runGlabJson').mockImplementation(() => {
+      throw new Error('glab: connection refused');
+    });
+    const adapter = new GitLabForgeAdapter('group/project');
+    await expect(adapter.prChecks(9)).rejects.toThrow('glab: connection refused');
+  });
 });
 
 describe('createForgeAdapter gitlab', () => {

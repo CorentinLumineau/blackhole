@@ -379,6 +379,19 @@ describe('formatDashboard', () => {
     expect(out).toContain('**Forge:** unavailable (skipped)');
   });
 
+  // Issue #864: the whole point of `fetchForgeCounts` returning `ok: false` on a `gh pr list`
+  // failure is that this renderer — the actual consumer an unattended orchestrator's dashboard
+  // read goes through — must show "unavailable", never a PR count it never actually obtained.
+  test('shows forge unavailable, not a false-clean PR count, when only the PR-list half of the forge read failed', () => {
+    const out = formatDashboard({
+      ...baseOpts,
+      forge: { openIssues: 3, openPrs: 0, ok: false, error: 'pr list failed' },
+    });
+
+    expect(out).toContain('**Forge:** unavailable (pr list failed)');
+    expect(out).not.toMatch(/\d+ open PRs?/);
+  });
+
   test('renders active workers from checkpoint body', () => {
     const out = formatDashboard({
       ...baseOpts,
@@ -677,7 +690,13 @@ describe('fetchForgeCounts', () => {
     });
   });
 
-  test('keeps ok true when issue list succeeds but PR list fails', () => {
+  // Issue #864: a `gh pr list` failure used to collapse into `openPrs: 0, ok: true` —
+  // indistinguishable from the legitimate "zero open PRs" state. The dashboard (and any other
+  // consumer reading `ok`) must be able to tell "forge unreachable" from "forge says zero" —
+  // see the `formatDashboard` consumer assertion below, which is the actual defect surface: an
+  // orchestrator reading `ok: true` here would keep scheduling work against a forge it can no
+  // longer read (issue's own failure scenario).
+  test('reports ok:false with the stderr text when issue list succeeds but PR list fails', () => {
     mockGhCalls({
       issue: () => ({
         status: 0,
@@ -690,7 +709,8 @@ describe('fetchForgeCounts', () => {
     expect(fetchForgeCounts({}, 'owner/repo')).toEqual({
       openIssues: 3,
       openPrs: 0,
-      ok: true,
+      ok: false,
+      error: 'pr list failed',
     });
   });
 

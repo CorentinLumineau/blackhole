@@ -99,8 +99,27 @@ const main = () => {
   // can legitimately happen outside git entirely, so an unresolvable git root is "no worktree
   // bound available", not "highest risk" — cwd is a real, present bound to fall back to instead of
   // treating the call as maximally suspicious.
-  const assignedRoot = readAssignedWorktreeRoot(cwd);
-  const roots = assignedRoot ? [assignedRoot] : allWorktreeRoots(cwd);
+  // `readAssignedWorktreeRoot`/`allWorktreeRoots` throw (rather than returning null) when git
+  // fails for a reason other than "not a git repository" (issue #864) — an anomalous state
+  // (missing git binary, corrupted `.git`, a permissions error) that must not be folded into the
+  // same fallback the routine no-git-context case takes below. Same `failClosed` posture already
+  // used for a malformed hook payload and a pattern-load failure above.
+  let assignedRoot;
+  let roots;
+  try {
+    assignedRoot = readAssignedWorktreeRoot(cwd);
+    roots = assignedRoot ? [assignedRoot] : allWorktreeRoots(cwd);
+  } catch (error) {
+    failClosed({
+      hook: HOOK,
+      tool,
+      error,
+      patternId: 'worktree-root-resolution-failure',
+      label: 'worktree containment resolution',
+      cwd,
+    });
+    return;
+  }
   if (roots) {
     if (filePath && !isInsideAnyRoot(filePath, roots)) {
       denyAndRecord({

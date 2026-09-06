@@ -189,30 +189,32 @@ export class GitLabForgeAdapter implements ForgeAdapter {
     ]);
   }
 
+  // A `glab ci status` failure used to collapse to `[]` — indistinguishable from "no pipeline
+  // configured" (issue #864). The merge gate reads an empty check list as nothing blocking the
+  // merge, so a swallowed CLI failure here reads as CI green it never actually observed. Let the
+  // error propagate instead, matching `GitHubForgeAdapter.prChecks` (github.ts), which has never
+  // caught here — the caller must fail closed on a rejected `prChecks()`, not treat it as a clean
+  // check list (V-INT-01: one adapter behavior for the shared `ForgeAdapter` interface method).
   async prChecks(number: number): Promise<ForgeCheck[]> {
-    try {
-      const pipeline = runGlabJson<{ status: string; detailed_status?: { group?: string } }>([
-        'ci',
-        'status',
-        ...this.repoFlag(),
-        '--mr',
-        String(number),
-      ]);
-      return [
-        {
-          name: 'pipeline',
-          status: pipeline.status === 'running' ? 'IN_PROGRESS' : 'COMPLETED',
-          conclusion:
-            pipeline.detailed_status?.group === 'success'
-              ? 'SUCCESS'
-              : pipeline.detailed_status?.group === 'failed'
-                ? 'FAILURE'
-                : null,
-        },
-      ];
-    } catch {
-      return [];
-    }
+    const pipeline = runGlabJson<{ status: string; detailed_status?: { group?: string } }>([
+      'ci',
+      'status',
+      ...this.repoFlag(),
+      '--mr',
+      String(number),
+    ]);
+    return [
+      {
+        name: 'pipeline',
+        status: pipeline.status === 'running' ? 'IN_PROGRESS' : 'COMPLETED',
+        conclusion:
+          pipeline.detailed_status?.group === 'success'
+            ? 'SUCCESS'
+            : pipeline.detailed_status?.group === 'failed'
+              ? 'FAILURE'
+              : null,
+      },
+    ];
   }
 }
 

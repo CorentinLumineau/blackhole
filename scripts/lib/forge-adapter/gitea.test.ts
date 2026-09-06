@@ -42,6 +42,17 @@ describe('GiteaForgeAdapter', () => {
     expect(prs[0].number).toBe(7);
     expect(prs[0].headRefName).toBe('feature');
   });
+
+  // Issue #864: `prChecks` used to swallow any `tea actions status` failure into `[]` —
+  // indistinguishable from "no checks configured". A caller reading an empty array as "nothing
+  // failing" would let a merge proceed on a CI read it never actually got.
+  test('prChecks propagates a tea CLI failure instead of returning an empty check list', async () => {
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockImplementation(() => {
+      throw new Error('tea: connection refused');
+    });
+    const adapter = new GiteaForgeAdapter('host/owner/repo');
+    await expect(adapter.prChecks(9)).rejects.toThrow('tea: connection refused');
+  });
 });
 
 describe('createForgeAdapter gitea', () => {

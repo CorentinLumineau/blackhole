@@ -195,27 +195,29 @@ export class GiteaForgeAdapter implements ForgeAdapter {
     runTeaText([kind, 'edit', String(entity.number), ...this.repoFlag(), '--remove-labels', labels.join(',')]);
   }
 
+  // A `tea actions status` failure used to collapse to `[]` — indistinguishable from "no checks
+  // configured" (issue #864). The merge gate reads an empty check list as nothing blocking the
+  // merge, so a swallowed CLI failure here reads as CI green it never actually observed. Let the
+  // error propagate instead, matching `GitHubForgeAdapter.prChecks` (github.ts), which has never
+  // caught here — the caller must fail closed on a rejected `prChecks()`, not treat it as a clean
+  // check list (V-INT-01: one adapter behavior for the shared `ForgeAdapter` interface method).
   async prChecks(number: number): Promise<ForgeCheck[]> {
-    try {
-      const rows = runTeaJson<Array<{ name: string; status: string; conclusion?: string | null }>>([
-        'actions',
-        'status',
-        String(number),
-        ...this.repoFlag(),
-      ]);
-      return rows.map((row) => ({
-        name: row.name,
-        status:
-          row.status === 'in_progress'
-            ? 'IN_PROGRESS'
-            : row.status === 'queued'
-              ? 'QUEUED'
-              : 'COMPLETED',
-        conclusion: (row.conclusion?.toUpperCase() ?? null) as ForgeCheck['conclusion'],
-      }));
-    } catch {
-      return [];
-    }
+    const rows = runTeaJson<Array<{ name: string; status: string; conclusion?: string | null }>>([
+      'actions',
+      'status',
+      String(number),
+      ...this.repoFlag(),
+    ]);
+    return rows.map((row) => ({
+      name: row.name,
+      status:
+        row.status === 'in_progress'
+          ? 'IN_PROGRESS'
+          : row.status === 'queued'
+            ? 'QUEUED'
+            : 'COMPLETED',
+      conclusion: (row.conclusion?.toUpperCase() ?? null) as ForgeCheck['conclusion'],
+    }));
   }
 }
 
