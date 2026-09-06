@@ -108,7 +108,7 @@ export const WAIVABLE_ENUMS: ReadonlySet<string> = new Set(['COMPANION_REPAIR_VC
  * {@link WAIVABLE_ENUMS} today — `COMPANION_REPAIR_VCODES`'s member list is unique — and keeps
  * the fail-closed default even if a future collision ever involved an allowlisted enum.
  */
-const LOCAL_CONST_NAME_BY_MEMBERS: ReadonlyMap<string, string> = (() => {
+export const LOCAL_CONST_NAME_BY_MEMBERS: ReadonlyMap<string, string> = (() => {
   const byMembers = new Map<string, string>();
   const ambiguous = new Set<string>();
   for (const [name, value] of Object.entries(ownEnumConstants)) {

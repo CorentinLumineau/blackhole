@@ -5,9 +5,16 @@ import * as path from 'path';
 import {
   ENUM_SOURCE_CONSTANTS_SUBPATH,
   ENUM_SOURCE_VALIDATOR_SUBPATH,
+  LOCAL_CONST_NAME_BY_MEMBERS,
   resolveValidateWorker,
   WAIVABLE_ENUMS,
 } from './enum-source.ts';
+import {
+  HUNTER_STATUSES,
+  IMPLEMENTER_STATUSES,
+  INVESTIGATOR_STATUSES,
+  REVIEWER_STATUSES,
+} from './constants.ts';
 
 // Trust boundary: an `--enum-source` tree is always a worker's own unreviewed PR worktree
 // (`orchestrator-runtime.md` step 1a), so its code must never run. These tests plant a
@@ -351,5 +358,54 @@ describe('--enum-source constants.ts read guard (F-00049)', () => {
     fs.writeFileSync(constantsPath, `// ${'x'.repeat(70_000)}\n`);
 
     await expect(resolveValidateWorker(treeRoot)).rejects.toThrow();
+  });
+});
+
+// Issue #883: LOCAL_CONST_NAME_BY_MEMBERS's collision-drop path (the `ambiguous` set loop) had
+// zero test coverage before this file — neither the mechanism itself, nor whether it could ever
+// silently swallow a WAIVABLE_ENUMS-allowlisted constant. Both real, pre-existing collisions on
+// `constants.ts` today exercise the mechanism; the WAIVABLE_ENUMS membership check is the
+// separate, falsifiable, load-bearing assertion (see plan's Falsifiability Specification —
+// AC #1 alone would stay green under a regression that swallows an unrelated allowlisted entry).
+describe('LOCAL_CONST_NAME_BY_MEMBERS — collision-drop path (issue #883)', () => {
+  test('AC #1: a real pre-existing collision leaves neither colliding name resolvable', () => {
+    // IMPLEMENTER_STATUSES and INVESTIGATOR_STATUSES share an identical member list today
+    // (constants.ts:10,24) — both must be dropped, not one arbitrarily kept.
+    const implementerKey = IMPLEMENTER_STATUSES.join('|');
+    expect(INVESTIGATOR_STATUSES.join('|')).toBe(implementerKey);
+    expect(LOCAL_CONST_NAME_BY_MEMBERS.get(implementerKey)).toBeUndefined();
+    const values = Array.from(LOCAL_CONST_NAME_BY_MEMBERS.values());
+    expect(values).not.toContain('IMPLEMENTER_STATUSES');
+    expect(values).not.toContain('INVESTIGATOR_STATUSES');
+
+    // REVIEWER_STATUSES and HUNTER_STATUSES are a second, independent real collision
+    // (constants.ts:11,25) — a second data point strengthens the mechanism assertion without
+    // extra cost, but per the plan this still says nothing about WAIVABLE_ENUMS (see AC #2).
+    const reviewerKey = REVIEWER_STATUSES.join('|');
+    expect(HUNTER_STATUSES.join('|')).toBe(reviewerKey);
+    expect(LOCAL_CONST_NAME_BY_MEMBERS.get(reviewerKey)).toBeUndefined();
+    expect(values).not.toContain('REVIEWER_STATUSES');
+    expect(values).not.toContain('HUNTER_STATUSES');
+  });
+
+  test('AC #2: every WAIVABLE_ENUMS member resolves in the real map (load-bearing)', () => {
+    // LOCAL_CONST_NAME_BY_MEMBERS is keyed by the JOINED MEMBER LIST, not by constant name — the
+    // production lookup in waiveWidenedEnumErrors does `.get(expectedJoined)` and only then
+    // checks WAIVABLE_ENUMS.has(constName) against the returned value (enum-source.ts's
+    // waiveWidenedEnumErrors). A constant name is therefore only ever a map VALUE, never a KEY:
+    // `.has(name)` on the map itself would always be false regardless of collision state, which
+    // would make this assertion unfalsifiable in the wrong direction (always failing) rather
+    // than in the intended direction (failing only on an actual collision-drop regression).
+    // Checking membership in `.values()` mirrors what the real lookup path actually resolves:
+    // "is this WAIVABLE_ENUMS member still bound to some key in the map at all".
+    const resolvedNames = new Set(LOCAL_CONST_NAME_BY_MEMBERS.values());
+    // Falsifiable by construction: if a future constants.ts addition's member list collides
+    // with a WAIVABLE_ENUMS entry's, the collision-drop loop deletes that entry from the map
+    // (name drops out of `resolvedNames`) and this assertion flips to failing — see plan's
+    // Falsifiability Specification for the reproduced failing-output shape (F-00048/F-00049/
+    // F-00060/F-00062, PR #854 review iter. 7).
+    for (const name of WAIVABLE_ENUMS) {
+      expect(resolvedNames.has(name)).toBe(true);
+    }
   });
 });
