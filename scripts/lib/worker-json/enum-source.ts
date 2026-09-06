@@ -33,6 +33,16 @@ const STRING_CONST_PATTERN = /export const (\w+)\s*=\s*'([^']*)'\s*as const;/g;
 const ENUM_ARRAY_PATTERN = /export const \w+\s*=\s*\[([^\]]*)\]\s*as const/g;
 
 /**
+ * Upper bound on a widened `constants.ts`'s byte size (F-00049, PR #854 review iteration 2). The
+ * path is always inside a worker's own unreviewed worktree ({@link resolveValidateWorker}'s trust
+ * boundary), so an unbounded `readFileSync` on it is a self-inflicted resource-exhaustion vector —
+ * a symlink to a FIFO or an unbounded device file at that path would hang or OOM the orchestrator.
+ * Any real `constants.ts` today is under 4KB; this leaves generous headroom without allowing an
+ * arbitrarily large read.
+ */
+const MAX_ENUM_SOURCE_CONSTANTS_BYTES = 65_536;
+
+/**
  * Extracts every exported `as const` string array's member list from a `constants.ts` source
  * text, without ever evaluating the file as code. An element that is itself an exported string
  * constant rather than a literal (e.g. `PLANNER_STATUSES = [..., PARTIAL_STATUS]`) is resolved
@@ -64,11 +74,23 @@ function extractEnumArrays(source: string): string[][] {
 }
 
 /**
- * Drops an "invalid enum value" error when some array in `widenedArrays` is a superset of both
- * the error's own `(expected ...)` list and the rejected value — i.e. the named tree's
- * `constants.ts` declares that same enum with the rejected value added. Every other error
- * (structural, type, or an enum value the widened tree doesn't declare either) passes through
- * unchanged.
+ * Drops an "invalid enum value" error when some array in `widenedArrays` is *exactly* the
+ * error's own `(expected ...)` list plus the rejected value — i.e. the named tree's
+ * `constants.ts` declares that same enum with the rejected value added, and nothing else. Every
+ * other error (structural, type, or an enum value the widened tree doesn't declare either)
+ * passes through unchanged.
+ *
+ * The exact-cardinality check (`candidate.length === expected.length + 1`) is load-bearing, not
+ * an optimization (F-00048, PR #854 review iteration 2). Without it, a superset-only check is
+ * satisfiable by a single "kitchen sink" array unioning every real enum member across the whole
+ * schema plus one bogus value — that array is a superset of *every* field's `expected` list, so
+ * it waives an invalid-enum error for a field it was never declared for. Because `value` is
+ * guaranteed distinct from `expected` (the local validator only raises this error when the value
+ * isn't already in `expected`), a candidate that both is a superset of `expected ∪ {value}` and
+ * has exactly `expected.length + 1` elements can only be that exact set — no room for members
+ * belonging to a different field's enum. This is what actually enforces this function's
+ * docstring-level "exactly one new member" invariant; the old code stated the invariant but never
+ * checked it.
  */
 function waiveWidenedEnumErrors(errors: string[], widenedArrays: string[][]): string[] {
   return errors.filter((error) => {
@@ -80,10 +102,41 @@ function waiveWidenedEnumErrors(errors: string[], widenedArrays: string[][]): st
     const expected = expectedJoined.split('|');
     const isWidened = widenedArrays.some(
       (candidate) =>
-        candidate.includes(value) && expected.every((member) => candidate.includes(member)),
+        candidate.length === expected.length + 1 &&
+        candidate.includes(value) &&
+        expected.every((member) => candidate.includes(member)),
     );
     return !isWidened;
   });
+}
+
+/**
+ * Reads a widened tree's `constants.ts` as plain text, refusing anything that isn't a small
+ * regular file (F-00049, PR #854 review iteration 2). `lstatSync` (not `statSync`) so a symlink
+ * at this path is caught by its own link stat rather than by following it into whatever it
+ * points at — the check must reject the link itself, not race a size check against a target that
+ * could be a FIFO or unbounded device file. Returns `''` when the path doesn't exist at all
+ * (a tree that declares no widened enums), matching this module's existing "no declaration"
+ * convention.
+ */
+function readWidenedConstantsSource(constantsPath: string): string {
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(constantsPath);
+  } catch {
+    return '';
+  }
+  if (!stat.isFile()) {
+    throw new Error(
+      `--enum-source: refusing to read ${constantsPath} — not a regular file (symlink, FIFO, or device)`,
+    );
+  }
+  if (stat.size > MAX_ENUM_SOURCE_CONSTANTS_BYTES) {
+    throw new Error(
+      `--enum-source: ${constantsPath} is ${stat.size} bytes, exceeds the ${MAX_ENUM_SOURCE_CONSTANTS_BYTES}-byte cap`,
+    );
+  }
+  return fs.readFileSync(constantsPath, 'utf-8');
 }
 
 /**
@@ -119,7 +172,7 @@ export async function resolveValidateWorker(enumSource: string | null): Promise<
   }
 
   const constantsPath = path.join(treeRoot, ENUM_SOURCE_CONSTANTS_SUBPATH);
-  const constantsSource = fs.existsSync(constantsPath) ? fs.readFileSync(constantsPath, 'utf-8') : '';
+  const constantsSource = readWidenedConstantsSource(constantsPath);
   const widenedArrays = extractEnumArrays(constantsSource);
 
   return (role: Role, data: unknown) =>
