@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Story-driven conformance adoption — shared user-story catalog contract (mercure ADR-103), `route.story_ref`/`needs_story`, `story-conformance` hunt kind, V-STORY-01..04, `story_driven` config block (default off); confidence-gated per ADR-004 with amendments always recorded as a committed diff"
 status: accepted
 created: 2026-07-26
 last_updated: 2026-07-26

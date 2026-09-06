@@ -1,5 +1,10 @@
 ---
+type: adr
+summary: "Reviewer BLOCK gate (`V-PLUGIN-01`) requiring every `templates/hooks/**`-touching PR to also bump `package.json`'s version, plus an advisory session-start plugin-cache content-hash drift signal on the `bun run status` dashboard — closes the recurrence mechanism that let 3 merged guard security fixes ship inert against a version-keyed, not content-addressed, installed plugin cache (issue #800); owner-delegated override of a Design Track block (breaking-consumer + sub-30% dominance margin; 2/3 scorers picked this option, dissent addressed not eliminated)"
 status: accepted
+review_trigger: "on protocol change"
+created: 2026-09-03
+last_updated: 2026-09-03
 ---
 
 # ADR-030: Reviewer version-bump BLOCK gate plus advisory plugin-cache drift signal

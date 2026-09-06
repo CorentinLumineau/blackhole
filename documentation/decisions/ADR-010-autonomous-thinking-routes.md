@@ -1,6 +1,10 @@
 ---
 type: adr
+summary: "Autonomous thinking routes — full mercure workflow parity: `needs_analysis`/`needs_brainstorm` route flags, investigator `analyze` sub-mode, planner `brainstorm` track (child-issue terminal), blind-critic Design Track + deterministic `design-aggregate.ts` autonomy verdict, confidence kernel superseding categorical clarify gates, durable `documentation/` artifacts shipped in-PR (merge = approval), hunter `retrospective` kind; opt-in `autonomy` config block; alternatives B (dedicated architect agent) and C (named workflow chains) rejected with critic evidence (amends ADR-004)"
 status: accepted
+review_trigger: "on protocol change"
+created: 2026-07-16
+last_updated: 2026-08-07
 scope: orchestration
 supersedes: partial (amends ADR-004 route{} and planner Design Track §4.8; supersedes clarify-gates.md as escalation *mechanism*)
 related:

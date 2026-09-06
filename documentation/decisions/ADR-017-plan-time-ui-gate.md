@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Plan-time UI gate for `ui`-flagged issues — `route.ui`/`confidence.ui`, planner `## UI Interpretation Gate` (mockup + Owner said/I interpreted/Open ambiguities) blocking on `ui_pending_approval`/`ui_gate: pending`, orchestrator implement-dispatch refusal until `ui_gate: approved`, reviewer `V-UI-01` audit; `size:xs` sole exemption; owner-approved Option B, design-track script verdict superseded by explicit human approval (ADR-012 E2.3)"
 status: accepted
 created: 2026-07-29
 last_updated: 2026-07-29

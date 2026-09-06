@@ -1,7 +1,11 @@
 ---
 type: adr
+summary: "Kaizen hunt — proactive improvement discovery: read-only hunter agent, 5 hunt kinds, V-PARETO-02-gated filing into the existing lifecycle, `kaizen` config block, complete launch form incl. `merge_mode: leave-open` (amends ADR-001, extends ADR-005's launch gate)"
 tracking_initiative: blackhole-kaizen-hunt
 status: accepted
+review_trigger: "on protocol change"
+created: 2026-07-10
+last_updated: 2026-08-07
 scope: orchestration
 supersedes: partial (amends ADR-001, does not replace it)
 ---

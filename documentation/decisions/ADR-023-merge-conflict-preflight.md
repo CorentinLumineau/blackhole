@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Rebase & Conflict Preflight before squash-merge — dedicated merge-conflict-protocol.md SSOT, Step 0.5 in phase-loop, implementer mechanical resolution, semantic HITL with conflict_hunks[] (extends ADR-005)"
 status: accepted
 scope: orchestration
 review_trigger: "on protocol change"

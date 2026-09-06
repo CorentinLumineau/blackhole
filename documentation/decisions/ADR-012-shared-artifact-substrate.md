@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Shared artifact substrate — repo-convention precedence extended to INDEX header and ADR frontmatter (mercure co-existence), promotion of human-approved designs via the existing coordinator resumption path, `## Active Constraints` write path with mandatory analyze-seeding fallback, durable `decisions/decision-log.md` for implementation decision memory, `autonomy` default flip sequenced last; read-path injection deferred to Future Work behind three named prerequisites (completes ADR-010 write path)"
 status: accepted
 created: 2026-07-20
 last_updated: 2026-07-20

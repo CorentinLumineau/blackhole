@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Ruling watermark + phase-gate re-validation — chat feedback intake forks task vs ruling (`clarify-gates.md` SSOT); per-issue `queue.json` `rulings_checked_at` watermark compared against the #417 ledger's `rulings_revision`; stale issues re-judged by the planner's existing ledger read (`ruling_conflicts[]` in worker JSON) or quarantined at the background-worker barrier when already spawned; owner-facing conflict list with per-item close/amend/proceed; owner-approved Option C (drops the design's mechanical scope-overlap pre-filter for a purely lazy gate), design-track script verdict superseded by explicit human approval (ADR-012 E2.3)"
 status: accepted
 created: 2026-07-29
 last_updated: 2026-07-29

@@ -1,5 +1,10 @@
 ---
+type: adr
+summary: "Generate `documentation/INDEX.md` from a tree walk + frontmatter `summary:` field instead of hand-appending — closes the campaign's single highest-contention merge-conflict file (13 commits/6h, ~1 rebase per 2 merges); overrides a Design Track block where the mechanized rubric's nominal winner (status quo) diverged from the substantive recommendation, on both blind critics' independently-identified rubric flaw (cost-only columns structurally favor inaction); 2 scoped BREAKING consumer changes, 108-file one-time migration"
 status: accepted
+review_trigger: "on protocol change"
+created: 2026-09-04
+last_updated: 2026-09-04
 ---
 
 # ADR-031: Generate `documentation/INDEX.md` from a tree walk + frontmatter

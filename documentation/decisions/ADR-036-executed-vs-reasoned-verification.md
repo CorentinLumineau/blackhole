@@ -1,5 +1,10 @@
 ---
+type: adr
+summary: "Adds optional `verification_mode` field + `verification_legs[]` sibling array to the reviewer JSON contract, disclosing executed-vs-reasoned checks (esp. the clean/negative-leg case with no Finding object) and surfacing reasoned security-mode legs at merge (mirrors V-SEC-08); alternatives B (prose marker, inherits the fragility it targets) and C (status quo, CRITICAL-disqualified by both critics despite a numeric tie) rejected; unanimous 3/3 scorer winner, design-aggregate.ts blocked on dominance only (one scorer's tie resolved by that scorer's own qualitative CRITICAL finding against the tied alternative); orchestrator override under autonomy.mode:full"
 status: accepted
+review_trigger: "on ADR acceptance"
+created: 2026-09-04
+last_updated: 2026-09-04
 ---
 
 # ADR-036: Disclose executed-vs-reasoned verification on reviewer findings and investigation legs

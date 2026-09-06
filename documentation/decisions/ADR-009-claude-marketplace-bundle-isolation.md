@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Isolate the Claude marketplace bundle from maintainer-local repo-root `.claude/` — dedicated `plugins/blackhole-claude/` bundle (mirrors Gemini precedent), `source` off `\".\"`; alternatives B (shared bundle) and C (`source:\".\"`+exclusion) rejected with evidence (addresses #262; respects ADR-007 AC4)"
 status: accepted
 created: 2026-07-14
 last_updated: 2026-07-14

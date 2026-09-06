@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "UX-coherence kaizen hunt kind — 8th hunt kind auditing a campaign's own live surfaces + user journeys against `DESIGN.md` + the #417 rulings ledger + `journeys.md`; per-surface + dedicated `journeys` territory bands on the existing `bands_done` mechanic; `journeys.md.template` companion file activated by a hunt-kind-gated (not universal or frontend-gated) third Phase-0 scaffold branch; no new orchestrator/hunter/`hunt_state`/severity-tier change; owner-approved Option A (parity-precedent kind + hunt-gated companion scaffold), design-track script verdict superseded by explicit human approval (ADR-012 E2.3)"
 status: accepted
 created: 2026-07-29
 last_updated: 2026-07-29

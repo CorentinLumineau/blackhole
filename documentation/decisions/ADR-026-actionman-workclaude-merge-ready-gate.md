@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "In-campaign ActionMan/workclaude merge-ready gate — cached per-turn pipeline detection (`queue.json` root `pipeline_detection`), new Merge-protocol Step 0.6 verdict check (`merge-gate.md` §6, mirrors ADR-023's Step 0.5 precedent), reused `review_iteration` fix loop (never a parallel counter), implementer never posts a bot-invoking slash comment (`V-GITFIX-01`), `leave-open` \"delivered\" annotation narrowed to require C1+C2+C3 (not `isLgtm()` alone), sibling-PR restack on observed human merge; alternatives B (parallel counter) and C (fold into `isLgtm()`) rejected — both blind critics independently flagged discriminating CRITICAL findings against each; D (literal mercure command port) rejected per PM-085"
 status: accepted
 review_trigger: "on protocol change"
 created: 2026-08-14

@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "agent-plugins.org v1.0.0 distribution target — Target F skills-only conformant shell at `plugins/blackhole-agent-plugins/` (`plugin.json` + `skills/blackhole/{SKILL.md,references/}`); campaign agents and protocol rules remain on vendor targets B–E until the spec adds portable component types; opt-in git-tracked gating; alternatives B (client-extensions) and C (defer) rejected; owner-approved Option (a)"
 status: accepted
 created: 2026-08-12
 last_updated: 2026-08-12

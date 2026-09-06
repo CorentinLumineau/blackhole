@@ -1,6 +1,10 @@
 ---
 type: adr
+summary: "Autonomy as the default and only mode — remove the `autonomy.enabled` master switch (autonomy unconditionally on, confidence kernel always-active), collapse ~17 `enabled && sub_flag` gates to `sub_flag` across 11 source files; preserve sub-flags as tuning (`brainstorm_routing:false` stays off — terminal-closure pin) and `never_bypass` as the permanent human-gate floor; BREAKING, removes the `enabled:false` rollback with T3 still unverified (residual: sub-flags + `adaptive_routing:false` + git revert); alternatives A (default-on keep switch) and B (verify T3 first) rejected by maintainer directive (removes ADR-010 opt-in invariant, completes ADR-012 default flip)"
 status: accepted
+review_trigger: "on protocol change"
+created: 2026-07-22
+last_updated: 2026-08-07
 scope: orchestration
 supersedes: partial (removes ADR-010's opt-in invariant; completes ADR-012's "autonomy default flip sequenced last")
 related:

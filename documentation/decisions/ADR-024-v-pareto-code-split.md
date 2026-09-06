@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Split V-PARETO-02 — WARN discovery label (V-PARETO-02) vs BLOCK filing gate (V-PARETO-03); upholds ADR-021 D5 without renumbering hunt SSOT headings; removes #567 severity-sync exemption"
 status: accepted
 scope: protocol
 review_trigger: "on protocol change"

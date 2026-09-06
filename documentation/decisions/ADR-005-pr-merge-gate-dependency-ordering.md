@@ -1,7 +1,11 @@
 ---
 type: adr
+summary: "PR merge-gate (`merge_hold`) and dependency-ordering (`merge_after`) for scoped, self-reviewed campaign batches"
 tracking_initiative: none
 status: accepted
+review_trigger: "on protocol change"
+created: 2026-07-09
+last_updated: 2026-08-07
 scope: orchestration
 ---
 

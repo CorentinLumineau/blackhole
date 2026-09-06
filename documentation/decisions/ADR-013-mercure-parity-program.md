@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Mercure parity program — living parity matrix contract (`audits/mercure-parity-matrix.md`, ~70 mechanism rows, PM-NNN ids, status enum, sync as sole writer), tiered Adoption Lens v2 (enforcement→ADOPT, workflow→ADAPT-async, runtime-ops→N/A; only sync-HITL and non-agent-agnostic hard-rejected), prj-mercure-sync v2 dual-mode (release impact analysis + matrix-driven backlog sweeps), thin consumer-repo doc-layout extension (runbooks/investigations/reviews); alternatives (two-ADR split, sync-owned matrix, matrix-less reports) rejected with critic evidence (consumes ADR-011/012 as in-flight rows)"
 status: accepted
 created: 2026-07-20
 last_updated: 2026-07-20

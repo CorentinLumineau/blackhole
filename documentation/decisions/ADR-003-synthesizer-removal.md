@@ -1,7 +1,11 @@
 ---
 type: adr
+summary: "Synthesizer removed in favor of deterministic review-aggregate.ts"
 tracking_initiative: backlog-campaign-v2
 status: accepted
+review_trigger: "on protocol change"
+created: 2026-07-05
+last_updated: 2026-08-07
 scope: review
 supersedes: ADR-002
 ---

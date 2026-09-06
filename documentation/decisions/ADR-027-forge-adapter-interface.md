@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Forge adapter interface and config schema v2 (github, gitea, gitlab) — normalized TypeScript contract for issue/PR/label/CI/auth operations, JSON normalization across gh/tea/glab CLIs, explicit host-mismatch guard (parent #676 epic child 1/5; implementation in #679–#682)"
 status: accepted
 review_trigger: "on forge adapter implementation (#679+)"
 created: 2026-08-29

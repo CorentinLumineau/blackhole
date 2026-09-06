@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Drift-proof toolchain re-seating (blueprint v2) — facts declared once + two-sided CI detection, verify decomposition along test taxonomy, shared FS walker, tracked⇒built-by-default; generation/splits/registry/cache rejected with critic evidence (extends ADR-003; informed by retrospective 2026-07-11); R3′ amended — see § Post-acceptance amendments"
 status: accepted
 created: 2026-07-11
 last_updated: 2026-07-11

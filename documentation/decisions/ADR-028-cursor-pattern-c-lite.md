@@ -1,6 +1,8 @@
 ---
 type: adr
+summary: "Cursor Pattern C-lite and Cloud goal mapping — detect-don't-assume C1–C4 primitives; main chat may orchestrate when C2+C3 present; Pattern B fallback (child #694 of #691)"
 status: accepted
+review_trigger: "on protocol change"
 created: 2026-08-29
 last_updated: 2026-08-29
 ---

@@ -1,5 +1,6 @@
 ---
 type: adr
+summary: "Implement-time accretion control — Reuse Check aperture split (repo-wide existence search vs. neighbourhood convention search), rule-of-three duplication threshold routing systemic duplication into the Pareto filing path, reviewer spot-check of negative claims, Scout/defer separated by diff scope rather than execution mode; corrects autonomous-workflow-parity §2b 'Implement = Parity' (amends ADR-008 § B)"
 status: accepted
 created: 2026-07-20
 last_updated: 2026-07-20
