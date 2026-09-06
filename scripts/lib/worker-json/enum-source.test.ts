@@ -5,6 +5,7 @@ import * as path from 'path';
 import {
   ENUM_SOURCE_CONSTANTS_SUBPATH,
   ENUM_SOURCE_VALIDATOR_SUBPATH,
+  NON_WAIVABLE_DISCRIMINATOR_FIELDS,
   resolveValidateWorker,
 } from './enum-source.ts';
 
@@ -126,17 +127,147 @@ describe('waiveWidenedEnumErrors — cardinality bound on widened arrays (F-0004
     );
   });
 
-  test('a genuinely widened single enum (exactly one new member in the right shape) is still waived', async () => {
+  // Iteration 4 (F-00060) makes `status` a non-waivable discriminator (see the dedicated describe
+  // block below), so the cardinality-bound regression coverage here moves to a non-discriminator
+  // enum — `companion_repairs[].vcode` (`COMPANION_REPAIR_VCODES`) — which is the actual enum
+  // issue #738 exists to widen and gates no required-field branch.
+  test('a genuinely widened single enum on a non-discriminator field (companion-repair vcode) is still waived — the actual #738 use case', async () => {
     treeRoot = writeTreeWithConstants(
-      "export const IMPLEMENTER_STATUSES = ['complete', 'blocked', 'error', 'partial', 'stalled'] as const;\n",
+      "export const COMPANION_REPAIR_VCODES = ['V-ADA-01', 'V-ADA-05', 'V-ADA-09', 'V-ADA-77'] as const;\n",
     );
 
     const validate = await resolveValidateWorker(treeRoot);
-    const errors = validate('implementer', { status: 'stalled' });
+    const errors = validate('implementer', {
+      status: 'complete',
+      pr_number: 1,
+      branch: 'blackhole/issue-738',
+      tests_passed: true,
+      touch_paths_honored: true,
+      evidence: { command: 'bun test', result: 'ok' },
+      companion_repairs: [{ vcode: 'V-ADA-77', file: 'ARCHITECTURE.md', action: 'add row' }],
+    });
 
     expect(errors).not.toContain(
-      'status: invalid enum value "stalled" (expected complete|blocked|error|partial)',
+      'vcode: invalid enum value "V-ADA-77" (expected V-ADA-01|V-ADA-05|V-ADA-09)',
     );
+  });
+});
+
+// F-00060 (PR #854 review iteration 4): the cardinality bound above is a per-*array* check, not a
+// per-*field* check. One `constants.ts` can declare one exactly-sized widened array per field and
+// smuggle one bogus value into every enum at once. That matters most for a field a validator uses
+// as a branch discriminator — e.g. implementer's `if (data.status === 'complete') { require
+// pr_number, branch, tests_passed, touch_paths_honored, evidence }` — because a smuggled value
+// matching none of the real branches skips every required-field check those branches gate,
+// turning a near-empty stub payload into a zero-error accept. The fix excludes
+// `NON_WAIVABLE_DISCRIMINATOR_FIELDS` from the waiver entirely, regardless of cardinality.
+describe('waiveWidenedEnumErrors — discriminator fields never waived (F-00060)', () => {
+  let treeRoot: string | undefined;
+
+  afterEach(() => {
+    if (treeRoot) {
+      fs.rmSync(treeRoot, { recursive: true, force: true });
+      treeRoot = undefined;
+    }
+  });
+
+  function writeTreeWithConstants(constantsSource: string): string {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'enum-source-discriminator-'));
+    const validatorDir = path.join(root, path.dirname(ENUM_SOURCE_VALIDATOR_SUBPATH));
+    fs.mkdirSync(validatorDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(root, ENUM_SOURCE_VALIDATOR_SUBPATH),
+      'export function validateWorker() { return []; }\n',
+    );
+    fs.writeFileSync(path.join(validatorDir, 'constants.ts'), constantsSource);
+    return root;
+  }
+
+  test('recheck PoC: a stub payload with a widened bogus implementer status is rejected, not accepted with zero errors', async () => {
+    treeRoot = writeTreeWithConstants(
+      "export const IMPLEMENTER_STATUSES = ['complete', 'blocked', 'error', 'partial', 'BOGUS'] as const;\n",
+    );
+
+    const validate = await resolveValidateWorker(treeRoot);
+    // No pr_number/branch/tests_passed/touch_paths_honored/evidence — exactly the near-empty stub
+    // the bypass would have let through by skipping the 'complete' branch's required-field checks.
+    const errors = validate('implementer', { status: 'BOGUS' });
+
+    expect(errors).toContain(
+      'status: invalid enum value "BOGUS" (expected complete|blocked|error|partial)',
+    );
+  });
+
+  test('same PoC against planner', async () => {
+    treeRoot = writeTreeWithConstants(
+      "export const PLANNER_STATUSES = ['ready', 'blocked', 'error', 'partial', 'BOGUS'] as const;\n",
+    );
+
+    const validate = await resolveValidateWorker(treeRoot);
+    const errors = validate('planner', { status: 'BOGUS' });
+
+    expect(errors).toContain(
+      'status: invalid enum value "BOGUS" (expected ready|blocked|error|partial)',
+    );
+  });
+
+  test('same PoC against reviewer', async () => {
+    treeRoot = writeTreeWithConstants(
+      "export const REVIEWER_STATUSES = ['complete', 'error', 'partial', 'BOGUS'] as const;\n",
+    );
+
+    const validate = await resolveValidateWorker(treeRoot);
+    const errors = validate('reviewer', { status: 'BOGUS' });
+
+    expect(errors).toContain('status: invalid enum value "BOGUS" (expected complete|error|partial)');
+  });
+
+  test('a non-status discriminator (planner track) is also never waived', async () => {
+    treeRoot = writeTreeWithConstants(
+      "export const TRACKS = ['quick', 'standard', 'skip', 'design', 'brainstorm', 'BOGUS'] as const;\n",
+    );
+
+    const validate = await resolveValidateWorker(treeRoot);
+    const errors = validate('planner', {
+      status: 'ready',
+      track: 'BOGUS',
+      plan_path: 'p',
+      failing_checks: [],
+      clarification_markers: 0,
+    });
+
+    expect(errors).toContain(
+      'track: invalid enum value "BOGUS" (expected quick|standard|skip|design|brainstorm)',
+    );
+  });
+
+  // Anti-rot: NON_WAIVABLE_DISCRIMINATOR_FIELDS is hand-maintained (enum-source.ts docstring), so
+  // nothing stops a future validator change from adding a new enum-checked field used as a branch
+  // discriminator without updating that set. This statically scans the real validator source for
+  // that exact shape — `data.<field> ===`/`!==` against a string literal, on a field the same file
+  // also enum-checks via `pushEnumError` — and fails the moment one exists outside the set.
+  test('NON_WAIVABLE_DISCRIMINATOR_FIELDS is exhaustive against validator source (anti-rot)', () => {
+    const validatorsDir = path.join(import.meta.dirname, 'validators');
+    const files = fs.readdirSync(validatorsDir).filter((f) => f.endsWith('.ts'));
+    expect(files.length).toBeGreaterThan(0);
+
+    const undeclared: string[] = [];
+    for (const file of files) {
+      const source = fs.readFileSync(path.join(validatorsDir, file), 'utf-8');
+      const comparedFields = new Set(
+        [...source.matchAll(/data\.(\w+)\s*(?:===|!==)\s*['"]/g)].map((m) => m[1]),
+      );
+      const enumCheckedFields = new Set(
+        [...source.matchAll(/pushEnumError\(errors,\s*'(\w+)'/g)].map((m) => m[1]),
+      );
+      for (const field of comparedFields) {
+        if (enumCheckedFields.has(field) && !NON_WAIVABLE_DISCRIMINATOR_FIELDS.has(field)) {
+          undeclared.push(`${file}: '${field}'`);
+        }
+      }
+    }
+
+    expect(undeclared).toEqual([]);
   });
 });
 

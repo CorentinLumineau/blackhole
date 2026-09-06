@@ -74,6 +74,40 @@ function extractEnumArrays(source: string): string[][] {
 }
 
 /**
+ * Field names that at least one role validator uses to select *which required-field checks run*,
+ * based on the field's own enum-checked value — e.g. implementer's `status: 'complete'` branch
+ * gates `pr_number`/`branch`/`tests_passed`/`touch_paths_honored`/`evidence`. A widened-enum
+ * waiver must never apply to one of these, no matter how exactly the widened tree's array matches
+ * the cardinality bound above: accepting an unrecognized discriminator value skips every
+ * required-field check gated on it, turning a near-empty stub payload into a zero-error accept
+ * (F-00060, PR #854 review iteration 4 — `{status: 'BOGUS'}` against a widened
+ * `IMPLEMENTER_STATUSES` array passed with none of the five `complete`-branch fields present).
+ *
+ * Derived by grepping `scripts/lib/worker-json/validators/*.ts` for a `data.<field> ===`/`!==`
+ * comparison against a string literal, on a field the same file also enum-checks via
+ * `pushEnumError`: `status` appears in this shape in all six role validators; `track`
+ * (planner.ts) gates its design/brainstorm-specific required fields; `escalation_trigger`
+ * (implementer.ts) gates `conflict_hunks`; `sprint_contract_status` (implementer.ts) gates
+ * `ac_results`. `COMPANION_REPAIR_VCODES`'s `vcode` field — the enum issue #738 exists to widen —
+ * is deliberately absent: it is enum-checked but gates no required-field branch, so widening it
+ * stays waivable.
+ *
+ * Hand-maintained rather than derived at runtime — parsing our own statically-imported validator
+ * source as data would be the same fragile-parsing trade `extractEnumArrays` above accepts only
+ * because the widened tree's `constants.ts` can't be imported at all (untrusted code). Kept
+ * honest by the anti-rot assertion in `enum-source.test.ts`
+ * ("NON_WAIVABLE_DISCRIMINATOR_FIELDS — exhaustive against validator source (F-00060)"), which
+ * fails the moment a validator gains a new enum-checked `data.<field> === '...'` branch this set
+ * doesn't list.
+ */
+export const NON_WAIVABLE_DISCRIMINATOR_FIELDS: ReadonlySet<string> = new Set([
+  'status',
+  'track',
+  'escalation_trigger',
+  'sprint_contract_status',
+]);
+
+/**
  * Drops an "invalid enum value" error when some array in `widenedArrays` is *exactly* the
  * error's own `(expected ...)` list plus the rejected value — i.e. the named tree's
  * `constants.ts` declares that same enum with the rejected value added, and nothing else. Every
@@ -91,6 +125,10 @@ function extractEnumArrays(source: string): string[][] {
  * belonging to a different field's enum. This is what actually enforces this function's
  * docstring-level "exactly one new member" invariant; the old code stated the invariant but never
  * checked it.
+ *
+ * A field in {@link NON_WAIVABLE_DISCRIMINATOR_FIELDS} is excluded from this entirely (F-00060):
+ * cardinality only bounds *which* array can satisfy the waiver, not *whether* waiving is safe for
+ * that field at all, and a discriminator's required-field-gating role makes it never safe.
  */
 function waiveWidenedEnumErrors(errors: string[], widenedArrays: string[][]): string[] {
   return errors.filter((error) => {
@@ -98,7 +136,10 @@ function waiveWidenedEnumErrors(errors: string[], widenedArrays: string[][]): st
     if (!match) {
       return true;
     }
-    const [, , value, expectedJoined] = match;
+    const [, field, value, expectedJoined] = match;
+    if (NON_WAIVABLE_DISCRIMINATOR_FIELDS.has(field)) {
+      return true;
+    }
     const expected = expectedJoined.split('|');
     const isWidened = widenedArrays.some(
       (candidate) =>
