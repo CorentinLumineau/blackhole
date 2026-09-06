@@ -297,6 +297,16 @@ describe('appendIndexRowIfAbsent — sorted insert', () => {
     ['empty link — both groups empty, canonicalizes to the empty string', '[]()', ''],
     ['bare path with parens, not link-shaped — falls back to raw text', 'docs/report(v2).md', 'docs/report(v2).md'],
     [
+      'a link immediately followed by a stray closing paren — degenerate, canonicalizes past its true boundary',
+      '[a](b))',
+      'b)',
+    ],
+    [
+      'two links folded into one cell — degenerate, greedy backtrack garbles across both',
+      '[a](b) [c](d)',
+      'b) [c](d',
+    ],
+    [
       'self-referential link whose path contains parens (the reported regression)',
       '[docs/notes(final).md](docs/notes(final).md)',
       'docs/notes(final).md',
@@ -347,6 +357,28 @@ describe('appendIndexRowIfAbsent — sorted insert', () => {
   // `doc-governance.md` § Lifecycle Frontmatter), so this is accepted as a non-issue rather
   // than special-cased: fixing it would add a rejection path for a malformed input the schema
   // already rules out, for a case that cannot occur in practice (YAGNI).
+  //
+  // The same judgment extends to the two further degenerate shapes pinned above —
+  // `[a](b))` (a stray closing paren immediately after a well-formed link) and
+  // `[a](b) [c](d)` (two links folded into one cell, greedy-backtracking across both) —
+  // both accepted unspecified-input behaviour rather than defects, on the same footing as
+  // `[]()`. None of today's `RootIndexRow` producers can emit either shape: one walks real
+  // files on disk, one renders a hardcoded literal, and one copies a staged `target_path` —
+  // none constructs a cell by string-concatenating multiple links or trailing punctuation.
+  // That is a claim about today's producers, though, not an invariant the parser enforces —
+  // `parseIndexTableRows` only filters a literally-empty raw cell, not a link that
+  // *canonicalizes* to empty or to a garbled substring, so a malformed row entering by some
+  // other route (a hand edit, a foreign repo's file, a future producer) is not structurally
+  // ruled out. That gap is self-limiting — a resulting path collision would surface as a
+  // dangling or duplicate INDEX row, not silent corruption — but it is a real gap between
+  // what this comment claims and what the code enforces, not a guarantee.
+  //
+  // Given that, `canonicalIndexPath` keeps its current best-effort unwrap rather than
+  // rejecting a cell outside the two schema-supported row shapes (a bare path, or an exact
+  // `[path](path)`) outright: no current consumer is affected by the degenerate cases, and a
+  // stricter regex risks re-breaking the parenthetical self-referential-link case above,
+  // which is exactly what the widening exists to keep working. A stricter regex is a
+  // separate trade with its own evidence, not something to fold in here.
   test('two distinct empty-link rows would collide on canonicalization, by design (documented, not fixed)', () => {
     const content = `# Doc Index\n\n${HEADER}| []() | First | ref | current | quarterly |\n`;
     const result = appendIndexRowIfAbsent(content, row(''));
