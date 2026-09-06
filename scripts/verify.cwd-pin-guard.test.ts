@@ -96,6 +96,17 @@ describe('cwd-pin-guard sweep scope', () => {
     expect(targets).toContain('src/references/companion-file-sync.md');
   });
 
+  // Issue #878: sweepTargets() must also scan the guard's own TARGET_SCRIPTS files, so an
+  // unpinned literal embedded in a script's own source (not just in prose documenting an
+  // invocation of it) is caught.
+  test('sweeps all four TARGET_SCRIPTS files', () => {
+    const targets = sweepTargets();
+    expect(targets).toContain('scripts/check-review-artifact.ts');
+    expect(targets).toContain('scripts/carry-staged-artifacts.ts');
+    expect(targets).toContain('scripts/lib/companion-file-sync.ts');
+    expect(targets).toContain('scripts/plan-quality-gate.ts');
+  });
+
   test('stays non-recursive — src/references/hunt/*.md is outside the declared scope', () => {
     expect(sweepTargets().some((target) => target.startsWith('src/references/hunt/'))).toBe(false);
   });

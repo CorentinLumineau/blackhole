@@ -59,12 +59,16 @@ const SWEEP_DIRS = ['src/agents', 'src/references'];
 const SWEEP_FILES = ['src/SKILL.md'];
 
 // Exported so the sweep's own scope is assertable, not just its verdict: a scope that silently
-// stops covering a file would otherwise still report `ok: true`.
+// stops covering a file would otherwise still report `ok: true`. Also sweeps TARGET_SCRIPTS
+// itself (issue #878) — the guard's own registered class of vulnerable scripts — so an unpinned
+// literal embedded in one of those scripts' own source (not just in prose that documents an
+// invocation of it) is caught too. `findMissingCwdPin` is unchanged; only the scan scope grows.
 export const sweepTargets = (): string[] => [
   ...[...SWEEP_DIRS, ...buildInputModuleDirs()].flatMap((dir) =>
     listFiles(dir).map((file) => `${dir}/${file}`),
   ),
   ...SWEEP_FILES,
+  ...TARGET_SCRIPTS,
 ];
 
 const checkCwdPinGuard = (): CheckResult => {
