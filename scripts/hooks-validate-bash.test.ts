@@ -3016,16 +3016,15 @@ describe('validate-bash-command.js — anomalous git failure falls back to CLAUD
   });
 });
 
-// `recordEvent`'s never-throw invariant is the actual mitigation for the T1 threat this fix
-// closes (design note § Threat Model): the fallback added above must never itself become a new
-// way to escape `denyAndRecord` before `emit()` runs. This drives `failClosed` — the same
-// recovery path a pattern-load or stdin-parse failure already uses — through a corrupted repo, so
-// `recordEvent`'s `mainCloneRoot(cwd)` call is guaranteed to hit the anomalous branch on the very
-// same event `failClosed` is trying to record. The assertion is on the process exit code, not a
-// mock, exercised end to end through the real subprocess: a naive implementation that lets the
-// anomalous throw escape `recordEvent` exits 1 here (verified by hand against a version of this
-// module with the local `try/catch` removed — the wrapper (`claude-native-settings.ts`) treats
-// exit 1 as "validator could not run" and converts the intended deny into an ALLOW), not exit 2.
+// Pins `recordEvent`'s never-throw invariant — the T1 mitigation whose full mechanism is
+// documented at its definition in `hook-event-log.js`; not restated here.
+//
+// Locally new: this drives `failClosed` — the same recovery path a pattern-load or stdin-parse
+// failure already uses — through a corrupted repo, so the `mainCloneRoot(cwd)` call is guaranteed
+// to hit the anomalous branch on the very same event `failClosed` is trying to record. The
+// assertion is on the process exit code rather than a mock, exercised end to end through the real
+// subprocess, because the failure this guards against is observable only there: an escaping throw
+// exits 1, and exit 1 is what the wrapper reads as "validator could not run". Exit 2 is the deny.
 describe('validate-bash-command.js — recordEvent never escapes failClosed, even under a corrupted repo (#889)', () => {
   test('malformed stdin + a corrupted repo still denies with exit 2, not 1', async () => {
     await withTempGitRepo('blackhole-hook-889-failclosed-', async (repo) => {
