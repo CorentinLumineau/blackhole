@@ -5,8 +5,8 @@ import * as path from 'path';
 import {
   ENUM_SOURCE_CONSTANTS_SUBPATH,
   ENUM_SOURCE_VALIDATOR_SUBPATH,
-  NON_WAIVABLE_DISCRIMINATOR_FIELDS,
   resolveValidateWorker,
+  WAIVABLE_ENUMS,
 } from './enum-source.ts';
 
 // Trust boundary: an `--enum-source` tree is always a worker's own unreviewed PR worktree
@@ -153,15 +153,17 @@ describe('waiveWidenedEnumErrors — cardinality bound on widened arrays (F-0004
   });
 });
 
-// F-00060 (PR #854 review iteration 4): the cardinality bound above is a per-*array* check, not a
-// per-*field* check. One `constants.ts` can declare one exactly-sized widened array per field and
-// smuggle one bogus value into every enum at once. That matters most for a field a validator uses
-// as a branch discriminator — e.g. implementer's `if (data.status === 'complete') { require
-// pr_number, branch, tests_passed, touch_paths_honored, evidence }` — because a smuggled value
-// matching none of the real branches skips every required-field check those branches gate,
-// turning a near-empty stub payload into a zero-error accept. The fix excludes
-// `NON_WAIVABLE_DISCRIMINATOR_FIELDS` from the waiver entirely, regardless of cardinality.
-describe('waiveWidenedEnumErrors — discriminator fields never waived (F-00060)', () => {
+// F-00060 (PR #854 review iteration 4) then F-00062 (iteration 5): a blocklist of "dangerous"
+// discriminator fields cannot be sound — it requires knowing about every discriminator, in every
+// file, in every comparison syntax, forever. Iteration 4 found four (`status`, `track`,
+// `escalation_trigger`, `sprint_contract_status`); iteration 5 found two more the same blocklist
+// missed (`capture_status`, `worktree_disposition` — they live in `shared-validators.ts`, outside
+// where the anti-rot test scanned), and the anti-rot test itself missed four equivalent
+// comparison shapes (destructuring, bracket access, `switch`, `.includes()`). Iteration 6 inverts
+// the model to an allowlist (`WAIVABLE_ENUMS`): only a named, enumerated-safe constant is ever
+// eligible for the waiver, so an unlisted enum — discriminator or not, known or not yet
+// discovered — is non-waivable by construction, with nothing to enumerate and nothing to miss.
+describe('waiveWidenedEnumErrors — only WAIVABLE_ENUMS-allowlisted constants are ever waived (F-00060, F-00062)', () => {
   let treeRoot: string | undefined;
 
   afterEach(() => {
@@ -241,33 +243,70 @@ describe('waiveWidenedEnumErrors — discriminator fields never waived (F-00060)
     );
   });
 
-  // Anti-rot: NON_WAIVABLE_DISCRIMINATOR_FIELDS is hand-maintained (enum-source.ts docstring), so
-  // nothing stops a future validator change from adding a new enum-checked field used as a branch
-  // discriminator without updating that set. This statically scans the real validator source for
-  // that exact shape — `data.<field> ===`/`!==` against a string literal, on a field the same file
-  // also enum-checks via `pushEnumError` — and fails the moment one exists outside the set.
-  test('NON_WAIVABLE_DISCRIMINATOR_FIELDS is exhaustive against validator source (anti-rot)', () => {
-    const validatorsDir = path.join(import.meta.dirname, 'validators');
-    const files = fs.readdirSync(validatorsDir).filter((f) => f.endsWith('.ts'));
-    expect(files.length).toBeGreaterThan(0);
+  // Iteration 5 (F-00062) live PoC: a `visual_evidence` entry with `capture_status: 'BOGUS'` and
+  // none of the fields `capture_status`'s own real branches require (`path`/`route`/`state` for
+  // 'captured', `note` for 'unavailable') was accepted with zero errors, because
+  // `CAPTURE_STATUSES` lived in `shared-validators.ts` — one directory outside where the old
+  // blocklist's anti-rot test scanned (`validators/` only) — so it was never in the blocklist and
+  // the widened array satisfied the old content-only cardinality check unconditionally. Under the
+  // allowlist model this is rejected because `CAPTURE_STATUSES` was simply never added to
+  // `WAIVABLE_ENUMS` — this test names `capture_status` only to construct the PoC payload; the
+  // fix itself never names it anywhere.
+  test('capture_status BOGUS (F-00062 live PoC) is rejected — CAPTURE_STATUSES was never allowlisted', async () => {
+    treeRoot = writeTreeWithConstants(
+      "export const CAPTURE_STATUSES = ['captured', 'unavailable', 'BOGUS'] as const;\n",
+    );
 
-    const undeclared: string[] = [];
-    for (const file of files) {
-      const source = fs.readFileSync(path.join(validatorsDir, file), 'utf-8');
-      const comparedFields = new Set(
-        [...source.matchAll(/data\.(\w+)\s*(?:===|!==)\s*['"]/g)].map((m) => m[1]),
-      );
-      const enumCheckedFields = new Set(
-        [...source.matchAll(/pushEnumError\(errors,\s*'(\w+)'/g)].map((m) => m[1]),
-      );
-      for (const field of comparedFields) {
-        if (enumCheckedFields.has(field) && !NON_WAIVABLE_DISCRIMINATOR_FIELDS.has(field)) {
-          undeclared.push(`${file}: '${field}'`);
-        }
-      }
-    }
+    const validate = await resolveValidateWorker(treeRoot);
+    // Deliberately omits path/route/state/note — the near-empty stub the F-00062 PoC used to get
+    // a zero-error accept out of the old blocklist model. `visual_evidence` is validated by
+    // `validators/implementer.ts` regardless of `status`, so `blocked` with no other fields is
+    // enough to reach the check.
+    const errors = validate('implementer', {
+      status: 'blocked',
+      visual_evidence: [{ target: 1, capture_status: 'BOGUS' }],
+    });
 
-    expect(undeclared).toEqual([]);
+    expect(errors.some((e) => e.includes('invalid enum value "BOGUS"'))).toBe(true);
+  });
+
+  // Same shape as the capture_status PoC above, for the other field F-00062 found missing from
+  // the old blocklist (`WORKTREE_DISPOSITIONS`, also declared in `shared-validators.ts`).
+  test('worktree_disposition BOGUS is rejected — WORKTREE_DISPOSITIONS was never allowlisted', async () => {
+    treeRoot = writeTreeWithConstants(
+      "export const WORKTREE_DISPOSITIONS = ['pushed', 'clean', 'dirty-uncommitted', 'BOGUS'] as const;\n",
+    );
+
+    const validate = await resolveValidateWorker(treeRoot);
+    const errors = validate('implementer', {
+      status: 'partial',
+      phase_reached: 'implement',
+      partial_result: { worktree_disposition: 'BOGUS' },
+    });
+
+    expect(errors.some((e) => e.includes('invalid enum value "BOGUS"'))).toBe(true);
+  });
+
+  // Fail-closed property, proven directly rather than by re-running past PoCs: pick an arbitrary
+  // enum that has never been named anywhere in this fix or its tests (`SEVERITIES`) and show it
+  // is non-waivable purely because it is absent from `WAIVABLE_ENUMS` — even though its widened
+  // array satisfies the exact-cardinality check that, on its own, would otherwise waive it. No
+  // prior knowledge of which enums are "dangerous" is required to reach this outcome.
+  test('an arbitrary non-allowlisted enum is non-waivable even at exact cardinality (fail-closed property)', async () => {
+    expect(WAIVABLE_ENUMS.has('SEVERITIES')).toBe(false);
+    treeRoot = writeTreeWithConstants(
+      "export const SEVERITIES = ['BLOCK', 'WARN', 'INFO', 'BOGUS'] as const;\n",
+    );
+
+    const validate = await resolveValidateWorker(treeRoot);
+    const errors = validate('reviewer', {
+      status: 'complete',
+      pr_number: 1,
+      readiness: 'LGTM',
+      findings: [{ vcode: 'V-SEC-01', severity: 'BOGUS', file: 'a.ts', line: 1, summary: 's' }],
+    });
+
+    expect(errors.some((e) => e.includes('invalid enum value "BOGUS"'))).toBe(true);
   });
 });
 

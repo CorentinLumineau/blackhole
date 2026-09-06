@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as ownEnumConstants from './constants.ts';
 import type { Role } from './types.ts';
 import { validateWorker as validateWorkerFromOwnTree } from './validate.ts';
 
@@ -30,7 +31,7 @@ export const ENUM_SOURCE_MISSING_VALUE_ERROR =
 
 const ENUM_ERROR_PATTERN = /^(.+): invalid enum value "(.*)" \(expected (.+)\)$/;
 const STRING_CONST_PATTERN = /export const (\w+)\s*=\s*'([^']*)'\s*as const;/g;
-const ENUM_ARRAY_PATTERN = /export const \w+\s*=\s*\[([^\]]*)\]\s*as const/g;
+const ENUM_ARRAY_PATTERN = /export const (\w+)\s*=\s*\[([^\]]*)\]\s*as const/g;
 
 /**
  * Upper bound on a widened `constants.ts`'s byte size (F-00049, PR #854 review iteration 2). The
@@ -43,21 +44,26 @@ const ENUM_ARRAY_PATTERN = /export const \w+\s*=\s*\[([^\]]*)\]\s*as const/g;
 const MAX_ENUM_SOURCE_CONSTANTS_BYTES = 65_536;
 
 /**
- * Extracts every exported `as const` string array's member list from a `constants.ts` source
- * text, without ever evaluating the file as code. An element that is itself an exported string
- * constant rather than a literal (e.g. `PLANNER_STATUSES = [..., PARTIAL_STATUS]`) is resolved
- * through a separate single-const pass first — left as a bare identifier it would never match a
- * quoted enum value, making the array look one member short.
+ * Extracts every exported `as const` string array from a `constants.ts` source text, keyed by
+ * its own constant name, without ever evaluating the file as code. An element that is itself an
+ * exported string constant rather than a literal (e.g. `PLANNER_STATUSES = [..., PARTIAL_STATUS]`)
+ * is resolved through a separate single-const pass first — left as a bare identifier it would
+ * never match a quoted enum value, making the array look one member short.
+ *
+ * The name is load-bearing (PR #854 review iteration 6): {@link waiveWidenedEnumErrors} binds a
+ * waiver decision to *which named constant* the widened tree declares, not merely to array
+ * content, so a widened `constants.ts` can only widen the specific enum it claims to.
  */
-function extractEnumArrays(source: string): string[][] {
+function extractEnumArrays(source: string): Map<string, string[]> {
   const stringConsts = new Map<string, string>();
   for (const match of source.matchAll(STRING_CONST_PATTERN)) {
     stringConsts.set(match[1], match[2]);
   }
 
-  const arrays: string[][] = [];
+  const arrays = new Map<string, string[]>();
   for (const match of source.matchAll(ENUM_ARRAY_PATTERN)) {
-    const members = match[1]
+    const [, name, rawMembers] = match;
+    const members = rawMembers
       .split(',')
       .map((raw) => raw.trim())
       .filter((raw) => raw.length > 0)
@@ -67,86 +73,105 @@ function extractEnumArrays(source: string): string[][] {
       })
       .filter((member): member is string => member !== null);
     if (members.length > 0) {
-      arrays.push(members);
+      arrays.set(name, members);
     }
   }
   return arrays;
 }
 
 /**
- * Field names that at least one role validator uses to select *which required-field checks run*,
- * based on the field's own enum-checked value — e.g. implementer's `status: 'complete'` branch
- * gates `pr_number`/`branch`/`tests_passed`/`touch_paths_honored`/`evidence`. A widened-enum
- * waiver must never apply to one of these, no matter how exactly the widened tree's array matches
- * the cardinality bound above: accepting an unrecognized discriminator value skips every
- * required-field check gated on it, turning a near-empty stub payload into a zero-error accept
- * (F-00060, PR #854 review iteration 4 — `{status: 'BOGUS'}` against a widened
- * `IMPLEMENTER_STATUSES` array passed with none of the five `complete`-branch fields present).
+ * Names of `constants.ts` exports whose widening a worker-return validation run may waive —
+ * an allowlist, not a blocklist (PR #854 review iteration 6). Iterations 4 and 5 each enumerated
+ * a *dangerous* field the waiver must never apply to (`status`, `track`, `escalation_trigger`,
+ * `sprint_contract_status`, then `capture_status`, `worktree_disposition` — the last two missed
+ * because they live in `shared-validators.ts`, one directory outside where the anti-rot test for
+ * that set scanned). That enumeration cannot be sound: it requires knowing about every
+ * discriminator, in every file, in every comparison syntax, forever. Enumerating instead the
+ * handful of enums this feature actually needs to widen makes an unlisted enum non-waivable *by
+ * construction* — no discriminator audit required, and nothing to miss.
  *
- * Derived by grepping `scripts/lib/worker-json/validators/*.ts` for a `data.<field> ===`/`!==`
- * comparison against a string literal, on a field the same file also enum-checks via
- * `pushEnumError`: `status` appears in this shape in all six role validators; `track`
- * (planner.ts) gates its design/brainstorm-specific required fields; `escalation_trigger`
- * (implementer.ts) gates `conflict_hunks`; `sprint_contract_status` (implementer.ts) gates
- * `ac_results`. `COMPANION_REPAIR_VCODES`'s `vcode` field — the enum issue #738 exists to widen —
- * is deliberately absent: it is enum-checked but gates no required-field branch, so widening it
- * stays waivable.
- *
- * Hand-maintained rather than derived at runtime — parsing our own statically-imported validator
- * source as data would be the same fragile-parsing trade `extractEnumArrays` above accepts only
- * because the widened tree's `constants.ts` can't be imported at all (untrusted code). Kept
- * honest by the anti-rot assertion in `enum-source.test.ts`
- * ("NON_WAIVABLE_DISCRIMINATOR_FIELDS — exhaustive against validator source (F-00060)"), which
- * fails the moment a validator gains a new enum-checked `data.<field> === '...'` branch this set
- * doesn't list.
+ * `COMPANION_REPAIR_VCODES` is issue #738's entire actual need: `companion_repairs[].vcode` is
+ * enum-checked but gates no required-field branch, so widening it is safe.
  */
-export const NON_WAIVABLE_DISCRIMINATOR_FIELDS: ReadonlySet<string> = new Set([
-  'status',
-  'track',
-  'escalation_trigger',
-  'sprint_contract_status',
-]);
+export const WAIVABLE_ENUMS: ReadonlySet<string> = new Set(['COMPANION_REPAIR_VCODES']);
 
 /**
- * Drops an "invalid enum value" error when some array in `widenedArrays` is *exactly* the
- * error's own `(expected ...)` list plus the rejected value — i.e. the named tree's
- * `constants.ts` declares that same enum with the rejected value added, and nothing else. Every
- * other error (structural, type, or an enum value the widened tree doesn't declare either)
- * passes through unchanged.
+ * Maps a local, trusted `constants.ts` array's exact member list (joined the same way
+ * `pushEnumError` joins its `(expected ...)` clause, so an error's `expected` text is a direct
+ * lookup key) back to the exported constant name that declares it. Built once, from this
+ * package's own statically-imported `constants.ts` — never from the untrusted widened tree.
  *
- * The exact-cardinality check (`candidate.length === expected.length + 1`) is load-bearing, not
- * an optimization (F-00048, PR #854 review iteration 2). Without it, a superset-only check is
- * satisfiable by a single "kitchen sink" array unioning every real enum member across the whole
- * schema plus one bogus value — that array is a superset of *every* field's `expected` list, so
- * it waives an invalid-enum error for a field it was never declared for. Because `value` is
- * guaranteed distinct from `expected` (the local validator only raises this error when the value
- * isn't already in `expected`), a candidate that both is a superset of `expected ∪ {value}` and
- * has exactly `expected.length + 1` elements can only be that exact set — no room for members
- * belonging to a different field's enum. This is what actually enforces this function's
- * docstring-level "exactly one new member" invariant; the old code stated the invariant but never
- * checked it.
- *
- * A field in {@link NON_WAIVABLE_DISCRIMINATOR_FIELDS} is excluded from this entirely (F-00060):
- * cardinality only bounds *which* array can satisfy the waiver, not *whether* waiving is safe for
- * that field at all, and a discriminator's required-field-gating role makes it never safe.
+ * A member list shared by two different constants (e.g. `IMPLEMENTER_STATUSES` and
+ * `INVESTIGATOR_STATUSES` are both `complete|blocked|error|partial`) cannot be bound to a single
+ * name from content alone, so both entries are dropped: the lookup then reports "unknown", which
+ * {@link waiveWidenedEnumErrors} treats as non-waivable. This never affects
+ * {@link WAIVABLE_ENUMS} today — `COMPANION_REPAIR_VCODES`'s member list is unique — and keeps
+ * the fail-closed default even if a future collision ever involved an allowlisted enum.
  */
-function waiveWidenedEnumErrors(errors: string[], widenedArrays: string[][]): string[] {
+const LOCAL_CONST_NAME_BY_MEMBERS: ReadonlyMap<string, string> = (() => {
+  const byMembers = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const [name, value] of Object.entries(ownEnumConstants)) {
+    if (!Array.isArray(value) || !value.every((member) => typeof member === 'string')) {
+      continue;
+    }
+    const key = (value as readonly string[]).join('|');
+    if (byMembers.has(key) && byMembers.get(key) !== name) {
+      ambiguous.add(key);
+    } else {
+      byMembers.set(key, name);
+    }
+  }
+  for (const key of ambiguous) {
+    byMembers.delete(key);
+  }
+  return byMembers;
+})();
+
+/**
+ * Drops an "invalid enum value" error when the constant it was raised against is
+ * {@link WAIVABLE_ENUMS}-allowlisted *and* the widened tree declares that same-named constant as
+ * exactly the error's own `(expected ...)` list plus the rejected value. Every other error
+ * (structural, type, an enum the allowlist doesn't cover, or an enum value the widened tree
+ * doesn't declare either) passes through unchanged.
+ *
+ * Two bindings compose to make this fail-closed by default rather than by enumeration:
+ *
+ * 1. **Which constant.** {@link LOCAL_CONST_NAME_BY_MEMBERS} maps the error's own `expected` list
+ *    back to the local, trusted constant name that declares it — never derived from the widened
+ *    tree, so an untrusted `constants.ts` cannot claim to be a constant it isn't by naming an
+ *    array it invented. An enum with no resolvable name (not exported at all, or ambiguous per
+ *    that map's collision handling) is non-waivable.
+ * 2. **Is it allowed.** Only a name in {@link WAIVABLE_ENUMS} proceeds to the cardinality check
+ *    below at all. A newly introduced discriminator anywhere in the codebase is non-waivable the
+ *    moment it exists, with no set to update — it was simply never added here.
+ *
+ * The exact-cardinality check itself (`candidate.length === expected.length + 1`) is
+ * load-bearing, not an optimization (F-00048, PR #854 review iteration 2): it enforces this
+ * function's "exactly one new member" invariant against the one, name-matched candidate array —
+ * there is no longer a `some()` search across every widened array, because step 1 above already
+ * identifies the single array that could possibly apply.
+ */
+function waiveWidenedEnumErrors(errors: string[], widenedArrays: Map<string, string[]>): string[] {
   return errors.filter((error) => {
     const match = error.match(ENUM_ERROR_PATTERN);
     if (!match) {
       return true;
     }
-    const [, field, value, expectedJoined] = match;
-    if (NON_WAIVABLE_DISCRIMINATOR_FIELDS.has(field)) {
+    const [, , value, expectedJoined] = match;
+    const constName = LOCAL_CONST_NAME_BY_MEMBERS.get(expectedJoined);
+    if (constName === undefined || !WAIVABLE_ENUMS.has(constName)) {
+      return true;
+    }
+    const candidate = widenedArrays.get(constName);
+    if (!candidate) {
       return true;
     }
     const expected = expectedJoined.split('|');
-    const isWidened = widenedArrays.some(
-      (candidate) =>
-        candidate.length === expected.length + 1 &&
-        candidate.includes(value) &&
-        expected.every((member) => candidate.includes(member)),
-    );
+    const isWidened =
+      candidate.length === expected.length + 1 &&
+      candidate.includes(value) &&
+      expected.every((member) => candidate.includes(member));
     return !isWidened;
   });
 }
