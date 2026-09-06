@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
+import { readJsonFile } from '../lib/fs.ts';
 
 // Issue #809 — deferred-reconciliation.check.ts: `findings-ledger.json`'s `deferred → resolved`
 // transition was documented as "optional cleanup" and nothing ever reconciled a `deferred`
@@ -62,8 +63,8 @@ export const checkDeferredReconciliation = (ledgerFile: string, queueFile: strin
     return [{ id: 'V-DEFER-01', ok: true }];
   }
 
-  const ledger: { findings?: LedgerFinding[] } = JSON.parse(fs.readFileSync(ledgerFile, 'utf-8'));
-  const queue: { issues?: QueueIssues } = JSON.parse(fs.readFileSync(queueFile, 'utf-8'));
+  const ledger: { findings?: LedgerFinding[] } = readJsonFile(ledgerFile, ledgerFile) as { findings?: LedgerFinding[] };
+  const queue: { issues?: QueueIssues } = readJsonFile(queueFile, queueFile) as { issues?: QueueIssues };
 
   const warnings = findUnreconciledDeferrals(ledger.findings ?? [], queue.issues ?? {});
   return [{ id: 'V-DEFER-01', ok: true, ...(warnings.length ? { detail: warnings.join('; ') } : {}) }];

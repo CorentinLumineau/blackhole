@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
+import { readJsonFile } from '../lib/fs.ts';
 import { CLAUDE_NATIVE_ROOT } from '../lib/build/paths.ts';
 import { runFullBuildOnce } from '../lib/check-common.ts';
 
@@ -29,7 +30,7 @@ export const evaluateClaudeSettingsHooksWiring = (claudeRoot: string): string[] 
 
   let preToolUse: PreToolUseEntry[];
   try {
-    const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>;
+    const parsed = readJsonFile(settingsPath, settingsPath) as Record<string, unknown>;
     const hooks = parsed.hooks as Record<string, unknown> | undefined;
     preToolUse = (hooks?.PreToolUse ?? []) as PreToolUseEntry[];
     if (!Array.isArray(preToolUse)) return [`${claudeRoot}: settings.json hooks.PreToolUse is not an array`];

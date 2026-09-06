@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root } from './checks/check-utils.ts';
+import { readJsonFile } from './lib/fs.ts';
 import { validateStateWrite } from './lib/state-write-guard.ts';
 import { runGhJson } from './lib/forge-adapter/cli.ts';
 
@@ -179,8 +180,8 @@ function main(): number {
     console.error(`Ledger file not found: ${ledgerPath}`);
     return 1;
   }
-  const ledger: { findings?: LedgerFinding[]; [key: string]: unknown } = JSON.parse(fs.readFileSync(ledgerPath, 'utf-8'));
-  const queue: { issues?: QueueIssues } = fs.existsSync(queuePath) ? JSON.parse(fs.readFileSync(queuePath, 'utf-8')) : { issues: {} };
+  const ledger: { findings?: LedgerFinding[]; [key: string]: unknown } = readJsonFile(ledgerPath, ledgerPath) as { findings?: LedgerFinding[]; [key: string]: unknown };
+  const queue: { issues?: QueueIssues } = fs.existsSync(queuePath) ? (readJsonFile(queuePath, queuePath) as { issues?: QueueIssues }) : { issues: {} };
 
   const { findings, summary } = triageFindings(ledger.findings ?? [], queue.issues ?? {}, fetchUntrackedIssue);
 

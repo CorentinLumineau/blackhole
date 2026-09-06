@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
+import { readJsonFile } from '../lib/fs.ts';
 
 // Issue #570 — queue-coherence.check.ts: mechanical coherence assertions over the live
 // `.blackhole/queue.json` (dependency coherence, phase/artifact consistency, in-flight
@@ -98,7 +99,7 @@ export const checkQueueCoherence = (queueFile: string, campaignDir: string): Che
     ];
   }
 
-  const queue: { issues?: QueueIssues } = JSON.parse(fs.readFileSync(queueFile, 'utf-8'));
+  const queue: { issues?: QueueIssues } = readJsonFile(queueFile, queueFile) as { issues?: QueueIssues };
   const issues = queue.issues ?? {};
 
   const worktreeExists = (worktree: string): boolean => fs.existsSync(worktree);
