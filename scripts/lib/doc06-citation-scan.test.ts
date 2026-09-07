@@ -9,7 +9,7 @@ import {
 } from './doc06-citation-scan.ts';
 import { makeTempDir } from './fs.ts';
 
-// V-DOC-06 boundary measurement (issue #951) — pure detection primitives used both by the
+// V-DOC-06 boundary measurement — pure detection primitives used both by the
 // one-off CLI report (`scripts/analyze-doc06-citations.ts`) and by any future re-measurement.
 // `.md` prose is deliberately never walked here: markdown citations are already the settled
 // boundary-3 exemption in `blackhole-vcodes.md`'s V-DOC-06 row.
@@ -76,9 +76,9 @@ describe('scanDirsForCitations — fixture-directory integration', () => {
   test('reports exactly the .ts comment citation, excluding .md prose and describe() titles', () => {
     const dir = makeTempDir('doc06-citation-scan-fixture');
     try {
-      // (a) .ts file with a #951-citing comment line — the one line this scan must report.
+      // (a) .ts file whose comment line cites an issue number — the one line this scan must report.
       fs.writeFileSync(path.join(dir, 'a.ts'), '// see #951 for context\nconst x = 1;\n');
-      // (b) .md file with a #951-citing line — markdown is never walked (boundary 3 exemption).
+      // (b) .md file whose line cites an issue number — markdown is never walked (boundary 3 exemption).
       fs.writeFileSync(path.join(dir, 'b.md'), '# Notes\n\nSee #951 for context.\n');
       // (c) .ts file whose only citation is inside a describe() title — code, not a comment.
       fs.writeFileSync(

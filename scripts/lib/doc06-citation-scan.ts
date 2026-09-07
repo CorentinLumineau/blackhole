@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { walkFilesAbs } from './fs.ts';
 
-// V-DOC-06 citation measurement (issue #951) — pure detection primitives for "does this source
+// V-DOC-06 citation measurement — pure detection primitives for "does this source
 // comment cite an issue/PR number" (`blackhole-vcodes.md` V-DOC-06). A `//` line comment or a
 // `/* ... */` block-comment continuation line (`* ...`) counts; a code line — including a
 // `describe()`/`test()`/`it()` title string that happens to contain `#NNN` — never does, per

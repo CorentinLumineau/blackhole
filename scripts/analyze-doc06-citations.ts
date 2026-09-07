@@ -3,7 +3,7 @@ import * as path from 'path';
 import { scanDirsForCitations } from './lib/doc06-citation-scan.ts';
 import { root } from './checks/check-utils.ts';
 
-// Issue #951 — one-off (and future re-runnable) measurement of how many `scripts/**`/`src/**`
+// One-off (and future re-runnable) measurement of how many `scripts/**`/`src/**`
 // `.ts`/`.js` comment lines cite an issue/PR number, so a V-DOC-06 boundary decision is made
 // from a real count rather than a manual grep estimate. `.md` is never walked — boundary (3) of
 // V-DOC-06 already exempts markdown prose.
