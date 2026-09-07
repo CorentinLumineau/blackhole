@@ -4,19 +4,13 @@ import * as path from 'path';
 import { PRETOOLUSE_HOOKS_DIR } from './lib/test-fixtures.ts';
 import { withTempDir } from './lib/test-fixtures.ts';
 
-// Issue #969 (Option A, owner-ruled partial fix — see .blackhole/plans/issue-969-design.md's
-// turn-19 gate). This module covers two shipped CommonJS helpers under
+// This module covers two shipped CommonJS helpers under
 // templates/hooks/pretooluse/utils/:
 //
 //   - installed-plugin-rows.js: selectCandidateInstalledPluginRows + extractCommandPath —
-//     dual-consumed by sibling-plugin-guard.js and scripts/lib/hook-sources.ts (binding
-//     constraint 2 — one implementation, not two independently-drifting regexes).
-//   - sibling-plugin-health.js: isPluginHealthy(installPath) — verifies only that a registered
-//     plugin's own hooks.json still declares a PreToolUse entry whose referenced script exists
-//     and is non-empty. This detects the narrower manifest-declared-but-script-missing layer
-//     ONLY. It does NOT detect the ADR-030/#800 stale-cache class (a script that exists, is
-//     non-empty, and is referenced correctly, but whose *content* is stale or broken) — binding
-//     constraint 1, the load-bearing scope limit from the design note's gate.
+//     dual-consumed by sibling-plugin-guard.js and scripts/lib/hook-sources.ts.
+//   - sibling-plugin-health.js: isPluginHealthy(installPath) — its own docstring carries the
+//     canonical scope statement for what the health check does and does not detect.
 
 const installedPluginRows = () =>
   require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'installed-plugin-rows.js'));
@@ -109,7 +103,7 @@ const healthyManifest = {
   },
 };
 
-describe('sibling-plugin-health.js — isPluginHealthy (fail-closed matrix, binding constraint 5)', () => {
+describe('sibling-plugin-health.js — isPluginHealthy (fail-closed matrix)', () => {
   test('(a) installPath missing/non-string -> false', () => {
     const { isPluginHealthy } = siblingPluginHealth();
     expect(isPluginHealthy(undefined)).toBe(false);

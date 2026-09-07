@@ -17,14 +17,8 @@
  * binding constraint 4 — see `isPluginHealthy`'s caller below) passes the health check; (4) that
  * main clone has no `.blackhole/config.json`.
  *
- * Health-check scope (issue #969, binding constraint 1 — the load-bearing one): the health leg
- * verifies only that the registered install's `hooks.json` still declares a `PreToolUse` entry
- * whose referenced script exists on disk and is non-empty — the narrower
- * manifest-declared-but-script-missing layer. It does NOT detect the ADR-030/issue #800
- * stale-cache class: a script file that exists, is non-empty, and is referenced correctly, but
- * whose *content* is stale or broken. No artifact this change produces may describe it as
- * closing #800 or "the stale-cache problem" — see `sibling-plugin-health.js`'s own docstring for
- * the same scope statement.
+ * Condition (3) is deliberately narrow. `isPluginHealthy` owns the canonical statement of what
+ * that check does and does not detect; nothing here may widen the claim it makes.
  *
  * Any detection ambiguity — an unreadable/malformed `installed_plugins.json`, no git context, an
  * anomalous `mainCloneRoot` throw, no candidate install row, a failing health check, or an

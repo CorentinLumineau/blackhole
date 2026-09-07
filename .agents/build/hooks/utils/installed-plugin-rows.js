@@ -13,17 +13,16 @@
  * direction — a shipped hook script running inside an installed plugin cache reaching into
  * `scripts/lib/`, which does not exist there — is not safe, which is why this logic is not
  * authored in `scripts/lib/` and re-exported. Dual-consumed by
- * `templates/hooks/pretooluse/utils/sibling-plugin-guard.js` (issue #969, via
- * `sibling-plugin-health.js`) and `scripts/lib/hook-sources.ts` (issue #912/ADR-044) — one
- * implementation, not two independently-drifting regexes (binding constraint 2).
+ * `templates/hooks/pretooluse/utils/sibling-plugin-guard.js` (via `sibling-plugin-health.js`)
+ * and `scripts/lib/hook-sources.ts` — one implementation, not two independently-drifting
+ * regexes.
  */
 
 /**
  * Returns every row in `rows` that could apply to `repoRoot`: a `user`-scope row (always a
  * candidate) or a `project`-scope row whose `projectPath` matches `repoRoot` exactly. Mirrors
  * `hook-sources.ts`'s `enumeratePluginCacheSources` filter verbatim — this function never
- * adjudicates precedence between multiple candidates, that is left to the caller (binding
- * constraint 4).
+ * adjudicates precedence between multiple candidates, that is left to the caller.
  */
 const selectCandidateInstalledPluginRows = (rows, repoRoot) => {
   if (!Array.isArray(rows)) return [];
