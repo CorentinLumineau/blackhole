@@ -105,7 +105,23 @@ export type HookRunResult = { exitCode: number; stdout: string; stderr: string }
  * containment root even when it is not a registered git worktree at all. `claudeProjectDir`, when
  * passed, is threaded as `CLAUDE_PROJECT_DIR` — the git-independent fallback sink `recordEvent`
  * consults on an anomalous `mainCloneRoot` failure; omitted, the spawn's env is built exactly as
- * before, so none of the existing call sites change behavior. */
+ * before, so none of the existing call sites change behavior. `claudeHome`, when passed, is
+ * threaded as `BLACKHOLE_CLAUDE_HOME` (issue #870) — points `sibling-plugin-guard.js`'s
+ * `installed_plugins.json` read at a fixture directory instead of the real machine's
+ * `~/.claude/`.
+ *
+ * Unlike every other optional parameter above, `BLACKHOLE_CLAUDE_HOME` is set UNCONDITIONALLY —
+ * omitted, it defaults to `NO_CLAUDE_HOME_SENTINEL` (a directory guaranteed never to exist)
+ * rather than leaving the env var unset. A machine running this suite can genuinely have a
+ * sibling mercure plugin registered in its own real `~/.claude/plugins/installed_plugins.json`
+ * (this repo's own dogfooding install is exactly that machine) — leaving the var unset would let
+ * `sibling-plugin-guard.js` fall through to `os.homedir()` and read that real file, silently
+ * flipping every pre-existing hook test that doesn't explicitly exercise issue #870's defer
+ * branch into exercising it by accident. Pinning a guaranteed-absent sentinel by default is what
+ * keeps every other call site's behavior byte-identical regardless of what is installed on the
+ * machine actually running the test. */
+const NO_CLAUDE_HOME_SENTINEL = path.join(os.tmpdir(), 'blackhole-hook-fixtures-no-claude-home');
+
 export const runPreToolUseHook = async (
   script: string,
   payload: unknown,
@@ -115,12 +131,14 @@ export const runPreToolUseHook = async (
   assignedWorktree?: string,
   scratchpadDirEnv?: string,
   claudeProjectDir?: string,
+  claudeHome?: string,
 ): Promise<HookRunResult> => {
   const extraEnv: Record<string, string> = {};
   if (eventDir) extraEnv.BLACKHOLE_HOOK_EVENT_DIR = eventDir;
   if (assignedWorktree) extraEnv.BLACKHOLE_ASSIGNED_WORKTREE = assignedWorktree;
   if (scratchpadDirEnv) extraEnv.BLACKHOLE_SCRATCHPAD_DIR = scratchpadDirEnv;
   if (claudeProjectDir) extraEnv.CLAUDE_PROJECT_DIR = claudeProjectDir;
+  extraEnv.BLACKHOLE_CLAUDE_HOME = claudeHome || NO_CLAUDE_HOME_SENTINEL;
   const proc = Bun.spawn({
     cmd: ['bun', 'run', path.join(hooksDir, script)],
     stdin: new Blob([JSON.stringify(payload)]),
@@ -268,6 +286,22 @@ export const writeCampaignConfig = (mainRepo: string, config: Record<string, unk
   const dir = path.join(mainRepo, '.blackhole');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
+};
+
+/** Writes `<claudeHome>/plugins/installed_plugins.json` with a `plugins` map keyed by
+ * `pluginKeys` (e.g. `mercure@some-marketplace`), each carrying one placeholder row — the shape
+ * `sibling-plugin-guard.js` reads (issue #870) and `hook-sources.ts` already reads for a
+ * different purpose (#912). Tests exercising the sibling-plugin-defer guard write a minimal
+ * fixture through this one helper rather than hand-rolling the file shape at each call site,
+ * mirroring `writeCampaignConfig` above. */
+export const writeInstalledPlugins = (claudeHome: string, pluginKeys: string[]): void => {
+  const dir = path.join(claudeHome, 'plugins');
+  fs.mkdirSync(dir, { recursive: true });
+  const plugins: Record<string, unknown[]> = {};
+  for (const key of pluginKeys) {
+    plugins[key] = [{ scope: 'user', installPath: '/fake/path', version: '0.0.0' }];
+  }
+  fs.writeFileSync(path.join(dir, 'installed_plugins.json'), JSON.stringify({ plugins }, null, 2), 'utf-8');
 };
 
 export const readHookEvents = (repoRoot: string): Record<string, unknown>[] => {

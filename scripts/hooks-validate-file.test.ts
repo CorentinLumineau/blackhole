@@ -10,6 +10,7 @@ import {
   withLinkedWorktree,
   withTempGitRepo,
   writeCampaignConfig,
+  writeInstalledPlugins,
 } from './lib/test-fixtures.ts';
 
 // Behavioral contract for the Write|Edit PreToolUse gate. Covers the three block classes
@@ -1277,5 +1278,200 @@ describe('mainCloneRoot — routine absence vs. anomalous git failure (#889)', (
       expect(hookEventLog.mainCloneRoot(mainRepo)).toBe(realMain);
       expect(hookEventLog.mainCloneRoot(worktree)).toBe(realMain);
     });
+  });
+});
+
+// Issue #870 — sibling mercure defer/stay-active/fail-closed matrix, mirrored from
+// hooks-validate-bash.test.ts for the Write|Edit validator. See that file's own describe block
+// docstring for the full rationale; assertions here use the system-path block tier
+// (`/etc/passwd`) as the "normal checks still run" probe in place of `rm -rf /`.
+describe('validate-file-changes.js — sibling mercure defer (#870)', () => {
+  test('defer: sibling mercure registered + no .blackhole/config.json → allow silently, one defer event', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-870-home-')));
+    try {
+      writeInstalledPlugins(claudeHome, ['mercure@some-marketplace']);
+      await withTempGitRepo('blackhole-hook-870-', async (repo) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+
+        const events = readHookEvents(repo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          hook: 'validate-file-changes',
+          tool: 'Write',
+          decision: 'allow',
+          tier: 'defer',
+          pattern_id: 'sibling-plugin-defer',
+        });
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+    }
+  });
+
+  test('stay-active: sibling mercure registered but .blackhole/config.json present → normal checks still run', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-870-home-')));
+    try {
+      writeInstalledPlugins(claudeHome, ['mercure@some-marketplace']);
+      await withTempGitRepo('blackhole-hook-870-', async (repo) => {
+        writeCampaignConfig(repo, { repo: 'owner/name' });
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        const events = readHookEvents(repo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ tier: 'block', pattern_id: 'etc' });
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+    }
+  });
+
+  test('stay-active: no key whose @-split segment is mercure → normal checks still run', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-870-home-')));
+    try {
+      writeInstalledPlugins(claudeHome, ['frontend-design@claude-plugins-official']);
+      await withTempGitRepo('blackhole-hook-870-', async (repo) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+    }
+  });
+
+  test('stay-active (fail-closed): installed_plugins.json absent → normal checks still run', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-870-home-')));
+    try {
+      await withTempGitRepo('blackhole-hook-870-', async (repo) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+    }
+  });
+
+  test('stay-active (fail-closed): installed_plugins.json present but malformed JSON → normal checks still run', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-870-home-')));
+    try {
+      fs.mkdirSync(path.join(claudeHome, 'plugins'), { recursive: true });
+      fs.writeFileSync(path.join(claudeHome, 'plugins', 'installed_plugins.json'), '{ not json', 'utf-8');
+      await withTempGitRepo('blackhole-hook-870-', async (repo) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+    }
+  });
+
+  test('stay-active (fail-closed): no git context at all → normal checks still run', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-870-home-')));
+    const nonRepo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-870-nogit-')));
+    try {
+      writeInstalledPlugins(claudeHome, ['mercure@some-marketplace']);
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        writePayload('/etc/passwd'),
+        nonRepo,
+        PRETOOLUSE_HOOKS_DIR,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        claudeHome,
+      );
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+      fs.rmSync(nonRepo, { recursive: true, force: true });
+    }
+  });
+
+  test('negative control: a key like `notmercure@x` does not trigger the defer branch (precision, not substring match)', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-870-home-')));
+    try {
+      writeInstalledPlugins(claudeHome, ['notmercure@x', 'mercure-fork@x']);
+      await withTempGitRepo('blackhole-hook-870-', async (repo) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+    }
   });
 });

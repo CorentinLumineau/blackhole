@@ -15,12 +15,14 @@
  */
 
 const { loadFilePatterns, matchFirst } = require('./utils/pattern-loader');
+const { shouldDeferToMercure } = require('./utils/sibling-plugin-guard');
 const {
   readHookInput,
   allWorktreeRoots,
   isUnderRoot,
   isAcceptableScratchpadDir,
   readAssignedWorktreeRoot,
+  recordEvent,
   denyAndRecord,
   warnAndRecord,
   allowSilently,
@@ -51,6 +53,27 @@ const main = () => {
   // The tool call's own working directory (harness-supplied on the payload) rather than the hook
   // process's own process.cwd() — see hook-event-log.js's `git` docstring for why (#507).
   const cwd = input.cwd || process.cwd();
+
+  // Issue #870 — a sibling mercure plugin is registered and this is an interactive,
+  // non-campaign session: cede the call entirely to mercure's own PreToolUse hook instead of
+  // running blackhole's pattern checks too. See sibling-plugin-guard.js's module docstring for
+  // the fail-closed-toward-staying-active discipline this early exit depends on.
+  if (shouldDeferToMercure(cwd)) {
+    recordEvent({
+      hook: HOOK,
+      tool,
+      decision: 'allow',
+      tier: 'defer',
+      pattern_id: 'sibling-plugin-defer',
+      reason:
+        'blackhole standing down: sibling mercure plugin detected, .blackhole/config.json absent — ' +
+        'mercure hook is the sole validator for this call',
+      detail: filePath,
+      cwd,
+    });
+    allowSilently();
+    return;
+  }
 
   let patterns;
   try {

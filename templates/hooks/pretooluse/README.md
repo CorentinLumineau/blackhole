@@ -50,3 +50,35 @@ Every PR that touches a file under `templates/hooks/**` must also bump `package.
 session-start signal (`.blackhole/plugin-drift.json`, `blackhole-state.md` § Plugin-Drift Signal)
 covers the residual gap this gate cannot see: a PR correctly bumps the version, but nobody ever
 runs the refresh path above afterward.
+
+## Sibling mercure defer (issue #870)
+
+blackhole's fork of these two hooks (`validate-bash-command.js`, `validate-file-changes.js`)
+runs alongside mercure's own, independently-versioned copy when both plugins are installed
+side by side — a user in that state used to run **two** PreToolUse validators, with drifted deny
+lists, on every Bash/Write/Edit call. `utils/sibling-plugin-guard.js`'s `shouldDeferToMercure`
+runs first, before any pattern is loaded: when (1) a sibling `mercure` plugin is registered in
+`~/.claude/plugins/installed_plugins.json`, (2) the calling repo resolves to a real git main
+clone, and (3) that main clone has no `.blackhole/config.json` — i.e. an interactive,
+non-campaign session — blackhole stands down silently and cedes the call entirely to mercure's
+own hook, recording a `tier: defer`, `pattern_id: sibling-plugin-defer` event and exiting `0`
+with no pattern checks run at all.
+
+The defer record is **human-greppable only**. Triage never ingests it into
+`findings-ledger.json` (`scripts/lib/hook-event-triage.ts`'s `TIER_VCODE` map has no `defer`
+entry, deliberately), and it carries no V-code — the two are mutually exclusive by construction:
+Triage only ever runs inside a campaign session, and a campaign session is exactly the condition
+(`.blackhole/config.json` present) that keeps blackhole from ever deferring in the first place.
+A fresh reader of this section alone can therefore correctly conclude: the defer record exists
+purely so an operator can confirm after the fact that blackhole stood down for a given call, not
+so any automated process acts on it.
+
+Any detection ambiguity — an unreadable/malformed `installed_plugins.json`, no git context, or
+an anomalous main-clone resolution failure — fails closed toward **not** deferring: blackhole's
+own validators stay active rather than risk silently ceding containment to a possibly-stale or
+absent sibling hook.
+
+Two follow-ups are logged, out of this mechanism's scope:
+
+- Health-based (rather than registration-based) sibling detection — issue #969.
+- Rotation/cleanup for `.blackhole/hook-events/` in the non-campaign context — issue #970.
