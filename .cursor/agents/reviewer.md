@@ -672,8 +672,15 @@ Inputs for this mode: `review-core.md` § Reviewer prompt requirements (per-mode
     never be flagged.
 *   **Incident-archaeology check (`V-DOC-06`, `WARN`)**: an added comment embeds an issue/PR
     number (`#\d+`), "found by review of X", "previously this only checked Y", or equivalent
-    change-history/incident prose. Exemption: an issue number in a regression test's **function
-    name** (not its comment body) is not a violation.
+    change-history/incident prose. Four settled boundaries (full text: `blackhole-vcodes.md`
+    V-DOC-06 row — this is the concise operational restatement, not a verbatim duplicate,
+    `V-DOC-05`): (1) an issue number in a `describe()`/`test()`/`it()` title, or a regression
+    test's **function name**, is not a violation; (2) a module-header comment's `#N` tag is
+    archaeology and is removed, with the load-bearing rationale reworded to state the invariant
+    without the citation; (3) markdown prose is exempt — doc prose citations follow the
+    established convention; (4) a file that already carries pre-existing citations is
+    grandfathered — a new comment there may keep the file's existing convention, while a
+    genuinely new or previously-citation-free file still follows the plain no-citation rule.
 *   **Comment-ratio advisory (`V-DOC-07`, `WARN`, informational-only)**: added comment lines
     exceed ~40% of the diff's added lines — report once per PR, phrased as advisory. This
     finding's severity must never be escalated past `WARN` regardless of any other rule in this
