@@ -3153,15 +3153,27 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     });
   });
 
-  test('#804: without BLACKHOLE_ASSIGNED_WORKTREE set, a bash write target outside the worktree is not denied by this check (fail-open parity with #620)', async () => {
-    await withLinkedWorktree('blackhole-hook-804-', async (mainRepo, worktree) => {
+  // #907 (TDD red-before-green — Task 2, Bash write-target parity with Task 1's Write/Edit red
+  // test): a worker's hook subprocess resolves `cwd` inside its own linked worktree with no
+  // `BLACKHOLE_ASSIGNED_WORKTREE` declared — Pattern C's shape, since the native
+  // `Agent`/`Workflow` tool never exports that env var to a spawned worker
+  // (`orchestrator-dispatch.md`). Superseded here what was previously named "fail-open parity
+  // with #620": that fail-open was the bug this issue closes, not a contract to preserve.
+  // Verified failing against `plan_base_commit` (write allowed, no denial) before the Task 3 fix
+  // landed — captured verbatim in the PR body per `V-UNFALSIFIABLE-01`.
+  test('#907: without BLACKHOLE_ASSIGNED_WORKTREE set, a bash write target outside a worktree-resolved cwd is denied (cwd-derived containment)', async () => {
+    await withLinkedWorktree('blackhole-hook-907-', async (mainRepo, worktree) => {
       const target = path.join(mainRepo, 'foo.txt');
       const payload = bashPayloadAt(`echo x > ${target}`, worktree);
       const result = await runPreToolUseHook(SCRIPT, payload, worktree);
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout.trim()).toBe('');
-      expect(readHookEvents(mainRepo)).toEqual([]);
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/assigned worktree/i);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({
+        tier: 'block',
+        pattern_id: 'bash-outside-assigned-worktree',
+      });
     });
   });
 });
