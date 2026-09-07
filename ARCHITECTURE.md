@@ -307,6 +307,7 @@ co-located `*.test.ts`.
 ---
 
 ## Active Constraints
+- Worker write-containment MUST key on structural call-site identity (repo/path resolution derived at hook time), never on caller-declared state (an env var a worker could `export`, or an assignment map a worker could tamper) (ADR-045)
 - A mechanical check whose second data source lives in a separate, private repository must compare against a periodically-refreshed vendored snapshot committed to this repo — never a live cross-repo parse or a wait-for-remote-emission design — because GitHub Actions does not forward repository secrets to fork-triggered `pull_request` runs, so a PR-gating check has no reachable path to a private counterpart repo regardless of any future secret configuration (analyze: issue #869)
 - A working-tree-mutating `git` subcommand whose effective repository is the main clone is refused regardless of which agent runs it — key the check on repo identity (`worktreeRoot === mainCloneRoot`, plus any `-C`/`--git-dir`/`--work-tree` override), never on `BLACKHOLE_ASSIGNED_WORKTREE`, which is unset for every Pattern C worker (ADR-043)
 - A drift or provenance signal must enumerate every registered enforcement source and assert an ordering only where a commit-graph ancestry proves one — an unverifiable, foreign, or unresolvable source is rendered as its own state, never collapsed into "no drift" (ADR-044)

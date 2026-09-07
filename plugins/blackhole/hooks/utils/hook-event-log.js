@@ -346,31 +346,81 @@ const readHookInput = () => {
 
 /** `BLACKHOLE_ASSIGNED_WORKTREE` narrows Write/Edit containment to a single assigned worktree
  * when set by the orchestrator at implementer spawn (#620). Unset, empty, unresolvable, or not a
- * registered member of `allWorktreeRoots(cwd)` → null (stderr notice, fail-open to today's
- * all-roots containment). Mirrors the `BLACKHOLE_HOOK_EVENT_DIR` override shape from #604.
+ * registered member of `allWorktreeRoots(cwd)` falls through to the cwd-derived tier below
+ * (`readCwdDerivedAssignedRoot`, #907) rather than straight to the `allWorktreeRoots` fallback —
+ * that tier's own docstring explains why it exists and what it returns. Mirrors the
+ * `BLACKHOLE_HOOK_EVENT_DIR` override shape from #604.
  * Propagates `allWorktreeRoots`'s throw on an anomalous (non-"not a git repository") git failure
  * rather than catching it — this function does not itself swallow anything; the caller (same
  * `failClosed` posture as every other call site below) decides how to react. */
 const readAssignedWorktreeRoot = (cwd = process.cwd()) => {
   const raw = process.env.BLACKHOLE_ASSIGNED_WORKTREE;
-  if (typeof raw !== 'string' || raw.trim().length === 0) return null;
-  const resolved = path.resolve(raw.trim());
-  const familyRoots = allWorktreeRoots(cwd);
-  if (!familyRoots) {
-    console.error(
-      `[blackhole-hook] BLACKHOLE_ASSIGNED_WORKTREE set but no git context — falling back to all-worktree containment`,
-    );
-    return null;
+  if (typeof raw === 'string' && raw.trim().length > 0) {
+    const resolved = path.resolve(raw.trim());
+    const familyRoots = allWorktreeRoots(cwd);
+    if (!familyRoots) {
+      console.error(
+        `[blackhole-hook] BLACKHOLE_ASSIGNED_WORKTREE set but no git context — falling back to cwd-derived containment`,
+      );
+    } else {
+      const realResolved = resolveExistingAncestor(resolved);
+      const match = familyRoots.find((root) => resolveExistingAncestor(root) === realResolved);
+      if (match) return realResolved;
+      console.error(
+        `[blackhole-hook] BLACKHOLE_ASSIGNED_WORKTREE ${JSON.stringify(resolved)} is not a registered family worktree — falling back to cwd-derived containment`,
+      );
+    }
   }
-  const realResolved = resolveExistingAncestor(resolved);
-  const match = familyRoots.find((root) => resolveExistingAncestor(root) === realResolved);
-  if (!match) {
-    console.error(
-      `[blackhole-hook] BLACKHOLE_ASSIGNED_WORKTREE ${JSON.stringify(resolved)} is not a registered family worktree — falling back to all-worktree containment`,
-    );
-    return null;
-  }
-  return realResolved;
+  return readCwdDerivedAssignedRoot(cwd);
+};
+
+/** cwd-derived containment tier (#907) — the channel `BLACKHOLE_ASSIGNED_WORKTREE` above actually
+ * reaches under Pattern C (`orchestrator-dispatch.md`): a worker dispatched via the native
+ * `Agent`/`Workflow` tool never receives an exported env var, confirmed by a zero-occurrence
+ * `outside-assigned-worktree` event corpus. `input.cwd` is harness-supplied on the PreToolUse
+ * payload rather than a field a worker's own tool-call arguments set — the same trust class
+ * `validate-file-changes.js` already extends to it for the #507 leaf-containment fix, not a fresh
+ * trust assumption. When `cwd` resolves to a linked (non-main) worktree, that worktree becomes
+ * the sole assigned root — no declaration needed. A `cwd` resolving to the main clone itself (the
+ * orchestrator's/`planner`'s/`investigator`'s/`hunter`'s legitimate case) returns null unchanged,
+ * falling through to today's `allWorktreeRoots(cwd)` fallback exactly as before this tier
+ * existed.
+ *
+ * The validated scratchpad root(s) — `<mainClone>/.blackhole/config.json`'s `scratchpad_dir` and
+ * the opt-in `BLACKHOLE_SCRATCHPAD_DIR` override — are never dropped when this tier narrows
+ * (#510/#729's invariant), the same two sources `allWorktreeRoots` itself unions in. A worker's
+ * worktree is, by this campaign's own convention, always nested directly under the configured
+ * `scratchpad_dir` (`wt-<issue>` under one scratchpad parent), so the common case collapses
+ * cleanly to a single broader root: when the resolved worktree nests under a validated
+ * scratchpad root, that broader root — not the narrower worktree — is returned as the sole
+ * assigned root, since it already spans the worktree and is the one place a worker's
+ * cross-worktree coordination writes (e.g. a shared file placed directly at the scratchpad root)
+ * are expected to land. `BLACKHOLE_SCRATCHPAD_DIR` is documented as the harness's own
+ * per-session scratchpad — a directory that is NOT expected to nest the worktree at all, so no
+ * single string can represent "the worktree" and "the disjoint scratchpad" simultaneously; when
+ * a scratchpad candidate is present (validated or not) but does not nest the worktree, this tier
+ * defers entirely (returns null) rather than silently dropping it — the caller's fallback to
+ * `allWorktreeRoots(cwd)` already unions every scratchpad source correctly, including rejecting
+ * an invalid one, so deferring to it is reuse, not re-derivation (`V-INT-02`). */
+const readCwdDerivedAssignedRoot = (cwd) => {
+  const cwdWorktree = worktreeRoot(cwd);
+  if (!cwdWorktree) return null;
+  const realCwdWorktree = resolveExistingAncestor(cwdWorktree);
+  const mainClone = mainCloneRoot(cwd);
+  if (!mainClone || resolveExistingAncestor(mainClone) === realCwdWorktree) return null;
+
+  const configScratchpad = readScratchpadDir(mainClone);
+  const envScratchpad = process.env.BLACKHOLE_SCRATCHPAD_DIR;
+  const envScratchpadDeclared = typeof envScratchpad === 'string' && envScratchpad.length > 0;
+  const envScratchpadValid = envScratchpadDeclared && isAcceptableScratchpadDir(envScratchpad);
+  const candidates = [configScratchpad, envScratchpadValid ? envScratchpad : null].filter(
+    (candidate) => candidate !== null && isExistingDirectory(candidate),
+  );
+
+  const nesting = candidates.find((candidate) => isUnderRoot(realCwdWorktree, candidate));
+  if (nesting) return resolveExistingAncestor(nesting);
+  if (candidates.length > 0 || envScratchpadDeclared) return null;
+  return realCwdWorktree;
 };
 
 /** `BLACKHOLE_HOOK_EVENT_DIR` makes the durable-record sink explicit and inspectable instead of

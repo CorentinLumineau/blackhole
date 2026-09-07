@@ -666,6 +666,11 @@ describe('validate-file-changes.js', () => {
 
   // Same symlinked-breadth case on the env-override leg, which reaches the same predicate — one
   // breadth check, both legs, so neither can be widened by a value the other would reject.
+  //
+  // #907: cwd is inside a linked worktree here, so the new cwd-derived tier now evaluates first;
+  // it sees `BLACKHOLE_SCRATCHPAD_DIR` declared-but-invalid (symlinked to $HOME) and defers
+  // (returns null) rather than silently dropping it, so the same `allWorktreeRoots` breadth
+  // check as before does the denying — deny outcome and pattern_id both unchanged.
   test('#839: BLACKHOLE_SCRATCHPAD_DIR symlinked to $HOME is not admitted as a containment root', async () => {
     const stamp = `${process.pid}-${Date.now()}`;
     const fakeHome = path.join(fs.realpathSync(os.tmpdir()), `blackhole-839-env-home-${stamp}`);
@@ -760,10 +765,60 @@ describe('validate-file-changes.js', () => {
     });
   });
 
-  test('#620: without assigned worktree env, main-clone writes remain allowed (fail-open baseline)', async () => {
-    await withLinkedWorktree('blackhole-hook-620-', async (mainRepo, worktree) => {
+  // #907 (TDD red-before-green — Task 1): a worker's hook subprocess resolves `cwd` inside its
+  // own linked worktree with no `BLACKHOLE_ASSIGNED_WORKTREE` declared at all — exactly Pattern
+  // C's shape, since the native `Agent`/`Workflow` tool never exports that env var to a spawned
+  // worker (`orchestrator-dispatch.md`). Before the cwd-derived tier existed this fell open to
+  // `allWorktreeRoots(cwd)`, which lists the main clone as a trusted family member, so the write
+  // succeeded — the confirmed incident this issue closes. Superseded here what was previously
+  // named "fail-open baseline": that baseline was the bug, not a contract to preserve. Verified
+  // failing against `plan_base_commit` (write allowed, no denial) before the Task 3 fix landed —
+  // captured verbatim in the PR body per `V-UNFALSIFIABLE-01`.
+  test('#907: cwd-derived containment denies a main-clone write when cwd is inside a linked worktree, env unset', async () => {
+    await withLinkedWorktree('blackhole-hook-907-', async (mainRepo, worktree) => {
       const target = path.join(mainRepo, 'src', 'main-only.ts');
       const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/assigned worktree/i);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({
+        tier: 'block',
+        pattern_id: 'outside-assigned-worktree',
+      });
+    });
+  });
+
+  // #907: an invalid/garbage BLACKHOLE_ASSIGNED_WORKTREE value must not grant *more* access than
+  // no declaration at all — both fall through to the same cwd-derived tier above, so a stale or
+  // mistyped declaration narrows exactly like the unset case rather than reopening the bug this
+  // issue closes.
+  test('#907: cwd-derived containment denies a main-clone write when the assigned worktree env is garbage', async () => {
+    await withLinkedWorktree('blackhole-hook-907-', async (mainRepo, worktree) => {
+      const target = path.join(mainRepo, 'src', 'main-only.ts');
+      const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+      const garbage = path.join(fs.realpathSync(os.tmpdir()), `blackhole-907-garbage-${process.pid}`);
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, garbage);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({
+        tier: 'block',
+        pattern_id: 'outside-assigned-worktree',
+      });
+    });
+  });
+
+  // #907 regression (Task 5, Critic A's finding): the new cwd-derived tier must never fire when
+  // `cwd` resolves to the main clone itself — the orchestrator's/`planner`'s/`investigator`'s/
+  // `hunter`'s legitimate case. Behavior stays byte-identical to today's `allWorktreeRoots(cwd)`
+  // fallback: a write anywhere else in the registered family (a sibling worktree here) is still
+  // allowed.
+  test('#907: cwd resolving to the main clone itself is unaffected by the new cwd-derived tier', async () => {
+    await withLinkedWorktree('blackhole-hook-907-', async (mainRepo, worktree) => {
+      const target = path.join(worktree, 'src', 'foo.ts');
+      const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
       const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
 
       expect(result.exitCode).toBe(0);
@@ -772,24 +827,32 @@ describe('validate-file-changes.js', () => {
     });
   });
 
-  test('#620: garbage assigned worktree env falls open to all-roots containment', async () => {
-    await withLinkedWorktree('blackhole-hook-620-', async (mainRepo, worktree) => {
-      const target = path.join(mainRepo, 'src', 'main-only.ts');
-      const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
-      const garbage = path.join(fs.realpathSync(os.tmpdir()), `blackhole-620-garbage-${process.pid}`);
-      const result = await runPreToolUseHook(
-        SCRIPT,
-        payload,
-        mainRepo,
-        PRETOOLUSE_HOOKS_DIR,
-        undefined,
-        garbage,
-      );
+  // #907 regression (Task 4): the cwd-derived tier must never drop the validated scratchpad-root
+  // inclusion #510/#729 already guarantee for `allWorktreeRoots` — a worker whose own worktree is
+  // nested under a validated `scratchpad_dir` can still write to that scratchpad root itself (a
+  // shared coordination file placed directly at it, not nested under any one worktree).
+  test('#907: cwd-derived tier preserves scratchpad-root access when cwd is inside a scratchpad-nested worktree', async () => {
+    const scratchpad = path.join(fs.realpathSync(os.tmpdir()), `blackhole-907-scratch-${process.pid}-${Date.now()}`);
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-907-',
+        async (mainRepo, worktree) => {
+          const target = path.join(scratchpad, 'shared-coordination.json');
+          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: worktree };
+          const result = await runPreToolUseHook(SCRIPT, payload, worktree);
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout.trim()).toBe('');
-      expect(readHookEvents(mainRepo)).toEqual([]);
-    });
+          expect(result.exitCode).toBe(0);
+          expect(result.stdout.trim()).toBe('');
+          expect(readHookEvents(mainRepo)).toEqual([]);
+        },
+        (mainRepo) => {
+          writeCampaignConfig(mainRepo, { scratchpad_dir: scratchpad });
+          return scratchpad;
+        },
+      );
+    } finally {
+      fs.rmSync(scratchpad, { recursive: true, force: true });
+    }
   });
 
   test('fails closed: an unparseable file-patterns.json denies even an ordinary write', async () => {
@@ -965,6 +1028,11 @@ describe('validate-file-changes.js', () => {
   // #729: absent the opt-in, the same harness-scratchpad-shaped target stays denied — no silent
   // full auto-detection of a `/tmp/claude-<uid>/...`-shaped path. Only an explicitly-set env var
   // widens containment; the shape alone never does.
+  //
+  // #907: cwd is inside a linked worktree here with no env var at all set, so the new cwd-derived
+  // tier now narrows to the worktree itself (no scratchpad candidate present, nothing to defer
+  // to) — the write is still denied, now classified `outside-assigned-worktree` rather than
+  // `outside-worktree` since an assigned root is present. Deny outcome unchanged.
   test('#729: without BLACKHOLE_SCRATCHPAD_DIR set, an unrelated scratchpad-shaped directory is still denied', async () => {
     const scratchpad = path.join(fs.realpathSync(os.tmpdir()), `blackhole-729-scratch-${process.pid}-${Date.now()}`);
     fs.mkdirSync(scratchpad, { recursive: true });
@@ -977,7 +1045,7 @@ describe('validate-file-changes.js', () => {
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
         expect(permissionReason(result.stdout)).toMatch(/outside/i);
-        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-assigned-worktree' });
       });
     } finally {
       fs.rmSync(scratchpad, { recursive: true, force: true });

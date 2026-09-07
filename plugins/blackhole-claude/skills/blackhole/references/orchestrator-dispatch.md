@@ -203,30 +203,46 @@ section consumes and `model-routing.md` § Escalation rule for the tier-bump mec
 section applies with the narrower cap above.
 
 
-## Implementer assigned-write-root env (issue #620)
+## Implementer write-root containment (issue #620, #907)
 
 **Scope:** every `implementer` spawn only — not `planner`, `reviewer`, `orchestrator`, or
-`coordinator`. The orchestrator and coordinator sessions must **not** set this variable; they
-legitimately Write/Edit the main clone (especially `.blackhole/` campaign state).
+`coordinator`. The orchestrator and coordinator sessions must **not** be narrowed by either
+mechanism below; they legitimately Write/Edit the main clone (especially `.blackhole/` campaign
+state).
 
-**Contract:** at implementer spawn, export the issue worktree's absolute path before any
-Write/Edit tool call in that session:
+**The reachable mechanism (issue #907): cwd-derived containment, automatic, no declaration
+needed.** `validate-file-changes.js` and `validate-bash-command.js` both resolve the assigned
+root through `readAssignedWorktreeRoot(cwd)` in `hook-event-log.js`. That function's primary tier
+derives the assignment structurally from the PreToolUse payload's own `cwd`: when `cwd` resolves
+to a linked (non-main) worktree, that worktree becomes the sole assigned root automatically —
+writes to the main clone or a sibling worktree are denied (`outside-assigned-worktree` /
+`bash-outside-assigned-worktree`, block tier). A validated scratchpad root (`scratchpad_dir` in
+`.blackhole/config.json`, or the opt-in `BLACKHOLE_SCRATCHPAD_DIR` override) is never dropped by
+this narrowing. When `cwd` resolves to the main clone itself (the orchestrator's/`planner`'s/
+`investigator`'s/`hunter`'s legitimate case), this tier does not fire at all — behaviour is
+unchanged from today's `allWorktreeRoots` fallback. This tier requires **no spawn-time action**:
+it works for every dispatch pattern, including Pattern C (the native `Agent`/`Workflow` tool),
+because it needs no channel to carry a declaration to the worker at all.
+
+**The declared-channel mechanism (issue #620): `BLACKHOLE_ASSIGNED_WORKTREE`, Pattern B / manual
+use only.** A shell `export` does not survive between subagent spawns or separate `Bash` tool
+calls, and the native `Agent`/`Workflow` tool provides no environment channel to a spawned
+worker at all — an `export` issued by the orchestrator's own session is never visible inside a
+Pattern C worker's process. This env var therefore has **no reachable effect on a Pattern C
+implementer spawn**; it remains meaningful only for Pattern B (a human or script manually
+exporting it in a shell before invoking Claude Code directly) or other manual/scripted
+invocations that share the orchestrator's own process environment. Where it *is* set, it takes
+precedence over the cwd-derived tier above (checked first in `readAssignedWorktreeRoot`); when
+unset, empty, unresolvable, or not a registered member of `allWorktreeRoots(cwd)`, resolution
+falls through to the cwd-derived tier rather than straight to `allWorktreeRoots`. Contract when
+it does apply:
 
 ```bash
 export BLACKHOLE_ASSIGNED_WORKTREE='<absolute wt-<N> path>'
 ```
 
-The 5-Field Delegation Contract's Tool Guidance must list this `export` as the **first** shell
-command in the session (same POSIX inheritance model as other `BLACKHOLE_*` hook env overrides
-from #604). `validate-file-changes.js` reads it via `readAssignedWorktreeRoot(cwd)` in
-`hook-event-log.js`: when set and the path is a registered member of `allWorktreeRoots(cwd)`,
-containment narrows to `[assignedRoot]` only — writes to the main clone or a sibling worktree
-are denied (`outside-assigned-worktree`, block tier). When unset, empty, or not a registered
-family worktree: **fail open** to today's `allWorktreeRoots` behaviour (stderr notice, no deny).
-The same env var also narrows `validate-bash-command.js`'s Bash file-write-target check (issue
-#804, ADR-029) to `[assignedRoot]` — a resolvable write target outside it denies
-(`bash-outside-assigned-worktree`); see `hook-schemas.md`'s `pattern_id` table for the full
-contract.
+See `hook-schemas.md`'s `pattern_id` table for the full `outside-assigned-worktree` /
+`bash-outside-assigned-worktree` contract, covering both resolution tiers.
 
 
 ## CI Failure Diagnosis Dispatch
