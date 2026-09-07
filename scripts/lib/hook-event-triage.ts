@@ -50,6 +50,11 @@ const TIER_VCODE: Record<string, { vcode: string; severity: 'BLOCK' | 'WARN' }> 
   block: { vcode: 'V-HOOK-01', severity: 'BLOCK' },
   warn: { vcode: 'V-HOOK-02', severity: 'WARN' },
   error: { vcode: 'V-HOOK-03', severity: 'BLOCK' },
+  // Deliberately no 'defer' entry. A defer event records blackhole standing down for a sibling
+  // plugin's own hook, not a decision this repo's V-HOOK-0N ledger should track — folding it
+  // under an existing tier (e.g. V-HOOK-02) would misrepresent a routine hand-off as a finding.
+  // The `if (!mapping) continue;` fallthrough below already drops any tier absent from this map;
+  // do not add a 'defer' key here without first re-reading why it is excluded.
 };
 
 // ADR-042 — the shared key composition (vcode, file, line, issue_ref) is unchanged; what
