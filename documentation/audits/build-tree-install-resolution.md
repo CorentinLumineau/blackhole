@@ -7,6 +7,7 @@ last_updated: 2026-09-07
 review_trigger: "on release"
 related:
   - documentation/decisions/ADR-009-claude-marketplace-bundle-isolation.md
+  - documentation/decisions/ADR-025-agent-plugins-skills-only-shell.md
   - documentation/decisions/ADR-038-unknown-build-tree-dispositions.md
   - documentation/architecture/retrospective-blackhole.md
   - documentation/architecture.md
@@ -96,6 +97,7 @@ correction.
 | 8 | `.gemini-plugin/` (root, `plugin.json` only) | None confirmed — no README install command references this path directly | `scripts/build.ts:661-662` comment, verbatim: "Detached manifest for marketplace metadata (same payload as co-located plugin.json)"; `scripts/build.ts:665-667`: "Independent write site from the detached manifest above — each block is deletable without breaking the other"; contrast with `plugins/blackhole/plugin.json` (row 2), which the symlink install path *does* reach. ADR-038's live install trace 2 (Antigravity symlink install on a never-built clone) confirms root `.gemini-plugin/` sits outside the symlink target and is structurally unreachable through the only documented Antigravity install path. | **Maintainer-surface** — ADR-038 D2: same disposition and reasoning as row 1b, with trace 2 supplying the unreachability result in place of trace 1's |
 | 9 | `.agents/build/` | Multitask Mode: `@coordinator run the campaign` — local workspace customization for running the campaign against **this repo itself**, never redistributed to consumers | `README.md:124,128`: "Antigravity / Gemini" section, "Compiles `.agents/build/` (workspace customization — 8 agent prompts, rules, skills..."; `documentation/architecture.md:68`: "Workspace customization (`@coordinator` / Multitask Mode)"; `scripts/build.ts:644-646` "Target D (Gemini/Antigravity workspace — `.agents/build/`)" | **Load-bearing** — for local/maintainer Multitask Mode use in *this* repo; distinct in kind (not redundant) from `plugins/blackhole`'s external-consumer redistribution (row 2) — both are genuinely resolved, by different consumers |
 | 10 | Root flat `skills/`/`agents/`/`references/`/`rules/` (as one grouped phrase in issue #328's body) | See rows 4b and 5 — **the issue's grouped phrasing bundles two different install paths (Cursor submodule and skills.sh) with two different consumers into one tree name; they are evidenced separately above and split into two rows here rather than merged**, per the plan's instruction not to collapse a mixed tree into one classification | Rows 4b and 5 above | **Load-bearing** (both halves, via two distinct install paths) |
+| 11 | `plugins/blackhole-agent-plugins/` | None documented — see evidence | `scripts/lib/build/paths.ts:39,46` (`AGENT_PLUGINS_DISTRIBUTION_ROOT`, `AGENT_PLUGINS_TARGET_DIRS`); `documentation/decisions/ADR-025-agent-plugins-skills-only-shell.md`'s Assumption Audit row "No TSC member has shipped agent-plugins install yet" (`~ Contestable`, `ADR-025-agent-plugins-skills-only-shell.md:201`); `README.md:165-172`'s Target F stanza — the only install stanza of the eight in that file naming no consumer install command at all, only the maintainer step `bun run build` | **Unknown** — no live agent-plugins.org-conformant client exists to trace an install against; undetermined until ADR-025's own re-evaluation trigger (a shipped TSC-member client plus a portable agent/rule component type) fires |
 
 ## Classification summary
 
@@ -112,9 +114,36 @@ correction.
 - **Shipped-unreferenced (1)**: `codex-agents/` (6, ADR-038 D3) — delivered to every Codex
   consumer via the whole-repo git install and required by this repo's own Codex build/install
   checks, though no shipped manifest references it directly (ADR-038 live install trace 3).
+- **Unknown (1)**: `plugins/blackhole-agent-plugins/` (11) — this is a new, single-row Unknown
+  distinct from the three ADR-038 already resolved below; it is not a reopening of that closed
+  bucket. No live agent-plugins.org-conformant client exists yet to trace an install against
+  (ADR-025's own Assumption Audit already flags this); undetermined until a shipped TSC-member
+  client appears.
 
 The three-row gap this audit left open is closed: `documentation/decisions/ADR-038-unknown-build-tree-dispositions.md`
 (accepted, 2026-09-04) ran the live install trace this audit called for and gave rows 1b, 6, and
 8 the definite dispositions above. No tree in this table is recommended for removal — ADR-038's
 own decision is that all three trees stay tracked, each with a falsifiable revisit condition
 recorded in that record rather than an open-ended "unknown".
+
+## Tree-coverage check (issue #937, AC3)
+
+`COMMITTED_TARGET_TREES` (`scripts/lib/build/paths.ts:35-63`) declares 8 tree ids. Every one is
+classified in the Evidence table above — **8/8**:
+
+| `paths.ts` id | Resolves to | Audit row(s) |
+|---|---|---|
+| `skills-registry` | root `skills/`, `agents/`, `references/`, `rules/` | 4b, 5, 10 |
+| `cursor` | `.cursor/` | 4a |
+| `claude-native` | `.claude/` (`CLAUDE_NATIVE_ROOT`) | 1c |
+| `claude-marketplace` | `.claude-plugin/`, `plugins/blackhole-claude/` | 1a, 1b, 3 |
+| `codex` | `codex-agents/`, `codex-skills/`, `.codex-plugin/`, `codex-marketplace.json` | 6, 7 |
+| `gemini-workspace` | `.agents/build/`, `.gemini-plugin/` | 9, 8 |
+| `agent-plugins` | `plugins/blackhole-agent-plugins/` | 11 |
+| `gemini-distribution` | `plugins/blackhole/` | 2 |
+
+A future `paths.ts` id added to `COMMITTED_TARGET_TREES` without a corresponding row in this
+table (or an entry in the Evidence table above) is the omission this section exists to make
+visible — re-run `sed -n '/COMMITTED_TARGET_TREES: CommittedTargetTree\[\] = \[/,/^\];/p'
+scripts/lib/build/paths.ts | grep -c '{ id:'` and compare the result against the 8 rows above
+rather than diffing this doc against `paths.ts` by hand.
