@@ -815,7 +815,7 @@ describe('validate-file-changes.js', () => {
   // `hunter`'s legitimate case. Behavior stays byte-identical to today's `allWorktreeRoots(cwd)`
   // fallback: a write anywhere else in the registered family (a sibling worktree here) is still
   // allowed.
-  test('#907: cwd resolving to the main clone itself is unaffected by the new cwd-derived tier', async () => {
+  test('#907: cwd resolving to the main clone itself is unaffected by the new cwd-derived tier (allow case)', async () => {
     await withLinkedWorktree('blackhole-hook-907-', async (mainRepo, worktree) => {
       const target = path.join(worktree, 'src', 'foo.ts');
       const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
@@ -825,6 +825,32 @@ describe('validate-file-changes.js', () => {
       expect(result.stdout.trim()).toBe('');
       expect(readHookEvents(mainRepo)).toEqual([]);
     });
+  });
+
+  // #907 regression (Task 5, discriminating case): the allow-case test above cannot by itself
+  // distinguish "the cwd-derived tier correctly declined to narrow" from "it narrowed to
+  // `mainRepo` and got lucky because the target happened to be nested under it too" — both
+  // produce the same allow outcome when nothing configured is outside `mainRepo`. Denying a
+  // target genuinely outside the whole registered family isolates the distinction instead: a
+  // narrowing bug would return `mainRepo` as a non-null assigned root (reclassifying the deny as
+  // `outside-assigned-worktree`), while the correct null return here still falls through to
+  // `allWorktreeRoots`'s `outside-worktree` classification, unchanged from before #907.
+  test('#907: cwd resolving to the main clone itself is unaffected by the new cwd-derived tier (deny classification unchanged)', async () => {
+    const elsewhere = path.join(fs.realpathSync(os.tmpdir()), `blackhole-907-elsewhere-${process.pid}-${Date.now()}`);
+    fs.mkdirSync(elsewhere, { recursive: true });
+    try {
+      await withLinkedWorktree('blackhole-hook-907-', async (mainRepo) => {
+        const target = path.join(elsewhere, 'pwned.ts');
+        const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
+        const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+      });
+    } finally {
+      fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
   });
 
   // #907 regression (Task 4): the cwd-derived tier must never drop the validated scratchpad-root
