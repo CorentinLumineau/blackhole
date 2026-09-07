@@ -121,6 +121,33 @@ Fixtures: [`fixtures/resume-signal/`](../../fixtures/resume-signal/). Implementa
 
 **`defer` tier (issue #870, Option A-prime; health leg issue #969):** when (1) a sibling `mercure` plugin is registered in `~/.claude/plugins/installed_plugins.json`, (2) the calling repo's main clone resolves via `mainCloneRoot`, (3) that plugin's preferred candidate install row (project-scope preferred over user-scope) passes `sibling-plugin-health.js`'s `isPluginHealthy` check, and (4) that main clone has no `.blackhole/config.json` (an interactive, non-campaign session), both validators' `sibling-plugin-guard.js` early-exit before loading any pattern data, standing down entirely and ceding the call to mercure's own, independently-registered `PreToolUse` hook — `decision: allow`, `pattern_id: sibling-plugin-defer`. **Health-check scope (issue #969):** `isPluginHealthy` verifies only that the install's `hooks.json` still declares a `PreToolUse` entry whose referenced script exists on disk and is non-empty — the narrower manifest-declared-but-script-missing layer. It does **not** detect the ADR-030/issue #800 stale-cache class (a script that exists, is non-empty, and is referenced correctly, but whose content is stale or broken); see `templates/hooks/pretooluse/README.md`'s § "Sibling mercure defer" for the full scope statement. This tier is **never** ingested by `ingestHookEvents`/Triage (`scripts/lib/hook-event-triage.ts`'s `TIER_VCODE` map has no `defer` entry by design) and carries no V-code — it is human-greppable only, the record existing purely so an operator can confirm after the fact that blackhole stood down for a given call, not so the orchestrator ever acts on it. Any detection ambiguity (unreadable/malformed `installed_plugins.json`, no git context, no candidate install row, a failing health check, an anomalous `mainCloneRoot` throw) fails closed toward **not** deferring — blackhole's own validators stay active.
 
+**Rotation (issue #970):** `.blackhole/hook-events/` has exactly one reader today — Triage
+(`scripts/lib/hook-event-triage.ts`'s `ingestHookEvents`), which only ever runs inside an active
+campaign (`.blackhole/config.json` present). The `defer` tier above fires on essentially every
+gated Bash/Write/Edit call in a co-installed session, including the interactive, non-campaign
+session where `.blackhole/config.json` is absent — the one context Triage never touches. Without
+a second mechanism, that directory accumulates indefinitely in exactly that context.
+`recordEvent` calls `rotateHookEvents` (`templates/hooks/pretooluse/utils/hook-event-rotation.js`)
+after every successful write, but only when `hasNoCampaignConfig` reports the main clone has no
+`.blackhole/config.json` — the two mechanisms are gated on the identical condition and so can
+never race a live campaign's own Triage sweep. The real constraint this solves for is
+directory-**entry** count, not disk bytes: each event file is a few hundred bytes to ~2KB
+(`MAX_DETAIL_CHARS = 300`), so even heavy daily use reaches only tens of megabytes a year — the
+cost that actually matters is `readdir`/glob performance over a flat directory of tens of
+thousands of small files. The sweep itself is sentinel-gated (a sibling
+`.blackhole/hook-events-rotation-sentinel` file's mtime, checked once via `fs.statSync` — never a
+`readdir`+sort on every call) so the directory scan runs at most once every 24 hours regardless of
+call volume; eligible files (older than `BLACKHOLE_HOOK_EVENT_RETENTION_DAYS`, default `14`) are
+**archived, never deleted** — renamed into a fresh
+`.blackhole/archive/hook-events-rotated-<ts>/` directory, the same archive-not-delete shape this
+repo already uses for Triage-consumed hook-event files (`archiveConsumedFiles`). Archiving rather
+than deleting is what makes the non-atomic ".blackhole/config.json absent" gate's inherent
+TOCTOU race benign: a campaign bootstrap writing that file between the check and the sweep can in
+principle still catch a pre-campaign event Triage would otherwise have ingested, but an archived
+file is recoverable and inspectable rather than permanently lost. The sentinel is persisted only
+once the sweep loop has finished — a process interrupted mid-sweep leaves it unwritten, so the
+next call re-attempts from scratch rather than recording the work as done.
+
 ### `.blackhole/hook-events/<event-id>.json` schema
 
 One file per event, written by non-agent code into the **main clone** (resolved via `git rev-parse --git-common-dir`, so every linked worktree lands in one directory). Filenames are `<iso-ts>-<pid>-<rand>.json` — unique by construction, so concurrent worktrees never race; unlike `resume-request.json` no read-modify-write merge is needed at write time.
