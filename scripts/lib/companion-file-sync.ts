@@ -265,24 +265,24 @@ export const readDiffFile = (diffFilePath: string): string[] =>
 // change to the invocation form only needs one edit.
 const USAGE =
   'Usage: bun run --cwd <path> scripts/lib/companion-file-sync.ts --repo-root <path> --diff-file <paths.txt>\n' +
-  '   or: bun run --cwd <path> scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index';
+  '   or: bun run --cwd <path> scripts/lib/companion-file-sync.ts --repo-root <path> --backfill-journeys-summary';
 
-function parseCliArgs(argv: string[]): { repoRoot: string | null; diffFile: string | null; upsertJourneysIndex: boolean } {
+function parseCliArgs(argv: string[]): { repoRoot: string | null; diffFile: string | null; backfillJourneysSummary: boolean } {
   const flags = parseFlags(argv);
   return {
     repoRoot: typeof flags['repo-root'] === 'string' ? flags['repo-root'] : null,
     diffFile: typeof flags['diff-file'] === 'string' ? flags['diff-file'] : null,
-    upsertJourneysIndex: flags['upsert-journeys-index'] === true,
+    backfillJourneysSummary: flags['backfill-journeys-summary'] === true,
   };
 }
 
 if (import.meta.main) {
-  const { repoRoot, diffFile, upsertJourneysIndex } = parseCliArgs(process.argv.slice(2));
+  const { repoRoot, diffFile, backfillJourneysSummary } = parseCliArgs(process.argv.slice(2));
   if (!repoRoot) {
     console.error(USAGE);
     process.exit(2);
   }
-  if (upsertJourneysIndex) {
+  if (backfillJourneysSummary) {
     // Bootstrap-time path (src/SKILL.md Phase 0 step 2, issue #728): repo-root only, no
     // --diff-file — this repair is unconditional (see runCompanionFileSync), so it needs no
     // diff-path predicate to decide whether to fire.
