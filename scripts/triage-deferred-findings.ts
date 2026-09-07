@@ -6,12 +6,13 @@ import { validateStateWrite } from './lib/state-write-guard.ts';
 import { runGhJson } from './lib/forge-adapter/cli.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 
-// Issue #809 — one-time migration/triage of `findings-ledger.json`'s existing `deferred`
-// backlog: reconciles every `deferred` row whose `deferred_to_issue` target has closed with no
-// `reconciled_at` recorded yet, via the reproducible rule below. This is a ONE-TIME script, not
-// a per-turn check (that's `scripts/checks/deferred-reconciliation.check.ts`, V-DEFER-01) — it
-// mutates the live ledger and so is run by the orchestrator alone (single-writer invariant,
-// `blackhole-state.md` § Single-writer invariant), never by an implementer worker.
+// Issue #809 — triage of `findings-ledger.json`'s `deferred` backlog: reconciles every
+// `deferred` row whose `deferred_to_issue` target has closed with no `reconciled_at` recorded
+// yet, via the reproducible rule below. Idempotent and safe to re-invoke as new closed-target
+// backlog accumulates — it already skips any row carrying `reconciled_at`. Not a per-turn check
+// (that's `scripts/checks/deferred-reconciliation.check.ts`, V-DEFER-01) — it mutates the live
+// ledger and so is run by the orchestrator alone (single-writer invariant, `blackhole-state.md`
+// § Single-writer invariant), never by an implementer worker.
 
 export type LedgerFinding = {
   id: string;
@@ -162,6 +163,33 @@ export const fetchUntrackedIssue = (n: number): FetchedIssue | null => {
   }
 };
 
+// Snapshot-before-mutate, per `blackhole-state.md` § Write protocol — every install of a `.tmp`
+// file over `findings-ledger.json` must archive the live content first. Isolated from `main()`
+// so the test suite can exercise the full protocol against a `makeTempDir()` fixture, never live
+// `.blackhole/` state (mirrors `migrate-ledger-schema.ts`'s `runMigration` split).
+export function installTriagedLedger(
+  ledgerPath: string,
+  archiveDir: string,
+  updatedLedger: { findings: LedgerFinding[]; [key: string]: unknown },
+): { ok: true } | { ok: false; reason: string } {
+  fs.mkdirSync(archiveDir, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const snapshotPath = path.join(archiveDir, `findings-ledger-${timestamp}.json`);
+  fs.copyFileSync(ledgerPath, snapshotPath);
+
+  const tmpPath = `${ledgerPath}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(updatedLedger, null, 2));
+
+  const validation = validateStateWrite({ tmpPath, livePath: ledgerPath, entityKey: 'findings' });
+  if (!validation.ok) {
+    fs.rmSync(tmpPath);
+    return { ok: false, reason: validation.reason };
+  }
+
+  fs.renameSync(tmpPath, ledgerPath);
+  return { ok: true };
+}
+
 function parseCliArgs(argv: string[]): { dryRun: boolean; ledgerPath: string; queuePath: string } {
   const flags = parseFlags(argv);
   return {
@@ -202,17 +230,13 @@ function main(): number {
   }
 
   const updatedLedger = { ...ledger, findings, refreshed_at: new Date().toISOString() };
-  const tmpPath = `${ledgerPath}.tmp`;
-  fs.writeFileSync(tmpPath, JSON.stringify(updatedLedger, null, 2));
-
-  const validation = validateStateWrite({ tmpPath, livePath: ledgerPath, entityKey: 'findings' });
-  if (!validation.ok) {
-    console.error(`state-write-guard refused install: ${validation.reason}`);
-    fs.rmSync(tmpPath);
+  const archiveDir = path.join(path.dirname(ledgerPath), 'archive');
+  const result = installTriagedLedger(ledgerPath, archiveDir, updatedLedger);
+  if (!result.ok) {
+    console.error(`state-write-guard refused install: ${result.reason}`);
     return 1;
   }
 
-  fs.renameSync(tmpPath, ledgerPath);
   console.log('Ledger updated.');
   return 0;
 }
