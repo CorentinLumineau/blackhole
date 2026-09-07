@@ -4,6 +4,7 @@ import * as path from 'path';
 import { makeTempDir } from './lib/fs.ts';
 import {
   classifyDeferredFinding,
+  installTriagedLedger,
   resolveClosureInfo,
   triageFindings,
   type FetchedIssue,
@@ -161,6 +162,55 @@ describe('triageFindings (pure orchestration over an in-memory fixture set)', ()
     expect(byId['F-00007'].status).toBe('deferred');
     expect(byId['F-00008'].status).toBe('deferred');
     expect(byId['F-00008'].reconciled_at).toBeUndefined();
+  });
+});
+
+describe('installTriagedLedger (file protocol, temp-dir isolated)', () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('archives a timestamped snapshot of the live ledger to archive/ before installing the update, and installs the update at the live path', () => {
+    const dir = makeTempDir('triage-install-');
+    tempDirs.push(dir);
+    const livePath = path.join(dir, 'findings-ledger.json');
+    const archiveDir = path.join(dir, 'archive');
+    const original = { refreshed_at: '2026-08-01T00:00:00.000Z', next_id: 2, findings: [finding({ id: 'F-00001', deferred_to_issue: 545 })] };
+    fs.writeFileSync(livePath, JSON.stringify(original));
+
+    const updated = { refreshed_at: '2026-09-07T00:00:00.000Z', next_id: 2, findings: [finding({ id: 'F-00001', deferred_to_issue: 545, status: 'resolved', reconciled_at: '2026-09-07T00:00:00.000Z', reconciliation_rule: 'closed-pr-title-match' })] };
+
+    const result = installTriagedLedger(livePath, archiveDir, updated);
+    expect(result).toEqual({ ok: true });
+
+    const snapshots = fs.readdirSync(archiveDir);
+    expect(snapshots).toHaveLength(1);
+    const snapshot = JSON.parse(fs.readFileSync(path.join(archiveDir, snapshots[0]), 'utf-8'));
+    expect(snapshot).toEqual(original);
+
+    const installed = JSON.parse(fs.readFileSync(livePath, 'utf-8'));
+    expect(installed).toEqual(updated);
+  });
+
+  test('refuses and leaves the live file untouched when validateStateWrite would reject the write', () => {
+    const dir = makeTempDir('triage-install-');
+    tempDirs.push(dir);
+    const livePath = path.join(dir, 'findings-ledger.json');
+    const archiveDir = path.join(dir, 'archive');
+    const original = { refreshed_at: '2026-08-01T00:00:00.000Z', next_id: 2, findings: [finding({ id: 'F-00001', deferred_to_issue: 545 })] };
+    fs.writeFileSync(livePath, JSON.stringify(original));
+    const before = fs.readFileSync(livePath, 'utf-8');
+
+    const updated = { refreshed_at: '2026-09-07T00:00:00.000Z', next_id: 2, findings: [] as LedgerFinding[] };
+
+    const result = installTriagedLedger(livePath, archiveDir, updated);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBeDefined();
+
+    expect(fs.readFileSync(livePath, 'utf-8')).toBe(before);
+    expect(fs.existsSync(`${livePath}.tmp`)).toBe(false);
   });
 });
 
