@@ -427,6 +427,49 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
       expect(totalOccurrences).toBe(392);
     });
   });
+
+  // Issue #870 regression lock — binding design decision (c): a sibling-plugin-defer event
+  // (`tier: 'defer'`) must never be folded into a V-HOOK-0N finding. This asserts the ingestion
+  // *result*, not TIER_VCODE's key list, so it would still fail if a future contributor added a
+  // 'defer' entry to that map even without touching this test.
+  test('issue #870 — tier defer is never ingested into any V-HOOK-0N finding', () => {
+    withTempDir('hook-triage-', (repoRoot) => {
+      const eventsDir = path.join(repoRoot, '.blackhole', 'hook-events');
+      fs.mkdirSync(eventsDir, { recursive: true });
+      const eventFile = path.join(eventsDir, 'defer-event.json');
+      fs.writeFileSync(
+        eventFile,
+        JSON.stringify({
+          version: 1,
+          recorded_at: '2026-09-07T00:00:00.000Z',
+          hook: 'validate-bash-command',
+          tool: 'Bash',
+          decision: 'allow',
+          tier: 'defer',
+          pattern_id: 'sibling-plugin-defer',
+          reason: 'blackhole standing down: sibling mercure plugin detected, .blackhole/config.json absent',
+          worktree: null,
+          detail: 'some command',
+        }),
+        'utf-8',
+      );
+
+      const ledger = { refreshed_at: '2026-09-07T00:00:00.000Z', next_id: 1, findings: [] as [] };
+
+      const { ingested, ledger: updated, consumedFiles } = ingestHookEvents({
+        repoRoot,
+        queueIssues: {},
+        ledger,
+      });
+
+      expect(ingested).toBe(0);
+      expect(updated.findings).toHaveLength(0);
+      expect(consumedFiles).toHaveLength(0);
+      // Never consumed, so archiveConsumedFiles would never touch it either — the file must
+      // still be sitting here, un-archived, for a human to grep directly.
+      expect(fs.existsSync(eventFile)).toBe(true);
+    });
+  });
 });
 
 // Task 8 — the `main()` CLI entrypoint the turn-start step invokes. Runs against THIS repo's

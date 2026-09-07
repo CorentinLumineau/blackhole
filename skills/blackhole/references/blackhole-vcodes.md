@@ -135,6 +135,10 @@ longer definitions (token cost, drift). Persist every finding to
 | V-MPARITY-02 | Vendored mercure V-code snapshot (`documentation/audits/mercure-vcode-snapshot.json`) staleness — `synced_at` older than `MERCURE_VCODE_SNAPSHOT_STALE_DAYS` (issue #869) | WARN | scripts/checks/vcode-parity.check.ts |
 | V-CTRLCHAR-01 | A tracked file contains a NUL byte or other always-illegal C0 control byte (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F, excluding tab/newline/CR), unless the path is declared `binary` in `.gitattributes` (issue #945 — PR #944's invisible-NUL shape) | BLOCK | scripts/checks/control-char.check.ts |
 
+`V-HOOK-02`'s row above does not cover the sibling-plugin-defer event (`pattern_id:
+sibling-plugin-defer`, `tier: defer`) introduced by issue #870 — that event is never ingested by
+Triage and carries no V-code (`src/references/hook-schemas.md` § PreToolUse hook events).
+
 **BLOCK** = must fix before merge (or escalate to user with justification).
 **WARN** = fix or document deferral in PR and ledger.
 Reviewers return findings as V-codes with file:line.
