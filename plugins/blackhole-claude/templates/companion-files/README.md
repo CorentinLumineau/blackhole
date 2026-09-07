@@ -75,7 +75,7 @@ repo's scaffold regardless of whether that repo has opted into the kind that rea
 
 Creating `documentation/reference/journeys.md` under `documentation/` means `doc-health.check.ts`'s
 `V-DOCHEALTH-02` requires it to have a `documentation/INDEX.md` row — the scaffold upserts that
-row automatically: at bootstrap via `--upsert-journeys-index`, and at implement-time (for a
+row automatically: at bootstrap via `--backfill-journeys-summary`, and at implement-time (for a
 `journeys.md` created by an older campaign build) via `runCompanionFileSync`'s unconditional
 check. No manual `documentation/INDEX.md` edit is needed.
 

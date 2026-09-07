@@ -112,13 +112,13 @@ describe('cwd-pin-guard sweep scope', () => {
   });
 
   test('flags the bootstrap-scaffold companion-file-sync.ts invocation shape when unpinned', () => {
-    const bad = '   `bun run scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index` to';
+    const bad = '   `bun run scripts/lib/companion-file-sync.ts --repo-root <path> --backfill-journeys-summary` to';
     expect(findMissingCwdPin(bad, 'src/SKILL.md')).toEqual(['src/SKILL.md:1']);
   });
 
   test('does not flag the bootstrap-scaffold invocation once --cwd matches --repo-root', () => {
     const good =
-      '   `bun run --cwd <path> scripts/lib/companion-file-sync.ts --repo-root <path> --upsert-journeys-index` to';
+      '   `bun run --cwd <path> scripts/lib/companion-file-sync.ts --repo-root <path> --backfill-journeys-summary` to';
     expect(findMissingCwdPin(good, 'src/SKILL.md')).toEqual([]);
   });
 });

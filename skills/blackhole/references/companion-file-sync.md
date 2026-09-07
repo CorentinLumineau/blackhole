@@ -93,16 +93,9 @@ from this `summary` field, so the repair no longer touches `documentation/INDEX.
 
 **Repair**: `repairJourneysSummary` — inserts a `summary: "..."` line into `journeys.md`'s
 frontmatter immediately after its `type:` line. No-op (returns `null`) when `journeys.md` is
-absent or already carries a `summary:` field.
-
-**CLI flag naming note**: the bootstrap-time invocation (`src/SKILL.md` Phase 0 step 2) still
-spells this flag `--upsert-journeys-index` — the name predates issue #832 and was not renamed
-alongside the behavior change. It calls the same `repairJourneysSummary` function described
-above, not an index-row upsert. Renaming the flag is a CLI surface change reaching
-`scripts/lib/companion-file-sync.ts`, `src/SKILL.md` and its generated mirrors,
-`templates/companion-files/README.md` and its mirrors, and
-`scripts/verify.cwd-pin-guard.test.ts` — out of scope for this docs-only fix (issue #947);
-left as a documented mismatch rather than silently implied to match current behavior.
+absent or already carries a `summary:` field. CLI-reachable via
+`scripts/lib/companion-file-sync.ts --repo-root <path> --backfill-journeys-summary`
+(`src/SKILL.md` Phase 0 step 2, issue #955).
 
 ## Out of scope (this reference)
 
@@ -112,7 +105,7 @@ left as a documented mismatch rather than silently implied to match current beha
 - Monorepo per-package `ARCHITECTURE.md` / `AGENTS.md` auto-walk
 - `journeys.md`'s own *creation* stays bootstrap-only (`src/SKILL.md` Phase 0 step 2), never
   implement-time — only the summary-frontmatter repair above runs at implement-time (also
-  reachable at bootstrap via the `--upsert-journeys-index` CLI flag, see naming note above)
+  reachable at bootstrap via the `--backfill-journeys-summary` CLI flag)
 
 ## Ledger contract
 

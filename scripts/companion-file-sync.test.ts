@@ -251,6 +251,74 @@ describe('companion-file-sync journeys summary repair (issue #728, retargeted is
   });
 });
 
+// Issue #955 — the CLI flag renamed from its retired predecessor to --backfill-journeys-summary
+// (issue #832 / ADR-031 Phase 2 already retargeted the repair itself; only the flag string was
+// left behind). Same Bun.spawn subprocess convention as scripts/carry-staged-artifacts.test.ts.
+// The retired flag's literal name is assembled at runtime (never written verbatim in source)
+// so this permanent regression fixture does not itself count as a residual caller under the
+// repo-wide zero-residual sweep (Task Breakdown "Repo-wide zero-residual sweep").
+describe('companion-file-sync CLI — --backfill-journeys-summary flag (issue #955)', () => {
+  const scriptsDir = path.join(root, 'scripts');
+  const scriptPath = path.join(scriptsDir, 'lib', 'companion-file-sync.ts');
+  const journeysRelPath = path.join('documentation', 'reference', 'journeys.md');
+  const RETIRED_FLAG = '--' + ['upsert', 'journeys', 'index'].join('-');
+
+  const run = (args: string[]) =>
+    Bun.spawn(['bun', 'run', scriptPath, ...args], { cwd: scriptsDir, stdout: 'pipe', stderr: 'pipe' });
+
+  const writeJourneysDocMissingSummary = (repo: string): void => {
+    fs.mkdirSync(path.join(repo, 'documentation', 'reference'), { recursive: true });
+    fs.writeFileSync(
+      path.join(repo, journeysRelPath),
+      '---\ntype: reference\nstatus: template\n---\n\n# User Journeys\n',
+      'utf-8',
+    );
+  };
+
+  test('--backfill-journeys-summary backfills summary: and reports V-ADA-09 on stdout', async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'companion-file-sync-cli-'));
+    try {
+      writeJourneysDocMissingSummary(repo);
+      const proc = run(['--repo-root', repo, '--backfill-journeys-summary']);
+      const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+      expect(code).toBe(0);
+      const parsed = JSON.parse(stdout);
+      expect(parsed.repairs).toEqual([
+        {
+          vcode: 'V-ADA-09',
+          file: journeysRelPath,
+          action: 'backfilled summary frontmatter on documentation/reference/journeys.md',
+        },
+      ]);
+      const content = fs.readFileSync(path.join(repo, journeysRelPath), 'utf-8');
+      expect(content).toContain('summary:');
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('the retired predecessor flag no longer performs the repair — falls through to USAGE/exit-2', async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'companion-file-sync-cli-'));
+    try {
+      writeJourneysDocMissingSummary(repo);
+      const proc = run(['--repo-root', repo, RETIRED_FLAG]);
+      const [code, stdout, stderr] = await Promise.all([
+        proc.exited,
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+      expect(code).toBe(2);
+      expect(stderr).toContain('Usage:');
+      expect(stdout).toBe('');
+      // The repair must not have fired despite the (now-unrecognized) old flag being passed.
+      const content = fs.readFileSync(path.join(repo, journeysRelPath), 'utf-8');
+      expect(content).not.toContain('summary:');
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('fixtures/companion-file-sync', () => {
   const fixtureRoot = path.join(root, 'fixtures', 'companion-file-sync');
 
