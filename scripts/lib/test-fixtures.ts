@@ -288,18 +288,61 @@ export const writeCampaignConfig = (mainRepo: string, config: Record<string, unk
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
 };
 
+export type WriteInstalledPluginsOptions = {
+  /** When `true`, each plugin key gets a real `installPath` directory (never the literal string
+   * `/fake/path`) containing a valid `hooks/hooks.json` (one `Bash`-matcher `PreToolUse` entry)
+   * plus its referenced, non-empty script — the fixture shape `isPluginHealthy` (issue #969)
+   * reads as healthy. Omitted or `false` (the default) is byte-for-byte identical to this
+   * function's pre-#969 behavior: `installPath: '/fake/path'`, nothing written to disk. */
+  healthy?: boolean;
+};
+
 /** Writes `<claudeHome>/plugins/installed_plugins.json` with a `plugins` map keyed by
  * `pluginKeys` (e.g. `mercure@some-marketplace`), each carrying one placeholder row — the shape
  * `sibling-plugin-guard.js` reads (issue #870) and `hook-sources.ts` already reads for a
  * different purpose (#912). Tests exercising the sibling-plugin-defer guard write a minimal
  * fixture through this one helper rather than hand-rolling the file shape at each call site,
- * mirroring `writeCampaignConfig` above. */
-export const writeInstalledPlugins = (claudeHome: string, pluginKeys: string[]): void => {
+ * mirroring `writeCampaignConfig` above. See `WriteInstalledPluginsOptions.healthy` (issue #969)
+ * for the opt-in mode that also populates a real, health-check-passing `installPath` on disk. */
+export const writeInstalledPlugins = (
+  claudeHome: string,
+  pluginKeys: string[],
+  opts: WriteInstalledPluginsOptions = {},
+): void => {
   const dir = path.join(claudeHome, 'plugins');
   fs.mkdirSync(dir, { recursive: true });
   const plugins: Record<string, unknown[]> = {};
   for (const key of pluginKeys) {
-    plugins[key] = [{ scope: 'user', installPath: '/fake/path', version: '0.0.0' }];
+    if (opts.healthy) {
+      const slug = key.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const installPath = path.join(claudeHome, 'plugin-installs', slug);
+      const hooksDir = path.join(installPath, 'hooks');
+      fs.mkdirSync(hooksDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(hooksDir, 'validate-bash-command.js'),
+        '#!/usr/bin/env bun\n// healthy fixture stub (issue #969) — never executed, only statSync-checked\n',
+        'utf-8',
+      );
+      const hooksManifest = {
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: 'Bash',
+              hooks: [
+                {
+                  type: 'command',
+                  command: 'bun run ${CLAUDE_PLUGIN_ROOT}/hooks/validate-bash-command.js',
+                },
+              ],
+            },
+          ],
+        },
+      };
+      fs.writeFileSync(path.join(hooksDir, 'hooks.json'), JSON.stringify(hooksManifest, null, 2), 'utf-8');
+      plugins[key] = [{ scope: 'user', installPath, version: '0.0.0' }];
+    } else {
+      plugins[key] = [{ scope: 'user', installPath: '/fake/path', version: '0.0.0' }];
+    }
   }
   fs.writeFileSync(path.join(dir, 'installed_plugins.json'), JSON.stringify({ plugins }, null, 2), 'utf-8');
 };

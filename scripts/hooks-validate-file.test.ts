@@ -1286,10 +1286,13 @@ describe('mainCloneRoot — routine absence vs. anomalous git failure (#889)', (
 // docstring for the full rationale; assertions here use the system-path block tier
 // (`/etc/passwd`) as the "normal checks still run" probe in place of `rm -rf /`.
 describe('validate-file-changes.js — sibling mercure defer (#870)', () => {
-  test('defer: sibling mercure registered + no .blackhole/config.json → allow silently, one defer event', async () => {
+  test('defer: sibling mercure registered, healthy install, no .blackhole/config.json → allow silently, one defer event', async () => {
     const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-870-home-')));
     try {
-      writeInstalledPlugins(claudeHome, ['mercure@some-marketplace']);
+      // Issue #969, Task 9 — re-verified red-before-green against the extended fixture (binding
+      // constraint 3): see the mirrored comment in hooks-validate-bash.test.ts's own updated
+      // test for the full rationale.
+      writeInstalledPlugins(claudeHome, ['mercure@some-marketplace'], { healthy: true });
       await withTempGitRepo('blackhole-hook-870-', async (repo) => {
         const result = await runPreToolUseHook(
           SCRIPT,
@@ -1472,6 +1475,227 @@ describe('validate-file-changes.js — sibling mercure defer (#870)', () => {
       });
     } finally {
       fs.rmSync(claudeHome, { recursive: true, force: true });
+    }
+  });
+});
+
+// Issue #969 — health leg regression matrix, mirrored from hooks-validate-bash.test.ts's own
+// block. Extends the #870 matrix above with the narrower manifest-declared-but-script-missing
+// detection (binding constraint 1 — does NOT cover the ADR-030/#800 stale-cache class). Every
+// ambiguous health-check outcome fails closed toward staying active (binding constraint 5) —
+// asserted here by proving the normal `/etc/passwd` block-tier pattern still fires.
+const writeMercureHooksJson = (
+  installPath: string,
+  mode: 'no-hooks-json' | 'malformed' | 'missing-script' | 'empty-script' | 'healthy',
+): void => {
+  if (mode === 'no-hooks-json') return;
+  const hooksDir = path.join(installPath, 'hooks');
+  fs.mkdirSync(hooksDir, { recursive: true });
+  if (mode === 'malformed') {
+    fs.writeFileSync(path.join(hooksDir, 'hooks.json'), '{ not json', 'utf-8');
+    return;
+  }
+  const manifest = {
+    hooks: {
+      PreToolUse: [
+        {
+          matcher: 'Write|Edit',
+          hooks: [{ type: 'command', command: 'bun run ${CLAUDE_PLUGIN_ROOT}/hooks/validate-file-changes.js' }],
+        },
+      ],
+    },
+  };
+  fs.writeFileSync(path.join(hooksDir, 'hooks.json'), JSON.stringify(manifest), 'utf-8');
+  if (mode === 'missing-script') return;
+  fs.writeFileSync(
+    path.join(hooksDir, 'validate-file-changes.js'),
+    mode === 'empty-script' ? '' : '// stub\n',
+    'utf-8',
+  );
+};
+
+type MercureRow = { scope: 'user' | 'project'; projectPath?: string; installPath: string };
+
+const writeMercureInstalledPlugins = (claudeHome: string, rows: MercureRow[]): void => {
+  const dir = path.join(claudeHome, 'plugins');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'installed_plugins.json'),
+    JSON.stringify({ plugins: { 'mercure@some-marketplace': rows } }, null, 2),
+    'utf-8',
+  );
+};
+
+describe('validate-file-changes.js — sibling mercure health check (#969)', () => {
+  test('defer: mercure registered (project-scope row), healthy install, no config → tier defer', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-home-')));
+    const installPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-install-')));
+    try {
+      writeMercureHooksJson(installPath, 'healthy');
+      await withTempGitRepo('blackhole-hook-969-', async (repo) => {
+        writeMercureInstalledPlugins(claudeHome, [{ scope: 'project', projectPath: repo, installPath }]);
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+        expect(result.exitCode).toBe(0);
+        const events = readHookEvents(repo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ tier: 'defer', pattern_id: 'sibling-plugin-defer' });
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+      fs.rmSync(installPath, { recursive: true, force: true });
+    }
+  });
+
+  test('stay-active: mercure registered, installPath hooks.json absent, no config → normal checks still run', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-home-')));
+    const installPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-install-')));
+    try {
+      writeMercureHooksJson(installPath, 'no-hooks-json');
+      await withTempGitRepo('blackhole-hook-969-', async (repo) => {
+        writeMercureInstalledPlugins(claudeHome, [{ scope: 'user', installPath }]);
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+      fs.rmSync(installPath, { recursive: true, force: true });
+    }
+  });
+
+  test('stay-active: hooks.json present but malformed JSON → normal checks still run', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-home-')));
+    const installPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-install-')));
+    try {
+      writeMercureHooksJson(installPath, 'malformed');
+      await withTempGitRepo('blackhole-hook-969-', async (repo) => {
+        writeMercureInstalledPlugins(claudeHome, [{ scope: 'user', installPath }]);
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+      fs.rmSync(installPath, { recursive: true, force: true });
+    }
+  });
+
+  test('stay-active: hooks.json present, referenced script missing on disk → normal checks still run', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-home-')));
+    const installPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-install-')));
+    try {
+      writeMercureHooksJson(installPath, 'missing-script');
+      await withTempGitRepo('blackhole-hook-969-', async (repo) => {
+        writeMercureInstalledPlugins(claudeHome, [{ scope: 'user', installPath }]);
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+      fs.rmSync(installPath, { recursive: true, force: true });
+    }
+  });
+
+  test('stay-active: hooks.json present, referenced script exists but zero-length → normal checks still run', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-home-')));
+    const installPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-install-')));
+    try {
+      writeMercureHooksJson(installPath, 'empty-script');
+      await withTempGitRepo('blackhole-hook-969-', async (repo) => {
+        writeMercureInstalledPlugins(claudeHome, [{ scope: 'user', installPath }]);
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+      fs.rmSync(installPath, { recursive: true, force: true });
+    }
+  });
+
+  test('defer: two candidate rows — stale user-scope row + healthy project-scope row → project-scope preferred (binding constraint 4)', async () => {
+    const claudeHome = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-home-')));
+    const staleInstallPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-stale-')));
+    const healthyInstallPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-969-healthy-')));
+    try {
+      writeMercureHooksJson(staleInstallPath, 'missing-script'); // unhealthy — must NOT be read
+      writeMercureHooksJson(healthyInstallPath, 'healthy');
+      await withTempGitRepo('blackhole-hook-969-', async (repo) => {
+        writeMercureInstalledPlugins(claudeHome, [
+          { scope: 'user', installPath: staleInstallPath },
+          { scope: 'project', projectPath: repo, installPath: healthyInstallPath },
+        ]);
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          writePayload('/etc/passwd'),
+          repo,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          claudeHome,
+        );
+        expect(result.exitCode).toBe(0);
+        const events = readHookEvents(repo);
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({ tier: 'defer', pattern_id: 'sibling-plugin-defer' });
+      });
+    } finally {
+      fs.rmSync(claudeHome, { recursive: true, force: true });
+      fs.rmSync(staleInstallPath, { recursive: true, force: true });
+      fs.rmSync(healthyInstallPath, { recursive: true, force: true });
     }
   });
 });

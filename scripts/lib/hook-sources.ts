@@ -1,4 +1,19 @@
 import * as path from 'path';
+import { root } from './build/paths.ts';
+
+// Issue #969, Task 5 — `extractCommandPath` and the candidate-row filter below used to be
+// private to this file; they now live in `templates/hooks/pretooluse/utils/installed-plugin-
+// rows.js` (the shipped CommonJS tree) and are `require()`d from there, mirroring the existing
+// `require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', '<file>.js'))` CJS/ESM interop precedent
+// already used in `scripts/hooks-validate-bash.test.ts`/`hooks-validate-file.test.ts`. Canonical
+// home is the shipped tree, not here, because only the scripts/lib -> templates/hooks import
+// direction is safe (this dev-time module always runs from inside a full repo checkout; the
+// reverse direction — a shipped hook reaching into scripts/lib/, which does not exist inside an
+// installed plugin cache — is not). One implementation, dual-consumed by this file and
+// `sibling-plugin-guard.js`'s health leg, not two independently-drifting regexes (V-INT-02).
+const { selectCandidateInstalledPluginRows, extractCommandPath } = require(
+  path.join(root, 'templates', 'hooks', 'pretooluse', 'utils', 'installed-plugin-rows.js'),
+);
 
 // Issue #912 (ADR-044) — enumeration half of the widened plugin-drift signal. Claude Code
 // composes PreToolUse hooks from every enabled source and merges them deny-wins with no
@@ -97,9 +112,7 @@ function enumerateRepoBuildSource(inputs: HookSourceInputs): HookSource {
 function enumeratePluginCacheSources(inputs: HookSourceInputs): HookSource[] {
   const file = readJson<InstalledPluginsFile>(inputs.readFile, inputs.installedPluginsPath);
   const rows = file?.plugins?.[inputs.pluginKey] ?? [];
-  const candidates = rows.filter(
-    (row) => row.scope === 'user' || (row.scope === 'project' && row.projectPath === inputs.repoRoot),
-  );
+  const candidates: InstalledPluginRow[] = selectCandidateInstalledPluginRows(rows, inputs.repoRoot);
 
   if (candidates.length === 0) {
     return [
@@ -131,17 +144,6 @@ function enumeratePluginCacheSources(inputs: HookSourceInputs): HookSource[] {
       commit_sha: typeof row.gitCommitSha === 'string' ? row.gitCommitSha : null,
     };
   });
-}
-
-// Extracts a plausible script path from a hook command string — enough to name and locate the
-// script for a `present`/file-kind check, not a full shell parser. Prefers a single-quoted path
-// (the observed convention for this kind of registration), falling back to the first bare
-// `/`- or `~`-rooted token ending in a common script extension.
-function extractCommandPath(command: string): string | null {
-  const quoted = command.match(/'([^']+\.(?:sh|js|ts))'/);
-  if (quoted) return quoted[1];
-  const bare = command.match(/(~?\/[^\s'"]+\.(?:sh|js|ts))/);
-  return bare ? bare[1] : null;
 }
 
 // Layers 3 (user `~/.claude/settings.json`) and 4 (`.claude/settings.local.json`) are read
