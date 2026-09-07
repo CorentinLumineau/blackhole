@@ -26,6 +26,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { rotateHookEvents } = require('./hook-event-rotation');
 
 /** Credential-shaped literals are masked before anything is written to disk. The warn tier exists
  * precisely because a command may carry a secret, and recording it verbatim would move that secret
@@ -455,6 +456,12 @@ const recordEvent = (event) => {
   const cwd = event.cwd || process.cwd();
   const override = process.env.BLACKHOLE_HOOK_EVENT_DIR;
   let dir;
+  // Set only on the ordinary main-clone-resolution branch below — never on the
+  // `BLACKHOLE_HOOK_EVENT_DIR` override branch (an explicit sink is always a test/inspection
+  // target, never the interactive session rotation exists for) and never on the anomalous
+  // `CLAUDE_PROJECT_DIR` fallback branch (a git-broken repository is not the ordinary
+  // "no campaign here" case this gate targets). Rotation runs only when this is non-null.
+  let rotationRoot = null;
   if (override) {
     dir = override;
   } else {
@@ -481,6 +488,7 @@ const recordEvent = (event) => {
       return;
     } else {
       dir = path.join(destRoot, '.blackhole', 'hook-events');
+      rotationRoot = destRoot;
     }
   }
   const payload = {
@@ -503,6 +511,16 @@ const recordEvent = (event) => {
     fs.writeFileSync(path.join(dir, `${unique}.json`), `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
   } catch (err) {
     console.error(`[blackhole-hook] could not record ${event.tier} event (${event.pattern_id}): ${err.message}`);
+    return;
+  }
+  // Best-effort, same posture as the write above: a rotation failure of any kind is logged and
+  // dropped, never allowed to escape recordEvent and alter the caller's allow/deny decision.
+  if (rotationRoot) {
+    try {
+      if (hasNoCampaignConfig(rotationRoot)) rotateHookEvents(dir);
+    } catch (err) {
+      console.error(`[blackhole-hook] hook-event rotation failed: ${err.message}`);
+    }
   }
 };
 
@@ -560,6 +578,22 @@ const allowSilently = () => process.exit(0);
  * prevent. Same helper for both failure sites — pattern load (main() below) and stdin parse
  * (readHookInput's caller, above) — distinguished only by `patternId`/`label` so the record and
  * the stderr message say which one actually failed. */
+/** True only when `<mainClone>/.blackhole/config.json` is absent (`ENOENT`) — the fail-closed
+ * "no live campaign" read shared by `sibling-plugin-guard.js`'s defer gate and the hook-event
+ * rotation gate `recordEvent` above wires up: present, or any other stat outcome (an unreadable
+ * directory, a permission error), folds to `false`. Both callers treat `false` as their own
+ * safer default — staying active in the defer guard's case, not sweeping in rotation's case —
+ * so an ambiguous read never accidentally grants either mechanism a broader condition than
+ * "genuinely, unambiguously no campaign here." */
+const hasNoCampaignConfig = (mainClone) => {
+  try {
+    fs.statSync(path.join(mainClone, '.blackhole', 'config.json'));
+    return false;
+  } catch (error) {
+    return Boolean(error && error.code === 'ENOENT');
+  }
+};
+
 const failClosed = ({ hook, tool, error, patternId = 'pattern-load-failure', label = 'pattern data', cwd }) => {
   const failurePhrase =
     patternId === 'uncaught-validator-error'
@@ -587,6 +621,7 @@ module.exports = {
   readScratchpadDir,
   readAssignedWorktreeRoot,
   readHookInput,
+  hasNoCampaignConfig,
   recordEvent,
   denyAndRecord,
   warnAndRecord,

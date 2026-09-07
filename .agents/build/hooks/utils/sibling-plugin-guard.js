@@ -32,7 +32,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { mainCloneRoot } = require('./hook-event-log');
+const { mainCloneRoot, hasNoCampaignConfig } = require('./hook-event-log');
 const { selectCandidateInstalledPluginRows } = require('./installed-plugin-rows');
 const { isPluginHealthy } = require('./sibling-plugin-health');
 
@@ -85,13 +85,7 @@ const shouldDeferToMercure = (cwd = process.cwd()) => {
   if (!preferred || typeof preferred.installPath !== 'string') return false;
   if (!isPluginHealthy(preferred.installPath)) return false;
 
-  try {
-    fs.statSync(path.join(mainClone, '.blackhole', 'config.json'));
-    return false; // config present — this IS a campaign session, blackhole stays active
-  } catch (error) {
-    if (error && error.code === 'ENOENT') return true; // config absent — defer to mercure
-    return false; // any other stat error is ambiguous — fail closed toward staying active
-  }
+  return hasNoCampaignConfig(mainClone);
 };
 
 module.exports = {

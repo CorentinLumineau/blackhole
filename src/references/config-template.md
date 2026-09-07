@@ -197,3 +197,21 @@ Runtime state files (gitignored in consumer repos):
 On first bootstrap, copy template to runtime if missing fields — do not
 overwrite existing runtime config without user confirmation.
 
+### Environment Variable Overrides
+
+Every field above is a `.blackhole/config.json` key. This section is for the one tunable
+(issue #970) that deliberately is **not**: the PreToolUse hooks' `.blackhole/hook-events/`
+rotation mechanism (`src/references/hook-schemas.md` § "Rotation") only ever sweeps when
+`.blackhole/config.json` is **absent** — a config-file-sourced setting would be definitionally
+unreadable in the one context that mechanism runs in, so it is read from the environment
+instead.
+
+| Variable | Default | Description |
+|----------|---------|--------------|
+| `BLACKHOLE_HOOK_EVENT_RETENTION_DAYS` | `14` | Age, in days, past which a `.blackhole/hook-events/` file becomes eligible for the sentinel-gated rotation sweep to archive into `.blackhole/archive/hook-events-rotated-<ts>/`. Any non-positive-integer value (unset, non-numeric, `0`, negative, fractional) falls back to the default rather than throwing. |
+
+This is not a registry of every pre-existing `BLACKHOLE_*` hook environment variable
+(`BLACKHOLE_HOOK_EVENT_DIR`, `BLACKHOLE_ASSIGNED_WORKTREE`, `BLACKHOLE_SCRATCHPAD_DIR`,
+`BLACKHOLE_CLAUDE_HOME`) — those are pre-existing, undocumented-here debt out of this issue's
+scope; only the rotation tunable is registered.
+

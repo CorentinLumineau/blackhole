@@ -3623,6 +3623,44 @@ describe('validate-bash-command.js — main-clone git working-tree-mutation guar
   });
 });
 
+// hook-event-log.js's `hasNoCampaignConfig` — the fail-closed ".blackhole/config.json absent"
+// read shared by sibling-plugin-guard.js's defer gate and the hook-event rotation gate.
+// Direct-import, mirroring hooks-sibling-plugin-health.test.ts's style for the sibling utils
+// modules under templates/hooks/pretooluse/utils/ (V-INT-01).
+describe('hook-event-log.js — hasNoCampaignConfig', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+
+  test('true when .blackhole/config.json is absent (ENOENT)', async () => {
+    await withTempGitRepo('blackhole-hook-970-config-', async (repo) => {
+      const { hasNoCampaignConfig } = hookEventLog();
+      expect(hasNoCampaignConfig(repo)).toBe(true);
+    });
+  });
+
+  test('false when .blackhole/config.json is present', async () => {
+    await withTempGitRepo('blackhole-hook-970-config-', async (repo) => {
+      writeCampaignConfig(repo, { repo: 'owner/name' });
+      const { hasNoCampaignConfig } = hookEventLog();
+      expect(hasNoCampaignConfig(repo)).toBe(false);
+    });
+  });
+
+  test('false (ambiguous, fail closed) on any other stat error — an unreadable parent directory', async () => {
+    if (process.getuid && process.getuid() === 0) return; // root bypasses permission bits
+    await withTempGitRepo('blackhole-hook-970-config-', async (repo) => {
+      const blackholeDir = path.join(repo, '.blackhole');
+      fs.mkdirSync(blackholeDir, { recursive: true });
+      fs.chmodSync(blackholeDir, 0o000);
+      try {
+        const { hasNoCampaignConfig } = hookEventLog();
+        expect(hasNoCampaignConfig(repo)).toBe(false);
+      } finally {
+        fs.chmodSync(blackholeDir, 0o755);
+      }
+    });
+  });
+});
+
 // Issue #870 — sibling mercure defer/stay-active/fail-closed matrix. When a sibling `mercure`
 // plugin is registered and the calling repo's main clone has no `.blackhole/config.json` (an
 // interactive, non-campaign session), blackhole's own validator stands down silently and cedes
@@ -4047,5 +4085,57 @@ describe('validate-bash-command.js — sibling mercure health check (#969)', () 
       fs.rmSync(staleInstallPath, { recursive: true, force: true });
       fs.rmSync(healthyInstallPath, { recursive: true, force: true });
     }
+  });
+});
+
+// Issue #970 — hook-event rotation gate wiring. `recordEvent` calls `rotateHookEvents` after a
+// successful write, but only in a non-campaign session (`.blackhole/config.json` absent) — the
+// one context where nothing else ever prunes `.blackhole/hook-events/`. Exercised end to end
+// through the real subprocess (not a direct import) because the gate lives inside `recordEvent`,
+// reached only via the hook script's own deny/warn/defer paths.
+describe('recordEvent — hook-event rotation gate wiring (#970)', () => {
+  const denyingBashCommand = ['rm', '-rf', '/'].join(' ');
+
+  test('non-campaign session: a stale pre-existing event file is archived on the next recordEvent call', async () => {
+    await withTempGitRepo('blackhole-hook-970-rotate-', async (repo) => {
+      const eventsDir = path.join(repo, '.blackhole', 'hook-events');
+      fs.mkdirSync(eventsDir, { recursive: true });
+      const stalePath = path.join(eventsDir, 'stale-event.json');
+      fs.writeFileSync(stalePath, '{}', 'utf-8');
+      const staleSeconds = (Date.now() - 15 * 24 * 60 * 60 * 1000) / 1000; // 15 days old (> 14-day default)
+      fs.utimesSync(stalePath, staleSeconds, staleSeconds);
+
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(denyingBashCommand), repo);
+
+      expect(result.exitCode).toBe(2);
+      expect(fs.existsSync(stalePath)).toBe(false);
+      const archiveRoot = path.join(repo, '.blackhole', 'archive');
+      const archivedDirs = fs.existsSync(archiveRoot) ? fs.readdirSync(archiveRoot) : [];
+      expect(archivedDirs.some((d) => d.startsWith('hook-events-rotated-'))).toBe(true);
+
+      // The newly-recorded block event for this same call is untouched — only the pre-existing
+      // stale file was eligible.
+      const events = readHookEvents(repo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ tier: 'block', pattern_id: 'rm-rf-root' });
+    });
+  });
+
+  test('campaign session (.blackhole/config.json present): a stale pre-existing event file is left untouched', async () => {
+    await withTempGitRepo('blackhole-hook-970-rotate-', async (repo) => {
+      writeCampaignConfig(repo, { repo: 'owner/name' });
+      const eventsDir = path.join(repo, '.blackhole', 'hook-events');
+      fs.mkdirSync(eventsDir, { recursive: true });
+      const stalePath = path.join(eventsDir, 'stale-event.json');
+      fs.writeFileSync(stalePath, '{}', 'utf-8');
+      const staleSeconds = (Date.now() - 15 * 24 * 60 * 60 * 1000) / 1000;
+      fs.utimesSync(stalePath, staleSeconds, staleSeconds);
+
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(denyingBashCommand), repo);
+
+      expect(result.exitCode).toBe(2);
+      expect(fs.existsSync(stalePath)).toBe(true);
+      expect(fs.existsSync(path.join(repo, '.blackhole', 'archive'))).toBe(false);
+    });
   });
 });
