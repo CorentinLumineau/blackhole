@@ -29,7 +29,7 @@ This note is the consumer graph for `V-SCOPE-03` planning — update it when imp
 `runChecks(): CheckResult[]`, and aggregates results. Any change to the `CheckResult` shape
 is **BREAKING** for all rows below.
 
-## `CheckResult` consumers (57 modules)
+## `CheckResult` consumers (58 modules)
 
 All paths are repo-relative. Imports verified against `main` at issue #410; refreshed at issue
 #462 (added `hooks.check.ts`, `stop-mode.check.ts` — both landed on `main` since #410 and were
@@ -61,7 +61,12 @@ independently of #945's own addition — `argv-flags-adoption.check.ts`,
 `new-file-test-pairing.check.ts`, `read-json-file.check.ts`, `vcode-parity.check.ts` — landed on
 `main` since #882 and never added to this table; re-measured with the § Maintenance `rg`
 commands rather than hand-incrementing: 57 `*.check.ts` modules import from `check-utils.ts`
-today).
+today); refreshed again at #960 (added `check-utils-blast-radius.check.ts` — the drift this note
+describes now has a mechanical enforcement point instead of only prose prescription; re-measured
+with the § Maintenance `rg` commands after the new module and its paired test file landed: 58
+`*.check.ts` modules import from `check-utils.ts` today, and `check-utils.ts`'s own header
+comment is now checked against a live scan by `V-BLASTRADIUS-01` on every `bun run verify`,
+closing the recurring six-time drift — #410/#462/#498/#570/#882/#945 — this history documents).
 
 | Consumer | Imports from `check-utils.ts` | Role |
 |----------|-------------------------------|------|
@@ -76,6 +81,7 @@ today).
 | `scripts/checks/audit-modules.check.ts` | `root`, `read`, `CheckResult` | Reviewer audit-module registry checks |
 | `scripts/checks/build-input-dirs.check.ts` | `root`, `CheckResult` | Build-input-only directory / INCLUDE-marker-site checks |
 | `scripts/checks/build.check.ts` | `root`, `CheckResult` | Build output parity checks |
+| `scripts/checks/check-utils-blast-radius.check.ts` | `root`, `read`, `CheckResult` | This file's own header-vs-live-scan drift checks |
 | `scripts/checks/checkpoint.check.ts` | `read`, `CheckResult` | Checkpoint protocol checks |
 | `scripts/checks/claude-dist.check.ts` | `root`, `CheckResult` | Claude marketplace dist checks |
 | `scripts/checks/claude-native-settings.check.ts` | `root`, `CheckResult` | Claude native settings checks |
@@ -123,7 +129,7 @@ today).
 | `scripts/checks/vocabulary.check.ts` | `root`, `CheckResult` | Vocabulary / naming checks |
 | `scripts/checks/worker-git-safety.check.ts` | `read`, `CheckResult` | Worker git safety checks |
 
-**Count:** 57 `*.check.ts` domain modules + `verify.ts` = **58** direct `CheckResult` consumers.
+**Count:** 58 `*.check.ts` domain modules + `verify.ts` = **59** direct `CheckResult` consumers.
 
 ## `root`-only consumer (no `CheckResult`)
 
@@ -169,16 +175,18 @@ reconciliation. Re-run all three and update every consumer of the corresponding 
 
 ```bash
 # 1. This table's own scope — *.check.ts domain modules + verify.ts (the "Count:" line above).
-rg -l "from ['\"].*check-utils" scripts/checks/*.check.ts scripts/verify.ts | wc -l   # 58
+rg -l "from ['\"].*check-utils" scripts/checks/*.check.ts scripts/verify.ts | wc -l   # 59
 
 # 2. Every scripts/ file (tests and utility scripts included) importing anything from
 #    check-utils.ts — a strict superset of #1. This is what check-utils.ts's own header
-#    comment ("Dependency blast-radius (N direct consumers)") should always match.
-rg -l "from ['\"].*check-utils" scripts --glob '!wt-*' | wc -l                        # 86
+#    comment ("Dependency blast-radius (N direct consumers)") should always match — and, as of
+#    issue #960, is now mechanically enforced by V-BLASTRADIUS-01
+#    (scripts/checks/check-utils-blast-radius.check.ts) rather than only prescribed here.
+rg -l "from ['\"].*check-utils" scripts --glob '!wt-*' | wc -l                        # 92
 
 # 3. Files anywhere under scripts/ that import the `read` symbol specifically — a subset of
 #    #2, orthogonal to #1 (a file can import `read` without being a *.check.ts module, e.g.
 #    scripts/lib/check-common.ts's readComposedAgentDoc).
 rg -l "from ['\"].*check-utils" scripts --glob '!wt-*' \
-  | xargs grep -lE "import\s*\{[^}]*\bread\b" | wc -l                              # 42
+  | xargs grep -lE "import\s*\{[^}]*\bread\b" | wc -l                              # 44
 ```

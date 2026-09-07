@@ -90,6 +90,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-UI-01 | UI Interpretation Gate — a `route.ui: true`, non-`size:xs` issue merged with `ui_gate` absent or `pending` (not `approved`) in the plan frontmatter | BLOCK | reviewer.md § UI Interpretation Gate Audit |
 | V-PERF-01 | Performance Budget — no N+1 queries, unindexed sorts, sync I/O in hot path, full-table scans, or unbounded pagination for a budgeted component | BLOCK | reviewer.md § Performance Budget Audit |
 | V-PERF-02 | Performance Budget — diff touching a budgeted component does not regress against its documented threshold | WARN | reviewer.md § Performance Budget Audit |
+| V-BLASTRADIUS-01 | check-utils.ts header's declared direct-consumer count diverges from a live scripts/**/*.ts import scan (recurring silent drift — #410/#462/#498/#570/#882/#945/#960) | BLOCK | scripts/checks/check-utils-blast-radius.check.ts |
 | V-BRANCH-01 | Force-push to protected branches (main, master, release/*) | BLOCK | phase-review.md (pre-merge gate) |
 | V-BRANCH-02 | Direct commit to main/master without review and approval | BLOCK | reviewer.md § PR & Git Hygiene |
 | V-BRANCH-03 | Branch name does not match blackhole/issue-N convention. mercure's `V-BRANCH-03` is a distinct meaning (`feature-branch.N` naming convention, MEDIUM) — a cross-plugin ID collision, documented not renumbered per ADR-021 D5 / ADR-024 D4 (issue #869) | WARN | phase-implement.md (worktree/branch creation checklist) |
