@@ -225,3 +225,16 @@ phased-migration threshold; single-campaign delivery is safe.
   `inline-schema-drift.check.ts`'s `EXCLUDED_REFERENCE_FILES` verified as needing no edit — the
   moved content has no role-named heading immediately preceding a `"status"`-bearing JSON
   block.
+- **2026-09-07 — `scripts/lib/build/facts.ts` grandfather entry retired via targeted split
+  (#952).** ADR-007's 6 Implementation Order items are fully merged (commit `d52aaf8d`,
+  PRs #254-#259). That completion does not, by itself, retire the `CONTENT_GATE_GRANDFATHERED`
+  row for `scripts/lib/build/facts.ts` — its `sunset_adr: 'ADR-007'` citation was a
+  misattribution from the start: the row's own inline comment already disclosed that its
+  actual governing pressure was issue #363's independent `build.test.ts`
+  `MAX_BUILD_MODULE_LOC` SRP gate, unrelated to this ADR's blueprint-v2 toolchain scope.
+  Resolution: extracted the self-contained `CONTENT_GATE_*` config block (2 consumers
+  repo-wide — `scripts/checks/content-gates.check.ts`, `scripts/verify.content-gates.test.ts`)
+  to a new `scripts/lib/build/content-gate-facts.ts`, bringing `facts.ts` back under its
+  `scripts/lib/build/*.ts` class ceiling (287 LOC) with the grandfather row deleted outright
+  rather than re-cited to a different ADR — matching this ADR's own precedent that retirement
+  means removal, never re-pointing at a new ADR to keep a row alive.
