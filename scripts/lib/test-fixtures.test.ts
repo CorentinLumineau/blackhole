@@ -9,6 +9,7 @@ import {
   runGit,
   withLinkedWorktree,
   withTempDir,
+  writeInstalledPlugins,
 } from './test-fixtures.ts';
 
 describe('withTempDir', () => {
@@ -53,6 +54,48 @@ describe('populateClaudeFixtureTree', () => {
       populateClaudeFixtureTree(destRoot);
       expect(fs.existsSync(path.join(destRoot, '.claude-plugin', 'plugin.json'))).toBe(true);
       expect(fs.existsSync(path.join(destRoot, 'agents'))).toBe(true);
+    });
+  });
+});
+
+// Issue #969, Task 2 — `writeInstalledPlugins`'s pre-existing default mode is asserted
+// byte-for-byte unchanged (constraint 3: a silent behavior change here would flip every
+// existing #870 defer-test fixture from testing defer to testing stay-active without anyone
+// noticing), and the new `{ healthy: true }` mode is asserted to produce a real, on-disk
+// install that `isPluginHealthy` (added in a later task) can read as healthy.
+describe('writeInstalledPlugins (#969)', () => {
+  test('default (no opts) mode is unchanged: installPath is the literal /fake/path string, nothing written to disk', () => {
+    withTempDir('test-fixtures-installed-plugins-default', (claudeHome) => {
+      writeInstalledPlugins(claudeHome, ['mercure@some-marketplace']);
+      const manifestPath = path.join(claudeHome, 'plugins', 'installed_plugins.json');
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      expect(manifest.plugins['mercure@some-marketplace'][0].installPath).toBe('/fake/path');
+      expect(fs.existsSync('/fake/path')).toBe(false);
+      expect(fs.existsSync(path.join(claudeHome, 'plugin-installs'))).toBe(false);
+    });
+  });
+
+  test('{ healthy: true } mode writes a real installPath with a parseable hooks.json and a non-empty referenced script', () => {
+    withTempDir('test-fixtures-installed-plugins-healthy', (claudeHome) => {
+      writeInstalledPlugins(claudeHome, ['mercure@some-marketplace'], { healthy: true });
+      const manifestPath = path.join(claudeHome, 'plugins', 'installed_plugins.json');
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      const installPath = manifest.plugins['mercure@some-marketplace'][0].installPath;
+      expect(typeof installPath).toBe('string');
+      expect(installPath).not.toBe('/fake/path');
+
+      const hooksJsonPath = path.join(installPath, 'hooks', 'hooks.json');
+      const hooksManifest = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf-8'));
+      const entries = hooksManifest.hooks.PreToolUse;
+      expect(Array.isArray(entries)).toBe(true);
+      expect(entries.length).toBeGreaterThan(0);
+
+      const command: string = entries[0].hooks[0].command;
+      const scriptPath = command.replace('${CLAUDE_PLUGIN_ROOT}', installPath).match(/(\S+\.js)$/)?.[1];
+      expect(typeof scriptPath).toBe('string');
+      const stat = fs.statSync(scriptPath as string);
+      expect(stat.isFile()).toBe(true);
+      expect(stat.size).toBeGreaterThan(0);
     });
   });
 });

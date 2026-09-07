@@ -51,7 +51,7 @@ session-start signal (`.blackhole/plugin-drift.json`, `blackhole-state.md` § Pl
 covers the residual gap this gate cannot see: a PR correctly bumps the version, but nobody ever
 runs the refresh path above afterward.
 
-## Sibling mercure defer (issue #870)
+## Sibling mercure defer (issue #870, health leg issue #969)
 
 blackhole's fork of these two hooks (`validate-bash-command.js`, `validate-file-changes.js`)
 runs alongside mercure's own, independently-versioned copy when both plugins are installed
@@ -59,10 +59,23 @@ side by side — a user in that state used to run **two** PreToolUse validators,
 lists, on every Bash/Write/Edit call. `utils/sibling-plugin-guard.js`'s `shouldDeferToMercure`
 runs first, before any pattern is loaded: when (1) a sibling `mercure` plugin is registered in
 `~/.claude/plugins/installed_plugins.json`, (2) the calling repo resolves to a real git main
-clone, and (3) that main clone has no `.blackhole/config.json` — i.e. an interactive,
+clone, (3) that plugin's preferred candidate install (project-scope preferred over user-scope)
+passes a health check — `utils/sibling-plugin-health.js`'s `isPluginHealthy`, added by issue
+#969 — and (4) that main clone has no `.blackhole/config.json` — i.e. an interactive,
 non-campaign session — blackhole stands down silently and cedes the call entirely to mercure's
 own hook, recording a `tier: defer`, `pattern_id: sibling-plugin-defer` event and exiting `0`
 with no pattern checks run at all.
+
+**Health-check scope (issue #969) — read this before assuming more than it detects.** The health
+check verifies only that the registered install's `hooks.json` still declares a `PreToolUse`
+entry whose referenced script exists on disk and is non-empty: the narrower
+manifest-declared-but-script-missing layer. It does **not** detect the ADR-030/issue #800
+stale-cache class — a script file that exists, is non-empty, and is referenced correctly by an
+untouched `hooks.json`, but whose *content* is stale or broken. A plugin cache left stale after a
+merged fix (issue #800's own failure mode) still reads as healthy under this check; closing that
+gap would need reading or executing the sibling's own code, a strictly worse trade this check
+deliberately does not make (see the design note this issue implemented,
+`.blackhole/plans/issue-969-design.md`'s turn-19 gate).
 
 The defer record is **human-greppable only**. Triage never ingests it into
 `findings-ledger.json` (`scripts/lib/hook-event-triage.ts`'s `TIER_VCODE` map has no `defer`
@@ -73,12 +86,11 @@ A fresh reader of this section alone can therefore correctly conclude: the defer
 purely so an operator can confirm after the fact that blackhole stood down for a given call, not
 so any automated process acts on it.
 
-Any detection ambiguity — an unreadable/malformed `installed_plugins.json`, no git context, or
-an anomalous main-clone resolution failure — fails closed toward **not** deferring: blackhole's
-own validators stay active rather than risk silently ceding containment to a possibly-stale or
-absent sibling hook.
+Any detection ambiguity — an unreadable/malformed `installed_plugins.json`, no git context, no
+candidate install row, a failing health check, or an anomalous main-clone resolution failure —
+fails closed toward **not** deferring: blackhole's own validators stay active rather than risk
+silently ceding containment to a possibly-stale or absent sibling hook.
 
-Two follow-ups are logged, out of this mechanism's scope:
+One follow-up remains logged, out of this mechanism's scope:
 
-- Health-based (rather than registration-based) sibling detection — issue #969.
 - Rotation/cleanup for `.blackhole/hook-events/` in the non-campaign context — issue #970.
