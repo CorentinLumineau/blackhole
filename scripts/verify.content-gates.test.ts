@@ -20,7 +20,7 @@ import {
   CONTENT_GATE_GRANDFATHERED,
   CONTENT_GATE_WARN_RATIO,
   type ContentGateBudget,
-} from './lib/build/facts.ts';
+} from './lib/build/content-gate-facts.ts';
 
 // V-CONTENTGATE-01 (ADR-007 T6/R3′, generalized issue #323): declared-budget section/file-size
 // gate. Inline fixtures cover the parser, the glob-class resolver, and the violation-finding
@@ -381,6 +381,10 @@ describe('findUncitedGrandfatherAdrs (V-CONTENTGATE-03, issue #722)', () => {
 });
 
 describe('CONTENT_GATE_BUDGETS integration (real repo content, zero false positives)', () => {
+  test('has no grandfather entry for scripts/lib/build/facts.ts — retired after the content-gate config split (issue #952)', () => {
+    expect(CONTENT_GATE_GRANDFATHERED.find((g) => g.file === 'scripts/lib/build/facts.ts')).toBeUndefined();
+  });
+
   test('is keyed by glob class only — exactly the 5 declared classes, no per-file key', () => {
     expect(Object.keys(CONTENT_GATE_BUDGETS).sort()).toEqual(
       [

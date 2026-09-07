@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
-import { CONTENT_GATE_BOUNDARY_UNITS, CONTENT_GATE_BUDGETS, CONTENT_GATE_GRANDFATHERED, CONTENT_GATE_WARN_RATIO } from '../lib/build/facts.ts';
-import type { ContentGateBudget, ContentGateGrandfather } from '../lib/build/facts.ts';
+import { CONTENT_GATE_BOUNDARY_UNITS, CONTENT_GATE_BUDGETS, CONTENT_GATE_GRANDFATHERED, CONTENT_GATE_WARN_RATIO } from '../lib/build/content-gate-facts.ts';
+import type { ContentGateBudget, ContentGateGrandfather } from '../lib/build/content-gate-facts.ts';
 
 // ADR-007 T5/R2' — content-gates.check.ts: declared-budget section/file-size gate (split from
 // the former catch-all check file, issue #322; generalized from a single hardcoded file to a

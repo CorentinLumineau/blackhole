@@ -87,9 +87,9 @@ this plan is about to create belongs under Touch-Paths, never here — `critical
 - [ ] **Verify Integrity**: Verify all tests and lints are clean (use the project's test and lint commands). — **AC**: full suite green, lint clean, both quoted in the completion evidence.
 - [ ] Task steps (with any [NEEDS CLARIFICATION: ...] markers if needed) — **AC**: <machine-verifiable condition for this task; Standard track only, BLOCKING per Step 8's `ac_mapping` check>.
 
-Never bump a `scripts/lib/build/facts.ts` `§ facts` value (`VCODE_TABLE_ROW_COUNT`,
-`EXPECTED_CHECK_COUNT`-style successor counters, `CONTENT_GATE_BUDGETS` entries,
-`DOC_HEALTH_THRESHOLDS` values, or any future addition to that block) as a literal number pair
+Never bump a `scripts/lib/build/facts.ts` or `content-gate-facts.ts` `§ facts` value
+(`VCODE_TABLE_ROW_COUNT`, `EXPECTED_CHECK_COUNT`-style successor counters, `CONTENT_GATE_BUDGETS`
+entries, `DOC_HEALTH_THRESHOLDS` values, or any future addition to either block) as a literal number pair
 frozen at plan time (e.g. "bump `VCODE_TABLE_ROW_COUNT` from `89` to `90`") — the live count keeps
 moving between plan time and implement time (issue #769). State the AC as a re-derivation
 instruction to run at implement time instead: read the live value via its parser (e.g.
