@@ -4,7 +4,7 @@ summary: "Architecture entry point pointing to the durable ARCHITECTURE.md narra
 status: current
 review_trigger: "on build target change"
 created: 2026-07-06
-last_updated: 2026-09-04
+last_updated: 2026-09-12
 ---
 
 # Architecture — Repository Map
@@ -82,7 +82,7 @@ should be hand-edited directly — changes made there are overwritten on the nex
 | Path(s) | Platform | Consumer | Edit via `src/` only? |
 |---------|----------|----------|------------------------|
 | `skills/`, root `agents/`, `references/`, `rules/` | skills.sh (flat registry) | skills.sh marketplace | Edit via `src/` only — never hand-edit. |
-| `.cursor/` | Cursor | Cursor IDE agent/rules/skills loader | Edit via `src/` only — never hand-edit. |
+| `.cursor/` | Cursor | Cursor IDE agent/rules/skills loader | Edit via `src/` only — never hand-edit. `.cursor/environment.json` and `.cursor/settings.json` are copied from `templates/cursor-cloud/` during Target B (`copyCursorCloudConfig`) so `cleanDir(.cursor)` cannot drop the Cloud Agent plugin bootstrap. |
 | `.claude/` | Claude Code | maintainer-local, not an install path (ADR-009) — auto-discovered only when this repo itself is opened in Claude Code, never redistributed | Edit via `src/` only — never hand-edit. |
 | `.claude-plugin/` (`plugin.json`, `marketplace.json`) + `plugins/blackhole-claude/` | Claude Code | Claude Code marketplace install (`/plugin marketplace add` + `/plugin install`) — `marketplace.json`'s `source` resolves to `plugins/blackhole-claude/`, the isolated bundle that ships `agents/` (ADR-009). The root `plugin.json` beside it is **maintainer-surface**: an install-trace shows it never reaches the installed plugin, and it is retained for the release version-parity gate (ADR-038) | Edit via `src/` only — never hand-edit. |
 | `codex-agents/` + `codex-skills/` + `.codex-plugin/` + `codex-marketplace.json` | Codex CLI | Codex plugin + marketplace manifest — the marketplace `source` is the repository itself, so all four ship together. `.codex-plugin/plugin.json`'s `skills` key resolves `codex-skills/`; `codex-agents/` is **shipped-unreferenced** — delivered by the same install, referenced by no manifest, kept (ADR-038) | Edit via `src/` only — never hand-edit. |

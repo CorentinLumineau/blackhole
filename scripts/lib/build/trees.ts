@@ -5,6 +5,21 @@ import { root, srcDir, templatesDir } from './paths.ts';
 import { compileFolder, processFile } from './content.ts';
 import type { Target } from './facts.ts';
 
+/** Cloud Agent env + plugin enablement. Not compiled from src/; copied after cleanDir(.cursor). */
+export const CURSOR_CLOUD_TEMPLATE_FILES = ['environment.json', 'settings.json'] as const;
+
+export const copyCursorCloudConfig = (cursorRoot: string) => {
+  const src = path.join(templatesDir, 'cursor-cloud');
+  fs.mkdirSync(cursorRoot, { recursive: true });
+  for (const file of CURSOR_CLOUD_TEMPLATE_FILES) {
+    const from = path.join(src, file);
+    if (!fs.existsSync(from)) {
+      throw new Error(`copyCursorCloudConfig: missing ${from}`);
+    }
+    fs.copyFileSync(from, path.join(cursorRoot, file));
+  }
+};
+
 /** Copies templates/companion-files/ (repo root, not src/) into destRoot's own
  * templates/companion-files/ subtree. Isolated distribution bundles need their own copy since
  * they don't ship at the repo root: the Gemini/Antigravity bundle (plugins/blackhole/) and, since

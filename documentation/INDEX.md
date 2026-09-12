@@ -179,3 +179,4 @@
 | reviews/review-refactor-build-named-flags-plumbing-for-build-targets-v-tree-01-tree-registry-ch.md | Review artifact for issue #724 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Review artifact for issue #704 (LGTM) | review | current | on file change |
 | reviews/review-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | Review artifact for issue #713 (LGTM) | review | current | on file change |
+| runbooks/cloud-agent-plugins.md | Cloud Agents on this repo install Mercure and Blackhole from GitHub, not the marketplace cache | runbook | current | on file change |

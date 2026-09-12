@@ -32,6 +32,13 @@ Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/blackhole/SKIL
 | `investigator` | Evidence-gathering for router re-route checkpoints | Handle spawns `investigator` for `research` when `route.needs_research`, or `investigate` when `route.needs_investigation` |
 | `hunter` | Read-only kaizen improvement scanner (ADR-006) | Spawned for one hunt wave of one kind (`quickwins`, `best-practices`, `coverage`, `refactor`, `bug`, `retrospective`, `parity`, `ux-coherence`, `docs`, `backlog`, `ci`, `deps`, `perf`) per spawn during a kaizen campaign |
 
+## Cloud Agent plugins
+
+Cursor Cloud VMs on this repo install Mercure and Blackhole from GitHub (not the marketplace
+cache) via `scripts/cloud-agent-plugins.sh`, driven by `.cursor/environment.json` (`install` +
+`start`). Edit the SSOT at `templates/cursor-cloud/`, then `bun run build`. Runbook:
+[`documentation/runbooks/cloud-agent-plugins.md`](documentation/runbooks/cloud-agent-plugins.md).
+
 ## Installation
 
 See [README.md](README.md#-installation-paths) for Cursor submodule, Claude marketplace, Codex CLI, and skills.sh setup.

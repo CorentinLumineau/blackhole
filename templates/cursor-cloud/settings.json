@@ -1,0 +1,10 @@
+{
+  "plugins": {
+    "mercure/mercure": {
+      "enabled": true
+    },
+    "blackhole/blackhole": {
+      "enabled": true
+    }
+  }
+}
