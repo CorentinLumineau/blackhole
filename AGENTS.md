@@ -19,6 +19,15 @@ Campaign protocol state (queue, ledger, plans) lives only under `.blackhole/` â€
 
 Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/blackhole/SKILL.md`](.cursor/skills/blackhole/SKILL.md) (Cursor), or [`codex-skills/blackhole/SKILL.md`](codex-skills/blackhole/SKILL.md) (Codex).
 
+## Opportunistic hygiene (always on)
+
+Warnings, misconfiguration, and log / console / runner noise are never dropped:
+**file a forge issue at minimum**, and **fix in the same pass when reasonably possible**.
+SSOT: [`.cursor/rules/opportunistic-fix.mdc`](.cursor/rules/opportunistic-fix.mdc) (`alwaysApply`).
+Claude Code companion: [`.claude/rules/opportunistic-fix.md`](.claude/rules/opportunistic-fix.md).
+Yields to Blackhole never-drop / V-HUNT â€” do not duplicate those policies, and do not treat
+this duty as a license to run the full suite locally.
+
 ## Agent roster
 
 | Agent | Role | Trigger |
