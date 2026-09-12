@@ -41,7 +41,7 @@ import {
   buildClaudeMarketplace,
   buildAgentPluginsManifest,
 } from './manifests.ts';
-import { compileGeminiTree, compileCodexTree, copyHooksDir, writeGeminiManifest } from './trees.ts';
+import { compileGeminiTree, compileCodexTree, copyHooksDir, copyCursorCloudConfig, writeGeminiManifest } from './trees.ts';
 import { mergeClaudeSettingsHooks } from './claude-native-settings.ts';
 
 const version = projectIdentity.version;
@@ -100,6 +100,7 @@ export const compileCursorTarget = () => {
     }
   };
   copyMaintainerCursorRules(path.join(root, '.cursor', 'rules'));
+  copyCursorCloudConfig(path.join(root, '.cursor'));
   compileFolder('agents', path.join(root, '.cursor', 'agents'), cursorAgentDir, cursorVcodesPath, 'cursor', true);
   processFile(path.join(srcDir, 'SKILL.md'), path.join(root, 'skills', 'blackhole', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');
   processFile(path.join(srcDir, 'SKILL.md'), path.join(root, '.cursor', 'skills', 'blackhole', 'SKILL.md'), cursorAgentDir, cursorVcodesPath, 'cursor');

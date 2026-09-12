@@ -1,0 +1,9 @@
+{
+  "name": "Blackhole",
+  "repositoryDependencies": [
+    "github.com/CorentinLumineau/blackhole",
+    "github.com/CorentinLumineau/mercure"
+  ],
+  "install": "export PATH=\"${HOME}/.bun/bin:/usr/local/bin:${PATH}\"\ncd /workspace\nbun install\nif [ -f scripts/cloud-agent-plugins.sh ]; then bash scripts/cloud-agent-plugins.sh || true; fi",
+  "start": "export PATH=\"${HOME}/.bun/bin:/usr/local/bin:${PATH}\"\ncd /workspace\nif [ -f scripts/cloud-agent-plugins.sh ]; then bash scripts/cloud-agent-plugins.sh || true; fi"
+}

@@ -130,6 +130,10 @@ git submodule add https://github.com/CorentinLumineau/blackhole .cursor
 ```
 Cursor auto-discovers `agents/`, `rules/`, `skills/` from the submodule.
 
+Cursor Cloud Agents on **this** repository clone Mercure and Blackhole from GitHub (never a
+stale marketplace cache) via `scripts/cloud-agent-plugins.sh`. See
+[Cloud Agent plugins](documentation/runbooks/cloud-agent-plugins.md).
+
 ### Claude Code (marketplace)
 ```bash
 /plugin marketplace add https://github.com/CorentinLumineau/blackhole
