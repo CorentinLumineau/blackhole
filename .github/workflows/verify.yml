@@ -46,6 +46,16 @@ jobs:
       # mirrors match their sources. A build earlier in this same job would silently regenerate
       # a stale mirror before that assertion runs, turning it into a tautology that passes
       # whether or not the committed output is actually in sync.
+
+      # `bun run test` carries --timeout 60000 (package.json), not bun's 5000ms default. Many
+      # test files here spawn subprocesses and a few shell out to a full build or a full verify
+      # run; those finish well under a second on an idle machine, but were measured crossing
+      # 5000ms on this self-hosted runner, which runs them while the rest of the suite competes
+      # for the same cores. 5000ms was acting as a performance assertion those tests never meant
+      # to make — 60000ms is a deadlock guard instead. The tradeoff is accepted deliberately: a
+      # genuinely hung test now takes a minute to fail rather than five seconds.
+      # bunfig.toml's [test] timeout key is NOT a substitute — bun 1.4.2 parses it without error
+      # and ignores it, so the CLI flag is the only lever that actually takes effect.
       - name: Run test suite
         run: bun run test
 

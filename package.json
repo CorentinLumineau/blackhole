@@ -11,7 +11,7 @@
     "verify:codex": "bun run scripts/verify.ts",
     "release": "bun run scripts/release.ts",
     "status": "bun run scripts/campaign-status.ts",
-    "test": "bun test"
+    "test": "bun test --timeout 60000"
   },
   "dependencies": {},
   "devDependencies": {
