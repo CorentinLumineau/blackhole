@@ -22,6 +22,11 @@ jobs:
     # pull_request runs attacker-controllable fork code — never schedule it on the self-hosted
     # runner (public repo). Trusted push/tag events keep the self-hosted MacBook runner.
     runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["self-hosted", "mba"]') }}
+    # There is exactly one self-hosted runner, so a wedged job blocks every later run in this
+    # repo until it is reaped. GitHub's default ceiling is 360 minutes; observed real durations
+    # here are 245s-1055s (PR runs on ubuntu-latest: 43-54s), so 30 minutes sits ~1.7x above the
+    # worst run actually seen while cutting a hang's blast radius from six hours to half an hour.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -84,6 +89,9 @@ jobs:
     name: Release Notes Gate
     runs-on: [self-hosted, mba]
     if: startsWith(github.ref, 'refs/tags/v')
+    # Checkout plus a shell existence check — seconds of real work. Same single-runner reasoning
+    # as the job above; the ceiling is here to bound a hang, not to pace the work.
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
