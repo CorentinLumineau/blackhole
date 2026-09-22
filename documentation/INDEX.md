@@ -19,6 +19,7 @@
 | audits/autonomous-workflow-parity.md | Autonomous workflow parity audit against mercure's thinking-route coverage | analysis | draft | on ADR acceptance |
 | audits/build-tree-install-resolution.md | Build-tree install resolution audit for the multi-target build pipeline | analysis | current | on release |
 | audits/documentation-framework-alignment.md | Documentation-framework alignment audit that identified the gaps this issue closes | analysis | draft | on mercure release |
+| audits/full-audit.md | Full-codebase x-analyze audit (coverage + best-practices + ux): 87.4% line coverage with 3 test-isolation failures in hook-event-triage.test.ts that CI cannot see, a verified security-relevant coverage gap in carry-target-allowlist.ts's reject branch that the coverage tool reports as 100%, SOLID/DRY debt concentrated in the shared PreToolUse hook modules, no UX findings (CLI-only tool), and a post-audit discovery that main has been red since 2026-09-07 on the self-hosted runner while PRs go green on ubuntu-latest. Remediation filed as epic #978. | analysis | current | on file change |
 | audits/mercure-companion-files-gap-analysis.md | Gap analysis of mercure companion-file (V-ADA) protocol coverage in blackhole | analysis | current | on protocol change |
 | audits/mercure-parity-matrix.md | Mechanism-by-mechanism parity matrix between mercure and blackhole | reference | current | on release |
 | audits/mercure-parity-surface.md | Survey of the mercure surface blackhole parity work targets | research | current | on ADR acceptance |
