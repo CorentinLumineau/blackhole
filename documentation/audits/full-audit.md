@@ -1,16 +1,16 @@
 ---
 type: analysis
-summary: "Full-codebase x-analyze audit (coverage + best-practices + ux): 87.4% line coverage with 3 test-isolation failures in hook-event-triage.test.ts that CI cannot see, a verified security-relevant coverage gap in carry-target-allowlist.ts's reject branch that the coverage tool reports as 100%, SOLID/DRY debt concentrated in the shared PreToolUse hook modules, no UX findings (CLI-only tool), and a post-audit discovery that main has been red since 2026-09-07 on the self-hosted runner while PRs go green on ubuntu-latest. Remediation filed as epic #978."
+summary: "Full-codebase x-analyze audit (coverage + best-practices + ux): 87.4% line coverage with 3 test-isolation failures in hook-event-triage.test.ts that CI cannot see, a verified security-relevant coverage gap in carry-target-allowlist.ts's reject branch that the coverage tool reports as 100%, SOLID/DRY debt concentrated in the shared PreToolUse hook modules, no UX findings (CLI-only tool), and a post-audit discovery that main was red from 2026-09-07 on the self-hosted runner while PRs went green on ubuntu-latest (resolved 2026-09-22 by #987). Remediation filed as epic #978."
 status: current
 created: 2026-09-22
-last_updated: 2026-09-22
+last_updated: 2026-09-23
 review_trigger: "on file change"
 ---
 
 # Full Audit Report
 
 **Date**: 2026-09-22
-**Scope**: Codebase root (`/Users/morphism/Documents/git/blackhole`)
+**Scope**: Codebase root (repo root)
 **Analyzer**: x-analyze (all modes: coverage, best-practices, ux)
 
 ## Mode Score Summary
@@ -100,7 +100,7 @@ No V-SEC, V-SOLID-01/03 CRITICAL, or V-DRY-01 (>10-line duplication) instances f
 5. `scripts/checks/adr-status.check.ts:118-207` — V-DRY-02/perf: 4 check functions each independently `fs.readdirSync`+`fs.readFileSync` the same ADR files (up to 4x redundant I/O per `bun run verify` pass). **VERIFIED**. Same file as the coverage-gap finding above.
 6. `scripts/lib/worker-json/validate.ts:11-28` — V-SOLID-02 minor: `switch(role)` dispatch; a `Record<Role, validator>` lookup makes role-addition a pure-addition change.
 
-**Watch only, no action needed**: `scripts/review-aggregate.ts`, `scripts/design-aggregate.ts`, `scripts/campaign-resume-signal.ts` (300+ lines but well-factored pure-function pipelines, not God-objects); `src/agents/planner.md` (506 lines, under its grandfathered 712-line ceiling).
+**Watch only, no action needed**: `scripts/review-aggregate.ts`, `scripts/design-aggregate.ts`, `scripts/campaign-resume-signal.ts` (300+ lines but well-factored pure-function pipelines, not God-objects); `src/agents/planner.md` (543 lines, under its grandfathered 712-line ceiling).
 
 ## Mode: UX
 
@@ -143,15 +143,15 @@ Ranked by x-synthesizer (Pareto 80/20). `[multi-mode]` = confirmed by 2+ modes.
 One finding surfaced while filing this report's issues, outside the three mode audits. It is
 recorded here because it changes how the rest of this report should be read.
 
-**`main` has been red since 2026-09-07** — five consecutive failing Verify runs. Two subprocess
+**`main` was red from 2026-09-07** — five consecutive failing Verify runs. **Resolved 2026-09-22 by #987**, which gave the test suite a deadlock-guard timeout instead of a 5s performance budget; the finding is kept below as the historical record. Two subprocess
 tests exceed bun's 5000ms default timeout on the self-hosted `mba` runner:
 `build.test.ts:1105` (`--all` byte-identical, 5067ms) and `verify.runner.test.ts`
 (`verify.ts CLI subprocess`, 5001ms). Both shell out to a full build or verify run; their passing
 siblings land at 1755–3561ms, so the budget is marginally met rather than comfortably met.
 
-This is invisible on pull requests because `verify.yml:24` routes `pull_request` events to
+This was invisible on pull requests because `verify.yml:24` routes `pull_request` events to
 `ubuntu-latest` (green) and `push` events to the self-hosted runner (red) — so PRs merge green and
-main goes red afterward. Filed as **#984**.
+main went red afterward. Filed as **#984**, closed by #987.
 
 Two consequences for this report:
 
@@ -172,7 +172,7 @@ Epic **#978** tracks the remediation set. Report tracking issue: **#977**.
 | `hook-event-triage.test.ts` clean-repo-root assumption | #981 | s | P1 |
 | `design-track.check.ts` two uninvoked check functions | #982 | s | P2 |
 | `state-write-guard` zero-collapse refusal untested | #983 | s | P1 |
-| `main` red on self-hosted runner (post-audit discovery) | #984 | s | P1 |
+| `main` red on self-hosted runner (post-audit discovery) — **resolved 2026-09-22 by #987** | #984 | s | P1 |
 
 **Deliberately not filed**, with reasons:
 
