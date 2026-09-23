@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { withTempDir } from './test-fixtures.ts';
@@ -483,14 +483,23 @@ describe('main() CLI entrypoint', () => {
   // main() reports failure through the process-global `process.exitCode`; capture it and always
   // restore, so a forced non-zero code never leaks into this test file's own exit status. The
   // `?? 0` is load-bearing: in Bun, assigning `undefined` after a truthy code is a no-op, not a
-  // reset, so only an explicit `0` clears it.
-  const runMain = (repoRoot: string, deps?: Parameters<typeof main>[0]): number | undefined => {
+  // reset, so only an explicit `0` clears it. console.log is captured too, so a test can assert
+  // which branch main() took rather than only that it exited cleanly.
+  const runMain = (
+    repoRoot: string,
+    deps?: Parameters<typeof main>[0],
+  ): { exitCode: number | undefined; logs: string[] } => {
     const originalExitCode = process.exitCode;
     process.exitCode = 0;
+    const logSpy = spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       main(deps, repoRoot);
-      return process.exitCode === undefined ? undefined : Number(process.exitCode);
+      return {
+        exitCode: process.exitCode === undefined ? undefined : Number(process.exitCode),
+        logs: logSpy.mock.calls.map((call) => String(call[0])),
+      };
     } finally {
+      logSpy.mockRestore();
       process.exitCode = originalExitCode ?? 0;
     }
   };
@@ -511,7 +520,10 @@ describe('main() CLI entrypoint', () => {
 
   test('no findings-ledger.json: exits 0 without creating .blackhole/', () => {
     withCampaignDir((repoRoot, campaignDir) => {
-      expect(runMain(repoRoot)).toBe(0);
+      expect(runMain(repoRoot)).toEqual({
+        exitCode: 0,
+        logs: ['hook-event-triage: no findings-ledger.json — nothing to ingest into'],
+      });
       expect(fs.existsSync(campaignDir)).toBe(false);
     });
   });
@@ -521,7 +533,7 @@ describe('main() CLI entrypoint', () => {
       const { ledgerPath, ledgerContent, eventsDir } = seedLedgerAndEvent(campaignDir, 'unused.json');
       fs.rmSync(eventsDir, { recursive: true, force: true });
 
-      expect(runMain(repoRoot)).toBe(0);
+      expect(runMain(repoRoot)).toEqual({ exitCode: 0, logs: ['hook-event-triage: no hook events to ingest'] });
       expect(fs.readFileSync(ledgerPath, 'utf-8')).toBe(ledgerContent);
       expect(fs.existsSync(path.join(campaignDir, 'archive'))).toBe(false);
     });
@@ -536,7 +548,10 @@ describe('main() CLI entrypoint', () => {
       );
       const { ledgerPath, eventsDir } = seedLedgerAndEvent(campaignDir, 'cli-test-event.json');
 
-      expect(runMain(repoRoot)).toBe(0);
+      expect(runMain(repoRoot)).toEqual({
+        exitCode: 0,
+        logs: ['hook-event-triage: ingested 1 event(s) into 1 total findings'],
+      });
       expect(fs.existsSync(path.join(eventsDir, 'cli-test-event.json'))).toBe(false);
 
       const updated = JSON.parse(fs.readFileSync(ledgerPath, 'utf-8'));
@@ -561,7 +576,8 @@ describe('main() CLI entrypoint', () => {
     withCampaignDir((repoRoot, campaignDir) => {
       const { ledgerPath, ledgerContent, eventsDir } = seedLedgerAndEvent(campaignDir, 'guard-refusal-event.json');
 
-      expect(runMain(repoRoot, { validateStateWrite: () => ({ ok: false, reason: 'test-forced-refusal' }) })).toBe(1);
+      const refusingDeps = { validateStateWrite: () => ({ ok: false as const, reason: 'test-forced-refusal' }) };
+      expect(runMain(repoRoot, refusingDeps)).toEqual({ exitCode: 1, logs: [] });
 
       // The refusal must abort before the atomic rename — the live ledger is untouched and the
       // rejected .tmp file is cleaned up, not left behind.
