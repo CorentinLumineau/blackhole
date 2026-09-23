@@ -1,8 +1,9 @@
 ---
 type: research
+summary: "Research for issue #800: Claude Code's installed plugin cache is version-keyed, not content-addressed, so a `templates/hooks/**` change reaches installed copies only after a version bump and reinstall (or the documented `rm -rf ~/.claude/plugins/cache` fallback); `--plugin-dir` is the only cache-bypassing dev path"
 status: current
 created: 2026-09-04
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 review_trigger: "on file change"
 issue: 800
 confidence: 85
