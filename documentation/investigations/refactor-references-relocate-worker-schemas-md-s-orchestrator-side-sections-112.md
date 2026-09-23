@@ -1,6 +1,6 @@
 ---
 type: analysis
-summary: "Investigation for issue #726: the ADR-007 accept-with-expiry amendment does not supersede it (worker-schemas.md's ADR_WATCH_ITEMS revisit trigger is tripped) and orchestrator-runtime.md lacks budget headroom, so the ~112 LOC of orchestrator-side sections should move to a new `flush-request.md` per the issue's own fallback"
+summary: "Investigation for issue #726: the ADR-007 accept-with-expiry amendment does not supersede it (worker-schemas.md's ADR_WATCH_ITEMS revisit trigger is tripped) and orchestrator-runtime.md lacks budget headroom, so the ~112 LOC of orchestrator-side sections should move out of worker-schemas.md, by default to a new `flush-request.md`, with the 43-LOC orchestrator-validation piece's placement left to the planner"
 status: current
 created: 2026-09-04
 last_updated: 2026-09-23
