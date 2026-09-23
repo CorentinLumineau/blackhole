@@ -16,6 +16,7 @@ const { evaluateWorktreeRemoval } = require('./utils/worktree-removal-guard');
 const { evaluateGitMainCloneMutation } = require('./utils/git-main-clone-guard');
 const { evaluateBashWriteTargets } = require('./utils/bash-write-target-guard');
 const { shouldDeferToMercure } = require('./utils/sibling-plugin-guard');
+const { createTierDispatch, BLOCK_ONLY, WARN_ONLY, BLOCK_OR_WARN } = require('./utils/tier-dispatch');
 const {
   readHookInput,
   recordEvent,
@@ -27,28 +28,7 @@ const {
 
 const HOOK = 'validate-bash-command';
 
-const RECORDER_BY_TIER = { block: denyAndRecord, warn: warnAndRecord };
-const BLOCK_ONLY = ['block'];
-const WARN_ONLY = ['warn'];
-const BLOCK_OR_WARN = ['block', 'warn'];
-
-/** Single tier dispatch for every guard verdict (`{ tier, pattern_id, reason }`) in main(). Records
- * and emits the verdict through the recorder for its tier and returns true — the caller then
- * returns. Returns false, recording nothing, for a null verdict or any tier outside
- * `allowedTiers` (including `'allow'`), so the caller falls through to the next check.
- * `allowedTiers` is the ceiling each call site declares for its evaluator: a tier it omits can
- * never be emitted from that site, whatever the evaluator returns. */
-const handleTieredResult = (verdict, { tool, command, allowedTiers }) => {
-  if (!verdict || !allowedTiers.includes(verdict.tier)) return false;
-  RECORDER_BY_TIER[verdict.tier]({
-    hook: HOOK,
-    tool,
-    pattern_id: verdict.pattern_id,
-    reason: verdict.reason,
-    detail: command,
-  });
-  return true;
-};
+const handleTieredResult = createTierDispatch(HOOK, { block: denyAndRecord, warn: warnAndRecord });
 
 const main = () => {
   let input;
