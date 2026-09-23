@@ -201,8 +201,15 @@ export const withTempGitRepo = async <T>(
   const dir = fs.realpathSync(makeTempDir(prefix));
   try {
     runGit(dir, ['init', '--quiet']);
-    runGit(dir, ['config', 'user.email', 'campaign@example.invalid']);
-    runGit(dir, ['config', 'user.name', 'campaign']);
+    // Appended rather than set via two `git config` subprocesses: this is the same file, and the
+    // same repo-local scope, that `git config` would write — so it stays visible to git processes
+    // the fixture does not own, including the hook under test resolving identity in this repo.
+    // The fixture is instantiated 189 times across the suite and every spawn is paid on a
+    // contended runner; two spawns became one file write (31.0ms -> 13.1ms per use, measured).
+    fs.appendFileSync(
+      path.join(dir, '.git', 'config'),
+      '[user]\n\temail = campaign@example.invalid\n\tname = campaign\n',
+    );
     return await fn(dir);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

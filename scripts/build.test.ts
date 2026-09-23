@@ -1093,12 +1093,28 @@ describe('bun run build — tracked ⇒ built-by-default (ADR-007 T2)', () => {
     expect(baseline).not.toContain(':absent');
   });
 
+  // The flagless reference is built once and shared by the three cases below, rather than rebuilt
+  // per flag: each case previously paid two full builds, and on the self-hosted runner those three
+  // tests cost 20.9s between them. Sharing it cannot mask a divergence — each case still runs its
+  // own flagged build and compares that flag's real output against the reference, so a flag that
+  // alters output still fails its own case. What the per-case rebuild covered incidentally is
+  // flagless-build determinism across repeated runs, and that is asserted directly elsewhere: by
+  // the `double compileGeminiTree into independent temp dirs is byte-identical (idempotency)` test
+  // and by CI's own "Verify build is in sync" step.
+  let flaglessBaseline: string | undefined;
+  const flaglessReference = (): string => {
+    if (flaglessBaseline === undefined) {
+      const flagless = runBuild([]);
+      expect(flagless.status).toBe(0);
+      flaglessBaseline = snapshotTargets([...GEMINI_TARGET_DIRS, ...CODEX_TARGET_DIRS]);
+    }
+    return flaglessBaseline;
+  };
+
   test.each(['--gemini', '--all', '--no-codex'])(
     '%s is a behaviorally no-op alias producing byte-identical output to the flagless run',
     (flag) => {
-      const flagless = runBuild([]);
-      const baseline = snapshotTargets([...GEMINI_TARGET_DIRS, ...CODEX_TARGET_DIRS]);
-      expect(flagless.status).toBe(0);
+      const baseline = flaglessReference();
 
       const flagged = runBuild([flag]);
       const afterFlagged = snapshotTargets([...GEMINI_TARGET_DIRS, ...CODEX_TARGET_DIRS]);
