@@ -1,6 +1,6 @@
 ---
 type: analysis
-summary: "Full-codebase x-analyze audit (coverage + best-practices + ux): 87.4% line coverage with 3 test-isolation failures in hook-event-triage.test.ts that CI cannot see, a verified security-relevant coverage gap in carry-target-allowlist.ts's reject branch that the coverage tool reports as 100%, SOLID/DRY debt concentrated in the shared PreToolUse hook modules, no UX findings (CLI-only tool), and a post-audit discovery that main was red from 2026-09-07 on the self-hosted runner while PRs went green on ubuntu-latest (resolved 2026-09-22 by #987). Remediation filed as epic #978."
+summary: "Full-codebase x-analyze audit (coverage + best-practices + ux): 87.4% line coverage with 3 test-isolation failures in hook-event-triage.test.ts that CI cannot see, a carry-target-allowlist.ts reject-branch gap later corrected to the CLI boundary only (unit-level rejection was already tested; closed by #994), SOLID/DRY debt concentrated in the shared PreToolUse hook modules, no UX findings (CLI-only tool), and a post-audit discovery that main was red from 2026-09-07 on the self-hosted runner while PRs went green on ubuntu-latest (resolved 2026-09-22 by #987). Remediation filed as epic #978."
 status: current
 created: 2026-09-22
 last_updated: 2026-09-23
@@ -33,7 +33,7 @@ Ran `bun test --coverage`: 2668 tests across 147 files, 2665 pass / 3 fail, 6378
 
 | File | Coverage | Finding | Effort |
 |------|----------|---------|--------|
-| `scripts/lib/carry-target-allowlist.ts` (`isCarryTargetAllowed`) | 100% (false negative) | Reject branch for in-repo-root-but-outside-allowlist targets (e.g. `package.json`, `.git/hooks/*`) has zero test coverage. Security-relevant: this is issue #784 AC1's whole reason for existing — a staged-artifact carry step could target CI config or git hooks. **VERIFIED** | S |
+| `scripts/lib/carry-target-allowlist.ts` (`isCarryTargetAllowed`) | 100% (accurate — see correction) | Reject branch for in-repo-root-but-outside-allowlist targets (e.g. `package.json`, `.git/hooks/*`) has zero test coverage. Security-relevant: this is issue #784 AC1's whole reason for existing — a staged-artifact carry step could target CI config or git hooks. **VERIFIED** *(Corrected 2026-09-23: the "zero test coverage" claim was wrong. `scripts/lib/carry-staged-artifacts.test.ts:472-494` has had a `test.each` table since 883e56bd (#810, 2026-09-03) asserting `isCarryTargetAllowed` rejects `package.json`, `.github/workflows/verify.yml`, `.git/hooks/pre-commit`, `scripts/foo.ts`, `src/agents/planner.md`, `.claude/settings.json` and four `documentation/../` traversal forms, and lines 644-727 assert `carryManifest` skips those targets without writing them. The 100% figure was accurate, not a false negative. The only real gap was the CLI boundary — no `scripts/carry-staged-artifacts.test.ts` case drove a rejected target through the subprocess entrypoint — closed by #994 for #979.)* | S |
 | `scripts/checks/adr-status.check.ts` | 49.10% lines / 74.07% funcs | Divergence-detection branches (INDEX-vs-frontmatter mismatch, missing supersession citation) uncovered; enforces V-ADR-01/02/03/04. Also flagged by Best-Practices for redundant I/O — see Cross-Mode Priorities. | M |
 | `scripts/checks/design-track.check.ts` | 40.91% lines | `checkDesignTrackTemplate()` (lines 20-31) and `checkDesignAutonomyGateGrounding()` (lines 49-66) are defined but never called by any test. Feeds the V-AUTO-01 BLOCK gate. **VERIFIED** | S/M |
 | `scripts/lib/state-write-guard.ts` | 56.25% lines / 50% funcs | `--allow-shrink` / zero-collapse-refusal logic at lines 36-82 (refusal itself at 70-71) is uncovered. This is the single-writer atomic-write guard for `queue.json`/`findings-ledger.json` — the direct fix for the historical issue #489 zero-byte-file incident. *(Corrected citation — original scan cited lines 89-130, which is CLI-parsing code; verification found the real logic at 36-82.)* | S |
@@ -121,7 +121,7 @@ Ranked by x-synthesizer (Pareto 80/20). `[multi-mode]` = confirmed by 2+ modes.
 | # | Tier | Mode(s) | File:Line | Issue | Effort |
 |---|------|---------|-----------|-------|--------|
 | 1 | Active red signal | Coverage | `scripts/lib/hook-event-triage.test.ts` (`main()` block) | 3 failing tests — test-isolation bug, `.blackhole/` dir leaks into test run. **VERIFIED** → **#981** | S |
-| 2 | Security gap | Coverage | `scripts/lib/carry-target-allowlist.ts` (`isCarryTargetAllowed`) | Reject-branch coverage gap, feeds issue #784 AC1's threat model. **VERIFIED** → **#979** | S |
+| 2 | Security gap | Coverage | `scripts/lib/carry-target-allowlist.ts` (`isCarryTargetAllowed`) | Reject-branch coverage gap, feeds issue #784 AC1's threat model. **VERIFIED** → **#979** *(Corrected 2026-09-23: unit- and `carryManifest`-level rejection was already tested; the gap was the CLI boundary only, closed by #994 — see P1 table.)* | S |
 | 3 | BLOCK-gate | Coverage + Best-Practices | `scripts/checks/adr-status.check.ts:118-207` | **[multi-mode]** Low coverage on divergence-detection branches + 4x redundant file I/O. **VERIFIED** (I/O angle) — *not filed; see Filed Issues below* | M |
 | 4 | BLOCK-gate | Coverage | `scripts/checks/design-track.check.ts:20-31,49-66` | Untested functions feeding V-AUTO-01. **VERIFIED** → **#982** | S/M |
 | 5 | BLOCK-gate | Coverage | `scripts/lib/state-write-guard.ts:36-82` (refusal at 70-71) | Zero-collapse-refusal coverage gap — protects against #489-class incident. Corrected citation. → **#983** | S |
@@ -167,7 +167,7 @@ Epic **#978** tracks the remediation set. Report tracking issue: **#977**.
 
 | Finding | Issue | Size | Priority |
 |---------|-------|------|----------|
-| `carry-target-allowlist` reject branch untested (security-relevant) | #979 | s | P1 |
+| `carry-target-allowlist` reject branch untested (security-relevant) — *corrected 2026-09-23: CLI boundary only; closed by #994* | #979 | s | P1 |
 | `validate-bash-command.js` 4x tier-dispatch duplication | #980 | s | P1 |
 | `hook-event-triage.test.ts` clean-repo-root assumption | #981 | s | P1 |
 | `design-track.check.ts` two uninvoked check functions | #982 | s | P2 |
@@ -190,7 +190,7 @@ Epic **#978** tracks the remediation set. Report tracking issue: **#977**.
 
 ### Top 5 by Risk-to-Effort Ratio
 
-1. **`carry-target-allowlist.ts` reject-branch test** (S) — closes a verified, security-relevant coverage-tool blind spot protecting issue #784's threat model.
+1. **`carry-target-allowlist.ts` reject-branch test** (S) — closes a verified, security-relevant coverage-tool blind spot protecting issue #784's threat model. *(Corrected 2026-09-23: no blind spot existed at unit level — the reject branch was already tested; only a CLI-boundary test was missing, added by #994.)*
 2. **`validate-bash-command.js` `handleTieredResult()` extraction** (S) — mechanical DRY fix on the file every Bash call in every session passes through.
 3. **Fix `hook-event-triage.test.ts` isolation bug** (S) — unblocks trustworthy coverage measurement on that file and removes an active red CI signal.
 4. **`design-track.check.ts` — test the two untested functions** (S/M) — direct enforcement-gate coverage (V-AUTO-01).
@@ -200,7 +200,7 @@ Epic **#978** tracks the remediation set. Report tracking issue: **#977**.
 
 ### Quick Wins (< 1 hour)
 
-1. `carry-target-allowlist.ts` reject-branch unit test — effort: S
+1. `carry-target-allowlist.ts` reject-branch unit test — effort: S *(corrected 2026-09-23: the unit test already existed; the CLI-boundary test was added by #994)*
 2. `validate-bash-command.js` tier-dispatch extraction — effort: S
 3. `hook-event-triage.test.ts` isolation fix (scope to temp dir) — effort: S
 4. `state-write-guard.ts` zero-collapse-refusal test (lines 36-82) — effort: S
