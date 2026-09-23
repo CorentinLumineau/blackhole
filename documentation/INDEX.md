@@ -19,6 +19,7 @@
 | audits/autonomous-workflow-parity.md | Autonomous workflow parity audit against mercure's thinking-route coverage | analysis | draft | on ADR acceptance |
 | audits/build-tree-install-resolution.md | Build-tree install resolution audit for the multi-target build pipeline | analysis | current | on release |
 | audits/documentation-framework-alignment.md | Documentation-framework alignment audit that identified the gaps this issue closes | analysis | draft | on mercure release |
+| audits/full-audit.md | Full-codebase x-analyze audit (coverage + best-practices + ux): 87.4% line coverage with 3 test-isolation failures in hook-event-triage.test.ts that CI cannot see, a verified security-relevant coverage gap in carry-target-allowlist.ts's reject branch that the coverage tool reports as 100%, SOLID/DRY debt concentrated in the shared PreToolUse hook modules, no UX findings (CLI-only tool), and a post-audit discovery that main was red from 2026-09-07 on the self-hosted runner while PRs went green on ubuntu-latest (resolved 2026-09-22 by #987). Remediation filed as epic #978. | analysis | current | on file change |
 | audits/mercure-companion-files-gap-analysis.md | Gap analysis of mercure companion-file (V-ADA) protocol coverage in blackhole | analysis | current | on protocol change |
 | audits/mercure-parity-matrix.md | Mechanism-by-mechanism parity matrix between mercure and blackhole | reference | current | on release |
 | audits/mercure-parity-surface.md | Survey of the mercure surface blackhole parity work targets | research | current | on ADR acceptance |
@@ -148,6 +149,7 @@
 | reviews/review-docs-decision-log-record-steady-state-baseline-for-decision-log-silent-prs.md | Review artifact for issue #767 (LGTM) | review | current | on file change |
 | reviews/review-docs-findings-ledger-id-shape-entity-key-asymmetry-consumer-path-resolution.md | Review artifact for issue #796 (LGTM, 1 deferred WARN) | review | current | on file change |
 | reviews/review-docs-implementer-document-gh-pr-edit-rest-patch-workaround.md | Review artifact for issue #813 (LGTM) | review | current | on file change |
+| reviews/review-docs-land-the-x-analyze-full-codebase-audit-report.md |  | review | current | on file change |
 | reviews/review-docs-review-core-per-dispatch-mode-reviewer-prompt-requirements-verification-mod.md | Review artifact for issue #709 (LGTM) | review | current | on file change |
 | reviews/review-docs-tests-strip-issue-finding-id-citations-from-hooks-validate-file-test-commen.md | Review artifact for issue #736 (LGTM) | review | current | on file change |
 | reviews/review-feat-checks-adr-watch-items-fact-v-watch-01-advisory-adr-007-s-worker-schemas-re.md | Review artifact for issue #710 (LGTM) | review | current | on file change |
