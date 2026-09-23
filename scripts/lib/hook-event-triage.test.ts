@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { withTempDir } from './test-fixtures.ts';
-import { archiveConsumedFiles, ingestHookEvents } from './hook-event-triage.ts';
+import { archiveConsumedFiles, ingestHookEvents, main } from './hook-event-triage.ts';
 import { root } from '../checks/check-utils.ts';
 
 // ADR-042 — finding identity is per-class `(vcode, pattern_id, worktree)`, not
@@ -472,27 +472,27 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
   });
 });
 
-// Task 8 — the `main()` CLI entrypoint the turn-start step invokes. main() resolves `root`
-// relative to its own script location (check-utils.ts), never `process.cwd`, so pointing it at
-// a throwaway campaign dir means running a copy of `scripts/` that lives inside a fresh temp
-// dir: the copy's `root` is that temp dir. Every test therefore runs against its own sandbox and
-// never reads, writes, or asserts anything about this checkout's real `.blackhole/`.
+// Task 8 — the `main()` CLI entrypoint the turn-start step invokes. Every test passes main() an
+// explicit temp-dir root, so none of them reads, writes, or asserts anything about this
+// checkout's real `.blackhole/`.
 describe('main() CLI entrypoint', () => {
-  const withCampaignDir = (fn: (sandbox: string, campaignDir: string) => void): void => {
-    withTempDir('hook-triage-cli-', (sandbox) => {
-      fs.cpSync(path.join(root, 'scripts'), path.join(sandbox, 'scripts'), {
-        recursive: true,
-        filter: (src) => !src.endsWith('.test.ts'),
-      });
-      // scripts/project-identity.ts reads the root package.json at import time.
-      fs.copyFileSync(path.join(root, 'package.json'), path.join(sandbox, 'package.json'));
-      fn(sandbox, path.join(sandbox, '.blackhole'));
-    });
+  const withCampaignDir = (fn: (repoRoot: string, campaignDir: string) => void): void => {
+    withTempDir('hook-triage-main-', (repoRoot) => fn(repoRoot, path.join(repoRoot, '.blackhole')));
   };
 
-  const runInSandbox = (sandbox: string, script: string) => {
-    const proc = Bun.spawnSync({ cmd: ['bun', 'run', script], cwd: sandbox, stdout: 'pipe', stderr: 'pipe' });
-    return { exitCode: proc.exitCode, stdout: proc.stdout.toString(), stderr: proc.stderr.toString() };
+  // main() reports failure through the process-global `process.exitCode`; capture it and always
+  // restore, so a forced non-zero code never leaks into this test file's own exit status. The
+  // `?? 0` is load-bearing: in Bun, assigning `undefined` after a truthy code is a no-op, not a
+  // reset, so only an explicit `0` clears it.
+  const runMain = (repoRoot: string, deps?: Parameters<typeof main>[0]): number | undefined => {
+    const originalExitCode = process.exitCode;
+    process.exitCode = 0;
+    try {
+      main(deps, repoRoot);
+      return process.exitCode === undefined ? undefined : Number(process.exitCode);
+    } finally {
+      process.exitCode = originalExitCode ?? 0;
+    }
   };
 
   const seedLedgerAndEvent = (campaignDir: string, eventName: string) => {
@@ -509,56 +509,60 @@ describe('main() CLI entrypoint', () => {
     return { ledgerPath, ledgerContent, eventsDir };
   };
 
-  test('no findings-ledger.json: logs and exits 0 without creating .blackhole/', () => {
-    withCampaignDir((sandbox, campaignDir) => {
-      const proc = runInSandbox(sandbox, 'scripts/lib/hook-event-triage.ts');
-      expect(proc.exitCode).toBe(0);
-      expect(proc.stdout).toContain('nothing to ingest into');
+  test('no findings-ledger.json: exits 0 without creating .blackhole/', () => {
+    withCampaignDir((repoRoot, campaignDir) => {
+      expect(runMain(repoRoot)).toBe(0);
       expect(fs.existsSync(campaignDir)).toBe(false);
     });
   });
 
+  test('ledger present but no hook events: leaves the ledger untouched and writes no archive', () => {
+    withCampaignDir((repoRoot, campaignDir) => {
+      const { ledgerPath, ledgerContent, eventsDir } = seedLedgerAndEvent(campaignDir, 'unused.json');
+      fs.rmSync(eventsDir, { recursive: true, force: true });
+
+      expect(runMain(repoRoot)).toBe(0);
+      expect(fs.readFileSync(ledgerPath, 'utf-8')).toBe(ledgerContent);
+      expect(fs.existsSync(path.join(campaignDir, 'archive'))).toBe(false);
+    });
+  });
+
   test('ledger + hook events present: ingests, archives the event, writes the ledger through the guard', () => {
-    withCampaignDir((sandbox, campaignDir) => {
+    withCampaignDir((repoRoot, campaignDir) => {
+      fs.mkdirSync(campaignDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(campaignDir, 'queue.json'),
+        JSON.stringify({ issues: {} }, null, 2),
+      );
       const { ledgerPath, eventsDir } = seedLedgerAndEvent(campaignDir, 'cli-test-event.json');
 
-      const proc = runInSandbox(sandbox, 'scripts/lib/hook-event-triage.ts');
-
-      expect(proc.exitCode).toBe(0);
-      expect(proc.stdout).toContain('ingested 1 event');
+      expect(runMain(repoRoot)).toBe(0);
       expect(fs.existsSync(path.join(eventsDir, 'cli-test-event.json'))).toBe(false);
 
       const updated = JSON.parse(fs.readFileSync(ledgerPath, 'utf-8'));
       expect(updated.findings).toHaveLength(1);
       expect(updated.findings[0].vcode).toBe('V-HOOK-02');
       expect(updated.findings[0].occurrences).toBe(1);
+      expect(fs.existsSync(`${ledgerPath}.tmp`)).toBe(false);
 
       const archiveRoot = path.join(campaignDir, 'archive');
       const archiveDirs = fs.readdirSync(archiveRoot).filter((d) => d.startsWith('hook-events-'));
-      expect(archiveDirs.length).toBeGreaterThan(0);
+      expect(archiveDirs).toHaveLength(1);
+      expect(fs.readdirSync(path.join(archiveRoot, archiveDirs[0]))).toEqual(['cli-test-event.json']);
       // one snapshot of the pre-ingest ledger, plus the archived event directory
       const ledgerSnapshots = fs.readdirSync(archiveRoot).filter((d) => d.startsWith('findings-ledger-'));
-      expect(ledgerSnapshots.length).toBeGreaterThan(0);
+      expect(ledgerSnapshots).toHaveLength(1);
     });
   });
 
   // The write-guard-refusal branch can't be reached through real inputs (the real write-protocol
   // flow only ever grows the findings count), so a stub is injected via `deps.validateStateWrite`.
-  // The stub is wired by a small driver script inside the sandbox rather than by calling main()
-  // in-process, because an in-process main() is bound to this checkout's own root.
   test('write guard refuses: does not install the tmp file, removes it, and exits non-zero', () => {
-    withCampaignDir((sandbox, campaignDir) => {
+    withCampaignDir((repoRoot, campaignDir) => {
       const { ledgerPath, ledgerContent, eventsDir } = seedLedgerAndEvent(campaignDir, 'guard-refusal-event.json');
-      fs.writeFileSync(
-        path.join(sandbox, 'refusing-driver.ts'),
-        "import { main } from './scripts/lib/hook-event-triage.ts';\n" +
-          "main({ validateStateWrite: () => ({ ok: false, reason: 'test-forced-refusal' }) });\n",
-      );
 
-      const proc = runInSandbox(sandbox, 'refusing-driver.ts');
+      expect(runMain(repoRoot, { validateStateWrite: () => ({ ok: false, reason: 'test-forced-refusal' }) })).toBe(1);
 
-      expect(proc.exitCode).toBe(1);
-      expect(proc.stderr).toContain('write guard refused install — test-forced-refusal');
       // The refusal must abort before the atomic rename — the live ledger is untouched and the
       // rejected .tmp file is cleaned up, not left behind.
       expect(fs.readFileSync(ledgerPath, 'utf-8')).toBe(ledgerContent);
@@ -568,6 +572,30 @@ describe('main() CLI entrypoint', () => {
       // reaches fs.renameSync(tmpPath, ledgerPath) either way), so the event file must still be
       // sitting here, un-archived, for the next run to re-ingest.
       expect(fs.existsSync(path.join(eventsDir, 'guard-refusal-event.json'))).toBe(true);
+    });
+  });
+
+  // One end-to-end run of the real CLI entrypoint (`import.meta.main` + the default root). The
+  // default root is script-relative, so the script runs from a copy of `scripts/` inside a temp
+  // dir — never from this checkout — and its root is that temp dir.
+  test('CLI entrypoint: with no ledger under its default root, logs and exits 0', () => {
+    withTempDir('hook-triage-cli-', (sandbox) => {
+      fs.cpSync(path.join(root, 'scripts'), path.join(sandbox, 'scripts'), {
+        recursive: true,
+        filter: (src) => !src.endsWith('.test.ts'),
+      });
+      // scripts/project-identity.ts reads the root package.json at import time.
+      fs.copyFileSync(path.join(root, 'package.json'), path.join(sandbox, 'package.json'));
+
+      const proc = Bun.spawnSync({
+        cmd: ['bun', 'run', 'scripts/lib/hook-event-triage.ts'],
+        cwd: sandbox,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      expect(proc.exitCode).toBe(0);
+      expect(proc.stdout.toString()).toContain('nothing to ingest into');
+      expect(fs.existsSync(path.join(sandbox, '.blackhole'))).toBe(false);
     });
   });
 });
