@@ -291,7 +291,9 @@ only two things that can differ are actual content.
 
 Mechanical check: `bun run --cwd <abs repo-root> scripts/check-review-artifact.ts --config <abs>
 --issue <N> --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head
-<sha> --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--cwd` MUST equal `--repo-root`
+<sha> --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--head` is the reviewed head
+passed to promotion, not the post-promotion head (`implementer.md` § Promote Review Artifact);
+`--cwd` MUST equal `--repo-root`
 (issue #798 — pins the entry file and every transitive relative import to the tree named by
 `--repo-root`, closing the cwd-vs-repo-root module-resolution divergence rather than only
 detecting it). Every path-shaped flag must be absolute (`path.isAbsolute()`), or the CLI exits
