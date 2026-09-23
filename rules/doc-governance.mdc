@@ -56,10 +56,9 @@ related: [<path>, ...]      # optional
 | `related` | No | Cross-references for graph navigation |
 
 All six lifecycle keys (`type`, `summary`, `status`, `review_trigger`, `created`,
-`last_updated`) are required — any absence is `V-DOC-GOV-02` (Phase 1 does not yet wire
-`summary`'s presence into that check's enforcement; see Phase 2 notes at
-`documentation/plans/plan-documentation-index-generation-implementation.md`). `supersedes` and
-`related` remain optional.
+`last_updated`) are required — any absence is `V-DOC-GOV-02`, reported per doc with the
+missing key names (`scripts/checks/doc-health.check.ts`). `supersedes` and `related` remain
+optional.
 
 An instantiated companion-file template — currently only `documentation/reference/journeys.md`
 (`templates/companion-files/journeys.md.template`) — may carry `status: template` instead of
