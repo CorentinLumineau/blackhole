@@ -150,6 +150,7 @@
 | reviews/review-discovery-promote-review-artifact-ts-counts-deferred-ledger-rows-toward-the-revi.md | Review artifact for issue #737 (LGTM) | review | current | on file change |
 | reviews/review-discovery-promoted-review-artifacts-carry-no-summary-frontmatter-every-new-revie.md | Review artifact for issue #992 (LGTM) | review | current | on file change |
 | reviews/review-discovery-test-fixtures-ts-ignores-every-spawnsync-status-a-failed-git-setup-ste.md | Review artifact for issue #756 (LGTM) | review | current | on file change |
+| reviews/review-discovery-v-doc-gov-02-s-frontmatter-check-ignores-summary-the-required-key-can.md | Review artifact for issue #1006 (LGTM) | review | current | on file change |
 | reviews/review-discovery-validate-bash-command-js-handletieredresult-s-allowedtiers-limit-is-un.md | Review artifact for issue #997 (LGTM) | review | current | on file change |
 | reviews/review-discovery-worktree-removal-guard-allows-force-on-a-dirty-worktree-uncommitted-wo.md | Review artifact for issue #777 (LGTM) | review | current | on file change |
 | reviews/review-discovery-worktree-removal-guard-fails-closed-on-every-detached-head-review-work.md | Review artifact for issue #761 (LGTM) | review | current | on file change |

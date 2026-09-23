@@ -28,35 +28,36 @@ const collectDocFiles = (docsDir: string): DocFile[] =>
 export type FrontmatterPresence = {
   relPath: string;
   hasType: boolean;
+  hasSummary: boolean;
   hasStatus: boolean;
   hasReviewTrigger: boolean;
   hasCreated: boolean;
   hasLastUpdated: boolean;
 };
 
-const lifecycleFrontmatterComplete = (f: FrontmatterPresence): boolean =>
-  f.hasType && f.hasStatus && f.hasReviewTrigger && f.hasCreated && f.hasLastUpdated;
+// The six required keys of doc-governance.md § Lifecycle Frontmatter, each paired with its presence flag.
+type PresenceFlag = Exclude<keyof FrontmatterPresence, 'relPath'>;
+const LIFECYCLE_KEYS: ReadonlyArray<[string, PresenceFlag]> = Object.entries({
+  type: 'hasType', summary: 'hasSummary', status: 'hasStatus',
+  review_trigger: 'hasReviewTrigger', created: 'hasCreated', last_updated: 'hasLastUpdated',
+} as const);
 
-export const findMissingFrontmatter = (files: FrontmatterPresence[]): string[] =>
+export type MissingFrontmatter = { relPath: string; keys: string[] };
+
+// Single V-DOC-GOV-02 decision: every candidate doc (INDEX.md/milestones/_archived/** excluded) with its missing keys.
+export const findMissingFrontmatter = (files: FrontmatterPresence[]): MissingFrontmatter[] =>
   files
     .filter((f) => !isIndexFile(f.relPath) && !isArchivedMilestone(f.relPath))
-    .filter((f) => !lifecycleFrontmatterComplete(f))
-    .map((f) => f.relPath);
+    .map((f) => ({ relPath: f.relPath, keys: LIFECYCLE_KEYS.filter(([, flag]) => !f[flag]).map(([key]) => key) }))
+    .filter((m) => m.keys.length > 0);
 
 export const evaluateFrontmatterPresence = (docsDir: string): CheckResult => {
-  const missing = findMissingFrontmatter(
-    collectDocFiles(docsDir).map((f) => {
-      const fm = parseFrontmatterFields(parseMdFrontmatter(f.content).frontmatter);
-      return {
-        relPath: f.relPath,
-        hasType: !!fm.type,
-        hasStatus: !!fm.status,
-        hasReviewTrigger: !!fm.review_trigger,
-        hasCreated: !!fm.created,
-        hasLastUpdated: !!fm.last_updated,
-      };
-    }),
-  );
+  const presence = collectDocFiles(docsDir).map((f): FrontmatterPresence => {
+    const fm = parseFrontmatterFields(parseMdFrontmatter(f.content).frontmatter);
+    const flags = Object.fromEntries(LIFECYCLE_KEYS.map(([key, flag]) => [flag, !!fm[key]]));
+    return { relPath: f.relPath, ...(flags as Record<PresenceFlag, boolean>) };
+  });
+  const missing = findMissingFrontmatter(presence).map((m) => `${m.relPath} (${m.keys.join(', ')})`);
   return missing.length
     ? { id: 'V-DOC-GOV-02', ok: true, detail: `missing lifecycle frontmatter: ${missing.join(', ')}` }
     : { id: 'V-DOC-GOV-02', ok: true };
