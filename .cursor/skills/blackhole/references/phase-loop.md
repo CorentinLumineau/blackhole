@@ -133,7 +133,9 @@ D5 narrowing as Step 0.5 above).
    call `gh pr merge`. Before merge (including consumer `merge-pr.sh` / Pattern B paths), run
    `bun run --cwd <abs repo-root> scripts/check-review-artifact.ts --config <abs> --issue <N>
    --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head <sha>
-   --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--cwd` MUST equal `--repo-root`
+   --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--head` is the reviewed head
+   passed to promotion, not the post-promotion head (`implementer.md` § Promote Review Artifact);
+   `--cwd` MUST equal `--repo-root`
    (issue #798 — pins module resolution to the same tree the CLI operates on). Every path-shaped
    flag must be an absolute path (issue #806 AC4; a relative path exits `2` with the usage
    message rather than resolving against whatever cwd happens to be active). This re-renders the
