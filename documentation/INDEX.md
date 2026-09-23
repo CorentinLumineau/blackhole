@@ -133,6 +133,7 @@
 | reviews/review-ci-harden-the-self-hosted-pipeline-no-job-timeout-on-a-single-runner-plus-two-me.md | Review artifact for issue #988 (LGTM) | review | current | on file change |
 | reviews/review-ci-setup-bun-pins-1-3-14-but-the-self-hosted-runner-has-1-4-2-every-self-hosted.md | Review artifact for issue #986 (LGTM) | review | current | on file change |
 | reviews/review-discovery-10-non-review-docs-have-no-summary-frontmatter-empty-cells-in-the-gene.md | Review artifact for issue #1003 (LGTM) | review | current | on file change |
+| reviews/review-discovery-3-audit-docs-lack-last-updated-lifecycle-frontmatter-v-doc-gov-02.md | Review artifact for issue #1008 (LGTM) | review | current | on file change |
 | reviews/review-discovery-bash-pretooluse-guards-miss-every-path-qualified-invocation-usr-bin-gi.md | Review artifact for issue #774 (LGTM) | review | current | on file change |
 | reviews/review-discovery-carry-staged-artifacts-containment-stops-at-reporoot-so-an-in-repo-tar.md | Review artifact for issue #784 (LGTM) | review | current | on file change |
 | reviews/review-discovery-carry-staged-artifacts-resolves-staged-path-and-target-path-against-on.md | Review artifact for issue #760 (LGTM) | review | current | on file change |
