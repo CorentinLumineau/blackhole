@@ -141,10 +141,12 @@
 | reviews/review-discovery-escalation-trigger-enum-has-no-environmental-blocker-value-so-an-egres.md | Review artifact for issue #763 (LGTM) | review | current | on file change |
 | reviews/review-discovery-every-campaign-pr-conflicts-on-documentation-index-md-the-carry-step-a.md | Review artifact for issue #743 (LGTM) | review | current | on file change |
 | reviews/review-discovery-findings-ledger-json-is-schema-drifted-at-scale-162-286-string-issue-r.md | Review artifact for issue #754 (LGTM) | review | current | on file change |
+| reviews/review-discovery-gate-11-promote-review-artifact-never-says-which-head-to-verify-with-t.md |  | review | current | on file change |
 | reviews/review-discovery-main-is-red-on-the-full-test-suite-742-changed-prose-to-verified-while.md | Review artifact for issue #746 (LGTM) | review | current | on file change |
 | reviews/review-discovery-planners-declare-staged-artifacts-in-plan-prose-but-never-write-manife.md | Review artifact for issue #782 (LGTM) | review | current | on file change |
 | reviews/review-discovery-promote-review-artifact-ts-counts-deferred-ledger-rows-toward-the-revi.md | Review artifact for issue #737 (LGTM) | review | current | on file change |
 | reviews/review-discovery-test-fixtures-ts-ignores-every-spawnsync-status-a-failed-git-setup-ste.md | Review artifact for issue #756 (LGTM) | review | current | on file change |
+| reviews/review-discovery-validate-bash-command-js-handletieredresult-s-allowedtiers-limit-is-un.md |  | review | current | on file change |
 | reviews/review-discovery-worktree-removal-guard-allows-force-on-a-dirty-worktree-uncommitted-wo.md | Review artifact for issue #777 (LGTM) | review | current | on file change |
 | reviews/review-discovery-worktree-removal-guard-fails-closed-on-every-detached-head-review-work.md | Review artifact for issue #761 (LGTM) | review | current | on file change |
 | reviews/review-docs-architecture-fix-stale-committed-trees-table-and-five-agents-in-the-archite.md | Review artifact for issue #706 (LGTM) | review | current | on file change |
