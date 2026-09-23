@@ -2,6 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { renderReviewMarkdown, selectReviewFindings } from './lib/promote-review-artifact.ts';
+import { buildDocIndexRows } from './lib/doc-index-generate.ts';
+import { makeTempDir } from './lib/fs.ts';
+import { reviewArtifactContentMatchesLedger } from './lib/merge-gate/review-artifact.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const fixtureLedger = JSON.parse(
@@ -45,6 +48,35 @@ describe('selectReviewFindings', () => {
   test('sorts by byte order, not locale collation (case + underscore, issue #791)', () => {
     const selected = selectReviewFindings(caseAndUnderscoreLedger, 791, 900);
     expect(selected.map((f) => f.file)).toEqual(['scripts/Zeta.ts', 'scripts/apple_file.ts']);
+  });
+
+  test('dedups a repeated vcode/file/line key: later pr_ref wins, then higher severity on the same pr_ref', () => {
+    const row = (id: string, vcode: string, severity: string, pr_ref: number) => ({
+      id,
+      vcode,
+      severity,
+      phase: 'review',
+      issue_ref: 50,
+      pr_ref,
+      file: 'scripts/a.ts',
+      line: 1,
+      summary: id,
+      status: 'open',
+    });
+    const selected = selectReviewFindings(
+      {
+        findings: [
+          row('F-1', 'V-DRY-01', 'BLOCK', 10),
+          row('F-2', 'V-DRY-01', 'WARN', 11),
+          row('F-3', 'V-KISS-03', 'WARN', 12),
+          row('F-4', 'V-KISS-03', 'BLOCK', 12),
+          row('F-5', 'V-KISS-03', 'WARN', 12),
+        ],
+      },
+      50,
+      12,
+    );
+    expect(selected.map((f) => f.id)).toEqual(['F-4', 'F-2']);
   });
 });
 
@@ -115,6 +147,63 @@ describe('renderReviewMarkdown', () => {
     expect(out.markdown).toContain('V-DOC-01');
     expect(out.markdown).toContain('### Deferred (not counted toward verdict)');
     expect(out.markdown).toContain('V-DOC-06');
+  });
+
+  const summaryInput = {
+    issueNumber: 445,
+    issueTitle: 'Durable plan and review artifact promotion',
+    prNumber: 901,
+    branchName: 'blackhole/issue-445',
+    headSha: 'deadbeefcafebabe',
+    ledger: fixtureLedger,
+    today: '2026-08-12',
+  };
+
+  test('emits a JSON-quoted summary frontmatter key matching the index-row summary (issue #992)', () => {
+    const out = renderReviewMarkdown(summaryInput);
+    const frontmatter = out.markdown.split('\n---\n')[0]!;
+
+    expect(frontmatter).toContain('\nsummary: "Review artifact for issue #445 (CHANGES REQUESTED)"\n');
+    expect(out.indexRow).toContain('| Review artifact for issue #445 (CHANGES REQUESTED) |');
+  });
+
+  test('the root-INDEX generator reads the promoted summary back, not an empty cell (issue #992)', () => {
+    const out = renderReviewMarkdown(summaryInput);
+    const docsDir = path.join(makeTempDir('promote-review-summary'), 'documentation');
+    try {
+      const full = path.join(docsDir, out.targetPath.replace(/^documentation\//, ''));
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, out.markdown);
+
+      const rows = buildDocIndexRows(docsDir);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.summary).toBe('Review artifact for issue #445 (CHANGES REQUESTED)');
+    } finally {
+      fs.rmSync(path.dirname(docsDir), { recursive: true, force: true });
+    }
+  });
+
+  test('a freshly promoted artifact still passes the merge-gate ledger re-render parity check (issue #992)', () => {
+    const out = renderReviewMarkdown(summaryInput);
+    const repoRoot = makeTempDir('promote-review-parity');
+    try {
+      const full = path.join(repoRoot, out.targetPath);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, out.markdown);
+
+      const result = reviewArtifactContentMatchesLedger({
+        issueTitle: summaryInput.issueTitle,
+        issueNumber: summaryInput.issueNumber,
+        prNumber: summaryInput.prNumber,
+        branchName: summaryInput.branchName,
+        headSha: summaryInput.headSha,
+        ledger: summaryInput.ledger,
+        repoRoot,
+      });
+      expect(result).toEqual({ ok: true });
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 });
 
