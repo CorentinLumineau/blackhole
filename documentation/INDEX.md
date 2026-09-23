@@ -131,6 +131,7 @@
 | reviews/review-chore-content-gates-budget-orchestrator-runtime-dispatch-delegation-md-split-off.md | Review artifact for issue #705 (LGTM) | review | current | on file change |
 | reviews/review-chore-land-the-16-stranded-decision-log-md-rows-sitting-uncommitted-in-the-main.md | Review artifact for issue #749 (LGTM) | review | current | on file change |
 | reviews/review-ci-harden-the-self-hosted-pipeline-no-job-timeout-on-a-single-runner-plus-two-me.md |  | review | current | on file change |
+| reviews/review-ci-setup-bun-pins-1-3-14-but-the-self-hosted-runner-has-1-4-2-every-self-hosted.md |  | review | current | on file change |
 | reviews/review-discovery-bash-pretooluse-guards-miss-every-path-qualified-invocation-usr-bin-gi.md | Review artifact for issue #774 (LGTM) | review | current | on file change |
 | reviews/review-discovery-carry-staged-artifacts-containment-stops-at-reporoot-so-an-in-repo-tar.md | Review artifact for issue #784 (LGTM) | review | current | on file change |
 | reviews/review-discovery-carry-staged-artifacts-resolves-staged-path-and-target-path-against-on.md | Review artifact for issue #760 (LGTM) | review | current | on file change |
@@ -140,6 +141,7 @@
 | reviews/review-discovery-escalation-trigger-enum-has-no-environmental-blocker-value-so-an-egres.md | Review artifact for issue #763 (LGTM) | review | current | on file change |
 | reviews/review-discovery-every-campaign-pr-conflicts-on-documentation-index-md-the-carry-step-a.md | Review artifact for issue #743 (LGTM) | review | current | on file change |
 | reviews/review-discovery-findings-ledger-json-is-schema-drifted-at-scale-162-286-string-issue-r.md | Review artifact for issue #754 (LGTM) | review | current | on file change |
+| reviews/review-discovery-gate-11-promote-review-artifact-never-says-which-head-to-verify-with-t.md |  | review | current | on file change |
 | reviews/review-discovery-main-is-red-on-the-full-test-suite-742-changed-prose-to-verified-while.md | Review artifact for issue #746 (LGTM) | review | current | on file change |
 | reviews/review-discovery-planners-declare-staged-artifacts-in-plan-prose-but-never-write-manife.md | Review artifact for issue #782 (LGTM) | review | current | on file change |
 | reviews/review-discovery-promote-review-artifact-ts-counts-deferred-ledger-rows-toward-the-revi.md | Review artifact for issue #737 (LGTM) | review | current | on file change |
@@ -184,6 +186,7 @@
 | reviews/review-refactor-hooks-validate-bash-command-js-repeats-the-same-tier-dispatch-block-fou.md |  | review | current | on file change |
 | reviews/review-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | Review artifact for issue #713 (LGTM) | review | current | on file change |
 | reviews/review-test-carry-target-allowlist-reject-branch-is-untested-coverage-reads-100-but-the.md |  | review | current | on file change |
+| reviews/review-test-design-track-check-ts-s-two-check-functions-are-defined-but-never-called-by.md |  | review | current | on file change |
 | reviews/review-test-hooks-hook-event-triage-test-ts-asserts-a-clean-repo-root-3-tests-fail-on-a.md |  | review | current | on file change |
 | reviews/review-test-state-write-guard-s-zero-collapse-refusal-is-untested-the-one-branch-that-p.md |  | review | current | on file change |
 | runbooks/cloud-agent-plugins.md | Cloud Agents on this repo install Mercure and Blackhole from GitHub, not the marketplace cache | runbook | current | on file change |
