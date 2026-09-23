@@ -146,6 +146,7 @@
 | reviews/review-discovery-planners-declare-staged-artifacts-in-plan-prose-but-never-write-manife.md | Review artifact for issue #782 (LGTM) | review | current | on file change |
 | reviews/review-discovery-promote-review-artifact-ts-counts-deferred-ledger-rows-toward-the-revi.md | Review artifact for issue #737 (LGTM) | review | current | on file change |
 | reviews/review-discovery-test-fixtures-ts-ignores-every-spawnsync-status-a-failed-git-setup-ste.md | Review artifact for issue #756 (LGTM) | review | current | on file change |
+| reviews/review-discovery-validate-bash-command-js-handletieredresult-s-allowedtiers-limit-is-un.md |  | review | current | on file change |
 | reviews/review-discovery-worktree-removal-guard-allows-force-on-a-dirty-worktree-uncommitted-wo.md | Review artifact for issue #777 (LGTM) | review | current | on file change |
 | reviews/review-discovery-worktree-removal-guard-fails-closed-on-every-detached-head-review-work.md | Review artifact for issue #761 (LGTM) | review | current | on file change |
 | reviews/review-docs-architecture-fix-stale-committed-trees-table-and-five-agents-in-the-archite.md | Review artifact for issue #706 (LGTM) | review | current | on file change |
