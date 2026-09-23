@@ -283,3 +283,47 @@ describe('carry-staged-artifacts CLI — path containment (issue #752)', () => {
     expect(fs.existsSync(path.join(repoRoot, 'documentation/plans/plan-x.md'))).toBe(true);
   });
 });
+
+describe('carry-staged-artifacts CLI — carry target allowlist (issue #784 AC1)', () => {
+  test('an in-root target_path of "package.json" passes containment but is refused by the allowlist, with the reason on stderr, and is never written', async () => {
+    const repoRoot = path.join(dir, 'repo');
+    fs.mkdirSync(repoRoot);
+    const stagedRel = '.blackhole/staged/1/plan-x.md';
+    fs.mkdirSync(path.join(repoRoot, path.dirname(stagedRel)), { recursive: true });
+    fs.writeFileSync(path.join(repoRoot, stagedRel), '# Plan\n');
+
+    const manifestPath = path.join(dir, 'manifest.json');
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        issue: 1,
+        updated_at: '2026-08-06T18:00:00.000Z',
+        entries: [
+          {
+            route: 'plan',
+            sub_mode: null,
+            produced_by: 'planner',
+            declared_at: '2026-08-06T17:58:00.000Z',
+            staged_path: stagedRel,
+            target_path: 'package.json',
+            target_kind: 'new_file',
+          },
+        ],
+      }),
+    );
+
+    const proc = run(['--manifest', manifestPath, '--repo-root', repoRoot]);
+    const [code, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+
+    // Every entry skipped and nothing carried: exit 1, so the refusal cannot read as success.
+    expect(code).toBe(1);
+    expect(JSON.parse(stdout)).toEqual([]);
+    expect(stderr).toContain('skipped entries[0]');
+    expect(stderr).toContain('target_path "package.json" is outside the carry allowlist');
+    expect(fs.existsSync(path.join(repoRoot, 'package.json'))).toBe(false);
+  });
+});
