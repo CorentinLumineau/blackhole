@@ -76,7 +76,11 @@ describe('findMissingFrontmatter (V-DOC-GOV-02)', () => {
         hasSummary: true,
       },
     ];
-    expect(findMissingFrontmatter(files)).toEqual(['foo.md', 'bar.md', 'baz.md']);
+    expect(findMissingFrontmatter(files)).toEqual([
+      { relPath: 'foo.md', keys: ['status'] },
+      { relPath: 'bar.md', keys: ['type'] },
+      { relPath: 'baz.md', keys: ['review_trigger'] },
+    ]);
   });
 
   test('excludes INDEX.md and milestones/_archived/** even when missing frontmatter', () => {
@@ -115,7 +119,7 @@ describe('findMissingFrontmatter (V-DOC-GOV-02)', () => {
         hasSummary: false,
       },
     ];
-    expect(findMissingFrontmatter(files)).toEqual(['no-summary.md']);
+    expect(findMissingFrontmatter(files)).toEqual([{ relPath: 'no-summary.md', keys: ['summary'] }]);
   });
 });
 

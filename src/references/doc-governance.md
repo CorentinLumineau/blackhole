@@ -63,8 +63,8 @@ optional.
 An instantiated companion-file template — currently only `documentation/reference/journeys.md`
 (`templates/companion-files/journeys.md.template`) — may carry `status: template` instead of
 one of the four values listed above. This is already accepted, not a new exception granted
-here: `doc-health.check.ts`'s `V-DOC-GOV-02` check (`findMissingFrontmatter` /
-`lifecycleFrontmatterComplete`) only checks the `status` key's **presence**, never its value
+here: `doc-health.check.ts`'s `V-DOC-GOV-02` check (`findMissingFrontmatter`,
+driven by its `LIFECYCLE_KEYS` table) only checks the `status` key's **presence**, never its value
 against an enum, so `status: template` has always passed. This is a scoped, one-off exception
 for companion-file templates only, not a general loosening of the `status` enum: the value
 signals the file is unfilled placeholder content, and the owning hunt-kind band (`ux-coherence`)

@@ -42,26 +42,22 @@ const LIFECYCLE_KEYS: ReadonlyArray<[string, PresenceFlag]> = Object.entries({
   review_trigger: 'hasReviewTrigger', created: 'hasCreated', last_updated: 'hasLastUpdated',
 } as const);
 
-const missingLifecycleKeys = (f: FrontmatterPresence): string[] =>
-  LIFECYCLE_KEYS.filter(([, flag]) => !f[flag]).map(([key]) => key);
+export type MissingFrontmatter = { relPath: string; keys: string[] };
 
-const isFrontmatterCandidate = (f: FrontmatterPresence): boolean =>
-  !isIndexFile(f.relPath) && !isArchivedMilestone(f.relPath);
-
-export const findMissingFrontmatter = (files: FrontmatterPresence[]): string[] =>
-  files.filter((f) => isFrontmatterCandidate(f) && missingLifecycleKeys(f).length > 0).map((f) => f.relPath);
+// Single V-DOC-GOV-02 decision: every candidate doc (INDEX.md/milestones/_archived/** excluded) with its missing keys.
+export const findMissingFrontmatter = (files: FrontmatterPresence[]): MissingFrontmatter[] =>
+  files
+    .filter((f) => !isIndexFile(f.relPath) && !isArchivedMilestone(f.relPath))
+    .map((f) => ({ relPath: f.relPath, keys: LIFECYCLE_KEYS.filter(([, flag]) => !f[flag]).map(([key]) => key) }))
+    .filter((m) => m.keys.length > 0);
 
 export const evaluateFrontmatterPresence = (docsDir: string): CheckResult => {
-  const missing = collectDocFiles(docsDir)
-    .map((f): FrontmatterPresence => {
-      const fm = parseFrontmatterFields(parseMdFrontmatter(f.content).frontmatter);
-      const flags = Object.fromEntries(LIFECYCLE_KEYS.map(([key, flag]) => [flag, !!fm[key]]));
-      return { relPath: f.relPath, ...(flags as Record<PresenceFlag, boolean>) };
-    })
-    .filter(isFrontmatterCandidate)
-    .map((f) => ({ relPath: f.relPath, keys: missingLifecycleKeys(f) }))
-    .filter((m) => m.keys.length > 0)
-    .map((m) => `${m.relPath} (${m.keys.join(', ')})`);
+  const presence = collectDocFiles(docsDir).map((f): FrontmatterPresence => {
+    const fm = parseFrontmatterFields(parseMdFrontmatter(f.content).frontmatter);
+    const flags = Object.fromEntries(LIFECYCLE_KEYS.map(([key, flag]) => [flag, !!fm[key]]));
+    return { relPath: f.relPath, ...(flags as Record<PresenceFlag, boolean>) };
+  });
+  const missing = findMissingFrontmatter(presence).map((m) => `${m.relPath} (${m.keys.join(', ')})`);
   return missing.length
     ? { id: 'V-DOC-GOV-02', ok: true, detail: `missing lifecycle frontmatter: ${missing.join(', ')}` }
     : { id: 'V-DOC-GOV-02', ok: true };
