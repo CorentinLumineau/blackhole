@@ -7,7 +7,7 @@
 // and never collapse the scan and the declaration onto one derivation path (the critics'
 // binding rejection of single-source generation, ADR-007 Rejected Alternatives).
 
-export const RULES_LIST = ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md', 'doc-governance.md'];
+export const RULES_LIST = ['blackhole-protocol.md', 'blackhole-state.md', 'blackhole-vcodes.md', 'doc-governance.md', 'opportunistic-fix.md'];
 
 /** The 8 agent files — bare names (no prefix) since the Blackhole rename (#64). */
 export const AGENT_NAMES = ['coordinator', 'orchestrator', 'planner', 'implementer', 'reviewer', 'router', 'investigator', 'hunter'] as const;
