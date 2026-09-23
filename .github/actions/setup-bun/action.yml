@@ -17,7 +17,8 @@ runs:
   steps:
     # Self-hosted runners keep Bun and ~/.bun/install/cache on local disk between runs, so
     # installing Bun and round-tripping the cache to GitHub is pure overhead (~164s/run). Only
-    # ephemeral github-hosted runners (fork PRs on ubuntu-latest) need setup-bun + actions/cache.
+    # ephemeral github-hosted runners need setup-bun + actions/cache: verify.yml routes every
+    # pull_request run (fork or not) to ubuntu-latest; push/tag runs and release.yml stay self-hosted.
     - uses: oven-sh/setup-bun@v2
       if: runner.environment == 'github-hosted'
       with:
