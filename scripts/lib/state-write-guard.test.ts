@@ -330,3 +330,161 @@ describe('state-write-guard CLI', () => {
     }
   });
 });
+
+// Both documented call sites, exercised through every fail-closed case in
+// `blackhole-state.md` § Write protocol: `queue.json` keys its entities by issue number under an
+// object (`issues`), while `findings-ledger.json` holds them in an array (`findings`).
+// `countEntities` branches on that shape, so each refusal must hold for both.
+type EntityShape = {
+  entityKey: 'issues' | 'findings';
+  file: string;
+  build: (n: number) => Record<string, unknown>;
+};
+
+const ENTITY_SHAPES: EntityShape[] = [
+  {
+    entityKey: 'issues',
+    file: 'queue.json',
+    build: (n) => ({ issues: Object.fromEntries(Array.from({ length: n }, (_, i) => [String(i + 1), {}])) }),
+  },
+  {
+    entityKey: 'findings',
+    file: 'findings-ledger.json',
+    build: (n) => ({ next_id: n + 1, findings: Array.from({ length: n }, (_, i) => ({ id: `F-${i + 1}` })) }),
+  },
+];
+
+describe.each(ENTITY_SHAPES)('validateStateWrite — $entityKey ($file)', ({ entityKey, file, build }) => {
+  function withFiles(tmpContent: string, liveContent: string | null, fn: (tmpPath: string, livePath: string) => void) {
+    const dir = makeTempDir(`state-guard-${entityKey}`);
+    try {
+      const livePath = path.join(dir, file);
+      const tmpPath = `${livePath}.tmp`;
+      fs.writeFileSync(tmpPath, tmpContent);
+      if (liveContent !== null) fs.writeFileSync(livePath, liveContent);
+      fn(tmpPath, livePath);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test('refuses a 0-byte tmp file even when a healthy live file exists', () => {
+    withFiles('', JSON.stringify(build(5)), (tmpPath, livePath) => {
+      const result = validateStateWrite({ tmpPath, livePath, entityKey, allowShrink: true });
+      expect(result).toEqual({ ok: false, reason: expect.stringMatching(/empty \(0 bytes\)/) });
+    });
+  });
+
+  test('refuses malformed JSON', () => {
+    withFiles(`{ "${entityKey}": [`, JSON.stringify(build(5)), (tmpPath, livePath) => {
+      const result = validateStateWrite({ tmpPath, livePath, entityKey });
+      expect(result).toEqual({ ok: false, reason: expect.stringMatching(/^malformed JSON/) });
+    });
+  });
+
+  test('refuses a tmp file whose entity key is absent', () => {
+    withFiles(JSON.stringify({ refreshed_at: '2026-09-23T00:00:00.000Z' }), null, (tmpPath, livePath) => {
+      const result = validateStateWrite({ tmpPath, livePath, entityKey });
+      expect(result).toEqual({ ok: false, reason: expect.stringContaining(`"${entityKey}" key`) });
+    });
+  });
+
+  test('refuses a tmp file whose entity key holds a scalar instead of an object/array', () => {
+    withFiles(JSON.stringify({ [entityKey]: 5 }), null, (tmpPath, livePath) => {
+      const result = validateStateWrite({ tmpPath, livePath, entityKey });
+      expect(result).toEqual({ ok: false, reason: expect.stringContaining(`"${entityKey}" key`) });
+    });
+  });
+
+  test('refuses a shrink (5 → 4) without allowShrink', () => {
+    withFiles(JSON.stringify(build(4)), JSON.stringify(build(5)), (tmpPath, livePath) => {
+      const result = validateStateWrite({ tmpPath, livePath, entityKey });
+      expect(result).toEqual({ ok: false, reason: expect.stringContaining(`${entityKey} count would regress from 5 to 4`) });
+    });
+  });
+
+  test('permits the same shrink (5 → 4) with allowShrink', () => {
+    withFiles(JSON.stringify(build(4)), JSON.stringify(build(5)), (tmpPath, livePath) => {
+      expect(validateStateWrite({ tmpPath, livePath, entityKey, allowShrink: true })).toEqual({ ok: true });
+    });
+  });
+
+  test('permits an equal-count rewrite without allowShrink', () => {
+    withFiles(JSON.stringify(build(5)), JSON.stringify(build(5)), (tmpPath, livePath) => {
+      expect(validateStateWrite({ tmpPath, livePath, entityKey })).toEqual({ ok: true });
+    });
+  });
+
+  test('refuses a collapse to zero (5 → 0) even with allowShrink — a declared shrink is not a declared wipe', () => {
+    withFiles(JSON.stringify(build(0)), JSON.stringify(build(5)), (tmpPath, livePath) => {
+      const result = validateStateWrite({ tmpPath, livePath, entityKey, allowShrink: true });
+      expect(result).toEqual({
+        ok: false,
+        reason: `${entityKey} count would collapse to zero (was 5) — refusing even with allowShrink`,
+      });
+    });
+  });
+
+  test('refuses a collapse to zero from a single entity (1 → 0) with allowShrink', () => {
+    withFiles(JSON.stringify(build(0)), JSON.stringify(build(1)), (tmpPath, livePath) => {
+      const result = validateStateWrite({ tmpPath, livePath, entityKey, allowShrink: true });
+      expect(result).toEqual({ ok: false, reason: expect.stringContaining('collapse to zero (was 1)') });
+    });
+  });
+
+  test('permits 0 → 0 — an already-empty live file has nothing to collapse', () => {
+    withFiles(JSON.stringify(build(0)), JSON.stringify(build(0)), (tmpPath, livePath) => {
+      expect(validateStateWrite({ tmpPath, livePath, entityKey })).toEqual({ ok: true });
+    });
+  });
+
+  test('permits a write when the live file lacks the entity key — no baseline to regress against', () => {
+    withFiles(JSON.stringify(build(1)), JSON.stringify({ refreshed_at: '2026-09-23T00:00:00.000Z' }), (tmpPath, livePath) => {
+      expect(validateStateWrite({ tmpPath, livePath, entityKey })).toEqual({ ok: true });
+    });
+  });
+});
+
+describe.each(ENTITY_SHAPES)('state-write-guard CLI — $entityKey ($file)', ({ entityKey, file, build }) => {
+  test('exit-code contract: 0 on pass, 1 on each refusal, 2 on malformed usage', async () => {
+    const dir = makeTempDir(`state-guard-cli-${entityKey}`);
+    try {
+      const livePath = path.join(dir, file);
+      const tmpPath = `${livePath}.tmp`;
+      fs.writeFileSync(livePath, JSON.stringify(build(3)));
+      const run = (content: string, ...extra: string[]) => {
+        fs.writeFileSync(tmpPath, content);
+        return runStateWriteGuardCli(['--tmp', tmpPath, '--live', livePath, '--entity-key', entityKey, ...extra]);
+      };
+
+      expect((await run(JSON.stringify(build(4)))).exitCode).toBe(0);
+      expect((await run(JSON.stringify(build(2)), '--allow-shrink')).exitCode).toBe(0);
+
+      const empty = await run('');
+      expect(empty.exitCode).toBe(1);
+      expect(empty.stderr).toMatch(/0 bytes/);
+
+      const malformed = await run('{');
+      expect(malformed.exitCode).toBe(1);
+      expect(malformed.stderr).toMatch(/malformed JSON/);
+
+      const noKey = await run('{}');
+      expect(noKey.exitCode).toBe(1);
+      expect(noKey.stderr).toContain(`"${entityKey}" key`);
+
+      const shrink = await run(JSON.stringify(build(2)));
+      expect(shrink.exitCode).toBe(1);
+      expect(shrink.stderr).toMatch(/regress from 3 to 2/);
+
+      const wipe = await run(JSON.stringify(build(0)), '--allow-shrink');
+      expect(wipe.exitCode).toBe(1);
+      expect(wipe.stderr).toMatch(/collapse to zero \(was 3\)/);
+
+      const usage = await runStateWriteGuardCli(['--entity-key', entityKey]);
+      expect(usage.exitCode).toBe(2);
+      expect(usage.stderr).toMatch(/Usage/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
