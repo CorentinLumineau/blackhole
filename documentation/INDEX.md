@@ -184,6 +184,7 @@
 | reviews/review-refactor-hooks-validate-bash-command-js-repeats-the-same-tier-dispatch-block-fou.md |  | review | current | on file change |
 | reviews/review-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | Review artifact for issue #713 (LGTM) | review | current | on file change |
 | reviews/review-test-carry-target-allowlist-reject-branch-is-untested-coverage-reads-100-but-the.md |  | review | current | on file change |
+| reviews/review-test-design-track-check-ts-s-two-check-functions-are-defined-but-never-called-by.md |  | review | current | on file change |
 | reviews/review-test-hooks-hook-event-triage-test-ts-asserts-a-clean-repo-root-3-tests-fail-on-a.md |  | review | current | on file change |
 | reviews/review-test-state-write-guard-s-zero-collapse-refusal-is-untested-the-one-branch-that-p.md |  | review | current | on file change |
 | runbooks/cloud-agent-plugins.md | Cloud Agents on this repo install Mercure and Blackhole from GitHub, not the marketplace cache | runbook | current | on file change |
