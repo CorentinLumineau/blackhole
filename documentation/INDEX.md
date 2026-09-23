@@ -181,6 +181,7 @@
 | reviews/review-record-408-s-reversal-of-adr-007-r3-supersession-rule-with-declared-phrase-scan.md | Review artifact for issue #712 (LGTM) | review | current | on file change |
 | reviews/review-refactor-build-named-flags-plumbing-for-build-targets-v-tree-01-tree-registry-ch.md | Review artifact for issue #724 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Review artifact for issue #704 (LGTM) | review | current | on file change |
+| reviews/review-refactor-hooks-validate-bash-command-js-repeats-the-same-tier-dispatch-block-fou.md |  | review | current | on file change |
 | reviews/review-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | Review artifact for issue #713 (LGTM) | review | current | on file change |
 | reviews/review-test-carry-target-allowlist-reject-branch-is-untested-coverage-reads-100-but-the.md |  | review | current | on file change |
 | reviews/review-test-hooks-hook-event-triage-test-ts-asserts-a-clean-repo-root-3-tests-fail-on-a.md |  | review | current | on file change |

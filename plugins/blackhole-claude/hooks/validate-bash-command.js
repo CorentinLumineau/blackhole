@@ -27,6 +27,29 @@ const {
 
 const HOOK = 'validate-bash-command';
 
+const RECORDER_BY_TIER = { block: denyAndRecord, warn: warnAndRecord };
+const BLOCK_ONLY = ['block'];
+const WARN_ONLY = ['warn'];
+const BLOCK_OR_WARN = ['block', 'warn'];
+
+/** Single tier dispatch for every guard verdict (`{ tier, pattern_id, reason }`) in main(). Records
+ * and emits the verdict through the recorder for its tier and returns true — the caller then
+ * returns. Returns false, recording nothing, for a null verdict or any tier outside
+ * `allowedTiers` (including `'allow'`), so the caller falls through to the next check.
+ * `allowedTiers` is the ceiling each call site declares for its evaluator: a tier it omits can
+ * never be emitted from that site, whatever the evaluator returns. */
+const handleTieredResult = (verdict, { tool, command, allowedTiers }) => {
+  if (!verdict || !allowedTiers.includes(verdict.tier)) return false;
+  RECORDER_BY_TIER[verdict.tier]({
+    hook: HOOK,
+    tool,
+    pattern_id: verdict.pattern_id,
+    reason: verdict.reason,
+    detail: command,
+  });
+  return true;
+};
+
 const main = () => {
   let input;
   try {
@@ -88,80 +111,27 @@ const main = () => {
   // whether the target is a registered worktree at all — neither of which a static pattern can
   // see. See worktree-removal-guard.js's module docstring.
   const worktreeRemoval = evaluateWorktreeRemoval(command, cwd);
-  if (worktreeRemoval && worktreeRemoval.tier === 'block') {
-    denyAndRecord({
-      hook: HOOK,
-      tool,
-      pattern_id: worktreeRemoval.pattern_id,
-      reason: worktreeRemoval.reason,
-      detail: command,
-    });
-    return;
-  }
+  if (handleTieredResult(worktreeRemoval, { tool, command, allowedTiers: BLOCK_ONLY })) return;
 
   // Dynamic check (#897/ADR-043): refuses a working-tree-mutating git subcommand (clean,
   // checkout/restore of a pathspec, reset --hard/--merge, apply/am, a forced checkout/switch)
   // whose effective repository is the main clone — see git-main-clone-guard.js's module
   // docstring. Severity graded by recoverability; `git stash` warns rather than blocks.
   const gitMainCloneMutation = evaluateGitMainCloneMutation(command, cwd);
-  if (gitMainCloneMutation && gitMainCloneMutation.tier === 'block') {
-    denyAndRecord({
-      hook: HOOK,
-      tool,
-      pattern_id: gitMainCloneMutation.pattern_id,
-      reason: gitMainCloneMutation.reason,
-      detail: command,
-    });
-    return;
-  }
-  if (gitMainCloneMutation && gitMainCloneMutation.tier === 'warn') {
-    warnAndRecord({
-      hook: HOOK,
-      tool,
-      pattern_id: gitMainCloneMutation.pattern_id,
-      reason: gitMainCloneMutation.reason,
-      detail: command,
-    });
-    return;
-  }
+  if (handleTieredResult(gitMainCloneMutation, { tool, command, allowedTiers: BLOCK_OR_WARN })) return;
 
   // Dynamic check (#804/ADR-029): extends #620's assigned-worktree write containment
   // (`validate-file-changes.js`, Write/Edit only) to Bash file-write commands — see
   // bash-write-target-guard.js's module docstring. No-op when BLACKHOLE_ASSIGNED_WORKTREE is
   // unset (byte-identical to today).
   const writeTarget = evaluateBashWriteTargets(command, cwd);
-  if (writeTarget && writeTarget.tier === 'block') {
-    denyAndRecord({
-      hook: HOOK,
-      tool,
-      pattern_id: writeTarget.pattern_id,
-      reason: writeTarget.reason,
-      detail: command,
-    });
-    return;
-  }
-  if (writeTarget && writeTarget.tier === 'warn') {
-    warnAndRecord({
-      hook: HOOK,
-      tool,
-      pattern_id: writeTarget.pattern_id,
-      reason: writeTarget.reason,
-      detail: command,
-    });
-    return;
-  }
+  if (handleTieredResult(writeTarget, { tool, command, allowedTiers: BLOCK_OR_WARN })) return;
 
+  // A static warnPattern match is warn-only by construction: the verdict is built here with
+  // `tier: 'warn'` and WARN_ONLY rejects any other tier, so this path can never deny.
   const flagged = matchFirstIgnoringNonExecutingText(command, patterns.warnPatterns);
-  if (flagged) {
-    warnAndRecord({
-      hook: HOOK,
-      tool,
-      pattern_id: flagged.id,
-      reason: flagged.reason,
-      detail: command,
-    });
-    return;
-  }
+  const flaggedVerdict = flagged && { tier: 'warn', pattern_id: flagged.id, reason: flagged.reason };
+  if (handleTieredResult(flaggedVerdict, { tool, command, allowedTiers: WARN_ONLY })) return;
 
   allowSilently();
 };
