@@ -3,6 +3,7 @@ type: analysis
 summary: "CI pipeline analysis for the blackhole build and verify toolchain"
 skill: x-analyze
 created: 2026-07-22
+last_updated: 2026-09-04
 target: "CI pipelines (.github/workflows/verify.yml, release.yml)"
 status: draft
 review_trigger: "on ADR acceptance"
