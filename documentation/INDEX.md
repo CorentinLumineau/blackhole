@@ -130,7 +130,7 @@
 | reviews/review-campaign-config-confirmation-gate.md | Review of the campaign config confirmation gate implementation | review | current | on ADR-015 change |
 | reviews/review-chore-content-gates-budget-orchestrator-runtime-dispatch-delegation-md-split-off.md | Review artifact for issue #705 (LGTM) | review | current | on file change |
 | reviews/review-chore-land-the-16-stranded-decision-log-md-rows-sitting-uncommitted-in-the-main.md | Review artifact for issue #749 (LGTM) | review | current | on file change |
-| reviews/review-ci-harden-the-self-hosted-pipeline-no-job-timeout-on-a-single-runner-plus-two-me.md |  | review | current | on file change |
+| reviews/review-ci-harden-the-self-hosted-pipeline-no-job-timeout-on-a-single-runner-plus-two-me.md | Review artifact for issue #988 (LGTM) | review | current | on file change |
 | reviews/review-discovery-bash-pretooluse-guards-miss-every-path-qualified-invocation-usr-bin-gi.md | Review artifact for issue #774 (LGTM) | review | current | on file change |
 | reviews/review-discovery-carry-staged-artifacts-containment-stops-at-reporoot-so-an-in-repo-tar.md | Review artifact for issue #784 (LGTM) | review | current | on file change |
 | reviews/review-discovery-carry-staged-artifacts-resolves-staged-path-and-target-path-against-on.md | Review artifact for issue #760 (LGTM) | review | current | on file change |
@@ -150,7 +150,7 @@
 | reviews/review-docs-decision-log-record-steady-state-baseline-for-decision-log-silent-prs.md | Review artifact for issue #767 (LGTM) | review | current | on file change |
 | reviews/review-docs-findings-ledger-id-shape-entity-key-asymmetry-consumer-path-resolution.md | Review artifact for issue #796 (LGTM, 1 deferred WARN) | review | current | on file change |
 | reviews/review-docs-implementer-document-gh-pr-edit-rest-patch-workaround.md | Review artifact for issue #813 (LGTM) | review | current | on file change |
-| reviews/review-docs-land-the-x-analyze-full-codebase-audit-report.md |  | review | current | on file change |
+| reviews/review-docs-land-the-x-analyze-full-codebase-audit-report.md | Review artifact for issue #977 (LGTM) | review | current | on file change |
 | reviews/review-docs-review-core-per-dispatch-mode-reviewer-prompt-requirements-verification-mod.md | Review artifact for issue #709 (LGTM) | review | current | on file change |
 | reviews/review-docs-tests-strip-issue-finding-id-citations-from-hooks-validate-file-test-commen.md | Review artifact for issue #736 (LGTM) | review | current | on file change |
 | reviews/review-feat-checks-adr-watch-items-fact-v-watch-01-advisory-adr-007-s-worker-schemas-re.md | Review artifact for issue #710 (LGTM) | review | current | on file change |
@@ -158,11 +158,11 @@
 | reviews/review-feat-checks-enforce-shape-exhaustive-markers-via-v-shape-01-second-leg.md | Review artifact for issue #762 (LGTM) | review | current | on file change |
 | reviews/review-feat-checks-v-gate-02-gate-resolution-citations-v-prose-01-mechanical-vs-judgmen.md | Review artifact for issue #723 (LGTM) | review | current | on file change |
 | reviews/review-feat-checks-v-shape-01-route-field-set-parity-router-validator-status-type-schem.md | Review artifact for issue #708 (LGTM) | review | current | on file change |
-| reviews/review-feat-docs-generate-documentation-index-md-from-frontmatter-adr-031-phase-1.md |  | review | current | on file change |
+| reviews/review-feat-docs-generate-documentation-index-md-from-frontmatter-adr-031-phase-1.md | Review artifact for issue #811 (LGTM) | review | current | on file change |
 | reviews/review-feat-findings-ledger-deferred-finding-reconciliation-on-target-closure.md | Review artifact for issue #809 (LGTM, 0 deferred WARN) | review | current | on file change |
 | reviews/review-feat-planner-plan-quality-gate-cli-invoked-at-plan-time.md | Review artifact for issue #716 (LGTM) | review | current | on file change |
 | reviews/review-feat-reviewer-plugin-cache-version-bump-gate-drift-signal.md | Review artifact for issue #800 (LGTM) | review | current | on file change |
-| reviews/review-feat-reviewer-v-test-11-unfalsifiable-test-check-adr-032.md |  | review | current | on file change |
+| reviews/review-feat-reviewer-v-test-11-unfalsifiable-test-check-adr-032.md | Review artifact for issue #795 (LGTM) | review | current | on file change |
 | reviews/review-feat-scripts-carry-staged-artifacts-ts-script-the-mechanical-two-thirds-of-imple.md | Review artifact for issue #715 (LGTM) | review | current | on file change |
 | reviews/review-feat-scripts-decision-log-append-ts-bumps-last-updated-silent-log-doc-health-sig.md | Review artifact for issue #717 (LGTM) | review | current | on file change |
 | reviews/review-fix-config-registration-parent-key-coverage-for-nested-config-blocks-router-conf.md | Review artifact for issue #707 (LGTM, 1 deferred WARN) | review | current | on file change |
@@ -170,20 +170,20 @@
 | reviews/review-fix-hooks-extend-assigned-worktree-write-containment-to-bash-file-write-commands.md | Review artifact for issue #804 (LGTM) | review | current | on file change |
 | reviews/review-fix-hooks-normalize-then-basename-compare-closes-worktree-remove-executable-spel.md | Review artifact for issue #788 (LGTM) | review | current | on file change |
 | reviews/review-fix-hooks-validate-file-changes-js-510-512-tests-fail-on-macos-os-tmpdir-under-p.md | Review artifact for issue #714 (LGTM, one deferred WARN) | review | current | on file change |
-| reviews/review-fix-hooks-validate-upstream-branch-identity-before-trusting-u-in-checkunpushedco.md |  | review | current | on file change |
+| reviews/review-fix-hooks-validate-upstream-branch-identity-before-trusting-u-in-checkunpushedco.md | Review artifact for issue #781 (LGTM) | review | current | on file change |
 | reviews/review-fix-merge-gate-review-artifact-content-verification-against-live-ledger.md | Review artifact for issue #806 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-fix-orchestrator-refresh-main-clone-from-origin-main-post-merge-and-turn-start.md | Review artifact for issue #792 (LGTM, 1 deferred WARN) | review | current | on file change |
 | reviews/review-fix-plan-template-generalize-facts-ts-literal-bump-prohibition.md | Review artifact for issue #769 (LGTM) | review | current | on file change |
 | reviews/review-fix-promote-review-artifact-byte-order-safe-sort-comparator.md | Review artifact for issue #791 (LGTM, 0 deferred WARN) | review | current | on file change |
-| reviews/review-fix-review-v-test-09-unmeasurable-for-hooks-reporting-accuracy.md |  | review | current | on file change |
+| reviews/review-fix-review-v-test-09-unmeasurable-for-hooks-reporting-accuracy.md | Review artifact for issue #787 (LGTM) | review | current | on file change |
 | reviews/review-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Review artifact for issue #728 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
 | reviews/review-record-408-s-reversal-of-adr-007-r3-supersession-rule-with-declared-phrase-scan.md | Review artifact for issue #712 (LGTM) | review | current | on file change |
 | reviews/review-refactor-build-named-flags-plumbing-for-build-targets-v-tree-01-tree-registry-ch.md | Review artifact for issue #724 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Review artifact for issue #704 (LGTM) | review | current | on file change |
-| reviews/review-refactor-hooks-validate-bash-command-js-repeats-the-same-tier-dispatch-block-fou.md |  | review | current | on file change |
+| reviews/review-refactor-hooks-validate-bash-command-js-repeats-the-same-tier-dispatch-block-fou.md | Review artifact for issue #980 (LGTM) | review | current | on file change |
 | reviews/review-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | Review artifact for issue #713 (LGTM) | review | current | on file change |
-| reviews/review-test-carry-target-allowlist-reject-branch-is-untested-coverage-reads-100-but-the.md |  | review | current | on file change |
-| reviews/review-test-hooks-hook-event-triage-test-ts-asserts-a-clean-repo-root-3-tests-fail-on-a.md |  | review | current | on file change |
-| reviews/review-test-state-write-guard-s-zero-collapse-refusal-is-untested-the-one-branch-that-p.md |  | review | current | on file change |
+| reviews/review-test-carry-target-allowlist-reject-branch-is-untested-coverage-reads-100-but-the.md | Review artifact for issue #979 (LGTM) | review | current | on file change |
+| reviews/review-test-hooks-hook-event-triage-test-ts-asserts-a-clean-repo-root-3-tests-fail-on-a.md | Review artifact for issue #981 (LGTM) | review | current | on file change |
+| reviews/review-test-state-write-guard-s-zero-collapse-refusal-is-untested-the-one-branch-that-p.md | Review artifact for issue #983 (LGTM) | review | current | on file change |
 | runbooks/cloud-agent-plugins.md | Cloud Agents on this repo install Mercure and Blackhole from GitHub, not the marketplace cache | runbook | current | on file change |
