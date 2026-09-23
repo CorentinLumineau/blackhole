@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { withTempDir } from './test-fixtures.ts';
-import { archiveConsumedFiles, ingestHookEvents, main } from './hook-event-triage.ts';
+import { archiveConsumedFiles, ingestHookEvents } from './hook-event-triage.ts';
 import { root } from '../checks/check-utils.ts';
 
 // ADR-042 — finding identity is per-class `(vcode, pattern_id, worktree)`, not
@@ -472,62 +472,60 @@ describe('ingestHookEvents — Triage 1b round-trip', () => {
   });
 });
 
-// Task 8 — the `main()` CLI entrypoint the turn-start step invokes. Runs against THIS repo's
-// own worktree root (main() resolves `root` the same way plugin-drift-signal.ts/
-// doc-health-signal.ts do — relative to the running script's own location, never `process.cwd`),
-// so every test creates its own `.blackhole/` here and removes it in `finally` — guarded by an
-// upfront assertion that no `.blackhole/` already exists, so a test never clobbers real state.
+// Task 8 — the `main()` CLI entrypoint the turn-start step invokes. main() resolves `root`
+// relative to its own script location (check-utils.ts), never `process.cwd`, so pointing it at
+// a throwaway campaign dir means running a copy of `scripts/` that lives inside a fresh temp
+// dir: the copy's `root` is that temp dir. Every test therefore runs against its own sandbox and
+// never reads, writes, or asserts anything about this checkout's real `.blackhole/`.
 describe('main() CLI entrypoint', () => {
-  const campaignDir = path.join(root, '.blackhole');
+  const withCampaignDir = (fn: (sandbox: string, campaignDir: string) => void): void => {
+    withTempDir('hook-triage-cli-', (sandbox) => {
+      fs.cpSync(path.join(root, 'scripts'), path.join(sandbox, 'scripts'), {
+        recursive: true,
+        filter: (src) => !src.endsWith('.test.ts'),
+      });
+      // scripts/project-identity.ts reads the root package.json at import time.
+      fs.copyFileSync(path.join(root, 'package.json'), path.join(sandbox, 'package.json'));
+      fn(sandbox, path.join(sandbox, '.blackhole'));
+    });
+  };
 
-  const withCampaignDir = (fn: () => void): void => {
-    expect(fs.existsSync(campaignDir)).toBe(false);
-    try {
-      fn();
-    } finally {
-      fs.rmSync(campaignDir, { recursive: true, force: true });
-    }
+  const runInSandbox = (sandbox: string, script: string) => {
+    const proc = Bun.spawnSync({ cmd: ['bun', 'run', script], cwd: sandbox, stdout: 'pipe', stderr: 'pipe' });
+    return { exitCode: proc.exitCode, stdout: proc.stdout.toString(), stderr: proc.stderr.toString() };
+  };
+
+  const seedLedgerAndEvent = (campaignDir: string, eventName: string) => {
+    const ledgerPath = path.join(campaignDir, 'findings-ledger.json');
+    const ledgerContent = JSON.stringify({ refreshed_at: '', next_id: 1, findings: [] }, null, 2);
+    const eventsDir = path.join(campaignDir, 'hook-events');
+    fs.mkdirSync(eventsDir, { recursive: true });
+    fs.writeFileSync(ledgerPath, ledgerContent);
+    fs.writeFileSync(
+      path.join(eventsDir, eventName),
+      JSON.stringify({ tier: 'warn', pattern_id: 'force-push', reason: 'force push detected', worktree: null }),
+      'utf-8',
+    );
+    return { ledgerPath, ledgerContent, eventsDir };
   };
 
   test('no findings-ledger.json: logs and exits 0 without creating .blackhole/', () => {
-    withCampaignDir(() => {
-      const proc = Bun.spawnSync({
-        cmd: ['bun', 'run', 'scripts/lib/hook-event-triage.ts'],
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
+    withCampaignDir((sandbox, campaignDir) => {
+      const proc = runInSandbox(sandbox, 'scripts/lib/hook-event-triage.ts');
       expect(proc.exitCode).toBe(0);
-      expect(proc.stdout.toString()).toContain('nothing to ingest into');
+      expect(proc.stdout).toContain('nothing to ingest into');
       expect(fs.existsSync(campaignDir)).toBe(false);
     });
   });
 
   test('ledger + hook events present: ingests, archives the event, writes the ledger through the guard', () => {
-    withCampaignDir(() => {
-      fs.mkdirSync(campaignDir, { recursive: true });
-      const ledgerPath = path.join(campaignDir, 'findings-ledger.json');
-      fs.writeFileSync(
-        ledgerPath,
-        JSON.stringify({ refreshed_at: '', next_id: 1, findings: [] }, null, 2),
-      );
-      const eventsDir = path.join(campaignDir, 'hook-events');
-      fs.mkdirSync(eventsDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(eventsDir, 'cli-test-event.json'),
-        JSON.stringify({ tier: 'warn', pattern_id: 'force-push', reason: 'force push detected', worktree: null }),
-        'utf-8',
-      );
+    withCampaignDir((sandbox, campaignDir) => {
+      const { ledgerPath, eventsDir } = seedLedgerAndEvent(campaignDir, 'cli-test-event.json');
 
-      const proc = Bun.spawnSync({
-        cmd: ['bun', 'run', 'scripts/lib/hook-event-triage.ts'],
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
+      const proc = runInSandbox(sandbox, 'scripts/lib/hook-event-triage.ts');
 
       expect(proc.exitCode).toBe(0);
-      expect(proc.stdout.toString()).toContain('ingested 1 event');
+      expect(proc.stdout).toContain('ingested 1 event');
       expect(fs.existsSync(path.join(eventsDir, 'cli-test-event.json'))).toBe(false);
 
       const updated = JSON.parse(fs.readFileSync(ledgerPath, 'utf-8'));
@@ -544,47 +542,31 @@ describe('main() CLI entrypoint', () => {
     });
   });
 
-  // Fix round 1 (PR #908, item 1) — the write-guard-refusal branch was previously unexercised:
-  // no test confirmed `main()` aborts before `fs.renameSync` when `validateStateWrite` returns
-  // `ok: false`. The real write-protocol flow only ever grows the findings count, so a genuine
-  // rejection can't be manufactured through real inputs; called in-process (not via
-  // `Bun.spawnSync` like the two tests above) so a stub can be injected for `deps.validateStateWrite`.
+  // The write-guard-refusal branch can't be reached through real inputs (the real write-protocol
+  // flow only ever grows the findings count), so a stub is injected via `deps.validateStateWrite`.
+  // The stub is wired by a small driver script inside the sandbox rather than by calling main()
+  // in-process, because an in-process main() is bound to this checkout's own root.
   test('write guard refuses: does not install the tmp file, removes it, and exits non-zero', () => {
-    withCampaignDir(() => {
-      fs.mkdirSync(campaignDir, { recursive: true });
-      const ledgerPath = path.join(campaignDir, 'findings-ledger.json');
-      const originalLedgerContent = JSON.stringify({ refreshed_at: '', next_id: 1, findings: [] }, null, 2);
-      fs.writeFileSync(ledgerPath, originalLedgerContent);
-      const eventsDir = path.join(campaignDir, 'hook-events');
-      fs.mkdirSync(eventsDir, { recursive: true });
+    withCampaignDir((sandbox, campaignDir) => {
+      const { ledgerPath, ledgerContent, eventsDir } = seedLedgerAndEvent(campaignDir, 'guard-refusal-event.json');
       fs.writeFileSync(
-        path.join(eventsDir, 'guard-refusal-event.json'),
-        JSON.stringify({ tier: 'warn', pattern_id: 'force-push', reason: 'force push detected', worktree: null }),
-        'utf-8',
+        path.join(sandbox, 'refusing-driver.ts'),
+        "import { main } from './scripts/lib/hook-event-triage.ts';\n" +
+          "main({ validateStateWrite: () => ({ ok: false, reason: 'test-forced-refusal' }) });\n",
       );
 
-      // `process.exitCode` is a process-global — save/restore it so a forced non-zero code
-      // here never leaks into this test file's own exit status. The `?? 0` is load-bearing:
-      // assigning `undefined` once the code has been set to a truthy value is a no-op in Bun,
-      // not a reset, so restoring a captured `undefined` would leave the process exiting 1 and
-      // make the suite's exit status disagree with its own "0 fail" summary. Only an explicit
-      // `0` clears it.
-      const originalExitCode = process.exitCode;
-      try {
-        main({ validateStateWrite: () => ({ ok: false, reason: 'test-forced-refusal' }) });
-        expect(process.exitCode).toBe(1);
-      } finally {
-        process.exitCode = originalExitCode ?? 0;
-      }
+      const proc = runInSandbox(sandbox, 'refusing-driver.ts');
 
+      expect(proc.exitCode).toBe(1);
+      expect(proc.stderr).toContain('write guard refused install — test-forced-refusal');
       // The refusal must abort before the atomic rename — the live ledger is untouched and the
       // rejected .tmp file is cleaned up, not left behind.
-      expect(fs.readFileSync(ledgerPath, 'utf-8')).toBe(originalLedgerContent);
+      expect(fs.readFileSync(ledgerPath, 'utf-8')).toBe(ledgerContent);
       expect(fs.existsSync(`${ledgerPath}.tmp`)).toBe(false);
-      // Issue #909 — archiving must not happen ahead of a successful ledger install: a guard
-      // refusal is the deterministic in-process stand-in for "the process died before the
-      // ledger install" (main() never reaches fs.renameSync(tmpPath, ledgerPath) either way),
-      // so the event file must still be sitting here, un-archived, for the next run to re-ingest.
+      // Archiving must not happen ahead of a successful ledger install: a guard refusal is the
+      // deterministic stand-in for "the process died before the ledger install" (main() never
+      // reaches fs.renameSync(tmpPath, ledgerPath) either way), so the event file must still be
+      // sitting here, un-archived, for the next run to re-ingest.
       expect(fs.existsSync(path.join(eventsDir, 'guard-refusal-event.json'))).toBe(true);
     });
   });
