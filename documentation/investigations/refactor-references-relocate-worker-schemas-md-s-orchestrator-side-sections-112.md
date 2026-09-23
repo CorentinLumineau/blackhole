@@ -1,8 +1,9 @@
 ---
 type: analysis
+summary: "Investigation for issue #726: the ADR-007 accept-with-expiry amendment does not supersede it (worker-schemas.md's ADR_WATCH_ITEMS revisit trigger is tripped) and orchestrator-runtime.md lacks budget headroom, so the ~112 LOC of orchestrator-side sections should move to a new `flush-request.md` per the issue's own fallback"
 status: current
 created: 2026-09-04
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 review_trigger: "on file change"
 issue: 726
 confidence: 88

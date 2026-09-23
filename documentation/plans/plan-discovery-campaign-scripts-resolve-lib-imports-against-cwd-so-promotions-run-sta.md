@@ -1,10 +1,11 @@
 ---
 issue: 798
 type: plan
+summary: "Plan for issue #798: pin `bun run --cwd` to the same absolute path as `--repo-root` for check-review-artifact.ts, carry-staged-artifacts.ts, and companion-file-sync.ts, plus a static regression guard so the pin cannot be silently dropped from documented invocations"
 status: current
 review_trigger: "on file change"
 created: 2026-09-04
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 related:
   - .blackhole/plans/issue-798-investigation.md
 ---

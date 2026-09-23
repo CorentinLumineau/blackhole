@@ -1,8 +1,9 @@
 ---
 type: research
+summary: "Research for issue #469: model-routing.md routes only model tier, an unqualified 'provider default' reasoning effort is not an implementable target, and no harness documents a stable default-effort table, so folding effort defaults into the existing economy/standard/premium tiers remains the winning design"
 status: current
 created: 2026-09-04
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 review_trigger: "on file change"
 issue: 469
 confidence: 86
