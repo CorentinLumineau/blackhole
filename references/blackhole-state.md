@@ -35,6 +35,7 @@ Mutations to `.blackhole/queue.json` and
 | `archive/` | Rotated ledger snapshots and pre-mutation `queue.json` snapshots (gitignored) |
 | `archive/hook-events-<ts>/` | Consumed PreToolUse hook-event files, archived rather than deleted once ingested (gitignored, ADR-042/#893) |
 | `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
+| `run-context.json` | What this run can do and the route resolved from it, rewritten at every bootstrap and resume (see `run-context.md`) |
 
 Full schemas: `references/findings-ledger.md`,
 `queue-dag.md`.

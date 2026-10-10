@@ -43,7 +43,8 @@ every `run`-mode campaign start — including the lightweight
 routine resume confirmation gate that fires when `.blackhole/config.json` already exists — and
 must execute it **before** its first fan-out, never after workers are already in flight.
 
-`coordinator.md` § Bootstrap preflight is the SSOT for that gate's trigger conditions and its
+Its first step is resolving the run context (`run-context.md`), which decides whether Pattern C
+applies at all on this run. `coordinator.md` § Bootstrap preflight is the SSOT for that gate's trigger conditions and its
 step-by-step form. This document deliberately does not restate them: one gate definition, read by
 whichever pattern is active (V-DRY-01).
 

@@ -11,6 +11,10 @@ Binding: `skills/blackhole/references/coordinator-dashboard.md`.
 
 ### Bootstrap preflight
 
+**Run context first.** Before anything below, on every bootstrap and resume, resolve the run
+context per `skills/blackhole/references/run-context.md`. If it reports a missing
+capability, stop and tell the user what is missing; do not start the campaign around it.
+
 **Campaign launch configuration gate** (ADR-005 § Campaign Launch
 Configuration Gate, extended per ADR-006 § "Campaign launch form") — run
 steps 1-6 below whenever **any** of these four conditions hold, regardless
