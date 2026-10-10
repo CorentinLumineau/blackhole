@@ -1,0 +1,56 @@
+# Run Context
+
+Blackhole runs on hosts and surfaces that offer different tools: a local Claude Code CLI, a
+Claude Code cloud session, a Claude Project thread, a headless `claude -p` job, the Cursor
+desktop agent and Cursor Cloud. Run-context resolution
+(`documentation/decisions/ADR-046-run-context-resolution.md`) records what this run can do and
+routes the campaign from that record, once, at bootstrap. No agent prompt should assume a host
+capability; it reads `.blackhole/run-context.json` instead.
+
+## Resolve it
+
+Before the configuration gate on every bootstrap and every resume, run:
+
+```bash
+bun run scripts/run-context.ts --tools <comma list>
+```
+
+`--tools` lists what is in **your own tool list**, which no script can see:
+
+| Tool | Report it when your tool list has |
+|------|-----------------------------------|
+| `workflow` | The `Workflow` tool |
+| `agent` | `Agent` / `Task` subagent spawning |
+| `background-agents` | Notifications when a background subagent finishes |
+| `ask-user-question` | `AskUserQuestion` (Claude Code) |
+| `ask-question` | `AskQuestion` / `cursor/ask_question` (Cursor) |
+| `ask-decision` | A Project decision card (`ask_decision`) |
+| `github-mcp` | GitHub MCP tools (`mcp__github__*`) |
+| `pr-subscriptions` | PR activity events delivered into the session |
+| `routines` | Scheduled triggers the session can create |
+
+The script reads the rest from the environment (host, surface, whether the disk survives the
+run) and from `gh auth status`. Pass `--host`, `--surface` or `--persistent-disk yes|no` only
+when detection is wrong or impossible (Cursor Cloud, for example, exposes no reliable marker).
+Each field in the written record carries its source: `env`, `probe`, `agent` or `derived`.
+
+## Refuse when a capability is missing
+
+Exit `1` means a capability the campaign cannot start without is absent; every `missing:` line
+names it. Stop and tell the user exactly those lines. Do not start a campaign around a gap. Exit
+`2` is a malformed call. Each `warn:` line names a degradation the run accepts; restate it once
+in the launch summary.
+
+## Routing table
+
+| Run context | Pattern | Questions | CI wait | State |
+|-------------|---------|-----------|---------|-------|
+| Fan-out + completion events + a question channel, Claude Code | C (`claude-code-native.md`) | First of ask-decision, AskUserQuestion, chat | PR events when offered, else poll | `local` when the disk persists, else `branch` |
+| Same, Cursor | C-lite (`multitask-mode.md` § Cursor Pattern C-lite) | First of AskQuestion, chat | As above | As above |
+| Anything less | B (`multitask-mode.md`) | As above; `none` when headless | As above | As above |
+
+Forge channel: `gh` when authenticated, else a token in `GH_TOKEN`/`GITHUB_TOKEN` (`rest`), else
+GitHub MCP tools (`mcp`). With none of them the campaign cannot sync and bootstrap refuses.
+
+`fixtures/run-context/` holds one resolved example per run type; `scripts/lib/run-context.ts`
+is the table's only implementation.

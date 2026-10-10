@@ -1,0 +1,23 @@
+{
+  "description": "Cursor desktop agent with background Task and AskQuestion",
+  "env": {
+    "CURSOR_TRACE_ID": "abc"
+  },
+  "probes": {
+    "ghAuthenticated": true
+  },
+  "tools": [
+    "agent",
+    "background-agents",
+    "ask-question"
+  ],
+  "expected": {
+    "pattern": "C-lite",
+    "forge_channel": "gh",
+    "question_channel": "ask-question",
+    "ci_wait": "poll",
+    "state_store": "local",
+    "missing": [],
+    "warnings": []
+  }
+}

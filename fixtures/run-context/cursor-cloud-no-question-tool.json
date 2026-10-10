@@ -1,0 +1,25 @@
+{
+  "description": "Cursor Cloud agent: no AskQuestion in schema, ephemeral VM, agent states host and surface",
+  "env": {},
+  "probes": {
+    "ghAuthenticated": true
+  },
+  "tools": [
+    "agent"
+  ],
+  "overrides": {
+    "host": "cursor",
+    "surface": "cloud"
+  },
+  "expected": {
+    "pattern": "B",
+    "forge_channel": "gh",
+    "question_channel": "chat",
+    "ci_wait": "poll",
+    "state_store": "branch",
+    "missing": [],
+    "warnings": [
+      "state: the disk does not persist; push .blackhole/ to a branch before the session ends"
+    ]
+  }
+}

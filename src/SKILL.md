@@ -11,6 +11,9 @@ runbook: `{{AGENT_DIR}}/skills/blackhole/references/blackhole-protocol.md`.
 
 ## Entry (Multitask Mode)
 
+Which pattern below applies is not a judgment call: resolve the run context first and follow the
+pattern it names ([run-context.md](references/run-context.md)).
+
 If the agent lacks a native long-running goal loop, use Multitask Mode (Pattern B) with a coordinator + background orchestrator:
 
 1. User talks to **`coordinator`** agent (or attaches this skill in Multitask Mode)
