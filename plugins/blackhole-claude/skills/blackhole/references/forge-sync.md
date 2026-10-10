@@ -40,7 +40,7 @@ Read optional scope from `.blackhole/config.json` (or `CAMPAIGN_CONFIG` env over
 
 ```bash
 # Pseudocode — prefer bun helper
-bun scripts/forge-scope.ts list-args   # prints --milestone / --label flags
+bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args   # prints --milestone / --label flags
 ```
 
 `readScope(config)` returns `{ milestone?, labels? }`. Empty `scope_labels: []` is
@@ -53,7 +53,7 @@ user-visible error — do not silently ingest zero issues.
 
 ```bash
 gh issue list --state open --json number,title,labels,body,milestone --limit 200 \
-  $(bun scripts/forge-scope.ts list-args)
+  $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args)
 ```
 
 When scope is active, `gh` applies milestone and label filters (labels use AND semantics).
@@ -194,11 +194,11 @@ Skip when `.blackhole/config.json` has `auto_sync: false` (offline — queue-onl
 
 ```bash
 # Print merged body from stdin
-bun scripts/forge-deps.ts merge-body --deps 11,12 < body.md
+bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-deps.ts merge-body --deps 11,12 < body.md
 
 # Fetch + apply for issue #13
 gh issue view 13 --json body -q .body | \
-  bun scripts/forge-deps.ts merge-body --deps 11,12 | \
+  bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-deps.ts merge-body --deps 11,12 | \
   gh issue edit 13 --body-file -
 ```
 
@@ -228,7 +228,7 @@ Use the **same scoped** issue list as step 2:
 
 ```bash
 OPEN_ISSUES=$(gh issue list --state open --json number \
-  $(bun scripts/forge-scope.ts list-args) | jq 'length')
+  $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args) | jq 'length')
 OPEN_PRS=$(gh pr list --state open --json number | jq 'length')
 ```
 
@@ -252,7 +252,7 @@ and the campaign discoverability label:
 
 ```bash
 gh issue create --title "..." --body "..." \
-  $(bun scripts/forge-scope.ts create-args)
+  $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args)
 ```
 
 `create-args` emits `--milestone` and `--label` flags from `scope_milestone` / `scope_labels`.

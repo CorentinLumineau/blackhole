@@ -6,6 +6,7 @@ import {
   EXPECTED_BC_AGENTS,
   checkCursorAgents,
   checkGeminiSymlinks,
+  checkPluginVersionDrift,
   checkStaleGlobalSkill,
   exitCodeFromChecks,
   shouldRunGhAuth,
@@ -219,5 +220,43 @@ describe('exitCodeFromChecks', () => {
       { id: 'D-SKILL-01', severity: 'WARN', ok: true },
     ];
     expect(exitCodeFromChecks(checks)).toBe(0);
+  });
+});
+
+describe('checkPluginVersionDrift', () => {
+  const setup = (vendored: string | null, installed: string | null) => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-repo-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-home-'));
+    if (vendored) {
+      fs.mkdirSync(path.join(repo, 'vendor', 'blackhole'), { recursive: true });
+      fs.writeFileSync(path.join(repo, 'vendor', 'blackhole', 'package.json'), JSON.stringify({ version: vendored }));
+    }
+    if (installed) {
+      fs.mkdirSync(path.join(home, '.claude', 'plugins'), { recursive: true });
+      fs.writeFileSync(
+        path.join(home, '.claude', 'plugins', 'installed_plugins.json'),
+        JSON.stringify({ plugins: { 'blackhole@blackhole-marketplace': [{ scope: 'user', version: installed }] } }),
+      );
+    }
+    return { repo, home };
+  };
+
+  test('ok when nothing is vendored', () => {
+    const { repo, home } = setup(null, '0.22.3');
+    expect(checkPluginVersionDrift(repo, home).ok).toBe(true);
+  });
+
+  test('ok when versions match', () => {
+    const { repo, home } = setup('0.22.3', '0.22.3');
+    expect(checkPluginVersionDrift(repo, home).ok).toBe(true);
+  });
+
+  test('warns with both versions when they differ', () => {
+    const { repo, home } = setup('0.21.0', '0.22.3');
+    const check = checkPluginVersionDrift(repo, home);
+    expect(check.ok).toBe(false);
+    expect(check.severity).toBe('WARN');
+    expect(check.detail).toContain('0.21.0');
+    expect(check.detail).toContain('0.22.3');
   });
 });

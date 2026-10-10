@@ -7,8 +7,8 @@ finish/run the backlog campaign, follow this protocol.
 
 - **Use `/goal`** or Multitask Mode: `coordinator` → spawns
   `orchestrator` in background
-- Skill: `plugins/blackhole-claude/skills/blackhole/SKILL.md`
-- Flow: `plugins/blackhole-claude/skills/blackhole/references/multitask-mode.md`
+- Skill: `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/SKILL.md`
+- Flow: `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/multitask-mode.md`
 
 Coordinator routes only; orchestrator runs five phases; workers implement.
 
@@ -16,7 +16,7 @@ Coordinator routes only; orchestrator runs five phases; workers implement.
 
 Handle → Plan → Implement → Review → Loop.
 
-Playbooks: `plugins/blackhole-claude/skills/blackhole/references/phase-*.md`
+Playbooks: `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/phase-*.md`
 
 ## Clarify — all issue sizes
 

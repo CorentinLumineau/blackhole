@@ -594,7 +594,7 @@ Each `findings[]` entry additionally carries `issue_ref: number` and `pr_ref: nu
 stamped by the script (issue #754) — never present on the raw `reviewer` input's Finding shape
 above, only on this aggregator's stamped output.
 
-CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>]`
+CLI: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>]`
 
 `--verification-file` (issue #439, § `verification` above) points to the independent security
 verification spawn's own `verification[]` array, serialized as a plain JSON array — omitted
@@ -634,7 +634,7 @@ tree by the CLI entrypoint's `resolveAdrAmendmentTruth`, never self-reported) is
 `amendment_acknowledged` is `false`. No new V-code — same convention as the four other reasons,
 none of which carry one either.
 
-CLI: `bun run scripts/design-aggregate.ts --input-file <path> [--repo-root <path>]`
+CLI: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/design-aggregate.ts --input-file <path> [--repo-root <path>]`
 
 ## Partial result (`status: partial`, `stop --now` leg B, issue #492)
 

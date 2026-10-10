@@ -36,7 +36,7 @@ Mutations to `.blackhole/queue.json` and
 | `archive/hook-events-<ts>/` | Consumed PreToolUse hook-event files, archived rather than deleted once ingested (gitignored, ADR-042/#893) |
 | `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
 
-Full schemas: `plugins/blackhole-claude/skills/blackhole/references/findings-ledger.md`,
+Full schemas: `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/findings-ledger.md`,
 `queue-dag.md`.
 
 ## Write protocol
@@ -54,7 +54,7 @@ mutation happened not to run in the same incident.
 2. Write the candidate output to `<file>.tmp`.
 3. Validate the `.tmp` file before installing it:
    ```
-   bun run scripts/lib/state-write-guard.ts --tmp <file>.tmp --live <file> --entity-key <key> [--allow-shrink]
+   bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/state-write-guard.ts --tmp <file>.tmp --live <file> --entity-key <key> [--allow-shrink]
    ```
 
    **Consumer-repo invocation** (issue #796): `scripts/lib/state-write-guard.ts` does not
@@ -306,7 +306,7 @@ consumer repo's.
 
 Existence-gated: when `scripts/checks/doc-health.check.ts` exists at repo root (blackhole
 self-hosting its own campaign), refresh `.blackhole/doc-health.json` via
-`bun run scripts/doc-health-signal.ts`; absent, this step is inert — no error, no attempted
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/doc-health-signal.ts`; absent, this step is inert — no error, no attempted
 invocation. Scope-2 (a consumer repo's tree) is enforced at review time by `reviewer.md` § Doc-Governance Judgment Audit.
 
 `doc_debt: "yes"` is visibility only: no ledger append, no phase gate. `V-DOCHEALTH-03` stays
@@ -358,7 +358,7 @@ proves one:
 
 Existence-gated: when `scripts/plugin-drift-signal.ts` exists at repo root (blackhole
 self-hosting its own campaign), refresh `.blackhole/plugin-drift.json` via
-`bun run scripts/plugin-drift-signal.ts`; absent, this step is inert — no error, no attempted
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/plugin-drift-signal.ts`; absent, this step is inert — no error, no attempted
 invocation. The signal is schema `version: 2`, carrying `sources[]` (each with its enumeration,
 ordering, and content-hash fields merged) and `veto_pairs[]`.
 

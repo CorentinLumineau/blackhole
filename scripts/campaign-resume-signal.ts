@@ -390,7 +390,8 @@ function parseCliArgs(argv: string[]) {
 }
 
 async function main() {
-  const root = path.resolve(import.meta.dirname, '..');
+  // Project root is the working directory: the script may run from an installed plugin copy.
+  const root = process.cwd();
   const argv = process.argv.slice(2);
   const { hook, campaignDir, inputFile } = parseCliArgs(argv);
   const resolvedCampaignDir = campaignDir

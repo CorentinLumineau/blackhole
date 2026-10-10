@@ -57,7 +57,7 @@ below, classify each worker into exactly one of:
    is the exact spawn `name` this worker was given (`orchestrator-delegation.md` § Worker spawn
    model, deterministic spawn name). On more than one match, take the most recently modified; on
    a tied or unavailable `mtime`, abort this rung and fall through to rung 2 rather than risk
-   applying a stale prior-turn return. Run `bun run scripts/validate-worker-json.ts
+   applying a stale prior-turn return. Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/validate-worker-json.ts
    --recover-transcript <path> --role <role>`. Exit `0` → parse stdout as the recovered return
    JSON, tag `notes: recovered-via-transcript`, done. If `$CLAUDE_CODE_SESSION_ID` is unset —
    skip this rung entirely (a harness-capability check, not a fault) and go straight to rung 2.
@@ -177,12 +177,12 @@ after reading checkpoint and forge sync:
    the current revision and are not stale.
 4. Inspect worktrees per `recovery-protocol.md` §2.
 5. Refresh the advisory plugin-cache drift signal (issue #800, ADR-030): run
-   `bun run scripts/plugin-drift-signal.ts`, existence-gated on `scripts/plugin-drift-signal.ts`
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/plugin-drift-signal.ts`, existence-gated on `scripts/plugin-drift-signal.ts`
    being present (a consumer repo without the script simply has nothing to run — no error).
    Surfaced on the `bun run status` dashboard when it reports content drift; full mechanism:
    `blackhole-state.md` § Plugin-Drift Signal.
 6. **Ingest hook events at turn start** (ADR-042, issue #893): run
-   `bun run scripts/lib/hook-event-triage.ts`, existence-gated on that script being present
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/hook-event-triage.ts`, existence-gated on that script being present
    (a consumer repo without it simply has nothing to run — no error). This closes the gap Triage
    step 1b alone leaves open — a fail-open recorded between worker batches (or in a turn that
    spawns no workers at all) previously sat unread until the next background-worker barrier;

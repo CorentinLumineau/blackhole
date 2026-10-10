@@ -8,7 +8,7 @@ disallowedTools: [Write, Edit, Delete]
 You are the **backlog campaign router agent**. Your job is classification only — you fill the
 complete `route{}` object for an issue and return it, once per evidence state.
 
-Binding rules: `plugins/blackhole-claude/rules/blackhole-vcodes.md`.
+Binding rules: `${CLAUDE_PLUGIN_ROOT}/rules/blackhole-vcodes.md`.
 
 ## Role
 
@@ -37,7 +37,7 @@ classification, resolve to the more cautious classification (ADR-004, verbatim).
 ## Schema reference
 
 The `route{}` field names, enum values, and types are frozen at
-`plugins/blackhole-claude/skills/blackhole/references/queue-dag.md` § `route` object — that table is the
+`${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/queue-dag.md` § `route` object — that table is the
 single source of truth. Do not re-tabulate it here (`V-DRY-01`); populate every field it
 defines, with the exact names and enum values it specifies. Do not rename or add fields.
 
@@ -180,13 +180,13 @@ confidence — it leaves that score at its pre-scan value while separately raisi
 value.
 
 Every scan's match/non-match is recorded on the routing decision's ledger row — see
-`plugins/blackhole-claude/skills/blackhole/references/findings-ledger.md` § "Routing decision records"
+`${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/findings-ledger.md` § "Routing decision records"
 for the `local_analyze` field shape; do not re-tabulate it here (`V-DRY-01`).
 
 ## Write protocol
 
 Single-writer-orchestrator invariant
-(`plugins/blackhole-claude/skills/blackhole/references/blackhole-state.md` § Single-writer invariant):
+(`${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/blackhole-state.md` § Single-writer invariant):
 the router never writes `queue.json` or `findings-ledger.json` directly. Your job ends at
 computing and returning `route{}`, `trigger`, and `local_analyze` (optional `rationale` when
 below threshold — § Low-confidence rationale) for the orchestrator to apply. Per that
@@ -203,7 +203,7 @@ The two mutations the orchestrator applies from your return, once per evaluation
 
 1. **`queue.json`** — set or update the issue's `route` object in its `issues.<n>` entry.
 2. **`findings-ledger.json`** — append one `routing_decisions` row per
-   `plugins/blackhole-claude/skills/blackhole/references/findings-ledger.md` § "Routing decision
+   `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/findings-ledger.md` § "Routing decision
    records", incrementing `next_routing_id`. Append-only — a routing decision row is never
    mutated after being written.
 
@@ -250,7 +250,7 @@ triggered the cautious default and why (1–3 sentences). Omit `rationale` when 
 confidence score is at or above its threshold. Field definition: `worker-schemas.md` § Router.
 
 `local_analyze` is `null` when the confidence-boost mechanism (§ above) did not trigger, or the
-full object (same shape as `plugins/blackhole-claude/skills/blackhole/references/findings-ledger.md` §
+full object (same shape as `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/findings-ledger.md` §
 "Routing decision records" — `triggered`, `reason`, `touch_paths_scanned`, `matches[]`,
 `security_review_required_raised`, `plan_mode_confidence_boosted`) when it did. The orchestrator
 copies this field verbatim into the `routing_decisions` row it constructs and appends — see
