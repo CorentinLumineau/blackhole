@@ -66,6 +66,23 @@ describe('validatePluginTreeShape', () => {
     }
   });
 
+  test('reports a missing bundled shadcn skill even when blackhole is present', () => {
+    const destRoot = makeTempDir('tree-shape-test');
+    try {
+      populateGeminiDistributionTree(destRoot);
+      fs.rmSync(path.join(destRoot, 'skills', 'shadcn'), { recursive: true, force: true });
+      const errors = validatePluginTreeShape(
+        destRoot,
+        path.join(destRoot, 'plugin.json'),
+        { treePrefix: '', manifest: 'plugin.json' },
+        RULES_LIST
+      );
+      expect(errors.some((e) => e.includes('skills/shadcn/SKILL.md'))).toBe(true);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
   test('reports an empty references/ directory', () => {
     const destRoot = makeTempDir('tree-shape-test');
     try {
@@ -353,6 +370,8 @@ describe('codexTreeErrors', () => {
       );
     }
     fs.writeFileSync(path.join(rootDir, 'codex-skills', 'blackhole', 'SKILL.md'), '# SKILL\n', 'utf-8');
+    fs.mkdirSync(path.join(rootDir, 'codex-skills', 'shadcn'), { recursive: true });
+    fs.writeFileSync(path.join(rootDir, 'codex-skills', 'shadcn', 'SKILL.md'), '# shadcn\n', 'utf-8');
     fs.writeFileSync(
       path.join(rootDir, 'codex-skills', 'blackhole', 'references', 'x.md'),
       '# ref\n',

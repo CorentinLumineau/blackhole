@@ -47,6 +47,18 @@ export const copyHooksDir = (destRoot: string) => {
   fs.cpSync(src, path.join(destRoot, 'hooks'), { recursive: true });
 };
 
+/** Verbatim copy of the pinned official shadcn/ui skill (vendor/shadcn/skill/) into a plugin
+ * tree's skills/ (or Codex `codex-skills/`) directory. Same raw-copy shape as copyTemplatesDir:
+ * processFile's markdown pass would rewrite upstream paths and frontmatter. */
+export const copyShadcnSkill = (destRoot: string, skillsDir = 'skills') => {
+  const src = path.join(root, 'vendor', 'shadcn', 'skill');
+  if (!fs.existsSync(path.join(src, 'SKILL.md'))) {
+    throw new Error(`copyShadcnSkill: missing ${path.join(src, 'SKILL.md')}`);
+  }
+  const dest = path.join(destRoot, skillsDir, 'shadcn');
+  fs.cpSync(src, dest, { recursive: true });
+};
+
 /**
  * Compiles a full plugin tree — agents? + rules + SKILL.md + references + templates — for a
  * given platform `target` (default 'gemini', preserving every existing call site's behavior
@@ -92,6 +104,7 @@ export const compileGeminiTree = (
   );
   copyTemplatesDir(destRoot);
   copyHooksDir(destRoot);
+  copyShadcnSkill(destRoot);
 };
 
 export const writeGeminiManifest = (destPath: string, manifest: Record<string, unknown>) => {
@@ -121,4 +134,5 @@ export const compileCodexTree = (rootDir: string, agentDir: string, rulesPath: s
     rulesPath,
     'codex'
   );
+  copyShadcnSkill(rootDir, 'codex-skills');
 };

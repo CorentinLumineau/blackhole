@@ -22,6 +22,7 @@ import {
 import {
   compileGeminiTree,
   copyTemplatesDir,
+  copyShadcnSkill,
   writeGeminiManifest,
   compileCodexTree,
 } from './lib/build/trees.ts';
@@ -549,6 +550,63 @@ describe('copyTemplatesDir', () => {
     } finally {
       fs.rmSync(workspaceRoot, { recursive: true, force: true });
       fs.rmSync(distributionRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('bundled shadcn skill wiring', () => {
+  test('implementer inlines the shadcn gate and refuses apply / init --preset without owner OK', () => {
+    const implementer = read('src/agents/implementer.md');
+    expect(implementer).toContain('Bundled shadcn skill');
+    expect(implementer).toContain('never run `shadcn apply` or');
+    expect(implementer).toContain('init --preset');
+    expect(implementer).toContain('without the owner');
+  });
+
+  test('planner and DESIGN.md-authority audit cite the wrapper', () => {
+    expect(read('src/agents/planner.md')).toContain('shadcn-skill.md');
+    expect(read('src/references/audits/10-companion-file-audit.md')).toContain('shadcn apply');
+  });
+});
+
+describe('copyShadcnSkill', () => {
+  test('copies vendor/shadcn/skill into destRoot/skills/shadcn verbatim', () => {
+    const destRoot = makeTempDir();
+    try {
+      copyShadcnSkill(destRoot);
+      const destSkill = path.join(destRoot, 'skills', 'shadcn', 'SKILL.md');
+      const srcSkill = path.join(root, 'vendor', 'shadcn', 'skill', 'SKILL.md');
+      expect(fs.existsSync(destSkill)).toBe(true);
+      expect(fs.readFileSync(destSkill, 'utf-8')).toBe(fs.readFileSync(srcSkill, 'utf-8'));
+      expect(fs.existsSync(path.join(destRoot, 'skills', 'shadcn', 'cli.md'))).toBe(true);
+      expect(fs.existsSync(path.join(destRoot, 'skills', 'shadcn', 'evals'))).toBe(false);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('Codex layout uses codex-skills/shadcn, not skills/shadcn', () => {
+    const destRoot = makeTempDir();
+    try {
+      copyShadcnSkill(destRoot, 'codex-skills');
+      expect(fs.existsSync(path.join(destRoot, 'codex-skills', 'shadcn', 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(destRoot, 'skills', 'shadcn', 'SKILL.md'))).toBe(false);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('compileGeminiTree and compileCodexTree both ship the bundled skill', () => {
+    const geminiRoot = makeTempDir();
+    const codexRoot = makeTempDir();
+    try {
+      compileGeminiTree(geminiRoot, '.agents/build', '.agents/build/rules/blackhole-vcodes.md');
+      compileCodexTree(codexRoot, 'codex-skills', 'codex-skills/blackhole/references/blackhole-vcodes.md');
+      expect(fs.existsSync(path.join(geminiRoot, 'skills', 'shadcn', 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(codexRoot, 'codex-skills', 'shadcn', 'SKILL.md'))).toBe(true);
+    } finally {
+      fs.rmSync(geminiRoot, { recursive: true, force: true });
+      fs.rmSync(codexRoot, { recursive: true, force: true });
     }
   });
 });
