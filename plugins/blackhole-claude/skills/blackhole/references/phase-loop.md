@@ -231,7 +231,7 @@ file or schedule discoveries until incident mode exits.
 - For every codebase improvement suggestion:
   1. Calculate the Priority score: $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$.
   2. If $\text{Priority} \ge 30$:
-     - If not yet filed, execute `gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)` (explain context, gain, effort, and priority score).
+     - If not yet filed, execute `gh issue create --title "[Discovery] <Name>" --body "..." $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args)` (explain context, gain, effort, and priority score).
      - Map the ledger's `deferred_to_issue` field to the new issue ID.
      - The next auto-sync step reconciles the new issue into `queue.json` as a new campaign backlog item.
   3. If $\text{Priority} < 30$:
@@ -240,7 +240,7 @@ file or schedule discoveries until incident mode exits.
 ## Campaign complete
  
 ```
-gh issue list --state open $(bun scripts/forge-scope.ts list-args) → []
+gh issue list --state open $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args) → []
 gh pr list --state open → [] (excluding LGTM'd `leave-open` PRs, which count as delivered)
 queue.json: no in-flight entries
 ```
@@ -316,7 +316,7 @@ increment, do not mark a dry wave, do not touch `hunt_state` at all. Re-evaluate
    `worker-schemas.md` contract has no `CRITICAL` tier; `severity: BLOCK` stands in for the
    ADR's "CRITICAL", per the plan's Codebase Conventions "Severity-term reconciliation"
    note). Findings that clear the gate are filed via the **existing** `gh issue create
-   --title "..." --body "..." $(bun scripts/forge-scope.ts create-args)` path (the same
+   --title "..." --body "..." $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args)` path (the same
    mechanism § Continuous Discovery of Improvements already uses — never a second filing code
    path, `V-INT-02`) with:
    - Title: `[Kaizen] <summary>`

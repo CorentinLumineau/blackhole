@@ -43,7 +43,7 @@ $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
 
 | Priority | Orchestrator action |
 |----------|---------------------|
-| ≥ 30 | File GitHub issue (`gh issue create` + `$(bun scripts/forge-scope.ts create-args)`); set `deferred_to_issue` |
+| ≥ 30 | File GitHub issue (`gh issue create` + `$(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args)`); set `deferred_to_issue` |
 | < 30 | Archive in ledger; do not file issue |
 
 Aligns with `phase-loop.md` continuous discovery protocol.
@@ -293,7 +293,7 @@ remaining inputs are dispatch-mode-dependent, not universal — `reviewer.md` §
 § Independent Security Verification Mode (Verification) narrow the checklist and diff scope by design; this table is their
 citation target, not a restatement each mode must independently reconcile against.
 
-| Mode | PR diff scope | Touch-Paths + schema baseline | Full V-code checklist (`plugins/blackhole-claude/rules/blackhole-vcodes.md`, every audit module) | Findings input | Attack-signature scan |
+| Mode | PR diff scope | Touch-Paths + schema baseline | Full V-code checklist (`${CLAUDE_PLUGIN_ROOT}/rules/blackhole-vcodes.md`, every audit module) | Findings input | Attack-signature scan |
 |------|----------------|-------------------------------|------------------------------------------------------|------------------|-------------------------|
 | Full (ordinary dispatch) | Whole PR diff | Yes | Yes | — | — |
 | Security-mode (§ Security-mode review, `route.security_review_required` resolved `true`) | Whole PR diff | Yes | Yes | — | Yes — diff-scoped, `src/references/security-attack-signatures.md` (cite by path; do not restate patterns inline) |
@@ -308,7 +308,7 @@ primary full-audit dispatch with that one addition, not a fifth independent mode
 After `reviewer` completes, the orchestrator runs:
 
 ```bash
-bun run scripts/review-aggregate.ts \
+bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/review-aggregate.ts \
   --reviewer-file <path> \
   --issue-ref <N> \
   [--pr-ref <P>] \

@@ -79,7 +79,7 @@ On `planner` returning `status: ready, track: brainstorm`:
 3. Wait for the artifact PR to reach `status: merged` (existing `merge-gate.md` path,
    unchanged).
 4. Only after step 3: file the `children[]` from the planner's return through the **existing**
-   `plugins/blackhole-claude/skills/blackhole/references/phase-loop.md` § Continuous Discovery of
+   `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/phase-loop.md` § Continuous Discovery of
    Improvements path — one Priority computation and one `gh issue create` per child clearing
    the `>= 30` gate; children below the gate are logged `archived` in the ledger, never filed
    (identical rule, not a new one).
@@ -252,7 +252,7 @@ after the transient 2-retry cap (`merge-gate.md` § CI-wait poller Reclassificat
 Permanent).
 
 **Dispatch**: orchestrator-inline, **not** a worker spawn — run
-`bun run scripts/ci-diagnosis.ts --pr <n>` foreground, then apply `ci-diagnosis.md` § Fix-loop
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/ci-diagnosis.ts --pr <n>` foreground, then apply `ci-diagnosis.md` § Fix-loop
 routing (ledger `V-CI-01` append, `queue.json` → `phase: implement`, `review_iteration += 1`,
 STOP merge steps 3–5). Full classification taxonomy, environment repair rerun, and implementer
 spawn framing: `ci-diagnosis.md`.
@@ -312,7 +312,7 @@ discoveries reported by workers/reviewers). Hunt waves are dispatched by three t
 Campaign complete), and the every-n-loops interleave (`phase-loop.md` § Next batch step 0).
 All three call into the same protocol — the entire spawn/dedup/gate/file/cap/watermark
 mechanics and all four stop conditions are specified **once**, in
-`plugins/blackhole-claude/skills/blackhole/references/phase-loop.md` § Kaizen hunt dispatch — this
+`${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/phase-loop.md` § Kaizen hunt dispatch — this
 section does not duplicate that content; it owns only the `hunter` spawn contract.
 
 **5-Field Delegation Contract for the `hunter` spawn:**

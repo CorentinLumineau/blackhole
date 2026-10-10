@@ -7,7 +7,7 @@ Use when not invoking the orchestrator via native `/goal`.
 
 ```
 Implement ALL open issues on the forge until zero open issues and zero open
-PRs remain, following plugins/blackhole-claude/skills/blackhole/SKILL.md (binding).
+PRs remain, following ${CLAUDE_PLUGIN_ROOT}/skills/blackhole/SKILL.md (binding).
 
 Act as ORCHESTRATOR only:
 - Spawn planner, implementer, and reviewer subagents for worker tasks

@@ -137,7 +137,7 @@ plus the pre-corruption value of `#868`'s stored `body_hash`.
 agents (Bash-only tool access) and for `recovery-protocol.md` §8's recompute step:
 
 ```bash
-echo '{"title": "Example Issue", "body": "This is the body."}' | bun run scripts/compute-body-hash.ts
+echo '{"title": "Example Issue", "body": "This is the body."}' | bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/compute-body-hash.ts
 ```
 
 **Worked example**:
@@ -256,7 +256,7 @@ On first `sync` with empty queue:
 
 ```bash
 gh issue list --state open --json number,title,labels,milestone --limit 200 \
-  $(bun scripts/forge-scope.ts list-args)
+  $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args)
 ```
 
 Create one `issues.<n>` entry per open issue: `phase: handle`, `status: ready`,

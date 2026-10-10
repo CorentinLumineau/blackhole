@@ -21,6 +21,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$CLAUDE_ENV_FILE\" ] && [ -n \"$CLAUDE_PLUGIN_ROOT\" ] && [ -z \"$BLACKHOLE_PLUGIN_ROOT\" ] && printf 'export BLACKHOLE_PLUGIN_ROOT=%q\\n' \"$CLAUDE_PLUGIN_ROOT\" >> \"$CLAUDE_ENV_FILE\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

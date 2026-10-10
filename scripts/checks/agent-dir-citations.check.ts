@@ -4,6 +4,7 @@ import { root, type CheckResult } from './check-utils.ts';
 import {
   AGENTS_BUILD_AGENT_DIR,
   CLAUDE_DISTRIBUTION_AGENT_DIR,
+  CLAUDE_DISTRIBUTION_CITED_AGENT_DIR,
 } from '../lib/build/paths.ts';
 import { AGENT_MD_FILES } from '../lib/build/facts.ts';
 
@@ -37,11 +38,13 @@ export const AGENT_DIR_CITATION_TARGETS = [
   {
     label: 'claude distribution',
     agentsDir: `${CLAUDE_DISTRIBUTION_AGENT_DIR}/agents`,
-    expectedPrefix: `${CLAUDE_DISTRIBUTION_AGENT_DIR}/skills/blackhole/`,
+    expectedPrefix: `${CLAUDE_DISTRIBUTION_CITED_AGENT_DIR}/skills/blackhole/`,
+    // Cited under the install-path placeholder; on disk the bundle lives at its repo path.
+    diskPrefix: { cited: CLAUDE_DISTRIBUTION_CITED_AGENT_DIR, disk: CLAUDE_DISTRIBUTION_AGENT_DIR },
   },
 ] as const;
 
-const CITATION_PATH_RE = /[\w./-]*skills\/blackhole\/[\w./-]+/g;
+const CITATION_PATH_RE = /(?:\$\{CLAUDE_PLUGIN_ROOT\})?[\w./-]*skills\/blackhole\/[\w./-]+/g;
 
 /** Extract repo-relative skills/blackhole/ citation paths from compiled agent markdown. */
 export const extractAgentDirCitations = (content: string): string[] => {
@@ -60,7 +63,8 @@ export const findCitationViolations = (
   content: string,
   relFile: string,
   expectedPrefix: string,
-  forbiddenPrefixes: readonly string[] = []
+  forbiddenPrefixes: readonly string[] = [],
+  diskPrefix?: { cited: string; disk: string }
 ): CitationViolation[] => {
   const violations: CitationViolation[] = [];
   for (const citation of extractAgentDirCitations(content)) {
@@ -85,7 +89,10 @@ export const findCitationViolations = (
       });
       continue;
     }
-    if (!fs.existsSync(path.join(root, citation))) {
+    const onDisk = diskPrefix && citation.startsWith(diskPrefix.cited)
+      ? diskPrefix.disk + citation.slice(diskPrefix.cited.length)
+      : citation;
+    if (!fs.existsSync(path.join(root, onDisk))) {
       violations.push({
         file: relFile,
         citation,
@@ -114,7 +121,8 @@ const checkAgentDirCitations = (): CheckResult => {
         content,
         relFile,
         target.expectedPrefix,
-        target.forbiddenPrefixes ?? []
+        'forbiddenPrefixes' in target ? target.forbiddenPrefixes : [],
+        'diskPrefix' in target ? target.diskPrefix : undefined
       )) {
         errors.push(`${target.label} ${v.file}: ${v.citation} — ${v.reason}`);
       }

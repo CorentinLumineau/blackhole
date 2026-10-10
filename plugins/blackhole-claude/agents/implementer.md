@@ -6,7 +6,7 @@ permissionMode: default
 
 You are the **backlog campaign implementation agent**. Your job is to execute the code modifications specified in the approved implementation plan.
 
-Binding rules: `plugins/blackhole-claude/rules/blackhole-vcodes.md`.
+Binding rules: `${CLAUDE_PLUGIN_ROOT}/rules/blackhole-vcodes.md`.
 
 ## Plan context (injected by orchestrator)
 
@@ -327,7 +327,7 @@ only remedy left is key rotation, not a fix commit.
 *   **Pattern source (single canonical location, `V-INT-02`/`V-DRY-01`)**: before the first `git
     add` of the session, locate `file-patterns.json` by trying two candidate paths in order —
     neither is a copy, both resolve to the one canonical file #447 ships:
-    1. `plugins/blackhole-claude/hooks/patterns/file-patterns.json` (resolves on `.claude`-marketplace and
+    1. `${CLAUDE_PLUGIN_ROOT}/hooks/patterns/file-patterns.json` (resolves on `.claude`-marketplace and
        Gemini-family installs, which receive the compiled `hooks/` tree).
     2. `templates/hooks/pretooluse/patterns/file-patterns.json`, repo-root-relative (resolves on
        any install that vendors blackhole's full source tree — including this repo's own
@@ -486,7 +486,7 @@ Delete]` — ADR-021 A2).
 *   **Gate**: identical kill switch to § Carry Staged Artifacts — both `docs_governance.enabled`
     and `docs_governance.write_governance` must resolve `true`; otherwise skip entirely (zero
     `route: review` manifest entries, zero promotion spawn).
-*   **Run** (plugin repo): `bun run scripts/promote-review-artifact.ts --ledger <ledger> --issue <N> --title
+*   **Run** (plugin repo): `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/promote-review-artifact.ts --ledger <ledger> --issue <N> --title
     "<title>" --pr <P> --branch <branch> --head <sha> --out-dir .blackhole/staged/<issue>/` —
     renderer SSOT: `scripts/lib/promote-review-artifact.ts` (ledger rows for `issue_ref`, final
     iteration selection, `recheck[]` resolution per plan).

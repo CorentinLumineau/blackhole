@@ -14,8 +14,11 @@ import { compileAgentPluginsSkillTree } from './build/targets.ts';
 import {
   AGENT_PLUGINS_DISTRIBUTION_AGENT_DIR,
   AGENT_PLUGINS_DISTRIBUTION_VCODES,
+  CLAUDE_DISTRIBUTION_CITED_AGENT_DIR,
+  CLAUDE_DISTRIBUTION_CITED_VCODES,
+  root,
 } from './build/paths.ts';
-import { root } from './build/paths.ts';
+import { finalizeClaudePluginBundle } from './build/claude-plugin-runtime.ts';
 import { makeTempDir, readJsonFile } from './fs.ts';
 
 // ADR-007 R6 — shared bun:test fixture kit: distribution-tree population, temp-dir lifecycle, and
@@ -365,10 +368,11 @@ export const readHookEvents = (repoRoot: string): Record<string, unknown>[] => {
 export const populateClaudeFixtureTree = (destRoot: string): void => {
   compileGeminiTree(
     destRoot,
-    'plugins/blackhole-claude',
-    'plugins/blackhole-claude/rules/blackhole-vcodes.md',
+    CLAUDE_DISTRIBUTION_CITED_AGENT_DIR,
+    CLAUDE_DISTRIBUTION_CITED_VCODES,
     { includeAgents: true, target: 'claude' },
   );
+  finalizeClaudePluginBundle(destRoot);
   const pluginDir = path.join(destRoot, '.claude-plugin');
   fs.mkdirSync(pluginDir, { recursive: true });
   fs.writeFileSync(

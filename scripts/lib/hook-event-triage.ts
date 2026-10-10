@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './fs.ts';
 import { validateStateWrite } from './state-write-guard.ts';
-import { root } from '../checks/check-utils.ts';
 
 /** Minimal queue issue shape for worktree → issue_ref resolution during Triage 1b. */
 export type QueueIssueForTriage = {
@@ -240,11 +239,12 @@ export const archiveConsumedFiles = ({
 // `{ ok: false }` to exercise the refusal branch (fs.renameSync must never run, exit code must
 // be non-zero) without needing a genuinely guard-rejecting ledger — the real write-protocol
 // flow only ever grows the findings count, so a real rejection cannot be manufactured here.
-// `repoRoot` defaults to this checkout's script-relative `root`; tests pass a temp dir so they
-// never touch a real `.blackhole/`.
+// `repoRoot` defaults to the working directory (the project being campaigned, even when this
+// script runs from an installed plugin copy); tests pass a temp dir so they never touch a real
+// `.blackhole/`.
 export function main(
   deps: { validateStateWrite: typeof validateStateWrite } = { validateStateWrite },
-  repoRoot: string = root,
+  repoRoot: string = process.cwd(),
 ): void {
   const campaignDir = path.join(repoRoot, '.blackhole');
   const ledgerPath = path.join(campaignDir, 'findings-ledger.json');

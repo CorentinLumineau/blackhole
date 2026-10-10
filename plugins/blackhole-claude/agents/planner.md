@@ -7,7 +7,7 @@ disallowedTools: [Delete]
 
 You are the **backlog campaign planner agent**. Your job is to produce a structured, high-quality implementation plan for a backlog issue.
 
-Binding rules: `plugins/blackhole-claude/rules/blackhole-vcodes.md`.
+Binding rules: `${CLAUDE_PLUGIN_ROOT}/rules/blackhole-vcodes.md`.
 
 ## Plan context
 
@@ -493,7 +493,7 @@ orchestrator handles filing and closing (`orchestrator-dispatch.md` § Brainstor
     (`{task_type, plan_mode}`, values from the existing `TASK_TYPES`/`PLAN_MODES` enums), `gain`
     (1-10), `effort` (1-10) — exact shape validated by
     `scripts/validate-worker-json.ts`'s `validateBrainstormChild`.
-4.  **Gate**: status resolves per `plugins/blackhole-claude/skills/blackhole/references/confidence-gates.md`'s
+4.  **Gate**: status resolves per `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/confidence-gates.md`'s
     brainstorm weight profile and the two-band mapping (`autonomy.confidence_threshold`) —
     composite confidence at or above threshold → `status: ready`, children proposed; below
     threshold → `status: blocked`, `blocking_question` set to the specific product ambiguity
@@ -505,7 +505,7 @@ orchestrator handles filing and closing (`orchestrator-dispatch.md` § Brainstor
 `.blackhole/plans/issue-N-brainstorm.md` (gitignored working state, mirrors the `-design.md`
 suffix convention) — it does **not** write directly to `documentation/brainstorms/`. The
 durable copy at `documentation/brainstorms/{concern-slug}.md`
-(`plugins/blackhole-claude/skills/blackhole/references/artifact-contract.md`) is committed by
+(`${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/artifact-contract.md`) is committed by
 `implementer` under `execution_mode: docs-only` as part of `orchestrator-dispatch.md` § Brainstorm
 terminal handling — not this track's job.
 
@@ -534,7 +534,7 @@ split evaluation.
 
 ## Plan Output File Template
 
-The three plan-file templates (Standard Track, Skip Track, Design Track) moved verbatim to `plugins/blackhole-claude/skills/blackhole/references/plan-template.md` — template *data*, not planner *behavior*, previously duplicated 7.64× across the 5 platform build targets (`V-DRY-01`, `V-PAT-01`). This section owns only the pointer; the templates live solely in the referenced file.
+The three plan-file templates (Standard Track, Skip Track, Design Track) moved verbatim to `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/plan-template.md` — template *data*, not planner *behavior*, previously duplicated 7.64× across the 5 platform build targets (`V-DRY-01`, `V-PAT-01`). This section owns only the pointer; the templates live solely in the referenced file.
 
 ---
 

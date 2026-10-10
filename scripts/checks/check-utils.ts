@@ -1,5 +1,5 @@
 // Shared verify primitives — `CheckResult` wire type, repo `root`, and `read()` helper.
-// Dependency blast-radius (92 direct consumers, mechanically enforced by V-BLASTRADIUS-01 /
+// Dependency blast-radius (91 direct consumers, mechanically enforced by V-BLASTRADIUS-01 /
 // scripts/checks/check-utils-blast-radius.check.ts — see that doc's § Maintenance for the exact
 // command and what this figure counts): documentation/reference/check-utils-blast-radius.md
 import * as fs from 'fs';

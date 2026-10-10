@@ -18,7 +18,7 @@ The orchestrator runs diagnosis **inline** — no worker spawn (precedent: `revi
 Docs-only PRs):
 
 ```bash
-bun run scripts/ci-diagnosis.ts --pr <n> [--repo owner/name]
+bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/ci-diagnosis.ts --pr <n> [--repo owner/name]
 ```
 
 - **Foreground only** — the orchestrator awaits stdout JSON before mutating `queue.json` or the
