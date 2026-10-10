@@ -27,3 +27,7 @@ bun run build
 
 The script overwrites `skill/`, `LICENSE.md`, and `upstream.json`. Blackhole
 policy that wraps this skill lives in `src/references/shadcn-skill.md`, not here.
+
+Vendored `*.png` assets (and every plugin-tree copy) are declared `binary` in
+the repo-root `.gitattributes` so V-CTRLCHAR-01 does not scan them. Keep that
+glob when adding new binary skill assets.

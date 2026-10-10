@@ -34,4 +34,6 @@ bun run sync:shadcn -- --commit <40-char-sha>
 bun run build
 ```
 
-Full maintainer notes: `vendor/shadcn/NOTICE.md`.
+Full maintainer notes: `vendor/shadcn/NOTICE.md`. Vendored `*.png` assets
+are declared `binary` in the repo-root `.gitattributes` so V-CTRLCHAR-01
+skips them.
