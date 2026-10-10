@@ -202,6 +202,16 @@ parsing it, so it has nothing to extract them from — a permanent, not temporar
 
 Containment falls back to `allWorktreeRoots(cwd)` unchanged (fail-open, the same degradation as an invalid `scratchpad_dir` in #510) only when neither path narrows: `cwd` resolves to the main clone itself (the orchestrator's/`planner`'s/`investigator`'s/`hunter`'s legitimate case), or a validated scratchpad candidate is present but does not nest the resolved worktree — deferred deliberately rather than silently dropped, since a single assigned-root string cannot represent two disjoint trusted roots at once.
 
+**Scope (ADR-047).** The containment checks above (`outside-worktree`,
+`outside-assigned-worktree`, `outside-cwd-fallback`, `cwd-fallback-too-broad`) and the
+main-clone git guard (`main-clone-*`) apply only to campaign-scoped calls
+(`templates/hooks/pretooluse/utils/campaign-scope.js`): the payload's `agent_type`, prefix
+stripped, names a campaign agent; or an assigned worktree resolves (declared env var or a cwd in
+a linked worktree); or `BLACKHOLE_HOOK_SCOPE=all` is set. Any other call, such as an ordinary
+interactive session writing to a project folder outside the repo, skips them. Path traversal,
+system paths, sensitive files, destructive Bash patterns, the Bash write-target guard and the
+worktree-removal guard stay unscoped.
+
 `outside-worktree`'s root set (#729) is `allWorktreeRoots()`'s union of five members: every
 registered worktree nested under the main clone; every registered worktree nested under a
 validated `scratchpad_dir` (the campaign's own `.blackhole/config.json` value, breadth-checked
