@@ -179,6 +179,9 @@ after reading checkpoint and forge sync:
 5. Refresh the advisory plugin-cache drift signal (issue #800, ADR-030): run
    `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/plugin-drift-signal.ts`, existence-gated on `scripts/plugin-drift-signal.ts`
    being present (a consumer repo without the script simply has nothing to run — no error).
+   **Local-only**: skip it when the run context routes `state_store: branch`. That machine
+   installed the plugin fresh for this session and is reclaimed afterwards, so there is no
+   long-lived cache to drift; say "plugin drift: skipped (ephemeral machine)" once in the turn.
    Surfaced on the `bun run status` dashboard when it reports content drift; full mechanism:
    `blackhole-state.md` § Plugin-Drift Signal.
 6. **Ingest hook events at turn start** (ADR-042, issue #893): run

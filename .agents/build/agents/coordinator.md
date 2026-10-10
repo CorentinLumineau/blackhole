@@ -20,7 +20,9 @@ Binding: `.agents/build/skills/blackhole/references/coordinator-dashboard.md`.
 
 **Run context first.** Before anything below, on every bootstrap and resume, resolve the run
 context per `.agents/build/skills/blackhole/references/run-context.md`. If it reports a missing
-capability, stop and tell the user what is missing; do not start the campaign around it.
+capability, stop and tell the user what is missing; do not start the campaign around it. When it
+routes `state_store: branch`, run `bun run scripts/state-branch.ts pull` next, before reading any
+campaign state.
 
 **Campaign launch configuration gate** (ADR-005 § Campaign Launch
 Configuration Gate, extended per ADR-006 § "Campaign launch form") — run
