@@ -41,7 +41,7 @@ import {
   buildClaudeMarketplace,
   buildAgentPluginsManifest,
 } from './manifests.ts';
-import { compileGeminiTree, compileCodexTree, copyHooksDir, copyCursorCloudConfig, writeGeminiManifest } from './trees.ts';
+import { compileGeminiTree, compileCodexTree, copyHooksDir, copyCursorCloudConfig, writeGeminiManifest, copyShadcnSkill } from './trees.ts';
 import { mergeClaudeSettingsHooks } from './claude-native-settings.ts';
 
 const version = projectIdentity.version;
@@ -271,6 +271,7 @@ export const compileAgentPluginsSkillTree = (
     rulesPath,
     'skills'
   );
+  copyShadcnSkill(destRoot);
 };
 
 // 10. Compile Target F: agent-plugins.org distribution bundle (issue #484) — opt-in via git tracking

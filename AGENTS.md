@@ -19,6 +19,10 @@ Campaign protocol state (queue, ledger, plans) lives only under `.blackhole/` â€
 
 Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/blackhole/SKILL.md`](.cursor/skills/blackhole/SKILL.md) (Cursor), or [`codex-skills/blackhole/SKILL.md`](codex-skills/blackhole/SKILL.md) (Codex).
 
+The plugin also ships the official **shadcn** skill (`skills/shadcn/`, vendored
+at `vendor/shadcn/`) for UI work in projects that have `components.json`. Policy:
+[`src/references/shadcn-skill.md`](src/references/shadcn-skill.md).
+
 ## Agent roster
 
 | Agent | Role | Trigger |

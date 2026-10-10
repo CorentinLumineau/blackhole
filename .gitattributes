@@ -1,0 +1,5 @@
+# Official shadcn/ui skill assets (and every plugin-tree copy of them) are
+# binary PNGs. V-CTRLCHAR-01 exempts only paths whose `binary` attribute is
+# `set` via `git check-attr` — never git's content heuristic. See
+# scripts/checks/control-char.check.ts Design Decision D1.
+*.png binary

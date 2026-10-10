@@ -66,7 +66,7 @@ export const INCLUDE_MARKER_SITES: string[] = ['src/agents/reviewer.md', 'src/ag
  * is the shape a reviewer checks. Declared side of a V-GROUND-01 pair; scan side is an
  * independent `listFiles` of the directory, never derived from this constant.
  */
-export const IMPLEMENTER_GATE_MODULE_COUNT = 15;
+export const IMPLEMENTER_GATE_MODULE_COUNT = 16;
 
 /**
  * Number of reviewer audit modules under `src/references/audits/` (V-AUDIT-01). Declared side of

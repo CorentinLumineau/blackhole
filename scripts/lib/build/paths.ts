@@ -34,8 +34,8 @@ export const CLAUDE_NATIVE_ROOT = '.claude';
 // are retained as parsed-but-ignored deprecation aliases for one release (see step-0 audit
 // below); they no longer influence build gating — only git tracking does.
 /** agent-plugins.org v1.0.0 distribution bundle (ADR-021 agent-plugins, issue #484) — skills-only
- * conformant shell: root `plugin.json` + `skills/blackhole/{SKILL.md,references/}`; no agents/,
- * rules/, or mcp.json. */
+ * conformant shell: root `plugin.json` + `skills/blackhole/{SKILL.md,references/}` + bundled
+ * `skills/shadcn/`; no agents/, rules/, or mcp.json. */
 export const AGENT_PLUGINS_DISTRIBUTION_ROOT = path.join('plugins', 'blackhole-agent-plugins');
 export const AGENT_PLUGINS_DISTRIBUTION_AGENT_DIR = 'plugins/blackhole-agent-plugins';
 export const AGENT_PLUGINS_DISTRIBUTION_VCODES =
