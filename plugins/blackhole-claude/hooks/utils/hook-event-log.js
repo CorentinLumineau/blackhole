@@ -326,7 +326,8 @@ let lastAgentContext = { agent_id: null, agent_type: null };
  * through raw, so a malformed or absent field always reads as "not captured" rather than leaking
  * an unexpected shape into a durable, dashboard-rendered record. `agent_type` is an
  * operator-chosen/harness-chosen label, not a verified role — recorded for observability only;
- * nothing in this module (or its callers) branches on either field's value. */
+ * nothing in this module branches on either field's value. `utils/campaign-scope.js` reads
+ * `agent_type` separately to decide which guards apply (ADR-047). */
 const captureAgentContext = (input) => {
   lastAgentContext = {
     agent_id: typeof input.agent_id === 'string' ? input.agent_id : null,

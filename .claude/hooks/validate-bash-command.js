@@ -16,9 +16,11 @@ const { evaluateWorktreeRemoval } = require('./utils/worktree-removal-guard');
 const { evaluateGitMainCloneMutation } = require('./utils/git-main-clone-guard');
 const { evaluateBashWriteTargets } = require('./utils/bash-write-target-guard');
 const { shouldDeferToMercure } = require('./utils/sibling-plugin-guard');
+const { isCampaignScoped } = require('./utils/campaign-scope');
 const { createTierDispatch, BLOCK_ONLY, WARN_ONLY, BLOCK_OR_WARN } = require('./utils/tier-dispatch');
 const {
   readHookInput,
+  readAssignedWorktreeRoot,
   recordEvent,
   denyAndRecord,
   warnAndRecord,
@@ -97,8 +99,18 @@ const main = () => {
   // checkout/restore of a pathspec, reset --hard/--merge, apply/am, a forced checkout/switch)
   // whose effective repository is the main clone — see git-main-clone-guard.js's module
   // docstring. Severity graded by recoverability; `git stash` warns rather than blocks.
-  const gitMainCloneMutation = evaluateGitMainCloneMutation(command, cwd);
-  if (handleTieredResult(gitMainCloneMutation, { tool, command, allowedTiers: BLOCK_OR_WARN })) return;
+  // Scoped to campaign workers (ADR-047): an ordinary session's own git commands in the main clone
+  // are its user's to make. A git failure while resolving the assigned root keeps the guard on.
+  let scoped = true;
+  try {
+    scoped = isCampaignScoped(input, readAssignedWorktreeRoot(cwd));
+  } catch {
+    scoped = true;
+  }
+  if (scoped) {
+    const gitMainCloneMutation = evaluateGitMainCloneMutation(command, cwd);
+    if (handleTieredResult(gitMainCloneMutation, { tool, command, allowedTiers: BLOCK_OR_WARN })) return;
+  }
 
   // Dynamic check (#804/ADR-029): extends #620's assigned-worktree write containment
   // (`validate-file-changes.js`, Write/Edit only) to Bash file-write commands — see

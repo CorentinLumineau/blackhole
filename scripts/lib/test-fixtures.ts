@@ -142,9 +142,16 @@ export const runPreToolUseHook = async (
   if (scratchpadDirEnv) extraEnv.BLACKHOLE_SCRATCHPAD_DIR = scratchpadDirEnv;
   if (claudeProjectDir) extraEnv.CLAUDE_PROJECT_DIR = claudeProjectDir;
   extraEnv.BLACKHOLE_CLAUDE_HOME = claudeHome || NO_CLAUDE_HOME_SENTINEL;
+  // The containment guards only act on campaign workers (ADR-047), and these suites exercise
+  // those guards, so a payload is a worker's unless it says otherwise. A payload that carries an
+  // `agent_type` key at all (even `undefined`, which serializes away) is sent as written.
+  const sent =
+    payload && typeof payload === 'object' && !('agent_type' in payload)
+      ? { ...(payload as Record<string, unknown>), agent_type: 'implementer' }
+      : payload;
   const proc = Bun.spawn({
     cmd: ['bun', 'run', path.join(hooksDir, script)],
-    stdin: new Blob([JSON.stringify(payload)]),
+    stdin: new Blob([JSON.stringify(sent)]),
     stdout: 'pipe',
     stderr: 'pipe',
     cwd,

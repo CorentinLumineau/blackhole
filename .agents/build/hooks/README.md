@@ -51,6 +51,15 @@ session-start signal (`.blackhole/plugin-drift.json`, `blackhole-state.md` § Pl
 covers the residual gap this gate cannot see: a PR correctly bumps the version, but nobody ever
 runs the refresh path above afterward.
 
+## Campaign scope (ADR-047)
+
+Worktree write containment and the main-clone git guard only constrain campaign workers
+(`utils/campaign-scope.js`): a call whose `agent_type` names a blackhole agent, a call with an
+assigned worktree (declared or cwd-derived), or any call when `BLACKHOLE_HOOK_SCOPE=all` is set.
+An ordinary session that happens to load the plugin is left alone by those two guards. Every
+other guard (destructive patterns, sensitive files, system paths, traversal, Bash write targets,
+worktree removal) applies to every call.
+
 ## Sibling mercure defer (issue #870, health leg issue #969)
 
 blackhole's fork of these two hooks (`validate-bash-command.js`, `validate-file-changes.js`)

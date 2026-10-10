@@ -85,7 +85,8 @@ describe('validate-bash-command.js', () => {
 
   test('agent_id/agent_type are recorded as null, not omitted, when absent from the payload (#907)', async () => {
     await withTempGitRepo('blackhole-hook-bash-', async (repo) => {
-      const result = await runPreToolUseHook(SCRIPT, bashPayload('rm -rf /'), repo);
+      // An explicit `agent_type: undefined` serializes away, so the field is truly absent.
+      const result = await runPreToolUseHook(SCRIPT, { ...bashPayload('rm -rf /'), agent_type: undefined }, repo);
 
       expect(result.exitCode).toBe(2);
       const events = readHookEvents(repo);
@@ -4136,6 +4137,34 @@ describe('recordEvent — hook-event rotation gate wiring (#970)', () => {
       expect(result.exitCode).toBe(2);
       expect(fs.existsSync(stalePath)).toBe(true);
       expect(fs.existsSync(path.join(repo, '.blackhole', 'archive'))).toBe(false);
+    });
+  });
+});
+
+// ADR-047: the main-clone git guard applies to campaign workers only.
+describe('validate-bash-command.js — main-clone guard scoped to campaign workers (ADR-047)', () => {
+  const gitAt = (command: string, agentType?: string) => ({ ...bashPayload(command), agent_type: agentType });
+
+  test('an ordinary session may run `git checkout <branch> -- .` in the main clone', async () => {
+    await withLinkedWorktree('blackhole-hook-047-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, gitAt('git checkout throwaway -- .'), mainRepo);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('a plugin-prefixed campaign agent is still refused it', async () => {
+    await withLinkedWorktree('blackhole-hook-047-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, gitAt('git checkout throwaway -- .', 'blackhole:reviewer'), mainRepo);
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'main-clone-checkout-path' });
+    });
+  });
+
+  test('an ordinary session is still refused `rm -rf /`', async () => {
+    await withTempGitRepo('blackhole-hook-047-', async (repo) => {
+      const result = await runPreToolUseHook(SCRIPT, gitAt('rm -rf /'), repo);
+      expect(result.exitCode).toBe(2);
     });
   });
 });

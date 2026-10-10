@@ -24,6 +24,7 @@ const writePayload = (filePath: string, toolName = 'Write') => ({
   tool_name: toolName,
   tool_input: { file_path: filePath, content: 'x' },
   tool_use_id: 'toolu_447_file',
+  agent_type: 'implementer',
 });
 
 /** Structured stdout contract the PreToolUse harness reads:
@@ -82,7 +83,8 @@ describe('validate-file-changes.js', () => {
 
   test('agent_id/agent_type are recorded as null, not omitted, when absent from the payload (#907)', async () => {
     await withTempGitRepo('blackhole-hook-file-', async (repo) => {
-      const result = await runPreToolUseHook(SCRIPT, writePayload('/etc/passwd'), repo);
+      // An explicit `agent_type: undefined` serializes away, so the field is truly absent.
+      const result = await runPreToolUseHook(SCRIPT, { ...writePayload('/etc/passwd'), agent_type: undefined }, repo);
 
       expect(result.exitCode).toBe(2);
       const events = readHookEvents(repo);
@@ -1697,5 +1699,62 @@ describe('validate-file-changes.js — sibling mercure health check (#969)', () 
       fs.rmSync(staleInstallPath, { recursive: true, force: true });
       fs.rmSync(healthyInstallPath, { recursive: true, force: true });
     }
+  });
+});
+
+// ADR-047: containment applies to campaign workers only. An ordinary session in a campaign repo
+// (no agent_type, cwd in the main clone) used to be refused any write outside the repo — the
+// shape a Project thread hit writing to its shared folder on 2026-10-09.
+describe('validate-file-changes.js — containment scoped to campaign workers (ADR-047)', () => {
+  const outsideTarget = () => path.join(fs.realpathSync(os.tmpdir()), `blackhole-047-outside-${process.pid}.md`);
+  const writeAt = (filePath: string, cwd: string, agentType?: string) => ({
+    tool_name: 'Write',
+    tool_input: { file_path: filePath, content: 'x' },
+    cwd,
+    agent_type: agentType,
+  });
+
+  test('an ordinary main-thread session may write outside the repo', async () => {
+    await withLinkedWorktree('blackhole-hook-047-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, writeAt(outsideTarget(), mainRepo), mainRepo);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('an ordinary session is still refused a system path', async () => {
+    await withTempGitRepo('blackhole-hook-047-', async (repo) => {
+      const result = await runPreToolUseHook(SCRIPT, writeAt('/etc/passwd', repo), repo);
+      expect(result.exitCode).toBe(2);
+    });
+  });
+
+  test('a plugin-prefixed campaign agent in the main clone is still contained', async () => {
+    await withLinkedWorktree('blackhole-hook-047-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, writeAt(outsideTarget(), mainRepo, 'blackhole:planner'), mainRepo);
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+    });
+  });
+
+  test('any agent working in a linked worktree is still contained to it', async () => {
+    await withLinkedWorktree('blackhole-hook-047-', async (mainRepo, worktree) => {
+      const target = path.join(mainRepo, 'escape.md');
+      const result = await runPreToolUseHook(SCRIPT, writeAt(target, worktree, 'general-purpose'), worktree);
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-assigned-worktree' });
+    });
+  });
+
+  test('BLACKHOLE_HOOK_SCOPE=all contains an ordinary session again', async () => {
+    await withLinkedWorktree('blackhole-hook-047-', async (mainRepo) => {
+      process.env.BLACKHOLE_HOOK_SCOPE = 'all';
+      try {
+        const result = await runPreToolUseHook(SCRIPT, writeAt(outsideTarget(), mainRepo), mainRepo);
+        expect(result.exitCode).toBe(2);
+      } finally {
+        delete process.env.BLACKHOLE_HOOK_SCOPE;
+      }
+    });
   });
 });
