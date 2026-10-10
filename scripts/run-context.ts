@@ -51,7 +51,7 @@ const main = () => {
   const disk = flags['persistent-disk'];
   if (disk !== undefined && disk !== 'yes' && disk !== 'no') fail('invalid --persistent-disk (yes|no)');
 
-  const context = detectRunContext(process.env, { ghAuthenticated: checkForgeAuthSync('github').ok }, tools, {
+  const context = detectRunContext(process.env, { ghAuthenticated: checkForgeAuthSync('github').channel === 'gh' }, tools, {
     host,
     surface,
     persistentDisk: disk === undefined ? undefined : disk === 'yes',

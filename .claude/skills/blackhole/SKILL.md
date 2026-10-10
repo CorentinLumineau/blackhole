@@ -6,7 +6,8 @@ runbook: `.claude/skills/blackhole/references/blackhole-protocol.md`.
 ## Entry (Multitask Mode)
 
 Which pattern below applies is not a judgment call: resolve the run context first and follow the
-pattern it names ([run-context.md](references/run-context.md)).
+pattern it names ([run-context.md](references/run-context.md)). Its forge channel decides how every
+`gh` command in these playbooks runs ([forge-channels.md](references/forge-channels.md)).
 
 If the agent lacks a native long-running goal loop, use Multitask Mode (Pattern B) with a coordinator + background orchestrator:
 

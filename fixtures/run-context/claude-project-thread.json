@@ -26,7 +26,7 @@
     "state_store": "branch",
     "missing": [],
     "warnings": [
-      "forge: gh is not authenticated; steps that shell out to gh fail until they gain a rest path",
+      "forge: gh porcelain commands are unavailable; run each forge step through its rest row in forge-channels.md",
       "state: the disk does not persist; push .blackhole/ to a branch before the session ends"
     ]
   }

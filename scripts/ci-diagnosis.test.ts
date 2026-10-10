@@ -146,24 +146,25 @@ describe('createGhRunner', () => {
     spawnSyncSpy?.mockRestore();
   });
 
-  test('getFailedRunLog passes --repo to gh run view', async () => {
-    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
-      status: 0,
-      stdout: 'failed step output',
-      stderr: '',
+  test('getFailedRunLog joins the REST logs of the failed jobs only', async () => {
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockImplementation((_cmd, args) => {
+      const endpoint = String((args as string[]).find((a) => a.startsWith('repos/')));
+      if (endpoint.endsWith('/jobs?per_page=100')) {
+        const jobs = [
+          { id: 1, name: 'lint', conclusion: 'success', run_id: 9001 },
+          { id: 2, name: 'test', conclusion: 'failure', run_id: 9001 },
+        ];
+        return { status: 0, stdout: JSON.stringify({ jobs }), stderr: '' } as never;
+      }
+      return { status: 0, stdout: `log of ${endpoint}`, stderr: '' } as never;
     });
 
     const runner = createGhRunner();
     const log = await runner.getFailedRunLog(9001, 'owner/repo');
 
-    expect(log).toBe('failed step output');
-    const runViewArgs = spawnSyncSpy.mock.calls.find((call) => call[1]?.[0] === 'run')?.[1];
-    expect(runViewArgs).toContain('run');
-    expect(runViewArgs).toContain('view');
-    expect(runViewArgs).toContain('9001');
-    expect(runViewArgs).toContain('--repo');
-    expect(runViewArgs).toContain('owner/repo');
-    expect(runViewArgs).toContain('--log-failed');
+    expect(log).toBe('=== test ===\nlog of repos/owner/repo/actions/jobs/2/logs');
+    const endpoints = spawnSyncSpy.mock.calls.map((call) => (call[1] as string[]).find((a) => a.startsWith('repos/')));
+    expect(endpoints).toEqual(['repos/owner/repo/actions/runs/9001/jobs?per_page=100', 'repos/owner/repo/actions/jobs/2/logs']);
   });
 });
 

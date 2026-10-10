@@ -122,7 +122,7 @@ export const routeRunContext = (ctx: RunContext): RunRoute => {
   if (ctx.fan_out.value === 'none') missing.push('fan-out: an Agent/Task or Workflow tool to spawn workers');
   const forge = (['gh', 'rest', 'mcp'] as const).find((c) => ctx.forge_channels.value.includes(c)) ?? null;
   if (!forge) missing.push('forge: an authenticated gh, a GitHub token, or GitHub MCP tools');
-  if (forge && forge !== 'gh') warnings.push(`forge: gh is not authenticated; steps that shell out to gh fail until they gain a ${forge} path`);
+  if (forge && forge !== 'gh') warnings.push(`forge: gh porcelain commands are unavailable; run each forge step through its ${forge} row in forge-channels.md`);
 
   // C3 (a foreground question channel) is the third precondition; chat counts, nobody does not.
   const nativeFanOut = ctx.fan_out.value !== 'none' && ctx.completion_events.value && ctx.question_channel.value !== 'none';

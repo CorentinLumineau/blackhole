@@ -699,6 +699,7 @@ describe('fetchForgeCounts', () => {
     spawnSyncSpy?.mockRestore();
   });
 
+  // Every forge read is `gh api -X GET <endpoint>` (ADR-048); route the mock by endpoint.
   function mockGhCalls(
     handlers: {
       issue?: () => childProcess.SpawnSyncReturns<string>;
@@ -706,25 +707,36 @@ describe('fetchForgeCounts', () => {
     },
   ): void {
     spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockImplementation((_cmd, args) => {
-      const subcommand = args?.[0];
-      if (subcommand === 'issue') return handlers.issue?.() ?? { status: 0, stdout: '[]', stderr: '' };
-      if (subcommand === 'pr') return handlers.pr?.() ?? { status: 0, stdout: '[]', stderr: '' };
-      return { status: 1, stdout: '', stderr: 'unexpected gh subcommand' };
+      const endpoint = String(args?.[3] ?? '');
+      if (endpoint.includes('/issues')) return handlers.issue?.() ?? { status: 0, stdout: '[]', stderr: '' };
+      if (endpoint.includes('/pulls')) return handlers.pr?.() ?? { status: 0, stdout: '[]', stderr: '' };
+      return { status: 1, stdout: '', stderr: 'unexpected gh api endpoint' };
     });
   }
+  const endpointFor = (kind: string): string =>
+    String(spawnSyncSpy.mock.calls.find((call) => String(call[1]?.[3]).includes(kind))?.[1]?.[3]);
+  const issueRow = (number: number, extra: Record<string, unknown> = {}) => ({
+    number,
+    title: `t${number}`,
+    body: null,
+    labels: [],
+    milestone: null,
+    state: 'open',
+    ...extra,
+  });
+  const prRow = (number: number) => ({
+    number,
+    title: `p${number}`,
+    body: null,
+    head: { ref: 'b', sha: 's' },
+    state: 'open',
+    merged_at: null,
+  });
 
-  test('returns open issue and PR counts when both gh calls succeed', () => {
+  test('returns open issue and PR counts when both REST reads succeed', () => {
     mockGhCalls({
-      issue: () => ({
-        status: 0,
-        stdout: JSON.stringify([{ number: 1 }, { number: 2 }]),
-        stderr: '',
-      }),
-      pr: () => ({
-        status: 0,
-        stdout: JSON.stringify([{ number: 10 }]),
-        stderr: '',
-      }),
+      issue: () => ({ status: 0, stdout: JSON.stringify([issueRow(1), issueRow(2)]), stderr: '' }),
+      pr: () => ({ status: 0, stdout: JSON.stringify([prRow(10)]), stderr: '' }),
     });
 
     expect(fetchForgeCounts({}, 'owner/repo')).toEqual({
@@ -734,12 +746,20 @@ describe('fetchForgeCounts', () => {
     });
 
     expect(spawnSyncSpy).toHaveBeenCalledTimes(2);
-    const issueArgs = spawnSyncSpy.mock.calls.find((call) => call[1]?.[0] === 'issue')?.[1];
-    const prArgs = spawnSyncSpy.mock.calls.find((call) => call[1]?.[0] === 'pr')?.[1];
-    expect(issueArgs).toContain('--repo');
-    expect(issueArgs).toContain('owner/repo');
-    expect(prArgs).toContain('--repo');
-    expect(prArgs).toContain('owner/repo');
+    expect(endpointFor('/issues')).toStartWith('repos/owner/repo/issues?state=open');
+    expect(endpointFor('/pulls')).toStartWith('repos/owner/repo/pulls?state=open');
+  });
+
+  test('does not count pull requests the issues endpoint returns', () => {
+    mockGhCalls({
+      issue: () => ({
+        status: 0,
+        stdout: JSON.stringify([issueRow(1), issueRow(2, { pull_request: { url: 'x' } })]),
+        stderr: '',
+      }),
+    });
+
+    expect(fetchForgeCounts({}, 'owner/repo').openIssues).toBe(1);
   });
 
   test('returns structured error when issue list fails', () => {
@@ -768,19 +788,12 @@ describe('fetchForgeCounts', () => {
     });
   });
 
-  // Issue #864: a `gh pr list` failure used to collapse into `openPrs: 0, ok: true` —
+  // Issue #864: a PR-list failure used to collapse into `openPrs: 0, ok: true` —
   // indistinguishable from the legitimate "zero open PRs" state. The dashboard (and any other
-  // consumer reading `ok`) must be able to tell "forge unreachable" from "forge says zero" —
-  // see the `formatDashboard` consumer assertion below, which is the actual defect surface: an
-  // orchestrator reading `ok: true` here would keep scheduling work against a forge it can no
-  // longer read (issue's own failure scenario).
+  // consumer reading `ok`) must be able to tell "forge unreachable" from "forge says zero".
   test('reports ok:false with the stderr text when issue list succeeds but PR list fails', () => {
     mockGhCalls({
-      issue: () => ({
-        status: 0,
-        stdout: JSON.stringify([{ number: 1 }, { number: 2 }, { number: 3 }]),
-        stderr: '',
-      }),
+      issue: () => ({ status: 0, stdout: JSON.stringify([issueRow(1), issueRow(2), issueRow(3)]), stderr: '' }),
       pr: () => ({ status: 1, stdout: '', stderr: 'pr list failed' }),
     });
 
@@ -792,14 +805,16 @@ describe('fetchForgeCounts', () => {
     });
   });
 
-  test('passes milestone scope to the issue-list gh invocation', () => {
-    mockGhCalls({});
+  test('applies milestone scope to the fetched issues', () => {
+    mockGhCalls({
+      issue: () => ({
+        status: 0,
+        stdout: JSON.stringify([issueRow(1, { milestone: { title: 'v0.4.2' } }), issueRow(2, { milestone: { title: 'v0.5' } })]),
+        stderr: '',
+      }),
+    });
 
-    fetchForgeCounts({ milestone: 'v0.4.2' }, 'owner/repo');
-
-    const issueArgs = spawnSyncSpy.mock.calls.find((call) => call[1]?.[0] === 'issue')?.[1];
-    expect(issueArgs).toContain('--milestone');
-    expect(issueArgs).toContain('v0.4.2');
+    expect(fetchForgeCounts({ milestone: 'v0.4.2' }, 'owner/repo').openIssues).toBe(1);
   });
 });
 
