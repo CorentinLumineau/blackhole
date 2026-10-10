@@ -1,0 +1,32 @@
+{
+  "repo": "shadcn-ui/ui",
+  "source_path": "skills/shadcn",
+  "commit": "2d3f1cd436b18ea12f24130de4df781355925b08",
+  "fetched_at": "2026-10-10T00:00:00.000Z",
+  "license": "MIT",
+  "license_file": "LICENSE.md",
+  "docs": "https://ui.shadcn.com/docs/skills",
+  "exclude": ["evals"],
+  "files": [
+    "SKILL.md",
+    "agents/openai.yml",
+    "assets/shadcn-small.png",
+    "assets/shadcn.png",
+    "assets/showcase/color-pair.tsx",
+    "assets/showcase/preview-states.css",
+    "assets/showcase/state-matrix.tsx",
+    "cli.md",
+    "customization.md",
+    "design-system-page.md",
+    "design-system.md",
+    "mcp.md",
+    "registry.md",
+    "rules/base-vs-radix.md",
+    "rules/chat.md",
+    "rules/composition.md",
+    "rules/forms.md",
+    "rules/icons.md",
+    "rules/styling.md",
+    "scripts/showcase-coverage.mjs"
+  ]
+}
