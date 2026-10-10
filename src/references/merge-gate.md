@@ -2,7 +2,9 @@
 
 Owns the entire merge-eligibility algorithm (ADR-005): whether an LGTM'd issue's PR
 may actually be merged this turn. No merge mechanics live here — HEAD/CI/build
-checks and the `gh pr merge` call itself stay in `phase-loop.md` § Merge protocol;
+checks and the `gh pr merge` call itself stay in `phase-loop.md` § Merge protocol (on the
+`rest` or `mcp` forge channel, every `gh` command here and there runs through its row in
+`forge-channels.md`);
 this doc is consulted from that section's own **step 0** as a single delegated
 precondition (`mergeEligible(issue)` — `false` stops the protocol before step 1),
 never inlined and never satisfied merely by citation from a different heading.

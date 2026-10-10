@@ -50,7 +50,9 @@ in the launch summary.
 | Anything less | B (`multitask-mode.md`) | As above; `none` when headless | As above | As above |
 
 Forge channel: `gh` when authenticated, else a token in `GH_TOKEN`/`GITHUB_TOKEN` (`rest`), else
-GitHub MCP tools (`mcp`). With none of them the campaign cannot sync and bootstrap refuses.
+GitHub MCP tools (`mcp`). With none of them the campaign cannot sync and bootstrap refuses. On
+`rest` or `mcp`, every `gh` porcelain command in the playbooks runs through its row in
+`forge-channels.md` instead.
 
 `fixtures/run-context/` holds one resolved example per run type; `scripts/lib/run-context.ts`
 is the table's only implementation.

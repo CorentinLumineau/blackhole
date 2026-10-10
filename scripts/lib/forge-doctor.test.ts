@@ -18,7 +18,7 @@ describe('checkForgeAuthSync github', () => {
       stderr: '',
       error: null,
     });
-    expect(checkForgeAuthSync('github')).toEqual({ ok: true, host: 'github.com' });
+    expect(checkForgeAuthSync('github')).toEqual({ ok: true, host: 'github.com', channel: 'gh' });
   });
 
   test('reports missing gh binary on ENOENT', () => {
@@ -41,6 +41,19 @@ describe('checkForgeAuthSync github', () => {
       error: null,
     });
     expect(checkForgeAuthSync('github')).toEqual({ ok: false, detail: 'not logged in' });
+  });
+
+  // ADR-048: a token that `gh auth status` rejects can still reach REST, which is all scripts use.
+  test('reports the rest channel when gh auth status fails but gh api works', () => {
+    runGhSpy = spyOn(cli, 'runGh').mockImplementation((args) => ({
+      status: args[0] === 'api' ? 0 : 1,
+      stdout: args[0] === 'api' ? '{}' : '',
+      stderr: args[0] === 'api' ? '' : 'X Failed to log in to github.com using token (GH_TOKEN)',
+      error: null,
+    }));
+    const result = checkForgeAuthSync('github');
+    expect(result).toMatchObject({ ok: true, channel: 'rest' });
+    expect(result.detail).toContain('REST only');
   });
 });
 
