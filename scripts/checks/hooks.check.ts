@@ -38,8 +38,12 @@ export const REQUIRED_PATTERN_KEYS: Record<string, string[]> = {
 };
 
 type PatternEntry = { id?: unknown; pattern?: unknown; flags?: unknown; reason?: unknown };
-type HookCommand = { type?: unknown; command?: unknown };
+type HookCommand = { type?: unknown; command?: unknown; onFailure?: unknown; timeout?: unknown };
 type PreToolUseEntry = { matcher?: unknown; hooks?: HookCommand[] };
+
+/** Claude Code ≥2.1.295: a PreToolUse command hook that cannot start, times out, or exits
+ * unexpectedly blocks the tool call instead of failing open. SessionStart is out of scope. */
+export const REQUIRED_PRETOOLUSE_ON_FAILURE = 'block';
 
 const readJson = (abs: string): Record<string, unknown> => readJsonFile(abs, abs) as Record<string, unknown>;
 
@@ -74,6 +78,11 @@ export const evaluateHooksWiring = (bundleRoot: string, label: string): string[]
     }
     for (const command of commands) {
       if (command.type !== 'command') errors.push(`${label}: matcher "${entry.matcher}" hook type is not "command"`);
+      if (command.type === 'command' && command.onFailure !== REQUIRED_PRETOOLUSE_ON_FAILURE) {
+        errors.push(
+          `${label}: matcher "${entry.matcher}" command hook missing onFailure: "${REQUIRED_PRETOOLUSE_ON_FAILURE}"`,
+        );
+      }
       const script = String(command.command ?? '').split('/').pop() ?? '';
       if (!script || !fs.existsSync(path.join(bundleRoot, 'hooks', script))) {
         errors.push(`${label}: matcher "${entry.matcher}" points at missing script "${script}"`);

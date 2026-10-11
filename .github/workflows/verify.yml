@@ -85,6 +85,20 @@ jobs:
       - name: Run install:verify
         run: bun run install:verify
 
+      # Claude Code plugin schema gate (2.1.295+). `claude plugin validate --strict` is a local
+      # static check; `claude plugin test` runs only when the plugin ships a tests/ tree.
+      # Free-tier only: skip GitHub-hosted pull_request runners (ubuntu-latest). Trusted push
+      # events already run on the self-hosted MacBook, which has the `claude` CLI.
+      - name: Validate Claude plugin (strict)
+        if: github.event_name == 'push' || runner.environment == 'self-hosted'
+        run: |
+          set -euo pipefail
+          claude plugin validate --strict .
+          claude plugin validate --strict plugins/blackhole-claude
+          if [ -d plugins/blackhole-claude/tests ] || [ -d tests ]; then
+            claude plugin test
+          fi
+
   release-notes-gate:
     name: Release Notes Gate
     runs-on: [self-hosted, mba]

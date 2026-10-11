@@ -2,6 +2,7 @@
 name: planner
 description: Backlog campaign planner agent. Generates structured implementation plans enforcing complexity tracks, quality gates, and base commit stamping.
 permissionMode: default
+autoCompactWindow: 100000
 disallowedTools: [Delete]
 ---
 
