@@ -349,6 +349,9 @@ co-located `*.test.ts`.
   semantic against the explicit rule in merge-conflict-protocol.md — never restate procedures
   inline in consumers; semantic hunks block with conflict_hunks[] surfaced to the owner
   (ADR-023)
+- Blackhole squash-merges only its own green, low-risk PRs (no auth/login, secrets/env, prod DB,
+  migrations, `.github/workflows`, release/tag tooling, or data deletion). Any other PR stays
+  open with `needs-chef` for Chef (orchestrator) to decide (`merge-gate.md` § 9).
 - Campaign implementers must never delegate a PR fix back to an external review bot (e.g.
   posting `/git-fix-pr` when ActionMan/workclaude is installed on the consumer forge) — findings
   are applied in-process and the bot's verdict is re-checked on the new HEAD SHA. (ADR-026)
