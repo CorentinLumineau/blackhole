@@ -495,6 +495,50 @@ mistaken for a verified base-ref landing.
 | Post-merge `git log <target_branch> --grep=#<PR>` finds nothing after the retry budget | Terminal (§ 8, step 4.7, exit `1`) — the merge did not land on the base ref; never reclassified as replication lag, `merged_into` stays absent, and the issue does not advance to `done` |
 | Post-merge `git fetch`/`git log` exits non-zero, or `target_branch` resolves to no ref | Exit `3` (§ 8, step 4.7) — reported as *verification could not run*, never as a miss and never as `ok`; `merged_into` stays absent and the issue does not advance to `done`, but the failure names the transport, not the landing |
 | `merged_into` absent on an older `merged` row | `mergedIntoVerdict()` reports `unknown`, not `base` — an unverified landing stays visibly unverified rather than being backfilled by assumption |
+| Green CI, low-risk campaign PR (`blackhole/issue-N`, none of the § 9 categories) | `phase-loop.md` step 4 squash-merges (`automerge: true`) |
+| Green CI, but the diff touches a § 9 high-risk category (or head is not `blackhole/issue-N`) | Step 4 **does not merge**. Label `needs-chef`, comment the script's `comment` field, leave the PR open for Chef |
+| `needs-chef` already on the PR from a prior turn | Do not post a second `needs-chef:` comment; re-evaluate next turn if the diff changed |
+| `DELETE FROM` / `DROP TABLE` only in a test or fixture file | Not `deletes-data` — `isTestPath()` excludes it |
+| `merge_mode: leave-open`, high-risk, CI green | Same hold half (label + comment); still no `gh pr merge` |
+
+## 9. `classifyMergeRisk(pr) -> automerge | needs-chef` — low-risk squash-merge gate
+
+Blackhole may squash-merge **its own** PRs only when CI is already green (step 1 / C3) **and** the
+diff is low-risk. Any other PR that has reached this point stays open for Chef (the orchestrator /
+owner) with label `needs-chef` and a short comment saying why. This is a PR-quality signal, not a
+fourth `mergeEligible()` condition (same shape as § 6 / Step 0.6).
+
+**Own PR:** head ref is `blackhole/issue-N` (`V-BRANCH-03`). An omitted head ref is treated as own
+(the merge protocol already only considers campaign issues). Any other head is a hold.
+
+**Low-risk:** the changed-file list (and optional unified diff) touches **none** of:
+
+| Category | Typical paths / content |
+|----------|-------------------------|
+| `auth-login` | `auth/`, `login`, `oauth`, `sso`, `passport`, `*password*`, `*jwt*` |
+| `secrets-env` | `.env*`, `secrets`, `credentials`, `*.pem`/`*.key`, `.ssh/`, `.aws/credentials` |
+| `prod-db` | paths combining prod/production with db/database/sql/postgres/mysql/mongo |
+| `migrations` | `migrations/`, `migrate/`, `prisma/migrations/`, alembic, knexfile, flyway |
+| `github-workflows` | `.github/workflows/**` |
+| `release-tag` | `scripts/release.ts`, `.github/releases/`, `git-create-release`, `package.json` version bump |
+| `deletes-data` | deleted `data/`/`dumps/`/`*.sql`/`*.csv` files, or `DROP TABLE`/`TRUNCATE`/`DELETE FROM` in a non-test patch |
+
+Mechanical check (exit `0` automerge, `1` hold, `2` usage) — judgment is above, arithmetic is not
+here:
+
+```
+bun run scripts/merge-risk.ts --name-status <abs> [--patches <abs unified diff>] --head-ref <branch>
+bun run scripts/merge-risk.ts --files <abs json>
+```
+
+`--files` JSON is `{ files: [{path, status, previousPath?}], patches?: [{path, patch}], headRef? }`.
+`--name-status` is `gh pr diff <n> --name-status` (or `git diff --name-status`). `--patches` is
+`gh pr diff <n>`; without it, `deletes-data` is path/status only. Stdout is the verdict JSON
+including a ready-to-post `comment` that starts with `needs-chef:`.
+
+Hold mechanics (`phase-loop.md` step 4, not here): create label `needs-chef` if missing, add it to
+the PR, comment once (skip if a `needs-chef:` comment already exists), set `queue.json` `notes` to
+`needs-chef: <categories>`, do not call `gh pr merge`.
 
 ## Consulted by
 
@@ -503,6 +547,7 @@ mistaken for a verified base-ref landing.
 - `phase-loop.md` § Merge protocol, **Step 0.6** — hard `pipelineVerdict(pr, queue)` (§ 6) check between Step 0.5 and step 1.
 - `phase-loop.md` § Merge protocol, **Step 0.7** and **step 4.6** — stacked-child tip capture check before the merge and `--onto` repair after it (§ 7).
 - `phase-loop.md` § Merge protocol, **Step 0.8** — hard pre-merge base assertion (§ 8) between Step 0.7 and step 1.
+- `phase-loop.md` § Merge protocol, **step 4** — low-risk automerge gate (§ 9) immediately before `gh pr merge --squash`; hold path applies `needs-chef`.
 - `phase-loop.md` § Merge protocol, **step 4.7** — post-merge landing verification (§ 8) after step 4.6's stacked-child repair.
 - `forge-sync.md` — cycle detection (§ 2), drift reconciliation (§ 3), and pipeline detection (§ 5.6, feeds § 6).
 - `orchestrator.md` Phase 5 — pointer reference only, no inline logic.

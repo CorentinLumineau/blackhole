@@ -5,7 +5,7 @@
 ```
 - [ ] Auto forge sync (native — no user prompt)
 - [ ] BLOCK/WARN unresolved? → phase implement (same issue)
-- [ ] LGTM AND mergeEligible(issue)? → merge PR (runbook quality gates)
+- [ ] LGTM AND mergeEligible(issue) AND low-risk own PR? → squash-merge; else `needs-chef` (Chef decides)
 - [ ] queue.json: status merged, phase done
 - [ ] Resolve/defer ledger entries for this issue/PR
 - [ ] forge-sync.md protocol
@@ -145,13 +145,25 @@ D5 narrowing as Step 0.5 above).
    (`merge-gate.md` §5) — exit non-zero blocks merge the same way. Inert when either governance
    flag is `false`. Bypassed under `merge_mode: leave-open`.
 3. Run the project's build command in main clone (if applicable)
-4. `gh pr merge --squash` (use `&&` only, never `;`) — immediately after this
-   command succeeds, in the **same** atomic `queue.json` write that sets
-   `status: merged`, also set `merged_by: blackhole` on the issue (ADR-005 —
-   see `merge-gate.md` § 3 for why: this is the sole signal `V-MERGE-01`/
-   `V-MERGE-02` attribution relies on; `status: in-flight` alone does not
-   indicate blackhole itself performed the merge and must not be used for
-   attribution).
+4. **Low-risk automerge gate** (`merge-gate.md` § 9), then squash-merge. Snapshot the PR's
+   files (`gh pr diff <n> --name-status`) and run
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-risk.ts --name-status <abs> [--patches <abs>] --head-ref <branch>`
+   (pass `--patches` from `gh pr diff <n>` so `deletes-data` sees SQL, not only deleted paths).
+   Exit 0 (`automerge: true`): CI is already green from step 1, the PR is blackhole's own
+   (`blackhole/issue-N`), and the diff touches none of the high-risk categories — `gh pr merge
+   --squash` (use `&&` only, never `;`). Immediately after this command succeeds, in the
+   **same** atomic `queue.json` write that sets `status: merged`, also set `merged_by: blackhole`
+   on the issue (ADR-005 — see `merge-gate.md` § 3 for why: this is the sole signal
+   `V-MERGE-01`/`V-MERGE-02` attribution relies on; `status: in-flight` alone does not indicate
+   blackhole itself performed the merge and must not be used for attribution).
+   Exit 1: **do not merge**. Ensure label `needs-chef` exists (`gh label create needs-chef
+   --color E4A820 --description "Awaiting Chef (orchestrator) merge decision"` — ignore
+   already-exists), `gh pr edit <n> --add-label needs-chef`, and if no existing comment starts
+   with `needs-chef:`, `gh pr comment <n>` with the script's `comment` field. Set `queue.json`
+   `notes` to `needs-chef: <categories>` and **STOP** this issue's merge for the turn — Chef
+   (orchestrator / owner) decides. Do not re-comment while the label is already present.
+   Under `merge_mode: leave-open`: skip the squash-merge half (unchanged); still run the hold
+   half on exit 1 so Chef sees why a green PR was not merged.
 4.5. **Main-clone freshness refresh (issue #792, mandatory)**: immediately after step 4
    succeeds, run `git fetch origin main && git merge --ff-only origin/main` in the
    orchestrator's own main clone. `.blackhole/` is fully `.gitignore`-excluded
