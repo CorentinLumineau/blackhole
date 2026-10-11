@@ -6,6 +6,10 @@ round trip and removing the LLM-discipline wave-barrier stall class documented i
 `multitask-mode.md` § Runbook (#151). Pattern B stays fully intact and is the required path on
 harnesses lacking the capabilities below (Cursor/OpenCode).
 
+In a Claude Project thread, run context selects Pattern P instead: this pattern's orchestration
+with the thread's own decision cards, status checklist, PR events and routines
+([project-thread-mode.md](project-thread-mode.md)).
+
 ## Capability matrix (core — harness-neutral)
 
 Pattern C requires a harness to provide four capabilities. This core section names the

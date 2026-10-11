@@ -11,6 +11,7 @@
     "question_channel": "chat",
     "ci_wait": "poll",
     "state_store": "local",
+    "schedule": "turn",
     "missing": [
       "host: pass --host claude|cursor",
       "fan-out: an Agent/Task or Workflow tool to spawn workers",

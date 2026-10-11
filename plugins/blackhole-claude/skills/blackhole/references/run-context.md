@@ -45,9 +45,13 @@ in the launch summary.
 
 | Run context | Pattern | Questions | CI wait | State |
 |-------------|---------|-----------|---------|-------|
+| Claude Project thread with fan-out and a question channel | P (`project-thread-mode.md`) | ask-decision | PR events when offered, else poll | `branch` |
 | Fan-out + completion events + a question channel, Claude Code | C (`claude-code-native.md`) | First of ask-decision, AskUserQuestion, chat | PR events when offered, else poll | `local` when the disk persists, else `branch` |
 | Same, Cursor | C-lite (`multitask-mode.md` § Cursor Pattern C-lite) | First of AskQuestion, chat | As above | As above |
 | Anything less | B (`multitask-mode.md`) | As above; `none` when headless | As above | As above |
+
+Schedule: `routine` when the session can create routines (kaizen waves and CI check-ins become
+routines, `project-thread-mode.md` § Scheduling), else `turn`.
 
 State store: `branch` means the disk is reclaimed after the session, so campaign state lives on
 the `blackhole/state` branch: pull it right after this resolution and before reading any state,

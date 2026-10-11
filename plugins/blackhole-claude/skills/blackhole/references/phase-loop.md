@@ -95,7 +95,8 @@ deliberately has no `queue.json`/`config.json` home, so it cannot be set once an
 D5 narrowing as Step 0.5 above).
 
 1. `gh pr view <n> --json headRefOid` equals local HEAD
-2. CI-wait: a detached background poll, never a foreground agent sleep. `gh pr
+2. CI-wait (on `ci_wait: pr-events`, wait for the PR's CI event instead, per
+   `project-thread-mode.md` § CI wait): a detached background poll, never a foreground agent sleep. `gh pr
    checks <n>` must reach green (except Vercel preview — expected fail), but
    the orchestrator does not block the turn on it synchronously
    (`V-PARETO-01` — no LLM turn sleeping >10 min in a foreground poll loop).

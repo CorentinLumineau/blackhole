@@ -1,5 +1,8 @@
 import { createGitHubAdapter } from './lib/forge-adapter/index.ts';
 import { parseFlags } from './lib/argv-flags.ts';
+import { isVercelPreviewCheck } from './lib/merge-gate/ci-verdict.ts';
+
+export { isVercelPreviewCheck };
 
 export type GhStep = {
   name: string;
@@ -61,9 +64,6 @@ export const ENVIRONMENT_PATTERNS: { id: string; pattern: RegExp }[] = [
 
 const LOG_FALLBACK_TAIL = 200;
 
-export function isVercelPreviewCheck(name: string): boolean {
-  return /^Vercel/i.test(name);
-}
 
 export function passesContextCheck(line: string): boolean {
   const trimmed = line.trim();

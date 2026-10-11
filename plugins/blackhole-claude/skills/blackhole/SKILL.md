@@ -9,7 +9,8 @@ Paths that start with `${CLAUDE_PLUGIN_ROOT}` mean this plugin's install directo
 
 Which pattern below applies is not a judgment call: resolve the run context first and follow the
 pattern it names ([run-context.md](references/run-context.md)). Its forge channel decides how every
-`gh` command in these playbooks runs ([forge-channels.md](references/forge-channels.md)).
+`gh` command in these playbooks runs ([forge-channels.md](references/forge-channels.md)). In a
+Claude Project thread it names Pattern P ([project-thread-mode.md](references/project-thread-mode.md)).
 
 If the agent lacks a native long-running goal loop, use Multitask Mode (Pattern B) with a coordinator + background orchestrator:
 
