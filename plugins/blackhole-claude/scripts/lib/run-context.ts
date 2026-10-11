@@ -37,13 +37,15 @@ export type RunContext = {
   scheduler: Fact<'routines' | 'none'>;
 };
 
-export type Pattern = 'B' | 'C' | 'C-lite';
+export type Pattern = 'B' | 'C' | 'C-lite' | 'P';
 export type RunRoute = {
   pattern: Pattern;
   forge_channel: ForgeChannel | null;
   question_channel: QuestionChannel;
   ci_wait: 'pr-events' | 'poll';
   state_store: 'local' | 'branch';
+  /** Where recurring work (kaizen waves, CI re-checks) is scheduled: a host routine, or the next turn. */
+  schedule: 'routine' | 'turn';
   /** Capabilities the campaign cannot start without; bootstrap refuses while non-empty. */
   missing: string[];
   /** Degradations that do not block a start, each stated once. */
@@ -111,7 +113,9 @@ export const detectRunContext = (
 };
 
 /**
- * The routing table (ADR-046, run-context.md). Pattern C needs fan-out, completion events and a
+ * The routing table (ADR-046, run-context.md). A Claude Project thread with fan-out and a question
+ * channel is Pattern P (ADR-050): the thread session orchestrates and events wake it, so it needs
+ * no completion notifications. Elsewhere Pattern C needs fan-out, completion events and a
  * question channel (C1-C3 in claude-code-native.md); Cursor's version of that is C-lite;
  * anything less is Pattern B.
  */
@@ -126,14 +130,16 @@ export const routeRunContext = (ctx: RunContext): RunRoute => {
 
   // C3 (a foreground question channel) is the third precondition; chat counts, nobody does not.
   const nativeFanOut = ctx.fan_out.value !== 'none' && ctx.completion_events.value && ctx.question_channel.value !== 'none';
-  const pattern: Pattern = !nativeFanOut ? 'B' : ctx.host.value === 'cursor' ? 'C-lite' : 'C';
+  const projectThread =
+    ctx.host.value === 'claude' && ctx.surface.value === 'project-thread' && ctx.fan_out.value !== 'none' && ctx.question_channel.value !== 'none';
+  const pattern: Pattern = projectThread ? 'P' : !nativeFanOut ? 'B' : ctx.host.value === 'cursor' ? 'C-lite' : 'C';
 
   if (ctx.question_channel.value === 'none') {
     warnings.push('questions: no channel reaches a person; clarify gates leave the issue blocked');
   }
   const stateStore = ctx.persistent_disk.value ? 'local' : 'branch';
   if (stateStore === 'branch') {
-    warnings.push('state: the disk does not persist; push .blackhole/ to a branch before the session ends');
+    warnings.push('state: the disk does not persist; campaign state travels on the blackhole/state branch (state-branch.md)');
   }
   return {
     pattern,
@@ -141,6 +147,7 @@ export const routeRunContext = (ctx: RunContext): RunRoute => {
     question_channel: ctx.question_channel.value,
     ci_wait: ctx.pr_events.value ? 'pr-events' : 'poll',
     state_store: stateStore,
+    schedule: ctx.scheduler.value === 'routines' ? 'routine' : 'turn',
     missing,
     warnings,
   };

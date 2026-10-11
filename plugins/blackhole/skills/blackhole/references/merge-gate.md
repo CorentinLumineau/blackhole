@@ -31,6 +31,10 @@ Specification only — no merge mechanics live here (this doc's own charter,
 above): the poll/retry/rerun mechanics themselves are `phase-loop.md` § Merge
 protocol step 2's, unchanged.
 
+- **Applies to `ci_wait: poll` only.** With `ci_wait: pr-events` (run context) the wait is event
+  driven (`project-thread-mode.md` § CI wait). Either way, the green/red/pending verdict comes from
+  `bun run scripts/ci-verdict.ts --checks <file>` over the checks snapshot, Vercel previews
+  excluded.
 - **Interval**: poll `gh pr checks <n>` every 60s while the background CI-wait
   is outstanding.
 - **Cap**: 20 minutes of total CI-wait per PR before the 2-retry/reclassify

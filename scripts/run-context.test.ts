@@ -26,7 +26,7 @@ describe('run-context CLI', () => {
         CLAUDE_CODE_PROJECTS_SESSION: '1',
       });
       expect(res.status).toBe(0);
-      expect(res.stdout).toContain('pattern C');
+      expect(res.stdout).toContain('pattern P');
       const record = JSON.parse(fs.readFileSync(path.join(dir, '.blackhole', 'run-context.json'), 'utf-8'));
       expect(record.route.question_channel).toBe('ask-decision');
       expect(record.context.surface).toEqual({ value: 'project-thread', source: 'env' });

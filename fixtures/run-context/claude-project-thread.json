@@ -19,15 +19,16 @@
     "routines"
   ],
   "expected": {
-    "pattern": "C",
+    "pattern": "P",
     "forge_channel": "rest",
     "question_channel": "ask-decision",
     "ci_wait": "pr-events",
     "state_store": "branch",
+    "schedule": "routine",
     "missing": [],
     "warnings": [
       "forge: gh porcelain commands are unavailable; run each forge step through its rest row in forge-channels.md",
-      "state: the disk does not persist; push .blackhole/ to a branch before the session ends"
+      "state: the disk does not persist; campaign state travels on the blackhole/state branch (state-branch.md)"
     ]
   }
 }

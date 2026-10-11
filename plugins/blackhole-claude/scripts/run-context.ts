@@ -72,7 +72,7 @@ const main = () => {
   console.log(
     `Run context: ${context.host.value} / ${context.surface.value} — pattern ${route.pattern}, ` +
       `forge ${route.forge_channel ?? 'none'}, questions ${route.question_channel}, ` +
-      `CI wait ${route.ci_wait}, state ${route.state_store}`,
+      `CI wait ${route.ci_wait}, state ${route.state_store}, schedule ${route.schedule}`,
   );
   for (const warning of route.warnings) console.log(`  warn: ${warning}`);
   for (const gap of route.missing) console.log(`  missing: ${gap}`);

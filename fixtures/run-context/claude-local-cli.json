@@ -19,6 +19,7 @@
     "question_channel": "ask-user-question",
     "ci_wait": "poll",
     "state_store": "local",
+    "schedule": "turn",
     "missing": [],
     "warnings": []
   }

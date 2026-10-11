@@ -11,6 +11,7 @@ Never instruct the model to call a question tool that is absent from the session
 |------------------------|--------------------------------|
 | Cursor `AskQuestion` or ACP `cursor/ask_question` | Call it with the Gate Content Contract (R-003) payload |
 | Claude `AskUserQuestion` | Unchanged — foreground Pattern C gate |
+| Claude Project decision card (`ask_decision`) | One card per gate, Executive Summary in its context (`project-thread-mode.md` § Clarify gates) |
 | Neither (Grok without picker, headless) | Lettered inline options in chat, `status: blocked`, end turn — **valid C3 backend**, not a failure |
 
 Do not paraphrase gate outcomes when the native picker is available. When only inline C3 is
