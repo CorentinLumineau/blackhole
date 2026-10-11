@@ -49,6 +49,12 @@ in the launch summary.
 | Same, Cursor | C-lite (`multitask-mode.md` § Cursor Pattern C-lite) | First of AskQuestion, chat | As above | As above |
 | Anything less | B (`multitask-mode.md`) | As above; `none` when headless | As above | As above |
 
+State store: `branch` means the disk is reclaimed after the session, so campaign state lives on
+the `blackhole/state` branch: pull it right after this resolution and before reading any state,
+push it at every turn end (`state-branch.md`). It also turns off the steps that only make sense
+on a machine that keeps its plugin cache (`orchestrator-runtime.md` § Session resume & recovery,
+step 5).
+
 Forge channel: `gh` when authenticated, else a token in `GH_TOKEN`/`GITHUB_TOKEN` (`rest`), else
 GitHub MCP tools (`mcp`). With none of them the campaign cannot sync and bootstrap refuses. On
 `rest` or `mcp`, every `gh` porcelain command in the playbooks runs through its row in

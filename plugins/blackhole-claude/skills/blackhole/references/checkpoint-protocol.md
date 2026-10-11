@@ -17,6 +17,12 @@ On every orchestrator turn end, persist in this order:
 1. `queue.json` (atomic tmp + mv)
 2. `findings-ledger.json` (atomic tmp + mv)
 3. `campaign-checkpoint.md` (when in-flight work exists)
+4. When `.blackhole/run-context.json` routes `state_store: branch` (the disk does not outlive the
+   session), push the state from the main clone:
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/state-branch.ts push --message "chore(state): turn <orchestrator_turn_id>"`.
+   It commits `.blackhole/` to the `blackhole/state` branch without touching the working tree or
+   the checked-out branch, and a failed push blocks ending the turn like any other write failure
+   (`state-branch.md`).
 
 Never write checkpoint before queue and ledger are valid — validate both with
 `scripts/lib/state-write-guard.ts`'s `validateStateWrite()`, never `jq empty` (it exits 0 on a
@@ -75,6 +81,8 @@ See also: [recovery-protocol.md](recovery-protocol.md) (dirty worktree / mixed-i
 
 After context loss or session restart:
 
+0. On `state_store: branch`, restore state first: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/state-branch.ts pull`
+   (`state-branch.md`). A fresh machine has no `.blackhole/` until this runs.
 1. Read `campaign-checkpoint.md` if present; else infer from `queue.json`
 2. Run forge sync (`forge-sync.md`)
 3. Validate queue + ledger with `validateStateWrite()` (see § Write order above — never `jq empty`)

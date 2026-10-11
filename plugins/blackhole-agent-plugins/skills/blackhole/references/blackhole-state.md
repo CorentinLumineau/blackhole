@@ -37,6 +37,11 @@ Mutations to `.blackhole/queue.json` and
 | `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
 | `run-context.json` | What this run can do and the route resolved from it, rewritten at every bootstrap and resume (see `run-context.md`) |
 
+On a machine whose disk does not outlive the session (`state_store: branch`), these files are
+also kept on the `blackhole/state` branch: pushed at every turn end and restored on resume
+(`state-branch.md`). `archive/`, `hook-events/`, `.tmp/`, `*.tmp` and the per-machine signals
+(`run-context.json`, `plugin-drift.json`, `doc-health.json`) stay local.
+
 Full schemas: `plugins/blackhole-agent-plugins/skills/blackhole/references/findings-ledger.md`,
 `queue-dag.md`.
 
