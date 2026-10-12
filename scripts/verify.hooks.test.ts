@@ -4,13 +4,17 @@ import * as path from 'path';
 import { root } from './checks/check-utils.ts';
 import {
   HOOK_BUNDLE_ROOTS,
+  PRETOOLUSE_HOOKS_SSOT,
   REQUIRED_PATTERN_KEYS,
   REQUIRED_PRETOOLUSE_MATCHERS,
   REQUIRED_PRETOOLUSE_ON_FAILURE,
+  REQUIRED_PRETOOLUSE_TIMEOUT,
   evaluateHookPatterns,
+  evaluateHooksSsotMatch,
   evaluateHooksWiring,
   runChecks,
 } from './checks/hooks.check.ts';
+import { CLAUDE_DISTRIBUTION_ROOT } from './lib/build/paths.ts';
 import { PRETOOLUSE_HOOKS_DIR, runPreToolUseHook, withTempDir, withTempGitRepo } from './lib/test-fixtures.ts';
 
 // Build-pipeline contract for the PreToolUse safety gate (#447). Both redistributable plugin
@@ -29,7 +33,7 @@ describe('shipped hooks/ tree in both plugin bundles', () => {
 
       const parsed = readJson(hooksJson);
       const preToolUse = (parsed.hooks as Record<string, unknown>)?.PreToolUse as
-        | { matcher?: string; hooks?: { type?: string; command?: string; onFailure?: string }[] }[]
+        | { matcher?: string; hooks?: { type?: string; command?: string; onFailure?: string; timeout?: number }[] }[]
         | undefined;
       expect(Array.isArray(preToolUse)).toBe(true);
 
@@ -40,12 +44,13 @@ describe('shipped hooks/ tree in both plugin bundles', () => {
       // Every matcher must actually dispatch to a command that resolves inside the bundle —
       // a matcher with an empty hooks array passes a naive "matcher present" assertion while
       // intercepting nothing. onFailure: "block" (Claude Code ≥2.1.295) is what makes a
-      // missing bun, a crash, or the 5s timeout refuse the tool call instead of failing open.
+      // missing bun, a crash, or the 15s timeout refuse the tool call instead of failing open.
       for (const entry of preToolUse ?? []) {
         expect(entry.hooks?.length).toBeGreaterThan(0);
         for (const h of entry.hooks ?? []) {
           expect(h.type).toBe('command');
           expect(h.onFailure).toBe(REQUIRED_PRETOOLUSE_ON_FAILURE);
+          expect(h.timeout).toBe(REQUIRED_PRETOOLUSE_TIMEOUT);
           const scriptName = (h.command ?? '').split('/').pop() ?? '';
           expect(fs.existsSync(path.join(root, bundle, 'hooks', scriptName))).toBe(true);
         }
@@ -131,6 +136,19 @@ describe('hooks.check.ts evaluators', () => {
     });
   });
 
+  test('a PreToolUse command hook with the wrong timeout is reported', () => {
+    withDamagedBundle((bundle) => {
+      const abs = path.join(bundle, 'hooks', 'hooks.json');
+      const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8'));
+      for (const entry of parsed.hooks.PreToolUse) {
+        for (const h of entry.hooks) h.timeout = 5;
+      }
+      fs.writeFileSync(abs, JSON.stringify(parsed));
+      const errors = evaluateHooksWiring(bundle, 'fixture');
+      expect(errors.some((e) => e.includes('timeout'))).toBe(true);
+    });
+  });
+
   test('a matcher wired to a nonexistent script is reported', () => {
     withDamagedBundle((bundle) => {
       fs.unlinkSync(path.join(bundle, 'hooks', 'validate-bash-command.js'));
@@ -209,19 +227,46 @@ describe('hooks runChecks() against the real bundles', () => {
 
 describe('PreToolUse fail-closed contract (onFailure: block)', () => {
   const templateHooks = JSON.parse(
-    fs.readFileSync(path.join(root, 'templates', 'hooks', 'pretooluse', 'hooks.json'), 'utf-8'),
+    fs.readFileSync(path.join(root, PRETOOLUSE_HOOKS_SSOT), 'utf-8'),
   ) as {
     hooks: { PreToolUse: { matcher: string; hooks: { timeout?: number; onFailure?: string }[] }[] };
   };
 
-  test('SSOT template pins timeout: 5 and onFailure: block on every PreToolUse command hook', () => {
+  test('SSOT template pins timeout: 15 and onFailure: block on every PreToolUse command hook', () => {
     expect(templateHooks.hooks.PreToolUse.length).toBeGreaterThan(0);
     for (const entry of templateHooks.hooks.PreToolUse) {
       for (const h of entry.hooks) {
-        expect(h.timeout).toBe(5);
+        expect(h.timeout).toBe(REQUIRED_PRETOOLUSE_TIMEOUT);
         expect(h.onFailure).toBe(REQUIRED_PRETOOLUSE_ON_FAILURE);
       }
     }
+  });
+
+  test('HOOK_BUNDLE_ROOTS names four copies including .agents/build', () => {
+    expect(HOOK_BUNDLE_ROOTS).toHaveLength(4);
+    expect(HOOK_BUNDLE_ROOTS).toContain('.agents/build');
+    expect(HOOK_BUNDLE_ROOTS).toContain(CLAUDE_DISTRIBUTION_ROOT);
+  });
+
+  test('verbatim copies match SSOT byte-for-byte; blackhole-claude is PreToolUse-only', () => {
+    for (const bundle of HOOK_BUNDLE_ROOTS) {
+      const preToolUseOnly = bundle === CLAUDE_DISTRIBUTION_ROOT;
+      expect(evaluateHooksSsotMatch(path.join(root, bundle), bundle, preToolUseOnly)).toEqual([]);
+    }
+  });
+
+  test('a copy that diverges from SSOT is reported; SessionStart extras are ignored when PreToolUse-only', () => {
+    withDamagedBundle((bundle) => {
+      const abs = path.join(bundle, 'hooks', 'hooks.json');
+      const parsed = JSON.parse(fs.readFileSync(abs, 'utf-8'));
+      parsed.hooks.SessionStart = [{ hooks: [{ type: 'command', command: 'true', timeout: 5 }] }];
+      fs.writeFileSync(abs, `${JSON.stringify(parsed, null, 2)}\n`);
+      expect(evaluateHooksSsotMatch(bundle, 'fixture', true)).toEqual([]);
+      expect(evaluateHooksSsotMatch(bundle, 'fixture', false).some((e) => e.includes('byte-for-byte'))).toBe(true);
+      parsed.hooks.PreToolUse[0].hooks[0].timeout = 5;
+      fs.writeFileSync(abs, `${JSON.stringify(parsed, null, 2)}\n`);
+      expect(evaluateHooksSsotMatch(bundle, 'fixture', true).some((e) => e.includes('PreToolUse'))).toBe(true);
+    });
   });
 
   test('validator exit 2 (deliberate deny) is a blocking PreToolUse outcome', async () => {
@@ -236,13 +281,13 @@ describe('PreToolUse fail-closed contract (onFailure: block)', () => {
     });
   });
 
-  test('timeout is a blocking outcome via the same onFailure: block + timeout: 5 pair', () => {
+  test('timeout is a blocking outcome via the same onFailure: block + timeout: 15 pair', () => {
     // Claude Code's harness (v2.1.295+) treats a timed-out command hook as a failure, then
     // applies onFailure. We cannot spawn that harness here; the pair above is the shipped
-    // contract that makes a 5s stall refuse the tool call instead of failing open.
+    // contract that makes a 15s stall refuse the tool call instead of failing open.
     for (const entry of templateHooks.hooks.PreToolUse) {
       for (const h of entry.hooks) {
-        expect(h.timeout).toBe(5);
+        expect(h.timeout).toBe(REQUIRED_PRETOOLUSE_TIMEOUT);
         expect(h.onFailure).toBe('block');
       }
     }

@@ -5,7 +5,7 @@ The files in this directory (`hooks.json`, `validate-bash-command.js`,
 enforce safety checks (worktree-removal guard, destructive Bash pattern denial, sensitive-file
 write denial, etc.) during a live Claude Code session. Each PreToolUse command hook in
 `hooks.json` sets `"onFailure": "block"` (Claude Code ≥2.1.295) so a missing `bun`, a crash, or
-the 5-second timeout refuses the tool call instead of failing open.
+the 15-second timeout refuses the tool call instead of failing open.
 
 ## The cache is version-keyed, not content-addressed
 
