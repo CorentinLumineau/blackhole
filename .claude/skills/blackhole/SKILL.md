@@ -1,3 +1,9 @@
+---
+name: blackhole
+description: Orchestrates backlog campaign until zero open issues and PRs. Multitask Mode entry via coordinator. Auto-syncs GitHub issues, clarifies/splits any size, five-phase lifecycle, V-code ledger. Use for finish the backlog, backlog campaign, /blackhole, orchestrate issues, split issues, bc-run, bc-status.
+disable-model-invocation: true
+---
+
 # Blackhole
 
 Orchestrates issue implementation until the forge backlog is empty. Binding

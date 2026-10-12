@@ -67,8 +67,8 @@ export const expandIncludes = (
 };
 
 // Strip Cursor-only MDC frontmatter (--- globs: / alwaysApply: ---) for non-Cursor targets.
-// The frontmatter block is kept as-is for Cursor; for Claude and skills.sh it is removed entirely
-// since those platforms do not understand Cursor rule metadata.
+// The frontmatter block is kept as-is for Cursor; for Claude/Gemini/Codex/skills.sh agents it is
+// preserved (YAML name/description). Rules still strip, since those platforms reject MDC metadata.
 const stripCursorFrontmatter = (content: string): string => {
   return content.replace(/^---\n(?:.*\n)*?---\n\n?/, '');
 };
@@ -236,8 +236,8 @@ export const processFile = (
     if (isVcodesMdc) {
       content = enrichVcodesMdcGlobs(content);
     }
-  } else if (isAgent && (target === 'claude' || target === 'gemini' || target === 'codex')) {
-    // Claude/Gemini/Codex agents: preserve frontmatter (name, description, disallowedTools; model omitted by design)
+  } else if ((isAgent && (target === 'claude' || target === 'gemini' || target === 'codex' || target === 'skills')) || path.basename(srcPath) === 'SKILL.md') {
+    // Claude/Gemini/Codex/skills.sh agents: preserve YAML frontmatter (name, description, …)
     // — do not strip; Codex serializes frontmatter into YAML separately
   } else if (target === 'codex' && isSkill) {
     // Codex skill: preserve skill frontmatter (disable-model-invocation, name, description)
