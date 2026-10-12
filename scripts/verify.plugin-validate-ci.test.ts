@@ -27,6 +27,11 @@ describe('verify.yml Claude plugin validate step', () => {
     expect(yaml).not.toMatch(/if:\s*github\.event_name == 'push' \|\| runner\.environment == 'self-hosted'/);
   });
 
+  test('pins Claude Code CLI 2.1.296 instead of curl | bash latest', () => {
+    expect(yaml).toContain('npm i -g @anthropic-ai/claude-code@2.1.296');
+    expect(yaml).not.toContain('https://claude.ai/install.sh');
+  });
+
   test('invokes claude plugin test only when a tests/ tree exists', () => {
     expect(yaml).toMatch(/if \[ -d plugins\/blackhole-claude\/tests \] \|\| \[ -d tests \]/);
     expect(yaml).toContain('claude plugin test');
