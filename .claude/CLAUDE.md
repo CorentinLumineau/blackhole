@@ -1,5 +1,7 @@
 # Blackhole — Claude Code
 
+Project memory for sessions in this checkout (`./.claude/CLAUDE.md`). Plugin-shipped context is the `blackhole` skill, not a root `CLAUDE.md`.
+
 ## Run the campaign
 
 ```bash
@@ -22,5 +24,5 @@ backend. See [ADR-027](documentation/decisions/ADR-027-forge-adapter-interface.m
 
 ## References
 
-- Agent roster and triggers: [AGENTS.md](AGENTS.md)
-- Skill entry: [.claude/skills/blackhole/SKILL.md](.claude/skills/blackhole/SKILL.md)
+- Agent roster and triggers: [AGENTS.md](../AGENTS.md)
+- Skill entry: [skills/blackhole/SKILL.md](skills/blackhole/SKILL.md)

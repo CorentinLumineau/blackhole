@@ -12,6 +12,7 @@ import {
   evaluateHookPatterns,
   evaluateHooksSsotMatch,
   evaluateHooksWiring,
+  hookCommandScriptName,
   runChecks,
 } from './checks/hooks.check.ts';
 import { CLAUDE_DISTRIBUTION_ROOT } from './lib/build/paths.ts';
@@ -51,7 +52,7 @@ describe('shipped hooks/ tree in both plugin bundles', () => {
           expect(h.type).toBe('command');
           expect(h.onFailure).toBe(REQUIRED_PRETOOLUSE_ON_FAILURE);
           expect(h.timeout).toBe(REQUIRED_PRETOOLUSE_TIMEOUT);
-          const scriptName = (h.command ?? '').split('/').pop() ?? '';
+          const scriptName = hookCommandScriptName(h.command ?? '');
           expect(fs.existsSync(path.join(root, bundle, 'hooks', scriptName))).toBe(true);
         }
       }
@@ -96,6 +97,15 @@ const withDamagedBundle = (fn: (bundleRoot: string) => void) =>
   });
 
 describe('hooks.check.ts evaluators', () => {
+  test('hookCommandScriptName strips trailing quotes from a quoted plugin-root path', () => {
+    expect(hookCommandScriptName('bun run "${CLAUDE_PLUGIN_ROOT}/hooks/validate-bash-command.js"')).toBe(
+      'validate-bash-command.js',
+    );
+    expect(hookCommandScriptName('bun run ${CLAUDE_PLUGIN_ROOT}/hooks/validate-file-changes.js')).toBe(
+      'validate-file-changes.js',
+    );
+  });
+
   test('a correctly built bundle produces no errors from either evaluator', () => {
     const bundle = path.join(root, HOOK_BUNDLE_ROOTS[0]);
     expect(evaluateHooksWiring(bundle, 'fixture')).toEqual([]);

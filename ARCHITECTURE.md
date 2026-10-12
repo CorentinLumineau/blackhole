@@ -40,7 +40,7 @@ backlog-campaign/
 ├── templates/             # Hook templates used by the build
 ├── AGENTS.md              # Quick-start agent roster + trigger index
 ├── README.md              # Project pitch, HITL model, Pareto gating explanation
-└── CLAUDE.md               # Entry point for Claude Code sessions in this repo
+└── .claude/CLAUDE.md      # Claude Code project memory (not plugin-shipped; see skills/blackhole)
 ```
 
 **Golden rule**: `src/` is the only editable source tree. Every platform directory above it
@@ -275,7 +275,7 @@ co-located `*.test.ts`.
 
 ## 10. Agent Notes
 
-- **Entry points**: `CLAUDE.md` / `AGENTS.md` at repo root route a session into the blackhole
+- **Entry points**: `.claude/CLAUDE.md` / `AGENTS.md` route a session into the blackhole
   skill (`SKILL.md`, `.claude/skills/blackhole/SKILL.md`); the five-phase loop is defined in
   `src/references/blackhole-protocol.md` (compiled to every platform's `references/` dir).
 - **Key patterns**: `src/` is the only hand-edited source — every other agent/skill/rule/plugin

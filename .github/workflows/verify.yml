@@ -87,10 +87,14 @@ jobs:
 
       # Claude Code plugin schema gate (2.1.295+). `claude plugin validate --strict` is a local
       # static check; `claude plugin test` runs only when the plugin ships a tests/ tree.
-      # Free-tier only: skip GitHub-hosted pull_request runners (ubuntu-latest). Trusted push
-      # events already run on the self-hosted MacBook, which has the `claude` CLI.
+      # GitHub-hosted PR runners do not preinstall the CLI; self-hosted push already has it.
+      - name: Setup Claude Code CLI
+        if: runner.environment != 'self-hosted'
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Validate Claude plugin (strict)
-        if: github.event_name == 'push' || runner.environment == 'self-hosted'
         run: |
           set -euo pipefail
           claude plugin validate --strict .

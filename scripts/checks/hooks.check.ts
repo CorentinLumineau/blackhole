@@ -46,6 +46,11 @@ type PreToolUseEntry = { matcher?: unknown; hooks?: HookCommand[] };
 export const REQUIRED_PRETOOLUSE_ON_FAILURE = 'block';
 export const REQUIRED_PRETOOLUSE_TIMEOUT = 15;
 
+/** Basename of the script a PreToolUse `command` names. Trailing quotes survive `split('/')`
+ * when the path is quoted (`bun run "${CLAUDE_PLUGIN_ROOT}/hooks/foo.js"`). */
+export const hookCommandScriptName = (command: string): string =>
+  (command.split('/').pop() ?? '').replace(/["']+$/, '');
+
 const readJson = (abs: string): Record<string, unknown> => readJsonFile(abs, abs) as Record<string, unknown>;
 
 /** Byte-for-byte SSOT match. Claude marketplace is PreToolUse-only (SessionStart is appended). */
@@ -106,7 +111,7 @@ export const evaluateHooksWiring = (bundleRoot: string, label: string): string[]
           `${label}: matcher "${entry.matcher}" command hook timeout is not ${REQUIRED_PRETOOLUSE_TIMEOUT}`,
         );
       }
-      const script = String(command.command ?? '').split('/').pop() ?? '';
+      const script = hookCommandScriptName(String(command.command ?? ''));
       if (!script || !fs.existsSync(path.join(bundleRoot, 'hooks', script))) {
         errors.push(`${label}: matcher "${entry.matcher}" points at missing script "${script}"`);
       }
