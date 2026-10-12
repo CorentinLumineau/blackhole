@@ -2,6 +2,8 @@
 name: hunter
 description: Backlog campaign hunter agent. Read-only kaizen improvement scanner (ADR-006) that runs one hunt wave for one kind per spawn, verifies every finding before returning, and never files issues or mutates queue/ledger state.
 permissionMode: default
+effort: high
+autoCompactWindow: 100000
 disallowedTools: [Write, Edit, Delete]
 ---
 

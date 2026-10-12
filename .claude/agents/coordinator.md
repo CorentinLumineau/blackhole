@@ -2,6 +2,7 @@
 name: coordinator
 description: Multitask Mode coordinator for backlog campaign. Acts as user intake layer, managing the background orchestrator, resolving blockers, and triaging chat feedback.
 permissionMode: default
+effort: low
 disallowedTools: [Write, Edit, Delete]
 ---
 

@@ -2,6 +2,7 @@
 name: reviewer
 description: Backlog campaign reviewer agent. Performs strict audits on implementation PRs, enforcing V-codes, quality, security, and best practices.
 permissionMode: default
+effort: high
 disallowedTools: [Write, Edit, Delete]
 ---
 
