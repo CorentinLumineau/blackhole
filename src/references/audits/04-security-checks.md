@@ -1,6 +1,6 @@
 ---
 section: Security Checks
-vcodes: [V-SEC-01, V-SEC-02, V-SEC-03, V-SEC-04, V-SEC-11]
+vcodes: [V-SEC-01, V-SEC-02, V-SEC-03, V-SEC-04, V-SEC-11, V-SEC-13]
 ---
 ### Security Checks
 *   No hardcoded secrets, API keys, or credentials (`V-SEC-03/04`).
@@ -23,6 +23,14 @@ vcodes: [V-SEC-01, V-SEC-02, V-SEC-03, V-SEC-04, V-SEC-11]
       this audit — confirm the PR body/worker JSON carries the `new_findings[]` row
       `implementer.md`'s Absent-pattern-file fallback mandates for that case; a missing row when
       no exclusion lines are present either — `BLOCK` (the gate may have silently no-opped).
+*   **Authz Test Audit (`V-SEC-13`, `BLOCK`)**: for every new or changed endpoint in the diff
+    (route handler, server action, middleware/`proxy.ts` matcher, resolver, webhook, API/MCP
+    tool — definition §2 of Mercure `mercure-plugin/rules/references/security-sensitive-surfaces.md` (single source of truth: https://github.com/CorentinLumineau/mercure/blob/main/mercure-plugin/rules/references/security-sensitive-surfaces.md — do not copy its lists here)), confirm the PR adds/updates authz tests covering §3: 401
+    (no/invalid/revoked/expired credential), cross-account 403/404 including forged ids, 403
+    insufficient scope (or a stated "no scopes"), and the middleware/proxy matcher when it
+    changed. Name the test file and assertion; "covered indirectly" does not satisfy it. A skip
+    is valid only under the §4 trivial exemption AND with the §5 `## Security opt-out` block in
+    the PR body — otherwise `BLOCK`.
 *   **Security-mode attack-signature scan** (when `review-core.md` § Security-mode review's gate
     resolves `true`): run the diff-scoped pattern scan per
     `src/references/security-attack-signatures.md` — cite by path; do not restate patterns in
