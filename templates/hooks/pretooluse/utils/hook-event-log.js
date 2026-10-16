@@ -552,23 +552,14 @@ const denyAndRecord = (event) => {
   );
 };
 
-/** WARN tier — allowed, but recorded; the orchestrator still ingests it as V-HOOK-02. Same
- * `hookSpecificOutput.permissionDecision` shape as the deny case for consistency; `systemMessage`
- * is kept alongside it for transcript visibility, which is a separate, additive field. */
+/** WARN tier — recorded for review (the orchestrator ingests it as V-HOOK-02), then exits 0 with
+ * no output, so the call goes through the session's normal permission flow. Emitting a
+ * `permissionDecision: 'allow'` here would both print into the session and auto-approve a call
+ * this hook has flagged as risky; the record under `.blackhole/hook-events/` is the review
+ * channel. */
 const warnAndRecord = (event) => {
   recordEvent({ ...event, decision: 'allow', tier: 'warn' });
-  const reason = `${event.reason} [${event.pattern_id}] — allowed and recorded for review`;
-  emit(
-    {
-      hookSpecificOutput: {
-        hookEventName: 'PreToolUse',
-        permissionDecision: 'allow',
-        permissionDecisionReason: reason,
-      },
-      systemMessage: `blackhole PreToolUse: ${reason}`,
-    },
-    0,
-  );
+  process.exit(0);
 };
 
 /** No pattern matched — allow with no output and no record. */

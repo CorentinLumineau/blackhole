@@ -159,9 +159,7 @@ describe('validate-file-changes.js', () => {
       const result = await runPreToolUseHook(SCRIPT, writePayload(path.join(repo, '.env')), repo);
 
       expect(result.exitCode).toBe(0);
-      expect(permissionDecision(result.stdout)).toBe('allow');
-      const out = JSON.parse(result.stdout);
-      expect(out.systemMessage).toMatch(/\.env/);
+      expect(result.stdout.trim()).toBe('');
 
       const events = readHookEvents(repo);
       expect(events).toHaveLength(1);

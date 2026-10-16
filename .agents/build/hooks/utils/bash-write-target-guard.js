@@ -22,10 +22,9 @@
  *    (`bash-write-target-unresolvable`), never a silent allow (ADR-029's accepted residual risk:
  *    command-string parsing cannot enumerate every write idiom).
  *
- * `BLACKHOLE_ASSIGNED_WORKTREE` unset (the routine case outside a campaign implementer spawn) →
- * `readAssignedWorktreeRoot` returns null and this module returns null immediately, before any
- * parsing — byte-identical to today for every session that never set the env var (#620's own
- * fail-open contract, not a regression this module introduces).
+ * The check runs whenever `readAssignedWorktreeRoot` resolves a root — the declared
+ * `BLACKHOLE_ASSIGNED_WORKTREE`, or the cwd-derived tier, so any session whose cwd is a linked
+ * worktree is covered, interactive ones included. A null root returns null before any parsing.
  *
  * Read-only sources are never evaluated: `cp`/`mv` extract only the destination (last positional
  * argument) as a write target, exactly like `validate-file-changes.js` only ever evaluates a
@@ -265,6 +264,26 @@ const findCopyMoveTargets = (tokens) => {
  * it — a different, non-silent-allow failure mode, tracked separately rather than fixed here). */
 const isResolvableLiteralTarget = (raw) => isLiteralPathArg(raw) && !raw.startsWith('~');
 
+/** Any input redirect (`< f`, `2< f`, `<&`) or `exec` can put a file on the session's stdout or
+ * stderr — directly, or via a later dup such as `1>&0` — after which writing `/dev/stdout` or
+ * `/dev/stderr` reopens that file for writing. Input redirects are never scanned as write targets,
+ * so their presence alone withdraws the stdout/stderr exemption. */
+const MAY_REBIND_STREAM_FD_RE = /<|\bexec\b/;
+
+/** A redirect target is captured up to the next whitespace, so `2>/dev/null;` or `>/dev/null&&`
+ * arrive with the following operator glued on; the operator starts a clause scanned on its own. */
+const stripTrailingOperator = (target) => target.replace(/[;&|].*$/, '');
+
+/** True when `target` is a stream device that writes no file: `/dev/null` discards, `/dev/tty` is
+ * the controlling terminal, and `/dev/stdout`/`/dev/stderr` reach the session's own streams unless
+ * the command may rebind them (`MAY_REBIND_STREAM_FD_RE`). `/dev/fd/N` is never exempt: opening it
+ * reopens whatever file fd N holds, including one opened read-only. */
+const isStreamDeviceTarget = (rawTarget, visible) => {
+  const target = stripTrailingOperator(rawTarget);
+  if (target === '/dev/null' || target === '/dev/tty') return true;
+  return (target === '/dev/stdout' || target === '/dev/stderr') && !MAY_REBIND_STREAM_FD_RE.test(visible);
+};
+
 /** True when one clause's leading command word is a write-shaped command this module cannot
  * resolve statically (see `UNRESOLVABLE_WRITE_COMMANDS`'s docstring). */
 const hasUnresolvableCommand = (tokens) => {
@@ -281,8 +300,8 @@ const hasUnresolvableCommand = (tokens) => {
 };
 
 /**
- * Entry point for `validate-bash-command.js`. Returns null when `BLACKHOLE_ASSIGNED_WORKTREE` is
- * unset/invalid (fail-open, byte-identical to today — #620's own contract) or when nothing
+ * Entry point for `validate-bash-command.js`. Returns null when `readAssignedWorktreeRoot(cwd)`
+ * resolves no root (the env var is unset/invalid and cwd is not a linked worktree) or when nothing
  * write-shaped is found. Otherwise returns `{ tier: 'block', pattern_id, reason }` for the first
  * resolvable target found outside the assigned root, or `{ tier: 'warn', pattern_id, reason }`
  * when every resolvable target is in-bounds but a dynamic target or an unresolvable command was
@@ -317,6 +336,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
   }
 
   for (const target of literalTargets) {
+    if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.isAbsolute(target) ? target : path.resolve(cwd, target);
     if (!isUnderRoot(resolvedPath, assignedRoot)) {
       return {
