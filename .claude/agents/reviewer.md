@@ -130,7 +130,7 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
       no exclusion lines are present either — `BLOCK` (the gate may have silently no-opped).
 *   **Authz Test Audit (`V-SEC-13`, `BLOCK`)**: for every new or changed endpoint in the diff
     (route handler, server action, middleware/`proxy.ts` matcher, resolver, webhook, API/MCP
-    tool — definition §2 of Mercure `mercure-plugin/rules/references/security-sensitive-surfaces.md` (single source of truth: https://github.com/CorentinLumineau/mercure/blob/main/mercure-plugin/rules/references/security-sensitive-surfaces.md — do not copy its lists here)), confirm the PR adds/updates authz tests covering §3: 401
+    tool — definition §2 of Mercure `mercure-plugin/rules/references/security-sensitive-surfaces.md` (single source of truth: the installed Mercure plugin at `rules/references/security-sensitive-surfaces.md`, pinned to Mercure edd7acc; Mercure is private, so do not link its GitHub URL — do not copy its lists here)), confirm the PR adds/updates authz tests covering §3: 401
     (no/invalid/revoked/expired credential), cross-account 403/404 including forged ids, 403
     insufficient scope (or a stated "no scopes"), and the middleware/proxy matcher when it
     changed. Name the test file and assertion; "covered indirectly" does not satisfy it. A skip
