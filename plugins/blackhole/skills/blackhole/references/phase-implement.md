@@ -18,10 +18,21 @@
 - [ ] Worker returns companion_repairs[] — orchestrator matches (vcode, file) against open/deferred V-ADA-01/V-ADA-05 ledger rows and sets fixed-in-pr (findings-ledger.md § Status transitions)
 - [ ] implementer status: blocked with escalation_trigger set → orchestrator-dispatch.md § Escalation dispatch (do not re-spawn implementer directly; spawn investigator instead)
 - [ ] File issues for unfixed discoveries
+- [ ] New/changed endpoint (route handler, server action, API/MCP tool) ships with an authz test, RED first → § Authz test for new endpoints (V-SEC)
 - [ ] lint + test in worktree; prepare PR with Closes #N in body (V-GIT-01)
 - [ ] queue.json: phase review (when PR open)
 - [ ] Recovery protocol clear if resuming dirty wt-<issue> (recovery-protocol.md)
 ```
+
+## Authz test for new endpoints (V-SEC)
+
+Any diff that adds or changes a request-reachable surface — HTTP route handler (e.g. Next.js `app/api/**/route.ts`), server action (`**/actions.ts`, `app/actions/**`), RPC/GraphQL resolver, or API/MCP tool — MUST include an authorization test in the same PR, written failing-first:
+
+- unauthenticated (no session / no key / bad key) → 401 or login redirect;
+- authenticated as another account → 403/404 on the first account's resource ids, including forged ids in params/body;
+- insufficient scope (when scopes exist) → 403.
+
+Follow the target repo's convention when one exists (e.g. `*.authz.test.ts`). Missing authz test for a new surface is a blocking finding: the implementer must not open the PR without it, and the reviewer flags it as V-SEC (`security_review_required` applies). Docs-only and refactor-strict runs that add no surface are exempt.
 
 ## Plan artifact paths (worktree rule)
 
