@@ -18,10 +18,18 @@
 - [ ] Worker returns companion_repairs[] — orchestrator matches (vcode, file) against open/deferred V-ADA-01/V-ADA-05 ledger rows and sets fixed-in-pr (findings-ledger.md § Status transitions)
 - [ ] implementer status: blocked with escalation_trigger set → orchestrator-dispatch.md § Escalation dispatch (do not re-spawn implementer directly; spawn investigator instead)
 - [ ] File issues for unfixed discoveries
+- [ ] New/changed endpoint (route handler, server action, API/MCP tool) ships with an authz test, RED first → § Authz test for new endpoints (V-SEC-13)
 - [ ] lint + test in worktree; prepare PR with Closes #N in body (V-GIT-01)
 - [ ] queue.json: phase review (when PR open)
 - [ ] Recovery protocol clear if resuming dirty wt-<issue> (recovery-protocol.md)
 ```
+
+## Authz test for new endpoints (V-SEC-13)
+
+Any diff that adds or changes an endpoint MUST include, in the same PR and written failing-first, the authz tests required by Mercure `mercure-plugin/rules/references/security-sensitive-surfaces.md` (single source of truth: https://github.com/CorentinLumineau/mercure/blob/main/mercure-plugin/rules/references/security-sensitive-surfaces.md — do not copy its lists here):
+§2 defines "endpoint" and "changed"; §3 lists the cases (401, cross-account 403/404 with forged ids, **scope 403**, middleware/`proxy.ts` matcher); §4 is the exhaustive trivial exemption; §5 is the `## Security opt-out` block that MUST appear in the PR body for any skip.
+
+The implementer must not open the PR without these tests (or a valid logged opt-out); the reviewer enforces it as `V-SEC-13` BLOCK (`audits/04-security-checks.md` § Authz Test Audit) and `security_review_required` applies.
 
 ## Plan artifact paths (worktree rule)
 
