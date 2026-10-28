@@ -106,6 +106,10 @@ const DAY_SECONDS = 24 * 3600;
 const dayIndex = (w: RateWindow, now: number): number =>
   Math.min(6, Math.max(0, Math.floor((now - (w.resets_at - WINDOW_SECONDS.seven_day)) / DAY_SECONDS)));
 
+// resets_at may jitter by a few seconds between statusline refreshes; a window is the same one within this tolerance.
+const RESET_TOLERANCE_SECONDS = 300;
+const sameWindow = (a: number, b: number): boolean => Math.abs(a - b) <= RESET_TOLERANCE_SECONDS;
+
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 export const readBaseline = (baselinePath: string): BaselineInput => {
@@ -135,22 +139,22 @@ export const readBaseline = (baselinePath: string): BaselineInput => {
  * current weekly usage; a still-current baseline is returned as is. */
 export const rollBaseline = (limits: WeeklyLimits, stored: Baseline | null, now: number): Baseline => {
   const week = limits.seven_day;
-  const sameWeek = stored !== null && stored.seven_day_resets_at === week.resets_at;
+  const sameWeek = stored !== null && sameWindow(stored.seven_day_resets_at, week.resets_at);
   const index = dayIndex(week, now);
   const day = sameWeek && stored.day.index === index ? stored.day : { index, seven_day_used: week.used_percentage };
   const five = limits.five_hour;
   const session =
-    sameWeek && (!five || stored.session.resets_at === five.resets_at)
+    sameWeek && (!five || sameWindow(stored.session.resets_at, five.resets_at))
       ? stored.session
       : { resets_at: five?.resets_at ?? 0, seven_day_used: week.used_percentage };
-  return { seven_day_resets_at: week.resets_at, day, session };
+  return { seven_day_resets_at: sameWeek ? stored.seven_day_resets_at : week.resets_at, day, session };
 };
 
 /** One reason per compartment whose spend since its baseline has reached its share of the weekly
  * allowance left when it began; a baseline that does not match the current windows checks nothing. */
 export const compartmentBreaches = (limits: RateLimits, baseline: Baseline, now: number): string[] => {
   const week = limits.seven_day;
-  if (!week || baseline.seven_day_resets_at !== week.resets_at) return [];
+  if (!week || !sameWindow(baseline.seven_day_resets_at, week.resets_at)) return [];
   const out: string[] = [];
   const dayShare = (100 - baseline.day.seven_day_used) / (7 - baseline.day.index);
   const daySpent = week.used_percentage - baseline.day.seven_day_used;
@@ -158,7 +162,7 @@ export const compartmentBreaches = (limits: RateLimits, baseline: Baseline, now:
     out.push(`day spent ${daySpent.toFixed(1)}% of its ${dayShare.toFixed(1)}% share`);
   }
   const five = limits.five_hour;
-  if (five && baseline.session.resets_at === five.resets_at) {
+  if (five && sameWindow(baseline.session.resets_at, five.resets_at)) {
     const sessions = (week.resets_at - (five.resets_at - WINDOW_SECONDS.five_hour)) / WINDOW_SECONDS.five_hour;
     const sessionShare = (100 - baseline.session.seven_day_used) / Math.max(1, sessions);
     const sessionSpent = week.used_percentage - baseline.session.seven_day_used;
@@ -167,7 +171,7 @@ export const compartmentBreaches = (limits: RateLimits, baseline: Baseline, now:
   return out;
 };
 
-export const resolvePaceGateThresholds =(config: Record<string, unknown>): PaceGateThresholds => {
+export const resolvePaceGateThresholds = (config: Record<string, unknown>): PaceGateThresholds => {
   const policy = (config.resource_policy ?? {}) as Record<string, unknown>;
   const pace = (policy.pace ?? {}) as Record<string, unknown>;
   const thresholds = { ...DEFAULT_PACE_GATE };
@@ -208,7 +212,8 @@ export const evaluatePaceGate = (
   else if (compartments) notes.push(`compartments unavailable: ${compartments.reason ?? 'no baseline'}`);
   if (stop.length) return { verdict: 'STOP-NEW', concurrency: 0, reasons: [...stop, ...throttle, ...notes] };
   if (throttle.length) return { verdict: 'THROTTLE', concurrency: Math.min(1, current), reasons: [...throttle, ...notes] };
-  if (weekly !== null && weekly < t.scaleUpRatio && (fiveHour ?? 0) < t.throttlePct) {
+  const baselineMissing = compartments !== undefined && compartments.baseline === null;
+  if (!baselineMissing && weekly !== null && weekly < t.scaleUpRatio && (fiveHour ?? 0) < t.throttlePct) {
     return {
       verdict: 'SCALE-UP',
       concurrency: Math.min(current + 1, max),
