@@ -13,6 +13,7 @@ related:
 # Harness Alignment and Rule-Enforcement Audit
 
 Scope: issue #1024. Blackhole v0.23.2 at `origin/main` (54cf74eb), audited 2026-10-14. Read-only: no source behavior changes.
+Findings are pinned to 54cf74eb. V-SEC-13 (authz test required, a judgment-only reviewer BLOCK) landed after the pin in #1030 and is not classified in the matrix below.
 Priority = Gain × (11 − Effort), both 1–10. V-PARETO-03 files an issue only at Priority ≥ 30.
 Gain and Effort are estimates, not measurements.
 
@@ -114,7 +115,7 @@ Legend: Y = script/hook can exit non-zero; M = marker-only or partial; N = agent
 ### Security coverage
 
 - **Hooks** (`templates/hooks/pretooluse/`): `hooks.json` matches only `Bash` and `Write|Edit`, `onFailure: block`. Block-tier Bash patterns cover destructive root/home removal, device writes, curl-pipe-shell and fork bombs. Force push, `reset --hard`, `clean -f`, `npm publish`, SQL drop/truncate and `secret-literal` are warn-tier (`bash-patterns.json`, `warnPatterns`). Dynamic guards: `git-main-clone-guard.js`, `worktree-removal-guard.js`, `bash-write-target-guard.js`, `sibling-plugin-guard.js`.
-- **G5.** V-BRANCH-01 is CRITICAL, yet `hooks-validate-bash.test.ts:1701-1702` expects `warn` for force push. A force push to `main` outside a PR is seen only by a hook that allows it.
+- **G5.** V-BRANCH-01 is CRITICAL, yet `hooks-validate-bash.test.ts` expects `warn` for force push (pattern ids `git-push-force`, `git-push-force-refspec`). A force push to `main` outside a PR is seen only by a hook that allows it.
 - **G18.** `templates/hooks/pretooluse/validate-file-changes.js:197-206` warns on `.env`/`*.pem`/`id_rsa` writes; `git add` is intentionally not intercepted (`templates/hooks/pretooluse/utils/git-main-clone-guard.js:80-84`). No script blocks sensitive-file staging; code comments cite V-SEC-11 (`validate-file-changes.js:216`) and one test names the gate (`scripts/hooks-validate-file.test.ts:1090`).
 - **G13.** The canonical rule is `src/references/forge-sync.md:320-329`: a plain-text fence `--- UNTRUSTED-FORGE-DATA (issue #N) ---`. An issue body containing the closing line escapes it. `planner.md:15` reads the issue body directly, and `planner.md`, `investigator.md`, `hunter.md`, `reviewer.md`, `coordinator.md`, `phase-plan.md`, `phase-review.md` and `review-core.md` contain no UNTRUSTED mention (the reviewer audit modules carry a quoting note but no issue-body fence). No script enforces the wrapper.
 - **G3.** `src/references/review-core.md:138-141` calls V-SEC-08 a "documented manual gate". A reviewer BLOCK security finding with no exploit path would proceed on manual confirmation alone.
