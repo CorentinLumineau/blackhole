@@ -35,12 +35,26 @@ export const buildPaceRecord = (
   reasons: [...pace.reasons, ...(resource?.reasons ?? [])],
 });
 
+const PACE_VERDICTS = ['STOP-NEW', 'THROTTLE', 'HOLD', 'SCALE-UP', 'unavailable'];
+const RESOURCE_VERDICTS = ['go', 'degrade', 'defer', 'unavailable'];
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+const isReasons = (v: unknown): boolean => Array.isArray(v) && v.every((r) => typeof r === 'string');
+const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+export const isPaceVerdict = (v: unknown): v is PaceGateVerdict =>
+  isObject(v) && PACE_VERDICTS.includes(v.verdict as string) && isCount(v.concurrency) && isReasons(v.reasons);
+export const isResourceVerdict = (v: unknown): v is ResourceGateVerdict =>
+  isObject(v) && RESOURCE_VERDICTS.includes(v.verdict as string) && isCount(v.batch_size) && isReasons(v.reasons);
+
+const isRecord = (v: unknown): v is PaceRecord => isObject(v) && isObject(v.pace) && typeof v.pace.verdict === 'string' && isCount(v.effective);
+
 const parseLines = (raw: string): PaceRecord[] => {
   const out: PaceRecord[] = [];
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
     try {
-      out.push(JSON.parse(line) as PaceRecord);
+      const parsed: unknown = JSON.parse(line);
+      if (isRecord(parsed)) out.push(parsed);
     } catch {
       // A torn or foreign line is dropped on the next rewrite.
     }

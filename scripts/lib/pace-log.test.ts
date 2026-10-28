@@ -66,6 +66,13 @@ describe('appendPaceLog', () => {
 });
 
 describe('readLatestPaceRecord / formatPaceLine', () => {
+  test('lines that are valid JSON but not records are skipped', () => {
+    const p = logPath();
+    appendPaceLog(p, buildPaceRecord(NOW, 3, pace, null));
+    fs.appendFileSync(p, '5\n{}\nnull\n');
+    expect(readLatestPaceRecord(p)?.planned).toBe(3);
+  });
+
   test('missing log gives null', () => {
     expect(readLatestPaceRecord('/nonexistent/pace-log.jsonl')).toBeNull();
   });
@@ -97,5 +104,14 @@ describe('pace-log CLI', () => {
   test('bad usage exits 2', () => {
     expect(run(['--log', logPath(), '--planned', 'x']).exitCode).toBe(2);
     expect(run(['--log', logPath(), '--planned', '1', '--pace', '{bad']).exitCode).toBe(2);
+  });
+
+  test('a verdict of the wrong shape exits 2 and writes nothing', () => {
+    const p = logPath();
+    const planned = ['--log', p, '--planned', '1'];
+    expect(run([...planned, '--pace', 'null']).exitCode).toBe(2);
+    expect(run([...planned, '--pace', '{}']).exitCode).toBe(2);
+    expect(run([...planned, '--pace', JSON.stringify(pace), '--resource', JSON.stringify({ verdict: 'go', reasons: [] })]).exitCode).toBe(2);
+    expect(fs.existsSync(p)).toBe(false);
   });
 });
