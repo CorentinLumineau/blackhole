@@ -37,7 +37,7 @@ vcodes: [V-UX-01, V-UX-04, V-UX-05, V-UX-07, V-UX-08]
 *   **`V-UX-04` (accessibility, static subset)**: a page-level document or layout component in
     the diff has no `main` landmark, skips a heading level or has no `h1`, or an interactive
     control (button, link, input, icon-only toggle) has no accessible name. Contrast and
-    keyboard-focus order cannot be judged statically: report them `unavailable`, never as passed.
+    keyboard-focus order cannot be judged statically: write a `V-UX-04 contrast/keyboard: unavailable (static review)` line in the review output, never a pass.
 *   **`V-UX-05` (data encoding)**: a bar or area chart whose value axis does not start at zero,
     a number shown without its unit, period or population, or one column mixing precisions.
 *   **`V-UX-07` (motion)**: an animation the reader must wait through before content is usable,
