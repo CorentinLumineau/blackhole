@@ -48,6 +48,8 @@ export const mapMercureSeverityToBlackholeAction = (mercureSeverity: string): 'B
 export const KNOWN_VCODE_PARITY_DIVERGENCES: { code: string; reason: string }[] = [
   { code: 'V-ADA-05', reason: 'mercure HIGH ("AGENTS.md -> CLAUDE.md symlink integrity") vs blackhole WARN — ADR-021 D5 / ADR-024 D4: documented, not renumbered (plan Design Decisions D2)' },
   { code: 'V-DOC-GOV-01', reason: 'mercure HIGH vs blackhole WARN by deliberate design (blackhole-vcodes.md row note: reviewer judgment audit, escalatable via docs_governance.severity_overrides)' },
+  { code: 'V-UX-04', reason: 'mercure HIGH vs blackhole WARN: blackhole adopts only the static landmark/heading/accessible-name subset; contrast and keyboard legs need a browser and report unavailable' },
+  { code: 'V-UX-05', reason: 'mercure HIGH vs blackhole WARN: static diff judgment with no rendered-chart evidence' },
 ];
 
 /**
