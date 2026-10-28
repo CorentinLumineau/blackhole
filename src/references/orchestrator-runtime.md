@@ -24,19 +24,20 @@ parallel planners, implementers, reviewers):
 
 ### Spawn
 
-1. When the batch includes test/build-bearing workers (implementers, or any worker that runs
-   `build`/`verify`/`test`), run `bun run scripts/resource-gate.ts --requested <batch size>`
-   first and spawn at most its `batch_size`: `go` keeps the batch, `degrade` cuts it to one,
-   `defer` spawns none this turn (log the reasons and retry next turn), `unavailable` keeps the
-   batch and logs the reason. A non-zero exit (bad flags or a malformed config) is handled as
-   `unavailable`, with its stderr line logged. Thresholds: `resource_policy.gate` (`config-template.md`).
-   Then run `bun run scripts/pace-gate.ts --current <that batch> --max <parallel_max>`, which reads the
-   cached statusline `rate_limits`, and spawn at most the smaller of the two gates' sizes: `STOP-NEW`
-   spawns nothing (let in-flight workers finish, checkpoint, tell the owner), `THROTTLE` caps at one,
-   `HOLD` keeps the batch, `SCALE-UP` allows one more up to `parallel_max`, and `unavailable` or a
-   non-zero exit keeps the batch and logs the reason. Thresholds: `resource_policy.pace`.
-2. Log `WAVE <N>: issues [...]` before the first spawn.
-3. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
+1. Every spawn round, run `bun run scripts/pace-gate.ts --current <planned batch> --max <parallel_max>`,
+   which reads the cached statusline `rate_limits`, to set this round's target: `STOP-NEW` spawns
+   nothing (let in-flight workers finish, checkpoint, tell the owner), `THROTTLE` targets one,
+   `HOLD` keeps the planned batch, `SCALE-UP` targets one more (only when another ready issue
+   exists, never above `parallel_max`), and `unavailable` or a non-zero exit keeps the planned
+   batch and logs the reason. Thresholds: `resource_policy.pace` (`config-template.md`).
+2. When the round includes test/build-bearing workers (implementers, or any worker that runs
+   `build`/`verify`/`test`), run `bun run scripts/resource-gate.ts --requested <target>` and spawn
+   at most its `batch_size`; it can only cut the target, never raise it: `go` keeps it, `degrade`
+   cuts it to one, `defer` spawns none this turn (log the reasons and retry next turn),
+   `unavailable` keeps it and logs the reason. A non-zero exit (bad flags or a malformed config)
+   is handled as `unavailable`, with its stderr line logged. Thresholds: `resource_policy.gate`.
+3. Log `WAVE <N>: issues [...]` before the first spawn.
+4. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
 
 ### Barrier
 
