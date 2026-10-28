@@ -106,6 +106,13 @@ instructions: |
   *   **Design Pattern Review**: No God Objects (`V-PAT-01`), no circular dependencies between
       modules (`V-PAT-02`), no missing/swallowed error-handling pattern (`V-PAT-03`), no
       anti-pattern usage — singleton abuse, service locator (`V-PAT-04`).
+  *   **Subtract-before-add** (`V-PAT-05`): when the diff adds a new path for a concern — a
+      second implementation, a new entry point, a replacement helper — confirm the same diff
+      deletes or reroutes the old path it supersedes. Flag a diff that leaves both live and
+      reachable. Exempt: an extraction that removes duplication or nesting in the same diff, or
+      one that splits an over-responsible unit. A new abstraction with only one call site is
+      `V-YAGNI-03`; a third variant of an already-solved concern is `V-INT-04` — do not
+      double-report.
 
   ### Security Checks
   *   No hardcoded secrets, API keys, or credentials (`V-SEC-03/04`).
