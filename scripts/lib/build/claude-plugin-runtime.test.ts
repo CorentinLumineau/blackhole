@@ -53,11 +53,30 @@ describe('rewriteScriptInvocations', () => {
   });
 
   test('keeps the --cwd pin on the operated tree and points the script at the plugin root', () => {
-    for (const cwd of ['"$X"', '<abs repo-root>', '`<this worktree>`', '/abs/path']) {
+    for (const cwd of ['"$X"', '<abs repo-root>', '`<this worktree>`', '/abs/path', '"${BLACKHOLE_PLUGIN_ROOT:-vendor/blackhole}"']) {
       expect(rewriteScriptInvocations(`bun run --cwd ${cwd} scripts/c.ts --repo-root r`)).toBe(
         `bun run --cwd ${cwd} "\${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/c.ts --repo-root r`,
       );
     }
+  });
+
+  test('rewrites two invocations on one line independently', () => {
+    expect(rewriteScriptInvocations('bun run --cwd <a> scripts/x.ts && bun run scripts/y.ts')).toBe(
+      'bun run --cwd <a> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/x.ts && bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/y.ts',
+    );
+  });
+
+  test('with the plugin root unset, the rewritten path still resolves under --cwd', () => {
+    withTempDir('runtime-cwd', (dir) => {
+      fs.mkdirSync(path.join(dir, 'scripts'));
+      fs.writeFileSync(path.join(dir, 'scripts', 'here.ts'), 'console.log(process.cwd());');
+      const cmd = rewriteScriptInvocations(`bun run --cwd ${dir} scripts/here.ts`);
+      const env = { ...process.env };
+      delete env.BLACKHOLE_PLUGIN_ROOT;
+      const r = Bun.spawnSync(['bash', '-c', cmd], { env, stdout: 'pipe', stderr: 'pipe' });
+      expect(r.exitCode).toBe(0);
+      expect(fs.realpathSync(r.stdout.toString().trim())).toBe(fs.realpathSync(dir));
+    });
   });
 
   test('is idempotent on an already rewritten invocation', () => {
