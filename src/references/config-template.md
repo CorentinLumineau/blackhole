@@ -107,6 +107,13 @@ Committed template: `.blackhole/config.json`
 | `resource_policy.gate.defer_above_load_ratio` | no | 1-minute load ÷ core count above which the batch is deferred (default `2.0`) |
 | `resource_policy.gate.full_below_load_ratio` | no | Load ratio at or below which the full batch may spawn; above it the batch is cut to one (default `1.0`) |
 | `resource_policy.gate.defer_above_dstate` | no | Count of uninterruptible-sleep (D-state) processes above which the batch is deferred, whatever the load (default `10`) |
+| `resource_policy.pace` | no | Thresholds for `scripts/pace-gate.ts`, the usage-pace check run beside `resource_policy.gate` before each spawn round. **Resolution**: absent block or key ⇒ the defaults below; absent or stale cache ⇒ `unavailable` (gate not applied, reason logged) |
+| `resource_policy.pace.cache_path` | no | File holding Claude Code's statusline stdin payload, whose `rate_limits` the gate reads (default `~/.claude/cache/rate-limits.json`). A statusline command fills it, e.g. `input=$(cat); printf '%s' "$input" > ~/.claude/cache/rate-limits.json`; `rate_limits` is present only for Pro/Max subscribers, after the session's first response |
+| `resource_policy.pace.max_age_seconds` | no | Cache older than this many seconds is treated as `unavailable` (default `600`) |
+| `resource_policy.pace.stop_pct` | no | `used_percentage` at or above which either window forces `STOP-NEW` (default `95`) |
+| `resource_policy.pace.throttle_pct` | no | Five-hour `used_percentage` at or above which the round is capped at one worker (default `80`) |
+| `resource_policy.pace.throttle_ratio` | no | Seven-day pace (used share ÷ elapsed share) above which the round is capped at one worker (default `1.2`) |
+| `resource_policy.pace.scale_up_ratio` | no | Seven-day pace below which one more worker is allowed, up to `parallel_max` (default `0.7`) |
 | `resource_policy.carveout_recorded_at` | no | ISO8601 timestamp when the resource-policy carveout block was last recorded |
 | `stop_budget_cleared_at` | no | ISO8601 timestamp when the campaign stop-budget gate was cleared by the owner/coordinator (audit trail) |
 | `issue_484_disposition` | no | Campaign-specific disposition record for issue #484 (or analogous parked-issue pin). **Resolution**: absent block ⇒ no special disposition |
