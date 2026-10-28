@@ -143,6 +143,14 @@ Perform a systematic check on the PR diff and return findings mapped to V-codes:
     changed. Name the test file and assertion; "covered indirectly" does not satisfy it. A skip
     is valid only under the §4 trivial exemption AND with the §5 `## Security opt-out` block in
     the PR body — otherwise `BLOCK`.
+*   **Destructive-Operation Idempotency Audit (`V-SEC-14`, `BLOCK`)**: for every workflow,
+    script, migration or release step the diff adds or changes that deletes tags, data or
+    deployed resources, confirm three things: it creates (or verifies) the replacement before
+    deleting the original, never delete-then-create; re-running it after a partial failure
+    converges to the same end state; and the destruction has a dry-run path plus a backup or
+    restore step. A missing leg is `BLOCK`; name the file:line of the destructive call. This
+    covers logic the PR ships, not the worker's own shell commands — those are the PreToolUse
+    hooks' job.
 *   **Security-mode attack-signature scan** (when `review-core.md` § Security-mode review's gate
     resolves `true`): run the diff-scoped pattern scan per
     `src/references/security-attack-signatures.md` — cite by path; do not restate patterns in
