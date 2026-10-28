@@ -426,7 +426,7 @@ this section states only what the script does not decide.
     whether an existing doc at the target directory already covers the same concern; if so,
     update it in place (bump `last_updated`, preserve its original `created`) instead of letting
     the script create a duplicate.
-*   **Invoke**: `bun run --cwd <this worktree's absolute path> scripts/carry-staged-artifacts.ts
+*   **Invoke**: `bun run --cwd <this worktree's absolute path> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/carry-staged-artifacts.ts
     --manifest {repo_root}/.blackhole/staged/<issue>/manifest.json --repo-root <this worktree's
     absolute path> --staging-root {repo_root}` — `--cwd` MUST equal `--repo-root` (issue #798 —
     pins module resolution to the worktree, the same tree the CLI operates on). `{repo_root}` is
@@ -497,7 +497,7 @@ Delete]` — ADR-021 A2).
     renderer SSOT: `scripts/lib/promote-review-artifact.ts` (ledger rows for `issue_ref`, final
     iteration selection, `recheck[]` resolution per plan).
     **Consumer worktree** (issue #687): the script lives in the vendored plugin — invoke with
-    `bun run --cwd <plugin-root> scripts/promote-review-artifact.ts --ledger
+    `bun run --cwd <plugin-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/promote-review-artifact.ts --ledger
     <consumer>/.blackhole/findings-ledger.json …` or `scripts/consumer-promote-review.sh` from the
     consumer repo (resolves `vendor/blackhole` or `BLACKHOLE_PLUGIN_ROOT`).
 *   **Stage**: write CLI outputs under `.blackhole/staged/<issue>/` and append one manifest entry
@@ -510,7 +510,7 @@ Delete]` — ADR-021 A2).
 *   **Verify (issue #806)**: merge-readiness never trusts the staged manifest for this — a
     manifest entry is written by the same party (`implementer`) the check exists to verify, so
     `check-review-artifact.ts` no longer reads it at all (`manifestHasReviewRoute` was removed
-    outright). Before merge, run `bun run --cwd <abs repo-root> scripts/check-review-artifact.ts
+    outright). Before merge, run `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/check-review-artifact.ts
     --config <abs> --issue <N> --title "<title>" --ledger <abs findings-ledger.json> --pr <P>
     --branch <branch> --head <sha> --repo-root <abs repo-root> --diff-file <abs paths.txt>` —
     `--cwd` MUST equal `--repo-root` (issue #798 — pins module resolution to the same tree the
@@ -532,7 +532,7 @@ when the diff trigger predicates in `companion-file-sync.md` are true.
     first `git add` — collect the list of paths about to be staged.
 *   **Run**:
     ```bash
-    bun run --cwd <worktree-abs> scripts/lib/companion-file-sync.ts --repo-root <worktree-abs> --diff-file <paths.txt>
+    bun run --cwd <worktree-abs> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/companion-file-sync.ts --repo-root <worktree-abs> --diff-file <paths.txt>
     ```
     `--cwd` MUST equal `--repo-root` (issue #798 — pins module resolution to the worktree).
     Templates are read from `templates/companion-files/` per `companion-file-sync.md` — never

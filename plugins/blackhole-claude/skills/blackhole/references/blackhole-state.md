@@ -71,7 +71,7 @@ mutation happened not to run in the same incident.
    `vendor/blackhole`, else `node_modules/blackhole`. From a consumer repo:
 
    ```bash
-   bun run --cwd "${BLACKHOLE_PLUGIN_ROOT:-vendor/blackhole}" scripts/lib/state-write-guard.ts \
+   bun run --cwd "${BLACKHOLE_PLUGIN_ROOT:-vendor/blackhole}" "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/state-write-guard.ts \
      --tmp <consumer-repo-abs-path>.tmp --live <consumer-repo-abs-path> --entity-key <key>
    ```
 

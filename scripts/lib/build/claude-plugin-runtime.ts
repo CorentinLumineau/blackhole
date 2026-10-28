@@ -25,9 +25,11 @@ export const PLUGIN_ROOT_NOTE =
   'the runbook path above resolves to. Shell commands reach it as `$BLACKHOLE_PLUGIN_ROOT`, which ' +
   'the plugin\'s SessionStart hook exports.\n';
 
-// `bun scripts/x.ts` or `bun run scripts/x.ts`. A `--cwd <dir>` form already names its root
-// (blackhole-state.md § Write protocol) and is left alone.
-const INVOCATION_RE = /\bbun(\s+run)?\s+scripts\/([\w./-]+\.ts)/g;
+// `bun scripts/x.ts`, `bun run scripts/x.ts`, or `bun run --cwd <dir> scripts/x.ts`. The `--cwd`
+// pin names the tree the script operates on (cwd-pin-guard.check.ts) and is kept as written; only
+// the script path moves to the plugin root, which under self-hosting falls back to `.`, i.e. the
+// pinned tree itself. `<dir>` takes the same shapes cwd-pin-guard.check.ts accepts.
+const INVOCATION_RE = /\bbun(\s+run(?:\s+--cwd\s+(?:<[^>]*>|`[^`]*`|"[^"]*"|\S+))?)?\s+scripts\/([\w./-]+\.ts)/g;
 const RELATIVE_IMPORT_RE = /(?:\bfrom|\bimport)\s*\(?\s*['"](\.{1,2}\/[^'"]+)['"]/g;
 
 /** Repo-relative script paths that compiled prose tells an agent to run with bun. */
@@ -71,10 +73,25 @@ export const runtimeScriptClosure = (entrypoints: string[], repoRoot: string = r
   return [...seen].map((abs) => path.relative(repoRoot, abs).split(path.sep).join('/')).sort();
 };
 
-/** Points every plain `bun [run] scripts/…` invocation at the plugin root. */
+/** Points every `bun [run [--cwd <dir>]] scripts/…` invocation at the plugin root. */
 export const rewriteScriptInvocations = (content: string): string =>
   content.replace(INVOCATION_RE, (_m, run: string | undefined, rel: string) =>
     `bun${run ?? ''} ${PLUGIN_ROOT_SHELL_EXPR}/scripts/${rel}`);
+
+/** Compiled markdown lines that still run a repo-relative `scripts/…` path after the rewrite,
+ * which a plugin-only install cannot resolve. */
+export const unrewrittenInvocationErrors = (destRoot: string): string[] => {
+  const errors: string[] = [];
+  for (const file of walkFilesAbs(destRoot)) {
+    if (!file.endsWith('.md')) continue;
+    fs.readFileSync(file, 'utf-8').split('\n').forEach((line, i) => {
+      for (const match of line.matchAll(INVOCATION_RE)) {
+        errors.push(`Claude bundle: ${path.relative(destRoot, file)}:${i + 1} runs repo-relative scripts/${match[2]}`);
+      }
+    });
+  }
+  return errors;
+};
 
 /** Adds the SessionStart export hook to a parsed hooks.json, once. */
 export const withSessionStartExport = (hooksJson: { hooks?: Record<string, unknown[]> }) => {
@@ -114,7 +131,8 @@ export const finalizeClaudePluginBundle = (destRoot: string, repoRoot: string = 
 };
 
 /** Shape errors for a finalized bundle: missing runtime scripts, a compiled markdown file that
- * still cites the repo-relative bundle path, or no SessionStart export. */
+ * still cites the repo-relative bundle path or runs a repo-relative script, or no SessionStart
+ * export. */
 export const claudePluginRuntimeErrors = (destRoot: string, repoRoot: string = root): string[] => {
   const errors: string[] = [];
   for (const rel of listRuntimeScriptEntrypoints(path.join(repoRoot, 'src'))) {
@@ -130,6 +148,7 @@ export const claudePluginRuntimeErrors = (destRoot: string, repoRoot: string = r
       errors.push(`Claude bundle: ${path.relative(destRoot, file)} cites repo-relative ${repoRelative}`);
     }
   }
+  errors.push(...unrewrittenInvocationErrors(destRoot));
   const hooksPath = path.join(destRoot, 'hooks', 'hooks.json');
   if (!fs.existsSync(hooksPath) || !fs.readFileSync(hooksPath, 'utf-8').includes('BLACKHOLE_PLUGIN_ROOT')) {
     errors.push('Claude bundle: hooks/hooks.json has no SessionStart BLACKHOLE_PLUGIN_ROOT export');
