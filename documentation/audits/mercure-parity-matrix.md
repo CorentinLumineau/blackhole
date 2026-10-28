@@ -152,7 +152,7 @@ reconcile into this matrix (issue #461).
 | PM-099 | protocol | Cross-forge Git hosting support — GitHub + Gitea/`tea` CLI equivalence (mercure `vcs-forge-operations`) (mercure v9.11.0) | not a gap — `src/references/config-template.md:9,36` `"forge": "github"` ("only supported v1") is a deliberate scope decision, not an oversight | N/A(scope decision to ratify — GitHub-only is v1, `config-template.md:36`; per `mercure-parity-surface.md` § 5e) | — | 2026-08-10, mercure v9.11.0 |
 | PM-100 | gate | Visual Evidence Audit — page-level horizontal-scrollbar overflow + capture-unavailable transparency, `V-UX-02/03` (mercure-quality-audit-criteria.md § Visual Evidence Audit) (mercure v9.11.0) | `src/agents/reviewer.md:362-389` § 22 Visual Evidence Audit; `src/references/blackhole-vcodes.md:76-77` `V-VIS-01/02` (landed via #427, ADR-018; no prior matrix row existed for this mechanism); re-verified against mercure v9.16.1's native-browser capture order — blackhole's `capture_status: unavailable` already matches mercure's 'unavailable, never a pass' stance | covered | — | 2026-10-28, mercure v9.16.1 |
 | PM-101 | gate | Owner Ruling Companion File — `product-principles.md` absence check + active-ruling violation BLOCK, `V-ADA-09` leg (a)/(b) (mercure-companion-awareness.md § V-ADA Code Mapping) (mercure v9.11.0) | PARTIAL, previously only implicit in PM-031 — `src/agents/reviewer.md:310-321` § 19 Owner-Ruling Violation Audit (`V-RULE-01`) covers leg (b): diff contradicts an `active`-status ruling's Interpretation, BLOCK; leg (a) — `product-principles.md` absent when UI/frontend signals are present, HIGH upstream — has no check: § 19's own Detection step treats an absent file as a vacuous no-op, not a finding; `src/references/blackhole-vcodes.md:44` `V-RULE-01` | adapted | — | 2026-08-10, mercure v9.11.0 |
-| PM-102 | checklist | Blast radius proven by an executed safety fact, `V-INT-05` (mercure `rules/references/v-codes-architecture.md`) (mercure v9.16.1) | PARTIAL — `src/references/audits/01-five-field-contract-plan-compliance.md:7` `V-SCOPE-03` (WARN) checks section presence and consumer count by grep only; the executed/reasoned seam exists (`audits/32-executed-vs-reasoned-disclosure.md`, ADR-036) but is not applied to blast-radius claims; #1041 | in-flight(#1041) | 40 | 2026-10-28, mercure v9.16.1 |
+| PM-102 | checklist | Blast radius proven by an executed safety fact, `V-INT-05` (mercure `rules/references/v-codes-architecture.md`) (mercure v9.16.1) | `V-INT-05` (BLOCK, same ID) — `audits/01-five-field-contract-plan-compliance.md` § Blast Radius Proven by Execution; planner blast-radius table gains a `verification` column (`executed`/`reasoned`, ADR-036 seam); `V-SCOPE-03` keeps presence/undercount | adapted(#1041) | 40 | 2026-10-28, mercure v9.16.1 |
 | PM-103 | checklist | Subtract-before-add, `V-PAT-05` — new abstraction without a second call site, or new path without removing the old (mercure `rules/references/v-codes-quality.md`) (mercure v9.16.1) | `V-PAT-05` (BLOCK, same ID) — `audits/03-code-quality-conventions.md` § Subtract-before-add; single-consumer half stays `V-YAGNI-03`, third variant stays `V-INT-04` | adapted(#1040) | 45 | 2026-10-28, mercure v9.16.1 |
 | PM-104 | checklist | Destructive non-idempotent operation — delete-before-create, non-converging retry, no dry-run/backup (mercure `V-SEC-08`, `rules/references/v-codes-security.md`) (mercure v9.16.1) | `V-SEC-14` (BLOCK, fresh ID — blackhole `V-SEC-08` is taken; collision documented on both rows) — `audits/04-security-checks.md` § Destructive-Operation Idempotency Audit | adapted(#1042) | 40 | 2026-10-28, mercure v9.16.1 |
 | PM-105 | gate | Observed-artifact proof before "done", `V-TEST-12` (mercure `rules/references/v-codes-testing.md`) (mercure v9.16.1) | `src/agents/implementer.md:153-160` `status: complete` requires the Verification Evidence Gate's `evidence {command, result}`; schema-enforced by `scripts/validate-worker-json.ts` (`V-BRIEF-01`); gate marker guarded by `V-GATE-01` | covered | — | 2026-10-28, mercure v9.16.1 |
@@ -172,7 +172,7 @@ away from `gap`/`in-flight`: `PM-003`, `PM-011`, `PM-046`, `PM-050` (→ `covere
 `PM-083` (→ `adapted`), `PM-055` (→ `covered`, contradicted), `PM-097` (→ `covered`, #454 merged
 as `176b647` after this row was first drafted in this same PR — stale on arrival, caught in
 review before merge). `PM-090` (→ `covered`, issue #869 — the row's "none" verdict was stale;
-`V-DOC-05/06/07` already implement this mechanism).
+`V-DOC-05/06/07` already implement this mechanism). Rows removed 2026-10-28: `PM-102`, `PM-103`, `PM-104`, `PM-106` (→ `adapted`, issues #1041, #1040, #1042, #1044), and `PM-097`, whose removal the note above records but whose row had stayed in the table.
 
 | `PM-id` | Gain | Effort | Priority |
 |---|---|---|---|
@@ -194,10 +194,5 @@ review before merge). `PM-090` (→ `covered`, issue #869 — the row's "none" v
 | `PM-092` | 5 | 5 | 30 |
 | `PM-094` | 4 | 2 | 36 |
 | `PM-095` | 4 | 2 | 36 |
-| `PM-097` | 6 | 3 | 48 |
 | `PM-098` | 6 | 3 | 48 |
-| `PM-102` | 5 | 3 | 40 |
-| `PM-103` | 5 | 2 | 45 |
-| `PM-104` | 5 | 3 | 40 |
-| `PM-106` | 4 | 3 | 32 |
 | `PM-107` | 5 | 4 | 35 |
