@@ -172,7 +172,7 @@ away from `gap`/`in-flight`: `PM-003`, `PM-011`, `PM-046`, `PM-050` (→ `covere
 `PM-083` (→ `adapted`), `PM-055` (→ `covered`, contradicted), `PM-097` (→ `covered`, #454 merged
 as `176b647` after this row was first drafted in this same PR — stale on arrival, caught in
 review before merge). `PM-090` (→ `covered`, issue #869 — the row's "none" verdict was stale;
-`V-DOC-05/06/07` already implement this mechanism).
+`V-DOC-05/06/07` already implement this mechanism). Rows removed 2026-10-28: `PM-102`, `PM-103`, `PM-104`, `PM-106` (→ `adapted`, issues #1041, #1040, #1042, #1044), and `PM-097`, whose removal the note above records but whose row had stayed in the table.
 
 | `PM-id` | Gain | Effort | Priority |
 |---|---|---|---|
@@ -194,10 +194,5 @@ review before merge). `PM-090` (→ `covered`, issue #869 — the row's "none" v
 | `PM-092` | 5 | 5 | 30 |
 | `PM-094` | 4 | 2 | 36 |
 | `PM-095` | 4 | 2 | 36 |
-| `PM-097` | 6 | 3 | 48 |
 | `PM-098` | 6 | 3 | 48 |
-| `PM-102` | 5 | 3 | 40 |
-| `PM-103` | 5 | 2 | 45 |
-| `PM-104` | 5 | 3 | 40 |
-| `PM-106` | 4 | 3 | 32 |
 | `PM-107` | 5 | 4 | 35 |

@@ -606,6 +606,12 @@ instructions: |
   narratively. This extends the 5-step gate above; it does not replace the single `evidence`
   {command,result} pair used for the overall test/build/lint claim.
 
+  **Blast-radius closure (`V-INT-05`)**: when the plan carries a `## Dependency Blast-Radius`
+  section, run the narrowest check that exercises the affected consumers against the changed code
+  (their tests, a typecheck, a build — through `with-test-lock`), and record it in the PR body under
+  `## Blast-Radius Evidence` as one `executed: <command> → <result>` line per check, both parts
+  non-empty. A consumer you could not exercise gets a `reasoned: <why>` line instead.
+
   ## Visual Evidence Capture (conditional)
 
   **Config gate**: read `.blackhole/config.json`. If `display_targets` is absent or an empty
