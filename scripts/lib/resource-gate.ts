@@ -65,12 +65,16 @@ export const readHostSample = (procRoot: string, nproc: number): HostSample | nu
   const loadavg = read('loadavg');
   const memAvailableMb = meminfo === null ? null : parseMemAvailableMb(meminfo);
   const load1 = loadavg === null ? null : parseLoad1(loadavg);
-  if (memAvailableMb === null || load1 === null) return null;
-  const stats = fs
-    .readdirSync(procRoot)
-    .filter((entry) => /^\d+$/.test(entry))
-    .map((pid) => read(path.join(pid, 'stat')))
-    .filter((stat): stat is string => stat !== null);
+  if (memAvailableMb === null || load1 === null || !Number.isInteger(nproc) || nproc < 1) return null;
+  let pids: string[];
+  try {
+    pids = fs.readdirSync(procRoot).filter((entry) => /^\d+$/.test(entry));
+  } catch {
+    return null;
+  }
+  // A pid that exits mid-scan, or one hidden by a `hidepid` mount, has no readable stat and is
+  // skipped, so D-state can undercount on such hosts; MemAvailable and load still gate.
+  const stats = pids.map((pid) => read(path.join(pid, 'stat'))).filter((stat): stat is string => stat !== null);
   return { memAvailableMb, load1, nproc, dState: countDState(stats) };
 };
 
@@ -95,7 +99,7 @@ export const evaluateResourceGate = (
     return {
       verdict: 'unavailable',
       batch_size: requested,
-      reasons: ['host metrics unavailable (no readable /proc meminfo/loadavg) — gate not applied'],
+      reasons: ['host metrics unavailable (no readable /proc meminfo/loadavg, or no core count) — gate not applied'],
     };
   }
   const ratio = sample.load1 / sample.nproc;

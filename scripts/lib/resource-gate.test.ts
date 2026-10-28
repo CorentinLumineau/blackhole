@@ -85,6 +85,25 @@ describe('evaluateResourceGate', () => {
     expect(v.reasons.join(' ')).toContain('D-state 11');
   });
 
+  test('thresholds are exact: the defer and full boundaries sit on the documented side', () => {
+    const at = (patch: Partial<HostSample>) => evaluateResourceGate({ ...healthy, ...patch }, 4, DEFAULT_RESOURCE_GATE).verdict;
+    expect(at({ memAvailableMb: 2499 })).toBe('defer');
+    expect(at({ memAvailableMb: 2500 })).toBe('degrade');
+    expect(at({ memAvailableMb: 3499 })).toBe('degrade');
+    expect(at({ memAvailableMb: 3500 })).toBe('go');
+    expect(at({ load1: 12 })).toBe('go');
+    expect(at({ load1: 12.12 })).toBe('degrade');
+    expect(at({ load1: 24 })).toBe('degrade');
+    expect(at({ load1: 24.12 })).toBe('defer');
+    expect(at({ dState: 10 })).toBe('go');
+    expect(at({ dState: 11 })).toBe('defer');
+  });
+
+  test('a zero-sized request stays zero on go and degrade', () => {
+    expect(evaluateResourceGate(healthy, 0, DEFAULT_RESOURCE_GATE).batch_size).toBe(0);
+    expect(evaluateResourceGate({ ...healthy, memAvailableMb: 3000 }, 0, DEFAULT_RESOURCE_GATE).batch_size).toBe(0);
+  });
+
   test('defer outranks degrade when both fire', () => {
     expect(evaluateResourceGate({ ...healthy, memAvailableMb: 3000, load1: 30 }, 4, DEFAULT_RESOURCE_GATE).verdict).toBe('defer');
   });
@@ -121,6 +140,18 @@ describe('readHostSample', () => {
     expect(readHostSample(dir, 12)).toEqual({ memAvailableMb: 3000, load1: 5, nproc: 12, dState: 2 });
   });
 
+  test('skips a pid directory whose stat has gone', () => {
+    const dir = fakeProc('MemAvailable: 3072000 kB\n', '5.00 1 1 1/1 1\n', ['D']);
+    fs.mkdirSync(path.join(dir, '999'));
+    expect(readHostSample(dir, 12)?.dState).toBe(1);
+  });
+
+  test('returns null for a core count that is not a positive integer', () => {
+    const dir = fakeProc('MemAvailable: 3072000 kB\n', '5.00 1 1 1/1 1\n', []);
+    expect(readHostSample(dir, 0)).toBeNull();
+    expect(readHostSample(dir, Number.NaN)).toBeNull();
+  });
+
   test('returns null when the proc root has no meminfo', () => {
     const dir = makeTempDir('resource-gate');
     tempDirs.push(dir);
@@ -147,6 +178,20 @@ describe('resource-gate CLI', () => {
     const r = run(['--requested', '3', '--proc-root', dir]);
     expect(JSON.parse(r.out)).toMatchObject({ verdict: 'unavailable', batch_size: 3 });
     expect(r.err).toContain('unavailable');
+  });
+
+  test('a non-numeric --nproc exits 2 instead of passing silently', () => {
+    const dir = fakeProc('MemAvailable: 9000000 kB\n', '1.0 1 1 1/1 1\n', []);
+    expect(run(['--requested', '2', '--proc-root', dir, '--nproc', 'abc']).code).toBe(2);
+  });
+
+  test('a malformed resource_policy.gate value exits 2 with a one-line message', () => {
+    const dir = fakeProc('MemAvailable: 9000000 kB\n', '1.0 1 1 1/1 1\n', []);
+    const config = path.join(dir, 'config.json');
+    fs.writeFileSync(config, JSON.stringify({ resource_policy: { gate: { defer_above_dstate: 'ten' } } }));
+    const r = run(['--requested', '2', '--proc-root', dir, '--config', config]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('resource_policy.gate.defer_above_dstate');
   });
 
   test('missing --requested exits 2', () => {
