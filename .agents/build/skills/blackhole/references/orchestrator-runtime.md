@@ -36,8 +36,19 @@ parallel planners, implementers, reviewers):
    cuts it to one, `defer` spawns none this turn (log the reasons and retry next turn),
    `unavailable` keeps it and logs the reason. A non-zero exit (bad flags or a malformed config)
    is handled as `unavailable`, with its stderr line logged. Thresholds: `resource_policy.gate`.
-3. Log `WAVE <N>: issues [...]` before the first spawn.
-4. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
+3. Record the round: `bun run scripts/pace-log.ts --planned <planned batch> --pace '<pace-gate JSON>'
+   [--resource '<resource-gate JSON>']` appends the pace verdict, resource verdict, planned batch,
+   effective concurrency (the smaller of the two gates) and reasons to `.blackhole/pace-log.jsonl`
+   (newest 200 rounds kept). Run it even when a gate said `STOP-NEW` or `defer`; a non-zero exit is
+   logged and the turn goes on.
+   **STOP-NEW is a pause, never a failure**: the round spawns nothing, in-flight workers finish
+   and are triaged as usual, `queue.json` and `findings-ledger.json` stay untouched (no issue
+   marked `failed` or `blocked`, no ledger row, no retry counter bumped), the checkpoint notes
+   "paused by pace gate" with the reason, and the turn ends. The next turn re-runs step 1 and
+   resumes normally the first time the verdict is no longer `STOP-NEW`; `unavailable` resumes too.
+   Issues left `ready` stay `ready`. A `defer` from the resource gate is handled the same way.
+4. Log `WAVE <N>: issues [...]` before the first spawn.
+5. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
 
 ### Barrier
 
@@ -209,6 +220,11 @@ after reading checkpoint and forge sync:
    any refusal (`blackhole-state.md` § Write protocol), so a failed ingest here is a missed
    visibility opportunity, never a corruption risk. The next turn's step 1b (when workers spawn)
    or this same step 6 (next turn) will retry against whatever events remain on disk.
+
+7. **Resume after a pace pause**: when the latest `.blackhole/pace-log.jsonl` line has
+   `rate_limit_stop: true`, treat the previous turn as a pause, not a failure: no recovery action,
+   no re-route, no retry counter. Run the spawn-round gates (§ Background worker barrier, Spawn
+   steps 1-3) as usual; the campaign continues from `queue.json` exactly as it was left.
 
 **MUST** complete `recovery-protocol.md` §5 orchestrator checklist before spawning
 `implementer` when any in-flight issue has a dirty worktree or recovery stash. Do not spawn
