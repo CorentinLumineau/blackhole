@@ -24,8 +24,14 @@ parallel planners, implementers, reviewers):
 
 ### Spawn
 
-1. Log `WAVE <N>: issues [...]` before the first spawn.
-2. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
+1. When the batch includes test/build-bearing workers (implementers, or any worker that runs
+   `build`/`verify`/`test`), run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/resource-gate.ts --requested <batch size>`
+   first and spawn at most its `batch_size`: `go` keeps the batch, `degrade` cuts it to one,
+   `defer` spawns none this turn (log the reasons and retry next turn), `unavailable` keeps the
+   batch and logs the reason. A non-zero exit (bad flags or a malformed config) is handled as
+   `unavailable`, with its stderr line logged. Thresholds: `resource_policy.gate` (`config-template.md`).
+2. Log `WAVE <N>: issues [...]` before the first spawn.
+3. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
 
 ### Barrier
 

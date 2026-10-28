@@ -101,6 +101,12 @@ Committed template: `.blackhole/config.json`
 | `resource_policy.testlock_carveout.scope` | no | Human-readable scope of the carveout (which repos/commands it covers) |
 | `resource_policy.testlock_carveout.rationale` | no | Human-readable rationale for granting the test-lock carveout |
 | `resource_policy.testlock_carveout.conditions` | no | Array of conditions workers must honor while the carveout is active (e.g. memory self-gate, serial heavy commands) |
+| `resource_policy.gate` | no | Thresholds for `scripts/resource-gate.ts`, the host check run before each test/build-bearing batch. **Resolution**: absent block or key ⇒ the defaults below |
+| `resource_policy.gate.defer_below_mem_mb` | no | MemAvailable (MB) below which the batch is deferred to a later turn (default `2500`) |
+| `resource_policy.gate.full_above_mem_mb` | no | MemAvailable (MB) at or above which the full batch may spawn; between the two the batch is cut to one (default `3500`) |
+| `resource_policy.gate.defer_above_load_ratio` | no | 1-minute load ÷ core count above which the batch is deferred (default `2.0`) |
+| `resource_policy.gate.full_below_load_ratio` | no | Load ratio at or below which the full batch may spawn; above it the batch is cut to one (default `1.0`) |
+| `resource_policy.gate.defer_above_dstate` | no | Count of uninterruptible-sleep (D-state) processes above which the batch is deferred, whatever the load (default `10`) |
 | `resource_policy.carveout_recorded_at` | no | ISO8601 timestamp when the resource-policy carveout block was last recorded |
 | `stop_budget_cleared_at` | no | ISO8601 timestamp when the campaign stop-budget gate was cleared by the owner/coordinator (audit trail) |
 | `issue_484_disposition` | no | Campaign-specific disposition record for issue #484 (or analogous parked-issue pin). **Resolution**: absent block ⇒ no special disposition |
