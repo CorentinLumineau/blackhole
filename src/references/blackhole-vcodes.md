@@ -28,6 +28,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-PAT-02 | Circular dependency between modules | BLOCK | reviewer.md § Code Quality & Conventions (Design Pattern Review) |
 | V-PAT-03 | Missing error-handling pattern — bare catch / swallowed errors (see `hunt/bug.md`) | BLOCK | reviewer.md § Code Quality & Conventions (Design Pattern Review) |
 | V-PAT-04 | Anti-pattern usage — singleton abuse, service locator | WARN | reviewer.md § Code Quality & Conventions (Design Pattern Review) |
+| V-PAT-05 | Subtract-before-add skipped — the diff adds a new path for a concern (a second implementation, a new entry point, a replacement helper) while the old path it supersedes stays live and reachable; exempt when the same diff removes the old path, or the addition is an extraction that removes duplication/nesting or splits an over-responsible unit. Complements `V-YAGNI-03` (single-consumer abstraction) and `V-INT-04` (which fires only on a *third* variant) | BLOCK | reviewer.md § Code Quality & Conventions (Design Pattern Review) |
 | V-TEST-01/02 | All new logic tested, tests FIRST | BLOCK | reviewer.md § TDD & Testing Baselines |
 | V-TEST-05 | Meaningful assertions (not existence checks) | WARN | reviewer.md § TDD & Testing Baselines |
 | V-TEST-09 | Coverage regression on changed files — line/function coverage vs. pre-change baseline must not drop | BLOCK | implementer.md § Refactoring & Implementation Workflow (Coverage-regression gate, step 6) + reviewer.md § V-TEST-09 Hooks-Claim Audit (reporting-accuracy backstop) |
