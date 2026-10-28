@@ -4,7 +4,7 @@ vcodes: [V-SEC-01, V-SEC-02, V-SEC-03, V-SEC-04, V-SEC-11, V-SEC-13, V-SEC-14]
 ---
 ### Security Checks
 *   No hardcoded secrets, API keys, or credentials (`V-SEC-03/04`).
-*   Verify proper input validation is implemented.
+*   Verify proper input validation is implemented; no injection or auth bypass (`V-SEC-01/02`).
 *   **Sensitive-Filename Staging Audit (`V-SEC-11`, `BLOCK`)**: independently recompute the
     implementer's Sensitive-Filename Staging Gate (`implementer.md` § Sensitive-Filename
     Staging Gate) rather than trusting its self-report. Resolve `file-patterns.json` via the

@@ -36,7 +36,7 @@ vcodes: [V-AUTO-02]
     *   `append_row`, `target_path === "ARCHITECTURE.md"` (`## Active Constraints` bullet): no
         table or `path` column, so carriage is decided by the trailing citation suffix
         `(ADR-{NNN})`/`(analyze: issue #N)`, the same discriminator as `implementer.md` § Carry
-        Staged Artifacts' idempotency guard (`V-INT-02`/`V-DRY-01`). A live bullet under
+        Staged Artifacts' idempotency guard (commit `ac80755`; `V-INT-02`/`V-DRY-01`). A live bullet under
         `## Active Constraints` with the same suffix counts as carried; absence — `V-AUTO-02`,
         severity `BLOCK`.
 *   **Self-report cross-check**: compare the verdicts against the implementer's PR-body
