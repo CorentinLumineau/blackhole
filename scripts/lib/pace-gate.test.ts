@@ -3,11 +3,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   DEFAULT_PACE_GATE,
+  compartmentBreaches,
   evaluatePaceGate,
+  readBaseline,
+  rollBaseline,
   readRateLimits,
   resolvePaceGateThresholds,
   windowPace,
   type RateLimits,
+  type Baseline,
+  type RateWindow,
 } from './pace-gate.ts';
 import { makeTempDir } from './fs.ts';
 
@@ -151,8 +156,163 @@ describe('pace-gate CLI', () => {
     expect(r.err).toContain('unavailable');
   });
 
+  test('records a baseline on the first run, then stops once a compartment is spent', () => {
+    const file = cacheFile({ rate_limits: limits([40, 3 * DAY], [5, HOUR]) });
+    const args = ['--current', '3', '--max', '6', '--cache', file, '--now', String(NOW)];
+    const first = run(args);
+    expect(JSON.parse(first.out).reasons.join()).toContain('compartments unavailable');
+    expect(fs.existsSync(path.join(path.dirname(file), 'pace-baseline.json'))).toBe(true);
+    fs.writeFileSync(file, JSON.stringify({ rate_limits: limits([44, 3 * DAY], [5, HOUR]) }));
+    const t = new Date(NOW * 1000);
+    fs.utimesSync(file, t, t);
+    expect(JSON.parse(run(args).out)).toMatchObject({ verdict: 'STOP-NEW', concurrency: 0 });
+  });
+
+  test('a corrupt baseline file is replaced and the run says compartments are unavailable', () => {
+    const file = cacheFile({ rate_limits: limits([40, 3 * DAY], [5, HOUR]) });
+    const baselineFile = path.join(path.dirname(file), 'pace-baseline.json');
+    fs.writeFileSync(baselineFile, '{corrupt');
+    const r = run(['--current', '3', '--max', '6', '--cache', file, '--now', String(NOW)]);
+    expect(JSON.parse(r.out).reasons.join()).toContain('compartments unavailable');
+    expect(JSON.parse(fs.readFileSync(baselineFile, 'utf-8'))).toHaveProperty('day');
+  });
+
   test('bad usage exits 2', () => {
     expect(run(['--current', 'x', '--max', '6']).code).toBe(2);
     expect(run([]).code).toBe(2);
+  });
+});
+
+// Weekly window 3 days in (day index 3, 4 days left incl. today), 40% used: a 15% day share.
+const WEEK_START = NOW - 3 * DAY - HOUR;
+const dayBase = (used: number): Baseline => ({
+  seven_day_resets_at: WEEK_START + 7 * DAY,
+  day: { index: 3, seven_day_used: used },
+  session: { resets_at: NOW + 4 * HOUR, seven_day_used: used },
+});
+const wk = (used: number): RateLimits & { seven_day: RateWindow } => ({
+  seven_day: { used_percentage: used, resets_at: WEEK_START + 7 * DAY },
+  five_hour: { used_percentage: 5, resets_at: NOW + 4 * HOUR },
+});
+
+describe('compartmentBreaches', () => {
+  test('under both shares breaches nothing', () => {
+    expect(compartmentBreaches(wk(41), dayBase(40), NOW)).toEqual([]);
+  });
+
+  test('a day that spent its share of the remaining weekly allowance breaches', () => {
+    // remaining 60% over 4 days = 15% per day; 16% spent today
+    const out = compartmentBreaches(wk(56), { ...dayBase(40), session: { resets_at: NOW + 4 * HOUR, seven_day_used: 56 } }, NOW);
+    expect(out.join()).toContain('day');
+  });
+
+  test('a session that spent its share breaches while the weekly total looks fine', () => {
+    // remaining 60% over ~19 sessions ~ 3.1% per session; 4% spent this session
+    const out = compartmentBreaches(wk(44), dayBase(40), NOW);
+    expect(out.join()).toContain('session');
+  });
+});
+
+describe('compartment boundaries', () => {
+  // Last day of the week: week resets in 1h, so day index 6 and the day share is the full remainder.
+  const weekEnd = (used: number): RateLimits => ({
+    seven_day: { used_percentage: used, resets_at: NOW + HOUR },
+    five_hour: { used_percentage: 5, resets_at: NOW + 4 * HOUR },
+  });
+  const endBase = (used: number): Baseline => ({
+    seven_day_resets_at: NOW + HOUR,
+    day: { index: 6, seven_day_used: 90 },
+    session: { resets_at: NOW + 4 * HOUR, seven_day_used: used },
+  });
+
+  test('on day index 6 the day share equals the whole remainder', () => {
+    expect(compartmentBreaches(weekEnd(99), endBase(99), NOW)).toEqual([]);
+    expect(compartmentBreaches(weekEnd(100), endBase(100), NOW).join()).toContain('day');
+  });
+
+  test('a session near the week end clamps its session count to one', () => {
+    // unclamped 0.4 sessions would give a 25% share and hide the 10% spent
+    expect(compartmentBreaches(weekEnd(100), endBase(90), NOW).join()).toContain('session');
+  });
+
+  test('a baseline from another day yields no day breach', () => {
+    const stale = { ...dayBase(40), day: { index: 1, seven_day_used: 40 } };
+    expect(compartmentBreaches(wk(60), stale, NOW).join()).not.toContain('day');
+  });
+
+  test('a resets_at jittered by seconds keeps the baseline', () => {
+    const jittered: RateLimits & { seven_day: RateWindow } = {
+      seven_day: { used_percentage: 41, resets_at: WEEK_START + 7 * DAY + 7 },
+      five_hour: { used_percentage: 5, resets_at: NOW + 4 * HOUR + 7 },
+    };
+    expect(rollBaseline(jittered, dayBase(40), NOW)).toEqual(dayBase(40));
+    expect(compartmentBreaches({ ...jittered, seven_day: { ...jittered.seven_day, used_percentage: 44 } }, dayBase(40), NOW).join()).toContain('session');
+  });
+});
+
+describe('rollBaseline without five_hour', () => {
+  test('keeps the stored session and does not invent one', () => {
+    const noFive: RateLimits & { seven_day: RateWindow } = { seven_day: wk(41).seven_day };
+    expect(rollBaseline(noFive, dayBase(40), NOW).session).toEqual(dayBase(40).session);
+    expect(rollBaseline(noFive, null, NOW).session).toEqual({ resets_at: 0, seven_day_used: 41 });
+  });
+});
+
+describe('rollBaseline', () => {
+  test('a stale day and session are restarted at current usage', () => {
+    const old = { ...dayBase(10), day: { index: 1, seven_day_used: 10 }, session: { resets_at: NOW - HOUR, seven_day_used: 10 } };
+    const rolled = rollBaseline(wk(40), old, NOW);
+    expect(rolled.day).toEqual({ index: 3, seven_day_used: 40 });
+    expect(rolled.session).toEqual({ resets_at: NOW + 4 * HOUR, seven_day_used: 40 });
+  });
+
+  test('a new weekly window discards the whole baseline', () => {
+    const old = { ...dayBase(90), seven_day_resets_at: WEEK_START - DAY };
+    expect(rollBaseline(wk(2), old, NOW).day.seven_day_used).toBe(2);
+  });
+
+  test('a current baseline is kept untouched', () => {
+    expect(rollBaseline(wk(41), dayBase(40), NOW)).toEqual(dayBase(40));
+  });
+});
+
+describe('readBaseline', () => {
+  test('missing file reports a reason', () => {
+    expect(readBaseline('/nonexistent/baseline.json').reason).toContain('no pace baseline');
+  });
+
+  test('corrupt and malformed content report a reason', () => {
+    expect(readBaseline(cacheFile('{nope')).reason).toContain('not valid JSON');
+    expect(readBaseline(cacheFile({ day: 1 })).reason).toContain('malformed');
+  });
+
+  test('a valid file round-trips', () => {
+    expect(readBaseline(cacheFile(dayBase(40)))).toEqual({ baseline: dayBase(40), reason: null });
+  });
+});
+
+describe('evaluatePaceGate with compartments', () => {
+  const t = DEFAULT_PACE_GATE;
+  test('a spent compartment stops new tasks although the weekly pace is fine', () => {
+    const v = evaluatePaceGate(wk(44), 3, 6, NOW, t, undefined, { baseline: dayBase(40), reason: null });
+    expect(v).toMatchObject({ verdict: 'STOP-NEW', concurrency: 0 });
+    expect(v.reasons.join()).toContain('session');
+  });
+
+  test('a missing baseline keeps the base verdict and states why the compartment check was skipped', () => {
+    const v = evaluatePaceGate(wk(43), 3, 6, NOW, t, undefined, { baseline: null, reason: 'no pace baseline at x' });
+    expect(v.verdict).not.toBe('STOP-NEW');
+    expect(v.reasons.join()).toContain('compartments unavailable: no pace baseline at x');
+  });
+
+  test('a missing baseline never lets the gate scale up', () => {
+    const idle = limits([10, 3 * DAY], [5, HOUR]);
+    expect(evaluatePaceGate(idle, 3, 6, NOW, t).verdict).toBe('SCALE-UP');
+    const v = evaluatePaceGate(idle, 3, 6, NOW, t, undefined, { baseline: null, reason: 'x' });
+    expect(v).toMatchObject({ verdict: 'HOLD', concurrency: 3 });
+  });
+
+  test('omitting the baseline argument leaves behavior unchanged', () => {
+    expect(evaluatePaceGate(wk(43), 3, 6, NOW, t).reasons.join()).not.toContain('compartment');
   });
 });
