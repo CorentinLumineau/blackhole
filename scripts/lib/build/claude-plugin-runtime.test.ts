@@ -7,20 +7,25 @@ import {
   claudePluginRuntimeErrors,
   listRuntimeScriptEntrypoints,
   rewriteScriptInvocations,
+  unrewrittenInvocationErrors,
   runtimeScriptClosure,
   withSessionStartExport,
 } from './claude-plugin-runtime.ts';
 import { populateClaudeFixtureTree, withTempDir } from '../test-fixtures.ts';
 
 describe('listRuntimeScriptEntrypoints', () => {
-  test('finds plain bun invocations and skips --cwd ones', () => {
+  test('finds plain and --cwd-pinned bun invocations', () => {
     withTempDir('runtime-entry', (dir) => {
       fs.writeFileSync(
         path.join(dir, 'a.md'),
         'run `bun scripts/forge-scope.ts`, then `bun run scripts/lib/state-write-guard.ts --tmp x`, ' +
-          'never `bun run --cwd <repo_root> scripts/plan-quality-gate.ts`.',
+          'then `bun run --cwd <repo_root> scripts/plan-quality-gate.ts`.',
       );
-      expect(listRuntimeScriptEntrypoints(dir)).toEqual(['scripts/forge-scope.ts', 'scripts/lib/state-write-guard.ts']);
+      expect(listRuntimeScriptEntrypoints(dir)).toEqual([
+        'scripts/forge-scope.ts',
+        'scripts/lib/state-write-guard.ts',
+        'scripts/plan-quality-gate.ts',
+      ]);
     });
   });
 });
@@ -40,12 +45,37 @@ describe('runtimeScriptClosure', () => {
 });
 
 describe('rewriteScriptInvocations', () => {
-  test('prefixes the plugin root and keeps --cwd forms as written', () => {
-    const before = 'bun scripts/a.ts; bun run scripts/lib/b.ts; bun run --cwd "$X" scripts/c.ts';
+  test('prefixes the plugin root on plain invocations', () => {
+    const before = 'bun scripts/a.ts; bun run scripts/lib/b.ts';
     expect(rewriteScriptInvocations(before)).toBe(
-      'bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/a.ts; bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/b.ts; ' +
-        'bun run --cwd "$X" scripts/c.ts',
+      'bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/a.ts; bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/b.ts',
     );
+  });
+
+  test('keeps the --cwd pin on the operated tree and points the script at the plugin root', () => {
+    for (const cwd of ['"$X"', '<abs repo-root>', '`<this worktree>`', '/abs/path']) {
+      expect(rewriteScriptInvocations(`bun run --cwd ${cwd} scripts/c.ts --repo-root r`)).toBe(
+        `bun run --cwd ${cwd} "\${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/c.ts --repo-root r`,
+      );
+    }
+  });
+
+  test('is idempotent on an already rewritten invocation', () => {
+    const once = rewriteScriptInvocations('bun run --cwd <r> scripts/c.ts; bun scripts/a.ts');
+    expect(rewriteScriptInvocations(once)).toBe(once);
+  });
+});
+
+describe('claudePluginRuntimeErrors (unrewritten invocations)', () => {
+  test('flags a compiled markdown file that still invokes a repo-relative script', () => {
+    withTempDir('runtime-errors', (dir) => {
+      fs.mkdirSync(path.join(dir, 'hooks'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'hooks', 'hooks.json'), '{"BLACKHOLE_PLUGIN_ROOT":1}');
+      fs.writeFileSync(path.join(dir, 'x.md'), 'bun run --cwd <r> scripts/plan-quality-gate.ts');
+      expect(unrewrittenInvocationErrors(dir)).toEqual(['Claude bundle: x.md:1 runs repo-relative scripts/plan-quality-gate.ts']);
+      fs.writeFileSync(path.join(dir, 'x.md'), rewriteScriptInvocations('bun run --cwd <r> scripts/plan-quality-gate.ts'));
+      expect(unrewrittenInvocationErrors(dir)).toEqual([]);
+    });
   });
 });
 
