@@ -582,12 +582,13 @@ Orchestrator invokes after `reviewer` completes. Not a worker agent — determin
 
 | Field | Values | Required |
 |-------|--------|----------|
-| `status` | `approved` \| `changes_requested` \| `error` | yes |
+| `status` | `approved` \| `changes_requested` \| `rethink` \| `error` | yes — `rethink` is not LGTM (`review-core.md` § Review convergence) |
 | `findings` | finding[] | yes |
 | `blockers_count` | number | yes |
 | `lgtm` | boolean | yes |
 | `pareto_candidates` | `{ summary, priority, file }[]` | yes (may be empty) |
 | `unresolved_recheck` | `{ finding_id, verdict, reason }[]` | yes (may be empty) — issue #485: a `recheck[]` `verdict: fixed` entry whose `finding_id` could not be linked to any prior finding's ledger `id`; non-empty forces `lgtm: false` |
+| `rechecked` | `{ ledger_id, vcode, file }[]` | only with `--review-iteration` — fresh findings dropped as repeats of an already-ledgered root cause |
 | `error` | string | when `status: error` |
 
 Each `findings[]` entry additionally carries `issue_ref: number` and `pr_ref: number | null`

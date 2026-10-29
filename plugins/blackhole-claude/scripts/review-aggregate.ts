@@ -14,7 +14,13 @@ export type Finding = {
   effort?: number;
   confidence?: number;
   locations?: { file: string; line: number }[];
+  origin?: 'new' | 'pre-existing';
+  root_cause?: string;
 };
+
+// Queue `review_iteration` value (incremented after each changes_requested run) at which an
+// aggregate that is still not LGTM returns `rethink`.
+export const MAX_REVIEW_ITERATIONS = 3;
 
 export type RecheckEntry = {
   finding_id: string;
@@ -59,10 +65,11 @@ export type ParetoCandidate = {
 };
 
 export type AggregateOutput = {
-  status: 'approved' | 'changes_requested' | 'error';
+  status: 'approved' | 'changes_requested' | 'rethink' | 'error';
   findings: Finding[];
   blockers_count: number;
   lgtm: boolean;
+  rechecked?: { ledger_id: string; vcode: string; file: string }[];
   pareto_candidates: ParetoCandidate[];
   unresolved_recheck: UnresolvedRecheckEntry[];
   error?: string;
@@ -221,6 +228,58 @@ function applyVerificationDowngrades(
   );
 }
 
+function normalizeSummary(summary: string): string {
+  return summary
+    .replace(LOW_CONFIDENCE_CAVEAT_RE, '')
+    .replace(UNVERIFIED_CAVEAT, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Root-cause identity for the no-repeat rule: vcode + file + (explicit root_cause, else the
+// normalized summary). Line is excluded so a moved occurrence still matches.
+function rootCauseKey(finding: Finding): string {
+  return `${finding.vcode}\0${finding.file}\0${finding.root_cause ?? normalizeSummary(finding.summary)}`;
+}
+
+function dropRepeatsOfPrior(
+  fresh: Finding[],
+  prior: Finding[],
+): { kept: Finding[]; rechecked: NonNullable<AggregateOutput['rechecked']> } {
+  const priorByKey = new Map<string, Finding>();
+  for (const p of prior) {
+    if (p.id) priorByKey.set(rootCauseKey(p), p);
+  }
+  const kept: Finding[] = [];
+  const rechecked: NonNullable<AggregateOutput['rechecked']> = [];
+  for (const f of fresh) {
+    const match = priorByKey.get(rootCauseKey(f));
+    if (match) {
+      rechecked.push({ ledger_id: match.id!, vcode: f.vcode, file: f.file });
+    } else {
+      kept.push(f);
+    }
+  }
+  return { kept, rechecked };
+}
+
+const UNVERIFIED_CAVEAT = ' [unverified BLOCK: no independent confirmation — downgraded]';
+
+// A BLOCK stays BLOCK only with a `confirmed` verification entry for its id; pre-existing
+// findings never block.
+function applyConvergenceSeverity(findings: Finding[], verification: VerificationEntry[]): Finding[] {
+  const confirmed = new Set(
+    verification.filter((v) => v.verdict === 'confirmed').map((v) => v.finding_id),
+  );
+  return findings.map((f) => {
+    if (f.severity !== 'BLOCK') return f;
+    if (f.origin === 'pre-existing') return { ...f, severity: 'WARN' };
+    if (f.id !== undefined && confirmed.has(f.id)) return f;
+    return { ...f, severity: 'WARN', summary: `${f.summary}${UNVERIFIED_CAVEAT}` };
+  });
+}
+
 export function dedupeFindings(findings: Finding[]): Finding[] {
   const byKey = new Map<string, Finding>();
 
@@ -286,6 +345,9 @@ export function aggregateReview(input: {
   // read from `input.reviewer.verification`, which is reserved for the raw shape of
   // that spawn's own output, never the primary reviewer's.
   verification?: VerificationEntry[];
+  // Opts into review-convergence rules (review-core.md § Review convergence); absent keeps the
+  // legacy behaviour. `reviewIteration` is the queue value read before this run.
+  convergence?: { reviewIteration: number };
 }): AggregateOutput {
   if (input.reviewer.status === 'error') {
     return {
@@ -301,10 +363,16 @@ export function aggregateReview(input: {
 
   const stampedIssueRef = stampIssueRef(input.reviewer.findings, input.issueRef);
   const stamped = stampPrRef(stampedIssueRef, input.prRef ?? null);
-  const verified = input.verification?.length
-    ? applyVerificationDowngrades(stamped, input.verification)
-    : stamped;
   const prior = input.priorFindings ?? [];
+  const { kept: fresh, rechecked } = input.convergence
+    ? dropRepeatsOfPrior(stamped, prior)
+    : { kept: stamped, rechecked: [] };
+  const verifiedDowngrades = input.verification?.length
+    ? applyVerificationDowngrades(fresh, input.verification)
+    : fresh;
+  const verified = input.convergence
+    ? applyConvergenceSeverity(verifiedDowngrades, input.verification ?? [])
+    : verifiedDowngrades;
   const { resolvedPrior, unresolved } = resolveRecheckExclusions(
     prior,
     input.reviewer.recheck ?? [],
@@ -315,7 +383,8 @@ export function aggregateReview(input: {
   const blockers_count = findings.filter((f) => f.severity === 'BLOCK').length;
   const lgtm =
     input.reviewer.status === 'complete' && blockers_count === 0 && unresolved.length === 0;
-  const status = lgtm ? 'approved' : 'changes_requested';
+  const rethink = !lgtm && (input.convergence?.reviewIteration ?? 0) >= MAX_REVIEW_ITERATIONS;
+  const status = lgtm ? 'approved' : rethink ? 'rethink' : 'changes_requested';
 
   return {
     status,
@@ -324,6 +393,7 @@ export function aggregateReview(input: {
     lgtm,
     pareto_candidates: buildParetoCandidates(findings),
     unresolved_recheck: unresolved,
+    ...(input.convergence ? { rechecked } : {}),
   };
 }
 
@@ -333,6 +403,7 @@ function parseArgs(argv: string[]): {
   prRef?: string;
   priorFile?: string;
   verificationFile?: string;
+  reviewIteration?: string;
 } {
   const flags = parseFlags(argv.slice(2));
   return {
@@ -341,6 +412,7 @@ function parseArgs(argv: string[]): {
     prRef: typeof flags['pr-ref'] === 'string' ? flags['pr-ref'] : undefined,
     priorFile: typeof flags['prior-file'] === 'string' ? flags['prior-file'] : undefined,
     verificationFile: typeof flags['verification-file'] === 'string' ? flags['verification-file'] : undefined,
+    reviewIteration: typeof flags['review-iteration'] === 'string' ? flags['review-iteration'] : undefined,
   };
 }
 
@@ -374,11 +446,11 @@ function isVerificationEntryArray(value: unknown): value is VerificationEntry[] 
 }
 
 if (import.meta.main) {
-  const { reviewerFile, issueRef, prRef, priorFile, verificationFile } = parseArgs(process.argv);
+  const { reviewerFile, issueRef, prRef, priorFile, verificationFile, reviewIteration } = parseArgs(process.argv);
 
   if (!reviewerFile || !issueRef) {
     console.error(
-      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>]',
+      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>]',
     );
     process.exit(1);
   }
@@ -424,7 +496,17 @@ if (import.meta.main) {
       verification = verificationRaw;
     }
 
+    let convergence: { reviewIteration: number } | undefined;
+    if (reviewIteration !== undefined) {
+      const n = Number(reviewIteration);
+      if (!Number.isInteger(n) || n < 0) {
+        throw new Error(`--review-iteration must be a non-negative integer, got: ${reviewIteration}`);
+      }
+      convergence = { reviewIteration: n };
+    }
+
     const result = aggregateReview({
+      convergence,
       reviewer: reviewerRaw,
       issueRef: issueRefNum,
       prRef: prRefNum,
