@@ -11,6 +11,8 @@ const fail = (message: string): never => {
   console.error(`review-noise-report: ${message}\n${usage}`);
   process.exit(2);
 };
+if (flags.ledger === true) fail('--ledger requires a value');
+if (flags.since === true) fail('--since requires a value');
 const ledgerPath = typeof flags.ledger === 'string' ? flags.ledger : '.blackhole/findings-ledger.json';
 if (!fs.existsSync(ledgerPath)) fail(`ledger not found: ${ledgerPath}`);
 let sinceMs = 0;

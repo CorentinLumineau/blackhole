@@ -13,6 +13,8 @@ type NoiseRow = { vcode?: unknown; status?: unknown; created_at?: unknown; round
 export type VcodeNoise = {
   vcode: string;
   count: number;
+  triaged: number;
+  untriaged: number;
   fixed_pct: number;
   wrong_pct: number;
   intentional_pct: number;
@@ -21,7 +23,10 @@ export type VcodeNoise = {
   rounds_p95: number | null;
   flags: string[];
 };
-export type NoiseReport = { since_ms: number; vcodes: VcodeNoise[] };
+// Outcome percentages and flags use triaged rows only (fixed + the three outcome statuses);
+// open and deferred rows are reported as `untriaged`, never diluting the shares.
+export const DENOMINATOR = 'triaged rows (fixed-in-pr, resolved, wrong, intentional, not-worth)';
+export type NoiseReport = { denominator: string; since_ms: number; vcodes: VcodeNoise[] };
 
 const UNIT_MS: Record<string, number> = { h: 3600_000, d: 86400_000, w: 7 * 86400_000 };
 
@@ -49,11 +54,13 @@ export const buildNoiseReport = (rows: unknown[], opts: { now: number; sinceMs: 
   for (const raw of rows) {
     const row = raw as NoiseRow;
     if (typeof row.vcode !== 'string' || typeof row.created_at !== 'string') continue;
-    if (Date.parse(row.created_at) < cutoff) continue;
+    const created = Date.parse(row.created_at);
+    if (Number.isNaN(created) || created < cutoff) continue;
     groups.set(row.vcode, [...(groups.get(row.vcode) ?? []), row]);
   }
-  const share = (list: NoiseRow[], statuses: readonly string[]): number =>
-    pct(list.filter((r) => statuses.includes(r.status as string)).length, list.length);
+  const TRIAGED: readonly string[] = [...FIXED_STATUSES, ...OUTCOME_STATUSES];
+  const share = (triaged: NoiseRow[], statuses: readonly string[]): number =>
+    triaged.length === 0 ? 0 : pct(triaged.filter((r) => statuses.includes(r.status as string)).length, triaged.length);
 
   const vcodes = [...groups.entries()]
     .map(([vcode, list]): VcodeNoise => {
@@ -61,36 +68,41 @@ export const buildNoiseReport = (rows: unknown[], opts: { now: number; sinceMs: 
         .map((r) => r.rounds_to_lgtm)
         .filter((n): n is number => typeof n === 'number')
         .sort((a, b) => a - b);
-      const fixedCount = list.filter((r) => (FIXED_STATUSES as readonly string[]).includes(r.status as string)).length;
-      const wrongPct = share(list, [WRONG]);
+      const triaged = list.filter((r) => TRIAGED.includes(r.status as string));
+      const fixedCount = triaged.filter((r) => (FIXED_STATUSES as readonly string[]).includes(r.status as string)).length;
+      const wrongPct = share(triaged, [WRONG]);
       const flags: string[] = [];
-      if (list.length >= WRONG_MIN_N && wrongPct >= WRONG_SHARE_PCT) flags.push('tune or demote');
+      if (triaged.length >= WRONG_MIN_N && wrongPct >= WRONG_SHARE_PCT) flags.push('tune or demote');
       if (fixedCount >= FIXED_MIN_COUNT) flags.push('encode as lint/CI');
       return {
         vcode,
         count: list.length,
-        fixed_pct: share(list, FIXED_STATUSES),
+        triaged: triaged.length,
+        untriaged: list.length - triaged.length,
+        fixed_pct: share(triaged, FIXED_STATUSES),
         wrong_pct: wrongPct,
-        intentional_pct: share(list, [INTENTIONAL]),
-        not_worth_pct: share(list, [NOT_WORTH]),
+        intentional_pct: share(triaged, [INTENTIONAL]),
+        not_worth_pct: share(triaged, [NOT_WORTH]),
         rounds_median: median(rounds),
         rounds_p95: percentile(rounds, 95),
         flags,
       };
     })
     .sort((a, b) => b.count - a.count || a.vcode.localeCompare(b.vcode));
-  return { since_ms: opts.sinceMs, vcodes };
+  return { denominator: DENOMINATOR, since_ms: opts.sinceMs, vcodes };
 };
 
 export const renderNoiseMarkdown = (report: NoiseReport): string => {
   if (report.vcodes.length === 0) return 'No findings in the window.\n';
   const cell = (n: number | null): string => (n === null ? '-' : String(n));
   const lines = [
-    '| V-code | n | fixed | wrong | intentional | not-worth | rounds p50 | rounds p95 | flag |',
-    '|---|---|---|---|---|---|---|---|---|',
+    `Percentages are over ${report.denominator}; open/deferred rows are listed separately.`,
+    '',
+    '| V-code | n | triaged | open/deferred | fixed | wrong | intentional | not-worth | rounds p50 | rounds p95 | flag |',
+    '|---|---|---|---|---|---|---|---|---|---|---|',
     ...report.vcodes.map(
       (v) =>
-        `| ${v.vcode} | ${v.count} | ${v.fixed_pct}% | ${v.wrong_pct}% | ${v.intentional_pct}% | ${v.not_worth_pct}% | ${cell(v.rounds_median)} | ${cell(v.rounds_p95)} | ${v.flags.join('; ')} |`,
+        `| ${v.vcode} | ${v.count} | ${v.triaged} | ${v.untriaged} | ${v.fixed_pct}% | ${v.wrong_pct}% | ${v.intentional_pct}% | ${v.not_worth_pct}% | ${cell(v.rounds_median)} | ${cell(v.rounds_p95)} | ${v.flags.join('; ')} |`,
     ),
   ];
   return `${lines.join('\n')}\n`;
