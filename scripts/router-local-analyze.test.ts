@@ -253,9 +253,12 @@ describe('blackhole-vcodes.md — documentation alignment registration (#446)', 
     },
   );
 
-  test('V-DOC-GOV-02 row requires all five lifecycle frontmatter fields', () => {
+  test('V-DOC-GOV-02 row requires all six lifecycle frontmatter fields', () => {
     const row = vcodes().split('\n').find((line) => line.startsWith('| V-DOC-GOV-02 |'));
     expect(row).toBeDefined();
+    expect(row).toContain('`type`');
+    expect(row).toContain('`summary`');
+    expect(row).toContain('`status`');
     expect(row).toContain('review_trigger');
     expect(row).toContain('created');
     expect(row).toContain('last_updated');

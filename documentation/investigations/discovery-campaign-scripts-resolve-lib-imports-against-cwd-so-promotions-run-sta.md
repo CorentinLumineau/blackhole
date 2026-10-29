@@ -1,8 +1,9 @@
 ---
 type: analysis
+summary: "Investigation for issue #798: confirms `bun run scripts/<name>.ts` loads its whole `./lib` module graph from whichever tree cwd points into, that neither #792 (main-clone freshness) nor #806 (absolute CLI paths) closes it, and that AC2's HEAD-SHA check misses dirty working trees; proceed to plan"
 status: current
 created: 2026-09-04
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 review_trigger: "on file change"
 issue: 798
 confidence: 92

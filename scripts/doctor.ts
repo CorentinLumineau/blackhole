@@ -126,6 +126,41 @@ export function checkGeminiSymlinks(paths: string[]): DoctorCheck[] {
   });
 }
 
+/** Plugin key the Claude marketplace install is recorded under in installed_plugins.json. */
+const CLAUDE_PLUGIN_KEY = 'blackhole@blackhole-marketplace';
+
+/**
+ * WARN when a project vendors blackhole (vendor/blackhole) at a different version from the Claude
+ * plugin installed for it. Agents load from the plugin while `--cwd` script invocations resolve
+ * into the vendored copy, so a mismatch runs prompts and scripts from two different releases.
+ */
+export function checkPluginVersionDrift(repoRoot: string, homeDir: string): DoctorCheck {
+  const id = 'Vendored blackhole matches installed Claude plugin';
+  const vendoredPkg = path.join(repoRoot, 'vendor', 'blackhole', 'package.json');
+  const installedPath = path.join(homeDir, '.claude', 'plugins', 'installed_plugins.json');
+  if (!fs.existsSync(vendoredPkg) || !fs.existsSync(installedPath)) return { id, severity: 'WARN', ok: true };
+  let vendored: unknown;
+  let rows: unknown;
+  try {
+    vendored = (readJsonFile(vendoredPkg, vendoredPkg) as { version?: unknown }).version;
+    rows = (readJsonFile(installedPath, installedPath) as { plugins?: Record<string, unknown> }).plugins?.[CLAUDE_PLUGIN_KEY];
+  } catch {
+    return { id, severity: 'WARN', ok: false, detail: 'could not read vendor/blackhole/package.json or installed_plugins.json' };
+  }
+  const versions = (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && (row.scope === 'user' || (row.scope === 'project' && row.projectPath === repoRoot)))
+    .map((row) => row.version)
+    .filter((v): v is string => typeof v === 'string');
+  const mismatched = versions.filter((v) => v !== vendored);
+  if (!mismatched.length) return { id, severity: 'WARN', ok: true };
+  return {
+    id,
+    severity: 'WARN',
+    ok: false,
+    detail: `vendor/blackhole is ${String(vendored)}, installed plugin is ${mismatched.join(', ')}; update one so both match`,
+  };
+}
+
 export function exitCodeFromChecks(checks: DoctorCheck[]): number {
   const blockFailed = checks.some((c) => c.severity === 'BLOCK' && !c.ok);
   return blockFailed ? 1 : 0;
@@ -255,6 +290,7 @@ export function runDoctorChecks(repoRoot: string = root): DoctorCheck[] {
 
   const homeDir = os.homedir();
   checks.push(checkStaleGlobalSkill(homeDir));
+  checks.push(checkPluginVersionDrift(repoRoot, homeDir));
 
   const geminiPaths = [
     path.join(homeDir, '.gemini', 'config', 'plugins', 'backlog-campaign'),

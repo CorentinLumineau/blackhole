@@ -6,8 +6,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/validate-bash-command.js",
-            "timeout": 5
+            "command": "bun run \"${CLAUDE_PLUGIN_ROOT}/hooks/validate-bash-command.js\"",
+            "timeout": 15,
+            "onFailure": "block"
           }
         ]
       },
@@ -16,7 +17,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/validate-file-changes.js",
+            "command": "bun run \"${CLAUDE_PLUGIN_ROOT}/hooks/validate-file-changes.js\"",
+            "timeout": 15,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$CLAUDE_ENV_FILE\" ] && [ -n \"$CLAUDE_PLUGIN_ROOT\" ] && [ -z \"$BLACKHOLE_PLUGIN_ROOT\" ] && printf 'export BLACKHOLE_PLUGIN_ROOT=%q\\n' \"$CLAUDE_PLUGIN_ROOT\" >> \"$CLAUDE_ENV_FILE\"; exit 0",
             "timeout": 5
           }
         ]

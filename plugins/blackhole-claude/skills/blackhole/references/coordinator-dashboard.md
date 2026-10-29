@@ -8,7 +8,7 @@ orchestrator turn logs.
 
 ```bash
 bun run status
-# or: bun run scripts/campaign-status.ts --campaign-dir .blackhole
+# or: bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --campaign-dir .blackhole
 ```
 
 Reads `.blackhole/config.json`, `queue.json`, `findings-ledger.json`,

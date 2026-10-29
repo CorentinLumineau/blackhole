@@ -5,6 +5,7 @@ import { CLAUDE_DISTRIBUTION_ROOT } from '../lib/build/paths.ts';
 import { AGENT_MD_FILES, RULES_LIST } from '../lib/build/facts.ts';
 import { claudeDistributionTreeErrors } from '../tree-shape.ts';
 import { runFullBuildOnce } from '../lib/check-common.ts';
+import { claudePluginRuntimeErrors } from '../lib/build/claude-plugin-runtime.ts';
 
 // ADR-007 T5/R2' — claude-dist.check.ts: Claude Code marketplace distribution bundle shape —
 // matches verify.claude-dist.test.ts.
@@ -20,7 +21,10 @@ export const evaluateClaudeDistributionBundle = (destRoot: string): string[] => 
   const agentFiles = fs.existsSync(agentsDir)
     ? fs.readdirSync(agentsDir).filter((f) => AGENT_MD_FILES.has(f))
     : [];
-  return claudeDistributionTreeErrors(destRoot, agentFiles, AGENT_MD_FILES.size, RULES_LIST);
+  return [
+    ...claudeDistributionTreeErrors(destRoot, agentFiles, AGENT_MD_FILES.size, RULES_LIST),
+    ...claudePluginRuntimeErrors(destRoot),
+  ];
 };
 
 const checkClaudeDistributionBundle = (): CheckResult => {

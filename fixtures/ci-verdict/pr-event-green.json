@@ -1,0 +1,8 @@
+{
+  "description": "GitHub MCP pull_request_read get_check_runs, recorded on blackhole PR #1015 after its CI-completed event (2026-10-10)",
+  "total_count": 2,
+  "check_runs": [
+    { "id": 114343869522, "name": "Release Notes Gate", "status": "completed", "conclusion": "skipped" },
+    { "id": 114343868497, "name": "Protocol Conformance", "status": "completed", "conclusion": "success" }
+  ]
+}

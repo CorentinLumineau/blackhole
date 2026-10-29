@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
-import { CLAUDE_DISTRIBUTION_ROOT, CLAUDE_NATIVE_ROOT, DISTRIBUTION_ROOT } from '../lib/build/paths.ts';
+import { AGENTS_BUILD_ROOT, CLAUDE_DISTRIBUTION_ROOT, CLAUDE_NATIVE_ROOT, DISTRIBUTION_ROOT } from '../lib/build/paths.ts';
 import { runFullBuildOnce } from '../lib/check-common.ts';
 import { readJsonFile } from '../lib/fs.ts';
 
@@ -14,11 +14,11 @@ import { readJsonFile } from '../lib/fs.ts';
 // files here, at `bun run scripts/verify.ts` time, is the gate that stops that from shipping.
 // Weakening or removing this check invalidates that argument — see the plan's Execution Strategy.
 
-/** Every bundle root that must ship the hooks/ tree. `DISTRIBUTION_ROOT` and
- * `CLAUDE_DISTRIBUTION_ROOT` are consumer install surfaces; `CLAUDE_NATIVE_ROOT` (issue #472) is
- * the maintainer-only repo-root native target — not a consumer install surface, but the one this
- * repo's own campaign runs from, so it must ship the same hooks/ tree too. */
-export const HOOK_BUNDLE_ROOTS = [DISTRIBUTION_ROOT, CLAUDE_DISTRIBUTION_ROOT, CLAUDE_NATIVE_ROOT];
+/** Four copies of the hooks/ tree: two consumer bundles, `.claude` (#472), `.agents/build`. */
+export const HOOK_BUNDLE_ROOTS = [DISTRIBUTION_ROOT, CLAUDE_DISTRIBUTION_ROOT, CLAUDE_NATIVE_ROOT, AGENTS_BUILD_ROOT];
+
+/** SSOT copied verbatim by `copyHooksDir`. Claude marketplace then appends SessionStart. */
+export const PRETOOLUSE_HOOKS_SSOT = path.join('templates', 'hooks', 'pretooluse', 'hooks.json');
 
 /** Matchers hooks.json must wire under PreToolUse. Bash covers destructive commands; Write|Edit
  * covers system-path, traversal, and outside-worktree writes. */
@@ -38,10 +38,37 @@ export const REQUIRED_PATTERN_KEYS: Record<string, string[]> = {
 };
 
 type PatternEntry = { id?: unknown; pattern?: unknown; flags?: unknown; reason?: unknown };
-type HookCommand = { type?: unknown; command?: unknown };
+type HookCommand = { type?: unknown; command?: unknown; onFailure?: unknown; timeout?: unknown };
 type PreToolUseEntry = { matcher?: unknown; hooks?: HookCommand[] };
 
+/** Claude Code ≥2.1.295: a PreToolUse command hook that cannot start, times out, or exits
+ * unexpectedly blocks the tool call instead of failing open. SessionStart is out of scope. */
+export const REQUIRED_PRETOOLUSE_ON_FAILURE = 'block';
+export const REQUIRED_PRETOOLUSE_TIMEOUT = 15;
+
+/** Basename of the script a PreToolUse `command` names. Trailing quotes survive `split('/')`
+ * when the path is quoted (`bun run "${CLAUDE_PLUGIN_ROOT}/hooks/foo.js"`). */
+export const hookCommandScriptName = (command: string): string =>
+  (command.split('/').pop() ?? '').replace(/["']+$/, '');
+
 const readJson = (abs: string): Record<string, unknown> => readJsonFile(abs, abs) as Record<string, unknown>;
+
+/** Byte-for-byte SSOT match. Claude marketplace is PreToolUse-only (SessionStart is appended). */
+export const evaluateHooksSsotMatch = (bundleRoot: string, label: string, preToolUseOnly = false): string[] => {
+  const copy = path.join(bundleRoot, 'hooks', 'hooks.json');
+  if (!fs.existsSync(copy)) return [`${label}: missing hooks/hooks.json`];
+  const ssotText = fs.readFileSync(path.join(root, PRETOOLUSE_HOOKS_SSOT), 'utf-8');
+  const copyText = fs.readFileSync(copy, 'utf-8');
+  if (!preToolUseOnly) {
+    return copyText === ssotText ? [] : [`${label}: hooks/hooks.json is not a byte-for-byte copy of ${PRETOOLUSE_HOOKS_SSOT}`];
+  }
+  const pick = (t: string) => JSON.stringify((JSON.parse(t) as { hooks?: { PreToolUse?: unknown } }).hooks?.PreToolUse ?? null);
+  try {
+    return pick(copyText) === pick(ssotText) ? [] : [`${label}: PreToolUse does not match ${PRETOOLUSE_HOOKS_SSOT}`];
+  } catch (err) {
+    return [`${label}: hooks/hooks.json invalid JSON (${(err as Error).message})`];
+  }
+};
 
 /** hooks.json wiring for one bundle: present, parseable, both matchers covered, and every matcher
  * dispatching to a command script that actually exists in the bundle. An entry with an empty
@@ -74,7 +101,17 @@ export const evaluateHooksWiring = (bundleRoot: string, label: string): string[]
     }
     for (const command of commands) {
       if (command.type !== 'command') errors.push(`${label}: matcher "${entry.matcher}" hook type is not "command"`);
-      const script = String(command.command ?? '').split('/').pop() ?? '';
+      if (command.type === 'command' && command.onFailure !== REQUIRED_PRETOOLUSE_ON_FAILURE) {
+        errors.push(
+          `${label}: matcher "${entry.matcher}" command hook missing onFailure: "${REQUIRED_PRETOOLUSE_ON_FAILURE}"`,
+        );
+      }
+      if (command.type === 'command' && command.timeout !== REQUIRED_PRETOOLUSE_TIMEOUT) {
+        errors.push(
+          `${label}: matcher "${entry.matcher}" command hook timeout is not ${REQUIRED_PRETOOLUSE_TIMEOUT}`,
+        );
+      }
+      const script = hookCommandScriptName(String(command.command ?? ''));
       if (!script || !fs.existsSync(path.join(bundleRoot, 'hooks', script))) {
         errors.push(`${label}: matcher "${entry.matcher}" points at missing script "${script}"`);
       }
@@ -146,14 +183,16 @@ const buildFailure = (id: string): CheckResult | null => {
   return build.ok ? null : { id, ok: false, detail: `build failed: ${build.output}` };
 };
 
-// V-HOOKWIRE-01: both shipped bundles wire PreToolUse for Bash and Write|Edit.
+// V-HOOKWIRE-01: every copy wires PreToolUse for Bash and Write|Edit and matches SSOT.
 const checkHooksWiring = (): CheckResult => {
   const blocked = buildFailure('V-HOOKWIRE-01');
   if (blocked) return blocked;
 
-  const errors = HOOK_BUNDLE_ROOTS.flatMap((bundle) =>
-    evaluateHooksWiring(path.join(root, bundle), bundle),
-  );
+  const errors = HOOK_BUNDLE_ROOTS.flatMap((bundle) => {
+    const abs = path.join(root, bundle);
+    const preToolUseOnly = bundle === CLAUDE_DISTRIBUTION_ROOT;
+    return [...evaluateHooksWiring(abs, bundle), ...evaluateHooksSsotMatch(abs, bundle, preToolUseOnly)];
+  });
   if (errors.length) return { id: 'V-HOOKWIRE-01', ok: false, detail: errors.join('; ') };
   return { id: 'V-HOOKWIRE-01', ok: true };
 };

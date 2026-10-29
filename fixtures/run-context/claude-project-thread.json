@@ -1,0 +1,34 @@
+{
+  "description": "Thread in a Claude Project (env observed 2026-10-10, Claude Code 2.1.42)",
+  "env": {
+    "CLAUDECODE": "1",
+    "CLAUDE_CODE_ENTRYPOINT": "remote_projects",
+    "CLAUDE_CODE_REMOTE": "true",
+    "CLAUDE_CODE_PROJECTS_SESSION": "1",
+    "GH_TOKEN": "proxy-injected"
+  },
+  "probes": {
+    "ghAuthenticated": false
+  },
+  "tools": [
+    "agent",
+    "background-agents",
+    "ask-decision",
+    "github-mcp",
+    "pr-subscriptions",
+    "routines"
+  ],
+  "expected": {
+    "pattern": "P",
+    "forge_channel": "rest",
+    "question_channel": "ask-decision",
+    "ci_wait": "pr-events",
+    "state_store": "branch",
+    "schedule": "routine",
+    "missing": [],
+    "warnings": [
+      "forge: gh porcelain commands are unavailable; run each forge step through its rest row in forge-channels.md",
+      "state: the disk does not persist; campaign state travels on the blackhole/state branch (state-branch.md)"
+    ]
+  }
+}

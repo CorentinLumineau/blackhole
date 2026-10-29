@@ -3,7 +3,9 @@
 The files in this directory (`hooks.json`, `validate-bash-command.js`,
 `validate-file-changes.js`, `patterns/`, `utils/`) are the source for the PreToolUse guards that
 enforce safety checks (worktree-removal guard, destructive Bash pattern denial, sensitive-file
-write denial, etc.) during a live Claude Code session.
+write denial, etc.) during a live Claude Code session. Each PreToolUse command hook in
+`hooks.json` sets `"onFailure": "block"` (Claude Code ≥2.1.295) so a missing `bun`, a crash, or
+the 15-second timeout refuses the tool call instead of failing open.
 
 ## The cache is version-keyed, not content-addressed
 
@@ -50,6 +52,15 @@ Every PR that touches a file under `templates/hooks/**` must also bump `package.
 session-start signal (`.blackhole/plugin-drift.json`, `blackhole-state.md` § Plugin-Drift Signal)
 covers the residual gap this gate cannot see: a PR correctly bumps the version, but nobody ever
 runs the refresh path above afterward.
+
+## Campaign scope (ADR-047)
+
+Worktree write containment and the main-clone git guard only constrain campaign workers
+(`utils/campaign-scope.js`): a call whose `agent_type` names a blackhole agent, a call with an
+assigned worktree (declared or cwd-derived), or any call when `BLACKHOLE_HOOK_SCOPE=all` is set.
+An ordinary session that happens to load the plugin is left alone by those two guards. Every
+other guard (destructive patterns, sensitive files, system paths, traversal, Bash write targets,
+worktree removal) applies to every call.
 
 ## Sibling mercure defer (issue #870, health leg issue #969)
 

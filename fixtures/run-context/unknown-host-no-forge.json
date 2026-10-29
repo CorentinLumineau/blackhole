@@ -1,0 +1,22 @@
+{
+  "description": "Nothing detected and nothing reported: bootstrap must refuse and name each gap",
+  "env": {},
+  "probes": {
+    "ghAuthenticated": false
+  },
+  "tools": [],
+  "expected": {
+    "pattern": "B",
+    "forge_channel": null,
+    "question_channel": "chat",
+    "ci_wait": "poll",
+    "state_store": "local",
+    "schedule": "turn",
+    "missing": [
+      "host: pass --host claude|cursor",
+      "fan-out: an Agent/Task or Workflow tool to spawn workers",
+      "forge: an authenticated gh, a GitHub token, or GitHub MCP tools"
+    ],
+    "warnings": []
+  }
+}

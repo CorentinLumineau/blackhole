@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 122;
+export const VCODE_TABLE_ROW_COUNT = 131;
 
 /** Vendored mercure V-code snapshot staleness window in days (V-MPARITY-02, issue #869). */
 export const MERCURE_VCODE_SNAPSHOT_STALE_DAYS = 90;
@@ -76,7 +76,7 @@ export const IMPLEMENTER_GATE_MODULE_COUNT = 15;
  * reviewer's growth unit is "one more module", not "N more lines in one section", so the fact
  * that has to be consciously bumped when an audit is added is a module count, not a LOC ceiling.
  */
-export const REVIEWER_AUDIT_MODULE_COUNT = 32;
+export const REVIEWER_AUDIT_MODULE_COUNT = 33;
 
 // § facts — ADR revisit watch items (issue #710). A declared-fact / independent-scan pair, the
 // same shape `VCODE_TABLE_ROW_COUNT`/`CONTENT_GATE_BUDGETS`/`DOC_HEALTH_THRESHOLDS` already use:

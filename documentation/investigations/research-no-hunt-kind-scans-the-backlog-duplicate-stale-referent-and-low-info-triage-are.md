@@ -1,8 +1,9 @@
 ---
 type: research
+summary: "Research for issue #452: confirms no hunt kind scans open forge issues for duplicates, stale referents, or low-information bodies, and that a new backlog-hygiene hunt kind would be a purely additive ADR-006 extension targeting mercure's triage-mode parity"
 status: current
 created: 2026-09-04
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 review_trigger: "on file change"
 issue: 452
 confidence: 90

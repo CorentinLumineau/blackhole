@@ -1,0 +1,29 @@
+{
+  "description": "claude -p in a CI job: nobody to ask, runner disk discarded",
+  "env": {
+    "CLAUDECODE": "1",
+    "CLAUDE_CODE_ENTRYPOINT": "sdk-cli",
+    "CI": "true",
+    "GITHUB_TOKEN": "ghs_x"
+  },
+  "probes": {
+    "ghAuthenticated": false
+  },
+  "tools": [
+    "agent"
+  ],
+  "expected": {
+    "pattern": "B",
+    "forge_channel": "rest",
+    "question_channel": "none",
+    "ci_wait": "poll",
+    "state_store": "branch",
+    "schedule": "turn",
+    "missing": [],
+    "warnings": [
+      "forge: gh porcelain commands are unavailable; run each forge step through its rest row in forge-channels.md",
+      "questions: no channel reaches a person; clarify gates leave the issue blocked",
+      "state: the disk does not persist; campaign state travels on the blackhole/state branch (state-branch.md)"
+    ]
+  }
+}

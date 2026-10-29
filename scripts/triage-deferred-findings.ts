@@ -2,8 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { root } from './checks/check-utils.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { validateStateWrite } from './lib/state-write-guard.ts';
-import { runGhJson } from './lib/forge-adapter/cli.ts';
+import { installStateFile } from './lib/state-write-guard.ts';
+import { mapRestIssue, repoSlugFromOrigin, viewIssue } from './lib/forge-adapter/github-rest.ts';
+import { readOriginUrl } from './lib/forge-detection.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 
 // Issue #809 — triage of `findings-ledger.json`'s `deferred` backlog: reconciles every
@@ -149,15 +150,16 @@ export const triageFindings = (
   return { findings: out, summary };
 };
 
-// The one, scoped `gh` call this script makes — only for a target absent from `queueIssues`
-// entirely. Routed through `runGhJson` (the sole allowed `gh` spawn site, `forge-adapter/cli.ts`
-// — V-FORGE-01) rather than spawning the CLI directly in this file. Any failure (auth, rate
-// limit, issue truly gone) returns `null`, which `resolveClosureInfo` turns into
+// The one forge read this script makes — only for a target absent from `queueIssues` entirely.
+// A GitHub REST call through the forge adapter (ADR-048, V-FORGE-01). Any failure (auth, rate
+// limit, issue truly gone, no GitHub origin) returns `null`, which `resolveClosureInfo` turns into
 // `{ kind: 'unreachable' }` and `triageFindings` turns into an immediate run abort — see the
 // Stop Condition note above.
-export const fetchUntrackedIssue = (n: number): FetchedIssue | null => {
+export const fetchUntrackedIssue = (n: number, repo: string | null): FetchedIssue | null => {
+  if (!repo) return null;
   try {
-    return runGhJson<FetchedIssue>(['issue', 'view', String(n), '--json', 'state,closedAt,title,body']);
+    const issue = mapRestIssue(viewIssue(repo, n));
+    return { state: issue.state, title: issue.title, body: issue.body };
   } catch {
     return null;
   }
@@ -172,22 +174,12 @@ export function installTriagedLedger(
   archiveDir: string,
   updatedLedger: { findings: LedgerFinding[]; [key: string]: unknown },
 ): { ok: true } | { ok: false; reason: string } {
-  fs.mkdirSync(archiveDir, { recursive: true });
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const snapshotPath = path.join(archiveDir, `findings-ledger-${timestamp}.json`);
-  fs.copyFileSync(ledgerPath, snapshotPath);
-
-  const tmpPath = `${ledgerPath}.tmp`;
-  fs.writeFileSync(tmpPath, JSON.stringify(updatedLedger, null, 2));
-
-  const validation = validateStateWrite({ tmpPath, livePath: ledgerPath, entityKey: 'findings' });
-  if (!validation.ok) {
-    fs.rmSync(tmpPath);
-    return { ok: false, reason: validation.reason };
-  }
-
-  fs.renameSync(tmpPath, ledgerPath);
-  return { ok: true };
+  return installStateFile({
+    livePath: ledgerPath,
+    archiveDir,
+    content: JSON.stringify(updatedLedger, null, 2),
+    entityKey: 'findings',
+  });
 }
 
 function parseCliArgs(argv: string[]): { dryRun: boolean; ledgerPath: string; queuePath: string } {
@@ -209,7 +201,8 @@ function main(): number {
   const ledger: { findings?: LedgerFinding[]; [key: string]: unknown } = readJsonFile(ledgerPath, ledgerPath) as { findings?: LedgerFinding[]; [key: string]: unknown };
   const queue: { issues?: QueueIssues } = fs.existsSync(queuePath) ? (readJsonFile(queuePath, queuePath) as { issues?: QueueIssues }) : { issues: {} };
 
-  const { findings, summary } = triageFindings(ledger.findings ?? [], queue.issues ?? {}, fetchUntrackedIssue);
+  const repo = repoSlugFromOrigin(readOriginUrl(process.cwd()));
+  const { findings, summary } = triageFindings(ledger.findings ?? [], queue.issues ?? {}, (n) => fetchUntrackedIssue(n, repo));
 
   console.log(`Examined: ${summary.examined}`);
   console.log(`Resolved: ${summary.resolved}`);
@@ -218,7 +211,7 @@ function main(): number {
 
   if (summary.aborted) {
     console.error(
-      `Aborted: gh issue view failed for #${summary.abortedAt} (rate limit or auth failure) — stopping run, ` +
+      `Aborted: reading issue #${summary.abortedAt} from the forge failed (rate limit, auth failure or no GitHub origin) — stopping run, ` +
         'reporting the partial result above rather than risking a false classification. No write performed.',
     );
     return 1;

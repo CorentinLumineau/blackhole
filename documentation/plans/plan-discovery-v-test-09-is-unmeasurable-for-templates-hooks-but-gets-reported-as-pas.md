@@ -1,9 +1,10 @@
 ---
 type: plan
+summary: "Plan for issue #787: make implementer and reviewer report V-TEST-09 as `unmeasurable` (never `pass`), with behavioral-test evidence, when a diff only changes `templates/hooks/**`, backed by an advisory mechanical check; instrumenting the hooks stays out of scope"
 status: current
 review_trigger: "on file change"
 created: 2026-09-04
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 ---
 
 # Plan - Issue #787

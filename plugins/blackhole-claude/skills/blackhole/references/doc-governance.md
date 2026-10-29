@@ -50,16 +50,15 @@ related: [<path>, ...]      # optional
 | `related` | No | Cross-references for graph navigation |
 
 All six lifecycle keys (`type`, `summary`, `status`, `review_trigger`, `created`,
-`last_updated`) are required — any absence is `V-DOC-GOV-02` (Phase 1 does not yet wire
-`summary`'s presence into that check's enforcement; see Phase 2 notes at
-`documentation/plans/plan-documentation-index-generation-implementation.md`). `supersedes` and
-`related` remain optional.
+`last_updated`) are required — any absence is `V-DOC-GOV-02`, reported per doc with the
+missing key names (`scripts/checks/doc-health.check.ts`). `supersedes` and `related` remain
+optional.
 
 An instantiated companion-file template — currently only `documentation/reference/journeys.md`
 (`templates/companion-files/journeys.md.template`) — may carry `status: template` instead of
 one of the four values listed above. This is already accepted, not a new exception granted
-here: `doc-health.check.ts`'s `V-DOC-GOV-02` check (`findMissingFrontmatter` /
-`lifecycleFrontmatterComplete`) only checks the `status` key's **presence**, never its value
+here: `doc-health.check.ts`'s `V-DOC-GOV-02` check (`findMissingFrontmatter`,
+driven by its `LIFECYCLE_KEYS` table) only checks the `status` key's **presence**, never its value
 against an enum, so `status: template` has always passed. This is a scoped, one-off exception
 for companion-file templates only, not a general loosening of the `status` enum: the value
 signals the file is unfilled placeholder content, and the owning hunt-kind band (`ux-coherence`)
@@ -196,7 +195,7 @@ artifact from source, never patch it incrementally). A producer that wants a cor
 only author `summary` on the doc's own frontmatter (or on the staging manifest's `new_file` entry
 for an investigator note — the carry-step writes it onto the promoted note's frontmatter); there
 is no second staged row file and no `append_row` manifest entry for this file to author.
-`bun run scripts/generate-doc-index.ts --check` (wired into `bun run verify` as
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/generate-doc-index.ts --check` (wired into `bun run verify` as
 `V-DOCHEALTH-01`/`V-DOCHEALTH-02`/`V-DOCHEALTH-04`, all blocking) fails the build the moment the
 committed file and the live tree's frontmatter disagree, so there is no drift window for a
 hand-edit to introduce.

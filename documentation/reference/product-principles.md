@@ -4,7 +4,7 @@ summary: "Owner-rulings ledger of durable product preferences binding on future 
 status: current
 review_trigger: "on new ruling"
 created: 2026-08-06
-last_updated: 2026-08-14
+last_updated: 2026-10-11
 rulings_revision: 5
 ---
 
@@ -69,7 +69,8 @@ rulings_revision: 5
     default. AC item 1 ("set explicitly, whatever the chosen value") is satisfied on this repo
     as of this ruling.
   - **Compensating controls for the retained `immediate` posture (AC item 3)**: blackhole's own
-    merge protocol gates every autonomous merge on CI-green before `gh pr merge --squash` runs
+    merge protocol gates every autonomous merge on CI-green and low-risk (`merge-gate.md` § 9)
+    before `gh pr merge --squash` runs; any other PR stays open with `needs-chef` for Chef
     (`phase-loop.md` § Merge protocol steps 1-2; `merge-gate.md`'s `mergeEligible()`). Verified
     directly against this repo at ruling time: `main` carries **no GitHub branch protection**
     (`gh api repos/CorentinLumineau/blackhole/branches/main` → `"protected": false`) and

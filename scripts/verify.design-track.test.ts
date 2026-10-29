@@ -1,10 +1,14 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
+import * as path from 'path';
 import {
   DESIGN_TRACK_REQUIRED_HEADINGS,
   findMissingDesignTrackHeadings,
   ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS,
   PLANNER_DESIGN_GATE_REQUIRED_MARKERS,
+  runChecks,
 } from './checks/design-track.check.ts';
+import * as content from './lib/build/content.ts';
+import { root } from './lib/build/paths.ts';
 import { expectMarkersMissing, expectMarkersPresent } from './lib/marker-fixture-test.ts';
 
 const COMPLETE_FIXTURE = `
@@ -125,5 +129,99 @@ describe('ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS', () => {
 
   test('stale orchestrator.md fixture (pre-M2 dispatch, no gated-verdict language) is missing all markers', () => {
     expectMarkersMissing(ORCHESTRATOR_FIXTURE_STALE, ORCHESTRATOR_DESIGN_GATE_REQUIRED_MARKERS);
+  });
+});
+
+// The two verdict functions take no parameters: they read fixed repo files through
+// check-utils.ts's `read()`, which passes every file's text through `expandIncludes(text,
+// absPath)`. Swapping `expandIncludes` at the module boundary is the narrowest seam that lets a
+// fixture stand in for a file without a production change. Paths without an override delegate to
+// the real implementation, so every other `expandIncludes` consumer in the same `bun test`
+// process sees unchanged behavior once `readOverrides` is cleared. If `read()` ever stops routing
+// through `expandIncludes`, the not-ok tests below fail loudly rather than passing vacuously.
+const realExpandIncludes = content.expandIncludes;
+const readOverrides = new Map<string, string>();
+mock.module('./lib/build/content.ts', () => ({
+  ...content,
+  expandIncludes: (text: string, srcPath: string, ...rest: [string[]?, string[]?]) =>
+    readOverrides.get(path.relative(root, srcPath)) ?? realExpandIncludes(text, srcPath, ...rest),
+}));
+
+const PLAN_TEMPLATE = 'src/references/plan-template.md';
+const PLANNER = 'src/agents/planner.md';
+const ORCHESTRATOR_DISPATCH = 'src/references/orchestrator-dispatch.md';
+
+const verdict = (id: string) => runChecks().find((r) => r.id === id);
+
+describe('runChecks verdicts (V-DESIGN-01 / V-DESIGN-02)', () => {
+  afterEach(() => readOverrides.clear());
+
+  test('live repo tree passes both checks', () => {
+    expect(runChecks()).toEqual([
+      { id: 'V-DESIGN-01', ok: true },
+      { id: 'V-DESIGN-02', ok: true },
+    ]);
+  });
+
+  test('V-DESIGN-01: conforming plan template -> ok', () => {
+    readOverrides.set(PLAN_TEMPLATE, COMPLETE_FIXTURE);
+    expect(verdict('V-DESIGN-01')).toEqual({ id: 'V-DESIGN-01', ok: true });
+  });
+
+  test('V-DESIGN-01: plan template missing a Design Track section -> not ok, names the heading', () => {
+    readOverrides.set(PLAN_TEMPLATE, COMPLETE_FIXTURE.replace('## Adversarial Evaluation\n...\n\n', ''));
+    expect(verdict('V-DESIGN-01')).toEqual({
+      id: 'V-DESIGN-01',
+      ok: false,
+      detail: 'plan-template.md missing Design Track headings: ## Adversarial Evaluation',
+    });
+  });
+
+  test('V-DESIGN-01: several missing headings are all listed, comma-joined in declared order', () => {
+    readOverrides.set(PLAN_TEMPLATE, '## Options + Trade-off Matrix\n\n## Gate\n');
+    expect(verdict('V-DESIGN-01')).toEqual({
+      id: 'V-DESIGN-01',
+      ok: false,
+      detail:
+        'plan-template.md missing Design Track headings: ## Requirements Framing, ## Adversarial Evaluation, ' +
+        '## Component Decomposition, ## Design Principles Validation, ## Refactoring Impact Analysis, ' +
+        '## Assumption Audit',
+    });
+  });
+
+  test('V-DESIGN-02: grounded gate (design-aggregate.ts verdict, no substitution) -> ok', () => {
+    readOverrides.set(PLANNER, PLANNER_FIXTURE_FIXED);
+    readOverrides.set(ORCHESTRATOR_DISPATCH, ORCHESTRATOR_FIXTURE_FIXED);
+    expect(verdict('V-DESIGN-02')).toEqual({ id: 'V-DESIGN-02', ok: true });
+  });
+
+  test('V-DESIGN-02: planner.md citing no verdict artifact -> not ok, names both planner markers', () => {
+    readOverrides.set(PLANNER, PLANNER_FIXTURE_STALE);
+    readOverrides.set(ORCHESTRATOR_DISPATCH, ORCHESTRATOR_FIXTURE_FIXED);
+    expect(verdict('V-DESIGN-02')).toEqual({
+      id: 'V-DESIGN-02',
+      ok: false,
+      detail: 'planner.md missing "design-aggregate.ts"; planner.md missing "MUST NOT substitute its own judgment"',
+    });
+  });
+
+  test('V-DESIGN-02: orchestrator-dispatch.md without applies-only-status language -> not ok', () => {
+    readOverrides.set(PLANNER, PLANNER_FIXTURE_FIXED);
+    readOverrides.set(ORCHESTRATOR_DISPATCH, ORCHESTRATOR_FIXTURE_STALE);
+    expect(verdict('V-DESIGN-02')).toEqual({
+      id: 'V-DESIGN-02',
+      ok: false,
+      detail: 'orchestrator-dispatch.md missing "applies only the worker JSON\'s `status` field"',
+    });
+  });
+
+  test('V-DESIGN-02: both files stale -> planner errors first, then orchestrator, "; "-joined', () => {
+    readOverrides.set(PLANNER, PLANNER_FIXTURE_STALE);
+    readOverrides.set(ORCHESTRATOR_DISPATCH, ORCHESTRATOR_FIXTURE_STALE);
+    expect(verdict('V-DESIGN-02')?.detail).toBe(
+      'planner.md missing "design-aggregate.ts"; planner.md missing "MUST NOT substitute its own judgment"; ' +
+        'orchestrator-dispatch.md missing "applies only the worker JSON\'s `status` field"',
+    );
+    expect(verdict('V-DESIGN-02')?.ok).toBe(false);
   });
 });

@@ -112,13 +112,15 @@ a separate regex replace) — a git merge driver is not.
 
 - **Attempt 1**: if `queue.json`'s `merge_after`/`depends_on` shows an issue that (a) this issue
   depends on and (b) merged *after* this issue's worktree branch point — the stacked-branch
-  signal is already known — go straight to the cherry-pick strategy below. Otherwise, attempt a
+  signal is already known — do not rebase or cherry-pick: follow § Stacked child after its parent
+  merges (the one authoritative procedure for that symptom). Otherwise, attempt a
   plain `git fetch origin main && git rebase origin/main`.
 - If Attempt 1 conflicts: classify every hunk per the rule above; resolve every mechanical hunk.
   If all hunks in every file resolve mechanically, `git rebase --continue` and finish (this
   attempt succeeded — do not consume Attempt 2).
-- If any hunk is semantic **and** the stacked-branch signal was not already known at Attempt 1
-  (i.e. this looks like it might be the squash-base symptom rather than a genuine semantic
+- Attempt 2 (cherry-pick) serves only a non-stacked branch whose rebase conflicts turn out to be
+  squash-base shaped; a stacked child never reaches it. If any hunk is semantic **and** the
+  stacked-branch signal was not already known at Attempt 1 (i.e. this looks like it might be the squash-base symptom rather than a genuine semantic
   conflict — git shows the same file/lines conflicting that a squashed predecessor also touched):
   `git rebase --abort`, then **Attempt 2**: identify this branch's own unique commits
   (`git log <original-branch-tip>...<pre-rebase-merge-base>` or the equivalent walk back to the
@@ -126,6 +128,33 @@ a separate regex replace) — a git merge driver is not.
   `origin/main`. Re-classify any resulting conflicts the same way.
 - If Attempt 2 also leaves a semantic hunk, or Attempt 1's semantic hunk was not
   stacked-branch-shaped (a genuine content conflict): stop. Do not attempt a third strategy.
+
+## Stacked child after its parent merges (squash included)
+
+The squash-base symptom above is the same one a stacked child hits (`queue-dag.md` Step 3b): the
+parent's branch commits are not ancestors of the squash commit on the target branch. The child is
+never rebased or force-pushed; its own commits are replayed by merging the target branch in:
+
+1. Retarget the child PR via REST (`gh pr edit` can fail on this repo):
+   `gh api -X PATCH repos/<repo>/pulls/<N> -f base=<target_branch>`.
+2. Switch the body link the same way, `Part of #<N>` to `Closes #<N>`:
+   `gh api -X PATCH repos/<repo>/pulls/<N> -f body="<body with Closes #<N>>"`.
+3. In the child worktree: `git fetch origin && git merge origin/<target_branch>`. Resolve each
+   conflicted file per § Hot files and generated trees below, `git add`, and commit the merge. Push normally.
+4. Run the build once and commit its output (Post-resolution discipline below).
+
+## Hot files and generated trees (single rule)
+
+Generated build trees and version-carrying manifests change in every PR, so sibling and stacked
+branches always conflict on them. Resolution:
+
+- Generated trees: the Classification rule's item 1 above is the only rule (discard both sides,
+  rebuild, idempotency check).
+- Source files: a real 3-way resolution that keeps both sides' intent. Never apply `--ours` or
+  `--theirs` to a whole source file.
+- `package.json`: keep the target branch's other changes (dependencies etc.); set `version` to
+  `max(target_branch, child)`, bumped above the target's. The other version-carrying manifests
+  follow from the build.
 
 ## Post-resolution discipline (mandatory even when no conflict occurred)
 
@@ -174,7 +203,7 @@ content, not just an issue number.
 | `mergeable` is an unfamiliar value on an older/newer `gh` | Treat only `CONFLICTING` as the trigger; anything else proceeds to step 1 unchanged (conservative default) |
 | Every hunk in a conflicting PR is mechanical | Resolved in Attempt 1, `V-MERGE-03` rows logged, merge protocol proceeds at step 1 with the new HEAD |
 | Mixed mechanical + semantic hunks in one file | Mechanical hunks resolved and staged; the file still can't be `git add`ed clean because of the semantic hunk, so the whole attempt aborts (no partial merge state left behind) |
-| Stacked branch (`merge_after` predecessor merged after this branch's point), plain rebase would conflict | Attempt 1 goes straight to cherry-pick (signal already known) — never wastes an attempt on a rebase known to fail this way |
+| Stacked branch (`merge_after` predecessor merged after this branch's point), plain rebase would conflict | Follow § Stacked child after its parent merges (merge the target branch into the child) — never a rebase or cherry-pick |
 | Non-stacked branch, but rebase conflicts turn out to be squash-base shaped anyway | Attempt 1 (plain rebase) fails, Attempt 2 (cherry-pick) recovers |
 | Both attempts exhausted, semantic hunk remains | `status: blocked`, hunks surfaced, no third attempt |
 | `merge_mode: leave-open` | Preflight runs as a merge-readiness dry run (ADR-026 D5) and as a post-external-merge sibling restack (D6) — but the campaign never calls `gh pr merge` itself; a human still merges the PR manually once ready |

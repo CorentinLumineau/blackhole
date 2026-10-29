@@ -1,8 +1,9 @@
 ---
 type: analysis
+summary: "Pre-plan analysis for issue #802: re-measures the three V-WATCH-01 ADR watch items (worker-schemas.md whole file and Implementer section, phase-implement.md largest section), shows the watch and content-gate ceilings measure the same value independently, and flags that item 3's tripping section is not the one its threshold note was calibrated against"
 status: current
 created: 2026-09-04
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 review_trigger: "on file change"
 issue: 802
 confidence: 78

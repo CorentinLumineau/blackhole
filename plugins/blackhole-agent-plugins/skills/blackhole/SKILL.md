@@ -1,9 +1,20 @@
+---
+name: blackhole
+description: Orchestrates backlog campaign until zero open issues and PRs. Multitask Mode entry via coordinator. Auto-syncs GitHub issues, clarifies/splits any size, five-phase lifecycle, V-code ledger. Use for finish the backlog, backlog campaign, /blackhole, orchestrate issues, split issues, bc-run, bc-status.
+disable-model-invocation: true
+---
+
 # Blackhole
 
 Orchestrates issue implementation until the forge backlog is empty. Binding
 runbook: `plugins/blackhole-agent-plugins/skills/blackhole/references/blackhole-protocol.md`.
 
 ## Entry (Multitask Mode)
+
+Which pattern below applies is not a judgment call: resolve the run context first and follow the
+pattern it names ([run-context.md](references/run-context.md)). Its forge channel decides how every
+`gh` command in these playbooks runs ([forge-channels.md](references/forge-channels.md)). In a
+Claude Project thread it names Pattern P ([project-thread-mode.md](references/project-thread-mode.md)).
 
 If the agent lacks a native long-running goal loop, use Multitask Mode (Pattern B) with a coordinator + background orchestrator:
 

@@ -61,7 +61,7 @@ When `status: blocked`, `failing_checks` lists failed items:
 - `touch_paths_declared` — Touch-Paths section present (`V-SCOPE-02`)
 - `schema_baseline` — API/schema changes specified for standard track (`V-API-01`)
 - `tdd_tasks` — TDD baseline and failing-test tasks present (`V-TEST-01/02`)
-- `ac_mapping` — acceptance criteria mapped to tasks; sibling mechanical checks `critical_files_exist` / `mitigation_concrete` — Critical Files Glob-miss and Execution Strategy vague-mitigation (Standard track only, mercure `x-plan` parity, issue #459); all three computed by `bun run --cwd <repo_root> scripts/plan-quality-gate.ts --plan-file <path> --repo-root <repo_root>` (issue #716; `--repo-root` required as of issue #891), copied verbatim into `failing_checks`
+- `ac_mapping` — acceptance criteria mapped to tasks; sibling mechanical checks `critical_files_exist` / `mitigation_concrete` — Critical Files Glob-miss and Execution Strategy vague-mitigation (Standard track only, mercure `x-plan` parity, issue #459); all three computed by `bun run --cwd <repo_root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/plan-quality-gate.ts --plan-file <path> --repo-root <repo_root>` (issue #716; `--repo-root` required as of issue #891), copied verbatim into `failing_checks`
 - `ac_sweep_conflict` / `ac_sweep_scope` / `touch_paths_ssot_gap` — advisory-only plan-time heuristics (sweep/retain overlap, unscoped sweep AC, Touch-Paths SSOT gaps via `findTouchPathSsotGaps`) — `ADVISORY:` rows or Quick Track `## Touch-Paths Completeness Advisory`; never `failing_checks` (#575)
 - `clarification_limit` — at most 2 `[NEEDS CLARIFICATION]` markers
 - `base_commit` — `plan_base_commit` stamped in frontmatter
@@ -273,7 +273,7 @@ below).
 | `findings` | finding[] | yes (empty array = no issues found) |
 | `error` | string | when `status: error` |
 | `recheck` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in recheck mode (`review-core.md` § Recheck mode); absent/omitted for a normal full-audit review |
-| `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent security verification mode (`review-core.md` § Independent security verification, `reviewer.md` § Independent Security Verification Mode); absent/omitted for every other dispatch |
+| `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent verification mode (a `finding_id` is assigned for every non-pre-existing BLOCK) (`review-core.md` § Independent security verification, `reviewer.md` § Independent Security Verification Mode); absent/omitted for every other dispatch |
 | `verification_legs` | `{direction, mode, evidence}[]` | optional — ADR-036 (issue #815); a clean/negative investigation leg that produced no `Finding` object |
 
 The reviewer return declares no PR-number field — the PR under review is the dispatch's own
@@ -582,19 +582,20 @@ Orchestrator invokes after `reviewer` completes. Not a worker agent — determin
 
 | Field | Values | Required |
 |-------|--------|----------|
-| `status` | `approved` \| `changes_requested` \| `error` | yes |
+| `status` | `approved` \| `changes_requested` \| `rethink` \| `error` | yes — `rethink` is not LGTM (`review-core.md` § Review convergence) |
 | `findings` | finding[] | yes |
 | `blockers_count` | number | yes |
 | `lgtm` | boolean | yes |
 | `pareto_candidates` | `{ summary, priority, file }[]` | yes (may be empty) |
 | `unresolved_recheck` | `{ finding_id, verdict, reason }[]` | yes (may be empty) — issue #485: a `recheck[]` `verdict: fixed` entry whose `finding_id` could not be linked to any prior finding's ledger `id`; non-empty forces `lgtm: false` |
+| `rechecked` | `{ ledger_id, vcode, file }[]` | only with `--review-iteration` — fresh findings dropped as repeats of an already-ledgered root cause |
 | `error` | string | when `status: error` |
 
 Each `findings[]` entry additionally carries `issue_ref: number` and `pr_ref: number | null`
 stamped by the script (issue #754) — never present on the raw `reviewer` input's Finding shape
 above, only on this aggregator's stamped output.
 
-CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>]`
+CLI: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>]`
 
 `--verification-file` (issue #439, § `verification` above) points to the independent security
 verification spawn's own `verification[]` array, serialized as a plain JSON array — omitted
@@ -634,7 +635,7 @@ tree by the CLI entrypoint's `resolveAdrAmendmentTruth`, never self-reported) is
 `amendment_acknowledged` is `false`. No new V-code — same convention as the four other reasons,
 none of which carry one either.
 
-CLI: `bun run scripts/design-aggregate.ts --input-file <path> [--repo-root <path>]`
+CLI: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/design-aggregate.ts --input-file <path> [--repo-root <path>]`
 
 ## Partial result (`status: partial`, `stop --now` leg B, issue #492)
 

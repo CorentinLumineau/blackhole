@@ -22,6 +22,11 @@ jobs:
     # pull_request runs attacker-controllable fork code — never schedule it on the self-hosted
     # runner (public repo). Trusted push/tag events keep the self-hosted MacBook runner.
     runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["self-hosted", "mba"]') }}
+    # There is exactly one self-hosted runner, so a wedged job blocks every later run in this
+    # repo until it is reaped. GitHub's default ceiling is 360 minutes; observed real durations
+    # here are 245s-1055s (PR runs on ubuntu-latest: 43-54s), so 30 minutes sits ~1.7x above the
+    # worst run actually seen while cutting a hang's blast radius from six hours to half an hour.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -46,6 +51,16 @@ jobs:
       # mirrors match their sources. A build earlier in this same job would silently regenerate
       # a stale mirror before that assertion runs, turning it into a tautology that passes
       # whether or not the committed output is actually in sync.
+
+      # `bun run test` carries --timeout 60000 (package.json), not bun's 5000ms default. Many
+      # test files here spawn subprocesses and a few shell out to a full build or a full verify
+      # run; those finish well under a second on an idle machine, but were measured crossing
+      # 5000ms on this self-hosted runner, which runs them while the rest of the suite competes
+      # for the same cores. 5000ms was acting as a performance assertion those tests never meant
+      # to make — 60000ms is a deadlock guard instead. The tradeoff is accepted deliberately: a
+      # genuinely hung test now takes a minute to fail rather than five seconds.
+      # bunfig.toml's [test] timeout key is NOT a substitute — bun 1.4.2 parses it without error
+      # and ignores it, so the CLI flag is the only lever that actually takes effect.
       - name: Run test suite
         run: bun run test
 
@@ -70,10 +85,32 @@ jobs:
       - name: Run install:verify
         run: bun run install:verify
 
+      # Claude Code plugin schema gate (2.1.295+). `claude plugin validate --strict` is a local
+      # static check; `claude plugin test` runs only when the plugin ships a tests/ tree.
+      # GitHub-hosted PR runners do not preinstall the CLI; self-hosted push already has it.
+      # Pin the npm package — `install.sh` latest can change --strict semantics under our feet.
+      - name: Setup Claude Code CLI
+        if: runner.environment != 'self-hosted'
+        run: |
+          npm i -g @anthropic-ai/claude-code@2.1.296
+          echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
+
+      - name: Validate Claude plugin (strict)
+        run: |
+          set -euo pipefail
+          claude plugin validate --strict .
+          claude plugin validate --strict plugins/blackhole-claude
+          if [ -d plugins/blackhole-claude/tests ] || [ -d tests ]; then
+            claude plugin test
+          fi
+
   release-notes-gate:
     name: Release Notes Gate
     runs-on: [self-hosted, mba]
     if: startsWith(github.ref, 'refs/tags/v')
+    # Checkout plus a shell existence check — seconds of real work. Same single-runner reasoning
+    # as the job above; the ceiling is here to bound a hang, not to pace the work.
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository

@@ -44,6 +44,7 @@ export type ReviewPromotionOutput = {
   findingsCount: number;
 };
 
+import { OUTCOME_STATUSES } from './worker-json/constants.ts';
 import { deriveConcernSlug, reviewTargetPath } from './concern-slug.ts';
 
 const SEVERITY_RANK: Record<string, number> = { BLOCK: 3, WARN: 2, NOTE: 1, INFO: 1 };
@@ -78,6 +79,7 @@ export function selectReviewFindings(
   for (const finding of candidates) {
     if (finding.status === 'resolved' && !isRecheckNotFixed(finding)) continue;
     if (finding.status === 'fixed-in-pr' && !isRecheckNotFixed(finding)) continue;
+    if ((OUTCOME_STATUSES as readonly string[]).includes(finding.status)) continue;
     if (isRecheckFixed(finding)) continue;
 
     const key = findingKey(finding);
@@ -109,6 +111,10 @@ export function renderIndexRow(targetPath: string, summary: string): string {
   return `| ${relPath} | ${summary} | review | current | on file change |`;
 }
 
+/**
+ * Render the promoted review doc (lifecycle frontmatter + findings tables) and its root-INDEX
+ * row from the live ledger. Pure: the merge gate re-renders with it to verify the committed file.
+ */
 export function renderReviewMarkdown(input: ReviewPromotionInput): ReviewPromotionOutput {
   const findings = selectReviewFindings(input.ledger, input.issueNumber, input.prNumber);
   const slug = deriveConcernSlug(input.issueTitle, input.issueNumber);
@@ -121,6 +127,9 @@ export function renderReviewMarkdown(input: ReviewPromotionInput): ReviewPromoti
   const blockers = blocking.filter((f) => f.severity === 'BLOCK').length;
   const warns = blocking.filter((f) => f.severity === 'WARN').length;
   const verdict: 'LGTM' | 'CHANGES REQUESTED' = blockers > 0 ? 'CHANGES REQUESTED' : 'LGTM';
+  // One derivation feeds both the frontmatter `summary:` (the source `documentation/INDEX.md` is
+  // regenerated from) and `indexRow`, so the two can never disagree.
+  const summary = `Review artifact for issue #${input.issueNumber} (${verdict})`;
 
   const findingsTable =
     blocking.length === 0
@@ -153,6 +162,7 @@ export function renderReviewMarkdown(input: ReviewPromotionInput): ReviewPromoti
 
   const markdown = `---
 type: review
+summary: ${JSON.stringify(summary)}
 status: current
 review_trigger: "on file change"
 created: ${today}
@@ -177,10 +187,7 @@ Diff: PR #${input.prNumber}, branch \`${input.branchName}\`.
 ${findingsTable}
 ${deferredTable}`;
 
-  const indexRow = renderIndexRow(
-    targetPath,
-    `Review artifact for issue #${input.issueNumber} (${verdict})`,
-  );
+  const indexRow = renderIndexRow(targetPath, summary);
 
   return {
     targetPath,

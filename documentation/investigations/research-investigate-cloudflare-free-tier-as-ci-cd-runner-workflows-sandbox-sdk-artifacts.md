@@ -1,8 +1,9 @@
 ---
 type: research
+summary: "Research for issue #593: Cloudflare's `@cloudflare/ci` stack is not viable on the Workers Free tier (Sandbox SDK and Artifacts need Workers Paid, Workflows Free caps CPU at 10 ms per step), and GitHub Actions plus the self-hosted runner remains the better fit for blackhole"
 status: current
 created: 2026-09-04
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 review_trigger: "on file change"
 issue: 593
 confidence: 82

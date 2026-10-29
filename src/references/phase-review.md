@@ -8,21 +8,21 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - [ ] queue.json: phase review
 - [ ] Spawn reviewer to perform PR audit
 - [ ] Route check: read route.security_review_required (+ confidence gate) → enrich reviewer prompt with security-mode audit (see review-core.md § Security-mode review)
-- [ ] Security-mode PR whose primary reviewer returned 1+ `V-SEC-*` findings → stamp each with a temporary `id` and dispatch a second, independent `reviewer` instance in verification mode at `standard` tier (see review-core.md § Independent security verification, issue #439); pass its `verification[]` output to review-aggregate.ts via `--verification-file`
+- [ ] Primary reviewer returned 1+ non-pre-existing `BLOCK` findings → stamp each with a temporary `id` and dispatch a second, independent `reviewer` instance in verification mode at `standard` tier (see review-core.md § Independent security verification, issue #439); pass its `verification[]` output to review-aggregate.ts via `--verification-file`
 - [ ] Route check: read route.plan_mode → scope plan-conformance audit to quick/full; skip → compensating no-API-surface check (see review-core.md § Skip-PR compensating control)
 - [ ] Recheck check: read recheck-mode trigger (review_iteration >= 1, no new touch-paths, no new BLOCK surface — see review-core.md § Recheck mode) → when satisfied, dispatch reviewer in recheck mode against the fix commits only, instead of a full-diff audit
 - [ ] Security-mode PR → confirm merge-gate validator (V-SEC-08) before LGTM
-- [ ] Run scripts/review-aggregate.ts on reviewer JSON
+- [ ] Run scripts/review-aggregate.ts on reviewer JSON, passing `--review-iteration <queue review_iteration>` and (when verification ran) `--verification-file` (see review-core.md § Aggregate invocation)
 - [ ] Aggregate output → ledger append (phase: review)
   - [ ] Issue #485: before appending, transition any prior ledger row named `fixed` in the aggregate's consumed `recheck[]` to `status: resolved` (see findings-ledger.md § Status transitions), so the write-time dedup check (findings-ledger.md § Write protocol step 3) never silently absorbs the new, distinct finding sharing that row's key
-  - [ ] Issue #485: if `unresolved_recheck` (worker-schemas.md § Review aggregate) is non-empty, do not silently proceed as a normal changes_requested iteration — surface it to the coordinator via the existing blocked-iteration/escalation path (review-core.md § Review iteration budget)
+  - [ ] Issue #485: if `unresolved_recheck` (worker-schemas.md § Review aggregate) is non-empty, do not silently proceed as a normal changes_requested iteration — surface it to the coordinator via the existing blocked-iteration/escalation path (review-core.md § Review convergence)
 - [ ] V-ADA-01/V-ADA-05 findings: before append, dedup by (vcode, file) ignoring issue_ref — skip append if an open/deferred row already exists for that (vcode, file) under any issue_ref (see findings-ledger.md).
-- [ ] BLOCK → increment review_iteration; back to phase implement (see review-core iteration budget)
-- [ ] review_iteration >= 4 → escalate to coordinator (`AskQuestion`, review-iteration
+- [ ] BLOCK → increment review_iteration; back to phase implement (see review-core.md § Review convergence)
+- [ ] Round limit reached → `rethink` verdict, escalate to coordinator (`AskQuestion`, review-iteration
   escalation gate class per `clarify-gates.md` § Gate Content Contract (R-003)): What — the
-  PR/issue and its current BLOCK finding; Why — 4 failed review iterations against the
-  iteration budget; Evidence — the finding ids still open, from the ledger; Options —
-  continue iterating / accept and defer / manual fix, each with its consequence.
+  PR/issue and its open BLOCK findings; Why — the round limit in review-core.md § Review convergence;
+  Evidence — the finding ids still open, from the ledger; Options — re-plan / accept and defer /
+  manual fix, each with its consequence.
 - [ ] WARN → fix in PR OR defer (file issue + ledger deferred_to_issue)
 - [ ] Docs-only PR (determined by `reviewer.md` § Docs-Only Execution Mode Compliance's plan-first detection — file-extension match is a no-plan fallback only, not restated here) → orchestrator direct review, still run review-aggregate.ts
 - [ ] LGTM (aggregate lgtm: true) → proceed to phase loop (merge); review durable artifact promotion runs at merge step 2.5 (`phase-loop.md`, `implementer.md` § Promote Review Artifact) — not during this phase
@@ -33,7 +33,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 
 1. **Reviewer** — spawn `reviewer` with PR diff, plan Touch-Paths, V-code checklist.
 2. **Aggregate** — orchestrator runs `scripts/review-aggregate.ts` with reviewer JSON + issue/PR context.
-3. **Orchestrator** — append aggregate `findings` to ledger; route by `lgtm` and iteration budget.
+3. **Orchestrator** — append aggregate `findings` to ledger; route by `lgtm` and convergence rules.
 
 ## Reviewer prompt must include
 
@@ -54,12 +54,12 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - **Improvement Discoveries**: Audit the code for UX/UI polish, performance gains, test coverage gaps, and styling best practices. Log them as WARN findings with detailed summaries. Do not demand resolving them in the current PR (prevents `V-SCOPE-02` scope creep); the orchestrator will file them as new GitHub issues.
 - **Docs Currency (`V-DOCSYNC-01`)**: Reviewer must confirm any public-API/schema/config-surface change (`reviewer.md` § 5-Field Contract & Plan Compliance's `V-API-01` surface) ships with a same-PR documentation update (`**/*.md`, `documentation/**`, or inline docstring); missing update is `BLOCK`.
 - **Companion-File Audit (`V-ADA-01/02/03/05/06/07`)**: Reviewer must confirm ARCHITECTURE.md, decisions/INDEX.md currency, AGENTS.md, and conditional DESIGN.md per `reviewer.md` § Companion-File Audit; gated by `docs_governance.companion_files`. All WARN.
-- **Visual Evidence Audit (`V-VIS-01/02`)**: Reviewer must confirm `visual_evidence[]` presence/declaration on UI-affecting PRs per `reviewer.md` § Visual Evidence Audit; gated by `display_targets`.
+- **Visual Evidence Audit (`V-VIS-01/02`, `V-PROOF-01`)**: Reviewer must confirm `visual_evidence[]` presence/declaration on UI-affecting PRs per `reviewer.md` § Visual Evidence Audit; gated by `display_targets`. `V-PROOF-01` (BLOCK, `reviewer.md` § Runtime Proof Audit) is ungated: a user-visible change needs a `## Proof` PR-body section.
 - **Staged Artifact Carry Audit (`V-AUTO-02`, BLOCK)**: Reviewer must independently diff the issue's staged manifest against what the PR actually carried per `reviewer.md` § Staged Artifact Carry Audit; gated by `docs_governance.write_governance`.
 
 ## Gating
 
-See [review-core.md](review-core.md) for severity mapping, LGTM definition, and iteration budget.
+See [review-core.md](review-core.md) for severity mapping, LGTM definition, and convergence rules.
 
 | Severity | Action |
 |----------|--------|

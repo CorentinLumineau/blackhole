@@ -1,0 +1,241 @@
+import { runGlab, runGlabJson, runGlabText } from './glab-cli.ts';
+import type {
+  ForgeAdapter,
+  ForgeAuthStatus,
+  ForgeCheck,
+  ForgeIssue,
+  ForgePr,
+  IssueCreateParams,
+  IssueEditParams,
+  IssueListFilter,
+  PrCreateParams,
+} from './types.ts';
+
+type GlabIssueRow = {
+  iid?: number;
+  number?: number;
+  title: string;
+  description?: string;
+  body?: string;
+  labels?: string[];
+  milestone?: { title: string } | null;
+  state?: string;
+};
+
+type GlabMrRow = {
+  iid?: number;
+  number?: number;
+  title: string;
+  description?: string;
+  body?: string;
+  source_branch?: string;
+  headRefName?: string;
+  state?: string;
+  merged_at?: string | null;
+  mergedAt?: string | null;
+};
+
+function issueNumber(row: GlabIssueRow): number {
+  return row.iid ?? row.number ?? 0;
+}
+
+function mrNumber(row: GlabMrRow): number {
+  return row.iid ?? row.number ?? 0;
+}
+
+function mapIssue(row: GlabIssueRow): ForgeIssue {
+  const state = (row.state ?? 'opened').toUpperCase();
+  return {
+    number: issueNumber(row),
+    title: row.title,
+    body: row.body ?? row.description ?? '',
+    labels: (row.labels ?? []).map((name) => ({ name })),
+    milestone: row.milestone ?? null,
+    state: state === 'CLOSED' ? 'CLOSED' : 'OPEN',
+  };
+}
+
+function mapMr(row: GlabMrRow): ForgePr {
+  const stateRaw = (row.state ?? 'opened').toLowerCase();
+  const state =
+    stateRaw === 'merged' ? 'MERGED' : stateRaw === 'closed' ? 'CLOSED' : 'OPEN';
+  return {
+    number: mrNumber(row),
+    title: row.title,
+    body: row.body ?? row.description ?? '',
+    headRefName: row.headRefName ?? row.source_branch ?? '',
+    state,
+    mergedAt: row.mergedAt ?? row.merged_at ?? null,
+  };
+}
+
+export class GitLabForgeAdapter implements ForgeAdapter {
+  readonly forge = 'gitlab' as const;
+
+  constructor(readonly repo: string) {}
+
+  async authStatus(): Promise<ForgeAuthStatus> {
+    const result = runGlab(['auth', 'status']);
+    if (result.error?.code === 'ENOENT') {
+      return {
+        ok: false,
+        forge: 'gitlab',
+        host: null,
+        detail: 'GitLab CLI (glab) not found — install glab and run `glab auth login`',
+      };
+    }
+    if (result.status !== 0) {
+      return {
+        ok: false,
+        forge: 'gitlab',
+        host: null,
+        detail: result.stderr.trim() || result.stdout.trim() || 'glab auth status failed',
+      };
+    }
+    const hostMatch = result.stdout.match(/GitLab:\s*(\S+)/);
+    return {
+      ok: true,
+      forge: 'gitlab',
+      host: hostMatch?.[1] ?? null,
+    };
+  }
+
+  private repoFlag(): string[] {
+    return ['--repo', this.repo];
+  }
+
+  async issueList(filter: IssueListFilter = {}): Promise<ForgeIssue[]> {
+    const args = ['issue', 'list', ...this.repoFlag(), '--per-page', String(filter.limit ?? 200)];
+    if (filter.state === 'closed') args.push('--closed');
+    if (filter.state === 'open') args.push('--opened');
+    const rows = runGlabJson<GlabIssueRow[]>(args);
+    return rows.map(mapIssue);
+  }
+
+  async issueCreate(params: IssueCreateParams): Promise<ForgeIssue> {
+    const args = [
+      'issue',
+      'create',
+      ...this.repoFlag(),
+      '--title',
+      params.title,
+      '--description',
+      params.body,
+    ];
+    if (params.labels?.length) args.push('--label', params.labels.join(','));
+    return mapIssue(runGlabJson<GlabIssueRow>(args));
+  }
+
+  async issueEdit(number: number, params: IssueEditParams): Promise<void> {
+    const args = ['issue', 'update', String(number), ...this.repoFlag()];
+    if (params.title) args.push('--title', params.title);
+    if (params.body) args.push('--description', params.body);
+    runGlabText(args);
+  }
+
+  async issueComment(number: number, body: string): Promise<void> {
+    runGlabText(['issue', 'note', String(number), ...this.repoFlag(), '--message', body]);
+  }
+
+  async prList(filter: { state?: 'open' | 'closed' | 'all'; limit?: number } = {}): Promise<ForgePr[]> {
+    const args = ['mr', 'list', ...this.repoFlag(), '--per-page', String(filter.limit ?? 100)];
+    if (filter.state === 'closed') args.push('--closed');
+    if (filter.state === 'open') args.push('--opened');
+    const rows = runGlabJson<GlabMrRow[]>(args);
+    return rows.map(mapMr);
+  }
+
+  async prView(number: number): Promise<ForgePr> {
+    return mapMr(runGlabJson<GlabMrRow>(['mr', 'view', String(number), ...this.repoFlag()]));
+  }
+
+  async prCreate(params: PrCreateParams): Promise<ForgePr> {
+    const args = [
+      'mr',
+      'create',
+      ...this.repoFlag(),
+      '--title',
+      params.title,
+      '--description',
+      params.body,
+      '--source-branch',
+      params.head,
+      '--target-branch',
+      params.base,
+    ];
+    return mapMr(runGlabJson<GlabMrRow>(args));
+  }
+
+  async prComment(number: number, body: string): Promise<void> {
+    runGlabText(['mr', 'note', String(number), ...this.repoFlag(), '--message', body]);
+  }
+
+  async labelAdd(entity: { type: 'issue' | 'pr'; number: number }, labels: string[]): Promise<void> {
+    if (labels.length === 0) return;
+    const kind = entity.type === 'issue' ? 'issue' : 'mr';
+    runGlabText([kind, 'update', String(entity.number), ...this.repoFlag(), '--label', labels.join(',')]);
+  }
+
+  async labelRemove(entity: { type: 'issue' | 'pr'; number: number }, labels: string[]): Promise<void> {
+    if (labels.length === 0) return;
+    const kind = entity.type === 'issue' ? 'issue' : 'mr';
+    runGlabText([
+      kind,
+      'update',
+      String(entity.number),
+      ...this.repoFlag(),
+      '--unlabel',
+      labels.join(','),
+    ]);
+  }
+
+  // A `glab ci status` failure used to collapse to `[]` — indistinguishable from "no pipeline
+  // configured" (issue #864). The merge gate reads an empty check list as nothing blocking the
+  // merge, so a swallowed CLI failure here reads as CI green it never actually observed. Let the
+  // error propagate instead, matching `GitHubForgeAdapter.prChecks` (github.ts), which has never
+  // caught here — the caller must fail closed on a rejected `prChecks()`, not treat it as a clean
+  // check list (V-INT-01: one adapter behavior for the shared `ForgeAdapter` interface method).
+  //
+  // `glab ci status` wraps GitLab's `GetPipeline` — a single aggregate object, not a per-job
+  // array — so synthesizing checks from it can only ever produce one `{ name: 'pipeline' }` row
+  // regardless of how many jobs actually ran, violating the `ForgeAdapter` contract's per-check
+  // shape that `gitea.ts`/`github.ts` both honor (V-SOLID-03). Reading GitLab's public REST API
+  // directly via `glab api` (parallel to `runGhApiJson` in cli.ts) gives one row per real
+  // pipeline job instead.
+  async prChecks(number: number): Promise<ForgeCheck[]> {
+    const project = encodeURIComponent(this.repo);
+    const pipelines = runGlabJson<Array<{ id: number }>>([
+      'api',
+      `projects/${project}/merge_requests/${number}/pipelines`,
+    ]);
+    if (pipelines.length === 0) return [];
+    const latest = pipelines.slice().sort((a, b) => b.id - a.id)[0];
+    const jobs = runGlabJson<Array<{ name: string; status: string }>>([
+      'api',
+      `projects/${project}/pipelines/${latest.id}/jobs`,
+    ]);
+    return jobs.map((job) => ({
+      name: job.name,
+      status:
+        job.status === 'running'
+          ? 'IN_PROGRESS'
+          : job.status === 'pending' || job.status === 'created'
+            ? 'QUEUED'
+            : 'COMPLETED',
+      conclusion:
+        job.status === 'success'
+          ? 'SUCCESS'
+          : job.status === 'failed'
+            ? 'FAILURE'
+            : job.status === 'canceled'
+              ? 'CANCELLED'
+              : job.status === 'skipped'
+                ? 'SKIPPED'
+                : null,
+    }));
+  }
+}
+
+export function createGitLabAdapter(repo: string): GitLabForgeAdapter {
+  return new GitLabForgeAdapter(repo);
+}

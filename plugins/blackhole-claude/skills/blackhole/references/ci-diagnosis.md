@@ -18,7 +18,7 @@ The orchestrator runs diagnosis **inline** — no worker spawn (precedent: `revi
 Docs-only PRs):
 
 ```bash
-bun run scripts/ci-diagnosis.ts --pr <n> [--repo owner/name]
+bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/ci-diagnosis.ts --pr <n> [--repo owner/name]
 ```
 
 - **Foreground only** — the orchestrator awaits stdout JSON before mutating `queue.json` or the
@@ -85,13 +85,9 @@ When classification is **genuine** (or environment repair is exhausted):
 4. **Spawn implementer** on the next scheduling pass with CI context (below).
 
 The existing `phase-loop.md` checklist line ("BLOCK/WARN unresolved? → phase implement") and
-`review-core.md` § Review iteration budget are the retry ceiling — **no second counter**:
+`review-core.md` § Review convergence are the retry ceiling — **no second counter**:
 
-| `review_iteration` | Action |
-|--------------------|--------|
-| 1–3 | Auto-fix via implementer → re-review |
-| 4+ | Escalate to coordinator (`AskQuestion`) |
-| Hard ceiling: 5 | Stop auto-fix; require human triage |
+Round limits and the `rethink` escalation are defined only there.
 
 ## Implementer spawn framing
 
@@ -134,7 +130,7 @@ mutating `status` prematurely.
 
 - `phase-loop.md` § Merge protocol step 2 — sub-bullet 4 (still-red Permanent → this doc).
 - `merge-gate.md` § CI-wait poller — Reclassification clause after 2-retry cap.
-- `review-core.md` § Review iteration budget — CI-genuine failures consume the same counter.
+- `review-core.md` § Review convergence — CI-genuine failures consume the same counter.
 - `orchestrator-dispatch.md` § CI Failure Diagnosis Dispatch.
 - `orchestrator.md` § CI Failure Diagnosis.
 

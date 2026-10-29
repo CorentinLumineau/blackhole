@@ -3,6 +3,7 @@ type: analysis
 summary: "Synergy analysis identifying mercure parity gaps blackhole should close"
 skill: x-analyze
 created: 2026-07-22
+last_updated: 2026-09-04
 target: "blackhole ↔ mercure autonomous-parity synergy"
 status: draft
 review_trigger: "on ADR acceptance"

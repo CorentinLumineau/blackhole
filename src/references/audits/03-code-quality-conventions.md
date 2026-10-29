@@ -1,6 +1,6 @@
 ---
 section: Code Quality & Conventions
-vcodes: [V-SOLID-01, V-SOLID-02, V-SOLID-03, V-SOLID-04, V-SOLID-05, V-DRY-01, V-DRY-02, V-DRY-03, V-DRY-04, V-KISS-02, V-KISS-03, V-YAGNI-02, V-YAGNI-03, V-PAT-01, V-PAT-02, V-PAT-03, V-PAT-04]
+vcodes: [V-SOLID-01, V-SOLID-02, V-SOLID-03, V-SOLID-04, V-SOLID-05, V-DRY-01, V-DRY-02, V-DRY-03, V-DRY-04, V-KISS-02, V-KISS-03, V-YAGNI-02, V-YAGNI-03, V-PAT-01, V-PAT-02, V-PAT-03, V-PAT-04, V-PAT-05]
 ---
 ### Code Quality & Conventions
 *   **SOLID & DRY Compliance**:
@@ -34,3 +34,10 @@ vcodes: [V-SOLID-01, V-SOLID-02, V-SOLID-03, V-SOLID-04, V-SOLID-05, V-DRY-01, V
 *   **Design Pattern Review**: No God Objects (`V-PAT-01`), no circular dependencies between
     modules (`V-PAT-02`), no missing/swallowed error-handling pattern (`V-PAT-03`), no
     anti-pattern usage — singleton abuse, service locator (`V-PAT-04`).
+*   **Subtract-before-add** (`V-PAT-05`): when the diff adds a new path for a concern — a
+    second implementation, a new entry point, a replacement helper — confirm the same diff
+    deletes or reroutes the old path it supersedes. Flag a diff that leaves both live and
+    reachable. Exempt: an extraction that removes duplication or nesting in the same diff, or
+    one that splits an over-responsible unit. A new abstraction with only one call site is
+    `V-YAGNI-03`; a third variant of an already-solved concern is `V-INT-04` — do not
+    double-report.

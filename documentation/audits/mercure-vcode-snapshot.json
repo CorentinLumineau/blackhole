@@ -1,7 +1,7 @@
 {
-  "synced_at": "2026-09-06T22:17:16.774Z",
-  "mercure_version": "9.15.0",
-  "mercure_commit": "d4bfddf73a925b6d4b36e6478c48dc10b41d0480",
+  "synced_at": "2026-10-28T09:59:35.315Z",
+  "mercure_version": "9.16.1",
+  "mercure_commit": null,
   "source_files": [
     "mercure-plugin/rules/references/v-codes-ada.md",
     "mercure-plugin/rules/references/v-codes-architecture.md",
@@ -64,6 +64,10 @@
     "V-INT-04": {
       "severity": "MEDIUM",
       "description": "Pattern absent — new code at an integration touchpoint is missing a required convention from the Codebase Conventions catalog"
+    },
+    "V-INT-05": {
+      "severity": "HIGH",
+      "description": "Blast radius unproven — plan or review names impact outside the diff (callers, consumers, config, data, CI) without the unique safety fact proven by executing code; or the Blast Radius section is missing"
     },
     "V-API-01": {
       "severity": "HIGH",
@@ -135,7 +139,7 @@
     },
     "V-WORKTREE-03": {
       "severity": "MEDIUM",
-      "description": "Worktree retains branch checkout lock after its PR reached mergeable state (CI green + `ai-review:LGTM` + no conflict) — see `mercure-worktree-hygiene.md` § Release on PR-Mergeable"
+      "description": "Worktree retains branch checkout lock after its PR reached mergeable state (CI green + `ai-review:LGTM` + no conflict) — see `worktree-release.md`"
     },
     "V-GIT-01": {
       "severity": "HIGH",
@@ -175,7 +179,7 @@
     },
     "V-CHAIN-01": {
       "severity": "MEDIUM",
-      "description": "User-invocable workflow skill missing `## After Completion` section — every skill with `user-invocable: true` and `model:` frontmatter must end with an `## After Completion` section containing `AskUserQuestion` routing options. Exemptions: x-help (informational), 12 redirect stubs (no model: field), user-invocable: false skills"
+      "description": "User-invocable workflow skill missing `## After Completion` section — every skill with `user-invocable: true` and `model:` frontmatter must end with an `## After Completion` section containing `AskUserQuestion` routing options. Exemptions: x-help (informational), 11 redirect stubs (no model: field), user-invocable: false skills"
     },
     "V-DOC-01": {
       "severity": "MEDIUM",
@@ -309,6 +313,10 @@
       "severity": "MEDIUM",
       "description": "Anti-pattern usage (singleton abuse, service locator)"
     },
+    "V-PAT-05": {
+      "severity": "HIGH",
+      "description": "Subtract-before-add skipped — this diff adds an abstraction (helper, wrapper, layer) without a second call site, or adds a new path without first removing the old one (exempt: extraction that removes duplication or nesting in the same diff, or splits an over-responsible unit)"
+    },
     "V-PARETO-01": {
       "severity": "MEDIUM",
       "description": "Over-engineering beyond 80/20 scope"
@@ -348,6 +356,14 @@
     "V-SEC-07": {
       "severity": "MEDIUM",
       "description": "Adversarial validation gap — security finding reported as confirmed without an independent pass that tried to disprove it"
+    },
+    "V-SEC-08": {
+      "severity": "HIGH",
+      "description": "Destructive non-idempotent operation — workflow/script deletes tags, data, or prod resources before create, or a retry would not converge to the same state, or destruction runs without dry-run and backup"
+    },
+    "V-SEC-13": {
+      "severity": "HIGH",
+      "description": "Authz test missing — new or changed endpoint without 401, cross-account 403/404 (forged ids) and scope 403 tests, or a security opt-out not logged in the PR body. Surfaces, cases, trivial exemption: `security-sensitive-surfaces.md`"
     },
     "V-THREAT-01": {
       "severity": "HIGH",
@@ -397,6 +413,10 @@
       "severity": "HIGH",
       "description": "Coverage regression on changed files — line/function coverage dropped vs. pre-change baseline"
     },
+    "V-TEST-12": {
+      "severity": "HIGH",
+      "description": "Observed-artifact proof missing (PROOF) — completion claimed from suite-green without quoting the executed deliverable (command output, page, read-back value, or re-read diff)"
+    },
     "V-UX-01": {
       "severity": "MEDIUM",
       "description": "Information overload / no progressive disclosure — UI surfaces flat field dumps or fully-expanded views instead of tiered at-a-glance/summary/detail/raw disclosure"
@@ -431,11 +451,11 @@
     },
     "V-UX-04": {
       "severity": "HIGH",
-      "description": "Accessibility baseline violation — mechanical Lighthouse accessibility category at captured routes: landmarks, heading outline, accessible name, keyboard-focusable controls, WCAG AA contrast; static hunt/analyze path (Grep+Read, no browser) covers the same landmark/heading/name subset on page-level documents"
+      "description": "Accessibility baseline violation — mechanical accessibility-tree read at captured routes: landmarks, heading outline, accessible name, keyboard-focusable controls (WCAG AA contrast reported unavailable — no native measurement); static hunt/analyze path (Grep+Read, no browser) covers the same landmark/heading/name subset on page-level documents"
     },
     "V-UX-04a": {
       "severity": "MEDIUM",
-      "description": "Colour-only meaning — state, status, or category conveyed by colour alone; hybrid Lighthouse `use-of-color` plus screenshot judgment (sub-classification of V-UX-04)"
+      "description": "Colour-only meaning — state, status, or category conveyed by colour alone; screenshot judgment (sub-classification of V-UX-04)"
     },
     "V-UX-05": {
       "severity": "HIGH",

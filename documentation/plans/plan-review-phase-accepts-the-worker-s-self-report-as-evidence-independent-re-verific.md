@@ -1,9 +1,10 @@
 ---
 type: plan
+summary: "Design note for issue #795: weighs a mandatory reviewer source-verification and blast-surface obligation (A), only a new V-code for structurally unfalsifiable tests (B), or no protocol change (C); design-aggregate returned `blocked` (dominance, disagreement), so the choice went to the owner"
 status: current
 review_trigger: "on file change"
 created: 2026-09-04
-last_updated: 2026-09-04
+last_updated: 2026-09-23
 ---
 
 

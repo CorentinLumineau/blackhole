@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './fs.ts';
 import { validateStateWrite } from './state-write-guard.ts';
-import { root } from '../checks/check-utils.ts';
 
 /** Minimal queue issue shape for worktree → issue_ref resolution during Triage 1b. */
 export type QueueIssueForTriage = {
@@ -240,8 +239,14 @@ export const archiveConsumedFiles = ({
 // `{ ok: false }` to exercise the refusal branch (fs.renameSync must never run, exit code must
 // be non-zero) without needing a genuinely guard-rejecting ledger — the real write-protocol
 // flow only ever grows the findings count, so a real rejection cannot be manufactured here.
-export function main(deps: { validateStateWrite: typeof validateStateWrite } = { validateStateWrite }): void {
-  const campaignDir = path.join(root, '.blackhole');
+// `repoRoot` defaults to the working directory (the project being campaigned, even when this
+// script runs from an installed plugin copy); tests pass a temp dir so they never touch a real
+// `.blackhole/`.
+export function main(
+  deps: { validateStateWrite: typeof validateStateWrite } = { validateStateWrite },
+  repoRoot: string = process.cwd(),
+): void {
+  const campaignDir = path.join(repoRoot, '.blackhole');
   const ledgerPath = path.join(campaignDir, 'findings-ledger.json');
   const queuePath = path.join(campaignDir, 'queue.json');
 
@@ -255,7 +260,7 @@ export function main(deps: { validateStateWrite: typeof validateStateWrite } = {
     : {};
   const ledger = readJsonFile(ledgerPath, ledgerPath) as FindingsLedger;
 
-  const { ingested, ledger: updated, consumedFiles } = ingestHookEvents({ repoRoot: root, queueIssues, ledger });
+  const { ingested, ledger: updated, consumedFiles } = ingestHookEvents({ repoRoot, queueIssues, ledger });
   if (ingested === 0) {
     console.log('hook-event-triage: no hook events to ingest');
     return;
@@ -282,7 +287,7 @@ export function main(deps: { validateStateWrite: typeof validateStateWrite } = {
   // file(s) in place — the next run re-ingests and inflates `occurrences` by one, a visible,
   // bounded, self-correcting cost, versus archiving first and losing the finding forever if the
   // process dies before this rename.
-  archiveConsumedFiles({ repoRoot: root, consumedFiles });
+  archiveConsumedFiles({ repoRoot, consumedFiles });
   console.log(`hook-event-triage: ingested ${ingested} event(s) into ${updated.findings.length} total findings`);
 }
 
