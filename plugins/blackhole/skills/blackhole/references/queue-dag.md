@@ -217,6 +217,44 @@ For each pair in ready set, if `touch_paths` globs overlap on likely files,
 keep the issue earlier in `user_queue_order`; defer the other (set `blocked`
 with note `overlap with #N`).
 
+### Step 3b — Stack at dispatch (overlap with an open PR)
+
+Deferral alone cannot protect an overlapping issue once the blocker has an open, unmerged PR:
+under `merge_mode: leave-open` an LGTM'd PR counts as delivered while `main` still lacks its
+changes, so the "cleared" blocker would hand the next wave a stale base. Before creating a
+worktree, run `bun run scripts/stack-parent.ts --queue .blackhole/queue.json --issue <N>`
+(`pickStackParent`, `scripts/lib/stack-parent.ts`; optionally `--parent-files '{"<parent>": [...]}'`
+from `gh pr diff --name-only` and `--default-touch-paths '[...]'` from config). When it names a
+parent — the **tip** of the chain rooted at the lowest-numbered other issue with an open PR and
+overlapping paths, in any `merge_mode` — then:
+
+1. Cut the branch from the parent's branch (`git worktree add --no-track <path> -b
+   blackhole/issue-<N> origin/blackhole/issue-<parent>`) and open the PR with `--base
+   blackhole/issue-<parent>`.
+2. Write `stacked_on: <parent>` and `merge_after: [<parent>]` in the same atomic write that sets
+   `in-flight`, then run `scripts/stack-repair.ts capture --apply` for the tip (`merge-gate.md` § 7).
+3. Link the PR body with `Part of #<N>`, never `Closes #<N>`: `pr-lint.sh` rejects a closing keyword
+   on a non-default base. The post-merge retarget to `config.target_branch` switches it to
+   `Closes #<N>`.
+4. A fix-round push to the parent is propagated to each open child by **merging** the parent
+   branch into the child branch and pushing normally — never a rebase or force-push.
+
+**Precedence with Step 3.** When the overlapping blocker already has an open PR, stacking
+replaces the overlap deferral: the issue is not set `blocked` with `overlap with #N`. Step 3
+deferral still applies while the blocker has no PR yet. `merge_after: [<parent>]` is unioned
+with any declared `merge_after`/`depends_on`; `depends_on` keeps gating readiness (Step 2) and
+`stacked_on` only picks the branch base.
+
+**Which paths count.** The parent PR's actual changed files (`--parent-files`) are compared with
+the child's `touch_paths` when supplied, else declared globs are compared. A `touch_paths` entry equal
+to a config `default_touch_paths` member, or a broad glob (a wildcard after at most one segment), is unknown and
+never triggers stacking alone (defaults and broad globs such as `src/**`, `**`, `*.md` are dropped
+individually from a mixed list); an empty `--parent-files` list is unknown, not "no overlap", and falls
+back to the parent's narrowed `touch_paths`. A non-empty list is glob-matched against the child's
+paths. A plan's narrowed `touch_paths` are what make stacking fire.
+
+No parent (or `stacked_on` already set) means the usual `origin/<target_branch>` branch point.
+
 **Migration slot:** at most one `in-flight` issue with `migration_slot: true`.
 Others with `migration_slot: true` stay `blocked` until slot frees.
 
