@@ -3210,6 +3210,12 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     ['install -t DIR', `install -t ${m} ./a.txt`],
     ['ln -s SRC DST', `ln -s ./a.txt ${m}/f.txt`],
     ['ln SRC DST', `ln ./a.txt ${m}/f.txt`],
+    ['install -d', `install -d ${m}/x`],
+    ['install --directory', `install --directory ${m}/x`],
+    ['ln -t', `ln -t ${m} ./a.txt`],
+    ['ln --target-directory=', `ln --target-directory=${m} ./a.txt`],
+    ['cp -at', `cp -at ${m} ./a.txt`],
+    ['cp -rt', `cp -rt ${m} ./a.txt`],
   ];
   for (const [label] of OUT('x')) {
     test(`write-target bypass is denied: ${label}`, async () => {
@@ -3237,6 +3243,7 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     'cp ./a --target-directory=./dir',
     'ln -s ./a ./b',
     'install ./a ./b',
+    'install -d ./nd',
     'echo x >| ./f',
     'make 2>&1',
   ]) {

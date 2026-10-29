@@ -264,7 +264,12 @@ const findCopyMoveTargets = (tokens) => {
   for (const name of ['cp', 'mv', 'install', 'ln']) {
     const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
     if (cmdIdx === -1) continue;
-    const { dir, rest } = splitTargetDirectory(positionalArgsBeforeRedirect(tokens, cmdIdx + 1));
+    const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
+    // `install -d`/`--directory` creates every positional as a directory: all are write targets.
+    if (name === 'install' && args.some((t) => t === '--directory' || /^-[a-zA-Z]*d[a-zA-Z]*$/.test(t))) {
+      return args.filter((t) => !t.startsWith('-')).map(stripQuotes);
+    }
+    const { dir, rest } = splitTargetDirectory(args);
     if (dir === null && rest.length < 2) continue;
     const written = dir !== null ? [dir] : [rest[rest.length - 1]];
     if (name === 'mv') written.push(...rest);
