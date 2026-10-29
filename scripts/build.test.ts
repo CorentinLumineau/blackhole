@@ -23,6 +23,7 @@ import {
 import {
   compileGeminiTree,
   copyTemplatesDir,
+  copyShadcnSkill,
   writeGeminiManifest,
   compileCodexTree,
 } from './lib/build/trees.ts';
@@ -550,6 +551,81 @@ describe('copyTemplatesDir', () => {
     } finally {
       fs.rmSync(workspaceRoot, { recursive: true, force: true });
       fs.rmSync(distributionRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('bundled shadcn skill wiring', () => {
+  test('implementer inlines the shadcn gate and refuses apply / init --preset without owner OK', () => {
+    const implementer = read('src/agents/implementer.md');
+    expect(implementer).toContain('Bundled shadcn skill');
+    expect(implementer).toContain('never run `shadcn apply` or');
+    expect(implementer).toContain('init --preset');
+    expect(implementer).toContain('without the owner');
+  });
+
+  test('planner and DESIGN.md-authority audit cite the wrapper', () => {
+    expect(read('src/agents/planner.md')).toContain('shadcn-skill.md');
+    expect(read('src/references/audits/10-companion-file-audit.md')).toContain('shadcn apply');
+  });
+});
+
+describe('shipped shadcn allowed-tools', () => {
+  const shipped = ['skills', 'codex-skills', 'plugins/blackhole-claude/skills', 'plugins/blackhole/skills', 'plugins/blackhole-agent-plugins/skills', '.claude/skills', '.cursor/skills', '.agents/build/skills']
+    .map((d) => path.join(root, d, 'shadcn', 'SKILL.md'))
+    .filter((f) => fs.existsSync(f));
+  test('no built copy pre-approves apply or init', () => {
+    expect(shipped.length).toBeGreaterThan(0);
+    for (const f of shipped) {
+      const tools = /^allowed-tools:(.*)$/m.exec(fs.readFileSync(f, 'utf-8'))![1];
+      expect(tools).not.toMatch(/\b(apply|init)\b/);
+    }
+  });
+});
+
+describe('copyShadcnSkill', () => {
+  test('copies vendor/shadcn/skill into destRoot/skills/shadcn, narrowing only allowed-tools', () => {
+    const destRoot = makeTempDir();
+    try {
+      copyShadcnSkill(destRoot);
+      const destSkill = path.join(destRoot, 'skills', 'shadcn', 'SKILL.md');
+      const srcSkill = path.join(root, 'vendor', 'shadcn', 'skill', 'SKILL.md');
+      expect(fs.existsSync(destSkill)).toBe(true);
+      const stripTools = (t: string) => t.replace(/^allowed-tools:.*$/m, '');
+      const shipped = fs.readFileSync(destSkill, 'utf-8');
+      expect(stripTools(shipped)).toBe(stripTools(fs.readFileSync(srcSkill, 'utf-8')));
+      const tools = /^allowed-tools:(.*)$/m.exec(shipped)![1];
+      expect(tools).not.toMatch(/\b(apply|init)\b/);
+      expect(tools).not.toMatch(/shadcn@latest \*\)/);
+      expect(fs.existsSync(path.join(destRoot, 'skills', 'shadcn', 'cli.md'))).toBe(true);
+      expect(fs.existsSync(path.join(destRoot, 'skills', 'shadcn', 'evals'))).toBe(false);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('Codex layout uses codex-skills/shadcn, not skills/shadcn', () => {
+    const destRoot = makeTempDir();
+    try {
+      copyShadcnSkill(destRoot, 'codex-skills');
+      expect(fs.existsSync(path.join(destRoot, 'codex-skills', 'shadcn', 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(destRoot, 'skills', 'shadcn', 'SKILL.md'))).toBe(false);
+    } finally {
+      fs.rmSync(destRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('compileGeminiTree and compileCodexTree both ship the bundled skill', () => {
+    const geminiRoot = makeTempDir();
+    const codexRoot = makeTempDir();
+    try {
+      compileGeminiTree(geminiRoot, '.agents/build', '.agents/build/rules/blackhole-vcodes.md');
+      compileCodexTree(codexRoot, 'codex-skills', 'codex-skills/blackhole/references/blackhole-vcodes.md');
+      expect(fs.existsSync(path.join(geminiRoot, 'skills', 'shadcn', 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(codexRoot, 'codex-skills', 'shadcn', 'SKILL.md'))).toBe(true);
+    } finally {
+      fs.rmSync(geminiRoot, { recursive: true, force: true });
+      fs.rmSync(codexRoot, { recursive: true, force: true });
     }
   });
 });

@@ -124,6 +124,11 @@ triggers.
 
 ## 📦 Installation Paths
 
+Installing Blackhole also ships the official [shadcn/ui skill](https://ui.shadcn.com/docs/skills)
+(`skills/shadcn/`, pinned at `vendor/shadcn/`). Campaign workers load it for UI work when the
+project has `components.json`; `DESIGN.md` stays authoritative — see
+[the shadcn skill runbook](documentation/runbooks/shadcn-skill.md).
+
 ### Cursor (git submodule)
 ```bash
 git submodule add https://github.com/CorentinLumineau/blackhole .cursor
@@ -168,7 +173,8 @@ symlink target above and is a maintainer-surface manifest, not part of the insta
 
 ### agent-plugins.org (skills-only shell)
 Target F ships a portable **skill surface only** at `plugins/blackhole-agent-plugins/` — root
-`plugin.json` (agent-plugins.org v1.0.0 schema) plus `skills/blackhole/{SKILL.md,references/}`.
+`plugin.json` (agent-plugins.org v1.0.0 schema) plus `skills/blackhole/{SKILL.md,references/}`
+and the bundled `skills/shadcn/`.
 The eight campaign agents and protocol rules are **not** portable under the current spec; install
 Cursor, Claude Code, Codex, or Antigravity paths above for the full campaign harness (ADR-021).
 ```bash
@@ -191,8 +197,8 @@ to skip while iterating on other targets) and commit the changed outputs.
 
 ## 💻 Development & Compilation
 
-All source lives under `src/` — every platform tree below it is a `bun run build` output, never
-hand-edited.
+Campaign source lives under `src/`; the official shadcn skill is vendored at `vendor/shadcn/`.
+Every platform tree below those inputs is a `bun run build` output, never hand-edited.
 
 `bun run build` also emits `plugins/blackhole-claude/` — the isolated Claude Code marketplace
 bundle (ADR-009): a co-located `.claude-plugin/plugin.json` + `agents/` + `skills/` + `rules/` +

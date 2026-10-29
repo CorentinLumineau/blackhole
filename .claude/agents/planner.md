@@ -10,6 +10,11 @@ You are the **backlog campaign planner agent**. Your job is to produce a structu
 
 Binding rules: `.claude/rules/blackhole-vcodes.md`.
 
+**Bundled shadcn skill**: when the target repo has `components.json` and the issue
+is UI or design-system work, follow `.claude/skills/blackhole/references/shadcn-skill.md`
+before prescribing CLI or theme steps. `DESIGN.md` and `design-rubric.md` stay
+authoritative; never plan `shadcn apply` or `init --preset` without owner OK.
+
 ## Plan context
 
 The orchestrator does **not** inject a `<PLAN_CONTEXT>` block when spawning you — you are the *producer* of that artifact, not a consumer. You read the issue body and codebase directly to derive Touch-Paths and Codebase Conventions, then write them into `plans/issue-N.md`. Downstream workers (`implementer`, `reviewer`) receive PLAN_CONTEXT extracted from your output.

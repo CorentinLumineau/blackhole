@@ -48,6 +48,11 @@ export const validatePluginTreeShape = (
     errors.push(`missing ${labels.treePrefix}skills/blackhole/SKILL.md`);
   }
 
+  const shadcnPath = path.join(treeRoot, 'skills', 'shadcn', 'SKILL.md');
+  if (!fs.existsSync(shadcnPath)) {
+    errors.push(`missing ${labels.treePrefix}skills/shadcn/SKILL.md`);
+  }
+
   const refsDir = path.join(treeRoot, 'skills', 'blackhole', 'references');
   if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {
     errors.push(`missing or empty ${labels.treePrefix}skills/blackhole/references/`);
@@ -131,6 +136,10 @@ export const agentPluginsTreeErrors = (destRoot: string, manifestPath: string): 
   const skillPath = path.join(destRoot, 'skills', 'blackhole', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
     errors.push('missing skills/blackhole/SKILL.md');
+  }
+
+  if (!fs.existsSync(path.join(destRoot, 'skills', 'shadcn', 'SKILL.md'))) {
+    errors.push('missing skills/shadcn/SKILL.md');
   }
 
   const refsDir = path.join(destRoot, 'skills', 'blackhole', 'references');
@@ -237,6 +246,9 @@ export const codexTreeErrors = (rootDir: string, agentFiles: string[], expectedA
   const skillPath = path.join(rootDir, 'codex-skills', 'blackhole', 'SKILL.md');
   if (!fs.existsSync(skillPath)) {
     errors.push('Codex: missing codex-skills/blackhole/SKILL.md');
+  }
+  if (!fs.existsSync(path.join(rootDir, 'codex-skills', 'shadcn', 'SKILL.md'))) {
+    errors.push('Codex: missing codex-skills/shadcn/SKILL.md');
   }
   const refsDir = path.join(rootDir, 'codex-skills', 'blackhole', 'references');
   if (!fs.existsSync(refsDir) || fs.readdirSync(refsDir).length === 0) {

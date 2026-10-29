@@ -47,6 +47,33 @@ export const copyHooksDir = (destRoot: string) => {
   fs.cpSync(src, path.join(destRoot, 'hooks'), { recursive: true });
 };
 
+const SHADCN_RUNNERS = ['npx shadcn@latest', 'pnpm dlx shadcn@latest', 'bunx --bun shadcn@latest'];
+const SHADCN_SAFE_SUBCOMMANDS = ['view', 'search', 'list', 'info', 'docs', 'add', 'diff'];
+
+/** Shipped `allowed-tools` for the bundled skill: only read-only/additive subcommands, so
+ * `apply` and `init` (unpinned remote code, owner-OK gated) always prompt. */
+export const SHADCN_SHIPPED_ALLOWED_TOOLS = SHADCN_RUNNERS.flatMap((r) =>
+  SHADCN_SAFE_SUBCOMMANDS.map((c) => `Bash(${r} ${c} *)`),
+).join(', ');
+
+/** Copy of the pinned official shadcn/ui skill (vendor/shadcn/skill/) into a plugin tree's
+ * skills/ (or Codex `codex-skills/`) directory. Raw copy (processFile's markdown pass would
+ * rewrite upstream paths) except SKILL.md's `allowed-tools` line, narrowed per
+ * SHADCN_SHIPPED_ALLOWED_TOOLS; vendor/ itself stays verbatim. */
+export const copyShadcnSkill = (destRoot: string, skillsDir = 'skills') => {
+  const src = path.join(root, 'vendor', 'shadcn', 'skill');
+  if (!fs.existsSync(path.join(src, 'SKILL.md'))) {
+    throw new Error(`copyShadcnSkill: missing ${path.join(src, 'SKILL.md')}`);
+  }
+  const dest = path.join(destRoot, skillsDir, 'shadcn');
+  fs.cpSync(src, dest, { recursive: true });
+  const skillPath = path.join(dest, 'SKILL.md');
+  const text = fs.readFileSync(skillPath, 'utf-8');
+  const narrowed = text.replace(/^allowed-tools:.*$/m, `allowed-tools: ${SHADCN_SHIPPED_ALLOWED_TOOLS}`);
+  if (narrowed === text) throw new Error('copyShadcnSkill: SKILL.md has no allowed-tools line to narrow');
+  fs.writeFileSync(skillPath, narrowed);
+};
+
 /**
  * Compiles a full plugin tree — agents? + rules + SKILL.md + references + templates — for a
  * given platform `target` (default 'gemini', preserving every existing call site's behavior
@@ -92,6 +119,7 @@ export const compileGeminiTree = (
   );
   copyTemplatesDir(destRoot);
   copyHooksDir(destRoot);
+  copyShadcnSkill(destRoot);
 };
 
 export const writeGeminiManifest = (destPath: string, manifest: Record<string, unknown>) => {
@@ -121,4 +149,5 @@ export const compileCodexTree = (rootDir: string, agentDir: string, rulesPath: s
     rulesPath,
     'codex'
   );
+  copyShadcnSkill(rootDir, 'codex-skills');
 };
