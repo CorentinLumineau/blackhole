@@ -6,8 +6,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/validate-bash-command.js",
-            "timeout": 5
+            "command": "bun run \"${CLAUDE_PLUGIN_ROOT}/hooks/validate-bash-command.js\"",
+            "timeout": 15,
+            "onFailure": "block"
           }
         ]
       },
@@ -16,8 +17,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun run ${CLAUDE_PLUGIN_ROOT}/hooks/validate-file-changes.js",
-            "timeout": 5
+            "command": "bun run \"${CLAUDE_PLUGIN_ROOT}/hooks/validate-file-changes.js\"",
+            "timeout": 15,
+            "onFailure": "block"
           }
         ]
       }

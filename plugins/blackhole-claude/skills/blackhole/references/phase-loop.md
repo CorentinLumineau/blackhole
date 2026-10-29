@@ -5,7 +5,7 @@
 ```
 - [ ] Auto forge sync (native — no user prompt)
 - [ ] BLOCK/WARN unresolved? → phase implement (same issue)
-- [ ] LGTM AND mergeEligible(issue)? → merge PR (runbook quality gates)
+- [ ] LGTM AND mergeEligible(issue) AND low-risk own PR? → squash-merge; else `needs-chef` (Chef decides)
 - [ ] queue.json: status merged, phase done
 - [ ] Resolve/defer ledger entries for this issue/PR
 - [ ] forge-sync.md protocol
@@ -43,7 +43,11 @@
   scoped to admin scheduling), treat the issue as delivered for campaign-complete purposes only:
   annotate `queue.json`'s `notes` field (not `status`/`phase`) — e.g.
   `"delivered-at-LGTM (leave-open) — awaiting human merge"` — and leave the PR
-  open. Before this narrowing, a `leave-open` PR could be annotated "delivered" while carrying an
+  open. Delivered is not merged: overlap deferral (`queue-dag.md` Step 3) alone leaves the next
+  wave branching from a `main` without this PR's changes, so an issue whose `touch_paths` overlap
+  an open leave-open PR is stacked on it at dispatch (`queue-dag.md` Step 3b) instead of fanned out
+  from the target branch; hot-file and generated-tree conflicts between such siblings follow
+  `merge-conflict-protocol.md` § Hot files and generated trees. Before this narrowing, a `leave-open` PR could be annotated "delivered" while carrying an
   unresolved merge conflict or red CI, because Step 0.5/0.6/1 were never reached at all under the
   old unconditional bypass. The actual external merge is picked up later by the normal
   forge-sync externally-observed-merge reconciliation path (unchanged,
@@ -95,7 +99,8 @@ deliberately has no `queue.json`/`config.json` home, so it cannot be set once an
 D5 narrowing as Step 0.5 above).
 
 1. `gh pr view <n> --json headRefOid` equals local HEAD
-2. CI-wait: a detached background poll, never a foreground agent sleep. `gh pr
+2. CI-wait (on `ci_wait: pr-events`, wait for the PR's CI event instead, per
+   `project-thread-mode.md` § CI wait): a detached background poll, never a foreground agent sleep. `gh pr
    checks <n>` must reach green (except Vercel preview — expected fail), but
    the orchestrator does not block the turn on it synchronously
    (`V-PARETO-01` — no LLM turn sleeping >10 min in a foreground poll loop).
@@ -131,7 +136,7 @@ D5 narrowing as Step 0.5 above).
    `documentation/reviews/` + `documentation/INDEX.md`, commit and push on the PR branch. If
    promotion fails to land `documentation/reviews/review-{slug}.md` in the PR, **STOP** — do not
    call `gh pr merge`. Before merge (including consumer `merge-pr.sh` / Pattern B paths), run
-   `bun run --cwd <abs repo-root> scripts/check-review-artifact.ts --config <abs> --issue <N>
+   `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/check-review-artifact.ts --config <abs> --issue <N>
    --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head <sha>
    --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--head` is the reviewed head
    passed to promotion, not the post-promotion head (`implementer.md` § Promote Review Artifact);
@@ -144,13 +149,25 @@ D5 narrowing as Step 0.5 above).
    (`merge-gate.md` §5) — exit non-zero blocks merge the same way. Inert when either governance
    flag is `false`. Bypassed under `merge_mode: leave-open`.
 3. Run the project's build command in main clone (if applicable)
-4. `gh pr merge --squash` (use `&&` only, never `;`) — immediately after this
-   command succeeds, in the **same** atomic `queue.json` write that sets
-   `status: merged`, also set `merged_by: blackhole` on the issue (ADR-005 —
-   see `merge-gate.md` § 3 for why: this is the sole signal `V-MERGE-01`/
-   `V-MERGE-02` attribution relies on; `status: in-flight` alone does not
-   indicate blackhole itself performed the merge and must not be used for
-   attribution).
+4. **Low-risk automerge gate** (`merge-gate.md` § 9), then squash-merge. Snapshot the PR's
+   files (`gh pr diff <n> --name-status`) and run
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-risk.ts --name-status <abs> [--patches <abs>] --head-ref <branch>`
+   (pass `--patches` from `gh pr diff <n>` so `deletes-data` sees SQL, not only deleted paths).
+   Exit 0 (`automerge: true`): CI is already green from step 1, the PR is blackhole's own
+   (`blackhole/issue-N`), and the diff touches none of the high-risk categories — `gh pr merge
+   --squash` (use `&&` only, never `;`). Immediately after this command succeeds, in the
+   **same** atomic `queue.json` write that sets `status: merged`, also set `merged_by: blackhole`
+   on the issue (ADR-005 — see `merge-gate.md` § 3 for why: this is the sole signal
+   `V-MERGE-01`/`V-MERGE-02` attribution relies on; `status: in-flight` alone does not indicate
+   blackhole itself performed the merge and must not be used for attribution).
+   Exit 1: **do not merge**. Ensure label `needs-chef` exists (`gh label create needs-chef
+   --color E4A820 --description "Awaiting Chef (orchestrator) merge decision"` — ignore
+   already-exists), `gh pr edit <n> --add-label needs-chef`, and if no existing comment starts
+   with `needs-chef:`, `gh pr comment <n>` with the script's `comment` field. Set `queue.json`
+   `notes` to `needs-chef: <categories>` and **STOP** this issue's merge for the turn — Chef
+   (orchestrator / owner) decides. Do not re-comment while the label is already present.
+   Under `merge_mode: leave-open`: skip the squash-merge half (unchanged); still run the hold
+   half on exit 1 so Chef sees why a green PR was not merged.
 4.5. **Main-clone freshness refresh (issue #792, mandatory)**: immediately after step 4
    succeeds, run `git fetch origin main && git merge --ff-only origin/main` in the
    orchestrator's own main clone. `.blackhole/` is fully `.gitignore`-excluded
@@ -194,6 +211,7 @@ D5 narrowing as Step 0.5 above).
 
 For issue N, PR P:
 
+- Before resetting, record the final `review_iteration` as `rounds_to_lgtm` and the reviewed head SHAs as `reviewed_head_shas` on the `queue.json` entry, and copy `rounds_to_lgtm` onto each ledger row for the issue (`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/review-noise-report.ts` reads it)
 - Reset `review_iteration` to 0 on merge
 - `fixed-in-pr` → `resolved`, `resolved_at` set
 - `open` BLOCK on merged files → file new issue or `resolved` if obsolete
@@ -231,7 +249,7 @@ file or schedule discoveries until incident mode exits.
 - For every codebase improvement suggestion:
   1. Calculate the Priority score: $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$.
   2. If $\text{Priority} \ge 30$:
-     - If not yet filed, execute `gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)` (explain context, gain, effort, and priority score).
+     - If not yet filed, execute `gh issue create --title "[Discovery] <Name>" --body "..." $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args)` (explain context, gain, effort, and priority score).
      - Map the ledger's `deferred_to_issue` field to the new issue ID.
      - The next auto-sync step reconciles the new issue into `queue.json` as a new campaign backlog item.
   3. If $\text{Priority} < 30$:
@@ -240,7 +258,7 @@ file or schedule discoveries until incident mode exits.
 ## Campaign complete
  
 ```
-gh issue list --state open $(bun scripts/forge-scope.ts list-args) → []
+gh issue list --state open $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args) → []
 gh pr list --state open → [] (excluding LGTM'd `leave-open` PRs, which count as delivered)
 queue.json: no in-flight entries
 ```
@@ -316,7 +334,7 @@ increment, do not mark a dry wave, do not touch `hunt_state` at all. Re-evaluate
    `worker-schemas.md` contract has no `CRITICAL` tier; `severity: BLOCK` stands in for the
    ADR's "CRITICAL", per the plan's Codebase Conventions "Severity-term reconciliation"
    note). Findings that clear the gate are filed via the **existing** `gh issue create
-   --title "..." --body "..." $(bun scripts/forge-scope.ts create-args)` path (the same
+   --title "..." --body "..." $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args)` path (the same
    mechanism § Continuous Discovery of Improvements already uses — never a second filing code
    path, `V-INT-02`) with:
    - Title: `[Kaizen] <summary>`

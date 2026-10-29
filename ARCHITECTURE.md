@@ -40,7 +40,7 @@ backlog-campaign/
 ├── templates/             # Hook templates used by the build
 ├── AGENTS.md              # Quick-start agent roster + trigger index
 ├── README.md              # Project pitch, HITL model, Pareto gating explanation
-└── CLAUDE.md               # Entry point for Claude Code sessions in this repo
+└── .claude/CLAUDE.md      # Claude Code project memory (not plugin-shipped; see skills/blackhole)
 ```
 
 **Golden rule**: `src/` is the only editable source tree. Every platform directory above it
@@ -275,7 +275,7 @@ co-located `*.test.ts`.
 
 ## 10. Agent Notes
 
-- **Entry points**: `CLAUDE.md` / `AGENTS.md` at repo root route a session into the blackhole
+- **Entry points**: `.claude/CLAUDE.md` / `AGENTS.md` route a session into the blackhole
   skill (`SKILL.md`, `.claude/skills/blackhole/SKILL.md`); the five-phase loop is defined in
   `src/references/blackhole-protocol.md` (compiled to every platform's `references/` dir).
 - **Key patterns**: `src/` is the only hand-edited source — every other agent/skill/rule/plugin
@@ -349,6 +349,9 @@ co-located `*.test.ts`.
   semantic against the explicit rule in merge-conflict-protocol.md — never restate procedures
   inline in consumers; semantic hunks block with conflict_hunks[] surfaced to the owner
   (ADR-023)
+- Blackhole squash-merges only its own green, low-risk PRs (no auth/login, secrets/env, prod DB,
+  migrations, `.github/workflows`, release/tag tooling, or data deletion). Any other PR stays
+  open with `needs-chef` for Chef (orchestrator) to decide (`merge-gate.md` § 9).
 - Campaign implementers must never delegate a PR fix back to an external review bot (e.g.
   posting `/git-fix-pr` when ActionMan/workclaude is installed on the consumer forge) — findings
   are applied in-process and the bot's verdict is re-checked on the new HEAD SHA. (ADR-026)

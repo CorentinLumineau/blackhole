@@ -1,6 +1,7 @@
 # Forge Sync — Reconcile queue.json with GitHub
 
-Uses `gh` CLI.
+Uses `gh` CLI. When `route.forge_channel` in `.blackhole/run-context.json` is `rest` or `mcp`,
+run each `gh` command below through its row in `forge-channels.md`.
 {{#cursor}}
 All commands need `required_permissions: ["full_network"]` in the Cursor sandbox.
 {{/cursor}}

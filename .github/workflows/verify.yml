@@ -85,6 +85,25 @@ jobs:
       - name: Run install:verify
         run: bun run install:verify
 
+      # Claude Code plugin schema gate (2.1.295+). `claude plugin validate --strict` is a local
+      # static check; `claude plugin test` runs only when the plugin ships a tests/ tree.
+      # GitHub-hosted PR runners do not preinstall the CLI; self-hosted push already has it.
+      # Pin the npm package — `install.sh` latest can change --strict semantics under our feet.
+      - name: Setup Claude Code CLI
+        if: runner.environment != 'self-hosted'
+        run: |
+          npm i -g @anthropic-ai/claude-code@2.1.296
+          echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
+
+      - name: Validate Claude plugin (strict)
+        run: |
+          set -euo pipefail
+          claude plugin validate --strict .
+          claude plugin validate --strict plugins/blackhole-claude
+          if [ -d plugins/blackhole-claude/tests ] || [ -d tests ]; then
+            claude plugin test
+          fi
+
   release-notes-gate:
     name: Release Notes Gate
     runs-on: [self-hosted, mba]

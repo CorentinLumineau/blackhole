@@ -4,8 +4,8 @@ summary: "Mercure sync audit tracking upstream skill/agent drift"
 status: current
 review_trigger: "on mercure release"
 created: 2026-07-14
-last_updated: 2026-07-26
-last_reviewed_mercure_version: v9.7.0
+last_updated: 2026-10-28
+last_reviewed_mercure_version: v9.16.1
 related:
   - .claude/skills/prj-mercure-sync/SKILL.md
   - documentation/audits/analysis-blackhole-adaptive-phase-routing.md
@@ -328,12 +328,64 @@ touched rows): the five `in-flight` refs from Runs 3–4 (#306, #308, #309, #310
 **CLOSED** on the forge. Those rows are candidates for an `in-flight → covered` transition once
 re-verified against `src/`.
 
+## Run 6 — 2026-10-28 (release-mode sweep, `v9.7.0` → `v9.16.1`)
+
+### Scope
+
+15 tags above the `v9.7.0` watermark (`v9.8.0` … `v9.16.1`, 2026-07-29 → 2026-10-26). Release notes
+read for every tag; mechanism detail read from the local `9.16.1` cache
+(`~/.claude/plugins/cache/mercure/mercure/9.16.1/rules/references/v-codes-*.md`). The watermark
+lagged the matrix: the #461 reconciliation and #869 had already verified 46 rows at v9.11.0/v9.15.0,
+so most v9.8–v9.11 mechanisms were re-verifications, not new rows.
+
+### Mechanism inventory and verdicts
+
+| Mechanism (mercure version) | Row | Verdict |
+|---|---|---|
+| Subtract-before-add `V-PAT-05` (9.16.0) | PM-103 | ADAPT → [#1040](https://github.com/CorentinLumineau/blackhole/issues/1040), Priority 45 |
+| Blast radius with executed safety fact `V-INT-05` (9.16.0) | PM-102 | ADAPT into `V-SCOPE-03` + ADR-036 seam → [#1041](https://github.com/CorentinLumineau/blackhole/issues/1041), Priority 40 |
+| Destructive non-idempotent ops, mercure `V-SEC-08` (9.16.0) | PM-104 | ADOPT under a fresh ID (collides with blackhole `V-SEC-08`) → [#1042](https://github.com/CorentinLumineau/blackhole/issues/1042), Priority 40 |
+| Host-resource spawn gate `resource-gate.sh` (9.16.0) | PM-107 | ADAPT → [#1043](https://github.com/CorentinLumineau/blackhole/issues/1043), Priority 35 |
+| Static UX codes `V-UX-04` subset/`05`/`07`/`08` (9.13.0) | PM-106 | ADOPT → [#1044](https://github.com/CorentinLumineau/blackhole/issues/1044), Priority 32 |
+| Observed-artifact proof `V-TEST-12` (9.16.0) | PM-105 | covered — Verification Evidence Gate `evidence {command, result}`, `V-BRIEF-01`, `V-GATE-01` |
+| Worktree release at mergeable `V-WORKTREE-03` (9.8.0) | PM-108 | N/A — orchestrator merges immediately on mergeability |
+| Stacked milestone branches (9.14.2) | PM-109 | N/A — dependency waits end on autonomous merge, not a human |
+| Usage pacing, band mod, native deny/ask list, initiative `Workflow` loop (9.13–9.16) | PM-110 | N/A — hard rejection #2 (Claude-Code-only) |
+| Hook removal (9.16.0) | PM-086 | covered, divergence recorded — blackhole keeps fail-closed hooks (#1021) |
+| Comment discipline `V-DOC-05..07` (9.11.0) | PM-090 | re-verified, covered |
+| Visual evidence gate / native-browser order (9.9.0, 9.16.x) | PM-100 | re-verified, covered |
+| Owner ruling `V-ADA-09` (9.9.0) | PM-101 | unchanged, adapted (leg (a) still open) |
+
+Not matrix rows, recorded so a later run does not re-open them: forge list pagination (9.14.0
+`listLabels` fix) — blackhole's `scripts/lib/forge-adapter/github-rest.ts:70-94` `listPaged` already
+paginates, no label listing exists; duplicate-ADR check (9.13.0) — `V-ADR-05`; publish-only size gate
+(9.10.1/9.11.0) — content gates run in `bun run verify`; release mirror parity and branch-then-tag
+push (9.14.1/9.14.3) — maintainer tooling, `scripts/release.ts:213-214` already pushes branch then tag;
+skill retirements, Cursor/OpenCode packaging, statusline, `x-prompt continue` — mercure-only surface.
+
+### V-code snapshot refresh (step 11)
+
+`documentation/audits/mercure-vcode-snapshot.json` regenerated from the 9.16.1 cache (115 codes, was
+9.15.0). New mercure IDs: `V-INT-05`, `V-PAT-05`, `V-SEC-08`, `V-SEC-13`, `V-TEST-12`. `V-SEC-08` and
+`V-SEC-13` are shared IDs with equal tier-mapped severity (BLOCK), so `V-MPARITY-01` does not flag them;
+`V-SEC-08`'s *meaning* collision is handled in #1042.
+
+### Outcome
+
+5 issues filed (#1040–#1044), all above the 30 floor and exactly at `max_issues_per_run` (5;
+`.blackhole/config.json` absent here, defaults apply). Zero above-floor items withheld. Each verified
+against the 9.16.1 cache and current `src/` immediately before filing (`V-HUNT-01`); deduped against
+all 600 most recent issues (open and closed) and matrix `in-flight` refs. Watermark `v9.7.0` → `v9.16.1`.
+
 ## Design note for future runs
 
 - Run 2 reviewed a genuine version delta (`v9.4.0` → `v9.6.0`), both tags landing 2026-07-14.
   As in Run 1, it filed **one** Pareto-qualifying item and explicitly recorded the REJECT
   (browser-automation UX swarm) so a future run doesn't re-surface it as a "new" gap.
-- The watermark is now `v9.7.0` (the latest tag, Run 5). With no version delta outstanding, the
+- The watermark is now `v9.16.1` (Run 6). Run 6 hit the filing cap exactly. Next run should be
+  backlog mode: PM-087/088/091 are still `gap` (48) but their issues #450/#451/#453 are all CLOSED —
+  re-verify against `src/` for a `gap → covered` transition before anything else.
+- (Run 5 note, kept for history) The watermark was `v9.7.0` (the latest tag, Run 5). With no version delta outstanding, the
   next run should be **backlog mode** against the live parity matrix. Two candidate targets:
   (a) re-verify the five closed `in-flight` refs from Runs 3–4 (#306, #308–#311) for an
   `in-flight → covered` transition, which is cheap matrix-accuracy work; (b) the top remaining

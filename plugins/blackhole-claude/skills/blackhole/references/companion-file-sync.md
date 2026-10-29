@@ -20,7 +20,7 @@ Inert when `docs_governance.enabled` does not resolve to `true` or
    staged.
 2. Run:
    ```bash
-   bun run --cwd <worktree-abs> scripts/lib/companion-file-sync.ts --repo-root <worktree-abs> --diff-file <paths.txt>
+   bun run --cwd <worktree-abs> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/companion-file-sync.ts --repo-root <worktree-abs> --diff-file <paths.txt>
    ```
    `--cwd` MUST equal `--repo-root` (issue #798 — pins module resolution to the worktree, the
    same tree the CLI operates on).

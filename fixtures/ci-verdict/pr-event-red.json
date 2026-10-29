@@ -1,0 +1,11 @@
+{
+  "description": "Check runs plus combined statuses: one real failure, one in progress, and a failing Vercel preview that never gates",
+  "check_runs": [
+    { "name": "Protocol Conformance", "status": "completed", "conclusion": "failure" },
+    { "name": "e2e-critical", "status": "in_progress", "conclusion": null }
+  ],
+  "statuses": [
+    { "context": "Vercel – invest", "state": "failure" },
+    { "context": "ci/legacy", "state": "success" }
+  ]
+}

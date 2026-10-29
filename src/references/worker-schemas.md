@@ -273,7 +273,7 @@ below).
 | `findings` | finding[] | yes (empty array = no issues found) |
 | `error` | string | when `status: error` |
 | `recheck` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in recheck mode (`review-core.md` § Recheck mode); absent/omitted for a normal full-audit review |
-| `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent security verification mode (`review-core.md` § Independent security verification, `reviewer.md` § Independent Security Verification Mode); absent/omitted for every other dispatch |
+| `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent verification mode (a `finding_id` is assigned for every non-pre-existing BLOCK) (`review-core.md` § Independent security verification, `reviewer.md` § Independent Security Verification Mode); absent/omitted for every other dispatch |
 | `verification_legs` | `{direction, mode, evidence}[]` | optional — ADR-036 (issue #815); a clean/negative investigation leg that produced no `Finding` object |
 
 The reviewer return declares no PR-number field — the PR under review is the dispatch's own
@@ -582,12 +582,13 @@ Orchestrator invokes after `reviewer` completes. Not a worker agent — determin
 
 | Field | Values | Required |
 |-------|--------|----------|
-| `status` | `approved` \| `changes_requested` \| `error` | yes |
+| `status` | `approved` \| `changes_requested` \| `rethink` \| `error` | yes — `rethink` is not LGTM (`review-core.md` § Review convergence) |
 | `findings` | finding[] | yes |
 | `blockers_count` | number | yes |
 | `lgtm` | boolean | yes |
 | `pareto_candidates` | `{ summary, priority, file }[]` | yes (may be empty) |
 | `unresolved_recheck` | `{ finding_id, verdict, reason }[]` | yes (may be empty) — issue #485: a `recheck[]` `verdict: fixed` entry whose `finding_id` could not be linked to any prior finding's ledger `id`; non-empty forces `lgtm: false` |
+| `rechecked` | `{ ledger_id, vcode, file }[]` | only with `--review-iteration` — fresh findings dropped as repeats of an already-ledgered root cause |
 | `error` | string | when `status: error` |
 
 Each `findings[]` entry additionally carries `issue_ref: number` and `pr_ref: number | null`

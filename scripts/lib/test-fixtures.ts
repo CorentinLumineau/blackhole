@@ -14,8 +14,11 @@ import { compileAgentPluginsSkillTree } from './build/targets.ts';
 import {
   AGENT_PLUGINS_DISTRIBUTION_AGENT_DIR,
   AGENT_PLUGINS_DISTRIBUTION_VCODES,
+  CLAUDE_DISTRIBUTION_CITED_AGENT_DIR,
+  CLAUDE_DISTRIBUTION_CITED_VCODES,
+  root,
 } from './build/paths.ts';
-import { root } from './build/paths.ts';
+import { finalizeClaudePluginBundle } from './build/claude-plugin-runtime.ts';
 import { makeTempDir, readJsonFile } from './fs.ts';
 
 // ADR-007 R6 — shared bun:test fixture kit: distribution-tree population, temp-dir lifecycle, and
@@ -139,9 +142,16 @@ export const runPreToolUseHook = async (
   if (scratchpadDirEnv) extraEnv.BLACKHOLE_SCRATCHPAD_DIR = scratchpadDirEnv;
   if (claudeProjectDir) extraEnv.CLAUDE_PROJECT_DIR = claudeProjectDir;
   extraEnv.BLACKHOLE_CLAUDE_HOME = claudeHome || NO_CLAUDE_HOME_SENTINEL;
+  // The containment guards only act on campaign workers (ADR-047), and these suites exercise
+  // those guards, so a payload is a worker's unless it says otherwise. A payload that carries an
+  // `agent_type` key at all (even `undefined`, which serializes away) is sent as written.
+  const sent =
+    payload && typeof payload === 'object' && !('agent_type' in payload)
+      ? { ...(payload as Record<string, unknown>), agent_type: 'implementer' }
+      : payload;
   const proc = Bun.spawn({
     cmd: ['bun', 'run', path.join(hooksDir, script)],
-    stdin: new Blob([JSON.stringify(payload)]),
+    stdin: new Blob([JSON.stringify(sent)]),
     stdout: 'pipe',
     stderr: 'pipe',
     cwd,
@@ -365,10 +375,11 @@ export const readHookEvents = (repoRoot: string): Record<string, unknown>[] => {
 export const populateClaudeFixtureTree = (destRoot: string): void => {
   compileGeminiTree(
     destRoot,
-    'plugins/blackhole-claude',
-    'plugins/blackhole-claude/rules/blackhole-vcodes.md',
+    CLAUDE_DISTRIBUTION_CITED_AGENT_DIR,
+    CLAUDE_DISTRIBUTION_CITED_VCODES,
     { includeAgents: true, target: 'claude' },
   );
+  finalizeClaudePluginBundle(destRoot);
   const pluginDir = path.join(destRoot, '.claude-plugin');
   fs.mkdirSync(pluginDir, { recursive: true });
   fs.writeFileSync(

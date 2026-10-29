@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseMdFrontmatter } from '../lib/build/content.ts';
+import { parseFrontmatterFields, parseMdFrontmatter } from '../lib/build/content.ts';
 import { root, read, type CheckResult } from './check-utils.ts';
 import { findMissingGateMarkers, readComposedAgentDoc } from '../lib/check-common.ts';
 
@@ -19,6 +19,48 @@ export const AGENT_TOOL_POLICY_DENY_MATRIX: Record<string, string[] | null> = {
   'router.md': ['Write', 'Edit', 'Delete'],
   'investigator.md': ['Write', 'Edit', 'Delete'],
   'hunter.md': ['Write', 'Edit', 'Delete'],
+};
+
+/** Claude Code 2.1.292–2.1.296 frontmatter: `effort: low` for triage/routing, `high` for
+ * review/verification, `autoCompactWindow` (token threshold) for long-running workers. Absent
+ * keys must stay absent — a stray `effort:` on planner/implementer would pin session effort
+ * against `worker_effort_policy` spawn routing in model-routing.md. */
+export type AgentFrontmatterPolicy = { effort?: 'low' | 'high'; autoCompactWindow?: string };
+
+export const AGENT_FRONTMATTER_POLICY: Record<string, AgentFrontmatterPolicy> = {
+  'coordinator.md': { effort: 'low' },
+  'router.md': { effort: 'low' },
+  'orchestrator.md': { effort: 'low', autoCompactWindow: '100000' },
+  'planner.md': { autoCompactWindow: '100000' },
+  'implementer.md': { autoCompactWindow: '100000' },
+  'reviewer.md': { effort: 'high' },
+  'hunter.md': { effort: 'high', autoCompactWindow: '100000' },
+  'investigator.md': { autoCompactWindow: '100000' },
+};
+
+export const validateAgentEffortFrontmatter = (
+  file: string,
+  fm: Record<string, string>,
+  expected: AgentFrontmatterPolicy,
+): string[] => {
+  const errors: string[] = [];
+  if (expected.effort) {
+    if (fm.effort !== expected.effort) {
+      errors.push(`${file}: expected effort: ${expected.effort}, got ${fm.effort ?? '(absent)'}`);
+    }
+  } else if (fm.effort) {
+    errors.push(`${file}: unexpected effort: ${fm.effort}`);
+  }
+  if (expected.autoCompactWindow) {
+    if (fm.autoCompactWindow !== expected.autoCompactWindow) {
+      errors.push(
+        `${file}: expected autoCompactWindow: ${expected.autoCompactWindow}, got ${fm.autoCompactWindow ?? '(absent)'}`,
+      );
+    }
+  } else if (fm.autoCompactWindow) {
+    errors.push(`${file}: unexpected autoCompactWindow: ${fm.autoCompactWindow}`);
+  }
+  return errors;
 };
 
 export const validateAgentToolPolicyFrontmatter = (
@@ -85,6 +127,10 @@ const checkAgentFrontmatter = (): CheckResult => {
       if (!frontmatter.includes(key)) missing.push(`${file}: missing ${key}`);
     }
     if (/\bmodel:/.test(frontmatter)) missing.push(`${file}: model must be absent (inherit harness default)`);
+    const policy = AGENT_FRONTMATTER_POLICY[file];
+    if (policy) {
+      missing.push(...validateAgentEffortFrontmatter(file, parseFrontmatterFields(frontmatter), policy));
+    }
   }
 
   if (missing.length) return { id: 'V-AGENT-01', ok: false, detail: missing.join('; ') };

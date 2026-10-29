@@ -16,6 +16,7 @@
 
 const { loadFilePatterns, matchFirst } = require('./utils/pattern-loader');
 const { shouldDeferToMercure } = require('./utils/sibling-plugin-guard');
+const { isCampaignScoped } = require('./utils/campaign-scope');
 const {
   readHookInput,
   allWorktreeRoots,
@@ -143,7 +144,10 @@ const main = () => {
     });
     return;
   }
-  if (roots) {
+  // Containment exists for campaign workers; an ordinary session in the same repo may write
+  // wherever its own permissions allow (ADR-047, utils/campaign-scope.js).
+  const scoped = isCampaignScoped(input, assignedRoot);
+  if (scoped && roots) {
     if (filePath && !isInsideAnyRoot(filePath, roots)) {
       denyAndRecord({
         hook: HOOK,
@@ -157,7 +161,7 @@ const main = () => {
       });
       return;
     }
-  } else if (filePath) {
+  } else if (scoped && filePath) {
     // The cwd fallback bound is only as good as `cwd` itself: a session whose cwd resolves to
     // `/`, `$HOME`, or a bare temp root is no narrower than no bound at all — the exact hole
     // #510/F-00088 closed for `scratchpad_dir`. Reuses that same breadth check (`V-INT-02`)

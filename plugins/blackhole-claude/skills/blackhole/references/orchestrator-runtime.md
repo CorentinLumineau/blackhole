@@ -24,8 +24,31 @@ parallel planners, implementers, reviewers):
 
 ### Spawn
 
-1. Log `WAVE <N>: issues [...]` before the first spawn.
-2. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
+1. Every spawn round, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/pace-gate.ts --current <planned batch> --max <parallel_max>`,
+   which reads the cached statusline `rate_limits`, to set this round's target: `STOP-NEW` spawns
+   nothing (let in-flight workers finish, checkpoint, tell the owner), `THROTTLE` targets one,
+   `HOLD` keeps the planned batch, `SCALE-UP` targets one more (only when another ready issue
+   exists, never above `parallel_max`), and `unavailable` or a non-zero exit keeps the planned
+   batch and logs the reason. Thresholds: `resource_policy.pace` (`config-template.md`).
+2. When the round includes test/build-bearing workers (implementers, or any worker that runs
+   `build`/`verify`/`test`), run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/resource-gate.ts --requested <target>` and spawn
+   at most its `batch_size`; it can only cut the target, never raise it: `go` keeps it, `degrade`
+   cuts it to one, `defer` spawns none this turn (log the reasons and retry next turn),
+   `unavailable` keeps it and logs the reason. A non-zero exit (bad flags or a malformed config)
+   is handled as `unavailable`, with its stderr line logged. Thresholds: `resource_policy.gate`.
+3. Record the round: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/pace-log.ts --planned <planned batch> --pace '<pace-gate JSON>'
+   [--resource '<resource-gate JSON>']` appends the pace verdict, resource verdict, planned batch,
+   effective concurrency (the smaller of the two gates) and reasons to `.blackhole/pace-log.jsonl`
+   (newest 200 rounds kept). Run it even when a gate said `STOP-NEW` or `defer`; a non-zero exit is
+   logged and the turn goes on.
+   **STOP-NEW is a pause, never a failure**: the round spawns nothing, in-flight workers finish
+   and are triaged as usual, `queue.json` and `findings-ledger.json` stay untouched (no issue
+   marked `failed` or `blocked`, no ledger row, no retry counter bumped), the checkpoint notes
+   "paused by pace gate" with the reason, and the turn ends. The next turn re-runs step 1 and
+   resumes normally the first time the verdict is no longer `STOP-NEW`; `unavailable` resumes too.
+   Issues left `ready` stay `ready`. A `defer` from the resource gate is handled the same way.
+4. Log `WAVE <N>: issues [...]` before the first spawn.
+5. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
 
 ### Barrier
 
@@ -57,7 +80,7 @@ below, classify each worker into exactly one of:
    is the exact spawn `name` this worker was given (`orchestrator-delegation.md` § Worker spawn
    model, deterministic spawn name). On more than one match, take the most recently modified; on
    a tied or unavailable `mtime`, abort this rung and fall through to rung 2 rather than risk
-   applying a stale prior-turn return. Run `bun run scripts/validate-worker-json.ts
+   applying a stale prior-turn return. Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/validate-worker-json.ts
    --recover-transcript <path> --role <role>`. Exit `0` → parse stdout as the recovered return
    JSON, tag `notes: recovered-via-transcript`, done. If `$CLAUDE_CODE_SESSION_ID` is unset —
    skip this rung entirely (a harness-capability check, not a fault) and go straight to rung 2.
@@ -177,12 +200,15 @@ after reading checkpoint and forge sync:
    the current revision and are not stale.
 4. Inspect worktrees per `recovery-protocol.md` §2.
 5. Refresh the advisory plugin-cache drift signal (issue #800, ADR-030): run
-   `bun run scripts/plugin-drift-signal.ts`, existence-gated on `scripts/plugin-drift-signal.ts`
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/plugin-drift-signal.ts`, existence-gated on `scripts/plugin-drift-signal.ts`
    being present (a consumer repo without the script simply has nothing to run — no error).
+   **Local-only**: skip it when the run context routes `state_store: branch`. That machine
+   installed the plugin fresh for this session and is reclaimed afterwards, so there is no
+   long-lived cache to drift; say "plugin drift: skipped (ephemeral machine)" once in the turn.
    Surfaced on the `bun run status` dashboard when it reports content drift; full mechanism:
    `blackhole-state.md` § Plugin-Drift Signal.
 6. **Ingest hook events at turn start** (ADR-042, issue #893): run
-   `bun run scripts/lib/hook-event-triage.ts`, existence-gated on that script being present
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/hook-event-triage.ts`, existence-gated on that script being present
    (a consumer repo without it simply has nothing to run — no error). This closes the gap Triage
    step 1b alone leaves open — a fail-open recorded between worker batches (or in a turn that
    spawns no workers at all) previously sat unread until the next background-worker barrier;
@@ -194,6 +220,11 @@ after reading checkpoint and forge sync:
    any refusal (`blackhole-state.md` § Write protocol), so a failed ingest here is a missed
    visibility opportunity, never a corruption risk. The next turn's step 1b (when workers spawn)
    or this same step 6 (next turn) will retry against whatever events remain on disk.
+
+7. **Resume after a pace pause**: when the latest `.blackhole/pace-log.jsonl` line has
+   `rate_limit_stop: true`, treat the previous turn as a pause, not a failure: no recovery action,
+   no re-route, no retry counter. Run the spawn-round gates (§ Background worker barrier, Spawn
+   steps 1-3) as usual; the campaign continues from `queue.json` exactly as it was left.
 
 **MUST** complete `recovery-protocol.md` §5 orchestrator checklist before spawning
 `implementer` when any in-flight issue has a dirty worktree or recovery stash. Do not spawn

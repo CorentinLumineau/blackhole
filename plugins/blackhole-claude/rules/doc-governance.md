@@ -195,7 +195,7 @@ artifact from source, never patch it incrementally). A producer that wants a cor
 only author `summary` on the doc's own frontmatter (or on the staging manifest's `new_file` entry
 for an investigator note — the carry-step writes it onto the promoted note's frontmatter); there
 is no second staged row file and no `append_row` manifest entry for this file to author.
-`bun run scripts/generate-doc-index.ts --check` (wired into `bun run verify` as
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/generate-doc-index.ts --check` (wired into `bun run verify` as
 `V-DOCHEALTH-01`/`V-DOCHEALTH-02`/`V-DOCHEALTH-04`, all blocking) fails the build the moment the
 committed file and the live tree's frontmatter disagree, so there is no drift window for a
 hand-edit to introduce.

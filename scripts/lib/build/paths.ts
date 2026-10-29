@@ -23,6 +23,12 @@ export const DISTRIBUTION_VCODES = 'plugins/blackhole/rules/blackhole-vcodes.md'
 export const CLAUDE_DISTRIBUTION_ROOT = path.join('plugins', 'blackhole-claude');
 export const CLAUDE_DISTRIBUTION_AGENT_DIR = 'plugins/blackhole-claude';
 export const CLAUDE_DISTRIBUTION_VCODES = 'plugins/blackhole-claude/rules/blackhole-vcodes.md';
+/** Placeholder Claude Code replaces with the plugin's install path in agent, skill and hook
+ * bodies. Compiled bundle content cites paths under it, because the repo-relative paths above only
+ * exist inside a blackhole checkout, never in the plugin cache a consumer installs into. */
+export const CLAUDE_PLUGIN_ROOT_TOKEN = '${CLAUDE_PLUGIN_ROOT}';
+export const CLAUDE_DISTRIBUTION_CITED_AGENT_DIR = CLAUDE_PLUGIN_ROOT_TOKEN;
+export const CLAUDE_DISTRIBUTION_CITED_VCODES = `${CLAUDE_PLUGIN_ROOT_TOKEN}/rules/blackhole-vcodes.md`;
 
 /** Maintainer-only, repo-root native target (issue #472) — NOT a consumer install surface (see
  * DISTRIBUTION_ROOT/CLAUDE_DISTRIBUTION_ROOT above for those). This is where blackhole's own

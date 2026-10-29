@@ -35,6 +35,13 @@ Mutations to `.blackhole/queue.json` and
 | `archive/` | Rotated ledger snapshots and pre-mutation `queue.json` snapshots (gitignored) |
 | `archive/hook-events-<ts>/` | Consumed PreToolUse hook-event files, archived rather than deleted once ingested (gitignored, ADR-042/#893) |
 | `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
+| `pace-log.jsonl` | Per-spawn-round pace/resource verdicts, planned batch and effective concurrency, newest 200 lines (gitignored, written by `scripts/pace-log.ts`, diagnostic only) |
+| `run-context.json` | What this run can do and the route resolved from it, rewritten at every bootstrap and resume (see `run-context.md`) |
+
+On a machine whose disk does not outlive the session (`state_store: branch`), these files are
+also kept on the `blackhole/state` branch: pushed at every turn end and restored on resume
+(`state-branch.md`). `archive/`, `hook-events/`, `.tmp/`, `*.tmp` and the per-machine signals
+(`run-context.json`, `plugin-drift.json`, `doc-health.json`, `pace-log.jsonl`) stay local.
 
 Full schemas: `.agents/build/skills/blackhole/references/findings-ledger.md`,
 `queue-dag.md`.

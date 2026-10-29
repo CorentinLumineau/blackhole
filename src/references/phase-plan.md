@@ -6,6 +6,7 @@
 - [ ] queue entry: phase plan (from handle)
 - [ ] Spawn planner to create Plan artifact → plans/<issue>.md or issue comment (directive derived from `route` when present, see § Route-derived planner spawn)
 - [ ] Plan-time V-code scan → findings-ledger (phase: plan)
+- [ ] Security/authz requirement (`V-SEC-13`): if scope touches a security-sensitive path or adds/changes an endpoint per Mercure `mercure-plugin/rules/references/security-sensitive-surfaces.md` (single source of truth: the installed Mercure plugin at `rules/references/security-sensitive-surfaces.md`, pinned to Mercure edd7acc; Mercure is private, so do not link its GitHub URL — do not copy its lists here) §1–§2, the plan lists each endpoint, includes a RED-first authz-test task + acceptance criterion (§3: 401, cross-account 403/404 forged ids, scope 403, middleware/proxy.ts matcher) and sets `security_review_required: true`; a planned skip only under §4 and carried to the PR body (§5)
 - [ ] Out-of-scope → gh issue create + ledger deferred_to_issue
 - [ ] issue-splitting.md — if plan reveals multi-PR scope, split NOW
 - [ ] clarify-gates.md — AskQuestion if still ambiguous

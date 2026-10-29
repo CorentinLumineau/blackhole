@@ -1,0 +1,26 @@
+{
+  "description": "Claude Code CLI on the owner's machine with gh logged in",
+  "env": {
+    "CLAUDECODE": "1",
+    "CLAUDE_CODE_ENTRYPOINT": "cli"
+  },
+  "probes": {
+    "ghAuthenticated": true
+  },
+  "tools": [
+    "workflow",
+    "agent",
+    "background-agents",
+    "ask-user-question"
+  ],
+  "expected": {
+    "pattern": "C",
+    "forge_channel": "gh",
+    "question_channel": "ask-user-question",
+    "ci_wait": "poll",
+    "state_store": "local",
+    "schedule": "turn",
+    "missing": [],
+    "warnings": []
+  }
+}

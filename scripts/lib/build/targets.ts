@@ -24,8 +24,8 @@ import {
   DISTRIBUTION_AGENT_DIR,
   DISTRIBUTION_VCODES,
   CLAUDE_DISTRIBUTION_ROOT,
-  CLAUDE_DISTRIBUTION_AGENT_DIR,
-  CLAUDE_DISTRIBUTION_VCODES,
+  CLAUDE_DISTRIBUTION_CITED_AGENT_DIR,
+  CLAUDE_DISTRIBUTION_CITED_VCODES,
   CLAUDE_NATIVE_ROOT,
   AGENT_PLUGINS_DISTRIBUTION_ROOT,
   AGENT_PLUGINS_DISTRIBUTION_AGENT_DIR,
@@ -43,6 +43,7 @@ import {
 } from './manifests.ts';
 import { compileGeminiTree, compileCodexTree, copyHooksDir, copyCursorCloudConfig, writeGeminiManifest, copyShadcnSkill } from './trees.ts';
 import { mergeClaudeSettingsHooks } from './claude-native-settings.ts';
+import { finalizeClaudePluginBundle } from './claude-plugin-runtime.ts';
 
 const version = projectIdentity.version;
 
@@ -158,10 +159,9 @@ export const compileClaudeNativeTarget = () => {
 export const compileClaudeMarketplaceTarget = (): string => {
   console.log('Compiling Claude Code marketplace bundle (plugins/blackhole-claude/)...');
   const claudeDistRoot = path.join(root, CLAUDE_DISTRIBUTION_ROOT);
-  compileGeminiTree(claudeDistRoot, CLAUDE_DISTRIBUTION_AGENT_DIR, CLAUDE_DISTRIBUTION_VCODES, {
-    includeAgents: true,
-    target: 'claude',
-  });
+  const options = { includeAgents: true, target: 'claude' } as const;
+  compileGeminiTree(claudeDistRoot, CLAUDE_DISTRIBUTION_CITED_AGENT_DIR, CLAUDE_DISTRIBUTION_CITED_VCODES, options);
+  finalizeClaudePluginBundle(claudeDistRoot);
   return claudeDistRoot;
 };
 

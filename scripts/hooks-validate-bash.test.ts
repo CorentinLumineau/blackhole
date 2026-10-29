@@ -85,7 +85,8 @@ describe('validate-bash-command.js', () => {
 
   test('agent_id/agent_type are recorded as null, not omitted, when absent from the payload (#907)', async () => {
     await withTempGitRepo('blackhole-hook-bash-', async (repo) => {
-      const result = await runPreToolUseHook(SCRIPT, bashPayload('rm -rf /'), repo);
+      // An explicit `agent_type: undefined` serializes away, so the field is truly absent.
+      const result = await runPreToolUseHook(SCRIPT, { ...bashPayload('rm -rf /'), agent_type: undefined }, repo);
 
       expect(result.exitCode).toBe(2);
       const events = readHookEvents(repo);
@@ -151,9 +152,7 @@ describe('validate-bash-command.js', () => {
       );
 
       expect(result.exitCode).toBe(0);
-      expect(permissionDecision(result.stdout)).toBe('allow');
-      const out = JSON.parse(result.stdout);
-      expect(out.systemMessage).toMatch(/force/i);
+      expect(result.stdout.trim()).toBe('');
 
       const events = readHookEvents(repo);
       expect(events).toHaveLength(1);
@@ -340,7 +339,7 @@ describe('validate-bash-command.js — git push force-refspec evasion (review ro
       const result = await runPreToolUseHook(SCRIPT, bashPayload('git push origin +main'), repo);
 
       expect(result.exitCode).toBe(0);
-      expect(permissionDecision(result.stdout)).toBe('allow');
+      expect(result.stdout.trim()).toBe('');
 
       const events = readHookEvents(repo);
       expect(events).toHaveLength(1);
@@ -1711,7 +1710,8 @@ describe('validate-bash-command.js — worktree-removal guard path-qualified git
 
         // A warn is a recorded allow, not a refusal — the tier drives the exit code.
         expect(result.exitCode).toBe(tier === 'block' ? 2 : 0);
-        expect(permissionDecision(result.stdout)).toBe(tier === 'block' ? 'deny' : 'allow');
+        if (tier === 'block') expect(permissionDecision(result.stdout)).toBe('deny');
+        else expect(result.stdout.trim()).toBe('');
 
         const events = readHookEvents(repo);
         expect(events).toHaveLength(1);
@@ -1736,7 +1736,7 @@ describe('validate-bash-command.js — worktree-removal guard path-qualified git
         const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
 
         expect(result.exitCode).toBe(0);
-        expect(permissionDecision(result.stdout)).toBe('allow');
+        expect(result.stdout.trim()).toBe('');
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -1744,6 +1744,42 @@ describe('validate-bash-command.js — worktree-removal guard path-qualified git
       });
     },
   );
+});
+
+// Subcommand-spelling bypass: the certain-`git` path compared `worktree`/`remove` raw, so a quoted
+// spelling of either token produced no detected invocation. Denied like the bare form; the allow
+// control proves a quoted spelling against a safe (pushed) worktree is still permitted.
+describe('validate-bash-command.js — worktree-removal guard subcommand-spelling bypass', () => {
+  test.each([
+    ['both single-quoted', (worktree: string) => `git 'worktree' 'remove' ${worktree}`],
+    ['worktree double-quoted', (worktree: string) => `git "worktree" remove ${worktree}`],
+    ['remove double-quoted', (worktree: string) => `git worktree "remove" ${worktree}`],
+  ])('deny: %s subcommand spelling is still detected', async (label, buildCommand) => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-subcmd-',
+      `blackhole/issue-subcmd-${label.replace(/[^a-z0-9]+/gi, '-')}`,
+      async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(buildCommand(worktree)), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      },
+    );
+  });
+
+  test('allow: quoted subcommand spelling against a pushed worktree is still allowed', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-subcmd-',
+      'blackhole/issue-subcmd-allow',
+      async (mainRepo, worktree, push) => {
+        push();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git 'worktree' "remove" ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+      },
+    );
+  });
 });
 
 // Executable-spelling bypass (#788): the guard's detection stage compared the leading token
@@ -3105,7 +3141,7 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
 
       expect(result.exitCode).toBe(0);
-      expect(permissionDecision(result.stdout)).toBe('allow');
+      expect(result.stdout.trim()).toBe('');
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
@@ -3128,7 +3164,7 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
 
       expect(result.exitCode).toBe(0);
-      expect(permissionDecision(result.stdout)).toBe('allow');
+      expect(result.stdout.trim()).toBe('');
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
@@ -3145,7 +3181,7 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
 
       expect(result.exitCode).toBe(0);
-      expect(permissionDecision(result.stdout)).toBe('allow');
+      expect(result.stdout.trim()).toBe('');
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
@@ -3154,6 +3190,185 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       });
     });
   });
+
+  for (const build of [
+    (t: string) => `echo x >&${t}`,
+    (t: string) => `echo x >& ${t}`,
+    (t: string) => `echo x &>${t}`,
+    (t: string) => `mv ${t} ./moved.txt`,
+    (t: string) => `mv -f ${t} ./moved.txt`,
+  ]) {
+    test(`ampersand-redirect and mv-source escapes are denied: ${build('<outside>')}`, async () => {
+      await withLinkedWorktree('blackhole-hook-amp-', async (mainRepo, worktree) => {
+        const command = build(path.join(mainRepo, 'victim.txt'));
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({
+          tier: 'block',
+          pattern_id: 'bash-outside-assigned-worktree',
+        });
+      });
+    });
+  }
+
+  for (const command of ['make 2>&1', 'echo x >&2', 'echo x 2>&1 | cat', 'echo x >&-', 'mv ./a.txt ./b.txt']) {
+    test(`fd duplication and in-tree mv are not file targets: ${command}`, async () => {
+      await withLinkedWorktree('blackhole-hook-amp-ok-', async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
+  const OUT = (m: string) => [
+    ['clobber redirect', `echo x >| ${m}/f.txt`],
+    ['cp -t before sources', `cp -t ${m} ./a.txt`],
+    ['cp -t after sources', `cp ./a.txt -t ${m}`],
+    ['cp --target-directory=', `cp ./a.txt --target-directory=${m}`],
+    ['cp --target-directory DIR', `cp ./a.txt --target-directory ${m}`],
+    ['mv -t after sources', `mv ./a.txt -t ${m}`],
+    ['install SRC DST', `install ./a.txt ${m}/f.txt`],
+    ['install -t DIR', `install -t ${m} ./a.txt`],
+    ['ln -s SRC DST', `ln -s ./a.txt ${m}/f.txt`],
+    ['ln SRC DST', `ln ./a.txt ${m}/f.txt`],
+    ['install -d', `install -d ${m}/x`],
+    ['install --directory', `install --directory ${m}/x`],
+    ['ln -t', `ln -t ${m} ./a.txt`],
+    ['ln --target-directory=', `ln --target-directory=${m} ./a.txt`],
+    ['cp -at', `cp -at ${m} ./a.txt`],
+    ['cp -rt', `cp -rt ${m} ./a.txt`],
+    ['truncate -s0', `truncate -s0 ${m}/f.txt`],
+    ['truncate --size=0', `truncate --size=0 ${m}/f.txt`],
+    ['dd of=', `dd if=/dev/zero of=${m}/f.txt`],
+    ['dd of quoted', `dd of="${m}/f.txt"`],
+    ['rsync file', `rsync a ${m}/f.txt`],
+    ['rsync dir', `rsync -a ./d/ ${m}/`],
+    ['rsync trailing --exclude', `rsync -a ./d/ ${m}/ --exclude x`],
+    ['rsync trailing -e', `rsync -a ./d/ ${m}/ -e ssh`],
+    ['rsync trailing --delete', `rsync ./d ${m}/ --delete`],
+  ];
+  for (const [label] of OUT('x')) {
+    test(`write-target bypass is denied: ${label}`, async () => {
+      await withLinkedWorktree('blackhole-hook-wtb-', async (mainRepo, worktree) => {
+        const command = OUT(mainRepo).find(([l]) => l === label)![1];
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({
+          tier: 'block',
+          pattern_id: 'bash-outside-assigned-worktree',
+        });
+      });
+    });
+  }
+
+  for (const command of [
+    'cp -t ./dir ./a',
+    'cp ./a --target-directory=./dir',
+    'ln -s ./a ./b',
+    'install ./a ./b',
+    'install -d ./nd',
+    'echo x >| ./f',
+    'make 2>&1',
+    'truncate -s0 ./f',
+    'dd if=/etc/hostname of=./f',
+    'rsync /etc/hostname ./f',
+    'rsync ./a host:/x',
+  ]) {
+    test(`in-tree write-target forms are allowed: ${command}`, async () => {
+      await withLinkedWorktree('blackhole-hook-wtb-ok-', async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
+  // A stream device is not a file write: discarding output to /dev/null, or writing to the
+  // session's own stdout/stderr/tty, must neither deny nor record.
+  for (const command of [
+    'ls 2>/dev/null',
+    'make >/dev/null 2>&1',
+    'echo x >/dev/stderr',
+    'echo x | tee /dev/stderr',
+    'echo x > /dev/tty',
+    'ls 2>/dev/null; echo done',
+    'make >/dev/null&& echo ok',
+    'ls 2>/dev/null||true',
+  ]) {
+    test(`a stream-device redirect is neither denied nor recorded: ${command}`, async () => {
+      await withLinkedWorktree('blackhole-hook-804-dev-', async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
+  // Exemption bounds: a regular file under /dev, /dev/fd/N (reopens whatever file the fd holds),
+  // and a stream device whose fd the same command rebinds to a file all stay containment targets.
+  for (const [label, build] of [
+    ['a regular file under /dev', () => 'echo x > /dev/shm/x'],
+    ['/dev/fd/N reopening a read-only fd on an outside file', (m: string) => `echo 1 > /dev/fd/0 < ${m}`],
+    ['/dev/stderr after rebinding fd 2 to an outside file', (m: string) => `echo 1 2< ${m} > /dev/stderr`],
+    ['/dev/stdout after an exec rebinding', (m: string) => `exec 1< ${m}; echo 1 > /dev/stdout`],
+    ['/dev/stdout after duplicating a read-only stdin onto fd 1', (m: string) => `echo x < ${m} 1>&0 > /dev/stdout`],
+    ['/dev/stderr after duplicating a read-only stdin onto fd 2', (m: string) => `echo x < ${m} 2>&0 > /dev/stderr`],
+  ] as const) {
+    test(`stream-device exemption does not cover ${label}`, async () => {
+      await withLinkedWorktree('blackhole-hook-804-dev-', async (mainRepo, worktree) => {
+        const command = build(path.join(mainRepo, 'AGENTS.md'));
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'bash-outside-assigned-worktree' });
+      });
+    });
+  }
 
   // #907 (TDD red-before-green — Task 2, Bash write-target parity with Task 1's Write/Edit red
   // test): a worker's hook subprocess resolves `cwd` inside its own linked worktree with no
@@ -3280,7 +3495,7 @@ describe('validate-bash-command.js — anomalous git failure falls back to CLAUD
         );
 
         expect(result.exitCode).toBe(0);
-        expect(permissionDecision(result.stdout)).toBe('allow');
+        expect(result.stdout.trim()).toBe('');
 
         const events = readHookEvents(sinkDir);
         expect(events).toHaveLength(1);
@@ -3412,7 +3627,7 @@ describe('validate-bash-command.js — main-clone git working-tree-mutation guar
       // warnPattern (unrelated to this guard) still fires, so the exit code is 0 and one warn
       // event is recorded, not zero events.
       expect(result.exitCode).toBe(0);
-      expect(permissionDecision(result.stdout)).toBe('allow');
+      expect(result.stdout.trim()).toBe('');
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({ tier: 'warn', pattern_id: 'git-reset-hard' });
@@ -3494,7 +3709,7 @@ describe('validate-bash-command.js — main-clone git working-tree-mutation guar
         );
 
         expect(result.exitCode).toBe(0);
-        expect(permissionDecision(result.stdout)).toBe('allow');
+        expect(result.stdout.trim()).toBe('');
         const events = readHookEvents(sinkDir);
         expect(events).toHaveLength(1);
         expect(events[0]).toMatchObject({ decision: 'allow', tier: 'warn', pattern_id: 'main-clone-target-unresolvable' });
@@ -3519,17 +3734,9 @@ describe('validate-bash-command.js — main-clone git working-tree-mutation guar
       const result = await runPreToolUseHook(SCRIPT, bashPayload('git stash push -m x'), mainRepo);
 
       expect(result.exitCode).toBe(0);
-      expect(permissionDecision(result.stdout)).toBe('allow');
-      // Review round on PR #925: `REASON_BY_PATTERN` was missing the `main-clone-stash` entry, so
-      // `permissionDecisionReason`/the recorded event's `reason` both resolved to the literal
-      // string "undefined" — decision, tier, and pattern_id were all correct, only the
-      // operator-facing text was broken. A `toMatchObject` on decision/tier/pattern_id alone
-      // (as this test originally did) cannot catch that; asserting the reason's shape directly
-      // closes the gap this specific regression exposed.
-      const reason = permissionReason(result.stdout);
-      expect(typeof reason).toBe('string');
-      expect(reason).not.toMatch(/^undefined\b/);
-      expect(reason!.length).toBeGreaterThan(0);
+      expect(result.stdout.trim()).toBe('');
+      // A `toMatchObject` on decision/tier/pattern_id alone cannot catch a reason that resolved to
+      // the literal string "undefined" (a missing `REASON_BY_PATTERN` entry); assert its shape.
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({ decision: 'allow', tier: 'warn', pattern_id: 'main-clone-stash' });
@@ -3562,13 +3769,16 @@ describe('validate-bash-command.js — main-clone git working-tree-mutation guar
       await withLinkedWorktree('blackhole-hook-897-reason-', async (mainRepo) => {
         const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
 
-        const reason = permissionReason(result.stdout);
-        expect(typeof reason).toBe('string');
-        expect(reason).not.toMatch(/^undefined\b/);
-        expect(reason!.length).toBeGreaterThan(0);
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
         expect(events[0].pattern_id).toBe(patternId);
+        // Block tiers also surface the reason to the caller; warn tiers record it only.
+        if (events[0].tier === 'block') {
+          const reason = permissionReason(result.stdout);
+          expect(typeof reason).toBe('string');
+          expect(reason).not.toMatch(/^undefined\b/);
+          expect(reason!.length).toBeGreaterThan(0);
+        }
         expect(typeof events[0].reason).toBe('string');
         expect(events[0].reason).not.toMatch(/^undefined\b/);
         expect((events[0].reason as string).length).toBeGreaterThan(0);
@@ -3616,6 +3826,70 @@ describe('validate-bash-command.js — main-clone git working-tree-mutation guar
     await withRemoteTrackedWorktree('blackhole-hook-897-vocab-', 'blackhole/issue-897-vocab', async (mainRepo, worktree, push) => {
       push();
       const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test.each([
+    ["git 'reset' --hard", 'main-clone-reset-destructive'],
+    ["git reset '--hard'", 'main-clone-reset-destructive'],
+    ["git 'clean' '-fd'", 'main-clone-clean'],
+  ])('quoted spelling `%s` in the main clone is denied (quote removal precedes classification)', async (command, patternId) => {
+    await withLinkedWorktree('blackhole-hook-q1077-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ decision: 'deny', tier: 'block', pattern_id: patternId });
+    });
+  });
+
+  test("quoted `git -C '<mainRepo>' 'clean' '-fd'` from the worktree denies — quoted -C still retargets", async () => {
+    await withLinkedWorktree('blackhole-hook-q1077-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git '-C' '${mainRepo}' 'clean' '-fd'`), worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ decision: 'deny', pattern_id: 'main-clone-clean' });
+    });
+  });
+
+  test("quoted `git 'reset' '--hard'` inside the linked worktree's own tree stays out of the main-clone block tier", async () => {
+    await withLinkedWorktree('blackhole-hook-q1077-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload("git 'reset' '--hard'"), worktree);
+
+      expect(readHookEvents(mainRepo).every((e) => e.pattern_id !== 'main-clone-reset-destructive')).toBe(true);
+      expect(result.exitCode).not.toBe(2);
+    });
+  });
+
+  test("`git '-C' <path> worktree remove --force <target>` denies an unpushed target (quoted global option)", async () => {
+    await withRemoteTrackedWorktree('blackhole-hook-q1077-wt-', 'blackhole/issue-q1077', async (mainRepo, worktree, push) => {
+      push();
+      fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+      runGit(worktree, ['add', 'unpushed.txt']);
+      runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`git '-C' ${mainRepo} worktree remove --force ${worktree}`),
+        mainRepo,
+      );
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ decision: 'deny', pattern_id: 'worktree-remove-force-unpushed' });
+    });
+  });
+
+  test("`git '-C' <path> worktree remove <target>` allows a pushed, clean target (quoted spelling, safe context)", async () => {
+    await withRemoteTrackedWorktree('blackhole-hook-q1077-ok-', 'blackhole/issue-q1077-ok', async (mainRepo, worktree, push) => {
+      push();
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`git '-C' ${mainRepo} worktree remove ${worktree}`),
+        mainRepo,
+      );
 
       expect(result.exitCode).toBe(0);
       expect(readHookEvents(mainRepo)).toEqual([]);
@@ -4136,6 +4410,34 @@ describe('recordEvent — hook-event rotation gate wiring (#970)', () => {
       expect(result.exitCode).toBe(2);
       expect(fs.existsSync(stalePath)).toBe(true);
       expect(fs.existsSync(path.join(repo, '.blackhole', 'archive'))).toBe(false);
+    });
+  });
+});
+
+// ADR-047: the main-clone git guard applies to campaign workers only.
+describe('validate-bash-command.js — main-clone guard scoped to campaign workers (ADR-047)', () => {
+  const gitAt = (command: string, agentType?: string) => ({ ...bashPayload(command), agent_type: agentType });
+
+  test('an ordinary session may run `git checkout <branch> -- .` in the main clone', async () => {
+    await withLinkedWorktree('blackhole-hook-047-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, gitAt('git checkout throwaway -- .'), mainRepo);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('a plugin-prefixed campaign agent is still refused it', async () => {
+    await withLinkedWorktree('blackhole-hook-047-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, gitAt('git checkout throwaway -- .', 'blackhole:reviewer'), mainRepo);
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'main-clone-checkout-path' });
+    });
+  });
+
+  test('an ordinary session is still refused `rm -rf /`', async () => {
+    await withTempGitRepo('blackhole-hook-047-', async (repo) => {
+      const result = await runPreToolUseHook(SCRIPT, gitAt('rm -rf /'), repo);
+      expect(result.exitCode).toBe(2);
     });
   });
 });

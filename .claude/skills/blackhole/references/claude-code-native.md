@@ -6,6 +6,10 @@ round trip and removing the LLM-discipline wave-barrier stall class documented i
 `multitask-mode.md` § Runbook (#151). Pattern B stays fully intact and is the required path on
 harnesses lacking the capabilities below (Cursor/OpenCode).
 
+In a Claude Project thread, run context selects Pattern P instead: this pattern's orchestration
+with the thread's own decision cards, status checklist, PR events and routines
+([project-thread-mode.md](project-thread-mode.md)).
+
 ## Capability matrix (core — harness-neutral)
 
 Pattern C requires a harness to provide four capabilities. This core section names the
@@ -43,7 +47,8 @@ every `run`-mode campaign start — including the lightweight
 routine resume confirmation gate that fires when `.blackhole/config.json` already exists — and
 must execute it **before** its first fan-out, never after workers are already in flight.
 
-`coordinator.md` § Bootstrap preflight is the SSOT for that gate's trigger conditions and its
+Its first step is resolving the run context (`run-context.md`), which decides whether Pattern C
+applies at all on this run. `coordinator.md` § Bootstrap preflight is the SSOT for that gate's trigger conditions and its
 step-by-step form. This document deliberately does not restate them: one gate definition, read by
 whichever pattern is active (V-DRY-01).
 

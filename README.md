@@ -117,7 +117,7 @@ Full detail: [Adaptive Routing § Human-in-the-loop](documentation/architecture/
 | **Codex CLI** | `/goal run blackhole until empty` or `@blackhole status` |
 | **skills.sh** | `npx skills add CorentinLumineau/blackhole --skill blackhole -y`, then attach `blackhole` |
 
-See [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) for the agent roster and Claude-specific
+See [AGENTS.md](AGENTS.md) and [.claude/CLAUDE.md](.claude/CLAUDE.md) for the agent roster and Claude-specific
 triggers.
 
 ---

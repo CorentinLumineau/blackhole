@@ -7,8 +7,8 @@ finish/run the backlog campaign, follow this protocol.
 
 - **Use `/goal`** or Multitask Mode: `coordinator` → spawns
   `orchestrator` in background
-- Skill: `plugins/blackhole-claude/skills/blackhole/SKILL.md`
-- Flow: `plugins/blackhole-claude/skills/blackhole/references/multitask-mode.md`
+- Skill: `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/SKILL.md`
+- Flow: `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/multitask-mode.md`
 
 Coordinator routes only; orchestrator runs five phases; workers implement.
 
@@ -16,7 +16,7 @@ Coordinator routes only; orchestrator runs five phases; workers implement.
 
 Handle → Plan → Implement → Review → Loop.
 
-Playbooks: `plugins/blackhole-claude/skills/blackhole/references/phase-*.md`
+Playbooks: `${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/phase-*.md`
 
 ## Clarify — all issue sizes
 
@@ -68,7 +68,9 @@ Playbooks: `plugins/blackhole-claude/skills/blackhole/references/phase-*.md`
   documented unconditional fallback instead: `rm -rf ~/.claude/plugins/cache`, restart Claude
   Code, then reinstall. See `templates/hooks/pretooluse/README.md` for the hooks-specific version
   of this same procedure, and `blackhole-state.md` § Plugin-Drift Signal for the advisory
-  detection mechanism that surfaces a stale installed copy.
+  detection mechanism that surfaces a stale installed copy. **Local-only**: on a machine the run
+  context marks ephemeral (`state_store: branch`), the plugin is installed fresh for each session,
+  so there is no stale cache to refresh.
 
 ## Merge & Linkage Gate (V-GIT)
 

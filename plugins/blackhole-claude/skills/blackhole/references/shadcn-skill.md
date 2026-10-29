@@ -5,7 +5,7 @@ next to this skill, vendored at `vendor/shadcn/` (pinned commit in
 `vendor/shadcn/upstream.json`). Every plugin install receives it automatically.
 
 
-Bundled path: `plugins/blackhole-claude/skills/shadcn/SKILL.md`
+Bundled path: `${CLAUDE_PLUGIN_ROOT}/skills/shadcn/SKILL.md`
 
 ## When to load it
 
@@ -24,7 +24,7 @@ The consumer project's own design sources beat shadcn defaults:
 
 1. **`DESIGN.md`** (tokens, themes, display targets, do/don'ts) — authoritative
    for visual language. Cite `V-ADA-03` / `V-ADA-04` when it is missing or stale.
-2. **`design-rubric.md`** (`plugins/blackhole-claude/skills/blackhole/references/design-rubric.md`)
+2. **`design-rubric.md`** (`${CLAUDE_PLUGIN_ROOT}/skills/blackhole/references/design-rubric.md`)
    — authoritative for Design Track scoring axes. Do not replace those columns
    with shadcn style-picker heuristics.
 3. The bundled skill — authoritative for component APIs, composition, and CLI

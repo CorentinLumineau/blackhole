@@ -33,7 +33,7 @@ and/or current repo Glob/Grep state — never a hunch from stale cache.
 
 **Data sources** (read-only):
 
-1. `gh issue list --state open $(bun scripts/forge-scope.ts list-args) --json number,title,body,labels`
+1. `gh issue list --state open $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args) --json number,title,body,labels`
 2. `queue.json` for `touch_paths`, `phase`, `status` (read only — not for post-merge signals)
 3. Repo Glob/Grep for stale-referent verification
 

@@ -1,0 +1,32 @@
+{
+  "description": "Claude Code on the web: gh not logged in, proxy token present, GitHub MCP and PR events available",
+  "env": {
+    "CLAUDECODE": "1",
+    "CLAUDE_CODE_ENTRYPOINT": "remote",
+    "CLAUDE_CODE_REMOTE": "true",
+    "GH_TOKEN": "proxy-injected"
+  },
+  "probes": {
+    "ghAuthenticated": false
+  },
+  "tools": [
+    "agent",
+    "background-agents",
+    "ask-user-question",
+    "github-mcp",
+    "pr-subscriptions"
+  ],
+  "expected": {
+    "pattern": "C",
+    "forge_channel": "rest",
+    "question_channel": "ask-user-question",
+    "ci_wait": "pr-events",
+    "state_store": "branch",
+    "schedule": "turn",
+    "missing": [],
+    "warnings": [
+      "forge: gh porcelain commands are unavailable; run each forge step through its rest row in forge-channels.md",
+      "state: the disk does not persist; campaign state travels on the blackhole/state branch (state-branch.md)"
+    ]
+  }
+}
