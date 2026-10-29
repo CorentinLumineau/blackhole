@@ -91,7 +91,7 @@ deferred → open        (deferred_to_issue closed WITHOUT the work shipping —
                          closed issue; set reconciled_at + reconciliation_rule, issue #809)
 ```
 
-`wrong`, `intentional` and `not-worth` are terminal: no outgoing transitions, and they count as closed (never `open`) in dashboards. Existing ledgers need no migration — `reason` is only required on these three statuses.
+`wrong`, `intentional` and `not-worth` are terminal: no outgoing transitions, and they count as closed (never `open`) in dashboards. The transitions above are documentation only; no code enforces them. The only mechanical check is `V-LEDGER-01`'s single-line `reason` requirement. Existing ledgers need no migration — `reason` is only required on these three statuses.
 
 **Reconciliation (issue #809)**: nothing previously reconciled a `deferred` finding once its
 `deferred_to_issue` target closed — the ledger's never-drop invariant was enforced at filing time

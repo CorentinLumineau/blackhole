@@ -127,6 +127,10 @@ describe('finding outcome statuses', () => {
     expect(findLedgerSchemaDrift([{ id: 'F-3', status: 'wrong', reason: '   ' }])).toHaveLength(1);
   });
 
+  test('a multi-line reason is rejected', () => {
+    expect(findLedgerSchemaDrift([{ id: 'F-5', status: 'wrong', reason: 'a\nb' }])).toHaveLength(1);
+  });
+
   test('legacy statuses need no reason', () => {
     const findings = ['open', 'fixed-in-pr', 'deferred', 'resolved'].map((status, i) => ({ id: `F-${i}`, status }));
     expect(findLedgerSchemaDrift(findings)).toEqual([]);
