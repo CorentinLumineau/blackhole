@@ -49,8 +49,6 @@ const UNRESOLVABLE_WRITE_COMMANDS = [
   { name: 'python', requiresFlag: '-c' },
   { name: 'perl', requiresFlag: /^-[a-zA-Z]*i/ },
   { name: 'awk', requiresFlag: null },
-  { name: 'dd', requiresFlag: null },
-  { name: 'rsync', requiresFlag: null },
 ];
 
 /** Replaces every masked character (a `#` comment, a heredoc body, or a print-only-sink's quoted
@@ -255,16 +253,49 @@ const splitTargetDirectory = (args) => {
   return { dir, rest };
 };
 
+/** `truncate` options that consume the following token as their value, so it is not a file. */
+const TRUNCATE_VALUE_OPTIONS = new Set(['-s', '--size', '-r', '--reference']);
+
+/** Every non-option positional of `truncate` is a file it truncates or creates; the values of
+ * `-s`/`-r` (and their `--size=`/`--reference=`/`-s0` attached forms) are skipped. */
+const truncateTargets = (args) => {
+  const files = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (TRUNCATE_VALUE_OPTIONS.has(t)) i++;
+    else if (t === '--') files.push(...args.slice(i + 1).map(stripQuotes));
+    else if (!t.startsWith('-')) files.push(stripQuotes(t));
+    if (t === '--') break;
+  }
+  return files;
+};
+
+/** `rsync` destination: the last positional. A `host:path` or `rsync://` destination is remote,
+ * not a local write. Needs a source and a destination (two positionals). */
+const rsyncTargets = (args) => {
+  const dashIdx = args.indexOf('--');
+  const positional = dashIdx === -1 ? args.filter((t) => !t.startsWith('-')) : [
+    ...args.slice(0, dashIdx).filter((t) => !t.startsWith('-')),
+    ...args.slice(dashIdx + 1),
+  ];
+  if (positional.length < 2) return [];
+  const dest = stripQuotes(positional[positional.length - 1]);
+  return /^(rsync:\/\/|[^/]*:)/.test(dest) ? [] : [dest];
+};
+
 /** `cp`/`mv`/`install`/`ln <source...> <dest>` write targets in one clause. Without a
  * target-directory option the last positional argument is the destination; with one, that
  * directory is the destination and every positional is a source. `mv` also unlinks its sources,
  * so all of its positional arguments count. Fewer than two positional arguments and no
  * target-directory means there is no destination to evaluate (`cp --help`, a malformed call). */
 const findCopyMoveTargets = (tokens) => {
-  for (const name of ['cp', 'mv', 'install', 'ln']) {
+  for (const name of ['cp', 'mv', 'install', 'ln', 'truncate', 'dd', 'rsync']) {
     const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
     if (cmdIdx === -1) continue;
     const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
+    if (name === 'dd') return args.filter((t) => t.startsWith('of=')).map((t) => stripQuotes(t.slice(3)));
+    if (name === 'truncate') return truncateTargets(args);
+    if (name === 'rsync') return rsyncTargets(args);
     // `install -d`/`--directory` creates every positional as a directory: all are write targets.
     if (name === 'install' && args.some((t) => t === '--directory' || /^-[a-zA-Z]*d[a-zA-Z]*$/.test(t))) {
       return args.filter((t) => !t.startsWith('-')).map(stripQuotes);

@@ -3216,6 +3216,12 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     ['ln --target-directory=', `ln --target-directory=${m} ./a.txt`],
     ['cp -at', `cp -at ${m} ./a.txt`],
     ['cp -rt', `cp -rt ${m} ./a.txt`],
+    ['truncate -s0', `truncate -s0 ${m}/f.txt`],
+    ['truncate --size=0', `truncate --size=0 ${m}/f.txt`],
+    ['dd of=', `dd if=/dev/zero of=${m}/f.txt`],
+    ['dd of quoted', `dd of="${m}/f.txt"`],
+    ['rsync file', `rsync a ${m}/f.txt`],
+    ['rsync dir', `rsync -a ./d/ ${m}/`],
   ];
   for (const [label] of OUT('x')) {
     test(`write-target bypass is denied: ${label}`, async () => {
@@ -3246,6 +3252,10 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     'install -d ./nd',
     'echo x >| ./f',
     'make 2>&1',
+    'truncate -s0 ./f',
+    'dd if=/etc/hostname of=./f',
+    'rsync /etc/hostname ./f',
+    'rsync ./a host:/x',
   ]) {
     test(`in-tree write-target forms are allowed: ${command}`, async () => {
       await withLinkedWorktree('blackhole-hook-wtb-ok-', async (mainRepo, worktree) => {
