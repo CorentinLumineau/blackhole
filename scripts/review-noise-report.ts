@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import { parseFlags } from './lib/argv-flags.ts';
+import { readJsonFile } from './lib/fs.ts';
 import { buildNoiseReport, parseSince, renderNoiseMarkdown } from './lib/review-noise-report.ts';
 
 // Usage: bun run scripts/review-noise-report.ts [--since 7d] [--ledger <path>] [--json]
@@ -18,6 +19,6 @@ try {
 } catch (error) {
   fail(String(error instanceof Error ? error.message : error));
 }
-const ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8')) as { findings?: unknown[] };
+const ledger = readJsonFile(ledgerPath, ledgerPath) as { findings?: unknown[] };
 const report = buildNoiseReport(ledger.findings ?? [], { now: Date.now(), sinceMs });
 console.log(flags.json === true ? JSON.stringify(report, null, 2) : renderNoiseMarkdown(report));
