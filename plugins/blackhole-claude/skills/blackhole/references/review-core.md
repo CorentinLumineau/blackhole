@@ -99,9 +99,9 @@ SSOT for how a PR's review rounds end. `review_iteration` (integer, default 0) i
 3. **One finding per root cause.** Every occurrence goes in that finding's `locations[]`, not in separate findings.
 4. **No repeats.** An already-posted `(vcode, file, root cause)` is a recheck of the existing ledger id (§ Recheck mode), never a new finding.
 5. **Pre-existing is not blocking.** A finding on lines the PR did not change carries `origin: "pre-existing"`, never blocks, and is filed or deferred under the existing Pareto rule (`V-PARETO-03`).
-6. **Every BLOCK is independently verified** by a second reviewer instance before it is posted; an unconfirmed BLOCK is downgraded to WARN with a caveat. § Independent security verification is the `V-SEC` instance of this rule.
+6. **Every BLOCK is independently verified** by a second reviewer instance before it is posted, per § Independent security verification (which covers every BLOCK, `V-SEC-*` included). A `refuted` BLOCK is downgraded to WARN; a BLOCK the supplied verification file does not cover stays BLOCK and is reported in the aggregate's `unverified` list; with no verification file at all every BLOCK stays BLOCK (fail-closed).
 
-Rules 1, 4, 5 and 6 are enforced by `aggregateReview` in `scripts/review-aggregate.ts` when the orchestrator passes `--review-iteration <review_iteration>`: `rethink` fires when the aggregate runs with `review_iteration >= MAX_REVIEW_ITERATIONS` (the counter as read before the run — it reads 3 after three `changes_requested` rounds) and is still not LGTM. The no-repeat key and the verification input are documented at that function; `rethink` is not LGTM and is never routed back to implement.
+Rules 1, 3, 4, 5 and 6 are enforced by `aggregateReview` in `scripts/review-aggregate.ts` when the orchestrator passes `--review-iteration <review_iteration>` (the CLI warns on stderr when it is omitted; the flag stays optional so non-convergence callers keep legacy behaviour): `rethink` fires when the aggregate runs with `review_iteration >= MAX_REVIEW_ITERATIONS` (the counter as read before the run — it reads 3 after three `changes_requested` rounds) and is still not LGTM. The no-repeat key and the verification input are documented at that function; `rethink` is not LGTM and is never routed back to implement.
 
 ## Security-mode review (ADR-004 step 8)
 
@@ -149,18 +149,19 @@ step 5) grading its own homework. Scoped narrowly — see ADR-003, unchanged: th
 second call of the existing `reviewer` component, not a new agent role or a reinstated
 LLM aggregation hop.
 
-1. **Trigger**: same gate as § Security-mode review step 1/2 (`route.security_review_required`
-   resolved `true`, including the confidence-gate cautious default) — no new detection
-   logic. When the trigger does not fire, no verification spawn runs; the pipeline is
-   unchanged from before this section existed.
-2. **Scope**: fires only when the primary spawn's returned `findings[]` includes at least
-   one `V-SEC-*`-vcode entry. Zero `V-SEC-*` findings from the primary pass → no
-   verification spawn (nothing to independently re-check).
-3. **Id-stamping (orchestrator step, before spawn)**: the primary's `findings[]` do not yet
+1. **Trigger**: every review pass whose primary `findings[]` holds at least one `BLOCK`
+   (§ Review convergence rule 6) — not only security-mode passes. The `V-SEC-*` findings of a
+   security-mode PR (§ Security-mode review step 1/2, including the confidence-gate cautious
+   default) are the security instance of this same mechanism; they are verified in the same
+   single spawn as every other BLOCK, never in a second one. No `BLOCK` in the primary
+   output → no verification spawn and no `--verification-file`.
+2. **Scope**: every `BLOCK` finding whose `origin` is not `pre-existing`. `WARN`/`NOTE`
+   findings are never sent for verification.
+3. **Id-stamping (orchestrator step, before spawn)**: every BLOCK is assigned a `finding_id`; the primary's `findings[]` do not yet
    carry a ledger `id` at review time (ledger `F-NNNNN` ids are assigned at append, after
    aggregation) — the recheck mechanism's own ids only exist because `recheck[]` matches
    against *prior*, already-ledgered findings. Here there is no prior ledger row yet, so
-   the orchestrator stamps each `V-SEC-*` finding in the primary's output with a
+   the orchestrator stamps each BLOCK finding in the primary's output with a
    review-pass-scoped temporary `id` (e.g. `V1`, `V2`, ... — any stable, unique string;
    the exact scheme does not matter as long as it is unique within this pass) before
    including that finding in the verification spawn's prompt. These temporary ids exist
@@ -170,7 +171,7 @@ LLM aggregation hop.
    review-pass-scoped and throwaway, one ledger-scoped and durable).
 4. **Mechanism**: after the primary `reviewer` spawn returns and step 2's scope check
    passes, spawn a **second, independent `reviewer` instance** — same agent identity, no
-   new role (`V-INT-02`). Its prompt carries only the stamped `V-SEC-*` findings
+   new role (`V-INT-02`). Its prompt carries only the stamped BLOCK findings
    (`{finding_id, vcode, severity, file, line, summary}` — not the full diff, not the
    primary's reasoning trace, not the rest of the primary's `findings[]`) plus an
    instruction to attempt to disprove each one (reproduce or refute the attack scenario).
@@ -310,7 +311,8 @@ bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/review-aggregate.ts \
   --issue-ref <N> \
   [--pr-ref <P>] \
   [--prior-file <ledger-rows.json>] \
-  [--verification-file <verification-entries.json>]
+  [--verification-file <verification-entries.json>] \
+  --review-iteration <queue review_iteration>
 ```
 
 `--prior-file` rows must include each finding's ledger `id` (issue #485) — without it, a

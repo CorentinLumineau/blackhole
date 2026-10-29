@@ -16,6 +16,8 @@ export type Finding = {
   locations?: { file: string; line: number }[];
   origin?: 'new' | 'pre-existing';
   root_cause?: string;
+  // Ledger status on prior rows; absent on fresh reviewer findings.
+  status?: string;
 };
 
 // Queue `review_iteration` value (incremented after each changes_requested run) at which an
@@ -70,6 +72,8 @@ export type AggregateOutput = {
   blockers_count: number;
   lgtm: boolean;
   rechecked?: { ledger_id: string; vcode: string; file: string }[];
+  // Ids of BLOCK findings kept at BLOCK because a supplied verification file did not cover them.
+  unverified?: string[];
   pareto_candidates: ParetoCandidate[];
   unresolved_recheck: UnresolvedRecheckEntry[];
   error?: string;
@@ -243,17 +247,45 @@ function rootCauseKey(finding: Finding): string {
   return `${finding.vcode}\0${finding.file}\0${finding.root_cause ?? normalizeSummary(finding.summary)}`;
 }
 
+const CLOSED_PRIOR_STATUSES = new Set(['fixed', 'resolved']);
+
+// Same root cause in one file is one finding (review-core.md § Review convergence rule 3):
+// distinct occurrences are folded into the first finding's `locations[]`.
+function mergeSameRootCause(findings: Finding[]): Finding[] {
+  const byKey = new Map<string, Finding>();
+  for (const f of findings) {
+    const key = rootCauseKey(f);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, f);
+      continue;
+    }
+    const locations = existing.locations ?? [{ file: existing.file, line: existing.line }];
+    if (!locations.some((l) => l.file === f.file && l.line === f.line)) {
+      locations.push({ file: f.file, line: f.line });
+    }
+    byKey.set(key, {
+      ...existing,
+      locations,
+      severity: severityRank(f.severity) > severityRank(existing.severity) ? f.severity : existing.severity,
+    });
+  }
+  return [...byKey.values()];
+}
+
+// Only still-open priors suppress a repeat; a prior already fixed/resolved must not hide a
+// regression, so an identical new finding is kept.
 function dropRepeatsOfPrior(
   fresh: Finding[],
   prior: Finding[],
 ): { kept: Finding[]; rechecked: NonNullable<AggregateOutput['rechecked']> } {
   const priorByKey = new Map<string, Finding>();
   for (const p of prior) {
-    if (p.id) priorByKey.set(rootCauseKey(p), p);
+    if (p.id && !CLOSED_PRIOR_STATUSES.has(p.status ?? '')) priorByKey.set(rootCauseKey(p), p);
   }
   const kept: Finding[] = [];
   const rechecked: NonNullable<AggregateOutput['rechecked']> = [];
-  for (const f of fresh) {
+  for (const f of mergeSameRootCause(fresh)) {
     const match = priorByKey.get(rootCauseKey(f));
     if (match) {
       rechecked.push({ ledger_id: match.id!, vcode: f.vcode, file: f.file });
@@ -266,18 +298,24 @@ function dropRepeatsOfPrior(
 
 const UNVERIFIED_CAVEAT = ' [unverified BLOCK: no independent confirmation — downgraded]';
 
-// A BLOCK stays BLOCK only with a `confirmed` verification entry for its id; pre-existing
-// findings never block.
-function applyConvergenceSeverity(findings: Finding[], verification: VerificationEntry[]): Finding[] {
-  const confirmed = new Set(
-    verification.filter((v) => v.verdict === 'confirmed').map((v) => v.finding_id),
-  );
-  return findings.map((f) => {
+// A refuted BLOCK is already WARN by applyVerificationDowngrades; this step only flags coverage gaps.
+// With no verification file a BLOCK stays BLOCK (fail-closed); a BLOCK missing from a
+// supplied file also stays BLOCK and is reported in `unverified`. Pre-existing findings
+// never block.
+function applyConvergenceSeverity(
+  findings: Finding[],
+  verification: VerificationEntry[] | undefined,
+): { findings: Finding[]; unverified: string[] } {
+  const verdicts = new Map((verification ?? []).map((v) => [v.finding_id, v.verdict]));
+  const unverified: string[] = [];
+  const out = findings.map((f) => {
     if (f.severity !== 'BLOCK') return f;
     if (f.origin === 'pre-existing') return { ...f, severity: 'WARN' };
-    if (f.id !== undefined && confirmed.has(f.id)) return f;
-    return { ...f, severity: 'WARN', summary: `${f.summary}${UNVERIFIED_CAVEAT}` };
+    if (verification === undefined || f.id === undefined) return f;
+    if (!verdicts.has(f.id)) unverified.push(f.id);
+    return f;
   });
+  return { findings: out, unverified };
 }
 
 export function dedupeFindings(findings: Finding[]): Finding[] {
@@ -370,9 +408,9 @@ export function aggregateReview(input: {
   const verifiedDowngrades = input.verification?.length
     ? applyVerificationDowngrades(fresh, input.verification)
     : fresh;
-  const verified = input.convergence
-    ? applyConvergenceSeverity(verifiedDowngrades, input.verification ?? [])
-    : verifiedDowngrades;
+  const { findings: verified, unverified } = input.convergence
+    ? applyConvergenceSeverity(verifiedDowngrades, input.verification)
+    : { findings: verifiedDowngrades, unverified: [] as string[] };
   const { resolvedPrior, unresolved } = resolveRecheckExclusions(
     prior,
     input.reviewer.recheck ?? [],
@@ -393,7 +431,7 @@ export function aggregateReview(input: {
     lgtm,
     pareto_candidates: buildParetoCandidates(findings),
     unresolved_recheck: unresolved,
-    ...(input.convergence ? { rechecked } : {}),
+    ...(input.convergence ? { rechecked, unverified } : {}),
   };
 }
 

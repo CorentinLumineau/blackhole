@@ -273,7 +273,7 @@ below).
 | `findings` | finding[] | yes (empty array = no issues found) |
 | `error` | string | when `status: error` |
 | `recheck` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in recheck mode (`review-core.md` § Recheck mode); absent/omitted for a normal full-audit review |
-| `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent security verification mode (`review-core.md` § Independent security verification, `reviewer.md` § Independent Security Verification Mode); absent/omitted for every other dispatch |
+| `verification` | `{finding_id, verdict, evidence}[]` | required only when the reviewer was dispatched in independent verification mode (a `finding_id` is assigned for every non-pre-existing BLOCK) (`review-core.md` § Independent security verification, `reviewer.md` § Independent Security Verification Mode); absent/omitted for every other dispatch |
 | `verification_legs` | `{direction, mode, evidence}[]` | optional — ADR-036 (issue #815); a clean/negative investigation leg that produced no `Finding` object |
 
 The reviewer return declares no PR-number field — the PR under review is the dispatch's own

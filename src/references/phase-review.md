@@ -8,11 +8,11 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - [ ] queue.json: phase review
 - [ ] Spawn reviewer to perform PR audit
 - [ ] Route check: read route.security_review_required (+ confidence gate) → enrich reviewer prompt with security-mode audit (see review-core.md § Security-mode review)
-- [ ] Security-mode PR whose primary reviewer returned 1+ `V-SEC-*` findings → stamp each with a temporary `id` and dispatch a second, independent `reviewer` instance in verification mode at `standard` tier (see review-core.md § Independent security verification, issue #439); pass its `verification[]` output to review-aggregate.ts via `--verification-file`
+- [ ] Primary reviewer returned 1+ non-pre-existing `BLOCK` findings → stamp each with a temporary `id` and dispatch a second, independent `reviewer` instance in verification mode at `standard` tier (see review-core.md § Independent security verification, issue #439); pass its `verification[]` output to review-aggregate.ts via `--verification-file`
 - [ ] Route check: read route.plan_mode → scope plan-conformance audit to quick/full; skip → compensating no-API-surface check (see review-core.md § Skip-PR compensating control)
 - [ ] Recheck check: read recheck-mode trigger (review_iteration >= 1, no new touch-paths, no new BLOCK surface — see review-core.md § Recheck mode) → when satisfied, dispatch reviewer in recheck mode against the fix commits only, instead of a full-diff audit
 - [ ] Security-mode PR → confirm merge-gate validator (V-SEC-08) before LGTM
-- [ ] Run scripts/review-aggregate.ts on reviewer JSON
+- [ ] Run scripts/review-aggregate.ts on reviewer JSON, passing `--review-iteration <queue review_iteration>` and (when verification ran) `--verification-file` (see review-core.md § Aggregate invocation)
 - [ ] Aggregate output → ledger append (phase: review)
   - [ ] Issue #485: before appending, transition any prior ledger row named `fixed` in the aggregate's consumed `recheck[]` to `status: resolved` (see findings-ledger.md § Status transitions), so the write-time dedup check (findings-ledger.md § Write protocol step 3) never silently absorbs the new, distinct finding sharing that row's key
   - [ ] Issue #485: if `unresolved_recheck` (worker-schemas.md § Review aggregate) is non-empty, do not silently proceed as a normal changes_requested iteration — surface it to the coordinator via the existing blocked-iteration/escalation path (review-core.md § Review convergence)
