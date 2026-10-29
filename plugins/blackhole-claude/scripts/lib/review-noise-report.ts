@@ -1,4 +1,4 @@
-import { OUTCOME_STATUSES } from '../checks/ledger-schema.check.ts';
+import { OUTCOME_STATUSES } from './worker-json/constants.ts';
 
 // "Fixed" is the union of these two statuses: the finding was addressed in code, whether or not
 // the merge-time cleanup has already promoted it to `resolved`.
