@@ -23,7 +23,13 @@ type LedgerRow = {
   pr_ref?: unknown;
   pr?: unknown;
   verification_mode?: unknown;
+  status?: unknown;
+  reason?: unknown;
 };
+
+// Terminal outcome statuses: each records how the author answered the finding and needs a
+// non-empty one-line `reason`. Legacy statuses carry no such requirement.
+export const OUTCOME_STATUSES = ['wrong', 'intentional', 'not-worth'] as const;
 
 const isNumberOrNull = (value: unknown): boolean => typeof value === 'number' || value === null;
 
@@ -55,6 +61,12 @@ export const findLedgerSchemaDrift = (findings: unknown[]): string[] => {
       violations.push(
         `${id}: verification_mode is ${JSON.stringify(row.verification_mode)} (expected "executed"|"reasoned")`,
       );
+    }
+    if (
+      (OUTCOME_STATUSES as readonly unknown[]).includes(row.status) &&
+      (typeof row.reason !== 'string' || row.reason.trim() === '')
+    ) {
+      violations.push(`${id}: status "${String(row.status)}" requires a non-empty reason`);
     }
   }
 

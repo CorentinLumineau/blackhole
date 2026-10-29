@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { makeTempDir } from './lib/fs.ts';
-import { checkLedgerSchema, findLedgerSchemaDrift } from './checks/ledger-schema.check.ts';
+import { checkLedgerSchema, findLedgerSchemaDrift, OUTCOME_STATUSES } from './checks/ledger-schema.check.ts';
 
 // V-LEDGER-01 — a string issue_ref row and a "pr"-keyed row must both be reported, by id, in
 // one failing check run.
@@ -108,5 +108,34 @@ describe('checkLedgerSchema (file-absent SKIP and live read)', () => {
     fs.writeFileSync(ledgerFile, JSON.stringify({ findings: [{ id: 'F-1', issue_ref: 100, pr_ref: null }] }));
     const result = checkLedgerSchema(ledgerFile);
     expect(result).toEqual({ id: 'V-LEDGER-01', ok: true });
+  });
+});
+
+describe('finding outcome statuses', () => {
+  test.each([...OUTCOME_STATUSES])('%s with a reason is accepted', (status) => {
+    expect(findLedgerSchemaDrift([{ id: 'F-1', status, reason: 'reviewer misread the guard' }])).toEqual([]);
+  });
+
+  test.each([...OUTCOME_STATUSES])('%s without a reason is rejected', (status) => {
+    const drift = findLedgerSchemaDrift([{ id: 'F-2', status }]);
+    expect(drift).toHaveLength(1);
+    expect(drift[0]).toContain('F-2');
+    expect(drift[0]).toContain('reason');
+  });
+
+  test('a blank reason is rejected', () => {
+    expect(findLedgerSchemaDrift([{ id: 'F-3', status: 'wrong', reason: '   ' }])).toHaveLength(1);
+  });
+
+  test('legacy statuses need no reason', () => {
+    const findings = ['open', 'fixed-in-pr', 'deferred', 'resolved'].map((status, i) => ({ id: `F-${i}`, status }));
+    expect(findLedgerSchemaDrift(findings)).toEqual([]);
+  });
+
+  test('the example fixture still validates and carries one row per outcome status', () => {
+    const fixture = JSON.parse(fs.readFileSync(path.join(import.meta.dir, '..', 'fixtures', 'findings-ledger.example.json'), 'utf8'));
+    expect(findLedgerSchemaDrift(fixture.findings)).toEqual([]);
+    const statuses = fixture.findings.map((f: { status: string }) => f.status);
+    for (const s of OUTCOME_STATUSES) expect(statuses).toContain(s);
   });
 });
