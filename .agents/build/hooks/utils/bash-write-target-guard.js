@@ -173,7 +173,7 @@ const isCommandToken = (token, command) => token === command || token.endsWith(`
  * shape `>`/`>>`/`&>` legitimately precede without naming a file (`2>&1`, `>&2`). */
 const isFdDuplicationTarget = (token) => /^&\d+$/.test(token);
 
-const REDIRECT_RE = /(&>>|&>|>>|>&|>)\s*(\S+)?/g;
+const REDIRECT_RE = /(&>>|&>|>>|>&|>\||>)\s*(\S+)?/g;
 
 /** After a `>&` operator, a digit or `-` is fd duplication/close (`>&2`, `>&-`); anything else is a
  * file path (`>&file` is `&>file`). */
@@ -239,18 +239,40 @@ const findSedTargets = (tokens) => {
   return positional.slice(1).map(stripQuotes);
 };
 
-/** `cp`/`mv <source...> <dest>` write targets in one clause. `cp` writes only its last positional
- * argument (the destination); its sources are read-only and never evaluated. `mv` unlinks its
- * sources, so all of its positional arguments count. Fewer than two positional arguments means
- * there is no destination to evaluate (`cp --help`, a malformed invocation, etc). */
+/** Destination directory named by `-t DIR`, `-tDIR`, a short cluster ending in `t` (`-pt DIR`),
+ * `--target-directory=DIR` or `--target-directory DIR`, plus the remaining non-flag arguments
+ * (sources). `dir` is null when no target-directory option is present. */
+const splitTargetDirectory = (args) => {
+  let dir = null;
+  const rest = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t.startsWith('--target-directory=')) dir = t.slice('--target-directory='.length);
+    else if (t === '--target-directory' || /^-[a-zA-Z]*t$/.test(t)) dir = args[++i] ?? dir;
+    else if (/^-t.+/.test(t)) dir = t.slice(2);
+    else if (!t.startsWith('-')) rest.push(t);
+  }
+  return { dir, rest };
+};
+
+/** `cp`/`mv`/`install`/`ln <source...> <dest>` write targets in one clause. Without a
+ * target-directory option the last positional argument is the destination; with one, that
+ * directory is the destination and every positional is a source. `mv` also unlinks its sources,
+ * so all of its positional arguments count. Fewer than two positional arguments and no
+ * target-directory means there is no destination to evaluate (`cp --help`, a malformed call). */
 const findCopyMoveTargets = (tokens) => {
-  for (const name of ['cp', 'mv']) {
+  for (const name of ['cp', 'mv', 'install', 'ln']) {
     const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
     if (cmdIdx === -1) continue;
-    const positional = positionalArgsBeforeRedirect(tokens, cmdIdx + 1).filter((t) => !t.startsWith('-'));
-    if (positional.length < 2) continue;
-    // `mv` unlinks every source, so each one is a write target; `cp` only reads its sources.
-    const written = name === 'mv' ? positional : [positional[positional.length - 1]];
+    const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
+    // `install -d`/`--directory` creates every positional as a directory: all are write targets.
+    if (name === 'install' && args.some((t) => t === '--directory' || /^-[a-zA-Z]*d[a-zA-Z]*$/.test(t))) {
+      return args.filter((t) => !t.startsWith('-')).map(stripQuotes);
+    }
+    const { dir, rest } = splitTargetDirectory(args);
+    if (dir === null && rest.length < 2) continue;
+    const written = dir !== null ? [dir] : [rest[rest.length - 1]];
+    if (name === 'mv') written.push(...rest);
     return written.map(stripQuotes);
   }
   return [];
