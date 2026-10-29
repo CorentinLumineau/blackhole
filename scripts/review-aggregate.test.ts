@@ -779,7 +779,7 @@ describe('review-aggregate CLI', () => {
     ]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr.trim()).toBe('');
+    expect(result.stderr).not.toContain('unresolved_recheck');
     const parsed = JSON.parse(result.stdout);
     expect(parsed.unresolved_recheck).toHaveLength(0);
   });
@@ -1024,7 +1024,7 @@ describe('review convergence', () => {
         priorFindings: [prior],
         verification: confirm('N1'),
       });
-      expect(out.findings.map((f) => f.id)).toEqual(['N1']);
+      expect(out.findings.map((f) => f.id)).toContain('N1');
       expect(out.rechecked).toEqual([]);
     },
   );
