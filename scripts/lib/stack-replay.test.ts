@@ -21,7 +21,7 @@ const write = (cwd: string, file: string, body: string): void => {
 };
 
 describe('stacked child replay after a squash-merged parent', () => {
-  test('merging the target branch into the child, taking the child side, leaves zero conflicts', () => {
+  test('merging the target branch into the child, with a hand resolution, leaves zero conflicts', () => {
     const repo = makeTempDir('stack-replay');
     dirs.push(repo);
     git(repo, 'init', '-q', '-b', 'main');
@@ -42,24 +42,23 @@ describe('stacked child replay after a squash-merged parent', () => {
     git(repo, 'checkout', '-q', 'main');
     expect(git(repo, 'merge', '--squash', 'parent').code).toBe(0);
     git(repo, 'commit', '-q', '-m', 'squash parent');
+    write(repo, 'unrelated.txt', 'main-only\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'unrelated main change');
 
-    // Without the replay the child collides with the squash commit.
+    // Documented replay: merge main into the child (never rebase), resolve the shared source
+    // file by hand keeping both sides' intent, and commit the merge.
     git(repo, 'checkout', '-q', 'child');
     expect(git(repo, 'merge', '--no-commit', '--no-ff', 'main').code).not.toBe(0);
-    git(repo, 'merge', '--abort');
-
-    // Documented replay: merge main into the child, take the child side of each conflict.
-    const merge = git(repo, 'merge', '--no-edit', 'main');
-    if (merge.code !== 0) {
-      git(repo, 'checkout', '--ours', '--', 'shared.txt');
-      git(repo, 'add', 'shared.txt');
-      expect(git(repo, 'commit', '-q', '--no-edit').code).toBe(0);
-    }
+    write(repo, 'shared.txt', 'base\nparent\nchild\n');
+    git(repo, 'add', 'shared.txt');
+    expect(git(repo, 'commit', '-q', '--no-edit').code).toBe(0);
 
     git(repo, 'checkout', '-q', 'main');
     const final = git(repo, 'merge', '--no-edit', 'child');
     expect(final.code).toBe(0);
     expect(fs.readFileSync(path.join(repo, 'shared.txt'), 'utf8')).toBe('base\nparent\nchild\n');
     expect(fs.existsSync(path.join(repo, 'child-only.txt'))).toBe(true);
+    expect(fs.readFileSync(path.join(repo, 'unrelated.txt'), 'utf8')).toBe('main-only\n');
   });
 });
