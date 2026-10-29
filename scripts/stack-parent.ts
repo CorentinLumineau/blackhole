@@ -6,4 +6,17 @@ import { pickStackParent, type StackCandidate } from './lib/stack-parent.ts';
 const flags = parseFlags(process.argv.slice(2));
 const queuePath = requireFlag(flags, 'queue');
 const queue = readJsonFile(queuePath, queuePath) as { issues?: Record<string, StackCandidate> };
-console.log(JSON.stringify(pickStackParent(queue.issues ?? {}, Number(requireFlag(flags, 'issue')))));
+// --parent-files: JSON {"<parent issue>": ["changed/file", ...]} from `gh pr diff --name-only`;
+// --default-touch-paths: JSON array, the config `default_touch_paths`.
+const jsonFlag = (name: string): unknown => {
+  const v = flags[name];
+  return typeof v === 'string' ? JSON.parse(v) : undefined;
+};
+console.log(
+  JSON.stringify(
+    pickStackParent(queue.issues ?? {}, Number(requireFlag(flags, 'issue')), {
+      parentFiles: jsonFlag('parent-files') as Record<string, string[]> | undefined,
+      defaultTouchPaths: jsonFlag('default-touch-paths') as string[] | undefined,
+    }),
+  ),
+);

@@ -223,8 +223,10 @@ Deferral alone cannot protect an overlapping issue once the blocker has an open,
 under `merge_mode: leave-open` an LGTM'd PR counts as delivered while `main` still lacks its
 changes, so the "cleared" blocker would hand the next wave a stale base. Before creating a
 worktree, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-parent.ts --queue .blackhole/queue.json --issue <N>`
-(`pickStackParent`, `scripts/lib/stack-parent.ts`). When it names a parent — the lowest-numbered
-other issue with an open PR and overlapping `touch_paths`, in any `merge_mode` — then:
+(`pickStackParent`, `scripts/lib/stack-parent.ts`; optionally `--parent-files '{"<parent>": [...]}'`
+from `gh pr diff --name-only` and `--default-touch-paths '[...]'` from config). When it names a
+parent — the **tip** of the chain rooted at the lowest-numbered other issue with an open PR and
+overlapping paths, in any `merge_mode` — then:
 
 1. Cut the branch from the parent's branch (`git worktree add --no-track <path> -b
    blackhole/issue-<N> origin/blackhole/issue-<parent>`) and open the PR with `--base
@@ -236,6 +238,28 @@ other issue with an open PR and overlapping `touch_paths`, in any `merge_mode` �
    `Closes #<N>`.
 4. A fix-round push to the parent is propagated to each open child by **merging** the parent
    branch into the child branch and pushing normally — never a rebase or force-push.
+
+**Precedence with Step 3.** When the overlapping blocker already has an open PR, stacking
+replaces the overlap deferral: the issue is not set `blocked` with `overlap with #N`. Step 3
+deferral still applies while the blocker has no PR yet. `merge_after: [<parent>]` is unioned
+with any declared `merge_after`/`depends_on`; `depends_on` keeps gating readiness (Step 2) and
+`stacked_on` only picks the branch base.
+
+**Which paths count.** The parent PR's actual changed files (`--parent-files`) are compared with
+the child's `touch_paths` when supplied, else declared globs are compared. A `touch_paths` equal
+to config `default_touch_paths`, or a glob with an empty/root-only prefix (`**`), is unknown and
+never triggers stacking alone; a plan's narrowed `touch_paths` are what make stacking fire.
+
+**Precedence with Step 3.** When the overlapping blocker already has an open PR, stacking
+replaces the overlap deferral: the issue is not set `blocked` with `overlap with #N`. Step 3
+deferral still applies while the blocker has no PR yet. `merge_after: [<parent>]` is unioned
+with any declared `merge_after`/`depends_on`; `depends_on` keeps gating readiness (Step 2) and
+`stacked_on` only picks the branch base.
+
+**Which paths count.** The parent PR's actual changed files (`--parent-files`) are compared with
+the child's `touch_paths` when supplied, else declared globs are compared. A `touch_paths` equal
+to config `default_touch_paths`, or a glob with an empty/root-only prefix (`**`), is unknown and
+never triggers stacking alone; a plan's narrowed `touch_paths` are what make stacking fire.
 
 No parent (or `stacked_on` already set) means the usual `origin/<target_branch>` branch point.
 
