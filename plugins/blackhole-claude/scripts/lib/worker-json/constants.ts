@@ -61,3 +61,6 @@ export const ROLE_FROM_TYPE: Record<string, Role> = {
 
 export const ROLE_PATTERN =
   /\b(?:blackhole:)?(planner|implementer|reviewer|router|investigator|hunter)\b/i;
+
+// Terminal ledger outcomes recording how a finding was answered; each needs a one-line `reason`.
+export const OUTCOME_STATUSES = ['wrong', 'intentional', 'not-worth'] as const;
