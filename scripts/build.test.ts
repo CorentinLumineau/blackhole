@@ -569,15 +569,33 @@ describe('bundled shadcn skill wiring', () => {
   });
 });
 
+describe('shipped shadcn allowed-tools', () => {
+  const shipped = ['skills', 'codex-skills', 'plugins/blackhole-claude/skills', 'plugins/blackhole/skills', 'plugins/blackhole-agent-plugins/skills', '.claude/skills', '.cursor/skills', '.agents/build/skills']
+    .map((d) => path.join(root, d, 'shadcn', 'SKILL.md'))
+    .filter((f) => fs.existsSync(f));
+  test('no built copy pre-approves apply or init', () => {
+    expect(shipped.length).toBeGreaterThan(0);
+    for (const f of shipped) {
+      const tools = /^allowed-tools:(.*)$/m.exec(fs.readFileSync(f, 'utf-8'))![1];
+      expect(tools).not.toMatch(/\b(apply|init)\b/);
+    }
+  });
+});
+
 describe('copyShadcnSkill', () => {
-  test('copies vendor/shadcn/skill into destRoot/skills/shadcn verbatim', () => {
+  test('copies vendor/shadcn/skill into destRoot/skills/shadcn, narrowing only allowed-tools', () => {
     const destRoot = makeTempDir();
     try {
       copyShadcnSkill(destRoot);
       const destSkill = path.join(destRoot, 'skills', 'shadcn', 'SKILL.md');
       const srcSkill = path.join(root, 'vendor', 'shadcn', 'skill', 'SKILL.md');
       expect(fs.existsSync(destSkill)).toBe(true);
-      expect(fs.readFileSync(destSkill, 'utf-8')).toBe(fs.readFileSync(srcSkill, 'utf-8'));
+      const stripTools = (t: string) => t.replace(/^allowed-tools:.*$/m, '');
+      const shipped = fs.readFileSync(destSkill, 'utf-8');
+      expect(stripTools(shipped)).toBe(stripTools(fs.readFileSync(srcSkill, 'utf-8')));
+      const tools = /^allowed-tools:(.*)$/m.exec(shipped)![1];
+      expect(tools).not.toMatch(/\b(apply|init)\b/);
+      expect(tools).not.toMatch(/shadcn@latest \*\)/);
       expect(fs.existsSync(path.join(destRoot, 'skills', 'shadcn', 'cli.md'))).toBe(true);
       expect(fs.existsSync(path.join(destRoot, 'skills', 'shadcn', 'evals'))).toBe(false);
     } finally {
