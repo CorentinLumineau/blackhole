@@ -3155,6 +3155,50 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     });
   });
 
+  for (const build of [
+    (t: string) => `echo x >&${t}`,
+    (t: string) => `echo x >& ${t}`,
+    (t: string) => `echo x &>${t}`,
+    (t: string) => `mv ${t} ./moved.txt`,
+    (t: string) => `mv -f ${t} ./moved.txt`,
+  ]) {
+    test(`ampersand-redirect and mv-source escapes are denied: ${build('<outside>')}`, async () => {
+      await withLinkedWorktree('blackhole-hook-amp-', async (mainRepo, worktree) => {
+        const command = build(path.join(mainRepo, 'victim.txt'));
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({
+          tier: 'block',
+          pattern_id: 'bash-outside-assigned-worktree',
+        });
+      });
+    });
+  }
+
+  for (const command of ['make 2>&1', 'echo x >&2', 'echo x 2>&1 | cat', 'echo x >&-', 'mv ./a.txt ./b.txt']) {
+    test(`fd duplication and in-tree mv are not file targets: ${command}`, async () => {
+      await withLinkedWorktree('blackhole-hook-amp-ok-', async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
   // A stream device is not a file write: discarding output to /dev/null, or writing to the
   // session's own stdout/stderr/tty, must neither deny nor record.
   for (const command of [
