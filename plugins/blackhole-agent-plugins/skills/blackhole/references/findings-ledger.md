@@ -38,7 +38,8 @@ Path: `.blackhole/findings-ledger.json` (gitignored at runtime).
 | `phase` | `handle` \| `plan` \| `implement` \| `review` \| `hunt` | When discovered |
 | `issue_ref` | number | Parent campaign issue |
 | `pr_ref` | number \| null | Set when PR exists |
-| `status` | `open` \| `fixed-in-pr` \| `deferred` \| `resolved` | See state machine |
+| `status` | `open` \| `fixed-in-pr` \| `deferred` \| `resolved` \| `wrong` \| `intentional` \| `not-worth` | See state machine |
+| `reason` | string \| absent | **Required, non-empty, one line** when `status` is `wrong`, `intentional` or `not-worth`; absent otherwise. Enforced by `V-LEDGER-01` |
 | `deferred_to_issue` | number \| null | **Required** when `status: deferred` |
 | `reconciled_at` | ISO timestamp \| absent | Set the turn the reconciliation check/triage script transitions a `deferred` row off its terminal state (issue #809) — **recorded, not inferred at read time**. Absent means never reconciled |
 | `reconciliation_rule` | `closed-pr-title-match` \| `closed-pr-body-match` \| `manual-triage` \| absent | Which reproducible rule (issue #809, `scripts/triage-deferred-findings.ts`) classified the transition; `manual-triage` covers rows where the automated title/body match was ambiguous and a human confirmed the outcome |
@@ -80,10 +81,16 @@ open → resolved        (fixed without deferral, or superseded)
 fixed-in-pr → resolved (after merge)
 deferred → resolved    (when deferred issue closes AND the work shipped — mandatory, not optional;
                          set reconciled_at + reconciliation_rule, issue #809)
+open → wrong           (false positive — reason required)
+open → intentional     (behaviour is wanted — reason required)
+open → not-worth       (real but not worth fixing — reason required)
+fixed-in-pr → wrong | intentional | not-worth   (author answers a finding after a fix attempt — reason required)
 deferred → open        (deferred_to_issue closed WITHOUT the work shipping — reopened into the
                          normal open-finding flow rather than left permanently invisible behind a
                          closed issue; set reconciled_at + reconciliation_rule, issue #809)
 ```
+
+`wrong`, `intentional` and `not-worth` are terminal: no outgoing transitions, and they count as closed (never `open`) in dashboards. The transitions above are documentation only; no code enforces them. The only mechanical check is `V-LEDGER-01`'s single-line `reason` requirement. Existing ledgers need no migration — `reason` is only required on these three statuses.
 
 **Reconciliation (issue #809)**: nothing previously reconciled a `deferred` finding once its
 `deferred_to_issue` target closed — the ledger's never-drop invariant was enforced at filing time

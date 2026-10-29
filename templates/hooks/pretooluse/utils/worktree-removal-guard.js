@@ -734,7 +734,16 @@ const findRemovalInvocations = (command, cwd) => {
 
       if (basename === 'git') {
         const subcommandIndex = skipGitGlobalOptions(tokens, cursor + 1);
-        if (subcommandIndex !== -1 && tokens[subcommandIndex] === 'worktree' && tokens[subcommandIndex + 1] === 'remove') {
+        const subcommandWord = subcommandIndex === -1 ? null : normalizeShellWord(tokens[subcommandIndex]);
+        const actionWord =
+          subcommandIndex === -1 || subcommandIndex + 1 >= tokens.length
+            ? null
+            : normalizeShellWord(tokens[subcommandIndex + 1]);
+        if (
+          subcommandWord && actionWord &&
+          !subcommandWord.dynamic && !actionWord.dynamic &&
+          subcommandWord.text === 'worktree' && actionWord.text === 'remove'
+        ) {
           invocations.push({ kind: 'git', argTokens: tokens.slice(subcommandIndex + 2), resolutionCwds });
           break; // identified `git worktree remove` — its own tail is the path argument, not a second command
         }

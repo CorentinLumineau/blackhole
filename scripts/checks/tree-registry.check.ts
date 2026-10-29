@@ -50,16 +50,28 @@ export const findMissingTrees = (
  * `undefined` when both docs cover every tree. Exported as a pure helper for the same reason
  * `extractMarkdownSection` and `findMissingTrees` are: the clean live repo never exercises the
  * drift branch, so it would otherwise only ever be covered by a real drift. */
-export const formatTreeRegistryDetail = (missingArch: string[], missingReadme: string[]): string | undefined => {
+export const formatTreeRegistryDetail = (
+  missingArch: string[],
+  missingReadme: string[],
+  missingAudit: string[] = []
+): string | undefined => {
   const parts: string[] = [];
   if (missingArch.length) parts.push(`architecture.md missing: ${missingArch.join(', ')}`);
   if (missingReadme.length) parts.push(`README.md missing: ${missingReadme.join(', ')}`);
+  if (missingAudit.length) parts.push(`build-tree-install-resolution.md missing: ${missingAudit.join(', ')}`);
   return parts.length ? parts.join('; ') : undefined;
 };
 
-export const checkTreeRegistry = (): CheckResult => {
-  const archSection = extractMarkdownSection(read('documentation/architecture.md'), 'Committed target trees');
-  const readmeSection = extractMarkdownSection(read('README.md'), 'Installation Paths');
+/** First cell of every pipe-table row in `sectionText`, trimmed of whitespace and backticks. */
+export const firstColumnCells = (sectionText: string): string[] =>
+  sectionText
+    .split('\n')
+    .filter((l) => l.trimStart().startsWith('|'))
+    .map((l) => l.trim().slice(1).split('|')[0].trim().replace(/^`+|`+$/g, ''));
+
+export const checkTreeRegistry = (readDoc: (rel: string) => string = read): CheckResult => {
+  const archSection = extractMarkdownSection(readDoc('documentation/architecture.md'), 'Committed target trees');
+  const readmeSection = extractMarkdownSection(readDoc('README.md'), 'Installation Paths');
 
   const missingArch = findMissingTrees(archSection, COMMITTED_TARGET_TREES, { requireAll: true });
   const missingReadme = findMissingTrees(readmeSection, COMMITTED_TARGET_TREES, {
@@ -67,7 +79,16 @@ export const checkTreeRegistry = (): CheckResult => {
     exclude: ['claude-native'],
   });
 
-  const detail = formatTreeRegistryDetail(missingArch, missingReadme);
+  // The audit's coverage table is keyed by tree id: match only the id column exactly, so path
+  // text in the other columns cannot satisfy a renamed or missing id.
+  const auditSection = extractMarkdownSection(
+    readDoc('documentation/audits/build-tree-install-resolution.md'),
+    'Tree-coverage check'
+  );
+  const auditIds = new Set(firstColumnCells(auditSection));
+  const missingAudit = COMMITTED_TARGET_TREES.filter((t) => !auditIds.has(t.id)).map((t) => t.id);
+
+  const detail = formatTreeRegistryDetail(missingArch, missingReadme, missingAudit);
   return detail ? { id: 'V-TREE-01', ok: true, detail } : { id: 'V-TREE-01', ok: true };
 };
 
