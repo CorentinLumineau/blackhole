@@ -1,6 +1,6 @@
 # Review Core — Shared Review Infrastructure
 
-Canonical definitions for review delegation, aggregation, iteration budgets, and gating. Referenced by `phase-review.md` and `reviewer`.
+Canonical definitions for review delegation, aggregation, convergence, and gating. Referenced by `phase-review.md` and `reviewer`.
 
 ## Review pipeline
 
@@ -90,23 +90,18 @@ summary. This closes the failure mode where a genuinely distinct regression at t
 `file:line` as an already-fixed prior finding had its description dropped in favor of the stale,
 already-fixed text.
 
-## Review iteration budget
+## Review convergence
 
-Tracked on queue entry as `review_iteration` (integer, default 0).
+SSOT for how a PR's review rounds end. `review_iteration` (integer, default 0) is tracked on the queue entry and incremented after each aggregate run that returns `changes_requested`; reset to 0 when the PR merges or the issue returns to plan phase. CI-genuine failures diagnosed per `ci-diagnosis.md` consume the same counter — no separate CI-fix budget.
 
-| Iteration | Action |
-|-----------|--------|
-| 1–3 | BLOCK → spawn implementer fix → re-review (automatic) |
-| 4+ | Escalate to user via coordinator (`AskQuestion`) |
-| Hard ceiling: 5 | Stop auto-fix; require human triage |
+1. **Max 3 rounds.** Rounds 1–3: BLOCK → implementer fix → re-review, automatically. Round 4 does **not** re-review: it returns a `rethink` verdict naming the open findings and asks the author to re-plan or escalate to the user via the coordinator (`AskQuestion`). There is no "one more auto pass" and no hard-ceiling tier above it.
+2. **Round ≥2 is interdiff-only.** Review the fix commits since the last reviewed head SHA, plus the objective-fulfilment check § Recheck mode already performs. Untouched code is not re-reviewed.
+3. **One finding per root cause.** Every occurrence goes in that finding's `locations[]`, not in separate findings.
+4. **No repeats.** An already-posted `(vcode, file, root cause)` is a recheck of the existing ledger id (§ Recheck mode), never a new finding.
+5. **Pre-existing is not blocking.** A finding on lines the PR did not change carries `origin: "pre-existing"`, never blocks, and is filed or deferred under the existing Pareto rule (`V-PARETO-03`).
+6. **Every BLOCK is independently verified** by a second reviewer instance before it is posted; an unconfirmed BLOCK is downgraded to WARN with a caveat. § Independent security verification is the `V-SEC` instance of this rule.
 
-Increment `review_iteration` after each aggregate run that returns `changes_requested`.
-
-Reset `review_iteration` to 0 when PR merges or issue returns to plan phase.
-
-CI-genuine failures diagnosed per `ci-diagnosis.md` (after transient retries are
-exhausted) consume the same `review_iteration` counter and escalation table above — not a
-separate CI-fix budget.
+Mechanical enforcement of rules 1–6 in `scripts/review-aggregate.ts` lands in a follow-up part; until then these are reviewer and orchestrator obligations.
 
 ## Security-mode review (ADR-004 step 8)
 
@@ -238,6 +233,8 @@ LLM aggregation hop.
    audit runs exactly as today, no behavior change.
 
 ## Recheck mode
+
+Round limits and interdiff scope: § Review convergence.
 
 Standing fast-path primitive for narrow fix rounds — a targeted response to a small set of
 already-named prior findings, not a fresh implementation.

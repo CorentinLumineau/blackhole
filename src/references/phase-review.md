@@ -15,14 +15,14 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - [ ] Run scripts/review-aggregate.ts on reviewer JSON
 - [ ] Aggregate output → ledger append (phase: review)
   - [ ] Issue #485: before appending, transition any prior ledger row named `fixed` in the aggregate's consumed `recheck[]` to `status: resolved` (see findings-ledger.md § Status transitions), so the write-time dedup check (findings-ledger.md § Write protocol step 3) never silently absorbs the new, distinct finding sharing that row's key
-  - [ ] Issue #485: if `unresolved_recheck` (worker-schemas.md § Review aggregate) is non-empty, do not silently proceed as a normal changes_requested iteration — surface it to the coordinator via the existing blocked-iteration/escalation path (review-core.md § Review iteration budget)
+  - [ ] Issue #485: if `unresolved_recheck` (worker-schemas.md § Review aggregate) is non-empty, do not silently proceed as a normal changes_requested iteration — surface it to the coordinator via the existing blocked-iteration/escalation path (review-core.md § Review convergence)
 - [ ] V-ADA-01/V-ADA-05 findings: before append, dedup by (vcode, file) ignoring issue_ref — skip append if an open/deferred row already exists for that (vcode, file) under any issue_ref (see findings-ledger.md).
-- [ ] BLOCK → increment review_iteration; back to phase implement (see review-core iteration budget)
-- [ ] review_iteration >= 4 → escalate to coordinator (`AskQuestion`, review-iteration
+- [ ] BLOCK → increment review_iteration; back to phase implement (see review-core.md § Review convergence)
+- [ ] Round limit reached → `rethink` verdict, escalate to coordinator (`AskQuestion`, review-iteration
   escalation gate class per `clarify-gates.md` § Gate Content Contract (R-003)): What — the
-  PR/issue and its current BLOCK finding; Why — 4 failed review iterations against the
-  iteration budget; Evidence — the finding ids still open, from the ledger; Options —
-  continue iterating / accept and defer / manual fix, each with its consequence.
+  PR/issue and its open BLOCK findings; Why — the round limit in review-core.md § Review convergence;
+  Evidence — the finding ids still open, from the ledger; Options — re-plan / accept and defer /
+  manual fix, each with its consequence.
 - [ ] WARN → fix in PR OR defer (file issue + ledger deferred_to_issue)
 - [ ] Docs-only PR (determined by `reviewer.md` § Docs-Only Execution Mode Compliance's plan-first detection — file-extension match is a no-plan fallback only, not restated here) → orchestrator direct review, still run review-aggregate.ts
 - [ ] LGTM (aggregate lgtm: true) → proceed to phase loop (merge); review durable artifact promotion runs at merge step 2.5 (`phase-loop.md`, `implementer.md` § Promote Review Artifact) — not during this phase
@@ -33,7 +33,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 
 1. **Reviewer** — spawn `reviewer` with PR diff, plan Touch-Paths, V-code checklist.
 2. **Aggregate** — orchestrator runs `scripts/review-aggregate.ts` with reviewer JSON + issue/PR context.
-3. **Orchestrator** — append aggregate `findings` to ledger; route by `lgtm` and iteration budget.
+3. **Orchestrator** — append aggregate `findings` to ledger; route by `lgtm` and convergence rules.
 
 ## Reviewer prompt must include
 
@@ -59,7 +59,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 
 ## Gating
 
-See [review-core.md](review-core.md) for severity mapping, LGTM definition, and iteration budget.
+See [review-core.md](review-core.md) for severity mapping, LGTM definition, and convergence rules.
 
 | Severity | Action |
 |----------|--------|

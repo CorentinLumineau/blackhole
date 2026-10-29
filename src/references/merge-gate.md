@@ -345,7 +345,7 @@ bot that has not run yet.
 
 When Step 0.6 returns `needs_changes`, the orchestrator routes exactly like `ci-diagnosis.md`'s
 existing CI-genuine-failure path — the identical `review_iteration` counter and escalation table
-(`review-core.md` § Review iteration budget), a third consumer of an existing mechanism, never a
+(`review-core.md` § Review convergence), a third consumer of an existing mechanism, never a
 parallel counter (`V-INT-02`/`V-DRY-01`):
 
 1. **`queue.json`**: set `phase: implement`, `status: ready`, `review_iteration += 1` for the
