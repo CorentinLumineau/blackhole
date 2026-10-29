@@ -505,6 +505,12 @@ instructions: |
       at least one `capture_status: "unavailable"` entry — severity `WARN`, state the
       unavailability explicitly in the review output (quote the entry's `note`) — never silently
       pass over it.
+  *   **Runtime-proof check (`V-PROOF-01`, `BLOCK`)**: independent of `display_targets`. When the PR
+      diff is a user-visible change (defined in `gates/14-visual-evidence-capture.md` § Runtime
+      Proof) and the PR body has no `## Proof` section, severity `BLOCK`. A `## Proof` section
+      stating `unavailable: <reason>` satisfies the check but is surfaced in the review output
+      (quote the reason) — never silently passed. A Proof section with no commands run and no
+      `unavailable:` reason is the same finding.
   *   **Judgement check (uncoded, same convention as § Recheck-Mode Compliance)**: for each `captured` entry, open the
       image at its `path` and judge it against `DESIGN.md` tokens (+
       `documentation/reference/product-principles.md`'s `## Ruling:` sections' `Interpretation`

@@ -54,7 +54,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - **Improvement Discoveries**: Audit the code for UX/UI polish, performance gains, test coverage gaps, and styling best practices. Log them as WARN findings with detailed summaries. Do not demand resolving them in the current PR (prevents `V-SCOPE-02` scope creep); the orchestrator will file them as new GitHub issues.
 - **Docs Currency (`V-DOCSYNC-01`)**: Reviewer must confirm any public-API/schema/config-surface change (`reviewer.md` § 5-Field Contract & Plan Compliance's `V-API-01` surface) ships with a same-PR documentation update (`**/*.md`, `documentation/**`, or inline docstring); missing update is `BLOCK`.
 - **Companion-File Audit (`V-ADA-01/02/03/05/06/07`)**: Reviewer must confirm ARCHITECTURE.md, decisions/INDEX.md currency, AGENTS.md, and conditional DESIGN.md per `reviewer.md` § Companion-File Audit; gated by `docs_governance.companion_files`. All WARN.
-- **Visual Evidence Audit (`V-VIS-01/02`)**: Reviewer must confirm `visual_evidence[]` presence/declaration on UI-affecting PRs per `reviewer.md` § Visual Evidence Audit; gated by `display_targets`.
+- **Visual Evidence Audit (`V-VIS-01/02`, `V-PROOF-01`)**: Reviewer must confirm `visual_evidence[]` presence/declaration on UI-affecting PRs per `reviewer.md` § Visual Evidence Audit; gated by `display_targets`. `V-PROOF-01` (BLOCK) is ungated: a user-visible change needs a `## Proof` PR-body section.
 - **Staged Artifact Carry Audit (`V-AUTO-02`, BLOCK)**: Reviewer must independently diff the issue's staged manifest against what the PR actually carried per `reviewer.md` § Staged Artifact Carry Audit; gated by `docs_governance.write_governance`.
 
 ## Gating
