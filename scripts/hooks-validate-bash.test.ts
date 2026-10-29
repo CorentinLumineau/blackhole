@@ -1746,6 +1746,42 @@ describe('validate-bash-command.js — worktree-removal guard path-qualified git
   );
 });
 
+// Subcommand-spelling bypass: the certain-`git` path compared `worktree`/`remove` raw, so a quoted
+// spelling of either token produced no detected invocation. Denied like the bare form; the allow
+// control proves a quoted spelling against a safe (pushed) worktree is still permitted.
+describe('validate-bash-command.js — worktree-removal guard subcommand-spelling bypass', () => {
+  test.each([
+    ['both single-quoted', (worktree: string) => `git 'worktree' 'remove' ${worktree}`],
+    ['worktree double-quoted', (worktree: string) => `git "worktree" remove ${worktree}`],
+    ['remove double-quoted', (worktree: string) => `git worktree "remove" ${worktree}`],
+  ])('deny: %s subcommand spelling is still detected', async (label, buildCommand) => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-subcmd-',
+      `blackhole/issue-subcmd-${label.replace(/[^a-z0-9]+/gi, '-')}`,
+      async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(buildCommand(worktree)), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      },
+    );
+  });
+
+  test('allow: quoted subcommand spelling against a pushed worktree is still allowed', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-subcmd-',
+      'blackhole/issue-subcmd-allow',
+      async (mainRepo, worktree, push) => {
+        push();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git 'worktree' "remove" ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+      },
+    );
+  });
+});
+
 // Executable-spelling bypass (#788): the guard's detection stage compared the leading token
 // against the exact literal `'git'` string, so ANY shell-accepted spelling other than the bare
 // literal token — a backslash escape, a quoted form, or adjacent-quote concatenation — produced
@@ -3790,6 +3826,70 @@ describe('validate-bash-command.js — main-clone git working-tree-mutation guar
     await withRemoteTrackedWorktree('blackhole-hook-897-vocab-', 'blackhole/issue-897-vocab', async (mainRepo, worktree, push) => {
       push();
       const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test.each([
+    ["git 'reset' --hard", 'main-clone-reset-destructive'],
+    ["git reset '--hard'", 'main-clone-reset-destructive'],
+    ["git 'clean' '-fd'", 'main-clone-clean'],
+  ])('quoted spelling `%s` in the main clone is denied (quote removal precedes classification)', async (command, patternId) => {
+    await withLinkedWorktree('blackhole-hook-q1077-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ decision: 'deny', tier: 'block', pattern_id: patternId });
+    });
+  });
+
+  test("quoted `git -C '<mainRepo>' 'clean' '-fd'` from the worktree denies — quoted -C still retargets", async () => {
+    await withLinkedWorktree('blackhole-hook-q1077-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git '-C' '${mainRepo}' 'clean' '-fd'`), worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ decision: 'deny', pattern_id: 'main-clone-clean' });
+    });
+  });
+
+  test("quoted `git 'reset' '--hard'` inside the linked worktree's own tree stays out of the main-clone block tier", async () => {
+    await withLinkedWorktree('blackhole-hook-q1077-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload("git 'reset' '--hard'"), worktree);
+
+      expect(readHookEvents(mainRepo).every((e) => e.pattern_id !== 'main-clone-reset-destructive')).toBe(true);
+      expect(result.exitCode).not.toBe(2);
+    });
+  });
+
+  test("`git '-C' <path> worktree remove --force <target>` denies an unpushed target (quoted global option)", async () => {
+    await withRemoteTrackedWorktree('blackhole-hook-q1077-wt-', 'blackhole/issue-q1077', async (mainRepo, worktree, push) => {
+      push();
+      fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+      runGit(worktree, ['add', 'unpushed.txt']);
+      runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`git '-C' ${mainRepo} worktree remove --force ${worktree}`),
+        mainRepo,
+      );
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ decision: 'deny', pattern_id: 'worktree-remove-force-unpushed' });
+    });
+  });
+
+  test("`git '-C' <path> worktree remove <target>` allows a pushed, clean target (quoted spelling, safe context)", async () => {
+    await withRemoteTrackedWorktree('blackhole-hook-q1077-ok-', 'blackhole/issue-q1077-ok', async (mainRepo, worktree, push) => {
+      push();
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`git '-C' ${mainRepo} worktree remove ${worktree}`),
+        mainRepo,
+      );
 
       expect(result.exitCode).toBe(0);
       expect(readHookEvents(mainRepo)).toEqual([]);

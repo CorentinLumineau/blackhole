@@ -175,7 +175,7 @@ const GIT_GLOBAL_OPTIONS_WITH_VALUE = new Set([
 const skipGitGlobalOptions = (tokens, start) => {
   let i = start;
   while (i < tokens.length) {
-    const token = tokens[i];
+    const token = unquoteWord(tokens[i]);
     if (token.startsWith('--') && token.includes('=')) {
       i += 1;
       continue;
@@ -203,7 +203,7 @@ const REPO_TARGETING_OPTIONS = new Set(['-C', '--git-dir', '--work-tree']);
 /** Reads the value of the LAST `-C` / `--git-dir` / `--work-tree` option (separate-token or
  * `--name=value` form) in the git global-option run starting at `start` — the same option run
  * `skipGitGlobalOptions` above walks, read additively rather than by modifying that function
- * (ADR-043 § Decision part 3: `skipGitGlobalOptions` stays byte-identical, since the removal-path
+ * (ADR-043 § Decision part 3: `skipGitGlobalOptions` stays separate from this reader, since the removal-path
  * caller above never needed these values). `git-main-clone-guard.js` (#897) is this function's
  * only consumer: `-C <path>` is the form this campaign's own protocol mandates for every git
  * invocation (#528), so an effective-repo check keyed on `cwd` alone would misresolve exactly the
@@ -216,7 +216,7 @@ const extractGitRepoOverride = (tokens, start) => {
   let i = start;
   let override = null;
   while (i < tokens.length) {
-    const token = tokens[i];
+    const token = unquoteWord(tokens[i]);
     if (token.startsWith('--') && token.includes('=')) {
       const eq = token.indexOf('=');
       if (REPO_TARGETING_OPTIONS.has(token.slice(0, eq))) override = token.slice(eq + 1);
@@ -225,7 +225,7 @@ const extractGitRepoOverride = (tokens, start) => {
     }
     if (GIT_GLOBAL_OPTIONS_WITH_VALUE.has(token)) {
       if (i + 1 >= tokens.length) return override;
-      if (REPO_TARGETING_OPTIONS.has(token)) override = tokens[i + 1];
+      if (REPO_TARGETING_OPTIONS.has(token)) override = unquoteWord(tokens[i + 1]);
       i += 2;
       continue;
     }
@@ -404,6 +404,19 @@ const normalizeShellWord = (word) => {
     i += 1;
   }
   return { text, dynamic: false };
+};
+
+/** `normalizeShellWord`'s text for `word`, or `word` unchanged when it cannot be resolved
+ * statically. Applied where tokens are consumed for literal comparison (git global options,
+ * subcommand, subcommand arguments) so `git 'reset' '--hard'` classifies exactly like the
+ * unquoted spelling. ANSI-C quoting (`$'reset'`) is a deliberate fail-open: `normalizeShellWord`
+ * reports it dynamic, so the raw token is kept and no refusal fires. Refusing it would need an
+ * ANSI-C escape decoder to tell `$'reset'` from `$'\x72eset'` (a second quote-removal
+ * implementation) or a blanket deny of every `$'...'` git word, which also blocks benign
+ * `git commit -m $'a\nb'`; the spelling is not a spelling an agent emits by accident. */
+const unquoteWord = (word) => {
+  const { text, dynamic } = normalizeShellWord(word);
+  return dynamic ? word : text;
 };
 
 /** True when `token` is a leading `NAME=value` environment-variable assignment — the shape bash
@@ -757,8 +770,8 @@ const findRemovalInvocations = (command, cwd) => {
         if (!isUncertain && subcommandIndex !== -1) {
           invocations.push({
             kind: 'git-mutation',
-            subcommand: tokens[subcommandIndex],
-            argTokens: tokens.slice(subcommandIndex + 1),
+            subcommand: unquoteWord(tokens[subcommandIndex]),
+            argTokens: tokens.slice(subcommandIndex + 1).map(unquoteWord),
             repoOverride: extractGitRepoOverride(tokens, cursor + 1),
             resolutionCwds,
           });
