@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { root } from './checks/check-utils.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { validateStateWrite } from './lib/state-write-guard.ts';
+import { installStateFile } from './lib/state-write-guard.ts';
 import { mapRestIssue, repoSlugFromOrigin, viewIssue } from './lib/forge-adapter/github-rest.ts';
 import { readOriginUrl } from './lib/forge-detection.ts';
 import { parseFlags } from './lib/argv-flags.ts';
@@ -174,22 +174,12 @@ export function installTriagedLedger(
   archiveDir: string,
   updatedLedger: { findings: LedgerFinding[]; [key: string]: unknown },
 ): { ok: true } | { ok: false; reason: string } {
-  fs.mkdirSync(archiveDir, { recursive: true });
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const snapshotPath = path.join(archiveDir, `findings-ledger-${timestamp}.json`);
-  fs.copyFileSync(ledgerPath, snapshotPath);
-
-  const tmpPath = `${ledgerPath}.tmp`;
-  fs.writeFileSync(tmpPath, JSON.stringify(updatedLedger, null, 2));
-
-  const validation = validateStateWrite({ tmpPath, livePath: ledgerPath, entityKey: 'findings' });
-  if (!validation.ok) {
-    fs.rmSync(tmpPath);
-    return { ok: false, reason: validation.reason };
-  }
-
-  fs.renameSync(tmpPath, ledgerPath);
-  return { ok: true };
+  return installStateFile({
+    livePath: ledgerPath,
+    archiveDir,
+    content: JSON.stringify(updatedLedger, null, 2),
+    entityKey: 'findings',
+  });
 }
 
 function parseCliArgs(argv: string[]): { dryRun: boolean; ledgerPath: string; queuePath: string } {

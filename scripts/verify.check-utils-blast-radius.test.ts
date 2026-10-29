@@ -8,11 +8,9 @@ import {
 } from './checks/check-utils-blast-radius.check.ts';
 import { findRowCountMismatch } from './checks/ground-truth.check.ts';
 
-// Issue #960 — closes the gap that let check-utils.ts's header "N direct consumers" literal
-// drift stale six times (#410, #462, #498, #570, #882, #945), each time caught only by a human
-// noticing during an unrelated PR. V-BLASTRADIUS-01 makes the drift mechanically detectable:
-// the declared header count is compared against a live git-tracked-file import scan on every
-// `bun run verify`.
+// V-BLASTRADIUS-01 makes drift in check-utils.ts's header "N direct consumers" literal
+// mechanically detectable: the declared count is compared against a live git-tracked-file
+// import scan on every `bun run verify`.
 
 describe('parseDeclaredBlastRadiusCount', () => {
   test('extracts the declared N from a "Dependency blast-radius (N direct consumers..." fixture', () => {

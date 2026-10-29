@@ -1,6 +1,6 @@
 {
   "refreshed_at": "2026-07-05T00:00:00.000Z",
-  "next_id": 4,
+  "next_id": 7,
   "findings": [
     {
       "id": "F-00001",
@@ -46,6 +46,54 @@
       "deferred_to_issue": null,
       "created_at": "2026-07-05T09:00:00.000Z",
       "resolved_at": null
+    },
+    {
+      "id": "F-00004",
+      "vcode": "V-DRY-02",
+      "severity": "WARN",
+      "phase": "review",
+      "issue_ref": 298,
+      "pr_ref": 42,
+      "file": "lib/bar.ts",
+      "line": 10,
+      "summary": "Example finding closed as wrong",
+      "status": "wrong",
+      "reason": "Guard on line 40 already rejects null; reviewer missed it",
+      "deferred_to_issue": null,
+      "created_at": "2026-07-05T10:00:00.000Z",
+      "resolved_at": "2026-07-05T11:00:00.000Z"
+    },
+    {
+      "id": "F-00005",
+      "vcode": "V-DRY-02",
+      "severity": "WARN",
+      "phase": "review",
+      "issue_ref": 298,
+      "pr_ref": 42,
+      "file": "lib/bar.ts",
+      "line": 11,
+      "summary": "Example finding closed as intentional",
+      "status": "intentional",
+      "reason": "Retry without backoff is wanted for this idempotent probe",
+      "deferred_to_issue": null,
+      "created_at": "2026-07-05T10:00:00.000Z",
+      "resolved_at": "2026-07-05T11:00:00.000Z"
+    },
+    {
+      "id": "F-00006",
+      "vcode": "V-DRY-02",
+      "severity": "WARN",
+      "phase": "review",
+      "issue_ref": 298,
+      "pr_ref": 42,
+      "file": "lib/bar.ts",
+      "line": 12,
+      "summary": "Example finding closed as not-worth",
+      "status": "not-worth",
+      "reason": "Real duplication but the three lines are scheduled for deletion",
+      "deferred_to_issue": null,
+      "created_at": "2026-07-05T10:00:00.000Z",
+      "resolved_at": "2026-07-05T11:00:00.000Z"
     }
   ],
   "hunt_state": {

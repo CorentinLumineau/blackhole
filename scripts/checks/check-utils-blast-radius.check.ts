@@ -2,9 +2,9 @@ import { root, read, type CheckResult } from './check-utils.ts';
 import { listTrackedFiles } from './control-char.check.ts';
 import { findRowCountMismatch } from './ground-truth.check.ts';
 
-// V-BLASTRADIUS-01 (BLOCK, issue #960): check-utils.ts's header comment states a hand-maintained
-// "N direct consumers" count that drifted stale six times (#410, #462, #498, #570, #882, #945),
-// each time caught only by a human noticing during an unrelated PR — never by a mechanical gate.
+// V-BLASTRADIUS-01 (BLOCK): check-utils.ts's header comment states a hand-maintained
+// "N direct consumers" count that goes stale silently unless a human notices it during an
+// unrelated PR.
 // This check makes the drift structurally impossible to ship silently: the declared header count
 // is compared against a live, independently-scanned git-tracked-file import count on every
 // `bun run verify`.

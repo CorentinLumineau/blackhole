@@ -3191,6 +3191,127 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     });
   });
 
+  for (const build of [
+    (t: string) => `echo x >&${t}`,
+    (t: string) => `echo x >& ${t}`,
+    (t: string) => `echo x &>${t}`,
+    (t: string) => `mv ${t} ./moved.txt`,
+    (t: string) => `mv -f ${t} ./moved.txt`,
+  ]) {
+    test(`ampersand-redirect and mv-source escapes are denied: ${build('<outside>')}`, async () => {
+      await withLinkedWorktree('blackhole-hook-amp-', async (mainRepo, worktree) => {
+        const command = build(path.join(mainRepo, 'victim.txt'));
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({
+          tier: 'block',
+          pattern_id: 'bash-outside-assigned-worktree',
+        });
+      });
+    });
+  }
+
+  for (const command of ['make 2>&1', 'echo x >&2', 'echo x 2>&1 | cat', 'echo x >&-', 'mv ./a.txt ./b.txt']) {
+    test(`fd duplication and in-tree mv are not file targets: ${command}`, async () => {
+      await withLinkedWorktree('blackhole-hook-amp-ok-', async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
+  const OUT = (m: string) => [
+    ['clobber redirect', `echo x >| ${m}/f.txt`],
+    ['cp -t before sources', `cp -t ${m} ./a.txt`],
+    ['cp -t after sources', `cp ./a.txt -t ${m}`],
+    ['cp --target-directory=', `cp ./a.txt --target-directory=${m}`],
+    ['cp --target-directory DIR', `cp ./a.txt --target-directory ${m}`],
+    ['mv -t after sources', `mv ./a.txt -t ${m}`],
+    ['install SRC DST', `install ./a.txt ${m}/f.txt`],
+    ['install -t DIR', `install -t ${m} ./a.txt`],
+    ['ln -s SRC DST', `ln -s ./a.txt ${m}/f.txt`],
+    ['ln SRC DST', `ln ./a.txt ${m}/f.txt`],
+    ['install -d', `install -d ${m}/x`],
+    ['install --directory', `install --directory ${m}/x`],
+    ['ln -t', `ln -t ${m} ./a.txt`],
+    ['ln --target-directory=', `ln --target-directory=${m} ./a.txt`],
+    ['cp -at', `cp -at ${m} ./a.txt`],
+    ['cp -rt', `cp -rt ${m} ./a.txt`],
+    ['truncate -s0', `truncate -s0 ${m}/f.txt`],
+    ['truncate --size=0', `truncate --size=0 ${m}/f.txt`],
+    ['dd of=', `dd if=/dev/zero of=${m}/f.txt`],
+    ['dd of quoted', `dd of="${m}/f.txt"`],
+    ['rsync file', `rsync a ${m}/f.txt`],
+    ['rsync dir', `rsync -a ./d/ ${m}/`],
+    ['rsync trailing --exclude', `rsync -a ./d/ ${m}/ --exclude x`],
+    ['rsync trailing -e', `rsync -a ./d/ ${m}/ -e ssh`],
+    ['rsync trailing --delete', `rsync ./d ${m}/ --delete`],
+  ];
+  for (const [label] of OUT('x')) {
+    test(`write-target bypass is denied: ${label}`, async () => {
+      await withLinkedWorktree('blackhole-hook-wtb-', async (mainRepo, worktree) => {
+        const command = OUT(mainRepo).find(([l]) => l === label)![1];
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({
+          tier: 'block',
+          pattern_id: 'bash-outside-assigned-worktree',
+        });
+      });
+    });
+  }
+
+  for (const command of [
+    'cp -t ./dir ./a',
+    'cp ./a --target-directory=./dir',
+    'ln -s ./a ./b',
+    'install ./a ./b',
+    'install -d ./nd',
+    'echo x >| ./f',
+    'make 2>&1',
+    'truncate -s0 ./f',
+    'dd if=/etc/hostname of=./f',
+    'rsync /etc/hostname ./f',
+    'rsync ./a host:/x',
+  ]) {
+    test(`in-tree write-target forms are allowed: ${command}`, async () => {
+      await withLinkedWorktree('blackhole-hook-wtb-ok-', async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
   // A stream device is not a file write: discarding output to /dev/null, or writing to the
   // session's own stdout/stderr/tty, must neither deny nor record.
   for (const command of [

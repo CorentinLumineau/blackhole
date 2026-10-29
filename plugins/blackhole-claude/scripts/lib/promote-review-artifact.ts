@@ -44,6 +44,7 @@ export type ReviewPromotionOutput = {
   findingsCount: number;
 };
 
+import { OUTCOME_STATUSES } from './worker-json/constants.ts';
 import { deriveConcernSlug, reviewTargetPath } from './concern-slug.ts';
 
 const SEVERITY_RANK: Record<string, number> = { BLOCK: 3, WARN: 2, NOTE: 1, INFO: 1 };
@@ -78,6 +79,7 @@ export function selectReviewFindings(
   for (const finding of candidates) {
     if (finding.status === 'resolved' && !isRecheckNotFixed(finding)) continue;
     if (finding.status === 'fixed-in-pr' && !isRecheckNotFixed(finding)) continue;
+    if ((OUTCOME_STATUSES as readonly string[]).includes(finding.status)) continue;
     if (isRecheckFixed(finding)) continue;
 
     const key = findingKey(finding);
