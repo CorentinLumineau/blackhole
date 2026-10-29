@@ -18,7 +18,7 @@
  *    that resolves outside the assigned root → `block` (`bash-outside-assigned-worktree`).
  *  - a **write-shaped-but-unresolvable** command — a dynamic target (`$VAR`, `$(cmd)`, a glob),
  *    or a command whose write behavior cannot be determined by inspecting the command string at
- *    all (`python3 -c`, `perl -i`, `awk`, `dd`, `rsync`) → `warn` and record
+ *    all (`python3 -c`, `perl -i`, `awk`) → `warn` and record
  *    (`bash-write-target-unresolvable`), never a silent allow (ADR-029's accepted residual risk:
  *    command-string parsing cannot enumerate every write idiom).
  *
@@ -42,7 +42,7 @@ const { isLiteralPathArg } = require('./worktree-removal-guard');
 /** Command words whose write behavior cannot be resolved by static inspection of the command
  * string at all — the residual gap ADR-029 accepts and downgrades to WARN rather than a silent
  * allow. `requiresFlag`, when set, narrows the match to invocations carrying that flag (a bare
- * `awk`/`dd`/`rsync` invocation is unresolvable outright; a bare `python3`/`perl` invocation with
+ * `awk` invocation is unresolvable outright; a bare `python3`/`perl` invocation with
  * no `-c`/`-i` is not write-shaped at all and is left alone). */
 const UNRESOLVABLE_WRITE_COMMANDS = [
   { name: 'python3', requiresFlag: '-c' },
@@ -270,17 +270,28 @@ const truncateTargets = (args) => {
   return files;
 };
 
-/** `rsync` destination: the last positional. A `host:path` or `rsync://` destination is remote,
- * not a local write. Needs a source and a destination (two positionals). */
+/** A target no literal check can resolve; routes the clause to the `warn` tier. */
+const UNRESOLVABLE_TARGET = '$UNRESOLVABLE';
+
+const isRemoteRsyncPath = (t) => /^(rsync:\/\/|[^/]*:)/.test(t);
+
+/** `rsync` destination: the last positional, a `host:path` or `rsync://` one being remote and not
+ * a local write. rsync accepts options after the destination, and an option's value cannot be told
+ * from a positional, so once an option follows the first positional the destination is
+ * uncertain: every positional except the first source is checked and the clause also warns. */
 const rsyncTargets = (args) => {
   const dashIdx = args.indexOf('--');
-  const positional = dashIdx === -1 ? args.filter((t) => !t.startsWith('-')) : [
-    ...args.slice(0, dashIdx).filter((t) => !t.startsWith('-')),
-    ...args.slice(dashIdx + 1),
-  ];
+  const head = dashIdx === -1 ? args : args.slice(0, dashIdx);
+  const tail = dashIdx === -1 ? [] : args.slice(dashIdx + 1);
+  const firstPos = head.findIndex((t) => !t.startsWith('-'));
+  const optionAfterPositional = firstPos !== -1 && head.slice(firstPos + 1).some((t) => t.startsWith('-'));
+  const positional = [...head.filter((t) => !t.startsWith('-')), ...tail].map(stripQuotes);
   if (positional.length < 2) return [];
-  const dest = stripQuotes(positional[positional.length - 1]);
-  return /^(rsync:\/\/|[^/]*:)/.test(dest) ? [] : [dest];
+  if (optionAfterPositional) {
+    return [...positional.slice(1).filter((t) => !isRemoteRsyncPath(t)), UNRESOLVABLE_TARGET];
+  }
+  const dest = positional[positional.length - 1];
+  return isRemoteRsyncPath(dest) ? [] : [dest];
 };
 
 /** `cp`/`mv`/`install`/`ln <source...> <dest>` write targets in one clause. Without a
@@ -414,7 +425,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
       pattern_id: 'bash-write-target-unresolvable',
       reason:
         'Bash command looks write-shaped but its target could not be resolved by static ' +
-        'inspection (a dynamic argument, or a command like python3 -c/perl -i/awk/dd/rsync whose ' +
+        'inspection (a dynamic argument, or a command like python3 -c/perl -i/awk whose ' +
         'write behavior cannot be determined from the command string alone) — cannot verify ' +
         'assigned-worktree containment',
     };

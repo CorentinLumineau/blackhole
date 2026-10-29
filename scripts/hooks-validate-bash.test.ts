@@ -3222,6 +3222,9 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     ['dd of quoted', `dd of="${m}/f.txt"`],
     ['rsync file', `rsync a ${m}/f.txt`],
     ['rsync dir', `rsync -a ./d/ ${m}/`],
+    ['rsync trailing --exclude', `rsync -a ./d/ ${m}/ --exclude x`],
+    ['rsync trailing -e', `rsync -a ./d/ ${m}/ -e ssh`],
+    ['rsync trailing --delete', `rsync ./d ${m}/ --delete`],
   ];
   for (const [label] of OUT('x')) {
     test(`write-target bypass is denied: ${label}`, async () => {
