@@ -26,8 +26,8 @@
  * `BLACKHOLE_ASSIGNED_WORKTREE`, or the cwd-derived tier, so any session whose cwd is a linked
  * worktree is covered, interactive ones included. A null root returns null before any parsing.
  *
- * Read-only sources are never evaluated: `cp`/`mv` extract only the destination (last positional
- * argument) as a write target, exactly like `validate-file-changes.js` only ever evaluates a
+ * Read-only sources are never evaluated: `cp` extracts only the destination (last positional
+ * argument) as a write target (`mv` also evaluates its sources, which it unlinks), exactly like `validate-file-changes.js` only ever evaluates a
  * write's own target — a source file that happens to live outside the assigned root (the
  * ordinary shape of reading a shared reference file) must never itself trigger a deny.
  */
@@ -172,7 +172,11 @@ const isCommandToken = (token, command) => token === command || token.endsWith(`
  * shape `>`/`>>`/`&>` legitimately precede without naming a file (`2>&1`, `>&2`). */
 const isFdDuplicationTarget = (token) => /^&\d+$/.test(token);
 
-const REDIRECT_RE = /(&>>|&>|>>|>)\s*(\S+)?/g;
+const REDIRECT_RE = /(&>>|&>|>>|>&|>)\s*(\S+)?/g;
+
+/** After a `>&` operator, a digit or `-` is fd duplication/close (`>&2`, `>&-`); anything else is a
+ * file path (`>&file` is `&>file`). */
+const isFdDupOperand = (token) => /^(\d+|-)(?:[;&|)]|$)/.test(token);
 
 /** Every redirect-shaped write target in the full visible command — `>`, `>>`, `&>`, `&>>`
  * followed by a real file argument. Never a bare fd-duplication target (`&1`, `&2`) or a dangling
@@ -186,7 +190,8 @@ const findRedirectTargets = (visible) => {
   let match = REDIRECT_RE.exec(visible);
   while (match !== null) {
     const raw = match[2];
-    if (raw && !isFdDuplicationTarget(raw)) {
+    const isFdDup = match[1] === '>&' ? raw && isFdDupOperand(raw) : raw && isFdDuplicationTarget(raw);
+    if (raw && !isFdDup) {
       targets.push(stripQuotes(raw));
     }
     match = REDIRECT_RE.exec(visible);
@@ -243,7 +248,9 @@ const findCopyMoveTargets = (tokens) => {
     if (cmdIdx === -1) continue;
     const positional = positionalArgsBeforeRedirect(tokens, cmdIdx + 1).filter((t) => !t.startsWith('-'));
     if (positional.length < 2) continue;
-    return [stripQuotes(positional[positional.length - 1])];
+    // `mv` unlinks every source, so each one is a write target; `cp` only reads its sources.
+    const written = name === 'mv' ? positional : [positional[positional.length - 1]];
+    return written.map(stripQuotes);
   }
   return [];
 };
