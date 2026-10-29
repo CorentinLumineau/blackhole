@@ -357,9 +357,8 @@ parallel counter (`V-INT-02`/`V-DRY-01`):
 
 | `review_iteration` | Action |
 |---------------------|--------|
-| 1–3 | Auto-fix via implementer → re-check `pipelineVerdict()` on the new HEAD |
-| 4+ | Escalate to coordinator (`AskQuestion`) |
-| Hard ceiling: 5 | Stop auto-fix; require human triage |
+| 0–2 | Auto-fix via implementer → re-check `pipelineVerdict()` on the new HEAD |
+| >= 3 | `rethink` — stop auto-fix and escalate to coordinator (`AskQuestion`); see `review-core.md` § Review convergence rule 1 |
 
 `lgtm` and `not_detected` both proceed to step 1 unchanged (two-criteria run when
 `not_detected`).

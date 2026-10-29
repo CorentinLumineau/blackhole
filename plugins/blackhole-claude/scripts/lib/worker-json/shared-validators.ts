@@ -3,6 +3,7 @@ import {
   CAPTURE_STATUSES,
   COMPANION_REPAIR_VCODES,
   DECISION_RECORD_KINDS,
+  FINDING_ORIGINS,
   PARTIAL_PHASES,
   SEVERITIES,
   VERIFICATION_MODES,
@@ -63,7 +64,33 @@ export function validateFinding(finding: unknown, path: string): string[] {
     errors.push(`${path}.verification_mode: expected string`);
   }
 
+  if ('origin' in finding) {
+    if (isString(finding.origin)) {
+      pushEnumError(errors, `${path}.origin`, finding.origin, FINDING_ORIGINS);
+    } else {
+      errors.push(`${path}.origin: expected string`);
+    }
+  }
+
+  if ('locations' in finding) {
+    errors.push(...validateArrayOf(finding.locations, `${path}.locations`, validateFindingLocation));
+  }
+
+  if (finding.severity === 'BLOCK' && isString(finding.file) && finding.file.length === 0) {
+    errors.push(`${path}.file: a BLOCK finding requires a non-empty file`);
+  }
+
   return errors;
+}
+
+function validateFindingLocation(entry: unknown, path: string): string[] {
+  const errors: string[] = [];
+  if (!isObject(entry)) {
+    return [`${path}: expected object`];
+  }
+  requireField(errors, entry, 'file', isNonEmptyString, 'non-empty string');
+  requireField(errors, entry, 'line', isNumber, 'number');
+  return errors.map((error) => `${path}.${error}`);
 }
 
 export function validateFindingsArray(value: unknown, path: string): string[] {

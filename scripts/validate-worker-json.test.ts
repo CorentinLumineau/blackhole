@@ -1402,3 +1402,30 @@ describe('--enum-source CLI flag', () => {
     expect(result.stderr).not.toContain(`invalid enum value "${widenedVcode}"`);
   });
 });
+
+describe('reviewer finding convergence fields', () => {
+  const reviewer = (finding: Record<string, unknown>) => ({
+    status: 'complete',
+    findings: [{ vcode: 'V-DRY-01', severity: 'BLOCK', file: 'a.ts', line: 3, summary: 's', ...finding }],
+  });
+
+  test('accepts origin and locations[]', () => {
+    expect(
+      validateWorker('reviewer', reviewer({ origin: 'pre-existing', locations: [{ file: 'a.ts', line: 3 }] })),
+    ).toEqual([]);
+  });
+
+  test('rejects an unknown origin', () => {
+    expect(validateWorker('reviewer', reviewer({ origin: 'old' })).length).toBeGreaterThan(0);
+  });
+
+  test('rejects a BLOCK finding without a line', () => {
+    const payload = reviewer({});
+    delete (payload.findings[0] as Record<string, unknown>).line;
+    expect(validateWorker('reviewer', payload).length).toBeGreaterThan(0);
+  });
+
+  test('rejects malformed locations[]', () => {
+    expect(validateWorker('reviewer', reviewer({ locations: [{ file: 'a.ts' }] })).length).toBeGreaterThan(0);
+  });
+});

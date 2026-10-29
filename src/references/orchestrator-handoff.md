@@ -80,7 +80,7 @@ Before ledger append or phase transition:
 
 1. Parse worker JSON; on parse failure → treat as worker error, do not advance phase
 2. For implementer: reject if `touch_paths_honored === false` or `tests_passed === false`
-3. Run `scripts/review-aggregate.ts` on reviewer output; route to implement only when `lgtm === false` and `review_iteration < 5`
+3. Run `scripts/review-aggregate.ts` on reviewer output; pass `--review-iteration <review_iteration>`; route to implement only when aggregate `status === changes_requested`; on `rethink` escalate per `review-core.md` § Review convergence
 4. Append aggregate `findings` to ledger with `phase: review` and `pr_ref` set
 
 ### Barrier triage
