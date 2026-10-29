@@ -27,9 +27,10 @@
  * worktree is covered, interactive ones included. A null root returns null before any parsing.
  *
  * Read-only sources are never evaluated: `cp` extracts only the destination (last positional
- * argument) as a write target (`mv` also evaluates its sources, which it unlinks), exactly like `validate-file-changes.js` only ever evaluates a
- * write's own target — a source file that happens to live outside the assigned root (the
- * ordinary shape of reading a shared reference file) must never itself trigger a deny.
+ * argument) as a write target, exactly like `validate-file-changes.js` only ever evaluates a
+ * write's own target — a source outside the assigned root (the ordinary shape of reading a shared
+ * reference file) must never itself trigger a deny. `mv` is the exception: it unlinks its
+ * sources, so every positional argument is a write target (see `findCopyMoveTargets`).
  */
 
 const path = require('path');
@@ -238,10 +239,10 @@ const findSedTargets = (tokens) => {
   return positional.slice(1).map(stripQuotes);
 };
 
-/** `cp`/`mv <source...> <dest>` write target in one clause — only the last positional argument
- * (the destination) is a write target; every earlier positional argument is a read-only source
- * and must never itself be evaluated (see module docstring). Fewer than two positional arguments
- * means there is no destination to evaluate (`cp --help`, a malformed invocation, etc). */
+/** `cp`/`mv <source...> <dest>` write targets in one clause. `cp` writes only its last positional
+ * argument (the destination); its sources are read-only and never evaluated. `mv` unlinks its
+ * sources, so all of its positional arguments count. Fewer than two positional arguments means
+ * there is no destination to evaluate (`cp --help`, a malformed invocation, etc). */
 const findCopyMoveTargets = (tokens) => {
   for (const name of ['cp', 'mv']) {
     const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
