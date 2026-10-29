@@ -46,7 +46,8 @@
   open. Delivered is not merged: overlap deferral (`queue-dag.md` Step 3) alone leaves the next
   wave branching from a `main` without this PR's changes, so an issue whose `touch_paths` overlap
   an open leave-open PR is stacked on it at dispatch (`queue-dag.md` Step 3b) instead of fanned out
-  from the target branch. Before this narrowing, a `leave-open` PR could be annotated "delivered" while carrying an
+  from the target branch; hot-file and generated-tree conflicts between such siblings follow
+  `merge-conflict-protocol.md` § Hot files and generated trees. Before this narrowing, a `leave-open` PR could be annotated "delivered" while carrying an
   unresolved merge conflict or red CI, because Step 0.5/0.6/1 were never reached at all under the
   old unconditional bypass. The actual external merge is picked up later by the normal
   forge-sync externally-observed-merge reconciliation path (unchanged,

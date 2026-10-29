@@ -244,6 +244,9 @@ overlapping paths, in any `merge_mode` — then:
    same text the dashboard's "Stacked PR merge order" section renders.
 5. A fix-round push to the parent is propagated to each open child by **merging** the parent
    branch into the child branch and pushing normally — never a rebase or force-push.
+6. After the parent merges (squash included), retarget the child and replay only its own commits
+   by merging the target branch into it: `merge-conflict-protocol.md` § Stacked child after its
+   parent merges. Never rebase or force-push.
 
 **Precedence with Step 3.** When the overlapping blocker already has an open PR, stacking
 replaces the overlap deferral: the issue is not set `blocked` with `overlap with #N`. Step 3

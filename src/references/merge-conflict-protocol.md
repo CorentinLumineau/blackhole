@@ -127,6 +127,30 @@ a separate regex replace) — a git merge driver is not.
 - If Attempt 2 also leaves a semantic hunk, or Attempt 1's semantic hunk was not
   stacked-branch-shaped (a genuine content conflict): stop. Do not attempt a third strategy.
 
+## Stacked child after its parent merges (squash included)
+
+The squash-base symptom above is the same one a stacked child hits (`queue-dag.md` Step 3b): the
+parent's branch commits are not ancestors of the squash commit on the target branch. The child is
+never rebased or force-pushed; its own commits are replayed by merging the target branch in:
+
+1. Retarget the child PR via REST (`gh pr edit` can fail on this repo):
+   `gh api -X PATCH repos/<repo>/pulls/<N> -f base=<target_branch>`.
+2. Switch the body link the same way, `Part of #<N>` to `Closes #<N>`:
+   `gh api -X PATCH repos/<repo>/pulls/<N> -f body="<body with Closes #<N>>"`.
+3. In the child worktree: `git fetch origin && git merge origin/<target_branch>`. Resolve each
+   conflicted file per the hot-file rule below, `git add`, and commit the merge. Push normally.
+4. Run the build once and commit its output (Post-resolution discipline below).
+
+## Hot files and generated trees (single rule)
+
+Generated build trees and version-carrying manifests change in every PR, so sibling and stacked
+branches always conflict on them. Resolution, in every strategy above:
+
+- Generated trees: take the child side (`git checkout --ours -- <path>` during a merge into the
+  child), then re-run the build; never hand-merge generated output.
+- `package.json` version: `max(target_branch, child)`, bumped when the child's value is not above
+  the target's; the other version-carrying manifests follow from the build.
+
 ## Post-resolution discipline (mandatory even when no conflict occurred)
 
 Per PR #510's evidence: after **any** successful rebase or cherry-pick — conflict-free or
