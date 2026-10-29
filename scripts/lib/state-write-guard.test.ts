@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { makeTempDir } from './fs.ts';
-import { validateStateWrite } from './state-write-guard.ts';
+import { installStateFile, validateStateWrite } from './state-write-guard.ts';
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const scriptPath = path.join(root, 'scripts/lib/state-write-guard.ts');
@@ -483,6 +483,44 @@ describe.each(ENTITY_SHAPES)('state-write-guard CLI — $entityKey ($file)', ({ 
       const usage = await runStateWriteGuardCli(['--entity-key', entityKey]);
       expect(usage.exitCode).toBe(2);
       expect(usage.stderr).toMatch(/Usage/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('installStateFile', () => {
+  const setup = () => {
+    const dir = makeTempDir('install-state-');
+    const livePath = path.join(dir, 'findings-ledger.json');
+    const archiveDir = path.join(dir, 'archive');
+    fs.writeFileSync(livePath, JSON.stringify({ findings: [1, 2] }));
+    return { dir, livePath, archiveDir };
+  };
+
+  test('snapshots the live file, installs the candidate, leaves no tmp', () => {
+    const { dir, livePath, archiveDir } = setup();
+    try {
+      const content = JSON.stringify({ findings: [1, 2, 3] });
+      expect(installStateFile({ livePath, archiveDir, content, entityKey: 'findings' })).toEqual({ ok: true });
+      expect(fs.readFileSync(livePath, 'utf-8')).toBe(content);
+      expect(fs.existsSync(`${livePath}.tmp`)).toBe(false);
+      const snaps = fs.readdirSync(archiveDir);
+      expect(snaps).toHaveLength(1);
+      expect(snaps[0]).toMatch(/^findings-ledger-.*\.json$/);
+      expect(fs.readFileSync(path.join(archiveDir, snaps[0]), 'utf-8')).toBe(JSON.stringify({ findings: [1, 2] }));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('refused candidate leaves live file untouched and removes tmp', () => {
+    const { dir, livePath, archiveDir } = setup();
+    try {
+      const result = installStateFile({ livePath, archiveDir, content: '{}', entityKey: 'findings' });
+      expect(result.ok).toBe(false);
+      expect(fs.readFileSync(livePath, 'utf-8')).toBe(JSON.stringify({ findings: [1, 2] }));
+      expect(fs.existsSync(`${livePath}.tmp`)).toBe(false);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
