@@ -1746,6 +1746,42 @@ describe('validate-bash-command.js — worktree-removal guard path-qualified git
   );
 });
 
+// Subcommand-spelling bypass: the certain-`git` path compared `worktree`/`remove` raw, so a quoted
+// spelling of either token produced no detected invocation. Denied like the bare form; the allow
+// control proves a quoted spelling against a safe (pushed) worktree is still permitted.
+describe('validate-bash-command.js — worktree-removal guard subcommand-spelling bypass', () => {
+  test.each([
+    ['both single-quoted', (worktree: string) => `git 'worktree' 'remove' ${worktree}`],
+    ['worktree double-quoted', (worktree: string) => `git "worktree" remove ${worktree}`],
+    ['remove double-quoted', (worktree: string) => `git worktree "remove" ${worktree}`],
+  ])('deny: %s subcommand spelling is still detected', async (label, buildCommand) => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-subcmd-',
+      `blackhole/issue-subcmd-${label.replace(/[^a-z0-9]+/gi, '-')}`,
+      async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(buildCommand(worktree)), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      },
+    );
+  });
+
+  test('allow: quoted subcommand spelling against a pushed worktree is still allowed', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-subcmd-',
+      'blackhole/issue-subcmd-allow',
+      async (mainRepo, worktree, push) => {
+        push();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git 'worktree' "remove" ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+      },
+    );
+  });
+});
+
 // Executable-spelling bypass (#788): the guard's detection stage compared the leading token
 // against the exact literal `'git'` string, so ANY shell-accepted spelling other than the bare
 // literal token — a backslash escape, a quoted form, or adjacent-quote concatenation — produced
@@ -3155,6 +3191,127 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     });
   });
 
+  for (const build of [
+    (t: string) => `echo x >&${t}`,
+    (t: string) => `echo x >& ${t}`,
+    (t: string) => `echo x &>${t}`,
+    (t: string) => `mv ${t} ./moved.txt`,
+    (t: string) => `mv -f ${t} ./moved.txt`,
+  ]) {
+    test(`ampersand-redirect and mv-source escapes are denied: ${build('<outside>')}`, async () => {
+      await withLinkedWorktree('blackhole-hook-amp-', async (mainRepo, worktree) => {
+        const command = build(path.join(mainRepo, 'victim.txt'));
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({
+          tier: 'block',
+          pattern_id: 'bash-outside-assigned-worktree',
+        });
+      });
+    });
+  }
+
+  for (const command of ['make 2>&1', 'echo x >&2', 'echo x 2>&1 | cat', 'echo x >&-', 'mv ./a.txt ./b.txt']) {
+    test(`fd duplication and in-tree mv are not file targets: ${command}`, async () => {
+      await withLinkedWorktree('blackhole-hook-amp-ok-', async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
+  const OUT = (m: string) => [
+    ['clobber redirect', `echo x >| ${m}/f.txt`],
+    ['cp -t before sources', `cp -t ${m} ./a.txt`],
+    ['cp -t after sources', `cp ./a.txt -t ${m}`],
+    ['cp --target-directory=', `cp ./a.txt --target-directory=${m}`],
+    ['cp --target-directory DIR', `cp ./a.txt --target-directory ${m}`],
+    ['mv -t after sources', `mv ./a.txt -t ${m}`],
+    ['install SRC DST', `install ./a.txt ${m}/f.txt`],
+    ['install -t DIR', `install -t ${m} ./a.txt`],
+    ['ln -s SRC DST', `ln -s ./a.txt ${m}/f.txt`],
+    ['ln SRC DST', `ln ./a.txt ${m}/f.txt`],
+    ['install -d', `install -d ${m}/x`],
+    ['install --directory', `install --directory ${m}/x`],
+    ['ln -t', `ln -t ${m} ./a.txt`],
+    ['ln --target-directory=', `ln --target-directory=${m} ./a.txt`],
+    ['cp -at', `cp -at ${m} ./a.txt`],
+    ['cp -rt', `cp -rt ${m} ./a.txt`],
+    ['truncate -s0', `truncate -s0 ${m}/f.txt`],
+    ['truncate --size=0', `truncate --size=0 ${m}/f.txt`],
+    ['dd of=', `dd if=/dev/zero of=${m}/f.txt`],
+    ['dd of quoted', `dd of="${m}/f.txt"`],
+    ['rsync file', `rsync a ${m}/f.txt`],
+    ['rsync dir', `rsync -a ./d/ ${m}/`],
+    ['rsync trailing --exclude', `rsync -a ./d/ ${m}/ --exclude x`],
+    ['rsync trailing -e', `rsync -a ./d/ ${m}/ -e ssh`],
+    ['rsync trailing --delete', `rsync ./d ${m}/ --delete`],
+  ];
+  for (const [label] of OUT('x')) {
+    test(`write-target bypass is denied: ${label}`, async () => {
+      await withLinkedWorktree('blackhole-hook-wtb-', async (mainRepo, worktree) => {
+        const command = OUT(mainRepo).find(([l]) => l === label)![1];
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({
+          tier: 'block',
+          pattern_id: 'bash-outside-assigned-worktree',
+        });
+      });
+    });
+  }
+
+  for (const command of [
+    'cp -t ./dir ./a',
+    'cp ./a --target-directory=./dir',
+    'ln -s ./a ./b',
+    'install ./a ./b',
+    'install -d ./nd',
+    'echo x >| ./f',
+    'make 2>&1',
+    'truncate -s0 ./f',
+    'dd if=/etc/hostname of=./f',
+    'rsync /etc/hostname ./f',
+    'rsync ./a host:/x',
+  ]) {
+    test(`in-tree write-target forms are allowed: ${command}`, async () => {
+      await withLinkedWorktree('blackhole-hook-wtb-ok-', async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
   // A stream device is not a file write: discarding output to /dev/null, or writing to the
   // session's own stdout/stderr/tty, must neither deny nor record.
   for (const command of [
@@ -3669,6 +3826,70 @@ describe('validate-bash-command.js — main-clone git working-tree-mutation guar
     await withRemoteTrackedWorktree('blackhole-hook-897-vocab-', 'blackhole/issue-897-vocab', async (mainRepo, worktree, push) => {
       push();
       const result = await runPreToolUseHook(SCRIPT, bashPayload(`git worktree remove ${worktree}`), mainRepo);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test.each([
+    ["git 'reset' --hard", 'main-clone-reset-destructive'],
+    ["git reset '--hard'", 'main-clone-reset-destructive'],
+    ["git 'clean' '-fd'", 'main-clone-clean'],
+  ])('quoted spelling `%s` in the main clone is denied (quote removal precedes classification)', async (command, patternId) => {
+    await withLinkedWorktree('blackhole-hook-q1077-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ decision: 'deny', tier: 'block', pattern_id: patternId });
+    });
+  });
+
+  test("quoted `git -C '<mainRepo>' 'clean' '-fd'` from the worktree denies — quoted -C still retargets", async () => {
+    await withLinkedWorktree('blackhole-hook-q1077-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git '-C' '${mainRepo}' 'clean' '-fd'`), worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ decision: 'deny', pattern_id: 'main-clone-clean' });
+    });
+  });
+
+  test("quoted `git 'reset' '--hard'` inside the linked worktree's own tree stays out of the main-clone block tier", async () => {
+    await withLinkedWorktree('blackhole-hook-q1077-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload("git 'reset' '--hard'"), worktree);
+
+      expect(readHookEvents(mainRepo).every((e) => e.pattern_id !== 'main-clone-reset-destructive')).toBe(true);
+      expect(result.exitCode).not.toBe(2);
+    });
+  });
+
+  test("`git '-C' <path> worktree remove --force <target>` denies an unpushed target (quoted global option)", async () => {
+    await withRemoteTrackedWorktree('blackhole-hook-q1077-wt-', 'blackhole/issue-q1077', async (mainRepo, worktree, push) => {
+      push();
+      fs.writeFileSync(path.join(worktree, 'unpushed.txt'), 'local only\n');
+      runGit(worktree, ['add', 'unpushed.txt']);
+      runGit(worktree, ['commit', '--quiet', '-m', 'unpushed work']);
+
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`git '-C' ${mainRepo} worktree remove --force ${worktree}`),
+        mainRepo,
+      );
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ decision: 'deny', pattern_id: 'worktree-remove-force-unpushed' });
+    });
+  });
+
+  test("`git '-C' <path> worktree remove <target>` allows a pushed, clean target (quoted spelling, safe context)", async () => {
+    await withRemoteTrackedWorktree('blackhole-hook-q1077-ok-', 'blackhole/issue-q1077-ok', async (mainRepo, worktree, push) => {
+      push();
+      const result = await runPreToolUseHook(
+        SCRIPT,
+        bashPayload(`git '-C' ${mainRepo} worktree remove ${worktree}`),
+        mainRepo,
+      );
 
       expect(result.exitCode).toBe(0);
       expect(readHookEvents(mainRepo)).toEqual([]);

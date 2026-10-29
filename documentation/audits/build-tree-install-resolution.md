@@ -3,7 +3,7 @@ type: analysis
 summary: "Build-tree install resolution audit for the multi-target build pipeline"
 status: current
 created: 2026-07-24
-last_updated: 2026-09-07
+last_updated: 2026-10-29
 review_trigger: "on release"
 related:
   - documentation/decisions/ADR-009-claude-marketplace-bundle-isolation.md
@@ -143,7 +143,5 @@ classified in the Evidence table above — **8/8**:
 | `gemini-distribution` | `plugins/blackhole/` | 2 |
 
 A future `paths.ts` id added to `COMMITTED_TARGET_TREES` without a corresponding row in this
-table (or an entry in the Evidence table above) is the omission this section exists to make
-visible — re-run `sed -n '/COMMITTED_TARGET_TREES: CommittedTargetTree\[\] = \[/,/^\];/p'
-scripts/lib/build/paths.ts | grep -c '{ id:'` and compare the result against the 8 rows above
-rather than diffing this doc against `paths.ts` by hand.
+table is flagged by the V-TREE-01 check (`scripts/checks/tree-registry.check.ts`), which diffs
+each declared id against this section on every `bun run verify` — no manual `sed` recount.

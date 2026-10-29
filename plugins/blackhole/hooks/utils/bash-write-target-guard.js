@@ -18,7 +18,7 @@
  *    that resolves outside the assigned root → `block` (`bash-outside-assigned-worktree`).
  *  - a **write-shaped-but-unresolvable** command — a dynamic target (`$VAR`, `$(cmd)`, a glob),
  *    or a command whose write behavior cannot be determined by inspecting the command string at
- *    all (`python3 -c`, `perl -i`, `awk`, `dd`, `rsync`) → `warn` and record
+ *    all (`python3 -c`, `perl -i`, `awk`) → `warn` and record
  *    (`bash-write-target-unresolvable`), never a silent allow (ADR-029's accepted residual risk:
  *    command-string parsing cannot enumerate every write idiom).
  *
@@ -26,10 +26,11 @@
  * `BLACKHOLE_ASSIGNED_WORKTREE`, or the cwd-derived tier, so any session whose cwd is a linked
  * worktree is covered, interactive ones included. A null root returns null before any parsing.
  *
- * Read-only sources are never evaluated: `cp`/`mv` extract only the destination (last positional
+ * Read-only sources are never evaluated: `cp` extracts only the destination (last positional
  * argument) as a write target, exactly like `validate-file-changes.js` only ever evaluates a
- * write's own target — a source file that happens to live outside the assigned root (the
- * ordinary shape of reading a shared reference file) must never itself trigger a deny.
+ * write's own target — a source outside the assigned root (the ordinary shape of reading a shared
+ * reference file) must never itself trigger a deny. `mv` is the exception: it unlinks its
+ * sources, so every positional argument is a write target (see `findCopyMoveTargets`).
  */
 
 const path = require('path');
@@ -41,15 +42,13 @@ const { isLiteralPathArg } = require('./worktree-removal-guard');
 /** Command words whose write behavior cannot be resolved by static inspection of the command
  * string at all — the residual gap ADR-029 accepts and downgrades to WARN rather than a silent
  * allow. `requiresFlag`, when set, narrows the match to invocations carrying that flag (a bare
- * `awk`/`dd`/`rsync` invocation is unresolvable outright; a bare `python3`/`perl` invocation with
+ * `awk` invocation is unresolvable outright; a bare `python3`/`perl` invocation with
  * no `-c`/`-i` is not write-shaped at all and is left alone). */
 const UNRESOLVABLE_WRITE_COMMANDS = [
   { name: 'python3', requiresFlag: '-c' },
   { name: 'python', requiresFlag: '-c' },
   { name: 'perl', requiresFlag: /^-[a-zA-Z]*i/ },
   { name: 'awk', requiresFlag: null },
-  { name: 'dd', requiresFlag: null },
-  { name: 'rsync', requiresFlag: null },
 ];
 
 /** Replaces every masked character (a `#` comment, a heredoc body, or a print-only-sink's quoted
@@ -172,7 +171,11 @@ const isCommandToken = (token, command) => token === command || token.endsWith(`
  * shape `>`/`>>`/`&>` legitimately precede without naming a file (`2>&1`, `>&2`). */
 const isFdDuplicationTarget = (token) => /^&\d+$/.test(token);
 
-const REDIRECT_RE = /(&>>|&>|>>|>)\s*(\S+)?/g;
+const REDIRECT_RE = /(&>>|&>|>>|>&|>\||>)\s*(\S+)?/g;
+
+/** After a `>&` operator, a digit or `-` is fd duplication/close (`>&2`, `>&-`); anything else is a
+ * file path (`>&file` is `&>file`). */
+const isFdDupOperand = (token) => /^(\d+|-)(?:[;&|)]|$)/.test(token);
 
 /** Every redirect-shaped write target in the full visible command — `>`, `>>`, `&>`, `&>>`
  * followed by a real file argument. Never a bare fd-duplication target (`&1`, `&2`) or a dangling
@@ -186,7 +189,8 @@ const findRedirectTargets = (visible) => {
   let match = REDIRECT_RE.exec(visible);
   while (match !== null) {
     const raw = match[2];
-    if (raw && !isFdDuplicationTarget(raw)) {
+    const isFdDup = match[1] === '>&' ? raw && isFdDupOperand(raw) : raw && isFdDuplicationTarget(raw);
+    if (raw && !isFdDup) {
       targets.push(stripQuotes(raw));
     }
     match = REDIRECT_RE.exec(visible);
@@ -233,17 +237,85 @@ const findSedTargets = (tokens) => {
   return positional.slice(1).map(stripQuotes);
 };
 
-/** `cp`/`mv <source...> <dest>` write target in one clause — only the last positional argument
- * (the destination) is a write target; every earlier positional argument is a read-only source
- * and must never itself be evaluated (see module docstring). Fewer than two positional arguments
- * means there is no destination to evaluate (`cp --help`, a malformed invocation, etc). */
+/** Destination directory named by `-t DIR`, `-tDIR`, a short cluster ending in `t` (`-pt DIR`),
+ * `--target-directory=DIR` or `--target-directory DIR`, plus the remaining non-flag arguments
+ * (sources). `dir` is null when no target-directory option is present. */
+const splitTargetDirectory = (args) => {
+  let dir = null;
+  const rest = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t.startsWith('--target-directory=')) dir = t.slice('--target-directory='.length);
+    else if (t === '--target-directory' || /^-[a-zA-Z]*t$/.test(t)) dir = args[++i] ?? dir;
+    else if (/^-t.+/.test(t)) dir = t.slice(2);
+    else if (!t.startsWith('-')) rest.push(t);
+  }
+  return { dir, rest };
+};
+
+/** `truncate` options that consume the following token as their value, so it is not a file. */
+const TRUNCATE_VALUE_OPTIONS = new Set(['-s', '--size', '-r', '--reference']);
+
+/** Every non-option positional of `truncate` is a file it truncates or creates; the values of
+ * `-s`/`-r` (and their `--size=`/`--reference=`/`-s0` attached forms) are skipped. */
+const truncateTargets = (args) => {
+  const files = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (TRUNCATE_VALUE_OPTIONS.has(t)) i++;
+    else if (t === '--') files.push(...args.slice(i + 1).map(stripQuotes));
+    else if (!t.startsWith('-')) files.push(stripQuotes(t));
+    if (t === '--') break;
+  }
+  return files;
+};
+
+/** A target no literal check can resolve; routes the clause to the `warn` tier. */
+const UNRESOLVABLE_TARGET = '$UNRESOLVABLE';
+
+const isRemoteRsyncPath = (t) => /^(rsync:\/\/|[^/]*:)/.test(t);
+
+/** `rsync` destination: the last positional, a `host:path` or `rsync://` one being remote and not
+ * a local write. rsync accepts options after the destination, and an option's value cannot be told
+ * from a positional, so once an option follows the first positional the destination is
+ * uncertain: every positional except the first source is checked and the clause also warns. */
+const rsyncTargets = (args) => {
+  const dashIdx = args.indexOf('--');
+  const head = dashIdx === -1 ? args : args.slice(0, dashIdx);
+  const tail = dashIdx === -1 ? [] : args.slice(dashIdx + 1);
+  const firstPos = head.findIndex((t) => !t.startsWith('-'));
+  const optionAfterPositional = firstPos !== -1 && head.slice(firstPos + 1).some((t) => t.startsWith('-'));
+  const positional = [...head.filter((t) => !t.startsWith('-')), ...tail].map(stripQuotes);
+  if (positional.length < 2) return [];
+  if (optionAfterPositional) {
+    return [...positional.slice(1).filter((t) => !isRemoteRsyncPath(t)), UNRESOLVABLE_TARGET];
+  }
+  const dest = positional[positional.length - 1];
+  return isRemoteRsyncPath(dest) ? [] : [dest];
+};
+
+/** `cp`/`mv`/`install`/`ln <source...> <dest>` write targets in one clause. Without a
+ * target-directory option the last positional argument is the destination; with one, that
+ * directory is the destination and every positional is a source. `mv` also unlinks its sources,
+ * so all of its positional arguments count. Fewer than two positional arguments and no
+ * target-directory means there is no destination to evaluate (`cp --help`, a malformed call). */
 const findCopyMoveTargets = (tokens) => {
-  for (const name of ['cp', 'mv']) {
+  for (const name of ['cp', 'mv', 'install', 'ln', 'truncate', 'dd', 'rsync']) {
     const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
     if (cmdIdx === -1) continue;
-    const positional = positionalArgsBeforeRedirect(tokens, cmdIdx + 1).filter((t) => !t.startsWith('-'));
-    if (positional.length < 2) continue;
-    return [stripQuotes(positional[positional.length - 1])];
+    const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
+    if (name === 'dd') return args.filter((t) => t.startsWith('of=')).map((t) => stripQuotes(t.slice(3)));
+    if (name === 'truncate') return truncateTargets(args);
+    if (name === 'rsync') return rsyncTargets(args);
+    // `install -d`/`--directory` creates every positional as a directory: all are write targets.
+    if (name === 'install' && args.some((t) => t === '--directory' || /^-[a-zA-Z]*d[a-zA-Z]*$/.test(t))) {
+      return args.filter((t) => !t.startsWith('-')).map(stripQuotes);
+    }
+    const { dir, rest } = splitTargetDirectory(args);
+    if (dir === null && rest.length < 2) continue;
+    const written = dir !== null ? [dir] : [rest[rest.length - 1]];
+    if (name === 'mv') written.push(...rest);
+    return written.map(stripQuotes);
   }
   return [];
 };
@@ -353,7 +425,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
       pattern_id: 'bash-write-target-unresolvable',
       reason:
         'Bash command looks write-shaped but its target could not be resolved by static ' +
-        'inspection (a dynamic argument, or a command like python3 -c/perl -i/awk/dd/rsync whose ' +
+        'inspection (a dynamic argument, or a command like python3 -c/perl -i/awk whose ' +
         'write behavior cannot be determined from the command string alone) — cannot verify ' +
         'assigned-worktree containment',
     };

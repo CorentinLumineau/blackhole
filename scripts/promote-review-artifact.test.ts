@@ -78,6 +78,19 @@ describe('selectReviewFindings', () => {
     );
     expect(selected.map((f) => f.id)).toEqual(['F-4', 'F-2']);
   });
+
+  test.each(['wrong', 'intentional', 'not-worth'])('a BLOCK finding closed as %s is not promoted', (status) => {
+    const selected = selectReviewFindings(
+      {
+        findings: [
+          { id: 'F-9', vcode: 'V-DRY-01', severity: 'BLOCK', phase: 'review', issue_ref: 50, pr_ref: 12, file: 'scripts/a.ts', line: 1, summary: 'x', status, reason: 'closed by author' },
+        ],
+      } as never,
+      50,
+      12,
+    );
+    expect(selected).toEqual([]);
+  });
 });
 
 describe('renderReviewMarkdown', () => {
