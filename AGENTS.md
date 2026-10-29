@@ -23,6 +23,15 @@ The plugin also ships the official **shadcn** skill (`skills/shadcn/`, vendored
 at `vendor/shadcn/`) for UI work in projects that have `components.json`. Policy:
 [`src/references/shadcn-skill.md`](src/references/shadcn-skill.md).
 
+## Opportunistic hygiene (always on)
+
+Warnings, misconfiguration, and log / console / runner noise are never dropped:
+**file a forge issue at minimum**, and **fix in the same pass when reasonably possible**.
+SSOT: [`.cursor/rules/opportunistic-fix.mdc`](.cursor/rules/opportunistic-fix.mdc) (`alwaysApply`).
+Claude Code companion: [`.claude/rules/opportunistic-fix.md`](.claude/rules/opportunistic-fix.md).
+Yields to Blackhole never-drop / V-HUNT — do not duplicate those policies, and do not treat
+this duty as a license to run the full suite locally.
+
 ## Agent roster
 
 | Agent | Role | Trigger |
