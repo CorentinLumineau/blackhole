@@ -126,3 +126,45 @@ export const pickStackParent = (
     issueLinkKeyword: 'Part of',
   };
 };
+
+export type StackStep = { issue: number; stackedOn: number | null };
+
+const isOpenPr = (v: StackCandidate | undefined): boolean =>
+  !!v && v.pr != null && !CLOSED_STATUSES.has(v.status ?? '');
+
+/**
+ * Merge order of every open stacked PR chain. A stack is rooted at an open-PR issue whose parent is
+ * absent or already merged/closed; children follow depth-first, lowest-numbered branch first (the
+ * same tie-break `chainTip` uses). Roots with no open child are independent PRs and are omitted.
+ */
+export const stackMergeOrder = (issues: Record<string, StackCandidate>): StackStep[][] => {
+  const open = Object.entries(issues)
+    .filter(([, v]) => isOpenPr(v))
+    .map(([k, v]) => ({ n: Number(k), parent: v.stacked_on ?? null }))
+    .sort((a, b) => a.n - b.n);
+  const openSet = new Set(open.map((o) => o.n));
+  const childrenOf = (p: number) => open.filter((o) => o.parent === p).map((o) => o.n);
+  const stacks: StackStep[][] = [];
+  for (const root of open.filter((o) => o.parent == null || !openSet.has(o.parent))) {
+    const steps: StackStep[] = [];
+    const seen = new Set<number>();
+    const walk = (n: number, parent: number | null): void => {
+      if (seen.has(n)) return;
+      seen.add(n);
+      steps.push({ issue: n, stackedOn: parent });
+      for (const c of childrenOf(n)) walk(c, n);
+    };
+    walk(root.n, null);
+    if (steps.length > 1) stacks.push(steps);
+  }
+  return stacks;
+};
+
+/** One line per stack: `merge #A, then #B (stacked on #A), then #C (stacked on #B)`. */
+export const formatStackMergeOrder = (stack: StackStep[]): string =>
+  stack
+    .map((s, i) => {
+      const base = i === 0 ? `merge #${s.issue}` : `then #${s.issue}`;
+      return s.stackedOn == null ? base : `${base} (stacked on #${s.stackedOn})`;
+    })
+    .join(', ');

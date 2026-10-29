@@ -238,7 +238,11 @@ overlapping paths, in any `merge_mode` — then:
 3. Link the PR body with `Part of #<N>`, never `Closes #<N>`: `pr-lint.sh` rejects a closing keyword
    on a non-default base. The post-merge retarget to `config.target_branch` switches it to
    `Closes #<N>`.
-4. A fix-round push to the parent is propagated to each open child by **merging** the parent
+4. Post the merge order for the stack as a PR comment on each open stacked child PR, and edit that
+   comment (do not add a new one) whenever the stack changes — a PR opens, merges, or closes. The
+   order is `formatStackMergeOrder(stackMergeOrder(issues))` (`scripts/lib/stack-parent.ts`), the
+   same text the dashboard's "Stacked PR merge order" section renders.
+5. A fix-round push to the parent is propagated to each open child by **merging** the parent
    branch into the child branch and pushing normally — never a rebase or force-push.
 
 **Precedence with Step 3.** When the overlapping blocker already has an open PR, stacking
