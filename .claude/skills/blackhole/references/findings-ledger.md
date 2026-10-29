@@ -38,6 +38,7 @@ Path: `.blackhole/findings-ledger.json` (gitignored at runtime).
 | `phase` | `handle` \| `plan` \| `implement` \| `review` \| `hunt` | When discovered |
 | `issue_ref` | number | Parent campaign issue |
 | `pr_ref` | number \| null | Set when PR exists |
+| `rounds_to_lgtm` | number | Optional; copied from the issue's queue entry at merge; input to `scripts/review-noise-report.ts` |
 | `status` | `open` \| `fixed-in-pr` \| `deferred` \| `resolved` \| `wrong` \| `intentional` \| `not-worth` | See state machine |
 | `reason` | string \| absent | **Required, non-empty, one line** when `status` is `wrong`, `intentional` or `not-worth`; absent otherwise. Enforced by `V-LEDGER-01` |
 | `deferred_to_issue` | number \| null | **Required** when `status: deferred` |
