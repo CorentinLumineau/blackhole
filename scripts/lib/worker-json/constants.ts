@@ -37,6 +37,7 @@ export const HUNTER_VERIFICATIONS = ['CONFIRMED', 'STALE'] as const;
 // (`HUNTER_VERIFICATIONS` and the reviewer's own `verification[]` recheck array): whether a
 // finding or a `verification_legs[]` entry was backed by a probe/test that actually ran
 // (`executed`) or by static analysis / code-reading only (`reasoned`).
+export const FINDING_ORIGINS = ['new', 'pre-existing'] as const;
 export const VERIFICATION_MODES = ['executed', 'reasoned'] as const;
 export const SUB_MODES = ['research', 'investigate', 'analyze'] as const;
 export const BRAINSTORM_CHILDREN_CAP = 5;

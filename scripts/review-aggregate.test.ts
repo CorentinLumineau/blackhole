@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { aggregateReview, paretoPriority, type Finding } from './review-aggregate';
+import { aggregateReview, MAX_REVIEW_ITERATIONS, paretoPriority, type Finding } from './review-aggregate';
 
 const root = path.resolve(import.meta.dirname, '..');
 const scriptPath = path.join(root, 'scripts/review-aggregate.ts');
@@ -899,5 +899,100 @@ describe('review-aggregate CLI', () => {
     const parsed = JSON.parse(result.stdout);
     expect(parsed.findings[0].pr_ref).toBe(99);
     expect(typeof parsed.findings[0].pr_ref).toBe('number');
+  });
+});
+
+describe('review convergence', () => {
+  const block = (o: Partial<Finding> = {}) => baseFinding({ severity: 'BLOCK', id: 'N1', ...o });
+  const confirm = (id: string) => [{ finding_id: id, verdict: 'confirmed' as const, evidence: 'e' }];
+  const run = (findings: Finding[], extra: Record<string, unknown> = {}) =>
+    aggregateReview({
+      reviewer: { status: 'complete', findings },
+      issueRef: 1,
+      convergence: { reviewIteration: 0 },
+      ...extra,
+    });
+
+  test('review_iteration at the cap with open blockers returns rethink naming them', () => {
+    const out = run([block()], {
+      verification: confirm('N1'),
+      convergence: { reviewIteration: MAX_REVIEW_ITERATIONS },
+    });
+    expect(out.status).toBe('rethink');
+    expect(out.lgtm).toBe(false);
+    expect(out.findings.map((f) => f.id)).toEqual(['N1']);
+  });
+
+  test('counter below the cap still returns changes_requested', () => {
+    const out = run([block()], {
+      verification: confirm('N1'),
+      convergence: { reviewIteration: MAX_REVIEW_ITERATIONS - 1 },
+    });
+    expect(out.status).toBe('changes_requested');
+  });
+
+  test('a lgtm pass at the cap stays approved', () => {
+    const out = run([], { convergence: { reviewIteration: MAX_REVIEW_ITERATIONS } });
+    expect(out.status).toBe('approved');
+  });
+
+  test('repeat of an already-posted finding is dropped and reported as a recheck', () => {
+    const prior = baseFinding({ id: 'F-00007', severity: 'BLOCK', summary: 'Same  Root cause', line: 3 });
+    const out = run([block({ summary: 'same root cause', line: 99 })], {
+      priorFindings: [prior],
+      verification: confirm('N1'),
+    });
+    expect(out.findings.filter((f) => f.id === 'N1')).toEqual([]);
+    expect(out.rechecked).toEqual([{ ledger_id: 'F-00007', vcode: 'V-KISS-03', file: 'src/a.ts' }]);
+  });
+
+  test('explicit root_cause beats summary wording for the match', () => {
+    const prior = baseFinding({ id: 'F-00008', root_cause: 'rc', summary: 'a' });
+    const out = run([baseFinding({ root_cause: 'rc', summary: 'totally different' })], {
+      priorFindings: [prior],
+    });
+    expect(out.rechecked?.[0].ledger_id).toBe('F-00008');
+  });
+
+  test('pre-existing BLOCK does not block lgtm', () => {
+    const out = run([block({ origin: 'pre-existing' })], { verification: confirm('N1') });
+    expect(out.blockers_count).toBe(0);
+    expect(out.lgtm).toBe(true);
+  });
+
+  test('unverified BLOCK is downgraded to WARN with a caveat', () => {
+    const out = run([block()]);
+    expect(out.findings[0].severity).toBe('WARN');
+    expect(out.findings[0].summary).toContain('unverified');
+    expect(out.lgtm).toBe(true);
+  });
+
+  test('verified BLOCK stays BLOCK', () => {
+    const out = run([block()], { verification: confirm('N1') });
+    expect(out.findings[0].severity).toBe('BLOCK');
+    expect(out.blockers_count).toBe(1);
+  });
+
+  test('without convergence input legacy behaviour is unchanged', () => {
+    const out = aggregateReview({
+      reviewer: { status: 'complete', findings: [block()] },
+      issueRef: 1,
+    });
+    expect(out.status).toBe('changes_requested');
+    expect(out.findings[0].severity).toBe('BLOCK');
+  });
+
+  test('simulated loop: the counter the orchestrator reads reaches rethink after 3 changes_requested', () => {
+    let iteration = 0;
+    const statuses: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const out = run([block({ id: `N${i}`, summary: `distinct ${i}`, line: i + 1 })], {
+        verification: confirm(`N${i}`),
+        convergence: { reviewIteration: iteration },
+      });
+      statuses.push(out.status);
+      if (out.status === 'changes_requested') iteration += 1;
+    }
+    expect(statuses).toEqual(['changes_requested', 'changes_requested', 'changes_requested', 'rethink']);
   });
 });

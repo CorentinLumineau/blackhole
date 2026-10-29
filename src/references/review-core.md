@@ -101,7 +101,7 @@ SSOT for how a PR's review rounds end. `review_iteration` (integer, default 0) i
 5. **Pre-existing is not blocking.** A finding on lines the PR did not change carries `origin: "pre-existing"`, never blocks, and is filed or deferred under the existing Pareto rule (`V-PARETO-03`).
 6. **Every BLOCK is independently verified** by a second reviewer instance before it is posted; an unconfirmed BLOCK is downgraded to WARN with a caveat. § Independent security verification is the `V-SEC` instance of this rule.
 
-Mechanical enforcement of rules 1–6 in `scripts/review-aggregate.ts` lands in a follow-up part; until then these are reviewer and orchestrator obligations.
+Rules 1, 4, 5 and 6 are enforced by `aggregateReview` in `scripts/review-aggregate.ts` when the orchestrator passes `--review-iteration <review_iteration>`: `rethink` fires when the aggregate runs with `review_iteration >= MAX_REVIEW_ITERATIONS` (the counter as read before the run — it reads 3 after three `changes_requested` rounds) and is still not LGTM. The no-repeat key and the verification input are documented at that function; `rethink` is not LGTM and is never routed back to implement.
 
 ## Security-mode review (ADR-004 step 8)
 
