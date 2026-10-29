@@ -26,7 +26,7 @@
 
 ## Authz test for new endpoints (V-SEC-13)
 
-Any diff that adds or changes an endpoint MUST include, in the same PR and written failing-first, the authz tests required by Mercure `mercure-plugin/rules/references/security-sensitive-surfaces.md` (single source of truth: https://github.com/CorentinLumineau/mercure/blob/main/mercure-plugin/rules/references/security-sensitive-surfaces.md — do not copy its lists here):
+Any diff that adds or changes an endpoint MUST include, in the same PR and written failing-first, the authz tests required by Mercure `mercure-plugin/rules/references/security-sensitive-surfaces.md` (single source of truth: the installed Mercure plugin at `rules/references/security-sensitive-surfaces.md`, pinned to Mercure edd7acc; Mercure is private, so do not link its GitHub URL — do not copy its lists here):
 §2 defines "endpoint" and "changed"; §3 lists the cases (401, cross-account 403/404 with forged ids, **scope 403**, middleware/`proxy.ts` matcher); §4 is the exhaustive trivial exemption; §5 is the `## Security opt-out` block that MUST appear in the PR body for any skip.
 
 The implementer must not open the PR without these tests (or a valid logged opt-out); the reviewer enforces it as `V-SEC-13` BLOCK (`audits/04-security-checks.md` § Authz Test Audit) and `security_review_required` applies.
