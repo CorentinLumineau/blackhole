@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { VERIFICATION_MODES } from '../lib/worker-json/constants.ts';
+import { OUTCOME_STATUSES, VERIFICATION_MODES } from '../lib/worker-json/constants.ts';
 import { root, type CheckResult } from './check-utils.ts';
 import { readJsonFile } from '../lib/fs.ts';
 
@@ -27,9 +27,7 @@ type LedgerRow = {
   reason?: unknown;
 };
 
-// Terminal outcome statuses: each records how the author answered the finding and needs a
-// non-empty one-line `reason`. Legacy statuses carry no such requirement.
-export const OUTCOME_STATUSES = ['wrong', 'intentional', 'not-worth'] as const;
+export { OUTCOME_STATUSES };
 
 const isNumberOrNull = (value: unknown): boolean => typeof value === 'number' || value === null;
 
@@ -64,9 +62,9 @@ export const findLedgerSchemaDrift = (findings: unknown[]): string[] => {
     }
     if (
       (OUTCOME_STATUSES as readonly unknown[]).includes(row.status) &&
-      (typeof row.reason !== 'string' || row.reason.trim() === '')
+      (typeof row.reason !== 'string' || row.reason.trim() === '' || /[\r\n]/.test(row.reason.trim()))
     ) {
-      violations.push(`${id}: status "${String(row.status)}" requires a non-empty reason`);
+      violations.push(`${id}: status "${String(row.status)}" requires a non-empty single-line reason`);
     }
   }
 
