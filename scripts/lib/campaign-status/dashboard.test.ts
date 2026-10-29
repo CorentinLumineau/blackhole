@@ -4,6 +4,7 @@ import {
   formatDashboard,
   renderLedgerOpenSection,
   renderRoutingSection,
+  renderStackMergeOrderSection,
   renderWavesSection,
 } from './dashboard.ts';
 import type { IssueRow, LedgerFinding, QueueIssue } from './types.ts';
@@ -170,5 +171,23 @@ describe('renderWavesSection — section cap', () => {
     const waveLines = lines.filter((l) => l.startsWith('**Wave '));
     expect(waveLines.length).toBe(10);
     expect(lines).toContain('- …and 340 more');
+  });
+});
+
+describe('renderStackMergeOrderSection', () => {
+  test('renders nothing when no stacked PR is open', () => {
+    expect(renderStackMergeOrderSection({})).toEqual([]);
+    expect(renderStackMergeOrderSection({ '1': { status: 'in-flight', pr: 11 } } as never)).toEqual([]);
+  });
+  test('renders the merge order for an open stack', () => {
+    const issues = {
+      '1': { status: 'in-flight', pr: 11 },
+      '2': { status: 'in-flight', pr: 12, stacked_on: 1 },
+    } as never;
+    expect(renderStackMergeOrderSection(issues)).toEqual([
+      '### Stacked PR merge order',
+      '- merge #1, then #2 (stacked on #1)',
+      '',
+    ]);
   });
 });

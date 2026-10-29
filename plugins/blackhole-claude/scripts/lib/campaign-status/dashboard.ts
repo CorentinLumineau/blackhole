@@ -1,4 +1,5 @@
 import { readScope, type CampaignScope } from '../../forge-scope.ts';
+import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
 import {
   computeWaves,
   countLedgerByStatus,
@@ -257,6 +258,18 @@ export function renderQueueHealthLine(verdict: QueueHealth, blockedCount: number
   return `**Queue health:** ${QUEUE_HEALTH_ICON[verdict]} ${label}`;
 }
 
+export function renderStackMergeOrderSection(issues: Record<string, QueueIssue>): string[] {
+  const stacks = stackMergeOrder(issues);
+  if (stacks.length === 0) return [];
+  const shown = stacks.slice(0, SECTION_CAP);
+  return [
+    '### Stacked PR merge order',
+    ...shown.map((s) => `- ${formatStackMergeOrder(s)}`),
+    ...capOverflowLine(stacks.length, shown.length),
+    '',
+  ];
+}
+
 export function formatDashboard(opts: {
   scope?: CampaignScope;
   checkpoint: CheckpointMeta;
@@ -308,6 +321,7 @@ export function formatDashboard(opts: {
   lines.push(...renderReadySection(ready));
   lines.push(...renderRoutingSection(active));
   lines.push(...renderWavesSection(issues));
+  lines.push(...renderStackMergeOrderSection(issues));
   lines.push(...renderCompletedSection(done));
   lines.push(...renderFiledSection(filed));
   lines.push(...renderLedgerOpenSection(findings));

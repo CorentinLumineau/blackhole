@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { globsMatchFiles, pickStackParent, touchPathsOverlap } from './stack-parent.ts';
+import {
+  formatStackMergeOrder,
+  globsMatchFiles,
+  pickStackParent,
+  stackMergeOrder,
+  touchPathsOverlap,
+} from './stack-parent.ts';
 
 describe('touchPathsOverlap', () => {
   test('nested literal prefixes overlap', () => {
@@ -108,5 +114,35 @@ describe('pickStackParent', () => {
       '11': { status: 'ready', touch_paths: ['src/a/*.ts'] },
     };
     expect(pickStackParent(q, 11, { parentFiles: { '10': ['src/a/x.md'] } })).toBeNull();
+  });
+});
+
+describe('stackMergeOrder', () => {
+  const pr = (n: number, extra: Record<string, unknown> = {}) => ({ [String(n)]: { status: 'in-flight', pr: n + 1000, ...extra } });
+  const fmt = (issues: Record<string, never>) => stackMergeOrder(issues).map(formatStackMergeOrder);
+
+  test('linear chain', () => {
+    const issues = { ...pr(1), ...pr(2, { stacked_on: 1 }), ...pr(3, { stacked_on: 2 }) } as never;
+    expect(fmt(issues)).toEqual(['merge #1, then #2 (stacked on #1), then #3 (stacked on #2)']);
+  });
+  test('branching: lowest-numbered child first, depth-first', () => {
+    const issues = { ...pr(1), ...pr(5, { stacked_on: 1 }), ...pr(2, { stacked_on: 1 }), ...pr(3, { stacked_on: 2 }) } as never;
+    expect(fmt(issues)).toEqual([
+      'merge #1, then #2 (stacked on #1), then #3 (stacked on #2), then #5 (stacked on #1)',
+    ]);
+  });
+  test('independent PRs are not listed', () => {
+    expect(stackMergeOrder({ ...pr(1), ...pr(2) } as never)).toEqual([]);
+  });
+  test('merged parent is dropped; child heads the remaining stack', () => {
+    const issues = {
+      '1': { status: 'merged', pr: 1001 },
+      ...pr(2, { stacked_on: 1 }),
+      ...pr(3, { stacked_on: 2 }),
+    } as never;
+    expect(fmt(issues)).toEqual(['merge #2, then #3 (stacked on #2)']);
+  });
+  test('empty queue yields no stacks', () => {
+    expect(stackMergeOrder({})).toEqual([]);
   });
 });
