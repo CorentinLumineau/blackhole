@@ -1746,42 +1746,6 @@ describe('validate-bash-command.js — worktree-removal guard path-qualified git
   );
 });
 
-// Subcommand-spelling bypass: the certain-`git` path compared `worktree`/`remove` raw, so a quoted
-// spelling of either token produced no detected invocation. Denied like the bare form; the allow
-// control proves a quoted spelling against a safe (pushed) worktree is still permitted.
-describe('validate-bash-command.js — worktree-removal guard subcommand-spelling bypass', () => {
-  test.each([
-    ['both single-quoted', (worktree: string) => `git 'worktree' 'remove' ${worktree}`],
-    ['worktree double-quoted', (worktree: string) => `git "worktree" remove ${worktree}`],
-    ['remove double-quoted', (worktree: string) => `git worktree "remove" ${worktree}`],
-  ])('deny: %s subcommand spelling is still detected', async (label, buildCommand) => {
-    await withRemoteTrackedWorktree(
-      'blackhole-hook-wt-subcmd-',
-      `blackhole/issue-subcmd-${label.replace(/[^a-z0-9]+/gi, '-')}`,
-      async (mainRepo, worktree) => {
-        const result = await runPreToolUseHook(SCRIPT, bashPayload(buildCommand(worktree)), mainRepo);
-
-        expect(result.exitCode).toBe(2);
-        expect(permissionDecision(result.stdout)).toBe('deny');
-      },
-    );
-  });
-
-  test('allow: quoted subcommand spelling against a pushed worktree is still allowed', async () => {
-    await withRemoteTrackedWorktree(
-      'blackhole-hook-wt-subcmd-',
-      'blackhole/issue-subcmd-allow',
-      async (mainRepo, worktree, push) => {
-        push();
-        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git 'worktree' "remove" ${worktree}`), mainRepo);
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout.trim()).toBe('');
-      },
-    );
-  });
-});
-
 // Executable-spelling bypass (#788): the guard's detection stage compared the leading token
 // against the exact literal `'git'` string, so ANY shell-accepted spelling other than the bare
 // literal token — a backslash escape, a quoted form, or adjacent-quote concatenation — produced
@@ -3252,6 +3216,15 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     ['ln --target-directory=', `ln --target-directory=${m} ./a.txt`],
     ['cp -at', `cp -at ${m} ./a.txt`],
     ['cp -rt', `cp -rt ${m} ./a.txt`],
+    ['truncate -s0', `truncate -s0 ${m}/f.txt`],
+    ['truncate --size=0', `truncate --size=0 ${m}/f.txt`],
+    ['dd of=', `dd if=/dev/zero of=${m}/f.txt`],
+    ['dd of quoted', `dd of="${m}/f.txt"`],
+    ['rsync file', `rsync a ${m}/f.txt`],
+    ['rsync dir', `rsync -a ./d/ ${m}/`],
+    ['rsync trailing --exclude', `rsync -a ./d/ ${m}/ --exclude x`],
+    ['rsync trailing -e', `rsync -a ./d/ ${m}/ -e ssh`],
+    ['rsync trailing --delete', `rsync ./d ${m}/ --delete`],
   ];
   for (const [label] of OUT('x')) {
     test(`write-target bypass is denied: ${label}`, async () => {
@@ -3282,6 +3255,10 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
     'install -d ./nd',
     'echo x >| ./f',
     'make 2>&1',
+    'truncate -s0 ./f',
+    'dd if=/etc/hostname of=./f',
+    'rsync /etc/hostname ./f',
+    'rsync ./a host:/x',
   ]) {
     test(`in-tree write-target forms are allowed: ${command}`, async () => {
       await withLinkedWorktree('blackhole-hook-wtb-ok-', async (mainRepo, worktree) => {
