@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { pickStackParent, touchPathsOverlap } from './stack-parent.ts';
+import { globsMatchFiles, pickStackParent, touchPathsOverlap } from './stack-parent.ts';
 
 describe('touchPathsOverlap', () => {
   test('nested literal prefixes overlap', () => {
@@ -10,6 +10,13 @@ describe('touchPathsOverlap', () => {
   });
   test('a root-only wildcard overlaps nothing', () => {
     expect(touchPathsOverlap(['**'], ['docs/x.md'])).toBe(false);
+  });
+});
+
+describe('globsMatchFiles', () => {
+  test('a glob matches only concrete files it covers', () => {
+    expect(globsMatchFiles(['src/a/*.ts'], ['src/a/x.ts'])).toBe(true);
+    expect(globsMatchFiles(['src/a/*.ts'], ['src/a/x.md'])).toBe(false);
   });
 });
 
@@ -68,5 +75,38 @@ describe('pickStackParent', () => {
     };
     expect(pickStackParent(q, 11, { parentFiles: { '10': ['docs/z.md'] } })).toBeNull();
     expect(pickStackParent(q, 11, { parentFiles: { '10': ['src/a/x.ts'] } })?.parent).toBe(10);
+  });
+  test('each default or broad glob is dropped individually from a mixed list', () => {
+    const q = {
+      '10': { status: 'in-flight', pr: 100, touch_paths: ['src/a/x.ts'] },
+      '11': { status: 'ready', touch_paths: ['src/a/x.ts', 'src/**', 'scripts/**'] },
+      '12': { status: 'ready', touch_paths: ['src/**', 'scripts/**'] },
+    };
+    const o = { defaultTouchPaths: ['src/**', 'scripts/**'] };
+    expect(pickStackParent(q, 11, o)?.parent).toBe(10);
+    expect(pickStackParent(q, 12, o)).toBeNull();
+  });
+  test('broad globs are unknown even when no defaults are supplied', () => {
+    for (const g of ['src/**', 'scripts/**', '**', '*.md']) {
+      const q = {
+        '10': { status: 'in-flight', pr: 100, touch_paths: [g] },
+        '11': { status: 'ready', touch_paths: [g] },
+      };
+      expect(pickStackParent(q, 11)).toBeNull();
+    }
+  });
+  test('an empty parentFiles list is unknown and falls back to the parent narrowed touch_paths', () => {
+    const q = {
+      '10': { status: 'in-flight', pr: 100, touch_paths: ['src/a/**'] },
+      '11': { status: 'ready', touch_paths: ['src/a/x.ts'] },
+    };
+    expect(pickStackParent(q, 11, { parentFiles: { '10': [] } })?.parent).toBe(10);
+  });
+  test('a child glob must match a concrete parent file, not just share a prefix', () => {
+    const q = {
+      '10': { status: 'in-flight', pr: 100, touch_paths: ['src/a/**'] },
+      '11': { status: 'ready', touch_paths: ['src/a/*.ts'] },
+    };
+    expect(pickStackParent(q, 11, { parentFiles: { '10': ['src/a/x.md'] } })).toBeNull();
   });
 });

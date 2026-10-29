@@ -246,20 +246,12 @@ with any declared `merge_after`/`depends_on`; `depends_on` keeps gating readines
 `stacked_on` only picks the branch base.
 
 **Which paths count.** The parent PR's actual changed files (`--parent-files`) are compared with
-the child's `touch_paths` when supplied, else declared globs are compared. A `touch_paths` equal
-to config `default_touch_paths`, or a glob with an empty/root-only prefix (`**`), is unknown and
-never triggers stacking alone; a plan's narrowed `touch_paths` are what make stacking fire.
-
-**Precedence with Step 3.** When the overlapping blocker already has an open PR, stacking
-replaces the overlap deferral: the issue is not set `blocked` with `overlap with #N`. Step 3
-deferral still applies while the blocker has no PR yet. `merge_after: [<parent>]` is unioned
-with any declared `merge_after`/`depends_on`; `depends_on` keeps gating readiness (Step 2) and
-`stacked_on` only picks the branch base.
-
-**Which paths count.** The parent PR's actual changed files (`--parent-files`) are compared with
-the child's `touch_paths` when supplied, else declared globs are compared. A `touch_paths` equal
-to config `default_touch_paths`, or a glob with an empty/root-only prefix (`**`), is unknown and
-never triggers stacking alone; a plan's narrowed `touch_paths` are what make stacking fire.
+the child's `touch_paths` when supplied, else declared globs are compared. A `touch_paths` entry equal
+to a config `default_touch_paths` member, or a broad glob (a wildcard after at most one segment), is unknown and
+never triggers stacking alone (defaults and broad globs such as `src/**`, `**`, `*.md` are dropped
+individually from a mixed list); an empty `--parent-files` list is unknown, not "no overlap", and falls
+back to the parent's narrowed `touch_paths`. A non-empty list is glob-matched against the child's
+paths. A plan's narrowed `touch_paths` are what make stacking fire.
 
 No parent (or `stacked_on` already set) means the usual `origin/<target_branch>` branch point.
 

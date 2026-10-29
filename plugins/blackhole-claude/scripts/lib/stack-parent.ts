@@ -26,7 +26,13 @@ const staticPrefix = (glob: string): string => {
   return (cut === -1 ? glob : glob.slice(0, cut)).replace(/\/+$/, '');
 };
 
-/** Conservative overlap of two glob lists: one literal prefix contains the other. Root-only prefixes never match. */
+const hasWildcard = (glob: string): boolean => /[*?[{]/.test(glob);
+
+/** Broad = a wildcard with at most one literal path segment before it (`**`, `*.md`, `src/**`). */
+const isBroad = (glob: string): boolean =>
+  hasWildcard(glob) && !staticPrefix(glob).includes('/');
+
+/** Overlap between two glob lists, by literal-prefix containment; used only when no concrete files are known. */
 export const touchPathsOverlap = (a: string[], b: string[]): boolean =>
   a.some((ga) =>
     b.some((gb) => {
@@ -37,21 +43,27 @@ export const touchPathsOverlap = (a: string[], b: string[]): boolean =>
     }),
   );
 
+/** True when any of `globs` matches any concrete file path. */
+export const globsMatchFiles = (globs: string[], files: string[]): boolean =>
+  globs.some((g) => {
+    const matcher = new Bun.Glob(g);
+    return files.some((f) => matcher.match(f));
+  });
+
 export type StackParentOptions = {
-  /** Config `default_touch_paths`: a list equal to this is the unnarrowed default, i.e. unknown. */
+  /** Config `default_touch_paths`: each member is the unnarrowed default, i.e. unknown. */
   defaultTouchPaths?: string[];
-  /** Parent issue -> files its open PR actually changes; preferred over the parent's declared globs. */
+  /**
+   * Parent issue -> files its open PR actually changes. A non-empty list is matched as concrete
+   * files; an empty or absent list is unknown (not "no overlap") and falls back to the parent's
+   * narrowed touch_paths.
+   */
   parentFiles?: Record<string, string[]>;
 };
 
-const sameList = (a: string[], b: string[]): boolean =>
-  a.length === b.length && a.every((g) => b.includes(g));
-
-/** Narrowed paths only: the default list and root-only/empty-prefix globs say nothing about overlap. */
+/** Narrowed paths only: each default member and each broad/root-only glob is dropped individually. */
 const knownPaths = (paths: string[] | undefined, defaults: string[] | undefined): string[] =>
-  !paths?.length || (defaults?.length && sameList(paths, defaults))
-    ? []
-    : paths.filter((g) => staticPrefix(g) !== '');
+  (paths ?? []).filter((g) => !defaults?.includes(g) && !isBroad(g));
 
 const reachesIssue = (issues: Record<string, StackCandidate>, from: number, target: number): boolean => {
   const seen = new Set<number>();
@@ -97,7 +109,9 @@ export const pickStackParent = (
     .map(([k, v]) => ({ n: Number(k), v }))
     .filter(({ n, v }) => {
       if (n === issue || v.pr == null || CLOSED_STATUSES.has(v.status ?? '')) return false;
-      const theirs = opts.parentFiles?.[String(n)] ?? knownPaths(v.touch_paths, opts.defaultTouchPaths);
+      const files = opts.parentFiles?.[String(n)];
+      if (files?.length) return globsMatchFiles(mine, files);
+      const theirs = knownPaths(v.touch_paths, opts.defaultTouchPaths);
       return theirs.length > 0 && touchPathsOverlap(mine, theirs);
     })
     .sort((x, y) => x.n - y.n);
