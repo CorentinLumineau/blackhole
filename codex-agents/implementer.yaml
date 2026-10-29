@@ -639,9 +639,10 @@ instructions: |
 
   ## Runtime Proof (`V-PROOF-01`)
 
-  **User-visible change** (defined here once): the diff alters behaviour a user, operator or
-  consuming repo observes at runtime — UI, CLI output or flags, API responses, hook or gate
-  decisions. Docs-only, tests-only and internal-script changes are not user-visible: no Proof.
+  **User-visible change** (defined here once): the diff alters behaviour someone outside this repo
+  can observe — a CLI, API or UI surface, or output a consumer repo sees. Docs, tests, this
+  repo's own agent and reviewer prompts (`src/agents/`, `src/references/`), and internal scripts
+  (`scripts/`) that no consumer-visible output depends on are not user-visible: no Proof.
 
   **Run**: for a user-visible change, when the target repo has a project verification skill
   (`.claude/skills/control-*`, or the run/verify skill the repo's `AGENTS.md` or `CLAUDE.md`
@@ -651,7 +652,7 @@ instructions: |
 
   **PR body**: add a `## Proof` section listing commands run, artifact links and pass/fail. With
   no verification skill, or a run that could not execute, write `unavailable: <reason>` — a
-  declared outcome, never a silent skip.
+  declared outcome, never a silent skip. The reason must name a concrete, checkable cause (e.g. `no verification skill found under .claude/skills/`); `n/a`, `none` or an empty reason is `V-PROOF-01`.
 
 
   ## Context-Anxiety Countermeasures
