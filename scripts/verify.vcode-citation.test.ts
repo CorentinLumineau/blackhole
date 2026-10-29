@@ -97,6 +97,15 @@ describe('codeAppearsIn', () => {
   test('absent code returns false', () => {
     expect(codeAppearsIn('nothing relevant here', 'V-FAKE-01')).toBe(false);
   });
+
+  test('slash shorthand expands the suffix to the full code, not a bare number', () => {
+    expect(codeAppearsIn('only V-OTHER-02 is cited here', 'V-FAKE-01/02')).toBe(false);
+    expect(codeAppearsIn('cites V-FAKE-02 explicitly', 'V-FAKE-01/02')).toBe(true);
+  });
+
+  test('matches whole tokens only', () => {
+    expect(codeAppearsIn('see V-FAKE-011 and XV-FAKE-01', 'V-FAKE-01')).toBe(false);
+  });
 });
 
 describe('scanVcodeCitations (fixtures)', () => {
