@@ -210,6 +210,7 @@ D5 narrowing as Step 0.5 above).
 
 For issue N, PR P:
 
+- Before resetting, record the final `review_iteration` as `rounds_to_lgtm` and the reviewed head SHAs as `reviewed_head_shas` on the `queue.json` entry, and copy `rounds_to_lgtm` onto each ledger row for the issue (`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/review-noise-report.ts` reads it)
 - Reset `review_iteration` to 0 on merge
 - `fixed-in-pr` → `resolved`, `resolved_at` set
 - `open` BLOCK on merged files → file new issue or `resolved` if obsolete

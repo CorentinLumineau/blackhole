@@ -59,6 +59,8 @@ name alone.
 | `phase` | `handle` \| `plan` \| `implement` \| `review` \| `done` | Current lifecycle phase |
 | `status` | `blocked` \| `ready` \| `in-flight` \| `merged` \| `closed` | Scheduling state. `merged` alone does not say *which* branch the PR landed on — that is `merged_into` below, and only a row carrying it has a verified base-ref landing |
 | `review_iteration` | number | Review loop counter (default 0); see `review-core.md` |
+| `rounds_to_lgtm` | number | Optional; the final `review_iteration` at merge, written just before the reset (`phase-loop.md` § Ledger cleanup on merge) |
+| `reviewed_head_shas` | string[] | Optional; head SHAs a review was run against, recorded at merge |
 | `notes` | string \| null | e.g. `awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, `awaiting-ruling-recheck`, `merge-conflict-semantic:<file1>,<file2>`, `overlap with #N` |
 | `depends_on` | number[] | Issue numbers that must be merged/closed first; bidirectional sync with forge issue bodies via [forge-sync.md](forge-sync.md) §6.5 write-back |
 | `merge_hold` | boolean | Optional (ADR-005, default `false`); when `true`, blocks this issue's PR from merging regardless of LGTM status. Distinct from `depends_on`: `depends_on` gates when implementation may *start*, `merge_hold` gates only when the PR may *merge*. Consulted by `merge-gate.md`'s `mergeEligible()` |
