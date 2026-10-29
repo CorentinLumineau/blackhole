@@ -295,7 +295,7 @@ frontmatter date is extracted and passed back in as the re-render's `today` over
 cross-midnight gap between promotion and verification never causes a spurious mismatch — the
 only two things that can differ are actual content.
 
-Mechanical check: `bun run --cwd <abs repo-root> scripts/check-review-artifact.ts --config <abs>
+Mechanical check: `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/check-review-artifact.ts --config <abs>
 --issue <N> --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head
 <sha> --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--head` is the reviewed head
 passed to promotion, not the post-promotion head (`implementer.md` § Promote Review Artifact);
@@ -382,7 +382,7 @@ of `config.target_branch` — record `stacked_on` + `parent_tip_sha` on the chil
 entry (`queue-dag.md` Field rules) and surface the squash-merge warning:
 
 ```
-bun run --cwd <abs repo-root> scripts/stack-repair.ts capture --queue <abs queue.json> \
+bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts capture --queue <abs queue.json> \
   --repo-root <abs repo-root> --child-issue <N> --parent-issue <M> --repo-slug <owner/repo> --apply
 ```
 
@@ -395,7 +395,7 @@ commits has an escape hatch for this stack, a squash-only repo does not.
 recorded *before* step 4 merges, and its step 4.6 runs the repair per child afterwards:
 
 ```
-bun run --cwd <abs child worktree> scripts/stack-repair.ts repair --queue <abs queue.json> \
+bun run --cwd <abs child worktree> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts repair --queue <abs queue.json> \
   --repo-root <abs child worktree> --repo-slug <owner/repo> --base <target branch> \
   --parent-issue <M> [--child-issue <N> --apply]
 ```
@@ -448,8 +448,8 @@ and its exhaustion is terminal: the orchestrator is left no verdict meaning "tol
 Mechanical check for both halves (ADR-003 — the judgment is above, the arithmetic is not here):
 
 ```
-bun run --cwd <abs repo-root> scripts/merge-base-guard.ts --mode pre-merge --base-ref <baseRefName> --target-branch <target_branch> [--stacked-into <branch>]
-bun run --cwd <abs repo-root> scripts/merge-base-guard.ts --mode post-merge --pr <N> --target-branch <target_branch> --repo-root <abs repo-root> [--attempts <N>] [--interval-ms <N>]
+bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-base-guard.ts --mode pre-merge --base-ref <baseRefName> --target-branch <target_branch> [--stacked-into <branch>]
+bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-base-guard.ts --mode post-merge --pr <N> --target-branch <target_branch> --repo-root <abs repo-root> [--attempts <N>] [--interval-ms <N>]
 ```
 
 Exit `0` proceed, `1` refuse (reason on stderr), `2` malformed usage — the same exit-code

@@ -77,8 +77,8 @@ describe('findSnapshotStaleness', () => {
 });
 
 describe('KNOWN_VCODE_PARITY_DIVERGENCES', () => {
-  test('is seeded with exactly V-ADA-05 and V-DOC-GOV-01 (plan Design Decisions D1 — no other code needs suppression)', () => {
-    expect(KNOWN_VCODE_PARITY_DIVERGENCES.map((d) => d.code).sort()).toEqual(['V-ADA-05', 'V-DOC-GOV-01']);
+  test('holds exactly the documented divergences, each with a reason', () => {
+    expect(KNOWN_VCODE_PARITY_DIVERGENCES.map((d) => d.code).sort()).toEqual(['V-ADA-05', 'V-DOC-GOV-01', 'V-UX-04', 'V-UX-05']);
     for (const d of KNOWN_VCODE_PARITY_DIVERGENCES) expect(d.reason).toBeTruthy();
   });
 });

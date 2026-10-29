@@ -132,7 +132,7 @@ D5 narrowing as Step 0.5 above).
    `documentation/reviews/` + `documentation/INDEX.md`, commit and push on the PR branch. If
    promotion fails to land `documentation/reviews/review-{slug}.md` in the PR, **STOP** — do not
    call `gh pr merge`. Before merge (including consumer `merge-pr.sh` / Pattern B paths), run
-   `bun run --cwd <abs repo-root> scripts/check-review-artifact.ts --config <abs> --issue <N>
+   `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/check-review-artifact.ts --config <abs> --issue <N>
    --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head <sha>
    --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--head` is the reviewed head
    passed to promotion, not the post-promotion head (`implementer.md` § Promote Review Artifact);

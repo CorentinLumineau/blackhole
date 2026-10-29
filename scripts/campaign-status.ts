@@ -6,6 +6,7 @@ import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dash
 import { fetchForgeCounts } from './lib/campaign-status/forge.ts';
 import { CampaignNotFoundError, loadCampaignState } from './lib/campaign-status/state.ts';
 import { readJsonFile } from './lib/fs.ts';
+import { formatPaceLine, readLatestPaceRecord } from './lib/pace-log.ts';
 import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
 
 export { parseCheckpointFrontmatter } from './lib/campaign-status/checkpoint.ts';
@@ -132,6 +133,9 @@ function main() {
   });
 
   console.log(dashboard);
+
+  const latestPace = readLatestPaceRecord(path.join(campaignDir, 'pace-log.jsonl'));
+  if (latestPace) console.log(formatPaceLine(latestPace));
 
   const driftPath = path.join(campaignDir, 'plugin-drift.json');
   if (fs.existsSync(driftPath)) {

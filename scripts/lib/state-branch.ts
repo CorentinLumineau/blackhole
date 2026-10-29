@@ -15,7 +15,7 @@ export const STATE_DIR = '.blackhole';
  * inboxes, write intermediates, and signals that describe this machine (each is re-derived on
  * the next one). Everything else under `.blackhole/` is campaign state. */
 const EXCLUDED_DIRS = new Set(['.tmp', 'hook-events', 'archive']);
-const MACHINE_FILES = new Set(['run-context.json', 'plugin-drift.json', 'doc-health.json']);
+const MACHINE_FILES = new Set(['run-context.json', 'plugin-drift.json', 'doc-health.json', 'pace-log.jsonl']);
 const isExcludedFile = (rel: string, name: string): boolean =>
   name.endsWith('.tmp') || (rel === STATE_DIR && MACHINE_FILES.has(name));
 

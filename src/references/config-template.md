@@ -101,6 +101,20 @@ Committed template: `.blackhole/config.json`
 | `resource_policy.testlock_carveout.scope` | no | Human-readable scope of the carveout (which repos/commands it covers) |
 | `resource_policy.testlock_carveout.rationale` | no | Human-readable rationale for granting the test-lock carveout |
 | `resource_policy.testlock_carveout.conditions` | no | Array of conditions workers must honor while the carveout is active (e.g. memory self-gate, serial heavy commands) |
+| `resource_policy.gate` | no | Thresholds for `scripts/resource-gate.ts`, the host check run before each test/build-bearing batch. **Resolution**: absent block or key ⇒ the defaults below |
+| `resource_policy.gate.defer_below_mem_mb` | no | MemAvailable (MB) below which the batch is deferred to a later turn (default `2500`) |
+| `resource_policy.gate.full_above_mem_mb` | no | MemAvailable (MB) at or above which the full batch may spawn; between the two the batch is cut to one (default `3500`) |
+| `resource_policy.gate.defer_above_load_ratio` | no | 1-minute load ÷ core count above which the batch is deferred (default `2.0`) |
+| `resource_policy.gate.full_below_load_ratio` | no | Load ratio at or below which the full batch may spawn; above it the batch is cut to one (default `1.0`) |
+| `resource_policy.gate.defer_above_dstate` | no | Count of uninterruptible-sleep (D-state) processes above which the batch is deferred, whatever the load (default `10`) |
+| `resource_policy.pace` | no | Thresholds for `scripts/pace-gate.ts`, the usage-pace check run beside `resource_policy.gate` before each spawn round. **Resolution**: absent block or key ⇒ the defaults below; absent or stale cache ⇒ `unavailable` (gate not applied, reason logged) |
+| `resource_policy.pace.cache_path` | no | File holding Claude Code's statusline stdin payload, whose `rate_limits` the gate reads (default `~/.claude/cache/rate-limits.json`). A statusline command fills it and still prints its own status text, e.g. `input=$(cat); mkdir -p ~/.claude/cache; printf '%s' "$input" > ~/.claude/cache/rate-limits.json.tmp && mv ~/.claude/cache/rate-limits.json.tmp ~/.claude/cache/rate-limits.json; echo "<your status line>"`; `rate_limits` is present only for Pro/Max subscribers, after the session's first response |
+| `resource_policy.pace.baseline_path` | no | File where the gate records `seven_day` usage at the start of the current day and five-hour session (default `pace-baseline.json` beside `cache_path`). A day or session that has spent its share of the weekly allowance left when it began (remaining ÷ remaining days, remaining ÷ remaining sessions) forces `STOP-NEW` even when the weekly total looks fine. A missing or corrupt file is replaced and that run's reasons say `compartments unavailable` |
+| `resource_policy.pace.max_age_seconds` | no | Cache older than this many seconds is treated as `unavailable` (default `600`) |
+| `resource_policy.pace.stop_pct` | no | `used_percentage` at or above which either window forces `STOP-NEW` (default `95`) |
+| `resource_policy.pace.throttle_pct` | no | Five-hour `used_percentage` at or above which the round is capped at one worker (default `80`) |
+| `resource_policy.pace.throttle_ratio` | no | Seven-day pace (used share ÷ elapsed share) above which the round is capped at one worker (default `1.2`) |
+| `resource_policy.pace.scale_up_ratio` | no | Seven-day pace below which one more worker is allowed, up to `parallel_max` (default `0.7`) |
 | `resource_policy.carveout_recorded_at` | no | ISO8601 timestamp when the resource-policy carveout block was last recorded |
 | `stop_budget_cleared_at` | no | ISO8601 timestamp when the campaign stop-budget gate was cleared by the owner/coordinator (audit trail) |
 | `issue_484_disposition` | no | Campaign-specific disposition record for issue #484 (or analogous parked-issue pin). **Resolution**: absent block ⇒ no special disposition |
