@@ -1,7 +1,6 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './lib/fs.ts';
-import { validateStateWrite } from './lib/state-write-guard.ts';
+import { installStateFile } from './lib/state-write-guard.ts';
 import type { LedgerFinding } from './lib/promote-review-artifact.ts';
 
 // One-shot normalization of the live findings-ledger.json's `issue_ref`/`pr_ref` schema drift,
@@ -93,21 +92,15 @@ export function runMigration(livePath: string, archiveDir: string): { before: nu
     );
   }
 
-  fs.mkdirSync(archiveDir, { recursive: true });
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const snapshotPath = path.join(archiveDir, `findings-ledger-${timestamp}.json`);
-  fs.copyFileSync(livePath, snapshotPath);
-
-  const tmpPath = `${livePath}.tmp`;
-  const output = { ...live, findings: migrated };
-  fs.writeFileSync(tmpPath, `${JSON.stringify(output, null, 2)}\n`, 'utf-8');
-
-  const result = validateStateWrite({ tmpPath, livePath, entityKey: 'findings' });
+  const result = installStateFile({
+    livePath,
+    archiveDir,
+    content: `${JSON.stringify({ ...live, findings: migrated }, null, 2)}\n`,
+    entityKey: 'findings',
+  });
   if (!result.ok) {
     throw new Error(`state-write-guard refused the migrated ledger: ${result.reason}`);
   }
-
-  fs.renameSync(tmpPath, livePath);
 
   return { before, changed };
 }
