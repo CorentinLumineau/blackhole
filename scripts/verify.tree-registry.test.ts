@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'bun:test';
 import {
   extractMarkdownSection,
   findMissingTrees,
   formatTreeRegistryDetail,
   checkTreeRegistry,
+  firstColumnCells,
   runChecks,
 } from './checks/tree-registry.check.ts';
 import { COMMITTED_TARGET_TREES } from './lib/build/paths.ts';
@@ -109,13 +111,19 @@ describe('formatTreeRegistryDetail (audit doc)', () => {
   });
 });
 
-describe('audit coverage table drift', () => {
-  test('a tree id absent from the audit section is reported by id', () => {
-    const ids = COMMITTED_TARGET_TREES.map((t) => ({ id: t.id, paths: [t.id] }));
-    const section = COMMITTED_TARGET_TREES.slice(1)
-      .map((t) => `| \`${t.id}\` |`)
-      .join('\n');
-    expect(findMissingTrees(section, ids, { requireAll: true })).toEqual([COMMITTED_TARGET_TREES[0].id]);
+describe('checkTreeRegistry audit leg', () => {
+  const auditPath = 'documentation/audits/build-tree-install-resolution.md';
+  const realRead = (rel: string) => readFileSync(rel, 'utf8');
+
+  test('firstColumnCells returns trimmed, unticked first cells only', () => {
+    expect(firstColumnCells('| `a` | `.a/` |\n|---|---|\nprose `b`')).toEqual(['a', '---']);
+  });
+
+  test('a renamed id cell fails even when its path stays in another column', () => {
+    const doc = realRead(auditPath).replace('| `cursor` | `.cursor/` |', '| `cursor-x` | `.cursor/` |');
+    expect(doc).toContain('`cursor-x`');
+    const result = checkTreeRegistry((rel) => (rel === auditPath ? doc : realRead(rel)));
+    expect(result.detail).toContain('build-tree-install-resolution.md missing: cursor');
   });
 });
 
