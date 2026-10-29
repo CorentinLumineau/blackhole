@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'bun:test';
 import {
   extractMarkdownSection,
   findMissingTrees,
   formatTreeRegistryDetail,
   checkTreeRegistry,
+  firstColumnCells,
   runChecks,
 } from './checks/tree-registry.check.ts';
 import { COMMITTED_TARGET_TREES } from './lib/build/paths.ts';
@@ -94,6 +96,34 @@ describe('formatTreeRegistryDetail', () => {
     expect(formatTreeRegistryDetail(['cursor'], ['codex'])).toBe(
       'architecture.md missing: cursor; README.md missing: codex'
     );
+  });
+});
+
+describe('formatTreeRegistryDetail (audit doc)', () => {
+  test('names the audit doc when its coverage table lacks a tree id', () => {
+    expect(formatTreeRegistryDetail([], [], ['codex'])).toBe('build-tree-install-resolution.md missing: codex');
+  });
+
+  test('appends the audit doc after architecture.md and README.md', () => {
+    expect(formatTreeRegistryDetail(['cursor'], ['codex'], ['gemini-workspace'])).toBe(
+      'architecture.md missing: cursor; README.md missing: codex; build-tree-install-resolution.md missing: gemini-workspace'
+    );
+  });
+});
+
+describe('checkTreeRegistry audit leg', () => {
+  const auditPath = 'documentation/audits/build-tree-install-resolution.md';
+  const realRead = (rel: string) => readFileSync(rel, 'utf8');
+
+  test('firstColumnCells returns trimmed, unticked first cells only', () => {
+    expect(firstColumnCells('| `a` | `.a/` |\n|---|---|\nprose `b`')).toEqual(['a', '---']);
+  });
+
+  test('a renamed id cell fails even when its path stays in another column', () => {
+    const doc = realRead(auditPath).replace('| `cursor` | `.cursor/` |', '| `cursor-x` | `.cursor/` |');
+    expect(doc).toContain('`cursor-x`');
+    const result = checkTreeRegistry((rel) => (rel === auditPath ? doc : realRead(rel)));
+    expect(result.detail).toContain('build-tree-install-resolution.md missing: cursor');
   });
 });
 

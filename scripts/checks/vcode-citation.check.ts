@@ -105,8 +105,15 @@ export const resolveSection = (fileContent: string, sectionRef: string | null): 
 // sub-code's literal string appears — permissive by design, see the plan's rationale in the
 // issue: the AC's core intent is "the site binds the code," not "every combined sub-code is
 // individually pinned at the same citation."
-export const codeAppearsIn = (searchText: string, code: string): boolean =>
-  code.split(/[/,\s]+/).filter(Boolean).some((c) => searchText.includes(c));
+export const codeAppearsIn = (searchText: string, code: string): boolean => {
+  const parts = code.split(/[/,\s]+/).filter(Boolean);
+  const prefix = parts[0]?.replace(/[^-]*$/, '') ?? '';
+  return parts.some((part) => {
+    const full = part.startsWith('V-') ? part : prefix + part;
+    const escaped = full.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(?<![\\w-])${escaped}(?![\\w])`).test(searchText);
+  });
+};
 
 type ScanResult = { unresolved: string[]; codeAbsent: string[] };
 

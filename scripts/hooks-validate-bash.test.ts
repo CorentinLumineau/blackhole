@@ -1746,6 +1746,42 @@ describe('validate-bash-command.js — worktree-removal guard path-qualified git
   );
 });
 
+// Subcommand-spelling bypass: the certain-`git` path compared `worktree`/`remove` raw, so a quoted
+// spelling of either token produced no detected invocation. Denied like the bare form; the allow
+// control proves a quoted spelling against a safe (pushed) worktree is still permitted.
+describe('validate-bash-command.js — worktree-removal guard subcommand-spelling bypass', () => {
+  test.each([
+    ['both single-quoted', (worktree: string) => `git 'worktree' 'remove' ${worktree}`],
+    ['worktree double-quoted', (worktree: string) => `git "worktree" remove ${worktree}`],
+    ['remove double-quoted', (worktree: string) => `git worktree "remove" ${worktree}`],
+  ])('deny: %s subcommand spelling is still detected', async (label, buildCommand) => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-subcmd-',
+      `blackhole/issue-subcmd-${label.replace(/[^a-z0-9]+/gi, '-')}`,
+      async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(buildCommand(worktree)), mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      },
+    );
+  });
+
+  test('allow: quoted subcommand spelling against a pushed worktree is still allowed', async () => {
+    await withRemoteTrackedWorktree(
+      'blackhole-hook-wt-subcmd-',
+      'blackhole/issue-subcmd-allow',
+      async (mainRepo, worktree, push) => {
+        push();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`git 'worktree' "remove" ${worktree}`), mainRepo);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('');
+      },
+    );
+  });
+});
+
 // Executable-spelling bypass (#788): the guard's detection stage compared the leading token
 // against the exact literal `'git'` string, so ANY shell-accepted spelling other than the bare
 // literal token — a backslash escape, a quoted form, or adjacent-quote concatenation — produced
@@ -3154,6 +3190,50 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       });
     });
   });
+
+  for (const build of [
+    (t: string) => `echo x >&${t}`,
+    (t: string) => `echo x >& ${t}`,
+    (t: string) => `echo x &>${t}`,
+    (t: string) => `mv ${t} ./moved.txt`,
+    (t: string) => `mv -f ${t} ./moved.txt`,
+  ]) {
+    test(`ampersand-redirect and mv-source escapes are denied: ${build('<outside>')}`, async () => {
+      await withLinkedWorktree('blackhole-hook-amp-', async (mainRepo, worktree) => {
+        const command = build(path.join(mainRepo, 'victim.txt'));
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({
+          tier: 'block',
+          pattern_id: 'bash-outside-assigned-worktree',
+        });
+      });
+    });
+  }
+
+  for (const command of ['make 2>&1', 'echo x >&2', 'echo x 2>&1 | cat', 'echo x >&-', 'mv ./a.txt ./b.txt']) {
+    test(`fd duplication and in-tree mv are not file targets: ${command}`, async () => {
+      await withLinkedWorktree('blackhole-hook-amp-ok-', async (mainRepo, worktree) => {
+        const result = await runPreToolUseHook(
+          SCRIPT,
+          bashPayloadAt(command, worktree),
+          worktree,
+          PRETOOLUSE_HOOKS_DIR,
+          undefined,
+          worktree,
+        );
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
 
   // A stream device is not a file write: discarding output to /dev/null, or writing to the
   // session's own stdout/stderr/tty, must neither deny nor record.

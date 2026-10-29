@@ -87,7 +87,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-CONFIG-02 | New `.blackhole/config.json` keys registered in config-template.md | WARN | scripts/checks/config-registration.check.ts |
 | V-GATE-01 | A required gate marker went missing from an agent prompt — `implementer.md`'s 5-step verification-evidence gate or `reviewer.md` § Suggestion Proportionality Gate no longer carries its declared marker text, so the gate can be edited away without any check noticing | WARN | scripts/checks/agents.check.ts |
 | V-GATE-02 | Gate-resolution clause restated outside its config-template.md `**Resolution**` sentence instead of cited by reference | WARN | scripts/checks/gate-resolution-citation.check.ts |
-| V-TREE-01 | Committed target tree drift — paths.ts's COMMITTED_TARGET_TREES diverges from documentation/architecture.md § Committed target trees or README § Installation Paths, named per-doc | WARN | scripts/checks/tree-registry.check.ts |
+| V-TREE-01 | Committed target tree drift — paths.ts's COMMITTED_TARGET_TREES diverges from documentation/architecture.md § Committed target trees or README § Installation Paths, or the build-tree-install-resolution audit's Tree-coverage table, named per-doc | WARN | scripts/checks/tree-registry.check.ts |
 | V-SCOPE-01 | No refactoring untouched code | WARN | reviewer.md § Suggestion Proportionality Gate |
 | V-SCOPE-02 | Touch-Paths violation — files modified outside plan scope | WARN | reviewer.md § 5-Field Contract & Plan Compliance |
 | V-SCOPE-03 | Missing/underestimated blast-radius — a Standard-track plan with 3+ affected consumers lacks a `## Dependency Blast-Radius` section | WARN | reviewer.md § 5-Field Contract & Plan Compliance |
@@ -114,6 +114,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-AUTO-02 | Thinking-route artifact staged but not carried into the PR — route declared an artifact and none reached the PR; a route that declared nothing is unaffected | BLOCK | reviewer.md § Staged Artifact Carry Audit |
 | V-VIS-01 | UI-affecting diff with display_targets configured but no visual_evidence declared — silent skip | BLOCK | reviewer.md § Visual Evidence Audit |
 | V-VIS-02 | visual_evidence[] present with a declared capture_status: unavailable entry — non-blocking, never silent | WARN | reviewer.md § Visual Evidence Audit |
+| V-PROOF-01 | User-visible change merged with no `## Proof` section in the PR body (commands run, artifact links, pass/fail, or an explicit `unavailable: <reason>`) — extends the V-VIS evidence concept beyond `display_targets`-gated UI screenshots | BLOCK | reviewer.md § Runtime Proof Audit |
 | V-HOOK-01 | PreToolUse hook denied a destructive/unsafe Bash or Write/Edit call; the `.blackhole/hook-events/` record must be ingested into findings-ledger.json before the issue advances past implement | BLOCK | orchestrator-runtime.md § Triage step 1b |
 | V-HOOK-02 | PreToolUse hook flagged a risky-but-allowed call for review — sensitive-file write, force push, registry publish, destructive SQL | WARN | orchestrator-runtime.md § Triage step 1b |
 | V-HOOK-03 | PreToolUse hook validator process failed before producing a decision and the call was allowed (fail-open); the `.blackhole/hook-events/` record must be ingested into findings-ledger.json | BLOCK | orchestrator-runtime.md § Triage step 1b |
