@@ -97,6 +97,28 @@ describe('formatTreeRegistryDetail', () => {
   });
 });
 
+describe('formatTreeRegistryDetail (audit doc)', () => {
+  test('names the audit doc when its coverage table lacks a tree id', () => {
+    expect(formatTreeRegistryDetail([], [], ['codex'])).toBe('build-tree-install-resolution.md missing: codex');
+  });
+
+  test('appends the audit doc after architecture.md and README.md', () => {
+    expect(formatTreeRegistryDetail(['cursor'], ['codex'], ['gemini-workspace'])).toBe(
+      'architecture.md missing: cursor; README.md missing: codex; build-tree-install-resolution.md missing: gemini-workspace'
+    );
+  });
+});
+
+describe('audit coverage table drift', () => {
+  test('a tree id absent from the audit section is reported by id', () => {
+    const ids = COMMITTED_TARGET_TREES.map((t) => ({ id: t.id, paths: [t.id] }));
+    const section = COMMITTED_TARGET_TREES.slice(1)
+      .map((t) => `| \`${t.id}\` |`)
+      .join('\n');
+    expect(findMissingTrees(section, ids, { requireAll: true })).toEqual([COMMITTED_TARGET_TREES[0].id]);
+  });
+});
+
 describe('checkTreeRegistry (live repo content)', () => {
   // Calibrated against the live docs: both README § Installation Paths and architecture.md
   // § Committed target trees now name every tree in COMMITTED_TARGET_TREES, so the check

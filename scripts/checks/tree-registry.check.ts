@@ -50,10 +50,15 @@ export const findMissingTrees = (
  * `undefined` when both docs cover every tree. Exported as a pure helper for the same reason
  * `extractMarkdownSection` and `findMissingTrees` are: the clean live repo never exercises the
  * drift branch, so it would otherwise only ever be covered by a real drift. */
-export const formatTreeRegistryDetail = (missingArch: string[], missingReadme: string[]): string | undefined => {
+export const formatTreeRegistryDetail = (
+  missingArch: string[],
+  missingReadme: string[],
+  missingAudit: string[] = []
+): string | undefined => {
   const parts: string[] = [];
   if (missingArch.length) parts.push(`architecture.md missing: ${missingArch.join(', ')}`);
   if (missingReadme.length) parts.push(`README.md missing: ${missingReadme.join(', ')}`);
+  if (missingAudit.length) parts.push(`build-tree-install-resolution.md missing: ${missingAudit.join(', ')}`);
   return parts.length ? parts.join('; ') : undefined;
 };
 
@@ -67,7 +72,18 @@ export const checkTreeRegistry = (): CheckResult => {
     exclude: ['claude-native'],
   });
 
-  const detail = formatTreeRegistryDetail(missingArch, missingReadme);
+  // The audit doc's coverage table is keyed by tree id, so match ids rather than paths.
+  const auditSection = extractMarkdownSection(
+    read('documentation/audits/build-tree-install-resolution.md'),
+    'Tree-coverage check'
+  );
+  const missingAudit = findMissingTrees(
+    auditSection,
+    COMMITTED_TARGET_TREES.map((t) => ({ id: t.id, paths: [t.id] })),
+    { requireAll: true }
+  );
+
+  const detail = formatTreeRegistryDetail(missingArch, missingReadme, missingAudit);
   return detail ? { id: 'V-TREE-01', ok: true, detail } : { id: 'V-TREE-01', ok: true };
 };
 
