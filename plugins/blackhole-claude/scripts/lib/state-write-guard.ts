@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { readJsonFile } from './fs.ts';
 import { parseFlags } from './argv-flags.ts';
 
@@ -31,6 +32,43 @@ const countEntities = (parsed: unknown, entityKey: string): number | null => {
   if (Array.isArray(value)) return value.length;
   if (typeof value === 'object' && value !== null) return Object.keys(value).length;
   return null;
+};
+
+export type InstallStateFileParams = {
+  livePath: string;
+  archiveDir: string;
+  /** Serialized candidate content, written verbatim to `<livePath>.tmp`. */
+  content: string;
+  entityKey: string;
+  allowShrink?: boolean;
+};
+
+/** Write protocol steps 1-4: snapshot the live file into `archiveDir`, write the candidate to
+ *  `<livePath>.tmp`, validate it, then atomically install it. A refused candidate leaves the live
+ *  file untouched and the `.tmp` removed. */
+export const installStateFile = ({
+  livePath,
+  archiveDir,
+  content,
+  entityKey,
+  allowShrink,
+}: InstallStateFileParams): StateWriteGuardResult => {
+  fs.mkdirSync(archiveDir, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const base = path.basename(livePath, path.extname(livePath));
+  fs.copyFileSync(livePath, path.join(archiveDir, `${base}-${timestamp}.json`));
+
+  const tmpPath = `${livePath}.tmp`;
+  fs.writeFileSync(tmpPath, content, 'utf-8');
+
+  const validation = validateStateWrite({ tmpPath, livePath, entityKey, allowShrink });
+  if (!validation.ok) {
+    fs.rmSync(tmpPath);
+    return validation;
+  }
+
+  fs.renameSync(tmpPath, livePath);
+  return { ok: true };
 };
 
 export const validateStateWrite = ({

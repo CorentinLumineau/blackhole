@@ -31,7 +31,7 @@ LGTM requires **all** of:
 
 1. `reviewer` returned `status: "complete"` (not `error`)
 2. `scripts/review-aggregate.ts` returned `lgtm: true` and `blockers_count === 0`
-3. No unresolved BLOCK rows in ledger for this issue/PR
+3. No unresolved BLOCK rows in ledger for this issue/PR — a user-visible PR with no `## Proof` section carries a `V-PROOF-01` BLOCK row (`reviewer.md` § Runtime Proof Audit) and so cannot reach LGTM
 4. When the Security-mode review gate resolved `true` for this PR, the merge-gate validator (`V-SEC-08`) passes — no unresolved `BLOCK` security finding without a populated attack-scenario field. Not applicable when the gate resolved `false` or `route` was absent.
 5. When the Security-mode review gate resolved `true` for this PR, any `verification_legs[]` entry with `mode: "reasoned"` has been surfaced to the merge decision (`V-SEC-12`) — visible, not blocking. Not applicable when the gate resolved `false` or `route` was absent.
 

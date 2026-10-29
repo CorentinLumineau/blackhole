@@ -43,7 +43,10 @@
   scoped to admin scheduling), treat the issue as delivered for campaign-complete purposes only:
   annotate `queue.json`'s `notes` field (not `status`/`phase`) — e.g.
   `"delivered-at-LGTM (leave-open) — awaiting human merge"` — and leave the PR
-  open. Before this narrowing, a `leave-open` PR could be annotated "delivered" while carrying an
+  open. Delivered is not merged: overlap deferral (`queue-dag.md` Step 3) alone leaves the next
+  wave branching from a `main` without this PR's changes, so an issue whose `touch_paths` overlap
+  an open leave-open PR is stacked on it at dispatch (`queue-dag.md` Step 3b) instead of fanned out
+  from the target branch. Before this narrowing, a `leave-open` PR could be annotated "delivered" while carrying an
   unresolved merge conflict or red CI, because Step 0.5/0.6/1 were never reached at all under the
   old unconditional bypass. The actual external merge is picked up later by the normal
   forge-sync externally-observed-merge reconciliation path (unchanged,
@@ -207,6 +210,7 @@ D5 narrowing as Step 0.5 above).
 
 For issue N, PR P:
 
+- Before resetting, record the final `review_iteration` as `rounds_to_lgtm` and the reviewed head SHAs as `reviewed_head_shas` on the `queue.json` entry, and copy `rounds_to_lgtm` onto each ledger row for the issue (`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/review-noise-report.ts` reads it)
 - Reset `review_iteration` to 0 on merge
 - `fixed-in-pr` → `resolved`, `resolved_at` set
 - `open` BLOCK on merged files → file new issue or `resolved` if obsolete

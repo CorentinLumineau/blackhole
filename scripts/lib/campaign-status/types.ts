@@ -27,6 +27,8 @@ export type QueueIssue = {
   depends_on?: number[];
   size?: string;
   review_iteration?: number;
+  rounds_to_lgtm?: number;
+  reviewed_head_shas?: string[];
   stacked_on?: number | null;
   parent_tip_sha?: string | null;
   route?: Route;
