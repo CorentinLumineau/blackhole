@@ -217,6 +217,28 @@ For each pair in ready set, if `touch_paths` globs overlap on likely files,
 keep the issue earlier in `user_queue_order`; defer the other (set `blocked`
 with note `overlap with #N`).
 
+### Step 3b — Stack at dispatch (overlap with an open PR)
+
+Deferral alone cannot protect an overlapping issue once the blocker has an open, unmerged PR:
+under `merge_mode: leave-open` an LGTM'd PR counts as delivered while `main` still lacks its
+changes, so the "cleared" blocker would hand the next wave a stale base. Before creating a
+worktree, run `bun run scripts/stack-parent.ts --queue .blackhole/queue.json --issue <N>`
+(`pickStackParent`, `scripts/lib/stack-parent.ts`). When it names a parent — the lowest-numbered
+other issue with an open PR and overlapping `touch_paths`, in any `merge_mode` — then:
+
+1. Cut the branch from the parent's branch (`git worktree add --no-track <path> -b
+   blackhole/issue-<N> origin/blackhole/issue-<parent>`) and open the PR with `--base
+   blackhole/issue-<parent>`.
+2. Write `stacked_on: <parent>` and `merge_after: [<parent>]` in the same atomic write that sets
+   `in-flight`, then run `scripts/stack-repair.ts capture --apply` for the tip (`merge-gate.md` § 7).
+3. Link the PR body with `Part of #<N>`, never `Closes #<N>`: `pr-lint.sh` rejects a closing keyword
+   on a non-default base. The post-merge retarget to `config.target_branch` switches it to
+   `Closes #<N>`.
+4. A fix-round push to the parent is propagated to each open child by **merging** the parent
+   branch into the child branch and pushing normally — never a rebase or force-push.
+
+No parent (or `stacked_on` already set) means the usual `origin/<target_branch>` branch point.
+
 **Migration slot:** at most one `in-flight` issue with `migration_slot: true`.
 Others with `migration_slot: true` stay `blocked` until slot frees.
 

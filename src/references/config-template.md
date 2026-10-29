@@ -180,6 +180,10 @@ renders an explicit `unset (bootstrap-blocking)` sentinel rather than silently r
 described in the field table row above — this note governs only what happens when the field is
 missing, not the three values' runtime behavior.
 
+Under `leave-open`, "delivered" is not "merged": an LGTM'd open PR clears an overlap deferral
+while `main` still lacks its changes. Overlapping issues are therefore stacked at dispatch
+(`queue-dag.md` Step 3b) in every `merge_mode`, so the human can merge in order without conflicts.
+
 **`display_targets` contract note**: **Resolution**: absent or empty array ⇒ inert (visual
 evidence gate is a no-op end to end). When the array is absent or empty, the visual evidence
 gate (ADR-018) is a no-op end to end — the implementer's Visual Evidence Capture step never
