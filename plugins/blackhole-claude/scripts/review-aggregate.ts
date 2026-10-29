@@ -247,7 +247,7 @@ function rootCauseKey(finding: Finding): string {
   return `${finding.vcode}\0${finding.file}\0${finding.root_cause ?? normalizeSummary(finding.summary)}`;
 }
 
-const CLOSED_PRIOR_STATUSES = new Set(['fixed', 'resolved']);
+const CLOSED_PRIOR_STATUSES = new Set(['fixed-in-pr', 'resolved']);
 
 // Same root cause in one file is one finding (review-core.md § Review convergence rule 3):
 // distinct occurrences are folded into the first finding's `locations[]`.
@@ -535,12 +535,21 @@ if (import.meta.main) {
     }
 
     let convergence: { reviewIteration: number } | undefined;
-    if (reviewIteration !== undefined) {
+    if (reviewIteration === undefined) {
+      console.error(
+        'warning: --review-iteration omitted — convergence rules (rethink, no-repeat, same-root-cause merge, BLOCK verification) are not applied',
+      );
+    } else {
       const n = Number(reviewIteration);
       if (!Number.isInteger(n) || n < 0) {
         throw new Error(`--review-iteration must be a non-negative integer, got: ${reviewIteration}`);
       }
       convergence = { reviewIteration: n };
+      if (!verificationFile) {
+        console.error(
+          'warning: --verification-file omitted on a convergence run — every BLOCK stays BLOCK (fail-closed, unverified)',
+        );
+      }
     }
 
     const result = aggregateReview({

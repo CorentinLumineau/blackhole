@@ -687,6 +687,27 @@ describe('review-aggregate CLI', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  test('omitting --review-iteration warns on stderr and keeps exit code 0', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    fs.writeFileSync(reviewerFile, JSON.stringify({ status: 'complete', findings: [] }));
+    const { exitCode, stderr } = await runReviewAggregateCli([
+      '--reviewer-file', reviewerFile, '--issue-ref', '1',
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stderr).toContain('--review-iteration omitted');
+  });
+
+  test('convergence run without --verification-file warns on stderr', async () => {
+    const reviewerFile = path.join(tmpDir, 'reviewer.json');
+    fs.writeFileSync(reviewerFile, JSON.stringify({ status: 'complete', findings: [] }));
+    const { exitCode, stderr } = await runReviewAggregateCli([
+      '--reviewer-file', reviewerFile, '--issue-ref', '1', '--review-iteration', '0',
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stderr).toContain('--verification-file omitted');
+    expect(stderr).not.toContain('--review-iteration omitted');
+  });
+
   test('unresolved recheck entry prints the fail-loud stderr line (issue #485)', async () => {
     const reviewerFile = path.join(tmpDir, 'reviewer.json');
     const priorFile = path.join(tmpDir, 'prior.json');
@@ -960,11 +981,61 @@ describe('review convergence', () => {
     expect(out.lgtm).toBe(true);
   });
 
-  test('unverified BLOCK is downgraded to WARN with a caveat', () => {
+  test('BLOCK with no verification file stays BLOCK (fail-closed)', () => {
     const out = run([block()]);
+    expect(out.findings[0].severity).toBe('BLOCK');
+    expect(out.lgtm).toBe(false);
+    expect(out.blockers_count).toBe(1);
+  });
+
+  test('BLOCK refuted in a supplied verification file is downgraded to WARN', () => {
+    const out = run([block()], {
+      verification: [{ finding_id: 'N1', verdict: 'refuted', evidence: 'not real' }],
+    });
     expect(out.findings[0].severity).toBe('WARN');
-    expect(out.findings[0].summary).toContain('unverified');
+    expect(out.blockers_count).toBe(0);
     expect(out.lgtm).toBe(true);
+  });
+
+  test('BLOCK absent from a supplied verification file stays BLOCK and is listed unverified', () => {
+    const out = run([block()], { verification: confirm('OTHER') });
+    expect(out.findings[0].severity).toBe('BLOCK');
+    expect(out.unverified).toEqual(['N1']);
+    expect(out.lgtm).toBe(false);
+  });
+
+  test('same root cause at two locations of one file becomes one finding with both locations', () => {
+    const out = run(
+      [block({ id: 'N1', line: 3, summary: 'dup cause' }), block({ id: 'N2', line: 40, summary: 'dup cause' })],
+      { verification: confirm('N1') },
+    );
+    expect(out.findings).toHaveLength(1);
+    expect(out.findings[0].locations).toEqual([
+      { file: 'src/a.ts', line: 3 },
+      { file: 'src/a.ts', line: 40 },
+    ]);
+  });
+
+  test.each(['fixed-in-pr', 'resolved'])(
+    'a prior finding with ledger status %s does not suppress an identical new finding',
+    (status) => {
+      const prior = baseFinding({ id: 'F-00010', severity: 'BLOCK', summary: 'regressed', status });
+      const out = run([block({ summary: 'regressed' })], {
+        priorFindings: [prior],
+        verification: confirm('N1'),
+      });
+      expect(out.findings.map((f) => f.id)).toEqual(['N1']);
+      expect(out.rechecked).toEqual([]);
+    },
+  );
+
+  test('round 3 with an open verified blocker returns rethink and not lgtm', () => {
+    const out = run([block()], {
+      verification: confirm('N1'),
+      convergence: { reviewIteration: 3 },
+    });
+    expect(out.status).toBe('rethink');
+    expect(out.lgtm).toBe(false);
   });
 
   test('verified BLOCK stays BLOCK', () => {
