@@ -65,6 +65,10 @@ export type StackParentOptions = {
 const knownPaths = (paths: string[] | undefined, defaults: string[] | undefined): string[] =>
   (paths ?? []).filter((g) => !defaults?.includes(g) && !isBroad(g));
 
+/** Paths that may match concrete files: broad globs count here, as real files are evidence; prefixless ones never do. */
+const matchablePaths = (paths: string[] | undefined, defaults: string[] | undefined): string[] =>
+  (paths ?? []).filter((g) => !defaults?.includes(g) && staticPrefix(g) !== '');
+
 const reachesIssue = (issues: Record<string, StackCandidate>, from: number, target: number): boolean => {
   const seen = new Set<number>();
   for (let cur: number | null | undefined = from; cur != null && !seen.has(cur); cur = issues[String(cur)]?.stacked_on) {
@@ -104,15 +108,16 @@ export const pickStackParent = (
   const me = issues[String(issue)];
   if (!me || me.stacked_on != null) return null;
   const mine = knownPaths(me.touch_paths, opts.defaultTouchPaths);
-  if (!mine.length) return null;
+  const matchable = matchablePaths(me.touch_paths, opts.defaultTouchPaths);
+  if (!matchable.length) return null;
   const roots = Object.entries(issues)
     .map(([k, v]) => ({ n: Number(k), v }))
     .filter(({ n, v }) => {
       if (n === issue || v.pr == null || CLOSED_STATUSES.has(v.status ?? '')) return false;
       const files = opts.parentFiles?.[String(n)];
-      if (files?.length) return globsMatchFiles(mine, files);
+      if (files?.length) return globsMatchFiles(matchable, files);
       const theirs = knownPaths(v.touch_paths, opts.defaultTouchPaths);
-      return theirs.length > 0 && touchPathsOverlap(mine, theirs);
+      return mine.length > 0 && theirs.length > 0 && touchPathsOverlap(mine, theirs);
     })
     .sort((x, y) => x.n - y.n);
   const root = roots[0];
@@ -125,6 +130,21 @@ export const pickStackParent = (
     parentPr: issues[String(parent)]!.pr as number,
     issueLinkKeyword: 'Part of',
   };
+};
+
+/** Changed files of every other open PR, for `parentFiles`; a null read is left out, so it stays unknown. */
+export const collectParentFiles = (
+  issues: Record<string, StackCandidate>,
+  issue: number,
+  readPrFiles: (pr: number) => string[] | null,
+): Record<string, string[]> => {
+  const out: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(issues)) {
+    if (Number(k) === issue || !isOpenPr(v)) continue;
+    const files = readPrFiles(v.pr as number);
+    if (files) out[k] = files;
+  }
+  return out;
 };
 
 export type StackStep = { issue: number; stackedOn: number | null };

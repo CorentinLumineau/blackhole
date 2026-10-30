@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  collectParentFiles,
   formatStackMergeOrder,
   globsMatchFiles,
   pickStackParent,
@@ -144,5 +145,49 @@ describe('stackMergeOrder', () => {
   });
   test('empty queue yields no stacks', () => {
     expect(stackMergeOrder({})).toEqual([]);
+  });
+});
+
+describe('pickStackParent with a broad child glob', () => {
+  const q = {
+    '10': { status: 'in-flight', pr: 100, touch_paths: ['src/**'] },
+    '11': { status: 'ready', touch_paths: ['src/**'] },
+  };
+  test('stacks when it matches the parent PR real changed files', () => {
+    expect(pickStackParent(q, 11, { parentFiles: { '10': ['src/a/x.ts'] } })?.parent).toBe(10);
+  });
+  test('does not stack when the real changed files lie elsewhere', () => {
+    expect(pickStackParent(q, 11, { parentFiles: { '10': ['docs/x.md'] } })).toBeNull();
+  });
+  test('does not stack on declared globs alone', () => {
+    expect(pickStackParent(q, 11)).toBeNull();
+  });
+  test('prefixless globs and defaults stay unknown against concrete files', () => {
+    for (const g of ['**', '*.md']) {
+      const p = { ...q, '11': { status: 'ready', touch_paths: [g] } };
+      expect(pickStackParent(p, 11, { parentFiles: { '10': ['a.md'] } })).toBeNull();
+    }
+    expect(
+      pickStackParent(q, 11, { parentFiles: { '10': ['src/a/x.ts'] }, defaultTouchPaths: ['src/**'] }),
+    ).toBeNull();
+  });
+});
+
+describe('collectParentFiles', () => {
+  const q = {
+    '10': { status: 'in-flight', pr: 100 },
+    '11': { status: 'ready', pr: null },
+    '12': { status: 'merged', pr: 102 },
+    '13': { status: 'in-flight', pr: 103 },
+    '14': { status: 'in-flight', pr: 104 },
+  };
+  test('reads open PRs other than the issue, leaving failed reads unknown', () => {
+    const asked: number[] = [];
+    const files = collectParentFiles(q, 13, (pr) => {
+      asked.push(pr);
+      return pr === 100 ? ['src/a.ts'] : null;
+    });
+    expect(asked).toEqual([100, 104]);
+    expect(files).toEqual({ '10': ['src/a.ts'] });
   });
 });

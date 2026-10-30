@@ -225,8 +225,9 @@ Deferral alone cannot protect an overlapping issue once the blocker has an open,
 under `merge_mode: leave-open` an LGTM'd PR counts as delivered while `main` still lacks its
 changes, so the "cleared" blocker would hand the next wave a stale base. Before creating a
 worktree, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-parent.ts --queue .blackhole/queue.json --issue <N>`
-(`pickStackParent`, `scripts/lib/stack-parent.ts`; optionally `--parent-files '{"<parent>": [...]}'`
-from `gh pr diff --name-only` and `--default-touch-paths '[...]'` from config). When it names a
+(`pickStackParent`, `scripts/lib/stack-parent.ts`; it reads each open PR's files with `gh pr diff
+--name-only` unless `--parent-files '{"<parent>": [...]}'` is passed; optionally
+`--default-touch-paths '[...]'` from config). When it names a
 parent — the **tip** of the chain rooted at the lowest-numbered other issue with an open PR and
 overlapping paths, in any `merge_mode` — then:
 
@@ -255,12 +256,12 @@ with any declared `merge_after`/`depends_on`; `depends_on` keeps gating readines
 `stacked_on` only picks the branch base.
 
 **Which paths count.** The parent PR's actual changed files (`--parent-files`) are compared with
-the child's `touch_paths` when supplied, else declared globs are compared. A `touch_paths` entry equal
-to a config `default_touch_paths` member, or a broad glob (a wildcard after at most one segment), is unknown and
-never triggers stacking alone (defaults and broad globs such as `src/**`, `**`, `*.md` are dropped
-individually from a mixed list); an empty `--parent-files` list is unknown, not "no overlap", and falls
-back to the parent's narrowed `touch_paths`. A non-empty list is glob-matched against the child's
-paths. A plan's narrowed `touch_paths` are what make stacking fire.
+the child's `touch_paths` when readable, else declared globs are compared. A `touch_paths` entry equal
+to a config `default_touch_paths` member is always unknown, as is a glob with no literal prefix (`**`,
+`*.md`). A broad glob with a prefix (`src/**`) counts only against the parent's actual files, never
+against declared globs. Each is dropped individually from a mixed list. A failed read or an empty
+`--parent-files` list is unknown, not "no overlap", and falls back to the parent's narrowed
+`touch_paths`. A plan's narrowed `touch_paths` are what make stacking fire.
 
 No parent (or `stacked_on` already set) means the usual `origin/<target_branch>` branch point.
 
