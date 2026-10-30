@@ -7,6 +7,7 @@
 - [ ] Plan approved (or narrow technical waive documented)
 - [ ] queue.json: phase implement, status in-flight
 - [ ] git worktree prune (V-WORKTREE-01)
+- [ ] bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-parent.ts --queue .blackhole/queue.json --issue <issue> (queue-dag.md Step 3b); a named parent replaces `origin/main` below with `origin/blackhole/issue-<parent>` and the PR uses `--base blackhole/issue-<parent>`
 - [ ] git worktree add --no-track <scratchpad>/wt-<issue> -b blackhole/issue-<issue> origin/main (V-BRANCH-03, issue #516)
 - [ ] git -C <scratchpad>/wt-<issue> config extensions.worktreeConfig true (one-time per repo, idempotent; issue #516 — required before `--worktree`-scoped config below can confine anything)
 - [ ] git -C <scratchpad>/wt-<issue> config --worktree push.default nothing (issue #516 — scoped to this worktree only; no bare `git push` can silently succeed here)
