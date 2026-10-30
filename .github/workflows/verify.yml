@@ -17,16 +17,25 @@ jobs:
     name: Protocol Conformance
     # Skip on tag pushes: release.yml already runs build + verify for tags, and the
     # release-notes-gate job below covers the tag-specific check. Avoids a duplicate
-    # full build+verify serializing behind the release on the single self-hosted runner.
+    # full build+verify on a tag.
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     # pull_request runs attacker-controllable fork code — never schedule it on the self-hosted
     # runner (public repo). Trusted push/tag events keep the self-hosted MacBook runner.
     runs-on: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["self-hosted", "mba"]') }}
-    # There is exactly one self-hosted runner, so a wedged job blocks every later run in this
-    # repo until it is reaped. GitHub's default ceiling is 360 minutes; observed real durations
-    # here are 245s-1055s (PR runs on ubuntu-latest: 43-54s), so 30 minutes sits ~1.7x above the
-    # worst run actually seen while cutting a hang's blast radius from six hours to half an hour.
-    timeout-minutes: 30
+    # The self-hosted runner is one slot of a pool shared across repos, so a wedged job holds
+    # that slot until it is reaped. GitHub's default ceiling is 360 minutes; observed real
+    # durations here are 245s-1055s (PR runs on ubuntu-latest: 43-54s). 40 minutes covers the
+    # 10-minute mba-slot wait below plus ~1.7x the worst run actually seen.
+    timeout-minutes: 40
+    # Environment rather than `git config --global`: on the self-hosted Mac that would rewrite
+    # the owner's own git identity. Several bun:test fixtures (scripts/lib/test-fixtures.ts) run
+    # `git commit` against a throwaway repo; with no identity that commit fails with "Author
+    # identity unknown".
+    env:
+      GIT_AUTHOR_NAME: blackhole-ci
+      GIT_AUTHOR_EMAIL: ci@blackhole.local
+      GIT_COMMITTER_NAME: blackhole-ci
+      GIT_COMMITTER_EMAIL: ci@blackhole.local
 
     steps:
       - name: Checkout repository
@@ -38,13 +47,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # Several bun:test fixtures (scripts/lib/test-fixtures.ts) run `git commit` against a
-      # throwaway repo to seed worktree/hook-guard scenarios; a runner with no global git
-      # identity fails that commit with "Author identity unknown".
-      - name: Configure git identity (test fixtures)
+      # Machine-wide FIFO ticket shared by every repo on the Mac. A short wait, so a busy host
+      # fails this job visibly instead of eating the whole timeout.
+      - name: Acquire MBA slot
+        if: runner.environment == 'self-hosted'
         run: |
-          git config --global user.email "ci@blackhole.local"
-          git config --global user.name "blackhole-ci"
+          command -v mba-slot >/dev/null 2>&1 || { echo "mba-slot absent; running unmetered"; exit 0; }
+          mba-slot acquire --timeout 600
 
       # Must run before "Run build" below: scripts/verify.hooks.test.ts reads the git-tracked
       # bundle trees straight off disk, with no build self-invocation, to assert the committed
@@ -104,12 +113,16 @@ jobs:
             claude plugin test
           fi
 
+      - name: Release MBA slot
+        if: always() && runner.environment == 'self-hosted'
+        run: command -v mba-slot >/dev/null 2>&1 && mba-slot release || true
+
   release-notes-gate:
     name: Release Notes Gate
-    runs-on: [self-hosted, mba]
+    # Checkout plus a shell existence check — seconds of real work, not worth a shared Mac slot.
+    runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    # Checkout plus a shell existence check — seconds of real work. Same single-runner reasoning
-    # as the job above; the ceiling is here to bound a hang, not to pace the work.
+    # The ceiling is here to bound a hang, not to pace the work.
     timeout-minutes: 10
 
     steps:
