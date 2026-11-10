@@ -21,21 +21,37 @@ export const AGENT_TOOL_POLICY_DENY_MATRIX: Record<string, string[] | null> = {
   'hunter.md': ['Write', 'Edit', 'Delete'],
 };
 
-/** Claude Code 2.1.292–2.1.296 frontmatter: `effort: low` for triage/routing, `high` for
- * review/verification, `autoCompactWindow` (token threshold) for long-running workers. Absent
- * keys must stay absent — a stray `effort:` on planner/implementer would pin session effort
- * against `worker_effort_policy` spawn routing in model-routing.md. */
-export type AgentFrontmatterPolicy = { effort?: 'low' | 'high'; autoCompactWindow?: string };
+/** Claude Code agent frontmatter: `effort: low` for triage/routing, `high` for
+ * review/verification. `model` pins the context window of a plugin agent type — a spawn-time
+ * `agent({ model })` override changes the model but not that window (model-routing.md § Context
+ * window), so agents that load a consumer repo's base context plus whole files or diffs run on
+ * `opus[1m]`. Absent keys must stay absent — a stray `effort:` on planner/implementer would pin
+ * session effort against `worker_effort_policy` spawn routing. `autoCompactWindow` is banned on
+ * every agent: a 100k cap sits below the base context some consumer repos inject, and the agent
+ * then thrashes on auto-compaction until it dies. */
+export const AGENT_1M_MODEL = 'opus[1m]';
+export type AgentFrontmatterPolicy = { effort?: 'low' | 'high'; model?: string };
 
 export const AGENT_FRONTMATTER_POLICY: Record<string, AgentFrontmatterPolicy> = {
   'coordinator.md': { effort: 'low' },
   'router.md': { effort: 'low' },
-  'orchestrator.md': { effort: 'low', autoCompactWindow: '100000' },
-  'planner.md': { autoCompactWindow: '100000' },
-  'implementer.md': { autoCompactWindow: '100000' },
-  'reviewer.md': { effort: 'high' },
-  'hunter.md': { effort: 'high', autoCompactWindow: '100000' },
-  'investigator.md': { autoCompactWindow: '100000' },
+  'orchestrator.md': { effort: 'low', model: AGENT_1M_MODEL },
+  'planner.md': { model: AGENT_1M_MODEL },
+  'implementer.md': { model: AGENT_1M_MODEL },
+  'reviewer.md': { effort: 'high', model: AGENT_1M_MODEL },
+  'hunter.md': { effort: 'high', model: AGENT_1M_MODEL },
+  'investigator.md': { model: AGENT_1M_MODEL },
+};
+
+const checkPolicyKey = (
+  file: string,
+  key: keyof AgentFrontmatterPolicy,
+  fm: Record<string, string>,
+  expected: AgentFrontmatterPolicy,
+): string[] => {
+  const want = expected[key];
+  if (want) return fm[key] === want ? [] : [`${file}: expected ${key}: ${want}, got ${fm[key] ?? '(absent)'}`];
+  return fm[key] ? [`${file}: unexpected ${key}: ${fm[key]}`] : [];
 };
 
 export const validateAgentEffortFrontmatter = (
@@ -43,23 +59,8 @@ export const validateAgentEffortFrontmatter = (
   fm: Record<string, string>,
   expected: AgentFrontmatterPolicy,
 ): string[] => {
-  const errors: string[] = [];
-  if (expected.effort) {
-    if (fm.effort !== expected.effort) {
-      errors.push(`${file}: expected effort: ${expected.effort}, got ${fm.effort ?? '(absent)'}`);
-    }
-  } else if (fm.effort) {
-    errors.push(`${file}: unexpected effort: ${fm.effort}`);
-  }
-  if (expected.autoCompactWindow) {
-    if (fm.autoCompactWindow !== expected.autoCompactWindow) {
-      errors.push(
-        `${file}: expected autoCompactWindow: ${expected.autoCompactWindow}, got ${fm.autoCompactWindow ?? '(absent)'}`,
-      );
-    }
-  } else if (fm.autoCompactWindow) {
-    errors.push(`${file}: unexpected autoCompactWindow: ${fm.autoCompactWindow}`);
-  }
+  const errors = [...checkPolicyKey(file, 'effort', fm, expected), ...checkPolicyKey(file, 'model', fm, expected)];
+  if (fm.autoCompactWindow) errors.push(`${file}: autoCompactWindow must be absent, got ${fm.autoCompactWindow}`);
   return errors;
 };
 
@@ -126,7 +127,6 @@ const checkAgentFrontmatter = (): CheckResult => {
     for (const key of ['name:', 'description:']) {
       if (!frontmatter.includes(key)) missing.push(`${file}: missing ${key}`);
     }
-    if (/\bmodel:/.test(frontmatter)) missing.push(`${file}: model must be absent (inherit harness default)`);
     const policy = AGENT_FRONTMATTER_POLICY[file];
     if (policy) {
       missing.push(...validateAgentEffortFrontmatter(file, parseFrontmatterFields(frontmatter), policy));

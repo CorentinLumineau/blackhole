@@ -38,7 +38,8 @@ Before every worker spawn:
    1. Determine **task tier** from § Task-tier matrix (role + route + escalation signals).
    2. Pick the **first** slug in the harness § Tier ladder for that tier that the harness
       accepts on spawn.
-   3. Never read `model:` from agent markdown (`V-AGENT-01`).
+   3. Never derive the spawn `model` from agent markdown: its frontmatter `model` sizes the
+      context window, not the tier (`V-AGENT-01`; § Harness tier ladders, Claude Code).
 4. If `worker_effort_policy` is `inherit` (or model policy is `inherit` and effort policy is
    absent) → omit harness-native effort parameters; session inheritance applies.
 5. If `worker_effort_policy` is `cost-optimized` (or absent — same semantics):

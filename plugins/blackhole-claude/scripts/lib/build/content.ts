@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { INSTRUCTIONS_MARKER } from '../../tree-shape.ts';
 import { walkFilesAbs } from '../fs.ts';
+import { stripClaudeOnlyAgentFrontmatter } from './agent-frontmatter.ts';
 import { BUILD_INPUT_ONLY_DIRS, INCLUDE_MARKER_SITES, PLATFORM_TARGETS, type Target } from './facts.ts';
 import { root, srcDir } from './paths.ts';
 
@@ -125,7 +126,7 @@ export const buildCodexAgentYaml = (
   agentDir: string,
   rulesPath: string
 ): string => {
-  const { frontmatter, body } = parseMdFrontmatter(sourceContent);
+  const { frontmatter, body } = parseMdFrontmatter(stripClaudeOnlyAgentFrontmatter(sourceContent));
   const fm = parseFrontmatterFields(frontmatter);
   let bodyContent = applyPlatformConditionals(body, 'codex');
   bodyContent = compileContent(bodyContent, agentDir, rulesPath, 'codex');
@@ -229,7 +230,7 @@ export const processFile = (
     return;
   }
 
-  let content = originalContent;
+  let content = isAgent && target !== 'claude' ? stripClaudeOnlyAgentFrontmatter(originalContent) : originalContent;
 
   if (target === 'cursor') {
     // Cursor: enrich vcodes .mdc with glob patterns

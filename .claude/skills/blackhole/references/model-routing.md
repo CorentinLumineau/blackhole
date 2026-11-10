@@ -38,7 +38,8 @@ Before every worker spawn:
    1. Determine **task tier** from § Task-tier matrix (role + route + escalation signals).
    2. Pick the **first** slug in the harness § Tier ladder for that tier that the harness
       accepts on spawn.
-   3. Never read `model:` from agent markdown (`V-AGENT-01`).
+   3. Never derive the spawn `model` from agent markdown: its frontmatter `model` sizes the
+      context window, not the tier (`V-AGENT-01`; § Harness tier ladders, Claude Code).
 4. If `worker_effort_policy` is `inherit` (or model policy is `inherit` and effort policy is
    absent) → omit harness-native effort parameters; session inheritance applies.
 5. If `worker_effort_policy` is `cost-optimized` (or absent — same semantics):
@@ -122,6 +123,22 @@ selection and document logical effort in the spawn footer.
 | `premium` | Opus (latest) | high (extended thinking enabled) | Security, design, XL |
 
 Use harness-native identifiers; prefer latest version in each family.
+
+**Context window.** A plugin agent type's context window comes from its frontmatter `model`,
+never from the spawn. A Workflow `agent({ model })` override (or an `Agent` `model` parameter)
+changes the model that answers but leaves the window the frontmatter set. `planner`,
+`implementer`, `investigator`, `hunter`, `orchestrator` and `reviewer` therefore ship
+`model: opus[1m]` and no `autoCompactWindow` cap (policy and rationale:
+`scripts/checks/agents.check.ts` `AGENT_FRONTMATTER_POLICY`). Measured on a consumer repo whose
+base context is ~155k tokens per subagent, one probe agent reading ~110k tokens of files:
+
+| Agent setup | Peak input tokens | Compactions |
+|---|---|---|
+| `autoCompactWindow: 100000`, session model `opus` | 179k–181k | thrash, agent dies |
+| cap removed, `agent({ model: 'opus[1m]' })` override | 205k | 2 |
+| cap removed, frontmatter `model: opus[1m]` | 302k | 0 |
+
+The tier ladder above still picks the spawn `model`; it does not size the window.
 
 ## Orchestrator integration
 
