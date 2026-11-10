@@ -754,6 +754,26 @@ describe('serializeCodexAgentYaml', () => {
   });
 });
 
+describe('agent model frontmatter per target (issue #1098)', () => {
+  const agentSrc = path.join(root, 'src', 'agents', 'planner.md');
+
+  test('claude target keeps model: opus[1m]; cursor, gemini and skills targets drop it', () => {
+    const dir = makeTempDir();
+    for (const target of ['claude', 'cursor', 'gemini', 'skills'] as const) {
+      const dest = path.join(dir, target, 'planner.md');
+      processFile(agentSrc, dest, '.x', '.x/rules/blackhole-vcodes.md', target, false, true);
+      const fm = parseMdFrontmatter(fs.readFileSync(dest, 'utf-8')).frontmatter;
+      if (target === 'claude') expect(fm).toMatch(/^model: opus\[1m\]$/m);
+      else expect(fm).not.toMatch(/^model:/m);
+    }
+  });
+
+  test('codex agent yaml omits the Claude-only model slug', () => {
+    const yaml = buildCodexAgentYaml(fs.readFileSync(agentSrc, 'utf-8'), 'codex-skills', 'r.md');
+    expect(yaml).not.toMatch(/^model:/m);
+  });
+});
+
 describe('buildCodexAgentYaml', () => {
   const agentDir = 'codex-skills';
   const rulesPath = 'codex-skills/blackhole/references/blackhole-vcodes.md';

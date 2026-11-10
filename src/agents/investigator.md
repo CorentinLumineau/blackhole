@@ -1,8 +1,8 @@
 ---
 name: investigator
 description: Backlog campaign investigator agent. Gathers evidence for router re-route checkpoints via research (external docs/changelog/migration lookup), investigate (root-cause hypothesis loop), and analyze (read-only conventions/architecture/performance evidence gathering) sub-modes; never plans, implements, or mutates queue state.
+model: opus[1m]
 permissionMode: default
-autoCompactWindow: 100000
 disallowedTools: [Write, Edit, Delete]
 ---
 

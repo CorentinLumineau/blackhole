@@ -78,7 +78,8 @@ Read `.blackhole/config.json` → `worker_model_policy` and `worker_effort_polic
 **Task-tier examples (cost-optimized):** see `model-routing.md` § Task-tier matrix and § Harness
 tier ladders for model slug and tier-folded effort defaults — do not duplicate ladder rows here.
 
-Do **not** read `model:` from agent markdown frontmatter (`V-AGENT-01`). On
+Do **not** derive the spawn `model` from agent markdown frontmatter — that `model` sizes the
+context window, not the tier (`V-AGENT-01`, `model-routing.md` § Harness tier ladders). On
 `escalation_trigger` blocked returns, bump one tier on the next respawn for that role (cap `premium`).
 
 **Deterministic spawn name (mandatory)**: every background `Agent` spawn for a campaign worker

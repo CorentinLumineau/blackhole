@@ -57,8 +57,8 @@ disallowedTools: [Write]`;
   });
 });
 
-describe('V-AGENT-01 — effort / autoCompactWindow frontmatter', () => {
-  test('pass: router effort: low with no autoCompactWindow', () => {
+describe('V-AGENT-01 — effort / model frontmatter', () => {
+  test('pass: router effort: low with no model', () => {
     const fm = parseFrontmatterFields(`name: router
 effort: low`);
     expect(validateAgentEffortFrontmatter('router.md', fm, AGENT_FRONTMATTER_POLICY['router.md']!)).toEqual([]);
@@ -74,18 +74,54 @@ effort: low`);
   test('fail: planner with stray effort is reported', () => {
     const errors = validateAgentEffortFrontmatter(
       'planner.md',
-      parseFrontmatterFields('autoCompactWindow: 100000\neffort: high'),
+      parseFrontmatterFields('model: opus[1m]\neffort: high'),
       AGENT_FRONTMATTER_POLICY['planner.md']!,
     );
     expect(errors.some((e) => e.includes('unexpected effort'))).toBe(true);
   });
 
-  test('pass: orchestrator pins both effort: low and autoCompactWindow', () => {
+  test('pass: orchestrator pins both effort: low and model: opus[1m]', () => {
     const fm = parseFrontmatterFields(`effort: low
-autoCompactWindow: 100000`);
+model: opus[1m]`);
     expect(validateAgentEffortFrontmatter('orchestrator.md', fm, AGENT_FRONTMATTER_POLICY['orchestrator.md']!)).toEqual(
       [],
     );
+  });
+
+  test('fail: heavy worker without model: opus[1m] is reported', () => {
+    const errors = validateAgentEffortFrontmatter(
+      'implementer.md',
+      parseFrontmatterFields('name: implementer'),
+      AGENT_FRONTMATTER_POLICY['implementer.md']!,
+    );
+    expect(errors.some((e) => e.includes('model: opus[1m]'))).toBe(true);
+  });
+
+  test('fail: router with a stray model is reported', () => {
+    const errors = validateAgentEffortFrontmatter(
+      'router.md',
+      parseFrontmatterFields('effort: low\nmodel: opus[1m]'),
+      AGENT_FRONTMATTER_POLICY['router.md']!,
+    );
+    expect(errors.some((e) => e.includes('unexpected model'))).toBe(true);
+  });
+
+  test('fail: autoCompactWindow is reported on any agent', () => {
+    const errors = validateAgentEffortFrontmatter(
+      'planner.md',
+      parseFrontmatterFields('model: opus[1m]\nautoCompactWindow: 100000'),
+      AGENT_FRONTMATTER_POLICY['planner.md']!,
+    );
+    expect(errors.some((e) => e.includes('autoCompactWindow'))).toBe(true);
+  });
+
+  test('heavy workers all run on the 1M window, light agents set no model', () => {
+    for (const f of ['planner.md', 'implementer.md', 'investigator.md', 'hunter.md', 'orchestrator.md', 'reviewer.md']) {
+      expect(AGENT_FRONTMATTER_POLICY[f]!.model).toBe('opus[1m]');
+    }
+    for (const f of ['router.md', 'coordinator.md']) {
+      expect(AGENT_FRONTMATTER_POLICY[f]!.model).toBeUndefined();
+    }
   });
 
   test('every roster agent has a frontmatter policy row', () => {
