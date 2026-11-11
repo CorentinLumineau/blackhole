@@ -143,6 +143,9 @@ export type BlockedGroup = {
  * computed from the same helpers. Documented in `src/references/coordinator-dashboard.md`
  * § Status page. Bump `schema_version` on any breaking field change.
  */
+/** A PR the campaign has delivered at LGTM and left open for the owner to merge. */
+export type ReadyToMergeItem = StatusItem & { pr_url: string };
+
 export type StatusReport = {
   schema_version: 1;
   generated_at: string;
@@ -164,6 +167,11 @@ export type StatusReport = {
   forge: ForgeCounts;
   counts: StatusCounts;
   queue_health: 'healthy' | 'stalled' | 'degraded';
+  /**
+   * Open PRs delivered at LGTM (`leave-open` mode: queue `notes` starts with `delivered-at-LGTM`),
+   * which passed review, CI and the conflict check — the owner reviews and merges them.
+   */
+  ready_to_merge: ReadyToMergeItem[];
   waiting_on_owner: StatusItem[];
   /** In-flight issues not yet in review. */
   in_flight: StatusItem[];

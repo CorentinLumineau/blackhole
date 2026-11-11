@@ -101,7 +101,7 @@ describe('renderStatusHtml — self-contained page', () => {
   });
 
   test('sections appear in the required order', () => {
-    const order = ['Waiting on the owner', 'In motion', 'Blocked', 'Host and environment', 'Recent events'].map((h) =>
+    const order = ['Ready to merge', 'Waiting on the owner', 'In motion', 'Blocked', 'Host and environment', 'Recent events'].map((h) =>
       html.indexOf(`<h2>${h}`),
     );
     expect(order.every((i) => i > 0)).toBe(true);
@@ -122,6 +122,52 @@ describe('renderStatusHtml — self-contained page', () => {
   test('empty campaign still renders every section with an empty-state line', () => {
     const page = renderStatusHtml(report({ issues: {} }, { config: {}, checkpointBody: '', paceLine: null, hostNotes: [] }));
     expect(page).toContain('<title>Blackhole status — all open issues</title>');
-    expect((page.match(/class="empty"/g) ?? []).length).toBeGreaterThanOrEqual(5);
+    expect((page.match(/class="empty"/g) ?? []).length).toBeGreaterThanOrEqual(6);
+  });
+});
+
+describe('renderStatusHtml — Ready to merge', () => {
+  const READY: QueueJson = {
+    issues: { '7': { title: HOSTILE, status: 'in-flight', phase: 'review', pr: 21, notes: 'delivered-at-LGTM (leave-open)' } },
+  };
+  const html = renderStatusHtml(report(READY));
+
+  test('lists the PR with count badge, PR and Files links, title and verdict line', () => {
+    expect(html).toMatch(/<h2>Ready to merge <span class="count">1<\/span><\/h2>/);
+    expect(html).toContain('acme/widgets#21');
+    expect(html).toContain('<a href="https://github.com/acme/widgets/pull/21" target="_blank" rel="noopener">Open PR ↗</a>');
+    expect(html).toContain('<a href="https://github.com/acme/widgets/pull/21/files" target="_blank" rel="noopener">Files changed ↗</a>');
+    expect(html).toContain('LGTM · CI green · no conflict');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  });
+
+  test('it is the first section, above Waiting on the owner', () => {
+    expect(html.indexOf('<h2>Ready to merge')).toBeLessThan(html.indexOf('<h2>Waiting on the owner'));
+  });
+
+  test('anchors are the only links: nothing else loads from the network', () => {
+    // Benign title: hostile text is escaped but stays readable (` src=x`) and would false-match the scan.
+    const benign: QueueJson = { issues: { '7': { ...READY.issues!['7'], title: 'plain' } } };
+    const rest = renderStatusHtml(report(benign, { ledger: { findings: [] }, checkpointBody: '' })).replace(/<a href="[^"]*"[^>]*>[^<]*<\/a>/g, '');
+    expect(rest).not.toMatch(/https?:\/\//i);
+    expect(rest).not.toMatch(/\s(src|href|srcset|action|poster|data)\s*=/i);
+    expect(rest).not.toMatch(/<(script|link|iframe|object|embed|img)\b/i);
+  });
+
+  test('empty state', () => {
+    expect(renderStatusHtml(report({ issues: {} }))).toContain('Nothing is ready to merge yet.');
+  });
+
+  test('a non-http(s) or hostile pr_url is never rendered as a link; href values are escaped', () => {
+    const base = report(READY);
+    const mk = (pr_url: string) => renderStatusHtml({ ...base, ready_to_merge: [{ ...base.ready_to_merge[0], pr_url }] });
+    for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'ftp://x/y', '//evil/x']) {
+      const page = mk(bad);
+      expect(page).not.toMatch(/<a href/i);
+      expect(page).not.toContain('Open PR');
+    }
+    const quoted = mk('https://github.com/a/b/pull/1"><script>x</script>');
+    expect(quoted).not.toContain('<script>');
+    expect(quoted).toContain('&quot;&gt;&lt;script&gt;');
   });
 });

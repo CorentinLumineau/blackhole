@@ -51,12 +51,15 @@ Later refreshes rewrite the same file silently.
 
 Sections, in this order (`scripts/lib/campaign-status/html.ts`):
 
-1. **Waiting on the owner** — blocked issues only the owner can clear (`awaiting-*` gates,
+1. **Ready to merge** — PRs delivered at LGTM, CI green and conflict-free: one row per PR with
+   `Open PR ↗` and `Files changed ↗` links, so the owner can review and merge each directly
+   (`ready_to_merge`; empty state "Nothing is ready to merge yet.")
+2. **Waiting on the owner** — blocked issues only the owner can clear (`awaiting-*` gates,
    `blocked-escalated:` notes)
-2. **In motion** — in-flight issues, then in-review, each with its PR and next step
-3. **Blocked** — grouped by what they wait on, with counts and issue numbers
-4. **Host and environment** — forge reachability, the pace line, plugin-drift lines
-5. **Recent events** — the checkpoint's `## Notes` and `## In-flight workers` lines
+3. **In motion** — in-flight issues, then in-review, each with its PR and next step
+4. **Blocked** — grouped by what they wait on, with counts and issue numbers
+5. **Host and environment** — forge reachability, the pace line, plugin-drift lines
+6. **Recent events** — the checkpoint's `## Notes` and `## In-flight workers` lines
 
 ## State file
 

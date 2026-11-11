@@ -1,4 +1,5 @@
 import { readScope } from '../../forge-scope.ts';
+import { prWebUrl } from '../forge-detection.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
 import { computeStatusCounts, DONE_STATUSES, groupIssuesByPhase } from './queue.ts';
 import type {
@@ -10,12 +11,13 @@ import type {
   LedgerJson,
   QueueIssue,
   QueueJson,
+  ReadyToMergeItem,
   StatusItem,
   StatusReport,
 } from './types.ts';
 
 export type StatusReportInput = {
-  config: ConfigSummaryInput & { repo?: string };
+  config: ConfigSummaryInput & { repo?: string; forge?: string };
   queue: QueueJson;
   ledger: LedgerJson;
   checkpoint: CheckpointMeta;
@@ -24,6 +26,8 @@ export type StatusReportInput = {
   paceLine: string | null;
   hostNotes: string[];
   generatedAt: string;
+  /** Forge host from the origin remote; only Gitea needs it. Absent ⇒ GitHub links. */
+  forgeWeb?: { forge: string; host: string | null };
 };
 
 // Owner-clearable `awaiting-*` gates from queue-dag.md § Field rules (`notes`).
@@ -107,6 +111,26 @@ function groupBlocked(blocked: IssueRow[], issues: Record<string, QueueIssue>): 
   );
 }
 
+// leave-open delivery marker, phase-loop.md § Merge protocol: written only after isLgtm, no conflict
+// and CI green, on a PR that stays open for the owner. Offline by design — no forge call here.
+const DELIVERED_PREFIX = 'delivered-at-LGTM';
+
+function readyToMerge(
+  issues: Record<string, QueueIssue>,
+  repo: string | undefined,
+  forge: string,
+  host: string | null,
+): ReadyToMergeItem[] {
+  const items: ReadyToMergeItem[] = [];
+  for (const [key, issue] of Object.entries(issues)) {
+    if (issue.status !== 'in-flight' || issue.pr == null) continue;
+    if (!(issue.notes ?? '').trim().startsWith(DELIVERED_PREFIX)) continue;
+    const prUrl = prWebUrl(forge, host, repo ?? '', issue.pr);
+    if (prUrl) items.push({ ...toItem({ num: Number(key), issue }), pr_url: prUrl });
+  }
+  return items.sort((a, b) => a.issue - b.issue);
+}
+
 const sectionLines = (body: string | undefined, heading: string): string[] =>
   (checkpointSection(body, heading) ?? '')
     .split('\n')
@@ -146,6 +170,7 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
       blockedCount: counts.queue.blocked,
       inFlightCount: counts.queue.in_flight,
     }),
+    ready_to_merge: readyToMerge(issues, config.repo, input.forgeWeb?.forge ?? config.forge ?? 'github', input.forgeWeb?.host ?? null),
     waiting_on_owner: blockedGroups.filter((g) => g.owner).flatMap((g) => g.issues),
     in_flight: inFlight.filter((r) => r.issue.phase !== 'review').map((r) => toItem(r)),
     in_review: inFlight.filter((r) => r.issue.phase === 'review').map((r) => toItem(r)),

@@ -252,3 +252,47 @@ describe('parseStatusArgs — report modes', () => {
     expect(() => parseStatusArgs(['--out', 'x.html'])).toThrow(/--out requires --html/);
   });
 });
+
+describe('buildStatusReport — ready_to_merge', () => {
+  const queue: QueueJson = {
+    issues: {
+      '1': { title: 'delivered', status: 'in-flight', phase: 'review', pr: 11, notes: 'delivered-at-LGTM (leave-open) — awaiting human merge' },
+      '2': { title: 'still reviewing', status: 'in-flight', phase: 'review', pr: 12, notes: null },
+      '3': { title: 'delivered, no pr', status: 'in-flight', phase: 'review', notes: 'delivered-at-LGTM (leave-open)' },
+      '4': { title: 'merged already', status: 'merged', phase: 'done', pr: 13, notes: 'delivered-at-LGTM (leave-open)' },
+    },
+  };
+  const build = (config: Record<string, unknown>, forgeWeb?: { forge: string; host: string | null }) =>
+    buildStatusReport({
+      config: { repo: 'acme/widgets', ...config },
+      queue,
+      ledger: {},
+      checkpoint: {},
+      forge: FORGE_OK,
+      paceLine: null,
+      hostNotes: [],
+      generatedAt: GENERATED_AT,
+      forgeWeb,
+    });
+
+  test('only an open PR delivered at LGTM is ready; the URL is the GitHub PR page', () => {
+    const r = build({});
+    expect(r.ready_to_merge.map((i) => i.issue)).toEqual([1]);
+    expect(r.ready_to_merge[0].pr_url).toBe('https://github.com/acme/widgets/pull/11');
+    expect(r.ready_to_merge[0].pr).toBe(11);
+  });
+
+  test('Gitea uses the origin host and /pulls/', () => {
+    const r = build({ forge: 'gitea' }, { forge: 'gitea', host: 'git.example.org' });
+    expect(r.ready_to_merge[0].pr_url).toBe('https://git.example.org/acme/widgets/pulls/11');
+  });
+
+  test('a forge whose PR URL cannot be built yields no ready item rather than a bad link', () => {
+    expect(build({ forge: 'gitea' }, { forge: 'gitea', host: null }).ready_to_merge).toEqual([]);
+    expect(build({}, { forge: 'gitlab', host: 'gitlab.com' }).ready_to_merge).toEqual([]);
+  });
+
+  test('a repo that is not owner/name yields no link', () => {
+    expect(build({ repo: 'x"><script>' }).ready_to_merge).toEqual([]);
+  });
+});

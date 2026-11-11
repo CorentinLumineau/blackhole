@@ -48,6 +48,7 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `forge` | Open issue/PR counts and `ok`/`error`, as on the dashboard's **Forge** line |
 | `counts` | `queue` (`active`, `done`, `in_flight`, `blocked`, `ready`, `by_status`) and `ledger` (`open`, `block`, `warn`, `note`, `deferred`) — the dashboard's **Queue** and **Ledger** lines |
 | `queue_health` | `healthy` \| `stalled` \| `degraded` |
+| `ready_to_merge` | Open PRs delivered at LGTM, each a status item plus `pr_url` (additive; `schema_version` stays `1`). An item is ready when its queue entry is `in-flight`, has a `pr`, and its `notes` start with `delivered-at-LGTM` — the `leave-open` marker `phase-loop.md` § Merge protocol writes only after LGTM, no conflict and CI green. Read offline from `queue.json`, no forge call. `pr_url` is `https://github.com/<repo>/pull/<n>` (GitHub) or `https://<host>/<repo>/pulls/<n>` (Gitea, host from the origin remote); an item whose URL cannot be built (GitLab, unknown Gitea host, non-`owner/name` repo) is left out |
 | `waiting_on_owner` | Blocked items only the owner can clear (`awaiting-*`, `blocked-escalated:`) |
 | `in_flight`, `in_review` | In-flight items split by `phase: review`, each `{issue, title, phase, status, pr, notes, next_step}` |
 | `blocked` | Groups `{waits_on, owner, count, issues}`; `waits_on` is the `awaiting-*` token, `blocked-escalated`, `dependency`, `overlap`, `merge-conflict` or `other` |
@@ -57,7 +58,8 @@ definition of the shape; bump `schema_version` on a breaking change):
 
 Every string comes from campaign state, and issue titles are untrusted: `--html` escapes each
 value, inlines its CSS (theme tokens with a dark-mode block, readable at ~400px) and loads
-nothing from the network. Publishing it is `status-page.md`'s job.
+nothing from the network. Its only links are the `Open PR` / `Files changed` anchors of the
+**Ready to merge** panel (`target=_blank rel=noopener`, http(s) URLs only). Publishing it is `status-page.md`'s job.
 
 ## When to print (REQUIRED)
 

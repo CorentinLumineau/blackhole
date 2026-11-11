@@ -8,6 +8,7 @@ import { renderStatusHtml } from './lib/campaign-status/html.ts';
 import { buildStatusReport } from './lib/campaign-status/report.ts';
 import { CampaignNotFoundError, loadCampaignState } from './lib/campaign-status/state.ts';
 import { readJsonFile } from './lib/fs.ts';
+import { resolveForgeForRepo } from './lib/forge-detection.ts';
 import { formatPaceLine, readLatestPaceRecord } from './lib/pace-log.ts';
 import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
 
@@ -27,6 +28,7 @@ export { buildStatusReport } from './lib/campaign-status/report.ts';
 export { escapeHtml, renderStatusHtml } from './lib/campaign-status/html.ts';
 export { parseStatusArgs } from './lib/campaign-status/cli.ts';
 export type {
+  ReadyToMergeItem,
   CheckpointMeta,
   ConfigSummaryInput,
   ForgeCounts,
@@ -141,8 +143,10 @@ function main() {
   const host = readHostLines(campaignDir);
 
   if (mode === 'json' || mode === 'html') {
+    const resolved = resolveForgeForRepo(path.dirname(path.resolve(campaignDir)), config.forge);
     const report = buildStatusReport({
       config,
+      forgeWeb: resolved.ok ? { forge: resolved.forge, host: resolved.host } : undefined,
       queue,
       ledger,
       checkpoint,

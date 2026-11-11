@@ -1,4 +1,4 @@
-import type { StatusItem, StatusReport } from './types.ts';
+import type { ReadyToMergeItem, StatusItem, StatusReport } from './types.ts';
 
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -38,6 +38,32 @@ const lineList = (lines: string[]): string =>
 function section(title: string, body: string, count?: number): string {
   const badge = count != null ? ` <span class="count">${escapeHtml(count)}</span>` : '';
   return `<section><h2>${escapeHtml(title)}${badge}</h2>${body}</section>`;
+}
+
+// The only links on the page. A URL that is not http(s) is dropped, never rendered as an href.
+const isHttpUrl = (url: string): boolean => /^https?:\/\//i.test(url);
+
+function readyLi(r: StatusReport, item: ReadyToMergeItem): string {
+  const ref = `${r.campaign.repo ?? ''}#${item.pr}`;
+  const link = (href: string, label: string) =>
+    `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+  const links = isHttpUrl(item.pr_url)
+    ? ` ${link(item.pr_url, 'Open PR ↗')} ${link(`${item.pr_url}/files`, 'Files changed ↗')}`
+    : '';
+  return [
+    '<li>',
+    `<span class="num">${escapeHtml(ref)}</span>${links}`,
+    `<div>${escapeHtml(item.title)} <span class="meta">#${escapeHtml(item.issue)}</span></div>`,
+    '<div class="next">LGTM · CI green · no conflict</div>',
+    '</li>',
+  ].join('');
+}
+
+function readySection(r: StatusReport): string {
+  const body = r.ready_to_merge.length
+    ? `<ul class="items">${r.ready_to_merge.map((i) => readyLi(r, i)).join('')}</ul>`
+    : empty('Nothing is ready to merge yet.');
+  return section('Ready to merge', body, r.ready_to_merge.length);
 }
 
 function ownerSection(r: StatusReport): string {
@@ -134,9 +160,11 @@ li:last-child { border-bottom: 0; }
 .sev-block { color: var(--block); } .sev-warn { color: var(--warn); }
 .empty { color: var(--muted); font-style: italic; margin: 4px 0; }
 code { font-size: 0.85em; }
+a { color: var(--accent); margin-left: 8px; }
 `;
 
-/** Self-contained status page: inline CSS, no script, no links, nothing loaded from the network. */
+/** Self-contained status page: inline CSS, no script, nothing loaded from the network; the only links are the
+ * forge PR anchors in "Ready to merge" (`target=_blank rel=noopener`, http(s) only). */
 export function renderStatusHtml(report: StatusReport): string {
   const name = campaignName(report);
   const q = report.counts.queue;
@@ -157,6 +185,7 @@ export function renderStatusHtml(report: StatusReport): string {
     '<body>',
     '<main>',
     `<header><h1>Blackhole status — ${escapeHtml(name)}</h1><p>${escapeHtml(summary)}</p></header>`,
+    readySection(report),
     ownerSection(report),
     motionSection(report),
     blockedSection(report),
