@@ -17,6 +17,7 @@ import {
   type ForgeParentState,
   type ParentLanding,
 } from './lib/stack-merge.ts';
+import { parentMergeMethod } from './lib/stack-lifecycle.ts';
 
 export { changedFileCount, childBranchFor };
 
@@ -130,6 +131,15 @@ export const recordParentTip = (queue: QueueJson, childIssue: number, tip: strin
   if (entry === undefined) return false;
   entry.parent_tip_sha = tip;
   if (parentIssue !== undefined) entry.stacked_on = parentIssue;
+  return true;
+};
+
+/** Stack edge of a child restacked onto an open PR; `stacked_on_pr` also covers a parent with no queue issue. */
+export const recordStackEdge = (queue: QueueJson, childIssue: number, parentPr: number, parentBranch: string): boolean => {
+  const entry = queue.issues?.[String(childIssue)];
+  if (entry === undefined) return false;
+  entry.stacked_on_pr = parentPr;
+  entry.parent_branch = parentBranch;
   return true;
 };
 
@@ -474,12 +484,24 @@ const restack = (flags: Flags): number => {
   }
 
   recordParentTip(queue, childIssue, parentHead, parentIssue);
+  if (typeof flags['parent-pr'] === 'string') recordStackEdge(queue, childIssue, Number(flags['parent-pr']), parentBranch);
   const failure = writeQueue(queuePath, queue);
   if (failure !== null) {
     console.error(`state-write-guard refused install: ${failure}`);
     return 1;
   }
   console.log(`#${childIssue}: parent_tip_sha = ${parentHead}`);
+  return 0;
+};
+
+// Merge method for the parent about to merge (merge-gate.md § 9): a merge commit when it has open
+// stacked children and the repo allows one, squash otherwise. Prints the choice as JSON.
+const mergeMethod = (flags: Flags): number => {
+  const queue = readQueue(requireFlag(flags, 'queue'));
+  const issue = Number(requireFlag(flags, 'issue'));
+  const children = findStackedChildren(queue.issues ?? {}, issue);
+  const choice = parentMergeMethod({ hasOpenChildren: children.length > 0, settings: fetchMergeSettings(requireFlag(flags, 'repo-slug')) });
+  console.log(JSON.stringify({ ...choice, openChildren: children.map((c) => c.issue) }));
   return 0;
 };
 
@@ -490,7 +512,8 @@ const USAGE = `Usage:
       --repo-slug <owner/repo> --base <branch> --parent-issue <M> \\
       [--child-issue <N> --apply] [--parent-state merged|closed-unmerged] [--accept-patch-id-change]
   bun run scripts/stack-repair.ts restack --queue <path> --repo-root <abs> \\
-      --repo-slug <owner/repo> --child-issue <N> (--parent-issue <M> | --parent-branch <b>) [--apply]`;
+      --repo-slug <owner/repo> --child-issue <N> (--parent-issue <M> | --parent-branch <b>) [--parent-pr <P>] [--apply]
+  bun run scripts/stack-repair.ts merge-method --queue <path> --repo-slug <owner/repo> --issue <N>`;
 
 export const main = (argv: string[]): number => {
   const [subcommand, ...rest] = argv;
@@ -499,6 +522,7 @@ export const main = (argv: string[]): number => {
     if (subcommand === 'capture') return capture(flags);
     if (subcommand === 'repair') return repair(flags);
     if (subcommand === 'restack') return restack(flags);
+    if (subcommand === 'merge-method') return mergeMethod(flags);
   } catch (error) {
     console.error((error as Error).message);
     return 2;

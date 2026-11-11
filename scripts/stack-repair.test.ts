@@ -11,6 +11,7 @@ import {
   planRepair,
   planRestack,
   recordParentTip,
+  recordStackEdge,
   squashMergeWarning,
   verifyChildFileCount,
   verifyRetarget,
@@ -131,6 +132,13 @@ describe('planRestack and recordParentTip (pure)', () => {
 
   test('an issue absent from the queue is reported, not invented', () => {
     expect(recordParentTip({ issues: {} }, 1, 'x')).toBe(false);
+  });
+
+  test('records the open PR a child was restacked onto, queue issue or not', () => {
+    const queue = { issues: { '2403': { status: 'ready' } } };
+    expect(recordStackEdge(queue, 2403, 157, 'feat/external')).toBe(true);
+    expect(queue.issues['2403']).toMatchObject({ stacked_on_pr: 157, parent_branch: 'feat/external' });
+    expect(recordStackEdge({ issues: {} }, 1, 2, 'b')).toBe(false);
   });
 });
 

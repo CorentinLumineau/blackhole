@@ -257,9 +257,13 @@ multi-PR operation. Compute the merge order and execute sequentially:
    remain unresolved at this point).
 3. For each issue in that order: re-check `mergeEligible(issue)` (a `merge_after`
    entry may resolve mid-batch as earlier PRs merge), then run the normal
-   `phase-loop.md` § Merge protocol (`gh pr merge --squash`) for that one PR,
+   `phase-loop.md` § Merge protocol for that one PR (merge method per § 9),
    then persist `queue.json` (`status: merged`, `refreshed_at` bump) **before**
    moving to the next issue in the order.
+4. If the merged PR had open stacked children, run step 4.6's recovery (§ 7) for each of them
+   inside this loop, before the next issue's turn. A recovered child gets a new head, so it must
+   re-reach CI green before its own turn in the batch. That costs one CI cycle per stack level;
+   collapsing a chain into one merge is a follow-up, not part of this procedure.
 
 Persisting after each individual merge — rather than issuing every `gh pr
 merge` call as one batch — is what turns a mid-batch failure into a resumable
@@ -400,6 +404,32 @@ bun run --cwd <abs child worktree> scripts/stack-repair.ts repair --queue <abs q
   --parent-issue <M> [--child-issue <N> --apply]
 ```
 
+**Recovery route per merge mode and landing.** The command is the same for each child
+(`bun run --cwd <abs child worktree> scripts/stack-repair.ts <command> ...` with the flags above);
+the landing (merge commit, squash, rebase or closed unmerged) is classified by the script from git
+ancestry and the forge state, so the orchestrator never guesses it. The mode decides the trigger
+and what the child waits for. Every cell names a command and its HITL route (an `AskQuestion`
+with an R-003 executive summary, `clarify-gates.md` § Gate Content Contract) for a non-zero exit.
+
+| Mode and trigger | Parent merged with a merge commit | Parent squash-merged | Parent rebase-merged | Parent closed unmerged |
+|---|---|---|---|---|
+| `immediate`: phase-loop.md step 4.6, right after step 4.5. same turn, before the child's review or CI wait | `repair --apply --child-issue <N>`: retarget only, no commit, no push. HITL: a failed retarget read-back: AskQuestion, retry or hold the child | `repair --apply --child-issue <N>`: replay merge with the recorded parent tip, fast-forward push. HITL: a replay conflict: AskQuestion, resolve through merge-conflict-protocol.md § Worker delegation or hold | `repair --apply --child-issue <N>`: replay merge with the recorded parent tip, fast-forward push. HITL: a replay conflict: AskQuestion, resolve through merge-conflict-protocol.md § Worker delegation or hold | `repair --apply --child-issue <N> --parent-state closed-unmerged`: replay against the parent's own base, removing the parent's lines. HITL: a conflict, noted stack-parent-abandoned:#<P>: AskQuestion, keep the parent work, unstack or close the child |
+| `gated-batch`: merge-gate.md § 4 per-issue loop, after each parent's merge. the recovered child re-reaches CI green before its own turn in the batch | `repair --apply --child-issue <N>`: retarget only, no commit, no push. HITL: a failed retarget read-back: AskQuestion, retry or hold the child | `repair --apply --child-issue <N>`: replay merge with the recorded parent tip, fast-forward push. HITL: a replay conflict: AskQuestion, resolve through merge-conflict-protocol.md § Worker delegation or hold | `repair --apply --child-issue <N>`: replay merge with the recorded parent tip, fast-forward push. HITL: a replay conflict: AskQuestion, resolve through merge-conflict-protocol.md § Worker delegation or hold | `repair --apply --child-issue <N> --parent-state closed-unmerged`: replay against the parent's own base, removing the parent's lines. HITL: a conflict, noted stack-parent-abandoned:#<P>: AskQuestion, keep the parent work, unstack or close the child |
+| `leave-open`: merge-gate.md § 3 externally-observed merge, at turn start. same turn; the child's delivered-at-LGTM note is revoked until recovery and CI finish | `repair --apply --child-issue <N>`: retarget only, no commit, no push. HITL: a failed retarget read-back: AskQuestion, retry or hold the child | `repair --apply --child-issue <N>`: replay merge with the recorded parent tip, fast-forward push. HITL: a replay conflict: AskQuestion, resolve through merge-conflict-protocol.md § Worker delegation or hold | `repair --apply --child-issue <N>`: replay merge with the recorded parent tip, fast-forward push. HITL: a replay conflict: AskQuestion, resolve through merge-conflict-protocol.md § Worker delegation or hold | `repair --apply --child-issue <N> --parent-state closed-unmerged`: replay against the parent's own base, removing the parent's lines. HITL: a conflict, noted stack-parent-abandoned:#<P>: AskQuestion, keep the parent work, unstack or close the child |
+
+`scripts/lib/stack-lifecycle.ts` `recoveryRoute` is the source of these cells, and its test fails
+when this table drifts from it.
+
+**Review after recovery.** The repair prints `review_carry: true|false`. `true` means the child's
+own patch-id is unchanged across a conflict-free replay, so the earlier review still applies and
+`phase-review.md` carries it instead of spawning a reviewer; `false` means a review round is needed.
+CI runs on the new base either way.
+
+**Fix-round propagation is lazy.** A fix-round push to a parent is not merged into its children.
+The child's three-dot diff against its parent branch does not change, so it is propagated only when
+the child is `CONFLICTING` against the parent (`stack-repair.ts restack --apply`), or at the
+parent's merge (the table above).
+
 Planning is a read over `queue.json`, so a dry run covers every child at once; `--apply` is
 per-child and requires `--child-issue`, because the replay fast-forwards the child branch locally and so
 `--repo-root` must be that child's own worktree (`wt-<child>`), never the main clone.
@@ -501,9 +531,16 @@ mistaken for a verified base-ref landing.
 | `DELETE FROM` / `DROP TABLE` only in a test or fixture file | Not `deletes-data` — `isTestPath()` excludes it |
 | `merge_mode: leave-open`, high-risk, CI green | Same hold half (label + comment); still no `gh pr merge` |
 
-## 9. `classifyMergeRisk(pr) -> automerge | needs-chef` — low-risk squash-merge gate
+## 9. `classifyMergeRisk(pr) -> automerge | needs-chef` — low-risk merge gate
 
-Blackhole may squash-merge **its own** PRs only when CI is already green (step 1 / C3) **and** the
+**Merge method.** Blackhole merges with `--squash` by default. A PR that has open stacked
+children is merged with `--merge` (a merge commit) when the repo allows it, because the child then
+already contains the parent's tip and recovery (§ 7) is a retarget with no commit, no push and no
+CI rerun. When the repo allows no merge commit, it stays `--squash` and § 7's replay is mandatory.
+`bun run scripts/stack-repair.ts merge-method --queue <abs queue.json> --repo-slug <owner/repo>
+--issue <N>` prints the choice as JSON (`method`, `flag`, `reason`); `phase-loop.md` step 4 runs it.
+
+Blackhole may merge **its own** PRs only when CI is already green (step 1 / C3) **and** the
 diff is low-risk. Any other PR that has reached this point stays open for Chef (the orchestrator /
 owner) with label `needs-chef` and a short comment saying why. This is a PR-quality signal, not a
 fourth `mergeEligible()` condition (same shape as § 6 / Step 0.6).
@@ -545,9 +582,9 @@ the PR, comment once (skip if a `needs-chef:` comment already exists), set `queu
 - `phase-loop.md` § Merge protocol, **step 0** — hard `mergeEligible(issue)` stop-gate before step 1, not merely a checklist reference one heading away.
 - `phase-loop.md` § Merge protocol's **trigger** paragraph — when `merge_mode: gated-batch`, invokes **§ 4** (this doc) instead of applying steps 0-5 issue-by-issue; § 4 internally calls back into steps 0-5 per issue.
 - `phase-loop.md` § Merge protocol, **Step 0.6** — hard `pipelineVerdict(pr, queue)` (§ 6) check between Step 0.5 and step 1.
-- `phase-loop.md` § Merge protocol, **Step 0.7** and **step 4.6** — stacked-child tip capture check before the merge and `--onto` repair after it (§ 7).
+- `phase-loop.md` § Merge protocol, **Step 0.7** and **step 4.6** — stacked-child tip capture check before the merge and replay-merge recovery after it (§ 7).
 - `phase-loop.md` § Merge protocol, **Step 0.8** — hard pre-merge base assertion (§ 8) between Step 0.7 and step 1.
-- `phase-loop.md` § Merge protocol, **step 4** — low-risk automerge gate (§ 9) immediately before `gh pr merge --squash`; hold path applies `needs-chef`.
+- `phase-loop.md` § Merge protocol, **step 4** — low-risk automerge gate (§ 9) immediately before `gh pr merge` with the method § 9 names; hold path applies `needs-chef`.
 - `phase-loop.md` § Merge protocol, **step 4.7** — post-merge landing verification (§ 8) after step 4.6's stacked-child repair.
 - `forge-sync.md` — cycle detection (§ 2), drift reconciliation (§ 3), and pipeline detection (§ 5.6, feeds § 6).
 - `orchestrator.md` Phase 5 — pointer reference only, no inline logic.

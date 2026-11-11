@@ -226,10 +226,12 @@ with note `overlap with #N`).
 Deferral alone cannot protect an overlapping issue once the blocker has an open, unmerged PR:
 under `merge_mode: leave-open` an LGTM'd PR counts as delivered while `main` still lacks its
 changes, so the "cleared" blocker would hand the next wave a stale base. Before creating a
-worktree, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-parent.ts --queue .blackhole/queue.json --issue <N>`
-(`pickStackParent`, `scripts/lib/stack-parent.ts`; it reads each open PR's files with `gh pr diff
---name-only` unless `--parent-files '{"<parent>": [...]}'` is passed; optionally
-`--default-touch-paths '[...]'` from config). When it names a
+worktree, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-parent.ts --queue .blackhole/queue.json --issue <N>
+--repo-slug <owner/repo> --repo-root <abs>` (`pickStackParent`, `scripts/lib/stack-parent.ts`; it
+reads each open PR's files from the turn's open-PR snapshot, one fetch and no per-PR API call,
+unless `--parent-files '{"<parent>": [...]}'` is passed; optionally
+`--default-touch-paths '[...]'` from config). The same script re-checks a PR that already exists
+(`phase-loop.md` Step 0.4). When it names a
 parent — the **tip** of the chain rooted at the lowest-numbered other issue with an open PR and
 overlapping paths, in any `merge_mode` — then:
 
@@ -245,11 +247,17 @@ overlapping paths, in any `merge_mode` — then:
    comment (do not add a new one) whenever the stack changes — a PR opens, merges, or closes. The
    order is `formatStackMergeOrder(stackMergeOrder(issues))` (`scripts/lib/stack-parent.ts`), the
    same text the dashboard's "Stacked PR merge order" section renders.
-5. A fix-round push to the parent is propagated to each open child by **merging** the parent
-   branch into the child branch and pushing normally — never a rebase or force-push.
+5. A fix-round push to the parent is **not** propagated eagerly. The child's three-dot diff against
+   its parent branch is unchanged by new parent commits, so the parent branch is merged into the
+   child (a normal merge and push, never a rebase or force-push) only when the child is
+   `CONFLICTING` against the parent, or at the parent's merge (item 6).
 6. After the parent merges (squash included), retarget the child and replay only its own commits
-   by merging the target branch into it: `merge-conflict-protocol.md` § Stacked child after its
-   parent merges. Never rebase or force-push.
+   by merging the target branch into it, in the same turn and before the child's review or CI
+   wait: `merge-gate.md` § 7 owns the command and the route for each merge mode, and
+   `merge-conflict-protocol.md` § Stacked child after its parent merges owns the conflict case.
+   Never rebase or force-push. When the replay reports `review_carry: true` (the child's own
+   patch-id is unchanged and no conflict was resolved), the earlier LGTM carries and `phase-review.md`
+   does not re-review; otherwise the child is reviewed again.
 
 **Precedence with Step 3.** When the overlapping blocker already has an open PR, stacking
 replaces the overlap deferral: the issue is not set `blocked` with `overlap with #N`. Step 3
