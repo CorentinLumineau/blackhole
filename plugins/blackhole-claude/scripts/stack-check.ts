@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
-import fs from 'node:fs';
 import path from 'node:path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { createForgeAdapter } from './lib/forge-adapter/index.ts';
 import type { ForgeType } from './lib/forge-adapter/types.ts';
+import { readJsonFile } from './lib/fs.ts';
 import { adapterSnapshotIo, buildOpenPrSnapshot, PR_REF_PREFIX, type OpenPrSnapshot } from './lib/open-pr-snapshot.ts';
 import { olderOnly } from './lib/stack-lifecycle.ts';
 import { mergeTreeVerdict, pickParent, type ConflictVerdict } from './lib/stack-overlap.ts';
@@ -59,7 +59,7 @@ const usage = (): never => {
 
 const readSnapshotFile = (file: string): OpenPrSnapshot | null => {
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf-8')) as OpenPrSnapshot;
+    const parsed = readJsonFile(file, file) as OpenPrSnapshot;
     return parsed && (parsed.status === 'ok' || parsed.status === 'unknown') ? parsed : null;
   } catch {
     return null;
