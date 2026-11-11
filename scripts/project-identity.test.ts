@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { readProjectIdentity, projectIdentity } from './project-identity.ts';
 
@@ -36,5 +37,30 @@ describe('readProjectIdentity', () => {
 describe('projectIdentity (module-level singleton)', () => {
   test('matches a fresh readProjectIdentity() call', () => {
     expect(projectIdentity).toEqual(readProjectIdentity());
+  });
+});
+
+describe('readProjectIdentity in an installed plugin (no package.json)', () => {
+  const makeInstall = (manifest?: object): string => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-install-'));
+    if (manifest) {
+      fs.mkdirSync(path.join(dir, '.claude-plugin'));
+      fs.writeFileSync(path.join(dir, '.claude-plugin', 'plugin.json'), JSON.stringify(manifest));
+    }
+    return dir;
+  };
+
+  test('falls back to the shipped .claude-plugin/plugin.json', () => {
+    const dir = makeInstall({ name: 'blackhole', version: '9.9.9', description: 'installed' });
+    const identity = readProjectIdentity(dir);
+    expect(identity.version).toBe('9.9.9');
+    expect(identity.description).toBe('installed');
+    expect(identity.homepage).toMatch(/^https:\/\//);
+  });
+
+  test('does not throw when neither manifest exists', () => {
+    const identity = readProjectIdentity(makeInstall());
+    expect(identity.name).toBe('blackhole');
+    expect(typeof identity.version).toBe('string');
   });
 });
