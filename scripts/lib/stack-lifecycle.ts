@@ -3,19 +3,13 @@
 // whether an open PR must be restacked because it newly overlaps an older one. Pure functions;
 // the prose half is `merge-gate.md` § 4, § 7, § 9 and `phase-loop.md` Step 0.4.
 
+import type { RepoMergeSettings } from './forge-adapter/types.ts';
 import type { OpenPrSnapshot } from './open-pr-snapshot.ts';
 import { pickParent, type ConflictVerdict, type PickParentResult } from './stack-overlap.ts';
 
 // ---- D2: merge method of a parent ----
 
-export type RepoMergeSettings = {
-  allow_squash_merge?: boolean;
-  allow_merge_commit?: boolean;
-  /** Gitea spells the merge-commit and rebase switches differently from GitHub. */
-  allow_merge_commits?: boolean;
-  allow_rebase_merge?: boolean;
-  allow_rebase?: boolean;
-};
+export type { RepoMergeSettings };
 
 export type MergeMethod = 'merge' | 'squash' | 'rebase';
 

@@ -7,6 +7,7 @@ import {
   changedFileCount,
   childBranchFor,
   findStackedChildren,
+  issueOfPr,
   main,
   planRepair,
   planRestack,
@@ -392,5 +393,39 @@ describe('the replay merge against a squash-merged parent', () => {
     expect(result.reviewCarry).toBe(true);
     expect(git('merge-base', '--is-ancestor', before, result.sha).status).toBe(0);
     expect(git('rev-list', '--count', '--first-parent', `${before}..${result.sha}`).stdout.trim()).toBe('1');
+  });
+});
+
+describe('stacked_on_pr edge (restack onto a campaign parent)', () => {
+  test('restack bookkeeping makes findStackedChildren return the child', () => {
+    const queue = { issues: { '7': { status: 'in-flight', pr: 70 }, '9': { status: 'in-flight', pr: 90, parent_tip_sha: 'aaa' } } };
+    const parent = issueOfPr(queue.issues, 70);
+    expect(parent).toBe(7);
+    expect(issueOfPr(queue.issues, 999)).toBeUndefined();
+    recordStackEdge(queue, 9, 70, 'blackhole/issue-7');
+    expect(findStackedChildren(queue.issues, 7).map((c) => c.issue)).toEqual([9]);
+    recordParentTip(queue, 9, 'bbb', parent);
+    expect(queue.issues['9']).toMatchObject({ stacked_on: 7, stacked_on_pr: 70, parent_tip_sha: 'bbb' });
+  });
+});
+
+describe('merge-method with unreadable settings', () => {
+  test('holds (exit 3) when the PR has open stacked children, instead of a silent squash', () => {
+    const dir = makeTempDir('merge-method-hold');
+    const queuePath = `${dir}/queue.json`;
+    fs.writeFileSync(queuePath, JSON.stringify({ issues: { '7': { status: 'in-flight', pr: 70 }, '9': { status: 'in-flight', pr: 90, stacked_on: 7 } } }));
+    const lines: string[] = [];
+    const orig = console.log;
+    console.log = (m: string) => void lines.push(m);
+    try {
+      expect(main(['merge-method', '--queue', queuePath, '--repo-slug', 'o/r', '--forge', 'gitlab', '--issue', '7'])).toBe(3);
+      expect(JSON.parse(lines[0])).toMatchObject({ hold: true, method: null, openChildren: [9] });
+      lines.length = 0;
+      expect(main(['merge-method', '--queue', queuePath, '--repo-slug', 'o/r', '--forge', 'gitlab', '--issue', '9'])).toBe(0);
+      expect(JSON.parse(lines[0])).toMatchObject({ method: 'squash' });
+    } finally {
+      console.log = orig;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

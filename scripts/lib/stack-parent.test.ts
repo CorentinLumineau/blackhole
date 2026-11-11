@@ -191,3 +191,16 @@ describe('collectParentFiles', () => {
     expect(files).toEqual({ '10': ['src/a.ts'] });
   });
 });
+
+describe('stacked_on_pr edges (restack from a PR number)', () => {
+  const q = {
+    '7': { status: 'in-flight', pr: 70, touch_paths: ['src/a/**'] },
+    '9': { status: 'in-flight', pr: 90, touch_paths: ['src/a/**'], stacked_on_pr: 70 },
+  };
+  test('stackMergeOrder sees the child of a stacked_on_pr edge', () => {
+    expect(stackMergeOrder(q).map(formatStackMergeOrder)).toEqual(['merge #7, then #9 (stacked on #7)']);
+  });
+  test('pickStackParent does not stack an issue that already has a stacked_on_pr edge', () => {
+    expect(pickStackParent(q, 9, { parentFiles: { '7': ['src/a/x.ts'] } })).toBeNull();
+  });
+});

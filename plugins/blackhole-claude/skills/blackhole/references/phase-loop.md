@@ -64,12 +64,12 @@ the dispatch decision. It runs at four points: (i) right after the implementer o
 after every fix-round push and before review is requested, (iii) at every turn start for every open
 campaign PR, against that turn's single open-PR snapshot, and (iv) here, after step 0 and before
 step 0.5. Each point runs `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-parent.ts --queue <abs queue.json> --pr <P>
---repo-slug <owner/repo> --repo-root <abs>`, which prints one decision as JSON:
+--repo-slug <owner/repo> --repo-root <abs> --forge <config.forge>`, which prints one decision as JSON:
 
 | `action` | What to do |
 |----------|------------|
 | `none` | Continue. A younger PR that overlaps this one triggers nothing: the younger PR stacks on this one, and this one stays put |
-| `restack` | An older open PR newly overlaps. Run `stack-repair.ts restack --apply --child-issue <N> --parent-branch <b> --parent-pr <P'>` (`merge-gate.md` § 7): a merge of the older head plus a retarget, never a rebase or force-push. Edit the stack comment and `notes`. The head changed, so CI reruns: at point (iv) STOP this issue's merge for the turn |
+| `restack` | An older open PR newly overlaps. Run `stack-repair.ts restack --apply --child-issue <N> --parent-branch <b> --parent-pr <P'> --repo-slug <owner/repo> --repo-root <abs> --queue <abs queue.json>`: the parent PR is mapped to its queue issue, so the child gets `stacked_on` (a parent PR outside the queue records `stacked_on_pr` only, which every stack lookup also reads) (`merge-gate.md` § 7): a merge of the older head plus a retarget, never a rebase or force-push. Edit the stack comment and `notes`. The head changed, so CI reruns: at point (iv) STOP this issue's merge for the turn |
 | `restack` with `alsoOverlaps` | The parent is the tip of the lowest-numbered chain. For each other overlapping chain whose root the campaign owns, restack that root onto the chosen tip (linearize). An external root is left alone and noted `also-overlaps:#<N>` |
 | `defer` | Depth cap: leave the PR as it is and note it |
 | `hold` | A fork parent (`unstackable-parent:fork:#<N>`): hold this PR's merge until #<N> merges or closes |
@@ -178,8 +178,8 @@ D5 narrowing as Step 0.5 above).
    Exit 0 (`automerge: true`): CI is already green from step 1, the PR is blackhole's own
    (`blackhole/issue-N`), and the diff touches none of the high-risk categories — `gh pr merge
    <flag>` where `<flag>` comes from `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts merge-method --queue <abs
-   queue.json> --repo-slug <owner/repo> --issue <N>`: `--merge` when the PR has open stacked
-   children and the repo allows merge commits, `--squash` otherwise (`merge-gate.md` § 9; use `&&`
+   queue.json> --repo-slug <owner/repo> --forge <config.forge> --issue <N>`: `--merge` when the PR has open stacked
+   children and the repo allows merge commits, `--squash` otherwise; exit 3 (`hold: true`) when the repo's merge settings are unreadable and the PR has open stacked children: do not merge this turn (`merge-gate.md` § 9; use `&&`
    only, never `;`). Immediately after this command succeeds, in the
    **same** atomic `queue.json` write that sets `status: merged`, also set `merged_by: blackhole`
    on the issue (ADR-005 — see `merge-gate.md` § 3 for why: this is the sole signal

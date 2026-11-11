@@ -68,6 +68,33 @@ export const mergeTreeVerdict = (git: (args: string[]) => GitResult, a: string, 
   return 'unknown';
 };
 
+/** `git rev-parse` of both PR refs must equal the snapshot heads, else the verdict would read a stale fetch. */
+export const verifiedPrMergeTree = (
+  git: (args: string[]) => GitResult,
+  refPrefix: string,
+  me: { number: number; headSha: string },
+  other: { number: number; headSha: string },
+): ConflictVerdict => {
+  for (const pr of [me, other]) {
+    const r = git(['rev-parse', '--verify', '--quiet', `${refPrefix}${pr.number}^{commit}`]);
+    if (r.code !== 0 || r.stdout.trim() !== pr.headSha) return 'unknown';
+  }
+  return mergeTreeVerdict(git, `${refPrefix}${me.number}`, `${refPrefix}${other.number}`);
+};
+
+export type StackEdgeFields = { pr?: number | null; stacked_on?: number | null; stacked_on_pr?: number | null };
+
+/**
+ * The queue issue an issue is stacked on: `stacked_on`, else the issue whose open PR is
+ * `stacked_on_pr` (an edge recorded from a PR number alone). Null when neither resolves.
+ */
+export const effectiveParent = (issues: Record<string, StackEdgeFields>, issue: StackEdgeFields): number | null => {
+  if (issue.stacked_on != null) return issue.stacked_on;
+  if (issue.stacked_on_pr == null) return null;
+  const hit = Object.entries(issues).find(([, v]) => v.pr === issue.stacked_on_pr);
+  return hit ? Number(hit[0]) : null;
+};
+
 // ---- PR-graph pick ----
 
 export type PickParentOptions = {

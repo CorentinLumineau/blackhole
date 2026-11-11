@@ -227,7 +227,7 @@ Deferral alone cannot protect an overlapping issue once the blocker has an open,
 under `merge_mode: leave-open` an LGTM'd PR counts as delivered while `main` still lacks its
 changes, so the "cleared" blocker would hand the next wave a stale base. Before creating a
 worktree, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-parent.ts --queue .blackhole/queue.json --issue <N>
---repo-slug <owner/repo> --repo-root <abs>` (`pickStackParent`, `scripts/lib/stack-parent.ts`; it
+--repo-slug <owner/repo> --repo-root <abs> --forge <config.forge>` (`pickStackParent`, `scripts/lib/stack-parent.ts`; it
 reads each open PR's files from the turn's open-PR snapshot, one fetch and no per-PR API call,
 unless `--parent-files '{"<parent>": [...]}'` is passed; optionally
 `--default-touch-paths '[...]'` from config). The same script re-checks a PR that already exists
