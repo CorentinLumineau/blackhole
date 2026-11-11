@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ForgeAdapter, ForgePr } from './forge-adapter/types.ts';
+import { readJsonFile } from './fs.ts';
 
 // One bounded read of every open PR in the target repo, shared by all campaign PRs in a turn
 // (stack overlap, ADR-051). Files come from one `git fetch` of the open PRs' `refs/pull/N/head`;
@@ -143,7 +144,7 @@ export const buildOpenPrSnapshot = async (io: SnapshotIo): Promise<OpenPrSnapsho
 export const fsPrFilesCacheIo = (file: string): Pick<SnapshotIo, 'readCache' | 'writeCache'> => ({
   readCache: () => {
     try {
-      const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as PrFilesCache;
+      const parsed = readJsonFile(file, file) as PrFilesCache;
       return parsed.version === 1 && parsed.entries && typeof parsed.entries === 'object' ? parsed : null;
     } catch {
       return null;
