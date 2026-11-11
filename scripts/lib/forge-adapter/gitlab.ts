@@ -8,6 +8,7 @@ import type {
   IssueCreateParams,
   IssueEditParams,
   IssueListFilter,
+  PrChangeBaseResult,
   PrCreateParams,
 } from './types.ts';
 
@@ -102,6 +103,16 @@ export class GitLabForgeAdapter implements ForgeAdapter {
 
   private repoFlag(): string[] {
     return ['--repo', this.repo];
+  }
+
+  // Stacking is built for the GitHub and Gitea PR graph; a merge request's file list and target
+  // branch change are not wired here, so the engine reads these as an unsupported forge.
+  async prFiles(_number: number): Promise<string[]> {
+    throw new Error('not-supported: prFiles on the gitlab forge');
+  }
+
+  async prChangeBase(_number: number, _base: string): Promise<PrChangeBaseResult> {
+    throw new Error('not-supported: prChangeBase on the gitlab forge');
   }
 
   async issueList(filter: IssueListFilter = {}): Promise<ForgeIssue[]> {

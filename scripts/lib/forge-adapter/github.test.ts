@@ -168,6 +168,89 @@ describe('GitHubForgeAdapter (REST)', () => {
     await expect(adapter.labelRemove({ type: 'issue', number: 6 }, ['stale'])).rejects.toThrow('HTTP 403');
   });
 
+  test('prView maps base ref, fork flag, draft and creation time', async () => {
+    mockApi(() => ({
+      stdout: prRow(8, {
+        base: { ref: 'main', repo: { full_name: 'owner/repo' } },
+        head: { ref: 'feat', sha: 'abc123', repo: { full_name: 'someone/repo' } },
+        draft: true,
+        created_at: '2026-11-01T10:00:00Z',
+      }),
+    }));
+    expect(await adapter.prView(8)).toMatchObject({
+      baseRefName: 'main',
+      headRepoIsFork: true,
+      draft: true,
+      createdAt: '2026-11-01T10:00:00Z',
+    });
+  });
+
+  test('a same-repo head is not a fork and a deleted fork repo is', async () => {
+    const same = {
+      base: { ref: 'main', repo: { full_name: 'owner/repo' } },
+      head: { ref: 'feat', sha: 'a', repo: { full_name: 'owner/repo' } },
+    };
+    mockApi(() => ({ stdout: prRow(1, same) }));
+    expect((await adapter.prView(1)).headRepoIsFork).toBe(false);
+    spawnSyncSpy.mockRestore();
+    mockApi(() => ({ stdout: prRow(2, { ...same, head: { ref: 'feat', sha: 'a', repo: null } }) }));
+    expect((await adapter.prView(2)).headRepoIsFork).toBe(true);
+  });
+
+  test('prList of open pull requests reads ceil(open/100) pages, one REST call each', async () => {
+    const page = (from: number, n: number) => Array.from({ length: n }, (_, i) => prRow(from + i));
+    mockApi((_m, endpoint) => ({
+      stdout: endpoint.endsWith('page=1') ? page(1, 100) : endpoint.endsWith('page=2') ? page(101, 100) : page(201, 50),
+    }));
+    const prs = await adapter.prList({ state: 'open', limit: 1001 });
+    expect(prs).toHaveLength(250);
+    expect(calls.map((c) => c.endpoint)).toEqual([
+      'repos/owner/repo/pulls?state=open&per_page=100&page=1',
+      'repos/owner/repo/pulls?state=open&per_page=100&page=2',
+      'repos/owner/repo/pulls?state=open&per_page=100&page=3',
+    ]);
+  });
+
+  test('prFiles pages through the files endpoint and lists both sides of a rename', async () => {
+    const full = Array.from({ length: 100 }, (_, i) => ({ filename: `f${i}.ts` }));
+    mockApi((_m, endpoint) => ({
+      stdout: endpoint.endsWith('page=1') ? full : [{ filename: 'new.ts', previous_filename: 'old.ts' }],
+    }));
+    const files = await adapter.prFiles(9);
+    expect(files).toHaveLength(102);
+    expect(files).toContain('old.ts');
+    expect(files).toContain('new.ts');
+    expect(calls[0].endpoint).toBe('repos/owner/repo/pulls/9/files?per_page=100&page=1');
+  });
+
+  test('prFiles refuses a truncated list at the 3000-file REST cap', async () => {
+    const full = Array.from({ length: 100 }, (_, i) => ({ filename: `f${i}.ts` }));
+    mockApi(() => ({ stdout: full }));
+    await expect(adapter.prFiles(9)).rejects.toThrow(/3000/);
+  });
+
+  test('prChangeBase patches the base, then reads it back', async () => {
+    mockApi((method) => ({
+      stdout: method === 'PATCH' ? { number: 4 } : prRow(4, { base: { ref: 'blackhole/issue-10', repo: { full_name: 'owner/repo' } } }),
+    }));
+    expect(await adapter.prChangeBase(4, 'blackhole/issue-10')).toEqual({ ok: true, base: 'blackhole/issue-10' });
+    expect(calls.map((c) => [c.method, c.endpoint, c.body])).toEqual([
+      ['PATCH', 'repos/owner/repo/pulls/4', { base: 'blackhole/issue-10' }],
+      ['GET', 'repos/owner/repo/pulls/4', undefined],
+    ]);
+  });
+
+  test('prChangeBase reports ok:false when the read-back base differs, even on a zero exit', async () => {
+    mockApi((method) => ({
+      stdout: method === 'PATCH' ? { number: 4 } : prRow(4, { base: { ref: 'main', repo: { full_name: 'owner/repo' } } }),
+    }));
+    expect(await adapter.prChangeBase(4, 'blackhole/issue-10')).toEqual({
+      ok: false,
+      base: 'main',
+      detail: 'base is main after the change, expected blackhole/issue-10',
+    });
+  });
+
   test('authStatus is ok when the repo is readable over REST', async () => {
     mockApi(() => ({ stdout: { full_name: 'owner/repo' } }));
     expect(await adapter.authStatus()).toEqual({ ok: true, forge: 'github', host: 'github.com' });

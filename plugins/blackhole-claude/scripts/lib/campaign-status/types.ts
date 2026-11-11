@@ -31,6 +31,8 @@ export type QueueIssue = {
   reviewed_head_shas?: string[];
   stacked_on?: number | null;
   parent_tip_sha?: string | null;
+  stacked_on_pr?: number | null;
+  parent_branch?: string | null;
   route?: Route;
 };
 

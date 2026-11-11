@@ -34,3 +34,26 @@ export function runTeaText(args: string[]): string {
   }
   return result.stdout;
 }
+
+export type TeaApiMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+
+export type TeaApiResult = { body: string; headers: string };
+
+/**
+ * One Gitea REST call through `tea api`. Response headers (`X-Total-Count`) come back on stderr,
+ * so a caller can tell a short page from the last page without trusting the server's page-size cap.
+ */
+export function runTeaApi(method: TeaApiMethod, endpoint: string, body?: unknown): TeaApiResult {
+  const args = ['api', '-i', '-X', method, endpoint];
+  if (body !== undefined) args.push('-d', JSON.stringify(body));
+  const result = runTea(args);
+  if (result.status !== 0) {
+    throw new Error(result.stderr.trim() || result.stdout.trim() || `tea api ${method} ${endpoint} failed`);
+  }
+  return { body: result.stdout, headers: result.stderr };
+}
+
+export function runTeaApiJson<T>(method: TeaApiMethod, endpoint: string, body?: unknown): { data: T; headers: string } {
+  const { body: text, headers } = runTeaApi(method, endpoint, body);
+  return { data: (text.trim() ? JSON.parse(text) : null) as T, headers };
+}

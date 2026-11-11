@@ -1,5 +1,5 @@
 import { isNotFound, runGhApi, runGhApiRestJson } from './cli.ts';
-import type { ForgeCheck, ForgeIssue, ForgePr, IssueListFilter } from './types.ts';
+import type { ForgeCheck, ForgeIssue, ForgePr, IssueListFilter, PrChangeBaseResult } from './types.ts';
 
 // GitHub REST rows and their mapping to the forge types (ADR-048). Pure mappers are exported so
 // any channel that already holds REST-shaped JSON (an MCP tool result saved to a file, a fixture)
@@ -20,10 +20,15 @@ export type RestPrRow = {
   number: number;
   title: string;
   body: string | null;
-  head: { ref: string; sha: string };
+  head: { ref: string; sha: string; repo?: { full_name: string } | null };
+  base?: { ref: string; repo?: { full_name: string } | null };
+  draft?: boolean;
+  created_at?: string | null;
   state: string;
   merged_at: string | null;
 };
+
+export type RestPrFile = { filename: string; previous_filename?: string };
 
 export type RestCheckRun = { name: string; status: string; conclusion: string | null };
 export type RestStatus = { context: string; state: string };
@@ -39,12 +44,23 @@ export const mapRestIssue = (row: RestIssueRow): ForgeIssue => ({
   state: row.state.toLowerCase() === 'closed' ? 'CLOSED' : 'OPEN',
 });
 
+/** A deleted fork reads as `head.repo: null`; it is a fork all the same. Unknown without a base repo. */
+const isForkHead = (row: RestPrRow): boolean | undefined => {
+  const baseRepo = row.base?.repo?.full_name;
+  if (!baseRepo || row.head.repo === undefined) return undefined;
+  return row.head.repo === null || row.head.repo.full_name !== baseRepo;
+};
+
 export const mapRestPr = (row: RestPrRow): ForgePr => ({
   number: row.number,
   title: row.title,
   body: row.body ?? '',
   headRefName: row.head.ref,
   headRefOid: row.head.sha,
+  baseRefName: row.base?.ref,
+  headRepoIsFork: isForkHead(row),
+  draft: row.draft,
+  createdAt: row.created_at,
   state: row.merged_at ? 'MERGED' : row.state.toLowerCase() === 'closed' ? 'CLOSED' : 'OPEN',
   mergedAt: row.merged_at,
 });
@@ -107,6 +123,33 @@ export const listPrs = (repo: string, state: 'open' | 'closed' | 'all' = 'open',
 
 export const viewPr = (repo: string, number: number): ForgePr =>
   mapRestPr(runGhApiRestJson<RestPrRow>('GET', `repos/${repo}/pulls/${number}`));
+
+/** GitHub lists at most 3000 files of a PR; a list that reaches the cap may be truncated. */
+const PR_FILES_MAX_PAGES = 30;
+
+export const listPrFiles = (repo: string, number: number): string[] => {
+  const files: string[] = [];
+  for (let page = 1; page <= PR_FILES_MAX_PAGES; page++) {
+    const rows = runGhApiRestJson<RestPrFile[]>(
+      'GET',
+      `repos/${repo}/pulls/${number}/files?${query({ per_page: PAGE_SIZE, page })}`,
+    );
+    for (const row of rows) {
+      files.push(row.filename);
+      if (row.previous_filename) files.push(row.previous_filename);
+    }
+    if (rows.length < PAGE_SIZE) return files;
+  }
+  throw new Error(`PR #${number} lists ${PR_FILES_MAX_PAGES * PAGE_SIZE} files, the REST cap; its file list may be truncated`);
+};
+
+export const changePrBase = (repo: string, number: number, base: string): PrChangeBaseResult => {
+  runGhApiRestJson('PATCH', `repos/${repo}/pulls/${number}`, { base });
+  const actual = viewPr(repo, number).baseRefName ?? null;
+  return actual === base
+    ? { ok: true, base: actual }
+    : { ok: false, base: actual, detail: `base is ${actual ?? 'unreadable'} after the change, expected ${base}` };
+};
 
 export const listChecks = (repo: string, sha: string): ForgeCheck[] => {
   const runs = runGhApiRestJson<{ check_runs: RestCheckRun[] }>(

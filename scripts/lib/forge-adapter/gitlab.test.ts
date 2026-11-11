@@ -339,6 +339,14 @@ describe('GitLabForgeAdapter', () => {
   });
 });
 
+describe('GitLabForgeAdapter stacking additions', () => {
+  test('prFiles and prChangeBase are not supported and say so', async () => {
+    const adapter = new GitLabForgeAdapter('host/owner/repo');
+    await expect(adapter.prFiles(1)).rejects.toThrow(/not-supported/);
+    await expect(adapter.prChangeBase(1, 'main')).rejects.toThrow(/not-supported/);
+  });
+});
+
 describe('createForgeAdapter gitlab', () => {
   test('selects gitlab backend', async () => {
     const { createForgeAdapter } = await import('./index.ts');

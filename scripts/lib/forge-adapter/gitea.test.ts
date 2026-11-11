@@ -69,6 +69,109 @@ describe('GiteaForgeAdapter', () => {
     ]);
   });
 
+  // `tea api` prints the Gitea REST JSON; the adapter reads PR graph fields from it because
+  // `tea pulls list --json` carries neither the base branch nor the head repository.
+  const apiPr = (n: number, extra: Record<string, unknown> = {}) => ({
+    number: n,
+    title: `p${n}`,
+    body: '',
+    state: 'open',
+    merged: false,
+    merged_at: null,
+    draft: false,
+    created_at: '2026-11-01T10:00:00Z',
+    head: { ref: 'feat', sha: 'abc', repo: { full_name: 'owner/repo' } },
+    base: { ref: 'main', repo: { full_name: 'owner/repo' } },
+    ...extra,
+  });
+  const teaApi = (reply: (argv: string[]) => { stdout?: unknown; stderr?: string; status?: number }) =>
+    spyOn(teaCli, 'runTea').mockImplementation((argv: string[]) => {
+      const r = reply(argv);
+      return {
+        status: r.status ?? 0,
+        stdout: typeof r.stdout === 'string' ? r.stdout : JSON.stringify(r.stdout ?? {}),
+        stderr: r.stderr ?? '',
+        error: null,
+      };
+    });
+
+  test('prList of open pull requests reads REST rows with base, fork flag and draft', async () => {
+    const spy = teaApi(() => ({
+      stdout: [apiPr(7, { draft: true, head: { ref: 'f', sha: 's', repo: { full_name: 'stranger/repo' } } })],
+      stderr: 'HTTP/1.1 200 OK\nX-Total-Count: 1\n',
+    }));
+    const prs = await new GiteaForgeAdapter('host/owner/repo').prList({ state: 'open', limit: 1001 });
+    expect(prs).toEqual([
+      {
+        number: 7,
+        title: 'p7',
+        body: '',
+        headRefName: 'f',
+        headRefOid: 's',
+        baseRefName: 'main',
+        headRepoIsFork: true,
+        draft: true,
+        createdAt: '2026-11-01T10:00:00Z',
+        state: 'OPEN',
+        mergedAt: null,
+      },
+    ]);
+    expect(spy.mock.calls[0][0].slice(0, 4)).toEqual(['api', '-i', '-X', 'GET']);
+    expect(spy.mock.calls[0][0]).toContain('repos/owner/repo/pulls?state=open&page=1&limit=50');
+    spy.mockRestore();
+  });
+
+  test('prList of open pull requests keeps paging until X-Total-Count rows are read', async () => {
+    const rows = Array.from({ length: 70 }, (_, i) => apiPr(i + 1));
+    const spy = teaApi((argv) => ({
+      stdout: argv.some((a) => a.endsWith('page=1&limit=50')) ? rows.slice(0, 50) : rows.slice(50),
+      stderr: 'X-Total-Count: 70\n',
+    }));
+    const prs = await new GiteaForgeAdapter('host/owner/repo').prList({ state: 'open', limit: 1001 });
+    expect(prs).toHaveLength(70);
+    expect(spy.mock.calls).toHaveLength(2);
+    spy.mockRestore();
+  });
+
+  test('prList of open pull requests fails when a page comes back empty before the total', async () => {
+    const spy = teaApi(() => ({ stdout: [], stderr: 'X-Total-Count: 5\n' }));
+    await expect(new GiteaForgeAdapter('host/owner/repo').prList({ state: 'open' })).rejects.toThrow(/total/);
+    spy.mockRestore();
+  });
+
+  test('prFiles reads the files endpoint until an empty page', async () => {
+    const spy = teaApi((argv) => ({
+      stdout: argv.some((a) => a.endsWith('page=1&limit=50'))
+        ? [{ filename: 'a.ts' }, { filename: 'b.ts', previous_filename: 'old.ts' }]
+        : [],
+    }));
+    expect(await new GiteaForgeAdapter('host/owner/repo').prFiles(3)).toEqual(['a.ts', 'b.ts', 'old.ts']);
+    expect(spy.mock.calls[0][0]).toContain('repos/owner/repo/pulls/3/files?page=1&limit=50');
+    spy.mockRestore();
+  });
+
+  test('prChangeBase patches base, reads it back, and reports a mismatch', async () => {
+    const spy = teaApi((argv) => ({ stdout: argv.includes('PATCH') ? { number: 4 } : apiPr(4, { base: { ref: 'main', repo: { full_name: 'owner/repo' } } }) }));
+    const result = await new GiteaForgeAdapter('host/owner/repo').prChangeBase(4, 'blackhole/issue-10');
+    expect(result).toMatchObject({ ok: false, base: 'main' });
+    const patch = spy.mock.calls[0][0];
+    expect(patch).toContain('PATCH');
+    expect(patch).toContain('repos/owner/repo/pulls/4');
+    expect(patch[patch.indexOf('-d') + 1]).toBe(JSON.stringify({ base: 'blackhole/issue-10' }));
+    spy.mockRestore();
+  });
+
+  test('prChangeBase is ok when the read-back base matches', async () => {
+    const spy = teaApi((argv) => ({
+      stdout: argv.includes('PATCH') ? { number: 4 } : apiPr(4, { base: { ref: 'blackhole/issue-10', repo: { full_name: 'owner/repo' } } }),
+    }));
+    expect(await new GiteaForgeAdapter('host/owner/repo').prChangeBase(4, 'blackhole/issue-10')).toEqual({
+      ok: true,
+      base: 'blackhole/issue-10',
+    });
+    spy.mockRestore();
+  });
+
   test('authStatus reports logged-in host from repo prefix', async () => {
     const runTeaSpy = spyOn(teaCli, 'runTea').mockReturnValue({
       status: 0,

@@ -1,7 +1,9 @@
 import { readOriginUrl } from '../forge-detection.ts';
 import { runGhApi, runGhApiJson, runGhApiRestJson, runGhApiText } from './cli.ts';
 import {
+  changePrBase,
   listChecks,
+  listPrFiles,
   listIssues,
   listPrs,
   mapRestIssue,
@@ -21,6 +23,7 @@ import type {
   IssueCreateParams,
   IssueEditParams,
   IssueListFilter,
+  PrChangeBaseResult,
   PrCreateParams,
 } from './types.ts';
 
@@ -103,6 +106,14 @@ export class GitHubForgeAdapter implements ForgeAdapter {
   async prChecks(number: number): Promise<ForgeCheck[]> {
     const pr = viewPr(this.repo, number);
     return listChecks(this.repo, pr.headRefOid ?? '');
+  }
+
+  async prFiles(number: number): Promise<string[]> {
+    return listPrFiles(this.repo, number);
+  }
+
+  async prChangeBase(number: number, base: string): Promise<PrChangeBaseResult> {
+    return changePrBase(this.repo, number, base);
   }
 
   getPrHeadSha(pr: number): Promise<string> {
