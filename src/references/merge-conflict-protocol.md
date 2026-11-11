@@ -137,8 +137,11 @@ never rebased or force-pushed; its own commits are replayed by merging the targe
 `scripts/stack-repair.ts repair --apply --child-issue <N>` does the retarget (REST, with a base
 read-back), the replay merge and the fast-forward push, and `merge-gate.md` § 7 owns the command
 and its flags. This section owns only the conflict case: when the replay reports conflicts nothing
-is pushed, and each conflicted file is resolved per § Hot files and generated trees below, then
-`git add` and the merge commit, a normal push, and the Post-resolution discipline build.
+is pushed and the child worktree has no merge in progress (the replay runs through `git merge-tree`,
+so there are no conflict markers to edit). The worker starts the merge itself in the child worktree:
+`git fetch origin && git merge origin/<target_branch>`. Each conflicted file is then resolved per
+§ Hot files and generated trees below, then `git add`, the merge commit, a normal push, and the
+Post-resolution discipline build.
 
 The body link switches from `Part of #<N>` to `Closes #<N>` once the child targets
 `config.target_branch`: `gh api -X PATCH repos/<repo>/pulls/<N> -f body="<body with Closes #<N>>"`.
