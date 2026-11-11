@@ -1,5 +1,5 @@
 import { childBranchFor } from '../stack-repair.ts';
-import { chainTip as graphChainTip, reachesNode, type StackGraph } from './stack-overlap.ts';
+import { chainTip as graphChainTip, effectiveParent, reachesNode, type StackGraph } from './stack-overlap.ts';
 
 // Dispatch-time stack-parent selection (queue-dag.md § Step 3b). A ready issue whose touch_paths
 // overlap an issue that already has an open, unmerged PR is cut from that PR's branch instead of
@@ -77,7 +77,10 @@ const matchablePaths = (paths: string[] | undefined, defaults: string[] | undefi
 const queueGraph = (issues: Record<string, StackCandidate>): StackGraph => ({
   nodes: () => Object.keys(issues).map(Number).filter((n) => isOpenPr(issues[String(n)])),
   has: (n) => issues[String(n)] !== undefined,
-  parentOf: (n) => issues[String(n)]?.stacked_on,
+  parentOf: (n) => {
+    const v = issues[String(n)];
+    return v === undefined ? undefined : effectiveParent(issues, v);
+  },
 });
 
 const chainTip = (issues: Record<string, StackCandidate>, root: number): number => graphChainTip(queueGraph(issues), root);
@@ -95,7 +98,7 @@ export const pickStackParent = (
   opts: StackParentOptions = {},
 ): StackParentPick | null => {
   const me = issues[String(issue)];
-  if (!me || me.stacked_on != null) return null;
+  if (!me || me.stacked_on != null || me.stacked_on_pr != null) return null;
   const mine = knownPaths(me.touch_paths, opts.defaultTouchPaths);
   const matchable = matchablePaths(me.touch_paths, opts.defaultTouchPaths);
   if (!matchable.length) return null;
@@ -149,7 +152,7 @@ const isOpenPr = (v: StackCandidate | undefined): boolean =>
 export const stackMergeOrder = (issues: Record<string, StackCandidate>): StackStep[][] => {
   const open = Object.entries(issues)
     .filter(([, v]) => isOpenPr(v))
-    .map(([k, v]) => ({ n: Number(k), parent: v.stacked_on ?? null }))
+    .map(([k, v]) => ({ n: Number(k), parent: effectiveParent(issues, v) }))
     .sort((a, b) => a.n - b.n);
   const openSet = new Set(open.map((o) => o.n));
   const childrenOf = (p: number) => open.filter((o) => o.parent === p).map((o) => o.n);

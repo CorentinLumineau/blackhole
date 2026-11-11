@@ -229,6 +229,11 @@ export const replayMerge = (options: ReplayOptions): ReplayResult => {
   if (merged.clean === null) return { status: 'refused', code: 'merge-error', reason: merged.error };
   if (!merged.clean) return { status: 'conflict', conflicts: merged.conflicts };
 
+  // An abandoned parent leaves newBase already in the child's history yet still needs the replay
+  // to strip the parent lines, so ancestry alone is not enough: the merged tree must be unchanged.
+  const childTree = git(repoRoot, ['rev-parse', '--verify', '--quiet', `${child}^{tree}`]).stdout.trim();
+  if (isAncestor(repoRoot, newBase, child, git) && merged.tree === childTree) return { status: 'up-to-date' };
+
   const branch = options.childBranch ?? options.child;
   const sha = commitMerge(repoRoot, git, merged.tree, [child, newBase], `Merge ${options.newBase} into ${branch} (replay from recorded parent tip)`);
   if (sha === null) return { status: 'refused', code: 'merge-error', reason: 'git commit-tree failed' };
