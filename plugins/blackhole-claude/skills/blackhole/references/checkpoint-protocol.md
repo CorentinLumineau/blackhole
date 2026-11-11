@@ -23,6 +23,9 @@ On every orchestrator turn end, persist in this order:
    It commits `.blackhole/` to the `blackhole/state` branch without touching the working tree or
    the checked-out branch, and a failed push blocks ending the turn like any other write failure
    (`state-branch.md`).
+5. Unless `status_page.enabled` is `false`, refresh the status page
+   (`bun run status --html`, then the per-harness view — `status-page.md` § Refresh procedure).
+   A failed refresh is reported in one line and does not block ending the turn.
 
 Never write checkpoint before queue and ledger are valid — validate both with
 `scripts/lib/state-write-guard.ts`'s `validateStateWrite()`, never `jq empty` (it exits 0 on a

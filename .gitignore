@@ -1,5 +1,6 @@
 node_modules/
-.blackhole/
+.blackhole/*
+!.blackhole/status-artifact.json
 .bc-campaign/
 .DS_Store
 /dist/

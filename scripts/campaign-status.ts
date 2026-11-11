@@ -4,6 +4,8 @@ import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { fetchForgeCounts } from './lib/campaign-status/forge.ts';
+import { renderStatusHtml } from './lib/campaign-status/html.ts';
+import { buildStatusReport } from './lib/campaign-status/report.ts';
 import { CampaignNotFoundError, loadCampaignState } from './lib/campaign-status/state.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { formatPaceLine, readLatestPaceRecord } from './lib/pace-log.ts';
@@ -21,6 +23,8 @@ export {
 export { formatDashboard, formatScopeLabel, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 export { fetchForgeCounts } from './lib/campaign-status/forge.ts';
 export { loadCampaignState } from './lib/campaign-status/state.ts';
+export { buildStatusReport } from './lib/campaign-status/report.ts';
+export { escapeHtml, renderStatusHtml } from './lib/campaign-status/html.ts';
 export { parseStatusArgs } from './lib/campaign-status/cli.ts';
 export type {
   CheckpointMeta,
@@ -33,6 +37,7 @@ export type {
   Route,
   StatusArgs,
   StatusMode,
+  StatusReport,
 } from './lib/campaign-status/types.ts';
 
 // Issue #912 (ADR-044) — widens dashboard surfacing for the advisory plugin-cache drift signal
@@ -91,8 +96,18 @@ export function renderPluginDriftWarning(signal: PluginDriftSignal | null): stri
   return lines.join('\n');
 }
 
+// Pace and plugin-drift lines, read once and shared by the text dashboard and the report modes.
+function readHostLines(campaignDir: string): { pace: string | null; drift: string | null } {
+  const latestPace = readLatestPaceRecord(path.join(campaignDir, 'pace-log.jsonl'));
+  const driftPath = path.join(campaignDir, 'plugin-drift.json');
+  const drift = fs.existsSync(driftPath)
+    ? renderPluginDriftWarning(readJsonFile(driftPath, driftPath) as PluginDriftSignal) || null
+    : null;
+  return { pace: latestPace ? formatPaceLine(latestPace) : null, drift };
+}
+
 function main() {
-  const { mode, campaignDir, skipGh } = parseStatusArgs(process.argv.slice(2));
+  const { mode, campaignDir, skipGh, outPath } = parseStatusArgs(process.argv.slice(2));
 
   let state: ReturnType<typeof loadCampaignState>;
   try {
@@ -123,6 +138,32 @@ function main() {
     ? { openIssues: 0, openPrs: 0, ok: false, error: 'skipped' }
     : fetchForgeCounts(scope, config.repo ?? '');
 
+  const host = readHostLines(campaignDir);
+
+  if (mode === 'json' || mode === 'html') {
+    const report = buildStatusReport({
+      config,
+      queue,
+      ledger,
+      checkpoint,
+      checkpointBody,
+      forge,
+      paceLine: host.pace,
+      hostNotes: host.drift ? host.drift.split('\n') : [],
+      generatedAt: new Date().toISOString(),
+    });
+    if (mode === 'json') {
+      console.log(JSON.stringify(report, null, 2));
+      return;
+    }
+    const target = outPath ?? path.join(campaignDir, '.tmp', 'status.html');
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(`${target}.tmp`, renderStatusHtml(report));
+    fs.renameSync(`${target}.tmp`, target);
+    console.log(target);
+    return;
+  }
+
   const dashboard = formatDashboard({
     scope,
     checkpoint,
@@ -133,15 +174,8 @@ function main() {
   });
 
   console.log(dashboard);
-
-  const latestPace = readLatestPaceRecord(path.join(campaignDir, 'pace-log.jsonl'));
-  if (latestPace) console.log(formatPaceLine(latestPace));
-
-  const driftPath = path.join(campaignDir, 'plugin-drift.json');
-  if (fs.existsSync(driftPath)) {
-    const warning = renderPluginDriftWarning(readJsonFile(driftPath, driftPath) as PluginDriftSignal);
-    if (warning) console.log(warning);
-  }
+  if (host.pace) console.log(host.pace);
+  if (host.drift) console.log(host.drift);
 }
 
 if (import.meta.main) {

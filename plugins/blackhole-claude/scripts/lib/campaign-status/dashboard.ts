@@ -1,8 +1,8 @@
 import { readScope, type CampaignScope } from '../../forge-scope.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
 import {
+  computeStatusCounts,
   computeWaves,
-  countLedgerByStatus,
   discoveryFilings,
   groupIssuesByPhase,
   renderRouteChain,
@@ -133,9 +133,10 @@ const ledgerRecencyKey = (f: LedgerFinding): number => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-// Exported: ADR-042 Task 2(d)/(e) unit-test this directly, not only through formatDashboard.
-export function renderLedgerOpenSection(findings: LedgerFinding[]): string[] {
-  const openFindings = findings
+// Open findings, BLOCK first then most recent — shared by the Ledger open section and the
+// --json report's `ledger_open`.
+export function sortOpenFindings(findings: LedgerFinding[]): LedgerFinding[] {
+  return findings
     .filter((f) => f.status === 'open')
     .slice()
     .sort((a, b) => {
@@ -143,6 +144,11 @@ export function renderLedgerOpenSection(findings: LedgerFinding[]): string[] {
       if (rankDiff !== 0) return rankDiff;
       return ledgerRecencyKey(b) - ledgerRecencyKey(a);
     });
+}
+
+// Exported: ADR-042 Task 2(d)/(e) unit-test this directly, not only through formatDashboard.
+export function renderLedgerOpenSection(findings: LedgerFinding[]): string[] {
+  const openFindings = sortOpenFindings(findings);
   if (openFindings.length === 0) return [];
   const shown = openFindings.slice(0, SECTION_CAP);
   const lines: string[] = ['### Ledger open'];
@@ -159,12 +165,16 @@ export function renderLedgerOpenSection(findings: LedgerFinding[]): string[] {
   return lines;
 }
 
+/** Trimmed body of the checkpoint's `## <heading>` section, or null when absent or empty. */
+export function checkpointSection(checkpointBody: string | undefined, heading: string): string | null {
+  const marker = `## ${heading}`;
+  if (!checkpointBody?.includes(marker)) return null;
+  const section = checkpointBody.split(marker)[1]?.split(/^## /m)[0]?.trim();
+  return section || null;
+}
+
 function renderActiveWorkersSection(checkpointBody: string | undefined): string[] {
-  if (!checkpointBody?.includes('## In-flight workers')) return [];
-  const workerSection = checkpointBody
-    .split('## In-flight workers')[1]
-    ?.split(/^## /m)[0]
-    ?.trim();
+  const workerSection = checkpointSection(checkpointBody, 'In-flight workers');
   if (!workerSection) return [];
   return ['### Active workers', workerSection, ''];
 }
@@ -282,7 +292,7 @@ export function formatDashboard(opts: {
   const issues = queue.issues ?? {};
   const findings = ledger.findings ?? [];
   const { active, done, inFlight, blocked, ready } = groupIssuesByPhase(issues);
-  const ledgerCounts = countLedgerByStatus(findings);
+  const { queue: q, ledger: ledgerCounts } = computeStatusCounts(issues, findings);
   const filed = discoveryFilings(findings);
   const scopeLabel = formatScopeLabel(scope);
 
@@ -303,7 +313,7 @@ export function formatDashboard(opts: {
     lines.push(`**Forge:** unavailable (${forge.error ?? 'gh failed'})`);
   }
   lines.push(
-    `**Queue:** ${active.length} active · ${done.length} done · ${inFlight.length} in-flight · ${blocked.length} blocked · ${ready.length} ready`,
+    `**Queue:** ${q.active} active · ${q.done} done · ${q.in_flight} in-flight · ${q.blocked} blocked · ${q.ready} ready`,
   );
   lines.push(
     `**Ledger:** ${ledgerCounts.open} open (BLOCK ${ledgerCounts.block} · WARN ${ledgerCounts.warn} · NOTE ${ledgerCounts.note}) · ${ledgerCounts.deferred} deferred`,

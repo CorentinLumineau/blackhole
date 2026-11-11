@@ -209,7 +209,7 @@ coherence checks fail.
 **Environments**: Single environment — the developer's local clone. No staging/prod split;
 `scripts/release.ts` handles semver tagging/publishing of the marketplace plugin.
 
-**Monitoring & logging**: None (no running service) — visibility is via `bun run status`
+**Monitoring & logging**: None (no running service) — visibility is via `bun run status` (text dashboard, `--json` report, `--html` status page)
 (`scripts/campaign-status.ts`) showing the queue dashboard, and the findings ledger.
 
 ---

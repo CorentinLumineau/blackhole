@@ -37,6 +37,8 @@ Mutations to `.blackhole/queue.json` and
 | `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
 | `pace-log.jsonl` | Per-spawn-round pace/resource verdicts, planned batch and effective concurrency, newest 200 lines (gitignored, written by `scripts/pace-log.ts`, diagnostic only) |
 | `run-context.json` | What this run can do and the route resolved from it, rewritten at every bootstrap and resume (see `run-context.md`) |
+| `status-artifact.json` | `{url, created_at}` of the campaign's one published status page (**tracked** — commit it, un-ignore it with `!.blackhole/status-artifact.json` under a `.blackhole/*` ignore, so every session and machine redeploys the same link; see `status-page.md`) |
+| `.tmp/status.html` | Latest rendered status page, rewritten by `bun run status --html` (gitignored, local only) |
 
 On a machine whose disk does not outlive the session (`state_store: branch`), these files are
 also kept on the `blackhole/state` branch: pushed at every turn end and restored on resume

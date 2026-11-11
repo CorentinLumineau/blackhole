@@ -9,7 +9,7 @@ Campaign protocol state (queue, ledger, plans) lives only under `.blackhole/` â€
 | Command | Action |
 |---------|--------|
 | `/blackhole run` | Start or resume the campaign loop |
-| `@blackhole status` | Sync forge and show queue dashboard |
+| `@blackhole status` | Sync forge, show queue dashboard, refresh the status page (`bun run status --json` / `--html`, [status-page.md](.cursor/skills/blackhole/references/status-page.md)) |
 | `@coordinator run the campaign` | Multitask Mode entry (Cursor, Gemini) |
 | `/goal run blackhole until empty` | Native background loop (Claude Code, Codex CLI) |
 
