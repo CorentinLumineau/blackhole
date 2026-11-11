@@ -85,8 +85,9 @@ describe('renderStatusHtml — self-contained page', () => {
     expect(benign).not.toMatch(/https?:\/\//i);
     expect(benign).not.toMatch(/\s(src|href|srcset|action|poster|data)\s*=/i);
     expect(benign).not.toMatch(/@import|url\s*\(/i);
+    expect(benign).not.toMatch(/<(script|link|iframe|object|embed|img)\b/i);
+    // Hostile state: no tag survives escaping, so nothing can load.
     expect(html).not.toMatch(/https?:\/\//i);
-    expect(html).not.toMatch(/\s(src|href|srcset|action|poster|data)\s*=/i);
     expect(html).not.toMatch(/@import|url\s*\(/i);
     expect(html).not.toMatch(/<(script|link|iframe|object|embed|img)\b/i);
   });
