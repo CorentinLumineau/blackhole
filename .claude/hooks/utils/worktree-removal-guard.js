@@ -169,9 +169,10 @@ const GIT_GLOBAL_OPTIONS_WITH_VALUE = new Set([
  * `GIT_GLOBAL_OPTIONS_WITH_VALUE` is treated as taking no value (git's own dispatcher never
  * treats a `--`-prefixed token before the subcommand as anything BUT a global option, so this
  * cannot manufacture a false `worktree remove` match — it can only walk past an option this set
- * does not separately track). Returns -1 when a value-taking option has no following token (the
- * clause ends mid-option) — the caller treats that exactly like "not a worktree remove
- * invocation here", not a match. */
+ * does not separately track). Returns -1 when no subcommand token exists: a value-taking option
+ * with no following token (the clause ends mid-option), or only global options (or nothing) after
+ * `git` — the caller treats that exactly like "not a worktree remove invocation here", not a
+ * match. */
 const skipGitGlobalOptions = (tokens, start) => {
   let i = start;
   while (i < tokens.length) {
@@ -191,7 +192,7 @@ const skipGitGlobalOptions = (tokens, start) => {
     }
     break;
   }
-  return i;
+  return i < tokens.length ? i : -1;
 };
 
 /** The three git global options that change WHICH repository an invocation targets — distinct
