@@ -84,7 +84,7 @@ merge-readiness dry run (same D5 narrowing as Step 0.5 above).
 `--parent-issue`. Exit 0 with no children listed means this PR is nobody's parent — continue to
 step 1 unchanged. Exit non-zero means at least one open child has no recorded `parent_tip_sha`:
 **STOP** this issue's merge for the turn and capture the missing tip (`merge-gate.md` § 7's
-`capture --apply`) first. The ordering is the whole point — the `--onto` boundary is recoverable
+`capture --apply`) first. The ordering is the whole point — the merge base is recoverable
 only while the parent branch still exists, and no amount of care at repair time recovers what the
 merge destroyed. **Runs for `merge_mode: leave-open` too**: a human's merge deletes the boundary
 exactly as blackhole's would.

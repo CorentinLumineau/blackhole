@@ -1,14 +1,31 @@
 import * as fs from 'fs';
-import { spawnSync } from 'child_process';
 import { validateStateWrite } from './lib/state-write-guard.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { runGh } from './lib/forge-adapter/cli.ts';
+import { parseFlags, requireFlag, type Flags } from './lib/argv-flags.ts';
+import {
+  changedFileCount,
+  childBranchFor,
+  classifyParentLanding,
+  fastForwardLocal,
+  isAncestor,
+  landingAction,
+  realGit,
+  replayMerge,
+  restackOnto,
+  revParse,
+  type ForgeParentState,
+  type ParentLanding,
+} from './lib/stack-merge.ts';
 
-// Stacked-PR tip capture and post-merge `--onto` repair. A squash-merged parent rewrites its
-// commits into one, so a child branched off that parent shares no history with the base ref and
-// starts claiming the parent's work as its own. The only recipe that restores it is a retarget
-// plus `git rebase --onto <base> <parent-tip> <child>`, and `<parent-tip>` has to be recorded
-// before the parent merges — after the parent branch is deleted the upstream boundary is gone.
+export { changedFileCount, childBranchFor };
+
+// Stacked-PR tip capture and post-parent-landing recovery. A parent that lands as a squash, as
+// replayed commits, or not at all leaves the child claiming the parent's work as its own. The
+// recovery is a merge, never a history rewrite: the child's remote head gains one commit whose
+// tree is a three-way merge with the tip recorded at stack creation as the base, published as a
+// fast-forward push (`lib/stack-merge.ts`). `<parent-tip>` has to be recorded before the parent
+// merges, because after the parent branch is deleted the base is gone.
 // The prose half (when to run each subcommand) lives in `merge-gate.md` § 7.
 
 export type StackedIssue = {
@@ -23,9 +40,6 @@ export type StackedIssue = {
 export type QueueIssues = Record<string, StackedIssue>;
 
 export type QueueJson = { issues?: QueueIssues; [key: string]: unknown };
-
-/** Campaign branch-naming convention (`V-BRANCH-03`) — the sole derivation site. */
-export const childBranchFor = (issue: number): string => `blackhole/issue-${issue}`;
 
 export type StackedChild = {
   issue: number;
@@ -56,7 +70,9 @@ export const findStackedChildren = (issues: QueueIssues, parentIssue: number): S
 export type RepairPlan = { child: StackedChild; commands: string[]; refusal: string | null };
 
 /**
- * The exact command sequence for one child, in execution order. `gh pr edit --base` is
+ * The exact command sequence for one child, in execution order, for a parent that landed as new
+ * commits. A parent merged with a merge commit stops after the read-back: the child already
+ * contains the parent tip, so there is nothing to commit or push. `gh pr edit --base` is
  * deliberately absent: on a repo with classic Projects enabled it exits non-zero from a GraphQL
  * deprecation before it ever applies the base change, so the REST PATCH form is the only one that
  * both works and can be read back.
@@ -67,8 +83,8 @@ export const planRepair = (child: StackedChild, base: string, repoSlug: string, 
       child,
       commands: [],
       refusal:
-        `no parent_tip_sha recorded for #${child.issue} — the --onto boundary was never captured at ` +
-        'stack creation and cannot be reconstructed once the parent branch is gone; repair it by hand ' +
+        `no parent_tip_sha recorded for #${child.issue} — the merge base was never captured at ` +
+        'stack creation and cannot be reconstructed once the parent branch is gone; recover it by hand ' +
         "from the merged parent PR's commit list",
     };
   }
@@ -81,11 +97,40 @@ export const planRepair = (child: StackedChild, base: string, repoSlug: string, 
       `git -C ${repoRoot} fetch origin ${base}`,
       `gh api -X PATCH repos/${repoSlug}/pulls/${child.pr} -f base=${base}`,
       `gh api repos/${repoSlug}/pulls/${child.pr} --jq .base.ref`,
-      `git -C ${repoRoot} rebase --onto origin/${base} ${child.parentTipSha} ${child.branch}`,
-      `git -C ${repoRoot} push --force-with-lease origin ${child.branch}:${child.branch}`,
+      `git -C ${repoRoot} merge-tree --write-tree --name-only --merge-base=${child.parentTipSha} ${child.branch} origin/${base}`,
+      `git -C ${repoRoot} commit-tree <tree> -p ${child.branch} -p origin/${base} -m "Merge ${base} into ${child.branch} (replay from recorded parent tip)"`,
+      `git -C ${repoRoot} push origin <merge-commit>:refs/heads/${child.branch}`,
     ],
     refusal: null,
   };
+};
+
+/** The commands a late restack runs: merge the parent head into the child, then retarget it. */
+export const planRestack = (child: StackedChild, parentBranch: string, repoSlug: string, repoRoot: string): RepairPlan => {
+  if (child.pr === null) {
+    return { child, commands: [], refusal: `no PR recorded for #${child.issue} — nothing to retarget` };
+  }
+  return {
+    child,
+    commands: [
+      `git -C ${repoRoot} fetch origin ${parentBranch}`,
+      `gh api -X PATCH repos/${repoSlug}/pulls/${child.pr} -f base=${parentBranch}`,
+      `gh api repos/${repoSlug}/pulls/${child.pr} --jq .base.ref`,
+      `git -C ${repoRoot} merge-tree --write-tree --name-only ${child.branch} origin/${parentBranch}`,
+      `git -C ${repoRoot} commit-tree <tree> -p ${child.branch} -p origin/${parentBranch} -m "Merge ${parentBranch} into ${child.branch}"`,
+      `git -C ${repoRoot} push origin <merge-commit>:refs/heads/${child.branch}`,
+    ],
+    refusal: null,
+  };
+};
+
+/** Queue update after a restack or a force-pushed parent: the parent tip moves, the stack link stays. */
+export const recordParentTip = (queue: QueueJson, childIssue: number, tip: string, parentIssue?: number): boolean => {
+  const entry = queue.issues?.[String(childIssue)];
+  if (entry === undefined) return false;
+  entry.parent_tip_sha = tip;
+  if (parentIssue !== undefined) entry.stacked_on = parentIssue;
+  return true;
 };
 
 export type Verdict = { ok: boolean; reason: string };
@@ -115,6 +160,10 @@ export const verifyChildFileCount = (expected: number, observed: number): Verdic
         reason: `changed-file count is ${observed}, expected ${expected} — the child is still claiming the parent's files`,
       };
 
+/** Verifies the commit that was published, so the evidence cannot drift onto a stale local branch. */
+export const verifyPublishedReplay = (repoRoot: string, target: string, sha: string, expectedFiles: number): Verdict =>
+  verifyChildFileCount(expectedFiles, changedFileCount(repoRoot, target, sha, true));
+
 export type MergeSettings = {
   allow_squash_merge?: boolean;
   allow_merge_commit?: boolean;
@@ -133,40 +182,6 @@ export const squashMergeWarning = (settings: MergeSettings): string | null => {
   return 'WARNING: this repo squash-merges and offers no merge-commit alternative. This stack WILL break when the parent lands — the post-merge repair is mandatory, not optional.';
 };
 
-export type CommandRun = { ok: boolean; stdout: string; stderr: string };
-
-const runGit = (args: string[]): CommandRun => {
-  const result = spawnSync('git', args, { encoding: 'utf-8' });
-  return { ok: result.status === 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
-};
-
-/** Changed-file count between two revisions, the same number a PR's "files changed" reports. */
-export const changedFileCount = (repoRoot: string, from: string, to: string, threeDot = false): number => {
-  const range = threeDot ? `${from}...${to}` : `${from}..${to}`;
-  const result = runGit(['-C', repoRoot, 'diff', '--name-only', range]);
-  if (!result.ok) throw new Error(`git diff ${range} failed: ${result.stderr.trim()}`);
-  return result.stdout.split('\n').filter((line) => line.trim() !== '').length;
-};
-
-/**
- * The `--onto` rebase itself, isolated so it is exercisable against a real repository without any
- * forge access. A plain `git rebase <base>` here replays the parent's commits too and reproduces
- * exactly the wrong diff this whole module exists to prevent.
- */
-export const rebaseOnto = (repoRoot: string, base: string, parentTipSha: string, childBranch: string): CommandRun => {
-  const result = runGit(['-C', repoRoot, 'rebase', '--onto', base, parentTipSha, childBranch]);
-  if (!result.ok) runGit(['-C', repoRoot, 'rebase', '--abort']);
-  return result;
-};
-
-const revParse = (repoRoot: string, rev: string): string | null => {
-  const result = runGit(['-C', repoRoot, 'rev-parse', rev]);
-  return result.ok ? result.stdout.trim() : null;
-};
-
-const isAncestor = (repoRoot: string, ancestor: string, descendant: string): boolean =>
-  runGit(['-C', repoRoot, 'merge-base', '--is-ancestor', ancestor, descendant]).ok;
-
 const readQueue = (queuePath: string): QueueJson => readJsonFile(queuePath, queuePath) as QueueJson;
 
 const writeQueue = (queuePath: string, queue: QueueJson): string | null => {
@@ -180,31 +195,6 @@ const writeQueue = (queuePath: string, queue: QueueJson): string | null => {
   }
   fs.renameSync(tmpPath, queuePath);
   return null;
-};
-
-type Flags = Record<string, string | true>;
-
-const parseFlags = (argv: string[]): Flags => {
-  const flags: Flags = {};
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (!arg.startsWith('--')) continue;
-    const key = arg.slice(2);
-    const next = argv[i + 1];
-    if (next !== undefined && !next.startsWith('--')) {
-      flags[key] = next;
-      i++;
-    } else {
-      flags[key] = true;
-    }
-  }
-  return flags;
-};
-
-const requireFlag = (flags: Flags, name: string): string => {
-  const value = flags[name];
-  if (typeof value !== 'string') throw new Error(`missing required flag --${name}`);
-  return value;
 };
 
 const fetchMergeSettings = (repoSlug: string): MergeSettings | null => {
@@ -266,44 +256,95 @@ const capture = (flags: Flags): number => {
   return 0;
 };
 
-const applyOneRepair = (plan: RepairPlan, base: string, repoSlug: string, repoRoot: string): boolean => {
-  const { child } = plan;
-  const parentTip = child.parentTipSha as string;
-
-  if (!runGit(['-C', repoRoot, 'fetch', 'origin', base]).ok) {
-    console.error(`#${child.issue}: git fetch origin ${base} failed`);
-    return false;
+const readParentState = (flags: Flags, repoSlug: string, parentPr: number | null): ForgeParentState | null => {
+  const forced = flags['parent-state'];
+  if (forced === 'merged') return { state: 'closed', merged: true };
+  if (forced === 'closed-unmerged') return { state: 'closed', merged: false };
+  if (parentPr === null) return null;
+  const result = runGh(['api', `repos/${repoSlug}/pulls/${parentPr}`]);
+  if (result.status !== 0) return null;
+  try {
+    const pr = JSON.parse(result.stdout) as { state?: string; merged?: boolean; merged_at?: string | null };
+    return { state: pr.state === 'open' ? 'open' : 'closed', merged: pr.merged === true || (pr.merged_at ?? null) !== null };
+  } catch {
+    return null;
   }
-  if (!isAncestor(repoRoot, parentTip, child.branch)) {
-    console.error(
-      `#${child.issue}: recorded parent tip ${parentTip} is not an ancestor of ${child.branch} — refusing to rebase, ` +
-        'the boundary is wrong and --onto would replay the wrong commits',
-    );
-    return false;
-  }
+};
 
-  const expectedFiles = changedFileCount(repoRoot, parentTip, child.branch);
-
+const retargetAndVerify = (child: StackedChild, base: string, repoSlug: string): boolean => {
   const patch = runGh(['api', '-X', 'PATCH', `repos/${repoSlug}/pulls/${child.pr}`, '-f', `base=${base}`]);
   if (patch.status !== 0) console.error(`#${child.issue}: retarget PATCH reported failure — verifying the observed base anyway`);
   const readback = runGh(['api', `repos/${repoSlug}/pulls/${child.pr}`, '--jq', '.base.ref']);
   const retarget = verifyRetarget(readback.stdout, base);
   console.log(`#${child.issue}: retarget — ${retarget.reason}`);
-  if (!retarget.ok) return false;
+  return retarget.ok;
+};
 
-  const rebase = rebaseOnto(repoRoot, `origin/${base}`, parentTip, child.branch);
-  if (!rebase.ok) {
-    console.error(`#${child.issue}: rebase --onto failed (aborted): ${rebase.stderr.trim()}`);
+const gitFetch = (repoRoot: string, branch: string): boolean => realGit(repoRoot, ['fetch', '--quiet', 'origin', branch]).ok;
+
+const applyOneRepair = (
+  plan: RepairPlan,
+  ctx: { base: string; repoSlug: string; repoRoot: string; queue: QueueJson; parentState: ForgeParentState; acceptPatchIdChange: boolean },
+): boolean => {
+  const { child } = plan;
+  const { base, repoSlug, repoRoot, queue } = ctx;
+  const parentTip = child.parentTipSha as string;
+  const target = `origin/${base}`;
+
+  if (!gitFetch(repoRoot, base)) {
+    console.error(`#${child.issue}: git fetch origin ${base} failed`);
     return false;
   }
-  if (!runGit(['-C', repoRoot, 'push', '--force-with-lease', 'origin', `${child.branch}:${child.branch}`]).ok) {
-    console.error(`#${child.issue}: force-with-lease push failed`);
+  if (!isAncestor(repoRoot, parentTip, child.branch)) {
+    console.error(
+      `#${child.issue}: recorded parent tip ${parentTip} is not an ancestor of ${child.branch} — refusing, ` +
+        'the merge base is wrong and the replay would drop or duplicate work',
+    );
     return false;
   }
 
-  const observedFiles = changedFileCount(repoRoot, `origin/${base}`, child.branch, true);
-  const counts = verifyChildFileCount(expectedFiles, observedFiles);
-  console.log(`#${child.issue}: repair — ${counts.reason}`);
+  const kind: ParentLanding = classifyParentLanding({ repoRoot, parentTip, target, forge: ctx.parentState });
+  console.log(`#${child.issue}: parent landing is "${kind}" — action ${landingAction(kind)}`);
+  const expectedFiles = changedFileCount(repoRoot, parentTip, child.branch);
+
+  if (!retargetAndVerify(child, base, repoSlug)) return false;
+
+  if (landingAction(kind) === 'retarget-only') {
+    const observed = changedFileCount(repoRoot, target, child.branch, true);
+    const counts = verifyChildFileCount(expectedFiles, observed);
+    console.log(`#${child.issue}: repair — no commit, no push needed; ${counts.reason}`);
+    return counts.ok;
+  }
+
+  const result = replayMerge({
+    repoRoot,
+    child: child.branch,
+    newBase: target,
+    mergeBase: parentTip,
+    push: { remote: 'origin', queue },
+    acceptPatchIdChange: ctx.acceptPatchIdChange,
+  });
+  if (result.status === 'conflict') {
+    const note = kind === 'abandoned' ? ` (note: stack-parent-abandoned:#${child.issue}) ` : ' ';
+    console.error(`#${child.issue}: replay conflict${note}in: ${result.conflicts.join(', ')} — nothing pushed`);
+    return false;
+  }
+  if (result.status === 'unsupported') {
+    console.error(`#${child.issue}: ${result.reason}`);
+    return false;
+  }
+  if (result.status === 'refused') {
+    console.error(`#${child.issue}: replay refused (${result.code}): ${result.reason}`);
+    return false;
+  }
+  if (result.status === 'up-to-date') return true;
+
+  if (!fastForwardLocal(repoRoot, result.sha)) {
+    console.error(`#${child.issue}: pushed ${result.sha} but the local fast-forward failed (dirty tree, wrong HEAD or diverged local branch) — local ${child.branch} is stale`);
+  }
+  const counts = verifyPublishedReplay(repoRoot, target, result.sha, expectedFiles);
+  console.log(`#${child.issue}: repair — ${counts.reason}; pushed ${result.sha} as a fast-forward`);
+  console.log(`#${child.issue}: review_carry: ${result.reviewCarry}`);
   return counts.ok;
 };
 
@@ -324,10 +365,10 @@ const repair = (flags: Flags): number => {
     return 0;
   }
   // Planning is a read over queue.json, so a dry run covers every child at once. Applying is
-  // per-child: the rebase checks the child branch out, so `--repo-root` has to be that child's own
-  // worktree and cannot be shared across siblings.
+  // per-child: `--repo-root` has to be that child's own worktree and cannot be shared across
+  // siblings, because the fast-forward of the local branch happens inside it.
   if (flags.apply === true && only === null) {
-    console.error('--apply requires --child-issue: the rebase runs inside one child worktree at a time.');
+    console.error('--apply requires --child-issue: the replay runs inside one child worktree at a time.');
     return 2;
   }
 
@@ -347,10 +388,104 @@ const repair = (flags: Flags): number => {
     return 1;
   }
 
+  const parentState = readParentState(flags, repoSlug, queue.issues?.[String(parentIssue)]?.pr ?? null);
+  if (parentState === null) {
+    console.error(`cannot tell how parent #${parentIssue} landed — pass --parent-state merged|closed-unmerged`);
+    return 1;
+  }
+  if (parentState.state === 'open') {
+    console.error(`parent #${parentIssue} is still open — use the restack subcommand, not repair`);
+    return 1;
+  }
+  const acceptPatchIdChange = flags['accept-patch-id-change'] === true;
   for (const plan of plans) {
-    if (!applyOneRepair(plan, base, repoSlug, repoRoot)) return 1;
+    if (!applyOneRepair(plan, { base, repoSlug, repoRoot, queue, parentState, acceptPatchIdChange })) return 1;
   }
   console.log(`Repaired ${plans.length} stacked child(ren) of #${parentIssue}.`);
+  return 0;
+};
+
+// Late or lazy restack: the child gains overlap with an open parent, or conflicts against it. An
+// ordinary merge of the parent head; a parent whose head no longer descends from the recorded tip
+// (force-pushed by its author) is replayed with the recorded tip as the merge base instead.
+const restack = (flags: Flags): number => {
+  const queuePath = requireFlag(flags, 'queue');
+  const repoRoot = requireFlag(flags, 'repo-root');
+  const repoSlug = requireFlag(flags, 'repo-slug');
+  const childIssue = Number(requireFlag(flags, 'child-issue'));
+  const parentIssue = typeof flags['parent-issue'] === 'string' ? Number(flags['parent-issue']) : undefined;
+  const parentBranch =
+    typeof flags['parent-branch'] === 'string'
+      ? flags['parent-branch']
+      : parentIssue !== undefined
+        ? childBranchFor(parentIssue)
+        : requireFlag(flags, 'parent-branch');
+
+  const queue = readQueue(queuePath);
+  const entry = queue.issues?.[String(childIssue)];
+  if (entry === undefined) {
+    console.error(`issue #${childIssue} is not in ${queuePath}`);
+    return 1;
+  }
+  const child: StackedChild = {
+    issue: childIssue,
+    pr: entry.pr ?? null,
+    branch: childBranchFor(childIssue),
+    parentTipSha: entry.parent_tip_sha ?? null,
+  };
+  const plan = planRestack(child, parentBranch, repoSlug, repoRoot);
+  if (plan.refusal !== null) {
+    console.error(`#${childIssue}: REFUSED — ${plan.refusal}`);
+    return 1;
+  }
+  for (const command of plan.commands) console.log(`#${childIssue}: ${command}`);
+  if (flags.apply !== true) {
+    console.log('Dry run — no command executed. Re-run with --apply.');
+    return 0;
+  }
+
+  if (!gitFetch(repoRoot, parentBranch)) {
+    console.error(`#${childIssue}: git fetch origin ${parentBranch} failed`);
+    return 1;
+  }
+  const parentHead = revParse(repoRoot, `origin/${parentBranch}`);
+  if (parentHead === null) {
+    console.error(`#${childIssue}: cannot resolve origin/${parentBranch}`);
+    return 1;
+  }
+  if (!retargetAndVerify(child, parentBranch, repoSlug)) return 1;
+
+  const forcePushed = child.parentTipSha !== null && !isAncestor(repoRoot, child.parentTipSha, parentHead);
+  const push = { remote: 'origin', queue };
+  const result = forcePushed
+    ? replayMerge({ repoRoot, child: child.branch, newBase: parentHead, mergeBase: child.parentTipSha as string, push })
+    : restackOnto({ repoRoot, child: child.branch, parentHead, push });
+  if (result.status === 'conflict') {
+    console.error(`#${childIssue}: restack conflict in: ${result.conflicts.join(', ')} — nothing pushed`);
+    return 1;
+  }
+  if (result.status === 'unsupported') {
+    console.error(`#${childIssue}: ${result.reason}`);
+    return 1;
+  }
+  if (result.status === 'refused') {
+    console.error(`#${childIssue}: restack refused (${result.code}): ${result.reason}`);
+    return 1;
+  }
+  if (result.status === 'merged') {
+    fastForwardLocal(repoRoot, result.sha);
+    console.log(`#${childIssue}: restacked onto ${parentBranch} with ${result.sha} as a fast-forward push`);
+  } else {
+    console.log(`#${childIssue}: already contains ${parentBranch}`);
+  }
+
+  recordParentTip(queue, childIssue, parentHead, parentIssue);
+  const failure = writeQueue(queuePath, queue);
+  if (failure !== null) {
+    console.error(`state-write-guard refused install: ${failure}`);
+    return 1;
+  }
+  console.log(`#${childIssue}: parent_tip_sha = ${parentHead}`);
   return 0;
 };
 
@@ -358,7 +493,10 @@ const USAGE = `Usage:
   bun run scripts/stack-repair.ts capture --queue <path> --repo-root <abs> \\
       --child-issue <N> --parent-issue <M> [--parent-branch <b>] [--repo-slug <owner/repo>] [--apply]
   bun run scripts/stack-repair.ts repair  --queue <path> --repo-root <abs> \\
-      --repo-slug <owner/repo> --base <branch> --parent-issue <M> [--child-issue <N> --apply]`;
+      --repo-slug <owner/repo> --base <branch> --parent-issue <M> \\
+      [--child-issue <N> --apply] [--parent-state merged|closed-unmerged] [--accept-patch-id-change]
+  bun run scripts/stack-repair.ts restack --queue <path> --repo-root <abs> \\
+      --repo-slug <owner/repo> --child-issue <N> (--parent-issue <M> | --parent-branch <b>) [--apply]`;
 
 export const main = (argv: string[]): number => {
   const [subcommand, ...rest] = argv;
@@ -366,6 +504,7 @@ export const main = (argv: string[]): number => {
   try {
     if (subcommand === 'capture') return capture(flags);
     if (subcommand === 'repair') return repair(flags);
+    if (subcommand === 'restack') return restack(flags);
   } catch (error) {
     console.error((error as Error).message);
     return 2;
