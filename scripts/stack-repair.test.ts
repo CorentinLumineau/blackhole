@@ -15,6 +15,7 @@ import {
   recordStackEdge,
   squashMergeWarning,
   verifyChildFileCount,
+  verifyPublishedReplay,
   verifyRetarget,
   type QueueIssues,
   type StackedChild,
@@ -393,6 +394,16 @@ describe('the replay merge against a squash-merged parent', () => {
     expect(result.reviewCarry).toBe(true);
     expect(git('merge-base', '--is-ancestor', before, result.sha).status).toBe(0);
     expect(git('rev-list', '--count', '--first-parent', `${before}..${result.sha}`).stdout.trim()).toBe('1');
+  });
+
+  test('verifyPublishedReplay measures the published sha, not the local branch', () => {
+    const stale = git('rev-parse', childBranch).stdout.trim();
+    const expectedFiles = changedFileCount(repo, parentTip, childBranch);
+    const result = replayMerge({ repoRoot: repo, child: childBranch, newBase: 'main', mergeBase: parentTip });
+    if (result.status !== 'merged') throw new Error(JSON.stringify(result));
+    git('branch', '-f', childBranch, stale);
+    expect(verifyPublishedReplay(repo, 'main', result.sha, expectedFiles).ok).toBe(true);
+    expect(verifyChildFileCount(expectedFiles, changedFileCount(repo, 'main', childBranch, true)).ok).toBe(false);
   });
 });
 

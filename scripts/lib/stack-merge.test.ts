@@ -158,6 +158,16 @@ describe('parent squash-merged', () => {
     expect(f.git('diff', '--name-only', `main..${result.sha}`).split('\n').sort()).toEqual(['child.txt', 'shared.txt']);
   });
 
+  test('re-running the replay once the child already contains the new base is up-to-date and pushes nothing', () => {
+    const f = fixture();
+    landSquash(f);
+    const first = replayMerge(replayArgs(f));
+    if (first.status !== 'merged') throw new Error(JSON.stringify(first));
+    const again = replayMerge(replayArgs(f, { child: first.sha, childBranch: CHILD }));
+    expect(again).toEqual({ status: 'up-to-date' });
+    expect(f.originGit('rev-parse', CHILD)).toBe(first.sha);
+  });
+
   test('a build without a push leaves the remote untouched', () => {
     const f = fixture();
     landSquash(f);

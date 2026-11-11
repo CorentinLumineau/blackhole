@@ -39,19 +39,40 @@ export const chainDepth = (graph: StackGraph, node: number): number => {
   return depth;
 };
 
-/** Deepest descendant of `root` outside `exclude`, following child edges downward; the lowest number breaks ties. */
-export const chainTip = (graph: StackGraph, root: number, exclude: ReadonlySet<number> = new Set()): number => {
+/**
+ * Deepest descendant of `root` outside `exclude`, following child edges downward; the lowest number
+ * breaks ties. With `prefer`, the walk first descends toward the preferred nodes (lowest-numbered
+ * child that is, or leads to, one) and only then extends to the deepest tip below where it stopped,
+ * so the result lies inside the branch holding them instead of in an unrelated sibling branch.
+ */
+export const chainTip = (
+  graph: StackGraph,
+  root: number,
+  exclude: ReadonlySet<number> = new Set(),
+  prefer: ReadonlySet<number> = new Set(),
+): number => {
   const all = [...graph.nodes()];
+  const childrenOf = (n: number, seen: ReadonlySet<number>): number[] =>
+    all.filter((c) => graph.parentOf(c) === n && !seen.has(c) && !exclude.has(c)).sort((x, y) => x - y);
+
   const visited = new Set<number>([root]);
-  let tip = root;
+  let start = root;
   for (;;) {
-    const child = all
-      .filter((n) => graph.parentOf(n) === tip && !visited.has(n) && !exclude.has(n))
-      .sort((a, b) => a - b)[0];
-    if (child === undefined) return tip;
-    visited.add(child);
-    tip = child;
+    const next = childrenOf(start, visited).find((c) => [...prefer].some((p) => reachesNode(graph, p, c)));
+    if (next === undefined) break;
+    visited.add(next);
+    start = next;
   }
+
+  const deepest = (node: number, seen: ReadonlySet<number>): { tip: number; depth: number } => {
+    let best = { tip: node, depth: 0 };
+    for (const c of childrenOf(node, seen)) {
+      const sub = deepest(c, new Set([...seen, c]));
+      if (sub.depth + 1 > best.depth) best = { tip: sub.tip, depth: sub.depth + 1 };
+    }
+    return best;
+  };
+  return deepest(start, visited).tip;
 };
 
 // ---- merge-tree decider ----
@@ -117,7 +138,7 @@ const shares = (a: string[], b: string[]): boolean => {
 
 /**
  * The parent PR `meNumber` must be stacked on, or why none is chosen. Edges come from each PR's
- * base branch; the parent is the tip of the lowest-numbered overlapping chain, and any other
+ * base branch; the parent is the tip of the branch holding the overlapping PRs of the lowest-numbered root, and any other
  * overlapping chain is reported in `alsoOverlaps`. A PR that is already an ancestor of `me`, or a
  * descendant of it, is not an overlap to act on.
  */
@@ -183,7 +204,7 @@ export const pickParent = (meNumber: number, snapshot: OpenPrSnapshot, opts: Pic
 
   // The tip may not be me or anything stacked on me: those are on my side of the graph.
   const mine = new Set(everyNode.filter((n) => n === meNumber || reachesNode(graph, n, meNumber)));
-  const tip = chainTip(graph, chosenRoot, mine);
+  const tip = chainTip(graph, chosenRoot, mine, new Set(roots.get(chosenRoot)!.map((o) => o.number)));
   const tipPr = byNumber.get(tip)!;
   const alsoOverlaps = [...roots.entries()]
     .filter(([root]) => root !== chosenRoot)
