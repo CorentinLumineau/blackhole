@@ -4441,3 +4441,30 @@ describe('validate-bash-command.js — main-clone guard scoped to campaign worke
     });
   });
 });
+
+// #1116: a `git` word with global options and no subcommand must not crash the validator.
+describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
+  const heredoc = (line: string) => `cat <<'EOF'\n${line}\nEOF`;
+  const commands: Array<[string, string]> = [
+    ['version flag only', 'git --version'],
+    ['-C with a path and no subcommand', 'git -C /tmp'],
+    ['--no-pager alone', 'git --no-pager'],
+    ['a bare git', 'git'],
+    ['a trailing value-taking option', 'git -C'],
+    ['a heredoc mentioning the version flag', heredoc('git --version')],
+    ['a heredoc mentioning -C with no subcommand', heredoc('git -C dir')],
+    ['a heredoc mentioning --no-pager alone', heredoc('git --no-pager')],
+    ['a heredoc mentioning a bare git', heredoc('git')],
+  ];
+
+  for (const [label, command] of commands) {
+    test(`${label} is allowed without a validator crash`, async () => {
+      await withTempGitRepo('blackhole-hook-1116-', async (repo) => {
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+        expect(result.stderr).not.toMatch(/uncaught-validator-error|TypeError/);
+        expect(result.exitCode).toBe(0);
+      });
+    });
+  }
+});
+
