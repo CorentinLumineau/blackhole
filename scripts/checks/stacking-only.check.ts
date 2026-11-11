@@ -49,10 +49,11 @@ const configFiles = (): string[] => {
     : [];
 };
 
-export const runChecks = (): CheckResult[] => [
+const checkStackingOnly = (): CheckResult =>
   evaluateStackingOnly({
     templateContent: read(`${DOC_DIR}/config-template.md`),
     configs: configFiles().map((f) => readJsonFile(f, f) as Record<string, unknown>),
     docs: Object.fromEntries([DEFINING_DOC, ...CITING_DOCS].map((name) => [name, read(`${DOC_DIR}/${name}`)])),
-  }),
-];
+  });
+
+export const runChecks = (): CheckResult[] => [checkStackingOnly()];
