@@ -157,3 +157,23 @@ describe('checkQueueCoherence file-absent SKIP', () => {
     expect(byId['V-QUEUE-03'].detail).toMatch(/70/);
   });
 });
+
+describe('external stack edge (stacked_on_pr)', () => {
+  test('a row stacked on an open PR with no queue issue is not flagged by any coherence check', () => {
+    const issues = {
+      '40': {
+        phase: 'review',
+        status: 'in-flight',
+        pr: 77,
+        stacked_on: null,
+        stacked_on_pr: 70,
+        parent_branch: 'owner/their-branch',
+        depends_on: [],
+        worktree: '/tmp/wt-40',
+      },
+    };
+    expect(findStaleBlockedIssues(issues)).toEqual([]);
+    expect(findPhaseArtifactMismatches(issues, { worktreeExists: () => true, planArtifactExists: () => true })).toEqual([]);
+    expect(findOrphanedInFlightWorktrees(issues, () => true)).toEqual([]);
+  });
+});
