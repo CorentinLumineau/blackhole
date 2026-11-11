@@ -12,7 +12,7 @@ import { mergeTreeVerdict, pickParent, type ConflictVerdict } from './lib/stack-
 // follow merge-base-guard.ts: 0 proceed, 1 overlapping and not stacked, 2 usage, 3 could not check
 // (an unreadable snapshot is never read as "no overlap").
 
-export type GateResult = { exit: 0 | 1 | 3; message: string };
+export type GateResult = { exit: 0 | 1 | 3; message: string; parentBranch?: string };
 
 type Conflicts = (me: { number: number; headSha: string }, other: { number: number; headSha: string }) => ConflictVerdict;
 
@@ -39,12 +39,14 @@ export const evaluateStackGate = (pr: number, snapshot: OpenPrSnapshot, conflict
       const also = result.alsoOverlaps.length > 0 ? ` It also overlaps #${result.alsoOverlaps.join(', #')} in another chain.` : '';
       return {
         exit: 1,
+        parentBranch: result.parentBranch,
         message: `V-STACK-02: PR #${pr} overlaps open PR #${result.parent} but is not stacked on it. Retarget it to ${result.parentBranch} and merge that branch in (no rebase, no force push).${also}`,
       };
     }
   }
 };
 
+const FORGES = ['github', 'gitea', 'gitlab'];
 const KNOWN_KEYS = ['pr', 'open-prs', 'fix', 'repo-slug', 'repo-root', 'forge'];
 
 const usage = (): never => {
@@ -60,7 +62,9 @@ const usage = (): never => {
 const readSnapshotFile = (file: string): OpenPrSnapshot | null => {
   try {
     const parsed = readJsonFile(file, file) as OpenPrSnapshot;
-    return parsed && (parsed.status === 'ok' || parsed.status === 'unknown') ? parsed : null;
+    if (!parsed) return null;
+    if (parsed.status === 'ok') return Array.isArray(parsed.prs) ? parsed : null;
+    return parsed.status === 'unknown' ? parsed : null;
   } catch {
     return null;
   }
@@ -80,7 +84,9 @@ const main = async (): Promise<number> => {
   } else {
     if (typeof flags['repo-slug'] !== 'string') usage();
     const repoRoot = path.resolve(typeof flags['repo-root'] === 'string' ? flags['repo-root'] : process.cwd());
-    const forge = (typeof flags.forge === 'string' ? flags.forge : 'github') as ForgeType;
+    const forgeFlag = typeof flags.forge === 'string' ? flags.forge : 'github';
+    if (!FORGES.includes(forgeFlag)) usage();
+    const forge = forgeFlag as ForgeType;
     const adapter = createForgeAdapter({ repo: flags['repo-slug'] as string, forge });
     snapshot = await buildOpenPrSnapshot(adapterSnapshotIo(adapter, repoRoot, path.join(repoRoot, '.blackhole', 'pr-files-cache.json')));
     conflicts = (me, other) =>
@@ -99,11 +105,22 @@ const main = async (): Promise<number> => {
     : ({ exit: 3, message: `stack-check: ${flags['open-prs']} is not a readable open-PR snapshot` } as GateResult);
   (result.exit === 0 ? console.log : console.error)(result.message);
   if (result.exit === 1 && flags.fix === true) {
+    const parentBranch = result.parentBranch ?? '<parent-branch>';
     console.error(
-      `fix: bun run scripts/stack-repair.ts restack --queue .blackhole/queue.json --repo-slug <owner/repo> --repo-root <abs> --child-issue <issue of PR #${pr}> --apply`,
+      `fix: bun run scripts/stack-repair.ts restack --queue .blackhole/queue.json --repo-slug <owner/repo> --repo-root <abs> --child-issue <issue of PR #${pr}> --parent-branch ${parentBranch} --apply`,
     );
   }
   return result.exit;
 };
 
-if (import.meta.main) process.exit(await main());
+// An unexpected throw is "could not check" (3), never the "overlapping and not stacked" refusal (1).
+const run = async (): Promise<number> => {
+  try {
+    return await main();
+  } catch (err) {
+    console.error(`stack-check: could not check: ${err instanceof Error ? err.message : String(err)}`);
+    return 3;
+  }
+};
+
+if (import.meta.main) process.exit(await run());
