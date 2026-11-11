@@ -1,4 +1,5 @@
 import { childBranchFor } from '../stack-repair.ts';
+import { chainTip as graphChainTip, reachesNode, type StackGraph } from './stack-overlap.ts';
 
 // Dispatch-time stack-parent selection (queue-dag.md § Step 3b). A ready issue whose touch_paths
 // overlap an issue that already has an open, unmerged PR is cut from that PR's branch instead of
@@ -9,6 +10,9 @@ export type StackCandidate = {
   pr?: number | null;
   touch_paths?: string[];
   stacked_on?: number | null;
+  /** External stack edge: the open PR number this issue's PR is based on, queue issue or not. */
+  stacked_on_pr?: number | null;
+  parent_branch?: string | null;
 };
 
 export type StackParentPick = {
@@ -69,29 +73,14 @@ const knownPaths = (paths: string[] | undefined, defaults: string[] | undefined)
 const matchablePaths = (paths: string[] | undefined, defaults: string[] | undefined): string[] =>
   (paths ?? []).filter((g) => !defaults?.includes(g) && staticPrefix(g) !== '');
 
-const reachesIssue = (issues: Record<string, StackCandidate>, from: number, target: number): boolean => {
-  const seen = new Set<number>();
-  for (let cur: number | null | undefined = from; cur != null && !seen.has(cur); cur = issues[String(cur)]?.stacked_on) {
-    if (cur === target) return true;
-    seen.add(cur);
-  }
-  return false;
-};
+/** The open-PR issues of a queue as a stack graph: edges are `stacked_on`, nodes are issues with an open PR. */
+const queueGraph = (issues: Record<string, StackCandidate>): StackGraph => ({
+  nodes: () => Object.keys(issues).map(Number).filter((n) => isOpenPr(issues[String(n)])),
+  has: (n) => issues[String(n)] !== undefined,
+  parentOf: (n) => issues[String(n)]?.stacked_on,
+});
 
-/** Deepest open descendant of `root` (follows `stacked_on` edges downward; lowest number breaks ties). */
-const chainTip = (issues: Record<string, StackCandidate>, root: number): number => {
-  const visited = new Set<number>([root]);
-  let tip = root;
-  for (;;) {
-    const child = Object.entries(issues)
-      .map(([k, v]) => ({ n: Number(k), v }))
-      .filter(({ n, v }) => v.stacked_on === tip && v.pr != null && !CLOSED_STATUSES.has(v.status ?? '') && !visited.has(n))
-      .sort((x, y) => x.n - y.n)[0];
-    if (!child) return tip;
-    visited.add(child.n);
-    tip = child.n;
-  }
-};
+const chainTip = (issues: Record<string, StackCandidate>, root: number): number => graphChainTip(queueGraph(issues), root);
 
 /**
  * Parent for `issue`: among other open-PR issues whose changed files (`parentFiles`) or narrowed
@@ -123,7 +112,7 @@ export const pickStackParent = (
   const root = roots[0];
   if (!root) return null;
   const parent = chainTip(issues, root.n);
-  if (parent === issue || reachesIssue(issues, parent, issue)) return null;
+  if (parent === issue || reachesNode(queueGraph(issues), parent, issue)) return null;
   return {
     parent,
     parentBranch: childBranchFor(parent),

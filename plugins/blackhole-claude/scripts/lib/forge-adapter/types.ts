@@ -16,8 +16,21 @@ export interface ForgePr {
   body: string;
   headRefName: string;
   headRefOid?: string;
+  /** Branch the PR targets; absent when the channel does not report it. */
+  baseRefName?: string;
+  /** True when the head branch lives in another repository, so it can never be a base branch. */
+  headRepoIsFork?: boolean;
+  draft?: boolean;
+  createdAt?: string | null;
   state: 'OPEN' | 'CLOSED' | 'MERGED';
   mergedAt: string | null;
+}
+
+/** `ok` is true only when the base read back after the change equals the requested base. */
+export interface PrChangeBaseResult {
+  ok: boolean;
+  base: string | null;
+  detail?: string;
 }
 
 export interface ForgeCheck {
@@ -90,4 +103,9 @@ export interface ForgeAdapter {
   labelRemove(entity: { type: 'issue' | 'pr'; number: number }, labels: string[]): Promise<void>;
 
   prChecks(number: number): Promise<ForgeCheck[]>;
+
+  /** Every path the PR changes; both sides of a rename. Throws when the list may be truncated. */
+  prFiles(number: number): Promise<string[]>;
+  /** Retargets the PR, then reads the base back: exit status is not evidence the base moved. */
+  prChangeBase(number: number, base: string): Promise<PrChangeBaseResult>;
 }

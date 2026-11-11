@@ -42,6 +42,8 @@
       "worktree": null,
       "pr": 43,
       "stacked_on": 298,
+      "stacked_on_pr": 42,
+      "parent_branch": "blackhole/issue-298",
       "parent_tip_sha": "d014e82a426c53ede436e2c446834182a5690e9a",
       "migration_slot": false,
       "touch_paths": ["lib/cashflow/export/**"],
