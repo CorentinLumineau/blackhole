@@ -2,13 +2,15 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import { spawnSync } from 'child_process';
 import { makeTempDir } from './lib/fs.ts';
+import { replayMerge } from './lib/stack-merge.ts';
 import {
   changedFileCount,
   childBranchFor,
   findStackedChildren,
   main,
   planRepair,
-  rebaseOnto,
+  planRestack,
+  recordParentTip,
   squashMergeWarning,
   verifyChildFileCount,
   verifyRetarget,
@@ -65,16 +67,29 @@ describe('findStackedChildren (pure)', () => {
 });
 
 describe('planRepair (pure)', () => {
-  test('emits retarget-then-onto in execution order, using the REST PATCH form', () => {
+  test('emits retarget-then-replay-merge in execution order, using the REST PATCH form', () => {
     const plan = planRepair(child(), 'main', 'CorentinLumineau/invest', '/repo');
     expect(plan.refusal).toBeNull();
     expect(plan.commands).toEqual([
       'git -C /repo fetch origin main',
       'gh api -X PATCH repos/CorentinLumineau/invest/pulls/2403 -f base=main',
       'gh api repos/CorentinLumineau/invest/pulls/2403 --jq .base.ref',
-      'git -C /repo rebase --onto origin/main d014e82a426c53ede436e2c446834182a5690e9a blackhole/issue-2403',
-      'git -C /repo push --force-with-lease origin blackhole/issue-2403:blackhole/issue-2403',
+      'git -C /repo merge-tree --write-tree --name-only --merge-base=d014e82a426c53ede436e2c446834182a5690e9a blackhole/issue-2403 origin/main',
+      'git -C /repo commit-tree <tree> -p blackhole/issue-2403 -p origin/main -m "Merge main into blackhole/issue-2403 (replay from recorded parent tip)"',
+      'git -C /repo push origin <merge-commit>:refs/heads/blackhole/issue-2403',
     ]);
+  });
+
+  test('no planned command rewrites history: no rebase, no force, no plus-refspec', () => {
+    const planned = [
+      ...planRepair(child(), 'main', 'o/r', '/repo').commands,
+      ...planRestack(child(), 'blackhole/issue-2400', 'o/r', '/repo').commands,
+    ];
+    expect(planned.length).toBeGreaterThan(0);
+    for (const command of planned) {
+      expect(command).not.toMatch(/rebase|--force|force-with-lease|push\s+-f|\s\+[^\s]*:/);
+    }
+    expect(planned.filter((c) => c.includes(' push ')).every((c) => /push origin <merge-commit>:refs\/heads\/blackhole\/issue-\d+$/.test(c))).toBe(true);
   });
 
   test('never emits `gh pr edit --base`, which silently no-ops on a classic-Projects repo', () => {
@@ -92,6 +107,30 @@ describe('planRepair (pure)', () => {
     const plan = planRepair(child({ pr: null }), 'main', 'o/r', '/repo');
     expect(plan.commands).toEqual([]);
     expect(plan.refusal).toContain('no PR recorded for #2403');
+  });
+});
+
+describe('planRestack and recordParentTip (pure)', () => {
+  test('a restack merges the parent head, then retargets onto the parent branch', () => {
+    const plan = planRestack(child(), 'blackhole/issue-2400', 'o/r', '/repo');
+    expect(plan.commands[1]).toBe('gh api -X PATCH repos/o/r/pulls/2403 -f base=blackhole/issue-2400');
+    expect(plan.commands[3]).toContain('merge-tree --write-tree --name-only blackhole/issue-2403 origin/blackhole/issue-2400');
+  });
+
+  test('a child with no PR cannot be restacked', () => {
+    expect(planRestack(child({ pr: null }), 'p', 'o/r', '/repo').refusal).toContain('no PR recorded');
+  });
+
+  test('records the new parent tip, and the stack link when a parent issue is given', () => {
+    const queue = { issues: { '2403': { status: 'ready', stacked_on: 2400, parent_tip_sha: 'old' } } };
+    expect(recordParentTip(queue, 2403, 'newtip')).toBe(true);
+    expect(queue.issues['2403']).toMatchObject({ parent_tip_sha: 'newtip', stacked_on: 2400 });
+    expect(recordParentTip(queue, 2403, 'tip3', 2411)).toBe(true);
+    expect(queue.issues['2403']).toMatchObject({ parent_tip_sha: 'tip3', stacked_on: 2411 });
+  });
+
+  test('an issue absent from the queue is reported, not invented', () => {
+    expect(recordParentTip({ issues: {} }, 1, 'x')).toBe(false);
   });
 });
 
@@ -184,13 +223,23 @@ describe('repair CLI (queue-driven, no forge access)', () => {
     expect(main(repairArgs())).toBe(1);
   });
 
-  test('--apply without --child-issue is refused, since the rebase needs one child worktree', () => {
+  test('--apply without --child-issue is refused, since the replay needs one child worktree', () => {
     writeQueue({ '2403': { status: 'ready', pr: 2403, stacked_on: 2400, parent_tip_sha: 'aaa111' } });
     expect(main(repairArgs(['--apply']))).toBe(2);
   });
 
   test('an unknown subcommand exits 2 rather than doing nothing quietly', () => {
-    expect(main(['restack'])).toBe(2);
+    expect(main(['rebase'])).toBe(2);
+  });
+
+  test('a restack dry run prints the plan and exits 0 without touching git or the forge', () => {
+    writeQueue({ '2403': { status: 'ready', pr: 2403, stacked_on: 2400, parent_tip_sha: 'aaa111' } });
+    expect(main(['restack', '--queue', queuePath(), '--repo-root', dir, '--repo-slug', 'o/r', '--child-issue', '2403', '--parent-issue', '2400'])).toBe(0);
+  });
+
+  test('a restack for a child absent from the queue exits 1', () => {
+    writeQueue({});
+    expect(main(['restack', '--queue', queuePath(), '--repo-root', dir, '--repo-slug', 'o/r', '--child-issue', '2403', '--parent-issue', '2400'])).toBe(1);
   });
 
   test('a missing required flag exits 2', () => {
@@ -272,7 +321,7 @@ describe('capture CLI (against a real repository, no forge access)', () => {
 // a child branched off its tip, and a squash-merge that collapses the parent into one commit
 // whose patch-id matches none of the originals. Everything below is measured, not asserted from
 // the recipe's description.
-describe('the --onto repair against a squash-merged parent', () => {
+describe('the replay merge against a squash-merged parent', () => {
   let repo: string;
   let parentTip: string;
   const parentBranch = childBranchFor(1);
@@ -321,24 +370,19 @@ describe('the --onto repair against a squash-merged parent', () => {
     expect(changedFileCount(repo, parentTip, childBranch)).toBe(4);
   });
 
-  test('a plain rebase onto the base does not repair it', () => {
-    const plain = spawnSync('git', ['-C', repo, 'rebase', 'main', childBranch], { encoding: 'utf-8' });
-    const stillBroken = changedFileCount(repo, 'main', childBranch, true) === 9;
-    spawnSync('git', ['-C', repo, 'rebase', '--abort'], { encoding: 'utf-8' });
-    spawnSync('git', ['-C', repo, 'checkout', '-q', childBranch], { encoding: 'utf-8' });
-    expect(plain.status === 0 && !stillBroken).toBe(false);
-  });
-
-  test('rebaseOnto restores the child to its pre-merge file count, one commit ahead of the base', () => {
+  test('replayMerge restores the child to its pre-merge file count, with one merge commit and no rewrite', () => {
+    const before = git('rev-parse', childBranch).stdout.trim();
     const expectedFiles = changedFileCount(repo, parentTip, childBranch);
-    const result = rebaseOnto(repo, 'main', parentTip, childBranch);
-    expect(result.ok).toBe(true);
+    const result = replayMerge({ repoRoot: repo, child: childBranch, newBase: 'main', mergeBase: parentTip });
+    if (result.status !== 'merged') throw new Error(JSON.stringify(result));
 
-    const observedFiles = changedFileCount(repo, 'main', childBranch, true);
+    const observedFiles = changedFileCount(repo, 'main', result.sha, true);
     expect(verifyChildFileCount(expectedFiles, observedFiles)).toEqual({
       ok: true,
       reason: 'changed-file count 4 matches the pre-merge value',
     });
-    expect(git('rev-list', '--count', `main..${childBranch}`).stdout.trim()).toBe('1');
+    expect(result.reviewCarry).toBe(true);
+    expect(git('merge-base', '--is-ancestor', before, result.sha).status).toBe(0);
+    expect(git('rev-list', '--count', '--first-parent', `${before}..${result.sha}`).stdout.trim()).toBe('1');
   });
 });

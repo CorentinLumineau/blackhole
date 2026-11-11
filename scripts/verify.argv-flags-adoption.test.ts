@@ -10,8 +10,8 @@ describe('hasArgvFlagsImport', () => {
     expect(hasArgvFlagsImport('scripts/lib/argv-flags.ts')).toBe(false);
   });
 
-  test('returns false for the deliberately non-migrated seed', () => {
-    expect(hasArgvFlagsImport('scripts/stack-repair.ts')).toBe(false);
+  test('detects the migrated seed', () => {
+    expect(hasArgvFlagsImport('scripts/stack-repair.ts')).toBe(true);
   });
 });
 
@@ -50,7 +50,7 @@ describe('argv-flags-adoption runChecks() against the real src/ tree', () => {
     expect(results[0].id).toBe('V-ARGV-01');
   });
 
-  test('passes against the current tree — all 15 target scripts import the shared primitive', () => {
+  test('passes against the current tree — all 16 target scripts import the shared primitive', () => {
     const [result] = runChecks();
     // On failure, surface which files still lack the import rather than a bare `false`.
     expect(result.detail ?? '').toBe('');

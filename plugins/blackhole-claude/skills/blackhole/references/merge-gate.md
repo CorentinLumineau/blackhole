@@ -368,9 +368,10 @@ parallel counter (`V-INT-02`/`V-DRY-01`):
 A squash-merging repo collapses a parent PR into one commit, so a child PR stacked on that parent
 shares no history with the base ref the moment the parent lands: the child goes `mergeable: false`
 while its own diff silently absorbs the parent's files, and a reviewer opening it sees work that is
-already on the base branch. The repair is **not** `git rebase <base>` on the child — that replays
-the parent's commits too and reproduces the identical wrong diff — but a retarget followed by
-`git rebase --onto <base> <parent-tip> <child>`. `<parent-tip>` is only knowable *before* the
+already on the base branch. The repair is a retarget followed by a **replay merge**, never a
+history rewrite: one new commit on the child whose tree is a three-way merge of the target branch
+into the child with `<parent-tip>` as the merge base, published as a fast-forward push. A parent
+merged with a merge commit needs no commit at all (retarget only). `<parent-tip>` is only knowable *before* the
 parent merges, which is why this section owns an obligation at stack-creation time and not only at
 merge time.
 
@@ -400,15 +401,15 @@ bun run --cwd <abs child worktree> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-r
 ```
 
 Planning is a read over `queue.json`, so a dry run covers every child at once; `--apply` is
-per-child and requires `--child-issue`, because the rebase checks the child branch out and so
+per-child and requires `--child-issue`, because the replay fast-forwards the child branch locally and so
 `--repo-root` must be that child's own worktree (`wt-<child>`), never the main clone.
 
 Three things the script refuses rather than guesses, each a case where proceeding would look like
 success:
 
 - a child with no recorded `parent_tip_sha` — the boundary is gone and no local recipe recovers it;
-- a recorded tip that is not an ancestor of the child branch — `--onto` would replay the wrong
-  commit range;
+- a recorded tip that is not an ancestor of the child branch — the replay merge would drop or
+  duplicate the parent's work;
 - a retarget whose read-back `base.ref` does not equal the base. The PATCH's exit status is not
   evidence that it applied, so the base is always read back. The retarget uses the REST form
   (`gh api -X PATCH repos/{owner}/{repo}/pulls/{N} -f base=<base>`), never `gh pr edit --base`,
@@ -417,7 +418,7 @@ success:
   PR-body edits.
 
 Repair success is measured, not assumed: the child's changed-file count against the base after the
-rebase must equal the count from the recorded parent tip to the child head measured before it —
+replay must equal the count from the recorded parent tip to the child head measured before it —
 the same number the PR showed while its base was still the parent branch.
 
 Asserting the PR base before merging, and verifying the base branch afterwards, are a separate
