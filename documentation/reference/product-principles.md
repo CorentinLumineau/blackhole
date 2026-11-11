@@ -4,8 +4,8 @@ summary: "Owner-rulings ledger of durable product preferences binding on future 
 status: current
 review_trigger: "on new ruling"
 created: 2026-08-06
-last_updated: 2026-10-11
-rulings_revision: 5
+last_updated: 2026-11-11
+rulings_revision: 6
 ---
 
 # Product Principles: blackhole
@@ -147,3 +147,21 @@ rulings_revision: 5
 - **Related**: issue #677; `documentation/decisions/ADR-026-actionman-workclaude-merge-ready-gate.md`;
   `documentation/audits/mercure-parity-matrix.md` PM-085 (command-surface N/A verdict, narrowed
   not reversed by this ruling); `src/references/merge-gate.md`; `src/references/phase-loop.md`
+
+## Ruling: stacking-is-the-only-behavior
+
+- **Id**: R-005
+- **Status**: active
+- **Date**: 2026-11-11
+- **Source**: issue #1113 (body) and the owner decision gate of 2026-11-11
+- **Verbatim**: > "stacking PRs whenever they would conflict must be the **default and only** behavior, so every PR merges smoothly in any `merge_mode`, without a conflict fix that forces CI and ai-review to run again."
+- **Interpretation**: a campaign PR that would conflict with any open PR in the target repo, queue
+  issue or not, is stacked on it by merge, never by rebase or force-push. No configuration key,
+  flag or mode turns stacking off (the same "no silent default for the highest-autonomy option"
+  posture as R-002, applied to merge topology). The deciding predicate is a real conflict between
+  the two heads (`git merge-tree`), with a shared changed file only as a prefilter. A diff that
+  adds a stacking toggle, or removes the gate that fails an overlapping unstacked PR, contradicts
+  this ruling (V-RULE-01).
+- **Related**: issue #1113; `documentation/decisions/ADR-051-stacking-only-overlap-strategy.md`;
+  `documentation/plans/plan-mandatory-stacking.md`; `src/references/queue-dag.md`;
+  `src/references/merge-gate.md`
