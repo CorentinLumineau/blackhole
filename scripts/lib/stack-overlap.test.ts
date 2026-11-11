@@ -163,6 +163,32 @@ describe('pickParent', () => {
     });
   });
 
+  test('a branching tree: the parent is the tip under the overlapping PR, not an unrelated sibling', () => {
+    const snap = snapshot(
+      spr(10, ['root.ts']),
+      spr(11, ['other.ts'], { baseRefName: 'feat-10' }),
+      spr(12, ['a.ts'], { baseRefName: 'feat-10' }),
+      spr(13, ['z.ts'], { baseRefName: 'feat-12' }),
+      spr(20, ['a.ts']),
+    );
+    expect(pickParent(20, snap, { conflicts: always('conflict') })).toMatchObject({
+      kind: 'stack',
+      parent: 13,
+      parentBranch: 'feat-13',
+      depth: 4,
+    });
+  });
+
+  test('a branching tree: a childless overlapping branch is itself the parent', () => {
+    const snap = snapshot(
+      spr(10, ['root.ts']),
+      spr(11, ['other.ts'], { baseRefName: 'feat-10' }),
+      spr(12, ['a.ts'], { baseRefName: 'feat-10' }),
+      spr(20, ['a.ts']),
+    );
+    expect(pickParent(20, snap, { conflicts: always('conflict') })).toMatchObject({ kind: 'stack', parent: 12, depth: 3 });
+  });
+
   test('a draft PR is a valid parent', () => {
     const snap = snapshot(spr(7, ['a.ts'], { draft: true }), spr(9, ['a.ts']));
     expect(pickParent(9, snap, { conflicts: always('conflict') })).toMatchObject({ kind: 'stack', parent: 7 });
@@ -182,6 +208,19 @@ describe('graph helpers', () => {
 
   test('chainTip is the deepest descendant, lowest number breaking ties', () => {
     expect(chainTip(graph, 1)).toBe(3);
+  });
+
+  test('chainTip follows the deepest branch, not the lowest-numbered child', () => {
+    const p: Record<number, number | null> = { 1: null, 2: 1, 3: 1, 4: 3 };
+    const g = { nodes: () => [1, 2, 3, 4], has: (n: number) => n in p, parentOf: (n: number) => p[n] ?? null };
+    expect(chainTip(g, 1)).toBe(4);
+  });
+
+  test('chainTip with a preferred set walks toward it first, then extends to that branch tip', () => {
+    const p: Record<number, number | null> = { 1: null, 2: 1, 3: 1, 4: 2, 5: 4, 6: 3 };
+    const g = { nodes: () => [1, 2, 3, 4, 5, 6], has: (n: number) => n in p, parentOf: (n: number) => p[n] ?? null };
+    expect(chainTip(g, 1, new Set(), new Set([6]))).toBe(6);
+    expect(chainTip(g, 1, new Set(), new Set([2]))).toBe(5);
   });
 
   test('chainDepth counts the node itself', () => {
