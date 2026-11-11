@@ -1,4 +1,4 @@
-import type { LedgerFinding, QueueIssue, Route } from './types.ts';
+import type { LedgerFinding, QueueIssue, Route, StatusCounts } from './types.ts';
 
 export function countLedgerByStatus(findings: LedgerFinding[]) {
   const open = findings.filter((f) => f.status === 'open');
@@ -28,6 +28,28 @@ export function groupIssuesByPhase(issues: Record<string, QueueIssue>) {
   const ready = active.filter((r) => r.issue.status === 'ready');
 
   return { active, done, inFlight, blocked, ready };
+}
+
+// The one count computation behind the dashboard's Queue/Ledger lines and the --json report,
+// so the two can never disagree.
+export function computeStatusCounts(issues: Record<string, QueueIssue>, findings: LedgerFinding[]): StatusCounts {
+  const { active, done, inFlight, blocked, ready } = groupIssuesByPhase(issues);
+  const by_status: Record<string, number> = {};
+  for (const issue of Object.values(issues)) {
+    const key = issue.status ?? 'unknown';
+    by_status[key] = (by_status[key] ?? 0) + 1;
+  }
+  return {
+    queue: {
+      active: active.length,
+      done: done.length,
+      in_flight: inFlight.length,
+      blocked: blocked.length,
+      ready: ready.length,
+      by_status,
+    },
+    ledger: countLedgerByStatus(findings),
+  };
 }
 
 // Render the PLANNED conditional route chain for one issue, marking the current phase.

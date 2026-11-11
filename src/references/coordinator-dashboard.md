@@ -24,6 +24,43 @@ Used by the routine resume confirmation gate (`coordinator.md` § Bootstrap pref
 part of the dashboard: the dashboard prints every orchestrator turn, this prints at campaign
 launch confirmation only.
 
+## Status page
+
+Two report modes read the same state and the same count helpers as the dashboard, so their
+numbers never diverge from `bun run status`:
+
+```bash
+bun run status --json                    # StatusReport JSON on stdout
+bun run status --html [--out <path>]     # self-contained page, default .blackhole/.tmp/status.html
+```
+
+Both accept `--campaign-dir` and `--no-gh`. `--json` and `--html` are mutually exclusive, and
+`--out` requires `--html`.
+
+`--json` emits the `StatusReport` type (`scripts/lib/campaign-status/types.ts`, the one
+definition of the shape; bump `schema_version` on a breaking change):
+
+| Field | Content |
+|-------|---------|
+| `schema_version`, `generated_at` | `1`, ISO time of the render |
+| `campaign` | `repo`, `scope` (`milestone`, `labels`), `started_at`, `queue_refreshed_at` |
+| `checkpoint` | `turn`, `refreshed_at`, `last_completed_phase`, `notes` (`## Notes` lines), `active_workers` (`## In-flight workers` lines) |
+| `forge` | Open issue/PR counts and `ok`/`error`, as on the dashboard's **Forge** line |
+| `counts` | `queue` (`active`, `done`, `in_flight`, `blocked`, `ready`, `by_status`) and `ledger` (`open`, `block`, `warn`, `note`, `deferred`) — the dashboard's **Queue** and **Ledger** lines |
+| `queue_health` | `healthy` \| `stalled` \| `degraded` |
+| `ready_to_merge` | Open PRs delivered at LGTM, each a status item plus `pr_url` (additive; `schema_version` stays `1`). An item is ready when its queue entry is `in-flight`, has a `pr`, and its `notes` start with `delivered-at-LGTM` — the `leave-open` marker `phase-loop.md` § Merge protocol writes only after LGTM, no conflict and CI green. Read offline from `queue.json`, no forge call. `pr_url` is `https://github.com/<repo>/pull/<n>` (GitHub) or `https://<host>/<repo>/pulls/<n>` (Gitea, host from the origin remote); an item whose URL cannot be built (GitLab, unknown Gitea host, non-`owner/name` repo) is left out |
+| `waiting_on_owner` | Blocked items only the owner can clear (`awaiting-*`, `blocked-escalated:`) |
+| `in_flight`, `in_review` | In-flight items split by `phase: review`, each `{issue, title, phase, status, pr, notes, next_step}` |
+| `blocked` | Groups `{waits_on, owner, count, issues}`; `waits_on` is the `awaiting-*` token, `blocked-escalated`, `dependency`, `overlap`, `merge-conflict` or `other` |
+| `ready` | The ready set |
+| `ledger_open` | Every open finding, BLOCK first then most recent (`id`, `vcode`, `severity`, `summary`, `issue_ref`) |
+| `host` | `pace` (the pace line or `null`) and `notes` (plugin-drift lines) |
+
+Every string comes from campaign state, and issue titles are untrusted: `--html` escapes each
+value, inlines its CSS (theme tokens with a dark-mode block, readable at ~400px) and loads
+nothing from the network. Its only links are the `Open PR` / `Files changed` anchors of the
+**Ready to merge** panel (`target=_blank rel=noopener`, http(s) URLs only). Publishing it is `status-page.md`'s job.
+
 ## When to print (REQUIRED)
 
 | Event | Who | Action |
@@ -33,6 +70,17 @@ launch confirmation only.
 | User asks `status` / `@blackhole status` | Coordinator or orchestrator | Run `bun run status` → print full output; do not spawn workers |
 | Intake files a GitHub issue | `coordinator` | Print one line: `📋 Filed #N — <title> (milestone <M>)` then re-run status if campaign is active |
 | Orchestrator ends turn | `orchestrator` | Ensure checkpoint written; coordinator prints dashboard on notification |
+
+### When to publish the status page
+
+Skipped entirely when `status_page.enabled` is `false`. Procedure and per-harness view:
+`status-page.md`.
+
+| Event | Who | Action |
+|-------|-----|--------|
+| Campaign start | `coordinator` or main-chat orchestrator | `bun run status --html` → publish (first publish saves `.blackhole/status-artifact.json`) |
+| Every checkpoint write | `orchestrator` | `bun run status --html` → redeploy the same artifact / refresh the `Blackhole status` canvas / rewrite the local file (`checkpoint-protocol.md` § Write order, step 5) |
+| User asks `status` | Coordinator or orchestrator | Print the dashboard as above, then refresh the page |
 
 **Do not** collapse the dashboard to a one-line confirmation. Users rely on the main
 chat for campaign overview.

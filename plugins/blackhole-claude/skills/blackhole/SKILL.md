@@ -39,7 +39,7 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 | Mode | Trigger | Who runs it |
 |------|---------|-------------|
 | `run` | `run`, `campaign`, "finish the backlog" | Coordinator spawns orchestrator |
-| `status` | default, `status`, `sync` | Coordinator or orchestrator — auto-sync + dashboard |
+| `status` | default, `status`, `sync` | Coordinator or orchestrator — auto-sync + dashboard, then refresh the status page ([status-page.md](references/status-page.md)) |
 | `handle #N` | `handle #N` | Orchestrator — phase 1 only |
 | `plan #N` | `plan #N` | Orchestrator — phase 2 only |
 | `implement #N` | `implement #N` | Orchestrator — phase 3 only |

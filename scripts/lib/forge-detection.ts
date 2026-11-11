@@ -83,7 +83,7 @@ export function resolveForgeType(input: ResolveForgeInput): ResolveForgeOutcome 
   };
 }
 
-function hostFromOrigin(url: string | null | undefined): string | null {
+export function hostFromOrigin(url: string | null | undefined): string | null {
   if (!url) return null;
   try {
     if (url.startsWith('git@')) {
@@ -104,4 +104,18 @@ export function resolveForgeForRepo(
     configForge,
     originUrl: readOriginUrl(repoRoot),
   });
+}
+
+const REPO_SLUG = /^[\w.-]+\/[\w.-]+$/;
+
+/**
+ * Web URL of a pull request: GitHub `https://github.com/<repo>/pull/<n>`, Gitea
+ * `https://<host>/<repo>/pulls/<n>`. Null when the forge has no supported shape here (GitLab), the
+ * Gitea host is unknown, or `repo` is not `owner/name` — a caller must never get a guessed link.
+ */
+export function prWebUrl(forge: string, host: string | null, repo: string, pr: number): string | null {
+  if (!REPO_SLUG.test(repo) || !Number.isInteger(pr) || pr <= 0) return null;
+  if (forge === 'github') return `https://github.com/${repo}/pull/${pr}`;
+  if (forge === 'gitea' && host && /^[\w.-]+(:\d+)?$/.test(host)) return `https://${host}/${repo}/pulls/${pr}`;
+  return null;
 }

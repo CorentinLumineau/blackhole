@@ -41,7 +41,8 @@ Claude Code, Cursor, Antigravity, Codex CLI, and the `skills.sh` registry.
 # Cursor — skill shorthand
 /blackhole run
 
-# Sync forge and show backlog dashboard
+# Sync forge, show backlog dashboard, refresh the status page
+# (bun run status --html writes .blackhole/.tmp/status.html; --json for the raw report)
 @blackhole status
 ```
 

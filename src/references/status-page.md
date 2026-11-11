@@ -1,0 +1,80 @@
+# Status Page — One Live View of the Campaign
+
+The owner checks campaign state on one page instead of asking the agent. The page is rendered
+from `bun run status --json` (the same counts as the text dashboard, `coordinator-dashboard.md`
+§ Status page) and published to **one** place per harness. It never gets a second link.
+
+Gated by `config.json` → `status_page.enabled` (`config-template.md`). When it is `false`, skip
+everything below; the text dashboard is unaffected.
+
+## When to refresh
+
+| Event | Who |
+|-------|-----|
+| Campaign start, after bootstrap and before the first spawn | `coordinator` (Pattern B) or the main-chat orchestrator (Pattern C) |
+| Every checkpoint write — `checkpoint-protocol.md` § Write order, step 5 | `orchestrator` |
+| `status` mode / the owner asks for status | whoever runs `bun run status` |
+
+A refresh is cheap and idempotent: regenerate, then update the existing view. A failed refresh is
+reported in one line and never blocks the turn — the checkpoint is the SSOT, this page only
+shows it.
+
+## Refresh procedure
+
+1. `bun run status --html` — writes `.blackhole/.tmp/status.html` (override with `--out <path>`)
+   and prints the path. Every value from state is HTML-escaped; the page loads nothing from the
+   network.
+2. Update the single view for this harness — the first matching row wins:
+
+{{#claude}}
+### Claude Code (Artifact tool present)
+
+- Read `.blackhole/status-artifact.json`. Its shape is `{"url": "<claude.ai artifact link>",
+  "created_at": "<ISO8601>"}`.
+- **File absent** (first publish for this campaign): publish `.blackhole/.tmp/status.html` with
+  the Artifact tool (`icon: "chart"`), then write `{url, created_at}` to
+  `.blackhole/status-artifact.json` (atomic `.tmp` + `mv`, `blackhole-state.md` § Write
+  protocol). Print the link once.
+- **File present**: redeploy to the stored `url`. A session that has not yet read or published
+  that artifact reads it first (`action: "read"`, the tool refuses a blind overwrite), then
+  publishes the regenerated file with `url` set. Do not print the link again.
+- Never publish without `url` once the file exists, and never delete the artifact to "reset"
+  it — a second link for the same campaign is the failure this file exists to prevent. If the
+  stored URL can no longer be opened, tell the owner and ask before replacing it.
+{{/claude}}
+{{#cursor}}
+### Cursor (Canvas present)
+
+- Refresh the canvas named exactly **`Blackhole status`**, with `bun run status --json` as its
+  data source. The JSON shape is the `StatusReport` type
+  (`scripts/lib/campaign-status/types.ts`); render the same six sections as the HTML page, in
+  the same order (§ Page layout below).
+- If no canvas with that name exists, create it once; afterwards rebuild that canvas, never a
+  second one with a new name.
+- Cursor CLI or a session without Canvas falls through to the local file below.
+{{/cursor}}
+
+### Any other harness, or no artifact/canvas tool
+
+Print the path from step 1 once per session (`📄 Status page: .blackhole/.tmp/status.html`).
+Later refreshes rewrite the same file silently.
+
+## Page layout
+
+Sections, in this order (`scripts/lib/campaign-status/html.ts`):
+
+1. **Ready to merge** — PRs delivered at LGTM, CI green and conflict-free: one row per PR with
+   `Open PR ↗` and `Files changed ↗` links, so the owner can review and merge each directly
+   (`ready_to_merge`; empty state "Nothing is ready to merge yet.")
+2. **Waiting on the owner** — blocked issues only the owner can clear (`awaiting-*` gates,
+   `blocked-escalated:` notes)
+3. **In motion** — in-flight issues, then in-review, each with its PR and next step
+4. **Blocked** — grouped by what they wait on, with counts and issue numbers
+5. **Host and environment** — forge reachability, the pace line, plugin-drift lines
+6. **Recent events** — the checkpoint's `## Notes` and `## In-flight workers` lines
+
+## State file
+
+`.blackhole/status-artifact.json` is the one state file meant to be committed in a consumer repo
+(`blackhole-state.md` § Paths), so every session and machine reuses the same link. On
+`state_store: branch` it also travels with the state branch.

@@ -93,12 +93,106 @@ export type ConfigSummaryInput = {
   adaptive_routing?: boolean;
 };
 
-export type StatusMode = 'dashboard' | 'config-summary';
+export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html';
 
 export type StatusArgs = {
   mode: StatusMode;
   campaignDir: string;
   skipGh: boolean;
+  /** `--html` only: absolute output path; null ⇒ `<campaignDir>/.tmp/status.html`. */
+  outPath: string | null;
+};
+
+/** Queue and ledger counts — the single computation both the text dashboard and the report read. */
+export type StatusCounts = {
+  queue: {
+    active: number;
+    done: number;
+    in_flight: number;
+    blocked: number;
+    ready: number;
+    /** Every `status` value present in queue.json, including ones outside the documented enum. */
+    by_status: Record<string, number>;
+  };
+  ledger: { open: number; block: number; warn: number; note: number; deferred: number };
+};
+
+/** One queue issue as the status page shows it. Every string is untrusted state — escape before rendering. */
+export type StatusItem = {
+  issue: number;
+  title: string;
+  phase: string | null;
+  status: string | null;
+  pr: number | null;
+  notes: string | null;
+  /** Plain-language next step derived from phase/status/PR. */
+  next_step: string;
+};
+
+/** Blocked issues sharing one wait reason: an `awaiting-*` gate token, or `dependency` / `overlap` / `merge-conflict` / `other`. */
+export type BlockedGroup = {
+  waits_on: string;
+  /** True when only the owner can clear it (an `awaiting-*` gate or a `blocked-escalated:` note). */
+  owner: boolean;
+  count: number;
+  issues: StatusItem[];
+};
+
+/**
+ * `bun run status --json` output, and the input of `--html`. Same data the text dashboard shows,
+ * computed from the same helpers. Documented in `src/references/coordinator-dashboard.md`
+ * § Status page. Bump `schema_version` on any breaking field change.
+ */
+/** A PR the campaign has delivered at LGTM and left open for the owner to merge. */
+export type ReadyToMergeItem = StatusItem & { pr_url: string };
+
+export type StatusReport = {
+  schema_version: 1;
+  generated_at: string;
+  campaign: {
+    repo: string | null;
+    scope: { milestone: string | null; labels: string[] };
+    started_at: string | null;
+    queue_refreshed_at: string | null;
+  };
+  checkpoint: {
+    turn: number | null;
+    refreshed_at: string | null;
+    last_completed_phase: string | null;
+    /** Lines of the checkpoint's `## Notes` section. */
+    notes: string[];
+    /** Lines of the checkpoint's `## In-flight workers` section. */
+    active_workers: string[];
+  };
+  forge: ForgeCounts;
+  counts: StatusCounts;
+  queue_health: 'healthy' | 'stalled' | 'degraded';
+  /**
+   * Open PRs delivered at LGTM (`leave-open` mode: queue `notes` starts with `delivered-at-LGTM`),
+   * which passed review, CI and the conflict check — the owner reviews and merges them.
+   */
+  ready_to_merge: ReadyToMergeItem[];
+  waiting_on_owner: StatusItem[];
+  /** In-flight issues not yet in review. */
+  in_flight: StatusItem[];
+  /** In-flight issues in the review phase. */
+  in_review: StatusItem[];
+  blocked: BlockedGroup[];
+  ready: StatusItem[];
+  /** Open findings, BLOCK first then most recent — the dashboard's `Ledger open` order, uncapped. */
+  ledger_open: Array<{
+    id: string | null;
+    vcode: string | null;
+    severity: string | null;
+    summary: string;
+    issue_ref: number | null;
+  }>;
+  host: {
+    /** The `bun run status` pace line, or null when `pace-log.jsonl` has no record. */
+    pace: string | null;
+    /** Plugin-drift and other environment lines the text dashboard prints after the counts. */
+    notes: string[];
+  };
 };
 
 export type IssueRow = { num: number; issue: QueueIssue };

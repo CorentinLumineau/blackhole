@@ -34,6 +34,7 @@ export function loadCampaignState(campaignDir: string) {
 
   const config = readJsonFile(configPath, configPath) as {
     repo?: string;
+    forge?: string;
     scope_milestone?: string;
     scope_labels?: string[];
   };
