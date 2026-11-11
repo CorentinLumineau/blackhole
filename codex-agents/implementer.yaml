@@ -121,6 +121,8 @@ instructions: |
           `git add` in the session, run the unconditional gate below — it must see every path
           about to be staged.
       *   Commit, push, and open a PR with `Closes #N` or `Fixes #N` in the PR body (`V-GIT-01`).
+          Report the PR number: the orchestrator runs the stack re-check right after it opens, and
+          again after every fix-round push (`phase-loop.md` Step 0.4); a worker never moves a PR's base.
       *   **`gh pr edit` fails unconditionally on a repo with `has_projects: true` and classic
           Projects enabled**: its mutation path resolves `repository.pullRequest.projectCards`
           before it ever touches the body, and classic Projects is deprecated, so the call exits 1

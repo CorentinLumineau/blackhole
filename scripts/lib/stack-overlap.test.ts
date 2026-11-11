@@ -9,6 +9,8 @@ import {
   mergeTreeVerdict,
   pickParent,
   reachesNode,
+  effectiveParent,
+  verifiedPrMergeTree,
   STACK_DEPTH_CAP,
   type ConflictVerdict,
 } from './stack-overlap.ts';
@@ -268,5 +270,58 @@ describe('mergeTreeVerdict (real git)', () => {
     expect(mergeTreeVerdict(run, 'a', 'b')).toBe('conflict');
     expect(mergeTreeVerdict(run, 'a', 'c')).toBe('clean');
     expect(mergeTreeVerdict(run, 'a', 'no-such-rev')).toBe('unknown');
+  });
+});
+
+describe('verifiedPrMergeTree (real git)', () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+  const git = (cwd: string, ...args: string[]): string => {
+    const r = Bun.spawnSync(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args], {
+      cwd,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    return r.stdout.toString().trim();
+  };
+  const runner = (cwd: string) => (args: string[]) => {
+    const r = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
+    return { code: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+  };
+
+  test('reads the merge-tree only when both PR refs equal the snapshot heads', () => {
+    const repo = makeTempDir('verified-merge-tree');
+    dirs.push(repo);
+    git(repo, 'init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(repo, 'f.txt'), 'one\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'base');
+    const oldHead = git(repo, 'rev-parse', 'HEAD');
+    fs.writeFileSync(path.join(repo, 'f.txt'), 'two\n');
+    git(repo, 'commit', '-q', '-am', 'next');
+    const newHead = git(repo, 'rev-parse', 'HEAD');
+    git(repo, 'update-ref', 'refs/blackhole/pr/1', newHead);
+    git(repo, 'update-ref', 'refs/blackhole/pr/2', newHead);
+    const run = runner(repo);
+    const pfx = 'refs/blackhole/pr/';
+
+    expect(verifiedPrMergeTree(run, pfx, { number: 1, headSha: newHead }, { number: 2, headSha: newHead })).toBe('clean');
+    // The snapshot moved on (a fix-round push) but the ref fetch failed: the stale ref must not certify anything.
+    expect(verifiedPrMergeTree(run, pfx, { number: 1, headSha: 'f'.repeat(40) }, { number: 2, headSha: newHead })).toBe('unknown');
+    git(repo, 'update-ref', 'refs/blackhole/pr/2', oldHead);
+    expect(verifiedPrMergeTree(run, pfx, { number: 1, headSha: newHead }, { number: 2, headSha: newHead })).toBe('unknown');
+    expect(verifiedPrMergeTree(run, pfx, { number: 1, headSha: newHead }, { number: 9, headSha: newHead })).toBe('unknown');
+  });
+});
+
+describe('effectiveParent', () => {
+  const issues = { '7': { pr: 70 }, '9': { pr: 90, stacked_on_pr: 70 }, '8': { pr: 80, stacked_on: 7, stacked_on_pr: 99 }, '5': { pr: 50, stacked_on_pr: 1234 } };
+  test('prefers stacked_on, falls back to the issue owning stacked_on_pr, else null', () => {
+    expect(effectiveParent(issues, issues['9'])).toBe(7);
+    expect(effectiveParent(issues, issues['8'])).toBe(7);
+    expect(effectiveParent(issues, issues['5'])).toBeNull();
+    expect(effectiveParent(issues, issues['7'])).toBeNull();
   });
 });

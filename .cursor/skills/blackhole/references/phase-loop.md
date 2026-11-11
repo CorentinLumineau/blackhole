@@ -5,7 +5,7 @@
 ```
 - [ ] Auto forge sync (native — no user prompt)
 - [ ] BLOCK/WARN unresolved? → phase implement (same issue)
-- [ ] LGTM AND mergeEligible(issue) AND low-risk own PR? → squash-merge; else `needs-chef` (Chef decides)
+- [ ] LGTM AND mergeEligible(issue) AND low-risk own PR? → merge (method per `merge-gate.md` § 9); else `needs-chef` (Chef decides)
 - [ ] queue.json: status merged, phase done
 - [ ] Resolve/defer ledger entries for this issue/PR
 - [ ] forge-sync.md protocol
@@ -20,10 +20,10 @@
 **Trigger, per `config.json.merge_mode`** (checklist line "LGTM AND
 `mergeEligible(issue)`? → merge PR`):
 - `"immediate"`: apply steps 0-5 below to each LGTM'd issue
-  individually, as encountered. Steps 0.5 through 0.8 run between step 0 and step 1, in that
+  individually, as encountered. Steps 0.4 through 0.8 run between step 0 and step 1, in that
   order.
 - `"gated-batch"`: do **not** apply steps 0-5 issue-by-issue as encountered.
-  Steps 0.5 through 0.8 run between step 0 and step 1 within § 4's per-issue loop.
+  Steps 0.4 through 0.8 run between step 0 and step 1 within § 4's per-issue loop.
   Instead, once `merge-gate.md` § 1 Condition 3 is satisfied for the whole
   in-scope set (every sibling LGTM'd), run `merge-gate.md` § 4's sequential
   batch procedure — it internally invokes steps 0-5 below, once per issue, in
@@ -58,6 +58,28 @@
    do not proceed to step 1 for this issue (leave it `in-flight`; re-evaluated
    next turn). This step is binding wherever this section is cited or
    delegated — never skip it to reach step 1 directly.
+
+**Step 0.4 — Stack Re-check** (ADR-051): the stack is derived again each time, never trusted from
+the dispatch decision. It runs at four points: (i) right after the implementer opens the PR, (ii)
+after every fix-round push and before review is requested, (iii) at every turn start for every open
+campaign PR, against that turn's single open-PR snapshot, and (iv) here, after step 0 and before
+step 0.5. Each point runs `bun run scripts/stack-parent.ts --queue <abs queue.json> --pr <P>
+--repo-slug <owner/repo> --repo-root <abs> --forge <config.forge>`, which prints one decision as JSON:
+
+| `action` | What to do |
+|----------|------------|
+| `none` | Continue. A younger PR that overlaps this one triggers nothing: the younger PR stacks on this one, and this one stays put |
+| `restack` | An older open PR newly overlaps. Run `stack-repair.ts restack --apply --child-issue <N> --parent-branch <b> --parent-pr <P'> --repo-slug <owner/repo> --repo-root <abs> --queue <abs queue.json>`: the parent PR is mapped to its queue issue, so the child gets `stacked_on` (a parent PR outside the queue records `stacked_on_pr` only, which every stack lookup also reads) (`merge-gate.md` § 7): a merge of the older head plus a retarget, never a rebase or force-push. Edit the stack comment and `notes`. The head changed, so CI reruns: at point (iv) STOP this issue's merge for the turn |
+| `restack` with `alsoOverlaps` | The parent is the tip of the lowest-numbered chain. For each other overlapping chain whose root the campaign owns, restack that root onto the chosen tip (linearize). An external root is left alone and noted `also-overlaps:#<N>` |
+| `defer` | Depth cap: leave the PR as it is and note it |
+| `hold` | A fork parent (`unstackable-parent:fork:#<N>`): hold this PR's merge until #<N> merges or closes |
+| `unknown` (exit 3) | The snapshot or a merge-tree check could not run. STOP this issue's merge for the turn and retry next turn; unknown never certifies "no overlap" |
+
+A parent idle for 72 hours, or in `needs-chef` or `blocked`, can be left through an owner-approved
+unstack: `AskQuestion` (`clarify-gates.md` § Gate Content Contract, R-003) with the choice to wait
+or to run `stack-repair.ts repair --apply --child-issue <N> --parent-state closed-unmerged`. It is a
+per-instance decision, never a config key. **Runs for `merge_mode: leave-open` too.** Other docs
+cite this step by pointer and do not restate it.
 
 **Step 0.5 — Rebase & Conflict Preflight** (issue #450): after step 0 passes and before step 1,
 run `merge-conflict-protocol.md` § Trigger — Step 0.5. When `gh pr view <n> --json
@@ -149,13 +171,16 @@ D5 narrowing as Step 0.5 above).
    (`merge-gate.md` §5) — exit non-zero blocks merge the same way. Inert when either governance
    flag is `false`. Bypassed under `merge_mode: leave-open`.
 3. Run the project's build command in main clone (if applicable)
-4. **Low-risk automerge gate** (`merge-gate.md` § 9), then squash-merge. Snapshot the PR's
+4. **Low-risk automerge gate** (`merge-gate.md` § 9), then merge. Snapshot the PR's
    files (`gh pr diff <n> --name-status`) and run
    `bun run scripts/merge-risk.ts --name-status <abs> [--patches <abs>] --head-ref <branch>`
    (pass `--patches` from `gh pr diff <n>` so `deletes-data` sees SQL, not only deleted paths).
    Exit 0 (`automerge: true`): CI is already green from step 1, the PR is blackhole's own
    (`blackhole/issue-N`), and the diff touches none of the high-risk categories — `gh pr merge
-   --squash` (use `&&` only, never `;`). Immediately after this command succeeds, in the
+   <flag>` where `<flag>` comes from `bun run scripts/stack-repair.ts merge-method --queue <abs
+   queue.json> --repo-slug <owner/repo> --forge <config.forge> --issue <N>`: `--merge` when the PR has open stacked
+   children and the repo allows merge commits, `--squash` otherwise; exit 3 (`hold: true`) when the repo's merge settings are unreadable and the PR has open stacked children: do not merge this turn (`merge-gate.md` § 9; use `&&`
+   only, never `;`). Immediately after this command succeeds, in the
    **same** atomic `queue.json` write that sets `status: merged`, also set `merged_by: blackhole`
    on the issue (ADR-005 — see `merge-gate.md` § 3 for why: this is the sole signal
    `V-MERGE-01`/`V-MERGE-02` attribution relies on; `status: in-flight` alone does not indicate
@@ -166,7 +191,7 @@ D5 narrowing as Step 0.5 above).
    with `needs-chef:`, `gh pr comment <n>` with the script's `comment` field. Set `queue.json`
    `notes` to `needs-chef: <categories>` and **STOP** this issue's merge for the turn — Chef
    (orchestrator / owner) decides. Do not re-comment while the label is already present.
-   Under `merge_mode: leave-open`: skip the squash-merge half (unchanged); still run the hold
+   Under `merge_mode: leave-open`: skip the merge half (unchanged); still run the hold
    half on exit 1 so Chef sees why a green PR was not merged.
 4.5. **Main-clone freshness refresh (issue #792, mandatory)**: immediately after step 4
    succeeds, run `git fetch origin main && git merge --ff-only origin/main` in the
@@ -181,15 +206,21 @@ D5 narrowing as Step 0.5 above).
    right after a merge — for every facts-read that follows: this turn's remaining
    `plan-quality-gate.ts` reads, the next issue's build-in-main-clone (step 3),
    and the plugin-drift-signal scan at the next turn start.
-4.6. **Stacked-child repair (issue #794, mandatory whenever Step 0.7 listed children)**: after 4.5's
+4.6. **Stacked-child recovery (mandatory whenever Step 0.7 listed children)**: after 4.5's
    main-clone refresh, run `merge-gate.md` § 7's `stack-repair.ts repair --apply` once per open
-   child, each with `--child-issue <N>` and `--repo-root` set to that child's own worktree. Until
-   this runs, every child PR is `mergeable: false` and displaying the just-merged parent's files as
-   its own, so a reviewer reading it is reading a diff that is not the child's work. A non-zero
-   exit is a blocker for that child — annotate its `queue.json` `notes` and leave it for the next
-   turn; it is never a post-merge step to skip past because the parent already landed. **Runs for
-   `merge_mode: leave-open` too**, triggered by the externally-observed merge that `merge-gate.md`
-   § 3's carve-out reconciles, alongside that section's D6 sibling restack.
+   child, each with `--child-issue <N>` and `--repo-root` set to that child's own worktree, **in the
+   same turn and before that child's review or CI wait**. Until it runs, every child PR is
+   `mergeable: false` and displays the just-merged parent's files as its own, so a reviewer reading
+   it is reading a diff that is not the child's work. The merge mode decides where it is triggered
+   and what the child waits for; `merge-gate.md` § 7's route table names the command and the HITL
+   route for each mode and landing, and is not restated here. `immediate`: right here, after 4.5.
+   `gated-batch`: inside `merge-gate.md` § 4's per-issue loop. `leave-open`: triggered by the
+   externally-observed merge that `merge-gate.md` § 3's carve-out reconciles, alongside that
+   section's D6 sibling restack, and the child's `delivered-at-LGTM` note is revoked until recovery
+   and CI finish. A non-zero exit is a blocker for that child: annotate its `queue.json` `notes`,
+   follow the HITL route, and leave it for the next turn; it is never a post-merge step to skip
+   past because the parent already landed. The repair prints `review_carry: true|false`; the review
+   phase reads it (`phase-review.md`).
 4.7. **Post-merge landing verification (mandatory)**: after 4.6's stacked-child repair, run
    `merge-gate.md` § 8's post-merge check against the branch Step 0.8 asserted. On exit `0`, write
    that branch to the issue's `merged_into` (`queue-dag.md` Field rules) — the field records a

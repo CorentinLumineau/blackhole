@@ -17,6 +17,10 @@ import {
   type ForgeParentState,
   type ParentLanding,
 } from './lib/stack-merge.ts';
+import { parentMergeMethod } from './lib/stack-lifecycle.ts';
+import { effectiveParent } from './lib/stack-overlap.ts';
+import { readRepoMergeSettings } from './lib/forge-adapter/merge-settings.ts';
+import type { ForgeType, RepoMergeSettings } from './lib/forge-adapter/types.ts';
 
 export { changedFileCount, childBranchFor };
 
@@ -33,6 +37,7 @@ export type StackedIssue = {
   status?: string;
   pr?: number | null;
   stacked_on?: number | null;
+  stacked_on_pr?: number | null;
   parent_tip_sha?: string | null;
   [key: string]: unknown;
 };
@@ -58,7 +63,7 @@ const OPEN_STATUSES_EXCLUDED = new Set(['merged', 'closed']);
  */
 export const findStackedChildren = (issues: QueueIssues, parentIssue: number): StackedChild[] =>
   Object.entries(issues)
-    .filter(([, issue]) => issue.stacked_on === parentIssue && !OPEN_STATUSES_EXCLUDED.has(issue.status ?? ''))
+    .filter(([, issue]) => effectiveParent(issues, issue) === parentIssue && !OPEN_STATUSES_EXCLUDED.has(issue.status ?? ''))
     .map(([id, issue]) => ({
       issue: Number(id),
       pr: issue.pr ?? null,
@@ -133,6 +138,22 @@ export const recordParentTip = (queue: QueueJson, childIssue: number, tip: strin
   return true;
 };
 
+/** The queue issue whose PR is `pr`, or undefined when the parent PR belongs to no queue issue. */
+export const issueOfPr = (issues: QueueIssues, pr: number | undefined): number | undefined => {
+  if (pr === undefined) return undefined;
+  const hit = Object.entries(issues).find(([, v]) => v.pr === pr);
+  return hit ? Number(hit[0]) : undefined;
+};
+
+/** Stack edge of a child restacked onto an open PR; `stacked_on_pr` also covers a parent with no queue issue. */
+export const recordStackEdge = (queue: QueueJson, childIssue: number, parentPr: number, parentBranch: string): boolean => {
+  const entry = queue.issues?.[String(childIssue)];
+  if (entry === undefined) return false;
+  entry.stacked_on_pr = parentPr;
+  entry.parent_branch = parentBranch;
+  return true;
+};
+
 export type Verdict = { ok: boolean; reason: string };
 
 /**
@@ -164,11 +185,7 @@ export const verifyChildFileCount = (expected: number, observed: number): Verdic
 export const verifyPublishedReplay = (repoRoot: string, target: string, sha: string, expectedFiles: number): Verdict =>
   verifyChildFileCount(expectedFiles, changedFileCount(repoRoot, target, sha, true));
 
-export type MergeSettings = {
-  allow_squash_merge?: boolean;
-  allow_merge_commit?: boolean;
-  allow_rebase_merge?: boolean;
-};
+export type MergeSettings = RepoMergeSettings;
 
 /**
  * Stack-creation-time warning. Squash is what makes stacking lossy; a repo that can also produce a
@@ -176,7 +193,7 @@ export type MergeSettings = {
  */
 export const squashMergeWarning = (settings: MergeSettings): string | null => {
   if (settings.allow_squash_merge !== true) return null;
-  if (settings.allow_merge_commit === true) {
+  if ((settings.allow_merge_commit ?? settings.allow_merge_commits) === true) {
     return 'WARNING: this repo allows squash merges. Squash-merging the parent will break this stack unless the post-merge repair runs; merging the parent with a merge commit avoids the whole problem.';
   }
   return 'WARNING: this repo squash-merges and offers no merge-commit alternative. This stack WILL break when the parent lands — the post-merge repair is mandatory, not optional.';
@@ -197,15 +214,9 @@ const writeQueue = (queuePath: string, queue: QueueJson): string | null => {
   return null;
 };
 
-const fetchMergeSettings = (repoSlug: string): MergeSettings | null => {
-  const result = runGh(['api', `repos/${repoSlug}`]);
-  if (result.status !== 0) return null;
-  try {
-    return JSON.parse(result.stdout) as MergeSettings;
-  } catch {
-    return null;
-  }
-};
+const forgeOf = (flags: Flags): ForgeType => (typeof flags.forge === 'string' ? flags.forge : 'github') as ForgeType;
+
+const fetchMergeSettings = (forge: ForgeType, repoSlug: string): MergeSettings | null => readRepoMergeSettings(forge, repoSlug);
 
 const capture = (flags: Flags): number => {
   const queuePath = requireFlag(flags, 'queue');
@@ -224,7 +235,7 @@ const capture = (flags: Flags): number => {
   if (repoSlug === null) {
     console.log('no --repo-slug given — skipping the squash-merge warning (merge settings not read)');
   } else {
-    const settings = fetchMergeSettings(repoSlug);
+    const settings = fetchMergeSettings(forgeOf(flags), repoSlug);
     if (settings === null) console.log(`could not read merge settings for ${repoSlug} — squash-merge warning not evaluated`);
     else {
       const warning = squashMergeWarning(settings);
@@ -413,7 +424,11 @@ const restack = (flags: Flags): number => {
   const repoRoot = requireFlag(flags, 'repo-root');
   const repoSlug = requireFlag(flags, 'repo-slug');
   const childIssue = Number(requireFlag(flags, 'child-issue'));
-  const parentIssue = typeof flags['parent-issue'] === 'string' ? Number(flags['parent-issue']) : undefined;
+  const parentPr = typeof flags['parent-pr'] === 'string' ? Number(flags['parent-pr']) : undefined;
+  const parentIssue =
+    typeof flags['parent-issue'] === 'string'
+      ? Number(flags['parent-issue'])
+      : issueOfPr(readQueue(queuePath).issues ?? {}, parentPr);
   const parentBranch =
     typeof flags['parent-branch'] === 'string'
       ? flags['parent-branch']
@@ -480,6 +495,7 @@ const restack = (flags: Flags): number => {
   }
 
   recordParentTip(queue, childIssue, parentHead, parentIssue);
+  if (parentPr !== undefined) recordStackEdge(queue, childIssue, parentPr, parentBranch);
   const failure = writeQueue(queuePath, queue);
   if (failure !== null) {
     console.error(`state-write-guard refused install: ${failure}`);
@@ -489,14 +505,33 @@ const restack = (flags: Flags): number => {
   return 0;
 };
 
+// Merge method for the parent about to merge (merge-gate.md § 9): a merge commit when it has open
+// stacked children and the repo allows one, squash otherwise. Prints the choice as JSON.
+const mergeMethod = (flags: Flags): number => {
+  const queue = readQueue(requireFlag(flags, 'queue'));
+  const issue = Number(requireFlag(flags, 'issue'));
+  const children = findStackedChildren(queue.issues ?? {}, issue);
+  const settings = fetchMergeSettings(forgeOf(flags), requireFlag(flags, 'repo-slug'));
+  const openChildren = children.map((c) => c.issue);
+  if (settings === null && children.length > 0) {
+    // A silent squash would strand the open children; hold the merge until the settings can be read.
+    console.log(JSON.stringify({ method: null, flag: null, hold: true, reason: 'merge settings unreadable and the PR has open stacked children: do not merge, retry next turn or ask the owner', openChildren }));
+    return 3;
+  }
+  const choice = parentMergeMethod({ hasOpenChildren: children.length > 0, settings });
+  console.log(JSON.stringify({ ...choice, openChildren }));
+  return 0;
+};
+
 const USAGE = `Usage:
   bun run scripts/stack-repair.ts capture --queue <path> --repo-root <abs> \\
-      --child-issue <N> --parent-issue <M> [--parent-branch <b>] [--repo-slug <owner/repo>] [--apply]
+      --child-issue <N> --parent-issue <M> [--parent-branch <b>] [--repo-slug <owner/repo>] [--forge <github|gitea>] [--apply]
   bun run scripts/stack-repair.ts repair  --queue <path> --repo-root <abs> \\
       --repo-slug <owner/repo> --base <branch> --parent-issue <M> \\
       [--child-issue <N> --apply] [--parent-state merged|closed-unmerged] [--accept-patch-id-change]
   bun run scripts/stack-repair.ts restack --queue <path> --repo-root <abs> \\
-      --repo-slug <owner/repo> --child-issue <N> (--parent-issue <M> | --parent-branch <b>) [--apply]`;
+      --repo-slug <owner/repo> --child-issue <N> (--parent-issue <M> | --parent-branch <b>) [--parent-pr <P>] [--apply]
+  bun run scripts/stack-repair.ts merge-method --queue <path> --repo-slug <owner/repo> [--forge <github|gitea>] --issue <N>   (exit 3: hold)`;
 
 export const main = (argv: string[]): number => {
   const [subcommand, ...rest] = argv;
@@ -505,6 +540,7 @@ export const main = (argv: string[]): number => {
     if (subcommand === 'capture') return capture(flags);
     if (subcommand === 'repair') return repair(flags);
     if (subcommand === 'restack') return restack(flags);
+    if (subcommand === 'merge-method') return mergeMethod(flags);
   } catch (error) {
     console.error((error as Error).message);
     return 2;

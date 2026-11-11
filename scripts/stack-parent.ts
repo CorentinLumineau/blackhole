@@ -1,33 +1,71 @@
+import path from 'node:path';
 import { parseFlags, requireFlag } from './lib/argv-flags.ts';
-import { runGh } from './lib/forge-adapter/cli.ts';
+import { createForgeAdapter } from './lib/forge-adapter/index.ts';
+import type { ForgeType } from './lib/forge-adapter/types.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { collectParentFiles, pickStackParent, type StackCandidate } from './lib/stack-parent.ts';
+import { adapterSnapshotIo, buildOpenPrSnapshot, PR_REF_PREFIX, type OpenPrSnapshot } from './lib/open-pr-snapshot.ts';
+import { recheckStack, snapshotParentFiles } from './lib/stack-lifecycle.ts';
+import { childBranchFor } from './lib/stack-merge.ts';
+import { verifiedPrMergeTree } from './lib/stack-overlap.ts';
+import { pickStackParent, type StackCandidate } from './lib/stack-parent.ts';
 
-// CLI for queue-dag.md Step 3b: prints the stack-parent pick for one issue as JSON (`null` when none).
+// CLI for queue-dag.md Step 3b and Step 0.4. Both modes read the same bounded open-PR snapshot
+// (one fetch of the open PRs' heads, no per-PR API call).
+//   --issue <N>  dispatch pick: prints the stack parent for one queue issue as JSON (`null` when none).
+//   --pr <N>     re-check of an open campaign PR: prints the restack decision as JSON; exit 3 when
+//                the snapshot could not be read in full, because "could not look" is not "no overlap".
+// --repo-slug <owner/repo> and --repo-root <abs> locate the forge and the checkout; --forge defaults to github.
 const flags = parseFlags(process.argv.slice(2));
 const queuePath = requireFlag(flags, 'queue');
 const queue = readJsonFile(queuePath, queuePath) as { issues?: Record<string, StackCandidate> };
-// --parent-files: JSON {"<parent issue>": ["changed/file", ...]}, read from each open PR when omitted;
+const issues = queue.issues ?? {};
+
+// --parent-files: JSON {"<parent issue>": ["changed/file", ...]}, replaces the snapshot read;
 // --default-touch-paths: JSON array, the config `default_touch_paths`.
 const jsonFlag = (name: string): unknown => {
   const v = flags[name];
   return typeof v === 'string' ? JSON.parse(v) : undefined;
 };
-const readPrFiles = (pr: number): string[] | null => {
-  const r = runGh(['pr', 'diff', String(pr), '--name-only']);
-  if (r.status === 0) return r.stdout.split('\n').filter(Boolean);
-  console.error(`stack-parent: could not read PR #${pr} files, treating them as unknown: ${r.stderr.trim()}`);
-  return null;
+
+const repoRoot = path.resolve(typeof flags['repo-root'] === 'string' ? flags['repo-root'] : process.cwd());
+
+const readSnapshot = async (): Promise<OpenPrSnapshot> => {
+  const forge = (typeof flags.forge === 'string' ? flags.forge : 'github') as ForgeType;
+  const adapter = createForgeAdapter({ repo: requireFlag(flags, 'repo-slug'), forge });
+  return buildOpenPrSnapshot(adapterSnapshotIo(adapter, repoRoot, path.join(repoRoot, '.blackhole', 'pr-files-cache.json')));
 };
-const issues = queue.issues ?? {};
-const issue = Number(requireFlag(flags, 'issue'));
-console.log(
-  JSON.stringify(
-    pickStackParent(issues, issue, {
-      parentFiles:
-        (jsonFlag('parent-files') as Record<string, string[]> | undefined) ??
-        collectParentFiles(issues, issue, readPrFiles),
-      defaultTouchPaths: jsonFlag('default-touch-paths') as string[] | undefined,
-    }),
-  ),
-);
+
+const recheck = async (pr: number): Promise<number> => {
+  const snapshot = await readSnapshot();
+  const owned = new Set(Object.keys(issues).map((id) => childBranchFor(Number(id))));
+  const decision = recheckStack(pr, snapshot, {
+    isOwned: (branch) => owned.has(branch),
+    conflicts: (me, other) =>
+      verifiedPrMergeTree(
+        (args) => {
+          const r = Bun.spawnSync(['git', ...args], { cwd: repoRoot });
+          return { code: r.exitCode ?? 1, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+        },
+        PR_REF_PREFIX,
+        me,
+        other,
+      ),
+  });
+  console.log(JSON.stringify(decision));
+  return decision.action === 'unknown' ? 3 : 0;
+};
+
+const dispatch = async (issue: number): Promise<number> => {
+  let parentFiles = jsonFlag('parent-files') as Record<string, string[]> | undefined;
+  if (parentFiles === undefined && flags['repo-slug'] !== undefined) {
+    parentFiles = snapshotParentFiles(issues, await readSnapshot());
+  }
+  // No snapshot and no --parent-files: every open PR's files are unknown, so declared touch_paths decide.
+  console.log(
+    JSON.stringify(pickStackParent(issues, issue, { parentFiles: parentFiles ?? {}, defaultTouchPaths: jsonFlag('default-touch-paths') as string[] | undefined })),
+  );
+  return 0;
+};
+
+const pr = flags.pr;
+process.exit(typeof pr === 'string' ? await recheck(Number(pr)) : await dispatch(Number(requireFlag(flags, 'issue'))));

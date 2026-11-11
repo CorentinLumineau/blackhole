@@ -7,10 +7,12 @@ import {
   changedFileCount,
   childBranchFor,
   findStackedChildren,
+  issueOfPr,
   main,
   planRepair,
   planRestack,
   recordParentTip,
+  recordStackEdge,
   squashMergeWarning,
   verifyChildFileCount,
   verifyPublishedReplay,
@@ -132,6 +134,13 @@ describe('planRestack and recordParentTip (pure)', () => {
 
   test('an issue absent from the queue is reported, not invented', () => {
     expect(recordParentTip({ issues: {} }, 1, 'x')).toBe(false);
+  });
+
+  test('records the open PR a child was restacked onto, queue issue or not', () => {
+    const queue = { issues: { '2403': { status: 'ready' } } };
+    expect(recordStackEdge(queue, 2403, 157, 'feat/external')).toBe(true);
+    expect(queue.issues['2403']).toMatchObject({ stacked_on_pr: 157, parent_branch: 'feat/external' });
+    expect(recordStackEdge({ issues: {} }, 1, 2, 'b')).toBe(false);
   });
 });
 
@@ -395,5 +404,39 @@ describe('the replay merge against a squash-merged parent', () => {
     git('branch', '-f', childBranch, stale);
     expect(verifyPublishedReplay(repo, 'main', result.sha, expectedFiles).ok).toBe(true);
     expect(verifyChildFileCount(expectedFiles, changedFileCount(repo, 'main', childBranch, true)).ok).toBe(false);
+  });
+});
+
+describe('stacked_on_pr edge (restack onto a campaign parent)', () => {
+  test('restack bookkeeping makes findStackedChildren return the child', () => {
+    const queue = { issues: { '7': { status: 'in-flight', pr: 70 }, '9': { status: 'in-flight', pr: 90, parent_tip_sha: 'aaa' } } };
+    const parent = issueOfPr(queue.issues, 70);
+    expect(parent).toBe(7);
+    expect(issueOfPr(queue.issues, 999)).toBeUndefined();
+    recordStackEdge(queue, 9, 70, 'blackhole/issue-7');
+    expect(findStackedChildren(queue.issues, 7).map((c) => c.issue)).toEqual([9]);
+    recordParentTip(queue, 9, 'bbb', parent);
+    expect(queue.issues['9']).toMatchObject({ stacked_on: 7, stacked_on_pr: 70, parent_tip_sha: 'bbb' });
+  });
+});
+
+describe('merge-method with unreadable settings', () => {
+  test('holds (exit 3) when the PR has open stacked children, instead of a silent squash', () => {
+    const dir = makeTempDir('merge-method-hold');
+    const queuePath = `${dir}/queue.json`;
+    fs.writeFileSync(queuePath, JSON.stringify({ issues: { '7': { status: 'in-flight', pr: 70 }, '9': { status: 'in-flight', pr: 90, stacked_on: 7 } } }));
+    const lines: string[] = [];
+    const orig = console.log;
+    console.log = (m: string) => void lines.push(m);
+    try {
+      expect(main(['merge-method', '--queue', queuePath, '--repo-slug', 'o/r', '--forge', 'gitlab', '--issue', '7'])).toBe(3);
+      expect(JSON.parse(lines[0])).toMatchObject({ hold: true, method: null, openChildren: [9] });
+      lines.length = 0;
+      expect(main(['merge-method', '--queue', queuePath, '--repo-slug', 'o/r', '--forge', 'gitlab', '--issue', '9'])).toBe(0);
+      expect(JSON.parse(lines[0])).toMatchObject({ method: 'squash' });
+    } finally {
+      console.log = orig;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

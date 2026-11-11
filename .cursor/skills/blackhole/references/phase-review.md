@@ -6,6 +6,8 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 
 ```
 - [ ] queue.json: phase review
+- [ ] Re-entry after a fix-round push → stack re-check first (phase-loop.md Step 0.4), then request review
+- [ ] After a stacked-child recovery → read `review_carry` (merge-gate.md § 7): `true` carries the prior review verdict to the recovered head with no reviewer spawn and `notes: review-carried:<old sha>-><new sha>`; `false` runs this phase in full
 - [ ] Spawn reviewer to perform PR audit
 - [ ] Route check: read route.security_review_required (+ confidence gate) → enrich reviewer prompt with security-mode audit (see review-core.md § Security-mode review)
 - [ ] Primary reviewer returned 1+ non-pre-existing `BLOCK` findings → stamp each with a temporary `id` and dispatch a second, independent `reviewer` instance in verification mode at `standard` tier (see review-core.md § Independent security verification, issue #439); pass its `verification[]` output to review-aggregate.ts via `--verification-file`
