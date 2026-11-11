@@ -389,7 +389,7 @@ entry (`queue-dag.md` Field rules) and surface the squash-merge warning:
 
 ```
 bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts capture --queue <abs queue.json> \
-  --repo-root <abs repo-root> --child-issue <N> --parent-issue <M> --repo-slug <owner/repo> --apply
+  --repo-root <abs repo-root> --child-issue <N> --parent-issue <M> --repo-slug <owner/repo> --forge <config.forge> --apply
 ```
 
 Dry-run without `--apply`. The write goes through `blackhole-state.md` § Write protocol's
@@ -542,7 +542,7 @@ children is merged with `--merge` (a merge commit) when the repo allows it, beca
 already contains the parent's tip and recovery (§ 7) is a retarget with no commit, no push and no
 CI rerun. When the repo allows no merge commit, it stays `--squash` and § 7's replay is mandatory.
 `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts merge-method --queue <abs queue.json> --repo-slug <owner/repo>
---issue <N>` prints the choice as JSON (`method`, `flag`, `reason`); `phase-loop.md` step 4 runs it.
+--forge <config.forge> --issue <N>` prints the choice as JSON (`method`, `flag`, `reason`); with unreadable repo settings and open stacked children it prints `hold: true` and exits 3 instead of choosing squash; `phase-loop.md` step 4 runs it.
 
 Blackhole may merge **its own** PRs only when CI is already green (step 1 / C3) **and** the
 diff is low-risk. Any other PR that has reached this point stays open for Chef (the orchestrator /

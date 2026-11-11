@@ -113,6 +113,7 @@ describe('stack-check CLI', () => {
     expect(r.code).toBe(1);
     expect(r.out).toContain('V-STACK-02');
     expect(r.out).toContain('stack-repair.ts restack');
+    expect(r.out).toContain('--parent-branch feat-7');
   });
 
   test('--open-prs with no overlap is exit 0', () => {
@@ -125,5 +126,14 @@ describe('stack-check CLI', () => {
 
   test('an unknown snapshot in --open-prs is exit 3', () => {
     expect(cli('--pr', '9', '--open-prs', openPrs({ status: 'unknown', reason: 'x' })).code).toBe(3);
+  });
+
+  test('an ok snapshot without a prs array is exit 3, not a crash', () => {
+    expect(cli('--pr', '9', '--open-prs', openPrs({ status: 'ok' })).code).toBe(3);
+    expect(cli('--pr', '9', '--open-prs', openPrs({ status: 'ok', prs: 'x' })).code).toBe(3);
+  });
+
+  test('an unknown --forge value is exit 2', () => {
+    expect(cli('--pr', '9', '--repo-slug', 'o/r', '--forge', 'bogus').code).toBe(2);
   });
 });

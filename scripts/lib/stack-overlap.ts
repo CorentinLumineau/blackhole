@@ -39,19 +39,40 @@ export const chainDepth = (graph: StackGraph, node: number): number => {
   return depth;
 };
 
-/** Deepest descendant of `root` outside `exclude`, following child edges downward; the lowest number breaks ties. */
-export const chainTip = (graph: StackGraph, root: number, exclude: ReadonlySet<number> = new Set()): number => {
+/**
+ * Deepest descendant of `root` outside `exclude`, following child edges downward; the lowest number
+ * breaks ties. With `prefer`, the walk first descends toward the preferred nodes (lowest-numbered
+ * child that is, or leads to, one) and only then extends to the deepest tip below where it stopped,
+ * so the result lies inside the branch holding them instead of in an unrelated sibling branch.
+ */
+export const chainTip = (
+  graph: StackGraph,
+  root: number,
+  exclude: ReadonlySet<number> = new Set(),
+  prefer: ReadonlySet<number> = new Set(),
+): number => {
   const all = [...graph.nodes()];
+  const childrenOf = (n: number, seen: ReadonlySet<number>): number[] =>
+    all.filter((c) => graph.parentOf(c) === n && !seen.has(c) && !exclude.has(c)).sort((x, y) => x - y);
+
   const visited = new Set<number>([root]);
-  let tip = root;
+  let start = root;
   for (;;) {
-    const child = all
-      .filter((n) => graph.parentOf(n) === tip && !visited.has(n) && !exclude.has(n))
-      .sort((a, b) => a - b)[0];
-    if (child === undefined) return tip;
-    visited.add(child);
-    tip = child;
+    const next = childrenOf(start, visited).find((c) => [...prefer].some((p) => reachesNode(graph, p, c)));
+    if (next === undefined) break;
+    visited.add(next);
+    start = next;
   }
+
+  const deepest = (node: number, seen: ReadonlySet<number>): { tip: number; depth: number } => {
+    let best = { tip: node, depth: 0 };
+    for (const c of childrenOf(node, seen)) {
+      const sub = deepest(c, new Set([...seen, c]));
+      if (sub.depth + 1 > best.depth) best = { tip: sub.tip, depth: sub.depth + 1 };
+    }
+    return best;
+  };
+  return deepest(start, visited).tip;
 };
 
 // ---- merge-tree decider ----
@@ -66,6 +87,33 @@ export const mergeTreeVerdict = (git: (args: string[]) => GitResult, a: string, 
   if (r.code === 0) return 'clean';
   if (r.code === 1 && /^[0-9a-f]{40,64}$/.test(r.stdout.split('\n')[0].trim())) return 'conflict';
   return 'unknown';
+};
+
+/** `git rev-parse` of both PR refs must equal the snapshot heads, else the verdict would read a stale fetch. */
+export const verifiedPrMergeTree = (
+  git: (args: string[]) => GitResult,
+  refPrefix: string,
+  me: { number: number; headSha: string },
+  other: { number: number; headSha: string },
+): ConflictVerdict => {
+  for (const pr of [me, other]) {
+    const r = git(['rev-parse', '--verify', '--quiet', `${refPrefix}${pr.number}^{commit}`]);
+    if (r.code !== 0 || r.stdout.trim() !== pr.headSha) return 'unknown';
+  }
+  return mergeTreeVerdict(git, `${refPrefix}${me.number}`, `${refPrefix}${other.number}`);
+};
+
+export type StackEdgeFields = { pr?: number | null; stacked_on?: number | null; stacked_on_pr?: number | null };
+
+/**
+ * The queue issue an issue is stacked on: `stacked_on`, else the issue whose open PR is
+ * `stacked_on_pr` (an edge recorded from a PR number alone). Null when neither resolves.
+ */
+export const effectiveParent = (issues: Record<string, StackEdgeFields>, issue: StackEdgeFields): number | null => {
+  if (issue.stacked_on != null) return issue.stacked_on;
+  if (issue.stacked_on_pr == null) return null;
+  const hit = Object.entries(issues).find(([, v]) => v.pr === issue.stacked_on_pr);
+  return hit ? Number(hit[0]) : null;
 };
 
 // ---- PR-graph pick ----
@@ -90,7 +138,7 @@ const shares = (a: string[], b: string[]): boolean => {
 
 /**
  * The parent PR `meNumber` must be stacked on, or why none is chosen. Edges come from each PR's
- * base branch; the parent is the tip of the lowest-numbered overlapping chain, and any other
+ * base branch; the parent is the tip of the branch holding the overlapping PRs of the lowest-numbered root, and any other
  * overlapping chain is reported in `alsoOverlaps`. A PR that is already an ancestor of `me`, or a
  * descendant of it, is not an overlap to act on.
  */
@@ -156,7 +204,7 @@ export const pickParent = (meNumber: number, snapshot: OpenPrSnapshot, opts: Pic
 
   // The tip may not be me or anything stacked on me: those are on my side of the graph.
   const mine = new Set(everyNode.filter((n) => n === meNumber || reachesNode(graph, n, meNumber)));
-  const tip = chainTip(graph, chosenRoot, mine);
+  const tip = chainTip(graph, chosenRoot, mine, new Set(roots.get(chosenRoot)!.map((o) => o.number)));
   const tipPr = byNumber.get(tip)!;
   const alsoOverlaps = [...roots.entries()]
     .filter(([root]) => root !== chosenRoot)
