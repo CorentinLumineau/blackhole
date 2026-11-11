@@ -185,6 +185,7 @@ missing, not the three values' runtime behavior.
 Under `leave-open`, "delivered" is not "merged": an LGTM'd open PR clears an overlap deferral
 while `main` still lacks its changes. Overlapping issues are therefore stacked at dispatch
 (`queue-dag.md` Step 3b) in every `merge_mode`, so the human can merge in order without conflicts.
+Stacking is the only behavior: no key controls it (`queue-dag.md` Step 3b).
 
 **`display_targets` contract note**: **Resolution**: absent or empty array ⇒ inert (visual
 evidence gate is a no-op end to end). When the array is absent or empty, the visual evidence

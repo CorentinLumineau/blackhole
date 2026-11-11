@@ -127,7 +127,7 @@ export type RecheckOptions = {
 };
 
 /** The snapshot without PRs younger than `me`: a younger PR stacks on ours, ours never moves for it. */
-const olderOnly = (me: number, snapshot: OpenPrSnapshot): OpenPrSnapshot =>
+export const olderOnly = (me: number, snapshot: OpenPrSnapshot): OpenPrSnapshot =>
   snapshot.status === 'ok' ? { ...snapshot, prs: snapshot.prs.filter((p) => p.number <= me) } : snapshot;
 
 const toDecision = (result: PickParentResult): RecheckDecision => {

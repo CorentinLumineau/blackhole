@@ -223,6 +223,10 @@ with note `overlap with #N`).
 
 ### Step 3b — Stack at dispatch (overlap with an open PR)
 
+Stacking is the only behavior: no config key turns it off. An overlap against any open PR in the
+repo, queue row or not, is stacked, and `scripts/stack-check.ts` (V-STACK-02) fails a PR that
+overlaps another open PR without being stacked on it.
+
 Deferral alone cannot protect an overlapping issue once the blocker has an open, unmerged PR:
 under `merge_mode: leave-open` an LGTM'd PR counts as delivered while `main` still lacks its
 changes, so the "cleared" blocker would hand the next wave a stale base. Before creating a
