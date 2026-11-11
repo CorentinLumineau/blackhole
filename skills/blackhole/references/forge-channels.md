@@ -39,7 +39,9 @@ sessions and fails on repositories that still carry a classic Project. On any ch
 | List PRs | `gh pr list --state open --json …` | `GET repos/{repo}/pulls?state=open&per_page=100` | `list_pull_requests` |
 | View PR | `gh pr view N --json state,mergedAt,headRefOid,…` | `GET repos/{repo}/pulls/N` (`merged_at` set means MERGED; head sha is `head.sha`) | `pull_request_read` (`get`) |
 | Create PR | `gh pr create --title … --body … --head … --base …` | `POST repos/{repo}/pulls` `{title, body, head, base}` | `create_pull_request` |
-| Change PR base | `gh pr edit N --base B` | `PATCH repos/{repo}/pulls/N` `{base}` | `update_pull_request` (`base`) |
+| Change PR base | `gh pr edit N --base B` | `PATCH repos/{repo}/pulls/N` `{base}`, then `GET` and compare `base.ref`: the PATCH exit status is not evidence | `update_pull_request` (`base`) |
+| PR changed files | `gh pr diff N --name-only` | `GET repos/{repo}/pulls/N/files?per_page=100&page=N` until a short page (a rename lists `filename` and `previous_filename`; 3000 files is the cap) | `pull_request_read` (`get_files`) |
+| PR head as a git ref | `git fetch origin +refs/pull/N/head:refs/blackhole/pr/N` | same: git, no API call. One fetch serves every open PR, so the open-PR snapshot (`queue-dag.md` Step 3b) reads files locally | same: git |
 | PR checks | `gh pr checks N` | `GET repos/{repo}/commits/{sha}/check-runs` plus `GET repos/{repo}/commits/{sha}/status` | `pull_request_read` (`get_check_runs`, `get_status`) |
 | Merge PR | `gh pr merge N --squash` | `PUT repos/{repo}/pulls/N/merge` `{merge_method: "squash", sha: "<head sha>"}` | `merge_pull_request` (`squash`, `expectedHeadSha`) |
 | List workflow runs | `gh run list --branch B` | `GET repos/{repo}/actions/runs?branch=B` or `?head_sha=S` | `actions_list` |
@@ -47,6 +49,10 @@ sessions and fails on repositories that still carry a classic Project. On any ch
 | Re-run failed jobs | `gh run rerun R --failed` | `POST repos/{repo}/actions/runs/R/rerun-failed-jobs` | `actions_run_trigger` (`rerun_failed_jobs`) |
 | View release | `gh release view T` | `GET repos/{repo}/releases/tags/T` | `get_release_by_tag` |
 | Create release | `gh release create T --notes …` | `POST repos/{repo}/releases` `{tag_name, name, body}` | none, use `rest` |
+
+On Gitea the base change is `PATCH repos/{owner}/{repo}/pulls/N` with `{base}`, read back with `GET`
+and compared on `base.ref`; the Gitea adapter (`scripts/lib/forge-adapter/gitea.ts`) does both, and
+its PR files come from `GET repos/{owner}/{repo}/pulls/N/files`.
 
 Always pass the head sha when merging over REST or MCP. The merge is then refused if the PR moved
 since the merge gate read it, the same guard `gh pr merge --match-head-commit` gives.

@@ -467,7 +467,9 @@ from a merge onto the campaign base, and `queue.json` then recorded a landing th
 
 **Pre-merge assertion** (`phase-loop.md` § Merge protocol **Step 0.8**). Read the PR's
 `baseRefName` and require it to equal `config.json`'s `target_branch`. A different base proceeds
-only under an explicit stacked-merge opt-in **naming the branch being landed into**; an opt-in
+only when `--stacked-into` **names the branch being landed into**. That flag asserts where this one
+merge lands; it is a per-merge assertion, not a stacking toggle (stacking is the only behavior,
+`queue-dag.md` Step 3b); an opt-in
 naming any other branch, and an unreadable `baseRefName`, both refuse. Refusal is a hard **STOP**
 for the turn, the same class as § 5's review-artifact stop — no V-code and no ledger row of its
 own.

@@ -218,8 +218,10 @@ Promote `blocked → ready` when dependencies clear and user gates pass.
 ### Step 3 — Conflict filter
 
 For each pair in ready set, if `touch_paths` globs overlap on likely files,
-keep the issue earlier in `user_queue_order`; defer the other (set `blocked`
-with note `overlap with #N`).
+keep the issue earlier in `user_queue_order`. Defer the other (set `blocked`
+with note `overlap with #N`) only while the blocker has no PR yet; once the blocker has an open PR, Step 3b stacks the issue on
+it instead. The stack depth cap is not applied at dispatch (`pickStackParent` has none): it is
+enforced at PR time by `scripts/stack-check.ts` (V-STACK-02) and the Step 0.4 recheck.
 
 ### Step 3b — Stack at dispatch (overlap with an open PR)
 

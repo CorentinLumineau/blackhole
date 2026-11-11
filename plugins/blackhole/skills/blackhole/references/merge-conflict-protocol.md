@@ -133,15 +133,18 @@ a separate regex replace) — a git merge driver is not.
 
 The squash-base symptom above is the same one a stacked child hits (`queue-dag.md` Step 3b): the
 parent's branch commits are not ancestors of the squash commit on the target branch. The child is
-never rebased or force-pushed; its own commits are replayed by merging the target branch in:
+never rebased or force-pushed; its own commits are replayed by merging the target branch in.
+`scripts/stack-repair.ts repair --apply --child-issue <N>` does the retarget (REST, with a base
+read-back), the replay merge and the fast-forward push, and `merge-gate.md` § 7 owns the command
+and its flags. This section owns only the conflict case: when the replay reports conflicts nothing
+is pushed and the child worktree has no merge in progress (the replay runs through `git merge-tree`,
+so there are no conflict markers to edit). The worker starts the merge itself in the child worktree:
+`git fetch origin && git merge origin/<target_branch>`. Each conflicted file is then resolved per
+§ Hot files and generated trees below, then `git add`, the merge commit, a normal push, and the
+Post-resolution discipline build.
 
-1. Retarget the child PR via REST (`gh pr edit` can fail on this repo):
-   `gh api -X PATCH repos/<repo>/pulls/<N> -f base=<target_branch>`.
-2. Switch the body link the same way, `Part of #<N>` to `Closes #<N>`:
-   `gh api -X PATCH repos/<repo>/pulls/<N> -f body="<body with Closes #<N>>"`.
-3. In the child worktree: `git fetch origin && git merge origin/<target_branch>`. Resolve each
-   conflicted file per § Hot files and generated trees below, `git add`, and commit the merge. Push normally.
-4. Run the build once and commit its output (Post-resolution discipline below).
+The body link switches from `Part of #<N>` to `Closes #<N>` once the child targets
+`config.target_branch`: `gh api -X PATCH repos/<repo>/pulls/<N> -f body="<body with Closes #<N>>"`.
 
 ## Hot files and generated trees (single rule)
 
