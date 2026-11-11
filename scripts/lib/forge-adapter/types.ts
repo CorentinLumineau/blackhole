@@ -78,6 +78,15 @@ export interface PrCreateParams {
   base: string;
 }
 
+/** Merge switches of a repository; Gitea spells the merge-commit and rebase switches differently from GitHub. */
+export type RepoMergeSettings = {
+  allow_squash_merge?: boolean;
+  allow_merge_commit?: boolean;
+  allow_merge_commits?: boolean;
+  allow_rebase_merge?: boolean;
+  allow_rebase?: boolean;
+};
+
 export interface ForgeAdapterConfig {
   repo: string;
   forge?: ForgeType;

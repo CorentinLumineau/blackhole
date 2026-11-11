@@ -6,7 +6,7 @@ import { readJsonFile } from './lib/fs.ts';
 import { adapterSnapshotIo, buildOpenPrSnapshot, PR_REF_PREFIX, type OpenPrSnapshot } from './lib/open-pr-snapshot.ts';
 import { recheckStack, snapshotParentFiles } from './lib/stack-lifecycle.ts';
 import { childBranchFor } from './lib/stack-merge.ts';
-import { mergeTreeVerdict } from './lib/stack-overlap.ts';
+import { verifiedPrMergeTree } from './lib/stack-overlap.ts';
 import { pickStackParent, type StackCandidate } from './lib/stack-parent.ts';
 
 // CLI for queue-dag.md Step 3b and Step 0.4. Both modes read the same bounded open-PR snapshot
@@ -41,13 +41,14 @@ const recheck = async (pr: number): Promise<number> => {
   const decision = recheckStack(pr, snapshot, {
     isOwned: (branch) => owned.has(branch),
     conflicts: (me, other) =>
-      mergeTreeVerdict(
+      verifiedPrMergeTree(
         (args) => {
           const r = Bun.spawnSync(['git', ...args], { cwd: repoRoot });
           return { code: r.exitCode ?? 1, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
         },
-        `${PR_REF_PREFIX}${me.number}`,
-        `${PR_REF_PREFIX}${other.number}`,
+        PR_REF_PREFIX,
+        me,
+        other,
       ),
   });
   console.log(JSON.stringify(decision));
