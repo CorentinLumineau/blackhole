@@ -160,6 +160,10 @@ export const verifyChildFileCount = (expected: number, observed: number): Verdic
         reason: `changed-file count is ${observed}, expected ${expected} — the child is still claiming the parent's files`,
       };
 
+/** Verifies the commit that was published, so the evidence cannot drift onto a stale local branch. */
+export const verifyPublishedReplay = (repoRoot: string, target: string, sha: string, expectedFiles: number): Verdict =>
+  verifyChildFileCount(expectedFiles, changedFileCount(repoRoot, target, sha, true));
+
 export type MergeSettings = {
   allow_squash_merge?: boolean;
   allow_merge_commit?: boolean;
@@ -335,8 +339,10 @@ const applyOneRepair = (
   }
   if (result.status === 'up-to-date') return true;
 
-  fastForwardLocal(repoRoot, result.sha);
-  const counts = verifyChildFileCount(expectedFiles, changedFileCount(repoRoot, target, child.branch, true));
+  if (!fastForwardLocal(repoRoot, result.sha)) {
+    console.error(`#${child.issue}: pushed ${result.sha} but the local fast-forward failed (dirty tree, wrong HEAD or diverged local branch) — local ${child.branch} is stale`);
+  }
+  const counts = verifyPublishedReplay(repoRoot, target, result.sha, expectedFiles);
   console.log(`#${child.issue}: repair — ${counts.reason}; pushed ${result.sha} as a fast-forward`);
   console.log(`#${child.issue}: review_carry: ${result.reviewCarry}`);
   return counts.ok;
