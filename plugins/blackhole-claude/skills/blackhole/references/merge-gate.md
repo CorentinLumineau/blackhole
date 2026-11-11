@@ -369,6 +369,8 @@ parallel counter (`V-INT-02`/`V-DRY-01`):
 
 ## 7. Stacked-child tip capture and post-merge repair (issue #794)
 
+Stacking is the only behavior (`queue-dag.md` Step 3b); this section owns how a stack is repaired, not whether one exists.
+
 A squash-merging repo collapses a parent PR into one commit, so a child PR stacked on that parent
 shares no history with the base ref the moment the parent lands: the child goes `mergeable: false`
 while its own diff silently absorbs the parent's files, and a reviewer opening it sees work that is

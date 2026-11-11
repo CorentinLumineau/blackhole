@@ -1,6 +1,6 @@
 name: PR lint
 # Mechanical PR checks that used to be review prose: issue link (V-GIT-01),
-# main base or a live stack (V-STACK-01). Script: scripts/pr-lint.sh.
+# main base or a live stack (V-STACK-01), no unstacked overlap (V-STACK-02). Script: scripts/pr-lint.sh.
 
 on:
   pull_request:
@@ -22,6 +22,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
       - name: Lint PR metadata
         env:
           GH_TOKEN: ${{ github.token }}

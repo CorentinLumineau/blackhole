@@ -75,10 +75,16 @@ step 0.5. Each point runs `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-p
 | `hold` | A fork parent (`unstackable-parent:fork:#<N>`): hold this PR's merge until #<N> merges or closes |
 | `unknown` (exit 3) | The snapshot or a merge-tree check could not run. STOP this issue's merge for the turn and retry next turn; unknown never certifies "no overlap" |
 
+Gate (V-STACK-02): once the decision above is applied, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-check.ts --pr <P>
+--repo-slug <owner/repo> --repo-root <abs>` at the same four points. Exit 1 means the PR still
+overlaps an open PR it is not stacked on: do not request review and STOP this issue's merge for the
+turn. Exit 3 means the check could not run, which is never read as clear. Over the `mcp` channel
+pass the snapshot with `--open-prs <json>`. `--fix` prints the restack command.
+
 A parent idle for 72 hours, or in `needs-chef` or `blocked`, can be left through an owner-approved
 unstack: `AskQuestion` (`clarify-gates.md` § Gate Content Contract, R-003) with the choice to wait
 or to run `stack-repair.ts repair --apply --child-issue <N> --parent-state closed-unmerged`. It is a
-per-instance decision, never a config key. **Runs for `merge_mode: leave-open` too.** Other docs
+per-instance decision, never a config key: stacking is the only behavior (`queue-dag.md` Step 3b). **Runs for `merge_mode: leave-open` too.** Other docs
 cite this step by pointer and do not restate it.
 
 **Step 0.5 — Rebase & Conflict Preflight** (issue #450): after step 0 passes and before step 1,
