@@ -85,7 +85,12 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 4. **Validate** — `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/state-write-guard.ts` on both JSON files (never `jq empty`
    alone — `blackhole-state.md` § Write protocol)
 5. **Forge sync** — if `auto_sync` true (default): `gh auth status` then [forge-sync.md](references/forge-sync.md). Sandbox: `full_network`.
-6. **Dashboard** — open issues/PRs, new since sync, in-flight, LEDGER OPEN, ready set
+6. **Dashboard** — print the text dashboard: open issues/PRs, new since sync, in-flight, LEDGER
+   OPEN, ready set
+7. **Status page** — in `run` mode, publish or refresh the campaign's status page before the
+   first spawn ([status-page.md](references/status-page.md) § Refresh procedure), unless
+   `status_page.enabled` is `false`. Printing step 6 does not do this: the page is a separate
+   published view.
 
 ---
 
@@ -118,6 +123,9 @@ require `gh issue create` + `deferred_to_issue`.
 2. Per issue: handle → plan → **user gate if needed** → implement → review → loop
 3. Spawn workers via the designated agent files (`planner`, `implementer`, `reviewer`), `run_in_background: true`, one turn per batch
 4. End turn; triage completions → ledger → next phase
+5. Before handing the turn back, refresh the status page
+   ([status-page.md](references/status-page.md) § When to refresh), whether or not workers are
+   still in flight
 
 **Do not spawn implement** while `status: blocked` with
 `awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, or

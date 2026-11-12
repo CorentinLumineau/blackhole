@@ -52,6 +52,10 @@ applies at all on this run. `coordinator.md` § Bootstrap preflight is the SSOT 
 step-by-step form. This document deliberately does not restate them: one gate definition, read by
 whichever pattern is active (V-DRY-01).
 
+The same ownership covers the campaign-start status page: once the gate is answered, and before
+the first fan-out, the main chat publishes or refreshes it (`status-page.md` § Refresh
+procedure), unless `status_page.enabled` is `false`.
+
 ## Two-tier gate topology
 
 1. **Batched gate-first per wave.** Before fan-out, the foreground orchestrator collects every
@@ -95,6 +99,11 @@ write `queue.json` + `findings-ledger.json` + `campaign-checkpoint.md` → `bun 
 update the Data dashboard (`bun run status --html` on the other harnesses; `status-page.md` § Refresh procedure), unless `status_page.enabled` is
 `false`. A turn that skips it leaves the page stale; `bun run status` prints a loud line when the
 state stopped moving for more than `STALE_AFTER_HOURS` or the page was never published.
+
+"Every turn" includes a turn that hands back to the owner with workers still in flight. Pattern C
+runs rolling waves, so a busy campaign may never reach a moment with no worker running; the
+checkpoint's turn-id increment waits for that moment (`orchestrator-runtime.md` § Turn-end gate),
+the page refresh does not.
 
 ## Resume path
 

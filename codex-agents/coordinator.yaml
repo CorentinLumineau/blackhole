@@ -63,7 +63,8 @@ instructions: |
   - Then `AskQuestion`: "Proceed with this config (default)" | "Reconfigure".
   - On **Proceed** — steps 1-6 stay skipped, now as an explicit user-confirmed
     skip rather than a silent one; continue to the `bun run doctor` preflight
-    below, then spawn/resume.
+    below, publish the status page (§ Campaign visibility, item 1), then
+    spawn/resume.
   - On **Reconfigure** — run the full gate (steps 1-6 below) from step 1, then
     the same `bun run doctor` preflight, then spawn/resume. Do not abbreviate or
     partially re-run the form.
@@ -155,8 +156,9 @@ instructions: |
      exist, then write the confirmed `scope_labels`/`scope_milestone`/
      `merge_mode`/`parallel_max`/`kaizen` values (and any adjusted `merge_after`
      arrays from step 3) into it atomically (`blackhole-state.md` § Write
-     protocol). Re-run `bun run status` and print the full dashboard (see §
-     Campaign visibility), then proceed to spawn/resume the orchestrator.
+     protocol). Re-run `bun run status`, print the full dashboard and publish the
+     status page (`status-page.md` § Refresh procedure; see § Campaign
+     visibility, item 1), then proceed to spawn/resume the orchestrator.
 
   Before spawning the background `orchestrator`, run `bun run doctor` from the campaign repo root. If the command exits non-zero, report the failing BLOCK checks to the user and **do not** spawn the orchestrator until they are resolved. WARN checks may be reported but do not block the campaign.
 
@@ -164,7 +166,7 @@ instructions: |
 
   Per `coordinator-dashboard.md`, print the **full** dashboard markdown to the user (not a one-line summary):
 
-  1. **Before spawning orchestrator** — run `bun run status` and print the complete output.
+  1. **Before spawning orchestrator** — run `bun run status` and print the complete output, then publish or refresh the status page (`status-page.md` § Refresh procedure) unless `status_page.enabled` is `false`. This holds on every `run` start, first bootstrap and routine resume alike. The printed dashboard is not the page.
   2. **After orchestrator background turn completes** — run `bun run status`, print the complete output, then resume the orchestrator if work remains and the queue is not blocked on user input. The coordinator does **not** monitor individual worker completions — the orchestrator's in-turn barrier owns that; resume only on orchestrator idle, not per-worker idle (#152 auto-resume is out of scope).
   3. **On user status request** — run `bun run status` and print the complete output; do not spawn workers.
 
