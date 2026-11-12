@@ -1,6 +1,6 @@
 import { SECTION_CAP } from './dashboard.ts';
 import { classPreview } from './blocked-classes.ts';
-import { inProgressItems, ownerDetail, READY_TO_MERGE_DETAIL } from './report.ts';
+import { inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
 import type { BlockedClass, ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind } from './types.ts';
 
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -98,7 +98,7 @@ function readyLi(r: StatusReport, item: ReadyToMergeItem): string {
     '<li>',
     `<span class="num">${escapeHtml(ref)}</span>${links}`,
     `<div>${escapeHtml(item.title)} <span class="meta">#${escapeHtml(item.issue)}</span></div>`,
-    `<div class="next">${escapeHtml(READY_TO_MERGE_DETAIL)}</div>`,
+    `<div class="next">${escapeHtml(readyToMergeDetail(item))}</div>`,
     '</li>',
   ].join('');
 }

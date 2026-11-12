@@ -166,8 +166,12 @@ export type BlockedClass = {
  * computed from the same helpers. Documented in `src/references/coordinator-dashboard.md`
  * § Status page. Bump `schema_version` on any breaking field change.
  */
-/** A PR the campaign has delivered at LGTM and left open for the owner to merge. */
-export type ReadyToMergeItem = StatusItem & { pr_url: string };
+/**
+ * A PR that reached LGTM and waits on the owner to merge: delivered under `leave-open`, or held by
+ * the low-risk merge gate (`needs-chef`). `held_for` is set only for a held PR and carries the
+ * categories its note names (`''` when the note names none).
+ */
+export type ReadyToMergeItem = StatusItem & { pr_url: string; held_for?: string };
 
 /** A loud line `bun run status` prints when the campaign's state stopped moving or its page was never published. */
 export type StatusAlert = { kind: 'stale_state' | 'page_never_published'; message: string };
