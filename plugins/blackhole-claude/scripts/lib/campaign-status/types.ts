@@ -24,6 +24,8 @@ export type QueueIssue = {
   status?: string;
   pr?: number | null;
   notes?: string | null;
+  /** Forge labels mirrored by the forge sync; `in-progress:*` / `agent:*` name the lane that owns the issue. */
+  labels?: string[];
   depends_on?: number[];
   size?: string;
   review_iteration?: number;
@@ -93,9 +95,10 @@ export type ConfigSummaryInput = {
   worker_model_policy?: string;
   auto_sync?: boolean;
   adaptive_routing?: boolean;
+  status_page?: { enabled?: boolean };
 };
 
-export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html';
+export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html' | 'data';
 
 export type StatusArgs = {
   mode: StatusMode;
@@ -103,6 +106,8 @@ export type StatusArgs = {
   skipGh: boolean;
   /** `--html` only: absolute output path; null ⇒ `<campaignDir>/.tmp/status.html`. */
   outPath: string | null;
+  /** `--data` only: absolute directory the row files are written to; null otherwise. */
+  dataDir: string | null;
 };
 
 /** Queue and ledger counts — the single computation both the text dashboard and the report read. */
@@ -129,6 +134,8 @@ export type StatusItem = {
   notes: string | null;
   /** Plain-language next step derived from phase/status/PR. */
   next_step: string;
+  /** Forge link to the PR; set on `waiting_on_owner` items that have one and whose URL can be built. */
+  pr_url?: string | null;
 };
 
 /** Blocked issues sharing one wait reason: an `awaiting-*` gate token, or `dependency` / `overlap` / `merge-conflict` / `other`. */
@@ -140,6 +147,20 @@ export type BlockedGroup = {
   issues: StatusItem[];
 };
 
+/** Why a non-owner blocked issue waits, derived from its labels, note and `depends_on`; no new state. */
+export type BlockedClassKind = 'tracking_issue' | 'dependency' | 'merge_conflict' | 'overlap' | 'sequenced_phase' | 'other' | 'another_lane';
+
+/** Blocked non-owner issues sharing one reason class. Every such issue is in exactly one class. */
+export type BlockedClass = {
+  class: BlockedClassKind;
+  /** Plain-language name for the page. */
+  label: string;
+  count: number;
+  /** True when an item's note addresses the owner (`owner:` / `needs-owner`) outside another lane; the page renders it open. */
+  attention: boolean;
+  issues: StatusItem[];
+};
+
 /**
  * `bun run status --json` output, and the input of `--html`. Same data the text dashboard shows,
  * computed from the same helpers. Documented in `src/references/coordinator-dashboard.md`
@@ -147,6 +168,26 @@ export type BlockedGroup = {
  */
 /** A PR the campaign has delivered at LGTM and left open for the owner to merge. */
 export type ReadyToMergeItem = StatusItem & { pr_url: string };
+
+/** A loud line `bun run status` prints when the campaign's state stopped moving or its page was never published. */
+export type StatusAlert = { kind: 'stale_state' | 'page_never_published'; message: string };
+
+/** What the campaign is doing right now. `stale` replaces any other kind when the state is old. */
+export type StatusStateKind = 'running' | 'waiting_on_you' | 'idle' | 'done' | 'stale';
+
+export type StatusState = {
+  kind: StatusStateKind;
+  /** The state the campaign would show if it were fresh; equals `kind` unless `kind` is `stale`. */
+  underlying: Exclude<StatusStateKind, 'stale'>;
+  /** Short reason, e.g. `2 workers active`. */
+  reason: string;
+  /** Newest of `checkpoint.refreshed_at` / `campaign.queue_refreshed_at`; null when neither parses. */
+  last_activity_at: string | null;
+  /** Age of `last_activity_at` at `generated_at`, in hours; null when unknown. */
+  stale_hours: number | null;
+  /** What the owner has to do, or the "running on its own" line. */
+  next_action: string;
+};
 
 export type StatusReport = {
   schema_version: 1;
@@ -157,6 +198,10 @@ export type StatusReport = {
     started_at: string | null;
     queue_refreshed_at: string | null;
   };
+  /** The banner: running / waiting on you / idle / done, or stale when the state is old. Additive. */
+  state: StatusState;
+  /** Stale-state and never-published lines, empty when all is well. Additive. */
+  alerts: StatusAlert[];
   checkpoint: {
     turn: number | null;
     refreshed_at: string | null;
@@ -180,7 +225,11 @@ export type StatusReport = {
   /** In-flight issues in the review phase. */
   in_review: StatusItem[];
   blocked: BlockedGroup[];
+  /** The non-owner part of `blocked`, regrouped by reason class. Additive: `blocked` is unchanged. */
+  blocked_classes: BlockedClass[];
   ready: StatusItem[];
+  /** Newest merged/closed items, highest PR then issue number first (the queue carries no merge time), at most 5. */
+  recently_done: StatusItem[];
   /** Open findings, BLOCK first then most recent — the dashboard's `Ledger open` order, uncapped. */
   ledger_open: Array<{
     id: string | null;

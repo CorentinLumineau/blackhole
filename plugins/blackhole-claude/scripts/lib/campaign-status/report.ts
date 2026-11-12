@@ -1,8 +1,11 @@
 import { readScope } from '../../forge-scope.ts';
 import { prWebUrl } from '../forge-detection.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
+import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
 import { computeStatusCounts, DONE_STATUSES, groupIssuesByPhase } from './queue.ts';
 import type {
+  BlockedClass,
+  BlockedClassKind,
   BlockedGroup,
   CheckpointMeta,
   ConfigSummaryInput,
@@ -14,6 +17,7 @@ import type {
   ReadyToMergeItem,
   StatusItem,
   StatusReport,
+  StatusState,
 } from './types.ts';
 
 export type StatusReportInput = {
@@ -28,6 +32,8 @@ export type StatusReportInput = {
   generatedAt: string;
   /** Forge host from the origin remote; only Gitea needs it. Absent ⇒ GitHub links. */
   forgeWeb?: { forge: string; host: string | null };
+  /** Whether `.blackhole/status-artifact.json` exists, and whether this host publishes one. Absent ⇒ no never-published alert. */
+  publish?: { artifactPublished: boolean; publishExpected: boolean };
 };
 
 // Owner-clearable `awaiting-*` gates from queue-dag.md § Field rules (`notes`).
@@ -44,7 +50,7 @@ type WaitReason = { waitsOn: string; owner: boolean };
 
 function waitReason(issue: QueueIssue, issues: Record<string, QueueIssue>): WaitReason {
   const notes = (issue.notes ?? '').trim();
-  const token = notes.split(/\s/)[0] ?? '';
+  const token = (notes.split(/\s/)[0] ?? '').replace(/:$/, '');
   if (token.startsWith('awaiting-')) return { waitsOn: token, owner: true };
   if (notes.startsWith(ESCALATED_PREFIX)) return { waitsOn: 'blocked-escalated', owner: true };
   if (notes.startsWith('merge-conflict-semantic')) return { waitsOn: 'merge-conflict', owner: false };
@@ -54,6 +60,61 @@ function waitReason(issue: QueueIssue, issues: Record<string, QueueIssue>): Wait
     return dep != null && !DONE_STATUSES.includes(dep.status ?? '');
   });
   return { waitsOn: unmet ? 'dependency' : 'other', owner: false };
+}
+
+// The campaign's own lanes: the contributor contract gives Claude and Blackhole `claude/*` / `blackhole/*`.
+// No config key declares them, so they are fixed here. Any other `in-progress:*` / `agent:*` lane is foreign.
+const OWN_LANES = new Set(['claude', 'blackhole']);
+const LANE_LABEL = /^(?:in-progress|agent):(.+)$/;
+
+function inForeignLane(issue: QueueIssue): boolean {
+  return (issue.labels ?? []).some((label) => {
+    const lane = LANE_LABEL.exec(label)?.[1];
+    return lane != null && !OWN_LANES.has(lane);
+  });
+}
+
+const ADDRESSES_OWNER = /^\s*owner:|needs-owner/i;
+
+// Display order: the campaign's own waits first, another lane's last (not the campaign's work).
+const BLOCKED_CLASS_LABELS: [BlockedClassKind, string][] = [
+  ['tracking_issue', 'Tracking issue'],
+  ['dependency', 'Dependency / upstream'],
+  ['merge_conflict', 'Merge conflict'],
+  ['overlap', 'Overlapping issue'],
+  ['sequenced_phase', 'Sequenced phase'],
+  ['other', 'Other'],
+  ['another_lane', 'Another lane'],
+];
+
+/** The one classifier for a blocked non-owner issue. First match wins: lane, tracking, sequence, dependency. */
+export function classifyBlocked(issue: QueueIssue, issues: Record<string, QueueIssue>): BlockedClassKind {
+  if (inForeignLane(issue)) return 'another_lane';
+  const notes = issue.notes ?? '';
+  if (/\btracking issue\b/i.test(notes)) return 'tracking_issue';
+  if (/\bin sequence\b/i.test(notes)) return 'sequenced_phase';
+  const waits = waitReason(issue, issues).waitsOn;
+  if (waits === 'merge-conflict') return 'merge_conflict';
+  if (waits === 'overlap') return 'overlap';
+  if (waits === 'dependency' || /^(?:dependency|upstream)\b|\bupstream\b|\bdepends on\b/i.test(notes.trim())) {
+    return 'dependency';
+  }
+  return 'other';
+}
+
+function classifyBlockedRows(blocked: IssueRow[], issues: Record<string, QueueIssue>): BlockedClass[] {
+  const byKind = new Map<BlockedClassKind, StatusItem[]>();
+  for (const row of blocked) {
+    const reason = waitReason(row.issue, issues);
+    if (reason.owner) continue;
+    const kind = classifyBlocked(row.issue, issues);
+    byKind.set(kind, [...(byKind.get(kind) ?? []), toItem(row, reason)]);
+  }
+  return BLOCKED_CLASS_LABELS.filter(([kind]) => byKind.has(kind)).map(([kind, label]) => {
+    const items = byKind.get(kind) ?? [];
+    const attention = kind !== 'another_lane' && items.some((i) => ADDRESSES_OWNER.test(i.notes ?? ''));
+    return { class: kind, label, count: items.length, attention, issues: items };
+  });
 }
 
 function blockedStep(issue: QueueIssue, reason: WaitReason): string {
@@ -131,21 +192,129 @@ function readyToMerge(
   return items.sort((a, b) => a.issue - b.issue);
 }
 
+// A checkpoint writes an empty section as a bare marker; that is no worker.
+const EMPTY_MARKER = /^(none|\(none\)|-|n\/a)$/i;
+
+// The one place a checkpoint's `## In-flight workers` lines become worker names.
+function workerLines(body: string | undefined): string[] {
+  return sectionLines(body, 'In-flight workers')
+    .map((l) => l.replace(/^[-*]\s+/, '').trim())
+    .filter((l) => l !== '' && !EMPTY_MARKER.test(l));
+}
+
+/** Issues named on a reason class's one visible line; the full list is its items. */
+export const CLASS_PREVIEW = 3;
+
+/** The line under a PR delivered at LGTM: what the owner can rely on before merging. */
+export const READY_TO_MERGE_DETAIL = 'LGTM · CI green · no conflict — review and merge';
+
+/** In-flight and in-review issues, minus PRs already delivered at LGTM (those wait on the owner). */
+export function inProgressItems(r: Pick<StatusReport, 'in_flight' | 'in_review' | 'ready_to_merge'>): StatusItem[] {
+  const delivered = new Set(r.ready_to_merge.map((i) => i.issue));
+  return [...r.in_flight, ...r.in_review].filter((i) => !delivered.has(i.issue));
+}
+
+/** What the owner has to do for an owner item: its note without the gate token, else the generic next step. */
+export function ownerDetail(item: StatusItem): string {
+  const note = (item.notes ?? '').replace(/^\s*(awaiting-[\w-]+|blocked-escalated):?\s*/, '').trim();
+  return note || item.next_step;
+}
+
 const sectionLines = (body: string | undefined, heading: string): string[] =>
   (checkpointSection(body, heading) ?? '')
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean);
 
+const RECENTLY_DONE_CAP = 5;
+const SELF_DRIVING = 'Nothing — the campaign is running on its own.';
+
+type StateInput = {
+  generatedAt: string;
+  checkpointRefreshedAt: string | null;
+  queueRefreshedAt: string | null;
+  activeWorkers: string[];
+  working: StatusItem[];
+  waitingOnOwner: StatusItem[];
+  readyToMerge: ReadyToMergeItem[];
+  readyCount: number;
+  activeCount: number;
+};
+
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+function computeState(i: StateInput): StatusState {
+  const lastActivity = newestStateWrite(i.checkpointRefreshedAt, i.queueRefreshedAt);
+  const ageHours = stateAgeHours(lastActivity, i.generatedAt);
+  const nextAction = i.waitingOnOwner[0]
+    ? `${ownerDetail(i.waitingOnOwner[0])} (#${i.waitingOnOwner[0].issue})`
+    : i.readyToMerge[0]
+      ? `Review and merge PR #${i.readyToMerge[0].pr} (#${i.readyToMerge[0].issue})`
+      : SELF_DRIVING;
+
+  let underlying: StatusState['underlying'];
+  let reason: string;
+  if (i.activeCount === 0) {
+    underlying = 'done';
+    reason = 'no active issue';
+  } else if (i.activeWorkers.length > 0) {
+    underlying = 'running';
+    reason = `${plural(i.activeWorkers.length, 'worker', 'workers')} active`;
+  } else if (i.working.length > 0) {
+    underlying = 'running';
+    reason = `${plural(i.working.length, 'issue', 'issues')} in flight`;
+  } else if (i.waitingOnOwner.length > 0 || i.readyToMerge.length > 0) {
+    underlying = 'waiting_on_you';
+    reason = `${i.waitingOnOwner.length + i.readyToMerge.length} waiting on you`;
+  } else {
+    underlying = 'idle';
+    reason = i.readyCount > 0 ? 'nothing in flight, work is ready to start' : 'nothing runnable';
+  }
+
+  const stale = isStateStale(ageHours);
+  return {
+    kind: stale ? 'stale' : underlying,
+    underlying,
+    reason: stale
+      ? ageHours === null
+        ? 'state has no write time, so what follows may be out of date'
+        : `state last written ${ageHours}h ago, so what follows may be out of date`
+      : reason,
+    last_activity_at: lastActivity,
+    stale_hours: ageHours,
+    next_action: nextAction,
+  };
+}
+
+// Newest first by PR number, then issue number: queue entries carry no merge timestamp.
+function recentlyDone(done: IssueRow[]): StatusItem[] {
+  return [...done]
+    .sort((a, b) => (b.issue.pr ?? 0) - (a.issue.pr ?? 0) || b.num - a.num)
+    .slice(0, RECENTLY_DONE_CAP)
+    .map((r) => toItem(r));
+}
+
 /** Builds the `bun run status --json` report from already-loaded state. Pure: no I/O. */
 export function buildStatusReport(input: StatusReportInput): StatusReport {
   const { config, queue, ledger, checkpoint, checkpointBody, forge } = input;
   const issues = queue.issues ?? {};
   const findings = ledger.findings ?? [];
-  const { inFlight, blocked, ready } = groupIssuesByPhase(issues);
+  const { inFlight, blocked, ready, done } = groupIssuesByPhase(issues);
   const counts = computeStatusCounts(issues, findings);
   const scope = readScope(config);
   const blockedGroups = groupBlocked(blocked, issues);
+  const forgeKind = input.forgeWeb?.forge ?? config.forge ?? 'github';
+  const forgeHost = input.forgeWeb?.host ?? null;
+  const readyItems = readyToMerge(issues, config.repo, forgeKind, forgeHost);
+  const deliveredIssues = new Set(readyItems.map((r) => r.issue));
+  const working = inFlight.filter((r) => !deliveredIssues.has(r.num)).map((r) => toItem(r));
+  const waitingOnOwner = blockedGroups
+    .filter((g) => g.owner)
+    .flatMap((g) => g.issues)
+    .map((item) => ({
+      ...item,
+      pr_url: item.pr != null ? prWebUrl(forgeKind, forgeHost, config.repo ?? '', item.pr) || null : null,
+    }));
 
   return {
     schema_version: 1,
@@ -156,12 +325,31 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
       started_at: queue.campaign_started_at ?? null,
       queue_refreshed_at: queue.refreshed_at ?? null,
     },
+    state: computeState({
+      generatedAt: input.generatedAt,
+      checkpointRefreshedAt: checkpoint.refreshed_at ?? null,
+      queueRefreshedAt: queue.refreshed_at ?? null,
+      activeWorkers: workerLines(checkpointBody),
+      working,
+      waitingOnOwner,
+      readyToMerge: readyItems,
+      readyCount: ready.length,
+      activeCount: counts.queue.active,
+    }),
+    alerts: computeStatusAlerts({
+      checkpointRefreshedAt: checkpoint.refreshed_at,
+      queueRefreshedAt: queue.refreshed_at,
+      nowIso: input.generatedAt,
+      statusPageEnabled: statusPageEnabled(config),
+      artifactPublished: input.publish?.artifactPublished ?? false,
+      publishExpected: input.publish?.publishExpected ?? false,
+    }),
     checkpoint: {
       turn: checkpoint.orchestrator_turn_id ?? null,
       refreshed_at: checkpoint.refreshed_at ?? null,
       last_completed_phase: checkpoint.last_completed_phase ?? null,
       notes: sectionLines(checkpointBody, 'Notes'),
-      active_workers: sectionLines(checkpointBody, 'In-flight workers'),
+      active_workers: workerLines(checkpointBody),
     },
     forge,
     counts,
@@ -170,12 +358,14 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
       blockedCount: counts.queue.blocked,
       inFlightCount: counts.queue.in_flight,
     }),
-    ready_to_merge: readyToMerge(issues, config.repo, input.forgeWeb?.forge ?? config.forge ?? 'github', input.forgeWeb?.host ?? null),
-    waiting_on_owner: blockedGroups.filter((g) => g.owner).flatMap((g) => g.issues),
+    ready_to_merge: readyItems,
+    waiting_on_owner: waitingOnOwner,
     in_flight: inFlight.filter((r) => r.issue.phase !== 'review').map((r) => toItem(r)),
     in_review: inFlight.filter((r) => r.issue.phase === 'review').map((r) => toItem(r)),
     blocked: blockedGroups,
+    blocked_classes: classifyBlockedRows(blocked, issues),
     ready: ready.map((r) => toItem(r)),
+    recently_done: recentlyDone(done),
     ledger_open: sortOpenFindings(findings).map((f) => ({
       id: f.id ?? null,
       vcode: f.vcode ?? null,

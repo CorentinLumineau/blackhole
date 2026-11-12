@@ -18,3 +18,6 @@ node_modules/
 
 # Codex CLI build outputs (committed for zero-build marketplace install — #31)
 # .codex-plugin/, codex-skills/, codex-agents/, codex-marketplace.json are tracked
+
+# Local scratch (never commit)
+.tmp/

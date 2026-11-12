@@ -32,10 +32,19 @@ numbers never diverge from `bun run status`:
 ```bash
 bun run status --json                    # StatusReport JSON on stdout
 bun run status --html [--out <path>]     # self-contained page, default .blackhole/.tmp/status.html
+bun run status --data <dir>              # row files <dir>/<id>.json for the Claude Data dashboard
 ```
 
-Both accept `--campaign-dir` and `--no-gh`. `--json` and `--html` are mutually exclusive, and
+All accept `--campaign-dir` and `--no-gh`. `--json`, `--html` and `--data` are mutually exclusive, and
 `--out` requires `--html`.
+
+`--data <dir>` writes one JSON array of flat rows per dataset (`summary` one row; `in_progress`,
+`waiting_on_you`, `waiting_else` one row per reason class with `waiting_else_items` holding the
+issues keyed by `class`, `up_next`, `recently_done`, `notes`), all derived from the `StatusReport`
+(`scripts/lib/campaign-status/data.ts`). `summary` carries `stale_after_hours` (the one
+`STALE_AFTER_HOURS`) beside `last_activity_at`, so the dashboard page
+(`templates/status-dashboard/index.html`) computes STALE when it is opened. Publishing it is
+`status-page.md`'s job.
 
 `--json` emits the `StatusReport` type (`scripts/lib/campaign-status/types.ts`, the one
 definition of the shape; bump `schema_version` on a breaking change):
@@ -44,22 +53,32 @@ definition of the shape; bump `schema_version` on a breaking change):
 |-------|---------|
 | `schema_version`, `generated_at` | `1`, ISO time of the render |
 | `campaign` | `repo`, `scope` (`milestone`, `labels`), `started_at`, `queue_refreshed_at` |
-| `checkpoint` | `turn`, `refreshed_at`, `last_completed_phase`, `notes` (`## Notes` lines), `active_workers` (`## In-flight workers` lines) |
+| `state` | The banner (additive): `kind` (`running` \| `waiting_on_you` \| `idle` \| `done` \| `stale`), `underlying` (the kind without the stale override), `reason`, `last_activity_at`, `stale_hours`, `next_action`. `done` = no active issue; `running` = the checkpoint names a worker or an issue is in flight (a PR delivered at LGTM is not work in flight); `waiting_on_you` = nothing runs and the owner has an item or a PR to merge; `idle` = otherwise. `kind` is `stale` when the newest of `checkpoint.refreshed_at` / `campaign.queue_refreshed_at` is older than `STALE_AFTER_HOURS` (2 h, `scripts/lib/campaign-status/staleness.ts`) or neither parses, and it wins over every other kind. `next_action` is the first owner item's note (gate token removed; its next step when the note is empty), else "Review and merge PR #N", else "Nothing — the campaign is running on its own." |
+| `alerts` | Loud lines (additive), each `{kind, message}`: `stale_state` when the newest state write is older than `STALE_AFTER_HOURS` (the banner's rule, one helper), `page_never_published` when `status_page.enabled` is not `false`, the host publishes an artifact (`run-context.json` `context.host.value` is `claude`) and `.blackhole/status-artifact.json` is absent. Empty when all is well |
+| `checkpoint` | `turn`, `refreshed_at`, `last_completed_phase`, `notes` (`## Notes` lines), `active_workers` (`## In-flight workers` lines with the list bullet stripped; an empty marker such as `none` is dropped, so it is never counted as a worker) |
 | `forge` | Open issue/PR counts and `ok`/`error`, as on the dashboard's **Forge** line |
 | `counts` | `queue` (`active`, `done`, `in_flight`, `blocked`, `ready`, `by_status`) and `ledger` (`open`, `block`, `warn`, `note`, `deferred`) — the dashboard's **Queue** and **Ledger** lines |
 | `queue_health` | `healthy` \| `stalled` \| `degraded` |
 | `ready_to_merge` | Open PRs delivered at LGTM, each a status item plus `pr_url` (additive; `schema_version` stays `1`). An item is ready when its queue entry is `in-flight`, has a `pr`, and its `notes` start with `delivered-at-LGTM` — the `leave-open` marker `phase-loop.md` § Merge protocol writes only after LGTM, no conflict and CI green. Read offline from `queue.json`, no forge call. `pr_url` is `https://github.com/<repo>/pull/<n>` (GitHub) or `https://<host>/<repo>/pulls/<n>` (Gitea, host from the origin remote); an item whose URL cannot be built (GitLab, unknown Gitea host, non-`owner/name` repo) is left out |
-| `waiting_on_owner` | Blocked items only the owner can clear (`awaiting-*`, `blocked-escalated:`) |
+| `waiting_on_owner` | Blocked items only the owner can clear (`awaiting-*`, `blocked-escalated:`); an item with a PR also carries `pr_url` |
 | `in_flight`, `in_review` | In-flight items split by `phase: review`, each `{issue, title, phase, status, pr, notes, next_step}` |
 | `blocked` | Groups `{waits_on, owner, count, issues}`; `waits_on` is the `awaiting-*` token, `blocked-escalated`, `dependency`, `overlap`, `merge-conflict` or `other` |
 | `ready` | The ready set |
+| `blocked_classes` | The non-owner part of `blocked` regrouped by reason class (`class`, `label`, `count`, `issues`), in display order: `tracking_issue`, `dependency`, `merge_conflict`, `overlap`, `sequenced_phase`, `other`, `another_lane`; each class also carries `attention` (true when a non-lane item's note starts `owner:` or says `needs-owner`; the page renders that class open). Every non-owner blocked issue is in exactly one class. Classified once by `classifyBlocked()` in `report.ts`, first match wins: a foreign-lane label (`in-progress:*` / `agent:*` whose lane is not `claude` or `blackhole`, the lanes the contributor contract gives the campaign; no config key declares them), then a note saying `tracking issue`, then `in sequence`, then a merge-conflict or overlap wait, then a dependency (unmet `depends_on`, or a note starting `dependency`/`upstream` or saying `depends on`), else `other`. Additive; `blocked` is unchanged |
+| `recently_done` | Newest merged/closed items, highest PR then issue number first (the queue holds no merge time), at most 5 |
 | `ledger_open` | Every open finding, BLOCK first then most recent (`id`, `vcode`, `severity`, `summary`, `issue_ref`) |
 | `host` | `pace` (the pace line or `null`) and `notes` (plugin-drift lines) |
+
+The text dashboard prints the same `alerts` lines above its output, and `--html` prints them on stderr (stdout stays the page path). `--html` leads with a state banner (turn, state, last activity relative and in UTC, the owner's
+next action), then **In progress**, **Waiting on you** (PRs ready to merge with their links, and
+owner gates), **Waiting on something else** (non-owner blocked items by reason class: one visible line per class with its count and first 3 issue numbers, the full list with each item's note in a folded native `<details>`),
+**Up next**, **Recently done**, and a native `<details>` holding host, checkpoint notes and open
+findings. A stale state is shown as `STALE` so a frozen page never looks live.
 
 Every string comes from campaign state, and issue titles are untrusted: `--html` escapes each
 value, inlines its CSS (theme tokens with a dark-mode block, readable at ~400px) and loads
 nothing from the network. Its only links are the `Open PR` / `Files changed` anchors of the
-**Ready to merge** panel (`target=_blank rel=noopener`, http(s) URLs only). Publishing it is `status-page.md`'s job.
+**Waiting on you** section (`target=_blank rel=noopener`, http(s) URLs only). Publishing it is `status-page.md`'s job.
 
 ## When to print (REQUIRED)
 
@@ -78,8 +97,8 @@ Skipped entirely when `status_page.enabled` is `false`. Procedure and per-harnes
 
 | Event | Who | Action |
 |-------|-----|--------|
-| Campaign start | `coordinator` or main-chat orchestrator | `bun run status --html` → publish (first publish saves `.blackhole/status-artifact.json`) |
-| Every checkpoint write | `orchestrator` | `bun run status --html` → redeploy the same artifact / refresh the `Blackhole status` canvas / rewrite the local file (`checkpoint-protocol.md` § Write order, step 5) |
+| Campaign start | `coordinator` or main-chat orchestrator | Claude Code: `bun run status --data` → create the Data dashboard once (saves `.blackhole/status-artifact.json`); elsewhere `bun run status --html` → publish |
+| Every checkpoint write | `orchestrator` | Claude Code: `bun run status --data` → upload the row files and update the datasets of the same dashboard; else `bun run status --html` → refresh the `Blackhole status` canvas / rewrite the local file (`checkpoint-protocol.md` § Write order, step 5) |
 | User asks `status` | Coordinator or orchestrator | Print the dashboard as above, then refresh the page |
 
 **Do not** collapse the dashboard to a one-line confirmation. Users rely on the main
