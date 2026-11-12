@@ -1,6 +1,6 @@
 import { SECTION_CAP } from './dashboard.ts';
 import { ownerDetail } from './report.ts';
-import type { ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind } from './types.ts';
+import type { BlockedClass, ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind } from './types.ts';
 
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -117,16 +117,25 @@ function ownerSection(r: StatusReport): string {
   return section('Waiting on you', body, rows.length);
 }
 
-function elseSection(r: StatusReport): string {
-  const groups = r.blocked.filter((g) => !g.owner);
-  const count = groups.reduce((n, g) => n + g.count, 0);
-  if (groups.length === 0) return section('Waiting on something else', empty('Nothing else is blocked.'), 0);
-  const rows = groups.map(
-    (g) =>
-      `<li><span class="wait">${escapeHtml(g.waits_on)}</span> <span class="count">${escapeHtml(g.count)}</span>` +
-      `<ul class="items">${g.issues.map((i) => itemLi(i, i.notes?.trim() || i.next_step)).join('')}</ul></li>`,
+const CLASS_PREVIEW = 3;
+
+// One visible line per class: the summary shows the count and the first few issue numbers; the full list sits
+// inside the native <details>, folded. No class is open by default, so another lane's items stay out of sight.
+function classLi(c: BlockedClass): string {
+  const first = c.issues.slice(0, CLASS_PREVIEW).map((i) => `#${escapeHtml(i.issue)}`).join(', ');
+  const rest = c.count - CLASS_PREVIEW;
+  const more = rest > 0 ? ` and ${escapeHtml(rest)} more` : '';
+  return (
+    `<li><details class="cls"><summary><span class="wait">${escapeHtml(c.label)}</span> ` +
+    `<span class="count">${escapeHtml(c.count)}</span> <span class="meta">${first}${more}</span></summary>` +
+    `<ul class="items">${c.issues.map((i) => itemLi(i, i.notes?.trim() || i.next_step)).join('')}</ul></details></li>`
   );
-  return section('Waiting on something else', `<ul class="groups">${rows.join('')}</ul>`, count);
+}
+
+function elseSection(r: StatusReport): string {
+  const count = r.blocked_classes.reduce((n, c) => n + c.count, 0);
+  if (count === 0) return section('Waiting on something else', empty('Nothing else is blocked.'), 0);
+  return section('Waiting on something else', `<ul class="groups">${r.blocked_classes.map(classLi).join('')}</ul>`, count);
 }
 
 const numberedLine = (i: StatusItem): string => `<li><span class="num">#${escapeHtml(i.issue)}</span> ${escapeHtml(i.title)}</li>`;

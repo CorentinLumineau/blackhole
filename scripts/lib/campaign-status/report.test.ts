@@ -438,3 +438,60 @@ describe('buildStatusReport — state banner and recently_done', () => {
     expect(r.waiting_on_owner[0].pr_url).toBe('https://github.com/acme/widgets/pull/9');
   });
 });
+
+describe('buildStatusReport — blocked reason classes', () => {
+  const cursor = { status: 'blocked', phase: 'handle', labels: ['in-progress:cursor', 'agent:cursor'] };
+  const queue: QueueJson = {
+    issues: {
+      '1': { ...cursor, title: 'cursor a', notes: 'cursor lane: not ours, skipped' },
+      '2': { title: 'cursor b', status: 'blocked', labels: ['agent:cursor'], notes: 'agent:cursor + needs-owner' },
+      '3': { title: 'ours', status: 'blocked', labels: ['agent:claude'], notes: 'taken: cursor draft PR is open' },
+      '4': { title: 'track', status: 'blocked', notes: 'ingested; tracking issue, stays open' },
+      '5': { title: 'seq', status: 'blocked', notes: 'owner: phases run in sequence. P13 returns to the owner' },
+      '6': { title: 'upstream', status: 'blocked', notes: 'upstream: waits for a release' },
+      '7': { title: 'dep', status: 'blocked', depends_on: [8] },
+      '8': { title: 'parent', status: 'in-flight', phase: 'implement' },
+      '9': { title: 'odd', status: 'blocked', notes: 'needs vendor answer' },
+      '10': { title: 'gate', status: 'blocked', notes: 'awaiting-plan-approval' },
+      '11': { title: 'foreign tracking', status: 'blocked', labels: ['in-progress:cursor'], notes: 'tracking issue, stays open' },
+    },
+  };
+  const report = buildStatusReport({
+    config: {},
+    queue,
+    ledger: { findings: [] },
+    checkpoint: {},
+    checkpointBody: '',
+    forge: FORGE_OK,
+    paceLine: null,
+    hostNotes: [],
+    generatedAt: GENERATED_AT,
+  });
+
+  test('every blocked non-owner item lands in exactly one class, in a fixed order', () => {
+    expect(report.blocked_classes.map((c) => [c.class, c.count, c.issues.map((i) => i.issue)])).toEqual([
+      ['tracking_issue', 1, [4]],
+      ['dependency', 2, [6, 7]],
+      ['sequenced_phase', 1, [5]],
+      ['other', 2, [3, 9]],
+      ['another_lane', 3, [1, 2, 11]],
+    ]);
+  });
+
+  test('counts sum to the blocked non-owner total and owner gates are excluded', () => {
+    const total = report.blocked.filter((g) => !g.owner).reduce((n, g) => n + g.count, 0);
+    expect(report.blocked_classes.reduce((n, c) => n + c.count, 0)).toBe(total);
+    expect(report.blocked_classes.flatMap((c) => c.issues.map((i) => i.issue))).not.toContain(10);
+  });
+
+  test('a foreign lane label beats the note, and the campaign own lanes (claude, blackhole) are not foreign', () => {
+    const lane = report.blocked_classes.find((c) => c.class === 'another_lane');
+    expect(lane?.issues.map((i) => i.issue)).toContain(11);
+    expect(lane?.issues.map((i) => i.issue)).not.toContain(3);
+  });
+
+  test('the existing blocked groups are unchanged and schema_version stays 1', () => {
+    expect(report.schema_version).toBe(1);
+    expect(report.blocked.map((g) => g.waits_on)).toContain('awaiting-plan-approval');
+  });
+});
