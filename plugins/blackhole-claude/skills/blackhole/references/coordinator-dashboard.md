@@ -45,6 +45,7 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `schema_version`, `generated_at` | `1`, ISO time of the render |
 | `campaign` | `repo`, `scope` (`milestone`, `labels`), `started_at`, `queue_refreshed_at` |
 | `state` | The banner (additive): `kind` (`running` \| `waiting_on_you` \| `idle` \| `done` \| `stale`), `underlying` (the kind without the stale override), `reason`, `last_activity_at`, `stale_hours`, `next_action`. `done` = no active issue; `running` = the checkpoint names a worker or an issue is in flight (a PR delivered at LGTM is not work in flight); `waiting_on_you` = nothing runs and the owner has an item or a PR to merge; `idle` = otherwise. `kind` is `stale` when the newest of `checkpoint.refreshed_at` / `campaign.queue_refreshed_at` is older than `STALE_AFTER_HOURS` (2 h, `scripts/lib/campaign-status/staleness.ts`) or neither parses, and it wins over every other kind. `next_action` is the first owner item's note (gate token removed; its next step when the note is empty), else "Review and merge PR #N", else "Nothing — the campaign is running on its own." |
+| `alerts` | Loud lines (additive), each `{kind, message}`: `stale_state` when the newest state write is older than `STALE_AFTER_HOURS` (the banner's rule, one helper), `page_never_published` when `status_page.enabled` is not `false` and `.blackhole/status-artifact.json` is absent. Empty when all is well |
 | `checkpoint` | `turn`, `refreshed_at`, `last_completed_phase`, `notes` (`## Notes` lines), `active_workers` (`## In-flight workers` lines with the list bullet stripped; an empty marker such as `none` is dropped, so it is never counted as a worker) |
 | `forge` | Open issue/PR counts and `ok`/`error`, as on the dashboard's **Forge** line |
 | `counts` | `queue` (`active`, `done`, `in_flight`, `blocked`, `ready`, `by_status`) and `ledger` (`open`, `block`, `warn`, `note`, `deferred`) — the dashboard's **Queue** and **Ledger** lines |
@@ -58,7 +59,7 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `ledger_open` | Every open finding, BLOCK first then most recent (`id`, `vcode`, `severity`, `summary`, `issue_ref`) |
 | `host` | `pace` (the pace line or `null`) and `notes` (plugin-drift lines) |
 
-`--html` leads with a state banner (turn, state, last activity relative and in UTC, the owner's
+The text dashboard prints the same `alerts` lines above its output, and `--html` prints them on stderr (stdout stays the page path). `--html` leads with a state banner (turn, state, last activity relative and in UTC, the owner's
 next action), then **In progress**, **Waiting on you** (PRs ready to merge with their links, and
 owner gates), **Waiting on something else** (non-owner blocked groups, each item with its note),
 **Up next**, **Recently done**, and a native `<details>` holding host, checkpoint notes and open

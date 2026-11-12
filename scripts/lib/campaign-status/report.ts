@@ -1,7 +1,7 @@
 import { readScope } from '../../forge-scope.ts';
 import { prWebUrl } from '../forge-detection.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
-import { isStateStale, newestStateWrite, stateAgeHours } from './staleness.ts';
+import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
 import { computeStatusCounts, DONE_STATUSES, groupIssuesByPhase } from './queue.ts';
 import type {
   BlockedGroup,
@@ -30,6 +30,8 @@ export type StatusReportInput = {
   generatedAt: string;
   /** Forge host from the origin remote; only Gitea needs it. Absent ⇒ GitHub links. */
   forgeWeb?: { forge: string; host: string | null };
+  /** Whether `.blackhole/status-artifact.json` exists. Absent ⇒ unknown, and no never-published alert. */
+  artifactPublished?: boolean;
 };
 
 // Owner-clearable `awaiting-*` gates from queue-dag.md § Field rules (`notes`).
@@ -264,6 +266,13 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
       readyToMerge: readyItems,
       readyCount: ready.length,
       activeCount: counts.queue.active,
+    }),
+    alerts: computeStatusAlerts({
+      checkpointRefreshedAt: checkpoint.refreshed_at,
+      queueRefreshedAt: queue.refreshed_at,
+      nowIso: input.generatedAt,
+      statusPageEnabled: statusPageEnabled(config),
+      artifactPublished: input.artifactPublished ?? true,
     }),
     checkpoint: {
       turn: checkpoint.orchestrator_turn_id ?? null,

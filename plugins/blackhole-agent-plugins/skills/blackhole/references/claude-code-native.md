@@ -72,6 +72,15 @@ scheduling.
 ## Per-harness mapping appendix
 
 
+## Turn-end step (main-chat orchestrator)
+
+The main chat has no coordinator to publish the status page, so it ends **every** turn with the
+same step Pattern B's orchestrator has in `checkpoint-protocol.md` § Write order: forge sync →
+write `queue.json` + `findings-ledger.json` + `campaign-checkpoint.md` → `bun run status --html` →
+redeploy the artifact (`status-page.md` § Refresh procedure), unless `status_page.enabled` is
+`false`. A turn that skips it leaves the page stale; `bun run status` prints a loud line when the
+state stopped moving for more than `STALE_AFTER_HOURS` or the page was never published.
+
 ## Resume path
 
 On a harness offering a native run journal or `resumeFromRunId`-style mechanism, that journal is a

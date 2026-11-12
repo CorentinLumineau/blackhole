@@ -93,6 +93,7 @@ export type ConfigSummaryInput = {
   worker_model_policy?: string;
   auto_sync?: boolean;
   adaptive_routing?: boolean;
+  status_page?: { enabled?: boolean };
 };
 
 export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html';
@@ -150,6 +151,9 @@ export type BlockedGroup = {
 /** A PR the campaign has delivered at LGTM and left open for the owner to merge. */
 export type ReadyToMergeItem = StatusItem & { pr_url: string };
 
+/** A loud line `bun run status` prints when the campaign's state stopped moving or its page was never published. */
+export type StatusAlert = { kind: 'stale_state' | 'page_never_published'; message: string };
+
 /** What the campaign is doing right now. `stale` replaces any other kind when the state is old. */
 export type StatusStateKind = 'running' | 'waiting_on_you' | 'idle' | 'done' | 'stale';
 
@@ -178,6 +182,8 @@ export type StatusReport = {
   };
   /** The banner: running / waiting on you / idle / done, or stale when the state is old. Additive. */
   state: StatusState;
+  /** Stale-state and never-published lines, empty when all is well. Additive. */
+  alerts: StatusAlert[];
   checkpoint: {
     turn: number | null;
     refreshed_at: string | null;
