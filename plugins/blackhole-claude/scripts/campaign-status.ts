@@ -5,6 +5,7 @@ import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { fetchForgeCounts } from './lib/campaign-status/forge.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
+import { readPublishState, readStatusAlerts } from './lib/campaign-status/staleness.ts';
 import { buildStatusReport } from './lib/campaign-status/report.ts';
 import { CampaignNotFoundError, loadCampaignState } from './lib/campaign-status/state.ts';
 import { readJsonFile } from './lib/fs.ts';
@@ -155,7 +156,10 @@ function main() {
       paceLine: host.pace,
       hostNotes: host.drift ? host.drift.split('\n') : [],
       generatedAt: new Date().toISOString(),
+      publish: readPublishState(campaignDir),
     });
+    // stdout carries the JSON or the page path, so the loud lines go to stderr.
+    if (mode === 'html') for (const alert of report.alerts) console.error(alert.message);
     if (mode === 'json') {
       console.log(JSON.stringify(report, null, 2));
       return;
@@ -177,6 +181,7 @@ function main() {
     checkpointBody,
   });
 
+  for (const alert of readStatusAlerts(campaignDir, state, new Date().toISOString())) console.log(alert.message);
   console.log(dashboard);
   if (host.pace) console.log(host.pace);
   if (host.drift) console.log(host.drift);
