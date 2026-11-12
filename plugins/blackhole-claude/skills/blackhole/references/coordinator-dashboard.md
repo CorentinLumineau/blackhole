@@ -55,13 +55,14 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `in_flight`, `in_review` | In-flight items split by `phase: review`, each `{issue, title, phase, status, pr, notes, next_step}` |
 | `blocked` | Groups `{waits_on, owner, count, issues}`; `waits_on` is the `awaiting-*` token, `blocked-escalated`, `dependency`, `overlap`, `merge-conflict` or `other` |
 | `ready` | The ready set |
+| `blocked_classes` | The non-owner part of `blocked` regrouped by reason class (`class`, `label`, `count`, `issues`), in display order: `tracking_issue`, `dependency`, `merge_conflict`, `overlap`, `sequenced_phase`, `other`, `another_lane`; each class also carries `attention` (true when a non-lane item's note starts `owner:` or says `needs-owner`; the page renders that class open). Every non-owner blocked issue is in exactly one class. Classified once by `classifyBlocked()` in `report.ts`, first match wins: a foreign-lane label (`in-progress:*` / `agent:*` whose lane is not `claude` or `blackhole`, the lanes the contributor contract gives the campaign; no config key declares them), then a note saying `tracking issue`, then `in sequence`, then a merge-conflict or overlap wait, then a dependency (unmet `depends_on`, or a note starting `dependency`/`upstream` or saying `depends on`), else `other`. Additive; `blocked` is unchanged |
 | `recently_done` | Newest merged/closed items, highest PR then issue number first (the queue holds no merge time), at most 5 |
 | `ledger_open` | Every open finding, BLOCK first then most recent (`id`, `vcode`, `severity`, `summary`, `issue_ref`) |
 | `host` | `pace` (the pace line or `null`) and `notes` (plugin-drift lines) |
 
 The text dashboard prints the same `alerts` lines above its output, and `--html` prints them on stderr (stdout stays the page path). `--html` leads with a state banner (turn, state, last activity relative and in UTC, the owner's
 next action), then **In progress**, **Waiting on you** (PRs ready to merge with their links, and
-owner gates), **Waiting on something else** (non-owner blocked groups, each item with its note),
+owner gates), **Waiting on something else** (non-owner blocked items by reason class: one visible line per class with its count and first 3 issue numbers, the full list with each item's note in a folded native `<details>`),
 **Up next**, **Recently done**, and a native `<details>` holding host, checkpoint notes and open
 findings. A stale state is shown as `STALE` so a frozen page never looks live.
 

@@ -4,6 +4,8 @@ import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashb
 import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
 import { computeStatusCounts, DONE_STATUSES, groupIssuesByPhase } from './queue.ts';
 import type {
+  BlockedClass,
+  BlockedClassKind,
   BlockedGroup,
   CheckpointMeta,
   ConfigSummaryInput,
@@ -58,6 +60,61 @@ function waitReason(issue: QueueIssue, issues: Record<string, QueueIssue>): Wait
     return dep != null && !DONE_STATUSES.includes(dep.status ?? '');
   });
   return { waitsOn: unmet ? 'dependency' : 'other', owner: false };
+}
+
+// The campaign's own lanes: the contributor contract gives Claude and Blackhole `claude/*` / `blackhole/*`.
+// No config key declares them, so they are fixed here. Any other `in-progress:*` / `agent:*` lane is foreign.
+const OWN_LANES = new Set(['claude', 'blackhole']);
+const LANE_LABEL = /^(?:in-progress|agent):(.+)$/;
+
+function inForeignLane(issue: QueueIssue): boolean {
+  return (issue.labels ?? []).some((label) => {
+    const lane = LANE_LABEL.exec(label)?.[1];
+    return lane != null && !OWN_LANES.has(lane);
+  });
+}
+
+const ADDRESSES_OWNER = /^\s*owner:|needs-owner/i;
+
+// Display order: the campaign's own waits first, another lane's last (not the campaign's work).
+const BLOCKED_CLASS_LABELS: [BlockedClassKind, string][] = [
+  ['tracking_issue', 'Tracking issue'],
+  ['dependency', 'Dependency / upstream'],
+  ['merge_conflict', 'Merge conflict'],
+  ['overlap', 'Overlapping issue'],
+  ['sequenced_phase', 'Sequenced phase'],
+  ['other', 'Other'],
+  ['another_lane', 'Another lane'],
+];
+
+/** The one classifier for a blocked non-owner issue. First match wins: lane, tracking, sequence, dependency. */
+export function classifyBlocked(issue: QueueIssue, issues: Record<string, QueueIssue>): BlockedClassKind {
+  if (inForeignLane(issue)) return 'another_lane';
+  const notes = issue.notes ?? '';
+  if (/\btracking issue\b/i.test(notes)) return 'tracking_issue';
+  if (/\bin sequence\b/i.test(notes)) return 'sequenced_phase';
+  const waits = waitReason(issue, issues).waitsOn;
+  if (waits === 'merge-conflict') return 'merge_conflict';
+  if (waits === 'overlap') return 'overlap';
+  if (waits === 'dependency' || /^(?:dependency|upstream)\b|\bupstream\b|\bdepends on\b/i.test(notes.trim())) {
+    return 'dependency';
+  }
+  return 'other';
+}
+
+function classifyBlockedRows(blocked: IssueRow[], issues: Record<string, QueueIssue>): BlockedClass[] {
+  const byKind = new Map<BlockedClassKind, StatusItem[]>();
+  for (const row of blocked) {
+    const reason = waitReason(row.issue, issues);
+    if (reason.owner) continue;
+    const kind = classifyBlocked(row.issue, issues);
+    byKind.set(kind, [...(byKind.get(kind) ?? []), toItem(row, reason)]);
+  }
+  return BLOCKED_CLASS_LABELS.filter(([kind]) => byKind.has(kind)).map(([kind, label]) => {
+    const items = byKind.get(kind) ?? [];
+    const attention = kind !== 'another_lane' && items.some((i) => ADDRESSES_OWNER.test(i.notes ?? ''));
+    return { class: kind, label, count: items.length, attention, issues: items };
+  });
 }
 
 function blockedStep(issue: QueueIssue, reason: WaitReason): string {
@@ -294,6 +351,7 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
     in_flight: inFlight.filter((r) => r.issue.phase !== 'review').map((r) => toItem(r)),
     in_review: inFlight.filter((r) => r.issue.phase === 'review').map((r) => toItem(r)),
     blocked: blockedGroups,
+    blocked_classes: classifyBlockedRows(blocked, issues),
     ready: ready.map((r) => toItem(r)),
     recently_done: recentlyDone(done),
     ledger_open: sortOpenFindings(findings).map((f) => ({

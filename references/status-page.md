@@ -44,8 +44,13 @@ campaign is working, which turn it is and what to do:
 1. **In progress** — in-flight and in-review issues, each with its next step
 2. **Waiting on you** — PRs delivered at LGTM (`Open PR ↗` and `Files changed ↗` links) and
    owner gates (`awaiting-*`, `blocked-escalated:`); empty state "Nothing is waiting on you."
-3. **Waiting on something else** — blocked groups the owner cannot clear (dependency, overlap,
-   merge conflict, `other`), each item with its note
+3. **Waiting on something else** — blocked items the owner cannot clear, one line per reason class
+   (tracking issue, dependency / upstream, sequenced phase, other, another lane: count plus first
+   3 issues), each class's full list with notes in a folded native `<details>` (`blocked_classes`)
+   The campaign's own lanes are `claude` and `blackhole`; an `in-progress:*` / `agent:*` label
+   naming any other lane puts the item in "another lane". The rule reads issue labels, not
+   `contributor-contract.json`. Merge-conflict and overlap waits keep their own classes, and a
+   class holding a note that addresses the owner (`owner:` or `needs-owner`) renders open
 4. **Up next** — the ready set, capped
 5. **Recently done** — newest merged/closed items (`recently_done`)
 6. **Details** — a collapsed native `<details>`: host and environment, the checkpoint's

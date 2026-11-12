@@ -113,7 +113,7 @@ describe('renderStatusHtml — self-contained page', () => {
 
   test('owner gates show their next step; other blocked groups show their count and issue numbers', () => {
     expect(html).toContain('Owner: approve the plan');
-    expect(html).toMatch(/dependency[\s\S]{0,80}>1<[\s\S]{0,200}#3/);
+    expect(html).toMatch(/Dependency \/ upstream[\s\S]{0,80}>1<[\s\S]{0,200}#3/);
     expect(html).toContain('#9');
   });
 
@@ -317,5 +317,67 @@ describe('renderStatusHtml — owner items and workers', () => {
     const html = renderStatusHtml(report(q, { checkpointBody: '## In-flight workers\n\nnone\n' }));
     expect(html).not.toContain('Active workers');
     expect(html).not.toContain('RUNNING');
+  });
+});
+
+describe('renderStatusHtml — Waiting on something else is grouped by reason class', () => {
+  const lane = { status: 'blocked', labels: ['in-progress:cursor'], notes: 'cursor lane: not ours, skipped' };
+  const issues: QueueJson['issues'] = {};
+  for (let n = 100; n < 110; n++) issues[String(n)] = { ...lane, title: `cursor ${n}` };
+  for (let n = 200; n < 204; n++) issues[String(n)] = { title: `track ${n}`, status: 'blocked', notes: 'tracking issue, stays open' };
+  issues['300'] = { title: 'hostile <b>x</b>', status: 'blocked', notes: '<script>alert(1)</script>' };
+  issues['301'] = { title: 'dep', status: 'blocked', notes: 'upstream: waits for a release' };
+  issues['302'] = { title: 'seq', status: 'blocked', notes: 'phases run in sequence' };
+  const html = renderStatusHtml(report({ issues }));
+  const s = html.slice(html.indexOf('<h2>Waiting on something else'), html.indexOf('<h2>Up next'));
+
+  test('one visible summary line per class, 5 at most, before any details is opened', () => {
+    const summaries = s.match(/<summary[^>]*>[\s\S]*?<\/summary>/g) ?? [];
+    expect(summaries).toHaveLength(5);
+    expect(s.match(/<details/g)).toHaveLength(5);
+    expect(s).not.toMatch(/<details[^>]* open/);
+  });
+
+  test('each summary carries the class label, its count and only the first 3 items', () => {
+    const lane = (s.match(/<summary[^>]*>[\s\S]*?<\/summary>/g) ?? []).find((x) => x.includes('Another lane')) ?? '';
+    expect(lane).toContain('>10<');
+    expect(lane).toContain('#100');
+    expect(lane).toContain('#102');
+    expect(lane).not.toContain('#103');
+    expect(lane).toContain('7 more');
+  });
+
+  test('the full list is inside the details, so no item is dropped', () => {
+    for (let n = 100; n < 110; n++) expect(s).toContain(`#${n}`);
+    for (let n = 200; n < 204; n++) expect(s).toContain(`#${n}`);
+    expect(s).toContain('#300');
+  });
+
+  test('all values are escaped and no script is added', () => {
+    expect(s).not.toContain('<script>');
+    expect(s).not.toContain('<b>x</b>');
+    expect(s).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).not.toMatch(/<script/i);
+  });
+});
+
+describe('renderStatusHtml — class rows', () => {
+  const html = renderStatusHtml(
+    report({
+      issues: {
+        '1': { title: 'a', status: 'blocked', notes: 'owner: pick a vendor' },
+        '2': { title: 'b', status: 'blocked', notes: 'tracking issue' },
+      },
+    }),
+  );
+  const s = html.slice(html.indexOf('<h2>Waiting on something else'), html.indexOf('<h2>Up next'));
+
+  test('a class whose note addresses the owner is rendered open, the others folded', () => {
+    expect(s).toMatch(/<details class="cls" open><summary><span class="wait">Other/);
+    expect(s).toMatch(/<details class="cls"><summary><span class="wait">Tracking issue/);
+  });
+  test('class rows reset the global details rule and indent their list', () => {
+    expect(html).toMatch(/details\.cls \{[^}]*margin-top: 0/);
+    expect(html).toMatch(/details\.cls > ul \{[^}]*margin-left/);
   });
 });

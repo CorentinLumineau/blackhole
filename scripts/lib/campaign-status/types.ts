@@ -24,6 +24,8 @@ export type QueueIssue = {
   status?: string;
   pr?: number | null;
   notes?: string | null;
+  /** Forge labels mirrored by the forge sync; `in-progress:*` / `agent:*` name the lane that owns the issue. */
+  labels?: string[];
   depends_on?: number[];
   size?: string;
   review_iteration?: number;
@@ -143,6 +145,20 @@ export type BlockedGroup = {
   issues: StatusItem[];
 };
 
+/** Why a non-owner blocked issue waits, derived from its labels, note and `depends_on`; no new state. */
+export type BlockedClassKind = 'tracking_issue' | 'dependency' | 'merge_conflict' | 'overlap' | 'sequenced_phase' | 'other' | 'another_lane';
+
+/** Blocked non-owner issues sharing one reason class. Every such issue is in exactly one class. */
+export type BlockedClass = {
+  class: BlockedClassKind;
+  /** Plain-language name for the page. */
+  label: string;
+  count: number;
+  /** True when an item's note addresses the owner (`owner:` / `needs-owner`) outside another lane; the page renders it open. */
+  attention: boolean;
+  issues: StatusItem[];
+};
+
 /**
  * `bun run status --json` output, and the input of `--html`. Same data the text dashboard shows,
  * computed from the same helpers. Documented in `src/references/coordinator-dashboard.md`
@@ -207,6 +223,8 @@ export type StatusReport = {
   /** In-flight issues in the review phase. */
   in_review: StatusItem[];
   blocked: BlockedGroup[];
+  /** The non-owner part of `blocked`, regrouped by reason class. Additive: `blocked` is unchanged. */
+  blocked_classes: BlockedClass[];
   ready: StatusItem[];
   /** Newest merged/closed items, highest PR then issue number first (the queue carries no merge time), at most 5. */
   recently_done: StatusItem[];

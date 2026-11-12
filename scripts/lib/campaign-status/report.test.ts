@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { parseStatusArgs } from './cli.ts';
 import { formatDashboard } from './dashboard.ts';
-import { buildStatusReport } from './report.ts';
+import { buildStatusReport, classifyBlocked } from './report.ts';
 import { loadCampaignState } from './state.ts';
 import type { ForgeCounts, QueueJson } from './types.ts';
 
@@ -436,5 +436,106 @@ describe('buildStatusReport — state banner and recently_done', () => {
       issues: { '5': { title: 'g', status: 'blocked', phase: 'review', pr: 9, notes: 'awaiting-user-clarification' } },
     });
     expect(r.waiting_on_owner[0].pr_url).toBe('https://github.com/acme/widgets/pull/9');
+  });
+});
+
+describe('buildStatusReport — blocked reason classes', () => {
+  const cursor = { status: 'blocked', phase: 'handle', labels: ['in-progress:cursor', 'agent:cursor'] };
+  const queue: QueueJson = {
+    issues: {
+      '1': { ...cursor, title: 'cursor a', notes: 'cursor lane: not ours, skipped' },
+      '2': { title: 'cursor b', status: 'blocked', labels: ['agent:cursor'], notes: 'agent:cursor + needs-owner' },
+      '3': { title: 'ours', status: 'blocked', labels: ['agent:claude'], notes: 'taken: cursor draft PR is open' },
+      '4': { title: 'track', status: 'blocked', notes: 'ingested; tracking issue, stays open' },
+      '5': { title: 'seq', status: 'blocked', notes: 'owner: phases run in sequence. P13 returns to the owner' },
+      '6': { title: 'upstream', status: 'blocked', notes: 'upstream: waits for a release' },
+      '7': { title: 'dep', status: 'blocked', depends_on: [8] },
+      '8': { title: 'parent', status: 'in-flight', phase: 'implement' },
+      '9': { title: 'odd', status: 'blocked', notes: 'needs vendor answer' },
+      '10': { title: 'gate', status: 'blocked', notes: 'awaiting-plan-approval' },
+      '11': { title: 'foreign tracking', status: 'blocked', labels: ['in-progress:cursor'], notes: 'tracking issue, stays open' },
+    },
+  };
+  const report = buildStatusReport({
+    config: {},
+    queue,
+    ledger: { findings: [] },
+    checkpoint: {},
+    checkpointBody: '',
+    forge: FORGE_OK,
+    paceLine: null,
+    hostNotes: [],
+    generatedAt: GENERATED_AT,
+  });
+
+  test('every blocked non-owner item lands in exactly one class, in a fixed order', () => {
+    expect(report.blocked_classes.map((c) => [c.class, c.count, c.issues.map((i) => i.issue)])).toEqual([
+      ['tracking_issue', 1, [4]],
+      ['dependency', 2, [6, 7]],
+      ['sequenced_phase', 1, [5]],
+      ['other', 2, [3, 9]],
+      ['another_lane', 3, [1, 2, 11]],
+    ]);
+  });
+
+  test('counts sum to the blocked non-owner total and owner gates are excluded', () => {
+    const total = report.blocked.filter((g) => !g.owner).reduce((n, g) => n + g.count, 0);
+    expect(report.blocked_classes.reduce((n, c) => n + c.count, 0)).toBe(total);
+    expect(report.blocked_classes.flatMap((c) => c.issues.map((i) => i.issue))).not.toContain(10);
+  });
+
+  test('a foreign lane label beats the note, and the campaign own lanes (claude, blackhole) are not foreign', () => {
+    const lane = report.blocked_classes.find((c) => c.class === 'another_lane');
+    expect(lane?.issues.map((i) => i.issue)).toContain(11);
+    expect(lane?.issues.map((i) => i.issue)).not.toContain(3);
+  });
+
+  test('the existing blocked groups are unchanged and schema_version stays 1', () => {
+    expect(report.schema_version).toBe(1);
+    expect(report.blocked.map((g) => g.waits_on)).toContain('awaiting-plan-approval');
+  });
+});
+
+describe('classifyBlocked — precedence and the owner-addressed note', () => {
+  const classify = (notes: string, extra: Partial<QueueJson['issues'][string]> = {}) =>
+    classifyBlocked({ status: 'blocked', notes, ...extra }, {});
+
+  test('tracking issue beats in sequence', () => {
+    expect(classify('tracking issue, phases run in sequence')).toBe('tracking_issue');
+  });
+  test('in sequence beats upstream', () => {
+    expect(classify('phases run in sequence, waits on upstream release')).toBe('sequenced_phase');
+  });
+  test('a mid-note "still depends on X" with no depends_on is a dependency', () => {
+    expect(classify('blocked: still depends on the zod release')).toBe('dependency');
+  });
+  test('matching is case-insensitive', () => {
+    expect(classify('Tracking Issue, stays open')).toBe('tracking_issue');
+  });
+  test('a foreign lane label beats every note', () => {
+    expect(classify('tracking issue', { labels: ['agent:cursor'] })).toBe('another_lane');
+  });
+  test('merge conflict and overlap keep their own class and label', () => {
+    expect(classify('merge-conflict-semantic:a.ts')).toBe('merge_conflict');
+    expect(classify('overlap with #12')).toBe('overlap');
+  });
+
+  test('a class holding a note that addresses the owner is flagged for attention; a lane class never is', () => {
+    const q: QueueJson = {
+      issues: {
+        '1': { title: 'a', status: 'blocked', notes: 'owner: pick a vendor' },
+        '2': { title: 'b', status: 'blocked', notes: 'waits, needs-owner call' },
+        '3': { title: 'c', status: 'blocked', notes: 'quiet wait' },
+        '4': { title: 'd', status: 'blocked', labels: ['agent:cursor'], notes: 'needs-owner — not Claude lane' },
+      },
+    };
+    const r = buildStatusReport({
+      config: {}, queue: q, ledger: { findings: [] }, checkpoint: {}, checkpointBody: '',
+      forge: FORGE_OK, paceLine: null, hostNotes: [], generatedAt: GENERATED_AT,
+    });
+    expect(r.blocked_classes.map((c) => [c.class, c.attention])).toEqual([
+      ['other', true],
+      ['another_lane', false],
+    ]);
   });
 });
