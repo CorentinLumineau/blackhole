@@ -8,7 +8,7 @@ const projectRoot = (): string => process.cwd();
 const resolveFromRoot = (p: string): string => (path.isAbsolute(p) ? p : path.join(projectRoot(), p));
 
 const USAGE =
-  'Usage: bun run status [config-summary] [--json | --html [--out <path>]] [--campaign-dir <dir>] [--no-gh]';
+  'Usage: bun run status [config-summary] [--json | --html [--out <path>] | --data <dir>] [--campaign-dir <dir>] [--no-gh]';
 
 /**
  * Parses CLI args into a mode + options. Subcommand dispatch on argv[2] follows the convention
@@ -25,6 +25,7 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
   let json = false;
   let html = false;
   let outPath: string | null = null;
+  let dataDir: string | null = null;
 
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--campaign-dir' && argv[i + 1]) {
@@ -32,6 +33,9 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
       i++;
     } else if (argv[i] === '--out' && argv[i + 1]) {
       outPath = resolveFromRoot(argv[i + 1]);
+      i++;
+    } else if (argv[i] === '--data' && argv[i + 1]) {
+      dataDir = resolveFromRoot(argv[i + 1]);
       i++;
     } else if (argv[i] === '--no-gh') {
       skipGh = true;
@@ -48,9 +52,11 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
   }
 
   if (json && html) throw new Error(`Pass either --json or --html, not both. ${USAGE}`);
+  if (dataDir && (json || html)) throw new Error(`Pass only one of --json, --html or --data. ${USAGE}`);
   if (outPath && !html) throw new Error(`--out requires --html. ${USAGE}`);
   if (json) mode = 'json';
   if (html) mode = 'html';
+  if (dataDir) mode = 'data';
 
-  return { mode, campaignDir, skipGh, outPath };
+  return { mode, campaignDir, skipGh, outPath, dataDir };
 }

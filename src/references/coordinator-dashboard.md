@@ -32,10 +32,19 @@ numbers never diverge from `bun run status`:
 ```bash
 bun run status --json                    # StatusReport JSON on stdout
 bun run status --html [--out <path>]     # self-contained page, default .blackhole/.tmp/status.html
+bun run status --data <dir>              # row files <dir>/<id>.json for the Claude Data dashboard
 ```
 
-Both accept `--campaign-dir` and `--no-gh`. `--json` and `--html` are mutually exclusive, and
+All accept `--campaign-dir` and `--no-gh`. `--json`, `--html` and `--data` are mutually exclusive, and
 `--out` requires `--html`.
+
+`--data <dir>` writes one JSON array of flat rows per dataset (`summary` one row; `in_progress`,
+`waiting_on_you`, `waiting_else` one row per reason class with `waiting_else_items` holding the
+issues keyed by `class`, `up_next`, `recently_done`, `notes`), all derived from the `StatusReport`
+(`scripts/lib/campaign-status/data.ts`). `summary` carries `stale_after_hours` (the one
+`STALE_AFTER_HOURS`) beside `last_activity_at`, so the dashboard page
+(`templates/status-dashboard/index.html`) computes STALE when it is opened. Publishing it is
+`status-page.md`'s job.
 
 `--json` emits the `StatusReport` type (`scripts/lib/campaign-status/types.ts`, the one
 definition of the shape; bump `schema_version` on a breaking change):
@@ -88,8 +97,8 @@ Skipped entirely when `status_page.enabled` is `false`. Procedure and per-harnes
 
 | Event | Who | Action |
 |-------|-----|--------|
-| Campaign start | `coordinator` or main-chat orchestrator | `bun run status --html` → publish (first publish saves `.blackhole/status-artifact.json`) |
-| Every checkpoint write | `orchestrator` | `bun run status --html` → redeploy the same artifact / refresh the `Blackhole status` canvas / rewrite the local file (`checkpoint-protocol.md` § Write order, step 5) |
+| Campaign start | `coordinator` or main-chat orchestrator | Claude Code: `bun run status --data` → create the Data dashboard once (saves `.blackhole/status-artifact.json`); elsewhere `bun run status --html` → publish |
+| Every checkpoint write | `orchestrator` | Claude Code: `bun run status --data` → upload the row files and update the datasets of the same dashboard; else `bun run status --html` → refresh the `Blackhole status` canvas / rewrite the local file (`checkpoint-protocol.md` § Write order, step 5) |
 | User asks `status` | Coordinator or orchestrator | Print the dashboard as above, then refresh the page |
 
 **Do not** collapse the dashboard to a one-line confirmation. Users rely on the main

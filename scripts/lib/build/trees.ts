@@ -20,18 +20,18 @@ export const copyCursorCloudConfig = (cursorRoot: string) => {
   }
 };
 
-/** Copies templates/companion-files/ (repo root, not src/) into destRoot's own
- * templates/companion-files/ subtree. Isolated distribution bundles need their own copy since
+/** Copies templates/companion-files/ and templates/status-dashboard/ (repo root, not src/) into
+ * destRoot's own templates/ subtree; the Claude status flow reads the dashboard page from there. Isolated distribution bundles need their own copy since
  * they don't ship at the repo root: the Gemini/Antigravity bundle (plugins/blackhole/) and, since
  * ADR-009 (issue #262), the Claude Code marketplace bundle (plugins/blackhole-claude/) — both
  * call this via compileGeminiTree. Cursor and Codex still install via full-repo-source/committed
  * mechanisms and already have templates/ at its natural repo-relative path with zero
  * build-pipeline change. */
 export const copyTemplatesDir = (destRoot: string) => {
-  const src = path.join(templatesDir, 'companion-files');
-  if (!fs.existsSync(src)) return;
-  const dest = path.join(destRoot, 'templates', 'companion-files');
-  fs.cpSync(src, dest, { recursive: true });
+  for (const name of ['companion-files', 'status-dashboard']) {
+    const src = path.join(templatesDir, name);
+    if (fs.existsSync(src)) fs.cpSync(src, path.join(destRoot, 'templates', name), { recursive: true });
+  }
 };
 
 /** Copies templates/hooks/pretooluse/ (repo root, not src/) into destRoot's own hooks/ subtree —

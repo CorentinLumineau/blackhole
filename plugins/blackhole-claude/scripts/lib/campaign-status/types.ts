@@ -98,7 +98,7 @@ export type ConfigSummaryInput = {
   status_page?: { enabled?: boolean };
 };
 
-export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html';
+export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html' | 'data';
 
 export type StatusArgs = {
   mode: StatusMode;
@@ -106,6 +106,8 @@ export type StatusArgs = {
   skipGh: boolean;
   /** `--html` only: absolute output path; null ⇒ `<campaignDir>/.tmp/status.html`. */
   outPath: string | null;
+  /** `--data` only: absolute directory the row files are written to; null otherwise. */
+  dataDir: string | null;
 };
 
 /** Queue and ledger counts — the single computation both the text dashboard and the report read. */

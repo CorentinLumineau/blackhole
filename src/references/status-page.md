@@ -1,8 +1,9 @@
 # Status Page — One Live View of the Campaign
 
-The owner checks campaign state on one page instead of asking the agent. The page is rendered
-from `bun run status --json` (the same counts as the text dashboard, `coordinator-dashboard.md`
-§ Status page) and published to **one** place per harness. It never gets a second link.
+The owner checks campaign state on one page instead of asking the agent. The page is fed by
+`bun run status --json` (the same counts as the text dashboard, `coordinator-dashboard.md`
+§ Status page) and published to **one** place per harness. It never gets a second link. Claude
+Code shows a live Data dashboard (`--data`); `--html` is the Cursor and local-file view.
 
 Gated by `config.json` → `status_page.enabled` (`config-template.md`). When it is `false`, skip
 everything below; the text dashboard is unaffected.
@@ -21,26 +22,53 @@ shows it.
 
 ## Refresh procedure
 
-1. `bun run status --html` — writes `.blackhole/.tmp/status.html` (override with `--out <path>`)
-   and prints the path. Every value from state is HTML-escaped; the page loads nothing from the
-   network.
+1. Render the view for this harness. Claude Code publishes a live **Data dashboard** fed by
+   `bun run status --data .blackhole/.tmp/status-data` (one `<id>.json` row file per dataset,
+   derived from the same `StatusReport` as `--json`, so the counts never diverge); every other
+   harness renders `bun run status --html`, which writes `.blackhole/.tmp/status.html` (override
+   with `--out <path>`) and prints the path. `--html` escapes every value and loads nothing from
+   the network.
 2. Update the single view for this harness — the first matching row wins:
 
 {{#claude}}
 ### Claude Code (Artifact tool present)
 
-- Read `.blackhole/status-artifact.json`. Its shape is `{"url": "<claude.ai artifact link>",
-  "created_at": "<ISO8601>"}`.
-- **File absent** (first publish for this campaign): publish `.blackhole/.tmp/status.html` with
-  the Artifact tool (`icon: "chart"`), then write `{url, created_at}` to
-  `.blackhole/status-artifact.json` (atomic `.tmp` + `mv`, `blackhole-state.md` § Write
-  protocol). Print the link once.
-- **File present**: redeploy to the stored `url`. A session that has not yet read or published
-  that artifact reads it first (`action: "read"`, the tool refuses a blind overwrite), then
-  publishes the regenerated file with `url` set. Do not print the link again.
-- Never publish without `url` once the file exists, and never delete the artifact to "reset"
-  it — a second link for the same campaign is the failure this file exists to prevent. If the
-  stored URL can no longer be opened, tell the owner and ask before replacing it.
+One Data dashboard per campaign, laid out by `templates/status-dashboard/index.html` (resolve it
+from `${BLACKHOLE_PLUGIN_ROOT:-.}`). Its datasets are `summary`, `in_progress`, `waiting_on_you`,
+`waiting_else`, `waiting_else_items`, `up_next`, `recently_done` and `notes` (the ids and fields:
+`scripts/lib/campaign-status/data.ts`). The page works STALE out in the reader's browser from
+`summary.last_activity_at` and `summary.stale_after_hours` (the one `STALE_AFTER_HOURS`), so a
+dashboard nobody refreshes stops saying RUNNING by itself; "x min ago" is computed when it is
+opened. Read `.blackhole/status-artifact.json`. Its shape is `{"url": "<claude.ai artifact link>",
+"kind": "data", "created_at": "<ISO8601>", "template_version": <n>}`.
+
+- **File absent** (first publish for this campaign): create the dashboard **once** from the
+  Data artifact type (`Artifact` `action: "quickstart"`, `intent: "other"`, then publish with the
+  returned `type_url`, a `title` and `auto_open: "after_first_write"`; the page declares the
+  `assets` capability). Then:
+  1. `bun run status --data .blackhole/.tmp/status-data`.
+  2. Upload each row file as an asset (`Artifact` `url`, `asset: true`, `file_path`; a text file
+     goes in a call of its own). Each result gives the file's `/_blob/<id>` url.
+  3. Write, in one `ArtifactData` `batch`: `dash/meta` (`{title}`), one `datasets/<id>` per file
+     (`{title, description, source: {kind: "file", url, name: "<id>.json", format: "json"},
+     updated: {at, by: "claude"}, edit: {via: "claude", at}}`, `at` UTC ISO now), and
+     `files/index.html` (`{text}` = the template; build the JSON for `file_path` with
+     `bun -e 'console.log(JSON.stringify({text: await Bun.file(process.argv[1]).text()}))' <template>`).
+  4. Write `{url, kind: "data", created_at, template_version}` to `.blackhole/status-artifact.json`
+     (atomic `.tmp` + `mv`, `blackhole-state.md` § Write protocol); `template_version` is the
+     template's `<meta name="bh-template-version">`. Print the link once.
+- **File present, `kind: "data"`** (every checkpoint): run step 1, upload each file as an
+  asset again, then update `datasets/<id>.source.url` plus the `updated` and `edit` stamps for all
+  datasets in **one** `ArtifactData` `batch`. Do not print the link again. Re-write
+  `files/index.html` only when the template's `bh-template-version` differs from the recorded
+  `template_version` (read the stored file first, a person may have edited it with the page's
+  editor; then update `template_version` in `status-artifact.json`).
+- **File present without `kind`/`template_version`** (a hand-made dashboard or the old static
+  page): leave its page and datasets alone, tell the owner once, and ask before adopting the
+  template (the batch above, with the stored `url`).
+- Never create a second dashboard once the file exists, and never delete it to "reset" it. If
+  the stored URL can no longer be opened, tell the owner and ask before replacing it. A failed
+  upload or batch is reported in one line and the old datasets keep serving.
 {{/claude}}
 {{#cursor}}
 ### Cursor (Canvas present)
@@ -56,18 +84,19 @@ shows it.
 
 ### Any other harness, or no artifact/canvas tool
 
-Print the path from step 1 once per session (`📄 Status page: .blackhole/.tmp/status.html`).
+Run `bun run status --html`, then print the path once per session (`📄 Status page: .blackhole/.tmp/status.html`).
 Later refreshes rewrite the same file silently.
 
 ## Page layout
 
-Top to bottom (`scripts/lib/campaign-status/html.ts`), so the owner sees at once whether the
+Top to bottom (`scripts/lib/campaign-status/html.ts` for `--html`, `templates/status-dashboard/index.html` for the Data dashboard, same sections), so the owner sees at once whether the
 campaign is working, which turn it is and what to do:
 
 0. **State banner** — turn, `RUNNING` / `WAITING ON YOU` / `IDLE` / `DONE`, last activity
    (relative and UTC) and "Your next action". `STALE` replaces the state when the newest of the
    checkpoint and queue write times is older than `STALE_AFTER_HOURS` (`staleness.ts`), saying
-   "state last written Xh ago, so what follows may be out of date" (`state`)
+   "state last written Xh ago, so what follows may be out of date" (`state`); the Data dashboard
+   decides this in the reader's browser, against the time it is opened
 1. **In progress** — in-flight and in-review issues, each with its next step
 2. **Waiting on you** — PRs delivered at LGTM (`Open PR ↗` and `Files changed ↗` links) and
    owner gates (`awaiting-*`, `blocked-escalated:`); empty state "Nothing is waiting on you."
