@@ -360,3 +360,24 @@ describe('renderStatusHtml — Waiting on something else is grouped by reason cl
     expect(html).not.toMatch(/<script/i);
   });
 });
+
+describe('renderStatusHtml — class rows', () => {
+  const html = renderStatusHtml(
+    report({
+      issues: {
+        '1': { title: 'a', status: 'blocked', notes: 'owner: pick a vendor' },
+        '2': { title: 'b', status: 'blocked', notes: 'tracking issue' },
+      },
+    }),
+  );
+  const s = html.slice(html.indexOf('<h2>Waiting on something else'), html.indexOf('<h2>Up next'));
+
+  test('a class whose note addresses the owner is rendered open, the others folded', () => {
+    expect(s).toMatch(/<details class="cls" open><summary><span class="wait">Other/);
+    expect(s).toMatch(/<details class="cls"><summary><span class="wait">Tracking issue/);
+  });
+  test('class rows reset the global details rule and indent their list', () => {
+    expect(html).toMatch(/details\.cls \{[^}]*margin-top: 0/);
+    expect(html).toMatch(/details\.cls > ul \{[^}]*margin-left/);
+  });
+});

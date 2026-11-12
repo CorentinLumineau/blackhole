@@ -126,7 +126,7 @@ function classLi(c: BlockedClass): string {
   const rest = c.count - CLASS_PREVIEW;
   const more = rest > 0 ? ` and ${escapeHtml(rest)} more` : '';
   return (
-    `<li><details class="cls"><summary><span class="wait">${escapeHtml(c.label)}</span> ` +
+    `<li><details class="cls"${c.attention ? ' open' : ''}><summary><span class="wait">${escapeHtml(c.label)}</span> ` +
     `<span class="count">${escapeHtml(c.count)}</span> <span class="meta">${first}${more}</span></summary>` +
     `<ul class="items">${c.issues.map((i) => itemLi(i, i.notes?.trim() || i.next_step)).join('')}</ul></details></li>`
   );
@@ -214,6 +214,8 @@ header p { margin: 2px 0 0; overflow-wrap: anywhere; }
 .state-idle { border-left-color: var(--warn); } .state-idle .state { color: var(--warn); }
 details { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 8px; }
 summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+details.cls { margin-top: 0; border-top: 0; padding-top: 0; }
+details.cls > ul { margin-left: 12px; }
 li > ul { margin: 4px 0 0 12px; }
 section { background: var(--surface); border-top: 1px solid var(--border); padding: 12px 0 4px; margin-top: 12px; }
 h2 { font-size: 1.05rem; margin: 0 0 8px; }

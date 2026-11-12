@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { parseStatusArgs } from './cli.ts';
 import { formatDashboard } from './dashboard.ts';
-import { buildStatusReport } from './report.ts';
+import { buildStatusReport, classifyBlocked } from './report.ts';
 import { loadCampaignState } from './state.ts';
 import type { ForgeCounts, QueueJson } from './types.ts';
 
@@ -493,5 +493,49 @@ describe('buildStatusReport — blocked reason classes', () => {
   test('the existing blocked groups are unchanged and schema_version stays 1', () => {
     expect(report.schema_version).toBe(1);
     expect(report.blocked.map((g) => g.waits_on)).toContain('awaiting-plan-approval');
+  });
+});
+
+describe('classifyBlocked — precedence and the owner-addressed note', () => {
+  const classify = (notes: string, extra: Partial<QueueJson['issues'][string]> = {}) =>
+    classifyBlocked({ status: 'blocked', notes, ...extra }, {});
+
+  test('tracking issue beats in sequence', () => {
+    expect(classify('tracking issue, phases run in sequence')).toBe('tracking_issue');
+  });
+  test('in sequence beats upstream', () => {
+    expect(classify('phases run in sequence, waits on upstream release')).toBe('sequenced_phase');
+  });
+  test('a mid-note "still depends on X" with no depends_on is a dependency', () => {
+    expect(classify('blocked: still depends on the zod release')).toBe('dependency');
+  });
+  test('matching is case-insensitive', () => {
+    expect(classify('Tracking Issue, stays open')).toBe('tracking_issue');
+  });
+  test('a foreign lane label beats every note', () => {
+    expect(classify('tracking issue', { labels: ['agent:cursor'] })).toBe('another_lane');
+  });
+  test('merge conflict and overlap keep their own class and label', () => {
+    expect(classify('merge-conflict-semantic:a.ts')).toBe('merge_conflict');
+    expect(classify('overlap with #12')).toBe('overlap');
+  });
+
+  test('a class holding a note that addresses the owner is flagged for attention; a lane class never is', () => {
+    const q: QueueJson = {
+      issues: {
+        '1': { title: 'a', status: 'blocked', notes: 'owner: pick a vendor' },
+        '2': { title: 'b', status: 'blocked', notes: 'waits, needs-owner call' },
+        '3': { title: 'c', status: 'blocked', notes: 'quiet wait' },
+        '4': { title: 'd', status: 'blocked', labels: ['agent:cursor'], notes: 'needs-owner — not Claude lane' },
+      },
+    };
+    const r = buildStatusReport({
+      config: {}, queue: q, ledger: { findings: [] }, checkpoint: {}, checkpointBody: '',
+      forge: FORGE_OK, paceLine: null, hostNotes: [], generatedAt: GENERATED_AT,
+    });
+    expect(r.blocked_classes.map((c) => [c.class, c.attention])).toEqual([
+      ['other', true],
+      ['another_lane', false],
+    ]);
   });
 });

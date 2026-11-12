@@ -74,10 +74,14 @@ function inForeignLane(issue: QueueIssue): boolean {
   });
 }
 
+const ADDRESSES_OWNER = /^\s*owner:|needs-owner/i;
+
 // Display order: the campaign's own waits first, another lane's last (not the campaign's work).
 const BLOCKED_CLASS_LABELS: [BlockedClassKind, string][] = [
   ['tracking_issue', 'Tracking issue'],
   ['dependency', 'Dependency / upstream'],
+  ['merge_conflict', 'Merge conflict'],
+  ['overlap', 'Overlapping issue'],
   ['sequenced_phase', 'Sequenced phase'],
   ['other', 'Other'],
   ['another_lane', 'Another lane'],
@@ -89,7 +93,10 @@ export function classifyBlocked(issue: QueueIssue, issues: Record<string, QueueI
   const notes = issue.notes ?? '';
   if (/\btracking issue\b/i.test(notes)) return 'tracking_issue';
   if (/\bin sequence\b/i.test(notes)) return 'sequenced_phase';
-  if (waitReason(issue, issues).waitsOn === 'dependency' || /^(?:dependency|upstream)\b|\bupstream\b|\bdepends on\b/i.test(notes.trim())) {
+  const waits = waitReason(issue, issues).waitsOn;
+  if (waits === 'merge-conflict') return 'merge_conflict';
+  if (waits === 'overlap') return 'overlap';
+  if (waits === 'dependency' || /^(?:dependency|upstream)\b|\bupstream\b|\bdepends on\b/i.test(notes.trim())) {
     return 'dependency';
   }
   return 'other';
@@ -105,7 +112,8 @@ function classifyBlockedRows(blocked: IssueRow[], issues: Record<string, QueueIs
   }
   return BLOCKED_CLASS_LABELS.filter(([kind]) => byKind.has(kind)).map(([kind, label]) => {
     const items = byKind.get(kind) ?? [];
-    return { class: kind, label, count: items.length, issues: items };
+    const attention = kind !== 'another_lane' && items.some((i) => ADDRESSES_OWNER.test(i.notes ?? ''));
+    return { class: kind, label, count: items.length, attention, issues: items };
   });
 }
 

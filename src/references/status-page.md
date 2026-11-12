@@ -74,6 +74,10 @@ campaign is working, which turn it is and what to do:
 3. **Waiting on something else** — blocked items the owner cannot clear, one line per reason class
    (tracking issue, dependency / upstream, sequenced phase, other, another lane: count plus first
    3 issues), each class's full list with notes in a folded native `<details>` (`blocked_classes`)
+   The campaign's own lanes are `claude` and `blackhole`; an `in-progress:*` / `agent:*` label
+   naming any other lane puts the item in "another lane". The rule reads issue labels, not
+   `contributor-contract.json`. Merge-conflict and overlap waits keep their own classes, and a
+   class holding a note that addresses the owner (`owner:` or `needs-owner`) renders open
 4. **Up next** — the ready set, capped
 5. **Recently done** — newest merged/closed items (`recently_done`)
 6. **Details** — a collapsed native `<details>`: host and environment, the checkpoint's

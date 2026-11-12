@@ -146,7 +146,7 @@ export type BlockedGroup = {
 };
 
 /** Why a non-owner blocked issue waits, derived from its labels, note and `depends_on`; no new state. */
-export type BlockedClassKind = 'tracking_issue' | 'dependency' | 'sequenced_phase' | 'other' | 'another_lane';
+export type BlockedClassKind = 'tracking_issue' | 'dependency' | 'merge_conflict' | 'overlap' | 'sequenced_phase' | 'other' | 'another_lane';
 
 /** Blocked non-owner issues sharing one reason class. Every such issue is in exactly one class. */
 export type BlockedClass = {
@@ -154,6 +154,8 @@ export type BlockedClass = {
   /** Plain-language name for the page. */
   label: string;
   count: number;
+  /** True when an item's note addresses the owner (`owner:` / `needs-owner`) outside another lane; the page renders it open. */
+  attention: boolean;
   issues: StatusItem[];
 };
 
