@@ -4,6 +4,7 @@ import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { fetchForgeCounts } from './lib/campaign-status/forge.ts';
+import { writeStatusData } from './lib/campaign-status/data.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
 import { readPublishState, readStatusAlerts } from './lib/campaign-status/staleness.ts';
 import { buildStatusReport } from './lib/campaign-status/report.ts';
@@ -110,7 +111,7 @@ function readHostLines(campaignDir: string): { pace: string | null; drift: strin
 }
 
 function main() {
-  const { mode, campaignDir, skipGh, outPath } = parseStatusArgs(process.argv.slice(2));
+  const { mode, campaignDir, skipGh, outPath, dataDir } = parseStatusArgs(process.argv.slice(2));
 
   let state: ReturnType<typeof loadCampaignState>;
   try {
@@ -143,7 +144,7 @@ function main() {
 
   const host = readHostLines(campaignDir);
 
-  if (mode === 'json' || mode === 'html') {
+  if (mode === 'json' || mode === 'html' || mode === 'data') {
     const resolved = resolveForgeForRepo(path.dirname(path.resolve(campaignDir)), config.forge);
     const report = buildStatusReport({
       config,
@@ -158,10 +159,14 @@ function main() {
       generatedAt: new Date().toISOString(),
       publish: readPublishState(campaignDir),
     });
-    // stdout carries the JSON or the page path, so the loud lines go to stderr.
-    if (mode === 'html') for (const alert of report.alerts) console.error(alert.message);
+    // stdout carries the JSON, the page path or the row files, so the loud lines go to stderr.
+    if (mode !== 'json') for (const alert of report.alerts) console.error(alert.message);
     if (mode === 'json') {
       console.log(JSON.stringify(report, null, 2));
+      return;
+    }
+    if (mode === 'data') {
+      for (const file of writeStatusData(dataDir as string, report)) console.log(file);
       return;
     }
     const target = outPath ?? path.join(campaignDir, '.tmp', 'status.html');

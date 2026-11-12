@@ -1,8 +1,9 @@
 # Status Page — One Live View of the Campaign
 
-The owner checks campaign state on one page instead of asking the agent. The page is rendered
-from `bun run status --json` (the same counts as the text dashboard, `coordinator-dashboard.md`
-§ Status page) and published to **one** place per harness. It never gets a second link.
+The owner checks campaign state on one page instead of asking the agent. The page is fed by
+`bun run status --json` (the same counts as the text dashboard, `coordinator-dashboard.md`
+§ Status page) and published to **one** place per harness. It never gets a second link. Claude
+Code shows a live Data dashboard (`--data`); `--html` is the Cursor and local-file view.
 
 Gated by `config.json` → `status_page.enabled` (`config-template.md`). When it is `false`, skip
 everything below; the text dashboard is unaffected.
@@ -21,26 +22,30 @@ shows it.
 
 ## Refresh procedure
 
-1. `bun run status --html` — writes `.blackhole/.tmp/status.html` (override with `--out <path>`)
-   and prints the path. Every value from state is HTML-escaped; the page loads nothing from the
-   network.
+1. Render the view for this harness. Claude Code publishes a live **Data dashboard** fed by
+   `bun run status --data .blackhole/.tmp/status-data` (one `<id>.json` row file per dataset,
+   derived from the same `StatusReport` as `--json`, so the counts never diverge); every other
+   harness renders `bun run status --html`, which writes `.blackhole/.tmp/status.html` (override
+   with `--out <path>`) and prints the path. `--html` escapes every value and loads nothing from
+   the network.
 2. Update the single view for this harness — the first matching row wins:
 
 
 ### Any other harness, or no artifact/canvas tool
 
-Print the path from step 1 once per session (`📄 Status page: .blackhole/.tmp/status.html`).
+Run `bun run status --html`, then print the path once per session (`📄 Status page: .blackhole/.tmp/status.html`).
 Later refreshes rewrite the same file silently.
 
 ## Page layout
 
-Top to bottom (`scripts/lib/campaign-status/html.ts`), so the owner sees at once whether the
+Top to bottom (`scripts/lib/campaign-status/html.ts` for `--html`, `templates/status-dashboard/index.html` for the Data dashboard, same sections), so the owner sees at once whether the
 campaign is working, which turn it is and what to do:
 
 0. **State banner** — turn, `RUNNING` / `WAITING ON YOU` / `IDLE` / `DONE`, last activity
    (relative and UTC) and "Your next action". `STALE` replaces the state when the newest of the
    checkpoint and queue write times is older than `STALE_AFTER_HOURS` (`staleness.ts`), saying
-   "state last written Xh ago, so what follows may be out of date" (`state`)
+   "state last written Xh ago, so what follows may be out of date" (`state`); the Data dashboard
+   decides this in the reader's browser, against the time it is opened
 1. **In progress** — in-flight and in-review issues, each with its next step
 2. **Waiting on you** — PRs delivered at LGTM (`Open PR ↗` and `Files changed ↗` links) and
    owner gates (`awaiting-*`, `blocked-escalated:`); empty state "Nothing is waiting on you."

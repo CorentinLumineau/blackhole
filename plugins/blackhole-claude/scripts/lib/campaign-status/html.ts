@@ -1,5 +1,5 @@
 import { SECTION_CAP } from './dashboard.ts';
-import { ownerDetail } from './report.ts';
+import { CLASS_PREVIEW, inProgressItems, ownerDetail, READY_TO_MERGE_DETAIL } from './report.ts';
 import type { BlockedClass, ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind } from './types.ts';
 
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -97,14 +97,13 @@ function readyLi(r: StatusReport, item: ReadyToMergeItem): string {
     '<li>',
     `<span class="num">${escapeHtml(ref)}</span>${links}`,
     `<div>${escapeHtml(item.title)} <span class="meta">#${escapeHtml(item.issue)}</span></div>`,
-    '<div class="next">LGTM · CI green · no conflict — review and merge</div>',
+    `<div class="next">${escapeHtml(READY_TO_MERGE_DETAIL)}</div>`,
     '</li>',
   ].join('');
 }
 
 function progressSection(r: StatusReport): string {
-  const delivered = new Set(r.ready_to_merge.map((i) => i.issue));
-  const items = [...r.in_flight, ...r.in_review].filter((i) => !delivered.has(i.issue));
+  const items = inProgressItems(r);
   return section('In progress', itemList(items, 'No issue is being planned, implemented or reviewed.'), items.length);
 }
 
@@ -116,8 +115,6 @@ function ownerSection(r: StatusReport): string {
   const body = rows.length ? `<ul class="items">${rows.join('')}</ul>` : empty('Nothing is waiting on you.');
   return section('Waiting on you', body, rows.length);
 }
-
-const CLASS_PREVIEW = 3;
 
 // One visible line per class: the summary shows the count and the first few issue numbers; the full list sits
 // inside the native <details>, folded. No class is open by default, so another lane's items stay out of sight.

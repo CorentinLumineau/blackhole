@@ -202,6 +202,18 @@ function workerLines(body: string | undefined): string[] {
     .filter((l) => l !== '' && !EMPTY_MARKER.test(l));
 }
 
+/** Issues named on a reason class's one visible line; the full list is its items. */
+export const CLASS_PREVIEW = 3;
+
+/** The line under a PR delivered at LGTM: what the owner can rely on before merging. */
+export const READY_TO_MERGE_DETAIL = 'LGTM · CI green · no conflict — review and merge';
+
+/** In-flight and in-review issues, minus PRs already delivered at LGTM (those wait on the owner). */
+export function inProgressItems(r: Pick<StatusReport, 'in_flight' | 'in_review' | 'ready_to_merge'>): StatusItem[] {
+  const delivered = new Set(r.ready_to_merge.map((i) => i.issue));
+  return [...r.in_flight, ...r.in_review].filter((i) => !delivered.has(i.issue));
+}
+
 /** What the owner has to do for an owner item: its note without the gate token, else the generic next step. */
 export function ownerDetail(item: StatusItem): string {
   const note = (item.notes ?? '').replace(/^\s*(awaiting-[\w-]+|blocked-escalated):?\s*/, '').trim();
