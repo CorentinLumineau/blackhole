@@ -34,7 +34,8 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
     } else if (argv[i] === '--out' && argv[i + 1]) {
       outPath = resolveFromRoot(argv[i + 1]);
       i++;
-    } else if (argv[i] === '--data' && argv[i + 1]) {
+    } else if (argv[i] === '--data') {
+      if (!argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(`--data requires a directory. ${USAGE}`);
       dataDir = resolveFromRoot(argv[i + 1]);
       i++;
     } else if (argv[i] === '--no-gh') {

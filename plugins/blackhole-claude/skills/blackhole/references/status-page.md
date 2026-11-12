@@ -57,12 +57,22 @@ opened. Read `.blackhole/status-artifact.json`. Its shape is `{"url": "<claude.a
   4. Write `{url, kind: "data", created_at, template_version}` to `.blackhole/status-artifact.json`
      (atomic `.tmp` + `mv`, `blackhole-state.md` § Write protocol); `template_version` is the
      template's `<meta name="bh-template-version">`. Print the link once.
-- **File present, `kind: "data"`** (every checkpoint): run step 1, upload each file as an
-  asset again, then update `datasets/<id>.source.url` plus the `updated` and `edit` stamps for all
-  datasets in **one** `ArtifactData` `batch`. Do not print the link again. Re-write
-  `files/index.html` only when the template's `bh-template-version` differs from the recorded
-  `template_version` (read the stored file first, a person may have edited it with the page's
-  editor; then update `template_version` in `status-artifact.json`).
+- **File present, `kind: "data"`** (every checkpoint). Do not print the link again.
+  1. Run step 1, then read the versions to pin: `ArtifactData` `list` of `datasets` (and `get`
+     `files/index.html` and `dash/meta` when this refresh writes them). Every write below is
+     an update of an existing document, so each carries `if_version` (the `version` just read).
+  2. Upload each row file as an asset again (one call each, as above).
+  3. Update `datasets/<id>.source.url` plus the `updated` and `edit` stamps for all datasets in
+     **one** `ArtifactData` `batch`, every entry with its `if_version`. On a version conflict,
+     re-read that document and redo that one write; never retry blind and never overwrite.
+  4. `files/index.html` is written only when the template's `bh-template-version` differs from
+     `status-artifact.json`'s `template_version`, and only after re-reading the stored file (a
+     person may have saved hand edits with the page's editor; merge, do not clobber). Then
+     update `template_version` in `status-artifact.json`.
+  5. After the batch succeeds, delete each superseded asset: the id is the `<id>` of the old
+     `source.url` (`/_blob/<id>`), removed with `Artifact` `action: "delete"`, `url`, `path: <id>`.
+     Without it every checkpoint leaves 8 orphaned blobs. A failed delete is reported in one
+     line and does not undo the refresh.
 - **File present without `kind`/`template_version`** (a hand-made dashboard or the old static
   page): leave its page and datasets alone, tell the owner once, and ask before adopting the
   template (the batch above, with the stored `url`).

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ownerDetail } from './report.ts';
+import { CLASS_PREVIEW, inProgressItems, ownerDetail, READY_TO_MERGE_DETAIL } from './report.ts';
 import { STALE_AFTER_HOURS } from './staleness.ts';
 import type { StatusItem, StatusReport } from './types.ts';
 
@@ -19,9 +19,6 @@ export const STATUS_DATASET_IDS = [
 export type StatusDatasetId = (typeof STATUS_DATASET_IDS)[number];
 export type StatusDataRow = Record<string, string | number | boolean | null>;
 export type StatusDatasets = Record<StatusDatasetId, StatusDataRow[]>;
-
-/** Issues named on a class's one visible line; the full list is its items. */
-const FIRST_ISSUES = 3;
 
 const issueRef = (i: StatusItem): string => `#${i.issue}`;
 
@@ -50,19 +47,14 @@ function summaryRow(r: StatusReport): StatusDataRow {
 }
 
 function inProgressRows(r: StatusReport): StatusDataRow[] {
-  const delivered = new Set(r.ready_to_merge.map((i) => i.issue));
-  const row = (i: StatusItem, stage: string): StatusDataRow => ({
+  return inProgressItems(r).map((i) => ({
     issue: i.issue,
     title: i.title,
-    stage,
+    stage: r.in_review.includes(i) ? 'in review' : 'in flight',
     phase: i.phase,
     pr: i.pr,
     next_step: i.next_step,
-  });
-  return [
-    ...r.in_flight.filter((i) => !delivered.has(i.issue)).map((i) => row(i, 'in flight')),
-    ...r.in_review.filter((i) => !delivered.has(i.issue)).map((i) => row(i, 'in review')),
-  ];
+  }));
 }
 
 function waitingOnYouRows(r: StatusReport): StatusDataRow[] {
@@ -73,7 +65,7 @@ function waitingOnYouRows(r: StatusReport): StatusDataRow[] {
       kind: 'ready to merge',
       pr: i.pr,
       pr_url: i.pr_url,
-      detail: 'LGTM · CI green · no conflict — review and merge',
+      detail: READY_TO_MERGE_DETAIL,
     })),
     ...r.waiting_on_owner.map((i) => ({
       issue: i.issue,
@@ -110,8 +102,8 @@ export function buildStatusData(r: StatusReport): StatusDatasets {
       label: c.label,
       count: c.count,
       attention: c.attention,
-      first_issues: c.issues.slice(0, FIRST_ISSUES).map(issueRef).join(', '),
-      more_count: Math.max(0, c.count - FIRST_ISSUES),
+      first_issues: c.issues.slice(0, CLASS_PREVIEW).map(issueRef).join(', '),
+      more_count: Math.max(0, c.count - CLASS_PREVIEW),
     })),
     waiting_else_items: r.blocked_classes.flatMap((c) =>
       c.issues.map((i) => ({ class: c.class, issue: i.issue, title: i.title, pr: i.pr, detail: i.notes?.trim() || i.next_step })),

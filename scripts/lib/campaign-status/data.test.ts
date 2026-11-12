@@ -4,39 +4,10 @@ import * as os from 'os';
 import * as path from 'path';
 import { buildStatusData, STATUS_DATASET_IDS, writeStatusData } from './data.ts';
 import { parseStatusArgs } from './cli.ts';
-import { buildStatusReport } from './report.ts';
+import { fixtureReport as report } from './data-fixture.ts';
+import { CLASS_PREVIEW, inProgressItems, READY_TO_MERGE_DETAIL } from './report.ts';
 import { STALE_AFTER_HOURS } from './staleness.ts';
-import type { QueueJson, StatusReport } from './types.ts';
-
-const QUEUE: QueueJson = {
-  refreshed_at: '2026-11-11T11:00:00.000Z',
-  issues: {
-    '1': { title: 'gate', status: 'blocked', phase: 'plan', notes: 'awaiting-plan-approval' },
-    '2': { title: 'motion', status: 'in-flight', phase: 'implement' },
-    '3': { title: 'review me', status: 'in-flight', phase: 'review', pr: 9 },
-    '4': { title: 'delivered', status: 'in-flight', phase: 'review', pr: 10, notes: 'delivered-at-LGTM (leave-open) — awaiting human merge' },
-    '5': { title: 'dep a', status: 'blocked', phase: 'handle', depends_on: [2] },
-    '6': { title: 'dep b', status: 'blocked', phase: 'handle', depends_on: [2] },
-    '7': { title: 'dep c', status: 'blocked', phase: 'handle', depends_on: [2] },
-    '8': { title: 'dep d', status: 'blocked', phase: 'handle', depends_on: [2] },
-    '9': { title: 'next', status: 'ready', phase: 'handle' },
-    '10': { title: 'old', status: 'merged', phase: 'done', pr: 5 },
-  },
-};
-
-function report(): StatusReport {
-  return buildStatusReport({
-    config: { repo: 'acme/widgets', scope_milestone: 'v1.0' },
-    queue: QUEUE,
-    ledger: { findings: [{ id: 'F-1', vcode: 'V-SEC-04', severity: 'BLOCK', status: 'open', summary: 'leak', issue_ref: 3 }] },
-    checkpoint: { orchestrator_turn_id: 7, refreshed_at: '2026-11-11T10:00:00.000Z' },
-    checkpointBody: '---\norchestrator_turn_id: 7\n---\n\n## Notes\n\nMerged #2\n\n## In-flight workers\n\n- worker for #2\n',
-    forge: { openIssues: 3, openPrs: 1, ok: true },
-    paceLine: 'pace: GO (session 12%)',
-    hostNotes: ['⚠ Plugin cache drift: layer 2'],
-    generatedAt: '2026-11-11T12:00:00.000Z',
-  });
-}
+import type { QueueJson } from './types.ts';
 
 describe('buildStatusData — one source with --json', () => {
   const r = report();
@@ -109,6 +80,32 @@ describe('buildStatusData — one source with --json', () => {
   });
 });
 
+describe('buildStatusData — one presentation rule with --html', () => {
+  const r = report();
+  const data = buildStatusData(r);
+
+  test('in_progress is the report helper inProgressItems', () => {
+    expect(data.in_progress.map((x) => x.issue)).toEqual(inProgressItems(r).map((i) => i.issue));
+  });
+
+  test('a class shows CLASS_PREVIEW issues and counts the rest', () => {
+    const dep = data.waiting_else.find((c) => c.kind === 'dependency');
+    expect(String(dep?.first_issues).split(', ')).toHaveLength(CLASS_PREVIEW);
+    expect(dep?.more_count).toBe(Number(dep?.count) - CLASS_PREVIEW);
+  });
+
+  test('the ready-to-merge detail is the shared text', () => {
+    expect(data.waiting_on_you[0].detail).toBe(READY_TO_MERGE_DETAIL);
+  });
+
+  test('up_next carries the whole ready set; the page caps it', () => {
+    const issues: QueueJson['issues'] = {};
+    for (let n = 1; n <= 12; n++) issues[String(n)] = { title: `t${n}`, status: 'ready', phase: 'handle' };
+    const big = report({ issues });
+    expect(buildStatusData(big).up_next).toHaveLength(12);
+  });
+});
+
 describe('writeStatusData', () => {
   test('writes one <id>.json per dataset, parseable and equal to the built rows', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-data-'));
@@ -135,6 +132,11 @@ describe('parseStatusArgs --data', () => {
   test('--data is mutually exclusive with --json and --html', () => {
     expect(() => parseStatusArgs(['--data', 'd', '--json'])).toThrow(/only one of/);
     expect(() => parseStatusArgs(['--data', 'd', '--html'])).toThrow(/only one of/);
+  });
+
+  test('--data without a value, or followed by a flag, throws instead of printing the text dashboard', () => {
+    expect(() => parseStatusArgs(['--data'])).toThrow(/--data requires a directory/);
+    expect(() => parseStatusArgs(['--data', '--no-gh'])).toThrow(/--data requires a directory/);
   });
 
   test('--out still requires --html', () => {

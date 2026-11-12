@@ -91,8 +91,8 @@ When C2+C3 are both detected, the main chat **may** orchestrate directly (Patter
 
 The main chat has no coordinator to publish the status page, so it ends **every** turn with the
 same step Pattern B's orchestrator has in `checkpoint-protocol.md` § Write order: forge sync →
-write `queue.json` + `findings-ledger.json` + `campaign-checkpoint.md` → `bun run status --html` →
-redeploy the artifact (`status-page.md` § Refresh procedure), unless `status_page.enabled` is
+write `queue.json` + `findings-ledger.json` + `campaign-checkpoint.md` → `bun run status --data` →
+update the Data dashboard (`bun run status --html` on the other harnesses; `status-page.md` § Refresh procedure), unless `status_page.enabled` is
 `false`. A turn that skips it leaves the page stale; `bun run status` prints a loud line when the
 state stopped moving for more than `STALE_AFTER_HOURS` or the page was never published.
 

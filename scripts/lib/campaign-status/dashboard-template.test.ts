@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { STATUS_DATASET_IDS } from './data.ts';
+import { fixtureReport } from './data-fixture.ts';
+import { buildStatusData, STATUS_DATASET_IDS, type StatusDatasetId } from './data.ts';
 import { isStateStale, STALE_AFTER_HOURS } from './staleness.ts';
 
 const TEMPLATE = fs.readFileSync(path.join(import.meta.dir, '../../../templates/status-dashboard/index.html'), 'utf8');
@@ -116,5 +117,61 @@ describe('status dashboard template — client-side staleness', () => {
     expect(bhAgo(3 * HOUR)).toBe('3 h ago');
     expect(bhAgo(72 * HOUR)).toBe('3 d ago');
     expect(bhAgo(-5000)).toBe('0 min ago');
+  });
+});
+
+describe('status dashboard template — every field it reads is a field the plugin writes', () => {
+  const data = buildStatusData(fixtureReport());
+  const fieldsOf = (id: string): Set<string> => new Set(data[id as StatusDatasetId]?.flatMap((row) => Object.keys(row)));
+  const isDataset = (id: string): boolean => (STATUS_DATASET_IDS as readonly string[]).includes(id);
+  const script = TEMPLATE.slice(TEMPLATE.indexOf('<script>'));
+
+  test('the fixture populates every dataset, so a missing field is a real gap', () => {
+    for (const id of STATUS_DATASET_IDS) expect(data[id].length).toBeGreaterThan(0);
+  });
+
+  test('every data-source + data-field pair in the HTML names an emitted column', () => {
+    const pairs = [...TEMPLATE.matchAll(/<[^>]*\bdata-source="([^"]+)"[^>]*\bdata-field="([^"]+)"/g)];
+    expect(pairs.length).toBeGreaterThan(10);
+    for (const [, source, field] of pairs) {
+      expect(isDataset(source) ? fieldsOf(source).has(field) : false).toBe(true);
+    }
+  });
+
+  test('every { source, field } mark built in the script names an emitted column', () => {
+    const marks = [...script.matchAll(/source:\s*'([a-z_]+)',\s*field:\s*'([a-z_]+)'/g)];
+    expect(marks.length).toBeGreaterThan(5);
+    for (const [, source, field] of marks) expect(fieldsOf(source).has(field)).toBe(true);
+    const all = new Set(STATUS_DATASET_IDS.flatMap((id) => [...fieldsOf(id)]));
+    const literals = [...script.matchAll(/field:\s*'([a-z_]+)'/g)];
+    expect(literals.length).toBeGreaterThan(10);
+    for (const [, field] of literals) expect(all.has(field)).toBe(true);
+  });
+
+  test('every row field a drawing or calc reads exists in its datasets', () => {
+    const chunks = script.split(/(?=dash\.(?:draw|calc)\(')/).slice(1);
+    let reads = 0;
+    for (const chunk of chunks) {
+      const [, kind, name] = chunk.match(/^dash\.(draw|calc)\('([a-z_]+)'/)!;
+      const sources =
+        kind === 'calc'
+          ? [...(chunk.match(/inputs:\s*\[([^\]]*)\]/)?.[1] ?? '').matchAll(/'([a-z_]+)'/g)].map((m) => m[1])
+          : [...(TEMPLATE.match(new RegExp(`data-draw="${name}"[^>]*data-source="([^"]+)"`))?.[1] ?? '').split(/\s+/)];
+      const known = new Set(sources.filter(isDataset).flatMap((id) => [...fieldsOf(id)]));
+      if (known.size === 0) continue;
+      const vars = kind === 'calc' ? 's|c' : 'r|c|it';
+      for (const m of chunk.matchAll(new RegExp(`\\b(?:${vars})\\.([a-z_]+)\\b`, 'g'))) {
+        reads++;
+        expect(`${name}.${m[1]}:${known.has(m[1])}`).toBe(`${name}.${m[1]}:true`);
+      }
+    }
+    expect(reads).toBeGreaterThan(15);
+  });
+
+  test('the staleness block reads only summary columns', () => {
+    const block = TEMPLATE.match(/\/\* bh-stale:start \*\/([\s\S]*?)\/\* bh-stale:end \*\//)![1];
+    const fields = [...block.matchAll(/summary(?: &&|\)?)?\.([a-z_]+)/g)].map((m) => m[1]);
+    expect(fields.length).toBeGreaterThan(2);
+    for (const f of fields) expect(fieldsOf('summary').has(f)).toBe(true);
   });
 });
