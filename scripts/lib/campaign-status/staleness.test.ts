@@ -28,7 +28,7 @@ describe('staleness helper', () => {
 });
 
 describe('computeStatusAlerts', () => {
-  const base = { checkpointRefreshedAt: OLD, queueRefreshedAt: null, nowIso: NOW, statusPageEnabled: true, artifactPublished: true };
+  const base = { checkpointRefreshedAt: OLD, queueRefreshedAt: null, nowIso: NOW, statusPageEnabled: true, artifactPublished: true, publishExpected: true };
 
   test('a 17 h-old checkpoint yields the stale alert naming the age and threshold', () => {
     const alerts = computeStatusAlerts(base);
@@ -51,6 +51,18 @@ describe('computeStatusAlerts', () => {
     expect(computeStatusAlerts({ ...fresh, statusPageEnabled: false })).toEqual([]);
   });
 
+  test('a harness that never publishes an artifact is not nagged', () => {
+    const fresh = { ...base, checkpointRefreshedAt: '2026-11-12T11:59:00.000Z', artifactPublished: false, publishExpected: false };
+    expect(computeStatusAlerts(fresh)).toEqual([]);
+  });
+
+  test('the never-published hint does not tell the owner to run the command that is already running', () => {
+    const fresh = { ...base, checkpointRefreshedAt: '2026-11-12T11:59:00.000Z', artifactPublished: false };
+    const msg = computeStatusAlerts(fresh)[0].message;
+    expect(msg).not.toContain('bun run status');
+    expect(msg).toContain('status-page.md');
+  });
+
   test('no state write time at all is reported as stale, never silent', () => {
     const alerts = computeStatusAlerts({ ...base, checkpointRefreshedAt: null });
     expect(alerts[0].kind).toBe('stale_state');
@@ -60,7 +72,7 @@ describe('computeStatusAlerts', () => {
 
 describe('readStatusAlerts and the report against a campaign directory', () => {
   const dirs: string[] = [];
-  function campaign(opts: { checkpointAt: string; artifact: boolean; statusPage?: boolean }): string {
+  function campaign(opts: { checkpointAt: string; artifact: boolean; statusPage?: boolean; host?: string }): string {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-stale-'));
     dirs.push(dir);
     const config = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'fixtures/config.example.json'), 'utf-8'));
@@ -74,6 +86,7 @@ describe('readStatusAlerts and the report against a campaign directory', () => {
       path.join(dir, 'campaign-checkpoint.md'),
       `---\nrefreshed_at: ${opts.checkpointAt}\norchestrator_turn_id: 4\n---\n\n## Notes\n\nx\n`,
     );
+    if (opts.host) fs.writeFileSync(path.join(dir, 'run-context.json'), JSON.stringify({ context: { host: { value: opts.host } } }));
     if (opts.artifact) fs.writeFileSync(path.join(dir, 'status-artifact.json'), '{"url":"https://claude.ai/artifact/x","created_at":"2026-11-01T00:00:00Z"}');
     return dir;
   }
@@ -82,7 +95,7 @@ describe('readStatusAlerts and the report against a campaign directory', () => {
   });
 
   test('17 h-old checkpoint: the helper and --json both expose the stale line; schema_version unchanged', () => {
-    const dir = campaign({ checkpointAt: OLD, artifact: true });
+    const dir = campaign({ checkpointAt: OLD, artifact: true, host: 'claude' });
     const state = loadCampaignState(dir);
     expect(readStatusAlerts(dir, state, NOW).map((a) => a.kind)).toEqual(['stale_state']);
     const report = buildStatusReport({
@@ -91,20 +104,62 @@ describe('readStatusAlerts and the report against a campaign directory', () => {
       paceLine: null,
       hostNotes: [],
       generatedAt: NOW,
-      artifactPublished: true,
+      publish: { artifactPublished: true, publishExpected: true },
     });
     expect(report.schema_version).toBe(1);
     expect(report.alerts.map((a) => a.kind)).toEqual(['stale_state']);
     expect(report.state.kind).toBe('stale');
   });
 
-  test('no status-artifact.json with the page enabled (the default) prints the never-published alert', () => {
-    const dir = campaign({ checkpointAt: '2026-11-12T11:59:00.000Z', artifact: false });
+  test('no status-artifact.json on Claude Code with the page enabled (the default) gives the never-published alert', () => {
+    const dir = campaign({ checkpointAt: '2026-11-12T11:59:00.000Z', artifact: false, host: 'claude' });
     expect(readStatusAlerts(dir, loadCampaignState(dir), NOW).map((a) => a.kind)).toEqual(['page_never_published']);
   });
 
+  test('no never-published alert on a non-Claude host or when the host is unknown', () => {
+    for (const host of ['cursor', undefined]) {
+      const dir = campaign({ checkpointAt: '2026-11-12T11:59:00.000Z', artifact: false, host });
+      expect(readStatusAlerts(dir, loadCampaignState(dir), NOW)).toEqual([]);
+    }
+  });
+
   test('page disabled in config: nothing, even without the artifact file', () => {
-    const dir = campaign({ checkpointAt: '2026-11-12T11:59:00.000Z', artifact: false, statusPage: false });
+    const dir = campaign({ checkpointAt: '2026-11-12T11:59:00.000Z', artifact: false, statusPage: false, host: 'claude' });
     expect(readStatusAlerts(dir, loadCampaignState(dir), NOW)).toEqual([]);
+  });
+
+  describe('the CLI output contract', () => {
+    const run = (dir: string, ...args: string[]) => {
+      const r = Bun.spawnSync(['bun', 'run', path.join(REPO_ROOT, 'scripts/campaign-status.ts'), '--campaign-dir', dir, '--no-gh', ...args], {
+        cwd: dir,
+      });
+      return { out: r.stdout.toString(), err: r.stderr.toString() };
+    };
+
+    test('text dashboard prints the alert lines on stdout, before the dashboard', () => {
+      const dir = campaign({ checkpointAt: OLD, artifact: false, host: 'claude' });
+      const { out } = run(dir);
+      expect(out).toContain('Campaign state last written');
+      expect(out).toContain('Status page never published');
+      expect(out.indexOf('Campaign state last written')).toBeLessThan(out.indexOf('Queue'));
+    });
+
+    test('--html keeps stdout to the page path and sends the alerts to stderr', () => {
+      const dir = campaign({ checkpointAt: OLD, artifact: false, host: 'claude' });
+      const target = path.join(dir, 'page.html');
+      const { out, err } = run(dir, '--html', '--out', target);
+      expect(out.trim()).toBe(target);
+      expect(err).toContain('Campaign state last written');
+      expect(err).toContain('Status page never published');
+      expect(fs.existsSync(target)).toBe(true);
+    });
+
+    test('--json keeps stdout parseable and exposes the alerts', () => {
+      const dir = campaign({ checkpointAt: OLD, artifact: false, host: 'claude' });
+      const { out } = run(dir, '--json');
+      const parsed = JSON.parse(out);
+      expect(parsed.alerts.map((a: { kind: string }) => a.kind)).toEqual(['stale_state', 'page_never_published']);
+      expect(parsed.schema_version).toBe(1);
+    });
   });
 });

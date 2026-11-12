@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { readJsonFile } from '../fs.ts';
 import type { ConfigSummaryInput, StatusAlert } from './types.ts';
 
 /** Hours without a state write after which the campaign is reported stale. The one threshold every
@@ -35,6 +36,8 @@ type AlertInput = {
   nowIso: string;
   statusPageEnabled: boolean;
   artifactPublished: boolean;
+  /** Whether this harness publishes the page as an artifact (Claude Code); elsewhere the marker never exists. */
+  publishExpected: boolean;
 };
 
 /** Loud lines for a campaign whose state stopped being written or whose status page was never published.
@@ -51,11 +54,11 @@ export function computeStatusAlerts(i: AlertInput): StatusAlert[] {
           : `⚠ Campaign state last written ${ageHours}h ago (threshold ${STALE_AFTER_HOURS}h): the checkpoint may have stopped.`,
     });
   }
-  if (i.statusPageEnabled && !i.artifactPublished) {
+  if (i.statusPageEnabled && i.publishExpected && !i.artifactPublished) {
     alerts.push({
       kind: 'page_never_published',
       message:
-        '⚠ Status page never published: .blackhole/status-artifact.json is absent. Run `bun run status --html` and publish it (status-page.md).',
+        '⚠ Status page never published: .blackhole/status-artifact.json is absent. Publish the page (status-page.md § Refresh procedure).',
     });
   }
   return alerts;
@@ -64,7 +67,23 @@ export function computeStatusAlerts(i: AlertInput): StatusAlert[] {
 /** `status_page.enabled` defaults to true when the block or key is absent (`config-template.md`). */
 export const statusPageEnabled = (config: ConfigSummaryInput): boolean => config.status_page?.enabled !== false;
 
-/** The alerts for a campaign directory: reads whether the published-page marker exists. */
+/** Whether the published-page marker exists, and whether this host publishes one at all. The host is the
+ * `context.host.value` of `run-context.json`; `claude` is the artifact flow in `status-page.md`. */
+export function readPublishState(campaignDir: string): { artifactPublished: boolean; publishExpected: boolean } {
+  let host: unknown;
+  try {
+    const file = path.join(campaignDir, 'run-context.json');
+    host = (readJsonFile(file, file) as { context?: { host?: { value?: unknown } } })?.context?.host?.value;
+  } catch {
+    host = undefined;
+  }
+  return {
+    artifactPublished: fs.existsSync(path.join(campaignDir, 'status-artifact.json')),
+    publishExpected: host === 'claude',
+  };
+}
+
+/** The alerts for a campaign directory. */
 export function readStatusAlerts(
   campaignDir: string,
   state: { config: ConfigSummaryInput; checkpoint: { refreshed_at?: string }; queue: { refreshed_at?: string } },
@@ -75,6 +94,6 @@ export function readStatusAlerts(
     queueRefreshedAt: state.queue.refreshed_at,
     nowIso,
     statusPageEnabled: statusPageEnabled(state.config),
-    artifactPublished: fs.existsSync(path.join(campaignDir, 'status-artifact.json')),
+    ...readPublishState(campaignDir),
   });
 }

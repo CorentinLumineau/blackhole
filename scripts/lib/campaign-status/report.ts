@@ -30,8 +30,8 @@ export type StatusReportInput = {
   generatedAt: string;
   /** Forge host from the origin remote; only Gitea needs it. Absent ⇒ GitHub links. */
   forgeWeb?: { forge: string; host: string | null };
-  /** Whether `.blackhole/status-artifact.json` exists. Absent ⇒ unknown, and no never-published alert. */
-  artifactPublished?: boolean;
+  /** Whether `.blackhole/status-artifact.json` exists, and whether this host publishes one. Absent ⇒ no never-published alert. */
+  publish?: { artifactPublished: boolean; publishExpected: boolean };
 };
 
 // Owner-clearable `awaiting-*` gates from queue-dag.md § Field rules (`notes`).
@@ -272,7 +272,8 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
       queueRefreshedAt: queue.refreshed_at,
       nowIso: input.generatedAt,
       statusPageEnabled: statusPageEnabled(config),
-      artifactPublished: input.artifactPublished ?? true,
+      artifactPublished: input.publish?.artifactPublished ?? false,
+      publishExpected: input.publish?.publishExpected ?? false,
     }),
     checkpoint: {
       turn: checkpoint.orchestrator_turn_id ?? null,
