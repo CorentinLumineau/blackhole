@@ -115,6 +115,17 @@ function groupBlocked(blocked: IssueRow[], issues: Record<string, QueueIssue>): 
 // and CI green, on a PR that stays open for the owner. Offline by design — no forge call here.
 const DELIVERED_PREFIX = 'delivered-at-LGTM';
 
+// The hold marker of the low-risk merge gate (merge-gate.md § 9, written by phase-loop.md § Merge
+// protocol step 4): the PR reached LGTM with green CI and the campaign will not merge it itself.
+// Like DELIVERED_PREFIX it means "the next move is the owner's", so both feed the same list.
+const HELD_NOTE = /^needs-chef(?::\s*(.*))?$/s;
+
+/** The categories a `needs-chef` note names, `''` for a bare marker, `null` when the note is not a hold. */
+function heldFor(notes: string): string | null {
+  const match = HELD_NOTE.exec(notes);
+  return match ? (match[1] ?? '').trim() : null;
+}
+
 function readyToMerge(
   issues: Record<string, QueueIssue>,
   repo: string | undefined,
@@ -124,9 +135,13 @@ function readyToMerge(
   const items: ReadyToMergeItem[] = [];
   for (const [key, issue] of Object.entries(issues)) {
     if (issue.status !== 'in-flight' || issue.pr == null) continue;
-    if (!(issue.notes ?? '').trim().startsWith(DELIVERED_PREFIX)) continue;
+    const notes = (issue.notes ?? '').trim();
+    const held = heldFor(notes);
+    if (held === null && !notes.startsWith(DELIVERED_PREFIX)) continue;
     const prUrl = prWebUrl(forge, host, repo ?? '', issue.pr);
-    if (prUrl) items.push({ ...toItem({ num: Number(key), issue }), pr_url: prUrl });
+    if (!prUrl) continue;
+    const item = { ...toItem({ num: Number(key), issue }), pr_url: prUrl };
+    items.push(held === null ? item : { ...item, held_for: held });
   }
   return items.sort((a, b) => a.issue - b.issue);
 }
@@ -143,6 +158,12 @@ function workerLines(body: string | undefined): string[] {
 
 /** The line under a PR delivered at LGTM: what the owner can rely on before merging. */
 export const READY_TO_MERGE_DETAIL = 'LGTM · CI green · no conflict — review and merge';
+
+/** The line under a PR that waits on the owner: why a held PR is held, else READY_TO_MERGE_DETAIL. */
+export function readyToMergeDetail(item: ReadyToMergeItem): string {
+  if (item.held_for === undefined) return READY_TO_MERGE_DETAIL;
+  return `Held for your decision${item.held_for ? ` (${item.held_for})` : ''} — review and merge`;
+}
 
 /** In-flight and in-review issues, minus PRs already delivered at LGTM (those wait on the owner). */
 export function inProgressItems(r: Pick<StatusReport, 'in_flight' | 'in_review' | 'ready_to_merge'>): StatusItem[] {

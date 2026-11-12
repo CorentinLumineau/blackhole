@@ -4,7 +4,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { parseStatusArgs } from './cli.ts';
 import { formatDashboard } from './dashboard.ts';
-import { buildStatusReport, classifyBlocked } from './report.ts';
+import { buildStatusData } from './data.ts';
+import { buildStatusReport, classifyBlocked, inProgressItems, READY_TO_MERGE_DETAIL, readyToMergeDetail } from './report.ts';
 import { loadCampaignState } from './state.ts';
 import type { ForgeCounts, QueueJson } from './types.ts';
 
@@ -537,5 +538,70 @@ describe('classifyBlocked — precedence and the owner-addressed note', () => {
       ['other', true],
       ['another_lane', false],
     ]);
+  });
+});
+
+describe('buildStatusReport — a PR held for the owner (needs-chef)', () => {
+  const queue: QueueJson = {
+    issues: {
+      '1': { title: 'held for the owner', status: 'in-flight', phase: 'review', pr: 21, notes: 'needs-chef: workflows, security' },
+      '2': { title: 'delivered', status: 'in-flight', phase: 'review', pr: 22, notes: 'delivered-at-LGTM (leave-open)' },
+      '3': { title: 'still reviewing', status: 'in-flight', phase: 'review', pr: 23, notes: null },
+      '4': { title: 'held, no pr', status: 'in-flight', phase: 'review', notes: 'needs-chef: security' },
+      '5': { title: 'held, bare marker', status: 'in-flight', phase: 'review', pr: 25, notes: 'needs-chef' },
+      '6': { title: 'mentions it mid-note', status: 'in-flight', phase: 'review', pr: 26, notes: 'turn 9: was needs-chef: security' },
+    },
+  };
+  const r = buildStatusReport({
+    config: { repo: 'acme/widgets' },
+    queue,
+    ledger: {},
+    checkpoint: {},
+    forge: FORGE_OK,
+    paceLine: null,
+    hostNotes: [],
+    generatedAt: GENERATED_AT,
+  });
+
+  test('a needs-chef PR waits on the owner, with the categories it is held for', () => {
+    expect(r.ready_to_merge.map((i) => i.issue)).toEqual([1, 2, 5]);
+    expect(r.ready_to_merge[0]).toMatchObject({ pr: 21, held_for: 'workflows, security', pr_url: 'https://github.com/acme/widgets/pull/21' });
+    expect(r.ready_to_merge[1].held_for).toBeUndefined();
+    expect(r.ready_to_merge[2].held_for).toBe('');
+  });
+
+  test('the marker counts only at the start of the note, and only with a PR', () => {
+    expect(r.ready_to_merge.some((i) => i.issue === 4 || i.issue === 6)).toBe(false);
+  });
+
+  test('a held PR is not shown as work in progress', () => {
+    expect(inProgressItems(r).map((i) => i.issue)).toEqual([3, 4, 6]);
+  });
+
+  test('the detail line says why it is held; a delivered PR keeps its own line', () => {
+    expect(readyToMergeDetail(r.ready_to_merge[0])).toBe('Held for your decision (workflows, security) — review and merge');
+    expect(readyToMergeDetail(r.ready_to_merge[1])).toBe(READY_TO_MERGE_DETAIL);
+    expect(readyToMergeDetail(r.ready_to_merge[2])).toBe('Held for your decision — review and merge');
+  });
+
+  test('the dashboard dataset lists it under waiting on you with its own kind', () => {
+    const rows = buildStatusData(r).waiting_on_you;
+    expect(rows[0]).toMatchObject({ issue: 1, kind: 'needs your decision', pr: 21, detail: 'Held for your decision (workflows, security) — review and merge' });
+    expect(rows[1]).toMatchObject({ issue: 2, kind: 'ready to merge', detail: READY_TO_MERGE_DETAIL });
+  });
+
+  test('with nothing else running, the campaign state is waiting on you', () => {
+    const only = buildStatusReport({
+      config: { repo: 'acme/widgets' },
+      queue: { issues: { '1': queue.issues!['1'] } },
+      ledger: {},
+      checkpoint: { refreshed_at: GENERATED_AT },
+      forge: FORGE_OK,
+      paceLine: null,
+      hostNotes: [],
+      generatedAt: GENERATED_AT,
+    });
+    expect(only.state.underlying).toBe('waiting_on_you');
+    expect(only.state.next_action).toBe('Review and merge PR #21 (#1)');
   });
 });

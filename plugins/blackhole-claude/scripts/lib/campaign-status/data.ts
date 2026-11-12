@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { classPreview } from './blocked-classes.ts';
-import { inProgressItems, ownerDetail, READY_TO_MERGE_DETAIL } from './report.ts';
+import { inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
 import { STALE_AFTER_HOURS } from './staleness.ts';
 import type { StatusItem, StatusReport } from './types.ts';
 
@@ -63,10 +63,10 @@ function waitingOnYouRows(r: StatusReport): StatusDataRow[] {
     ...r.ready_to_merge.map((i) => ({
       issue: i.issue,
       title: i.title,
-      kind: 'ready to merge',
+      kind: i.held_for === undefined ? 'ready to merge' : 'needs your decision',
       pr: i.pr,
       pr_url: i.pr_url,
-      detail: READY_TO_MERGE_DETAIL,
+      detail: readyToMergeDetail(i),
     })),
     ...r.waiting_on_owner.map((i) => ({
       issue: i.issue,
