@@ -182,7 +182,7 @@ rg -l "from ['\"].*check-utils" scripts/checks/*.check.ts scripts/verify.ts | wc
 #    comment ("Dependency blast-radius (N direct consumers)") should always match — and, as of
 #    issue #960, is now mechanically enforced by V-BLASTRADIUS-01
 #    (scripts/checks/check-utils-blast-radius.check.ts) rather than only prescribed here.
-rg -l "from ['\"].*check-utils" scripts --glob '!wt-*' | wc -l                        # 92
+rg -l "from ['\"].*check-utils" scripts --glob '!wt-*' | wc -l                        # 93
 
 # 3. Files anywhere under scripts/ that import the `read` symbol specifically — a subset of
 #    #2, orthogonal to #1 (a file can import `read` without being a *.check.ts module, e.g.
