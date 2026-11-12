@@ -1,4 +1,5 @@
 import { readScope, type CampaignScope } from '../../forge-scope.ts';
+import { classPreview, groupBlockedRows, waitReason } from './blocked-classes.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
 import {
   computeStatusCounts,
@@ -38,11 +39,18 @@ function renderInFlightSection(inFlight: IssueRow[]): string[] {
   return lines;
 }
 
-function renderBlockedSection(blocked: IssueRow[]): string[] {
+// One line per owner gate (the owner can act on each), then one line per reason class.
+function renderBlockedSection(blocked: IssueRow[], issues: Record<string, QueueIssue>): string[] {
   if (blocked.length === 0) return [];
   const lines: string[] = ['### Blocked'];
   for (const { num, issue } of blocked) {
+    if (!waitReason(issue, issues).owner) continue;
     lines.push(`- **#${num}** ${issue.title ?? ''} — ${issue.notes ?? 'blocked'}`);
+  }
+  for (const { label, rows } of groupBlockedRows(blocked, issues)) {
+    const { first, more } = classPreview(rows, rows.length);
+    const refs = first.map((r) => `#${r.num}`).join(', ');
+    lines.push(`- **${label}** (${rows.length}): ${refs}${more > 0 ? ` and ${more} more` : ''}`);
   }
   lines.push('');
   return lines;
@@ -327,7 +335,7 @@ export function formatDashboard(opts: {
   lines.push('');
 
   lines.push(...renderInFlightSection(inFlight));
-  lines.push(...renderBlockedSection(blocked));
+  lines.push(...renderBlockedSection(blocked, issues));
   lines.push(...renderReadySection(ready));
   lines.push(...renderRoutingSection(active));
   lines.push(...renderWavesSection(issues));
