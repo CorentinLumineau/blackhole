@@ -1,4 +1,5 @@
 import { SECTION_CAP } from './dashboard.ts';
+import { ownerDetail } from './report.ts';
 import type { ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind } from './types.ts';
 
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -66,7 +67,10 @@ function agoText(lastIso: string, nowIso: string): string {
 }
 
 // "2026-11-12 11:56 UTC" from an ISO timestamp.
-const utcText = (iso: string): string => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
+const utcText = (iso: string): string => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
+};
 
 function banner(r: StatusReport, name: string): string {
   const { state } = r;
@@ -75,7 +79,7 @@ function banner(r: StatusReport, name: string): string {
     ? `Last activity: ${agoText(state.last_activity_at, r.generated_at)} (${utcText(state.last_activity_at)})`
     : 'Last activity: unknown';
   return [
-    `<header class="banner state-${state.kind.replace('_', '-')}">`,
+    `<header class="banner state-${state.kind.replaceAll('_', '-')}">`,
     `<h1>Blackhole — ${escapeHtml(name)} · Turn ${escapeHtml(r.checkpoint.turn ?? '—')}</h1>`,
     `<p class="state"><span class="mark" aria-hidden="true">${mark}</span> ${label} — ${escapeHtml(state.reason)}</p>`,
     `<p>${escapeHtml(activity)}</p>`,
@@ -107,7 +111,7 @@ function progressSection(r: StatusReport): string {
 function ownerSection(r: StatusReport): string {
   const rows = [
     ...r.ready_to_merge.map((i) => readyLi(r, i)),
-    ...r.waiting_on_owner.map((i) => itemLi(i)),
+    ...r.waiting_on_owner.map((i) => itemLi(i, ownerDetail(i))),
   ];
   const body = rows.length ? `<ul class="items">${rows.join('')}</ul>` : empty('Nothing is waiting on you.');
   return section('Waiting on you', body, rows.length);
@@ -197,6 +201,7 @@ header p { margin: 2px 0 0; overflow-wrap: anywhere; }
 .state-running { border-left-color: var(--ok); } .state-running .state { color: var(--ok); }
 .state-waiting-on-you { border-left-color: var(--accent); } .state-waiting-on-you .state { color: var(--accent); }
 .state-stale { border-left-color: var(--block); } .state-stale .state { color: var(--block); }
+.state-done { border-left-color: var(--ok); } .state-done .state { color: var(--ok); }
 .state-idle { border-left-color: var(--warn); } .state-idle .state { color: var(--warn); }
 details { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 8px; }
 summary { cursor: pointer; font-weight: 600; padding: 6px 0; }

@@ -46,7 +46,7 @@ type WaitReason = { waitsOn: string; owner: boolean };
 
 function waitReason(issue: QueueIssue, issues: Record<string, QueueIssue>): WaitReason {
   const notes = (issue.notes ?? '').trim();
-  const token = notes.split(/\s/)[0] ?? '';
+  const token = (notes.split(/\s/)[0] ?? '').replace(/:$/, '');
   if (token.startsWith('awaiting-')) return { waitsOn: token, owner: true };
   if (notes.startsWith(ESCALATED_PREFIX)) return { waitsOn: 'blocked-escalated', owner: true };
   if (notes.startsWith('merge-conflict-semantic')) return { waitsOn: 'merge-conflict', owner: false };
@@ -133,6 +133,22 @@ function readyToMerge(
   return items.sort((a, b) => a.issue - b.issue);
 }
 
+// A checkpoint writes an empty section as a bare marker; that is no worker.
+const EMPTY_MARKER = /^(none|\(none\)|-|n\/a)$/i;
+
+// The one place a checkpoint's `## In-flight workers` lines become worker names.
+function workerLines(body: string | undefined): string[] {
+  return sectionLines(body, 'In-flight workers')
+    .map((l) => l.replace(/^[-*]\s+/, '').trim())
+    .filter((l) => l !== '' && !EMPTY_MARKER.test(l));
+}
+
+/** What the owner has to do for an owner item: its note without the gate token, else the generic next step. */
+export function ownerDetail(item: StatusItem): string {
+  const note = (item.notes ?? '').replace(/^\s*(awaiting-[\w-]+|blocked-escalated):?\s*/, '').trim();
+  return note || item.next_step;
+}
+
 const sectionLines = (body: string | undefined, heading: string): string[] =>
   (checkpointSection(body, heading) ?? '')
     .split('\n')
@@ -160,7 +176,7 @@ function computeState(i: StateInput): StatusState {
   const lastActivity = newestStateWrite(i.checkpointRefreshedAt, i.queueRefreshedAt);
   const ageHours = stateAgeHours(lastActivity, i.generatedAt);
   const nextAction = i.waitingOnOwner[0]
-    ? `${i.waitingOnOwner[0].next_step} (#${i.waitingOnOwner[0].issue})`
+    ? `${ownerDetail(i.waitingOnOwner[0])} (#${i.waitingOnOwner[0].issue})`
     : i.readyToMerge[0]
       ? `Review and merge PR #${i.readyToMerge[0].pr} (#${i.readyToMerge[0].issue})`
       : SELF_DRIVING;
@@ -242,7 +258,7 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
       generatedAt: input.generatedAt,
       checkpointRefreshedAt: checkpoint.refreshed_at ?? null,
       queueRefreshedAt: queue.refreshed_at ?? null,
-      activeWorkers: sectionLines(checkpointBody, 'In-flight workers'),
+      activeWorkers: workerLines(checkpointBody),
       working,
       waitingOnOwner,
       readyToMerge: readyItems,
@@ -254,7 +270,7 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
       refreshed_at: checkpoint.refreshed_at ?? null,
       last_completed_phase: checkpoint.last_completed_phase ?? null,
       notes: sectionLines(checkpointBody, 'Notes'),
-      active_workers: sectionLines(checkpointBody, 'In-flight workers'),
+      active_workers: workerLines(checkpointBody),
     },
     forge,
     counts,

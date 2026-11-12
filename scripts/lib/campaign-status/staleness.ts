@@ -1,5 +1,5 @@
-/** Hours without a state write after which the campaign is reported stale. The one threshold the status
- * page banner and the text dashboard share. */
+/** Hours without a state write after which the campaign is reported stale. The one threshold every
+ * staleness check reads; the status page banner uses it. */
 export const STALE_AFTER_HOURS = 2;
 
 const HOUR_MS = 3_600_000;

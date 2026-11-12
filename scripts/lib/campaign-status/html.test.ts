@@ -221,6 +221,26 @@ describe('renderStatusHtml — state banner', () => {
     expect(top).toContain('state last written 17h ago, so what follows may be out of date');
   });
 
+  test('every state kind gets a class that the stylesheet defines', () => {
+    const cases: Array<[string, QueueJson, Partial<Parameters<typeof buildStatusReport>[0]>]> = [
+      ['state-running', { issues: { '2': { title: 'm', status: 'in-flight', phase: 'plan' } } }, {}],
+      ['state-waiting-on-you', { issues: { '1': { title: 'g', status: 'blocked', phase: 'plan', notes: 'awaiting-plan-approval' } } }, {}],
+      ['state-idle', { issues: { '4': { title: 'n', status: 'ready' } } }, {}],
+      ['state-done', { issues: { '4': { title: 'n', status: 'merged', pr: 1 } } }, {}],
+      ['state-stale', { issues: { '2': { title: 'm', status: 'in-flight' } } }, { checkpoint: { orchestrator_turn_id: 1, refreshed_at: '2026-11-01T00:00:00.000Z' } }],
+    ];
+    for (const [cls, queue, extra] of cases) {
+      const html = page(queue, extra);
+      expect(html).toContain(`class="banner ${cls}"`);
+      expect(html).toContain(`.${cls} `);
+    }
+  });
+
+  test('the last-activity UTC time is formatted from the parsed date', () => {
+    const html = page({ issues: {} }, { checkpoint: { orchestrator_turn_id: 1, refreshed_at: '2026-11-12T11:56:00+02:00' } });
+    expect(html).toContain('(2026-11-12 09:56 UTC)');
+  });
+
   test('IDLE and DONE render their own banners', () => {
     expect(mainStart(page({ issues: { '4': { title: 'n', status: 'ready', phase: 'handle' } } }))).toContain('IDLE');
     expect(mainStart(page({ issues: { '4': { title: 'n', status: 'merged', pr: 1 } } }))).toContain('DONE');
@@ -276,5 +296,26 @@ describe('renderStatusHtml — section content', () => {
     expect(html).toContain('<details>');
     expect(html).toContain('<summary>Details</summary>');
     expect(html).not.toMatch(/<script/i);
+  });
+});
+
+describe('renderStatusHtml — owner items and workers', () => {
+  const NOTE = 'PR #4872 (MCP-8 write path) needs your approving review; standing auth does not cover it';
+  const q: QueueJson = {
+    issues: { '4206': { title: 'MCP-8', status: 'blocked', phase: 'review', pr: 4872, notes: `awaiting-owner-review: ${NOTE}` } },
+  };
+
+  test('an owner item shows its note as the detail, not the generic gate line', () => {
+    const html = renderStatusHtml(report(q, { generatedAt: '2026-11-11T12:00:00.000Z' }));
+    const owner = html.slice(html.indexOf('<h2>Waiting on you'), html.indexOf('<h2>Waiting on something else'));
+    expect(owner).toContain('needs your approving review');
+    expect(owner).not.toContain('Owner: clear awaiting-owner-review');
+    expect(html).toContain(`Your next action: ${NOTE} (#4206)`);
+  });
+
+  test('a bare `none` under In-flight workers shows no worker line in Details', () => {
+    const html = renderStatusHtml(report(q, { checkpointBody: '## In-flight workers\n\nnone\n' }));
+    expect(html).not.toContain('Active workers');
+    expect(html).not.toContain('RUNNING');
   });
 });

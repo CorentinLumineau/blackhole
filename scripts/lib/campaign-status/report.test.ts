@@ -69,7 +69,7 @@ describe('buildStatusReport — JSON shape against the fixtures', () => {
       refreshed_at: '2026-07-05T00:00:00.000Z',
       last_completed_phase: 'review',
       notes: ['Awaiting implement fix for V-KISS-03 on #298.'],
-      active_workers: ['- reviewer on #298 PR 42 (spawned turn 12)'],
+      active_workers: ['reviewer on #298 PR 42 (spawned turn 12)'],
     });
   });
 
@@ -388,6 +388,47 @@ describe('buildStatusReport — state banner and recently_done', () => {
     issues['8'] = { title: 'closed-no-pr', status: 'closed' };
     const r = build({ issues });
     expect(r.recently_done.map((i) => i.issue)).toEqual([7, 6, 5, 4, 3]);
+  });
+
+  test.each(['none', '- none', '(none)', '-', 'N/A', '  None  '])(
+    'the empty marker %p under In-flight workers is not a worker',
+    (marker) => {
+      const r = build(
+        { issues: { '1': { title: 'a', status: 'ready', phase: 'handle' } } },
+        { checkpointBody: `## In-flight workers\n\n${marker}\n` },
+      );
+      expect(r.checkpoint.active_workers).toEqual([]);
+      expect(r.state.kind).toBe('idle');
+    },
+  );
+
+  test('worker lines lose their list bullet in checkpoint.active_workers and still count', () => {
+    const r = build(
+      { issues: { '1': { title: 'a', status: 'in-flight', phase: 'plan' } } },
+      { checkpointBody: '## In-flight workers\n\n- implementer on #1\n* reviewer on #2\n' },
+    );
+    expect(r.checkpoint.active_workers).toEqual(['implementer on #1', 'reviewer on #2']);
+    expect(r.state.reason).toBe('2 workers active');
+  });
+
+  const OWNER_NOTE = 'PR #4872 (MCP-8 write path) needs your approving review; standing auth does not cover it';
+  const REAL_OWNER_ITEM: QueueJson = {
+    issues: { '4206': { title: 'MCP-8', status: 'blocked', phase: 'review', pr: 4872, notes: `awaiting-owner-review: ${OWNER_NOTE}` } },
+  };
+
+  test('next_action for an owner item built from its note, without the gate token or its colon', () => {
+    const r = build(REAL_OWNER_ITEM);
+    expect(r.state.next_action).toBe(`${OWNER_NOTE} (#4206)`);
+    expect(r.waiting_on_owner[0].next_step).not.toContain('awaiting-owner-review:');
+  });
+
+  test('the owner gate token is grouped without its trailing colon', () => {
+    expect(build(REAL_OWNER_ITEM).blocked[0].waits_on).toBe('awaiting-owner-review');
+  });
+
+  test('an owner item with only the bare gate token falls back to its next step', () => {
+    const r = build({ issues: { '5': { title: 'g', status: 'blocked', phase: 'plan', notes: 'awaiting-plan-approval' } } });
+    expect(r.state.next_action).toBe('Owner: approve the plan (#5)');
   });
 
   test('waiting_on_owner items carry a pr_url when they have a PR', () => {
