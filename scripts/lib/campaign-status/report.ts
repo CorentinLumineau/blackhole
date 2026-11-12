@@ -1,11 +1,11 @@
 import { readScope } from '../../forge-scope.ts';
 import { prWebUrl } from '../forge-detection.ts';
+import { classifyBlocked, CLASS_PREVIEW, groupBlockedRows, waitReason, type WaitReason } from './blocked-classes.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
 import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
-import { computeStatusCounts, DONE_STATUSES, groupIssuesByPhase } from './queue.ts';
+import { computeStatusCounts, groupIssuesByPhase } from './queue.ts';
 import type {
   BlockedClass,
-  BlockedClassKind,
   BlockedGroup,
   CheckpointMeta,
   ConfigSummaryInput,
@@ -19,6 +19,9 @@ import type {
   StatusReport,
   StatusState,
 } from './types.ts';
+
+// Re-exported: callers import these from here.
+export { classifyBlocked, CLASS_PREVIEW };
 
 export type StatusReportInput = {
   config: ConfigSummaryInput & { repo?: string; forge?: string };
@@ -43,75 +46,11 @@ const OWNER_GATE_STEPS: Record<string, string> = {
   'awaiting-design-approval': 'Owner: approve the design',
   'awaiting-ruling-recheck': 'Owner: re-confirm the product ruling',
 };
-// Blocked-Iteration escalation note (checkpoint-protocol.md § Blocked-Iteration Counter).
-const ESCALATED_PREFIX = 'blocked-escalated:';
-
-type WaitReason = { waitsOn: string; owner: boolean };
-
-function waitReason(issue: QueueIssue, issues: Record<string, QueueIssue>): WaitReason {
-  const notes = (issue.notes ?? '').trim();
-  const token = (notes.split(/\s/)[0] ?? '').replace(/:$/, '');
-  if (token.startsWith('awaiting-')) return { waitsOn: token, owner: true };
-  if (notes.startsWith(ESCALATED_PREFIX)) return { waitsOn: 'blocked-escalated', owner: true };
-  if (notes.startsWith('merge-conflict-semantic')) return { waitsOn: 'merge-conflict', owner: false };
-  if (/overlap with #\d+/.test(notes)) return { waitsOn: 'overlap', owner: false };
-  const unmet = (issue.depends_on ?? []).some((d) => {
-    const dep = issues[String(d)];
-    return dep != null && !DONE_STATUSES.includes(dep.status ?? '');
-  });
-  return { waitsOn: unmet ? 'dependency' : 'other', owner: false };
-}
-
-// The campaign's own lanes: the contributor contract gives Claude and Blackhole `claude/*` / `blackhole/*`.
-// No config key declares them, so they are fixed here. Any other `in-progress:*` / `agent:*` lane is foreign.
-const OWN_LANES = new Set(['claude', 'blackhole']);
-const LANE_LABEL = /^(?:in-progress|agent):(.+)$/;
-
-function inForeignLane(issue: QueueIssue): boolean {
-  return (issue.labels ?? []).some((label) => {
-    const lane = LANE_LABEL.exec(label)?.[1];
-    return lane != null && !OWN_LANES.has(lane);
-  });
-}
-
 const ADDRESSES_OWNER = /^\s*owner:|needs-owner/i;
 
-// Display order: the campaign's own waits first, another lane's last (not the campaign's work).
-const BLOCKED_CLASS_LABELS: [BlockedClassKind, string][] = [
-  ['tracking_issue', 'Tracking issue'],
-  ['dependency', 'Dependency / upstream'],
-  ['merge_conflict', 'Merge conflict'],
-  ['overlap', 'Overlapping issue'],
-  ['sequenced_phase', 'Sequenced phase'],
-  ['other', 'Other'],
-  ['another_lane', 'Another lane'],
-];
-
-/** The one classifier for a blocked non-owner issue. First match wins: lane, tracking, sequence, dependency. */
-export function classifyBlocked(issue: QueueIssue, issues: Record<string, QueueIssue>): BlockedClassKind {
-  if (inForeignLane(issue)) return 'another_lane';
-  const notes = issue.notes ?? '';
-  if (/\btracking issue\b/i.test(notes)) return 'tracking_issue';
-  if (/\bin sequence\b/i.test(notes)) return 'sequenced_phase';
-  const waits = waitReason(issue, issues).waitsOn;
-  if (waits === 'merge-conflict') return 'merge_conflict';
-  if (waits === 'overlap') return 'overlap';
-  if (waits === 'dependency' || /^(?:dependency|upstream)\b|\bupstream\b|\bdepends on\b/i.test(notes.trim())) {
-    return 'dependency';
-  }
-  return 'other';
-}
-
 function classifyBlockedRows(blocked: IssueRow[], issues: Record<string, QueueIssue>): BlockedClass[] {
-  const byKind = new Map<BlockedClassKind, StatusItem[]>();
-  for (const row of blocked) {
-    const reason = waitReason(row.issue, issues);
-    if (reason.owner) continue;
-    const kind = classifyBlocked(row.issue, issues);
-    byKind.set(kind, [...(byKind.get(kind) ?? []), toItem(row, reason)]);
-  }
-  return BLOCKED_CLASS_LABELS.filter(([kind]) => byKind.has(kind)).map(([kind, label]) => {
-    const items = byKind.get(kind) ?? [];
+  return groupBlockedRows(blocked, issues).map(({ kind, label, rows }) => {
+    const items = rows.map((row) => toItem(row, waitReason(row.issue, issues)));
     const attention = kind !== 'another_lane' && items.some((i) => ADDRESSES_OWNER.test(i.notes ?? ''));
     return { class: kind, label, count: items.length, attention, issues: items };
   });
@@ -201,9 +140,6 @@ function workerLines(body: string | undefined): string[] {
     .map((l) => l.replace(/^[-*]\s+/, '').trim())
     .filter((l) => l !== '' && !EMPTY_MARKER.test(l));
 }
-
-/** Issues named on a reason class's one visible line; the full list is its items. */
-export const CLASS_PREVIEW = 3;
 
 /** The line under a PR delivered at LGTM: what the owner can rely on before merging. */
 export const READY_TO_MERGE_DETAIL = 'LGTM · CI green · no conflict — review and merge';

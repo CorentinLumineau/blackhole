@@ -1,5 +1,6 @@
 import { SECTION_CAP } from './dashboard.ts';
-import { CLASS_PREVIEW, inProgressItems, ownerDetail, READY_TO_MERGE_DETAIL } from './report.ts';
+import { classPreview } from './blocked-classes.ts';
+import { inProgressItems, ownerDetail, READY_TO_MERGE_DETAIL } from './report.ts';
 import type { BlockedClass, ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind } from './types.ts';
 
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -119,9 +120,9 @@ function ownerSection(r: StatusReport): string {
 // One visible line per class: the summary shows the count and the first few issue numbers; the full list sits
 // inside the native <details>, folded. No class is open by default, so another lane's items stay out of sight.
 function classLi(c: BlockedClass): string {
-  const first = c.issues.slice(0, CLASS_PREVIEW).map((i) => `#${escapeHtml(i.issue)}`).join(', ');
-  const rest = c.count - CLASS_PREVIEW;
-  const more = rest > 0 ? ` and ${escapeHtml(rest)} more` : '';
+  const preview = classPreview(c.issues, c.count);
+  const first = preview.first.map((i) => `#${escapeHtml(i.issue)}`).join(', ');
+  const more = preview.more > 0 ? ` and ${escapeHtml(preview.more)} more` : '';
   return (
     `<li><details class="cls"${c.attention ? ' open' : ''}><summary><span class="wait">${escapeHtml(c.label)}</span> ` +
     `<span class="count">${escapeHtml(c.count)}</span> <span class="meta">${first}${more}</span></summary>` +

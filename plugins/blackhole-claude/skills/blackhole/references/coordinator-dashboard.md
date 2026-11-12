@@ -64,7 +64,7 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `in_flight`, `in_review` | In-flight items split by `phase: review`, each `{issue, title, phase, status, pr, notes, next_step}` |
 | `blocked` | Groups `{waits_on, owner, count, issues}`; `waits_on` is the `awaiting-*` token, `blocked-escalated`, `dependency`, `overlap`, `merge-conflict` or `other` |
 | `ready` | The ready set |
-| `blocked_classes` | The non-owner part of `blocked` regrouped by reason class (`class`, `label`, `count`, `issues`), in display order: `tracking_issue`, `dependency`, `merge_conflict`, `overlap`, `sequenced_phase`, `other`, `another_lane`; each class also carries `attention` (true when a non-lane item's note starts `owner:` or says `needs-owner`; the page renders that class open). Every non-owner blocked issue is in exactly one class. Classified once by `classifyBlocked()` in `report.ts`, first match wins: a foreign-lane label (`in-progress:*` / `agent:*` whose lane is not `claude` or `blackhole`, the lanes the contributor contract gives the campaign; no config key declares them), then a note saying `tracking issue`, then `in sequence`, then a merge-conflict or overlap wait, then a dependency (unmet `depends_on`, or a note starting `dependency`/`upstream` or saying `depends on`), else `other`. Additive; `blocked` is unchanged |
+| `blocked_classes` | The non-owner part of `blocked` regrouped by reason class (`class`, `label`, `count`, `issues`), in display order: `tracking_issue`, `dependency`, `merge_conflict`, `overlap`, `sequenced_phase`, `other`, `another_lane`; each class also carries `attention` (true when a non-lane item's note starts `owner:` or says `needs-owner`; the page renders that class open). Every non-owner blocked issue is in exactly one class. Classified once by `classifyBlocked()` in `blocked-classes.ts` (re-exported by `report.ts`), first match wins: a foreign-lane label (`in-progress:*` / `agent:*` whose lane is not `claude` or `blackhole`, the lanes the contributor contract gives the campaign; no config key declares them), then a note saying `tracking issue`, then `in sequence`, then a merge-conflict or overlap wait, then a dependency (unmet `depends_on`, or a note starting `dependency`/`upstream` or saying `depends on`), else `other`. Additive; `blocked` is unchanged |
 | `recently_done` | Newest merged/closed items, highest PR then issue number first (the queue holds no merge time), at most 5 |
 | `ledger_open` | Every open finding, BLOCK first then most recent (`id`, `vcode`, `severity`, `summary`, `issue_ref`) |
 | `host` | `pace` (the pace line or `null`) and `notes` (plugin-drift lines) |
@@ -115,7 +115,7 @@ The status script emits markdown with:
    deliberately narrow: it says nothing about plugin-cache drift or doc-tree health — those are
    separate signals read (and, for plugin-drift, rendered) elsewhere.
 3. **In-flight** — table: issue, phase, PR, notes
-4. **Blocked** — issue list with blocker reason
+4. **Blocked** — one line per owner gate (`awaiting-*`, `blocked-escalated:`) with its note, then one line per reason class: label, count, first 3 issue numbers and "and N more". The same `classifyBlocked()` as `blocked_classes` (`scripts/lib/campaign-status/blocked-classes.ts`), so counts match `--json`
 5. **Ready** — Pareto-ready issue numbers
 6. **Routing** — per active issue carrying a `route{}`: the **planned** conditional chain
    `Handle → [research?] → [investigate?] → [design-gate?] → Plan(tier) → Implement → Review([security?])`
