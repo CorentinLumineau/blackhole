@@ -99,6 +99,7 @@ Skipped entirely when `status_page.enabled` is `false`. Procedure and per-harnes
 |-------|-----|--------|
 | Campaign start | `coordinator` or main-chat orchestrator | Claude Code: `bun run status --data` → create the Data dashboard once (saves `.blackhole/status-artifact.json`); elsewhere `bun run status --html` → publish |
 | Every checkpoint write | `orchestrator` | Claude Code: `bun run status --data` → upload the row files and update the datasets of the same dashboard; else `bun run status --html` → refresh the `Blackhole status` canvas / rewrite the local file (`checkpoint-protocol.md` § Write order, step 5) |
+| Main chat hands the turn back with workers in flight (Pattern C) | main-chat orchestrator | Same refresh as a checkpoint write |
 | User asks `status` | Coordinator or orchestrator | Print the dashboard as above, then refresh the page |
 
 **Do not** collapse the dashboard to a one-line confirmation. Users rely on the main

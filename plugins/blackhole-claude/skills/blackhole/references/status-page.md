@@ -14,6 +14,7 @@ everything below; the text dashboard is unaffected.
 |-------|-----|
 | Campaign start, after bootstrap and before the first spawn | `coordinator` (Pattern B) or the main-chat orchestrator (Pattern C) |
 | Every checkpoint write — `checkpoint-protocol.md` § Write order, step 5 | `orchestrator` |
+| The main chat hands the turn back while workers are still in flight (Pattern C) | main-chat orchestrator |
 | `status` mode / the owner asks for status | whoever runs `bun run status` |
 
 A refresh is cheap and idempotent: regenerate, then update the existing view. A failed refresh is
