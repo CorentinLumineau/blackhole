@@ -1,4 +1,6 @@
-import type { ReadyToMergeItem, StatusItem, StatusReport } from './types.ts';
+import { SECTION_CAP } from './dashboard.ts';
+import { ownerDetail } from './report.ts';
+import type { ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind } from './types.ts';
 
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
@@ -18,19 +20,27 @@ function campaignName(report: StatusReport): string {
 
 const empty = (text: string): string => `<p class="empty">${escapeHtml(text)}</p>`;
 
-function itemLi(item: StatusItem): string {
+// The only links on the page. A URL that is not http(s) is dropped, never rendered as an href.
+const isHttpUrl = (url: string): boolean => /^https?:\/\//i.test(url);
+
+const link = (href: string, label: string): string =>
+  `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+
+function itemLi(item: StatusItem, detail: string = item.next_step): string {
   const meta = [item.phase, item.pr != null ? `PR #${item.pr}` : null].filter(Boolean).join(' · ');
+  const open = item.pr_url && isHttpUrl(item.pr_url) ? ` ${link(item.pr_url, 'Open PR ↗')}` : '';
   return [
     '<li>',
     `<span class="num">#${escapeHtml(item.issue)}</span> ${escapeHtml(item.title)}`,
     meta ? ` <span class="meta">${escapeHtml(meta)}</span>` : '',
-    `<div class="next">${escapeHtml(item.next_step)}</div>`,
+    open,
+    `<div class="next">${escapeHtml(detail)}</div>`,
     '</li>',
   ].join('');
 }
 
-const itemList = (items: StatusItem[], none: string): string =>
-  items.length ? `<ul class="items">${items.map(itemLi).join('')}</ul>` : empty(none);
+const itemList = (items: StatusItem[], none: string, detail?: (i: StatusItem) => string): string =>
+  items.length ? `<ul class="items">${items.map((i) => itemLi(i, detail?.(i))).join('')}</ul>` : empty(none);
 
 const lineList = (lines: string[]): string =>
   `<ul class="lines">${lines.map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ul>`;
@@ -40,13 +50,46 @@ function section(title: string, body: string, count?: number): string {
   return `<section><h2>${escapeHtml(title)}${badge}</h2>${body}</section>`;
 }
 
-// The only links on the page. A URL that is not http(s) is dropped, never rendered as an href.
-const isHttpUrl = (url: string): boolean => /^https?:\/\//i.test(url);
+const STATE_LABEL: Record<StatusStateKind, { mark: string; label: string }> = {
+  running: { mark: '●', label: 'RUNNING' },
+  waiting_on_you: { mark: '■', label: 'WAITING ON YOU' },
+  idle: { mark: '◐', label: 'IDLE' },
+  done: { mark: '✓', label: 'DONE' },
+  stale: { mark: '⚠', label: 'STALE' },
+};
+
+function agoText(lastIso: string, nowIso: string): string {
+  const minutes = Math.max(0, Math.round((Date.parse(nowIso) - Date.parse(lastIso)) / 60_000));
+  if (Number.isNaN(minutes)) return lastIso;
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 48 * 60) return `${Math.round(minutes / 60)} h ago`;
+  return `${Math.round(minutes / 1440)} d ago`;
+}
+
+// "2026-11-12 11:56 UTC" from an ISO timestamp.
+const utcText = (iso: string): string => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)} UTC`;
+};
+
+function banner(r: StatusReport, name: string): string {
+  const { state } = r;
+  const { mark, label } = STATE_LABEL[state.kind];
+  const activity = state.last_activity_at
+    ? `Last activity: ${agoText(state.last_activity_at, r.generated_at)} (${utcText(state.last_activity_at)})`
+    : 'Last activity: unknown';
+  return [
+    `<header class="banner state-${state.kind.replaceAll('_', '-')}">`,
+    `<h1>Blackhole — ${escapeHtml(name)} · Turn ${escapeHtml(r.checkpoint.turn ?? '—')}</h1>`,
+    `<p class="state"><span class="mark" aria-hidden="true">${mark}</span> ${label} — ${escapeHtml(state.reason)}</p>`,
+    `<p>${escapeHtml(activity)}</p>`,
+    `<p>Your next action: ${escapeHtml(state.next_action)}</p>`,
+    '</header>',
+  ].join('');
+}
 
 function readyLi(r: StatusReport, item: ReadyToMergeItem): string {
   const ref = `${r.campaign.repo ?? ''}#${item.pr}`;
-  const link = (href: string, label: string) =>
-    `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
   const links = isHttpUrl(item.pr_url)
     ? ` ${link(item.pr_url, 'Open PR ↗')} ${link(`${item.pr_url}/files`, 'Files changed ↗')}`
     : '';
@@ -54,45 +97,53 @@ function readyLi(r: StatusReport, item: ReadyToMergeItem): string {
     '<li>',
     `<span class="num">${escapeHtml(ref)}</span>${links}`,
     `<div>${escapeHtml(item.title)} <span class="meta">#${escapeHtml(item.issue)}</span></div>`,
-    '<div class="next">LGTM · CI green · no conflict</div>',
+    '<div class="next">LGTM · CI green · no conflict — review and merge</div>',
     '</li>',
   ].join('');
 }
 
-function readySection(r: StatusReport): string {
-  const body = r.ready_to_merge.length
-    ? `<ul class="items">${r.ready_to_merge.map((i) => readyLi(r, i)).join('')}</ul>`
-    : empty('Nothing is ready to merge yet.');
-  return section('Ready to merge', body, r.ready_to_merge.length);
+function progressSection(r: StatusReport): string {
+  const delivered = new Set(r.ready_to_merge.map((i) => i.issue));
+  const items = [...r.in_flight, ...r.in_review].filter((i) => !delivered.has(i.issue));
+  return section('In progress', itemList(items, 'No issue is being planned, implemented or reviewed.'), items.length);
 }
 
 function ownerSection(r: StatusReport): string {
-  return section('Waiting on the owner', itemList(r.waiting_on_owner, 'Nothing is waiting on you.'), r.waiting_on_owner.length);
-}
-
-function motionSection(r: StatusReport): string {
-  const parts = [
-    '<h3>In flight</h3>',
-    itemList(r.in_flight, 'No issue is being planned or implemented.'),
-    '<h3>In review</h3>',
-    itemList(r.in_review, 'No PR is in review.'),
-    '<h3>Ready next</h3>',
-    r.ready.length
-      ? `<p class="nums">${r.ready.map((i) => `#${escapeHtml(i.issue)}`).join(', ')}</p>`
-      : empty('The ready set is empty.'),
+  const rows = [
+    ...r.ready_to_merge.map((i) => readyLi(r, i)),
+    ...r.waiting_on_owner.map((i) => itemLi(i, ownerDetail(i))),
   ];
-  return section('In motion', parts.join(''), r.in_flight.length + r.in_review.length);
+  const body = rows.length ? `<ul class="items">${rows.join('')}</ul>` : empty('Nothing is waiting on you.');
+  return section('Waiting on you', body, rows.length);
 }
 
-function blockedSection(r: StatusReport): string {
-  if (r.blocked.length === 0) return section('Blocked', empty('Nothing is blocked.'), 0);
-  const rows = r.blocked.map(
+function elseSection(r: StatusReport): string {
+  const groups = r.blocked.filter((g) => !g.owner);
+  const count = groups.reduce((n, g) => n + g.count, 0);
+  if (groups.length === 0) return section('Waiting on something else', empty('Nothing else is blocked.'), 0);
+  const rows = groups.map(
     (g) =>
-      `<li><span class="wait">${escapeHtml(g.waits_on)}</span>${g.owner ? ' <span class="tag">owner</span>' : ''}` +
-      ` <span class="count">${escapeHtml(g.count)}</span>` +
-      `<div class="nums">${g.issues.map((i) => `#${escapeHtml(i.issue)} ${escapeHtml(i.title)}`).join(' · ')}</div></li>`,
+      `<li><span class="wait">${escapeHtml(g.waits_on)}</span> <span class="count">${escapeHtml(g.count)}</span>` +
+      `<ul class="items">${g.issues.map((i) => itemLi(i, i.notes?.trim() || i.next_step)).join('')}</ul></li>`,
   );
-  return section('Blocked', `<ul class="groups">${rows.join('')}</ul>`, r.counts.queue.blocked);
+  return section('Waiting on something else', `<ul class="groups">${rows.join('')}</ul>`, count);
+}
+
+const numberedLine = (i: StatusItem): string => `<li><span class="num">#${escapeHtml(i.issue)}</span> ${escapeHtml(i.title)}</li>`;
+
+function upNextSection(r: StatusReport): string {
+  if (r.ready.length === 0) return section('Up next', empty('The ready set is empty.'), 0);
+  const more = r.ready.length - SECTION_CAP;
+  const rows = r.ready.slice(0, SECTION_CAP).map(numberedLine).join('');
+  const tail = more > 0 ? `<li class="meta">+${escapeHtml(more)} more</li>` : '';
+  return section('Up next', `<ul class="lines">${rows}${tail}</ul>`, r.ready.length);
+}
+
+function doneSection(r: StatusReport): string {
+  const body = r.recently_done.length
+    ? `<ul class="lines">${r.recently_done.map(numberedLine).join('')}</ul>`
+    : empty('Nothing has merged yet.');
+  return section('Recently done', body, r.recently_done.length);
 }
 
 function hostSection(r: StatusReport): string {
@@ -143,7 +194,18 @@ body { margin: 0; background: var(--bg); color: var(--text);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 main { max-width: 760px; margin: 0 auto; padding: 16px; }
 header h1 { font-size: 1.35rem; margin: 0 0 4px; overflow-wrap: anywhere; }
-header p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+header p { margin: 2px 0 0; overflow-wrap: anywhere; }
+.banner { background: var(--surface); border: 1px solid var(--border); border-left: 6px solid var(--muted);
+  border-radius: 6px; padding: 12px 14px; }
+.banner .state { font-size: 1.15rem; font-weight: 700; }
+.state-running { border-left-color: var(--ok); } .state-running .state { color: var(--ok); }
+.state-waiting-on-you { border-left-color: var(--accent); } .state-waiting-on-you .state { color: var(--accent); }
+.state-stale { border-left-color: var(--block); } .state-stale .state { color: var(--block); }
+.state-done { border-left-color: var(--ok); } .state-done .state { color: var(--ok); }
+.state-idle { border-left-color: var(--warn); } .state-idle .state { color: var(--warn); }
+details { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 8px; }
+summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+li > ul { margin: 4px 0 0 12px; }
 section { background: var(--surface); border-top: 1px solid var(--border); padding: 12px 0 4px; margin-top: 12px; }
 h2 { font-size: 1.05rem; margin: 0 0 8px; }
 h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 12px 0 4px; }
@@ -164,15 +226,9 @@ a { color: var(--accent); margin-left: 8px; }
 `;
 
 /** Self-contained status page: inline CSS, no script, nothing loaded from the network; the only links are the
- * forge PR anchors in "Ready to merge" (`target=_blank rel=noopener`, http(s) only). */
+ * forge PR anchors in "Waiting on you" (`target=_blank rel=noopener`, http(s) only). */
 export function renderStatusHtml(report: StatusReport): string {
   const name = campaignName(report);
-  const q = report.counts.queue;
-  const l = report.counts.ledger;
-  const summary =
-    `Turn ${report.checkpoint.turn ?? '—'} · checkpoint ${report.checkpoint.refreshed_at ?? '—'} · ` +
-    `${q.active} active · ${q.in_flight} in flight · ${q.blocked} blocked · ${q.ready} ready · ${q.done} done · ` +
-    `ledger ${l.open} open (BLOCK ${l.block}) · generated ${report.generated_at}`;
   return [
     '<!doctype html>',
     '<html lang="en">',
@@ -184,14 +240,17 @@ export function renderStatusHtml(report: StatusReport): string {
     '</head>',
     '<body>',
     '<main>',
-    `<header><h1>Blackhole status — ${escapeHtml(name)}</h1><p>${escapeHtml(summary)}</p></header>`,
-    readySection(report),
+    banner(report, name),
+    progressSection(report),
     ownerSection(report),
-    motionSection(report),
-    blockedSection(report),
+    elseSection(report),
+    upNextSection(report),
+    doneSection(report),
+    '<details><summary>Details</summary>',
     hostSection(report),
     eventsSection(report),
     findingsSection(report),
+    '</details>',
     '</main>',
     '</body>',
     '</html>',

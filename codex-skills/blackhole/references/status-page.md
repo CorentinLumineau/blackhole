@@ -34,17 +34,22 @@ Later refreshes rewrite the same file silently.
 
 ## Page layout
 
-Sections, in this order (`scripts/lib/campaign-status/html.ts`):
+Top to bottom (`scripts/lib/campaign-status/html.ts`), so the owner sees at once whether the
+campaign is working, which turn it is and what to do:
 
-1. **Ready to merge** — PRs delivered at LGTM, CI green and conflict-free: one row per PR with
-   `Open PR ↗` and `Files changed ↗` links, so the owner can review and merge each directly
-   (`ready_to_merge`; empty state "Nothing is ready to merge yet.")
-2. **Waiting on the owner** — blocked issues only the owner can clear (`awaiting-*` gates,
-   `blocked-escalated:` notes)
-3. **In motion** — in-flight issues, then in-review, each with its PR and next step
-4. **Blocked** — grouped by what they wait on, with counts and issue numbers
-5. **Host and environment** — forge reachability, the pace line, plugin-drift lines
-6. **Recent events** — the checkpoint's `## Notes` and `## In-flight workers` lines
+0. **State banner** — turn, `RUNNING` / `WAITING ON YOU` / `IDLE` / `DONE`, last activity
+   (relative and UTC) and "Your next action". `STALE` replaces the state when the newest of the
+   checkpoint and queue write times is older than `STALE_AFTER_HOURS` (`staleness.ts`), saying
+   "state last written Xh ago, so what follows may be out of date" (`state`)
+1. **In progress** — in-flight and in-review issues, each with its next step
+2. **Waiting on you** — PRs delivered at LGTM (`Open PR ↗` and `Files changed ↗` links) and
+   owner gates (`awaiting-*`, `blocked-escalated:`); empty state "Nothing is waiting on you."
+3. **Waiting on something else** — blocked groups the owner cannot clear (dependency, overlap,
+   merge conflict, `other`), each item with its note
+4. **Up next** — the ready set, capped
+5. **Recently done** — newest merged/closed items (`recently_done`)
+6. **Details** — a collapsed native `<details>`: host and environment, the checkpoint's
+   `## Notes` and `## In-flight workers` lines, open findings
 
 ## State file
 

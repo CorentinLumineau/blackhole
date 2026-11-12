@@ -69,7 +69,7 @@ describe('buildStatusReport — JSON shape against the fixtures', () => {
       refreshed_at: '2026-07-05T00:00:00.000Z',
       last_completed_phase: 'review',
       notes: ['Awaiting implement fix for V-KISS-03 on #298.'],
-      active_workers: ['- reviewer on #298 PR 42 (spawned turn 12)'],
+      active_workers: ['reviewer on #298 PR 42 (spawned turn 12)'],
     });
   });
 
@@ -294,5 +294,147 @@ describe('buildStatusReport — ready_to_merge', () => {
 
   test('a repo that is not owner/name yields no link', () => {
     expect(build({ repo: 'x"><script>' }).ready_to_merge).toEqual([]);
+  });
+});
+
+describe('buildStatusReport — state banner and recently_done', () => {
+  const NOW = '2026-11-12T12:00:00.000Z';
+  const build = (queue: QueueJson, over: Partial<Parameters<typeof buildStatusReport>[0]> = {}) =>
+    buildStatusReport({
+      config: { repo: 'acme/widgets' },
+      queue: { refreshed_at: '2026-11-12T11:50:00.000Z', ...queue },
+      ledger: {},
+      checkpoint: { orchestrator_turn_id: 3, refreshed_at: '2026-11-12T11:56:00.000Z' },
+      checkpointBody: '',
+      forge: FORGE_OK,
+      paceLine: null,
+      hostNotes: [],
+      generatedAt: NOW,
+      ...over,
+    });
+
+  test('RUNNING when the checkpoint names an active worker', () => {
+    const r = build(
+      { issues: { '1': { title: 'a', status: 'in-flight', phase: 'implement' } } },
+      { checkpointBody: '## In-flight workers\n\n- implementer on #1\n- reviewer on #2\n' },
+    );
+    expect(r.state.kind).toBe('running');
+    expect(r.state.reason).toBe('2 workers active');
+    expect(r.state.last_activity_at).toBe('2026-11-12T11:56:00.000Z');
+    expect(r.state.next_action).toBe('Nothing — the campaign is running on its own.');
+  });
+
+  test('RUNNING when an issue is in flight with a fresh checkpoint and no worker lines', () => {
+    const r = build({ issues: { '1': { title: 'a', status: 'in-flight', phase: 'plan' } } });
+    expect(r.state.kind).toBe('running');
+    expect(r.state.reason).toBe('1 issue in flight');
+  });
+
+  test('WAITING ON YOU when nothing runs and the owner has an item; next action is its next step', () => {
+    const r = build({
+      issues: { '5': { title: 'gate', status: 'blocked', phase: 'plan', notes: 'awaiting-plan-approval' } },
+    });
+    expect(r.state.kind).toBe('waiting_on_you');
+    expect(r.state.next_action).toBe('Owner: approve the plan (#5)');
+  });
+
+  test('a PR delivered at LGTM counts as waiting on you, not as work in flight', () => {
+    const r = build({
+      issues: { '7': { title: 'x', status: 'in-flight', phase: 'review', pr: 21, notes: 'delivered-at-LGTM' } },
+    });
+    expect(r.state.kind).toBe('waiting_on_you');
+    expect(r.state.next_action).toBe('Review and merge PR #21 (#7)');
+  });
+
+  test('IDLE when only the ready set is non-empty', () => {
+    const r = build({ issues: { '2': { title: 'n', status: 'ready', phase: 'handle' } } });
+    expect(r.state.kind).toBe('idle');
+  });
+
+  test('DONE when no issue is active', () => {
+    const r = build({ issues: { '2': { title: 'n', status: 'merged', phase: 'review', pr: 3 } } });
+    expect(r.state.kind).toBe('done');
+  });
+
+  test('STALE wins over RUNNING when the newest state write is older than the threshold', () => {
+    const r = build(
+      { refreshed_at: '2026-11-11T19:00:00.000Z', issues: { '1': { title: 'a', status: 'in-flight', phase: 'implement' } } },
+      { checkpoint: { orchestrator_turn_id: 3, refreshed_at: '2026-11-11T18:00:00.000Z' } },
+    );
+    expect(r.state.kind).toBe('stale');
+    expect(r.state.underlying).toBe('running');
+    expect(r.state.last_activity_at).toBe('2026-11-11T19:00:00.000Z');
+    expect(r.state.stale_hours).toBe(17);
+    expect(r.state.reason).toContain('17h ago');
+  });
+
+  test('the newest of checkpoint and queue timestamps decides staleness', () => {
+    const r = build(
+      { refreshed_at: '2026-11-12T11:30:00.000Z', issues: { '1': { title: 'a', status: 'in-flight', phase: 'plan' } } },
+      { checkpoint: { orchestrator_turn_id: 3, refreshed_at: '2026-11-10T00:00:00.000Z' } },
+    );
+    expect(r.state.kind).toBe('running');
+  });
+
+  test('no timestamp at all is STALE, never live', () => {
+    const r = build({ refreshed_at: undefined, issues: {} }, { checkpoint: {} });
+    expect(r.state.kind).toBe('stale');
+    expect(r.state.last_activity_at).toBeNull();
+  });
+
+  test('recently_done lists merged/closed items, highest PR then issue number first, capped at 5', () => {
+    const issues: QueueJson['issues'] = {};
+    for (let i = 1; i <= 7; i++) issues[String(i)] = { title: `t${i}`, status: 'merged', pr: 100 + i };
+    issues['8'] = { title: 'closed-no-pr', status: 'closed' };
+    const r = build({ issues });
+    expect(r.recently_done.map((i) => i.issue)).toEqual([7, 6, 5, 4, 3]);
+  });
+
+  test.each(['none', '- none', '(none)', '-', 'N/A', '  None  '])(
+    'the empty marker %p under In-flight workers is not a worker',
+    (marker) => {
+      const r = build(
+        { issues: { '1': { title: 'a', status: 'ready', phase: 'handle' } } },
+        { checkpointBody: `## In-flight workers\n\n${marker}\n` },
+      );
+      expect(r.checkpoint.active_workers).toEqual([]);
+      expect(r.state.kind).toBe('idle');
+    },
+  );
+
+  test('worker lines lose their list bullet in checkpoint.active_workers and still count', () => {
+    const r = build(
+      { issues: { '1': { title: 'a', status: 'in-flight', phase: 'plan' } } },
+      { checkpointBody: '## In-flight workers\n\n- implementer on #1\n* reviewer on #2\n' },
+    );
+    expect(r.checkpoint.active_workers).toEqual(['implementer on #1', 'reviewer on #2']);
+    expect(r.state.reason).toBe('2 workers active');
+  });
+
+  const OWNER_NOTE = 'PR #4872 (MCP-8 write path) needs your approving review; standing auth does not cover it';
+  const REAL_OWNER_ITEM: QueueJson = {
+    issues: { '4206': { title: 'MCP-8', status: 'blocked', phase: 'review', pr: 4872, notes: `awaiting-owner-review: ${OWNER_NOTE}` } },
+  };
+
+  test('next_action for an owner item built from its note, without the gate token or its colon', () => {
+    const r = build(REAL_OWNER_ITEM);
+    expect(r.state.next_action).toBe(`${OWNER_NOTE} (#4206)`);
+    expect(r.waiting_on_owner[0].next_step).not.toContain('awaiting-owner-review:');
+  });
+
+  test('the owner gate token is grouped without its trailing colon', () => {
+    expect(build(REAL_OWNER_ITEM).blocked[0].waits_on).toBe('awaiting-owner-review');
+  });
+
+  test('an owner item with only the bare gate token falls back to its next step', () => {
+    const r = build({ issues: { '5': { title: 'g', status: 'blocked', phase: 'plan', notes: 'awaiting-plan-approval' } } });
+    expect(r.state.next_action).toBe('Owner: approve the plan (#5)');
+  });
+
+  test('waiting_on_owner items carry a pr_url when they have a PR', () => {
+    const r = build({
+      issues: { '5': { title: 'g', status: 'blocked', phase: 'review', pr: 9, notes: 'awaiting-user-clarification' } },
+    });
+    expect(r.waiting_on_owner[0].pr_url).toBe('https://github.com/acme/widgets/pull/9');
   });
 });
