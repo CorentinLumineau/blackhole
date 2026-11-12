@@ -129,6 +129,8 @@ export type StatusItem = {
   notes: string | null;
   /** Plain-language next step derived from phase/status/PR. */
   next_step: string;
+  /** Forge link to the PR; set on `waiting_on_owner` items that have one and whose URL can be built. */
+  pr_url?: string | null;
 };
 
 /** Blocked issues sharing one wait reason: an `awaiting-*` gate token, or `dependency` / `overlap` / `merge-conflict` / `other`. */
@@ -148,6 +150,23 @@ export type BlockedGroup = {
 /** A PR the campaign has delivered at LGTM and left open for the owner to merge. */
 export type ReadyToMergeItem = StatusItem & { pr_url: string };
 
+/** What the campaign is doing right now. `stale` replaces any other kind when the state is old. */
+export type StatusStateKind = 'running' | 'waiting_on_you' | 'idle' | 'done' | 'stale';
+
+export type StatusState = {
+  kind: StatusStateKind;
+  /** The state the campaign would show if it were fresh; equals `kind` unless `kind` is `stale`. */
+  underlying: Exclude<StatusStateKind, 'stale'>;
+  /** Short reason, e.g. `2 workers active`. */
+  reason: string;
+  /** Newest of `checkpoint.refreshed_at` / `campaign.queue_refreshed_at`; null when neither parses. */
+  last_activity_at: string | null;
+  /** Age of `last_activity_at` at `generated_at`, in hours; null when unknown. */
+  stale_hours: number | null;
+  /** What the owner has to do, or the "running on its own" line. */
+  next_action: string;
+};
+
 export type StatusReport = {
   schema_version: 1;
   generated_at: string;
@@ -157,6 +176,8 @@ export type StatusReport = {
     started_at: string | null;
     queue_refreshed_at: string | null;
   };
+  /** The banner: running / waiting on you / idle / done, or stale when the state is old. Additive. */
+  state: StatusState;
   checkpoint: {
     turn: number | null;
     refreshed_at: string | null;
@@ -181,6 +202,8 @@ export type StatusReport = {
   in_review: StatusItem[];
   blocked: BlockedGroup[];
   ready: StatusItem[];
+  /** Newest merged/closed items, highest PR then issue number first (the queue carries no merge time), at most 5. */
+  recently_done: StatusItem[];
   /** Open findings, BLOCK first then most recent — the dashboard's `Ledger open` order, uncapped. */
   ledger_open: Array<{
     id: string | null;
