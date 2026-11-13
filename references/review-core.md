@@ -313,11 +313,15 @@ bun run scripts/review-aggregate.ts \
   [--prior-file <ledger-rows.json>] \
   [--verification-file <verification-entries.json>] \
   --review-iteration <queue review_iteration> \
-  --base-ref <PR base branch>
+  --base-ref <PR base branch> \
+  --repo-dir <PR worktree> \
+  --head <PR head ref>
 ```
 
 `--base-ref` (ADR-134) runs the slop citation check on every `V-UX-09`/`V-UX-10` `BLOCK`, using
-the vendored `scripts/lib/slop-citation/slop-citation-check.mjs` against the PR checkout. A row
+the vendored `scripts/lib/slop-citation/slop-citation-check.mjs` against the PR checkout named by
+`--repo-dir` and `--head` (default: the current directory's `HEAD`). A bare base name resolves to
+`origin/<name>` when that ref exists. A row
 whose citation is missing or not verified is downgraded, with the reason in an
 `[unverified slop citation: <reason>]` caveat (§ Static UX Checks in the reviewer). Omitting the
 flag downgrades every such row, so a missing flag can never let an unverified slop finding block.

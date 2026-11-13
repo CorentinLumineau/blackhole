@@ -8,7 +8,7 @@
       "line": 2,
       "summary": "radius outside the declared set",
       "cited_value": 42,
-      "declared_set_ref": "DESIGN.md"
+      "declared_set_ref": "DESIGN.md#radius"
     }
   ]
 }

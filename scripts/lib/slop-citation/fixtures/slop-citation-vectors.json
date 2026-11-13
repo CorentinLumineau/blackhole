@@ -2,262 +2,1311 @@
   "templates": {
     "design": "---\nversion: 1\nrounded:\n  none: 0px\n  xs: 4px\n  md: 8px\n  lg: 12px\n  full: 9999px\ncolors:\n  primary: \"#1f5c38\"\n  ink: \"#26251e\"\nspacing:\n  sm: 8px\n  md: 16px\n---\n# Design\n\nThe closed radius set is 4px, 8px and pills.\n",
     "design-sm": "---\nversion: 1\nrounded:\n  none: 0px\n  xs: 4px\n  sm: 6px\n  md: 8px\n  lg: 12px\n  full: 9999px\ncolors:\n  primary: \"#1f5c38\"\n  ink: \"#26251e\"\nspacing:\n  sm: 8px\n  md: 16px\n---\n# Design\n",
-    "card-base": "export function Card() {\n  return <div className=\"p-4\">x</div>;\n}\n"
+    "card-base": "export function Card() {\n  return <div className=\"p-4\">x</div>;\n}\n",
+    "design-nested": "---\nrounded:\n  sm: 4px\n  scale:\n    md: 7px\ncolors:\n  primary: \"#1f5c38\"\n---\n",
+    "design-full": "---\nrounded:\n  md: 8px\nshadow:\n  sm: \"0 1px 2px rgba(0,0,0,0.1)\"\nfontSize:\n  sm: 14px\n  base: 16px\n---\n",
+    "design-default": "---\nrounded:\n  default: 4px\n  md: 8px\n---\n"
   },
   "vectors": [
     {
       "name": "named-scale class absent from the authoritative set verifies",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 0 }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 0
+      }
     },
     {
       "name": "key declared in the base set is not verified",
-      "base": { "DESIGN.md": "@tpl:design-sm", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "key-in-set" }
+      "base": {
+        "DESIGN.md": "@tpl:design-sm",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "key-in-set"
+      }
     },
     {
       "name": "bare rounded maps to DEFAULT, absent from the set",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 0 }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 0
+      }
     },
     {
       "name": "exempt universal value",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-full p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded-full", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "exempt" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-full p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-full",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "exempt"
+      }
     },
     {
       "name": "new hex absent from an all-hex colour set verifies",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div style={{ color: \"#ff6600\" }}>x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "#ff6600", "axis": "color", "setFile": "DESIGN.md" },
-      "expect": { "exit": 0 }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div style={{ color: \"#ff6600\" }}>x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "#ff6600",
+        "axis": "color",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 0
+      }
     },
     {
       "name": "hex equal to a token in another case is in the set",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div style={{ color: \"#1F5C38\" }}>x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "#1F5C38", "axis": "color", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "value-in-set" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div style={{ color: \"#1F5C38\" }}>x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "#1F5C38",
+        "axis": "color",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "value-in-set"
+      }
     },
     {
       "name": "hex against a set with computed colours fails open",
-      "base": { "theme.css": "@theme {\n  --color-primary: oklch(0.5 0.1 150);\n}\n", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div style={{ color: \"#ff6600\" }}>x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "#ff6600", "axis": "color", "setFile": "theme.css" },
-      "expect": { "exit": 1, "reason": "set-computed" }
+      "base": {
+        "theme.css": "@theme {\n  --color-primary: oklch(0.5 0.1 150);\n}\n",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div style={{ color: \"#ff6600\" }}>x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "#ff6600",
+        "axis": "color",
+        "setFile": "theme.css"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "set-computed"
+      }
     },
     {
       "name": "arbitrary spacing value absent from the set verifies",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"p-[13px]\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "p-[13px]", "axis": "spacing", "setFile": "DESIGN.md" },
-      "expect": { "exit": 0 }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"p-[13px]\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "p-[13px]",
+        "axis": "spacing",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 0
+      }
     },
     {
       "name": "arbitrary rem value equal to a px token is in the set",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"p-[1rem]\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "p-[1rem]", "axis": "spacing", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "value-in-set" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"p-[1rem]\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "p-[1rem]",
+        "axis": "spacing",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "value-in-set"
+      }
     },
     {
       "name": "arbitrary var() value is undecidable",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-[var(--radius-sm)]\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded-[var(--radius-sm)]", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "shape-undecidable" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-[var(--radius-sm)]\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-[var(--radius-sm)]",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "shape-undecidable"
+      }
     },
     {
       "name": "raw palette class against the authoritative set verifies",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"text-gray-500 p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "text-gray-500", "axis": "color", "setFile": "DESIGN.md" },
-      "expect": { "exit": 0 }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"text-gray-500 p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "text-gray-500",
+        "axis": "color",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 0
+      }
     },
     {
       "name": "raw palette class against an open CSS theme fails open",
-      "base": { "theme.css": "@theme {\n  --color-primary: #1f5c38;\n}\n", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"text-gray-500 p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "text-gray-500", "axis": "color", "setFile": "theme.css" },
-      "expect": { "exit": 1, "reason": "set-open-world" }
+      "base": {
+        "theme.css": "@theme {\n  --color-primary: #1f5c38;\n}\n",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"text-gray-500 p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "text-gray-500",
+        "axis": "color",
+        "setFile": "theme.css"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "set-open-world"
+      }
     },
     {
       "name": "raw palette class against a CSS theme closed by reset verifies",
-      "base": { "theme.css": "@theme {\n  --color-*: initial;\n  --color-primary: #1f5c38;\n}\n", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"text-gray-500 p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "text-gray-500", "axis": "color", "setFile": "theme.css" },
-      "expect": { "exit": 0 }
+      "base": {
+        "theme.css": "@theme {\n  --color-*: initial;\n  --color-primary: #1f5c38;\n}\n",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"text-gray-500 p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "text-gray-500",
+        "axis": "color",
+        "setFile": "theme.css"
+      },
+      "expect": {
+        "exit": 0
+      }
     },
     {
       "name": "value already in the base file is not net-new",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "export function Card() {\n  return <div className=\"p-4\">x</div>;\n}\nexport const old = \"rounded-sm\";\n" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\nexport const old = \"rounded-sm\";\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "not-net-new" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"p-4\">x</div>;\n}\nexport const old = \"rounded-sm\";\n"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\nexport const old = \"rounded-sm\";\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "not-net-new"
+      }
     },
     {
       "name": "a renamed file keeps its base occurrences",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n// card\n// more\n// lines\n" },
-      "renames": [["src/Card.tsx", "src/ui/Card.tsx"]],
-      "head": { "src/ui/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n// card\n// more\n// lines\n// moved\n" },
-      "citation": { "code": "V-UX-09", "file": "src/ui/Card.tsx", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "not-net-new" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n// card\n// more\n// lines\n"
+      },
+      "renames": [
+        [
+          "src/Card.tsx",
+          "src/ui/Card.tsx"
+        ]
+      ],
+      "head": {
+        "src/ui/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n// card\n// more\n// lines\n// moved\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/ui/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "not-net-new"
+      }
     },
     {
       "name": "a value moved out of another changed file is not net-new",
-      "base": { "DESIGN.md": "@tpl:design", "src/A.tsx": "export const A = () => <div className=\"rounded-sm\">a</div>;\n" },
-      "head": { "src/A.tsx": "export const A = () => <div className=\"p-4\">a</div>;\n", "src/B.tsx": "import { x } from './x';\nexport const B = () => <section className=\"rounded-sm\">{x}</section>;\n" },
-      "citation": { "code": "V-UX-09", "file": "src/B.tsx", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "moved-from-donor" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/A.tsx": "export const A = () => <div className=\"rounded-sm\">a</div>;\n"
+      },
+      "head": {
+        "src/A.tsx": "export const A = () => <div className=\"p-4\">a</div>;\n",
+        "src/B.tsx": "import { x } from './x';\nexport const B = () => <section className=\"rounded-sm\">{x}</section>;\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/B.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "moved-from-donor"
+      }
     },
     {
       "name": "a token added to the set in the same PR does not count (Rule Text 4)",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "DESIGN.md": "@tpl:design-sm", "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 0 }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "DESIGN.md": "@tpl:design-sm",
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 0
+      }
     },
     {
       "name": "a token added on the base tip after branching counts",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n" },
-      "baseAfter": { "DESIGN.md": "@tpl:design-sm" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "key-in-set" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n"
+      },
+      "baseAfter": {
+        "DESIGN.md": "@tpl:design-sm"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "key-in-set"
+      }
     },
     {
       "name": "several new occurrences verify on the cited line",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  const a = \"rounded-sm\";\n  const b = \"rounded-sm\";\n  return <div className=\"rounded-sm\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 3, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 0 }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  const a = \"rounded-sm\";\n  const b = \"rounded-sm\";\n  return <div className=\"rounded-sm\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 3,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 0
+      }
     },
     {
       "name": "a citation on the wrong line is not verified",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 1, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "line-mismatch" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 1,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "line-mismatch"
+      }
     },
     {
       "name": "a value inside a comment is not verified",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  // later: rounded-sm\n  return <div className=\"p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "comment" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  // later: rounded-sm\n  return <div className=\"p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "comment"
+      }
     },
     {
       "name": "a dynamically built class is not verified",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card({ size }) {\n  return <div className={`rounded-${size}`}>x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "dynamic" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card({ size }) {\n  return <div className={`rounded-${size}`}>x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "dynamic"
+      }
     },
     {
       "name": "a test file is excluded",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.test.tsx": "@tpl:card-base" },
-      "head": { "src/Card.test.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.test.tsx", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "path-excluded" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.test.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.test.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.test.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "path-excluded"
+      }
     },
     {
       "name": "a .ts constants file is out of scope",
-      "base": { "DESIGN.md": "@tpl:design", "src/styles.ts": "export const A = \"p-4\";\n" },
-      "head": { "src/styles.ts": "export const A = \"p-4\";\nexport const B = \"rounded-sm\";\n" },
-      "citation": { "code": "V-UX-09", "file": "src/styles.ts", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "ext-unsupported" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/styles.ts": "export const A = \"p-4\";\n"
+      },
+      "head": {
+        "src/styles.ts": "export const A = \"p-4\";\nexport const B = \"rounded-sm\";\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/styles.ts",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "ext-unsupported"
+      }
     },
     {
       "name": "a set file that does not exist at base fails open",
-      "base": { "src/Card.tsx": "@tpl:card-base" },
-      "head": { "tokens.css": "@theme {\n  --radius-*: initial;\n  --radius-md: 8px;\n}\n", "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "tokens.css" },
-      "expect": { "exit": 1, "reason": "set-missing-at-base" }
+      "base": {
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "tokens.css": "@theme {\n  --radius-*: initial;\n  --radius-md: 8px;\n}\n",
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "tokens.css"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "set-missing-at-base"
+      }
     },
     {
       "name": "a prose-only set is unresolvable",
-      "base": { "README.md": "# Design\n\nUse 4px and 8px radii only.\n", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded-sm", "axis": "radius", "setFile": "README.md" },
-      "expect": { "exit": 1, "reason": "set-unresolvable" }
+      "base": {
+        "README.md": "# Design\n\nUse 4px and 8px radii only.\n",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "README.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "set-unresolvable"
+      }
     },
     {
       "name": "a cited axis that disagrees with the value shape is not verified",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "rounded-sm", "axis": "color", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "axis-mismatch" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "color",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "axis-mismatch"
+      }
     },
     {
       "name": "a generative spacing scale class never blocks",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "export function Card() {\n  return <div>x</div>;\n}\n" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"p-7\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "p-7", "axis": "spacing", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "axis-generative" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "export function Card() {\n  return <div>x</div>;\n}\n"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"p-7\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "p-7",
+        "axis": "spacing",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "axis-generative"
+      }
     },
     {
       "name": "a font-size class with no font-size namespace fails open",
-      "base": { "DESIGN.md": "@tpl:design", "src/Card.tsx": "@tpl:card-base" },
-      "head": { "src/Card.tsx": "export function Card() {\n  return <div className=\"text-sm p-4\">x</div>;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/Card.tsx", "line": 2, "value": "text-sm", "axis": "font-size", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "set-axis-missing" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"text-sm p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "text-sm",
+        "axis": "font-size",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "set-axis-missing"
+      }
     },
     {
       "name": "a custom-property declaration line is a definition, not a use",
-      "base": { "DESIGN.md": "@tpl:design", "src/app.css": ":root {\n  --gap: 8px;\n}\n" },
-      "head": { "src/app.css": ":root {\n  --brand: #ff6600;\n  --gap: 8px;\n}\n" },
-      "citation": { "code": "V-UX-09", "file": "src/app.css", "line": 2, "value": "#ff6600", "axis": "color", "setFile": "DESIGN.md" },
-      "expect": { "exit": 1, "reason": "declaration" }
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/app.css": ":root {\n  --gap: 8px;\n}\n"
+      },
+      "head": {
+        "src/app.css": ":root {\n  --brand: #ff6600;\n  --gap: 8px;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/app.css",
+        "line": 2,
+        "value": "#ff6600",
+        "axis": "color",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "declaration"
+      }
     },
     {
       "name": "V-UX-10: a listed filler phrase in a rendered file verifies",
-      "base": { "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n" },
-      "head": { "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const Done = () => <p>Asset saved successfully</p>;\n" },
-      "citation": { "code": "V-UX-10", "file": "src/Save.tsx", "line": 2, "value": "Asset saved successfully" },
-      "expect": { "exit": 0 }
+      "base": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n"
+      },
+      "head": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const Done = () => <p>Asset saved successfully</p>;\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.tsx",
+        "line": 2,
+        "value": "Asset saved successfully"
+      },
+      "expect": {
+        "exit": 0
+      }
     },
     {
       "name": "V-UX-10: 'Something went wrong' needs context and stays a suggestion",
-      "base": { "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n" },
-      "head": { "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const Err = () => <p>Something went wrong</p>;\n" },
-      "citation": { "code": "V-UX-10", "file": "src/Save.tsx", "line": 2, "value": "Something went wrong" },
-      "expect": { "exit": 1, "reason": "phrase-not-listed" }
+      "base": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n"
+      },
+      "head": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const Err = () => <p>Something went wrong</p>;\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.tsx",
+        "line": 2,
+        "value": "Something went wrong"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "phrase-not-listed"
+      }
     },
     {
       "name": "V-UX-10: a story file is excluded",
-      "base": { "src/Save.stories.tsx": "export const A = 1;\n" },
-      "head": { "src/Save.stories.tsx": "export const A = 1;\nexport const B = () => <p>Saved successfully</p>;\n" },
-      "citation": { "code": "V-UX-10", "file": "src/Save.stories.tsx", "line": 2, "value": "Saved successfully" },
-      "expect": { "exit": 1, "reason": "path-excluded" }
+      "base": {
+        "src/Save.stories.tsx": "export const A = 1;\n"
+      },
+      "head": {
+        "src/Save.stories.tsx": "export const A = 1;\nexport const B = () => <p>Saved successfully</p>;\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.stories.tsx",
+        "line": 2,
+        "value": "Saved successfully"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "path-excluded"
+      }
     },
     {
       "name": "V-UX-10: an emoji leading a status string verifies",
-      "base": { "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n" },
-      "head": { "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const Done = () => <span>✅ Saved</span>;\n" },
-      "citation": { "code": "V-UX-10", "file": "src/Save.tsx", "line": 2, "value": "✅ Saved" },
-      "expect": { "exit": 0 }
+      "base": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n"
+      },
+      "head": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const Done = () => <span>✅ Saved</span>;\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.tsx",
+        "line": 2,
+        "value": "✅ Saved"
+      },
+      "expect": {
+        "exit": 0
+      }
     },
     {
       "name": "V-UX-10: an emoji after the text is not a status marker",
-      "base": { "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n" },
-      "head": { "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const Done = () => <span>Saved ✅</span>;\n" },
-      "citation": { "code": "V-UX-10", "file": "src/Save.tsx", "line": 2, "value": "Saved ✅" },
-      "expect": { "exit": 1, "reason": "phrase-not-listed" }
+      "base": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n"
+      },
+      "head": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const Done = () => <span>Saved ✅</span>;\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.tsx",
+        "line": 2,
+        "value": "Saved ✅"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "phrase-not-listed"
+      }
     },
     {
       "name": "V-UX-10: a phrase in a comment is not UI copy",
-      "base": { "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n" },
-      "head": { "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n// toast: Saved successfully\n" },
-      "citation": { "code": "V-UX-10", "file": "src/Save.tsx", "line": 2, "value": "Saved successfully" },
-      "expect": { "exit": 1, "reason": "comment" }
+      "base": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n"
+      },
+      "head": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n// toast: Saved successfully\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.tsx",
+        "line": 2,
+        "value": "Saved successfully"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "comment"
+      }
+    },
+    {
+      "name": "a JSX comment opened mid-line is not a use",
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div>{/* rounded-[10px] */}</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-[10px]",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "comment"
+      }
+    },
+    {
+      "name": "a block comment opened mid-line is not a use",
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  const b = 1; /* #abcdef */\n  return <div>x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "#abcdef",
+        "axis": "color",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "comment"
+      }
+    },
+    {
+      "name": "a block-comment continuation line is not a use",
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  /*\n     old #abcdef value\n  */\n  return <div>x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 3,
+        "value": "#abcdef",
+        "axis": "color",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "comment"
+      }
+    },
+    {
+      "name": "only clean occurrence inside a trailing comment is not a use",
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card({ q }) {\n  const d = <i className={`rounded-[10px]x ${q}`} /> // rounded-[10px]\n  return d;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-[10px]",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "comment"
+      }
+    },
+    {
+      "name": "a nested YAML group under the axis fails open",
+      "base": {
+        "DESIGN.md": "@tpl:design-nested",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-[7px]\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-[7px]",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "set-unresolvable"
+      }
+    },
+    {
+      "name": "a non-normalized path is a usage error",
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "./src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "usage"
+      }
+    },
+    {
+      "name": "bare rounded is net-new beside a longer class with the same prefix",
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "export function Card() {\n  const a = <p className=\"rounded-md p-4\">a</p>;\n  return a;\n}\n"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  const a = <p className=\"rounded-md p-4\">a</p>;\n  const b = <p className=\"rounded p-4\">b</p>;\n  return a;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 3,
+        "value": "rounded",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 0
+      }
+    },
+    {
+      "name": "a Tailwind v4 base-unit spacing set never blocks",
+      "base": {
+        "theme.css": "@theme {\n  --spacing: 0.25rem;\n}\n",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"p-[16px]\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "p-[16px]",
+        "axis": "spacing",
+        "setFile": "theme.css"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "axis-generative"
+      }
+    },
+    {
+      "name": "V-UX-10: a decorative emoji is not a status marker",
+      "base": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n"
+      },
+      "head": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const Hi = () => <h1>🎉 Welcome back</h1>;\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.tsx",
+        "line": 2,
+        "value": "🎉 Welcome back"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "phrase-not-listed"
+      }
+    },
+    {
+      "name": "shadow class absent from the set verifies",
+      "base": {
+        "DESIGN.md": "@tpl:design-full",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"shadow-lg\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "shadow-lg",
+        "axis": "shadow",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 0
+      }
+    },
+    {
+      "name": "shadow key in the set is not verified",
+      "base": {
+        "DESIGN.md": "@tpl:design-full",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"shadow-sm\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "shadow-sm",
+        "axis": "shadow",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "key-in-set"
+      }
+    },
+    {
+      "name": "font-size class absent from the set verifies",
+      "base": {
+        "DESIGN.md": "@tpl:design-full",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"text-2xl\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "text-2xl",
+        "axis": "font-size",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 0
+      }
+    },
+    {
+      "name": "arbitrary font size absent from the set verifies",
+      "base": {
+        "DESIGN.md": "@tpl:design-full",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"text-[13px]\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "text-[13px]",
+        "axis": "font-size",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 0
+      }
+    },
+    {
+      "name": "a CSS radius theme closed by reset verifies a missing key",
+      "base": {
+        "theme.css": "@theme {\n  --radius-*: initial;\n  --radius-md: 8px;\n}\n",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "theme.css"
+      },
+      "expect": {
+        "exit": 0
+      }
+    },
+    {
+      "name": "an open CSS radius theme fails open",
+      "base": {
+        "theme.css": "@theme {\n  --radius-md: 8px;\n}\n",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "theme.css"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "set-open-world"
+      }
+    },
+    {
+      "name": "a YAML token file is an authoritative set",
+      "base": {
+        "tokens.yaml": "radius:\n  md: 8px\n",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "tokens.yaml"
+      },
+      "expect": {
+        "exit": 0
+      }
+    },
+    {
+      "name": "a JSON token file is unresolvable",
+      "base": {
+        "tokens.json": "{\"radius\":{\"md\":\"8px\"}}\n",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "tokens.json"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "set-unresolvable"
+      }
+    },
+    {
+      "name": "a default key declares bare rounded",
+      "base": {
+        "DESIGN.md": "@tpl:design-default",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "key-in-set"
+      }
+    },
+    {
+      "name": "V-UX-10: 'Please try again later' is on the closed list",
+      "base": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n"
+      },
+      "head": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const E = () => <p>Please try again later</p>;\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.tsx",
+        "line": 2,
+        "value": "Please try again later"
+      },
+      "expect": {
+        "exit": 0
+      }
+    },
+    {
+      "name": "V-UX-10: 'Oops! Nothing here' is on the closed list",
+      "base": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n"
+      },
+      "head": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const E = () => <p>Oops! Nothing here</p>;\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.tsx",
+        "line": 2,
+        "value": "Oops! Nothing here"
+      },
+      "expect": {
+        "exit": 0
+      }
+    },
+    {
+      "name": "V-UX-10: 'Whoops, lost it' is on the closed list",
+      "base": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n"
+      },
+      "head": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const E = () => <p>Whoops, lost it</p>;\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.tsx",
+        "line": 2,
+        "value": "Whoops, lost it"
+      },
+      "expect": {
+        "exit": 0
+      }
+    },
+    {
+      "name": "V-UX-10: 'Uh oh, gone' is on the closed list",
+      "base": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n"
+      },
+      "head": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const E = () => <p>Uh oh, gone</p>;\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.tsx",
+        "line": 2,
+        "value": "Uh oh, gone"
+      },
+      "expect": {
+        "exit": 0
+      }
+    },
+    {
+      "name": "V-UX-10: 'loops' does not match 'oops'",
+      "base": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\n"
+      },
+      "head": {
+        "src/Save.tsx": "export const Save = () => <p>Ready</p>;\nexport const E = () => <p>Three loops left</p>;\n"
+      },
+      "citation": {
+        "code": "V-UX-10",
+        "file": "src/Save.tsx",
+        "line": 2,
+        "value": "Three loops left"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "phrase-not-listed"
+      }
+    },
+    {
+      "name": "a token removed from the base tip still counts at the merge base",
+      "base": {
+        "DESIGN.md": "@tpl:design-sm",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  return <div className=\"rounded-sm p-4\">x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "key-in-set"
+      },
+      "baseAfter": {
+        "DESIGN.md": "@tpl:design"
+      }
+    },
+    {
+      "name": "an unterminated block comment opening the file covers the cited line",
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "/* draft\nexport const A = () => <div className=\"rounded-[10px]\">x</div>;\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-[10px]",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "comment"
+      }
     }
   ]
 }

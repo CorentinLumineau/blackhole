@@ -55,6 +55,8 @@ vcodes: [V-UX-01, V-UX-04, V-UX-05, V-UX-07, V-UX-08, V-UX-09, V-UX-10]
     cannot show whether the difference was meant. When the project declares two sets for one axis
     that disagree, report the disagreement once against the design-system source. (Mirrors
     mercure's slop-test doctrine, ADR-134.)
+    *   **Severity**: emit `V-UX-09`/`V-UX-10` at `BLOCK` with the citation below; the aggregate
+        keeps it only when the citation verifies.
     *   **Citation**: every slop finding carries `cited_value`, the literal exactly as written on
         `file:line`, and for `V-UX-09` also `declared_set_ref`, `<set file>#<axis>` with the axis
         one of `radius`, `color`, `font-size`, `shadow`, `spacing`. `review-aggregate.ts`

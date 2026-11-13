@@ -249,7 +249,10 @@ const SLOP_CAVEAT_RE = /\s?\[unverified slop citation: [\w-]+\]/;
 export function applySlopCitationCheck(findings: Finding[], check?: SlopCheck): Finding[] {
   return findings.map((finding) => {
     if (finding.severity !== 'BLOCK' || !SLOP_CODES.has(finding.vcode)) return finding;
-    const cited = finding.cited_value && (finding.vcode === 'V-UX-10' || finding.declared_set_ref);
+    const cited =
+      typeof finding.cited_value === 'string' &&
+      finding.cited_value !== '' &&
+      (finding.vcode === 'V-UX-10' || typeof finding.declared_set_ref === 'string');
     const outcome = !cited
       ? { verified: false, reason: 'missing-citation' }
       : check
@@ -478,6 +481,8 @@ function parseArgs(argv: string[]): {
   verificationFile?: string;
   reviewIteration?: string;
   baseRef?: string;
+  repoDir?: string;
+  head?: string;
 } {
   const flags = parseFlags(argv.slice(2));
   return {
@@ -488,6 +493,8 @@ function parseArgs(argv: string[]): {
     verificationFile: typeof flags['verification-file'] === 'string' ? flags['verification-file'] : undefined,
     reviewIteration: typeof flags['review-iteration'] === 'string' ? flags['review-iteration'] : undefined,
     baseRef: typeof flags['base-ref'] === 'string' ? flags['base-ref'] : undefined,
+    repoDir: typeof flags['repo-dir'] === 'string' ? flags['repo-dir'] : undefined,
+    head: typeof flags['head'] === 'string' ? flags['head'] : undefined,
   };
 }
 
@@ -521,11 +528,11 @@ function isVerificationEntryArray(value: unknown): value is VerificationEntry[] 
 }
 
 if (import.meta.main) {
-  const { reviewerFile, issueRef, prRef, priorFile, verificationFile, reviewIteration, baseRef } = parseArgs(process.argv);
+  const { reviewerFile, issueRef, prRef, priorFile, verificationFile, reviewIteration, baseRef, repoDir, head } = parseArgs(process.argv);
 
   if (!reviewerFile || !issueRef) {
     console.error(
-      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base ref>]',
+      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base ref>] [--repo-dir <PR checkout>] [--head <PR head ref>]',
     );
     process.exit(1);
   }
@@ -594,15 +601,20 @@ if (import.meta.main) {
       // One git snapshot per run; the PR checkout is the working tree's HEAD.
       let io: ReturnType<typeof gitIo> | null = null;
       try {
-        io = gitIo({ base: baseRef, head: 'HEAD' });
+        // The PR checkout and head, not the orchestrator's cwd: citations name the PR's files.
+        io = gitIo({ base: baseRef, head: head ?? 'HEAD', cwd: repoDir ?? process.cwd() });
       } catch {
         console.error(`warning: --base-ref ${baseRef} does not resolve — V-UX-09/10 BLOCK findings downgrade to WARN`);
       }
       slopCheck = (f) => {
         if (!io) return { verified: false, reason: 'ref-unresolved' };
         const [setFile, axis] = (f.declared_set_ref ?? '').split('#');
-        const r = decide({ code: f.vcode, file: f.file, line: f.line, value: f.cited_value, axis, setFile }, io);
-        return r.verdict === 'VERIFIED' ? { verified: true } : { verified: false, reason: r.reason };
+        try {
+          const r = decide({ code: f.vcode, file: f.file, line: f.line, value: f.cited_value, axis, setFile }, io);
+          return r.verdict === 'VERIFIED' ? { verified: true } : { verified: false, reason: r.reason };
+        } catch {
+          return { verified: false, reason: 'internal-error' };
+        }
       };
     } else {
       console.error('warning: --base-ref omitted — V-UX-09/10 BLOCK findings downgrade to WARN (ADR-134)');

@@ -1154,3 +1154,53 @@ describe('review-aggregate CLI --base-ref (ADR-134)', () => {
     expect(out.findings[0].summary).toContain('[unverified slop citation: ref-unresolved]');
   });
 });
+
+describe('review-aggregate CLI slop check on a real repo (ADR-134)', () => {
+  const g = (cwd: string, ...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...a], { cwd });
+  const setup = () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'agg-slop-repo-'));
+    g(repo, 'init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(repo, 'DESIGN.md'), '---\nrounded:\n  sm: 6px\n  md: 8px\n---\n');
+    fs.mkdirSync(path.join(repo, 'src'));
+    fs.writeFileSync(path.join(repo, 'src/Card.tsx'), 'export const A = () => <div>a</div>;\n');
+    g(repo, 'add', '-A');
+    g(repo, 'commit', '-q', '-m', 'base');
+    g(repo, 'checkout', '-q', '-b', 'feature');
+    fs.writeFileSync(
+      path.join(repo, 'src/Card.tsx'),
+      'export const A = () => <div>a</div>;\nexport const B = () => <div className="rounded-[7px] rounded-sm">b</div>;\n',
+    );
+    g(repo, 'commit', '-qam', 'head');
+    return repo;
+  };
+  const runOn = async (repo: string, findings: Finding[]) => {
+    const reviewerFile = path.join(repo, 'reviewer.json');
+    fs.writeFileSync(reviewerFile, JSON.stringify({ status: 'complete', findings }));
+    const r = await runReviewAggregateCli([
+      '--reviewer-file', reviewerFile, '--issue-ref', '1', '--base-ref', 'main', '--repo-dir', repo, '--head', 'feature',
+    ]);
+    fs.rmSync(repo, { recursive: true, force: true });
+    expect(r.exitCode).toBe(0);
+    return JSON.parse(r.stdout);
+  };
+  const slopRow = (value: string) =>
+    baseFinding({ vcode: 'V-UX-09', severity: 'BLOCK', file: 'src/Card.tsx', line: 2, cited_value: value, declared_set_ref: 'DESIGN.md#radius' });
+
+  test('a verified out-of-set value keeps BLOCK', async () => {
+    const out = await runOn(setup(), [slopRow('rounded-[7px]')]);
+    expect(out.findings[0].severity).toBe('BLOCK');
+  });
+
+  test('an in-set value downgrades with the check reason', async () => {
+    const out = await runOn(setup(), [slopRow('rounded-sm')]);
+    expect(out.findings[0].severity).toBe('WARN');
+    expect(out.findings[0].summary).toContain('[unverified slop citation: key-in-set]');
+  });
+
+  test('a non-string cited_value downgrades instead of crashing', async () => {
+    const out = await runOn(setup(), [{ ...slopRow('x'), cited_value: 42 as unknown as string }]);
+    expect(out.findings[0].severity).toBe('WARN');
+    expect(out.findings[0].summary).toContain('[unverified slop citation: missing-citation]');
+  });
+});

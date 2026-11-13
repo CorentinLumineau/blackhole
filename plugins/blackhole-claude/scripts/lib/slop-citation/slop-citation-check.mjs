@@ -1,4 +1,4 @@
-// vendored from mercure@505cd1e0 mercure-plugin/scripts/slop-citation-check.mjs body-sha256=1a1c0860c9db8a76463ad387fda9b0660cd31eab95446374841547bc042e3eab; re-vendor, never hand-edit
+// vendored from mercure@85a0aebd mercure-plugin/scripts/slop-citation-check.mjs body-sha256=44fa7c26e467cf3f05e7de70d3e11a8bd14649e2140b71e820b3842a52ca8af9; re-vendor, never hand-edit
 // Re-checks a V-UX-09 / V-UX-10 citation so a slop finding can block (ADR-134). Read-only.
 // Exit 0 only from the single VERIFIED path; every other outcome, including a crash, exits 1.
 // `decide()` is pure over an `io` adapter so blackhole can vendor this file unchanged.
@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 // The blocking subset of the doctrine's copy table: filler in any context. "Something went
 // wrong" is not here because it is only filler when the failed action is known (a judgment).
 export const BLOCKING_PHRASES = ['successfully', 'please try again later', 'oops', 'whoops', 'uh oh'];
-export const STATUS_EMOJI = ['✅', '❌', '⚠️', '⚠', '✔️', '✔', '✖️', '✖', '🚫', '❗', '⛔', '🔴', '🟢', '🟡', '🟠', '🎉', '✨', '🚀'];
+export const STATUS_EMOJI = ['✅', '❌', '⚠️', '⚠', '✔️', '✔', '✖️', '✖', '🚫', '❗', '⛔', '🔴', '🟢', '🟡', '🟠'];
 
 const AXES = ['radius', 'color', 'font-size', 'shadow', 'spacing'];
 const RENDERED_EXT = {
@@ -35,7 +35,9 @@ const SPACING_PREFIX =
   /^-?(p|px|py|pt|pb|pl|pr|ps|pe|m|mx|my|mt|mb|ml|mr|ms|me|gap|gap-x|gap-y|space-x|space-y|w|h|size|min-w|min-h|max-w|max-h|inset|inset-x|inset-y|top|left|right|bottom|start|end)$/;
 
 const fail = (reason, detail = '') => ({ verdict: 'NOT_VERIFIED', reason, detail });
-const safePath = (p) => typeof p === 'string' && p !== '' && !p.startsWith('-') && !path.isAbsolute(p) && !p.split('/').includes('..');
+// Normalized repo-relative paths only: `./x` or `a//b` would miss the rename and donor maps.
+const safePath = (p) =>
+  typeof p === 'string' && p !== '' && !p.startsWith('-') && !path.isAbsolute(p) && path.posix.normalize(p) === p && !p.split('/').includes('..');
 const collapse = (s) => s.replace(/\s+/g, ' ').trim().toLowerCase();
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -108,7 +110,11 @@ function parseYaml(text) {
     if (!cur) continue;
     const entry = ns.get(cur);
     childIndent ??= indent;
-    if (indent > childIndent) continue;
+    if (indent > childIndent) {
+      // A nested group hides members this flat reader cannot see, so the axis fails open.
+      entry.unresolvable = true;
+      continue;
+    }
     if (indent < childIndent || line.trimStart().startsWith('- ')) {
       entry.unresolvable = true;
       continue;
@@ -186,6 +192,8 @@ export function setVerdict(cls, set) {
     if (ns.computed || ns.values.some((v) => !/^#[0-9a-f]{3,8}$/i.test(v))) return 'set-computed';
     return hexesIn(set.text).includes(cls.hex) ? 'value-in-set' : null;
   }
+  // A base unit (`--spacing: 0.25rem`) makes the whole numeric scale in-set.
+  if (cls.axis === 'spacing' && ns.keys.has('default')) return 'axis-generative';
   if (cls.shape === 'arbitrary') {
     const px = ns.values.map((v) => v.match(/^(-?\d*\.?\d+)(px|rem|em)?$/));
     if (ns.computed || px.some((m) => !m)) return 'set-computed';
@@ -199,30 +207,59 @@ export function setVerdict(cls, set) {
   return null;
 }
 
-function cleanOccurrence(line, value) {
-  let found = false;
-  for (let i = line.indexOf(value); i !== -1; i = line.indexOf(value, i + 1)) {
-    found = true;
-    const before = i === 0 ? '' : line[i - 1];
-    const after = line[i + value.length] ?? '';
-    if ((before === '' || /[\s"'`:!(]/.test(before)) && (after === '' || /[\s"'`;,)]/.test(after))) return 'clean';
-  }
-  return found ? 'dynamic' : 'absent';
-}
+const CLEAN_BEFORE = /[\s"'`:!(]/;
+const CLEAN_AFTER = /[\s"'`;,)]/;
+const isToken = (text, i, len) =>
+  (i === 0 || CLEAN_BEFORE.test(text[i - 1])) && (i + len === text.length || CLEAN_AFTER.test(text[i + len]));
 
-function isCommentAt(line, idx) {
-  const t = line.trimStart();
-  if (/^(\/\/|\/\*|\*|<!--|\{\/\*)/.test(t)) return true;
-  const slashes = line.indexOf('//');
-  return slashes !== -1 && slashes < idx && !/:\/\/$/.test(line.slice(0, slashes + 2));
+// Comment spans over the whole file. It errs towards "comment" (no string tracking), which only
+// ever turns a would-be block into a suggestion.
+function commentSpans(text) {
+  const spans = [];
+  for (let i = 0; i < text.length; ) {
+    const close = (open, closer) => {
+      const at = text.indexOf(closer, i + open.length);
+      return at === -1 ? text.length : at + closer.length;
+    };
+    let end = -1;
+    if (text.startsWith('/*', i)) end = close('/*', '*/');
+    else if (text.startsWith('<!--', i)) end = close('<!--', '-->');
+    else if (text.startsWith('//', i) && text[i - 1] !== ':') end = close('//', '\n');
+    if (end === -1) {
+      i++;
+      continue;
+    }
+    spans.push([i, end]);
+    i = end;
+  }
+  return spans;
+}
+const inSpans = (spans, at) => spans.some(([a, b]) => at >= a && at < b);
+
+// First usable occurrence of the cited value on the cited line: 'ok', or why none is usable.
+function locate(matches, spans, lineStart) {
+  let inComment = false;
+  for (const { at, clean } of matches) {
+    if (!clean) continue;
+    if (!inSpans(spans, lineStart + at)) return 'ok';
+    inComment = true;
+  }
+  if (inComment) return 'comment';
+  return matches.length ? 'dynamic' : 'line-mismatch';
 }
 
 function countIn(text, value, cls) {
   if (text == null) return 0;
   if (cls?.shape === 'hex') return hexesIn(text).filter((h) => h === cls.hex).length;
-  const hay = cls ? text.toLowerCase() : collapse(text);
-  const needle = cls ? value.toLowerCase() : collapse(value);
-  return needle ? hay.split(needle).length - 1 : 0;
+  if (!cls) {
+    const needle = collapse(value);
+    return needle ? collapse(text).split(needle).length - 1 : 0;
+  }
+  const hay = text.toLowerCase();
+  const needle = value.toLowerCase();
+  let n = 0;
+  for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + 1)) if (isToken(hay, i, needle.length)) n++;
+  return n;
 }
 
 /**
@@ -241,14 +278,21 @@ export function decide(c, io) {
 
   const head = io.headText(c.file);
   if (head == null) return fail('file-missing', c.file);
-  const line = head.replace(/^﻿/, '').replace(/\r\n/g, '\n').split('\n')[c.line - 1];
+  const text = head.replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  const line = lines[c.line - 1];
   if (line === undefined) return fail('line-mismatch');
+  const lineStart = lines.slice(0, c.line - 1).reduce((n, l) => n + l.length + 1, 0);
+  const spans = commentSpans(text);
 
   let cls = null;
   if (is09) {
-    const occ = cleanOccurrence(line, c.value);
-    if (occ !== 'clean') return fail(occ === 'dynamic' ? 'dynamic' : 'line-mismatch');
-    if (isCommentAt(line, line.indexOf(c.value))) return fail('comment');
+    const matches = [];
+    for (let i = line.indexOf(c.value); i !== -1; i = line.indexOf(c.value, i + 1)) {
+      matches.push({ at: i, clean: isToken(line, i, c.value.length) });
+    }
+    const where = locate(matches, spans, lineStart);
+    if (where !== 'ok') return fail(where);
     if (/^\s*--[\w-]+\s*:/.test(line)) return fail('declaration');
     cls = classify(c.value);
     if (cls.shape === 'exempt') return fail('exempt');
@@ -257,8 +301,9 @@ export function decide(c, io) {
     if (cls.axis !== c.axis) return fail('axis-mismatch', `value is ${cls.axis}`);
   } else {
     const v = collapse(c.value);
-    if (!collapse(line).includes(v)) return fail('line-mismatch');
-    if (isCommentAt(line, line.toLowerCase().indexOf(v.split(' ')[0]))) return fail('comment');
+    const words = new RegExp(v.split(' ').map(escapeRe).join('\\s+'), 'gi');
+    const where = locate([...line.matchAll(words)].map((m) => ({ at: m.index, clean: true })), spans, lineStart);
+    if (where !== 'ok') return fail(where);
     const listed = BLOCKING_PHRASES.some((p) => new RegExp(`(^|[^a-z])${escapeRe(p)}([^a-z]|$)`).test(v));
     const t = c.value.trim();
     const emoji = STATUS_EMOJI.find((e) => t.startsWith(e));
@@ -301,7 +346,15 @@ export function gitIo({ base, head = 'WORKTREE', cwd = process.cwd() }) {
   };
   const rev = (r) => run(['rev-parse', '--verify', '--quiet', `${r}^{commit}`]).trim();
   const top = run(['rev-parse', '--show-toplevel']).trim();
-  const tip = rev(base);
+  // A bare branch name prefers its remote-tracking ref: a local `main` often lags the real tip.
+  const tip = (() => {
+    if (!base.includes('/')) {
+      try {
+        return rev(`refs/remotes/origin/${base}`);
+      } catch {}
+    }
+    return rev(base);
+  })();
   const headSha = rev(head === 'WORKTREE' ? 'HEAD' : head);
   const mb = run(['merge-base', tip, headSha]).trim();
   const diffArgs = ['diff', '-z', '--name-status', '-M40%', '-C', mb];
@@ -364,7 +417,11 @@ function main(argv) {
   } catch {
     return fail('ref-unresolved', a.base);
   }
-  return { ...decide(c, io), base: io.mb.slice(0, 7), setFile: c.setFile ?? '', code: c.code };
+  try {
+    return { ...decide(c, io), base: io.mb.slice(0, 7), setFile: c.setFile ?? '', code: c.code };
+  } catch (e) {
+    return fail('internal-error', String(e?.message ?? e).split('\n')[0]);
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
