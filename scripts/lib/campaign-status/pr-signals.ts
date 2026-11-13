@@ -4,7 +4,8 @@ import type { PrSignal } from './types.ts';
 // Review verdict, CI and mergeability of the open PRs the board shows, read through the forge
 // adapter of the configured forge (GitHub, Gitea or GitLab), the same channel as the forge counts.
 // Two adapter reads per PR (`prView` for labels and mergeability, `prChecks` for CI), at most
-// PR_SIGNAL_CAP PRs per render, so a refresh stays a few seconds. A PR whose reads fail, or that is
+// PR_SIGNAL_CAP PRs per render, so a refresh stays a few seconds. The reads are independent: one
+// that fails leaves its own fact unknown and keeps the other. A PR whose reads both fail, or that is
 // past the cap, has no signal and the page says "not checked" for it.
 
 export const PR_SIGNAL_CAP = 15;
@@ -27,16 +28,27 @@ export function reviewOf(labels: Array<{ name: string } | string> | undefined): 
   return label ? label.slice(REVIEW_LABEL.length) || null : null;
 }
 
-/** Reads the signal of each PR (lowest number first, capped). A PR whose reads fail is left out. */
+const attempt = async <T>(read: () => Promise<T>): Promise<T | null> => {
+  try {
+    return await read();
+  } catch {
+    return null;
+  }
+};
+
+/** Reads the signal of each PR (lowest number first, capped). A failed read leaves its fact unknown; a PR whose reads both fail is left out. */
 export async function fetchPrSignals(adapter: ForgeAdapter, prs: number[], cap: number = PR_SIGNAL_CAP): Promise<Record<number, PrSignal>> {
   const out: Record<number, PrSignal> = {};
   for (const n of [...new Set(prs)].sort((a, b) => a - b).slice(0, cap)) {
-    try {
-      const pr = await adapter.prView(n);
-      out[n] = { review: reviewOf(pr.labels), mergeable: pr.mergeable ?? null, ...ciOf(await adapter.prChecks(n)) };
-    } catch {
-      // No signal: the card says the forge was not checked for this PR.
-    }
+    const pr = await attempt(() => adapter.prView(n));
+    const checks = await attempt(() => adapter.prChecks(n));
+    if (!pr && !checks) continue;
+    out[n] = {
+      review: pr ? reviewOf(pr.labels) : null,
+      review_read: pr !== null,
+      mergeable: pr?.mergeable ?? null,
+      ...(checks ? ciOf(checks) : { ci: 'unknown' as const, failing: [] }),
+    };
   }
   return out;
 }

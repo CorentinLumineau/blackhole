@@ -179,7 +179,7 @@ forge type.
 |------------|---------------|---------------|-----------------|
 | PR vocabulary | `pr` | `pull` / `pull request` | `merge_request` → mapped to `ForgePr` |
 | Issue list | `gh issue list --json` | `tea issues list --json` | `glab issue list --output json` |
-| CI status | `gh pr checks` | `tea actions` / workflow status | `glab ci status` / pipeline |
+| CI status | `gh pr checks` | combined commit status of the PR head, via `tea api` (`tea` has no per-PR CI command) | `glab ci status` / pipeline |
 | Auth | `gh auth status` | `tea login status` | `glab auth status` |
 
 The adapter maps each backend's response into the normalized types above. Fields absent on a

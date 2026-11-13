@@ -1,5 +1,6 @@
 import { issueMatchesScope, type CampaignScope } from '../../forge-scope.ts';
 import type { ForgeAdapter } from '../forge-adapter/types.ts';
+import { closedIssues } from './merged.ts';
 import type { ForgeCounts, MergedPr } from './types.ts';
 
 // Open-issue and open-PR counts, and the merged PRs, read through the forge adapter of the
@@ -32,7 +33,7 @@ export async function fetchMergedPrs(adapter: ForgeAdapter): Promise<MergedPr[] 
   try {
     return (await adapter.prList({ state: 'all', limit: MERGED_PR_LIMIT }))
       .filter((p) => p.state === 'MERGED' && p.mergedAt)
-      .map((p) => ({ number: p.number, title: p.title, mergedAt: p.mergedAt as string }));
+      .map((p) => ({ number: p.number, title: p.title, mergedAt: p.mergedAt as string, closes: closedIssues(p.body), labels: p.labels }));
   } catch {
     return null;
   }
@@ -40,5 +41,5 @@ export async function fetchMergedPrs(adapter: ForgeAdapter): Promise<MergedPr[] 
 
 function errorText(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes('Unexpected token') || message.includes('JSON') ? 'invalid gh JSON' : message;
+  return message.includes('Unexpected token') || message.includes('JSON') ? 'the forge answered with invalid JSON' : message;
 }

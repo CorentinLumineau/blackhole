@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { buildBoard, buildMoves, buildStreams, cardTitle, DEFAULT_STREAM, prPlacement, stageCounts, streamOf, type BoardInput } from './board.ts';
 import type { PrSignal, QueueIssue } from './types.ts';
 
-const sig = (over: Partial<PrSignal> = {}): PrSignal => ({ review: null, ci: 'green', failing: [], mergeable: true, ...over });
+const sig = (over: Partial<PrSignal> = {}): PrSignal => ({ review: null, review_read: true, ci: 'green', failing: [], mergeable: true, ...over });
 
 describe('prPlacement — a PR card from the forge signal', () => {
   const plain = { delivered: false, phase: 'review' };
@@ -28,6 +28,23 @@ describe('prPlacement — a PR card from the forge signal', () => {
     expect(prPlacement(sig({ review: 'NEEDS_CHANGES' }), plain)).toMatchObject({ stage: 'review', status: 'changes requested' });
     expect(prPlacement(sig({ review: 'ERROR' }), plain)).toMatchObject({ stage: 'review', tone: 'bad' });
     expect(prPlacement(sig({ ci: 'none' }), plain)).toMatchObject({ stage: 'review', status: 'waiting for review' });
+  });
+
+  test('an unread CI says "CI not checked" and never claims green or no CI', () => {
+    expect(prPlacement(sig({ ci: 'unknown', review: 'LGTM' }), plain)).toEqual({ stage: 'review', status: 'LGTM, CI not checked', tone: 'ok' });
+    expect(prPlacement(sig({ ci: 'unknown' }), { ...plain, delivered: true })).toEqual({ stage: 'ready', status: 'LGTM: merge · CI not checked', tone: 'ok' });
+    expect(prPlacement(sig({ ci: 'unknown' }), plain)).toEqual({ stage: 'review', status: 'waiting for review, CI not checked', tone: '' });
+  });
+
+  test('an unread review says "review not checked" and never "waiting for review"', () => {
+    expect(prPlacement(sig({ review_read: false }), plain)).toEqual({ stage: 'review', status: 'review not checked', tone: '' });
+    expect(prPlacement(sig({ review_read: false, ci: 'running' }), plain).status).toBe('review not checked, CI running');
+    expect(prPlacement(sig({ review_read: false, ci: 'unknown' }), plain).status).toBe('review not checked, CI not checked');
+  });
+
+  test('a known conflict or failing CI still blocks when the other read failed', () => {
+    expect(prPlacement(sig({ review_read: false, ci: 'failing', failing: ['unit'] }), plain).stage).toBe('blocked');
+    expect(prPlacement(sig({ ci: 'unknown', mergeable: false }), plain).stage).toBe('blocked');
   });
 
   test('without a signal it never guesses: the card says CI was not checked', () => {

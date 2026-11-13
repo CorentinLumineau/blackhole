@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as childProcess from 'child_process';
-import { runTea, runTeaJson, runTeaText } from './tea-cli.ts';
+import { runTea, runTeaApi, runTeaJson, runTeaText } from './tea-cli.ts';
 
 /**
  * A minimal `child_process.spawnSync` return value shaped for the mocks below — status/stdout/
@@ -109,5 +109,26 @@ describe('tea-cli', () => {
     expect(result.error?.code).toBe('ENOENT');
     expect(result.stdout).toBe('');
     expect(result.stderr).toBe('');
+  });
+
+  // `tea api -i` exits 0 on an HTTP 4xx/5xx and prints the error object as the body, so a missing
+  // commit or a disabled unit used to parse as a normal, empty reply.
+  describe('runTeaApi', () => {
+    test('an HTTP error status throws, though tea exited 0', () => {
+      spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(
+        mockSpawnResult('{"message":"not found","url":"https://forge.example/api/swagger"}', 0, 'HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n'),
+      );
+      expect(() => runTeaApi('GET', 'repos/acme/widgets/commits/abc/status')).toThrow('HTTP 404');
+    });
+
+    test('a 2xx reply returns the body and the headers', () => {
+      spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('[]', 0, 'HTTP/2.0 200 OK\r\nX-Total-Count: 0\r\n'));
+      expect(runTeaApi('GET', 'repos/acme/widgets/pulls')).toEqual({ body: '[]', headers: 'HTTP/2.0 200 OK\r\nX-Total-Count: 0\r\n' });
+    });
+
+    test('the last status line decides, so a redirect followed by a 200 is a success', () => {
+      spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('{}', 0, 'HTTP/1.1 301 Moved Permanently\r\n\r\nHTTP/1.1 200 OK\r\n'));
+      expect(runTeaApi('GET', 'user').body).toBe('{}');
+    });
   });
 });

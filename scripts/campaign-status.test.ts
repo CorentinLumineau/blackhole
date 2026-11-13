@@ -778,7 +778,7 @@ describe('fetchForgeCounts', () => {
     });
   });
 
-  test('returns invalid gh JSON error when issue stdout is not JSON', async () => {
+  test('returns a forge-neutral invalid JSON error when issue stdout is not JSON', async () => {
     mockGhCalls({
       issue: () => ({ status: 0, stdout: 'not-json', stderr: '' }),
     });
@@ -787,7 +787,7 @@ describe('fetchForgeCounts', () => {
       openIssues: 0,
       openPrs: 0,
       ok: false,
-      error: 'invalid gh JSON',
+      error: 'the forge answered with invalid JSON',
     });
   });
 

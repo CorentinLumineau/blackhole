@@ -22,15 +22,35 @@ forge counts, then two adapter reads per open PR the board shows (`prView` for t
 mergeability, `prChecks` for CI; at most `PR_SIGNAL_CAP` = 15 PRs,
 `scripts/lib/campaign-status/pr-signals.ts`), then the merged PRs (`prList`, newest 300). All of it
 goes through the forge adapter of the configured forge (`github`, `gitea` or `gitlab`), so a Gitea
-campaign gets the same page as a GitHub one. `--no-gh` reads nothing from the forge and every PR card
-says "CI not checked"; a PR whose reads fail says it too. Merged PRs make two things: a campaign PR
-merged since `queue.json` `campaign_started_at` that no queue entry names is a done card in its
-workstream, and a queue entry whose PR the forge merged renders as done, says what the queue said
-and is listed as drift for the next sync (`drift` in `--json`, one warning line in "Blocking the
-run"). Without `campaign_started_at` no unnamed PR is counted, because nothing bounds it. A failed
-refresh is
-reported in one line and never blocks the turn — the checkpoint is the SSOT, this page only
-shows it.
+campaign gets the same page as a GitHub one. CI comes from each forge's own source: check runs and
+commit statuses on GitHub, the pipeline jobs on GitLab, and on Gitea the combined commit status of
+the PR's head commit (`tea` has no per-PR CI command, so it is read through the REST API). A
+commit with no status at all reads as "no CI", never as green.
+
+The reads are independent. `--no-gh` reads nothing from the forge and every PR card says "CI not
+checked". A PR whose CI read fails keeps its review verdict and conflict check and says "CI not
+checked"; one whose review read fails keeps its CI and says "review not checked"; only a PR whose
+reads both fail has no signal. The review verdict is the PR's `ai-review:*` label, the one verdict
+the merge gate also reads (`merge-gate.md`); the page does not read formal reviews, and no config
+key names another review label.
+
+Merged PRs make two things. A campaign PR merged since `queue.json` `campaign_started_at` that no
+queue entry names is a done card in its workstream. A queue entry whose PR the forge merged renders
+as done, says what the queue said and is listed as drift for the next sync (`drift` in `--json`, one
+warning line in "Blocking the run"); so does an entry with no PR whose issue a merged PR closes
+(`Closes #N` in its body), which is matched to that PR and not counted a second time. Known limits:
+
+- Only the newest 300 PRs are read, so a campaign with more merged PRs than that since it started
+  shows the newest.
+- Without `campaign_started_at` no unnamed PR is counted, because nothing bounds it.
+- When `config.json` sets `scope_labels`, an unnamed merged PR counts only if it carries every one
+  of them (the same matcher the sync uses, `issueMatchesScope`); a PR whose forge channel reports
+  no labels is kept. `scope_milestone` is not applied to PRs, because a pull request row carries no
+  milestone, and there is no author filter.
+- Closing references are read from the PR body only; the forges' own linked-issue fields are not.
+
+A failed refresh is reported in one line and never blocks the turn: the checkpoint is the SSOT, this
+page only shows it.
 
 ## What the orchestrator records
 
