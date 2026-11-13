@@ -232,6 +232,11 @@ Check the union of `merge_after` and `depends_on` edges for cycles per `merge-ga
 If issue body or branch name contains `fixes #N` / `closes #N`, link `pr` on
 queue entry for issue N.
 
+An open PR that links no queue issue (work opened without one: a trunk fix, a dependency bump, a
+branch sync) is not adopted into `queue.json`, whose entries are issues. `bun run status` lists it
+instead, from the open-PR list it already fetches, under **Open PR with no queue entry**
+(`untracked_prs`, `coordinator-dashboard.md` § Status page), until a queue entry names it or it closes.
+
 ### 8. Persist
 
 Bump `queue.json` `refreshed_at`. Write atomically (`.tmp` + `mv`).

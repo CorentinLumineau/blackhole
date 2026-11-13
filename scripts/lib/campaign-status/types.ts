@@ -73,6 +73,8 @@ export type CheckpointMeta = {
 export type ForgeCounts = {
   openIssues: number;
   openPrs: number;
+  /** The open PRs behind `openPrs`, when they were fetched; absent offline (`--no-gh`) or on a failed list. */
+  openPrList?: Array<{ number: number; title: string }>;
   ok: boolean;
   error?: string;
 };
@@ -118,6 +120,8 @@ export type StatusCounts = {
     in_flight: number;
     blocked: number;
     ready: number;
+    /** Active entries whose `status` is missing or outside the documented set (listed in `unclassified`). */
+    unclassified: number;
     /** Every `status` value present in queue.json, including ones outside the documented enum. */
     by_status: Record<string, number>;
   };
@@ -150,9 +154,12 @@ export type BlockedGroup = {
 /** Why a non-owner blocked issue waits, derived from its labels, note and `depends_on`; no new state. */
 export type BlockedClassKind = 'tracking_issue' | 'dependency' | 'merge_conflict' | 'overlap' | 'sequenced_phase' | 'other' | 'another_lane';
 
+/** The extra rows `elseClasses` adds after the blocked classes on the page: `unclassified` and `untracked_prs`. */
+export type ElseClassKind = BlockedClassKind | 'unclassified' | 'untracked_pr';
+
 /** Blocked non-owner issues sharing one reason class. Every such issue is in exactly one class. */
 export type BlockedClass = {
-  class: BlockedClassKind;
+  class: ElseClassKind;
   /** Plain-language name for the page. */
   label: string;
   count: number;
@@ -232,6 +239,13 @@ export type StatusReport = {
   /** The non-owner part of `blocked`, regrouped by reason class. Additive: `blocked` is unchanged. */
   blocked_classes: BlockedClass[];
   ready: StatusItem[];
+  /** Active entries whose `status` is missing or undocumented, so no section above lists them. Additive. */
+  unclassified: StatusItem[];
+  /**
+   * Open forge PRs that no queue entry's `pr` names (work opened without an issue). `null` when the
+   * open-PR list was not fetched (`--no-gh` or a forge failure), so "none" is never claimed unchecked. Additive.
+   */
+  untracked_prs: Array<{ pr: number; title: string }> | null;
   /** Newest merged/closed items, highest PR then issue number first (the queue carries no merge time), at most 5. */
   recently_done: StatusItem[];
   /** Open findings, BLOCK first then most recent — the dashboard's `Ledger open` order, uncapped. */

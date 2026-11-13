@@ -56,8 +56,8 @@ name alone.
 
 | Field | Values | Notes |
 |-------|--------|-------|
-| `phase` | `handle` \| `plan` \| `implement` \| `review` \| `done` | Current lifecycle phase |
-| `status` | `blocked` \| `ready` \| `in-flight` \| `merged` \| `closed` | Scheduling state. `merged` alone does not say *which* branch the PR landed on — that is `merged_into` below, and only a row carrying it has a verified base-ref landing |
+| `phase` | `handle` \| `plan` \| `implement` \| `review` \| `done` | Current lifecycle phase. `state-write-guard.ts` refuses any other value |
+| `status` | `blocked` \| `ready` \| `in-flight` \| `merged` \| `closed` | Scheduling state; `state-write-guard.ts` refuses any other value, and the status page lists an active entry with one under **Unknown queue status** rather than dropping it. `merged` alone does not say *which* branch the PR landed on — that is `merged_into` below, and only a row carrying it has a verified base-ref landing |
 | `review_iteration` | number | Review loop counter (default 0); see `review-core.md` |
 | `rounds_to_lgtm` | number | Optional; the final `review_iteration` at merge, written just before the reset (`phase-loop.md` § Ledger cleanup on merge) |
 | `reviewed_head_shas` | string[] | Optional; head SHAs a review was run against, recorded at merge |

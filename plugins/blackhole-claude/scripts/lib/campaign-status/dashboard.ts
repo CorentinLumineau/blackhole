@@ -56,6 +56,17 @@ function renderBlockedSection(blocked: IssueRow[], issues: Record<string, QueueI
   return lines;
 }
 
+// Active entries `groupIssuesByPhase` could not place: listed so a bad `status` never hides an issue.
+function renderUnclassifiedSection(unclassified: IssueRow[]): string[] {
+  if (unclassified.length === 0) return [];
+  const lines = ['### Unclassified (unknown queue status)'];
+  for (const { num, issue } of unclassified) {
+    lines.push(`- **#${num}** ${issue.title ?? ''} — status ${issue.status == null ? 'missing' : `"${issue.status}"`}`);
+  }
+  lines.push('');
+  return lines;
+}
+
 function renderReadySection(ready: IssueRow[]): string[] {
   if (ready.length === 0) return [];
   return [
@@ -299,7 +310,7 @@ export function formatDashboard(opts: {
   const { scope, checkpoint, queue, ledger, forge, checkpointBody } = opts;
   const issues = queue.issues ?? {};
   const findings = ledger.findings ?? [];
-  const { active, done, inFlight, blocked, ready } = groupIssuesByPhase(issues);
+  const { active, done, inFlight, blocked, ready, unclassified } = groupIssuesByPhase(issues);
   const { queue: q, ledger: ledgerCounts } = computeStatusCounts(issues, findings);
   const filed = discoveryFilings(findings);
   const scopeLabel = formatScopeLabel(scope);
@@ -321,7 +332,7 @@ export function formatDashboard(opts: {
     lines.push(`**Forge:** unavailable (${forge.error ?? 'gh failed'})`);
   }
   lines.push(
-    `**Queue:** ${q.active} active · ${q.done} done · ${q.in_flight} in-flight · ${q.blocked} blocked · ${q.ready} ready`,
+    `**Queue:** ${q.active} active · ${q.done} done · ${q.in_flight} in-flight · ${q.blocked} blocked · ${q.ready} ready${q.unclassified > 0 ? ` · ${q.unclassified} unclassified` : ''}`,
   );
   lines.push(
     `**Ledger:** ${ledgerCounts.open} open (BLOCK ${ledgerCounts.block} · WARN ${ledgerCounts.warn} · NOTE ${ledgerCounts.note}) · ${ledgerCounts.deferred} deferred`,
@@ -336,6 +347,7 @@ export function formatDashboard(opts: {
 
   lines.push(...renderInFlightSection(inFlight));
   lines.push(...renderBlockedSection(blocked, issues));
+  lines.push(...renderUnclassifiedSection(unclassified));
   lines.push(...renderReadySection(ready));
   lines.push(...renderRoutingSection(active));
   lines.push(...renderWavesSection(issues));

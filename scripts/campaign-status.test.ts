@@ -742,6 +742,7 @@ describe('fetchForgeCounts', () => {
     expect(fetchForgeCounts({}, 'owner/repo')).toEqual({
       openIssues: 2,
       openPrs: 1,
+      openPrList: [{ number: 10, title: 'p10' }],
       ok: true,
     });
 

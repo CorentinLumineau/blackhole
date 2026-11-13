@@ -117,7 +117,11 @@ campaign is working, which turn it is and what to do:
    The campaign's own lanes are `claude` and `blackhole`; an `in-progress:*` / `agent:*` label
    naming any other lane puts the item in "another lane". The rule reads issue labels, not
    `contributor-contract.json`. Merge-conflict and overlap waits keep their own classes, and a
-   class holding a note that addresses the owner (`owner:` or `needs-owner`) renders open
+   class holding a note that addresses the owner (`owner:` or `needs-owner`) renders open.
+   Two more classes follow when non-empty (`elseClasses()`): **Unknown queue status** (active
+   entries with an undocumented `status`, open) and **Open PR with no queue entry** (open PRs no
+   entry's `pr` names; online only, absent under `--no-gh`). The Data dashboard gets them as extra
+   `waiting_else` / `waiting_else_items` rows, so the template needs no change
 4. **Up next** — the ready set, capped
 5. **Recently done** — newest merged/closed items (`recently_done`)
 6. **Details** — a collapsed native `<details>`: host and environment, the checkpoint's

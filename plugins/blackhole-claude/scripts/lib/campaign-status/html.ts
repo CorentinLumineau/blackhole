@@ -1,6 +1,6 @@
 import { SECTION_CAP } from './dashboard.ts';
 import { classPreview } from './blocked-classes.ts';
-import { inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
+import { elseClasses, inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
 import type { BlockedClass, ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind } from './types.ts';
 
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -131,9 +131,10 @@ function classLi(c: BlockedClass): string {
 }
 
 function elseSection(r: StatusReport): string {
-  const count = r.blocked_classes.reduce((n, c) => n + c.count, 0);
+  const classes = elseClasses(r);
+  const count = classes.reduce((n, c) => n + c.count, 0);
   if (count === 0) return section('Waiting on something else', empty('Nothing else is blocked.'), 0);
-  return section('Waiting on something else', `<ul class="groups">${r.blocked_classes.map(classLi).join('')}</ul>`, count);
+  return section('Waiting on something else', `<ul class="groups">${classes.map(classLi).join('')}</ul>`, count);
 }
 
 const numberedLine = (i: StatusItem): string => `<li><span class="num">#${escapeHtml(i.issue)}</span> ${escapeHtml(i.title)}</li>`;
