@@ -50,9 +50,14 @@ const MATCHERS: MatcherSpec[] = [
  * value for this one record type — not a temporary gap — keeping the schema uniform across both
  * paths (`hook-event-log.js`'s `recordEvent` populates the real value on every other record).
  */
+/** Double-quoted JS only — it is embedded inside a single-quoted shell argument. */
+const RECORD_JS =
+  'const e=process.env;const t=e.HOOK_STDERR_TAIL;process.stdout.write(JSON.stringify({version:2,recorded_at:e.HOOK_RECORDED_AT,hook:e.HOOK_NAME,tool:e.HOOK_TOOL||null,decision:"allow",tier:"error",pattern_id:"hook-exec-failure",reason:"validator process exited "+e.HOOK_CODE+" before producing a decision",worktree:e.HOOK_WORKTREE||null,detail:"process exit code "+e.HOOK_CODE+" ("+e.HOOK_KIND+")"+(t?": "+t:""),agent_id:null,agent_type:null}));';
+
 const buildCommand = (spec: MatcherSpec): string => {
   const hookName = spec.script.replace(/\.js$/, '');
-  const toolField = spec.matcher === 'Bash' ? 'tool: "Bash",' : 'tool: null,';
+  // Empty string maps to a JSON null in RECORD_JS.
+  const toolName = spec.matcher === 'Bash' ? 'Bash' : '';
   return [
     // ADR-042 item 5 — capture the validator's own stderr to a temp file rather
     // than `output=$(cmd 2>&1)`: a combined-output capture would also swallow the process's
@@ -74,16 +79,28 @@ const buildCommand = (spec: MatcherSpec): string => {
     'elapsed_s=$(( end_s - start_s ))',
     'if [ "$elapsed_s" -ge 4 ]; then kind="timeout"; else kind="crash"; fi',
     'stderr_tail="$(tail -c 300 "$stderr_tmp" 2>/dev/null | tr -d \'\\0\')"',
-    'jq -n \\',
-    '  --arg recorded_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \\',
-    `  --arg hook "${hookName}" \\`,
-    '  --arg code "$code" \\',
-    '  --arg worktree "$worktree" \\',
-    '  --arg kind "$kind" \\',
-    '  --arg stderr_tail "$stderr_tail" \\',
-    `  '{version: 2, recorded_at: $recorded_at, hook: $hook, ${toolField} decision: "allow", tier: "error", pattern_id: "hook-exec-failure", reason: ("validator process exited " + $code + " before producing a decision"), worktree: (if $worktree == "" then null else $worktree end), detail: ("process exit code " + $code + " (" + $kind + ")" + (if $stderr_tail == "" then "" else ": " + $stderr_tail end)), agent_id: null, agent_type: null}' \\`,
-    '  > "$CLAUDE_PROJECT_DIR/.blackhole/hook-events/hook-exec-error-$(date +%s%N).json" 2>/dev/null',
-    `echo "[blackhole-hook] ${hookName}: validator process exited $code before producing a decision — call allowed (fail-open); see .blackhole/hook-events/" >&2`,
+    // bun builds the JSON (not jq: absent jq left a 0-byte record under `2>/dev/null` while the
+    // notice below still claimed one existed). Values go in as env vars so bun does the escaping.
+    // The record is generated into a dot-prefixed temp file and `mv`d into place only when
+    // generation succeeded and produced bytes, so a reader never sees a partial or empty record.
+    'events_dir="$CLAUDE_PROJECT_DIR/.blackhole/hook-events"',
+    'record_tmp="$(mktemp "$events_dir/.hook-exec-error.XXXXXX" 2>/dev/null || true)"',
+    'record_written=0',
+    'if [ -n "$record_tmp" ]; then',
+    '  HOOK_RECORDED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \\',
+    `  HOOK_NAME="${hookName}" \\`,
+    `  HOOK_TOOL="${toolName}" \\`,
+    '  HOOK_CODE="$code" \\',
+    '  HOOK_WORKTREE="$worktree" \\',
+    '  HOOK_KIND="$kind" \\',
+    '  HOOK_STDERR_TAIL="$stderr_tail" \\',
+    `  bun -e '${RECORD_JS}' > "$record_tmp" 2>/dev/null`,
+    '  gen=$?',
+    '  if [ "$gen" = "0" ] && [ -s "$record_tmp" ] && mv "$record_tmp" "$events_dir/hook-exec-error-$(date +%s%N).json" 2>/dev/null; then record_written=1; fi',
+    '  rm -f "$record_tmp" 2>/dev/null',
+    'fi',
+    'if [ "$record_written" = "1" ]; then note="see .blackhole/hook-events/"; else note="record NOT written to .blackhole/hook-events/"; fi',
+    `echo "[blackhole-hook] ${hookName}: validator process exited $code before producing a decision — call allowed (fail-open); $note" >&2`,
     'exit 0',
   ].join('\n');
 };
