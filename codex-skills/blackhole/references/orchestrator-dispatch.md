@@ -334,6 +334,9 @@ section does not duplicate that content; it owns only the `hunter` spawn contrac
     nothing found), exactly one wave per spawn — `hunter` never loops internally across
     waves, even when `territory.exhausted` comes out `false`.
 
+Right after a `hunt <kind> --fresh-territory` reset (`phase-loop.md` § Territory reset) the
+spawn-context band list is the kind's full territory, because `bands_done` is empty.
+
 Model tier: `standard` (§ Worker spawn model above; `model-routing.md`'s `hunter` row is the
 SSOT for the rationale).
 

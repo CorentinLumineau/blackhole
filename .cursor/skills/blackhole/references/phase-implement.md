@@ -45,6 +45,13 @@ relative to the **main clone repo root**, not the worktree checkout.
 - Implementers MUST read the plan via that absolute path — never assume a
   relative `.blackhole/plans/` path resolves from the worktree cwd.
 
+## Hunt-origin spawn context
+
+The `implementer` spawn context carries `origin: hunt` when the issue's ledger row has
+`phase: hunt` and `deferred_to_issue == N` (the kaizen-filed issue); otherwise the field is
+absent. `implementer.md` step 6 labels the resulting PR `kaizen` (ADR-053); the full contract
+is in `orchestrator-delegation.md` § PLAN_CONTEXT.
+
 ## Target-repo setup at worktree creation
 
 After dependency install, before spawning the implementer — existence-gated steps in order (stop

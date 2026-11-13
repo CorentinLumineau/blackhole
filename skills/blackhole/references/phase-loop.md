@@ -356,6 +356,17 @@ in-scope issue is already `status: merged` while at least one sibling in scope i
 `status: ready`/`in-flight` — skip this turn's hunt wave entirely. Do not consume a `waves`
 increment, do not mark a dry wave, do not touch `hunt_state` at all. Re-evaluate next turn.
 
+### Territory reset (`hunt <kind> --fresh-territory`, ADR-053)
+
+Run once at wave start, after the gated-batch no-op check above (a no-op turn never touches
+`hunt_state`) and before step 1. Valid only with an explicit kind: `--fresh-territory` without
+a kind is refused with "requires an explicit kind". In one atomic write (`state-write-guard.ts`,
+`.tmp` + `mv`, `refreshed_at` bumped) set `hunt_state.kinds.<kind>` to `bands_done: []`,
+`waves: 0`, `dry_waves: 0`, `exhausted: false`, `last_reset_at: <now>` and
+`lifetime_waves: <prior lifetime_waves ?? prior waves>`. A kind absent from `hunt_state` (first
+ever wave) gets the entry created with `lifetime_waves: 0`. Ledger dedup (step 2) is untouched,
+so a reset never re-files a known finding.
+
 ### 5-step wave protocol
 
 1. **Spawn.** Spawn `hunter` with the round-robin-selected `kind` and its territory directive

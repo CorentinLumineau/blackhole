@@ -324,6 +324,8 @@ watermark of hunt progress:
 | `hunt_state.kinds.<kind>.waves` | number | Count of hunt waves dispatched for this kind so far; compared against `kaizen.max_waves` |
 | `hunt_state.kinds.<kind>.exhausted` | boolean | `true` once every band is scanned or `waves` reaches `kaizen.max_waves` — no further waves dispatch for this kind until reset |
 | `hunt_state.kinds.<kind>.last_wave_at` | ISO timestamp \| `null` | When the most recent wave for this kind completed |
+| `hunt_state.kinds.<kind>.last_reset_at` | ISO timestamp (optional) | When `hunt <kind> --fresh-territory` last reset this kind's watermark; `waves` counts waves since this instant |
+| `hunt_state.kinds.<kind>.lifetime_waves` | number (optional) | Waves dispatched for this kind across all resets; read as `lifetime_waves ?? waves` by the cumulative-issue sanity check (F-HUNT-01 (c)) |
 
 `hunt_state` is a watermark, not a decision log: each key is read-modify-written in place as
 hunt waves complete, never appended to as a growing history. Same atomic write protocol as
