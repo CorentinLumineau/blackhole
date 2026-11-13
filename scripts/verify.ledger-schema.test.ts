@@ -143,3 +143,12 @@ describe('finding outcome statuses', () => {
     for (const s of OUTCOME_STATUSES) expect(statuses).toContain(s);
   });
 });
+
+describe('hunt_state reset fields in the example fixture (ADR-053)', () => {
+  test('the example kind carries numeric lifetime_waves and an ISO last_reset_at', () => {
+    const fixture = JSON.parse(fs.readFileSync(path.join(import.meta.dir, '..', 'fixtures', 'findings-ledger.example.json'), 'utf8'));
+    const kind = fixture.hunt_state.kinds.quickwins;
+    expect(typeof kind.lifetime_waves).toBe('number');
+    expect(Number.isNaN(Date.parse(kind.last_reset_at))).toBe(false);
+  });
+});

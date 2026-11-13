@@ -15,7 +15,7 @@ Campaign protocol state (queue, ledger, plans) lives only under `.blackhole/` �
 
 ## Skill namespace
 
-**`blackhole`** — modes: `run`, `status`, `handle`, `plan`, `implement`, `review`, `hunt [kind]`, `campaign-audit`
+**`blackhole`** — modes: `run`, `status`, `handle`, `plan`, `implement`, `review`, `hunt [kind] [--fresh-territory]`, `campaign-audit`
 
 Skill entry: [`SKILL.md`](SKILL.md) (skills.sh), [`.cursor/skills/blackhole/SKILL.md`](.cursor/skills/blackhole/SKILL.md) (Cursor), or [`codex-skills/blackhole/SKILL.md`](codex-skills/blackhole/SKILL.md) (Codex).
 
