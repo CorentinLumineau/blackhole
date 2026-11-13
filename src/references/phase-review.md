@@ -53,6 +53,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
   - `V-KISS-03` (Empty scaffolding/no-op functions)
   - `V-YAGNI-03` (Single-consumer abstractions)
   - `V-DRY-04` (Template copy-paste renames)
+  - `V-UX-09` / `V-UX-10` (the slop test: values with no declared token, filler UI copy; `reviewer.md` § Static UX Checks)
 - **Improvement Discoveries**: Audit the code for UX/UI polish, performance gains, test coverage gaps, and styling best practices. Log them as WARN findings with detailed summaries. Do not demand resolving them in the current PR (prevents `V-SCOPE-02` scope creep); the orchestrator will file them as new GitHub issues.
 - **Docs Currency (`V-DOCSYNC-01`)**: Reviewer must confirm any public-API/schema/config-surface change (`reviewer.md` § 5-Field Contract & Plan Compliance's `V-API-01` surface) ships with a same-PR documentation update (`**/*.md`, `documentation/**`, or inline docstring); missing update is `BLOCK`.
 - **Companion-File Audit (`V-ADA-01/02/03/05/06/07`)**: Reviewer must confirm ARCHITECTURE.md, decisions/INDEX.md currency, AGENTS.md, and conditional DESIGN.md per `reviewer.md` § Companion-File Audit; gated by `docs_governance.companion_files`. All WARN.
