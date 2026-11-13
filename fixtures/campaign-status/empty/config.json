@@ -1,0 +1,5 @@
+{
+  "repo": "acme/widgets",
+  "forge": "github",
+  "merge_mode": "immediate"
+}

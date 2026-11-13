@@ -1,7 +1,7 @@
 import { buildStatusReport } from './report.ts';
 import type { QueueJson, StatusReport } from './types.ts';
 
-/** A populated report: every dataset of the status data has at least one row. */
+/** A populated report: every dataset of the status data has at least one row, every board stage but parked a card. */
 export const FIXTURE_QUEUE: QueueJson = {
   refreshed_at: '2026-11-11T11:00:00.000Z',
   issues: {
@@ -20,7 +20,12 @@ export const FIXTURE_QUEUE: QueueJson = {
 
 export function fixtureReport(queue: QueueJson = FIXTURE_QUEUE): StatusReport {
   return buildStatusReport({
-    config: { repo: 'acme/widgets', scope_milestone: 'v1.0' },
+    config: {
+      repo: 'acme/widgets',
+      scope_milestone: 'v1.0',
+      merge_mode: 'leave-open',
+      campaign_scope: { entries: [{ kind: 'in', text: 'Open issues in milestone v1.0', set_at: '2026-11-10', reason: 'set at launch', filter: true }] },
+    },
     queue,
     ledger: { findings: [{ id: 'F-1', vcode: 'V-SEC-04', severity: 'BLOCK', status: 'open', summary: 'leak', issue_ref: 3 }] },
     checkpoint: { orchestrator_turn_id: 7, refreshed_at: '2026-11-11T10:00:00.000Z' },
@@ -29,6 +34,9 @@ export function fixtureReport(queue: QueueJson = FIXTURE_QUEUE): StatusReport {
     paceLine: 'pace: GO (session 12%)',
     hostNotes: ['⚠ Plugin cache drift: layer 2'],
     generatedAt: '2026-11-11T12:00:00.000Z',
+    decisions: [{ date: '2026-11-10', text: 'Leave every PR open for review' }],
+    prSignals: { 9: { review: 'LGTM', ci: 'running', failing: [], mergeable: true } },
+    pluginVersion: '1.2.3',
   });
 }
 

@@ -1,0 +1,22 @@
+{
+  "decisions": [
+    {
+      "date": "2026-11-10",
+      "text": "Leave every PR open for my review"
+    },
+    {
+      "date": "2026-11-11",
+      "text": "Include the dependency bump PRs",
+      "refs": [
+        250
+      ]
+    },
+    {
+      "date": "2026-11-12",
+      "text": "Park the theme editor: another team owns it",
+      "refs": [
+        111
+      ]
+    }
+  ]
+}

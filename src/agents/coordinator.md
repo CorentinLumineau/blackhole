@@ -174,7 +174,12 @@ The full 6-step form follows:
    exist, then write the confirmed `scope_labels`/`scope_milestone`/
    `merge_mode`/`parallel_max`/`kaizen` values (and any adjusted `merge_after`
    arrays from step 3) into it atomically (`blackhole-state.md` § Write
-   protocol). Re-run `bun run status`, print the full dashboard and publish the
+   protocol). Record the confirmed scope in words, then each answer of the form
+   as a decision (`status-page.md` § What the orchestrator records):
+   `bun scripts/campaign-record.ts scope --kind in --text "<the step-1 filter in words, e.g. Open issues in milestone v2.0>" --filter`,
+   plus one `scope` line per thing the owner named as parked, deferred, blocked
+   upstream or out, and `bun scripts/campaign-record.ts decision --text "<answer>"`
+   per answer. Re-run `bun run status`, print the full dashboard and publish the
    status page (`status-page.md` § Refresh procedure; see § Campaign
    visibility, item 1), then proceed to spawn/resume the orchestrator.
 
@@ -242,6 +247,7 @@ When the user enters a message in the chat:
       (manual rebase/push, defer, or provide a resolution strategy), then hand the resolution back
       to the orchestrator to clear `status`/`notes` — the coordinator never writes `queue.json`
       directly (`blackhole-state.md` § Single-writer invariant).
+    *   Record the answer as a decision, and any scope change it makes (`clarify-gates.md` § Chat feedback intake, item 6).
     *   Update the queue notes and `resume` the orchestrator with `interrupt: false`, passing the user's clarification details.
 3.  **Status Requests**:
     *   If the user asks for campaign status, run `bun run status` and print the **full** markdown dashboard to the user. Do not resume or spawn new workers.
@@ -250,7 +256,8 @@ When the user enters a message in the chat:
     *   Verify that all code modifications comply with Quality Gates (V-codes) and establish a TDD baseline (tests run before modifications).
 5.  **Reconfiguring Scope / Merge Mode**:
     *   If the user asks, mid-campaign, to "reconfigure scope" or "change merge mode": re-run the **Campaign launch configuration gate** (§ Bootstrap preflight, steps 1-6) on demand — do not wait for a "Campaign complete" report.
-    *   Re-write the confirmed `scope_labels`/`scope_milestone`/`merge_mode`/`parallel_max`/`kaizen` fields into `.blackhole/config.json`.
+    *   Re-write the confirmed `scope_labels`/`scope_milestone`/`merge_mode`/`parallel_max`/`kaizen` fields into `.blackhole/config.json`, and record the new scope and the decision as step 6 of the gate does.
+    *   A narrower scope change that needs no form ("park #12", "add the dependency bumps", "that one is blocked upstream") is recorded directly with `bun scripts/campaign-record.ts scope …` and `… decision …` (`clarify-gates.md` § Chat feedback intake, item 6).
     *   After updating, re-run `bun run status` and print the full dashboard so the user sees the effect of the change immediately.
 
 ---

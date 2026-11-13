@@ -5,6 +5,7 @@ import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { fetchForgeCounts } from './lib/campaign-status/forge.ts';
 import { writeStatusData } from './lib/campaign-status/data.ts';
+import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
 import { readPublishState, readStatusAlerts } from './lib/campaign-status/staleness.ts';
 import { buildStatusReport } from './lib/campaign-status/report.ts';
@@ -13,6 +14,7 @@ import { readJsonFile } from './lib/fs.ts';
 import { resolveForgeForRepo } from './lib/forge-detection.ts';
 import { formatPaceLine, readLatestPaceRecord } from './lib/pace-log.ts';
 import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
+import type { StatusReport } from './lib/campaign-status/types.ts';
 
 export { parseCheckpointFrontmatter } from './lib/campaign-status/checkpoint.ts';
 export {
@@ -110,12 +112,84 @@ function readHostLines(campaignDir: string): { pace: string | null; drift: strin
   return { pace: latestPace ? formatPaceLine(latestPace) : null, drift };
 }
 
+/** The plugin's own version: its `.claude-plugin/plugin.json`, else its `package.json`; null when neither reads. */
+export function readPluginVersion(pluginRoot: string = path.join(import.meta.dir, '..')): string | null {
+  for (const file of [path.join(pluginRoot, '.claude-plugin', 'plugin.json'), path.join(pluginRoot, 'package.json')]) {
+    try {
+      const version = (readJsonFile(file, file) as { version?: unknown }).version;
+      if (typeof version === 'string' && version) return version;
+    } catch {
+      // Try the next file.
+    }
+  }
+  return null;
+}
+
+/** The open PRs the board shows: those queue entries name while in flight, then the ones no entry names. */
+const boardPrs = (queue: { issues?: Record<string, { status?: string; pr?: number | null }> }, openPrList: Array<{ number: number }> | undefined): number[] => {
+  const open = new Set((openPrList ?? []).map((p) => p.number));
+  const named = Object.values(queue.issues ?? {}).filter((i) => i.status === 'in-flight' && i.pr != null).map((i) => i.pr as number);
+  return [...new Set([...named.filter((n) => open.has(n)), ...open])];
+};
+
+/**
+ * Loads the campaign and builds the one `StatusReport` every mode prints. `skipGh` makes no forge
+ * call at all; otherwise the forge counts, then the review/CI/conflict signal of each open PR the
+ * board shows (`PR_SIGNAL_CAP` at most), are read.
+ */
+export function collectStatusReport(campaignDir: string, skipGh: boolean, generatedAt: string = new Date().toISOString()): {
+  report: StatusReport;
+  state: ReturnType<typeof loadCampaignState>;
+  host: { pace: string | null; drift: string | null };
+} {
+  const state = loadCampaignState(campaignDir);
+  const { config, queue, ledger, checkpoint, checkpointBody, decisions } = state;
+  const scope = readScope(config);
+  const forge = skipGh
+    ? { openIssues: 0, openPrs: 0, ok: false, error: 'skipped' }
+    : fetchForgeCounts(scope, config.repo ?? '');
+  const prSignals = !skipGh && forge.ok && config.repo ? fetchPrSignals(config.repo, boardPrs(queue, forge.openPrList)) : null;
+  const host = readHostLines(campaignDir);
+  const resolved = resolveForgeForRepo(path.dirname(path.resolve(campaignDir)), config.forge);
+  const report = buildStatusReport({
+    config,
+    forgeWeb: resolved.ok ? { forge: resolved.forge, host: resolved.host } : undefined,
+    queue,
+    ledger,
+    checkpoint,
+    checkpointBody,
+    forge,
+    paceLine: host.pace,
+    hostNotes: host.drift ? host.drift.split('\n') : [],
+    generatedAt,
+    publish: readPublishState(campaignDir),
+    decisions,
+    prSignals,
+    pluginVersion: readPluginVersion(),
+  });
+  return { report, state, host };
+}
+
 function main() {
   const { mode, campaignDir, skipGh, outPath, dataDir } = parseStatusArgs(process.argv.slice(2));
 
-  let state: ReturnType<typeof loadCampaignState>;
+  if (mode === 'config-summary') {
+    // The routine-resume confirmation gate (coordinator.md § Bootstrap preflight) prints only
+    // this — no forge call, no queue/ledger rendering.
+    let config: ReturnType<typeof loadCampaignState>['config'];
+    try {
+      config = loadCampaignState(campaignDir).config;
+    } catch (error) {
+      if (error instanceof CampaignNotFoundError) return console.log(error.message);
+      throw error;
+    }
+    console.log(renderConfigSummary(config));
+    return;
+  }
+
+  let collected: ReturnType<typeof collectStatusReport>;
   try {
-    state = loadCampaignState(campaignDir);
+    collected = collectStatusReport(campaignDir, skipGh);
   } catch (error) {
     // "No campaign here" is a normal, expected state (fresh checkout, wrong --campaign-dir) —
     // print the message and exit 0 (falling off main() already does; no process.exit needed).
@@ -127,38 +201,9 @@ function main() {
     }
     throw error;
   }
-  const { config, queue, ledger, checkpoint, checkpointBody } = state;
-
-  // The routine-resume confirmation gate (coordinator.md § Bootstrap preflight) prints only
-  // this — no forge call, no queue/ledger rendering.
-  if (mode === 'config-summary') {
-    console.log(renderConfigSummary(config));
-    return;
-  }
-
-  const scope = readScope(config);
-
-  const forge = skipGh
-    ? { openIssues: 0, openPrs: 0, ok: false, error: 'skipped' }
-    : fetchForgeCounts(scope, config.repo ?? '');
-
-  const host = readHostLines(campaignDir);
+  const { report, state, host } = collected;
 
   if (mode === 'json' || mode === 'html' || mode === 'data') {
-    const resolved = resolveForgeForRepo(path.dirname(path.resolve(campaignDir)), config.forge);
-    const report = buildStatusReport({
-      config,
-      forgeWeb: resolved.ok ? { forge: resolved.forge, host: resolved.host } : undefined,
-      queue,
-      ledger,
-      checkpoint,
-      checkpointBody,
-      forge,
-      paceLine: host.pace,
-      hostNotes: host.drift ? host.drift.split('\n') : [],
-      generatedAt: new Date().toISOString(),
-      publish: readPublishState(campaignDir),
-    });
     // stdout carries the JSON, the page path or the row files, so the loud lines go to stderr.
     if (mode !== 'json') for (const alert of report.alerts) console.error(alert.message);
     if (mode === 'json') {
@@ -178,15 +223,16 @@ function main() {
   }
 
   const dashboard = formatDashboard({
-    scope,
-    checkpoint,
-    queue,
-    ledger,
-    forge,
-    checkpointBody,
+    scope: readScope(state.config),
+    checkpoint: state.checkpoint,
+    queue: state.queue,
+    ledger: state.ledger,
+    forge: report.forge,
+    checkpointBody: state.checkpointBody,
+    view: report,
   });
 
-  for (const alert of readStatusAlerts(campaignDir, state, new Date().toISOString())) console.log(alert.message);
+  for (const alert of readStatusAlerts(campaignDir, state, report.generated_at)) console.log(alert.message);
   console.log(dashboard);
   if (host.pace) console.log(host.pace);
   if (host.drift) console.log(host.drift);

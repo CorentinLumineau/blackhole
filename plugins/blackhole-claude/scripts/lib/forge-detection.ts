@@ -114,8 +114,23 @@ const REPO_SLUG = /^[\w.-]+\/[\w.-]+$/;
  * Gitea host is unknown, or `repo` is not `owner/name` — a caller must never get a guessed link.
  */
 export function prWebUrl(forge: string, host: string | null, repo: string, pr: number): string | null {
-  if (!REPO_SLUG.test(repo) || !Number.isInteger(pr) || pr <= 0) return null;
-  if (forge === 'github') return `https://github.com/${repo}/pull/${pr}`;
-  if (forge === 'gitea' && host && /^[\w.-]+(:\d+)?$/.test(host)) return `https://${host}/${repo}/pulls/${pr}`;
+  if (!Number.isInteger(pr) || pr <= 0) return null;
+  const base = repoWebUrl(forge, host, repo);
+  if (!base) return null;
+  return forge === 'github' ? `${base}/pull/${pr}` : `${base}/pulls/${pr}`;
+}
+
+/** Web URL of an issue (`<repo page>/issues/<n>`), under the same rules as `prWebUrl`. */
+export function issueWebUrl(forge: string, host: string | null, repo: string, issue: number): string | null {
+  if (!Number.isInteger(issue) || issue <= 0) return null;
+  const base = repoWebUrl(forge, host, repo);
+  return base ? `${base}/issues/${issue}` : null;
+}
+
+/** Web URL of the repository page (GitHub, or Gitea with a known host); null otherwise, never guessed. */
+export function repoWebUrl(forge: string, host: string | null, repo: string): string | null {
+  if (!REPO_SLUG.test(repo)) return null;
+  if (forge === 'github') return `https://github.com/${repo}`;
+  if (forge === 'gitea' && host && /^[\w.-]+(:\d+)?$/.test(host)) return `https://${host}/${repo}`;
   return null;
 }

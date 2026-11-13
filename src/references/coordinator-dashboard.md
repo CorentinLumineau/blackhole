@@ -12,7 +12,8 @@ bun run status
 ```
 
 Reads `.blackhole/config.json`, `queue.json`, `findings-ledger.json`,
-`campaign-checkpoint.md`, and (when `gh` is available) scoped forge open counts.
+`campaign-checkpoint.md`, `owner-decisions.json`, and (when `gh` is available) scoped forge open
+counts plus the review label, CI and mergeability of the open PRs the board shows.
 
 Sibling subcommand — config summary only, no forge call, no queue/ledger render:
 
@@ -38,13 +39,24 @@ bun run status --data <dir>              # row files <dir>/<id>.json for the Cla
 All accept `--campaign-dir` and `--no-gh`. `--json`, `--html` and `--data` are mutually exclusive, and
 `--out` requires `--html`.
 
-`--data <dir>` writes one JSON array of flat rows per dataset (`summary` one row; `in_progress`,
-`waiting_on_you`, `waiting_else` one row per reason class with `waiting_else_items` holding the
-issues keyed by `class`, `up_next`, `recently_done`, `notes`), all derived from the `StatusReport`
-(`scripts/lib/campaign-status/data.ts`). `summary` carries `stale_after_hours` (the one
-`STALE_AFTER_HOURS`) beside `last_activity_at`, so the dashboard page
-(`templates/status-dashboard/index.html`) computes STALE when it is opened. Publishing it is
-`status-page.md`'s job.
+`--data <dir>` writes one JSON array of flat rows per dataset, all derived from the `StatusReport`
+(`scripts/lib/campaign-status/data.ts`, `STATUS_DATASET_IDS`):
+
+| Dataset | Rows |
+|---------|------|
+| `overview` | One: `title`, `headline`, `headline_source`, `state_kind`, `last_activity_at`, `stale_after_hours` (the one `STALE_AFTER_HOURS`, so the page computes stale when it is opened), `generated_at`, `forge_checked`, and the `stage_counts` |
+| `moves` | `text`, `url`, `ref` per item of `moves` |
+| `blockers` | `text`, `tone`, `source` |
+| `board` | `stage`, `ref`, `kind`, `title`, `status`, `tone`, `url`, `stream` per card |
+| `streams` | `stream`, `done`, `in_review`, `left`, `next` |
+| `scope` | `kind` (`In`, `Parked`, `Deferred`, `Blocked upstream`, `Out`), `text`, `reason`, `date`; empty when no scope is recorded |
+| `config` | `key`, `value` |
+| `decisions` | `date`, `text`, newest first |
+| `links` | `label`, `url` |
+
+The page (`templates/status-dashboard/index.html`) reads these and nothing else; a contract test
+(`dashboard-template.test.ts`) fails when it names a dataset or field the generator does not
+write. Publishing it is `status-page.md`'s job.
 
 `--json` emits the `StatusReport` type (`scripts/lib/campaign-status/types.ts`, the one
 definition of the shape; bump `schema_version` on a breaking change):
@@ -70,6 +82,17 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `recently_done` | Newest merged/closed items, highest PR then issue number first (the queue holds no merge time), at most 5 |
 | `ledger_open` | Every open finding, BLOCK first then most recent (`id`, `vcode`, `severity`, `summary`, `issue_ref`) |
 | `host` | `pace` (the pace line or `null`) and `notes` (plugin-drift lines) |
+| `scope_record` | `recorded` and the `entries` of `config.json` `campaign_scope` (`kind`, `text`, `set_at`, optional `reason`, `refs`, `filter`); malformed entries are dropped. Additive |
+| `decisions` | `owner-decisions.json`, newest first (`date`, `text`, optional `refs`). Additive |
+| `headline` | `{text, source}`: the checkpoint's `## Headline` (`checkpoint`), else one sentence from the stage counts (`generated`). Additive |
+| `blockers` | `{text, tone, source}`: the checkpoint's `## Blocking the run` lines (`none` ⇒ empty), else the failing or conflicting PRs, the three largest blocked reason classes and, offline, a "forge not checked" line. Additive |
+| `forge_checked` | True when the forge counts and the PR signals were read this render; false under `--no-gh` or a forge failure. Additive |
+| `board` | One card per queue entry and per `untracked_prs` entry: `stage` (`ready`, `review`, `active`, `blocked`, `you`, `todo`, `parked`, `done`), `ref` (the PR when there is one), `kind`, `issue`, `pr`, `title`, `status`, `tone` (`ok`, `warn`, `bad`, `info` or empty), `url`, `stream`. Placed by `board.ts`: done; a non-`in` scope entry naming it (parked, or blocked for `blocked_upstream`); an undocumented status; an owner gate; in flight without a PR (`active`); an open PR by its signal (conflict or failing CI ⇒ blocked; LGTM, or a delivered-at-LGTM marker, with green CI ⇒ ready; otherwise review), or by the queue with "CI not checked" when there is no signal; blocked; ready ⇒ `todo`. Additive |
+| `stage_counts` | `done`, `in_review` (`ready` + `review` + `active`), `on_you` (the length of `moves`), `blocked`, `parked`, `not_started` (`you` + `todo`), `total`. Additive |
+| `moves` | `{text, url, ref}`: PRs delivered at LGTM or held for the owner, then owner gates, then other ready PRs. Additive |
+| `streams` | Per workstream (`status_page.streams`, `config-template.md`): `done`, `in_review`, `left` (not parked), `next` (the first card still to move). Additive |
+| `links` | The forge's PR, issue and CI pages (GitHub, or Gitea with a known host), then `status_page.links` (http(s) only). Additive |
+| `config_rows` | Merge mode, autonomy, concurrency, verification, issue filter, kaizen and plugin version, read from `config.json`. Additive |
 
 The text dashboard prints the same `alerts` lines above its output, and `--html` prints them on stderr (stdout stays the page path). `--html` leads with a state banner (turn, state, last activity relative and in UTC, the owner's
 next action), then **In progress**, **Waiting on you** (PRs ready to merge with their links, and
@@ -112,7 +135,8 @@ chat for campaign overview.
 The status script emits markdown with:
 
 1. **Header** — scope (milestone/labels), orchestrator turn, queue `refreshed_at`
-2. **Counts** — forge open issues/PRs, queue active/done/in-flight/blocked/ready, ledger
+2. **Counts** — the report's `headline` and stage board counts, the owner's moves, the recorded
+   scope ("Scope not recorded" when none) and the three newest decisions, then forge open issues/PRs, queue active/done/in-flight/blocked/ready, ledger
    severities, and a **Queue health** verdict (`✓ HEALTHY` / `⚠ STALLED` / `✗ DEGRADED`) computed
    from forge availability plus the blocked/in-flight counts already shown here. Scoped
    deliberately narrow: it says nothing about plugin-cache drift or doc-tree health — those are

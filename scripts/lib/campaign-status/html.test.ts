@@ -82,12 +82,16 @@ describe('renderStatusHtml — self-contained page', () => {
         generatedAt: '2026-11-11T12:00:00.000Z',
       }),
     );
-    expect(benign).not.toMatch(/https?:\/\//i);
-    expect(benign).not.toMatch(/\s(src|href|srcset|action|poster|data)\s*=/i);
+    // Its only URLs are the quick-link anchors, which open in a new tab and load nothing.
+    const anchors = /<a href="https:\/\/[^"]*" target="_blank" rel="noopener">[^<]*<\/a>/g;
+    expect((benign.match(anchors) ?? []).length).toBeGreaterThan(0);
+    const rest = benign.replace(anchors, '');
+    expect(rest).not.toMatch(/https?:\/\//i);
+    expect(rest).not.toMatch(/\s(src|href|srcset|action|poster|data)\s*=/i);
     expect(benign).not.toMatch(/@import|url\s*\(/i);
     expect(benign).not.toMatch(/<(script|link|iframe|object|embed|img)\b/i);
     // Hostile state: no tag survives escaping, so nothing can load.
-    expect(html).not.toMatch(/https?:\/\//i);
+    expect(html.replace(anchors, '')).not.toMatch(/https?:\/\//i);
     expect(html).not.toMatch(/@import|url\s*\(/i);
     expect(html).not.toMatch(/<(script|link|iframe|object|embed|img)\b/i);
   });
@@ -167,8 +171,8 @@ describe('renderStatusHtml — Ready to merge', () => {
     const mk = (pr_url: string) => renderStatusHtml({ ...base, ready_to_merge: [{ ...base.ready_to_merge[0], pr_url }] });
     for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'ftp://x/y', '//evil/x']) {
       const page = mk(bad);
-      expect(page).not.toMatch(/<a href/i);
-      expect(page).not.toContain('Open PR');
+      expect(page).not.toContain(`href="${bad}`);
+      expect(page).not.toContain('Open PR ↗');
     }
     const quoted = mk('https://github.com/a/b/pull/1"><script>x</script>');
     expect(quoted).not.toContain('<script>');

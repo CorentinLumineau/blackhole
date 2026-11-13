@@ -1,120 +1,67 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { classPreview } from './blocked-classes.ts';
-import { elseClasses, inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
+import { SCOPE_LABELS } from './record.ts';
+import { campaignName } from './report.ts';
 import { STALE_AFTER_HOURS } from './staleness.ts';
-import type { StatusItem, StatusReport } from './types.ts';
+import type { ScopeKind, StatusReport } from './types.ts';
 
 /** The datasets of the Claude "Data" dashboard, one `<id>.json` file each (`status-page.md` § Claude Code). */
 export const STATUS_DATASET_IDS = [
-  'summary',
-  'in_progress',
-  'waiting_on_you',
-  'waiting_else',
-  'waiting_else_items',
-  'up_next',
-  'recently_done',
-  'notes',
+  'overview',
+  'moves',
+  'blockers',
+  'board',
+  'streams',
+  'scope',
+  'config',
+  'decisions',
+  'links',
 ] as const;
 
 export type StatusDatasetId = (typeof STATUS_DATASET_IDS)[number];
 export type StatusDataRow = Record<string, string | number | boolean | null>;
 export type StatusDatasets = Record<StatusDatasetId, StatusDataRow[]>;
 
-const issueRef = (i: StatusItem): string => `#${i.issue}`;
+const SCOPE_ORDER = Object.keys(SCOPE_LABELS) as ScopeKind[];
 
-function summaryRow(r: StatusReport): StatusDataRow {
+function overviewRow(r: StatusReport): StatusDataRow {
   return {
-    repo: r.campaign.repo,
-    turn: r.checkpoint.turn,
+    title: campaignName(r),
+    headline: r.headline.text,
+    headline_source: r.headline.source,
     state_kind: r.state.kind,
-    state_underlying: r.state.underlying,
-    state_reason: r.state.reason,
     last_activity_at: r.state.last_activity_at,
     stale_after_hours: STALE_AFTER_HOURS,
-    next_action: r.state.next_action,
     generated_at: r.generated_at,
-    finished: r.counts.queue.done,
-    open: r.counts.queue.active,
-    in_flight: r.counts.queue.in_flight,
-    blocked: r.counts.queue.blocked,
-    ready: r.counts.queue.ready,
-    forge_ok: r.forge.ok,
-    forge_open_issues: r.forge.ok ? r.forge.openIssues : null,
-    forge_open_prs: r.forge.ok ? r.forge.openPrs : null,
-    queue_health: r.queue_health,
-    findings_open: r.counts.ledger.open,
+    forge_checked: r.forge_checked,
+    ...r.stage_counts,
   };
 }
 
-function inProgressRows(r: StatusReport): StatusDataRow[] {
-  return inProgressItems(r).map((i) => ({
-    issue: i.issue,
-    title: i.title,
-    stage: r.in_review.includes(i) ? 'in review' : 'in flight',
-    phase: i.phase,
-    pr: i.pr,
-    next_step: i.next_step,
-  }));
-}
-
-function waitingOnYouRows(r: StatusReport): StatusDataRow[] {
-  return [
-    ...r.ready_to_merge.map((i) => ({
-      issue: i.issue,
-      title: i.title,
-      kind: i.held_for === undefined ? 'ready to merge' : 'needs your decision',
-      pr: i.pr,
-      pr_url: i.pr_url,
-      detail: readyToMergeDetail(i),
-    })),
-    ...r.waiting_on_owner.map((i) => ({
-      issue: i.issue,
-      title: i.title,
-      kind: 'owner gate',
-      pr: i.pr,
-      pr_url: i.pr_url ?? null,
-      detail: ownerDetail(i),
-    })),
-  ];
-}
-
-function notesRows(r: StatusReport): StatusDataRow[] {
-  const { notes, active_workers } = r.checkpoint;
-  const findings = r.ledger_open.map((f) =>
-    [f.severity ?? '?', f.vcode ?? '', f.summary, f.issue_ref != null ? `#${f.issue_ref}` : ''].filter(Boolean).join(' '),
-  );
-  return [
-    ...notes.map((text) => ({ kind: 'note', text })),
-    ...active_workers.map((text) => ({ kind: 'worker', text })),
-    ...[r.host.pace, ...r.host.notes].filter((t): t is string => !!t).map((text) => ({ kind: 'host', text })),
-    ...findings.map((text) => ({ kind: 'finding', text })),
-  ];
+function scopeRows(r: StatusReport): StatusDataRow[] {
+  return [...r.scope_record.entries]
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => SCOPE_ORDER.indexOf(a.e.kind) - SCOPE_ORDER.indexOf(b.e.kind) || a.i - b.i)
+    .map(({ e }) => ({
+      kind: SCOPE_LABELS[e.kind],
+      text: e.refs?.length && !e.refs.every((n) => e.text.includes(`#${n}`)) ? `${e.text} (${e.refs.map((n) => `#${n}`).join(', ')})` : e.text,
+      reason: e.reason ?? null,
+      date: e.set_at,
+    }));
 }
 
 /** Every dataset, derived from the one `StatusReport` that `--json` prints; nothing is recomputed. */
 export function buildStatusData(r: StatusReport): StatusDatasets {
   return {
-    summary: [summaryRow(r)],
-    in_progress: inProgressRows(r),
-    waiting_on_you: waitingOnYouRows(r),
-    waiting_else: elseClasses(r).map((c) => {
-      const preview = classPreview(c.issues, c.count);
-      return {
-        kind: c.class,
-        label: c.label,
-        count: c.count,
-        attention: c.attention,
-        first_issues: preview.first.map(issueRef).join(', '),
-        more_count: preview.more,
-      };
-    }),
-    waiting_else_items: elseClasses(r).flatMap((c) =>
-      c.issues.map((i) => ({ class: c.class, issue: i.issue, title: i.title, pr: i.pr, detail: i.notes?.trim() || i.next_step })),
-    ),
-    up_next: r.ready.map((i) => ({ issue: i.issue, title: i.title })),
-    recently_done: r.recently_done.map((i) => ({ issue: i.issue, title: i.title, pr: i.pr })),
-    notes: notesRows(r),
+    overview: [overviewRow(r)],
+    moves: r.moves.map((m) => ({ text: m.text, url: m.url, ref: m.ref })),
+    blockers: r.blockers.map((b) => ({ text: b.text, tone: b.tone, source: b.source })),
+    board: r.board.map((c) => ({ stage: c.stage, ref: c.ref, kind: c.kind, title: c.title, status: c.status, tone: c.tone, url: c.url, stream: c.stream })),
+    streams: r.streams.map((s) => ({ ...s })),
+    scope: scopeRows(r),
+    config: r.config_rows.map((c) => ({ ...c })),
+    decisions: r.decisions.map((d) => ({ date: d.date, text: d.text })),
+    links: r.links.map((l) => ({ ...l })),
   };
 }
 

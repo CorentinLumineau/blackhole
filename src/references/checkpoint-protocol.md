@@ -25,7 +25,9 @@ On every orchestrator turn end, persist in this order:
    (`state-branch.md`).
 5. Unless `status_page.enabled` is `false`, refresh the status page
    (`bun run status --data` on Claude Code, `--html` elsewhere, then the per-harness view — `status-page.md` § Refresh procedure).
-   A failed refresh is reported in one line and does not block ending the turn.
+   It reads the checkpoint's `## Headline` and `## Blocking the run` written in step 3, so a
+   checkpoint is written before every refresh that should show a new headline. A failed refresh
+   is reported in one line and does not block ending the turn.
 
 Never write checkpoint before queue and ledger are valid — validate both with
 `scripts/lib/state-write-guard.ts`'s `validateStateWrite()`, never `jq empty` (it exits 0 on a
@@ -52,6 +54,14 @@ stop_kind: null
 ---
 
 # Campaign Checkpoint
+
+## Headline
+
+Payments is nearly done; two PRs wait for your merge.
+
+## Blocking the run
+
+- #206 conflicts with main after the cache refactor
 
 ## In-flight
 
@@ -111,6 +121,8 @@ phase inference per § Compaction recovery above) before continuing.
 | `last_completed_phase` | checkpoint frontmatter | Last phase fully completed for primary in-flight issue |
 | `review_iteration` | `queue.json` issues.* | Per-issue review loop counter |
 | `in_flight_workers` | checkpoint body | Active worker spawns for resume |
+| `## Headline` | checkpoint body | One sentence on where the run stands, rewritten every checkpoint; the status page leads with it (`status-page.md` § What the orchestrator records). Absent ⇒ the page generates one from the counts |
+| `## Blocking the run` | checkpoint body | One line per thing holding the run back, rewritten every checkpoint; `none` when nothing does. Absent ⇒ the page lists the failing or conflicting PRs and the largest blocked reason classes |
 | `stopped_by` | checkpoint frontmatter | Who requested the stop — `user` \| `null` (`phase-stop.md`) |
 | `stop_kind` | checkpoint frontmatter | `drained` \| `killed` \| `flushed` (issue #492) \| `null` — which `phase-stop.md` tier ran; `flushed` (issue #492) is emitted per that file's `stop --now` tier step 6 priority rule |
 | `worker_state` | `## In-flight workers` row, stop-event-only | `drained` \| `flushed` (issue #492) \| `killed` — tags a stopped worker's row before removal per `phase-stop.md`'s § `stop --now` tier step 3 (`flushed`, issue #492) and § `--abandon` tier (`killed`); absent on a normal turn's rows |

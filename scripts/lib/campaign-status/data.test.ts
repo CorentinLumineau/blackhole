@@ -5,7 +5,6 @@ import * as path from 'path';
 import { buildStatusData, STATUS_DATASET_IDS, writeStatusData } from './data.ts';
 import { parseStatusArgs } from './cli.ts';
 import { fixtureReport as report } from './data-fixture.ts';
-import { CLASS_PREVIEW, inProgressItems, READY_TO_MERGE_DETAIL } from './report.ts';
 import { STALE_AFTER_HOURS } from './staleness.ts';
 import type { QueueJson } from './types.ts';
 
@@ -13,61 +12,42 @@ describe('buildStatusData — one source with --json', () => {
   const r = report();
   const data = buildStatusData(r);
 
-  test('summary is one row whose counts and state equal the report', () => {
-    expect(data.summary).toHaveLength(1);
-    const s = data.summary[0];
-    expect(s).toMatchObject({
-      turn: 7,
+  test('overview is one row whose counts, headline and state equal the report', () => {
+    expect(data.overview).toHaveLength(1);
+    expect(data.overview[0]).toMatchObject({
+      title: 'acme/widgets',
+      headline: r.headline.text,
+      headline_source: r.headline.source,
       state_kind: r.state.kind,
-      state_reason: r.state.reason,
       last_activity_at: r.state.last_activity_at,
-      next_action: r.state.next_action,
       generated_at: r.generated_at,
-      finished: r.counts.queue.done,
-      open: r.counts.queue.active,
-      in_flight: r.counts.queue.in_flight,
-      blocked: r.counts.queue.blocked,
-      ready: r.counts.queue.ready,
-      forge_open_issues: 3,
-      forge_open_prs: 1,
-      findings_open: r.counts.ledger.open,
+      forge_checked: r.forge_checked,
+      ...r.stage_counts,
     });
   });
 
   test('stale_after_hours is the one STALE_AFTER_HOURS constant', () => {
-    expect(data.summary[0].stale_after_hours).toBe(STALE_AFTER_HOURS);
+    expect(data.overview[0].stale_after_hours).toBe(STALE_AFTER_HOURS);
   });
 
-  test('in_progress lists in-flight and in-review work, not the PR already delivered', () => {
-    expect(data.in_progress.map((x) => x.issue)).toEqual([2, 3]);
-    expect(data.in_progress.map((x) => x.stage)).toEqual(['in flight', 'in review']);
+  test('board, moves, blockers, streams, config, decisions and links are the report lists, row for row', () => {
+    expect(data.board.map((c) => c.ref)).toEqual(r.board.map((c) => c.ref));
+    expect(data.board.map((c) => c.stage)).toEqual(r.board.map((c) => c.stage));
+    expect(data.moves).toEqual(r.moves);
+    expect(data.blockers.map((b) => b.text)).toEqual(r.blockers.map((b) => b.text));
+    expect(data.streams).toEqual(r.streams);
+    expect(data.config).toEqual(r.config_rows);
+    expect(data.decisions).toEqual([{ date: '2026-11-10', text: 'Leave every PR open for review' }]);
+    expect(data.links).toEqual(r.links);
   });
 
-  test('waiting_on_you carries the delivered PR with its link, then owner gates', () => {
-    const [pr, gate] = data.waiting_on_you;
-    expect(pr).toMatchObject({ issue: 4, kind: 'ready to merge', pr: 10, pr_url: r.ready_to_merge[0].pr_url });
-    expect(String(pr.pr_url)).toMatch(/^https:\/\//);
-    expect(gate).toMatchObject({ issue: 1, kind: 'owner gate', pr_url: null });
+  test('your move holds the PR delivered at LGTM with its link, then the owner gate', () => {
+    expect(data.moves.map((m) => m.ref)).toEqual([10, 1]);
+    expect(String(data.moves[0].url)).toBe('https://github.com/acme/widgets/pull/10');
   });
 
-  test('waiting_else has one row per reason class and the item rows add up to its counts', () => {
-    expect(data.waiting_else.map((c) => c.kind)).toEqual(r.blocked_classes.map((c) => c.class));
-    const dep = data.waiting_else.find((c) => c.kind === 'dependency');
-    expect(dep).toMatchObject({ count: 4, attention: false, first_issues: '#5, #6, #7', more_count: 1 });
-    for (const c of data.waiting_else) {
-      expect(data.waiting_else_items.filter((i) => i.class === c.kind)).toHaveLength(Number(c.count));
-    }
-  });
-
-  test('up_next, recently_done and notes come from the same report', () => {
-    expect(data.up_next).toEqual([{ issue: 9, title: 'next' }]);
-    expect(data.recently_done).toEqual([{ issue: 10, title: 'old', pr: 5 }]);
-    const lines = data.notes.map((n) => `${n.kind}:${n.text}`);
-    expect(lines).toContain('note:Merged #2');
-    expect(lines).toContain('worker:worker for #2');
-    expect(lines).toContain('host:pace: GO (session 12%)');
-    expect(lines).toContain('host:⚠ Plugin cache drift: layer 2');
-    expect(lines.some((l) => l.startsWith('finding:') && l.includes('V-SEC-04'))).toBe(true);
+  test('scope rows carry the kind word, the text, the reason and the date', () => {
+    expect(data.scope).toEqual([{ kind: 'In', text: 'Open issues in milestone v1.0', reason: 'set at launch', date: '2026-11-10' }]);
   });
 
   test('every dataset is an array of flat objects', () => {
@@ -80,29 +60,12 @@ describe('buildStatusData — one source with --json', () => {
   });
 });
 
-describe('buildStatusData — one presentation rule with --html', () => {
-  const r = report();
-  const data = buildStatusData(r);
-
-  test('in_progress is the report helper inProgressItems', () => {
-    expect(data.in_progress.map((x) => x.issue)).toEqual(inProgressItems(r).map((i) => i.issue));
-  });
-
-  test('a class shows CLASS_PREVIEW issues and counts the rest', () => {
-    const dep = data.waiting_else.find((c) => c.kind === 'dependency');
-    expect(String(dep?.first_issues).split(', ')).toHaveLength(CLASS_PREVIEW);
-    expect(dep?.more_count).toBe(Number(dep?.count) - CLASS_PREVIEW);
-  });
-
-  test('the ready-to-merge detail is the shared text', () => {
-    expect(data.waiting_on_you[0].detail).toBe(READY_TO_MERGE_DETAIL);
-  });
-
-  test('up_next carries the whole ready set; the page caps it', () => {
+describe('buildStatusData — the whole board, the page folds it', () => {
+  test('every ready issue is a card; the page shows four per column and folds the rest', () => {
     const issues: QueueJson['issues'] = {};
     for (let n = 1; n <= 12; n++) issues[String(n)] = { title: `t${n}`, status: 'ready', phase: 'handle' };
     const big = report({ issues });
-    expect(buildStatusData(big).up_next).toHaveLength(12);
+    expect(buildStatusData(big).board.filter((c) => c.stage === 'todo')).toHaveLength(12);
   });
 });
 

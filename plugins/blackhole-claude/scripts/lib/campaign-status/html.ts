@@ -1,6 +1,7 @@
 import { SECTION_CAP } from './dashboard.ts';
 import { classPreview } from './blocked-classes.ts';
-import { elseClasses, inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
+import { SCOPE_LABELS } from './record.ts';
+import { campaignName, elseClasses, inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
 import type { BlockedClass, ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind } from './types.ts';
 
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -8,15 +9,6 @@ const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '
 /** Escapes text for HTML element content and quoted attributes. Every value from state goes through this. */
 export function escapeHtml(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
-}
-
-// Plain-text campaign name for the <title> and header: the repo, else the scope.
-function campaignName(report: StatusReport): string {
-  const { repo, scope } = report.campaign;
-  if (repo) return repo;
-  if (scope.milestone) return `milestone ${scope.milestone}`;
-  if (scope.labels.length) return `labels ${scope.labels.join(', ')}`;
-  return 'all open issues';
 }
 
 const empty = (text: string): string => `<p class="empty">${escapeHtml(text)}</p>`;
@@ -87,6 +79,41 @@ function banner(r: StatusReport, name: string): string {
     `<p>Your next action: ${escapeHtml(state.next_action)}</p>`,
     '</header>',
   ].join('');
+}
+
+// The page's header facts after the banner: headline, board counts and the quick links.
+function overview(r: StatusReport): string {
+  const c = r.stage_counts;
+  const board = `${c.done} done · ${c.in_review} in review · ${c.on_you} on you · ${c.blocked} blocked · ${c.parked} parked · ${c.not_started} not started`;
+  const links = r.links.filter((l) => isHttpUrl(l.url)).map((l) => link(l.url, `${l.label} ↗`)).join(' ');
+  return [
+    '<section class="overview">',
+    `<p class="headline">${escapeHtml(r.headline.text)}</p>`,
+    `<p class="meta">${escapeHtml(board)}${r.forge_checked ? '' : ' · forge not checked'}</p>`,
+    links ? `<p class="links">${links}</p>` : '',
+    '</section>',
+  ].join('');
+}
+
+function scopeSection(r: StatusReport): string {
+  if (!r.scope_record.recorded) return section('Scope', empty('Scope not recorded'));
+  const rows = r.scope_record.entries.map((e) => {
+    const refs = e.refs?.length ? ` (${e.refs.map((n) => `#${n}`).join(', ')})` : '';
+    const why = e.reason ? ` — ${e.reason}` : '';
+    return `<li><span class="wait">${escapeHtml(SCOPE_LABELS[e.kind])}</span> ${escapeHtml(`${e.text}${refs}${why}`)} <span class="meta">since ${escapeHtml(e.set_at)}</span></li>`;
+  });
+  return section('Scope', `<ul class="lines">${rows.join('')}</ul>`);
+}
+
+function decisionsSection(r: StatusReport): string {
+  const body = r.decisions.length
+    ? `<ul class="lines">${r.decisions.map((d) => `<li><span class="meta">${escapeHtml(d.date)}</span> ${escapeHtml(d.text)}</li>`).join('')}</ul>`
+    : empty('No decision recorded yet.');
+  return section('Your decisions', body, r.decisions.length);
+}
+
+function configSection(r: StatusReport): string {
+  return section('Config', lineList(r.config_rows.map((c) => `${c.key}: ${c.value}`)));
 }
 
 function readyLi(r: StatusReport, item: ReadyToMergeItem): string {
@@ -232,11 +259,14 @@ li:last-child { border-bottom: 0; }
 .sev-block { color: var(--block); } .sev-warn { color: var(--warn); }
 .empty { color: var(--muted); font-style: italic; margin: 4px 0; }
 code { font-size: 0.85em; }
+.overview { border-top: 0; }
+.headline { font-size: 1.1rem; margin: 0 0 4px; }
+.links a { margin: 0 12px 0 0; }
 a { color: var(--accent); margin-left: 8px; }
 `;
 
-/** Self-contained status page: inline CSS, no script, nothing loaded from the network; the only links are the
- * forge PR anchors in "Waiting on you" (`target=_blank rel=noopener`, http(s) only). */
+/** Self-contained status page: inline CSS, no script, nothing loaded from the network; the only links are
+ * anchors (`target=_blank rel=noopener`, http(s) only): the quick links and the forge PR links in "Waiting on you". */
 export function renderStatusHtml(report: StatusReport): string {
   const name = campaignName(report);
   return [
@@ -251,11 +281,15 @@ export function renderStatusHtml(report: StatusReport): string {
     '<body>',
     '<main>',
     banner(report, name),
+    overview(report),
+    scopeSection(report),
     progressSection(report),
     ownerSection(report),
     elseSection(report),
     upNextSection(report),
     doneSection(report),
+    decisionsSection(report),
+    configSection(report),
     '<details><summary>Details</summary>',
     hostSection(report),
     eventsSection(report),

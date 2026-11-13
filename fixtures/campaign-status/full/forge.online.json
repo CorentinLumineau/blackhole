@@ -1,0 +1,73 @@
+{
+  "forge": {
+    "openIssues": 9,
+    "openPrs": 6,
+    "ok": true,
+    "openPrList": [
+      {
+        "number": 203,
+        "title": "feat(payments): retry failed charges"
+      },
+      {
+        "number": 204,
+        "title": "ci: pin the deploy workflow"
+      },
+      {
+        "number": 205,
+        "title": "Refund screen shows the fee"
+      },
+      {
+        "number": 206,
+        "title": "Cache the price table"
+      },
+      {
+        "number": 213,
+        "title": "Search ranking tweak"
+      },
+      {
+        "number": 250,
+        "title": "chore(deps): bump the date library"
+      }
+    ]
+  },
+  "pr_signals": {
+    "203": {
+      "review": "LGTM",
+      "ci": "green",
+      "failing": [],
+      "mergeable": true
+    },
+    "204": {
+      "review": "LGTM",
+      "ci": "green",
+      "failing": [],
+      "mergeable": true
+    },
+    "205": {
+      "review": "NEEDS_CHANGES",
+      "ci": "green",
+      "failing": [],
+      "mergeable": true
+    },
+    "206": {
+      "review": null,
+      "ci": "running",
+      "failing": [],
+      "mergeable": false
+    },
+    "213": {
+      "review": null,
+      "ci": "failing",
+      "failing": [
+        "unit tests"
+      ],
+      "mergeable": true
+    },
+    "250": {
+      "review": "LGTM",
+      "ci": "green",
+      "failing": [],
+      "mergeable": true
+    }
+  }
+}

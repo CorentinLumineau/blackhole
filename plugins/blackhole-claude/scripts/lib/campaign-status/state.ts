@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from '../fs.ts';
 import { parseCheckpointFrontmatter } from './checkpoint.ts';
-import type { LedgerJson, QueueJson } from './types.ts';
+import { readDecisions } from './record.ts';
+import type { ConfigSummaryInput, LedgerJson, QueueJson } from './types.ts';
 
 // Thrown when `campaignDir` itself doesn't exist — the fresh-checkout/wrong-directory case,
 // distinct from a campaign directory that exists but holds unparseable JSON (which still
@@ -32,12 +33,7 @@ export function loadCampaignState(campaignDir: string) {
   const ledgerPath = path.join(campaignDir, 'findings-ledger.json');
   const checkpointPath = path.join(campaignDir, 'campaign-checkpoint.md');
 
-  const config = readJsonFile(configPath, configPath) as {
-    repo?: string;
-    forge?: string;
-    scope_milestone?: string;
-    scope_labels?: string[];
-  };
+  const config = readJsonFile(configPath, configPath) as ConfigSummaryInput & { repo?: string; forge?: string };
   const queue = readJsonFile(queuePath, queuePath) as QueueJson;
   const ledger = readJsonFile(ledgerPath, ledgerPath) as LedgerJson;
 
@@ -49,5 +45,5 @@ export function loadCampaignState(campaignDir: string) {
     checkpointBody = raw;
   }
 
-  return { config, queue, ledger, checkpoint, checkpointBody };
+  return { config, queue, ledger, checkpoint, checkpointBody, decisions: readDecisions(campaignDir) };
 }

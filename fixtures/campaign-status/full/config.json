@@ -1,0 +1,81 @@
+{
+  "repo": "acme/widgets",
+  "target_branch": "main",
+  "forge": "github",
+  "merge_mode": "leave-open",
+  "parallel_max": 3,
+  "scope_milestone": "v2.0",
+  "kaizen": {
+    "enabled": false
+  },
+  "autonomy": {
+    "mode": "full"
+  },
+  "display_targets": [
+    1440
+  ],
+  "status_page": {
+    "enabled": true,
+    "streams": {
+      "from": "label",
+      "label_prefix": "stream:",
+      "default": "Platform",
+      "overrides": {
+        "250": "Dependencies"
+      }
+    },
+    "links": [
+      {
+        "label": "Release plan",
+        "url": "https://example.com/plan"
+      },
+      {
+        "label": "Bad link",
+        "url": "javascript:alert(1)"
+      }
+    ]
+  },
+  "campaign_scope": {
+    "entries": [
+      {
+        "kind": "in",
+        "text": "Open issues in milestone v2.0",
+        "set_at": "2026-11-10",
+        "filter": true
+      },
+      {
+        "kind": "in",
+        "text": "Dependency bump PRs",
+        "set_at": "2026-11-11",
+        "reason": "owner asked to include them"
+      },
+      {
+        "kind": "parked",
+        "text": "Theme editor",
+        "set_at": "2026-11-12",
+        "reason": "owned by another team",
+        "refs": [
+          111
+        ]
+      },
+      {
+        "kind": "deferred",
+        "text": "Accessibility audit",
+        "set_at": "2026-11-12"
+      },
+      {
+        "kind": "blocked_upstream",
+        "text": "Waits on the vendor SDK release",
+        "set_at": "2026-11-12",
+        "refs": [
+          112
+        ]
+      },
+      {
+        "kind": "out",
+        "text": "Mobile app",
+        "set_at": "2026-11-10"
+      }
+    ]
+  }
+}
