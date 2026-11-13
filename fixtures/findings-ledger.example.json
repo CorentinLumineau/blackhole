@@ -101,7 +101,7 @@
       "quickwins": {
         "bands_done": ["src/agents", "src/references"],
         "waves": 2,
-        "lifetime_waves": 2,
+        "lifetime_waves": 5,
         "exhausted": false,
         "last_wave_at": "2026-07-05T09:00:00.000Z",
         "last_reset_at": "2026-07-05T08:00:00.000Z"

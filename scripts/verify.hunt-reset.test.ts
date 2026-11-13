@@ -18,8 +18,15 @@ describe('phase-loop.md — territory reset step', () => {
   });
 
   test('the reset runs after the gated-batch no-op check so a no-op turn never writes', () => {
-    expect(doc.indexOf('Gated-batch mid-flight no-op')).toBeGreaterThan(-1);
-    expect(doc.indexOf('Territory reset')).toBeGreaterThan(doc.indexOf('Gated-batch mid-flight no-op'));
+    const noOp = doc.indexOf('**Gated-batch mid-flight no-op');
+    expect(noOp).toBeGreaterThan(-1);
+    expect(doc.indexOf('### Territory reset')).toBeGreaterThan(noOp);
+  });
+
+  test('the watermark step increments lifetime_waves alongside waves, so (c) never reads a frozen count', () => {
+    const step5 = doc.slice(doc.indexOf('5. **Watermark.**'), doc.indexOf('5. **Watermark.**') + 400);
+    expect(step5).toContain('increment `waves`');
+    expect(step5).toContain('`lifetime_waves`');
   });
 });
 
@@ -39,6 +46,11 @@ describe('SKILL.md — hunt mode and F-HUNT-01 wording', () => {
 });
 
 describe('findings-ledger.md and fixture — additive fields', () => {
+  test('fixture shows a reset kind: lifetime_waves exceeds waves', () => {
+    const kind = JSON.parse(read('fixtures/findings-ledger.example.json')).hunt_state.kinds.quickwins;
+    expect(kind.lifetime_waves).toBeGreaterThan(kind.waves);
+  });
+
   test('field table documents last_reset_at and lifetime_waves', () => {
     const doc = read('src/references/findings-ledger.md');
     expect(doc).toContain('`hunt_state.kinds.<kind>.last_reset_at`');

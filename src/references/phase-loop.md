@@ -415,7 +415,8 @@ so a reset never re-files a known finding.
    above-floor findings stay `status: open` in the ledger — never dropped, never
    silently archived — to be filed in a future wave once the cap resets.
 5. **Watermark.** Update `hunt_state.kinds.<kind>` atomically in the same write: merge this
-   wave's `territory.bands_scanned` into `bands_done`, increment `waves`, set
+   wave's `territory.bands_scanned` into `bands_done`, increment `waves` (and `lifetime_waves`
+   when present), set
    `last_wave_at` to now. Same atomic write protocol as every other `hunt_state`/ledger
    mutation (`blackhole-state.md` § Write protocol): validate via `state-write-guard.ts`
    (never `jq empty` alone), `.tmp` + `mv`, bump `refreshed_at`.

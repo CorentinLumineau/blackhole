@@ -40,11 +40,13 @@ export const COORDINATOR_NON_INTERACTIVE_REQUIRED_MARKERS = [
   'Questions` column is `none`',
   'launch config incomplete',
   'Never default a field',
+  'channel is unknown',
+  'sole exception',
 ];
 
 export const RUN_CONTEXT_NON_INTERACTIVE_REQUIRED_MARKERS = [
   'Non-interactive launch',
-  'launch config incomplete',
+  'Questions` value of `none`',
 ];
 
 export const SKILL_NON_INTERACTIVE_REQUIRED_MARKERS = ['Non-interactive launch', 'launch config incomplete'];

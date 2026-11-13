@@ -55,7 +55,8 @@ const SKILL_FIXTURE_STALE = `
 const NON_INTERACTIVE_FIXTURE_FIXED = `
 **Non-interactive launch** — when the routing table \`Questions\` column is \`none\` and the config is
 complete, skip steps 1-6 and the AskQuestion. Incomplete: stop with \`launch config incomplete: <field>\`;
-Never default a field.
+Never default a field. A missing run-context.json means the channel is unknown. This is the
+sole exception to the routine-resume skip. A \`Questions\` value of \`none\` lets the skip happen.
 `;
 
 const NON_INTERACTIVE_FIXTURE_STALE = `

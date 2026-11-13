@@ -62,7 +62,8 @@ of whether `.blackhole/config.json` already exists:
 **Skip steps 1-6 only on routine resume** — i.e., when `.blackhole/config.json`
 already exists AND none of the four conditions above hold (per
 `config-template.md`'s "do not overwrite existing runtime config without user
-confirmation"). This carve-out is the ONLY skip condition — do not skip steps
+confirmation"). When a question channel exists, this carve-out is the ONLY skip condition
+(§ Non-interactive launch below is the sole exception) — do not skip steps
 1-6, including step 2's gated-batch+unscoped Validation warning, merely
 because `config.json` exists; conditions 2, 3, and 4 all fire precisely when
 it already does.
@@ -94,10 +95,14 @@ field table resolves and `merge_mode` is one of `immediate` / `gated-batch` / `l
 steps 1-6 **and** the `AskQuestion` above: run `bun run status config-summary`, echo its output
 verbatim to the digest/log, then continue to the `bun run doctor` preflight below. Conditions 2
 and 3 (user-requested restart or reconfigure) cannot occur without a channel and keep their
-behavior. **Fail closed** (R-002): with no channel and an absent, incomplete or invalid config
-(including condition 4), stop with `launch config incomplete: <field>` and a non-zero exit. Never default a field and never guess `merge_mode`.
-A missing `run-context.json` means the channel is
-unknown, so the interactive behavior above stays in force and nothing is skipped.
+behavior.
+
+**Fail closed** (R-002): with no channel and an absent, incomplete or invalid config (including
+condition 4), stop with `launch config incomplete: <field>` and a non-zero exit.
+Never default a field and never guess `merge_mode`.
+
+A missing `run-context.json` means the channel is unknown: the interactive behavior above stays
+in force and nothing is skipped.
 
 This confirmation fires on `run` mode only — `status`, `handle #N`, `plan #N`,
 `implement #N`, `review #N`, `hunt [kind]`, and `campaign-audit` keep loading
