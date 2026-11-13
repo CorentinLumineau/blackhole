@@ -337,7 +337,8 @@ export class GiteaForgeAdapter implements ForgeAdapter {
       const statuses = data?.statuses ?? [];
       if (statuses.length === 0) return rows.map(mapGiteaStatus);
       rows.push(...statuses);
-      if (typeof data.total_count === 'number' && rows.length >= data.total_count) return rows.map(mapGiteaStatus);
+      // `total_count` is the length of this page, not of the whole list: only a short page ends the read.
+      if (statuses.length < API_PAGE) return rows.map(mapGiteaStatus);
     }
     throw new Error(`PR #${number} status list passed ${MAX_STATUS_PAGES} pages and may be truncated`);
   }

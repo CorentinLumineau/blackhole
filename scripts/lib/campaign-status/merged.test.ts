@@ -147,7 +147,7 @@ describe('drift on the page header', () => {
     const out = buildBlockers('## Blocking the run\n\n- Vendor SDK is not out\n', [], [], true, drift);
     expect(out).toEqual([
       { text: 'Vendor SDK is not out', tone: '', source: 'checkpoint' },
-      { text: '2 queue entries say less than the forge: #11, #12 are merged there. The next sync updates them', tone: 'warn', source: 'generated' },
+      { text: '2 queue entries say less than the forge: #11, #12 are merged there. Sync the queue to update them', tone: 'warn', source: 'generated' },
     ]);
   });
 
