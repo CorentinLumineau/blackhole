@@ -3,6 +3,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { withTempDir } from '../test-fixtures.ts';
 import { computeMergedSettings, mergeClaudeSettingsHooks } from './claude-native-settings.ts';
+import {
+  assertFailOpenRecord,
+  bashCommand,
+  fileChangesCommand,
+  hookEventFiles,
+  runWrapperWithStubExit,
+} from './claude-native-settings.fixtures.ts';
 
 // Issue #472 — the .claude/settings.json read-modify-write merge contract. This is the file this
 // plan's highest-severity risk (Tampering/Elevation of Privilege) centers on: a bug here is data
@@ -151,84 +158,6 @@ describe('mergeClaudeSettingsHooks — file I/O contract', () => {
     });
   });
 });
-
-const bashCommand = (): string => {
-  const merged = computeMergedSettings({}) as {
-    hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] };
-  };
-  const entry = merged.hooks.PreToolUse.find((e) => e.matcher === 'Bash');
-  if (!entry) throw new Error('test setup: no Bash matcher in computeMergedSettings({})');
-  return entry.hooks[0].command;
-};
-
-const initGitRepo = (projectDir: string): void => {
-  Bun.spawnSync({ cmd: ['git', 'init', '--quiet'], cwd: projectDir });
-  Bun.spawnSync({
-    cmd: ['git', 'config', 'user.email', 'test@example.com'],
-    cwd: projectDir,
-  });
-  Bun.spawnSync({ cmd: ['git', 'config', 'user.name', 'test'], cwd: projectDir });
-  fs.writeFileSync(path.join(projectDir, 'README'), 'fixture\n');
-  Bun.spawnSync({ cmd: ['git', 'add', 'README'], cwd: projectDir });
-  Bun.spawnSync({ cmd: ['git', 'commit', '--quiet', '-m', 'init'], cwd: projectDir });
-};
-
-const fileChangesCommand = (): string => {
-  const merged = computeMergedSettings({}) as {
-    hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] };
-  };
-  const entry = merged.hooks.PreToolUse.find((e) => e.matcher === 'Write|Edit');
-  if (!entry) throw new Error('test setup: no Write|Edit matcher in computeMergedSettings({})');
-  return entry.hooks[0].command;
-};
-
-const runWrapperWithStubExit = (
-  projectDir: string,
-  stubExitCode: number,
-  command: string = bashCommand(),
-  stubScript = 'validate-bash-command.js',
-): { exitCode: number | null; stderr: string } => {
-  initGitRepo(projectDir);
-  const hooksDir = path.join(projectDir, '.claude', 'hooks');
-  fs.mkdirSync(hooksDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(hooksDir, stubScript),
-    `process.exit(${stubExitCode});\n`,
-  );
-  const proc = Bun.spawnSync({
-    cmd: ['bash', '-c', command],
-    env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  return { exitCode: proc.exitCode, stderr: proc.stderr.toString() };
-};
-
-const hookEventFiles = (projectDir: string): Record<string, unknown>[] => {
-  const dir = path.join(projectDir, '.blackhole', 'hook-events');
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')) as Record<string, unknown>);
-};
-
-const assertFailOpenRecord = (
-  dir: string,
-  events: Record<string, unknown>[],
-  hook: string,
-  tool: string | null,
-): void => {
-  expect(events).toHaveLength(1);
-  expect(events[0]).toMatchObject({
-    tier: 'error',
-    decision: 'allow',
-    pattern_id: 'hook-exec-failure',
-    hook,
-    tool,
-  });
-  expect(events[0].worktree).toBe(fs.realpathSync(dir));
-  expect(String(events[0].detail).length).toBeGreaterThan(0);
-};
 
 describe('AC-4d/4e — exit-code discrimination through the real generated command', () => {
   test('stub exit 0 (allow): wrapper exits 0, no hook-exec-error record, no fail-open notice on stderr', () => {
