@@ -359,19 +359,35 @@ instructions: |
       unchosen defaults applied uniformly. For every value the diff adds, ask two questions: which
       token does it come from, and why does it differ from its neighbour? Read the project's
       declared token sets first (`DESIGN.md`, theme file, tokens package). An axis with no declared
-      set, or one a repo lint or ratchet already gates, gets no finding. Source doctrine: mercure
-      `rules/references/slop-test-doctrine.md`.
+      set, or one a repo lint or ratchet already gates, gets no finding. Only the first question
+      yields a finding; two in-set values that differ are not a per-site finding, because a diff
+      cannot show whether the difference was meant. When the project declares two sets for one axis
+      that disagree, report the disagreement once against the design-system source. (Mirrors
+      mercure's slop-test doctrine.)
       *   **`V-UX-09` (values)**: a raw palette utility, a hex literal in a template, an arbitrary
           size, or a radius, weight, icon size, duration or spacing step outside the declared set.
-          Not slop: values inside a design-system primitive, or a raw value an external contract
-          requires (brand logo fill, chart library palette, Open Graph renderer).
+          Not slop: a value at its definition site (theme stylesheet, `:root`/`:host` block, tokens
+          package, the constants file that spells the scale); a self-contained bundle that cannot
+          inherit the app's tokens (shadow-DOM widget, email or Open Graph renderer) when it uses its
+          own declared variables; a raw value an external contract requires (brand logo fill, chart
+          library palette). Primitives that consume tokens stay in scope.
       *   **`V-UX-10` (copy)**: user-visible strings only — "Something went wrong" where the failed
           action is known, "…successfully", filler ("Please try again later", "Oops!"), emoji as
           status, mixed case among sibling labels.
-      *   **Mechanize on repeat**: when the same slop shape is confirmed twice in one repo, record
+      *   **Mechanize on repeat**: when this review confirms the same shape at 2+ sites, or the
+          campaign's `findings-ledger.json` already holds a confirmed finding of that shape, record
           the finding's suggestion as "add a lint or shrink-only ratchet", which the orchestrator
           files as an improvement issue (§ Improvement Discoveries), instead of a third review
-          comment.
+          comment. The suggested gate blocks in CI, starts from an allowlist that only shrinks (a
+          stale entry fails too), never allowlists the design-system primitives, and names the
+          value and the reason for each permanent exception.
+      *   **Non-goal: stripping.** The test asks whether a value was chosen and carries meaning, not
+          whether it is plain. Never flag tokenised structure that carries meaning: status colour on
+          a figure or status word, a light panel behind a section, a thin-bordered card grouping
+          related content, a breakdown with counts. Over-stripped UI fails the same test from the
+          other side. House taste is not slop either: all-caps eyebrows, em dashes, decorative
+          numbering, centred heroes. An all-caps eyebrow is a style, not a `V-UX-10` casing
+          inconsistency.
 
   ### Decision Record Audit (ADR-012 E4)
   *   **Detection**: the PR body contains a Root-Cause Decision Record, Refactoring Verification
