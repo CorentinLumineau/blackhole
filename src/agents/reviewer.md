@@ -123,6 +123,9 @@ findings (rare)" bullet for the exception).
 (ADR-036, § Executed vs. Reasoned Verification Disclosure) — disclosing executed-vs-reasoned basis for a finding and for a clean leg
 respectively. Neither authorizes bypassing `with-test-lock`.
 
+A `V-UX-09`/`V-UX-10` finding also carries `cited_value` and, for `V-UX-09`, `declared_set_ref`
+(`<set file>#<axis>`); without them it cannot stay `BLOCK` (§ Static UX Checks, ADR-134).
+
 On audit failure (cannot read PR, missing plan), return `{ "status": "error", "findings": [], "error": "..." }`.
 
 Raw findings are passed to `scripts/review-aggregate.ts` for deduplication and ranking — do not deduplicate or rank in reviewer output.

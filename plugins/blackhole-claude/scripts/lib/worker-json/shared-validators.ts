@@ -72,6 +72,14 @@ export function validateFinding(finding: unknown, path: string): string[] {
     }
   }
 
+  // ADR-134 — optional V-UX-09/10 citation; review-aggregate re-checks it before a BLOCK stands.
+  if ('cited_value' in finding && !isString(finding.cited_value)) {
+    errors.push(`${path}.cited_value: expected string`);
+  }
+  if ('declared_set_ref' in finding && !(isString(finding.declared_set_ref) && /^[^#]+#[\w-]+$/.test(finding.declared_set_ref))) {
+    errors.push(`${path}.declared_set_ref: expected "<set file>#<axis>"`);
+  }
+
   if ('locations' in finding) {
     errors.push(...validateArrayOf(finding.locations, `${path}.locations`, validateFindingLocation));
   }

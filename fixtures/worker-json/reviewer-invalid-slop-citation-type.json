@@ -1,0 +1,14 @@
+{
+  "status": "complete",
+  "findings": [
+    {
+      "vcode": "V-UX-09",
+      "severity": "BLOCK",
+      "file": "src/Card.tsx",
+      "line": 2,
+      "summary": "radius outside the declared set",
+      "cited_value": 42,
+      "declared_set_ref": "DESIGN.md#radius"
+    }
+  ]
+}

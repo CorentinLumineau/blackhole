@@ -62,7 +62,7 @@ See `{{AGENT_DIR}}/skills/blackhole/references/orchestrator-dispatch.md` § Inve
 Per `review-core.md`:
 
 1. Spawn `reviewer` → raw findings JSON
-2. Run `scripts/review-aggregate.ts` → deduplicated, ranked findings + `lgtm`
+2. Run `scripts/review-aggregate.ts` with `--base-ref <PR base branch> --repo-dir <PR worktree> --head <PR head>` (review-core.md § Aggregate invocation) → deduplicated, ranked findings + `lgtm`
 3. Append aggregate output to ledger
 
 For docs-only PRs (per `review-core.md` § "Docs-only PRs"), step 1 is replaced: the orchestrator applies `reviewer.md` § Docs-Only Execution Mode Compliance itself instead of spawning `reviewer`, then proceeds to steps 2–3 unchanged.

@@ -354,6 +354,8 @@ product-principles.md` (the owner-rulings ledger) when present, gated by
 
 `verification_mode` (optional — `executed` \| `reasoned`, ADR-036 / issue #815): execution vs. reasoning-only basis; absence means no claim made.
 
+`cited_value` and `declared_set_ref` (optional strings, ADR-134): the citation on a `V-UX-09` or `V-UX-10` finding. `cited_value` is the literal as written on `file:line`. `declared_set_ref` is `<set file>#<axis>` and is required for `V-UX-09`. `review-aggregate.ts` re-checks the citation before such a finding may stay `BLOCK`.
+
 ## Router (`router`)
 
 <!-- shape: exhaustive -->
@@ -595,7 +597,9 @@ Each `findings[]` entry additionally carries `issue_ref: number` and `pr_ref: nu
 stamped by the script (issue #754) — never present on the raw `reviewer` input's Finding shape
 above, only on this aggregator's stamped output.
 
-CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>]`
+CLI: `bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base branch>] [--repo-dir <PR worktree>] [--head <PR head ref>]`
+
+`--base-ref` (ADR-134) enables the slop citation check. Without it, or when it does not resolve, every `V-UX-09`/`V-UX-10` `BLOCK` downgrades with an `[unverified slop citation: no-base-ref]` or `ref-unresolved` caveat.
 
 `--verification-file` (issue #439, § `verification` above) points to the independent security
 verification spawn's own `verification[]` array, serialized as a plain JSON array — omitted

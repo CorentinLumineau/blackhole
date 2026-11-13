@@ -101,3 +101,21 @@ describe('buildNoiseReport', () => {
     expect(r.vcodes.map((v) => v.vcode)).toEqual(['V-I']);
   });
 });
+
+describe('blocking slop codes (V-UX-09/10, ADR-134) use Tricorder thresholds', () => {
+  const mix = (v: string, status: string, n: number) => Array.from({ length: n }, () => row(v, status));
+  const flagsOf = (rows: ReturnType<typeof row>[]) =>
+    buildNoiseReport(rows, { now: NOW, sinceMs: 7 * 86400_000 }).vcodes[0].flags;
+  test('n=19 never flags, even at 50% wrong', () => {
+    expect(flagsOf([...mix('V-UX-09', 'wrong', 10), ...mix('V-UX-09', 'intentional', 9)])).toEqual([]);
+  });
+  test('n=20 at 10% wrong goes on probation', () => {
+    expect(flagsOf([...mix('V-UX-09', 'wrong', 2), ...mix('V-UX-09', 'intentional', 18)])).toEqual(['probation']);
+  });
+  test('n=20 above 25% wrong is tune or demote, not probation', () => {
+    expect(flagsOf([...mix('V-UX-10', 'wrong', 6), ...mix('V-UX-10', 'intentional', 14)])).toEqual(['tune or demote']);
+  });
+  test('the lint recommendation still fires at fixed >= 5', () => {
+    expect(flagsOf([...mix('V-UX-09', 'resolved', 5)])).toEqual(['encode as lint/CI']);
+  });
+});

@@ -615,6 +615,18 @@ describe('validateWorker reviewer', () => {
   test('finding with no verification_mode key still validates (backward compatible)', () =>
     expectValid('reviewer', 'reviewer-complete-vada-finding.json'));
 
+  // ADR-134 — V-UX-09/10 citation fields on the shared Finding shape.
+  test('valid finding with cited_value and declared_set_ref', () =>
+    expectValid('reviewer', 'reviewer-complete-slop-citation.json'));
+  test('invalid cited_value type', () => {
+    const errors = validateWorker('reviewer', readFixture('reviewer-invalid-slop-citation-type.json'));
+    expect(errors.some((e) => e.endsWith('.cited_value: expected string'))).toBe(true);
+  });
+  test('invalid declared_set_ref without #axis', () => {
+    const errors = validateWorker('reviewer', readFixture('reviewer-invalid-slop-citation-ref.json'));
+    expect(errors.some((e) => e.includes('.declared_set_ref: expected'))).toBe(true);
+  });
+
   // ADR-036 (issue #815) — top-level verification_legs[] array.
   test('valid verification_legs entry', () =>
     expectValid('reviewer', 'reviewer-complete-verification-legs.json'));

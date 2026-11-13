@@ -14,7 +14,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
 - [ ] Route check: read route.plan_mode → scope plan-conformance audit to quick/full; skip → compensating no-API-surface check (see review-core.md § Skip-PR compensating control)
 - [ ] Recheck check: read recheck-mode trigger (review_iteration >= 1, no new touch-paths, no new BLOCK surface — see review-core.md § Recheck mode) → when satisfied, dispatch reviewer in recheck mode against the fix commits only, instead of a full-diff audit
 - [ ] Security-mode PR → confirm merge-gate validator (V-SEC-08) before LGTM
-- [ ] Run scripts/review-aggregate.ts on reviewer JSON, passing `--review-iteration <queue review_iteration>` and (when verification ran) `--verification-file` (see review-core.md § Aggregate invocation)
+- [ ] Run scripts/review-aggregate.ts on reviewer JSON, passing `--review-iteration <queue review_iteration>`, `--base-ref <PR base branch> --repo-dir <PR worktree> --head <PR head>` (ADR-134 slop citation check) and (when verification ran) `--verification-file` (see review-core.md § Aggregate invocation)
 - [ ] Aggregate output → ledger append (phase: review)
   - [ ] Issue #485: before appending, transition any prior ledger row named `fixed` in the aggregate's consumed `recheck[]` to `status: resolved` (see findings-ledger.md § Status transitions), so the write-time dedup check (findings-ledger.md § Write protocol step 3) never silently absorbs the new, distinct finding sharing that row's key
   - [ ] Issue #485: if `unresolved_recheck` (worker-schemas.md § Review aggregate) is non-empty, do not silently proceed as a normal changes_requested iteration — surface it to the coordinator via the existing blocked-iteration/escalation path (review-core.md § Review convergence)
@@ -53,6 +53,7 @@ Binding: [review-core.md](review-core.md), [worker-schemas.md](worker-schemas.md
   - `V-KISS-03` (Empty scaffolding/no-op functions)
   - `V-YAGNI-03` (Single-consumer abstractions)
   - `V-DRY-04` (Template copy-paste renames)
+  - `V-UX-09` / `V-UX-10` (the slop test: values with no declared token, filler UI copy; `reviewer.md` § Static UX Checks)
 - **Improvement Discoveries**: Audit the code for UX/UI polish, performance gains, test coverage gaps, and styling best practices. Log them as WARN findings with detailed summaries. Do not demand resolving them in the current PR (prevents `V-SCOPE-02` scope creep); the orchestrator will file them as new GitHub issues.
 - **Docs Currency (`V-DOCSYNC-01`)**: Reviewer must confirm any public-API/schema/config-surface change (`reviewer.md` § 5-Field Contract & Plan Compliance's `V-API-01` surface) ships with a same-PR documentation update (`**/*.md`, `documentation/**`, or inline docstring); missing update is `BLOCK`.
 - **Companion-File Audit (`V-ADA-01/02/03/05/06/07`)**: Reviewer must confirm ARCHITECTURE.md, decisions/INDEX.md currency, AGENTS.md, and conditional DESIGN.md per `reviewer.md` § Companion-File Audit; gated by `docs_governance.companion_files`. All WARN.
