@@ -1,6 +1,7 @@
 import { expect } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { readJsonFile } from '../fs.ts';
 import { computeMergedSettings } from './claude-native-settings.ts';
 
 // Shared helpers for running the generated `.claude/settings.json` PreToolUse wrapper command
@@ -64,7 +65,7 @@ export const hookEventFiles = (projectDir: string): Record<string, unknown>[] =>
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
-    .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')) as Record<string, unknown>);
+    .map((f) => readJsonFile(path.join(dir, f), 'hook-event record') as Record<string, unknown>);
 };
 
 export const assertFailOpenRecord = (
