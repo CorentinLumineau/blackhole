@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { buildBlockers } from './overview.ts';
-import { reconcileMerged } from './merged.ts';
+import { closedIssues, reconcileMerged } from './merged.ts';
 import type { MergedPr, QueueIssue } from './types.ts';
 
 const START = '2026-11-10T08:00:00.000Z';
-const merged = (number: number, mergedAt: string): MergedPr => ({ number, title: `PR ${number}`, mergedAt });
+const merged = (number: number, mergedAt: string, extra: Partial<MergedPr> = {}): MergedPr => ({ number, title: `PR ${number}`, mergedAt, ...extra });
 
 const issues: Record<string, QueueIssue> = {
   '1': { title: 'in review', status: 'in-flight', phase: 'review', pr: 11 },
@@ -60,6 +60,71 @@ describe('the campaign start date bounds the merged PRs without an entry', () =>
   test('a merged PR before the start that a queue entry names is still drift: the entry is the campaign\'s', () => {
     const r = reconcileMerged({ '9': { title: 't', status: 'in-flight', pr: 70 } }, list, START);
     expect(r.drift.map((d) => d.pr)).toEqual([70]);
+  });
+});
+
+describe('closedIssues, the issues a PR body closes', () => {
+  test('reads the closing keywords GitHub, Gitea and GitLab share, in any case', () => {
+    expect(closedIssues('Closes #12\nfixes #13 and Resolved: #14\nCLOSED #15')).toEqual([12, 13, 14, 15]);
+  });
+
+  test('ignores a plain mention, another repository and a repeated number', () => {
+    expect(closedIssues('See #20. Related to #21. Closes acme/other#22. Closes #23, closes #23')).toEqual([23]);
+  });
+
+  test('an empty body closes nothing', () => {
+    expect(closedIssues('')).toEqual([]);
+  });
+});
+
+describe('a queue entry with no linked PR whose issue a merged PR closed', () => {
+  const entries: Record<string, QueueIssue> = {
+    '40': { title: 'no PR linked', status: 'ready', phase: 'handle' },
+    '41': { title: 'already done, no PR', status: 'closed' },
+    '42': { title: 'linked to another PR', status: 'in-flight', phase: 'review', pr: 80 },
+  };
+  const list = [merged(95, '2026-11-12T09:00:00Z', { closes: [40, 41, 42] }), merged(96, '2026-11-12T10:00:00Z', { closes: [999] })];
+  const out = reconcileMerged(entries, list, START);
+
+  test('is read as merged, and listed as drift against the merged PR', () => {
+    expect(out.issues['40']!.status).toBe('merged');
+    expect(out.drift).toEqual([{ issue: 40, pr: 95, title: 'no PR linked', queue: 'ready', forge: 'merged' }]);
+  });
+
+  test('is not counted a second time as a merged PR no entry names', () => {
+    expect(out.mergedOnly.map((p) => p.number)).toEqual([96]);
+  });
+
+  test('an entry that already reads done is matched without drift, and an entry with its own PR is left alone', () => {
+    expect(out.issues['41']).toBe(entries['41']!);
+    expect(out.issues['42']).toBe(entries['42']!);
+  });
+
+  test('a merged PR before the campaign start still belongs to the entry that names it', () => {
+    const r = reconcileMerged(entries, [merged(95, '2026-11-01T09:00:00Z', { closes: [40] })], START);
+    expect(r.drift.map((d) => d.issue)).toEqual([40]);
+    expect(r.mergedOnly).toEqual([]);
+  });
+});
+
+describe('the campaign scope labels bound the merged PRs without an entry', () => {
+  const list = [
+    merged(60, '2026-11-12T09:00:00Z', { labels: ['campaign', 'bug'] }),
+    merged(61, '2026-11-12T10:00:00Z', { labels: ['bug'] }),
+    merged(62, '2026-11-12T11:00:00Z'),
+  ];
+
+  test('a PR missing a scope label is not the campaign work; a PR whose labels are unknown is kept', () => {
+    expect(reconcileMerged({}, list, START, { labels: ['campaign'] }).mergedOnly.map((p) => p.number)).toEqual([60, 62]);
+  });
+
+  test('no scope labels means no filter, and the milestone is not applied because a PR row carries none', () => {
+    expect(reconcileMerged({}, list, START, { milestone: 'v2' }).mergedOnly.map((p) => p.number)).toEqual([60, 61, 62]);
+  });
+
+  test('a PR a queue entry names is drift whatever its labels', () => {
+    const r = reconcileMerged({ '9': { title: 't', status: 'in-flight', pr: 61 } }, list, START, { labels: ['campaign'] });
+    expect(r.drift.map((d) => d.pr)).toEqual([61]);
   });
 });
 

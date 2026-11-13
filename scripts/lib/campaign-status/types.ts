@@ -142,19 +142,29 @@ export type StreamConfig = {
   default?: string;
 };
 
-/** Review verdict, CI and mergeability of one open PR, read from the forge. Absent offline. */
+/**
+ * Review verdict, CI and mergeability of one open PR, read from the forge. Absent offline. The
+ * reads are independent: one that failed leaves its fact unknown (`ci: 'unknown'`,
+ * `review_read: false`, `mergeable: null`) and keeps the others.
+ */
 export type PrSignal = {
-  /** The PR's `ai-review:*` label without the prefix, or null when it carries none. */
+  /** The PR's `ai-review:*` label without the prefix, or null when it carries none or `review_read` is false. */
   review: string | null;
-  ci: 'green' | 'failing' | 'running' | 'none';
+  /** False when the PR read that carries the labels failed, so a null `review` means "not read", not "no verdict". */
+  review_read: boolean;
+  /** `none` is a CI that reported nothing; `unknown` is a CI read that failed. */
+  ci: 'green' | 'failing' | 'running' | 'none' | 'unknown';
   /** Names of the failing checks. */
   failing: string[];
   /** False when the forge reports a conflict; null when it has not computed it yet. */
   mergeable: boolean | null;
 };
 
-/** A pull request the forge reports as merged, with its merge time. */
-export type MergedPr = { number: number; title: string; mergedAt: string };
+/**
+ * A pull request the forge reports as merged, with its merge time. `closes` holds the issues its
+ * body closes (`Closes #N`); `labels` is absent when the forge channel does not report them.
+ */
+export type MergedPr = { number: number; title: string; mergedAt: string; closes?: number[]; labels?: string[] };
 
 /** A queue entry the forge contradicts: the queue says `queue`, the forge says its PR is merged. */
 export type QueueDrift = { issue: number; pr: number; title: string; queue: string; forge: 'merged' };

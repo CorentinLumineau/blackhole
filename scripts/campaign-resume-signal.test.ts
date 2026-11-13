@@ -8,6 +8,7 @@ import {
   checkpointReadySetNonEmpty,
   detectStaleBarrier,
   DOORBELL_MESSAGE,
+  extractCheckpointSection,
   evaluateResumeHook,
   hasUserGate,
   hasWorkRemaining,
@@ -409,4 +410,22 @@ describe('runHook CLI fail-open', () => {
       expect(result.stderr).toContain('resume hook error:');
     },
   );
+});
+
+describe('extractCheckpointSection', () => {
+  test('a heading named inside a sentence starts no section', () => {
+    const body = '## Notes\n\n- The `## Ready set` list is rewritten each turn.\n\n## Ready set\n\n- #12\n';
+    expect(extractCheckpointSection(body, 'Ready set')).toBe('- #12');
+    expect(checkpointReadySetNonEmpty(body)).toBe(true);
+  });
+
+  test('a mid-line mention with no real section is empty, not the text after it', () => {
+    const body = '## Notes\n\nSee `## In-flight workers` below.\n- not a worker line\n';
+    expect(extractCheckpointSection(body, 'In-flight workers')).toBe('');
+    expect(checkpointInFlightWorkersNonEmpty(body)).toBe(false);
+  });
+
+  test('a section ends at the next heading that starts a line', () => {
+    expect(extractCheckpointSection('## Ready set\n\n- #1\n\n## Notes\n\n- x\n', 'Ready set')).toBe('- #1');
+  });
 });

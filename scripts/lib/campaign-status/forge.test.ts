@@ -52,13 +52,32 @@ describe('fetchMergedPrs', () => {
       },
     });
     expect(await fetchMergedPrs(forge)).toEqual([
-      { number: 30, title: 'feat(a): one', mergedAt: '2026-11-12T08:00:00Z' },
-      { number: 33, title: 'fix(b): two', mergedAt: '2026-11-13T07:00:00Z' },
+      { number: 30, title: 'feat(a): one', mergedAt: '2026-11-12T08:00:00Z', closes: [], labels: undefined },
+      { number: 33, title: 'fix(b): two', mergedAt: '2026-11-13T07:00:00Z', closes: [], labels: undefined },
     ]);
     expect(forge.calls).toEqual([`prList:all:${MERGED_PR_LIMIT}`]);
   });
 
+  test('carries the issues a PR body closes and the labels the forge reports', async () => {
+    const forge = fakeForge({
+      prs: { all: [prRow(40, { state: 'MERGED', mergedAt: '2026-11-12T08:00:00Z', body: 'Closes #7', labels: ['campaign'] })] },
+    });
+    expect(await fetchMergedPrs(forge)).toEqual([{ number: 40, title: 'PR 40', mergedAt: '2026-11-12T08:00:00Z', closes: [7], labels: ['campaign'] }]);
+  });
+
   test('a failed read is null ("not read"), never an empty list', async () => {
     expect(await fetchMergedPrs(fakeForge())).toBeNull();
+  });
+});
+
+describe('a forge failure message', () => {
+  test('is the forge\'s own text, and a JSON parse failure is named without a forge', async () => {
+    const parse = fakeForge({ issues: [issue(1)] });
+    parse.prList = async () => {
+      throw new SyntaxError('Unexpected token < in JSON at position 0');
+    };
+    const out = await fetchForgeCounts({}, parse);
+    expect(out.error).toBe('the forge answered with invalid JSON');
+    expect(out.error).not.toContain('gh');
   });
 });

@@ -13,6 +13,7 @@ import {
   type HookInput,
   type Role,
 } from './validate-worker-json';
+import { checkpointSection } from './lib/campaign-status/dashboard.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 
@@ -104,10 +105,9 @@ export function resolveCampaignAgent(input: HookInput): CampaignAgent | null {
   return null;
 }
 
+/** Body of the checkpoint's `## <heading>` section, or '' when absent: the one section reader of `checkpointSection`, so a heading named mid-line is never a section. */
 export function extractCheckpointSection(body: string, heading: string): string {
-  const marker = `## ${heading}`;
-  if (!body.includes(marker)) return '';
-  return body.split(marker)[1]?.split(/^## /m)[0]?.trim() ?? '';
+  return checkpointSection(body, heading) ?? '';
 }
 
 export function checkpointReadySetNonEmpty(checkpointBody: string): boolean {

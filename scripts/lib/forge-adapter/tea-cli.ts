@@ -50,6 +50,11 @@ export function runTeaApi(method: TeaApiMethod, endpoint: string, body?: unknown
   if (result.status !== 0) {
     throw new Error(result.stderr.trim() || result.stdout.trim() || `tea api ${method} ${endpoint} failed`);
   }
+  // `tea api` exits 0 on an HTTP 4xx/5xx and prints the error object as the body: without this
+  // check a missing resource parses as an empty, successful reply.
+  const codes = [...result.stderr.matchAll(/^HTTP\/\S+\s+(\d{3})/gm)];
+  const code = codes.length ? Number(codes[codes.length - 1][1]) : 0;
+  if (code >= 400) throw new Error(`tea api ${method} ${endpoint} failed: HTTP ${code}`);
   return { body: result.stdout, headers: result.stderr };
 }
 

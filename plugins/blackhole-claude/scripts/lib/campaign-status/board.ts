@@ -99,10 +99,15 @@ export function prPlacement(
   if (signal.ci === 'failing') return { stage: 'blocked', status: clip(`CI failing: ${signal.failing.slice(0, 2).join(', ')}`, STATUS_MAX), tone: 'bad' };
   const lgtm = signal.review === 'LGTM' || queue.delivered;
   if (lgtm && signal.ci === 'green') return { stage: 'ready', status: held ? `LGTM, CI green: ${held}` : 'LGTM, CI green: merge', tone: held ? 'warn' : 'ok' };
+  if (lgtm && signal.ci === 'unknown') {
+    if (queue.delivered) return { stage: 'ready', status: `${held ?? 'LGTM: merge'} · CI not checked`, tone: held ? 'warn' : 'ok' };
+    return { stage: 'review', status: 'LGTM, CI not checked', tone: 'ok' };
+  }
   if (lgtm) return { stage: 'review', status: signal.ci === 'running' ? 'LGTM, CI running' : 'LGTM, no CI yet', tone: 'ok' };
   if (signal.review === 'NEEDS_CHANGES' || signal.review === 'CRITICAL_ISSUES') return { stage: 'review', status: 'changes requested', tone: '' };
   if (signal.review === 'ERROR') return { stage: 'review', status: 'reviewer errored', tone: 'bad' };
-  return { stage: 'review', status: signal.ci === 'running' ? 'waiting for review, CI running' : 'waiting for review', tone: '' };
+  const ci = signal.ci === 'running' ? 'CI running' : signal.ci === 'unknown' ? 'CI not checked' : '';
+  return { stage: 'review', status: [signal.review_read ? 'waiting for review' : 'review not checked', ci].filter(Boolean).join(', '), tone: '' };
 }
 
 function issuePlacement(num: number, issue: QueueIssue, input: BoardInput, ready: Map<number, ReadyToMergeItem>, owner: Map<number, string>): Placement {

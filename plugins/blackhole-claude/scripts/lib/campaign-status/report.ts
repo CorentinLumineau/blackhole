@@ -309,7 +309,7 @@ function untrackedPrs(issues: Record<string, QueueIssue>, forge: ForgeCounts): S
 export function buildStatusReport(input: StatusReportInput): StatusReport {
   const { config, queue, ledger, checkpoint, checkpointBody, forge } = input;
   // The queue as the forge has it: an entry whose PR the forge merged reads as merged (and is listed as drift).
-  const reconciled = reconcileMerged(queue.issues ?? {}, input.mergedPrs ?? null, queue.campaign_started_at ?? null);
+  const reconciled = reconcileMerged(queue.issues ?? {}, input.mergedPrs ?? null, queue.campaign_started_at ?? null, readScope(config));
   const issues = reconciled.issues;
   const findings = ledger.findings ?? [];
   const { inFlight, blocked, ready, done, unclassified } = groupIssuesByPhase(issues);
