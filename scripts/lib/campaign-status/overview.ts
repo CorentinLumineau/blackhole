@@ -45,7 +45,7 @@ function driftBlockers(drift: QueueDrift[]): StatusReport['blockers'] {
   const one = drift.length === 1;
   const listed = drift.slice(0, DRIFT_LISTED).map((d) => `#${d.pr}`).join(', ');
   const rest = drift.length > DRIFT_LISTED ? ` and ${drift.length - DRIFT_LISTED} more` : '';
-  const text = `${plural(drift.length, 'queue entry says', 'queue entries say')} less than the forge: ${listed}${rest} ${one ? 'is' : 'are'} merged there. The next sync updates ${one ? 'it' : 'them'}`;
+  const text = `${plural(drift.length, 'queue entry says', 'queue entries say')} less than the forge: ${listed}${rest} ${one ? 'is' : 'are'} merged there. Sync the queue to update ${one ? 'it' : 'them'}`;
   return [{ text, tone: 'warn', source: 'generated' }];
 }
 

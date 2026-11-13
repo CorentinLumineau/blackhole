@@ -409,7 +409,9 @@ describe('GiteaForgeAdapter', () => {
       expect(await new GiteaForgeAdapter('host/owner/repo').prChecks(9)).toEqual([]);
     });
 
-    test('pages until the server total is read', async () => {
+    // Gitea's `total_count` is the length of the page it returned, not of the whole list, so
+    // only a short page can end the read.
+    test('pages until a short page, since total_count only counts the returned page', async () => {
       const first = Array.from({ length: 50 }, (_, i) => status(`job-${i}`, 'success'));
       const second = [status('job-50', 'failure')];
       const seen: string[] = [];
@@ -417,7 +419,8 @@ describe('GiteaForgeAdapter', () => {
         const endpoint = argv[argv.indexOf('-X') + 2];
         seen.push(endpoint);
         if (endpoint.endsWith('/pulls/9')) return { stdout: apiPr(9) };
-        return { stdout: { total_count: 51, statuses: endpoint.includes('page=1') ? first : second } };
+        const statuses = endpoint.includes('page=1') ? first : second;
+        return { stdout: { total_count: statuses.length, statuses } };
       });
       const checks = await new GiteaForgeAdapter('host/owner/repo').prChecks(9);
       expect(checks).toHaveLength(51);
