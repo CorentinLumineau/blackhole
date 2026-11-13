@@ -136,6 +136,11 @@ Your work is strictly governed by the 5-field contract delegated to you by the o
         unaffected because it never resolves project-card metadata. Use this for every PR-body
         edit after the initial `gh pr create` (fix rounds, Decision Record insertion, any later
         body append).
+    *   **Hunt-origin label (ADR-053)**: when the spawn context carries `origin: hunt`, add
+        label `kaizen` to the PR right after it opens, through the `forge-channels.md`
+        "Add labels to a PR" row — never `gh pr edit` (the Projects-classic failure above). A
+        missing label on the forge is logged in the completion note and never fails the PR (the
+        kaizen runbook ensures the label exists). Without `origin: hunt`, add nothing.
     *   The PR body MUST also carry the **Reuse Check** entry produced by the Reuse Check Gate
         below — a required PR-body element alongside the issue linkage (`V-INT-02`).
 7.  **Continuous Discovery**:

@@ -206,6 +206,10 @@ PLAN_CONTEXT) containing:
 3. **Codebase Conventions** — the `## Codebase Conventions` section from the plan file
    (write `(none declared)` if absent)
 
+4. **Origin** (ADR-053, `implementer` only) — pass `origin: hunt` when the issue's ledger row has
+   `phase: hunt` and `deferred_to_issue == N`; otherwise omit the field. `implementer.md` turns
+   it into the `kaizen` PR label.
+
 `planner` does **not** receive PLAN_CONTEXT — it *produces* the plan
 artifact from which Touch-Paths and Conventions are extracted.
 

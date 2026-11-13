@@ -34,6 +34,7 @@ sessions and fails on repositories that still carry a classic Project. On any ch
 | Close issue | `gh issue close N --reason …` | `PATCH repos/{repo}/issues/N` `{state: "closed", state_reason}` | `issue_write` (`update`, `state: closed`) |
 | Comment on issue or PR | `gh issue comment N` / `gh pr comment N` | `POST repos/{repo}/issues/N/comments` `{body}` | `add_issue_comment` |
 | Add labels | `gh issue edit N --add-label …` | `POST repos/{repo}/issues/N/labels` `{labels}` | `issue_write` (`update`, full label set) |
+| Add labels to a PR | `gh api -X POST repos/{owner}/{repo}/issues/N/labels -f 'labels[]=L'` (never `gh pr edit`: classic-Projects GraphQL failure) | `POST repos/{repo}/issues/N/labels` `{labels}` (N is the PR number) | `issue_write` (`update`, full label set) |
 | Remove a label | `gh issue edit N --remove-label L` | `DELETE repos/{repo}/issues/N/labels/L` (404 means already absent) | `issue_write` (`update`, full label set) |
 | List labels | `gh label list --json name` | `GET repos/{repo}/labels?per_page=100` | `get_label` per name |
 | List PRs | `gh pr list --state open --json …` | `GET repos/{repo}/pulls?state=open&per_page=100` | `list_pull_requests` |
