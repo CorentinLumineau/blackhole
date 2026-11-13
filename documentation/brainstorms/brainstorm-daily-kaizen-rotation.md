@@ -1,9 +1,12 @@
 ---
 type: brainstorm
+summary: "Brainstorm scoping a weekday kaizen rotation across four repos: risk-first theme per day, full autonomous fix with leave-open PRs, WIP cap of three per repo, staged rollout"
 skill: x-brainstorm
 created: 2026-11-13
 target: "Daily weekday kaizen rotation across 4 repos"
-status: draft
+status: current
+review_trigger: "on ADR acceptance"
+last_updated: 2026-11-13
 ---
 
 # Brainstorm: Daily Weekday Kaizen Rotation

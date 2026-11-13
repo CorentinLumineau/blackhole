@@ -1,12 +1,15 @@
 ---
 type: plan
+summary: "Implementation plan for ADR-053 in three stacked PRs: engine changes (territory reset, non-interactive launch, kaizen PR label), kaizen runtime (rotation file, preflight, runbook), and the ssl-management enable"
 track: standard
 mode: single
 adr: ADR-053
 input: documentation/brainstorms/brainstorm-daily-kaizen-rotation.md
-status: draft
 created: 2026-11-13
 plan_base_commit: 6036870
+status: current
+review_trigger: "on ADR acceptance"
+last_updated: 2026-11-13
 ---
 
 # Plan: Daily Weekday Kaizen Rotation (ADR-053)
@@ -215,9 +218,8 @@ Close PR1: `bun run build`, commit source + regenerated trees, one scoped test p
 
 **T9 - Enable week 1.** depends on: PR1 and PR2 merged
 - `kaizen/rotation.json`: `ssl-management` -> `enabled: true`; the other three stay `false`.
-- `documentation/decisions/ADR-053-daily-kaizen-rotation.md`: frontmatter `status: accepted`,
-  `last_updated`, and the `## Status` line; `documentation/decisions/INDEX.md` row `proposed` ->
-  `accepted`.
+- ADR-053 is already `accepted` in PR1 (`V-ADR-01` rejects `proposed` in the tree); T9 only
+  bumps its `last_updated`.
 - Verify: `bun test scripts/lib/kaizen-rotation.test.ts` still passes (exactly one repo enabled
   is asserted for week 1); `verify.doc-health.test.ts` passes on the ADR/INDEX pair.
 

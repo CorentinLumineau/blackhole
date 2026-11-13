@@ -2,7 +2,7 @@
 type: adr
 decision_kind: architecture
 summary: "A weekday kaizen rotation runs from one local scheduled task that only points at a versioned runbook (kaizen/daily.md); the runbook reads kaizen/rotation.json (day to hunt kinds, repo list with staged-rollout flags, budgets, wip_cap) and, for each enabled repo in turn, asks scripts/kaizen-preflight.ts for GO, HUNT-ONLY or SKIP before running blackhole hunt <kind> with merge_mode leave-open; three engine changes make this safe unattended: a per-run territory reset, a non-interactive launch path, and a kaizen label on hunt-origin PRs that the preflight counts against the cap"
-status: proposed
+status: accepted
 review_trigger: "after four weeks of runs, or on a request for per-repo rotations or always-on (non-workstation) scheduling"
 created: 2026-11-13
 last_updated: 2026-11-13
@@ -12,7 +12,7 @@ last_updated: 2026-11-13
 
 ## Status
 
-Proposed. Input: `documentation/brainstorms/brainstorm-daily-kaizen-rotation.md`.
+Accepted 2026-11-13 (owner approved approach A+ at the design gates). Input: `documentation/brainstorms/brainstorm-daily-kaizen-rotation.md`.
 
 ## Context
 
