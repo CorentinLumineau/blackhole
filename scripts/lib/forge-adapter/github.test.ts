@@ -86,6 +86,11 @@ describe('GitHubForgeAdapter (REST)', () => {
     expect(calls[0].endpoint).toBe('repos/owner/repo/pulls/5');
   });
 
+  test('prView carries the label names and the mergeability the REST row reports', async () => {
+    mockApi(() => ({ stdout: prRow(6, { mergeable: false, labels: [{ name: 'ai-review:LGTM' }, { name: 'bug' }] }) }));
+    expect(await adapter.prView(6)).toMatchObject({ mergeable: false, labels: ['ai-review:LGTM', 'bug'] });
+  });
+
   test('prChecks reads check runs and commit statuses for the head sha', async () => {
     mockApi((_m, endpoint) => {
       if (endpoint.endsWith('/pulls/7')) return { stdout: prRow(7) };

@@ -186,12 +186,20 @@ export function renderLedgerOpenSection(findings: LedgerFinding[]): string[] {
   return lines;
 }
 
-/** Trimmed body of the checkpoint's `## <heading>` section, or null when absent or empty. */
+const headingLine = (heading: string) => (line: string): boolean => line.trimEnd() === `## ${heading}`;
+
+/** Whether the checkpoint has a `## <heading>` line. A heading named inside a sentence is prose, not a section. */
+export function hasCheckpointSection(checkpointBody: string | undefined, heading: string): boolean {
+  return checkpointBody?.split('\n').some(headingLine(heading)) ?? false;
+}
+
+/** Trimmed body of the checkpoint's `## <heading>` section, or null when absent or empty. The heading must start its line, and the section ends at the next line that starts with `## `. */
 export function checkpointSection(checkpointBody: string | undefined, heading: string): string | null {
-  const marker = `## ${heading}`;
-  if (!checkpointBody?.includes(marker)) return null;
-  const section = checkpointBody.split(marker)[1]?.split(/^## /m)[0]?.trim();
-  return section || null;
+  const lines = checkpointBody?.split('\n') ?? [];
+  const start = lines.findIndex(headingLine(heading));
+  if (start < 0) return null;
+  const next = lines.findIndex((line, i) => i > start && line.startsWith('## '));
+  return lines.slice(start + 1, next < 0 ? undefined : next).join('\n').trim() || null;
 }
 
 function renderActiveWorkersSection(checkpointBody: string | undefined): string[] {

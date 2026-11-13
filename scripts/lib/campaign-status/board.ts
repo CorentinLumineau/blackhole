@@ -3,7 +3,9 @@ import { scopeEntryFor } from './record.ts';
 import type {
   BoardItem,
   BoardStage,
+  MergedPr,
   PrSignal,
+  QueueDrift,
   QueueIssue,
   ReadyToMergeItem,
   ScopeEntry,
@@ -32,6 +34,10 @@ export type BoardInput = {
   /** Issues whose blocked reason class is a merge conflict. */
   mergeConflicts: Set<number>;
   untrackedPrs: Array<{ pr: number; title: string }> | null;
+  /** Merged campaign PRs no queue entry names; each is a done card. */
+  mergedPrs?: MergedPr[];
+  /** Entries the forge contradicted (`reconcileMerged`); their card says what the queue said. */
+  drift?: QueueDrift[];
   scope: ScopeEntry[];
   /** Per-PR forge signals; null when the forge was not read this render. */
   signals: Record<number, PrSignal> | null;
@@ -93,14 +99,22 @@ export function prPlacement(
   if (signal.ci === 'failing') return { stage: 'blocked', status: clip(`CI failing: ${signal.failing.slice(0, 2).join(', ')}`, STATUS_MAX), tone: 'bad' };
   const lgtm = signal.review === 'LGTM' || queue.delivered;
   if (lgtm && signal.ci === 'green') return { stage: 'ready', status: held ? `LGTM, CI green: ${held}` : 'LGTM, CI green: merge', tone: held ? 'warn' : 'ok' };
+  if (lgtm && signal.ci === 'unknown') {
+    if (queue.delivered) return { stage: 'ready', status: `${held ?? 'LGTM: merge'} · CI not checked`, tone: held ? 'warn' : 'ok' };
+    return { stage: 'review', status: 'LGTM, CI not checked', tone: 'ok' };
+  }
   if (lgtm) return { stage: 'review', status: signal.ci === 'running' ? 'LGTM, CI running' : 'LGTM, no CI yet', tone: 'ok' };
   if (signal.review === 'NEEDS_CHANGES' || signal.review === 'CRITICAL_ISSUES') return { stage: 'review', status: 'changes requested', tone: '' };
   if (signal.review === 'ERROR') return { stage: 'review', status: 'reviewer errored', tone: 'bad' };
-  return { stage: 'review', status: signal.ci === 'running' ? 'waiting for review, CI running' : 'waiting for review', tone: '' };
+  const ci = signal.ci === 'running' ? 'CI running' : signal.ci === 'unknown' ? 'CI not checked' : '';
+  return { stage: 'review', status: [signal.review_read ? 'waiting for review' : 'review not checked', ci].filter(Boolean).join(', '), tone: '' };
 }
 
 function issuePlacement(num: number, issue: QueueIssue, input: BoardInput, ready: Map<number, ReadyToMergeItem>, owner: Map<number, string>): Placement {
-  if (issue.status === 'merged' || issue.status === 'closed') return { stage: 'done', status: '', tone: 'ok' };
+  if (issue.status === 'merged' || issue.status === 'closed') {
+    const drifted = input.drift?.find((d) => d.issue === num);
+    return { stage: 'done', status: drifted ? clip(`merged on the forge; queue said ${drifted.queue}`, STATUS_MAX) : '', tone: 'ok' };
+  }
   const scoped = scopeEntryFor(input.scope, num) ?? scopeEntryFor(input.scope, issue.pr ?? null);
   if (scoped && scoped.kind !== 'in') {
     const status = clip(`${SCOPE_WORD[scoped.kind]}${scoped.reason ? `: ${scoped.reason}` : ''}`, STATUS_MAX);
@@ -159,6 +173,12 @@ export function buildBoard(input: BoardInput): BoardItem[] {
         ? { stage: scoped.kind === 'blocked_upstream' ? 'blocked' : 'parked', status: clip(`${SCOPE_WORD[scoped.kind]}${scoped.reason ? `: ${scoped.reason}` : ''}`, STATUS_MAX), tone: '' }
         : prPlacement(input.signals?.[p.pr], { delivered: false, phase: null });
     cards.push({ ...place, ref: p.pr, kind: 'pr', issue: null, pr: p.pr, title: cardTitle(p.title), url: input.prUrl(p.pr), stream: streamOf(input.streams, input.issues, null, p.pr) });
+  }
+  for (const p of input.mergedPrs ?? []) {
+    cards.push({
+      stage: 'done', status: '', tone: 'ok', ref: p.number, kind: 'pr', issue: null, pr: p.number,
+      title: cardTitle(p.title), url: input.prUrl(p.number), stream: streamOf(input.streams, input.issues, null, p.number),
+    });
   }
   return cards.sort((a, b) => STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] || TONE_ORDER[a.tone] - TONE_ORDER[b.tone] || b.ref - a.ref);
 }

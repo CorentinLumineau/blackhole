@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { buildBoard, buildMoves, buildStreams, cardTitle, DEFAULT_STREAM, prPlacement, stageCounts, streamOf, type BoardInput } from './board.ts';
 import type { PrSignal, QueueIssue } from './types.ts';
 
-const sig = (over: Partial<PrSignal> = {}): PrSignal => ({ review: null, ci: 'green', failing: [], mergeable: true, ...over });
+const sig = (over: Partial<PrSignal> = {}): PrSignal => ({ review: null, review_read: true, ci: 'green', failing: [], mergeable: true, ...over });
 
 describe('prPlacement — a PR card from the forge signal', () => {
   const plain = { delivered: false, phase: 'review' };
@@ -28,6 +28,23 @@ describe('prPlacement — a PR card from the forge signal', () => {
     expect(prPlacement(sig({ review: 'NEEDS_CHANGES' }), plain)).toMatchObject({ stage: 'review', status: 'changes requested' });
     expect(prPlacement(sig({ review: 'ERROR' }), plain)).toMatchObject({ stage: 'review', tone: 'bad' });
     expect(prPlacement(sig({ ci: 'none' }), plain)).toMatchObject({ stage: 'review', status: 'waiting for review' });
+  });
+
+  test('an unread CI says "CI not checked" and never claims green or no CI', () => {
+    expect(prPlacement(sig({ ci: 'unknown', review: 'LGTM' }), plain)).toEqual({ stage: 'review', status: 'LGTM, CI not checked', tone: 'ok' });
+    expect(prPlacement(sig({ ci: 'unknown' }), { ...plain, delivered: true })).toEqual({ stage: 'ready', status: 'LGTM: merge · CI not checked', tone: 'ok' });
+    expect(prPlacement(sig({ ci: 'unknown' }), plain)).toEqual({ stage: 'review', status: 'waiting for review, CI not checked', tone: '' });
+  });
+
+  test('an unread review says "review not checked" and never "waiting for review"', () => {
+    expect(prPlacement(sig({ review_read: false }), plain)).toEqual({ stage: 'review', status: 'review not checked', tone: '' });
+    expect(prPlacement(sig({ review_read: false, ci: 'running' }), plain).status).toBe('review not checked, CI running');
+    expect(prPlacement(sig({ review_read: false, ci: 'unknown' }), plain).status).toBe('review not checked, CI not checked');
+  });
+
+  test('a known conflict or failing CI still blocks when the other read failed', () => {
+    expect(prPlacement(sig({ review_read: false, ci: 'failing', failing: ['unit'] }), plain).stage).toBe('blocked');
+    expect(prPlacement(sig({ ci: 'unknown', mergeable: false }), plain).stage).toBe('blocked');
   });
 
   test('without a signal it never guesses: the card says CI was not checked', () => {
@@ -145,4 +162,54 @@ describe('streams — mapped from labels, milestone or epic, with overrides and 
 test('cardTitle drops a conventional-commit prefix and clips long titles', () => {
   expect(cardTitle('fix(api)!: handle empty bodies')).toBe('Handle empty bodies');
   expect(cardTitle('x'.repeat(100))).toHaveLength(70);
+});
+
+describe('merged pull requests and queue drift on the board', () => {
+  const base = (over: Partial<BoardInput> = {}): BoardInput => ({
+    issues: {},
+    readyToMerge: [],
+    ownerItems: [],
+    mergeConflicts: new Set(),
+    untrackedPrs: [],
+    scope: [],
+    signals: null,
+    prUrl: (n) => `https://forge.example/acme/widgets/pulls/${n}`,
+    issueUrl: (n) => `https://forge.example/acme/widgets/issues/${n}`,
+    ...over,
+  });
+
+  test('a merged PR no queue entry names is a done card in its stream', () => {
+    const board = buildBoard(base({ mergedPrs: [{ number: 60, title: 'fix(api): handle empty input', mergedAt: '2026-11-12T08:00:00Z' }], streams: { overrides: { '60': 'Fixes' } } }));
+    expect(board).toEqual([
+      {
+        stage: 'done', status: '', tone: 'ok', ref: 60, kind: 'pr', issue: null, pr: 60,
+        title: 'Handle empty input', url: 'https://forge.example/acme/widgets/pulls/60', stream: 'Fixes',
+      },
+    ]);
+  });
+
+  test('merged PRs raise the done count of their workstream, next to the queue entries', () => {
+    const board = buildBoard(
+      base({
+        issues: { '1': { title: 'feat(ui): header', status: 'merged', pr: 11 }, '2': { title: 'Later', status: 'ready', phase: 'handle' } },
+        mergedPrs: [{ number: 60, title: 'a', mergedAt: '2026-11-12T08:00:00Z' }, { number: 61, title: 'b', mergedAt: '2026-11-12T09:00:00Z' }],
+      }),
+    );
+    expect(buildStreams(board)).toEqual([{ stream: DEFAULT_STREAM, done: 3, in_review: 0, left: 1, next: '#2 not started' }]);
+    expect(stageCounts(board, 0)).toMatchObject({ done: 3, not_started: 1, total: 4 });
+  });
+
+  test('a queue entry the forge merged shows as done, saying what the queue said', () => {
+    const board = buildBoard(
+      base({
+        issues: { '5': { title: 'Refund fee', status: 'merged', phase: 'review', pr: 25 } },
+        drift: [{ issue: 5, pr: 25, title: 'Refund fee', queue: 'in-flight', forge: 'merged' }],
+      }),
+    );
+    expect(board[0]).toMatchObject({ stage: 'done', tone: 'ok', status: 'merged on the forge; queue said in-flight', ref: 25, issue: 5 });
+  });
+
+  test('a done entry the queue and the forge agree on carries no drift text', () => {
+    expect(buildBoard(base({ issues: { '5': { title: 'x', status: 'merged', pr: 25 } } }))[0]!.status).toBe('');
+  });
 });

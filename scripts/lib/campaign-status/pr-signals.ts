@@ -1,24 +1,17 @@
-import { runGhApiRestJson } from '../forge-adapter/cli.ts';
-import { listChecks } from '../forge-adapter/github-rest.ts';
-import type { ForgeCheck } from '../forge-adapter/types.ts';
+import type { ForgeAdapter, ForgeCheck } from '../forge-adapter/types.ts';
 import type { PrSignal } from './types.ts';
 
-// Review verdict, CI and mergeability of the open PRs the board shows, over GitHub REST (ADR-048),
-// the same channel as the forge counts. Three reads per PR (the PR, its check runs, its commit
-// statuses), at most PR_SIGNAL_CAP PRs per render, so a refresh stays a few seconds. A PR whose
-// reads fail, or that is past the cap, has no signal and the page says "not checked" for it.
+// Review verdict, CI and mergeability of the open PRs the board shows, read through the forge
+// adapter of the configured forge (GitHub, Gitea or GitLab), the same channel as the forge counts.
+// Two adapter reads per PR (`prView` for labels and mergeability, `prChecks` for CI), at most
+// PR_SIGNAL_CAP PRs per render, so a refresh stays a few seconds. The reads are independent: one
+// that fails leaves its own fact unknown and keeps the other. A PR whose reads both fail, or that is
+// past the cap, has no signal and the page says "not checked" for it.
 
 export const PR_SIGNAL_CAP = 15;
 
 const REVIEW_LABEL = 'ai-review:';
 const FAILED = new Set<ForgeCheck['conclusion']>(['FAILURE', 'CANCELLED', 'ACTION_REQUIRED']);
-
-type RestPrDetail = {
-  number: number;
-  mergeable: boolean | null;
-  head: { sha: string };
-  labels?: Array<{ name: string } | string>;
-};
 
 /** The CI verdict of a set of checks. No check at all is `none`, never `green`. */
 export function ciOf(checks: ForgeCheck[]): Pick<PrSignal, 'ci' | 'failing'> {
@@ -35,16 +28,27 @@ export function reviewOf(labels: Array<{ name: string } | string> | undefined): 
   return label ? label.slice(REVIEW_LABEL.length) || null : null;
 }
 
-/** Reads the signal of each PR (lowest number first, capped). A PR whose reads fail is left out. */
-export function fetchPrSignals(repo: string, prs: number[], cap: number = PR_SIGNAL_CAP): Record<number, PrSignal> {
+const attempt = async <T>(read: () => Promise<T>): Promise<T | null> => {
+  try {
+    return await read();
+  } catch {
+    return null;
+  }
+};
+
+/** Reads the signal of each PR (lowest number first, capped). A failed read leaves its fact unknown; a PR whose reads both fail is left out. */
+export async function fetchPrSignals(adapter: ForgeAdapter, prs: number[], cap: number = PR_SIGNAL_CAP): Promise<Record<number, PrSignal>> {
   const out: Record<number, PrSignal> = {};
   for (const n of [...new Set(prs)].sort((a, b) => a - b).slice(0, cap)) {
-    try {
-      const pr = runGhApiRestJson<RestPrDetail>('GET', `repos/${repo}/pulls/${n}`);
-      out[n] = { review: reviewOf(pr.labels), mergeable: pr.mergeable ?? null, ...ciOf(listChecks(repo, pr.head.sha)) };
-    } catch {
-      // No signal: the card says the forge was not checked for this PR.
-    }
+    const pr = await attempt(() => adapter.prView(n));
+    const checks = await attempt(() => adapter.prChecks(n));
+    if (!pr && !checks) continue;
+    out[n] = {
+      review: pr ? reviewOf(pr.labels) : null,
+      review_read: pr !== null,
+      mergeable: pr?.mergeable ?? null,
+      ...(checks ? ciOf(checks) : { ci: 'unknown' as const, failing: [] }),
+    };
   }
   return out;
 }

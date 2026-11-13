@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { root } from './checks/check-utils.ts';
+import { createGitHubAdapter } from './lib/forge-adapter/index.ts';
 import {
   computeWaves,
   countLedgerByStatus,
@@ -693,6 +694,7 @@ describe('renderPluginDriftWarning', () => {
 });
 
 describe('fetchForgeCounts', () => {
+  const github = createGitHubAdapter('owner/repo');
   let spawnSyncSpy: ReturnType<typeof spyOn<typeof childProcess, 'spawnSync'>>;
 
   afterEach(() => {
@@ -733,13 +735,13 @@ describe('fetchForgeCounts', () => {
     merged_at: null,
   });
 
-  test('returns open issue and PR counts when both REST reads succeed', () => {
+  test('returns open issue and PR counts when both REST reads succeed', async () => {
     mockGhCalls({
       issue: () => ({ status: 0, stdout: JSON.stringify([issueRow(1), issueRow(2)]), stderr: '' }),
       pr: () => ({ status: 0, stdout: JSON.stringify([prRow(10)]), stderr: '' }),
     });
 
-    expect(fetchForgeCounts({}, 'owner/repo')).toEqual({
+    expect(await fetchForgeCounts({}, github)).toEqual({
       openIssues: 2,
       openPrs: 1,
       openPrList: [{ number: 10, title: 'p10' }],
@@ -751,7 +753,7 @@ describe('fetchForgeCounts', () => {
     expect(endpointFor('/pulls')).toStartWith('repos/owner/repo/pulls?state=open');
   });
 
-  test('does not count pull requests the issues endpoint returns', () => {
+  test('does not count pull requests the issues endpoint returns', async () => {
     mockGhCalls({
       issue: () => ({
         status: 0,
@@ -760,15 +762,15 @@ describe('fetchForgeCounts', () => {
       }),
     });
 
-    expect(fetchForgeCounts({}, 'owner/repo').openIssues).toBe(1);
+    expect((await fetchForgeCounts({}, github)).openIssues).toBe(1);
   });
 
-  test('returns structured error when issue list fails', () => {
+  test('returns structured error when issue list fails', async () => {
     mockGhCalls({
       issue: () => ({ status: 1, stdout: '', stderr: 'rate limited' }),
     });
 
-    expect(fetchForgeCounts({}, 'owner/repo')).toEqual({
+    expect(await fetchForgeCounts({}, github)).toEqual({
       openIssues: 0,
       openPrs: 0,
       ok: false,
@@ -776,29 +778,29 @@ describe('fetchForgeCounts', () => {
     });
   });
 
-  test('returns invalid gh JSON error when issue stdout is not JSON', () => {
+  test('returns a forge-neutral invalid JSON error when issue stdout is not JSON', async () => {
     mockGhCalls({
       issue: () => ({ status: 0, stdout: 'not-json', stderr: '' }),
     });
 
-    expect(fetchForgeCounts({}, 'owner/repo')).toEqual({
+    expect(await fetchForgeCounts({}, github)).toEqual({
       openIssues: 0,
       openPrs: 0,
       ok: false,
-      error: 'invalid gh JSON',
+      error: 'the forge answered with invalid JSON',
     });
   });
 
   // Issue #864: a PR-list failure used to collapse into `openPrs: 0, ok: true` —
   // indistinguishable from the legitimate "zero open PRs" state. The dashboard (and any other
   // consumer reading `ok`) must be able to tell "forge unreachable" from "forge says zero".
-  test('reports ok:false with the stderr text when issue list succeeds but PR list fails', () => {
+  test('reports ok:false with the stderr text when issue list succeeds but PR list fails', async () => {
     mockGhCalls({
       issue: () => ({ status: 0, stdout: JSON.stringify([issueRow(1), issueRow(2), issueRow(3)]), stderr: '' }),
       pr: () => ({ status: 1, stdout: '', stderr: 'pr list failed' }),
     });
 
-    expect(fetchForgeCounts({}, 'owner/repo')).toEqual({
+    expect(await fetchForgeCounts({}, github)).toEqual({
       openIssues: 3,
       openPrs: 0,
       ok: false,
@@ -806,7 +808,7 @@ describe('fetchForgeCounts', () => {
     });
   });
 
-  test('applies milestone scope to the fetched issues', () => {
+  test('applies milestone scope to the fetched issues', async () => {
     mockGhCalls({
       issue: () => ({
         status: 0,
@@ -815,7 +817,7 @@ describe('fetchForgeCounts', () => {
       }),
     });
 
-    expect(fetchForgeCounts({ milestone: 'v0.4.2' }, 'owner/repo').openIssues).toBe(1);
+    expect((await fetchForgeCounts({ milestone: 'v0.4.2' }, github)).openIssues).toBe(1);
   });
 });
 

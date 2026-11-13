@@ -35,7 +35,7 @@ export function fixtureReport(queue: QueueJson = FIXTURE_QUEUE): StatusReport {
     hostNotes: ['⚠ Plugin cache drift: layer 2'],
     generatedAt: '2026-11-11T12:00:00.000Z',
     decisions: [{ date: '2026-11-10', text: 'Leave every PR open for review' }],
-    prSignals: { 9: { review: 'LGTM', ci: 'running', failing: [], mergeable: true } },
+    prSignals: { 9: { review: 'LGTM', review_read: true, ci: 'running', failing: [], mergeable: true } },
     pluginVersion: '1.2.3',
   });
 }

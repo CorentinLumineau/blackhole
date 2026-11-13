@@ -4,6 +4,7 @@ import { classifyBlocked, CLASS_PREVIEW, groupBlockedRows, waitReason, type Wait
 import { buildBoard, buildMoves, buildStreams, stageCounts } from './board.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
 import { buildBlockers, buildConfigRows, buildHeadline, buildLinks } from './overview.ts';
+import { reconcileMerged } from './merged.ts';
 import { newestFirst, readScopeEntries } from './record.ts';
 import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
 import { computeStatusCounts, groupIssuesByPhase, QUEUE_STATUSES } from './queue.ts';
@@ -15,6 +16,7 @@ import type {
   ForgeCounts,
   IssueRow,
   LedgerJson,
+  MergedPr,
   OwnerDecision,
   PrSignal,
   QueueIssue,
@@ -46,6 +48,8 @@ export type StatusReportInput = {
   decisions?: OwnerDecision[];
   /** Per-PR forge signals; absent or null ⇒ the forge was not read (`--no-gh`), and the page says "not checked". */
   prSignals?: Record<number, PrSignal> | null;
+  /** The forge's merged PRs; absent or null ⇒ not read, and no PR is counted as merged on the forge's word. */
+  mergedPrs?: MergedPr[] | null;
   /** The plugin's own version, shown in the config rows. */
   pluginVersion?: string | null;
 };
@@ -304,7 +308,9 @@ function untrackedPrs(issues: Record<string, QueueIssue>, forge: ForgeCounts): S
 /** Builds the `bun run status --json` report from already-loaded state. Pure: no I/O. */
 export function buildStatusReport(input: StatusReportInput): StatusReport {
   const { config, queue, ledger, checkpoint, checkpointBody, forge } = input;
-  const issues = queue.issues ?? {};
+  // The queue as the forge has it: an entry whose PR the forge merged reads as merged (and is listed as drift).
+  const reconciled = reconcileMerged(queue.issues ?? {}, input.mergedPrs ?? null, queue.campaign_started_at ?? null, readScope(config));
+  const issues = reconciled.issues;
   const findings = ledger.findings ?? [];
   const { inFlight, blocked, ready, done, unclassified } = groupIssuesByPhase(issues);
   const counts = computeStatusCounts(issues, findings);
@@ -334,6 +340,8 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
     ownerItems: waitingOnOwner.map((i) => ({ ...i, detail: ownerDetail(i) })),
     mergeConflicts: new Set(blockedClasses.filter((c) => c.class === 'merge_conflict').flatMap((c) => c.issues.map((i) => i.issue))),
     untrackedPrs: untracked,
+    mergedPrs: reconciled.mergedOnly,
+    drift: reconciled.drift,
     scope: scopeEntries,
     signals: forgeChecked ? (input.prSignals ?? null) : null,
     streams: config.status_page?.streams,
@@ -408,7 +416,7 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
     scope_record: { recorded: scopeEntries.length > 0, entries: scopeEntries },
     decisions: newestFirst(input.decisions ?? []),
     headline: buildHeadline(checkpointBody, boardCounts, topBlocked && topBlocked.count > 0 ? topBlocked : null),
-    blockers: buildBlockers(checkpointBody, board, elseRows, forgeChecked),
+    blockers: buildBlockers(checkpointBody, board, elseRows, forgeChecked, reconciled.drift),
     forge_checked: forgeChecked,
     board,
     stage_counts: boardCounts,
@@ -416,5 +424,6 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
     streams: buildStreams(board),
     links: buildLinks(repoWebUrl(forgeKind, forgeHost, config.repo ?? ''), forgeKind, config.status_page),
     config_rows: buildConfigRows(config, input.pluginVersion ?? null),
+    drift: reconciled.drift,
   };
 }

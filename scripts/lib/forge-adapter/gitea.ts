@@ -33,17 +33,39 @@ type GiteaApiPrRow = {
   merged_at?: string | null;
   draft?: boolean;
   created_at?: string | null;
+  mergeable?: boolean | null;
+  labels?: Array<{ name: string }> | null;
   head: { ref: string; sha: string; repo?: { full_name: string } | null };
   base: { ref: string; repo?: { full_name: string } | null };
 };
 
 type GiteaApiFile = { filename: string; previous_filename?: string };
 
+/** One commit status as Gitea reports it; `status` is pending, success, failure, error, warning or skipped. */
+type GiteaCommitStatus = { context: string; status: string };
+
+type GiteaCombinedStatus = { total_count?: number; statuses?: GiteaCommitStatus[] | null };
+
 const API_PAGE = 50;
 // Gitea caps a page at its configured MAX_RESPONSE_ITEMS and 3000 files is GitHub's own cap, so
 // both walks stop at a bounded page count; the open-PR walk also checks the server's own total.
 const MAX_FILE_PAGES = 60;
 const MAX_PR_PAGES = 100;
+const MAX_STATUS_PAGES = 20;
+
+const STATUS_CONCLUSION: Record<string, ForgeCheck['conclusion']> = {
+  success: 'SUCCESS',
+  failure: 'FAILURE',
+  error: 'FAILURE',
+  warning: 'NEUTRAL',
+  skipped: 'SKIPPED',
+};
+
+/** A state this adapter does not know reads as still running: never as a pass, never as a failure. */
+export const mapGiteaStatus = (row: GiteaCommitStatus): ForgeCheck => {
+  const conclusion = STATUS_CONCLUSION[row.status];
+  return conclusion ? { name: row.context, status: 'COMPLETED', conclusion } : { name: row.context, status: 'IN_PROGRESS', conclusion: null };
+};
 
 export const mapGiteaApiPr = (row: GiteaApiPrRow): ForgePr => {
   const baseRepo = row.base.repo?.full_name;
@@ -60,6 +82,8 @@ export const mapGiteaApiPr = (row: GiteaApiPrRow): ForgePr => {
     createdAt: row.created_at,
     state: merged ? 'MERGED' : (row.state ?? 'open').toLowerCase() === 'closed' ? 'CLOSED' : 'OPEN',
     mergedAt: row.merged_at ?? null,
+    labels: row.labels?.map((l) => l.name),
+    mergeable: row.mergeable,
   };
 };
 
@@ -202,29 +226,30 @@ export class GiteaForgeAdapter implements ForgeAdapter {
   }
 
   /**
-   * Open PRs through the REST API, because `tea pulls list --json` reports neither the base branch
-   * nor the head repository. Pages until the server's X-Total-Count is read; an empty page before
-   * that total is an error, so a server page cap never truncates the list silently.
+   * Pull requests of one state through the REST API, because `tea pulls list --json` reports neither
+   * the base branch, the head repository nor the merge time. Pages until the server's X-Total-Count
+   * is read; an empty page before that total is an error, so a server page cap never truncates the
+   * list silently.
    */
-  private listOpenPrsRest(limit: number): ForgePr[] {
+  private listPrsRest(state: 'open' | 'closed' | 'all', limit: number): ForgePr[] {
     const out: ForgePr[] = [];
     let total: number | null = null;
     for (let page = 1; page <= MAX_PR_PAGES; page++) {
       const { data, headers } = runTeaApiJson<GiteaApiPrRow[]>(
         'GET',
-        `repos/${this.apiSlug()}/pulls?state=open&page=${page}&limit=${API_PAGE}`,
+        `repos/${this.apiSlug()}/pulls?state=${state}&page=${page}&limit=${API_PAGE}`,
       );
       total ??= totalCount(headers);
       if (data.length === 0) {
         if (total !== null && out.length < total) {
-          throw new Error(`open PR list ended at ${out.length} rows before the server total of ${total}`);
+          throw new Error(`${state} PR list ended at ${out.length} rows before the server total of ${total}`);
         }
         return out;
       }
       out.push(...data.map(mapGiteaApiPr));
       if (out.length >= limit || (total !== null && out.length >= total)) return out.slice(0, limit);
     }
-    throw new Error(`open PR list passed ${MAX_PR_PAGES} pages`);
+    throw new Error(`${state} PR list passed ${MAX_PR_PAGES} pages`);
   }
 
   async prFiles(number: number): Promise<string[]> {
@@ -253,7 +278,7 @@ export class GiteaForgeAdapter implements ForgeAdapter {
   }
 
   async prList(filter: { state?: 'open' | 'closed' | 'all'; limit?: number } = {}): Promise<ForgePr[]> {
-    if (filter.state === 'open') return this.listOpenPrsRest(filter.limit ?? 100);
+    if (filter.state) return this.listPrsRest(filter.state, filter.limit ?? 100);
     const args = ['pulls', 'list', ...this.repoFlag(), '--limit', String(filter.limit ?? 100)];
     if (filter.state && filter.state !== 'all') args.push('--state', filter.state);
     const rows = runTeaJson<TeaPrRow[] | { pulls: TeaPrRow[] }>(args);
@@ -261,8 +286,9 @@ export class GiteaForgeAdapter implements ForgeAdapter {
     return list.map(mapPr);
   }
 
+  /** The REST row, because `tea pull view --json` reports neither labels, mergeability nor the head sha. */
   async prView(number: number): Promise<ForgePr> {
-    return mapPr(runTeaJson<TeaPrRow>(['pull', 'view', String(number), ...this.repoFlag()]));
+    return mapGiteaApiPr(runTeaApiJson<GiteaApiPrRow>('GET', `repos/${this.apiSlug()}/pulls/${number}`).data);
   }
 
   async prCreate(params: PrCreateParams): Promise<ForgePr> {
@@ -298,29 +324,23 @@ export class GiteaForgeAdapter implements ForgeAdapter {
     runTeaText([kind, 'edit', String(entity.number), ...this.repoFlag(), '--remove-labels', labels.join(',')]);
   }
 
-  // A `tea actions status` failure used to collapse to `[]` — indistinguishable from "no checks
-  // configured" (issue #864). The merge gate reads an empty check list as nothing blocking the
-  // merge, so a swallowed CLI failure here reads as CI green it never actually observed. Let the
-  // error propagate instead, matching `GitHubForgeAdapter.prChecks` (github.ts), which has never
-  // caught here — the caller must fail closed on a rejected `prChecks()`, not treat it as a clean
-  // check list (V-INT-01: one adapter behavior for the shared `ForgeAdapter` interface method).
+  // `tea` has no per-PR CI command (`tea actions` only lists secrets, variables, runs and
+  // workflows), so CI is the combined commit status of the PR's head commit, read through the REST
+  // API. A failed read throws rather than returning `[]`: an empty list means "no status was
+  // reported" and a caller must never be able to mistake a swallowed failure for it (issue #864).
   async prChecks(number: number): Promise<ForgeCheck[]> {
-    const rows = runTeaJson<Array<{ name: string; status: string; conclusion?: string | null }>>([
-      'actions',
-      'status',
-      String(number),
-      ...this.repoFlag(),
-    ]);
-    return rows.map((row) => ({
-      name: row.name,
-      status:
-        row.status === 'in_progress'
-          ? 'IN_PROGRESS'
-          : row.status === 'queued'
-            ? 'QUEUED'
-            : 'COMPLETED',
-      conclusion: (row.conclusion?.toUpperCase() ?? null) as ForgeCheck['conclusion'],
-    }));
+    const sha = (await this.prView(number)).headRefOid;
+    if (!sha) throw new Error(`PR #${number} reports no head commit to read CI for`);
+    const rows: GiteaCommitStatus[] = [];
+    for (let page = 1; page <= MAX_STATUS_PAGES; page++) {
+      const { data } = runTeaApiJson<GiteaCombinedStatus>('GET', `repos/${this.apiSlug()}/commits/${sha}/status?page=${page}&limit=${API_PAGE}`);
+      const statuses = data?.statuses ?? [];
+      if (statuses.length === 0) return rows.map(mapGiteaStatus);
+      rows.push(...statuses);
+      // `total_count` is the length of this page, not of the whole list: only a short page ends the read.
+      if (statuses.length < API_PAGE) return rows.map(mapGiteaStatus);
+    }
+    throw new Error(`PR #${number} status list passed ${MAX_STATUS_PAGES} pages and may be truncated`);
   }
 }
 

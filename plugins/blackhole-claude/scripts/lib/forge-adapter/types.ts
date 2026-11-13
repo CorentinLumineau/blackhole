@@ -24,6 +24,10 @@ export interface ForgePr {
   createdAt?: string | null;
   state: 'OPEN' | 'CLOSED' | 'MERGED';
   mergedAt: string | null;
+  /** Label names; absent when the channel does not report them. */
+  labels?: string[];
+  /** False when the forge reports a conflict, true when it reports none, null when it has not computed it yet; absent when the channel does not report it. */
+  mergeable?: boolean | null;
 }
 
 /** `ok` is true only when the base read back after the change equals the requested base. */

@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test, afterEach } from 'bun:test';
+import { describe, expect, mock, spyOn, test, afterEach } from 'bun:test';
 import * as teaCli from './tea-cli.ts';
 import { GiteaForgeAdapter } from './gitea.ts';
 
@@ -41,32 +41,6 @@ describe('GiteaForgeAdapter', () => {
     const prs = await adapter.prList();
     expect(prs[0].number).toBe(7);
     expect(prs[0].headRefName).toBe('feature');
-  });
-
-  // Issue #864: `prChecks` used to swallow any `tea actions status` failure into `[]` —
-  // indistinguishable from "no checks configured". A caller reading an empty array as "nothing
-  // failing" would let a merge proceed on a CI read it never actually got.
-  test('prChecks propagates a tea CLI failure instead of returning an empty check list', async () => {
-    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockImplementation(() => {
-      throw new Error('tea: connection refused');
-    });
-    const adapter = new GiteaForgeAdapter('host/owner/repo');
-    await expect(adapter.prChecks(9)).rejects.toThrow('tea: connection refused');
-  });
-
-  test('prChecks normalizes distinct rows using tea actions status shape', async () => {
-    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue([
-      { name: 'lint', status: 'in_progress', conclusion: null },
-      { name: 'build', status: 'queued', conclusion: null },
-      { name: 'test', status: 'completed', conclusion: 'failure' },
-    ]);
-    const adapter = new GiteaForgeAdapter('host/owner/repo');
-    const checks = await adapter.prChecks(9);
-    expect(checks).toEqual([
-      { name: 'lint', status: 'IN_PROGRESS', conclusion: null },
-      { name: 'build', status: 'QUEUED', conclusion: null },
-      { name: 'test', status: 'COMPLETED', conclusion: 'FAILURE' },
-    ]);
   });
 
   // `tea api` prints the Gitea REST JSON; the adapter reads PR graph fields from it because
@@ -345,26 +319,126 @@ describe('GiteaForgeAdapter', () => {
     runTeaTextSpy.mockRestore();
   });
 
-  test('prView maps a single tea pull row', async () => {
-    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue({
-      index: 30,
-      title: 'Add feature',
-      body: 'description',
-      head: { name: 'feature-branch' },
-      state: 'merged',
-      merged_at: '2026-01-01T00:00:00Z',
-    });
-    const adapter = new GiteaForgeAdapter('host/owner/repo');
-    const pr = await adapter.prView(30);
-    expect(pr).toEqual({
+  test('prView reads the REST row, so labels, mergeability and the head sha reach the caller', async () => {
+    const spy = teaApi(() => ({
+      stdout: apiPr(30, {
+        title: 'Add feature',
+        body: 'description',
+        state: 'closed',
+        merged: true,
+        merged_at: '2026-01-01T00:00:00Z',
+        mergeable: false,
+        labels: [{ name: 'ai-review:LGTM' }, { name: 'bug' }],
+        head: { ref: 'feature-branch', sha: 'abc', repo: { full_name: 'owner/repo' } },
+      }),
+    }));
+    const pr = await new GiteaForgeAdapter('host/owner/repo').prView(30);
+    expect(pr).toMatchObject({
       number: 30,
       title: 'Add feature',
       body: 'description',
       headRefName: 'feature-branch',
+      headRefOid: 'abc',
       state: 'MERGED',
       mergedAt: '2026-01-01T00:00:00Z',
+      mergeable: false,
+      labels: ['ai-review:LGTM', 'bug'],
+    });
+    expect(spy.mock.calls[0][0]).toEqual(['api', '-i', '-X', 'GET', 'repos/owner/repo/pulls/30']);
+    spy.mockRestore();
+  });
+
+  test('prList of every state reads REST rows, so a merged pull request carries its merge time', async () => {
+    const spy = teaApi(() => ({
+      stdout: [apiPr(8, { state: 'closed', merged: true, merged_at: '2026-11-12T08:00:00Z' }), apiPr(9, { state: 'closed' })],
+      stderr: 'X-Total-Count: 2\n',
+    }));
+    const prs = await new GiteaForgeAdapter('host/owner/repo').prList({ state: 'all', limit: 300 });
+    expect(prs.map((p) => [p.number, p.state, p.mergedAt])).toEqual([
+      [8, 'MERGED', '2026-11-12T08:00:00Z'],
+      [9, 'CLOSED', null],
+    ]);
+    expect(spy.mock.calls[0][0]).toContain('repos/owner/repo/pulls?state=all&page=1&limit=50');
+    spy.mockRestore();
+  });
+  describe('prChecks, from the combined commit status of the head commit', () => {
+    afterEach(() => mock.restore());
+
+    const status = (context: string, state: string) => ({ context, status: state, target_url: 'https://forge.example/run/1' });
+    const checksApi = (statuses: unknown[], extra: Record<string, unknown> = {}, seen: string[] = []) =>
+      teaApi((argv) => {
+        const endpoint = argv[argv.indexOf('-X') + 2];
+        seen.push(endpoint);
+        if (endpoint.endsWith('/pulls/9')) return { stdout: apiPr(9, { head: { ref: 'f', sha: 'abc123', repo: { full_name: 'owner/repo' } } }) };
+        return { stdout: { state: 'success', sha: 'abc123', total_count: statuses.length, statuses, ...extra } };
+      });
+
+    test('reads the PR for its head sha, then the combined status of that commit', async () => {
+      const seen: string[] = [];
+      checksApi([status('build', 'success')], {}, seen);
+      await new GiteaForgeAdapter('host/owner/repo').prChecks(9);
+      expect(seen).toEqual(['repos/owner/repo/pulls/9', 'repos/owner/repo/commits/abc123/status?page=1&limit=50']);
+    });
+
+    test('maps each status state to one check', async () => {
+      checksApi([
+        status('lint', 'pending'),
+        status('build', 'success'),
+        status('unit', 'failure'),
+        status('e2e', 'error'),
+        status('docs', 'skipped'),
+        status('style', 'warning'),
+      ]);
+      expect(await new GiteaForgeAdapter('host/owner/repo').prChecks(9)).toEqual([
+        { name: 'lint', status: 'IN_PROGRESS', conclusion: null },
+        { name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' },
+        { name: 'unit', status: 'COMPLETED', conclusion: 'FAILURE' },
+        { name: 'e2e', status: 'COMPLETED', conclusion: 'FAILURE' },
+        { name: 'docs', status: 'COMPLETED', conclusion: 'SKIPPED' },
+        { name: 'style', status: 'COMPLETED', conclusion: 'NEUTRAL' },
+      ]);
+    });
+
+    test('a state it does not know is pending, never success', async () => {
+      checksApi([status('odd', 'queued-by-a-newer-server')]);
+      expect(await new GiteaForgeAdapter('host/owner/repo').prChecks(9)).toEqual([{ name: 'odd', status: 'IN_PROGRESS', conclusion: null }]);
+    });
+
+    test('a commit with no status at all is an empty list: no CI ran, which is not green', async () => {
+      checksApi([]);
+      expect(await new GiteaForgeAdapter('host/owner/repo').prChecks(9)).toEqual([]);
+    });
+
+    // Gitea's `total_count` is the length of the page it returned, not of the whole list, so
+    // only a short page can end the read.
+    test('pages until a short page, since total_count only counts the returned page', async () => {
+      const first = Array.from({ length: 50 }, (_, i) => status(`job-${i}`, 'success'));
+      const second = [status('job-50', 'failure')];
+      const seen: string[] = [];
+      teaApi((argv) => {
+        const endpoint = argv[argv.indexOf('-X') + 2];
+        seen.push(endpoint);
+        if (endpoint.endsWith('/pulls/9')) return { stdout: apiPr(9) };
+        const statuses = endpoint.includes('page=1') ? first : second;
+        return { stdout: { total_count: statuses.length, statuses } };
+      });
+      const checks = await new GiteaForgeAdapter('host/owner/repo').prChecks(9);
+      expect(checks).toHaveLength(51);
+      expect(checks[50]).toEqual({ name: 'job-50', status: 'COMPLETED', conclusion: 'FAILURE' });
+      expect(seen.filter((e) => e.includes('/status'))).toHaveLength(2);
+    });
+
+    test('a failing read propagates instead of reading as no CI (issue #864)', async () => {
+      teaApi(() => ({ status: 1, stderr: 'tea: connection refused' }));
+      await expect(new GiteaForgeAdapter('host/owner/repo').prChecks(9)).rejects.toThrow('tea: connection refused');
+    });
+
+    test('a PR without a head sha cannot be read, and says so', async () => {
+      teaApi(() => ({ stdout: { ...apiPr(9), head: { ref: 'f', sha: '' } } }));
+      await expect(new GiteaForgeAdapter('host/owner/repo').prChecks(9)).rejects.toThrow('head commit');
     });
   });
+
 });
 
 describe('createForgeAdapter gitea', () => {
@@ -373,4 +447,5 @@ describe('createForgeAdapter gitea', () => {
     const adapter = createForgeAdapter({ repo: 'host/o/r', forge: 'gitea' });
     expect(adapter.forge).toBe('gitea');
   });
+
 });

@@ -26,6 +26,8 @@ export type RestPrRow = {
   created_at?: string | null;
   state: string;
   merged_at: string | null;
+  labels?: Array<{ name: string } | string>;
+  mergeable?: boolean | null;
 };
 
 export type RestPrFile = { filename: string; previous_filename?: string };
@@ -63,6 +65,8 @@ export const mapRestPr = (row: RestPrRow): ForgePr => ({
   createdAt: row.created_at,
   state: row.merged_at ? 'MERGED' : row.state.toLowerCase() === 'closed' ? 'CLOSED' : 'OPEN',
   mergedAt: row.merged_at,
+  labels: row.labels?.map((l) => (typeof l === 'string' ? l : l.name)),
+  mergeable: row.mergeable,
 });
 
 export const mapRestCheckRun = (row: RestCheckRun): ForgeCheck => ({
