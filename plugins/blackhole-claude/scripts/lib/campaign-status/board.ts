@@ -182,10 +182,23 @@ export function buildMoves(board: BoardItem[], delivered: Set<number>): StatusRe
   return [...readyDelivered, ...gates, ...otherReady].map(move);
 }
 
+/**
+ * The board's five columns, left to right, and the stages each holds. `--html` lays its board out
+ * from this list; the Data dashboard template carries the same list as `COLUMNS` (it cannot import).
+ */
+export const BOARD_COLUMNS: ReadonlyArray<{ key: Exclude<keyof StageCounts, 'on_you' | 'total'>; label: string; stages: readonly BoardStage[] }> = [
+  { key: 'in_review', label: 'in review', stages: ['ready', 'review', 'active'] },
+  { key: 'blocked', label: 'blocked', stages: ['blocked'] },
+  { key: 'not_started', label: 'not started', stages: ['you', 'todo'] },
+  { key: 'parked', label: 'parked', stages: ['parked'] },
+  { key: 'done', label: 'done', stages: ['done'] },
+];
+
 /** The board's five column counts, plus how many moves wait on the owner. */
 export function stageCounts(board: BoardItem[], onYou: number): StageCounts {
-  const n = (...stages: BoardStage[]) => board.filter((c) => stages.includes(c.stage)).length;
-  const counts = { done: n('done'), in_review: n('ready', 'review', 'active'), blocked: n('blocked'), parked: n('parked'), not_started: n('you', 'todo') };
+  const n = (key: (typeof BOARD_COLUMNS)[number]['key']) =>
+    board.filter((c) => BOARD_COLUMNS.find((col) => col.key === key)!.stages.includes(c.stage)).length;
+  const counts = { done: n('done'), in_review: n('in_review'), blocked: n('blocked'), parked: n('parked'), not_started: n('not_started') };
   return { ...counts, on_you: onYou, total: counts.done + counts.in_review + counts.blocked + counts.parked + counts.not_started };
 }
 

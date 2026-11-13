@@ -121,8 +121,10 @@ Per `checkpoint-protocol.md` — **Turn-end checklist** (when any issue is `in-f
 - [ ] `## Headline` (one sentence on where the run stands) and `## Blocking the run` (one line
       each, `none` when nothing blocks) rewritten for this turn — the status page leads with them
       (`status-page.md` § What the orchestrator records)
-- [ ] Every owner answer this turn recorded as a decision, and any scope change it made
-      (`bun scripts/campaign-record.ts`, `clarify-gates.md` § Chat feedback intake, item 6)
+- [ ] Every owner answer relayed to you directly this turn, not through the coordinator (which
+      records those itself), recorded as a decision, and any scope change it made; in Pattern C
+      that is every answer (`bun scripts/campaign-record.ts`, `clarify-gates.md` § Chat feedback
+      intake, item 6)
 - [ ] orchestrator_turn_id incremented (monotonic); post-recovery first turn increments per compaction recovery
 - [ ] Session handoff includes CHECKPOINT line (turn N | in-flight issues | LEDGER OPEN count)
 ```

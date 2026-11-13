@@ -33,10 +33,13 @@ facts come from the owner or the orchestrator; each has one home (ADR-052):
 |------|------|-----------|------|
 | Headline (one sentence) | checkpoint `## Headline` | orchestrator | every checkpoint write |
 | Blocking the run (one line each) | checkpoint `## Blocking the run` (`none` when nothing blocks) | orchestrator | every checkpoint write |
-| Scope (in, parked, deferred, blocked upstream, out; date and optional reason) | `config.json` → `campaign_scope.entries` | `bun scripts/campaign-record.ts scope` | the launch configuration gate, and every owner scope change |
-| Your decisions (date, one line) | `owner-decisions.json` | `bun scripts/campaign-record.ts decision` | every owner answer to a gate, and every scope or priority instruction |
+| Scope (in, parked, deferred, blocked upstream, out; date and optional reason) | `config.json` → `campaign_scope.entries` | the coordinator (Pattern B) or the main-chat orchestrator (Pattern C), with `bun scripts/campaign-record.ts scope` | the launch configuration gate, and every owner scope change |
+| Your decisions (date, one line) | `owner-decisions.json` | the coordinator (Pattern B) or the main-chat orchestrator (Pattern C), with `bun scripts/campaign-record.ts decision` | every owner answer to a gate, and every scope or priority instruction |
 
-Only the record script writes the last two (atomic, checked, a repeated call changes nothing):
+In Pattern B the orchestrator records only an answer given to it directly, never one the
+coordinator relayed, so each answer is written once (`clarify-gates.md` § Chat feedback intake,
+item 6). Only the record script writes these two files (atomic, checked, a repeated call changes
+nothing, and re-recording an entry keeps its place and date):
 
 ```bash
 bun scripts/campaign-record.ts scope --kind in --text "Open issues in milestone v2.0" --filter
@@ -84,10 +87,9 @@ Later refreshes rewrite the same file silently.
 
 ## Page layout
 
-Top to bottom, the same facts in every renderer (`templates/status-dashboard/index.html` for the
-Data dashboard, `scripts/lib/campaign-status/html.ts` for `--html`, `dashboard.ts` for the text
-dashboard, all from one `StatusReport`), so the owner sees at a glance where the run stands and
-what to do:
+Top to bottom, the sections of the Data dashboard (`templates/status-dashboard/index.html`) and
+of `--html` (`scripts/lib/campaign-status/html.ts`), both from one `StatusReport`, so the owner
+sees at a glance where the run stands and what to do:
 
 1. **Header** — `<campaign> · <state> · updated <age>` (state `running` / `waiting on you` /
    `idle` / `done`, or `stale` when the newest of the checkpoint and queue write times is older
@@ -103,15 +105,17 @@ what to do:
    cards per column, the rest in a native `<details>` "N more". Each card is a link `#ref title`
    and a one-line status whose colour repeats its words: green done, blue in review, orange your
    move, red a conflict, failing CI or a bad queue entry, grey otherwise
-4. **Workstreams** — done / in review / left / next per stream; a stream button above the board,
-   or a row, shows only that stream (no buttons when there is one stream)
+4. **Workstreams** — done / in review / left / next per stream. On the Data dashboard a stream
+   button above the board, or a row, shows only that stream (no buttons when there is one
+   stream); `--html` ships no script, so it has the table without the filter
 5. **Scope** (in, parked, deferred, blocked upstream, out; "Scope not recorded" when none is),
-   **Config**, **Your decisions** (newest first, four shown, the rest folded)
+   **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest)
 
 `--html` keeps its detail sections after these: in progress, waiting on you, waiting on
 something else by reason class (`elseClasses()`), up next, recently done, and a closed native
-`<details>` with host, checkpoint notes and open findings. The text dashboard prints the headline,
-the board counts, your move, the scope and the newest decisions above its queue sections.
+`<details>` with host, checkpoint notes and open findings. The text dashboard (`dashboard.ts`)
+is shorter: it prints the headline, the board counts, your move, the scope and the newest
+decisions above its queue sections, with no card list and no workstreams.
 Visual rules: R-006 (`documentation/reference/product-principles.md`).
 
 ## State file

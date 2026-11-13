@@ -269,6 +269,47 @@ describe('status dashboard template — every field it reads is a field the plug
     expect(reads).toBeGreaterThan(15);
   });
 
+  // A helper declared before the first drawing (card, ...) is outside every `dash.draw(` chunk, so the
+  // per-drawing check above never sees it, and the union check below passes a field any dataset emits.
+  // Each helper that reads row fields is therefore pinned to the one dataset whose rows it receives.
+  const HELPER_DATASETS: Record<string, StatusDatasetId> = { card: 'board', streamNames: 'streams' };
+  const helpers = [...script.matchAll(/\n {2}function (\w+)\(/g)].map((m) => {
+    const start = m.index! + 1;
+    const rest = script.slice(start + 1);
+    const end = rest.search(/\n {2}(?:function |const |let |dash\.|\/\/)/);
+    return { name: m[1], body: end < 0 ? rest : rest.slice(0, end) };
+  });
+
+  test('every helper that reads row fields is pinned to its dataset, and reads only that dataset\'s fields', () => {
+    let reads = 0;
+    for (const { name, body } of helpers) {
+      const fields = [...body.matchAll(/\br\.([a-z_]+)\b/g)].map((m) => m[1]);
+      if (fields.length === 0) continue;
+      expect(`${name}:${name in HELPER_DATASETS}`).toBe(`${name}:true`);
+      const known = fieldsOf(HELPER_DATASETS[name]);
+      for (const f of fields) {
+        reads++;
+        expect(`${name}.${f}:${known.has(f)}`).toBe(`${name}.${f}:true`);
+      }
+    }
+    expect(reads).toBeGreaterThanOrEqual(5);
+    for (const name of Object.keys(HELPER_DATASETS)) expect(helpers.some((h) => h.name === name)).toBe(true);
+  });
+
+  test('a stream filter a refresh made stale is cleared before the filter, board and streams draw', () => {
+    const m = TEMPLATE.match(/\/\* bh-filter:start \*\/([\s\S]*?)\/\* bh-filter:end \*\//);
+    expect(m).not.toBeNull();
+    const bhFilter = new Function(`${m![1]}; return bhFilter;`)() as (current: string, names: string[]) => string;
+    expect(bhFilter('Payments', ['Payments', 'Search'])).toBe('Payments');
+    expect(bhFilter('Payments', ['Search'])).toBe('');
+    expect(bhFilter('Payments', [])).toBe('');
+    expect(bhFilter('', ['Search'])).toBe('');
+    for (const name of ['filter', 'board', 'streams']) {
+      const chunk = script.slice(script.indexOf(`dash.draw('${name}', (`)).split(/\n {2}dash\.draw\('/)[0];
+      expect(`${name}:${/^dash\.draw\('\w+', \(\w+\) => \{\s*syncFilter\(\);/.test(chunk)}`).toBe(`${name}:true`);
+    }
+  });
+
   test('the staleness block reads only overview columns', () => {
     const block = TEMPLATE.match(/\/\* bh-stale:start \*\/([\s\S]*?)\/\* bh-stale:end \*\//)![1];
     const fields = [...block.matchAll(/overview(?: &&|\)?)?\.([a-z_]+)/g)].map((m) => m[1]);

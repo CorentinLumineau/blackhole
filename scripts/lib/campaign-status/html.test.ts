@@ -385,3 +385,62 @@ describe('renderStatusHtml — class rows', () => {
     expect(html).toMatch(/details\.cls > ul \{[^}]*margin-left/);
   });
 });
+
+describe('renderStatusHtml — the Page layout sections the Data dashboard also shows', () => {
+  const issues: QueueJson['issues'] = {
+    '1': { title: 'gate', status: 'blocked', phase: 'plan', notes: 'awaiting-plan-approval' },
+    '2': { title: 'motion', status: 'in-flight', phase: 'review', pr: 9 },
+    '6': { title: 'old', status: 'merged', pr: 50 },
+  };
+  for (let n = 10; n < 16; n++) issues[String(n)] = { title: `todo ${n}`, status: 'ready', phase: 'handle' };
+  const r = report({ issues }, { checkpointBody: '## Blocking the run\n\n- Waiting on the vendor <b>API</b>\n' });
+  const html = renderStatusHtml(r);
+  const between = (a: string, b: string) => html.slice(html.indexOf(a), html.indexOf(b));
+
+  test('Your move, Blocking the run, the stage board and Workstreams come before Scope, in that order', () => {
+    const order = ['Your move', 'Blocking the run', 'Stage board', 'Workstreams', 'Scope', 'Config', 'Your decisions', 'In progress'].map((h) =>
+      html.indexOf(`<h2>${h}`),
+    );
+    expect(order.every((i) => i > 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  test('Your move lists every move of the report, each a link when it has one', () => {
+    const s = between('<h2>Your move', '<h2>Blocking the run');
+    expect(r.moves.length).toBeGreaterThan(0);
+    for (const m of r.moves) expect(s).toContain(escapeHtml(m.text));
+    expect(s).toContain('<ol');
+  });
+
+  test('Blocking the run shows the checkpoint lines, escaped', () => {
+    const s = between('<h2>Blocking the run', '<h2>Stage board');
+    expect(s).toContain('Waiting on the vendor &lt;b&gt;API&lt;/b&gt;');
+  });
+
+  test('the board has five columns with the report counts, four cards each and the rest folded', () => {
+    const s = between('<h2>Stage board', '<h2>Workstreams');
+    const c = r.stage_counts;
+    for (const [n, label] of [[c.in_review, 'in review'], [c.blocked, 'blocked'], [c.not_started, 'not started'], [c.parked, 'parked'], [c.done, 'done']] as const) {
+      expect(s).toContain(`<h3><b>${n}</b> ${label}</h3>`);
+    }
+    expect(c.not_started).toBe(7);
+    expect(s).toContain('<summary>3 more</summary>');
+    for (const card of r.board) expect(s).toContain(`#${card.ref}`);
+    expect(s).toContain('Nothing here.');
+  });
+
+  test('Workstreams has one row per stream with its counts and next card', () => {
+    const s = between('<h2>Workstreams', '<h2>Scope');
+    for (const row of r.streams) {
+      expect(s).toContain(`<th scope="row">${escapeHtml(row.stream)}</th>`);
+      expect(s).toContain(escapeHtml(row.next));
+    }
+  });
+
+  test('empty campaign: each new section has its empty line', () => {
+    const page = renderStatusHtml(report({ issues: {} }, { checkpointBody: '## Blocking the run\n\nnone\n' }));
+    expect(page).toContain('Nothing is waiting on you.');
+    expect(page).toContain('Nothing blocks the run.');
+    expect(page).toContain('No workstream yet: the queue is empty.');
+  });
+});

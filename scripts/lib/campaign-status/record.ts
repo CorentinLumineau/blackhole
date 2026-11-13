@@ -50,18 +50,22 @@ export function readScopeEntries(config: { campaign_scope?: { entries?: unknown 
  * Adds one entry so the record always says what holds now. A `filter` entry (the launch gate's
  * description of the issue filter) replaces the previous one. An entry naming `refs` takes those refs
  * from every older entry, and an older entry left with no refs is dropped: re-including a parked
- * issue moves it, it does not list it twice. An identical entry is not added again.
+ * issue moves it, it does not list it twice. An entry identical to one already recorded (date aside)
+ * returns `entries` unchanged, so re-running a command neither moves nor re-dates it; that check runs
+ * on the original entries, before the passes above would strip the twin's refs or replace its filter.
  */
 export function addScopeEntry(entries: ScopeEntry[], next: ScopeEntry): ScopeEntry[] {
+  const same = (e: ScopeEntry) =>
+    e.kind === next.kind && e.text === next.text && (e.reason ?? '') === (next.reason ?? '') &&
+    Boolean(e.filter) === Boolean(next.filter) &&
+    JSON.stringify(e.refs ?? []) === JSON.stringify(next.refs ?? []);
+  if (entries.some(same)) return entries;
   const taken = new Set(next.refs ?? []);
   const kept = entries
     .filter((e) => !(next.filter && e.filter))
     .map((e) => (e.refs && taken.size ? { ...e, refs: e.refs.filter((r) => !taken.has(r)) } : e))
     .filter((e) => !e.refs || e.refs.length > 0);
-  const same = (e: ScopeEntry) =>
-    e.kind === next.kind && e.text === next.text && (e.reason ?? '') === (next.reason ?? '') &&
-    JSON.stringify(e.refs ?? []) === JSON.stringify(next.refs ?? []);
-  return kept.some(same) ? kept : [...kept, next];
+  return [...kept, next];
 }
 
 /** The latest scope entry naming `ref`, or null. */

@@ -213,6 +213,15 @@
     return li;
   }
 
+  /* bh-filter:start */
+  // A selected stream that a refresh removed would leave every column empty, with no "All streams"
+  // button to clear it once one stream or none is left, so it is dropped.
+  function bhFilter(current, names) { return current && names.indexOf(current) < 0 ? '' : current; }
+  /* bh-filter:end */
+  function streamNames() { return rowsOf('streams').map((r) => String(r.stream || '')); }
+  // The filter, board and streams drawings call this first, so the three agree on the current list.
+  function syncFilter() { streamFilter = bhFilter(streamFilter, streamNames()); }
+
   // Selecting the shown stream again, or "All streams", clears the filter.
   function setFilter(name) {
     streamFilter = streamFilter === name ? '' : name;
@@ -293,11 +302,13 @@
 
 
   dash.draw('filter', (el) => {
-    const names = rowsOf('streams').map((r) => String(r.stream || ''));
+    syncFilter();
+    const names = streamNames();
     el.replaceChildren(...(names.length > 1 ? [filterButton('All streams', ''), ...names.map((n) => filterButton(n, n))] : []));
   });
 
   dash.draw('board', (el) => {
+    syncFilter();
     const st = dash.data('board').status;
     el.classList.toggle('dash-skeleton', st === 'loading');
     if (st !== 'ok') { el.replaceChildren(); return; }
@@ -328,7 +339,7 @@
   });
 
   // A row selects its stream with the mouse; the button in its first cell does it from the keyboard.
-  dash.draw('streams', (tb) => fill(tb, 'streams', () => rowsOf('streams').map((r, i) => {
+  dash.draw('streams', (tb) => { syncFilter(); fill(tb, 'streams', () => rowsOf('streams').map((r, i) => {
     const tr = mk('tr', 'is-row', '');
     const name = document.createElement('td');
     const b = mk('button', '', String(r.stream || ''), { source: 'streams', field: 'stream', row: i });
@@ -340,7 +351,7 @@
     tr.append(name, cell('done', 't-ok'), cell('in_review', 't-info'), cell('left', ''), mk('td', 'cd-next', String(r.next || ''), { source: 'streams', field: 'next', row: i }));
     tr.addEventListener('click', () => setFilter(r.stream));
     return tr;
-  })));
+  })); });
 
   dash.draw('scope', (dl) => fill(dl, 'scope', () => {
     const out = [];

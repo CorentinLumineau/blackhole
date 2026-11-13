@@ -40,6 +40,14 @@ describe('addScopeEntry — the record says what holds now', () => {
     const e: ScopeEntry = { kind: 'deferred', text: 'Docs pass', set_at: '2026-11-12' };
     expect(addScopeEntry(addScopeEntry([], e), e)).toHaveLength(1);
   });
+
+  test('re-recording an entry with refs, or the filter line, on a later day keeps its place and its date', () => {
+    const parked: ScopeEntry = { kind: 'parked', text: 'Export rework', set_at: '2026-11-11', refs: [12, 14] };
+    const deferred: ScopeEntry = { kind: 'deferred', text: 'Docs pass', set_at: '2026-11-11' };
+    const entries = [filter, parked, deferred];
+    expect(addScopeEntry(entries, { ...parked, set_at: '2026-11-13' })).toEqual(entries);
+    expect(addScopeEntry(entries, { ...filter, set_at: '2026-11-13' })).toEqual(entries);
+  });
 });
 
 describe('readScopeEntries / readDecisions — malformed state is skipped, never guessed', () => {
@@ -93,6 +101,20 @@ describe('campaign-record CLI', () => {
     runRecord(args, NOW);
     const once = fs.readFileSync(path.join(dir, 'config.json'), 'utf-8');
     runRecord(args, NOW);
+    expect(fs.readFileSync(path.join(dir, 'config.json'), 'utf-8')).toBe(once);
+  });
+
+  test('re-running a refs entry and the filter line after other entries, on a later day, leaves the file unchanged', () => {
+    const dir = campaign();
+    const filterArgs = ['scope', '--kind', 'in', '--text', 'Open issues in milestone v1.0', '--filter', '--campaign-dir', dir];
+    const parkedArgs = ['scope', '--kind', 'parked', '--text', 'Theme work', '--refs', '4,5', '--reason', 'needs a design', '--campaign-dir', dir];
+    runRecord(filterArgs, NOW);
+    runRecord(parkedArgs, NOW);
+    runRecord(['scope', '--kind', 'deferred', '--text', 'Docs pass', '--campaign-dir', dir], NOW);
+    const once = fs.readFileSync(path.join(dir, 'config.json'), 'utf-8');
+    const later = new Date('2026-11-20T09:00:00.000Z');
+    runRecord(parkedArgs, later);
+    runRecord(filterArgs, later);
     expect(fs.readFileSync(path.join(dir, 'config.json'), 'utf-8')).toBe(once);
   });
 

@@ -95,15 +95,15 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `config_rows` | Merge mode, autonomy, concurrency, verification, issue filter, kaizen and plugin version, read from `config.json`. Additive |
 
 The text dashboard prints the same `alerts` lines above its output, and `--html` prints them on stderr (stdout stays the page path). `--html` leads with a state banner (turn, state, last activity relative and in UTC, the owner's
-next action), then **In progress**, **Waiting on you** (PRs ready to merge with their links, and
+next action), then the sections of `status-page.md` § Page layout (headline, board counts and quick links; **Your move**; **Blocking the run**; the five-column **Stage board**; **Workstreams**; **Scope**, **Config**, **Your decisions**), then **In progress**, **Waiting on you** (PRs ready to merge with their links, and
 owner gates), **Waiting on something else** (non-owner blocked items by reason class: one visible line per class with its count and first 3 issue numbers, the full list with each item's note in a folded native `<details>`; then, when non-empty, an **Unknown queue status** class (`unclassified`, rendered open) and an **Open PR with no queue entry** class (`untracked_prs`), both built by `elseClasses()` in `report.ts`),
 **Up next**, **Recently done**, and a native `<details>` holding host, checkpoint notes and open
 findings. A stale state is shown as `STALE` so a frozen page never looks live.
 
 Every string comes from campaign state, and issue titles are untrusted: `--html` escapes each
 value, inlines its CSS (theme tokens with a dark-mode block, readable at ~400px) and loads
-nothing from the network. Its only links are the `Open PR` / `Files changed` anchors of the
-**Waiting on you** section (`target=_blank rel=noopener`, http(s) URLs only). Publishing it is `status-page.md`'s job.
+nothing from the network. Its only links are anchors (`target=_blank rel=noopener`, http(s) URLs only): the quick links, the
+moves and board cards, and the `Open PR` / `Files changed` anchors of **Waiting on you**. Publishing it is `status-page.md`'s job.
 
 ## When to print (REQUIRED)
 

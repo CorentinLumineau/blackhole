@@ -240,6 +240,7 @@ When the user enters a message in the chat:
     *   If the user asks, mid-campaign, to "reconfigure scope" or "change merge mode": re-run the **Campaign launch configuration gate** (§ Bootstrap preflight, steps 1-6) on demand — do not wait for a "Campaign complete" report.
     *   Re-write the confirmed `scope_labels`/`scope_milestone`/`merge_mode`/`parallel_max`/`kaizen` fields into `.blackhole/config.json`, and record the new scope and the decision as step 6 of the gate does.
     *   A narrower scope change that needs no form ("park #12", "add the dependency bumps", "that one is blocked upstream") is recorded directly with `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts scope …` and `… decision …` (`clarify-gates.md` § Chat feedback intake, item 6).
+    *   You are the one writer of every owner answer you relay: record it before you pass it to the orchestrator, which does not record a relayed answer again (`clarify-gates.md` § Chat feedback intake, item 6).
     *   After updating, re-run `bun run status` and print the full dashboard so the user sees the effect of the change immediately.
 
 ---
