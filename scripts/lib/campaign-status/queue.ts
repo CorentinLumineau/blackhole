@@ -9,12 +9,19 @@ export function countLedgerByStatus(findings: LedgerFinding[]) {
   return { open: open.length, deferred: deferred.length, block, warn, note };
 }
 
+// The documented `status` and `phase` values of a queue entry (`queue-dag.md` § Per-issue fields).
+// `state-write-guard.ts` refuses any other value; `groupIssuesByPhase` lists one it meets anyway
+// as `unclassified`, so an entry outside the set is never silently dropped from the status page.
+export const QUEUE_STATUSES: readonly string[] = ['blocked', 'ready', 'in-flight', 'merged', 'closed'];
+export const QUEUE_PHASES: readonly string[] = ['handle', 'plan', 'implement', 'review', 'done'];
+
 // Terminal queue statuses — single source shared by every "is this issue active?" check
 // (groupIssuesByPhase, computeWaves). Adding a new terminal status here keeps the dashboard
 // sections and the wave computation in agreement (prevents a silent active/done split).
 export const DONE_STATUSES = ['merged', 'closed'];
 
 const isDone = (issue: QueueIssue) => DONE_STATUSES.includes(issue.status ?? '');
+const SECTIONED_ACTIVE_STATUSES = ['in-flight', 'blocked', 'ready'];
 
 export function groupIssuesByPhase(issues: Record<string, QueueIssue>) {
   const rows: { num: number; issue: QueueIssue }[] = Object.entries(issues)
@@ -26,14 +33,16 @@ export function groupIssuesByPhase(issues: Record<string, QueueIssue>) {
   const inFlight = active.filter((r) => r.issue.status === 'in-flight');
   const blocked = active.filter((r) => r.issue.status === 'blocked');
   const ready = active.filter((r) => r.issue.status === 'ready');
+  // Active entries no section above claims: a missing or undocumented `status`.
+  const unclassified = active.filter((r) => !SECTIONED_ACTIVE_STATUSES.includes(r.issue.status ?? ''));
 
-  return { active, done, inFlight, blocked, ready };
+  return { active, done, inFlight, blocked, ready, unclassified };
 }
 
 // The one count computation behind the dashboard's Queue/Ledger lines and the --json report,
 // so the two can never disagree.
 export function computeStatusCounts(issues: Record<string, QueueIssue>, findings: LedgerFinding[]): StatusCounts {
-  const { active, done, inFlight, blocked, ready } = groupIssuesByPhase(issues);
+  const { active, done, inFlight, blocked, ready, unclassified } = groupIssuesByPhase(issues);
   const by_status: Record<string, number> = {};
   for (const issue of Object.values(issues)) {
     const key = issue.status ?? 'unknown';
@@ -46,6 +55,7 @@ export function computeStatusCounts(issues: Record<string, QueueIssue>, findings
       in_flight: inFlight.length,
       blocked: blocked.length,
       ready: ready.length,
+      unclassified: unclassified.length,
       by_status,
     },
     ledger: countLedgerByStatus(findings),

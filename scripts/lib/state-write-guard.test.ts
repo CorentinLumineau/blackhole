@@ -526,3 +526,67 @@ describe('installStateFile', () => {
     }
   });
 });
+
+describe('validateStateWrite — queue entry status and phase', () => {
+  const check = (issues: Record<string, unknown>, entityKey = 'issues') => {
+    const dir = makeTempDir('state-guard-enum');
+    try {
+      const tmpPath = path.join(dir, 'queue.json.tmp');
+      fs.writeFileSync(tmpPath, JSON.stringify({ [entityKey]: issues }));
+      return validateStateWrite({ tmpPath, livePath: null, entityKey });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  test('accepts every documented status and phase, and an entry that omits them', () => {
+    expect(
+      check({
+        '1': { status: 'ready', phase: 'handle' },
+        '2': { status: 'in-flight', phase: 'review' },
+        '3': { status: 'blocked', phase: 'plan' },
+        '4': { status: 'merged', phase: 'done' },
+        '5': { status: 'closed', phase: 'implement' },
+        '6': {},
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  test('rejects an unknown status and names the entry and the valid values', () => {
+    const result = check({ '7': { status: 'ready' }, '12': { status: 'in-review', phase: 'review' } });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toContain('#12');
+    expect(result.reason).toContain('"in-review"');
+    expect(result.reason).toContain('blocked, ready, in-flight, merged, closed');
+  });
+
+  test('rejects an unknown phase and names the valid values', () => {
+    const result = check({ '3': { status: 'in-flight', phase: 'qa' } });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toContain('phase "qa"');
+    expect(result.reason).toContain('handle, plan, implement, review, done');
+  });
+
+  test('rejects a non-string status', () => {
+    expect(check({ '3': { status: 1 } }).ok).toBe(false);
+  });
+
+  test('does not apply the queue enums to the findings ledger', () => {
+    expect(check({ a: { status: 'deferred', phase: 'hunt' } }, 'findings')).toEqual({ ok: true });
+  });
+
+  test('the CLI exits 1 on an unknown status', async () => {
+    const dir = makeTempDir('state-guard-enum-cli');
+    try {
+      const tmpPath = path.join(dir, 'queue.json.tmp');
+      fs.writeFileSync(tmpPath, JSON.stringify({ issues: { '4': { status: 'in-review' } } }));
+      const { exitCode, stderr } = await runStateWriteGuardCli(['--tmp', tmpPath, '--entity-key', 'issues']);
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain('in-review');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

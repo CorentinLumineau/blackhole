@@ -16,7 +16,8 @@ export function fetchForgeCounts(scope: CampaignScope, repo: string): ForgeCount
   // A PR-list failure must never render as a clean zero (issue #864): `ok: false` with the
   // error text, while the issue count that did succeed stays populated.
   try {
-    return { openIssues, openPrs: listPrs(repo, 'open', COUNT_LIMIT).length, ok: true };
+    const prs = listPrs(repo, 'open', COUNT_LIMIT);
+    return { openIssues, openPrs: prs.length, openPrList: prs.map((p) => ({ number: p.number, title: p.title })), ok: true };
   } catch (error) {
     return { openIssues, openPrs: 0, ok: false, error: errorText(error) };
   }

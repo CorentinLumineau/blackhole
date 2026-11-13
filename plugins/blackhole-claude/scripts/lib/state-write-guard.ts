@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readJsonFile } from './fs.ts';
 import { parseFlags } from './argv-flags.ts';
+import { QUEUE_PHASES, QUEUE_STATUSES } from './campaign-status/queue.ts';
 
 // Issue #489 — the write-protocol guard `blackhole-state.md` § Write protocol prescribes before
 // every atomic install of a `.tmp` file over `queue.json`/`findings-ledger.json`. Replaces the
@@ -31,6 +32,28 @@ const countEntities = (parsed: unknown, entityKey: string): number | null => {
   const value = (parsed as Record<string, unknown>)[entityKey];
   if (Array.isArray(value)) return value.length;
   if (typeof value === 'object' && value !== null) return Object.keys(value).length;
+  return null;
+};
+
+// queue.json's entity key. Only its entries carry the `status`/`phase` enums of `QUEUE_STATUSES` /
+// `QUEUE_PHASES`; the ledger's `findings` use their own status vocabulary and are not checked here.
+const QUEUE_ENTITY_KEY = 'issues';
+
+/** The first queue entry whose `status` or `phase` is present but undocumented, as a refusal reason. */
+const queueEnumError = (entries: unknown): string | null => {
+  if (typeof entries !== 'object' || entries === null) return null;
+  const fields: Array<[string, readonly string[]]> = [
+    ['status', QUEUE_STATUSES],
+    ['phase', QUEUE_PHASES],
+  ];
+  for (const [num, entry] of Object.entries(entries)) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    for (const [field, allowed] of fields) {
+      const value = (entry as Record<string, unknown>)[field];
+      if (value === undefined || (typeof value === 'string' && allowed.includes(value))) continue;
+      return `queue entry #${num} has ${field} ${JSON.stringify(value)} — valid values: ${allowed.join(', ')}`;
+    }
+  }
   return null;
 };
 
@@ -94,6 +117,11 @@ export const validateStateWrite = ({
   const tmpCount = countEntities(parsed, entityKey);
   if (tmpCount === null) {
     return { ok: false, reason: `${tmpPath} is missing the required "${entityKey}" key or it is not an object/array` };
+  }
+
+  if (entityKey === QUEUE_ENTITY_KEY) {
+    const enumError = queueEnumError((parsed as Record<string, unknown>)[entityKey]);
+    if (enumError) return { ok: false, reason: enumError };
   }
 
   const liveExists = livePath !== null && fs.existsSync(livePath);

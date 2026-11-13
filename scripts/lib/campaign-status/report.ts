@@ -3,7 +3,7 @@ import { prWebUrl } from '../forge-detection.ts';
 import { classifyBlocked, CLASS_PREVIEW, groupBlockedRows, waitReason, type WaitReason } from './blocked-classes.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
 import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
-import { computeStatusCounts, groupIssuesByPhase } from './queue.ts';
+import { computeStatusCounts, groupIssuesByPhase, QUEUE_STATUSES } from './queue.ts';
 import type {
   BlockedClass,
   BlockedGroup,
@@ -171,6 +171,23 @@ export function inProgressItems(r: Pick<StatusReport, 'in_flight' | 'in_review' 
   return [...r.in_flight, ...r.in_review].filter((i) => !delivered.has(i.issue));
 }
 
+const UNTRACKED_PR_STEP = 'No queue entry names this PR: add one at the next sync, or close the PR';
+
+/**
+ * The "Waiting on something else" rows of the page: the blocked classes, then one row for entries with an
+ * unknown status and one for open PRs no entry names, each only when non-empty. Both renderers read this.
+ */
+export function elseClasses(r: Pick<StatusReport, 'blocked_classes' | 'unclassified' | 'untracked_prs'>): BlockedClass[] {
+  const untracked: StatusItem[] = (r.untracked_prs ?? []).map((p) => ({
+    issue: p.pr, title: p.title, phase: null, status: null, pr: p.pr, notes: null, next_step: UNTRACKED_PR_STEP,
+  }));
+  const extra: BlockedClass[] = [
+    { class: 'unclassified', label: 'Unknown queue status', count: r.unclassified.length, attention: true, issues: r.unclassified },
+    { class: 'untracked_pr', label: 'Open PR with no queue entry', count: untracked.length, attention: false, issues: untracked },
+  ];
+  return [...r.blocked_classes, ...extra.filter((c) => c.count > 0)];
+}
+
 /** What the owner has to do for an owner item: its note without the gate token, else the generic next step. */
 export function ownerDetail(item: StatusItem): string {
   const note = (item.notes ?? '').replace(/^\s*(awaiting-[\w-]+|blocked-escalated):?\s*/, '').trim();
@@ -251,12 +268,25 @@ function recentlyDone(done: IssueRow[]): StatusItem[] {
     .map((r) => toItem(r));
 }
 
+const unclassifiedStep = (issue: QueueIssue): string =>
+  `Fix the queue entry: status ${issue.status == null ? 'is missing' : `"${issue.status}" is not one of`} ${QUEUE_STATUSES.join(', ')}`;
+
+// Reads only the PR list the forge counts already fetched: offline it is absent and this is null.
+function untrackedPrs(issues: Record<string, QueueIssue>, forge: ForgeCounts): StatusReport['untracked_prs'] {
+  if (!forge.ok || !forge.openPrList) return null;
+  const tracked = new Set(Object.values(issues).map((i) => i.pr).filter((pr): pr is number => pr != null));
+  return forge.openPrList
+    .filter((p) => !tracked.has(p.number))
+    .sort((a, b) => a.number - b.number)
+    .map((p) => ({ pr: p.number, title: p.title }));
+}
+
 /** Builds the `bun run status --json` report from already-loaded state. Pure: no I/O. */
 export function buildStatusReport(input: StatusReportInput): StatusReport {
   const { config, queue, ledger, checkpoint, checkpointBody, forge } = input;
   const issues = queue.issues ?? {};
   const findings = ledger.findings ?? [];
-  const { inFlight, blocked, ready, done } = groupIssuesByPhase(issues);
+  const { inFlight, blocked, ready, done, unclassified } = groupIssuesByPhase(issues);
   const counts = computeStatusCounts(issues, findings);
   const scope = readScope(config);
   const blockedGroups = groupBlocked(blocked, issues);
@@ -322,6 +352,8 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
     blocked: blockedGroups,
     blocked_classes: classifyBlockedRows(blocked, issues),
     ready: ready.map((r) => toItem(r)),
+    unclassified: unclassified.map((r) => ({ ...toItem(r), next_step: unclassifiedStep(r.issue) })),
+    untracked_prs: untrackedPrs(issues, forge),
     recently_done: recentlyDone(done),
     ledger_open: sortOpenFindings(findings).map((f) => ({
       id: f.id ?? null,

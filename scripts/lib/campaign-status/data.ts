@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { classPreview } from './blocked-classes.ts';
-import { inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
+import { elseClasses, inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
 import { STALE_AFTER_HOURS } from './staleness.ts';
 import type { StatusItem, StatusReport } from './types.ts';
 
@@ -98,7 +98,7 @@ export function buildStatusData(r: StatusReport): StatusDatasets {
     summary: [summaryRow(r)],
     in_progress: inProgressRows(r),
     waiting_on_you: waitingOnYouRows(r),
-    waiting_else: r.blocked_classes.map((c) => {
+    waiting_else: elseClasses(r).map((c) => {
       const preview = classPreview(c.issues, c.count);
       return {
         kind: c.class,
@@ -109,7 +109,7 @@ export function buildStatusData(r: StatusReport): StatusDatasets {
         more_count: preview.more,
       };
     }),
-    waiting_else_items: r.blocked_classes.flatMap((c) =>
+    waiting_else_items: elseClasses(r).flatMap((c) =>
       c.issues.map((i) => ({ class: c.class, issue: i.issue, title: i.title, pr: i.pr, detail: i.notes?.trim() || i.next_step })),
     ),
     up_next: r.ready.map((i) => ({ issue: i.issue, title: i.title })),

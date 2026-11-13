@@ -93,6 +93,10 @@ mutation happened not to run in the same incident.
      for a legitimate reduction (an issue removed, a ledger rotated to `archive/`) — even with
      `--allow-shrink`, a collapse to exactly zero is always refused; a declared shrink is not a
      declared wipe
+   - (`issues` only) a queue entry carries a `status` or `phase` outside the documented values
+     (`queue-dag.md` § Per-issue fields, `QUEUE_STATUSES` / `QUEUE_PHASES` in
+     `scripts/lib/campaign-status/queue.ts`); the reason names the entry and the valid values.
+     A review in progress is `status: in-flight` with `phase: review`; review is a phase, not a status
 4. Only on a passing validation, atomically install: `mv <file>.tmp <file>`.
 5. Bump `refreshed_at` on every mutation.
 6. Idempotency: dedup ledger by `(vcode, file, line, issue_ref)` before append.

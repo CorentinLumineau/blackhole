@@ -5,6 +5,7 @@ import * as path from 'path';
 import { parseStatusArgs } from './cli.ts';
 import { formatDashboard } from './dashboard.ts';
 import { buildStatusData } from './data.ts';
+import { renderStatusHtml } from './html.ts';
 import { buildStatusReport, classifyBlocked, inProgressItems, READY_TO_MERGE_DETAIL, readyToMergeDetail } from './report.ts';
 import { loadCampaignState } from './state.ts';
 import type { ForgeCounts, QueueJson } from './types.ts';
@@ -82,6 +83,7 @@ describe('buildStatusReport — JSON shape against the fixtures', () => {
         in_flight: 1,
         blocked: 1,
         ready: 0,
+        unclassified: 0,
         by_status: { 'in-flight': 1, blocked: 1, merged: 1 },
       },
       ledger: { open: 2, block: 1, warn: 1, note: 0, deferred: 1 },
@@ -194,12 +196,12 @@ describe('buildStatusReport — wait-reason grouping', () => {
 
 describe('text dashboard and JSON report the same counts', () => {
   function dashboardCounts(text: string) {
-    const q = text.match(/\*\*Queue:\*\* (\d+) active · (\d+) done · (\d+) in-flight · (\d+) blocked · (\d+) ready/);
+    const q = text.match(/\*\*Queue:\*\* (\d+) active · (\d+) done · (\d+) in-flight · (\d+) blocked · (\d+) ready(?: · (\d+) unclassified)?/);
     const l = text.match(/\*\*Ledger:\*\* (\d+) open \(BLOCK (\d+) · WARN (\d+) · NOTE (\d+)\) · (\d+) deferred/);
     if (!q || !l) throw new Error(`dashboard count lines not found:\n${text}`);
-    const [active, done, in_flight, blocked, ready] = q.slice(1).map(Number);
+    const [active, done, in_flight, blocked, ready, unclassified] = q.slice(1).map((n) => Number(n ?? 0));
     const [open, block, warn, note, deferred] = l.slice(1).map(Number);
-    return { queue: { active, done, in_flight, blocked, ready }, ledger: { open, block, warn, note, deferred } };
+    return { queue: { active, done, in_flight, blocked, ready, unclassified }, ledger: { open, block, warn, note, deferred } };
   }
 
   test('fixture campaign', () => {
@@ -212,9 +214,9 @@ describe('text dashboard and JSON report the same counts', () => {
   });
 
   test('synthetic 40-issue campaign with mixed statuses and severities', () => {
-    const statuses = ['ready', 'blocked', 'in-flight', 'merged', 'closed'];
+    const statuses = ['ready', 'blocked', 'in-flight', 'merged', 'closed', 'in-review'];
     const issues: QueueJson['issues'] = {};
-    for (let i = 1; i <= 40; i++) issues[String(i)] = { title: `t${i}`, status: statuses[i % 5], phase: 'plan' };
+    for (let i = 1; i <= 40; i++) issues[String(i)] = { title: `t${i}`, status: statuses[i % 6], phase: 'plan' };
     const severities = ['BLOCK', 'WARN', 'NOTE', 'INFO'];
     const findings = Array.from({ length: 23 }, (_, i) => ({
       id: `F-${i}`,
@@ -603,5 +605,70 @@ describe('buildStatusReport — a PR held for the owner (needs-chef)', () => {
     });
     expect(only.state.underlying).toBe('waiting_on_you');
     expect(only.state.next_action).toBe('Review and merge PR #21 (#1)');
+  });
+});
+
+describe('buildStatusReport — entries no section claims, and PRs no entry names', () => {
+  const queue: QueueJson = {
+    issues: {
+      '1': { title: 'written with an undocumented status', status: 'in-review', phase: 'review', pr: 31 },
+      '2': { title: 'no status at all', phase: 'plan' },
+      '3': { title: 'tracked', status: 'in-flight', phase: 'implement', pr: 32 },
+      '4': { title: 'done', status: 'merged', phase: 'done', pr: 30 },
+    },
+  };
+  const build = (forge: ForgeCounts) =>
+    buildStatusReport({
+      config: { repo: 'acme/widgets' }, queue, ledger: {}, checkpoint: {}, forge, paceLine: null, hostNotes: [], generatedAt: GENERATED_AT,
+    });
+  const online = build({
+    openIssues: 3,
+    openPrs: 4,
+    openPrList: [
+      { number: 40, title: 'chore: bump a dependency' },
+      { number: 31, title: 'undocumented status PR' },
+      { number: 32, title: 'tracked PR' },
+      { number: 35, title: 'fix: trunk build' },
+    ],
+    ok: true,
+  });
+
+  test('an active entry with an unknown or missing status is counted and listed, not dropped', () => {
+    expect(online.counts.queue.active).toBe(3);
+    expect(online.counts.queue.unclassified).toBe(2);
+    expect(online.unclassified.map((i) => i.issue)).toEqual([1, 2]);
+    expect(online.unclassified[0].next_step).toBe('Fix the queue entry: status "in-review" is not one of blocked, ready, in-flight, merged, closed');
+    expect(online.unclassified[1].next_step).toContain('status is missing');
+    const sectioned = [...online.in_flight, ...online.in_review, ...online.ready, ...online.blocked.flatMap((g) => g.issues)];
+    expect(sectioned.map((i) => i.issue)).toEqual([3]);
+  });
+
+  test('open PRs that no queue entry names are listed, lowest number first', () => {
+    expect(online.untracked_prs).toEqual([
+      { pr: 35, title: 'fix: trunk build' },
+      { pr: 40, title: 'chore: bump a dependency' },
+    ]);
+  });
+
+  test('offline (no PR list) the untracked list is null, never a clean empty', () => {
+    expect(build({ openIssues: 0, openPrs: 0, ok: false, error: 'skipped' }).untracked_prs).toBeNull();
+    expect(build(FORGE_OK).untracked_prs).toBeNull();
+  });
+
+  test('both reach the dashboard data, the text dashboard and the HTML page', () => {
+    const data = buildStatusData(online);
+    expect(data.waiting_else.map((c) => [c.kind, c.count])).toEqual([
+      ['unclassified', 2],
+      ['untracked_pr', 2],
+    ]);
+    expect(data.waiting_else_items.filter((i) => i.class === 'untracked_pr').map((i) => i.pr)).toEqual([35, 40]);
+    const text = formatDashboard({ checkpoint: {}, queue, ledger: {}, forge: FORGE_OK });
+    expect(text).toContain('2 unclassified');
+    expect(text).toContain('### Unclassified');
+    expect(text).toContain('#1');
+    const html = renderStatusHtml(online);
+    expect(html).toContain('Unknown queue status');
+    expect(html).toContain('Open PR with no queue entry');
+    expect(html).toContain('fix: trunk build');
   });
 });
