@@ -7,6 +7,10 @@ const [WRONG, INTENTIONAL, NOT_WORTH] = OUTCOME_STATUSES;
 const WRONG_MIN_N = 5;
 const WRONG_SHARE_PCT = 30;
 const FIXED_MIN_COUNT = 5;
+// Blocking slop codes follow Tricorder (ADR-134): probation from 10% wrong, demote above 25%, and
+// no verdict before 20 triaged rows, since one wrong row in five would already read as 20%.
+const BLOCKING_SLOP = { minN: 20, probationPct: 10, demoteAbovePct: 25 };
+const STRICT_THRESHOLDS: Record<string, typeof BLOCKING_SLOP> = { 'V-UX-09': BLOCKING_SLOP, 'V-UX-10': BLOCKING_SLOP };
 
 type NoiseRow = { vcode?: unknown; status?: unknown; created_at?: unknown; rounds_to_lgtm?: unknown };
 
@@ -72,7 +76,11 @@ export const buildNoiseReport = (rows: unknown[], opts: { now: number; sinceMs: 
       const fixedCount = triaged.filter((r) => (FIXED_STATUSES as readonly string[]).includes(r.status as string)).length;
       const wrongPct = share(triaged, [WRONG]);
       const flags: string[] = [];
-      if (triaged.length >= WRONG_MIN_N && wrongPct >= WRONG_SHARE_PCT) flags.push('tune or demote');
+      const strict = STRICT_THRESHOLDS[vcode];
+      if (strict) {
+        if (triaged.length >= strict.minN && wrongPct > strict.demoteAbovePct) flags.push('tune or demote');
+        else if (triaged.length >= strict.minN && wrongPct >= strict.probationPct) flags.push('probation');
+      } else if (triaged.length >= WRONG_MIN_N && wrongPct >= WRONG_SHARE_PCT) flags.push('tune or demote');
       if (fixedCount >= FIXED_MIN_COUNT) flags.push('encode as lint/CI');
       return {
         vcode,

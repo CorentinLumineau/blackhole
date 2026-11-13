@@ -363,9 +363,15 @@ instructions: |
       set, or one a repo lint or ratchet already gates, gets no finding. Only the first question
       yields a finding; two in-set values that differ are not a per-site finding, because a diff
       cannot show whether the difference was meant. When the project declares two sets for one axis
-      that disagree, report the disagreement once against the design-system source. Both codes
-      `BLOCK`, so a finding needs a site confirmed against the declared set; a value you cannot tie
-      to one is a suggestion, not a finding. (Mirrors mercure's slop-test doctrine.)
+      that disagree, report the disagreement once against the design-system source. (Mirrors
+      mercure's slop-test doctrine, ADR-134.)
+      *   **Citation**: every slop finding carries `cited_value`, the literal exactly as written on
+          `file:line`, and for `V-UX-09` also `declared_set_ref`, `<set file>#<axis>` with the axis
+          one of `radius`, `color`, `font-size`, `shadow`, `spacing`. `review-aggregate.ts`
+          re-checks the citation with `--base-ref`: the value must be net-new in the file and absent
+          from the base-branch set. Only a verified row keeps its severity; any other row is
+          downgraded with an `[unverified slop citation: <reason>]` caveat. Shapes the check never
+          verifies: spacing scales, computed values, `var()`, JSON or JS token configs.
       *   **`V-UX-09` (values)**: a raw palette utility, a hex literal in a template, an arbitrary
           size, or a radius, weight, icon size, duration or spacing step outside the declared set.
           Not slop: a value at its definition site (theme stylesheet, `:root`/`:host` block, tokens
@@ -373,9 +379,10 @@ instructions: |
           inherit the app's tokens (shadow-DOM widget, email or Open Graph renderer) when it uses its
           own declared variables; a raw value an external contract requires (brand logo fill, chart
           library palette). Primitives that consume tokens stay in scope.
-      *   **`V-UX-10` (copy)**: user-visible strings only — "Something went wrong" where the failed
-          action is known, "…successfully", filler ("Please try again later", "Oops!"), emoji as
-          status, mixed case among sibling labels.
+      *   **`V-UX-10` (copy)**: user-visible strings in rendered files only. The check verifies the
+          closed list: "…successfully", "Please try again later", "Oops", "Whoops", "Uh oh", and an
+          emoji leading a status string. "Something went wrong" where the failed action is known,
+          and mixed case among sibling labels, need judgment, so the check never verifies them.
       *   **Mechanize on repeat**: when this review confirms the same shape at 2+ sites, or the
           campaign's `findings-ledger.json` already holds a confirmed finding of that shape, record
           the finding's suggestion as "add a lint or shrink-only ratchet", which the orchestrator
@@ -937,6 +944,9 @@ instructions: |
   `verification_mode` (on a finding) and `verification_legs` (top-level) are both optional
   (ADR-036, § Executed vs. Reasoned Verification Disclosure) — disclosing executed-vs-reasoned basis for a finding and for a clean leg
   respectively. Neither authorizes bypassing `with-test-lock`.
+
+  A `V-UX-09`/`V-UX-10` finding also carries `cited_value` and, for `V-UX-09`, `declared_set_ref`
+  (`<set file>#<axis>`); without them it cannot stay `BLOCK` (§ Static UX Checks, ADR-134).
 
   On audit failure (cannot read PR, missing plan), return `{ "status": "error", "findings": [], "error": "..." }`.
 

@@ -1,5 +1,6 @@
 import { readJsonFile } from './lib/fs.ts';
 import { parseFlags } from './lib/argv-flags.ts';
+import { decide, gitIo } from './lib/slop-citation/slop-citation-check.mjs';
 
 export type Finding = {
   id?: string;
@@ -18,7 +19,12 @@ export type Finding = {
   root_cause?: string;
   // Ledger status on prior rows; absent on fresh reviewer findings.
   status?: string;
+  // V-UX-09/10 citation (ADR-134): the literal value, and for V-UX-09 `<set file>#<axis>`.
+  cited_value?: string;
+  declared_set_ref?: string;
 };
+
+export type SlopCheck = (finding: Finding) => { verified: boolean; reason?: string };
 
 // Queue `review_iteration` value (incremented after each changes_requested run) at which an
 // aggregate that is still not LGTM returns `rethink`.
@@ -232,8 +238,34 @@ function applyVerificationDowngrades(
   );
 }
 
+const SLOP_CODES = new Set(['V-UX-09', 'V-UX-10']);
+const SLOP_CAVEAT_RE = /\s?\[unverified slop citation: [\w-]+\]/;
+
+/**
+ * ADR-134: a V-UX-09/10 BLOCK stands only when the deterministic citation check verifies it.
+ * Everything else, including a row with no citation or a run with no check (no --base-ref),
+ * downgrades to WARN with the check's reason, so the reviewer's judgment alone never blocks.
+ */
+export function applySlopCitationCheck(findings: Finding[], check?: SlopCheck): Finding[] {
+  return findings.map((finding) => {
+    if (finding.severity !== 'BLOCK' || !SLOP_CODES.has(finding.vcode)) return finding;
+    const cited = finding.cited_value && (finding.vcode === 'V-UX-10' || finding.declared_set_ref);
+    const outcome = !cited
+      ? { verified: false, reason: 'missing-citation' }
+      : check
+        ? check(finding)
+        : { verified: false, reason: 'no-base-ref' };
+    if (outcome.verified) return finding;
+    const summary = SLOP_CAVEAT_RE.test(finding.summary)
+      ? finding.summary
+      : `${finding.summary} [unverified slop citation: ${outcome.reason ?? 'not-verified'}]`;
+    return { ...finding, severity: 'WARN', summary };
+  });
+}
+
 function normalizeSummary(summary: string): string {
   return summary
+    .replace(SLOP_CAVEAT_RE, '')
     .replace(LOW_CONFIDENCE_CAVEAT_RE, '')
     .replace(UNVERIFIED_CAVEAT, '')
     .toLowerCase()
@@ -386,6 +418,8 @@ export function aggregateReview(input: {
   // Opts into review-convergence rules (review-core.md § Review convergence); absent keeps the
   // legacy behaviour. `reviewIteration` is the queue value read before this run.
   convergence?: { reviewIteration: number };
+  // Deterministic V-UX-09/10 citation check (ADR-134); the CLI builds it from --base-ref.
+  slopCheck?: SlopCheck;
 }): AggregateOutput {
   if (input.reviewer.status === 'error') {
     return {
@@ -405,9 +439,10 @@ export function aggregateReview(input: {
   const { kept: fresh, rechecked } = input.convergence
     ? dropRepeatsOfPrior(stamped, prior)
     : { kept: stamped, rechecked: [] };
-  const verifiedDowngrades = input.verification?.length
-    ? applyVerificationDowngrades(fresh, input.verification)
-    : fresh;
+  const verifiedDowngrades = applySlopCitationCheck(
+    input.verification?.length ? applyVerificationDowngrades(fresh, input.verification) : fresh,
+    input.slopCheck,
+  );
   const { findings: verified, unverified } = input.convergence
     ? applyConvergenceSeverity(verifiedDowngrades, input.verification)
     : { findings: verifiedDowngrades, unverified: [] as string[] };
@@ -442,6 +477,7 @@ function parseArgs(argv: string[]): {
   priorFile?: string;
   verificationFile?: string;
   reviewIteration?: string;
+  baseRef?: string;
 } {
   const flags = parseFlags(argv.slice(2));
   return {
@@ -451,6 +487,7 @@ function parseArgs(argv: string[]): {
     priorFile: typeof flags['prior-file'] === 'string' ? flags['prior-file'] : undefined,
     verificationFile: typeof flags['verification-file'] === 'string' ? flags['verification-file'] : undefined,
     reviewIteration: typeof flags['review-iteration'] === 'string' ? flags['review-iteration'] : undefined,
+    baseRef: typeof flags['base-ref'] === 'string' ? flags['base-ref'] : undefined,
   };
 }
 
@@ -484,11 +521,11 @@ function isVerificationEntryArray(value: unknown): value is VerificationEntry[] 
 }
 
 if (import.meta.main) {
-  const { reviewerFile, issueRef, prRef, priorFile, verificationFile, reviewIteration } = parseArgs(process.argv);
+  const { reviewerFile, issueRef, prRef, priorFile, verificationFile, reviewIteration, baseRef } = parseArgs(process.argv);
 
   if (!reviewerFile || !issueRef) {
     console.error(
-      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>]',
+      'Usage: bun run scripts/review-aggregate.ts --reviewer-file <path> --issue-ref <N> [--pr-ref <P>] [--prior-file <ledger-rows.json>] [--verification-file <verification-entries.json>] [--review-iteration <N>] [--base-ref <PR base ref>]',
     );
     process.exit(1);
   }
@@ -552,7 +589,27 @@ if (import.meta.main) {
       }
     }
 
+    let slopCheck: SlopCheck | undefined;
+    if (baseRef) {
+      // One git snapshot per run; the PR checkout is the working tree's HEAD.
+      let io: ReturnType<typeof gitIo> | null = null;
+      try {
+        io = gitIo({ base: baseRef, head: 'HEAD' });
+      } catch {
+        console.error(`warning: --base-ref ${baseRef} does not resolve — V-UX-09/10 BLOCK findings downgrade to WARN`);
+      }
+      slopCheck = (f) => {
+        if (!io) return { verified: false, reason: 'ref-unresolved' };
+        const [setFile, axis] = (f.declared_set_ref ?? '').split('#');
+        const r = decide({ code: f.vcode, file: f.file, line: f.line, value: f.cited_value, axis, setFile }, io);
+        return r.verdict === 'VERIFIED' ? { verified: true } : { verified: false, reason: r.reason };
+      };
+    } else {
+      console.error('warning: --base-ref omitted — V-UX-09/10 BLOCK findings downgrade to WARN (ADR-134)');
+    }
+
     const result = aggregateReview({
+      slopCheck,
       convergence,
       reviewer: reviewerRaw,
       issueRef: issueRefNum,

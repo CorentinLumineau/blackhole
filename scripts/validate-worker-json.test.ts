@@ -615,6 +615,12 @@ describe('validateWorker reviewer', () => {
   test('finding with no verification_mode key still validates (backward compatible)', () =>
     expectValid('reviewer', 'reviewer-complete-vada-finding.json'));
 
+  // ADR-134 — V-UX-09/10 citation fields on the shared Finding shape.
+  test('valid finding with cited_value and declared_set_ref', () =>
+    expectValid('reviewer', 'reviewer-complete-slop-citation.json'));
+  test('invalid cited_value type and declared_set_ref without #axis', () =>
+    expectInvalid('reviewer', 'reviewer-invalid-slop-citation-type.json'));
+
   // ADR-036 (issue #815) — top-level verification_legs[] array.
   test('valid verification_legs entry', () =>
     expectValid('reviewer', 'reviewer-complete-verification-legs.json'));

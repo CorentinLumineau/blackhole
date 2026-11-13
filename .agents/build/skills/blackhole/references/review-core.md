@@ -312,8 +312,15 @@ bun run scripts/review-aggregate.ts \
   [--pr-ref <P>] \
   [--prior-file <ledger-rows.json>] \
   [--verification-file <verification-entries.json>] \
-  --review-iteration <queue review_iteration>
+  --review-iteration <queue review_iteration> \
+  --base-ref <PR base branch>
 ```
+
+`--base-ref` (ADR-134) runs the slop citation check on every `V-UX-09`/`V-UX-10` `BLOCK`, using
+the vendored `scripts/lib/slop-citation/slop-citation-check.mjs` against the PR checkout. A row
+whose citation is missing or not verified is downgraded, with the reason in an
+`[unverified slop citation: <reason>]` caveat (§ Static UX Checks in the reviewer). Omitting the
+flag downgrades every such row, so a missing flag can never let an unverified slop finding block.
 
 `--prior-file` rows must include each finding's ledger `id` (issue #485) — without it, a
 `recheck[]` `verdict: fixed` entry naming that finding cannot resolve, and it surfaces in

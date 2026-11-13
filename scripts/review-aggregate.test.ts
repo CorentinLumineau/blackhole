@@ -1067,3 +1067,90 @@ describe('review convergence', () => {
     expect(statuses).toEqual(['changes_requested', 'changes_requested', 'changes_requested', 'rethink']);
   });
 });
+
+describe('slop citation check (V-UX-09/10, ADR-134)', () => {
+  const slop = (overrides: Partial<Finding> = {}) =>
+    baseFinding({
+      id: 'S1',
+      vcode: 'V-UX-09',
+      severity: 'BLOCK',
+      file: 'src/Card.tsx',
+      line: 2,
+      summary: 'radius outside the declared set',
+      cited_value: 'rounded-sm',
+      declared_set_ref: 'DESIGN.md#radius',
+      ...overrides,
+    });
+  const run = (findings: Finding[], slopCheck?: (f: Finding) => { verified: boolean; reason?: string }) =>
+    aggregateReview({ reviewer: { status: 'complete', findings }, issueRef: 1, slopCheck });
+
+  test('a verified citation keeps the BLOCK', () => {
+    const r = run([slop()], () => ({ verified: true }));
+    expect(r.findings[0].severity).toBe('BLOCK');
+    expect(r.blockers_count).toBe(1);
+  });
+
+  test('an unverified citation downgrades to WARN with the reason in a caveat', () => {
+    const r = run([slop()], () => ({ verified: false, reason: 'key-in-set' }));
+    expect(r.findings[0].severity).toBe('WARN');
+    expect(r.findings[0].summary).toContain('[unverified slop citation: key-in-set]');
+    expect(r.blockers_count).toBe(0);
+  });
+
+  test('a row without cited_value never blocks, and the check is not called', () => {
+    let called = false;
+    const r = run([slop({ cited_value: undefined })], () => ((called = true), { verified: true }));
+    expect(called).toBe(false);
+    expect(r.findings[0].severity).toBe('WARN');
+    expect(r.findings[0].summary).toContain('[unverified slop citation: missing-citation]');
+  });
+
+  test('no check available (no --base-ref) downgrades instead of trusting the reviewer', () => {
+    const r = run([slop()]);
+    expect(r.findings[0].severity).toBe('WARN');
+    expect(r.findings[0].summary).toContain('[unverified slop citation: no-base-ref]');
+  });
+
+  test('the caveat is not appended twice', () => {
+    const once = slop({ summary: 'radius outside the declared set [unverified slop citation: key-in-set]' });
+    const r = run([once], () => ({ verified: false, reason: 'key-in-set' }));
+    expect(r.findings[0].summary.match(/unverified slop citation/g)).toHaveLength(1);
+  });
+
+  test('other codes and non-BLOCK slop rows are untouched', () => {
+    let calls = 0;
+    const check = () => (calls++, { verified: false, reason: 'x' });
+    const r = run([baseFinding({ vcode: 'V-SEC-02', severity: 'BLOCK' }), slop({ id: 'S2', severity: 'WARN' })], check);
+    expect(calls).toBe(0);
+    expect(r.findings.find((f) => f.vcode === 'V-SEC-02')?.severity).toBe('BLOCK');
+  });
+
+  test('V-UX-10 needs only cited_value', () => {
+    const r = run([slop({ vcode: 'V-UX-10', declared_set_ref: undefined, cited_value: 'Saved successfully' })], () => ({ verified: true }));
+    expect(r.findings[0].severity).toBe('BLOCK');
+  });
+});
+
+describe('review-aggregate CLI --base-ref (ADR-134)', () => {
+  test('an unresolvable --base-ref downgrades a slop BLOCK instead of failing the run', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agg-slop-'));
+    const reviewerFile = path.join(dir, 'reviewer.json');
+    fs.writeFileSync(
+      reviewerFile,
+      JSON.stringify({
+        status: 'complete',
+        findings: [
+          baseFinding({ vcode: 'V-UX-09', severity: 'BLOCK', cited_value: 'rounded-sm', declared_set_ref: 'DESIGN.md#radius' }),
+        ],
+      }),
+    );
+    const { exitCode, stdout } = await runReviewAggregateCli([
+      '--reviewer-file', reviewerFile, '--issue-ref', '1', '--base-ref', 'refs/heads/no-such-branch-for-test',
+    ]);
+    fs.rmSync(dir, { recursive: true, force: true });
+    expect(exitCode).toBe(0);
+    const out = JSON.parse(stdout);
+    expect(out.findings[0].severity).toBe('WARN');
+    expect(out.findings[0].summary).toContain('[unverified slop citation: ref-unresolved]');
+  });
+});
