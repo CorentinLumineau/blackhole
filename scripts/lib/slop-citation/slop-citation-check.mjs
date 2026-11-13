@@ -1,4 +1,4 @@
-// vendored from mercure@85a0aebd mercure-plugin/scripts/slop-citation-check.mjs body-sha256=44fa7c26e467cf3f05e7de70d3e11a8bd14649e2140b71e820b3842a52ca8af9; re-vendor, never hand-edit
+// vendored from mercure@a2355894 mercure-plugin/scripts/slop-citation-check.mjs body-sha256=e30829b2920701765f521a738ac618fdfab4ec326ab4338a46c7e4152b1ff845; re-vendor, never hand-edit
 // Re-checks a V-UX-09 / V-UX-10 citation so a slop finding can block (ADR-134). Read-only.
 // Exit 0 only from the single VERIFIED path; every other outcome, including a crash, exits 1.
 // `decide()` is pure over an `io` adapter so blackhole can vendor this file unchanged.
@@ -224,7 +224,7 @@ function commentSpans(text) {
     let end = -1;
     if (text.startsWith('/*', i)) end = close('/*', '*/');
     else if (text.startsWith('<!--', i)) end = close('<!--', '-->');
-    else if (text.startsWith('//', i) && text[i - 1] !== ':') end = close('//', '\n');
+    else if (text.startsWith('//', i) && !/\b(?:https?|wss?|ftp|file):$/i.test(text.slice(Math.max(0, i - 8), i))) end = close('//', '\n');
     if (end === -1) {
       i++;
       continue;
@@ -255,16 +255,14 @@ function countIn(text, value, cls) {
     const needle = collapse(value);
     return needle ? collapse(text).split(needle).length - 1 : 0;
   }
-  const hay = text.toLowerCase();
-  const needle = value.toLowerCase();
-  let n = 0;
-  for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + 1)) if (isToken(hay, i, needle.length)) n++;
-  return n;
+  // Looser than isToken on purpose: any occurrence not glued to another class name counts, so a
+  // base use like `rounded-sm${x}` is found. Over-counting the base can only fail open.
+  return (text.match(new RegExp(`(?<![\\w-])${escapeRe(value)}(?![\\w-])`, 'gi')) ?? []).length;
 }
 
 /**
  * @param c   { code, file, line, value, axis?, setFile? }
- * @param io  { headText(p), baseText(ref, p), renameSource(p), changed(), mb, tip }
+ * @param io  { headText(p), baseText(ref, p), renameSource(p), changed(), mb, tips }
  */
 export function decide(c, io) {
   if (!['V-UX-09', 'V-UX-10'].includes(c.code) || !safePath(c.file) || !Number.isInteger(c.line) || c.line < 1 || !c.value) {
@@ -323,7 +321,7 @@ export function decide(c, io) {
   }
 
   if (is09) {
-    for (const ref of [io.mb, io.tip]) {
+    for (const ref of [io.mb, ...io.tips]) {
       const reason = setVerdict(cls, parseSet(c.setFile, io.baseText(ref, c.setFile)));
       if (reason) return fail(reason, ref === io.mb ? 'merge base' : 'base tip');
     }
@@ -347,14 +345,18 @@ export function gitIo({ base, head = 'WORKTREE', cwd = process.cwd() }) {
   const rev = (r) => run(['rev-parse', '--verify', '--quiet', `${r}^{commit}`]).trim();
   const top = run(['rev-parse', '--show-toplevel']).trim();
   // A bare branch name prefers its remote-tracking ref: a local `main` often lags the real tip.
-  const tip = (() => {
-    if (!base.includes('/')) {
-      try {
-        return rev(`refs/remotes/origin/${base}`);
-      } catch {}
+  // A bare branch name is read at both its remote-tracking and its local tip: either may be the
+  // newer one, and a token on either counts.
+  const candidates = base.includes('/') ? [base] : [`refs/remotes/origin/${base}`, base];
+  const tips = [...new Set(candidates.flatMap((r) => {
+    try {
+      return [rev(r)];
+    } catch {
+      return [];
     }
-    return rev(base);
-  })();
+  }))];
+  if (tips.length === 0) throw new Error(`base ${base} does not resolve`);
+  const tip = tips[0];
   const headSha = rev(head === 'WORKTREE' ? 'HEAD' : head);
   const mb = run(['merge-base', tip, headSha]).trim();
   const diffArgs = ['diff', '-z', '--name-status', '-M40%', '-C', mb];
@@ -380,7 +382,7 @@ export function gitIo({ base, head = 'WORKTREE', cwd = process.cwd() }) {
   };
   return {
     mb,
-    tip,
+    tips,
     headText,
     baseText: show,
     renameSource(p) {

@@ -1307,6 +1307,50 @@
         "exit": 1,
         "reason": "comment"
       }
+    },
+    {
+      "name": "a base occurrence followed by template syntax still counts as present",
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "export const A = ({ c }) => <div className={`rounded-sm${c ? \" x\" : \"\"}`}>a</div>;\n"
+      },
+      "head": {
+        "src/Card.tsx": "export const A = ({ c }) => <div className={`rounded-sm${c ? \" x\" : \"\"}`}>a</div>;\nexport const B = () => <div className=\"rounded-sm\">b</div>;\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "not-net-new"
+      }
+    },
+    {
+      "name": "a line comment opened right after a colon is still a comment",
+      "base": {
+        "DESIGN.md": "@tpl:design",
+        "src/Card.tsx": "@tpl:card-base"
+      },
+      "head": {
+        "src/Card.tsx": "export function Card() {\n  const x = {a:// \"rounded-sm\"\n  };\n  return <div>x</div>;\n}\n"
+      },
+      "citation": {
+        "code": "V-UX-09",
+        "file": "src/Card.tsx",
+        "line": 2,
+        "value": "rounded-sm",
+        "axis": "radius",
+        "setFile": "DESIGN.md"
+      },
+      "expect": {
+        "exit": 1,
+        "reason": "comment"
+      }
     }
   ]
 }
