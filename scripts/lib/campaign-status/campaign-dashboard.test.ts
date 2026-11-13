@@ -6,6 +6,7 @@ import * as path from 'path';
 import { collectStatusReport } from '../../campaign-status.ts';
 import { formatDashboard } from './dashboard.ts';
 import { buildStatusData } from './data.ts';
+import { fakeForge, prRow } from './forge-fake.ts';
 import { renderStatusHtml } from './html.ts';
 import { buildStatusReport } from './report.ts';
 import { loadCampaignState } from './state.ts';
@@ -172,23 +173,27 @@ describe('collectStatusReport — the forge path', () => {
   afterAll(() => {
     for (const d of tmp) fs.rmSync(d, { recursive: true, force: true });
   });
-  const copy = (name: string): string => {
+  const copy = (name: string, forge?: string): string => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-dash-'));
     tmp.push(dir);
     const campaign = path.join(dir, '.blackhole');
     fs.cpSync(path.join(FIXTURES, name), campaign, { recursive: true });
+    if (forge) {
+      const file = path.join(campaign, 'config.json');
+      fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf-8')), forge }));
+    }
     return campaign;
   };
   const ghCalls = () => (spy?.mock.calls ?? []).filter((c) => c[0] === 'gh');
 
-  test('--no-gh makes no forge call at all', () => {
+  test('--no-gh makes no forge call at all', async () => {
     spy = spyOn(childProcess, 'spawnSync');
-    const { report } = collectStatusReport(copy('full'), true, GENERATED_AT);
+    const { report } = await collectStatusReport(copy('full'), true, GENERATED_AT);
     expect(ghCalls()).toHaveLength(0);
     expect(report.forge_checked).toBe(false);
   });
 
-  test('online, each open PR is read once for its verdict, CI and mergeability', () => {
+  test('on GitHub, each open PR is read for its verdict, CI and mergeability', async () => {
     const rest = (stdout: unknown) => ({ status: 0, stdout: JSON.stringify(stdout), stderr: '' }) as childProcess.SpawnSyncReturns<string>;
     const original = childProcess.spawnSync;
     spy = spyOn(childProcess, 'spawnSync').mockImplementation(((cmd: string, args: string[], opts: unknown) => {
@@ -196,15 +201,76 @@ describe('collectStatusReport — the forge path', () => {
       const endpoint = String(args[3]);
       if (endpoint.includes('/issues?')) return rest([]);
       if (/\/pulls\?/.test(endpoint)) return rest([{ number: 206, title: 'Cache the price table', body: null, head: { ref: 'b', sha: 'abc' }, state: 'open', merged_at: null }]);
-      if (endpoint.endsWith('/pulls/206')) return rest({ number: 206, mergeable: false, head: { sha: 'abc' }, labels: [{ name: 'ai-review:LGTM' }] });
+      if (endpoint.endsWith('/pulls/206')) return rest({ number: 206, title: 'Cache the price table', body: null, mergeable: false, head: { ref: 'b', sha: 'abc' }, state: 'open', merged_at: null, labels: [{ name: 'ai-review:LGTM' }] });
       if (endpoint.includes('/check-runs')) return rest({ check_runs: [{ name: 'test', status: 'completed', conclusion: 'success' }] });
       if (endpoint.endsWith('/status')) return rest({ statuses: [] });
       return { status: 1, stdout: '', stderr: `unexpected ${endpoint}` } as childProcess.SpawnSyncReturns<string>;
     }) as typeof childProcess.spawnSync);
-    const { report } = collectStatusReport(copy('full'), false, GENERATED_AT);
+    const { report } = await collectStatusReport(copy('full'), false, GENERATED_AT);
     expect(report.forge_checked).toBe(true);
     expect(report.board.find((c) => c.ref === 206)).toMatchObject({ stage: 'blocked', status: 'conflict with its base', tone: 'bad' });
     // 203/204/205/213 are not open on this mocked forge, so they were never read.
-    expect(ghCalls().filter((c) => String(c[1]?.[3]).includes('/pulls/')).map((c) => c[1]?.[3])).toEqual(['repos/acme/widgets/pulls/206']);
+    expect([...new Set(ghCalls().filter((c) => /\/pulls\/\d+$/.test(String(c[1]?.[3]))).map((c) => c[1]?.[3]))]).toEqual(['repos/acme/widgets/pulls/206']);
+  });
+
+  // The Gitea acceptance case: PR signals, merged-PR counting and drift all come through the adapter.
+  describe('on Gitea, through the forge adapter', () => {
+    const merged = (n: number, at: string) => prRow(n, { title: `feat(x): merged ${n}`, state: 'MERGED', mergedAt: at });
+    const forge = () =>
+      fakeForge({
+        forge: 'gitea',
+        issues: [],
+        prs: {
+          open: [prRow(203, { title: 'feat(payments): retry failed charges' }), prRow(206, { title: 'Cache the price table' }), prRow(250, { title: 'chore(deps): bump the date library' })],
+          all: [merged(205, '2026-11-12T08:00:00Z'), merged(300, '2026-11-11T09:00:00Z'), merged(301, '2026-11-01T09:00:00Z')],
+        },
+        views: {
+          203: prRow(203, { labels: ['ai-review:LGTM'], mergeable: true }),
+          206: prRow(206, { labels: [], mergeable: false }),
+          250: prRow(250, { labels: ['ai-review:NEEDS_CHANGES'], mergeable: true }),
+        },
+        checks: {
+          203: [{ name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+          206: [{ name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+          250: [{ name: 'build', status: 'IN_PROGRESS', conclusion: null }],
+        },
+      });
+
+    test('PR cards carry review, CI and mergeability, and the page does not say "not checked"', async () => {
+      spy = spyOn(childProcess, 'spawnSync');
+      const { report } = await collectStatusReport(copy('full', 'gitea'), false, GENERATED_AT, forge());
+      expect(report.forge_checked).toBe(true);
+      expect(ghCalls()).toHaveLength(0);
+      const card = (ref: number) => report.board.find((c) => c.ref === ref);
+      expect(card(203)).toMatchObject({ stage: 'ready', status: 'LGTM, CI green: merge' });
+      expect(card(206)).toMatchObject({ stage: 'blocked', status: 'conflict with its base' });
+      expect(card(250)).toMatchObject({ stage: 'review', status: 'changes requested' });
+      expect(report.board.filter((c) => c.kind === 'pr' && c.stage !== 'done').every((c) => !c.status.includes('not checked') || [204, 213].includes(c.ref))).toBe(true);
+    });
+
+    test('a merged campaign PR with no queue entry is done, in its stream, and one merged before the start is not', async () => {
+      const { report } = await collectStatusReport(copy('full', 'gitea'), false, GENERATED_AT, forge());
+      expect(report.board.find((c) => c.ref === 300)).toMatchObject({ stage: 'done', kind: 'pr', issue: null, title: 'Merged 300', stream: 'Platform' });
+      expect(report.board.some((c) => c.ref === 301)).toBe(false);
+      const platform = report.streams.find((s) => s.stream === 'Platform')!;
+      expect(platform.done).toBe(report.board.filter((c) => c.stream === 'Platform' && c.stage === 'done').length);
+      expect(platform.done).toBeGreaterThanOrEqual(2);
+    });
+
+    test('a queue entry the forge contradicts renders as merged and is listed as drift', async () => {
+      const { report } = await collectStatusReport(copy('full', 'gitea'), false, GENERATED_AT, forge());
+      expect(report.board.find((c) => c.ref === 205)).toMatchObject({ stage: 'done', status: 'merged on the forge; queue said in-flight' });
+      expect(report.drift).toEqual([{ issue: 105, pr: 205, title: 'Refund screen shows the fee', queue: 'in-flight', forge: 'merged' }]);
+      expect(report.blockers.some((b) => b.tone === 'warn' && b.text.includes('#205'))).toBe(true);
+      expect(report.in_review.some((i) => i.issue === 105)).toBe(false);
+    });
+
+    test('a merged-list read that fails leaves the rest of the forge data in place and claims no drift', async () => {
+      const broken = fakeForge({ forge: 'gitea', issues: [], prs: { open: [prRow(203)] }, views: { 203: prRow(203, { mergeable: true }) }, checks: { 203: [] } });
+      const { report } = await collectStatusReport(copy('full', 'gitea'), false, GENERATED_AT, broken);
+      expect(report.forge_checked).toBe(true);
+      expect(report.drift).toEqual([]);
+      expect(report.board.find((c) => c.ref === 205)).toMatchObject({ stage: 'review' });
+    });
   });
 });

@@ -345,25 +345,47 @@ describe('GiteaForgeAdapter', () => {
     runTeaTextSpy.mockRestore();
   });
 
-  test('prView maps a single tea pull row', async () => {
-    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue({
-      index: 30,
-      title: 'Add feature',
-      body: 'description',
-      head: { name: 'feature-branch' },
-      state: 'merged',
-      merged_at: '2026-01-01T00:00:00Z',
-    });
-    const adapter = new GiteaForgeAdapter('host/owner/repo');
-    const pr = await adapter.prView(30);
-    expect(pr).toEqual({
+  test('prView reads the REST row, so labels, mergeability and the head sha reach the caller', async () => {
+    const spy = teaApi(() => ({
+      stdout: apiPr(30, {
+        title: 'Add feature',
+        body: 'description',
+        state: 'closed',
+        merged: true,
+        merged_at: '2026-01-01T00:00:00Z',
+        mergeable: false,
+        labels: [{ name: 'ai-review:LGTM' }, { name: 'bug' }],
+        head: { ref: 'feature-branch', sha: 'abc', repo: { full_name: 'owner/repo' } },
+      }),
+    }));
+    const pr = await new GiteaForgeAdapter('host/owner/repo').prView(30);
+    expect(pr).toMatchObject({
       number: 30,
       title: 'Add feature',
       body: 'description',
       headRefName: 'feature-branch',
+      headRefOid: 'abc',
       state: 'MERGED',
       mergedAt: '2026-01-01T00:00:00Z',
+      mergeable: false,
+      labels: ['ai-review:LGTM', 'bug'],
     });
+    expect(spy.mock.calls[0][0]).toEqual(['api', '-i', '-X', 'GET', 'repos/owner/repo/pulls/30']);
+    spy.mockRestore();
+  });
+
+  test('prList of every state reads REST rows, so a merged pull request carries its merge time', async () => {
+    const spy = teaApi(() => ({
+      stdout: [apiPr(8, { state: 'closed', merged: true, merged_at: '2026-11-12T08:00:00Z' }), apiPr(9, { state: 'closed' })],
+      stderr: 'X-Total-Count: 2\n',
+    }));
+    const prs = await new GiteaForgeAdapter('host/owner/repo').prList({ state: 'all', limit: 300 });
+    expect(prs.map((p) => [p.number, p.state, p.mergedAt])).toEqual([
+      [8, 'MERGED', '2026-11-12T08:00:00Z'],
+      [9, 'CLOSED', null],
+    ]);
+    expect(spy.mock.calls[0][0]).toContain('repos/owner/repo/pulls?state=all&page=1&limit=50');
+    spy.mockRestore();
   });
 });
 

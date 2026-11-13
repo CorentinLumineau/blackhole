@@ -153,6 +153,12 @@ export type PrSignal = {
   mergeable: boolean | null;
 };
 
+/** A pull request the forge reports as merged, with its merge time. */
+export type MergedPr = { number: number; title: string; mergedAt: string };
+
+/** A queue entry the forge contradicts: the queue says `queue`, the forge says its PR is merged. */
+export type QueueDrift = { issue: number; pr: number; title: string; queue: string; forge: 'merged' };
+
 export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html' | 'data';
 
 export type StatusArgs = {
@@ -337,6 +343,8 @@ export type StatusReport = {
   links: Array<{ label: string; url: string }>;
   /** The rules the run works under, read from `config.json`. Additive. */
   config_rows: Array<{ key: string; value: string }>;
+  /** Queue entries the forge contradicts, rendered as the forge has them; the next sync brings the queue in line. Empty when the forge was not read. Additive. */
+  drift: QueueDrift[];
 };
 
 /** A status colour name. Text always carries the meaning; the colour only repeats it. */

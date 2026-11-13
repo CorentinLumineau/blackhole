@@ -1,5 +1,5 @@
-import { checkpointSection } from './dashboard.ts';
-import type { BlockedClass, BoardItem, ConfigSummaryInput, StageCounts, StatusReport, Tone } from './types.ts';
+import { checkpointSection, hasCheckpointSection } from './dashboard.ts';
+import type { BlockedClass, BoardItem, ConfigSummaryInput, QueueDrift, StageCounts, StatusReport, Tone } from './types.ts';
 
 // The header of the status page: the headline, what blocks the run, the quick links and the config
 // the run works under. The orchestrator writes the headline and the blockers into the checkpoint
@@ -10,7 +10,7 @@ const EMPTY_MARKER = /^(none|\(none\)|-|n\/a|nothing)\.?$/i;
 
 const sectionLines = (body: string | undefined, heading: string): string[] | null => {
   const section = checkpointSection(body, heading);
-  if (section === null) return body?.includes(`## ${heading}`) ? [] : null;
+  if (section === null) return hasCheckpointSection(body, heading) ? [] : null;
   return section
     .split('\n')
     .map((l) => l.replace(/^[-*]\s+/, '').trim())
@@ -37,20 +37,32 @@ export function buildHeadline(body: string | undefined, counts: StageCounts, top
 
 const BLOCKER_CARDS = 3;
 const BLOCKER_CLASSES = 3;
+const DRIFT_LISTED = 5;
+
+/** One warning line when queue entries disagree with the forge: the page shows them as the forge has them. */
+function driftBlockers(drift: QueueDrift[]): StatusReport['blockers'] {
+  if (drift.length === 0) return [];
+  const one = drift.length === 1;
+  const listed = drift.slice(0, DRIFT_LISTED).map((d) => `#${d.pr}`).join(', ');
+  const rest = drift.length > DRIFT_LISTED ? ` and ${drift.length - DRIFT_LISTED} more` : '';
+  const text = `${plural(drift.length, 'queue entry says', 'queue entries say')} less than the forge: ${listed}${rest} ${one ? 'is' : 'are'} merged there. The next sync updates ${one ? 'it' : 'them'}`;
+  return [{ text, tone: 'warn', source: 'generated' }];
+}
 
 /**
  * The checkpoint's `## Blocking the run` lines (an empty marker such as `none` means nothing blocks);
  * without the section: the failing or conflicting PRs, the largest blocked reason classes, and a line
- * when the forge was not read.
+ * when the forge was not read. A line for queue entries the forge contradicts follows either way.
  */
 export function buildBlockers(
   body: string | undefined,
   board: BoardItem[],
   classes: BlockedClass[],
   forgeChecked: boolean,
+  drift: QueueDrift[],
 ): StatusReport['blockers'] {
   const written = sectionLines(body, 'Blocking the run');
-  if (written) return written.map((text) => ({ text, tone: '' as Tone, source: 'checkpoint' as const }));
+  if (written) return [...written.map((text) => ({ text, tone: '' as Tone, source: 'checkpoint' as const })), ...driftBlockers(drift)];
   const out: StatusReport['blockers'] = [];
   const bad = board.filter((c) => c.tone === 'bad' && c.stage !== 'done');
   for (const c of bad.slice(0, BLOCKER_CARDS)) out.push({ text: `#${c.ref} ${c.status}`, tone: 'bad', source: 'generated' });
@@ -60,7 +72,7 @@ export function buildBlockers(
     out.push({ text: `${c.label}: ${plural(c.count, 'item', 'items')}`, tone: '', source: 'generated' });
   }
   if (!forgeChecked) out.push({ text: 'Forge not checked: review verdicts, CI and conflicts are not shown', tone: 'warn', source: 'generated' });
-  return out;
+  return [...out, ...driftBlockers(drift)];
 }
 
 const isHttp = (u: unknown): u is string => typeof u === 'string' && /^https?:\/\/\S+$/i.test(u);

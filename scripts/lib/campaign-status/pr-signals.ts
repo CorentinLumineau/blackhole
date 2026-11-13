@@ -1,24 +1,16 @@
-import { runGhApiRestJson } from '../forge-adapter/cli.ts';
-import { listChecks } from '../forge-adapter/github-rest.ts';
-import type { ForgeCheck } from '../forge-adapter/types.ts';
+import type { ForgeAdapter, ForgeCheck } from '../forge-adapter/types.ts';
 import type { PrSignal } from './types.ts';
 
-// Review verdict, CI and mergeability of the open PRs the board shows, over GitHub REST (ADR-048),
-// the same channel as the forge counts. Three reads per PR (the PR, its check runs, its commit
-// statuses), at most PR_SIGNAL_CAP PRs per render, so a refresh stays a few seconds. A PR whose
-// reads fail, or that is past the cap, has no signal and the page says "not checked" for it.
+// Review verdict, CI and mergeability of the open PRs the board shows, read through the forge
+// adapter of the configured forge (GitHub, Gitea or GitLab), the same channel as the forge counts.
+// Two adapter reads per PR (`prView` for labels and mergeability, `prChecks` for CI), at most
+// PR_SIGNAL_CAP PRs per render, so a refresh stays a few seconds. A PR whose reads fail, or that is
+// past the cap, has no signal and the page says "not checked" for it.
 
 export const PR_SIGNAL_CAP = 15;
 
 const REVIEW_LABEL = 'ai-review:';
 const FAILED = new Set<ForgeCheck['conclusion']>(['FAILURE', 'CANCELLED', 'ACTION_REQUIRED']);
-
-type RestPrDetail = {
-  number: number;
-  mergeable: boolean | null;
-  head: { sha: string };
-  labels?: Array<{ name: string } | string>;
-};
 
 /** The CI verdict of a set of checks. No check at all is `none`, never `green`. */
 export function ciOf(checks: ForgeCheck[]): Pick<PrSignal, 'ci' | 'failing'> {
@@ -36,12 +28,12 @@ export function reviewOf(labels: Array<{ name: string } | string> | undefined): 
 }
 
 /** Reads the signal of each PR (lowest number first, capped). A PR whose reads fail is left out. */
-export function fetchPrSignals(repo: string, prs: number[], cap: number = PR_SIGNAL_CAP): Record<number, PrSignal> {
+export async function fetchPrSignals(adapter: ForgeAdapter, prs: number[], cap: number = PR_SIGNAL_CAP): Promise<Record<number, PrSignal>> {
   const out: Record<number, PrSignal> = {};
   for (const n of [...new Set(prs)].sort((a, b) => a - b).slice(0, cap)) {
     try {
-      const pr = runGhApiRestJson<RestPrDetail>('GET', `repos/${repo}/pulls/${n}`);
-      out[n] = { review: reviewOf(pr.labels), mergeable: pr.mergeable ?? null, ...ciOf(listChecks(repo, pr.head.sha)) };
+      const pr = await adapter.prView(n);
+      out[n] = { review: reviewOf(pr.labels), mergeable: pr.mergeable ?? null, ...ciOf(await adapter.prChecks(n)) };
     } catch {
       // No signal: the card says the forge was not checked for this PR.
     }

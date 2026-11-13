@@ -18,9 +18,17 @@ everything below; the text dashboard is unaffected.
 | `status` mode / the owner asks for status | whoever runs `bun run status` |
 
 A refresh is cheap and idempotent: regenerate, then update the existing view. Online it reads the
-forge counts plus three REST reads per open PR the board shows (review label, check runs, commit
-statuses; at most `PR_SIGNAL_CAP` = 15 PRs, `scripts/lib/campaign-status/pr-signals.ts`); `--no-gh`
-reads nothing from the forge and every PR card says "CI not checked". A failed refresh is
+forge counts, then two adapter reads per open PR the board shows (`prView` for the review label and
+mergeability, `prChecks` for CI; at most `PR_SIGNAL_CAP` = 15 PRs,
+`scripts/lib/campaign-status/pr-signals.ts`), then the merged PRs (`prList`, newest 300). All of it
+goes through the forge adapter of the configured forge (`github`, `gitea` or `gitlab`), so a Gitea
+campaign gets the same page as a GitHub one. `--no-gh` reads nothing from the forge and every PR card
+says "CI not checked"; a PR whose reads fail says it too. Merged PRs make two things: a campaign PR
+merged since `queue.json` `campaign_started_at` that no queue entry names is a done card in its
+workstream, and a queue entry whose PR the forge merged renders as done, says what the queue said
+and is listed as drift for the next sync (`drift` in `--json`, one warning line in "Blocking the
+run"). Without `campaign_started_at` no unnamed PR is counted, because nothing bounds it. A failed
+refresh is
 reported in one line and never blocks the turn — the checkpoint is the SSOT, this page only
 shows it.
 

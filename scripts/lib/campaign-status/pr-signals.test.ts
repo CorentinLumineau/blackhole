@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
-import * as childProcess from 'child_process';
+import { describe, expect, test } from 'bun:test';
+import type { ForgeCheck } from '../forge-adapter/types.ts';
+import { fakeForge, prRow } from './forge-fake.ts';
 import { ciOf, fetchPrSignals, reviewOf } from './pr-signals.ts';
 
 describe('ciOf / reviewOf', () => {
@@ -27,23 +28,43 @@ describe('ciOf / reviewOf', () => {
   });
 });
 
-describe('fetchPrSignals', () => {
-  let spy: ReturnType<typeof spyOn<typeof childProcess, 'spawnSync'>> | undefined;
-  afterEach(() => spy?.mockRestore());
+describe('fetchPrSignals, through the forge adapter', () => {
+  const ok = (name: string): ForgeCheck => ({ name, status: 'COMPLETED', conclusion: 'SUCCESS' });
 
-  test('reads the lowest PRs up to the cap, and leaves out a PR whose read fails', () => {
-    spy = spyOn(childProcess, 'spawnSync').mockImplementation(((_cmd: string, args: string[]) => {
-      const endpoint = String(args[3]);
-      const ok = (v: unknown) => ({ status: 0, stdout: JSON.stringify(v), stderr: '' });
-      if (endpoint.endsWith('/pulls/2')) return { status: 1, stdout: '', stderr: 'HTTP 502' };
-      const pr = endpoint.match(/\/pulls\/(\d+)$/);
-      if (pr) return ok({ number: Number(pr[1]), mergeable: null, head: { sha: `s${pr[1]}` }, labels: [] });
-      if (endpoint.includes('/check-runs')) return ok({ check_runs: [] });
-      if (endpoint.endsWith('/status')) return ok({ statuses: [{ context: 'build', state: 'pending' }] });
-      return { status: 1, stdout: '', stderr: 'unexpected' };
-    }) as typeof childProcess.spawnSync);
-    const signals = fetchPrSignals('acme/widgets', [9, 2, 1, 5], 3);
+  test('a Gitea PR carries its review verdict, CI and mergeability', async () => {
+    const forge = fakeForge({
+      forge: 'gitea',
+      views: {
+        7: prRow(7, { labels: ['bug', 'ai-review:LGTM'], mergeable: true }),
+        8: prRow(8, { labels: [], mergeable: false }),
+      },
+      checks: { 7: [ok('build'), ok('test')], 8: [{ name: 'unit', status: 'COMPLETED', conclusion: 'FAILURE' }] },
+    });
+    const signals = await fetchPrSignals(forge, [8, 7]);
+    expect(signals[7]).toEqual({ review: 'LGTM', mergeable: true, ci: 'green', failing: [] });
+    expect(signals[8]).toEqual({ review: null, mergeable: false, ci: 'failing', failing: ['unit'] });
+  });
+
+  test('a mergeability the forge has not computed is null, not a conflict', async () => {
+    const forge = fakeForge({ views: { 1: prRow(1, { mergeable: null }), 2: prRow(2) }, checks: { 1: [], 2: [] } });
+    const signals = await fetchPrSignals(forge, [1, 2]);
+    expect(signals[1]!.mergeable).toBeNull();
+    expect(signals[2]!.mergeable).toBeNull();
+  });
+
+  test('reads the lowest PRs up to the cap and leaves out a PR whose read fails', async () => {
+    const forge = fakeForge({
+      views: { 1: prRow(1), 5: prRow(5), 9: prRow(9) },
+      checks: { 1: [{ name: 'build', status: 'IN_PROGRESS', conclusion: null }], 5: [], 9: [] },
+    });
+    const signals = await fetchPrSignals(forge, [9, 2, 1, 5], 3);
     expect(Object.keys(signals).map(Number)).toEqual([1, 5]);
     expect(signals[1]).toEqual({ review: null, mergeable: null, ci: 'running', failing: [] });
+    expect(forge.calls.filter((c) => c.startsWith('prView:'))).toEqual(['prView:1', 'prView:2', 'prView:5']);
+  });
+
+  test('a PR whose CI read fails has no signal, so the card says "not checked" and never "no CI"', async () => {
+    const forge = fakeForge({ views: { 3: prRow(3, { labels: ['ai-review:LGTM'] }) } });
+    expect(await fetchPrSignals(forge, [3])).toEqual({});
   });
 });

@@ -317,6 +317,28 @@ describe('GitLabForgeAdapter', () => {
     runGlabTextSpy.mockRestore();
   });
 
+  test('prView carries the label names and reads has_conflicts as mergeability', async () => {
+    runGlabJsonSpy = spyOn(glabCli, 'runGlabJson').mockReturnValue({
+      iid: 31,
+      title: 'mr',
+      description: '',
+      source_branch: 'f',
+      state: 'opened',
+      labels: ['ai-review:LGTM'],
+      has_conflicts: true,
+    });
+    expect(await new GitLabForgeAdapter('group/project').prView(31)).toMatchObject({ labels: ['ai-review:LGTM'], mergeable: false });
+  });
+
+  test('prList of every state passes --all, so merged merge requests are listed', async () => {
+    runGlabJsonSpy = spyOn(glabCli, 'runGlabJson').mockReturnValue([
+      { iid: 5, title: 'done', description: '', source_branch: 'f', state: 'merged', merged_at: '2026-11-12T08:00:00Z' },
+    ]);
+    const prs = await new GitLabForgeAdapter('group/project').prList({ state: 'all', limit: 300 });
+    expect(runGlabJsonSpy.mock.calls[0][0]).toContain('--all');
+    expect(prs[0]).toMatchObject({ number: 5, state: 'MERGED', mergedAt: '2026-11-12T08:00:00Z' });
+  });
+
   test('prView maps a single glab merge request row', async () => {
     runGlabJsonSpy = spyOn(glabCli, 'runGlabJson').mockReturnValue({
       iid: 30,

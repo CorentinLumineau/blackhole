@@ -146,3 +146,53 @@ test('cardTitle drops a conventional-commit prefix and clips long titles', () =>
   expect(cardTitle('fix(api)!: handle empty bodies')).toBe('Handle empty bodies');
   expect(cardTitle('x'.repeat(100))).toHaveLength(70);
 });
+
+describe('merged pull requests and queue drift on the board', () => {
+  const base = (over: Partial<BoardInput> = {}): BoardInput => ({
+    issues: {},
+    readyToMerge: [],
+    ownerItems: [],
+    mergeConflicts: new Set(),
+    untrackedPrs: [],
+    scope: [],
+    signals: null,
+    prUrl: (n) => `https://forge.example/acme/widgets/pulls/${n}`,
+    issueUrl: (n) => `https://forge.example/acme/widgets/issues/${n}`,
+    ...over,
+  });
+
+  test('a merged PR no queue entry names is a done card in its stream', () => {
+    const board = buildBoard(base({ mergedPrs: [{ number: 60, title: 'fix(api): handle empty input', mergedAt: '2026-11-12T08:00:00Z' }], streams: { overrides: { '60': 'Fixes' } } }));
+    expect(board).toEqual([
+      {
+        stage: 'done', status: '', tone: 'ok', ref: 60, kind: 'pr', issue: null, pr: 60,
+        title: 'Handle empty input', url: 'https://forge.example/acme/widgets/pulls/60', stream: 'Fixes',
+      },
+    ]);
+  });
+
+  test('merged PRs raise the done count of their workstream, next to the queue entries', () => {
+    const board = buildBoard(
+      base({
+        issues: { '1': { title: 'feat(ui): header', status: 'merged', pr: 11 }, '2': { title: 'Later', status: 'ready', phase: 'handle' } },
+        mergedPrs: [{ number: 60, title: 'a', mergedAt: '2026-11-12T08:00:00Z' }, { number: 61, title: 'b', mergedAt: '2026-11-12T09:00:00Z' }],
+      }),
+    );
+    expect(buildStreams(board)).toEqual([{ stream: DEFAULT_STREAM, done: 3, in_review: 0, left: 1, next: '#2 not started' }]);
+    expect(stageCounts(board, 0)).toMatchObject({ done: 3, not_started: 1, total: 4 });
+  });
+
+  test('a queue entry the forge merged shows as done, saying what the queue said', () => {
+    const board = buildBoard(
+      base({
+        issues: { '5': { title: 'Refund fee', status: 'merged', phase: 'review', pr: 25 } },
+        drift: [{ issue: 5, pr: 25, title: 'Refund fee', queue: 'in-flight', forge: 'merged' }],
+      }),
+    );
+    expect(board[0]).toMatchObject({ stage: 'done', tone: 'ok', status: 'merged on the forge; queue said in-flight', ref: 25, issue: 5 });
+  });
+
+  test('a done entry the queue and the forge agree on carries no drift text', () => {
+    expect(buildBoard(base({ issues: { '5': { title: 'x', status: 'merged', pr: 25 } } }))[0]!.status).toBe('');
+  });
+});

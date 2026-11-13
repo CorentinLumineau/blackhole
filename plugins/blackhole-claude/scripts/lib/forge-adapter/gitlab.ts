@@ -34,6 +34,8 @@ type GlabMrRow = {
   state?: string;
   merged_at?: string | null;
   mergedAt?: string | null;
+  labels?: string[];
+  has_conflicts?: boolean;
 };
 
 function issueNumber(row: GlabIssueRow): number {
@@ -67,6 +69,8 @@ function mapMr(row: GlabMrRow): ForgePr {
     headRefName: row.headRefName ?? row.source_branch ?? '',
     state,
     mergedAt: row.mergedAt ?? row.merged_at ?? null,
+    labels: row.labels,
+    mergeable: row.has_conflicts === undefined ? undefined : !row.has_conflicts,
   };
 }
 
@@ -152,6 +156,8 @@ export class GitLabForgeAdapter implements ForgeAdapter {
     const args = ['mr', 'list', ...this.repoFlag(), '--per-page', String(filter.limit ?? 100)];
     if (filter.state === 'closed') args.push('--closed');
     if (filter.state === 'open') args.push('--opened');
+    // `glab mr list` shows opened merge requests only unless told otherwise; merged ones need --all.
+    if (filter.state === 'all') args.push('--all');
     const rows = runGlabJson<GlabMrRow[]>(args);
     return rows.map(mapMr);
   }

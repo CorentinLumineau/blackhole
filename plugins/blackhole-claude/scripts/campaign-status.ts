@@ -3,7 +3,7 @@ import * as path from 'path';
 import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
-import { fetchForgeCounts } from './lib/campaign-status/forge.ts';
+import { fetchForgeCounts, fetchMergedPrs } from './lib/campaign-status/forge.ts';
 import { writeStatusData } from './lib/campaign-status/data.ts';
 import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
@@ -11,7 +11,9 @@ import { readPublishState, readStatusAlerts } from './lib/campaign-status/stalen
 import { buildStatusReport } from './lib/campaign-status/report.ts';
 import { CampaignNotFoundError, loadCampaignState } from './lib/campaign-status/state.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { resolveForgeForRepo } from './lib/forge-detection.ts';
+import { createForgeAdapter } from './lib/forge-adapter/index.ts';
+import type { ForgeAdapter } from './lib/forge-adapter/types.ts';
+import { isForgeType, resolveForgeForRepo } from './lib/forge-detection.ts';
 import { formatPaceLine, readLatestPaceRecord } from './lib/pace-log.ts';
 import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
 import type { StatusReport } from './lib/campaign-status/types.ts';
@@ -134,23 +136,33 @@ const boardPrs = (queue: { issues?: Record<string, { status?: string; pr?: numbe
 
 /**
  * Loads the campaign and builds the one `StatusReport` every mode prints. `skipGh` makes no forge
- * call at all; otherwise the forge counts, then the review/CI/conflict signal of each open PR the
- * board shows (`PR_SIGNAL_CAP` at most), are read.
+ * call at all; otherwise, through the adapter of the configured forge (GitHub, Gitea or GitLab),
+ * the forge counts, then the review/CI/conflict signal of each open PR the board shows
+ * (`PR_SIGNAL_CAP` at most) and the merged PRs, are read. `adapter` replaces the configured forge's
+ * own, for a test.
  */
-export function collectStatusReport(campaignDir: string, skipGh: boolean, generatedAt: string = new Date().toISOString()): {
+export async function collectStatusReport(
+  campaignDir: string,
+  skipGh: boolean,
+  generatedAt: string = new Date().toISOString(),
+  adapter?: ForgeAdapter,
+): Promise<{
   report: StatusReport;
   state: ReturnType<typeof loadCampaignState>;
   host: { pace: string | null; drift: string | null };
-} {
+}> {
   const state = loadCampaignState(campaignDir);
   const { config, queue, ledger, checkpoint, checkpointBody, decisions } = state;
   const scope = readScope(config);
-  const forge = skipGh
-    ? { openIssues: 0, openPrs: 0, ok: false, error: 'skipped' }
-    : fetchForgeCounts(scope, config.repo ?? '');
-  const prSignals = !skipGh && forge.ok && config.repo ? fetchPrSignals(config.repo, boardPrs(queue, forge.openPrList)) : null;
-  const host = readHostLines(campaignDir);
   const resolved = resolveForgeForRepo(path.dirname(path.resolve(campaignDir)), config.forge);
+  const forgeType = resolved.ok ? resolved.forge : config.forge && isForgeType(config.forge) ? config.forge : 'github';
+  const source = skipGh || !config.repo ? null : (adapter ?? createForgeAdapter({ repo: config.repo, forge: forgeType }));
+  const forge = source
+    ? await fetchForgeCounts(scope, source)
+    : { openIssues: 0, openPrs: 0, ok: false, error: skipGh ? 'skipped' : 'no repo in config.json' };
+  const prSignals = source && forge.ok ? await fetchPrSignals(source, boardPrs(queue, forge.openPrList)) : null;
+  const mergedPrs = source && forge.ok ? await fetchMergedPrs(source) : null;
+  const host = readHostLines(campaignDir);
   const report = buildStatusReport({
     config,
     forgeWeb: resolved.ok ? { forge: resolved.forge, host: resolved.host } : undefined,
@@ -165,12 +177,13 @@ export function collectStatusReport(campaignDir: string, skipGh: boolean, genera
     publish: readPublishState(campaignDir),
     decisions,
     prSignals,
+    mergedPrs,
     pluginVersion: readPluginVersion(),
   });
   return { report, state, host };
 }
 
-function main() {
+async function main() {
   const { mode, campaignDir, skipGh, outPath, dataDir } = parseStatusArgs(process.argv.slice(2));
 
   if (mode === 'config-summary') {
@@ -187,9 +200,9 @@ function main() {
     return;
   }
 
-  let collected: ReturnType<typeof collectStatusReport>;
+  let collected: Awaited<ReturnType<typeof collectStatusReport>>;
   try {
-    collected = collectStatusReport(campaignDir, skipGh);
+    collected = await collectStatusReport(campaignDir, skipGh);
   } catch (error) {
     // "No campaign here" is a normal, expected state (fresh checkout, wrong --campaign-dir) —
     // print the message and exit 0 (falling off main() already does; no process.exit needed).
@@ -239,5 +252,5 @@ function main() {
 }
 
 if (import.meta.main) {
-  main();
+  await main();
 }

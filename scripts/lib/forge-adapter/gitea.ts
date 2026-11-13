@@ -33,6 +33,8 @@ type GiteaApiPrRow = {
   merged_at?: string | null;
   draft?: boolean;
   created_at?: string | null;
+  mergeable?: boolean | null;
+  labels?: Array<{ name: string }> | null;
   head: { ref: string; sha: string; repo?: { full_name: string } | null };
   base: { ref: string; repo?: { full_name: string } | null };
 };
@@ -60,6 +62,8 @@ export const mapGiteaApiPr = (row: GiteaApiPrRow): ForgePr => {
     createdAt: row.created_at,
     state: merged ? 'MERGED' : (row.state ?? 'open').toLowerCase() === 'closed' ? 'CLOSED' : 'OPEN',
     mergedAt: row.merged_at ?? null,
+    labels: row.labels?.map((l) => l.name),
+    mergeable: row.mergeable,
   };
 };
 
@@ -202,29 +206,30 @@ export class GiteaForgeAdapter implements ForgeAdapter {
   }
 
   /**
-   * Open PRs through the REST API, because `tea pulls list --json` reports neither the base branch
-   * nor the head repository. Pages until the server's X-Total-Count is read; an empty page before
-   * that total is an error, so a server page cap never truncates the list silently.
+   * Pull requests of one state through the REST API, because `tea pulls list --json` reports neither
+   * the base branch, the head repository nor the merge time. Pages until the server's X-Total-Count
+   * is read; an empty page before that total is an error, so a server page cap never truncates the
+   * list silently.
    */
-  private listOpenPrsRest(limit: number): ForgePr[] {
+  private listPrsRest(state: 'open' | 'closed' | 'all', limit: number): ForgePr[] {
     const out: ForgePr[] = [];
     let total: number | null = null;
     for (let page = 1; page <= MAX_PR_PAGES; page++) {
       const { data, headers } = runTeaApiJson<GiteaApiPrRow[]>(
         'GET',
-        `repos/${this.apiSlug()}/pulls?state=open&page=${page}&limit=${API_PAGE}`,
+        `repos/${this.apiSlug()}/pulls?state=${state}&page=${page}&limit=${API_PAGE}`,
       );
       total ??= totalCount(headers);
       if (data.length === 0) {
         if (total !== null && out.length < total) {
-          throw new Error(`open PR list ended at ${out.length} rows before the server total of ${total}`);
+          throw new Error(`${state} PR list ended at ${out.length} rows before the server total of ${total}`);
         }
         return out;
       }
       out.push(...data.map(mapGiteaApiPr));
       if (out.length >= limit || (total !== null && out.length >= total)) return out.slice(0, limit);
     }
-    throw new Error(`open PR list passed ${MAX_PR_PAGES} pages`);
+    throw new Error(`${state} PR list passed ${MAX_PR_PAGES} pages`);
   }
 
   async prFiles(number: number): Promise<string[]> {
@@ -253,7 +258,7 @@ export class GiteaForgeAdapter implements ForgeAdapter {
   }
 
   async prList(filter: { state?: 'open' | 'closed' | 'all'; limit?: number } = {}): Promise<ForgePr[]> {
-    if (filter.state === 'open') return this.listOpenPrsRest(filter.limit ?? 100);
+    if (filter.state) return this.listPrsRest(filter.state, filter.limit ?? 100);
     const args = ['pulls', 'list', ...this.repoFlag(), '--limit', String(filter.limit ?? 100)];
     if (filter.state && filter.state !== 'all') args.push('--state', filter.state);
     const rows = runTeaJson<TeaPrRow[] | { pulls: TeaPrRow[] }>(args);
@@ -261,8 +266,9 @@ export class GiteaForgeAdapter implements ForgeAdapter {
     return list.map(mapPr);
   }
 
+  /** The REST row, because `tea pull view --json` reports neither labels, mergeability nor the head sha. */
   async prView(number: number): Promise<ForgePr> {
-    return mapPr(runTeaJson<TeaPrRow>(['pull', 'view', String(number), ...this.repoFlag()]));
+    return mapGiteaApiPr(runTeaApiJson<GiteaApiPrRow>('GET', `repos/${this.apiSlug()}/pulls/${number}`).data);
   }
 
   async prCreate(params: PrCreateParams): Promise<ForgePr> {
