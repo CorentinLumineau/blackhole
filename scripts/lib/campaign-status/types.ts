@@ -35,6 +35,10 @@ export type QueueIssue = {
   parent_tip_sha?: string | null;
   stacked_on_pr?: number | null;
   parent_branch?: string | null;
+  /** Forge milestone title, synced every turn; a workstream source (`status_page.streams.from: milestone`). */
+  milestone?: string | null;
+  /** Parent epic issue; a workstream source (`status_page.streams.from: epic`). */
+  epic_parent?: number | null;
   route?: Route;
 };
 
@@ -93,11 +97,60 @@ export type ConfigSummaryInput = {
     docs_impact_routing?: boolean;
     write_governance?: boolean;
   };
-  incident_mode?: { enabled?: boolean };
+  incident_mode?: { enabled?: boolean; parallel_max_override?: number };
   worker_model_policy?: string;
   auto_sync?: boolean;
   adaptive_routing?: boolean;
-  status_page?: { enabled?: boolean };
+  status_page?: {
+    enabled?: boolean;
+    streams?: StreamConfig;
+    links?: Array<{ label?: string; url?: string }>;
+  };
+  /** The recorded campaign scope (`config-template.md` § `campaign_scope`), written by `scripts/campaign-record.ts`. */
+  campaign_scope?: { entries?: ScopeEntry[] };
+  autonomy?: { mode?: string; confidence_threshold?: number };
+  display_targets?: number[];
+  resource_policy?: { testlock_carveout?: { allowed?: boolean; scope?: string } };
+};
+
+/** The kinds a scope entry can have. `in` includes work; the others say why work is not being done. */
+export const SCOPE_KINDS = ['in', 'parked', 'deferred', 'blocked_upstream', 'out'] as const;
+export type ScopeKind = (typeof SCOPE_KINDS)[number];
+
+/** One line of the recorded campaign scope. `refs` names issues or PRs; `filter` marks the line the launch gate writes. */
+export type ScopeEntry = {
+  kind: ScopeKind;
+  text: string;
+  /** `YYYY-MM-DD` the owner set it. */
+  set_at: string;
+  reason?: string;
+  refs?: number[];
+  filter?: boolean;
+};
+
+/** One owner decision (`owner-decisions.json`), appended by `scripts/campaign-record.ts decision`. */
+export type OwnerDecision = { date: string; text: string; refs?: number[] };
+
+/** How issues map to workstreams. Absent ⇒ one stream holding everything. */
+export type StreamConfig = {
+  from?: 'label' | 'milestone' | 'epic';
+  /** `from: label` only: the label prefix naming a stream (default `stream:`). */
+  label_prefix?: string;
+  /** Issue or PR number → stream name; wins over `from`. */
+  overrides?: Record<string, string>;
+  /** Stream for an item `from` cannot place (default `All work`). */
+  default?: string;
+};
+
+/** Review verdict, CI and mergeability of one open PR, read from the forge. Absent offline. */
+export type PrSignal = {
+  /** The PR's `ai-review:*` label without the prefix, or null when it carries none. */
+  review: string | null;
+  ci: 'green' | 'failing' | 'running' | 'none';
+  /** Names of the failing checks. */
+  failing: string[];
+  /** False when the forge reports a conflict; null when it has not computed it yet. */
+  mergeable: boolean | null;
 };
 
 export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html' | 'data';
@@ -262,6 +315,62 @@ export type StatusReport = {
     /** Plugin-drift and other environment lines the text dashboard prints after the counts. */
     notes: string[];
   };
+  /** The recorded campaign scope; `recorded: false` when `config.json` has none ("Scope not recorded"). Additive. */
+  scope_record: { recorded: boolean; entries: ScopeEntry[] };
+  /** The owner's decisions, newest first. Additive. */
+  decisions: OwnerDecision[];
+  /** One sentence on where the run stands: the checkpoint's `## Headline`, else generated from the counts. Additive. */
+  headline: { text: string; source: 'checkpoint' | 'generated' };
+  /** What holds the run back: the checkpoint's `## Blocking the run` lines, else generated. Additive. */
+  blockers: Array<{ text: string; tone: Tone; source: 'checkpoint' | 'generated' }>;
+  /** Whether PR review verdicts, CI and conflicts were read from the forge this render. Additive. */
+  forge_checked: boolean;
+  /** Every queue entry and untracked PR as one card of the stage board. Additive. */
+  board: BoardItem[];
+  /** The board's counts; `on_you` is the length of `moves`. Additive. */
+  stage_counts: StageCounts;
+  /** What the owner can do now: PRs delivered at LGTM and owner gates first. Additive. */
+  moves: Array<{ text: string; url: string | null; ref: number }>;
+  /** Board items per workstream. Additive. */
+  streams: Array<{ stream: string; done: number; in_review: number; left: number; next: string }>;
+  /** Forge pages and configured links. Additive. */
+  links: Array<{ label: string; url: string }>;
+  /** The rules the run works under, read from `config.json`. Additive. */
+  config_rows: Array<{ key: string; value: string }>;
+};
+
+/** A status colour name. Text always carries the meaning; the colour only repeats it. */
+export type Tone = 'ok' | 'info' | 'warn' | 'bad' | '';
+
+/**
+ * Where a card sits. The page folds them into five columns: in review (`ready`, `review`, `active`),
+ * blocked, not started (`you`, `todo`), parked, done.
+ */
+export type BoardStage = 'ready' | 'review' | 'active' | 'blocked' | 'you' | 'todo' | 'parked' | 'done';
+
+export type BoardItem = {
+  stage: BoardStage;
+  /** The number the card links to: the PR when there is one, else the issue. */
+  ref: number;
+  kind: 'issue' | 'pr';
+  issue: number | null;
+  pr: number | null;
+  title: string;
+  /** One line saying where the item stands; empty for a plain not-started or done item. */
+  status: string;
+  tone: Tone;
+  url: string | null;
+  stream: string;
+};
+
+export type StageCounts = {
+  done: number;
+  in_review: number;
+  on_you: number;
+  blocked: number;
+  parked: number;
+  not_started: number;
+  total: number;
 };
 
 export type IssueRow = { num: number; issue: QueueIssue };

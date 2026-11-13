@@ -17,9 +17,47 @@ everything below; the text dashboard is unaffected.
 | The main chat hands the turn back while workers are still in flight (Pattern C) | main-chat orchestrator |
 | `status` mode / the owner asks for status | whoever runs `bun run status` |
 
-A refresh is cheap and idempotent: regenerate, then update the existing view. A failed refresh is
+A refresh is cheap and idempotent: regenerate, then update the existing view. Online it reads the
+forge counts plus three REST reads per open PR the board shows (review label, check runs, commit
+statuses; at most `PR_SIGNAL_CAP` = 15 PRs, `scripts/lib/campaign-status/pr-signals.ts`); `--no-gh`
+reads nothing from the forge and every PR card says "CI not checked". A failed refresh is
 reported in one line and never blocks the turn — the checkpoint is the SSOT, this page only
 shows it.
+
+## What the orchestrator records
+
+Everything the page shows is derived from campaign state, so nothing on it is typed by hand. Four
+facts come from the owner or the orchestrator; each has one home (ADR-052):
+
+| Fact | Home | Written by | When |
+|------|------|-----------|------|
+| Headline (one sentence) | checkpoint `## Headline` | orchestrator | every checkpoint write |
+| Blocking the run (one line each) | checkpoint `## Blocking the run` (`none` when nothing blocks) | orchestrator | every checkpoint write |
+| Scope (in, parked, deferred, blocked upstream, out; date and optional reason) | `config.json` → `campaign_scope.entries` | the coordinator (Pattern B) or the main-chat orchestrator (Pattern C), with `bun scripts/campaign-record.ts scope` | the launch configuration gate, and every owner scope change |
+| Your decisions (date, one line) | `owner-decisions.json` | the coordinator (Pattern B) or the main-chat orchestrator (Pattern C), with `bun scripts/campaign-record.ts decision` | every owner answer to a gate, and every scope or priority instruction |
+
+In Pattern B the orchestrator records only an answer given to it directly, never one the
+coordinator relayed, so each answer is written once (`clarify-gates.md` § Chat feedback intake,
+item 6). Only the record script writes these two files (atomic, checked, a repeated call changes
+nothing, and re-recording an entry keeps its place and date):
+
+```bash
+bun scripts/campaign-record.ts scope --kind in --text "Open issues in milestone v2.0" --filter
+bun scripts/campaign-record.ts scope --kind parked --text "Theme editor" --refs 111 --reason "another team owns it"
+bun scripts/campaign-record.ts decision --text "Park the theme editor: another team owns it" --refs 111
+```
+
+`--filter` marks the line the launch gate writes for the issue filter, and replaces the previous
+one when the gate runs again. An entry naming `--refs` takes those issues from older entries, so
+re-including a parked issue moves it. A missing headline or blocker section is not an error: the
+page then shows one generated from the counts (what waits on the owner, how many are in review,
+what blocks most), and a campaign with no recorded scope shows "Scope not recorded".
+
+Derived, never recorded: the stage of each card (queue state, the scope entry naming it, and the
+PR's review label, CI and mergeability when the forge is read), the workstream of each issue
+(`status_page.streams`, `config-template.md`; one stream when absent), the quick links (the
+forge's PR, issue and CI pages, plus `status_page.links`) and the config rows (`config.json` and
+the plugin version).
 
 ## Refresh procedure
 
@@ -39,32 +77,36 @@ Later refreshes rewrite the same file silently.
 
 ## Page layout
 
-Top to bottom (`scripts/lib/campaign-status/html.ts` for `--html`, `templates/status-dashboard/index.html` for the Data dashboard, same sections), so the owner sees at once whether the
-campaign is working, which turn it is and what to do:
+Top to bottom, the sections of the Data dashboard (`templates/status-dashboard/index.html`) and
+of `--html` (`scripts/lib/campaign-status/html.ts`), both from one `StatusReport`, so the owner
+sees at a glance where the run stands and what to do:
 
-0. **State banner** — turn, `RUNNING` / `WAITING ON YOU` / `IDLE` / `DONE`, last activity
-   (relative and UTC) and "Your next action". `STALE` replaces the state when the newest of the
-   checkpoint and queue write times is older than `STALE_AFTER_HOURS` (`staleness.ts`), saying
-   "state last written Xh ago, so what follows may be out of date" (`state`); the Data dashboard
-   decides this in the reader's browser, against the time it is opened
-1. **In progress** — in-flight and in-review issues, each with its next step
-2. **Waiting on you** — PRs delivered at LGTM (`Open PR ↗` and `Files changed ↗` links) and
-   owner gates (`awaiting-*`, `blocked-escalated:`); empty state "Nothing is waiting on you."
-3. **Waiting on something else** — blocked items the owner cannot clear, one line per reason class
-   (tracking issue, dependency / upstream, sequenced phase, other, another lane: count plus first
-   3 issues), each class's full list with notes in a folded native `<details>` (`blocked_classes`)
-   The campaign's own lanes are `claude` and `blackhole`; an `in-progress:*` / `agent:*` label
-   naming any other lane puts the item in "another lane". The rule reads issue labels, not
-   `contributor-contract.json`. Merge-conflict and overlap waits keep their own classes, and a
-   class holding a note that addresses the owner (`owner:` or `needs-owner`) renders open.
-   Two more classes follow when non-empty (`elseClasses()`): **Unknown queue status** (active
-   entries with an undocumented `status`, open) and **Open PR with no queue entry** (open PRs no
-   entry's `pr` names; online only, absent under `--no-gh`). The Data dashboard gets them as extra
-   `waiting_else` / `waiting_else_items` rows, so the template needs no change
-4. **Up next** — the ready set, capped
-5. **Recently done** — newest merged/closed items (`recently_done`)
-6. **Details** — a collapsed native `<details>`: host and environment, the checkpoint's
-   `## Notes` and `## In-flight workers` lines, open findings
+1. **Header** — `<campaign> · <state> · updated <age>` (state `running` / `waiting on you` /
+   `idle` / `done`, or `stale` when the newest of the checkpoint and queue write times is older
+   than `STALE_AFTER_HOURS`, `staleness.ts`; the Data dashboard decides this in the reader's
+   browser, against the time it is opened), `· forge not checked` when the forge was not read,
+   the headline, one progress bar, six counts (done, in review, on you, blocked, parked, not
+   started) and the quick links
+2. **Your move** (numbered, each a link: PRs delivered at LGTM or held for the owner first, then
+   owner gates, then other PRs ready to merge; "Nothing is waiting on you.") beside **Blocking
+   the run** ("Nothing blocks the run.")
+3. **Stage board** — five columns: in review (`ready`, `review`, `active`: work in flight
+   without a PR yet), blocked, not started (`you`: an owner gate, `todo`), parked, done. Four
+   cards per column, the rest in a native `<details>` "N more". Each card is a link `#ref title`
+   and a one-line status whose colour repeats its words: green done, blue in review, orange your
+   move, red a conflict, failing CI or a bad queue entry, grey otherwise
+4. **Workstreams** — done / in review / left / next per stream. On the Data dashboard a stream
+   button above the board, or a row, shows only that stream (no buttons when there is one
+   stream); `--html` ships no script, so it has the table without the filter
+5. **Scope** (in, parked, deferred, blocked upstream, out; "Scope not recorded" when none is),
+   **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest)
+
+`--html` keeps its detail sections after these: in progress, waiting on you, waiting on
+something else by reason class (`elseClasses()`), up next, recently done, and a closed native
+`<details>` with host, checkpoint notes and open findings. The text dashboard (`dashboard.ts`)
+is shorter: it prints the headline, the board counts, your move, the scope and the newest
+decisions above its queue sections, with no card list and no workstreams.
+Visual rules: R-006 (`documentation/reference/product-principles.md`).
 
 ## State file
 

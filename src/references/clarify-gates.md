@@ -137,4 +137,15 @@ silently pick a branch.
    same edit. `coordinator.md` § Chat Feedback Intake Protocol item 2 recognizes the resulting
    `awaiting-ruling-recheck` holds and drives the per-item close/amend/proceed disposition.
 
+6. Every owner answer — to a gate (clarify, plan, design, ruling, merge escalation, blocker) or as
+   a scope or priority instruction — is recorded the same turn as one dated line:
+   `bun scripts/campaign-record.ts decision --text "<what the owner decided, one line>" [--refs <issues>]`.
+   An answer that changes what the campaign covers ("add the dependency bumps", "park that, I do
+   not own it") also updates the scope:
+   `bun scripts/campaign-record.ts scope --kind <in|parked|deferred|blocked-upstream|out> --text "<what>" [--refs <issues>] [--reason "<why>"]`.
+   One writer per pattern, so an answer is recorded once: in Pattern B the coordinator records
+   every answer it relays, and the orchestrator records only an answer given to it directly, never
+   one the coordinator relayed; in Pattern C the main-chat orchestrator records every answer.
+   `status-page.md` § What the orchestrator records owns where each lands.
+
 Never silently reinterpret user intent.

@@ -1,0 +1,24 @@
+{
+  "refreshed_at": "2026-11-13T09:00:00.000Z",
+  "issues": {
+    "1": {
+      "title": "First task",
+      "status": "ready",
+      "phase": "handle"
+    },
+    "2": {
+      "title": "Second task",
+      "status": "blocked",
+      "phase": "handle",
+      "depends_on": [
+        1
+      ]
+    },
+    "3": {
+      "title": "Shipped task",
+      "status": "merged",
+      "phase": "done",
+      "pr": 30
+    }
+  }
+}

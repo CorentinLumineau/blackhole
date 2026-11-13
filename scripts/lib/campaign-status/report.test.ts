@@ -586,10 +586,11 @@ describe('buildStatusReport — a PR held for the owner (needs-chef)', () => {
     expect(readyToMergeDetail(r.ready_to_merge[2])).toBe('Held for your decision — review and merge');
   });
 
-  test('the dashboard dataset lists it under waiting on you with its own kind', () => {
-    const rows = buildStatusData(r).waiting_on_you;
-    expect(rows[0]).toMatchObject({ issue: 1, kind: 'needs your decision', pr: 21, detail: 'Held for your decision (workflows, security) — review and merge' });
-    expect(rows[1]).toMatchObject({ issue: 2, kind: 'ready to merge', detail: READY_TO_MERGE_DETAIL });
+  test('the dashboard lists it under your move, saying it is held', () => {
+    const rows = buildStatusData(r).moves;
+    expect(rows.map((m) => m.ref)).toEqual([25, 21, 22]);
+    expect(rows[1].text).toBe('Decide on #21: held for you (workflows, security) · CI not checked');
+    expect(rows[2].text).toMatch(/^Merge #22: /);
   });
 
   test('with nothing else running, the campaign state is waiting on you', () => {
@@ -657,11 +658,9 @@ describe('buildStatusReport — entries no section claims, and PRs no entry name
 
   test('both reach the dashboard data, the text dashboard and the HTML page', () => {
     const data = buildStatusData(online);
-    expect(data.waiting_else.map((c) => [c.kind, c.count])).toEqual([
-      ['unclassified', 2],
-      ['untracked_pr', 2],
-    ]);
-    expect(data.waiting_else_items.filter((i) => i.class === 'untracked_pr').map((i) => i.pr)).toEqual([35, 40]);
+    expect(data.board.filter((c) => c.tone === 'bad' && c.stage === 'blocked').map((c) => c.ref).sort((a, b) => a - b)).toEqual([2, 31]);
+    expect(data.board.filter((c) => c.kind === 'pr' && c.title.toLowerCase().includes('trunk')).map((c) => c.ref)).toEqual([35]);
+    expect(data.board.some((c) => c.ref === 40)).toBe(true);
     const text = formatDashboard({ checkpoint: {}, queue, ledger: {}, forge: FORGE_OK });
     expect(text).toContain('2 unclassified');
     expect(text).toContain('### Unclassified');

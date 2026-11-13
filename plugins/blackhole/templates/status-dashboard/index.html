@@ -1,177 +1,152 @@
 <meta name="dash-one-writer">
-<meta name="bh-template-version" content="2">
+<meta name="bh-template-version" content="3">
 <style>
-  .bh { display: flex; flex-direction: column; gap: var(--cds-gap-xl); font-family: var(--font-anthropic-sans); color: var(--color-fg); min-width: 0; }
-  .bh * { min-width: 0; box-sizing: border-box; }
-
-  /* Hero: title, the sentence that says where the run stands, and the live state line. */
-  .bh-hero { display: flex; flex-direction: column; gap: var(--cds-gap-sm); }
-  .bh-title { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; overflow-wrap: anywhere; }
-  .bh-lede { font-size: var(--cds-font-size-heading); margin: 0; max-width: 62ch; text-wrap: pretty; }
-  .bh-meta { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: 0; display: flex; flex-wrap: wrap; gap: 4px var(--cds-gap-md); align-items: center; }
-  .bh-pill { display: inline-flex; align-items: center; gap: 7px; padding: 2px 10px 2px 8px; border-radius: 999px; border: 1px solid var(--color-border-line); background: var(--color-panel); color: var(--color-fg); font-weight: var(--cds-font-weight-medium); }
-  .bh-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-fg-muted); flex: none; }
-  .is-running .bh-dot, .is-done .bh-dot { background: var(--color-ok); }
-  .is-waiting_on_you .bh-dot { background: var(--color-warn); }
-  .is-stale .bh-dot { background: var(--color-bad); }
-  .bh-pill.is-stale { border-color: var(--color-bad); color: var(--color-bad); }
-  @media (prefers-reduced-motion: no-preference) {
-    .is-running .bh-dot { animation: bh-pulse 2s var(--cds-ease-out) infinite; }
-    @keyframes bh-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  /* Colours: the artifact page's own tokens, with a fallback for a page that defines none. --cd-info,
+     the warm "your move" panel and the done column have no page token, so they are set here. */
+  .cd { --cd-fg: var(--color-fg, #1c1917); --cd-muted: var(--color-fg-muted, #57534e); --cd-bg: var(--color-bg, #ffffff);
+        --cd-panel: var(--color-panel, #f5f5f4); --cd-line: var(--color-border-line, #d6d3d1);
+        --cd-ok: var(--color-ok, #15803d); --cd-warn: var(--color-warn, #c2410c); --cd-bad: var(--color-bad, #b91c1c);
+        --cd-info: #1d4ed8; --cd-move-bg: #fff7ed; --cd-move-fg: #9a3412; --cd-done-bg: #f0fdf4; --cd-card: #ffffff;
+        display: flex; flex-direction: column; gap: 20px; font-family: var(--font-anthropic-sans, Inter, system-ui, sans-serif); color: var(--cd-fg); font-size: 16px; line-height: 1.4; min-width: 0; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .cd { --cd-fg: var(--color-fg, #f5f5f4); --cd-muted: var(--color-fg-muted, #a8a29e); --cd-bg: var(--color-bg, #1c1917);
+        --cd-panel: var(--color-panel, #292524); --cd-line: var(--color-border-line, #57534e);
+        --cd-ok: var(--color-ok, #4ade80); --cd-warn: var(--color-warn, #fb923c); --cd-bad: var(--color-bad, #f87171);
+        --cd-info: #93c5fd; --cd-move-bg: #3b1d0b; --cd-move-fg: #fdba74; --cd-done-bg: #0f2a1a; --cd-card: rgba(255,255,255,.04); }
   }
-  .bh-stale-note { margin: 0; padding: var(--cds-pad-sm) var(--cds-pad-md); border: 1px solid var(--color-bad); border-radius: var(--cds-radius); color: var(--color-bad); font-size: var(--cds-font-size-caption); }
-
-  /* Your move: the one card that asks something of the owner. */
-  .bh-move { border: 1px solid var(--color-border-line); border-left: 3px solid var(--color-ok); border-radius: var(--cds-radius); background: var(--color-panel); padding: var(--cds-pad-md) var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-sm); }
-  .bh-move.needs-you { border-left-color: var(--color-warn); }
-  .bh-label { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); text-transform: uppercase; letter-spacing: .06em; margin: 0; display: flex; align-items: center; gap: var(--cds-gap-sm); }
-  .bh-next-action { margin: 0; font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); overflow-wrap: anywhere; }
-
-  .bh-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-  .bh-list > li { display: flex; flex-direction: column; gap: 3px; padding: var(--cds-pad-sm) 0; border-bottom: 1px solid var(--color-border-line); overflow-wrap: anywhere; }
-  .bh-list > li:last-child { border-bottom: 0; }
-  .bh-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--cds-gap-md); }
-  .bh-ref { font-weight: var(--cds-font-weight-medium); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .bh-sub { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
-  .bh-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--color-border-line); color: var(--color-fg); text-decoration: none; font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); white-space: nowrap; }
-  .bh-btn:hover { border-color: var(--color-fg-muted); }
-  .bh-btn.is-primary { border-color: var(--color-warn); }
-
-  /* Numbers at a glance. */
-  .bh-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: var(--cds-gap-md); }
-  .bh-tile { border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-panel); padding: var(--cds-pad-md) var(--cds-pad-lg); display: flex; flex-direction: column; gap: 2px; }
-  .bh-num { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; line-height: 1.1; }
-  .bh-tile.is-you .bh-num { color: var(--color-warn); }
-  .bh-progress { display: flex; flex-direction: column; gap: var(--cds-gap-xs); }
-  .bh-track { height: 10px; border-radius: 999px; background: var(--cds-chart-grid); overflow: hidden; }
-  .bh-fill { height: 100%; width: 0; background: var(--color-ok); border-radius: 999px; }
-  @media (prefers-reduced-motion: no-preference) { .bh-fill { transition: width var(--cds-dur-slow) var(--cds-ease-out); } }
-
-  .bh-section { display: flex; flex-direction: column; gap: var(--cds-gap-sm); }
-  .bh-h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; display: flex; align-items: baseline; gap: var(--cds-gap-sm); }
-  .bh-count { color: var(--color-fg-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
-  .bh-empty { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: 0; }
-
-  /* Now: one card per issue in flight, with where it is in the five phases. */
-  .bh-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--cds-gap-md); list-style: none; margin: 0; padding: 0; }
-  .bh-card { border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-panel); padding: var(--cds-pad-md) var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-sm); overflow-wrap: anywhere; }
-  .bh-steps { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 0; padding: 0; }
-  .bh-step { font-size: var(--cds-font-size-caption); padding: 1px 8px; border-radius: 999px; border: 1px solid var(--color-border-line); color: var(--color-fg-muted); }
-  .bh-step.is-done { color: var(--color-fg); }
-  .bh-step.is-current { border-color: var(--color-ok); color: var(--color-fg); font-weight: var(--cds-font-weight-medium); }
-
-  /* Up next: an ordered queue. */
-  .bh-queue { list-style: none; margin: 0; padding: 0; counter-reset: bhq; display: flex; flex-direction: column; }
-  .bh-queue > li { counter-increment: bhq; display: flex; gap: var(--cds-gap-md); align-items: baseline; padding: var(--cds-pad-sm) 0; border-bottom: 1px solid var(--color-border-line); overflow-wrap: anywhere; }
-  .bh-queue > li:last-child { border-bottom: 0; }
-  .bh-queue > li::before { content: counter(bhq); font-family: var(--font-anthropic-serif); color: var(--color-fg-muted); font-variant-numeric: tabular-nums; min-width: 1.4em; text-align: right; flex: none; }
-
-  /* Waiting elsewhere: one bar split by reason, then a row per reason that expands. */
-  .bh-split { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--cds-chart-grid); gap: 2px; }
-  .bh-split > span { display: block; height: 100%; }
-  .bh-reasons { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-  .bh-reasons > li { border-bottom: 1px solid var(--color-border-line); }
-  .bh-reasons > li:last-child { border-bottom: 0; }
-  .bh-reason > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--cds-gap-md); padding: var(--cds-pad-sm) 0; list-style: none; }
-  .bh-reason > summary::-webkit-details-marker { display: none; }
-  .bh-reason > summary::after { content: "▸"; color: var(--color-fg-muted); margin-left: auto; }
-  .bh-reason[open] > summary::after { content: "▾"; }
-  .bh-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; align-self: center; background: var(--cds-chart-muted); }
-  .bh-reason .bh-list { margin: 0 0 var(--cds-gap-sm) calc(10px + var(--cds-gap-md)); }
-
-  /* Recently done. */
-  .bh-done > li { flex-direction: row; gap: var(--cds-gap-md); align-items: baseline; }
-  .bh-tick { color: var(--color-ok); flex: none; }
-
-  .bh-details { border-top: 1px solid var(--color-border-line); padding-top: var(--cds-pad-sm); }
-  .bh-details > summary { cursor: pointer; font-weight: var(--cds-font-weight-medium); padding: var(--cds-pad-sm) 0; }
-  .bh-details h3 { font-size: var(--cds-font-size-caption); text-transform: uppercase; letter-spacing: .06em; color: var(--color-fg-muted); font-weight: var(--cds-font-weight-medium); margin: var(--cds-gap-md) 0 var(--cds-gap-xs); }
+  :root[data-theme="dark"] .cd { --cd-fg: var(--color-fg, #f5f5f4); --cd-muted: var(--color-fg-muted, #a8a29e); --cd-bg: var(--color-bg, #1c1917);
+        --cd-panel: var(--color-panel, #292524); --cd-line: var(--color-border-line, #57534e);
+        --cd-ok: var(--color-ok, #4ade80); --cd-warn: var(--color-warn, #fb923c); --cd-bad: var(--color-bad, #f87171);
+        --cd-info: #93c5fd; --cd-move-bg: #3b1d0b; --cd-move-fg: #fdba74; --cd-done-bg: #0f2a1a; --cd-card: rgba(255,255,255,.04); }
+  .cd * { min-width: 0; box-sizing: border-box; }
+  .cd a { color: inherit; text-decoration: underline; text-decoration-color: var(--cd-line); text-underline-offset: 3px; }
+  .cd a:hover { text-decoration-color: currentColor; }
+  .cd :focus-visible { outline: 2px solid var(--cd-info); outline-offset: 2px; border-radius: 2px; }
+  .cd-muted { color: var(--cd-muted); }
+  .cd-meta { margin: 0; font-size: 14px; color: var(--cd-muted); }
+  .cd-head { display: flex; flex-direction: column; gap: 12px; }
+  .cd-h1 { margin: 0; font-size: 30px; font-weight: 700; line-height: 1.2; text-wrap: balance; }
+  .cd-h2 { margin: 0; font-size: 18px; font-weight: 700; }
+  .cd-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--cd-line); }
+  .cd-bar > span { display: block; height: 100%; }
+  .cd-counts { display: flex; flex-wrap: wrap; gap: 6px 28px; font-size: 15px; margin: 0; }
+  .cd-counts b { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .t-ok { color: var(--cd-ok); } .t-info { color: var(--cd-info); } .t-warn { color: var(--cd-warn); } .t-bad { color: var(--cd-bad); }
+  .bg-ok { background: var(--cd-ok); } .bg-info { background: var(--cd-info); } .bg-grey { background: var(--cd-muted); }
+  .cd-links { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 15px; margin: 0; padding: 0; list-style: none; }
+  .cd-two { display: flex; flex-wrap: wrap; gap: 20px; }
+  .cd-panel { background: var(--cd-panel); border-radius: 8px; padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; }
+  .cd-two > .cd-panel { flex: 1 1 380px; }
+  .cd-move { background: var(--cd-move-bg); } .cd-move .cd-h2 { color: var(--cd-move-fg); }
+  .cd-big { margin: 0; padding-left: 26px; display: flex; flex-direction: column; gap: 8px; font-size: 18px; }
+  .cd ol.cd-big { list-style: decimal outside; } .cd ul.cd-big, .cd ul.cd-list { list-style: disc outside; }
+  .cd-big > li, .cd-list > li { display: list-item; }
+  .cd-strong { font-weight: 600; }
+  .cd-filter { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 14px; }
+  .cd button { font: inherit; color: inherit; background: none; border: 1px solid var(--cd-line); border-radius: 6px; padding: 4px 10px; cursor: pointer; min-height: 32px; }
+  .cd button[aria-pressed="true"] { background: var(--cd-fg); color: var(--cd-bg); border-color: var(--cd-fg); }
+  .cd-board-wrap { overflow-x: auto; }
+  .cd-board { display: grid; grid-template-columns: repeat(5, minmax(196px, 1fr)); gap: 12px; min-width: 1040px; }
+  .cd-col { background: var(--cd-panel); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; align-content: start; }
+  .cd-col.is-done { background: var(--cd-done-bg); }
+  .cd-col h3 { margin: 0 0 2px; font-size: 16px; font-weight: 600; }
+  .cd-col h3 b { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cd-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .cd-card { background: var(--cd-card); border: 1px solid var(--cd-line); border-radius: 6px; padding: 10px; font-size: 14px; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 2px; }
+  .cd-card a, .cd-card .cd-card-title { font-weight: 600; text-decoration: none; display: block; }
+  .cd-card a:hover { text-decoration: underline; }
+  .cd-more > summary { cursor: pointer; font-size: 14px; color: var(--cd-muted); padding: 4px 0; }
+  .cd-more[open] > summary { margin-bottom: 8px; }
+  .cd-scroll { overflow-x: auto; }
+  .cd-table { width: 100%; border-collapse: collapse; font-size: 16px; min-width: 620px; }
+  .cd-table th { text-align: left; font-size: 14px; font-weight: 500; color: var(--cd-muted); padding: 6px 12px 6px 0; }
+  .cd-table td { padding: 8px 12px 8px 0; border-top: 1px solid var(--cd-line); }
+  .cd-table .n { text-align: right; font-variant-numeric: tabular-nums; }
+  .cd-table .cd-next { padding-left: 24px; }
+  .cd-table tr.is-row { cursor: pointer; } .cd-table tr.is-row:hover td { background: var(--cd-card); }
+  .cd-table td button { border-color: transparent; padding: 2px 6px; margin-left: -6px; text-align: left; font-weight: 600; }
+  .cd-kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; }
+  .cd-kv dt { color: var(--cd-muted); } .cd-kv dt.t-ok { color: var(--cd-ok); font-weight: 600; } .cd-kv dd { margin: 0; }
+  .cd-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+  .cd-three { display: flex; flex-wrap: wrap; gap: 20px; }
+  .cd-three > .cd-panel { flex: 1 1 260px; } .cd-three > .cd-panel.is-wide { flex: 2 1 420px; }
+  .cd-stale { margin: 0; color: var(--cd-bad); font-size: 14px; }
+  .cd-empty { margin: 0; color: var(--cd-muted); }
+  .cd-note { margin: 0; font-size: 14px; color: var(--cd-muted); }
   [data-dash-source-state=refreshing] { opacity: .5; }
 </style>
 
-<div class="bh">
-  <header class="bh-hero" id="state">
-    <h1 class="bh-title">Blackhole Campaign · <span data-draw="s" data-source="summary" data-field="repo" data-row="0">—</span></h1>
-    <p class="bh-lede">Turn <span data-draw="s" data-num data-source="summary" data-field="turn" data-row="0">—</span> · <span data-draw="s" data-num data-source="summary" data-field="in_flight" data-row="0">—</span> in motion, <span data-draw="owner_n" data-source="owner_count">—</span> waiting on you, <span data-draw="s" data-num data-source="summary" data-field="forge_open_prs" data-row="0">—</span> pull requests open.</p>
-    <p class="bh-meta">
-      <span class="bh-pill" data-draw="state" data-source="summary" data-field="state_kind" data-row="0">—</span>
-      <span data-draw="s" data-source="summary" data-field="state_reason" data-row="0">—</span>
-      <span>Last activity <span data-draw="activity" data-source="summary" data-field="last_activity_at" data-row="0">—</span></span>
-    </p>
-    <p class="bh-stale-note" hidden>No campaign state was written for longer than its threshold, so what follows may be out of date.</p>
+<div class="cd">
+  <header class="cd-head" id="state">
+    <p class="cd-meta"><span data-draw="ov" data-source="overview" data-field="title" data-row="0">—</span> · <span data-draw="state" data-source="overview" data-field="state_kind" data-row="0">—</span> · updated <span data-draw="activity" data-source="overview" data-field="last_activity_at" data-row="0">—</span><span data-draw="forge" data-source="overview" data-field="forge_checked" data-row="0"></span></p>
+    <p class="cd-stale" hidden>No campaign state was written for longer than its threshold, so what follows may be out of date.</p>
+    <h1 class="cd-h1" data-draw="ov" data-source="overview" data-field="headline" data-row="0">—</h1>
+    <div class="cd-bar" role="img" aria-label="Campaign progress" data-draw="bar" data-source="overview"></div>
+    <p class="cd-counts" data-draw="counts" data-source="overview"></p>
+    <ul class="cd-links" data-draw="links" data-source="links" aria-label="Quick links"></ul>
+    <p class="cd-note" data-empty="links" hidden>No quick links: the forge page of this repository could not be built.</p>
   </header>
 
-  <section class="bh-move" id="waiting-on-you" aria-labelledby="bh-move-label">
-    <p class="bh-label" id="bh-move-label">Your move <span class="bh-count" data-draw="owner_n" data-source="owner_count">—</span></p>
-    <p class="bh-next-action" data-draw="s" data-source="summary" data-field="next_action" data-row="0">—</p>
-    <ul class="bh-list" data-draw="owner" data-source="waiting_on_you"></ul>
-    <p class="bh-empty" data-empty hidden>Nothing is waiting on you. The campaign is running on its own.</p>
-  </section>
+  <div class="cd-two">
+    <section class="cd-panel cd-move" id="your-move" aria-labelledby="cd-move-h">
+      <h2 class="cd-h2" id="cd-move-h">Your move</h2>
+      <ol class="cd-big" data-draw="moves" data-source="moves"></ol>
+      <p class="cd-empty" data-empty="moves" hidden>Nothing is waiting on you.</p>
+    </section>
+    <section class="cd-panel" id="blocking" aria-labelledby="cd-block-h">
+      <h2 class="cd-h2" id="cd-block-h">Blocking the run</h2>
+      <ul class="cd-big" data-draw="blockers" data-source="blockers"></ul>
+      <p class="cd-empty" data-empty="blockers" hidden>Nothing blocks the run.</p>
+    </section>
+  </div>
 
-  <section class="bh-section" id="counts" aria-label="Campaign counts">
-    <div class="bh-tiles">
-      <div class="bh-tile"><span class="bh-num" data-draw="s" data-num data-source="summary" data-field="finished" data-row="0">—</span><span class="bh-sub">finished</span></div>
-      <div class="bh-tile"><span class="bh-num" data-draw="s" data-num data-source="summary" data-field="forge_open_issues" data-row="0">—</span><span class="bh-sub">open issues in scope</span></div>
-      <div class="bh-tile"><span class="bh-num" data-draw="s" data-num data-source="summary" data-field="forge_open_prs" data-row="0">—</span><span class="bh-sub">open pull requests</span></div>
-      <div class="bh-tile"><span class="bh-num" data-draw="s" data-num data-source="summary" data-field="in_flight" data-row="0">—</span><span class="bh-sub">in motion</span></div>
-      <div class="bh-tile is-you"><span class="bh-num" data-draw="owner_n" data-source="owner_count">—</span><span class="bh-sub">waiting on you</span></div>
-      <div class="bh-tile"><span class="bh-num" data-draw="s" data-num data-source="summary" data-field="blocked" data-row="0">—</span><span class="bh-sub">blocked elsewhere</span></div>
+  <div class="cd-filter" data-draw="filter" data-source="streams" role="group" aria-label="Show one workstream on the board"></div>
+
+  <section id="board" aria-label="Stage board">
+    <div class="cd-board-wrap">
+      <div class="cd-board" data-draw="board" data-source="board"></div>
     </div>
-    <div class="bh-progress">
-      <p class="bh-sub"><span data-draw="pct" data-source="progress">—</span>% of the campaign's issues are finished</p>
-      <div class="bh-track" role="img" aria-label="Share of the campaign's issues that are finished" data-source="progress"><div class="bh-fill" data-draw="bar"></div></div>
+  </section>
+
+  <section class="cd-panel" id="streams" aria-labelledby="cd-streams-h">
+    <h2 class="cd-h2" id="cd-streams-h">Workstreams</h2>
+    <div class="cd-scroll">
+      <table class="cd-table">
+        <thead><tr><th scope="col">Stream</th><th scope="col" class="n">Done</th><th scope="col" class="n">In review</th><th scope="col" class="n">Left</th><th scope="col" class="cd-next">Next</th></tr></thead>
+        <tbody data-draw="streams" data-source="streams"></tbody>
+      </table>
     </div>
+    <p class="cd-empty" data-empty="streams" hidden>No workstream yet: the queue is empty.</p>
+    <p class="cd-note">Select a stream to show only its cards on the board.</p>
   </section>
 
-  <section class="bh-section" id="in-progress">
-    <h2 class="bh-h2">Now <span class="bh-count" data-draw="n" data-source="in_progress">—</span></h2>
-    <ul class="bh-cards" data-draw="in_progress" data-source="in_progress"></ul>
-    <p class="bh-empty" data-empty hidden>No issue is being planned, implemented or reviewed right now.</p>
-  </section>
-
-  <section class="bh-section" id="up-next">
-    <h2 class="bh-h2">Up next <span class="bh-count" data-draw="n" data-source="up_next">—</span></h2>
-    <ol class="bh-queue" data-draw="up_next" data-source="up_next"></ol>
-    <p class="bh-empty" data-empty hidden>The ready set is empty.</p>
-    <p class="bh-sub" data-more-line hidden>+<span data-draw="more_count" data-source="up_next_more">—</span> more in the queue</p>
-  </section>
-
-  <section class="bh-section" id="waiting-else">
-    <h2 class="bh-h2">Waiting on something else <span class="bh-count" data-draw="else_n" data-source="else_count">—</span></h2>
-    <div class="bh-split" role="img" aria-label="Blocked items split by reason" data-draw="split" data-source="waiting_else"></div>
-    <ul class="bh-reasons" data-draw="else" data-source="waiting_else waiting_else_items"></ul>
-    <p class="bh-empty" data-empty hidden>Nothing else is blocked.</p>
-  </section>
-
-  <section class="bh-section" id="recently-done">
-    <h2 class="bh-h2">Recently done</h2>
-    <ul class="bh-list bh-done" data-draw="done" data-source="recently_done"></ul>
-    <p class="bh-empty" data-empty hidden>Nothing has merged yet.</p>
-  </section>
-
-  <details class="bh-details" id="details">
-    <summary>Details</summary>
-    <p class="bh-sub">Queue health <span data-draw="s" data-source="summary" data-field="queue_health" data-row="0">—</span> · <span data-draw="s" data-num data-source="summary" data-field="open" data-row="0">—</span> open in the queue · <span data-draw="s" data-num data-source="summary" data-field="ready" data-row="0">—</span> ready · <span data-draw="s" data-num data-source="summary" data-field="findings_open" data-row="0">—</span> open findings · generated <span data-draw="utc" data-source="summary" data-field="generated_at" data-row="0">—</span></p>
-    <h3>Workers</h3>
-    <ul class="bh-list" data-draw="lines" data-kinds="worker host" data-source="notes"></ul>
-    <p class="bh-empty" data-empty hidden>None.</p>
-    <h3>Checkpoint notes</h3>
-    <ul class="bh-list" data-draw="lines" data-kinds="note" data-source="notes"></ul>
-    <p class="bh-empty" data-empty hidden>None.</p>
-    <h3>Open findings</h3>
-    <ul class="bh-list" data-draw="lines" data-kinds="finding" data-source="notes"></ul>
-    <p class="bh-empty" data-empty hidden>None.</p>
-  </details>
+  <div class="cd-three">
+    <section class="cd-panel is-wide" id="scope" aria-labelledby="cd-scope-h">
+      <h2 class="cd-h2" id="cd-scope-h">Scope</h2>
+      <dl class="cd-kv" data-draw="scope" data-source="scope"></dl>
+      <p class="cd-empty" data-empty="scope" hidden>Scope not recorded.</p>
+    </section>
+    <section class="cd-panel" id="config" aria-labelledby="cd-config-h">
+      <h2 class="cd-h2" id="cd-config-h">Config</h2>
+      <dl class="cd-kv" data-draw="config" data-source="config"></dl>
+      <p class="cd-empty" data-empty="config" hidden>No config recorded.</p>
+    </section>
+    <section class="cd-panel" id="decisions" aria-labelledby="cd-dec-h">
+      <h2 class="cd-h2" id="cd-dec-h">Your decisions</h2>
+      <ul class="cd-list" data-draw="decisions" data-source="decisions"></ul>
+      <p class="cd-empty" data-empty="decisions" hidden>No decision recorded yet.</p>
+    </section>
+  </div>
 </div>
 
 <script>
   /* bh-stale:start */
-  function bhState(summary, nowMs) {
-    const last = summary ? Date.parse(summary.last_activity_at) : NaN;
-    const hours = summary ? Number(summary.stale_after_hours) : NaN;
+  function bhState(overview, nowMs) {
+    const last = overview ? Date.parse(overview.last_activity_at) : NaN;
+    const hours = overview ? Number(overview.stale_after_hours) : NaN;
     const ageMs = Number.isNaN(last) ? null : Math.max(0, nowMs - last);
     const stale = ageMs === null || Number.isNaN(hours) || ageMs > hours * 3600000;
-    return { kind: stale ? 'stale' : String(summary && summary.state_kind), stale: stale, ageMs: ageMs };
+    return { kind: stale ? 'stale' : String(overview && overview.state_kind), stale: stale, ageMs: ageMs };
   }
   function bhAgo(ageMs) {
     const min = Math.max(0, Math.round(ageMs / 60000));
@@ -181,282 +156,240 @@
   }
   /* bh-stale:end */
 
-  const UP_NEXT_SHOWN = 5;
-  const STATES = {
-    running: 'Running',
-    waiting_on_you: 'Waiting on you',
-    idle: 'Idle',
-    done: 'Done',
-    stale: 'Stale',
-  };
-  const PHASES = ['handle', 'plan', 'implement', 'review'];
-  const PHASE_WORDS = ['Handle', 'Plan', 'Implement', 'Review', 'Merge'];
-  const fmtInt = d3.format(',');
-  const fmtUtc = d3.utcFormat('%Y-%m-%d %H:%M UTC');
-  const rowsOf = (id) => {
-    const d = dash.data(id);
-    return d.status === 'ok' && Array.isArray(d.data) ? d.data : [];
-  };
+  const CARDS_SHOWN = 4;
+  const DECISIONS_SHOWN = 4;
+  const STATES = { running: 'running', waiting_on_you: 'waiting on you', idle: 'idle', done: 'done', stale: 'stale' };
+  const COLUMNS = [
+    { key: 'review', label: 'in review', tone: 't-info', stages: ['ready', 'review', 'active'] },
+    { key: 'blocked', label: 'blocked', tone: '', stages: ['blocked'] },
+    { key: 'todo', label: 'not started', tone: '', stages: ['you', 'todo'] },
+    { key: 'parked', label: 'parked', tone: '', stages: ['parked'] },
+    { key: 'done', label: 'done', tone: 't-ok', stages: ['done'] },
+  ];
+  const SEGMENTS = [
+    { field: 'done', label: 'done', bg: 'bg-ok', tone: 't-ok' },
+    { field: 'in_review', label: 'in review', bg: 'bg-info', tone: 't-info' },
+    { field: 'blocked', label: 'blocked', bg: 'bg-grey', tone: '' },
+    { field: 'parked', label: 'parked', bg: 'bg-grey', tone: '' },
+    { field: 'not_started', label: 'not started', bg: '', tone: '' },
+  ];
+  const TONES = { ok: 't-ok', bad: 't-bad', warn: 't-warn', info: 't-info' };
+  let streamFilter = '';
+  const openMore = new Set();
+
+  const rowsOf = (id) => { const d = dash.data(id); return d.status === 'ok' && Array.isArray(d.data) ? d.data : []; };
   const firstOf = (id) => rowsOf(id)[0] || null;
   const safeUrl = (u) => /^https?:\/\//i.test(String(u || ''));
-  const isEmpty = (v) => v == null || v === '';
-  const num = (v) => (isEmpty(v) ? '—' : fmtInt(Number(v)));
-
-  // An element with its text and, when given, the marks that tie it to one cell of its dataset.
   function mk(tag, cls, text, mark) {
     const el = document.createElement(tag);
     if (cls) el.className = cls;
-    el.textContent = text;
-    if (mark) {
-      el.dataset.source = mark.source;
-      el.dataset.field = mark.field;
-      el.dataset.row = String(mark.row);
-    }
+    if (text != null) el.textContent = text;
+    if (mark) { el.dataset.source = mark.source; el.dataset.field = mark.field; el.dataset.row = String(mark.row); }
     return el;
   }
-  // "#1234" and "PR #56": the prefix is plain text, the number carries the mark.
-  function tagged(cls, prefix, value, mark) {
-    const w = mk('span', cls, prefix);
-    w.append(mk('span', '', String(value), mark));
-    return w;
-  }
-  const issueRef = (source, row, issue) => tagged('bh-ref', '#', issue, { source: source, field: 'issue', row: row });
-  const prRef = (source, row, pr) => tagged('bh-sub', 'PR #', pr, { source: source, field: 'pr', row: row });
-  function prButton(url, label, source, row, primary) {
-    const a = mk('a', 'bh-btn' + (primary ? ' is-primary' : ''), label, { source: source, field: 'pr_url', row: row });
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener';
+  function link(url, text, mark) {
+    if (!safeUrl(url)) return mk('span', '', text, mark);
+    const a = mk('a', '', text, mark);
+    a.href = url; a.target = '_blank'; a.rel = 'noopener';
     return a;
   }
-
-  // Fills a list or shows the empty line that follows it; a loading source keeps the skeleton.
-  function fillList(ul, sources, build) {
-    const statuses = sources.map((s) => dash.data(s).status);
-    const ok = statuses.every((s) => s === 'ok');
-    ul.classList.toggle('dash-skeleton', statuses.includes('loading'));
-    const items = ok ? build() : [];
-    ul.replaceChildren(...items);
-    const empty = ul.nextElementSibling && ul.nextElementSibling.hasAttribute('data-empty') ? ul.nextElementSibling : null;
-    if (empty) empty.hidden = !(ok && items.length === 0);
+  // Fills a list, or shows its empty line (data-empty="<draw name>") when the dataset has no row.
+  function fill(el, source, build) {
+    const st = dash.data(source).status;
+    el.classList.toggle('dash-skeleton', st === 'loading');
+    const items = st === 'ok' ? build() : [];
+    el.replaceChildren(...items);
+    const empty = document.querySelector('[data-empty="' + el.dataset.draw + '"]');
+    if (empty) empty.hidden = !(st === 'ok' && items.length === 0);
   }
 
-  function titleRow(source, i, r) {
-    const row = document.createElement('div');
-    row.className = 'bh-row';
-    row.append(issueRef(source, i, r.issue), mk('span', '', r.title || '', { source: source, field: 'title', row: i }));
-    return row;
+  function card(r, i) {
+    const li = mk('li', 'cd-card', '');
+    const head = (r.ref != null ? '#' + r.ref + ' ' : '') + String(r.title || '');
+    const title = link(r.url, head, { source: 'board', field: 'title', row: i });
+    if (!safeUrl(r.url)) title.className = 'cd-card-title';
+    li.append(title);
+    if (r.status) li.append(mk('span', TONES[r.tone] || 'cd-muted', String(r.status), { source: 'board', field: 'status', row: i }));
+    return li;
   }
 
-  dash.calc('owner_count', {
-    inputs: ['waiting_on_you'],
-    title: 'Items waiting on you',
-    description: 'How many items only the owner can clear.',
-    fn: (waitingOnYou) => waitingOnYou.length,
-  });
-  dash.calc('else_count', {
-    inputs: ['waiting_else'],
-    title: 'Items blocked elsewhere',
-    description: 'Blocked items that are not owner gates: the sum of the reason classes.',
-    fn: (classes) => classes.reduce((n, c) => n + Number(c.count || 0), 0),
-  });
-  dash.calc('progress', {
-    inputs: ['summary'],
-    title: 'Share finished',
-    description: 'Finished issues over finished plus still-open issues in the campaign queue, as a percentage.',
-    fn: (summary) => {
-      const s = summary[0];
-      const done = s ? Number(s.finished) : 0;
-      const total = s ? done + Number(s.open) : 0;
-      return total > 0 ? Math.round((done / total) * 100) : null;
-    },
-  });
-  dash.calc('up_next_more', {
-    inputs: ['up_next'],
-    title: 'Ready issues beyond the first five',
-    description: 'Ready issues the page does not list: all of them minus the five shown.',
-    fn: (upNext) => Math.max(0, upNext.length - UP_NEXT_SHOWN),
-  });
+  /* bh-filter:start */
+  // A selected stream that a refresh removed would leave every column empty, with no "All streams"
+  // button to clear it once one stream or none is left, so it is dropped.
+  function bhFilter(current, names) { return current && names.indexOf(current) < 0 ? '' : current; }
+  /* bh-filter:end */
+  function streamNames() { return rowsOf('streams').map((r) => String(r.stream || '')); }
+  // The filter, board and streams drawings call this first, so the three agree on the current list.
+  function syncFilter() { streamFilter = bhFilter(streamFilter, streamNames()); }
 
-  const calcText = (id) => {
-    const d = dash.data(id);
-    return d.status === 'ok' && d.data != null ? num(d.data) : '—';
-  };
-
-  dash.draw('s', (el) => {
-    const r = firstOf('summary');
-    const v = r ? r[el.dataset.field] : null;
-    el.classList.toggle('dash-skeleton', dash.data('summary').status === 'loading');
-    el.textContent = isEmpty(v) ? '—' : el.hasAttribute('data-num') ? num(v) : String(v);
+  // Selecting the shown stream again, or "All streams", clears the filter.
+  function setFilter(name) {
+    streamFilter = streamFilter === name ? '' : name;
+    dash.draw('filter'); dash.draw('board'); dash.draw('streams');
+  }
+  function filterButton(label, name) {
+    const b = mk('button', '', label);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', String(streamFilter === name));
+    b.addEventListener('click', () => setFilter(name));
+    return b;
+  }
+  dash.draw('ov', (el) => {
+    const o = firstOf('overview');
+    el.textContent = o && o[el.dataset.field] != null ? String(o[el.dataset.field]) : '—';
   });
-  dash.draw('owner_n', (el) => { el.textContent = calcText('owner_count'); });
-  dash.draw('else_n', (el) => { el.textContent = calcText('else_count'); });
-  dash.draw('n', (el) => {
-    const d = dash.data(el.dataset.source);
-    el.textContent = d.status === 'ok' && Array.isArray(d.data) ? num(d.data.length) : '—';
+  dash.draw('forge', (el) => {
+    const o = firstOf('overview');
+    el.textContent = o && o.forge_checked === false ? ' · forge not checked' : '';
   });
-  dash.draw('utc', (el) => {
-    const r = firstOf('summary');
-    const d = r ? d3.isoParse(r[el.dataset.field]) : null;
-    el.textContent = d ? fmtUtc(d) : '—';
-  });
+  // The state word and the age re-draw every minute, so a page left open turns stale by itself.
+  const tick = { mount: () => setInterval(() => { dash.draw('state'); dash.draw('activity'); }, 60000), unmount: (el, t) => clearInterval(t) };
+  dash.draw('state', Object.assign({}, tick, { update: (el) => {
+    const o = firstOf('overview');
+    const note = document.querySelector('.cd-stale');
+    if (!o) { el.textContent = '—'; if (note) note.hidden = true; return; }
+    const s = bhState(o, Date.now());
+    el.textContent = STATES[s.kind] || s.kind;
+    el.className = 'cd-strong ' + (s.kind === 'stale' ? 't-bad' : s.kind === 'waiting_on_you' ? 't-warn' : 't-info');
+    if (note) note.hidden = !s.stale;
+  } }));
+  dash.draw('activity', Object.assign({}, tick, { update: (el) => {
+    const s = bhState(firstOf('overview'), Date.now());
+    el.textContent = s.ageMs === null ? '—' : bhAgo(s.ageMs);
+  } }));
 
-  // The state pill and the age re-draw every minute, so a page left open turns Stale by itself.
-  const tick = {
-    mount: () => setInterval(() => { dash.draw('state'); dash.draw('activity'); }, 60000),
-    unmount: (el, timer) => clearInterval(timer),
-  };
-  dash.draw('state', Object.assign({}, tick, {
-    update: (el) => {
-      const hero = el.closest('.bh-hero');
-      const note = hero ? hero.querySelector('.bh-stale-note') : null;
-      const r = firstOf('summary');
-      for (const k of Object.keys(STATES)) el.classList.remove('is-' + k);
-      if (!r) { el.replaceChildren(document.createTextNode('—')); if (note) note.hidden = true; return; }
-      const s = bhState(r, Date.now());
-      el.classList.add('is-' + s.kind);
-      const dot = mk('span', 'bh-dot', '');
-      dot.setAttribute('aria-hidden', 'true');
-      el.replaceChildren(dot, document.createTextNode(STATES[s.kind] || String(s.kind)));
-      if (note) note.hidden = !s.stale;
-    },
-  }));
-  dash.draw('activity', Object.assign({}, tick, {
-    update: (el) => {
-      const r = firstOf('summary');
-      const d = r ? d3.isoParse(r.last_activity_at) : null;
-      el.textContent = d ? bhAgo(Math.max(0, Date.now() - d.getTime())) + ' · ' + fmtUtc(d) : '—';
-    },
-  }));
-
-  dash.draw('pct', (el) => { el.textContent = calcText('progress'); });
   dash.draw('bar', (el) => {
-    const d = dash.data('progress');
-    el.style.width = d.status === 'ok' && d.data != null ? Math.max(0, Math.min(100, Number(d.data))) + '%' : '0';
-  });
-
-  dash.draw('owner', (ul) => {
-    const card = ul.closest('.bh-move');
-    if (card) card.classList.toggle('needs-you', rowsOf('waiting_on_you').length > 0);
-    fillList(ul, ['waiting_on_you'], () => rowsOf('waiting_on_you').map((r, i) => {
-      const li = document.createElement('li');
-      const row = titleRow('waiting_on_you', i, r);
-      if (safeUrl(r.pr_url)) {
-        row.append(prButton(r.pr_url, (r.kind === 'ready to merge' ? 'Merge' : 'Review') + ' PR #' + (r.pr != null ? r.pr : '') + ' ↗', 'waiting_on_you', i, i === 0));
-        if (r.kind === 'ready to merge') row.append(prButton(String(r.pr_url).replace(/\/$/, '') + '/files', 'Files changed ↗', 'waiting_on_you', i, false));
-      }
-      li.append(row);
-      if (!isEmpty(r.detail)) li.append(mk('span', 'bh-sub', String(r.detail), { source: 'waiting_on_you', field: 'detail', row: i }));
-      return li;
-    }));
-  });
-
-  dash.draw('in_progress', (ul) => {
-    fillList(ul, ['in_progress'], () => rowsOf('in_progress').map((r, i) => {
-      const li = mk('li', 'bh-card', '');
-      const row = titleRow('in_progress', i, r);
-      if (r.pr != null) row.append(prRef('in_progress', i, r.pr));
-      const steps = mk('ol', 'bh-steps', '');
-      steps.setAttribute('aria-label', 'Phase');
-      const at = PHASES.indexOf(String(r.phase || ''));
-      PHASE_WORDS.forEach((w, k) => {
-        steps.append(mk('li', 'bh-step' + (k < at ? ' is-done' : k === at ? ' is-current' : ''), w));
-      });
-      li.append(row, steps);
-      if (!isEmpty(r.next_step)) li.append(mk('span', 'bh-sub', 'Next: ' + String(r.next_step), { source: 'in_progress', field: 'next_step', row: i }));
-      return li;
-    }));
-  });
-
-  dash.draw('up_next', (ol) => {
-    fillList(ol, ['up_next'], () => rowsOf('up_next').slice(0, UP_NEXT_SHOWN).map((r, i) => {
-      const li = document.createElement('li');
-      li.append(titleRow('up_next', i, r));
-      return li;
-    }));
-  });
-  dash.onData(() => {
-    const d = dash.data('up_next_more');
-    for (const p of document.querySelectorAll('[data-more-line]')) p.hidden = !(d.status === 'ok' && Number(d.data) > 0);
-  });
-  dash.draw('more_count', (el) => { el.textContent = calcText('up_next_more'); });
-
-  const colorFor = (i) => dash.colors[i % dash.colors.length];
-  dash.draw('split', (el) => {
-    const classes = rowsOf('waiting_else');
-    const total = classes.reduce((n, c) => n + Number(c.count || 0), 0);
-    el.replaceChildren(...classes.filter((c) => Number(c.count) > 0).map((c) => {
-      const seg = document.createElement('span');
-      seg.style.flex = String(Number(c.count));
-      seg.style.background = colorFor(classes.indexOf(c));
+    const o = firstOf('overview');
+    if (!o) { el.replaceChildren(); return; }
+    el.replaceChildren(...SEGMENTS.filter((s) => s.bg && Number(o[s.field]) > 0).map((s) => {
+      const seg = mk('span', s.bg, '');
+      seg.style.flex = String(Number(o[s.field]));
+      if (s.field === 'parked') seg.style.opacity = '.55';
       return seg;
-    }));
-    el.setAttribute('aria-label', 'Blocked items split by reason: ' + classes.map((c) => c.label + ' ' + c.count).join(', ') + (total ? '' : ' (none)'));
+    }), (() => { const rest = mk('span', '', ''); rest.style.flex = String(Number(o.not_started) || 0); return rest; })());
+    el.setAttribute('aria-label', 'Campaign progress: ' + SEGMENTS.map((s) => o[s.field] + ' ' + s.label).join(', '));
   });
-
-  // Which reason rows a reader opened, kept across redraws; a class with `attention` starts open.
-  const openReasons = new Map();
-  dash.draw('else', (ul) => {
-    fillList(ul, ['waiting_else', 'waiting_else_items'], () => {
-      const classes = rowsOf('waiting_else');
-      const items = rowsOf('waiting_else_items');
-      return classes.map((c, ci) => {
-        const li = document.createElement('li');
-        const details = mk('details', 'bh-reason', '');
-        details.open = openReasons.has(c.kind) ? openReasons.get(c.kind) : c.attention === true;
-        details.addEventListener('toggle', () => openReasons.set(c.kind, details.open));
-        const summary = document.createElement('summary');
-        const swatch = mk('span', 'bh-swatch', '');
-        swatch.style.background = colorFor(ci);
-        summary.append(
-          swatch,
-          mk('span', 'bh-ref', String(c.label || ''), { source: 'waiting_else', field: 'label', row: ci }),
-          mk('span', 'bh-count', num(c.count), { source: 'waiting_else', field: 'count', row: ci }),
-          mk('span', 'bh-sub', String(c.first_issues || ''), { source: 'waiting_else', field: 'first_issues', row: ci }),
-        );
-        if (Number(c.more_count) > 0) {
-          const more = mk('span', 'bh-sub', 'and ');
-          more.append(mk('span', '', num(c.more_count), { source: 'waiting_else', field: 'more_count', row: ci }), document.createTextNode(' more'));
-          summary.append(more);
-        }
-        const inner = mk('ul', 'bh-list', '');
-        items.forEach((it, ii) => {
-          if (it.class !== c.kind) return;
-          const row = document.createElement('li');
-          row.append(titleRow('waiting_else_items', ii, it));
-          if (!isEmpty(it.detail)) row.append(mk('span', 'bh-sub', String(it.detail), { source: 'waiting_else_items', field: 'detail', row: ii }));
-          inner.append(row);
-        });
-        details.append(summary, inner);
-        li.append(details);
-        return li;
-      });
+  dash.draw('counts', (el) => {
+    const o = firstOf('overview');
+    if (!o) { el.textContent = '—'; return; }
+    const parts = SEGMENTS.map((s) => {
+      const w = mk('span', '', '');
+      w.append(mk('b', s.tone, String(o[s.field]), { source: 'overview', field: s.field, row: 0 }), document.createTextNode(' ' + s.label));
+      return w;
     });
+    const you = mk('span', '', '');
+    you.append(mk('b', 't-warn', String(o.on_you), { source: 'overview', field: 'on_you', row: 0 }), document.createTextNode(' on you'));
+    parts.splice(2, 0, you);
+    el.replaceChildren(...parts);
   });
 
-  dash.draw('done', (ul) => {
-    fillList(ul, ['recently_done'], () => rowsOf('recently_done').map((r, i) => {
+  dash.draw('links', (ul) => fill(ul, 'links', () => rowsOf('links').map((r, i) => {
+    const li = document.createElement('li');
+    li.append(link(r.url, String(r.label || '') + ' ↗', { source: 'links', field: 'label', row: i }));
+    return li;
+  })));
+
+  dash.draw('moves', (ol) => fill(ol, 'moves', () => rowsOf('moves').map((r, i) => {
+    const li = document.createElement('li');
+    li.append(link(r.url, String(r.text || ''), { source: 'moves', field: 'text', row: i }));
+    return li;
+  })));
+  dash.draw('blockers', (ul) => fill(ul, 'blockers', () => rowsOf('blockers').map((r, i) => {
+    const li = document.createElement('li');
+    li.append(mk('span', TONES[r.tone] ? TONES[r.tone] + ' cd-strong' : '', String(r.text || ''), { source: 'blockers', field: 'text', row: i }));
+    return li;
+  })));
+
+
+  dash.draw('filter', (el) => {
+    syncFilter();
+    const names = streamNames();
+    el.replaceChildren(...(names.length > 1 ? [filterButton('All streams', ''), ...names.map((n) => filterButton(n, n))] : []));
+  });
+
+  dash.draw('board', (el) => {
+    syncFilter();
+    const st = dash.data('board').status;
+    el.classList.toggle('dash-skeleton', st === 'loading');
+    if (st !== 'ok') { el.replaceChildren(); return; }
+    const all = rowsOf('board').map((r, i) => ({ r: r, i: i })).filter((x) => !streamFilter || x.r.stream === streamFilter);
+    el.replaceChildren(...COLUMNS.map((col) => {
+      const items = all.filter((x) => col.stages.includes(x.r.stage));
+      const box = mk('section', 'cd-col' + (col.key === 'done' ? ' is-done' : ''), '');
+      box.setAttribute('aria-label', items.length + ' ' + col.label);
+      const h = document.createElement('h3');
+      h.append(mk('b', col.tone, String(items.length)), document.createTextNode(' ' + col.label));
+      box.append(h);
+      const first = mk('ul', 'cd-cards', '');
+      items.slice(0, CARDS_SHOWN).forEach((x) => first.append(card(x.r, x.i)));
+      box.append(first);
+      if (items.length > CARDS_SHOWN) {
+        const d = mk('details', 'cd-more', '');
+        d.open = openMore.has(col.key);
+        d.addEventListener('toggle', () => { if (d.open) openMore.add(col.key); else openMore.delete(col.key); });
+        d.append(mk('summary', '', (items.length - CARDS_SHOWN) + ' more'));
+        const rest = mk('ul', 'cd-cards', '');
+        items.slice(CARDS_SHOWN).forEach((x) => rest.append(card(x.r, x.i)));
+        d.append(rest);
+        box.append(d);
+      }
+      if (items.length === 0) box.append(mk('p', 'cd-muted', 'Nothing here.'));
+      return box;
+    }));
+  });
+
+  // A row selects its stream with the mouse; the button in its first cell does it from the keyboard.
+  dash.draw('streams', (tb) => { syncFilter(); fill(tb, 'streams', () => rowsOf('streams').map((r, i) => {
+    const tr = mk('tr', 'is-row', '');
+    const name = document.createElement('td');
+    const b = mk('button', '', String(r.stream || ''), { source: 'streams', field: 'stream', row: i });
+    b.type = 'button';
+    b.setAttribute('aria-pressed', String(streamFilter === r.stream));
+    b.addEventListener('click', (e) => { e.stopPropagation(); setFilter(r.stream); });
+    name.append(b);
+    const cell = (f, tone) => mk('td', 'n' + (tone ? ' ' + tone + ' cd-strong' : ''), String(r[f] ?? '—'), { source: 'streams', field: f, row: i });
+    tr.append(name, cell('done', 't-ok'), cell('in_review', 't-info'), cell('left', ''), mk('td', 'cd-next', String(r.next || ''), { source: 'streams', field: 'next', row: i }));
+    tr.addEventListener('click', () => setFilter(r.stream));
+    return tr;
+  })); });
+
+  dash.draw('scope', (dl) => fill(dl, 'scope', () => {
+    const out = [];
+    let last = null;
+    rowsOf('scope').forEach((r, i) => {
+      out.push(mk('dt', r.kind === 'In' ? 't-ok' : '', r.kind === last ? '' : String(r.kind || '')));
+      last = r.kind;
+      const dd = mk('dd', '', '');
+      dd.append(mk('span', '', String(r.text || ''), { source: 'scope', field: 'text', row: i }));
+      if (r.reason) dd.append(document.createTextNode(' — '), mk('span', '', String(r.reason), { source: 'scope', field: 'reason', row: i }));
+      dd.append(mk('span', 'cd-muted', ' · since ' + String(r.date || '')));
+      out.push(dd);
+    });
+    return out;
+  }));
+  dash.draw('config', (dl) => fill(dl, 'config', () => rowsOf('config').flatMap((r, i) => [
+    mk('dt', '', String(r.key || '')),
+    mk('dd', '', String(r.value || ''), { source: 'config', field: 'value', row: i }),
+  ])));
+  dash.draw('decisions', (ul) => fill(ul, 'decisions', () => {
+    const rows = rowsOf('decisions');
+    const item = (r, i) => {
       const li = document.createElement('li');
-      const tick = mk('span', 'bh-tick', '✓');
-      tick.setAttribute('aria-hidden', 'true');
-      const row = titleRow('recently_done', i, r);
-      if (r.pr != null) row.append(prRef('recently_done', i, r.pr));
-      li.append(tick, row);
+      li.append(mk('span', 'cd-muted', String(r.date || '') + ' '), mk('span', '', String(r.text || ''), { source: 'decisions', field: 'text', row: i }));
       return li;
-    }));
-  });
-
-  dash.draw('lines', (ul) => {
-    const kinds = String(ul.dataset.kinds || '').split(/\s+/);
-    fillList(ul, ['notes'], () => {
-      const lis = [];
-      rowsOf('notes').forEach((r, i) => {
-        if (!kinds.includes(r.kind)) return;
-        const li = document.createElement('li');
-        li.append(mk('span', '', String(r.text || ''), { source: 'notes', field: 'text', row: i }));
-        lis.push(li);
-      });
-      return lis;
-    });
-  });
+    };
+    const out = rows.slice(0, DECISIONS_SHOWN).map(item);
+    if (rows.length > DECISIONS_SHOWN) {
+      const li = document.createElement('li');
+      li.style.listStyle = 'none';
+      const d = mk('details', 'cd-more', '');
+      d.append(mk('summary', '', (rows.length - DECISIONS_SHOWN) + ' more'));
+      const inner = mk('ul', 'cd-list', '');
+      rows.slice(DECISIONS_SHOWN).forEach((r, k) => inner.append(item(r, k + DECISIONS_SHOWN)));
+      d.append(inner);
+      li.append(d);
+      out.push(li);
+    }
+    return out;
+  }));
 </script>

@@ -1,22 +1,18 @@
 import { SECTION_CAP } from './dashboard.ts';
 import { classPreview } from './blocked-classes.ts';
-import { elseClasses, inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
-import type { BlockedClass, ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind } from './types.ts';
+import { BOARD_COLUMNS } from './board.ts';
+import { SCOPE_LABELS } from './record.ts';
+import { campaignName, elseClasses, inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
+import type { BlockedClass, BoardItem, ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind, Tone } from './types.ts';
+
+/** Cards shown per board column before the rest fold into "N more" — the template's `CARDS_SHOWN`. */
+const BOARD_CARDS_SHOWN = 4;
 
 const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 /** Escapes text for HTML element content and quoted attributes. Every value from state goes through this. */
 export function escapeHtml(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
-}
-
-// Plain-text campaign name for the <title> and header: the repo, else the scope.
-function campaignName(report: StatusReport): string {
-  const { repo, scope } = report.campaign;
-  if (repo) return repo;
-  if (scope.milestone) return `milestone ${scope.milestone}`;
-  if (scope.labels.length) return `labels ${scope.labels.join(', ')}`;
-  return 'all open issues';
 }
 
 const empty = (text: string): string => `<p class="empty">${escapeHtml(text)}</p>`;
@@ -87,6 +83,85 @@ function banner(r: StatusReport, name: string): string {
     `<p>Your next action: ${escapeHtml(state.next_action)}</p>`,
     '</header>',
   ].join('');
+}
+
+// The page's header facts after the banner: headline, board counts and the quick links.
+function overview(r: StatusReport): string {
+  const c = r.stage_counts;
+  const board = `${c.done} done · ${c.in_review} in review · ${c.on_you} on you · ${c.blocked} blocked · ${c.parked} parked · ${c.not_started} not started`;
+  const links = r.links.filter((l) => isHttpUrl(l.url)).map((l) => link(l.url, `${l.label} ↗`)).join(' ');
+  return [
+    '<section class="overview">',
+    `<p class="headline">${escapeHtml(r.headline.text)}</p>`,
+    `<p class="meta">${escapeHtml(board)}${r.forge_checked ? '' : ' · forge not checked'}</p>`,
+    links ? `<p class="links">${links}</p>` : '',
+    '</section>',
+  ].join('');
+}
+
+// The text always carries the meaning; the class only repeats it in colour.
+const toneClass = (tone: Tone): string => (tone ? ` class="t-${tone}"` : '');
+
+function movesSection(r: StatusReport): string {
+  if (r.moves.length === 0) return section('Your move', empty('Nothing is waiting on you.'), 0);
+  const rows = r.moves.map((m) => `<li>${m.url && isHttpUrl(m.url) ? link(m.url, m.text) : escapeHtml(m.text)}</li>`);
+  return section('Your move', `<ol class="moves">${rows.join('')}</ol>`, r.moves.length);
+}
+
+function blockersSection(r: StatusReport): string {
+  if (r.blockers.length === 0) return section('Blocking the run', empty('Nothing blocks the run.'));
+  return section('Blocking the run', `<ul class="lines">${r.blockers.map((b) => `<li${toneClass(b.tone)}>${escapeHtml(b.text)}</li>`).join('')}</ul>`);
+}
+
+function boardCard(c: BoardItem): string {
+  const head = `#${c.ref} ${c.title}`;
+  const title = c.url && isHttpUrl(c.url) ? link(c.url, head) : `<span class="num">${escapeHtml(head)}</span>`;
+  const status = c.status ? `<div${toneClass(c.tone) || ' class="meta"'}>${escapeHtml(c.status)}</div>` : '';
+  return `<li>${title}${status}</li>`;
+}
+
+function boardSection(r: StatusReport): string {
+  const cols = BOARD_COLUMNS.map((col) => {
+    const cards = r.board.filter((c) => col.stages.includes(c.stage));
+    const shown = cards.slice(0, BOARD_CARDS_SHOWN).map(boardCard).join('');
+    const rest = cards.slice(BOARD_CARDS_SHOWN);
+    const more = rest.length
+      ? `<details class="more"><summary>${escapeHtml(rest.length)} more</summary><ul class="cards">${rest.map(boardCard).join('')}</ul></details>`
+      : '';
+    const body = cards.length ? `<ul class="cards">${shown}</ul>${more}` : empty('Nothing here.');
+    return `<div class="col"><h3><b>${escapeHtml(cards.length)}</b> ${escapeHtml(col.label)}</h3>${body}</div>`;
+  });
+  return section('Stage board', `<div class="board">${cols.join('')}</div>`);
+}
+
+function streamsSection(r: StatusReport): string {
+  if (r.streams.length === 0) return section('Workstreams', empty('No workstream yet: the queue is empty.'));
+  const head = '<tr><th scope="col">Stream</th><th scope="col">Done</th><th scope="col">In review</th><th scope="col">Left</th><th scope="col">Next</th></tr>';
+  const rows = r.streams.map(
+    (s) => `<tr><th scope="row">${escapeHtml(s.stream)}</th><td>${escapeHtml(s.done)}</td><td>${escapeHtml(s.in_review)}</td><td>${escapeHtml(s.left)}</td><td>${escapeHtml(s.next)}</td></tr>`,
+  );
+  return section('Workstreams', `<table class="streams"><thead>${head}</thead><tbody>${rows.join('')}</tbody></table>`);
+}
+
+function scopeSection(r: StatusReport): string {
+  if (!r.scope_record.recorded) return section('Scope', empty('Scope not recorded'));
+  const rows = r.scope_record.entries.map((e) => {
+    const refs = e.refs?.length ? ` (${e.refs.map((n) => `#${n}`).join(', ')})` : '';
+    const why = e.reason ? ` — ${e.reason}` : '';
+    return `<li><span class="wait">${escapeHtml(SCOPE_LABELS[e.kind])}</span> ${escapeHtml(`${e.text}${refs}${why}`)} <span class="meta">since ${escapeHtml(e.set_at)}</span></li>`;
+  });
+  return section('Scope', `<ul class="lines">${rows.join('')}</ul>`);
+}
+
+function decisionsSection(r: StatusReport): string {
+  const body = r.decisions.length
+    ? `<ul class="lines">${r.decisions.map((d) => `<li><span class="meta">${escapeHtml(d.date)}</span> ${escapeHtml(d.text)}</li>`).join('')}</ul>`
+    : empty('No decision recorded yet.');
+  return section('Your decisions', body, r.decisions.length);
+}
+
+function configSection(r: StatusReport): string {
+  return section('Config', lineList(r.config_rows.map((c) => `${c.key}: ${c.value}`)));
 }
 
 function readyLi(r: StatusReport, item: ReadyToMergeItem): string {
@@ -218,7 +293,14 @@ details.cls > ul { margin-left: 12px; }
 li > ul { margin: 4px 0 0 12px; }
 section { background: var(--surface); border-top: 1px solid var(--border); padding: 12px 0 4px; margin-top: 12px; }
 h2 { font-size: 1.05rem; margin: 0 0 8px; }
-h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 12px 0 4px; }
+h3 { font-size: 0.9rem; color: var(--muted); margin: 12px 0 4px; }
+.t-ok { color: var(--ok); } .t-info { color: var(--accent); } .t-warn { color: var(--warn); } .t-bad { color: var(--block); }
+.moves { list-style: decimal outside; padding-left: 24px; }
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.col h3 { margin-top: 0; color: var(--text); } .col h3 b { font-size: 1.3rem; }
+.cards li { padding: 4px 0; } .cards a { margin-left: 0; font-weight: 600; }
+details.more { margin-top: 4px; border-top: 0; padding-top: 0; } details.more > summary { font-weight: 400; color: var(--muted); }
+.streams { width: 100%; border-collapse: collapse; } .streams th, .streams td { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border); }
 ul { list-style: none; margin: 0; padding: 0; }
 li { padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 li:last-child { border-bottom: 0; }
@@ -232,11 +314,15 @@ li:last-child { border-bottom: 0; }
 .sev-block { color: var(--block); } .sev-warn { color: var(--warn); }
 .empty { color: var(--muted); font-style: italic; margin: 4px 0; }
 code { font-size: 0.85em; }
+.overview { border-top: 0; }
+.headline { font-size: 1.1rem; margin: 0 0 4px; }
+.links a { margin: 0 12px 0 0; }
 a { color: var(--accent); margin-left: 8px; }
 `;
 
-/** Self-contained status page: inline CSS, no script, nothing loaded from the network; the only links are the
- * forge PR anchors in "Waiting on you" (`target=_blank rel=noopener`, http(s) only). */
+/** Self-contained status page: inline CSS, no script, nothing loaded from the network; the only links are
+ * anchors (`target=_blank rel=noopener`, http(s) only): the quick links, the moves, the board cards and the
+ * forge PR links in "Waiting on you". Sections follow `status-page.md` § Page layout, then the detail sections. */
 export function renderStatusHtml(report: StatusReport): string {
   const name = campaignName(report);
   return [
@@ -251,6 +337,14 @@ export function renderStatusHtml(report: StatusReport): string {
     '<body>',
     '<main>',
     banner(report, name),
+    overview(report),
+    movesSection(report),
+    blockersSection(report),
+    boardSection(report),
+    streamsSection(report),
+    scopeSection(report),
+    configSection(report),
+    decisionsSection(report),
     progressSection(report),
     ownerSection(report),
     elseSection(report),

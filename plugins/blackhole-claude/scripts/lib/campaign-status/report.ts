@@ -1,7 +1,10 @@
 import { readScope } from '../../forge-scope.ts';
-import { prWebUrl } from '../forge-detection.ts';
+import { issueWebUrl, prWebUrl, repoWebUrl } from '../forge-detection.ts';
 import { classifyBlocked, CLASS_PREVIEW, groupBlockedRows, waitReason, type WaitReason } from './blocked-classes.ts';
+import { buildBoard, buildMoves, buildStreams, stageCounts } from './board.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
+import { buildBlockers, buildConfigRows, buildHeadline, buildLinks } from './overview.ts';
+import { newestFirst, readScopeEntries } from './record.ts';
 import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
 import { computeStatusCounts, groupIssuesByPhase, QUEUE_STATUSES } from './queue.ts';
 import type {
@@ -12,6 +15,8 @@ import type {
   ForgeCounts,
   IssueRow,
   LedgerJson,
+  OwnerDecision,
+  PrSignal,
   QueueIssue,
   QueueJson,
   ReadyToMergeItem,
@@ -37,6 +42,12 @@ export type StatusReportInput = {
   forgeWeb?: { forge: string; host: string | null };
   /** Whether `.blackhole/status-artifact.json` exists, and whether this host publishes one. Absent ⇒ no never-published alert. */
   publish?: { artifactPublished: boolean; publishExpected: boolean };
+  /** `owner-decisions.json`, in recorded order. Absent ⇒ none. */
+  decisions?: OwnerDecision[];
+  /** Per-PR forge signals; absent or null ⇒ the forge was not read (`--no-gh`), and the page says "not checked". */
+  prSignals?: Record<number, PrSignal> | null;
+  /** The plugin's own version, shown in the config rows. */
+  pluginVersion?: string | null;
 };
 
 // Owner-clearable `awaiting-*` gates from queue-dag.md § Field rules (`notes`).
@@ -188,6 +199,15 @@ export function elseClasses(r: Pick<StatusReport, 'blocked_classes' | 'unclassif
   return [...r.blocked_classes, ...extra.filter((c) => c.count > 0)];
 }
 
+/** Plain-text campaign name for page titles and headers: the repo, else the issue filter. */
+export function campaignName(report: Pick<StatusReport, 'campaign'>): string {
+  const { repo, scope } = report.campaign;
+  if (repo) return repo;
+  if (scope.milestone) return `milestone ${scope.milestone}`;
+  if (scope.labels.length) return `labels ${scope.labels.join(', ')}`;
+  return 'all open issues';
+}
+
 /** What the owner has to do for an owner item: its note without the gate token, else the generic next step. */
 export function ownerDetail(item: StatusItem): string {
   const note = (item.notes ?? '').replace(/^\s*(awaiting-[\w-]+|blocked-escalated):?\s*/, '').trim();
@@ -303,6 +323,28 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
       pr_url: item.pr != null ? prWebUrl(forgeKind, forgeHost, config.repo ?? '', item.pr) || null : null,
     }));
 
+  const blockedClasses = classifyBlockedRows(blocked, issues);
+  const unclassifiedItems = unclassified.map((r) => ({ ...toItem(r), next_step: unclassifiedStep(r.issue) }));
+  const untracked = untrackedPrs(issues, forge);
+  const scopeEntries = readScopeEntries(config);
+  const forgeChecked = forge.ok && input.prSignals != null;
+  const board = buildBoard({
+    issues,
+    readyToMerge: readyItems,
+    ownerItems: waitingOnOwner.map((i) => ({ ...i, detail: ownerDetail(i) })),
+    mergeConflicts: new Set(blockedClasses.filter((c) => c.class === 'merge_conflict').flatMap((c) => c.issues.map((i) => i.issue))),
+    untrackedPrs: untracked,
+    scope: scopeEntries,
+    signals: forgeChecked ? (input.prSignals ?? null) : null,
+    streams: config.status_page?.streams,
+    prUrl: (n) => prWebUrl(forgeKind, forgeHost, config.repo ?? '', n),
+    issueUrl: (n) => issueWebUrl(forgeKind, forgeHost, config.repo ?? '', n),
+  });
+  const moves = buildMoves(board, new Set(readyItems.map((i) => i.issue)));
+  const boardCounts = stageCounts(board, moves.length);
+  const elseRows = elseClasses({ blocked_classes: blockedClasses, unclassified: unclassifiedItems, untracked_prs: untracked });
+  const topBlocked = [...blockedClasses].filter((c) => c.class !== 'another_lane').sort((a, b) => b.count - a.count)[0] ?? null;
+
   return {
     schema_version: 1,
     generated_at: input.generatedAt,
@@ -350,10 +392,10 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
     in_flight: inFlight.filter((r) => r.issue.phase !== 'review').map((r) => toItem(r)),
     in_review: inFlight.filter((r) => r.issue.phase === 'review').map((r) => toItem(r)),
     blocked: blockedGroups,
-    blocked_classes: classifyBlockedRows(blocked, issues),
+    blocked_classes: blockedClasses,
     ready: ready.map((r) => toItem(r)),
-    unclassified: unclassified.map((r) => ({ ...toItem(r), next_step: unclassifiedStep(r.issue) })),
-    untracked_prs: untrackedPrs(issues, forge),
+    unclassified: unclassifiedItems,
+    untracked_prs: untracked,
     recently_done: recentlyDone(done),
     ledger_open: sortOpenFindings(findings).map((f) => ({
       id: f.id ?? null,
@@ -363,5 +405,16 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
       issue_ref: f.issue_ref ?? null,
     })),
     host: { pace: input.paceLine, notes: input.hostNotes },
+    scope_record: { recorded: scopeEntries.length > 0, entries: scopeEntries },
+    decisions: newestFirst(input.decisions ?? []),
+    headline: buildHeadline(checkpointBody, boardCounts, topBlocked && topBlocked.count > 0 ? topBlocked : null),
+    blockers: buildBlockers(checkpointBody, board, elseRows, forgeChecked),
+    forge_checked: forgeChecked,
+    board,
+    stage_counts: boardCounts,
+    moves,
+    streams: buildStreams(board),
+    links: buildLinks(repoWebUrl(forgeKind, forgeHost, config.repo ?? ''), forgeKind, config.status_page),
+    config_rows: buildConfigRows(config, input.pluginVersion ?? null),
   };
 }

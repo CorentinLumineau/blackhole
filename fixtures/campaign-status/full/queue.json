@@ -1,0 +1,103 @@
+{
+  "refreshed_at": "2026-11-13T09:00:00.000Z",
+  "campaign_started_at": "2026-11-10T08:00:00.000Z",
+  "issues": {
+    "101": {
+      "title": "feat(api): add the export endpoint",
+      "status": "merged",
+      "phase": "done",
+      "pr": 201
+    },
+    "102": {
+      "title": "Remove the legacy importer",
+      "status": "closed",
+      "phase": "done"
+    },
+    "103": {
+      "title": "feat(payments): retry failed charges",
+      "status": "in-flight",
+      "phase": "review",
+      "pr": 203,
+      "labels": [
+        "stream:Payments"
+      ],
+      "notes": "delivered-at-LGTM (leave-open) \u2014 awaiting human merge"
+    },
+    "104": {
+      "title": "ci: pin the deploy workflow",
+      "status": "in-flight",
+      "phase": "review",
+      "pr": 204,
+      "labels": [
+        "stream:Payments"
+      ],
+      "notes": "needs-chef: workflows"
+    },
+    "105": {
+      "title": "Refund screen shows the fee",
+      "status": "in-flight",
+      "phase": "review",
+      "pr": 205,
+      "review_iteration": 2,
+      "labels": [
+        "stream:Payments"
+      ]
+    },
+    "106": {
+      "title": "Cache the price table",
+      "status": "in-flight",
+      "phase": "implement",
+      "pr": 206
+    },
+    "107": {
+      "title": "Split the settings page",
+      "status": "in-flight",
+      "phase": "implement"
+    },
+    "108": {
+      "title": "New onboarding flow",
+      "status": "blocked",
+      "phase": "plan",
+      "notes": "awaiting-plan-approval"
+    },
+    "109": {
+      "title": "Invoice PDF layout",
+      "status": "blocked",
+      "phase": "handle",
+      "depends_on": [
+        107
+      ],
+      "labels": [
+        "stream:Payments"
+      ]
+    },
+    "110": {
+      "title": "Document the export API",
+      "status": "ready",
+      "phase": "handle",
+      "labels": [
+        "stream:Docs"
+      ]
+    },
+    "111": {
+      "title": "Theme editor",
+      "status": "ready",
+      "phase": "handle",
+      "labels": [
+        "stream:Docs"
+      ]
+    },
+    "112": {
+      "title": "Upgrade the vendor SDK",
+      "status": "blocked",
+      "phase": "handle",
+      "notes": "upstream: vendor SDK 4.0 not released"
+    },
+    "113": {
+      "title": "Search ranking tweak",
+      "status": "in-flight",
+      "phase": "review",
+      "pr": 213
+    }
+  }
+}

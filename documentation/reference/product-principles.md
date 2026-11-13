@@ -4,8 +4,8 @@ summary: "Owner-rulings ledger of durable product preferences binding on future 
 status: current
 review_trigger: "on new ruling"
 created: 2026-08-06
-last_updated: 2026-11-11
-rulings_revision: 6
+last_updated: 2026-11-13
+rulings_revision: 7
 ---
 
 # Product Principles: blackhole
@@ -165,3 +165,23 @@ rulings_revision: 6
 - **Related**: issue #1113; `documentation/decisions/ADR-051-stacking-only-overlap-strategy.md`;
   `documentation/plans/plan-mandatory-stacking.md`; `src/references/queue-dag.md`;
   `src/references/merge-gate.md`
+
+## Ruling: campaign-dashboard-at-a-glance
+
+- **Id**: R-006
+- **Status**: active
+- **Date**: 2026-11-13
+- **Source**: issue #1145 (comment "Owner-approved design", after the owner reviewed the mockups)
+- **Verbatim**: > "all information needed to understand the current campaign, state, scope, config", readable "with a quick look", "concise, like for adhd human", "no ai slop", with links "to quick look prs or what we need"
+- **Interpretation**: the campaign status page is one generated page, refreshed on every run with
+  no hand-kept file, laid out top to bottom as header (campaign, state, age, headline, one
+  progress bar, six counts, quick links), "Your move" beside "Blocking the run", a five-column
+  stage board, workstreams, then scope, config and decisions. Status colours sit on numbers and
+  status words only (green done, blue in review, orange your move, red conflict or failing,
+  grey otherwise) and never carry meaning alone; sections and board columns are pale panels with
+  a small radius and plain bordered cards. A diff that adds status pills, uppercase letter-spaced
+  labels, coloured top or left borders, dashed outlines, per-row mini bars, gradients, shadows,
+  emoji or a second accent block, or that strips the panels and colours entirely, contradicts this
+  ruling (V-RULE-01).
+- **Related**: issue #1145; `documentation/decisions/ADR-052-campaign-dashboard-state.md`;
+  `src/references/status-page.md`; `templates/status-dashboard/index.html`

@@ -1,6 +1,7 @@
 import { readScope, type CampaignScope } from '../../forge-scope.ts';
 import { classPreview, groupBlockedRows, waitReason } from './blocked-classes.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
+import { SCOPE_LABELS } from './record.ts';
 import {
   computeStatusCounts,
   computeWaves,
@@ -17,6 +18,7 @@ import type {
   LedgerJson,
   QueueIssue,
   QueueJson,
+  StatusReport,
 } from './types.ts';
 
 // One render*Section helper per independently-addable dashboard section — each returns
@@ -299,6 +301,36 @@ export function renderStackMergeOrderSection(issues: Record<string, QueueIssue>)
   ];
 }
 
+/** The campaign facts the page leads with, from the same report as `--json`: what the text dashboard repeats. */
+export type DashboardView = Pick<StatusReport, 'headline' | 'stage_counts' | 'moves' | 'scope_record' | 'decisions' | 'forge_checked'>;
+
+const DECISIONS_SHOWN = 3;
+
+// The page's header in text: headline, board counts, the owner's moves, the scope and the latest decisions.
+export function renderViewSection(view: DashboardView): string[] {
+  const c = view.stage_counts;
+  const lines = [
+    `**Headline:** ${view.headline.text}${view.headline.source === 'generated' ? ' _(generated)_' : ''}`,
+    `**Board:** ${c.done} done · ${c.in_review} in review · ${c.on_you} on you · ${c.blocked} blocked · ${c.parked} parked · ${c.not_started} not started${view.forge_checked ? '' : ' · forge not checked'}`,
+    '',
+  ];
+  if (view.moves.length) {
+    lines.push('### Your move', ...view.moves.map((m, i) => `${i + 1}. ${m.text}`), '');
+  }
+  lines.push('### Scope');
+  if (!view.scope_record.recorded) lines.push('Scope not recorded');
+  for (const e of view.scope_record.entries) {
+    const refs = e.refs?.length ? ` (${e.refs.map((n) => `#${n}`).join(', ')})` : '';
+    lines.push(`- **${SCOPE_LABELS[e.kind]}:** ${e.text}${refs}${e.reason ? ` — ${e.reason}` : ''} · since ${e.set_at}`);
+  }
+  lines.push('');
+  if (view.decisions.length) {
+    const shown = view.decisions.slice(0, DECISIONS_SHOWN);
+    lines.push('### Your decisions', ...shown.map((d) => `- ${d.date} ${d.text}`), ...capOverflowLine(view.decisions.length, shown.length), '');
+  }
+  return lines;
+}
+
 export function formatDashboard(opts: {
   scope?: CampaignScope;
   checkpoint: CheckpointMeta;
@@ -306,8 +338,10 @@ export function formatDashboard(opts: {
   ledger: LedgerJson;
   forge: ForgeCounts;
   checkpointBody?: string;
+  /** The report's header facts; absent ⇒ the dashboard prints only the queue sections. */
+  view?: DashboardView;
 }): string {
-  const { scope, checkpoint, queue, ledger, forge, checkpointBody } = opts;
+  const { scope, checkpoint, queue, ledger, forge, checkpointBody, view } = opts;
   const issues = queue.issues ?? {};
   const findings = ledger.findings ?? [];
   const { active, done, inFlight, blocked, ready, unclassified } = groupIssuesByPhase(issues);
@@ -344,6 +378,7 @@ export function formatDashboard(opts: {
   });
   lines.push(renderQueueHealthLine(queueHealth, blocked.length));
   lines.push('');
+  if (view) lines.push(...renderViewSection(view));
 
   lines.push(...renderInFlightSection(inFlight));
   lines.push(...renderBlockedSection(blocked, issues));
