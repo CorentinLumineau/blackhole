@@ -57,7 +57,8 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    explicit reconfigure) or otherwise the lightweight
    routine resume confirmation gate — print the current config, then Proceed / Reconfigure.
    The gate applies in `run` mode only; every other mode in the table above loads config with no
-   confirm step.
+   confirm step. Non-interactive launch (no question channel): a complete config skips the gate and
+   echoes `config-summary`; an incomplete one stops with `launch config incomplete`.
 2. **Companion-file scaffold** — gated by `docs_governance.companion_files` (default `true`,
    config already loaded from step 1); skip entirely when `docs_governance.enabled` does not
    resolve to `true` (per `config-template.md` § `docs_governance` resolution — no scaffold) or

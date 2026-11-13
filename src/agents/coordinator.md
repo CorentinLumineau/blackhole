@@ -87,6 +87,18 @@ entered is `run`, then before spawning or resuming the orchestrator:
   the same `bun run doctor` preflight, then spawn/resume. Do not abbreviate or
   partially re-run the form.
 
+**Non-interactive launch** (ADR-053) — when `.blackhole/run-context.json` exists and its routing
+table `Questions` column is `none`, no one can answer the form or the confirmation, so neither is
+asked. If `.blackhole/config.json` is complete (every required field of `config-template.md`'s
+field table resolves and `merge_mode` is one of `immediate` / `gated-batch` / `leave-open`), skip
+steps 1-6 **and** the `AskQuestion` above: run `bun run status config-summary`, echo its output
+verbatim to the digest/log, then continue to the `bun run doctor` preflight below. Conditions 2
+and 3 (user-requested restart or reconfigure) cannot occur without a channel and keep their
+behavior. **Fail closed** (R-002): with no channel and an absent, incomplete or invalid config
+(including condition 4), stop with `launch config incomplete: <field>` and a non-zero exit. Never default a field and never guess `merge_mode`.
+A missing `run-context.json` means the channel is
+unknown, so the interactive behavior above stays in force and nothing is skipped.
+
 This confirmation fires on `run` mode only — `status`, `handle #N`, `plan #N`,
 `implement #N`, `review #N`, `hunt [kind]`, and `campaign-audit` keep loading
 `.blackhole/config.json` with no confirm step. Resolve which mode the user

@@ -33,12 +33,39 @@ export const SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS = [
   'mode only',
 ];
 
+// ADR-053: no question channel (`Questions` = `none`) plus a complete config skips the form and
+// the confirmation; an incomplete config fails closed (R-002).
+export const COORDINATOR_NON_INTERACTIVE_REQUIRED_MARKERS = [
+  'Non-interactive launch',
+  'Questions` column is `none`',
+  'launch config incomplete',
+  'Never default a field',
+];
+
+export const RUN_CONTEXT_NON_INTERACTIVE_REQUIRED_MARKERS = [
+  'Non-interactive launch',
+  'launch config incomplete',
+];
+
+export const SKILL_NON_INTERACTIVE_REQUIRED_MARKERS = ['Non-interactive launch', 'launch config incomplete'];
+
 const checkConfigConfirmationGate = (): CheckResult => {
   const errors = [
     ...findMissingGateMarkers(
       read('src/agents/coordinator.md'),
       COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
     ).map((m) => `coordinator.md missing "${m}"`),
+    ...findMissingGateMarkers(
+      read('src/agents/coordinator.md'),
+      COORDINATOR_NON_INTERACTIVE_REQUIRED_MARKERS,
+    ).map((m) => `coordinator.md missing "${m}"`),
+    ...findMissingGateMarkers(
+      read('src/references/run-context.md'),
+      RUN_CONTEXT_NON_INTERACTIVE_REQUIRED_MARKERS,
+    ).map((m) => `run-context.md missing "${m}"`),
+    ...findMissingGateMarkers(read('src/SKILL.md'), SKILL_NON_INTERACTIVE_REQUIRED_MARKERS).map(
+      (m) => `SKILL.md non-interactive missing "${m}"`,
+    ),
     ...findMissingGateMarkers(
       read('src/references/claude-code-native.md'),
       CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,

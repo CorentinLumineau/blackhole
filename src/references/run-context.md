@@ -50,6 +50,11 @@ in the launch summary.
 | Same, Cursor | C-lite (`multitask-mode.md` § Cursor Pattern C-lite) | First of AskQuestion, chat | As above | As above |
 | Anything less | B (`multitask-mode.md`) | As above; `none` when headless | As above | As above |
 
+**Non-interactive launch**: when the `Questions` column resolves to `none` and
+`.blackhole/config.json` is complete, the coordinator skips the launch form and the routine
+resume confirmation and echoes `bun run status config-summary` instead; an incomplete config
+stops with `launch config incomplete: <field>` (`coordinator.md` § Bootstrap preflight is the SSOT).
+
 Schedule: `routine` when the session can create routines (kaizen waves and CI check-ins become
 routines, `project-thread-mode.md` § Scheduling), else `turn`.
 

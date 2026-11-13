@@ -2,6 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import { expectMarkerContract, expectMarkersSubstantive } from './lib/marker-fixture-test.ts';
 import {
   COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
+  COORDINATOR_NON_INTERACTIVE_REQUIRED_MARKERS,
+  RUN_CONTEXT_NON_INTERACTIVE_REQUIRED_MARKERS,
+  SKILL_NON_INTERACTIVE_REQUIRED_MARKERS,
   CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
   SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS,
   runChecks,
@@ -48,6 +51,41 @@ const SKILL_FIXTURE_FIXED = `
 const SKILL_FIXTURE_STALE = `
 1. **Config** — \`.blackhole/config.json\` (from \`config-template.md\` in this repo)
 `;
+
+const NON_INTERACTIVE_FIXTURE_FIXED = `
+**Non-interactive launch** — when the routing table \`Questions\` column is \`none\` and the config is
+complete, skip steps 1-6 and the AskQuestion. Incomplete: stop with \`launch config incomplete: <field>\`;
+Never default a field.
+`;
+
+const NON_INTERACTIVE_FIXTURE_STALE = `
+**Routine resume confirmation gate** — then \`AskQuestion\`: "Proceed with this config (default)".
+`;
+
+describe('ADR-053 non-interactive launch marker contract', () => {
+  test('coordinator.md must carry the skip-and-fail-closed branch; the interactive-only text fails', () => {
+    expectMarkerContract(
+      NON_INTERACTIVE_FIXTURE_FIXED,
+      NON_INTERACTIVE_FIXTURE_STALE,
+      COORDINATOR_NON_INTERACTIVE_REQUIRED_MARKERS,
+    );
+  });
+
+  test('run-context.md and SKILL.md must state the branch', () => {
+    expectMarkerContract(NON_INTERACTIVE_FIXTURE_FIXED, NON_INTERACTIVE_FIXTURE_STALE, RUN_CONTEXT_NON_INTERACTIVE_REQUIRED_MARKERS);
+    expectMarkerContract(NON_INTERACTIVE_FIXTURE_FIXED, NON_INTERACTIVE_FIXTURE_STALE, SKILL_NON_INTERACTIVE_REQUIRED_MARKERS);
+  });
+
+  test('no non-interactive marker is empty or whitespace-only', () => {
+    for (const markers of [
+      COORDINATOR_NON_INTERACTIVE_REQUIRED_MARKERS,
+      RUN_CONTEXT_NON_INTERACTIVE_REQUIRED_MARKERS,
+      SKILL_NON_INTERACTIVE_REQUIRED_MARKERS,
+    ]) {
+      expectMarkersSubstantive(markers);
+    }
+  });
+});
 
 describe('V-CONFGATE-01 marker contract', () => {
   test('a coordinator.md carrying the routine-resume gate passes; the pre-change text fails', () => {
