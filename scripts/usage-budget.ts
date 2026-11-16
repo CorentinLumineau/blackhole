@@ -23,7 +23,10 @@ const isWindow = (v: unknown): v is RateWindow =>
   typeof v === 'object' &&
   v !== null &&
   Number.isFinite((v as RateWindow).used_percentage) &&
-  Number.isFinite((v as RateWindow).resets_at);
+  (v as RateWindow).used_percentage >= 0 &&
+  (v as RateWindow).used_percentage <= 100 &&
+  Number.isFinite((v as RateWindow).resets_at) &&
+  (v as RateWindow).resets_at > 0;
 
 export const parseUsage = (raw: string): RateLimits => {
   let parsed: unknown;
@@ -37,7 +40,7 @@ export const parseUsage = (raw: string): RateLimits => {
   for (const name of ['five_hour', 'seven_day'] as const) {
     const w = (parsed as Record<string, unknown>)[name];
     if (w === undefined) continue;
-    if (!isWindow(w)) throw new Error(`--usage ${name} must be {used_percentage, resets_at} numbers`);
+    if (!isWindow(w)) throw new Error(`--usage ${name} must be {used_percentage 0-100, resets_at epoch seconds > 0}`);
     out[name] = w;
   }
   if (!out.five_hour && !out.seven_day) throw new Error('--usage carries no five_hour or seven_day window');

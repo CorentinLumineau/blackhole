@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
+import { resolveUsageBudget } from './lib/usage-budget.ts';
 import { checkForgeAuthSync } from './lib/forge-doctor.ts';
 import {
   AGENT_TOOLS,
@@ -34,10 +35,16 @@ export const parseTools = (raw: string): AgentTool[] => {
   return tools as AgentTool[];
 };
 
-const usageBudgetEnabled = (configPath: string): boolean => {
-  if (!fs.existsSync(configPath)) return false;
-  const config = readJsonFile(configPath, configPath) as { usage_budget?: { enabled?: unknown } };
-  return config.usage_budget?.enabled === true;
+// An unreadable config or an invalid block must not look like a missing capability (exit 1): the
+// budget counts as disabled and the run says so.
+const usageBudgetEnabled = (configPath: string): { enabled: boolean; unreadable: boolean } => {
+  if (!fs.existsSync(configPath)) return { enabled: false, unreadable: false };
+  try {
+    const config = readJsonFile(configPath, configPath) as Record<string, unknown>;
+    return { enabled: resolveUsageBudget(config).enabled, unreadable: false };
+  } catch {
+    return { enabled: false, unreadable: true };
+  }
 };
 
 const main = () => {
@@ -65,7 +72,8 @@ const main = () => {
   });
   // Campaign state belongs to the project the command runs in (working directory).
   const campaignDir = path.resolve(typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : '.blackhole');
-  const route = routeRunContext(context, { usageBudgetEnabled: usageBudgetEnabled(path.join(campaignDir, 'config.json')) });
+  const budget = usageBudgetEnabled(path.join(campaignDir, 'config.json'));
+  const route = routeRunContext(context, { usageBudgetEnabled: budget.enabled });
 
   if (flags['no-write'] !== true) {
     fs.mkdirSync(campaignDir, { recursive: true });
@@ -81,6 +89,7 @@ const main = () => {
       `forge ${route.forge_channel ?? 'none'}, questions ${route.question_channel}, ` +
       `CI wait ${route.ci_wait}, state ${route.state_store}, schedule ${route.schedule}`,
   );
+  if (budget.unreadable) console.log('  warn: config.json unreadable, usage_budget treated as disabled');
   for (const warning of route.warnings) console.log(`  warn: ${warning}`);
   for (const gap of route.missing) console.log(`  missing: ${gap}`);
   process.exit(route.missing.length ? 1 : 0);
