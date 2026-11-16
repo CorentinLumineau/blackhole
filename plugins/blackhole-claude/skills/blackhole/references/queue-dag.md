@@ -213,7 +213,7 @@ An issue is **ready** when ALL hold:
 4. Issue is open on forge **within campaign scope** (`gh issue view --json state` plus
    `issueMatchesScope` when `scope_milestone` / `scope_labels` are configured)
 
-Promote `blocked → ready` when dependencies clear and user gates pass.
+Promote `blocked → ready` when dependencies clear, user gates pass and no `waiting-on-trunk-fix` note remains.
 
 ### Trunk-red: base-fix first
 

@@ -1,7 +1,7 @@
 import { createGitHubAdapter } from './lib/forge-adapter/index.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 import { isVercelPreviewCheck } from './lib/merge-gate/ci-verdict.ts';
-import { fingerprintLog, pathsInLog, type TrunkRedFailure } from './lib/trunk-red.ts';
+import { failingPaths, fingerprintLog, type TrunkRedFailure } from './lib/trunk-red.ts';
 
 export { isVercelPreviewCheck };
 
@@ -131,12 +131,15 @@ export function classifyStepLogs(stepLogs: StepLog[]): 'genuine' | 'environment'
   return 'genuine';
 }
 
+/** Classifier input: one entry per failing step with a usable fingerprint; paths come from the failure's own log window. */
 export function toFailingChecks(stepLogs: StepLog[]): TrunkRedFailure[] {
-  return stepLogs.map((step) => ({
-    check: step.jobName,
-    fingerprint: fingerprintLog(step.log),
-    failingPaths: pathsInLog(step.log),
-  }));
+  return stepLogs
+    .map((step) => ({
+      check: step.jobName,
+      fingerprint: fingerprintLog(step.log),
+      failingPaths: failingPaths(step.log),
+    }))
+    .filter((f) => f.fingerprint !== '');
 }
 
 export function createGhRunner(repo?: string): GhRunner {

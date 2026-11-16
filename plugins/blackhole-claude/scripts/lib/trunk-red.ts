@@ -23,13 +23,21 @@ export type TrunkRedResult = {
   groups: TrunkRedGroup[];
 };
 
+const RUNNER_PREFIX = /^(?:\/(?:home|Users)\/runner\/work\/[^/]+\/[^/]+\/|\/github\/workspace\/)/;
+
+/** Repo-relative form of a path: no leading `./`, no GitHub runner checkout prefix. */
+export function normalizeRepoPath(p: string): string {
+  return p.replace(RUNNER_PREFIX, '').replace(/^(?:\.\/)+/, '');
+}
+
 /** A failing check that no PR's own diff explains, seen on at least two PRs, is a red trunk. */
 export function classifyTrunkRed(prs: TrunkRedPr[]): TrunkRedResult {
   const byKey = new Map<string, TrunkRedGroup>();
   for (const { pr, failingChecks, touchedFiles } of prs) {
-    const touched = new Set(touchedFiles);
+    const touched = new Set(touchedFiles.map(normalizeRepoPath));
     for (const { check, fingerprint, failingPaths = [] } of failingChecks) {
-      if (failingPaths.some((p) => touched.has(p))) continue;
+      if (fingerprint.trim() === '') continue;
+      if (failingPaths.some((p) => touched.has(normalizeRepoPath(p)))) continue;
       const key = `${check}\u0000${fingerprint}`;
       const group = byKey.get(key) ?? { check, fingerprint, prs: [] };
       if (!group.prs.includes(pr)) group.prs.push(pr);
@@ -42,22 +50,41 @@ export function classifyTrunkRed(prs: TrunkRedPr[]): TrunkRedResult {
 
 const VOLATILE = /\d{4}-\d{2}-\d{2}T[\d:.]+Z?|\b[0-9a-f]{7,40}\b|\d+/gi;
 const ERROR_LINE = /error|fail|✗|✕|expected|not assignable|cannot|unexpected/i;
+const GENERIC_LINE = /exited with code|Process completed with exit code/i;
+const WINDOW_RADIUS = 3;
 
-/** Stable id for one failure: the first error-looking line with digits, hashes and timestamps removed. */
+/** Index of the line that identifies the failure, skipping blank and generic wrapper lines; -1 if none. */
+function failureLineIndex(lines: string[]): number {
+  const usable = (l: string) => l.trim() !== '' && !GENERIC_LINE.test(l);
+  const hit = lines.findIndex((l) => usable(l) && ERROR_LINE.test(l));
+  return hit >= 0 ? hit : lines.findIndex(usable);
+}
+
+/** Stable id for one failure: the failure line with digits, hashes and timestamps removed; '' when the log has none. */
 export function fingerprintLog(log: string): string {
-  const lines = log.split('\n').map((l) => l.trim()).filter(Boolean);
-  const line = lines.find((l) => ERROR_LINE.test(l)) ?? lines[0] ?? '';
-  const normalized = line.replace(VOLATILE, '#').replace(/\s+/g, ' ');
+  const lines = log.split('\n');
+  const idx = failureLineIndex(lines);
+  if (idx < 0) return '';
+  const normalized = lines[idx].trim().replace(VOLATILE, '#').replace(/\s+/g, ' ');
   return createHash('sha1').update(normalized).digest('hex').slice(0, 12);
 }
 
-const PATH_RE = /(?:^|[\s("'])((?:[\w.@-]+\/)+[\w.@-]+\.[A-Za-z0-9]+)(?=[:(\s"')]|$)/g;
+const PATH_RE = /(?:^|[\s("'=])((?:\.\/|\/)?(?:[\w.@-]+\/)*[\w.@-]+\.[A-Za-z][A-Za-z0-9]*)(?=[:(\s"')\],.;]|$)/g;
 
-/** Repo-relative file paths named in a log, first-seen order, deduplicated. */
+/** Normalised repo-relative file paths named in a log, first-seen order, deduplicated. */
 export function pathsInLog(log: string): string[] {
   const out: string[] = [];
   for (const m of log.matchAll(PATH_RE)) {
-    if (!out.includes(m[1])) out.push(m[1]);
+    const p = normalizeRepoPath(m[1]);
+    if (!out.includes(p)) out.push(p);
   }
   return out;
+}
+
+/** Paths named within a few lines of the fingerprint line, not the whole log. */
+export function failingPaths(log: string): string[] {
+  const lines = log.split('\n');
+  const idx = failureLineIndex(lines);
+  if (idx < 0) return [];
+  return pathsInLog(lines.slice(Math.max(0, idx - WINDOW_RADIUS), idx + WINDOW_RADIUS + 1).join('\n'));
 }
