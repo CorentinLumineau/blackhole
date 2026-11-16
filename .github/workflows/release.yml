@@ -8,7 +8,7 @@ on:
 jobs:
   release:
     name: Build and Release
-    # GitHub-hosted so a release does not depend on the single self-hosted runner being online.
+    # GitHub-hosted, like every workflow in this repo.
     runs-on: ubuntu-latest
     # Observed release durations are 32s-1011s; 30 minutes bounds a wedge without pacing the work.
     timeout-minutes: 30
