@@ -453,19 +453,10 @@ Repair success is measured, not assumed: the child's changed-file count against 
 replay must equal the count from the recorded parent tip to the child head measured before it —
 the same number the PR showed while its base was still the parent branch.
 
-**Has the parent landed?** Ask the forge, never git history. A squash or rebase landing is not an
-ancestor of the base branch, so a wait on the parent head being an ancestor of `origin/<base>` never ends.
-Never run `git merge-base --is-ancestor <parent head> origin/<base>` to decide landing. One command answers it from the PR's merged state and prints
-`{"parentPr","state","landed","mergedAt","mergeCommitSha"}`:
-
-```
-bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts parent-landed --repo-slug <owner/repo> --forge <config.forge> \
-  (--parent-pr <P> | --queue <abs queue.json> --child-issue <N>)
-```
-
-Exit `0` merged, `1` still open, `4` closed unmerged (the abandoned column of the table above),
-`3` unreadable: a waiter treats `3` as "retry next turn", never as open or as landed. `repair`
-reads the same state, so it and every waiter agree.
+**Has the parent landed?** Ask the forge, never git history: a squash or rebase landing is not an ancestor of the base, so waiting on ancestry never ends.
+Never run `git merge-base --is-ancestor <parent head> origin/<base>` to decide landing. Run `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts parent-landed --repo-slug <owner/repo> --forge <config.forge> (--parent-pr <P> | --queue <abs queue.json> --child-issue <N>)`;
+it prints `{"parentPr","state","landed","mergedAt","mergeCommitSha"}` and exits `0` merged, `1` open, `4` closed unmerged (the abandoned column above), `3` unreadable
+(a waiter retries next turn, never reads `3` as open or landed). `repair` reads the same state.
 
 Asserting the PR base before merging, and verifying the base branch afterwards, are a separate
 concern — § 8 below, cited here and not restated. This section owns
