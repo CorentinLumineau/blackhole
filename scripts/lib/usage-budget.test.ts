@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { findUnregisteredConfigKeys, flattenConfigKeys, parseConfigTemplateKeys } from '../checks/config-registration.check.ts';
-import { read } from '../checks/check-utils.ts';
+import * as fs from 'fs';
+import * as path from 'path';
+import { root } from './build/paths.ts';
 import type { RateLimits } from './pace-gate.ts';
 import { DEFAULT_USAGE_BUDGET, forecastWeekly, resolveUsageBudget, workersAllowed, type UsageBudgetConfig } from './usage-budget.ts';
 
@@ -169,7 +171,7 @@ describe('config registration of the usage_budget block (V-CONFIG-02)', () => {
     },
   };
   const keys = flattenConfigKeys(full);
-  const template = read('src/references/config-template.md');
+  const template = fs.readFileSync(path.join(root, 'src', 'references', 'config-template.md'), 'utf-8');
 
   test('every leaf is registered in config-template.md', () => {
     expect(keys.length).toBe(11);
