@@ -4,7 +4,7 @@ import * as path from 'path';
 
 // Pins the Claude Code plugin-validate CI step: `--strict` on `.` and the marketplace bundle,
 // plus `claude plugin test` only when a tests/ tree exists. The step must run on pull_request
-// (GitHub-hosted installs the CLI; self-hosted already has it).
+// (every job runs on GitHub-hosted runners, which do not preinstall the CLI).
 // Resolves paths via this file's dirname so the test is not a check-utils consumer
 // (V-BLASTRADIUS-01).
 
@@ -20,11 +20,12 @@ describe('verify.yml Claude plugin validate step', () => {
     expect(yaml).toContain('claude plugin validate --strict plugins/blackhole-claude');
   });
 
-  test('runs on pull_request: not gated to push/self-hosted, installs CLI on GitHub-hosted', () => {
+  test('runs on pull_request: not gated to push, always installs the CLI on ubuntu-latest', () => {
     expect(yaml).toContain('name: Validate Claude plugin (strict)');
     expect(yaml).toContain('name: Setup Claude Code CLI');
-    expect(yaml).toMatch(/if:\s*runner\.environment != 'self-hosted'/);
-    expect(yaml).not.toMatch(/if:\s*github\.event_name == 'push' \|\| runner\.environment == 'self-hosted'/);
+    expect(yaml).toMatch(/^\s*runs-on: ubuntu-latest$/m);
+    expect(yaml).not.toContain('self-hosted');
+    expect(yaml).not.toMatch(/name: Setup Claude Code CLI\n\s*if:/);
   });
 
   test('pins Claude Code CLI 2.1.296 instead of curl | bash latest', () => {
