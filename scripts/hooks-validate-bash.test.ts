@@ -4471,7 +4471,8 @@ describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
 
 describe('hook-event-log.js — redact length caps', () => {
   const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
-  const longReason = `${'x'.repeat(450)} Remedy: run the command from inside the assigned worktree.`;
+  const filler = 'x'.repeat(450);
+  const longReason = `${filler} Remedy: run the command from inside the assigned worktree.`;
 
   test('reason cap keeps a Remedy clause that sits past the 300-char detail cap', () => {
     const { redact, redactReason } = hookEventLog();
@@ -4479,10 +4480,31 @@ describe('hook-event-log.js — redact length caps', () => {
     expect(redactReason(longReason)).toBe(longReason);
   });
 
-  test('redactReason still masks credential literals', () => {
+  test('redactReason caps at exactly 2000 chars', () => {
     const { redactReason } = hookEventLog();
-    expect(redactReason('leaked GITHUB_TOKEN=abcdef123456 here. Remedy: rotate it.')).toBe(
-      'leaked GITHUB_TOKEN=*** here. Remedy: rotate it.',
-    );
+    expect(redactReason('x'.repeat(3000)).length).toBe(2000);
+  });
+
+  test('redactReason masks a credential placed after the detail cap and keeps the Remedy clause', () => {
+    const { redactReason } = hookEventLog();
+    const out = redactReason(`${filler} leaked GITHUB_TOKEN=abcdef123456 here. Remedy: rotate it.`);
+    expect(out).toContain('GITHUB_TOKEN=***');
+    expect(out).not.toContain('abcdef123456');
+    expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+  });
+
+  test('through the hook: a recorded reason over 300 chars keeps its Remedy clause while detail stays <= 300', async () => {
+    await withLinkedWorktree('blackhole-hook-1181-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git checkout throwaway -- ${'a'.repeat(500)}`), mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      const reason = events[0].reason as string;
+      expect(reason.length).toBeGreaterThan(300);
+      expect(reason).toContain('Remedy:');
+      expect(reason.trimEnd().endsWith('.')).toBe(true);
+      expect((events[0].detail as string).length).toBeLessThanOrEqual(300);
+    });
   });
 });

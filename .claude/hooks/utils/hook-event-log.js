@@ -47,8 +47,7 @@ const SECRET_KV =
 const SECRET_SPACE =
   /\b(--?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key|with-token)|Bearer)\s+(['"]?)[^'"\s]{4,}\2/gi;
 const MAX_DETAIL_CHARS = 300;
-/** `reason` carries the trailing `Remedy:` clause, which a warn-tier record is the only place to
- * read; the 300-char `detail` cap cut it off. */
+/** `reason` must keep its trailing `Remedy:` clause, so it has a separate, larger cap than `detail`. */
 const MAX_REASON_CHARS = 2000;
 
 const redactTo = (max) => (text) =>
