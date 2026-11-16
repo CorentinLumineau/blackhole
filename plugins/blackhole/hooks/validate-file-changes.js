@@ -24,6 +24,7 @@ const {
   isUnderRoot,
   isAcceptableScratchpadDir,
   readAssignedWorktreeRoot,
+  worktreeRoot,
   recordEvent,
   denyAndRecord,
   warnAndRecord,
@@ -35,7 +36,9 @@ const HOOK = 'validate-file-changes';
 
 /** The denial remedy shared by every containment deny: name the root and a path under it that would pass. */
 const remedyInside = (root, filePath) =>
-  `Remedy: write inside ${root} instead (e.g. ${path.join(root, path.basename(String(filePath)))}).`;
+  root
+    ? `Remedy: write inside ${root} instead (e.g. ${path.join(root, path.basename(String(filePath)))}).`
+    : 'Remedy: write inside your assigned worktree instead.';
 
 /** True when `filePath` resolves inside ANY of `roots` — the main clone plus every accepted
  * linked worktree of the same repo family (see `allWorktreeRoots`'s docstring for why "any", not
@@ -101,7 +104,7 @@ const main = () => {
       hook: HOOK,
       tool,
       pattern_id: systemPath.id,
-      reason: `Cannot write to system path — ${systemPath.reason}`,
+      reason: `Cannot write to system path — ${systemPath.reason}. Remedy: write inside the assigned worktree root instead`,
       detail: filePath,
       cwd,
     });
@@ -160,7 +163,7 @@ const main = () => {
         pattern_id: assignedRoot ? 'outside-assigned-worktree' : 'outside-worktree',
         reason: assignedRoot
           ? `Write target resolves outside the assigned worktree root (${assignedRoot}). ${remedyInside(assignedRoot, filePath)}`
-          : `Write target resolves outside every known worktree root (${roots.join(', ')}). ${remedyInside(roots[0], filePath)}`,
+          : `Write target resolves outside every known worktree root (${roots.join(', ')}). ${remedyInside(worktreeRoot(cwd), filePath)}`,
         detail: filePath,
         cwd,
       });

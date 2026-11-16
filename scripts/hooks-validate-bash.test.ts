@@ -4506,26 +4506,10 @@ describe('PreToolUse deny decisions — every deny names a remedy or is explicit
 
   /** Deny ids with no safe alternative to name, each with the reason it stays remedy-free. */
   const NO_ALTERNATIVE: Record<string, string> = {
-    'rm-rf-root': 'static destructive pattern',
-    'rm-rf-home': 'static destructive pattern',
-    'rm-no-preserve-root': 'static destructive pattern',
-    'disk-device-write': 'static destructive pattern',
-    mkfs: 'static destructive pattern',
-    'dd-to-device': 'static destructive pattern',
-    'curl-pipe-shell': 'static destructive pattern',
-    'wget-pipe-shell': 'static destructive pattern',
-    'fork-bomb': 'static destructive pattern',
-    'chmod-777-root': 'static destructive pattern',
-    etc: 'system path, no in-root equivalent',
-    usr: 'system path, no in-root equivalent',
-    var: 'system path, no in-root equivalent',
-    'root-home': 'system path, no in-root equivalent',
-    bin: 'system path, no in-root equivalent',
-    boot: 'system path, no in-root equivalent',
-    proc: 'system path, no in-root equivalent',
-    sys: 'system path, no in-root equivalent',
-    windows: 'system path, no in-root equivalent',
-    'program-files': 'system path, no in-root equivalent',
+    'rm-rf-root': 'no legitimate use inside a worktree; deleting the root filesystem has no safe variant',
+    'rm-no-preserve-root': 'no legitimate use inside a worktree; it only exists to defeat the root-delete guard',
+    mkfs: 'no legitimate use inside a worktree; formatting a filesystem is never part of a task',
+    'fork-bomb': 'no legitimate use; it has no non-destructive form',
     'hook-input-parse-failure': 'fail-closed on a malformed hook payload; nothing for the caller to change',
     'uncaught-validator-error': 'fail-closed on a validator crash; nothing for the caller to change',
     'worktree-root-resolution-failure': 'fail-closed on broken git; nothing for the caller to change',
@@ -4577,11 +4561,11 @@ describe('PreToolUse deny decisions — every deny names a remedy or is explicit
     }
   });
 
-  test('pattern JSON: traversal reasons carry a Remedy; block and system-path ids are allow-listed', () => {
+  test('pattern JSON: traversal and bash block reasons carry a Remedy unless allow-listed', () => {
     const file = readPatterns('patterns/file-patterns.json');
     for (const entry of file.pathTraversal) expect(entry.reason).toMatch(/Remedy: use an absolute path inside/);
     const bash = readPatterns('patterns/bash-patterns.json');
-    const jsonDeny = [...bash.blockPatterns, ...file.blockedSystemPaths];
+    const jsonDeny = bash.blockPatterns;
     for (const e of jsonDeny) expect(/Remedy:/.test(e.reason) || e.id in NO_ALTERNATIVE).toBe(true);
     const liveIds = new Set([...jsonDeny.map((e: { id: string }) => e.id), ...sourceDecisions.flatMap((d) => d.ids)]);
     for (const id of Object.keys(NO_ALTERNATIVE)) expect(liveIds.has(id)).toBe(true);
