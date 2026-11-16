@@ -177,18 +177,30 @@ const SHELL_EXEC_RE = new RegExp(
  * escapes, `$'..'`/`$".."` strings and here-strings. */
 const QUOTE_REINTERPRETING_RE = /\$\(|`|\$\{|\\|\$['"]|<<<|<\(|>\(/;
 
-/** Commands that only read their quoted arguments and never run them: the sole commands whose
- * quoted spans `maskRedirectNoise` may blank. An allowlist, because the set of commands that execute
- * or write from a quoted argument (`su -c`, `tmux`, `ssh -o ProxyCommand=`, `sed 'e'`, ...) cannot
- * be enumerated; anything unlisted keeps every quoted span visible. */
-const INERT_FILTER_COMMANDS = new Set([
-  'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'wc', 'sort', 'uniq', 'cut', 'tr', 'head', 'tail',
-  'diff', 'cmp', 'comm', 'jq', 'yq', 'column', 'printf', 'echo', 'test', '[',
-]);
-const INERT_GIT_SUBCOMMANDS = new Set(['log', 'grep', 'show', 'diff']);
+/** The only commands whose quoted spans `maskRedirectNoise` may blank (the reported false positives
+ * are grep and sed). An allowlist, because the commands that execute or write from a quoted
+ * argument cannot be enumerated; every other clause keeps its quoted spans visible. */
+const INERT_GREP_COMMANDS = new Set(['grep', 'egrep', 'fgrep', 'rg']);
 
-/** Options that make an otherwise inert filter run a command. */
-const COMMAND_RUNNING_OPTION_RE = /^--(?:pre|pager|compress-program|hostname-bin)/;
+/** rg options that run a decompressor/preprocessor, plus any unique prefix of them. */
+const RG_COMMAND_OPTIONS = ['--pre', '--pre-glob', '--hostname-bin', '--search-zip'];
+
+/** Whole-command constructs that can redefine what a bare command word means: a function
+ * definition, alias/hash/enable/builtin, or a PATH change. */
+const COMMAND_REBINDING_RE = new RegExp(
+  '(?:^|[;&|\\s(])(?:function\\s+[\\w.-]+|[\\w.-]+\\s*\\(\\s*\\)\\s*\\{)|\\b(?:alias|unalias|hash|enable|builtin)\\b|\\bPATH=|export\\s+PATH',
+);
+
+/** `-f`/`--file` (a pattern file) and, for rg, a decompressor/preprocessor option disqualify a
+ * clause; neither runs a command in grep, but the rule is kept simple and read-only. */
+const hasDisqualifyingOption = (head, args) =>
+  args.some((t) => {
+    if (/^-[a-zA-Z]*f/.test(t) || t === '--file' || t.startsWith('--file=')) return true;
+    if (head !== 'rg') return false;
+    if (/^-[a-zA-Z]*z/.test(t)) return true;
+    const name = t.startsWith('--') ? t.split('=')[0] : '';
+    return name.length > 2 && RG_COMMAND_OPTIONS.some((opt) => opt.startsWith(name));
+  });
 
 /** A sed script made only of `s<d>re<d>repl<d>flags` commands whose flags cannot be `e` or `w`. */
 const SED_SUBST_SCRIPT_RE = /^(?:s([^\w\s\\;])(?:(?!\1)[^\n])*\1(?:(?!\1)[^\n])*\1[gIiMmp0-9]*(?:;|$))+$/;
@@ -204,17 +216,14 @@ const isInertSed = (args) => {
   return args.every((t) => t === scripts[0] || SED_PLAIN_OPTION_RE.test(t) || !t.startsWith('-'));
 };
 
-/** True when a clause's command word, after leading `VAR=val` assignments and any path prefix, is
- * an inert filter (see `INERT_FILTER_COMMANDS`). */
+/** True when a clause's command word is a bare, unquoted, unprefixed grep-family command or a pure
+ * `s///` sed. A leading `VAR=val`, a path (`./grep`, `/tmp/grep`) or any quoting disqualifies it:
+ * the word may then name something else than the filter. */
 const isInertClause = (tokens) => {
-  let idx = 0;
-  while (idx < tokens.length && /^[A-Za-z_]\w*=/.test(tokens[idx])) idx++;
-  if (idx >= tokens.length) return false;
-  const head = path.basename(tokens[idx]);
-  const args = tokens.slice(idx + 1);
-  if (args.some((t) => COMMAND_RUNNING_OPTION_RE.test(t))) return false;
-  if (INERT_FILTER_COMMANDS.has(head)) return true;
-  if (head === 'git') return INERT_GIT_SUBCOMMANDS.has(args[0]);
+  if (tokens.length === 0 || !/^[A-Za-z]+$/.test(tokens[0])) return false;
+  const head = tokens[0];
+  const args = tokens.slice(1);
+  if (INERT_GREP_COMMANDS.has(head)) return !hasDisqualifyingOption(head, args);
   return head === 'sed' && isInertSed(args);
 };
 
@@ -238,7 +247,9 @@ const isInertQuotedSpan = (text, start, end) => {
  * unchanged (base behaviour), so masking can never turn a deny into an allow. Unquoted text is never masked: an unquoted
  * `sed s/<A>/x/` really is a redirect in bash. */
 const maskRedirectNoise = (visible) => {
-  if (SHELL_EXEC_RE.test(visible) || QUOTE_REINTERPRETING_RE.test(visible)) return visible;
+  if (SHELL_EXEC_RE.test(visible) || QUOTE_REINTERPRETING_RE.test(visible) || COMMAND_REBINDING_RE.test(visible)) {
+    return visible;
+  }
   const chars = visible.split('');
   for (const [start, end] of clauseRanges(visible)) {
     const text = visible.slice(start, end);

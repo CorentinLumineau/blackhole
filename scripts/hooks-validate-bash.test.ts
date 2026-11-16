@@ -4631,6 +4631,29 @@ describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes
     `xterm -e '${t}'`,
   ];
 
+  // Allowlist-bypass shapes: a command word that is not the bare grep/sed filter.
+  const ALLOWLIST_BYPASS_ROWS = (t: string) => [
+    `git grep -O'${t}' x`,
+    `git grep --open-files-in-pager='${t}' x`,
+    `git grep --open='${t}' x`,
+    `GIT_EXTERNAL_DIFF='${t}' git diff`,
+    `GIT_EXTERNAL_DIFF='${t}' git log -p`,
+    `GIT_PAGER='${t}' git log`,
+    `PAGER='${t}' git log`,
+    `PATH=. grep '${t}'`,
+    `PATH=/tmp grep '${t}'`,
+    `./grep '${t}'`,
+    `/tmp/grep '${t}'`,
+    `/tmp/git log '${t}'`,
+    `./sort '${t}'`,
+    `grep(){ tmux new "$1"; }; grep '${t}'`,
+    `function grep { sudo -s "$1"; }; grep '${t}'`,
+    `git(){ sudo -s "$1"; }; git log '${t}'`,
+    `function git { tmux new "$1"; }; git log '${t}'`,
+    `ag --pag='${t}' x`,
+    `ack --pa='${t}' x`,
+  ];
+
   // Every row must block (the base tier before #1179). `O` is replaced by the main clone path.
   const MUST_BLOCK = [
     'echo hi > @OUT@/x',
@@ -4665,6 +4688,8 @@ describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes
     'cat "$(cat ")" > @OUT@/x ; cat ")")"',
     ...QUOTED_EXECUTOR_ROWS('echo a > @OUT@/x ; true'),
     ...QUOTED_EXECUTOR_ROWS('echo a >@OUT@/x ; true'),
+    ...ALLOWLIST_BYPASS_ROWS('echo a > @OUT@/x ; true'),
+    ...ALLOWLIST_BYPASS_ROWS('echo a >@OUT@/x ; true'),
     "cat x >| '@OUT@/x'",
     "cat x >|'@OUT@/x'",
     'cat x >|"@OUT@/x"',
@@ -4704,9 +4729,12 @@ describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes
     });
   });
 
-  test('inert filters over a git subcommand and sed -n/-i substitutions are masked', async () => {
-    for (const command of ["git log --format='%h>%s' | wc -l", "sed -n 's/a>b/c/p' f"]) {
+  test('sed -n substitution and rg are masked; removed filters keep base behaviour', async () => {
+    for (const command of ["sed -n 's/a>b/c/p' f", "rg 'a>b' f"]) {
       expect(await evaluate(command)).toBeNull();
+    }
+    for (const command of ["sort 'a>b' -o @OUT@/x", "git log --format='%h>%s' | wc -l"]) {
+      expect(await evaluate(command)).toMatchObject({ tier: 'warn' });
     }
   });
 
