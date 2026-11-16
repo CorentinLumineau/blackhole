@@ -73,6 +73,56 @@ describe('collectDenyCounts', () => {
   });
 });
 
+describe('collectDenyCounts — window, hostile input and archive skipping', () => {
+  it('compares instants, not strings: a start with no milliseconds and a +02:00 offset', () => {
+    const live = path.join(campaignDir, 'hook-events');
+    // 2026-11-10T10:00:00Z is before 2026-11-10T10:00:01Z; as raw strings "…00.000Z" > "…00Z".
+    write(live, 'a.json', event('block', 'r', '2026-11-10T10:00:00.500Z'));
+    // 12:00+02:00 is 10:00Z: after a 09:30Z start, before a 10:30Z start.
+    write(live, 'b.json', event('block', 'r', '2026-11-10T12:00:00+02:00'));
+    expect(collectDenyCounts(campaignDir, '2026-11-10T10:00:00Z')).toEqual([{ pattern_id: 'r', deny: 2, warn: 0 }]);
+    expect(collectDenyCounts(campaignDir, '2026-11-10T10:00:01Z')).toEqual([]);
+    expect(collectDenyCounts(campaignDir, '2026-11-10T09:30:00Z')[0].deny).toBe(2);
+    expect(collectDenyCounts(campaignDir, '2026-11-10T10:30:00Z')).toEqual([]);
+  });
+
+  it('ignores the window when since is unparseable and keeps an event whose recorded_at is unparseable', () => {
+    const live = path.join(campaignDir, 'hook-events');
+    write(live, 'a.json', event('block', 'r', '2020-01-01T00:00:00Z'));
+    write(live, 'b.json', event('warn', 'r', 'garbage'));
+    expect(collectDenyCounts(campaignDir, 'not-a-date')).toEqual([{ pattern_id: 'r', deny: 1, warn: 1 }]);
+    expect(collectDenyCounts(campaignDir, '2026-01-01T00:00:00Z')).toEqual([{ pattern_id: 'r', deny: 0, warn: 1 }]);
+  });
+
+  it('survives a null event and a non-string pattern_id', () => {
+    const live = path.join(campaignDir, 'hook-events');
+    write(live, 'n.json', 'null');
+    write(live, 'num.json', 'null'.replace('null', '7'));
+    write(live, 'id.json', { tier: 'block', pattern_id: 42 });
+    write(live, 'empty.json', { tier: 'warn', pattern_id: '' });
+    expect(collectDenyCounts(campaignDir, null)).toEqual([{ pattern_id: 'unknown', deny: 1, warn: 1 }]);
+  });
+
+  it('does not read an archive directory stamped before the campaign start', () => {
+    const since = '2026-11-10T00:00:00Z';
+    const old = path.join(campaignDir, 'archive', `hook-events-${Date.parse(since) - 1}`);
+    write(old, 'bad.json', '{not json');
+    write(old, 'real.json', event('block', 'old-rule', '2026-11-10T10:00:00.000Z'));
+    const fresh = path.join(campaignDir, 'archive', `hook-events-rotated-${Date.parse(since) + 1}`);
+    write(fresh, 'x.json', event('block', 'new-rule'));
+    expect(collectDenyCounts(campaignDir, since)).toEqual([{ pattern_id: 'new-rule', deny: 1, warn: 0 }]);
+    expect(collectDenyCounts(campaignDir, null).map((r) => r.pattern_id).sort()).toEqual(['new-rule', 'old-rule']);
+  });
+});
+
+describe('renderDenyCountsSection — id sanitising', () => {
+  it('strips newlines and backticks from a pattern_id', () => {
+    const text = renderDenyCountsSection([{ pattern_id: 'a`b\n### injected', deny: 1, warn: 0 }]).join('\n');
+    expect(text).toContain('- `ab### injected` — 1 deny');
+    expect(text.split('\n').filter((l) => l.startsWith('###'))).toEqual(['### Hook denials']);
+  });
+});
+
 describe('topDenyCounts', () => {
   it('keeps the first five rows', () => {
     const rows = Array.from({ length: 8 }, (_, i) => ({ pattern_id: `r${i}`, deny: 8 - i, warn: 0 }));
@@ -94,7 +144,7 @@ describe('hook denials in the dashboard and the page', () => {
 
   it('says "no hook denials recorded" when there are none, in text and on the page', () => {
     expect(renderDenyCountsSection([]).join('\n')).toContain('no hook denials recorded');
-    expect(renderStatusHtml(fixtureReport())).toContain('no hook denials recorded');
+    expect(renderStatusHtml({ ...fixtureReport(), deny_counts: [] })).toContain('no hook denials recorded');
   });
 
   it('lists the top 5 on the page', () => {

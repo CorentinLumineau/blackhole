@@ -1,7 +1,7 @@
 import { readScope, type CampaignScope } from '../../forge-scope.ts';
 import { classPreview, groupBlockedRows, waitReason } from './blocked-classes.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
-import { topDenyCounts } from './deny-counts.ts';
+import { safePatternId, topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
 import {
   computeStatusCounts,
@@ -346,7 +346,7 @@ export function renderViewSection(view: DashboardView): string[] {
 export function renderDenyCountsSection(rows: DenyCount[]): string[] {
   const lines = ['### Hook denials'];
   if (rows.length === 0) lines.push('no hook denials recorded');
-  for (const r of topDenyCounts(rows)) lines.push(`- \`${r.pattern_id}\` — ${r.deny} deny · ${r.warn} warn`);
+  for (const r of topDenyCounts(rows)) lines.push(`- \`${safePatternId(r.pattern_id)}\` — ${r.deny} deny · ${r.warn} warn`);
   lines.push('');
   return lines;
 }

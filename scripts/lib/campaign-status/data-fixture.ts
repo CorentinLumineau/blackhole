@@ -37,6 +37,7 @@ export function fixtureReport(queue: QueueJson = FIXTURE_QUEUE): StatusReport {
     decisions: [{ date: '2026-11-10', text: 'Leave every PR open for review' }],
     prSignals: { 9: { review: 'LGTM', review_read: true, ci: 'running', failing: [], mergeable: true } },
     pluginVersion: '1.2.3',
+    denyCounts: [{ pattern_id: 'rm-rf', deny: 3, warn: 1 }],
   });
 }
 
