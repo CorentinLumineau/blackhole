@@ -4601,3 +4601,34 @@ describe('hook-event-log.js — keyword-less credential masking', () => {
     }
   });
 });
+
+describe('hook-event-log.js — space-separated secret flags', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  const value = 'abcdefgh1234';
+
+  const MASKED: Array<[string, string, string]> = [
+    ['--token', `run --token ${value} now`, '--token ***'],
+    ['--api-key', `run --api-key ${value} now`, '--api-key ***'],
+    ['--secret', `run --secret ${value} now`, '--secret ***'],
+    ['-token', `run -token ${value} now`, '-token ***'],
+    ['--with-token', `gh auth login --with-token ${value} now`, '--with-token ***'],
+    ['Bearer', `curl -H "Authorization: Bearer ${value}" now`, 'Bearer ***'],
+  ];
+
+  for (const [label, input, masked] of MASKED) {
+    test(`redactReason masks ${label} after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${input}`);
+      expect(out).toContain(masked);
+      expect(out).not.toContain(value);
+    });
+  }
+
+  test('flags that merely start with a secret keyword stay unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    for (const text of ['--token-file /path/to/file', '--secret-name foo', '--tokenizer x']) {
+      expect(redactReason(`${filler} ${text}`)).toBe(`${filler} ${text}`);
+      expect(redact(text)).toBe(text);
+    }
+  });
+});

@@ -45,7 +45,7 @@ const { rotateHookEvents } = require('./hook-event-rotation');
 const SECRET_KV =
   /\b((?:[A-Za-z][A-Za-z0-9]*_)*?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+)*)(\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
 const SECRET_SPACE =
-  /\b(--?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key|with-token)|Bearer)\s+(['"]?)[^'"\s]{4,}\2/gi;
+  /(?<![\w-])(--?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key|with-token)|Bearer)\s+(['"]?)[^'"\s]{4,}\2/gi;
 /** Credentials with no keyword in front of them. Every quantifier is bounded or runs over a
  * character class its neighbour cannot also match, so none of these backtracks catastrophically.
  *  - Bare GitHub tokens keep their prefix (`ghp_***`) so a reader can tell what leaked.
