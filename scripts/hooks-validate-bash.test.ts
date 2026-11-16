@@ -4468,3 +4468,21 @@ describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
   }
 });
 
+
+describe('hook-event-log.js — redact length caps', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const longReason = `${'x'.repeat(450)} Remedy: run the command from inside the assigned worktree.`;
+
+  test('reason cap keeps a Remedy clause that sits past the 300-char detail cap', () => {
+    const { redact, redactReason } = hookEventLog();
+    expect(redact(longReason)).not.toContain('Remedy:');
+    expect(redactReason(longReason)).toBe(longReason);
+  });
+
+  test('redactReason still masks credential literals', () => {
+    const { redactReason } = hookEventLog();
+    expect(redactReason('leaked GITHUB_TOKEN=abcdef123456 here. Remedy: rotate it.')).toBe(
+      'leaked GITHUB_TOKEN=*** here. Remedy: rotate it.',
+    );
+  });
+});
