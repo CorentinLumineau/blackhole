@@ -28,6 +28,11 @@ describe('prLandingFromRow', () => {
     expect(prLandingFromRow({ state: 'open', merged: false })).toEqual({ state: 'open', mergedAt: null, mergeCommitSha: null });
   });
 
+  test('a state that is neither open nor closed, with no merge evidence, is unreadable', () => {
+    expect(prLandingFromRow({ state: 'draft' })).toBeNull();
+    expect(prLandingFromRow({ state: 'weird', merged: false })).toBeNull();
+  });
+
   test('a row with no state is unreadable (null), never open', () => {
     expect(prLandingFromRow({})).toBeNull();
     expect(prLandingFromRow(null)).toBeNull();

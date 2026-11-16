@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import { validateStateWrite } from './lib/state-write-guard.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { runGh } from './lib/forge-adapter/cli.ts';
-import { readPrLanding, type PrLanding } from './lib/forge-adapter/pr-landing.ts';
+import { readPrLanding, type PrLanding, type PrRowFetcher } from './lib/forge-adapter/pr-landing.ts';
 import { parseFlags, requireFlag, type Flags } from './lib/argv-flags.ts';
 import {
   changedFileCount,
@@ -274,10 +274,15 @@ const FORCED_LANDING: Record<string, PrLanding> = {
   'closed-unmerged': { state: 'closed-unmerged', mergedAt: null, mergeCommitSha: null },
 };
 
-const readLanding = (flags: Flags, repoSlug: string, parentPr: number | null): PrLanding | null => {
+const readLanding = (flags: Flags, repoSlug: string, parentPr: number | null, fetchRow?: PrRowFetcher): PrLanding | null => {
   const forced = flags['parent-state'];
-  if (typeof forced === 'string' && forced in FORCED_LANDING) return FORCED_LANDING[forced];
-  return parentPr === null ? null : readPrLanding(forgeOf(flags), repoSlug, parentPr);
+  if (forced !== undefined) {
+    if (typeof forced !== 'string' || !Object.hasOwn(FORCED_LANDING, forced)) {
+      throw new Error(`invalid --parent-state: expected open|merged|closed-unmerged`);
+    }
+    return FORCED_LANDING[forced];
+  }
+  return parentPr === null ? null : readPrLanding(forgeOf(flags), repoSlug, parentPr, fetchRow);
 };
 
 const readParentState = (flags: Flags, repoSlug: string, parentPr: number | null): ForgeParentState | null => {
@@ -528,7 +533,7 @@ const mergeMethod = (flags: Flags): number => {
 
 // Has the parent landed? The forge's merged state answers it; git ancestry never can, because a
 // squash or rebase landing is not an ancestor of the base (merge-gate.md § 7).
-const parentLanded = (flags: Flags): number => {
+const parentLanded = (flags: Flags, fetchRow?: PrRowFetcher): number => {
   const repoSlug = requireFlag(flags, 'repo-slug');
   let parentPr: number | null = typeof flags['parent-pr'] === 'string' ? Number(flags['parent-pr']) : null;
   if (parentPr === null) {
@@ -541,7 +546,7 @@ const parentLanded = (flags: Flags): number => {
     console.error('no parent PR: pass --parent-pr, or --queue and --child-issue naming a child with a stack edge');
     return 3;
   }
-  const { report, exit } = parentLandedReport(parentPr, readLanding(flags, repoSlug, parentPr));
+  const { report, exit } = parentLandedReport(parentPr, readLanding(flags, repoSlug, parentPr, fetchRow));
   if (report === null) console.error(`could not read PR #${parentPr} state — unknown, not open; retry next turn`);
   else console.log(JSON.stringify(report));
   return exit;
@@ -559,7 +564,7 @@ const USAGE = `Usage:
       (exit 0 merged, 1 open, 4 closed unmerged, 3 unreadable)
   bun run scripts/stack-repair.ts merge-method --queue <path> --repo-slug <owner/repo> [--forge <github|gitea>] --issue <N>   (exit 3: hold)`;
 
-export const main = (argv: string[]): number => {
+export const main = (argv: string[], fetchRow?: PrRowFetcher): number => {
   const [subcommand, ...rest] = argv;
   const flags = parseFlags(rest);
   try {
@@ -567,7 +572,7 @@ export const main = (argv: string[]): number => {
     if (subcommand === 'repair') return repair(flags);
     if (subcommand === 'restack') return restack(flags);
     if (subcommand === 'merge-method') return mergeMethod(flags);
-    if (subcommand === 'parent-landed') return parentLanded(flags);
+    if (subcommand === 'parent-landed') return parentLanded(flags, fetchRow);
   } catch (error) {
     console.error((error as Error).message);
     return 2;

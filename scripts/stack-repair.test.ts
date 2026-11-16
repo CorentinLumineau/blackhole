@@ -489,6 +489,30 @@ describe('parent-landed resolves the parent PR from the queue', () => {
     expect(JSON.parse(r.logs[0]).parentPr).toBe(44);
   });
 
+  test('--parent-state with an inherited object key is a usage error, not a landing', () => {
+    const orig = console.error;
+    console.error = () => {};
+    try {
+      expect(main(['parent-landed', '--parent-pr', '1', '--repo-slug', 'o/r', '--parent-state', 'constructor'])).toBe(2);
+    } finally {
+      console.error = orig;
+    }
+  });
+
+  test('without --parent-state, a squash row read through the injected fetcher exits 0', () => {
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (m: string) => logs.push(m);
+    try {
+      const row = { state: 'closed', merged: true, merged_at: '2026-01-02T03:04:05Z', merge_commit_sha: 'abc' };
+      expect(main(['parent-landed', '--parent-pr', '41', '--repo-slug', 'o/r'], () => row)).toBe(0);
+      expect(JSON.parse(logs[0])).toMatchObject({ parentPr: 41, state: 'merged', landed: true, mergeCommitSha: 'abc' });
+      expect(main(['parent-landed', '--parent-pr', '41', '--repo-slug', 'o/r'], () => ({ state: 'open' }))).toBe(1);
+    } finally {
+      console.log = orig;
+    }
+  });
+
   test('a child with no parent edge is unreadable (3), not landed', () => {
     expect(withQueue({ '5': { pr: 55 } }, ['--child-issue', '5']).code).toBe(3);
   });

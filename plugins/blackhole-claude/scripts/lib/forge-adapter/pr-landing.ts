@@ -19,8 +19,11 @@ export const prLandingFromRow = (row: PrRow | null | undefined): PrLanding | nul
   const mergeCommitSha = row.merge_commit_sha ?? null;
   if (row.merged === true || mergedAt !== null) return { state: 'merged', mergedAt, mergeCommitSha };
   if (row.state === 'open') return { state: 'open', mergedAt: null, mergeCommitSha: null };
+  if (row.state !== 'closed') return null;
   return { state: 'closed-unmerged', mergedAt: null, mergeCommitSha: null };
 };
+
+export type PrRowFetcher = (forge: ForgeType, repo: string, pr: number) => PrRow | null;
 
 const defaultFetch = (forge: ForgeType, repo: string, pr: number): PrRow | null => {
   if (forge === 'github') return runGhApiRestJson<PrRow>('GET', `repos/${repo}/pulls/${pr}`);
@@ -33,7 +36,7 @@ export const readPrLanding = (
   forge: ForgeType,
   repo: string,
   pr: number,
-  fetchRow: (forge: ForgeType, repo: string, pr: number) => PrRow | null = defaultFetch,
+  fetchRow: PrRowFetcher = defaultFetch,
 ): PrLanding | null => {
   if (forge !== 'github' && forge !== 'gitea') return null;
   try {
