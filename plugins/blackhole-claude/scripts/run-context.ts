@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
+import { readJsonFile } from './lib/fs.ts';
 import { checkForgeAuthSync } from './lib/forge-doctor.ts';
 import {
   AGENT_TOOLS,
@@ -33,6 +34,12 @@ export const parseTools = (raw: string): AgentTool[] => {
   return tools as AgentTool[];
 };
 
+const usageBudgetEnabled = (configPath: string): boolean => {
+  if (!fs.existsSync(configPath)) return false;
+  const config = readJsonFile(configPath, configPath) as { usage_budget?: { enabled?: unknown } };
+  return config.usage_budget?.enabled === true;
+};
+
 const main = () => {
   const flags = parseFlags(process.argv.slice(2));
   const unknown = unknownFlagKeys(flags, ['tools', 'host', 'surface', 'persistent-disk', 'campaign-dir', 'no-write']);
@@ -56,11 +63,11 @@ const main = () => {
     surface,
     persistentDisk: disk === undefined ? undefined : disk === 'yes',
   });
-  const route = routeRunContext(context);
+  // Campaign state belongs to the project the command runs in (working directory).
+  const campaignDir = path.resolve(typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : '.blackhole');
+  const route = routeRunContext(context, { usageBudgetEnabled: usageBudgetEnabled(path.join(campaignDir, 'config.json')) });
 
   if (flags['no-write'] !== true) {
-    // Campaign state belongs to the project the command runs in (working directory).
-    const campaignDir = path.resolve(typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : '.blackhole');
     fs.mkdirSync(campaignDir, { recursive: true });
     const target = path.join(campaignDir, 'run-context.json');
     const tmp = `${target}.tmp`;
