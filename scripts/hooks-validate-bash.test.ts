@@ -4572,81 +4572,112 @@ describe('PreToolUse deny decisions — every deny names a remedy or is explicit
   });
 });
 
-describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes and sed scripts (#1179)', () => {
+describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes (#1179)', () => {
   const guard = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+  type Verdict = { tier: string; pattern_id: string; reason: string } | null;
 
-  const evaluate = async (command: (mainRepo: string, worktree: string) => string) => {
-    let result: { tier: string; pattern_id: string; reason: string } | null = null;
+  // `O` stands for a path outside the assigned worktree (the main clone).
+  const evaluate = async (command: string): Promise<Verdict> => {
+    let result: Verdict = null;
     await withLinkedWorktree('blackhole-hook-1179-', async (mainRepo, worktree) => {
-      result = guard.evaluateBashWriteTargets(command(mainRepo, worktree), worktree);
+      result = guard.evaluateBashWriteTargets(command.replaceAll('O', mainRepo), worktree);
     });
     return result;
   };
 
   const FALSE_POSITIVES = [
-    'sed -i s/<A>/#1174/g foo.txt',
     "sed -i 's/<A>/#1174/g' foo.txt",
     "sed 's/<A>/x/g;s/b/c/' foo.txt",
     "grep 'a>b' foo.txt | wc -l",
     'grep "a>b" foo.txt',
-    "perl -ne 'print if /a>b/' foo.txt",
+    "grep -E 'a>b|c' foo.txt",
   ];
 
   for (const command of FALSE_POSITIVES) {
     test(`not a redirect: ${command}`, async () => {
-      const result = await evaluate(() => command);
-      // the in-bounds `foo.txt` write (sed -i) may still be inspected, but never as a block or
-      // a phantom-target warning from the quoted/regex `>`
-      expect(result).toBeNull();
+      expect(await evaluate(command)).toBeNull();
     });
   }
 
-  const REAL_REDIRECTS: Array<[string, (outside: string) => string]> = [
-    ['plain >', (o) => `echo hi > ${o}/x`],
-    ['glued >', (o) => `cmd >${o}/x`],
-    ['append >>', (o) => `cat a >> ${o}/b`],
-    ['after ;', (o) => `true; echo hi > ${o}/x`],
-    ['after &&', (o) => `true && echo hi > ${o}/x`],
-    ['after |', (o) => `echo hi | cat > ${o}/x`],
-    ['stderr 2>', (o) => `cmd 2> ${o}/x`],
-    ['combined &>', (o) => `cmd &> ${o}/x`],
-    ['clobber >|', (o) => `cmd >| ${o}/x`],
-    ['double-quoted target', (o) => `echo hi > "${o}/x"`],
-    ['single-quoted target', (o) => `echo hi > '${o}/x'`],
-    ['sed script then glued redirect', (o) => `sed s/a/b/>${o}/x`],
-    ['quoted sed script then redirect', (o) => `sed 's/a>b/c/' f > ${o}/x`],
+  test('unquoted `sed -i s/<A>/#1174/g f` is a true redirect: blocked, with the quote-it hint', async () => {
+    const result = await evaluate('sed -i s/<A>/#1174/g foo.txt');
+    expect(result).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    expect(result!.reason).toContain('This looks like a sed/regex expression; quote it.');
+  });
+
+  // Every row must block (the base tier before #1179). `O` is replaced by the main clone path.
+  const MUST_BLOCK = [
+    'echo hi > O/x',
+    'cmd >O/x',
+    'cat a >> O/b',
+    'true; echo hi > O/x',
+    'true && echo hi > O/x',
+    'echo hi | cat > O/x',
+    'cmd 2> O/x',
+    'cmd &> O/x',
+    'cmd >| O/x',
+    'echo hi > "O/x"',
+    "echo hi > 'O/x'",
+    'sed s/a/b/>O/x',
+    "sed 's/a>b/c/' f > O/x",
+    'sed s/x>O/x f',
+    'sed s/a>>O/x/g f',
+    'sed y/a>O/x/ f',
+    'sed s/a/b>O/x',
+    'sed -i s/a>O/x/ y',
+    'touch sed s/a>O/x/',
+    'xargs sed s/a>O/x/',
+    'env sed s/a>O/x/ f',
+    '/usr/bin/sed s/a>O/x/ f',
+    "cat \\' > O/x ; cat \\'",
+    "cat x \\' > O/x \\'",
+    'cat \\" > O/x ; cat \\"',
+    "cat $'\\'' > O/x ; cat ''",
+    "cat $'\\'' > O/x ; cat 'z'",
+    "cat x \\\\\\' > O/x \\\\\\'",
+    "cat x >| 'O/x'",
+    "cat x >|'O/x'",
+    'cat x >|"O/x"',
+    "cat x 2>| 'O/x'",
   ];
 
-  for (const [label, build] of REAL_REDIRECTS) {
-    test(`still blocks: ${label}`, async () => {
-      const result = await evaluate((mainRepo) => build(mainRepo));
-      expect(result).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+  for (const command of MUST_BLOCK) {
+    test(`still blocks: ${command}`, async () => {
+      expect(await evaluate(command)).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
     });
   }
 
-  // The enclosing quote or `)` glues onto the target, so these were never a resolvable block
-  // target; the contract is that quote masking must not downgrade them to an allow.
-  const NESTED_REDIRECTS: Array<[string, (outside: string) => string]> = [
-    ['command substitution in double quotes', (o) => `echo "$(echo hi > ${o}/x)"`],
-    ['bash -c', (o) => `bash -c 'echo hi > ${o}/x'`],
-    ['eval', (o) => `eval "echo hi > ${o}/x"`],
+  // Quoted text that is executed as shell: never allowed (the base tier is block or warn).
+  const MUST_NOT_ALLOW = [
+    "trap 'echo a > O/x' EXIT",
+    "alias ll='cat > O/x'",
+    "watch 'echo a > O/x'",
+    "x='cat > O/x'; eval \"$x\"",
+    "cat <<< 'echo a > O/x' | sh",
+    "export BASH_ENV='x > O/x'",
+    "perl -e 'system(\"echo a > O/x\")'",
+    'sed s{a>{O/x{ f',
+    'echo "$(echo hi > O/x)"',
   ];
 
-  for (const [label, build] of NESTED_REDIRECTS) {
-    test(`never allowed: redirect inside ${label}`, async () => {
-      const result = await evaluate((mainRepo) => build(mainRepo));
-      expect(result).not.toBeNull();
+  for (const command of MUST_NOT_ALLOW) {
+    test(`never allowed: ${command}`, async () => {
+      expect(await evaluate(command)).not.toBeNull();
     });
   }
 
-  test('a block on a regex-looking target adds the quote-it hint', async () => {
-    const result = await evaluate(() => 'sed -i s/a/b/ >/#1174/g');
-    expect(result).toMatchObject({ tier: 'block' });
-    expect(result!.reason).toContain('If this is part of a sed/regex expression, quote it.');
+  test('`bash -c` and `eval` of a quoted redirect keep the base tier', async () => {
+    for (const command of ["bash -c 'echo hi > O/x'", 'eval "echo hi > O/x"']) {
+      expect((await evaluate(command))?.tier).toBe('warn');
+    }
+    expect(await evaluate('echo "$(echo hi > O/x)"')).toMatchObject({
+      tier: 'warn',
+      pattern_id: 'bash-write-target-unresolvable',
+    });
   });
 
   test('a block on an ordinary path carries no regex hint', async () => {
-    const result = await evaluate((mainRepo) => `echo hi > ${mainRepo}/x`);
+    const result = await evaluate('echo hi > O/x');
     expect(result!.reason).not.toContain('sed/regex expression');
   });
 });

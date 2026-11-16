@@ -138,7 +138,7 @@ const clauseRanges = (visible) => {
       continue;
     }
     const isSeparator =
-      ch === ';' || ch === '|' || ch === '\n' || (ch === '&' && !isRedirectAmpersand(visible, i));
+      ch === ';' || (ch === '|' && visible[i - 1] !== '>') || ch === '\n' || (ch === '&' && !isRedirectAmpersand(visible, i));
     if (isSeparator) {
       ranges.push([start, i]);
       start = i + 1;
@@ -159,84 +159,58 @@ const isCommandToken = (token, command) => token === command || token.endsWith(`
  * shape `>`/`>>`/`&>` legitimately precede without naming a file (`2>&1`, `>&2`). */
 const isFdDuplicationTarget = (token) => /^&\d+$/.test(token);
 
-/** A clause that can itself execute a quoted string as shell (`bash -c '...'`, `eval "..."`, ...):
- * its quoted spans are real command text, so `maskRedirectNoise` leaves them alone. */
-const SHELL_EXECUTORS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'eval', 'source', '.']);
+/** Whole-command signals that quoted text may be executed as shell (or smuggles a quote the
+ * span walker would misread). Any hit disables `maskRedirectNoise` entirely: masking is only safe
+ * when no quoted span can be command text. */
+const SHELL_EXEC_RE = new RegExp(
+  [
+    '(?:^|[\\s;&|(`])(?:\\S*/)?(?:bash|sh|zsh|dash|ksh|eval|source|trap|alias|watch|at|parallel|xargs)(?=$|[\\s;&|)])',
+    '(?:^|\\s)-c(?=$|\\s)',
+    'BASH_ENV=|PROMPT_COMMAND=',
+    '<<<',
+    '\\b(?:perl|ruby|node|bun|php|lua|python[0-9.]*)\\b[^;|&\\n]*\\s-[a-zA-Z]*[ecr]\\b',
+  ].join('|'),
+);
 
-const executesQuotedShell = (tokens) =>
-  tokens.some((t) => SHELL_EXECUTORS.has(path.basename(stripQuotes(t))) || t === '-c');
+/** An escaped quote (`\'`, `\"`) or an ANSI-C/locale string (`$'`, `$"`) changes where a quoted
+ * span really ends, so the span walker cannot be trusted on such a command. */
+const AMBIGUOUS_QUOTE_RE = /\\['"]|\$['"]/;
 
 const REDIRECT_OPERATOR_TAIL_RE = /(?:&>>|&>|>>|>&|>\||>)\s*$/;
 
 /** A quoted span `text[start..end)` is inert text (cannot hide a write target) unless it is a
- * redirect's own target (`> "/x"`), an unterminated span, or a double-quoted span carrying a
- * command substitution (`"$(echo x > /etc/y)"`). */
+ * redirect's own target (`> "/x"`), unterminated, contains another quote character, or is a
+ * double-quoted span carrying a command substitution (`"$(echo x > /etc/y)"`). */
 const isInertQuotedSpan = (text, start, end) => {
   const span = text.slice(start, end);
   if (span.length < 2 || span[span.length - 1] !== span[0]) return false;
+  if (/['"]/.test(span.slice(1, -1))) return false;
   if (REDIRECT_OPERATOR_TAIL_RE.test(text.slice(0, start))) return false;
   return !(span[0] === '"' && (span.includes('$(') || span.includes('`')));
 };
 
-/** Length of the leading sed substitute/transliterate command (`s/re/repl/flags`, any
- * non-alphanumeric delimiter) at the start of `word`, or 0 when `word` is not one. Only the
- * well-formed command itself is measured: whatever follows it (`s/a/b/>/etc/x`) stays visible. */
-const sedScriptLength = (word) => {
-  if (word.length < 4 || (word[0] !== 's' && word[0] !== 'y')) return 0;
-  const delim = word[1];
-  if (/[A-Za-z0-9\s\\>;|&]/.test(delim)) return 0;
-  let seen = 0;
-  let i = 2;
-  while (i < word.length) {
-    if (word[i] === '\\') {
-      i += 2;
-      continue;
-    }
-    if (word[i] === delim && ++seen === 2) break;
-    i++;
-  }
-  if (seen < 2) return 0;
-  i++;
-  while (i < word.length && /[A-Za-z0-9]/.test(word[i])) i++;
-  return i;
-};
-
-/** Copy of `visible` with the characters that merely look like redirect operators blanked, for the
- * whole-command `REDIRECT_RE` scan only: the contents of inert quoted spans (`grep 'a>b'`), and an
- * unquoted sed `s/…/…/flags` script word (`sed -i s/<A>/x/g f`). Positions are preserved. A clause
- * that may execute its quoted text as shell is left untouched, so masking never turns a deny into
- * an allow. */
+/** Copy of `visible` with the contents of inert quoted spans blanked (`grep 'a>b'`), for the
+ * whole-command `REDIRECT_RE` scan only; positions are preserved. Fails closed: returns
+ * `visible` unchanged whenever quoted text may be executed or the quoting is ambiguous, so
+ * masking can never turn a deny into an allow. Unquoted text is never masked: an unquoted
+ * `sed s/<A>/x/` really is a redirect in bash. */
 const maskRedirectNoise = (visible) => {
+  if (SHELL_EXEC_RE.test(visible) || AMBIGUOUS_QUOTE_RE.test(visible)) return visible;
   const chars = visible.split('');
-  const blank = (from, to) => {
-    for (let k = from; k < to; k++) chars[k] = ' ';
-  };
   for (const [start, end] of clauseRanges(visible)) {
     const text = visible.slice(start, end);
-    const tokens = tokenize(text);
-    if (executesQuotedShell(tokens)) continue;
-    const isSed = tokens.some((t) => isCommandToken(t, 'sed'));
     let i = 0;
-    let wordStart = 0;
     while (i < text.length) {
       const ch = text[i];
-      if (ch === "'" || ch === '"') {
-        const spanEnd = skipQuotedSpan(text, i, text.length);
-        if (isInertQuotedSpan(text, i, spanEnd)) blank(start + i + 1, start + spanEnd - 1);
-        i = spanEnd;
+      if (ch !== "'" && ch !== '"') {
+        i++;
         continue;
       }
-      if (ch === ' ' || ch === '\t') {
-        wordStart = i + 1;
-      } else if (isSed && i === wordStart) {
-        const length = sedScriptLength(text.slice(i).split(/\s/, 1)[0]);
-        if (length > 0) {
-          blank(start + i, start + i + length);
-          i += length;
-          continue;
-        }
+      const spanEnd = skipQuotedSpan(text, i, text.length);
+      if (isInertQuotedSpan(text, i, spanEnd)) {
+        for (let k = start + i + 1; k < start + spanEnd - 1; k++) chars[k] = ' ';
       }
-      i++;
+      i = spanEnd;
     }
   }
   return chars.join('');
@@ -487,7 +461,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
     const resolvedPath = path.isAbsolute(target) ? target : path.resolve(cwd, target);
     if (!isUnderRoot(resolvedPath, assignedRoot)) {
       const hint = looksLikeRegexFragment(target)
-        ? ' If this is part of a sed/regex expression, quote it.'
+        ? ' This looks like a sed/regex expression; quote it.'
         : '';
       return {
         tier: 'block',
