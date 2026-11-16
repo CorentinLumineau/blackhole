@@ -141,7 +141,8 @@ sees at a glance where the run stands and what to do:
 
 `--html` keeps its detail sections after these: in progress, waiting on you, waiting on
 something else by reason class (`elseClasses()`), up next, recently done, and a closed native
-`<details>` with host, checkpoint notes and open findings. The text dashboard (`dashboard.ts`)
+`<details>` with host, checkpoint notes, open findings and the top 5 hook rules by deny and warn count
+(`deny_counts`; `no hook denials recorded` when empty). The text dashboard (`dashboard.ts`)
 is shorter: it prints the headline, the board counts, your move, the scope and the newest
 decisions above its queue sections, with no card list and no workstreams.
 Visual rules: R-006 (`documentation/reference/product-principles.md`).

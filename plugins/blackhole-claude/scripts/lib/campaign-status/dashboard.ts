@@ -1,6 +1,7 @@
 import { readScope, type CampaignScope } from '../../forge-scope.ts';
 import { classPreview, groupBlockedRows, waitReason } from './blocked-classes.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
+import { topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
 import {
   computeStatusCounts,
@@ -12,6 +13,7 @@ import {
 import type {
   CheckpointMeta,
   ConfigSummaryInput,
+  DenyCount,
   ForgeCounts,
   IssueRow,
   LedgerFinding,
@@ -310,7 +312,8 @@ export function renderStackMergeOrderSection(issues: Record<string, QueueIssue>)
 }
 
 /** The campaign facts the page leads with, from the same report as `--json`: what the text dashboard repeats. */
-export type DashboardView = Pick<StatusReport, 'headline' | 'stage_counts' | 'moves' | 'scope_record' | 'decisions' | 'forge_checked'>;
+export type DashboardView = Pick<StatusReport, 'headline' | 'stage_counts' | 'moves' | 'scope_record' | 'decisions' | 'forge_checked'> &
+  Partial<Pick<StatusReport, 'deny_counts'>>;
 
 const DECISIONS_SHOWN = 3;
 
@@ -336,6 +339,15 @@ export function renderViewSection(view: DashboardView): string[] {
     const shown = view.decisions.slice(0, DECISIONS_SHOWN);
     lines.push('### Your decisions', ...shown.map((d) => `- ${d.date} ${d.text}`), ...capOverflowLine(view.decisions.length, shown.length), '');
   }
+  return lines;
+}
+
+/** Top hook rules by deny and warn count; always printed once the report carries the field. */
+export function renderDenyCountsSection(rows: DenyCount[]): string[] {
+  const lines = ['### Hook denials'];
+  if (rows.length === 0) lines.push('no hook denials recorded');
+  for (const r of topDenyCounts(rows)) lines.push(`- \`${r.pattern_id}\` — ${r.deny} deny · ${r.warn} warn`);
+  lines.push('');
   return lines;
 }
 
@@ -398,6 +410,7 @@ export function formatDashboard(opts: {
   lines.push(...renderCompletedSection(done));
   lines.push(...renderFiledSection(filed));
   lines.push(...renderLedgerOpenSection(findings));
+  if (view?.deny_counts) lines.push(...renderDenyCountsSection(view.deny_counts));
   lines.push(...renderActiveWorkersSection(checkpointBody));
 
   return lines.join('\n').trimEnd();
