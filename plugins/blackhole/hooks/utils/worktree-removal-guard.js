@@ -1091,8 +1091,8 @@ const checkUnpushedCommits = (worktreePath) => {
  * caller.
  */
 const unverifiableRefusalOpener = (resolvedPath, claim, detail) =>
-  `Could not verify ${resolvedPath} ${claim} (${detail}) — refusing rather than risk silent ` +
-  `data loss.`;
+  `Could not verify ${resolvedPath} ${claim} (${detail}) — the check could not run (not confirmed unsafe), ` +
+  `refusing rather than risk silent data loss.`;
 
 const GITHUB_RETAINS_PR_HEADS_NOTE =
   '(GitHub retains PR head refs permanently, so this gives a true answer instead of bypassing the ' +
@@ -1185,7 +1185,8 @@ const evaluateResolvedWorktree = (resolvedPath, shape) => {
       pattern_id: shape.unpushedId,
       reason:
         `Worktree at ${resolvedPath} has commits not on its remote (${result.detail}) — removal would discard them permanently` +
-        shape.unpushedNote,
+        shape.unpushedNote +
+        `. Remedy: push first (git -C ${resolvedPath} push origin <branch>:<branch>), then retry.`,
     };
   }
   if (result.status === 'unknown') {

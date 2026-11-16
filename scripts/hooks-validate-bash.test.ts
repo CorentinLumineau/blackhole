@@ -799,6 +799,8 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
       expect(permissionDecision(result.stdout)).toBe('deny');
       expect(permissionReason(result.stdout)).toMatch(/verify/i);
       expect(permissionReason(result.stdout)).toMatch(/refs\/pull/i);
+      // says the check could not run, not that the worktree was found unsafe
+      expect(permissionReason(result.stdout)).toMatch(/not confirmed unsafe/i);
 
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
@@ -825,6 +827,7 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
         expect(permissionReason(result.stdout)).toMatch(/remote/i);
+        expect(permissionReason(result.stdout)).toMatch(/Remedy: push/);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -3014,6 +3017,9 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       expect(result.exitCode).toBe(2);
       expect(permissionDecision(result.stdout)).toBe('deny');
       expect(permissionReason(result.stdout)).toMatch(/assigned worktree/i);
+      // names the form that would pass: the same file name under the assigned root
+      expect(permissionReason(result.stdout)).toContain(`Remedy: write inside ${worktree}`);
+      expect(permissionReason(result.stdout)).toContain(path.join(worktree, 'foo.txt'));
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
