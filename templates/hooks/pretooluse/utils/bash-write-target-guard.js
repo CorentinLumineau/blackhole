@@ -172,9 +172,51 @@ const SHELL_EXEC_RE = new RegExp(
   ].join('|'),
 );
 
-/** An escaped quote (`\'`, `\"`) or an ANSI-C/locale string (`$'`, `$"`) changes where a quoted
- * span really ends, so the span walker cannot be trusted on such a command. */
-const AMBIGUOUS_QUOTE_RE = /\\['"]|\$['"]/;
+/** Constructs inside which bash nests or reinterprets quotes, so this module's flat quote pairing
+ * cannot be trusted anywhere in the command: command/process substitution, parameter expansion,
+ * escapes, `$'..'`/`$".."` strings and here-strings. */
+const QUOTE_REINTERPRETING_RE = /\$\(|`|\$\{|\\|\$['"]|<<<|<\(|>\(/;
+
+/** Commands that only read their quoted arguments and never run them: the sole commands whose
+ * quoted spans `maskRedirectNoise` may blank. An allowlist, because the set of commands that execute
+ * or write from a quoted argument (`su -c`, `tmux`, `ssh -o ProxyCommand=`, `sed 'e'`, ...) cannot
+ * be enumerated; anything unlisted keeps every quoted span visible. */
+const INERT_FILTER_COMMANDS = new Set([
+  'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'wc', 'sort', 'uniq', 'cut', 'tr', 'head', 'tail',
+  'diff', 'cmp', 'comm', 'jq', 'yq', 'column', 'printf', 'echo', 'test', '[',
+]);
+const INERT_GIT_SUBCOMMANDS = new Set(['log', 'grep', 'show', 'diff']);
+
+/** Options that make an otherwise inert filter run a command. */
+const COMMAND_RUNNING_OPTION_RE = /^--(?:pre|pager|compress-program|hostname-bin)/;
+
+/** A sed script made only of `s<d>re<d>repl<d>flags` commands whose flags cannot be `e` or `w`. */
+const SED_SUBST_SCRIPT_RE = /^(?:s([^\w\s\\;])(?:(?!\1)[^\n])*\1(?:(?!\1)[^\n])*\1[gIiMmp0-9]*(?:;|$))+$/;
+const SED_PLAIN_OPTION_RE = /^(?:-[nEr]+|-i|-i\.\w+|--in-place(?:=\S+)?|--quiet|--regexp-extended)$/;
+
+/** sed is inert for masking only with exactly one quoted script that is pure `s///` (no `e`/`w`
+ * command or flag) and no `-f`/`-s`/`-e` option. `-i` is allowed: its write target is resolved by
+ * `findSedTargets`, not by the redirect scan. */
+const isInertSed = (args) => {
+  const scripts = args.filter((t) => t[0] === "'" || t[0] === '"');
+  if (scripts.length !== 1) return false;
+  if (!SED_SUBST_SCRIPT_RE.test(stripQuotes(scripts[0]))) return false;
+  return args.every((t) => t === scripts[0] || SED_PLAIN_OPTION_RE.test(t) || !t.startsWith('-'));
+};
+
+/** True when a clause's command word, after leading `VAR=val` assignments and any path prefix, is
+ * an inert filter (see `INERT_FILTER_COMMANDS`). */
+const isInertClause = (tokens) => {
+  let idx = 0;
+  while (idx < tokens.length && /^[A-Za-z_]\w*=/.test(tokens[idx])) idx++;
+  if (idx >= tokens.length) return false;
+  const head = path.basename(tokens[idx]);
+  const args = tokens.slice(idx + 1);
+  if (args.some((t) => COMMAND_RUNNING_OPTION_RE.test(t))) return false;
+  if (INERT_FILTER_COMMANDS.has(head)) return true;
+  if (head === 'git') return INERT_GIT_SUBCOMMANDS.has(args[0]);
+  return head === 'sed' && isInertSed(args);
+};
 
 const REDIRECT_OPERATOR_TAIL_RE = /(?:&>>|&>|>>|>&|>\||>)\s*$/;
 
@@ -190,15 +232,17 @@ const isInertQuotedSpan = (text, start, end) => {
 };
 
 /** Copy of `visible` with the contents of inert quoted spans blanked (`grep 'a>b'`), for the
- * whole-command `REDIRECT_RE` scan only; positions are preserved. Fails closed: returns
- * `visible` unchanged whenever quoted text may be executed or the quoting is ambiguous, so
- * masking can never turn a deny into an allow. Unquoted text is never masked: an unquoted
+ * whole-command `REDIRECT_RE` scan only; positions are preserved. Fails closed: spans are blanked
+ * only inside a clause whose command is an inert filter, and only when nothing in the command
+ * nests or reinterprets quotes or may execute quoted text; otherwise `visible` is returned
+ * unchanged (base behaviour), so masking can never turn a deny into an allow. Unquoted text is never masked: an unquoted
  * `sed s/<A>/x/` really is a redirect in bash. */
 const maskRedirectNoise = (visible) => {
-  if (SHELL_EXEC_RE.test(visible) || AMBIGUOUS_QUOTE_RE.test(visible)) return visible;
+  if (SHELL_EXEC_RE.test(visible) || QUOTE_REINTERPRETING_RE.test(visible)) return visible;
   const chars = visible.split('');
   for (const [start, end] of clauseRanges(visible)) {
     const text = visible.slice(start, end);
+    if (!isInertClause(tokenize(text))) continue;
     let i = 0;
     while (i < text.length) {
       const ch = text[i];
