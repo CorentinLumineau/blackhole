@@ -34,7 +34,8 @@ bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/ci-diagnosis.ts --pr <n> [--repo o
   "classification": "genuine | environment",
   "failing_jobs": [],
   "step_logs": [],
-  "run_ids": []
+  "run_ids": [],
+  "failing_checks": []
 }
 ```
 
@@ -68,10 +69,30 @@ transient handling upstream.
 |-------|------|---------------------|
 | **Transient** | `cancelled` with no real error; base-branch modified | Already handled in `phase-loop.md` step 2.1–2.2 — **do not** reclassify here |
 | **Environment** | Failing-step log matches a declared infrastructure pattern (disk/OOM, registry/network timeout, runner setup/install failure) after a V-SEC-10-style one-line context check (comment/fixture/string-literal lines do not count) | One repair `gh run rerun <run-id>` per poll (in-memory, reuse step 2.1's call). If repair does not resolve to green, escalate as Genuine |
+| **Trunk-red** | The same check and fingerprint fails on at least 2 PRs whose diffs do not contain the failing path (`classifyTrunkRed`) | Park the PRs and fix the base once — § Trunk-red; **do not** route any of them to per-PR fixing |
 | **Genuine** | No environment pattern match (default) | Route to implementer fix loop (below) |
 
 Classification is **deterministic in-script** — the orchestrator does not LLM-reclassify CI
 output.
+
+## Trunk-red
+
+A genuine failure that is not the PR's own. `failing_checks[]` in the diagnosis JSON carries
+`{ check, fingerprint, failingPaths }` per failing step (`fingerprint` = the first error line with
+digits, hashes and timestamps removed). After diagnosing every red PR in the queue, the
+orchestrator feeds those entries plus each PR's changed files to `classifyTrunkRed`
+(`scripts/lib/trunk-red.ts`). A group of `TRUNK_RED_MIN_PRS` (2) or more PRs sharing a check and
+fingerprint, none touching a failing path, is `trunk-red`; one PR, or a failing path inside the
+PR's own diff, stays `genuine`.
+
+On `trunk-red`:
+
+1. Do not append `V-CI-01` fix rounds for the group; set `notes: waiting-on-trunk-fix` per
+   `queue-dag.md` § Trunk-red.
+2. The orchestrator opens the base-fix PR itself (owner ruling, #1169), through the usual
+   plan, review and verify gates; workers are never pointed at the symptom in their own PR.
+3. After the base fix merges, each child gets one throttled merge-base push via
+   `stack-repair.ts restack` and the token is cleared.
 
 ## Fix-loop routing
 

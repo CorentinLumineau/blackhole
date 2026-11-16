@@ -1,6 +1,7 @@
 import { createGitHubAdapter } from './lib/forge-adapter/index.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 import { isVercelPreviewCheck } from './lib/merge-gate/ci-verdict.ts';
+import { fingerprintLog, pathsInLog, type TrunkRedFailure } from './lib/trunk-red.ts';
 
 export { isVercelPreviewCheck };
 
@@ -38,6 +39,8 @@ export type DiagnosisResult = {
   failing_jobs: FailingJob[];
   step_logs: StepLog[];
   run_ids: number[];
+  /** One entry per failing step log: input for `classifyTrunkRed` across PRs. */
+  failing_checks: TrunkRedFailure[];
 };
 
 export type GhRunner = {
@@ -126,6 +129,14 @@ export function classifyStepLogs(stepLogs: StepLog[]): 'genuine' | 'environment'
     }
   }
   return 'genuine';
+}
+
+export function toFailingChecks(stepLogs: StepLog[]): TrunkRedFailure[] {
+  return stepLogs.map((step) => ({
+    check: step.jobName,
+    fingerprint: fingerprintLog(step.log),
+    failingPaths: pathsInLog(step.log),
+  }));
 }
 
 export function createGhRunner(repo?: string): GhRunner {
@@ -226,6 +237,7 @@ export async function diagnoseCi(
     failing_jobs: failingJobs,
     step_logs: stepLogs,
     run_ids: runIds,
+    failing_checks: toFailingChecks(stepLogs),
   };
 }
 
