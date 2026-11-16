@@ -1088,7 +1088,8 @@ const checkUnpushedCommits = (worktreePath) => {
  * Shared prose for a `status: 'unknown'` refusal below — the dirty-worktree, detached-HEAD and
  * named-branch outcomes share an identical opening clause and closing clause and differ only in
  * what could not be verified (`claim`) and the remedy paragraph appended after this by the
- * caller.
+ * caller. The opener's "the check could not run (not confirmed unsafe)" clause separates an
+ * unverifiable state from a confirmed-unsafe one, which the `unpushed`/`dirty` refusals name instead.
  */
 const unverifiableRefusalOpener = (resolvedPath, claim, detail) =>
   `Could not verify ${resolvedPath} ${claim} (${detail}) — the check could not run (not confirmed unsafe), ` +

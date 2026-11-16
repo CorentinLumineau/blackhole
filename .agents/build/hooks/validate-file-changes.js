@@ -14,6 +14,7 @@
  * with nobody watching to unblock it is a worse outcome than a flagged-but-permitted write.
  */
 
+const path = require('path');
 const { loadFilePatterns, matchFirst } = require('./utils/pattern-loader');
 const { shouldDeferToMercure } = require('./utils/sibling-plugin-guard');
 const { isCampaignScoped } = require('./utils/campaign-scope');
@@ -31,6 +32,10 @@ const {
 } = require('./utils/hook-event-log');
 
 const HOOK = 'validate-file-changes';
+
+/** The denial remedy shared by every containment deny: name the root and a path under it that would pass. */
+const remedyInside = (root, filePath) =>
+  `Remedy: write inside ${root} instead (e.g. ${path.join(root, path.basename(String(filePath)))}).`;
 
 /** True when `filePath` resolves inside ANY of `roots` — the main clone plus every accepted
  * linked worktree of the same repo family (see `allWorktreeRoots`'s docstring for why "any", not
@@ -154,8 +159,8 @@ const main = () => {
         tool,
         pattern_id: assignedRoot ? 'outside-assigned-worktree' : 'outside-worktree',
         reason: assignedRoot
-          ? `Write target resolves outside the assigned worktree root (${assignedRoot})`
-          : `Write target resolves outside every known worktree root (${roots.join(', ')})`,
+          ? `Write target resolves outside the assigned worktree root (${assignedRoot}). ${remedyInside(assignedRoot, filePath)}`
+          : `Write target resolves outside every known worktree root (${roots.join(', ')}). ${remedyInside(roots[0], filePath)}`,
         detail: filePath,
         cwd,
       });
@@ -172,7 +177,7 @@ const main = () => {
         hook: HOOK,
         tool,
         pattern_id: 'cwd-fallback-too-broad',
-        reason: `No git context resolved for containment, and the tool call's own cwd (${cwd}) is too broad to trust as a fallback root`,
+        reason: `No git context resolved for containment, and the tool call's own cwd (${cwd}) is too broad to trust as a fallback root. Remedy: start the session from a project or worktree directory (not /, $HOME or a bare temp root) and write inside it`,
         detail: filePath,
         cwd,
       });
@@ -183,7 +188,7 @@ const main = () => {
         hook: HOOK,
         tool,
         pattern_id: 'outside-cwd-fallback',
-        reason: `No git context resolved for containment — write target resolves outside the tool call's own cwd (${cwd})`,
+        reason: `No git context resolved for containment — write target resolves outside the tool call's own cwd (${cwd}). ${remedyInside(cwd, filePath)}`,
         detail: filePath,
         cwd,
       });

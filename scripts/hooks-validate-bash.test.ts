@@ -858,6 +858,8 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
 
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/--force also bypasses/);
+        expect(permissionReason(result.stdout)).toContain(`Remedy: push first (git -C ${worktree} push origin <branch>:<branch>)`);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -1442,6 +1444,7 @@ describe('validate-bash-command.js — worktree-removal guard global-option and 
 
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toContain(`Remedy: push first (git -C ${worktree} push origin`);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -1923,6 +1926,8 @@ describe('validate-bash-command.js — rm-shaped worktree removal (#803)', () =>
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
         expect(permissionReason(result.stdout)).toMatch(/remote/i);
+        expect(permissionReason(result.stdout)).toMatch(/a recursive rm performs none of the checks/);
+        expect(permissionReason(result.stdout)).toContain(`Remedy: push first (git -C ${worktree} push origin`);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -3150,6 +3155,21 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       expect(result.stdout.trim()).toBe('');
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
+      expect(events[0].reason).toContain('not confirmed unsafe');
+      // the recorded event truncates the reason, so read the full text from the guard itself
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      const previous = process.env.BLACKHOLE_ASSIGNED_WORKTREE;
+      process.env.BLACKHOLE_ASSIGNED_WORKTREE = worktree;
+      try {
+        const verdict = evaluateBashWriteTargets(`python3 -c "open('/tmp/x','w').write('y')"`, worktree);
+        expect(verdict.tier).toBe('warn');
+        expect(verdict.reason).toContain(
+          'Remedy: use a literal absolute path under the assigned worktree, or the Write/Edit tools.',
+        );
+      } finally {
+        if (previous === undefined) delete process.env.BLACKHOLE_ASSIGNED_WORKTREE;
+        else process.env.BLACKHOLE_ASSIGNED_WORKTREE = previous;
+      }
       expect(events[0]).toMatchObject({
         tier: 'warn',
         pattern_id: 'bash-write-target-unresolvable',
@@ -4474,3 +4494,96 @@ describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
   }
 });
 
+
+// Drift guard for the "name the passing alternative" rule: every deny decision the PreToolUse
+// guards can emit carries a `Remedy:` clause, unless its id is listed below as having no safe
+// alternative to name. Ids and reasons are read from the guard sources and the pattern JSON, so a
+// deny added without a remedy (or an allow-list entry whose decision is gone) fails here.
+describe('PreToolUse deny decisions — every deny names a remedy or is explicitly allow-listed', () => {
+  const hooksRoot = path.resolve(import.meta.dir, '..', 'templates', 'hooks', 'pretooluse');
+  const readSource = (rel: string) => fs.readFileSync(path.join(hooksRoot, rel), 'utf8');
+  const readPatterns = (rel: string) => JSON.parse(readSource(rel));
+
+  /** Deny ids with no safe alternative to name, each with the reason it stays remedy-free. */
+  const NO_ALTERNATIVE: Record<string, string> = {
+    'rm-rf-root': 'static destructive pattern',
+    'rm-rf-home': 'static destructive pattern',
+    'rm-no-preserve-root': 'static destructive pattern',
+    'disk-device-write': 'static destructive pattern',
+    mkfs: 'static destructive pattern',
+    'dd-to-device': 'static destructive pattern',
+    'curl-pipe-shell': 'static destructive pattern',
+    'wget-pipe-shell': 'static destructive pattern',
+    'fork-bomb': 'static destructive pattern',
+    'chmod-777-root': 'static destructive pattern',
+    etc: 'system path, no in-root equivalent',
+    usr: 'system path, no in-root equivalent',
+    var: 'system path, no in-root equivalent',
+    'root-home': 'system path, no in-root equivalent',
+    bin: 'system path, no in-root equivalent',
+    boot: 'system path, no in-root equivalent',
+    proc: 'system path, no in-root equivalent',
+    sys: 'system path, no in-root equivalent',
+    windows: 'system path, no in-root equivalent',
+    'program-files': 'system path, no in-root equivalent',
+    'hook-input-parse-failure': 'fail-closed on a malformed hook payload; nothing for the caller to change',
+    'uncaught-validator-error': 'fail-closed on a validator crash; nothing for the caller to change',
+    'worktree-root-resolution-failure': 'fail-closed on broken git; nothing for the caller to change',
+  };
+  /** Ids emitted next to a pattern_id that are not denials. */
+  const NON_DENY = new Set(['sibling-plugin-defer', 'main-clone-target-unresolvable']);
+
+  const decisionWindows = (rel: string, key: RegExp) => {
+    const src = readSource(rel);
+    const hits = [...src.matchAll(key)];
+    return hits.map((m, i) => {
+      const end = Math.min(hits[i + 1]?.index ?? src.length, m.index! + 1800);
+      const expr = m[1].trim();
+      return {
+        ids: [...expr.matchAll(/'([a-z0-9-]+)'/g)].map((x) => x[1]),
+        label: expr,
+        window: src.slice(m.index!, end),
+      };
+    });
+  };
+
+  const sourceDecisions = [
+    ...decisionWindows('validate-bash-command.js', /patternId:\s*([^\n]*)/g),
+    ...decisionWindows('validate-file-changes.js', /(?:pattern_id|patternId):\s*([^\n]*)/g),
+    ...decisionWindows('utils/bash-write-target-guard.js', /pattern_id:\s*([^\n]*)/g),
+    ...decisionWindows('utils/worktree-removal-guard.js', /pattern_id:\s*([^\n]*)/g),
+  ].filter((d) => d.ids.length > 0 || d.label.startsWith('shape.'));
+
+  test('every literal or shape-driven deny in the guard sources carries a Remedy or is allow-listed', () => {
+    expect(sourceDecisions.length).toBeGreaterThan(10);
+    const missing = sourceDecisions
+      .filter((d) => !d.ids.every((id) => NON_DENY.has(id) || id in NO_ALTERNATIVE))
+      .filter((d) => !/Remedy:|remedyInside\(/.test(d.window))
+      .map((d) => d.label);
+    expect(missing).toEqual([]);
+  });
+
+  test('every main-clone block reason carries a Remedy', () => {
+    const src = readSource('utils/git-main-clone-guard.js');
+    expect(/const REMEDY = 'Remedy:/.test(src)).toBe(true);
+    const table = src.slice(src.indexOf('const REASON_BY_PATTERN'));
+    const blockIds = [...src.matchAll(/tier: 'block', patternId: '([a-z-]+)'/g)].map((m) => m[1]);
+    expect(blockIds.length).toBeGreaterThanOrEqual(6);
+    for (const id of blockIds) {
+      const start = table.indexOf(`'${id}':`);
+      expect(start).toBeGreaterThan(-1);
+      const entry = table.slice(start, table.indexOf("\n  '", start + 1));
+      expect(entry.includes('${REMEDY}') || /Remedy:/.test(entry)).toBe(true);
+    }
+  });
+
+  test('pattern JSON: traversal reasons carry a Remedy; block and system-path ids are allow-listed', () => {
+    const file = readPatterns('patterns/file-patterns.json');
+    for (const entry of file.pathTraversal) expect(entry.reason).toMatch(/Remedy: use an absolute path inside/);
+    const bash = readPatterns('patterns/bash-patterns.json');
+    const jsonDeny = [...bash.blockPatterns, ...file.blockedSystemPaths];
+    for (const e of jsonDeny) expect(/Remedy:/.test(e.reason) || e.id in NO_ALTERNATIVE).toBe(true);
+    const liveIds = new Set([...jsonDeny.map((e: { id: string }) => e.id), ...sourceDecisions.flatMap((d) => d.ids)]);
+    for (const id of Object.keys(NO_ALTERNATIVE)) expect(liveIds.has(id)).toBe(true);
+  });
+});

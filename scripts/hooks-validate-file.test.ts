@@ -100,6 +100,7 @@ describe('validate-file-changes.js', () => {
 
       expect(result.exitCode).toBe(2);
       expect(permissionReason(result.stdout)).toMatch(/traversal/i);
+      expect(permissionReason(result.stdout)).toContain('Remedy: use an absolute path inside');
       expect(readHookEvents(repo)[0]).toMatchObject({
         tier: 'block',
         pattern_id: 'dotdot-slash',
@@ -234,6 +235,7 @@ describe('validate-file-changes.js', () => {
 
       expect(result.exitCode).toBe(2);
       expect(permissionReason(result.stdout)).toMatch(/outside/i);
+      expect(permissionReason(result.stdout)).toContain(`Remedy: write inside ${mainRepo} instead (e.g. ${path.join(mainRepo, path.basename(outside))})`);
       expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
     });
   });
@@ -729,6 +731,7 @@ describe('validate-file-changes.js', () => {
 
       expect(result.exitCode).toBe(2);
       expect(permissionReason(result.stdout)).toMatch(/assigned worktree/i);
+      expect(permissionReason(result.stdout)).toContain(`Remedy: write inside ${worktree} instead (e.g. ${path.join(worktree, 'main-only.ts')})`);
       expect(readHookEvents(mainRepo)[0]).toMatchObject({
         tier: 'block',
         pattern_id: 'outside-assigned-worktree',
@@ -976,6 +979,7 @@ describe('validate-file-changes.js', () => {
       expect(result.exitCode).toBe(2);
       expect(permissionDecision(result.stdout)).toBe('deny');
       expect(permissionReason(result.stdout)).toMatch(/cwd/i);
+      expect(permissionReason(result.stdout)).toContain(`Remedy: write inside ${nonRepo} instead (e.g. ${path.join(nonRepo, path.basename(outside))})`);
       expect(result.stderr).toMatch(/cwd/i);
       // No git context means no destination dir to persist the event under — the deny still
       // fires, but recording is a best-effort side channel that has nowhere to write (mirrors
@@ -1754,5 +1758,16 @@ describe('validate-file-changes.js — containment scoped to campaign workers (A
         delete process.env.BLACKHOLE_HOOK_SCOPE;
       }
     });
+  });
+});
+
+describe('validate-file-changes.js — cwd fallback too-broad denial names a remedy', () => {
+  test('a bare temp-root cwd with no git context is refused with a remedy to start from a project dir', async () => {
+    const tmpRoot = fs.realpathSync(os.tmpdir());
+    const result = await runPreToolUseHook(SCRIPT, writePayload(path.join(tmpRoot, 'blackhole-too-broad.ts')), tmpRoot);
+
+    expect(result.exitCode).toBe(2);
+    expect(permissionReason(result.stdout)).toMatch(/too broad/i);
+    expect(permissionReason(result.stdout)).toContain('Remedy: start the session from a project or worktree directory');
   });
 });
