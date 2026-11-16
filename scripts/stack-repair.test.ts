@@ -396,6 +396,26 @@ describe('the replay merge against a squash-merged parent', () => {
     expect(git('rev-list', '--count', '--first-parent', `${before}..${result.sha}`).stdout.trim()).toBe('1');
   });
 
+  test('parent-landed answers from the forge while ancestry says the squashed parent never landed', () => {
+    expect(spawnSync('git', ['-C', repo, 'merge-base', '--is-ancestor', parentTip, 'main']).status).toBe(1);
+    const run = (...extra: string[]) => {
+      const logs: string[] = [];
+      const orig = console.log;
+      console.log = (m: string) => logs.push(m);
+      try {
+        return { code: main(['parent-landed', '--parent-pr', '41', '--repo-slug', 'o/r', ...extra]), logs };
+      } finally {
+        console.log = orig;
+      }
+    };
+    const merged = run('--parent-state', 'merged');
+    expect(merged.code).toBe(0);
+    expect(JSON.parse(merged.logs[0])).toMatchObject({ parentPr: 41, state: 'merged', landed: true });
+    expect(run('--parent-state', 'open').code).toBe(1);
+    expect(run('--parent-state', 'closed-unmerged').code).toBe(4);
+    expect(run('--forge', 'gitlab').code).toBe(3);
+  });
+
   test('verifyPublishedReplay measures the published sha, not the local branch', () => {
     const stale = git('rev-parse', childBranch).stdout.trim();
     const expectedFiles = changedFileCount(repo, parentTip, childBranch);
@@ -438,5 +458,38 @@ describe('merge-method with unreadable settings', () => {
       console.log = orig;
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('parent-landed resolves the parent PR from the queue', () => {
+  const withQueue = (issues: object, args: string[]) => {
+    const dir = makeTempDir('blackhole-parent-landed');
+    const queue = `${dir}/queue.json`;
+    fs.writeFileSync(queue, JSON.stringify({ issues }));
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (m: string) => logs.push(m);
+    try {
+      return { code: main(['parent-landed', '--queue', queue, '--repo-slug', 'o/r', '--parent-state', 'merged', ...args]), logs };
+    } finally {
+      console.log = orig;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  test('through stacked_on_pr', () => {
+    const r = withQueue({ '5': { pr: 55, stacked_on_pr: 99 } }, ['--child-issue', '5']);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.logs[0]).parentPr).toBe(99);
+  });
+
+  test('through stacked_on to that issue\'s pr', () => {
+    const r = withQueue({ '4': { pr: 44 }, '5': { pr: 55, stacked_on: 4 } }, ['--child-issue', '5']);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.logs[0]).parentPr).toBe(44);
+  });
+
+  test('a child with no parent edge is unreadable (3), not landed', () => {
+    expect(withQueue({ '5': { pr: 55 } }, ['--child-issue', '5']).code).toBe(3);
   });
 });

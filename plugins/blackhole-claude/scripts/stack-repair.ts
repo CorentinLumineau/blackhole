@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import { validateStateWrite } from './lib/state-write-guard.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { runGh } from './lib/forge-adapter/cli.ts';
+import { readPrLanding, type PrLanding } from './lib/forge-adapter/pr-landing.ts';
 import { parseFlags, requireFlag, type Flags } from './lib/argv-flags.ts';
 import {
   changedFileCount,
@@ -17,7 +18,7 @@ import {
   type ForgeParentState,
   type ParentLanding,
 } from './lib/stack-merge.ts';
-import { parentMergeMethod } from './lib/stack-lifecycle.ts';
+import { forgeParentState, parentLandedReport, parentMergeMethod } from './lib/stack-lifecycle.ts';
 import { effectiveParent } from './lib/stack-overlap.ts';
 import { readRepoMergeSettings } from './lib/forge-adapter/merge-settings.ts';
 import type { ForgeType, RepoMergeSettings } from './lib/forge-adapter/types.ts';
@@ -267,19 +268,21 @@ const capture = (flags: Flags): number => {
   return 0;
 };
 
-const readParentState = (flags: Flags, repoSlug: string, parentPr: number | null): ForgeParentState | null => {
+const FORCED_LANDING: Record<string, PrLanding> = {
+  open: { state: 'open', mergedAt: null, mergeCommitSha: null },
+  merged: { state: 'merged', mergedAt: null, mergeCommitSha: null },
+  'closed-unmerged': { state: 'closed-unmerged', mergedAt: null, mergeCommitSha: null },
+};
+
+const readLanding = (flags: Flags, repoSlug: string, parentPr: number | null): PrLanding | null => {
   const forced = flags['parent-state'];
-  if (forced === 'merged') return { state: 'closed', merged: true };
-  if (forced === 'closed-unmerged') return { state: 'closed', merged: false };
-  if (parentPr === null) return null;
-  const result = runGh(['api', `repos/${repoSlug}/pulls/${parentPr}`]);
-  if (result.status !== 0) return null;
-  try {
-    const pr = JSON.parse(result.stdout) as { state?: string; merged?: boolean; merged_at?: string | null };
-    return { state: pr.state === 'open' ? 'open' : 'closed', merged: pr.merged === true || (pr.merged_at ?? null) !== null };
-  } catch {
-    return null;
-  }
+  if (typeof forced === 'string' && forced in FORCED_LANDING) return FORCED_LANDING[forced];
+  return parentPr === null ? null : readPrLanding(forgeOf(flags), repoSlug, parentPr);
+};
+
+const readParentState = (flags: Flags, repoSlug: string, parentPr: number | null): ForgeParentState | null => {
+  const landing = readLanding(flags, repoSlug, parentPr);
+  return landing === null ? null : forgeParentState(landing);
 };
 
 const retargetAndVerify = (child: StackedChild, base: string, repoSlug: string): boolean => {
@@ -523,14 +526,37 @@ const mergeMethod = (flags: Flags): number => {
   return 0;
 };
 
+// Has the parent landed? The forge's merged state answers it; git ancestry never can, because a
+// squash or rebase landing is not an ancestor of the base (merge-gate.md § 7).
+const parentLanded = (flags: Flags): number => {
+  const repoSlug = requireFlag(flags, 'repo-slug');
+  let parentPr: number | null = typeof flags['parent-pr'] === 'string' ? Number(flags['parent-pr']) : null;
+  if (parentPr === null) {
+    const issues = readQueue(requireFlag(flags, 'queue')).issues ?? {};
+    const child = issues[requireFlag(flags, 'child-issue')];
+    const parentIssue = child === undefined ? undefined : effectiveParent(issues, child);
+    parentPr = child?.stacked_on_pr ?? (parentIssue === undefined || parentIssue === null ? null : (issues[String(parentIssue)]?.pr ?? null));
+  }
+  if (parentPr === null || !Number.isInteger(parentPr)) {
+    console.error('no parent PR: pass --parent-pr, or --queue and --child-issue naming a child with a stack edge');
+    return 3;
+  }
+  const { report, exit } = parentLandedReport(parentPr, readLanding(flags, repoSlug, parentPr));
+  if (report === null) console.error(`could not read PR #${parentPr} state — unknown, not open; retry next turn`);
+  else console.log(JSON.stringify(report));
+  return exit;
+};
+
 const USAGE = `Usage:
   bun run scripts/stack-repair.ts capture --queue <path> --repo-root <abs> \\
       --child-issue <N> --parent-issue <M> [--parent-branch <b>] [--repo-slug <owner/repo>] [--forge <github|gitea>] [--apply]
   bun run scripts/stack-repair.ts repair  --queue <path> --repo-root <abs> \\
       --repo-slug <owner/repo> --base <branch> --parent-issue <M> \\
-      [--child-issue <N> --apply] [--parent-state merged|closed-unmerged] [--accept-patch-id-change]
+      [--child-issue <N> --apply] [--parent-state merged|closed-unmerged] [--forge <github|gitea>] [--accept-patch-id-change]
   bun run scripts/stack-repair.ts restack --queue <path> --repo-root <abs> \\
       --repo-slug <owner/repo> --child-issue <N> (--parent-issue <M> | --parent-branch <b>) [--parent-pr <P>] [--apply]
+  bun run scripts/stack-repair.ts parent-landed --repo-slug <owner/repo> [--forge <github|gitea>] (--parent-pr <P> | --queue <path> --child-issue <N>) [--parent-state open|merged|closed-unmerged]
+      (exit 0 merged, 1 open, 4 closed unmerged, 3 unreadable)
   bun run scripts/stack-repair.ts merge-method --queue <path> --repo-slug <owner/repo> [--forge <github|gitea>] --issue <N>   (exit 3: hold)`;
 
 export const main = (argv: string[]): number => {
@@ -541,6 +567,7 @@ export const main = (argv: string[]): number => {
     if (subcommand === 'repair') return repair(flags);
     if (subcommand === 'restack') return restack(flags);
     if (subcommand === 'merge-method') return mergeMethod(flags);
+    if (subcommand === 'parent-landed') return parentLanded(flags);
   } catch (error) {
     console.error((error as Error).message);
     return 2;
