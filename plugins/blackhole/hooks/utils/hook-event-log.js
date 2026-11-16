@@ -46,6 +46,16 @@ const SECRET_KV =
   /\b((?:[A-Za-z][A-Za-z0-9]*_)*?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+)*)(\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
 const SECRET_SPACE =
   /\b(--?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key|with-token)|Bearer)\s+(['"]?)[^'"\s]{4,}\2/gi;
+/** Credentials with no keyword in front of them. Every quantifier is bounded or runs over a
+ * character class its neighbour cannot also match, so none of these backtracks catastrophically.
+ *  - Bare GitHub tokens keep their prefix (`ghp_***`) so a reader can tell what leaked.
+ *  - AWS access key ids keep `AKIA`/`ASIA`.
+ *  - URL userinfo masks only the password; the scheme and user stay readable.
+ *  - `--password x` / `--password=x` at any length: SECRET_SPACE only fires from 4 chars up. */
+const SECRET_GITHUB_TOKEN = /(gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}/g;
+const SECRET_AWS_KEY = /\b(AKIA|ASIA)[0-9A-Z]{16}\b/g;
+const SECRET_URL_USERINFO = /\b([a-z][a-z0-9+.-]{0,31}:\/\/)([^\s:/@'"]{1,256}):[^\s@/'"]{1,256}@/gi;
+const SECRET_PASSWORD_FLAG = /(--?(?:password|passwd))(\s{1,64}|=)(['"]?)[^'"\s]+\3/gi;
 const MAX_DETAIL_CHARS = 300;
 /** `reason` must keep its trailing `Remedy:` clause, so it has a separate, larger cap than `detail`. */
 const MAX_REASON_CHARS = 2000;
@@ -54,6 +64,10 @@ const redactTo = (max) => (text) =>
   String(text === undefined || text === null ? '' : text)
     .replace(SECRET_KV, (_match, key, separator, quote) => `${key}${separator}${quote}***${quote}`)
     .replace(SECRET_SPACE, (_match, flag, quote) => `${flag} ${quote}***${quote}`)
+    .replace(SECRET_PASSWORD_FLAG, (_match, flag, joiner, quote) => `${flag}${joiner}${quote}***${quote}`)
+    .replace(SECRET_GITHUB_TOKEN, (_match, prefix) => `${prefix}***`)
+    .replace(SECRET_AWS_KEY, (_match, prefix) => `${prefix}***`)
+    .replace(SECRET_URL_USERINFO, (_match, scheme, user) => `${scheme}${user}:***@`)
     .slice(0, max);
 
 const redact = redactTo(MAX_DETAIL_CHARS);
