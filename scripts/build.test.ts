@@ -1191,7 +1191,7 @@ describe('bun run build — tracked ⇒ built-by-default (ADR-007 T2)', () => {
   });
 
   // The flagless reference is built once and shared by the three cases below, rather than rebuilt
-  // per flag: each case previously paid two full builds, and on the self-hosted runner those three
+  // per flag: each case previously paid two full builds, and on CI those three
   // tests cost 20.9s between them. Sharing it cannot mask a divergence — each case still runs its
   // own flagged build and compares that flag's real output against the reference, so a flag that
   // alters output still fails its own case. What the per-case rebuild covered incidentally is

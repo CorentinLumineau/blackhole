@@ -19,19 +19,15 @@ jobs:
     # release-notes-gate job below covers the tag-specific check. Avoids a duplicate
     # full build+verify on a tag.
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-    # A fork pull_request runs attacker-controllable code, so it never reaches the self-hosted
-    # runner (public repo) and stays on ubuntu-latest. Push/tag events and same-repo PRs (only
-    # collaborators can push a branch here) run on the self-hosted MacBook runner.
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "mba"]') || fromJSON('["ubuntu-latest"]') }}
-    # The self-hosted runner is one slot of a pool shared across repos, so a wedged job holds
-    # that slot until it is reaped. GitHub's default ceiling is 360 minutes; observed real
-    # durations here are 245s-1055s (PR runs on ubuntu-latest: 43-54s). 40 minutes covers the
-    # 10-minute mba-slot wait below plus ~1.7x the worst run actually seen.
-    timeout-minutes: 40
-    # Environment rather than `git config --global`: on the self-hosted Mac that would rewrite
-    # the owner's own git identity. Several bun:test fixtures (scripts/lib/test-fixtures.ts) run
-    # `git commit` against a throwaway repo; with no identity that commit fails with "Author
-    # identity unknown".
+    runs-on: ubuntu-latest
+    # Bounds a hang, not the work: recent runs on GitHub-hosted runners take about 4-9 minutes
+    # (PR runs 43s-9m), so 20 minutes leaves room for a slow runner without holding a wedged job
+    # for GitHub's 360-minute default.
+    timeout-minutes: 20
+    # Environment rather than `git config --global`, so the job never rewrites runner-wide git
+    # config. Several bun:test fixtures (scripts/lib/test-fixtures.ts) run `git commit` against a
+    # throwaway repo; hosted runners have no git identity, and with none that commit fails with
+    # "Author identity unknown".
     env:
       GIT_AUTHOR_NAME: blackhole-ci
       GIT_AUTHOR_EMAIL: ci@blackhole.local
@@ -48,14 +44,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # Machine-wide FIFO ticket shared by every repo on the Mac. A short wait, so a busy host
-      # fails this job visibly instead of eating the whole timeout.
-      - name: Acquire MBA slot
-        if: runner.environment == 'self-hosted'
-        run: |
-          command -v mba-slot >/dev/null 2>&1 || { echo "mba-slot absent; running unmetered"; exit 0; }
-          mba-slot acquire --timeout 600
-
       # Must run before "Run build" below: scripts/verify.hooks.test.ts reads the git-tracked
       # bundle trees straight off disk, with no build self-invocation, to assert the committed
       # mirrors match their sources. A build earlier in this same job would silently regenerate
@@ -65,8 +53,8 @@ jobs:
       # `bun run test` carries --timeout 60000 (package.json), not bun's 5000ms default. Many
       # test files here spawn subprocesses and a few shell out to a full build or a full verify
       # run; those finish well under a second on an idle machine, but were measured crossing
-      # 5000ms on this self-hosted runner, which runs them while the rest of the suite competes
-      # for the same cores. 5000ms was acting as a performance assertion those tests never meant
+      # 5000ms while the rest of the suite competes for the same cores. 5000ms was acting as a
+      # performance assertion those tests never meant
       # to make — 60000ms is a deadlock guard instead. The tradeoff is accepted deliberately: a
       # genuinely hung test now takes a minute to fail rather than five seconds.
       # bunfig.toml's [test] timeout key is NOT a substitute — bun 1.4.2 parses it without error
@@ -97,10 +85,9 @@ jobs:
 
       # Claude Code plugin schema gate (2.1.295+). `claude plugin validate --strict` is a local
       # static check; `claude plugin test` runs only when the plugin ships a tests/ tree.
-      # GitHub-hosted PR runners do not preinstall the CLI; self-hosted push already has it.
+      # GitHub-hosted runners do not preinstall the CLI.
       # Pin the npm package — `install.sh` latest can change --strict semantics under our feet.
       - name: Setup Claude Code CLI
-        if: runner.environment != 'self-hosted'
         run: |
           npm i -g @anthropic-ai/claude-code@2.1.296
           echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
@@ -114,13 +101,10 @@ jobs:
             claude plugin test
           fi
 
-      - name: Release MBA slot
-        if: always() && runner.environment == 'self-hosted'
-        run: command -v mba-slot >/dev/null 2>&1 && mba-slot release || true
 
   release-notes-gate:
     name: Release Notes Gate
-    # Checkout plus a shell existence check — seconds of real work, not worth a shared Mac slot.
+    # Checkout plus a shell existence check — seconds of real work, not worth a heavier job.
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     # The ceiling is here to bound a hang, not to pace the work.
