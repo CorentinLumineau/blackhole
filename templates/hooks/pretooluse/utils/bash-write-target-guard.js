@@ -126,42 +126,30 @@ const tokenize = (text) => {
  * match `worktree-removal-guard.js`'s `findClauseStartIndices` — that guard needs the opposite
  * policy for its own, equally load-bearing reason (see that function's own `QUOTE POLICY:` note).
  */
-const splitClauses = (visible) => {
-  const clauses = [];
-  let current = '';
+const clauseRanges = (visible) => {
+  const ranges = [];
+  let start = 0;
   let i = 0;
   const n = visible.length;
   while (i < n) {
     const ch = visible[i];
     if (ch === "'" || ch === '"') {
-      const end = skipQuotedSpan(visible, i, n);
-      current += visible.slice(i, end);
-      i = end;
+      i = skipQuotedSpan(visible, i, n);
       continue;
     }
-    if (ch === ';' || ch === '|' || ch === '\n') {
-      clauses.push(current);
-      current = '';
-      i++;
-      continue;
+    const isSeparator =
+      ch === ';' || ch === '|' || ch === '\n' || (ch === '&' && !isRedirectAmpersand(visible, i));
+    if (isSeparator) {
+      ranges.push([start, i]);
+      start = i + 1;
     }
-    if (ch === '&') {
-      if (isRedirectAmpersand(visible, i)) {
-        current += ch;
-        i++;
-        continue;
-      }
-      clauses.push(current);
-      current = '';
-      i++;
-      continue;
-    }
-    current += ch;
     i++;
   }
-  clauses.push(current);
-  return clauses;
+  ranges.push([start, n]);
+  return ranges;
 };
+
+const splitClauses = (visible) => clauseRanges(visible).map(([start, end]) => visible.slice(start, end));
 
 /** True when `token` names `command` — either exactly, or as the final path segment of an
  * absolute/relative invocation (`/usr/bin/sed` still names `sed`). */
@@ -170,6 +158,89 @@ const isCommandToken = (token, command) => token === command || token.endsWith(`
 /** True when a fd-duplication argument (`&1`, `&2`, ...) rather than a real file path — the one
  * shape `>`/`>>`/`&>` legitimately precede without naming a file (`2>&1`, `>&2`). */
 const isFdDuplicationTarget = (token) => /^&\d+$/.test(token);
+
+/** A clause that can itself execute a quoted string as shell (`bash -c '...'`, `eval "..."`, ...):
+ * its quoted spans are real command text, so `maskRedirectNoise` leaves them alone. */
+const SHELL_EXECUTORS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'eval', 'source', '.']);
+
+const executesQuotedShell = (tokens) =>
+  tokens.some((t) => SHELL_EXECUTORS.has(path.basename(stripQuotes(t))) || t === '-c');
+
+const REDIRECT_OPERATOR_TAIL_RE = /(?:&>>|&>|>>|>&|>\||>)\s*$/;
+
+/** A quoted span `text[start..end)` is inert text (cannot hide a write target) unless it is a
+ * redirect's own target (`> "/x"`), an unterminated span, or a double-quoted span carrying a
+ * command substitution (`"$(echo x > /etc/y)"`). */
+const isInertQuotedSpan = (text, start, end) => {
+  const span = text.slice(start, end);
+  if (span.length < 2 || span[span.length - 1] !== span[0]) return false;
+  if (REDIRECT_OPERATOR_TAIL_RE.test(text.slice(0, start))) return false;
+  return !(span[0] === '"' && (span.includes('$(') || span.includes('`')));
+};
+
+/** Length of the leading sed substitute/transliterate command (`s/re/repl/flags`, any
+ * non-alphanumeric delimiter) at the start of `word`, or 0 when `word` is not one. Only the
+ * well-formed command itself is measured: whatever follows it (`s/a/b/>/etc/x`) stays visible. */
+const sedScriptLength = (word) => {
+  if (word.length < 4 || (word[0] !== 's' && word[0] !== 'y')) return 0;
+  const delim = word[1];
+  if (/[A-Za-z0-9\s\\>;|&]/.test(delim)) return 0;
+  let seen = 0;
+  let i = 2;
+  while (i < word.length) {
+    if (word[i] === '\\') {
+      i += 2;
+      continue;
+    }
+    if (word[i] === delim && ++seen === 2) break;
+    i++;
+  }
+  if (seen < 2) return 0;
+  i++;
+  while (i < word.length && /[A-Za-z0-9]/.test(word[i])) i++;
+  return i;
+};
+
+/** Copy of `visible` with the characters that merely look like redirect operators blanked, for the
+ * whole-command `REDIRECT_RE` scan only: the contents of inert quoted spans (`grep 'a>b'`), and an
+ * unquoted sed `s/…/…/flags` script word (`sed -i s/<A>/x/g f`). Positions are preserved. A clause
+ * that may execute its quoted text as shell is left untouched, so masking never turns a deny into
+ * an allow. */
+const maskRedirectNoise = (visible) => {
+  const chars = visible.split('');
+  const blank = (from, to) => {
+    for (let k = from; k < to; k++) chars[k] = ' ';
+  };
+  for (const [start, end] of clauseRanges(visible)) {
+    const text = visible.slice(start, end);
+    const tokens = tokenize(text);
+    if (executesQuotedShell(tokens)) continue;
+    const isSed = tokens.some((t) => isCommandToken(t, 'sed'));
+    let i = 0;
+    let wordStart = 0;
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === "'" || ch === '"') {
+        const spanEnd = skipQuotedSpan(text, i, text.length);
+        if (isInertQuotedSpan(text, i, spanEnd)) blank(start + i + 1, start + spanEnd - 1);
+        i = spanEnd;
+        continue;
+      }
+      if (ch === ' ' || ch === '\t') {
+        wordStart = i + 1;
+      } else if (isSed && i === wordStart) {
+        const length = sedScriptLength(text.slice(i).split(/\s/, 1)[0]);
+        if (length > 0) {
+          blank(start + i, start + i + length);
+          i += length;
+          continue;
+        }
+      }
+      i++;
+    }
+  }
+  return chars.join('');
+};
 
 const REDIRECT_RE = /(&>>|&>|>>|>&|>\||>)\s*(\S+)?/g;
 
@@ -356,6 +427,10 @@ const isStreamDeviceTarget = (rawTarget, visible) => {
   return (target === '/dev/stdout' || target === '/dev/stderr') && !MAY_REBIND_STREAM_FD_RE.test(visible);
 };
 
+/** A target that starts `/#` or carries regex metacharacters is probably a sed/regex fragment
+ * (`s/<A>/#1174/g` read as `/#1174/g`), not a path the author meant to write. */
+const looksLikeRegexFragment = (target) => target.startsWith('/#') || /[\\^$*+?()[\]{}|]/.test(target);
+
 /** True when one clause's leading command word is a write-shaped command this module cannot
  * resolve statically (see `UNRESOLVABLE_WRITE_COMMANDS`'s docstring). */
 const hasUnresolvableCommand = (tokens) => {
@@ -390,7 +465,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
   const literalTargets = [];
   let unresolvable = false;
 
-  for (const raw of findRedirectTargets(visible)) {
+  for (const raw of findRedirectTargets(maskRedirectNoise(visible))) {
     if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
     else unresolvable = true;
   }
@@ -411,13 +486,16 @@ const evaluateBashWriteTargets = (command, cwd) => {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.isAbsolute(target) ? target : path.resolve(cwd, target);
     if (!isUnderRoot(resolvedPath, assignedRoot)) {
+      const hint = looksLikeRegexFragment(target)
+        ? ' If this is part of a sed/regex expression, quote it.'
+        : '';
       return {
         tier: 'block',
         pattern_id: 'bash-outside-assigned-worktree',
         reason:
           `Bash write target resolves outside the assigned worktree root (${assignedRoot}): ${resolvedPath}. ` +
           `Remedy: write inside ${assignedRoot} instead (e.g. ${path.join(assignedRoot, path.basename(resolvedPath))}) ` +
-          `and use a literal absolute path, or the Write/Edit tools.`,
+          `and use a literal absolute path, or the Write/Edit tools.${hint}`,
       };
     }
   }

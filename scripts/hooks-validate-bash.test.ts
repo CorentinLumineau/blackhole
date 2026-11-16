@@ -4571,3 +4571,82 @@ describe('PreToolUse deny decisions — every deny names a remedy or is explicit
     for (const id of Object.keys(NO_ALTERNATIVE)) expect(liveIds.has(id)).toBe(true);
   });
 });
+
+describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes and sed scripts (#1179)', () => {
+  const guard = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+
+  const evaluate = async (command: (mainRepo: string, worktree: string) => string) => {
+    let result: { tier: string; pattern_id: string; reason: string } | null = null;
+    await withLinkedWorktree('blackhole-hook-1179-', async (mainRepo, worktree) => {
+      result = guard.evaluateBashWriteTargets(command(mainRepo, worktree), worktree);
+    });
+    return result;
+  };
+
+  const FALSE_POSITIVES = [
+    'sed -i s/<A>/#1174/g foo.txt',
+    "sed -i 's/<A>/#1174/g' foo.txt",
+    "sed 's/<A>/x/g;s/b/c/' foo.txt",
+    "grep 'a>b' foo.txt | wc -l",
+    'grep "a>b" foo.txt',
+    "perl -ne 'print if /a>b/' foo.txt",
+  ];
+
+  for (const command of FALSE_POSITIVES) {
+    test(`not a redirect: ${command}`, async () => {
+      const result = await evaluate(() => command);
+      // the in-bounds `foo.txt` write (sed -i) may still be inspected, but never as a block or
+      // a phantom-target warning from the quoted/regex `>`
+      expect(result).toBeNull();
+    });
+  }
+
+  const REAL_REDIRECTS: Array<[string, (outside: string) => string]> = [
+    ['plain >', (o) => `echo hi > ${o}/x`],
+    ['glued >', (o) => `cmd >${o}/x`],
+    ['append >>', (o) => `cat a >> ${o}/b`],
+    ['after ;', (o) => `true; echo hi > ${o}/x`],
+    ['after &&', (o) => `true && echo hi > ${o}/x`],
+    ['after |', (o) => `echo hi | cat > ${o}/x`],
+    ['stderr 2>', (o) => `cmd 2> ${o}/x`],
+    ['combined &>', (o) => `cmd &> ${o}/x`],
+    ['clobber >|', (o) => `cmd >| ${o}/x`],
+    ['double-quoted target', (o) => `echo hi > "${o}/x"`],
+    ['single-quoted target', (o) => `echo hi > '${o}/x'`],
+    ['sed script then glued redirect', (o) => `sed s/a/b/>${o}/x`],
+    ['quoted sed script then redirect', (o) => `sed 's/a>b/c/' f > ${o}/x`],
+  ];
+
+  for (const [label, build] of REAL_REDIRECTS) {
+    test(`still blocks: ${label}`, async () => {
+      const result = await evaluate((mainRepo) => build(mainRepo));
+      expect(result).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    });
+  }
+
+  // The enclosing quote or `)` glues onto the target, so these were never a resolvable block
+  // target; the contract is that quote masking must not downgrade them to an allow.
+  const NESTED_REDIRECTS: Array<[string, (outside: string) => string]> = [
+    ['command substitution in double quotes', (o) => `echo "$(echo hi > ${o}/x)"`],
+    ['bash -c', (o) => `bash -c 'echo hi > ${o}/x'`],
+    ['eval', (o) => `eval "echo hi > ${o}/x"`],
+  ];
+
+  for (const [label, build] of NESTED_REDIRECTS) {
+    test(`never allowed: redirect inside ${label}`, async () => {
+      const result = await evaluate((mainRepo) => build(mainRepo));
+      expect(result).not.toBeNull();
+    });
+  }
+
+  test('a block on a regex-looking target adds the quote-it hint', async () => {
+    const result = await evaluate(() => 'sed -i s/a/b/ >/#1174/g');
+    expect(result).toMatchObject({ tier: 'block' });
+    expect(result!.reason).toContain('If this is part of a sed/regex expression, quote it.');
+  });
+
+  test('a block on an ordinary path carries no regex hint', async () => {
+    const result = await evaluate((mainRepo) => `echo hi > ${mainRepo}/x`);
+    expect(result!.reason).not.toContain('sed/regex expression');
+  });
+});
