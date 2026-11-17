@@ -14,8 +14,10 @@ import { resolveHost, restrictWindows, usageSourceFor, type UsageSource } from '
 // Without it the host's usage source is read (usage-source.ts): the rate-limit cache on Claude, none
 // on Cursor or an unknown host (verdict unavailable with the reason). The host is --host, else the one
 // run-context.json beside the config records, else the environment's. Prints the verdict
-// JSON on stdout (with `weekly_fit` when `usage_budget.weekly.target_at_reset` is set; the weekly fit
-// and any PACE-WAIT wake time also go to stderr); exit 0 on any verdict, 2 on bad usage, a malformed
+// JSON on stdout (with `weekly_fit` when `usage_budget.weekly.target_at_reset` is set, and
+// `five_hour_pct`/`weekly_pct`, the usage judged or null when none was read, so the line passes
+// unchanged to `pace-log.ts --usage`; the weekly fit and any PACE-WAIT wake time also go to
+// stderr); exit 0 on any verdict, 2 on bad usage, a malformed
 // `--usage` (enabled or not) or an invalid config.
 const USAGE =
   "usage: usage-budget.ts --parallel-max <n> [--usage '<json>' | --cache <path>] [--host claude|cursor] [--config <path>] [--now <epoch s>]";
@@ -88,6 +90,7 @@ const main = (): void => {
   }
 
   let verdict: UsageVerdict;
+  let judged: RateLimits | null = null;
   if (!budget.enabled) {
     verdict = { verdict: 'unavailable', workers: parallelMax as number, reasons: ['usage_budget disabled'], wake_at: null, hours_to_reset: null, weekly_fit: null };
   } else {
@@ -95,6 +98,7 @@ const main = (): void => {
     let limits: RateLimits | null = given ? restrictWindows(given, budget.windows).limits : null;
     let reason: string | null = given && !limits ? 'usage_budget.windows leaves none of the --usage windows' : null;
     if (!given) ({ limits, reason } = source.read(now as number));
+    judged = limits;
     verdict = workersAllowed(limits, now as number, budget, parallelMax as number);
     if (reason) verdict.reasons.unshift(reason);
   }
@@ -103,7 +107,7 @@ const main = (): void => {
     console.error(`usage-budget: weekly fit ${verdict.weekly_fit} worker(s) toward ${budget.weekly.target_at_reset}% at reset`);
   }
   if (verdict.verdict === 'PACE-WAIT') console.error(`usage-budget: PACE-WAIT until ${verdict.wake_at}: ${verdict.reasons[0]}`);
-  console.log(JSON.stringify(verdict));
+  console.log(JSON.stringify({ ...verdict, five_hour_pct: judged?.five_hour?.used_percentage ?? null, weekly_pct: judged?.seven_day?.used_percentage ?? null }));
 };
 
 if (import.meta.main) main();
