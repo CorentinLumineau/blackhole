@@ -990,7 +990,9 @@ const INTERPRETERS = [
     name: /^(?:node(?:js)?[0-9.]*|bun)$/,
     scriptFlag: (t) => /^-[a-zA-Z]*[ep]$/.test(t) || ['--eval', '--print'].some((n) => isLongOptionPrefix(t.split('=')[0], n)),
     valueOption: (t) =>
-      /^(?:-[rC]|--(?:require|import|loader|experimental-loader|conditions|env-file|preload|cwd|config|title))$/.test(t),
+      /^(?:-[rC]|--(?:require|import|loader|experimental-loader|conditions|env-file|preload|cwd|config|title|input-type))$/.test(t),
+    // `bun run -` runs stdin like `bun -`.
+    runWord: true,
     writeCall: (script) => JS_WRITE_CALL_RE.test(script),
   },
   {
@@ -1007,14 +1009,22 @@ const INTERPRETERS = [
   },
 ];
 
-/** True when an interpreter given `args` reads its script from stdin: a `-` operand, or no
- * operand at all. A value-taking option's value is skipped, so it is not mistaken for a script
- * file. The word after `-e`/`-c` and the module after `-m` read as operands, so stdin is data. */
-const interpreterReadsStdinScript = ({ valueOption }, args) => {
+/** Script operands that name stdin itself. */
+const STDIN_SCRIPT_OPERANDS = new Set(['-', '/dev/stdin', '/dev/fd/0', '/proc/self/fd/0']);
+
+/** True when an interpreter given `args` reads its script from stdin: an operand naming stdin
+ * (`-`, `/dev/stdin`, …), or no operand at all. A value-taking option's value is skipped, so it is
+ * not mistaken for a script file, and so are fd-prefixed redirects and bun's `run` word. The word
+ * after `-e`/`-c` and the module after `-m` read as operands, so stdin is data. */
+const interpreterReadsStdinScript = ({ valueOption, runWord }, args) => {
   for (let i = 0; i < args.length; i++) {
     const t = args[i];
-    if (t === '-') return true;
-    if (valueOption(t)) i++;
+    if (STDIN_SCRIPT_OPERANDS.has(t)) return true;
+    if (/^\d+[<>]/.test(t)) {
+      // An fd-prefixed redirect (`0<<'EOF'`, `0< f`) is shell syntax, not an operand.
+      if (/^\d+[<>]+$/.test(t)) i++;
+    } else if (valueOption(t)) i++;
+    else if (runWord && i === 0 && t === 'run') continue;
     else if (!t.startsWith('-')) return false;
   }
   return true;
@@ -1061,17 +1071,25 @@ const hasInterpreterWrite = (tokens, heredocText) =>
     }
     const script = stdinRedirectScript(tokens, idx, heredocText);
     if (script === null || !interpreterReadsStdinScript(entry, args)) return false;
+    if (script === STDIN_FROM_FILE) return true;
     // Python has no write-call check: its `open` reads and writes alike, as for `-c`.
     return !writeCall || writeCall(unescapeDoubleQuoted(script));
   });
 
-/** The script a heredoc (`<<`) or here-string (`<<<`) after the command word at `idx` feeds on
- * stdin, or null when the clause has neither. A heredoc yields `heredocText`, every heredoc body
- * in the command: checking more text than the clause's own body only ever adds a warning. */
+/** `stdinRedirectScript`'s answer when stdin is a file, fd or process substitution
+ * (`node < script.js`, `node <&3`): a script the command string does not show. */
+const STDIN_FROM_FILE = Symbol('stdin from a file');
+
+/** The script a heredoc (`<<`), here-string (`<<<`) or input file (`<`) after the command word at
+ * `idx` feeds on stdin, fd `0` named or not, or null when the clause has none. A heredoc yields
+ * `heredocText`, every heredoc body in the command: checking more text than the clause's own body
+ * only ever adds a warning. */
 const stdinRedirectScript = (tokens, idx, heredocText) => {
   for (let i = idx + 1; i < tokens.length; i++) {
-    if (tokens[i].startsWith('<<<')) return [tokens[i].slice(3), ...tokens.slice(i + 1)].join(' ');
-    if (tokens[i].startsWith('<<')) return heredocText;
+    const here = /^0?<<<(.*)$/s.exec(tokens[i]);
+    if (here) return [here[1], ...tokens.slice(i + 1)].join(' ');
+    if (/^0?<</.test(tokens[i])) return heredocText;
+    if (/^0?</.test(tokens[i])) return STDIN_FROM_FILE;
   }
   return null;
 };

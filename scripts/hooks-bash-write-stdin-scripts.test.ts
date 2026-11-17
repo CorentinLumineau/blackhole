@@ -67,6 +67,19 @@ describe('bash-write-target-guard.js — interpreters fed their script on stdin 
     'cat x.py | python3 -W ignore',
     // `-` names stdin even when script arguments follow it.
     'cat x.js | node - --flag value',
+    // Review of the #1237 chain: other names for stdin, fd-prefixed redirects, `bun run -`.
+    "python3 /dev/stdin <<'EOF'\nprint(1)\nEOF",
+    'python3 -I /dev/fd/0 <<EOF\nprint(1)\nEOF',
+    `echo 'open("/etc/x","w")' | python3 /dev/stdin`,
+    'cat x.js | node /proc/self/fd/0',
+    "node 0<<'EOF'\nrequire('fs').writeFileSync('/etc/x', 'y')\nEOF",
+    "node 0<<< \"require('fs').unlinkSync('/etc/x')\"",
+    'node < script.js',
+    'python3 0< script.py',
+    'node <&3',
+    "bun run - <<EOF\nawait Bun.write('/etc/x', 'y')\nEOF",
+    'cat x.js | bun run -',
+    "node --input-type commonjs - <<EOF\nrequire('fs').writeFileSync('/etc/x', 'y')\nEOF",
   ]) {
     test(`#1237: \`${command.replace(/\n/g, '\\n')}\` warns`, async () => {
       expect(await verdict(command)).toMatchObject(WARN);
@@ -96,6 +109,10 @@ describe('bash-write-target-guard.js — interpreters fed their script on stdin 
     'ps aux | grep node',
     'node --version || echo none',
     'python3 --version',
+    "node 0<<'EOF'\nconsole.log(1)\nEOF",
+    'bun run build < input.txt',
+    'cat data.json | python3 run',
+    'cat data.json | python3 scripts/check.py /dev/stdin',
   ]) {
     test(`#1237: \`${command.replace(/\n/g, '\\n')}\` stays allowed with no verdict`, async () => {
       expect(await verdict(command)).toBeNull();
