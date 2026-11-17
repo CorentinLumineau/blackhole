@@ -118,6 +118,7 @@ export function buildBudgetPanel(input: {
     source: input.source ?? 'rate-limit-cache',
     windows: USAGE_WINDOWS.filter((name) => (name === 'five_hour' ? five : week) !== undefined),
     target_at_reset: budget?.weekly.target_at_reset ?? null,
+    stale: null,
   };
 }
 
