@@ -7,7 +7,7 @@ import {
   extractHuntKinds,
   extractPlatformTargets,
 } from './checks/vocabulary.check.ts';
-import { QUEUE_NOTES } from './lib/build/facts.ts';
+import { QUEUE_NOTES, QUEUE_STATUSES } from './lib/build/facts.ts';
 
 // ADR-007 T5/R2' style: pure extraction/comparison functions tested against synthetic string
 // fixtures — no real filesystem reads (real-repo scanning is exercised by `bun run verify` /
@@ -76,6 +76,13 @@ describe('QUEUE_NOTES gate token — awaiting-ruling-recheck (issue #422)', () =
 
   test('a scanned awaiting-ruling-recheck mention matches the declared vocabulary', () => {
     expect(findVocabMismatch(['awaiting-ruling-recheck'], QUEUE_NOTES)).toBeNull();
+  });
+});
+
+describe('QUEUE_NOTES gate token — waiting-on-trunk-fix (issue #1169)', () => {
+  test('QUEUE_NOTES declares waiting-on-trunk-fix as a notes token, not a status', () => {
+    expect(QUEUE_NOTES).toContain('waiting-on-trunk-fix');
+    expect(QUEUE_STATUSES).not.toContain('waiting-on-trunk-fix');
   });
 });
 

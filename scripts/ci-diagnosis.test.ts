@@ -126,6 +126,21 @@ describe('diagnoseCi with fixture gh runner', () => {
     expect(result.run_ids).toEqual([9001]);
   });
 
+  test('failing_checks skips a step whose log yields no fingerprint', async () => {
+    const blank: GhRunner = { ...genuineRunner, getJobLog: async () => '', getFailedRunLog: async () => '' };
+    const result = await diagnoseCi(42, 'owner/repo', blank);
+    expect(result.failing_checks).toEqual([]);
+  });
+
+  test('exposes failing_checks (check name + stable fingerprint) for the trunk-red classifier', async () => {
+    const a = await diagnoseCi(42, 'owner/repo', genuineRunner);
+    const b = await diagnoseCi(43, 'owner/repo', genuineRunner);
+    expect(a.failing_checks).toHaveLength(1);
+    expect(a.failing_checks[0].check).toBe('test');
+    expect(a.failing_checks[0].fingerprint).toMatch(/^[0-9a-f]{12}$/);
+    expect(a.failing_checks[0].fingerprint).toBe(b.failing_checks[0].fingerprint);
+  });
+
   test('returns environment classification', async () => {
     const envRunner: GhRunner = {
       ...genuineRunner,
