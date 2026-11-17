@@ -4974,9 +4974,12 @@ describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes
     for (const command of ["sed -n 's/a>b/c/p' f", "rg 'a>b' f"]) {
       expect(await evaluate(command)).toBeNull();
     }
-    for (const command of ["sort 'a>b' -o @OUT@/x", "git log --format='%h>%s' | wc -l"]) {
+    // `sort -o` writes a file (#1184), so the unmasked-quote signal is checked with an in-root
+    // output; the same command with an outside output is a real write and blocks.
+    for (const command of ["sort 'a>b' -o x", "git log --format='%h>%s' | wc -l"]) {
       expect(await evaluate(command)).toMatchObject({ tier: 'warn' });
     }
+    expect(await evaluate("sort 'a>b' -o @OUT@/x")).toMatchObject({ tier: 'block' });
   });
 
   test('sed with an `e` flag keeps its quoted text visible', async () => {
