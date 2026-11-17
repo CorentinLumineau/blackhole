@@ -40,6 +40,7 @@
 | milestones/_active/catchup-mode/README.md | Catchup-mode initiative: bootstrap version check, host-agnostic usage reading, /blackhole catchup with the full-config launch gate, and lane claims (ADR-053) | plan | current | on milestone completion |
 | milestones/_active/catchup-mode/discovery.md | Shared discovery block for the catchup-mode initiative: ADR-053 constraints, codebase conventions at the usage, config, CLI, forge adapter, mode and launch-gate touchpoints | reference | current | on file change |
 | milestones/_active/catchup-mode/milestone-1.md | Catchup-mode M1 plan: warn once when the running blackhole plugin is older than the newest installed or cached version (#1271), and add the missing Sleep row to launch-gate.md | plan | current | on milestone completion |
+| milestones/_active/catchup-mode/outcomes.md | Per-milestone outcomes log for the catchup-mode initiative: what shipped, plan divergences, constraints hit | reference | current | on milestone completion |
 | plans/adr-004-adaptive-routing-campaign.md | Implementation campaign plan for ADR-004 adaptive phase routing | plan | current | on ADR acceptance |
 | plans/adr-006-kaizen-hunt-campaign.md | Implementation campaign plan for ADR-006 kaizen hunt | plan | current | on ADR acceptance |
 | plans/plan-act-on-the-three-adr-watch-thresholds-v-watch-01-fires-on.md | Implementation plan executing ADR-037's disposition of the three ADR_WATCH_ITEMS trips (accept-with-expiry item 1, split item 2 into implementer-schemas.md, raise+correct item 3) in one coordinated PR | plan | current | on ADR acceptance |
@@ -134,6 +135,7 @@
 | reference/product-principles.md | Owner-rulings ledger of durable product preferences binding on future diffs | reference | current | on new ruling |
 | reviews/release-v0.13.1-to-head-audit.md | Release audit covering all changes from v0.13.1 to HEAD | review | current | on release |
 | reviews/review-campaign-config-confirmation-gate.md | Review of the campaign config confirmation gate implementation | review | current | on ADR-015 change |
+| reviews/review-catchup-mode-m1-plugin-version-warning.md | Readiness review of catchup-mode M1 (plugin-version warning, launch-gate Sleep row): LGTM with two LOW notes | review | current | on file change |
 | reviews/review-chore-content-gates-budget-orchestrator-runtime-dispatch-delegation-md-split-off.md | Review artifact for issue #705 (LGTM) | review | current | on file change |
 | reviews/review-chore-land-the-16-stranded-decision-log-md-rows-sitting-uncommitted-in-the-main.md | Review artifact for issue #749 (LGTM) | review | current | on file change |
 | reviews/review-ci-harden-the-self-hosted-pipeline-no-job-timeout-on-a-single-runner-plus-two-me.md | Review artifact for issue #988 (LGTM) | review | current | on file change |

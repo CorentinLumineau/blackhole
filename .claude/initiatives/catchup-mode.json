@@ -2,16 +2,30 @@
   "version": "2.0",
   "name": "catchup-mode",
   "status": "in_progress",
-  "currentMilestone": "M1",
-  "currentPhase": "plan",
-  "lastUpdated": "2026-11-17T13:54:05Z",
-  "progress": {},
-  "milestones": {},
+  "currentMilestone": "M2",
+  "currentPhase": "checkpoint",
+  "lastUpdated": "2026-11-17T14:03:28Z",
+  "progress": {
+    "M1": "completed"
+  },
+  "milestones": {
+    "M1": {
+      "name": "Bootstrap version check and launch-gate doc completeness",
+      "status": "completed",
+      "baseSha": "642dfc43c1f4742513c0bab3012cc7c215f71e79"
+    }
+  },
   "execConfig": {
     "branchModel": "shared",
     "sharedBranch": "design/catchup-mode",
     "pinnedAt": "2026-11-17T13:54:05Z"
   },
-  "checkpoints": [],
-  "nextAction": "Run M1 plan"
+  "checkpoints": [
+    {
+      "milestone": "M1",
+      "timestamp": "2026-11-17T14:03:28Z",
+      "summary": "M1 shipped: plugin-version warning and launch-gate Sleep row; review LGTM (0 CRITICAL/HIGH, 2 LOW)"
+    }
+  ],
+  "nextAction": "Run M2 plan"
 }
