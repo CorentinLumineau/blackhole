@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { rateLimitCachePath, readRateLimits, resolvePaceGateThresholds, type RateLimits } from '../pace-gate.ts';
+import { readRateLimits, resolvePaceGateThresholds, resolveRateLimitCachePath, type RateLimits } from '../pace-gate.ts';
 import { forecastWeekly, resolveUsageBudget, workersAllowed, type UsageBudgetConfig, type UsageVerdict } from '../usage-budget.ts';
 import type { BudgetPanel } from './types.ts';
 
@@ -80,9 +80,9 @@ export function buildBudgetPanel(input: {
   };
 }
 
-/** Reads the rate-limit cache the config names (`rateLimitCachePath`), as pace-gate.ts and usage-budget.ts do. */
+/** Reads the rate-limit cache the config names (`resolveRateLimitCachePath`), as pace-gate.ts and usage-budget.ts do. */
 export function readBudgetPanel(config: Record<string, unknown>, now: number = Math.floor(Date.now() / 1000)): BudgetPanel {
-  const cachePath = rateLimitCachePath(config);
+  const cachePath = resolveRateLimitCachePath(config);
   let maxAge: number;
   try {
     maxAge = resolvePaceGateThresholds(config).maxAgeSeconds;

@@ -59,8 +59,9 @@ const isWindow = (value: unknown): value is RateWindow =>
   typeof (value as RateWindow).used_percentage === 'number' &&
   typeof (value as RateWindow).resets_at === 'number';
 
-/** The rate-limit cache file: `resource_policy.pace.cache_path`, else the statusline default under `~/.claude/cache`. */
-export const rateLimitCachePath = (config: Record<string, unknown>): string => {
+/** The one rate-limit cache every reader and writer shares: `resource_policy.pace.cache_path`, else
+ * the statusline default `~/.claude/cache/rate-limits.json`. */
+export const resolveRateLimitCachePath = (config: Record<string, unknown>): string => {
   const pace = ((config.resource_policy ?? {}) as { pace?: { cache_path?: unknown } }).pace;
   return typeof pace?.cache_path === 'string' ? pace.cache_path : path.join(os.homedir(), '.claude', 'cache', 'rate-limits.json');
 };

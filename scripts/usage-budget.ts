@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { rateLimitCachePath, readRateLimits, resolvePaceGateThresholds, type RateLimits, type RateWindow } from './lib/pace-gate.ts';
+import { readRateLimits, resolvePaceGateThresholds, resolveRateLimitCachePath, type RateLimits, type RateWindow } from './lib/pace-gate.ts';
 import { resolveUsageBudget, workersAllowed, type UsageVerdict } from './lib/usage-budget.ts';
 
 // Usage: bun run scripts/usage-budget.ts --parallel-max <n> [--usage '<json>' | --cache <path>]
@@ -67,7 +67,7 @@ const main = (): void => {
     const config = fs.existsSync(configPath) ? (readJsonFile(configPath, configPath) as Record<string, unknown>) : {};
     budget = resolveUsageBudget(config);
     maxAge = resolvePaceGateThresholds(config).maxAgeSeconds;
-    if (!cachePath) cachePath = rateLimitCachePath(config);
+    if (!cachePath) cachePath = resolveRateLimitCachePath(config);
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
   }

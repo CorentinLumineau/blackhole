@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { crossRepoBlockers } from '../../forge-deps.ts';
+import type { PrLanding } from '../forge-adapter/pr-landing.ts';
 import {
   computeQueueHealth,
   formatDashboard,
@@ -193,6 +195,37 @@ describe('renderStackMergeOrderSection', () => {
   });
 });
 
+describe('Merge next — cross-repo dependencies', () => {
+  const issues = [{ number: 6241, body: 'Depends on #6240\nDepends on acme/workflows#185' }];
+  const queue = { '6241': { status: 'in-flight', phase: 'review', pr: 50 } } as never;
+  const withLanding = (landing: PrLanding | null) => renderMergeNextSection(queue, [], crossRepoBlockers(issues, () => landing));
+
+  test('an unmerged PR in another repo is named as the item blocker', () => {
+    expect(withLanding({ state: 'open', mergedAt: null, mergeCommitSha: null })).toEqual([
+      '### Merge next',
+      '1. #6241 (PR #50) — waits on acme/workflows#185 (cross-repo, not merged yet)',
+      '',
+    ]);
+  });
+
+  test('an unreadable PR stays a blocker', () => {
+    expect(withLanding(null)[1]).toBe('1. #6241 (PR #50) — waits on acme/workflows#185 (cross-repo, merged state unreadable, treated as unmet)');
+  });
+
+  test('once the other repo PR is merged, nothing blocks the item', () => {
+    expect(withLanding({ state: 'merged', mergedAt: '2026-11-16T10:00:00Z', mergeCommitSha: 'abc' })[1]).toBe('1. #6241 (PR #50) — none');
+  });
+
+  test('formatDashboard carries the blockers into Merge next, and says so when the bodies were not read', () => {
+    const base = { checkpoint: {}, queue: { issues: queue }, ledger: {}, forge: { ok: true, openIssues: 1, openPrs: 1 } };
+    const read = formatDashboard({ ...base, crossRepoBlockers: crossRepoBlockers(issues, () => null) } as never);
+    expect(read).toContain('### Merge next\n1. #6241 (PR #50) — waits on acme/workflows#185 (cross-repo,');
+    expect(read).not.toContain('Cross-repo blockers');
+    const unread = formatDashboard({ ...base, crossRepoBlockers: null } as never);
+    expect(unread).toContain('1. #6241 (PR #50) — none\n- cross-repo dependencies not read: the forge issue list failed');
+  });
+});
+
 describe('renderMergeNextSection', () => {
   test('numbers every open PR in merge order with its blocker, and reports a cycle', () => {
     const issues = {
@@ -226,5 +259,23 @@ describe('renderMergeNextSection', () => {
     } as never);
     expect(out).toContain('### Merge next\n1. #1 (PR #11) — none\n2. #2 (PR #12) — waits on #1 (stacked on)');
     expect(out.indexOf('### Merge next')).toBeLessThan(out.indexOf('### Stacked PR merge order'));
+  });
+
+  test('formatDashboard puts the trunk-red base-fix PR first and names it on each waiting PR', () => {
+    const out = formatDashboard({
+      checkpoint: {},
+      queue: {
+        issues: {
+          '1': { status: 'blocked', phase: 'review', pr: 11, notes: 'waiting-on-trunk-fix #7' },
+          '2': { status: 'blocked', phase: 'review', pr: 12, notes: 'waiting-on-trunk-fix #7' },
+          '7': { status: 'in-flight', phase: 'review', pr: 17 },
+        },
+      },
+      ledger: {},
+      forge: { ok: true, openIssues: 0, openPrs: 3 },
+    } as never);
+    expect(out).toContain(
+      '### Merge next\n1. #7 (PR #17) — none — CI fix, merge first\n2. #1 (PR #11) — waits on #7 (trunk fix)\n3. #2 (PR #12) — waits on #7 (trunk fix)',
+    );
   });
 });

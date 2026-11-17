@@ -142,7 +142,7 @@ sees at a glance where the run stands and what to do:
    **Usage budget** — see below
 
 **Usage budget** (`scripts/lib/campaign-status/budget.ts`) reads the rate-limit cache
-`pace-gate.ts` and `usage-budget.ts` read (`rateLimitCachePath`: `resource_policy.pace.cache_path`,
+`pace-gate.ts` and `usage-budget.ts` read (`resolveRateLimitCachePath`: `resource_policy.pace.cache_path`,
 else `~/.claude/cache/rate-limits.json`; stale past `resource_policy.pace.max_age_seconds`) and
 shows: the **5-hour** % and reset, only when the plan has a current five_hour window (a weekly-only
 plan shows no 5-hour row); the **Weekly** % and reset; **Workers allowed** with the
@@ -161,9 +161,11 @@ is shorter: it prints the headline, the board counts, your move, the scope, the 
 decisions and a **Usage budget** section (the same rows) above its queue sections, with no card list and no workstreams.
 Among its queue sections, **Merge next** numbers every open PR in the order to merge it
 (`mergeNextOrder`, `scripts/lib/merge-next.ts`): CI-fix PRs first, then parents, then children,
-ordered over stack edges (`effectiveParent`) and `depends_on`. Each line names its blocker —
-`waits on #N (stacked on)`, `waits on #N (depends on)`, `blocked: <notes>`, `after CI fix #N`, or
-`none` — and a loop of edges is printed as a `Cycle, not ordered` line instead of being walked.
+ordered over stack edges (`effectiveParent`), `depends_on` and trunk-red parking. The CI-fix tier is
+the trunk-red base fixes the `waiting-on-trunk-fix #N` notes name (`trunkFixIssues`). Each line names
+its blocker — `waits on #N (stacked on)`, `waits on #N (depends on)`, `waits on #N (trunk fix)`,
+`waits on owner/repo#N (cross-repo, …)` (an unmet body line, `forge-sync.md` § 6.7),
+`blocked: <notes>`, `after CI fix #N`, or `none` — and a loop of edges is printed as a `Cycle, not ordered` line instead of being walked.
 It sits above "Stacked PR merge order", which it does not replace.
 Visual rules: R-006 (`documentation/reference/product-principles.md`).
 
