@@ -37,7 +37,7 @@ const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand } = require('./shell-lexer');
 const { readAssignedWorktreeRoot, isUnderRoot } = require('./hook-event-log');
-const { isLiteralPathArg, extractCdTargetText, normalizeShellWord } = require('./worktree-removal-guard');
+const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
  * string at all — the residual gap ADR-029 accepts and downgrades to WARN rather than a silent
@@ -1000,7 +1000,9 @@ const INTERPRETERS = [
     name: /^(?:node(?:js)?[0-9.]*|bun)$/,
     scriptFlag: (t) => /^-[a-zA-Z]*[ep]$/.test(t) || ['--eval', '--print'].some((n) => isLongOptionPrefix(t.split('=')[0], n)),
     valueOption: (t) =>
-      /^(?:-[rC]|--(?:require|import|loader|experimental-loader|conditions|env-file|preload|cwd|config|title))$/.test(t),
+      /^(?:-[rC]|--(?:require|import|loader|experimental-loader|conditions|env-file|preload|cwd|config|title|input-type))$/.test(t),
+    // `bun run -` runs stdin like `bun -`.
+    runWord: true,
     writeCall: (script) => JS_WRITE_CALL_RE.test(script),
   },
   {
@@ -1017,14 +1019,22 @@ const INTERPRETERS = [
   },
 ];
 
-/** True when an interpreter given `args` reads its script from stdin: a `-` operand, or no
- * operand at all. A value-taking option's value is skipped, so it is not mistaken for a script
- * file. The word after `-e`/`-c` and the module after `-m` read as operands, so stdin is data. */
-const interpreterReadsStdinScript = ({ valueOption }, args) => {
+/** Script operands that name stdin itself. */
+const STDIN_SCRIPT_OPERANDS = new Set(['-', '/dev/stdin', '/dev/fd/0', '/proc/self/fd/0']);
+
+/** True when an interpreter given `args` reads its script from stdin: an operand naming stdin
+ * (`-`, `/dev/stdin`, …), or no operand at all. A value-taking option's value is skipped, so it is
+ * not mistaken for a script file, and so are fd-prefixed redirects and bun's `run` word. The word
+ * after `-e`/`-c` and the module after `-m` read as operands, so stdin is data. */
+const interpreterReadsStdinScript = ({ valueOption, runWord }, args) => {
   for (let i = 0; i < args.length; i++) {
     const t = args[i];
-    if (t === '-') return true;
-    if (valueOption(t)) i++;
+    if (STDIN_SCRIPT_OPERANDS.has(t)) return true;
+    if (/^\d+[<>]/.test(t)) {
+      // An fd-prefixed redirect (`0<<'EOF'`, `0< f`) is shell syntax, not an operand.
+      if (/^\d+[<>]+$/.test(t)) i++;
+    } else if (valueOption(t)) i++;
+    else if (runWord && i === 0 && t === 'run') continue;
     else if (!t.startsWith('-')) return false;
   }
   return true;
@@ -1071,17 +1081,25 @@ const hasInterpreterWrite = (tokens, heredocText) =>
     }
     const script = stdinRedirectScript(tokens, idx, heredocText);
     if (script === null || !interpreterReadsStdinScript(entry, args)) return false;
+    if (script === STDIN_FROM_FILE) return true;
     // Python has no write-call check: its `open` reads and writes alike, as for `-c`.
     return !writeCall || writeCall(unescapeDoubleQuoted(script));
   });
 
-/** The script a heredoc (`<<`) or here-string (`<<<`) after the command word at `idx` feeds on
- * stdin, or null when the clause has neither. A heredoc yields `heredocText`, every heredoc body
- * in the command: checking more text than the clause's own body only ever adds a warning. */
+/** `stdinRedirectScript`'s answer when stdin is a file, fd or process substitution
+ * (`node < script.js`, `node <&3`): a script the command string does not show. */
+const STDIN_FROM_FILE = Symbol('stdin from a file');
+
+/** The script a heredoc (`<<`), here-string (`<<<`) or input file (`<`) after the command word at
+ * `idx` feeds on stdin, fd `0` named or not, or null when the clause has none. A heredoc yields
+ * `heredocText`, every heredoc body in the command: checking more text than the clause's own body
+ * only ever adds a warning. */
 const stdinRedirectScript = (tokens, idx, heredocText) => {
   for (let i = idx + 1; i < tokens.length; i++) {
-    if (tokens[i].startsWith('<<<')) return [tokens[i].slice(3), ...tokens.slice(i + 1)].join(' ');
-    if (tokens[i].startsWith('<<')) return heredocText;
+    const here = /^0?<<<(.*)$/s.exec(tokens[i]);
+    if (here) return [here[1], ...tokens.slice(i + 1)].join(' ');
+    if (/^0?<</.test(tokens[i])) return heredocText;
+    if (/^0?</.test(tokens[i])) return STDIN_FROM_FILE;
   }
   return null;
 };
@@ -1092,14 +1110,14 @@ const stdinRedirectScript = (tokens, idx, heredocText) => {
 const hasUnresolvableCommand = (tokens, heredocText) =>
   UNRESOLVABLE_WRITE_COMMANDS.some((name) => isCommandToken(tokens[0], name)) || hasInterpreterWrite(tokens, heredocText);
 
-/** Most directories a `cd … || cd …` chain may fan out to; past it the base is unknown. */
-const MAX_CWD_CANDIDATES = 16;
-
-/** The directory a `cd` moves to from each of `dirs`, or null when its target cannot be read
- * statically (`cd "$D"`, `cd -`, a bare `cd`, `cd ~`, a glob). */
-const cdDestinations = (cdArgs, dirs) => {
+/** The directory a `cd`/`pushd`/`popd` moves to from each of `dirs`, or null when its target
+ * cannot be read statically (`cd "$D"`, `cd -`, a bare `cd` or `popd`, `cd ~`, a glob, `pushd +1`), or when a
+ * `CDPATH` set in the command may redirect a relative target that does not start with `.`. */
+const cdDestinations = (word, cdArgs, dirs, cdpath) => {
+  if (word !== 'cd' && cdArgs.some((t) => /^[+-]/.test(t))) return null;
   const text = extractCdTargetText(cdArgs);
   if (text === null || !isResolvableLiteralTarget(text)) return null;
+  if (cdpath && !path.isAbsolute(text) && !text.startsWith('.')) return null;
   return dirs.map((dir) => path.resolve(dir, text));
 };
 
@@ -1111,27 +1129,75 @@ const unescapeTarget = (raw) => {
   return dynamic ? raw : text;
 };
 
-/** The directories the shell may stand in after a clause, tracked the way
- * `worktree-removal-guard.js`'s `findRemovalInvocations` tracks them: a `cd` after `||` may not
- * have run, so its destination is added to the candidates; any other `cd` replaces them; a `cd`
- * past the clause's first word (`command cd`, `eval cd`) may be an argument, so it only adds. A
- * `cd` whose target cannot be read makes the base `unknown`, so later relative targets warn. */
-const applyCd = (state, tokens, precededByOr) => {
-  const certain = normalizeShellWord(tokens[0]).text === 'cd';
-  const idx = certain ? 0 : tokens.findIndex((t, i) => i > 0 && normalizeShellWord(t).text === 'cd');
+/** Words that open and close a compound command (`if … fi`, loops, `case … esac`, `{ … }`). */
+const COMPOUND_OPENERS = new Set(['if', 'while', 'until', 'for', 'select', 'case', '{']);
+const COMPOUND_CLOSERS = new Set(['fi', 'done', 'esac', '}']);
+
+/** Index of the clause's command word past compound keywords and a function header (`f()`),
+ * updating `compound` (open compound commands) and `cases` (open `case`s). A word such as
+ * `then` or `y)` is not skipped: a `cd` past it is found as an argument-position `cd`, which only
+ * ever adds a candidate, the same as any `cd` inside a compound command. */
+const skipCompoundWords = (tokens, nest) => {
+  let k = 0;
+  while (k < tokens.length) {
+    const word = tokens[k];
+    if (COMPOUND_OPENERS.has(word)) {
+      nest.compound++;
+      if (word === 'case') nest.cases++;
+    } else if (COMPOUND_CLOSERS.has(word)) {
+      nest.compound = Math.max(0, nest.compound - 1);
+      if (word === 'esac') nest.cases = Math.max(0, nest.cases - 1);
+    } else if (!/^[\w.:-]+\(\)$/.test(word)) {
+      break;
+    }
+    k++;
+  }
+  return k;
+};
+
+/** The directories the shell may stand in after a clause whose command starts at `tokens[k]`.
+ * `union` adds a `cd`'s destination to the candidates instead of replacing them, for a `cd` that
+ * may not run; a `cd` past the command word (`command cd`, `echo cd x`) may be an argument, so it
+ * only ever adds. A `cd` whose target cannot be read makes the base `unknown`, so
+ * later relative targets warn. */
+const applyCd = (state, tokens, k, union, cdpath) => {
+  const isCd = (t) => ['cd', 'pushd', 'popd'].includes(normalizeShellWord(t).text);
+  const certain = k < tokens.length && isCd(tokens[k]);
+  const idx = certain ? k : tokens.findIndex((t, i) => i > k && isCd(t));
   if (idx === -1) return state;
-  const moved = cdDestinations(tokens.slice(idx + 1), state.dirs);
-  const keep = precededByOr || !certain;
+  const word = normalizeShellWord(tokens[idx]).text;
+  const keep = union || !certain;
+  const moved = cdDestinations(word, tokens.slice(idx + 1), state.dirs, cdpath);
   if (moved === null) return { dirs: keep ? state.dirs : [], unknown: true };
   const dirs = [...new Set(keep ? [...state.dirs, ...moved] : moved)];
   if (dirs.length > MAX_CWD_CANDIDATES) return { dirs: state.dirs, unknown: true };
   return { dirs, unknown: state.unknown };
 };
 
+/** Every directory any of `states` may stand in. */
+const unionStates = (states) => ({
+  dirs: [...new Set(states.flatMap((st) => st.dirs))],
+  unknown: states.some((st) => st.unknown),
+});
+
+/** How the clause at `[start, end)` joins its neighbours: the operator before it (`and`, `or`,
+ * `pipe`, `bg` or `seq` for `;`, a newline or the start) and whether it runs in a pipeline or in
+ * the background, where a `cd` changes only a subshell's directory. */
+const clauseLinks = (visible, start, end) => {
+  const [b1, b2] = [visible[start - 1], visible[start - 2]];
+  const before =
+    b1 === '&' ? (b2 === '&' ? 'and' : b2 === '|' ? 'pipe' : 'bg') : b1 === '|' ? (b2 === '|' ? 'or' : 'pipe') : 'seq';
+  const [a1, a2] = [visible[end], visible[end + 1]];
+  const subshell = before === 'pipe' || (a1 === '|' && a2 !== '|') || (a1 === '&' && a2 !== '&');
+  return { before, subshell };
+};
+
 /** Write targets in one view of the command, each with the directories a relative target
  * resolves against (`dirs`, and `unknown` when a `cd` hid one), and whether anything
  * write-shaped cannot be resolved. Clauses are walked in order so a `cd` moves the base of every
- * later clause; a subshell `( … )` restores the base it opened with. */
+ * later clause it surely precedes; a `cd` that may not run (after `||`, inside a compound command
+ * or function, or anywhere in an `&&` list once a `;` ends it) leaves every earlier base possible;
+ * a subshell `( … )` restores the base it opened with. */
 const collectWriteSignals = (visible, heredocText, cwd) => {
   const literalTargets = [];
   let unresolvable = false;
@@ -1148,20 +1214,41 @@ const collectWriteSignals = (visible, heredocText, cwd) => {
   };
 
   const redirectView = maskRedirectNoise(visible);
+  // `list` holds the base after each clause of the current `&&`/`||` list: when a `;` or newline
+  // ends it, any of them may be where the shell stands, since a later link may not have run.
+  let list = [];
+  const nest = { compound: 0, cases: 0 };
+  let cdpath = false;
   for (const [start, end] of clauseRanges(visible)) {
-    // Subshell parens around the clause are syntax, not part of its first or last word.
+    const links = clauseLinks(visible, start, end);
+    if (visible.slice(start, end).trim() && (links.before === 'seq' || links.before === 'bg') && list.length > 0) {
+      state = unionStates(list);
+      list = [];
+    }
+    // Subshell parens around the clause are syntax, not part of its first or last word; inside a
+    // `case`, a trailing `)` closes a pattern instead.
     const opening = visible.slice(start, end).match(/^[\s(]*/)[0];
-    const closing = visible.slice(start + opening.length, end).match(/[\s)]*$/)[0];
-    const [from, to] = [start + opening.length, end - closing.length];
-    for (let k = 0; k < opening.replace(/\s/g, '').length; k++) saved.push(state);
-    findRedirectTargets(redirectView.slice(from, to)).forEach(add);
+    let to = end;
+    while (to > start + opening.length && /[\s)]/.test(visible[to - 1])) to--;
+    const from = start + opening.length;
     const tokens = tokenize(visible.slice(from, to));
+    const k = skipCompoundWords(tokens, nest);
+    const inCase = nest.cases > 0;
+    if (!inCase) for (let p = 0; p < opening.replace(/\s/g, '').length; p++) saved.push({ state, list }), (list = []);
+    findRedirectTargets(redirectView.slice(from, to)).forEach(add);
     if (tokens.length > 0) {
       [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens), ...findOptionWriteTargets(tokens)].forEach(add);
       if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
-      state = applyCd(state, tokens, start >= 2 && visible[start - 1] === '|' && visible[start - 2] === '|');
+      if (tokens.some((t) => t.startsWith('CDPATH='))) cdpath = true;
+      // A pipeline element or background job runs in a subshell: its `cd` moves only that subshell,
+      // which a `( … )` around it tracks and restores.
+      if (!links.subshell || opening.includes('(')) state = applyCd(state, tokens, k, links.before === 'or' || nest.compound > 0, cdpath);
     }
-    for (let k = 0; k < closing.replace(/\s/g, '').length && saved.length > 0; k++) state = saved.pop();
+    const closing = visible.slice(to, end).replace(/\s/g, '').length;
+    if (!inCase) {
+      for (let p = 0; p < closing && saved.length > 0; p++) ({ state, list } = saved.pop());
+    }
+    list.push(state);
   }
 
   if (hasPipedScript(visible)) unresolvable = true;
