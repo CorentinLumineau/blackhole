@@ -1088,11 +1088,12 @@ const checkUnpushedCommits = (worktreePath) => {
  * Shared prose for a `status: 'unknown'` refusal below — the dirty-worktree, detached-HEAD and
  * named-branch outcomes share an identical opening clause and closing clause and differ only in
  * what could not be verified (`claim`) and the remedy paragraph appended after this by the
- * caller.
+ * caller. The opener's "the check could not run (not confirmed unsafe)" clause separates an
+ * unverifiable state from a confirmed-unsafe one, which the `unpushed`/`dirty` refusals name instead.
  */
 const unverifiableRefusalOpener = (resolvedPath, claim, detail) =>
-  `Could not verify ${resolvedPath} ${claim} (${detail}) — refusing rather than risk silent ` +
-  `data loss.`;
+  `Could not verify ${resolvedPath} ${claim} (${detail}) — the check could not run (not confirmed unsafe), ` +
+  `refusing rather than risk silent data loss.`;
 
 const GITHUB_RETAINS_PR_HEADS_NOTE =
   '(GitHub retains PR head refs permanently, so this gives a true answer instead of bypassing the ' +
@@ -1185,7 +1186,8 @@ const evaluateResolvedWorktree = (resolvedPath, shape) => {
       pattern_id: shape.unpushedId,
       reason:
         `Worktree at ${resolvedPath} has commits not on its remote (${result.detail}) — removal would discard them permanently` +
-        shape.unpushedNote,
+        shape.unpushedNote +
+        `. Remedy: push first (git -C ${resolvedPath} push origin <branch>:<branch>), then retry.`,
     };
   }
   if (result.status === 'unknown') {

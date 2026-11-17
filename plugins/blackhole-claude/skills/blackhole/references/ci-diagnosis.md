@@ -89,7 +89,7 @@ PR's own diff, stays `genuine`.
 
 On `trunk-red`:
 
-1. Do not append `V-CI-01` fix rounds for the group (doing so is `V-CI-02`); set `notes: waiting-on-trunk-fix` per
+1. Do not append `V-CI-01` fix rounds for the group (doing so is `V-CI-02`); set `notes: waiting-on-trunk-fix #N` (`N` the base-fix issue) per
    `queue-dag.md` § Trunk-red.
 2. The orchestrator opens the base-fix PR itself (owner ruling, #1169), through the usual
    plan, review and verify gates; workers are never pointed at the symptom in their own PR.

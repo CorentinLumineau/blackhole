@@ -799,6 +799,8 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
       expect(permissionDecision(result.stdout)).toBe('deny');
       expect(permissionReason(result.stdout)).toMatch(/verify/i);
       expect(permissionReason(result.stdout)).toMatch(/refs\/pull/i);
+      // says the check could not run, not that the worktree was found unsafe
+      expect(permissionReason(result.stdout)).toMatch(/not confirmed unsafe/i);
 
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
@@ -825,6 +827,7 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
         expect(permissionReason(result.stdout)).toMatch(/remote/i);
+        expect(permissionReason(result.stdout)).toMatch(/Remedy: push/);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -855,6 +858,8 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
 
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/--force also bypasses/);
+        expect(permissionReason(result.stdout)).toContain(`Remedy: push first (git -C ${worktree} push origin <branch>:<branch>)`);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -1439,6 +1444,7 @@ describe('validate-bash-command.js — worktree-removal guard global-option and 
 
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toContain(`Remedy: push first (git -C ${worktree} push origin`);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -1920,6 +1926,8 @@ describe('validate-bash-command.js — rm-shaped worktree removal (#803)', () =>
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
         expect(permissionReason(result.stdout)).toMatch(/remote/i);
+        expect(permissionReason(result.stdout)).toMatch(/a recursive rm performs none of the checks/);
+        expect(permissionReason(result.stdout)).toContain(`Remedy: push first (git -C ${worktree} push origin`);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -3014,6 +3022,9 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       expect(result.exitCode).toBe(2);
       expect(permissionDecision(result.stdout)).toBe('deny');
       expect(permissionReason(result.stdout)).toMatch(/assigned worktree/i);
+      // names the form that would pass: the same file name under the assigned root
+      expect(permissionReason(result.stdout)).toContain(`Remedy: write inside ${worktree}`);
+      expect(permissionReason(result.stdout)).toContain(path.join(worktree, 'foo.txt'));
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
@@ -3144,6 +3155,21 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       expect(result.stdout.trim()).toBe('');
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
+      expect(events[0].reason).toContain('not confirmed unsafe');
+      // the recorded event truncates the reason, so read the full text from the guard itself
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      const previous = process.env.BLACKHOLE_ASSIGNED_WORKTREE;
+      process.env.BLACKHOLE_ASSIGNED_WORKTREE = worktree;
+      try {
+        const verdict = evaluateBashWriteTargets(`python3 -c "open('/tmp/x','w').write('y')"`, worktree);
+        expect(verdict.tier).toBe('warn');
+        expect(verdict.reason).toContain(
+          'Remedy: use a literal absolute path under the assigned worktree, or the Write/Edit tools.',
+        );
+      } finally {
+        if (previous === undefined) delete process.env.BLACKHOLE_ASSIGNED_WORKTREE;
+        else process.env.BLACKHOLE_ASSIGNED_WORKTREE = previous;
+      }
       expect(events[0]).toMatchObject({
         tier: 'warn',
         pattern_id: 'bash-write-target-unresolvable',
@@ -4468,3 +4494,134 @@ describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
   }
 });
 
+
+// `redact` runs inside `recordEvent`, which the deny path calls before emitting its verdict; a
+// superlinear redaction pass over attacker-sized input would time the hook out and the native
+// wrapper fails open. Timing is the minimum of 3 runs after a warm-up to damp scheduler noise.
+describe('hook-event-log.js — redact is bounded on adversarial input (#1195)', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const minMs = (fn: () => unknown): number => {
+    fn();
+    let best = Infinity;
+    for (let i = 0; i < 3; i++) {
+      const start = performance.now();
+      fn();
+      best = Math.min(best, performance.now() - start);
+    }
+    return best;
+  };
+
+  test('redact of a 220 KB repeated-keyword input completes in under 50 ms', () => {
+    const { redact } = hookEventLog();
+    const input = 'a_password_'.repeat(20000);
+    expect(minMs(() => redact(input))).toBeLessThan(50);
+  });
+
+  test('SECRET_KV alone over a 2,400-char repeated-keyword input completes in under 5 ms', () => {
+    const { SECRET_KV } = hookEventLog();
+    const input = 'a_password_'.repeat(220).slice(0, 2400);
+    expect(minMs(() => input.replace(SECRET_KV, '***'))).toBeLessThan(5);
+  });
+
+  test('a secret inside the window is still masked and the output is capped at 300', () => {
+    const { redact } = hookEventLog();
+    const out = redact(`db_password=hunter2hunter2 ${'x'.repeat(5000)}`);
+    expect(out).toContain('db_password=***');
+    expect(out).not.toContain('hunter2');
+    expect(out.length).toBeLessThanOrEqual(300);
+  });
+
+  test('a ~250 KB command containing a blocked operation is still denied with exit 2 and recorded', async () => {
+    await withTempGitRepo('blackhole-hook-1195-', async (repo) => {
+      const command = `rm -rf / ; ${'a_password_'.repeat(22000)}`;
+      expect(command.length).toBeGreaterThan(240_000);
+
+      const start = performance.now();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      const elapsedMs = performance.now() - start;
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(readHookEvents(repo)).toHaveLength(1);
+      expect(readHookEvents(repo)[0]).toMatchObject({ decision: 'deny', pattern_id: 'rm-rf-root' });
+      expect(elapsedMs).toBeLessThan(2500);
+    });
+  });
+});
+
+// Drift guard for the "name the passing alternative" rule: every deny decision the PreToolUse
+// guards can emit carries a `Remedy:` clause, unless its id is listed below as having no safe
+// alternative to name. Ids and reasons are read from the guard sources and the pattern JSON, so a
+// deny added without a remedy (or an allow-list entry whose decision is gone) fails here.
+describe('PreToolUse deny decisions — every deny names a remedy or is explicitly allow-listed', () => {
+  const hooksRoot = path.resolve(import.meta.dir, '..', 'templates', 'hooks', 'pretooluse');
+  const readSource = (rel: string) => fs.readFileSync(path.join(hooksRoot, rel), 'utf8');
+  const readPatterns = (rel: string) => JSON.parse(readSource(rel));
+
+  /** Deny ids with no safe alternative to name, each with the reason it stays remedy-free. */
+  const NO_ALTERNATIVE: Record<string, string> = {
+    'rm-rf-root': 'no legitimate use inside a worktree; deleting the root filesystem has no safe variant',
+    'rm-no-preserve-root': 'no legitimate use inside a worktree; it only exists to defeat the root-delete guard',
+    mkfs: 'no legitimate use inside a worktree; formatting a filesystem is never part of a task',
+    'fork-bomb': 'no legitimate use; it has no non-destructive form',
+    'hook-input-parse-failure': 'fail-closed on a malformed hook payload; nothing for the caller to change',
+    'uncaught-validator-error': 'fail-closed on a validator crash; nothing for the caller to change',
+    'worktree-root-resolution-failure': 'fail-closed on broken git; nothing for the caller to change',
+  };
+  /** Ids emitted next to a pattern_id that are not denials. */
+  const NON_DENY = new Set(['sibling-plugin-defer', 'main-clone-target-unresolvable']);
+
+  const decisionWindows = (rel: string, key: RegExp) => {
+    const src = readSource(rel);
+    const hits = [...src.matchAll(key)];
+    return hits.map((m, i) => {
+      const end = Math.min(hits[i + 1]?.index ?? src.length, m.index! + 1800);
+      const expr = m[1].trim();
+      return {
+        ids: [...expr.matchAll(/'([a-z0-9-]+)'/g)].map((x) => x[1]),
+        label: expr,
+        window: src.slice(m.index!, end),
+      };
+    });
+  };
+
+  const sourceDecisions = [
+    ...decisionWindows('validate-bash-command.js', /patternId:\s*([^\n]*)/g),
+    ...decisionWindows('validate-file-changes.js', /(?:pattern_id|patternId):\s*([^\n]*)/g),
+    ...decisionWindows('utils/bash-write-target-guard.js', /pattern_id:\s*([^\n]*)/g),
+    ...decisionWindows('utils/worktree-removal-guard.js', /pattern_id:\s*([^\n]*)/g),
+  ].filter((d) => d.ids.length > 0 || d.label.startsWith('shape.'));
+
+  test('every literal or shape-driven deny in the guard sources carries a Remedy or is allow-listed', () => {
+    expect(sourceDecisions.length).toBeGreaterThan(10);
+    const missing = sourceDecisions
+      .filter((d) => !d.ids.every((id) => NON_DENY.has(id) || id in NO_ALTERNATIVE))
+      .filter((d) => !/Remedy:|remedyInside\(/.test(d.window))
+      .map((d) => d.label);
+    expect(missing).toEqual([]);
+  });
+
+  test('every main-clone block reason carries a Remedy', () => {
+    const src = readSource('utils/git-main-clone-guard.js');
+    expect(/const REMEDY = 'Remedy:/.test(src)).toBe(true);
+    const table = src.slice(src.indexOf('const REASON_BY_PATTERN'));
+    const blockIds = [...src.matchAll(/tier: 'block', patternId: '([a-z-]+)'/g)].map((m) => m[1]);
+    expect(blockIds.length).toBeGreaterThanOrEqual(6);
+    for (const id of blockIds) {
+      const start = table.indexOf(`'${id}':`);
+      expect(start).toBeGreaterThan(-1);
+      const entry = table.slice(start, table.indexOf("\n  '", start + 1));
+      expect(entry.includes('${REMEDY}') || /Remedy:/.test(entry)).toBe(true);
+    }
+  });
+
+  test('pattern JSON: traversal and bash block reasons carry a Remedy unless allow-listed', () => {
+    const file = readPatterns('patterns/file-patterns.json');
+    for (const entry of file.pathTraversal) expect(entry.reason).toMatch(/Remedy: use an absolute path inside/);
+    const bash = readPatterns('patterns/bash-patterns.json');
+    const jsonDeny = bash.blockPatterns;
+    for (const e of jsonDeny) expect(/Remedy:/.test(e.reason) || e.id in NO_ALTERNATIVE).toBe(true);
+    const liveIds = new Set([...jsonDeny.map((e: { id: string }) => e.id), ...sourceDecisions.flatMap((d) => d.ids)]);
+    for (const id of Object.keys(NO_ALTERNATIVE)) expect(liveIds.has(id)).toBe(true);
+  });
+});
