@@ -871,14 +871,17 @@ const looksLikeRegexFragment = (target) => target.startsWith('/#') || /[\\^$*+?(
 /** Calls in a JS one-liner that write, delete, move or link a file, or run a command (through
  * `child_process`, `Bun.spawn` or `Bun.$`). Whole words or distinctive stems only, so
  * `process.stdout.write`, `process.execPath` and `/re/.exec` do not match. RegExp `exec` is not a
- * command: `child_process` must be named to reach `exec`. Literal alternations, linear time. */
+ * command: `child_process` must be named to reach `exec`. A `.write`/`.writer` method on anything
+ * but stdout/stderr (`Bun.file(p).write`, `Bun.file(p).writer()`) counts. Literal alternations
+ * and one bounded lookbehind, linear time. */
 const JS_WRITE_CALL_RE =
-  /writefile|writesync|createwritestream|bun\.write|appendfile|unlink|rename|truncate|symlink|\blink(?:sync)?\b|mkdir|mkdtemp|rmdir|copyfile|\b(?:cp|rm)(?:sync)?\b|chmod|chown|utime|child_process|\b(?:open|opensync|spawn|spawnsync|fork|eval)\b|bun\.\$|\$`/i;
+  /writefile|writesync|createwritestream|bun\.write|(?<!std(?:out|err))\.writer?\b|appendfile|unlink|rename|truncate|symlink|\blink(?:sync)?\b|mkdir|mkdtemp|rmdir|copyfile|\b(?:cp|rm)(?:sync)?\b|chmod|chown|utime|child_process|\b(?:open|opensync|spawn|spawnsync|fork|eval)\b|\$`/i;
 
-/** The same for Perl and Ruby, where `open`, `system`, `exec`, backticks, `qx` and `%x` run
- * commands or open files for writing. */
+/** The same for Perl and Ruby, where `open`, `system`, `exec`, `spawn`, backticks, `qx` and `%x`
+ * run commands or open files for writing, and a `.write`/`.binwrite` method on anything but
+ * stdout/stderr (`File.binwrite`, `Pathname#write`) writes a file. */
 const PERL_RUBY_WRITE_CALL_RE =
-  /file\.(?:write|delete|new|open|rename|unlink|symlink|link|truncate)|io\.(?:write|popen)|fileutils|syswrite|sysopen|dbmopen|unlink|rename|truncate|symlink|\blink\b|mkdir|rmdir|chmod|chown|utime|\b(?:open|popen|exec|system|fork|eval|qx)\b|`|%x/i;
+  /file\.(?:write|delete|new|open|rename|unlink|symlink|link|truncate)|io\.(?:write|popen)|(?<!std(?:out|err))\.(?:bin)?write\b|fileutils|syswrite|sysopen|dbmopen|unlink|rename|truncate|symlink|\blink\b|mkdir|rmdir|chmod|chown|utime|\b(?:open|popen|exec|system|spawn|fork|eval|qx)\b|`|%x/i;
 
 /** Interpreters whose inline script (`-e`, `-c`, …) this module cannot parse. Every argument after
  * the interpreter word is checked, so a value-taking option ahead of the script cannot hide it.
@@ -910,13 +913,19 @@ const commandName = (word) => {
  * backslash before `$`, `` ` ``, `"` and `\`, so `Bun.\$\`…\`` arrives as `` Bun.$`…` ``. */
 const unescapeDoubleQuoted = (text) => text.replace(/\\([$`"\\])/g, '$1');
 
-/** True when an interpreter in the clause runs an inline script that may write. An interpreter
- * name that follows a grep-family word (`git grep -n perl -i`, `grep -e ruby`) is a search
- * pattern, not a command. */
+/** True when the clause's own command is a grep-family search (`grep …`, `git grep …`), so every
+ * later word is a pattern, option or file. Only the head command counts: a `grep` that is an
+ * argument (`find -name grep -exec perl …`, `sudo -u grep python3 …`) exempts nothing. */
+const isGrepHeadClause = (tokens) =>
+  INERT_GREP_COMMANDS.has(tokens[0]) || (tokens[0] === 'git' && tokens[1] === 'grep');
+
+/** True when an interpreter in the clause runs an inline script that may write. In a grep clause
+ * (`git grep -n perl -i`, `grep -e ruby`) an interpreter name is a search pattern, not a command. */
 const hasInterpreterWrite = (tokens) =>
+  !isGrepHeadClause(tokens) &&
   INTERPRETERS.some(({ name, scriptFlag, always, writeCall }) => {
     const idx = tokens.findIndex((t) => name.test(commandName(t)));
-    if (idx === -1 || tokens.slice(0, idx).some((t) => INERT_GREP_COMMANDS.has(t))) return false;
+    if (idx === -1) return false;
     const args = positionalArgsBeforeRedirect(tokens, idx + 1);
     if (always && args.some(always)) return true;
     return Boolean(scriptFlag && args.some(scriptFlag) && writeCall(unescapeDoubleQuoted(args.join(' '))));

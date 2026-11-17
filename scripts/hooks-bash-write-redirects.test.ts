@@ -265,6 +265,26 @@ describe('bash-write-target-guard.js — #1183 review: sed script sources and sc
   test('#1183: an escaped newline continues `a` text, so a `w` on the next line is text', async () => {
     expect(await verdictFor((o) => `sed 'a foo\\\nw ${o}' f`)).toBeNull();
   });
+
+  test('#1183: an escaped backslash before a newline ends `a` text, so a `w` on the next line runs', async () => {
+    expect(await verdictFor((o) => `sed 'a foo\\\\\nw ${o}' f`)).toMatchObject({
+      tier: 'block',
+      pattern_id: 'bash-outside-assigned-worktree',
+    });
+  });
+
+  test('#1183: an unquoted glued `<` makes the script word unclean, so the command warns', async () => {
+    await withLinkedWorktree('blackhole-hook-1183-', async (mainRepo, worktree) => {
+      // The shell writes `<main>/out` and reads stdin from the rest; read as one clean word, the
+      // `w` target resolves back inside the worktree and the write is missed.
+      const up = '../'.repeat(mainRepo.split('/').length + 1);
+      const command = `sed -n 1w${path.join(mainRepo, 'out')}<${up}${worktree.slice(1)}/x f`;
+      expect(guard().evaluateBashWriteTargets(command, worktree)).toMatchObject({
+        tier: 'warn',
+        pattern_id: 'bash-write-target-unresolvable',
+      });
+    });
+  });
 });
 
 describe('bash-write-target-guard.js — #1183 review: interpreter calls, words and false positives', () => {
@@ -294,6 +314,14 @@ describe('bash-write-target-guard.js — #1183 review: interpreter calls, words 
     "node22 -e \"require('fs').writeFileSync('x', '')\"",
     'py -c "print(1)"',
     'pypy3 -c "print(1)"',
+    `bun -e "await Bun.file('x').write('')"`,
+    `bun -e "const w = Bun.file('x').writer(); w.end()"`,
+    "ruby -e 'spawn(\"touch x\")'",
+    "ruby -e 'Process.spawn(\"touch x\")'",
+    "ruby -e 'File.binwrite(\"x\", \"y\")'",
+    "ruby -e 'require \"pathname\"; Pathname.new(\"x\").write(\"y\")'",
+    "find . -name grep -exec perl -i -pe 's/a/b/' /etc/x \\;",
+    'sudo -u grep python3 -c "print(1)"',
   ]) {
     test(`#1183: \`${command}\` warns`, async () => {
       expect(await verdict(command)).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
@@ -308,6 +336,8 @@ describe('bash-write-target-guard.js — #1183 review: interpreter calls, words 
     "node -e 'console.log(\"overwrite\")'",
     'git grep -n perl -i',
     'grep -e ruby -i f.txt',
+    "ruby -e '$stdout.write(\"hi\")'",
+    "ruby -e 'STDERR.write(\"hi\")'",
   ]) {
     test(`#1183: read-only \`${command}\` stays allowed with no verdict`, async () => {
       expect(await verdict(command)).toBeNull();
