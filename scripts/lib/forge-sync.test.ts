@@ -121,3 +121,65 @@ describe('syncQueue — reconcile', () => {
     expect(sync({ queue: done, issues: [issue(6)] }).queue.issues?.['6']).toMatchObject({ status: 'merged', phase: 'done' });
   });
 });
+
+describe('syncQueue — another lane', () => {
+  test('an issue labelled agent:cursor or in-progress:<other> is ingested blocked, never ready', () => {
+    const r = sync({ issues: [issue(1, { labels: [{ name: 'agent:cursor' }] }), issue(2, { labels: [{ name: 'in-progress:cursor' }] }), issue(3, { labels: [{ name: 'in-progress:claude' }] })] });
+    expect(r.queue.issues['1']).toMatchObject({ status: 'blocked', notes: 'another lane: agent:cursor' });
+    expect(r.queue.issues['2']).toMatchObject({ status: 'blocked', notes: 'another lane: in-progress:cursor' });
+    expect(r.queue.issues['3']).toMatchObject({ status: 'ready', notes: 'auto-sync ingest' });
+  });
+
+  test('an open PR from a foreign branch blocks its issue and is not linked as the campaign PR', () => {
+    const r = sync({ issues: [issue(4)], prs: [pr(40, { headRefName: 'cursor/fix-4', body: 'Closes #4' })] });
+    expect(r.queue.issues['4']).toMatchObject({ status: 'blocked', notes: 'another lane: cursor/fix-4', pr: null });
+  });
+
+  test('reconcile: a ready entry that gains a foreign label turns blocked, and turns ready again once the lane is gone', () => {
+    const queue = { issues: { '5': { title: 'five', phase: 'handle', status: 'ready', pr: null } } };
+    const blocked = sync({ queue, issues: [issue(5, { labels: [{ name: 'agent:cursor' }] })] }).queue;
+    expect(blocked.issues['5']).toMatchObject({ status: 'blocked', notes: 'another lane: agent:cursor' });
+    expect(sync({ queue: blocked, issues: [issue(5)] }).queue.issues['5']).toMatchObject({ status: 'ready', notes: null });
+  });
+
+  test('an in-flight entry is never taken over by the lane rule', () => {
+    const queue = { issues: { '6': { title: 'six', phase: 'implement', status: 'in-flight', pr: null } } };
+    expect(sync({ queue, issues: [issue(6, { labels: [{ name: 'agent:cursor' }] })] }).queue.issues['6']).toMatchObject({ status: 'in-flight' });
+  });
+});
+
+describe('syncQueue — what a PR may claim', () => {
+  test('a merged PR that names the issue only by branch (Part of #N) never marks it done', () => {
+    const r = sync({ queue: { issues: { '1221': { title: 't', phase: 'review', status: 'in-flight', pr: 1236 } } }, issues: [issue(1221)], prs: [pr(1234, { state: 'MERGED', mergedAt: NOW, headRefName: 'blackhole/issue-1221-a', body: 'Part of #1221' })] });
+    expect(r.queue.issues['1221']).toMatchObject({ status: 'in-flight', phase: 'review', pr: 1236 });
+    expect(r.closed).toEqual([]);
+  });
+
+  test('the forge OPEN state wins over a merged closing PR', () => {
+    const r = sync({ queue: { issues: { '7': { title: 't', phase: 'review', status: 'in-flight', pr: 70 } } }, issues: [issue(7)], prs: [pr(70, { state: 'MERGED', mergedAt: NOW, body: 'Closes #7' })] });
+    expect(r.queue.issues['7']).toMatchObject({ status: 'in-flight' });
+  });
+
+  test('an open PR with a closing keyword is linked before a lower-numbered Part-of PR', () => {
+    const r = sync({ issues: [issue(8)], prs: [pr(80, { headRefName: 'blackhole/issue-8-part1', body: 'Part of #8' }), pr(81, { headRefName: 'blackhole/issue-8-part2', body: 'Closes #8' })] });
+    expect(r.queue.issues['8'].pr).toBe(81);
+  });
+
+  test('a dependency-blocked entry still gets its own open PR linked', () => {
+    const queue = { issues: { '10': { title: 't', phase: 'handle', status: 'blocked', pr: null, depends_on: [1] } } };
+    expect(sync({ queue, issues: [issue(10)], prs: [pr(100, { body: 'Closes #10' })] }).queue.issues['10']).toMatchObject({ status: 'blocked', pr: 100 });
+  });
+
+  test('with no closing PR, the branch match links the PR', () => {
+    expect(sync({ issues: [issue(9)], prs: [pr(90, { headRefName: 'blackhole/issue-9-x', body: 'Part of #9' })] }).queue.issues['9'].pr).toBe(90);
+  });
+});
+
+describe('syncQueue — user_queue_order', () => {
+  test('ingested issues are appended once, existing order kept', () => {
+    const queue = { user_queue_order: [3, 1], issues: { '1': { title: 'a', phase: 'handle', status: 'ready' }, '3': { title: 'c', phase: 'handle', status: 'ready' } } };
+    expect(sync({ queue, issues: [issue(1), issue(2), issue(3), issue(4)] }).queue.user_queue_order).toEqual([3, 1, 2, 4]);
+    expect(sync({ issues: [issue(5)] }).queue.user_queue_order).toEqual([5]);
+  });
+});
+

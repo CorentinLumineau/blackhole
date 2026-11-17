@@ -12,15 +12,21 @@ import type { QueueJson } from './lib/campaign-status/types.ts';
 import { installStateFile } from './lib/state-write-guard.ts';
 import { syncQueue, type SyncResult } from './lib/forge-sync.ts';
 
-// Builds or refreshes `.blackhole/queue.json` from the forge (`forge-sync.md` § Queue builder):
+// Builds or refreshes `.blackhole/queue.json` from the forge (`forge-sync.md` § Queue builder script):
 // open and closed issues plus open and merged PRs, read through the configured forge's adapter.
 // Works from a fresh checkout holding only `config.json`: it also creates an empty findings ledger,
-// so `bun run status` can render the page right after. Nothing is written when a forge read fails.
+// so `bun run status` can render the page right after. Nothing is written when a forge read fails,
+// and nothing is read when `auto_sync` is false (the queue is kept offline).
+//
+// Single writer: the orchestrator is the only writer of `queue.json` (`blackhole-state.md`
+// § Single-writer invariant). Run this from the orchestrator's own turn, or when no orchestrator
+// runs (bootstrap, a fresh checkout). To keep the window for a lost concurrent write small, the
+// queue is read again just before the write and the sync is re-applied to that copy.
 
 const USAGE = 'Usage: bun run forge-sync [--campaign-dir <dir>] [--dry-run]';
 const ISSUE_LIMIT = 1000;
 
-type Config = { repo?: string; forge?: string; scope_milestone?: string; scope_labels?: string[]; default_touch_paths?: string[]; size_label_prefix?: string };
+type Config = { auto_sync?: boolean; repo?: string; forge?: string; scope_milestone?: string; scope_labels?: string[]; default_touch_paths?: string[]; size_label_prefix?: string };
 
 /** Open issues, plus closed ones only when a live queue entry is missing from the open list. */
 async function readIssues(adapter: ForgeAdapter, queue: QueueJson | null): Promise<ForgeIssue[]> {
@@ -39,31 +45,44 @@ export function summaryLine(r: SyncResult, scope: ReturnType<typeof readScope>):
   return `Forge sync${where}: ${total} in queue, +${r.added.length} new${refs(r.added)}, ${r.closed.length} closed${refs(r.closed)}, ${r.linked.length} PR linked${refs(r.linked)}`;
 }
 
+export type ForgeSyncOutcome = SyncResult | { skipped: string };
+
+const readQueue = (queuePath: string): { raw: string | null; queue: QueueJson | null } => {
+  if (!fs.existsSync(queuePath)) return { raw: null, queue: null };
+  return { raw: fs.readFileSync(queuePath, 'utf8'), queue: readJsonFile(queuePath, queuePath) as QueueJson };
+};
+
+function install(livePath: string, archiveDir: string, value: unknown, entityKey: string): void {
+  const written = installStateFile({ livePath, archiveDir, content: `${JSON.stringify(value, null, 2)}\n`, entityKey });
+  if (!written.ok) throw new Error(`Refused to write ${livePath}: ${written.reason}`);
+}
+
 /** Reads the forge and writes `queue.json` (and an empty ledger when none exists). `adapter` replaces the configured forge's, for a test. */
-export async function runForgeSync(campaignDir: string, opts: { adapter?: ForgeAdapter; now?: string; dryRun?: boolean } = {}): Promise<SyncResult> {
+export async function runForgeSync(campaignDir: string, opts: { adapter?: ForgeAdapter; now?: string; dryRun?: boolean } = {}): Promise<ForgeSyncOutcome> {
   const configPath = path.join(campaignDir, 'config.json');
   if (!fs.existsSync(configPath)) throw new Error(`No ${configPath}: forge-sync builds the queue of an existing campaign config.`);
   const config = readJsonFile(configPath, configPath) as Config;
+  if (config.auto_sync === false) return { skipped: 'auto_sync is false in config.json: the queue is kept offline, the forge was not read' };
   if (!config.repo && !opts.adapter) throw new Error(`${configPath} has no "repo": the forge cannot be read.`);
   const queuePath = path.join(campaignDir, 'queue.json');
-  const queue = fs.existsSync(queuePath) ? (readJsonFile(queuePath, queuePath) as QueueJson) : null;
+  const first = readQueue(queuePath);
   const resolved = resolveForgeForRepo(path.dirname(path.resolve(campaignDir)), config.forge);
   const forge = resolved.ok ? resolved.forge : config.forge && isForgeType(config.forge) ? config.forge : 'github';
   const adapter = opts.adapter ?? createForgeAdapter({ repo: config.repo as string, forge });
   const scope = readScope(config);
-  const issues = await readIssues(adapter, queue);
+  const issues = await readIssues(adapter, first.queue);
   const prs = await adapter.prList({ state: 'all', limit: MERGED_PR_LIMIT });
-  const result = syncQueue({ queue, issues, prs, scope, config, now: opts.now ?? new Date().toISOString() });
-  if (opts.dryRun) return result;
+  const now = opts.now ?? new Date().toISOString();
+  const sync = (queue: QueueJson | null) => syncQueue({ queue, issues, prs, scope, config, now });
+  if (opts.dryRun) return sync(first.queue);
 
+  // Re-read: a write made while the forge was being read is kept, and the sync applies on top of it.
+  const latest = readQueue(queuePath);
+  const result = sync(latest.raw === first.raw ? first.queue : latest.queue);
   const archiveDir = path.join(campaignDir, 'archive');
-  const written = installStateFile({ livePath: queuePath, archiveDir, content: `${JSON.stringify(result.queue, null, 2)}\n`, entityKey: 'issues' });
-  if (!written.ok) throw new Error(`Refused to write ${queuePath}: ${written.reason}`);
+  install(queuePath, archiveDir, result.queue, 'issues');
   const ledgerPath = path.join(campaignDir, 'findings-ledger.json');
-  if (!fs.existsSync(ledgerPath)) {
-    fs.writeFileSync(`${ledgerPath}.tmp`, `${JSON.stringify({ refreshed_at: result.queue.refreshed_at, next_id: 1, findings: [] }, null, 2)}\n`);
-    fs.renameSync(`${ledgerPath}.tmp`, ledgerPath);
-  }
+  if (!fs.existsSync(ledgerPath)) install(ledgerPath, archiveDir, { refreshed_at: now, next_id: 1, findings: [] }, 'findings');
   return result;
 }
 
@@ -78,6 +97,7 @@ async function main(): Promise<void> {
   const campaignDir = path.resolve(process.cwd(), dir);
   try {
     const result = await runForgeSync(campaignDir, { dryRun: flags['dry-run'] === true });
+    if ('skipped' in result) return console.log(`Forge sync skipped: ${result.skipped}`);
     if (flags['dry-run'] === true) console.log(JSON.stringify(result.queue, null, 2));
     const config = readJsonFile(path.join(campaignDir, 'config.json'), 'config.json') as Config;
     console.log(summaryLine(result, readScope(config)));
