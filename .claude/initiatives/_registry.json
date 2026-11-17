@@ -1,8 +1,21 @@
 {
   "version": "3.0",
-  "focus": null,
-  "lastUpdated": "2026-07-21T00:00:00Z",
-  "initiatives": [],
+  "focus": "catchup-mode",
+  "lastUpdated": "2026-11-17T13:54:05Z",
+  "initiatives": [
+    {
+      "name": "catchup-mode",
+      "displayName": "Catchup mode: weekly quota pacing (ADR-053)",
+      "priority": 1,
+      "status": "in_progress",
+      "dependsOn": [],
+      "relatedTo": [
+        "documentation/decisions/ADR-053-catchup-mode-quota-pacing.md"
+      ],
+      "blockedBy": [],
+      "created": "2026-11-17T13:54:05Z"
+    }
+  ],
   "archived": [
     {
       "name": "companion-substrate-closure",
@@ -18,7 +31,7 @@
       "blockedBy": [],
       "created": "2026-07-20T00:00:00Z",
       "archivedAt": "2026-07-21T00:00:00Z",
-      "archiveNote": "All 6 milestones merged+pushed (54d08f4, eed17e5, 1fb772e, 8f13aef, 48581f4, 2c6d24e). Summary at documentation/milestones/_archived/companion-substrate-closure.md. OPEN FOLLOW-UP: M5 autonomy flip shipped with the green-campaign Entry-Gate WAIVED — T3 live-campaign verification (4 criteria) still outstanding, observe on next campaign; rollback autonomy.enabled:false."
+      "archiveNote": "All 6 milestones merged+pushed (54d08f4, eed17e5, 1fb772e, 8f13aef, 48581f4, 2c6d24e). Summary at documentation/milestones/_archived/companion-substrate-closure.md. OPEN FOLLOW-UP: M5 autonomy flip shipped with the green-campaign Entry-Gate WAIVED \u2014 T3 live-campaign verification (4 criteria) still outstanding, observe on next campaign; rollback autonomy.enabled:false."
     },
     {
       "name": "mercure-parity-program",

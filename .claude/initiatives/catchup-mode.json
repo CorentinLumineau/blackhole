@@ -1,0 +1,17 @@
+{
+  "version": "2.0",
+  "name": "catchup-mode",
+  "status": "in_progress",
+  "currentMilestone": "M1",
+  "currentPhase": "plan",
+  "lastUpdated": "2026-11-17T13:54:05Z",
+  "progress": {},
+  "milestones": {},
+  "execConfig": {
+    "branchModel": "shared",
+    "sharedBranch": "design/catchup-mode",
+    "pinnedAt": "2026-11-17T13:54:05Z"
+  },
+  "checkpoints": [],
+  "nextAction": "Run M1 plan"
+}
