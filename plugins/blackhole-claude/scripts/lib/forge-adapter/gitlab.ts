@@ -2,6 +2,7 @@ import { runGlab, runGlabJson, runGlabText } from './glab-cli.ts';
 import { isUnavailable, readDependencies, writeDependencies, type BodyChannel, type NativeDependencyChannel } from './dependencies.ts';
 import type {
   DependencyRef,
+  DependencyTarget,
   ForgeAdapter,
   ForgeDependencies,
   ForgeAuthStatus,
@@ -130,25 +131,26 @@ export class GitLabForgeAdapter implements ForgeAdapter {
     throw new Error('not-supported: prChangeBase on the gitlab forge');
   }
 
-  async getDependencies(pr: number): Promise<ForgeDependencies> {
-    return readDependencies('gitlab', this.repo, pr, this.nativeDependencies(), this.mrBodies());
+  async getDependencies(target: DependencyTarget): Promise<ForgeDependencies> {
+    return readDependencies('gitlab', this.repo, target, this.nativeDependencies(), this.mrBodies());
   }
 
-  async setDependencies(pr: number, blockedBy: DependencyRef[]): Promise<ForgeDependencies> {
-    return writeDependencies('gitlab', this.repo, pr, blockedBy, this.nativeDependencies(), this.mrBodies());
+  async setDependencies(target: DependencyTarget, blockedBy: DependencyRef[]): Promise<ForgeDependencies> {
+    return writeDependencies('gitlab', this.repo, target, blockedBy, this.nativeDependencies(), this.mrBodies());
   }
 
   /**
-   * Merge request dependencies ("blocked by" merge requests, GitLab Premium). A plan without them
-   * answers 403 or 404, and the edges fall back to body lines; an issue can never block a merge
-   * request natively, so an issue blocker is always a body line. The POST names the blocker by its
-   * global `id`, so each add reads the blocking merge request first.
+   * Merge request dependencies ("blocked by" merge requests, GitLab Premium) join two merge
+   * requests, so edges are read and written on the merge request with a same-project merge
+   * request as the blocker; an issue or cross-project blocker is a body line. A project without
+   * the feature answers 404; any other failure, a 403 included, throws. The POST names the
+   * blocker by its global `id`, so each add reads the blocking merge request first.
    */
   private nativeDependencies(): NativeDependencyChannel {
     const project = (repo: string) => encodeURIComponent(repo);
-    const blocks = (pr: number) => `projects/${project(this.repo)}/merge_requests/${pr}/blocks`;
+    const blocks = (mr: number) => `projects/${project(this.repo)}/merge_requests/${mr}/blocks`;
     return {
-      list: (pr) => {
+      list: ({ pr }) => {
         let rows: GlabBlockRow[];
         try {
           rows = glabApiJson<GlabBlockRow[]>(blocks(pr)) ?? [];
@@ -161,12 +163,12 @@ export class GitLabForgeAdapter implements ForgeAdapter {
           return { ref: { repo: full?.[1] ?? this.repo, number: row.blocking_merge_request.iid, kind: 'pr' as const }, handle: row.id };
         });
       },
-      holds: (ref) => ref.kind === 'pr',
-      add: (pr, ref) => {
+      holds: (ref) => ref.kind === 'pr' && ref.repo === this.repo,
+      add: ({ pr }, ref) => {
         const { id } = glabApiJson<{ id: number }>(`projects/${project(ref.repo)}/merge_requests/${ref.number}`);
         glabApiJson(`${blocks(pr)}?blocking_merge_request_id=${id}`, 'POST');
       },
-      remove: (pr, edge) => {
+      remove: ({ pr }, edge) => {
         glabApiJson(`${blocks(pr)}/${edge.handle}`, 'DELETE');
       },
     };

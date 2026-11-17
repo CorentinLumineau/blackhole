@@ -45,6 +45,7 @@ Mutations to `.blackhole/queue.json` and
 | `pace-log.jsonl` | Per-spawn-round pace/resource verdicts, planned batch and effective concurrency, newest 200 lines (gitignored, written by `scripts/pace-log.ts`, diagnostic only) |
 | `run-context.json` | What this run can do and the route resolved from it, rewritten at every bootstrap and resume (see `run-context.md`) |
 | `owner-decisions.json` | `{"decisions": [{date, text, refs?}]}` — the owner's answers and scope/priority instructions, appended only by `scripts/campaign-record.ts decision` (gitignored; travels on the state branch; see `status-page.md` § What the orchestrator records) |
+| `pending-decisions.json` | `{"next_id", "decisions": [{id, question, options, recommended, evidence?, blocks, gate?, created_at}]}` — owner questions parked while `sleep_mode.enabled` is `true`, written only by `scripts/campaign-record.ts park`/`resolve` through the write guard (entity key `decisions`; gitignored; travels on the state branch; see `sleep-mode.md`) |
 | `status-artifact.json` | `{url, kind, created_at, template_version, template_sha256}` of the campaign's one published status page (**tracked** — commit it, un-ignore it with `!.blackhole/status-artifact.json` under a `.blackhole/*` ignore, so every session and machine redeploys the same link; see `status-page.md`) |
 | `.tmp/status.html` | Latest rendered status page, rewritten by `bun run status --html` (gitignored, local only) |
 

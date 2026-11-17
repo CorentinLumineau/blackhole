@@ -30,7 +30,7 @@ const MATCHERS: MatcherSpec[] = [
  * The ERROR-outcome contract (plan § Database/API Schema Changes): exit 0 (allow) and exit 2
  * (the validator's own deliberate deny) pass through verbatim — anything else means the validator
  * process itself could not run to completion (bad path, missing binary, crash before it reaches
- * its own failClosed()). That case degrades to allow rather than fail-closed, so an infra hiccup
+ * its own failClosed()). That case degrades to allow rather than fail-closed (a TIMEOUT does not: see the deadline policy in `buildCommand`), so an infra hiccup
  * can never stall the orchestrator's own session, but it is durably recorded under
  * .blackhole/hook-events/ with `tier: "error"` so Triage still surfaces it. The explicit
  * `code=$?` capture and 0/2 branch (not a blanket `command1 || fallback`) is what keeps a
@@ -52,7 +52,7 @@ const MATCHERS: MatcherSpec[] = [
  */
 /** Double-quoted JS only — it is embedded inside a single-quoted shell argument. */
 const RECORD_JS =
-  'const e=process.env;const t=e.HOOK_STDERR_TAIL;process.stdout.write(JSON.stringify({version:2,recorded_at:e.HOOK_RECORDED_AT,hook:e.HOOK_NAME,tool:e.HOOK_TOOL||null,decision:"allow",tier:"error",pattern_id:"hook-exec-failure",reason:"validator process exited "+e.HOOK_CODE+" before producing a decision",worktree:e.HOOK_WORKTREE||null,detail:"process exit code "+e.HOOK_CODE+" ("+e.HOOK_KIND+")"+(t?": "+t:""),agent_id:null,agent_type:null}));';
+  'const e=process.env;const t=e.HOOK_STDERR_TAIL;process.stdout.write(JSON.stringify({version:2,recorded_at:e.HOOK_RECORDED_AT,hook:e.HOOK_NAME,tool:e.HOOK_TOOL||null,decision:e.HOOK_DECISION,tier:e.HOOK_TIER,pattern_id:e.HOOK_PATTERN,reason:e.HOOK_REASON,worktree:e.HOOK_WORKTREE||null,detail:"process exit code "+e.HOOK_CODE+" ("+e.HOOK_KIND+")"+(t?": "+t:""),agent_id:null,agent_type:null}));';
 
 const buildCommand = (spec: MatcherSpec): string => {
   const hookName = spec.script.replace(/\.js$/, '');
@@ -65,12 +65,35 @@ const buildCommand = (spec: MatcherSpec): string => {
     // read), which a plain command substitution does not let pass through. `trap ... EXIT`
     // guarantees cleanup on every exit path without touching the exit-code contract line below.
     'stderr_tmp="$(mktemp)"',
-    'trap \'rm -f "$stderr_tmp"\' EXIT',
+    'input_tmp="$(mktemp)"',
+    'deadline_flag="$stderr_tmp.deadline"',
+    'trap \'rm -f "$stderr_tmp" "$input_tmp" "$deadline_flag"\' EXIT',
+    // Deadline policy (#1197): the validator runs under its own deadline, below the harness's 5 s
+    // hook timeout, which fails OPEN. A validator that has not reached a verdict by then is
+    // killed and the call is DENIED (`hook-verification-timeout`) — an input slow enough to
+    // outrun the deadline must never turn into an allow. A CRASH (any non-0/2 exit before the
+    // deadline) stays fail-open, exactly as the contract above. Plain POSIX shell (background job
+    // plus a killing watcher) because `timeout` is absent from stock macOS. A background job gets
+    // /dev/null for stdin, so the payload is spooled first; the watcher's output is detached so
+    // its orphaned `sleep` cannot hold the hook's stdout open.
+    'cat > "$input_tmp"',
     'start_s="$(date +%s)"',
-    `bun run "$CLAUDE_PROJECT_DIR/.claude/hooks/${spec.script}" 2>"$stderr_tmp"`,
+    `bun run "$CLAUDE_PROJECT_DIR/.claude/hooks/${spec.script}" < "$input_tmp" 2>"$stderr_tmp" &`,
+    'validator_pid=$!',
+    '( sleep "${BLACKHOLE_HOOK_DEADLINE_S:-4}" && : > "$deadline_flag" && kill -9 "$validator_pid" ) >/dev/null 2>&1 &',
+    'watcher_pid=$!',
+    'wait "$validator_pid"',
     'code=$?',
+    'kill "$watcher_pid" >/dev/null 2>&1',
     'end_s="$(date +%s)"',
     'if [ "$code" = "0" ] || [ "$code" = "2" ]; then exit "$code"; fi',
+    'decision=allow; tier=error; pattern=hook-exec-failure',
+    'reason="validator process exited $code before producing a decision"',
+    'timed_out=0',
+    'if [ -e "$deadline_flag" ]; then',
+    '  timed_out=1; decision=deny; tier=block; pattern=hook-verification-timeout',
+    '  reason="validator did not reach a verdict before its deadline - refused fail-closed. Remedy: split the command into smaller calls."',
+    'fi',
     'mkdir -p "$CLAUDE_PROJECT_DIR/.blackhole/hook-events" 2>/dev/null',
     'worktree="$(git -C "$CLAUDE_PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"',
     // Whole-second elapsed time, not `date +%s%N`: BSD/macOS date has no %N, and an
@@ -91,6 +114,7 @@ const buildCommand = (spec: MatcherSpec): string => {
     `  HOOK_NAME="${hookName}" \\`,
     `  HOOK_TOOL="${toolName}" \\`,
     '  HOOK_CODE="$code" \\',
+    '  HOOK_DECISION="$decision" HOOK_TIER="$tier" HOOK_PATTERN="$pattern" HOOK_REASON="$reason" \\',
     '  HOOK_WORKTREE="$worktree" \\',
     '  HOOK_KIND="$kind" \\',
     '  HOOK_STDERR_TAIL="$stderr_tail" \\',
@@ -100,6 +124,11 @@ const buildCommand = (spec: MatcherSpec): string => {
     '  rm -f "$record_tmp" 2>/dev/null',
     'fi',
     'if [ "$record_written" = "1" ]; then note="see .blackhole/hook-events/"; else note="record NOT written to .blackhole/hook-events/"; fi',
+    'if [ "$timed_out" = "1" ]; then',
+    '  printf \'{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blackhole PreToolUse: denied - %s [hook-verification-timeout]"}}\\n\' "$reason"',
+    '  echo "blackhole PreToolUse: denied - $reason [hook-verification-timeout]" >&2',
+    '  exit 2',
+    'fi',
     `echo "[blackhole-hook] ${hookName}: validator process exited $code before producing a decision — call allowed (fail-open); $note" >&2`,
     'exit 0',
   ].join('\n');

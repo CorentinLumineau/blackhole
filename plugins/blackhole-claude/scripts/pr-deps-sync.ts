@@ -40,6 +40,8 @@ async function main(): Promise<number> {
   const result = await syncPrDependencies(adapter, queue, { apply, repo, queuePath });
   if (result.queue && out) fs.writeFileSync(out, `${JSON.stringify(result.queue, null, 2)}\n`);
   console.log(JSON.stringify({ rows: result.rows, errors: result.errors }, null, 2));
+  const bodyOnly = result.rows.filter((r) => !r.native).map((r) => `#${r.issue}`);
+  if (bodyOnly.length) console.error(`no native dependency feature (HTTP 404/410) for ${bodyOnly.join(', ')}: their edges are PR-body lines`);
   return result.errors.length ? 1 : 0;
 }
 

@@ -81,17 +81,27 @@ export function planPrDependencies(input: PlanInput): PrDepsPlan[] {
   const byPr = new Map(Object.entries(issues).filter(([, v]) => v.pr != null).map(([k, v]) => [v.pr as number, Number(k)]));
   const satisfied = (n: number) => SATISFIED.has(issues[String(n)]?.status ?? '');
 
-  /** The queue issue a same-repo forge ref names; null when it names none that can be read. */
+  /**
+   * The queue issue a same-repo forge ref names; null when it names none for certain. On GitHub and
+   * Gitea one number sequence covers issues and PRs, so a number is a queue issue, a queue issue's
+   * PR, or (read from a native edge, which only ever joins issues) an issue outside the queue; a
+   * body line naming another number may be a PR and is left unresolved. On GitLab `#N` is always an
+   * issue and `!N` a merge request.
+   */
   const resolve = (r: DependencyRef): number | null => {
+    const asIssue = r.kind === 'issue' || sharedNumbers;
+    if (asIssue && issues[String(r.number)] !== undefined) return r.number;
     if (r.kind === 'pr' || sharedNumbers) {
       const hit = byPr.get(r.number);
       if (hit != null) return hit;
     }
-    return r.kind === 'issue' || sharedNumbers ? r.number : null;
+    if (r.kind === 'issue' && (!sharedNumbers || r.via === 'native')) return r.number;
+    return null;
   };
+  /** The forge edge for dependency `n`: an issue on GitHub/Gitea, the merge request on GitLab when it has one. */
   const toRef = (n: number): DependencyRef => {
     const dep = issues[String(n)];
-    return isOpenPr(dep) ? { repo, number: dep!.pr as number, kind: 'pr' } : { repo, number: n, kind: 'issue' };
+    return !sharedNumbers && isOpenPr(dep) ? { repo, number: dep!.pr as number, kind: 'pr' } : { repo, number: n, kind: 'issue' };
   };
   const crossKey = (d: CrossRepoDep) => refKey({ repo: d.repo, number: d.number, kind: 'pr' }, forge);
 
@@ -114,7 +124,7 @@ export function planPrDependencies(input: PlanInput): PrDepsPlan[] {
       }
     }
     const basePr = input.openPrs.find((p) => p.headRefName === read.baseRefName && p.number !== me.pr && !p.headRepoIsFork);
-    const baseIssue = basePr ? resolve({ repo, number: basePr.number, kind: 'pr' }) : null;
+    const baseIssue = basePr ? (byPr.get(basePr.number) ?? null) : null;
     const stackedOn = baseIssue != null && baseIssue !== n ? baseIssue : null;
     if (stackedOn != null) forgeSame.add(issueKey(stackedOn));
 
@@ -124,17 +134,16 @@ export function planPrDependencies(input: PlanInput): PrDepsPlan[] {
     const last = me.forge_deps ? new Set(me.forge_deps.synced.filter((k) => isIssueKey(k) && !satisfied(keyIssue(k)))) : null;
     const merged = [...merge3(queueSame, forgeSame, last)].map(keyIssue).sort((a, b) => a - b);
 
-    // Stack first: the live base carries its edge; else one open-PR dependency becomes a restack.
+    // Stack first: the live base carries its edge. One open-PR dependency not yet stacked becomes
+    // a restack, and until the base really moves it also gets a native edge, so the forge shows it
+    // at once; the next sync after the restack drops that edge.
     const openDeps = merged.filter((d) => isOpenPr(issues[String(d)]));
     let restack: Restack | null = null;
-    let viaStack: number | null = stackedOn != null && merged.includes(stackedOn) ? stackedOn : null;
+    const viaStack = stackedOn != null && merged.includes(stackedOn) ? stackedOn : null;
     if (viaStack == null && openDeps.length === 1) {
       const parent = openDeps[0]!;
       const head = input.openPrs.find((p) => p.number === issues[String(parent)]!.pr && !p.headRepoIsFork);
-      if (head) {
-        restack = { parent, parentPr: head.number, parentBranch: head.headRefName };
-        viaStack = parent;
-      }
+      if (head) restack = { parent, parentPr: head.number, parentBranch: head.headRefName };
     }
     const same = merged.filter((d) => d !== viaStack).map(toRef);
 
@@ -149,7 +158,7 @@ export function planPrDependencies(input: PlanInput): PrDepsPlan[] {
     const have = new Set(dedupeRefs(read.blockedBy, forge).map((r) => refKey(r, forge)));
     const write = want.size !== have.size || [...want].some((k) => !have.has(k));
 
-    const synced = [...merged.filter((d) => d !== viaStack || d === stackedOn).map(issueKey), ...cross.map((r) => refKey(r, forge))];
+    const synced = [...merged.map(issueKey), ...cross.map((r) => refKey(r, forge))];
     plans.push({
       issue: n,
       pr: me.pr as number,
@@ -192,6 +201,8 @@ export type PrDepsReportRow = {
   blocked_by: string[];
   write: boolean;
   applied: boolean;
+  /** False when the forge said it has no native dependency feature (404/410): every edge is a PR-body line. Never silent. */
+  native: boolean;
   restack: (Restack & { command: string }) | null;
   unresolved: string[];
 };
@@ -227,11 +238,14 @@ export async function syncPrDependencies(
   for (const i of openIssues) if (issues[String(i.number)]) crossRepoBody[String(i.number)] = parseCrossRepoDepsFromBody(i.body);
 
   const reads: Record<string, PrForgeRead> = {};
+  const native: Record<string, boolean> = {};
   for (const [key, issue] of Object.entries(issues)) {
     const pr = openPrs.find((p) => p.number === issue.pr);
     if (!isOpenPr(issue) || !pr) continue;
     try {
-      reads[key] = { blockedBy: (await adapter.getDependencies(pr.number)).blockedBy, baseRefName: pr.baseRefName };
+      const deps = await adapter.getDependencies({ issue: Number(key), pr: pr.number });
+      reads[key] = { blockedBy: deps.blockedBy, baseRefName: pr.baseRefName };
+      native[key] = deps.native;
     } catch (error) {
       errors.push(`#${key} (PR #${pr.number}): reading dependencies failed: ${message(error)}`);
     }
@@ -244,7 +258,7 @@ export async function syncPrDependencies(
     let applied = false;
     if (opts.apply) {
       try {
-        const back = plan.write ? await adapter.setDependencies(plan.pr, plan.blockedBy) : { blockedBy: plan.blockedBy };
+        const back = plan.write ? await adapter.setDependencies({ issue: plan.issue, pr: plan.pr }, plan.blockedBy) : { blockedBy: plan.blockedBy };
         const want = new Set(plan.blockedBy.map((r) => refKey(r, adapter.forge)));
         const got = new Set(dedupeRefs(back.blockedBy, adapter.forge).map((r) => refKey(r, adapter.forge)));
         applied = want.size === got.size && [...want].every((k) => got.has(k));
@@ -261,6 +275,7 @@ export async function syncPrDependencies(
       blocked_by: plan.blockedBy.map((r) => refKey(r, adapter.forge)),
       write: plan.write,
       applied,
+      native: native[String(plan.issue)] ?? false,
       restack: plan.restack && {
         ...plan.restack,
         command: `bun run scripts/stack-repair.ts restack --queue ${opts.queuePath} --repo-slug ${opts.repo} --repo-root <abs> --child-issue ${plan.issue} --parent-issue ${plan.restack.parent} --parent-pr ${plan.restack.parentPr} --apply`,

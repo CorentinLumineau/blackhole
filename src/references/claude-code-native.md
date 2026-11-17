@@ -56,6 +56,9 @@ The same ownership covers the campaign-start status page: once the gate is answe
 the first fan-out, the main chat publishes or refreshes it (`status-page.md` § Refresh
 procedure), unless `status_page.enabled` is `false`.
 
+In sleep mode (`sleep-mode.md`) the main chat asks nothing in the foreground: every gate goes
+through `askOrPark()` and is parked until the wake-up round.
+
 ## Two-tier gate topology
 
 1. **Batched gate-first per wave.** Before fan-out, the foreground orchestrator collects every
@@ -65,6 +68,12 @@ procedure), unless `status_page.enabled` is `false`.
    user — it returns `status: blocked` with a structured reason. That issue's chain skips its
    remaining stages for this wave; sibling chains continue uninterrupted. Once the user answers,
    the issue re-dispatches as a fresh chain in the next wave.
+
+3. **Spawn-round gates.** Before each fan-out, run the same gates Pattern B runs
+   (`orchestrator-runtime.md` § Background worker barrier, Spawn steps 1-3): `scripts/pace-gate.ts`,
+   `scripts/usage-budget.ts` and, for test/build-bearing workers, `scripts/resource-gate.ts`. The
+   fan-out is at most the smallest of their counts, and a usage stop drains and wakes per
+   `phase-stop.md` § Usage stop.
 
 ## Per-issue chain granularity
 
@@ -107,6 +116,19 @@ Detect session primitives — never bake-time "this harness cannot" claims (issu
 
 When C2+C3 are both detected, the main chat **may** orchestrate directly (Pattern C-lite) using `Task` fan-out; Pattern B (coordinator + background orchestrator) remains the fallback when either primitive is absent.
 {{/cursor}}
+
+## Cross-session budget transport
+
+The manager/peer shared-budget protocol (`multitask-mode.md` § Shared usage budget) needs a way
+for one session to message another. Each harness maps it to its own cross-session message tool:
+
+| Harness | Transport |
+|---|---|
+| Claude Code (Remote) | The host's cross-session `send_message` tool (`claude-code-remote` server), addressed by session id; `coordination.manager_session` holds the manager's id and each message names the sender's session, so the reply goes back the same way |
+| Any host without a cross-session message tool | None. `coordination.role` must be `solo`, and the budget is per-session |
+
+A `manager` or `peer` role on a host without such a tool is a misconfiguration: the orchestrator treats the
+session as `solo` and tells the owner, rather than waiting on messages that can never arrive.
 
 ## Turn-end step (main-chat orchestrator)
 

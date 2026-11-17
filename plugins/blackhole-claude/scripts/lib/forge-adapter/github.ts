@@ -17,6 +17,7 @@ import {
 import { isUnavailable, readDependencies, writeDependencies, type BodyChannel, type NativeDependencyChannel, type NativeEdge } from './dependencies.ts';
 import type {
   DependencyRef,
+  DependencyTarget,
   ForgeAdapter,
   ForgeDependencies,
   ForgeAuthStatus,
@@ -125,29 +126,33 @@ export class GitHubForgeAdapter implements ForgeAdapter {
     return changePrBase(this.repo, number, base);
   }
 
-  async getDependencies(pr: number): Promise<ForgeDependencies> {
-    return readDependencies('github', this.repo, pr, this.nativeDependencies(), this.prBodies());
+  async getDependencies(target: DependencyTarget): Promise<ForgeDependencies> {
+    return readDependencies('github', this.repo, target, this.nativeDependencies(), this.prBodies());
   }
 
-  async setDependencies(pr: number, blockedBy: DependencyRef[]): Promise<ForgeDependencies> {
-    return writeDependencies('github', this.repo, pr, blockedBy, this.nativeDependencies(), this.prBodies());
+  async setDependencies(target: DependencyTarget, blockedBy: DependencyRef[]): Promise<ForgeDependencies> {
+    return writeDependencies('github', this.repo, target, blockedBy, this.nativeDependencies(), this.prBodies());
   }
 
   /**
-   * GitHub's issue dependencies ("blocked by"), which a pull request has as an issue. A repo
-   * without the feature answers 404 (or 403/410), and the edges fall back to body lines. The POST
-   * names the blocker by its global `id`, not its number, so each add reads the blocker first.
+   * GitHub's issue dependencies ("blocked by") join two ISSUES: a pull request on either end is
+   * refused with 422 "Source issue may only be an issue". So edges are read and written on the
+   * queue issue, and only a same-repo issue can be the blocker; a PR, cross-repo or issue-less
+   * blocker is a PR-body line. The POST names the blocker by its global issue `id`, so each add
+   * reads the blocker first and refuses one that turns out to be a pull request. A repo without
+   * the feature answers 404 (or 410); any other failure, a 403 included, throws.
    */
   private nativeDependencies(): NativeDependencyChannel {
-    const endpoint = (pr: number) => `repos/${this.repo}/issues/${pr}/dependencies/blocked_by`;
+    const endpoint = (issue: number) => `repos/${this.repo}/issues/${issue}/dependencies/blocked_by`;
     return {
-      list: (pr) => {
+      list: ({ issue }) => {
+        if (issue == null) return [];
         const edges: NativeEdge[] = [];
         for (let page = 1; page <= BLOCKER_MAX_PAGES; page++) {
-          const result = runGhApi('GET', `${endpoint(pr)}?per_page=${BLOCKER_PAGE}&page=${page}`);
+          const result = runGhApi('GET', `${endpoint(issue)}?per_page=${BLOCKER_PAGE}&page=${page}`);
           if (result.status !== 0) {
             if (page === 1 && isUnavailable(result.stderr)) return null;
-            throw new Error(result.stderr.trim() || `reading the blockers of #${pr} failed`);
+            throw new Error(result.stderr.trim() || `reading the blockers of issue #${issue} failed`);
           }
           const rows = JSON.parse(result.stdout || '[]') as RestBlockerRow[];
           for (const row of rows) {
@@ -156,15 +161,16 @@ export class GitHubForgeAdapter implements ForgeAdapter {
           }
           if (rows.length < BLOCKER_PAGE) return edges;
         }
-        throw new Error(`#${pr} lists more than ${BLOCKER_PAGE * BLOCKER_MAX_PAGES} blockers`);
+        throw new Error(`issue #${issue} lists more than ${BLOCKER_PAGE * BLOCKER_MAX_PAGES} blockers`);
       },
-      holds: () => true,
-      add: (pr, ref) => {
-        const { id } = runGhApiRestJson<{ id: number }>('GET', `repos/${ref.repo}/issues/${ref.number}`);
-        runGhApiRestJson('POST', endpoint(pr), { issue_id: id });
+      holds: (ref, target) => target.issue != null && ref.repo === this.repo && ref.kind === 'issue',
+      add: ({ issue }, ref) => {
+        const row = runGhApiRestJson<{ id: number; pull_request?: unknown }>('GET', `repos/${ref.repo}/issues/${ref.number}`);
+        if (row.pull_request) throw new Error(`#${ref.number} is a pull request; GitHub blocked_by joins issues only`);
+        runGhApiRestJson('POST', endpoint(issue as number), { issue_id: row.id });
       },
-      remove: (pr, edge) => {
-        runGhApiRestJson('DELETE', `${endpoint(pr)}/${edge.handle}`);
+      remove: ({ issue }, edge) => {
+        runGhApiRestJson('DELETE', `${endpoint(issue as number)}/${edge.handle}`);
       },
     };
   }

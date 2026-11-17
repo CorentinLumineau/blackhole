@@ -1,22 +1,27 @@
 import { placeDependencyLines } from '../../forge-deps.ts';
-import type { DependencyRef, ForgeDependencies, ForgeType } from './types.ts';
+import type { DependencyRef, DependencyTarget, ForgeDependencies, ForgeType } from './types.ts';
 
 // The one get/set flow behind every backend's `getDependencies`/`setDependencies` (ADR-027): a
 // backend supplies its native "blocked by" channel and its PR-body channel, and this module decides
 // which edge goes where, writes only the difference, and reads the result back. An edge the native
-// channel cannot hold (no native feature on the repo, or a GitLab issue blocker) becomes a
-// `Blocked by #N` line in the PR body, the fallback a human sees on any forge.
+// channel cannot hold (no native feature on the repo, a cross-repo or non-issue blocker on
+// GitHub/Gitea, an issue blocker on GitLab) becomes a `Blocked by #N` line in the PR body, the
+// fallback a human sees on any forge. An edge read from one channel that the planner passes back
+// unchanged (`via`) stays in that channel.
 
 /** One native edge as the forge lists it; `handle` is whatever the backend needs to delete it. */
 export type NativeEdge = { ref: DependencyRef; handle: string | number };
 
 export interface NativeDependencyChannel {
-  /** The PR's native edges, or null when the forge offers no native dependency feature here. */
-  list(pr: number): NativeEdge[] | null;
-  /** Whether a native edge can name `ref`. */
-  holds(ref: DependencyRef): boolean;
-  add(pr: number, ref: DependencyRef): void;
-  remove(pr: number, edge: NativeEdge): void;
+  /**
+   * The target's native edges, or null when the forge answered that the feature does not exist
+   * here (404/410). Any other failure, a 403 included (rate limit, token scope), throws.
+   */
+  list(target: DependencyTarget): NativeEdge[] | null;
+  /** Whether a native edge of `target` can name `ref`. */
+  holds(ref: DependencyRef, target: DependencyTarget): boolean;
+  add(target: DependencyTarget, ref: DependencyRef): void;
+  remove(target: DependencyTarget, edge: NativeEdge): void;
 }
 
 export interface BodyChannel {
@@ -77,37 +82,41 @@ export const writeBodyRefs = (body: string, refs: DependencyRef[], repo: string,
 export const readDependencies = (
   forge: ForgeType,
   repo: string,
-  pr: number,
+  target: DependencyTarget,
   native: NativeDependencyChannel,
   bodies: BodyChannel,
 ): ForgeDependencies => {
-  const edges = native.list(pr);
-  const fromBody = parseBodyRefs(bodies.read(pr), repo, forge);
-  return { native: edges !== null, blockedBy: dedupeRefs([...(edges ?? []).map((e) => e.ref), ...fromBody], forge) };
+  const edges = native.list(target);
+  const fromNative = (edges ?? []).map((e): DependencyRef => ({ ...e.ref, via: 'native' }));
+  const fromBody = parseBodyRefs(bodies.read(target.pr), repo, forge).map((r): DependencyRef => ({ ...r, via: 'body' }));
+  return { native: edges !== null, blockedBy: dedupeRefs([...fromNative, ...fromBody], forge) };
 };
 
 export const writeDependencies = (
   forge: ForgeType,
   repo: string,
-  pr: number,
+  target: DependencyTarget,
   blockedBy: DependencyRef[],
   native: NativeDependencyChannel,
   bodies: BodyChannel,
 ): ForgeDependencies => {
   const want = dedupeRefs(blockedBy, forge);
-  const edges = native.list(pr);
-  const wantNative = edges ? want.filter((ref) => native.holds(ref)) : [];
+  const edges = native.list(target);
+  const wantNative = edges ? want.filter((ref) => ref.via === 'native' || (ref.via !== 'body' && native.holds(ref, target))) : [];
   const nativeKeys = new Set(wantNative.map((r) => refKey(r, forge)));
   const wantBody = want.filter((ref) => !nativeKeys.has(refKey(ref, forge)));
   if (edges) {
     const have = new Set(edges.map((e) => refKey(e.ref, forge)));
-    for (const edge of edges) if (!nativeKeys.has(refKey(edge.ref, forge))) native.remove(pr, edge);
-    for (const ref of wantNative) if (!have.has(refKey(ref, forge))) native.add(pr, ref);
+    for (const edge of edges) if (!nativeKeys.has(refKey(edge.ref, forge))) native.remove(target, edge);
+    for (const ref of wantNative) if (!have.has(refKey(ref, forge))) native.add(target, ref);
   }
-  const body = bodies.read(pr);
-  if (!sameKeys(parseBodyRefs(body, repo, forge), wantBody, forge)) bodies.write(pr, writeBodyRefs(body, wantBody, repo, forge));
-  return readDependencies(forge, repo, pr, native, bodies);
+  const body = bodies.read(target.pr);
+  if (!sameKeys(parseBodyRefs(body, repo, forge), wantBody, forge)) bodies.write(target.pr, writeBodyRefs(body, wantBody, repo, forge));
+  return readDependencies(forge, repo, target, native, bodies);
 };
 
-/** True when a failed forge call means "this repo has no such endpoint or feature", not a failure. */
-export const isUnavailable = (text: string): boolean => /\b(?:HTTP\s*)?(?:403|404|410)\b/.test(text);
+/**
+ * True when a failed forge call says the endpoint or feature does not exist here (404, 410). A 403
+ * is not that: a rate limit or a token without the scope must fail loudly, never switch channel.
+ */
+export const isUnavailable = (text: string): boolean => /\b(?:HTTP\s*)?(?:404|410)\b/.test(text);

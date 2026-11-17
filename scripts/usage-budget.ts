@@ -1,9 +1,7 @@
 import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { readRateLimits, resolvePaceGateThresholds, type RateLimits, type RateWindow } from './lib/pace-gate.ts';
+import { readRateLimits, resolvePaceGateThresholds, resolveRateLimitCachePath, type RateLimits, type RateWindow } from './lib/pace-gate.ts';
 import { resolveUsageBudget, workersAllowed, type UsageVerdict } from './lib/usage-budget.ts';
 
 // Usage: bun run scripts/usage-budget.ts --parallel-max <n> [--usage '<json>' | --cache <path>]
@@ -11,8 +9,10 @@ import { resolveUsageBudget, workersAllowed, type UsageVerdict } from './lib/usa
 // `--usage` is the normalized RateLimits JSON the agent builds from its harness usage call:
 //   {"five_hour":{"used_percentage":0-100,"resets_at":<epoch s>},"seven_day":{...}}  (either window optional)
 // Without it the statusline cache is read through pace-gate.ts's readRateLimits. Prints the verdict
-// JSON on stdout (with `weekly_fit` when `usage_budget.weekly.target_at_reset` is set; the weekly fit
-// and any PACE-WAIT wake time also go to stderr); exit 0 on any verdict, 2 on bad usage, a malformed
+// JSON on stdout (with `weekly_fit` when `usage_budget.weekly.target_at_reset` is set, and
+// `five_hour_pct`/`weekly_pct`, the usage judged or null when none was read, so the line passes
+// unchanged to `pace-log.ts --usage`; the weekly fit and any PACE-WAIT wake time also go to
+// stderr); exit 0 on any verdict, 2 on bad usage, a malformed
 // `--usage` (enabled or not) or an invalid config.
 const USAGE =
   "usage: usage-budget.ts --parallel-max <n> [--usage '<json>' | --cache <path>] [--config <path>] [--now <epoch s>]";
@@ -69,8 +69,7 @@ const main = (): void => {
     const config = fs.existsSync(configPath) ? (readJsonFile(configPath, configPath) as Record<string, unknown>) : {};
     budget = resolveUsageBudget(config);
     maxAge = resolvePaceGateThresholds(config).maxAgeSeconds;
-    const pace = ((config.resource_policy ?? {}) as { pace?: { cache_path?: unknown } }).pace;
-    if (!cachePath) cachePath = typeof pace?.cache_path === 'string' ? pace.cache_path : path.join(os.homedir(), '.claude', 'cache', 'rate-limits.json');
+    if (!cachePath) cachePath = resolveRateLimitCachePath(config);
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
   }
@@ -86,12 +85,14 @@ const main = (): void => {
   }
 
   let verdict: UsageVerdict;
+  let judged: RateLimits | null = null;
   if (!budget.enabled) {
     verdict = { verdict: 'unavailable', workers: parallelMax as number, reasons: ['usage_budget disabled'], wake_at: null, hours_to_reset: null, weekly_fit: null };
   } else {
     let limits: RateLimits | null = given;
     let reason: string | null = null;
     if (!given) ({ limits, reason } = readRateLimits(cachePath, now as number, maxAge));
+    judged = limits;
     verdict = workersAllowed(limits, now as number, budget, parallelMax as number);
     if (reason) verdict.reasons.unshift(reason);
   }
@@ -100,7 +101,7 @@ const main = (): void => {
     console.error(`usage-budget: weekly fit ${verdict.weekly_fit} worker(s) toward ${budget.weekly.target_at_reset}% at reset`);
   }
   if (verdict.verdict === 'PACE-WAIT') console.error(`usage-budget: PACE-WAIT until ${verdict.wake_at}: ${verdict.reasons[0]}`);
-  console.log(JSON.stringify(verdict));
+  console.log(JSON.stringify({ ...verdict, five_hour_pct: judged?.five_hour?.used_percentage ?? null, weekly_pct: judged?.seven_day?.used_percentage ?? null }));
 };
 
 if (import.meta.main) main();

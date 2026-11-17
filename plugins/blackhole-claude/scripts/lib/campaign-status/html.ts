@@ -1,6 +1,7 @@
 import { SECTION_CAP } from './dashboard.ts';
 import { classPreview } from './blocked-classes.ts';
 import { BOARD_COLUMNS } from './board.ts';
+import { budgetRows } from './budget.ts';
 import { topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
 import { campaignName, elseClasses, inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
@@ -238,6 +239,10 @@ function hostSection(r: StatusReport): string {
   return section('Host and environment', lineList(lines));
 }
 
+function budgetSection(r: StatusReport): string {
+  return section('Usage budget', lineList(budgetRows(r.budget).map((row) => `${row.key}: ${row.value}`)));
+}
+
 function eventsSection(r: StatusReport): string {
   const { notes, active_workers } = r.checkpoint;
   if (notes.length === 0 && active_workers.length === 0) {
@@ -352,6 +357,7 @@ export function renderStatusHtml(report: StatusReport): string {
     streamsSection(report),
     scopeSection(report),
     configSection(report),
+    budgetSection(report),
     decisionsSection(report),
     progressSection(report),
     ownerSection(report),

@@ -310,31 +310,42 @@ state-write-guard (`blackhole-state.md` § Write protocol). Skip on `auto_sync: 
 depends on exactly one open PR A in the same repo, the forge edge is B's base branch = A's head
 branch — the stacking-only model of `queue-dag.md` § Step 3b and `merge-gate.md`. The plan
 reports it as a `restack` row carrying the `stack-repair.ts restack` command; the orchestrator
-runs it (merge the parent in, then retarget — never a rebase). A native **"blocked by"** edge is
-used only where a stack cannot express the dependency, which keeps those edges few by design:
+runs it (merge the parent in, then retarget — never a rebase). Until the base really moves, B
+also gets an interim native edge on A so the forge shows the dependency at once; the first sync
+that reads B based on A's branch removes it. A native **"blocked by"** edge is otherwise used
+only where a stack cannot express the dependency, which keeps those edges few by design:
 
 | Case | Forge edge |
 |------|-----------|
-| B depends on exactly one open PR A | B's base = A's head branch (stack) |
+| B depends on exactly one open PR A | B's base = A's head branch (stack); interim edge until it moves |
 | B depends on 2+ open PRs | the base carries the one it is stacked on (if any); "blocked by" for the rest |
 | B depends on an issue with no PR yet | "blocked by" that issue |
-| B depends on a PR in another repo (§ 6.7) | "blocked by" that PR |
+| B depends on a PR in another repo (§ 6.7) | a PR-body line (GitHub/Gitea native edges join same-repo issues only) |
 
-Per backend, through the forge adapter (ADR-027) `getDependencies(pr)` / `setDependencies(pr,
-blockedBy[])` (`scripts/lib/forge-adapter/dependencies.ts`), REST only:
+**Both ends are queue issues on GitHub and Gitea.** Their native edges join two ISSUES (GitHub
+answers 422 "Source issue may only be an issue" when either end is a PR), so the edge is "issue
+N blocked by issue M" on the queue's issue numbers, read and written on issue N. GitLab's join
+merge requests, so there it is MR blocked by MR. Per backend, through the forge adapter
+(ADR-027) `getDependencies({issue, pr})` / `setDependencies({issue, pr}, blockedBy[])`
+(`scripts/lib/forge-adapter/dependencies.ts`), REST only:
 
-- **GitHub**: `repos/{o}/{r}/issues/{n}/dependencies/blocked_by` (GET; POST `{issue_id}` with the
-  blocker's global id; DELETE `…/blocked_by/{issue_id}`).
-- **Gitea**: `repos/{o}/{r}/issues/{n}/dependencies` (GET; POST/DELETE `{owner, repo, index}`).
-- **GitLab**: `projects/:id/merge_requests/:iid/blocks` (Premium); an issue can never block a
-  merge request natively, so an issue blocker is always a body line.
-- **Fallback**: when the repo has no native feature (403/404/410), each edge is a `Blocked by #N`
-  line (`Blocked by !N` for a GitLab merge request, `Blocked by owner/repo#N` cross-repo) in the
-  PR body's `## Dependencies` section. The read is native edges plus these lines.
+- **GitHub**: `repos/{o}/{r}/issues/{issue}/dependencies/blocked_by` (GET; POST `{issue_id}` with
+  the blocker issue's global id, refused when it is a PR; DELETE `…/blocked_by/{issue_id}`).
+- **Gitea**: `repos/{o}/{r}/issues/{issue}/dependencies` (GET; POST/DELETE `{owner, repo, index}`).
+- **GitLab**: `projects/:id/merge_requests/:iid/blocks` (Premium); an issue blocker is a body line.
+- **Body lines**: an edge no native channel can hold — cross-repo, a PR or number with no queue
+  issue, an issue on GitLab — or every edge when the forge answers 404/410 (no such feature), is a
+  `Blocked by #N` line (`Blocked by !N` for a GitLab MR, `Blocked by owner/repo#N` cross-repo) in
+  the PR body's `## Dependencies` section. The read is native edges plus these lines; an edge read
+  from one channel and kept stays in that channel.
+- **Failures are loud.** A 403 (rate limit, token scope) or any other error throws; it never
+  switches channel. Each plan row reports `native`, and the CLI names on stderr every issue whose
+  edges went to body lines.
 
-**Read-back follows the same split.** A live stacked base (B's base is an open PR's head branch)
-and every forge "blocked by" edge become `depends_on` edges; a blocker naming a PR resolves to
-the queue issue whose `pr` it is.
+**Read-back follows the same split.** A live stacked base (B's base is a queue PR's head branch)
+and every forge "blocked by" edge become `depends_on` edges: a number resolves to the queue issue
+it is, or whose `pr` it is; a native edge to an issue outside the queue is kept as one; a body
+line naming another number may be a PR, so it is kept where it is but is never a DAG edge.
 
 **Two-way and idempotent.** Each planned issue records `forge_deps: {synced, body_cross}` — the
 forge view after the write (`#<issue>` keys, `owner/repo#N` cross-repo) and the cross-repo lines
