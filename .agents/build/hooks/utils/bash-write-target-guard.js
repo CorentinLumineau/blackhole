@@ -320,6 +320,144 @@ const findCopyMoveTargets = (tokens) => {
   return [];
 };
 
+/** The value of a long option `--name=VALUE` or `--name VALUE` at `args[i]`, with the index of the
+ * last token it consumed; null when `args[i]` is not that option. */
+const longOptionValue = (args, i, name) => {
+  const t = args[i];
+  if (t.startsWith(`${name}=`)) return { value: t.slice(name.length + 1), last: i };
+  if (t === name) return { value: args[i + 1] ?? UNRESOLVABLE_TARGET, last: i + 1 };
+  return null;
+};
+
+/** `sort` short options that take a value (`-k`, `-t`, `-S`, `-T`, `-o`). */
+const SORT_VALUE_SHORT = new Set(['k', 't', 'S', 'T', 'o']);
+
+/** `sort -o FILE` / `-oFILE` / a cluster ending in `o` (`-ro FILE`) / `--output[=]FILE` write
+ * targets. GNU sort permutes options, so the option counts wherever it sits. A short cluster is
+ * walked getopt-style: the first value-taking letter consumes the rest of the cluster or the next
+ * token, so `-k1o` is a key spec, never an output. */
+const sortTargets = (args) => {
+  const targets = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--') break;
+    const long = longOptionValue(args, i, '--output');
+    if (long) {
+      targets.push(stripQuotes(long.value));
+      i = long.last;
+      continue;
+    }
+    if (!/^-[^-]/.test(t)) continue;
+    for (let c = 1; c < t.length; c++) {
+      if (!SORT_VALUE_SHORT.has(t[c])) continue;
+      const attached = t.slice(c + 1);
+      const value = attached || args[++i] || UNRESOLVABLE_TARGET;
+      if (t[c] === 'o') targets.push(stripQuotes(value));
+      break;
+    }
+  }
+  return targets;
+};
+
+/** `uniq` options whose value is the next token when not attached. */
+const UNIQ_VALUE_OPTIONS = /^(-[a-zA-Z]*[fsw]|--skip-fields|--skip-chars|--check-chars)$/;
+
+/** `uniq [OPTION]... [INPUT [OUTPUT]]` writes its second operand; `-` means stdout. */
+const uniqTargets = (args) => {
+  const operands = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--') {
+      operands.push(...args.slice(i + 1));
+      break;
+    }
+    if (UNIQ_VALUE_OPTIONS.test(t)) i++;
+    else if (t === '-' || !t.startsWith('-')) operands.push(t);
+  }
+  const out = operands[1];
+  return out === undefined || out === '-' ? [] : [stripQuotes(out)];
+};
+
+/** `git … --output[=]FILE` (the diff family: `diff`, `log -p`, `show`, `format-patch`) write
+ * target, wherever it sits after the command word. */
+const gitOutputTargets = (args) => {
+  const targets = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--') break;
+    const long = longOptionValue(args, i, '--output');
+    if (long) {
+      targets.push(stripQuotes(long.value));
+      i = long.last;
+    }
+  }
+  return targets;
+};
+
+/** `yq -i|--inplace` rewrites its file operands. The expression operand cannot be told from a
+ * file without parsing yq's own flag set, so every operand is checked: an expression resolves to
+ * an in-root relative path (harmless) or, when dynamic, to the warn tier. */
+const yqTargets = (args) => {
+  const inPlace = args.some((t) => t === '--inplace' || t.startsWith('--inplace=') || /^-[a-zA-Z]*i[a-zA-Z]*$/.test(t));
+  if (!inPlace) return [];
+  return args.filter((t) => !t.startsWith('-')).map(stripQuotes);
+};
+
+/** Commands that look read-only but write a file through an option or operand (#1184). */
+const OPTION_WRITE_COMMANDS = [
+  ['sort', sortTargets],
+  ['uniq', uniqTargets],
+  ['git', gitOutputTargets],
+  ['yq', yqTargets],
+];
+
+/** Leading words that run the next word as the command (`sudo sort -o …`, `env X=1 git …`). */
+const COMMAND_PREFIX_WORDS = new Set(['sudo', 'env', 'command', 'exec', 'nice', 'nohup', 'time', 'xargs']);
+
+/** Index of the clause's command word: the first token that is not a prefix word, one of its
+ * flags, or a `NAME=value` assignment. These command names are common as plain arguments
+ * (`grep uniq a b`), so only the command position counts. */
+const commandWordIndex = (tokens) => {
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (COMMAND_PREFIX_WORDS.has(path.basename(t)) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(t) || (i > 0 && t.startsWith('-'))) i++;
+    else break;
+  }
+  return i;
+};
+
+const findOptionWriteTargets = (tokens) => {
+  const cmdIdx = commandWordIndex(tokens);
+  const head = tokens[cmdIdx];
+  if (head === undefined) return [];
+  const entry = OPTION_WRITE_COMMANDS.find(([name]) => isCommandToken(head, name));
+  return entry ? entry[1](positionalArgsBeforeRedirect(tokens, cmdIdx + 1)) : [];
+};
+
+const SHELL_NAMES = ['sh', 'bash', 'dash', 'zsh', 'ksh'];
+
+/** A single `|` (or `|&`) pipe — never the `||` operator — and the clause text it feeds. */
+const PIPE_INTO_RE = /(?<!\|)\|&?(?!\|)([^;|&\n]*)/g;
+
+/** True when a pipe feeds a shell that reads its script from stdin (`… | sh`, `… | bash -s`): the
+ * piped text runs as commands this module never sees, so the call is unresolvable. A shell given
+ * a script file or `-c` reads its commands from there, not from the pipe. */
+const hasPipedShellScript = (visible) => {
+  PIPE_INTO_RE.lastIndex = 0;
+  let match = PIPE_INTO_RE.exec(visible);
+  while (match !== null) {
+    const tokens = tokenize(match[1]);
+    if (tokens.length > 0 && SHELL_NAMES.some((name) => isCommandToken(tokens[0], name))) {
+      const args = positionalArgsBeforeRedirect(tokens, 1);
+      const flags = args.filter((t) => t.startsWith('-'));
+      const readsStdin = flags.some((t) => /^-[a-zA-Z]*s/.test(t)) || !args.some((t) => !t.startsWith('-'));
+      if (readsStdin && !flags.some((t) => /^-[a-zA-Z]*c/.test(t))) return true;
+    }
+    match = PIPE_INTO_RE.exec(visible);
+  }
+  return false;
+};
+
 /** `isLiteralPathArg` (from `worktree-removal-guard.js`) excludes shell metacharacters that make a
  * target dynamic (`$`, `` ` ``, `*`, `?`, `[`, `]`, `{`, `}`) but not bash tilde (`~`) expansion —
  * a target like `~/foo.txt` passes it as "literal," yet `path.resolve(cwd, target)` never performs
@@ -399,13 +537,17 @@ const evaluateBashWriteTargets = (command, cwd) => {
     const tokens = tokenize(clause);
     if (tokens.length === 0) continue;
 
-    for (const raw of [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens)]) {
+    for (const raw of [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens),
+      ...findOptionWriteTargets(tokens),
+    ]) {
       if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
       else unresolvable = true;
     }
 
     if (hasUnresolvableCommand(tokens)) unresolvable = true;
   }
+
+  if (hasPipedShellScript(visible)) unresolvable = true;
 
   for (const target of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
@@ -425,7 +567,8 @@ const evaluateBashWriteTargets = (command, cwd) => {
       pattern_id: 'bash-write-target-unresolvable',
       reason:
         'Bash command looks write-shaped but its target could not be resolved by static ' +
-        'inspection (a dynamic argument, or a command like python3 -c/perl -i/awk whose ' +
+        'inspection (a dynamic argument, a script piped into a shell, or a command like ' +
+        'python3 -c/perl -i/awk whose ' +
         'write behavior cannot be determined from the command string alone) — cannot verify ' +
         'assigned-worktree containment',
     };
