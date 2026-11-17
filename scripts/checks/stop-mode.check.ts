@@ -45,34 +45,37 @@ export const findUncitedFlushedMention = (content: string): boolean => {
   return false;
 };
 
-// A usage stop (STOP-WORKERS / PACE-WAIT / STOP-CAMPAIGN, and NO-SPAWN) is a drain-and-wake
-// pause: no prose that governs it may route to `--abandon`, mark a queue entry failed or blocked,
-// or bump a retry counter. A match is exempt only when a negation precedes it inside its own
-// clause; commas, colons, semicolons, sentence ends and table cells all end a clause, so a
-// negation elsewhere in the sentence never covers a later instruction.
-const FAILURE_ROUTES: [RegExp, string][] = [
-  [/--abandon|\babandon\b/i, 'routes to --abandon'],
-  [/\bfailed\b|\bblocked\b|\bretry counters?\b/i, 'marks a queue entry failed or blocked or bumps a retry counter'],
-];
-const GOVERNING_NEGATION = /\b(never|no|not|none)\b/i;
+// A usage stop is a drain-and-wake pause, never a failure. Rather than parse negations, the rule
+// is structural: in every section that decides what a usage stop does, each mention of a
+// forbidden action may appear only inside that section's one "Never on a usage stop:" list (the
+// marker line plus the `- ` items right after it). A mention anywhere else fails, negated or not.
+const NEVER_MARKER = 'Never on a usage stop:';
+const FORBIDDEN_ACTION = /failed_attempts|retry[ _-]?counters?|--abandon|\b(?:abandon|kill|abort)\w*|\bfail(?:ed|ure|s)?\b|\bblocked\b/gi;
 
-export const findUngovernedFailureRoutes = (text: string): string[] => {
-  const clauses = text.replace(/\n(?!\s*\n)/g, ' ').split(/[.,;:|\n]/);
+export const findUnlistedForbiddenMentions = (section: string, name: string): string[] => {
+  const lines = section.split('\n');
+  const markers = lines.flatMap((line, i) => (line.trim() === NEVER_MARKER ? [i] : []));
+  if (markers.length === 0) return [`${name} has no "${NEVER_MARKER}" list`];
+  if (markers.length > 1) return [`${name} has more than one "${NEVER_MARKER}" list`];
+  let listEnd = markers[0] + 1;
+  while (listEnd < lines.length && lines[listEnd].trim().startsWith('- ')) listEnd++;
   const out: string[] = [];
-  for (const clause of clauses) {
-    for (const [pattern, label] of FAILURE_ROUTES) {
-      const match = pattern.exec(clause);
-      if (match && !GOVERNING_NEGATION.test(clause.slice(0, match.index))) out.push(`${label}: "${clause.trim()}"`);
+  lines.forEach((line, i) => {
+    if (i >= markers[0] && i < listEnd) return;
+    for (const match of line.matchAll(FORBIDDEN_ACTION)) {
+      out.push(`${name}: "${match[0]}" outside the "${NEVER_MARKER}" list: "${line.trim()}"`);
     }
-  }
+  });
   return out;
 };
 
-const sliceSection = (content: string, start: string, end: string): string | null => {
+// The section from `start` up to the first `end` after it (or the end of the file).
+const sliceSection = (content: string, start: string, end: RegExp): string | null => {
   const from = content.indexOf(start);
   if (from < 0) return null;
-  const to = content.indexOf(end, from + start.length);
-  return content.slice(from, to < 0 ? undefined : to);
+  const rest = content.slice(from + start.length);
+  const to = rest.search(end);
+  return start + (to < 0 ? rest : rest.slice(0, to));
 };
 
 export const findUsageStopViolations = (phaseStop: string): string[] => {
@@ -84,22 +87,22 @@ export const findUsageStopViolations = (phaseStop: string): string[] => {
   const errors: string[] = [];
   if (!section.includes('stopped_by: usage')) errors.push('usage stop does not record `stopped_by: usage`');
   if (!section.includes('wake_at')) errors.push('usage stop does not record `wake_at`');
-  return [...errors, ...findUngovernedFailureRoutes(section).map((e) => `usage stop ${e}`)];
+  return [...errors, ...findUnlistedForbiddenMentions(section, 'usage stop')];
 };
 
-// The Spawn verdict table (with its closing paragraph) and Session resume step 7 in
-// orchestrator-runtime.md, both of which decide what a usage stop does.
-const RUNTIME_SECTIONS: [string, string, string][] = [
-  ['usage verdict table', '| Verdict | Behaviour |', '\n2. When the round includes'],
-  ['resume step 7', '7. **Resume after a pace or usage pause**', '\n\n'],
+// The Spawn usage-verdict table (up to Spawn step 2) and Session resume step 7 (up to the next
+// heading) in orchestrator-runtime.md, which both decide what a usage stop does.
+const RUNTIME_SECTIONS: [string, string, RegExp][] = [
+  ['usage verdict table', 'Usage gate (`usage_budget`', /\n2\. When the round includes/],
+  ['resume step 7', '7. **Resume after a pace or usage pause**', /\n#{1,6} /],
 ];
 
 export const findUsageRuntimeViolations = (runtime: string): string[] =>
   RUNTIME_SECTIONS.flatMap(([name, start, end]) => {
     const section = sliceSection(runtime, start, end);
-    if (section === null) return [`orchestrator-runtime.md missing the ${name}`];
-    return findUngovernedFailureRoutes(section).map((e) => `${name} ${e}`);
+    return section === null ? [`orchestrator-runtime.md missing the ${name}`] : findUnlistedForbiddenMentions(section, name);
   });
+
 
 // Every spawn site (Pattern B `orchestrator-runtime.md` § Spawn, Pattern C
 // `claude-code-native.md`, Pattern P `project-thread-mode.md`, or any other prose block) that runs

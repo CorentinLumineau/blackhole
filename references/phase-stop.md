@@ -146,12 +146,12 @@ them.
 Not a fourth tier: the drain tier above, started by the spawn-round usage gate
 (`orchestrator-runtime.md` § Background worker barrier, Spawn step 1, `scripts/usage-budget.ts`)
 instead of the owner. `STOP-WORKERS` and `PACE-WAIT` are a drain-and-wake pause; `STOP-CAMPAIGN` is
-the same drain with no wake. It is never an abandon: never `--abandon`, never `stop --now`.
+the same drain with no wake, and the list at the end of this section holds for all three.
 
 1. **Drain** — run § Drain tier steps 2-4 unchanged: spawn nothing, let every in-flight worker
    return, triage each return as usual, run the Exit Invariants checklist.
-2. **Leave the queue alone** — no queue entry is marked `failed` or `blocked`, no retry counter is
-   bumped, no ledger row is written for the stop itself; issues left `ready` stay `ready`.
+2. **Leave the queue alone** — every issue keeps its status (issues left `ready` stay `ready`),
+   and no ledger row is written for the stop itself.
 3. **Checkpoint**: `stopped_by: usage`, `stop_kind: drained`, `wake_at` = the verdict's `wake_at`
    (epoch seconds; `null` for `STOP-CAMPAIGN`), and the verdict plus its first reason in Notes
    (`checkpoint-protocol.md` § Checkpoint template).
@@ -165,6 +165,11 @@ the same drain with no wake. It is never an abandon: never `--abandon`, never `s
 6. **Resume** — the wake (or any turn after `wake_at`) runs `orchestrator-runtime.md` § Session
    resume & recovery step 7: the spawn-round gates run again and the campaign continues from
    `queue.json` as left. A turn before `wake_at` spawns nothing and ends.
+
+Never on a usage stop:
+- route to `--abandon` or `stop --now`, or kill or abort a worker
+- mark a queue entry `failed` or `blocked`
+- bump `failed_attempts` or any retry counter
 
 ## Exit Invariants (verbatim from #476 — every tier, `stop --now` verified explicitly below)
 

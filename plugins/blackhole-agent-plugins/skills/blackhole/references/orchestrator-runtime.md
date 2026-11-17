@@ -46,8 +46,11 @@ parallel planners, implementers, reviewers):
    | `STOP-WORKERS`, `PACE-WAIT` | **Drain and wake**: spawn nothing, let in-flight workers finish, then run `phase-stop.md` § Usage stop with the verdict's `wake_at` |
    | `STOP-CAMPAIGN` | Drain and stop: `phase-stop.md` § Usage stop with `wake_at: null`, and tell the owner the weekly line was crossed |
 
-   No usage verdict is a failure, the same as `STOP-NEW`. None marks a queue entry `failed` or
-   `blocked`. None writes a ledger row. None bumps a retry counter. None routes to `stop --abandon`.
+   Every usage verdict is a pause, the same as `STOP-NEW`.
+   Never on a usage stop:
+   - mark a queue entry `failed` or `blocked`, or write a ledger row for the stop
+   - bump `failed_attempts` or any retry counter
+   - route to `stop --abandon`, or kill or abort a worker
 2. When the round includes test/build-bearing workers (implementers, or any worker that runs
    `build`/`verify`/`test`), run `bun run scripts/resource-gate.ts --requested <target>` and spawn
    at most its `batch_size`; it can only cut the target, never raise it: `go` keeps it, `degrade`
@@ -245,12 +248,16 @@ after reading checkpoint and forge sync:
 7. **Resume after a pace or usage pause**: when the latest `.blackhole/pace-log.jsonl` line has
    `rate_limit_stop: true` (a pace `STOP-NEW`, or a usage `NO-SPAWN`, `STOP-WORKERS`, `PACE-WAIT`
    or `STOP-CAMPAIGN`), or the checkpoint carries `stopped_by: usage`, treat the previous turn as a
-   pause, not a failure: no recovery action, no re-route, no retry counter. A turn that starts
+   pause: run no recovery action and no re-route. A turn that starts
    before the checkpoint's `wake_at` spawns nothing and ends (re-arming the wake if none is
    scheduled, `phase-stop.md` § Usage stop); otherwise run the spawn-round gates (§ Background
    worker barrier, Spawn steps 1-3) as usual, and clear `stopped_by`, `stop_kind` and `wake_at` the
    first time the round spawns again. The campaign continues from `queue.json` exactly as it was
    left.
+   Never on a usage stop:
+   - mark a paused issue `failed` or `blocked`
+   - bump `failed_attempts` or any retry counter
+   - kill, abort or `--abandon` a worker
 
 **MUST** complete `recovery-protocol.md` §5 orchestrator checklist before spawning
 `implementer` when any in-flight issue has a dirty worktree or recovery stash. Do not spawn

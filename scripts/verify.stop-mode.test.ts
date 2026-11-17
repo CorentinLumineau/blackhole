@@ -6,7 +6,7 @@ import {
   checkUsageGateWiring,
   findSpawnSitesMissingUsageGate,
   findUncitedFlushedMention,
-  findUngovernedFailureRoutes,
+  findUnlistedForbiddenMentions,
   findUsageRuntimeViolations,
   findUsageStopViolations,
   runChecks,
@@ -131,40 +131,6 @@ describe('findUncitedFlushedMention() (issue #492)', () => {
   });
 });
 
-const USAGE_STOP_OK = [
-  '# Phase — Stop',
-  '',
-  '## Usage stop',
-  '',
-  'Runs the drain tier with `stopped_by: usage` and `wake_at`. Never `--abandon`.',
-  '',
-  '## Exit Invariants',
-  '',
-  'Kill every worker via `--abandon`.',
-].join('\n');
-
-describe('findUsageStopViolations()', () => {
-  test('a usage stop that drains, records stopped_by: usage and wake_at passes', () => {
-    expect(findUsageStopViolations(USAGE_STOP_OK)).toEqual([]);
-  });
-
-  test('fails when the usage stop routes to --abandon', () => {
-    const bad = USAGE_STOP_OK.replace('Never `--abandon`.', 'Then run the `--abandon` tier.');
-    expect(findUsageStopViolations(bad).join('; ')).toContain('routes to --abandon');
-  });
-
-  test('fails when the section is missing, or omits stopped_by: usage or wake_at', () => {
-    expect(findUsageStopViolations('# Phase — Stop\n\n## Drain tier\n')).toEqual(['phase-stop.md missing the ## Usage stop section']);
-    expect(findUsageStopViolations(USAGE_STOP_OK.replace('`stopped_by: usage`', 'a stop')).join('; ')).toContain('stopped_by: usage');
-    expect(findUsageStopViolations(USAGE_STOP_OK.replace('and `wake_at`', '')).join('; ')).toContain('wake_at');
-  });
-
-  test('fails when the usage stop marks a queue entry failed or blocked', () => {
-    const bad = USAGE_STOP_OK.replace('Never `--abandon`.', 'Set each issue `status: blocked`.');
-    expect(findUsageStopViolations(bad).join('; ')).toContain('failed or blocked');
-  });
-});
-
 describe('findSpawnSitesMissingUsageGate()', () => {
   const site = (content: string) => [{ path: 'src/references/claude-code-native.md', content }];
 
@@ -194,54 +160,70 @@ describe('checkUsageGateWiring() against the real src/ files', () => {
   });
 });
 
-describe('usage stop failure routes: review-round edits are caught', () => {
+
+const NEVER_LIST = ['Never on a usage stop:', '- route to `--abandon`, or kill or abort a worker', '- mark a queue entry `failed` or `blocked`', '- bump `failed_attempts` or any retry counter'].join('\n');
+
+describe('findUnlistedForbiddenMentions()', () => {
+  test('forbidden actions inside the one marked list pass', () => {
+    expect(findUnlistedForbiddenMentions('Drain, then wake.\n\n' + NEVER_LIST + '\n\nResume later.', 's')).toEqual([]);
+  });
+
+  test('a section without the marked list fails, and so does one with two', () => {
+    expect(findUnlistedForbiddenMentions('Drain, then wake.', 's')).toEqual(['s has no "Never on a usage stop:" list']);
+    expect(findUnlistedForbiddenMentions(NEVER_LIST + '\n\n' + NEVER_LIST, 's')).toEqual(['s has more than one "Never on a usage stop:" list']);
+  });
+
+  test('every forbidden action outside the list fails, negated or not', () => {
+    for (const text of ['Never `--abandon`.', 'Do not kill workers.', 'No abort.', 'Not `failed`.', 'None `blocked`.', 'No retry counter.', 'Leave `failed_attempts` alone.']) {
+      expect(findUnlistedForbiddenMentions(text + '\n\n' + NEVER_LIST, 's')).toHaveLength(1);
+    }
+  });
+});
+
+describe('usage stop bypasses from the re-review are caught on the real files', () => {
   const runtime = read('src/references/orchestrator-runtime.md');
   const phaseStop = read('src/references/phase-stop.md');
+  const inject = (content: string, anchor: string, text: string) => {
+    expect(content).toContain(anchor);
+    return content.replace(anchor, `${anchor} ${text}`);
+  };
 
-  test('the real files carry no failure route', () => {
+  test('the real files carry no forbidden action outside their lists', () => {
     expect(findUsageRuntimeViolations(runtime)).toEqual([]);
     expect(findUsageStopViolations(phaseStop)).toEqual([]);
   });
 
-  test('(a) the STOP-WORKERS/PACE-WAIT verdict row routed to stop --abandon fails', () => {
-    const row = "then run `phase-stop.md` § Usage stop with the verdict's `wake_at`";
-    expect(runtime).toContain(row);
-    const bad = runtime.replace(row, 'then run `stop --abandon`');
-    expect(findUsageRuntimeViolations(bad).join('; ')).toContain('routes to --abandon');
+  test('(a) a negation earlier in the clause does not exempt a later verb', () => {
+    const row = '| `STOP-CAMPAIGN` |';
+    expect(findUsageRuntimeViolations(inject(runtime, row, 'When no reset time is known abandon the campaign.')).length).toBeGreaterThan(0);
+    expect(findUsageStopViolations(inject(phaseStop, '6. **Resume**', 'If the window has not reset yet mark the issue failed.')).length).toBeGreaterThan(0);
   });
 
-  test('(b) usage-stop step 2 rewritten to mark entries failed and bump the retry counter fails', () => {
-    const step2 = /2\. \*\*Leave the queue alone\*\*[\s\S]*?(?=\n3\. )/;
-    expect(phaseStop).toMatch(step2);
-    const bad = phaseStop.replace(step2, '2. **Leave the queue alone** — Mark each in-flight queue entry `failed` and bump its retry counter.');
-    expect(findUsageStopViolations(bad).join('; ')).toContain('failed or blocked or bumps a retry counter');
+  test('(b) an em dash does not hide a forbidden verb', () => {
+    expect(findUsageStopViolations(inject(phaseStop, '1. **Drain**', 'Never wait — abandon.')).length).toBeGreaterThan(0);
   });
 
-  test('resume step 7 rewritten to bump the retry counter fails', () => {
-    expect(runtime).toContain('no retry counter.');
-    const bad = runtime.replace('no retry counter.', 'bump the retry counter.');
-    expect(findUsageRuntimeViolations(bad).join('; ')).toContain('retry counter');
+  test('(c) the kill and abort aliases of --abandon are caught', () => {
+    expect(findUsageStopViolations(inject(phaseStop, '4. **Arm one wake at `wake_at`**', 'Kill the in-flight workers.')).length).toBeGreaterThan(0);
+    expect(findUsageStopViolations(inject(phaseStop, '4. **Arm one wake at `wake_at`**', 'Abort the round.')).length).toBeGreaterThan(0);
   });
 
-  test('missing scanned sections fail loudly', () => {
-    expect(findUsageRuntimeViolations('# nothing here').length).toBe(2);
-  });
-});
-
-describe('findUngovernedFailureRoutes()', () => {
-  test('a negation elsewhere in the sentence does not exempt a later clause', () => {
-    expect(findUngovernedFailureRoutes('Drain: spawn nothing, let workers finish, then run `stop --abandon`.')).toHaveLength(1);
-    expect(findUngovernedFailureRoutes('Do not wait, mark the entry `failed`.')).toHaveLength(1);
+  test('(d) the real counter name failed_attempts is caught', () => {
+    expect(findUsageStopViolations(inject(phaseStop, '2. **Leave the queue alone**', 'Increment `failed_attempts`.')).length).toBeGreaterThan(0);
   });
 
-  test('a negation that governs its own clause exempts the match', () => {
-    expect(findUngovernedFailureRoutes('It is never an abandon: never `--abandon`, never `stop --now`.')).toEqual([]);
-    expect(findUngovernedFailureRoutes('None marks a queue entry `failed` or `blocked`. None bumps a retry counter.')).toEqual([]);
+  test('(e) a second paragraph under resume step 7 is scanned up to the next heading', () => {
+    const bad = runtime.replace('**MUST** complete `recovery-protocol.md` §5', 'On resume, mark each paused issue `failed`.\n\n**MUST** complete `recovery-protocol.md` §5');
+    expect(bad).not.toBe(runtime);
+    expect(findUsageRuntimeViolations(bad).join('; ')).toContain('resume step 7');
   });
 
-  test('matches failed, blocked, retry-counter wording and --abandon', () => {
-    for (const text of ['Mark it failed.', 'Set it `status: blocked`.', 'Bump its retry counter.', 'Run --abandon.']) {
-      expect(findUngovernedFailureRoutes(text)).toHaveLength(1);
-    }
+  test('the usage stop still records stopped_by: usage and wake_at', () => {
+    expect(findUsageStopViolations(phaseStop.replace(/stopped_by: usage/g, 'stopped_by: x')).join('; ')).toContain('stopped_by: usage');
+    expect(findUsageStopViolations('# Phase — Stop\n\n## Drain tier\n')).toEqual(['phase-stop.md missing the ## Usage stop section']);
+  });
+
+  test('missing runtime sections fail loudly', () => {
+    expect(findUsageRuntimeViolations('# nothing here')).toHaveLength(2);
   });
 });
