@@ -157,9 +157,22 @@ export function syncQueue(input: SyncInput): SyncResult {
 
   const merged = mergedPrIndex(input.prs);
   const lane = input.lane ?? null;
-  const open = openPrIndex(input.prs, lane, (n) => issues[String(n)]?.labels ?? []);
   const updatedAt = new Map(input.issues.map((i) => [String(i.number), i.updatedAt] as const));
   const nowMs = Date.parse(input.now);
+  // Lease staleness is decided once, before the PR index, so an expired claim stops deciding
+  // ownership there too: its PRs are inactive by definition (their activity feeds the lease).
+  const stale = new Set<string>();
+  if (lane !== null) {
+    for (const key of Object.keys(issues)) {
+      if (isClaimStale({ updatedAt: updatedAt.get(key), activityAt: latestClosingPrActivity(input.prs, Number(key)), now: nowMs, leaseHours: input.claimLeaseHours ?? DEFAULT_CLAIM_LEASE_HOURS })) stale.add(key);
+    }
+  }
+  // A stale lease frees the issue from `in-progress:*` claims only; `agent:*` never leases.
+  const liveLabels = (key: string): string[] => {
+    const labels = issues[key]?.labels ?? [];
+    return stale.has(key) ? labels.filter((l) => !l.startsWith(LANE_LABEL_PREFIX)) : labels;
+  };
+  const open = openPrIndex(input.prs, lane, (n) => liveLabels(String(n)));
   for (const [key, entry] of Object.entries(issues)) {
     if (DONE_STATUSES.includes(entry.status ?? '')) continue;
     const n = Number(key);
@@ -170,11 +183,10 @@ export function syncQueue(input: SyncInput): SyncResult {
       closed.push(n);
       continue;
     }
-    const stale = lane !== null && isClaimStale({ updatedAt: updatedAt.get(key), activityAt: latestClosingPrActivity(input.prs, n), now: nowMs, leaseHours: input.claimLeaseHours ?? DEFAULT_CLAIM_LEASE_HOURS });
-    // A stale lease frees the issue from `in-progress:*` claims only; `agent:*` never leases.
-    const labels = stale ? (entry.labels ?? []).filter((l) => !l.startsWith(LANE_LABEL_PREFIX)) : (entry.labels ?? []);
-    const label = state ? foreignLaneLabel(labels, lane) : null;
-    let next = state ? applyLane(entry, label ? `${ANOTHER_LANE} ${label}` : (open.foreign.get(n) ?? null)) : entry;
+    const isStale = stale.has(key);
+    const label = state ? foreignLaneLabel(liveLabels(key), lane) : null;
+    const prHold = isStale ? null : (open.foreign.get(n) ?? null);
+    let next = state ? applyLane(entry, label ? `${ANOTHER_LANE} ${label}` : prHold) : entry;
     const ownPr = open.own.get(n);
     if (ownPr && next.pr !== ownPr.number && !isLaneNote(next.notes)) {
       next = { ...next, pr: ownPr.number, phase: next.phase === 'implement' ? 'review' : next.phase };

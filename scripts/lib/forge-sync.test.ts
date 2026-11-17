@@ -256,6 +256,11 @@ describe('syncQueue — lane ownership and the claim lease', () => {
     expect(r.queue.issues['1']).toMatchObject({ status: 'blocked' });
   });
 
+  test('a stale claim whose open PR is also inactive frees the issue and links no PR', () => {
+    const r = sync({ ...lane, issues: [withLabel(1, 'in-progress:acct-b', { updatedAt: ago(30) })], prs: [pr(10, { headRefName: 'cursor/x', body: 'Closes #1', updatedAt: ago(30) })] });
+    expect(r.queue.issues['1']).toMatchObject({ status: 'ready', pr: null });
+  });
+
   test('agent labels never lease', () => {
     const r = sync({ ...lane, issues: [withLabel(1, 'agent:cursor', { updatedAt: ago(48) })] });
     expect(r.queue.issues['1']).toMatchObject({ status: 'blocked' });
