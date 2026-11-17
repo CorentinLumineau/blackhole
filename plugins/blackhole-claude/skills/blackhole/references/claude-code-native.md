@@ -91,6 +91,19 @@ uses the `Workflow` tool when available; if a specific fan-out does not meet the
 trigger conditions, fall back to the `Agent` tool with the same in-turn barrier discipline Pattern
 B already documents.
 
+## Cross-session budget transport
+
+The manager/peer shared-budget protocol (`multitask-mode.md` § Shared usage budget) needs a way
+for one session to message another. Each harness maps it to its own cross-session message tool:
+
+| Harness | Transport |
+|---|---|
+| Claude Code (Remote) | The host's cross-session `send_message` tool (`claude-code-remote` server), addressed by session id; `coordination.manager_session` holds the manager's id and each message names the sender's session, so the reply goes back the same way |
+| Any host without a cross-session message tool | None. `coordination.role` must be `solo`, and the budget is per-session |
+
+A `manager` or `peer` role on a host without such a tool is a misconfiguration: the orchestrator treats the
+session as `solo` and tells the owner, rather than waiting on messages that can never arrive.
+
 ## Turn-end step (main-chat orchestrator)
 
 The main chat has no coordinator to publish the status page, so it ends **every** turn with the

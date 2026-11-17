@@ -131,6 +131,55 @@ without `CreateGoal` use coordinator + background orchestrator unchanged.
 
 See `documentation/decisions/ADR-028-cursor-pattern-c-lite.md` for the design amendment.
 
+## Shared usage budget (manager / peer)
+
+Several campaign sessions on one account share one usage budget. `usage_budget.coordination`
+(`config-template.md`) says how this session takes part; `scripts/usage-budget.ts` stays the only
+place that turns usage into a worker count.
+
+| `coordination.role` | Meaning |
+|---|---|
+| `solo` (default) | This session sizes its own rounds from its own gate verdict. The budget is per-session; nothing is exchanged |
+| `manager` | This session owns the shared pool: the `workers` its own gate returns. It grants worker slots to peers and runs its own workers out of the same pool |
+| `peer` | This session asks `coordination.manager_session` for slots before each round and uses only what it was granted, plus `coordination.peer_floor` |
+
+### Messages
+
+Three plain-text messages, one per line, sent over the host's cross-session message tool
+(per-harness mapping: `claude-code-native.md` § Cross-session budget transport):
+
+| Message | Direction | Body |
+|---|---|---|
+| `slot-request` | peer → manager | `slot-request session=<peer session> want=<N> verdict=<peer's own gate verdict>` |
+| `slot-grant` | manager → peer | `slot-grant session=<peer session> slots=<M>` — `M` may be `0` |
+| `worker-done` | peer → manager | `worker-done session=<peer session> slots=<K>` — returns `K` slots when workers finish |
+
+The manager's free slots are its pool minus its own running workers, minus every slot granted and
+not yet returned by `worker-done`, minus `peer_floor` for each peer it knows of. A grant never
+exceeds the free slots. The manager re-runs its gate before each grant; a verdict other than `GO`
+grants `0`.
+
+### Peer floor
+
+`peer_floor` is the number of workers a peer may always run without a grant (default `1`; `0`
+makes every worker wait on a grant). It is counted inside the manager's pool, never on top of
+it, and it never overrides the peer's own gate: a peer whose own verdict is not `GO` runs `0`.
+
+### No-reply timeout
+
+A peer that has no `slot-grant` 10 minutes after its `slot-request` proceeds with `peer_floor`
+workers only, and asks again before its next round. The timeout is fixed by this protocol; there
+is no config key for it. A late grant is read at the next round, never used to widen a round
+already running.
+
+### Plans with only a weekly window
+
+A plan may report only a `seven_day` window, with no `five_hour` one. There is then no 5-hour fit,
+and the pool comes from the weekly leg alone (`weekly_fit`), which needs
+`usage_budget.weekly.target_at_reset`. Without a target the gate returns `unavailable` and
+`workers` = `parallel_max`: a per-session ceiling, not a shared budget, so the manager must not
+hand it out as a pool. Set `target_at_reset` before running `manager`/`peer` on such a plan.
+
 ## User starting the campaign
 
 Say any of:
