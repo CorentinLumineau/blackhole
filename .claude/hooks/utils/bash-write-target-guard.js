@@ -183,9 +183,45 @@ const clauseRanges = (visible) => {
 
 const splitClauses = (visible) => clauseRanges(visible).map(([start, end]) => visible.slice(start, end));
 
-/** True when `token` names `command` once the shell has removed its quotes and escapes —
- * `'sed'`, `\\sed` and `"/usr/bin/sed"` all run `sed`. */
-const isCommandToken = (token, command) => commandName(token) === command;
+/** Words after which the next word is again a command: wrappers that run the rest of the clause
+ * (`sudo`, `env`, `timeout 5`, …) and the keywords a command may follow (`then`, `do`, `!`, …). */
+const COMMAND_PREFIXES = new Set([
+  'sudo', 'doas', 'env', 'nice', 'nohup', 'timeout', 'command', 'exec', 'time', 'stdbuf', 'ionice',
+  'builtin', 'xargs', 'chronic', 'unbuffer', 'if', 'then', 'else', 'elif', 'while', 'until', 'do', '!', '{',
+]);
+
+/** Wrapper options whose value is the next word (`sudo -u bob`, `nice -n 5`, `env -C dir`). */
+const PREFIX_VALUE_OPTIONS = new Set(['-u', '-g', '-n', '-C', '-k', '-p', '-I', '-L', '-P', '-o', '-e']);
+
+/** Indices of the words in a clause that run as commands: the first word after any `NAME=value`
+ * assignments, and the word after each wrapper or keyword together with its options. */
+const commandPositions = (tokens) => {
+  const positions = new Set();
+  let i = 0;
+  while (i < tokens.length) {
+    while (i < tokens.length && /^[A-Za-z_]\w*=/.test(tokens[i])) i++;
+    if (i >= tokens.length) break;
+    positions.add(i);
+    if (!COMMAND_PREFIXES.has(commandName(tokens[i]))) break;
+    i++;
+    while (i < tokens.length && (tokens[i].startsWith('-') || /^\d+(?:\.\d+)?[smhd]?$/.test(tokens[i]))) {
+      i += PREFIX_VALUE_OPTIONS.has(tokens[i]) ? 2 : 1;
+    }
+  }
+  return positions;
+};
+
+/** Index of the first word in `tokens` that runs a command `isName` accepts, or -1. A bare word
+ * counts anywhere in the clause, so a wrapper this module does not know (`find -exec cp …`) never
+ * hides it. A quoted or escaped spelling (`'sed'`, `\cp`, `$'tee'`) counts only where a command
+ * runs, so a quoted grep pattern (`grep -rn "tee" .`) is not mistaken for one. */
+const findCommandIndex = (tokens, isName) => {
+  const positions = commandPositions(tokens);
+  return tokens.findIndex((t, i) => isName(t.slice(t.lastIndexOf('/') + 1)) || (positions.has(i) && isName(commandName(t))));
+};
+
+/** `findCommandIndex` for one command name. */
+const findCommand = (tokens, name) => findCommandIndex(tokens, (n) => n === name);
 
 /** True when a fd-duplication argument (`&1`, `&2`, ...) rather than a real file path — the one
  * shape `>`/`>>`/`&>` legitimately precede without naming a file (`2>&1`, `>&2`). */
@@ -340,25 +376,25 @@ const positionalArgsBeforeRedirect = (tokens, startIdx) => {
   for (let i = startIdx; i < tokens.length; i++) {
     const token = tokens[i];
     if (token.startsWith('<') || token.startsWith('>') || token.startsWith('&')) break;
-    args.push(asOptionWord(token));
+    args.push(asStaticWord(token));
   }
   return args;
 };
 
-/** An option spelled with quotes or escapes (`'-i'`, `"-t"`, `\\-o`) is the option the command
- * receives, so it is read in its unquoted form. A word whose quotes protect something the shell
- * would otherwise act on (`--format="{x,y}"`, `--expression='$w f'`) is kept exactly as written,
- * so later checks still see those characters as quoted. */
-const asOptionWord = (token) => {
+/** A word spelled with quotes or escapes (`'-i'`, `"format-patch"`, `\-o`, `'of=/x'`) is the
+ * word the command receives, so it is read in its unquoted form. A word whose quotes protect
+ * something the shell would otherwise act on (`--format="{x,y}"`, `--expression='$w f'`) is kept
+ * exactly as written, so later checks still see those characters as quoted. */
+const asStaticWord = (token) => {
   if (!/['"\\]/.test(token)) return token;
   const { text, dynamic } = normalizeShellWord(token);
-  return !dynamic && /^-[\w.,:+=@%/-]*$/.test(text) ? text : token;
+  return !dynamic && /^[\w.,:+=@%/-]+$/.test(text) ? text : token;
 };
 
 /** `tee [-a|--append] <target...>` write targets in one clause — every non-flag positional
  * argument after the command word, up to the first redirect/pipe. */
 const findTeeTargets = (tokens) => {
-  const cmdIdx = tokens.findIndex((t) => isCommandToken(t, 'tee'));
+  const cmdIdx = findCommand(tokens, 'tee');
   if (cmdIdx === -1) return [];
   return positionalArgsBeforeRedirect(tokens, cmdIdx + 1)
     .filter((t) => !t.startsWith('-'))
@@ -525,7 +561,7 @@ const parseSedScript = (script) => {
  * script writes, and an unresolvable target when the script runs a shell command or a script word
  * is not clean (its real text is not the text this module reads). */
 const findSedTargets = (tokens) => {
-  const cmdIdx = tokens.findIndex((t) => isCommandToken(t, 'sed'));
+  const cmdIdx = findCommand(tokens, 'sed');
   if (cmdIdx === -1) return [];
   const { script, files, inPlace, unclean } = parseSedArgs(positionalArgsBeforeRedirect(tokens, cmdIdx + 1));
   const written = parseSedScript(script);
@@ -596,7 +632,7 @@ const rsyncTargets = (args) => {
  * target-directory means there is no destination to evaluate (`cp --help`, a malformed call). */
 const findCopyMoveTargets = (tokens) => {
   for (const name of ['cp', 'mv', 'install', 'ln', 'truncate', 'dd', 'rsync']) {
-    const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
+    const cmdIdx = findCommand(tokens, name);
     if (cmdIdx === -1) continue;
     const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
     if (name === 'dd') return args.filter((t) => t.startsWith('of=')).map((t) => stripQuotes(t.slice(3)));
@@ -872,7 +908,7 @@ const OPTION_WRITE_COMMANDS = [
 const findOptionWriteTargets = (tokens) => {
   const targets = [];
   for (const [name, extract] of OPTION_WRITE_COMMANDS) {
-    const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
+    const cmdIdx = findCommand(tokens, name);
     if (cmdIdx !== -1) targets.push(...extract(positionalArgsBeforeRedirect(tokens, cmdIdx + 1)));
   }
   return targets;
@@ -924,7 +960,7 @@ const hasPipedScript = (visible) => {
     }
     // Found anywhere in the piped clause, like the other finders, so a wrapper (`env bash`,
     // `sudo sh`) cannot hide it.
-    const shellIdx = tokens.findIndex((t) => SHELL_NAMES.some((name) => isCommandToken(t, name)));
+    const shellIdx = findCommandIndex(tokens, (name) => SHELL_NAMES.includes(name));
     if (shellIdx !== -1 && shellReadsStdinScript(positionalArgsBeforeRedirect(tokens, shellIdx + 1))) return true;
     const interpreter = findInterpreter(tokens);
     if (interpreter && interpreterReadsStdinScript(interpreter.entry, positionalArgsBeforeRedirect(tokens, interpreter.idx + 1))) {
@@ -1050,11 +1086,19 @@ const findInterpreter = (tokens) => {
 };
 
 /** The command a word names once the shell has removed its quotes and escapes (`\node`,
- * `'node'`, `/usr/bin/node` all name `node`). */
+ * `'node'`, `$'node'`, `/usr/bin/node` all name `node`). */
 const commandName = (word) => {
-  const bare = word.replace(/['"\\]/g, '');
+  const bare = word.replace(/\$'((?:\\.|[^'\\])*)'/g, (_, body) => decodeAnsiC(body)).replace(/['"\\]/g, '');
   return bare.slice(bare.lastIndexOf('/') + 1);
 };
+
+/** The text of an ANSI-C quoted `$'…'` body as far as a command name needs it: `\xHH` and octal
+ * `\NNN` decoded, any other escaped character kept as itself. */
+const decodeAnsiC = (body) =>
+  body.replace(/\\(x[0-9a-fA-F]{1,2}|[0-7]{1,3}|[\s\S])/g, (_, e) => {
+    if (e[0] === 'x' && e.length > 1) return String.fromCharCode(parseInt(e.slice(1), 16));
+    return /^[0-7]/.test(e) ? String.fromCharCode(parseInt(e, 8)) : e;
+  });
 
 /** Script text as the interpreter receives it: inside double quotes the shell drops the
  * backslash before `$`, `` ` ``, `"` and `\`, so `Bun.\$\`…\`` arrives as `` Bun.$`…` ``. */
@@ -1108,7 +1152,7 @@ const stdinRedirectScript = (tokens, idx, heredocText) => {
  * `UNRESOLVABLE_WRITE_COMMANDS`, or an interpreter in it runs an inline or stdin script that may
  * write. */
 const hasUnresolvableCommand = (tokens, heredocText) =>
-  UNRESOLVABLE_WRITE_COMMANDS.some((name) => isCommandToken(tokens[0], name)) || hasInterpreterWrite(tokens, heredocText);
+  UNRESOLVABLE_WRITE_COMMANDS.includes(commandName(tokens[0])) || hasInterpreterWrite(tokens, heredocText);
 
 /** The directory a `cd`/`pushd`/`popd` moves to from each of `dirs`, or null when its target
  * cannot be read statically (`cd "$D"`, `cd -`, a bare `cd` or `popd`, `cd ~`, a glob, `pushd +1`), or when a
@@ -1252,7 +1296,7 @@ const collectWriteSignals = (visible, heredocText, cwd) => {
   }
 
   if (hasPipedScript(visible)) unresolvable = true;
-  if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => tokenize(c).some((t) => isCommandToken(t, 'git')))) {
+  if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => findCommand(tokenize(c), 'git') !== -1)) {
     unresolvable = true;
   }
   return { literalTargets, unresolvable };
