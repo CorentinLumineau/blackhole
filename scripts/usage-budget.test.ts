@@ -113,7 +113,8 @@ describe('usage-budget CLI weekly pacing', () => {
   });
   test('prints PACE-WAIT with its wake time', () => {
     withTempDir('usage-budget-cli', (dir) => {
-      const r = run(dir, ['--usage', weekOnly(99, 1)], paced);
+      // 0.05% left over the 15-minute floor fits no worker before the reset
+      const r = run(dir, ['--usage', weekOnly(99.95, 1)], paced);
       expect(r.code).toBe(0);
       expect(r.out).toMatchObject({ verdict: 'PACE-WAIT', workers: 0, wake_at: NOW + HOUR });
       expect(r.err).toContain(`PACE-WAIT until ${NOW + HOUR}`);

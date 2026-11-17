@@ -211,20 +211,20 @@ describe('weekly pacing to target_at_reset', () => {
   const light = { rates: { orchestrator_weekly_pct_per_hour: 0.1, worker_weekly_pct_per_hour: 0.2 } };
 
   const rows: [string, RateLimits, UsageBudgetConfig, string, number][] = [
-    // (79/110 - 0.1)/0.2 = 3.09 -> 3
-    ['owner case: seven_day only, 21% at 110h, target 100 -> positive', weekOnly(21, 110), target(100, light), 'GO', 3],
-    // 99 >= target line 97.5 -> wait for the reset
-    ['owner case: 99% at 1h, target 100 -> PACE-WAIT', weekOnly(99, 1), target(100, light), 'PACE-WAIT', 0],
+    // shipped defaults 0.1 + 0.15/worker: (79/110 - 0.1)/0.15 = 4.12 -> 4
+    ['owner case: seven_day only, 21% at 110h, target 100, shipped defaults -> GO', weekOnly(21, 110), target(100), 'GO', 4],
+    // 0.05% left over the 15-minute floor = 0.2 %/h < one worker's 0.25 -> wait for the reset
+    ['near the target at 1h -> PACE-WAIT', weekOnly(99.95, 1), target(100), 'PACE-WAIT', 0],
     // under pace: (50/10 - 0.1)/0.2 = 24.5 -> clamped to max_workers 4
     ['under pace clamps to max_workers', weekOnly(50, 10), target(100, light), 'GO', 4],
-    // over pace with default rates 0.78/0.91: 50/100 = 0.5 %/h < 0.78 -> nothing fits
-    ['over pace with default rates -> PACE-WAIT', weekOnly(50, 100), target(100), 'PACE-WAIT', 0],
+    // over pace with default rates: 10/100 = 0.1 %/h, all of it the orchestrator's -> nothing fits
+    ['over pace with default rates -> PACE-WAIT', weekOnly(90, 100), target(100), 'PACE-WAIT', 0],
     // 5h leg gives 2 (see GO worker count), weekly leg gives 3 -> min 2
     ['min() picks the five_hour fit when it is smaller', both(10, 21, 110), target(100, light), 'GO', 2],
     // 5h leg gives 2, weekly leg (40/100 - 0.1)/0.2 = 1.5 -> 1
     ['min() picks the weekly fit when it is smaller', both(10, 60, 100), target(100, light), 'GO', 1],
     // 5h leg gives 2, weekly fit 0 -> PACE-WAIT, never STOP-CAMPAIGN
-    ['weekly fit below 1 with a five_hour window -> PACE-WAIT', both(10, 50, 100), target(100), 'PACE-WAIT', 0],
+    ['weekly fit below 1 with a five_hour window -> PACE-WAIT', both(10, 90, 100), target(100), 'PACE-WAIT', 0],
     ['reaching the target is STOP-CAMPAIGN (stop_campaign_at defaults to target)', weekOnly(90, 10), target(90, light), 'STOP-CAMPAIGN', 0],
   ];
   for (const [name, u, b, verdict, workers] of rows) {
@@ -237,16 +237,20 @@ describe('weekly pacing to target_at_reset', () => {
 
   test('PACE-WAIT wake_at is the first second one worker fits again', () => {
     const b = target(100);
-    const u = weekOnly(50, 100);
+    const u = weekOnly(90, 100);
     const r = workersAllowed(u, NOW, b, 9);
-    // one worker needs 0.78 + 0.91 = 1.69 %/h: 50 / 1.69 h before the reset
-    const expected = Math.ceil(NOW + 100 * HOUR - (50 / 1.69) * HOUR);
+    // one worker needs 0.1 + 0.15 = 0.25 %/h: 10 / 0.25 = 40 h before the reset
+    const expected = Math.ceil(NOW + 100 * HOUR - 40 * HOUR);
     expect(r.wake_at).toBe(expected);
     expect(workersAllowed(u, r.wake_at as number, b, 9)).toMatchObject({ verdict: 'GO', workers: 1 });
     expect(workersAllowed(u, (r.wake_at as number) - 60, b, 9).verdict).toBe('PACE-WAIT');
   });
-  test('PACE-WAIT past the target line wakes at the weekly reset', () => {
-    expect(workersAllowed(weekOnly(99, 1), NOW, target(100, light), 9).wake_at).toBe(NOW + HOUR);
+  test('PACE-WAIT when no worker fits before the 15-minute floor wakes at the weekly reset', () => {
+    expect(workersAllowed(weekOnly(99.95, 1), NOW, target(100), 9).wake_at).toBe(NOW + HOUR);
+  });
+  test('PACE-WAIT past an explicit no_new_starts_at above the target wakes at the weekly reset', () => {
+    const b = target(90, { weekly: { target_at_reset: 90, no_new_starts_at: 95, stop_campaign_at: 100 } });
+    expect(workersAllowed(weekOnly(96, 10), NOW, b, 9)).toMatchObject({ verdict: 'PACE-WAIT', wake_at: NOW + 10 * HOUR });
   });
   test('hours to the weekly reset are floored at 15 minutes', () => {
     // rates 1 + 10/worker: 3% left over 0.25h = 12 %/h -> (12-1)/10 = 1 (no floor would give thousands)
@@ -271,10 +275,18 @@ describe('weekly pacing to target_at_reset', () => {
     expect(workersAllowed(weekOnly(50, 10), NOW, target(100, light), 2).workers).toBe(2);
   });
   test('measured weekly rates win over the configured ones', () => {
-    // configured defaults would PACE-WAIT; measured light rates give (79/110 - 0.1)/0.2 = 3
-    const r = workersAllowed(weekOnly(21, 110), NOW, target(100), 9, { orchestrator_weekly_pct_per_hour: 0.1, worker_weekly_pct_per_hour: 0.2 });
-    expect(r).toMatchObject({ verdict: 'GO', workers: 3 });
+    // configured defaults PACE-WAIT at 90% / 100h; measured 0.01 + 0.02 give (0.1 - 0.01)/0.02 = 4.5 -> 4
+    const r = workersAllowed(weekOnly(90, 100), NOW, target(100), 9, { orchestrator_weekly_pct_per_hour: 0.01, worker_weekly_pct_per_hour: 0.02 });
+    expect(r).toMatchObject({ verdict: 'GO', workers: 4 });
   });
+  const badMeasured: [string, number][] = [['NaN', Number.NaN], ['0', 0], ['negative', -1], ['Infinity', Number.POSITIVE_INFINITY]];
+  for (const [name, value] of badMeasured) {
+    test(`an invalid measured rate (${name}) falls back to the configured rate with a reason`, () => {
+      const r = workersAllowed(weekOnly(90, 100), NOW, target(100), 9, { orchestrator_weekly_pct_per_hour: value, worker_weekly_pct_per_hour: value });
+      expect(r.verdict).toBe('PACE-WAIT');
+      expect(r.reasons.filter((l) => l.startsWith('measured ') && l.includes('configured rate used'))).toHaveLength(2);
+    });
+  }
   test('no target keeps weekly_fit null', () => {
     expect(decide(usage(10, 10)).weekly_fit).toBeNull();
   });
@@ -286,23 +298,29 @@ describe('resolveUsageBudget weekly target keys', () => {
   });
   test('target set moves both unset weekly lines to the target', () => {
     expect(resolveUsageBudget({ usage_budget: { weekly: { target_at_reset: 100 } } }).weekly).toEqual({
-      no_new_starts_at: 97.5,
+      no_new_starts_at: 100,
       stop_campaign_at: 100,
       target_at_reset: 100,
     });
   });
   test('explicit weekly lines win over the target', () => {
-    const w = resolveUsageBudget({ usage_budget: { weekly: { target_at_reset: 100, no_new_starts_at: 70, stop_campaign_at: 95 } } }).weekly;
-    expect(w).toEqual({ no_new_starts_at: 70, stop_campaign_at: 95, target_at_reset: 100 });
+    const w = resolveUsageBudget({ usage_budget: { weekly: { target_at_reset: 90, no_new_starts_at: 95, stop_campaign_at: 100 } } }).weekly;
+    expect(w).toEqual({ no_new_starts_at: 95, stop_campaign_at: 100, target_at_reset: 90 });
   });
-  test('weekly rate defaults are the 5-hour rates times 0.13', () => {
+  test('an explicit target_at_reset null is the same as absent', () => {
+    expect(resolveUsageBudget({ usage_budget: { weekly: { target_at_reset: null } } })).toEqual(DEFAULT_USAGE_BUDGET);
+  });
+  test('weekly rate defaults are the 0.1 / 0.15 starting points', () => {
     const r = resolveUsageBudget({}).rates;
-    expect(r.orchestrator_weekly_pct_per_hour).toBeCloseTo(0.78, 9);
-    expect(r.worker_weekly_pct_per_hour).toBeCloseTo(0.91, 9);
+    expect(r.orchestrator_weekly_pct_per_hour).toBe(0.1);
+    expect(r.worker_weekly_pct_per_hour).toBe(0.15);
   });
   const invalid: [string, Record<string, unknown>, string][] = [
     ['target zero', { usage_budget: { weekly: { target_at_reset: 0 } } }, 'usage_budget.weekly.target_at_reset'],
     ['target above 100', { usage_budget: { weekly: { target_at_reset: 101 } } }, 'usage_budget.weekly.target_at_reset'],
+    ['stop_campaign_at below the target', { usage_budget: { weekly: { target_at_reset: 100, stop_campaign_at: 80 } } }, 'usage_budget.weekly.stop_campaign_at must be >= usage_budget.weekly.target_at_reset'],
+    ['no_new_starts_at below the target', { usage_budget: { weekly: { target_at_reset: 100, no_new_starts_at: 78 } } }, 'usage_budget.weekly.no_new_starts_at must be >= usage_budget.weekly.target_at_reset'],
+    ['no_new_starts_at above stop_campaign_at with a target', { usage_budget: { weekly: { target_at_reset: 90, no_new_starts_at: 100, stop_campaign_at: 95 } } }, 'usage_budget.weekly.no_new_starts_at must be at most'],
     ['weekly worker rate zero', { usage_budget: { rates: { worker_weekly_pct_per_hour: 0 } } }, 'usage_budget.rates.worker_weekly_pct_per_hour'],
     ['weekly orchestrator rate string', { usage_budget: { rates: { orchestrator_weekly_pct_per_hour: '1' } } }, 'usage_budget.rates.orchestrator_weekly_pct_per_hour'],
   ];

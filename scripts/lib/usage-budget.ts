@@ -46,8 +46,9 @@ export const DEFAULT_USAGE_BUDGET: UsageBudgetConfig = {
   enabled: false,
   five_hour: { no_spawn_at: 85, stop_workers_at: 90 },
   weekly: { no_new_starts_at: 78, stop_campaign_at: 80, target_at_reset: null },
-  // Weekly rates: the 5-hour rates times 0.13, the measured weekly share of one full 5-hour window.
-  rates: { orchestrator_pct_per_hour: 6, worker_pct_per_hour: 7, orchestrator_weekly_pct_per_hour: 6 * 0.13, worker_weekly_pct_per_hour: 7 * 0.13 },
+  // Weekly rates are starting points for a plan where ~1.2M subagent tokens moved the weekly % by
+  // under a point; probe calibration replaces them.
+  rates: { orchestrator_pct_per_hour: 6, worker_pct_per_hour: 7, orchestrator_weekly_pct_per_hour: 0.1, worker_weekly_pct_per_hour: 0.15 },
   max_workers: 4,
   coordination: { role: 'solo', manager_session: null, peer_floor: 1 },
 };
@@ -84,11 +85,11 @@ export const resolveUsageBudget = (config: Record<string, unknown>): UsageBudget
   const rates = section(block, 'rates');
   const coord = section(block, 'coordination');
   const P = 'usage_budget';
-  const target = pick<number | null>(weekly, 'target_at_reset', `${P}.weekly.target_at_reset`, d.weekly.target_at_reset, isPct, 'a number in (0, 100]');
-  // With a target, unset weekly lines move up to it, keeping the default 78/80 ratio between them.
-  const stopDefault = target ?? d.weekly.stop_campaign_at;
-  const stopCampaignAt = pick(weekly, 'stop_campaign_at', `${P}.weekly.stop_campaign_at`, stopDefault, isPct, 'a number in (0, 100]');
-  const noNewDefault = target === null ? d.weekly.no_new_starts_at : (stopCampaignAt * d.weekly.no_new_starts_at) / d.weekly.stop_campaign_at;
+  // null is the same as absent: no weekly pacing.
+  const target = pick<number | null>(weekly, 'target_at_reset', `${P}.weekly.target_at_reset`, d.weekly.target_at_reset, (v) => v === null || isPct(v), 'a number in (0, 100] or null');
+  // With a target, unset weekly lines default to the target itself, so usage can land on it.
+  const stopCampaignAt = pick(weekly, 'stop_campaign_at', `${P}.weekly.stop_campaign_at`, target ?? d.weekly.stop_campaign_at, isPct, 'a number in (0, 100]');
+  const noNewDefault = target ?? d.weekly.no_new_starts_at;
 
   const resolved: UsageBudgetConfig = {
     enabled: pick(block, 'enabled', `${P}.enabled`, d.enabled, (v) => typeof v === 'boolean', 'a boolean'),
@@ -118,8 +119,18 @@ export const resolveUsageBudget = (config: Record<string, unknown>): UsageBudget
   if (resolved.five_hour.no_spawn_at >= resolved.five_hour.stop_workers_at) {
     throw new Error(`${P}.five_hour.no_spawn_at must be less than ${P}.five_hour.stop_workers_at`);
   }
-  if (resolved.weekly.no_new_starts_at >= resolved.weekly.stop_campaign_at) {
-    throw new Error(`${P}.weekly.no_new_starts_at must be less than ${P}.weekly.stop_campaign_at`);
+  if (target === null) {
+    if (resolved.weekly.no_new_starts_at >= resolved.weekly.stop_campaign_at) {
+      throw new Error(`${P}.weekly.no_new_starts_at must be less than ${P}.weekly.stop_campaign_at`);
+    }
+  } else {
+    // A weekly line below the target would stop the campaign before it lands; both may equal it.
+    for (const key of ['stop_campaign_at', 'no_new_starts_at'] as const) {
+      if (resolved.weekly[key] < target) throw new Error(`${P}.weekly.${key} must be >= ${P}.weekly.target_at_reset`);
+    }
+    if (resolved.weekly.no_new_starts_at > resolved.weekly.stop_campaign_at) {
+      throw new Error(`${P}.weekly.no_new_starts_at must be at most ${P}.weekly.stop_campaign_at`);
+    }
   }
   if (resolved.coordination.role === 'peer' && !resolved.coordination.manager_session) {
     throw new Error(`${P}.coordination.manager_session must be a non-empty string when role is peer`);
@@ -171,6 +182,15 @@ export const workersAllowed = (
   const target = budget.weekly.target_at_reset;
   const paced = week !== undefined && target !== null;
   if (!five && !paced) return unavailable(parallelMax, ['usage unavailable: no current five_hour window']);
+  const reasons: string[] = [];
+  // A measured rate that is not a finite number > 0 is ignored in favour of the configured one.
+  const weeklyRate = (key: keyof MeasuredWeeklyRates): number => {
+    const value = measured[key];
+    if (value === undefined) return budget.rates[key];
+    if (Number.isFinite(value) && value > 0) return value;
+    reasons.push(`measured ${key} ${value} is not a number > 0: configured rate used`);
+    return budget.rates[key];
+  };
 
   const hoursToReset = five ? hoursLeft(five.resets_at, now) : hoursLeft((week as { resets_at: number }).resets_at, now);
   const leg = paced
@@ -178,12 +198,11 @@ export const workersAllowed = (
         week,
         now,
         target,
-        measured.orchestrator_weekly_pct_per_hour ?? budget.rates.orchestrator_weekly_pct_per_hour,
-        measured.worker_weekly_pct_per_hour ?? budget.rates.worker_weekly_pct_per_hour,
+        weeklyRate('orchestrator_weekly_pct_per_hour'),
+        weeklyRate('worker_weekly_pct_per_hour'),
       )
     : null;
   const base = { hours_to_reset: hoursToReset, weekly_fit: leg ? leg.fit : null };
-  const reasons: string[] = [];
   if (!week) reasons.push('seven_day absent: weekly rules skipped');
   if (!five) reasons.push('five_hour absent: 5-hour rules skipped, the weekly target sizes the round');
   const ceiling = Math.min(budget.max_workers, parallelMax);
