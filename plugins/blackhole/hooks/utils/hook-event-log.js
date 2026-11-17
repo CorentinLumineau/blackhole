@@ -73,6 +73,18 @@ const SECRET_AUTH_HEADER = /(\bAuthorization\s{0,64}:\s{0,64}(?:Basic|token)\s{1
 const SECRET_USER_FLAG = /((?<![\w-])--user(?:\s{1,64}|=))(['"]?)([^'"\s:]{1,256}):[^'"\s]{1,256}\2/gi;
 const SECRET_CURL_U_FLAG =
   /((?<![\w-])curl(?:\s+(?!curl\b)[^\s|;&]{1,256}){0,16}?\s+-u\s{0,64})(['"]?)([^'"\s:]{1,256}):[^'"\s]{1,256}\2/gi;
+/** A quoted `KEY="a b"` / `"key": 'a b'` value is masked up to its closing quote of the same kind, so
+ * spaces inside it do not end the match early. Runs before SECRET_KV. The keyword tail excludes
+ * `_hint` (`"password_hint":"my first pet"` is prose, not a credential). */
+const SECRET_KV_QUOTED =
+  /\b((?:[A-Za-z][A-Za-z0-9]*_){0,8}?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_(?!hint\b)[A-Za-z0-9]+){0,8})(['"]?\s*[=:]\s*)(['"])[^'"]{1,512}\3/gi;
+/** Quoted `--user "u:p w"` and `curl -u 'u:p w'`: only the password part is masked, up to the closing
+ * quote. The unquoted forms below handle values without spaces. */
+const SECRET_USER_FLAG_QUOTED = /((?<![\w-])--user(?:\s{1,64}|=))(['"])([^'"\s:]{1,256}):[^'"]{1,512}\2/gi;
+const SECRET_CURL_U_FLAG_QUOTED =
+  /((?<![\w-])curl(?:\s+(?!curl\b)[^\s|;&]{1,256}){0,16}?\s+-u\s{0,64})(['"])([^'"\s:]{1,256}):[^'"]{1,512}\2/gi;
+/** Client password environment variables whose names carry no keyword SECRET_KV could match. */
+const SECRET_CLIENT_ENV = /((?<![\w-])(?:PGPASSWORD|MYSQL_PWD)=)(?:(['"])[^'"]{1,512}\2|[^\s'"]{1,512})/g;
 const SECRET_PASSWORD_FLAG = /(--?(?:password|passwd))(\s{1,64}|=)(['"]?)[^'"\s]+\3/gi;
 const MAX_DETAIL_CHARS = 300;
 /** `reason` must keep its trailing `Remedy:` clause, so it has a separate, larger cap than `detail`. */
@@ -85,10 +97,15 @@ const MAX_REASON_CHARS = 2000;
 // minimum length; a shorter cut fragment (e.g. under 4 chars for SECRET_KV) can be emitted unmasked.
 const REDACT_WINDOW_CHARS = Math.max(MAX_DETAIL_CHARS * 8, MAX_REASON_CHARS);
 
+/** Shared by the quoted and unquoted `--user` / `curl -u` passes: keeps the user, masks the password. */
+const maskUserPassword = (_match, head, quote, user) => `${head}${quote}${user}:***${quote}`;
+
 const redactTo = (max) => (text) =>
   String(text === undefined || text === null ? '' : text)
     .slice(0, REDACT_WINDOW_CHARS)
     .replace(SECRET_PASSWORD_QUOTED, (_match, flag, joiner, quote) => `${flag}${joiner}${quote}***${quote}`)
+    .replace(SECRET_KV_QUOTED, (_match, key, separator, quote) => `${key}${separator}${quote}***${quote}`)
+    .replace(SECRET_CLIENT_ENV, (_match, head, quote = '') => `${head}${quote}***${quote}`)
     .replace(SECRET_KV, (_match, key, separator, quote) => `${key}${separator}${quote}***${quote}`)
     .replace(SECRET_SPACE, (_match, flag, quote) => `${flag} ${quote}***${quote}`)
     .replace(SECRET_PASSWORD_FLAG, (_match, flag, joiner, quote) => `${flag}${joiner}${quote}***${quote}`)
@@ -96,8 +113,10 @@ const redactTo = (max) => (text) =>
     .replace(SECRET_AWS_KEY, (_match, prefix) => `${prefix}***`)
     .replace(SECRET_MYSQL_GLUED_P, (_match, head) => `${head}***`)
     .replace(SECRET_AUTH_HEADER, (_match, head) => `${head}***`)
-    .replace(SECRET_USER_FLAG, (_match, head, quote, user) => `${head}${quote}${user}:***${quote}`)
-    .replace(SECRET_CURL_U_FLAG, (_match, head, quote, user) => `${head}${quote}${user}:***${quote}`)
+    .replace(SECRET_USER_FLAG_QUOTED, maskUserPassword)
+    .replace(SECRET_CURL_U_FLAG_QUOTED, maskUserPassword)
+    .replace(SECRET_USER_FLAG, maskUserPassword)
+    .replace(SECRET_CURL_U_FLAG, maskUserPassword)
     .replace(SECRET_URL_USERINFO, (_match, scheme, user) => `${scheme}${user}:***@`)
     .slice(0, max);
 

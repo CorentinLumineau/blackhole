@@ -5243,3 +5243,71 @@ describe('hook-event-log.js — residual credential forms (#1190)', () => {
     });
   }
 });
+describe('hook-event-log.js — quoted values and client password env vars (#1192)', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  // Fake values built by concatenation so no credential-shaped literal sits in source for secret scanners.
+  const phrase = 'my pa' + 'ss phr' + 'ase';
+  const hunter = 'hun' + 'ter 22';
+  const twoWords = 'p' + 'w w' + 'x';
+  const single = 'hun' + 'ter2' + 'pw';
+
+  const FORMS: Array<{ label: string; input: string; secret: string; masked: string }> = [
+    { label: 'KV double-quoted value with spaces', input: `{"password":"${phrase}"}`, secret: 'phr' + 'ase', masked: '{"password":"***"}' },
+    { label: 'KV double-quoted value with spaces after a spaced colon', input: `{"password": "${hunter}"}`, secret: 'ter 22', masked: '{"password": "***"}' },
+    { label: 'KV single-quoted value with spaces', input: `password='${phrase}' next`, secret: 'phr' + 'ase', masked: "password='***' next" },
+    { label: 'curl -u quoted user:pass with spaces', input: `curl -u 'admin:${hunter}' https://example.com/x`, secret: 'ter 22', masked: "-u 'admin:***' https://example.com/x" },
+    { label: 'curl --user quoted user:pass with spaces', input: `curl --user "u:${twoWords}" https://example.com/x`, secret: 'w w', masked: '--user "u:***" https://example.com/x' },
+    { label: 'bare --user quoted user:pass with spaces', input: `tool --user="u:${twoWords}" go`, secret: 'w w', masked: '--user="u:***" go' },
+    { label: 'PGPASSWORD before a command', input: `PGPASSWORD=${single} psql -h db`, secret: single, masked: 'PGPASSWORD=*** psql -h db' },
+    { label: 'PGPASSWORD with a quoted value', input: `PGPASSWORD="${phrase}" psql`, secret: 'phr' + 'ase', masked: 'PGPASSWORD="***" psql' },
+    { label: 'export PGPASSWORD', input: `export PGPASSWORD=${single}`, secret: single, masked: 'export PGPASSWORD=***' },
+    { label: 'MYSQL_PWD before a command', input: `MYSQL_PWD=${single} mysql -u root`, secret: single, masked: 'MYSQL_PWD=*** mysql -u root' },
+    { label: 'MYSQL_PWD with a short value', input: 'MYSQL_PWD=ab mysql', secret: '=ab', masked: 'MYSQL_PWD=*** mysql' },
+  ];
+
+  for (const form of FORMS) {
+    test(`redactReason masks ${form.label} placed after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${form.input} Remedy: rotate it.`);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+      expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+    });
+  }
+
+  test('negatives: look-alike text is left unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    const unchanged = [
+      '{"password_hint":"my first pet"}',
+      '{"tokens":["a b"]}',
+      'curl -u user https://example.com',
+      'PG_HOST=x psql',
+      'PGHOST=db psql',
+    ];
+    for (const text of unchanged) {
+      expect(redact(text)).toBe(text);
+      expect(redactReason(`${filler} ${text}`)).toBe(`${filler} ${text}`);
+    }
+  });
+
+  const ADVERSARIAL: Array<[string, string]> = [
+    ['unterminated quoted KV value', `"password":"${'a '.repeat(100_000)}`],
+    ['repeated unterminated quoted KV openers', '"password":"'.repeat(16_600)],
+    ['repeated single-quoted KV openers', "password: '".repeat(18_000)],
+    ['unterminated quoted curl -u', `curl -u '${'a:b '.repeat(50_000)}`],
+    ['repeated unterminated curl -u openers', "curl -u 'a:".repeat(18_000)],
+    ['repeated unterminated --user openers', '--user "a:'.repeat(22_000)],
+    ['unterminated quoted PGPASSWORD', `PGPASSWORD="${'a '.repeat(100_000)}`],
+    ['repeated PGPASSWORD openers', 'PGPASSWORD="'.repeat(16_000)],
+    ['PGPASSWORD then endless value', `PGPASSWORD=${'a'.repeat(200_000)}`],
+    ['repeated MYSQL_PWD', 'MYSQL_PWD='.repeat(20_000)],
+  ];
+
+  for (const [label, input] of ADVERSARIAL) {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+      const { redactReason } = hookEventLog();
+      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+    });
+  }
+});
+
