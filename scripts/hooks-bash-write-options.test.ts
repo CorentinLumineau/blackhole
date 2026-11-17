@@ -558,3 +558,87 @@ describe('bash-write-target-guard.js — #1222 round 2: config words, env and ke
     });
   }
 });
+
+// Issue #1246: git appends a trace to the file a `GIT_TRACE*` variable names, so a literal
+// absolute value is a write target. `1`, `true`, `0`, `false` and `2`–`9` mean stderr, off or an
+// fd; any other value that is not absolute is ignored by git.
+describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246)', () => {
+  const verdict = async (build: (main: string, wt: string) => string) => {
+    let result: unknown = undefined;
+    await withLinkedWorktree('blackhole-hook-1246-', async (mainRepo, worktree) => {
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      result = evaluateBashWriteTargets(build(mainRepo, worktree), worktree);
+    });
+    return result;
+  };
+  const BLOCK = { tier: 'block', pattern_id: 'bash-outside-assigned-worktree' };
+  const WARN = { tier: 'warn', pattern_id: 'bash-write-target-unresolvable' };
+
+  const FAMILIES = [
+    'GIT_TRACE',
+    'GIT_TRACE_PACKET',
+    'GIT_TRACE_PERFORMANCE',
+    'GIT_TRACE_SETUP',
+    'GIT_TRACE_CURL',
+    'GIT_TRACE2',
+    'GIT_TRACE2_EVENT',
+    'GIT_TRACE2_PERF',
+  ];
+
+  for (const name of FAMILIES) {
+    test(`#1246: \`${name}=<main>/t git status\` is denied`, async () => {
+      expect(await verdict((m) => `${name}=${m}/t git status`)).toMatchObject(BLOCK);
+    });
+    test(`#1246: \`${name}=<wt>/t git status\` stays allowed`, async () => {
+      expect(await verdict((_m, w) => `${name}=${w}/t git status`)).toBeNull();
+    });
+  }
+
+  test('#1246: the issue example `GIT_TRACE=<outside>/x git status` is denied through the full hook', async () => {
+    await withLinkedWorktree('blackhole-hook-1246-', async (mainRepo, worktree) => {
+      const result = await run(`GIT_TRACE=${mainRepo}/x git status`, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject(BLOCK);
+    });
+  });
+
+  for (const [label, build] of [
+    ['export then git', (m: string) => `export GIT_TRACE=${m}/t; git status`],
+    ['through env', (m: string) => `env GIT_TRACE_PACKET=${m}/t git fetch`],
+    ['quoted value', (m: string) => `GIT_TRACE="${m}/t" git status`],
+    ['escaped value', (m: string) => `GIT_TRACE=\\${m}/t git status`],
+    ['GIT_TRACE2_EVENT naming a directory', (m: string) => `GIT_TRACE2_EVENT=${m} git status`],
+    ['a later family member', (m: string) => `GIT_TRACE_PACK_ACCESS=${m}/t git status`],
+  ] as const) {
+    test(`#1246: ${label} is denied`, async () => {
+      expect(await verdict(build)).toMatchObject(BLOCK);
+    });
+  }
+
+  for (const command of ['GIT_TRACE=$LOG git status', 'GIT_TRACE="$HOME/t" git status', 'GIT_TRACE=`pwd`/t git status', 'GIT_TRACE=~/t git status']) {
+    test(`#1246: \`${command}\` warns (the trace file is not known statically)`, async () => {
+      expect(await verdict(() => command)).toMatchObject(WARN);
+    });
+  }
+
+  for (const value of ['1', 'true', 'TRUE', '0', 'false', '', ...'23456789']) {
+    test(`#1246: \`GIT_TRACE=${value} git status\` (stderr, off or an fd) stays allowed`, async () => {
+      expect(await verdict(() => `GIT_TRACE=${value} git status`)).toBeNull();
+    });
+  }
+
+  for (const build of [
+    (_m: string, w: string) => `GIT_TRACE2_EVENT=${w}/traces git status`,
+    () => 'GIT_TRACE=relative/t git status',
+    () => 'GIT_TRACE2_CONFIG_PARAMS=core.pager git status',
+    () => 'GIT_TRACE2_ENV_VARS=HOME,PATH git status',
+    () => 'GIT_TRACE_REDACT=0 git status',
+    () => "git commit -m 'GIT_TRACE=/etc/x'",
+    (m: string) => `GIT_DIR=${m}/.git git log`,
+  ]) {
+    test(`#1246: \`${build('<main>', '<wt>')}\` stays allowed`, async () => {
+      expect(await verdict(build)).toBeNull();
+    });
+  }
+});

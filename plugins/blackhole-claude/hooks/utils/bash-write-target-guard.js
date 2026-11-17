@@ -878,6 +878,23 @@ const findOptionWriteTargets = (tokens) => {
   return targets;
 };
 
+/** Files git appends a trace to (`GIT_TRACE=/x`, `GIT_TRACE2_EVENT=<dir>`, …) from assignments
+ * anywhere in one clause — a prefix, `export` or `env` alike. Git writes only to an absolute
+ * value: `1`, `true`, `0`, `false` and `2`–`9` mean stderr, off or an fd, and any other value is
+ * ignored. A value the shell rewrites (`$LOG`, `` `pwd` ``, `~/t`) is returned as written, so it
+ * is unresolvable. */
+const findGitTraceTargets = (tokens) => {
+  const targets = [];
+  for (const token of tokens) {
+    const value = /^GIT_TRACE\w*=([\s\S]*)$/.exec(token)?.[1];
+    if (value === undefined) continue;
+    const { text, dynamic } = normalizeShellWord(value);
+    if (dynamic) targets.push(value);
+    else if (path.isAbsolute(text) || text.startsWith('~')) targets.push(text);
+  }
+  return targets;
+};
+
 const SHELL_NAMES = ['sh', 'bash', 'dash', 'zsh', 'ksh'];
 
 /** Shell options whose value is the next token (`-o pipefail`, `+O extglob`, `--rcfile f`). */
@@ -1157,7 +1174,13 @@ const collectWriteSignals = (visible, heredocText, cwd) => {
     findRedirectTargets(redirectView.slice(from, to)).forEach(add);
     const tokens = tokenize(visible.slice(from, to));
     if (tokens.length > 0) {
-      [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens), ...findOptionWriteTargets(tokens)].forEach(add);
+      [
+        ...findTeeTargets(tokens),
+        ...findSedTargets(tokens),
+        ...findCopyMoveTargets(tokens),
+        ...findOptionWriteTargets(tokens),
+        ...findGitTraceTargets(tokens),
+      ].forEach(add);
       if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
       state = applyCd(state, tokens, start >= 2 && visible[start - 1] === '|' && visible[start - 2] === '|');
     }
