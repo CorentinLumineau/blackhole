@@ -36,6 +36,19 @@ const permissionDecision = (stdout: string): string | undefined =>
 const permissionReason = (stdout: string): string | undefined =>
   JSON.parse(stdout).hookSpecificOutput?.permissionDecisionReason;
 
+/** Minimum wall time of `runs` calls after one warm-up call: the minimum damps scheduler noise, so a
+ * timing budget measures the code, not a busy CI runner. */
+const minMs = (run: () => unknown, runs = 3): number => {
+  run();
+  let best = Infinity;
+  for (let i = 0; i < runs; i += 1) {
+    const start = performance.now();
+    run();
+    best = Math.min(best, performance.now() - start);
+  }
+  return best;
+};
+
 describe('validate-bash-command.js', () => {
   test('block tier: `rm -rf /` is denied with exit 2, a stderr reason, and a durable block event', async () => {
     await withTempGitRepo('blackhole-hook-bash-', async (repo) => {
@@ -4499,16 +4512,6 @@ describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
 // wrapper fails open. Timing is the minimum of 3 runs after a warm-up to damp scheduler noise.
 describe('hook-event-log.js — redact is bounded on adversarial input (#1195)', () => {
   const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
-  const minMs = (fn: () => unknown): number => {
-    fn();
-    let best = Infinity;
-    for (let i = 0; i < 3; i++) {
-      const start = performance.now();
-      fn();
-      best = Math.min(best, performance.now() - start);
-    }
-    return best;
-  };
 
   test('redact of a 220 KB repeated-keyword input completes in under 50 ms', () => {
     const { redact } = hookEventLog();
@@ -4634,17 +4637,6 @@ describe('validate-bash-command.js — clause-scan cost bound (#1197)', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'worktree-removal-guard.js'));
   const SIZE_CAP = 32 * 1024;
-
-  const minMs = (run: () => void, runs = 3): number => {
-    run(); // warm-up
-    let best = Infinity;
-    for (let i = 0; i < runs; i += 1) {
-      const start = performance.now();
-      run();
-      best = Math.min(best, performance.now() - start);
-    }
-    return best;
-  };
 
   for (const [label, unit] of [['`;`', ';'], ['`| `', '| ']] as const) {
     test(`#1197: 120 KB of ${label} followed by \`git checkout -- f\` is still denied in under 2.5 s`, async () => {
@@ -5026,5 +5018,125 @@ describe('hook-event-log.js — redact length caps', () => {
       expect(reason.trimEnd().endsWith('.')).toBe(true);
       expect((events[0].detail as string).length).toBeLessThanOrEqual(300);
     });
+  });
+});
+
+describe('hook-event-log.js — keyword-less credential masking', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  // Fake values built by concatenation so no token-shaped literal sits in source for secret scanners.
+  const ghp = 'ghp' + '_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4';
+  const ghs = 'ghs' + '_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8N7m6';
+  const pat = 'github' + '_pat_' + '11ABCDEFG0abcdefghij_klmnopqrstuvwxyz0123';
+  const aws = 'AKIA' + 'IOSFODNN7EXAMPLE';
+  const awsTemp = 'ASIA' + 'IOSFODNN7EXAMPLE';
+  const filler = 'x'.repeat(450);
+
+  const FORMS: Array<{ label: string; input: string; secret: string; masked: string }> = [
+    { label: 'ghp_ token', input: `curl -H x ${ghp} end`, secret: ghp, masked: 'ghp_***' },
+    { label: 'ghs_ token', input: `use ${ghs} now`, secret: ghs, masked: 'ghs_***' },
+    { label: 'github_pat_ token', input: `export ${pat}`, secret: pat, masked: 'github_pat_***' },
+    { label: 'AWS AKIA key', input: `id ${aws} used`, secret: aws, masked: 'AKIA***' },
+    { label: 'AWS ASIA key', input: `id ${awsTemp} used`, secret: awsTemp, masked: 'ASIA***' },
+    {
+      label: 'URL userinfo',
+      input: 'git clone https://deploy:hunter2pw@example.com/org/repo.git',
+      secret: 'hunter2pw',
+      masked: 'https://deploy:***@example.com/org/repo.git',
+    },
+    { label: '--password with a short value', input: 'mysql --password ab -h db', secret: 'password ab', masked: '--password ***' },
+    { label: '--password= with a short value', input: 'mysql --password=ab -h db', secret: '=ab', masked: '--password=***' },
+    { label: '--password with a long value', input: 'mysql --password correcthorse -h db', secret: 'correcthorse', masked: '--password ***' },
+  ];
+
+  for (const form of FORMS) {
+    test(`redact masks ${form.label}`, () => {
+      const out = hookEventLog().redact(form.input);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+    });
+
+    test(`redactReason masks ${form.label} placed after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${form.input} Remedy: rotate it.`);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+      expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+    });
+  }
+
+  test('through the hook: a token in a blocked command is masked in the recorded detail and reason', async () => {
+    await withLinkedWorktree('blackhole-hook-1188-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git checkout throwaway -- ${ghp}`), mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      const recorded = JSON.stringify(events[0]);
+      expect(recorded).not.toContain(ghp);
+      expect(recorded).toContain('ghp_***');
+    });
+  });
+
+  const ADVERSARIAL: Array<[string, string]> = [
+    ['ghp_ run', 'ghp_'.repeat(500)],
+    ['github_pat_ run', 'github_pat_'.repeat(180)],
+    ['AKIA run', 'AKIA'.repeat(500)],
+    ['scheme-like run', 'a'.repeat(2000)],
+    ['scheme with endless userinfo', `https://${'u'.repeat(1990)}`],
+    ['userinfo colon run', `a://${':'.repeat(1990)}`],
+    ['--password then whitespace', `--password${' '.repeat(1980)}`],
+    ['repeated --password', '--password '.repeat(180)],
+  ];
+
+  for (const [label, input] of ADVERSARIAL) {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+      const { redactReason } = hookEventLog();
+      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+    });
+  }
+
+  test('unrelated text is left unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    const unchanged = [
+      'git -C /home/dev/work/blackhole/src status',
+      'commit 7a1f23b67d3342712cdc588e874e2b99843f3514 is fine',
+      'the ghp prefix without an underscore stays, as does ghpAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      'fetch https://example.com/path?q=1 and ssh://git@example.com/repo.git',
+      'AKIA is short, and AKIAshort stays',
+    ];
+    for (const text of unchanged) {
+      expect(redact(text)).toBe(text);
+      expect(redactReason(text)).toBe(text);
+    }
+  });
+});
+
+describe('hook-event-log.js — space-separated secret flags', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  const value = 'abcdefgh1234';
+
+  const MASKED: Array<[string, string, string]> = [
+    ['--token', `run --token ${value} now`, '--token ***'],
+    ['--api-key', `run --api-key ${value} now`, '--api-key ***'],
+    ['--secret', `run --secret ${value} now`, '--secret ***'],
+    ['-token', `run -token ${value} now`, '-token ***'],
+    ['--with-token', `gh auth login --with-token ${value} now`, '--with-token ***'],
+    ['Bearer', `curl -H "Authorization: Bearer ${value}" now`, 'Bearer ***'],
+  ];
+
+  for (const [label, input, masked] of MASKED) {
+    test(`redactReason masks ${label} after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${input}`);
+      expect(out).toContain(masked);
+      expect(out).not.toContain(value);
+    });
+  }
+
+  test('flags that merely start with a secret keyword stay unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    for (const text of ['--token-file /path/to/file', '--secret-name foo', '--tokenizer x']) {
+      expect(redactReason(`${filler} ${text}`)).toBe(`${filler} ${text}`);
+      expect(redact(text)).toBe(text);
+    }
   });
 });
