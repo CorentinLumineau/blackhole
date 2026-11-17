@@ -51,6 +51,7 @@ orchestrator_turn_id: 12
 last_completed_phase: review
 stopped_by: null
 stop_kind: null
+wake_at: null
 ---
 
 # Campaign Checkpoint
@@ -123,8 +124,9 @@ phase inference per § Compaction recovery above) before continuing.
 | `in_flight_workers` | checkpoint body | Active worker spawns for resume |
 | `## Headline` | checkpoint body | One sentence on where the run stands, rewritten every checkpoint; the status page leads with it (`status-page.md` § What the orchestrator records). Absent ⇒ the page generates one from the counts |
 | `## Blocking the run` | checkpoint body | One line per thing holding the run back, rewritten every checkpoint; `none` when nothing does. Absent ⇒ the page lists the failing or conflicting PRs and the largest blocked reason classes |
-| `stopped_by` | checkpoint frontmatter | Who requested the stop — `user` \| `null` (`phase-stop.md`) |
+| `stopped_by` | checkpoint frontmatter | Who requested the stop — `user` \| `usage` (the spawn-round usage gate, `phase-stop.md` § Usage stop) \| `null` (`phase-stop.md`) |
 | `stop_kind` | checkpoint frontmatter | `drained` \| `killed` \| `flushed` (issue #492) \| `null` — which `phase-stop.md` tier ran; `flushed` (issue #492) is emitted per that file's `stop --now` tier step 6 priority rule |
+| `wake_at` | checkpoint frontmatter | Epoch seconds the campaign resumes after a usage stop — the usage verdict's `wake_at`; `null` otherwise, and for `STOP-CAMPAIGN`. A turn before it spawns nothing; the first round that spawns again clears it with `stopped_by` and `stop_kind` (`orchestrator-runtime.md` § Session resume & recovery step 7) |
 | `worker_state` | `## In-flight workers` row, stop-event-only | `drained` \| `flushed` (issue #492) \| `killed` — tags a stopped worker's row before removal per `phase-stop.md`'s § `stop --now` tier step 3 (`flushed`, issue #492) and § `--abandon` tier (`killed`); absent on a normal turn's rows |
 
 ## Failed-Approaches Log

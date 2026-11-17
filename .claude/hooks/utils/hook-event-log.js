@@ -43,7 +43,7 @@ const { rotateHookEvents } = require('./hook-event-rotation');
  *  - Space form (`--token xyz`, `Bearer xyz`): no `=`/`:` joins the keyword to its value at all.
  */
 const SECRET_KV =
-  /\b((?:[A-Za-z][A-Za-z0-9]*_)*?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+)*)(['"]?\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
+  /\b((?:[A-Za-z][A-Za-z0-9]*_){0,8}?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+){0,8})(['"]?\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
 const SECRET_SPACE =
   /(?<![\w-])(--?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key|with-token)|Bearer)\s+(['"]?)[^'"\s]{4,}\2/gi;
 /** Credentials with no keyword in front of them. Every quantifier is bounded or runs over a
@@ -77,7 +77,7 @@ const SECRET_CURL_U_FLAG =
  * spaces inside it do not end the match early. Runs before SECRET_KV. The keyword tail excludes
  * `_hint` (`"password_hint":"my first pet"` is prose, not a credential). */
 const SECRET_KV_QUOTED =
-  /\b((?:[A-Za-z][A-Za-z0-9]*_)*?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_(?!hint\b)[A-Za-z0-9]+)*)(['"]?\s*[=:]\s*)(['"])[^'"]{1,512}\3/gi;
+  /\b((?:[A-Za-z][A-Za-z0-9]*_){0,8}?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_(?!hint\b)[A-Za-z0-9]+){0,8})(['"]?\s*[=:]\s*)(['"])[^'"]{1,512}\3/gi;
 /** Quoted `--user "u:p w"` and `curl -u 'u:p w'`: only the password part is masked, up to the closing
  * quote. The unquoted forms below handle values without spaces. */
 const SECRET_USER_FLAG_QUOTED = /((?<![\w-])--user(?:\s{1,64}|=))(['"])([^'"\s:]{1,256}):[^'"]{1,512}\2/gi;
@@ -89,11 +89,20 @@ const SECRET_PASSWORD_FLAG = /(--?(?:password|passwd))(\s{1,64}|=)(['"]?)[^'"\s]
 const MAX_DETAIL_CHARS = 300;
 /** `reason` must keep its trailing `Remedy:` clause, so it has a separate, larger cap than `detail`. */
 const MAX_REASON_CHARS = 2000;
+// Invariant: every regex pass sees at most this many chars, so redaction cost is O(1) in the input
+// size, and no character past the window is ever emitted. The window does not keep a straddling
+// secret out of the output on its own: each mask can be shorter than the value it replaces, so the
+// final cap slice (MAX_DETAIL_CHARS or MAX_REASON_CHARS) can reach text near the window edge. A
+// value cut by the edge is still masked when the part left inside the window meets its pattern's
+// minimum length; a shorter cut fragment (e.g. under 4 chars for SECRET_KV) can be emitted unmasked.
+const REDACT_WINDOW_CHARS = Math.max(MAX_DETAIL_CHARS * 8, MAX_REASON_CHARS);
 
-const maskQuotedUser = (_match, head, quote, user) => `${head}${quote}${user}:***${quote}`;
+/** Shared by the quoted and unquoted `--user` / `curl -u` passes: keeps the user, masks the password. */
+const maskUserPassword = (_match, head, quote, user) => `${head}${quote}${user}:***${quote}`;
 
 const redactTo = (max) => (text) =>
   String(text === undefined || text === null ? '' : text)
+    .slice(0, REDACT_WINDOW_CHARS)
     .replace(SECRET_PASSWORD_QUOTED, (_match, flag, joiner, quote) => `${flag}${joiner}${quote}***${quote}`)
     .replace(SECRET_KV_QUOTED, (_match, key, separator, quote) => `${key}${separator}${quote}***${quote}`)
     .replace(SECRET_CLIENT_ENV, (_match, head, quote = '') => `${head}${quote}***${quote}`)
@@ -104,10 +113,10 @@ const redactTo = (max) => (text) =>
     .replace(SECRET_AWS_KEY, (_match, prefix) => `${prefix}***`)
     .replace(SECRET_MYSQL_GLUED_P, (_match, head) => `${head}***`)
     .replace(SECRET_AUTH_HEADER, (_match, head) => `${head}***`)
-    .replace(SECRET_USER_FLAG_QUOTED, maskQuotedUser)
-    .replace(SECRET_CURL_U_FLAG_QUOTED, maskQuotedUser)
-    .replace(SECRET_USER_FLAG, (_match, head, quote, user) => `${head}${quote}${user}:***${quote}`)
-    .replace(SECRET_CURL_U_FLAG, (_match, head, quote, user) => `${head}${quote}${user}:***${quote}`)
+    .replace(SECRET_USER_FLAG_QUOTED, maskUserPassword)
+    .replace(SECRET_CURL_U_FLAG_QUOTED, maskUserPassword)
+    .replace(SECRET_USER_FLAG, maskUserPassword)
+    .replace(SECRET_CURL_U_FLAG, maskUserPassword)
     .replace(SECRET_URL_USERINFO, (_match, scheme, user) => `${scheme}${user}:***@`)
     .slice(0, max);
 
@@ -666,6 +675,7 @@ const failClosed = ({ hook, tool, error, patternId = 'pattern-load-failure', lab
 module.exports = {
   redact,
   redactReason,
+  SECRET_KV,
   worktreeRoot,
   mainCloneRoot,
   allWorktreeRoots,

@@ -1,3 +1,5 @@
+import type { UsageVerdictName } from '../usage-budget.ts';
+
 // Mirrors the `route` object SSOT — `queue-dag.md` § `route` object. Field names and enum
 // values are frozen there; this type must not rename or add fields (V-INT-01 / V-DRY-01).
 // omits: needs_brainstorm, needs_analysis, docs_impact, ui, confidence.docs, confidence.brainstorm, confidence.analysis, confidence.ui — not read by campaign-status.ts's current consumers (V-SHAPE-01 declared narrowing).
@@ -269,6 +271,9 @@ export type StatusState = {
   next_action: string;
 };
 
+/** PreToolUse hook decisions for one rule: `deny` counts `tier: block` events, `warn` counts `tier: warn`. */
+export type DenyCount = { pattern_id: string; deny: number; warn: number };
+
 export type StatusReport = {
   schema_version: 1;
   generated_at: string;
@@ -355,6 +360,35 @@ export type StatusReport = {
   config_rows: Array<{ key: string; value: string }>;
   /** Queue entries the forge contradicts, rendered as the forge has them; the next sync brings the queue in line. Empty when the forge was not read. Additive. */
   drift: QueueDrift[];
+  /** Hook deny and warn events per `pattern_id` since the campaign started, live and archived, most frequent first. Additive. */
+  deny_counts: DenyCount[];
+  /** The usage reading and the usage-budget verdict for it (`budget.ts`); `probed: false` when no reading was found. Additive. */
+  budget: BudgetPanel;
+};
+
+/** The status page's usage-budget panel. Times are ISO 8601; every number is null when the window or the reading is absent. */
+export type BudgetPanel = {
+  /** Whether a current rate-limit reading was read; false ⇒ the page says "usage not probed". */
+  probed: boolean;
+  /** Why no reading was read; null when `probed`. */
+  reason: string | null;
+  /** Seconds since the rate-limit cache was written. */
+  age_seconds: number | null;
+  /** Only set when the plan has a current five_hour window. */
+  five_hour_pct: number | null;
+  five_hour_resets_at: string | null;
+  weekly_pct: number | null;
+  /** The weekly (seven_day) reset. */
+  resets_at: string | null;
+  /** `workersAllowed()`'s count, or `parallel_max` when the verdict is `unavailable`. */
+  workers_allowed: number | null;
+  verdict: UsageVerdictName | null;
+  verdict_reasons: string[];
+  /**
+   * The weekly pace since the window opened, and when it reaches each distinct weekly threshold
+   * (`no_new_starts_at`, `stop_campaign_at`): `at` null when not before the reset or already crossed. Null without a weekly window.
+   */
+  forecast: { pct_per_hour: number | null; reaches: Array<{ pct: number; at: string | null }> } | null;
 };
 
 /** A status colour name. Text always carries the meaning; the colour only repeats it. */

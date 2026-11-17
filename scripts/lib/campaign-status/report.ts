@@ -4,15 +4,18 @@ import { classifyBlocked, CLASS_PREVIEW, groupBlockedRows, waitReason, type Wait
 import { buildBoard, buildMoves, buildStreams, stageCounts } from './board.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
 import { buildBlockers, buildConfigRows, buildHeadline, buildLinks } from './overview.ts';
+import { NOT_PROBED } from './budget.ts';
 import { reconcileMerged } from './merged.ts';
 import { newestFirst, readScopeEntries } from './record.ts';
 import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
 import { computeStatusCounts, groupIssuesByPhase, QUEUE_STATUSES } from './queue.ts';
 import type {
   BlockedClass,
+  BudgetPanel,
   BlockedGroup,
   CheckpointMeta,
   ConfigSummaryInput,
+  DenyCount,
   ForgeCounts,
   IssueRow,
   LedgerJson,
@@ -52,6 +55,10 @@ export type StatusReportInput = {
   mergedPrs?: MergedPr[] | null;
   /** The plugin's own version, shown in the config rows. */
   pluginVersion?: string | null;
+  /** Hook deny/warn counts per rule (`collectDenyCounts`); absent ⇒ none. */
+  denyCounts?: DenyCount[];
+  /** The usage-budget panel (`readBudgetPanel`); absent ⇒ not probed. */
+  budget?: BudgetPanel;
 };
 
 // Owner-clearable `awaiting-*` gates from queue-dag.md § Field rules (`notes`).
@@ -425,5 +432,7 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
     links: buildLinks(repoWebUrl(forgeKind, forgeHost, config.repo ?? ''), forgeKind, config.status_page),
     config_rows: buildConfigRows(config, input.pluginVersion ?? null),
     drift: reconciled.drift,
+    deny_counts: input.denyCounts ?? [],
+    budget: input.budget ?? NOT_PROBED,
   };
 }
