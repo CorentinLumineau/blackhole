@@ -879,3 +879,55 @@ describe('main() CLI entrypoint — no campaign directory', () => {
     }
   });
 });
+
+describe('status --summary (the launch summary)', () => {
+  const FULL = path.join(root, 'fixtures/campaign-status/full');
+  const summary = (...args: string[]) =>
+    Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--summary', '--no-gh', ...args], cwd: root, stdout: 'pipe', stderr: 'pipe' });
+
+  test('parses --summary with --usage, --now and --json', () => {
+    const parsed = parseStatusArgs(['--summary', '--usage', '{"five_hour":{}}', '--now', '1700000000', '--json']);
+    expect(parsed).toMatchObject({ mode: 'summary', usage: '{"five_hour":{}}', now: 1700000000, summaryJson: true });
+  });
+
+  test('--summary combined with --html or --data throws', () => {
+    expect(() => parseStatusArgs(['--summary', '--html'])).toThrow(/--summary/);
+    expect(() => parseStatusArgs(['--summary', '--data', 'd'])).toThrow(/--summary/);
+  });
+
+  test('--usage or --now without --summary throws', () => {
+    expect(() => parseStatusArgs(['--usage', '{}'])).toThrow(/--summary/);
+    expect(() => parseStatusArgs(['--now', '1'])).toThrow(/--summary/);
+  });
+
+  test('prints the seven-row table for the fixture campaign', () => {
+    const proc = summary('--campaign-dir', FULL, '--now', '1763026200');
+    expect(proc.exitCode).toBe(0);
+    const out = proc.stdout.toString();
+    expect(out).toContain('## Launch summary');
+    for (const label of ['Scope', 'Order', 'Merge', 'Budget', 'Status page', 'Kaizen and staging', 'Peers']) expect(out).toContain(`| ${label} |`);
+    expect(out).toContain('pacing off');
+  });
+
+  test('--json returns the rows and the question cards', () => {
+    const proc = summary('--campaign-dir', FULL, '--json');
+    expect(proc.exitCode).toBe(0);
+    const parsed = JSON.parse(proc.stdout.toString());
+    expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual(['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers']);
+    expect(Array.isArray(parsed.cards)).toBe(true);
+  });
+
+  test('a malformed --usage exits 2', () => {
+    const proc = summary('--campaign-dir', FULL, '--usage', '{not json');
+    expect(proc.exitCode).toBe(2);
+    expect(proc.stderr.toString()).toContain('--usage');
+  });
+
+  test('no .blackhole prints the not-found message and exits 0', () => {
+    const missing = path.join(os.tmpdir(), `blackhole-summary-missing-${Date.now()}`);
+    const proc = summary('--campaign-dir', missing);
+    expect(proc.exitCode).toBe(0);
+    expect(proc.stdout.toString().toLowerCase()).toContain('no campaign');
+    expect(proc.stderr.toString()).toBe('');
+  });
+});

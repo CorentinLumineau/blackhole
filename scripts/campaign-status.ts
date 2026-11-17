@@ -8,7 +8,11 @@ import { fetchForgeCounts, fetchMergedPrs } from './lib/campaign-status/forge.ts
 import { writeStatusData } from './lib/campaign-status/data.ts';
 import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
-import { readPublishState, readStatusAlerts } from './lib/campaign-status/staleness.ts';
+import { readPublishState, readStatusAlerts, statusPageEnabled } from './lib/campaign-status/staleness.ts';
+import { buildBudgetView } from './lib/campaign-status/budget.ts';
+import { buildLaunchSummary, gateCards, renderLaunchSummary, type StatusArtifact, type StatusPageInput } from './lib/campaign-status/launch-summary.ts';
+import type { RateLimits } from './lib/pace-gate.ts';
+import { parseUsage } from './usage-budget.ts';
 import { buildStatusReport } from './lib/campaign-status/report.ts';
 import { CampaignNotFoundError, loadCampaignState } from './lib/campaign-status/state.ts';
 import { readJsonFile } from './lib/fs.ts';
@@ -185,8 +189,82 @@ export async function collectStatusReport(
   return { report, state, host };
 }
 
+/** The shipped status-page template's `bh-template-version`, or null when it cannot be read. */
+export function readTemplateVersion(pluginRoot: string = path.join(import.meta.dir, '..')): number | null {
+  try {
+    const html = fs.readFileSync(path.join(pluginRoot, 'templates', 'status-dashboard', 'index.html'), 'utf-8');
+    const match = /<meta name="bh-template-version" content="(\d+)">/.exec(html);
+    return match ? Number(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+const readJsonOrNull = (file: string): unknown => {
+  try {
+    return fs.existsSync(file) ? readJsonFile(file, file) : null;
+  } catch {
+    return null;
+  }
+};
+
+/** The Status page row's inputs: config, host, `status-artifact.json` and the shipped template version. */
+function readStatusPageInput(campaignDir: string, config: Parameters<typeof statusPageEnabled>[0], nowIso: string): StatusPageInput {
+  const artifact = readJsonOrNull(path.join(campaignDir, 'status-artifact.json'));
+  return {
+    enabled: statusPageEnabled(config),
+    publishExpected: readPublishState(campaignDir).publishExpected,
+    artifact: artifact && typeof artifact === 'object' && !Array.isArray(artifact) ? (artifact as StatusArtifact) : null,
+    templateVersion: readTemplateVersion(),
+    nowIso,
+  };
+}
+
+/** Print-only mode (`launch-gate.md`): sleep mode is on, or the run context reports no question channel. */
+function readPrintOnly(campaignDir: string, config: Record<string, unknown>): boolean {
+  const sleep = (config.sleep_mode ?? {}) as { enabled?: unknown };
+  const route = (readJsonOrNull(path.join(campaignDir, 'run-context.json')) ?? {}) as { route?: { question_channel?: unknown } };
+  return sleep.enabled === true || route.route?.question_channel === 'none';
+}
+
+/** `--summary`: the launch gate's seven rows and question cards (`launch-gate.md`). */
+async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJson: string | null, now: number | null, asJson: boolean) {
+  let usage: RateLimits | null = null;
+  if (usageJson !== null) {
+    try {
+      usage = parseUsage(usageJson);
+    } catch (error) {
+      console.error(`status --summary: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(2);
+    }
+  }
+  const nowS = now ?? Math.floor(Date.now() / 1000);
+  const nowIso = new Date(nowS * 1000).toISOString();
+  let collected: Awaited<ReturnType<typeof collectStatusReport>>;
+  try {
+    collected = await collectStatusReport(campaignDir, skipGh, nowIso);
+  } catch (error) {
+    if (error instanceof CampaignNotFoundError) return console.log(error.message);
+    throw error;
+  }
+  const config = collected.state.config as Record<string, unknown>;
+  const rows = buildLaunchSummary({
+    report: collected.report,
+    config,
+    budget: buildBudgetView({ config, usage, now: nowS }),
+    statusPage: readStatusPageInput(campaignDir, collected.state.config, nowIso),
+  });
+  if (asJson) {
+    console.log(JSON.stringify({ rows, cards: gateCards(rows, { printOnly: readPrintOnly(campaignDir, config) }) }, null, 2));
+    return;
+  }
+  console.log(renderLaunchSummary(rows));
+}
+
 async function main() {
-  const { mode, campaignDir, skipGh, outPath, dataDir } = parseStatusArgs(process.argv.slice(2));
+  const { mode, campaignDir, skipGh, outPath, dataDir, usage, now, summaryJson } = parseStatusArgs(process.argv.slice(2));
+
+  if (mode === 'summary') return printLaunchSummary(campaignDir, skipGh, usage, now, summaryJson);
 
   if (mode === 'config-summary') {
     // The routine-resume confirmation gate (coordinator.md § Bootstrap preflight) prints only
