@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { minMs, PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
 
@@ -272,11 +274,38 @@ describe('bash-write-target-guard.js — #1222 deep-path containment stays linea
     });
   });
 
-  test('#1222: a redirect into a 16k-segment relative path is evaluated in linear time', async () => {
+  // Direct timings of the resolver itself: the bottom-up walk took ~1.8 s on the 32k-deep missing
+  // path, and the plain top-down walk ~70 ms on the deep existing tree (quadratic in its depth).
+  test('#1222: resolveExistingAncestor on a 32k-deep missing path stays fast', () => {
+    const { resolveExistingAncestor } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+    const deep = path.join(os.tmpdir(), 'a/'.repeat(32_000), 'x');
+    expect(resolveExistingAncestor(deep)).toBe(fs.realpathSync(os.tmpdir()));
+    expect(minMs(() => resolveExistingAncestor(deep))).toBeLessThan(100);
+  });
+
+  test('#1222: resolveExistingAncestor under a deep existing tree behind a symlink stays fast', () => {
+    const { resolveExistingAncestor } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-1222-deep-'));
+    try {
+      fs.mkdirSync(path.join(base, 'real'));
+      fs.symlinkSync(path.join(base, 'real'), path.join(base, 'link'));
+      const depth = Math.floor((3_800 - base.length) / 2);
+      const tree = 'a/'.repeat(depth);
+      fs.mkdirSync(path.join(base, 'real', tree), { recursive: true });
+      const target = path.join(base, 'link', tree, 'missing', 'x');
+      expect(resolveExistingAncestor(target)).toBe(fs.realpathSync(path.join(base, 'real', tree)));
+      expect(minMs(() => resolveExistingAncestor(target))).toBeLessThan(30);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  test('#1222: a 32k-character `-c` key is matched in linear time', async () => {
     await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
-      const { evaluateBashWriteTargets } = guard();
-      const command = `echo hi > ${'a/'.repeat(16_000)}x`;
-      expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      for (const key of [`sendemail.${'a.'.repeat(16_000)}x`, `diff.${'a.'.repeat(16_000)}x`, `includeIf.${'a.'.repeat(16_000)}x`]) {
+        expect(minMs(() => evaluateBashWriteTargets(`git -c ${key}=1 log`, worktree))).toBeLessThan(250);
+      }
     });
   });
 
@@ -290,6 +319,82 @@ describe('bash-write-target-guard.js — #1222 deep-path containment stays linea
 });
 
 describe('validate-bash-command.js — #1222 git -c aliases, -C format-patch, piped grep', () => {
+  // One row per exec-carrying config key family; removing any family from the guard fails its row.
+  for (const setting of [
+    'filter.lfs.clean=x',
+    'pager.log=x',
+    'core.editor=x',
+    'core.fsmonitor=x',
+    'core.hooksPath=x',
+    'core.askpass=x',
+    'sequence.editor=x',
+    'diff.foo.textconv=x',
+    'diff.foo.command=x',
+    'gpg.program=x',
+    'gpg.x509.program=x',
+    'credential.helper=x',
+    'include.path=x',
+    'includeIf.gitdir:/x.path=x',
+    'core.alternateRefsCommand=x',
+    'core.gitProxy=x',
+    'remote.origin.uploadpack=x',
+    'remote.origin.receivepack=x',
+    'merge.foo.driver=x',
+    'difftool.foo.cmd=x',
+    'mergetool.foo.cmd=x',
+    'submodule.foo.update=!x',
+    'gpg.ssh.defaultKeyCommand=x',
+    'sendemail.sendmailCmd=x',
+    'sendemail.toCmd=x',
+    'protocol.ext.allow=always',
+    '"alias.d"=x',
+    'core.pa"ger"=x',
+  ]) {
+    test(`#1222: \`git -c ${setting} log\` warns (exec-carrying config key)`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
+        const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+        expect(evaluateBashWriteTargets(`git -c ${setting} log`, worktree)).toMatchObject({ tier: 'warn' });
+      });
+    });
+  }
+
+  for (const command of [
+    'GIT_PAGER=x git log',
+    'env GIT_EXTERNAL_DIFF=x git diff',
+    'GIT_SSH_COMMAND=x git fetch',
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0=x git log',
+    "GIT_CONFIG_PARAMETERS=\"'core.pager'='x'\" git log",
+    'export GIT_CONFIG_GLOBAL=/tmp/cfg; git log',
+  ]) {
+    test(`#1222: \`${command}\` warns (git config or command through the environment)`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
+        const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+        expect(evaluateBashWriteTargets(command, worktree)).toMatchObject({ tier: 'warn' });
+      });
+    });
+  }
+
+  test('#1222: `submodule.foo.update=checkout` (no command) stays allowed', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      expect(evaluateBashWriteTargets('git -c submodule.foo.update=checkout status', worktree)).toBeNull();
+    });
+  });
+
+  for (const build of [
+    (m: string) => `git -c format.outputDirectory=${m} format-patch -1`,
+    (m: string) => `git -c Format.OutputDirectory="${m}" format-patch -1`,
+  ]) {
+    test(`#1222: \`${build('<main>')}\` (configured output directory) is denied`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+        const result = await run(build(mainRepo), worktree);
+
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+      });
+    });
+  }
+
   for (const command of [
     "git -c alias.d='!touch /etc/x' d",
     'git -c alias.d=!sh d',

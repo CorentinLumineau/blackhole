@@ -681,14 +681,42 @@ const uniqTargets = (args) => {
 const GIT_VALUE_GLOBALS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env', '--attr-source']);
 
 /** Config keys through which `git -c KEY=VALUE` (or `--config-env=KEY=ENVVAR`) makes git run a
- * command or a different subcommand: an alias (`alias.d=!cmd`, or `alias.fp=format-patch -o DIR`),
- * a pager, editor, ssh or fsmonitor command, a hooks path, an external diff or textconv, a filter
- * driver, a gpg program or a credential helper. Case-insensitive, like git's own key names. */
-const GIT_EXEC_CONFIG_RE =
-  /^(?:alias\.|pager\.|filter\.|core\.(?:pager|editor|sshcommand|fsmonitor|hookspath|askpass)$|sequence\.editor$|diff\.(?:.+\.)?(?:external|textconv|command)$|gpg\.(?:.+\.)?program$|credential\.)/i;
+ * command or a different subcommand, or read more config that may: an alias (`alias.d=!cmd`, or
+ * `alias.fp=format-patch -o DIR`), a pager, editor, ssh, proxy, fsmonitor or askpass command, a
+ * hooks path, an included config file, an external diff, textconv, merge driver or tool command, a
+ * filter driver, a remote's upload/receive program, a gpg program or key command, a credential
+ * helper, a sendemail command, or the `ext::` transport. Case-insensitive, like git's own keys. */
+const GIT_EXEC_CONFIG_RE = new RegExp(
+  [
+    '^(?:alias|pager|filter|credential)\\.',
+    '^core\\.(?:pager|editor|sshcommand|fsmonitor|hookspath|askpass|alternaterefscommand|gitproxy)$',
+    '^sequence\\.editor$',
+    '^(?:include\\.path|includeif\\..+\\.path)$',
+    '^diff\\.(?:.+\\.)?(?:external|textconv|command)$',
+    '^(?:merge\\..+\\.driver|(?:diff|merge)tool\\..+\\.cmd)$',
+    '^remote\\..+\\.(?:uploadpack|receivepack)$',
+    '^gpg\\.(?:.+\\.)?program$|^gpg\\.ssh\\.defaultkeycommand$',
+    '^sendemail\\.(?:.+\\.)?[a-z]*cmd$',
+    '^protocol\\.ext\\.allow$',
+  ].join('|'),
+  'i',
+);
 
-/** True when a `-c`/`--config-env` value sets one of `GIT_EXEC_CONFIG_RE`'s keys. */
-const isGitExecConfig = (value) => GIT_EXEC_CONFIG_RE.test(stripQuotes(value).split('=')[0]);
+/** `KEY` and `VALUE` of a `-c`/`--config-env` setting, with the shell's quote characters removed
+ * (`"alias.d"='!x'` sets `alias.d`). */
+const splitGitSetting = (setting) => {
+  const eq = setting.indexOf('=');
+  const unquote = (text) => text.replace(/['"]/g, '');
+  return eq === -1 ? { key: unquote(setting), value: '' } : { key: unquote(setting.slice(0, eq)), value: unquote(setting.slice(eq + 1)) };
+};
+
+/** True when a setting makes git run a command: one of `GIT_EXEC_CONFIG_RE`'s keys, or a
+ * submodule update mode that is a `!command`. */
+const isGitExecConfig = ({ key, value }) =>
+  GIT_EXEC_CONFIG_RE.test(key) || (/^submodule\..+\.update$/i.test(key) && value.startsWith('!'));
+
+/** Environment variables through which git reads extra config or runs a command. */
+const GIT_EXEC_ENV_RE = /(?:^|[\s;&|(])(?:export\s+)?GIT_(?:CONFIG\w*|PAGER|EXTERNAL_DIFF|SSH|SSH_COMMAND|EDITOR|SEQUENCE_EDITOR|ASKPASS|PROXY_COMMAND)=/;
 
 /** Walks git's global options (everything before the subcommand) and returns the directories a
  * relative output path may resolve against, the subcommand index, and whether a `-c` setting makes
@@ -700,6 +728,7 @@ const isGitExecConfig = (value) => GIT_EXEC_CONFIG_RE.test(stripQuotes(value).sp
 const gitGlobalBases = (args) => {
   let segments = [];
   let execConfig = false;
+  let outputDirectory = null;
   const extra = [];
   let i = 0;
   for (; i < args.length && args[i].startsWith('-') && args[i] !== '--'; i++) {
@@ -708,7 +737,12 @@ const gitGlobalBases = (args) => {
     const name = t.startsWith('--') && eq !== -1 ? t.slice(0, eq) : t;
     if (!GIT_VALUE_GLOBALS.has(name)) continue;
     const value = stripQuotes(eq !== -1 && t.startsWith('--') ? t.slice(eq + 1) : (args[++i] ?? UNRESOLVABLE_TARGET));
-    if ((name === '-c' || name === '--config-env') && isGitExecConfig(value)) execConfig = true;
+    if (name === '-c' || name === '--config-env') {
+      const setting = splitGitSetting(value);
+      if (isGitExecConfig(setting)) execConfig = true;
+      if (name === '-c' && setting.key.toLowerCase() === 'format.outputdirectory') outputDirectory = setting.value;
+      if (name === '--config-env' && setting.key.toLowerCase() === 'format.outputdirectory') outputDirectory = UNRESOLVABLE_TARGET;
+    }
     if (name === '-C' && value) {
       if (path.isAbsolute(value)) segments = [value];
       else segments.push(value);
@@ -724,7 +758,7 @@ const gitGlobalBases = (args) => {
     // A git dir is usually `<work tree>/.git`, so its parent is a likely work tree too.
     if (name === '--git-dir') bases.push(path.dirname(dir));
   }
-  return { bases, subIdx: i, execConfig };
+  return { bases, subIdx: i, execConfig, outputDirectory };
 };
 
 /** `format-patch -o DIR` / `-oDIR` / `--output-directory[=]DIR` (or an abbreviation) value at
@@ -740,10 +774,11 @@ const formatPatchDirValue = (args, i) => {
  * `git format-patch -o DIR` write targets. git resolves a relative path against its working
  * directory, so each relative target is checked under every base `gitGlobalBases` returns (a
  * dynamic base makes the joined target dynamic, i.e. WARN). `format-patch` without `-o` or
- * `--stdout` writes its patches into the working directory itself, so that is a target too. A
+ * `--stdout` writes its patches into `format.outputDirectory` (when `-c` sets it) or the working
+ * directory itself, so that is a target too. A
  * `-c` setting that runs a command makes the call unresolvable. */
 const gitOutputTargets = (args) => {
-  const { bases, subIdx, execConfig } = gitGlobalBases(args);
+  const { bases, subIdx, execConfig, outputDirectory } = gitGlobalBases(args);
   const isFormatPatch = args[subIdx] === 'format-patch';
   const values = execConfig ? [UNRESOLVABLE_TARGET] : [];
   for (let i = subIdx + 1; i < args.length; i++) {
@@ -755,7 +790,8 @@ const gitOutputTargets = (args) => {
     }
   }
   const toStdout = args.slice(subIdx + 1).some((t) => t.startsWith('--') && isLongOptionPrefix(t, '--stdout'));
-  if (isFormatPatch && !toStdout && !values.some((v) => v !== UNRESOLVABLE_TARGET)) values.push('.');
+  // Without -o, format-patch writes into `format.outputDirectory` when set, else the working dir.
+  if (isFormatPatch && !toStdout && !values.some((v) => v !== UNRESOLVABLE_TARGET)) values.push(outputDirectory || '.');
   const targets = [];
   for (const value of values) {
     if (path.isAbsolute(value) || value === UNRESOLVABLE_TARGET) targets.push(value);
@@ -969,6 +1005,9 @@ const collectWriteSignals = (visible) => {
   }
 
   if (hasPipedShellScript(visible)) unresolvable = true;
+  if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => tokenize(c).some((t) => isCommandToken(t, 'git')))) {
+    unresolvable = true;
+  }
   return { literalTargets, unresolvable };
 };
 

@@ -175,19 +175,30 @@ const resolveExistingAncestor = (p) => {
   try {
     return fs.realpathSync(resolved);
   } catch {
-    // Walked top-down: existence is monotone along a path's prefixes, so the first prefix that
-    // does not resolve ends the walk. A bottom-up walk re-resolved every ancestor of a deep
-    // nonexistent path, quadratic in its depth (#1222).
+    // Existence is monotone along a path's prefixes, so the deepest resolvable prefix is found by
+    // binary search: O(log depth) realpath calls of O(length) each. Walking every ancestor,
+    // bottom-up or top-down, is quadratic in the depth (#1222).
     const { root } = path.parse(resolved);
     const segments = resolved.slice(root.length).split(path.sep).filter(Boolean);
-    let existing = root;
-    let prefix = root;
-    for (const segment of segments) {
-      prefix = path.join(prefix, segment);
+    const prefix = (k) => root + segments.slice(0, k).join(path.sep);
+    const tryRealpath = (k) => {
       try {
-        existing = fs.realpathSync(prefix);
+        return fs.realpathSync(prefix(k));
       } catch {
-        break;
+        return null;
+      }
+    };
+    let existing = root;
+    let lo = 1;
+    let hi = segments.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const real = tryRealpath(mid);
+      if (real === null) {
+        hi = mid - 1;
+      } else {
+        existing = real;
+        lo = mid + 1;
       }
     }
     return existing;
