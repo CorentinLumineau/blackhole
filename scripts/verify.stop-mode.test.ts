@@ -246,7 +246,7 @@ describe('V-STOP-03 follow-ups from the #1213 review', () => {
   });
 
   test('an exception word inside the marked list fails', () => {
-    for (const item of ['- route to `--abandon`, except mark it `failed`', '- kill a worker unless it is stuck', '- abort a worker, but only when the window is closed', '- mark a queue entry `blocked` other than a stuck one', '- bump `failed_attempts` if the round failed']) {
+    for (const item of ['- route to `--abandon`, except mark it `failed`', '- kill a worker unless it is stuck', '- abort a worker, but only when the window is closed', '- mark a queue entry `blocked` other than a stuck one', '- bump `failed_attempts` if the round failed', '- kill a worker once the window resets', '- abort a worker after wake_at', '- mark a queue entry `failed` otherwise', '- kill a worker — the stuck one is fine', '- abort a worker until the reset', '- kill a worker, though a stuck one may go']) {
       const out = findUnlistedForbiddenMentions(NEVER_LIST + '\n' + item, 's');
       expect(out.join('; ')).toContain('exception');
     }
@@ -260,8 +260,29 @@ describe('V-STOP-03 follow-ups from the #1213 review', () => {
     const bad = phaseStop.replace('\n## Exit Invariants', `${sibling}\n## Exit Invariants`);
     expect(bad).not.toBe(phaseStop);
     expect(findUsageStopViolations(bad).join('; ')).toContain('Usage stop on the weekly line');
-    const lower = phaseStop.replace('\n## Exit Invariants', '\n### Notes on the usage stop\n\nAbort the round.\n\n## Exit Invariants');
-    expect(findUsageStopViolations(lower).length).toBeGreaterThan(0);
+  });
+
+  test('a deeper, mixed-case usage stop heading under another ## parent is scanned', () => {
+    const lower = phaseStop.replace('\n## Usage stop\n', '\n### Notes on the Usage Stop\n\nAbort the round.\n\n## Usage stop\n');
+    expect(lower).not.toBe(phaseStop);
+    expect(findUsageStopViolations(lower).join('; ')).toContain('Notes on the Usage Stop: "Abort"');
+  });
+
+  test('the main section is the exact `## Usage stop` heading, not an earlier sibling', () => {
+    const earlier = phaseStop.replace('\n## Usage stop\n', '\n## Usage stop notes\n\nName `wake_at` in local time.\n\n## Usage stop\n');
+    expect(earlier).not.toBe(phaseStop);
+    expect(findUsageStopViolations(earlier)).toEqual([]);
+  });
+
+  test('a `#` comment inside a fenced block does not end the section', () => {
+    const fenced = phaseStop.replace('\n## Exit Invariants', '\n```bash\n# drain first\n```\n\nKill every in-flight worker.\n\n## Exit Invariants');
+    expect(fenced).not.toBe(phaseStop);
+    expect(findUsageStopViolations(fenced).join('; ')).toContain('"Kill" outside');
+  });
+
+  test('a usage stop heading nested in the main section is reported once, not twice', () => {
+    const nested = phaseStop.replace('\nNever on a usage stop:', '\n### Usage stop detail\n\nAbort the round.\n\nNever on a usage stop:');
+    expect(findUsageStopViolations(nested).filter((e) => e.includes('Abort the round'))).toHaveLength(1);
   });
 
   test('a clean sibling section needs no list of its own, and the real docs still pass', () => {
