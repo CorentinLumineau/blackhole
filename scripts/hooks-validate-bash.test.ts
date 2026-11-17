@@ -5339,10 +5339,10 @@ describe('validate-bash-command.js — fork-bomb pattern stays linear on long id
     });
   }
 
-  test('hook seam: `echo` plus 60 KB of identifier chars is allowed in under 500 ms', async () => {
+  test('hook seam: `echo` plus 30 KB of identifier chars (under the 32 KiB size cap) is allowed in under 500 ms', async () => {
     await withTempGitRepo('blackhole-hook-forkbomb-', async (repo) => {
       const start = performance.now();
-      const result = await runPreToolUseHook(SCRIPT, bashPayload(`echo ${'a'.repeat(60 * 1024)}`), repo);
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`echo ${'a'.repeat(30 * 1024)}`), repo);
       const elapsed = performance.now() - start;
       expect(result.exitCode).toBe(0);
       expect(elapsed).toBeLessThan(500);
