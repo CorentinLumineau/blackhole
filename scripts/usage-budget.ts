@@ -12,7 +12,7 @@ import { resolveHost, restrictWindows, usageSourceFor, type UsageSource } from '
 // `--usage` is the normalized RateLimits JSON the agent builds from its harness usage call:
 //   {"five_hour":{"used_percentage":0-100,"resets_at":<epoch s>},"seven_day":{...}}  (either window optional)
 // Without it the host's usage source is read (usage-source.ts): the rate-limit cache on Claude, none
-// on Cursor or an unknown host (verdict unavailable with the reason). The host is --host, else the one
+// on Cursor (verdict unavailable with the reason; an unknown host still reads the cache). The host is --host, else the one
 // run-context.json beside the config records, else the environment's. Prints the verdict
 // JSON on stdout (with `weekly_fit` when `usage_budget.weekly.target_at_reset` is set, and
 // `five_hour_pct`/`weekly_pct`, the usage judged or null when none was read, so the line passes

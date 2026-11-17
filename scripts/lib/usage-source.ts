@@ -7,9 +7,10 @@ import { resolveUsageWindows, USAGE_WINDOWS, type UsageWindow } from './usage-bu
 // The usage source for a host: where its rate-limit reading comes from, and which windows that
 // reading shows. Claude reads the one rate-limit cache (written by the statusline or by
 // usage-probe.ts from a rate_limit_event's unifiedWindows), and the windows are the ones present in
-// it, so a plan with no five_hour window gates on the weekly window alone with no config. Cursor
-// and an unknown host have no readable source: their reading is null with a reason, which the
-// usage-budget gate turns into `unavailable`, never a silent GO.
+// it, so a plan with no five_hour window gates on the weekly window alone with no config. An unknown
+// host means detection is unsure, not that the host is not Claude, so it reads the same cache: a
+// configured or cached reading is never discarded for it. Cursor has no readable source: its reading
+// is null with a reason, which the usage-budget gate turns into `unavailable`, never a silent GO.
 
 export type UsageSourceName = 'rate-limit-cache' | 'none';
 
@@ -46,7 +47,6 @@ const noSource = (reason: string): UsageSource => ({
 /** The source for `host`. Throws on an invalid `resource_policy.pace` or `usage_budget.windows`. */
 export const usageSourceFor = (host: Host, config: Record<string, unknown>, options: { cachePath?: string } = {}): UsageSource => {
   if (host === 'cursor') return noSource('cursor: no readable usage source, usage-aware pacing not applied');
-  if (host === 'unknown') return noSource('host unknown: no usage source, usage-aware pacing not applied');
   const cachePath = options.cachePath || resolveRateLimitCachePath(config);
   const maxAge = resolvePaceGateThresholds(config).maxAgeSeconds;
   const only = resolveUsageWindows(config);
@@ -55,7 +55,7 @@ export const usageSourceFor = (host: Host, config: Record<string, unknown>, opti
     cachePath,
     read: (now) => {
       const { limits, reason } = readRateLimits(cachePath, now, maxAge);
-      if (!limits) return { source: 'rate-limit-cache', limits: null, windows: [], reason };
+      if (!limits) return { source: 'rate-limit-cache', limits: null, windows: [], reason: host === 'unknown' ? `host unknown: ${reason}` : reason };
       const kept = restrictWindows(limits, only);
       const dropped = kept.limits ? null : `usage_budget.windows ${JSON.stringify(only)} leaves none of the detected windows`;
       return { source: 'rate-limit-cache', ...kept, reason: dropped };

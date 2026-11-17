@@ -15,7 +15,7 @@ import { resolveHost, usageSourceFor, type UsageSource } from './lib/usage-sourc
 
 // Usage: bun run scripts/pace-gate.ts --current <n> --max <n> [--cache <path>] [--host claude|cursor] [--config <path>] [--now <epoch s>]
 // Reads the host's usage source (usage-source.ts), as usage-budget.ts does: the rate-limit cache on
-// Claude, none on Cursor or an unknown host (verdict unavailable with the reason). The host is
+// Claude or an unknown host, none on Cursor (verdict unavailable with the reason). The host is
 // --host, else the one run-context.json beside the config records, else the environment's.
 // Prints the verdict JSON on stdout; exit 0 on any verdict, 2 on bad usage or a malformed config.
 const usage = 'usage: pace-gate.ts --current <n> --max <n> [--cache <path>] [--host claude|cursor] [--config <path>] [--now <epoch s>]';

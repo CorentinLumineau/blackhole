@@ -132,8 +132,8 @@ sees at a glance where the run stands and what to do:
    **Usage budget** — see below
 
 **Usage budget** (`scripts/lib/campaign-status/budget.ts`) reads the host's usage source
-(`usage-source.ts`; the host `run-context.json` records, else the environment's; Cursor and an
-unknown host have none, so the panel says `usage not probed — <reason>`): on Claude, the rate-limit cache
+(`usage-source.ts`; the host `run-context.json` records, else the environment's; Cursor has none, so
+the panel says `usage not probed — <reason>`): on Claude or an unknown host, the rate-limit cache
 `pace-gate.ts` and `usage-budget.ts` read (`resolveRateLimitCachePath`: `resource_policy.pace.cache_path`,
 else `~/.claude/cache/rate-limits.json`; stale past `resource_policy.pace.max_age_seconds`) and
 shows: the **5-hour** % and reset, only when the plan has a current five_hour window (a weekly-only

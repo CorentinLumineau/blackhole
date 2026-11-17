@@ -96,8 +96,19 @@ describe('usageSourceFor', () => {
     });
   });
 
-  test('unknown host is unavailable with a reason', () => {
-    expect(usageSourceFor('unknown', {}).read(NOW).reason).toContain('host unknown');
+  test('unknown host still reads a present rate-limit cache: an unsure detection never discards it', () => {
+    withTempDir('usage-source', (dir) => {
+      const reading = usageSourceFor('unknown', cfg(writeCache(dir, both))).read(NOW);
+      expect(reading).toMatchObject({ source: 'rate-limit-cache', windows: ['five_hour', 'seven_day'], reason: null });
+    });
+  });
+
+  test('unknown host with no cache is unavailable, and the reason names the unknown host', () => {
+    withTempDir('usage-source', (dir) => {
+      const reading = usageSourceFor('unknown', cfg(path.join(dir, 'missing.json'))).read(NOW);
+      expect(reading.limits).toBeNull();
+      expect(reading.reason).toMatch(/^host unknown: no rate-limit cache at /);
+    });
   });
 });
 
