@@ -3,7 +3,16 @@ import type { PrLanding, PrLandingState } from './lib/forge-adapter/pr-landing.t
 const DEP_LINE_RE =
   /^(?:blocked by|depends on|after)\s+#(\d+)(?:\s+merges)?\s*$/i;
 
-const EPIC_PARENT_RE = /^part of\s+#\d+\s*$/i;
+const EPIC_PARENT_RE = /^part of\s+#(\d+)\s*$/i;
+
+/** The epic a body names with a `Part of #N` line (`forge-sync.md` § 6), or null: a parent, not a dependency. */
+export function parseEpicParentFromBody(body: string): number | null {
+  for (const line of body.split('\n')) {
+    const match = EPIC_PARENT_RE.exec(line.trim());
+    if (match) return Number(match[1]);
+  }
+  return null;
+}
 
 export function parseDependsFromBody(body: string): number[] {
   const seen = new Set<number>();
