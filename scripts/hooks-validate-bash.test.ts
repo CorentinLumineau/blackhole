@@ -4468,3 +4468,57 @@ describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
   }
 });
 
+
+// `redact` runs inside `recordEvent`, which the deny path calls before emitting its verdict; a
+// superlinear redaction pass over attacker-sized input would time the hook out and the native
+// wrapper fails open. Timing is the minimum of 3 runs after a warm-up to damp scheduler noise.
+describe('hook-event-log.js — redact is bounded on adversarial input (#1195)', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const minMs = (fn: () => unknown): number => {
+    fn();
+    let best = Infinity;
+    for (let i = 0; i < 3; i++) {
+      const start = performance.now();
+      fn();
+      best = Math.min(best, performance.now() - start);
+    }
+    return best;
+  };
+
+  test('redact of a 220 KB repeated-keyword input completes in under 50 ms', () => {
+    const { redact } = hookEventLog();
+    const input = 'a_password_'.repeat(20000);
+    expect(minMs(() => redact(input))).toBeLessThan(50);
+  });
+
+  test('SECRET_KV alone over a 2,400-char repeated-keyword input completes in under 5 ms', () => {
+    const { SECRET_KV } = hookEventLog();
+    const input = 'a_password_'.repeat(220).slice(0, 2400);
+    expect(minMs(() => input.replace(SECRET_KV, '***'))).toBeLessThan(5);
+  });
+
+  test('a secret inside the window is still masked and the output is capped at 300', () => {
+    const { redact } = hookEventLog();
+    const out = redact(`db_password=hunter2hunter2 ${'x'.repeat(5000)}`);
+    expect(out).toContain('db_password=***');
+    expect(out).not.toContain('hunter2');
+    expect(out.length).toBeLessThanOrEqual(300);
+  });
+
+  test('a ~250 KB command containing a blocked operation is still denied with exit 2 and recorded', async () => {
+    await withTempGitRepo('blackhole-hook-1195-', async (repo) => {
+      const command = `rm -rf / ; ${'a_password_'.repeat(22000)}`;
+      expect(command.length).toBeGreaterThan(240_000);
+
+      const start = performance.now();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      const elapsedMs = performance.now() - start;
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(readHookEvents(repo)).toHaveLength(1);
+      expect(readHookEvents(repo)[0]).toMatchObject({ decision: 'deny', pattern_id: 'rm-rf-root' });
+      expect(elapsedMs).toBeLessThan(2500);
+    });
+  });
+});
