@@ -234,11 +234,9 @@ export const withTempGitRepo = async <T>(
  * temp dir.
  *
  * The worktree nests under `<mainRepo>/.worktrees/` by default — this repo's own convention
- * (`.worktrees/wt-N`) and one of the two roots `allWorktreeRoots` accepts by construction
- * (#510/F-00088: only worktrees nested under the main clone or under a configured
- * `scratchpad_dir` are trusted, never every registered worktree unconditionally). Pass
- * `parentDir` to place the worktree elsewhere — under a caller-supplied `scratchpad_dir`, or
- * fully outside both accepted roots — for tests exercising that boundary directly. */
+ * (`.worktrees/wt-N`). Pass `parentDir` to place it elsewhere — under a caller-supplied
+ * `scratchpad_dir`, or outside the main clone the way a campaign's `/tmp/campaign/wt-N` is
+ * (#1226) — for tests exercising the containment root set directly. */
 export const withLinkedWorktree = async <T>(
   prefix: string,
   fn: (mainRepo: string, worktree: string) => Promise<T>,

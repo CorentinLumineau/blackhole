@@ -28,9 +28,10 @@ campaign state.
 **Campaign launch configuration gate** (ADR-005 § Campaign Launch
 Configuration Gate, extended per ADR-006 § "Campaign launch form") — run
 steps 1-6 below whenever **any** of these four conditions hold, regardless
-of whether `.blackhole/config.json` already exists. Every `AskQuestion` in this gate goes
-through `askOrPark()` first (`clarify-gates.md` § C3 adapter): in sleep mode the gate is
-print-only (`sleep-mode.md`).
+of whether `.blackhole/config.json` already exists. Every question in this gate, picker or
+lettered inline options alike, goes through `askOrPark()` first (`clarify-gates.md` § C3 adapter).
+`launch-gate.md` § Print-only mode owns what happens when nothing may be asked: the gate prints,
+asks nothing, and refuses to start while `merge_mode` is unset.
 
 1. **True first bootstrap** — `.blackhole/config.json` does not yet exist.
 2. **Post-"Campaign complete" restart** — `phase-loop.md` § Campaign complete
@@ -54,23 +55,18 @@ it already does.
 
 **Routine resume confirmation gate** — a skipped form is not a silent start.
 When steps 1-6 are skipped per the carve-out above **and** the mode being
-entered is `run`, then before spawning or resuming the orchestrator:
+entered is `run`, run the launch gate before spawning or resuming the
+orchestrator: `.agents/build/skills/blackhole/references/launch-gate.md` owns
+its executive summary, per-section Accept / Adjust, status-page probe,
+print-only clause and bootstrap order (status page, doctor, spawn). It also
+runs `bun run status config-summary`, the output the drift guard below reads.
 
-- Print the current campaign config by running `bun run status config-summary`
-  (`renderConfigSummary` in `scripts/campaign-status.ts`) — run that command,
-  do not hand-format a summary here.
 - **Fail closed on docs_governance drift**: if any orchestrator/campaign spawn text you are
   about to send (or resume with) states `write_governance` on/off differently from the
   `**Docs governance.write_governance:**` line in that `config-summary` output, **STOP** —
   re-run `config-summary`, copy those lines verbatim into the spawn body, then proceed.
-- Then `AskQuestion`: "Proceed with this config (default)" | "Reconfigure".
-- On **Proceed** — steps 1-6 stay skipped, now as an explicit user-confirmed
-  skip rather than a silent one; continue to the `bun run doctor` preflight
-  below, publish the status page (§ Campaign visibility, item 1), then
-  spawn/resume.
-- On **Reconfigure** — run the full gate (steps 1-6 below) from step 1, then
-  the same `bun run doctor` preflight, then spawn/resume. Do not abbreviate or
-  partially re-run the form.
+- After the full form (steps 1-6 below), print the same summary once, with no
+  further question.
 
 This confirmation fires on `run` mode only — `status`, `handle #N`, `plan #N`,
 `implement #N`, `review #N`, `hunt [kind]`, and `campaign-audit` keep loading
