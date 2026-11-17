@@ -91,6 +91,8 @@ describe('a campaign with every record written, forge reachable', () => {
       Verification: 'LGTM, CI green and no conflict before a merge; visual evidence at 1440 px',
       'Issue filter': 'milestone v2.0',
       Kaizen: 'off',
+      'Docs governance': 'off',
+      Workers: 'model cost-optimized · effort cost-optimized',
       Plugin: 'blackhole 9.9.9',
     });
   });

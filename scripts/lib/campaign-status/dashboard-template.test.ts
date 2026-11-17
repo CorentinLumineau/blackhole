@@ -86,7 +86,7 @@ describe('status dashboard template — the Data type page contract', () => {
   });
 
   test('holds the sections of the approved layout, top to bottom', () => {
-    const ids = ['state', 'your-move', 'blocking', 'board', 'streams', 'scope', 'config', 'decisions'];
+    const ids = ['state', 'your-move', 'blocking', 'pending', 'board', 'streams', 'scope', 'config', 'run', 'decisions'];
     const at = ids.map((id) => TEMPLATE.indexOf(`id="${id}"`));
     expect(at.every((i) => i > 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
@@ -104,8 +104,8 @@ describe('status dashboard template — the Data type page contract', () => {
   });
 
   test('every list has a plain empty line, and an absent scope says "Scope not recorded"', () => {
-    const lists = [...TEMPLATE.matchAll(/data-draw="(links|moves|blockers|streams|scope|config|decisions)"/g)].map((m) => m[1]);
-    expect(lists.sort()).toEqual(['blockers', 'config', 'decisions', 'links', 'moves', 'scope', 'streams']);
+    const lists = [...TEMPLATE.matchAll(/data-draw="(links|moves|blockers|streams|scope|config|decisions|run|pending)"/g)].map((m) => m[1]);
+    expect(lists.sort()).toEqual(['blockers', 'config', 'decisions', 'links', 'moves', 'pending', 'run', 'scope', 'streams']);
     for (const name of lists) expect(TEMPLATE).toMatch(new RegExp(`data-empty="${name}" hidden>[^<]+<`));
     expect(TEMPLATE).toContain('data-empty="scope" hidden>Scope not recorded.<');
     expect(TEMPLATE).toContain("'Nothing here.'");
