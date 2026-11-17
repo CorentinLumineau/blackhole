@@ -585,12 +585,13 @@ const evaluateBashWriteTargets = (command, cwd) => {
       tier: 'warn',
       pattern_id: 'bash-write-target-unresolvable',
       reason:
+        // The event log keeps only the first 300 characters of a reason (MAX_DETAIL_CHARS in
+        // hook-event-log.js), so the verdict comes first and the list of causes after it.
         'Bash command looks write-shaped but its target could not be resolved by static ' +
-        'inspection (a dynamic argument, a script piped into a shell, or a command like ' +
-        'python3 -c/perl -i/awk whose ' +
-        'write behavior cannot be determined from the command string alone) — cannot verify ' +
-        'assigned-worktree containment (not confirmed unsafe). Remedy: use a literal absolute path ' +
-        'under the assigned worktree, or the Write/Edit tools.',
+        'inspection — cannot verify assigned-worktree containment (not confirmed unsafe). Cause: ' +
+        'a dynamic argument, a script piped into a shell, or a command like python3 -c/perl -i/awk ' +
+        'whose writes the command string does not show. Remedy: use a literal absolute path under ' +
+        'the assigned worktree, or the Write/Edit tools.',
     };
   }
 
