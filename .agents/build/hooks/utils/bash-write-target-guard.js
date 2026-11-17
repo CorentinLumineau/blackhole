@@ -183,9 +183,9 @@ const clauseRanges = (visible) => {
 
 const splitClauses = (visible) => clauseRanges(visible).map(([start, end]) => visible.slice(start, end));
 
-/** True when `token` names `command` — either exactly, or as the final path segment of an
- * absolute/relative invocation (`/usr/bin/sed` still names `sed`). */
-const isCommandToken = (token, command) => token === command || token.endsWith(`/${command}`);
+/** True when `token` names `command` once the shell has removed its quotes and escapes —
+ * `'sed'`, `\\sed` and `"/usr/bin/sed"` all run `sed`. */
+const isCommandToken = (token, command) => commandName(token) === command;
 
 /** True when a fd-duplication argument (`&1`, `&2`, ...) rather than a real file path — the one
  * shape `>`/`>>`/`&>` legitimately precede without naming a file (`2>&1`, `>&2`). */
@@ -340,9 +340,19 @@ const positionalArgsBeforeRedirect = (tokens, startIdx) => {
   for (let i = startIdx; i < tokens.length; i++) {
     const token = tokens[i];
     if (token.startsWith('<') || token.startsWith('>') || token.startsWith('&')) break;
-    args.push(token);
+    args.push(asOptionWord(token));
   }
   return args;
+};
+
+/** An option spelled with quotes or escapes (`'-i'`, `"-t"`, `\\-o`) is the option the command
+ * receives, so it is read in its unquoted form. A word whose quotes protect something the shell
+ * would otherwise act on (`--format="{x,y}"`, `--expression='$w f'`) is kept exactly as written,
+ * so later checks still see those characters as quoted. */
+const asOptionWord = (token) => {
+  if (!/['"\\]/.test(token)) return token;
+  const { text, dynamic } = normalizeShellWord(token);
+  return !dynamic && /^-[\w.,:+=@%/-]*$/.test(text) ? text : token;
 };
 
 /** `tee [-a|--append] <target...>` write targets in one clause — every non-flag positional
@@ -1093,6 +1103,14 @@ const cdDestinations = (cdArgs, dirs) => {
   return dirs.map((dir) => path.resolve(dir, text));
 };
 
+/** A write target as the command receives it: the shell drops a backslash before any character,
+ * so `\\/etc/x` writes `/etc/x`. A dynamic word is kept as written, and its `$` makes it unresolvable. */
+const unescapeTarget = (raw) => {
+  if (!raw.includes('\\')) return raw;
+  const { text, dynamic } = normalizeShellWord(raw);
+  return dynamic ? raw : text;
+};
+
 /** The directories the shell may stand in after a clause, tracked the way
  * `worktree-removal-guard.js`'s `findRemovalInvocations` tracks them: a `cd` after `||` may not
  * have run, so its destination is added to the candidates; any other `cd` replaces them; a `cd`
@@ -1120,10 +1138,11 @@ const collectWriteSignals = (visible, heredocText, cwd) => {
   let state = { dirs: [cwd], unknown: false };
   const saved = [];
   const add = (raw) => {
-    if (!isResolvableLiteralTarget(raw)) unresolvable = true;
-    else if (path.isAbsolute(raw)) literalTargets.push({ target: raw, dirs: [cwd] });
+    const target = unescapeTarget(raw);
+    if (!isResolvableLiteralTarget(target)) unresolvable = true;
+    else if (path.isAbsolute(target)) literalTargets.push({ target, dirs: [cwd] });
     else {
-      literalTargets.push({ target: raw, dirs: state.dirs });
+      literalTargets.push({ target, dirs: state.dirs });
       if (state.unknown) unresolvable = true;
     }
   };
