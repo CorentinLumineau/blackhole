@@ -516,8 +516,12 @@ const MAX_CLAUSE_SCAN_CHARS = 4_000_000;
  * was exceeded and the walk stopped; every consumer maps it to `scanBudgetExceededDecision`. */
 const SCAN_BUDGET_EXCEEDED = 'scan-budget-exceeded';
 
-/** Most distinct `rm` targets one command may probe with a `git worktree list` subprocess
- * (~2.3 ms each); a normal `rm -rf a b c` uses a handful. */
+/** Most directories `findRemovalInvocations` tracks as a relative path's possible base. */
+const MAX_CWD_CANDIDATES = 16;
+
+/** Most distinct resolved paths (across every `rm` clause and `cd` candidate) one command may
+ * probe with a `git worktree list` subprocess (~2.3 ms each); a normal `rm -rf a b c` uses a
+ * handful. */
 const MAX_REMOVAL_TARGET_PROBES = 64;
 
 const tooManyRemovalTargetsDecision = () => ({
@@ -835,6 +839,12 @@ const findRemovalInvocations = (command, cwd) => {
         } else {
           const resolved = cwdCandidates.map((base) => resolveAgainstBase(text, base));
           cwdCandidates = precededByOr ? [...new Set([...cwdCandidates, ...resolved])] : [...new Set(resolved)];
+        }
+        // Each `||`-guarded or uncertain `cd` can double the candidate set (a `cd d0 || cd d1 || …`
+        // chain is 2^n directories); past the cap the verdict is fail-closed, not a longer walk.
+        if (cwdCandidates.length > MAX_CWD_CANDIDATES) {
+          invocations.push({ kind: SCAN_BUDGET_EXCEEDED });
+          return invocations;
         }
         break; // `cd`'s own remaining tokens are its target/flags, not a second command to scan
       }
@@ -1448,6 +1458,7 @@ module.exports = {
   scanBudgetExceededDecision,
   SCAN_BUDGET_EXCEEDED,
   MAX_ANALYZABLE_COMMAND_CHARS,
+  MAX_REMOVAL_TARGET_PROBES,
   checkUnpushedCommits,
   checkDetachedReachability,
   checkDirtyWorktree,

@@ -4606,4 +4606,52 @@ describe('validate-bash-command.js — clause-scan cost bound (#1197)', () => {
       expect(result.exitCode).toBe(0);
     });
   });
+  test('#1197: 2,000 `git clean -fd` clauses then a main-clone one are denied in under 2.5 s (identity probes are memoized)', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const command = `${'git clean -fd; '.repeat(2000)}git -C ${mainRepo} clean -fd`;
+      const start = performance.now();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
+      const elapsed = performance.now() - start;
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'main-clone-clean' });
+      expect(elapsed).toBeLessThan(2500);
+    });
+  });
+
+  test('#1197: more than 64 distinct git target directories are refused fail-closed with a Remedy', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const command = Array.from({ length: 100 }, (_, n) => `git -C /nonexistent-1197/d${n} clean -fd`).join('; ');
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'too-many-git-targets' });
+      expect(permissionReason(result.stdout)).toMatch(/Remedy: .*split/i);
+    });
+  });
+
+  const cdChains: [string, string][] = [
+    ['a 30-link `cd d0 || cd d1 …` chain', Array.from({ length: 30 }, (_, n) => `cd d${n}`).join(' || ')],
+    ['a 30-link `nohup cd` chain', Array.from({ length: 30 }, (_, n) => `nohup cd d${n}`).join('; ')],
+  ];
+  for (const [label, chain] of cdChains) {
+    test(`#1197: ${label} followed by \`rm -rf x\` reaches a verdict in under 2.5 s`, async () => {
+      await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+        const start = performance.now();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`${chain}; rm -rf x`), worktree);
+        const elapsed = performance.now() - start;
+
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'command-too-complex-to-verify' });
+        expect(elapsed).toBeLessThan(2500);
+      });
+    });
+  }
+
+  test('#1197: a short `cd a || cd b; rm -rf x` is not refused', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('cd a || cd b; rm -rf x'), worktree);
+      expect(result.exitCode).toBe(0);
+    });
+  });
 });

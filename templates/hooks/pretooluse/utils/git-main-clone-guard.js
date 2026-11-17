@@ -114,6 +114,17 @@ const classify = (subcommand, argTokens) => {
   }
 };
 
+/** Most distinct directories one command may identity-probe (two `git rev-parse` calls each). */
+const MAX_IDENTITY_PROBES = 64;
+
+const tooManyGitTargetsDecision = () => ({
+  tier: 'block',
+  pattern_id: 'too-many-git-targets',
+  reason:
+    `This command targets more than ${MAX_IDENTITY_PROBES} distinct repositories or directories for ` +
+    'working-tree-mutating git commands — refused fail-closed. Remedy: split it into smaller calls.',
+});
+
 const REMEDY = 'Remedy: re-run this inside your own wt-<issue> worktree, or target the worktree ' +
   'explicitly with `git -C <worktree-abs-path> ...` instead of the main clone.';
 
@@ -150,18 +161,28 @@ const effectiveDirs = (repoOverride, resolutionCwds) => {
  * so scanning every candidate and preferring the confirmed-unsafe outcome is what keeps this from
  * denying (or allowing) by coincidence rather than by verification. Returns `null` when no
  * candidate is confirmed the main clone and none was anomalous — an ordinary worktree target. */
-const resolveDecision = (match, repoOverride, resolutionCwds) => {
+const resolveDecision = (match, repoOverride, resolutionCwds, identities) => {
   let anomalous = false;
   for (const dir of effectiveDirs(repoOverride, resolutionCwds)) {
-    let mcRoot;
-    try {
-      mcRoot = mainCloneRoot(dir);
-    } catch {
+    // Two `git rev-parse` subprocesses per directory: probed once per DISTINCT directory per
+    // command, and the distinct count is capped, so a long chain of git clauses stays bounded.
+    let identity = identities.get(dir);
+    if (!identity) {
+      if (identities.size >= MAX_IDENTITY_PROBES) return tooManyGitTargetsDecision();
+      try {
+        const mcRoot = mainCloneRoot(dir);
+        identity = { mcRoot, isMainClone: Boolean(mcRoot) && worktreeRoot(dir) === mcRoot };
+      } catch {
+        identity = { anomalous: true };
+      }
+      identities.set(dir, identity);
+    }
+    if (identity.anomalous) {
       anomalous = true;
       continue;
     }
-    if (!mcRoot) continue; // outside any repository at all — not this guard's concern
-    if (worktreeRoot(dir) === mcRoot) {
+    if (!identity.mcRoot) continue; // outside any repository at all — not this guard's concern
+    if (identity.isMainClone) {
       return { tier: match.tier, pattern_id: match.patternId, reason: REASON_BY_PATTERN[match.patternId] };
     }
   }
@@ -188,11 +209,12 @@ const evaluateGitMainCloneMutation = (command, cwd) => {
   if (oversize) return oversize;
   const invocations = findRemovalInvocations(command, cwd);
   if (invocations.some((invocation) => invocation.kind === SCAN_BUDGET_EXCEEDED)) return scanBudgetExceededDecision();
+  const identities = new Map();
   for (const invocation of invocations) {
     if (invocation.kind !== 'git-mutation') continue;
     const match = classify(invocation.subcommand, invocation.argTokens);
     if (!match) continue;
-    const decision = resolveDecision(match, invocation.repoOverride, invocation.resolutionCwds);
+    const decision = resolveDecision(match, invocation.repoOverride, invocation.resolutionCwds, identities);
     if (decision) return decision;
   }
   return null;
