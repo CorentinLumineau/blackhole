@@ -5,10 +5,12 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   inhibitorFor,
+  identifyWith,
   keepAwakeStatus,
   readHold,
   releaseHold,
   resolveStateStore,
+  SETTLE_MS,
   SLEEP_HOLD_FILE,
   startInhibitor,
   systemHoldDeps,
@@ -210,6 +212,28 @@ describe('takeHold', () => {
   });
 });
 
+describe('startInhibitor', () => {
+  test('waits SETTLE_MS before judging, so an inhibitor that dies during that wait is not taken as held', () => {
+    const waits: number[] = [];
+    let waited = false;
+    const host = fakeHost('linux', ['systemd-inhibit']);
+    host.deps.spawnDetached = (_command, stderrFile) => {
+      fs.writeFileSync(stderrFile, 'Failed to inhibit\n');
+      return 900;
+    };
+    host.deps.identify = () => (waited ? { state: 'gone' } : { state: 'running', identity: 'x' });
+    host.deps.wait = (ms) => {
+      waits.push(ms);
+      waited = true;
+    };
+    expect(startInhibitor(['systemd-inhibit'], host.deps, path.join(campaignDir(), '.tmp', 'err'))).toEqual({
+      ok: false,
+      reason: 'exited: Failed to inhibit',
+    });
+    expect(waits).toEqual([SETTLE_MS]);
+  });
+});
+
 describe('releaseHold', () => {
   test('stops the recorded inhibitor, then drops the record', () => {
     const dir = campaignDir();
@@ -308,6 +332,34 @@ describe('systemHoldDeps on real processes', () => {
     systemHoldDeps.wait(200);
     expect(systemHoldDeps.identify(pid)).toEqual({ state: 'gone' });
     expect(systemHoldDeps.identify(2 ** 22 + 7)).toEqual({ state: 'gone' });
+  });
+
+  test('identify does not depend on the caller time zone or locale', () => {
+    const pid = systemHoldDeps.spawnDetached(['sleep', '30'], stderrFile());
+    pids.push(pid);
+    const saved = { TZ: process.env.TZ, LC_ALL: process.env.LC_ALL };
+    try {
+      process.env.TZ = 'Pacific/Kiritimati';
+      process.env.LC_ALL = 'C';
+      const east = systemHoldDeps.identify(pid);
+      process.env.TZ = 'America/Adak';
+      const west = systemHoldDeps.identify(pid);
+      expect(east.state).toBe('running');
+      expect(west).toEqual(east);
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      systemHoldDeps.kill(pid);
+    }
+  });
+
+  test('a missing ps binary reads as unknown, never gone', () => {
+    const identify = identifyWith(path.join(campaignDir(), 'no-such-ps'));
+    const p = identify(process.pid);
+    expect(p.state).toBe('unknown');
+    expect((p as { reason: string }).reason).toStartWith('ps failed: ');
   });
 
   test('kill stops the whole process group, not only its leader', () => {

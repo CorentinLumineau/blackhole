@@ -17,7 +17,7 @@ export const SLEEP_HOLD_FILE = path.join('.tmp', 'sleep-hold.json');
 export const SETTLE_MS = 300;
 
 export type InhibitorTool = 'caffeinate' | 'systemd-inhibit';
-/** `identity` is the process start time and command line, as `ps -o lstart=,args=` printed them. */
+/** `identity` is the process start time (UTC, C locale) and command line, as `ps -o lstart=,args=` printed them. */
 export type HoldRecord = { pid: number; tool: InhibitorTool; started_at: string; identity: string };
 export type StateStore = 'local' | 'branch';
 /** `unknown`: the process table could not be read, so neither "held" nor "gone" may be assumed. */
@@ -211,6 +211,22 @@ function parsePs(out: string): ProcState {
   return { state: 'running', identity: words.slice(1).join(' ') };
 }
 
+/** `identify` backed by the `ps` at `psBin`; a `ps` that cannot run reads as unknown. */
+export function identifyWith(psBin: string): HoldDeps['identify'] {
+  return (pid) => {
+    // `lstart` prints local time in the caller's locale: pin both, so the same process reads the
+    // same identity whichever shell runs `sleep --on` and which one runs `wake`.
+    const ps = spawnSync(psBin, ['-p', String(pid), '-o', 'stat=', '-o', 'lstart=', '-o', 'args='], {
+      encoding: 'utf-8',
+      env: { ...process.env, TZ: 'UTC', LC_ALL: 'C' },
+    });
+    if (ps.error) return { state: 'unknown', reason: `ps failed: ${ps.error.message}` };
+    if (ps.status === 0) return parsePs(ps.stdout);
+    // ps exits non-zero with no output when the pid does not exist; anything on stderr is a real failure.
+    return ps.stderr.trim() ? { state: 'unknown', reason: `ps failed: ${ps.stderr.trim()}` } : { state: 'gone' };
+  };
+}
+
 /** The real process calls. */
 export const systemHoldDeps: HoldDeps = {
   platform: process.platform,
@@ -238,13 +254,7 @@ export const systemHoldDeps: HoldDeps = {
       fs.closeSync(err);
     }
   },
-  identify: (pid) => {
-    const ps = spawnSync('ps', ['-p', String(pid), '-o', 'stat=', '-o', 'lstart=', '-o', 'args='], { encoding: 'utf-8' });
-    if (ps.error) return { state: 'unknown', reason: `ps failed: ${ps.error.message}` };
-    if (ps.status === 0) return parsePs(ps.stdout);
-    // ps exits non-zero with no output when the pid does not exist; anything on stderr is a real failure.
-    return ps.stderr.trim() ? { state: 'unknown', reason: `ps failed: ${ps.stderr.trim()}` } : { state: 'gone' };
-  },
+  identify: identifyWith('ps'),
   kill: (pid) => {
     // The inhibitor leads its own process group (spawned detached): signalling the group also stops
     // the `sleep infinity` that `systemd-inhibit` runs, so nothing is left orphaned.

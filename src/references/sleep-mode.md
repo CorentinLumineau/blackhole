@@ -110,7 +110,9 @@ The inhibitor runs detached in its own process group. `sleep --on` gives it a mo
 (no D-Bus session, no permission) and confirms it is still running; one that exited is reported
 as `not held — <tool> exited: <its first stderr line>` and nothing is recorded. A confirmed hold
 is recorded in `.blackhole/.tmp/sleep-hold.json` as `{pid, tool, started_at, identity}`, where
-`identity` is the process start time and command line. `.tmp/` is ignored wherever `.blackhole/`
+`identity` is the process start time (read in UTC, C locale, so a
+change of shell time zone between `sleep --on` and `wake` never makes a live hold look stale) and
+command line. `.tmp/` is ignored wherever `.blackhole/`
 is tracked and never travels on the state branch. If the record cannot be written, the new
 inhibitor is stopped at once, so no hold is ever left untracked.
 
