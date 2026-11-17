@@ -117,7 +117,9 @@ sees at a glance where the run stands and what to do:
    started) and the quick links
 2. **Your move** (numbered, each a link: PRs delivered at LGTM or held for the owner first, then
    owner gates, then other PRs ready to merge; "Nothing is waiting on you.") beside **Blocking
-   the run** ("Nothing blocks the run.")
+   the run** ("Nothing blocks the run.") and **Decisions waiting for you** (a count, then each
+   question parked by sleep mode, most-blocking first, with its recommended answer;
+   `pending-decisions.json`, read with `sleep-mode.md`'s helpers)
 3. **Stage board** — five columns: in review (`ready`, `review`, `active`: work in flight
    without a PR yet), blocked, not started (`you`: an owner gate, `todo`), parked, done. Four
    cards per column, the rest in a native `<details>` "N more". Each card is a link `#ref title`
@@ -129,7 +131,13 @@ sees at a glance where the run stands and what to do:
 5. **Scope** (in, parked, deferred, blocked upstream, out; "Scope not recorded" when none is),
    **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest),
    **Hook denials** (top 5 rules by deny and warn count, or `no hook denials recorded`),
-   **Usage budget** — see below
+   **Usage budget** — see below — and **Run**: the run route from `run-context.json` (pattern,
+   host, state store, question and forge channels, any missing capability), sleep mode on or off
+   with the parked count, and the coordination role (solo, manager, or peer of its manager)
+
+Every top-level config block names the dataset that shows it, or `none` with a reason, in
+`config-template.md` § Status page coverage (`V-CONFIG-03`): a run feature that adds config adds
+its row there, and its panel bumps `bh-template-version`.
 
 **Usage budget** (`scripts/lib/campaign-status/budget.ts`) reads the host's usage source
 (`usage-source.ts`; the host `run-context.json` records, else the environment's; Cursor has none, so
@@ -142,7 +150,7 @@ plan shows no 5-hour row); the **Weekly** % and reset; **Workers allowed** with 
 `usage_budget` is off or invalid, as the CLI returns); one **Forecast** row per distinct weekly
 threshold (`no_new_starts_at`, `stop_campaign_at`): `weekly X% reached around <day HH:MM UTC>`,
 or `not reached before the reset`, from the pace since the weekly window opened at 0%
-(`forecastWeekly()`); the reading's age; and **Usage windows**, the windows the reading shows and its source. With no current reading it says
+(`forecastWeekly()`); **Weekly target** (`usage_budget.weekly.target_at_reset`, when set); the reading's age; and **Usage windows**, the windows the reading shows and its source. With no current reading it says
 `usage not probed — <reason>`. Times are UTC, so every host prints the same page.
 
 `--html` keeps its detail sections after these: in progress, waiting on you, waiting on

@@ -4,6 +4,7 @@ import { classPreview, groupBlockedRows, waitReason } from './blocked-classes.ts
 import { formatMergeNextItem, mergeNextOrder, trunkFixIssues } from '../merge-next.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
 import { budgetRows } from './budget.ts';
+import { runRows } from './run-state.ts';
 import { safePatternId, topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
 import {
@@ -340,7 +341,7 @@ export function renderStackMergeOrderSection(issues: Record<string, QueueIssue>)
 
 /** The campaign facts the page leads with, from the same report as `--json`: what the text dashboard repeats. */
 export type DashboardView = Pick<StatusReport, 'headline' | 'stage_counts' | 'moves' | 'scope_record' | 'decisions' | 'forge_checked'> &
-  Partial<Pick<StatusReport, 'deny_counts' | 'budget'>>;
+  Partial<Pick<StatusReport, 'deny_counts' | 'budget' | 'run' | 'pending_decisions'>>;
 
 const DECISIONS_SHOWN = 3;
 
@@ -375,6 +376,17 @@ export function renderDenyCountsSection(rows: DenyCount[]): string[] {
   if (rows.length === 0) lines.push('no hook denials recorded');
   for (const r of topDenyCounts(rows)) lines.push(`- \`${safePatternId(r.pattern_id)}\` — ${r.deny} deny · ${r.warn} warn`);
   lines.push('');
+  return lines;
+}
+
+/** Route, sleep mode and coordination, then the parked decisions waiting on the owner. */
+export function renderRunSection(view: Pick<StatusReport, 'run' | 'pending_decisions'>): string[] {
+  const lines = ['### Run', ...runRows(view.run).map((r) => `- **${r.key}:** ${r.value}`), ''];
+  if (view.pending_decisions.length) {
+    lines.push(`### Decisions waiting for you (${view.pending_decisions.length})`);
+    for (const d of view.pending_decisions) lines.push(`- **${d.id}** ${d.question} — recommended: ${d.recommended} · holds ${d.waiting_items}`);
+    lines.push('');
+  }
   return lines;
 }
 
@@ -434,6 +446,7 @@ export function formatDashboard(opts: {
   lines.push('');
   if (view) lines.push(...renderViewSection(view));
   if (view?.budget) lines.push(...renderBudgetSection(view.budget));
+  if (view?.run && view.pending_decisions) lines.push(...renderRunSection({ run: view.run, pending_decisions: view.pending_decisions }));
 
   lines.push(...renderInFlightSection(inFlight));
   lines.push(...renderBlockedSection(blocked, issues));

@@ -5,35 +5,19 @@ import { formatScopeLabel } from './dashboard.ts';
 import { isSleepMode, QUESTIONS_PER_CARD } from './pending-decisions.ts';
 import { readSleepSession } from './sleep-session.ts';
 import { statusPageRow, type StatusPageInput } from './status-page-row.ts';
-import type { BudgetPanel, ConfigSummaryInput, StatusReport } from './types.ts';
+import { LAUNCH_ROW_KEYS, type BudgetPanel, type ConfigSummaryInput, type GateOption, type LaunchRow, type LaunchRowKey, type StatusReport } from './types.ts';
 
 // The executive-summary launch gate: one row per section, each with a one-line consequence, and
 // the Accept / Adjust question cards built from those rows. Pure: every input is already read;
 // `scripts/campaign-status.ts --summary` does the I/O. The Budget row reads the status page's own
 // `BudgetPanel` (`budget.ts`), so the gate and the page never disagree.
 
-export const LAUNCH_ROW_KEYS = ['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep'] as const;
-export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];
+// Re-exported: callers import the row keys and row types from here.
+export { LAUNCH_ROW_KEYS };
+export type { GateOption, LaunchRow, LaunchRowKey };
 
 /** A consequence must read on its own on a card line. */
 export const MAX_CONSEQUENCE_CHARS = 140;
-
-export type GateOption = { label: string; description: string };
-
-export type LaunchRow = {
-  key: LaunchRowKey;
-  label: string;
-  /** Short card header (12 characters at most). */
-  header: string;
-  value: string;
-  consequence: string;
-  /** False for a display-only row, which never becomes a question. */
-  adjustable: boolean;
-  /** The row's own choices; absent ⇒ Accept / Adjust. */
-  options?: GateOption[];
-  /** Status page only: the stored URL to probe before the gate asks. */
-  probe_needed?: { url: string };
-};
 
 export type GateQuestion = { row: LaunchRowKey; header: string; question: string; multiSelect: false; options: GateOption[] };
 export type GateCard = { questions: GateQuestion[] };

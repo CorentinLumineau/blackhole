@@ -103,6 +103,7 @@ export type ConfigSummaryInput = {
   };
   incident_mode?: { enabled?: boolean; parallel_max_override?: number };
   worker_model_policy?: string;
+  worker_effort_policy?: string;
   auto_sync?: boolean;
   adaptive_routing?: boolean;
   status_page?: {
@@ -372,6 +373,10 @@ export type StatusReport = {
   deny_counts: DenyCount[];
   /** The usage reading and the usage-budget verdict for it (`budget.ts`); `probed: false` when no reading was found. Additive. */
   budget: BudgetPanel;
+  /** Run route, sleep mode with its parked count, and the coordination role (`run-state.ts`). Additive. */
+  run: RunPanel;
+  /** The parked owner decisions, most-blocking first: the "Decisions waiting for you" panel. Additive. */
+  pending_decisions: PendingRow[];
 };
 
 /** The status page's usage-budget panel. Times are ISO 8601; every number is null when the window or the reading is absent. */
@@ -401,6 +406,8 @@ export type BudgetPanel = {
   source: 'rate-limit-cache' | 'none' | null;
   /** The windows the reading shows: `five_hour` only when the plan has one. */
   windows: Array<'five_hour' | 'seven_day'>;
+  /** `usage_budget.weekly.target_at_reset`: the weekly % the pace aims to land on at the reset; null when unset or invalid. */
+  target_at_reset: number | null;
 };
 
 /** A status colour name. Text always carries the meaning; the colour only repeats it. */
@@ -438,3 +445,60 @@ export type StageCounts = {
 };
 
 export type IssueRow = { num: number; issue: QueueIssue };
+
+/** The launch summary's rows, in display order (`launch-summary.ts`). */
+export const LAUNCH_ROW_KEYS = ['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep'] as const;
+export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];
+
+export type GateOption = { label: string; description: string };
+
+/** One section of the launch summary and, when adjustable, one question of its gate. */
+export type LaunchRow = {
+  key: LaunchRowKey;
+  label: string;
+  /** Short card header (12 characters at most). */
+  header: string;
+  value: string;
+  consequence: string;
+  /** False for a display-only row, which never becomes a question. */
+  adjustable: boolean;
+  /** The row's own choices; absent ⇒ Accept / Adjust. */
+  options?: GateOption[];
+  /** Status page only: the stored URL to probe before the gate asks. */
+  probe_needed?: { url: string };
+};
+
+/**
+ * How this run works, read from `run-context.json`, `config.json` and `pending-decisions.json`
+ * (`run-state.ts`). Every field the page cannot read is null, with its reason where one exists.
+ */
+export type RunPanel = {
+  /** The resolved route (`run-context.ts`); null when `run-context.json` is absent or holds no route. */
+  route: {
+    host: string | null;
+    pattern: string;
+    state_store: string | null;
+    question_channel: string | null;
+    forge_channel: string | null;
+    missing: string[];
+    refreshed_at: string | null;
+  } | null;
+  sleep_mode: boolean;
+  /** Decisions parked in `pending-decisions.json`; null when the file is unreadable (`parked_error`). */
+  parked: number | null;
+  parked_error: string | null;
+  /** `usage_budget.coordination`; null when `usage_budget` is invalid (`coordination_invalid`). */
+  coordination: { role: 'manager' | 'peer' | 'solo'; manager_session: string | null; peer_floor: number } | null;
+  coordination_invalid: string | null;
+};
+
+/** One parked owner decision as the "Decisions waiting for you" panel lists it, most-blocking first. */
+export type PendingRow = {
+  id: string;
+  question: string;
+  /** The label of the recommended option. */
+  recommended: string;
+  waiting_items: number;
+  gate: string | null;
+  created_at: string;
+};

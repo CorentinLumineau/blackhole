@@ -79,7 +79,7 @@ Committed template: `.blackhole/config.json`
 | `worker_effort_policy` | no | `cost-optimized` (default when field present) — per-spawn reasoning effort folded into the resolved task tier (`model-routing.md` § Harness tier ladders); `inherit` — omit effort parameters, session inheritance (mirror `worker_model_policy: inherit`). When absent, tier-folded effort defaults apply under `cost-optimized` semantics |
 | `sleep_mode.enabled` | no | Sleep mode (`sleep-mode.md`): `true` ⇒ the campaign never asks the owner; every owner question is parked in `pending-decisions.json` and asked in one batched round on wake-up. **Resolution**: absent or `false` (default) ⇒ awake, every gate asks as before |
 | `sleep_mode.since` | no | ISO 8601 time sleep mode went on; written only by `campaign-record.ts sleep --on`, dropped when it goes off. **Resolution**: absent ⇒ the wake-up report says the start was not recorded |
-| `sleep_mode.baseline` | no | `{done: number[], weekly_pct: number \| null}` — issues already done and weekly usage % when sleep mode went on, the wake-up report's reference; written and dropped with `since`. **Resolution**: absent ⇒ work done is reported as not measured |
+| `sleep_mode.baseline` | no | `{done: number[] \| null, weekly_pct: number \| null}` (`done` null: no `queue.json` then, so not measured) — issues already done and weekly usage % when sleep mode went on, the wake-up report's reference; written and dropped with `since`. **Resolution**: absent ⇒ work done is reported as not measured |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 | `merge_mode` | **yes at bootstrap** | `"immediate"` \| `"gated-batch"` (ADR-005) \| `"leave-open"` (ADR-006) — **no default** (ruling R-002, `documentation/reference/product-principles.md`): an absent or invalid value is a bootstrap-blocking condition, not a silent fallback; see the contract note below. `immediate`: each **low-risk** green campaign PR squash-merges as soon as it reaches LGTM; any other PR stays open with `needs-chef` (`merge-gate.md` § 9). `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one low-risk PR at a time in `merge_after` dependency order; high-risk siblings still get `needs-chef`. `leave-open`: blackhole never merges — every PR is driven to LGTM and left open for human review/merge; an LGTM'd open PR counts as *delivered* for campaign-complete purposes; `merged_by: blackhole` is never set for these issues; `fixed-in-pr` ledger rows stay `fixed-in-pr` until the human merge is later observed by a sync; high-risk green PRs still receive `needs-chef`; see `phase-loop.md` § Merge protocol and `merge-gate.md` |
 | `display_targets` | no | Array of viewport widths in px (e.g. `[412, 700, 2560]`) to capture visual evidence at for UI-affecting PRs (ADR-018); absent or empty (default) ⇒ both the implementer's capture step and the reviewer's Visual Evidence Audit are no-ops |
@@ -269,3 +269,46 @@ rename, remove or retype one. The executive-summary launch gate's Budget row may
 `usage_budget.rates.worker_weekly_pct_per_hour` (issue #1200) join the frozen set on the same terms;
 the verdict `PACE-WAIT` (drain, wake at `wake_at`, resume) is part of the gate's output contract. The gate is
 `scripts/usage-budget.ts`; it sits beside the pace gate (`resource_policy.pace`), which is unchanged.
+
+## Status page coverage
+
+Every top-level block registered in the field table above names the status page dataset that
+shows it (`STATUS_DATASET_IDS`, `scripts/lib/campaign-status/data.ts`), and for the `config` and
+`run` datasets the row; or `none` with the reason the page leaves it out. A PR that adds a block
+adds its row here, and a new panel bumps the template's `bh-template-version`
+(`status-page.md` § Refresh procedure). `bun run verify` fails (`V-CONFIG-03`,
+`scripts/checks/status-coverage.check.ts`) on a block with no row, a dataset the plugin does not
+write or no template panel draws, a row the dataset does not emit, or `none` without a reason.
+
+| Block | Status page | Row | Reason |
+|-------|-------------|-----|--------|
+| `repo` | `links` | — | The quick links (open PRs, issues, CI runs) are built from it |
+| `target_branch` | none | — | The merge target; every PR card already links its PR on the forge |
+| `forge` | `links` | — | Picks the forge the quick links point at |
+| `parallel_max` | `config` | Concurrency | |
+| `scratchpad_dir` | none | — | Where worktrees live on this machine; nothing the owner acts on |
+| `size_label_prefix` | none | — | Label spelling the sync reads; sizes appear on no panel |
+| `default_touch_paths` | none | — | Per-issue plan scope; each plan carries its own |
+| `issue_labels` | none | — | Label put on issues the run files; the filed issues show on the board |
+| `scope_milestone` | `config` | Issue filter | |
+| `scope_labels` | `config` | Issue filter | |
+| `auto_sync` | none | — | Sync cadence; its result is the board itself and the `forge not checked` header |
+| `adaptive_routing` | none | — | Per-issue routing internals; the text dashboard's Routing section shows each route |
+| `router_confidence_thresholds` | none | — | Routing internals, as `adaptive_routing` |
+| `docs_governance` | `config` | Docs governance | |
+| `kaizen` | `config` | Kaizen | |
+| `incident_mode` | `config` | Concurrency | |
+| `autonomy` | `config` | Autonomy | |
+| `worker_model_policy` | `config` | Workers | |
+| `worker_effort_policy` | `config` | Workers | |
+| `sleep_mode` | `run` | Sleep mode | |
+| `entry_mode` | none | — | Session layout fixed at bootstrap; the Run route row names the pattern that runs |
+| `merge_mode` | `config` | Merge mode | |
+| `display_targets` | `config` | Verification | |
+| `status_page` | `streams` | — | Configures the page itself: its streams and links; `enabled: false` publishes no page |
+| `campaign_scope` | `scope` | — | |
+| `wave_scheduling` | none | — | How a wave is sharded; the board shows what is in flight |
+| `resource_policy` | `config` | Verification | The test-lock carve-out; the host pace line is on the `--html` Host section |
+| `usage_budget` | `budget` | — | Verdict, weekly %, target and reset; its `coordination` role is the Run panel's Coordination row |
+| `stop_budget_cleared_at` | none | — | Audit timestamp of a past owner action |
+| `issue_484_disposition` | none | — | One campaign's historical pin; the parked issue shows on the board |
