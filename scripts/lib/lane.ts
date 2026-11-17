@@ -1,4 +1,4 @@
-// The lane vocabulary (ADR-053 C4): the label an issue carries while an account works on it, the
+// The lane vocabulary (ADR-054 C4): the label an issue carries while an account works on it, the
 // campaign's own lane set, and the claim lease. Pure; the clock is a parameter.
 
 /** The lanes the contributor contract gives the campaign when no lane is configured. */

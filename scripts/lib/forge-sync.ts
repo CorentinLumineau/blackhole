@@ -25,7 +25,7 @@ export type SyncInput = {
   scope: CampaignScope;
   config: { default_touch_paths?: string[]; size_label_prefix?: string };
   now: string;
-  /** The account's lane (ADR-053 C4). Absent or null: the legacy `claude`/`blackhole` ownership. */
+  /** The account's lane (ADR-054 C4). Absent or null: the legacy `claude`/`blackhole` ownership. */
   lane?: string | null;
   /** Hours without issue or PR activity before another lane's `in-progress:*` claim is stale; used with a lane. */
   claimLeaseHours?: number;
@@ -61,7 +61,7 @@ type LaneLabels = (issue: number) => readonly string[];
 /**
  * Open PRs per issue. With a lane, the issue's lane label decides: the own lane label makes the PR
  * the campaign's own, another lane's label makes it foreign, and only an issue with no lane label
- * falls back to the branch prefix (ADR-053 C4). Without a lane the prefix always decides. Own PRs:
+ * falls back to the branch prefix (ADR-054 C4). Without a lane the prefix always decides. Own PRs:
  * closing keyword first, then an `…/issue-N` branch, then lowest number. A foreign PR holds the
  * issue elsewhere, with the note to write.
  */

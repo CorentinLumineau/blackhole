@@ -1,19 +1,19 @@
 ---
 type: reference
-summary: "Shared discovery block for the catchup-mode initiative: ADR-053 constraints, codebase conventions at the usage, config, CLI, forge adapter, mode and launch-gate touchpoints"
+summary: "Shared discovery block for the catchup-mode initiative: ADR-054 constraints, codebase conventions at the usage, config, CLI, forge adapter, mode and launch-gate touchpoints"
 status: current
 review_trigger: "on file change"
 created: 2026-11-17
 last_updated: 2026-11-17
 related:
-  - documentation/decisions/ADR-053-catchup-mode-quota-pacing.md
+  - documentation/decisions/ADR-054-catchup-mode-quota-pacing.md
   - documentation/brainstorms/weekly-quota-pacing.md
 ---
 
 # Catchup mode: Shared Discovery Block
 
 ## Upstream ADR Summary
-- ADR-053: `catchup` is a dedicated mode; normal `run` semantics are unchanged.
+- ADR-054: `catchup` is a dedicated mode; normal `run` semantics are unchanged.
 - `usage-budget.ts --floor` is the only gate. It fails closed on unreadable usage, and the floor replaces `stop_campaign_at` for that invocation only. `config.json` is never mutated.
 - The usage provider chain returns the full subscription picture: plan, only the windows the plan has (5h, weekly, per-model weekly), used % and reset per window, extra usage, source.
 - `run` and `catchup` share the launch gate: full config summary, Accept/Adjust per section. `catchup` pre-fills the pacing preset (floor, 5h 75/80, lane). Scheduled runs use print-only mode.

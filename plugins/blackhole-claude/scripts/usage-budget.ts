@@ -21,7 +21,7 @@ import { resolveHost, restrictWindows, usageSourceFor, type UsageSource } from '
 // unchanged to `pace-log.ts --usage`; the weekly fit and any PACE-WAIT wake time also go to
 // stderr); exit 0 on any verdict, 2 on bad usage, a malformed
 // `--usage` (enabled or not) or an invalid config.
-// `--floor <pct>` is the catchup gate (ADR-053 C3), for this invocation only: it replaces both
+// `--floor <pct>` is the catchup gate (ADR-054 C3), for this invocation only: it replaces both
 // weekly lines, takes the 5h caps from the `catchup` block, forces the gate on, never writes the
 // config, and fails closed: unreadable usage, no weekly window or no plan limits is verdict `SKIP`.
 // The output line then carries `floor_pct`. A 0 floor (nothing owed yet this week) is a valid

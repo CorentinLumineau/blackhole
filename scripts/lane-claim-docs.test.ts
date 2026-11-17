@@ -8,7 +8,7 @@ describe('lane claim wiring in src/references', () => {
     const doc = ref('orchestrator-dispatch.md');
     const section = doc.slice(doc.indexOf('## Lane claim and release'));
     expect(section.length).toBeGreaterThan(0);
-    for (const word of ['scripts/claim.ts', '--claim', '--release', 'CLAIMED', 'ALREADY-OWN', 'RECLAIMED', 'SKIP', 'HELD', 'CLOSED', 'ADR-053']) {
+    for (const word of ['scripts/claim.ts', '--claim', '--release', 'CLAIMED', 'ALREADY-OWN', 'RECLAIMED', 'SKIP', 'HELD', 'CLOSED', 'ADR-054']) {
       expect(section).toContain(word);
     }
   });

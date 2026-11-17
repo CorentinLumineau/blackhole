@@ -235,8 +235,25 @@ plan shows no 5-hour row); the **Weekly** % and reset; **Workers allowed** with 
 `usage_budget` is off or invalid, as the CLI returns); one **Forecast** row per distinct weekly
 threshold (`no_new_starts_at`, `stop_campaign_at`): `weekly X% reached around <day HH:MM UTC>`,
 or `not reached before the reset`, from the pace since the weekly window opened at 0%
-(`forecastWeekly()`); **Weekly target** (`usage_budget.weekly.target_at_reset`, when set); the reading's age; and **Usage windows**, the windows the reading shows and its source. With no current reading it says
-`usage not probed — <reason>`. Times are UTC, so every host prints the same page.
+(`forecastWeekly()`); **Weekly target** (`usage_budget.weekly.target_at_reset`, when set); **Pace**; the reading's age; and **Usage windows**, the windows the reading shows and its source. With no current reading it says
+`usage not probed — <reason>`, except when the cache is only older than `max_age_seconds` and still
+carries a current weekly window: then it shows that last reading, its age and, with a target, where
+the line from 0% at the window start to `target_at_reset` at the reset stands now
+(`weekly 21% at Tue 17 Nov 05:54 UTC, 4h 15m old (stale); target line 22.5% now`). Pacing still
+treats a stale cache as not probed. Times are UTC, so every host prints the same page.
+
+**Pace** is on every Budget panel, probed, stale or not probed. `weeklyPace()` (`usage-budget.ts`)
+reads `.blackhole/usage-history.jsonl` (the weekly readings `usage-probe.ts` appends) plus the
+reading on hand, keeps the readings of the current weekly window, and compares the slope over the
+last `PACE_RATE_WINDOW_HOURS` (3) hours (the two newest readings when fewer) with the rate needed
+to land on `target_at_reset` at the reset, `(target - used) / hours to reset`: `ACCELERATE` below
+0.85× the needed rate, `DECELERATE` above 1.15×, else `ON TRACK`. It also gives the points over or
+under the straight line from the window's first reading to the target at the reset:
+`Pace: DECELERATE — 3.5%/h now vs 0.6%/h needed; 12 points over the line`. Without a target, with
+fewer than two readings in the window, or past the reset it says `Pace: unknown — <reason>`. The
+row is visibility only: nothing throttles on it, the usage gate still sizes the rounds. On a cloud
+or Remote session the history only grows if the orchestrator probes at every turn and heartbeat
+(`run-context.md`, Claude usage sources, step 2).
 
 `--html` keeps its detail sections after these: in progress, waiting on you, waiting on
 something else by reason class (`elseClasses()`), up next, recently done, and a closed native

@@ -58,3 +58,33 @@ export const readJsonFile = (filePath: string, label: string): unknown => {
     throw new Error(`${label}: ${message}`);
   }
 };
+
+// JSON-lines log read: one parsed value per line that passes `isValid`. A missing file reads as
+// no lines; a torn or foreign line is skipped, and dropped on the next `writeJsonlCapped`.
+export const readJsonl = <T>(filePath: string, isValid: (v: unknown) => v is T): T[] => {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    return [];
+  }
+  const out: T[] = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (isValid(parsed)) out.push(parsed);
+    } catch {
+      // Skipped: see above.
+    }
+  }
+  return out;
+};
+
+// Atomic JSON-lines rewrite keeping the newest `maxLines` records (pace-log.jsonl, usage-history.jsonl).
+export const writeJsonlCapped = (filePath: string, records: unknown[], maxLines: number): void => {
+  const kept = records.slice(-maxLines);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(`${filePath}.tmp`, kept.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  fs.renameSync(`${filePath}.tmp`, filePath);
+};

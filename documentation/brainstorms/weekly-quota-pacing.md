@@ -6,7 +6,7 @@ review_trigger: "on ADR acceptance"
 created: 2026-11-17
 last_updated: 2026-11-17
 related:
-  - documentation/decisions/ADR-053-catchup-mode-quota-pacing.md
+  - documentation/decisions/ADR-054-catchup-mode-quota-pacing.md
 ---
 
 # Brainstorm: Weekly quota pacing and scheduled blackhole burn

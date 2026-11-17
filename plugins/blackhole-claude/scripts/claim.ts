@@ -8,7 +8,7 @@ import { LANE_NAME, readLaneConfig } from './lib/lane.ts';
 
 // Usage: bun run scripts/claim.ts (--claim <N> | --release <N>) [--campaign-dir <dir>] [--lane <name>]
 //        [--user <login>] [--lease-hours <h>] [--now <epoch ms>]
-// Claims or releases one issue for the account's lane (ADR-053 C4) and prints one JSON line
+// Claims or releases one issue for the account's lane (ADR-054 C4) and prints one JSON line
 // `{verdict, issue, lane, user?, held_by?}`. No lane (flag, then `catchup.lane`) prints `SKIP` and
 // touches no forge: claims are off. Exit 0 on every verdict, 2 on bad usage, 1 on a forge failure
 // (message on stderr): the orchestrator never dispatches an issue it could not claim.

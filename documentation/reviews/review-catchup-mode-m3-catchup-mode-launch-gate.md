@@ -7,7 +7,7 @@ created: 2026-11-17
 last_updated: 2026-11-17
 related:
   - documentation/milestones/_active/catchup-mode/milestone-3.md
-  - documentation/decisions/ADR-053-catchup-mode-quota-pacing.md
+  - documentation/decisions/ADR-054-catchup-mode-quota-pacing.md
 ---
 
 # Review: catchup-mode M3 "Catchup mode with the full-config launch gate"

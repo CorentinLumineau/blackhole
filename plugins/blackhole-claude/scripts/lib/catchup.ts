@@ -4,7 +4,7 @@ import { DEFAULT_CLAIM_LEASE_HOURS, LANE_NAME } from './lane.ts';
 import type { RateLimits } from './rate-limit-cache.ts';
 import { isPct, isPositive, pick, section, workersAllowed, type MeasuredWeeklyRates, type UsageBudgetConfig, type UsageVerdict } from './usage-budget.ts';
 
-// Catchup mode (ADR-053 C2, C3): the pacing preset, its invocation-only overrides, and the floor
+// Catchup mode (ADR-054 C2, C3): the pacing preset, its invocation-only overrides, and the floor
 // gate. The floor replaces the weekly lines for one invocation; unreadable usage fails closed with
 // `SKIP`. Pure except `localUtcOffsetMinutes`, the one named clock read.
 

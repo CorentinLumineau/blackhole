@@ -138,7 +138,7 @@ Committed template: `.blackhole/config.json`
 | `usage_budget.coordination.role` | no | `solo`, `manager` or `peer`: how this session shares one budget with others (default `solo`) |
 | `usage_budget.coordination.manager_session` | no | Session that grants worker slots; required non-empty when `role` is `peer` (default `null`) |
 | `usage_budget.coordination.peer_floor` | no | Worker slots a peer may always use without a grant (default `1`; integer `>= 0`) |
-| `catchup` | no | Pacing preset of `/blackhole catchup` mode (ADR-053): the keys below. Never read by `run`. **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
+| `catchup` | no | Pacing preset of `/blackhole catchup` mode (ADR-054): the keys below. Never read by `run`. **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `catchup.pct_per_weekday` | no | Weekly points the pace floor credits per weekday (default `17.5`; number in (0, 100]). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `catchup.five_hour.no_spawn_at` | no | 5-hour `used_percentage` at or above which a catchup spawns no new worker (default `75`; must be `<` `stop_workers_at`). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `catchup.five_hour.stop_workers_at` | no | 5-hour `used_percentage` at or above which a catchup stops its workers (default `80`; number in (0, 100]). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
@@ -324,7 +324,7 @@ write or no template panel draws, a row the dataset does not emit, or `none` wit
 | `campaign_scope` | `scope` | — | |
 | `wave_scheduling` | none | — | How a wave is sharded; the board shows what is in flight |
 | `resource_policy` | `config` | Verification | The test-lock carve-out; the host pace line is on the `--html` Host section |
-| `usage_budget` | `budget` | Workers allowed, Weekly, Weekly target | Verdict, weekly %, target and reset |
+| `usage_budget` | `budget` | Workers allowed, Weekly, Weekly target, Pace | Verdict, weekly %, target, pace against the target and reset |
 | `usage_budget.coordination` | `run` | Coordination | |
 | `catchup` | none | — | The pacing preset is shown on the launch summary's Pacing row; the budget panel keeps the verdict |
 | `stop_budget_cleared_at` | none | — | Audit timestamp of a past owner action |

@@ -10,6 +10,7 @@ import { isSleepMode } from './lib/campaign-status/pending-decisions.ts';
 import { pluginVersionWarning, readPluginVersion, readPluginVersionCheck } from './lib/plugin-drift.ts';
 import { projectIdentity } from './project-identity.ts';
 import { readSleepSession } from './lib/campaign-status/sleep-session.ts';
+import { keepAwakeStatus, systemHoldDeps } from './lib/campaign-status/sleep-hold.ts';
 import {
   AGENT_TOOLS,
   detectRunContext,
@@ -108,7 +109,11 @@ const main = () => {
     pluginName: projectIdentity.name,
   });
   const versionWarning = pluginVersionWarning(pluginCheck);
-  const sleepMode = { enabled: isSleepMode(config.config), since: readSleepSession(config.config).since };
+  const sleepMode = {
+    enabled: isSleepMode(config.config),
+    since: readSleepSession(config.config).since,
+    keep_awake: keepAwakeStatus(campaignDir, route.state_store, systemHoldDeps.identify),
+  };
 
   if (flags['no-write'] !== true) {
     fs.mkdirSync(campaignDir, { recursive: true });
@@ -129,7 +134,11 @@ const main = () => {
       ? `  usage ${usage.source} (${usage.windows.join(', ')})`
       : `  usage unavailable: ${usage.reason ?? 'no current window'}`,
   );
-  if (sleepMode.enabled) console.log('  sleep mode on: owner questions are parked (sleep-mode.md)');
+  if (sleepMode.enabled) {
+    const hold = sleepMode.keep_awake;
+    const keepAwake = hold.held ? `held by ${hold.tool} (pid ${hold.pid})` : hold.reason;
+    console.log(`  sleep mode on: owner questions are parked (sleep-mode.md); keep-awake: ${keepAwake}`);
+  }
   if (budget.unreadable) console.log('  warn: config.json unreadable, usage_budget treated as disabled');
   if (versionWarning) console.log(`  warn: ${versionWarning}`);
   for (const warning of route.warnings) console.log(`  warn: ${warning}`);

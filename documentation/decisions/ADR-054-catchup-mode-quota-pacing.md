@@ -13,7 +13,7 @@ related:
   - src/references/forge-sync.md
 ---
 
-# ADR-053: Catchup mode — weekly quota pacing
+# ADR-054: Catchup mode — weekly quota pacing
 
 ## Status
 

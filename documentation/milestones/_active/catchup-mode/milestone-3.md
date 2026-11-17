@@ -1,6 +1,6 @@
 ---
 type: plan
-summary: "Catchup-mode M3 plan: usage-budget.ts --floor (fail-closed, per-invocation, ADR-053 C3), the registered catchup config block, the `catchup` mode and its playbook (C2), and the launch gate widened from run to run and catchup with the pacing preset and a Pacing row"
+summary: "Catchup-mode M3 plan: usage-budget.ts --floor (fail-closed, per-invocation, ADR-054 C3), the registered catchup config block, the `catchup` mode and its playbook (C2), and the launch gate widened from run to run and catchup with the pacing preset and a Pacing row"
 status: current
 review_trigger: "on milestone completion"
 created: 2026-11-17
@@ -11,7 +11,7 @@ related:
   - documentation/milestones/_active/catchup-mode/discovery.md
   - documentation/milestones/_active/catchup-mode/outcomes.md
   - documentation/milestones/_active/catchup-mode/milestone-2.md
-  - documentation/decisions/ADR-053-catchup-mode-quota-pacing.md
+  - documentation/decisions/ADR-054-catchup-mode-quota-pacing.md
 ---
 
 # M3: Catchup mode with the full-config launch gate
@@ -25,7 +25,7 @@ Track: standard. Branch: `design/catchup-mode` (shared, already checked out). Es
 
 After this milestone:
 
-1. `scripts/usage-budget.ts --floor <pct>` is the one catchup gate (ADR-053 C3). Unreadable usage, a
+1. `scripts/usage-budget.ts --floor <pct>` is the one catchup gate (ADR-054 C3). Unreadable usage, a
    reading with no weekly window, or a plan with no limits gives verdict `SKIP` (fail-closed). The floor
    replaces `stop_campaign_at` for that invocation only, the 5h lines come from the `catchup` config
    block, and `config.json` is never written. Without `--floor` the CLI behaves exactly as today.
@@ -40,9 +40,9 @@ After this milestone:
    adjustable for that invocation only, and a **Pacing** row shows the usage reading and the shortfall.
    Print-only mode covers scheduled runs. `stop` drains a catchup exactly like a run.
 
-Out of scope: lane claims and `OWN_LANES` (M4, ADR-053 C4), mercure `git-issue` (C5), usage provider 4
+Out of scope: lane claims and `OWN_LANES` (M4, ADR-054 C4), mercure `git-issue` (C5), usage provider 4
 (M2 D1). Until M4 the `lane` key is recorded and shown but nothing consumes it, so `catchup` is
-single-account only (ADR-053 Consequences, migration order).
+single-account only (ADR-054 Consequences, migration order).
 
 ## Assumptions and deferred items (recorded, no interactive channel)
 
@@ -241,7 +241,7 @@ Depends on T5. Edit `src/` only (never `skills/`).
   floor in the spawn text so every spawn round runs `usage-budget.ts --floor <pct>` instead of step 1's
   plain call (D1); a later-round `SKIP` is a `STOP-CAMPAIGN` (drain, no wake, `phase-stop.md` § Usage
   stop); (3) `stop` drains a catchup like a run; (4) the scheduled-task prompt template: one line
-  (`/blackhole catchup`) plus the hand-off, with the schedule from ADR-053 (weekdays about 18:00, 23:00,
+  (`/blackhole catchup`) plus the hand-off, with the schedule from ADR-054 (weekdays about 18:00, 23:00,
   04:00; weekends every 5 h), writing the app's usage tool output to a file and passing `--usage <file>`,
   turning sleep mode on (A8), and the copy-per-account note (set `catchup.lane`). Cites the ADR; never
   restates it. Every block that names `pace-gate.ts` also names `usage-budget.ts` (V-STOP-03).
@@ -285,7 +285,7 @@ Depends on T6. `with-test-lock bun run build`. Splice the `milestones/_active/ca
 row into `documentation/INDEX.md` (`bun run scripts/generate-doc-index.ts`, copy the one new row, never
 overwrite the file; the new `phase-catchup.md` is under `src/`, not `documentation/`, so it needs no
 row); `bun run scripts/generate-doc-index.ts --check` exits 0. Commit 2 with explicit paths, never `git
-add -A`: `feat(catchup): catchup mode with the full-config launch gate` with a body naming ADR-053 C2 and
+add -A`: `feat(catchup): catchup mode with the full-config launch gate` with a body naming ADR-054 C2 and
 C3 and deferrals D1 and D2. No AI attribution lines. Run the Scout Check on the diff and record one
 Improvement Record (planned candidate: the header counts in `argv-flags-adoption.check.ts` that the diff
 touches anyway).
@@ -300,12 +300,12 @@ plugins/blackhole-claude/scripts/pace-floor.ts plugins/blackhole-claude/scripts/
 |------|--------|-----|
 | `scripts/lib/catchup.ts` | new: resolver, overrides, `floorBudget`, `workersAtFloor`, `readPacing` | One home for the catchup math; CLIs and the summary share it |
 | `scripts/lib/usage-budget.ts` | export 4 helpers, `SKIP` in `UsageVerdictName` | Reuse validation (V-INT-02), new verdict |
-| `scripts/usage-budget.ts` | `--floor` | ADR-053 C3 |
+| `scripts/usage-budget.ts` | `--floor` | ADR-054 C3 |
 | `scripts/pace-floor.ts`, `package.json`, `scripts/checks/argv-flags-adoption.check.ts` | new CLI, alias, allowlist | The playbook needs the floor as a number |
 | `scripts/lib/pace-log.ts` | `SKIP` is a pause | The verdict line must stay accepted |
 | `src/references/config-template.md` | seven field rows, contract note, coverage row | V-CONFIG-02, V-CONFIG-03 |
-| `scripts/lib/campaign-status/types.ts`, `launch-summary.ts`, `budget.ts`, `cli.ts`, `scripts/campaign-status.ts` | catchup rows, Pacing row, panel override, flags | ADR-053 C2 gate |
-| `src/references/phase-catchup.md` (new), `src/SKILL.md` | playbook, Modes row, Phase 0 wording | ADR-053 C2 |
+| `scripts/lib/campaign-status/types.ts`, `launch-summary.ts`, `budget.ts`, `cli.ts`, `scripts/campaign-status.ts` | catchup rows, Pacing row, panel override, flags | ADR-054 C2 gate |
+| `src/references/phase-catchup.md` (new), `src/SKILL.md` | playbook, Modes row, Phase 0 wording | ADR-054 C2 |
 | `src/references/launch-gate.md`, `src/agents/coordinator.md`, `src/references/claude-code-native.md`, `src/references/coordinator-dashboard.md`, `src/references/phase-stop.md` | widen run-only to run and catchup | One gate, both modes |
 | `scripts/lib/build/facts.ts` | `PHASE_PLAYBOOK_FILES` | V-GROUND-01 roster |
 | `scripts/checks/config-gate.check.ts`, `scripts/checks/stop-mode.check.ts` and their tests | markers, wiring | Conformance |
@@ -355,7 +355,7 @@ Overall: MEDIUM. Each MEDIUM entry has an unchanged existing suite or fixture as
 | Callers | Agents run `usage-budget.ts` from `orchestrator-runtime.md` step 1 and `pace-log.ts --usage`; `status --summary` from `launch-gate.md` | Without `--floor` and `--mode` their output is byte-identical |
 | Consumers | `status-page.md` and `coordinator-dashboard.md` describe the summary; `sleep-mode.md` names the Sleep row | The summary text for `run` does not change |
 | Config | `catchup` is new and optional; the committed `.blackhole/config.json` gets no key | V-CONFIG-02 needs rows only for keys present in it |
-| Data | No new persisted state; `config.json` is never written by `--floor`; no checkpoint field | A crash cannot leave overrides behind (ADR-053 rejected alternative) |
+| Data | No new persisted state; `config.json` is never written by `--floor`; no checkpoint field | A crash cannot leave overrides behind (ADR-054 rejected alternative) |
 | CI | `verify` (V-CONFGATE-01, V-STOP-02/03, V-GROUND-01, V-PHASE-01, V-ARGV-01, V-CONFIG-02/03, doc INDEX) and the full suite run in CI after the push | Not run locally |
 | Built trees | Regenerated by `bun run build`; the committed output must match (CI sync check) | Stale output fails CI |
 
@@ -413,9 +413,9 @@ serialized by the one-test-process rule).
 ### Human-verifiable
 
 - [ ] Reading the catchup launch summary, an owner sees the usage reading, the floor, the shortfall, the 5h caps and the lane, and each value says what it costs.
-- [ ] `phase-catchup.md` reads as a short playbook that cites ADR-053 and the gate docs without restating them, and its scheduled-task template fits one prompt.
+- [ ] `phase-catchup.md` reads as a short playbook that cites ADR-054 and the gate docs without restating them, and its scheduled-task template fits one prompt.
 - [ ] `launch-gate.md` states one gate for both modes, with the catchup differences in one section.
-- [ ] Both commits reference ADR-053 and carry no AI attribution line.
+- [ ] Both commits reference ADR-054 and carry no AI attribution line.
 
 ## Plan Quality Gate
 

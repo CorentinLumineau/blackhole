@@ -1,6 +1,6 @@
 ---
 type: plan
-summary: "Catchup-mode M2 plan: break the usage-source and pace-gate layering cycle (#1272) by moving the rate-limit cache reader into rate-limit-cache.ts, add the usage provider chain and a normalized `bun run usage` reading (ADR-053 C6), and add the pure pace-floor.ts (ADR-053 C1)"
+summary: "Catchup-mode M2 plan: break the usage-source and pace-gate layering cycle (#1272) by moving the rate-limit cache reader into rate-limit-cache.ts, add the usage provider chain and a normalized `bun run usage` reading (ADR-054 C6), and add the pure pace-floor.ts (ADR-054 C1)"
 status: current
 review_trigger: "on milestone completion"
 created: 2026-11-17
@@ -10,7 +10,7 @@ related:
   - documentation/milestones/_active/catchup-mode/README.md
   - documentation/milestones/_active/catchup-mode/discovery.md
   - documentation/milestones/_active/catchup-mode/outcomes.md
-  - documentation/decisions/ADR-053-catchup-mode-quota-pacing.md
+  - documentation/decisions/ADR-054-catchup-mode-quota-pacing.md
 ---
 
 # M2: Usage reading everywhere
@@ -52,10 +52,10 @@ same cache with the same verdicts.
 | A5 | The explicit file is read once per call and must be fresh: its `read_at` (else its mtime) older than `resource_policy.pace.max_age_seconds` (600 s default) makes the provider fail and the chain moves on, as the cache reader does | A scheduled task that writes the file early would be ignored; the task prompt template (M3) writes it just before the call |
 | A6 | An explicit file that is missing, unreadable or malformed is a usage error (exit 2), like a malformed `usage-budget.ts --usage`. A valid but stale or all-expired file is not an error: the chain moves on and the reason says why | A silent fall-through would hide an agent's broken hand-off |
 | A7 | `pace-floor.ts` takes the used percent as an input because `shortfall_pct` needs it (the brief's tuple omits it), and a `utcOffsetMinutes` input (default 0) because a pure function cannot read the local zone. The caller (M3) passes the offset in force at `now` | A DST change inside the week shifts later day-end instants by an hour; accepted (LOW) |
-| A8 | Day-end hour defaults to 18 (the scheduled 18:00 run, ADR-053). It is an argument now and becomes the `catchup` config key in M3 | None |
+| A8 | Day-end hour defaults to 18 (the scheduled 18:00 run, ADR-054). It is an argument now and becomes the `catchup` config key in M3 | None |
 | A9 | Credit instants are clamped into the week `[resets_at - 7d, resets_at]`: the reset weekday's half credit lands at its day end, or at the week start when the reset hour is already past that hour; the closing half credit lands at `resets_at`. A reset on a weekend gives no half credits | Edge only; tested |
-| D1 | **Deferred: provider 4 (the live account usage endpoint) is not built.** ADR-053 marks it "include only if verified, otherwise dropped, not stubbed", and nothing here can verify an undocumented endpoint. No stub, no flag, no empty branch. Revisit as its own milestone if the desktop hand-off (D2) proves insufficient | A host with neither a file nor a cache gets `source: none` with a reason, which M3's gate turns into a SKIP: fail-closed, safe |
-| D2 | **Deferred to rollout: whether a desktop scheduled-task session can call the app's usage tool** (ADR-053 Key Assumption, open) cannot be tested from the repo. M2 ships the file hand-off contract and fixtures; the first scheduled run validates it | If it cannot, the task skips (provider 4 is the only other route, see D1) |
+| D1 | **Deferred: provider 4 (the live account usage endpoint) is not built.** ADR-054 marks it "include only if verified, otherwise dropped, not stubbed", and nothing here can verify an undocumented endpoint. No stub, no flag, no empty branch. Revisit as its own milestone if the desktop hand-off (D2) proves insufficient | A host with neither a file nor a cache gets `source: none` with a reason, which M3's gate turns into a SKIP: fail-closed, safe |
+| D2 | **Deferred to rollout: whether a desktop scheduled-task session can call the app's usage tool** (ADR-054 Key Assumption, open) cannot be tested from the repo. M2 ships the file hand-off contract and fixtures; the first scheduled run validates it | If it cannot, the task skips (provider 4 is the only other route, see D1) |
 
 ## Task Breakdown
 
@@ -237,7 +237,7 @@ Splice the `milestones/_active/catchup-mode/milestone-2.md` row into `documentat
 (`bun run scripts/generate-doc-index.ts`, copy the one new row, never overwrite the file), then
 `bun run scripts/generate-doc-index.ts --check` must exit 0. Commit 2 with explicit paths (never
 `git add -A`): `feat(usage): bun run usage prints one normalized reading on any host, add pace-floor`
-with a body naming ADR-053 C1 and C6 and deferral D1. No AI attribution lines. Run the Scout Check on
+with a body naming ADR-054 C1 and C6 and deferral D1. No AI attribution lines. Run the Scout Check on
 the diff and record one Improvement Record; the planned candidate is the stale "15-path" wording in the
 `V-ARGV-01` row of `src/references/blackhole-vcodes.md` (document it, do not fix it here: the row is a
 generated-from-`src/` gate text outside this diff).
@@ -251,10 +251,10 @@ lists only planned paths.
 |------|--------|-----|
 | `scripts/lib/rate-limit-cache.ts` | new: types, `RATE_WINDOW_NAMES`, path resolver, `readRateLimits` | The one cache reader (#1272) |
 | `scripts/lib/pace-gate.ts` | remove the moved symbols, import types | Cycle break only; pace arithmetic untouched |
-| `scripts/lib/usage-source.ts` | provider chain, `report`, `usageFile` option | ADR-053 C6 |
+| `scripts/lib/usage-source.ts` | provider chain, `report`, `usageFile` option | ADR-054 C6 |
 | `scripts/lib/usage-normalize.ts` | new: payload shape adapters | Keeps shape parsing out of the chain |
-| `scripts/usage.ts` | new CLI | ADR-053 C6 entry point |
-| `scripts/lib/pace-floor.ts` | new pure function | ADR-053 C1 |
+| `scripts/usage.ts` | new CLI | ADR-054 C6 entry point |
+| `scripts/lib/pace-floor.ts` | new pure function | ADR-054 C1 |
 | `scripts/lib/usage-budget.ts` | `USAGE_WINDOWS` from `RATE_WINDOW_NAMES`, type import path | One window list (V-INT-02) |
 | `scripts/usage-budget.ts`, `scripts/usage-probe.ts`, `scripts/campaign-status.ts`, `scripts/lib/campaign-status/budget.ts` | type import path only | Follow the move |
 | `scripts/checks/argv-flags-adoption.check.ts`, `package.json` | allowlist entry, `usage` alias | V-ARGV-01, convention |
@@ -358,8 +358,8 @@ serialized by the one-test-process rule).
 ### Human-verifiable
 
 - [ ] Reading one `bun run usage` line, an owner sees the plan, each window with its percent and reset, and where the reading came from.
-- [ ] `pace-floor.ts` reads as one pure function whose credit rules match ADR-053 C1 (half day at the reset weekday, one per weekday at day end, weekends zero, the closing half at the reset).
-- [ ] Both commits reference ADR-053 (and #1272 for commit 1) and carry no AI attribution line.
+- [ ] `pace-floor.ts` reads as one pure function whose credit rules match ADR-054 C1 (half day at the reset weekday, one per weekday at day end, weekends zero, the closing half at the reset).
+- [ ] Both commits reference ADR-054 (and #1272 for commit 1) and carry no AI attribution line.
 
 ## Plan Quality Gate
 

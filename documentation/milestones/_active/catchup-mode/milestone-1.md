@@ -9,7 +9,7 @@ plan_base_commit: 13d217f5
 related:
   - documentation/milestones/_active/catchup-mode/README.md
   - documentation/milestones/_active/catchup-mode/discovery.md
-  - documentation/decisions/ADR-053-catchup-mode-quota-pacing.md
+  - documentation/decisions/ADR-054-catchup-mode-quota-pacing.md
 ---
 
 # M1: Bootstrap version check and launch-gate doc completeness

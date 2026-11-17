@@ -1,12 +1,12 @@
 ---
 type: plan
-summary: "Catchup-mode initiative: bootstrap version check, host-agnostic usage reading, /blackhole catchup with the full-config launch gate, and lane claims (ADR-053)"
+summary: "Catchup-mode initiative: bootstrap version check, host-agnostic usage reading, /blackhole catchup with the full-config launch gate, and lane claims (ADR-054)"
 status: current
 review_trigger: "on milestone completion"
 created: 2026-11-17
 last_updated: 2026-11-17
 related:
-  - documentation/decisions/ADR-053-catchup-mode-quota-pacing.md
+  - documentation/decisions/ADR-054-catchup-mode-quota-pacing.md
   - documentation/brainstorms/weekly-quota-pacing.md
   - documentation/milestones/_active/catchup-mode/discovery.md
 ---
@@ -15,7 +15,7 @@ related:
 
 Spend the weekly plan quota up to a 17.5%-per-weekday pace floor with `/blackhole catchup`. The
 5h window must never go above 80%, and a run must never take an issue another session, colleague
-or account holds. Source: ADR-053 and the weekly-quota-pacing brainstorm.
+or account holds. Source: ADR-054 and the weekly-quota-pacing brainstorm.
 
 ## Milestones
 

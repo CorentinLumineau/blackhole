@@ -2,7 +2,7 @@ import { isClaimStale, laneLabel, laneOfLabel, LANE_LABEL_PREFIX, DEFAULT_CLAIM_
 import { closedIssues } from '../campaign-status/merged.ts';
 import type { ClaimLease, ClaimResult, ForgePr, ReleaseResult } from './types.ts';
 
-// The one claim and release flow behind every backend's `claim`/`release` (ADR-053 C4), the way
+// The one claim and release flow behind every backend's `claim`/`release` (ADR-054 C4), the way
 // `dependencies.ts` holds the dependency flow: a backend supplies its channel, this module decides.
 
 export type ClaimSnapshot = { state: 'OPEN' | 'CLOSED'; labels: string[]; assignees: string[]; updatedAt?: string | null };

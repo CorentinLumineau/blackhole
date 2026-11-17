@@ -132,7 +132,7 @@ export interface ForgeDependencies {
 }
 
 /**
- * One claim of an issue for a lane (ADR-053 C4). `HELD`: another lane holds a live claim (`held_by`).
+ * One claim of an issue for a lane (ADR-054 C4). `HELD`: another lane holds a live claim (`held_by`).
  * `RECLAIMED`: a stale claim was taken over. `CLOSED`: the issue is closed, nothing was written.
  */
 export interface ClaimResult {

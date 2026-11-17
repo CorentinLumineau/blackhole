@@ -5,12 +5,12 @@
   "initiatives": [
     {
       "name": "catchup-mode",
-      "displayName": "Catchup mode: weekly quota pacing (ADR-053)",
+      "displayName": "Catchup mode: weekly quota pacing (ADR-054)",
       "priority": 1,
       "status": "completed",
       "dependsOn": [],
       "relatedTo": [
-        "documentation/decisions/ADR-053-catchup-mode-quota-pacing.md"
+        "documentation/decisions/ADR-054-catchup-mode-quota-pacing.md"
       ],
       "blockedBy": [],
       "created": "2026-11-17T13:54:05Z"

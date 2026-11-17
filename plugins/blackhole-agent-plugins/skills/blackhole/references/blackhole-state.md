@@ -36,16 +36,18 @@ Mutations to `.blackhole/queue.json` and
 | `archive/hook-events-<ts>/` | Consumed PreToolUse hook-event files, archived rather than deleted once ingested (gitignored, ADR-042/#893) |
 | `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
 | `pace-log.jsonl` | Per-spawn-round pace/resource verdicts, planned batch and effective concurrency, newest 200 lines (gitignored, written by `scripts/pace-log.ts`, diagnostic only) |
+| `usage-history.jsonl` | Weekly usage readings (`observed_at`, `used_percentage`, `resets_at`), one per `observed_at`, newest 200 lines (gitignored, appended by `scripts/usage-probe.ts`, read by the status page's Pace row) |
 | `run-context.json` | What this run can do and the route resolved from it, rewritten at every bootstrap and resume (see `run-context.md`) |
 | `owner-decisions.json` | `{"decisions": [{date, text, refs?}]}` — the owner's answers and scope/priority instructions, appended only by `scripts/campaign-record.ts decision` (gitignored; travels on the state branch; see `status-page.md` § What the orchestrator records) |
 | `pending-decisions.json` | `{"next_id", "decisions": [{id, question, options, recommended, evidence?, blocks, gate?, created_at}]}` — owner questions parked while `sleep_mode.enabled` is `true`, written only by `scripts/campaign-record.ts park`/`resolve` through the write guard (entity key `decisions`; gitignored; travels on the state branch; see `sleep-mode.md`) |
 | `status-artifact.json` | `{url, kind, created_at, template_version, template_sha256, last_probe?}` of the campaign's one published status page; the optional `last_probe` (`{at, ok, url, reason?}`) is the launch gate's reachability probe, written only by `scripts/status-probe.ts record` (**tracked** — commit it, un-ignore it with `!.blackhole/status-artifact.json` under a `.blackhole/*` ignore, so every session and machine redeploys the same link; see `status-page.md`) |
+| `.tmp/sleep-hold.json` | `{pid, tool, started_at, identity}` of the keep-awake inhibitor sleep mode holds on a local host, written by `scripts/campaign-record.ts sleep --on` and removed by `sleep --off`/`wake` (gitignored, local only; see `sleep-mode.md` § Keeps itself alive) |
 | `.tmp/status.html` | Latest rendered status page, rewritten by `bun run status --html` (gitignored, local only) |
 
 On a machine whose disk does not outlive the session (`state_store: branch`), these files are
 also kept on the `blackhole/state` branch: pushed at every turn end and restored on resume
 (`state-branch.md`). `archive/`, `hook-events/`, `.tmp/`, `*.tmp` and the per-machine signals
-(`run-context.json`, `plugin-drift.json`, `doc-health.json`, `pace-log.jsonl`) stay local.
+(`run-context.json`, `plugin-drift.json`, `doc-health.json`, `pace-log.jsonl`, `usage-history.jsonl`) stay local.
 
 Full schemas: `plugins/blackhole-agent-plugins/skills/blackhole/references/findings-ledger.md`,
 `queue-dag.md`.

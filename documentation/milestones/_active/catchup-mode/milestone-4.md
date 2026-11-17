@@ -1,6 +1,6 @@
 ---
 type: plan
-summary: "Catchup-mode M4 plan: lane claim and release on the GitHub, Gitea and GitLab adapters (ADR-053 C4), the account-stable lane replacing the hardcoded OWN_LANES with the old list as fallback, forge-sync deciding ownership by the own lane label, a claim lease, and the claim CLI wired into the orchestrator dispatch playbook"
+summary: "Catchup-mode M4 plan: lane claim and release on the GitHub, Gitea and GitLab adapters (ADR-054 C4), the account-stable lane replacing the hardcoded OWN_LANES with the old list as fallback, forge-sync deciding ownership by the own lane label, a claim lease, and the claim CLI wired into the orchestrator dispatch playbook"
 status: current
 review_trigger: "on milestone completion"
 created: 2026-11-17
@@ -11,7 +11,7 @@ related:
   - documentation/milestones/_active/catchup-mode/discovery.md
   - documentation/milestones/_active/catchup-mode/outcomes.md
   - documentation/milestones/_active/catchup-mode/milestone-3.md
-  - documentation/decisions/ADR-053-catchup-mode-quota-pacing.md
+  - documentation/decisions/ADR-054-catchup-mode-quota-pacing.md
   - documentation/decisions/ADR-027-forge-adapter-interface.md
 ---
 
@@ -24,7 +24,7 @@ commits, one `bun run build`. Depends on M3 (shipped: `catchup.ts` with the regi
 
 ## Objective
 
-After this milestone (ADR-053 C4):
+After this milestone (ADR-054 C4):
 
 1. `ForgeAdapter` has `claim(issue, lane, user)`, `release(issue, lane)` and `viewerLogin()` on GitHub,
    Gitea and GitLab. A claim adds `in-progress:<lane>` (through the existing `labelAdd`) and assigns the
@@ -168,7 +168,7 @@ Tests (added to `gitlab.test.ts`; `runGlabText`/`runGlabJson` spies): claim argv
 union of ids; release PUT drops only the user; `HELD` writes nothing; `viewerLogin`; field mapping.
 
 Acceptance: `with-test-lock bun test scripts/lib/forge-adapter/gitlab.test.ts scripts/lib/forge-adapter/github.test.ts scripts/lib/forge-adapter/gitea.test.ts scripts/lib/forge-adapter/claim.test.ts scripts/verify.forge-adapter-routing.test.ts` exits 0 (V-FORGE-01: no bare CLI spawn added).
-Commit 1 (explicit paths): `feat(forge): lane claim and release on the three forge adapters`, body naming ADR-053 C4.
+Commit 1 (explicit paths): `feat(forge): lane claim and release on the three forge adapters`, body naming ADR-054 C4.
 
 ### T6. `forge-sync`: ownership by lane label and the lease
 
@@ -238,13 +238,13 @@ Acceptance: `with-test-lock bun test scripts/claim.test.ts scripts/verify.argv-f
 
 Depends on T8. Edit `src/` only.
 
-- `src/references/orchestrator-dispatch.md`: new `## Lane claim and release (ADR-053 C4)`: before the status
+- `src/references/orchestrator-dispatch.md`: new `## Lane claim and release (ADR-054 C4)`: before the status
   moves to `in-flight`, run `bun run scripts/claim.ts --claim <N> --campaign-dir .blackhole [--lane <pinned>]`;
   `CLAIMED`, `ALREADY-OWN`, `RECLAIMED` and `SKIP` dispatch; `HELD` or `CLOSED` do not (`status: blocked`,
   notes `another lane: in-progress:<held_by>`, the form `forge-sync` writes); exit 1 does not dispatch and
   retries next turn (D4). Release with `--release <N>`: on merge (after `phase-loop.md` Merge protocol step
   5), on a worker that returns failed, on `stop --abandon` and a `stop --now` worker that falls back to
-  abandon, and on a stop for a claim with no open own PR (A6). Cites ADR-053 and `scripts/claim.ts` by path
+  abandon, and on a stop for a claim with no open own PR (A6). Cites ADR-054 and `scripts/claim.ts` by path
   (the build keeps cited scripts in the shipped closure).
 - One pointer line each at the dispatch site that sets `in-flight` (found by `Grep "status: in-flight"` in
   `orchestrator-delegation.md`, `orchestrator-runtime.md`, `queue-dag.md`; edit only the one site),
@@ -273,7 +273,7 @@ Depends on T9. `with-test-lock bun run build`. Splice the `milestones/_active/ca
 row into `documentation/INDEX.md` (`bun run scripts/generate-doc-index.ts`, copy the one new row, never
 overwrite the file); `bun run scripts/generate-doc-index.ts --check` exits 0. Commit 2 with explicit paths,
 never `git add -A`: `feat(forge-sync): lane-label ownership, claim lease and the claim CLI`, body naming
-ADR-053 C4 and D1 to D4, no AI attribution. Scout Check on the diff, one Improvement Record (planned
+ADR-054 C4 and D1 to D4, no AI attribution. Scout Check on the diff, one Improvement Record (planned
 candidate: the stale "consumed from M4" wording and the `argv-flags-adoption` header counts the diff already
 touches).
 
@@ -286,13 +286,13 @@ plugins/blackhole-claude/scripts/claim.ts plugins/blackhole-claude/scripts/lib/l
 | File | Change | Why |
 |------|--------|-----|
 | `scripts/lib/lane.ts` | new: vocabulary, tolerant config read, lease | One parser and one lease rule (V-INT-02) |
-| `scripts/lib/campaign-status/blocked-classes.ts` | `OWN_LANES` out, optional lane params | ADR-053 C4 fallback |
+| `scripts/lib/campaign-status/blocked-classes.ts` | `OWN_LANES` out, optional lane params | ADR-054 C4 fallback |
 | `scripts/lib/forge-adapter/types.ts`, `claim.ts` (new) | contract, shared claim logic | One implementation for three adapters |
 | `scripts/lib/forge-adapter/github.ts`, `github-rest.ts`, `gitea.ts`, `gitlab.ts` | `claim`, `release`, `viewerLogin`, new fields | BREAKING for all three adapters in one change |
-| `scripts/lib/forge-sync.ts`, `scripts/forge-sync.ts` | ownership by lane label, lease, `--lane` | ADR-053 C4 |
+| `scripts/lib/forge-sync.ts`, `scripts/forge-sync.ts` | ownership by lane label, lease, `--lane` | ADR-054 C4 |
 | `scripts/lib/campaign-status/report.ts`, `dashboard.ts`, `scripts/campaign-status.ts` | pass the lane | Blocked classes stay right under a lane |
 | `scripts/claim.ts` (new), `scripts/lib/forge-adapter/for-campaign.ts` (new), `package.json`, `scripts/checks/argv-flags-adoption.check.ts` | CLI, adapter helper, alias, allowlist | The orchestrator needs a command |
-| `src/references/orchestrator-dispatch.md`, one dispatch site, `phase-loop.md`, `phase-stop.md`, `forge-sync.md`, `config-template.md`, `phase-catchup.md` | claim/release wiring and docs | ADR-053 C4 |
+| `src/references/orchestrator-dispatch.md`, one dispatch site, `phase-loop.md`, `phase-stop.md`, `forge-sync.md`, `config-template.md`, `phase-catchup.md` | claim/release wiring and docs | ADR-054 C4 |
 | Tests: `lane.test.ts`, `claim.test.ts`, the three adapter tests, `forge-sync.test.ts`, `claim.test.ts` (CLI), `lane-claim-docs.test.ts`, `blocked-classes.test.ts`, `report.test.ts`, `dashboard.test.ts` | new cases | Test-first evidence |
 | `documentation/INDEX.md` | one row | Doc governance |
 
@@ -391,7 +391,7 @@ one-test-process rule).
 
 - [ ] On a scratch issue, `claim` then `release` through the CLI leaves the issue with no lane label and no assignee, and a second lane's `claim` in between returns `HELD`.
 - [ ] `orchestrator-dispatch.md` § Lane claim reads as one short procedure an orchestrator can follow without opening the ADR.
-- [ ] Both commits reference ADR-053 and carry no AI attribution line.
+- [ ] Both commits reference ADR-054 and carry no AI attribution line.
 
 ## Plan Quality Gate
 

@@ -2,7 +2,7 @@
 
 Binding playbook for the `catchup` mode (`SKILL.md` § Modes): burn the weekly quota down to the pace
 floor by running the normal campaign, gated by `usage-budget.ts --floor`. The decision and the
-floor math are `documentation/decisions/ADR-053-catchup-mode-quota-pacing.md` (C1-C3); this file
+floor math are `documentation/decisions/ADR-054-catchup-mode-quota-pacing.md` (C1-C3); this file
 owns the steps. It composes with the five phase playbooks and replaces none of them. A catchup is
 a `run`: it takes the same launch gate (`launch-gate.md`, catchup form) and drains with `stop`
 (`phase-stop.md`).
@@ -53,7 +53,7 @@ Set `catchup.lane` per account before a second account runs on the same repo (th
 
 ## Scheduled task
 
-The schedule is ADR-053's: weekdays about 18:00, 23:00 and 04:00, weekends every 5 hours. The task
+The schedule is ADR-054's: weekdays about 18:00, 23:00 and 04:00, weekends every 5 hours. The task
 lives outside the repo (a desktop scheduled task or a cloud routine). One prompt per account:
 
 ```text

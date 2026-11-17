@@ -8,7 +8,7 @@ import { resolveHost, usageSourceFor } from './lib/usage-source.ts';
 
 // Usage: bun run scripts/pace-floor.ts [--usage <file>] [--cache <path>] [--host claude|cursor]
 //        [--config <path>] [--now <epoch s>]
-// Prints the catchup pace floor (ADR-053 C1) as one JSON line: status (ok | unreadable | no-weekly),
+// Prints the catchup pace floor (ADR-054 C1) as one JSON line: status (ok | unreadable | no-weekly),
 // floor_pct (null unless ok), credits, shortfall_pct, used_pct, resets_at, plan, source, reason.
 // The reading comes from the same provider chain as usage.ts (`--usage` is a FILE PATH); the
 // schedule comes from the `catchup` config block. Exit 0 on every status, 2 on bad usage, a broken

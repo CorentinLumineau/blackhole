@@ -308,7 +308,7 @@ describe('V-STOP-03 follow-ups from the #1213 review', () => {
   });
 });
 
-describe('catchup wiring (ADR-053 C2, C3)', () => {
+describe('catchup wiring (ADR-054 C2, C3)', () => {
   test('phase-stop.md says a catchup drains like a run, and the playbook cites --floor and the gate', () => {
     expect(read('src/references/phase-stop.md')).toContain('catchup');
     const playbook = read('src/references/phase-catchup.md');

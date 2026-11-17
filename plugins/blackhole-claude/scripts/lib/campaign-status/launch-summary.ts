@@ -32,7 +32,7 @@ export type LaunchSummaryInput = {
   catchup?: CatchupInput;
 };
 
-/** The catchup launch inputs (ADR-053 C2): the effective preset after the invocation's overrides, the
+/** The catchup launch inputs (ADR-054 C2): the effective preset after the invocation's overrides, the
  * effective floor (null when usage is unreadable), the pace reading and the floor budget the Budget
  * row judges by; or the invalid-block message, shown on the Pacing row instead of a throw. */
 export type CatchupInput = { invalid: string } | { preset: CatchupConfig; floorPct: number | null; pacing: Pacing; budget: UsageBudgetConfig };
@@ -178,7 +178,7 @@ export function budgetRow(b: BudgetPanel, config: Record<string, unknown>, floor
 
 const PACING_BASE = { key: 'pacing' as const, label: 'Pacing', header: 'Pacing', adjustable: true };
 
-/** The Pacing row of a catchup (ADR-053 C2): the reading, the floor, the shortfall, the 5h caps and the lane. */
+/** The Pacing row of a catchup (ADR-054 C2): the reading, the floor, the shortfall, the 5h caps and the lane. */
 export function pacingRow(input: CatchupInput): LaunchRow {
   if ('invalid' in input) {
     return { ...PACING_BASE, value: `catchup config invalid: ${input.invalid}`, consequence: 'catchup config is invalid, so the catchup cannot start.' };

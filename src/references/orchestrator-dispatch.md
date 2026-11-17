@@ -364,7 +364,7 @@ Amendments (not restated here — `V-DRY-01`).
 change is exactly the case `V-SCOPE-02` is meant to catch, and correctly does — the amendment
 above is what closes the gap, not a reason to treat the spawn prompt as self-authorizing.
 
-## Lane claim and release (ADR-053 C4)
+## Lane claim and release (ADR-054 C4)
 
 Applies when a lane is set (`catchup.lane` in `config.json`, or `--lane` for one invocation); with no
 lane every claim answers `SKIP` and dispatch is unchanged. The claim is the account's statement on the

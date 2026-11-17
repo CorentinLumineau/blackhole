@@ -1,4 +1,4 @@
-// Pace floor (ADR-053 C1): the share of the weekly allowance a campaign should have spent by now if it
+// Pace floor (ADR-054 C1): the share of the weekly allowance a campaign should have spent by now if it
 // spent 17.5 points per weekday. Pure: no I/O, no clock reads, no local imports; every instant is
 // epoch seconds and the local calendar comes from `utcOffsetMinutes` (the caller passes the offset
 // in force at `now`).
