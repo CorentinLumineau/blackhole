@@ -498,48 +498,143 @@ const skipDollarParenSpan = (text, start, heredocMasked) => {
  * (e.g. containing the literal words `worktree`/`remove`) from contributing tokens to
  * `findRemovalInvocations`'s `.split(/\s+/)` token stream: those characters are spaces by the
  * time this function returns, not merely excluded from the clause's own extent. */
-const clauseTailFrom = (command, index, heredocMasked) => {
-  const rest = command.slice(index);
-  const heredocMaskedRest = heredocMasked ? heredocMasked.slice(index) : null;
-  let end = rest.length;
-  for (let i = 0; i < rest.length; i++) {
-    const ch = rest[i];
-    if (ch === '$' && rest[i + 1] === '(') {
-      i = skipDollarParenSpan(rest, i, heredocMaskedRest) - 1; // loop's own i++ lands just past the matched ')'
-      continue;
-    }
-    if (ch === ';' || ch === '|' || ch === '\n' || ch === ')') {
-      end = i;
-      break;
-    }
-    if (isBraceGroupClose(rest, i)) {
-      // A brace group's closing `}` (F-00064), the `}` counterpart to `)` above: guarded on a
-      // preceding whitespace character — the same structural requirement real bash syntax already
-      // imposes on this reserved word (`findClauseStartIndices`'s docstring) — so it never
-      // truncates a `${VAR}` parameter expansion or a `file{a,b}` brace expansion, neither of
-      // which has whitespace before its own `}`.
-      end = i;
-      break;
-    }
-    if (ch === '&') {
-      if (isRedirectAmpersand(rest, i)) continue; // 2>&1, >&, &>file, &>>file, …
-      end = i; // &&, bare background &, or other non-redirect &
-      break;
+/** Largest command, in characters, the Bash hook will analyse; above it the hook fails CLOSED
+ * (`oversizeCommandDecision`) because the native wrapper fails OPEN on its 5 s timeout and no
+ * matcher's cost can otherwise be bounded. Applies to EVERY session, not only campaign workers:
+ * the static pattern matchers run for all of them and one (fork-bomb) backtracks quadratically.
+ * 32 KiB sits above the longest of 12,893 observed real Bash calls (18,722 characters); larger
+ * file bodies belong in the Write tool. */
+const MAX_ANALYZABLE_COMMAND_CHARS = 32 * 1024;
+
+/** Ceiling on the summed length of every clause tail one `findRemovalInvocations` call
+ * tokenizes. Disjoint clauses sum to the command length; only deeply nested openers (`((((…`,
+ * `{ { { …`, `$($(…`) re-tokenize the same text once per level, so a legitimate command stays
+ * orders of magnitude below this while an adversarial one is cut off in ~60 ms. */
+const MAX_CLAUSE_SCAN_CHARS = 4_000_000;
+
+/** `findRemovalInvocations` entry (the last one it returns) marking that `MAX_CLAUSE_SCAN_CHARS`
+ * was exceeded and the walk stopped; every consumer maps it to `scanBudgetExceededDecision`. */
+const SCAN_BUDGET_EXCEEDED = 'scan-budget-exceeded';
+
+/** Most directories `findRemovalInvocations` tracks as a relative path's possible base. */
+const MAX_CWD_CANDIDATES = 16;
+
+/** Most distinct resolved paths (across every `rm` clause and `cd` candidate) one command may
+ * probe with a `git worktree list` subprocess (~2.3 ms each); a normal `rm -rf a b c` uses a
+ * handful. */
+const MAX_REMOVAL_TARGET_PROBES = 64;
+
+const tooManyRemovalTargetsDecision = () => ({
+  tier: 'block',
+  pattern_id: 'too-many-removal-targets',
+  reason:
+    `rm names more than ${MAX_REMOVAL_TARGET_PROBES} distinct targets to verify in time — refused ` +
+    'fail-closed. Remedy: remove the files in smaller batches, or use a glob inside the worktree.',
+});
+
+const SPLIT_REMEDY =
+  'Remedy: split this into several smaller Bash calls (write large file bodies with the Write ' +
+  'tool instead of a heredoc).';
+
+/** Block decision for a command above `MAX_ANALYZABLE_COMMAND_CHARS`, or null. The one place the
+ * size limit is enforced, shared by `evaluateWorktreeRemoval` and `evaluateGitMainCloneMutation`
+ * so neither pays any scan cost before it. */
+const oversizeCommandDecision = (command) =>
+  command.length > MAX_ANALYZABLE_COMMAND_CHARS
+    ? {
+        tier: 'block',
+        pattern_id: 'command-too-large-to-verify',
+        reason:
+          `Command is ${command.length} characters, above the ${MAX_ANALYZABLE_COMMAND_CHARS}-character ` +
+          `limit the worktree and main-clone guards can verify in time — refused fail-closed. ${SPLIT_REMEDY}`,
+      }
+    : null;
+
+/** Block decision for a command whose clause nesting exceeded `MAX_CLAUSE_SCAN_CHARS`. */
+const scanBudgetExceededDecision = () => ({
+  tier: 'block',
+  pattern_id: 'command-too-complex-to-verify',
+  reason:
+    'Command nests clauses too deeply for the worktree and main-clone guards to verify in time — ' +
+    `refused fail-closed. ${SPLIT_REMEDY}`,
+});
+
+/** True when the character at `i` ends a clause tail on its own account, ignoring the one
+ * position-relative case `clauseTailFrom` handles itself (a clause's very first character). */
+const isClauseTailBoundary = (command, i) => {
+  const ch = command[i];
+  if (ch === ';' || ch === '|' || ch === '\n' || ch === ')') return true;
+  // A brace group's closing `}` (F-00064), the `}` counterpart to `)` above: guarded on a
+  // preceding whitespace character — the same structural requirement real bash syntax already
+  // imposes on this reserved word (`findClauseStartIndices`'s docstring) — so it never
+  // truncates a `${VAR}` parameter expansion or a `file{a,b}` brace expansion, neither of
+  // which has whitespace before its own `}`.
+  if (isBraceGroupClose(command, i)) return true;
+  // `&&` and a bare background `&` end the clause; a redirect (2>&1, >&, &>file, &>>file, …) does not.
+  return ch === '&' && !isRedirectAmpersand(command, i);
+};
+
+/** For every position `i`, the index where a clause tail scanned from `i` ends (`ends[i]`), built
+ * in ONE right-to-left pass so `clauseTailFrom` is O(1) per clause instead of a fresh forward
+ * scan: a run of `(` or `{ ` opens a clause at every position yet has no boundary to stop any of
+ * their tails, which made the per-clause scan quadratic (#1197). A `$(...)` span jumps to its
+ * matching `)` exactly like `skipDollarParenSpan`'s depth counting, precomputed here for every
+ * `(` with a single stack so the jump is O(1) too. Also returns `nextMasked`, so a clause that
+ * holds no heredoc body skips the per-character blanking pass. */
+const buildClauseEndTable = (command, heredocMasked) => {
+  const n = command.length;
+  const closeOf = new Int32Array(n).fill(n); // matching `)` per unmasked `(`; n when unterminated
+  const open = [];
+  for (let i = 0; i < n; i++) {
+    if (heredocMasked && heredocMasked[i]) continue;
+    if (command[i] === '(') open.push(i);
+    else if (command[i] === ')' && open.length > 0) closeOf[open.pop()] = i;
+  }
+  const ends = new Int32Array(n + 1);
+  const nextMasked = new Int32Array(n + 1); // first heredoc-body position at or after `i`, else n
+  ends[n] = n;
+  nextMasked[n] = n;
+  for (let i = n - 1; i >= 0; i--) {
+    nextMasked[i] = heredocMasked && heredocMasked[i] ? i : nextMasked[i + 1];
+    if (command[i] === '$' && command[i + 1] === '(') {
+      // A masked `(` right after `$` is the one shape the stack above does not model — defer to
+      // the depth-counting original for it.
+      const past = heredocMasked && heredocMasked[i + 1]
+        ? skipDollarParenSpan(command, i, heredocMasked)
+        : closeOf[i + 1] === n ? n : closeOf[i + 1] + 1;
+      ends[i] = ends[past];
+    } else {
+      ends[i] = isClauseTailBoundary(command, i) ? i : ends[i + 1];
     }
   }
-  let clause = rest.slice(0, end).trimEnd();
-  if (heredocMaskedRest) {
-    let blanked = '';
+  return { ends, nextMasked };
+};
+
+const TRAILING_REDIRECT_TOKEN_RE = /^(?:2>&1|>&\d*|>>?[^\s;&|]+|\d>>?[^\s;&|]+|&>>?[^\s;&|]+)$/;
+
+const clauseTailFrom = (command, index, heredocMasked, { ends, nextMasked }) => {
+  // A clause's own first character has no predecessor within the clause, so `}` is never its
+  // closing brace and `&` is a redirect only when `>` follows it.
+  let end;
+  if (command[index] === '}') end = ends[index + 1];
+  else if (command[index] === '&') end = command[index + 1] === '>' ? ends[index + 1] : index;
+  else end = ends[index];
+  let clause = command.slice(index, end).trimEnd();
+  if (heredocMasked && nextMasked[index] < index + clause.length) {
+    const chars = new Array(clause.length);
     for (let i = 0; i < clause.length; i++) {
-      blanked += heredocMaskedRest[i] ? ' ' : clause[i];
+      chars[i] = heredocMasked[index + i] ? ' ' : clause[i];
     }
-    clause = blanked;
+    clause = chars.join('');
   }
-  // Strip one or more trailing shell redirects (2>&1, >/dev/null, 2>/dev/null, &>file, …).
-  const TRAILING_REDIRECT_RE =
-    /\s+(?:2>&1|>&\d*|>>?[^\s;&|]+|\d>>?[^\s;&|]+|&>>?[^\s;&|]+)\s*$/;
-  while (TRAILING_REDIRECT_RE.test(clause)) {
-    clause = clause.replace(TRAILING_REDIRECT_RE, '').trimEnd();
+  // Strip one or more trailing shell redirects (2>&1, >/dev/null, 2>/dev/null, &>file, …): the
+  // clause's last whitespace-delimited token, when it is one. Checking only that token keeps this
+  // linear — an unanchored `\s+(?:…)\s*$` regex retried from every whitespace in a long run.
+  while (true) {
+    let start = clause.length;
+    while (start > 0 && !/\s/.test(clause[start - 1])) start -= 1;
+    if (start === 0 || !TRAILING_REDIRECT_TOKEN_RE.test(clause.slice(start))) break;
+    clause = clause.slice(0, start).trimEnd();
   }
   return clause;
 };
@@ -687,11 +782,18 @@ const resolveAgainstBase = (text, base) => (path.isAbsolute(text) ? text : path.
 const findRemovalInvocations = (command, cwd) => {
   const masked = computeMaskedSpans(command);
   const heredocMasked = computeHeredocBodyMask(command);
+  const clauseTable = buildClauseEndTable(command, heredocMasked);
   const invocations = [];
   let cwdCandidates = [cwd];
+  let scannedChars = 0;
   for (const { index: clauseStart, precededByOr } of findClauseStartIndices(command, masked)) {
     if (!isCommandWordStart(command, clauseStart)) continue; // defensive: clause starts are always real word starts
-    const tokens = clauseTailFrom(command, clauseStart, heredocMasked).trim().split(/\s+/).filter(Boolean);
+    scannedChars += clauseTable.ends[clauseStart] - clauseStart;
+    if (scannedChars > MAX_CLAUSE_SCAN_CHARS) {
+      invocations.push({ kind: SCAN_BUDGET_EXCEEDED });
+      break;
+    }
+    const tokens = clauseTailFrom(command, clauseStart, heredocMasked, clauseTable).trim().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) continue;
 
     let cursor = 0;
@@ -737,6 +839,12 @@ const findRemovalInvocations = (command, cwd) => {
         } else {
           const resolved = cwdCandidates.map((base) => resolveAgainstBase(text, base));
           cwdCandidates = precededByOr ? [...new Set([...cwdCandidates, ...resolved])] : [...new Set(resolved)];
+        }
+        // Each `||`-guarded or uncertain `cd` can double the candidate set (a `cd d0 || cd d1 || …`
+        // chain is 2^n directories); past the cap the verdict is fail-closed, not a longer walk.
+        if (cwdCandidates.length > MAX_CWD_CANDIDATES) {
+          invocations.push({ kind: SCAN_BUDGET_EXCEEDED });
+          return invocations;
         }
         break; // `cd`'s own remaining tokens are its target/flags, not a second command to scan
       }
@@ -1088,11 +1196,12 @@ const checkUnpushedCommits = (worktreePath) => {
  * Shared prose for a `status: 'unknown'` refusal below — the dirty-worktree, detached-HEAD and
  * named-branch outcomes share an identical opening clause and closing clause and differ only in
  * what could not be verified (`claim`) and the remedy paragraph appended after this by the
- * caller.
+ * caller. The opener's "the check could not run (not confirmed unsafe)" clause separates an
+ * unverifiable state from a confirmed-unsafe one, which the `unpushed`/`dirty` refusals name instead.
  */
 const unverifiableRefusalOpener = (resolvedPath, claim, detail) =>
-  `Could not verify ${resolvedPath} ${claim} (${detail}) — refusing rather than risk silent ` +
-  `data loss.`;
+  `Could not verify ${resolvedPath} ${claim} (${detail}) — the check could not run (not confirmed unsafe), ` +
+  `refusing rather than risk silent data loss.`;
 
 const GITHUB_RETAINS_PR_HEADS_NOTE =
   '(GitHub retains PR head refs permanently, so this gives a true answer instead of bypassing the ' +
@@ -1185,7 +1294,8 @@ const evaluateResolvedWorktree = (resolvedPath, shape) => {
       pattern_id: shape.unpushedId,
       reason:
         `Worktree at ${resolvedPath} has commits not on its remote (${result.detail}) — removal would discard them permanently` +
-        shape.unpushedNote,
+        shape.unpushedNote +
+        `. Remedy: push first (git -C ${resolvedPath} push origin <branch>:<branch>), then retry.`,
     };
   }
   if (result.status === 'unknown') {
@@ -1282,7 +1392,7 @@ const evaluateOneInvocation = (argTokens, resolutionCwds) => {
  * stand between an ordinary `rm` and any check at all — no recursive flag, no statically resolvable
  * target, or a target that is not a registered linked worktree — each of which returns "nothing to
  * check" rather than a refusal, which is what keeps `rm -rf` on ordinary paths exactly as it was. */
-const evaluateRmInvocation = (argTokens, resolutionCwds, spawnCwd) => {
+const evaluateRmInvocation = (argTokens, resolutionCwds, spawnCwd, probes = { memo: new Map(), spawned: 0 }) => {
   const { recursive, positional } = parseRmRemovalArgs(argTokens);
   if (!recursive) return null;
 
@@ -1293,7 +1403,14 @@ const evaluateRmInvocation = (argTokens, resolutionCwds, spawnCwd) => {
       const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(base, pathArg);
       if (tried.has(resolvedPath)) continue;
       tried.add(resolvedPath);
-      if (!isRegisteredLinkedWorktree(resolvedPath, spawnCwd)) continue;
+      // One `git worktree list` subprocess (~2 ms) per DISTINCT path: a repeated target is
+      // answered from the memo, and the distinct count is capped (`MAX_REMOVAL_TARGET_PROBES`).
+      if (!probes.memo.has(resolvedPath)) {
+        if (probes.spawned >= MAX_REMOVAL_TARGET_PROBES) return tooManyRemovalTargetsDecision();
+        probes.spawned += 1;
+        probes.memo.set(resolvedPath, isRegisteredLinkedWorktree(resolvedPath, spawnCwd));
+      }
+      if (!probes.memo.get(resolvedPath)) continue;
       const decision = evaluateResolvedWorktree(resolvedPath, RM_REMOVAL_SHAPE);
       if (decision) return decision;
     }
@@ -1312,13 +1429,17 @@ const evaluateRmInvocation = (argTokens, resolutionCwds, spawnCwd) => {
  * blockPatterns' philosophy (V-HOOK-01) rather than the warnPatterns' one.
  */
 const evaluateWorktreeRemoval = (command, cwd) => {
+  const oversize = oversizeCommandDecision(command);
+  if (oversize) return oversize;
   const invocations = findRemovalInvocations(command, cwd);
   if (invocations.length === 0) return null;
+  if (invocations.some((invocation) => invocation.kind === SCAN_BUDGET_EXCEEDED)) return scanBudgetExceededDecision();
 
+  const probes = { memo: new Map(), spawned: 0 };
   for (const invocation of invocations) {
     let decision;
     if (invocation.kind === 'rm') {
-      decision = evaluateRmInvocation(invocation.argTokens, invocation.resolutionCwds, cwd);
+      decision = evaluateRmInvocation(invocation.argTokens, invocation.resolutionCwds, cwd, probes);
     } else if (invocation.unresolvableExecutable) {
       decision = unresolvableExecutableDecision();
     } else if (invocation.kind === 'git-mutation') {
@@ -1335,6 +1456,11 @@ const evaluateWorktreeRemoval = (command, cwd) => {
 
 module.exports = {
   evaluateWorktreeRemoval,
+  oversizeCommandDecision,
+  scanBudgetExceededDecision,
+  SCAN_BUDGET_EXCEEDED,
+  MAX_ANALYZABLE_COMMAND_CHARS,
+  MAX_REMOVAL_TARGET_PROBES,
   checkUnpushedCommits,
   checkDetachedReachability,
   checkDirtyWorktree,

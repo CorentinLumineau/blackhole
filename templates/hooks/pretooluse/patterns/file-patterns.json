@@ -14,8 +14,8 @@
     { "id": "program-files", "pattern": "^[a-z]:\\\\Program Files", "flags": "i", "reason": "Windows program directory" }
   ],
   "pathTraversal": [
-    { "id": "dotdot-slash", "pattern": "(^|/)\\.\\./", "flags": "", "reason": "Relative path traversal (../)" },
-    { "id": "dotdot-backslash", "pattern": "(^|\\\\)\\.\\.\\\\", "flags": "", "reason": "Relative path traversal (..\\)" }
+    { "id": "dotdot-slash", "pattern": "(^|/)\\.\\./", "flags": "", "reason": "Relative path traversal (../) — Remedy: use an absolute path inside the assigned worktree root" },
+    { "id": "dotdot-backslash", "pattern": "(^|\\\\)\\.\\.\\\\", "flags": "", "reason": "Relative path traversal (..\\) — Remedy: use an absolute path inside the assigned worktree root" }
   ],
   "sensitiveFiles": [
     { "id": "env", "pattern": "(^|/)\\.env$", "flags": "i", "reason": "Environment file — may hold credentials" },

@@ -8,6 +8,7 @@ import {
   bashCommand,
   fileChangesCommand,
   hookEventFiles,
+  initGitRepo,
   runWrapperWithStubExit,
 } from './claude-native-settings.fixtures.ts';
 
@@ -200,6 +201,46 @@ describe('AC-4d/4e — exit-code discrimination through the real generated comma
       );
       expect(exitCode).toBe(0);
       assertFailOpenRecord(dir, hookEventFiles(dir), 'validate-file-changes', null);
+    });
+  });
+  // #1197: the harness's own 5 s timeout fails OPEN, so the wrapper enforces a shorter deadline of
+  // its own and denies when the validator has not decided by then; a crash stays fail-open.
+  const runSlowStub = (dir: string) => {
+    initGitRepo(dir);
+    const hooksDir = path.join(dir, '.claude', 'hooks');
+    fs.mkdirSync(hooksDir, { recursive: true });
+    fs.writeFileSync(path.join(hooksDir, 'validate-bash-command.js'), 'setTimeout(() => {}, 60000);\n');
+    const start = performance.now();
+    const proc = Bun.spawnSync({
+      cmd: ['bash', '-c', bashCommand()],
+      env: { ...process.env, CLAUDE_PROJECT_DIR: dir, BLACKHOLE_HOOK_DEADLINE_S: '1' },
+      stdin: new Blob(['{}']),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    return { proc, elapsed: performance.now() - start };
+  };
+
+  test('a validator that outruns its deadline is denied (exit 2) well under 5 s, with a Remedy and a block record', () => {
+    withTempDir('blackhole-claude-wrapper-', (dir) => {
+      const { proc, elapsed } = runSlowStub(dir);
+      expect(proc.exitCode).toBe(2);
+      expect(elapsed).toBeLessThan(4000);
+      const out = JSON.parse(proc.stdout.toString());
+      expect(out.hookSpecificOutput.permissionDecision).toBe('deny');
+      expect(proc.stderr.toString()).toMatch(/Remedy: split/);
+      const events = hookEventFiles(dir);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block', pattern_id: 'hook-verification-timeout' });
+    });
+  });
+
+  test('a crashing validator is still allowed (fail-open) even with the deadline in place', () => {
+    withTempDir('blackhole-claude-wrapper-', (dir) => {
+      const { exitCode } = runWrapperWithStubExit(dir, 1, bashCommand(), 'validate-bash-command.js', {
+        BLACKHOLE_HOOK_DEADLINE_S: '1',
+      });
+      expect(exitCode).toBe(0);
     });
   });
 });
