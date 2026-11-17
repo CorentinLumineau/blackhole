@@ -495,9 +495,21 @@ describe('bash-write-target-guard.js — #1222 round 2: config words, env and ke
     () => 'git -c submodule.foo.update=\\!x submodule update',
     (m: string) => `git -c format.output\\Directory=${m} format-patch -1`,
     (m: string) => `git -c format.outputDirectory=\\${m} format-patch -1`,
+    () => 'git -c core.`echo`pager=x log',
+    () => 'git -c {alias.x=!touch\\ X,-p} x',
+    () => 'git {-c,alias.x=!touch\\ X} x',
+    () => 'git -c {alias.x=!touch,-p} x',
+    () => 'git {-c,alias.x=!touch} x',
+    () => 'git -c x=1 {-c,alias.x=!touch} x',
   ]) {
     test(`#1222: \`${build('<main>')}\` warns or blocks, never allows`, async () => {
       expect(await verdict(build)).toMatchObject({ tier: expect.stringMatching(/^(warn|block)$/) });
+    });
+  }
+
+  for (const command of ["git commit -m '{a,b}'", 'git log --format="{x,y}"', 'git log \\{a,b\\}', 'git log {a}']) {
+    test(`#1222: \`${command}\` (no unquoted brace expansion) stays allowed`, async () => {
+      expect(await verdict(() => command)).toBeNull();
     });
   }
 

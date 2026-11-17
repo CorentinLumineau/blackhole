@@ -712,6 +712,13 @@ const GIT_EXEC_CONFIG_RE = new RegExp(
  * git applies. */
 const SHELL_REWRITTEN_RE = /[\\$`]/;
 
+/** True when `text` holds an unquoted, unescaped brace expansion (`{a,b}`): the shell turns it
+ * into several words (`git {-c,alias.x=!cmd} x` becomes `git -c alias.x=!cmd x`), so no word read
+ * from the string is one git sees. Escapes and quoted spans are dropped first; each `[^{}]*` run
+ * stops at the next brace, so the scan stays linear. */
+const hasBraceExpansion = (text) =>
+  /\{[^{}]*,[^{}]*\}/.test(text.replace(/\\[\s\S]/g, '').replace(/'[^']*'|"(?:[^"\\]|\\[\s\S])*"/g, ''));
+
 /** `KEY` and `VALUE` of a `-c`/`--config-env` setting, with the shell's quote characters removed
  * (`"alias.d"='!x'` sets `alias.d`), and whether the shell rewrites either half
  * (`SHELL_REWRITTEN_RE`), which makes that half unknown. */
@@ -804,6 +811,7 @@ const formatPatchDirValue = (args, i) => {
  * directory itself, so that is a target too. A
  * `-c` setting that runs a command makes the call unresolvable. */
 const gitOutputTargets = (args) => {
+  if (hasBraceExpansion(args.join(' '))) return [UNRESOLVABLE_TARGET];
   const { bases, subIdx, execConfig, outputDirectory } = gitGlobalBases(args);
   const isFormatPatch = args[subIdx] === 'format-patch';
   const values = execConfig ? [UNRESOLVABLE_TARGET] : [];
