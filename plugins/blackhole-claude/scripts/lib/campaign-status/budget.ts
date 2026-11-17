@@ -49,10 +49,11 @@ export const NOT_PROBED: BudgetPanel = {
 const targetOf = (config: Record<string, unknown>): number | null => resolveBudgetSettings(config).budget?.weekly.target_at_reset ?? null;
 
 /** The verdict the usage-budget CLI returns for this reading: `unavailable` when the budget is off or its config is invalid. */
-function verdictFor(limits: RateLimits, now: number, config: Record<string, unknown>): { verdict: UsageVerdict; budget: UsageBudgetConfig | null } {
+function verdictFor(limits: RateLimits, now: number, config: Record<string, unknown>, override?: UsageBudgetConfig): { verdict: UsageVerdict; budget: UsageBudgetConfig | null } {
   const parallelMax = parallelMaxOf(config);
   const off = (reason: string): UsageVerdict => ({ verdict: 'unavailable', workers: parallelMax, reasons: [reason], wake_at: null, hours_to_reset: null, weekly_fit: null });
-  const settings = resolveBudgetSettings(config);
+  // A catchup passes its floor budget (catchup.ts floorBudget): already resolved, always enabled.
+  const settings = override ? { budget: override, invalid: null } : resolveBudgetSettings(config);
   if (settings.invalid !== null) return { verdict: off(`usage_budget config invalid: ${settings.invalid}`), budget: null };
   const { budget } = settings;
   return { verdict: budget.enabled ? workersAllowed(limits, now, budget, parallelMax) : off('usage_budget disabled'), budget };
@@ -66,10 +67,12 @@ export function buildBudgetPanel(input: {
   now: number;
   config: Record<string, unknown>;
   source?: UsageSourceName;
+  /** The resolved budget to judge by instead of `config.usage_budget` (the catchup's floor budget). */
+  budget?: UsageBudgetConfig;
 }): BudgetPanel {
   const { limits, now, config } = input;
   if (!limits) return { ...NOT_PROBED, reason: input.reason ?? NOT_PROBED.reason, target_at_reset: targetOf(config) };
-  const { verdict, budget } = verdictFor(limits, now, config);
+  const { verdict, budget } = verdictFor(limits, now, config, input.budget);
   const five = limits.five_hour && limits.five_hour.resets_at > now ? limits.five_hour : undefined;
   const week = limits.seven_day && limits.seven_day.resets_at > now ? limits.seven_day : undefined;
   let forecast: BudgetPanel['forecast'] = null;
@@ -103,7 +106,7 @@ export function buildBudgetPanel(input: {
 }
 
 /** Reads `host`'s usage source (`usage-source.ts`): the rate-limit cache the config names on Claude, none elsewhere. */
-export function readBudgetPanel(config: Record<string, unknown>, host: Host, now: number = Math.floor(Date.now() / 1000)): BudgetPanel {
+export function readBudgetPanel(config: Record<string, unknown>, host: Host, now: number = Math.floor(Date.now() / 1000), budget?: UsageBudgetConfig): BudgetPanel {
   let reading;
   let cachePath: string | null = null;
   try {
@@ -119,16 +122,16 @@ export function readBudgetPanel(config: Record<string, unknown>, host: Host, now
   } catch {
     // No cache: the source already gave the reason.
   }
-  return buildBudgetPanel({ limits: reading.limits, reason: reading.reason, ageSeconds, now, config, source: reading.source });
+  return buildBudgetPanel({ limits: reading.limits, reason: reading.reason, ageSeconds, now, config, source: reading.source, budget });
 }
 
 /** The panel for a reading the harness reported (`--usage`), restricted to `usage_budget.windows` as the usage source and usage-budget.ts restrict it. */
-export function givenBudgetPanel(usage: RateLimits, config: Record<string, unknown>, now: number): BudgetPanel {
+export function givenBudgetPanel(usage: RateLimits, config: Record<string, unknown>, now: number, budget?: UsageBudgetConfig): BudgetPanel {
   const settings = resolveBudgetSettings(config);
   // An invalid config is shown by the panel's own `unavailable` verdict; the reading is kept whole.
   const kept = settings.invalid === null ? restrictWindows(usage, settings.budget.windows).limits : usage;
   const reason = kept ? null : 'usage_budget.windows leaves none of the --usage windows';
-  return buildBudgetPanel({ limits: kept, reason, ageSeconds: 0, now, config });
+  return buildBudgetPanel({ limits: kept, reason, ageSeconds: 0, now, config, budget });
 }
 
 const WINDOW_LABELS = { five_hour: '5-hour', seven_day: 'weekly' } as const;

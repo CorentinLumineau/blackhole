@@ -4,10 +4,12 @@ import * as path from 'path';
 import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
-import { givenBudgetPanel, readBudgetPanel } from './lib/campaign-status/budget.ts';
+import { buildBudgetPanel, givenBudgetPanel, readBudgetPanel, resolveBudgetSettings } from './lib/campaign-status/budget.ts';
+import { adjustPacing, applyOverrides, floorBudget, localUtcOffsetMinutes, readPacing, resolveCatchup } from './lib/catchup.ts';
+import { DEFAULT_USAGE_BUDGET } from './lib/usage-budget.ts';
 import { isSleepMode, readPendingDecisions } from './lib/campaign-status/pending-decisions.ts';
 import type { PendingRead } from './lib/campaign-status/run-state.ts';
-import { resolveHost } from './lib/usage-source.ts';
+import { resolveHost, usageSourceFor } from './lib/usage-source.ts';
 import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
 import { crossRepoBlockersOf, fetchForgeCounts, fetchMergedPrs, readOpenIssues } from './lib/campaign-status/forge.ts';
 import { readPrLanding } from './lib/forge-adapter/pr-landing.ts';
@@ -16,7 +18,7 @@ import { writeStatusData } from './lib/campaign-status/data.ts';
 import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
 import { readPublishState, readStatusAlerts, statusPageEnabled } from './lib/campaign-status/staleness.ts';
-import { buildLaunchSummary, gateCards, renderLaunchSummary } from './lib/campaign-status/launch-summary.ts';
+import { buildLaunchSummary, gateCards, renderLaunchSummary, type CatchupInput } from './lib/campaign-status/launch-summary.ts';
 import type { StatusArtifact, StatusPageInput } from './lib/campaign-status/status-page-row.ts';
 import type { RateLimits } from './lib/rate-limit-cache.ts';
 import { parseUsage } from './usage-budget.ts';
@@ -29,7 +31,7 @@ import { isForgeType, resolveForgeForRepo } from './lib/forge-detection.ts';
 import { formatPaceLine, readLatestPaceRecord } from './lib/pace-log.ts';
 import { forgeDeclaredCrossRepo } from './lib/pr-dependencies.ts';
 import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
-import type { StatusReport } from './lib/campaign-status/types.ts';
+import type { CatchupArgs, StatusReport } from './lib/campaign-status/types.ts';
 import { pluginVersionWarning, readPluginVersion, readPluginVersionCheck } from './lib/plugin-drift.ts';
 import { projectIdentity } from './project-identity.ts';
 
@@ -257,7 +259,41 @@ function readPrintOnly(campaignDir: string, config: Record<string, unknown>): bo
  * `BudgetPanel` the status page shows: built from `--usage` (restricted to `usage_budget.windows`)
  * when given, else from the host's usage source at `--now`, as `report.budget` is.
  */
-async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJson: string | null, now: number | null, asJson: boolean) {
+/**
+ * The catchup launch inputs: the preset with this invocation's overrides applied, the pace reading
+ * through the provider chain (`--usage-file` first), and the floor budget the Budget row judges by.
+ * An invalid `catchup` block becomes `{ invalid }`, shown on the Pacing row; a bad override exits 2.
+ */
+function readCatchup(config: Record<string, unknown>, host: ReturnType<typeof resolveHost>, flags: CatchupArgs, nowS: number) {
+  let preset;
+  try {
+    preset = resolveCatchup(config);
+  } catch (error) {
+    return { input: { invalid: error instanceof Error ? error.message : String(error) } as CatchupInput, budget: null, pacing: null, preset: null };
+  }
+  try {
+    preset = applyOverrides(preset, { floor_pct: flags.floorPct ?? undefined, no_spawn_at: flags.noSpawnAt ?? undefined, stop_workers_at: flags.stopWorkersAt ?? undefined, lane: flags.lane ?? undefined });
+    const source = usageSourceFor(host, config, { usageFile: flags.usageFile ?? undefined });
+    const reading = source.read(nowS);
+    const pacing = readPacing(source.report(nowS), preset, nowS, localUtcOffsetMinutes(nowS));
+    const floorPct = flags.floorPct ?? pacing.floor_pct;
+    const settings = resolveBudgetSettings(config);
+    const budget = floorBudget(settings.invalid === null ? settings.budget : DEFAULT_USAGE_BUDGET, preset, floorPct ?? 100);
+    const panel = buildBudgetPanel({ limits: reading.limits, reason: reading.reason, ageSeconds: 0, now: nowS, config, source: reading.source, budget });
+    return { input: { preset, floorPct, pacing, budget } as CatchupInput, budget: panel, pacing: adjustPacing(pacing, floorPct), preset };
+  } catch (error) {
+    console.error(`status --summary: ${error instanceof Error ? error.message : String(error)}`);
+    return process.exit(2);
+  }
+}
+
+/**
+ * `--summary`: the launch gate's rows and question cards (eight for `run`, nine with Pacing for
+ * `--mode catchup`). The Budget row reads the same `BudgetPanel` the status page shows: built from
+ * `--usage` (restricted to `usage_budget.windows`) when given, else from the host's usage source at
+ * `--now`, as `report.budget` is. A catchup reads `--usage-file` through the same source chain.
+ */
+async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJson: string | null, now: number | null, asJson: boolean, catchupFlags: CatchupArgs | null) {
   let usage: RateLimits | null = null;
   if (usageJson !== null) {
     try {
@@ -277,27 +313,38 @@ async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJso
     throw error;
   }
   const config = collected.state.config as Record<string, unknown>;
+  const host = resolveHost(campaignDir, process.env);
+  const catchup = catchupFlags ? readCatchup(config, host, catchupFlags, nowS) : null;
   const rows = buildLaunchSummary({
     report: collected.report,
     config,
-    budget: usage ? givenBudgetPanel(usage, config, nowS) : readBudgetPanel(config, resolveHost(campaignDir, process.env), nowS),
+    budget: catchup?.budget ?? (usage ? givenBudgetPanel(usage, config, nowS) : readBudgetPanel(config, host, nowS)),
     statusPage: readStatusPageInput(campaignDir, collected.state.config, nowIso),
+    catchup: catchup?.input,
   });
   const versionWarning = pluginVersionWarning(
     readPluginVersionCheck({ running: readPluginVersion(PLUGIN_ROOT), homeDir: os.homedir(), pluginName: projectIdentity.name }),
   );
   const warnings = versionWarning ? [versionWarning] : [];
   if (asJson) {
-    console.log(JSON.stringify({ rows, cards: gateCards(rows, { printOnly: readPrintOnly(campaignDir, config) }), warnings }, null, 2));
+    const pacing = catchup?.pacing ? { pacing: { ...catchup.pacing, preset: catchup.preset } } : {};
+    console.log(JSON.stringify({ rows, cards: gateCards(rows, { printOnly: readPrintOnly(campaignDir, config) }), warnings, ...pacing }, null, 2));
     return;
   }
   console.log(renderLaunchSummary(rows, warnings));
 }
 
 async function main() {
-  const { mode, campaignDir, skipGh, outPath, dataDir, usage, now, summaryJson } = parseStatusArgs(process.argv.slice(2));
+  let args: ReturnType<typeof parseStatusArgs>;
+  try {
+    args = parseStatusArgs(process.argv.slice(2));
+  } catch (error) {
+    console.error(`status: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(2);
+  }
+  const { mode, campaignDir, skipGh, outPath, dataDir, usage, now, summaryJson, catchup } = args;
 
-  if (mode === 'summary') return printLaunchSummary(campaignDir, skipGh, usage, now, summaryJson);
+  if (mode === 'summary') return printLaunchSummary(campaignDir, skipGh, usage, now, summaryJson, catchup);
 
   if (mode === 'config-summary') {
     // The routine-resume confirmation gate (coordinator.md § Bootstrap preflight) prints only

@@ -946,6 +946,36 @@ describe('status --summary (the launch summary)', () => {
     expect(JSON.parse(summaryWithEnv(env, '--campaign-dir', FULL, '--json').stdout.toString()).warnings).toEqual([]);
   });
 
+  test('--mode catchup parses the catchup flags; inline --usage and stray catchup flags are rejected', () => {
+    const parsed = parseStatusArgs(['--summary', '--mode', 'catchup', '--floor', '80', '--lane', 'b', '--no-spawn-at', '70']);
+    expect(parsed.catchup).toMatchObject({ floorPct: 80, lane: 'b', noSpawnAt: 70, stopWorkersAt: null, usageFile: null });
+    expect(parseStatusArgs(['--summary']).catchup).toBeNull();
+    expect(() => parseStatusArgs(['--summary', '--mode', 'catchup', '--usage', '{}'])).toThrow(/--usage-file/);
+    expect(() => parseStatusArgs(['--summary', '--floor', '80'])).toThrow(/--mode catchup/);
+    expect(() => parseStatusArgs(['--summary', '--mode', 'catchup', '--floor', '101'])).toThrow(/--floor/);
+    expect(() => parseStatusArgs(['--summary', '--mode', 'other'])).toThrow(/--mode/);
+  });
+
+  test('--mode catchup --usage-file prints nine rows and the pacing object; run mode keeps eight', () => {
+    const NOW_FRI = '1794562200';
+    const file = path.join(FULL, 'usage.catchup.json');
+    const catchup = summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage-file', file, '--now', NOW_FRI, '--json');
+    expect(catchup.exitCode).toBe(0);
+    const parsed = JSON.parse(catchup.stdout.toString());
+    expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual(['scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep']);
+    expect(parsed.pacing).toMatchObject({ status: 'ok', floor_pct: 61.25, shortfall_pct: 11.25 });
+    expect(JSON.parse(summary('--campaign-dir', FULL, '--now', NOW_FRI, '--json').stdout.toString()).rows).toHaveLength(8);
+    const adjusted = JSON.parse(summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage-file', file, '--floor', '80', '--now', NOW_FRI, '--json').stdout.toString());
+    expect(adjusted.pacing).toMatchObject({ floor_pct: 80, shortfall_pct: 30 });
+  });
+
+  test('catchup exits 2 on inline --usage, a stray --floor, a bad override and a missing usage file', () => {
+    expect(summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage', '{}').exitCode).toBe(2);
+    expect(summary('--campaign-dir', FULL, '--floor', '80').exitCode).toBe(2);
+    expect(summary('--campaign-dir', FULL, '--mode', 'catchup', '--no-spawn-at', '90', '--stop-workers-at', '80').exitCode).toBe(2);
+    expect(summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage-file', '/nonexistent/usage.json').exitCode).toBe(2);
+  });
+
   test('a malformed --usage exits 2', () => {
     const proc = summary('--campaign-dir', FULL, '--usage', '{not json');
     expect(proc.exitCode).toBe(2);

@@ -4,7 +4,7 @@ import { findMissingGateMarkers } from '../lib/check-common.ts';
 // ADR-007 T5/R2' — config-gate.check.ts: matches verify.config-gate.test.ts.
 //
 // V-CONFGATE-01: the routine-resume campaign-config confirmation gate must be documented at ALL
-// THREE campaign entry paths, because each one can reach `run` mode without passing through the
+// THREE campaign entry paths, because each one can reach `run` or `catchup` mode without passing through the
 // others:
 //
 //   Pattern B — coordinator.md § Bootstrap preflight (coordinator spawns background orchestrator)
@@ -21,7 +21,7 @@ export const COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS = [
   'Routine resume confirmation gate',
   'launch-gate.md',
   'Fail closed on docs_governance drift',
-  'run` mode only',
+  'run` and `catchup` modes only',
 ];
 
 export const LAUNCH_GATE_REQUIRED_MARKERS = [
@@ -31,17 +31,20 @@ export const LAUNCH_GATE_REQUIRED_MARKERS = [
   'last_probe',
   'Print-only mode',
   'never waits',
+  'catchup',
+  'Pacing',
 ];
 
 export const CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS = [
   'owns the Campaign launch configuration gate',
   'routine resume confirmation gate',
+  'catchup',
 ];
 
 export const SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS = [
   'Campaign launch configuration gate',
   'routine resume confirmation gate',
-  'mode only',
+  'modes only',
 ];
 
 const GATE_MARKERS_BY_FILE: [string, string[]][] = [

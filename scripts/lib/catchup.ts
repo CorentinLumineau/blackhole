@@ -148,5 +148,11 @@ export const readPacing = (report: UsageReport, preset: CatchupConfig, now: numb
   return { ...base, status: 'ok', floor_pct: floor.floor_pct, credits: floor.credits, shortfall_pct: floor.shortfall_pct, reason: null };
 };
 
+/** `pacing` against an owner-adjusted floor: the shortfall follows the floor; other fields are kept. */
+export const adjustPacing = (pacing: Pacing, floor: number | null): Pacing => {
+  if (pacing.status !== 'ok' || floor === null || pacing.used_pct === null) return pacing;
+  return { ...pacing, floor_pct: floor, shortfall_pct: Math.max(0, Math.round((floor - pacing.used_pct) * 100) / 100) };
+};
+
 /** The one impure helper: the local UTC offset in force at `now` (epoch seconds), in minutes. */
 export const localUtcOffsetMinutes = (now: number): number => -new Date(now * 1000).getTimezoneOffset();

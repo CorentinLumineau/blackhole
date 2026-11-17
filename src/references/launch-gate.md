@@ -1,14 +1,14 @@
 # Launch Gate — Executive Summary Before the First Spawn
 
-The launch gate shows the owner, on one screen, what a `run` will do, what it will cost and where
-to watch it, then asks one question per section. It replaces the raw config print the routine
+The launch gate shows the owner, on one screen, what a `run` or `catchup` will do, what it will cost and where
+to watch it, then asks one question per section. `catchup` mode uses the same gate with one more row (§ Catchup form). It replaces the raw config print the routine
 resume confirmation gate used to show. The trigger conditions and the full 6-step form stay in
 `coordinator.md` § Bootstrap preflight; this file owns the gate's body. On Pattern C the main chat
 runs it (`claude-code-native.md` § Bootstrap gate ownership).
 
 ## When it runs
 
-`run` mode only; every other mode loads config with no gate (`coordinator.md` § Bootstrap
+`run` and `catchup` modes only; every other mode loads config with no gate (`coordinator.md` § Bootstrap
 preflight lists them).
 
 | Bootstrap | What the gate does |
@@ -45,6 +45,21 @@ gate adds two steps of its own:
 - Also run `bun run status config-summary` once: the coordinator's docs-governance drift guard
   copies its `Docs governance` lines verbatim into the spawn text.
 
+## Catchup form
+
+`/blackhole catchup` (`phase-catchup.md`) runs this gate with the full config, and the pacing preset
+(`catchup` block, `config-template.md`) pre-fills what the run gate leaves to `usage_budget`:
+
+- Run `bun run status --summary --mode catchup [--usage-file <path>] --json` instead of the plain
+  summary. The rows are the run rows plus **Pacing**: the usage reading, the floor, the shortfall,
+  the 5h caps and the lane. The Budget row judges by the floor budget.
+- Every value stays adjustable for this invocation only, as in a run: re-print the summary with
+  `--floor <pct>`, `--no-spawn-at <pct>`, `--stop-workers-at <pct>` or `--lane <name>`. Nothing
+  writes `config.json`, and the adjusted floor is pinned in the spawn text.
+- Unreadable usage, or a reading with no weekly window, reads as fail-closed on the Pacing row: the
+  catchup skips rather than spends.
+- A catchup is single-account until lane claims land: `lane unset` is shown, not enforced.
+
 ## Probe procedure
 
 The Status page row says whether the stored page opens from this account. A stored URL that no
@@ -74,7 +89,7 @@ also offers "Refresh template". Never delete the stored page to reset it (`statu
 ## Questions
 
 One Accept / Adjust question per adjustable row, at most 4 per card. Scope, Merge, Budget and
-Kaizen and staging are always adjustable, and so is Status page unless the host publishes no
+Kaizen and staging (and Pacing in a catchup) are always adjustable, and so is Status page unless the host publishes no
 page: a full gate is 2 cards, or 1 card when the Status page row reads `none on this host`.
 Send the cards the `--json` output returns; every option carries its own description. Accept keeps the
 row as shown. Adjust opens only that row's form steps, never the whole form:
@@ -84,6 +99,7 @@ row as shown. Adjust opens only that row's form steps, never the whole form:
 | Scope | Step 1 (scope and the targeted-issues preview) |
 | Order | Display only: bugs first, then Pareto order; stacking is always on |
 | Merge | Step 2, then step 3 when the answer is gated batch |
+| Pacing | Catchup only: the floor, the 5h caps or the lane, for this invocation only; `config.json` is untouched |
 | Budget | Step 4 (`parallel_max`); the `usage_budget` thresholds are edited in `config.json`; a stale or missing reading is refreshed with `usage-probe.ts`, then the summary re-runs |
 | Status page | Reuse the stored page, reuse another, publish new, or refresh template |
 | Kaizen and staging | Step 5 |
@@ -97,7 +113,9 @@ answer), re-print the summary, and continue the bootstrap order.
 ## Print-only mode
 
 Print-only mode applies when sleep mode is on (`sleep_mode.enabled`), or the run context has no
-question channel (its route reports questions `none`, e.g. a headless run). The gate then prints
+question channel (its route reports questions `none`, e.g. a headless run). This is how a scheduled
+catchup runs: sleep mode on, summary printed, every row accepted, then the `--floor` gate decides.
+The gate then prints
 the summary, asks nothing and never waits. It is not sleep mode's parking either: the
 `coordinator.md` 6-step form does not run, and nothing is parked through `askOrPark()`
 (`sleep-mode.md` § The choke point), so the gate leaves no pending decision behind:

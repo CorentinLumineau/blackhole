@@ -6,6 +6,8 @@ god-step (extension-tax). Not a five-phase-lifecycle playbook — it composes wi
 handle/plan/implement/review at any point in a turn without replacing any of them (`SKILL.md` §
 Five-phase lifecycle is unaffected).
 
+A `catchup` (`phase-catchup.md`) is a `run` for all three tiers below.
+
 ## Three tiers — nothing more, nothing less
 
 | Tier | Trigger keywords | Behavior |

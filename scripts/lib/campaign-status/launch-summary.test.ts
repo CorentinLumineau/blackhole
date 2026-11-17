@@ -1,10 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { applyOverrides, DEFAULT_CATCHUP, floorBudget, readPacing } from '../catchup.ts';
 import type { RateLimits } from '../rate-limit-cache.ts';
+import { DEFAULT_USAGE_BUDGET } from '../usage-budget.ts';
+import type { UsageReport } from '../usage-source.ts';
 import { buildBudgetPanel, NOT_PROBED } from './budget.ts';
 import {
   budgetRow,
+  CATCHUP_ROW_KEYS,
+  type CatchupInput,
   buildLaunchSummary,
   gateCards,
   LAUNCH_ROW_KEYS,
@@ -251,5 +256,86 @@ describe('buildBudgetPanel is the one budget builder under campaign-status/', ()
   test('no second function builds a BudgetPanel', () => {
     const builders = sources.flatMap(({ file, text }) => [...text.matchAll(/function\s+(\w+)\s*\((?:(?!function\b)[^])*?\)\s*:\s*BudgetPanel\s*\{/g)].map((m) => `${file}:${m[1]}`));
     expect(builders.sort()).toEqual(['budget.ts:buildBudgetPanel', 'budget.ts:givenBudgetPanel', 'budget.ts:readBudgetPanel']);
+  });
+});
+
+describe('the catchup launch summary', () => {
+  const EXPECTED_CATCHUP = path.join(FIXTURES, 'full', 'launch-summary.catchup.expected.md');
+  const fileReport = (): UsageReport => {
+    const raw = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'full/usage.catchup.json'), 'utf-8')) as { plan: UsageReport['plan']; windows: UsageReport['windows'] };
+    return { plan: raw.plan, windows: raw.windows, extra_usage: null, source: 'usage-file', provider: 'usage-file', read_at: NOW, reason: null };
+  };
+  const input = (over: { report?: UsageReport; overrides?: Parameters<typeof applyOverrides>[1] } = {}): Extract<CatchupInput, { preset: unknown }> => {
+    const preset = applyOverrides(DEFAULT_CATCHUP, over.overrides ?? {});
+    const pacing = readPacing(over.report ?? fileReport(), preset, NOW, 0);
+    const floorPct = over.overrides?.floor_pct ?? pacing.floor_pct;
+    return { preset, floorPct, pacing, budget: floorBudget(DEFAULT_USAGE_BUDGET, preset, floorPct ?? 100) };
+  };
+  const rowsFor = (catchup: CatchupInput, limits: RateLimits | null = USAGE): LaunchRow[] => {
+    const budget = 'budget' in catchup ? catchup.budget : undefined;
+    const b = limits ? buildBudgetPanel({ limits, reason: null, ageSeconds: 0, now: NOW, config: SAMPLE_CONFIG, budget }) : { ...NOT_PROBED, reason: 'no usage' };
+    return buildLaunchSummary({ report, config: SAMPLE_CONFIG, budget: b, statusPage: PAGE, catchup });
+  };
+  const rows = rowsFor(input());
+  const pacingOf = (r: LaunchRow[]) => r.find((x) => x.key === 'pacing') as LaunchRow;
+
+  test('the run summary is untouched: still the committed run fixture', () => {
+    expect(renderLaunchSummary(fullRows())).toBe(fs.readFileSync(EXPECTED, 'utf-8'));
+  });
+
+  test('nine rows in CATCHUP_ROW_KEYS order; without Pacing they are the run keys', () => {
+    expect(rows.map((r) => r.key)).toEqual([...CATCHUP_ROW_KEYS]);
+    expect([...CATCHUP_ROW_KEYS].filter((k) => k !== 'pacing')).toEqual([...LAUNCH_ROW_KEYS]);
+  });
+
+  test('Pacing shows the floor and the shortfall, Budget the 5h caps; equals the committed fixture', () => {
+    expect(pacingOf(rows).value).toContain('floor 61.25%');
+    expect(pacingOf(rows).value).toContain('shortfall 11.25%');
+    expect(pacingOf(rows).value).toContain('lane unset');
+    expect(rows.find((r) => r.key === 'budget')?.value).toContain('5h 75/80');
+    expect(renderLaunchSummary(rows)).toBe(fs.readFileSync(EXPECTED_CATCHUP, 'utf-8'));
+  });
+
+  test('every catchup consequence is non-empty and at most 140 chars', () => {
+    const none: UsageReport = { ...fileReport(), source: 'none', windows: [], reason: 'cache missing' };
+    const fiveOnly: UsageReport = { ...fileReport(), windows: fileReport().windows.filter((w) => w.name === 'five_hour') };
+    const over: UsageReport = { ...fileReport(), windows: [{ name: 'seven_day', used_pct: 90, resets_at: NOW + 72 * HOUR }] };
+    const all = [
+      rows,
+      rowsFor(input({ report: none }), null),
+      rowsFor(input({ report: fiveOnly }), { five_hour: USAGE.five_hour }),
+      rowsFor(input({ report: over }), { seven_day: { used_percentage: 90, resets_at: NOW + 72 * HOUR } }),
+      rowsFor({ invalid: 'catchup.lane must be null or a name' }),
+    ];
+    for (const r of all) for (const row of r) {
+      expect(row.consequence.length).toBeGreaterThan(0);
+      expect(row.consequence.length).toBeLessThanOrEqual(MAX_CONSEQUENCE_CHARS);
+    }
+    expect(pacingOf(all[3]).consequence).toContain('at or above the floor');
+    expect(pacingOf(all[4]).consequence).toContain('invalid');
+  });
+
+  test('gate cards: Pacing is adjustable, Order, Peers and Sleep are not, 4 per card; print-only asks nothing', () => {
+    const cards = gateCards(rows, { printOnly: false });
+    const asked = cards.flatMap((c) => c.questions).map((q) => q.row);
+    expect(asked).toEqual(['scope', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging']);
+    for (const c of cards) expect(c.questions.length).toBeLessThanOrEqual(4);
+    expect(gateCards(rows, { printOnly: true })).toEqual([]);
+  });
+
+  test('overrides: floor 80 and 5h caps 70/80 show on the rows and leave the preset alone', () => {
+    const before = structuredClone(DEFAULT_CATCHUP);
+    const r = rowsFor(input({ overrides: { floor_pct: 80, no_spawn_at: 70 } }));
+    expect(pacingOf(r).value).toContain('floor 80%');
+    expect(pacingOf(r).value).toContain('5h caps 70/80');
+    expect(r.find((x) => x.key === 'budget')?.value).toContain('weekly 80%');
+    expect(DEFAULT_CATCHUP).toEqual(before);
+  });
+
+  test('unreadable usage: Pacing and Budget both say fail-closed', () => {
+    const none: UsageReport = { ...fileReport(), source: 'none', windows: [], reason: 'cache missing' };
+    const r = rowsFor(input({ report: none }), null);
+    expect(pacingOf(r).consequence).toContain('fail-closed');
+    expect(r.find((x) => x.key === 'budget')?.consequence).toContain('the catchup skips');
   });
 });

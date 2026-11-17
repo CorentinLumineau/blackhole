@@ -19,10 +19,10 @@ export const PHASE_NAMES = ['handle', 'plan', 'implement', 'review', 'done'] as 
 
 /** The `src/references/phase-*.md` roster — the 5 five-phase-lifecycle playbooks (note the
  *  terminal `done` phase loops back via `phase-loop.md`, it has no dedicated `phase-done.md`
- *  file) plus `phase-stop.md`, the campaign control-surface `stop` mode playbook (issue #478) —
+ *  file) plus `phase-stop.md` (the `stop` mode playbook, issue #478) and `phase-catchup.md` (the `catchup` mode playbook, ADR-053) —
  *  not a lifecycle phase, but it shares the `phase-*.md` filename prefix and directory, so
  *  `V-GROUND-01`'s independent filesystem scan requires it declared here too (V-PHASE-01/V-GROUND-01). */
-export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-implement.md', 'phase-review.md', 'phase-loop.md', 'phase-stop.md'];
+export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-implement.md', 'phase-review.md', 'phase-loop.md', 'phase-stop.md', 'phase-catchup.md'];
 
 /** References every phase playbook assumes exist under `src/references/` (V-GROUND-01). */
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];

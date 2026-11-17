@@ -1,0 +1,8 @@
+{
+  "plan": "max",
+  "read_at": 1794562200,
+  "windows": [
+    { "name": "five_hour", "used_pct": 40, "resets_at": 1794576600 },
+    { "name": "seven_day", "used_pct": 50, "resets_at": 1794821400 }
+  ]
+}

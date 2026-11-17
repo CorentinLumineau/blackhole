@@ -28,10 +28,17 @@ launch confirmation only.
 Launch summary — the launch gate's executive-summary table (`launch-gate.md` § The summary):
 
 ```bash
-bun run status --summary [--usage <json>] [--now <epoch s>] [--json] [--campaign-dir <dir>] [--no-gh]
+bun run status --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [--campaign-dir <dir>] [--no-gh]
 ```
 
-Eight rows in fixed order (Scope, Order, Merge, Budget, Status page, Kaizen and staging, Peers,
+Catchup form (`--mode catchup`, `launch-gate.md` § Catchup form): nine rows, the run rows with
+**Pacing** after Merge. It adds `--usage-file <path>` (the usage reading as a file, the same
+hand-off `usage.ts --usage` and `pace-floor.ts --usage` take as a path), and the invocation-only
+overrides `--floor <pct>`, `--no-spawn-at <pct>`, `--stop-workers-at <pct>` and `--lane <name>`;
+inline `--usage` is refused with it (exit `2`), and the catchup flags are refused without it.
+`--json` adds a `pacing` object (the reading, the effective floor and the effective preset).
+
+Run form: eight rows in fixed order (Scope, Order, Merge, Budget, Status page, Kaizen and staging, Peers,
 Sleep mode),
 each with a one-line consequence. The status page reads the same builder, so the two never
 disagree. `--summary` accepts only `--usage`, `--now`, `--json`, `--campaign-dir` and `--no-gh`,
