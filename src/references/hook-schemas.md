@@ -161,7 +161,7 @@ One file per event, written by non-agent code into the **main clone** (resolved 
 | `decision` | `deny` \| `allow` | yes |
 | `tier` | `block` \| `warn` \| `error` \| `defer` | yes — `error` is wrapper fail-open only (`decision: allow`); `defer` is also `decision: allow` only (issue #870, see paragraph below) |
 | `pattern_id` | matched entry's `id`, or `outside-worktree` \| `outside-assigned-worktree` \| `outside-cwd-fallback` \| `cwd-fallback-too-broad` \| `bash-outside-assigned-worktree` \| `bash-write-target-unresolvable` \| `main-clone-clean` \| `main-clone-checkout-path` \| `main-clone-restore` \| `main-clone-reset-destructive` \| `main-clone-apply` \| `main-clone-checkout-force` \| `main-clone-stash` \| `main-clone-target-unresolvable` \| `command-too-large-to-verify` \| `command-too-complex-to-verify` \| `too-many-removal-targets` \| `too-many-git-targets` \| `hook-verification-timeout` \| `pattern-load-failure` \| `hook-input-parse-failure` \| `uncaught-validator-error` \| `hook-exec-failure` \| `sibling-plugin-defer` | yes |
-| `reason` | human-readable refusal/flag text | yes |
+| `reason` | human-readable refusal/flag text, credential literals masked, ≤2000 chars (keeps the trailing `Remedy:` clause). `warn`-tier decisions exit 0 with no output, so a warn's reason is log-only: it is never shown to the agent | yes |
 | `worktree` | absolute worktree root of the calling process, or `null` | yes |
 | `detail` | matched command or file path — credential literals masked, ≤300 chars (`block`/`warn` tiers; the `error` tier is unredacted — see note below) | yes |
 | `agent_id` | the PreToolUse payload's own `agent_id` field verbatim, or `null` | yes |
