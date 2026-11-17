@@ -227,3 +227,47 @@ describe('usage stop bypasses from the re-review are caught on the real files', 
     expect(findUsageRuntimeViolations('# nothing here')).toHaveLength(2);
   });
 });
+
+describe('V-STOP-03 follow-ups from the #1213 review', () => {
+  const runtime = read('src/references/orchestrator-runtime.md');
+  const phaseStop = read('src/references/phase-stop.md');
+  const inject = (content: string, anchor: string, text: string) => {
+    expect(content).toContain(anchor);
+    return content.replace(anchor, `${anchor} ${text}`);
+  };
+
+  test('terminate, cancel, TaskStop, give up, drop and mark `closed` are forbidden outside the list', () => {
+    const verbs = ['Terminate the workers.', 'Cancel the round.', 'Call TaskStop on each worker.', 'Give up on the issue.', 'Drop the in-flight issue.', 'Mark the issue `closed`.'];
+    for (const text of verbs) {
+      expect(findUnlistedForbiddenMentions(text + '\n\n' + NEVER_LIST, 's')).toHaveLength(1);
+      expect(findUsageStopViolations(inject(phaseStop, '1. **Drain**', text)).length).toBeGreaterThan(0);
+      expect(findUsageRuntimeViolations(inject(runtime, '| `STOP-CAMPAIGN` |', text)).length).toBeGreaterThan(0);
+    }
+  });
+
+  test('an exception word inside the marked list fails', () => {
+    for (const item of ['- route to `--abandon`, except mark it `failed`', '- kill a worker unless it is stuck', '- abort a worker, but only when the window is closed', '- mark a queue entry `blocked` other than a stuck one', '- bump `failed_attempts` if the round failed']) {
+      const out = findUnlistedForbiddenMentions(NEVER_LIST + '\n' + item, 's');
+      expect(out.join('; ')).toContain('exception');
+    }
+    const bad = phaseStop.replace('- bump `failed_attempts` or any retry counter', '- bump `failed_attempts` or any retry counter, except when the weekly line is crossed');
+    expect(bad).not.toBe(phaseStop);
+    expect(findUsageStopViolations(bad).join('; ')).toContain('exception');
+  });
+
+  test('a sibling heading naming the usage stop is scanned too', () => {
+    const sibling = '\n## Usage stop on the weekly line\n\nKill every in-flight worker.\n';
+    const bad = phaseStop.replace('\n## Exit Invariants', `${sibling}\n## Exit Invariants`);
+    expect(bad).not.toBe(phaseStop);
+    expect(findUsageStopViolations(bad).join('; ')).toContain('Usage stop on the weekly line');
+    const lower = phaseStop.replace('\n## Exit Invariants', '\n### Notes on the usage stop\n\nAbort the round.\n\n## Exit Invariants');
+    expect(findUsageStopViolations(lower).length).toBeGreaterThan(0);
+  });
+
+  test('a clean sibling section needs no list of its own, and the real docs still pass', () => {
+    const clean = phaseStop.replace('\n## Exit Invariants', '\n## Usage stop reporting\n\nName `wake_at` in local time.\n\n## Exit Invariants');
+    expect(findUsageStopViolations(clean)).toEqual([]);
+    expect(findUsageStopViolations(phaseStop)).toEqual([]);
+    expect(findUsageRuntimeViolations(runtime)).toEqual([]);
+  });
+});

@@ -50,18 +50,27 @@ export const findUncitedFlushedMention = (content: string): boolean => {
 // forbidden action may appear only inside that section's one "Never on a usage stop:" list (the
 // marker line plus the `- ` items right after it). A mention anywhere else fails, negated or not.
 const NEVER_MARKER = 'Never on a usage stop:';
-const FORBIDDEN_ACTION = /failed_attempts|retry[ _-]?counters?|--abandon|\b(?:abandon|kill|abort)\w*|\bfail(?:ed|ure|s)?\b|\bblocked\b/gi;
+const FORBIDDEN_ACTION =
+  /failed_attempts|retry[ _-]?counters?|--abandon|\bTaskStop\b|\bgiv(?:e|es|ing) up\b|\b(?:abandon|kill|abort|terminat|cancel|drop)\w*|\bfail(?:ed|ure|s)?\b|\b(?:blocked|closed)\b/gi;
+// The list is absolute: an item that carves out an exception would re-permit the action it names.
+const EXCEPTION_WORD = /\b(?:except\w*|unless|but|other than|apart from|save for|instead|if|when|only)\b/i;
 
-export const findUnlistedForbiddenMentions = (section: string, name: string): string[] => {
+export const findUnlistedForbiddenMentions = (section: string, name: string, requireList = true): string[] => {
   const lines = section.split('\n');
   const markers = lines.flatMap((line, i) => (line.trim() === NEVER_MARKER ? [i] : []));
-  if (markers.length === 0) return [`${name} has no "${NEVER_MARKER}" list`];
+  if (markers.length === 0 && requireList) return [`${name} has no "${NEVER_MARKER}" list`];
   if (markers.length > 1) return [`${name} has more than one "${NEVER_MARKER}" list`];
-  let listEnd = markers[0] + 1;
-  while (listEnd < lines.length && lines[listEnd].trim().startsWith('- ')) listEnd++;
+  const marker = markers.length ? markers[0] : -1;
+  let listEnd = marker + 1;
+  while (marker >= 0 && listEnd < lines.length && lines[listEnd].trim().startsWith('- ')) listEnd++;
   const out: string[] = [];
   lines.forEach((line, i) => {
-    if (i >= markers[0] && i < listEnd) return;
+    if (marker >= 0 && i > marker && i < listEnd) {
+      const exception = line.match(EXCEPTION_WORD);
+      if (exception) out.push(`${name}: exception "${exception[0]}" inside the "${NEVER_MARKER}" list: "${line.trim()}"`);
+      return;
+    }
+    if (i === marker) return;
     for (const match of line.matchAll(FORBIDDEN_ACTION)) {
       out.push(`${name}: "${match[0]}" outside the "${NEVER_MARKER}" list: "${line.trim()}"`);
     }
@@ -78,16 +87,29 @@ const sliceSection = (content: string, start: string, end: RegExp): string | nul
   return start + (to < 0 ? rest : rest.slice(0, to));
 };
 
+// Every heading that names the usage stop, at any level, runs to the next heading of the same or a
+// higher level. The `## Usage stop` section must carry the one list; any other such section may
+// hold a list of its own but needs none, and fails on any forbidden mention outside one.
+const USAGE_STOP_HEADING = /^(#{1,6}) (.*usage stop.*)$/gim;
+
 export const findUsageStopViolations = (phaseStop: string): string[] => {
-  const start = phaseStop.search(/^## Usage stop/m);
+  const start = phaseStop.search(/^## Usage stop$/m);
   if (start < 0) return ['phase-stop.md missing the ## Usage stop section'];
-  const rest = phaseStop.slice(start + 1);
-  const end = rest.search(/^## /m);
-  const section = end < 0 ? rest : rest.slice(0, end);
   const errors: string[] = [];
-  if (!section.includes('stopped_by: usage')) errors.push('usage stop does not record `stopped_by: usage`');
-  if (!section.includes('wake_at')) errors.push('usage stop does not record `wake_at`');
-  return [...errors, ...findUnlistedForbiddenMentions(section, 'usage stop')];
+  for (const heading of phaseStop.matchAll(USAGE_STOP_HEADING)) {
+    const level = heading[1].length;
+    const rest = phaseStop.slice(heading.index + heading[0].length);
+    const end = rest.search(new RegExp(`^#{1,${level}} `, 'm'));
+    const section = heading[0] + (end < 0 ? rest : rest.slice(0, end));
+    if (heading.index === start) {
+      if (!section.includes('stopped_by: usage')) errors.push('usage stop does not record `stopped_by: usage`');
+      if (!section.includes('wake_at')) errors.push('usage stop does not record `wake_at`');
+      errors.push(...findUnlistedForbiddenMentions(section, 'usage stop'));
+    } else {
+      errors.push(...findUnlistedForbiddenMentions(section, heading[2].trim(), false));
+    }
+  }
+  return [...new Set(errors)];
 };
 
 // The Spawn usage-verdict table (up to Spawn step 2) and Session resume step 7 (up to the next
