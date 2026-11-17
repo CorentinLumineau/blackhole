@@ -871,11 +871,12 @@ const looksLikeRegexFragment = (target) => target.startsWith('/#') || /[\\^$*+?(
 /** Calls in a JS one-liner that write, delete, move or link a file, or run a command (through
  * `child_process`, `Bun.spawn` or `Bun.$`). Whole words or distinctive stems only, so
  * `process.stdout.write`, `process.execPath` and `/re/.exec` do not match. RegExp `exec` is not a
- * command: `child_process` must be named to reach `exec`. A `.write`/`.writer` method on anything
- * but stdout/stderr (`Bun.file(p).write`, `Bun.file(p).writer()`) counts. Literal alternations
- * and one bounded lookbehind, linear time. */
+ * command: `child_process` must be named to reach `exec`. `Bun.$` counts wherever it appears, since
+ * it can be tagged after a space or through an alias (`const sh = Bun.$`). A `.write`/`.writer`
+ * method on anything but stdout/stderr (`Bun.file(p).write`, `Bun.file(p).writer()`) counts.
+ * Literal alternations and one bounded lookbehind, linear time. */
 const JS_WRITE_CALL_RE =
-  /writefile|writesync|createwritestream|bun\.write|(?<!std(?:out|err))\.writer?\b|appendfile|unlink|rename|truncate|symlink|\blink(?:sync)?\b|mkdir|mkdtemp|rmdir|copyfile|\b(?:cp|rm)(?:sync)?\b|chmod|chown|utime|child_process|\b(?:open|opensync|spawn|spawnsync|fork|eval)\b|\$`/i;
+  /writefile|writesync|createwritestream|bun\.write|(?<!std(?:out|err))\.writer?\b|appendfile|unlink|rename|truncate|symlink|\blink(?:sync)?\b|mkdir|mkdtemp|rmdir|copyfile|\b(?:cp|rm)(?:sync)?\b|chmod|chown|utime|child_process|\b(?:open|opensync|spawn|spawnsync|fork|eval)\b|bun\.\$|\$`/i;
 
 /** The same for Perl and Ruby, where `open`, `system`, `exec`, `spawn`, backticks, `qx` and `%x`
  * run commands or open files for writing, and a `.write`/`.binwrite` method on anything but

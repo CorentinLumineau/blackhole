@@ -314,6 +314,8 @@ describe('bash-write-target-guard.js — #1183 review: interpreter calls, words 
     "node22 -e \"require('fs').writeFileSync('x', '')\"",
     'py -c "print(1)"',
     'pypy3 -c "print(1)"',
+    'bun -e "await Bun.$ \\`touch x\\`"',
+    'bun -e "const sh = Bun.$; await sh\\`touch x\\`"',
     `bun -e "await Bun.file('x').write('')"`,
     `bun -e "const w = Bun.file('x').writer(); w.end()"`,
     "ruby -e 'spawn(\"touch x\")'",
