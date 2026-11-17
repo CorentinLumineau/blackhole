@@ -70,6 +70,14 @@ describe('the launch summary of the full fixture', () => {
     expect(renderLaunchSummary(rows)).toBe(fs.readFileSync(EXPECTED, 'utf-8'));
   });
 
+  test('warnings render as blockquote lines between the heading and the table, in order', () => {
+    const plain = renderLaunchSummary(rows).split('\n');
+    const one = renderLaunchSummary(rows, ['W1']).split('\n');
+    expect(one.slice(0, 4)).toEqual(['## Launch summary', '', '> W1', '']);
+    expect(one.slice(4)).toEqual(plain.slice(2));
+    expect(renderLaunchSummary(rows, ['W1', 'W2']).split('\n').slice(0, 5)).toEqual(['## Launch summary', '', '> W1', '> W2', '']);
+  });
+
   test('exactly eight rows, in fixed order', () => {
     expect(rows.map((r) => r.key)).toEqual(['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep']);
     expect([...LAUNCH_ROW_KEYS]).toEqual(rows.map((r) => r.key));

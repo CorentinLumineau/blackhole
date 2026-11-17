@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
@@ -29,6 +30,10 @@ import { formatPaceLine, readLatestPaceRecord } from './lib/pace-log.ts';
 import { forgeDeclaredCrossRepo } from './lib/pr-dependencies.ts';
 import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
 import type { StatusReport } from './lib/campaign-status/types.ts';
+import { pluginVersionWarning, readPluginVersion, readPluginVersionCheck } from './lib/plugin-drift.ts';
+import { projectIdentity } from './project-identity.ts';
+
+const PLUGIN_ROOT = path.join(import.meta.dir, '..');
 
 export { parseCheckpointFrontmatter } from './lib/campaign-status/checkpoint.ts';
 export {
@@ -126,19 +131,6 @@ function readHostLines(campaignDir: string): { pace: string | null; drift: strin
   return { pace: latestPace ? formatPaceLine(latestPace) : null, drift };
 }
 
-/** The plugin's own version: its `.claude-plugin/plugin.json`, else its `package.json`; null when neither reads. */
-export function readPluginVersion(pluginRoot: string = path.join(import.meta.dir, '..')): string | null {
-  for (const file of [path.join(pluginRoot, '.claude-plugin', 'plugin.json'), path.join(pluginRoot, 'package.json')]) {
-    try {
-      const version = (readJsonFile(file, file) as { version?: unknown }).version;
-      if (typeof version === 'string' && version) return version;
-    } catch {
-      // Try the next file.
-    }
-  }
-  return null;
-}
-
 /** The open PRs the board shows: those queue entries name while in flight, then the ones no entry names. */
 const boardPrs = (queue: { issues?: Record<string, { status?: string; pr?: number | null }> }, openPrList: Array<{ number: number }> | undefined): number[] => {
   const open = new Set((openPrList ?? []).map((p) => p.number));
@@ -205,7 +197,7 @@ export async function collectStatusReport(
     decisions,
     prSignals,
     mergedPrs,
-    pluginVersion: readPluginVersion(),
+    pluginVersion: readPluginVersion(PLUGIN_ROOT),
     denyCounts: collectDenyCounts(campaignDir, queue.campaign_started_at ?? null),
     budget: readBudgetPanel(config as Record<string, unknown>, resolveHost(campaignDir, process.env)),
     runContext: readJsonOrNull(path.join(campaignDir, 'run-context.json')),
@@ -291,11 +283,15 @@ async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJso
     budget: usage ? givenBudgetPanel(usage, config, nowS) : readBudgetPanel(config, resolveHost(campaignDir, process.env), nowS),
     statusPage: readStatusPageInput(campaignDir, collected.state.config, nowIso),
   });
+  const versionWarning = pluginVersionWarning(
+    readPluginVersionCheck({ running: readPluginVersion(PLUGIN_ROOT), homeDir: os.homedir(), pluginName: projectIdentity.name }),
+  );
+  const warnings = versionWarning ? [versionWarning] : [];
   if (asJson) {
-    console.log(JSON.stringify({ rows, cards: gateCards(rows, { printOnly: readPrintOnly(campaignDir, config) }) }, null, 2));
+    console.log(JSON.stringify({ rows, cards: gateCards(rows, { printOnly: readPrintOnly(campaignDir, config) }), warnings }, null, 2));
     return;
   }
-  console.log(renderLaunchSummary(rows));
+  console.log(renderLaunchSummary(rows, warnings));
 }
 
 async function main() {

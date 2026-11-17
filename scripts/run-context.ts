@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
@@ -6,6 +7,8 @@ import { resolveUsageBudget } from './lib/usage-budget.ts';
 import { usageSourceFor, type UsageReading } from './lib/usage-source.ts';
 import { checkForgeAuthSync } from './lib/forge-doctor.ts';
 import { isSleepMode } from './lib/campaign-status/pending-decisions.ts';
+import { pluginVersionWarning, readPluginVersion, readPluginVersionCheck } from './lib/plugin-drift.ts';
+import { projectIdentity } from './project-identity.ts';
 import { readSleepSession } from './lib/campaign-status/sleep-session.ts';
 import {
   AGENT_TOOLS,
@@ -99,13 +102,19 @@ const main = () => {
   const budget = usageBudgetEnabled(config);
   const route = routeRunContext(context, { usageBudgetEnabled: budget.enabled });
   const usage = detectUsage(context.host.value, config.config);
+  const pluginCheck = readPluginVersionCheck({
+    running: readPluginVersion(path.join(import.meta.dir, '..')),
+    homeDir: os.homedir(),
+    pluginName: projectIdentity.name,
+  });
+  const versionWarning = pluginVersionWarning(pluginCheck);
   const sleepMode = { enabled: isSleepMode(config.config), since: readSleepSession(config.config).since };
 
   if (flags['no-write'] !== true) {
     fs.mkdirSync(campaignDir, { recursive: true });
     const target = path.join(campaignDir, 'run-context.json');
     const tmp = `${target}.tmp`;
-    const record = { refreshed_at: new Date().toISOString(), context, route, usage, sleep_mode: sleepMode };
+    const record = { refreshed_at: new Date().toISOString(), context, route, usage, sleep_mode: sleepMode, plugin: { running: pluginCheck.running, newest: pluginCheck.newest, behind: pluginCheck.behind } };
     fs.writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`);
     fs.renameSync(tmp, target);
   }
@@ -122,6 +131,7 @@ const main = () => {
   );
   if (sleepMode.enabled) console.log('  sleep mode on: owner questions are parked (sleep-mode.md)');
   if (budget.unreadable) console.log('  warn: config.json unreadable, usage_budget treated as disabled');
+  if (versionWarning) console.log(`  warn: ${versionWarning}`);
   for (const warning of route.warnings) console.log(`  warn: ${warning}`);
   for (const gap of route.missing) console.log(`  missing: ${gap}`);
   process.exit(route.missing.length ? 1 : 0);

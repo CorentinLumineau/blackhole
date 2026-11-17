@@ -63,6 +63,10 @@ Claude usage sources, in probe order. Both end in the one rate-limit cache (`res
 Sleep mode: the record also carries `sleep_mode: {enabled, since}` read from `config.json`, and the
 run prints `sleep mode on: …` while it is on (`sleep-mode.md` § Launch gate and run context).
 
+Plugin version: when the running plugin is older than the newest `installed_plugins.json` row or
+marketplace cache version, the run prints a `warn:` line (advisory, exit code unchanged) and the
+record carries `plugin: {running, newest, behind}`.
+
 Schedule: `routine` when the session can create routines (kaizen waves and CI check-ins become
 routines, `project-thread-mode.md` § Scheduling), else `turn`.
 

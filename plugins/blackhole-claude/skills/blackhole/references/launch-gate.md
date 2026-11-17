@@ -18,7 +18,9 @@ preflight lists them).
 
 Bootstrap order, every `run` start:
 
-1. Resolve the run context (`run-context.md`); on `state_store: branch`, pull the state branch.
+1. Resolve the run context (`run-context.md`); on `state_store: branch`, pull the state branch. A
+   `warn:` line saying the running plugin is older than an installed version is part of its output:
+   restate it verbatim, never drop it.
 2. The 6-step form when a `coordinator.md` trigger condition holds.
 3. The summary and the status-page probe (§ Probe procedure).
 4. The questions (§ Questions), unless print-only (§ Print-only mode).
@@ -38,6 +40,8 @@ gate adds two steps of its own:
   Cursor there is no source, so the row reads `not probed: cursor: no readable usage source,
   usage-aware pacing not applied` and, with `usage_budget` on, its consequence is `Usage not
   probed: workers are sized from parallel_max (<n>).`
+- The summary carries the same plugin-version warning as a `> ` line under its heading, in every
+  mode including print-only; it never becomes a question.
 - Also run `bun run status config-summary` once: the coordinator's docs-governance drift guard
   copies its `Docs governance` lines verbatim into the spawn text.
 
@@ -84,6 +88,7 @@ row as shown. Adjust opens only that row's form steps, never the whole form:
 | Status page | Reuse the stored page, reuse another, publish new, or refresh template |
 | Kaizen and staging | Step 5 |
 | Peers | Display only: the configured `usage_budget.coordination.role` |
+| Sleep mode | Display only: sleep mode on or off; while on the whole gate is print-only |
 
 With `merge_mode` unset the Merge card has no Accept option (R-002): the owner must pick one.
 After the adjusted steps, write the answers as step 6 does (atomic write, one decision record per

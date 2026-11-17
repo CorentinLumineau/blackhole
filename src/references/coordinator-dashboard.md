@@ -44,8 +44,9 @@ and cannot be combined with `--html`, `--out`, `--data` or `config-summary`.
   readable usage source, usage-aware pacing not applied`, and with `usage_budget` on its
   consequence is `Usage not probed: workers are sized from parallel_max (<n>).`
 - `--now <epoch s>` pins the clock (whole seconds).
-- `--json` prints `{rows, cards}`: the rows plus the question cards `gateCards` builds (none in
-  print-only mode).
+- `--json` prints `{rows, cards, warnings}`: the rows, the question cards `gateCards` builds (none
+  in print-only mode) and the warnings. A warning (the running plugin is older than an installed
+  version) prints as a `> ` line under the heading in text mode.
 - With no `.blackhole` it prints the not-found message and exits `0`.
 
 ## Status page

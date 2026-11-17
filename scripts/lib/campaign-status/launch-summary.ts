@@ -214,11 +214,12 @@ export function buildLaunchSummary({ report, config, budget, statusPage }: Launc
 
 const cell = (s: string): string => s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
-/** The summary as one markdown table, the text the launch gate prints verbatim. */
-export function renderLaunchSummary(rows: LaunchRow[]): string {
+/** The summary as one markdown table, the text the launch gate prints verbatim; each warning is a `> ` line above it. */
+export function renderLaunchSummary(rows: LaunchRow[], warnings: string[] = []): string {
   return [
     '## Launch summary',
     '',
+    ...(warnings.length ? [...warnings.map((w) => `> ${w}`), ''] : []),
     '| Section | Now | Consequence |',
     '|---------|-----|-------------|',
     ...rows.map((r) => `| ${r.label} | ${cell(r.value)} | ${cell(r.consequence)} |`),
