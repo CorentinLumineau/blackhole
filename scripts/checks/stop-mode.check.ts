@@ -45,12 +45,37 @@ export const findUncitedFlushedMention = (content: string): boolean => {
   return false;
 };
 
+// A usage stop (STOP-WORKERS / PACE-WAIT / STOP-CAMPAIGN, and NO-SPAWN) is a drain-and-wake
+// pause: no prose that governs it may route to `--abandon`, mark a queue entry failed or blocked,
+// or bump a retry counter. A match is exempt only when a negation precedes it inside its own
+// clause; commas, colons, semicolons, sentence ends and table cells all end a clause, so a
+// negation elsewhere in the sentence never covers a later instruction.
+const FAILURE_ROUTES: [RegExp, string][] = [
+  [/--abandon|\babandon\b/i, 'routes to --abandon'],
+  [/\bfailed\b|\bblocked\b|\bretry counters?\b/i, 'marks a queue entry failed or blocked or bumps a retry counter'],
+];
+const GOVERNING_NEGATION = /\b(never|no|not|none)\b/i;
+
+export const findUngovernedFailureRoutes = (text: string): string[] => {
+  const clauses = text.replace(/\n(?!\s*\n)/g, ' ').split(/[.,;:|\n]/);
+  const out: string[] = [];
+  for (const clause of clauses) {
+    for (const [pattern, label] of FAILURE_ROUTES) {
+      const match = pattern.exec(clause);
+      if (match && !GOVERNING_NEGATION.test(clause.slice(0, match.index))) out.push(`${label}: "${clause.trim()}"`);
+    }
+  }
+  return out;
+};
+
+const sliceSection = (content: string, start: string, end: string): string | null => {
+  const from = content.indexOf(start);
+  if (from < 0) return null;
+  const to = content.indexOf(end, from + start.length);
+  return content.slice(from, to < 0 ? undefined : to);
+};
+
 export const findUsageStopViolations = (phaseStop: string): string[] => {
-  // A usage stop (the spawn-round usage gate's STOP-WORKERS / PACE-WAIT / STOP-CAMPAIGN) is a
-  // drain-and-wake pause: it records `stopped_by: usage` and `wake_at`, and never routes to
-  // `--abandon` or marks a queue entry failed or blocked. A line that mentions either is allowed
-  // only when it negates it.
-  const NEGATED = /\b(never|no|not|nothing)\b/i;
   const start = phaseStop.search(/^## Usage stop/m);
   if (start < 0) return ['phase-stop.md missing the ## Usage stop section'];
   const rest = phaseStop.slice(start + 1);
@@ -59,14 +84,22 @@ export const findUsageStopViolations = (phaseStop: string): string[] => {
   const errors: string[] = [];
   if (!section.includes('stopped_by: usage')) errors.push('usage stop does not record `stopped_by: usage`');
   if (!section.includes('wake_at')) errors.push('usage stop does not record `wake_at`');
-  for (const line of section.split('\n')) {
-    if (line.includes('--abandon') && !NEGATED.test(line)) errors.push(`usage stop routes to --abandon: "${line.trim()}"`);
-    if (/status: (failed|blocked)/.test(line) && !NEGATED.test(line)) {
-      errors.push(`usage stop marks a queue entry failed or blocked: "${line.trim()}"`);
-    }
-  }
-  return errors;
+  return [...errors, ...findUngovernedFailureRoutes(section).map((e) => `usage stop ${e}`)];
 };
+
+// The Spawn verdict table (with its closing paragraph) and Session resume step 7 in
+// orchestrator-runtime.md, both of which decide what a usage stop does.
+const RUNTIME_SECTIONS: [string, string, string][] = [
+  ['usage verdict table', '| Verdict | Behaviour |', '\n2. When the round includes'],
+  ['resume step 7', '7. **Resume after a pace or usage pause**', '\n\n'],
+];
+
+export const findUsageRuntimeViolations = (runtime: string): string[] =>
+  RUNTIME_SECTIONS.flatMap(([name, start, end]) => {
+    const section = sliceSection(runtime, start, end);
+    if (section === null) return [`orchestrator-runtime.md missing the ${name}`];
+    return findUngovernedFailureRoutes(section).map((e) => `${name} ${e}`);
+  });
 
 // Every spawn site (Pattern B `orchestrator-runtime.md` § Spawn, Pattern C
 // `claude-code-native.md`, Pattern P `project-thread-mode.md`, or any other prose block) that runs
@@ -145,6 +178,7 @@ export const checkUsageGateWiring = (): CheckResult => {
     if (!read(site).includes('usage-budget.ts')) errors.push(`${site} does not cite usage-budget.ts`);
   }
   errors.push(...findUsageStopViolations(read('src/references/phase-stop.md')));
+  errors.push(...findUsageRuntimeViolations(read('src/references/orchestrator-runtime.md')));
   if (errors.length) return { id: 'V-STOP-03', ok: false, detail: errors.join('; ') };
   return { id: 'V-STOP-03', ok: true };
 };

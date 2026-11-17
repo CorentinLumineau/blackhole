@@ -6,6 +6,8 @@ import {
   checkUsageGateWiring,
   findSpawnSitesMissingUsageGate,
   findUncitedFlushedMention,
+  findUngovernedFailureRoutes,
+  findUsageRuntimeViolations,
   findUsageStopViolations,
   runChecks,
 } from './checks/stop-mode.check.ts';
@@ -189,5 +191,57 @@ describe('checkUsageGateWiring() against the real src/ files', () => {
 
   test('the usage stop in the real phase-stop.md drains and never routes to --abandon', () => {
     expect(findUsageStopViolations(read('src/references/phase-stop.md'))).toEqual([]);
+  });
+});
+
+describe('usage stop failure routes: review-round edits are caught', () => {
+  const runtime = read('src/references/orchestrator-runtime.md');
+  const phaseStop = read('src/references/phase-stop.md');
+
+  test('the real files carry no failure route', () => {
+    expect(findUsageRuntimeViolations(runtime)).toEqual([]);
+    expect(findUsageStopViolations(phaseStop)).toEqual([]);
+  });
+
+  test('(a) the STOP-WORKERS/PACE-WAIT verdict row routed to stop --abandon fails', () => {
+    const row = "then run `phase-stop.md` § Usage stop with the verdict's `wake_at`";
+    expect(runtime).toContain(row);
+    const bad = runtime.replace(row, 'then run `stop --abandon`');
+    expect(findUsageRuntimeViolations(bad).join('; ')).toContain('routes to --abandon');
+  });
+
+  test('(b) usage-stop step 2 rewritten to mark entries failed and bump the retry counter fails', () => {
+    const step2 = /2\. \*\*Leave the queue alone\*\*[\s\S]*?(?=\n3\. )/;
+    expect(phaseStop).toMatch(step2);
+    const bad = phaseStop.replace(step2, '2. **Leave the queue alone** — Mark each in-flight queue entry `failed` and bump its retry counter.');
+    expect(findUsageStopViolations(bad).join('; ')).toContain('failed or blocked or bumps a retry counter');
+  });
+
+  test('resume step 7 rewritten to bump the retry counter fails', () => {
+    expect(runtime).toContain('no retry counter.');
+    const bad = runtime.replace('no retry counter.', 'bump the retry counter.');
+    expect(findUsageRuntimeViolations(bad).join('; ')).toContain('retry counter');
+  });
+
+  test('missing scanned sections fail loudly', () => {
+    expect(findUsageRuntimeViolations('# nothing here').length).toBe(2);
+  });
+});
+
+describe('findUngovernedFailureRoutes()', () => {
+  test('a negation elsewhere in the sentence does not exempt a later clause', () => {
+    expect(findUngovernedFailureRoutes('Drain: spawn nothing, let workers finish, then run `stop --abandon`.')).toHaveLength(1);
+    expect(findUngovernedFailureRoutes('Do not wait, mark the entry `failed`.')).toHaveLength(1);
+  });
+
+  test('a negation that governs its own clause exempts the match', () => {
+    expect(findUngovernedFailureRoutes('It is never an abandon: never `--abandon`, never `stop --now`.')).toEqual([]);
+    expect(findUngovernedFailureRoutes('None marks a queue entry `failed` or `blocked`. None bumps a retry counter.')).toEqual([]);
+  });
+
+  test('matches failed, blocked, retry-counter wording and --abandon', () => {
+    for (const text of ['Mark it failed.', 'Set it `status: blocked`.', 'Bump its retry counter.', 'Run --abandon.']) {
+      expect(findUngovernedFailureRoutes(text)).toHaveLength(1);
+    }
   });
 });

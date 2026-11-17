@@ -46,8 +46,8 @@ parallel planners, implementers, reviewers):
    | `STOP-WORKERS`, `PACE-WAIT` | **Drain and wake**: spawn nothing, let in-flight workers finish, then run `phase-stop.md` § Usage stop with the verdict's `wake_at` |
    | `STOP-CAMPAIGN` | Drain and stop: `phase-stop.md` § Usage stop with `wake_at: null`, and tell the owner the weekly line was crossed |
 
-   No usage verdict is a failure: like `STOP-NEW`, none marks a queue entry `failed` or `blocked`,
-   writes a ledger row or bumps a retry counter, and none ever routes to `stop --abandon`.
+   No usage verdict is a failure, the same as `STOP-NEW`. None marks a queue entry `failed` or
+   `blocked`. None writes a ledger row. None bumps a retry counter. None routes to `stop --abandon`.
 2. When the round includes test/build-bearing workers (implementers, or any worker that runs
    `build`/`verify`/`test`), run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/resource-gate.ts --requested <target>` and spawn
    at most its `batch_size`; it can only cut the target, never raise it: `go` keeps it, `degrade`
