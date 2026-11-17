@@ -148,9 +148,11 @@ is shorter: it prints the headline, the board counts, your move, the scope and t
 decisions above its queue sections, with no card list and no workstreams.
 Among its queue sections, **Merge next** numbers every open PR in the order to merge it
 (`mergeNextOrder`, `scripts/lib/merge-next.ts`): CI-fix PRs first, then parents, then children,
-ordered over stack edges (`effectiveParent`) and `depends_on`. Each line names its blocker —
-`waits on #N (stacked on)`, `waits on #N (depends on)`, `waits on owner/repo#N (cross-repo, …)`
-(an unmet body line, `forge-sync.md` § 6.7), `blocked: <notes>`, `after CI fix #N`, or `none` — and a loop of edges is printed as a `Cycle, not ordered` line instead of being walked.
+ordered over stack edges (`effectiveParent`), `depends_on` and trunk-red parking. The CI-fix tier is
+the trunk-red base fixes the `waiting-on-trunk-fix #N` notes name (`trunkFixIssues`). Each line names
+its blocker — `waits on #N (stacked on)`, `waits on #N (depends on)`, `waits on #N (trunk fix)`,
+`waits on owner/repo#N (cross-repo, …)` (an unmet body line, `forge-sync.md` § 6.7),
+`blocked: <notes>`, `after CI fix #N`, or `none` — and a loop of edges is printed as a `Cycle, not ordered` line instead of being walked.
 It sits above "Stacked PR merge order", which it does not replace.
 Visual rules: R-006 (`documentation/reference/product-principles.md`).
 

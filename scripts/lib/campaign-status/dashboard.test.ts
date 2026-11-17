@@ -260,4 +260,22 @@ describe('renderMergeNextSection', () => {
     expect(out).toContain('### Merge next\n1. #1 (PR #11) — none\n2. #2 (PR #12) — waits on #1 (stacked on)');
     expect(out.indexOf('### Merge next')).toBeLessThan(out.indexOf('### Stacked PR merge order'));
   });
+
+  test('formatDashboard puts the trunk-red base-fix PR first and names it on each waiting PR', () => {
+    const out = formatDashboard({
+      checkpoint: {},
+      queue: {
+        issues: {
+          '1': { status: 'blocked', phase: 'review', pr: 11, notes: 'waiting-on-trunk-fix #7' },
+          '2': { status: 'blocked', phase: 'review', pr: 12, notes: 'waiting-on-trunk-fix #7' },
+          '7': { status: 'in-flight', phase: 'review', pr: 17 },
+        },
+      },
+      ledger: {},
+      forge: { ok: true, openIssues: 0, openPrs: 3 },
+    } as never);
+    expect(out).toContain(
+      '### Merge next\n1. #7 (PR #17) — none — CI fix, merge first\n2. #1 (PR #11) — waits on #7 (trunk fix)\n3. #2 (PR #12) — waits on #7 (trunk fix)',
+    );
+  });
 });
