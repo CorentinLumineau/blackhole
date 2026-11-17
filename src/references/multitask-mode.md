@@ -131,6 +131,88 @@ without `CreateGoal` use coordinator + background orchestrator unchanged.
 
 See `documentation/decisions/ADR-028-cursor-pattern-c-lite.md` for the design amendment.
 
+## Shared usage budget (manager / peer)
+
+Several campaign sessions on one account share one usage budget. `usage_budget.coordination`
+(`config-template.md`) says how this session takes part; `scripts/usage-budget.ts` stays the only
+place that turns usage into a worker count.
+
+| `coordination.role` | Meaning |
+|---|---|
+| `solo` (default) | This session sizes its own rounds from its own gate verdict. The budget is per-session; nothing is exchanged |
+| `manager` | This session owns the shared pool: the `workers` its own gate returns. It grants worker slots to peers and runs its own workers out of the same pool |
+| `peer` | This session asks `coordination.manager_session` for slots before each round and uses only what it was granted, plus `coordination.peer_floor` |
+
+### Messages
+
+Four plain-text messages, one per line, sent over the host's cross-session message tool
+(per-harness mapping: `claude-code-native.md` § Cross-session budget transport):
+
+| Message | Direction | Body |
+|---|---|---|
+| `slot-request` | peer → manager | `slot-request session=<peer session> want=<N> running=<R> verdict=<peer's own gate verdict>` |
+| `slot-grant` | manager → peer | `slot-grant session=<peer session> slots=<M>` — `M` may be `0` |
+| `worker-done` | peer → manager | `worker-done session=<peer session> slots=<K>` — returns `K` slots when workers finish |
+| `heartbeat` | peer → manager | `heartbeat session=<peer session> running=<R>` — renews the peer's lease (below); `R` is the workers the peer has in flight right now |
+
+The manager's free slots are its pool minus its own running workers, minus every slot granted and
+not yet returned or expired, minus `peer_floor` for each known peer. A session becomes a known
+peer the moment any of its messages arrives, even one the manager has never seen before, so its
+floor is reserved from that message on. A grant never exceeds the free slots.
+
+### Verdicts
+
+Both sides read the gate verdict the way the spawn round does (`orchestrator-runtime.md`
+§ Background worker barrier, Spawn — the usage-gate verdict table, issue #1213). The manager re-runs its gate
+before each grant; a peer runs the smaller of its own verdict's count and its grant plus
+`peer_floor`.
+
+| Verdict | Manager grants | Peer runs |
+|---|---|---|
+| `GO` | Up to the free slots | Its grant plus `peer_floor`, capped by its own `workers` |
+| `unavailable` (or a non-zero exit) | No cut: the pool is `workers` = `parallel_max`, granted as under `GO`; the reason is logged | No cut from its own gate; still bounded by its grant plus `peer_floor` |
+| `NO-NEW-STARTS` | Slots only for workers that continue an issue already past handle; none for a new start | The same: no issue leaves `ready`; in-flight workers continue |
+| `NO-SPAWN` | `0`; slots already granted stay held until returned or expired | No new spawn; in-flight workers finish |
+| `STOP-WORKERS`, `PACE-WAIT`, `STOP-CAMPAIGN` | `0` | No new spawn; drain per `phase-stop.md` § Usage stop |
+
+### Grant lease
+
+Every grant and every floor reservation is a lease. Each message a peer sends renews its lease.
+A peer holding granted slots or running workers sends `heartbeat` at least every 20 minutes (the
+same interval as the CI check-in, `project-thread-mode.md` § Scheduling: routines). The lease is
+twice that, 40 minutes, so one late or lost heartbeat does not lapse it. When 40 minutes pass with
+no message from a peer, the manager frees every slot granted to it, releases its floor
+reservation and stops counting it as known. A peer that died or lost its context therefore leaks
+its slots for at most one lease.
+
+`running=<R>` is how the manager stays right when a lapsed peer turns out to be alive. On every
+`slot-request` and `heartbeat`, the manager sets that peer's held slots to at least `R`. On
+re-contact after a lapse, it re-reserves the peer's in-flight workers before it grants anything
+new, even when that leaves no free slots. A peer whose lease lapsed treats its old grant as gone
+and runs no new worker beyond `peer_floor`. Its `R` in-flight workers still finish. It then sends
+a fresh `slot-request` carrying `running=<R>`.
+
+### Peer floor
+
+`peer_floor` is the number of workers a peer may always run without a grant (default `1`; `0`
+makes every worker wait on a grant). It is counted inside the manager's pool, never on top of
+it, and it never overrides the peer's own gate verdict (table above).
+
+### No-reply timeout
+
+A peer that has no `slot-grant` 10 minutes after its `slot-request` proceeds with `peer_floor`
+workers only, and asks again before its next round. The timeout is fixed by this protocol; there
+is no config key for it. A late grant is read at the next round, never used to widen a round
+already running.
+
+### Plans with only a weekly window
+
+A plan may report only a `seven_day` window, with no `five_hour` one. There is then no 5-hour fit,
+and the pool comes from the weekly leg alone (`weekly_fit`), which needs
+`usage_budget.weekly.target_at_reset`. Without a target the gate returns `unavailable`, which cuts
+nothing (`workers` = `parallel_max`), so shared pacing is in effect off. Set `target_at_reset`
+before running `manager`/`peer` on such a plan.
+
 ## User starting the campaign
 
 Say any of:

@@ -114,6 +114,19 @@ Detect session primitives — never bake-time "this harness cannot" claims (issu
 When C2+C3 are both detected, the main chat **may** orchestrate directly (Pattern C-lite) using `Task` fan-out; Pattern B (coordinator + background orchestrator) remains the fallback when either primitive is absent.
 {{/cursor}}
 
+## Cross-session budget transport
+
+The manager/peer shared-budget protocol (`multitask-mode.md` § Shared usage budget) needs a way
+for one session to message another. Each harness maps it to its own cross-session message tool:
+
+| Harness | Transport |
+|---|---|
+| Claude Code (Remote) | The host's cross-session `send_message` tool (`claude-code-remote` server), addressed by session id; `coordination.manager_session` holds the manager's id and each message names the sender's session, so the reply goes back the same way |
+| Any host without a cross-session message tool | None. `coordination.role` must be `solo`, and the budget is per-session |
+
+A `manager` or `peer` role on a host without such a tool is a misconfiguration: the orchestrator treats the
+session as `solo` and tells the owner, rather than waiting on messages that can never arrive.
+
 ## Turn-end step (main-chat orchestrator)
 
 The main chat has no coordinator to publish the status page, so it ends **every** turn with the
