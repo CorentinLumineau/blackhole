@@ -59,7 +59,7 @@ export type Overrides = Partial<{ host: Host; surface: Surface; persistentDisk: 
 
 const fact = <T>(value: T, source: Source): Fact<T> => ({ value, source });
 
-const detectHost = (env: Record<string, string | undefined>): Host => {
+export const detectHost = (env: Record<string, string | undefined>): Host => {
   if (env.CLAUDECODE === '1' || env.CLAUDE_CODE_ENTRYPOINT) return 'claude';
   if (env.CURSOR_AGENT || env.CURSOR_TRACE_ID) return 'cursor';
   return 'unknown';

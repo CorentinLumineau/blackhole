@@ -72,13 +72,21 @@ describe('unavailable usage fails open with a reason', () => {
     expect(decide(null)).toMatchObject({ verdict: 'unavailable', workers: 3, wake_at: null, hours_to_reset: null });
     expect(decide(null).reasons[0]).toContain('usage unavailable');
   });
+  test('neither window current', () => {
+    expect(decide({ five_hour: { used_percentage: 5, resets_at: NOW - 1 } }).verdict).toBe('unavailable');
+  });
+});
+
+describe('weekly-only usage (no five_hour window) gates on the weekly rules alone', () => {
   test('five_hour window already past resets_at is treated as absent', () => {
     const r = decide(usage(95, 10, 0));
-    expect(r.verdict).toBe('unavailable');
+    expect(r.verdict).toBe('GO');
     expect(r.workers).toBe(3);
+    expect(r.reasons.filter((l) => l.startsWith('five_hour absent'))).toHaveLength(1);
   });
-  test('five_hour absent', () => {
-    expect(decide(usage(null, 79)).verdict).toBe('unavailable');
+  test('five_hour absent: the weekly lines still stop new starts and the campaign', () => {
+    expect(decide(usage(null, 79)).verdict).toBe('NO-NEW-STARTS');
+    expect(decide(usage(null, 80)).verdict).toBe('STOP-CAMPAIGN');
   });
   test('weekly absent skips weekly rules and says so', () => {
     const r = decide(usage(10, null));
@@ -92,6 +100,10 @@ describe('unavailable usage fails open with a reason', () => {
 });
 
 describe('resolveUsageBudget', () => {
+  test('usage_budget.windows is validated with the rest of the block', () => {
+    expect(resolveUsageBudget({ usage_budget: { windows: ['seven_day'] } }).windows).toEqual(['seven_day']);
+    expect(() => resolveUsageBudget({ usage_budget: { windows: 'seven_day' } })).toThrow('usage_budget.windows');
+  });
   test('absent block gives the defaults with enabled false', () => {
     expect(resolveUsageBudget({})).toEqual(DEFAULT_USAGE_BUDGET);
     expect(DEFAULT_USAGE_BUDGET.enabled).toBe(false);
@@ -263,8 +275,8 @@ describe('weekly pacing to target_at_reset', () => {
     expect(r.reasons.filter((l) => l.includes('five_hour absent'))).toHaveLength(1);
     expect(r.weekly_fit).toBe(3);
   });
-  test('five_hour absent and no target stays unavailable', () => {
-    expect(workersAllowed(weekOnly(21, 110), NOW, budget, 3).verdict).toBe('unavailable');
+  test('five_hour absent and no target: GO capped at the ceiling, no weekly fit', () => {
+    expect(workersAllowed(weekOnly(21, 110), NOW, budget, 3)).toMatchObject({ verdict: 'GO', workers: 3, weekly_fit: null });
   });
   test('seven_day absent with a target paces on the 5-hour leg alone', () => {
     const r = workersAllowed(usage(10, null), NOW, target(100), 3);
