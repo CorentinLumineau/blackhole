@@ -9,6 +9,7 @@ import {
   PENDING_DECISIONS_FILE,
   pendingDecisionError,
   readPendingDecisions,
+  resolvePendingDecision,
   wakeBatch,
   type PendingDecision,
 } from './pending-decisions.ts';
@@ -42,7 +43,9 @@ describe('pending-decision schema', () => {
   test('the committed fixture is valid and reads back in order', () => {
     const dir = campaign();
     fs.copyFileSync(FIXTURE, path.join(dir, PENDING_DECISIONS_FILE));
-    expect(readPendingDecisions(dir).map((d) => d.id)).toEqual(['PD-1', 'PD-2']);
+    const file = readPendingDecisions(dir);
+    expect(file.decisions.map((d) => d.id)).toEqual(['PD-1', 'PD-2']);
+    expect(file.next_id).toBe(3);
   });
 
   test('rejects too few or too many options and an out-of-range recommendation', () => {
@@ -53,6 +56,7 @@ describe('pending-decision schema', () => {
     expect(pendingDecisionError({ ...base, options: five })).toContain('2 to 4 options');
     expect(pendingDecisionError({ ...base, recommended: 2 })).toContain('recommends no listed option');
     expect(pendingDecisionError({ ...base, blocks: [0] })).toContain('invalid blocks');
+    expect(pendingDecisionError({ ...base, options: [{ label: 'Same' }, { label: 'Same ' }] })).toContain('duplicate option labels');
   });
 
   test('a malformed file throws instead of reading as empty', () => {
@@ -61,26 +65,41 @@ describe('pending-decision schema', () => {
     expect(() => readPendingDecisions(dir)).toThrow('has no question');
   });
 
+  const EMPTY = { next_id: 1, decisions: [] };
+  const q = { question: 'Q?', options: [{ label: 'A' }, { label: 'B' }], recommended: 0, blocks: [1], created_at: NOW.toISOString() };
+
   test('the same question parked twice merges its blocks and keeps its id', () => {
-    const first = addPendingDecision([], {
-      question: 'Q?', options: [{ label: 'A' }, { label: 'B' }], recommended: 0, blocks: [1], created_at: NOW.toISOString(),
-    });
-    const again = addPendingDecision(first.list, { ...first.decision, blocks: [1, 2] });
-    expect(again.list).toHaveLength(1);
+    const first = addPendingDecision(EMPTY, q);
+    const again = addPendingDecision(first.file, { ...q, blocks: [1, 2] });
+    expect(again.file.decisions).toHaveLength(1);
     expect(again.decision).toMatchObject({ id: 'PD-1', blocks: [1, 2] });
+  });
+
+  test('the same question re-parked with different options is refused, not silently narrowed', () => {
+    const first = addPendingDecision(EMPTY, q);
+    expect(() => addPendingDecision(first.file, { ...q, options: [{ label: 'A' }, { label: 'C' }] })).toThrow(
+      'PD-1 already parks "Q?" with options A, B',
+    );
+  });
+
+  test('ids never repeat, even after every decision is answered', () => {
+    const one = addPendingDecision(EMPTY, q);
+    const cleared = resolvePendingDecision(one.file, 'PD-1');
+    expect(cleared.file).toEqual({ next_id: 2, decisions: [] });
+    expect(addPendingDecision(cleared.file, { ...q, question: 'Other?' }).decision.id).toBe('PD-2');
   });
 });
 
 describe('wakeBatch — one round, most-blocking first, four per card', () => {
   test('sorts by blocked-item count and chunks into cards of at most four', () => {
-    let list: PendingDecision[] = [];
+    let file = { next_id: 1, decisions: [] as PendingDecision[] };
     for (let i = 1; i <= 6; i++) {
-      list = addPendingDecision(list, {
+      file = addPendingDecision(file, {
         question: `Q${i}?`, options: [{ label: 'Yes' }, { label: 'No' }], recommended: 0,
         blocks: Array.from({ length: i % 3 }, (_, k) => i * 10 + k), created_at: `2026-11-16T0${i}:00:00.000Z`,
-      }).list;
+      }).file;
     }
-    const batch = wakeBatch(list);
+    const batch = wakeBatch(file.decisions);
     expect(batch.total).toBe(6);
     expect(batch.cards.map((c) => c.length)).toEqual([4, 2]);
     expect(batch.cards.flat().map((q) => q.waiting_items)).toEqual([2, 2, 1, 1, 0, 0]);
@@ -108,7 +127,11 @@ describe('campaign-record park / wake / resolve', () => {
     });
     runRecord(['park', '--question', 'Split #30?', '--options', 'Yes|No', '--recommended', 'No', ...flags], NOW);
 
+    expect(runRecord(['ask', ...flags], NOW)).toBe('park');
     const batch = JSON.parse(runRecord(['wake', ...flags], NOW));
+    // The round's own questions must reach the owner: wake turns sleep mode off before it prints.
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf-8')).sleep_mode).toEqual({ enabled: false });
+    expect(runRecord(['ask', ...flags], NOW)).toBe('ask');
     expect(batch.total).toBe(2);
     expect(batch.cards[0].map((q: PendingDecision) => q.id)).toEqual(['PD-1', 'PD-2']);
 
@@ -119,8 +142,11 @@ describe('campaign-record park / wake / resolve', () => {
     expect(readDecisions(dir)).toEqual([{ date: '2026-11-17', text: 'Approve the plan for #12? → Approve', refs: [12, 14] }]);
 
     runRecord(['resolve', '--id', 'PD-2', '--answer', 'No', ...flags], NOW);
-    expect(fs.existsSync(path.join(dir, PENDING_DECISIONS_FILE))).toBe(false);
+    expect(pending(dir)).toEqual([]);
     expect(fs.readdirSync(path.join(dir, 'archive')).some((f) => f.startsWith('pending-decisions-'))).toBe(true);
+    // A late answer to the old PD-1 cannot hit the next parked question.
+    expect(runRecord(['park', '--question', 'New?', '--options', 'Yes|No', '--recommended', 'Yes', ...flags], NOW)).toContain('Parked PD-3');
+    expect(() => runRecord(['resolve', '--id', 'PD-1', '--answer', 'Approve', ...flags], NOW)).toThrow('No pending decision PD-1');
   });
 
   test('park refuses a recommendation that is not one of the options, and writes nothing', () => {

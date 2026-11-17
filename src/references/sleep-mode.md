@@ -10,7 +10,7 @@ owner returns, every parked question is asked in one batched round.
 `config.json` → `sleep_mode.enabled` (`config-template.md`). Absent or `false` ⇒ awake: every gate
 asks as it always has. Entry: `/blackhole sleep` (or the owner saying they are leaving) sets it to
 `true`; `/blackhole wake` (or the owner's first message after it was set) runs the wake-up round
-below, then sets it back to `false`.
+below, whose first step sets it back to `false`.
 
 ## The choke point: `askOrPark()`
 
@@ -21,6 +21,9 @@ adapter). `askOrPark(config)` (`scripts/lib/campaign-status/pending-decisions.ts
 - `ask` — sleep mode is off: use the C3 adapter row for this session, unchanged.
 - `park` — sleep mode is on: do not call any question tool. Park the question instead:
 
+`bun scripts/campaign-record.ts ask` prints which of the two applies, read from `config.json`.
+
+
 ```bash
 bun scripts/campaign-record.ts park --question "<the question as it would have been asked>" \
   --options "<label>: <consequence>|<label>|…" --recommended "<label>" \
@@ -30,7 +33,8 @@ bun scripts/campaign-record.ts park --question "<the question as it would have b
 
 Then set each blocked item `status: blocked`, `notes: "awaiting-owner-on-return"`
 (`clarify-gates.md` § Queue status when waiting on user) and move on. Parking the same question
-again adds its new blocked items to the existing record; it is never listed twice.
+again with the same options adds its new blocked items to the existing record; it is never listed
+twice. The same question with different options is refused — reword it or reuse the options.
 
 **Allowed without asking:** only what config or an earlier owner ruling already authorizes —
 `merge_mode`, the release permission, `usage_budget`. Anything else that is destructive,
@@ -38,21 +42,23 @@ outward-facing or irreversible is parked, never decided by the agent.
 
 ## Pending-decision record
 
-`.blackhole/pending-decisions.json` — `{"decisions": [...]}`, written only by
+`.blackhole/pending-decisions.json` — `{"next_id": <n>, "decisions": [...]}`, written only by
 `campaign-record.ts park` and `resolve`, through the state write guard (`blackhole-state.md` §
-Write protocol, entity key `decisions`). Each decision: `id` (`PD-<n>`), `question`, `options`
-(2 to 4, each `{label, consequence?}`), `recommended` (index into `options`), optional `evidence`,
+Write protocol, entity key `decisions`). `next_id` only grows, so an answered id is never reused.
+Each decision: `id` (`PD-<n>`), `question`, `options`
+(2 to 4, each `{label, consequence?}`, labels distinct), `recommended` (index into `options`), optional `evidence`,
 `blocks` (issue or PR numbers waiting on it — the cost of waiting), optional `gate`, `created_at`.
 Schema and fixture: `pending-decisions.ts`, `fixtures/sleep-mode/pending-decisions.example.json`.
 
 ## Wake-up round
 
-1. Executive summary of what ran while the owner was away: merged and merge-ready PRs, budget used.
-2. `bun scripts/campaign-record.ts wake` prints the batch as JSON: every parked decision, the
-   most-blocking first, in `cards` of at most four questions. Ask each card as **one**
+1. `bun scripts/campaign-record.ts wake` sets `sleep_mode.enabled` to `false` **first** — while it
+   is `true`, the round's own questions would be parked again — then prints the batch as JSON:
+   every parked decision, the most-blocking first, in `cards` of at most four questions.
+2. Executive summary of what ran while the owner was away: merged and merge-ready PRs, budget used.
+3. Ask each card as **one**
    AskUserQuestion call (or one set of decision cards, `project-thread-mode.md`), the recommended
    option first; more than four decisions means more cards, never a dropped question.
-3. For each answer: `bun scripts/campaign-record.ts resolve --id PD-<n> --answer "<label or text>"`.
+4. For each answer: `bun scripts/campaign-record.ts resolve --id PD-<n> --answer "<label or text>"`.
    It removes the decision, records it in `owner-decisions.json` with its blocked items as `refs`,
    and prints the items to unblock — promote them `blocked → ready` in the same turn.
-4. Set `sleep_mode.enabled` back to `false`.

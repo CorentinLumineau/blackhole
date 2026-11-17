@@ -56,6 +56,8 @@ export function pendingDecisionError(d: unknown): string | null {
     return `${r.id} needs ${MIN_OPTIONS} to ${MAX_OPTIONS} options`;
   }
   if (options.some((o) => typeof o?.label !== 'string' || !o.label.trim())) return `${r.id} has an option without a label`;
+  const labels = options.map((o) => o.label.trim());
+  if (new Set(labels).size !== labels.length) return `${r.id} has duplicate option labels`;
   const rec = r.recommended;
   if (typeof rec !== 'number' || !Number.isInteger(rec) || rec < 0 || rec >= options.length) {
     return `${r.id} recommends no listed option`;
@@ -65,47 +67,69 @@ export function pendingDecisionError(d: unknown): string | null {
   return null;
 }
 
-/** The parked decisions in recorded order; absent ⇒ none. A malformed file throws: never guess. */
-export function readPendingDecisions(campaignDir: string): PendingDecision[] {
+/**
+ * The file's content: the parked decisions in recorded order, and the number the next one takes.
+ * `next_id` only grows, even once every decision is answered, so an id is never reused and a late
+ * answer can never resolve a different question.
+ */
+export type PendingFile = { next_id: number; decisions: PendingDecision[] };
+
+const idNumber = (d: PendingDecision): number => Number(d.id.slice(3));
+
+/** Absent ⇒ nothing parked yet. A malformed file throws: never guess. */
+export function readPendingDecisions(campaignDir: string): PendingFile {
   const file = path.join(campaignDir, PENDING_DECISIONS_FILE);
-  if (!fs.existsSync(file)) return [];
-  const list = (readJsonFile(file, file) as { decisions?: unknown })?.decisions;
+  if (!fs.existsSync(file)) return { next_id: 1, decisions: [] };
+  const raw = readJsonFile(file, file) as { decisions?: unknown; next_id?: unknown };
+  const list = raw?.decisions;
   if (!Array.isArray(list)) throw new Error(`${file} has no "decisions" array; fix it before parking or resolving.`);
   for (const d of list) {
     const why = pendingDecisionError(d);
     if (why) throw new Error(`${file}: a decision ${why}.`);
   }
-  return list as PendingDecision[];
+  const decisions = list as PendingDecision[];
+  const floor = decisions.reduce((max, d) => Math.max(max, idNumber(d)), 0) + 1;
+  const recorded = Number.isInteger(raw.next_id) ? (raw.next_id as number) : 0;
+  return { next_id: Math.max(recorded, floor), decisions };
 }
+
+const sameOptions = (a: PendingOption[], b: PendingOption[]): boolean =>
+  a.length === b.length && a.every((o, i) => o.label === b[i].label && (o.consequence ?? '') === (b[i].consequence ?? ''));
 
 /**
- * Parks one decision. The same question parked again is not listed twice: it gains the new
- * `blocks` and keeps its id and date, so the cost of waiting stays honest.
+ * Parks one decision. The same question parked again with the same options is not listed twice:
+ * it gains the new `blocks` and keeps its id and date, so the cost of waiting stays honest. The
+ * same question with different options is refused: silently keeping either set would ask the owner
+ * something other than what one of the parking gates meant.
  */
 export function addPendingDecision(
-  list: PendingDecision[],
+  file: PendingFile,
   next: Omit<PendingDecision, 'id'>,
-): { list: PendingDecision[]; decision: PendingDecision } {
-  const twin = list.find((d) => d.question === next.question);
+): { file: PendingFile; decision: PendingDecision } {
+  const twin = file.decisions.find((d) => d.question === next.question);
   if (twin) {
+    if (!sameOptions(twin.options, next.options)) {
+      throw new Error(
+        `${twin.id} already parks "${twin.question}" with options ${twin.options.map((o) => o.label).join(', ')}; ` +
+          'park it again with the same options, or reword the question.',
+      );
+    }
     const merged = { ...twin, blocks: [...new Set([...twin.blocks, ...next.blocks])] };
-    return { list: list.map((d) => (d === twin ? merged : d)), decision: merged };
+    return { file: { ...file, decisions: file.decisions.map((d) => (d === twin ? merged : d)) }, decision: merged };
   }
-  const n = list.reduce((max, d) => Math.max(max, Number(d.id.slice(3))), 0) + 1;
-  const decision: PendingDecision = { id: `PD-${n}`, ...next };
+  const decision: PendingDecision = { id: `PD-${file.next_id}`, ...next };
   const why = pendingDecisionError(decision);
   if (why) throw new Error(`The decision ${why}.`);
-  return { list: [...list, decision], decision };
+  return { file: { next_id: file.next_id + 1, decisions: [...file.decisions, decision] }, decision };
 }
 
-/** Removes the answered decision; throws when `id` is not parked. */
-export function resolvePendingDecision(
-  list: PendingDecision[],
-  id: string,
-): { list: PendingDecision[]; decision: PendingDecision } {
-  const decision = list.find((d) => d.id === id);
-  if (!decision) throw new Error(`No pending decision ${id}. Parked: ${list.map((d) => d.id).join(', ') || 'none'}.`);
-  return { list: list.filter((d) => d !== decision), decision };
+/** Removes the answered decision; throws when `id` is not parked. `next_id` is kept. */
+export function resolvePendingDecision(file: PendingFile, id: string): { file: PendingFile; decision: PendingDecision } {
+  const decision = file.decisions.find((d) => d.id === id);
+  if (!decision) {
+    throw new Error(`No pending decision ${id}. Parked: ${file.decisions.map((d) => d.id).join(', ') || 'none'}.`);
+  }
+  return { file: { ...file, decisions: file.decisions.filter((d) => d !== decision) }, decision };
 }
 
 export type WakeCardQuestion = PendingDecision & { waiting_items: number };
@@ -130,25 +154,24 @@ export function wakeBatch(list: PendingDecision[]): WakeBatch {
 }
 
 /**
- * Installs the list through the state write guard (snapshot, `.tmp`, validate, rename). The guard
- * refuses a collapse to zero, so answering the last parked decision archives the file instead.
+ * Installs the file through the state write guard (snapshot, `.tmp`, validate, rename). The guard
+ * refuses a collapse to zero, so answering the last parked decision snapshots the file into
+ * `archive/` and then writes the empty list with its `next_id` directly.
  */
-export function writePendingDecisions(campaignDir: string, list: PendingDecision[], allowShrink = false): void {
+export function writePendingDecisions(campaignDir: string, file: PendingFile, allowShrink = false): void {
   const livePath = path.join(campaignDir, PENDING_DECISIONS_FILE);
   const archiveDir = path.join(campaignDir, 'archive');
-  if (list.length === 0) {
-    if (!fs.existsSync(livePath)) return;
-    fs.mkdirSync(archiveDir, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    fs.renameSync(livePath, path.join(archiveDir, `pending-decisions-${stamp}.json`));
+  const content = `${JSON.stringify(file, null, 2)}\n`;
+  if (file.decisions.length === 0) {
+    if (fs.existsSync(livePath)) {
+      fs.mkdirSync(archiveDir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      fs.copyFileSync(livePath, path.join(archiveDir, `pending-decisions-${stamp}.json`));
+    }
+    fs.writeFileSync(`${livePath}.tmp`, content);
+    fs.renameSync(`${livePath}.tmp`, livePath);
     return;
   }
-  const result = installStateFile({
-    livePath,
-    archiveDir,
-    content: `${JSON.stringify({ decisions: list }, null, 2)}\n`,
-    entityKey: PENDING_ENTITY_KEY,
-    allowShrink,
-  });
+  const result = installStateFile({ livePath, archiveDir, content, entityKey: PENDING_ENTITY_KEY, allowShrink });
   if (!result.ok) throw new Error(`Refused to write ${livePath}: ${result.reason}`);
 }

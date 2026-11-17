@@ -12,6 +12,7 @@ import {
 } from './lib/campaign-status/record.ts';
 import {
   addPendingDecision,
+  askOrPark,
   readPendingDecisions,
   resolvePendingDecision,
   wakeBatch,
@@ -29,7 +30,8 @@ import { SCOPE_KINDS, type ScopeEntry, type ScopeKind } from './lib/campaign-sta
 //   decision --text "<one line>" [--refs 12] [--date YYYY-MM-DD] → owner-decisions.json
 //   park     --question "<q>" --options "A: why|B|C" --recommended A [--evidence "<text>"]
 //            [--refs 12,14] [--gate <name>]                      → pending-decisions.json
-//   wake                                                         → prints the batched round as JSON
+//   ask                                                          → prints `ask` or `park` (askOrPark)
+//   wake                                                         → turns sleep mode off, then prints the batched round as JSON
 //   resolve  --id PD-1 --answer "<text>" [--date YYYY-MM-DD]     → pending-decisions.json + owner-decisions.json
 //
 // All take --campaign-dir (default ./.blackhole). Re-running scope, decision or park changes nothing.
@@ -38,7 +40,7 @@ const USAGE =
   'Usage: bun scripts/campaign-record.ts scope --kind <in|parked|deferred|blocked-upstream|out> --text <text> ' +
   '[--reason <text>] [--refs 1,2] [--filter] [--date YYYY-MM-DD] | decision --text <text> [--refs 1,2] [--date YYYY-MM-DD] ' +
   '| park --question <text> --options "A: consequence|B" --recommended <label> [--evidence <text>] [--refs 1,2] [--gate <name>] ' +
-  '| wake | resolve --id PD-<n> --answer <text> [--date YYYY-MM-DD] [--campaign-dir <dir>]';
+  '| ask | wake | resolve --id PD-<n> --answer <text> [--date YYYY-MM-DD] [--campaign-dir <dir>]';
 
 type Flags = {
   kind?: string; text?: string; reason?: string; refs?: string; date?: string; filter: boolean; campaignDir: string;
@@ -100,6 +102,12 @@ function dateOf(flags: Flags, now: Date): string {
   return d;
 }
 
+function readConfig(campaignDir: string): Record<string, unknown> & { sleep_mode?: Record<string, unknown> } {
+  const configPath = path.join(campaignDir, 'config.json');
+  if (!fs.existsSync(configPath)) throw new Error(`${configPath} is absent: the launch configuration gate writes it first.`);
+  return readJsonFile(configPath, configPath) as Record<string, unknown> & { sleep_mode?: Record<string, unknown> };
+}
+
 /** Runs one record command and returns the line to print. Throws on bad input; writes nothing then. */
 export function runRecord(argv: string[], now: Date = new Date()): string {
   const [sub, ...rest] = argv;
@@ -140,7 +148,7 @@ export function runRecord(argv: string[], now: Date = new Date()): string {
     const recommended = options.findIndex((o) => o.label === flags.recommended?.trim());
     if (recommended < 0) throw new Error(`--recommended must name one of the options (${options.map((o) => o.label).join(', ')}).`);
     const before = readPendingDecisions(flags.campaignDir);
-    const { list, decision } = addPendingDecision(before, {
+    const { file, decision } = addPendingDecision(before, {
       question: requireText(flags.question, '--question'),
       options,
       recommended,
@@ -149,16 +157,25 @@ export function runRecord(argv: string[], now: Date = new Date()): string {
       ...(flags.gate?.trim() ? { gate: flags.gate.trim() } : {}),
       created_at: now.toISOString(),
     });
-    writePendingDecisions(flags.campaignDir, list);
+    writePendingDecisions(flags.campaignDir, file);
     const blocks = decision.blocks.length ? `blocks ${decision.blocks.map((b) => `#${b}`).join(', ')}` : 'blocks nothing';
-    return `Parked ${decision.id}: ${decision.question} (${blocks}; ${list.length} waiting)`;
+    return `Parked ${decision.id}: ${decision.question} (${blocks}; ${file.decisions.length} waiting)`;
   }
 
-  if (sub === 'wake') return JSON.stringify(wakeBatch(readPendingDecisions(flags.campaignDir)), null, 2);
+  if (sub === 'ask') return askOrPark(readConfig(flags.campaignDir));
+
+  if (sub === 'wake') {
+    // Sleep mode goes off before the round is printed: while it is on, every question — the
+    // round's own included — would be parked again (`clarify-gates.md` § C3 adapter).
+    const configPath = path.join(flags.campaignDir, 'config.json');
+    const config = readConfig(flags.campaignDir);
+    writeJsonAtomic(configPath, { ...config, sleep_mode: { ...(config.sleep_mode ?? {}), enabled: false } });
+    return JSON.stringify(wakeBatch(readPendingDecisions(flags.campaignDir).decisions), null, 2);
+  }
 
   if (sub === 'resolve') {
     const answer = requireText(flags.answer, '--answer');
-    const { list, decision } = resolvePendingDecision(readPendingDecisions(flags.campaignDir), requireText(flags.id, '--id'));
+    const { file, decision } = resolvePendingDecision(readPendingDecisions(flags.campaignDir), requireText(flags.id, '--id'));
     const record = {
       date: dateOf(flags, now),
       text: `${decision.question} → ${answer}`,
@@ -166,9 +183,9 @@ export function runRecord(argv: string[], now: Date = new Date()): string {
     };
     const decisions = addDecision(readDecisions(flags.campaignDir, true), record);
     writeJsonAtomic(path.join(flags.campaignDir, DECISIONS_FILE), { decisions });
-    writePendingDecisions(flags.campaignDir, list, true);
+    writePendingDecisions(flags.campaignDir, file, true);
     const unblock = decision.blocks.length ? `Unblock ${decision.blocks.map((b) => `#${b}`).join(', ')}` : 'Nothing to unblock';
-    return `Resolved ${decision.id} → ${answer}. ${unblock} (${list.length} still pending)`;
+    return `Resolved ${decision.id} → ${answer}. ${unblock} (${file.decisions.length} still pending)`;
   }
 
   throw new Error(`Unknown subcommand "${sub ?? ''}". ${USAGE}`);

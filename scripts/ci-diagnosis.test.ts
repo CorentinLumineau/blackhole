@@ -15,6 +15,7 @@ import {
   type GhRunner,
   type StepLog,
 } from './ci-diagnosis';
+import { failingPaths, fingerprintLog } from './lib/trunk-red.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const fixturesDir = path.join(root, 'fixtures/ci-diagnosis');
@@ -64,7 +65,33 @@ describe('isolateStepLog', () => {
     const full = readLogFixture('log-genuine.txt');
     const isolated = isolateStepLog(full, 'Run tests');
     expect(isolated).toContain('expect(received).toBe(expected)');
-    expect(isolated).not.toContain('##[group]');
+    expect(isolated.split('\n')[0]).toContain('##[group]Run tests');
+  });
+
+  test('output logged inside the step group still fingerprints on its failure line', () => {
+    const isolated = isolateStepLog(readLogFixture('log-genuine.txt'), 'Run tests');
+    expect(fingerprintLog(isolated)).toBe(fingerprintLog('error: expect(received).toBe(expected)'));
+  });
+
+  test('a realistic job log keeps the step header and the output after ##[endgroup], up to the next step', () => {
+    const isolated = isolateStepLog(readLogFixture('log-job-realistic.txt'), 'Run bun test --fail-fast');
+    expect(isolated).toContain('##[group]Run bun test --fail-fast');
+    expect(isolated).toContain('FAIL src/a.test.ts');
+    expect(isolated).toContain('##[error]Process completed with exit code 1.');
+    expect(isolated).not.toContain('Syncing repository');
+    expect(isolated).not.toContain('Post job cleanup.');
+  });
+
+  test('realistic logs differing only in the FAIL line fingerprint differently through isolateStepLog', () => {
+    const full = readLogFixture('log-job-realistic.txt');
+    const other = full.replace('FAIL src/a.test.ts', 'FAIL src/b.test.ts');
+    const a = isolateStepLog(full, 'Run bun test --fail-fast');
+    const b = isolateStepLog(other, 'Run bun test --fail-fast');
+    expect(fingerprintLog(a)).not.toBe('');
+    expect(fingerprintLog(a)).not.toBe(fingerprintLog(b));
+    expect(fingerprintLog(a)).toBe(fingerprintLog('FAIL src/a.test.ts'));
+    expect(failingPaths(a)).toEqual(['src/a.test.ts']);
+    expect(failingPaths(b)).toEqual(['src/b.test.ts']);
   });
 
   test('returns tail when step group is missing', () => {

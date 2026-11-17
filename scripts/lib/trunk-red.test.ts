@@ -119,6 +119,20 @@ describe('normalizeRepoPath', () => {
     expect(normalizeRepoPath('/github/workspace/a.ts')).toBe('a.ts');
     expect(normalizeRepoPath('a/b.ts')).toBe('a/b.ts');
   });
+
+  test('strips a self-hosted runner _work/<repo>/<repo>/ checkout prefix', () => {
+    expect(normalizeRepoPath('/Users/someone/actions-runner/_work/blackhole/blackhole/src/a.ts')).toBe('src/a.ts');
+    expect(normalizeRepoPath('/opt/runners/r1/_work/repo/repo/package.json')).toBe('package.json');
+  });
+
+  test('a self-hosted absolute failing path still excludes the PR that owns it', () => {
+    const failing = '/Users/someone/actions-runner/_work/blackhole/blackhole/src/a.ts';
+    const result = classifyTrunkRed([
+      pr(1, [fail('lint', 'fp-1', [failing])], ['src/a.ts']),
+      pr(2, [fail('lint', 'fp-1', [failing])], ['src/other.ts']),
+    ]);
+    expect(result.classification).toBe('per-pr');
+  });
 });
 
 describe('fingerprintLog / pathsInLog', () => {
@@ -158,6 +172,45 @@ describe('fingerprintLog / pathsInLog', () => {
 
   test('different errors fingerprint differently', () => {
     expect(fingerprintLog('error: boom A')).not.toBe(fingerprintLog('error: boom B'));
+  });
+
+  test('pathsInLog and failingPaths extract bracket-bounded paths', () => {
+    expect(pathsInLog('##[error]src/b.ts(1,2): boom\nsee [src/c.ts]')).toEqual(['src/b.ts', 'src/c.ts']);
+    expect(failingPaths('##[error]src/b.ts(1,2): error TS1')).toEqual(['src/b.ts']);
+  });
+
+  test.each([
+    ['ungrouped Run line', 'Run bun test --fail-fast\n'],
+    ['grouped echoed script and env', '##[group]Run bun test --fail-fast\nbun test --fail-fast\nshell: /usr/bin/bash -e {0}\nenv:\n  FAIL_FAST: 1\n##[endgroup]\n'],
+  ])('an echoed preamble does not mask the real failure line: %s', (_n, preamble) => {
+    const a = `${preamble}FAIL src/a.test.ts`;
+    const b = `${preamble}FAIL src/b.test.ts`;
+    expect(fingerprintLog(a)).not.toBe('');
+    expect(fingerprintLog(a)).not.toBe(fingerprintLog(b));
+    expect(fingerprintLog(a)).toBe(fingerprintLog('FAIL src/a.test.ts'));
+    expect(failingPaths(a)).toEqual(['src/a.test.ts']);
+  });
+
+  test('an indented failure line after an ungrouped Run line is not skipped as an echoed setting', () => {
+    const a = 'Run bun test\n  ● adds A';
+    expect(fingerprintLog(a)).not.toBe('');
+    expect(fingerprintLog(a)).not.toBe(fingerprintLog('Run bun test\n  ● adds B'));
+  });
+
+  test('an indented failure line followed by more output is the fingerprint line, not the line after it', () => {
+    const a = 'Run bun test\n  ✗ adds A\nRan 3 tests';
+    const b = 'Run bun test\n  ✗ adds B\nRan 3 tests';
+    expect(fingerprintLog(a)).not.toBe(fingerprintLog(b));
+    expect(fingerprintLog(a)).toBe(fingerprintLog('  ✗ adds A'));
+  });
+
+  test('ISO timestamp and BOM prefixes are stripped before matching', () => {
+    const ts = (l: string) => `2026-08-12T10:00:03.1234567Z ${l}`;
+    const log = (f: string) =>
+      '\uFEFF' + [ts('##[group]Run bun test --fail-fast'), ts('bun test --fail-fast'), ts('##[endgroup]'), ts(`FAIL ${f}`)].join('\n');
+    expect(fingerprintLog(log('src/a.test.ts'))).toBe(fingerprintLog('FAIL src/a.test.ts'));
+    expect(fingerprintLog(log('src/a.test.ts'))).not.toBe(fingerprintLog(log('src/b.test.ts')));
+    expect(failingPaths(log('src/a.test.ts'))).toEqual(['src/a.test.ts']);
   });
 
   test('pathsInLog extracts repo-relative file paths from error lines', () => {
