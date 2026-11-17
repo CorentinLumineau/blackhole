@@ -43,16 +43,43 @@ const { rotateHookEvents } = require('./hook-event-rotation');
  *  - Space form (`--token xyz`, `Bearer xyz`): no `=`/`:` joins the keyword to its value at all.
  */
 const SECRET_KV =
-  /\b((?:[A-Za-z][A-Za-z0-9]*_)*?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+)*)(\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
+  /\b((?:[A-Za-z][A-Za-z0-9]*_){0,8}?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+){0,8})(\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
 const SECRET_SPACE =
-  /\b(--?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key|with-token)|Bearer)\s+(['"]?)[^'"\s]{4,}\2/gi;
+  /(?<![\w-])(--?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key|with-token)|Bearer)\s+(['"]?)[^'"\s]{4,}\2/gi;
+/** Credentials with no keyword in front of them. Every quantifier is bounded or runs over a
+ * character class its neighbour cannot also match, so none of these backtracks catastrophically.
+ *  - Bare GitHub tokens keep their prefix (`ghp_***`) so a reader can tell what leaked.
+ *  - AWS access key ids keep `AKIA`/`ASIA`.
+ *  - URL userinfo masks only the password; the scheme and user stay readable.
+ *  - `--password x` / `--password=x` at any length: SECRET_SPACE only fires from 4 chars up. */
+const SECRET_GITHUB_TOKEN = /(gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}/g;
+const SECRET_AWS_KEY = /\b(AKIA|ASIA)[0-9A-Z]{16}\b/g;
+const SECRET_URL_USERINFO = /\b([a-z][a-z0-9+.-]{0,31}:\/\/)([^\s:/@'"]{1,256}):[^\s@/'"]{1,256}@/gi;
+const SECRET_PASSWORD_FLAG = /(--?(?:password|passwd))(\s{1,64}|=)(['"]?)[^'"\s]+\3/gi;
 const MAX_DETAIL_CHARS = 300;
+/** `reason` must keep its trailing `Remedy:` clause, so it has a separate, larger cap than `detail`. */
+const MAX_REASON_CHARS = 2000;
+// Invariant: every regex pass sees at most this many chars, so redaction cost is O(1) in the input
+// size, and no character past the window is ever emitted. The window does not keep a straddling
+// secret out of the output on its own: each mask can be shorter than the value it replaces, so the
+// final cap slice (MAX_DETAIL_CHARS or MAX_REASON_CHARS) can reach text near the window edge. A
+// value cut by the edge is still masked when the part left inside the window meets its pattern's
+// minimum length; a shorter cut fragment (e.g. under 4 chars for SECRET_KV) can be emitted unmasked.
+const REDACT_WINDOW_CHARS = Math.max(MAX_DETAIL_CHARS * 8, MAX_REASON_CHARS);
 
-const redact = (text) =>
+const redactTo = (max) => (text) =>
   String(text === undefined || text === null ? '' : text)
+    .slice(0, REDACT_WINDOW_CHARS)
     .replace(SECRET_KV, (_match, key, separator, quote) => `${key}${separator}${quote}***${quote}`)
     .replace(SECRET_SPACE, (_match, flag, quote) => `${flag} ${quote}***${quote}`)
-    .slice(0, MAX_DETAIL_CHARS);
+    .replace(SECRET_PASSWORD_FLAG, (_match, flag, joiner, quote) => `${flag}${joiner}${quote}***${quote}`)
+    .replace(SECRET_GITHUB_TOKEN, (_match, prefix) => `${prefix}***`)
+    .replace(SECRET_AWS_KEY, (_match, prefix) => `${prefix}***`)
+    .replace(SECRET_URL_USERINFO, (_match, scheme, user) => `${scheme}${user}:***@`)
+    .slice(0, max);
+
+const redact = redactTo(MAX_DETAIL_CHARS);
+const redactReason = redactTo(MAX_REASON_CHARS);
 
 /** `cwd` defaults to `process.cwd()` at every call site below rather than here, because the right
  * default is "the hook process's own cwd" ONLY when nothing better is known — and the PreToolUse
@@ -500,7 +527,7 @@ const recordEvent = (event) => {
     decision: event.decision,
     tier: event.tier,
     pattern_id: event.pattern_id,
-    reason: redact(event.reason),
+    reason: redactReason(event.reason),
     worktree: worktreeRoot(cwd),
     detail: redact(event.detail),
     agent_id: lastAgentContext.agent_id,
@@ -553,7 +580,8 @@ const denyAndRecord = (event) => {
 };
 
 /** WARN tier — recorded for review (the orchestrator ingests it as V-HOOK-02), then exits 0 with
- * no output, so the call goes through the session's normal permission flow. Emitting a
+ * no output, so the call goes through the session's normal permission flow. A warn is therefore
+ * log-only: its reason (including any `Remedy:` clause) is never shown to the agent. Emitting a
  * `permissionDecision: 'allow'` here would both print into the session and auto-approve a call
  * this hook has flagged as risky; the record under `.blackhole/hook-events/` is the review
  * channel. */
@@ -604,6 +632,8 @@ const failClosed = ({ hook, tool, error, patternId = 'pattern-load-failure', lab
 
 module.exports = {
   redact,
+  redactReason,
+  SECRET_KV,
   worktreeRoot,
   mainCloneRoot,
   allWorktreeRoots,

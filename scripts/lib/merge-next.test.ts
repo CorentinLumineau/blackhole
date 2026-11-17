@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { formatMergeNextItem, mergeNextOrder } from './merge-next.ts';
+import { formatMergeNextItem, mergeNextOrder, trunkFixIssues } from './merge-next.ts';
 
 describe('mergeNextOrder', () => {
   test('mixed forest: CI-fix PRs first, then parents, then children, each with a named blocker', () => {
@@ -77,6 +77,48 @@ describe('mergeNextOrder', () => {
       [1, 'parent', 'none'],
       [2, 'ci-fix', 'waits on #1 (stacked on)'],
     ]);
+  });
+});
+
+describe('trunkFixIssues', () => {
+  test('collects the base-fix issue each waiting-on-trunk-fix note names, once, ascending', () => {
+    const issues = {
+      '1': { status: 'blocked', pr: 11, notes: 'waiting-on-trunk-fix #9' },
+      '2': { status: 'blocked', pr: 12, notes: 'overlap with #3; waiting-on-trunk-fix #9' },
+      '3': { status: 'blocked', pr: 13, notes: 'waiting-on-trunk-fix #4' },
+      '4': { status: 'in-flight', pr: 14 },
+      '5': { status: 'blocked', pr: 15, notes: 'waiting-on-trunk-fix' },
+      '6': { status: 'blocked', pr: 16, notes: 'overlap with #9' },
+      '9': { status: 'in-flight', pr: 19 },
+    };
+    expect(trunkFixIssues(issues)).toEqual([4, 9]);
+  });
+});
+
+describe('mergeNextOrder — trunk red', () => {
+  test('the base-fix PR merges first and is named as the blocker of every PR waiting on it', () => {
+    const issues = {
+      '1': { status: 'blocked', pr: 11, notes: 'waiting-on-trunk-fix #7' },
+      '2': { status: 'blocked', pr: 12, notes: 'waiting-on-trunk-fix #7' },
+      '3': { status: 'in-flight', pr: 13 },
+      '7': { status: 'in-flight', pr: 17 },
+    };
+    const { items } = mergeNextOrder(issues, trunkFixIssues(issues));
+    expect(items.map((i) => [i.issue, i.kind, i.blocker])).toEqual([
+      [7, 'ci-fix', 'none — CI fix, merge first'],
+      [3, 'parent', 'after CI fix #7'],
+      [1, 'child', 'waits on #7 (trunk fix)'],
+      [2, 'child', 'waits on #7 (trunk fix)'],
+    ]);
+  });
+
+  test('once the base fix has merged, a child still parked shows its blocked note', () => {
+    const issues = {
+      '1': { status: 'blocked', pr: 11, notes: 'waiting-on-trunk-fix #7' },
+      '7': { status: 'merged', pr: 17 },
+    };
+    const { items } = mergeNextOrder(issues, trunkFixIssues(issues));
+    expect(items.map((i) => [i.issue, i.kind, i.blocker])).toEqual([[1, 'parent', 'blocked: waiting-on-trunk-fix #7']]);
   });
 });
 

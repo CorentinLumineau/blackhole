@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { appendPaceLog, buildPaceRecord, formatPaceLine, readLatestPaceRecord } from './pace-log.ts';
+import { appendPaceLog, buildPaceRecord, formatPaceLine, isUsageRecordVerdict, readLatestPaceRecord } from './pace-log.ts';
 import { makeTempDir } from './fs.ts';
 
 const tempDirs: string[] = [];
@@ -42,6 +42,56 @@ describe('buildPaceRecord', () => {
   });
 });
 
+const usage = (verdict: string, workers: number, wake_at: number | null = null) => ({
+  verdict,
+  workers,
+  reasons: [`usage ${verdict}`],
+  wake_at,
+  hours_to_reset: 2,
+  weekly_fit: null,
+  five_hour_pct: 42,
+  weekly_pct: 61,
+});
+
+describe('buildPaceRecord with a usage-budget verdict', () => {
+  test('persists the verdict, 5-hour %, weekly %, workers and wake time', () => {
+    const r = buildPaceRecord(NOW, 3, { ...pace, verdict: 'HOLD', concurrency: 3 }, null, usage('PACE-WAIT', 0, NOW + 900) as never);
+    expect(r.usage).toEqual({ verdict: 'PACE-WAIT', workers: 0, five_hour_pct: 42, weekly_pct: 61, wake_at: NOW + 900 });
+    expect(r.reasons).toContain('usage PACE-WAIT');
+  });
+
+  test('GO caps effective at its worker count: the smallest of the three gates wins', () => {
+    const r = buildPaceRecord(NOW, 4, { ...pace, verdict: 'HOLD', concurrency: 4 }, { ...resource, verdict: 'go', batch_size: 3 }, usage('GO', 2) as never);
+    expect(r.effective).toBe(2);
+    expect(r.rate_limit_stop).toBe(false);
+  });
+
+  for (const verdict of ['NO-SPAWN', 'STOP-WORKERS', 'PACE-WAIT', 'STOP-CAMPAIGN']) {
+    test(`${verdict} is a rate-limit stop with zero effective workers, never a failure`, () => {
+      const r = buildPaceRecord(NOW, 3, { ...pace, verdict: 'HOLD', concurrency: 3 }, null, usage(verdict, 0) as never);
+      expect(r).toMatchObject({ effective: 0, rate_limit_stop: true });
+    });
+  }
+
+  test('unavailable and NO-NEW-STARTS do not cut the count', () => {
+    for (const verdict of ['unavailable', 'NO-NEW-STARTS']) {
+      const r = buildPaceRecord(NOW, 3, { ...pace, verdict: 'HOLD', concurrency: 3 }, null, usage(verdict, verdict === 'unavailable' ? 3 : 0) as never);
+      expect(r).toMatchObject({ effective: 3, rate_limit_stop: false });
+    }
+  });
+
+  test('without a usage verdict the record carries usage: null', () => {
+    expect(buildPaceRecord(NOW, 3, pace, null).usage).toBeNull();
+  });
+
+  test('isUsageRecordVerdict accepts the usage-budget shape and rejects others', () => {
+    expect(isUsageRecordVerdict(usage('GO', 2))).toBe(true);
+    expect(isUsageRecordVerdict({ ...usage('GO', 2), five_hour_pct: undefined, weekly_pct: undefined })).toBe(true);
+    expect(isUsageRecordVerdict({ ...usage('GO', 2), verdict: 'SCALE-UP' })).toBe(false);
+    expect(isUsageRecordVerdict({ verdict: 'GO', reasons: [] })).toBe(false);
+  });
+});
+
 describe('appendPaceLog', () => {
   test('appends one JSON line per call', () => {
     const p = logPath();
@@ -73,6 +123,17 @@ describe('readLatestPaceRecord / formatPaceLine', () => {
     expect(readLatestPaceRecord(p)?.planned).toBe(3);
   });
 
+  test('an old record written before the usage leg still parses', () => {
+    const p = logPath();
+    const old = { at: new Date(NOW * 1000).toISOString(), planned: 2, pace, resource: null, effective: 1, rate_limit_stop: false, reasons: [] };
+    fs.writeFileSync(p, JSON.stringify(old) + '\n');
+    const latest = readLatestPaceRecord(p);
+    expect(latest?.planned).toBe(2);
+    expect(formatPaceLine(latest!)).toContain('THROTTLE');
+    appendPaceLog(p, buildPaceRecord(NOW + 60, 3, pace, null));
+    expect(fs.readFileSync(p, 'utf-8').trim().split('\n')).toHaveLength(2);
+  });
+
   test('missing log gives null', () => {
     expect(readLatestPaceRecord('/nonexistent/pace-log.jsonl')).toBeNull();
   });
@@ -99,6 +160,22 @@ describe('pace-log CLI', () => {
     expect(res.exitCode).toBe(0);
     expect(JSON.parse(res.stdout.toString()).effective).toBe(1);
     expect(readLatestPaceRecord(p)?.rate_limit_stop).toBe(false);
+  });
+
+  test('--usage persists the usage-budget verdict on the record', () => {
+    const p = logPath();
+    const res = run(['--log', p, '--planned', '3', '--now', String(NOW), '--pace', JSON.stringify({ ...pace, verdict: 'HOLD', concurrency: 3 }), '--usage', JSON.stringify(usage('STOP-WORKERS', 0, NOW + 3600))]);
+    expect(res.exitCode).toBe(0);
+    const latest = readLatestPaceRecord(p);
+    expect(latest?.usage).toEqual({ verdict: 'STOP-WORKERS', workers: 0, five_hour_pct: 42, weekly_pct: 61, wake_at: NOW + 3600 });
+    expect(latest?.rate_limit_stop).toBe(true);
+    expect(formatPaceLine(latest!)).toContain('usage STOP-WORKERS');
+  });
+
+  test('a --usage of the wrong shape exits 2 and writes nothing', () => {
+    const p = logPath();
+    expect(run(['--log', p, '--planned', '1', '--pace', JSON.stringify(pace), '--usage', '{"verdict":"GO"}']).exitCode).toBe(2);
+    expect(fs.existsSync(p)).toBe(false);
   });
 
   test('bad usage exits 2', () => {

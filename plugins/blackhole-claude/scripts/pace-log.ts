@@ -1,10 +1,12 @@
 import { parseFlags } from './lib/argv-flags.ts';
 import type { PaceGateVerdict } from './lib/pace-gate.ts';
-import { appendPaceLog, buildPaceRecord, isPaceVerdict, isResourceVerdict } from './lib/pace-log.ts';
+import { appendPaceLog, buildPaceRecord, isPaceVerdict, isResourceVerdict, isUsageRecordVerdict } from './lib/pace-log.ts';
 
-// Usage: bun run scripts/pace-log.ts --planned <n> --pace '<pace-gate JSON>' [--resource '<resource-gate JSON>'] [--log <path>] [--now <epoch s>]
+// Usage: bun run scripts/pace-log.ts --planned <n> --pace '<pace-gate JSON>' [--resource '<resource-gate JSON>']
+//        [--usage '<usage-budget JSON>'] [--log <path>] [--now <epoch s>]
+// `--usage` is scripts/usage-budget.ts's stdout, passed through unchanged.
 // Appends this spawn round's record to .blackhole/pace-log.jsonl and prints it; exit 0, or 2 on bad usage.
-const usage = "usage: pace-log.ts --planned <n> --pace '<json>' [--resource '<json>'] [--log <path>] [--now <epoch s>]";
+const usage = "usage: pace-log.ts --planned <n> --pace '<json>' [--resource '<json>'] [--usage '<json>'] [--log <path>] [--now <epoch s>]";
 const flags = parseFlags(process.argv.slice(2));
 const fail = (message: string): never => {
   console.error(`pace-log: ${message}\n${usage}`);
@@ -19,11 +21,17 @@ const parseVerdict = <T>(name: string, required: boolean, valid: (v: unknown) =>
   if (typeof raw !== 'string') return required ? fail(`--${name} is required`) : null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    return valid(parsed) ? parsed : fail(`--${name} does not have the ${name}-gate verdict shape`);
+    return valid(parsed) ? parsed : fail(`--${name} does not have the ${name === 'usage' ? 'usage-budget' : `${name}-gate`} verdict shape`);
   } catch (error) {
     return error instanceof SyntaxError ? fail(`--${name} is not valid JSON`) : fail(String(error));
   }
 };
-const record = buildPaceRecord(now, planned, parseVerdict('pace', true, isPaceVerdict) as PaceGateVerdict, parseVerdict('resource', false, isResourceVerdict));
+const record = buildPaceRecord(
+  now,
+  planned,
+  parseVerdict('pace', true, isPaceVerdict) as PaceGateVerdict,
+  parseVerdict('resource', false, isResourceVerdict),
+  parseVerdict('usage', false, isUsageRecordVerdict),
+);
 appendPaceLog(typeof flags.log === 'string' ? flags.log : '.blackhole/pace-log.jsonl', record);
 console.log(JSON.stringify(record));
