@@ -191,6 +191,21 @@ describe('fingerprintLog / pathsInLog', () => {
     expect(failingPaths(a)).toEqual(['src/a.test.ts']);
   });
 
+  test('an indented failure line after an ungrouped Run line is not skipped as an echoed setting', () => {
+    const a = 'Run bun test\n  ● adds A';
+    expect(fingerprintLog(a)).not.toBe('');
+    expect(fingerprintLog(a)).not.toBe(fingerprintLog('Run bun test\n  ● adds B'));
+  });
+
+  test('ISO timestamp and BOM prefixes are stripped before matching', () => {
+    const ts = (l: string) => `2026-08-12T10:00:03.1234567Z ${l}`;
+    const log = (f: string) =>
+      '\uFEFF' + [ts('##[group]Run bun test --fail-fast'), ts('bun test --fail-fast'), ts('##[endgroup]'), ts(`FAIL ${f}`)].join('\n');
+    expect(fingerprintLog(log('src/a.test.ts'))).toBe(fingerprintLog('FAIL src/a.test.ts'));
+    expect(fingerprintLog(log('src/a.test.ts'))).not.toBe(fingerprintLog(log('src/b.test.ts')));
+    expect(failingPaths(log('src/a.test.ts'))).toEqual(['src/a.test.ts']);
+  });
+
   test('pathsInLog extracts repo-relative file paths from error lines', () => {
     expect(pathsInLog('src/foo/bar.ts:12:3 error TS1\nok\nscripts/x.test.ts(4,1): fail')).toEqual([
       'src/foo/bar.ts',
