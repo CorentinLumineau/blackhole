@@ -5,6 +5,7 @@ import * as path from 'path';
 import { runRecord } from '../../campaign-record.ts';
 import { NOT_PROBED } from './budget.ts';
 import { sleepRow } from './launch-summary.ts';
+import { SLEEP_HOLD_FILE, type HoldDeps } from './sleep-hold.ts';
 import { buildWakeReport, CI_CHECK_IN_MINUTES, planWakeUps, readSleepSession, sleepOff, sleepOn } from './sleep-session.ts';
 import type { BudgetPanel, QueueIssue } from './types.ts';
 
@@ -41,8 +42,29 @@ function probedCampaign(config: Record<string, unknown>, queue?: Record<string, 
   } }));
   fs.utimesSync(cache, NOW, NOW);
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ ...config, resource_policy: { pace: { cache_path: cache } } }));
-  fs.writeFileSync(path.join(dir, 'run-context.json'), JSON.stringify({ context: { host: { value: 'claude' } }, route: { schedule } }));
+  fs.writeFileSync(path.join(dir, 'run-context.json'), JSON.stringify({ context: { host: { value: 'claude' } }, route: { schedule, state_store: 'local' } }));
   return dir;
+}
+
+/** A macOS host with caffeinate whose process calls are recorded, never made. */
+function fakeMac() {
+  const running = new Set<number>();
+  const calls: string[] = [];
+  const deps: HoldDeps = {
+    platform: 'darwin',
+    onPath: (bin) => bin === 'caffeinate',
+    spawnDetached: (command) => {
+      calls.push(`spawn ${command.join(' ')}`);
+      running.add(700);
+      return 700;
+    },
+    isRunning: (pid) => running.has(pid),
+    kill: (pid) => {
+      calls.push(`kill ${pid}`);
+      running.delete(pid);
+    },
+  };
+  return { deps, calls };
 }
 const panel = (over: Partial<BudgetPanel>): BudgetPanel => ({ ...NOT_PROBED, ...over });
 const PROBED = panel({
@@ -86,21 +108,39 @@ describe('campaign-record sleep --on | --off', () => {
   test('--on snapshots the done issues and the weekly %, --off turns it off, ask follows the flag', () => {
     const dir = probedCampaign({ merge_mode: 'leave-open' }, QUEUE);
     const flags = ['--campaign-dir', dir];
-    expect(runRecord(['sleep', '--on', ...flags], NOW)).toBe('Sleep mode on since Tue 17 Nov 02:00 UTC: owner questions are parked (0 waiting).');
+    const mac = fakeMac();
+    expect(runRecord(['sleep', '--on', ...flags], NOW, mac.deps)).toBe(
+      'Sleep mode on since Tue 17 Nov 02:00 UTC: owner questions are parked (0 waiting).\n' +
+        'Keep-awake: held by caffeinate (pid 700) until `sleep --off` or `wake`.',
+    );
     const block = readConfig(dir).sleep_mode;
     expect(block.enabled).toBe(true);
     expect(block.since).toBe(NOW_ISO);
     expect(block.baseline).toEqual({ done: [1, 2], weekly_pct: 61 });
     expect(runRecord(['ask', ...flags], NOW)).toBe('park');
-    expect(runRecord(['sleep', '--off', ...flags], NOW)).toBe('Sleep mode off: 0 parked decisions wait for `campaign-record.ts wake`.');
+    expect(runRecord(['sleep', '--off', ...flags], NOW, mac.deps)).toBe(
+      'Sleep mode off: 0 parked decisions wait for `campaign-record.ts wake`.\nKeep-awake: released caffeinate (pid 700).',
+    );
+    expect(mac.calls).toEqual(['spawn caffeinate -i', 'kill 700']);
+    expect(fs.existsSync(path.join(dir, SLEEP_HOLD_FILE))).toBe(false);
     expect(readConfig(dir).sleep_mode).toEqual({ enabled: false });
     expect(runRecord(['ask', ...flags], NOW)).toBe('ask');
   });
 
   test('--on with no queue.json records the done baseline as not measured', () => {
     const dir = campaign({});
-    runRecord(['sleep', '--on', '--campaign-dir', dir], NOW);
+    runRecord(['sleep', '--on', '--campaign-dir', dir], NOW, fakeMac().deps);
     expect(readConfig(dir).sleep_mode.baseline.done).toBeNull();
+  });
+
+  test('--on on an ephemeral host (state_store branch) takes no hold and says so', () => {
+    const dir = campaign({});
+    fs.writeFileSync(path.join(dir, 'run-context.json'), JSON.stringify({ route: { state_store: 'branch' } }));
+    const mac = fakeMac();
+    expect(runRecord(['sleep', '--on', '--campaign-dir', dir], NOW, mac.deps)).toEndWith(
+      '\nKeep-awake: not held — ephemeral host (state_store: branch), nothing to inhibit.',
+    );
+    expect(mac.calls).toEqual([]);
   });
 
   test('sleep needs exactly one of --on and --off', () => {
@@ -111,8 +151,13 @@ describe('campaign-record sleep --on | --off', () => {
 
   test('wake prints the report ahead of the batch and turns sleep mode off', () => {
     const dir = campaign({ sleep_mode: { enabled: true, since: NOW_ISO, baseline: { done: [1], weekly_pct: null } } }, QUEUE);
-    const out = JSON.parse(runRecord(['wake', '--campaign-dir', dir], NOW));
+    fs.writeFileSync(path.join(dir, SLEEP_HOLD_FILE), JSON.stringify({ pid: 700, tool: 'caffeinate', started_at: NOW_ISO }));
+    const mac = fakeMac();
+    mac.deps.isRunning = () => true;
+    const out = JSON.parse(runRecord(['wake', '--campaign-dir', dir], NOW, mac.deps));
     expect(Object.keys(out)[0]).toBe('report');
+    expect(out.keep_awake).toBe('Keep-awake: released caffeinate (pid 700).');
+    expect(mac.calls).toEqual(['kill 700']);
     expect(out.report).toContain('Work done: 1 issue finished — #2');
     expect(out.total).toBe(0);
     expect(readConfig(dir).sleep_mode).toEqual({ enabled: false });
@@ -232,13 +277,17 @@ describe('the sleep flag outside config.json', () => {
     expect(on.consequence).toBe('No question is asked: each is parked for the wake-up round, and this gate only prints.');
   });
 
-  test('run-context.json carries sleep_mode with its since, and the run says so', () => {
+  test('run-context.json carries sleep_mode with its since and keep-awake hold, and the run says so', () => {
     const dir = campaign({ sleep_mode: { enabled: true, since: NOW_ISO } });
     const proc = Bun.spawnSync(
       ['bun', 'run', path.resolve(import.meta.dir, '../../run-context.ts'), '--tools', 'agent,background-agents,ask-user-question,github-mcp', '--host', 'claude', '--surface', 'local', '--campaign-dir', dir],
       { env: { ...process.env, GH_TOKEN: '' } },
     );
-    expect(proc.stdout.toString()).toContain('sleep mode on: owner questions are parked (sleep-mode.md)');
-    expect(JSON.parse(fs.readFileSync(path.join(dir, 'run-context.json'), 'utf-8')).sleep_mode).toEqual({ enabled: true, since: NOW_ISO });
+    expect(proc.stdout.toString()).toContain('sleep mode on: owner questions are parked (sleep-mode.md); keep-awake: no hold recorded');
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'run-context.json'), 'utf-8')).sleep_mode).toEqual({
+      enabled: true,
+      since: NOW_ISO,
+      keep_awake: { held: false, reason: 'no hold recorded' },
+    });
   });
 });

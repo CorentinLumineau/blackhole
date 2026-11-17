@@ -18,6 +18,7 @@ const MACHINE_ONLY: Record<string, string> = {
   '.blackhole/run-context.json': '{}',
   '.blackhole/plugin-drift.json': '{}',
   '.blackhole/pace-log.jsonl': '{}',
+  '.blackhole/sleep-hold.json': '{"pid":1,"tool":"caffeinate"}',
   '.blackhole/queue.json.tmp': 'partial',
   '.blackhole/archive/queue-1.json': '{}',
   '.blackhole/hook-events/e.json': '{}',

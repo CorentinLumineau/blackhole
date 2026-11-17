@@ -12,14 +12,16 @@ asks as it always has. Never hand-edit it; the toggle is a script:
 
 | Owner says | Run |
 |------------|-----|
-| `/blackhole sleep`, or that they are leaving | `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts sleep --on` — sets `enabled: true` and records `since` and a `baseline` (issues already done, weekly usage %) for the wake-up report. Already on ⇒ nothing changes |
-| `/blackhole wake`, or their first message back | `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts wake` — the wake-up round below; its first step turns sleep mode off |
-| Cancel sleep with no round | `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts sleep --off` — prints how many parked decisions still wait for `wake` |
+| `/blackhole sleep`, or that they are leaving | `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts sleep --on` — sets `enabled: true` and records `since` and a `baseline` (issues already done, weekly usage %) for the wake-up report, then takes the keep-awake hold (§ Keeps itself alive). Already on ⇒ the config is unchanged and a live hold is kept |
+| `/blackhole wake`, or their first message back | `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts wake` — the wake-up round below; its first step turns sleep mode off and releases the hold |
+| Cancel sleep with no round | `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts sleep --off` — releases the hold and prints how many parked decisions still wait for `wake` |
 
 ## Launch gate and run context
 
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/run-context.ts` writes `sleep_mode: {enabled, since}` into `run-context.json` and
-prints `sleep mode on: owner questions are parked` when it is on, so every resume sees it. The
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/run-context.ts` writes `sleep_mode: {enabled, since, keep_awake}` into
+`run-context.json` and prints `sleep mode on: owner questions are parked` with the hold's state
+when it is on, so every resume sees it. `keep_awake` is `{held: true, tool, pid, since}` or
+`{held: false, reason}` (§ Keeps itself alive). The
 launch summary (`bun run status --summary`) carries a display-only **Sleep mode** row. What the
 launch gate does while sleep mode is on is `launch-gate.md` § Print-only mode's.
 
@@ -90,7 +92,29 @@ A sleeping campaign must not depend on the owner's hardware staying on. What eac
 | Host | Can | Cannot |
 |------|-----|--------|
 | Claude Code cloud session (or Project thread) | Run while a turn is active; wake on a scheduled routine or trigger (`route.schedule: routine`), a PR event (`ci_wait: pr-events`) or a peer's message; keep state on the `blackhole/state` branch | Stay alive between turns on its own: an idle session ends and its container is reclaimed. There is no OS idle inhibitor to hold, and none is needed — no owner machine is involved |
-| Local Claude Code / Cursor | Everything above that its run context reports | Run once the machine sleeps or the app quits. Holding the local host awake (an app hold plus an OS idle inhibitor where one exists) is tracked separately in #1238 |
+| Local Claude Code / Cursor | Everything above that its run context reports, and hold the machine awake with an OS idle inhibitor (below) | Run once the app quits, or once the machine sleeps where no inhibitor exists. An app-level hold (keeping Claude Code or Cursor itself open) is out of reach of a script |
+
+### Keep-awake hold (local hosts)
+
+`sleep --on` takes an OS idle inhibitor; `sleep --off` and `wake` release it
+(`scripts/lib/campaign-status/sleep-hold.ts`):
+
+| Host | Inhibitor |
+|------|-----------|
+| macOS with `caffeinate` | `caffeinate -i` |
+| Linux with `systemd-inhibit` | `systemd-inhibit --what=idle:sleep --mode=block sleep infinity` |
+| `route.state_store: branch` (cloud, Project thread, CI) | none: a no-op, and the output says `not held — ephemeral host` |
+| Any other host | none, and the output says so; sleep mode still goes on |
+
+The inhibitor runs detached in its own process group. Its pid, tool and start time are recorded in
+`.blackhole/sleep-hold.json`, a per-machine file that never travels on the state branch, so the
+hold is never orphaned: release stops the whole group (`systemd-inhibit`'s `sleep` child included)
+and drops the record. A recorded pid is trusted only while it still runs the recorded tool, so a
+reused pid is never killed. `sleep --on` again keeps a live hold and replaces a stale one (after a
+reboot, say); release on a stale record only clears it. With no `run-context.json`, the host is
+judged from the environment the same way `run-context.ts` judges it.
+
+### Wake-ups
 
 So on every host the campaign keeps itself alive by re-arming its own wake-ups. At every turn end
 in sleep mode (`checkpoint-protocol.md` § Write order, step 3), run:
