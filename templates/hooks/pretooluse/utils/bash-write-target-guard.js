@@ -685,7 +685,9 @@ const GIT_VALUE_GLOBALS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--na
  * `alias.fp=format-patch -o DIR`), a pager, editor, ssh, proxy, fsmonitor or askpass command, a
  * hooks path, an included config file, an external diff, textconv, merge driver or tool command, a
  * filter driver, a remote's upload/receive program, a gpg program or key command, a credential
- * helper, a sendemail command, or the `ext::` transport. Case-insensitive, like git's own keys. */
+ * helper, a sendemail command or SMTP server program, a pack-objects hook, a man or web browser
+ * viewer, an instaweb server, or a protocol allow rule (`ext::` runs a command). Case-insensitive,
+ * like git's own keys. */
 const GIT_EXEC_CONFIG_RE = new RegExp(
   [
     '^(?:alias|pager|filter|credential)\\.',
@@ -696,27 +698,49 @@ const GIT_EXEC_CONFIG_RE = new RegExp(
     '^(?:merge\\..+\\.driver|(?:diff|merge)tool\\..+\\.cmd)$',
     '^remote\\..+\\.(?:uploadpack|receivepack)$',
     '^gpg\\.(?:.+\\.)?program$|^gpg\\.ssh\\.defaultkeycommand$',
-    '^sendemail\\.(?:.+\\.)?[a-z]*cmd$',
-    '^protocol\\.ext\\.allow$',
+    '^sendemail\\.(?:.+\\.)?(?:[a-z]*cmd|smtpserver)$',
+    '^protocol\\.(?:.+\\.)?allow$',
+    '^uploadpack\\.packobjectshook$',
+    '^(?:man|browser)\\..+\\.(?:cmd|path)$|^man\\.viewer$|^web\\.browser$',
+    '^instaweb\\.httpd$',
   ].join('|'),
   'i',
 );
 
+/** A backslash, `$` or backtick in a `-c` word: the shell unescapes or expands it (`core.pa\\ger`,
+ * `$'core.pager'`, `"$K"`, `\\!x`) before git reads it, so the text in the string is not the text
+ * git applies. */
+const SHELL_REWRITTEN_RE = /[\\$`]/;
+
 /** `KEY` and `VALUE` of a `-c`/`--config-env` setting, with the shell's quote characters removed
- * (`"alias.d"='!x'` sets `alias.d`). */
+ * (`"alias.d"='!x'` sets `alias.d`), and whether the shell rewrites either half
+ * (`SHELL_REWRITTEN_RE`), which makes that half unknown. */
 const splitGitSetting = (setting) => {
   const eq = setting.indexOf('=');
+  const rawKey = eq === -1 ? setting : setting.slice(0, eq);
+  const rawValue = eq === -1 ? '' : setting.slice(eq + 1);
   const unquote = (text) => text.replace(/['"]/g, '');
-  return eq === -1 ? { key: unquote(setting), value: '' } : { key: unquote(setting.slice(0, eq)), value: unquote(setting.slice(eq + 1)) };
+  return {
+    key: unquote(rawKey),
+    value: unquote(rawValue),
+    dynamicKey: SHELL_REWRITTEN_RE.test(rawKey),
+    dynamicValue: SHELL_REWRITTEN_RE.test(rawValue),
+  };
 };
 
-/** True when a setting makes git run a command: one of `GIT_EXEC_CONFIG_RE`'s keys, or a
- * submodule update mode that is a `!command`. */
-const isGitExecConfig = ({ key, value }) =>
-  GIT_EXEC_CONFIG_RE.test(key) || (/^submodule\..+\.update$/i.test(key) && value.startsWith('!'));
+/** True when a setting may make git run a command: a key the shell rewrites (it may name any key),
+ * one of `GIT_EXEC_CONFIG_RE`'s keys, or a submodule update mode that is (or may be) a `!command`. */
+const isGitExecConfig = ({ key, value, dynamicKey, dynamicValue }) =>
+  dynamicKey ||
+  GIT_EXEC_CONFIG_RE.test(key) ||
+  (/^submodule\..+\.update$/i.test(key) && (dynamicValue || value.startsWith('!')));
 
-/** Environment variables through which git reads extra config or runs a command. */
-const GIT_EXEC_ENV_RE = /(?:^|[\s;&|(])(?:export\s+)?GIT_(?:CONFIG\w*|PAGER|EXTERNAL_DIFF|SSH|SSH_COMMAND|EDITOR|SEQUENCE_EDITOR|ASKPASS|PROXY_COMMAND)=/;
+/** Environment variables through which git reads extra config, runs a command (its own `GIT_*`
+ * ones and the generic `PAGER`, `EDITOR`, `VISUAL`, `SSH_ASKPASS`), loads its subcommands from
+ * another directory (`GIT_EXEC_PATH`) or allows the command-running `ext::` transport
+ * (`GIT_ALLOW_PROTOCOL`). */
+const GIT_EXEC_ENV_RE =
+  /(?:^|[\s;&|(])(?:export\s+)?(?:GIT_(?:CONFIG\w*|PAGER|EXTERNAL_DIFF|SSH|SSH_COMMAND|EDITOR|SEQUENCE_EDITOR|ASKPASS|PROXY_COMMAND|EXEC_PATH|ALLOW_PROTOCOL)|PAGER|EDITOR|VISUAL|SSH_ASKPASS)=/;
 
 /** Walks git's global options (everything before the subcommand) and returns the directories a
  * relative output path may resolve against, the subcommand index, and whether a `-c` setting makes
@@ -740,8 +764,10 @@ const gitGlobalBases = (args) => {
     if (name === '-c' || name === '--config-env') {
       const setting = splitGitSetting(value);
       if (isGitExecConfig(setting)) execConfig = true;
-      if (name === '-c' && setting.key.toLowerCase() === 'format.outputdirectory') outputDirectory = setting.value;
-      if (name === '--config-env' && setting.key.toLowerCase() === 'format.outputdirectory') outputDirectory = UNRESOLVABLE_TARGET;
+      if (setting.key.toLowerCase() === 'format.outputdirectory') {
+        // `--config-env` names an environment variable, not the directory.
+        outputDirectory = name === '-c' && !setting.dynamicValue ? setting.value : UNRESOLVABLE_TARGET;
+      }
     }
     if (name === '-C' && value) {
       if (path.isAbsolute(value)) segments = [value];

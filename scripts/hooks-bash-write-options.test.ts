@@ -464,3 +464,85 @@ describe('validate-bash-command.js — #1222 git -c aliases, -C format-patch, pi
     });
   });
 });
+
+// Round-2 review of #1232 (#1222): `--config-env` output directories, `-c` words the shell rewrites,
+// and the remaining exec-carrying environment variables and config keys.
+describe('bash-write-target-guard.js — #1222 round 2: config words, env and keys', () => {
+  const verdict = async (build: (main: string) => string) => {
+    let result: unknown = undefined;
+    await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      result = evaluateBashWriteTargets(build(mainRepo), worktree);
+    });
+    return result;
+  };
+
+  test('#1222: `git --config-env=format.outputDirectory=D format-patch -1` warns (directory read from the env)', async () => {
+    expect(await verdict(() => 'git --config-env=format.outputDirectory=D format-patch -1')).toMatchObject({
+      tier: 'warn',
+      pattern_id: 'bash-write-target-unresolvable',
+    });
+  });
+
+  // A backslash, `$` or `$'..'` in a `-c` word is rewritten by the shell before git sees it, so
+  // the key or value read from the string is not the one git applies.
+  for (const build of [
+    () => 'git -c core.pa\\ger=x log',
+    () => 'git -c \\core.pager=x log',
+    () => "git -c $'core.pager'=x log",
+    () => 'git -c "$K"=x log',
+    () => 'git -c core.$P=x log',
+    () => 'git -c submodule.foo.update=\\!x submodule update',
+    (m: string) => `git -c format.output\\Directory=${m} format-patch -1`,
+    (m: string) => `git -c format.outputDirectory=\\${m} format-patch -1`,
+  ]) {
+    test(`#1222: \`${build('<main>')}\` warns or blocks, never allows`, async () => {
+      expect(await verdict(build)).toMatchObject({ tier: expect.stringMatching(/^(warn|block)$/) });
+    });
+  }
+
+  test('#1222: a `$` in the value of a key that runs nothing stays allowed', async () => {
+    expect(await verdict(() => 'git -c user.name="$NAME" status')).toBeNull();
+  });
+
+  for (const command of [
+    'GIT_SSH=x git fetch',
+    'GIT_EDITOR=x git commit',
+    'GIT_SEQUENCE_EDITOR=x git rebase -i HEAD~2',
+    'GIT_ASKPASS=x git fetch',
+    'GIT_PROXY_COMMAND=x git fetch',
+    'PAGER=x git log',
+    'EDITOR=x git commit',
+    'VISUAL=x git commit',
+    'SSH_ASKPASS=x git fetch',
+    'GIT_EXEC_PATH=/tmp/x git log',
+    'GIT_ALLOW_PROTOCOL=ext git fetch',
+  ]) {
+    test(`#1222: \`${command}\` warns (git runs a command through the environment)`, async () => {
+      expect(await verdict(() => command)).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+    });
+  }
+
+  for (const setting of [
+    'protocol.allow=always',
+    'sendemail.smtpServer=/tmp/x',
+    'uploadpack.packObjectsHook=x',
+    'man.foo.cmd=x',
+    'man.foo.path=x',
+    'man.viewer=foo',
+    'browser.foo.cmd=x',
+    'browser.foo.path=x',
+    'web.browser=foo',
+    'instaweb.httpd=x',
+  ]) {
+    test(`#1222: \`git -c ${setting} log\` warns (exec-carrying config key)`, async () => {
+      expect(await verdict(() => `git -c ${setting} log`)).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+    });
+  }
+
+  for (const command of ['PAGERS=x git log', 'MY_EDITOR=x git status', 'git -c man.foo.other=x log']) {
+    test(`#1222: \`${command}\` (not an exec variable or key) stays allowed`, async () => {
+      expect(await verdict(() => command)).toBeNull();
+    });
+  }
+});
