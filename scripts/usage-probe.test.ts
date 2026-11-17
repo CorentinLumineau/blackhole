@@ -60,6 +60,11 @@ describe('eventsToRateLimits', () => {
       { ccr: { data: [event({ seven_day: week }, NOW - 30), event({ seven_day: { ...week, utilization: 0.1 } }, NOW - 900)] } },
       { seven_day: { used_percentage: 21, resets_at: NOW + 3 * DAY } },
     ],
+    [
+      'newest event of the list_events wrapper wins when it comes last',
+      { ccr: { data: [event({ seven_day: { ...week, utilization: 0.1 } }, NOW - 900), event({ seven_day: week }, NOW - 30)] } },
+      { seven_day: { used_percentage: 21, resets_at: NOW + 3 * DAY } },
+    ],
   ];
   for (const [name, input, expected] of cases) {
     test(name, () => {
@@ -70,6 +75,24 @@ describe('eventsToRateLimits', () => {
   test('reports the newest event time as observedAt', () => {
     expect(eventsToRateLimits(JSON.stringify(event({ seven_day: week }, NOW - 120)), NOW).observedAt).toBe(NOW - 120);
   });
+
+  test('a future created_at is clamped to now', () => {
+    expect(eventsToRateLimits(JSON.stringify(event({ seven_day: week }, NOW + 500)), NOW).observedAt).toBe(NOW);
+  });
+
+  const badTimes: [string, unknown][] = [
+    ['missing', undefined],
+    ['unparseable', 'not-a-date'],
+    ['non-string', 1795000000],
+  ];
+  for (const [name, createdAt] of badTimes) {
+    test(`a ${name} created_at is refused`, () => {
+      const e: Record<string, unknown> = event({ seven_day: week });
+      if (createdAt === undefined) delete e.created_at;
+      else e.created_at = createdAt;
+      expect(() => eventsToRateLimits(JSON.stringify(e), NOW)).toThrow(/created_at/);
+    });
+  }
 
   test('every window past its reset leaves no limits', () => {
     expect(() => eventsToRateLimits(JSON.stringify(event({ seven_day: { ...week, resetsAt: NOW - 1 } })), NOW)).toThrow(
@@ -94,6 +117,42 @@ describe('usage-probe CLI', () => {
       expect(r.code).toBe(2);
       expect(r.err).toContain('not valid JSON');
       expect(fs.existsSync(cache)).toBe(false);
+    });
+  });
+
+  test('a missing created_at exits 2 and writes nothing', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const cache = path.join(dir, 'rl.json');
+      const e: Record<string, unknown> = event({ seven_day: { utilization: 0.2, resetsAt: NOW + DAY } });
+      delete e.created_at;
+      const r = runProbe(dir, JSON.stringify(e), ['--cache', cache]);
+      expect(r.code).toBe(2);
+      expect(r.err).toContain('created_at');
+      expect(fs.existsSync(cache)).toBe(false);
+    });
+  });
+
+  test('a future created_at is written dated to now', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const cache = path.join(dir, 'rl.json');
+      const r = runProbe(dir, JSON.stringify(event({ seven_day: { utilization: 0.2, resetsAt: NOW + DAY } }, NOW + 500)), ['--cache', cache]);
+      expect(r.code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(cache, 'utf-8')).observed_at).toBe(NOW);
+      expect(Math.round(fs.statSync(cache).mtimeMs / 1000)).toBe(NOW);
+      expect(JSON.parse(r.out).age_seconds).toBe(0);
+    });
+  });
+
+  test('a cache write failure exits 3 with a one-line message', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const blocker = path.join(dir, 'not-a-dir');
+      fs.writeFileSync(blocker, '');
+      const cache = path.join(blocker, 'rl.json');
+      const r = runProbe(dir, JSON.stringify(event({ seven_day: { utilization: 0.2, resetsAt: NOW + DAY } })), ['--cache', cache]);
+      expect(r.code).toBe(3);
+      expect(r.err.trim().split('\n')).toHaveLength(1);
+      expect(r.err).toContain(`cannot write rate-limit cache at ${cache}`);
+      expect(r.out).toBe('');
     });
   });
 

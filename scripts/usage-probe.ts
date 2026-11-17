@@ -9,8 +9,10 @@ import { resolveRateLimitCachePath, type RateLimits } from './lib/pace-gate.ts';
 // one event or its `{"ccr":{"data":[...]}}` wrapper, newest event wins) into the normalized
 // RateLimits shape and writes it to the statusline rate-limit cache, so pace-gate.ts and
 // usage-budget.ts read one place. The cache file's mtime is set to the event's own time, so the
-// readers' max-age check measures how old the reading is, not when the probe ran.
-// Exit 0 written; 1 no current window in the event (nothing written); 2 bad usage or malformed input.
+// readers' max-age check measures how old the reading is, not when the probe ran; a `created_at`
+// in the future is clamped to now.
+// Exit 0 written; 1 no current window in the event (nothing written); 2 bad usage or malformed input,
+// including a missing or unparseable `created_at` (nothing written); 3 the cache could not be written.
 const USAGE = 'usage: usage-probe.ts --from-events <file|-> [--cache <path>] [--config <path>] [--now <epoch s>]';
 const WINDOWS = ['five_hour', 'seven_day'] as const;
 
@@ -20,9 +22,12 @@ type Info = { unifiedWindows?: Record<string, { utilization?: unknown; resetsAt?
 type Event = { created_at?: unknown; rate_limit_event?: Record<string, { rate_limit_info?: Info }> };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+// Without a readable event time the reading's age is unknown, so the event is refused rather than
+// dated to the probe run.
 const eventTime = (e: Event): number => {
   const t = typeof e.created_at === 'string' ? Date.parse(e.created_at) : NaN;
-  return Number.isFinite(t) ? Math.floor(t / 1000) : 0;
+  if (!Number.isFinite(t)) throw new Error('rate_limit_event has a missing or unparseable created_at');
+  return Math.floor(t / 1000);
 };
 
 const pickNewestEvent = (parsed: unknown): Event => {
@@ -32,7 +37,7 @@ const pickNewestEvent = (parsed: unknown): Event => {
   return events.reduce((a, b) => (eventTime(b) > eventTime(a) ? b : a));
 };
 
-export const eventsToRateLimits = (raw: string, now: number): { limits: RateLimits; observedAt: number | null } => {
+export const eventsToRateLimits = (raw: string, now: number): { limits: RateLimits; observedAt: number } => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -60,8 +65,7 @@ export const eventsToRateLimits = (raw: string, now: number): { limits: RateLimi
     }
   }
   if (!limits.five_hour && !limits.seven_day) throw new NoCurrentWindow('rate_limit_event carries no current five_hour or seven_day window');
-  const observedAt = eventTime(event);
-  return { limits, observedAt: observedAt > 0 ? observedAt : null };
+  return { limits, observedAt: Math.min(eventTime(event), now) };
 };
 
 const main = (): void => {
@@ -97,12 +101,17 @@ const main = (): void => {
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error), error instanceof NoCurrentWindow ? 1 : 2);
   }
-  const observedAt = reading.observedAt ?? now;
-  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-  fs.writeFileSync(`${cachePath}.tmp`, JSON.stringify({ rate_limits: reading.limits, source: 'rate_limit_event', observed_at: observedAt }));
-  fs.renameSync(`${cachePath}.tmp`, cachePath);
-  fs.utimesSync(cachePath, observedAt, observedAt);
-  console.log(JSON.stringify({ cache: cachePath, observed_at: observedAt, age_seconds: Math.max(0, now - observedAt), rate_limits: reading.limits }));
+  const { limits, observedAt } = reading;
+  try {
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    fs.writeFileSync(`${cachePath}.tmp`, JSON.stringify({ rate_limits: limits, source: 'rate_limit_event', observed_at: observedAt }));
+    fs.renameSync(`${cachePath}.tmp`, cachePath);
+    fs.utimesSync(cachePath, observedAt, observedAt);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return fail(`cannot write rate-limit cache at ${cachePath}: ${detail.replace(/\s+/g, ' ')}`, 3);
+  }
+  console.log(JSON.stringify({ cache: cachePath, observed_at: observedAt, age_seconds: Math.max(0, now - observedAt), rate_limits: limits }));
 };
 
 if (import.meta.main) main();
