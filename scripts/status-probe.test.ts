@@ -42,7 +42,7 @@ describe('recordProbe', () => {
     expect(recordProbe(prior, { ok: true, url: URL }, NOW)).toEqual({ changed: false, next: prior });
     expect(recordProbe(prior, { ok: false, url: URL, reason: 'gone' }, NOW).changed).toBe(true);
     expect(recordProbe(prior, { ok: true, url: 'https://claude.ai/code/artifact/other' }, NOW).changed).toBe(true);
-    // Ten minutes old: no longer fresh, so it is rewritten (an hour-old probe used to be kept for 24 h).
+    // Ten minutes old: no longer fresh, so it is rewritten.
     for (const at of ['2026-11-17T09:50:00.000Z', '2026-11-17T09:00:00.000Z']) {
       const old = { ...ARTIFACT, last_probe: { at, ok: true, url: URL } };
       expect(recordProbe(old, { ok: true, url: URL }, NOW).next.last_probe?.at).toBe(NOW);

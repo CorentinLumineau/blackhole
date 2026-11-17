@@ -1,5 +1,5 @@
 <meta name="dash-one-writer">
-<meta name="bh-template-version" content="5">
+<meta name="bh-template-version" content="6">
 <style>
   /* Colours: the artifact page's own tokens, with a fallback for a page that defines none. --cd-info,
      the warm "your move" panel and the done column have no page token, so they are set here. */
@@ -98,6 +98,11 @@
       <ul class="cd-big" data-draw="blockers" data-source="blockers"></ul>
       <p class="cd-empty" data-empty="blockers" hidden>Nothing blocks the run.</p>
     </section>
+    <section class="cd-panel" id="pending" aria-labelledby="cd-pending-h">
+      <h2 class="cd-h2" id="cd-pending-h">Decisions waiting for you <b class="t-warn" data-draw="pending_count" data-source="pending">0</b></h2>
+      <ol class="cd-list" data-draw="pending" data-source="pending"></ol>
+      <p class="cd-empty" data-empty="pending" hidden>No decision is waiting for you.</p>
+    </section>
   </div>
 
   <div class="cd-filter" data-draw="filter" data-source="streams" role="group" aria-label="Show one workstream on the board"></div>
@@ -135,6 +140,11 @@
       <h2 class="cd-h2" id="cd-budget-h">Usage budget</h2>
       <dl class="cd-kv" data-draw="budget" data-source="budget"></dl>
       <p class="cd-empty" data-empty="budget" hidden>usage not probed</p>
+    </section>
+    <section class="cd-panel" id="run" aria-labelledby="cd-run-h">
+      <h2 class="cd-h2" id="cd-run-h">Run</h2>
+      <dl class="cd-kv" data-draw="run" data-source="run"></dl>
+      <p class="cd-empty" data-empty="run" hidden>Run state not recorded.</p>
     </section>
     <section class="cd-panel" id="decisions" aria-labelledby="cd-dec-h">
       <h2 class="cd-h2" id="cd-dec-h">Your decisions</h2>
@@ -385,6 +395,21 @@
     mk('dt', '', String(r.key || '')),
     mk('dd', '', String(r.value || ''), { source: 'budget', field: 'value', row: i }),
   ])));
+  dash.draw('run', (dl) => fill(dl, 'run', () => rowsOf('run').flatMap((r, i) => [
+    mk('dt', '', String(r.key || '')),
+    mk('dd', '', String(r.value || ''), { source: 'run', field: 'value', row: i }),
+  ])));
+  dash.draw('pending_count', (el) => {
+    const st = dash.data('pending').status;
+    el.textContent = st === 'ok' ? String(rowsOf('pending').length) : '—';
+  });
+  dash.draw('pending', (ol) => fill(ol, 'pending', () => rowsOf('pending').map((r, i) => {
+    const li = document.createElement('li');
+    const waits = Number(r.waiting_items) || 0;
+    li.append(mk('span', 'cd-strong', String(r.question || ''), { source: 'pending', field: 'question', row: i }),
+      mk('span', 'cd-muted', ' recommended: ' + String(r.recommended || '—') + ' \u00b7 holds ' + waits + (waits === 1 ? ' item' : ' items')));
+    return li;
+  })));
   dash.draw('denials', (ul) => fill(ul, 'denials', () => rowsOf('denials').map((r, i) => {
     const li = document.createElement('li');
     li.append(mk('code', '', String(r.pattern_id || ''), { source: 'denials', field: 'pattern_id', row: i }), mk('span', 'cd-muted', ' ' + String(r.deny || 0) + ' deny \u00b7 ' + String(r.warn || 0) + ' warn'));

@@ -1,4 +1,4 @@
-import type { GateOption, LaunchRow } from './launch-summary.ts';
+import type { GateOption, LaunchRow } from './types.ts';
 
 // The launch summary's Status page row: whether the stored page opens from this account (its
 // `last_probe`), and whether its template is behind the shipped one. Pure.
