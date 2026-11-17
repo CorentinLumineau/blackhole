@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { minMs, PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
 
@@ -255,4 +257,304 @@ describe('validate-bash-command.js — #1184 re-review: git globals, format-patc
       expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(500);
     });
   });
+});
+
+// Follow-ups from the #1208 review (#1222): linear containment for deep relative targets, git
+// aliases and exec-carrying config passed with `-c`, format-patch writing into the `-C` directory,
+// and a piped `grep bash` that is not a shell.
+describe('bash-write-target-guard.js — #1222 deep-path containment stays linear', () => {
+  const guard = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+
+  test('#1222: 64k chained `-C a` options are evaluated in linear time', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
+      const { evaluateBashWriteTargets } = guard();
+      const command = `git ${'-C a '.repeat(64_000)}diff --output=o1`;
+      // The bottom-up ancestor walk took ~4 s here (16k: ~0.4 s); a linear walk is well under 250 ms.
+      expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
+    });
+  });
+
+  // Direct timings of the resolver itself: the bottom-up walk took ~1.8 s on the 32k-deep missing
+  // path, and the plain top-down walk ~70 ms on the deep existing tree (quadratic in its depth).
+  test('#1222: resolveExistingAncestor on a 32k-deep missing path stays fast', () => {
+    const { resolveExistingAncestor } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+    const deep = path.join(os.tmpdir(), 'a/'.repeat(32_000), 'x');
+    expect(resolveExistingAncestor(deep)).toBe(fs.realpathSync(os.tmpdir()));
+    expect(minMs(() => resolveExistingAncestor(deep))).toBeLessThan(100);
+  });
+
+  test('#1222: resolveExistingAncestor under a deep existing tree behind a symlink stays fast', () => {
+    const { resolveExistingAncestor } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-1222-deep-'));
+    try {
+      fs.mkdirSync(path.join(base, 'real'));
+      fs.symlinkSync(path.join(base, 'real'), path.join(base, 'link'));
+      const depth = Math.floor((3_800 - base.length) / 2);
+      const tree = 'a/'.repeat(depth);
+      fs.mkdirSync(path.join(base, 'real', tree), { recursive: true });
+      const target = path.join(base, 'link', tree, 'missing', 'x');
+      expect(resolveExistingAncestor(target)).toBe(fs.realpathSync(path.join(base, 'real', tree)));
+      expect(minMs(() => resolveExistingAncestor(target))).toBeLessThan(30);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  test('#1222: a 32k-character `-c` key is matched in linear time', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      for (const key of [`sendemail.${'a.'.repeat(16_000)}x`, `diff.${'a.'.repeat(16_000)}x`, `includeIf.${'a.'.repeat(16_000)}x`]) {
+        expect(minMs(() => evaluateBashWriteTargets(`git -c ${key}=1 log`, worktree))).toBeLessThan(250);
+      }
+    });
+  });
+
+  test('#1222: a deep relative path that climbs out with `..` is still denied', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+      const up = path.relative(worktree, mainRepo);
+      const verdict = guard().evaluateBashWriteTargets(`echo hi > ${'a/'.repeat(50)}${'../'.repeat(50)}${up}/x`, worktree);
+      expect(verdict).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    });
+  });
+});
+
+describe('validate-bash-command.js — #1222 git -c aliases, -C format-patch, piped grep', () => {
+  // One row per exec-carrying config key family; removing any family from the guard fails its row.
+  for (const setting of [
+    'filter.lfs.clean=x',
+    'pager.log=x',
+    'core.editor=x',
+    'core.fsmonitor=x',
+    'core.hooksPath=x',
+    'core.askpass=x',
+    'sequence.editor=x',
+    'diff.foo.textconv=x',
+    'diff.foo.command=x',
+    'gpg.program=x',
+    'gpg.x509.program=x',
+    'credential.helper=x',
+    'include.path=x',
+    'includeIf.gitdir:/x.path=x',
+    'core.alternateRefsCommand=x',
+    'core.gitProxy=x',
+    'remote.origin.uploadpack=x',
+    'remote.origin.receivepack=x',
+    'merge.foo.driver=x',
+    'difftool.foo.cmd=x',
+    'mergetool.foo.cmd=x',
+    'submodule.foo.update=!x',
+    'gpg.ssh.defaultKeyCommand=x',
+    'sendemail.sendmailCmd=x',
+    'sendemail.toCmd=x',
+    'protocol.ext.allow=always',
+    '"alias.d"=x',
+    'core.pa"ger"=x',
+  ]) {
+    test(`#1222: \`git -c ${setting} log\` warns (exec-carrying config key)`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
+        const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+        expect(evaluateBashWriteTargets(`git -c ${setting} log`, worktree)).toMatchObject({ tier: 'warn' });
+      });
+    });
+  }
+
+  for (const command of [
+    'GIT_PAGER=x git log',
+    'env GIT_EXTERNAL_DIFF=x git diff',
+    'GIT_SSH_COMMAND=x git fetch',
+    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0=x git log',
+    "GIT_CONFIG_PARAMETERS=\"'core.pager'='x'\" git log",
+    'export GIT_CONFIG_GLOBAL=/tmp/cfg; git log',
+  ]) {
+    test(`#1222: \`${command}\` warns (git config or command through the environment)`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
+        const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+        expect(evaluateBashWriteTargets(command, worktree)).toMatchObject({ tier: 'warn' });
+      });
+    });
+  }
+
+  test('#1222: `submodule.foo.update=checkout` (no command) stays allowed', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      expect(evaluateBashWriteTargets('git -c submodule.foo.update=checkout status', worktree)).toBeNull();
+    });
+  });
+
+  for (const build of [
+    (m: string) => `git -c format.outputDirectory=${m} format-patch -1`,
+    (m: string) => `git -c Format.OutputDirectory="${m}" format-patch -1`,
+  ]) {
+    test(`#1222: \`${build('<main>')}\` (configured output directory) is denied`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+        const result = await run(build(mainRepo), worktree);
+
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+      });
+    });
+  }
+
+  for (const command of [
+    "git -c alias.d='!touch /etc/x' d",
+    'git -c alias.d=!sh d',
+    "git -c alias.fp='format-patch -o /etc' fp",
+    "git -c 'alias.d=!touch /etc/x' d",
+    'git --config-env=alias.d=CMD d',
+    "git -c core.pager='sh -c x' log",
+    "git -c core.sshCommand='touch /etc/x' fetch",
+    "git -c diff.external='touch /etc/x' diff",
+  ]) {
+    test(`#1222: \`${command}\` warns (git runs a command the string does not show)`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+        const result = await run(command, worktree);
+
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+      });
+    });
+  }
+
+  test('#1222: `git -c user.name=x commit` (no exec-carrying key) stays allowed with no event', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+      const result = await run("git -c user.name=x -c core.autocrlf=false status", worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('#1222: `git -C <outside> format-patch -1` (patches written into the -C directory) is denied', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+      const result = await run(`git -C ${mainRepo} format-patch -1`, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    });
+  });
+
+  for (const command of ['git format-patch -1', 'git -C sub format-patch -1', 'git -C MAIN format-patch --stdout -1']) {
+    test(`#1222: \`${command}\` stays allowed`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+        const result = await run(command.replace('MAIN', mainRepo), worktree);
+
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
+  for (const command of ['ps aux | grep bash', 'ps | grep -c sh', "pgrep -a node | rg 'bash'"]) {
+    test(`#1222: \`${command}\` is not a piped shell and stays allowed with no event`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+        const result = await run(command, worktree);
+
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
+  test('#1222: `echo x | grep x | bash` still warns (the last stage is a shell)', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+      const result = await run("echo 'x' | grep x | bash", worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+    });
+  });
+});
+
+// Round-2 review of #1232 (#1222): `--config-env` output directories, `-c` words the shell rewrites,
+// and the remaining exec-carrying environment variables and config keys.
+describe('bash-write-target-guard.js — #1222 round 2: config words, env and keys', () => {
+  const verdict = async (build: (main: string) => string) => {
+    let result: unknown = undefined;
+    await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      result = evaluateBashWriteTargets(build(mainRepo), worktree);
+    });
+    return result;
+  };
+
+  test('#1222: `git --config-env=format.outputDirectory=D format-patch -1` warns (directory read from the env)', async () => {
+    expect(await verdict(() => 'git --config-env=format.outputDirectory=D format-patch -1')).toMatchObject({
+      tier: 'warn',
+      pattern_id: 'bash-write-target-unresolvable',
+    });
+  });
+
+  // A backslash, `$` or `$'..'` in a `-c` word is rewritten by the shell before git sees it, so
+  // the key or value read from the string is not the one git applies.
+  for (const build of [
+    () => 'git -c core.pa\\ger=x log',
+    () => 'git -c \\core.pager=x log',
+    () => "git -c $'core.pager'=x log",
+    () => 'git -c "$K"=x log',
+    () => 'git -c core.$P=x log',
+    () => 'git -c submodule.foo.update=\\!x submodule update',
+    (m: string) => `git -c format.output\\Directory=${m} format-patch -1`,
+    (m: string) => `git -c format.outputDirectory=\\${m} format-patch -1`,
+    () => 'git -c core.`echo`pager=x log',
+    () => 'git -c {alias.x=!touch\\ X,-p} x',
+    () => 'git {-c,alias.x=!touch\\ X} x',
+    () => 'git -c {alias.x=!touch,-p} x',
+    () => 'git {-c,alias.x=!touch} x',
+    () => 'git -c x=1 {-c,alias.x=!touch} x',
+  ]) {
+    test(`#1222: \`${build('<main>')}\` warns or blocks, never allows`, async () => {
+      expect(await verdict(build)).toMatchObject({ tier: expect.stringMatching(/^(warn|block)$/) });
+    });
+  }
+
+  for (const command of ["git commit -m '{a,b}'", 'git log --format="{x,y}"', 'git log \\{a,b\\}', 'git log {a}']) {
+    test(`#1222: \`${command}\` (no unquoted brace expansion) stays allowed`, async () => {
+      expect(await verdict(() => command)).toBeNull();
+    });
+  }
+
+  test('#1222: a `$` in the value of a key that runs nothing stays allowed', async () => {
+    expect(await verdict(() => 'git -c user.name="$NAME" status')).toBeNull();
+  });
+
+  for (const command of [
+    'GIT_SSH=x git fetch',
+    'GIT_EDITOR=x git commit',
+    'GIT_SEQUENCE_EDITOR=x git rebase -i HEAD~2',
+    'GIT_ASKPASS=x git fetch',
+    'GIT_PROXY_COMMAND=x git fetch',
+    'PAGER=x git log',
+    'EDITOR=x git commit',
+    'VISUAL=x git commit',
+    'SSH_ASKPASS=x git fetch',
+    'GIT_EXEC_PATH=/tmp/x git log',
+    'GIT_ALLOW_PROTOCOL=ext git fetch',
+  ]) {
+    test(`#1222: \`${command}\` warns (git runs a command through the environment)`, async () => {
+      expect(await verdict(() => command)).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+    });
+  }
+
+  for (const setting of [
+    'protocol.allow=always',
+    'sendemail.smtpServer=/tmp/x',
+    'uploadpack.packObjectsHook=x',
+    'man.foo.cmd=x',
+    'man.foo.path=x',
+    'man.viewer=foo',
+    'browser.foo.cmd=x',
+    'browser.foo.path=x',
+    'web.browser=foo',
+    'instaweb.httpd=x',
+  ]) {
+    test(`#1222: \`git -c ${setting} log\` warns (exec-carrying config key)`, async () => {
+      expect(await verdict(() => `git -c ${setting} log`)).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+    });
+  }
+
+  for (const command of ['PAGERS=x git log', 'MY_EDITOR=x git status', 'git -c man.foo.other=x log']) {
+    test(`#1222: \`${command}\` (not an exec variable or key) stays allowed`, async () => {
+      expect(await verdict(() => command)).toBeNull();
+    });
+  }
 });

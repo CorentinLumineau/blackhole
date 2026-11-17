@@ -680,14 +680,86 @@ const uniqTargets = (args) => {
 /** git global options that take the next token as their value when not written `--name=value`. */
 const GIT_VALUE_GLOBALS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env', '--attr-source']);
 
+/** Config keys through which `git -c KEY=VALUE` (or `--config-env=KEY=ENVVAR`) makes git run a
+ * command or a different subcommand, or read more config that may: an alias (`alias.d=!cmd`, or
+ * `alias.fp=format-patch -o DIR`), a pager, editor, ssh, proxy, fsmonitor or askpass command, a
+ * hooks path, an included config file, an external diff, textconv, merge driver or tool command, a
+ * filter driver, a remote's upload/receive program, a gpg program or key command, a credential
+ * helper, a sendemail command or SMTP server program, a pack-objects hook, a man or web browser
+ * viewer, an instaweb server, or a protocol allow rule (`ext::` runs a command). Case-insensitive,
+ * like git's own keys. */
+const GIT_EXEC_CONFIG_RE = new RegExp(
+  [
+    '^(?:alias|pager|filter|credential)\\.',
+    '^core\\.(?:pager|editor|sshcommand|fsmonitor|hookspath|askpass|alternaterefscommand|gitproxy)$',
+    '^sequence\\.editor$',
+    '^(?:include\\.path|includeif\\..+\\.path)$',
+    '^diff\\.(?:.+\\.)?(?:external|textconv|command)$',
+    '^(?:merge\\..+\\.driver|(?:diff|merge)tool\\..+\\.cmd)$',
+    '^remote\\..+\\.(?:uploadpack|receivepack)$',
+    '^gpg\\.(?:.+\\.)?program$|^gpg\\.ssh\\.defaultkeycommand$',
+    '^sendemail\\.(?:.+\\.)?(?:[a-z]*cmd|smtpserver)$',
+    '^protocol\\.(?:.+\\.)?allow$',
+    '^uploadpack\\.packobjectshook$',
+    '^(?:man|browser)\\..+\\.(?:cmd|path)$|^man\\.viewer$|^web\\.browser$',
+    '^instaweb\\.httpd$',
+  ].join('|'),
+  'i',
+);
+
+/** A backslash, `$` or backtick in a `-c` word: the shell unescapes or expands it (`core.pa\\ger`,
+ * `$'core.pager'`, `"$K"`, `\\!x`) before git reads it, so the text in the string is not the text
+ * git applies. */
+const SHELL_REWRITTEN_RE = /[\\$`]/;
+
+/** True when `text` holds an unquoted, unescaped brace expansion (`{a,b}`): the shell turns it
+ * into several words (`git {-c,alias.x=!cmd} x` becomes `git -c alias.x=!cmd x`), so no word read
+ * from the string is one git sees. Escapes and quoted spans are dropped first; each `[^{}]*` run
+ * stops at the next brace, so the scan stays linear. */
+const hasBraceExpansion = (text) =>
+  /\{[^{}]*,[^{}]*\}/.test(text.replace(/\\[\s\S]/g, '').replace(/'[^']*'|"(?:[^"\\]|\\[\s\S])*"/g, ''));
+
+/** `KEY` and `VALUE` of a `-c`/`--config-env` setting, with the shell's quote characters removed
+ * (`"alias.d"='!x'` sets `alias.d`), and whether the shell rewrites either half
+ * (`SHELL_REWRITTEN_RE`), which makes that half unknown. */
+const splitGitSetting = (setting) => {
+  const eq = setting.indexOf('=');
+  const rawKey = eq === -1 ? setting : setting.slice(0, eq);
+  const rawValue = eq === -1 ? '' : setting.slice(eq + 1);
+  const unquote = (text) => text.replace(/['"]/g, '');
+  return {
+    key: unquote(rawKey),
+    value: unquote(rawValue),
+    dynamicKey: SHELL_REWRITTEN_RE.test(rawKey),
+    dynamicValue: SHELL_REWRITTEN_RE.test(rawValue),
+  };
+};
+
+/** True when a setting may make git run a command: a key the shell rewrites (it may name any key),
+ * one of `GIT_EXEC_CONFIG_RE`'s keys, or a submodule update mode that is (or may be) a `!command`. */
+const isGitExecConfig = ({ key, value, dynamicKey, dynamicValue }) =>
+  dynamicKey ||
+  GIT_EXEC_CONFIG_RE.test(key) ||
+  (/^submodule\..+\.update$/i.test(key) && (dynamicValue || value.startsWith('!')));
+
+/** Environment variables through which git reads extra config, runs a command (its own `GIT_*`
+ * ones and the generic `PAGER`, `EDITOR`, `VISUAL`, `SSH_ASKPASS`), loads its subcommands from
+ * another directory (`GIT_EXEC_PATH`) or allows the command-running `ext::` transport
+ * (`GIT_ALLOW_PROTOCOL`). */
+const GIT_EXEC_ENV_RE =
+  /(?:^|[\s;&|(])(?:export\s+)?(?:GIT_(?:CONFIG\w*|PAGER|EXTERNAL_DIFF|SSH|SSH_COMMAND|EDITOR|SEQUENCE_EDITOR|ASKPASS|PROXY_COMMAND|EXEC_PATH|ALLOW_PROTOCOL)|PAGER|EDITOR|VISUAL|SSH_ASKPASS)=/;
+
 /** Walks git's global options (everything before the subcommand) and returns the directories a
- * relative output path may resolve against, plus the subcommand index. Each `-C DIR` moves the
+ * relative output path may resolve against, the subcommand index, and whether a `-c` setting makes
+ * git run a command the string does not show (`execConfig`). Each `-C DIR` moves the
  * working directory relative to the previous one; `--git-dir`/`--work-tree` can make git resolve
  * relative paths elsewhere, so their directories become extra candidate bases (every candidate
  * is checked — over-matching only adds a target). Segments are joined once at the end, keeping
  * the walk linear in the number of `-C` options. */
 const gitGlobalBases = (args) => {
   let segments = [];
+  let execConfig = false;
+  let outputDirectory = null;
   const extra = [];
   let i = 0;
   for (; i < args.length && args[i].startsWith('-') && args[i] !== '--'; i++) {
@@ -696,6 +768,14 @@ const gitGlobalBases = (args) => {
     const name = t.startsWith('--') && eq !== -1 ? t.slice(0, eq) : t;
     if (!GIT_VALUE_GLOBALS.has(name)) continue;
     const value = stripQuotes(eq !== -1 && t.startsWith('--') ? t.slice(eq + 1) : (args[++i] ?? UNRESOLVABLE_TARGET));
+    if (name === '-c' || name === '--config-env') {
+      const setting = splitGitSetting(value);
+      if (isGitExecConfig(setting)) execConfig = true;
+      if (setting.key.toLowerCase() === 'format.outputdirectory') {
+        // `--config-env` names an environment variable, not the directory.
+        outputDirectory = name === '-c' && !setting.dynamicValue ? setting.value : UNRESOLVABLE_TARGET;
+      }
+    }
     if (name === '-C' && value) {
       if (path.isAbsolute(value)) segments = [value];
       else segments.push(value);
@@ -711,7 +791,7 @@ const gitGlobalBases = (args) => {
     // A git dir is usually `<work tree>/.git`, so its parent is a likely work tree too.
     if (name === '--git-dir') bases.push(path.dirname(dir));
   }
-  return { bases, subIdx: i };
+  return { bases, subIdx: i, execConfig, outputDirectory };
 };
 
 /** `format-patch -o DIR` / `-oDIR` / `--output-directory[=]DIR` (or an abbreviation) value at
@@ -726,11 +806,15 @@ const formatPatchDirValue = (args, i) => {
 /** `git … --output[=]FILE` (the diff family: `diff`, `log -p`, `show`, `format-patch`) and
  * `git format-patch -o DIR` write targets. git resolves a relative path against its working
  * directory, so each relative target is checked under every base `gitGlobalBases` returns (a
- * dynamic base makes the joined target dynamic, i.e. WARN). */
+ * dynamic base makes the joined target dynamic, i.e. WARN). `format-patch` without `-o` or
+ * `--stdout` writes its patches into `format.outputDirectory` (when `-c` sets it) or the working
+ * directory itself, so that is a target too. A
+ * `-c` setting that runs a command makes the call unresolvable. */
 const gitOutputTargets = (args) => {
-  const { bases, subIdx } = gitGlobalBases(args);
+  if (hasBraceExpansion(args.join(' '))) return [UNRESOLVABLE_TARGET];
+  const { bases, subIdx, execConfig, outputDirectory } = gitGlobalBases(args);
   const isFormatPatch = args[subIdx] === 'format-patch';
-  const values = [];
+  const values = execConfig ? [UNRESOLVABLE_TARGET] : [];
   for (let i = subIdx + 1; i < args.length; i++) {
     if (args[i] === '--') break;
     const opt = (isFormatPatch && formatPatchDirValue(args, i)) || longOptionValue(args, i, '--output');
@@ -739,6 +823,9 @@ const gitOutputTargets = (args) => {
       i = opt.last;
     }
   }
+  const toStdout = args.slice(subIdx + 1).some((t) => t.startsWith('--') && isLongOptionPrefix(t, '--stdout'));
+  // Without -o, format-patch writes into `format.outputDirectory` when set, else the working dir.
+  if (isFormatPatch && !toStdout && !values.some((v) => v !== UNRESOLVABLE_TARGET)) values.push(outputDirectory || '.');
   const targets = [];
   for (const value of values) {
     if (path.isAbsolute(value) || value === UNRESOLVABLE_TARGET) targets.push(value);
@@ -819,6 +906,11 @@ const hasPipedShellScript = (visible) => {
   let match = PIPE_INTO_RE.exec(visible);
   while (match !== null) {
     const tokens = tokenize(match[1]);
+    // A bare grep-family filter only matches text, so `ps | grep bash` names no shell.
+    if (isInertClause(tokens)) {
+      match = PIPE_INTO_RE.exec(visible);
+      continue;
+    }
     // Found anywhere in the piped clause, like the other finders, so a wrapper (`env bash`,
     // `sudo sh`) cannot hide it.
     const shellIdx = tokens.findIndex((t) => SHELL_NAMES.some((name) => isCommandToken(t, name)));
@@ -957,6 +1049,9 @@ const collectWriteSignals = (visible) => {
   }
 
   if (hasPipedShellScript(visible)) unresolvable = true;
+  if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => tokenize(c).some((t) => isCommandToken(t, 'git')))) {
+    unresolvable = true;
+  }
   return { literalTargets, unresolvable };
 };
 
