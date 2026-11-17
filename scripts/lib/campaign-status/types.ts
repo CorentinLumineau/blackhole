@@ -1,4 +1,4 @@
-import type { UsageVerdictName } from '../usage-budget.ts';
+import type { UsageVerdictName, WeeklyPace } from '../usage-budget.ts';
 
 // Mirrors the `route` object SSOT — `queue-dag.md` § `route` object. Field names and enum
 // values are frozen there; this type must not rename or add fields (V-INT-01 / V-DRY-01).
@@ -406,6 +406,8 @@ export type BudgetPanel = {
   source: 'rate-limit-cache' | 'none' | null;
   /** The windows the reading shows: `five_hour` only when the plan has one. */
   windows: Array<'five_hour' | 'seven_day'>;
+  /** Spending pace against `target_at_reset` over the usage history (`weeklyPace`); shown on every panel, `unknown` with a reason when it cannot be judged. */
+  pace: WeeklyPace;
   /** `usage_budget.weekly.target_at_reset`: the weekly % the pace aims to land on at the reset; null when unset or invalid. */
   target_at_reset: number | null;
   /**

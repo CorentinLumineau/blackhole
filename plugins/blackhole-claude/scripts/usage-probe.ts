@@ -3,6 +3,7 @@ import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { resolveRateLimitCachePath, type RateLimits } from './lib/pace-gate.ts';
+import { appendUsageReading, USAGE_HISTORY_FILE } from './lib/usage-history.ts';
 
 // Usage: bun run scripts/usage-probe.ts --from-events <file|-> [--cache <path>] [--config <path>] [--now <epoch s>]
 // Turns raw `rate_limit_event` JSON (what the claude-code-remote `list_events` tool returns, either
@@ -10,9 +11,10 @@ import { resolveRateLimitCachePath, type RateLimits } from './lib/pace-gate.ts';
 // RateLimits shape and writes it to the statusline rate-limit cache, so pace-gate.ts and
 // usage-budget.ts read one place. The cache file's mtime is set to the event's own time, so the
 // readers' max-age check measures how old the reading is, not when the probe ran; a `created_at`
-// in the future is clamped to now.
+// in the future is clamped to now. A weekly reading is also appended to usage-history.jsonl beside
+// the config (`.blackhole/` by default), which the status page's pace row reads.
 // Exit 0 written; 1 no current window in the event (nothing written); 2 bad usage or malformed input,
-// including a missing or unparseable `created_at` (nothing written); 3 the cache could not be written.
+// including a missing or unparseable `created_at` (nothing written); 3 the cache or the usage history could not be written.
 const USAGE = 'usage: usage-probe.ts --from-events <file|-> [--cache <path>] [--config <path>] [--now <epoch s>]';
 const WINDOWS = ['five_hour', 'seven_day'] as const;
 
@@ -85,9 +87,9 @@ const main = (): void => {
   const now = flags.now === undefined ? Math.floor(Date.now() / 1000) : nowFlag;
 
   let cachePath = typeof flags.cache === 'string' ? flags.cache : '';
+  const configPath = typeof flags.config === 'string' ? flags.config : '.blackhole/config.json';
   let raw: string;
   try {
-    const configPath = typeof flags.config === 'string' ? flags.config : '.blackhole/config.json';
     const config = fs.existsSync(configPath) ? (readJsonFile(configPath, configPath) as Record<string, unknown>) : {};
     if (!cachePath) cachePath = resolveRateLimitCachePath(config);
     raw = fs.readFileSync(source === '-' ? 0 : (source as string), 'utf-8');
@@ -110,6 +112,13 @@ const main = (): void => {
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     return fail(`cannot write rate-limit cache at ${cachePath}: ${detail.replace(/\s+/g, ' ')}`, 3);
+  }
+  const historyPath = path.join(path.dirname(configPath), USAGE_HISTORY_FILE);
+  try {
+    if (limits.seven_day) appendUsageReading(historyPath, { observed_at: observedAt, ...limits.seven_day });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return fail(`cannot append usage history at ${historyPath}: ${detail.replace(/\s+/g, ' ')}`, 3);
   }
   console.log(JSON.stringify({ cache: cachePath, observed_at: observedAt, age_seconds: Math.max(0, now - observedAt), rate_limits: limits }));
 };

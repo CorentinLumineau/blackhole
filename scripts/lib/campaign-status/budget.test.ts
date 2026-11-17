@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { budgetRows, buildBudgetPanel, NOT_PROBED, readBudgetPanel } from './budget.ts';
+import { appendUsageReading } from '../usage-history.ts';
 import { formatDashboard } from './dashboard.ts';
 import { buildStatusData } from './data.ts';
 import { fixtureReport } from './data-fixture.ts';
@@ -75,7 +76,7 @@ describe('buildBudgetPanel', () => {
   it('no usage record: "usage not probed" with the reason, every number null', () => {
     const panel = buildBudgetPanel({ limits: null, reason: 'no rate-limit cache at /x', ageSeconds: null, now: NOW, config: enabled() });
     expect(panel).toEqual({ ...NOT_PROBED, reason: 'no rate-limit cache at /x' });
-    expect(lines(panel)).toEqual(['Usage: usage not probed — no rate-limit cache at /x']);
+    expect(lines(panel)).toEqual(['Usage: usage not probed — no rate-limit cache at /x', 'Pace: unknown — no usage reading']);
   });
 });
 
@@ -101,20 +102,21 @@ describe('a stale reading', () => {
     expect(lines(panel)).toEqual([
       'Usage: weekly 21% at Fri 15 Jan 03:45 UTC, 4h 15m old (stale); target line 22.5% now',
       'Weekly target: 45% at the weekly reset',
+      'Pace: unknown — fewer than 2 weekly readings in this window',
     ]);
   });
 
   it('without a weekly target there is no target line', () => {
     const panel = buildBudgetPanel({ limits: null, reason: 'stale', ageSeconds: 700, now: NOW, config: enabled(), stale: { limits: staleLimits, ageSeconds: 700 } });
     expect(panel.stale?.target_line_pct).toBeNull();
-    expect(lines(panel)).toEqual(['Usage: weekly 21% at Fri 15 Jan 07:48 UTC, 12m old (stale)']);
+    expect(lines(panel)).toEqual(['Usage: weekly 21% at Fri 15 Jan 07:48 UTC, 12m old (stale)', 'Pace: unknown — no weekly target_at_reset']);
   });
 
   it('a stale reading with no current weekly window falls back to "usage not probed"', () => {
     const fiveOnly = { five_hour: { used_percentage: 30, resets_at: NOW + HOUR } };
     const panel = buildBudgetPanel({ limits: null, reason: 'stale', ageSeconds: 700, now: NOW, config: enabled(), stale: { limits: fiveOnly, ageSeconds: 700 } });
     expect(panel.stale).toBeNull();
-    expect(lines(panel)).toEqual(['Usage: usage not probed — stale']);
+    expect(lines(panel)).toEqual(['Usage: usage not probed — stale', 'Pace: unknown — no usage reading']);
   });
 });
 
@@ -139,7 +141,7 @@ describe('readBudgetPanel', () => {
     expect(panel.probed).toBe(false);
     expect(panel.reason).toBe(`no rate-limit cache at ${cache}`);
     expect(panel.stale).toBeNull();
-    expect(lines(panel)).toEqual([`Usage: usage not probed — no rate-limit cache at ${cache}`]);
+    expect(lines(panel)).toEqual([`Usage: usage not probed — no rate-limit cache at ${cache}`, 'Pace: unknown — no usage reading']);
   });
 
   it('a cache past max_age_seconds: not probed, with the last reading and its age', () => {
@@ -172,7 +174,7 @@ describe('the weekly target', () => {
     const text = lines(probed);
     expect(text.indexOf('Weekly target: 70% at the weekly reset')).toBe(text.findIndex((l) => l.startsWith('Weekly:')) + 1);
     const unprobed = buildBudgetPanel({ limits: null, reason: 'no cache', ageSeconds: null, now: NOW, config });
-    expect(lines(unprobed)).toEqual(['Usage: usage not probed — no cache', 'Weekly target: 70% at the weekly reset']);
+    expect(lines(unprobed)).toEqual(['Usage: usage not probed — no cache', 'Weekly target: 70% at the weekly reset', 'Pace: unknown — no usage reading']);
   });
 
   it('no target, or an invalid usage_budget, shows no target row', () => {
@@ -197,7 +199,10 @@ describe('the budget panel on every surface', () => {
     const report = fixtureReport();
     expect(report.budget).toEqual(NOT_PROBED);
     expect(renderStatusHtml(report)).toContain('usage not probed');
-    expect(buildStatusData(report).budget).toEqual([{ key: 'Usage', value: `usage not probed — ${NOT_PROBED.reason}` }]);
+    expect(buildStatusData(report).budget).toEqual([
+      { key: 'Usage', value: `usage not probed — ${NOT_PROBED.reason}` },
+      { key: 'Pace', value: 'unknown — no usage reading' },
+    ]);
   });
 
   it('text dashboard, --html and the data rows carry the same lines', () => {
@@ -210,5 +215,60 @@ describe('the budget panel on every surface', () => {
     expect(html).toContain('Usage budget');
     expect(html).toContain('Weekly: 40% · resets Mon 18 Jan 20:00 UTC');
     expect(buildStatusData(report).budget).toEqual(budgetRows(probed));
+  });
+});
+
+describe('the pace row (issue #1261)', () => {
+  // The 2026-11-17 run: 21% at 05:54Z, 36% at 10:14Z, weekly reset Sat 21 Nov 20:00Z, target 100.
+  const RESET = 1_795_291_200;
+  const T1 = Date.parse('2026-11-17T05:54:00Z') / 1000;
+  const T2 = Date.parse('2026-11-17T10:14:00Z') / 1000;
+  const config = enabled({ target_at_reset: 100 });
+  const history = [{ observed_at: T1, used_percentage: 21, resets_at: RESET }];
+  const reading = { seven_day: { used_percentage: 36, resets_at: RESET } };
+  const REAL_ROW = 'Pace: DECELERATE — 3.5%/h now vs 0.6%/h needed; 12 points over the line';
+
+  it('a probed reading plus the history gives the verdict, rates and distance from the line', () => {
+    const panel = buildBudgetPanel({ limits: reading, reason: null, ageSeconds: 0, now: T2, config, history });
+    expect(panel.pace.verdict).toBe('decelerate');
+    expect(lines(panel)).toContain(REAL_ROW);
+    // Right after the target row.
+    const text = lines(panel);
+    expect(text.indexOf(REAL_ROW)).toBe(text.indexOf('Weekly target: 100% at the weekly reset') + 1);
+  });
+
+  it('is shown for a stale reading too, measured from the reading time', () => {
+    const later = T2 + 4 * HOUR;
+    const panel = buildBudgetPanel({ limits: null, reason: 'stale', ageSeconds: 4 * HOUR, now: later, config, history, stale: { limits: reading, ageSeconds: 4 * HOUR } });
+    expect(panel.probed).toBe(false);
+    expect(panel.pace.verdict).toBe('decelerate');
+    expect(lines(panel).find((l) => l.startsWith('Pace:'))).toMatch(/^Pace: DECELERATE — 3\.5%\/h now vs 0\.6%\/h needed; 12 points over the line$/);
+  });
+
+  it('under the line and accelerate; on the line and on track', () => {
+    const at = (first: { observed_at: number; used_percentage: number }, used: number) =>
+      buildBudgetPanel({ limits: { seven_day: { used_percentage: used, resets_at: RESET } }, reason: null, ageSeconds: 0, now: T2, config, history: [{ ...first, resets_at: RESET }] });
+    // 5% to 5.2% in 2h is 0.1%/h; the line from 5% at -2h to 100% at the reset stands at 6.8% now.
+    expect(lines(at({ observed_at: T2 - 2 * HOUR, used_percentage: 5 }, 5.2))).toContain('Pace: ACCELERATE — 0.1%/h now vs 0.9%/h needed; 2 points under the line');
+    // 0% at -10h to 8.6% now sits on the line (8.64% now) at about the rate needed.
+    expect(lines(at({ observed_at: T2 - 10 * HOUR, used_percentage: 0 }, 8.6))).toContain('Pace: ON TRACK — 0.9%/h now vs 0.9%/h needed; on the line');
+  });
+
+  it('readBudgetPanel reads the history file it is given', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-pace-'));
+    try {
+      const cache = path.join(dir, 'rate-limits.json');
+      fs.writeFileSync(cache, JSON.stringify({ rate_limits: reading }));
+      fs.utimesSync(cache, T2, T2);
+      const historyPath = path.join(dir, 'usage-history.jsonl');
+      appendUsageReading(historyPath, history[0]);
+      const panel = readBudgetPanel({ resource_policy: { pace: { cache_path: cache } }, usage_budget: { weekly: { target_at_reset: 100 } } }, 'claude', T2, historyPath);
+      expect(lines(panel)).toContain(REAL_ROW);
+      expect(lines(readBudgetPanel({ resource_policy: { pace: { cache_path: cache } }, usage_budget: { weekly: { target_at_reset: 100 } } }, 'claude', T2))).toContain(
+        'Pace: unknown — fewer than 2 weekly readings in this window',
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

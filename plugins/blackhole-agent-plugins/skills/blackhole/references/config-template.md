@@ -310,7 +310,7 @@ write or no template panel draws, a row the dataset does not emit, or `none` wit
 | `campaign_scope` | `scope` | — | |
 | `wave_scheduling` | none | — | How a wave is sharded; the board shows what is in flight |
 | `resource_policy` | `config` | Verification | The test-lock carve-out; the host pace line is on the `--html` Host section |
-| `usage_budget` | `budget` | Workers allowed, Weekly, Weekly target | Verdict, weekly %, target and reset |
+| `usage_budget` | `budget` | Workers allowed, Weekly, Weekly target, Pace | Verdict, weekly %, target, pace against the target and reset |
 | `usage_budget.coordination` | `run` | Coordination | |
 | `stop_budget_cleared_at` | none | — | Audit timestamp of a past owner action |
 | `issue_484_disposition` | none | — | One campaign's historical pin; the parked issue shows on the board |

@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { root } from './build/paths.ts';
 import type { RateLimits } from './pace-gate.ts';
-import { DEFAULT_USAGE_BUDGET, forecastWeekly, resolveUsageBudget, workersAllowed, type UsageBudgetConfig } from './usage-budget.ts';
+import { DEFAULT_USAGE_BUDGET, forecastWeekly, resolveUsageBudget, weeklyPace, workersAllowed, type UsageBudgetConfig, type WeeklyReading } from './usage-budget.ts';
 
 const NOW = 1_800_000_000;
 const HOUR = 3600;
@@ -348,5 +348,77 @@ describe('resolveUsageBudget weekly target keys', () => {
     });
     expect(keys.length).toBe(3);
     expect(findUnregisteredConfigKeys(keys, parseConfigTemplateKeys(template))).toEqual([]);
+  });
+});
+
+describe('weeklyPace', () => {
+  // The 2026-11-17 run: 21% at 05:54Z, 36% at 10:14Z, weekly reset Sat 21 Nov 20:00Z, target 100.
+  const RESET = 1_795_291_200;
+  const T1 = Date.parse('2026-11-17T05:54:00Z') / 1000;
+  const T2 = Date.parse('2026-11-17T10:14:00Z') / 1000;
+  const real: WeeklyReading[] = [
+    { observed_at: T1, used_percentage: 21, resets_at: RESET },
+    { observed_at: T2, used_percentage: 36, resets_at: RESET },
+  ];
+
+  test('the real 2026-11-17 readings: decelerate, about 3.5%/h now vs 0.6%/h needed, 12 points over the line', () => {
+    const p = weeklyPace(real, T2, 100);
+    expect(p.verdict).toBe('decelerate');
+    // Only the newest reading is in the 3h window, so the two newest give the rate: 15 points in 4h20m.
+    expect(p.recent_pct_per_hour).toBeCloseTo(15 / (260 / 60), 6);
+    // 64 points left over 105h46m.
+    expect(p.required_pct_per_hour).toBeCloseTo(64 / ((RESET - T2) / HOUR), 6);
+    expect(p.required_pct_per_hour!).toBeGreaterThan(0.6);
+    expect(p.required_pct_per_hour!).toBeLessThan(0.61);
+    // The line from 21% at 05:54 to 100% at the reset stands at 24.1% at 10:14.
+    expect(p.points_vs_line).toBeCloseTo(36 - (21 + (79 * (T2 - T1)) / (RESET - T1)), 6);
+    expect(p.reason).toBeNull();
+  });
+
+  test('within 15% of the required rate is on track; below 0.85x is accelerate', () => {
+    // 50% at now, 50h to the reset, target 100: 1 %/h needed.
+    const at = (rate: number): WeeklyReading[] => [
+      { observed_at: NOW - 2 * HOUR, used_percentage: 50 - 2 * rate, resets_at: NOW + 50 * HOUR },
+      { observed_at: NOW, used_percentage: 50, resets_at: NOW + 50 * HOUR },
+    ];
+    expect(weeklyPace(at(1.14), NOW, 100).verdict).toBe('on track');
+    expect(weeklyPace(at(0.86), NOW, 100).verdict).toBe('on track');
+    expect(weeklyPace(at(1.16), NOW, 100).verdict).toBe('decelerate');
+    expect(weeklyPace(at(0.84), NOW, 100).verdict).toBe('accelerate');
+    expect(weeklyPace(at(0), NOW, 100)).toMatchObject({ verdict: 'accelerate', recent_pct_per_hour: 0 });
+  });
+
+  test('the rate is the slope over the readings in the last N hours, not the whole history', () => {
+    const resets_at = NOW + 50 * HOUR;
+    const history: WeeklyReading[] = [
+      { observed_at: NOW - 10 * HOUR, used_percentage: 10, resets_at },
+      { observed_at: NOW - 2 * HOUR, used_percentage: 48, resets_at },
+      { observed_at: NOW - HOUR, used_percentage: 49, resets_at },
+      { observed_at: NOW, used_percentage: 50, resets_at },
+    ];
+    expect(weeklyPace(history, NOW, 100).recent_pct_per_hour).toBeCloseTo(1, 6);
+    // A 12h window takes the early burst in.
+    expect(weeklyPace(history, NOW, 100, 12).recent_pct_per_hour!).toBeGreaterThan(2);
+    // The line starts at the first reading of the window: 10% at -10h to 100% at +50h stands at 25% now.
+    expect(weeklyPace(history, NOW, 100).points_vs_line).toBeCloseTo(25, 6);
+  });
+
+  test('readings of an earlier weekly window are ignored, and the order of the history does not matter', () => {
+    const old = { observed_at: NOW - 30 * HOUR, used_percentage: 95, resets_at: NOW - 20 * HOUR };
+    const resets_at = NOW + 50 * HOUR;
+    const cur = [
+      { observed_at: NOW, used_percentage: 50, resets_at },
+      { observed_at: NOW - HOUR, used_percentage: 49, resets_at },
+    ];
+    const p = weeklyPace([cur[0], old, cur[1]], NOW, 100);
+    expect(p.recent_pct_per_hour).toBeCloseTo(1, 6);
+    expect(p.points_vs_line).toBeCloseTo(0, 6);
+  });
+
+  test('unknown, with a reason, without a target, with fewer than two readings, or past the reset', () => {
+    expect(weeklyPace(real, T2, null)).toEqual({ verdict: 'unknown', recent_pct_per_hour: null, required_pct_per_hour: null, points_vs_line: null, reason: 'no weekly target_at_reset' });
+    expect(weeklyPace(real.slice(1), T2, 100)).toMatchObject({ verdict: 'unknown', reason: 'fewer than 2 weekly readings in this window' });
+    expect(weeklyPace([], T2, 100)).toMatchObject({ verdict: 'unknown', reason: 'fewer than 2 weekly readings in this window' });
+    expect(weeklyPace(real, RESET, 100)).toMatchObject({ verdict: 'unknown', reason: 'the weekly window has reset' });
   });
 });
