@@ -274,6 +274,21 @@ describe('V-STOP-03 follow-ups from the #1213 review', () => {
     expect(findUsageStopViolations(earlier)).toEqual([]);
   });
 
+  test('a higher-level usage stop heading wrapping the main section does not skip its checks', () => {
+    const wrapped = phaseStop.replace('\n## Usage stop\n', '\n# Usage stop overview\n\n## Usage stop\n');
+    expect(wrapped).not.toBe(phaseStop);
+    expect(findUsageStopViolations(wrapped.replace(/stopped_by: usage/g, 'stopped_by: x')).join('; ')).toContain('`stopped_by: usage`');
+    expect(findUsageStopViolations(wrapped.replace(/wake_at/g, 'wake')).join('; ')).toContain('`wake_at`');
+    const noList = wrapped.replace('Never on a usage stop:', 'Avoid on a usage stop:');
+    expect(findUsageStopViolations(noList)).toContain('usage stop has no "Never on a usage stop:" list');
+  });
+
+  test('an earlier `### Usage stop` heading is not taken as the main section', () => {
+    const deeper = phaseStop.replace('\n## Usage stop\n', '\n### Usage stop\n\nName `wake_at` in local time.\n\n## Usage stop\n');
+    expect(deeper).not.toBe(phaseStop);
+    expect(findUsageStopViolations(deeper)).toEqual([]);
+  });
+
   test('a `#` comment inside a fenced block does not end the section', () => {
     const fenced = phaseStop.replace('\n## Exit Invariants', '\n```bash\n# drain first\n```\n\nKill every in-flight worker.\n\n## Exit Invariants');
     expect(fenced).not.toBe(phaseStop);
