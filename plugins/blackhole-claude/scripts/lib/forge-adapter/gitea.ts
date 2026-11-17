@@ -92,6 +92,23 @@ const totalCount = (headers: string): number | null => {
   return m ? Number(m[1]) : null;
 };
 
+/** `owner/name` without the host prefix a `host/owner/name` repo string may carry. */
+export const giteaApiSlug = (repo: string): string => repo.split('/').slice(-2).join('/');
+
+/**
+ * Retargets a pull request through `tea api` (`PATCH repos/{owner}/{repo}/pulls/N` with `{base}`),
+ * then reads `base.ref` back with a `GET`: the PATCH's exit status is not evidence the base moved.
+ * Synchronous so the stack-repair CLI can call it; throws when either call fails.
+ */
+export const changeGiteaPrBase = (repo: string, number: number, base: string): PrChangeBaseResult => {
+  const endpoint = `repos/${giteaApiSlug(repo)}/pulls/${number}`;
+  runTeaApiJson('PATCH', endpoint, { base });
+  const actual = runTeaApiJson<GiteaApiPrRow>('GET', endpoint).data.base.ref;
+  return actual === base
+    ? { ok: true, base: actual }
+    : { ok: false, base: actual, detail: `base is ${actual} after the change, expected ${base}` };
+};
+
 type TeaPrRow = {
   index?: number;
   number?: number;
@@ -220,9 +237,8 @@ export class GiteaForgeAdapter implements ForgeAdapter {
     runTeaText(['issue', 'comment', String(number), ...this.repoFlag(), '--content', body]);
   }
 
-  /** `owner/name` without the host prefix a `host/owner/name` repo string may carry. */
   private apiSlug(): string {
-    return this.repo.split('/').slice(-2).join('/');
+    return giteaApiSlug(this.repo);
   }
 
   /**
@@ -269,12 +285,7 @@ export class GiteaForgeAdapter implements ForgeAdapter {
   }
 
   async prChangeBase(number: number, base: string): Promise<PrChangeBaseResult> {
-    const endpoint = `repos/${this.apiSlug()}/pulls/${number}`;
-    runTeaApiJson('PATCH', endpoint, { base });
-    const actual = runTeaApiJson<GiteaApiPrRow>('GET', endpoint).data.base.ref;
-    return actual === base
-      ? { ok: true, base: actual }
-      : { ok: false, base: actual, detail: `base is ${actual} after the change, expected ${base}` };
+    return changeGiteaPrBase(this.repo, number, base);
   }
 
   async prList(filter: { state?: 'open' | 'closed' | 'all'; limit?: number } = {}): Promise<ForgePr[]> {

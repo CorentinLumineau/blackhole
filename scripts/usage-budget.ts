@@ -1,9 +1,7 @@
 import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { readRateLimits, resolvePaceGateThresholds, type RateLimits, type RateWindow } from './lib/pace-gate.ts';
+import { readRateLimits, resolvePaceGateThresholds, resolveRateLimitCachePath, type RateLimits, type RateWindow } from './lib/pace-gate.ts';
 import { resolveUsageBudget, workersAllowed, type UsageVerdict } from './lib/usage-budget.ts';
 
 // Usage: bun run scripts/usage-budget.ts --parallel-max <n> [--usage '<json>' | --cache <path>]
@@ -71,8 +69,7 @@ const main = (): void => {
     const config = fs.existsSync(configPath) ? (readJsonFile(configPath, configPath) as Record<string, unknown>) : {};
     budget = resolveUsageBudget(config);
     maxAge = resolvePaceGateThresholds(config).maxAgeSeconds;
-    const pace = ((config.resource_policy ?? {}) as { pace?: { cache_path?: unknown } }).pace;
-    if (!cachePath) cachePath = typeof pace?.cache_path === 'string' ? pace.cache_path : path.join(os.homedir(), '.claude', 'cache', 'rate-limits.json');
+    if (!cachePath) cachePath = resolveRateLimitCachePath(config);
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
   }

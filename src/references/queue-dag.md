@@ -208,10 +208,14 @@ An issue is **ready** when ALL hold:
 
 1. `status` is `ready` (not `blocked`, `in-flight`, `merged`, `closed`)
 2. `notes` does not contain `awaiting-user` or `awaiting-plan` (user gates) or `waiting-on-trunk-fix` (Trunk-red below)
-2. Every `depends_on` issue has `status: merged` or `closed` on forge
-3. No active `migration_slot` holder unless this issue holds the slot
-4. Issue is open on forge **within campaign scope** (`gh issue view --json state` plus
+3. Every `depends_on` issue has `status: merged` or `closed` on forge
+4. No active `migration_slot` holder unless this issue holds the slot
+5. Issue is open on forge **within campaign scope** (`gh issue view --json state` plus
    `issueMatchesScope` when `scope_milestone` / `scope_labels` are configured)
+
+A cross-repo `Depends on owner/repo#N` line does **not** gate this ready set: it lives only in the
+issue body, never in `depends_on`, and no queue or board code reads it. Only the status page
+reports it, as the blocker of that issue's PR in "Merge next" ([forge-sync.md](forge-sync.md) § 6.7).
 
 Promote `blocked → ready` when dependencies clear, user gates pass and no `waiting-on-trunk-fix` note remains.
 
@@ -223,7 +227,9 @@ any PR. Per-PR fixing is wrong: each fix would patch the same trunk defect in a 
 branch.
 
 1. **Park the children.** Set every affected PR's queue entry to `status: blocked` and add
-   `notes: waiting-on-trunk-fix`. The token is a `notes` value, never a `status` value.
+   `notes: waiting-on-trunk-fix`; once the base-fix entry exists (step 2), suffix its issue number
+   (`waiting-on-trunk-fix #N`) so "Merge next" (`trunkFixIssues`, `scripts/lib/merge-next.ts`) puts
+   that PR first and names it on each child. The token is a `notes` value, never a `status` value.
    The token sits outside the ready set (Step 2): no implementer spawn, no `V-CI-01` fix round.
 2. **Fix the base once.** Owner ruling (#1169): the orchestrator opens the base-fix PR itself,
    under the usual plan, review and verify gates. It is an ordinary queue entry targeting
@@ -273,7 +279,10 @@ overlapping paths, in any `merge_mode` — then:
 4. Post the merge order for the stack as a PR comment on each open stacked child PR, and edit that
    comment (do not add a new one) whenever the stack changes — a PR opens, merges, or closes. The
    order is `formatStackMergeOrder(stackMergeOrder(issues))` (`scripts/lib/stack-parent.ts`), the
-   same text the dashboard's "Stacked PR merge order" section renders.
+   same text the dashboard's "Stacked PR merge order" section renders. Across every open PR, not
+   one stack, the dashboard's "Merge next" list (`mergeNextOrder`, `scripts/lib/merge-next.ts`)
+   gives the order to merge them in: CI-fix PRs, then parents, then children, with stack edges and
+   `depends_on` as the edges, each PR's blocker named and an edge loop reported, never walked.
 5. A fix-round push to the parent is **not** propagated eagerly. The child's three-dot diff against
    its parent branch is unchanged by new parent commits, so the parent branch is merged into the
    child (a normal merge and push, never a rebase or force-push) only when the child is
@@ -346,4 +355,5 @@ gh issue list --state open --json number,title,labels,milestone --limit 200 \
 ```
 
 Create one `issues.<n>` entry per open issue: `phase: handle`, `status: ready`,
-`depends_on` parsed from body "Blocked by #N" / "Depends on #N".
+`depends_on` parsed from body "Blocked by #N" / "Depends on #N". A cross-repo
+`Depends on owner/repo#N` line never enters `depends_on` ([forge-sync.md](forge-sync.md) § 6.7).
