@@ -28,7 +28,9 @@ campaign state.
 **Campaign launch configuration gate** (ADR-005 § Campaign Launch
 Configuration Gate, extended per ADR-006 § "Campaign launch form") — run
 steps 1-6 below whenever **any** of these four conditions hold, regardless
-of whether `.blackhole/config.json` already exists:
+of whether `.blackhole/config.json` already exists. Every `AskQuestion` in this gate goes
+through `askOrPark()` first (`clarify-gates.md` § C3 adapter): in sleep mode the gate is
+print-only (`sleep-mode.md`).
 
 1. **True first bootstrap** — `.blackhole/config.json` does not yet exist.
 2. **Post-"Campaign complete" restart** — `phase-loop.md` § Campaign complete

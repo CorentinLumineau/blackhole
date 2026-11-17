@@ -60,7 +60,7 @@ switches. **Do not run those without the owner's explicit OK:**
 an approved `ui_gate` / design-approval resume — not inference from DESIGN.md
 or from the skill's "pick the closest style" table.
 
-Without that OK: do **not** run the command. Ask (`AskQuestion`) or return
+Without that OK: do **not** run the command. Ask (`AskQuestion` (through `askOrPark()`, `clarify-gates.md` § C3 adapter)) or return
 `status: blocked` with a one-line reason naming the command you refused.
 `add` / `search` / `docs` / `info` / `diff` / `--dry-run` stay allowed.
 

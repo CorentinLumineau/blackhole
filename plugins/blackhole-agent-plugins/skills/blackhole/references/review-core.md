@@ -94,7 +94,7 @@ already-fixed text.
 
 SSOT for how a PR's review rounds end. `review_iteration` (integer, default 0) is tracked on the queue entry and incremented after each aggregate run that returns `changes_requested`; reset to 0 when the PR merges or the issue returns to plan phase. CI-genuine failures diagnosed per `ci-diagnosis.md` consume the same counter — no separate CI-fix budget.
 
-1. **Max 3 rounds.** Rounds 1–3: BLOCK → implementer fix → re-review, automatically. Round 4 does **not** re-review: it returns a `rethink` verdict naming the open findings and asks the author to re-plan or escalate to the user via the coordinator (`AskQuestion`). There is no "one more auto pass" and no hard-ceiling tier above it.
+1. **Max 3 rounds.** Rounds 1–3: BLOCK → implementer fix → re-review, automatically. Round 4 does **not** re-review: it returns a `rethink` verdict naming the open findings and asks the author to re-plan or escalate to the user via the coordinator (`AskQuestion` via `askOrPark()`, `clarify-gates.md` § C3 adapter). There is no "one more auto pass" and no hard-ceiling tier above it.
 2. **Round ≥2 is interdiff-only.** Review the fix commits since the last reviewed head SHA, plus the objective-fulfilment check § Recheck mode already performs. Untouched code is not re-reviewed.
 3. **One finding per root cause.** Every occurrence goes in that finding's `locations[]`, not in separate findings.
 4. **No repeats.** An already-posted `(vcode, file, root cause)` is a recheck of the existing ledger id (§ Recheck mode), never a new finding.
