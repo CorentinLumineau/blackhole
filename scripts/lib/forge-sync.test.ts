@@ -87,7 +87,7 @@ describe('syncQueue — reconcile', () => {
   });
 
   test('an open PR closing the issue links it and moves implement to review', () => {
-    const r = sync({ queue, issues: [issue(1), issue(2), issue(3), issue(4)], prs: [pr(11, { body: 'Closes #1' }), pr(12, { headRefName: 'blackhole/issue-2-thing' })] });
+    const r = sync({ queue, issues: [issue(1), issue(2), issue(3), issue(4)], prs: [pr(11, { headRefName: 'claude/login', body: 'Closes #1' }), pr(12, { headRefName: 'blackhole/issue-2-thing' })] });
     expect(r.queue.issues?.['1']).toMatchObject({ pr: 11, phase: 'review', status: 'in-flight' });
     expect(r.queue.issues?.['2']).toMatchObject({ pr: 12, phase: 'handle' });
     expect(r.linked).toEqual([1, 2]);
@@ -112,7 +112,7 @@ describe('syncQueue — reconcile', () => {
 
   test('the input queue is not mutated', () => {
     const before = JSON.stringify(queue);
-    sync({ queue, issues: [issue(1, { title: 'changed' }), issue(5)], prs: [pr(11, { body: 'Closes #1' })] });
+    sync({ queue, issues: [issue(1, { title: 'changed' }), issue(5)], prs: [pr(11, { headRefName: 'claude/x', body: 'Closes #1' })] });
     expect(JSON.stringify(queue)).toBe(before);
   });
 
@@ -167,7 +167,7 @@ describe('syncQueue — what a PR may claim', () => {
 
   test('a dependency-blocked entry still gets its own open PR linked', () => {
     const queue = { issues: { '10': { title: 't', phase: 'handle', status: 'blocked', pr: null, depends_on: [1] } } };
-    expect(sync({ queue, issues: [issue(10)], prs: [pr(100, { body: 'Closes #10' })] }).queue.issues['10']).toMatchObject({ status: 'blocked', pr: 100 });
+    expect(sync({ queue, issues: [issue(10)], prs: [pr(100, { headRefName: 'blackhole/issue-10', body: 'Closes #10' })] }).queue.issues['10']).toMatchObject({ status: 'blocked', pr: 100 });
   });
 
   test('with no closing PR, the branch match links the PR', () => {
@@ -180,6 +180,47 @@ describe('syncQueue — user_queue_order', () => {
     const queue = { user_queue_order: [3, 1], issues: { '1': { title: 'a', phase: 'handle', status: 'ready' }, '3': { title: 'c', phase: 'handle', status: 'ready' } } };
     expect(sync({ queue, issues: [issue(1), issue(2), issue(3), issue(4)] }).queue.user_queue_order).toEqual([3, 1, 2, 4]);
     expect(sync({ issues: [issue(5)] }).queue.user_queue_order).toEqual([5]);
+  });
+});
+
+describe('syncQueue — round 2: gates survive, own branches only', () => {
+  const GATES = ['awaiting-user-clarification', 'awaiting-plan-approval', 'waiting-on-trunk-fix #12', 'overlap with #4', 'merge-conflict-semantic: parser.ts'];
+
+  test('a blocked entry with a gate note keeps it through a foreign label coming and going', () => {
+    for (const notes of GATES) {
+      const queue = { issues: { '20': { title: 't', phase: 'plan', status: 'blocked', pr: null, notes } } };
+      const during = sync({ queue, issues: [issue(20, { labels: [{ name: 'agent:cursor' }] })] }).queue;
+      expect(during.issues['20']).toMatchObject({ status: 'blocked', notes });
+      expect(sync({ queue: during, issues: [issue(20)] }).queue.issues['20']).toMatchObject({ status: 'blocked', notes });
+    }
+  });
+
+  test('a note that only starts like a lane note is not promoted back', () => {
+    const queue = { issues: { '21': { title: 't', phase: 'handle', status: 'blocked', pr: null, notes: 'another lane: agent:cursor — then owner: decide scope' } } };
+    expect(sync({ queue, issues: [issue(21)] }).queue.issues['21']).toMatchObject({ status: 'blocked', notes: 'another lane: agent:cursor — then owner: decide scope' });
+  });
+
+  test('a fork patch-1 or an unprefixed human branch blocks the issue instead of linking', () => {
+    for (const headRefName of ['patch-1', 'fix-x', 'feature/x']) {
+      const r = sync({ issues: [issue(22)], prs: [pr(220, { headRefName, body: 'Fixes #22' })] });
+      expect(r.queue.issues['22']).toMatchObject({ status: 'blocked', notes: `another lane: ${headRefName}`, pr: null });
+    }
+  });
+
+  test('a bare issue-N branch is not the campaign\'s own and does not link by name', () => {
+    const r = sync({ issues: [issue(23)], prs: [pr(230, { headRefName: 'issue-23-x', body: '' })] });
+    expect(r.queue.issues['23']).toMatchObject({ status: 'ready', pr: null });
+  });
+
+  test('a renovate or dependabot PR closing the issue is noted as an open PR', () => {
+    for (const headRefName of ['renovate/lodash-4.x', 'dependabot/npm_and_yarn/x-1.2']) {
+      expect(sync({ issues: [issue(24)], prs: [pr(240, { headRefName, body: 'Closes #24' })] }).queue.issues['24']).toMatchObject({ status: 'blocked', notes: `open PR: ${headRefName}` });
+    }
+  });
+
+  test('a lane note this sync wrote is promoted back once the PR closes', () => {
+    const blocked = sync({ issues: [issue(25)], prs: [pr(250, { headRefName: 'patch-1', body: 'Closes #25' })] }).queue;
+    expect(sync({ queue: blocked, issues: [issue(25)] }).queue.issues['25']).toMatchObject({ status: 'ready', notes: null });
   });
 });
 

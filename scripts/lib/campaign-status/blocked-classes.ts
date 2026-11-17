@@ -38,10 +38,10 @@ export function foreignLaneLabel(labels: readonly string[]): string | null {
   );
 }
 
-/** A `<lane>/…` branch of a lane other than the campaign's own (e.g. `cursor/fix-x`), or null. A branch without a lane prefix is not attributed. */
-export function foreignLaneBranch(branch: string): string | null {
-  const lane = /^([A-Za-z0-9_-]+)\//.exec(branch)?.[1];
-  return lane != null && !OWN_LANES.has(lane) ? branch : null;
+/** A branch of the campaign's own lanes: `claude/…` or `blackhole/…` (V-BRANCH-03). Every other branch, a fork's `patch-1` included, is someone else's. */
+export function isOwnLaneBranch(branch: string): boolean {
+  const lane = /^([^/]+)\//.exec(branch)?.[1];
+  return lane != null && OWN_LANES.has(lane);
 }
 
 function inForeignLane(issue: QueueIssue): boolean {

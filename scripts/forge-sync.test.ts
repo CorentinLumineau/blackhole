@@ -29,8 +29,8 @@ describe('forge-sync from a fresh checkout (only config.json)', () => {
   const forge = () =>
     fakeForge({
       issues: [issue(1, { title: 'Add export' }), issue(2, { title: 'Fix login', body: 'Blocked by #1' })],
-      prs: { all: [prRow(10, { body: 'Closes #1' })], open: [prRow(10, { body: 'Closes #1' })] },
-      views: { 10: prRow(10, { body: 'Closes #1' }) },
+      prs: { all: [prRow(10, { headRefName: 'blackhole/issue-1-export', body: 'Closes #1' })], open: [prRow(10, { headRefName: 'blackhole/issue-1-export', body: 'Closes #1' })] },
+      views: { 10: prRow(10, { headRefName: 'blackhole/issue-1-export', body: 'Closes #1' }) },
       checks: { 10: [] },
     });
 

@@ -46,10 +46,10 @@ writes `queue.json` through the state write guard (`blackhole-state.md` § Write
 
 - ingests in-scope open issues and appends them to `user_queue_order`; refreshes title, labels,
   milestone, size and `depends_on` (body lines join the queue's own edges, never replace them);
-- blocks a ready entry held by another lane (an `agent:*` / `in-progress:*` label or an open PR
-  from a `<lane>/…` branch outside `claude`/`blackhole`) with the note `another lane: <label>`,
-  and makes it ready again once the lane is gone; in-flight entries are left alone;
-- links the campaign's own open PR, a closing keyword first, else an `…/issue-N` branch;
+- blocks a `ready` entry held elsewhere (an `agent:*` / `in-progress:*` label, or an open PR
+  closing it from any branch outside `claude/`/`blackhole/`) with `another lane: <label|branch>`
+  (`open PR: <branch>` for renovate/dependabot); only an entry carrying exactly that note goes back;
+- links the campaign's own open PR, a closing keyword first, else a `claude|blackhole/issue-N` branch;
 - marks an issue `merged` only for a merged PR whose body closes it (`Closes`/`Fixes`/`Resolves
   #N`, as `reconcileMerged`), `closed` when the forge closed it; a forge-open issue stays open.
 

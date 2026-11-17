@@ -1,7 +1,7 @@
 import { parseDependsFromBody, parseEpicParentFromBody } from '../forge-deps.ts';
 import { issueMatchesScope, type CampaignScope } from '../forge-scope.ts';
 import type { ForgeIssue, ForgePr } from './forge-adapter/types.ts';
-import { foreignLaneBranch, foreignLaneLabel } from './campaign-status/blocked-classes.ts';
+import { foreignLaneLabel, isOwnLaneBranch } from './campaign-status/blocked-classes.ts';
 import { closedIssues } from './campaign-status/merged.ts';
 import { DONE_STATUSES } from './campaign-status/queue.ts';
 import type { QueueIssue, QueueJson } from './campaign-status/types.ts';
@@ -32,9 +32,16 @@ export type SyncResult = {
   linked: number[];
 };
 
-/** The `notes` prefix of an entry held by another lane; the sync clears it once the lane is gone. */
+/** The notes this sync writes on a ready entry held elsewhere; only these exact notes are cleared again. */
 export const ANOTHER_LANE = 'another lane:';
-const BRANCH_ISSUE_RE = /(?:^|\/)issue-(\d+)(?:\D|$)/;
+export const OPEN_PR = 'open PR:';
+const LANE_NOTE = /^(?:another lane|open PR): \S+$/;
+/** A campaign branch names its issue: `claude/issue-N…` or `blackhole/issue-N…`. */
+const BRANCH_ISSUE_RE = /^(?:claude|blackhole)\/issue-(\d+)(?:\D|$)/;
+/** Dependency bots: their PR is an open PR, not another agent lane. */
+const BOT_BRANCH = /^(?:renovate|dependabot)\//;
+
+const isLaneNote = (notes: string | null | undefined): boolean => LANE_NOTE.test(notes ?? '');
 
 function forgeFields(i: ForgeIssue, sizePrefix: string) {
   const labels = i.labels.map((l) => l.name);
@@ -42,19 +49,24 @@ function forgeFields(i: ForgeIssue, sizePrefix: string) {
   return { title: i.title, labels, milestone: i.milestone?.title ?? null, size, epic_parent: parseEpicParentFromBody(i.body ?? '') };
 }
 
-/** Open PRs per issue: the campaign's own (closing keyword before branch match, then lowest number) and another lane's. */
+/**
+ * Open PRs per issue. The campaign's own (a `claude/` or `blackhole/` branch): closing keyword first,
+ * then an `…/issue-N` branch, then lowest number. Any other branch whose PR closes the issue holds it
+ * elsewhere, with the note to write.
+ */
 function openPrIndex(prs: ForgePr[]): { own: Map<number, ForgePr>; foreign: Map<number, string> } {
   const own = new Map<number, ForgePr>();
   const foreign = new Map<number, string>();
   const open = prs.filter((p) => p.state === 'OPEN').sort((a, b) => a.number - b.number);
   for (const byKeyword of [true, false]) {
     for (const p of open) {
-      const branch = BRANCH_ISSUE_RE.exec(p.headRefName ?? '');
-      const targets = byKeyword ? closedIssues(p.body ?? '') : branch ? [Number(branch[1])] : [];
-      const lane = foreignLaneBranch(p.headRefName ?? '');
+      const branch = p.headRefName ?? '';
+      const named = BRANCH_ISSUE_RE.exec(branch);
+      const targets = byKeyword ? closedIssues(p.body ?? '') : named ? [Number(named[1])] : [];
       for (const n of targets) {
-        if (lane) foreign.set(n, foreign.get(n) ?? lane);
-        else if (!own.has(n)) own.set(n, p);
+        if (!isOwnLaneBranch(branch)) {
+          if (!foreign.has(n)) foreign.set(n, `${BOT_BRANCH.test(branch) ? OPEN_PR : ANOTHER_LANE} ${branch}`);
+        } else if (!own.has(n)) own.set(n, p);
       }
     }
   }
@@ -96,12 +108,15 @@ function reconcile(entry: SyncedEntry, i: ForgeIssue, sizePrefix: string): Synce
   return { ...entry, title: f.title, labels: f.labels, milestone: f.milestone, size: f.size ?? entry.size ?? null, depends_on: deps, ...(f.epic_parent !== null ? { epic_parent: f.epic_parent } : {}) };
 }
 
-/** Another lane holds a ready or blocked entry: blocked with the lane named; once it is gone, ready again. In-flight work is never taken over. */
-function applyLane(entry: SyncedEntry, lane: string | null): SyncedEntry {
-  if (entry.status === 'in-flight') return entry;
-  if (lane) return { ...entry, status: 'blocked', notes: `${ANOTHER_LANE} ${lane}` };
-  if ((entry.notes ?? '').startsWith(ANOTHER_LANE)) return { ...entry, status: 'ready', notes: null };
-  return entry;
+/**
+ * Held elsewhere: a `ready` entry turns blocked with the lane note; a note this sync wrote follows
+ * the lane, and goes back to ready once it is gone. Any other note (an owner gate, a trunk fix, an
+ * overlap) is never touched, and in-flight work is never taken over.
+ */
+function applyLane(entry: SyncedEntry, note: string | null): SyncedEntry {
+  const ours = entry.status === 'blocked' && isLaneNote(entry.notes);
+  if (note) return entry.status === 'ready' || ours ? { ...entry, status: 'blocked', notes: note } : entry;
+  return ours ? { ...entry, status: 'ready', notes: null } : entry;
 }
 
 export function syncQueue(input: SyncInput): SyncResult {
@@ -135,10 +150,10 @@ export function syncQueue(input: SyncInput): SyncResult {
       closed.push(n);
       continue;
     }
-    const labelLane = state ? foreignLaneLabel(entry.labels ?? []) : null;
-    let next = state ? applyLane(entry, labelLane ?? open.foreign.get(n) ?? null) : entry;
+    const label = state ? foreignLaneLabel(entry.labels ?? []) : null;
+    let next = state ? applyLane(entry, label ? `${ANOTHER_LANE} ${label}` : (open.foreign.get(n) ?? null)) : entry;
     const ownPr = open.own.get(n);
-    if (ownPr && next.pr !== ownPr.number && !(next.notes ?? '').startsWith(ANOTHER_LANE)) {
+    if (ownPr && next.pr !== ownPr.number && !isLaneNote(next.notes)) {
       next = { ...next, pr: ownPr.number, phase: next.phase === 'implement' ? 'review' : next.phase };
       linked.push(n);
     }
