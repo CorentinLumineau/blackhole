@@ -106,13 +106,25 @@ A sleeping campaign must not depend on the owner's hardware staying on. What eac
 | `route.state_store: branch` (cloud, Project thread, CI) | none: a no-op, and the output says `not held — ephemeral host` |
 | Any other host | none, and the output says so; sleep mode still goes on |
 
-The inhibitor runs detached in its own process group. Its pid, tool and start time are recorded in
-`.blackhole/sleep-hold.json`, a per-machine file that never travels on the state branch, so the
-hold is never orphaned: release stops the whole group (`systemd-inhibit`'s `sleep` child included)
-and drops the record. A recorded pid is trusted only while it still runs the recorded tool, so a
-reused pid is never killed. `sleep --on` again keeps a live hold and replaces a stale one (after a
-reboot, say); release on a stale record only clears it. With no `run-context.json`, the host is
-judged from the environment the same way `run-context.ts` judges it.
+The inhibitor runs detached in its own process group. `sleep --on` gives it a moment to fail
+(no D-Bus session, no permission) and confirms it is still running; one that exited is reported
+as `not held — <tool> exited: <its first stderr line>` and nothing is recorded. A confirmed hold
+is recorded in `.blackhole/.tmp/sleep-hold.json` as `{pid, tool, started_at, identity}`, where
+`identity` is the process start time and command line. `.tmp/` is ignored wherever `.blackhole/`
+is tracked and never travels on the state branch. If the record cannot be written, the new
+inhibitor is stopped at once, so no hold is ever left untracked.
+
+A recorded pid counts as the hold only while its start time and command line still match
+`identity`, so a pid the system has since reused is never signalled:
+
+- `sleep --on` again keeps a live hold, and clears and replaces a stale one (after a reboot, say).
+- Release stops the whole process group (`systemd-inhibit`'s `sleep` child included) and drops
+  the record only after the stop succeeds; a stale record is only cleared.
+- When the process table cannot be read (`ps` fails), the hold's state is unknown: the record is
+  kept, nothing is killed, and no second inhibitor starts.
+
+With no `run-context.json`, the host is judged from the environment the same way
+`run-context.ts` judges it.
 
 ### Wake-ups
 

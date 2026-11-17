@@ -58,11 +58,12 @@ function fakeMac() {
       running.add(700);
       return 700;
     },
-    isRunning: (pid) => running.has(pid),
+    identify: (pid) => (running.has(pid) ? { state: 'running', identity: `lstart caffeinate -i #${pid}` } : { state: 'gone' }),
     kill: (pid) => {
       calls.push(`kill ${pid}`);
       running.delete(pid);
     },
+    wait: () => {},
   };
   return { deps, calls };
 }
@@ -151,9 +152,13 @@ describe('campaign-record sleep --on | --off', () => {
 
   test('wake prints the report ahead of the batch and turns sleep mode off', () => {
     const dir = campaign({ sleep_mode: { enabled: true, since: NOW_ISO, baseline: { done: [1], weekly_pct: null } } }, QUEUE);
-    fs.writeFileSync(path.join(dir, SLEEP_HOLD_FILE), JSON.stringify({ pid: 700, tool: 'caffeinate', started_at: NOW_ISO }));
+    fs.mkdirSync(path.join(dir, '.tmp'));
+    fs.writeFileSync(
+      path.join(dir, SLEEP_HOLD_FILE),
+      JSON.stringify({ pid: 700, tool: 'caffeinate', started_at: NOW_ISO, identity: 'lstart caffeinate -i #700' }),
+    );
     const mac = fakeMac();
-    mac.deps.isRunning = () => true;
+    mac.deps.identify = () => ({ state: 'running', identity: 'lstart caffeinate -i #700' });
     const out = JSON.parse(runRecord(['wake', '--campaign-dir', dir], NOW, mac.deps));
     expect(Object.keys(out)[0]).toBe('report');
     expect(out.keep_awake).toBe('Keep-awake: released caffeinate (pid 700).');

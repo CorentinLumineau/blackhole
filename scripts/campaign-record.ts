@@ -37,7 +37,7 @@ import { resolveUsageBudget } from './lib/usage-budget.ts';
 //            [--refs 12,14] [--gate <name>]                      → pending-decisions.json
 //   ask                                                          → prints `ask` or `park` (askOrPark)
 //   sleep    --on | --off                                        → config.json sleep_mode (on records since + baseline);
-//                                                                  on takes the local keep-awake hold, off releases it (sleep-hold.json)
+//                                                                  on takes the local keep-awake hold, off releases it (.tmp/sleep-hold.json)
 //   wake                                                         → turns sleep mode off and releases the hold, then prints the report and the batched round as JSON
 //   rearm                                                        → prints the wake-ups to keep armed as JSON (sleep-mode.md § Keeps itself alive)
 //   resolve  --id PD-1 --answer "<text>" [--date YYYY-MM-DD]     → pending-decisions.json + owner-decisions.json

@@ -103,7 +103,7 @@ const main = () => {
   const sleepMode = {
     enabled: isSleepMode(config.config),
     since: readSleepSession(config.config).since,
-    keep_awake: keepAwakeStatus(campaignDir, route.state_store, systemHoldDeps.isRunning),
+    keep_awake: keepAwakeStatus(campaignDir, route.state_store, systemHoldDeps.identify),
   };
 
   if (flags['no-write'] !== true) {

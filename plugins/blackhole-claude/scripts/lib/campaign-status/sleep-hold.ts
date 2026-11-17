@@ -6,27 +6,35 @@ import { detectRunContext } from '../run-context.ts';
 import { writeJsonAtomic } from './record.ts';
 
 // The keep-awake hold of a sleeping campaign on a local host (`sleep-mode.md` § Keeps itself
-// alive): `sleep --on` starts an OS idle inhibitor, `sleep --off` and `wake` stop it. Its pid
-// lives in `.blackhole/sleep-hold.json`, a per-machine record that never travels on the state
-// branch, so every hold can be found and stopped again. Every process call goes through
-// `HoldDeps`, so tests never start a real inhibitor.
+// alive): `sleep --on` starts an OS idle inhibitor, `sleep --off` and `wake` stop it. The record
+// lives in `.blackhole/.tmp/`, ignored wherever `.blackhole/` is tracked and never carried on the
+// state branch. A recorded pid is acted on only while its start time and command line still
+// match the record, so a reused pid is never signalled. Every process call goes through
+// `HoldDeps`, so unit tests never start a real inhibitor.
 
-export const SLEEP_HOLD_FILE = 'sleep-hold.json';
+export const SLEEP_HOLD_FILE = path.join('.tmp', 'sleep-hold.json');
+/** How long a fresh inhibitor gets to fail (no D-Bus, no permission) before it counts as holding. */
+export const SETTLE_MS = 300;
 
 export type InhibitorTool = 'caffeinate' | 'systemd-inhibit';
-export type HoldRecord = { pid: number; tool: InhibitorTool; started_at: string };
+/** `identity` is the process start time and command line, as `ps -o lstart=,args=` printed them. */
+export type HoldRecord = { pid: number; tool: InhibitorTool; started_at: string; identity: string };
 export type StateStore = 'local' | 'branch';
+/** `unknown`: the process table could not be read, so neither "held" nor "gone" may be assumed. */
+export type ProcState = { state: 'running'; identity: string } | { state: 'gone' } | { state: 'unknown'; reason: string };
 
 export type HoldDeps = {
   platform: NodeJS.Platform;
   /** True when `bin` is an executable on PATH. */
   onPath: (bin: string) => boolean;
-  /** Starts `command` detached from this process (its own process group) and returns its pid. */
-  spawnDetached: (command: string[]) => number;
-  /** True when `pid` is alive and runs `tool`, so a reused pid is never mistaken for the hold. */
-  isRunning: (pid: number, tool: InhibitorTool) => boolean;
-  /** Stops `pid` and its process group. */
+  /** Starts `command` detached (its own process group), stderr to `stderrFile`, and returns its pid. */
+  spawnDetached: (command: string[], stderrFile: string) => number;
+  /** The process `pid` names now; a zombie counts as gone. */
+  identify: (pid: number) => ProcState;
+  /** Stops `pid`'s process group. */
   kill: (pid: number) => void;
+  /** Blocks for `ms`. */
+  wait: (ms: number) => void;
 };
 
 /** The idle inhibitor this platform offers, or null. Each one holds until it is killed. */
@@ -60,13 +68,15 @@ export function resolveStateStore(campaignDir: string, env: Record<string, strin
 
 const isTool = (v: unknown): v is InhibitorTool => v === 'caffeinate' || v === 'systemd-inhibit';
 
-/** The recorded hold, or null when there is none or the file is not a hold record. */
+/** The recorded hold, or null when there is none or the file is not a valid record (pid 1 and below included). */
 export function readHold(campaignDir: string): HoldRecord | null {
   const file = path.join(campaignDir, SLEEP_HOLD_FILE);
   if (!fs.existsSync(file)) return null;
   try {
     const r = readJsonFile(file, file) as Partial<HoldRecord>;
-    return Number.isInteger(r.pid) && (r.pid as number) > 0 && isTool(r.tool) && typeof r.started_at === 'string' ? (r as HoldRecord) : null;
+    const ok = Number.isInteger(r.pid) && (r.pid as number) > 1 && isTool(r.tool) && typeof r.started_at === 'string'
+      && typeof r.identity === 'string' && r.identity.length > 0;
+    return ok ? (r as HoldRecord) : null;
   } catch {
     return null;
   }
@@ -74,53 +84,131 @@ export function readHold(campaignDir: string): HoldRecord | null {
 
 const dropHold = (campaignDir: string): void => fs.rmSync(path.join(campaignDir, SLEEP_HOLD_FILE), { force: true });
 
+type Check = { state: 'live' } | { state: 'stale' } | { state: 'unknown'; reason: string };
+
+/** Whether the recorded process is still the hold: same pid, same start time and command line. */
+function checkHold(record: HoldRecord, identify: HoldDeps['identify']): Check {
+  const p = identify(record.pid);
+  if (p.state === 'unknown') return p;
+  return p.state === 'running' && p.identity === record.identity ? { state: 'live' } : { state: 'stale' };
+}
+
+const unknownLine = (pid: number, reason: string) => `hold state unknown for pid ${pid} (${reason})`;
+
+function firstLine(file: string): string {
+  try {
+    return fs.readFileSync(file, 'utf-8').trim().split('\n')[0]?.trim().slice(0, 200) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 /**
- * Takes the hold for `sleep --on`. Idempotent: a live recorded hold is kept, a stale one (its pid
- * gone or reused) is cleared and replaced. Never throws on a hold that cannot start: sleep mode
- * stays on and the line says why. Returns the `Keep-awake:` line to print.
+ * Spawns `command`, gives it `SETTLE_MS` to fail, then confirms it is still running. Returns its pid
+ * and identity, or why it is not holding: it exited (with its first stderr line), or its state
+ * could not be read (it is then stopped, since an unconfirmed inhibitor cannot be tracked).
+ */
+export function startInhibitor(
+  command: string[],
+  deps: HoldDeps,
+  stderrFile: string,
+): { ok: true; pid: number; identity: string } | { ok: false; reason: string } {
+  fs.mkdirSync(path.dirname(stderrFile), { recursive: true });
+  let pid: number;
+  try {
+    pid = deps.spawnDetached(command, stderrFile);
+  } catch (err) {
+    return { ok: false, reason: `did not start: ${(err as Error).message}` };
+  }
+  deps.wait(SETTLE_MS);
+  const p = deps.identify(pid);
+  const stderr = firstLine(stderrFile);
+  fs.rmSync(stderrFile, { force: true });
+  if (p.state === 'running') return { ok: true, pid, identity: p.identity };
+  if (p.state === 'gone') return { ok: false, reason: stderr ? `exited: ${stderr}` : 'exited' };
+  try {
+    deps.kill(pid);
+  } catch {
+    // Its state is already unreadable; the reason below says the hold was not confirmed.
+  }
+  return { ok: false, reason: `not confirmed running (${p.reason}), stopped` };
+}
+
+/**
+ * Takes the hold for `sleep --on`. Idempotent: a live recorded hold is kept; a stale one (pid gone
+ * or reused) is cleared and replaced; one whose state cannot be read is kept and nothing new starts.
+ * Never throws on an inhibitor problem: sleep mode stays on and the line says why.
  */
 export function takeHold(campaignDir: string, stateStore: StateStore, deps: HoldDeps, nowIso: string): string {
   if (stateStore === 'branch') return 'Keep-awake: not held — ephemeral host (state_store: branch), nothing to inhibit.';
   const current = readHold(campaignDir);
-  if (current && deps.isRunning(current.pid, current.tool)) return `Keep-awake: already held by ${current.tool} (pid ${current.pid}).`;
-  const stale = current ? `; stale pid ${current.pid} cleared` : '';
+  let stale = '';
+  if (current) {
+    const check = checkHold(current, deps.identify);
+    if (check.state === 'live') return `Keep-awake: already held by ${current.tool} (pid ${current.pid}).`;
+    if (check.state === 'unknown') return `Keep-awake: ${unknownLine(current.pid, check.reason)}; record kept, no second inhibitor started.`;
+    stale = `; stale pid ${current.pid} cleared`;
+  }
   dropHold(campaignDir);
   const inhibitor = inhibitorFor(deps.platform, deps.onPath);
   if (!inhibitor) return `Keep-awake: not held — no caffeinate (macOS) or systemd-inhibit (Linux) on this host${stale}.`;
-  let pid: number;
+  const started = startInhibitor(inhibitor.command, deps, path.join(campaignDir, '.tmp', 'sleep-hold.stderr'));
+  if (!started.ok) return `Keep-awake: not held — ${inhibitor.tool} ${started.reason}${stale}.`;
+  const record: HoldRecord = { pid: started.pid, tool: inhibitor.tool, started_at: nowIso, identity: started.identity };
   try {
-    pid = deps.spawnDetached(inhibitor.command);
+    writeJsonAtomic(path.join(campaignDir, SLEEP_HOLD_FILE), record);
   } catch (err) {
-    return `Keep-awake: not held — ${inhibitor.tool} did not start: ${(err as Error).message}${stale}.`;
+    // An unrecorded inhibitor could never be released, so it does not outlive this call.
+    deps.kill(started.pid);
+    return `Keep-awake: not held — could not record pid ${started.pid}, inhibitor stopped: ${(err as Error).message}${stale}.`;
   }
-  const record: HoldRecord = { pid, tool: inhibitor.tool, started_at: nowIso };
-  writeJsonAtomic(path.join(campaignDir, SLEEP_HOLD_FILE), record);
-  return `Keep-awake: held by ${inhibitor.tool} (pid ${pid}) until \`sleep --off\` or \`wake\`${stale}.`;
+  return `Keep-awake: held by ${inhibitor.tool} (pid ${started.pid}) until \`sleep --off\` or \`wake\`${stale}.`;
 }
 
-/** Releases the hold for `sleep --off` and `wake`; the record goes either way. Returns the line to print. */
+/**
+ * Releases the hold for `sleep --off` and `wake`. The record is dropped only once the hold is gone:
+ * after a successful kill, or when its pid no longer names the hold. Returns the line to print.
+ */
 export function releaseHold(campaignDir: string, deps: HoldDeps): string {
   const current = readHold(campaignDir);
-  dropHold(campaignDir);
-  if (!current) return 'Keep-awake: nothing to release.';
-  if (!deps.isRunning(current.pid, current.tool)) return `Keep-awake: pid ${current.pid} was no longer running; stale record cleared.`;
+  if (!current) {
+    dropHold(campaignDir);
+    return 'Keep-awake: nothing to release.';
+  }
+  const check = checkHold(current, deps.identify);
+  if (check.state === 'unknown') return `Keep-awake: ${unknownLine(current.pid, check.reason)}; record kept.`;
+  if (check.state === 'stale') {
+    dropHold(campaignDir);
+    return `Keep-awake: pid ${current.pid} is no longer the hold; stale record cleared.`;
+  }
   try {
     deps.kill(current.pid);
   } catch (err) {
-    return `Keep-awake: could not stop ${current.tool} (pid ${current.pid}): ${(err as Error).message}.`;
+    return `Keep-awake: could not stop ${current.tool} (pid ${current.pid}): ${(err as Error).message}; record kept.`;
   }
+  dropHold(campaignDir);
   return `Keep-awake: released ${current.tool} (pid ${current.pid}).`;
 }
 
 export type KeepAwake = { held: true; tool: InhibitorTool; pid: number; since: string } | { held: false; reason: string };
 
 /** What `run-context.json` records about the hold: held, or why not. Reads only; never starts or stops one. */
-export function keepAwakeStatus(campaignDir: string, stateStore: StateStore, isRunning: HoldDeps['isRunning']): KeepAwake {
+export function keepAwakeStatus(campaignDir: string, stateStore: StateStore, identify: HoldDeps['identify']): KeepAwake {
   if (stateStore === 'branch') return { held: false, reason: 'ephemeral host (state_store: branch): nothing to inhibit' };
   const current = readHold(campaignDir);
   if (!current) return { held: false, reason: 'no hold recorded' };
-  if (!isRunning(current.pid, current.tool)) return { held: false, reason: `stale record: pid ${current.pid} is not running; \`sleep --on\` takes a new hold` };
+  const check = checkHold(current, identify);
+  if (check.state === 'unknown') return { held: false, reason: unknownLine(current.pid, check.reason) };
+  if (check.state === 'stale') return { held: false, reason: `stale record: pid ${current.pid} is no longer the hold; \`sleep --on\` takes a new hold` };
   return { held: true, tool: current.tool, pid: current.pid, since: current.started_at };
+}
+
+/** `ps -o stat=,lstart=,args=` output → state; lstart is always five words (`Tue Nov 17 02:00:00 2026`). */
+function parsePs(out: string): ProcState {
+  const words = out.trim().split(/\s+/);
+  if (words.length < 7) return { state: 'gone' };
+  if (words[0].startsWith('Z')) return { state: 'gone' };
+  return { state: 'running', identity: words.slice(1).join(' ') };
 }
 
 /** The real process calls. */
@@ -135,26 +223,34 @@ export const systemHoldDeps: HoldDeps = {
         return false;
       }
     }),
-  spawnDetached: (command) => {
-    const child = spawn(command[0], command.slice(1), { detached: true, stdio: 'ignore' });
-    // A spawn failure is reported through the missing pid below; the async event carries nothing more.
-    child.on('error', () => {});
-    if (child.pid === undefined) throw new Error(`could not spawn ${command[0]}`);
-    child.unref();
-    return child.pid;
+  spawnDetached: (command, stderrFile) => {
+    const err = fs.openSync(stderrFile, 'w');
+    try {
+      const child = spawn(command[0], command.slice(1), { detached: true, stdio: ['ignore', 'ignore', err] });
+      let spawnError: Error | null = null;
+      child.on('error', (e) => {
+        spawnError = e;
+      });
+      if (child.pid === undefined) throw spawnError ?? new Error(`could not spawn ${command[0]}`);
+      child.unref();
+      return child.pid;
+    } finally {
+      fs.closeSync(err);
+    }
   },
-  isRunning: (pid, tool) => {
-    // `comm` is the executable name, cut to 15 characters on Linux; `systemd-inhibit` is exactly 15.
-    const ps = spawnSync('ps', ['-p', String(pid), '-o', 'comm='], { encoding: 'utf-8' });
-    return ps.status === 0 && path.basename(ps.stdout.trim()) === tool.slice(0, 15);
+  identify: (pid) => {
+    const ps = spawnSync('ps', ['-p', String(pid), '-o', 'stat=', '-o', 'lstart=', '-o', 'args='], { encoding: 'utf-8' });
+    if (ps.error) return { state: 'unknown', reason: `ps failed: ${ps.error.message}` };
+    if (ps.status === 0) return parsePs(ps.stdout);
+    // ps exits non-zero with no output when the pid does not exist; anything on stderr is a real failure.
+    return ps.stderr.trim() ? { state: 'unknown', reason: `ps failed: ${ps.stderr.trim()}` } : { state: 'gone' };
   },
   kill: (pid) => {
-    // The inhibitor leads its own process group (spawned detached): stopping the group also stops
+    // The inhibitor leads its own process group (spawned detached): signalling the group also stops
     // the `sleep infinity` that `systemd-inhibit` runs, so nothing is left orphaned.
-    try {
-      process.kill(-pid, 'SIGTERM');
-    } catch {
-      process.kill(pid, 'SIGTERM');
-    }
+    process.kill(-pid, 'SIGTERM');
+  },
+  wait: (ms) => {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
   },
 };
