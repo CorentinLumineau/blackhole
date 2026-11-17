@@ -31,7 +31,8 @@ Act as ORCHESTRATOR only:
 - File NEW issues for bugs, refactors, quick wins, docs gaps found along the way
 
 Clarify and split (ALL issue sizes):
-- AskQuestion on ANY product/UX/data doubt — user is source of truth
+- AskQuestion on ANY product/UX/data doubt — user is source of truth; every question goes
+  through askOrPark() first (clarify-gates.md § C3 adapter), so sleep mode parks it
 - Even size:xs / size:s issues: clarify if acceptance criteria ambiguous
 - Split into child issues when not one comfortable reviewable PR — not only epics
 - Get user sign-off on plan before implement workers when scope was unclear

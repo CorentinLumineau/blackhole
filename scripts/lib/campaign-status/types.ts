@@ -447,7 +447,7 @@ export type StageCounts = {
 export type IssueRow = { num: number; issue: QueueIssue };
 
 /** The launch summary's rows, in display order (`launch-summary.ts`). */
-export const LAUNCH_ROW_KEYS = ['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers'] as const;
+export const LAUNCH_ROW_KEYS = ['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep'] as const;
 export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];
 
 export type GateOption = { label: string; description: string };

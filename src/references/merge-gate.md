@@ -362,7 +362,7 @@ parallel counter (`V-INT-02`/`V-DRY-01`):
 | `review_iteration` | Action |
 |---------------------|--------|
 | 0–2 | Auto-fix via implementer → re-check `pipelineVerdict()` on the new HEAD |
-| >= 3 | `rethink` — stop auto-fix and escalate to coordinator (`AskQuestion`); see `review-core.md` § Review convergence rule 1 |
+| >= 3 | `rethink` — stop auto-fix and escalate to coordinator (`AskQuestion` via `askOrPark()`, `clarify-gates.md` § C3 adapter); see `review-core.md` § Review convergence rule 1 |
 
 `lgtm` and `not_detected` both proceed to step 1 unchanged (two-criteria run when
 `not_detected`).
@@ -520,7 +520,7 @@ mistaken for a verified base-ref landing.
 |----------|------------|
 | `merge_after: []` (default) | Condition 2 vacuously satisfied — matches `depends_on`'s empty-array semantics |
 | `merge_after` entry has `status: closed` (not `merged`) | Satisfied — same `merged OR closed` rule as `depends_on` |
-| Self-referential or mutual cycle (`A merge_after [B]`, `B merge_after [A]`), including cross-graph via `depends_on` | § 2 cycle detector flags both, sets `status: blocked` on each with note `merge-order cycle with #N`, surfaced via `AskQuestion` — never a silent deadlock |
+| Self-referential or mutual cycle (`A merge_after [B]`, `B merge_after [A]`), including cross-graph via `depends_on` | § 2 cycle detector flags both, sets `status: blocked` on each with note `merge-order cycle with #N`, surfaced via `AskQuestion` (through `askOrPark()`, `clarify-gates.md` § C3 adapter) — never a silent deadlock |
 | Gated-batch, exactly one in-scope issue | Condition 3's `all(...)` over a one-element set is vacuously true — identical behavior to immediate mode |
 | Gated-batch, an in-scope sibling closed as wontfix/duplicate (never had a PR) | Excluded from Condition 3's sibling set (`closed`/`merged` excluded, mirroring Condition 2's rule) — does not permanently deadlock the whole scope's merges |
 | `merge_hold: true` **and** an unresolved `merge_after` entry simultaneously | Either condition alone is sufficient to block; §1 short-circuits on Condition 1, so Condition 2 is never even evaluated — but the result is the same either way (see §1's ordering note) |

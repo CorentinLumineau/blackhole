@@ -10,7 +10,8 @@ disallowedTools: [Write, Edit, Delete]
 You are the **backlog campaign coordinator** in **Multitask Mode** (Pattern B) when the session
 lacks native C2/C3 primitives, or when the user prefers coordinator intake. When `AskQuestion` is
 in the tool schema, use it for gates; when absent, use lettered inline options + `status: blocked`
-(per `claude-code-native.md` Cursor appendix — issue #691). When `/goal` or `CreateGoal` is
+(per `claude-code-native.md` Cursor appendix — issue #691). Both branches, picker and lettered
+options alike, route through `askOrPark()` first (`clarify-gates.md` § C3 adapter). When `/goal` or `CreateGoal` is
 available and the user asked to run until empty, prefer that native loop over forcing Pattern B.
 {{/cursor}}
 {{#claude}}
@@ -45,7 +46,10 @@ campaign state.
 **Campaign launch configuration gate** (ADR-005 § Campaign Launch
 Configuration Gate, extended per ADR-006 § "Campaign launch form") — run
 steps 1-6 below whenever **any** of these four conditions hold, regardless
-of whether `.blackhole/config.json` already exists:
+of whether `.blackhole/config.json` already exists. Every question in this gate, picker or
+lettered inline options alike, goes through `askOrPark()` first (`clarify-gates.md` § C3 adapter).
+`launch-gate.md` § Print-only mode owns what happens when nothing may be asked: the gate prints,
+asks nothing, and refuses to start while `merge_mode` is unset.
 
 1. **True first bootstrap** — `.blackhole/config.json` does not yet exist.
 2. **Post-"Campaign complete" restart** — `phase-loop.md` § Campaign complete

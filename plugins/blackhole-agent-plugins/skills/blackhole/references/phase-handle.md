@@ -22,7 +22,7 @@ Orchestrator-led. Workers: read-only `explore` only — `router` is the one scop
 
 ## Clarify (all sizes)
 
-Even `size:xs`: if AC missing or vague → `AskQuestion`, `status: blocked`,
+Even `size:xs`: if AC missing or vague → `AskQuestion` (through `askOrPark()`, `clarify-gates.md` § C3 adapter), `status: blocked`,
 `notes: awaiting-user-clarification`. Do not assume intent.
 
 ## Split (all sizes)
