@@ -11,7 +11,9 @@ import { resolveUsageBudget, workersAllowed, type UsageVerdict } from './lib/usa
 // `--usage` is the normalized RateLimits JSON the agent builds from its harness usage call:
 //   {"five_hour":{"used_percentage":0-100,"resets_at":<epoch s>},"seven_day":{...}}  (either window optional)
 // Without it the statusline cache is read through pace-gate.ts's readRateLimits. Prints the verdict
-// JSON on stdout; exit 0 on any verdict, 2 on bad usage, a malformed `--usage` or an invalid config.
+// JSON on stdout (with `weekly_fit` when `usage_budget.weekly.target_at_reset` is set; the weekly fit
+// and any PACE-WAIT wake time also go to stderr); exit 0 on any verdict, 2 on bad usage, a malformed
+// `--usage` (enabled or not) or an invalid config.
 const USAGE =
   "usage: usage-budget.ts --parallel-max <n> [--usage '<json>' | --cache <path>] [--config <path>] [--now <epoch s>]";
 const fail = (message: string): never => {
@@ -73,25 +75,31 @@ const main = (): void => {
     return fail(error instanceof Error ? error.message : String(error));
   }
 
+  // A malformed --usage is a usage error whether or not the budget is enabled.
+  let given: RateLimits | null = null;
+  if (typeof flags.usage === 'string') {
+    try {
+      given = parseUsage(flags.usage);
+    } catch (error) {
+      return fail(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   let verdict: UsageVerdict;
   if (!budget.enabled) {
-    verdict = { verdict: 'unavailable', workers: parallelMax as number, reasons: ['usage_budget disabled'], wake_at: null, hours_to_reset: null };
+    verdict = { verdict: 'unavailable', workers: parallelMax as number, reasons: ['usage_budget disabled'], wake_at: null, hours_to_reset: null, weekly_fit: null };
   } else {
-    let limits: RateLimits | null;
+    let limits: RateLimits | null = given;
     let reason: string | null = null;
-    if (typeof flags.usage === 'string') {
-      try {
-        limits = parseUsage(flags.usage);
-      } catch (error) {
-        return fail(error instanceof Error ? error.message : String(error));
-      }
-    } else {
-      ({ limits, reason } = readRateLimits(cachePath, now as number, maxAge));
-    }
+    if (!given) ({ limits, reason } = readRateLimits(cachePath, now as number, maxAge));
     verdict = workersAllowed(limits, now as number, budget, parallelMax as number);
     if (reason) verdict.reasons.unshift(reason);
   }
   if (verdict.verdict === 'unavailable') console.error(`usage-budget: ${verdict.reasons[0]}`);
+  if (verdict.weekly_fit !== null) {
+    console.error(`usage-budget: weekly fit ${verdict.weekly_fit} worker(s) toward ${budget.weekly.target_at_reset}% at reset`);
+  }
+  if (verdict.verdict === 'PACE-WAIT') console.error(`usage-budget: PACE-WAIT until ${verdict.wake_at}: ${verdict.reasons[0]}`);
   console.log(JSON.stringify(verdict));
 };
 

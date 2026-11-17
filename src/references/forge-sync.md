@@ -246,8 +246,10 @@ A cross-repo dependency is satisfied **only** by the other repo's forge merged s
 `readPrLanding` (`scripts/lib/forge-adapter/pr-landing.ts`) — never by the queue and never by SHA
 ancestry. Open, closed-unmerged, or unreadable (failed read, unsupported forge) are all unmet;
 unreadable is never satisfied. `crossRepoBlockers(issues, read)` returns the unmet ones, and the
-status page renders each under `### Cross-repo blockers` as
-`#6241 — blocked by owner/repo#185 (not merged yet)`. Release and rollout
+status page names each as the blocker of that issue's PR in "Merge next"
+(`mergeNextOrder`), as `waits on owner/repo#185 (cross-repo, not merged yet)`. If the open-issue
+read fails, the section says the cross-repo dependencies were not read. It is report-only: the
+ready set (`queue-dag.md` Step 2) does not read these lines. Release and rollout
 steps the other repo needs before its PR counts belong in that PR, not in this campaign.
 
 ### 7. PR cross-reference

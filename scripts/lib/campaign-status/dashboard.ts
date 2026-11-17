@@ -1,6 +1,7 @@
-import { formatCrossRepoBlocker, type CrossRepoBlocker } from '../../forge-deps.ts';
+import type { CrossRepoBlocker } from '../../forge-deps.ts';
 import { readScope, type CampaignScope } from '../../forge-scope.ts';
 import { classPreview, groupBlockedRows, waitReason } from './blocked-classes.ts';
+import { formatMergeNextItem, mergeNextOrder } from '../merge-next.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
 import { safePatternId, topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
@@ -300,6 +301,29 @@ export function renderQueueHealthLine(verdict: QueueHealth, blockedCount: number
   return `**Queue health:** ${QUEUE_HEALTH_ICON[verdict]} ${label}`;
 }
 
+/**
+ * Every open PR in the order to merge it (`mergeNextOrder`), each with its blocker; `ciFixIssues`
+ * merge first. `crossRepo` null means the issue bodies were not read, so cross-repo blockers are
+ * unknown — said so, never shown as clear.
+ */
+export function renderMergeNextSection(
+  issues: Record<string, QueueIssue>,
+  ciFixIssues: number[] = [],
+  crossRepo: CrossRepoBlocker[] | null = [],
+): string[] {
+  const { items, cycles } = mergeNextOrder(issues, ciFixIssues, crossRepo ?? []);
+  if (items.length === 0 && cycles.length === 0) return [];
+  const shown = items.slice(0, SECTION_CAP);
+  return [
+    '### Merge next',
+    ...shown.map((item, i) => `${i + 1}. ${formatMergeNextItem(item)}`),
+    ...capOverflowLine(items.length, shown.length),
+    ...cycles.map((c) => `- **Cycle, not ordered:** ${c.map((n) => `#${n}`).join(', ')} — their stack or depends_on edges loop`),
+    ...(crossRepo === null ? ['- cross-repo dependencies not read: the forge issue list failed'] : []),
+    '',
+  ];
+}
+
 export function renderStackMergeOrderSection(issues: Record<string, QueueIssue>): string[] {
   const stacks = stackMergeOrder(issues);
   if (stacks.length === 0) return [];
@@ -310,17 +334,6 @@ export function renderStackMergeOrderSection(issues: Record<string, QueueIssue>)
     ...capOverflowLine(stacks.length, shown.length),
     '',
   ];
-}
-
-/**
- * Unmet `Depends on owner/repo#N` lines of open queue issues (forge-sync.md § Cross-repo
- * dependencies). Null means the issue bodies could not be read — said so, never a clean list.
- */
-export function renderCrossRepoBlockersSection(blockers: CrossRepoBlocker[] | null): string[] {
-  if (blockers === null) return ['### Cross-repo blockers', '- not read: the forge issue list failed', ''];
-  if (blockers.length === 0) return [];
-  const shown = blockers.slice(0, SECTION_CAP);
-  return ['### Cross-repo blockers', ...shown.map((b) => `- ${formatCrossRepoBlocker(b)}`), ...capOverflowLine(blockers.length, shown.length), ''];
 }
 
 /** The campaign facts the page leads with, from the same report as `--json`: what the text dashboard repeats. */
@@ -372,7 +385,7 @@ export function formatDashboard(opts: {
   checkpointBody?: string;
   /** The report's header facts; absent ⇒ the dashboard prints only the queue sections. */
   view?: DashboardView;
-  /** Unmet cross-repo dependencies; absent ⇒ not computed (no forge read), null ⇒ the read failed. */
+  /** Unmet cross-repo dependencies, named in "Merge next"; absent ⇒ none computed (no forge read), null ⇒ the read failed. */
   crossRepoBlockers?: CrossRepoBlocker[] | null;
 }): string {
   const { scope, checkpoint, queue, ledger, forge, checkpointBody, view, crossRepoBlockers } = opts;
@@ -420,8 +433,8 @@ export function formatDashboard(opts: {
   lines.push(...renderReadySection(ready));
   lines.push(...renderRoutingSection(active));
   lines.push(...renderWavesSection(issues));
+  lines.push(...renderMergeNextSection(issues, [], crossRepoBlockers));
   lines.push(...renderStackMergeOrderSection(issues));
-  if (crossRepoBlockers !== undefined) lines.push(...renderCrossRepoBlockersSection(crossRepoBlockers));
   lines.push(...renderCompletedSection(done));
   lines.push(...renderFiledSection(filed));
   lines.push(...renderLedgerOpenSection(findings));

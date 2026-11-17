@@ -204,6 +204,12 @@ something else by reason class (`elseClasses()`), up next, recently done, and a 
 (`deny_counts`; `no hook denials recorded` when empty). The text dashboard (`dashboard.ts`)
 is shorter: it prints the headline, the board counts, your move, the scope and the newest
 decisions above its queue sections, with no card list and no workstreams.
+Among its queue sections, **Merge next** numbers every open PR in the order to merge it
+(`mergeNextOrder`, `scripts/lib/merge-next.ts`): CI-fix PRs first, then parents, then children,
+ordered over stack edges (`effectiveParent`) and `depends_on`. Each line names its blocker —
+`waits on #N (stacked on)`, `waits on #N (depends on)`, `waits on owner/repo#N (cross-repo, …)`
+(an unmet body line, `forge-sync.md` § 6.7), `blocked: <notes>`, `after CI fix #N`, or `none` — and a loop of edges is printed as a `Cycle, not ordered` line instead of being walked.
+It sits above "Stacked PR merge order", which it does not replace.
 Visual rules: R-006 (`documentation/reference/product-principles.md`).
 
 ## State file

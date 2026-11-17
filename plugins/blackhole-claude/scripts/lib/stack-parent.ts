@@ -141,7 +141,7 @@ export const collectParentFiles = (
 
 export type StackStep = { issue: number; stackedOn: number | null };
 
-const isOpenPr = (v: StackCandidate | undefined): boolean =>
+export const isOpenPr = (v: StackCandidate | undefined): boolean =>
   !!v && v.pr != null && !CLOSED_STATUSES.has(v.status ?? '');
 
 /**

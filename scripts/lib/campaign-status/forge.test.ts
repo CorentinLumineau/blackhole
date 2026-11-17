@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ForgeIssue } from '../forge-adapter/types.ts';
 import { fakeForge, prRow } from './forge-fake.ts';
-import { fetchCrossRepoBlockers, fetchForgeCounts, fetchMergedPrs, MERGED_PR_LIMIT } from './forge.ts';
+import { crossRepoBlockersOf, fetchForgeCounts, fetchMergedPrs, MERGED_PR_LIMIT, readOpenIssues } from './forge.ts';
 
 const issue = (number: number, milestone: string | null = null): ForgeIssue => ({
   number,
@@ -82,20 +82,28 @@ describe('a forge failure message', () => {
   });
 });
 
-describe('fetchCrossRepoBlockers', () => {
+describe('one open-issue read per status run', () => {
   const withBody = (number: number, body: string): ForgeIssue => ({ ...issue(number), body });
 
-  test('reads the cross-repo lines of open queue issues only, through the landing reader', async () => {
+  test('fetchForgeCounts and crossRepoBlockersOf share the rows readOpenIssues fetched once', async () => {
     const forge = fakeForge({
       issues: [withBody(1, 'Depends on acme/workflows#185'), withBody(2, 'Depends on acme/workflows#186'), withBody(3, 'Depends on #1')],
+      prs: { open: [] },
     });
-    const read = (repo: string, n: number) => (n === 185 ? null : { state: 'open' as const, mergedAt: null, mergeCommitSha: null });
-    expect(await fetchCrossRepoBlockers(forge, new Set([1, 3]), read)).toEqual([
+    const open = await readOpenIssues(forge);
+    expect((await fetchForgeCounts({}, forge, open)).openIssues).toBe(3);
+    const read = (_repo: string, n: number) => (n === 185 ? null : { state: 'open' as const, mergedAt: null, mergeCommitSha: null });
+    expect(crossRepoBlockersOf(open, new Set([1, 3]), read)).toEqual([
       { issue: 1, dep: { repo: 'acme/workflows', number: 185 }, state: 'unreadable' },
     ]);
+    expect(forge.calls.filter((c) => c === 'issueList')).toEqual(['issueList']);
   });
 
-  test('an issue-list failure is null, never an empty list', async () => {
-    expect(await fetchCrossRepoBlockers(fakeForge({}), new Set([1]), () => null)).toBeNull();
+  test('an issue-list failure is ok:false for the counts and null blockers, never an empty list', async () => {
+    const forge = fakeForge({ prs: { open: [] } });
+    const open = await readOpenIssues(forge);
+    expect(await fetchForgeCounts({}, forge, open)).toMatchObject({ ok: false, openIssues: 0, openPrs: 0 });
+    expect(crossRepoBlockersOf(open, new Set([1]), () => null)).toBeNull();
+    expect(forge.calls).toEqual(['issueList']);
   });
 });

@@ -88,9 +88,9 @@ const BLOCKER_REASON: Record<CrossRepoDepState, string> = {
   unreadable: 'merged state unreadable, treated as unmet',
 };
 
-/** One blocker line: the waiting issue, the other repo's PR and why it is unmet. */
-export function formatCrossRepoBlocker(b: CrossRepoBlocker): string {
-  return `#${b.issue} — blocked by ${b.dep.repo}#${b.dep.number} (${BLOCKER_REASON[b.state]})`;
+/** The blocker text of one unmet dependency, as a "Merge next" item names it. */
+export function crossRepoBlockerText(b: CrossRepoBlocker): string {
+  return `waits on ${b.dep.repo}#${b.dep.number} (cross-repo, ${BLOCKER_REASON[b.state]})`;
 }
 
 function isDepLine(line: string): boolean {

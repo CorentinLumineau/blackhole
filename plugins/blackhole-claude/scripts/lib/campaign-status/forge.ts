@@ -1,6 +1,6 @@
 import { crossRepoBlockers, type CrossRepoBlocker, type CrossRepoLandingReader } from '../../forge-deps.ts';
 import { issueMatchesScope, type CampaignScope } from '../../forge-scope.ts';
-import type { ForgeAdapter } from '../forge-adapter/types.ts';
+import type { ForgeAdapter, ForgeIssue } from '../forge-adapter/types.ts';
 import { closedIssues } from './merged.ts';
 import type { ForgeCounts, MergedPr } from './types.ts';
 
@@ -12,13 +12,22 @@ const COUNT_LIMIT = 1000;
 /** The newest PRs of any state read to find the merged ones: a few pages, not the whole history. */
 export const MERGED_PR_LIMIT = 300;
 
-export async function fetchForgeCounts(scope: CampaignScope, adapter: ForgeAdapter): Promise<ForgeCounts> {
-  let openIssues: number;
+/** The open issues, read once per status run and shared by every consumer; `ok: false` keeps the error text. */
+export type OpenIssueRead = { ok: true; issues: ForgeIssue[] } | { ok: false; error: string };
+
+export async function readOpenIssues(adapter: ForgeAdapter): Promise<OpenIssueRead> {
   try {
-    openIssues = (await adapter.issueList({ state: 'open', limit: COUNT_LIMIT })).filter((i) => issueMatchesScope(i, scope)).length;
+    return { ok: true, issues: await adapter.issueList({ state: 'open', limit: COUNT_LIMIT }) };
   } catch (error) {
-    return { openIssues: 0, openPrs: 0, ok: false, error: errorText(error) };
+    return { ok: false, error: errorText(error) };
   }
+}
+
+/** Counts from `open` when the caller already read the open issues; otherwise reads them itself. */
+export async function fetchForgeCounts(scope: CampaignScope, adapter: ForgeAdapter, open?: OpenIssueRead): Promise<ForgeCounts> {
+  const read = open ?? (await readOpenIssues(adapter));
+  if (!read.ok) return { openIssues: 0, openPrs: 0, ok: false, error: read.error };
+  const openIssues = read.issues.filter((i) => issueMatchesScope(i, scope)).length;
   // A PR-list failure must never render as a clean zero (issue #864): `ok: false` with the
   // error text, while the issue count that did succeed stays populated.
   try {
@@ -42,20 +51,15 @@ export async function fetchMergedPrs(adapter: ForgeAdapter): Promise<MergedPr[] 
 
 /**
  * Unmet cross-repo dependencies of the open issues numbered in `queueIssues`, from their bodies'
- * `Depends on owner/repo#N` lines. Null when the issue list cannot be read: "not read" is never "none".
+ * `Depends on owner/repo#N` lines. Null when the open issues could not be read: "not read" is never "none".
  */
-export async function fetchCrossRepoBlockers(
-  adapter: ForgeAdapter,
+export function crossRepoBlockersOf(
+  open: OpenIssueRead,
   queueIssues: Set<number>,
   read: CrossRepoLandingReader,
-): Promise<CrossRepoBlocker[] | null> {
-  let issues;
-  try {
-    issues = await adapter.issueList({ state: 'open', limit: COUNT_LIMIT });
-  } catch {
-    return null;
-  }
-  return crossRepoBlockers(issues.filter((i) => queueIssues.has(i.number)), read);
+): CrossRepoBlocker[] | null {
+  if (!open.ok) return null;
+  return crossRepoBlockers(open.issues.filter((i) => queueIssues.has(i.number)), read);
 }
 
 function errorText(error: unknown): string {

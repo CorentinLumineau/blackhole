@@ -4,7 +4,7 @@ import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
-import { fetchCrossRepoBlockers, fetchForgeCounts, fetchMergedPrs } from './lib/campaign-status/forge.ts';
+import { crossRepoBlockersOf, fetchForgeCounts, fetchMergedPrs, readOpenIssues } from './lib/campaign-status/forge.ts';
 import { readPrLanding } from './lib/forge-adapter/pr-landing.ts';
 import { DONE_STATUSES } from './lib/campaign-status/queue.ts';
 import { writeStatusData } from './lib/campaign-status/data.ts';
@@ -162,7 +162,7 @@ export async function collectStatusReport(
   state: ReturnType<typeof loadCampaignState>;
   host: { pace: string | null; drift: string | null };
   /** Unmet cross-repo dependencies of open queue issues; undefined when the forge was not read. */
-  crossRepoBlockers?: Awaited<ReturnType<typeof fetchCrossRepoBlockers>>;
+  crossRepoBlockers?: ReturnType<typeof crossRepoBlockersOf>;
 }> {
   const state = loadCampaignState(campaignDir);
   const { config, queue, ledger, checkpoint, checkpointBody, decisions } = state;
@@ -170,15 +170,16 @@ export async function collectStatusReport(
   const resolved = resolveForgeForRepo(path.dirname(path.resolve(campaignDir)), config.forge);
   const forgeType = resolved.ok ? resolved.forge : config.forge && isForgeType(config.forge) ? config.forge : 'github';
   const source = skipGh || !config.repo ? null : (adapter ?? createForgeAdapter({ repo: config.repo, forge: forgeType }));
-  const forge = source
-    ? await fetchForgeCounts(scope, source)
+  // One open-issue read per run, shared by the counts and the cross-repo blockers.
+  const openIssues = source ? await readOpenIssues(source) : null;
+  const forge = source && openIssues
+    ? await fetchForgeCounts(scope, source, openIssues)
     : { openIssues: 0, openPrs: 0, ok: false, error: skipGh ? 'skipped' : 'no repo in config.json' };
   const prSignals = source && forge.ok ? await fetchPrSignals(source, boardPrs(queue, forge.openPrList)) : null;
   const mergedPrs = source && forge.ok ? await fetchMergedPrs(source) : null;
-  const crossRepoBlockers =
-    source && forge.ok
-      ? await fetchCrossRepoBlockers(source, openQueueIssues(queue), (repo, n) => readPrLanding(forgeType, repo, n))
-      : undefined;
+  const crossRepoBlockers = openIssues
+    ? crossRepoBlockersOf(openIssues, openQueueIssues(queue), (repo, n) => readPrLanding(forgeType, repo, n))
+    : undefined;
   const host = readHostLines(campaignDir);
   const report = buildStatusReport({
     config,

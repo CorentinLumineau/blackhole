@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { PrLanding } from './lib/forge-adapter/pr-landing.ts';
 import {
   crossRepoBlockers,
-  formatCrossRepoBlocker,
+  crossRepoBlockerText,
   mergeDependsIntoBody,
   parseCrossRepoDepsFromBody,
   parseDependsFromBody,
@@ -200,14 +200,14 @@ describe('crossRepoBlockers', () => {
   });
 
   test('each blocker names the other repo PR and why it is unmet', () => {
-    expect(formatCrossRepoBlocker({ issue: 6241, dep: { repo: 'acme/infra', number: 2 }, state: 'open' })).toBe(
-      '#6241 — blocked by acme/infra#2 (not merged yet)',
+    expect(crossRepoBlockerText({ issue: 6241, dep: { repo: 'acme/infra', number: 2 }, state: 'open' })).toBe(
+      'waits on acme/infra#2 (cross-repo, not merged yet)',
     );
-    expect(formatCrossRepoBlocker({ issue: 6241, dep: { repo: 'acme/infra', number: 3 }, state: 'closed-unmerged' })).toBe(
-      '#6241 — blocked by acme/infra#3 (closed without merging)',
+    expect(crossRepoBlockerText({ issue: 6241, dep: { repo: 'acme/infra', number: 3 }, state: 'closed-unmerged' })).toBe(
+      'waits on acme/infra#3 (cross-repo, closed without merging)',
     );
-    expect(formatCrossRepoBlocker({ issue: 6241, dep: { repo: 'acme/infra', number: 4 }, state: 'unreadable' })).toBe(
-      '#6241 — blocked by acme/infra#4 (merged state unreadable, treated as unmet)',
+    expect(crossRepoBlockerText({ issue: 6241, dep: { repo: 'acme/infra', number: 4 }, state: 'unreadable' })).toBe(
+      'waits on acme/infra#4 (cross-repo, merged state unreadable, treated as unmet)',
     );
   });
 });
