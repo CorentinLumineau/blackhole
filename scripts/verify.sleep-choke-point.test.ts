@@ -23,7 +23,7 @@ describe('findUnroutedAsks', () => {
   });
 
   test('a route anywhere in the same section passes', () => {
-    for (const route of ['`askOrPark()`', 'clarify-gates.md § C3 adapter', '`clarify-gates.md` § Gate Content Contract', '`sleep-mode.md`']) {
+    for (const route of ['`askOrPark()`', 'clarify-gates.md § C3 adapter', 'the C3 adapter row for this session', '`clarify-gates.md` § Gate Content Contract', '`sleep-mode.md`']) {
       expect(findUnroutedAsks([doc('a.md', `## G\nUse AskQuestion.\n\nRouted via ${route}.\n`)], [])).toEqual([]);
     }
   });

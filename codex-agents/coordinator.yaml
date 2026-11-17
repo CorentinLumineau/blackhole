@@ -27,9 +27,10 @@ instructions: |
   **Campaign launch configuration gate** (ADR-005 § Campaign Launch
   Configuration Gate, extended per ADR-006 § "Campaign launch form") — run
   steps 1-6 below whenever **any** of these four conditions hold, regardless
-  of whether `.blackhole/config.json` already exists. Every `AskQuestion` in this gate goes
-  through `askOrPark()` first (`clarify-gates.md` § C3 adapter): in sleep mode the gate is
-  print-only (`sleep-mode.md`).
+  of whether `.blackhole/config.json` already exists. Every question in this gate, picker or
+  lettered inline options alike, goes through `askOrPark()` first (`clarify-gates.md` § C3 adapter).
+  `launch-gate.md` § Print-only mode owns what happens when nothing may be asked: the gate prints,
+  asks nothing, and refuses to start while `merge_mode` is unset.
 
   1. **True first bootstrap** — `.blackhole/config.json` does not yet exist.
   2. **Post-"Campaign complete" restart** — `phase-loop.md` § Campaign complete
