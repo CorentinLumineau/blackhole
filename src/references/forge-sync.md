@@ -37,6 +37,20 @@ When `.blackhole/config.json` has `auto_sync: false`, skip forge calls (offline 
 **User-visible output:** only report material changes — e.g. `Synced: +2 new
 issues (#333, #334)`, closed issues merged, or drift fixed. No prompt.
 
+## Queue builder script
+
+`bun run scripts/forge-sync.ts` (logic in `scripts/lib/forge-sync.ts`) runs steps
+4, 5, 6 and 7 below as code: it reads the open issues (and the closed ones when a live queue entry
+is missing from the open list) and the open and merged PRs through the configured forge's adapter,
+then writes `queue.json` through the state write guard (`blackhole-state.md` § Write protocol).
+It ingests in-scope open issues, refreshes title, labels, milestone, size and `depends_on` (body
+lines join the queue's own edges, never replace them), links a PR by its closing keyword or its
+`…/issue-N` branch, and marks an issue `merged` or `closed` (`phase: done`). It never removes an
+entry and never demotes `in-flight`. On a fresh checkout holding only `config.json` it also
+writes an empty `findings-ledger.json`, so `bun run status` can publish the page right after.
+A failed forge read writes nothing (exit 1); `--dry-run` prints the queue instead of writing it.
+Write-back (§ 6.5), merge-hold drift (§ 5.5) and PR dependencies (§ 6.8) stay with the orchestrator.
+
 ## Sync protocol
 
 ### 1. Auth check

@@ -94,7 +94,9 @@ the plugin version).
    derived from the same `StatusReport` as `--json`, so the counts never diverge); every other
    harness renders `bun run status --html`, which writes `.blackhole/.tmp/status.html` (override
    with `--out <path>`) and prints the path. `--html` escapes every value and loads nothing from
-   the network.
+   the network. With no `queue.json` yet (a fresh checkout holding only
+   `config.json`), run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-sync.ts` first: it builds the queue and an empty ledger from
+   the forge (`forge-sync.md` § Queue builder script).
 2. Update the single view for this harness — the first matching row wins:
 
 
