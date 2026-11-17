@@ -3,6 +3,7 @@ import * as path from 'path';
 import { parseMdFrontmatter } from '../lib/build/content.ts';
 import { root, read, type CheckResult } from './check-utils.ts';
 import { walkMdFilesAbs } from '../lib/check-common.ts';
+import { fencedLineMask } from '../lib/markdown-headings.ts';
 
 // ADR-007 T5/R2' — links.check.ts: markdown cross-reference integrity + epic-runbook linkage
 // (split from the former catch-all check file, issue #322).
@@ -12,19 +13,16 @@ const srcDir = path.join(root, 'src');
 // V-LINK-01 (ADR-007 T4/R7): markdown cross-reference integrity.
 //
 // Extracts `[text](target)` link targets from `content`, one-indexed by line. Skips targets
-// inside fenced (```) code blocks, absolute http(s)/mailto links, and pure-anchor (`#fragment`)
+// inside fenced (``` / ~~~) code blocks, absolute http(s)/mailto links, and pure-anchor (`#fragment`)
 // links — none of those are a same-repo cross-reference this check can validate.
 export const extractMarkdownLinkTargets = (content: string): { line: number; target: string }[] => {
   const out: { line: number; target: string }[] = [];
-  let inFence = false;
   const linkRe = /\[[^\]]*\]\(([^)]+)\)/g;
+  const lines = content.split('\n');
+  const fenced = fencedLineMask(lines);
 
-  content.split('\n').forEach((line, i) => {
-    if (/^\s*```/.test(line)) {
-      inFence = !inFence;
-      return;
-    }
-    if (inFence) return;
+  lines.forEach((line, i) => {
+    if (fenced[i]) return;
 
     let m: RegExpExecArray | null;
     linkRe.lastIndex = 0;

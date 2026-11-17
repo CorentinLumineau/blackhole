@@ -5,12 +5,21 @@ export type MarkdownHeading = { line: number; level: number; text: string };
 const FENCE = /^\s*(?:```|~~~)/;
 const HEADING = /^(#{1,6}) (.*)$/;
 
+/** Per line: true for a fence delimiter or a line inside a fenced code block. */
+export const fencedLineMask = (lines: string[]): boolean[] => {
+  let inFence = false;
+  return lines.map((line) => {
+    if (!FENCE.test(line)) return inFence;
+    inFence = !inFence;
+    return true;
+  });
+};
+
 /** Every ATX heading in `lines`, skipping `#` lines inside fenced code blocks. */
 export const markdownHeadings = (lines: string[]): MarkdownHeading[] => {
-  let inFence = false;
+  const fenced = fencedLineMask(lines);
   return lines.flatMap((line, i) => {
-    if (FENCE.test(line)) inFence = !inFence;
-    const match = inFence ? null : HEADING.exec(line);
+    const match = fenced[i] ? null : HEADING.exec(line);
     return match ? [{ line: i, level: match[1].length, text: match[2].trim() }] : [];
   });
 };

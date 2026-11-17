@@ -49,8 +49,9 @@ must execute it **before** its first fan-out, never after workers are already in
 
 Its first step is resolving the run context (`run-context.md`), which decides whether Pattern C
 applies at all on this run. `coordinator.md` § Bootstrap preflight is the SSOT for that gate's trigger conditions and its
-step-by-step form. This document deliberately does not restate them: one gate definition, read by
-whichever pattern is active (V-DRY-01).
+step-by-step form; `launch-gate.md` owns the routine-resume body (summary, Accept / Adjust per
+section, status-page probe, print-only mode). This document deliberately does not restate them:
+one gate definition, read by whichever pattern is active (V-DRY-01).
 
 The same ownership covers the campaign-start status page: once the gate is answered, and before
 the first fan-out, the main chat publishes or refreshes it (`status-page.md` § Refresh
