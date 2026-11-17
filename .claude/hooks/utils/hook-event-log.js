@@ -43,7 +43,7 @@ const { rotateHookEvents } = require('./hook-event-rotation');
  *  - Space form (`--token xyz`, `Bearer xyz`): no `=`/`:` joins the keyword to its value at all.
  */
 const SECRET_KV =
-  /\b((?:[A-Za-z][A-Za-z0-9]*_){0,8}?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+){0,8})(\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
+  /\b((?:[A-Za-z][A-Za-z0-9]*_){0,8}?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+){0,8})(['"]?\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
 const SECRET_SPACE =
   /(?<![\w-])(--?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key|with-token)|Bearer)\s+(['"]?)[^'"\s]{4,}\2/gi;
 /** Credentials with no keyword in front of them. Every quantifier is bounded or runs over a
@@ -53,8 +53,26 @@ const SECRET_SPACE =
  *  - URL userinfo masks only the password; the scheme and user stay readable.
  *  - `--password x` / `--password=x` at any length: SECRET_SPACE only fires from 4 chars up. */
 const SECRET_GITHUB_TOKEN = /(gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}/g;
-const SECRET_AWS_KEY = /\b(AKIA|ASIA)[0-9A-Z]{16}\b/g;
-const SECRET_URL_USERINFO = /\b([a-z][a-z0-9+.-]{0,31}:\/\/)([^\s:/@'"]{1,256}):[^\s@/'"]{1,256}@/gi;
+const SECRET_AWS_KEY = /\b(AKIA|ASIA)[0-9A-Z]{16}(?![0-9A-Z])/g;
+/** The password class admits `@`, so the greedy run backtracks to the LAST `@` before the first
+ * `/` of the authority (`https://user:p@ss@host` masks `p@ss`). */
+const SECRET_URL_USERINFO = /\b([a-z][a-z0-9+.-]{0,31}:\/\/)([^\s:/@'"]{1,256}):[^\s/'"]{1,256}@/gi;
+/** A quoted `--password` value may hold spaces; it is consumed up to its closing quote. Runs
+ * before the unquoted passes so a value such as `"two words"` is not half-matched by them. */
+const SECRET_PASSWORD_QUOTED = /(--?(?:password|passwd))(\s{1,64}|=)(['"])[^'"]{1,512}\3/gi;
+/** Glued `-p<value>` is a password only for the MySQL client family; elsewhere `-p` is a port or a
+ * "parents" flag. Up to 16 argument tokens may sit between the command word and the flag (a repeated
+ * command word ends the scan, which keeps a run of them linear), and a
+ * bare `-p` (interactive prompt) has no value to mask. */
+const SECRET_MYSQL_GLUED_P =
+  /((?<![\w-])(?:mysqldump|mysql|mariadb)(?:\s+(?!(?:mysqldump|mysql|mariadb)\b)[^\s|;&]{1,256}){0,16}?\s+-p)(?:'[^']{1,256}'|"[^"]{1,256}"|[^'"\s]{1,256})/gi;
+/** `Authorization: Basic <b64>` and `Authorization: token x` (`Bearer` is covered by SECRET_SPACE). */
+const SECRET_AUTH_HEADER = /(\bAuthorization\s{0,64}:\s{0,64}(?:Basic|token)\s{1,64})[^'"\s]{1,2048}/gi;
+/** `--user user:pass` (any command) and `curl ... -u user:pass`: only the password part is masked.
+ * `-u` means user/uid on many other tools, so it is recognised only after a `curl` command word. */
+const SECRET_USER_FLAG = /((?<![\w-])--user(?:\s{1,64}|=))(['"]?)([^'"\s:]{1,256}):[^'"\s]{1,256}\2/gi;
+const SECRET_CURL_U_FLAG =
+  /((?<![\w-])curl(?:\s+(?!curl\b)[^\s|;&]{1,256}){0,16}?\s+-u\s{0,64})(['"]?)([^'"\s:]{1,256}):[^'"\s]{1,256}\2/gi;
 const SECRET_PASSWORD_FLAG = /(--?(?:password|passwd))(\s{1,64}|=)(['"]?)[^'"\s]+\3/gi;
 const MAX_DETAIL_CHARS = 300;
 /** `reason` must keep its trailing `Remedy:` clause, so it has a separate, larger cap than `detail`. */
@@ -70,11 +88,16 @@ const REDACT_WINDOW_CHARS = Math.max(MAX_DETAIL_CHARS * 8, MAX_REASON_CHARS);
 const redactTo = (max) => (text) =>
   String(text === undefined || text === null ? '' : text)
     .slice(0, REDACT_WINDOW_CHARS)
+    .replace(SECRET_PASSWORD_QUOTED, (_match, flag, joiner, quote) => `${flag}${joiner}${quote}***${quote}`)
     .replace(SECRET_KV, (_match, key, separator, quote) => `${key}${separator}${quote}***${quote}`)
     .replace(SECRET_SPACE, (_match, flag, quote) => `${flag} ${quote}***${quote}`)
     .replace(SECRET_PASSWORD_FLAG, (_match, flag, joiner, quote) => `${flag}${joiner}${quote}***${quote}`)
     .replace(SECRET_GITHUB_TOKEN, (_match, prefix) => `${prefix}***`)
     .replace(SECRET_AWS_KEY, (_match, prefix) => `${prefix}***`)
+    .replace(SECRET_MYSQL_GLUED_P, (_match, head) => `${head}***`)
+    .replace(SECRET_AUTH_HEADER, (_match, head) => `${head}***`)
+    .replace(SECRET_USER_FLAG, (_match, head, quote, user) => `${head}${quote}${user}:***${quote}`)
+    .replace(SECRET_CURL_U_FLAG, (_match, head, quote, user) => `${head}${quote}${user}:***${quote}`)
     .replace(SECRET_URL_USERINFO, (_match, scheme, user) => `${scheme}${user}:***@`)
     .slice(0, max);
 

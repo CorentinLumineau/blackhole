@@ -5140,3 +5140,106 @@ describe('hook-event-log.js — space-separated secret flags', () => {
     }
   });
 });
+
+describe('hook-event-log.js — residual credential forms (#1190)', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  // Fake values built by concatenation so no credential-shaped literal sits in source for secret scanners.
+  const pw = 'hun' + 'ter2' + 'pw';
+  const pwAt = 'hun' + 'ter@2' + 'pw';
+  const aws = 'AKIA' + 'IOSFODNN7EXAMPLE';
+  const b64 = 'dXNlcjpw' + 'YXNzd29yZA==';
+
+  const FORMS: Array<{ label: string; input: string; secret: string; masked: string }> = [
+    { label: '--password with a double-quoted value containing spaces', input: 'db --password "correct horse battery" -h x', secret: 'horse', masked: '--password "***" -h x' },
+    { label: '--password with a single-quoted value containing spaces', input: "db --password 'correct horse battery' -h x", secret: 'horse', masked: "--password '***' -h x" },
+    { label: '--password= with a quoted value containing spaces', input: 'db --password="correct horse" -h x', secret: 'horse', masked: '--password="***" -h x' },
+    { label: 'mysql -p<value>', input: `mysql -u root -p${pw} -h db`, secret: pw, masked: 'mysql -u root -p*** -h db' },
+    { label: 'mysqldump -p<value>', input: `mysqldump -u root -p${pw} app`, secret: pw, masked: '-p*** app' },
+    { label: 'mariadb -p<value>', input: `mariadb -p${pw}`, secret: pw, masked: 'mariadb -p***' },
+    { label: 'URL userinfo with an unencoded @ in the password', input: `git clone https://deploy:${pwAt}@example.com/org/repo.git`, secret: 'ter@2', masked: 'https://deploy:***@example.com/org/repo.git' },
+    { label: 'AKIA key followed by an underscore', input: `id ${aws}_BACKUP used`, secret: aws, masked: 'AKIA***_BACKUP' },
+    { label: 'AKIA key followed by lowercase alphanumerics', input: `id ${aws}abc used`, secret: aws, masked: 'AKIA***abc' },
+    { label: 'JSON "password" key', input: `{"password":"${pw}"}`, secret: pw, masked: '{"password":"***"}' },
+    { label: 'JSON "token" key', input: `{"token":"${pw}"}`, secret: pw, masked: '{"token":"***"}' },
+    { label: 'JSON "aws_secret_access_key" key', input: `{"aws_secret_access_key":"${pw}"}`, secret: pw, masked: '"aws_secret_access_key":"***"' },
+    { label: 'JSON key with spaces around the colon', input: `{"password" : "${pw}"}`, secret: pw, masked: '"password" : "***"' },
+    { label: 'Authorization: Basic', input: `curl -H "Authorization: Basic ${b64}" x`, secret: b64, masked: 'Authorization: Basic ***"' },
+    { label: 'Authorization: token', input: `curl -H "Authorization: token ${pw}" x`, secret: pw, masked: 'Authorization: token ***"' },
+    { label: 'curl -u user:pass', input: `curl -u admin:${pw} https://example.com/x`, secret: pw, masked: '-u admin:*** https://example.com/x' },
+    { label: 'curl -u after other flags', input: `curl -sS -L -H x -X POST -u admin:${pw} https://example.com/x`, secret: pw, masked: '-u admin:***' },
+    { label: 'curl -uuser:pass', input: `curl -uadmin:${pw} https://example.com/x`, secret: pw, masked: '-uadmin:***' },
+    { label: 'curl --user user:pass', input: `curl --user admin:${pw} https://example.com/x`, secret: pw, masked: '--user admin:***' },
+    { label: 'curl --user=user:pass', input: `curl --user=admin:${pw} https://example.com/x`, secret: pw, masked: '--user=admin:***' },
+    { label: 'curl -u with a quoted user:pass', input: `curl -u 'admin:${pw}' https://example.com/x`, secret: pw, masked: "-u 'admin:***'" },
+  ];
+
+  for (const form of FORMS) {
+    test(`redactReason masks ${form.label} placed after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${form.input} Remedy: rotate it.`);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+      expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+    });
+  }
+
+  test('negatives: look-alike text is left unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    const unchanged = [
+      'curl -u user https://example.com',
+      'curl -u user https://example.com:8080/x',
+      'ssh -p 22 host',
+      'mkdir -p dir/sub',
+      'docker run -p 8080:80 img',
+      'curl -p8080 x',
+      'mysql -p -h db',
+      'mysql -P 3306 -h db',
+      'mysql --port 3306',
+      'commit 7a1f23b67d3342712cdc588e874e2b99843f3514 is fine',
+      'git -C /home/dev/work/blackhole/src status',
+      'db --password-file /run/secrets/pw',
+      'db --password-stdin',
+      'git clone git@github.com:org/repo.git',
+      'git clone ssh://git@example.com/org/repo.git',
+      'ping user@host and mail dev@example.com',
+      'fetch https://example.com:8080/a@b',
+      'Basic authentication is documented in the Authorization header section',
+      'the token is stored elsewhere and the password is unknown',
+      'AKIA' + 'IOSFODNN7EXAMPLE' + 'X',
+    ];
+    for (const text of unchanged) {
+      expect(redact(text)).toBe(text);
+      expect(redactReason(`${filler} ${text}`)).toBe(`${filler} ${text}`);
+    }
+  });
+
+  const ADVERSARIAL: Array<[string, string]> = [
+    ['unterminated quoted --password', `--password "${'a '.repeat(100_000)}`],
+    ['repeated quoted --password openers', '--password "'.repeat(16_600)],
+    ['repeated mysql', 'mysql '.repeat(33_000)],
+    ['mysql with a long token run and no -p', `mysql ${'a '.repeat(100_000)}`],
+    ['mysql followed by one huge token', `mysql ${'a'.repeat(200_000)}`],
+    ['URL userinfo run of @', `https://u:${'@'.repeat(200_000)}`],
+    ['URL userinfo long unterminated password', `https://u:${'p'.repeat(200_000)}`],
+    ['repeated URL userinfo openers', 'a://u:'.repeat(33_000)],
+    ['repeated AKIA', 'AKIA'.repeat(50_000)],
+    ['AKIA followed by endless capitals', `AKIA${'A'.repeat(200_000)}`],
+    ['JSON key then endless whitespace', `"password${'"'.repeat(1)}${' '.repeat(200_000)}`],
+    ['repeated JSON keys', '"password" '.repeat(18_000)],
+    ['repeated Authorization openers', 'Authorization:'.repeat(14_000)],
+    ['Authorization: Basic then endless value', `Authorization: Basic ${'a'.repeat(200_000)}`],
+    ['Authorization then endless whitespace', `Authorization${' '.repeat(200_000)}`],
+    ['repeated curl', 'curl '.repeat(40_000)],
+    ['repeated curl -u', 'curl -u '.repeat(25_000)],
+    ['repeated --user', '--user '.repeat(28_000)],
+    ['--user then endless user without colon', `--user ${'a'.repeat(200_000)}`],
+    ['curl -u then endless colons', `curl -u a${':'.repeat(200_000)}`],
+  ];
+
+  for (const [label, input] of ADVERSARIAL) {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+      const { redactReason } = hookEventLog();
+      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+    });
+  }
+});
