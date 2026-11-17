@@ -53,6 +53,11 @@ in the launch summary.
 
 Usage probe: when `usage_budget.enabled` is `true` in `.blackhole/config.json` and `usage-probe` is not reported, the route carries one warning (usage-aware pacing falls back to `parallel_max`); it is never a `missing` entry and never blocks a start.
 
+Usage sources, in probe order. Both end in the one rate-limit cache (`resource_policy.pace.cache_path`, default `~/.claude/cache/rate-limits.json`) that `pace-gate.ts` and `usage-budget.ts` read when no `--usage` is passed:
+
+1. **Statusline cache** (local Claude Code): the statusline command writes its stdin payload's `rate_limits` there (`config-template.md` § `resource_policy.pace.cache_path`). Use it when it is present and fresh.
+2. **Remote session events** (Claude cloud and Remote sessions, where no statusline runs): before each spawn round, read the newest `rate_limit_event` with the `claude-code-remote` MCP `list_events` tool (`kinds: ["rate_limit_event"]`) and pipe its JSON to `bun run scripts/usage-probe.ts --from-events -`. The script takes one event or the tool's `{"ccr":{"data":[...]}}` wrapper (newest event wins), turns `unifiedWindows.<window>.utilization` (0-1) into `used_percentage` and `resetsAt` into `resets_at`, drops a window past its reset, and writes the cache dated to the event, so the readers' max-age check measures the reading's age. It prints the written windows and `age_seconds`. Exit `1` means the event had no current window (nothing written); exit `2` is malformed input. A plan with no 5-hour window reports only `seven_day`. `get_session` gives no percentage, so it is not a source.
+
 Schedule: `routine` when the session can create routines (kaizen waves and CI check-ins become
 routines, `project-thread-mode.md` § Scheduling), else `turn`.
 
