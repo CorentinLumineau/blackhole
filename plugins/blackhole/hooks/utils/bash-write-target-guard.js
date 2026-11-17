@@ -90,10 +90,18 @@ const joinLineContinuations = (text) => {
  * order that finds where a heredoc body starts when its operator line is continued
  * (`cat <<EOF >\<newline>/etc/x`). Each view is checked, so neither order can hide a target. */
 const visibleViews = (command) => {
-  const views = [joinLineContinuations(buildVisibleCommand(command, computeMaskedSpans(command)))];
+  const views = [joinLineContinuations(buildVisibleCommand(command, maskedSpans(command)))];
   const joined = joinLineContinuations(command);
-  if (joined !== command) views.push(buildVisibleCommand(joined, computeMaskedSpans(joined)));
+  if (joined !== command) views.push(buildVisibleCommand(joined, maskedSpans(joined)));
   return views;
+};
+
+/** `computeMaskedSpans`, except that a substitution placeholder always stays visible: its body
+ * runs even inside a print-only argument (`echo "$(…)"`), so the clause it sits in must see it. */
+const maskedSpans = (command) => {
+  const masked = computeMaskedSpans(command);
+  for (const m of command.matchAll(PLACEHOLDER_RE)) masked.fill(false, m.index, m.index + m[0].length);
+  return masked;
 };
 
 /** Strips one matching pair of surrounding quotes (`'...'` or `"..."`), if present. */
@@ -1120,6 +1128,73 @@ const cdDestinations = (cdArgs, dirs) => {
   return dirs.map((dir) => path.resolve(dir, text));
 };
 
+/** A substitution leaves a `$` word in the text around it, so the outer command reads it as
+ * dynamic, carrying the index of the body it stands for between two control characters. */
+const placeholder = (idx) => `$\u0001${idx}\u0001`;
+const PLACEHOLDER_RE = /\$\u0001(\d+)\u0001/g;
+
+/** Backtick body as the shell runs it: inside backticks `\\`, `` \` `` and `\$` lose their backslash. */
+const unescapeBacktickBody = (raw) => raw.replace(/\\([\\`$])/g, '$1');
+
+/** True when a `#` at `i` starts a comment: it begins a word. */
+const startsComment = (text, i) => i === 0 || /[\s;&|()]/.test(text[i - 1]);
+
+/**
+ * Replaces each command or process substitution in `text` — `$(…)`, backticks, `<(…)`, `>(…)` —
+ * with a placeholder, and appends its body to `bodies` with its own nested substitutions already
+ * replaced the same way. One pass with a stack of open bodies, so each character is copied once
+ * however deep the nesting; a backtick body is unescaped first and extracted again, and each
+ * nesting level doubles its backslashes, so that rescan stays linear too. Single quotes, comments
+ * and heredoc bodies are copied as they are. `$((…))` arithmetic reads as a body holding a
+ * subshell, which runs nothing. An unclosed body is put back as written.
+ */
+const extractSubstitutions = (text, bodies) => {
+  const heredoc = computeHeredocBodyMask(text);
+  const frames = [{ out: '', opener: '', inDouble: false, depth: 0 }];
+  const n = text.length;
+  let i = 0;
+  while (i < n) {
+    const frame = frames[frames.length - 1];
+    const ch = text[i];
+    let end = i + 1;
+    if (heredoc[i]) {
+      frame.out += ch;
+    } else if (ch === '\\') {
+      end = i + 2;
+      frame.out += text.slice(i, end);
+    } else if (!frame.inDouble && (ch === "'" || (ch === '#' && startsComment(text, i)))) {
+      const eol = text.indexOf('\n', i);
+      end = ch === "'" ? skipQuotedSpan(text, i, n) : eol === -1 ? n : eol;
+      frame.out += text.slice(i, end);
+    } else if (ch === '`') {
+      let j = i + 1;
+      while (j < n && text[j] !== '`') j += text[j] === '\\' ? 2 : 1;
+      const body = extractSubstitutions(unescapeBacktickBody(text.slice(i + 1, Math.min(j, n))), bodies);
+      frame.out += placeholder(bodies.push(body) - 1);
+      end = j + 1;
+    } else if (ch === '$' || (!frame.inDouble && (ch === '<' || ch === '>'))) {
+      if (text[i + 1] === '(') {
+        frames.push({ out: '', opener: ch + '(', inDouble: false, depth: 0 });
+        end = i + 2;
+      } else frame.out += ch;
+    } else if (frames.length > 1 && !frame.inDouble && ch === ')' && frame.depth === 0) {
+      frames.pop();
+      frames[frames.length - 1].out += placeholder(bodies.push(frame.out) - 1);
+    } else {
+      if (!frame.inDouble && ch === '(') frame.depth++;
+      if (!frame.inDouble && ch === ')') frame.depth--;
+      if (ch === '"') frame.inDouble = !frame.inDouble;
+      frame.out += ch;
+    }
+    i = end;
+  }
+  while (frames.length > 1) {
+    const open = frames.pop();
+    frames[frames.length - 1].out += open.opener + open.out;
+  }
+  return frames[0].out;
+};
+
 /** A write target as the command receives it: the shell drops a backslash before any character,
  * so `\\/etc/x` writes `/etc/x`. A dynamic word is kept as written, and its `$` makes it unresolvable. */
 const unescapeTarget = (raw) => {
@@ -1148,11 +1223,12 @@ const applyCd = (state, tokens, precededByOr) => {
 /** Write targets in one view of the command, each with the directories a relative target
  * resolves against (`dirs`, and `unknown` when a `cd` hid one), and whether anything
  * write-shaped cannot be resolved. Clauses are walked in order so a `cd` moves the base of every
- * later clause; a subshell `( … )` restores the base it opened with. */
-const collectWriteSignals = (visible, heredocText, cwd) => {
+ * later clause; a subshell `( … )` restores the base it opened with. Each substitution placeholder
+ * in a clause is handed to `onSubstitution` with the base its body runs in. */
+const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitution) => {
   const literalTargets = [];
   let unresolvable = false;
-  let state = { dirs: [cwd], unknown: false };
+  let state = initialState;
   const saved = [];
   const add = (raw) => {
     const target = unescapeTarget(raw);
@@ -1171,6 +1247,7 @@ const collectWriteSignals = (visible, heredocText, cwd) => {
     const closing = visible.slice(start + opening.length, end).match(/[\s)]*$/)[0];
     const [from, to] = [start + opening.length, end - closing.length];
     for (let k = 0; k < opening.replace(/\s/g, '').length; k++) saved.push(state);
+    for (const [, idx] of visible.slice(from, to).matchAll(PLACEHOLDER_RE)) onSubstitution(Number(idx), state);
     findRedirectTargets(redirectView.slice(from, to)).forEach(add);
     const tokens = tokenize(visible.slice(from, to));
     if (tokens.length > 0) {
@@ -1210,14 +1287,28 @@ const evaluateBashWriteTargets = (command, cwd) => {
   const literalTargets = [];
   let unresolvable = false;
 
-  const heredocMask = computeHeredocBodyMask(command);
-  const heredocText = command.replace(/[\s\S]/g, (ch, i) => (heredocMask[i] ? ch : ' '));
-  for (const visible of visibleViews(command)) {
-    const signals = collectWriteSignals(visible, heredocText, cwd);
-    for (const { target, dirs } of signals.literalTargets) {
-      for (const dir of dirs) literalTargets.push({ target, dir, visible });
+  // The command and each substitution body are scanned once, every body with the directories in
+  // effect where its placeholder stands (`maskedSpans` keeps every placeholder visible).
+  const bodies = [];
+  const queue = [[extractSubstitutions(command, bodies), { dirs: [cwd], unknown: false }]];
+  const queued = new Set();
+  const enqueue = (idx, state) => {
+    if (idx < bodies.length && !queued.has(idx)) {
+      queued.add(idx);
+      queue.push([bodies[idx], state]);
     }
-    if (signals.unresolvable) unresolvable = true;
+  };
+  for (let q = 0; q < queue.length; q++) {
+    const [text, state] = queue[q];
+    const heredocMask = computeHeredocBodyMask(text);
+    const heredocText = text.replace(/[\s\S]/g, (ch, i) => (heredocMask[i] ? ch : ' '));
+    for (const visible of visibleViews(text)) {
+      const signals = collectWriteSignals(visible, heredocText, cwd, state, enqueue);
+      for (const { target, dirs } of signals.literalTargets) {
+        for (const dir of dirs) literalTargets.push({ target, dir, visible });
+      }
+      if (signals.unresolvable) unresolvable = true;
+    }
   }
 
   for (const { target, dir, visible } of literalTargets) {
