@@ -1,5 +1,4 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { readJsonl, writeJsonlCapped } from './fs.ts';
 import type { PaceGateVerdict } from './pace-gate.ts';
 import type { ResourceGateVerdict } from './resource-gate.ts';
 import type { UsageVerdict, UsageVerdictName } from './usage-budget.ts';
@@ -88,34 +87,10 @@ export const isUsageRecordVerdict = (v: unknown): v is UsageGateOutput =>
 
 const isRecord = (v: unknown): v is PaceRecord => isObject(v) && isObject(v.pace) && typeof v.pace.verdict === 'string' && isCount(v.effective);
 
-const parseLines = (raw: string): PaceRecord[] => {
-  const out: PaceRecord[] = [];
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      const parsed: unknown = JSON.parse(line);
-      if (isRecord(parsed)) out.push(parsed);
-    } catch {
-      // A torn or foreign line is dropped on the next rewrite.
-    }
-  }
-  return out;
-};
+const readRecords = (logPath: string): PaceRecord[] => readJsonl(logPath, isRecord);
 
-const readRecords = (logPath: string): PaceRecord[] => {
-  try {
-    return parseLines(fs.readFileSync(logPath, 'utf-8'));
-  } catch {
-    return [];
-  }
-};
-
-export const appendPaceLog = (logPath: string, record: PaceRecord, maxLines = MAX_LINES): void => {
-  const kept = [...readRecords(logPath), record].slice(-maxLines);
-  fs.mkdirSync(path.dirname(logPath), { recursive: true });
-  fs.writeFileSync(`${logPath}.tmp`, kept.map((r) => JSON.stringify(r)).join('\n') + '\n');
-  fs.renameSync(`${logPath}.tmp`, logPath);
-};
+export const appendPaceLog = (logPath: string, record: PaceRecord, maxLines = MAX_LINES): void =>
+  writeJsonlCapped(logPath, [...readRecords(logPath), record], maxLines);
 
 export const readLatestPaceRecord = (logPath: string): PaceRecord | null => readRecords(logPath).at(-1) ?? null;
 
