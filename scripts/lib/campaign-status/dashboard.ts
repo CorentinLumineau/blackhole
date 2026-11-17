@@ -1,6 +1,8 @@
 import { readScope, type CampaignScope } from '../../forge-scope.ts';
 import { classPreview, groupBlockedRows, waitReason } from './blocked-classes.ts';
+import { formatMergeNextItem, mergeNextOrder } from '../merge-next.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
+import { safePatternId, topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
 import {
   computeStatusCounts,
@@ -12,6 +14,7 @@ import {
 import type {
   CheckpointMeta,
   ConfigSummaryInput,
+  DenyCount,
   ForgeCounts,
   IssueRow,
   LedgerFinding,
@@ -297,6 +300,20 @@ export function renderQueueHealthLine(verdict: QueueHealth, blockedCount: number
   return `**Queue health:** ${QUEUE_HEALTH_ICON[verdict]} ${label}`;
 }
 
+/** Every open PR in the order to merge it (`mergeNextOrder`), each with its blocker; `ciFixIssues` merge first. */
+export function renderMergeNextSection(issues: Record<string, QueueIssue>, ciFixIssues: number[] = []): string[] {
+  const { items, cycles } = mergeNextOrder(issues, ciFixIssues);
+  if (items.length === 0 && cycles.length === 0) return [];
+  const shown = items.slice(0, SECTION_CAP);
+  return [
+    '### Merge next',
+    ...shown.map((item, i) => `${i + 1}. ${formatMergeNextItem(item)}`),
+    ...capOverflowLine(items.length, shown.length),
+    ...cycles.map((c) => `- **Cycle, not ordered:** ${c.map((n) => `#${n}`).join(', ')} — their stack or depends_on edges loop`),
+    '',
+  ];
+}
+
 export function renderStackMergeOrderSection(issues: Record<string, QueueIssue>): string[] {
   const stacks = stackMergeOrder(issues);
   if (stacks.length === 0) return [];
@@ -310,7 +327,8 @@ export function renderStackMergeOrderSection(issues: Record<string, QueueIssue>)
 }
 
 /** The campaign facts the page leads with, from the same report as `--json`: what the text dashboard repeats. */
-export type DashboardView = Pick<StatusReport, 'headline' | 'stage_counts' | 'moves' | 'scope_record' | 'decisions' | 'forge_checked'>;
+export type DashboardView = Pick<StatusReport, 'headline' | 'stage_counts' | 'moves' | 'scope_record' | 'decisions' | 'forge_checked'> &
+  Partial<Pick<StatusReport, 'deny_counts'>>;
 
 const DECISIONS_SHOWN = 3;
 
@@ -336,6 +354,15 @@ export function renderViewSection(view: DashboardView): string[] {
     const shown = view.decisions.slice(0, DECISIONS_SHOWN);
     lines.push('### Your decisions', ...shown.map((d) => `- ${d.date} ${d.text}`), ...capOverflowLine(view.decisions.length, shown.length), '');
   }
+  return lines;
+}
+
+/** Top hook rules by deny and warn count; always printed once the report carries the field. */
+export function renderDenyCountsSection(rows: DenyCount[]): string[] {
+  const lines = ['### Hook denials'];
+  if (rows.length === 0) lines.push('no hook denials recorded');
+  for (const r of topDenyCounts(rows)) lines.push(`- \`${safePatternId(r.pattern_id)}\` — ${r.deny} deny · ${r.warn} warn`);
+  lines.push('');
   return lines;
 }
 
@@ -394,10 +421,12 @@ export function formatDashboard(opts: {
   lines.push(...renderReadySection(ready));
   lines.push(...renderRoutingSection(active));
   lines.push(...renderWavesSection(issues));
+  lines.push(...renderMergeNextSection(issues));
   lines.push(...renderStackMergeOrderSection(issues));
   lines.push(...renderCompletedSection(done));
   lines.push(...renderFiledSection(filed));
   lines.push(...renderLedgerOpenSection(findings));
+  if (view?.deny_counts) lines.push(...renderDenyCountsSection(view.deny_counts));
   lines.push(...renderActiveWorkersSection(checkpointBody));
 
   return lines.join('\n').trimEnd();

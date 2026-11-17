@@ -51,3 +51,73 @@ describe('run-context CLI', () => {
     });
   });
 });
+
+describe('run-context CLI usage_budget wiring', () => {
+  const TOOLS = 'agent,background-agents,ask-decision,github-mcp';
+  const ENV = { CLAUDECODE: '1', CLAUDE_CODE_PROJECTS_SESSION: '1' };
+  const WARN = 'warn: usage:';
+  const withConfig = (dir: string, content: string | null, sub = '.blackhole') => {
+    if (content === null) return;
+    fs.mkdirSync(path.join(dir, sub), { recursive: true });
+    fs.writeFileSync(path.join(dir, sub, 'config.json'), content);
+  };
+
+  test('enabled without usage-probe warns on stdout and in the written route, and still exits 0', () => {
+    withTempDir('run-context-cli', (dir) => {
+      withConfig(dir, JSON.stringify({ usage_budget: { enabled: true } }));
+      const res = run(['--tools', TOOLS], dir, ENV);
+      expect(res.status).toBe(0);
+      expect(res.stdout).toContain(WARN);
+      const record = JSON.parse(fs.readFileSync(path.join(dir, '.blackhole', 'run-context.json'), 'utf-8'));
+      expect(record.route.warnings.filter((w: string) => w.startsWith('usage:'))).toHaveLength(1);
+      expect(record.route.missing).toEqual([]);
+    });
+  });
+
+  test('enabled with usage-probe reported does not warn', () => {
+    withTempDir('run-context-cli', (dir) => {
+      withConfig(dir, JSON.stringify({ usage_budget: { enabled: true } }));
+      expect(run(['--tools', `${TOOLS},usage-probe`], dir, ENV).stdout).not.toContain(WARN);
+    });
+  });
+
+  test('disabled, absent block and no config do not warn', () => {
+    for (const content of [JSON.stringify({ usage_budget: { enabled: false } }), '{}', null]) {
+      withTempDir('run-context-cli', (dir) => {
+        withConfig(dir, content);
+        const res = run(['--tools', TOOLS], dir, ENV);
+        expect(res.status).toBe(0);
+        expect(res.stdout).not.toContain(WARN);
+      });
+    }
+  });
+
+  test('--campaign-dir decides which config.json is read', () => {
+    withTempDir('run-context-cli', (dir) => {
+      withConfig(dir, JSON.stringify({ usage_budget: { enabled: true } }), 'camp');
+      const res = run(['--tools', TOOLS, '--campaign-dir', path.join(dir, 'camp')], dir, ENV);
+      expect(res.stdout).toContain(WARN);
+      expect(fs.existsSync(path.join(dir, 'camp', 'run-context.json'))).toBe(true);
+    });
+  });
+
+  test('a malformed config.json warns once, treats the budget as disabled and keeps the exit code', () => {
+    withTempDir('run-context-cli', (dir) => {
+      withConfig(dir, '{not json');
+      const res = run(['--tools', TOOLS], dir, ENV);
+      expect(res.status).toBe(0);
+      expect(res.stdout.match(/warn: config\.json unreadable, usage_budget treated as disabled/g)).toHaveLength(1);
+      expect(res.stdout).not.toContain(WARN);
+    });
+  });
+
+  test('an invalid usage_budget block is treated like an unreadable config', () => {
+    withTempDir('run-context-cli', (dir) => {
+      withConfig(dir, JSON.stringify({ usage_budget: { enabled: true, max_workers: 0 } }));
+      const res = run(['--tools', TOOLS], dir, ENV);
+      expect(res.status).toBe(0);
+      expect(res.stdout).toContain('warn: config.json unreadable, usage_budget treated as disabled');
+      expect(res.stdout).not.toContain(WARN);
+    });
+  });
+});

@@ -3,6 +3,7 @@ import {
   computeQueueHealth,
   formatDashboard,
   renderLedgerOpenSection,
+  renderMergeNextSection,
   renderRoutingSection,
   renderStackMergeOrderSection,
   renderWavesSection,
@@ -189,5 +190,41 @@ describe('renderStackMergeOrderSection', () => {
       '- merge #1, then #2 (stacked on #1)',
       '',
     ]);
+  });
+});
+
+describe('renderMergeNextSection', () => {
+  test('numbers every open PR in merge order with its blocker, and reports a cycle', () => {
+    const issues = {
+      '1': { status: 'in-flight', pr: 11 },
+      '2': { status: 'in-flight', pr: 12, stacked_on: 1 },
+      '3': { status: 'in-flight', pr: 13 },
+      '4': { status: 'in-flight', pr: 14, stacked_on: 5 },
+      '5': { status: 'in-flight', pr: 15, stacked_on: 4 },
+      '6': { status: 'merged', pr: 16 },
+    } as never;
+    expect(renderMergeNextSection(issues, [3])).toEqual([
+      '### Merge next',
+      '1. #3 (PR #13) — none — CI fix, merge first',
+      '2. #1 (PR #11) — after CI fix #3',
+      '3. #2 (PR #12) — waits on #1 (stacked on)',
+      '- **Cycle, not ordered:** #4, #5 — their stack or depends_on edges loop',
+      '',
+    ]);
+  });
+
+  test('prints nothing when no PR is open', () => {
+    expect(renderMergeNextSection({ '1': { status: 'merged', pr: 11 } } as never)).toEqual([]);
+  });
+
+  test('formatDashboard shows the section ahead of the stacked merge order', () => {
+    const out = formatDashboard({
+      checkpoint: {},
+      queue: { issues: { '1': { status: 'in-flight', phase: 'review', pr: 11 }, '2': { status: 'in-flight', phase: 'review', pr: 12, stacked_on: 1 } } },
+      ledger: {},
+      forge: { ok: true, openIssues: 0, openPrs: 2 },
+    } as never);
+    expect(out).toContain('### Merge next\n1. #1 (PR #11) — none\n2. #2 (PR #12) — waits on #1 (stacked on)');
+    expect(out.indexOf('### Merge next')).toBeLessThan(out.indexOf('### Stacked PR merge order'));
   });
 });

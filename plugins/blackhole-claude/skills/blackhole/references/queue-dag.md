@@ -61,7 +61,7 @@ name alone.
 | `review_iteration` | number | Review loop counter (default 0); see `review-core.md` |
 | `rounds_to_lgtm` | number | Optional; the final `review_iteration` at merge, written just before the reset (`phase-loop.md` § Ledger cleanup on merge) |
 | `reviewed_head_shas` | string[] | Optional; head SHAs a review was run against, recorded at merge |
-| `notes` | string \| null | e.g. `awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, `awaiting-ruling-recheck`, `merge-conflict-semantic:<file1>,<file2>`, `overlap with #N` |
+| `notes` | string \| null | e.g. `awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, `awaiting-ruling-recheck`, `waiting-on-trunk-fix`, `merge-conflict-semantic:<file1>,<file2>`, `overlap with #N` |
 | `depends_on` | number[] | Issue numbers that must be merged/closed first; bidirectional sync with forge issue bodies via [forge-sync.md](forge-sync.md) §6.5 write-back |
 | `merge_hold` | boolean | Optional (ADR-005, default `false`); when `true`, blocks this issue's PR from merging regardless of LGTM status. Distinct from `depends_on`: `depends_on` gates when implementation may *start*, `merge_hold` gates only when the PR may *merge*. Consulted by `merge-gate.md`'s `mergeEligible()` |
 | `merge_after` | number[] | Optional (ADR-005, default `[]`); issue numbers whose PR must merge before this issue's PR may merge. Resolves on `status: merged` **OR** `status: closed`, mirroring the exact satisfaction rule `depends_on` already uses (Step 2 below). Distinct field from `depends_on` — a merge-time-only gate, not an implementation-start gate; not forge-synced (queue.json-only for v1). Consulted by `merge-gate.md`'s `mergeEligible()` |
@@ -207,13 +207,34 @@ See `forge-sync.md`. Refresh open/closed state, PR links, labels.
 An issue is **ready** when ALL hold:
 
 1. `status` is `ready` (not `blocked`, `in-flight`, `merged`, `closed`)
-2. `notes` does not contain `awaiting-user` or `awaiting-plan` (user gates)
+2. `notes` does not contain `awaiting-user` or `awaiting-plan` (user gates) or `waiting-on-trunk-fix` (Trunk-red below)
 2. Every `depends_on` issue has `status: merged` or `closed` on forge
 3. No active `migration_slot` holder unless this issue holds the slot
 4. Issue is open on forge **within campaign scope** (`gh issue view --json state` plus
    `issueMatchesScope` when `scope_milestone` / `scope_labels` are configured)
 
-Promote `blocked → ready` when dependencies clear and user gates pass.
+Promote `blocked → ready` when dependencies clear, user gates pass and no `waiting-on-trunk-fix` note remains.
+
+### Trunk-red: base-fix first
+
+When `ci-diagnosis.md` § Trunk-red classifies the same failing check and fingerprint on at least 2
+PRs whose diffs do not contain the failing path, the failure belongs to the base branch, not to
+any PR. Per-PR fixing is wrong: each fix would patch the same trunk defect in a different
+branch.
+
+1. **Park the children.** Set every affected PR's queue entry to `status: blocked` and add
+   `notes: waiting-on-trunk-fix`. The token is a `notes` value, never a `status` value.
+   The token sits outside the ready set (Step 2): no implementer spawn, no `V-CI-01` fix round.
+2. **Fix the base once.** Owner ruling (#1169): the orchestrator opens the base-fix PR itself,
+   under the usual plan, review and verify gates. It is an ordinary queue entry targeting
+   `config.target_branch`, and it sorts ahead of every parked child.
+3. **Unblock.** When the base-fix PR is `merged` on the forge, clear the token from each child
+   and push the base into it once, throttled to one child per scheduling pass — the
+   `stack-repair.ts restack` mechanics (`restackOnto`, V-INT-02), with `--parent-branch` set to
+   `config.target_branch`. A child that conflicts keeps its PR and re-enters
+   `merge-conflict-protocol.md`; nothing is force-pushed.
+4. **V-CI-02** fires when a trunk-red set is fixed per PR (a `V-CI-01` implement round on a
+   parked child) instead of through the base-fix PR.
 
 ### Step 3 — Conflict filter
 
@@ -252,7 +273,10 @@ overlapping paths, in any `merge_mode` — then:
 4. Post the merge order for the stack as a PR comment on each open stacked child PR, and edit that
    comment (do not add a new one) whenever the stack changes — a PR opens, merges, or closes. The
    order is `formatStackMergeOrder(stackMergeOrder(issues))` (`scripts/lib/stack-parent.ts`), the
-   same text the dashboard's "Stacked PR merge order" section renders.
+   same text the dashboard's "Stacked PR merge order" section renders. Across every open PR, not
+   one stack, the dashboard's "Merge next" list (`mergeNextOrder`, `scripts/lib/merge-next.ts`)
+   gives the order to merge them in: CI-fix PRs, then parents, then children, with stack edges and
+   `depends_on` as the edges, each PR's blocker named and an edge loop reported, never walked.
 5. A fix-round push to the parent is **not** propagated eagerly. The child's three-dot diff against
    its parent branch is unchanged by new parent commits, so the parent branch is merged into the
    child (a normal merge and push, never a rebase or force-push) only when the child is
@@ -261,6 +285,7 @@ overlapping paths, in any `merge_mode` — then:
    by merging the target branch into it, in the same turn and before the child's review or CI
    wait: `merge-gate.md` § 7 owns the command and the route for each merge mode, and
    `merge-conflict-protocol.md` § Stacked child after its parent merges owns the conflict case.
+   Whether the parent has landed comes from `stack-repair.ts parent-landed` (the forge's merged state, `merge-gate.md` § 7), never from ancestry.
    Never rebase or force-push. When the replay reports `review_carry: true` (the child's own
    patch-id is unchanged and no conflict was resolved), the earlier LGTM carries and `phase-review.md`
    does not re-review; otherwise the child is reviewed again.
