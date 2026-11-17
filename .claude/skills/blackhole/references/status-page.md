@@ -209,8 +209,8 @@ Among its queue sections, **Merge next** numbers every open PR in the order to m
 ordered over stack edges (`effectiveParent`), `depends_on` and trunk-red parking. The CI-fix tier is
 the trunk-red base fixes the `waiting-on-trunk-fix #N` notes name (`trunkFixIssues`). Each line names
 its blocker — `waits on #N (stacked on)`, `waits on #N (depends on)`, `waits on #N (trunk fix)`,
-`blocked: <notes>`, `after CI fix #N`, or
-`none` — and a loop of edges is printed as a `Cycle, not ordered` line instead of being walked.
+`waits on owner/repo#N (cross-repo, …)` (an unmet body line, `forge-sync.md` § 6.7),
+`blocked: <notes>`, `after CI fix #N`, or `none` — and a loop of edges is printed as a `Cycle, not ordered` line instead of being walked.
 It sits above "Stacked PR merge order", which it does not replace.
 Visual rules: R-006 (`documentation/reference/product-principles.md`).
 

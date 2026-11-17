@@ -203,7 +203,7 @@ gh issue view 13 --json body -q .body | \
   gh issue edit 13 --body-file -
 ```
 
-Helper exports: `parseDependsFromBody(body)`, `mergeDependsIntoBody(body, dependsOn)`.
+Helper exports: `parseDependsFromBody(body)`, `mergeDependsIntoBody(body, dependsOn)`; cross-repo lines: § 6.7.
 
 **Round-trip acceptance:** body → sync → queue `depends_on` mutation → write-back →
 re-sync preserves `depends_on`.
@@ -213,6 +213,31 @@ re-sync preserves `depends_on`.
 Check the union of `merge_after` and `depends_on` edges for cycles per `merge-gate.md`
 § 2 — do not duplicate the detection algorithm here. On a cycle, set both issues
 `status: blocked` with note `merge-order cycle with #N`.
+
+### 6.7 Cross-repo dependencies (body only)
+
+A dependency on a pull request in another repo on the same forge is one body line, with the same
+keywords as § 6 (case-insensitive):
+
+- `Depends on owner/repo#185`
+- `Blocked by owner/repo#185`
+- `After owner/repo#185 merges`
+
+`N` is the **PR** number in `owner/repo`. Owner ruling: these live **only in the issue body** —
+no `queue.json` field, so they never enter `depends_on` and § 6.5 write-back never touches them
+(`mergeDependsIntoBody` matches same-repo lines only). A line that is not exactly
+`<keyword> owner/repo#N` is ignored. Parser: `parseCrossRepoDepsFromBody(body)` in
+`scripts/forge-deps.ts`.
+
+A cross-repo dependency is satisfied **only** by the other repo's forge merged state, read with
+`readPrLanding` (`scripts/lib/forge-adapter/pr-landing.ts`) — never by the queue and never by SHA
+ancestry. Open, closed-unmerged, or unreadable (failed read, unsupported forge) are all unmet;
+unreadable is never satisfied. `crossRepoBlockers(issues, read)` returns the unmet ones, and the
+status page names each as the blocker of that issue's PR in "Merge next"
+(`mergeNextOrder`), as `waits on owner/repo#185 (cross-repo, not merged yet)`. If the open-issue
+read fails, the section says the cross-repo dependencies were not read. It is report-only: the
+ready set (`queue-dag.md` Step 2) does not read these lines. Release and rollout
+steps the other repo needs before its PR counts belong in that PR, not in this campaign.
 
 ### 7. PR cross-reference
 

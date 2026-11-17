@@ -1,10 +1,12 @@
+import { crossRepoBlockerText, type CrossRepoBlocker } from '../forge-deps.ts';
 import { effectiveParent } from './stack-overlap.ts';
 import { isOpenPr, type StackCandidate } from './stack-parent.ts';
 
 // The owner's "Merge next" list (status-page.md § Merge next): every open PR in the order to
 // merge it, CI-fix PRs first, then parents, then children, each with the thing it waits on named.
 // Edges are stack edges (`effectiveParent`), `depends_on` issues that have an open PR, and the
-// trunk-red base fix a `waiting-on-trunk-fix #N` note names (queue-dag.md § Trunk-red).
+// trunk-red base fix a `waiting-on-trunk-fix #N` note names (queue-dag.md § Trunk-red). An unmet
+// cross-repo dependency (forge-sync.md § 6.7) is named in the blocker but is not an edge.
 
 export type MergeNextCandidate = StackCandidate & { depends_on?: number[]; notes?: string | null };
 
@@ -118,6 +120,7 @@ const blockerOf = (
   edges: Edge[],
   ciFix: number[],
   preds: Map<number, Edge[]>,
+  crossRepo: CrossRepoBlocker[],
 ): string => {
   const me = issues[String(n)]!;
   const parts: string[] = [];
@@ -125,6 +128,7 @@ const blockerOf = (
   const parkedOnOpenFix = edges.some((e) => e.why === 'trunk fix') && me.notes?.trim() === `waiting-on-trunk-fix #${trunkFixOf(me)}`;
   if (me.status === 'blocked' && !parkedOnOpenFix) parts.push(`blocked: ${me.notes ?? 'no reason recorded'}`);
   for (const e of edges) parts.push(`waits on #${e.from} (${e.why})`);
+  for (const b of crossRepo) if (b.issue === n) parts.push(crossRepoBlockerText(b));
   for (const d of me.depends_on ?? []) {
     if (edges.some((e) => e.from === d)) continue;
     const dep = issues[String(d)];
@@ -141,9 +145,14 @@ const blockerOf = (
 /**
  * Every open PR of the queue in merge order. `ciFixIssues` names the issues whose PR fixes a red
  * check every other PR fails on (the trunk-red base fix); those merge first. A loop of stack or
- * dependency edges is reported in `cycles`, never walked.
+ * dependency edges is reported in `cycles`, never walked. `crossRepo` holds the unmet cross-repo
+ * dependencies (`crossRepoBlockers`); each is named in its issue's blocker.
  */
-export const mergeNextOrder = (issues: Record<string, MergeNextCandidate>, ciFixIssues: number[]): MergeNextOrder => {
+export const mergeNextOrder = (
+  issues: Record<string, MergeNextCandidate>,
+  ciFixIssues: number[],
+  crossRepo: CrossRepoBlocker[] = [],
+): MergeNextOrder => {
   const nodes = Object.keys(issues)
     .map(Number)
     .filter((n) => isOpenPr(issues[String(n)]))
@@ -164,7 +173,7 @@ export const mergeNextOrder = (issues: Record<string, MergeNextCandidate>, ciFix
       issue: n,
       pr: issues[String(n)]!.pr as number,
       kind: ciFix.has(n) ? 'ci-fix' : edges.length ? 'child' : 'parent',
-      blocker: blockerOf(issues, n, edges, ciFixOpen, preds),
+      blocker: blockerOf(issues, n, edges, ciFixOpen, preds, crossRepo),
     };
   });
   return { items, cycles };
