@@ -1,6 +1,10 @@
 import { runTea, runTeaApiJson, runTeaJson, runTeaText } from './tea-cli.ts';
+import { isUnavailable, readDependencies, writeDependencies, type BodyChannel, type NativeDependencyChannel, type NativeEdge } from './dependencies.ts';
 import type {
+  DependencyRef,
+  DependencyTarget,
   ForgeAdapter,
+  ForgeDependencies,
   ForgeAuthStatus,
   ForgeCheck,
   ForgeIssue,
@@ -38,6 +42,11 @@ type GiteaApiPrRow = {
   head: { ref: string; sha: string; repo?: { full_name: string } | null };
   base: { ref: string; repo?: { full_name: string } | null };
 };
+
+/** One row of `GET issues/{n}/dependencies`: the blocking issue or pull request. */
+type GiteaBlockerRow = { number: number; pull_request?: unknown; repository?: { full_name: string } | null };
+
+const MAX_BLOCKER_PAGES = 20;
 
 type GiteaApiFile = { filename: string; previous_filename?: string };
 
@@ -286,6 +295,66 @@ export class GiteaForgeAdapter implements ForgeAdapter {
 
   async prChangeBase(number: number, base: string): Promise<PrChangeBaseResult> {
     return changeGiteaPrBase(this.repo, number, base);
+  }
+
+  async getDependencies(target: DependencyTarget): Promise<ForgeDependencies> {
+    return readDependencies('gitea', this.apiSlug(), target, this.nativeDependencies(), this.prBodies());
+  }
+
+  async setDependencies(target: DependencyTarget, blockedBy: DependencyRef[]): Promise<ForgeDependencies> {
+    return writeDependencies('gitea', this.apiSlug(), target, blockedBy, this.nativeDependencies(), this.prBodies());
+  }
+
+  /**
+   * Gitea's issue dependencies, read and written on the queue issue with a same-repo issue as the
+   * blocker, the same issue-to-issue shape as GitHub; a PR, cross-repo or issue-less blocker is a
+   * PR-body line. A repo with dependencies turned off answers 404; any other failure, a 403
+   * included, throws. Add and remove name the blocker by owner, repo and number.
+   */
+  private nativeDependencies(): NativeDependencyChannel {
+    const endpoint = (issue: number) => `repos/${this.apiSlug()}/issues/${issue}/dependencies`;
+    const meta = (ref: DependencyRef) => {
+      const [owner, repo] = ref.repo.split('/');
+      return { owner, repo, index: ref.number };
+    };
+    return {
+      list: ({ issue }) => {
+        if (issue == null) return [];
+        const edges: NativeEdge[] = [];
+        for (let page = 1; page <= MAX_BLOCKER_PAGES; page++) {
+          let rows: GiteaBlockerRow[];
+          try {
+            rows = runTeaApiJson<GiteaBlockerRow[]>('GET', `${endpoint(issue)}?page=${page}&limit=${API_PAGE}`).data ?? [];
+          } catch (error) {
+            if (page === 1 && isUnavailable(String(error))) return null;
+            throw error;
+          }
+          for (const row of rows) {
+            const ref: DependencyRef = { repo: row.repository?.full_name ?? this.apiSlug(), number: row.number, kind: row.pull_request ? 'pr' : 'issue' };
+            edges.push({ ref, handle: ref.number });
+          }
+          if (rows.length < API_PAGE) return edges;
+        }
+        throw new Error(`issue #${issue} blocker list passed ${MAX_BLOCKER_PAGES} pages`);
+      },
+      holds: (ref, target) => target.issue != null && ref.repo === this.apiSlug() && ref.kind === 'issue',
+      add: ({ issue }, ref) => {
+        runTeaApiJson('POST', endpoint(issue as number), meta(ref));
+      },
+      remove: ({ issue }, edge) => {
+        runTeaApiJson('DELETE', endpoint(issue as number), meta(edge.ref));
+      },
+    };
+  }
+
+  private prBodies(): BodyChannel {
+    const endpoint = (pr: number) => `repos/${this.apiSlug()}/pulls/${pr}`;
+    return {
+      read: (pr) => runTeaApiJson<GiteaApiPrRow>('GET', endpoint(pr)).data.body ?? '',
+      write: (pr, body) => {
+        runTeaApiJson('PATCH', endpoint(pr), { body });
+      },
+    };
   }
 
   async prList(filter: { state?: 'open' | 'closed' | 'all'; limit?: number } = {}): Promise<ForgePr[]> {

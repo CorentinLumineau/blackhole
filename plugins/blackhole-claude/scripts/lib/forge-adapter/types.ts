@@ -91,6 +91,40 @@ export type RepoMergeSettings = {
   allow_rebase?: boolean;
 };
 
+/**
+ * One "blocked by" edge on the forge: issue or pull request `number` of `repo` (`owner/name`).
+ * GitHub and Gitea number issues and PRs in one sequence; GitLab numbers issues (`#N`) and merge
+ * requests (`!N`) apart, so `kind` names which one `number` is. `via` is set on a read: the channel
+ * the edge was found in, so a write keeps an edge it cannot place anywhere else where it was.
+ */
+export interface DependencyRef {
+  repo: string;
+  number: number;
+  kind: 'issue' | 'pr';
+  via?: 'native' | 'body';
+}
+
+/**
+ * Whose blockers: a queue issue and its open PR. GitHub's and Gitea's native "blocked by" edges
+ * join two ISSUES (GitHub answers 422 "Source issue may only be an issue" for a PR), so they are
+ * read and written on `issue`; GitLab's join merge requests, so on `pr`. Body lines live in the PR
+ * body. `issue` is null for a PR with no queue issue: its edges are body lines only.
+ */
+export interface DependencyTarget {
+  issue: number | null;
+  pr: number;
+}
+
+/**
+ * The blockers declared on the forge: native "blocked by" edges plus the `Blocked by #N` lines of
+ * the PR body. `native` is false when the forge answered that the native feature does not exist
+ * here (HTTP 404/410), so every edge is a body line; any other failure throws.
+ */
+export interface ForgeDependencies {
+  native: boolean;
+  blockedBy: DependencyRef[];
+}
+
 export interface ForgeAdapterConfig {
   repo: string;
   forge?: ForgeType;
@@ -121,4 +155,13 @@ export interface ForgeAdapter {
   prFiles(number: number): Promise<string[]>;
   /** Retargets the PR, then reads the base back: exit status is not evidence the base moved. */
   prChangeBase(number: number, base: string): Promise<PrChangeBaseResult>;
+
+  /** The target's forge-declared blockers (native edges and PR-body lines), each once. */
+  getDependencies(target: DependencyTarget): Promise<ForgeDependencies>;
+  /**
+   * Makes the target's blockers exactly `blockedBy`: native edges where the forge holds them, a
+   * PR-body line otherwise; edges and lines outside the set are removed. Writes nothing when the
+   * set already matches. Returns the set read back after the write.
+   */
+  setDependencies(target: DependencyTarget, blockedBy: DependencyRef[]): Promise<ForgeDependencies>;
 }

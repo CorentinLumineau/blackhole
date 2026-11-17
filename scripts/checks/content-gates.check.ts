@@ -3,6 +3,7 @@ import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
 import { CONTENT_GATE_BOUNDARY_UNITS, CONTENT_GATE_BUDGETS, CONTENT_GATE_GRANDFATHERED, CONTENT_GATE_WARN_RATIO } from '../lib/build/content-gate-facts.ts';
 import type { ContentGateBudget, ContentGateGrandfather } from '../lib/build/content-gate-facts.ts';
+import { fencedLineMask } from '../lib/markdown-headings.ts';
 
 // ADR-007 T5/R2' — content-gates.check.ts: declared-budget section/file-size gate (split from
 // the former catch-all check file, issue #322; generalized from a single hardcoded file to a
@@ -22,20 +23,16 @@ const splitLines = (content: string): string[] => {
 // any boundary `RegExp` — defaults to the original `##`-level markdown heading pattern so every
 // pre-existing call site and test is unaffected. Returns a header -> line-count map, where a
 // section's line count spans from its boundary line up to (not including) the next boundary
-// line, or EOF. Fence-awareness (lines inside ``` / ~~~ fences never count as a boundary) is
-// preserved verbatim from the original markdown-only implementation.
+// line, or EOF. Lines inside ``` / ~~~ fences never count as a boundary (`fencedLineMask`). A
+// section ends at the next boundary of any level, unlike `sectionEnd`, so only the fence scan
+// is shared.
 export const parseSectionLineCounts = (
   content: string,
   boundaryPattern: RegExp = /^## /,
 ): Record<string, number> => {
   const lines = splitLines(content);
-
-  const headerIdx: number[] = [];
-  let inFence = false;
-  lines.forEach((l, i) => {
-    if (/^(```|~~~)/.test(l)) inFence = !inFence;
-    if (!inFence && boundaryPattern.test(l)) headerIdx.push(i);
-  });
+  const fenced = fencedLineMask(lines);
+  const headerIdx = lines.flatMap((l, i) => (!fenced[i] && boundaryPattern.test(l) ? [i] : []));
 
   const sections: Record<string, number> = {};
   for (let k = 0; k < headerIdx.length; k++) {

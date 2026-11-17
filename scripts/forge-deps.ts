@@ -62,13 +62,24 @@ export type CrossRepoBlocker = { issue: number; dep: CrossRepoDep; state: CrossR
 export type CrossRepoLandingReader = (repo: string, number: number) => PrLanding | null;
 
 /**
- * The unmet cross-repo dependencies of `issues`. Only the other repo's forge merged state
- * satisfies one; an unreadable PR (null or a throwing read) stays a blocker, never satisfied.
+ * The unmet cross-repo dependencies of `issues`: their body lines plus the ones declared only on
+ * the forge (`forgeDeclared`, from each queue issue's `forge_deps`, forge-sync.md § 6.8), each once.
+ * Only the other repo's forge merged state satisfies one; an unreadable PR (null or a throwing
+ * read) stays a blocker, never satisfied.
  */
-export function crossRepoBlockers(issues: { number: number; body: string }[], read: CrossRepoLandingReader): CrossRepoBlocker[] {
+export function crossRepoBlockers(
+  issues: { number: number; body: string }[],
+  read: CrossRepoLandingReader,
+  forgeDeclared: Map<number, CrossRepoDep[]> = new Map(),
+): CrossRepoBlocker[] {
   const blockers: CrossRepoBlocker[] = [];
   for (const issue of issues) {
-    for (const dep of parseCrossRepoDepsFromBody(issue.body)) {
+    const deps = [...parseCrossRepoDepsFromBody(issue.body), ...(forgeDeclared.get(issue.number) ?? [])];
+    const seen = new Set<string>();
+    for (const dep of deps) {
+      const key = `${dep.repo}#${dep.number}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       let landing: PrLanding | null;
       try {
         landing = read(dep.repo, dep.number);
@@ -141,8 +152,15 @@ export function mergeDependsIntoBody(body: string, dependsOn: number[]): string 
     nonDepLines.push(line);
   }
 
-  const depLines = targetDeps.map(formatDepLine);
+  return placeDependencyLines(nonDepLines, targetDeps.map(formatDepLine));
+}
 
+/**
+ * Puts `depLines` at the top of the body's `## Dependencies` section (appending the section when
+ * there is none) and returns the body. `nonDepLines` is the body already stripped of the lines
+ * the caller owns; everything else, prose inside the section included, is kept in order.
+ */
+export function placeDependencyLines(nonDepLines: string[], depLines: string[]): string {
   if (depLines.length === 0) {
     return trimTrailingBlankLines(nonDepLines).join('\n');
   }

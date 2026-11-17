@@ -29,6 +29,8 @@ export type QueueIssue = {
   /** Forge labels mirrored by the forge sync; `in-progress:*` / `agent:*` name the lane that owns the issue. */
   labels?: string[];
   depends_on?: number[];
+  /** What the last PR-dependency sync saw on the forge (forge-sync.md § 6.8). */
+  forge_deps?: { synced: string[]; body_cross: string[] };
   size?: string;
   review_iteration?: number;
   rounds_to_lgtm?: number;
@@ -171,7 +173,7 @@ export type MergedPr = { number: number; title: string; mergedAt: string; closes
 /** A queue entry the forge contradicts: the queue says `queue`, the forge says its PR is merged. */
 export type QueueDrift = { issue: number; pr: number; title: string; queue: string; forge: 'merged' };
 
-export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html' | 'data';
+export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html' | 'data' | 'summary';
 
 export type StatusArgs = {
   mode: StatusMode;
@@ -181,6 +183,12 @@ export type StatusArgs = {
   outPath: string | null;
   /** `--data` only: absolute directory the row files are written to; null otherwise. */
   dataDir: string | null;
+  /** `--summary` only: the raw `--usage` JSON (parsed by `main`, which exits 2 on a malformed one); null otherwise. */
+  usage: string | null;
+  /** `--summary` only: `--now` in epoch seconds; null ⇒ the clock. */
+  now: number | null;
+  /** `--summary --json`: print the rows and the question cards as JSON. */
+  summaryJson: boolean;
 };
 
 /** Queue and ledger counts — the single computation both the text dashboard and the report read. */
