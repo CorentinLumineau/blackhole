@@ -212,19 +212,27 @@ interactive session writing to a project folder outside the repo, skips them. Pa
 system paths, sensitive files, destructive Bash patterns, the Bash write-target guard and the
 worktree-removal guard stay unscoped.
 
-`outside-worktree`'s root set (#729) is `allWorktreeRoots()`'s union of five members: every
-registered worktree nested under the main clone; every registered worktree nested under a
-validated `scratchpad_dir` (the campaign's own `.blackhole/config.json` value, breadth-checked
-via the same check `scratchpad_dir` uses elsewhere in this file); `scratchpad_dir` itself,
-admitted only when `isExistingDirectory()` confirms it is still present on disk — a target
-sitting directly at the scratchpad root, not just inside one of its `wt-*` subdirectories, is
-in-bounds; the payload's own `cwd` worktree, always included when not already covered by the
-three roots above (#729); and, when set and valid (same breadth and existence checks as
-`scratchpad_dir`), an opt-in `BLACKHOLE_SCRATCHPAD_DIR` env var — a distinct mechanism from
-the config `scratchpad_dir` above, naming the harness's own per-session scratchpad directory,
-which is never a git worktree and so never appears in `git worktree list` output at all.
+`outside-worktree`'s root set (#729, #1226) is `allWorktreeRoots()`'s union of five members:
+every registered worktree nested under the main clone; every other registered linked worktree,
+read from `git worktree list --porcelain -z` (NUL-delimited, so a newline in a path cannot forge
+a record; git before 2.36 has no `-z`, so the listing falls back to the line-delimited form,
+where a forged record still fails the back-link below) and admitted only when it is back-linked to this repository from both ends — the path
+resolves to itself, its `.git` file names a directory directly under this repository's own
+`<git-common-dir>/worktrees/` (not another repository's, nor a submodule-style gitdir), and that entry's
+`gitdir` file names the path's `.git` back — and passes the breadth check `scratchpad_dir` uses
+(never `/`, `$HOME` or a bare temp root). A forged `worktrees/<name>/gitdir`, a symlink swapped in
+after registration and a deleted worktree all fail the back-link. Then `scratchpad_dir` itself
+(the campaign's own `.blackhole/config.json` value, breadth-checked and admitted only when
+`isExistingDirectory()` confirms it is still present on disk) — a target sitting directly at the
+scratchpad root is in-bounds; the payload's own `cwd` worktree, always included when not already
+covered above (#729); and, when set and valid (same breadth and existence checks as
+`scratchpad_dir`), an opt-in `BLACKHOLE_SCRATCHPAD_DIR` env var — a distinct mechanism from the
+config `scratchpad_dir` above, naming the harness's own per-session scratchpad directory, which
+is never a git worktree and so never appears in `git worktree list` output at all. The harness
+scratchpad is never auto-detected: the payload does not name it, and the common
+`/tmp/claude-<uid>/` parent spans every session of that user.
 
-`bash-outside-assigned-worktree` and `bash-write-target-unresolvable` (issue #804, ADR-029) extend `outside-assigned-worktree`'s containment to the `Bash` tool: `validate-bash-command.js`'s `bash-write-target-guard.js` extracts common file-write-target shapes (`>`, `>>`, `&>`, `tee [-a]`, `sed -i[.suffix]`, sed's own `w`/`W` commands and `s///w` flag, `cp`, `mv`, heredoc targets) from the command string, after joining backslash-newline continuations the way the shell does (#1183) and, whenever `readAssignedWorktreeRoot(cwd)` resolves a non-null root — from either the declared `BLACKHOLE_ASSIGNED_WORKTREE` leg or the cwd-derived tier above (#907) — checks each resolvable target against that same single root. Stream devices that write no file — `/dev/null`, `/dev/tty`, and `/dev/stdout`/`/dev/stderr` only when the command contains no input redirect (`<` in any form) and no `exec`, since either can put a file behind those streams — are not containment targets; `/dev/fd/N` always is, since opening it reopens whatever file fd N holds. A resolvable target outside the assigned root denies (`bash-outside-assigned-worktree`, block tier); a write-shaped command whose target cannot be resolved statically (a dynamic argument, a command like `python3 -c`/`perl -i`/`awk`/`dd`/`rsync` whose write behavior cannot be determined from the command string alone, a sed `e` command, or a `node`/`bun`/`perl`/`ruby` `-e` one-liner whose script calls a write, delete or exec function) is allowed but recorded (`bash-write-target-unresolvable`, warn tier) — never a silent allow. Only when `readAssignedWorktreeRoot(cwd)` itself resolves null (`cwd` is the main clone, or a non-nesting scratchpad candidate deferred the decision) does this check fall open, byte-identical to today (same #510 `allWorktreeRoots` degradation `outside-assigned-worktree` already documents) — this is no longer simply "env var unset".
+`bash-outside-assigned-worktree` and `bash-write-target-unresolvable` (issue #804, ADR-029) extend `outside-assigned-worktree`'s containment to the `Bash` tool: `validate-bash-command.js`'s `bash-write-target-guard.js` extracts common file-write-target shapes (`>`, `>>`, `&>`, `tee [-a]`, `sed -i[.suffix]`, sed's own `w`/`W` commands and `s///w` flag, `cp`, `mv`, heredoc targets) from the command string, after joining backslash-newline continuations the way the shell does (#1183) and, whenever `readAssignedWorktreeRoot(cwd)` resolves a non-null root — from either the declared `BLACKHOLE_ASSIGNED_WORKTREE` leg or the cwd-derived tier above (#907) — checks each resolvable target against that same single root. Stream devices that write no file — `/dev/null`, `/dev/tty`, and `/dev/stdout`/`/dev/stderr` only when the command contains no input redirect (`<` in any form) and no `exec`, since either can put a file behind those streams — are not containment targets; `/dev/fd/N` always is, since opening it reopens whatever file fd N holds. A resolvable target outside the assigned root denies (`bash-outside-assigned-worktree`, block tier); a write-shaped command whose target cannot be resolved statically (a dynamic argument, a command like `python3 -c`/`perl -i`/`awk`/`dd`/`rsync` whose write behavior cannot be determined from the command string alone, a sed `e` command, or a `node`/`bun`/`perl`/`ruby` `-e` one-liner whose script calls a write, delete or exec function) is allowed but recorded (`bash-write-target-unresolvable`, warn tier) — never a silent allow. Only when `readAssignedWorktreeRoot(cwd)` itself resolves null (`cwd` is the main clone, or a non-nesting scratchpad candidate deferred the decision) does this check fall open, byte-identical to today: with no assigned root there is no single worktree to bound a Bash write to, so the Write/Edit-only `allWorktreeRoots` root set above does not apply here — this is no longer simply "env var unset".
 
 The eight `main-clone-*` pattern ids (issue #897, ADR-043) refuse a working-tree-mutating `git` subcommand whose effective repository is not a linked worktree — this includes the campaign's main clone, but also any other standalone, non-linked-worktree checkout (`worktree-removal-guard.js`'s `findRemovalInvocations` cannot tell those apart from each other, only from a genuine linked worktree; see ADR-043 § Consequences). `validate-bash-command.js`'s `git-main-clone-guard.js` reuses the same clause walk `worktree-removal-guard.js` already runs for `git worktree remove` (a second subcommand match emitted only from the CERTAIN executable position), then grades severity by recoverability — none of the six block-tier ids below can be recovered by inspecting reflog or `refs/stash` after the fact:
 

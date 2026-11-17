@@ -359,13 +359,28 @@ const findTeeTargets = (tokens) => {
 const SED_VALUE_SHORT = new Set(['e', 'f', 'l']);
 const SED_VALUE_LONG = ['--expression', '--file', '--line-length'];
 
+/** True when a sed script word reaches sed exactly as written: one single-quoted span with no
+ * other quote, one double-quoted span with nothing the shell expands or unescapes, or a bare word
+ * with no quote, escape, expansion or glued redirect. Any other word (`$'..'`, `'a'w' b'`,
+ * `'s/x/w '/etc/x`, `w\ /etc/x`, `'..'<f`) is rebuilt by the shell in ways this module does not
+ * model, so its writes cannot be read from it. */
+const isCleanSedWord = (word) => {
+  const inner = word.slice(1, -1);
+  if (word.length >= 2 && word[0] === "'" && word.endsWith("'")) return !inner.includes("'");
+  if (word.length >= 2 && word[0] === '"' && word.endsWith('"')) return !/["\\$`]/.test(inner);
+  return !/['"\\$`<>]/.test(word);
+};
+
 /** Splits sed's arguments getopt-style into its script (every `-e`/`--expression` joined by
  * newlines, as sed joins them, else the first operand), its file operands and whether it edits in
- * place (`-i[SUFFIX]` alone or ending a short cluster such as `-ni`, or `--in-place[=SUFFIX]`). */
+ * place (`-i[SUFFIX]` alone or ending a short cluster such as `-ni`, or `--in-place[=SUFFIX]`).
+ * A `-f`/`--file` script source also means no operand is the script. `unclean` is set when a
+ * script word is not `isCleanSedWord`. */
 const parseSedArgs = (args) => {
   const scripts = [];
   const operands = [];
   let inPlace = false;
+  let hasScriptSource = false;
   for (let i = 0; i < args.length; i++) {
     const t = args[i];
     if (t === '--') {
@@ -380,6 +395,7 @@ const parseSedArgs = (args) => {
       if (!name) continue;
       const value = eq === -1 ? (args[++i] ?? '') : t.slice(eq + 1);
       if (name === '--expression') scripts.push(value);
+      if (name !== '--line-length') hasScriptSource = true;
       continue;
     }
     if (t.length < 2 || t[0] !== '-') {
@@ -394,11 +410,13 @@ const parseSedArgs = (args) => {
       if (!SED_VALUE_SHORT.has(t[c])) continue;
       const value = t.slice(c + 1) || (args[++i] ?? '');
       if (t[c] === 'e') scripts.push(value);
+      if (t[c] !== 'l') hasScriptSource = true;
       break;
     }
   }
-  if (scripts.length === 0 && operands.length > 0) scripts.push(operands.shift());
-  return { script: scripts.map(stripQuotes).join('\n'), files: operands.map(stripQuotes), inPlace };
+  if (!hasScriptSource && operands.length > 0) scripts.push(operands.shift());
+  const unclean = scripts.some((w) => !isCleanSedWord(w));
+  return { script: scripts.map(stripQuotes).join('\n'), files: operands.map(stripQuotes), inPlace, unclean };
 };
 
 /** sed commands that take no argument (`l`, `q`, `Q`, `L` take an optional number). */
@@ -494,13 +512,14 @@ const parseSedScript = (script) => {
 };
 
 /** Write targets of `sed` in one clause: the file operands when it edits in place, every file its
- * script writes, and an unresolvable target when the script runs a shell command. */
+ * script writes, and an unresolvable target when the script runs a shell command or a script word
+ * is not clean (its real text is not the text this module reads). */
 const findSedTargets = (tokens) => {
   const cmdIdx = tokens.findIndex((t) => isCommandToken(t, 'sed'));
   if (cmdIdx === -1) return [];
-  const { script, files, inPlace } = parseSedArgs(positionalArgsBeforeRedirect(tokens, cmdIdx + 1));
+  const { script, files, inPlace, unclean } = parseSedArgs(positionalArgsBeforeRedirect(tokens, cmdIdx + 1));
   const written = parseSedScript(script);
-  return [...(inPlace ? files : []), ...written.files, ...(written.exec ? [UNRESOLVABLE_TARGET] : [])];
+  return [...(inPlace ? files : []), ...written.files, ...(written.exec || unclean ? [UNRESOLVABLE_TARGET] : [])];
 };
 
 /** Destination directory named by `-t DIR`, `-tDIR`, a short cluster ending in `t` (`-pt DIR`),
@@ -871,10 +890,17 @@ const isStreamDeviceTarget = (rawTarget, visible) => {
  * (`s/<A>/#1174/g` read as `/#1174/g`), not a path the author meant to write. */
 const looksLikeRegexFragment = (target) => target.startsWith('/#') || /[\\^$*+?()[\]{}|]/.test(target);
 
-/** Calls that write, delete or move a file, or run a command, in a JS, Perl or Ruby one-liner. A
- * plain literal alternation, so the scan is linear in the script length. */
-const SCRIPT_WRITE_CALL_RE =
-  /write|append|unlink|rename|truncate|symlink|mkdir|rmdir|copyfile|chmod|chown|utime|child_process|fileutils|\b(?:rm|cp|mv)(?:sync)?\b|\b(?:open|popen|exec|spawn|fork|system|eval)/i;
+/** Calls in a JS one-liner that write, delete, move or link a file, or run a command (through
+ * `child_process`, `Bun.spawn` or `Bun.$`). Whole words or distinctive stems only, so
+ * `process.stdout.write`, `process.execPath` and `/re/.exec` do not match. RegExp `exec` is not a
+ * command: `child_process` must be named to reach `exec`. Literal alternations, linear time. */
+const JS_WRITE_CALL_RE =
+  /writefile|writesync|createwritestream|bun\.write|appendfile|unlink|rename|truncate|symlink|\blink(?:sync)?\b|mkdir|mkdtemp|rmdir|copyfile|\b(?:cp|rm)(?:sync)?\b|chmod|chown|utime|child_process|\b(?:open|opensync|spawn|spawnsync|fork|eval)\b|bun\.\$|\$`/i;
+
+/** The same for Perl and Ruby, where `open`, `system`, `exec`, backticks, `qx` and `%x` run
+ * commands or open files for writing. */
+const PERL_RUBY_WRITE_CALL_RE =
+  /file\.(?:write|delete|new|open|rename|unlink|symlink|link|truncate)|io\.(?:write|popen)|fileutils|syswrite|sysopen|dbmopen|unlink|rename|truncate|symlink|\blink\b|mkdir|rmdir|chmod|chown|utime|\b(?:open|popen|exec|system|fork|eval|qx)\b|`|%x/i;
 
 /** Interpreters whose inline script (`-e`, `-c`, …) this module cannot parse. Every argument after
  * the interpreter word is checked, so a value-taking option ahead of the script cannot hide it.
@@ -882,29 +908,40 @@ const SCRIPT_WRITE_CALL_RE =
  * through the same `open`), and perl/ruby `-i`, which edit their file operands in place. */
 const INTERPRETERS = [
   {
-    name: /^(?:node|bun)$/,
+    name: /^(?:node(?:js)?[0-9.]*|bun)$/,
     scriptFlag: (t) => /^-[a-zA-Z]*[ep]$/.test(t) || ['--eval', '--print'].some((n) => isLongOptionPrefix(t.split('=')[0], n)),
-    // `Bun.$` runs a shell command through a tagged template.
-    writeCall: (script) => SCRIPT_WRITE_CALL_RE.test(script) || script.includes('$`'),
+    writeCall: (script) => JS_WRITE_CALL_RE.test(script),
   },
   {
     name: /^(?:perl|ruby)[0-9.]*$/,
     scriptFlag: (t) => /^-[a-zA-Z]*[eE]/.test(t),
     always: (t) => /^-[a-zA-Z]*i/.test(t),
-    // Backticks, `qx` and `%x` run a shell command.
-    writeCall: (script) => SCRIPT_WRITE_CALL_RE.test(script) || /`|%x|\bqx\b/.test(script),
+    writeCall: (script) => PERL_RUBY_WRITE_CALL_RE.test(script),
   },
-  { name: /^python[0-9.]*$/, always: (t) => /^-[a-zA-Z]*c/.test(t) },
+  { name: /^(?:python|pypy|py)[0-9.]*$/, always: (t) => /^-[a-zA-Z]*c/.test(t) },
 ];
 
-/** True when an interpreter anywhere in the clause runs an inline script that may write. */
+/** The command a word names once the shell has removed its quotes and escapes (`\node`,
+ * `'node'`, `/usr/bin/node` all name `node`). */
+const commandName = (word) => {
+  const bare = word.replace(/['"\\]/g, '');
+  return bare.slice(bare.lastIndexOf('/') + 1);
+};
+
+/** Script text as the interpreter receives it: inside double quotes the shell drops the
+ * backslash before `$`, `` ` ``, `"` and `\`, so `Bun.\$\`…\`` arrives as `` Bun.$`…` ``. */
+const unescapeDoubleQuoted = (text) => text.replace(/\\([$`"\\])/g, '$1');
+
+/** True when an interpreter in the clause runs an inline script that may write. An interpreter
+ * name that follows a grep-family word (`git grep -n perl -i`, `grep -e ruby`) is a search
+ * pattern, not a command. */
 const hasInterpreterWrite = (tokens) =>
   INTERPRETERS.some(({ name, scriptFlag, always, writeCall }) => {
-    const idx = tokens.findIndex((t) => name.test(t.slice(t.lastIndexOf('/') + 1)));
-    if (idx === -1) return false;
+    const idx = tokens.findIndex((t) => name.test(commandName(t)));
+    if (idx === -1 || tokens.slice(0, idx).some((t) => INERT_GREP_COMMANDS.has(t))) return false;
     const args = positionalArgsBeforeRedirect(tokens, idx + 1);
     if (always && args.some(always)) return true;
-    return Boolean(scriptFlag && args.some(scriptFlag) && writeCall(args.join(' ')));
+    return Boolean(scriptFlag && args.some(scriptFlag) && writeCall(unescapeDoubleQuoted(args.join(' '))));
   });
 
 /** True when a clause is write-shaped but unresolvable: its leading command word is one of

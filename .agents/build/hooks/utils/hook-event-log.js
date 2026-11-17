@@ -293,19 +293,97 @@ const readScratchpadDir = (mainClone) => {
   return value;
 };
 
+/** Splits `git worktree list --porcelain` output into worktree paths. With `-z` every field
+ * ends in NUL, so a path containing newlines cannot forge a second record. Git before 2.36 has no
+ * `-z`; its line-delimited form can carry a forged record, which is still safe here because every
+ * path outside the main clone must pass `isBackLinkedWorktree` (which also refuses any path
+ * containing a newline). */
+const parseWorktreeListing = (listing, nulDelimited) =>
+  listing
+    .split(nulDelimited ? '\0' : '\n')
+    .filter((field) => field.startsWith('worktree '))
+    .map((field) => field.slice('worktree '.length));
+
+/** `git worktree list --porcelain`, NUL-delimited when this git supports `-z` (2.36+), otherwise
+ * line-delimited. A git that rejects `-z` must not make every Write/Edit fail closed. When the
+ * plain form fails too, the `-z` call's error is the one rethrown. */
+const listWorktrees = (cwd) => {
+  try {
+    return { listing: git(['worktree', 'list', '--porcelain', '-z'], cwd), nulDelimited: true };
+  } catch (error) {
+    try {
+      return { listing: git(['worktree', 'list', '--porcelain'], cwd), nulDelimited: false };
+    } catch {
+      throw error;
+    }
+  }
+};
+
+/** Reads a one-line pointer file (`<worktree>/.git` or `worktrees/<name>/gitdir`), or null when
+ * it is absent, not a regular file, or not a single line. */
+const readPointerFile = (file) => {
+  try {
+    if (!fs.lstatSync(file).isFile()) return null;
+    const value = fs.readFileSync(file, 'utf-8').replace(/\r?\n$/, '');
+    return value.length > 0 && !value.includes('\n') ? value : null;
+  } catch {
+    return null;
+  }
+};
+
+const realpathOrNull = (p) => {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return null;
+  }
+};
+
+/** True when `worktreePath` is a real linked worktree of the repository whose common dir is
+ * `commonDir`, checked from both ends. A `worktrees/<name>/gitdir` entry is only a claim anyone
+ * who can write under `.git` can make, so git listing a path proves nothing on its own:
+ *  - the path must resolve to itself (no symlink swapped in after registration),
+ *  - `<path>/.git` must be a gitdir file naming `<commonDir>/worktrees/<name>`, and
+ *  - that directory's own `gitdir` file must name `<path>/.git` back.
+ * A foreign repository listed through a forged entry has a `.git` directory, not a file pointing
+ * here, so it fails; a deleted worktree has no `.git` file at all, so it fails too. */
+const isBackLinkedWorktree = (worktreePath, commonDir) => {
+  if (worktreePath.includes('\n') || realpathOrNull(worktreePath) !== path.resolve(worktreePath)) return false;
+  const dotGit = path.join(worktreePath, '.git');
+  const pointer = readPointerFile(dotGit);
+  if (!pointer || !pointer.startsWith('gitdir: ')) return false;
+  const adminDir = realpathOrNull(path.resolve(worktreePath, pointer.slice('gitdir: '.length)));
+  const worktreesDir = realpathOrNull(path.join(commonDir, 'worktrees'));
+  if (!adminDir || !worktreesDir || path.dirname(adminDir) !== worktreesDir) return false;
+  const backPointer = readPointerFile(path.join(adminDir, 'gitdir'));
+  return Boolean(backPointer) && realpathOrNull(path.resolve(adminDir, backPointer)) === realpathOrNull(dotGit);
+};
+
+/** A registered linked worktree outside the main clone is a containment root when it is
+ * back-linked to this repository (`isBackLinkedWorktree`) and not too broad to bound anything
+ * (`isAcceptableScratchpadDir`: never `/`, `$HOME` or a bare temp root) — #1226. */
+const isTrustedLinkedWorktree = (worktreePath, commonDir) =>
+  isBackLinkedWorktree(worktreePath, commonDir) && isAcceptableScratchpadDir(worktreePath);
+
 /** Worktree roots this repo family's containment check trusts, resolved from `cwd` for the same
- * reason `worktreeRoot`/`mainCloneRoot` are (#507). NOT every worktree `git worktree list
- * --porcelain` reports — `git worktree add` is ungated (no bash-pattern blocks it), so trusting
- * every *registered* worktree unconditionally let one such call permanently widen the
- * Write/Edit containment allow-list to an arbitrary directory (#510/F-00088). Narrowed here to
- * worktrees nested under the main clone, or nested under a validated `scratchpad_dir` from
- * `<mainClone>/.blackhole/config.json` — the documented location for worker worktrees (e.g.
- * `/tmp/blackhole-campaign/wt-42`) — **plus that validated `scratchpad_dir` itself**, so a target
+ * reason `worktreeRoot`/`mainCloneRoot` are (#507): every worktree `git worktree list
+ * --porcelain` reports — the main clone, the worktrees nested under it, and every registered
+ * linked worktree wherever it lives (#1226: a campaign worker's `/tmp/campaign/wt-<N>` sits under
+ * neither the main clone nor a configured `scratchpad_dir`, and refusing it pushed the worker
+ * onto an unguarded Bash heredoc). A linked worktree outside the main clone is admitted only via
+ * `isTrustedLinkedWorktree`: it must be back-linked to this repository from both ends (a forged
+ * `worktrees/<name>/gitdir`, a symlink swapped in, or a deleted directory all fail) and pass the
+ * `isAcceptableScratchpadDir` breadth check. The listing is read with `-z` where git supports it
+ * (see `listWorktrees`), so a newline in a worktree path cannot forge a record. This replaces #510's
+ * narrowing to worktrees nested under the main clone or `scratchpad_dir`: that filter assumed
+ * `git worktree add` was the only way to reach a new directory, but a worker whose cwd is the
+ * main clone can already write to that directory through Bash, so it bounded nothing while
+ * refusing real campaign worktrees — **plus the validated `scratchpad_dir` itself**, so a target
  * placed directly at the scratchpad root (a probe script, a shared coordination file) is in-bounds
  * rather than denied for sitting in none of the `wt-*` subdirectories: the directory already
- * passed the same `isAcceptableScratchpadDir` breadth check that makes its nested worktrees
- * trustworthy, and `isExistingDirectory` keeps a never-created value from collapsing onto its
- * parent. Being a member of this set, the scratchpad root also satisfies
+ * passed the same `isAcceptableScratchpadDir` breadth check, and `isExistingDirectory` keeps a
+ * never-created value from collapsing onto its parent. Being a member of this set, the scratchpad
+ * root also satisfies
  * `readAssignedWorktreeRoot`'s membership test, so `BLACKHOLE_ASSIGNED_WORKTREE` may now name it
  * — an assignment that spans every worktree beneath it rather than narrowing to one. That grants
  * no permission the unset case does not already grant (an unrecognized value falls open to this
@@ -316,10 +394,9 @@ const readScratchpadDir = (mainClone) => {
  * able to Write/Edit within its own worktree even when that worktree is registered neither under
  * the main clone nor under `scratchpad_dir` (e.g. a worktree created via a bare `git worktree
  * add <elsewhere>`). This is no broader than the trust the no-git-context fallback in
- * `validate-file-changes.js` already extends to `cwd` unconditionally (#512) — #510/F-00088's
- * actual invariant (a session cannot write into a worktree that is neither its own cwd nor
- * nested under a trusted root) is unaffected; see the split #510/#729 regression tests in
- * `scripts/hooks-validate-file.test.ts`. Also admits `BLACKHOLE_SCRATCHPAD_DIR` (#729) — an
+ * `validate-file-changes.js` already extends to `cwd` unconditionally (#512); it matters for a
+ * cwd worktree that `isTrustedLinkedWorktree` rejects (e.g. one too broad to admit on its own
+ * for a session sitting elsewhere). Also admits `BLACKHOLE_SCRATCHPAD_DIR` (#729) — an
  * opt-in override for the Claude Code harness's own per-session scratchpad directory, which is
  * never a git worktree and so never appears in `git worktree list` output at all — validated
  * through the same `isAcceptableScratchpadDir` breadth check `scratchpad_dir` already uses
@@ -350,23 +427,21 @@ const readScratchpadDir = (mainClone) => {
  * containment state must never fall back to the permissive cwd-bound path that null triggers
  * below. */
 const allWorktreeRoots = (cwd = process.cwd()) => {
-  let listing;
+  let listed;
   try {
-    listing = git(['worktree', 'list', '--porcelain'], cwd);
+    listed = listWorktrees(cwd);
   } catch (error) {
     if (!hasGitMarkerInAncestry(cwd)) return null;
     throw error;
   }
-  const roots = listing
-    .split('\n')
-    .filter((line) => line.startsWith('worktree '))
-    .map((line) => line.slice('worktree '.length));
+  const roots = parseWorktreeListing(listed.listing, listed.nulDelimited);
   if (roots.length === 0) return null;
   const mainClone = mainCloneRoot(cwd);
   if (!mainClone) return null;
+  const commonDir = path.resolve(cwd, git(['rev-parse', '--git-common-dir'], cwd));
   const scratchpadDir = readScratchpadDir(mainClone);
   const filtered = roots.filter(
-    (root) => isUnderRoot(root, mainClone) || (scratchpadDir !== null && isUnderRoot(root, scratchpadDir)),
+    (root) => isUnderRoot(root, mainClone) || isTrustedLinkedWorktree(root, commonDir),
   );
   const withScratchpad =
     scratchpadDir !== null && isExistingDirectory(scratchpadDir) ? [...filtered, scratchpadDir] : filtered;
