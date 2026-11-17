@@ -98,4 +98,4 @@ Set `notes: awaiting-plan-approval` until user confirms.
  ## Scope growth
  
  If plan exceeds one reviewable PR → stop, split per `issue-splitting.md`,
- AskQuestion, do not spawn implement.
+ AskQuestion (through `askOrPark()`, `clarify-gates.md` § C3 adapter), do not spawn implement.

@@ -47,8 +47,11 @@ switches. **Do not run those without the owner's explicit OK:**
 an approved `ui_gate` / design-approval resume — not inference from DESIGN.md
 or from the skill's "pick the closest style" table.
 
-Without that OK: do **not** run the command. Ask (`AskQuestion`) or return
-`status: blocked` with a one-line reason naming the command you refused.
+Without that OK: do **not** run the command. A worker never asks the owner itself and never parks
+(`campaign-record.ts park` writes to the worktree's `.blackhole`): return `status: blocked` with a
+one-line reason naming the command you refused. The orchestrator then routes the question through
+`askOrPark()` (`clarify-gates.md` § C3 adapter). An interactive session with no orchestrator asks
+through the same C3 adapter.
 `add` / `search` / `docs` / `info` / `diff` / `--dry-run` stay allowed.
 
 Upstream `design-system.md` Step 1 (`init --preset` / style pick) is the same

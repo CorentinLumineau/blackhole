@@ -21,9 +21,6 @@ adapter). `askOrPark(config)` (`scripts/lib/campaign-status/pending-decisions.ts
 - `ask` — sleep mode is off: use the C3 adapter row for this session, unchanged.
 - `park` — sleep mode is on: do not call any question tool. Park the question instead:
 
-`bun scripts/campaign-record.ts ask` prints which of the two applies, read from `config.json`.
-
-
 ```bash
 bun scripts/campaign-record.ts park --question "<the question as it would have been asked>" \
   --options "<label>: <consequence>|<label>|…" --recommended "<label>" \
@@ -35,6 +32,14 @@ Then set each blocked item `status: blocked`, `notes: "awaiting-owner-on-return"
 (`clarify-gates.md` § Queue status when waiting on user) and move on. Parking the same question
 again with the same options adds its new blocked items to the existing record; it is never listed
 twice. The same question with different options is refused — reword it or reuse the options.
+
+`bun scripts/campaign-record.ts ask` prints which of the two applies, read from `config.json`.
+
+No playbook may skip the choke point: `scripts/checks/sleep-choke-point.check.ts` (`V-SLEEP-01`)
+fails any `src/agents/*.md` or `src/references/*.md` section that names `AskQuestion` or
+`AskUserQuestion` without citing `askOrPark()`, `clarify-gates.md` or this file. Descriptive
+mentions (harness capability tables, this contract) are allowlisted in that check, each with its
+reason; an entry that stops matching fails too.
 
 **Allowed without asking:** only what config or an earlier owner ruling already authorizes —
 `merge_mode`, the release permission, `usage_budget`. Anything else that is destructive,
