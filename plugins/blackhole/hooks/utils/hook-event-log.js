@@ -48,7 +48,11 @@ const SECRET_SPACE =
   /\b(--?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key|with-token)|Bearer)\s+(['"]?)[^'"\s]{4,}\2/gi;
 const MAX_DETAIL_CHARS = 300;
 // Invariant: both regex passes see at most this many chars, so redaction cost is O(1) in the input
-// size; a secret straddling the window edge lies past MAX_DETAIL_CHARS and is never emitted anyway.
+// size, and no character past the window is ever emitted. The window does not keep a straddling
+// secret out of the output on its own: each mask can be shorter than the value it replaces, so the
+// final MAX_DETAIL_CHARS slice can reach text near the window edge. A value cut by the edge is still
+// masked when 4+ of its characters remain inside the window; only a cut leaving 1-3 characters
+// (below the regexes' 4-char floor) can emit those few leading characters unmasked.
 const REDACT_WINDOW_CHARS = MAX_DETAIL_CHARS * 8;
 
 const redact = (text) =>
