@@ -109,7 +109,10 @@ dashboard nobody refreshes stops saying running by itself; "x min ago" is comput
 opened. Read `.blackhole/status-artifact.json`. Its shape is `{"url": "<claude.ai artifact link>",
 "kind": "data", "created_at": "<ISO8601>", "template_version": <n>, "template_sha256": "<hex>"}`;
 `template_sha256` (the SHA-256 of the `files/index.html` text last written) is absent on a
-dashboard published before template version 3.
+dashboard published before template version 3. An optional `last_probe` (`{at, ok, url,
+reason?}`) records whether the stored URL opened from this account at the last launch
+(the launch gate probes it before the first spawn of a `run`); only `scripts/status-probe.ts record` writes it, and every
+other step keeps it as is.
 
 - **File absent** (first publish for this campaign): create the dashboard **once** from the
   Data artifact type (`Artifact` `action: "quickstart"`, `intent: "other"`, then publish with the

@@ -8,7 +8,7 @@ const projectRoot = (): string => process.cwd();
 const resolveFromRoot = (p: string): string => (path.isAbsolute(p) ? p : path.join(projectRoot(), p));
 
 const USAGE =
-  'Usage: bun run status [config-summary] [--json | --html [--out <path>] | --data <dir>] [--campaign-dir <dir>] [--no-gh]';
+  'Usage: bun run status [config-summary] [--json | --html [--out <path>] | --data <dir> | --summary [--usage <json>] [--now <epoch s>] [--json]] [--campaign-dir <dir>] [--no-gh]';
 
 /**
  * Parses CLI args into a mode + options. Subcommand dispatch on argv[2] follows the convention
@@ -26,6 +26,9 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
   let html = false;
   let outPath: string | null = null;
   let dataDir: string | null = null;
+  let summary = false;
+  let usage: string | null = null;
+  let now: number | null = null;
 
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--campaign-dir' && argv[i + 1]) {
@@ -38,6 +41,17 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
       if (!argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error(`--data requires a directory. ${USAGE}`);
       dataDir = resolveFromRoot(argv[i + 1]);
       i++;
+    } else if (argv[i] === '--usage') {
+      if (argv[i + 1] === undefined) throw new Error(`--usage requires a JSON value. ${USAGE}`);
+      usage = argv[i + 1];
+      i++;
+    } else if (argv[i] === '--now') {
+      const value = Number(argv[i + 1]);
+      if (!Number.isInteger(value) || value < 0) throw new Error(`--now requires epoch seconds. ${USAGE}`);
+      now = value;
+      i++;
+    } else if (argv[i] === '--summary') {
+      summary = true;
     } else if (argv[i] === '--no-gh') {
       skipGh = true;
     } else if (argv[i] === '--json') {
@@ -52,6 +66,11 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
     }
   }
 
+  if (summary && (html || dataDir || outPath || mode === 'config-summary')) {
+    throw new Error(`--summary takes only --usage, --now and --json. ${USAGE}`);
+  }
+  if (!summary && (usage !== null || now !== null)) throw new Error(`--usage and --now require --summary. ${USAGE}`);
+  if (summary) return { mode: 'summary', campaignDir, skipGh, outPath: null, dataDir: null, usage, now, summaryJson: json };
   if (json && html) throw new Error(`Pass either --json or --html, not both. ${USAGE}`);
   if (dataDir && (json || html)) throw new Error(`Pass only one of --json, --html or --data. ${USAGE}`);
   if (outPath && !html) throw new Error(`--out requires --html. ${USAGE}`);
@@ -59,5 +78,5 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
   if (html) mode = 'html';
   if (dataDir) mode = 'data';
 
-  return { mode, campaignDir, skipGh, outPath, dataDir };
+  return { mode, campaignDir, skipGh, outPath, dataDir, usage: null, now: null, summaryJson: false };
 }
