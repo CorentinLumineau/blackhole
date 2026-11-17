@@ -138,6 +138,13 @@ Committed template: `.blackhole/config.json`
 | `usage_budget.coordination.role` | no | `solo`, `manager` or `peer`: how this session shares one budget with others (default `solo`) |
 | `usage_budget.coordination.manager_session` | no | Session that grants worker slots; required non-empty when `role` is `peer` (default `null`) |
 | `usage_budget.coordination.peer_floor` | no | Worker slots a peer may always use without a grant (default `1`; integer `>= 0`) |
+| `catchup` | no | Pacing preset of `/blackhole catchup` mode (ADR-053): the keys below. Never read by `run`. **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
+| `catchup.pct_per_weekday` | no | Weekly points the pace floor credits per weekday (default `17.5`; number in (0, 100]). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
+| `catchup.five_hour.no_spawn_at` | no | 5-hour `used_percentage` at or above which a catchup spawns no new worker (default `75`; must be `<` `stop_workers_at`). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
+| `catchup.five_hour.stop_workers_at` | no | 5-hour `used_percentage` at or above which a catchup stops its workers (default `80`; number in (0, 100]). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
+| `catchup.lane` | no | Name of this account's lane, matching `[a-z0-9][a-z0-9._-]*` (default `null` = unset; recorded and shown, consumed from M4). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
+| `catchup.claim_lease_hours` | no | Hours a lane claim stays valid (default `24`; number > 0; consumed from M4). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
+| `catchup.day_end_hour` | no | Local hour at which a weekday's credit lands (default `18`; integer 1-24). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `resource_policy.carveout_recorded_at` | no | ISO8601 timestamp when the resource-policy carveout block was last recorded |
 | `stop_budget_cleared_at` | no | ISO8601 timestamp when the campaign stop-budget gate was cleared by the owner/coordinator (audit trail) |
 | `issue_484_disposition` | no | Campaign-specific disposition record for issue #484 (or analogous parked-issue pin). **Resolution**: absent block ⇒ no special disposition |
@@ -270,6 +277,13 @@ rename, remove or retype one. The executive-summary launch gate's Budget row may
 the verdict `PACE-WAIT` (drain, wake at `wake_at`, resume) is part of the gate's output contract. The gate is
 `scripts/usage-budget.ts`; it sits beside the pace gate (`resource_policy.pace`), which is unchanged.
 
+## catchup
+
+The `catchup` block is read only by `catchup` mode, `scripts/usage-budget.ts --floor`,
+`scripts/pace-floor.ts` and the launch gate's Pacing row; it never changes `run`. The invocation
+overrides (`--floor`, `--no-spawn-at`, `--stop-workers-at`, `--lane`) never write it. `lane` is recorded
+but consumed from M4.
+
 ## Status page coverage
 
 Every top-level block registered in the field table above names the status page dataset that
@@ -312,5 +326,6 @@ write or no template panel draws, a row the dataset does not emit, or `none` wit
 | `resource_policy` | `config` | Verification | The test-lock carve-out; the host pace line is on the `--html` Host section |
 | `usage_budget` | `budget` | Workers allowed, Weekly, Weekly target | Verdict, weekly %, target and reset |
 | `usage_budget.coordination` | `run` | Coordination | |
+| `catchup` | none | — | The pacing preset is shown on the launch summary's Pacing row; the budget panel keeps the verdict |
 | `stop_budget_cleared_at` | none | — | Audit timestamp of a past owner action |
 | `issue_484_disposition` | none | — | One campaign's historical pin; the parked issue shows on the board |

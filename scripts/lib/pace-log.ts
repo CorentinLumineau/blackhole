@@ -36,7 +36,7 @@ export type PaceRecord = {
 
 // Usage verdicts that pause the round (spawn nothing, drain, resume later). NO-NEW-STARTS limits
 // which issues may start, not how many workers run, and `unavailable` fails open: neither cuts.
-const USAGE_PAUSES: UsageVerdictName[] = ['NO-SPAWN', 'STOP-WORKERS', 'PACE-WAIT', 'STOP-CAMPAIGN'];
+const USAGE_PAUSES: UsageVerdictName[] = ['NO-SPAWN', 'STOP-WORKERS', 'PACE-WAIT', 'STOP-CAMPAIGN', 'SKIP'];
 const USAGE_CUTS: UsageVerdictName[] = ['GO', ...USAGE_PAUSES];
 
 export const buildPaceRecord = (

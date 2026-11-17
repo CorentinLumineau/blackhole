@@ -171,3 +171,71 @@ describe('parseUsage', () => {
     });
   });
 });
+
+describe('usage-budget CLI --floor (catchup gate)', () => {
+  const week = (used: number) => JSON.stringify({ five_hour: { used_percentage: 40, resets_at: NOW + 4 * HOUR }, seven_day: { used_percentage: used, resets_at: NOW + 3 * 24 * HOUR } });
+  const base = { usage_budget: { enabled: false } };
+
+  test('below the floor is GO and echoes floor_pct, whatever usage_budget.enabled says', () => {
+    withTempDir('usage-budget-floor', (dir) => {
+      const r = run(dir, ['--floor', '87.5', '--usage', week(70)], base);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatchObject({ verdict: 'GO', floor_pct: 87.5 });
+    });
+  });
+
+  test('at or over the floor is STOP-CAMPAIGN with no wake', () => {
+    withTempDir('usage-budget-floor', (dir) => {
+      const r = run(dir, ['--floor', '61.25', '--usage', week(62)]);
+      expect(r.out).toMatchObject({ verdict: 'STOP-CAMPAIGN', wake_at: null });
+    });
+  });
+
+  test('no usage source is SKIP with a stderr line, where the plain call is unavailable', () => {
+    withTempDir('usage-budget-floor', (dir) => {
+      const none = ['--cache', path.join(dir, 'missing.json'), '--host', 'claude'];
+      const r = run(dir, ['--floor', '87.5', ...none]);
+      expect(r.code).toBe(0);
+      expect(r.out.verdict).toBe('SKIP');
+      expect(r.err).toContain('usage-budget: SKIP:');
+      expect(run(dir, none).out.verdict).toBe('unavailable');
+    });
+  });
+
+  test('a five-hour-only reading is SKIP', () => {
+    withTempDir('usage-budget-floor', (dir) => {
+      expect(run(dir, ['--floor', '87.5', '--usage', usageJson(40)]).out.verdict).toBe('SKIP');
+    });
+  });
+
+  test('the catchup.five_hour block is honoured', () => {
+    withTempDir('usage-budget-floor', (dir) => {
+      const usage = JSON.stringify({ five_hour: { used_percentage: 65, resets_at: NOW + 4 * HOUR }, seven_day: { used_percentage: 50, resets_at: NOW + 3 * 24 * HOUR } });
+      const r = run(dir, ['--floor', '87.5', '--usage', usage], { catchup: { five_hour: { no_spawn_at: 60, stop_workers_at: 70 } } });
+      expect(r.out.verdict).toBe('NO-SPAWN');
+    });
+  });
+
+  test('config.json is never written', () => {
+    withTempDir('usage-budget-floor', (dir) => {
+      const configPath = path.join(dir, 'config.json');
+      run(dir, ['--floor', '87.5', '--usage', week(70)]);
+      const before = fs.readFileSync(configPath);
+      run(dir, ['--floor', '87.5', '--usage', week(70)]);
+      expect(fs.readFileSync(configPath).equals(before)).toBe(true);
+    });
+  });
+
+  test.each([['0'], ['101'], ['abc']])('--floor %s exits 2', (value) => {
+    withTempDir('usage-budget-floor', (dir) => {
+      expect(run(dir, ['--floor', value, '--usage', week(10)]).code).toBe(2);
+    });
+  });
+
+  test('a bare --floor and an invalid catchup block exit 2', () => {
+    withTempDir('usage-budget-floor', (dir) => {
+      expect(run(dir, ['--usage', week(10), '--floor']).code).toBe(2);
+      expect(run(dir, ['--floor', '80', '--usage', week(10)], { catchup: { lane: 'Bad Lane' } }).code).toBe(2);
+    });
+  });
+});

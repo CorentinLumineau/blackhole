@@ -14,6 +14,7 @@
     "forge-sync": "bun run scripts/forge-sync.ts",
     "record": "bun run scripts/campaign-record.ts",
     "usage": "bun run scripts/usage.ts",
+    "pace-floor": "bun run scripts/pace-floor.ts",
     "sync:shadcn": "bun run scripts/sync-shadcn-skill.ts",
     "test": "bun test --timeout 60000"
   },
