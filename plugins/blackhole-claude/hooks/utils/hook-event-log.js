@@ -282,19 +282,43 @@ const readScratchpadDir = (mainClone) => {
   return value;
 };
 
+/** Splits `git worktree list --porcelain` output into one `{ path, prunable }` record per
+ * worktree. Records are separated by a blank line; `prunable` (git 2.31+) marks a registered
+ * worktree whose directory no longer exists. */
+const parseWorktreeListing = (listing) =>
+  listing
+    .split(/\n\s*\n/)
+    .map((block) => block.split('\n'))
+    .filter((lines) => lines[0] && lines[0].startsWith('worktree '))
+    .map((lines) => ({
+      path: lines[0].slice('worktree '.length),
+      prunable: lines.some((line) => line === 'prunable' || line.startsWith('prunable ')),
+    }));
+
+/** A registered linked worktree is a containment root when its directory still exists and is
+ * not too broad to bound anything (#1226). A missing directory would be compared as its nearest
+ * existing ancestor, which trusts every sibling — so `prunable` entries are skipped, and the
+ * existence check catches the case older git does not flag. */
+const isTrustedLinkedWorktree = (entry) =>
+  !entry.prunable && isExistingDirectory(entry.path) && isAcceptableScratchpadDir(entry.path);
+
 /** Worktree roots this repo family's containment check trusts, resolved from `cwd` for the same
- * reason `worktreeRoot`/`mainCloneRoot` are (#507). NOT every worktree `git worktree list
- * --porcelain` reports — `git worktree add` is ungated (no bash-pattern blocks it), so trusting
- * every *registered* worktree unconditionally let one such call permanently widen the
- * Write/Edit containment allow-list to an arbitrary directory (#510/F-00088). Narrowed here to
- * worktrees nested under the main clone, or nested under a validated `scratchpad_dir` from
- * `<mainClone>/.blackhole/config.json` — the documented location for worker worktrees (e.g.
- * `/tmp/blackhole-campaign/wt-42`) — **plus that validated `scratchpad_dir` itself**, so a target
+ * reason `worktreeRoot`/`mainCloneRoot` are (#507): every worktree `git worktree list
+ * --porcelain` reports — the main clone, the worktrees nested under it, and every registered
+ * linked worktree wherever it lives (#1226: a campaign worker's `/tmp/campaign/wt-<N>` sits under
+ * neither the main clone nor a configured `scratchpad_dir`, and refusing it pushed the worker
+ * onto an unguarded Bash heredoc). A linked worktree outside the main clone is admitted only via
+ * `isTrustedLinkedWorktree`: its directory must still exist (a deleted one would be compared as
+ * its parent) and pass the `isAcceptableScratchpadDir` breadth check. This replaces #510's
+ * narrowing to worktrees nested under the main clone or `scratchpad_dir`: that filter assumed
+ * `git worktree add` was the only way to reach a new directory, but a worker whose cwd is the
+ * main clone can already write to that directory through Bash, so it bounded nothing while
+ * refusing real campaign worktrees — **plus the validated `scratchpad_dir` itself**, so a target
  * placed directly at the scratchpad root (a probe script, a shared coordination file) is in-bounds
  * rather than denied for sitting in none of the `wt-*` subdirectories: the directory already
- * passed the same `isAcceptableScratchpadDir` breadth check that makes its nested worktrees
- * trustworthy, and `isExistingDirectory` keeps a never-created value from collapsing onto its
- * parent. Being a member of this set, the scratchpad root also satisfies
+ * passed the same `isAcceptableScratchpadDir` breadth check, and `isExistingDirectory` keeps a
+ * never-created value from collapsing onto its parent. Being a member of this set, the scratchpad
+ * root also satisfies
  * `readAssignedWorktreeRoot`'s membership test, so `BLACKHOLE_ASSIGNED_WORKTREE` may now name it
  * — an assignment that spans every worktree beneath it rather than narrowing to one. That grants
  * no permission the unset case does not already grant (an unrecognized value falls open to this
@@ -305,10 +329,9 @@ const readScratchpadDir = (mainClone) => {
  * able to Write/Edit within its own worktree even when that worktree is registered neither under
  * the main clone nor under `scratchpad_dir` (e.g. a worktree created via a bare `git worktree
  * add <elsewhere>`). This is no broader than the trust the no-git-context fallback in
- * `validate-file-changes.js` already extends to `cwd` unconditionally (#512) — #510/F-00088's
- * actual invariant (a session cannot write into a worktree that is neither its own cwd nor
- * nested under a trusted root) is unaffected; see the split #510/#729 regression tests in
- * `scripts/hooks-validate-file.test.ts`. Also admits `BLACKHOLE_SCRATCHPAD_DIR` (#729) — an
+ * `validate-file-changes.js` already extends to `cwd` unconditionally (#512); it matters for a
+ * cwd worktree that `isTrustedLinkedWorktree` rejects (e.g. one too broad to admit on its own
+ * for a session sitting elsewhere). Also admits `BLACKHOLE_SCRATCHPAD_DIR` (#729) — an
  * opt-in override for the Claude Code harness's own per-session scratchpad directory, which is
  * never a git worktree and so never appears in `git worktree list` output at all — validated
  * through the same `isAcceptableScratchpadDir` breadth check `scratchpad_dir` already uses
@@ -346,17 +369,14 @@ const allWorktreeRoots = (cwd = process.cwd()) => {
     if (!hasGitMarkerInAncestry(cwd)) return null;
     throw error;
   }
-  const roots = listing
-    .split('\n')
-    .filter((line) => line.startsWith('worktree '))
-    .map((line) => line.slice('worktree '.length));
-  if (roots.length === 0) return null;
+  const entries = parseWorktreeListing(listing);
+  if (entries.length === 0) return null;
   const mainClone = mainCloneRoot(cwd);
   if (!mainClone) return null;
   const scratchpadDir = readScratchpadDir(mainClone);
-  const filtered = roots.filter(
-    (root) => isUnderRoot(root, mainClone) || (scratchpadDir !== null && isUnderRoot(root, scratchpadDir)),
-  );
+  const filtered = entries
+    .filter((entry) => isUnderRoot(entry.path, mainClone) || isTrustedLinkedWorktree(entry))
+    .map((entry) => entry.path);
   const withScratchpad =
     scratchpadDir !== null && isExistingDirectory(scratchpadDir) ? [...filtered, scratchpadDir] : filtered;
 
