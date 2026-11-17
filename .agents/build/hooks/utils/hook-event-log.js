@@ -43,7 +43,7 @@ const { rotateHookEvents } = require('./hook-event-rotation');
  *  - Space form (`--token xyz`, `Bearer xyz`): no `=`/`:` joins the keyword to its value at all.
  */
 const SECRET_KV =
-  /\b((?:[A-Za-z][A-Za-z0-9]*_)*?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+)*)(['"]?\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
+  /\b((?:[A-Za-z][A-Za-z0-9]*_){0,8}?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+){0,8})(['"]?\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
 const SECRET_SPACE =
   /(?<![\w-])(--?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key|with-token)|Bearer)\s+(['"]?)[^'"\s]{4,}\2/gi;
 /** Credentials with no keyword in front of them. Every quantifier is bounded or runs over a
@@ -77,9 +77,17 @@ const SECRET_PASSWORD_FLAG = /(--?(?:password|passwd))(\s{1,64}|=)(['"]?)[^'"\s]
 const MAX_DETAIL_CHARS = 300;
 /** `reason` must keep its trailing `Remedy:` clause, so it has a separate, larger cap than `detail`. */
 const MAX_REASON_CHARS = 2000;
+// Invariant: every regex pass sees at most this many chars, so redaction cost is O(1) in the input
+// size, and no character past the window is ever emitted. The window does not keep a straddling
+// secret out of the output on its own: each mask can be shorter than the value it replaces, so the
+// final cap slice (MAX_DETAIL_CHARS or MAX_REASON_CHARS) can reach text near the window edge. A
+// value cut by the edge is still masked when the part left inside the window meets its pattern's
+// minimum length; a shorter cut fragment (e.g. under 4 chars for SECRET_KV) can be emitted unmasked.
+const REDACT_WINDOW_CHARS = Math.max(MAX_DETAIL_CHARS * 8, MAX_REASON_CHARS);
 
 const redactTo = (max) => (text) =>
   String(text === undefined || text === null ? '' : text)
+    .slice(0, REDACT_WINDOW_CHARS)
     .replace(SECRET_PASSWORD_QUOTED, (_match, flag, joiner, quote) => `${flag}${joiner}${quote}***${quote}`)
     .replace(SECRET_KV, (_match, key, separator, quote) => `${key}${separator}${quote}***${quote}`)
     .replace(SECRET_SPACE, (_match, flag, quote) => `${flag} ${quote}***${quote}`)
@@ -648,6 +656,7 @@ const failClosed = ({ hook, tool, error, patternId = 'pattern-load-failure', lab
 module.exports = {
   redact,
   redactReason,
+  SECRET_KV,
   worktreeRoot,
   mainCloneRoot,
   allWorktreeRoots,

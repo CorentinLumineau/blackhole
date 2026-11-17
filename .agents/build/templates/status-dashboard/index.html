@@ -1,5 +1,5 @@
 <meta name="dash-one-writer">
-<meta name="bh-template-version" content="3">
+<meta name="bh-template-version" content="5">
 <style>
   /* Colours: the artifact page's own tokens, with a fallback for a page that defines none. --cd-info,
      the warm "your move" panel and the done column have no page token, so they are set here. */
@@ -131,10 +131,20 @@
       <dl class="cd-kv" data-draw="config" data-source="config"></dl>
       <p class="cd-empty" data-empty="config" hidden>No config recorded.</p>
     </section>
+    <section class="cd-panel" id="budget" aria-labelledby="cd-budget-h">
+      <h2 class="cd-h2" id="cd-budget-h">Usage budget</h2>
+      <dl class="cd-kv" data-draw="budget" data-source="budget"></dl>
+      <p class="cd-empty" data-empty="budget" hidden>usage not probed</p>
+    </section>
     <section class="cd-panel" id="decisions" aria-labelledby="cd-dec-h">
       <h2 class="cd-h2" id="cd-dec-h">Your decisions</h2>
       <ul class="cd-list" data-draw="decisions" data-source="decisions"></ul>
       <p class="cd-empty" data-empty="decisions" hidden>No decision recorded yet.</p>
+    </section>
+    <section class="cd-panel" id="denials" aria-labelledby="cd-den-h">
+      <h2 class="cd-h2" id="cd-den-h">Hook denials</h2>
+      <ul class="cd-list" data-draw="denials" data-source="denials"></ul>
+      <p class="cd-empty" data-empty="denials" hidden>no hook denials recorded</p>
     </section>
   </div>
 </div>
@@ -371,6 +381,15 @@
     mk('dt', '', String(r.key || '')),
     mk('dd', '', String(r.value || ''), { source: 'config', field: 'value', row: i }),
   ])));
+  dash.draw('budget', (dl) => fill(dl, 'budget', () => rowsOf('budget').flatMap((r, i) => [
+    mk('dt', '', String(r.key || '')),
+    mk('dd', '', String(r.value || ''), { source: 'budget', field: 'value', row: i }),
+  ])));
+  dash.draw('denials', (ul) => fill(ul, 'denials', () => rowsOf('denials').map((r, i) => {
+    const li = document.createElement('li');
+    li.append(mk('code', '', String(r.pattern_id || ''), { source: 'denials', field: 'pattern_id', row: i }), mk('span', 'cd-muted', ' ' + String(r.deny || 0) + ' deny \u00b7 ' + String(r.warn || 0) + ' warn'));
+    return li;
+  })));
   dash.draw('decisions', (ul) => fill(ul, 'decisions', () => {
     const rows = rowsOf('decisions');
     const item = (r, i) => {

@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
+import { readJsonFile } from './lib/fs.ts';
+import { resolveUsageBudget } from './lib/usage-budget.ts';
 import { checkForgeAuthSync } from './lib/forge-doctor.ts';
 import {
   AGENT_TOOLS,
@@ -33,6 +35,18 @@ export const parseTools = (raw: string): AgentTool[] => {
   return tools as AgentTool[];
 };
 
+// An unreadable config or an invalid block must not look like a missing capability (exit 1): the
+// budget counts as disabled and the run says so.
+const usageBudgetEnabled = (configPath: string): { enabled: boolean; unreadable: boolean } => {
+  if (!fs.existsSync(configPath)) return { enabled: false, unreadable: false };
+  try {
+    const config = readJsonFile(configPath, configPath) as Record<string, unknown>;
+    return { enabled: resolveUsageBudget(config).enabled, unreadable: false };
+  } catch {
+    return { enabled: false, unreadable: true };
+  }
+};
+
 const main = () => {
   const flags = parseFlags(process.argv.slice(2));
   const unknown = unknownFlagKeys(flags, ['tools', 'host', 'surface', 'persistent-disk', 'campaign-dir', 'no-write']);
@@ -56,11 +70,12 @@ const main = () => {
     surface,
     persistentDisk: disk === undefined ? undefined : disk === 'yes',
   });
-  const route = routeRunContext(context);
+  // Campaign state belongs to the project the command runs in (working directory).
+  const campaignDir = path.resolve(typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : '.blackhole');
+  const budget = usageBudgetEnabled(path.join(campaignDir, 'config.json'));
+  const route = routeRunContext(context, { usageBudgetEnabled: budget.enabled });
 
   if (flags['no-write'] !== true) {
-    // Campaign state belongs to the project the command runs in (working directory).
-    const campaignDir = path.resolve(typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : '.blackhole');
     fs.mkdirSync(campaignDir, { recursive: true });
     const target = path.join(campaignDir, 'run-context.json');
     const tmp = `${target}.tmp`;
@@ -74,6 +89,7 @@ const main = () => {
       `forge ${route.forge_channel ?? 'none'}, questions ${route.question_channel}, ` +
       `CI wait ${route.ci_wait}, state ${route.state_store}, schedule ${route.schedule}`,
   );
+  if (budget.unreadable) console.log('  warn: config.json unreadable, usage_budget treated as disabled');
   for (const warning of route.warnings) console.log(`  warn: ${warning}`);
   for (const gap of route.missing) console.log(`  missing: ${gap}`);
   process.exit(route.missing.length ? 1 : 0);

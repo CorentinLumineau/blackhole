@@ -56,3 +56,31 @@ describe('detectRunContext', () => {
     expect(routeRunContext(mcpOnly).forge_channel).toBe('mcp');
   });
 });
+
+describe('usage-probe capability', () => {
+  const base = { CLAUDECODE: '1' };
+  const toolsWith = (extra: AgentTool[]): AgentTool[] => ['agent', 'background-agents', 'ask-user-question', 'github-mcp', ...extra];
+  const route = (tools: AgentTool[], usageBudgetEnabled: boolean) =>
+    routeRunContext(detectRunContext(base, { ghAuthenticated: true }, tools), { usageBudgetEnabled });
+  const usageWarnings = (r: ReturnType<typeof routeRunContext>) => r.warnings.filter((w) => w.startsWith('usage:'));
+
+  test('absent while the budget is enabled adds exactly one warning and no missing entry', () => {
+    const r = route(toolsWith([]), true);
+    expect(usageWarnings(r)).toHaveLength(1);
+    expect(usageWarnings(r)[0]).toContain('falls back to parallel_max');
+    expect(r.missing).toEqual([]);
+  });
+  test('present adds no warning', () => {
+    const r = route(toolsWith(['usage-probe']), true);
+    expect(usageWarnings(r)).toEqual([]);
+    expect(r.missing).toEqual([]);
+  });
+  test('absent while the budget is disabled adds no warning, and route.missing is unchanged', () => {
+    const off = route(toolsWith([]), false);
+    expect(usageWarnings(off)).toEqual([]);
+    expect(off.missing).toEqual(route(toolsWith(['usage-probe']), true).missing);
+  });
+  test('the context records the probe as agent-reported', () => {
+    expect(detectRunContext(base, { ghAuthenticated: true }, ['usage-probe']).usage_probe).toEqual({ value: true, source: 'agent' });
+  });
+});

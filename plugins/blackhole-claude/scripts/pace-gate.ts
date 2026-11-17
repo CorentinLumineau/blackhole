@@ -1,9 +1,16 @@
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { parseFlags } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { evaluatePaceGate, readBaseline, readRateLimits, resolvePaceGateThresholds, rollBaseline, type BaselineInput } from './lib/pace-gate.ts';
+import {
+  evaluatePaceGate,
+  readBaseline,
+  readRateLimits,
+  resolvePaceGateThresholds,
+  resolveRateLimitCachePath,
+  rollBaseline,
+  type BaselineInput,
+} from './lib/pace-gate.ts';
 
 // Usage: bun run scripts/pace-gate.ts --current <n> --max <n> [--cache <path>] [--config <path>] [--now <epoch s>]
 // Prints the verdict JSON on stdout; exit 0 on any verdict, 2 on bad usage or a malformed config.
@@ -28,8 +35,8 @@ let baselinePath = '';
 try {
   const config = fs.existsSync(configPath) ? (readJsonFile(configPath, configPath) as Record<string, unknown>) : {};
   thresholds = resolvePaceGateThresholds(config);
-  const pace = ((config.resource_policy ?? {}) as { pace?: { cache_path?: unknown; baseline_path?: unknown } }).pace;
-  if (!cachePath) cachePath = typeof pace?.cache_path === 'string' ? pace.cache_path : path.join(os.homedir(), '.claude', 'cache', 'rate-limits.json');
+  const pace = ((config.resource_policy ?? {}) as { pace?: { baseline_path?: unknown } }).pace;
+  if (!cachePath) cachePath = resolveRateLimitCachePath(config);
   baselinePath = typeof pace?.baseline_path === 'string' ? pace.baseline_path : path.join(path.dirname(cachePath), 'pace-baseline.json');
 } catch (error) {
   console.error(`pace-gate: ${error instanceof Error ? error.message : String(error)}`);

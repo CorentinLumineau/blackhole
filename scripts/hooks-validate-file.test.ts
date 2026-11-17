@@ -100,6 +100,7 @@ describe('validate-file-changes.js', () => {
 
       expect(result.exitCode).toBe(2);
       expect(permissionReason(result.stdout)).toMatch(/traversal/i);
+      expect(permissionReason(result.stdout)).toContain('Remedy: use an absolute path inside');
       expect(readHookEvents(repo)[0]).toMatchObject({
         tier: 'block',
         pattern_id: 'dotdot-slash',
@@ -234,7 +235,30 @@ describe('validate-file-changes.js', () => {
 
       expect(result.exitCode).toBe(2);
       expect(permissionReason(result.stdout)).toMatch(/outside/i);
+      expect(permissionReason(result.stdout)).toContain(`Remedy: write inside ${mainRepo} instead (e.g. ${path.join(mainRepo, path.basename(outside))})`);
       expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+    });
+  });
+
+  test('outside-worktree remedy names the cwd worktree, never the main clone', async () => {
+    await withLinkedWorktree('blackhole-hook-remedy-', async (mainRepo, worktree) => {
+      const outside = path.join(fs.realpathSync(os.tmpdir()), `blackhole-remedy-outside-${process.pid}.ts`);
+      const payload = { tool_name: 'Write', tool_input: { file_path: outside, content: 'x' }, cwd: worktree };
+
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree);
+
+      expect(result.exitCode).toBe(2);
+      const reason = permissionReason(result.stdout) ?? '';
+      expect(reason).toContain(`Remedy: write inside ${worktree} instead (e.g. ${path.join(worktree, path.basename(outside))})`);
+      expect(reason).not.toContain(`Remedy: write inside ${mainRepo} `);
+    });
+  });
+
+  test('a system-path denial names writing inside the assigned worktree root', async () => {
+    await withTempGitRepo('blackhole-hook-sysremedy-', async (repo) => {
+      const result = await runPreToolUseHook(SCRIPT, writePayload('/etc/passwd'), repo);
+      expect(result.exitCode).toBe(2);
+      expect(permissionReason(result.stdout)).toContain('Remedy: write inside the assigned worktree root');
     });
   });
 
@@ -729,6 +753,7 @@ describe('validate-file-changes.js', () => {
 
       expect(result.exitCode).toBe(2);
       expect(permissionReason(result.stdout)).toMatch(/assigned worktree/i);
+      expect(permissionReason(result.stdout)).toContain(`Remedy: write inside ${worktree} instead (e.g. ${path.join(worktree, 'main-only.ts')})`);
       expect(readHookEvents(mainRepo)[0]).toMatchObject({
         tier: 'block',
         pattern_id: 'outside-assigned-worktree',
@@ -976,6 +1001,7 @@ describe('validate-file-changes.js', () => {
       expect(result.exitCode).toBe(2);
       expect(permissionDecision(result.stdout)).toBe('deny');
       expect(permissionReason(result.stdout)).toMatch(/cwd/i);
+      expect(permissionReason(result.stdout)).toContain(`Remedy: write inside ${nonRepo} instead (e.g. ${path.join(nonRepo, path.basename(outside))})`);
       expect(result.stderr).toMatch(/cwd/i);
       // No git context means no destination dir to persist the event under — the deny still
       // fires, but recording is a best-effort side channel that has nowhere to write (mirrors
@@ -1754,5 +1780,39 @@ describe('validate-file-changes.js — containment scoped to campaign workers (A
         delete process.env.BLACKHOLE_HOOK_SCOPE;
       }
     });
+  });
+});
+
+describe('validate-file-changes.js — cwd fallback too-broad denial names a remedy', () => {
+  test('a bare temp-root cwd with no git context is refused with a remedy to start from a project dir', async () => {
+    const tmpRoot = fs.realpathSync(os.tmpdir());
+    const result = await runPreToolUseHook(SCRIPT, writePayload(path.join(tmpRoot, 'blackhole-too-broad.ts')), tmpRoot);
+
+    expect(result.exitCode).toBe(2);
+    expect(permissionReason(result.stdout)).toMatch(/too broad/i);
+    expect(permissionReason(result.stdout)).toContain('Remedy: start the session from a project or worktree directory');
+  });
+});
+
+describe('validate-file-changes.js — remedyInside never throws when no root resolves', () => {
+  // The helper is module-private (the hook runs `main()` on load), so it is lifted from the source
+  // and evaluated in isolation: an empty roots list or an unresolved cwd root must yield the
+  // generic clause, not a `path.join(undefined)` TypeError.
+  const source = fs.readFileSync(path.join(PRETOOLUSE_HOOKS_DIR, SCRIPT), 'utf8');
+  const body = /const remedyInside = ([\s\S]*?\n    : '[^']*';)/.exec(source)?.[1] ?? '';
+  const remedyInside = new Function('path', `return ${body.replace(/;$/, '')}`)(path) as (
+    root: string | null | undefined,
+    filePath: string,
+  ) => string;
+
+  test('undefined, null and empty-roots inputs fall back to the generic clause', () => {
+    expect(body).not.toBe('');
+    for (const root of [undefined, null, ([] as string[])[0]]) {
+      expect(remedyInside(root, '/x/y.ts')).toBe('Remedy: write inside your assigned worktree instead.');
+    }
+  });
+
+  test('a resolved root names the root and the same basename under it', () => {
+    expect(remedyInside('/wt/a', '/elsewhere/y.ts')).toBe('Remedy: write inside /wt/a instead (e.g. /wt/a/y.ts).');
   });
 });
