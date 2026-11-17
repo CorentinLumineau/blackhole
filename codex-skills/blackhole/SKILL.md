@@ -56,7 +56,8 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
    this step also runs the **Campaign launch configuration gate** (`coordinator.md` § Bootstrap
    preflight, the SSOT): either the full 6-step form (first bootstrap, post-campaign restart, or
    explicit reconfigure) or otherwise the lightweight
-   routine resume confirmation gate — print the current config, then Proceed / Reconfigure.
+   routine resume confirmation gate — the executive summary, then Accept / Adjust per section
+   ([launch-gate.md](references/launch-gate.md)).
    The gate applies in `run` mode only; every other mode in the table above loads config with no
    confirm step.
 2. **Companion-file scaffold** — gated by `docs_governance.companion_files` (default `true`,
