@@ -150,10 +150,10 @@ Four plain-text messages, one per line, sent over the host's cross-session messa
 
 | Message | Direction | Body |
 |---|---|---|
-| `slot-request` | peer → manager | `slot-request session=<peer session> want=<N> verdict=<peer's own gate verdict>` |
+| `slot-request` | peer → manager | `slot-request session=<peer session> want=<N> running=<R> verdict=<peer's own gate verdict>` |
 | `slot-grant` | manager → peer | `slot-grant session=<peer session> slots=<M>` — `M` may be `0` |
 | `worker-done` | peer → manager | `worker-done session=<peer session> slots=<K>` — returns `K` slots when workers finish |
-| `heartbeat` | peer → manager | `heartbeat session=<peer session> running=<R>` — renews the peer's lease (below) |
+| `heartbeat` | peer → manager | `heartbeat session=<peer session> running=<R>` — renews the peer's lease (below); `R` is the workers the peer has in flight right now |
 
 The manager's free slots are its pool minus its own running workers, minus every slot granted and
 not yet returned or expired, minus `peer_floor` for each known peer. A session becomes a known
@@ -177,13 +177,20 @@ before each grant; a peer runs the smaller of its own verdict's count and its gr
 
 ### Grant lease
 
-Every grant and every floor reservation is a lease. Each message a peer sends renews its lease;
-a peer holding granted slots or running workers sends `heartbeat` at least every 20 minutes (the
-same interval as the CI check-in, `project-thread-mode.md` § Scheduling: routines). When 20 minutes pass
-with no message from a peer, the manager frees every slot granted to it, releases its floor
-reservation and stops counting it as known. A peer that died or lost its context mid-round
-therefore leaks its slots for at most one lease. A peer whose lease lapsed but is still alive
-treats its grant as gone, runs `peer_floor` only, and sends a fresh `slot-request`.
+Every grant and every floor reservation is a lease. Each message a peer sends renews its lease.
+A peer holding granted slots or running workers sends `heartbeat` at least every 20 minutes (the
+same interval as the CI check-in, `project-thread-mode.md` § Scheduling: routines). The lease is
+twice that, 40 minutes, so one late or lost heartbeat does not lapse it. When 40 minutes pass with
+no message from a peer, the manager frees every slot granted to it, releases its floor
+reservation and stops counting it as known. A peer that died or lost its context therefore leaks
+its slots for at most one lease.
+
+`running=<R>` is how the manager stays right when a lapsed peer turns out to be alive. On every
+`slot-request` and `heartbeat`, the manager sets that peer's held slots to at least `R`. On
+re-contact after a lapse, it re-reserves the peer's in-flight workers before it grants anything
+new, even when that leaves no free slots. A peer whose lease lapsed treats its old grant as gone
+and runs no new worker beyond `peer_floor`. Its `R` in-flight workers still finish. It then sends
+a fresh `slot-request` carrying `running=<R>`.
 
 ### Peer floor
 
