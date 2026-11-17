@@ -4468,3 +4468,51 @@ describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
   }
 });
 
+
+// The fork-bomb pattern's leading identifier group used to restart its greedy run at every
+// offset inside a long identifier, backtracking quadratically (8.4 s on 120 KB of `a`) — past the
+// native-wrapper timeout, which fails open and bypasses the static deny.
+describe('validate-bash-command.js — fork-bomb pattern stays linear on long identifier runs', () => {
+  const forkBomb = (): RegExp => {
+    const raw = JSON.parse(
+      fs.readFileSync(path.join(PRETOOLUSE_HOOKS_DIR, 'patterns', 'bash-patterns.json'), 'utf8'),
+    );
+    const entry = raw.blockPatterns.find((p: { id: string }) => p.id === 'fork-bomb');
+    return new RegExp(entry.pattern, entry.flags);
+  };
+
+  test('64 KB of identifier chars is scanned in under 50 ms', () => {
+    const re = forkBomb();
+    const input = 'a'.repeat(64 * 1024);
+    const start = performance.now();
+    const matched = re.test(input);
+    const elapsed = performance.now() - start;
+    expect(matched).toBe(false);
+    expect(elapsed).toBeLessThan(50);
+  });
+
+  for (const command of [':(){ :|:& };:', 'bomb(){ bomb|bomb& };bomb', 'echo hi; f(){ f|f& };f']) {
+    test(`the pattern still matches \`${command}\``, () => {
+      expect(forkBomb().test(command)).toBe(true);
+    });
+  }
+
+  test('hook seam: `echo` plus 60 KB of identifier chars is allowed in under 500 ms', async () => {
+    await withTempGitRepo('blackhole-hook-forkbomb-', async (repo) => {
+      const start = performance.now();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`echo ${'a'.repeat(60 * 1024)}`), repo);
+      const elapsed = performance.now() - start;
+      expect(result.exitCode).toBe(0);
+      expect(elapsed).toBeLessThan(500);
+    });
+  });
+
+  test('hook seam: the classic `:(){ :|:& };:` form is still denied', async () => {
+    await withTempGitRepo('blackhole-hook-forkbomb-', async (repo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(':(){ :|:& };:'), repo);
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(readHookEvents(repo)[0]).toMatchObject({ tier: 'block', pattern_id: 'fork-bomb' });
+    });
+  });
+});
