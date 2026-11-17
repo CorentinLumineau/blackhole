@@ -5,6 +5,8 @@ import type { OpenPrSnapshot, SnapshotPr } from './open-pr-snapshot.ts';
 import {
   LANDINGS,
   MERGE_MODES,
+  forgeParentState,
+  parentLandedReport,
   parentMergeMethod,
   recheckStack,
   recoveryRoute,
@@ -167,5 +169,28 @@ describe('snapshotParentFiles', () => {
 
   test('an unknown snapshot yields no files', () => {
     expect(snapshotParentFiles({ '1': { pr: 7 } }, { status: 'unknown', reason: 'x' })).toEqual({});
+  });
+});
+
+describe('forgeParentState', () => {
+  test('maps the landing vocabulary onto the one ForgeParentState classifyParentLanding reads', () => {
+    expect(forgeParentState({ state: 'merged', mergedAt: 't', mergeCommitSha: 's' })).toEqual({ state: 'closed', merged: true });
+    expect(forgeParentState({ state: 'closed-unmerged', mergedAt: null, mergeCommitSha: null })).toEqual({ state: 'closed', merged: false });
+    expect(forgeParentState({ state: 'open', mergedAt: null, mergeCommitSha: null })).toEqual({ state: 'open', merged: false });
+  });
+});
+
+describe('parentLandedReport', () => {
+  test('exit codes: 0 merged, 1 open, 4 closed unmerged, 3 unreadable', () => {
+    const merged = parentLandedReport(12, { state: 'merged', mergedAt: '2026-01-02T03:04:05Z', mergeCommitSha: 'abc' });
+    expect(merged.exit).toBe(0);
+    expect(merged.report).toEqual({ parentPr: 12, state: 'merged', landed: true, mergedAt: '2026-01-02T03:04:05Z', mergeCommitSha: 'abc' });
+    const open = parentLandedReport(12, { state: 'open', mergedAt: null, mergeCommitSha: null });
+    expect(open.exit).toBe(1);
+    expect(open.report?.landed).toBe(false);
+    const closed = parentLandedReport(12, { state: 'closed-unmerged', mergedAt: null, mergeCommitSha: null });
+    expect(closed.exit).toBe(4);
+    expect(closed.report?.landed).toBe(false);
+    expect(parentLandedReport(12, null)).toEqual({ report: null, exit: 3 });
   });
 });

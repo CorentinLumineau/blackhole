@@ -108,6 +108,7 @@ longer definitions (token cost, drift). Persist every finding to
 | V-GIT-01 | PR created without Closes #N issue linkage in description | BLOCK | reviewer.md § PR & Git Hygiene |
 | V-GITFIX-01 | Campaign posted a bot-invoking slash comment (e.g. `/git-fix-pr`) delegating a PR fix back to an installed ActionMan/workclaude review pipeline instead of applying findings in-process | BLOCK | reviewer.md § ActionMan/Workclaude Discipline Audit |
 | V-CI-01 | Required CI check failed after transient retries; failing-step log retrieved; routed to implementer fix loop | BLOCK | ci-diagnosis.md |
+| V-CI-02 | Trunk-red set fixed per PR — a `V-CI-01` implement round was spent on a PR parked `waiting-on-trunk-fix`, or the same check and fingerprint was fixed in 2+ PR branches instead of one base-fix PR | BLOCK | ci-diagnosis.md § Trunk-red |
 | V-MERGE-01 | drift-reconciled merge with merged_by:blackhole present — step 0 bypassed | BLOCK | merge-gate.md §3 |
 | V-MERGE-02 | drift-reconciled merge with merged_by absent — external bypass of hold/merge_after | WARN | merge-gate.md §3 |
 | V-HUNT-01 | Kaizen issue filed from a finding without a `CONFIRMED` verification pass | BLOCK | hunter.md (CONFIRMED verification gate) |

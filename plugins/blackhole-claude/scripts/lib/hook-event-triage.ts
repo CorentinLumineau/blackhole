@@ -36,8 +36,9 @@ export type FindingsLedger = {
   findings: LedgerFinding[];
 };
 
-type HookEvent = {
+export type HookEvent = {
   tier?: string;
+  recorded_at?: string;
   reason?: string;
   worktree?: string | null;
   pattern_id?: string;
