@@ -22,6 +22,7 @@ import {
 import { SCOPE_KINDS, type QueueIssue, type ScopeEntry, type ScopeKind } from './lib/campaign-status/types.ts';
 import { readBudgetPanel, when } from './lib/campaign-status/budget.ts';
 import { buildWakeReport, doneIssues, planWakeUps, readSleepSession, sleepOff, sleepOn } from './lib/campaign-status/sleep-session.ts';
+import { releaseHold, resolveStateStore, systemHoldDeps, takeHold, type HoldDeps } from './lib/campaign-status/sleep-hold.ts';
 import { resolveHost } from './lib/usage-source.ts';
 import { resolveUsageBudget } from './lib/usage-budget.ts';
 
@@ -35,8 +36,9 @@ import { resolveUsageBudget } from './lib/usage-budget.ts';
 //   park     --question "<q>" --options "A: why|B|C" --recommended A [--evidence "<text>"]
 //            [--refs 12,14] [--gate <name>]                      → pending-decisions.json
 //   ask                                                          → prints `ask` or `park` (askOrPark)
-//   sleep    --on | --off                                        → config.json sleep_mode (on records since + baseline)
-//   wake                                                         → turns sleep mode off, then prints the report and the batched round as JSON
+//   sleep    --on | --off                                        → config.json sleep_mode (on records since + baseline);
+//                                                                  on takes the local keep-awake hold, off releases it (.tmp/sleep-hold.json)
+//   wake                                                         → turns sleep mode off and releases the hold, then prints the report and the batched round as JSON
 //   rearm                                                        → prints the wake-ups to keep armed as JSON (sleep-mode.md § Keeps itself alive)
 //   resolve  --id PD-1 --answer "<text>" [--date YYYY-MM-DD]     → pending-decisions.json + owner-decisions.json
 //
@@ -137,8 +139,11 @@ function coordinationRole(config: Record<string, unknown>): string {
   }
 }
 
-/** Runs one record command and returns the line to print. Throws on bad input; writes nothing then. */
-export function runRecord(argv: string[], now: Date = new Date()): string {
+/**
+ * Runs one record command and returns the line to print. Throws on bad input; writes nothing then.
+ * `hold` makes the keep-awake inhibitor's process calls (`sleep-hold.ts`); tests pass a fake.
+ */
+export function runRecord(argv: string[], now: Date = new Date(), hold: HoldDeps = systemHoldDeps): string {
   const [sub, ...rest] = argv;
   const flags = parseFlags(rest);
   if (!fs.existsSync(flags.campaignDir)) throw new Error(`No campaign found at ${flags.campaignDir}.`);
@@ -200,13 +205,15 @@ export function runRecord(argv: string[], now: Date = new Date()): string {
     const waiting = readPendingDecisions(flags.campaignDir).decisions.length;
     if (flags.off) {
       writeJsonAtomic(configPath, sleepOff(config));
-      return `Sleep mode off: ${waiting} parked decision${waiting === 1 ? '' : 's'} wait for \`campaign-record.ts wake\`.`;
+      const released = releaseHold(flags.campaignDir, hold);
+      return `Sleep mode off: ${waiting} parked decision${waiting === 1 ? '' : 's'} wait for \`campaign-record.ts wake\`.\n${released}`;
     }
     const issues = readQueueIssues(flags.campaignDir);
     const baseline = { done: issues ? doneIssues(issues) : null, weekly_pct: readBudget(flags.campaignDir, config, now).weekly_pct };
     const next = sleepOn(config, now.toISOString(), baseline);
     writeJsonAtomic(configPath, next);
-    return `Sleep mode on since ${when(readSleepSession(next).since ?? now.toISOString())}: owner questions are parked (${waiting} waiting).`;
+    const held = takeHold(flags.campaignDir, resolveStateStore(flags.campaignDir, process.env), hold, now.toISOString());
+    return `Sleep mode on since ${when(readSleepSession(next).since ?? now.toISOString())}: owner questions are parked (${waiting} waiting).\n${held}`;
   }
 
   if (sub === 'wake') {
@@ -214,6 +221,7 @@ export function runRecord(argv: string[], now: Date = new Date()): string {
     // round's own included — would be parked again (`clarify-gates.md` § C3 adapter).
     const config = readConfig(flags.campaignDir);
     writeJsonAtomic(path.join(flags.campaignDir, 'config.json'), sleepOff(config));
+    const keep_awake = releaseHold(flags.campaignDir, hold);
     const batch = wakeBatch(readPendingDecisions(flags.campaignDir).decisions);
     const report = buildWakeReport({
       ...readSleepSession(config),
@@ -221,7 +229,7 @@ export function runRecord(argv: string[], now: Date = new Date()): string {
       budget: readBudget(flags.campaignDir, config, now),
       pending: batch.total,
     });
-    return JSON.stringify({ report, ...batch }, null, 2);
+    return JSON.stringify({ report, keep_awake, ...batch }, null, 2);
   }
 
   if (sub === 'rearm') {
