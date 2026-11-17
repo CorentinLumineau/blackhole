@@ -102,7 +102,7 @@ the plugin version).
 
 One Data dashboard per campaign, laid out by `templates/status-dashboard/index.html` (resolve it
 from `${BLACKHOLE_PLUGIN_ROOT:-.}`). Its datasets are `overview`, `moves`, `blockers`, `board`,
-`streams`, `scope`, `config`, `decisions` and `links` (`STATUS_DATASET_IDS`; the ids and fields:
+`streams`, `scope`, `config`, `decisions`, `links` and `denials` (the top 5 hook rules by deny and warn count; `STATUS_DATASET_IDS`; the ids and fields:
 `scripts/lib/campaign-status/data.ts`). The page works STALE out in the reader's browser from
 `overview.last_activity_at` and `overview.stale_after_hours` (the one `STALE_AFTER_HOURS`), so a
 dashboard nobody refreshes stops saying running by itself; "x min ago" is computed when it is
@@ -207,13 +207,21 @@ sees at a glance where the run stands and what to do:
    button above the board, or a row, shows only that stream (no buttons when there is one
    stream); `--html` ships no script, so it has the table without the filter
 5. **Scope** (in, parked, deferred, blocked upstream, out; "Scope not recorded" when none is),
-   **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest)
+   **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest),
+   **Hook denials** (top 5 rules by deny and warn count, or `no hook denials recorded`)
 
 `--html` keeps its detail sections after these: in progress, waiting on you, waiting on
 something else by reason class (`elseClasses()`), up next, recently done, and a closed native
-`<details>` with host, checkpoint notes and open findings. The text dashboard (`dashboard.ts`)
+`<details>` with host, checkpoint notes, open findings and the top 5 hook rules by deny and warn count
+(`deny_counts`; `no hook denials recorded` when empty). The text dashboard (`dashboard.ts`)
 is shorter: it prints the headline, the board counts, your move, the scope and the newest
 decisions above its queue sections, with no card list and no workstreams.
+Among its queue sections, **Merge next** numbers every open PR in the order to merge it
+(`mergeNextOrder`, `scripts/lib/merge-next.ts`): CI-fix PRs first, then parents, then children,
+ordered over stack edges (`effectiveParent`) and `depends_on`. Each line names its blocker —
+`waits on #N (stacked on)`, `waits on #N (depends on)`, `blocked: <notes>`, `after CI fix #N`, or
+`none` — and a loop of edges is printed as a `Cycle, not ordered` line instead of being walked.
+It sits above "Stacked PR merge order", which it does not replace.
 Visual rules: R-006 (`documentation/reference/product-principles.md`).
 
 ## State file
