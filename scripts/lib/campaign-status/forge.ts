@@ -1,4 +1,4 @@
-import { crossRepoBlockers, type CrossRepoBlocker, type CrossRepoLandingReader } from '../../forge-deps.ts';
+import { crossRepoBlockers, type CrossRepoBlocker, type CrossRepoDep, type CrossRepoLandingReader } from '../../forge-deps.ts';
 import { issueMatchesScope, type CampaignScope } from '../../forge-scope.ts';
 import type { ForgeAdapter, ForgeIssue } from '../forge-adapter/types.ts';
 import { closedIssues } from './merged.ts';
@@ -51,15 +51,17 @@ export async function fetchMergedPrs(adapter: ForgeAdapter): Promise<MergedPr[] 
 
 /**
  * Unmet cross-repo dependencies of the open issues numbered in `queueIssues`, from their bodies'
- * `Depends on owner/repo#N` lines. Null when the open issues could not be read: "not read" is never "none".
+ * `Depends on owner/repo#N` lines and the cross-repo edges declared on their PRs (`forgeDeclared`).
+ * Null when the open issues could not be read: "not read" is never "none".
  */
 export function crossRepoBlockersOf(
   open: OpenIssueRead,
   queueIssues: Set<number>,
   read: CrossRepoLandingReader,
+  forgeDeclared?: Map<number, CrossRepoDep[]>,
 ): CrossRepoBlocker[] | null {
   if (!open.ok) return null;
-  return crossRepoBlockers(open.issues.filter((i) => queueIssues.has(i.number)), read);
+  return crossRepoBlockers(open.issues.filter((i) => queueIssues.has(i.number)), read, forgeDeclared);
 }
 
 function errorText(error: unknown): string {

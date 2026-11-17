@@ -239,6 +239,10 @@ read fails, the section says the cross-repo dependencies were not read. It is re
 ready set (`queue-dag.md` Step 2) does not read these lines. Release and rollout
 steps the other repo needs before its PR counts belong in that PR, not in this campaign.
 
+### 6.8 PR dependencies on the forge
+
+Mirror every PR dependency onto the forge and read the forge's back: [§ PR dependencies on the forge](#pr-dependencies-on-the-forge-two-way).
+
 ### 7. PR cross-reference
 
 If issue body or branch name contains `fixes #N` / `closes #N`, link `pr` on
@@ -275,6 +279,72 @@ Forge sync (scope: milestone v0.4.0): 3 open, +1 new (#14), 0 drift
 ```
 
 When scope is unset, omit the `(scope: …)` clause.
+
+## PR dependencies on the forge (two-way)
+
+Every known PR dependency is mirrored onto the forge so a human merging by hand sees it, and a
+dependency a human adds on the forge becomes a DAG edge. Run once per sync (§ 6.8), after § 6.5–6.7:
+
+```bash
+bun run scripts/pr-deps-sync.ts --campaign-dir .blackhole                       # dry run: prints the plan
+bun run scripts/pr-deps-sync.ts --campaign-dir .blackhole --apply --out .blackhole/queue.json.tmp
+```
+
+`--apply` writes the forge and the updated queue to `--out`; install it through the
+state-write-guard (`blackhole-state.md` § Write protocol). Skip on `auto_sync: false`.
+
+**Stack first (owner rule).** Stacking is the main way to express a PR dependency: when PR B
+depends on exactly one open PR A in the same repo, the forge edge is B's base branch = A's head
+branch — the stacking-only model of `queue-dag.md` § Step 3b and `merge-gate.md`. The plan
+reports it as a `restack` row carrying the `stack-repair.ts restack` command; the orchestrator
+runs it (merge the parent in, then retarget — never a rebase). Until the base really moves, B
+also gets an interim native edge on A so the forge shows the dependency at once; the first sync
+that reads B based on A's branch removes it. A native **"blocked by"** edge is otherwise used
+only where a stack cannot express the dependency, which keeps those edges few by design:
+
+| Case | Forge edge |
+|------|-----------|
+| B depends on exactly one open PR A | B's base = A's head branch (stack); interim edge until it moves |
+| B depends on 2+ open PRs | the base carries the one it is stacked on (if any); "blocked by" for the rest |
+| B depends on an issue with no PR yet | "blocked by" that issue |
+| B depends on a PR in another repo (§ 6.7) | a PR-body line (GitHub/Gitea native edges join same-repo issues only) |
+
+**Both ends are queue issues on GitHub and Gitea.** Their native edges join two ISSUES (GitHub
+answers 422 "Source issue may only be an issue" when either end is a PR), so the edge is "issue
+N blocked by issue M" on the queue's issue numbers, read and written on issue N. GitLab's join
+merge requests, so there it is MR blocked by MR. Per backend, through the forge adapter
+(ADR-027) `getDependencies({issue, pr})` / `setDependencies({issue, pr}, blockedBy[])`
+(`scripts/lib/forge-adapter/dependencies.ts`), REST only:
+
+- **GitHub**: `repos/{o}/{r}/issues/{issue}/dependencies/blocked_by` (GET; POST `{issue_id}` with
+  the blocker issue's global id, refused when it is a PR; DELETE `…/blocked_by/{issue_id}`).
+- **Gitea**: `repos/{o}/{r}/issues/{issue}/dependencies` (GET; POST/DELETE `{owner, repo, index}`).
+- **GitLab**: `projects/:id/merge_requests/:iid/blocks` (Premium); an issue blocker is a body line.
+- **Body lines**: an edge no native channel can hold — cross-repo, a PR or number with no queue
+  issue, an issue on GitLab — or every edge when the forge answers 404/410 (no such feature), is a
+  `Blocked by #N` line (`Blocked by !N` for a GitLab MR, `Blocked by owner/repo#N` cross-repo) in
+  the PR body's `## Dependencies` section. The read is native edges plus these lines. Native or
+  stack first: a same-repo body line that resolves to a queue issue is promoted to a native issue
+  edge (and its line removed); an edge the planner cannot resolve stays in the channel it was read from.
+- **Failures are loud.** A 403 (rate limit, token scope) or any other error throws; it never
+  switches channel. Each plan row reports `native`, and the CLI names on stderr every issue whose
+  edges went to body lines.
+
+**Read-back follows the same split.** A live stacked base (B's base is a queue PR's head branch)
+and every forge "blocked by" edge become `depends_on` edges: a number resolves to the queue issue
+it is, or whose `pr` it is; a native edge to an issue outside the queue is kept as one; a body
+line naming another number may be a PR, so it is kept where it is but is never a DAG edge.
+
+**Two-way and idempotent.** Each planned issue records `forge_deps: {synced, body_cross}` — the
+forge view after the write (`#<issue>` keys, `owner/repo#N` cross-repo) and the cross-repo lines
+pushed from the issue body. Against `synced`, an edge present on one side only is kept when it
+is new since the last sync and dropped when it was there before (the other side removed it), so
+a forge-removed edge leaves the queue and a newly queued edge is pushed, never both lost. A
+dependency already merged or closed stays in `depends_on` and is not mirrored. Cross-repo edges
+stay body-owned (§ 6.7): body lines are pushed, a forge-only cross-repo edge is kept and named in
+"Merge next" (`forgeDeclaredCrossRepo`), and one the body dropped since the last sync is removed.
+A write that does not read back as planned leaves that issue's queue state unchanged so the next
+sync retries it. Planner: `planPrDependencies` (`scripts/lib/pr-dependencies.ts`).
 
 ## Runtime issue creation
 

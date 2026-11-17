@@ -24,6 +24,7 @@ import { createForgeAdapter } from './lib/forge-adapter/index.ts';
 import type { ForgeAdapter } from './lib/forge-adapter/types.ts';
 import { isForgeType, resolveForgeForRepo } from './lib/forge-detection.ts';
 import { formatPaceLine, readLatestPaceRecord } from './lib/pace-log.ts';
+import { forgeDeclaredCrossRepo } from './lib/pr-dependencies.ts';
 import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
 import type { StatusReport } from './lib/campaign-status/types.ts';
 
@@ -184,7 +185,7 @@ export async function collectStatusReport(
   const prSignals = source && forge.ok ? await fetchPrSignals(source, boardPrs(queue, forge.openPrList)) : null;
   const mergedPrs = source && forge.ok ? await fetchMergedPrs(source) : null;
   const crossRepoBlockers = openIssues
-    ? crossRepoBlockersOf(openIssues, openQueueIssues(queue), (repo, n) => readPrLanding(forgeType, repo, n))
+    ? crossRepoBlockersOf(openIssues, openQueueIssues(queue), (repo, n) => readPrLanding(forgeType, repo, n), forgeDeclaredCrossRepo(queue.issues ?? {}))
     : undefined;
   const host = readHostLines(campaignDir);
   const report = buildStatusReport({

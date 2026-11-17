@@ -420,6 +420,229 @@ const findCopyMoveTargets = (tokens) => {
   return [];
 };
 
+/** True when `word` (the part of a `--long` token before any `=`) names `name` the way getopt_long
+ * and git's parse-options accept it: exactly, or as an abbreviation of at least `--` plus one
+ * letter. An ambiguous abbreviation is counted too — over-matching only adds a target. */
+const isLongOptionPrefix = (word, name) => word.length >= 3 && name.startsWith(word);
+
+/** The value of a long option `--name=VALUE` or `--name VALUE` (or any abbreviation of `--name`)
+ * at `args[i]`, with the index of the last token it consumed; null when `args[i]` is not that
+ * option. */
+const longOptionValue = (args, i, name) => {
+  const t = args[i];
+  if (!t.startsWith('--')) return null;
+  const eq = t.indexOf('=');
+  if (!isLongOptionPrefix(eq === -1 ? t : t.slice(0, eq), name)) return null;
+  if (eq !== -1) return { value: t.slice(eq + 1), last: i };
+  return { value: args[i + 1] ?? UNRESOLVABLE_TARGET, last: i + 1 };
+};
+
+/** `sort` short options that take a value (`-k`, `-t`, `-S`, `-T`, `-o`). */
+const SORT_VALUE_SHORT = new Set(['k', 't', 'S', 'T', 'o']);
+
+/** `sort -o FILE` / `-oFILE` / a cluster ending in `o` (`-ro FILE`) / `--output[=]FILE` write
+ * targets. GNU sort permutes options, so the option counts wherever it sits. A short cluster is
+ * walked getopt-style: the first value-taking letter consumes the rest of the cluster or the next
+ * token, so `-k1o` is a key spec, never an output. */
+const sortTargets = (args) => {
+  const targets = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--') break;
+    const long = longOptionValue(args, i, '--output');
+    if (long) {
+      targets.push(stripQuotes(long.value));
+      i = long.last;
+      continue;
+    }
+    if (!/^-[^-]/.test(t)) continue;
+    for (let c = 1; c < t.length; c++) {
+      if (!SORT_VALUE_SHORT.has(t[c])) continue;
+      const attached = t.slice(c + 1);
+      const value = attached || args[++i] || UNRESOLVABLE_TARGET;
+      if (t[c] === 'o') targets.push(stripQuotes(value));
+      break;
+    }
+  }
+  return targets;
+};
+
+/** `uniq` short options whose value is the next token when not attached. */
+const UNIQ_VALUE_SHORT = /^-[a-zA-Z]*[fsw]$/;
+const UNIQ_VALUE_LONG = ['--skip-fields', '--skip-chars', '--check-chars'];
+
+/** True when `t` takes the next token as its value: a short cluster ending in `-f`/`-s`/`-w`, or a
+ * `=`-less abbreviation of a value-taking long option. */
+const isUniqValueOption = (t) =>
+  UNIQ_VALUE_SHORT.test(t) || (t.startsWith('--') && !t.includes('=') && UNIQ_VALUE_LONG.some((n) => isLongOptionPrefix(t, n)));
+
+/** `uniq [OPTION]... [INPUT [OUTPUT]]` writes its second operand; `-` means stdout. */
+const uniqTargets = (args) => {
+  const operands = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--') {
+      operands.push(...args.slice(i + 1));
+      break;
+    }
+    if (isUniqValueOption(t)) i++;
+    else if (t === '-' || !t.startsWith('-')) operands.push(t);
+  }
+  const out = operands[1];
+  return out === undefined || out === '-' ? [] : [stripQuotes(out)];
+};
+
+/** git global options that take the next token as their value when not written `--name=value`. */
+const GIT_VALUE_GLOBALS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env', '--attr-source']);
+
+/** Walks git's global options (everything before the subcommand) and returns the directories a
+ * relative output path may resolve against, plus the subcommand index. Each `-C DIR` moves the
+ * working directory relative to the previous one; `--git-dir`/`--work-tree` can make git resolve
+ * relative paths elsewhere, so their directories become extra candidate bases (every candidate
+ * is checked — over-matching only adds a target). Segments are joined once at the end, keeping
+ * the walk linear in the number of `-C` options. */
+const gitGlobalBases = (args) => {
+  let segments = [];
+  const extra = [];
+  let i = 0;
+  for (; i < args.length && args[i].startsWith('-') && args[i] !== '--'; i++) {
+    const t = args[i];
+    const eq = t.indexOf('=');
+    const name = t.startsWith('--') && eq !== -1 ? t.slice(0, eq) : t;
+    if (!GIT_VALUE_GLOBALS.has(name)) continue;
+    const value = stripQuotes(eq !== -1 && t.startsWith('--') ? t.slice(eq + 1) : (args[++i] ?? UNRESOLVABLE_TARGET));
+    if (name === '-C' && value) {
+      if (path.isAbsolute(value)) segments = [value];
+      else segments.push(value);
+    } else if (name === '--git-dir' || name === '--work-tree') {
+      extra.push({ name, value });
+    }
+  }
+  const cwdBase = segments.length > 0 ? path.join(...segments) : '';
+  const bases = [cwdBase];
+  for (const { name, value } of extra) {
+    const dir = path.isAbsolute(value) || !cwdBase ? value : path.join(cwdBase, value);
+    bases.push(dir);
+    // A git dir is usually `<work tree>/.git`, so its parent is a likely work tree too.
+    if (name === '--git-dir') bases.push(path.dirname(dir));
+  }
+  return { bases, subIdx: i };
+};
+
+/** `format-patch -o DIR` / `-oDIR` / `--output-directory[=]DIR` (or an abbreviation) value at
+ * `args[i]`, with the index of the last token it consumed; null when `args[i]` is not that option. */
+const formatPatchDirValue = (args, i) => {
+  const t = args[i];
+  if (t === '-o') return { value: args[i + 1] ?? UNRESOLVABLE_TARGET, last: i + 1 };
+  if (/^-o./.test(t)) return { value: t.slice(2), last: i };
+  return longOptionValue(args, i, '--output-directory');
+};
+
+/** `git … --output[=]FILE` (the diff family: `diff`, `log -p`, `show`, `format-patch`) and
+ * `git format-patch -o DIR` write targets. git resolves a relative path against its working
+ * directory, so each relative target is checked under every base `gitGlobalBases` returns (a
+ * dynamic base makes the joined target dynamic, i.e. WARN). */
+const gitOutputTargets = (args) => {
+  const { bases, subIdx } = gitGlobalBases(args);
+  const isFormatPatch = args[subIdx] === 'format-patch';
+  const values = [];
+  for (let i = subIdx + 1; i < args.length; i++) {
+    if (args[i] === '--') break;
+    const opt = (isFormatPatch && formatPatchDirValue(args, i)) || longOptionValue(args, i, '--output');
+    if (opt) {
+      values.push(stripQuotes(opt.value));
+      i = opt.last;
+    }
+  }
+  const targets = [];
+  for (const value of values) {
+    if (path.isAbsolute(value) || value === UNRESOLVABLE_TARGET) targets.push(value);
+    else for (const base of bases) targets.push(base ? path.join(base, value) : value);
+  }
+  return targets;
+};
+
+/** `yq -i|--inplace` rewrites its file operands. The expression operand cannot be told from a
+ * file without parsing yq's own flag set, so every operand is checked: an expression resolves to
+ * an in-root relative path (harmless) or, when dynamic, to the warn tier. */
+const yqTargets = (args) => {
+  const inPlace = args.some((t) => {
+    if (t.startsWith('--')) return isLongOptionPrefix(t.split('=')[0], '--inplace');
+    // A short cluster carrying `i` (`-i`, `-Pi`); checked without a backtracking regex.
+    return t.startsWith('-') && t.includes('i') && /^-[a-zA-Z]+$/.test(t);
+  });
+  if (!inPlace) return [];
+  return args.filter((t) => !t.startsWith('-')).map(stripQuotes);
+};
+
+/** Commands that look read-only but write a file through an option or operand (#1184). */
+const OPTION_WRITE_COMMANDS = [
+  ['sort', sortTargets],
+  ['uniq', uniqTargets],
+  ['git', gitOutputTargets],
+  ['yq', yqTargets],
+];
+
+/** Write targets of every option-writing command in one clause. Like the tee/sed/cp finders, the
+ * command word is found anywhere in the clause, so a wrapper with its own value (`nice -n 5`,
+ * `timeout 5`, `env X=1`) never hides it; a command name that is merely an argument
+ * (`grep uniq a b`) is over-matched, which only ever adds a target. */
+const findOptionWriteTargets = (tokens) => {
+  const targets = [];
+  for (const [name, extract] of OPTION_WRITE_COMMANDS) {
+    const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
+    if (cmdIdx !== -1) targets.push(...extract(positionalArgsBeforeRedirect(tokens, cmdIdx + 1)));
+  }
+  return targets;
+};
+
+const SHELL_NAMES = ['sh', 'bash', 'dash', 'zsh', 'ksh'];
+
+/** Shell options whose value is the next token (`-o pipefail`, `+O extglob`, `--rcfile f`). */
+const isShellValueOption = (t) => /^[-+][a-zA-Z]*[oO]$/.test(t) || t === '--rcfile' || t === '--init-file';
+
+/** True when a shell invoked with `args` reads its script from stdin: `-s` is given, or no script
+ * operand follows the options, and no `-c` supplies the script inline. */
+const shellReadsStdinScript = (args) => {
+  let stdinFlag = false;
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--' || t === '-') return !args.slice(i + 1).length || stdinFlag || t === '-';
+    if (isShellValueOption(t)) {
+      i++;
+      continue;
+    }
+    if (/^-[a-zA-Z]+$/.test(t)) {
+      if (t.includes('c')) return false;
+      if (t.includes('s')) stdinFlag = true;
+      continue;
+    }
+    if (t.startsWith('-') || t.startsWith('+')) continue;
+    return stdinFlag;
+  }
+  return true;
+};
+
+/** A single `|` (or `|&`) pipe — never the `||` operator — and the clause text it feeds. */
+const PIPE_INTO_RE = /(?<!\|)\|&?(?!\|)([^;|&\n]*)/g;
+
+/** True when a pipe feeds a shell that reads its script from stdin (`… | sh`, `… | bash -s`): the
+ * piped text runs as commands this module never sees, so the call is unresolvable. A shell given
+ * a script file or `-c` reads its commands from there, not from the pipe. */
+const hasPipedShellScript = (visible) => {
+  PIPE_INTO_RE.lastIndex = 0;
+  let match = PIPE_INTO_RE.exec(visible);
+  while (match !== null) {
+    const tokens = tokenize(match[1]);
+    // Found anywhere in the piped clause, like the other finders, so a wrapper (`env bash`,
+    // `sudo sh`) cannot hide it.
+    const shellIdx = tokens.findIndex((t) => SHELL_NAMES.some((name) => isCommandToken(t, name)));
+    if (shellIdx !== -1 && shellReadsStdinScript(positionalArgsBeforeRedirect(tokens, shellIdx + 1))) return true;
+    match = PIPE_INTO_RE.exec(visible);
+  }
+  return false;
+};
+
 /** `isLiteralPathArg` (from `worktree-removal-guard.js`) excludes shell metacharacters that make a
  * target dynamic (`$`, `` ` ``, `*`, `?`, `[`, `]`, `{`, `}`) but not bash tilde (`~`) expansion —
  * a target like `~/foo.txt` passes it as "literal," yet `path.resolve(cwd, target)` never performs
@@ -503,13 +726,17 @@ const evaluateBashWriteTargets = (command, cwd) => {
     const tokens = tokenize(clause);
     if (tokens.length === 0) continue;
 
-    for (const raw of [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens)]) {
+    for (const raw of [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens),
+      ...findOptionWriteTargets(tokens),
+    ]) {
       if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
       else unresolvable = true;
     }
 
     if (hasUnresolvableCommand(tokens)) unresolvable = true;
   }
+
+  if (hasPipedShellScript(visible)) unresolvable = true;
 
   for (const target of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
@@ -534,11 +761,13 @@ const evaluateBashWriteTargets = (command, cwd) => {
       tier: 'warn',
       pattern_id: 'bash-write-target-unresolvable',
       reason:
+        // The event log keeps only the first 300 characters of a reason (MAX_DETAIL_CHARS in
+        // hook-event-log.js), so the verdict comes first and the list of causes after it.
         'Bash command looks write-shaped but its target could not be resolved by static ' +
-        'inspection (a dynamic argument, or a command like python3 -c/perl -i/awk whose ' +
-        'write behavior cannot be determined from the command string alone) — cannot verify ' +
-        'assigned-worktree containment (not confirmed unsafe). Remedy: use a literal absolute path ' +
-        'under the assigned worktree, or the Write/Edit tools.',
+        'inspection — cannot verify assigned-worktree containment (not confirmed unsafe). Cause: ' +
+        'a dynamic argument, a script piped into a shell, or a command like python3 -c/perl -i/awk ' +
+        'whose writes the command string does not show. Remedy: use a literal absolute path under ' +
+        'the assigned worktree, or the Write/Edit tools.',
     };
   }
 
