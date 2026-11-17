@@ -282,6 +282,7 @@ overlapping paths, in any `merge_mode` — then:
    by merging the target branch into it, in the same turn and before the child's review or CI
    wait: `merge-gate.md` § 7 owns the command and the route for each merge mode, and
    `merge-conflict-protocol.md` § Stacked child after its parent merges owns the conflict case.
+   Whether the parent has landed comes from `stack-repair.ts parent-landed` (the forge's merged state, `merge-gate.md` § 7), never from ancestry.
    Never rebase or force-push. When the replay reports `review_carry: true` (the child's own
    patch-id is unchanged and no conflict was resolved), the earlier LGTM carries and `phase-review.md`
    does not re-review; otherwise the child is reviewed again.

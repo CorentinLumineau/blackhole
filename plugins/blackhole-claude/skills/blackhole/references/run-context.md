@@ -28,6 +28,7 @@ bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/run-context.ts --tools <comma list
 | `github-mcp` | GitHub MCP tools (`mcp__github__*`) |
 | `pr-subscriptions` | PR activity events delivered into the session |
 | `routines` | Scheduled triggers the session can create |
+| `usage-probe` | A harness usage tool (e.g. `get_usage`) that reports the 5-hour and weekly rate-limit usage |
 
 The script reads the rest from the environment (host, surface, whether the disk survives the
 run) and from `gh auth status`. Pass `--host`, `--surface` or `--persistent-disk yes|no` only
@@ -49,6 +50,8 @@ in the launch summary.
 | Fan-out + completion events + a question channel, Claude Code | C (`claude-code-native.md`) | First of ask-decision, AskUserQuestion, chat | PR events when offered, else poll | `local` when the disk persists, else `branch` |
 | Same, Cursor | C-lite (`multitask-mode.md` § Cursor Pattern C-lite) | First of AskQuestion, chat | As above | As above |
 | Anything less | B (`multitask-mode.md`) | As above; `none` when headless | As above | As above |
+
+Usage probe: when `usage_budget.enabled` is `true` in `.blackhole/config.json` and `usage-probe` is not reported, the route carries one warning (usage-aware pacing falls back to `parallel_max`); it is never a `missing` entry and never blocks a start.
 
 Schedule: `routine` when the session can create routines (kaizen waves and CI check-ins become
 routines, `project-thread-mode.md` § Scheduling), else `turn`.

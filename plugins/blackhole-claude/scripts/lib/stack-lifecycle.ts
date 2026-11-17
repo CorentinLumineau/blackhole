@@ -3,8 +3,10 @@
 // whether an open PR must be restacked because it newly overlaps an older one. Pure functions;
 // the prose half is `merge-gate.md` § 4, § 7, § 9 and `phase-loop.md` Step 0.4.
 
+import type { PrLanding } from './forge-adapter/pr-landing.ts';
 import type { RepoMergeSettings } from './forge-adapter/types.ts';
 import type { OpenPrSnapshot } from './open-pr-snapshot.ts';
+import type { ForgeParentState } from './stack-merge.ts';
 import { pickParent, type ConflictVerdict, type PickParentResult } from './stack-overlap.ts';
 
 // ---- D2: merge method of a parent ----
@@ -170,4 +172,30 @@ export const snapshotParentFiles = (
     if (files) out[id] = files;
   }
   return out;
+};
+
+// ---- Has the parent landed? (merge-gate.md § 7) ----
+
+/** The forge's landing in the vocabulary `classifyParentLanding` already reads; never a second one. */
+export const forgeParentState = (landing: PrLanding): ForgeParentState => ({
+  state: landing.state === 'open' ? 'open' : 'closed',
+  merged: landing.state === 'merged',
+});
+
+export type ParentLandedReport = {
+  parentPr: number;
+  state: PrLanding['state'];
+  landed: boolean;
+  mergedAt: string | null;
+  mergeCommitSha: string | null;
+};
+
+/** Exit codes: 0 merged, 1 open, 4 closed unmerged, 3 unreadable (never read as open). */
+export const parentLandedReport = (parentPr: number, landing: PrLanding | null): { report: ParentLandedReport | null; exit: number } => {
+  if (landing === null) return { report: null, exit: 3 };
+  const exit = landing.state === 'merged' ? 0 : landing.state === 'open' ? 1 : 4;
+  return {
+    report: { parentPr, state: landing.state, landed: landing.state === 'merged', mergedAt: landing.mergedAt, mergeCommitSha: landing.mergeCommitSha },
+    exit,
+  };
 };

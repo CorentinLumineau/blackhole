@@ -269,6 +269,9 @@ export type StatusState = {
   next_action: string;
 };
 
+/** PreToolUse hook decisions for one rule: `deny` counts `tier: block` events, `warn` counts `tier: warn`. */
+export type DenyCount = { pattern_id: string; deny: number; warn: number };
+
 export type StatusReport = {
   schema_version: 1;
   generated_at: string;
@@ -355,6 +358,8 @@ export type StatusReport = {
   config_rows: Array<{ key: string; value: string }>;
   /** Queue entries the forge contradicts, rendered as the forge has them; the next sync brings the queue in line. Empty when the forge was not read. Additive. */
   drift: QueueDrift[];
+  /** Hook deny and warn events per `pattern_id` since the campaign started, live and archived, most frequent first. Additive. */
+  deny_counts: DenyCount[];
 };
 
 /** A status colour name. Text always carries the meaning; the colour only repeats it. */
