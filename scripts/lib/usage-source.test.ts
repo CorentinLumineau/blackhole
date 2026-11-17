@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { withTempDir } from './test-fixtures.ts';
 import { resolveUsageBudget, resolveUsageWindows, workersAllowed } from './usage-budget.ts';
+import { UsageFileError } from './usage-normalize.ts';
 import { readRecordedHost, resolveHost, usageSourceFor } from './usage-source.ts';
 
 const NOW = 1_800_000_000;
@@ -136,6 +137,139 @@ describe('host resolution', () => {
       expect(readRecordedHost(dir)).toBeNull();
       expect(resolveHost(dir, { CLAUDECODE: '1' })).toBe('claude');
       expect(resolveHost(dir, {})).toBe('unknown');
+    });
+  });
+});
+
+const writeUsageFile = (dir: string, payload: unknown, mtime = NOW - 10): string => {
+  const file = path.join(dir, 'usage.json');
+  fs.writeFileSync(file, typeof payload === 'string' ? payload : JSON.stringify(payload));
+  fs.utimesSync(file, mtime, mtime);
+  return file;
+};
+const fileWindows = [
+  { name: 'five_hour', used_pct: 40, resets_at: NOW + 2 * HOUR },
+  { name: 'seven_day', used_pct: 30, resets_at: NOW + 90 * HOUR },
+  { name: 'seven_day_opus', used_pct: 12, resets_at: NOW + 90 * HOUR },
+];
+
+describe('usageSourceFor provider chain', () => {
+  test('an explicit file reports plan, every window and extra_usage; read() keeps the two gate windows', () => {
+    withTempDir('usage-source', (dir) => {
+      const usageFile = writeUsageFile(dir, { plan: 'max', extra_usage: { enabled: true, currency: 'USD' }, windows: fileWindows });
+      const source = usageSourceFor('claude', cfg(path.join(dir, 'missing.json')), { usageFile });
+      expect(source.report(NOW)).toEqual({
+        plan: 'max',
+        windows: fileWindows,
+        extra_usage: { enabled: true, currency: 'USD' },
+        source: 'usage-file',
+        provider: 'usage-file',
+        read_at: NOW - 10,
+        reason: null,
+      });
+      const reading = source.read(NOW);
+      expect(reading).toMatchObject({ source: 'usage-file', windows: ['five_hour', 'seven_day'], reason: null });
+      expect(reading.limits).toEqual(both);
+    });
+  });
+
+  test('a desktop-shaped file converts utilization and an ISO reset', () => {
+    withTempDir('usage-source', (dir) => {
+      const iso = new Date((NOW + 90 * HOUR) * 1000).toISOString();
+      const usageFile = writeUsageFile(dir, { seven_day: { utilization: 0.09, resetsAt: iso } });
+      expect(usageSourceFor('claude', cfg('/none.json'), { usageFile }).report(NOW).windows).toEqual([{ name: 'seven_day', used_pct: 9, resets_at: NOW + 90 * HOUR }]);
+    });
+  });
+
+  test('plan none with no window is a valid reading: no limits, reason "no plan limits"', () => {
+    withTempDir('usage-source', (dir) => {
+      const usageFile = writeUsageFile(dir, { plan: 'none', windows: [] });
+      const source = usageSourceFor('claude', cfg('/none.json'), { usageFile });
+      expect(source.report(NOW)).toMatchObject({ plan: 'none', windows: [], source: 'usage-file', reason: null });
+      expect(source.read(NOW)).toEqual({ source: 'usage-file', limits: null, windows: [], reason: 'no plan limits' });
+    });
+  });
+
+  test('a stale file falls through to a fresh cache with no reason', () => {
+    withTempDir('usage-source', (dir) => {
+      const usageFile = writeUsageFile(dir, { windows: fileWindows }, NOW - 700);
+      const report = usageSourceFor('claude', cfg(writeCache(dir, weeklyOnly)), { usageFile }).report(NOW);
+      expect(report).toMatchObject({ source: 'rate-limit-cache', provider: 'statusline', reason: null });
+    });
+  });
+
+  test('a stale file and no cache: the reason lists both failures in chain order', () => {
+    withTempDir('usage-source', (dir) => {
+      const usageFile = writeUsageFile(dir, { windows: fileWindows }, NOW - 700);
+      const report = usageSourceFor('claude', cfg(path.join(dir, 'missing.json')), { usageFile }).report(NOW);
+      expect(report).toMatchObject({ source: 'none', provider: 'none', plan: 'unknown', windows: [], extra_usage: null, read_at: null });
+      expect(report.reason).toMatch(/^usage file stale \(\d+s > 600s\); no rate-limit cache at /);
+    });
+  });
+
+  test('a file whose windows are all past their reset fails the provider, the chain moves on', () => {
+    withTempDir('usage-source', (dir) => {
+      const usageFile = writeUsageFile(dir, { windows: [{ name: 'seven_day', used_pct: 5, resets_at: NOW - 1 }] });
+      const report = usageSourceFor('claude', cfg(writeCache(dir, both)), { usageFile }).report(NOW);
+      expect(report.provider).toBe('statusline');
+    });
+  });
+
+  test('a missing or malformed file throws UsageFileError naming the path', () => {
+    withTempDir('usage-source', (dir) => {
+      const missing = path.join(dir, 'nope.json');
+      expect(() => usageSourceFor('claude', cfg('/none.json'), { usageFile: missing }).report(NOW)).toThrow(UsageFileError);
+      expect(() => usageSourceFor('claude', cfg('/none.json'), { usageFile: missing }).report(NOW)).toThrow(missing);
+      const bad = writeUsageFile(dir, '{not json');
+      expect(() => usageSourceFor('claude', cfg('/none.json'), { usageFile: bad }).read(NOW)).toThrow(bad);
+      const noWindow = writeUsageFile(dir, { plan: 'max', windows: [] });
+      expect(() => usageSourceFor('claude', cfg('/none.json'), { usageFile: noWindow }).report(NOW)).toThrow(UsageFileError);
+    });
+  });
+
+  test('a statusline cache reports provider statusline, plan unknown, read_at = the file mtime', () => {
+    withTempDir('usage-source', (dir) => {
+      const report = usageSourceFor('claude', cfg(writeCache(dir, both))).report(NOW);
+      expect(report).toMatchObject({
+        plan: 'unknown',
+        extra_usage: null,
+        source: 'rate-limit-cache',
+        provider: 'statusline',
+        read_at: NOW - 10,
+        reason: null,
+      });
+      expect(report.windows).toEqual([
+        { name: 'five_hour', used_pct: 40, resets_at: NOW + 2 * HOUR },
+        { name: 'seven_day', used_pct: 30, resets_at: NOW + 90 * HOUR },
+      ]);
+    });
+  });
+
+  test('a probe-written cache reports provider probe under source rate-limit-cache', () => {
+    withTempDir('usage-source', (dir) => {
+      const cache = path.join(dir, 'rate-limits.json');
+      fs.writeFileSync(cache, JSON.stringify({ rate_limits: both, source: 'rate_limit_event' }));
+      fs.utimesSync(cache, NOW - 20, NOW - 20);
+      expect(usageSourceFor('claude', cfg(cache)).report(NOW)).toMatchObject({ provider: 'probe', source: 'rate-limit-cache', read_at: NOW - 20 });
+    });
+  });
+
+  test('cursor uses an explicit file; without one it reports none with the cursor reason', () => {
+    withTempDir('usage-source', (dir) => {
+      const usageFile = writeUsageFile(dir, { windows: fileWindows });
+      expect(usageSourceFor('cursor', cfg('/none.json'), { usageFile }).report(NOW)).toMatchObject({ source: 'usage-file' });
+      const none = usageSourceFor('cursor', cfg('/none.json')).report(NOW);
+      expect(none).toMatchObject({ source: 'none', provider: 'none' });
+      expect(none.reason).toContain('cursor');
+    });
+  });
+
+  test('usage_budget.windows restricts read() only; the report still lists every window', () => {
+    withTempDir('usage-source', (dir) => {
+      const usageFile = writeUsageFile(dir, { windows: fileWindows });
+      const source = usageSourceFor('claude', cfg('/none.json', { enabled: true, windows: ['seven_day'] }), { usageFile });
+      expect(source.read(NOW).windows).toEqual(['seven_day']);
+      expect(source.report(NOW).windows.map((w) => w.name)).toEqual(['five_hour', 'seven_day', 'seven_day_opus']);
     });
   });
 });
