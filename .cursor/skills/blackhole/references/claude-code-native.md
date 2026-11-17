@@ -69,6 +69,12 @@ through `askOrPark()` and is parked until the wake-up round.
    remaining stages for this wave; sibling chains continue uninterrupted. Once the user answers,
    the issue re-dispatches as a fresh chain in the next wave.
 
+3. **Spawn-round gates.** Before each fan-out, run the same gates Pattern B runs
+   (`orchestrator-runtime.md` § Background worker barrier, Spawn steps 1-3): `scripts/pace-gate.ts`,
+   `scripts/usage-budget.ts` and, for test/build-bearing workers, `scripts/resource-gate.ts`. The
+   fan-out is at most the smallest of their counts, and a usage stop drains and wakes per
+   `phase-stop.md` § Usage stop.
+
 ## Per-issue chain granularity
 
 One orchestration unit is one issue chain — handle → plan → implement → review for a single

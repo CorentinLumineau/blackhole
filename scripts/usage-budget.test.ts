@@ -52,6 +52,14 @@ describe('usage-budget CLI', () => {
     });
   });
 
+  test('echoes the 5-hour and weekly % it judged, for pace-log --usage', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      expect(run(dir, ['--usage', usageJson(42, 61)]).out).toMatchObject({ five_hour_pct: 42, weekly_pct: 61 });
+      expect(run(dir, ['--usage', usageJson(42)]).out).toMatchObject({ five_hour_pct: 42, weekly_pct: null });
+      expect(run(dir, ['--usage', usageJson(42, 61)], {}).out).toMatchObject({ five_hour_pct: null, weekly_pct: null });
+    });
+  });
+
   test('reads the statusline cache through readRateLimits when --usage is absent', () => {
     withTempDir('usage-budget-cli', (dir) => {
       const cache = path.join(dir, 'rl.json');
