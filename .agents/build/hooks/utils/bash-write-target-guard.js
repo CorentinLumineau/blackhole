@@ -392,26 +392,72 @@ const uniqTargets = (args) => {
   return out === undefined || out === '-' ? [] : [stripQuotes(out)];
 };
 
-/** `git … --output[=]FILE` (the diff family: `diff`, `log -p`, `show`, `format-patch`) write
- * target, wherever it sits after the command word. git resolves a relative FILE against its
- * working directory, which each leading `-C DIR` changes relative to the previous one, so the
- * target is joined onto that chain (a dynamic `-C` makes the joined target dynamic, i.e. WARN). */
-const gitOutputTargets = (args) => {
-  let base = '';
+/** git global options that take the next token as their value when not written `--name=value`. */
+const GIT_VALUE_GLOBALS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env', '--attr-source']);
+
+/** Walks git's global options (everything before the subcommand) and returns the directories a
+ * relative output path may resolve against, plus the subcommand index. Each `-C DIR` moves the
+ * working directory relative to the previous one; `--git-dir`/`--work-tree` can make git resolve
+ * relative paths elsewhere, so their directories become extra candidate bases (every candidate
+ * is checked — over-matching only adds a target). Segments are joined once at the end, keeping
+ * the walk linear in the number of `-C` options. */
+const gitGlobalBases = (args) => {
+  let segments = [];
+  const extra = [];
   let i = 0;
-  for (; i + 1 < args.length && args[i] === '-C'; i += 2) {
-    const dir = stripQuotes(args[i + 1]);
-    if (dir) base = path.isAbsolute(dir) ? dir : path.join(base, dir);
+  for (; i < args.length && args[i].startsWith('-') && args[i] !== '--'; i++) {
+    const t = args[i];
+    const eq = t.indexOf('=');
+    const name = t.startsWith('--') && eq !== -1 ? t.slice(0, eq) : t;
+    if (!GIT_VALUE_GLOBALS.has(name)) continue;
+    const value = stripQuotes(eq !== -1 && t.startsWith('--') ? t.slice(eq + 1) : (args[++i] ?? UNRESOLVABLE_TARGET));
+    if (name === '-C' && value) {
+      if (path.isAbsolute(value)) segments = [value];
+      else segments.push(value);
+    } else if (name === '--git-dir' || name === '--work-tree') {
+      extra.push({ name, value });
+    }
+  }
+  const cwdBase = segments.length > 0 ? path.join(...segments) : '';
+  const bases = [cwdBase];
+  for (const { name, value } of extra) {
+    const dir = path.isAbsolute(value) || !cwdBase ? value : path.join(cwdBase, value);
+    bases.push(dir);
+    // A git dir is usually `<work tree>/.git`, so its parent is a likely work tree too.
+    if (name === '--git-dir') bases.push(path.dirname(dir));
+  }
+  return { bases, subIdx: i };
+};
+
+/** `format-patch -o DIR` / `-oDIR` / `--output-directory[=]DIR` (or an abbreviation) value at
+ * `args[i]`, with the index of the last token it consumed; null when `args[i]` is not that option. */
+const formatPatchDirValue = (args, i) => {
+  const t = args[i];
+  if (t === '-o') return { value: args[i + 1] ?? UNRESOLVABLE_TARGET, last: i + 1 };
+  if (/^-o./.test(t)) return { value: t.slice(2), last: i };
+  return longOptionValue(args, i, '--output-directory');
+};
+
+/** `git … --output[=]FILE` (the diff family: `diff`, `log -p`, `show`, `format-patch`) and
+ * `git format-patch -o DIR` write targets. git resolves a relative path against its working
+ * directory, so each relative target is checked under every base `gitGlobalBases` returns (a
+ * dynamic base makes the joined target dynamic, i.e. WARN). */
+const gitOutputTargets = (args) => {
+  const { bases, subIdx } = gitGlobalBases(args);
+  const isFormatPatch = args[subIdx] === 'format-patch';
+  const values = [];
+  for (let i = subIdx + 1; i < args.length; i++) {
+    if (args[i] === '--') break;
+    const opt = (isFormatPatch && formatPatchDirValue(args, i)) || longOptionValue(args, i, '--output');
+    if (opt) {
+      values.push(stripQuotes(opt.value));
+      i = opt.last;
+    }
   }
   const targets = [];
-  for (; i < args.length; i++) {
-    if (args[i] === '--') break;
-    const long = longOptionValue(args, i, '--output');
-    if (long) {
-      const value = stripQuotes(long.value);
-      targets.push(base && !path.isAbsolute(value) && value !== UNRESOLVABLE_TARGET ? path.join(base, value) : value);
-      i = long.last;
-    }
+  for (const value of values) {
+    if (path.isAbsolute(value) || value === UNRESOLVABLE_TARGET) targets.push(value);
+    else for (const base of bases) targets.push(base ? path.join(base, value) : value);
   }
   return targets;
 };
@@ -452,6 +498,31 @@ const findOptionWriteTargets = (tokens) => {
 
 const SHELL_NAMES = ['sh', 'bash', 'dash', 'zsh', 'ksh'];
 
+/** Shell options whose value is the next token (`-o pipefail`, `+O extglob`, `--rcfile f`). */
+const isShellValueOption = (t) => /^[-+][a-zA-Z]*[oO]$/.test(t) || t === '--rcfile' || t === '--init-file';
+
+/** True when a shell invoked with `args` reads its script from stdin: `-s` is given, or no script
+ * operand follows the options, and no `-c` supplies the script inline. */
+const shellReadsStdinScript = (args) => {
+  let stdinFlag = false;
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--' || t === '-') return !args.slice(i + 1).length || stdinFlag || t === '-';
+    if (isShellValueOption(t)) {
+      i++;
+      continue;
+    }
+    if (/^-[a-zA-Z]+$/.test(t)) {
+      if (t.includes('c')) return false;
+      if (t.includes('s')) stdinFlag = true;
+      continue;
+    }
+    if (t.startsWith('-') || t.startsWith('+')) continue;
+    return stdinFlag;
+  }
+  return true;
+};
+
 /** A single `|` (or `|&`) pipe — never the `||` operator — and the clause text it feeds. */
 const PIPE_INTO_RE = /(?<!\|)\|&?(?!\|)([^;|&\n]*)/g;
 
@@ -463,12 +534,10 @@ const hasPipedShellScript = (visible) => {
   let match = PIPE_INTO_RE.exec(visible);
   while (match !== null) {
     const tokens = tokenize(match[1]);
-    if (tokens.length > 0 && SHELL_NAMES.some((name) => isCommandToken(tokens[0], name))) {
-      const args = positionalArgsBeforeRedirect(tokens, 1);
-      const flags = args.filter((t) => t.startsWith('-'));
-      const readsStdin = flags.some((t) => /^-[a-zA-Z]*s/.test(t)) || !args.some((t) => !t.startsWith('-'));
-      if (readsStdin && !flags.some((t) => /^-[a-zA-Z]*c/.test(t))) return true;
-    }
+    // Found anywhere in the piped clause, like the other finders, so a wrapper (`env bash`,
+    // `sudo sh`) cannot hide it.
+    const shellIdx = tokens.findIndex((t) => SHELL_NAMES.some((name) => isCommandToken(t, name)));
+    if (shellIdx !== -1 && shellReadsStdinScript(positionalArgsBeforeRedirect(tokens, shellIdx + 1))) return true;
     match = PIPE_INTO_RE.exec(visible);
   }
   return false;

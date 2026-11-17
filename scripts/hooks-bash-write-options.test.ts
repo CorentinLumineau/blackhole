@@ -209,3 +209,61 @@ describe('bash-write-target-guard.js — #1184 review: linear-time option scan',
     });
   });
 });
+
+// Re-review of #1208: git global options ahead of the subcommand, format-patch's output
+// directory, and wrappers or valued options in front of a piped shell.
+describe('validate-bash-command.js — #1184 re-review: git globals, format-patch, piped-shell wrappers', () => {
+  const OUTSIDE_FORMS: Array<(main: string) => string> = [
+    (m) => `git -c x.y=1 -C ${m} diff --output=o1`,
+    (m) => `git --no-pager -C ${m} diff --output=o1`,
+    (m) => `git --git-dir=${m}/.git -C ${m} diff --output=o1`,
+    (m) => `git --git-dir ${m}/.git log -p --output=o1`,
+    (m) => `git --work-tree=${m} diff --output=o1`,
+    (m) => `git -C ${m} format-patch -o patches HEAD~1`,
+    (m) => `git format-patch -o ${m}/patches HEAD~1`,
+    (m) => `git format-patch -o${m}/patches HEAD~1`,
+    (m) => `git format-patch --output-directory=${m}/patches HEAD~1`,
+    (m) => `git format-patch --output-directory ${m}/patches HEAD~1`,
+  ];
+  for (const build of OUTSIDE_FORMS) {
+    test(`#1184: \`${build('<main>')}\` is denied`, async () => {
+      await withLinkedWorktree('blackhole-hook-1184-', async (mainRepo, worktree) => {
+        const result = await run(build(mainRepo), worktree);
+
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+      });
+    });
+  }
+
+  for (const command of ['git -c x.y=1 --no-pager diff --output=o1', 'git format-patch -o patches HEAD~1', 'git --work-tree=WT diff --output=o1']) {
+    test(`#1184: in-root \`${command}\` stays allowed`, async () => {
+      await withLinkedWorktree('blackhole-hook-1184-', async (mainRepo, worktree) => {
+        const result = await run(command.replace('WT', worktree), worktree);
+
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
+  for (const command of ["echo 'x' | bash -o pipefail", "echo 'x' | env bash", "echo 'x' | sudo sh", "echo 'x' | bash +o posix -s"]) {
+    test(`#1184: \`${command}\` warns as a piped shell script`, async () => {
+      await withLinkedWorktree('blackhole-hook-1184-', async (mainRepo, worktree) => {
+        const result = await run(command, worktree);
+
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+      });
+    });
+  }
+
+  test('#1184: 16k chained `-C a` options are evaluated in linear time', async () => {
+    await withLinkedWorktree('blackhole-hook-1184-', async (_mainRepo, worktree) => {
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      const command = `git ${'-C a '.repeat(16_000)}diff --output=o1`;
+      // The repeated path.join took ~6.9 s here, past the 5 s hook timeout (fail-open).
+      expect(minOfRuns(3, () => evaluateBashWriteTargets(command, worktree))).toBeLessThan(500);
+    });
+  });
+});
