@@ -23,9 +23,10 @@ export type TrunkRedResult = {
   groups: TrunkRedGroup[];
 };
 
-const RUNNER_PREFIX = /^(?:\/(?:home|Users)\/runner\/work\/[^/]+\/[^/]+\/|\/github\/workspace\/)/;
+const RUNNER_PREFIX =
+  /^(?:\/(?:home|Users)\/runner\/work\/[^/]+\/[^/]+\/|\/(?:[^/]+\/)*?_work\/[^/]+\/[^/]+\/|\/github\/workspace\/)/;
 
-/** Repo-relative form of a path: no leading `./`, no GitHub runner checkout prefix. */
+/** Repo-relative form of a path: no leading `./`, no hosted or self-hosted runner checkout prefix. */
 export function normalizeRepoPath(p: string): string {
   return p.replace(RUNNER_PREFIX, '').replace(/^(?:\.\/)+/, '');
 }
@@ -52,24 +53,58 @@ const VOLATILE = /\d{4}-\d{2}-\d{2}T[\d:.]+Z?|\b[0-9a-f]{7,40}\b|\d+/gi;
 const ERROR_LINE = /error|fail|✗|✕|expected|not assignable|cannot|unexpected/i;
 const GENERIC_LINE = /exited with code|Process completed with exit code/i;
 const WINDOW_RADIUS = 3;
+const RUN_LINE = /^(?:##\[group\])?Run\s/;
+const END_GROUP = /^##\[endgroup\]/;
+/** Ungrouped echoed step settings: `shell:`, `env:`/`with:` headers and their indented `KEY: value` entries — never an indented failure line. */
+const ECHOED_SETTING = /^(?:shell:|env:|with:|\s+[\w-]+:(?:\s|$))/;
+const LOG_LINE_PREFIX = /^\uFEFF?(?:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z ?)?/;
 
-/** Index of the line that identifies the failure, skipping blank and generic wrapper lines; -1 if none. */
-function failureLineIndex(lines: string[]): number {
-  const usable = (l: string) => l.trim() !== '' && !GENERIC_LINE.test(l);
-  const hit = lines.findIndex((l) => usable(l) && ERROR_LINE.test(l));
+/** A GitHub Actions log line without its leading BOM and ISO-8601 timestamp. */
+export function stripLogPrefix(line: string): string {
+  return line.replace(LOG_LINE_PREFIX, '');
+}
+
+const logLines = (log: string): string[] => log.split(/\r?\n/).map(stripLogPrefix);
+
+/** Where a step's echoed `Run` preamble (command, script, shell, env) starts and ends; header -1 when there is none. */
+function preamble(lines: string[]): { header: number; end: number } {
+  const first = lines.findIndex((l) => l.trim() !== '');
+  if (first < 0 || !RUN_LINE.test(lines[first])) return { header: -1, end: 0 };
+  const endGroup = lines.findIndex((l, i) => i > first && END_GROUP.test(l));
+  if (endGroup >= 0) return { header: first, end: endGroup + 1 };
+  let i = first + 1;
+  while (i < lines.length && ECHOED_SETTING.test(lines[i])) i++;
+  return { header: first, end: i };
+}
+
+/** First line from `start` that identifies the failure, skipping blank and generic wrapper lines; -1 if none. */
+function failureLineFrom(lines: string[], start: number): number {
+  const usable = (l: string, i: number) => i >= start && l.trim() !== '' && !GENERIC_LINE.test(l);
+  const hit = lines.findIndex((l, i) => usable(l, i) && ERROR_LINE.test(l));
   return hit >= 0 ? hit : lines.findIndex(usable);
+}
+
+/**
+ * The failure line past the preamble, and the window start that excludes it. When the step's output was
+ * logged inside its own group (nothing follows `##[endgroup]`), only the `Run` header itself is skipped.
+ */
+function locateFailure(lines: string[]): { idx: number; from: number } {
+  const { header, end } = preamble(lines);
+  const idx = failureLineFrom(lines, end);
+  if (idx >= 0 || header < 0) return { idx, from: end };
+  return { idx: failureLineFrom(lines, header + 1), from: header + 1 };
 }
 
 /** Stable id for one failure: the failure line with digits, hashes and timestamps removed; '' when the log has none. */
 export function fingerprintLog(log: string): string {
-  const lines = log.split('\n');
-  const idx = failureLineIndex(lines);
+  const lines = logLines(log);
+  const { idx } = locateFailure(lines);
   if (idx < 0) return '';
   const normalized = lines[idx].trim().replace(VOLATILE, '#').replace(/\s+/g, ' ');
   return createHash('sha1').update(normalized).digest('hex').slice(0, 12);
 }
 
-const PATH_RE = /(?:^|[\s("'=])((?:\.\/|\/)?(?:[\w.@-]+\/)*[\w.@-]+\.[A-Za-z][A-Za-z0-9]*)(?=[:(\s"')\],.;]|$)/g;
+const PATH_RE = /(?:^|[\s("'=[\]])((?:\.\/|\/)?(?:[\w.@-]+\/)*[\w.@-]+\.[A-Za-z][A-Za-z0-9]*)(?=[:(\s"')\],.;]|$)/g;
 
 /** Normalised repo-relative file paths named in a log, first-seen order, deduplicated. */
 export function pathsInLog(log: string): string[] {
@@ -83,10 +118,11 @@ export function pathsInLog(log: string): string[] {
 
 /** Paths named within a few lines of the fingerprint line, not the whole log. */
 export function failingPaths(log: string): string[] {
-  const lines = log.split('\n');
-  const idx = failureLineIndex(lines);
+  const lines = logLines(log);
+  const { idx, from: floor } = locateFailure(lines);
   if (idx < 0) return [];
-  return pathsInLog(lines.slice(Math.max(0, idx - WINDOW_RADIUS), idx + WINDOW_RADIUS + 1).join('\n'));
+  const from = Math.max(floor, idx - WINDOW_RADIUS);
+  return pathsInLog(lines.slice(from, idx + WINDOW_RADIUS + 1).join('\n'));
 }
 
 const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === 'string');

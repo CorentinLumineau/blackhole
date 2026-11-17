@@ -4812,3 +4812,179 @@ describe('validate-bash-command.js — clause-scan cost bound (#1197)', () => {
     });
   });
 });
+
+describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes (#1179)', () => {
+  const guard = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+  type Verdict = { tier: string; pattern_id: string; reason: string } | null;
+
+  // `@OUT@` stands for a path outside the assigned worktree (the main clone).
+  const evaluate = async (command: string): Promise<Verdict> => {
+    let result: Verdict = null;
+    await withLinkedWorktree('blackhole-hook-1179-', async (mainRepo, worktree) => {
+      result = guard.evaluateBashWriteTargets(command.replaceAll('@OUT@', mainRepo), worktree);
+    });
+    return result;
+  };
+
+  const FALSE_POSITIVES = [
+    "sed -i 's/<A>/#1174/g' foo.txt",
+    "sed 's/<A>/x/g;s/b/c/' foo.txt",
+    "grep 'a>b' foo.txt | wc -l",
+    'grep "a>b" foo.txt',
+    "grep -E 'a>b|c' foo.txt",
+  ];
+  // known false positive: perl is not an inert filter, so `perl -ne 'print if /a>b/' f` stays WARN.
+
+  for (const command of FALSE_POSITIVES) {
+    test(`not a redirect: ${command}`, async () => {
+      expect(await evaluate(command)).toBeNull();
+    });
+  }
+
+  test('unquoted `sed -i s/<A>/#1174/g f` is a true redirect: blocked, with the quote-it hint', async () => {
+    const result = await evaluate('sed -i s/<A>/#1174/g foo.txt');
+    expect(result).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    expect(result!.reason).toContain('This looks like a sed/regex expression; quote it.');
+  });
+
+  // Commands that run a quoted argument as shell or write from it; `t` is the quoted payload.
+  const QUOTED_EXECUTOR_ROWS = (t: string) => [
+    `su -lc '${t}' root`,
+    `sudo -s '${t}'`,
+    `sudo -i '${t}'`,
+    `script -qc '${t}' /dev/null`,
+    `tmux new-session '${t}'`,
+    `tmux new -d '${t}'`,
+    `tmux send-keys '${t}' Enter`,
+    `screen -dm '${t}'`,
+    `sg wheel '${t}'`,
+    `sed '1e ${t}' f`,
+    `sed 's/.*/${t}/e' f`,
+    `man -P '${t}' ls`,
+    `tar --to-command='${t}'`,
+    `tar --checkpoint-action=exec='${t}'`,
+    `mysql -e '\\! ${t}'`,
+    `sqlite3 :memory: '.shell ${t}'`,
+    `vi '+!${t}'`,
+    `ssh -o ProxyCommand='${t}' h`,
+    `git config alias.x '!${t}'`,
+    `systemd-run --user '${t}'`,
+    `xterm -e '${t}'`,
+  ];
+
+  // Allowlist-bypass shapes: a command word that is not the bare grep/sed filter.
+  const ALLOWLIST_BYPASS_ROWS = (t: string) => [
+    `git grep -O'${t}' x`,
+    `git grep --open-files-in-pager='${t}' x`,
+    `git grep --open='${t}' x`,
+    `GIT_EXTERNAL_DIFF='${t}' git diff`,
+    `GIT_EXTERNAL_DIFF='${t}' git log -p`,
+    `GIT_PAGER='${t}' git log`,
+    `PAGER='${t}' git log`,
+    `PATH=. grep '${t}'`,
+    `PATH=/tmp grep '${t}'`,
+    `./grep '${t}'`,
+    `/tmp/grep '${t}'`,
+    `/tmp/git log '${t}'`,
+    `./sort '${t}'`,
+    `grep(){ tmux new "$1"; }; grep '${t}'`,
+    `function grep { sudo -s "$1"; }; grep '${t}'`,
+    `git(){ sudo -s "$1"; }; git log '${t}'`,
+    `function git { tmux new "$1"; }; git log '${t}'`,
+    `ag --pag='${t}' x`,
+    `ack --pa='${t}' x`,
+  ];
+
+  // Every row must block (the base tier before #1179). `O` is replaced by the main clone path.
+  const MUST_BLOCK = [
+    'echo hi > @OUT@/x',
+    'cmd >@OUT@/x',
+    'cat a >> @OUT@/b',
+    'true; echo hi > @OUT@/x',
+    'true && echo hi > @OUT@/x',
+    'echo hi | cat > @OUT@/x',
+    'cmd 2> @OUT@/x',
+    'cmd &> @OUT@/x',
+    'cmd >| @OUT@/x',
+    'echo hi > "@OUT@/x"',
+    "echo hi > '@OUT@/x'",
+    'sed s/a/b/>@OUT@/x',
+    "sed 's/a>b/c/' f > @OUT@/x",
+    'sed s/x>@OUT@/x f',
+    'sed s/a>>@OUT@/x/g f',
+    'sed y/a>@OUT@/x/ f',
+    'sed s/a/b>@OUT@/x',
+    'sed -i s/a>@OUT@/x/ y',
+    'touch sed s/a>@OUT@/x/',
+    'xargs sed s/a>@OUT@/x/',
+    'env sed s/a>@OUT@/x/ f',
+    '/usr/bin/sed s/a>@OUT@/x/ f',
+    "cat \\' > @OUT@/x ; cat \\'",
+    "cat x \\' > @OUT@/x \\'",
+    'cat \\" > @OUT@/x ; cat \\"',
+    "cat $'\\'' > @OUT@/x ; cat ''",
+    "cat $'\\'' > @OUT@/x ; cat 'z'",
+    "cat x \\\\\\' > @OUT@/x \\\\\\'",
+    'x="$(cat ")" > @OUT@/x ; cat ")")"',
+    'cat "$(cat ")" > @OUT@/x ; cat ")")"',
+    ...QUOTED_EXECUTOR_ROWS('echo a > @OUT@/x ; true'),
+    ...QUOTED_EXECUTOR_ROWS('echo a >@OUT@/x ; true'),
+    ...ALLOWLIST_BYPASS_ROWS('echo a > @OUT@/x ; true'),
+    ...ALLOWLIST_BYPASS_ROWS('echo a >@OUT@/x ; true'),
+    "cat x >| '@OUT@/x'",
+    "cat x >|'@OUT@/x'",
+    'cat x >|"@OUT@/x"',
+    "cat x 2>| '@OUT@/x'",
+  ];
+
+  for (const command of MUST_BLOCK) {
+    test(`still blocks: ${command}`, async () => {
+      expect(await evaluate(command)).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    });
+  }
+
+  // Quoted text executed as shell: the base tier (warn) must be kept exactly.
+  const BASE_WARN = [
+    "trap 'echo a > @OUT@/x' EXIT",
+    "alias ll='cat > @OUT@/x'",
+    "watch 'echo a > @OUT@/x'",
+    "x='cat > @OUT@/x'; eval \"$x\"",
+    "cat <<< 'echo a > @OUT@/x' | sh",
+    "export BASH_ENV='x > @OUT@/x'",
+    "perl -e 'system(\"echo a > @OUT@/x\")'",
+    'sed s{a>{@OUT@/x{ f',
+    "bash -c 'echo hi > @OUT@/x'",
+    'eval "echo hi > @OUT@/x"',
+  ];
+
+  for (const command of BASE_WARN) {
+    test(`keeps the base warn tier: ${command}`, async () => {
+      expect(await evaluate(command)).toMatchObject({ tier: 'warn' });
+    });
+  }
+
+  test('`$(...)` in double quotes keeps the base warn tier and pattern', async () => {
+    expect(await evaluate('echo "$(echo hi > @OUT@/x)"')).toMatchObject({
+      tier: 'warn',
+      pattern_id: 'bash-write-target-unresolvable',
+    });
+  });
+
+  test('sed -n substitution and rg are masked; removed filters keep base behaviour', async () => {
+    for (const command of ["sed -n 's/a>b/c/p' f", "rg 'a>b' f"]) {
+      expect(await evaluate(command)).toBeNull();
+    }
+    for (const command of ["sort 'a>b' -o @OUT@/x", "git log --format='%h>%s' | wc -l"]) {
+      expect(await evaluate(command)).toMatchObject({ tier: 'warn' });
+    }
+  });
+
+  test('sed with an `e` flag keeps its quoted text visible', async () => {
+    expect(await evaluate("sed 's/a>b/c/e' f")).not.toBeNull();
+  });
+
+  test('a block on an ordinary path carries no regex hint', async () => {
+    const result = await evaluate('echo hi > @OUT@/x');
+    expect(result!.reason).not.toContain('sed/regex expression');
+  });
+});

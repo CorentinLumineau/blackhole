@@ -126,42 +126,30 @@ const tokenize = (text) => {
  * match `worktree-removal-guard.js`'s `findClauseStartIndices` — that guard needs the opposite
  * policy for its own, equally load-bearing reason (see that function's own `QUOTE POLICY:` note).
  */
-const splitClauses = (visible) => {
-  const clauses = [];
-  let current = '';
+const clauseRanges = (visible) => {
+  const ranges = [];
+  let start = 0;
   let i = 0;
   const n = visible.length;
   while (i < n) {
     const ch = visible[i];
     if (ch === "'" || ch === '"') {
-      const end = skipQuotedSpan(visible, i, n);
-      current += visible.slice(i, end);
-      i = end;
+      i = skipQuotedSpan(visible, i, n);
       continue;
     }
-    if (ch === ';' || ch === '|' || ch === '\n') {
-      clauses.push(current);
-      current = '';
-      i++;
-      continue;
+    const isSeparator =
+      ch === ';' || (ch === '|' && visible[i - 1] !== '>') || ch === '\n' || (ch === '&' && !isRedirectAmpersand(visible, i));
+    if (isSeparator) {
+      ranges.push([start, i]);
+      start = i + 1;
     }
-    if (ch === '&') {
-      if (isRedirectAmpersand(visible, i)) {
-        current += ch;
-        i++;
-        continue;
-      }
-      clauses.push(current);
-      current = '';
-      i++;
-      continue;
-    }
-    current += ch;
     i++;
   }
-  clauses.push(current);
-  return clauses;
+  ranges.push([start, n]);
+  return ranges;
 };
+
+const splitClauses = (visible) => clauseRanges(visible).map(([start, end]) => visible.slice(start, end));
 
 /** True when `token` names `command` — either exactly, or as the final path segment of an
  * absolute/relative invocation (`/usr/bin/sed` still names `sed`). */
@@ -170,6 +158,118 @@ const isCommandToken = (token, command) => token === command || token.endsWith(`
 /** True when a fd-duplication argument (`&1`, `&2`, ...) rather than a real file path — the one
  * shape `>`/`>>`/`&>` legitimately precede without naming a file (`2>&1`, `>&2`). */
 const isFdDuplicationTarget = (token) => /^&\d+$/.test(token);
+
+/** Whole-command signals that quoted text may be executed as shell (or smuggles a quote the
+ * span walker would misread). Any hit disables `maskRedirectNoise` entirely: masking is only safe
+ * when no quoted span can be command text. */
+const SHELL_EXEC_RE = new RegExp(
+  [
+    '(?:^|[\\s;&|(`])(?:\\S*/)?(?:bash|sh|zsh|dash|ksh|eval|source|trap|alias|watch|at|parallel|xargs)(?=$|[\\s;&|)])',
+    '(?:^|\\s)-c(?=$|\\s)',
+    'BASH_ENV=|PROMPT_COMMAND=',
+    '<<<',
+    '\\b(?:perl|ruby|node|bun|php|lua|python[0-9.]*)\\b[^;|&\\n]*\\s-[a-zA-Z]*[ecr]\\b',
+  ].join('|'),
+);
+
+/** Constructs inside which bash nests or reinterprets quotes, so this module's flat quote pairing
+ * cannot be trusted anywhere in the command: command/process substitution, parameter expansion,
+ * escapes, `$'..'`/`$".."` strings and here-strings. */
+const QUOTE_REINTERPRETING_RE = /\$\(|`|\$\{|\\|\$['"]|<<<|<\(|>\(/;
+
+/** The only commands whose quoted spans `maskRedirectNoise` may blank (the reported false positives
+ * are grep and sed). An allowlist, because the commands that execute or write from a quoted
+ * argument cannot be enumerated; every other clause keeps its quoted spans visible. */
+const INERT_GREP_COMMANDS = new Set(['grep', 'egrep', 'fgrep', 'rg']);
+
+/** rg options that run a decompressor/preprocessor, plus any unique prefix of them. */
+const RG_COMMAND_OPTIONS = ['--pre', '--pre-glob', '--hostname-bin', '--search-zip'];
+
+/** Whole-command constructs that can redefine what a bare command word means: a function
+ * definition, alias/hash/enable/builtin, or a PATH change. */
+const COMMAND_REBINDING_RE = new RegExp(
+  '(?:^|[;&|\\s(])(?:function\\s+[\\w.-]+|[\\w.-]+\\s*\\(\\s*\\)\\s*\\{)|\\b(?:alias|unalias|hash|enable|builtin)\\b|\\bPATH=|export\\s+PATH',
+);
+
+/** `-f`/`--file` (a pattern file) and, for rg, a decompressor/preprocessor option disqualify a
+ * clause; neither runs a command in grep, but the rule is kept simple and read-only. */
+const hasDisqualifyingOption = (head, args) =>
+  args.some((t) => {
+    if (/^-[a-zA-Z]*f/.test(t) || t === '--file' || t.startsWith('--file=')) return true;
+    if (head !== 'rg') return false;
+    if (/^-[a-zA-Z]*z/.test(t)) return true;
+    const name = t.startsWith('--') ? t.split('=')[0] : '';
+    return name.length > 2 && RG_COMMAND_OPTIONS.some((opt) => opt.startsWith(name));
+  });
+
+/** A sed script made only of `s<d>re<d>repl<d>flags` commands whose flags cannot be `e` or `w`. */
+const SED_SUBST_SCRIPT_RE = /^(?:s([^\w\s\\;])(?:(?!\1)[^\n])*\1(?:(?!\1)[^\n])*\1[gIiMmp0-9]*(?:;|$))+$/;
+const SED_PLAIN_OPTION_RE = /^(?:-[nEr]+|-i|-i\.\w+|--in-place(?:=\S+)?|--quiet|--regexp-extended)$/;
+
+/** sed is inert for masking only with exactly one quoted script that is pure `s///` (no `e`/`w`
+ * command or flag) and no `-f`/`-s`/`-e` option. `-i` is allowed: its write target is resolved by
+ * `findSedTargets`, not by the redirect scan. */
+const isInertSed = (args) => {
+  const scripts = args.filter((t) => t[0] === "'" || t[0] === '"');
+  if (scripts.length !== 1) return false;
+  if (!SED_SUBST_SCRIPT_RE.test(stripQuotes(scripts[0]))) return false;
+  return args.every((t) => t === scripts[0] || SED_PLAIN_OPTION_RE.test(t) || !t.startsWith('-'));
+};
+
+/** True when a clause's command word is a bare, unquoted, unprefixed grep-family command or a pure
+ * `s///` sed. A leading `VAR=val`, a path (`./grep`, `/tmp/grep`) or any quoting disqualifies it:
+ * the word may then name something else than the filter. */
+const isInertClause = (tokens) => {
+  if (tokens.length === 0 || !/^[A-Za-z]+$/.test(tokens[0])) return false;
+  const head = tokens[0];
+  const args = tokens.slice(1);
+  if (INERT_GREP_COMMANDS.has(head)) return !hasDisqualifyingOption(head, args);
+  return head === 'sed' && isInertSed(args);
+};
+
+const REDIRECT_OPERATOR_TAIL_RE = /(?:&>>|&>|>>|>&|>\||>)\s*$/;
+
+/** A quoted span `text[start..end)` is inert text (cannot hide a write target) unless it is a
+ * redirect's own target (`> "/x"`), unterminated, contains another quote character, or is a
+ * double-quoted span carrying a command substitution (`"$(echo x > /etc/y)"`). */
+const isInertQuotedSpan = (text, start, end) => {
+  const span = text.slice(start, end);
+  if (span.length < 2 || span[span.length - 1] !== span[0]) return false;
+  if (/['"]/.test(span.slice(1, -1))) return false;
+  if (REDIRECT_OPERATOR_TAIL_RE.test(text.slice(0, start))) return false;
+  return !(span[0] === '"' && (span.includes('$(') || span.includes('`')));
+};
+
+/** Copy of `visible` with the contents of inert quoted spans blanked (`grep 'a>b'`), for the
+ * whole-command `REDIRECT_RE` scan only; positions are preserved. Fails closed: spans are blanked
+ * only inside a clause whose command is an inert filter, and only when nothing in the command
+ * nests or reinterprets quotes or may execute quoted text; otherwise `visible` is returned
+ * unchanged (base behaviour), so masking can never turn a deny into an allow. Unquoted text is never masked: an unquoted
+ * `sed s/<A>/x/` really is a redirect in bash. */
+const maskRedirectNoise = (visible) => {
+  if (SHELL_EXEC_RE.test(visible) || QUOTE_REINTERPRETING_RE.test(visible) || COMMAND_REBINDING_RE.test(visible)) {
+    return visible;
+  }
+  const chars = visible.split('');
+  for (const [start, end] of clauseRanges(visible)) {
+    const text = visible.slice(start, end);
+    if (!isInertClause(tokenize(text))) continue;
+    let i = 0;
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch !== "'" && ch !== '"') {
+        i++;
+        continue;
+      }
+      const spanEnd = skipQuotedSpan(text, i, text.length);
+      if (isInertQuotedSpan(text, i, spanEnd)) {
+        for (let k = start + i + 1; k < start + spanEnd - 1; k++) chars[k] = ' ';
+      }
+      i = spanEnd;
+    }
+  }
+  return chars.join('');
+};
 
 const REDIRECT_RE = /(&>>|&>|>>|>&|>\||>)\s*(\S+)?/g;
 
@@ -579,6 +679,10 @@ const isStreamDeviceTarget = (rawTarget, visible) => {
   return (target === '/dev/stdout' || target === '/dev/stderr') && !MAY_REBIND_STREAM_FD_RE.test(visible);
 };
 
+/** A target that starts `/#` or carries regex metacharacters is probably a sed/regex fragment
+ * (`s/<A>/#1174/g` read as `/#1174/g`), not a path the author meant to write. */
+const looksLikeRegexFragment = (target) => target.startsWith('/#') || /[\\^$*+?()[\]{}|]/.test(target);
+
 /** True when one clause's leading command word is a write-shaped command this module cannot
  * resolve statically (see `UNRESOLVABLE_WRITE_COMMANDS`'s docstring). */
 const hasUnresolvableCommand = (tokens) => {
@@ -613,7 +717,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
   const literalTargets = [];
   let unresolvable = false;
 
-  for (const raw of findRedirectTargets(visible)) {
+  for (const raw of findRedirectTargets(maskRedirectNoise(visible))) {
     if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
     else unresolvable = true;
   }
@@ -638,13 +742,16 @@ const evaluateBashWriteTargets = (command, cwd) => {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.isAbsolute(target) ? target : path.resolve(cwd, target);
     if (!isUnderRoot(resolvedPath, assignedRoot)) {
+      const hint = looksLikeRegexFragment(target)
+        ? ' This looks like a sed/regex expression; quote it.'
+        : '';
       return {
         tier: 'block',
         pattern_id: 'bash-outside-assigned-worktree',
         reason:
           `Bash write target resolves outside the assigned worktree root (${assignedRoot}): ${resolvedPath}. ` +
           `Remedy: write inside ${assignedRoot} instead (e.g. ${path.join(assignedRoot, path.basename(resolvedPath))}) ` +
-          `and use a literal absolute path, or the Write/Edit tools.`,
+          `and use a literal absolute path, or the Write/Edit tools.${hint}`,
       };
     }
   }
