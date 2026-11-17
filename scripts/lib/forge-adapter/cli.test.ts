@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as childProcess from 'child_process';
 import { runGh, runGhApiJson, runGhApiText, runGhJson, runGhText } from './cli.ts';
+import { FORGE_CLI_MAX_BUFFER } from './spawn.ts';
 
 /**
  * A minimal `child_process.spawnSync` return value shaped for the mocks below — status/stdout/
@@ -37,7 +38,7 @@ describe('cli (gh)', () => {
     expect(spawnSyncSpy).toHaveBeenCalledWith(
       'gh',
       ['pr', 'view', '5', '--repo', 'owner/repo'],
-      { encoding: 'utf-8' },
+      { encoding: 'utf-8', maxBuffer: FORGE_CLI_MAX_BUFFER },
     );
   });
 
@@ -49,7 +50,7 @@ describe('cli (gh)', () => {
     expect(spawnSyncSpy).toHaveBeenCalledWith(
       'gh',
       ['pr', 'view', '5', '--repo', 'other/repo'],
-      { encoding: 'utf-8' },
+      { encoding: 'utf-8', maxBuffer: FORGE_CLI_MAX_BUFFER },
     );
   });
 
@@ -58,7 +59,7 @@ describe('cli (gh)', () => {
 
     runGh(['auth', 'status']);
 
-    expect(spawnSyncSpy).toHaveBeenCalledWith('gh', ['auth', 'status'], { encoding: 'utf-8' });
+    expect(spawnSyncSpy).toHaveBeenCalledWith('gh', ['auth', 'status'], { encoding: 'utf-8', maxBuffer: FORGE_CLI_MAX_BUFFER });
   });
 
   test('runGhJson parses stdout JSON and returns it', () => {
@@ -127,7 +128,7 @@ describe('cli (gh)', () => {
     expect(spawnSyncSpy).toHaveBeenCalledWith(
       'gh',
       ['api', 'repos/owner/repo/actions/runs?head_sha=abc', '--repo', 'owner/repo'],
-      { encoding: 'utf-8' },
+      { encoding: 'utf-8', maxBuffer: FORGE_CLI_MAX_BUFFER },
     );
     expect(data).toEqual({ workflow_runs: [] });
   });
@@ -140,8 +141,40 @@ describe('cli (gh)', () => {
     expect(spawnSyncSpy).toHaveBeenCalledWith(
       'gh',
       ['api', 'repos/owner/repo/actions/jobs/9/logs', '--repo', 'owner/repo'],
-      { encoding: 'utf-8' },
+      { encoding: 'utf-8', maxBuffer: FORGE_CLI_MAX_BUFFER },
     );
     expect(log).toBe('raw log output');
+  });
+  test('runGh raises the spawn buffer far above the 1 MiB default', () => {
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('ok', 0));
+
+    runGh(['api', 'repos/o/r/pulls?per_page=100']);
+
+    const options = spawnSyncSpy.mock.calls[0]?.[2] as { maxBuffer?: number };
+    expect(options.maxBuffer).toBe(FORGE_CLI_MAX_BUFFER);
+    expect(FORGE_CLI_MAX_BUFFER).toBeGreaterThanOrEqual(256 * 1024 * 1024);
+  });
+
+  test('runGhJson reports ENOBUFS as a buffer overflow, not a JSON parse error over the cut output', () => {
+    const truncated = '[{"url":"https://example.test/1","body":"cut mid-str';
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
+      ...mockSpawnResult(truncated, 0),
+      status: null,
+      signal: 'SIGTERM',
+      error: Object.assign(new Error('spawnSync gh ENOBUFS'), { code: 'ENOBUFS' }),
+    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+
+    let message = '';
+    try {
+      runGhJson(['api', 'repos/o/r/pulls?per_page=100']);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+
+    expect(message).toContain('ENOBUFS');
+    expect(message).toContain('gh api');
+    expect(message).toContain(String(FORGE_CLI_MAX_BUFFER));
+    expect(message).not.toContain('cut mid-str');
+    expect(message).not.toMatch(/JSON/);
   });
 });

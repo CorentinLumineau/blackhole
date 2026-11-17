@@ -1,11 +1,7 @@
 import { spawnSync } from 'child_process';
+import { FORGE_CLI_MAX_BUFFER, toForgeSpawnResult, type ForgeSpawnResult } from './spawn.ts';
 
-export type GhSpawnResult = {
-  status: number | null;
-  stdout: string;
-  stderr: string;
-  error: NodeJS.ErrnoException | null;
-};
+export type GhSpawnResult = ForgeSpawnResult;
 
 /** Sole `gh` spawn site for the GitHub forge backend (ADR-027, #679). */
 export function runGh(args: string[], options?: { repo?: string; input?: string }): GhSpawnResult {
@@ -13,14 +9,11 @@ export function runGh(args: string[], options?: { repo?: string; input?: string 
   if (options?.repo && !args.includes('--repo')) {
     fullArgs.push('--repo', options.repo);
   }
-  const spawnOptions = options?.input === undefined ? { encoding: 'utf-8' as const } : { encoding: 'utf-8' as const, input: options.input };
+  const spawnOptions = options?.input === undefined
+    ? { encoding: 'utf-8' as const, maxBuffer: FORGE_CLI_MAX_BUFFER }
+    : { encoding: 'utf-8' as const, maxBuffer: FORGE_CLI_MAX_BUFFER, input: options.input };
   const result = spawnSync('gh', fullArgs, spawnOptions);
-  return {
-    status: result.status,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-    error: (result.error as NodeJS.ErrnoException | undefined) ?? null,
-  };
+  return toForgeSpawnResult('gh', fullArgs, result);
 }
 
 export function runGhJson<T>(args: string[], options?: { repo?: string }): T {

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as childProcess from 'child_process';
 import { runTea, runTeaApi, runTeaJson, runTeaText } from './tea-cli.ts';
+import { FORGE_CLI_MAX_BUFFER } from './spawn.ts';
 
 /**
  * A minimal `child_process.spawnSync` return value shaped for the mocks below — status/stdout/
@@ -34,7 +35,7 @@ describe('tea-cli', () => {
 
     const result = runTea(['logins']);
 
-    expect(spawnSyncSpy).toHaveBeenCalledWith('tea', ['logins'], { encoding: 'utf-8' });
+    expect(spawnSyncSpy).toHaveBeenCalledWith('tea', ['logins'], { encoding: 'utf-8', maxBuffer: FORGE_CLI_MAX_BUFFER });
     expect(result).toEqual({ status: 0, stdout: 'logged in\n', stderr: '', error: null });
   });
 
@@ -45,6 +46,7 @@ describe('tea-cli', () => {
 
     expect(spawnSyncSpy).toHaveBeenCalledWith('tea', ['issues', 'list', '--json'], {
       encoding: 'utf-8',
+      maxBuffer: FORGE_CLI_MAX_BUFFER,
     });
   });
 
@@ -55,6 +57,7 @@ describe('tea-cli', () => {
 
     expect(spawnSyncSpy).toHaveBeenCalledWith('tea', ['issues', 'list', '--json'], {
       encoding: 'utf-8',
+      maxBuffer: FORGE_CLI_MAX_BUFFER,
     });
   });
 
@@ -130,5 +133,37 @@ describe('tea-cli', () => {
       spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('{}', 0, 'HTTP/1.1 301 Moved Permanently\r\n\r\nHTTP/1.1 200 OK\r\n'));
       expect(runTeaApi('GET', 'user').body).toBe('{}');
     });
+  });
+  test('runTea raises the spawn buffer far above the 1 MiB default', () => {
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('ok', 0));
+
+    runTea(['issues', 'list']);
+
+    const options = spawnSyncSpy.mock.calls[0]?.[2] as { maxBuffer?: number };
+    expect(options.maxBuffer).toBe(FORGE_CLI_MAX_BUFFER);
+    expect(FORGE_CLI_MAX_BUFFER).toBeGreaterThanOrEqual(256 * 1024 * 1024);
+  });
+
+  test('runTeaJson reports ENOBUFS as a buffer overflow, not a JSON parse error over the cut output', () => {
+    const truncated = '[{"url":"https://example.test/1","body":"cut mid-str';
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
+      ...mockSpawnResult(truncated, 0),
+      status: null,
+      signal: 'SIGTERM',
+      error: Object.assign(new Error('spawnSync tea ENOBUFS'), { code: 'ENOBUFS' }),
+    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+
+    let message = '';
+    try {
+      runTeaJson(['issues', 'list']);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+
+    expect(message).toContain('ENOBUFS');
+    expect(message).toContain('tea issues');
+    expect(message).toContain(String(FORGE_CLI_MAX_BUFFER));
+    expect(message).not.toContain('cut mid-str');
+    expect(message).not.toMatch(/JSON/);
   });
 });
