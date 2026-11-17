@@ -12,9 +12,9 @@ a `run`: it takes the same launch gate (`launch-gate.md`, catchup form) and drai
 The owner (or a scheduled task) wants the unused share of this week's allowance spent on backlog
 work. Use `run` instead when no quota target matters.
 
-Single-account only until lane claims land: `catchup.lane` is recorded and shown but nothing
-consumes it yet, so a second account's catchup on the same repo is unsafe (the Pacing row reads
-`lane unset`).
+Set `catchup.lane` per account before a second account runs on the same repo (the Pacing row reads
+`lane unset` until then): dispatch claims each issue under that lane through
+`orchestrator-dispatch.md` § Lane claim and release.
 
 ## Steps
 

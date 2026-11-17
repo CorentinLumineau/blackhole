@@ -3,6 +3,8 @@ import { issueMatchesScope, type CampaignScope } from '../forge-scope.ts';
 import type { ForgeIssue, ForgePr } from './forge-adapter/types.ts';
 import { foreignLaneLabel, isOwnLaneBranch } from './campaign-status/blocked-classes.ts';
 import { closedIssues } from './campaign-status/merged.ts';
+import { latestClosingPrActivity } from './forge-adapter/claim.ts';
+import { DEFAULT_CLAIM_LEASE_HOURS, isClaimStale, LANE_LABEL_PREFIX, laneOfLabel } from './lane.ts';
 import { DONE_STATUSES } from './campaign-status/queue.ts';
 import type { QueueIssue, QueueJson } from './campaign-status/types.ts';
 
@@ -23,6 +25,10 @@ export type SyncInput = {
   scope: CampaignScope;
   config: { default_touch_paths?: string[]; size_label_prefix?: string };
   now: string;
+  /** The account's lane (ADR-053 C4). Absent or null: the legacy `claude`/`blackhole` ownership. */
+  lane?: string | null;
+  /** Hours without issue or PR activity before another lane's `in-progress:*` claim is stale; used with a lane. */
+  claimLeaseHours?: number;
 };
 
 export type SyncResult = {
@@ -49,22 +55,33 @@ function forgeFields(i: ForgeIssue, sizePrefix: string) {
   return { title: i.title, labels, milestone: i.milestone?.title ?? null, size, epic_parent: parseEpicParentFromBody(i.body ?? '') };
 }
 
+/** How an issue's labels settle who owns a PR closing it; only consulted when a lane is configured. */
+type LaneLabels = (issue: number) => readonly string[];
+
 /**
- * Open PRs per issue. The campaign's own (a `claude/` or `blackhole/` branch): closing keyword first,
- * then an `…/issue-N` branch, then lowest number. Any other branch whose PR closes the issue holds it
- * elsewhere, with the note to write.
+ * Open PRs per issue. With a lane, the issue's lane label decides: the own lane label makes the PR
+ * the campaign's own, another lane's label makes it foreign, and only an issue with no lane label
+ * falls back to the branch prefix (ADR-053 C4). Without a lane the prefix always decides. Own PRs:
+ * closing keyword first, then an `…/issue-N` branch, then lowest number. A foreign PR holds the
+ * issue elsewhere, with the note to write.
  */
-function openPrIndex(prs: ForgePr[]): { own: Map<number, ForgePr>; foreign: Map<number, string> } {
+function openPrIndex(prs: ForgePr[], lane: string | null, labelsOf: LaneLabels): { own: Map<number, ForgePr>; foreign: Map<number, string> } {
   const own = new Map<number, ForgePr>();
   const foreign = new Map<number, string>();
   const open = prs.filter((p) => p.state === 'OPEN').sort((a, b) => a.number - b.number);
+  const isOwn = (n: number, branch: string): boolean => {
+    if (lane === null) return isOwnLaneBranch(branch);
+    const lanes = labelsOf(n).map(laneOfLabel).filter((l): l is string => l !== null);
+    if (lanes.length === 0) return isOwnLaneBranch(branch);
+    return lanes.includes(lane);
+  };
   for (const byKeyword of [true, false]) {
     for (const p of open) {
       const branch = p.headRefName ?? '';
       const named = BRANCH_ISSUE_RE.exec(branch);
       const targets = byKeyword ? closedIssues(p.body ?? '') : named ? [Number(named[1])] : [];
       for (const n of targets) {
-        if (!isOwnLaneBranch(branch)) {
+        if (!isOwn(n, branch)) {
           if (!foreign.has(n)) foreign.set(n, `${BOT_BRANCH.test(branch) ? OPEN_PR : ANOTHER_LANE} ${branch}`);
         } else if (!own.has(n)) own.set(n, p);
       }
@@ -139,7 +156,10 @@ export function syncQueue(input: SyncInput): SyncResult {
   }
 
   const merged = mergedPrIndex(input.prs);
-  const open = openPrIndex(input.prs);
+  const lane = input.lane ?? null;
+  const open = openPrIndex(input.prs, lane, (n) => issues[String(n)]?.labels ?? []);
+  const updatedAt = new Map(input.issues.map((i) => [String(i.number), i.updatedAt] as const));
+  const nowMs = Date.parse(input.now);
   for (const [key, entry] of Object.entries(issues)) {
     if (DONE_STATUSES.includes(entry.status ?? '')) continue;
     const n = Number(key);
@@ -150,7 +170,10 @@ export function syncQueue(input: SyncInput): SyncResult {
       closed.push(n);
       continue;
     }
-    const label = state ? foreignLaneLabel(entry.labels ?? []) : null;
+    const stale = lane !== null && isClaimStale({ updatedAt: updatedAt.get(key), activityAt: latestClosingPrActivity(input.prs, n), now: nowMs, leaseHours: input.claimLeaseHours ?? DEFAULT_CLAIM_LEASE_HOURS });
+    // A stale lease frees the issue from `in-progress:*` claims only; `agent:*` never leases.
+    const labels = stale ? (entry.labels ?? []).filter((l) => !l.startsWith(LANE_LABEL_PREFIX)) : (entry.labels ?? []);
+    const label = state ? foreignLaneLabel(labels, lane) : null;
     let next = state ? applyLane(entry, label ? `${ANOTHER_LANE} ${label}` : (open.foreign.get(n) ?? null)) : entry;
     const ownPr = open.own.get(n);
     if (ownPr && next.pr !== ownPr.number && !isLaneNote(next.notes)) {

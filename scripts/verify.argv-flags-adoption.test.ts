@@ -50,7 +50,7 @@ describe('argv-flags-adoption runChecks() against the real src/ tree', () => {
     expect(results[0].id).toBe('V-ARGV-01');
   });
 
-  test('passes against the current tree — all 18 target scripts import the shared primitive', () => {
+  test('passes against the current tree — all 19 target scripts import the shared primitive', () => {
     const [result] = runChecks();
     // On failure, surface which files still lack the import rather than a bare `false`.
     expect(result.detail ?? '').toBe('');

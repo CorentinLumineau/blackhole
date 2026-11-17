@@ -10,12 +10,17 @@ import {
   mapRestPr,
   removeLabel,
   repoSlugFromOrigin,
+  viewIssue,
   viewPr,
   type RestIssueRow,
   type RestPrRow,
 } from './github-rest.ts';
+import { claimIssue, latestClosingPrActivity, releaseIssue, type ClaimOps } from './claim.ts';
 import { isUnavailable, readDependencies, writeDependencies, type BodyChannel, type NativeDependencyChannel, type NativeEdge } from './dependencies.ts';
 import type {
+  ClaimLease,
+  ClaimResult,
+  ReleaseResult,
   DependencyRef,
   DependencyTarget,
   ForgeAdapter,
@@ -111,6 +116,39 @@ export class GitHubForgeAdapter implements ForgeAdapter {
 
   async labelRemove(entity: { type: 'issue' | 'pr'; number: number }, labels: string[]): Promise<void> {
     for (const label of labels) removeLabel(this.repo, entity.number, label);
+  }
+
+  async claim(issue: number, lane: string, user: string, lease?: ClaimLease): Promise<ClaimResult> {
+    return claimIssue(this.claimOps(), issue, lane, user, lease);
+  }
+
+  async release(issue: number, lane: string): Promise<ReleaseResult> {
+    return releaseIssue(this.claimOps(), issue, lane, await this.viewerLogin());
+  }
+
+  async viewerLogin(): Promise<string> {
+    return runGhApiRestJson<{ login: string }>('GET', 'user').login;
+  }
+
+  /** GitHub creates a label on first use, so `ensureLabel` is a no-op. */
+  private claimOps(): ClaimOps {
+    const assignees = (issue: number) => `repos/${this.repo}/issues/${issue}/assignees`;
+    return {
+      read: async (issue) => {
+        const row = mapRestIssue(viewIssue(this.repo, issue));
+        return { state: row.state, labels: row.labels.map((l) => l.name), assignees: row.assignees ?? [], updatedAt: row.updatedAt };
+      },
+      prActivity: async (issue) => latestClosingPrActivity(listPrs(this.repo, 'open', 100), issue),
+      ensureLabel: async () => {},
+      labelAdd: (issue, label) => this.labelAdd({ type: 'issue', number: issue }, [label]),
+      labelRemove: (issue, label) => this.labelRemove({ type: 'issue', number: issue }, [label]),
+      assign: async (issue, user) => {
+        runGhApiRestJson('POST', assignees(issue), { assignees: [user] });
+      },
+      unassign: async (issue, user) => {
+        runGhApiRestJson('DELETE', assignees(issue), { assignees: [user] });
+      },
+    };
   }
 
   async prChecks(number: number): Promise<ForgeCheck[]> {

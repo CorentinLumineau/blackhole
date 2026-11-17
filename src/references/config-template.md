@@ -142,8 +142,8 @@ Committed template: `.blackhole/config.json`
 | `catchup.pct_per_weekday` | no | Weekly points the pace floor credits per weekday (default `17.5`; number in (0, 100]). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `catchup.five_hour.no_spawn_at` | no | 5-hour `used_percentage` at or above which a catchup spawns no new worker (default `75`; must be `<` `stop_workers_at`). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `catchup.five_hour.stop_workers_at` | no | 5-hour `used_percentage` at or above which a catchup stops its workers (default `80`; number in (0, 100]). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
-| `catchup.lane` | no | Name of this account's lane, matching `[a-z0-9][a-z0-9._-]*` (default `null` = unset; recorded and shown, consumed from M4). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
-| `catchup.claim_lease_hours` | no | Hours a lane claim stays valid (default `24`; number > 0; consumed from M4). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
+| `catchup.lane` | no | Name of this account's lane, matching `[a-z0-9][a-z0-9._-]*` (default `null` = unset; read by `scripts/claim.ts`, `forge-sync` and the status surfaces). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
+| `catchup.claim_lease_hours` | no | Hours a lane claim stays valid (default `24`; number > 0; read by `scripts/claim.ts` and `forge-sync`). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `catchup.day_end_hour` | no | Local hour at which a weekday's credit lands (default `18`; integer 1-24). **Resolution**: absent block or key ⇒ the default; a wrong type throws with the key path |
 | `resource_policy.carveout_recorded_at` | no | ISO8601 timestamp when the resource-policy carveout block was last recorded |
 | `stop_budget_cleared_at` | no | ISO8601 timestamp when the campaign stop-budget gate was cleared by the owner/coordinator (audit trail) |
@@ -281,8 +281,8 @@ the verdict `PACE-WAIT` (drain, wake at `wake_at`, resume) is part of the gate's
 
 The `catchup` block is read only by `catchup` mode, `scripts/usage-budget.ts --floor`,
 `scripts/pace-floor.ts` and the launch gate's Pacing row; it never changes `run`. The invocation
-overrides (`--floor`, `--no-spawn-at`, `--stop-workers-at`, `--lane`) never write it. `lane` is recorded
-but consumed from M4.
+overrides (`--floor`, `--no-spawn-at`, `--stop-workers-at`, `--lane`) never write it. `lane` is also read by
+`scripts/claim.ts`, `forge-sync` and the status surfaces.
 
 ## Status page coverage
 

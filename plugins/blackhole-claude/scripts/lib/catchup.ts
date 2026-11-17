@@ -1,5 +1,6 @@
 import type { UsageReport } from './usage-source.ts';
 import { DEFAULT_DAY_END_HOUR, DEFAULT_PCT_PER_WEEKDAY, computePaceFloor } from './pace-floor.ts';
+import { DEFAULT_CLAIM_LEASE_HOURS, LANE_NAME } from './lane.ts';
 import type { RateLimits } from './rate-limit-cache.ts';
 import { isPct, isPositive, pick, section, workersAllowed, type MeasuredWeeklyRates, type UsageBudgetConfig, type UsageVerdict } from './usage-budget.ts';
 
@@ -19,11 +20,10 @@ export const DEFAULT_CATCHUP: CatchupConfig = {
   pct_per_weekday: DEFAULT_PCT_PER_WEEKDAY,
   five_hour: { no_spawn_at: 75, stop_workers_at: 80 },
   lane: null,
-  claim_lease_hours: 24,
+  claim_lease_hours: DEFAULT_CLAIM_LEASE_HOURS,
   day_end_hour: DEFAULT_DAY_END_HOUR,
 };
 
-const LANE = /^[a-z0-9][a-z0-9._-]*$/;
 const P = 'catchup';
 
 const validate = (c: CatchupConfig, keyPath: { no_spawn: string; stop_workers: string }): CatchupConfig => {
@@ -45,7 +45,7 @@ export const resolveCatchup = (config: Record<string, unknown>): CatchupConfig =
       no_spawn_at: pick(five, 'no_spawn_at', `${P}.five_hour.no_spawn_at`, d.five_hour.no_spawn_at, isPct, 'a number in (0, 100]'),
       stop_workers_at: pick(five, 'stop_workers_at', `${P}.five_hour.stop_workers_at`, d.five_hour.stop_workers_at, isPct, 'a number in (0, 100]'),
     },
-    lane: pick<string | null>(block, 'lane', `${P}.lane`, d.lane, (v) => v === null || (typeof v === 'string' && LANE.test(v)), 'null or a name matching [a-z0-9][a-z0-9._-]*'),
+    lane: pick<string | null>(block, 'lane', `${P}.lane`, d.lane, (v) => v === null || (typeof v === 'string' && LANE_NAME.test(v)), 'null or a name matching [a-z0-9][a-z0-9._-]*'),
     claim_lease_hours: pick(block, 'claim_lease_hours', `${P}.claim_lease_hours`, d.claim_lease_hours, isPositive, 'a number > 0'),
     day_end_hour: pick(block, 'day_end_hour', `${P}.day_end_hour`, d.day_end_hour, (v) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 24, 'an integer 1-24'),
   };
@@ -63,7 +63,7 @@ export const applyOverrides = (preset: CatchupConfig, overrides: CatchupOverride
   if (overrides.floor_pct !== undefined) ok('--floor', overrides.floor_pct, isPct, 'a number in (0, 100]');
   if (overrides.no_spawn_at !== undefined) ok('--no-spawn-at', overrides.no_spawn_at, isPct, 'a number in (0, 100]');
   if (overrides.stop_workers_at !== undefined) ok('--stop-workers-at', overrides.stop_workers_at, isPct, 'a number in (0, 100]');
-  if (overrides.lane !== undefined) ok('--lane', overrides.lane, (v) => v === null || (typeof v === 'string' && LANE.test(v)), 'null or a name matching [a-z0-9][a-z0-9._-]*');
+  if (overrides.lane !== undefined) ok('--lane', overrides.lane, (v) => v === null || (typeof v === 'string' && LANE_NAME.test(v)), 'null or a name matching [a-z0-9][a-z0-9._-]*');
   return validate(
     {
       ...preset,

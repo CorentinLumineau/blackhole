@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
+import { readLaneConfig } from './lib/lane.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { buildBudgetPanel, givenBudgetPanel, readBudgetPanel, resolveBudgetSettings } from './lib/campaign-status/budget.ts';
 import { adjustPacing, applyOverrides, floorBudget, localUtcOffsetMinutes, readPacing, resolveCatchup } from './lib/catchup.ts';
@@ -404,6 +405,7 @@ async function main() {
     checkpointBody: state.checkpointBody,
     view: report,
     crossRepoBlockers,
+    lane: readLaneConfig(state.config as { catchup?: unknown }).lane,
   });
 
   for (const alert of readStatusAlerts(campaignDir, state, report.generated_at)) console.log(alert.message);

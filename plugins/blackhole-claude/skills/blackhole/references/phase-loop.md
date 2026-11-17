@@ -244,6 +244,7 @@ D5 narrowing as Step 0.5 above).
    transport failure rather than the branch. Bypassed under `merge_mode: leave-open`, which never
    calls `gh pr merge` at all.
 5. Post-merge: migration apply if schema PR; deploy verify per runbook
+5.5. Release the issue's lane claim: `orchestrator-dispatch.md` § Lane claim and release.
 
 ## Ledger cleanup on merge
 
