@@ -211,7 +211,9 @@ sees at a glance where the run stands and what to do:
    **Hook denials** (top 5 rules by deny and warn count, or `no hook denials recorded`),
    **Usage budget** — see below
 
-**Usage budget** (`scripts/lib/campaign-status/budget.ts`) reads the rate-limit cache
+**Usage budget** (`scripts/lib/campaign-status/budget.ts`) reads the host's usage source
+(`usage-source.ts`; the host `run-context.json` records, else the environment's; Cursor has none, so
+the panel says `usage not probed — <reason>`): on Claude or an unknown host, the rate-limit cache
 `pace-gate.ts` and `usage-budget.ts` read (`resolveRateLimitCachePath`: `resource_policy.pace.cache_path`,
 else `~/.claude/cache/rate-limits.json`; stale past `resource_policy.pace.max_age_seconds`) and
 shows: the **5-hour** % and reset, only when the plan has a current five_hour window (a weekly-only
@@ -220,7 +222,7 @@ plan shows no 5-hour row); the **Weekly** % and reset; **Workers allowed** with 
 `usage_budget` is off or invalid, as the CLI returns); one **Forecast** row per distinct weekly
 threshold (`no_new_starts_at`, `stop_campaign_at`): `weekly X% reached around <day HH:MM UTC>`,
 or `not reached before the reset`, from the pace since the weekly window opened at 0%
-(`forecastWeekly()`); and the reading's age. With no current reading it says
+(`forecastWeekly()`); the reading's age; and **Usage windows**, the windows the reading shows and its source. With no current reading it says
 `usage not probed — <reason>`. Times are UTC, so every host prints the same page.
 
 `--html` keeps its detail sections after these: in progress, waiting on you, waiting on

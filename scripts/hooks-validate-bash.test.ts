@@ -5243,3 +5243,118 @@ describe('hook-event-log.js — residual credential forms (#1190)', () => {
     });
   }
 });
+describe('hook-event-log.js — quoted values and client password env vars (#1192)', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  // Fake values built by concatenation so no credential-shaped literal sits in source for secret scanners.
+  const phrase = 'my pa' + 'ss phr' + 'ase';
+  const hunter = 'hun' + 'ter 22';
+  const twoWords = 'p' + 'w w' + 'x';
+  const single = 'hun' + 'ter2' + 'pw';
+
+  const FORMS: Array<{ label: string; input: string; secret: string; masked: string }> = [
+    { label: 'KV double-quoted value with spaces', input: `{"password":"${phrase}"}`, secret: 'phr' + 'ase', masked: '{"password":"***"}' },
+    { label: 'KV double-quoted value with spaces after a spaced colon', input: `{"password": "${hunter}"}`, secret: 'ter 22', masked: '{"password": "***"}' },
+    { label: 'KV single-quoted value with spaces', input: `password='${phrase}' next`, secret: 'phr' + 'ase', masked: "password='***' next" },
+    { label: 'curl -u quoted user:pass with spaces', input: `curl -u 'admin:${hunter}' https://example.com/x`, secret: 'ter 22', masked: "-u 'admin:***' https://example.com/x" },
+    { label: 'curl --user quoted user:pass with spaces', input: `curl --user "u:${twoWords}" https://example.com/x`, secret: 'w w', masked: '--user "u:***" https://example.com/x' },
+    { label: 'bare --user quoted user:pass with spaces', input: `tool --user="u:${twoWords}" go`, secret: 'w w', masked: '--user="u:***" go' },
+    { label: 'PGPASSWORD before a command', input: `PGPASSWORD=${single} psql -h db`, secret: single, masked: 'PGPASSWORD=*** psql -h db' },
+    { label: 'PGPASSWORD with a quoted value', input: `PGPASSWORD="${phrase}" psql`, secret: 'phr' + 'ase', masked: 'PGPASSWORD="***" psql' },
+    { label: 'export PGPASSWORD', input: `export PGPASSWORD=${single}`, secret: single, masked: 'export PGPASSWORD=***' },
+    { label: 'MYSQL_PWD before a command', input: `MYSQL_PWD=${single} mysql -u root`, secret: single, masked: 'MYSQL_PWD=*** mysql -u root' },
+    { label: 'MYSQL_PWD with a short value', input: 'MYSQL_PWD=ab mysql', secret: '=ab', masked: 'MYSQL_PWD=*** mysql' },
+  ];
+
+  for (const form of FORMS) {
+    test(`redactReason masks ${form.label} placed after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${form.input} Remedy: rotate it.`);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+      expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+    });
+  }
+
+  test('negatives: look-alike text is left unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    const unchanged = [
+      '{"password_hint":"my first pet"}',
+      '{"tokens":["a b"]}',
+      'curl -u user https://example.com',
+      'PG_HOST=x psql',
+      'PGHOST=db psql',
+    ];
+    for (const text of unchanged) {
+      expect(redact(text)).toBe(text);
+      expect(redactReason(`${filler} ${text}`)).toBe(`${filler} ${text}`);
+    }
+  });
+
+  const ADVERSARIAL: Array<[string, string]> = [
+    ['unterminated quoted KV value', `"password":"${'a '.repeat(100_000)}`],
+    ['repeated unterminated quoted KV openers', '"password":"'.repeat(16_600)],
+    ['repeated single-quoted KV openers', "password: '".repeat(18_000)],
+    ['unterminated quoted curl -u', `curl -u '${'a:b '.repeat(50_000)}`],
+    ['repeated unterminated curl -u openers', "curl -u 'a:".repeat(18_000)],
+    ['repeated unterminated --user openers', '--user "a:'.repeat(22_000)],
+    ['unterminated quoted PGPASSWORD', `PGPASSWORD="${'a '.repeat(100_000)}`],
+    ['repeated PGPASSWORD openers', 'PGPASSWORD="'.repeat(16_000)],
+    ['PGPASSWORD then endless value', `PGPASSWORD=${'a'.repeat(200_000)}`],
+    ['repeated MYSQL_PWD', 'MYSQL_PWD='.repeat(20_000)],
+  ];
+
+  for (const [label, input] of ADVERSARIAL) {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+      const { redactReason } = hookEventLog();
+      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+    });
+  }
+});
+
+// The fork-bomb pattern's leading identifier group used to restart its greedy run at every
+// offset inside a long identifier, backtracking quadratically (8.4 s on 120 KB of `a`) — past the
+// native-wrapper timeout, which fails open and bypasses the static deny.
+describe('validate-bash-command.js — fork-bomb pattern stays linear on long identifier runs', () => {
+  const forkBomb = (): RegExp => {
+    const raw = JSON.parse(
+      fs.readFileSync(path.join(PRETOOLUSE_HOOKS_DIR, 'patterns', 'bash-patterns.json'), 'utf8'),
+    );
+    const entry = raw.blockPatterns.find((p: { id: string }) => p.id === 'fork-bomb');
+    return new RegExp(entry.pattern, entry.flags);
+  };
+
+  test('64 KB of identifier chars is scanned in under 50 ms', () => {
+    const re = forkBomb();
+    const input = 'a'.repeat(64 * 1024);
+    const start = performance.now();
+    const matched = re.test(input);
+    const elapsed = performance.now() - start;
+    expect(matched).toBe(false);
+    expect(elapsed).toBeLessThan(50);
+  });
+
+  for (const command of [':(){ :|:& };:', 'bomb(){ bomb|bomb& };bomb', 'echo hi; f(){ f|f& };f']) {
+    test(`the pattern still matches \`${command}\``, () => {
+      expect(forkBomb().test(command)).toBe(true);
+    });
+  }
+
+  test('hook seam: `echo` plus 30 KB of identifier chars (under the 32 KiB size cap) is allowed in under 500 ms', async () => {
+    await withTempGitRepo('blackhole-hook-forkbomb-', async (repo) => {
+      const start = performance.now();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`echo ${'a'.repeat(30 * 1024)}`), repo);
+      const elapsed = performance.now() - start;
+      expect(result.exitCode).toBe(0);
+      expect(elapsed).toBeLessThan(500);
+    });
+  });
+
+  test('hook seam: the classic `:(){ :|:& };:` form is still denied', async () => {
+    await withTempGitRepo('blackhole-hook-forkbomb-', async (repo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(':(){ :|:& };:'), repo);
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(readHookEvents(repo)[0]).toMatchObject({ tier: 'block', pattern_id: 'fork-bomb' });
+    });
+  });
+});
