@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import { readRateLimits, resolvePaceGateThresholds, type RateLimits } from '../pace-gate.ts';
 import type { Host } from '../run-context.ts';
-import { forecastWeekly, resolveUsageBudget, resolveUsageWindows, workersAllowed, USAGE_WINDOWS, type UsageBudgetConfig, type UsageVerdict } from '../usage-budget.ts';
+import { forecastWeekly, resolveUsageBudget, resolveUsageWindows, weeklyPace, workersAllowed, USAGE_WINDOWS, type UsageBudgetConfig, type UsageVerdict, type WeeklyPace, type WeeklyReading } from '../usage-budget.ts';
+import { readUsageHistory } from '../usage-history.ts';
 import { restrictWindows, usageSourceFor, type UsageSourceName } from '../usage-source.ts';
 import type { BudgetPanel } from './types.ts';
 
@@ -45,6 +46,7 @@ export const NOT_PROBED: BudgetPanel = {
   windows: [],
   target_at_reset: null,
   stale: null,
+  pace: { verdict: 'unknown', recent_pct_per_hour: null, required_pct_per_hour: null, points_vs_line: null, reason: 'no usage reading' },
 };
 
 const targetOf = (config: Record<string, unknown>): number | null => resolveBudgetSettings(config).budget?.weekly.target_at_reset ?? null;
@@ -72,6 +74,14 @@ function staleOf(stale: { limits: RateLimits; ageSeconds: number } | null, now: 
   };
 }
 
+/** The pace over the history plus the reading on hand (current or stale), which replaces a history line with its own time. */
+function paceOf(history: WeeklyReading[], limits: RateLimits | null, ageSeconds: number | null, now: number, target: number | null): WeeklyPace {
+  const week = limits?.seven_day;
+  const own = week ? [{ observed_at: now - (ageSeconds ?? 0), used_percentage: week.used_percentage, resets_at: week.resets_at }] : [];
+  const readings = [...history.filter((r) => !own.some((o) => o.observed_at === r.observed_at)), ...own];
+  return readings.length ? weeklyPace(readings, now, target) : NOT_PROBED.pace;
+}
+
 /** The panel for one reading; `limits` null ⇒ not probed, with `reason`. `now` is epoch seconds. */
 export function buildBudgetPanel(input: {
   limits: RateLimits | null;
@@ -82,11 +92,21 @@ export function buildBudgetPanel(input: {
   source?: UsageSourceName;
   /** The reading of a cache past its max age, kept for display only. */
   stale?: { limits: RateLimits; ageSeconds: number } | null;
+  /** Earlier weekly readings (`usage-history.jsonl`), for the pace row. */
+  history?: WeeklyReading[];
 }): BudgetPanel {
   const { limits, now, config } = input;
+  const history = input.history ?? [];
   if (!limits) {
     const target = targetOf(config);
-    return { ...NOT_PROBED, reason: input.reason ?? NOT_PROBED.reason, target_at_reset: target, stale: staleOf(input.stale ?? null, now, target) };
+    const stale = input.stale ?? null;
+    return {
+      ...NOT_PROBED,
+      reason: input.reason ?? NOT_PROBED.reason,
+      target_at_reset: target,
+      stale: staleOf(stale, now, target),
+      pace: paceOf(history, stale?.limits ?? null, stale?.ageSeconds ?? null, now, target),
+    };
   }
   const { verdict, budget } = verdictFor(limits, now, config);
   const five = limits.five_hour && limits.five_hour.resets_at > now ? limits.five_hour : undefined;
@@ -119,11 +139,12 @@ export function buildBudgetPanel(input: {
     windows: USAGE_WINDOWS.filter((name) => (name === 'five_hour' ? five : week) !== undefined),
     target_at_reset: budget?.weekly.target_at_reset ?? null,
     stale: null,
+    pace: paceOf(history, limits, input.ageSeconds, now, budget?.weekly.target_at_reset ?? null),
   };
 }
 
-/** Reads `host`'s usage source (`usage-source.ts`): the rate-limit cache the config names on Claude, none elsewhere. */
-export function readBudgetPanel(config: Record<string, unknown>, host: Host, now: number = Math.floor(Date.now() / 1000)): BudgetPanel {
+/** Reads `host`'s usage source (`usage-source.ts`): the rate-limit cache the config names on Claude, none elsewhere; `historyPath` is the campaign's `usage-history.jsonl`. */
+export function readBudgetPanel(config: Record<string, unknown>, host: Host, now: number = Math.floor(Date.now() / 1000), historyPath: string | null = null): BudgetPanel {
   let reading;
   let cachePath: string | null = null;
   try {
@@ -146,7 +167,8 @@ export function readBudgetPanel(config: Record<string, unknown>, host: Host, now
     const kept = last ? restrictWindows(last, resolveUsageWindows(config)).limits : null;
     if (kept) stale = { limits: kept, ageSeconds };
   }
-  return buildBudgetPanel({ limits: reading.limits, reason: reading.reason, ageSeconds, now, config, source: reading.source, stale });
+  const history = historyPath ? readUsageHistory(historyPath) : [];
+  return buildBudgetPanel({ limits: reading.limits, reason: reading.reason, ageSeconds, now, config, source: reading.source, stale, history });
 }
 
 /** The panel for a reading the harness reported (`--usage`), restricted to `usage_budget.windows` as the usage source and usage-budget.ts restrict it. */
@@ -175,9 +197,21 @@ const staleAge = (seconds: number): string => {
 };
 const age = (seconds: number): string => (seconds < 60 ? `${seconds}s old` : seconds < 2 * HOUR ? `${Math.round(seconds / 60)} min old` : `${Math.round(seconds / HOUR)} h old`);
 
+/** `DECELERATE — 3.5%/h now vs 0.6%/h needed; 12 points over the line`, or `unknown — <reason>`. */
+export function paceValue(p: WeeklyPace): string {
+  if (p.verdict === 'unknown' || p.recent_pct_per_hour === null || p.required_pct_per_hour === null || p.points_vs_line === null) return `unknown — ${p.reason ?? 'no usage reading'}`;
+  const points = Math.round(p.points_vs_line);
+  const n = Math.abs(points);
+  const line = points === 0 ? 'on the line' : `${n} point${n === 1 ? '' : 's'} ${points > 0 ? 'over' : 'under'} the line`;
+  return `${p.verdict.toUpperCase()} — ${p.recent_pct_per_hour.toFixed(1)}%/h now vs ${p.required_pct_per_hour.toFixed(1)}%/h needed; ${line}`;
+}
+
 /** The panel as key/value rows: the text dashboard, `--html` and the `budget` dataset all print these. */
 export function budgetRows(b: BudgetPanel): Array<{ key: string; value: string }> {
-  const target = b.target_at_reset === null ? [] : [{ key: 'Weekly target', value: `${b.target_at_reset}% at the weekly reset` }];
+  const target = [
+    ...(b.target_at_reset === null ? [] : [{ key: 'Weekly target', value: `${b.target_at_reset}% at the weekly reset` }]),
+    { key: 'Pace', value: paceValue(b.pace) },
+  ];
   if (!b.probed && b.stale) {
     const s = b.stale;
     const line = s.target_line_pct === null ? '' : `; target line ${s.target_line_pct}% now`;

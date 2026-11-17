@@ -26,6 +26,7 @@ import { createForgeAdapter } from './lib/forge-adapter/index.ts';
 import type { ForgeAdapter } from './lib/forge-adapter/types.ts';
 import { isForgeType, resolveForgeForRepo } from './lib/forge-detection.ts';
 import { formatPaceLine, readLatestPaceRecord } from './lib/pace-log.ts';
+import { USAGE_HISTORY_FILE } from './lib/usage-history.ts';
 import { forgeDeclaredCrossRepo } from './lib/pr-dependencies.ts';
 import type { PluginDriftSignal, PluginDriftSource } from './plugin-drift-signal.ts';
 import type { StatusReport } from './lib/campaign-status/types.ts';
@@ -207,7 +208,7 @@ export async function collectStatusReport(
     mergedPrs,
     pluginVersion: readPluginVersion(),
     denyCounts: collectDenyCounts(campaignDir, queue.campaign_started_at ?? null),
-    budget: readBudgetPanel(config as Record<string, unknown>, resolveHost(campaignDir, process.env)),
+    budget: readBudgetPanel(config as Record<string, unknown>, resolveHost(campaignDir, process.env), undefined, path.join(campaignDir, USAGE_HISTORY_FILE)),
     runContext: readJsonOrNull(path.join(campaignDir, 'run-context.json')),
     pending: readPending(campaignDir),
   });
@@ -288,7 +289,7 @@ async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJso
   const rows = buildLaunchSummary({
     report: collected.report,
     config,
-    budget: usage ? givenBudgetPanel(usage, config, nowS) : readBudgetPanel(config, resolveHost(campaignDir, process.env), nowS),
+    budget: usage ? givenBudgetPanel(usage, config, nowS) : readBudgetPanel(config, resolveHost(campaignDir, process.env), nowS, path.join(campaignDir, USAGE_HISTORY_FILE)),
     statusPage: readStatusPageInput(campaignDir, collected.state.config, nowIso),
   });
   if (asJson) {
