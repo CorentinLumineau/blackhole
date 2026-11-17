@@ -256,3 +256,106 @@ describe('validate-bash-command.js — #1184 re-review: git globals, format-patc
     });
   });
 });
+
+// Follow-ups from the #1208 review (#1222): linear containment for deep relative targets, git
+// aliases and exec-carrying config passed with `-c`, format-patch writing into the `-C` directory,
+// and a piped `grep bash` that is not a shell.
+describe('bash-write-target-guard.js — #1222 deep-path containment stays linear', () => {
+  const guard = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+
+  test('#1222: 64k chained `-C a` options are evaluated in linear time', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
+      const { evaluateBashWriteTargets } = guard();
+      const command = `git ${'-C a '.repeat(64_000)}diff --output=o1`;
+      // The bottom-up ancestor walk took ~4 s here (16k: ~0.4 s); a linear walk is well under 250 ms.
+      expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
+    });
+  });
+
+  test('#1222: a redirect into a 16k-segment relative path is evaluated in linear time', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
+      const { evaluateBashWriteTargets } = guard();
+      const command = `echo hi > ${'a/'.repeat(16_000)}x`;
+      expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
+    });
+  });
+
+  test('#1222: a deep relative path that climbs out with `..` is still denied', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+      const up = path.relative(worktree, mainRepo);
+      const verdict = guard().evaluateBashWriteTargets(`echo hi > ${'a/'.repeat(50)}${'../'.repeat(50)}${up}/x`, worktree);
+      expect(verdict).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    });
+  });
+});
+
+describe('validate-bash-command.js — #1222 git -c aliases, -C format-patch, piped grep', () => {
+  for (const command of [
+    "git -c alias.d='!touch /etc/x' d",
+    'git -c alias.d=!sh d',
+    "git -c alias.fp='format-patch -o /etc' fp",
+    "git -c 'alias.d=!touch /etc/x' d",
+    'git --config-env=alias.d=CMD d',
+    "git -c core.pager='sh -c x' log",
+    "git -c core.sshCommand='touch /etc/x' fetch",
+    "git -c diff.external='touch /etc/x' diff",
+  ]) {
+    test(`#1222: \`${command}\` warns (git runs a command the string does not show)`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+        const result = await run(command, worktree);
+
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+      });
+    });
+  }
+
+  test('#1222: `git -c user.name=x commit` (no exec-carrying key) stays allowed with no event', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+      const result = await run("git -c user.name=x -c core.autocrlf=false status", worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  test('#1222: `git -C <outside> format-patch -1` (patches written into the -C directory) is denied', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+      const result = await run(`git -C ${mainRepo} format-patch -1`, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    });
+  });
+
+  for (const command of ['git format-patch -1', 'git -C sub format-patch -1', 'git -C MAIN format-patch --stdout -1']) {
+    test(`#1222: \`${command}\` stays allowed`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+        const result = await run(command.replace('MAIN', mainRepo), worktree);
+
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
+  for (const command of ['ps aux | grep bash', 'ps | grep -c sh', "pgrep -a node | rg 'bash'"]) {
+    test(`#1222: \`${command}\` is not a piped shell and stays allowed with no event`, async () => {
+      await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+        const result = await run(command, worktree);
+
+        expect(result.exitCode).toBe(0);
+        expect(readHookEvents(mainRepo)).toEqual([]);
+      });
+    });
+  }
+
+  test('#1222: `echo x | grep x | bash` still warns (the last stage is a shell)', async () => {
+    await withLinkedWorktree('blackhole-hook-1222-', async (mainRepo, worktree) => {
+      const result = await run("echo 'x' | grep x | bash", worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+    });
+  });
+});

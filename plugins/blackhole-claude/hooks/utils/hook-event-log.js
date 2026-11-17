@@ -171,15 +171,26 @@ const mainCloneRoot = (cwd = process.cwd()) => {
  * `validate-file-changes.js`'s leaf-containment check and `allWorktreeRoots`'s root filter below
  * (#510) — one resolution path for both sides of every containment comparison (`V-INT-02`). */
 const resolveExistingAncestor = (p) => {
-  let current = path.resolve(p);
-  for (;;) {
-    try {
-      return fs.realpathSync(current);
-    } catch {
-      const parent = path.dirname(current);
-      if (parent === current) return current;
-      current = parent;
+  const resolved = path.resolve(p);
+  try {
+    return fs.realpathSync(resolved);
+  } catch {
+    // Walked top-down: existence is monotone along a path's prefixes, so the first prefix that
+    // does not resolve ends the walk. A bottom-up walk re-resolved every ancestor of a deep
+    // nonexistent path, quadratic in its depth (#1222).
+    const { root } = path.parse(resolved);
+    const segments = resolved.slice(root.length).split(path.sep).filter(Boolean);
+    let existing = root;
+    let prefix = root;
+    for (const segment of segments) {
+      prefix = path.join(prefix, segment);
+      try {
+        existing = fs.realpathSync(prefix);
+      } catch {
+        break;
+      }
     }
+    return existing;
   }
 };
 
