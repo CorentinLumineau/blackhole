@@ -3,7 +3,7 @@ import * as path from 'path';
 import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
-import { buildBudgetPanel, readBudgetPanel } from './lib/campaign-status/budget.ts';
+import { givenBudgetPanel, readBudgetPanel } from './lib/campaign-status/budget.ts';
 import { isSleepMode } from './lib/campaign-status/pending-decisions.ts';
 import { resolveHost } from './lib/usage-source.ts';
 import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
@@ -14,7 +14,8 @@ import { writeStatusData } from './lib/campaign-status/data.ts';
 import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
 import { readPublishState, readStatusAlerts, statusPageEnabled } from './lib/campaign-status/staleness.ts';
-import { buildLaunchSummary, gateCards, renderLaunchSummary, type StatusArtifact, type StatusPageInput } from './lib/campaign-status/launch-summary.ts';
+import { buildLaunchSummary, gateCards, renderLaunchSummary } from './lib/campaign-status/launch-summary.ts';
+import type { StatusArtifact, StatusPageInput } from './lib/campaign-status/status-page-row.ts';
 import type { RateLimits } from './lib/pace-gate.ts';
 import { parseUsage } from './usage-budget.ts';
 import { buildStatusReport } from './lib/campaign-status/report.ts';
@@ -249,8 +250,8 @@ function readPrintOnly(campaignDir: string, config: Record<string, unknown>): bo
 
 /**
  * `--summary`: the launch gate's seven rows and question cards. The Budget row reads the same
- * `BudgetPanel` the status page shows: built from `--usage` when given, else from the rate-limit
- * cache at `--now`, as `report.budget` is.
+ * `BudgetPanel` the status page shows: built from `--usage` (restricted to `usage_budget.windows`)
+ * when given, else from the host's usage source at `--now`, as `report.budget` is.
  */
 async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJson: string | null, now: number | null, asJson: boolean) {
   let usage: RateLimits | null = null;
@@ -275,7 +276,7 @@ async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJso
   const rows = buildLaunchSummary({
     report: collected.report,
     config,
-    budget: usage ? buildBudgetPanel({ limits: usage, reason: null, ageSeconds: 0, now: nowS, config }) : readBudgetPanel(config, resolveHost(campaignDir, process.env), nowS),
+    budget: usage ? givenBudgetPanel(usage, config, nowS) : readBudgetPanel(config, resolveHost(campaignDir, process.env), nowS),
     statusPage: readStatusPageInput(campaignDir, collected.state.config, nowIso),
   });
   if (asJson) {

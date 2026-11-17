@@ -10,11 +10,10 @@ import {
   LAUNCH_ROW_KEYS,
   MAX_CONSEQUENCE_CHARS,
   renderLaunchSummary,
-  statusPageRow,
   type LaunchRow,
-  type StatusPageInput,
 } from './launch-summary.ts';
 import { buildStatusReport } from './report.ts';
+import type { StatusPageInput } from './status-page-row.ts';
 import { loadCampaignState } from './state.ts';
 import type { BudgetPanel, ForgeCounts, PrSignal } from './types.ts';
 
@@ -147,6 +146,29 @@ describe('the Budget row', () => {
     expect(budgetRow(panel(on(), usage(10, 20)), on()).consequence).toContain('spawning stops at 5h 85%');
   });
 
+  test('a configured weekly-only plan reads weekly-only before any reading, and keeps the not-probed reason', () => {
+    const config = on({ windows: ['seven_day'] });
+    const row = budgetRow({ ...NOT_PROBED, reason: 'cursor: no readable usage source' }, config);
+    expect(row.value).toContain('not probed: cursor: no readable usage source');
+    expect(row.value).toContain('stops weekly 78/80%');
+    expect(row.value).not.toContain('5h');
+  });
+
+  test('PACE-WAIT names the wait for the weekly target', () => {
+    const config = on({ weekly: { target_at_reset: 50 } });
+    const b = panel(config, { five_hour: { used_percentage: 10, resets_at: NOW + HOUR }, seven_day: { used_percentage: 20, resets_at: NOW + 160 * HOUR } });
+    expect(b.verdict).toBe('PACE-WAIT');
+    const row = budgetRow(b, config);
+    expect(row.value).toContain('target 50% at weekly reset');
+    expect(row.consequence).toBe('The campaign waits until a worker fits the pace that lands on the weekly target at the reset.');
+  });
+
+  test('a flat weekly reading says there is no weekly trend yet', () => {
+    const row = budgetRow(panel(on(), usage(10, 0)), on());
+    expect(row.value).toContain('no weekly trend yet');
+    expect(row.value).not.toContain('forecast ');
+  });
+
   test('a weekly window gives a forecast; without one the row says so', () => {
     // 50% used with 3.5 of 7 days left: 0.6%/h, the 80% stop about 50h out.
     const week = { used_percentage: 50, resets_at: NOW + 84 * HOUR };
@@ -154,62 +176,6 @@ describe('the Budget row', () => {
     expect(withForecast.value).toContain('forecast 0.6%/h, weekly stop Sun 15 Nov 11:54 UTC');
     const noWeek = budgetRow(panel(on(), { five_hour: { used_percentage: 10, resets_at: NOW + HOUR } }), on());
     expect(noWeek.value).toContain('no forecast yet');
-  });
-});
-
-describe('the Status page row', () => {
-  const at = (minutesAgo: number) => new Date(Date.parse(NOW_ISO) - minutesAgo * 60_000).toISOString();
-  const page = (over: Partial<StatusPageInput>): StatusPageInput => ({ ...PAGE, ...over });
-
-  test('disabled', () => {
-    const row = statusPageRow(page({ enabled: false }));
-    expect(row.value).toBe('off (status_page.enabled is false)');
-    expect(row.consequence).toBe('No page is published; follow the run with bun run status.');
-    expect(row.probe_needed).toBeUndefined();
-  });
-
-  test('the host publishes none', () => {
-    const row = statusPageRow(page({ publishExpected: false }));
-    expect(row.value).toBe('none on this host');
-    expect(row.consequence).toBe('This host has no artifact tool; follow the run with bun run status.');
-    expect(row.adjustable).toBe(false);
-  });
-
-  test('never published', () => {
-    const row = statusPageRow(page({ artifact: null }));
-    expect(row.value).toBe('never published');
-    expect(row.consequence).toBe('A new page is published before the first spawn.');
-    expect(row.probe_needed).toBeUndefined();
-  });
-
-  test('probe ok and fresh (under 10 min)', () => {
-    const row = statusPageRow(page({ artifact: { url: URL, template_version: 4, last_probe: { at: at(9), ok: true, url: URL } } }));
-    expect(row.value).toBe(`${URL} · reachable (probed 9 min ago) · template v4`);
-    expect(row.consequence).toBe('The stored page opens from this account and is refreshed at every checkpoint.');
-    expect(row.options?.map((o) => o.label)).toEqual(['Accept', 'Reuse another', 'Publish new']);
-    expect(row.probe_needed).toBeUndefined();
-  });
-
-  test('probe failed: offers reuse-another or publish-new', () => {
-    const row = statusPageRow(page({ artifact: { url: URL, template_version: 4, last_probe: { at: at(2), ok: false, url: URL, reason: 'not found' } } }));
-    expect(row.value).toBe(`${URL} · NOT reachable: not found · template v4`);
-    expect(row.consequence).toBe('The stored page does not open from this account: reuse another artifact or publish a new one.');
-    expect(row.options?.map((o) => o.label)).toEqual(['Reuse another', 'Publish new']);
-  });
-
-  test('not probed: carries probe_needed.url (no probe, an old probe, or a probe of another URL)', () => {
-    for (const last_probe of [undefined, { at: at(11), ok: true, url: URL }, { at: at(1), ok: true, url: 'https://claude.ai/code/artifact/other' }]) {
-      const row = statusPageRow(page({ artifact: { url: URL, template_version: 4, last_probe } }));
-      expect(row.value).toBe(`${URL} · not probed · template v4`);
-      expect(row.probe_needed).toEqual({ url: URL });
-      expect(row.consequence).toBe('Probe the stored page (ArtifactData list of datasets) and re-run the summary before the first spawn.');
-    }
-  });
-
-  test("stale template: adds 'refresh template'", () => {
-    const row = statusPageRow(page({ artifact: { url: URL, template_version: 3, last_probe: { at: at(1), ok: true, url: URL } } }));
-    expect(row.value).toBe(`${URL} · reachable (probed 1 min ago) · template v3, refresh template to v4`);
-    expect(row.options?.map((o) => o.label)).toEqual(['Accept', 'Reuse another', 'Publish new', 'Refresh template']);
   });
 });
 
@@ -275,6 +241,6 @@ describe('buildBudgetPanel is the one budget builder under campaign-status/', ()
 
   test('no second function builds a BudgetPanel', () => {
     const builders = sources.flatMap(({ file, text }) => [...text.matchAll(/function\s+(\w+)\s*\((?:(?!function\b)[^])*?\)\s*:\s*BudgetPanel\s*\{/g)].map((m) => `${file}:${m[1]}`));
-    expect(builders.sort()).toEqual(['budget.ts:buildBudgetPanel', 'budget.ts:readBudgetPanel']);
+    expect(builders.sort()).toEqual(['budget.ts:buildBudgetPanel', 'budget.ts:givenBudgetPanel', 'budget.ts:readBudgetPanel']);
   });
 });

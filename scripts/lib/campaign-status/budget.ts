@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import type { RateLimits } from '../pace-gate.ts';
 import type { Host } from '../run-context.ts';
 import { forecastWeekly, resolveUsageBudget, workersAllowed, USAGE_WINDOWS, type UsageBudgetConfig, type UsageVerdict } from '../usage-budget.ts';
-import { usageSourceFor, type UsageSourceName } from '../usage-source.ts';
+import { restrictWindows, usageSourceFor, type UsageSourceName } from '../usage-source.ts';
 import type { BudgetPanel } from './types.ts';
 
 // The status page's usage-budget panel: the rate-limit reading pace-gate.ts and usage-budget.ts
@@ -11,7 +11,21 @@ import type { BudgetPanel } from './types.ts';
 
 const HOUR = 3600;
 const WEEK = 7 * 24 * HOUR;
-const DEFAULT_PARALLEL_MAX = 4;
+/** `parallel_max` when `config.json` has none (`config-template.md`). */
+export const DEFAULT_PARALLEL_MAX = 4;
+
+/** `config.parallel_max`, else `DEFAULT_PARALLEL_MAX`. */
+export const parallelMaxOf = (config: Record<string, unknown>): number =>
+  typeof config.parallel_max === 'number' ? config.parallel_max : DEFAULT_PARALLEL_MAX;
+
+/** The resolved `usage_budget`, or null with the error when it is invalid: callers show `unavailable`, never throw. */
+export function resolveBudgetSettings(config: Record<string, unknown>): { budget: UsageBudgetConfig; invalid: null } | { budget: null; invalid: string } {
+  try {
+    return { budget: resolveUsageBudget(config), invalid: null };
+  } catch (error) {
+    return { budget: null, invalid: error instanceof Error ? error.message : String(error) };
+  }
+}
 
 const iso = (epoch: number): string => new Date(epoch * 1000).toISOString();
 
@@ -33,14 +47,11 @@ export const NOT_PROBED: BudgetPanel = {
 
 /** The verdict the usage-budget CLI returns for this reading: `unavailable` when the budget is off or its config is invalid. */
 function verdictFor(limits: RateLimits, now: number, config: Record<string, unknown>): { verdict: UsageVerdict; budget: UsageBudgetConfig | null } {
-  const parallelMax = typeof config.parallel_max === 'number' ? config.parallel_max : DEFAULT_PARALLEL_MAX;
+  const parallelMax = parallelMaxOf(config);
   const off = (reason: string): UsageVerdict => ({ verdict: 'unavailable', workers: parallelMax, reasons: [reason], wake_at: null, hours_to_reset: null, weekly_fit: null });
-  let budget: UsageBudgetConfig;
-  try {
-    budget = resolveUsageBudget(config);
-  } catch (error) {
-    return { verdict: off(`usage_budget config invalid: ${error instanceof Error ? error.message : String(error)}`), budget: null };
-  }
+  const settings = resolveBudgetSettings(config);
+  if (settings.invalid !== null) return { verdict: off(`usage_budget config invalid: ${settings.invalid}`), budget: null };
+  const { budget } = settings;
   return { verdict: budget.enabled ? workersAllowed(limits, now, budget, parallelMax) : off('usage_budget disabled'), budget };
 }
 
@@ -105,6 +116,15 @@ export function readBudgetPanel(config: Record<string, unknown>, host: Host, now
     // No cache: the source already gave the reason.
   }
   return buildBudgetPanel({ limits: reading.limits, reason: reading.reason, ageSeconds, now, config, source: reading.source });
+}
+
+/** The panel for a reading the harness reported (`--usage`), restricted to `usage_budget.windows` as the usage source and usage-budget.ts restrict it. */
+export function givenBudgetPanel(usage: RateLimits, config: Record<string, unknown>, now: number): BudgetPanel {
+  const settings = resolveBudgetSettings(config);
+  // An invalid config is shown by the panel's own `unavailable` verdict; the reading is kept whole.
+  const kept = settings.invalid === null ? restrictWindows(usage, settings.budget.windows).limits : usage;
+  const reason = kept ? null : 'usage_budget.windows leaves none of the --usage windows';
+  return buildBudgetPanel({ limits: kept, reason, ageSeconds: 0, now, config });
 }
 
 const WINDOW_LABELS = { five_hour: '5-hour', seven_day: 'weekly' } as const;

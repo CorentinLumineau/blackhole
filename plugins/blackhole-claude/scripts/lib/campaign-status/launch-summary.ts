@@ -1,8 +1,9 @@
 import { readScope } from '../../forge-scope.ts';
-import { DEFAULT_USAGE_BUDGET, resolveUsageBudget, type UsageBudgetConfig } from '../usage-budget.ts';
-import { when } from './budget.ts';
+import { DEFAULT_USAGE_BUDGET, type UsageBudgetConfig } from '../usage-budget.ts';
+import { parallelMaxOf, resolveBudgetSettings, when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
 import { QUESTIONS_PER_CARD } from './pending-decisions.ts';
+import { statusPageRow, type StatusPageInput } from './status-page-row.ts';
 import type { BudgetPanel, ConfigSummaryInput, StatusReport } from './types.ts';
 
 // The executive-summary launch gate: one row per section, each with a one-line consequence, and
@@ -15,8 +16,6 @@ export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];
 
 /** A consequence must read on its own on a card line. */
 export const MAX_CONSEQUENCE_CHARS = 140;
-/** A probe younger than this counts as current; older, the page is probed again. */
-export const PROBE_FRESH_MINUTES = 10;
 
 export type GateOption = { label: string; description: string };
 
@@ -38,22 +37,6 @@ export type LaunchRow = {
 export type GateQuestion = { row: LaunchRowKey; header: string; question: string; multiSelect: false; options: GateOption[] };
 export type GateCard = { questions: GateQuestion[] };
 
-/** `status-artifact.json`'s `last_probe`. */
-export type ProbeRecord = { at: string; ok: boolean; url: string; reason?: string };
-export type StatusArtifact = { url?: string; kind?: string; template_version?: number; last_probe?: ProbeRecord };
-
-export type StatusPageInput = {
-  /** `status_page.enabled` (default true). */
-  enabled: boolean;
-  /** Whether this host publishes the page as an artifact. */
-  publishExpected: boolean;
-  /** `status-artifact.json`, or null when absent. */
-  artifact: StatusArtifact | null;
-  /** The shipped template's `bh-template-version`, or null when unreadable. */
-  templateVersion: number | null;
-  nowIso: string;
-};
-
 export type LaunchSummaryInput = {
   report: StatusReport;
   config: ConfigSummaryInput & Record<string, unknown>;
@@ -62,9 +45,6 @@ export type LaunchSummaryInput = {
 };
 
 const ACCEPT: GateOption = { label: 'Accept', description: 'Keep this section as shown.' };
-const REUSE: GateOption = { label: 'Reuse another', description: 'Pick an existing artifact from Artifact list and store its URL.' };
-const PUBLISH: GateOption = { label: 'Publish new', description: 'Publish a new status page and store its URL.' };
-const REFRESH: GateOption = { label: 'Refresh template', description: 'Rewrite the page with the current template, keeping hand edits.' };
 
 const ADJUST: Partial<Record<LaunchRowKey, string>> = {
   scope: 'Open step 1: the scope filter and the targeted-issues preview.',
@@ -82,15 +62,10 @@ const MERGE_MODES: GateOption[] = [
 
 const pct = (x: number): string => `${Number(x.toFixed(2))}%`;
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
-const DEFAULT_PARALLEL_MAX = 4;
-
-/** The resolved `usage_budget`, or the defaults plus the error when it is invalid: the row never throws. */
-function readSettings(config: Record<string, unknown>): { budget: UsageBudgetConfig; invalid: string | null } {
-  try {
-    return { budget: resolveUsageBudget(config), invalid: null };
-  } catch (error) {
-    return { budget: DEFAULT_USAGE_BUDGET, invalid: error instanceof Error ? error.message : String(error) };
-  }
+/** The `usage_budget` the rows show: the resolved one, or the defaults when it is invalid (then `invalid` says why). */
+function rowSettings(config: Record<string, unknown>): { settings: UsageBudgetConfig; invalid: string | null } {
+  const r = resolveBudgetSettings(config);
+  return r.invalid === null ? { settings: r.budget, invalid: null } : { settings: DEFAULT_USAGE_BUDGET, invalid: r.invalid };
 }
 
 function scopeRow(report: StatusReport, config: ConfigSummaryInput & { repo?: string }): LaunchRow {
@@ -143,7 +118,7 @@ function budgetConsequence({ b, settings, invalid, workers, parallelMax }: Budge
   switch (b.verdict) {
     case 'GO': {
       const starts = `${plural(workers, 'worker')} ${workers === 1 ? 'starts' : 'start'} now`;
-      return weeklyOnly(b)
+      return weeklyOnly(b, settings)
         ? `${starts}; the campaign stops at weekly ${t.stop_campaign_at}%.`
         : `${starts}; spawning stops at 5h ${t.no_spawn_at}%, the campaign at weekly ${t.stop_campaign_at}%.`;
     }
@@ -162,8 +137,11 @@ function budgetConsequence({ b, settings, invalid, workers, parallelMax }: Budge
   }
 }
 
-/** A reading that shows the weekly window and no 5-hour one: the plan gates on the weekly window alone. */
-const weeklyOnly = (b: BudgetPanel): boolean => b.probed && b.windows.includes('seven_day') && !b.windows.includes('five_hour');
+/** The weekly window and no 5-hour one: the reading's windows, or before any reading the configured `usage_budget.windows`. */
+const weeklyOnly = (b: BudgetPanel, settings: UsageBudgetConfig): boolean => {
+  const windows = b.probed ? b.windows : (settings.windows ?? []);
+  return windows.includes('seven_day') && !windows.includes('five_hour');
+};
 
 function forecastText(b: BudgetPanel, stopAt: number): string {
   if (!b.forecast) return 'no forecast yet';
@@ -174,71 +152,30 @@ function forecastText(b: BudgetPanel, stopAt: number): string {
 
 /** The Budget row, from the status page's panel plus the thresholds `config.json` sets. */
 export function budgetRow(b: BudgetPanel, config: Record<string, unknown>): LaunchRow {
-  const { budget: settings, invalid } = readSettings(config);
-  const parallelMax = typeof config.parallel_max === 'number' ? config.parallel_max : DEFAULT_PARALLEL_MAX;
+  const { settings, invalid } = rowSettings(config);
+  const parallelMax = parallelMaxOf(config);
+  const weekly = weeklyOnly(b, settings);
   const sized = invalid !== null || !settings.enabled || !b.probed || b.verdict === 'unavailable' || b.workers_allowed === null;
   const workers = sized ? parallelMax : (b.workers_allowed as number);
   const head = invalid ? 'usage_budget invalid, unavailable' : !settings.enabled ? 'pacing off' : b.probed ? (b.verdict ?? 'unavailable') : '';
   const usage = b.probed
     ? [
-        ...(weeklyOnly(b) ? [] : [b.five_hour_pct === null ? '5h n/a' : `5h ${pct(b.five_hour_pct)}${b.five_hour_resets_at ? ` (resets ${when(b.five_hour_resets_at)})` : ''}`]),
+        ...(weekly ? [] : [b.five_hour_pct === null ? '5h n/a' : `5h ${pct(b.five_hour_pct)}${b.five_hour_resets_at ? ` (resets ${when(b.five_hour_resets_at)})` : ''}`]),
         b.weekly_pct === null ? 'weekly n/a' : `weekly ${pct(b.weekly_pct)}${b.resets_at ? ` (resets ${when(b.resets_at)})` : ''}`,
       ]
-    : ['not probed'];
+    : [b.reason ? `not probed: ${b.reason}` : 'not probed'];
   const { no_spawn_at, stop_workers_at } = settings.five_hour;
   const { no_new_starts_at, stop_campaign_at, target_at_reset } = settings.weekly;
   const parts = [
     head,
     ...usage,
     sized ? `${plural(workers, 'worker')} (parallel_max)` : `${plural(workers, 'worker')} allowed`,
-    weeklyOnly(b) ? `stops weekly ${no_new_starts_at}/${stop_campaign_at}%` : `stops 5h ${no_spawn_at}/${stop_workers_at}%, weekly ${no_new_starts_at}/${stop_campaign_at}%`,
+    weekly ? `stops weekly ${no_new_starts_at}/${stop_campaign_at}%` : `stops 5h ${no_spawn_at}/${stop_workers_at}%, weekly ${no_new_starts_at}/${stop_campaign_at}%`,
     ...(target_at_reset === null ? [] : [`target ${target_at_reset}% at weekly reset`]),
     ...(b.probed ? [forecastText(b, stop_campaign_at)] : []),
   ].filter(Boolean);
   const consequence = budgetConsequence({ b, settings, invalid, workers, parallelMax });
   return { key: 'budget', label: 'Budget', header: 'Budget', value: parts.join(' · '), consequence, adjustable: true };
-}
-
-export function statusPageRow(p: StatusPageInput): LaunchRow {
-  const base = { key: 'status_page' as const, label: 'Status page', header: 'Status page', adjustable: true };
-  if (!p.enabled) {
-    return { ...base, value: 'off (status_page.enabled is false)', consequence: 'No page is published; follow the run with bun run status.' };
-  }
-  if (!p.publishExpected) {
-    return { ...base, adjustable: false, value: 'none on this host', consequence: 'This host has no artifact tool; follow the run with bun run status.' };
-  }
-  if (!p.artifact?.url) {
-    return { ...base, value: 'never published', consequence: 'A new page is published before the first spawn.', options: [{ ...ACCEPT, description: 'Publish a new page before the first spawn.' }, REUSE] };
-  }
-  const { url, template_version: stored, last_probe: probe } = p.artifact;
-  const staleTemplate = p.templateVersion !== null && typeof stored === 'number' && stored < p.templateVersion;
-  const template = typeof stored === 'number' ? `template v${stored}${staleTemplate ? `, refresh template to v${p.templateVersion}` : ''}` : 'template unknown';
-  const ageMin = probe ? (Date.parse(p.nowIso) - Date.parse(probe.at)) / 60_000 : NaN;
-  const current = probe !== undefined && probe.url === url && ageMin >= 0 && ageMin < PROBE_FRESH_MINUTES;
-  const extra = staleTemplate ? [REFRESH] : [];
-  if (current && !probe.ok) {
-    return {
-      ...base,
-      value: `${url} · NOT reachable: ${probe.reason ?? 'no reason recorded'} · ${template}`,
-      consequence: 'The stored page does not open from this account: reuse another artifact or publish a new one.',
-      options: [REUSE, PUBLISH],
-    };
-  }
-  if (current) {
-    return {
-      ...base,
-      value: `${url} · reachable (probed ${Math.floor(ageMin)} min ago) · ${template}`,
-      consequence: 'The stored page opens from this account and is refreshed at every checkpoint.',
-      options: [{ ...ACCEPT, description: 'Keep refreshing the stored page.' }, REUSE, PUBLISH, ...extra],
-    };
-  }
-  return {
-    ...base,
-    value: `${url} · not probed · ${template}`,
-    consequence: 'Probe the stored page (ArtifactData list of datasets) and re-run the summary before the first spawn.',
-    options: [{ ...ACCEPT, description: 'Keep the stored page once the probe passes.' }, REUSE, PUBLISH, ...extra],
-    probe_needed: { url },
-  };
 }
 
 const TRIGGERS: Record<string, string> = { 'on-empty': 'when the queue empties', manual: 'only on request' };
@@ -247,19 +184,19 @@ function kaizenRow(config: ConfigSummaryInput & { kaizen?: { trigger?: string; l
   const kz = config.kaizen?.enabled === true;
   const trigger = config.kaizen?.trigger ?? 'on-empty';
   const staging = config.docs_governance?.enabled === true && config.docs_governance.write_governance !== false;
-  const when = TRIGGERS[trigger] ?? `every ${config.kaizen?.loop_interval ?? 5} loops`;
+  const cadence = TRIGGERS[trigger] ?? `every ${config.kaizen?.loop_interval ?? 5} loops`;
   return {
     key: 'kaizen_staging',
     label: 'Kaizen and staging',
     header: 'Kaizen',
     value: `kaizen ${kz ? `on (trigger ${trigger})` : 'off'} · staging carry ${staging ? 'on' : 'off'}`,
-    consequence: `${kz ? `Improvement hunts file issues ${when}` : 'No improvement hunts run'}; ${staging ? 'staged docs carry into each PR' : 'no staged docs are carried'}.`,
+    consequence: `${kz ? `Improvement hunts file issues ${cadence}` : 'No improvement hunts run'}; ${staging ? 'staged docs carry into each PR' : 'no staged docs are carried'}.`,
     adjustable: true,
   };
 }
 
 function peersRow(config: Record<string, unknown>): LaunchRow {
-  const { role, manager_session, peer_floor } = readSettings(config).budget.coordination;
+  const { role, manager_session, peer_floor } = rowSettings(config).settings.coordination;
   const base = { key: 'peers' as const, label: 'Peers', header: 'Peers', adjustable: false };
   if (role === 'manager') return { ...base, value: 'manager', consequence: 'This session grants worker slots to the peer sessions sharing its usage budget.' };
   if (role === 'peer') {

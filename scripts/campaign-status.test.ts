@@ -923,6 +923,82 @@ describe('status --summary (the launch summary)', () => {
     expect(proc.stderr.toString()).toContain('--usage');
   });
 
+  // A copy of the fixture campaign with `config` merged over its config and the extra state files written.
+  const tempDirs: string[] = [];
+  afterEach(() => {
+    for (const d of tempDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+  const tempCampaign = (config: Record<string, unknown>, files: Record<string, unknown> = {}): string => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-summary-'));
+    tempDirs.push(dir);
+    fs.cpSync(FULL, dir, { recursive: true });
+    const base = JSON.parse(fs.readFileSync(path.join(FULL, 'config.json'), 'utf-8'));
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ ...base, ...config }));
+    for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), JSON.stringify(body));
+    return dir;
+  };
+  const summaryJson = (dir: string, ...args: string[]) => {
+    const proc = summary('--campaign-dir', dir, '--json', ...args);
+    expect(proc.exitCode).toBe(0);
+    return JSON.parse(proc.stdout.toString()) as { rows: Array<{ key: string; value: string; consequence: string }>; cards: unknown[] };
+  };
+  const row = (out: ReturnType<typeof summaryJson>, key: string) => out.rows.find((r) => r.key === key) as { value: string; consequence: string };
+  const NOW_S = '1763026200';
+  const runContext = (host: string, questions: string) => ({ context: { host: { value: host } }, route: { question_channel: questions } });
+
+  test('sleep_mode.enabled: print-only, no question card', () => {
+    const awake = summaryJson(tempCampaign({}));
+    expect(awake.cards.length).toBeGreaterThan(0);
+    expect(summaryJson(tempCampaign({ sleep_mode: { enabled: true } })).cards).toEqual([]);
+  });
+
+  test('a run context with no question channel: no question card', () => {
+    expect(summaryJson(tempCampaign({}, { 'run-context.json': runContext('claude', 'none') })).cards).toEqual([]);
+    expect(summaryJson(tempCampaign({}, { 'run-context.json': runContext('claude', 'ask-user-question') })).cards.length).toBeGreaterThan(0);
+  });
+
+  test('a valid --usage changes the Budget row', () => {
+    const dir = tempCampaign({ usage_budget: { enabled: true } }, { 'run-context.json': runContext('cursor', 'ask-user-question') });
+    const before = row(summaryJson(dir, '--now', NOW_S), 'budget');
+    expect(before.value).toContain('not probed');
+    const usage = JSON.stringify({ five_hour: { used_percentage: 30, resets_at: 1763026200 + 3600 }, seven_day: { used_percentage: 40, resets_at: 1763026200 + 72 * 3600 } });
+    const after = row(summaryJson(dir, '--now', NOW_S, '--usage', usage), 'budget');
+    expect(after.value).toContain('5h 30%');
+    expect(after.value).toContain('weekly 40%');
+    expect(after.value).not.toContain('not probed');
+  });
+
+  test('--usage honours usage_budget.windows, and the summary and usage-budget.ts agree', () => {
+    const config = { usage_budget: { enabled: true, windows: ['seven_day'] } };
+    const dir = tempCampaign(config);
+    const usage = JSON.stringify({ five_hour: { used_percentage: 88, resets_at: 1763026200 + 3600 }, seven_day: { used_percentage: 20, resets_at: 1763026200 + 72 * 3600 } });
+    const budget = row(summaryJson(dir, '--now', NOW_S, '--usage', usage), 'budget');
+    expect(budget.value).toStartWith('GO · weekly 20%');
+    expect(budget.value).not.toContain('NO-SPAWN');
+    const gate = Bun.spawnSync({
+      cmd: ['bun', 'run', 'scripts/usage-budget.ts', '--parallel-max', '3', '--config', path.join(dir, 'config.json'), '--now', NOW_S, '--usage', usage],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    expect(gate.exitCode).toBe(0);
+    expect(JSON.parse(gate.stdout.toString()).verdict).toBe('GO');
+  });
+
+  test('an invalid usage_budget.windows with --usage shows unavailable, not a crash', () => {
+    const usage = JSON.stringify({ seven_day: { used_percentage: 20, resets_at: 1763026200 + 72 * 3600 } });
+    const budget = row(summaryJson(tempCampaign({ usage_budget: { enabled: true, windows: ['hourly'] } }), '--now', NOW_S, '--usage', usage), 'budget');
+    expect(budget.value).toContain('unavailable');
+  });
+
+  test('a page built on an older template offers refresh template', () => {
+    const dir = tempCampaign({}, {
+      'run-context.json': runContext('claude', 'ask-user-question'),
+      'status-artifact.json': { url: 'https://claude.ai/code/artifact/abc', kind: 'data', template_version: 1 },
+    });
+    expect(row(summaryJson(dir), 'status_page').value).toContain('refresh template to v');
+  });
+
   test('no .blackhole prints the not-found message and exits 0', () => {
     const missing = path.join(os.tmpdir(), `blackhole-summary-missing-${Date.now()}`);
     const proc = summary('--campaign-dir', missing);

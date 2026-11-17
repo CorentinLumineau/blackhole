@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
-import type { ProbeRecord, StatusArtifact } from './lib/campaign-status/launch-summary.ts';
+import { PROBE_FRESH_MINUTES, type ProbeRecord, type StatusArtifact } from './lib/campaign-status/status-page-row.ts';
 
 // Usage: bun run scripts/status-probe.ts record --ok|--fail [--reason <text>] [--url <url>]
 //        [--campaign-dir <dir>] [--now <ISO8601>]
@@ -13,12 +13,13 @@ import type { ProbeRecord, StatusArtifact } from './lib/campaign-status/launch-s
 const USAGE =
   'usage: status-probe.ts record --ok|--fail [--reason <text>] [--url <url>] [--campaign-dir <dir>] [--now <ISO8601>]';
 
-/** A probe with the same result, URL and reason younger than this is not rewritten. */
-export const UNCHANGED_PROBE_HOURS = 24;
-
 type StoredArtifact = StatusArtifact & Record<string, unknown>;
 
-/** The artifact with `probe` recorded at `nowIso`; `changed: false` keeps a recent identical probe. */
+/**
+ * The artifact with `probe` recorded at `nowIso`. `changed: false` keeps an identical probe only while
+ * the Status page row still counts it as fresh (`PROBE_FRESH_MINUTES`); an older one is rewritten,
+ * or the launch gate would ask for a probe it then refuses to record.
+ */
 export function recordProbe(
   artifact: StoredArtifact,
   probe: Omit<ProbeRecord, 'at'>,
@@ -27,7 +28,7 @@ export function recordProbe(
   const prior = artifact.last_probe;
   const age = prior ? Date.parse(nowIso) - Date.parse(prior.at) : NaN;
   const same = prior !== undefined && prior.ok === probe.ok && prior.url === probe.url && (prior.reason ?? null) === (probe.reason ?? null);
-  if (same && age >= 0 && age < UNCHANGED_PROBE_HOURS * 3_600_000) return { changed: false, next: artifact };
+  if (same && age >= 0 && age < PROBE_FRESH_MINUTES * 60_000) return { changed: false, next: artifact };
   const last_probe: ProbeRecord = { at: nowIso, ok: probe.ok, url: probe.url, ...(probe.reason ? { reason: probe.reason } : {}) };
   return { changed: true, next: { ...artifact, last_probe } };
 }
