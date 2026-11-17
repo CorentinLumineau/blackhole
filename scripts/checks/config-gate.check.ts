@@ -12,14 +12,25 @@ import { findMissingGateMarkers } from '../lib/check-common.ts';
 //   Pattern A — SKILL.md Phase 0 (legacy direct `/blackhole run` in a single session)
 //
 // Documenting the gate in only one of them silently reopens the bypass hole on the other two.
+// The routine-resume gate's own body (summary, per-section Accept/Adjust, status-page probe,
+// print-only clause) lives once in launch-gate.md; coordinator.md carries the pointer to it.
 // Marker-based content assertion, modeled on agents.check.ts's V-GATE-01 — a prose convention alone
 // is not regression-detectable, a required-substring check is.
 
 export const COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS = [
   'Routine resume confirmation gate',
-  'renderConfigSummary',
-  'Proceed with this config',
+  'launch-gate.md',
+  'Fail closed on docs_governance drift',
   'run` mode only',
+];
+
+export const LAUNCH_GATE_REQUIRED_MARKERS = [
+  'status --summary',
+  'Accept / Adjust',
+  'status-probe.ts record',
+  'last_probe',
+  'Print-only mode',
+  'never waits',
 ];
 
 export const CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS = [
@@ -33,20 +44,20 @@ export const SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS = [
   'mode only',
 ];
 
-const checkConfigConfirmationGate = (): CheckResult => {
-  const errors = [
-    ...findMissingGateMarkers(
-      read('src/agents/coordinator.md'),
-      COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
-    ).map((m) => `coordinator.md missing "${m}"`),
-    ...findMissingGateMarkers(
-      read('src/references/claude-code-native.md'),
-      CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
-    ).map((m) => `claude-code-native.md missing "${m}"`),
-    ...findMissingGateMarkers(read('src/SKILL.md'), SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS).map(
-      (m) => `SKILL.md missing "${m}"`,
+const GATE_MARKERS_BY_FILE: [string, string[]][] = [
+  ['src/agents/coordinator.md', COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS],
+  ['src/references/launch-gate.md', LAUNCH_GATE_REQUIRED_MARKERS],
+  ['src/references/claude-code-native.md', CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS],
+  ['src/SKILL.md', SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS],
+];
+
+// `files` maps a repo-relative path to its content; a path it omits is read from the tree.
+export const checkConfigConfirmationGate = (files: Record<string, string> = {}): CheckResult => {
+  const errors = GATE_MARKERS_BY_FILE.flatMap(([file, markers]) =>
+    findMissingGateMarkers(files[file] ?? read(file), markers).map(
+      (m) => `${file.split('/').pop()} missing "${m}"`,
     ),
-  ];
+  );
 
   if (errors.length) return { id: 'V-CONFGATE-01', ok: false, detail: errors.join('; ') };
   return { id: 'V-CONFGATE-01', ok: true };

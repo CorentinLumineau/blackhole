@@ -25,6 +25,18 @@ Used by the routine resume confirmation gate (`coordinator.md` § Bootstrap pref
 part of the dashboard: the dashboard prints every orchestrator turn, this prints at campaign
 launch confirmation only.
 
+Launch summary — the launch gate's executive-summary table (`launch-gate.md` § The summary):
+
+```bash
+bun run status --summary [--usage <json>] [--now <iso>] [--json]
+```
+
+Seven rows in fixed order (Scope, Order, Merge, Budget, Status page, Kaizen and staging, Peers),
+each with a one-line consequence. `--usage` is the harness's usage report (a malformed value
+exits `2`); without it the Budget row reads `not probed`. `--json` adds the question cards.
+`--summary` cannot be combined with `--html` or `--data`. With no `.blackhole` it prints the
+not-found message and exits `0`.
+
 ## Status page
 
 Two report modes read the same state and the same count helpers as the dashboard, so their
