@@ -2,12 +2,13 @@
   "version": "2.0",
   "name": "catchup-mode",
   "status": "in_progress",
-  "currentMilestone": "M3",
+  "currentMilestone": "M4",
   "currentPhase": "checkpoint",
-  "lastUpdated": "2026-11-17T14:16:04Z",
+  "lastUpdated": "2026-11-17T15:30:00Z",
   "progress": {
     "M1": "completed",
-    "M2": "completed"
+    "M2": "completed",
+    "M3": "completed"
   },
   "milestones": {
     "M1": {
@@ -19,6 +20,11 @@
       "name": "Usage reading everywhere",
       "status": "completed",
       "baseSha": "8f9ed13d5ca564a331575c84712d012b0f4bb4be"
+    },
+    "M3": {
+      "name": "catchup mode with the full-config launch gate",
+      "status": "completed",
+      "baseSha": "3b5b9f51de7fcce89f8bcecab49d92b926b0d629"
     }
   },
   "execConfig": {
@@ -36,7 +42,12 @@
       "milestone": "M2",
       "timestamp": "2026-11-17T14:16:04Z",
       "summary": "M2 shipped: usage provider chain, bun run usage normalized reading, pace-floor, #1272 cycle broken; review LGTM (0 CRITICAL/HIGH, 3 LOW)"
+    },
+    {
+      "milestone": "M3",
+      "timestamp": "2026-11-17T15:30:00Z",
+      "summary": "M3 shipped: catchup mode with full-config launch gate and pacing defaults; review ok (0 CRITICAL/HIGH, 2 MEDIUM, 3 LOW)"
     }
   ],
-  "nextAction": "Run M3 plan"
+  "nextAction": "Run M4 plan"
 }
