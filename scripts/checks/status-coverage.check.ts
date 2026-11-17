@@ -1,5 +1,6 @@
 import { read, type CheckResult } from './check-utils.ts';
 import { parseConfigTemplateKeys } from './config-registration.check.ts';
+import { budgetRows, NOT_PROBED } from '../lib/campaign-status/budget.ts';
 import { STATUS_DATASET_IDS } from '../lib/campaign-status/data.ts';
 import { buildConfigRows } from '../lib/campaign-status/overview.ts';
 import { RUN_ROW_KEYS } from '../lib/campaign-status/run-state.ts';
@@ -8,12 +9,13 @@ import { RUN_ROW_KEYS } from '../lib/campaign-status/run-state.ts';
 // in its `## Status page coverage` table, the status dataset that shows it — or `none` with a
 // reason. A run feature that adds config cannot ship invisible on the status page: removing a
 // row, naming a dataset the plugin does not write, a row the dataset does not emit, or a dataset
-// no template panel draws all fail verify.
+// no template panel draws all fail verify. A sub-block (`usage_budget.coordination`) may add its
+// own row when another panel shows it; the top-level block still needs its own.
 
 export const COVERAGE_HEADING = '## Status page coverage';
 const NONE = 'none';
 
-export type CoverageRow = { block: string; dataset: string; row: string | null; reason: string };
+export type CoverageRow = { block: string; dataset: string; rows: string[]; reason: string };
 
 const cell = (c: string | undefined): string => (c ?? '').trim().replace(/^`+|`+$/g, '').trim();
 
@@ -27,8 +29,9 @@ export const parseCoverageTable = (doc: string): CoverageRow[] => {
     if (line.startsWith('## ')) break;
     if (!line.startsWith('|') || /^\|[-| ]+\|$/.test(line.trim()) || /^\|\s*Block\s*\|/.test(line)) continue;
     const cols = line.split('|').slice(1, -1);
-    const row = cell(cols[2]);
-    rows.push({ block: cell(cols[0]), dataset: cell(cols[1]), row: row && row !== '—' ? row : null, reason: cell(cols[3]) });
+    const named = cell(cols[2]);
+    const keys = named && named !== '—' ? named.split(',').map((k) => k.trim()).filter(Boolean) : [];
+    rows.push({ block: cell(cols[0]), dataset: cell(cols[1]), rows: keys, reason: cell(cols[3]) });
   }
   return rows;
 };
@@ -36,10 +39,30 @@ export const parseCoverageTable = (doc: string): CoverageRow[] => {
 /** Top-level config blocks: the first segment of every registered field. */
 export const registeredBlocks = (templateKeys: Set<string>): string[] => [...new Set([...templateKeys].map((k) => k.split('.')[0]))];
 
-/** Row keys of the key/value datasets whose rows are always emitted, so a declared row can be checked. */
+// A budget panel with every optional part present: its rows plus the not-probed ones are every key
+// `budgetRows` can emit, read from the renderer itself rather than restated.
+const FULL_BUDGET = {
+  ...NOT_PROBED,
+  probed: true,
+  reason: null,
+  age_seconds: 60,
+  five_hour_pct: 10,
+  five_hour_resets_at: '2026-01-01T00:00:00.000Z',
+  weekly_pct: 20,
+  resets_at: '2026-01-02T00:00:00.000Z',
+  workers_allowed: 2,
+  verdict: 'GO' as const,
+  forecast: { pct_per_hour: 1, reaches: [{ pct: 80, at: null }] },
+  source: 'rate-limit-cache' as const,
+  windows: ['five_hour' as const, 'seven_day' as const],
+  target_at_reset: 70,
+};
+
+/** Row keys of the key/value datasets, so a declared row can be checked against what the renderer emits. */
 export const PANEL_ROW_KEYS: Record<string, readonly string[]> = {
   config: buildConfigRows({}, null).map((r) => r.key),
   run: RUN_ROW_KEYS,
+  budget: [...new Set([...budgetRows(NOT_PROBED), ...budgetRows(FULL_BUDGET)].map((r) => r.key))],
 };
 
 /** Datasets the status-page template draws (`data-source="<id>"`). */
@@ -52,12 +75,17 @@ const rowGaps = (r: CoverageRow, drawn: Set<string>): string[] => {
   const gaps: string[] = [];
   if (!drawn.has(r.dataset)) gaps.push(`${r.block}: dataset "${r.dataset}" is drawn by no panel of templates/status-dashboard/index.html`);
   const keys = PANEL_ROW_KEYS[r.dataset];
-  if (r.row && keys && !keys.includes(r.row)) gaps.push(`${r.block}: "${r.row}" is not a row of the ${r.dataset} dataset (${keys.join(', ')})`);
+  for (const row of keys ? r.rows : []) {
+    if (!keys!.includes(row)) gaps.push(`${r.block}: "${row}" is not a row of the ${r.dataset} dataset (${keys!.join(', ')})`);
+  }
   return gaps;
 };
 
+const isRegistered = (block: string, keys: Set<string>): boolean => [...keys].some((k) => k === block || k.startsWith(`${block}.`));
+
 export const findStatusCoverageGaps = (configTemplate: string, template: string): string[] => {
-  const blocks = registeredBlocks(parseConfigTemplateKeys(configTemplate));
+  const templateKeys = parseConfigTemplateKeys(configTemplate);
+  const blocks = registeredBlocks(templateKeys);
   const rows = parseCoverageTable(configTemplate);
   const drawn = templateDatasets(template);
   const gaps: string[] = [];
@@ -65,7 +93,7 @@ export const findStatusCoverageGaps = (configTemplate: string, template: string)
   for (const r of rows) {
     if (seen.has(r.block)) gaps.push(`${r.block}: listed twice in ${COVERAGE_HEADING}`);
     seen.add(r.block);
-    if (!blocks.includes(r.block)) gaps.push(`${r.block}: listed in ${COVERAGE_HEADING} but registered in no field row`);
+    if (!isRegistered(r.block, templateKeys)) gaps.push(`${r.block}: listed in ${COVERAGE_HEADING} but registered in no field row`);
     gaps.push(...rowGaps(r, drawn));
   }
   for (const b of blocks) if (!seen.has(b)) gaps.push(`${b}: registered in config-template.md but declares no status dataset or none (${COVERAGE_HEADING})`);

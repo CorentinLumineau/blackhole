@@ -1,21 +1,12 @@
 import { spawnSync } from 'child_process';
+import { FORGE_CLI_MAX_BUFFER, toForgeSpawnResult, type ForgeSpawnResult } from './spawn.ts';
 
-export type GlabSpawnResult = {
-  status: number | null;
-  stdout: string;
-  stderr: string;
-  error: NodeJS.ErrnoException | null;
-};
+export type GlabSpawnResult = ForgeSpawnResult;
 
 /** Sole `glab` spawn site for the GitLab forge backend (ADR-027, #681). */
 export function runGlab(args: string[]): GlabSpawnResult {
-  const result = spawnSync('glab', args, { encoding: 'utf-8' });
-  return {
-    status: result.status,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-    error: (result.error as NodeJS.ErrnoException | undefined) ?? null,
-  };
+  const result = spawnSync('glab', args, { encoding: 'utf-8', maxBuffer: FORGE_CLI_MAX_BUFFER });
+  return toForgeSpawnResult('glab', args, result);
 }
 
 export function runGlabJson<T>(args: string[]): T {

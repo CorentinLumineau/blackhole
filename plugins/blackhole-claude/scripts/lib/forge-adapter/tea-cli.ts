@@ -1,21 +1,12 @@
 import { spawnSync } from 'child_process';
+import { FORGE_CLI_MAX_BUFFER, toForgeSpawnResult, type ForgeSpawnResult } from './spawn.ts';
 
-export type TeaSpawnResult = {
-  status: number | null;
-  stdout: string;
-  stderr: string;
-  error: NodeJS.ErrnoException | null;
-};
+export type TeaSpawnResult = ForgeSpawnResult;
 
 /** Sole `tea` spawn site for the Gitea forge backend (ADR-027, #680). */
 export function runTea(args: string[]): TeaSpawnResult {
-  const result = spawnSync('tea', args, { encoding: 'utf-8' });
-  return {
-    status: result.status,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-    error: (result.error as NodeJS.ErrnoException | undefined) ?? null,
-  };
+  const result = spawnSync('tea', args, { encoding: 'utf-8', maxBuffer: FORGE_CLI_MAX_BUFFER });
+  return toForgeSpawnResult('tea', args, result);
 }
 
 export function runTeaJson<T>(args: string[]): T {

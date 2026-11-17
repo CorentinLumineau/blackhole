@@ -44,10 +44,10 @@ describe('V-CONFIG-03 status page coverage', () => {
 
   test('parses the table: dataset, row (— is none) and reason', () => {
     expect(parseCoverageTable(doc())).toEqual([
-      { block: 'repo', dataset: 'links', row: null, reason: 'forge pages' },
-      { block: 'parallel_max', dataset: 'config', row: 'Concurrency', reason: '' },
-      { block: 'sleep_mode', dataset: 'run', row: 'Sleep mode', reason: '' },
-      { block: 'scratchpad_dir', dataset: 'none', row: null, reason: 'where worktrees live; not run state' },
+      { block: 'repo', dataset: 'links', rows: [], reason: 'forge pages' },
+      { block: 'parallel_max', dataset: 'config', rows: ['Concurrency'], reason: '' },
+      { block: 'sleep_mode', dataset: 'run', rows: ['Sleep mode'], reason: '' },
+      { block: 'scratchpad_dir', dataset: 'none', rows: [], reason: 'where worktrees live; not run state' },
     ]);
   });
 
@@ -90,6 +90,21 @@ describe('V-CONFIG-03 status page coverage', () => {
       `gone_block: listed in ${COVERAGE_HEADING} but registered in no field row`,
       `repo: listed twice in ${COVERAGE_HEADING}`,
     ]);
+  });
+
+  test('budget rows are checked against what budgetRows emits, several per cell', () => {
+    expect(PANEL_ROW_KEYS.budget).toEqual(expect.arrayContaining(['Usage', 'Weekly', 'Weekly target', 'Workers allowed', 'Forecast']));
+    const ok = '| `parallel_max` | `budget` | Workers allowed, Weekly target | |';
+    expect(findStatusCoverageGaps(doc(replaced('parallel_max', ok)), `${TEMPLATE}<dl data-source="budget"></dl>`)).toEqual([]);
+    const bad = '| `parallel_max` | `budget` | Weekly target, Monthly | |';
+    expect(findStatusCoverageGaps(doc(replaced('parallel_max', bad)), `${TEMPLATE}<dl data-source="budget"></dl>`)).toEqual([
+      `parallel_max: "Monthly" is not a row of the budget dataset (${PANEL_ROW_KEYS.budget.join(', ')})`,
+    ]);
+  });
+
+  test('a registered sub-block may add its own row; an unregistered one fails', () => {
+    const sub = [...COVERAGE.slice(0, -2), '| `sleep_mode.enabled` | `run` | Sleep mode | |', '| `sleep_mode.ghost` | `run` | — | |', '', '## Next section'];
+    expect(findStatusCoverageGaps(doc(sub), TEMPLATE)).toEqual([`sleep_mode.ghost: listed in ${COVERAGE_HEADING} but registered in no field row`]);
   });
 
   test('the live config-template.md and template pass', () => {

@@ -273,8 +273,9 @@ the verdict `PACE-WAIT` (drain, wake at `wake_at`, resume) is part of the gate's
 ## Status page coverage
 
 Every top-level block registered in the field table above names the status page dataset that
-shows it (`STATUS_DATASET_IDS`, `scripts/lib/campaign-status/data.ts`), and for the `config` and
-`run` datasets the row; or `none` with the reason the page leaves it out. A PR that adds a block
+shows it (`STATUS_DATASET_IDS`, `scripts/lib/campaign-status/data.ts`), and for the `config`,
+`run` and `budget` datasets the rows (comma-separated); or `none` with the reason the page leaves
+it out. A sub-block another panel shows (`usage_budget.coordination`) adds a row of its own. A PR that adds a block
 adds its row here, and a new panel bumps the template's `bh-template-version`
 (`status-page.md` § Refresh procedure). `bun run verify` fails (`V-CONFIG-03`,
 `scripts/checks/status-coverage.check.ts`) on a block with no row, a dataset the plugin does not
@@ -309,6 +310,7 @@ write or no template panel draws, a row the dataset does not emit, or `none` wit
 | `campaign_scope` | `scope` | — | |
 | `wave_scheduling` | none | — | How a wave is sharded; the board shows what is in flight |
 | `resource_policy` | `config` | Verification | The test-lock carve-out; the host pace line is on the `--html` Host section |
-| `usage_budget` | `budget` | — | Verdict, weekly %, target and reset; its `coordination` role is the Run panel's Coordination row |
+| `usage_budget` | `budget` | Workers allowed, Weekly, Weekly target | Verdict, weekly %, target and reset |
+| `usage_budget.coordination` | `run` | Coordination | |
 | `stop_budget_cleared_at` | none | — | Audit timestamp of a past owner action |
 | `issue_484_disposition` | none | — | One campaign's historical pin; the parked issue shows on the board |
