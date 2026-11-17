@@ -127,11 +127,13 @@ sees at a glance where the run stands and what to do:
    button above the board, or a row, shows only that stream (no buttons when there is one
    stream); `--html` ships no script, so it has the table without the filter
 5. **Scope** (in, parked, deferred, blocked upstream, out; "Scope not recorded" when none is),
-   **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest)
+   **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest),
+   **Hook denials** (top 5 rules by deny and warn count, or `no hook denials recorded`)
 
 `--html` keeps its detail sections after these: in progress, waiting on you, waiting on
 something else by reason class (`elseClasses()`), up next, recently done, and a closed native
-`<details>` with host, checkpoint notes and open findings. The text dashboard (`dashboard.ts`)
+`<details>` with host, checkpoint notes, open findings and the top 5 hook rules by deny and warn count
+(`deny_counts`; `no hook denials recorded` when empty). The text dashboard (`dashboard.ts`)
 is shorter: it prints the headline, the board counts, your move, the scope and the newest
 decisions above its queue sections, with no card list and no workstreams.
 Visual rules: R-006 (`documentation/reference/product-principles.md`).

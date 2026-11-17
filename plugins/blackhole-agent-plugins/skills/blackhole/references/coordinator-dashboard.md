@@ -81,6 +81,7 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `untracked_prs` | Open forge PRs no queue entry's `pr` names (`{pr, title}`, lowest first): work opened without an issue, such as a trunk fix or a dependency bump. Taken from the open-PR list the `forge` counts already fetch, so no extra call; `null` when that list was not fetched (`--no-gh`, forge failure), never an unchecked `[]`. Additive |
 | `recently_done` | Newest merged/closed items, highest PR then issue number first (the queue holds no merge time), at most 5 |
 | `ledger_open` | Every open finding, BLOCK first then most recent (`id`, `vcode`, `severity`, `summary`, `issue_ref`) |
+| `deny_counts` | PreToolUse hook `deny` (`tier: block`) and `warn` events per `pattern_id` (`pattern_id`, `deny`, `warn`) since the campaign started, from live and archived `.blackhole/hook-events`, most frequent first. Additive; the dashboard's **Hook denials** section lists the top 5 |
 | `host` | `pace` (the pace line or `null`) and `notes` (plugin-drift lines) |
 | `scope_record` | `recorded` and the `entries` of `config.json` `campaign_scope` (`kind`, `text`, `set_at`, optional `reason`, `refs`, `filter`); malformed entries are dropped. Additive |
 | `decisions` | `owner-decisions.json`, newest first (`date`, `text`, optional `refs`). Additive |
@@ -161,7 +162,8 @@ The status script emits markdown with:
 9. **Issues filed** — ledger rows with `deferred_to_issue` (discovery filings)
 10. **Ledger open** — top open V-code findings, capped at 10 with a `…and N more` line beyond
     that.
-11. **Active workers** — from checkpoint `## In-flight workers` section
+11. **Hook denials** — top 5 hook rules by deny and warn count, or `no hook denials recorded`
+12. **Active workers** — from checkpoint `## In-flight workers` section
 
 ## Coordinator turn flow (with visibility)
 
