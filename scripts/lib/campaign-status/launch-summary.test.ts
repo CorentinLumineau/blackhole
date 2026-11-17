@@ -134,6 +134,19 @@ describe('the Budget row', () => {
     });
   }
 
+  test('a weekly-only plan drops the 5-hour stop from the GO line and the row', () => {
+    const weeklyOnly = panel(on(), { seven_day: { used_percentage: 20, resets_at: NOW + 48 * HOUR } });
+    expect(weeklyOnly.windows).toEqual(['seven_day']);
+    const row = budgetRow(weeklyOnly, on());
+    expect(row.value).toStartWith('GO · weekly 20%');
+    expect(row.value).toContain('stops weekly 78/80%');
+    expect(row.value).not.toContain('5h');
+    expect(row.consequence).toMatch(/starts? now; the campaign stops at weekly 80%\.$/);
+    expect(row.consequence).not.toContain('spawning stops at 5h');
+    // With both windows the 5-hour stop stays on the line.
+    expect(budgetRow(panel(on(), usage(10, 20)), on()).consequence).toContain('spawning stops at 5h 85%');
+  });
+
   test('a weekly window gives a forecast; without one the row says so', () => {
     // 50% used with 3.5 of 7 days left: 0.6%/h, the 80% stop about 50h out.
     const week = { used_percentage: 50, resets_at: NOW + 84 * HOUR };

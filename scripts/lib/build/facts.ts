@@ -139,6 +139,7 @@ export const QUEUE_NOTES = [
   'awaiting-investigation',
   'awaiting-recovery-approval',
   'awaiting-ruling-recheck',
+  'awaiting-owner-on-return',
   'waiting-on-trunk-fix',
   'clarify waived — narrow technical',
 ];

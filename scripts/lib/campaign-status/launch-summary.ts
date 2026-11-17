@@ -2,6 +2,7 @@ import { readScope } from '../../forge-scope.ts';
 import { DEFAULT_USAGE_BUDGET, resolveUsageBudget, type UsageBudgetConfig } from '../usage-budget.ts';
 import { when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
+import { QUESTIONS_PER_CARD } from './pending-decisions.ts';
 import type { BudgetPanel, ConfigSummaryInput, StatusReport } from './types.ts';
 
 // The executive-summary launch gate: one row per section, each with a one-line consequence, and
@@ -16,8 +17,6 @@ export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];
 export const MAX_CONSEQUENCE_CHARS = 140;
 /** A probe younger than this counts as current; older, the page is probed again. */
 export const PROBE_FRESH_MINUTES = 10;
-/** Questions one card carries. */
-export const QUESTIONS_PER_CARD = 4;
 
 export type GateOption = { label: string; description: string };
 
@@ -142,8 +141,12 @@ function budgetConsequence({ b, settings, invalid, workers, parallelMax }: Budge
   if (!b.probed) return `Usage not probed: workers are sized from parallel_max (${parallelMax}).`;
   const t = { ...settings.five_hour, ...settings.weekly };
   switch (b.verdict) {
-    case 'GO':
-      return `${plural(workers, 'worker')} ${workers === 1 ? 'starts' : 'start'} now; spawning stops at 5h ${t.no_spawn_at}%, the campaign at weekly ${t.stop_campaign_at}%.`;
+    case 'GO': {
+      const starts = `${plural(workers, 'worker')} ${workers === 1 ? 'starts' : 'start'} now`;
+      return weeklyOnly(b)
+        ? `${starts}; the campaign stops at weekly ${t.stop_campaign_at}%.`
+        : `${starts}; spawning stops at 5h ${t.no_spawn_at}%, the campaign at weekly ${t.stop_campaign_at}%.`;
+    }
     case 'NO-SPAWN':
       return 'No new worker spawns until the 5-hour window resets; in-flight workers finish.';
     case 'STOP-WORKERS':
@@ -158,6 +161,9 @@ function budgetConsequence({ b, settings, invalid, workers, parallelMax }: Budge
       return `Usage could not be read: workers are sized from parallel_max (${parallelMax}).`;
   }
 }
+
+/** A reading that shows the weekly window and no 5-hour one: the plan gates on the weekly window alone. */
+const weeklyOnly = (b: BudgetPanel): boolean => b.probed && b.windows.includes('seven_day') && !b.windows.includes('five_hour');
 
 function forecastText(b: BudgetPanel, stopAt: number): string {
   if (!b.forecast) return 'no forecast yet';
@@ -175,7 +181,7 @@ export function budgetRow(b: BudgetPanel, config: Record<string, unknown>): Laun
   const head = invalid ? 'usage_budget invalid, unavailable' : !settings.enabled ? 'pacing off' : b.probed ? (b.verdict ?? 'unavailable') : '';
   const usage = b.probed
     ? [
-        b.five_hour_pct === null ? '5h n/a' : `5h ${pct(b.five_hour_pct)}${b.five_hour_resets_at ? ` (resets ${when(b.five_hour_resets_at)})` : ''}`,
+        ...(weeklyOnly(b) ? [] : [b.five_hour_pct === null ? '5h n/a' : `5h ${pct(b.five_hour_pct)}${b.five_hour_resets_at ? ` (resets ${when(b.five_hour_resets_at)})` : ''}`]),
         b.weekly_pct === null ? 'weekly n/a' : `weekly ${pct(b.weekly_pct)}${b.resets_at ? ` (resets ${when(b.resets_at)})` : ''}`,
       ]
     : ['not probed'];
@@ -185,7 +191,7 @@ export function budgetRow(b: BudgetPanel, config: Record<string, unknown>): Laun
     head,
     ...usage,
     sized ? `${plural(workers, 'worker')} (parallel_max)` : `${plural(workers, 'worker')} allowed`,
-    `stops 5h ${no_spawn_at}/${stop_workers_at}%, weekly ${no_new_starts_at}/${stop_campaign_at}%`,
+    weeklyOnly(b) ? `stops weekly ${no_new_starts_at}/${stop_campaign_at}%` : `stops 5h ${no_spawn_at}/${stop_workers_at}%, weekly ${no_new_starts_at}/${stop_campaign_at}%`,
     ...(target_at_reset === null ? [] : [`target ${target_at_reset}% at weekly reset`]),
     ...(b.probed ? [forecastText(b, stop_campaign_at)] : []),
   ].filter(Boolean);

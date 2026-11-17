@@ -7,8 +7,13 @@ import type { RateLimits } from './pace-gate.ts';
 // clock reads. Anything unreadable is `unavailable`, which fails open with the caller's
 // `parallel_max` and always carries a reason.
 
+export const USAGE_WINDOWS = ['five_hour', 'seven_day'] as const;
+export type UsageWindow = (typeof USAGE_WINDOWS)[number];
+
 export type UsageBudgetConfig = {
   enabled: boolean;
+  /** Windows to gate on; null auto-detects them from the reading (usage-source.ts). */
+  windows: UsageWindow[] | null;
   five_hour: { no_spawn_at: number; stop_workers_at: number };
   weekly: { no_new_starts_at: number; stop_campaign_at: number; target_at_reset: number | null };
   rates: {
@@ -44,6 +49,7 @@ export type WeeklyForecast = {
 
 export const DEFAULT_USAGE_BUDGET: UsageBudgetConfig = {
   enabled: false,
+  windows: null,
   five_hour: { no_spawn_at: 85, stop_workers_at: 90 },
   weekly: { no_new_starts_at: 78, stop_campaign_at: 80, target_at_reset: null },
   // Weekly rates are starting points for a plan where ~1.2M subagent tokens moved the weekly % by
@@ -75,6 +81,16 @@ const pick = <T>(src: Record<string, unknown>, key: string, path: string, fallba
 const isPct = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 100;
 const isPositive = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0;
 
+/** `usage_budget.windows`: absent or null auto-detects from the reading; a list keeps only those windows. */
+export const resolveUsageWindows = (config: Record<string, unknown>): UsageWindow[] | null => {
+  const block = config.usage_budget;
+  const value = typeof block === 'object' && block !== null ? (block as Record<string, unknown>).windows : undefined;
+  if (value === undefined || value === null) return null;
+  const ok = Array.isArray(value) && value.length > 0 && value.every((w) => (USAGE_WINDOWS as readonly unknown[]).includes(w));
+  if (!ok) throw new Error(`usage_budget.windows must be null or a non-empty list of ${USAGE_WINDOWS.join(', ')}`);
+  return [...new Set(value as UsageWindow[])];
+};
+
 export const resolveUsageBudget = (config: Record<string, unknown>): UsageBudgetConfig => {
   const d = DEFAULT_USAGE_BUDGET;
   const raw = (config.usage_budget ?? {}) as unknown;
@@ -93,6 +109,7 @@ export const resolveUsageBudget = (config: Record<string, unknown>): UsageBudget
 
   const resolved: UsageBudgetConfig = {
     enabled: pick(block, 'enabled', `${P}.enabled`, d.enabled, (v) => typeof v === 'boolean', 'a boolean'),
+    windows: resolveUsageWindows(config),
     five_hour: {
       no_spawn_at: pick(five, 'no_spawn_at', `${P}.five_hour.no_spawn_at`, d.five_hour.no_spawn_at, isPct, 'a number in (0, 100]'),
       stop_workers_at: pick(five, 'stop_workers_at', `${P}.five_hour.stop_workers_at`, d.five_hour.stop_workers_at, isPct, 'a number in (0, 100]'),
@@ -165,8 +182,9 @@ const weeklyLeg = (week: { used_percentage: number; resets_at: number }, now: nu
 /** The verdict for the current usage. First match wins: weekly stop, 5-hour stop, weekly
  * no-new-starts (PACE-WAIT until the reset when a target is set), 5-hour no-spawn, else GO with a
  * worker count sized to the tokens left — the smaller of the 5-hour fit and the weekly fit, and
- * PACE-WAIT when the weekly fit is below one. Without a five_hour window the weekly leg alone sizes
- * the round when a target is set; otherwise usage is unavailable. `now` is epoch seconds;
+ * PACE-WAIT when the weekly fit is below one. Without a five_hour window (a weekly-only plan) the
+ * weekly rules alone gate: the weekly fit sizes the round when a target is set, else the ceiling
+ * does. With neither window usage is unavailable. `now` is epoch seconds;
  * `parallelMax` is the count returned when usage cannot be read and a ceiling on every count. */
 export const workersAllowed = (
   usage: RateLimits | null,
@@ -181,7 +199,7 @@ export const workersAllowed = (
   const week = usage.seven_day && usage.seven_day.resets_at > now ? usage.seven_day : undefined;
   const target = budget.weekly.target_at_reset;
   const paced = week !== undefined && target !== null;
-  if (!five && !paced) return unavailable(parallelMax, ['usage unavailable: no current five_hour window']);
+  if (!five && !week) return unavailable(parallelMax, ['usage unavailable: no current five_hour or seven_day window']);
   const reasons: string[] = [];
   // A measured rate that is not a finite number > 0 is ignored in favour of the configured one.
   const weeklyRate = (key: keyof MeasuredWeeklyRates): number => {
@@ -204,7 +222,11 @@ export const workersAllowed = (
     : null;
   const base = { hours_to_reset: hoursToReset, weekly_fit: leg ? leg.fit : null };
   if (!week) reasons.push('seven_day absent: weekly rules skipped');
-  if (!five) reasons.push('five_hour absent: 5-hour rules skipped, the weekly target sizes the round');
+  if (!five) {
+    reasons.push(paced
+      ? 'five_hour absent: 5-hour rules skipped, the weekly target sizes the round'
+      : 'five_hour absent: 5-hour rules skipped, the weekly thresholds gate and max_workers caps the round');
+  }
   const ceiling = Math.min(budget.max_workers, parallelMax);
 
   if (week && week.used_percentage >= budget.weekly.stop_campaign_at) {

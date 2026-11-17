@@ -139,26 +139,27 @@ describe('resolvePaceGateThresholds', () => {
 
 describe('pace-gate CLI', () => {
   const run = (args: string[]) => {
-    const r = Bun.spawnSync(['bun', 'run', SCRIPT_PATH, ...args], { stdout: 'pipe', stderr: 'pipe' });
+    // A bare environment: the host comes from --host, never from the session running the tests.
+    const r = Bun.spawnSync(['bun', 'run', SCRIPT_PATH, ...args], { stdout: 'pipe', stderr: 'pipe', env: { PATH: process.env.PATH ?? '' } });
     return { code: r.exitCode, out: r.stdout.toString(), err: r.stderr.toString() };
   };
 
   test('prints the verdict for a cached payload', () => {
     const file = cacheFile({ rate_limits: limits([96, 6 * DAY], [10, HOUR]) });
-    const r = run(['--current', '4', '--max', '6', '--cache', file, '--now', String(NOW)]);
+    const r = run(['--host', 'claude', '--current', '4', '--max', '6', '--cache', file, '--now', String(NOW)]);
     expect(r.code).toBe(0);
     expect(JSON.parse(r.out)).toMatchObject({ verdict: 'STOP-NEW', concurrency: 0 });
   });
 
   test('an absent cache prints unavailable with the reason on stderr', () => {
-    const r = run(['--current', '2', '--max', '6', '--cache', '/nonexistent/x.json', '--now', String(NOW)]);
+    const r = run(['--host', 'claude', '--current', '2', '--max', '6', '--cache', '/nonexistent/x.json', '--now', String(NOW)]);
     expect(JSON.parse(r.out)).toMatchObject({ verdict: 'unavailable', concurrency: 2 });
     expect(r.err).toContain('unavailable');
   });
 
   test('records a baseline on the first run, then stops once a compartment is spent', () => {
     const file = cacheFile({ rate_limits: limits([40, 3 * DAY], [5, HOUR]) });
-    const args = ['--current', '3', '--max', '6', '--cache', file, '--now', String(NOW)];
+    const args = ['--host', 'claude', '--current', '3', '--max', '6', '--cache', file, '--now', String(NOW)];
     const first = run(args);
     expect(JSON.parse(first.out).reasons.join()).toContain('compartments unavailable');
     expect(fs.existsSync(path.join(path.dirname(file), 'pace-baseline.json'))).toBe(true);
@@ -172,12 +173,30 @@ describe('pace-gate CLI', () => {
     const file = cacheFile({ rate_limits: limits([40, 3 * DAY], [5, HOUR]) });
     const baselineFile = path.join(path.dirname(file), 'pace-baseline.json');
     fs.writeFileSync(baselineFile, '{corrupt');
-    const r = run(['--current', '3', '--max', '6', '--cache', file, '--now', String(NOW)]);
+    const r = run(['--host', 'claude', '--current', '3', '--max', '6', '--cache', file, '--now', String(NOW)]);
     expect(JSON.parse(r.out).reasons.join()).toContain('compartments unavailable');
     expect(JSON.parse(fs.readFileSync(baselineFile, 'utf-8'))).toHaveProperty('day');
   });
 
+  test('cursor has no readable usage source: unavailable with the reason, the cache is not read', () => {
+    const file = cacheFile({ rate_limits: limits([96, 6 * DAY], [10, HOUR]) });
+    const r = run(['--host', 'cursor', '--current', '2', '--max', '6', '--cache', file, '--now', String(NOW)]);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out)).toMatchObject({ verdict: 'unavailable', concurrency: 2 });
+    expect(r.err).toContain('cursor: no readable usage source');
+  });
+
+  test('the host recorded in run-context.json beside the config picks the source', () => {
+    const file = cacheFile({ rate_limits: limits([96, 6 * DAY], [10, HOUR]) });
+    const dir = path.dirname(file);
+    fs.writeFileSync(path.join(dir, 'config.json'), '{}');
+    fs.writeFileSync(path.join(dir, 'run-context.json'), JSON.stringify({ context: { host: { value: 'claude', source: 'env' } } }));
+    const r = run(['--config', path.join(dir, 'config.json'), '--current', '4', '--max', '6', '--cache', file, '--now', String(NOW)]);
+    expect(JSON.parse(r.out)).toMatchObject({ verdict: 'STOP-NEW' });
+  });
+
   test('bad usage exits 2', () => {
+    expect(run(['--host', 'teleport', '--current', '1', '--max', '6']).code).toBe(2);
     expect(run(['--current', 'x', '--max', '6']).code).toBe(2);
     expect(run([]).code).toBe(2);
   });

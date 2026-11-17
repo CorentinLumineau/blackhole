@@ -32,7 +32,7 @@ describe('usage-budget CLI', () => {
     ['STOP-WORKERS', usageJson(90, 10), 'STOP-WORKERS'],
     ['NO-NEW-STARTS', usageJson(10, 78), 'NO-NEW-STARTS'],
     ['STOP-CAMPAIGN', usageJson(10, 80), 'STOP-CAMPAIGN'],
-    ['unavailable (no five_hour)', JSON.stringify({ seven_day: { used_percentage: 5, resets_at: NOW + HOUR } }), 'unavailable'],
+    ['GO (weekly-only plan, no five_hour)', JSON.stringify({ seven_day: { used_percentage: 5, resets_at: NOW + HOUR } }), 'GO'],
   ];
   for (const [name, usage, verdict] of cases) {
     test(`exits 0 on ${name}`, () => {
@@ -44,6 +44,13 @@ describe('usage-budget CLI', () => {
     });
   }
 
+  test('usage_budget.windows drops a --usage window: weekly-only gating', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      const r = run(dir, ['--usage', usageJson(95, 10)], { usage_budget: { enabled: true, windows: ['seven_day'] } });
+      expect(r.out.verdict).toBe('GO');
+    });
+  });
+
   test('disabled returns unavailable with workers = parallel_max', () => {
     withTempDir('usage-budget-cli', (dir) => {
       const r = run(dir, ['--usage', usageJson(99, 99)], {});
@@ -52,18 +59,48 @@ describe('usage-budget CLI', () => {
     });
   });
 
+  test('echoes the 5-hour and weekly % it judged, for pace-log --usage', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      expect(run(dir, ['--usage', usageJson(42, 61)]).out).toMatchObject({ five_hour_pct: 42, weekly_pct: 61 });
+      expect(run(dir, ['--usage', usageJson(42)]).out).toMatchObject({ five_hour_pct: 42, weekly_pct: null });
+      expect(run(dir, ['--usage', usageJson(42, 61)], {}).out).toMatchObject({ five_hour_pct: null, weekly_pct: null });
+    });
+  });
+
   test('reads the statusline cache through readRateLimits when --usage is absent', () => {
     withTempDir('usage-budget-cli', (dir) => {
       const cache = path.join(dir, 'rl.json');
       fs.writeFileSync(cache, JSON.stringify({ rate_limits: JSON.parse(usageJson(90, 10)) }));
       fs.utimesSync(cache, NOW, NOW);
+      expect(run(dir, ['--host', 'claude', '--cache', cache]).out.verdict).toBe('STOP-WORKERS');
+    });
+  });
+
+  test('the host recorded in run-context.json picks the usage source', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      const cache = path.join(dir, 'rl.json');
+      fs.writeFileSync(cache, JSON.stringify({ rate_limits: JSON.parse(usageJson(90, 10)) }));
+      fs.utimesSync(cache, NOW, NOW);
+      fs.writeFileSync(path.join(dir, 'run-context.json'), JSON.stringify({ context: { host: { value: 'claude', source: 'env' } } }));
       expect(run(dir, ['--cache', cache]).out.verdict).toBe('STOP-WORKERS');
+    });
+  });
+
+  test('cursor has no readable usage source: unavailable with the reason, never GO', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      const cache = path.join(dir, 'rl.json');
+      fs.writeFileSync(cache, JSON.stringify({ rate_limits: JSON.parse(usageJson(10, 10)) }));
+      fs.utimesSync(cache, NOW, NOW);
+      const r = run(dir, ['--host', 'cursor', '--cache', cache]);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatchObject({ verdict: 'unavailable', workers: 3 });
+      expect(r.out.reasons[0]).toContain('cursor: no readable usage source');
     });
   });
 
   test('a missing cache is unavailable, never an error', () => {
     withTempDir('usage-budget-cli', (dir) => {
-      const r = run(dir, ['--cache', path.join(dir, 'nope.json')]);
+      const r = run(dir, ['--host', 'claude', '--cache', path.join(dir, 'nope.json')]);
       expect(r.code).toBe(0);
       expect(r.out).toMatchObject({ verdict: 'unavailable', workers: 3 });
       expect(r.out.reasons[0]).toContain('no rate-limit cache');

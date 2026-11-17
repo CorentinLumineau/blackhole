@@ -4,6 +4,8 @@ import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { buildBudgetPanel, readBudgetPanel } from './lib/campaign-status/budget.ts';
+import { isSleepMode } from './lib/campaign-status/pending-decisions.ts';
+import { resolveHost } from './lib/usage-source.ts';
 import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
 import { crossRepoBlockersOf, fetchForgeCounts, fetchMergedPrs, readOpenIssues } from './lib/campaign-status/forge.ts';
 import { readPrLanding } from './lib/forge-adapter/pr-landing.ts';
@@ -202,7 +204,7 @@ export async function collectStatusReport(
     mergedPrs,
     pluginVersion: readPluginVersion(),
     denyCounts: collectDenyCounts(campaignDir, queue.campaign_started_at ?? null),
-    budget: readBudgetPanel(config as Record<string, unknown>),
+    budget: readBudgetPanel(config as Record<string, unknown>, resolveHost(campaignDir, process.env)),
   });
   return { report, state, host, crossRepoBlockers };
 }
@@ -238,11 +240,10 @@ function readStatusPageInput(campaignDir: string, config: Parameters<typeof stat
   };
 }
 
-/** The launch gate's print-only mode: sleep mode is on, or the run context reports no question channel. */
+/** The launch gate's print-only mode: sleep mode is on (`isSleepMode`), or the run context reports no question channel. */
 function readPrintOnly(campaignDir: string, config: Record<string, unknown>): boolean {
-  const sleep = (config.sleep_mode ?? {}) as { enabled?: unknown };
   const route = (readJsonOrNull(path.join(campaignDir, 'run-context.json')) ?? {}) as { route?: { question_channel?: unknown } };
-  return sleep.enabled === true || route.route?.question_channel === 'none';
+  return isSleepMode(config) || route.route?.question_channel === 'none';
 }
 
 /**
@@ -273,7 +274,7 @@ async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJso
   const rows = buildLaunchSummary({
     report: collected.report,
     config,
-    budget: usage ? buildBudgetPanel({ limits: usage, reason: null, ageSeconds: 0, now: nowS, config }) : readBudgetPanel(config, nowS),
+    budget: usage ? buildBudgetPanel({ limits: usage, reason: null, ageSeconds: 0, now: nowS, config }) : readBudgetPanel(config, resolveHost(campaignDir, process.env), nowS),
     statusPage: readStatusPageInput(campaignDir, collected.state.config, nowIso),
   });
   if (asJson) {

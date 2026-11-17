@@ -36,6 +36,19 @@ const permissionDecision = (stdout: string): string | undefined =>
 const permissionReason = (stdout: string): string | undefined =>
   JSON.parse(stdout).hookSpecificOutput?.permissionDecisionReason;
 
+/** Minimum wall time of `runs` calls after one warm-up call: the minimum damps scheduler noise, so a
+ * timing budget measures the code, not a busy CI runner. */
+const minMs = (run: () => unknown, runs = 3): number => {
+  run();
+  let best = Infinity;
+  for (let i = 0; i < runs; i += 1) {
+    const start = performance.now();
+    run();
+    best = Math.min(best, performance.now() - start);
+  }
+  return best;
+};
+
 describe('validate-bash-command.js', () => {
   test('block tier: `rm -rf /` is denied with exit 2, a stderr reason, and a durable block event', async () => {
     await withTempGitRepo('blackhole-hook-bash-', async (repo) => {
@@ -4499,16 +4512,6 @@ describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
 // wrapper fails open. Timing is the minimum of 3 runs after a warm-up to damp scheduler noise.
 describe('hook-event-log.js — redact is bounded on adversarial input (#1195)', () => {
   const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
-  const minMs = (fn: () => unknown): number => {
-    fn();
-    let best = Infinity;
-    for (let i = 0; i < 3; i++) {
-      const start = performance.now();
-      fn();
-      best = Math.min(best, performance.now() - start);
-    }
-    return best;
-  };
 
   test('redact of a 220 KB repeated-keyword input completes in under 50 ms', () => {
     const { redact } = hookEventLog();
@@ -4634,17 +4637,6 @@ describe('validate-bash-command.js — clause-scan cost bound (#1197)', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'worktree-removal-guard.js'));
   const SIZE_CAP = 32 * 1024;
-
-  const minMs = (run: () => void, runs = 3): number => {
-    run(); // warm-up
-    let best = Infinity;
-    for (let i = 0; i < runs; i += 1) {
-      const start = performance.now();
-      run();
-      best = Math.min(best, performance.now() - start);
-    }
-    return best;
-  };
 
   for (const [label, unit] of [['`;`', ';'], ['`| `', '| ']] as const) {
     test(`#1197: 120 KB of ${label} followed by \`git checkout -- f\` is still denied in under 2.5 s`, async () => {
@@ -5025,6 +5017,344 @@ describe('hook-event-log.js — redact length caps', () => {
       expect(reason).toContain('Remedy:');
       expect(reason.trimEnd().endsWith('.')).toBe(true);
       expect((events[0].detail as string).length).toBeLessThanOrEqual(300);
+    });
+  });
+});
+
+describe('hook-event-log.js — keyword-less credential masking', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  // Fake values built by concatenation so no token-shaped literal sits in source for secret scanners.
+  const ghp = 'ghp' + '_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4';
+  const ghs = 'ghs' + '_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8N7m6';
+  const pat = 'github' + '_pat_' + '11ABCDEFG0abcdefghij_klmnopqrstuvwxyz0123';
+  const aws = 'AKIA' + 'IOSFODNN7EXAMPLE';
+  const awsTemp = 'ASIA' + 'IOSFODNN7EXAMPLE';
+  const filler = 'x'.repeat(450);
+
+  const FORMS: Array<{ label: string; input: string; secret: string; masked: string }> = [
+    { label: 'ghp_ token', input: `curl -H x ${ghp} end`, secret: ghp, masked: 'ghp_***' },
+    { label: 'ghs_ token', input: `use ${ghs} now`, secret: ghs, masked: 'ghs_***' },
+    { label: 'github_pat_ token', input: `export ${pat}`, secret: pat, masked: 'github_pat_***' },
+    { label: 'AWS AKIA key', input: `id ${aws} used`, secret: aws, masked: 'AKIA***' },
+    { label: 'AWS ASIA key', input: `id ${awsTemp} used`, secret: awsTemp, masked: 'ASIA***' },
+    {
+      label: 'URL userinfo',
+      input: 'git clone https://deploy:hunter2pw@example.com/org/repo.git',
+      secret: 'hunter2pw',
+      masked: 'https://deploy:***@example.com/org/repo.git',
+    },
+    { label: '--password with a short value', input: 'mysql --password ab -h db', secret: 'password ab', masked: '--password ***' },
+    { label: '--password= with a short value', input: 'mysql --password=ab -h db', secret: '=ab', masked: '--password=***' },
+    { label: '--password with a long value', input: 'mysql --password correcthorse -h db', secret: 'correcthorse', masked: '--password ***' },
+  ];
+
+  for (const form of FORMS) {
+    test(`redact masks ${form.label}`, () => {
+      const out = hookEventLog().redact(form.input);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+    });
+
+    test(`redactReason masks ${form.label} placed after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${form.input} Remedy: rotate it.`);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+      expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+    });
+  }
+
+  test('through the hook: a token in a blocked command is masked in the recorded detail and reason', async () => {
+    await withLinkedWorktree('blackhole-hook-1188-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git checkout throwaway -- ${ghp}`), mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      const recorded = JSON.stringify(events[0]);
+      expect(recorded).not.toContain(ghp);
+      expect(recorded).toContain('ghp_***');
+    });
+  });
+
+  const ADVERSARIAL: Array<[string, string]> = [
+    ['ghp_ run', 'ghp_'.repeat(500)],
+    ['github_pat_ run', 'github_pat_'.repeat(180)],
+    ['AKIA run', 'AKIA'.repeat(500)],
+    ['scheme-like run', 'a'.repeat(2000)],
+    ['scheme with endless userinfo', `https://${'u'.repeat(1990)}`],
+    ['userinfo colon run', `a://${':'.repeat(1990)}`],
+    ['--password then whitespace', `--password${' '.repeat(1980)}`],
+    ['repeated --password', '--password '.repeat(180)],
+  ];
+
+  for (const [label, input] of ADVERSARIAL) {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+      const { redactReason } = hookEventLog();
+      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+    });
+  }
+
+  test('unrelated text is left unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    const unchanged = [
+      'git -C /home/dev/work/blackhole/src status',
+      'commit 7a1f23b67d3342712cdc588e874e2b99843f3514 is fine',
+      'the ghp prefix without an underscore stays, as does ghpAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      'fetch https://example.com/path?q=1 and ssh://git@example.com/repo.git',
+      'AKIA is short, and AKIAshort stays',
+    ];
+    for (const text of unchanged) {
+      expect(redact(text)).toBe(text);
+      expect(redactReason(text)).toBe(text);
+    }
+  });
+});
+
+describe('hook-event-log.js — space-separated secret flags', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  const value = 'abcdefgh1234';
+
+  const MASKED: Array<[string, string, string]> = [
+    ['--token', `run --token ${value} now`, '--token ***'],
+    ['--api-key', `run --api-key ${value} now`, '--api-key ***'],
+    ['--secret', `run --secret ${value} now`, '--secret ***'],
+    ['-token', `run -token ${value} now`, '-token ***'],
+    ['--with-token', `gh auth login --with-token ${value} now`, '--with-token ***'],
+    ['Bearer', `curl -H "Authorization: Bearer ${value}" now`, 'Bearer ***'],
+  ];
+
+  for (const [label, input, masked] of MASKED) {
+    test(`redactReason masks ${label} after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${input}`);
+      expect(out).toContain(masked);
+      expect(out).not.toContain(value);
+    });
+  }
+
+  test('flags that merely start with a secret keyword stay unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    for (const text of ['--token-file /path/to/file', '--secret-name foo', '--tokenizer x']) {
+      expect(redactReason(`${filler} ${text}`)).toBe(`${filler} ${text}`);
+      expect(redact(text)).toBe(text);
+    }
+  });
+});
+
+describe('hook-event-log.js — residual credential forms (#1190)', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  // Fake values built by concatenation so no credential-shaped literal sits in source for secret scanners.
+  const pw = 'hun' + 'ter2' + 'pw';
+  const pwAt = 'hun' + 'ter@2' + 'pw';
+  const aws = 'AKIA' + 'IOSFODNN7EXAMPLE';
+  const b64 = 'dXNlcjpw' + 'YXNzd29yZA==';
+
+  const FORMS: Array<{ label: string; input: string; secret: string; masked: string }> = [
+    { label: '--password with a double-quoted value containing spaces', input: 'db --password "correct horse battery" -h x', secret: 'horse', masked: '--password "***" -h x' },
+    { label: '--password with a single-quoted value containing spaces', input: "db --password 'correct horse battery' -h x", secret: 'horse', masked: "--password '***' -h x" },
+    { label: '--password= with a quoted value containing spaces', input: 'db --password="correct horse" -h x', secret: 'horse', masked: '--password="***" -h x' },
+    { label: 'mysql -p<value>', input: `mysql -u root -p${pw} -h db`, secret: pw, masked: 'mysql -u root -p*** -h db' },
+    { label: 'mysqldump -p<value>', input: `mysqldump -u root -p${pw} app`, secret: pw, masked: '-p*** app' },
+    { label: 'mariadb -p<value>', input: `mariadb -p${pw}`, secret: pw, masked: 'mariadb -p***' },
+    { label: 'URL userinfo with an unencoded @ in the password', input: `git clone https://deploy:${pwAt}@example.com/org/repo.git`, secret: 'ter@2', masked: 'https://deploy:***@example.com/org/repo.git' },
+    { label: 'AKIA key followed by an underscore', input: `id ${aws}_BACKUP used`, secret: aws, masked: 'AKIA***_BACKUP' },
+    { label: 'AKIA key followed by lowercase alphanumerics', input: `id ${aws}abc used`, secret: aws, masked: 'AKIA***abc' },
+    { label: 'JSON "password" key', input: `{"password":"${pw}"}`, secret: pw, masked: '{"password":"***"}' },
+    { label: 'JSON "token" key', input: `{"token":"${pw}"}`, secret: pw, masked: '{"token":"***"}' },
+    { label: 'JSON "aws_secret_access_key" key', input: `{"aws_secret_access_key":"${pw}"}`, secret: pw, masked: '"aws_secret_access_key":"***"' },
+    { label: 'JSON key with spaces around the colon', input: `{"password" : "${pw}"}`, secret: pw, masked: '"password" : "***"' },
+    { label: 'Authorization: Basic', input: `curl -H "Authorization: Basic ${b64}" x`, secret: b64, masked: 'Authorization: Basic ***"' },
+    { label: 'Authorization: token', input: `curl -H "Authorization: token ${pw}" x`, secret: pw, masked: 'Authorization: token ***"' },
+    { label: 'curl -u user:pass', input: `curl -u admin:${pw} https://example.com/x`, secret: pw, masked: '-u admin:*** https://example.com/x' },
+    { label: 'curl -u after other flags', input: `curl -sS -L -H x -X POST -u admin:${pw} https://example.com/x`, secret: pw, masked: '-u admin:***' },
+    { label: 'curl -uuser:pass', input: `curl -uadmin:${pw} https://example.com/x`, secret: pw, masked: '-uadmin:***' },
+    { label: 'curl --user user:pass', input: `curl --user admin:${pw} https://example.com/x`, secret: pw, masked: '--user admin:***' },
+    { label: 'curl --user=user:pass', input: `curl --user=admin:${pw} https://example.com/x`, secret: pw, masked: '--user=admin:***' },
+    { label: 'curl -u with a quoted user:pass', input: `curl -u 'admin:${pw}' https://example.com/x`, secret: pw, masked: "-u 'admin:***'" },
+  ];
+
+  for (const form of FORMS) {
+    test(`redactReason masks ${form.label} placed after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${form.input} Remedy: rotate it.`);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+      expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+    });
+  }
+
+  test('negatives: look-alike text is left unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    const unchanged = [
+      'curl -u user https://example.com',
+      'curl -u user https://example.com:8080/x',
+      'ssh -p 22 host',
+      'mkdir -p dir/sub',
+      'docker run -p 8080:80 img',
+      'curl -p8080 x',
+      'mysql -p -h db',
+      'mysql -P 3306 -h db',
+      'mysql --port 3306',
+      'commit 7a1f23b67d3342712cdc588e874e2b99843f3514 is fine',
+      'git -C /home/dev/work/blackhole/src status',
+      'db --password-file /run/secrets/pw',
+      'db --password-stdin',
+      'git clone git@github.com:org/repo.git',
+      'git clone ssh://git@example.com/org/repo.git',
+      'ping user@host and mail dev@example.com',
+      'fetch https://example.com:8080/a@b',
+      'Basic authentication is documented in the Authorization header section',
+      'the token is stored elsewhere and the password is unknown',
+      'AKIA' + 'IOSFODNN7EXAMPLE' + 'X',
+    ];
+    for (const text of unchanged) {
+      expect(redact(text)).toBe(text);
+      expect(redactReason(`${filler} ${text}`)).toBe(`${filler} ${text}`);
+    }
+  });
+
+  const ADVERSARIAL: Array<[string, string]> = [
+    ['unterminated quoted --password', `--password "${'a '.repeat(100_000)}`],
+    ['repeated quoted --password openers', '--password "'.repeat(16_600)],
+    ['repeated mysql', 'mysql '.repeat(33_000)],
+    ['mysql with a long token run and no -p', `mysql ${'a '.repeat(100_000)}`],
+    ['mysql followed by one huge token', `mysql ${'a'.repeat(200_000)}`],
+    ['URL userinfo run of @', `https://u:${'@'.repeat(200_000)}`],
+    ['URL userinfo long unterminated password', `https://u:${'p'.repeat(200_000)}`],
+    ['repeated URL userinfo openers', 'a://u:'.repeat(33_000)],
+    ['repeated AKIA', 'AKIA'.repeat(50_000)],
+    ['AKIA followed by endless capitals', `AKIA${'A'.repeat(200_000)}`],
+    ['JSON key then endless whitespace', `"password${'"'.repeat(1)}${' '.repeat(200_000)}`],
+    ['repeated JSON keys', '"password" '.repeat(18_000)],
+    ['repeated Authorization openers', 'Authorization:'.repeat(14_000)],
+    ['Authorization: Basic then endless value', `Authorization: Basic ${'a'.repeat(200_000)}`],
+    ['Authorization then endless whitespace', `Authorization${' '.repeat(200_000)}`],
+    ['repeated curl', 'curl '.repeat(40_000)],
+    ['repeated curl -u', 'curl -u '.repeat(25_000)],
+    ['repeated --user', '--user '.repeat(28_000)],
+    ['--user then endless user without colon', `--user ${'a'.repeat(200_000)}`],
+    ['curl -u then endless colons', `curl -u a${':'.repeat(200_000)}`],
+  ];
+
+  for (const [label, input] of ADVERSARIAL) {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+      const { redactReason } = hookEventLog();
+      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+    });
+  }
+});
+describe('hook-event-log.js — quoted values and client password env vars (#1192)', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  // Fake values built by concatenation so no credential-shaped literal sits in source for secret scanners.
+  const phrase = 'my pa' + 'ss phr' + 'ase';
+  const hunter = 'hun' + 'ter 22';
+  const twoWords = 'p' + 'w w' + 'x';
+  const single = 'hun' + 'ter2' + 'pw';
+
+  const FORMS: Array<{ label: string; input: string; secret: string; masked: string }> = [
+    { label: 'KV double-quoted value with spaces', input: `{"password":"${phrase}"}`, secret: 'phr' + 'ase', masked: '{"password":"***"}' },
+    { label: 'KV double-quoted value with spaces after a spaced colon', input: `{"password": "${hunter}"}`, secret: 'ter 22', masked: '{"password": "***"}' },
+    { label: 'KV single-quoted value with spaces', input: `password='${phrase}' next`, secret: 'phr' + 'ase', masked: "password='***' next" },
+    { label: 'curl -u quoted user:pass with spaces', input: `curl -u 'admin:${hunter}' https://example.com/x`, secret: 'ter 22', masked: "-u 'admin:***' https://example.com/x" },
+    { label: 'curl --user quoted user:pass with spaces', input: `curl --user "u:${twoWords}" https://example.com/x`, secret: 'w w', masked: '--user "u:***" https://example.com/x' },
+    { label: 'bare --user quoted user:pass with spaces', input: `tool --user="u:${twoWords}" go`, secret: 'w w', masked: '--user="u:***" go' },
+    { label: 'PGPASSWORD before a command', input: `PGPASSWORD=${single} psql -h db`, secret: single, masked: 'PGPASSWORD=*** psql -h db' },
+    { label: 'PGPASSWORD with a quoted value', input: `PGPASSWORD="${phrase}" psql`, secret: 'phr' + 'ase', masked: 'PGPASSWORD="***" psql' },
+    { label: 'export PGPASSWORD', input: `export PGPASSWORD=${single}`, secret: single, masked: 'export PGPASSWORD=***' },
+    { label: 'MYSQL_PWD before a command', input: `MYSQL_PWD=${single} mysql -u root`, secret: single, masked: 'MYSQL_PWD=*** mysql -u root' },
+    { label: 'MYSQL_PWD with a short value', input: 'MYSQL_PWD=ab mysql', secret: '=ab', masked: 'MYSQL_PWD=*** mysql' },
+  ];
+
+  for (const form of FORMS) {
+    test(`redactReason masks ${form.label} placed after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${form.input} Remedy: rotate it.`);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+      expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+    });
+  }
+
+  test('negatives: look-alike text is left unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    const unchanged = [
+      '{"password_hint":"my first pet"}',
+      '{"tokens":["a b"]}',
+      'curl -u user https://example.com',
+      'PG_HOST=x psql',
+      'PGHOST=db psql',
+    ];
+    for (const text of unchanged) {
+      expect(redact(text)).toBe(text);
+      expect(redactReason(`${filler} ${text}`)).toBe(`${filler} ${text}`);
+    }
+  });
+
+  const ADVERSARIAL: Array<[string, string]> = [
+    ['unterminated quoted KV value', `"password":"${'a '.repeat(100_000)}`],
+    ['repeated unterminated quoted KV openers', '"password":"'.repeat(16_600)],
+    ['repeated single-quoted KV openers', "password: '".repeat(18_000)],
+    ['unterminated quoted curl -u', `curl -u '${'a:b '.repeat(50_000)}`],
+    ['repeated unterminated curl -u openers', "curl -u 'a:".repeat(18_000)],
+    ['repeated unterminated --user openers', '--user "a:'.repeat(22_000)],
+    ['unterminated quoted PGPASSWORD', `PGPASSWORD="${'a '.repeat(100_000)}`],
+    ['repeated PGPASSWORD openers', 'PGPASSWORD="'.repeat(16_000)],
+    ['PGPASSWORD then endless value', `PGPASSWORD=${'a'.repeat(200_000)}`],
+    ['repeated MYSQL_PWD', 'MYSQL_PWD='.repeat(20_000)],
+  ];
+
+  for (const [label, input] of ADVERSARIAL) {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+      const { redactReason } = hookEventLog();
+      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+    });
+  }
+});
+
+// The fork-bomb pattern's leading identifier group used to restart its greedy run at every
+// offset inside a long identifier, backtracking quadratically (8.4 s on 120 KB of `a`) — past the
+// native-wrapper timeout, which fails open and bypasses the static deny.
+describe('validate-bash-command.js — fork-bomb pattern stays linear on long identifier runs', () => {
+  const forkBomb = (): RegExp => {
+    const raw = JSON.parse(
+      fs.readFileSync(path.join(PRETOOLUSE_HOOKS_DIR, 'patterns', 'bash-patterns.json'), 'utf8'),
+    );
+    const entry = raw.blockPatterns.find((p: { id: string }) => p.id === 'fork-bomb');
+    return new RegExp(entry.pattern, entry.flags);
+  };
+
+  test('64 KB of identifier chars is scanned in under 50 ms', () => {
+    const re = forkBomb();
+    const input = 'a'.repeat(64 * 1024);
+    const start = performance.now();
+    const matched = re.test(input);
+    const elapsed = performance.now() - start;
+    expect(matched).toBe(false);
+    expect(elapsed).toBeLessThan(50);
+  });
+
+  for (const command of [':(){ :|:& };:', 'bomb(){ bomb|bomb& };bomb', 'echo hi; f(){ f|f& };f']) {
+    test(`the pattern still matches \`${command}\``, () => {
+      expect(forkBomb().test(command)).toBe(true);
+    });
+  }
+
+  test('hook seam: `echo` plus 30 KB of identifier chars (under the 32 KiB size cap) is allowed in under 500 ms', async () => {
+    await withTempGitRepo('blackhole-hook-forkbomb-', async (repo) => {
+      const start = performance.now();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`echo ${'a'.repeat(30 * 1024)}`), repo);
+      const elapsed = performance.now() - start;
+      expect(result.exitCode).toBe(0);
+      expect(elapsed).toBeLessThan(500);
+    });
+  });
+
+  test('hook seam: the classic `:(){ :|:& };:` form is still denied', async () => {
+    await withTempGitRepo('blackhole-hook-forkbomb-', async (repo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(':(){ :|:& };:'), repo);
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(readHookEvents(repo)[0]).toMatchObject({ tier: 'block', pattern_id: 'fork-bomb' });
     });
   });
 });

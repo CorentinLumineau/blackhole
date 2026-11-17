@@ -1,11 +1,13 @@
 import * as fs from 'fs';
-import { readRateLimits, resolvePaceGateThresholds, resolveRateLimitCachePath, type RateLimits } from '../pace-gate.ts';
-import { forecastWeekly, resolveUsageBudget, workersAllowed, type UsageBudgetConfig, type UsageVerdict } from '../usage-budget.ts';
+import type { RateLimits } from '../pace-gate.ts';
+import type { Host } from '../run-context.ts';
+import { forecastWeekly, resolveUsageBudget, workersAllowed, USAGE_WINDOWS, type UsageBudgetConfig, type UsageVerdict } from '../usage-budget.ts';
+import { usageSourceFor, type UsageSourceName } from '../usage-source.ts';
 import type { BudgetPanel } from './types.ts';
 
 // The status page's usage-budget panel: the rate-limit reading pace-gate.ts and usage-budget.ts
-// read (one cache file), the verdict workersAllowed() gives for it, and when the weekly thresholds
-// would be reached. A plan with no five_hour window shows the weekly rows only.
+// read (one cache file, through the host's usage source), the verdict workersAllowed() gives for it,
+// and when the weekly thresholds would be reached. A plan with no five_hour window shows the weekly rows only.
 
 const HOUR = 3600;
 const WEEK = 7 * 24 * HOUR;
@@ -25,6 +27,8 @@ export const NOT_PROBED: BudgetPanel = {
   verdict: null,
   verdict_reasons: [],
   forecast: null,
+  source: null,
+  windows: [],
 };
 
 /** The verdict the usage-budget CLI returns for this reading: `unavailable` when the budget is off or its config is invalid. */
@@ -47,6 +51,7 @@ export function buildBudgetPanel(input: {
   ageSeconds: number | null;
   now: number;
   config: Record<string, unknown>;
+  source?: UsageSourceName;
 }): BudgetPanel {
   const { limits, now, config } = input;
   if (!limits) return { ...NOT_PROBED, reason: input.reason ?? NOT_PROBED.reason };
@@ -77,28 +82,32 @@ export function buildBudgetPanel(input: {
     verdict: verdict.verdict,
     verdict_reasons: verdict.reasons,
     forecast,
+    source: input.source ?? 'rate-limit-cache',
+    windows: USAGE_WINDOWS.filter((name) => (name === 'five_hour' ? five : week) !== undefined),
   };
 }
 
-/** Reads the rate-limit cache the config names (`resolveRateLimitCachePath`), as pace-gate.ts and usage-budget.ts do. */
-export function readBudgetPanel(config: Record<string, unknown>, now: number = Math.floor(Date.now() / 1000)): BudgetPanel {
-  const cachePath = resolveRateLimitCachePath(config);
-  let maxAge: number;
+/** Reads `host`'s usage source (`usage-source.ts`): the rate-limit cache the config names on Claude, none elsewhere. */
+export function readBudgetPanel(config: Record<string, unknown>, host: Host, now: number = Math.floor(Date.now() / 1000)): BudgetPanel {
+  let reading;
+  let cachePath: string | null = null;
   try {
-    maxAge = resolvePaceGateThresholds(config).maxAgeSeconds;
+    const source = usageSourceFor(host, config);
+    reading = source.read(now);
+    cachePath = source.cachePath;
   } catch (error) {
-    return { ...NOT_PROBED, reason: `resource_policy.pace invalid: ${error instanceof Error ? error.message : String(error)}` };
+    return { ...NOT_PROBED, reason: `usage source config invalid: ${error instanceof Error ? error.message : String(error)}` };
   }
-  const { limits, reason } = readRateLimits(cachePath, now, maxAge);
   let ageSeconds: number | null = null;
   try {
-    ageSeconds = Math.max(0, Math.round(now - fs.statSync(cachePath).mtimeMs / 1000));
+    if (cachePath) ageSeconds = Math.max(0, Math.round(now - fs.statSync(cachePath).mtimeMs / 1000));
   } catch {
-    // No cache: readRateLimits already gave the reason.
+    // No cache: the source already gave the reason.
   }
-  return buildBudgetPanel({ limits, reason, ageSeconds, now, config });
+  return buildBudgetPanel({ limits: reading.limits, reason: reading.reason, ageSeconds, now, config, source: reading.source });
 }
 
+const WINDOW_LABELS = { five_hour: '5-hour', seven_day: 'weekly' } as const;
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const pad = (n: number): string => String(n).padStart(2, '0');
@@ -124,5 +133,6 @@ export function budgetRows(b: BudgetPanel): Array<{ key: string; value: string }
     else for (const r of f.reaches) rows.push({ key: 'Forecast', value: `weekly ${r.pct}% ${r.at ? `reached around ${when(r.at)}` : 'not reached before the reset'} (${rate})` });
   }
   if (b.age_seconds !== null) rows.push({ key: 'Usage reading', value: age(b.age_seconds) });
+  if (b.windows.length) rows.push({ key: 'Usage windows', value: `${b.windows.map((w) => WINDOW_LABELS[w]).join(', ')} (${b.source})` });
   return rows;
 }

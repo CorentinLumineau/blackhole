@@ -26,6 +26,9 @@ decision card:
 The issue goes `status: blocked` until the answer arrives as a wake. Work on other issues
 continues. Never repeat the question in a separate message.
 
+In sleep mode (`sleep-mode.md`) no card is posted: the question is parked, and on wake-up the
+parked questions are posted together, at most four per batch.
+
 ## Dashboard: the status checklist
 
 The thread's status checklist replaces the coordinator dashboard (`coordinator-dashboard.md`).
@@ -60,8 +63,13 @@ When `route.schedule` is `routine`:
   second one.
 - An outstanding CI wait gets a one-off check-in 20 minutes out. It re-runs step 3 above in case
   an event was lost.
+- A usage stop (`STOP-WORKERS` or `PACE-WAIT` from `scripts/usage-budget.ts`, run with
+  `scripts/pace-gate.ts` at every spawn round, `orchestrator-runtime.md` § Background worker
+  barrier) gets one one-off routine at the verdict's `wake_at`; the thread ends its turn and the
+  routine resumes it (`phase-stop.md` § Usage stop).
 
-When `route.schedule` is `turn`, both stay in-turn as today.
+When `route.schedule` is `turn`, all three stay in-turn as today (a usage stop's `wake_at` is then
+named in the report and checked at the next turn start).
 
 ## State
 
