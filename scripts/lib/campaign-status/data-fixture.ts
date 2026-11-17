@@ -38,6 +38,9 @@ export function fixtureReport(queue: QueueJson = FIXTURE_QUEUE): StatusReport {
     prSignals: { 9: { review: 'LGTM', review_read: true, ci: 'running', failing: [], mergeable: true } },
     pluginVersion: '1.2.3',
     denyCounts: [{ pattern_id: 'rm-rf', deny: 3, warn: 1 }],
+    pending: [
+      { id: 'PD-1', question: 'Ship the gate as a draft?', options: [{ label: 'Yes' }, { label: 'No' }], recommended: 0, blocks: [1], gate: 'plan-approval', created_at: '2026-11-11T09:00:00.000Z' },
+    ],
   });
 }
 

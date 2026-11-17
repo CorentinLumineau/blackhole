@@ -111,6 +111,27 @@ describe('readBudgetPanel', () => {
   });
 });
 
+describe('the weekly target', () => {
+  it('a configured target_at_reset is a row after the weekly one, probed or not', () => {
+    const config = enabled({ target_at_reset: 70 });
+    const limits = { seven_day: { used_percentage: 40, resets_at: NOW + WEEK / 2 } };
+    const probed = buildBudgetPanel({ limits, reason: null, ageSeconds: 0, now: NOW, config });
+    expect(probed.target_at_reset).toBe(70);
+    const text = lines(probed);
+    expect(text.indexOf('Weekly target: 70% at the weekly reset')).toBe(text.findIndex((l) => l.startsWith('Weekly:')) + 1);
+    const unprobed = buildBudgetPanel({ limits: null, reason: 'no cache', ageSeconds: null, now: NOW, config });
+    expect(lines(unprobed)).toEqual(['Usage: usage not probed — no cache', 'Weekly target: 70% at the weekly reset']);
+  });
+
+  it('no target, or an invalid usage_budget, shows no target row', () => {
+    for (const config of [enabled(), { usage_budget: { weekly: { target_at_reset: 'high' } } }]) {
+      const panel = buildBudgetPanel({ limits: null, reason: null, ageSeconds: null, now: NOW, config });
+      expect(panel.target_at_reset).toBeNull();
+      expect(lines(panel).some((l) => l.startsWith('Weekly target'))).toBe(false);
+    }
+  });
+});
+
 describe('the budget panel on every surface', () => {
   const probed = buildBudgetPanel({
     limits: { seven_day: { used_percentage: 40, resets_at: NOW + WEEK / 2 } },

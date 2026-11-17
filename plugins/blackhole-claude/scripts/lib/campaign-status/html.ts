@@ -2,6 +2,7 @@ import { SECTION_CAP } from './dashboard.ts';
 import { classPreview } from './blocked-classes.ts';
 import { BOARD_COLUMNS } from './board.ts';
 import { budgetRows } from './budget.ts';
+import { runRows } from './run-state.ts';
 import { topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
 import { campaignName, elseClasses, inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
@@ -243,6 +244,15 @@ function budgetSection(r: StatusReport): string {
   return section('Usage budget', lineList(budgetRows(r.budget).map((row) => `${row.key}: ${row.value}`)));
 }
 
+function runSection(r: StatusReport): string {
+  return section('Run', lineList(runRows(r.run).map((row) => `${row.key}: ${row.value}`)));
+}
+
+function pendingSection(r: StatusReport): string {
+  const lines = r.pending_decisions.map((d) => `${d.question} — recommended: ${d.recommended} · holds ${d.waiting_items} item${d.waiting_items === 1 ? '' : 's'}`);
+  return section('Decisions waiting for you', lines.length ? lineList(lines) : empty('No decision is waiting for you.'), lines.length);
+}
+
 function eventsSection(r: StatusReport): string {
   const { notes, active_workers } = r.checkpoint;
   if (notes.length === 0 && active_workers.length === 0) {
@@ -353,11 +363,13 @@ export function renderStatusHtml(report: StatusReport): string {
     overview(report),
     movesSection(report),
     blockersSection(report),
+    pendingSection(report),
     boardSection(report),
     streamsSection(report),
     scopeSection(report),
     configSection(report),
     budgetSection(report),
+    runSection(report),
     decisionsSection(report),
     progressSection(report),
     ownerSection(report),

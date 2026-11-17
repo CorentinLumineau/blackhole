@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as childProcess from 'child_process';
 import { runGlab, runGlabJson, runGlabText } from './glab-cli.ts';
+import { FORGE_CLI_MAX_BUFFER } from './spawn.ts';
 
 /**
  * A minimal `child_process.spawnSync` return value shaped for the mocks below — status/stdout/
@@ -34,7 +35,7 @@ describe('glab-cli', () => {
 
     const result = runGlab(['auth', 'status']);
 
-    expect(spawnSyncSpy).toHaveBeenCalledWith('glab', ['auth', 'status'], { encoding: 'utf-8' });
+    expect(spawnSyncSpy).toHaveBeenCalledWith('glab', ['auth', 'status'], { encoding: 'utf-8', maxBuffer: FORGE_CLI_MAX_BUFFER });
     expect(result).toEqual({ status: 0, stdout: 'GitLab: gitlab.com\n', stderr: '', error: null });
   });
 
@@ -45,6 +46,7 @@ describe('glab-cli', () => {
 
     expect(spawnSyncSpy).toHaveBeenCalledWith('glab', ['mr', 'list', '--output', 'json'], {
       encoding: 'utf-8',
+      maxBuffer: FORGE_CLI_MAX_BUFFER,
     });
   });
 
@@ -55,6 +57,7 @@ describe('glab-cli', () => {
 
     expect(spawnSyncSpy).toHaveBeenCalledWith('glab', ['mr', 'list', '--output', 'json'], {
       encoding: 'utf-8',
+      maxBuffer: FORGE_CLI_MAX_BUFFER,
     });
   });
 
@@ -109,5 +112,37 @@ describe('glab-cli', () => {
     expect(result.error?.code).toBe('ENOENT');
     expect(result.stdout).toBe('');
     expect(result.stderr).toBe('');
+  });
+  test('runGlab raises the spawn buffer far above the 1 MiB default', () => {
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('ok', 0));
+
+    runGlab(['mr', 'list']);
+
+    const options = spawnSyncSpy.mock.calls[0]?.[2] as { maxBuffer?: number };
+    expect(options.maxBuffer).toBe(FORGE_CLI_MAX_BUFFER);
+    expect(FORGE_CLI_MAX_BUFFER).toBeGreaterThanOrEqual(256 * 1024 * 1024);
+  });
+
+  test('runGlabJson reports ENOBUFS as a buffer overflow, not a JSON parse error over the cut output', () => {
+    const truncated = '[{"url":"https://example.test/1","body":"cut mid-str';
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue({
+      ...mockSpawnResult(truncated, 0),
+      status: null,
+      signal: 'SIGTERM',
+      error: Object.assign(new Error('spawnSync glab ENOBUFS'), { code: 'ENOBUFS' }),
+    } as unknown as ReturnType<typeof childProcess.spawnSync>);
+
+    let message = '';
+    try {
+      runGlabJson(['mr', 'list']);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+
+    expect(message).toContain('ENOBUFS');
+    expect(message).toContain('glab mr');
+    expect(message).toContain(String(FORGE_CLI_MAX_BUFFER));
+    expect(message).not.toContain('cut mid-str');
+    expect(message).not.toMatch(/JSON/);
   });
 });

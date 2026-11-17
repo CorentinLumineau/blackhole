@@ -4,7 +4,8 @@ import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { givenBudgetPanel, readBudgetPanel } from './lib/campaign-status/budget.ts';
-import { isSleepMode } from './lib/campaign-status/pending-decisions.ts';
+import { isSleepMode, readPendingDecisions } from './lib/campaign-status/pending-decisions.ts';
+import type { PendingRead } from './lib/campaign-status/run-state.ts';
 import { resolveHost } from './lib/usage-source.ts';
 import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
 import { crossRepoBlockersOf, fetchForgeCounts, fetchMergedPrs, readOpenIssues } from './lib/campaign-status/forge.ts';
@@ -207,6 +208,8 @@ export async function collectStatusReport(
     pluginVersion: readPluginVersion(),
     denyCounts: collectDenyCounts(campaignDir, queue.campaign_started_at ?? null),
     budget: readBudgetPanel(config as Record<string, unknown>, resolveHost(campaignDir, process.env)),
+    runContext: readJsonOrNull(path.join(campaignDir, 'run-context.json')),
+    pending: readPending(campaignDir),
   });
   return { report, state, host, crossRepoBlockers };
 }
@@ -230,6 +233,15 @@ const readJsonOrNull = (file: string): unknown => {
   }
 };
 
+/** `pending-decisions.json` for the page: a malformed file is shown as unreadable, never as none parked. */
+function readPending(campaignDir: string): PendingRead {
+  try {
+    return readPendingDecisions(campaignDir).decisions;
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 /** The Status page row's inputs: config, host, `status-artifact.json` and the shipped template version. */
 function readStatusPageInput(campaignDir: string, config: Parameters<typeof statusPageEnabled>[0], nowIso: string): StatusPageInput {
   const artifact = readJsonOrNull(path.join(campaignDir, 'status-artifact.json'));
@@ -249,7 +261,7 @@ function readPrintOnly(campaignDir: string, config: Record<string, unknown>): bo
 }
 
 /**
- * `--summary`: the launch gate's seven rows and question cards. The Budget row reads the same
+ * `--summary`: the launch gate's eight rows and question cards. The Budget row reads the same
  * `BudgetPanel` the status page shows: built from `--usage` (restricted to `usage_budget.windows`)
  * when given, else from the host's usage source at `--now`, as `report.budget` is.
  */
