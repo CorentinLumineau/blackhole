@@ -320,13 +320,21 @@ const findCopyMoveTargets = (tokens) => {
   return [];
 };
 
-/** The value of a long option `--name=VALUE` or `--name VALUE` at `args[i]`, with the index of the
- * last token it consumed; null when `args[i]` is not that option. */
+/** True when `word` (the part of a `--long` token before any `=`) names `name` the way getopt_long
+ * and git's parse-options accept it: exactly, or as an abbreviation of at least `--` plus one
+ * letter. An ambiguous abbreviation is counted too — over-matching only adds a target. */
+const isLongOptionPrefix = (word, name) => word.length >= 3 && name.startsWith(word);
+
+/** The value of a long option `--name=VALUE` or `--name VALUE` (or any abbreviation of `--name`)
+ * at `args[i]`, with the index of the last token it consumed; null when `args[i]` is not that
+ * option. */
 const longOptionValue = (args, i, name) => {
   const t = args[i];
-  if (t.startsWith(`${name}=`)) return { value: t.slice(name.length + 1), last: i };
-  if (t === name) return { value: args[i + 1] ?? UNRESOLVABLE_TARGET, last: i + 1 };
-  return null;
+  if (!t.startsWith('--')) return null;
+  const eq = t.indexOf('=');
+  if (!isLongOptionPrefix(eq === -1 ? t : t.slice(0, eq), name)) return null;
+  if (eq !== -1) return { value: t.slice(eq + 1), last: i };
+  return { value: args[i + 1] ?? UNRESOLVABLE_TARGET, last: i + 1 };
 };
 
 /** `sort` short options that take a value (`-k`, `-t`, `-S`, `-T`, `-o`). */
@@ -359,8 +367,14 @@ const sortTargets = (args) => {
   return targets;
 };
 
-/** `uniq` options whose value is the next token when not attached. */
-const UNIQ_VALUE_OPTIONS = /^(-[a-zA-Z]*[fsw]|--skip-fields|--skip-chars|--check-chars)$/;
+/** `uniq` short options whose value is the next token when not attached. */
+const UNIQ_VALUE_SHORT = /^-[a-zA-Z]*[fsw]$/;
+const UNIQ_VALUE_LONG = ['--skip-fields', '--skip-chars', '--check-chars'];
+
+/** True when `t` takes the next token as its value: a short cluster ending in `-f`/`-s`/`-w`, or a
+ * `=`-less abbreviation of a value-taking long option. */
+const isUniqValueOption = (t) =>
+  UNIQ_VALUE_SHORT.test(t) || (t.startsWith('--') && !t.includes('=') && UNIQ_VALUE_LONG.some((n) => isLongOptionPrefix(t, n)));
 
 /** `uniq [OPTION]... [INPUT [OUTPUT]]` writes its second operand; `-` means stdout. */
 const uniqTargets = (args) => {
@@ -371,7 +385,7 @@ const uniqTargets = (args) => {
       operands.push(...args.slice(i + 1));
       break;
     }
-    if (UNIQ_VALUE_OPTIONS.test(t)) i++;
+    if (isUniqValueOption(t)) i++;
     else if (t === '-' || !t.startsWith('-')) operands.push(t);
   }
   const out = operands[1];
@@ -379,14 +393,23 @@ const uniqTargets = (args) => {
 };
 
 /** `git … --output[=]FILE` (the diff family: `diff`, `log -p`, `show`, `format-patch`) write
- * target, wherever it sits after the command word. */
+ * target, wherever it sits after the command word. git resolves a relative FILE against its
+ * working directory, which each leading `-C DIR` changes relative to the previous one, so the
+ * target is joined onto that chain (a dynamic `-C` makes the joined target dynamic, i.e. WARN). */
 const gitOutputTargets = (args) => {
+  let base = '';
+  let i = 0;
+  for (; i + 1 < args.length && args[i] === '-C'; i += 2) {
+    const dir = stripQuotes(args[i + 1]);
+    if (dir) base = path.isAbsolute(dir) ? dir : path.join(base, dir);
+  }
   const targets = [];
-  for (let i = 0; i < args.length; i++) {
+  for (; i < args.length; i++) {
     if (args[i] === '--') break;
     const long = longOptionValue(args, i, '--output');
     if (long) {
-      targets.push(stripQuotes(long.value));
+      const value = stripQuotes(long.value);
+      targets.push(base && !path.isAbsolute(value) && value !== UNRESOLVABLE_TARGET ? path.join(base, value) : value);
       i = long.last;
     }
   }
@@ -397,7 +420,11 @@ const gitOutputTargets = (args) => {
  * file without parsing yq's own flag set, so every operand is checked: an expression resolves to
  * an in-root relative path (harmless) or, when dynamic, to the warn tier. */
 const yqTargets = (args) => {
-  const inPlace = args.some((t) => t === '--inplace' || t.startsWith('--inplace=') || /^-[a-zA-Z]*i[a-zA-Z]*$/.test(t));
+  const inPlace = args.some((t) => {
+    if (t.startsWith('--')) return isLongOptionPrefix(t.split('=')[0], '--inplace');
+    // A short cluster carrying `i` (`-i`, `-Pi`); checked without a backtracking regex.
+    return t.startsWith('-') && t.includes('i') && /^-[a-zA-Z]+$/.test(t);
+  });
   if (!inPlace) return [];
   return args.filter((t) => !t.startsWith('-')).map(stripQuotes);
 };
@@ -410,28 +437,17 @@ const OPTION_WRITE_COMMANDS = [
   ['yq', yqTargets],
 ];
 
-/** Leading words that run the next word as the command (`sudo sort -o …`, `env X=1 git …`). */
-const COMMAND_PREFIX_WORDS = new Set(['sudo', 'env', 'command', 'exec', 'nice', 'nohup', 'time', 'xargs']);
-
-/** Index of the clause's command word: the first token that is not a prefix word, one of its
- * flags, or a `NAME=value` assignment. These command names are common as plain arguments
- * (`grep uniq a b`), so only the command position counts. */
-const commandWordIndex = (tokens) => {
-  let i = 0;
-  while (i < tokens.length) {
-    const t = tokens[i];
-    if (COMMAND_PREFIX_WORDS.has(path.basename(t)) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(t) || (i > 0 && t.startsWith('-'))) i++;
-    else break;
-  }
-  return i;
-};
-
+/** Write targets of every option-writing command in one clause. Like the tee/sed/cp finders, the
+ * command word is found anywhere in the clause, so a wrapper with its own value (`nice -n 5`,
+ * `timeout 5`, `env X=1`) never hides it; a command name that is merely an argument
+ * (`grep uniq a b`) is over-matched, which only ever adds a target. */
 const findOptionWriteTargets = (tokens) => {
-  const cmdIdx = commandWordIndex(tokens);
-  const head = tokens[cmdIdx];
-  if (head === undefined) return [];
-  const entry = OPTION_WRITE_COMMANDS.find(([name]) => isCommandToken(head, name));
-  return entry ? entry[1](positionalArgsBeforeRedirect(tokens, cmdIdx + 1)) : [];
+  const targets = [];
+  for (const [name, extract] of OPTION_WRITE_COMMANDS) {
+    const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
+    if (cmdIdx !== -1) targets.push(...extract(positionalArgsBeforeRedirect(tokens, cmdIdx + 1)));
+  }
+  return targets;
 };
 
 const SHELL_NAMES = ['sh', 'bash', 'dash', 'zsh', 'ksh'];

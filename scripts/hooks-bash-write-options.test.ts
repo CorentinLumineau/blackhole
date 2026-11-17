@@ -112,7 +112,7 @@ describe('validate-bash-command.js — file-writing options of read-only-looking
   }
 });
 
-describe('validate-bash-command.js — #1184 option writers only at the command position', () => {
+describe('validate-bash-command.js — #1184 option writers behind wrapper words', () => {
   test('#1184: `sudo sort -o <outside>` is denied (prefix word skipped)', async () => {
     await withLinkedWorktree('blackhole-hook-1184-', async (mainRepo, worktree) => {
       const result = await run(`sudo sort -o ${path.join(mainRepo, 'out.txt')} a.txt`, worktree);
@@ -122,12 +122,90 @@ describe('validate-bash-command.js — #1184 option writers only at the command 
     });
   });
 
-  test('#1184: `grep uniq a.txt <outside>` reads only and stays allowed (uniq is an argument here)', async () => {
+  // Review of #1208: the command word is found anywhere in the clause, like tee/sed/cp, so a
+  // wrapper with its own value (`nice -n 5`, `timeout 5`) can never hide it. The accepted cost is
+  // fail-closed over-tightening: `grep uniq a.txt <outside>` is read as a uniq write and denied.
+  for (const build of [
+    (t: string) => `nice -n 5 sort -o ${t} a.txt`,
+    (t: string) => `timeout 5 sort -o ${t} a.txt`,
+    (t: string) => `env X=1 sort -o ${t} a.txt`,
+    (t: string) => `grep uniq a.txt ${t}`,
+  ]) {
+    test(`#1184: \`${build('<outside>')}\` is denied (command word found past any wrapper)`, async () => {
+      await withLinkedWorktree('blackhole-hook-1184-', async (mainRepo, worktree) => {
+        const result = await run(build(path.join(mainRepo, 'out.txt')), worktree);
+
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+      });
+    });
+  }
+});
+
+describe('validate-bash-command.js — #1184 review: git -C and long-option abbreviation', () => {
+  test('#1184: `git -C <outside> diff --output=rel.patch` is denied (relative output resolves under -C)', async () => {
     await withLinkedWorktree('blackhole-hook-1184-', async (mainRepo, worktree) => {
-      const result = await run(`grep uniq a.txt ${path.join(mainRepo, 'ref.txt')}`, worktree);
+      const result = await run(`git -C ${mainRepo} diff --output=rel.patch`, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    });
+  });
+
+  test('#1184: chained `git -C <outside-parent> -C <name> log --output=x` is denied (each -C relative to the last)', async () => {
+    await withLinkedWorktree('blackhole-hook-1184-', async (mainRepo, worktree) => {
+      const result = await run(`git -C ${path.dirname(mainRepo)} -C ${path.basename(mainRepo)} log --output=x`, worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    });
+  });
+
+  test('#1184: `git -C <worktree-subdir> diff --output=rel.patch` stays allowed', async () => {
+    await withLinkedWorktree('blackhole-hook-1184-', async (mainRepo, worktree) => {
+      const result = await run(`git -C ${worktree} -C sub diff --output=rel.patch`, worktree);
 
       expect(result.exitCode).toBe(0);
       expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+
+  for (const build of [
+    (t: string) => `sort --out=${t} a.txt`,
+    (t: string) => `sort --outp ${t} a.txt`,
+    (t: string) => `sort --o=${t} a.txt`,
+    (t: string) => `git diff --outpu=${t}`,
+    (t: string) => `uniq --skip-f 1 a.txt ${t}`,
+  ]) {
+    test(`#1184: abbreviated long option \`${build('<outside>')}\` is denied`, async () => {
+      await withLinkedWorktree('blackhole-hook-1184-', async (mainRepo, worktree) => {
+        const result = await run(build(path.join(mainRepo, 'out.txt')), worktree);
+
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+      });
+    });
+  }
+});
+
+/** Smallest wall time of `runs` calls — the least noisy estimate on a shared host. */
+const minOfRuns = (runs: number, fn: () => void): number => {
+  let best = Infinity;
+  for (let i = 0; i < runs; i++) {
+    const start = performance.now();
+    fn();
+    best = Math.min(best, performance.now() - start);
+  }
+  return best;
+};
+
+describe('bash-write-target-guard.js — #1184 review: linear-time option scan', () => {
+  test('#1184: an 80k-character `-iii…` yq flag is evaluated in linear time', async () => {
+    await withLinkedWorktree('blackhole-hook-1184-', async (_mainRepo, worktree) => {
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      const command = `yq -${'i'.repeat(80_000)}! a.yaml`;
+      // The quadratic regex took ~2.5 s on this input; a linear scan is a few milliseconds.
+      expect(minOfRuns(3, () => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
     });
   });
 });
