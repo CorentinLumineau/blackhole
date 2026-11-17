@@ -6,6 +6,7 @@ import * as path from 'path';
 import {
   PRETOOLUSE_HOOKS_DIR,
   readHookEvents,
+  runGit,
   runPreToolUseHook,
   withLinkedWorktree,
   withTempGitRepo,
@@ -276,47 +277,10 @@ describe('validate-file-changes.js', () => {
     });
   });
 
-  // `allWorktreeRoots` used to trust every worktree `git worktree list --porcelain`
-  // reported unconditionally — `git worktree add` is ungated (no bash-pattern blocks it), so one
-  // such call from inside a legitimate worktree permanently widened the Write/Edit containment
-  // allow-list to an arbitrary directory. Orchestrator-reproduced: a worktree registered under an
-  // unrelated parent dir (neither nested under the main clone nor under a configured
-  // `scratchpad_dir`) must still be excluded from the root set for a session that is NOT
-  // operating from that worktree's own cwd.
-  //
-  // Split for #729 (was a single test asserting denial with `cwd: evilWorktree`): #729
-  // intentionally widens containment to always trust a session's own cwd worktree, so the old
-  // single test would now pass for the wrong reason (cwd-trust, not the main-clone/scratchpad
-  // nesting filter this test exists to guard). This half keeps `cwd` as the MAIN clone — a
-  // session sitting elsewhere — to isolate #510's actual invariant; the companion allow-case
-  // below covers the cwd-is-its-own-worktree path #729 adds.
-  test('#510: a worktree registered outside the main clone/scratchpad_dir is denied to a session not sitting in it', async () => {
-    const evilParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-510-evil-${process.pid}-${Date.now()}`);
-    try {
-      await withLinkedWorktree(
-        'blackhole-hook-510-',
-        async (mainRepo, evilWorktree) => {
-          const target = path.join(evilWorktree, 'pwned.ts');
-          const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
-          const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
-
-          expect(result.exitCode).toBe(2);
-          expect(permissionDecision(result.stdout)).toBe('deny');
-          expect(permissionReason(result.stdout)).toMatch(/outside/i);
-          expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
-        },
-        () => evilParent,
-      );
-    } finally {
-      fs.rmSync(evilParent, { recursive: true, force: true });
-    }
-  });
-
-  // #729: the counterpart allow-case split out of the #510 test above — a session sitting IN its
-  // own worktree (even one registered outside the main clone and outside scratchpad_dir) must be
-  // able to Write/Edit within that same worktree. This is the fix's primary case: cwd's own
-  // resolved git toplevel is now always unioned into `allWorktreeRoots`, regardless of the
-  // main-clone/scratchpad_dir nesting filter.
+  // #729: a session sitting IN its own worktree (even one registered outside the main clone and
+  // outside scratchpad_dir) must be able to Write/Edit within that same worktree: cwd's own
+  // resolved git toplevel is always unioned into `allWorktreeRoots`. The #1226 tests below cover
+  // the same worktree reached from a main-clone cwd.
   test('#729: a session can Write/Edit inside its own cwd worktree even when that worktree is registered outside the main clone/scratchpad_dir', async () => {
     const ownParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-729-own-${process.pid}-${Date.now()}`);
     try {
@@ -334,6 +298,336 @@ describe('validate-file-changes.js', () => {
       );
     } finally {
       fs.rmSync(ownParent, { recursive: true, force: true });
+    }
+  });
+
+  // #1226: a campaign worker's assigned worktree lives wherever the orchestrator placed it
+  // (`/tmp/campaign/wt-<N>`), registered with `git worktree add` but nested under neither the main
+  // clone nor a configured `scratchpad_dir`, while the worker's tool-call cwd is the main clone.
+  // The Write tool refused it ("outside every known worktree root") and the worker fell back to a
+  // Bash heredoc. Every registered linked worktree of the repo family is a known root.
+  test('#1226: a Write into a registered linked worktree outside the main clone is allowed from a main-clone cwd', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-campaign-${process.pid}-${Date.now()}`);
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-1226-',
+        async (mainRepo, worktree) => {
+          const target = path.join(worktree, 'src', 'foo.ts');
+          const payload = { ...writePayload(target), cwd: mainRepo };
+          const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+
+          expect(result.exitCode).toBe(0);
+          expect(result.stdout.trim()).toBe('');
+          expect(readHookEvents(mainRepo)).toEqual([]);
+        },
+        () => campaignParent,
+      );
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // #1226 negative control: trusting a registered linked worktree must not trust its parent or
+  // its neighbours. A sibling directory next to the worktree, never registered, stays denied.
+  test('#1226: a Write next to (not inside) a registered linked worktree is still refused', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-campaign-${process.pid}-${Date.now()}`);
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-1226-',
+        async (mainRepo) => {
+          const target = path.join(campaignParent, 'not-a-worktree', 'foo.ts');
+          const payload = { ...writePayload(target), cwd: mainRepo };
+          const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+          expect(permissionReason(result.stdout)).toContain('outside every known worktree root');
+          expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+        },
+        () => campaignParent,
+      );
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // #1226: a registered worktree whose directory was deleted without `git worktree remove` stays
+  // listed. Containment resolves a missing path to its nearest existing ancestor, so admitting it
+  // would trust the whole parent directory. It has no `.git` file left, so the back-link check
+  // refuses it, and a Write where it used to be is denied.
+  test('#1226: a deleted linked worktree is not admitted as a root', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-campaign-${process.pid}-${Date.now()}`);
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-1226-',
+        async (mainRepo, worktree) => {
+          fs.rmSync(worktree, { recursive: true, force: true });
+          const target = path.join(worktree, 'src', 'foo.ts');
+          const payload = { ...writePayload(target), cwd: mainRepo };
+          const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+          expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+        },
+        () => campaignParent,
+      );
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // #1226 security review: a registration entry is only a claim. With the Write tool alone, an
+  // agent can create `<common-dir>/worktrees/<name>/gitdir` naming another repository's `.git`,
+  // and `git worktree list` then reports that repository as a worktree of this one. A root is
+  // admitted only when the entry's own `.git` file points back into this repo's
+  // `worktrees/<name>`, so the other repository stays out of bounds.
+  test('#1226: a forged worktree registration pointing at another repository is not a root', async () => {
+    await withTempGitRepo('blackhole-1226-victim-', async (victimRepo) => {
+      await withLinkedWorktree('blackhole-hook-1226-', async (mainRepo) => {
+        const forged = path.join(mainRepo, '.git', 'worktrees', 'evil');
+        fs.mkdirSync(forged, { recursive: true });
+        fs.writeFileSync(path.join(forged, 'gitdir'), `${path.join(victimRepo, '.git')}\n`);
+
+        const target = path.join(victimRepo, '.github', 'workflows', 'pwn.yml');
+        const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+      });
+    });
+  });
+
+  // Same review, second shape: a genuine registration whose directory is moved away and replaced
+  // by a symlink to another repository. The registered path no longer resolves to itself, so it
+  // is refused even though git still lists it.
+  test('#1226: a registered worktree path swapped for a symlink to another repository is not a root', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-swap-${process.pid}-${Date.now()}`);
+    try {
+      await withTempGitRepo('blackhole-1226-victim-', async (victimRepo) => {
+        await withLinkedWorktree(
+          'blackhole-hook-1226-',
+          async (mainRepo, worktree) => {
+            fs.renameSync(worktree, `${worktree}-moved`);
+            fs.symlinkSync(victimRepo, worktree, 'dir');
+
+            const target = path.join(worktree, '.github', 'workflows', 'pwn.yml');
+            const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+            expect(result.exitCode).toBe(2);
+            expect(permissionDecision(result.stdout)).toBe('deny');
+            expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+          },
+          () => campaignParent,
+        );
+      });
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // The reverse half of the back-link: a `.git` file copied out of a genuine worktree into another
+  // directory points into this repo's `worktrees/<name>`, but that entry's own `gitdir` names the
+  // genuine worktree, not the copy. A forged registration for the copy is therefore refused.
+  test('#1226: a .git file copied from a genuine worktree does not make another directory a root', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-copy-${process.pid}-${Date.now()}`);
+    const victim = path.join(campaignParent, 'victim');
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-1226-',
+        async (mainRepo, worktree) => {
+          fs.mkdirSync(victim, { recursive: true });
+          fs.copyFileSync(path.join(worktree, '.git'), path.join(victim, '.git'));
+          const forged = path.join(mainRepo, '.git', 'worktrees', 'evil');
+          fs.mkdirSync(forged, { recursive: true });
+          fs.writeFileSync(path.join(forged, 'gitdir'), `${path.join(victim, '.git')}\n`);
+
+          const target = path.join(victim, 'pwned.ts');
+          const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+          expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+        },
+        () => campaignParent,
+      );
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // The membership half of the back-link: a forged entry can name a directory whose `.git` FILE
+  // is back-linked perfectly — just to a different repository's `worktrees/<name>`. The admin
+  // directory must sit in THIS repository's `<common-dir>/worktrees`, so a foreign repository's
+  // own linked worktree stays out of bounds.
+  test("#1226: a forged entry naming another repository's linked worktree is not a root", async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-foreignwt-${process.pid}-${Date.now()}`);
+    const foreignWorktree = path.join(campaignParent, 'foreign-wt');
+    try {
+      await withTempGitRepo('blackhole-1226-victim-', async (victimRepo) => {
+        runGit(victimRepo, ['commit', '--allow-empty', '--quiet', '-m', 'init']);
+        runGit(victimRepo, ['worktree', 'add', '--detach', '--quiet', foreignWorktree]);
+        await withLinkedWorktree('blackhole-hook-1226-', async (mainRepo) => {
+          const forged = path.join(mainRepo, '.git', 'worktrees', 'evil');
+          fs.mkdirSync(forged, { recursive: true });
+          fs.writeFileSync(path.join(forged, 'gitdir'), `${path.join(foreignWorktree, '.git')}\n`);
+
+          const target = path.join(foreignWorktree, '.github', 'workflows', 'pwn.yml');
+          const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+          expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+        });
+      });
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // Same membership leg, submodule-style layout: `<dir>/.git` is a gitdir file naming `../modgit`,
+  // and `modgit/gitdir` names `<dir>/.git` back. Both pointers agree, but `modgit` is not under
+  // this repository's `worktrees/`, so a forged entry for `<dir>` is refused.
+  test('#1226: a forged entry naming a submodule-style .git file layout is not a root', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-submod-${process.pid}-${Date.now()}`);
+    const moduleDir = path.join(campaignParent, 'module');
+    const moduleGit = path.join(campaignParent, 'modgit');
+    try {
+      fs.mkdirSync(moduleDir, { recursive: true });
+      fs.mkdirSync(moduleGit, { recursive: true });
+      fs.writeFileSync(path.join(moduleDir, '.git'), 'gitdir: ../modgit\n');
+      fs.writeFileSync(path.join(moduleGit, 'gitdir'), `${path.join(moduleDir, '.git')}\n`);
+      await withLinkedWorktree('blackhole-hook-1226-', async (mainRepo) => {
+        const forged = path.join(mainRepo, '.git', 'worktrees', 'evil');
+        fs.mkdirSync(forged, { recursive: true });
+        fs.writeFileSync(path.join(forged, 'gitdir'), `${path.join(moduleDir, '.git')}\n`);
+
+        const target = path.join(moduleDir, 'pwned.ts');
+        const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+      });
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  /** Runs `fn` with a `git` shim first on PATH that rejects `-z` the way git before 2.36 does
+   * (`error: unknown switch`, exit 129) and passes every other call to the real git. */
+  const withGitRejectingZ = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const realGit = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf-8' }).stdout.trim();
+    const shimDir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'blackhole-1226-oldgit-'));
+    fs.writeFileSync(
+      path.join(shimDir, 'git'),
+      `#!/bin/sh\nfor a in "$@"; do\n  if [ "$a" = "-z" ]; then echo "error: unknown switch \\\`z'" >&2; exit 129; fi\ndone\nexec "${realGit}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${shimDir}${path.delimiter}${previousPath ?? ''}`;
+    try {
+      return await fn();
+    } finally {
+      process.env.PATH = previousPath;
+      fs.rmSync(shimDir, { recursive: true, force: true });
+    }
+  };
+
+  // git before 2.36 has no `worktree list -z`. Failing closed there would refuse every Write/Edit
+  // in every session, so the listing falls back to the line-delimited form.
+  test('#1226: on a git without `worktree list -z`, a registered linked worktree is still a root', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-oldgit-${process.pid}-${Date.now()}`);
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-1226-',
+        async (mainRepo, worktree) => {
+          const target = path.join(worktree, 'src', 'foo.ts');
+          const result = await withGitRejectingZ(() =>
+            runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo),
+          );
+
+          expect(result.exitCode).toBe(0);
+          expect(result.stdout.trim()).toBe('');
+          expect(readHookEvents(mainRepo)).toEqual([]);
+        },
+        () => campaignParent,
+      );
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // The fallback stays safe: in line-delimited output a newline in a worktree path forges a record,
+  // but the forged directory has no back-link, so it is still refused.
+  test('#1226: on a git without `worktree list -z`, a newline-forged record is still refused', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-oldgit-nl-${process.pid}-${Date.now()}`);
+    const victim = path.join(campaignParent, 'victim');
+    fs.mkdirSync(victim, { recursive: true });
+    try {
+      await withLinkedWorktree('blackhole-hook-1226-', async (mainRepo) => {
+        runGit(mainRepo, ['worktree', 'add', '--detach', '--quiet', path.join(campaignParent, `a\n\nworktree ${victim}`)]);
+
+        const target = path.join(victim, 'pwned.ts');
+        const result = await withGitRejectingZ(() =>
+          runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo),
+        );
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+      });
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // Same review, third shape: `git worktree list --porcelain` is newline-delimited, so a worktree
+  // added at a path containing `\n\nworktree <dir>` forges a whole record for `<dir>`. The listing
+  // is read NUL-delimited (`-z`), so the forged directory never appears as an entry.
+  test('#1226: a newline in a worktree path cannot forge a registration record', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-nl-${process.pid}-${Date.now()}`);
+    const victim = path.join(campaignParent, 'victim');
+    fs.mkdirSync(victim, { recursive: true });
+    try {
+      await withLinkedWorktree('blackhole-hook-1226-', async (mainRepo) => {
+        runGit(mainRepo, ['worktree', 'add', '--detach', '--quiet', path.join(campaignParent, `a\n\nworktree ${victim}`)]);
+
+        const target = path.join(victim, 'pwned.ts');
+        const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+      });
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // The breadth leg of linked-worktree admission: a genuinely registered worktree that IS $HOME
+  // (git creates the directory, so the back-pointer is real) must not become a root, or every
+  // file under the home directory would be writable.
+  test('#1226: a registered linked worktree at $HOME is not admitted as a root', async () => {
+    const fakeHome = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-home-${process.pid}-${Date.now()}`);
+    const previousHome = process.env.HOME;
+    try {
+      await withLinkedWorktree('blackhole-hook-1226-', async (mainRepo) => {
+        runGit(mainRepo, ['worktree', 'add', '--detach', '--quiet', fakeHome]);
+        process.env.HOME = fakeHome;
+
+        const target = path.join(fakeHome, '.ssh', 'authorized_keys');
+        const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+      });
+    } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      fs.rmSync(fakeHome, { recursive: true, force: true });
     }
   });
 
@@ -405,21 +699,20 @@ describe('validate-file-changes.js', () => {
   });
 
   // property 4: a malformed .blackhole/config.json must fall back to main-clone-only
-  // containment, never fall open to trusting an unparseable value's worktree anyway. `cwd` is
-  // deliberately the MAIN clone, not the worktree under test — #729 now always trusts a
-  // session's own cwd worktree unconditionally (see the split #510/#729 pair above), so proving
-  // this config-fallback invariant requires a session sitting somewhere else, not the worktree
-  // whose reachability the (malformed/absent/overly-broad) `scratchpad_dir` is supposed to gate.
+  // containment, never fall open to trusting an unparseable value anyway. `cwd` is deliberately
+  // the MAIN clone (#729 always trusts a session's own cwd worktree). The target sits directly at
+  // the would-be scratchpad root, outside its registered worktree: since #1226 every registered
+  // worktree is a root on its own, so the scratchpad root itself is what `scratchpad_dir` gates.
   test('#510: malformed .blackhole/config.json falls back to main-clone-only (fail closed)', async () => {
     const scratchpad = path.join(fs.realpathSync(os.tmpdir()), `blackhole-510-scratch-${process.pid}-${Date.now()}`);
     try {
       await withLinkedWorktree(
         'blackhole-hook-510-',
-        async (mainRepo, worktree) => {
+        async (mainRepo) => {
           fs.mkdirSync(path.join(mainRepo, '.blackhole'), { recursive: true });
           fs.writeFileSync(path.join(mainRepo, '.blackhole', 'config.json'), '{ not json');
 
-          const target = path.join(worktree, 'src', 'foo.ts');
+          const target = path.join(scratchpad, 'probe.sh');
           const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
           const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
 
@@ -434,17 +727,17 @@ describe('validate-file-changes.js', () => {
   });
 
   // property 4: a config.json that parses fine but carries no scratchpad_dir key must also
-  // fall back to main-clone-only, not silently trust the worktree anyway. `cwd` is the main
-  // clone — see the note on the preceding test for why.
+  // fall back to main-clone-only, not silently trust the scratchpad root anyway. `cwd` and the
+  // target are chosen as in the preceding test, for the same reason.
   test('#510: .blackhole/config.json without scratchpad_dir falls back to main-clone-only', async () => {
     const scratchpad = path.join(fs.realpathSync(os.tmpdir()), `blackhole-510-scratch-${process.pid}-${Date.now()}`);
     try {
       await withLinkedWorktree(
         'blackhole-hook-510-',
-        async (mainRepo, worktree) => {
+        async (mainRepo) => {
           writeCampaignConfig(mainRepo, { repo: 'owner/name' });
 
-          const target = path.join(worktree, 'src', 'foo.ts');
+          const target = path.join(scratchpad, 'probe.sh');
           const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
           const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
 
@@ -458,15 +751,15 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // property 5: a bare system temp dir as scratchpad_dir would accept a worktree created
-  // almost anywhere under it — the same failure reopened through config instead of
-  // through an ungated `git worktree add`. Must be rejected, falling back to main-clone-only.
-  // `cwd` is the main clone — see the note two tests above for why.
+  // property 5: a bare system temp dir as scratchpad_dir would trust everything under it.
+  // Must be rejected, falling back to main-clone-only. `cwd` is the main clone, and the target is
+  // an unregistered directory under the temp root (the registered worktree is a root on its own
+  // since #1226) — see the note two tests above.
   test('#510: an overly-broad scratchpad_dir ("/tmp") is rejected, falling back to main-clone-only', async () => {
     await withLinkedWorktree(
       'blackhole-hook-510-',
-      async (mainRepo, worktree) => {
-        const target = path.join(worktree, 'src', 'foo.ts');
+      async (mainRepo) => {
+        const target = path.join(fs.realpathSync(os.tmpdir()), `blackhole-510-unregistered-${process.pid}`, 'foo.ts');
         const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
         const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
 
@@ -484,8 +777,8 @@ describe('validate-file-changes.js', () => {
   // root reached only through a symlinked ancestor evades classification — the same defect that
   // makes os.tmpdir() (/var/folders/... on darwin, realpath /private/var/folders/...) slip past
   // the check on macOS. Reproduced portably here via a fresh symlink whose target is the
-  // worker's own realpath'd temp root, so the failure is observable on Linux CI too. `cwd` is
-  // the main clone — see the note three tests above for why.
+  // worker's own realpath'd temp root, so the failure is observable on Linux CI too. `cwd` and
+  // the unregistered target are chosen as in the test above.
   test('#714: a scratchpad_dir reaching a bare temp root only through a symlinked ancestor is rejected', async () => {
     const tmpRoot = fs.realpathSync(os.tmpdir());
     const symlinkedAlias = path.join(tmpRoot, `blackhole-714-alias-${process.pid}-${Date.now()}`);
@@ -493,8 +786,8 @@ describe('validate-file-changes.js', () => {
     try {
       await withLinkedWorktree(
         'blackhole-hook-714-',
-        async (mainRepo, worktree) => {
-          const target = path.join(worktree, 'src', 'foo.ts');
+        async (mainRepo) => {
+          const target = path.join(symlinkedAlias, `blackhole-714-unregistered-${process.pid}`, 'foo.ts');
           const payload = { tool_name: 'Write', tool_input: { file_path: target, content: 'x' }, cwd: mainRepo };
           const result = await runPreToolUseHook(SCRIPT, payload, mainRepo);
 

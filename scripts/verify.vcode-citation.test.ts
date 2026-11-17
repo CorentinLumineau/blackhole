@@ -80,6 +80,14 @@ describe('resolveSection', () => {
     expect(resolveSection('## 1. First\n\nBody.\n', '§9')).toBeNull();
   });
 
+  test('a `#` line inside a fenced code block neither resolves nor ends a section', () => {
+    const content = '```\n## Gate\n```\n\n## Gate\n\nReal body.\n\n```sh\n# a shell comment\n```\n\nStill the gate.\n\n## Next\n\nOther.\n';
+    const result = resolveSection(content, 'Gate');
+    expect(result?.body.startsWith('## Gate\n\nReal body.')).toBe(true);
+    expect(result?.body).toContain('Still the gate.');
+    expect(result?.body).not.toContain('Other.');
+  });
+
   test('a null sectionRef never fails resolution — whole-file fallback', () => {
     expect(resolveSection('Just prose, no headings.\n', null)).toEqual({ body: 'Just prose, no headings.\n' });
   });

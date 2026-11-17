@@ -48,6 +48,21 @@ describe('the Status page row', () => {
     expect(row.probe_needed).toBeUndefined();
   });
 
+  test('a probe recorded within the same second as a whole-second summary clock counts as fresh', () => {
+    // The summary floors its clock to whole seconds; status-probe.ts records milliseconds.
+    const sameSecond = new Date(Date.parse(NOW_ISO) + 400).toISOString();
+    const row = statusPageRow(page({ artifact: { url: URL, template_version: 4, last_probe: { at: sameSecond, ok: true, url: URL } } }));
+    expect(row.value).toBe(`${URL} · reachable (probed 0 min ago) · template v4`);
+    expect(row.probe_needed).toBeUndefined();
+  });
+
+  test('a probe dated a whole second or more after the clock is not fresh', () => {
+    const later = new Date(Date.parse(NOW_ISO) + 1_400).toISOString();
+    const row = statusPageRow(page({ artifact: { url: URL, template_version: 4, last_probe: { at: later, ok: true, url: URL } } }));
+    expect(row.value).toBe(`${URL} · not probed · template v4`);
+    expect(row.probe_needed).toEqual({ url: URL });
+  });
+
   test('probe failed: offers reuse-another or publish-new', () => {
     const row = statusPageRow(page({ artifact: { url: URL, template_version: 4, last_probe: { at: at(2), ok: false, url: URL, reason: 'not found' } } }));
     expect(row.value).toBe(`${URL} · NOT reachable: not found · template v4`);

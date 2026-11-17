@@ -26,17 +26,26 @@ issues (#333, #334)`, closed issues merged, or drift fixed. No prompt.
 
 ## Queue builder script
 
-`bun run scripts/forge-sync.ts` (logic in `scripts/lib/forge-sync.ts`) runs steps
-4, 5, 6 and 7 below as code: it reads the open issues (and the closed ones when a live queue entry
-is missing from the open list) and the open and merged PRs through the configured forge's adapter,
-then writes `queue.json` through the state write guard (`blackhole-state.md` § Write protocol).
-It ingests in-scope open issues, refreshes title, labels, milestone, size and `depends_on` (body
-lines join the queue's own edges, never replace them), links a PR by its closing keyword or its
-`…/issue-N` branch, and marks an issue `merged` or `closed` (`phase: done`). It never removes an
-entry and never demotes `in-flight`. On a fresh checkout holding only `config.json` it also
-writes an empty `findings-ledger.json`, so `bun run status` can publish the page right after.
-A failed forge read writes nothing (exit 1); `--dry-run` prints the queue instead of writing it.
-Write-back (§ 6.5), merge-hold drift (§ 5.5) and PR dependencies (§ 6.8) stay with the orchestrator.
+`bun run scripts/forge-sync.ts` (logic in `scripts/lib/forge-sync.ts`) runs steps 4, 5, 6 and 7
+below as code: it reads the open issues (and the closed ones when a live queue entry is missing
+from the open list) and the open and merged PRs through the configured forge's adapter, then
+writes `queue.json` through the state write guard (`blackhole-state.md` § Write protocol). It:
+
+- ingests in-scope open issues and appends them to `user_queue_order`; refreshes title, labels,
+  milestone, size and `depends_on` (body lines join the queue's own edges, never replace them);
+- blocks a ready entry held by another lane (an `agent:*` / `in-progress:*` label or an open PR
+  from a `<lane>/…` branch outside `claude`/`blackhole`) with the note `another lane: <label>`,
+  and makes it ready again once the lane is gone; in-flight entries are left alone;
+- links the campaign's own open PR, a closing keyword first, else an `…/issue-N` branch;
+- marks an issue `merged` only for a merged PR whose body closes it (`Closes`/`Fixes`/`Resolves
+  #N`, as `reconcileMerged`), `closed` when the forge closed it; a forge-open issue stays open.
+
+It never removes an entry. On a fresh checkout holding only `config.json` it also writes an empty
+`findings-ledger.json`, so `bun run status` can publish the page right after. A failed forge read
+writes nothing (exit 1); `auto_sync: false` reads and writes nothing; `--dry-run` prints the queue.
+The orchestrator stays the single writer: run it in the orchestrator's turn or when none runs; the
+queue is re-read just before the write and the sync re-applied to that copy. Write-back (§ 6.5),
+merge-hold drift (§ 5.5) and PR dependencies (§ 6.8) stay with the orchestrator.
 
 ## Sync protocol
 
