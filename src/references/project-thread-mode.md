@@ -26,6 +26,9 @@ decision card:
 The issue goes `status: blocked` until the answer arrives as a wake. Work on other issues
 continues. Never repeat the question in a separate message.
 
+In sleep mode (`sleep-mode.md`) no card is posted: the question is parked, and on wake-up the
+parked questions are posted together, at most four per batch.
+
 ## Dashboard: the status checklist
 
 The thread's status checklist replaces the coordinator dashboard (`coordinator-dashboard.md`).
