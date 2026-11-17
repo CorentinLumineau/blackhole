@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { crossRepoBlockers } from '../../forge-deps.ts';
+import type { PrLanding } from '../forge-adapter/pr-landing.ts';
 import {
   computeQueueHealth,
   formatDashboard,
@@ -190,6 +192,37 @@ describe('renderStackMergeOrderSection', () => {
       '- merge #1, then #2 (stacked on #1)',
       '',
     ]);
+  });
+});
+
+describe('Merge next — cross-repo dependencies', () => {
+  const issues = [{ number: 6241, body: 'Depends on #6240\nDepends on acme/workflows#185' }];
+  const queue = { '6241': { status: 'in-flight', phase: 'review', pr: 50 } } as never;
+  const withLanding = (landing: PrLanding | null) => renderMergeNextSection(queue, [], crossRepoBlockers(issues, () => landing));
+
+  test('an unmerged PR in another repo is named as the item blocker', () => {
+    expect(withLanding({ state: 'open', mergedAt: null, mergeCommitSha: null })).toEqual([
+      '### Merge next',
+      '1. #6241 (PR #50) — waits on acme/workflows#185 (cross-repo, not merged yet)',
+      '',
+    ]);
+  });
+
+  test('an unreadable PR stays a blocker', () => {
+    expect(withLanding(null)[1]).toBe('1. #6241 (PR #50) — waits on acme/workflows#185 (cross-repo, merged state unreadable, treated as unmet)');
+  });
+
+  test('once the other repo PR is merged, nothing blocks the item', () => {
+    expect(withLanding({ state: 'merged', mergedAt: '2026-11-16T10:00:00Z', mergeCommitSha: 'abc' })[1]).toBe('1. #6241 (PR #50) — none');
+  });
+
+  test('formatDashboard carries the blockers into Merge next, and says so when the bodies were not read', () => {
+    const base = { checkpoint: {}, queue: { issues: queue }, ledger: {}, forge: { ok: true, openIssues: 1, openPrs: 1 } };
+    const read = formatDashboard({ ...base, crossRepoBlockers: crossRepoBlockers(issues, () => null) } as never);
+    expect(read).toContain('### Merge next\n1. #6241 (PR #50) — waits on acme/workflows#185 (cross-repo,');
+    expect(read).not.toContain('Cross-repo blockers');
+    const unread = formatDashboard({ ...base, crossRepoBlockers: null } as never);
+    expect(unread).toContain('1. #6241 (PR #50) — none\n- cross-repo dependencies not read: the forge issue list failed');
   });
 });
 
