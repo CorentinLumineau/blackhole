@@ -3,6 +3,7 @@ import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { resolveUsageBudget } from './lib/usage-budget.ts';
+import { usageSourceFor, type UsageReading } from './lib/usage-source.ts';
 import { checkForgeAuthSync } from './lib/forge-doctor.ts';
 import {
   AGENT_TOOLS,
@@ -13,7 +14,8 @@ import {
   type Surface,
 } from './lib/run-context.ts';
 
-// Writes .blackhole/run-context.json and prints the resolved route (ADR-046). Exit 1 when the
+// Writes .blackhole/run-context.json (the context, the route, and the host's usage source with the
+// windows its reading shows) and prints the resolved route (ADR-046). Exit 1 when the
 // campaign is missing a capability it cannot start without, so bootstrap can refuse by exit code.
 
 const USAGE =
@@ -35,15 +37,34 @@ export const parseTools = (raw: string): AgentTool[] => {
   return tools as AgentTool[];
 };
 
+type Config = { config: Record<string, unknown>; unreadable: boolean };
+const readConfig = (configPath: string): Config => {
+  if (!fs.existsSync(configPath)) return { config: {}, unreadable: false };
+  try {
+    return { config: readJsonFile(configPath, configPath) as Record<string, unknown>, unreadable: false };
+  } catch {
+    return { config: {}, unreadable: true };
+  }
+};
+
 // An unreadable config or an invalid block must not look like a missing capability (exit 1): the
 // budget counts as disabled and the run says so.
-const usageBudgetEnabled = (configPath: string): { enabled: boolean; unreadable: boolean } => {
-  if (!fs.existsSync(configPath)) return { enabled: false, unreadable: false };
+const usageBudgetEnabled = ({ config, unreadable }: Config): { enabled: boolean; unreadable: boolean } => {
+  if (unreadable) return { enabled: false, unreadable };
   try {
-    const config = readJsonFile(configPath, configPath) as Record<string, unknown>;
     return { enabled: resolveUsageBudget(config).enabled, unreadable: false };
   } catch {
     return { enabled: false, unreadable: true };
+  }
+};
+
+/** The host's usage source and the windows its current reading shows (usage-source.ts). */
+const detectUsage = (host: Parameters<typeof usageSourceFor>[0], config: Record<string, unknown>): Omit<UsageReading, 'limits'> => {
+  try {
+    const { source, windows, reason } = usageSourceFor(host, config).read(Math.floor(Date.now() / 1000));
+    return { source, windows, reason };
+  } catch (err) {
+    return { source: 'none', windows: [], reason: `usage source config invalid: ${(err as Error).message}` };
   }
 };
 
@@ -72,14 +93,16 @@ const main = () => {
   });
   // Campaign state belongs to the project the command runs in (working directory).
   const campaignDir = path.resolve(typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : '.blackhole');
-  const budget = usageBudgetEnabled(path.join(campaignDir, 'config.json'));
+  const config = readConfig(path.join(campaignDir, 'config.json'));
+  const budget = usageBudgetEnabled(config);
   const route = routeRunContext(context, { usageBudgetEnabled: budget.enabled });
+  const usage = detectUsage(context.host.value, config.config);
 
   if (flags['no-write'] !== true) {
     fs.mkdirSync(campaignDir, { recursive: true });
     const target = path.join(campaignDir, 'run-context.json');
     const tmp = `${target}.tmp`;
-    const record = { refreshed_at: new Date().toISOString(), context, route };
+    const record = { refreshed_at: new Date().toISOString(), context, route, usage };
     fs.writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`);
     fs.renameSync(tmp, target);
   }
@@ -88,6 +111,11 @@ const main = () => {
     `Run context: ${context.host.value} / ${context.surface.value} — pattern ${route.pattern}, ` +
       `forge ${route.forge_channel ?? 'none'}, questions ${route.question_channel}, ` +
       `CI wait ${route.ci_wait}, state ${route.state_store}, schedule ${route.schedule}`,
+  );
+  console.log(
+    usage.windows.length
+      ? `  usage ${usage.source} (${usage.windows.join(', ')})`
+      : `  usage unavailable: ${usage.reason ?? 'no current window'}`,
   );
   if (budget.unreadable) console.log('  warn: config.json unreadable, usage_budget treated as disabled');
   for (const warning of route.warnings) console.log(`  warn: ${warning}`);

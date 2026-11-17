@@ -83,11 +83,16 @@ describe('two-way, idempotent sync', () => {
     expect(planOf(input, 4)).toMatchObject({ dependsOn: [1, 2, 3], write: false });
   });
 
-  test('a body line naming a queue PR number resolves to its issue', () => {
+  test('a same-repo body line naming a queue PR resolves to its issue and is promoted to a native issue edge', () => {
     const input = base({ '4': open(104, { depends_on: [1, 2] }) }, {
       reads: { '4': { blockedBy: [nat(1), nat(2), { ...ref(103), via: 'body' }], baseRefName: 'main' } },
     });
-    expect(planOf(input, 4).dependsOn).toEqual([1, 2, 3]);
+    const p = planOf(input, 4);
+    expect(p.dependsOn).toEqual([1, 2, 3]);
+    // No `via: 'body'` on the written edge: the adapter places it natively (stack or native first).
+    expect(p.blockedBy).toEqual([ref(1), ref(2), ref(3)]);
+    expect(p.blockedBy.every((r) => r.via === undefined)).toBe(true);
+    expect(p.write).toBe(true);
   });
 
   test('an edge a human removes on the forge is removed from the queue', () => {
@@ -156,7 +161,7 @@ describe('Merge next reads forge-declared cross-repo blockers', () => {
 
 describe('syncPrDependencies (fake adapter)', () => {
   /** A forge with open PRs 101 and 102 on issue branches; native edges are keyed by ISSUE. */
-  function fakeAdapter(opts: { failSet?: boolean } = {}) {
+  function fakeAdapter(opts: { failSet?: boolean; native?: boolean } = {}) {
     let blockers: DependencyRef[] = [];
     const writes: Array<{ target: unknown; refs: DependencyRef[] }> = [];
     const reads: unknown[] = [];
@@ -170,7 +175,7 @@ describe('syncPrDependencies (fake adapter)', () => {
       issueList: async () => [{ number: 2, body: 'Depends on other/lib#185' }],
       getDependencies: async (target: { issue: number }) => {
         reads.push(target);
-        return { native: true, blockedBy: target.issue === 2 ? blockers : [] };
+        return { native: opts.native ?? true, blockedBy: target.issue === 2 ? blockers : [] };
       },
       setDependencies: async (target: unknown, refs: DependencyRef[]) => {
         writes.push({ target, refs });
@@ -200,6 +205,12 @@ describe('syncPrDependencies (fake adapter)', () => {
     const second = await syncPrDependencies(f.adapter, first.queue!, { apply: true, repo: REPO, queuePath: 'q.json' });
     expect(f.writes).toHaveLength(1);
     expect(second.queue!.issues!['2']).toEqual(first.queue!.issues!['2']);
+  });
+
+  test('a forge without the native feature reports native: false on the row', async () => {
+    const f = fakeAdapter({ native: false });
+    const r = await syncPrDependencies(f.adapter, queue(), { apply: false, repo: REPO, queuePath: 'q.json' });
+    expect(r.rows.map((x) => [x.issue, x.native])).toEqual([[1, false], [2, false]]);
   });
 
   test('a write that does not read back keeps the old queue state and reports it', async () => {

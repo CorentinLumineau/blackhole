@@ -336,8 +336,9 @@ merge requests, so there it is MR blocked by MR. Per backend, through the forge 
 - **Body lines**: an edge no native channel can hold — cross-repo, a PR or number with no queue
   issue, an issue on GitLab — or every edge when the forge answers 404/410 (no such feature), is a
   `Blocked by #N` line (`Blocked by !N` for a GitLab MR, `Blocked by owner/repo#N` cross-repo) in
-  the PR body's `## Dependencies` section. The read is native edges plus these lines; an edge read
-  from one channel and kept stays in that channel.
+  the PR body's `## Dependencies` section. The read is native edges plus these lines. Native or
+  stack first: a same-repo body line that resolves to a queue issue is promoted to a native issue
+  edge (and its line removed); an edge the planner cannot resolve stays in the channel it was read from.
 - **Failures are loud.** A 403 (rate limit, token scope) or any other error throws; it never
   switches channel. Each plan row reports `native`, and the CLI names on stderr every issue whose
   edges went to body lines.

@@ -391,6 +391,10 @@ export type BudgetPanel = {
    * (`no_new_starts_at`, `stop_campaign_at`): `at` null when not before the reset or already crossed. Null without a weekly window.
    */
   forecast: { pct_per_hour: number | null; reaches: Array<{ pct: number; at: string | null }> } | null;
+  /** The usage source the reading came from (`usage-source.ts`); null when not probed. */
+  source: 'rate-limit-cache' | 'none' | null;
+  /** The windows the reading shows: `five_hour` only when the plan has one. */
+  windows: Array<'five_hour' | 'seven_day'>;
 };
 
 /** A status colour name. Text always carries the meaning; the colour only repeats it. */

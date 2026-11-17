@@ -123,6 +123,13 @@ describe('readDependencies / writeDependencies', () => {
     expect(after).toEqual({ native: false, blockedBy: [body(issue(12))] });
   });
 
+  test('a same-repo body line passed back without its channel tag is promoted to a native edge', () => {
+    const f = fakeForge({ native: true, body: 'Closes #9\nBlocked by #3' });
+    writeDependencies('github', REPO, T, [issue(3)], f.channel, f.bodies);
+    expect(f.log).toEqual(['add acme/app#3', 'write body']);
+    expect(f.body()).toBe('Closes #9');
+  });
+
   test('an edge the native channel cannot hold goes to the body; an edge read from a channel stays in it', () => {
     const f = fakeForge({ native: true, holds: (r) => r.kind === 'issue', edges: [issue(4, 'other/lib')] });
     writeDependencies('github', REPO, T, [issue(3), pr(8), native(issue(4, 'other/lib'))], f.channel, f.bodies);
@@ -136,6 +143,12 @@ describe('isUnavailable', () => {
     expect(isUnavailable('gh: Not Found (HTTP 404)')).toBe(true);
     expect(isUnavailable('tea api GET x failed: HTTP 410')).toBe(true);
     expect(isUnavailable('gh: API rate limit exceeded (HTTP 403)')).toBe(false);
+  });
+
+  test('a 403 on issue #404 or on a slug ending -404 is not a missing feature: only the HTTP status counts', () => {
+    expect(isUnavailable('gh: Resource not accessible by integration for repos/o/r/issues/404/dependencies/blocked_by (HTTP 403)')).toBe(false);
+    expect(isUnavailable('tea api GET repos/o/app-404/issues/9/dependencies failed: HTTP 403')).toBe(false);
+    expect(isUnavailable('glab: 410 Gone (HTTP 410)')).toBe(true);
   });
 });
 
@@ -228,6 +241,23 @@ describe('GitHub getDependencies / setDependencies (REST)', () => {
     const after = await gh().setDependencies({ issue: 9, pr: 5 }, [issue(12, 'o/r')]);
     expect(f.body()).toBe('Closes #9\n\n## Dependencies\nBlocked by #12');
     expect(after).toEqual({ native: false, blockedBy: [body(issue(12, 'o/r'))] });
+  });
+
+  test('a 403 on issue #404 fails loudly too: the number in the path is not a status', async () => {
+    const calls: string[] = [];
+    spies.push(
+      spyOn(childProcess, 'spawnSync').mockImplementation((_cmd, args) => {
+        const [, , method, endpoint] = args as string[];
+        calls.push(`${method} ${endpoint}`);
+        if (endpoint.includes('/dependencies/')) {
+          return { status: 1, stdout: '', stderr: 'gh: Resource not accessible for repos/o/r/issues/404/dependencies/blocked_by (HTTP 403)' } as never;
+        }
+        const pr = { number: 5, title: 'p', body: 'Closes #404', head: { ref: 'f', sha: 's' }, state: 'open', merged_at: null };
+        return { status: 0, stdout: JSON.stringify(pr), stderr: '' } as never;
+      }),
+    );
+    await expect(gh().setDependencies({ issue: 404, pr: 5 }, [issue(12, 'o/r')])).rejects.toThrow('HTTP 403');
+    expect(calls.some((c) => c.startsWith('PATCH'))).toBe(false);
   });
 
   test('a 403 fails loudly and never switches to body lines', async () => {

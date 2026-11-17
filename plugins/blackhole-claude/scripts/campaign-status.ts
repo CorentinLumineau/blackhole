@@ -4,6 +4,7 @@ import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { readBudgetPanel } from './lib/campaign-status/budget.ts';
+import { resolveHost } from './lib/usage-source.ts';
 import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
 import { crossRepoBlockersOf, fetchForgeCounts, fetchMergedPrs, readOpenIssues } from './lib/campaign-status/forge.ts';
 import { readPrLanding } from './lib/forge-adapter/pr-landing.ts';
@@ -200,7 +201,7 @@ export async function collectStatusReport(
     mergedPrs,
     pluginVersion: readPluginVersion(),
     denyCounts: collectDenyCounts(campaignDir, queue.campaign_started_at ?? null),
-    budget: readBudgetPanel(config as Record<string, unknown>),
+    budget: readBudgetPanel(config as Record<string, unknown>, resolveHost(campaignDir, process.env)),
   });
   return { report, state, host, crossRepoBlockers };
 }

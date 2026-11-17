@@ -6,8 +6,9 @@ import type { DependencyRef, DependencyTarget, ForgeDependencies, ForgeType } fr
 // which edge goes where, writes only the difference, and reads the result back. An edge the native
 // channel cannot hold (no native feature on the repo, a cross-repo or non-issue blocker on
 // GitHub/Gitea, an issue blocker on GitLab) becomes a `Blocked by #N` line in the PR body, the
-// fallback a human sees on any forge. An edge read from one channel that the planner passes back
-// unchanged (`via`) stays in that channel.
+// fallback a human sees on any forge. An edge the planner passes back with its read tag (`via`)
+// stays in that channel; one passed without it is placed afresh, native first, so a same-repo body
+// line the planner resolved to a queue issue is promoted to a native issue edge.
 
 /** One native edge as the forge lists it; `handle` is whatever the backend needs to delete it. */
 export type NativeEdge = { ref: DependencyRef; handle: string | number };
@@ -116,7 +117,8 @@ export const writeDependencies = (
 };
 
 /**
- * True when a failed forge call says the endpoint or feature does not exist here (404, 410). A 403
- * is not that: a rate limit or a token without the scope must fail loudly, never switch channel.
+ * True when a failed forge call says the endpoint or feature does not exist here: an `HTTP 404` or
+ * `HTTP 410` status, never a bare number (an issue #404 or a repo `app-404` in the message is not a
+ * status). A 403 is not that either: a rate limit or a token without the scope fails loudly.
  */
-export const isUnavailable = (text: string): boolean => /\b(?:HTTP\s*)?(?:404|410)\b/.test(text);
+export const isUnavailable = (text: string): boolean => /\bHTTP\s*(?:404|410)\b/.test(text);

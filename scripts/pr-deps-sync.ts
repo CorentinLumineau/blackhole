@@ -16,6 +16,12 @@ import { syncPrDependencies } from './lib/pr-dependencies.ts';
 const USAGE =
   'Usage: bun run scripts/pr-deps-sync.ts --campaign-dir <.blackhole> [--apply --out <queue.json.tmp>]';
 
+/** The stderr line naming every issue whose forge has no native dependency feature; null when there is none. */
+export function bodyOnlyNotice(rows: Array<{ issue: number; native: boolean }>): string | null {
+  const bodyOnly = rows.filter((r) => !r.native).map((r) => `#${r.issue}`);
+  return bodyOnly.length ? `no native dependency feature (HTTP 404/410) for ${bodyOnly.join(', ')}: their edges are PR-body lines` : null;
+}
+
 async function main(): Promise<number> {
   const flags = parseFlags(process.argv.slice(2));
   const dir = typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : null;
@@ -40,8 +46,8 @@ async function main(): Promise<number> {
   const result = await syncPrDependencies(adapter, queue, { apply, repo, queuePath });
   if (result.queue && out) fs.writeFileSync(out, `${JSON.stringify(result.queue, null, 2)}\n`);
   console.log(JSON.stringify({ rows: result.rows, errors: result.errors }, null, 2));
-  const bodyOnly = result.rows.filter((r) => !r.native).map((r) => `#${r.issue}`);
-  if (bodyOnly.length) console.error(`no native dependency feature (HTTP 404/410) for ${bodyOnly.join(', ')}: their edges are PR-body lines`);
+  const notice = bodyOnlyNotice(result.rows);
+  if (notice) console.error(notice);
   return result.errors.length ? 1 : 0;
 }
 
