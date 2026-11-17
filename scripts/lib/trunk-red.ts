@@ -88,3 +88,22 @@ export function failingPaths(log: string): string[] {
   if (idx < 0) return [];
   return pathsInLog(lines.slice(Math.max(0, idx - WINDOW_RADIUS), idx + WINDOW_RADIUS + 1).join('\n'));
 }
+
+const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === 'string');
+
+/** Validates classifier input read from JSON; throws naming the first bad entry and field. */
+export function parseTrunkRedPrs(input: unknown): TrunkRedPr[] {
+  if (!Array.isArray(input)) throw new Error('expected a JSON array of { pr, failingChecks, touchedFiles }');
+  input.forEach((entry, i) => {
+    const bad = (field: string) => new Error(`entry ${i}: ${field} is missing or malformed`);
+    if (typeof entry !== 'object' || entry === null) throw bad('entry');
+    if (typeof entry.pr !== 'number') throw bad('pr');
+    if (!isStringArray(entry.touchedFiles)) throw bad('touchedFiles');
+    if (!Array.isArray(entry.failingChecks)) throw bad('failingChecks');
+    for (const f of entry.failingChecks) {
+      if (typeof f?.check !== 'string' || typeof f?.fingerprint !== 'string') throw bad('failingChecks[].check/fingerprint');
+      if (f.failingPaths !== undefined && !isStringArray(f.failingPaths)) throw bad('failingChecks[].failingPaths');
+    }
+  });
+  return input as TrunkRedPr[];
+}
