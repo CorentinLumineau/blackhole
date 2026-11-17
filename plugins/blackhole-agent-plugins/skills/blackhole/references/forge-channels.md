@@ -51,8 +51,14 @@ sessions and fails on repositories that still carry a classic Project. On any ch
 | Create release | `gh release create T --notes …` | `POST repos/{repo}/releases` `{tag_name, name, body}` | none, use `rest` |
 
 On Gitea the base change is `PATCH repos/{owner}/{repo}/pulls/N` with `{base}`, read back with `GET`
-and compared on `base.ref`; the Gitea adapter (`scripts/lib/forge-adapter/gitea.ts`) does both, and
-its PR files come from `GET repos/{owner}/{repo}/pulls/N/files`.
+and compared on `base.ref`; the Gitea adapter (`scripts/lib/forge-adapter/gitea.ts`) does both
+(`changeGiteaPrBase`, which `stack-repair.ts --forge gitea` calls), and its PR files come from
+`GET repos/{owner}/{repo}/pulls/N/files`. Gitea does not re-run CI when a base changes and no
+re-run endpoint is assumed: CI is re-triggered by a push only. So after a Gitea retarget,
+`stack-repair.ts repair`/`restack` print one `ci-retrigger:` line: a recovery that pushed (a replay
+or a restack merge) says its push re-triggered CI; one that did not (retarget only, or already up
+to date) tells the operator to push the child branch. The repo's merge switches come from
+`GET repos/{owner}/{repo}` (`allow_merge_commits`, `allow_rebase`, `allow_squash_merge`).
 
 Always pass the head sha when merging over REST or MCP. The merge is then refused if the PR moved
 since the merge gate read it, the same guard `gh pr merge --match-head-commit` gives.

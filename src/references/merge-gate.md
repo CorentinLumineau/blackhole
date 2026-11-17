@@ -403,8 +403,9 @@ recorded *before* step 4 merges, and its step 4.6 runs the repair per child afte
 ```
 bun run --cwd <abs child worktree> scripts/stack-repair.ts repair --queue <abs queue.json> \
   --repo-root <abs child worktree> --repo-slug <owner/repo> --base <target branch> \
-  --parent-issue <M> [--child-issue <N> --apply]
+  --parent-issue <M> [--child-issue <N> --apply] [--forge <config.forge>]
 ```
+On Gitea each recovery prints a `ci-retrigger:` line (push-only; `forge-channels.md` § Operation table).
 
 **Recovery route per merge mode and landing.** The command is the same for each child
 (`bun run --cwd <abs child worktree> scripts/stack-repair.ts <command> ...` with the flags above);
@@ -444,7 +445,7 @@ success:
   duplicate the parent's work;
 - a retarget whose read-back `base.ref` does not equal the base. The PATCH's exit status is not
   evidence that it applied, so the base is always read back. The retarget uses the REST form
-  (`gh api -X PATCH repos/{owner}/{repo}/pulls/{N} -f base=<base>`), never `gh pr edit --base`,
+  (`gh api -X PATCH repos/{owner}/{repo}/pulls/{N} -f base=<base>`; `tea api` on Gitea), never `gh pr edit --base`,
   which on a repo with classic Projects enabled exits from a GraphQL deprecation before applying
   anything — the same CLI limitation `implementer.md` § Verify & Open PR already records for
   PR-body edits.
