@@ -8,9 +8,20 @@ owner returns, every parked question is asked in one batched round.
 ## Switch
 
 `config.json` → `sleep_mode.enabled` (`config-template.md`). Absent or `false` ⇒ awake: every gate
-asks as it always has. Entry: `/blackhole sleep` (or the owner saying they are leaving) sets it to
-`true`; `/blackhole wake` (or the owner's first message after it was set) runs the wake-up round
-below, whose first step sets it back to `false`.
+asks as it always has. Never hand-edit it; the toggle is a script:
+
+| Owner says | Run |
+|------------|-----|
+| `/blackhole sleep`, or that they are leaving | `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts sleep --on` — sets `enabled: true` and records `since` and a `baseline` (issues already done, weekly usage %) for the wake-up report. Already on ⇒ nothing changes |
+| `/blackhole wake`, or their first message back | `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts wake` — the wake-up round below; its first step turns sleep mode off |
+| Cancel sleep with no round | `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts sleep --off` — prints how many parked decisions still wait for `wake` |
+
+## Launch gate and run context
+
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/run-context.ts` writes `sleep_mode: {enabled, since}` into `run-context.json` and
+prints `sleep mode on: owner questions are parked` when it is on, so every resume sees it. The
+launch summary (`bun run status --summary`) carries a display-only **Sleep mode** row. What the
+launch gate does while sleep mode is on is `launch-gate.md` § Print-only mode's.
 
 ## The choke point: `askOrPark()`
 
@@ -60,11 +71,44 @@ Schema and fixture: `pending-decisions.ts`, `fixtures/sleep-mode/pending-decisio
 1. `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts wake` sets `sleep_mode.enabled` to `false` **first** — while it
    is `true`, the round's own questions would be parked again — then prints the batch as JSON:
    every parked decision, the most-blocking first, in `cards` of at most four questions.
-2. Executive summary of what ran while the owner was away: merged and merge-ready PRs, budget used.
+2. Show the `report` field of that JSON first, verbatim: the executive summary of what ran while
+   the owner was away — issues finished since `since` (against the sleep baseline), open PRs in
+   merge order with each one's blocker (`mergeNextOrder`, `scripts/lib/merge-next.ts`), weekly usage
+   now and the points used while away, and the number of decisions waiting. A value that could not
+   be read is named as such, never guessed (`buildWakeReport`, `scripts/lib/campaign-status/sleep-session.ts`).
 3. Ask each card as **one**
    AskUserQuestion call (or one set of decision cards, `project-thread-mode.md`), the recommended
    option first; more than four decisions means more cards, never a dropped question.
 4. For each answer: `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts resolve --id PD-<n> --answer "<label or text>"`.
    It removes the decision, records it in `owner-decisions.json` with its blocked items as `refs`,
    and prints the items to unblock — promote them `blocked → ready` in the same turn.
+
+## Keeps itself alive
+
+A sleeping campaign must not depend on the owner's hardware staying on. What each host can do:
+
+| Host | Can | Cannot |
+|------|-----|--------|
+| Claude Code cloud session (or Project thread) | Run while a turn is active; wake on a scheduled routine or trigger (`route.schedule: routine`), a PR event (`ci_wait: pr-events`) or a peer's message; keep state on the `blackhole/state` branch | Stay alive between turns on its own: an idle session ends and its container is reclaimed. There is no OS idle inhibitor to hold, and none is needed — no owner machine is involved |
+| Local Claude Code / Cursor | Everything above that its run context reports | Run once the machine sleeps or the app quits. Holding the local host awake (an app hold plus an OS idle inhibitor where one exists) is tracked separately in #1238 |
+
+So on every host the campaign keeps itself alive by re-arming its own wake-ups. At every turn end
+in sleep mode (`checkpoint-protocol.md` § Write order, step 3), run:
+
+```bash
+bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts rearm
+```
+
+It prints `{schedule, wake_ups}`: one entry per minute, soonest first, each with `at`, `reasons`
+(`ci-check-in` for the PRs in flight, `CI_CHECK_IN_MINUTES` out; `five-hour-reset` and
+`weekly-reset` for each future usage-window reset), `refs` and `wake_peers`. A usage stop's own
+`wake_at` is not listed; `phase-stop.md` § Usage stop arms exactly that one.
+
+- `schedule: routine`: keep one one-off routine per entry (`project-thread-mode.md` § Scheduling:
+  routines). `checkpoint-protocol.md` § Write order, step 3 runs `rearm` at every turn end and lists
+  each armed wake-up on a `## Notes` line, so a resume does not arm a second.
+- `schedule: turn`: no timer exists; name the entries in the turn report, and the next turn started
+  at or after one runs it.
+- `wake_peers: true` (this session is the `usage_budget.coordination` manager): after the reset,
+  message each peer holding a lease (`multitask-mode.md`), since the reset frees the slots they wait for.
 <!-- GENERATED by scripts/build.ts from src/references/sleep-mode.md — do not hand-edit -->

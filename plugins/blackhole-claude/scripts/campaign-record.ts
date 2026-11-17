@@ -19,7 +19,11 @@ import {
   writePendingDecisions,
   type PendingOption,
 } from './lib/campaign-status/pending-decisions.ts';
-import { SCOPE_KINDS, type ScopeEntry, type ScopeKind } from './lib/campaign-status/types.ts';
+import { SCOPE_KINDS, type QueueIssue, type ScopeEntry, type ScopeKind } from './lib/campaign-status/types.ts';
+import { readBudgetPanel, when } from './lib/campaign-status/budget.ts';
+import { buildWakeReport, doneIssues, planWakeUps, readSleepSession, sleepOff, sleepOn } from './lib/campaign-status/sleep-session.ts';
+import { resolveHost } from './lib/usage-source.ts';
+import { resolveUsageBudget } from './lib/usage-budget.ts';
 
 // Records what the owner said so the status page shows it without a hand-kept file
 // (`status-page.md` § What the orchestrator records), and the questions sleep mode parks for the
@@ -31,7 +35,9 @@ import { SCOPE_KINDS, type ScopeEntry, type ScopeKind } from './lib/campaign-sta
 //   park     --question "<q>" --options "A: why|B|C" --recommended A [--evidence "<text>"]
 //            [--refs 12,14] [--gate <name>]                      → pending-decisions.json
 //   ask                                                          → prints `ask` or `park` (askOrPark)
-//   wake                                                         → turns sleep mode off, then prints the batched round as JSON
+//   sleep    --on | --off                                        → config.json sleep_mode (on records since + baseline)
+//   wake                                                         → turns sleep mode off, then prints the report and the batched round as JSON
+//   rearm                                                        → prints the wake-ups to keep armed as JSON (sleep-mode.md § Keeps itself alive)
 //   resolve  --id PD-1 --answer "<text>" [--date YYYY-MM-DD]     → pending-decisions.json + owner-decisions.json
 //
 // All take --campaign-dir (default ./.blackhole). Re-running scope, decision or park changes nothing.
@@ -40,15 +46,15 @@ const USAGE =
   'Usage: bun scripts/campaign-record.ts scope --kind <in|parked|deferred|blocked-upstream|out> --text <text> ' +
   '[--reason <text>] [--refs 1,2] [--filter] [--date YYYY-MM-DD] | decision --text <text> [--refs 1,2] [--date YYYY-MM-DD] ' +
   '| park --question <text> --options "A: consequence|B" --recommended <label> [--evidence <text>] [--refs 1,2] [--gate <name>] ' +
-  '| ask | wake | resolve --id PD-<n> --answer <text> [--date YYYY-MM-DD] [--campaign-dir <dir>]';
+  '| ask | sleep --on|--off | wake | rearm | resolve --id PD-<n> --answer <text> [--date YYYY-MM-DD] [--campaign-dir <dir>]';
 
 type Flags = {
-  kind?: string; text?: string; reason?: string; refs?: string; date?: string; filter: boolean; campaignDir: string;
+  kind?: string; text?: string; reason?: string; refs?: string; date?: string; filter: boolean; on: boolean; off: boolean; campaignDir: string;
   question?: string; options?: string; recommended?: string; evidence?: string; gate?: string; id?: string; answer?: string;
 };
 
 function parseFlags(argv: string[]): Flags {
-  const flags: Flags = { filter: false, campaignDir: path.join(process.cwd(), '.blackhole') };
+  const flags: Flags = { filter: false, on: false, off: false, campaignDir: path.join(process.cwd(), '.blackhole') };
   const valued: Record<string, keyof Flags> = {
     '--kind': 'kind', '--text': 'text', '--reason': 'reason', '--refs': 'refs', '--date': 'date', '--campaign-dir': 'campaignDir',
     '--question': 'question', '--options': 'options', '--recommended': 'recommended', '--evidence': 'evidence',
@@ -61,8 +67,8 @@ function parseFlags(argv: string[]): Flags {
       if (value === undefined || value.startsWith('--')) throw new Error(`${argv[i]} needs a value. ${USAGE}`);
       (flags as Record<string, unknown>)[key] = key === 'campaignDir' ? path.resolve(value) : value;
       i++;
-    } else if (argv[i] === '--filter') {
-      flags.filter = true;
+    } else if (argv[i] === '--filter' || argv[i] === '--on' || argv[i] === '--off') {
+      flags[argv[i].slice(2) as 'filter' | 'on' | 'off'] = true;
     } else {
       throw new Error(`Unknown argument "${argv[i]}". ${USAGE}`);
     }
@@ -106,6 +112,29 @@ function readConfig(campaignDir: string): Record<string, unknown> & { sleep_mode
   const configPath = path.join(campaignDir, 'config.json');
   if (!fs.existsSync(configPath)) throw new Error(`${configPath} is absent: the launch configuration gate writes it first.`);
   return readJsonFile(configPath, configPath) as Record<string, unknown> & { sleep_mode?: Record<string, unknown> };
+}
+
+function readOptionalJson(file: string): unknown {
+  return fs.existsSync(file) ? readJsonFile(file, file) : null;
+}
+
+/** `queue.json`'s issues, or null when there is no queue yet. */
+function readQueueIssues(campaignDir: string): Record<string, QueueIssue> | null {
+  const queue = readOptionalJson(path.join(campaignDir, 'queue.json')) as { issues?: Record<string, QueueIssue> } | null;
+  return queue?.issues ?? null;
+}
+
+/** The status page's budget panel for this host, now. */
+const readBudget = (campaignDir: string, config: Record<string, unknown>, now: Date) =>
+  readBudgetPanel(config, resolveHost(campaignDir, process.env), Math.floor(now.getTime() / 1000));
+
+/** `usage_budget.coordination.role`; an invalid block counts as solo, so no peer is woken on a guess. */
+function coordinationRole(config: Record<string, unknown>): string {
+  try {
+    return resolveUsageBudget(config).coordination.role;
+  } catch {
+    return 'solo';
+  }
 }
 
 /** Runs one record command and returns the line to print. Throws on bad input; writes nothing then. */
@@ -164,13 +193,47 @@ export function runRecord(argv: string[], now: Date = new Date()): string {
 
   if (sub === 'ask') return askOrPark(readConfig(flags.campaignDir));
 
+  if (sub === 'sleep') {
+    if (flags.on === flags.off) throw new Error(`sleep takes --on or --off. ${USAGE}`);
+    const configPath = path.join(flags.campaignDir, 'config.json');
+    const config = readConfig(flags.campaignDir);
+    const waiting = readPendingDecisions(flags.campaignDir).decisions.length;
+    if (flags.off) {
+      writeJsonAtomic(configPath, sleepOff(config));
+      return `Sleep mode off: ${waiting} parked decision${waiting === 1 ? '' : 's'} wait for \`campaign-record.ts wake\`.`;
+    }
+    const issues = readQueueIssues(flags.campaignDir);
+    const baseline = { done: issues ? doneIssues(issues) : null, weekly_pct: readBudget(flags.campaignDir, config, now).weekly_pct };
+    const next = sleepOn(config, now.toISOString(), baseline);
+    writeJsonAtomic(configPath, next);
+    return `Sleep mode on since ${when(readSleepSession(next).since ?? now.toISOString())}: owner questions are parked (${waiting} waiting).`;
+  }
+
   if (sub === 'wake') {
     // Sleep mode goes off before the round is printed: while it is on, every question — the
     // round's own included — would be parked again (`clarify-gates.md` § C3 adapter).
-    const configPath = path.join(flags.campaignDir, 'config.json');
     const config = readConfig(flags.campaignDir);
-    writeJsonAtomic(configPath, { ...config, sleep_mode: { ...(config.sleep_mode ?? {}), enabled: false } });
-    return JSON.stringify(wakeBatch(readPendingDecisions(flags.campaignDir).decisions), null, 2);
+    writeJsonAtomic(path.join(flags.campaignDir, 'config.json'), sleepOff(config));
+    const batch = wakeBatch(readPendingDecisions(flags.campaignDir).decisions);
+    const report = buildWakeReport({
+      ...readSleepSession(config),
+      issues: readQueueIssues(flags.campaignDir),
+      budget: readBudget(flags.campaignDir, config, now),
+      pending: batch.total,
+    });
+    return JSON.stringify({ report, ...batch }, null, 2);
+  }
+
+  if (sub === 'rearm') {
+    const config = readConfig(flags.campaignDir);
+    const runContext = readOptionalJson(path.join(flags.campaignDir, 'run-context.json')) as { route?: { schedule?: unknown } } | null;
+    const wake_ups = planWakeUps({
+      budget: readBudget(flags.campaignDir, config, now),
+      issues: readQueueIssues(flags.campaignDir) ?? {},
+      role: coordinationRole(config),
+      nowIso: now.toISOString(),
+    });
+    return JSON.stringify({ schedule: runContext?.route?.schedule === 'routine' ? 'routine' : 'turn', wake_ups }, null, 2);
   }
 
   if (sub === 'resolve') {

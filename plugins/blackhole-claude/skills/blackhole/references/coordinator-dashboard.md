@@ -31,7 +31,8 @@ Launch summary â€” the launch gate's executive-summary table (`launch-gate.md` Â
 bun run status --summary [--usage <json>] [--now <epoch s>] [--json] [--campaign-dir <dir>] [--no-gh]
 ```
 
-Seven rows in fixed order (Scope, Order, Merge, Budget, Status page, Kaizen and staging, Peers),
+Eight rows in fixed order (Scope, Order, Merge, Budget, Status page, Kaizen and staging, Peers,
+Sleep mode),
 each with a one-line consequence. The status page reads the same builder, so the two never
 disagree. `--summary` accepts only `--usage`, `--now`, `--json`, `--campaign-dir` and `--no-gh`,
 and cannot be combined with `--html`, `--out`, `--data` or `config-summary`.
