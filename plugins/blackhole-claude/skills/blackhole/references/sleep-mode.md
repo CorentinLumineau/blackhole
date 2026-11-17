@@ -20,8 +20,8 @@ asks as it always has. Never hand-edit it; the toggle is a script:
 
 `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/run-context.ts` writes `sleep_mode: {enabled, since}` into `run-context.json` and
 prints `sleep mode on: owner questions are parked` when it is on, so every resume sees it. The
-launch summary (`bun run status --summary`) carries a display-only **Sleep mode** row; while it is
-on, the gate is print-only — it shows the summary and asks nothing (no question cards).
+launch summary (`bun run status --summary`) carries a display-only **Sleep mode** row. What the
+launch gate does while sleep mode is on is `launch-gate.md` § Print-only mode's.
 
 ## The choke point: `askOrPark()`
 
@@ -90,10 +90,10 @@ A sleeping campaign must not depend on the owner's hardware staying on. What eac
 | Host | Can | Cannot |
 |------|-----|--------|
 | Claude Code cloud session (or Project thread) | Run while a turn is active; wake on a scheduled routine or trigger (`route.schedule: routine`), a PR event (`ci_wait: pr-events`) or a peer's message; keep state on the `blackhole/state` branch | Stay alive between turns on its own: an idle session ends and its container is reclaimed. There is no OS idle inhibitor to hold, and none is needed — no owner machine is involved |
-| Local Claude Code / Cursor | Everything above that its run context reports; the owner may hold the machine awake (`caffeinate -i` on macOS, `systemd-inhibit --what=idle:sleep` on Linux, or the app's own keep-awake setting) | Run once the machine sleeps or the app quits; the campaign never starts an inhibitor itself |
+| Local Claude Code / Cursor | Everything above that its run context reports | Run once the machine sleeps or the app quits. Holding the local host awake (an app hold plus an OS idle inhibitor where one exists) is tracked separately in #1238 |
 
-So the campaign keeps itself alive by re-arming its own wake-ups, not by holding a host awake. At
-every turn end in sleep mode, run:
+So on every host the campaign keeps itself alive by re-arming its own wake-ups. At every turn end
+in sleep mode (`checkpoint-protocol.md` § Write order, step 3), run:
 
 ```bash
 bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts rearm
@@ -105,7 +105,8 @@ It prints `{schedule, wake_ups}`: one entry per minute, soonest first, each with
 `wake_at` is not listed; `phase-stop.md` § Usage stop arms exactly that one.
 
 - `schedule: routine`: keep one one-off routine per entry (`project-thread-mode.md` § Scheduling:
-  routines), its id noted in the checkpoint so a resume does not arm a second.
+  routines). `checkpoint-protocol.md` § Write order, step 3 runs `rearm` at every turn end and lists
+  each armed wake-up on a `## Notes` line, so a resume does not arm a second.
 - `schedule: turn`: no timer exists; name the entries in the turn report, and the next turn started
   at or after one runs it.
 - `wake_peers: true` (this session is the `usage_budget.coordination` manager): after the reset,

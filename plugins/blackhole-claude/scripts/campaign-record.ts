@@ -203,7 +203,7 @@ export function runRecord(argv: string[], now: Date = new Date()): string {
       return `Sleep mode off: ${waiting} parked decision${waiting === 1 ? '' : 's'} wait for \`campaign-record.ts wake\`.`;
     }
     const issues = readQueueIssues(flags.campaignDir);
-    const baseline = { done: issues ? doneIssues(issues) : [], weekly_pct: readBudget(flags.campaignDir, config, now).weekly_pct };
+    const baseline = { done: issues ? doneIssues(issues) : null, weekly_pct: readBudget(flags.campaignDir, config, now).weekly_pct };
     const next = sleepOn(config, now.toISOString(), baseline);
     writeJsonAtomic(configPath, next);
     return `Sleep mode on since ${when(readSleepSession(next).since ?? now.toISOString())}: owner questions are parked (${waiting} waiting).`;

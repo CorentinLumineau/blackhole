@@ -1,4 +1,4 @@
-import { formatMergeNextItem, mergeNextOrder } from '../merge-next.ts';
+import { formatMergeNextItem, mergeNextOrder, trunkFixIssues } from '../merge-next.ts';
 import { when } from './budget.ts';
 import { DONE_STATUSES } from './queue.ts';
 import type { BudgetPanel, QueueIssue } from './types.ts';
@@ -7,8 +7,11 @@ import type { BudgetPanel, QueueIssue } from './types.ts';
 // toggle writes, the wake-ups the campaign re-arms for itself while nobody is watching, and the
 // report the owner reads before the batched round. Pure: `scripts/campaign-record.ts` does the I/O.
 
-/** What was true when sleep mode went on, so the wake-up report can say what changed. */
-export type SleepBaseline = { done: number[]; weekly_pct: number | null };
+/**
+ * What was true when sleep mode went on, so the wake-up report can say what changed. `done` is
+ * null when `queue.json` was absent then: nothing was measured, which is not "nothing was done".
+ */
+export type SleepBaseline = { done: number[] | null; weekly_pct: number | null };
 type SleepBlock = { enabled?: unknown; since?: unknown; baseline?: SleepBaseline };
 type WithSleep = Record<string, unknown> & { sleep_mode?: SleepBlock };
 
@@ -30,7 +33,9 @@ export function sleepOff(config: WithSleep): WithSleep {
 export function readSleepSession(config: WithSleep): { since: string | null; baseline: SleepBaseline | null } {
   const b = block(config);
   const since = typeof b.since === 'string' && !Number.isNaN(Date.parse(b.since)) ? b.since : null;
-  const ok = Array.isArray(b.baseline?.done) && b.baseline.done.every(Number.isInteger);
+  const done = b.baseline?.done;
+  const weekly = b.baseline?.weekly_pct;
+  const ok = (done === null || (Array.isArray(done) && done.every(Number.isInteger))) && (weekly === null || typeof weekly === 'number');
   return { since, baseline: ok ? (b.baseline as SleepBaseline) : null };
 }
 
@@ -85,6 +90,7 @@ const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' 
 
 function workDone(baseline: SleepBaseline | null, issues: Record<string, QueueIssue> | null): string {
   if (!baseline) return 'not measured — no sleep baseline was recorded';
+  if (!baseline.done) return 'not measured — queue.json was absent when sleep mode went on';
   if (!issues) return 'not measured — queue.json not read';
   const before = new Set(baseline.done);
   const finished = doneIssues(issues).filter((n) => !before.has(n));
@@ -93,10 +99,13 @@ function workDone(baseline: SleepBaseline | null, issues: Record<string, QueueIs
 
 function openPrs(issues: Record<string, QueueIssue> | null): string {
   if (!issues) return 'queue.json not read';
-  const { items, cycles } = mergeNextOrder(issues, []);
+  // Trunk-red base fixes merge first, as on the dashboard; issue bodies are not read here, so
+  // cross-repo blockers are unknown and the line says so rather than showing them as clear.
+  const { items, cycles } = mergeNextOrder(issues, trunkFixIssues(issues));
   const ordered = items.map((item, i) => `${i + 1}. ${formatMergeNextItem(item)}`);
   const loops = cycles.map((c) => `cycle, not ordered: ${list(c)}`);
-  return [...ordered, ...loops].join('; ') || 'none';
+  const all = [...ordered, ...loops];
+  return all.length ? `${all.join('; ')} (cross-repo dependencies not read)` : 'none';
 }
 
 function budgetUsed(b: BudgetPanel, baseline: SleepBaseline | null): string {
