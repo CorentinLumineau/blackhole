@@ -1,6 +1,6 @@
 import { readScope, type CampaignScope } from '../../forge-scope.ts';
 import { classPreview, groupBlockedRows, waitReason } from './blocked-classes.ts';
-import { formatMergeNextItem, mergeNextOrder } from '../merge-next.ts';
+import { formatMergeNextItem, mergeNextOrder, trunkFixIssues } from '../merge-next.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
 import { safePatternId, topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
@@ -421,7 +421,7 @@ export function formatDashboard(opts: {
   lines.push(...renderReadySection(ready));
   lines.push(...renderRoutingSection(active));
   lines.push(...renderWavesSection(issues));
-  lines.push(...renderMergeNextSection(issues));
+  lines.push(...renderMergeNextSection(issues, trunkFixIssues(issues)));
   lines.push(...renderStackMergeOrderSection(issues));
   lines.push(...renderCompletedSection(done));
   lines.push(...renderFiledSection(filed));

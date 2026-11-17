@@ -223,7 +223,9 @@ any PR. Per-PR fixing is wrong: each fix would patch the same trunk defect in a 
 branch.
 
 1. **Park the children.** Set every affected PR's queue entry to `status: blocked` and add
-   `notes: waiting-on-trunk-fix`. The token is a `notes` value, never a `status` value.
+   `notes: waiting-on-trunk-fix`; once the base-fix entry exists (step 2), suffix its issue number
+   (`waiting-on-trunk-fix #N`) so "Merge next" (`trunkFixIssues`, `scripts/lib/merge-next.ts`) puts
+   that PR first and names it on each child. The token is a `notes` value, never a `status` value.
    The token sits outside the ready set (Step 2): no implementer spawn, no `V-CI-01` fix round.
 2. **Fix the base once.** Owner ruling (#1169): the orchestrator opens the base-fix PR itself,
    under the usual plan, review and verify gates. It is an ordinary queue entry targeting
