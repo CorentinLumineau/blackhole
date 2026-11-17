@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import * as path from 'path';
-import { PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
+import { minMs, PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
 
 // Issue #1184: commands that look read-only but carry a file-writing option (`sort -o`, `uniq`'s
 // second positional, `git diff|log|show --output`, `yq -i`) must resolve that option's target
@@ -188,24 +188,13 @@ describe('validate-bash-command.js — #1184 review: git -C and long-option abbr
   }
 });
 
-/** Smallest wall time of `runs` calls — the least noisy estimate on a shared host. */
-const minOfRuns = (runs: number, fn: () => void): number => {
-  let best = Infinity;
-  for (let i = 0; i < runs; i++) {
-    const start = performance.now();
-    fn();
-    best = Math.min(best, performance.now() - start);
-  }
-  return best;
-};
-
 describe('bash-write-target-guard.js — #1184 review: linear-time option scan', () => {
   test('#1184: an 80k-character `-iii…` yq flag is evaluated in linear time', async () => {
     await withLinkedWorktree('blackhole-hook-1184-', async (_mainRepo, worktree) => {
       const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
       const command = `yq -${'i'.repeat(80_000)}! a.yaml`;
       // The quadratic regex took ~2.5 s on this input; a linear scan is a few milliseconds.
-      expect(minOfRuns(3, () => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
+      expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
     });
   });
 });
@@ -263,7 +252,7 @@ describe('validate-bash-command.js — #1184 re-review: git globals, format-patc
       const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
       const command = `git ${'-C a '.repeat(16_000)}diff --output=o1`;
       // The repeated path.join took ~6.9 s here, past the 5 s hook timeout (fail-open).
-      expect(minOfRuns(3, () => evaluateBashWriteTargets(command, worktree))).toBeLessThan(500);
+      expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(500);
     });
   });
 });

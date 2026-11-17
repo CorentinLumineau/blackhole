@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import {
+  minMs,
   PRETOOLUSE_HOOKS_DIR,
   readHookEvents,
   runPreToolUseHook,
@@ -35,19 +36,6 @@ const permissionDecision = (stdout: string): string | undefined =>
   JSON.parse(stdout).hookSpecificOutput?.permissionDecision;
 const permissionReason = (stdout: string): string | undefined =>
   JSON.parse(stdout).hookSpecificOutput?.permissionDecisionReason;
-
-/** Minimum wall time of `runs` calls after one warm-up call: the minimum damps scheduler noise, so a
- * timing budget measures the code, not a busy CI runner. */
-const minMs = (run: () => unknown, runs = 3): number => {
-  run();
-  let best = Infinity;
-  for (let i = 0; i < runs; i += 1) {
-    const start = performance.now();
-    run();
-    best = Math.min(best, performance.now() - start);
-  }
-  return best;
-};
 
 describe('validate-bash-command.js', () => {
   test('block tier: `rm -rf /` is denied with exit 2, a stderr reason, and a durable block event', async () => {

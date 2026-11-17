@@ -41,15 +41,9 @@ const { isLiteralPathArg } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
  * string at all — the residual gap ADR-029 accepts and downgrades to WARN rather than a silent
- * allow. `requiresFlag`, when set, narrows the match to invocations carrying that flag (a bare
- * `awk` invocation is unresolvable outright; a bare `python3`/`perl` invocation with
- * no `-c`/`-i` is not write-shaped at all and is left alone). */
-const UNRESOLVABLE_WRITE_COMMANDS = [
-  { name: 'python3', requiresFlag: '-c' },
-  { name: 'python', requiresFlag: '-c' },
-  { name: 'perl', requiresFlag: /^-[a-zA-Z]*i/ },
-  { name: 'awk', requiresFlag: null },
-];
+ * allow. A bare `awk` invocation is unresolvable outright; interpreters are matched by
+ * `INTERPRETERS` below, which looks at their inline script. */
+const UNRESOLVABLE_WRITE_COMMANDS = ['awk'];
 
 /** Replaces every masked character (a `#` comment, a heredoc body, or a print-only-sink's quoted
  * literal text — see `bash-context.js`'s module docstring) with a space, preserving string
@@ -63,6 +57,44 @@ const buildVisibleCommand = (command, masked) =>
     .split('')
     .map((ch, i) => (masked[i] ? ' ' : ch))
     .join('');
+
+/** Removes every backslash-newline pair the shell removes before it splits words: outside single
+ * quotes, and not where the backslash is itself escaped (`\\<newline>` keeps the newline). A
+ * continued line is one line to bash, so `cat x >\<newline>/etc/x` writes `/etc/x`; without the
+ * join the newline would end the clause and the target would be lost. One linear pass. */
+const joinLineContinuations = (text) => {
+  if (!text.includes('\\\n')) return text;
+  let out = '';
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inSingle) {
+      if (ch === "'") inSingle = false;
+      out += ch;
+    } else if (ch === '\\') {
+      if (text[i + 1] !== '\n') out += ch + (text[i + 1] ?? '');
+      i++;
+    } else {
+      if (ch === "'" && !inDouble) inSingle = true;
+      else if (ch === '"') inDouble = !inDouble;
+      out += ch;
+    }
+  }
+  return out;
+};
+
+/** The command as the scanners below read it. Masked spans are found on the original text and
+ * continuations joined afterwards, so a heredoc body or comment ending in `\` stays inert. When the
+ * command has a continuation, a second view joins first and masks afterwards: that is the only
+ * order that finds where a heredoc body starts when its operator line is continued
+ * (`cat <<EOF >\<newline>/etc/x`). Each view is checked, so neither order can hide a target. */
+const visibleViews = (command) => {
+  const views = [joinLineContinuations(buildVisibleCommand(command, computeMaskedSpans(command)))];
+  const joined = joinLineContinuations(command);
+  if (joined !== command) views.push(buildVisibleCommand(joined, computeMaskedSpans(joined)));
+  return views;
+};
 
 /** Strips one matching pair of surrounding quotes (`'...'` or `"..."`), if present. */
 const stripQuotes = (token) => {
@@ -323,18 +355,152 @@ const findTeeTargets = (tokens) => {
     .map(stripQuotes);
 };
 
-/** `sed -i[.suffix]|--in-place[=suffix] <script> <target...>` write targets in one clause — only
- * when an in-place flag is present (a plain `sed 's/a/b/' file` prints to stdout and writes
- * nothing). The first non-flag positional argument is the script; every non-flag positional
- * argument after that is a target file (`sed -i 's/a/b/' f1 f2` edits both in place). */
+/** sed short options that take a value: the script (`-e`), a script file (`-f`), a line length. */
+const SED_VALUE_SHORT = new Set(['e', 'f', 'l']);
+const SED_VALUE_LONG = ['--expression', '--file', '--line-length'];
+
+/** Splits sed's arguments getopt-style into its script (every `-e`/`--expression` joined by
+ * newlines, as sed joins them, else the first operand), its file operands and whether it edits in
+ * place (`-i[SUFFIX]` alone or ending a short cluster such as `-ni`, or `--in-place[=SUFFIX]`). */
+const parseSedArgs = (args) => {
+  const scripts = [];
+  const operands = [];
+  let inPlace = false;
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--') {
+      operands.push(...args.slice(i + 1));
+      break;
+    }
+    if (t.startsWith('--')) {
+      const eq = t.indexOf('=');
+      const word = eq === -1 ? t : t.slice(0, eq);
+      if (isLongOptionPrefix(word, '--in-place')) inPlace = true;
+      const name = SED_VALUE_LONG.find((n) => isLongOptionPrefix(word, n));
+      if (!name) continue;
+      const value = eq === -1 ? (args[++i] ?? '') : t.slice(eq + 1);
+      if (name === '--expression') scripts.push(value);
+      continue;
+    }
+    if (t.length < 2 || t[0] !== '-') {
+      operands.push(t);
+      continue;
+    }
+    for (let c = 1; c < t.length; c++) {
+      if (t[c] === 'i') {
+        inPlace = true;
+        break;
+      }
+      if (!SED_VALUE_SHORT.has(t[c])) continue;
+      const value = t.slice(c + 1) || (args[++i] ?? '');
+      if (t[c] === 'e') scripts.push(value);
+      break;
+    }
+  }
+  if (scripts.length === 0 && operands.length > 0) scripts.push(operands.shift());
+  return { script: scripts.map(stripQuotes).join('\n'), files: operands.map(stripQuotes), inPlace };
+};
+
+/** sed commands that take no argument (`l`, `q`, `Q`, `L` take an optional number). */
+const SED_PLAIN_COMMANDS = new Set('=dDgGhHnNpPxzFlqQL{}');
+
+/**
+ * Files a sed script writes (`w FILE`, `W FILE`, the `s///w FILE` flag) and whether it runs a
+ * shell command (the `e` command or `s///e` flag). A single forward pass over GNU sed's grammar:
+ * addresses, then one command, whose argument is skipped by its own rule — a regex or replacement
+ * to its unescaped delimiter, a file name or `a`/`i`/`c` text to the end of the line, a label to
+ * `;` or the end of the line. An unknown command ends the scan, since sed refuses the script.
+ */
+const parseSedScript = (script) => {
+  const files = [];
+  let exec = false;
+  const n = script.length;
+  let i = 0;
+  /** Moves `i` past the next unescaped `delim`. */
+  const skipDelimited = (delim) => {
+    while (i < n && script[i] !== delim) i += script[i] === '\\' ? 2 : 1;
+    i++;
+  };
+  /** Returns the text up to the end of the line, and moves `i` there. */
+  const restOfLine = () => {
+    const end = script.indexOf('\n', i);
+    const stop = end === -1 ? n : end;
+    const text = script.slice(i, stop);
+    i = stop;
+    return text;
+  };
+  const skipAddress = () => {
+    const c = script[i];
+    if (c === '/' || c === '\\') {
+      const delim = c === '/' ? '/' : script[i + 1];
+      i += c === '/' ? 1 : 2;
+      skipDelimited(delim);
+      while (script[i] === 'I' || script[i] === 'M') i++;
+    } else {
+      while (i < n && /[0-9$+~]/.test(script[i])) i++;
+    }
+  };
+  while (i < n) {
+    const ch = script[i];
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === ';') {
+      i++;
+      continue;
+    }
+    if (ch === '#') {
+      restOfLine();
+      continue;
+    }
+    skipAddress();
+    while (script[i] === ' ' || script[i] === '\t') i++;
+    if (script[i] === ',') {
+      i++;
+      while (script[i] === ' ' || script[i] === '\t') i++;
+      skipAddress();
+    }
+    while (script[i] === ' ' || script[i] === '\t' || script[i] === '!') i++;
+    const command = script[i++];
+    if (command === undefined) break;
+    if (SED_PLAIN_COMMANDS.has(command)) {
+      while (i < n && /[0-9 \t]/.test(script[i])) i++;
+    } else if (command === 's' || command === 'y') {
+      const delim = script[i++];
+      skipDelimited(delim);
+      skipDelimited(delim);
+      while (command === 's' && i < n && /[gpiImMe0-9w]/.test(script[i])) {
+        const flag = script[i++];
+        if (flag === 'e') exec = true;
+        if (flag === 'w') {
+          files.push(restOfLine().trim());
+          break;
+        }
+      }
+    } else if (command === 'w' || command === 'W') {
+      files.push(restOfLine().trim());
+    } else if (command === 'e') {
+      exec = true;
+      restOfLine();
+    } else if (command === 'r' || command === 'R') {
+      restOfLine();
+    } else if (command === 'a' || command === 'i' || command === 'c') {
+      // Text runs to the first newline that is not escaped by a backslash.
+      while (i < n && script[i] !== '\n') i += script[i] === '\\' ? 2 : 1;
+    } else if (command === 'b' || command === 't' || command === 'T' || command === ':' || command === 'v') {
+      while (i < n && script[i] !== ';' && script[i] !== '\n') i++;
+    } else {
+      break;
+    }
+  }
+  return { files: files.filter(Boolean), exec };
+};
+
+/** Write targets of `sed` in one clause: the file operands when it edits in place, every file its
+ * script writes, and an unresolvable target when the script runs a shell command. */
 const findSedTargets = (tokens) => {
   const cmdIdx = tokens.findIndex((t) => isCommandToken(t, 'sed'));
   if (cmdIdx === -1) return [];
-  const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
-  const inPlace = args.some((t) => t === '-i' || t.startsWith('-i.') || t.startsWith('--in-place'));
-  if (!inPlace) return [];
-  const positional = args.filter((t) => !t.startsWith('-'));
-  return positional.slice(1).map(stripQuotes);
+  const { script, files, inPlace } = parseSedArgs(positionalArgsBeforeRedirect(tokens, cmdIdx + 1));
+  const written = parseSedScript(script);
+  return [...(inPlace ? files : []), ...written.files, ...(written.exec ? [UNRESOLVABLE_TARGET] : [])];
 };
 
 /** Destination directory named by `-t DIR`, `-tDIR`, a short cluster ending in `t` (`-pt DIR`),
@@ -683,19 +849,68 @@ const isStreamDeviceTarget = (rawTarget, visible) => {
  * (`s/<A>/#1174/g` read as `/#1174/g`), not a path the author meant to write. */
 const looksLikeRegexFragment = (target) => target.startsWith('/#') || /[\\^$*+?()[\]{}|]/.test(target);
 
-/** True when one clause's leading command word is a write-shaped command this module cannot
- * resolve statically (see `UNRESOLVABLE_WRITE_COMMANDS`'s docstring). */
-const hasUnresolvableCommand = (tokens) => {
-  if (tokens.length === 0) return false;
-  const head = tokens[0];
-  for (const { name, requiresFlag } of UNRESOLVABLE_WRITE_COMMANDS) {
-    if (!isCommandToken(head, name)) continue;
-    if (!requiresFlag) return true;
-    const matcher =
-      requiresFlag instanceof RegExp ? (t) => requiresFlag.test(t) : (t) => t === requiresFlag;
-    if (tokens.slice(1).some(matcher)) return true;
+/** Calls that write, delete or move a file, or run a command, in a JS, Perl or Ruby one-liner. A
+ * plain literal alternation, so the scan is linear in the script length. */
+const SCRIPT_WRITE_CALL_RE =
+  /write|append|unlink|rename|truncate|symlink|mkdir|rmdir|copyfile|chmod|chown|utime|child_process|fileutils|\b(?:rm|cp|mv)(?:sync)?\b|\b(?:open|popen|exec|spawn|fork|system|eval)/i;
+
+/** Interpreters whose inline script (`-e`, `-c`, …) this module cannot parse. Every argument after
+ * the interpreter word is checked, so a value-taking option ahead of the script cannot hide it.
+ * `always` flags warn whatever the script says: python `-c` (Python reads and writes files
+ * through the same `open`), and perl/ruby `-i`, which edit their file operands in place. */
+const INTERPRETERS = [
+  {
+    name: /^(?:node|bun)$/,
+    scriptFlag: (t) => /^-[a-zA-Z]*[ep]$/.test(t) || ['--eval', '--print'].some((n) => isLongOptionPrefix(t.split('=')[0], n)),
+    // `Bun.$` runs a shell command through a tagged template.
+    writeCall: (script) => SCRIPT_WRITE_CALL_RE.test(script) || script.includes('$`'),
+  },
+  {
+    name: /^(?:perl|ruby)[0-9.]*$/,
+    scriptFlag: (t) => /^-[a-zA-Z]*[eE]/.test(t),
+    always: (t) => /^-[a-zA-Z]*i/.test(t),
+    // Backticks, `qx` and `%x` run a shell command.
+    writeCall: (script) => SCRIPT_WRITE_CALL_RE.test(script) || /`|%x|\bqx\b/.test(script),
+  },
+  { name: /^python[0-9.]*$/, always: (t) => /^-[a-zA-Z]*c/.test(t) },
+];
+
+/** True when an interpreter anywhere in the clause runs an inline script that may write. */
+const hasInterpreterWrite = (tokens) =>
+  INTERPRETERS.some(({ name, scriptFlag, always, writeCall }) => {
+    const idx = tokens.findIndex((t) => name.test(t.slice(t.lastIndexOf('/') + 1)));
+    if (idx === -1) return false;
+    const args = positionalArgsBeforeRedirect(tokens, idx + 1);
+    if (always && args.some(always)) return true;
+    return Boolean(scriptFlag && args.some(scriptFlag) && writeCall(args.join(' ')));
+  });
+
+/** True when a clause is write-shaped but unresolvable: its leading command word is one of
+ * `UNRESOLVABLE_WRITE_COMMANDS`, or an interpreter in it runs an inline script that may write. */
+const hasUnresolvableCommand = (tokens) =>
+  UNRESOLVABLE_WRITE_COMMANDS.some((name) => isCommandToken(tokens[0], name)) || hasInterpreterWrite(tokens);
+
+/** Literal write targets in one view of the command, and whether anything write-shaped in it
+ * cannot be resolved. */
+const collectWriteSignals = (visible) => {
+  const literalTargets = [];
+  let unresolvable = false;
+  const add = (raw) => {
+    if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
+    else unresolvable = true;
+  };
+
+  findRedirectTargets(maskRedirectNoise(visible)).forEach(add);
+
+  for (const clause of splitClauses(visible)) {
+    const tokens = tokenize(clause);
+    if (tokens.length === 0) continue;
+    [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens), ...findOptionWriteTargets(tokens)].forEach(add);
+    if (hasUnresolvableCommand(tokens)) unresolvable = true;
   }
-  return false;
+
+  if (hasPipedShellScript(visible)) unresolvable = true;
+  return { literalTargets, unresolvable };
 };
 
 /**
@@ -711,34 +926,16 @@ const evaluateBashWriteTargets = (command, cwd) => {
   const assignedRoot = readAssignedWorktreeRoot(cwd);
   if (!assignedRoot) return null;
 
-  const masked = computeMaskedSpans(command);
-  const visible = buildVisibleCommand(command, masked);
-
   const literalTargets = [];
   let unresolvable = false;
 
-  for (const raw of findRedirectTargets(maskRedirectNoise(visible))) {
-    if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
-    else unresolvable = true;
+  for (const visible of visibleViews(command)) {
+    const signals = collectWriteSignals(visible);
+    for (const target of signals.literalTargets) literalTargets.push({ target, visible });
+    if (signals.unresolvable) unresolvable = true;
   }
 
-  for (const clause of splitClauses(visible)) {
-    const tokens = tokenize(clause);
-    if (tokens.length === 0) continue;
-
-    for (const raw of [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens),
-      ...findOptionWriteTargets(tokens),
-    ]) {
-      if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
-      else unresolvable = true;
-    }
-
-    if (hasUnresolvableCommand(tokens)) unresolvable = true;
-  }
-
-  if (hasPipedShellScript(visible)) unresolvable = true;
-
-  for (const target of literalTargets) {
+  for (const { target, visible } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.isAbsolute(target) ? target : path.resolve(cwd, target);
     if (!isUnderRoot(resolvedPath, assignedRoot)) {
@@ -765,9 +962,10 @@ const evaluateBashWriteTargets = (command, cwd) => {
         // hook-event-log.js), so the verdict comes first and the list of causes after it.
         'Bash command looks write-shaped but its target could not be resolved by static ' +
         'inspection — cannot verify assigned-worktree containment (not confirmed unsafe). Cause: ' +
-        'a dynamic argument, a script piped into a shell, or a command like python3 -c/perl -i/awk ' +
-        'whose writes the command string does not show. Remedy: use a literal absolute path under ' +
-        'the assigned worktree, or the Write/Edit tools.',
+        'a dynamic argument, a script piped into a shell, an interpreter one-liner (node -e, ' +
+        'python -c, perl -i), a sed e command or an awk program, whose writes the command string ' +
+        'does not show. Remedy: use a literal absolute path under the assigned worktree, or the ' +
+        'Write/Edit tools.',
     };
   }
 
