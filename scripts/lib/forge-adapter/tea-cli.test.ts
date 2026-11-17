@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as childProcess from 'child_process';
-import { runTea, runTeaApi, runTeaJson, runTeaText } from './tea-cli.ts';
+import { runTea, runTeaApi, runTeaApiJson, runTeaJson, runTeaText } from './tea-cli.ts';
 import { FORGE_CLI_MAX_BUFFER } from './spawn.ts';
 
 /**
@@ -165,5 +165,23 @@ describe('tea-cli', () => {
     expect(message).toContain(String(FORGE_CLI_MAX_BUFFER));
     expect(message).not.toContain('cut mid-str');
     expect(message).not.toMatch(/JSON/);
+  });
+  test('runTeaApi throws the stderr text on a non-zero exit', () => {
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('', 1, 'no login'));
+
+    expect(() => runTeaApi('GET', 'user')).toThrow('no login');
+  });
+
+  test('runTeaApiJson posts the body with -d and parses the reply', () => {
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('{"id":3}', 0, 'HTTP/2.0 201 Created\r\n'));
+
+    const result = runTeaApiJson<{ id: number }>('POST', 'repos/acme/widgets/issues', { title: 't' });
+
+    expect(spawnSyncSpy).toHaveBeenCalledWith(
+      'tea',
+      ['api', '-i', '-X', 'POST', 'repos/acme/widgets/issues', '-d', '{"title":"t"}'],
+      { encoding: 'utf-8', maxBuffer: FORGE_CLI_MAX_BUFFER },
+    );
+    expect(result.data).toEqual({ id: 3 });
   });
 });

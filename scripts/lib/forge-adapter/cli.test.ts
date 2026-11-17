@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as childProcess from 'child_process';
-import { runGh, runGhApiJson, runGhApiText, runGhJson, runGhText } from './cli.ts';
+import { runGh, runGhApiJson, runGhApiRestJson, runGhApiText, runGhJson, runGhText } from './cli.ts';
 import { FORGE_CLI_MAX_BUFFER } from './spawn.ts';
 
 /**
@@ -176,5 +176,23 @@ describe('cli (gh)', () => {
     expect(message).toContain(String(FORGE_CLI_MAX_BUFFER));
     expect(message).not.toContain('cut mid-str');
     expect(message).not.toMatch(/JSON/);
+  });
+  test('runGhApiRestJson sends a JSON body on stdin with the raised buffer and parses the reply', () => {
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('{"number":7}', 0));
+
+    const data = runGhApiRestJson<{ number: number }>('PATCH', 'repos/o/r/pulls/7', { title: 't' });
+
+    expect(spawnSyncSpy).toHaveBeenCalledWith(
+      'gh',
+      ['api', '-X', 'PATCH', 'repos/o/r/pulls/7', '--input', '-'],
+      { encoding: 'utf-8', maxBuffer: FORGE_CLI_MAX_BUFFER, input: '{"title":"t"}' },
+    );
+    expect(data).toEqual({ number: 7 });
+  });
+
+  test('runGhApiRestJson throws the stderr text on a non-zero exit', () => {
+    spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('', 1, 'HTTP 422: Validation Failed'));
+
+    expect(() => runGhApiRestJson('GET', 'repos/o/r/pulls')).toThrow('HTTP 422: Validation Failed');
   });
 });
