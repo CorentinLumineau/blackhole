@@ -282,14 +282,31 @@ const readScratchpadDir = (mainClone) => {
   return value;
 };
 
-/** Splits `git worktree list --porcelain -z` output into worktree paths. Every field ends in
- * NUL and a record ends in one extra NUL, so a path containing newlines cannot forge a second
- * record the way it can in the line-delimited form. */
-const parseWorktreeListing = (listing) =>
+/** Splits `git worktree list --porcelain` output into worktree paths. With `-z` every field
+ * ends in NUL, so a path containing newlines cannot forge a second record. Git before 2.36 has no
+ * `-z`; its line-delimited form can carry a forged record, which is still safe here because every
+ * path outside the main clone must pass `isBackLinkedWorktree` (which also refuses any path
+ * containing a newline). */
+const parseWorktreeListing = (listing, nulDelimited) =>
   listing
-    .split('\0')
+    .split(nulDelimited ? '\0' : '\n')
     .filter((field) => field.startsWith('worktree '))
     .map((field) => field.slice('worktree '.length));
+
+/** `git worktree list --porcelain`, NUL-delimited when this git supports `-z` (2.36+), otherwise
+ * line-delimited. A git that rejects `-z` must not make every Write/Edit fail closed. When the
+ * plain form fails too, the `-z` call's error is the one rethrown. */
+const listWorktrees = (cwd) => {
+  try {
+    return { listing: git(['worktree', 'list', '--porcelain', '-z'], cwd), nulDelimited: true };
+  } catch (error) {
+    try {
+      return { listing: git(['worktree', 'list', '--porcelain'], cwd), nulDelimited: false };
+    } catch {
+      throw error;
+    }
+  }
+};
 
 /** Reads a one-line pointer file (`<worktree>/.git` or `worktrees/<name>/gitdir`), or null when
  * it is absent, not a regular file, or not a single line. */
@@ -345,8 +362,8 @@ const isTrustedLinkedWorktree = (worktreePath, commonDir) =>
  * onto an unguarded Bash heredoc). A linked worktree outside the main clone is admitted only via
  * `isTrustedLinkedWorktree`: it must be back-linked to this repository from both ends (a forged
  * `worktrees/<name>/gitdir`, a symlink swapped in, or a deleted directory all fail) and pass the
- * `isAcceptableScratchpadDir` breadth check. The listing is read with `-z`, so a newline in a
- * worktree path cannot forge a record. This replaces #510's
+ * `isAcceptableScratchpadDir` breadth check. The listing is read with `-z` where git supports it
+ * (see `listWorktrees`), so a newline in a worktree path cannot forge a record. This replaces #510's
  * narrowing to worktrees nested under the main clone or `scratchpad_dir`: that filter assumed
  * `git worktree add` was the only way to reach a new directory, but a worker whose cwd is the
  * main clone can already write to that directory through Bash, so it bounded nothing while
@@ -399,14 +416,14 @@ const isTrustedLinkedWorktree = (worktreePath, commonDir) =>
  * containment state must never fall back to the permissive cwd-bound path that null triggers
  * below. */
 const allWorktreeRoots = (cwd = process.cwd()) => {
-  let listing;
+  let listed;
   try {
-    listing = git(['worktree', 'list', '--porcelain', '-z'], cwd);
+    listed = listWorktrees(cwd);
   } catch (error) {
     if (!hasGitMarkerInAncestry(cwd)) return null;
     throw error;
   }
-  const roots = parseWorktreeListing(listing);
+  const roots = parseWorktreeListing(listed.listing, listed.nulDelimited);
   if (roots.length === 0) return null;
   const mainClone = mainCloneRoot(cwd);
   if (!mainClone) return null;

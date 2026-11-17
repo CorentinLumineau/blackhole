@@ -215,8 +215,10 @@ worktree-removal guard stay unscoped.
 `outside-worktree`'s root set (#729, #1226) is `allWorktreeRoots()`'s union of five members:
 every registered worktree nested under the main clone; every other registered linked worktree,
 read from `git worktree list --porcelain -z` (NUL-delimited, so a newline in a path cannot forge
-a record) and admitted only when it is back-linked to this repository from both ends — the path
-resolves to itself, its `.git` file names `<git-common-dir>/worktrees/<name>`, and that entry's
+a record; git before 2.36 has no `-z`, so the listing falls back to the line-delimited form,
+where a forged record still fails the back-link below) and admitted only when it is back-linked to this repository from both ends — the path
+resolves to itself, its `.git` file names a directory directly under this repository's own
+`<git-common-dir>/worktrees/` (not another repository's, nor a submodule-style gitdir), and that entry's
 `gitdir` file names the path's `.git` back — and passes the breadth check `scratchpad_dir` uses
 (never `/`, `$HOME` or a bare temp root). A forged `worktrees/<name>/gitdir`, a symlink swapped in
 after registration and a deleted worktree all fail the back-link. Then `scratchpad_dir` itself
