@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ForgeIssue } from '../forge-adapter/types.ts';
 import { fakeForge, prRow } from './forge-fake.ts';
-import { fetchForgeCounts, fetchMergedPrs, MERGED_PR_LIMIT } from './forge.ts';
+import { fetchCrossRepoBlockers, fetchForgeCounts, fetchMergedPrs, MERGED_PR_LIMIT } from './forge.ts';
 
 const issue = (number: number, milestone: string | null = null): ForgeIssue => ({
   number,
@@ -79,5 +79,23 @@ describe('a forge failure message', () => {
     const out = await fetchForgeCounts({}, parse);
     expect(out.error).toBe('the forge answered with invalid JSON');
     expect(out.error).not.toContain('gh');
+  });
+});
+
+describe('fetchCrossRepoBlockers', () => {
+  const withBody = (number: number, body: string): ForgeIssue => ({ ...issue(number), body });
+
+  test('reads the cross-repo lines of open queue issues only, through the landing reader', async () => {
+    const forge = fakeForge({
+      issues: [withBody(1, 'Depends on acme/workflows#185'), withBody(2, 'Depends on acme/workflows#186'), withBody(3, 'Depends on #1')],
+    });
+    const read = (repo: string, n: number) => (n === 185 ? null : { state: 'open' as const, mergedAt: null, mergeCommitSha: null });
+    expect(await fetchCrossRepoBlockers(forge, new Set([1, 3]), read)).toEqual([
+      { issue: 1, dep: { repo: 'acme/workflows', number: 185 }, state: 'unreadable' },
+    ]);
+  });
+
+  test('an issue-list failure is null, never an empty list', async () => {
+    expect(await fetchCrossRepoBlockers(fakeForge({}), new Set([1]), () => null)).toBeNull();
   });
 });

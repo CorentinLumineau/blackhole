@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'bun:test';
+import { crossRepoBlockers } from '../../forge-deps.ts';
+import type { PrLanding } from '../forge-adapter/pr-landing.ts';
 import {
   computeQueueHealth,
   formatDashboard,
+  renderCrossRepoBlockersSection,
   renderLedgerOpenSection,
   renderRoutingSection,
   renderStackMergeOrderSection,
@@ -189,5 +192,36 @@ describe('renderStackMergeOrderSection', () => {
       '- merge #1, then #2 (stacked on #1)',
       '',
     ]);
+  });
+});
+
+describe('renderCrossRepoBlockersSection', () => {
+  const issues = [{ number: 6241, body: 'Depends on #6240\nDepends on acme/workflows#185' }];
+  const dashboardWith = (landing: PrLanding | null) =>
+    formatDashboard({
+      checkpoint: { orchestrator_turn_id: 1 },
+      queue: { refreshed_at: '2026-11-17T00:00:00.000Z', issues: { '6241': { status: 'ready' } } as never },
+      ledger: { findings: [] },
+      forge: { openIssues: 1, openPrs: 0, ok: true },
+      crossRepoBlockers: crossRepoBlockers(issues, () => landing),
+    });
+
+  test('an unmerged dependency in another repo renders as a named blocker', () => {
+    expect(dashboardWith({ state: 'open', mergedAt: null, mergeCommitSha: null })).toContain(
+      '### Cross-repo blockers\n- #6241 — blocked by acme/workflows#185 (not merged yet)',
+    );
+  });
+
+  test('an unreadable dependency stays a blocker', () => {
+    expect(dashboardWith(null)).toContain('- #6241 — blocked by acme/workflows#185 (merged state unreadable, treated as unmet)');
+  });
+
+  test('once the other repo PR is merged, the blocker is gone', () => {
+    expect(dashboardWith({ state: 'merged', mergedAt: '2026-11-16T10:00:00Z', mergeCommitSha: 'abc' })).not.toContain('Cross-repo blockers');
+  });
+
+  test('renders nothing with no blocker, and says so when the bodies were not read', () => {
+    expect(renderCrossRepoBlockersSection([])).toEqual([]);
+    expect(renderCrossRepoBlockersSection(null)).toEqual(['### Cross-repo blockers', '- not read: the forge issue list failed', '']);
   });
 });

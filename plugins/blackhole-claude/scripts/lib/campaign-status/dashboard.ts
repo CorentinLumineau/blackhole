@@ -1,3 +1,4 @@
+import { formatCrossRepoBlocker, type CrossRepoBlocker } from '../../forge-deps.ts';
 import { readScope, type CampaignScope } from '../../forge-scope.ts';
 import { classPreview, groupBlockedRows, waitReason } from './blocked-classes.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
@@ -311,6 +312,17 @@ export function renderStackMergeOrderSection(issues: Record<string, QueueIssue>)
   ];
 }
 
+/**
+ * Unmet `Depends on owner/repo#N` lines of open queue issues (forge-sync.md § Cross-repo
+ * dependencies). Null means the issue bodies could not be read — said so, never a clean list.
+ */
+export function renderCrossRepoBlockersSection(blockers: CrossRepoBlocker[] | null): string[] {
+  if (blockers === null) return ['### Cross-repo blockers', '- not read: the forge issue list failed', ''];
+  if (blockers.length === 0) return [];
+  const shown = blockers.slice(0, SECTION_CAP);
+  return ['### Cross-repo blockers', ...shown.map((b) => `- ${formatCrossRepoBlocker(b)}`), ...capOverflowLine(blockers.length, shown.length), ''];
+}
+
 /** The campaign facts the page leads with, from the same report as `--json`: what the text dashboard repeats. */
 export type DashboardView = Pick<StatusReport, 'headline' | 'stage_counts' | 'moves' | 'scope_record' | 'decisions' | 'forge_checked'> &
   Partial<Pick<StatusReport, 'deny_counts'>>;
@@ -360,8 +372,10 @@ export function formatDashboard(opts: {
   checkpointBody?: string;
   /** The report's header facts; absent ⇒ the dashboard prints only the queue sections. */
   view?: DashboardView;
+  /** Unmet cross-repo dependencies; absent ⇒ not computed (no forge read), null ⇒ the read failed. */
+  crossRepoBlockers?: CrossRepoBlocker[] | null;
 }): string {
-  const { scope, checkpoint, queue, ledger, forge, checkpointBody, view } = opts;
+  const { scope, checkpoint, queue, ledger, forge, checkpointBody, view, crossRepoBlockers } = opts;
   const issues = queue.issues ?? {};
   const findings = ledger.findings ?? [];
   const { active, done, inFlight, blocked, ready, unclassified } = groupIssuesByPhase(issues);
@@ -407,6 +421,7 @@ export function formatDashboard(opts: {
   lines.push(...renderRoutingSection(active));
   lines.push(...renderWavesSection(issues));
   lines.push(...renderStackMergeOrderSection(issues));
+  if (crossRepoBlockers !== undefined) lines.push(...renderCrossRepoBlockersSection(crossRepoBlockers));
   lines.push(...renderCompletedSection(done));
   lines.push(...renderFiledSection(filed));
   lines.push(...renderLedgerOpenSection(findings));
