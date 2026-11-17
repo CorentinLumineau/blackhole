@@ -137,6 +137,7 @@
 | reviews/release-v0.13.1-to-head-audit.md | Release audit covering all changes from v0.13.1 to HEAD | review | current | on release |
 | reviews/review-campaign-config-confirmation-gate.md | Review of the campaign config confirmation gate implementation | review | current | on ADR-015 change |
 | reviews/review-catchup-mode-m1-plugin-version-warning.md | Readiness review of catchup-mode M1 (plugin-version warning, launch-gate Sleep row): LGTM with two LOW notes | review | current | on file change |
+| reviews/review-catchup-mode-m2-usage-reading.md | Readiness review of catchup-mode M2 (usage provider chain, bun run usage, pace-floor, #1272 cache-reader extraction): LGTM with three LOW notes | review | current | on file change |
 | reviews/review-chore-content-gates-budget-orchestrator-runtime-dispatch-delegation-md-split-off.md | Review artifact for issue #705 (LGTM) | review | current | on file change |
 | reviews/review-chore-land-the-16-stranded-decision-log-md-rows-sitting-uncommitted-in-the-main.md | Review artifact for issue #749 (LGTM) | review | current | on file change |
 | reviews/review-ci-harden-the-self-hosted-pipeline-no-job-timeout-on-a-single-runner-plus-two-me.md | Review artifact for issue #988 (LGTM) | review | current | on file change |
