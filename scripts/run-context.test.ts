@@ -120,4 +120,28 @@ describe('run-context CLI usage_budget wiring', () => {
       expect(res.stdout).not.toContain(WARN);
     });
   });
+
+  test('records the detected usage source and windows, and prints them', () => {
+    withTempDir('run-context-cli', (dir) => {
+      const cache = path.join(dir, 'rate-limits.json');
+      const resetsAt = Math.floor(Date.now() / 1000) + 50 * 3600;
+      fs.writeFileSync(cache, JSON.stringify({ rate_limits: { seven_day: { used_percentage: 21, resets_at: resetsAt } } }));
+      fs.mkdirSync(path.join(dir, '.blackhole'));
+      fs.writeFileSync(path.join(dir, '.blackhole', 'config.json'), JSON.stringify({ resource_policy: { pace: { cache_path: cache } } }));
+      const res = run(['--tools', 'agent', '--host', 'claude'], dir);
+      const record = JSON.parse(fs.readFileSync(path.join(dir, '.blackhole', 'run-context.json'), 'utf-8'));
+      expect(record.usage).toEqual({ source: 'rate-limit-cache', windows: ['seven_day'], reason: null });
+      expect(res.stdout).toContain('usage rate-limit-cache (seven_day)');
+    });
+  });
+
+  test('cursor records no usage source with the reason', () => {
+    withTempDir('run-context-cli', (dir) => {
+      const res = run(['--tools', 'agent', '--host', 'cursor'], dir);
+      const record = JSON.parse(fs.readFileSync(path.join(dir, '.blackhole', 'run-context.json'), 'utf-8'));
+      expect(record.usage).toMatchObject({ source: 'none', windows: [] });
+      expect(record.usage.reason).toContain('cursor: no readable usage source');
+      expect(res.stdout).toContain('usage unavailable: cursor: no readable usage source');
+    });
+  });
 });

@@ -23,9 +23,10 @@ describe('buildBudgetPanel', () => {
     expect(panel.five_hour_pct).toBeNull();
     expect(panel.weekly_pct).toBe(40);
     expect(panel.resets_at).toBe(new Date((NOW + WEEK / 2) * 1000).toISOString());
-    // No target, no five_hour window: workersAllowed has nothing to size the round with.
-    expect(panel.verdict).toBe('unavailable');
+    // No target, no five_hour window: the weekly lines gate and max_workers caps the round.
+    expect(panel.verdict).toBe('GO');
     expect(panel.workers_allowed).toBe(4);
+    expect(panel.windows).toEqual(['seven_day']);
     expect(panel.forecast?.pct_per_hour).toBeCloseTo(40 / 84, 6);
     expect(panel.forecast?.reaches.map((r) => [r.pct, r.at !== null])).toEqual([[78, true], [80, false]]);
     const text = lines(panel);
@@ -34,6 +35,7 @@ describe('buildBudgetPanel', () => {
     expect(text).toContain('Forecast: weekly 80% not reached before the reset (0.48%/h)');
     expect(text.find((l) => l.startsWith('Forecast'))).toMatch(/^Forecast: weekly 78% reached around \w{3} \d{2} \w{3} \d{2}:\d{2} UTC \(0\.48%\/h\)$/);
     expect(text).toContain('Usage reading: 2 min old');
+    expect(text).toContain('Usage windows: weekly (rate-limit-cache)');
   });
 
   it('weekly target: the weekly leg sizes the round and both lines collapse to one forecast row', () => {
@@ -53,6 +55,7 @@ describe('buildBudgetPanel', () => {
     const panel = buildBudgetPanel({ limits, reason: null, ageSeconds: 0, now: NOW, config: enabled() });
     expect(panel.five_hour_pct).toBe(30);
     expect(lines(panel)).toContain('5-hour: 30% · resets Fri 15 Jan 10:00 UTC');
+    expect(lines(panel)).toContain('Usage windows: 5-hour, weekly (rate-limit-cache)');
     expect(panel.verdict).toBe('GO');
   });
 
@@ -87,15 +90,24 @@ describe('readBudgetPanel', () => {
     const cache = path.join(dir, 'rate-limits.json');
     fs.writeFileSync(cache, JSON.stringify({ rate_limits: { seven_day: { used_percentage: 21, resets_at: NOW + 50 * HOUR } } }));
     fs.utimesSync(cache, NOW - 90, NOW - 90);
-    const panel = readBudgetPanel({ resource_policy: { pace: { cache_path: cache } } }, NOW);
+    const panel = readBudgetPanel({ resource_policy: { pace: { cache_path: cache } } }, 'claude', NOW);
     expect(panel).toMatchObject({ probed: true, weekly_pct: 21, five_hour_pct: null, age_seconds: 90 });
   });
 
   it('no cache file: not probed', () => {
     const cache = path.join(dir, 'missing.json');
-    const panel = readBudgetPanel({ resource_policy: { pace: { cache_path: cache } } }, NOW);
+    const panel = readBudgetPanel({ resource_policy: { pace: { cache_path: cache } } }, 'claude', NOW);
     expect(panel.probed).toBe(false);
     expect(panel.reason).toBe(`no rate-limit cache at ${cache}`);
+  });
+
+  it('cursor: not probed, with the reason no usage source is readable there', () => {
+    const cache = path.join(dir, 'rate-limits.json');
+    fs.writeFileSync(cache, JSON.stringify({ rate_limits: { seven_day: { used_percentage: 21, resets_at: NOW + 50 * HOUR } } }));
+    fs.utimesSync(cache, NOW, NOW);
+    const panel = readBudgetPanel({ resource_policy: { pace: { cache_path: cache } } }, 'cursor', NOW);
+    expect(panel.probed).toBe(false);
+    expect(panel.reason).toContain('cursor: no readable usage source');
   });
 });
 
