@@ -96,6 +96,13 @@ const scopeFilter = (c: ConfigSummaryInput): string => {
   return 'all open issues';
 };
 
+// Absent block or `enabled` not true ⇒ off (config-template.md's `docs_governance.enabled` row);
+// staging carry follows `write_governance`, default on.
+const docsGovernance = (c: ConfigSummaryInput): string => {
+  if (c.docs_governance?.enabled !== true) return 'off';
+  return `on · staging carry ${c.docs_governance.write_governance === false ? 'off' : 'on'}`;
+};
+
 /** The rules the run works under, read from `config.json`; defaults are the ones `config-template.md` documents. */
 export function buildConfigRows(c: ConfigSummaryInput, pluginVersion: string | null): StatusReport['config_rows'] {
   const incident = c.incident_mode?.enabled ? `, ${c.incident_mode.parallel_max_override ?? 1} while the incident lasts` : '';
@@ -111,6 +118,8 @@ export function buildConfigRows(c: ConfigSummaryInput, pluginVersion: string | n
     { key: 'Verification', value: verification },
     { key: 'Issue filter', value: scopeFilter(c) },
     { key: 'Kaizen', value: c.kaizen?.enabled ? 'on' : 'off' },
+    { key: 'Docs governance', value: docsGovernance(c) },
+    { key: 'Workers', value: `model ${c.worker_model_policy ?? 'cost-optimized'} · effort ${c.worker_effort_policy ?? 'cost-optimized'}` },
     { key: 'Plugin', value: pluginVersion ? `blackhole ${pluginVersion}` : 'version unknown' },
   ];
 }

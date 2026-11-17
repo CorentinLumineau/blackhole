@@ -43,7 +43,10 @@ export const NOT_PROBED: BudgetPanel = {
   forecast: null,
   source: null,
   windows: [],
+  target_at_reset: null,
 };
+
+const targetOf = (config: Record<string, unknown>): number | null => resolveBudgetSettings(config).budget?.weekly.target_at_reset ?? null;
 
 /** The verdict the usage-budget CLI returns for this reading: `unavailable` when the budget is off or its config is invalid. */
 function verdictFor(limits: RateLimits, now: number, config: Record<string, unknown>): { verdict: UsageVerdict; budget: UsageBudgetConfig | null } {
@@ -65,7 +68,7 @@ export function buildBudgetPanel(input: {
   source?: UsageSourceName;
 }): BudgetPanel {
   const { limits, now, config } = input;
-  if (!limits) return { ...NOT_PROBED, reason: input.reason ?? NOT_PROBED.reason };
+  if (!limits) return { ...NOT_PROBED, reason: input.reason ?? NOT_PROBED.reason, target_at_reset: targetOf(config) };
   const { verdict, budget } = verdictFor(limits, now, config);
   const five = limits.five_hour && limits.five_hour.resets_at > now ? limits.five_hour : undefined;
   const week = limits.seven_day && limits.seven_day.resets_at > now ? limits.seven_day : undefined;
@@ -95,6 +98,7 @@ export function buildBudgetPanel(input: {
     forecast,
     source: input.source ?? 'rate-limit-cache',
     windows: USAGE_WINDOWS.filter((name) => (name === 'five_hour' ? five : week) !== undefined),
+    target_at_reset: budget?.weekly.target_at_reset ?? null,
   };
 }
 
@@ -140,10 +144,12 @@ const age = (seconds: number): string => (seconds < 60 ? `${seconds}s old` : sec
 
 /** The panel as key/value rows: the text dashboard, `--html` and the `budget` dataset all print these. */
 export function budgetRows(b: BudgetPanel): Array<{ key: string; value: string }> {
-  if (!b.probed) return [{ key: 'Usage', value: `usage not probed — ${b.reason ?? NOT_PROBED.reason}` }];
+  const target = b.target_at_reset === null ? [] : [{ key: 'Weekly target', value: `${b.target_at_reset}% at the weekly reset` }];
+  if (!b.probed) return [{ key: 'Usage', value: `usage not probed — ${b.reason ?? NOT_PROBED.reason}` }, ...target];
   const rows: Array<{ key: string; value: string }> = [];
   if (b.five_hour_pct !== null && b.five_hour_resets_at) rows.push({ key: '5-hour', value: `${b.five_hour_pct}% · resets ${when(b.five_hour_resets_at)}` });
   if (b.weekly_pct !== null && b.resets_at) rows.push({ key: 'Weekly', value: `${b.weekly_pct}% · resets ${when(b.resets_at)}` });
+  rows.push(...target);
   const why = b.verdict_reasons[0];
   rows.push({ key: 'Workers allowed', value: `${b.workers_allowed} (${b.verdict}${why ? `: ${why}` : ''})` });
   const f = b.forecast;

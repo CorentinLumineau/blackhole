@@ -328,7 +328,7 @@ whole check is skipped and campaign-complete behavior is byte-for-byte identical
 pre-ADR-006 (config-template.md's contract note).
  
 Report to user: SHIPPED summary, LEDGER OPEN count, any deferred issues filed.
-Then ask, via the coordinator's `AskQuestion` convention: "Start a new
+Then ask, via the coordinator's `AskQuestion` convention (through `askOrPark()`, `clarify-gates.md` § C3 adapter): "Start a new
 campaign?"
 
 - **Yes** — re-fire the Campaign Launch Configuration Gate (`coordinator.md`

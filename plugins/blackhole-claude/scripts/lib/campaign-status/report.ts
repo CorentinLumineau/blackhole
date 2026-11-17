@@ -5,6 +5,7 @@ import { buildBoard, buildMoves, buildStreams, stageCounts } from './board.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
 import { buildBlockers, buildConfigRows, buildHeadline, buildLinks } from './overview.ts';
 import { NOT_PROBED } from './budget.ts';
+import { buildRunPanel, pendingRows, type PendingRead } from './run-state.ts';
 import { reconcileMerged } from './merged.ts';
 import { newestFirst, readScopeEntries } from './record.ts';
 import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
@@ -59,6 +60,10 @@ export type StatusReportInput = {
   denyCounts?: DenyCount[];
   /** The usage-budget panel (`readBudgetPanel`); absent ⇒ not probed. */
   budget?: BudgetPanel;
+  /** `run-context.json` as read, or null when absent or unreadable. */
+  runContext?: unknown;
+  /** `pending-decisions.json` as read; absent ⇒ none parked. */
+  pending?: PendingRead;
 };
 
 // Owner-clearable `awaiting-*` gates from queue-dag.md § Field rules (`notes`).
@@ -435,5 +440,7 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
     drift: reconciled.drift,
     deny_counts: input.denyCounts ?? [],
     budget: input.budget ?? NOT_PROBED,
+    run: buildRunPanel({ config: config as Record<string, unknown>, runContext: input.runContext ?? null, pending: input.pending ?? [] }),
+    pending_decisions: pendingRows(input.pending ?? []),
   };
 }

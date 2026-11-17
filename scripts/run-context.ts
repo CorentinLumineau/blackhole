@@ -5,6 +5,9 @@ import { readJsonFile } from './lib/fs.ts';
 import { resolveUsageBudget } from './lib/usage-budget.ts';
 import { usageSourceFor, type UsageReading } from './lib/usage-source.ts';
 import { checkForgeAuthSync } from './lib/forge-doctor.ts';
+import { isSleepMode } from './lib/campaign-status/pending-decisions.ts';
+import { readSleepSession } from './lib/campaign-status/sleep-session.ts';
+import { keepAwakeStatus, systemHoldDeps } from './lib/campaign-status/sleep-hold.ts';
 import {
   AGENT_TOOLS,
   detectRunContext,
@@ -14,8 +17,8 @@ import {
   type Surface,
 } from './lib/run-context.ts';
 
-// Writes .blackhole/run-context.json (the context, the route, and the host's usage source with the
-// windows its reading shows) and prints the resolved route (ADR-046). Exit 1 when the
+// Writes .blackhole/run-context.json (the context, the route, the host's usage source with the
+// windows its reading shows, and whether sleep mode is on) and prints the resolved route (ADR-046). Exit 1 when the
 // campaign is missing a capability it cannot start without, so bootstrap can refuse by exit code.
 
 const USAGE =
@@ -97,12 +100,17 @@ const main = () => {
   const budget = usageBudgetEnabled(config);
   const route = routeRunContext(context, { usageBudgetEnabled: budget.enabled });
   const usage = detectUsage(context.host.value, config.config);
+  const sleepMode = {
+    enabled: isSleepMode(config.config),
+    since: readSleepSession(config.config).since,
+    keep_awake: keepAwakeStatus(campaignDir, route.state_store, systemHoldDeps.identify),
+  };
 
   if (flags['no-write'] !== true) {
     fs.mkdirSync(campaignDir, { recursive: true });
     const target = path.join(campaignDir, 'run-context.json');
     const tmp = `${target}.tmp`;
-    const record = { refreshed_at: new Date().toISOString(), context, route, usage };
+    const record = { refreshed_at: new Date().toISOString(), context, route, usage, sleep_mode: sleepMode };
     fs.writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`);
     fs.renameSync(tmp, target);
   }
@@ -117,6 +125,11 @@ const main = () => {
       ? `  usage ${usage.source} (${usage.windows.join(', ')})`
       : `  usage unavailable: ${usage.reason ?? 'no current window'}`,
   );
+  if (sleepMode.enabled) {
+    const hold = sleepMode.keep_awake;
+    const keepAwake = hold.held ? `held by ${hold.tool} (pid ${hold.pid})` : hold.reason;
+    console.log(`  sleep mode on: owner questions are parked (sleep-mode.md); keep-awake: ${keepAwake}`);
+  }
   if (budget.unreadable) console.log('  warn: config.json unreadable, usage_budget treated as disabled');
   for (const warning of route.warnings) console.log(`  warn: ${warning}`);
   for (const gap of route.missing) console.log(`  missing: ${gap}`);

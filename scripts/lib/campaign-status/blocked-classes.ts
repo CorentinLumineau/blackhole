@@ -28,11 +28,24 @@ export function waitReason(issue: QueueIssue, issues: Record<string, QueueIssue>
 const OWN_LANES = new Set(['claude', 'blackhole']);
 const LANE_LABEL = /^(?:in-progress|agent):(.+)$/;
 
+/** The first `in-progress:*` / `agent:*` label naming a lane other than the campaign's own, or null. */
+export function foreignLaneLabel(labels: readonly string[]): string | null {
+  return (
+    labels.find((label) => {
+      const lane = LANE_LABEL.exec(label)?.[1];
+      return lane != null && !OWN_LANES.has(lane);
+    }) ?? null
+  );
+}
+
+/** A branch of the campaign's own lanes: `claude/…` or `blackhole/…` (V-BRANCH-03). Every other branch, a fork's `patch-1` included, is someone else's. */
+export function isOwnLaneBranch(branch: string): boolean {
+  const lane = /^([^/]+)\//.exec(branch)?.[1];
+  return lane != null && OWN_LANES.has(lane);
+}
+
 function inForeignLane(issue: QueueIssue): boolean {
-  return (issue.labels ?? []).some((label) => {
-    const lane = LANE_LABEL.exec(label)?.[1];
-    return lane != null && !OWN_LANES.has(lane);
-  });
+  return foreignLaneLabel(issue.labels ?? []) !== null;
 }
 
 // Display order: the campaign's own waits first, another lane's last (not the campaign's work).

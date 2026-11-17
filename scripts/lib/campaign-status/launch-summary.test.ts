@@ -70,8 +70,8 @@ describe('the launch summary of the full fixture', () => {
     expect(renderLaunchSummary(rows)).toBe(fs.readFileSync(EXPECTED, 'utf-8'));
   });
 
-  test('exactly seven rows, in fixed order', () => {
-    expect(rows.map((r) => r.key)).toEqual(['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers']);
+  test('exactly eight rows, in fixed order', () => {
+    expect(rows.map((r) => r.key)).toEqual(['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep']);
     expect([...LAUNCH_ROW_KEYS]).toEqual(rows.map((r) => r.key));
   });
 
@@ -198,6 +198,7 @@ describe('gateCards', () => {
     for (const row of rows.filter((r) => !r.adjustable)) expect(asked).not.toContain(row.key);
     expect(asked).not.toContain('order');
     expect(asked).not.toContain('peers');
+    expect(asked).not.toContain('sleep');
   });
 
   test('every option carries a description (R-003)', () => {

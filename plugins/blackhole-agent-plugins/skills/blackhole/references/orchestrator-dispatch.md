@@ -195,7 +195,7 @@ its own escalation marker.
 3. **Second exhaustion (blocking)**: set `status: "blocked"`, `notes:
    "investigation-inconclusive"` (atomic write) and route through the existing HITL Blocker
    Gate (`orchestrator.md` § Human-in-the-Loop (HITL) & Blocker Gating, "Blocker Gates" —
-   unchanged, no new gate mechanism) so the coordinator surfaces it via `AskQuestion` with the
+   unchanged, no new gate mechanism) so the coordinator surfaces it via `AskQuestion` (through `askOrPark()`, `clarify-gates.md` § C3 adapter) with the
    investigator's note (both hypothesis sets and why each was refuted) as context.
 
 See `worker-schemas.md` § `escalation_trigger` (Investigator subsection) for the field this
@@ -277,7 +277,7 @@ alone (independent of the script) could route an issue past the human gate.
 
 When `status: "blocked"` — the config gate off/absent, or `design-aggregate.ts` itself
 returned `blocked` — dispatch is unchanged from today: the design artifact routes to the
-unconditional `AskQuestion` gate.
+unconditional `AskQuestion` gate (through `askOrPark()`, `clarify-gates.md` § C3 adapter).
 
 Resume-after-human-approval dispatch (`resume_context: design_approved`) is a distinct
 contract — see § Design-Approval Resume Dispatch below.
