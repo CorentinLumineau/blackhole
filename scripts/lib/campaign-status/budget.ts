@@ -1,7 +1,7 @@
 import * as fs from 'fs';
-import type { RateLimits } from '../pace-gate.ts';
+import { readRateLimits, resolvePaceGateThresholds, type RateLimits } from '../pace-gate.ts';
 import type { Host } from '../run-context.ts';
-import { forecastWeekly, resolveUsageBudget, workersAllowed, USAGE_WINDOWS, type UsageBudgetConfig, type UsageVerdict } from '../usage-budget.ts';
+import { forecastWeekly, resolveUsageBudget, resolveUsageWindows, workersAllowed, USAGE_WINDOWS, type UsageBudgetConfig, type UsageVerdict } from '../usage-budget.ts';
 import { restrictWindows, usageSourceFor, type UsageSourceName } from '../usage-source.ts';
 import type { BudgetPanel } from './types.ts';
 
@@ -44,6 +44,7 @@ export const NOT_PROBED: BudgetPanel = {
   source: null,
   windows: [],
   target_at_reset: null,
+  stale: null,
 };
 
 const targetOf = (config: Record<string, unknown>): number | null => resolveBudgetSettings(config).budget?.weekly.target_at_reset ?? null;
@@ -58,6 +59,19 @@ function verdictFor(limits: RateLimits, now: number, config: Record<string, unkn
   return { verdict: budget.enabled ? workersAllowed(limits, now, budget, parallelMax) : off('usage_budget disabled'), budget };
 }
 
+/** The last weekly reading of a stale cache, with where the target line (0% at the window start, `target` at the reset) stands at `now`. */
+function staleOf(stale: { limits: RateLimits; ageSeconds: number } | null, now: number, target: number | null): BudgetPanel['stale'] {
+  const week = stale?.limits.seven_day;
+  if (!stale || !week || week.resets_at <= now) return null;
+  const elapsed = Math.min(1, Math.max(0, (now - (week.resets_at - WEEK)) / WEEK));
+  return {
+    weekly_pct: week.used_percentage,
+    read_at: iso(now - stale.ageSeconds),
+    age_seconds: stale.ageSeconds,
+    target_line_pct: target === null ? null : Math.round(target * elapsed * 10) / 10,
+  };
+}
+
 /** The panel for one reading; `limits` null ⇒ not probed, with `reason`. `now` is epoch seconds. */
 export function buildBudgetPanel(input: {
   limits: RateLimits | null;
@@ -66,9 +80,14 @@ export function buildBudgetPanel(input: {
   now: number;
   config: Record<string, unknown>;
   source?: UsageSourceName;
+  /** The reading of a cache past its max age, kept for display only. */
+  stale?: { limits: RateLimits; ageSeconds: number } | null;
 }): BudgetPanel {
   const { limits, now, config } = input;
-  if (!limits) return { ...NOT_PROBED, reason: input.reason ?? NOT_PROBED.reason, target_at_reset: targetOf(config) };
+  if (!limits) {
+    const target = targetOf(config);
+    return { ...NOT_PROBED, reason: input.reason ?? NOT_PROBED.reason, target_at_reset: target, stale: staleOf(input.stale ?? null, now, target) };
+  }
   const { verdict, budget } = verdictFor(limits, now, config);
   const five = limits.five_hour && limits.five_hour.resets_at > now ? limits.five_hour : undefined;
   const week = limits.seven_day && limits.seven_day.resets_at > now ? limits.seven_day : undefined;
@@ -99,6 +118,7 @@ export function buildBudgetPanel(input: {
     source: input.source ?? 'rate-limit-cache',
     windows: USAGE_WINDOWS.filter((name) => (name === 'five_hour' ? five : week) !== undefined),
     target_at_reset: budget?.weekly.target_at_reset ?? null,
+    stale: null,
   };
 }
 
@@ -119,7 +139,14 @@ export function readBudgetPanel(config: Record<string, unknown>, host: Host, now
   } catch {
     // No cache: the source already gave the reason.
   }
-  return buildBudgetPanel({ limits: reading.limits, reason: reading.reason, ageSeconds, now, config, source: reading.source });
+  // Past max age the gate treats the cache as not probed; the page still shows its last reading, unrestricted by age.
+  let stale: { limits: RateLimits; ageSeconds: number } | null = null;
+  if (!reading.limits && cachePath && ageSeconds !== null && ageSeconds > resolvePaceGateThresholds(config).maxAgeSeconds) {
+    const last = readRateLimits(cachePath, now, Number.POSITIVE_INFINITY).limits;
+    const kept = last ? restrictWindows(last, resolveUsageWindows(config)).limits : null;
+    if (kept) stale = { limits: kept, ageSeconds };
+  }
+  return buildBudgetPanel({ limits: reading.limits, reason: reading.reason, ageSeconds, now, config, source: reading.source, stale });
 }
 
 /** The panel for a reading the harness reported (`--usage`), restricted to `usage_budget.windows` as the usage source and usage-budget.ts restrict it. */
@@ -140,11 +167,22 @@ export const when = (isoTime: string): string => {
   const d = new Date(isoTime);
   return `${DAYS[d.getUTCDay()]} ${pad(d.getUTCDate())} ${MONTHS[d.getUTCMonth()]} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
 };
+/** `4h 15m old`: a stale reading is hours old, so minutes still count. */
+const staleAge = (seconds: number): string => {
+  const minutes = Math.round(seconds / 60);
+  const h = Math.floor(minutes / 60);
+  return `${h ? `${h}h ` : ''}${minutes % 60}m old`;
+};
 const age = (seconds: number): string => (seconds < 60 ? `${seconds}s old` : seconds < 2 * HOUR ? `${Math.round(seconds / 60)} min old` : `${Math.round(seconds / HOUR)} h old`);
 
 /** The panel as key/value rows: the text dashboard, `--html` and the `budget` dataset all print these. */
 export function budgetRows(b: BudgetPanel): Array<{ key: string; value: string }> {
   const target = b.target_at_reset === null ? [] : [{ key: 'Weekly target', value: `${b.target_at_reset}% at the weekly reset` }];
+  if (!b.probed && b.stale) {
+    const s = b.stale;
+    const line = s.target_line_pct === null ? '' : `; target line ${s.target_line_pct}% now`;
+    return [{ key: 'Usage', value: `weekly ${s.weekly_pct}% at ${when(s.read_at)}, ${staleAge(s.age_seconds)} (stale)${line}` }, ...target];
+  }
   if (!b.probed) return [{ key: 'Usage', value: `usage not probed — ${b.reason ?? NOT_PROBED.reason}` }, ...target];
   const rows: Array<{ key: string; value: string }> = [];
   if (b.five_hour_pct !== null && b.five_hour_resets_at) rows.push({ key: '5-hour', value: `${b.five_hour_pct}% · resets ${when(b.five_hour_resets_at)}` });

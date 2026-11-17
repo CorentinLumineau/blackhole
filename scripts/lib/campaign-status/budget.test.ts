@@ -79,6 +79,45 @@ describe('buildBudgetPanel', () => {
   });
 });
 
+describe('a stale reading', () => {
+  // The cache was written 4h 15m ago (Fri 15 Jan 03:45 UTC); the weekly window is half gone, so a 45% target's line is at 22.5% now.
+  const STALE_AGE = 4 * HOUR + 15 * 60;
+  const staleLimits = { seven_day: { used_percentage: 21, resets_at: NOW + WEEK / 2 } };
+
+  it('shows the last weekly reading with its age and the target line for now, still not probed', () => {
+    const panel = buildBudgetPanel({
+      limits: null,
+      reason: 'rate-limit cache stale (15300s > 600s)',
+      ageSeconds: STALE_AGE,
+      now: NOW,
+      config: enabled({ target_at_reset: 45 }),
+      stale: { limits: staleLimits, ageSeconds: STALE_AGE },
+    });
+    // Gating is unchanged: a stale reading is still not probed, with no verdict.
+    expect(panel.probed).toBe(false);
+    expect(panel.verdict).toBeNull();
+    expect(panel.workers_allowed).toBeNull();
+    expect(panel.stale).toEqual({ weekly_pct: 21, read_at: new Date((NOW - STALE_AGE) * 1000).toISOString(), age_seconds: STALE_AGE, target_line_pct: 22.5 });
+    expect(lines(panel)).toEqual([
+      'Usage: weekly 21% at Fri 15 Jan 03:45 UTC, 4h 15m old (stale); target line 22.5% now',
+      'Weekly target: 45% at the weekly reset',
+    ]);
+  });
+
+  it('without a weekly target there is no target line', () => {
+    const panel = buildBudgetPanel({ limits: null, reason: 'stale', ageSeconds: 700, now: NOW, config: enabled(), stale: { limits: staleLimits, ageSeconds: 700 } });
+    expect(panel.stale?.target_line_pct).toBeNull();
+    expect(lines(panel)).toEqual(['Usage: weekly 21% at Fri 15 Jan 07:48 UTC, 12m old (stale)']);
+  });
+
+  it('a stale reading with no current weekly window falls back to "usage not probed"', () => {
+    const fiveOnly = { five_hour: { used_percentage: 30, resets_at: NOW + HOUR } };
+    const panel = buildBudgetPanel({ limits: null, reason: 'stale', ageSeconds: 700, now: NOW, config: enabled(), stale: { limits: fiveOnly, ageSeconds: 700 } });
+    expect(panel.stale).toBeNull();
+    expect(lines(panel)).toEqual(['Usage: usage not probed — stale']);
+  });
+});
+
 describe('readBudgetPanel', () => {
   let dir: string;
   beforeEach(() => {
@@ -99,6 +138,19 @@ describe('readBudgetPanel', () => {
     const panel = readBudgetPanel({ resource_policy: { pace: { cache_path: cache } } }, 'claude', NOW);
     expect(panel.probed).toBe(false);
     expect(panel.reason).toBe(`no rate-limit cache at ${cache}`);
+    expect(panel.stale).toBeNull();
+    expect(lines(panel)).toEqual([`Usage: usage not probed — no rate-limit cache at ${cache}`]);
+  });
+
+  it('a cache past max_age_seconds: not probed, with the last reading and its age', () => {
+    const cache = path.join(dir, 'rate-limits.json');
+    fs.writeFileSync(cache, JSON.stringify({ rate_limits: { seven_day: { used_percentage: 21, resets_at: NOW + WEEK / 2 } } }));
+    fs.utimesSync(cache, NOW - 15_300, NOW - 15_300);
+    const panel = readBudgetPanel({ resource_policy: { pace: { cache_path: cache } }, usage_budget: { weekly: { target_at_reset: 45 } } }, 'claude', NOW);
+    expect(panel.probed).toBe(false);
+    expect(panel.reason).toBe('rate-limit cache stale (15300s > 600s)');
+    expect(panel.stale).toMatchObject({ weekly_pct: 21, age_seconds: 15_300, target_line_pct: 22.5 });
+    expect(lines(panel)[0]).toBe('Usage: weekly 21% at Fri 15 Jan 03:45 UTC, 4h 15m old (stale); target line 22.5% now');
   });
 
   it('cursor: not probed, with the reason no usage source is readable there', () => {

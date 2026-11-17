@@ -408,6 +408,12 @@ export type BudgetPanel = {
   windows: Array<'five_hour' | 'seven_day'>;
   /** `usage_budget.weekly.target_at_reset`: the weekly % the pace aims to land on at the reset; null when unset or invalid. */
   target_at_reset: number | null;
+  /**
+   * The last weekly reading of a cache older than `resource_policy.pace.max_age_seconds`, shown so the page is not blind
+   * while `probed` stays false for pacing: its %, when it was written, its age, and where the line from 0% at the window
+   * start to `target_at_reset` at the reset stands now (null without a target). Null when not stale or no weekly window is current. Additive.
+   */
+  stale: { weekly_pct: number; read_at: string; age_seconds: number; target_line_pct: number | null } | null;
 };
 
 /** A status colour name. Text always carries the meaning; the colour only repeats it. */
