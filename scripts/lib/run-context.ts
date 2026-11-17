@@ -19,6 +19,7 @@ export const AGENT_TOOLS = [
   'github-mcp', // GitHub MCP tools (mcp__github__*)
   'pr-subscriptions', // PR activity events delivered into the session
   'routines', // scheduled triggers the session can create
+  'usage-probe', // harness usage tool (e.g. get_usage) the agent can call for rate-limit usage
 ] as const;
 export type AgentTool = (typeof AGENT_TOOLS)[number];
 
@@ -35,6 +36,7 @@ export type RunContext = {
   completion_events: Fact<boolean>;
   pr_events: Fact<boolean>;
   scheduler: Fact<'routines' | 'none'>;
+  usage_probe: Fact<boolean>;
 };
 
 export type Pattern = 'B' | 'C' | 'C-lite' | 'P';
@@ -109,6 +111,7 @@ export const detectRunContext = (
     completion_events: fact(toolSet.has('background-agents'), 'agent'),
     pr_events: fact(toolSet.has('pr-subscriptions'), 'agent'),
     scheduler: fact(toolSet.has('routines') ? 'routines' : 'none', 'agent'),
+    usage_probe: fact(toolSet.has('usage-probe'), 'agent'),
   };
 };
 
@@ -119,7 +122,7 @@ export const detectRunContext = (
  * question channel (C1-C3 in claude-code-native.md); Cursor's version of that is C-lite;
  * anything less is Pattern B.
  */
-export const routeRunContext = (ctx: RunContext): RunRoute => {
+export const routeRunContext = (ctx: RunContext, options: { usageBudgetEnabled?: boolean } = {}): RunRoute => {
   const missing: string[] = [];
   const warnings: string[] = [];
   if (ctx.host.value === 'unknown') missing.push('host: pass --host claude|cursor');
@@ -136,6 +139,10 @@ export const routeRunContext = (ctx: RunContext): RunRoute => {
 
   if (ctx.question_channel.value === 'none') {
     warnings.push('questions: no channel reaches a person; clarify gates leave the issue blocked');
+  }
+  // A missing usage probe degrades pacing to parallel_max; it never blocks a start.
+  if (options.usageBudgetEnabled && !ctx.usage_probe.value) {
+    warnings.push('usage: no usage-probe tool; usage-aware pacing falls back to parallel_max');
   }
   const stateStore = ctx.persistent_disk.value ? 'local' : 'branch';
   if (stateStore === 'branch') {

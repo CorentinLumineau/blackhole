@@ -1,4 +1,6 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test';
+import * as teaCli from './lib/forge-adapter/tea-cli.ts';
+import * as ghCli from './lib/forge-adapter/cli.ts';
 import * as fs from 'fs';
 import { spawnSync } from 'child_process';
 import { makeTempDir } from './lib/fs.ts';
@@ -6,6 +8,7 @@ import { replayMerge } from './lib/stack-merge.ts';
 import {
   changedFileCount,
   childBranchFor,
+  ciRetriggerNotice,
   findStackedChildren,
   issueOfPr,
   main,
@@ -13,6 +16,7 @@ import {
   planRestack,
   recordParentTip,
   recordStackEdge,
+  retargetAndVerify,
   squashMergeWarning,
   verifyChildFileCount,
   verifyPublishedReplay,
@@ -396,6 +400,26 @@ describe('the replay merge against a squash-merged parent', () => {
     expect(git('rev-list', '--count', '--first-parent', `${before}..${result.sha}`).stdout.trim()).toBe('1');
   });
 
+  test('parent-landed answers from the forge while ancestry says the squashed parent never landed', () => {
+    expect(spawnSync('git', ['-C', repo, 'merge-base', '--is-ancestor', parentTip, 'main']).status).toBe(1);
+    const run = (...extra: string[]) => {
+      const logs: string[] = [];
+      const orig = console.log;
+      console.log = (m: string) => logs.push(m);
+      try {
+        return { code: main(['parent-landed', '--parent-pr', '41', '--repo-slug', 'o/r', ...extra]), logs };
+      } finally {
+        console.log = orig;
+      }
+    };
+    const merged = run('--parent-state', 'merged');
+    expect(merged.code).toBe(0);
+    expect(JSON.parse(merged.logs[0])).toMatchObject({ parentPr: 41, state: 'merged', landed: true });
+    expect(run('--parent-state', 'open').code).toBe(1);
+    expect(run('--parent-state', 'closed-unmerged').code).toBe(4);
+    expect(run('--forge', 'gitlab').code).toBe(3);
+  });
+
   test('verifyPublishedReplay measures the published sha, not the local branch', () => {
     const stale = git('rev-parse', childBranch).stdout.trim();
     const expectedFiles = changedFileCount(repo, parentTip, childBranch);
@@ -438,5 +462,233 @@ describe('merge-method with unreadable settings', () => {
       console.log = orig;
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('parent-landed resolves the parent PR from the queue', () => {
+  const withQueue = (issues: object, args: string[]) => {
+    const dir = makeTempDir('blackhole-parent-landed');
+    const queue = `${dir}/queue.json`;
+    fs.writeFileSync(queue, JSON.stringify({ issues }));
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (m: string) => logs.push(m);
+    try {
+      return { code: main(['parent-landed', '--queue', queue, '--repo-slug', 'o/r', '--parent-state', 'merged', ...args]), logs };
+    } finally {
+      console.log = orig;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  test('through stacked_on_pr', () => {
+    const r = withQueue({ '5': { pr: 55, stacked_on_pr: 99 } }, ['--child-issue', '5']);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.logs[0]).parentPr).toBe(99);
+  });
+
+  test('through stacked_on to that issue\'s pr', () => {
+    const r = withQueue({ '4': { pr: 44 }, '5': { pr: 55, stacked_on: 4 } }, ['--child-issue', '5']);
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.logs[0]).parentPr).toBe(44);
+  });
+
+  test('--parent-state with an inherited object key is a usage error, not a landing', () => {
+    const orig = console.error;
+    console.error = () => {};
+    try {
+      expect(main(['parent-landed', '--parent-pr', '1', '--repo-slug', 'o/r', '--parent-state', 'constructor'])).toBe(2);
+    } finally {
+      console.error = orig;
+    }
+  });
+
+  test('without --parent-state, a squash row read through the injected fetcher exits 0', () => {
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (m: string) => logs.push(m);
+    try {
+      const row = { state: 'closed', merged: true, merged_at: '2026-01-02T03:04:05Z', merge_commit_sha: 'abc' };
+      expect(main(['parent-landed', '--parent-pr', '41', '--repo-slug', 'o/r'], () => row)).toBe(0);
+      expect(JSON.parse(logs[0])).toMatchObject({ parentPr: 41, state: 'merged', landed: true, mergeCommitSha: 'abc' });
+      expect(main(['parent-landed', '--parent-pr', '41', '--repo-slug', 'o/r'], () => ({ state: 'open' }))).toBe(1);
+    } finally {
+      console.log = orig;
+    }
+  });
+
+  test('a child with no parent edge is unreadable (3), not landed', () => {
+    expect(withQueue({ '5': { pr: 55 } }, ['--child-issue', '5']).code).toBe(3);
+  });
+});
+
+describe('Gitea parity: retarget, read-back, CI re-trigger notice and merge settings', () => {
+  const teaReply = (reply: (argv: string[]) => unknown) =>
+    spyOn(teaCli, 'runTea').mockImplementation((argv: string[]) => ({
+      status: 0,
+      stdout: JSON.stringify(reply(argv)),
+      stderr: 'HTTP/1.1 200 OK\n',
+      error: null,
+    }));
+  const giteaPr = (baseRef: string) => ({
+    number: 2403,
+    title: 't',
+    head: { ref: 'blackhole/issue-2403', sha: 'abc' },
+    base: { ref: baseRef },
+  });
+  const captureLogs = <T>(fn: () => T): { value: T; logs: string[] } => {
+    const logs: string[] = [];
+    const [log, err] = [console.log, console.error];
+    console.log = (m: string) => void logs.push(m);
+    console.error = (m: string) => void logs.push(m);
+    try {
+      return { value: fn(), logs };
+    } finally {
+      console.log = log;
+      console.error = err;
+    }
+  };
+
+  test('stack-repair.ts spawns no gh directly: every forge call goes through the adapter', () => {
+    expect(fs.readFileSync(new URL('./stack-repair.ts', import.meta.url), 'utf-8')).not.toMatch(/\brunGh\b/);
+  });
+
+  test('a Gitea plan names the tea api PATCH and its read-back, never gh', () => {
+    const plan = planRepair(child(), 'main', 'git.example/owner/repo', '/repo', 'gitea');
+    expect(plan.commands[1]).toBe(`tea api -X PATCH repos/owner/repo/pulls/2403 -d ${JSON.stringify(JSON.stringify({ base: 'main' }))}`);
+    expect(plan.commands[2]).toBe('tea api repos/owner/repo/pulls/2403 (compare .base.ref)');
+    const restack = planRestack(child(), 'blackhole/issue-2400', 'owner/repo', '/repo', 'gitea');
+    expect([...plan.commands, ...restack.commands].some((c) => c.startsWith('gh '))).toBe(false);
+  });
+
+  test('a Gitea retarget PATCHes then reads the base back; equality passes', () => {
+    const spy = teaReply((argv) => (argv.includes('PATCH') ? { number: 2403 } : giteaPr('main')));
+    try {
+      const { value, logs } = captureLogs(() => retargetAndVerify(child(), 'main', 'host/owner/repo', 'gitea'));
+      expect(value).toBe(true);
+      expect(logs).toEqual(['#2403: retarget — base.ref == main']);
+      const calls = spy.mock.calls.map((c) => c[0] as string[]);
+      expect(calls[0]).toEqual(['api', '-i', '-X', 'PATCH', 'repos/owner/repo/pulls/2403', '-d', JSON.stringify({ base: 'main' })]);
+      expect(calls[1]).toEqual(['api', '-i', '-X', 'GET', 'repos/owner/repo/pulls/2403']);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('a Gitea retarget whose read-back base differs is reported as a failure', () => {
+    const spy = teaReply((argv) => (argv.includes('PATCH') ? { number: 2403 } : giteaPr('blackhole/issue-2400')));
+    try {
+      const { value, logs } = captureLogs(() => retargetAndVerify(child(), 'main', 'owner/repo', 'gitea'));
+      expect(value).toBe(false);
+      expect(logs.join('\n')).toContain('retarget did not apply — base.ref is "blackhole/issue-2400", expected "main"');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('a Gitea retarget whose PATCH fails is a failure, not an exception', () => {
+    const spy = spyOn(teaCli, 'runTea').mockReturnValue({ status: 0, stdout: '{"message":"nope"}', stderr: 'HTTP/1.1 422 Unprocessable\n', error: null });
+    try {
+      const { value, logs } = captureLogs(() => retargetAndVerify(child(), 'main', 'owner/repo', 'gitea'));
+      expect(value).toBe(false);
+      expect(logs.join('\n')).toContain('HTTP 422');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  const ghPr = (baseRef: string) => ({
+    number: 2403,
+    title: 't',
+    state: 'open',
+    head: { ref: 'blackhole/issue-2403', sha: 'abc' },
+    base: { ref: baseRef },
+  });
+
+  test('a GitHub retarget PATCHes then reads the base back; equality passes', () => {
+    const spy = spyOn(ghCli, 'runGhApi').mockImplementation((method: string) => ({
+      status: 0,
+      stdout: JSON.stringify(method === 'PATCH' ? { number: 2403 } : ghPr('main')),
+      stderr: '',
+      error: null,
+    }));
+    try {
+      const { value, logs } = captureLogs(() => retargetAndVerify(child(), 'main', 'owner/repo', 'github'));
+      expect(value).toBe(true);
+      expect(logs).toEqual(['#2403: retarget — base.ref == main']);
+      const calls = spy.mock.calls.map((c) => [c[0], c[1], c[2]]);
+      expect(calls).toEqual([
+        ['PATCH', 'repos/owner/repo/pulls/2403', { base: 'main' }],
+        ['GET', 'repos/owner/repo/pulls/2403', undefined],
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('a GitHub retarget whose PATCH errors fails closed without reading the base back', () => {
+    const spy = spyOn(ghCli, 'runGhApi').mockReturnValue({
+      status: 1,
+      stdout: '',
+      stderr: 'gh: Validation Failed (HTTP 422)',
+      error: null,
+    });
+    try {
+      const { value, logs } = captureLogs(() => retargetAndVerify(child(), 'main', 'owner/repo', 'github'));
+      expect(value).toBe(false);
+      expect(logs).toEqual(['#2403: retarget failed — base not read back: gh: Validation Failed (HTTP 422)']);
+      expect(spy.mock.calls.map((c) => c[0])).toEqual(['PATCH']);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('the ci-retrigger notice is pinned per landing kind on Gitea and absent on GitHub', () => {
+    const noPush =
+      'ci-retrigger: #2403 retargeted to main with no push (retarget-only) — Gitea does not re-run CI on a base change; ' +
+      'push blackhole/issue-2403 to re-trigger it (this script calls no re-run endpoint)';
+    expect(ciRetriggerNotice('gitea', child(), 'main', 'retarget-only', null)).toBe(noPush);
+    expect(ciRetriggerNotice('gitea', child(), 'main', 'replay', 'f00d')).toBe(
+      'ci-retrigger: #2403 retargeted to main and pushed f00d (replay) — that push re-triggers CI; nothing else to do',
+    );
+    expect(ciRetriggerNotice('gitea', child(), 'blackhole/issue-2400', 'restack', 'beef')).toBe(
+      'ci-retrigger: #2403 retargeted to blackhole/issue-2400 and pushed beef (restack) — that push re-triggers CI; nothing else to do',
+    );
+    expect(ciRetriggerNotice('gitea', child(), 'main', 'replay', null)).toContain('with no push (replay)');
+    for (const action of ['retarget-only', 'replay', 'restack'] as const) {
+      expect(ciRetriggerNotice('github', child(), 'main', action, null)).toBeNull();
+    }
+  });
+
+  const mergeMethodOn = (settings: Record<string, boolean>, issue: string) => {
+    const dir = makeTempDir('merge-method-gitea');
+    const queuePath = `${dir}/queue.json`;
+    fs.writeFileSync(queuePath, JSON.stringify({ issues: { '7': { status: 'in-flight', pr: 70 }, '9': { status: 'in-flight', pr: 90, stacked_on: 7 } } }));
+    const spy = teaReply(() => settings);
+    try {
+      const { value, logs } = captureLogs(() => main(['merge-method', '--queue', queuePath, '--repo-slug', 'host/owner/repo', '--forge', 'gitea', '--issue', issue]));
+      expect(spy.mock.calls[0][0]).toEqual(['api', '-i', '-X', 'GET', 'repos/owner/repo']);
+      return { code: value, choice: JSON.parse(logs[0]) };
+    } finally {
+      spy.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  test('merge-method reads Gitea allow_merge_commits: a parent with open children merges with a merge commit', () => {
+    const { code, choice } = mergeMethodOn({ allow_squash_merge: true, allow_merge_commits: true, allow_rebase: true }, '7');
+    expect(code).toBe(0);
+    expect(choice).toMatchObject({ method: 'merge', openChildren: [9] });
+  });
+
+  test('merge-method reads Gitea allow_rebase: a rebase-only repo merges by rebase', () => {
+    const { code, choice } = mergeMethodOn({ allow_squash_merge: false, allow_merge_commits: false, allow_rebase: true }, '9');
+    expect(code).toBe(0);
+    expect(choice).toMatchObject({ method: 'rebase' });
+  });
+
+  test('merge-method on a Gitea squash-only repo squashes even with open children', () => {
+    const { choice } = mergeMethodOn({ allow_squash_merge: true, allow_merge_commits: false, allow_rebase: false }, '7');
+    expect(choice).toMatchObject({ method: 'squash' });
   });
 });

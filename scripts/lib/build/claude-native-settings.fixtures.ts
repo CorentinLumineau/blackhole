@@ -89,7 +89,7 @@ export const assertFailOpenRecord = (
 /** A PATH holding only the tools the wrapper needs — deliberately no `jq`. */
 export const pathWithoutJq = (binDir: string): string => {
   fs.mkdirSync(binDir, { recursive: true });
-  for (const tool of ['bun', 'git', 'mktemp', 'date', 'tail', 'tr', 'mv', 'rm', 'mkdir', 'bash']) {
+  for (const tool of ['bun', 'git', 'mktemp', 'date', 'tail', 'tr', 'mv', 'rm', 'mkdir', 'bash', 'cat', 'sleep']) {
     const resolved = Bun.which(tool);
     if (!resolved) throw new Error(`test setup: ${tool} not found on PATH`);
     fs.symlinkSync(resolved, path.join(binDir, tool));

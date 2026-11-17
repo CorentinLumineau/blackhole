@@ -1,6 +1,7 @@
 import { createGitHubAdapter } from './lib/forge-adapter/index.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 import { isVercelPreviewCheck } from './lib/merge-gate/ci-verdict.ts';
+import { failingPaths, fingerprintLog, stripLogPrefix, type TrunkRedFailure } from './lib/trunk-red.ts';
 
 export { isVercelPreviewCheck };
 
@@ -38,6 +39,8 @@ export type DiagnosisResult = {
   failing_jobs: FailingJob[];
   step_logs: StepLog[];
   run_ids: number[];
+  /** One entry per failing step log: input for `classifyTrunkRed` across PRs. */
+  failing_checks: TrunkRedFailure[];
 };
 
 export type GhRunner = {
@@ -80,34 +83,23 @@ export function pickFailedStep(steps: GhStep[]): GhStep | null {
   return failed[0];
 }
 
+/** A step-header group (`##[group]Run …`) or the post-job cleanup marker: where the previous step's output ends. */
+const NEXT_STEP = /^(?:##\[group\]Run |Post job cleanup\.)/;
+
+/**
+ * The failed step's slice of a job log: its `##[group]` header (with the echoed preamble), plus the output GitHub logs
+ * after `##[endgroup]`, up to the next step. Falls back to the log tail when the step's header is not found.
+ */
 export function isolateStepLog(fullLog: string, stepName: string): string {
-  const groupStart = `##[group]${stepName}`;
-  const altGroupStart = `##[group]Run ${stepName}`;
   const lines = fullLog.split('\n');
-  let start = -1;
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (line.includes(groupStart) || line.includes(altGroupStart) || line.includes(stepName)) {
-      if (line.includes('##[group]')) {
-        start = i + 1;
-        break;
-      }
-    }
-  }
-
+  const bare = lines.map(stripLogPrefix);
+  const start = bare.findIndex((l) => l.startsWith('##[group]') && l.includes(stepName));
   if (start >= 0) {
-    const chunk: string[] = [];
-    for (let i = start; i < lines.length; i += 1) {
-      if (lines[i].includes('##[endgroup]')) break;
-      chunk.push(lines[i]);
-    }
-    if (chunk.length > 0) {
-      return chunk.join('\n').trim();
-    }
+    const next = bare.findIndex((l, i) => i > start && NEXT_STEP.test(l));
+    const chunk = lines.slice(start, next < 0 ? lines.length : next).join('\n').trim();
+    if (chunk) return chunk;
   }
-
-  const tail = lines.slice(-LOG_FALLBACK_TAIL);
-  return tail.join('\n').trim();
+  return lines.slice(-LOG_FALLBACK_TAIL).join('\n').trim();
 }
 
 export function listFailingJobs(jobs: GhJob[]): GhJob[] {
@@ -126,6 +118,17 @@ export function classifyStepLogs(stepLogs: StepLog[]): 'genuine' | 'environment'
     }
   }
   return 'genuine';
+}
+
+/** Classifier input: one entry per failing step with a usable fingerprint; paths come from the failure's own log window. */
+export function toFailingChecks(stepLogs: StepLog[]): TrunkRedFailure[] {
+  return stepLogs
+    .map((step) => ({
+      check: step.jobName,
+      fingerprint: fingerprintLog(step.log),
+      failingPaths: failingPaths(step.log),
+    }))
+    .filter((f) => f.fingerprint !== '');
 }
 
 export function createGhRunner(repo?: string): GhRunner {
@@ -226,6 +229,7 @@ export async function diagnoseCi(
     failing_jobs: failingJobs,
     step_logs: stepLogs,
     run_ids: runIds,
+    failing_checks: toFailingChecks(stepLogs),
   };
 }
 

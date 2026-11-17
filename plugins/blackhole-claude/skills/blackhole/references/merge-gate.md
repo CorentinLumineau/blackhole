@@ -403,8 +403,9 @@ recorded *before* step 4 merges, and its step 4.6 runs the repair per child afte
 ```
 bun run --cwd <abs child worktree> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts repair --queue <abs queue.json> \
   --repo-root <abs child worktree> --repo-slug <owner/repo> --base <target branch> \
-  --parent-issue <M> [--child-issue <N> --apply]
+  --parent-issue <M> [--child-issue <N> --apply] [--forge <config.forge>]
 ```
+On Gitea each recovery prints a `ci-retrigger:` line (push-only; `forge-channels.md` § Operation table).
 
 **Recovery route per merge mode and landing.** The command is the same for each child
 (`bun run --cwd <abs child worktree> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts <command> ...` with the flags above);
@@ -443,8 +444,9 @@ success:
 - a recorded tip that is not an ancestor of the child branch — the replay merge would drop or
   duplicate the parent's work;
 - a retarget whose read-back `base.ref` does not equal the base. The PATCH's exit status is not
-  evidence that it applied, so the base is always read back. The retarget uses the REST form
-  (`gh api -X PATCH repos/{owner}/{repo}/pulls/{N} -f base=<base>`), never `gh pr edit --base`,
+  evidence that it applied, so a PATCH that returns success is always followed by a read-back; a PATCH
+  that errors fails the retarget closed, with no read-back. The retarget uses the REST form
+  (`gh api -X PATCH repos/{owner}/{repo}/pulls/{N} -f base=<base>`; `tea api` on Gitea), never `gh pr edit --base`,
   which on a repo with classic Projects enabled exits from a GraphQL deprecation before applying
   anything — the same CLI limitation `implementer.md` § Verify & Open PR already records for
   PR-body edits.
@@ -452,6 +454,11 @@ success:
 Repair success is measured, not assumed: the child's changed-file count against the base after the
 replay must equal the count from the recorded parent tip to the child head measured before it —
 the same number the PR showed while its base was still the parent branch.
+
+**Has the parent landed?** Ask the forge, never git history: a squash or rebase landing is not an ancestor of the base, so waiting on ancestry never ends.
+Never run `git merge-base --is-ancestor <parent head> origin/<base>` to decide landing. Run `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts parent-landed --repo-slug <owner/repo> --forge <config.forge> (--parent-pr <P> | --queue <abs queue.json> --child-issue <N>)`;
+it prints `{"parentPr","state","landed","mergedAt","mergeCommitSha"}` and exits `0` merged, `1` open, `4` closed unmerged (the abandoned column above), `3` unreadable
+(a waiter retries next turn, never reads `3` as open or landed). `repair` reads the same state.
 
 Asserting the PR base before merging, and verifying the base branch afterwards, are a separate
 concern — § 8 below, cited here and not restated. This section owns
