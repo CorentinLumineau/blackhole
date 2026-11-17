@@ -123,11 +123,14 @@ Committed template: `.blackhole/config.json`
 | `usage_budget.enabled` | no | Master switch for `scripts/usage-budget.ts`, the usage-aware pacing gate (default `false`; `false` ⇒ verdict `unavailable`, `workers` = `parallel_max`, campaigns unchanged). **Resolution**: absent block or key ⇒ the defaults in this block; a wrong type throws with the key path |
 | `usage_budget.five_hour.no_spawn_at` | no | 5-hour `used_percentage` at or above which no new worker spawns, in-flight workers finish (default `85`; must be `>` 0 and `<` `stop_workers_at`) |
 | `usage_budget.five_hour.stop_workers_at` | no | 5-hour `used_percentage` at or above which workers stop and the campaign waits for the window reset (default `90`; `<= 100`). Also the ceiling `workers` is sized against |
-| `usage_budget.weekly.no_new_starts_at` | no | Weekly (`seven_day`) `used_percentage` at or above which no new chain starts, in-flight chains finish (default `78`; must be `>` 0 and `<` `stop_campaign_at`) |
-| `usage_budget.weekly.stop_campaign_at` | no | Weekly `used_percentage` at or above which the campaign drains and stops (default `80`; `<= 100`) |
+| `usage_budget.weekly.no_new_starts_at` | no | Weekly (`seven_day`) `used_percentage` at or above which no new chain starts, in-flight chains finish (default `78`, or `stop_campaign_at` × 78/80 when `target_at_reset` is set; must be `>` 0 and `<` `stop_campaign_at`). With a target, crossing it is `PACE-WAIT` until the weekly reset instead of `NO-NEW-STARTS` |
+| `usage_budget.weekly.stop_campaign_at` | no | Weekly `used_percentage` at or above which the campaign drains and stops (default `80`, or `target_at_reset` when that is set; `<= 100`) |
+| `usage_budget.weekly.target_at_reset` | no | Weekly `used_percentage` to land on exactly at the weekly reset (default `null` = no weekly pacing; number in (0, 100]). When set, workers = min(5-hour fit, weekly fit), weekly fit = `floor((headroom per hour to the target - orchestrator weekly rate) / worker weekly rate)` with the hours to the reset floored at 15 minutes; a weekly fit below 1 is `PACE-WAIT` with `wake_at` = when one worker fits again. Without a `five_hour` window the weekly fit alone sizes the round |
 | `usage_budget.rates.orchestrator_pct_per_hour` | no | Calibrated 5-hour percentage points per hour the orchestrator session itself burns (default `6`; `> 0`) |
 | `usage_budget.rates.worker_pct_per_hour` | no | Calibrated 5-hour percentage points per hour one worker burns (default `7`; `> 0`) |
-| `usage_budget.max_workers` | no | Ceiling on the worker count `GO` returns (default `4`; integer `>= 1`) |
+| `usage_budget.rates.orchestrator_weekly_pct_per_hour` | no | Weekly percentage points per hour the orchestrator burns, used by `target_at_reset` pacing; a measured rate wins over it (default `0.78` = `6` × 0.13; `> 0`) |
+| `usage_budget.rates.worker_weekly_pct_per_hour` | no | Weekly percentage points per hour one worker burns, used by `target_at_reset` pacing; a measured rate wins over it (default `0.91` = `7` × 0.13; `> 0`) |
+| `usage_budget.max_workers` | no | Ceiling on the worker count `GO` returns, together with `parallel_max` (the smaller wins; default `4`; integer `>= 1`) |
 | `usage_budget.coordination.role` | no | `solo`, `manager` or `peer`: how this session shares one budget with others (default `solo`) |
 | `usage_budget.coordination.manager_session` | no | Session that grants worker slots; required non-empty when `role` is `peer` (default `null`) |
 | `usage_budget.coordination.peer_floor` | no | Worker slots a peer may always use without a grant (default `1`; integer `>= 0`) |
@@ -256,5 +259,8 @@ scope; only the rotation tunable is registered.
 The `usage_budget` keys above are frozen: later work may add behavior that reads them but does not
 rename, remove or retype one. The executive-summary launch gate's Budget row may read
 `usage_budget.enabled`, `usage_budget.five_hour.*`, `usage_budget.weekly.*` and
-`usage_budget.max_workers`; the `rates` and `coordination` keys are pacing internals. The gate is
+`usage_budget.max_workers`; the `rates` and `coordination` keys are pacing internals.
+`usage_budget.weekly.target_at_reset`, `usage_budget.rates.orchestrator_weekly_pct_per_hour` and
+`usage_budget.rates.worker_weekly_pct_per_hour` (issue #1200) join the frozen set on the same terms;
+the verdict `PACE-WAIT` (drain, wake at `wake_at`, resume) is part of the gate's output contract. The gate is
 `scripts/usage-budget.ts`; it sits beside the pace gate (`resource_policy.pace`), which is unchanged.

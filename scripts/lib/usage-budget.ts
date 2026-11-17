@@ -1,7 +1,8 @@
 import type { RateLimits } from './pace-gate.ts';
 
 // Usage-budget gate: owner-set two-tier thresholds per rate-limit window, and a worker count
-// derived from the tokens left until the 5-hour window resets. A sibling of the pace gate
+// derived from the tokens left until the 5-hour window resets and, when `weekly.target_at_reset`
+// is set, from the weekly headroom left to land on that target exactly at the weekly reset. A sibling of the pace gate
 // (pace-gate.ts), which stays as is; both read the same `RateLimits` shape. Pure: no I/O, no
 // clock reads. Anything unreadable is `unavailable`, which fails open with the caller's
 // `parallel_max` and always carries a reason.
@@ -9,13 +10,18 @@ import type { RateLimits } from './pace-gate.ts';
 export type UsageBudgetConfig = {
   enabled: boolean;
   five_hour: { no_spawn_at: number; stop_workers_at: number };
-  weekly: { no_new_starts_at: number; stop_campaign_at: number };
-  rates: { orchestrator_pct_per_hour: number; worker_pct_per_hour: number };
+  weekly: { no_new_starts_at: number; stop_campaign_at: number; target_at_reset: number | null };
+  rates: {
+    orchestrator_pct_per_hour: number;
+    worker_pct_per_hour: number;
+    orchestrator_weekly_pct_per_hour: number;
+    worker_weekly_pct_per_hour: number;
+  };
   max_workers: number;
   coordination: { role: 'manager' | 'peer' | 'solo'; manager_session: string | null; peer_floor: number };
 };
 
-export type UsageVerdictName = 'GO' | 'NO-SPAWN' | 'STOP-WORKERS' | 'NO-NEW-STARTS' | 'STOP-CAMPAIGN' | 'unavailable';
+export type UsageVerdictName = 'GO' | 'NO-SPAWN' | 'STOP-WORKERS' | 'NO-NEW-STARTS' | 'STOP-CAMPAIGN' | 'PACE-WAIT' | 'unavailable';
 
 export type UsageVerdict = {
   verdict: UsageVerdictName;
@@ -23,7 +29,12 @@ export type UsageVerdict = {
   reasons: string[];
   wake_at: number | null;
   hours_to_reset: number | null;
+  /** Workers the weekly target leaves room for, before the max_workers/parallelMax clamp; null without a target. */
+  weekly_fit: number | null;
 };
+
+/** Weekly %/h rates measured from probe samples; each one present wins over its configured rate. */
+export type MeasuredWeeklyRates = { orchestrator_weekly_pct_per_hour?: number; worker_weekly_pct_per_hour?: number };
 
 export type WeeklySample = { at: number; used_percentage: number };
 export type WeeklyForecast = {
@@ -34,8 +45,9 @@ export type WeeklyForecast = {
 export const DEFAULT_USAGE_BUDGET: UsageBudgetConfig = {
   enabled: false,
   five_hour: { no_spawn_at: 85, stop_workers_at: 90 },
-  weekly: { no_new_starts_at: 78, stop_campaign_at: 80 },
-  rates: { orchestrator_pct_per_hour: 6, worker_pct_per_hour: 7 },
+  weekly: { no_new_starts_at: 78, stop_campaign_at: 80, target_at_reset: null },
+  // Weekly rates: the 5-hour rates times 0.13, the measured weekly share of one full 5-hour window.
+  rates: { orchestrator_pct_per_hour: 6, worker_pct_per_hour: 7, orchestrator_weekly_pct_per_hour: 6 * 0.13, worker_weekly_pct_per_hour: 7 * 0.13 },
   max_workers: 4,
   coordination: { role: 'solo', manager_session: null, peer_floor: 1 },
 };
@@ -72,6 +84,11 @@ export const resolveUsageBudget = (config: Record<string, unknown>): UsageBudget
   const rates = section(block, 'rates');
   const coord = section(block, 'coordination');
   const P = 'usage_budget';
+  const target = pick<number | null>(weekly, 'target_at_reset', `${P}.weekly.target_at_reset`, d.weekly.target_at_reset, isPct, 'a number in (0, 100]');
+  // With a target, unset weekly lines move up to it, keeping the default 78/80 ratio between them.
+  const stopDefault = target ?? d.weekly.stop_campaign_at;
+  const stopCampaignAt = pick(weekly, 'stop_campaign_at', `${P}.weekly.stop_campaign_at`, stopDefault, isPct, 'a number in (0, 100]');
+  const noNewDefault = target === null ? d.weekly.no_new_starts_at : (stopCampaignAt * d.weekly.no_new_starts_at) / d.weekly.stop_campaign_at;
 
   const resolved: UsageBudgetConfig = {
     enabled: pick(block, 'enabled', `${P}.enabled`, d.enabled, (v) => typeof v === 'boolean', 'a boolean'),
@@ -80,12 +97,15 @@ export const resolveUsageBudget = (config: Record<string, unknown>): UsageBudget
       stop_workers_at: pick(five, 'stop_workers_at', `${P}.five_hour.stop_workers_at`, d.five_hour.stop_workers_at, isPct, 'a number in (0, 100]'),
     },
     weekly: {
-      no_new_starts_at: pick(weekly, 'no_new_starts_at', `${P}.weekly.no_new_starts_at`, d.weekly.no_new_starts_at, isPct, 'a number in (0, 100]'),
-      stop_campaign_at: pick(weekly, 'stop_campaign_at', `${P}.weekly.stop_campaign_at`, d.weekly.stop_campaign_at, isPct, 'a number in (0, 100]'),
+      no_new_starts_at: pick(weekly, 'no_new_starts_at', `${P}.weekly.no_new_starts_at`, noNewDefault, isPct, 'a number in (0, 100]'),
+      stop_campaign_at: stopCampaignAt,
+      target_at_reset: target,
     },
     rates: {
       orchestrator_pct_per_hour: pick(rates, 'orchestrator_pct_per_hour', `${P}.rates.orchestrator_pct_per_hour`, d.rates.orchestrator_pct_per_hour, isPositive, 'a number > 0'),
       worker_pct_per_hour: pick(rates, 'worker_pct_per_hour', `${P}.rates.worker_pct_per_hour`, d.rates.worker_pct_per_hour, isPositive, 'a number > 0'),
+      orchestrator_weekly_pct_per_hour: pick(rates, 'orchestrator_weekly_pct_per_hour', `${P}.rates.orchestrator_weekly_pct_per_hour`, d.rates.orchestrator_weekly_pct_per_hour, isPositive, 'a number > 0'),
+      worker_weekly_pct_per_hour: pick(rates, 'worker_weekly_pct_per_hour', `${P}.rates.worker_weekly_pct_per_hour`, d.rates.worker_weekly_pct_per_hour, isPositive, 'a number > 0'),
     },
     max_workers: pick(block, 'max_workers', `${P}.max_workers`, d.max_workers, (v) => Number.isInteger(v) && (v as number) >= 1, 'an integer >= 1'),
     coordination: {
@@ -113,40 +133,91 @@ const unavailable = (parallelMax: number, reasons: string[]): UsageVerdict => ({
   reasons,
   wake_at: null,
   hours_to_reset: null,
+  weekly_fit: null,
 });
 
+const hoursLeft = (resetsAt: number, now: number): number => Math.max(resetsAt - now, MIN_SECONDS_TO_RESET) / HOUR;
+// Absorbs float error so a worker that fits exactly is counted.
+const fitFloor = (x: number): number => Math.floor(x + 1e-9);
+
+/** The weekly leg: workers that fit the headroom left to `target` spread over the hours to the
+ * weekly reset, and, when none fits, the first second one worker fits again (usage held still while
+ * the campaign waits), or the reset itself when that moment is inside the 15-minute floor. */
+const weeklyLeg = (week: { used_percentage: number; resets_at: number }, now: number, target: number, orch: number, worker: number) => {
+  const left = target - week.used_percentage;
+  const fit = Math.max(0, fitFloor((left / hoursLeft(week.resets_at, now) - orch) / worker));
+  const hoursForOne = left / (orch + worker);
+  const wakeAt = hoursForOne < MIN_SECONDS_TO_RESET / HOUR ? week.resets_at : Math.ceil(week.resets_at - hoursForOne * HOUR);
+  return { fit, wakeAt };
+};
+
 /** The verdict for the current usage. First match wins: weekly stop, 5-hour stop, weekly
- * no-new-starts, 5-hour no-spawn, else GO with a worker count sized to the tokens left. `now` is
- * epoch seconds; `parallelMax` is the count returned when usage cannot be read. */
-export const workersAllowed = (usage: RateLimits | null, now: number, budget: UsageBudgetConfig, parallelMax: number): UsageVerdict => {
+ * no-new-starts (PACE-WAIT until the reset when a target is set), 5-hour no-spawn, else GO with a
+ * worker count sized to the tokens left — the smaller of the 5-hour fit and the weekly fit, and
+ * PACE-WAIT when the weekly fit is below one. Without a five_hour window the weekly leg alone sizes
+ * the round when a target is set; otherwise usage is unavailable. `now` is epoch seconds;
+ * `parallelMax` is the count returned when usage cannot be read and a ceiling on every count. */
+export const workersAllowed = (
+  usage: RateLimits | null,
+  now: number,
+  budget: UsageBudgetConfig,
+  parallelMax: number,
+  measured: MeasuredWeeklyRates = {},
+): UsageVerdict => {
   if (usage === null) return unavailable(parallelMax, ['usage unavailable: usage-aware pacing not applied']);
   // A window past its reset already rolled and no longer applies.
   const five = usage.five_hour && usage.five_hour.resets_at > now ? usage.five_hour : undefined;
   const week = usage.seven_day && usage.seven_day.resets_at > now ? usage.seven_day : undefined;
-  if (!five) return unavailable(parallelMax, ['usage unavailable: no current five_hour window']);
+  const target = budget.weekly.target_at_reset;
+  const paced = week !== undefined && target !== null;
+  if (!five && !paced) return unavailable(parallelMax, ['usage unavailable: no current five_hour window']);
 
-  const hoursToReset = Math.max(five.resets_at - now, MIN_SECONDS_TO_RESET) / HOUR;
-  const base = { hours_to_reset: hoursToReset };
+  const hoursToReset = five ? hoursLeft(five.resets_at, now) : hoursLeft((week as { resets_at: number }).resets_at, now);
+  const leg = paced
+    ? weeklyLeg(
+        week,
+        now,
+        target,
+        measured.orchestrator_weekly_pct_per_hour ?? budget.rates.orchestrator_weekly_pct_per_hour,
+        measured.worker_weekly_pct_per_hour ?? budget.rates.worker_weekly_pct_per_hour,
+      )
+    : null;
+  const base = { hours_to_reset: hoursToReset, weekly_fit: leg ? leg.fit : null };
   const reasons: string[] = [];
   if (!week) reasons.push('seven_day absent: weekly rules skipped');
+  if (!five) reasons.push('five_hour absent: 5-hour rules skipped, the weekly target sizes the round');
+  const ceiling = Math.min(budget.max_workers, parallelMax);
 
   if (week && week.used_percentage >= budget.weekly.stop_campaign_at) {
     return { ...base, verdict: 'STOP-CAMPAIGN', workers: 0, wake_at: null, reasons: [`seven_day ${week.used_percentage}% >= ${budget.weekly.stop_campaign_at}%`, ...reasons] };
   }
-  if (five.used_percentage >= budget.five_hour.stop_workers_at) {
+  if (five && five.used_percentage >= budget.five_hour.stop_workers_at) {
     return { ...base, verdict: 'STOP-WORKERS', workers: 0, wake_at: five.resets_at, reasons: [`five_hour ${five.used_percentage}% >= ${budget.five_hour.stop_workers_at}%`, ...reasons] };
   }
   if (week && week.used_percentage >= budget.weekly.no_new_starts_at) {
-    return { ...base, verdict: 'NO-NEW-STARTS', workers: 0, wake_at: null, reasons: [`seven_day ${week.used_percentage}% >= ${budget.weekly.no_new_starts_at}%`, ...reasons] };
+    const reason = `seven_day ${week.used_percentage}% >= ${budget.weekly.no_new_starts_at}%`;
+    if (paced) return { ...base, verdict: 'PACE-WAIT', workers: 0, wake_at: week.resets_at, reasons: [`${reason}: waiting for the weekly reset`, ...reasons] };
+    return { ...base, verdict: 'NO-NEW-STARTS', workers: 0, wake_at: null, reasons: [reason, ...reasons] };
   }
-  if (five.used_percentage >= budget.five_hour.no_spawn_at) {
+  if (five && five.used_percentage >= budget.five_hour.no_spawn_at) {
     return { ...base, verdict: 'NO-SPAWN', workers: 0, wake_at: null, reasons: [`five_hour ${five.used_percentage}% >= ${budget.five_hour.no_spawn_at}%`, ...reasons] };
   }
+  if (leg && leg.fit < 1) {
+    return { ...base, verdict: 'PACE-WAIT', workers: 0, wake_at: leg.wakeAt, reasons: [`0 workers fit the weekly pace to ${target}% at reset`, ...reasons] };
+  }
 
-  const headroomPerHour = (budget.five_hour.stop_workers_at - five.used_percentage) / hoursToReset;
-  const raw = Math.round((headroomPerHour - budget.rates.orchestrator_pct_per_hour) / budget.rates.worker_pct_per_hour);
-  const workers = Math.min(budget.max_workers, Math.max(1, raw));
-  return { ...base, verdict: 'GO', workers, wake_at: null, reasons: [`${raw} workers fit the five_hour headroom, clamped to ${workers}`, ...reasons] };
+  let workers = ceiling;
+  if (five) {
+    const headroomPerHour = (budget.five_hour.stop_workers_at - five.used_percentage) / hoursToReset;
+    const raw = Math.round((headroomPerHour - budget.rates.orchestrator_pct_per_hour) / budget.rates.worker_pct_per_hour);
+    workers = Math.min(ceiling, Math.max(1, raw));
+    reasons.unshift(`${raw} workers fit the five_hour headroom, clamped to ${workers}`);
+  }
+  if (leg) {
+    workers = Math.min(workers, leg.fit);
+    reasons.unshift(`${leg.fit} workers fit the weekly pace to ${target}% at reset`);
+  }
+  return { ...base, verdict: 'GO', workers, wake_at: null, reasons };
 };
 
 /** Linear fit of weekly usage over probe samples, and when each weekly threshold would be reached.
