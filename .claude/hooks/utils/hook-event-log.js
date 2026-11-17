@@ -43,13 +43,21 @@ const { rotateHookEvents } = require('./hook-event-rotation');
  *  - Space form (`--token xyz`, `Bearer xyz`): no `=`/`:` joins the keyword to its value at all.
  */
 const SECRET_KV =
-  /\b((?:[A-Za-z][A-Za-z0-9]*_)*?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+)*)(\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
+  /\b((?:[A-Za-z][A-Za-z0-9]*_){0,8}?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key)(?:_[A-Za-z0-9]+){0,8})(\s*[=:]\s*)(['"]?)[^'"\s]{4,}\3/gi;
 const SECRET_SPACE =
   /\b(--?(?:password|passwd|api[_-]?key|secret|token|access[_-]?key|with-token)|Bearer)\s+(['"]?)[^'"\s]{4,}\2/gi;
 const MAX_DETAIL_CHARS = 300;
+// Invariant: both regex passes see at most this many chars, so redaction cost is O(1) in the input
+// size, and no character past the window is ever emitted. The window does not keep a straddling
+// secret out of the output on its own: each mask can be shorter than the value it replaces, so the
+// final MAX_DETAIL_CHARS slice can reach text near the window edge. A value cut by the edge is still
+// masked when 4+ of its characters remain inside the window; only a cut leaving 1-3 characters
+// (below the regexes' 4-char floor) can emit those few leading characters unmasked.
+const REDACT_WINDOW_CHARS = MAX_DETAIL_CHARS * 8;
 
 const redact = (text) =>
   String(text === undefined || text === null ? '' : text)
+    .slice(0, REDACT_WINDOW_CHARS)
     .replace(SECRET_KV, (_match, key, separator, quote) => `${key}${separator}${quote}***${quote}`)
     .replace(SECRET_SPACE, (_match, flag, quote) => `${flag} ${quote}***${quote}`)
     .slice(0, MAX_DETAIL_CHARS);
@@ -604,6 +612,7 @@ const failClosed = ({ hook, tool, error, patternId = 'pattern-load-failure', lab
 
 module.exports = {
   redact,
+  SECRET_KV,
   worktreeRoot,
   mainCloneRoot,
   allWorktreeRoots,

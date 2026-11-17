@@ -64,7 +64,8 @@ the dispatch decision. It runs at four points: (i) right after the implementer o
 after every fix-round push and before review is requested, (iii) at every turn start for every open
 campaign PR, against that turn's single open-PR snapshot, and (iv) here, after step 0 and before
 step 0.5. Each point runs `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-parent.ts --queue <abs queue.json> --pr <P>
---repo-slug <owner/repo> --repo-root <abs> --forge <config.forge>`, which prints one decision as JSON:
+--repo-slug <owner/repo> --repo-root <abs> --forge <config.forge>`, which prints one decision as JSON. Whether a
+parent has landed is never read from git ancestry: `stack-repair.ts parent-landed` (`merge-gate.md` § 7) answers it from the forge's merged state.
 
 | `action` | What to do |
 |----------|------------|
