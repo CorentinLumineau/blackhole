@@ -6,8 +6,8 @@ import type { ProbeRecord, StatusArtifact } from './lib/campaign-status/launch-s
 
 // Usage: bun run scripts/status-probe.ts record --ok|--fail [--reason <text>] [--url <url>]
 //        [--campaign-dir <dir>] [--now <ISO8601>]
-// Records the launch gate's status-page reachability probe (`launch-gate.md` § Probe procedure)
-// as `last_probe {at, ok, url, reason?}` in `.blackhole/status-artifact.json`, keeping every other
+// Records the launch gate's status-page reachability probe (an `ArtifactData` list of the stored
+// page's datasets) as `last_probe {at, ok, url, reason?}` in `.blackhole/status-artifact.json`, keeping every other
 // key. `--url` defaults to the stored `url`. Exit 0 when written or left unchanged, 2 on a usage
 // error or a missing, malformed or url-less file (never touched then).
 const USAGE =

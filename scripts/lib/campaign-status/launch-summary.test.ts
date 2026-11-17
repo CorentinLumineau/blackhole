@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { RateLimits } from '../pace-gate.ts';
-import { buildBudgetView } from './budget.ts';
+import { buildBudgetPanel, NOT_PROBED } from './budget.ts';
 import {
   budgetRow,
   buildLaunchSummary,
@@ -16,7 +16,10 @@ import {
 } from './launch-summary.ts';
 import { buildStatusReport } from './report.ts';
 import { loadCampaignState } from './state.ts';
-import type { ForgeCounts, PrSignal } from './types.ts';
+import type { BudgetPanel, ForgeCounts, PrSignal } from './types.ts';
+
+const panel = (config: Record<string, unknown>, limits: RateLimits | null, now = NOW): BudgetPanel =>
+  limits ? buildBudgetPanel({ limits, reason: null, ageSeconds: 0, now, config }) : { ...NOT_PROBED, reason: 'no --usage given' };
 
 const FIXTURES = path.resolve(import.meta.dir, '../../../fixtures/campaign-status');
 const EXPECTED = path.join(FIXTURES, 'full', 'launch-summary.expected.md');
@@ -59,7 +62,7 @@ const PAGE: StatusPageInput = {
   nowIso: NOW_ISO,
 };
 const fullRows = (): LaunchRow[] =>
-  buildLaunchSummary({ report, config: SAMPLE_CONFIG, budget: buildBudgetView({ config: SAMPLE_CONFIG, usage: USAGE, now: NOW }), statusPage: PAGE });
+  buildLaunchSummary({ report, config: SAMPLE_CONFIG, budget: panel(SAMPLE_CONFIG, USAGE), statusPage: PAGE });
 
 describe('the launch summary of the full fixture', () => {
   const rows = fullRows();
@@ -93,7 +96,7 @@ describe('the launch summary of the full fixture', () => {
 
   test('a forge that was not read says so instead of claiming zero', () => {
     const offline = { ...report, forge: { openIssues: 0, openPrs: 0, ok: false, error: 'skipped' } };
-    const scope = buildLaunchSummary({ report: offline, config: SAMPLE_CONFIG, budget: buildBudgetView({ config: SAMPLE_CONFIG, usage: null, now: NOW }), statusPage: PAGE })[0];
+    const scope = buildLaunchSummary({ report: offline, config: SAMPLE_CONFIG, budget: panel(SAMPLE_CONFIG, null), statusPage: PAGE })[0];
     expect(scope.value).toContain('forge not read');
     expect(scope.value).not.toContain('0 open PRs');
   });
@@ -105,20 +108,19 @@ describe('the Budget row', () => {
     five_hour: { used_percentage: five, resets_at: NOW + 2 * HOUR },
     seven_day: { used_percentage: week, resets_at: NOW + 48 * HOUR },
   });
-  const cases: Array<{ name: string; config: Record<string, unknown>; usage: RateLimits | null; verdict: string; value: string[]; consequence: RegExp }> = [
-    { name: 'pacing off', config: { parallel_max: 3 }, usage: usage(40, 50), verdict: 'off', value: ['pacing off', '3 workers'], consequence: /pacing is off/ },
-    { name: 'GO', config: on(), usage: usage(10, 20), verdict: 'GO', value: ['GO', 'workers allowed'], consequence: /starts? now/ },
-    { name: 'NO-SPAWN', config: on(), usage: usage(86, 20), verdict: 'NO-SPAWN', value: ['NO-SPAWN', '0 workers allowed'], consequence: /No new worker/ },
-    { name: 'STOP-WORKERS', config: on(), usage: usage(91, 20), verdict: 'STOP-WORKERS', value: ['STOP-WORKERS', '0 workers allowed'], consequence: /2026-11-13 11:30Z/ },
-    { name: 'NO-NEW-STARTS', config: on(), usage: usage(10, 79), verdict: 'NO-NEW-STARTS', value: ['NO-NEW-STARTS'], consequence: /No new chain/ },
-    { name: 'STOP-CAMPAIGN', config: on(), usage: usage(10, 81), verdict: 'STOP-CAMPAIGN', value: ['STOP-CAMPAIGN'], consequence: /drains and stops/ },
-    { name: 'usage null', config: on(), usage: null, verdict: 'unavailable', value: ['not probed', '3 workers'], consequence: /parallel_max \(3\)/ },
+  const cases: Array<{ name: string; config: Record<string, unknown>; usage: RateLimits | null; value: string[]; consequence: RegExp }> = [
+    { name: 'pacing off', config: { parallel_max: 3 }, usage: usage(40, 50), value: ['pacing off', '3 workers (parallel_max)'], consequence: /pacing is off/ },
+    { name: 'GO', config: on(), usage: usage(10, 20), value: ['GO', 'workers allowed'], consequence: /starts? now/ },
+    { name: 'NO-SPAWN', config: on(), usage: usage(86, 20), value: ['NO-SPAWN', '0 workers allowed'], consequence: /No new worker/ },
+    { name: 'STOP-WORKERS (reset time shown)', config: on(), usage: usage(91, 20), value: ['STOP-WORKERS', '0 workers allowed'], consequence: /Fri 13 Nov 11:30 UTC/ },
+    { name: 'NO-NEW-STARTS', config: on(), usage: usage(10, 79), value: ['NO-NEW-STARTS'], consequence: /No new chain/ },
+    { name: 'STOP-CAMPAIGN', config: on(), usage: usage(10, 81), value: ['STOP-CAMPAIGN'], consequence: /drains and stops/ },
+    { name: 'usage null: not probed, parallel_max', config: on(), usage: null, value: ['not probed', '3 workers (parallel_max)'], consequence: /parallel_max \(3\)/ },
+    { name: 'invalid usage_budget: unavailable, never a throw', config: { parallel_max: 3, usage_budget: { enabled: 'yes' } }, usage: usage(10, 20), value: ['unavailable', '3 workers (parallel_max)'], consequence: /invalid/ },
   ];
   for (const c of cases) {
     test(c.name, () => {
-      const view = buildBudgetView({ config: c.config, usage: c.usage, now: NOW });
-      expect(view.verdict).toBe(c.verdict);
-      const row = budgetRow(view);
+      const row = budgetRow(panel(c.config, c.usage), c.config);
       for (const part of c.value) expect(row.value).toContain(part);
       // The four stop thresholds are always carried.
       expect(row.value).toContain('stops 5h 85/90%');
@@ -132,15 +134,13 @@ describe('the Budget row', () => {
     });
   }
 
-  test('a forecast with two or more samples names when the weekly stop is reached; without, it says none', () => {
-    const samples = [
-      { at: NOW - 2 * HOUR, used_percentage: 18 },
-      { at: NOW, used_percentage: 20 },
-    ];
-    const withForecast = budgetRow(buildBudgetView({ config: on(), usage: usage(10, 20), now: NOW, samples }));
-    expect(withForecast.value).toContain('forecast 1%/h, weekly stop 2026-11-15 21:30Z');
-    const oneSample = budgetRow(buildBudgetView({ config: on(), usage: usage(10, 20), now: NOW, samples: samples.slice(1) }));
-    expect(oneSample.value).toContain('no forecast yet');
+  test('a weekly window gives a forecast; without one the row says so', () => {
+    // 50% used with 3.5 of 7 days left: 0.6%/h, the 80% stop about 50h out.
+    const week = { used_percentage: 50, resets_at: NOW + 84 * HOUR };
+    const withForecast = budgetRow(panel(on(), { five_hour: { used_percentage: 10, resets_at: NOW + HOUR }, seven_day: week }), on());
+    expect(withForecast.value).toContain('forecast 0.6%/h, weekly stop Sun 15 Nov 11:54 UTC');
+    const noWeek = budgetRow(panel(on(), { five_hour: { used_percentage: 10, resets_at: NOW + HOUR } }), on());
+    expect(noWeek.value).toContain('no forecast yet');
   });
 });
 
@@ -230,7 +230,7 @@ describe('gateCards', () => {
 
   test('merge_mode unset drops the Accept option (R-002)', () => {
     const config = { ...SAMPLE_CONFIG, merge_mode: undefined };
-    const unset = buildLaunchSummary({ report, config, budget: buildBudgetView({ config, usage: USAGE, now: NOW }), statusPage: PAGE });
+    const unset = buildLaunchSummary({ report, config, budget: panel(config, USAGE), statusPage: PAGE });
     const merge = gateCards(unset, { printOnly: false }).flatMap((c) => c.questions).find((q) => q.row === 'merge');
     expect(merge?.options.map((o) => o.label)).toEqual(['Immediate', 'Gated batch', 'Leave open']);
     const set = cards.flatMap((c) => c.questions).find((q) => q.row === 'merge');
@@ -238,13 +238,30 @@ describe('gateCards', () => {
   });
 });
 
-describe('buildBudgetView is the one caller of the pacing gate under campaign-status/', () => {
-  test('source scan', () => {
-    const dir = import.meta.dir;
-    const callers = fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
-      .filter((f) => /\b(workersAllowed|forecastWeekly)\s*\(/.test(fs.readFileSync(path.join(dir, f), 'utf-8')));
-    expect(callers).toEqual(['budget.ts']);
+describe('buildBudgetPanel is the one budget builder under campaign-status/', () => {
+  const dir = import.meta.dir;
+  // A name in a comment is not a call.
+  const stripComments = (text: string): string => text.replace(/\/\*[^]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const sources = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+    .map((f) => ({ file: f, text: stripComments(fs.readFileSync(path.join(dir, f), 'utf-8')) }));
+  // The top-level declaration each call sits in: the nearest one starting at column 0 above it.
+  const enclosing = (text: string, index: number): string => {
+    const names = [...text.slice(0, index).matchAll(/^(?:export\s+)?(?:async\s+)?(?:function\s+(\w+)|const\s+(\w+)\s*=)/gm)];
+    const last = names.at(-1);
+    return last ? (last[1] ?? last[2]) : '<top level>';
+  };
+  const callers = (fn: string): string[] =>
+    sources.flatMap(({ file, text }) => [...text.matchAll(new RegExp(`\\b${fn}\\s*\\(`, 'g'))].map((m) => `${file}:${enclosing(text, m.index as number)}`));
+
+  test('workersAllowed and forecastWeekly are each called once, from the panel builder', () => {
+    expect(callers('workersAllowed')).toEqual(['budget.ts:verdictFor']);
+    expect(callers('forecastWeekly')).toEqual(['budget.ts:buildBudgetPanel']);
+  });
+
+  test('no second function builds a BudgetPanel', () => {
+    const builders = sources.flatMap(({ file, text }) => [...text.matchAll(/function\s+(\w+)\s*\((?:(?!function\b)[^])*?\)\s*:\s*BudgetPanel\s*\{/g)].map((m) => `${file}:${m[1]}`));
+    expect(builders.sort()).toEqual(['budget.ts:buildBudgetPanel', 'budget.ts:readBudgetPanel']);
   });
 });

@@ -1,12 +1,13 @@
 import { readScope } from '../../forge-scope.ts';
-import { resolveUsageBudget } from '../usage-budget.ts';
-import type { BudgetView } from './budget.ts';
+import { DEFAULT_USAGE_BUDGET, resolveUsageBudget, type UsageBudgetConfig } from '../usage-budget.ts';
+import { when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
-import type { ConfigSummaryInput, StatusReport } from './types.ts';
+import type { BudgetPanel, ConfigSummaryInput, StatusReport } from './types.ts';
 
-// The executive-summary launch gate (`launch-gate.md`): one row per section, each with a one-line
-// consequence, and the Accept / Adjust question cards built from those rows. Pure: every input is
-// already read; `scripts/campaign-status.ts --summary` does the I/O.
+// The executive-summary launch gate: one row per section, each with a one-line consequence, and
+// the Accept / Adjust question cards built from those rows. Pure: every input is already read;
+// `scripts/campaign-status.ts --summary` does the I/O. The Budget row reads the status page's own
+// `BudgetPanel` (`budget.ts`), so the gate and the page never disagree.
 
 export const LAUNCH_ROW_KEYS = ['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers'] as const;
 export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];
@@ -57,7 +58,7 @@ export type StatusPageInput = {
 export type LaunchSummaryInput = {
   report: StatusReport;
   config: ConfigSummaryInput & Record<string, unknown>;
-  budget: BudgetView;
+  budget: BudgetPanel;
   statusPage: StatusPageInput;
 };
 
@@ -80,10 +81,18 @@ const MERGE_MODES: GateOption[] = [
   { label: 'Leave open', description: 'Drive every PR to LGTM and leave it open for you to merge.' },
 ];
 
-/** Epoch seconds as `YYYY-MM-DD HH:MMZ`. */
-export const formatEpoch = (s: number): string => `${new Date(s * 1000).toISOString().slice(0, 16).replace('T', ' ')}Z`;
-const pct = (x: number): string => `${Number(x.toFixed(1))}%`;
+const pct = (x: number): string => `${Number(x.toFixed(2))}%`;
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+const DEFAULT_PARALLEL_MAX = 4;
+
+/** The resolved `usage_budget`, or the defaults plus the error when it is invalid: the row never throws. */
+function readSettings(config: Record<string, unknown>): { budget: UsageBudgetConfig; invalid: string | null } {
+  try {
+    return { budget: resolveUsageBudget(config), invalid: null };
+  } catch (error) {
+    return { budget: DEFAULT_USAGE_BUDGET, invalid: error instanceof Error ? error.message : String(error) };
+  }
+}
 
 function scopeRow(report: StatusReport, config: ConfigSummaryInput & { repo?: string }): LaunchRow {
   const q = report.counts.queue;
@@ -125,54 +134,63 @@ function mergeRow(mode: string | undefined): LaunchRow {
   };
 }
 
-function budgetConsequence(b: BudgetView): string {
-  const t = b.thresholds;
+type BudgetState = { b: BudgetPanel; settings: UsageBudgetConfig; invalid: string | null; workers: number; parallelMax: number };
+
+function budgetConsequence({ b, settings, invalid, workers, parallelMax }: BudgetState): string {
+  if (invalid) return `usage_budget is invalid, so pacing is unavailable: workers are sized from parallel_max (${parallelMax}).`;
+  if (!settings.enabled) return `Usage pacing is off: up to ${plural(parallelMax, 'worker')} run whatever the usage.`;
+  if (!b.probed) return `Usage not probed: workers are sized from parallel_max (${parallelMax}).`;
+  const t = { ...settings.five_hour, ...settings.weekly };
   switch (b.verdict) {
-    case 'off':
-      return `Usage pacing is off: up to ${plural(b.parallel_max, 'worker')} run whatever the usage.`;
     case 'GO':
-      return `${plural(b.workers, 'worker')} ${b.workers === 1 ? 'starts' : 'start'} now; spawning stops at 5h ${t.no_spawn_at}%, the campaign at weekly ${t.stop_campaign_at}%.`;
+      return `${plural(workers, 'worker')} ${workers === 1 ? 'starts' : 'start'} now; spawning stops at 5h ${t.no_spawn_at}%, the campaign at weekly ${t.stop_campaign_at}%.`;
     case 'NO-SPAWN':
       return 'No new worker spawns until the 5-hour window resets; in-flight workers finish.';
     case 'STOP-WORKERS':
-      return `Workers stop now; the campaign waits for the 5-hour reset at ${b.wake_at === null ? 'an unknown time' : formatEpoch(b.wake_at)}.`;
+      return `Workers stop now; the campaign waits for the 5-hour reset at ${b.five_hour_resets_at ? when(b.five_hour_resets_at) : 'an unknown time'}.`;
     case 'NO-NEW-STARTS':
       return 'No new chain starts this week; in-flight chains finish.';
     case 'STOP-CAMPAIGN':
       return `The campaign drains and stops: weekly usage is at or past ${t.stop_campaign_at}%.`;
     case 'PACE-WAIT':
-      return `The campaign waits until ${b.wake_at === null ? 'the weekly reset' : formatEpoch(b.wake_at)} to land on the weekly target.`;
+      return 'The campaign waits until a worker fits the pace that lands on the weekly target at the reset.';
     default:
-      return b.probed
-        ? `Usage could not be read: workers are sized from parallel_max (${b.parallel_max}).`
-        : `Usage not probed: workers are sized from parallel_max (${b.parallel_max}).`;
+      return `Usage could not be read: workers are sized from parallel_max (${parallelMax}).`;
   }
 }
 
-export function budgetRow(b: BudgetView): LaunchRow {
-  const t = b.thresholds;
-  const window = (name: string, w: BudgetView['five_hour']): string => (w ? `${name} ${pct(w.used_percentage)} (resets ${formatEpoch(w.resets_at)})` : `${name} n/a`);
-  const usage = b.probed ? [window('5h', b.five_hour), window('weekly', b.weekly)] : ['not probed'];
-  const head = !b.enabled ? 'pacing off' : b.verdict === 'unavailable' ? (b.probed ? 'usage unavailable' : '') : b.verdict;
-  const workers = b.verdict === 'off' || b.verdict === 'unavailable' ? `${plural(b.workers, 'worker')} (parallel_max)` : `${plural(b.workers, 'worker')} allowed`;
-  const forecast = !b.enabled
-    ? []
-    : b.forecast?.pct_per_hour == null
-      ? ['no forecast yet']
-      : [
-          `forecast ${pct(b.forecast.pct_per_hour)}/h, weekly stop ${
-            b.forecast.reaches_at_pct.stop_campaign_at === null ? 'not reached' : formatEpoch(b.forecast.reaches_at_pct.stop_campaign_at)
-          }`,
-        ];
+function forecastText(b: BudgetPanel, stopAt: number): string {
+  if (!b.forecast) return 'no forecast yet';
+  if (b.forecast.pct_per_hour === null) return 'no weekly trend yet';
+  const stop = b.forecast.reaches.find((r) => r.pct === stopAt);
+  return `forecast ${pct(b.forecast.pct_per_hour)}/h, weekly stop ${stop?.at ? when(stop.at) : 'not before the reset'}`;
+}
+
+/** The Budget row, from the status page's panel plus the thresholds `config.json` sets. */
+export function budgetRow(b: BudgetPanel, config: Record<string, unknown>): LaunchRow {
+  const { budget: settings, invalid } = readSettings(config);
+  const parallelMax = typeof config.parallel_max === 'number' ? config.parallel_max : DEFAULT_PARALLEL_MAX;
+  const sized = invalid !== null || !settings.enabled || !b.probed || b.verdict === 'unavailable' || b.workers_allowed === null;
+  const workers = sized ? parallelMax : (b.workers_allowed as number);
+  const head = invalid ? 'usage_budget invalid, unavailable' : !settings.enabled ? 'pacing off' : b.probed ? (b.verdict ?? 'unavailable') : '';
+  const usage = b.probed
+    ? [
+        b.five_hour_pct === null ? '5h n/a' : `5h ${pct(b.five_hour_pct)}${b.five_hour_resets_at ? ` (resets ${when(b.five_hour_resets_at)})` : ''}`,
+        b.weekly_pct === null ? 'weekly n/a' : `weekly ${pct(b.weekly_pct)}${b.resets_at ? ` (resets ${when(b.resets_at)})` : ''}`,
+      ]
+    : ['not probed'];
+  const { no_spawn_at, stop_workers_at } = settings.five_hour;
+  const { no_new_starts_at, stop_campaign_at, target_at_reset } = settings.weekly;
   const parts = [
     head,
     ...usage,
-    workers,
-    `stops 5h ${t.no_spawn_at}/${t.stop_workers_at}%, weekly ${t.no_new_starts_at}/${t.stop_campaign_at}%`,
-    ...(t.target_at_reset === null ? [] : [`target ${t.target_at_reset}% at weekly reset`]),
-    ...forecast,
+    sized ? `${plural(workers, 'worker')} (parallel_max)` : `${plural(workers, 'worker')} allowed`,
+    `stops 5h ${no_spawn_at}/${stop_workers_at}%, weekly ${no_new_starts_at}/${stop_campaign_at}%`,
+    ...(target_at_reset === null ? [] : [`target ${target_at_reset}% at weekly reset`]),
+    ...(b.probed ? [forecastText(b, stop_campaign_at)] : []),
   ].filter(Boolean);
-  return { key: 'budget', label: 'Budget', header: 'Budget', value: parts.join(' · '), consequence: budgetConsequence(b), adjustable: true };
+  const consequence = budgetConsequence({ b, settings, invalid, workers, parallelMax });
+  return { key: 'budget', label: 'Budget', header: 'Budget', value: parts.join(' · '), consequence, adjustable: true };
 }
 
 export function statusPageRow(p: StatusPageInput): LaunchRow {
@@ -235,7 +253,7 @@ function kaizenRow(config: ConfigSummaryInput & { kaizen?: { trigger?: string; l
 }
 
 function peersRow(config: Record<string, unknown>): LaunchRow {
-  const { role, manager_session, peer_floor } = resolveUsageBudget(config).coordination;
+  const { role, manager_session, peer_floor } = readSettings(config).budget.coordination;
   const base = { key: 'peers' as const, label: 'Peers', header: 'Peers', adjustable: false };
   if (role === 'manager') return { ...base, value: 'manager', consequence: 'This session grants worker slots to the peer sessions sharing its usage budget.' };
   if (role === 'peer') {
@@ -246,7 +264,7 @@ function peersRow(config: Record<string, unknown>): LaunchRow {
 
 /** The seven rows, in `LAUNCH_ROW_KEYS` order. */
 export function buildLaunchSummary({ report, config, budget, statusPage }: LaunchSummaryInput): LaunchRow[] {
-  return [scopeRow(report, config), orderRow(), mergeRow(config.merge_mode), budgetRow(budget), statusPageRow(statusPage), kaizenRow(config), peersRow(config)];
+  return [scopeRow(report, config), orderRow(), mergeRow(config.merge_mode), budgetRow(budget, config), statusPageRow(statusPage), kaizenRow(config), peersRow(config)];
 }
 
 const cell = (s: string): string => s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
