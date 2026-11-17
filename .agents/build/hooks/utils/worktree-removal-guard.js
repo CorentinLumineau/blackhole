@@ -498,12 +498,13 @@ const skipDollarParenSpan = (text, start, heredocMasked) => {
  * (e.g. containing the literal words `worktree`/`remove`) from contributing tokens to
  * `findRemovalInvocations`'s `.split(/\s+/)` token stream: those characters are spaces by the
  * time this function returns, not merely excluded from the clause's own extent. */
-/** Largest command, in characters, the dynamic guards will analyse. Above it they fail CLOSED
- * (`oversizeCommandDecision`) rather than risk a verdict past the native wrapper's 5 s hook
- * timeout, which fails OPEN. 64 KiB is ~2x the largest command any campaign worker is observed
- * to issue (a heredoc writing a whole file; the Write/Edit tools carry anything larger) and
- * sits well inside the linear scan's ~30 ms budget. */
-const MAX_ANALYZABLE_COMMAND_CHARS = 64 * 1024;
+/** Largest command, in characters, the Bash hook will analyse; above it the hook fails CLOSED
+ * (`oversizeCommandDecision`) because the native wrapper fails OPEN on its 5 s timeout and no
+ * matcher's cost can otherwise be bounded. Applies to EVERY session, not only campaign workers:
+ * the static pattern matchers run for all of them and one (fork-bomb) backtracks quadratically.
+ * 32 KiB sits above the longest of 12,893 observed real Bash calls (18,722 characters); larger
+ * file bodies belong in the Write tool. */
+const MAX_ANALYZABLE_COMMAND_CHARS = 32 * 1024;
 
 /** Ceiling on the summed length of every clause tail one `findRemovalInvocations` call
  * tokenizes. Disjoint clauses sum to the command length; only deeply nested openers (`((((…`,
@@ -514,6 +515,18 @@ const MAX_CLAUSE_SCAN_CHARS = 4_000_000;
 /** `findRemovalInvocations` entry (the last one it returns) marking that `MAX_CLAUSE_SCAN_CHARS`
  * was exceeded and the walk stopped; every consumer maps it to `scanBudgetExceededDecision`. */
 const SCAN_BUDGET_EXCEEDED = 'scan-budget-exceeded';
+
+/** Most distinct `rm` targets one command may probe with a `git worktree list` subprocess
+ * (~2.3 ms each); a normal `rm -rf a b c` uses a handful. */
+const MAX_REMOVAL_TARGET_PROBES = 64;
+
+const tooManyRemovalTargetsDecision = () => ({
+  tier: 'block',
+  pattern_id: 'too-many-removal-targets',
+  reason:
+    `rm names more than ${MAX_REMOVAL_TARGET_PROBES} distinct targets to verify in time — refused ` +
+    'fail-closed. Remedy: remove the files in smaller batches, or use a glob inside the worktree.',
+});
 
 const SPLIT_REMEDY =
   'Remedy: split this into several smaller Bash calls (write large file bodies with the Write ' +
@@ -1367,7 +1380,7 @@ const evaluateOneInvocation = (argTokens, resolutionCwds) => {
  * stand between an ordinary `rm` and any check at all — no recursive flag, no statically resolvable
  * target, or a target that is not a registered linked worktree — each of which returns "nothing to
  * check" rather than a refusal, which is what keeps `rm -rf` on ordinary paths exactly as it was. */
-const evaluateRmInvocation = (argTokens, resolutionCwds, spawnCwd) => {
+const evaluateRmInvocation = (argTokens, resolutionCwds, spawnCwd, probes = { memo: new Map(), spawned: 0 }) => {
   const { recursive, positional } = parseRmRemovalArgs(argTokens);
   if (!recursive) return null;
 
@@ -1378,7 +1391,14 @@ const evaluateRmInvocation = (argTokens, resolutionCwds, spawnCwd) => {
       const resolvedPath = path.isAbsolute(pathArg) ? pathArg : path.resolve(base, pathArg);
       if (tried.has(resolvedPath)) continue;
       tried.add(resolvedPath);
-      if (!isRegisteredLinkedWorktree(resolvedPath, spawnCwd)) continue;
+      // One `git worktree list` subprocess (~2 ms) per DISTINCT path: a repeated target is
+      // answered from the memo, and the distinct count is capped (`MAX_REMOVAL_TARGET_PROBES`).
+      if (!probes.memo.has(resolvedPath)) {
+        if (probes.spawned >= MAX_REMOVAL_TARGET_PROBES) return tooManyRemovalTargetsDecision();
+        probes.spawned += 1;
+        probes.memo.set(resolvedPath, isRegisteredLinkedWorktree(resolvedPath, spawnCwd));
+      }
+      if (!probes.memo.get(resolvedPath)) continue;
       const decision = evaluateResolvedWorktree(resolvedPath, RM_REMOVAL_SHAPE);
       if (decision) return decision;
     }
@@ -1403,10 +1423,11 @@ const evaluateWorktreeRemoval = (command, cwd) => {
   if (invocations.length === 0) return null;
   if (invocations.some((invocation) => invocation.kind === SCAN_BUDGET_EXCEEDED)) return scanBudgetExceededDecision();
 
+  const probes = { memo: new Map(), spawned: 0 };
   for (const invocation of invocations) {
     let decision;
     if (invocation.kind === 'rm') {
-      decision = evaluateRmInvocation(invocation.argTokens, invocation.resolutionCwds, cwd);
+      decision = evaluateRmInvocation(invocation.argTokens, invocation.resolutionCwds, cwd, probes);
     } else if (invocation.unresolvableExecutable) {
       decision = unresolvableExecutableDecision();
     } else if (invocation.kind === 'git-mutation') {
