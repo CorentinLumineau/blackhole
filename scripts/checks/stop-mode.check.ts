@@ -50,8 +50,7 @@ export const findUncitedFlushedMention = (content: string): boolean => {
 // forbidden action may appear only inside that section's one "Never on a usage stop:" list (the
 // marker line plus the `- ` items right after it). A mention anywhere else fails, negated or not.
 const NEVER_MARKER = 'Never on a usage stop:';
-const FORBIDDEN_ACTION =
-  /failed_attempts|retry[ _-]?counters?|--abandon|\bTaskStop\b|\bgiv(?:e|es|ing) up\b|\b(?:abandon|kill|abort|terminat|cancel|drop)\w*|\bfail(?:ed|ure|s)?\b|\b(?:blocked|closed)\b/gi;
+const FORBIDDEN_ACTION = /failed_attempts|retry[ _-]?counters?|--abandon|\bTaskStop\b|\bgiv(?:e|es|ing) up\b|\b(?:abandon|kill|abort|terminat|cancel|drop)\w*|\bfail(?:ed|ure|s)?\b|\b(?:blocked|closed)\b/gi;
 // The list is absolute: an item that carves out an exception would re-permit the action it names.
 const EXCEPTION_WORD = /\b(?:except\w*|unless|but|other than|apart from|save for|instead|if|when|only|once|after|until|otherwise|though)\b|—/i;
 
@@ -65,15 +64,10 @@ export const findUnlistedForbiddenMentions = (section: string, name: string, req
   while (marker >= 0 && listEnd < lines.length && lines[listEnd].trim().startsWith('- ')) listEnd++;
   const out: string[] = [];
   lines.forEach((line, i) => {
-    if (marker >= 0 && i > marker && i < listEnd) {
-      const exception = line.match(EXCEPTION_WORD);
-      if (exception) out.push(`${name}: exception "${exception[0]}" inside the "${NEVER_MARKER}" list: "${line.trim()}"`);
-      return;
-    }
-    if (i === marker) return;
-    for (const match of line.matchAll(FORBIDDEN_ACTION)) {
-      out.push(`${name}: "${match[0]}" outside the "${NEVER_MARKER}" list: "${line.trim()}"`);
-    }
+    const exception = marker >= 0 && i > marker && i < listEnd ? line.match(EXCEPTION_WORD) : null;
+    if (exception) out.push(`${name}: exception "${exception[0]}" inside the "${NEVER_MARKER}" list: "${line.trim()}"`);
+    if (marker >= 0 && i >= marker && i < listEnd) return;
+    for (const match of line.matchAll(FORBIDDEN_ACTION)) out.push(`${name}: "${match[0]}" outside the "${NEVER_MARKER}" list: "${line.trim()}"`);
   });
   return out;
 };
@@ -87,12 +81,9 @@ const sliceSection = (content: string, start: string, end: RegExp): string | nul
   return start + (to < 0 ? rest : rest.slice(0, to));
 };
 
-// Every heading that names the usage stop, at any level, runs to the next heading of the same or a
-// higher level; `#` lines inside fenced code blocks are not headings. The exact `## Usage stop`
-// section must carry the one list; any other such section may hold a list of its own but needs
-// none, and fails on any forbidden mention outside one. A heading nested inside a section already
-// scanned is not scanned again.
-const USAGE_STOP_HEADING = /usage stop/i;
+// Each heading naming the usage stop (any level, `#` lines in code fences are not headings) runs to
+// the next heading of the same or a higher level. Only the exact `## Usage stop` must carry the
+// list; a heading nested in a section already scanned is not scanned again.
 const FENCE = /^\s*(?:```|~~~)/;
 
 const markdownHeadings = (lines: string[]): { line: number; level: number; text: string }[] => {
@@ -112,18 +103,15 @@ export const findUsageStopViolations = (phaseStop: string): string[] => {
   const errors: string[] = [];
   let scannedTo = -1;
   for (const heading of headings) {
-    if (!USAGE_STOP_HEADING.test(heading.text) || heading.line < scannedTo) continue;
+    if (!/usage stop/i.test(heading.text) || heading.line < scannedTo) continue;
     const next = headings.find((h) => h.line > heading.line && h.level <= heading.level);
-    const end = next ? next.line : lines.length;
-    scannedTo = end;
-    const section = lines.slice(heading.line, end).join('\n');
+    scannedTo = next ? next.line : lines.length;
+    const section = lines.slice(heading.line, scannedTo).join('\n');
     if (heading === main) {
       if (!section.includes('stopped_by: usage')) errors.push('usage stop does not record `stopped_by: usage`');
       if (!section.includes('wake_at')) errors.push('usage stop does not record `wake_at`');
-      errors.push(...findUnlistedForbiddenMentions(section, 'usage stop'));
-    } else {
-      errors.push(...findUnlistedForbiddenMentions(section, heading.text, false));
     }
+    errors.push(...findUnlistedForbiddenMentions(section, heading === main ? 'usage stop' : heading.text, heading === main));
   }
   return errors;
 };
