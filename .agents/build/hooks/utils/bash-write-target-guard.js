@@ -37,7 +37,7 @@ const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand } = require('./shell-lexer');
 const { readAssignedWorktreeRoot, isUnderRoot } = require('./hook-event-log');
-const { isLiteralPathArg } = require('./worktree-removal-guard');
+const { isLiteralPathArg, extractCdTargetText, normalizeShellWord } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
  * string at all — the residual gap ADR-029 accepts and downgrades to WARN rather than a silent
@@ -1082,23 +1082,67 @@ const stdinRedirectScript = (tokens, idx, heredocText) => {
 const hasUnresolvableCommand = (tokens, heredocText) =>
   UNRESOLVABLE_WRITE_COMMANDS.some((name) => isCommandToken(tokens[0], name)) || hasInterpreterWrite(tokens, heredocText);
 
-/** Literal write targets in one view of the command, and whether anything write-shaped in it
- * cannot be resolved. */
-const collectWriteSignals = (visible, heredocText) => {
+/** Most directories a `cd … || cd …` chain may fan out to; past it the base is unknown. */
+const MAX_CWD_CANDIDATES = 16;
+
+/** The directory a `cd` moves to from each of `dirs`, or null when its target cannot be read
+ * statically (`cd "$D"`, `cd -`, a bare `cd`, `cd ~`, a glob). */
+const cdDestinations = (cdArgs, dirs) => {
+  const text = extractCdTargetText(cdArgs);
+  if (text === null || !isResolvableLiteralTarget(text)) return null;
+  return dirs.map((dir) => path.resolve(dir, text));
+};
+
+/** The directories the shell may stand in after a clause, tracked the way
+ * `worktree-removal-guard.js`'s `findRemovalInvocations` tracks them: a `cd` after `||` may not
+ * have run, so its destination is added to the candidates; any other `cd` replaces them; a `cd`
+ * past the clause's first word (`command cd`, `eval cd`) may be an argument, so it only adds. A
+ * `cd` whose target cannot be read makes the base `unknown`, so later relative targets warn. */
+const applyCd = (state, tokens, precededByOr) => {
+  const certain = normalizeShellWord(tokens[0]).text === 'cd';
+  const idx = certain ? 0 : tokens.findIndex((t, i) => i > 0 && normalizeShellWord(t).text === 'cd');
+  if (idx === -1) return state;
+  const moved = cdDestinations(tokens.slice(idx + 1), state.dirs);
+  const keep = precededByOr || !certain;
+  if (moved === null) return { dirs: keep ? state.dirs : [], unknown: true };
+  const dirs = [...new Set(keep ? [...state.dirs, ...moved] : moved)];
+  if (dirs.length > MAX_CWD_CANDIDATES) return { dirs: state.dirs, unknown: true };
+  return { dirs, unknown: state.unknown };
+};
+
+/** Write targets in one view of the command, each with the directories a relative target
+ * resolves against (`dirs`, and `unknown` when a `cd` hid one), and whether anything
+ * write-shaped cannot be resolved. Clauses are walked in order so a `cd` moves the base of every
+ * later clause; a subshell `( … )` restores the base it opened with. */
+const collectWriteSignals = (visible, heredocText, cwd) => {
   const literalTargets = [];
   let unresolvable = false;
+  let state = { dirs: [cwd], unknown: false };
+  const saved = [];
   const add = (raw) => {
-    if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
-    else unresolvable = true;
+    if (!isResolvableLiteralTarget(raw)) unresolvable = true;
+    else if (path.isAbsolute(raw)) literalTargets.push({ target: raw, dirs: [cwd] });
+    else {
+      literalTargets.push({ target: raw, dirs: state.dirs });
+      if (state.unknown) unresolvable = true;
+    }
   };
 
-  findRedirectTargets(maskRedirectNoise(visible)).forEach(add);
-
-  for (const clause of splitClauses(visible)) {
-    const tokens = tokenize(clause);
-    if (tokens.length === 0) continue;
-    [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens), ...findOptionWriteTargets(tokens)].forEach(add);
-    if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
+  const redirectView = maskRedirectNoise(visible);
+  for (const [start, end] of clauseRanges(visible)) {
+    // Subshell parens around the clause are syntax, not part of its first or last word.
+    const opening = visible.slice(start, end).match(/^[\s(]*/)[0];
+    const closing = visible.slice(start + opening.length, end).match(/[\s)]*$/)[0];
+    const [from, to] = [start + opening.length, end - closing.length];
+    for (let k = 0; k < opening.replace(/\s/g, '').length; k++) saved.push(state);
+    findRedirectTargets(redirectView.slice(from, to)).forEach(add);
+    const tokens = tokenize(visible.slice(from, to));
+    if (tokens.length > 0) {
+      [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens), ...findOptionWriteTargets(tokens)].forEach(add);
+      if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
+      state = applyCd(state, tokens, start >= 2 && visible[start - 1] === '|' && visible[start - 2] === '|');
+    }
+    for (let k = 0; k < closing.replace(/\s/g, '').length && saved.length > 0; k++) state = saved.pop();
   }
 
   if (hasPipedScript(visible)) unresolvable = true;
@@ -1127,14 +1171,16 @@ const evaluateBashWriteTargets = (command, cwd) => {
   const heredocMask = computeHeredocBodyMask(command);
   const heredocText = command.replace(/[\s\S]/g, (ch, i) => (heredocMask[i] ? ch : ' '));
   for (const visible of visibleViews(command)) {
-    const signals = collectWriteSignals(visible, heredocText);
-    for (const target of signals.literalTargets) literalTargets.push({ target, visible });
+    const signals = collectWriteSignals(visible, heredocText, cwd);
+    for (const { target, dirs } of signals.literalTargets) {
+      for (const dir of dirs) literalTargets.push({ target, dir, visible });
+    }
     if (signals.unresolvable) unresolvable = true;
   }
 
-  for (const { target, visible } of literalTargets) {
+  for (const { target, dir, visible } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
-    const resolvedPath = path.isAbsolute(target) ? target : path.resolve(cwd, target);
+    const resolvedPath = path.resolve(dir, target);
     if (!isUnderRoot(resolvedPath, assignedRoot)) {
       const hint = looksLikeRegexFragment(target)
         ? ' This looks like a sed/regex expression; quote it.'
