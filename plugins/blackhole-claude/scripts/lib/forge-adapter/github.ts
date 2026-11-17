@@ -14,8 +14,11 @@ import {
   type RestIssueRow,
   type RestPrRow,
 } from './github-rest.ts';
+import { isUnavailable, readDependencies, writeDependencies, type BodyChannel, type NativeDependencyChannel, type NativeEdge } from './dependencies.ts';
 import type {
+  DependencyRef,
   ForgeAdapter,
+  ForgeDependencies,
   ForgeAuthStatus,
   ForgeCheck,
   ForgeIssue,
@@ -26,6 +29,12 @@ import type {
   PrChangeBaseResult,
   PrCreateParams,
 } from './types.ts';
+
+/** One row of `GET issues/{n}/dependencies/blocked_by`: the blocking issue or pull request. */
+type RestBlockerRow = { id: number; number: number; repository_url?: string; pull_request?: unknown };
+
+const BLOCKER_PAGE = 100;
+const BLOCKER_MAX_PAGES = 10;
 
 // Every call is a REST call through `gh api` (ADR-048). The porcelain commands (`gh issue list`,
 // `gh pr view`, `gh pr checks`, `gh repo view`) use GraphQL, which fails where GraphQL is blocked
@@ -114,6 +123,59 @@ export class GitHubForgeAdapter implements ForgeAdapter {
 
   async prChangeBase(number: number, base: string): Promise<PrChangeBaseResult> {
     return changePrBase(this.repo, number, base);
+  }
+
+  async getDependencies(pr: number): Promise<ForgeDependencies> {
+    return readDependencies('github', this.repo, pr, this.nativeDependencies(), this.prBodies());
+  }
+
+  async setDependencies(pr: number, blockedBy: DependencyRef[]): Promise<ForgeDependencies> {
+    return writeDependencies('github', this.repo, pr, blockedBy, this.nativeDependencies(), this.prBodies());
+  }
+
+  /**
+   * GitHub's issue dependencies ("blocked by"), which a pull request has as an issue. A repo
+   * without the feature answers 404 (or 403/410), and the edges fall back to body lines. The POST
+   * names the blocker by its global `id`, not its number, so each add reads the blocker first.
+   */
+  private nativeDependencies(): NativeDependencyChannel {
+    const endpoint = (pr: number) => `repos/${this.repo}/issues/${pr}/dependencies/blocked_by`;
+    return {
+      list: (pr) => {
+        const edges: NativeEdge[] = [];
+        for (let page = 1; page <= BLOCKER_MAX_PAGES; page++) {
+          const result = runGhApi('GET', `${endpoint(pr)}?per_page=${BLOCKER_PAGE}&page=${page}`);
+          if (result.status !== 0) {
+            if (page === 1 && isUnavailable(result.stderr)) return null;
+            throw new Error(result.stderr.trim() || `reading the blockers of #${pr} failed`);
+          }
+          const rows = JSON.parse(result.stdout || '[]') as RestBlockerRow[];
+          for (const row of rows) {
+            const repo = row.repository_url?.split('/repos/')[1] ?? this.repo;
+            edges.push({ ref: { repo, number: row.number, kind: row.pull_request ? 'pr' : 'issue' }, handle: row.id });
+          }
+          if (rows.length < BLOCKER_PAGE) return edges;
+        }
+        throw new Error(`#${pr} lists more than ${BLOCKER_PAGE * BLOCKER_MAX_PAGES} blockers`);
+      },
+      holds: () => true,
+      add: (pr, ref) => {
+        const { id } = runGhApiRestJson<{ id: number }>('GET', `repos/${ref.repo}/issues/${ref.number}`);
+        runGhApiRestJson('POST', endpoint(pr), { issue_id: id });
+      },
+      remove: (pr, edge) => {
+        runGhApiRestJson('DELETE', `${endpoint(pr)}/${edge.handle}`);
+      },
+    };
+  }
+
+  private prBodies(): BodyChannel {
+    return {
+      read: (pr) => viewPr(this.repo, pr).body,
+      write: (pr, body) => {
+        runGhApiRestJson('PATCH', `repos/${this.repo}/pulls/${pr}`, { body });
+      },
+    };
   }
 
   getPrHeadSha(pr: number): Promise<string> {

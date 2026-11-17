@@ -239,6 +239,10 @@ read fails, the section says the cross-repo dependencies were not read. It is re
 ready set (`queue-dag.md` Step 2) does not read these lines. Release and rollout
 steps the other repo needs before its PR counts belong in that PR, not in this campaign.
 
+### 6.8 PR dependencies on the forge
+
+Mirror every PR dependency onto the forge and read the forge's back: [§ PR dependencies on the forge](#pr-dependencies-on-the-forge-two-way).
+
 ### 7. PR cross-reference
 
 If issue body or branch name contains `fixes #N` / `closes #N`, link `pr` on
@@ -275,6 +279,60 @@ Forge sync (scope: milestone v0.4.0): 3 open, +1 new (#14), 0 drift
 ```
 
 When scope is unset, omit the `(scope: …)` clause.
+
+## PR dependencies on the forge (two-way)
+
+Every known PR dependency is mirrored onto the forge so a human merging by hand sees it, and a
+dependency a human adds on the forge becomes a DAG edge. Run once per sync (§ 6.8), after § 6.5–6.7:
+
+```bash
+bun run scripts/pr-deps-sync.ts --campaign-dir .blackhole                       # dry run: prints the plan
+bun run scripts/pr-deps-sync.ts --campaign-dir .blackhole --apply --out .blackhole/queue.json.tmp
+```
+
+`--apply` writes the forge and the updated queue to `--out`; install it through the
+state-write-guard (`blackhole-state.md` § Write protocol). Skip on `auto_sync: false`.
+
+**Stack first (owner rule).** Stacking is the main way to express a PR dependency: when PR B
+depends on exactly one open PR A in the same repo, the forge edge is B's base branch = A's head
+branch — the stacking-only model of `queue-dag.md` § Step 3b and `merge-gate.md`. The plan
+reports it as a `restack` row carrying the `stack-repair.ts restack` command; the orchestrator
+runs it (merge the parent in, then retarget — never a rebase). A native **"blocked by"** edge is
+used only where a stack cannot express the dependency, which keeps those edges few by design:
+
+| Case | Forge edge |
+|------|-----------|
+| B depends on exactly one open PR A | B's base = A's head branch (stack) |
+| B depends on 2+ open PRs | the base carries the one it is stacked on (if any); "blocked by" for the rest |
+| B depends on an issue with no PR yet | "blocked by" that issue |
+| B depends on a PR in another repo (§ 6.7) | "blocked by" that PR |
+
+Per backend, through the forge adapter (ADR-027) `getDependencies(pr)` / `setDependencies(pr,
+blockedBy[])` (`scripts/lib/forge-adapter/dependencies.ts`), REST only:
+
+- **GitHub**: `repos/{o}/{r}/issues/{n}/dependencies/blocked_by` (GET; POST `{issue_id}` with the
+  blocker's global id; DELETE `…/blocked_by/{issue_id}`).
+- **Gitea**: `repos/{o}/{r}/issues/{n}/dependencies` (GET; POST/DELETE `{owner, repo, index}`).
+- **GitLab**: `projects/:id/merge_requests/:iid/blocks` (Premium); an issue can never block a
+  merge request natively, so an issue blocker is always a body line.
+- **Fallback**: when the repo has no native feature (403/404/410), each edge is a `Blocked by #N`
+  line (`Blocked by !N` for a GitLab merge request, `Blocked by owner/repo#N` cross-repo) in the
+  PR body's `## Dependencies` section. The read is native edges plus these lines.
+
+**Read-back follows the same split.** A live stacked base (B's base is an open PR's head branch)
+and every forge "blocked by" edge become `depends_on` edges; a blocker naming a PR resolves to
+the queue issue whose `pr` it is.
+
+**Two-way and idempotent.** Each planned issue records `forge_deps: {synced, body_cross}` — the
+forge view after the write (`#<issue>` keys, `owner/repo#N` cross-repo) and the cross-repo lines
+pushed from the issue body. Against `synced`, an edge present on one side only is kept when it
+is new since the last sync and dropped when it was there before (the other side removed it), so
+a forge-removed edge leaves the queue and a newly queued edge is pushed, never both lost. A
+dependency already merged or closed stays in `depends_on` and is not mirrored. Cross-repo edges
+stay body-owned (§ 6.7): body lines are pushed, a forge-only cross-repo edge is kept and named in
+"Merge next" (`forgeDeclaredCrossRepo`), and one the body dropped since the last sync is removed.
+A write that does not read back as planned leaves that issue's queue state unchanged so the next
+sync retries it. Planner: `planPrDependencies` (`scripts/lib/pr-dependencies.ts`).
 
 ## Runtime issue creation
 

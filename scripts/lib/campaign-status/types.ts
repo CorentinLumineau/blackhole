@@ -27,6 +27,8 @@ export type QueueIssue = {
   /** Forge labels mirrored by the forge sync; `in-progress:*` / `agent:*` name the lane that owns the issue. */
   labels?: string[];
   depends_on?: number[];
+  /** What the last PR-dependency sync saw on the forge (forge-sync.md § 6.8). */
+  forge_deps?: { synced: string[]; body_cross: string[] };
   size?: string;
   review_iteration?: number;
   rounds_to_lgtm?: number;

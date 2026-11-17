@@ -218,10 +218,10 @@ is shorter: it prints the headline, the board counts, your move, the scope and t
 decisions above its queue sections, with no card list and no workstreams.
 Among its queue sections, **Merge next** numbers every open PR in the order to merge it
 (`mergeNextOrder`, `scripts/lib/merge-next.ts`): CI-fix PRs first, then parents, then children,
-ordered over stack edges (`effectiveParent`), `depends_on` and trunk-red parking. The CI-fix tier is
+ordered over stack edges (`effectiveParent`), `depends_on` and trunk-red parking. A forge-declared dependency (a "blocked by" edge or a stacked base set on the forge) is a `depends_on` edge after the sync (`forge-sync.md` § 6.8), so it shows exactly like a campaign-declared one. The CI-fix tier is
 the trunk-red base fixes the `waiting-on-trunk-fix #N` notes name (`trunkFixIssues`). Each line names
 its blocker — `waits on #N (stacked on)`, `waits on #N (depends on)`, `waits on #N (trunk fix)`,
-`waits on owner/repo#N (cross-repo, …)` (an unmet body line, `forge-sync.md` § 6.7),
+`waits on owner/repo#N (cross-repo, …)` (an unmet body line, `forge-sync.md` § 6.7, or a cross-repo edge declared on the PR, § 6.8),
 `blocked: <notes>`, `after CI fix #N`, or `none` — and a loop of edges is printed as a `Cycle, not ordered` line instead of being walked.
 It sits above "Stacked PR merge order", which it does not replace.
 Visual rules: R-006 (`documentation/reference/product-principles.md`).

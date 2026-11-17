@@ -1,6 +1,9 @@
 import { runGlab, runGlabJson, runGlabText } from './glab-cli.ts';
+import { isUnavailable, readDependencies, writeDependencies, type BodyChannel, type NativeDependencyChannel } from './dependencies.ts';
 import type {
+  DependencyRef,
   ForgeAdapter,
+  ForgeDependencies,
   ForgeAuthStatus,
   ForgeCheck,
   ForgeIssue,
@@ -36,6 +39,14 @@ type GlabMrRow = {
   mergedAt?: string | null;
   labels?: string[];
   has_conflicts?: boolean;
+};
+
+/** One row of `GET merge_requests/:iid/blocks`: a merge request that blocks this one. */
+type GlabBlockRow = { id: number; blocking_merge_request: { iid: number; references?: { full?: string } } };
+
+const glabApiJson = <T>(endpoint: string, method = 'GET'): T => {
+  const text = runGlabText(['api', endpoint, '--method', method]);
+  return (text.trim() ? JSON.parse(text) : null) as T;
 };
 
 function issueNumber(row: GlabIssueRow): number {
@@ -117,6 +128,57 @@ export class GitLabForgeAdapter implements ForgeAdapter {
 
   async prChangeBase(_number: number, _base: string): Promise<PrChangeBaseResult> {
     throw new Error('not-supported: prChangeBase on the gitlab forge');
+  }
+
+  async getDependencies(pr: number): Promise<ForgeDependencies> {
+    return readDependencies('gitlab', this.repo, pr, this.nativeDependencies(), this.mrBodies());
+  }
+
+  async setDependencies(pr: number, blockedBy: DependencyRef[]): Promise<ForgeDependencies> {
+    return writeDependencies('gitlab', this.repo, pr, blockedBy, this.nativeDependencies(), this.mrBodies());
+  }
+
+  /**
+   * Merge request dependencies ("blocked by" merge requests, GitLab Premium). A plan without them
+   * answers 403 or 404, and the edges fall back to body lines; an issue can never block a merge
+   * request natively, so an issue blocker is always a body line. The POST names the blocker by its
+   * global `id`, so each add reads the blocking merge request first.
+   */
+  private nativeDependencies(): NativeDependencyChannel {
+    const project = (repo: string) => encodeURIComponent(repo);
+    const blocks = (pr: number) => `projects/${project(this.repo)}/merge_requests/${pr}/blocks`;
+    return {
+      list: (pr) => {
+        let rows: GlabBlockRow[];
+        try {
+          rows = glabApiJson<GlabBlockRow[]>(blocks(pr)) ?? [];
+        } catch (error) {
+          if (isUnavailable(String(error))) return null;
+          throw error;
+        }
+        return rows.map((row) => {
+          const full = row.blocking_merge_request.references?.full?.match(/^(.+)!\d+$/);
+          return { ref: { repo: full?.[1] ?? this.repo, number: row.blocking_merge_request.iid, kind: 'pr' as const }, handle: row.id };
+        });
+      },
+      holds: (ref) => ref.kind === 'pr',
+      add: (pr, ref) => {
+        const { id } = glabApiJson<{ id: number }>(`projects/${project(ref.repo)}/merge_requests/${ref.number}`);
+        glabApiJson(`${blocks(pr)}?blocking_merge_request_id=${id}`, 'POST');
+      },
+      remove: (pr, edge) => {
+        glabApiJson(`${blocks(pr)}/${edge.handle}`, 'DELETE');
+      },
+    };
+  }
+
+  private mrBodies(): BodyChannel {
+    return {
+      read: (pr) => mapMr(runGlabJson<GlabMrRow>(['mr', 'view', String(pr), ...this.repoFlag()])).body,
+      write: (pr, body) => {
+        runGlabText(['mr', 'update', String(pr), ...this.repoFlag(), '--description', body]);
+      },
+    };
   }
 
   async issueList(filter: IssueListFilter = {}): Promise<ForgeIssue[]> {

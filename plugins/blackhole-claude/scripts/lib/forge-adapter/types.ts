@@ -91,6 +91,27 @@ export type RepoMergeSettings = {
   allow_rebase?: boolean;
 };
 
+/**
+ * One "blocked by" edge on the forge: issue or pull request `number` of `repo` (`owner/name`).
+ * GitHub and Gitea number issues and PRs in one sequence; GitLab numbers issues (`#N`) and merge
+ * requests (`!N`) apart, so `kind` names which one `number` is.
+ */
+export interface DependencyRef {
+  repo: string;
+  number: number;
+  kind: 'issue' | 'pr';
+}
+
+/**
+ * The blockers a PR declares on the forge: native "blocked by" edges plus the
+ * `Blocked by #N` lines of its body. `native` is false when the forge offers no native
+ * dependency feature for this repo (disabled, or a plan without it), so every edge is a body line.
+ */
+export interface ForgeDependencies {
+  native: boolean;
+  blockedBy: DependencyRef[];
+}
+
 export interface ForgeAdapterConfig {
   repo: string;
   forge?: ForgeType;
@@ -121,4 +142,13 @@ export interface ForgeAdapter {
   prFiles(number: number): Promise<string[]>;
   /** Retargets the PR, then reads the base back: exit status is not evidence the base moved. */
   prChangeBase(number: number, base: string): Promise<PrChangeBaseResult>;
+
+  /** The PR's forge-declared blockers (native edges and body lines), each once. */
+  getDependencies(pr: number): Promise<ForgeDependencies>;
+  /**
+   * Makes the PR's blockers exactly `blockedBy`: native edges where the forge holds them, a body
+   * line otherwise; edges and lines outside the set are removed. Writes nothing when the set
+   * already matches. Returns the set read back after the write.
+   */
+  setDependencies(pr: number, blockedBy: DependencyRef[]): Promise<ForgeDependencies>;
 }
