@@ -139,4 +139,23 @@ describe('usage-probe CLI', () => {
       expect(verdict.reasons.join(' ')).not.toContain('rate-limit cache');
     });
   });
+
+  test('with no cache_path configured, probe and usage-budget.ts both use the ~/.claude/cache default', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const configPath = path.join(dir, 'config.json');
+      fs.writeFileSync(configPath, JSON.stringify({ usage_budget: { enabled: true } }));
+      const env = { PATH: process.env.PATH ?? '', HOME: dir };
+      const windows = { five_hour: { utilization: 0.1, resetsAt: NOW + 4 * 3600 }, seven_day: { utilization: 0.1, resetsAt: NOW + 3 * DAY } };
+      const file = path.join(dir, 'events.json');
+      fs.writeFileSync(file, JSON.stringify(event(windows)));
+      const p = spawnSync('bun', ['run', probe, '--from-events', file, '--config', configPath, '--now', String(NOW)], { encoding: 'utf-8', env });
+      expect(p.status).toBe(0);
+      expect(JSON.parse(p.stdout).cache).toBe(path.join(dir, '.claude', 'cache', 'rate-limits.json'));
+      const r = spawnSync('bun', ['run', budget, '--config', configPath, '--now', String(NOW), '--parallel-max', '3'], { encoding: 'utf-8', env });
+      expect(r.status).toBe(0);
+      const verdict = JSON.parse(r.stdout);
+      expect(verdict.verdict).not.toBe('unavailable');
+      expect(verdict.reasons.join(' ')).not.toContain('rate-limit cache');
+    });
+  });
 });
