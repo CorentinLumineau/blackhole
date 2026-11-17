@@ -226,7 +226,45 @@ describe('usage-budget CLI --floor (catchup gate)', () => {
     });
   });
 
-  test.each([['0'], ['101'], ['abc']])('--floor %s exits 2', (value) => {
+  test('a 0 floor (nothing owed yet) is STOP-CAMPAIGN, not a usage error', () => {
+    withTempDir('usage-budget-floor', (dir) => {
+      const r = run(dir, ['--floor', '0', '--usage', week(3)]);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatchObject({ verdict: 'STOP-CAMPAIGN', floor_pct: 0 });
+    });
+  });
+
+  test('--usage-file feeds the floor gate, so an app-only host is GO below the floor', () => {
+    withTempDir('usage-budget-floor', (dir) => {
+      const file = path.join(dir, 'usage.json');
+      fs.writeFileSync(file, JSON.stringify({ plan: 'max', read_at: NOW - 5, windows: [
+        { name: 'five_hour', used_pct: 40, resets_at: NOW + 4 * HOUR },
+        { name: 'seven_day', used_pct: 70, resets_at: NOW + 3 * 24 * HOUR },
+      ] }));
+      const none = ['--cache', path.join(dir, 'missing.json'), '--host', 'claude'];
+      const r = run(dir, ['--floor', '87.5', '--usage-file', file, ...none]);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatchObject({ verdict: 'GO', weekly_pct: 70, floor_pct: 87.5 });
+    });
+  });
+
+  test('an unreadable --usage-file fails closed as SKIP under --floor', () => {
+    withTempDir('usage-budget-floor', (dir) => {
+      const none = ['--cache', path.join(dir, 'missing.json'), '--host', 'claude'];
+      const r = run(dir, ['--floor', '87.5', '--usage-file', path.join(dir, 'absent.json'), ...none]);
+      expect(r.code).toBe(0);
+      expect(r.out.verdict).toBe('SKIP');
+      expect(r.err).toContain('usage-budget: SKIP:');
+    });
+  });
+
+  test('--usage and --usage-file together exit 2', () => {
+    withTempDir('usage-budget-floor', (dir) => {
+      expect(run(dir, ['--floor', '87.5', '--usage', week(10), '--usage-file', path.join(dir, 'u.json')]).code).toBe(2);
+    });
+  });
+
+  test.each([['-1'], ['101'], ['abc']])('--floor %s exits 2', (value) => {
     withTempDir('usage-budget-floor', (dir) => {
       expect(run(dir, ['--floor', value, '--usage', week(10)]).code).toBe(2);
     });

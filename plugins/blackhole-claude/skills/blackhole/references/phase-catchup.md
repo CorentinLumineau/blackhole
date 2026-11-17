@@ -20,11 +20,14 @@ Set `catchup.lane` per account before a second account runs on the same repo (th
 
 1. **Resolve the run context** (`run-context.md`), as for any `run`.
 2. **Read usage.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/usage.ts` prints one normalized reading. On a host with only an app
-   usage tool (no statusline cache), write that tool's output to a file and pass
-   `--usage <file>` to `usage`, `pace-floor` and the gate below.
+   usage tool (no statusline cache), write that tool's output to a file and pass it to `usage` and
+   `pace-floor` as `--usage <file>`, and to the gate as `--usage-file <file>` (the gate's own
+   `--usage` takes inline JSON).
 3. **Compute the floor.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/pace-floor.ts [--usage <file>]` prints `status`, `floor_pct`,
-   `credits` and `shortfall_pct`. `unreadable` or `no-weekly` means log the reason and exit.
-4. **Gate.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/usage-budget.ts --parallel-max <n> --floor <pct> [--usage '<json>']`
+   `credits` and `shortfall_pct`. `unreadable` or `no-weekly` means log the reason and exit. A
+   `floor_pct` of 0 (just after the weekly reset, before that day ends) is a valid floor: pass it to
+   the gate, which returns `STOP-CAMPAIGN`.
+4. **Gate.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/usage-budget.ts --parallel-max <n> --floor <pct> [--usage-file <file>]`
    (the sibling pace gate, `pace-gate.ts`, is unchanged and runs beside it in every spawn round).
    `--floor` is for this invocation only, forces the gate on and never writes `config.json`:
 
@@ -39,7 +42,7 @@ Set `catchup.lane` per account before a second account runs on the same repo (th
 5. **Launch gate.** Run `launch-gate.md` in its catchup form: nine rows with the Pacing row, the
    preset pre-filled, every value adjustable for this invocation through the summary flags.
 6. **Run the normal campaign** with the floor pinned in the orchestrator's spawn text, so every
-   spawn round runs `usage-budget.ts --floor <pct>` in place of the plain call in
+   spawn round runs `usage-budget.ts --floor <pct> [--usage-file <file>]` in place of the plain call in
    `orchestrator-runtime.md` § Spawn step 1. The floor is recomputed at every start and wake (it
    grows with the clock); an owner-adjusted floor stays pinned for the invocation. A `SKIP` in a
    later round is a `STOP-CAMPAIGN`: drain, no wake (`phase-stop.md` § Usage stop).
@@ -55,7 +58,7 @@ lives outside the repo (a desktop scheduled task or a cloud routine). One prompt
 
 ```text
 Turn sleep mode on (it is idempotent; never turn it off, wake stays mine). Write the app's usage
-tool output to <usage-file>. Then run /blackhole catchup with --usage <usage-file>.
+tool output to <usage-file>. Then run /blackhole catchup with --usage-file <usage-file>.
 ```
 
 Sleep mode makes the launch gate print-only: every row counts as accepted and the `--floor` gate
