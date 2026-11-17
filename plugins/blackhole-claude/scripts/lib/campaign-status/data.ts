@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { SCOPE_LABELS } from './record.ts';
+import { topDenyCounts } from './deny-counts.ts';
 import { campaignName } from './report.ts';
 import { STALE_AFTER_HOURS } from './staleness.ts';
 import type { ScopeKind, StatusReport } from './types.ts';
@@ -16,6 +17,7 @@ export const STATUS_DATASET_IDS = [
   'config',
   'decisions',
   'links',
+  'denials',
 ] as const;
 
 export type StatusDatasetId = (typeof STATUS_DATASET_IDS)[number];
@@ -62,6 +64,7 @@ export function buildStatusData(r: StatusReport): StatusDatasets {
     config: r.config_rows.map((c) => ({ ...c })),
     decisions: r.decisions.map((d) => ({ date: d.date, text: d.text })),
     links: r.links.map((l) => ({ ...l })),
+    denials: topDenyCounts(r.deny_counts).map((c) => ({ pattern_id: c.pattern_id, deny: c.deny, warn: c.warn })),
   };
 }
 

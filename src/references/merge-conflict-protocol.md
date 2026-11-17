@@ -136,7 +136,7 @@ parent's branch commits are not ancestors of the squash commit on the target bra
 never rebased or force-pushed; its own commits are replayed by merging the target branch in.
 `scripts/stack-repair.ts repair --apply --child-issue <N>` does the retarget (REST, with a base
 read-back), the replay merge and the fast-forward push, and `merge-gate.md` § 7 owns the command
-and its flags. This section owns only the conflict case: when the replay reports conflicts nothing
+and its flags; `parent-landed` there answers "has the parent landed?" from the forge, never from ancestry. This section owns only the conflict case: when the replay reports conflicts nothing
 is pushed and the child worktree has no merge in progress (the replay runs through `git merge-tree`,
 so there are no conflict markers to edit). The worker starts the merge itself in the child worktree:
 `git fetch origin && git merge origin/<target_branch>`. Each conflicted file is then resolved per

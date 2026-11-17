@@ -414,7 +414,10 @@ const evaluateBashWriteTargets = (command, cwd) => {
       return {
         tier: 'block',
         pattern_id: 'bash-outside-assigned-worktree',
-        reason: `Bash write target resolves outside the assigned worktree root (${assignedRoot}): ${resolvedPath}`,
+        reason:
+          `Bash write target resolves outside the assigned worktree root (${assignedRoot}): ${resolvedPath}. ` +
+          `Remedy: write inside ${assignedRoot} instead (e.g. ${path.join(assignedRoot, path.basename(resolvedPath))}) ` +
+          `and use a literal absolute path, or the Write/Edit tools.`,
       };
     }
   }
@@ -427,7 +430,8 @@ const evaluateBashWriteTargets = (command, cwd) => {
         'Bash command looks write-shaped but its target could not be resolved by static ' +
         'inspection (a dynamic argument, or a command like python3 -c/perl -i/awk whose ' +
         'write behavior cannot be determined from the command string alone) — cannot verify ' +
-        'assigned-worktree containment',
+        'assigned-worktree containment (not confirmed unsafe). Remedy: use a literal absolute path ' +
+        'under the assigned worktree, or the Write/Edit tools.',
     };
   }
 

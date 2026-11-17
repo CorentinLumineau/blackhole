@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ref = (name: string) => readFileSync(join(import.meta.dir, '..', 'src', 'references', name), 'utf8');
@@ -27,5 +27,25 @@ describe('queue-dag Step 3 conflict filter', () => {
   test('does not promise a dispatch-time depth deferral that pickStackParent never makes', () => {
     expect(body).not.toMatch(/stack depth cap\s+is reached/);
     expect(body).toMatch(/stack-check\.ts/);
+  });
+});
+
+describe('parent-landed doc rule', () => {
+  test('merge-gate § 7 names parent-landed and forbids deciding landing by ancestry', () => {
+    const body = section(ref('merge-gate.md'), '## 7. Stacked-child tip capture and post-merge repair');
+    expect(body).toContain('parent-landed');
+    expect(body).toMatch(/never[^\n]*--is-ancestor/i);
+  });
+
+  test('the only --is-ancestor mentions under src/references are the allowlisted ones', () => {
+    const dir = join(import.meta.dir, '..', 'src', 'references');
+    const hits = readdirSync(dir)
+      .filter((f) => f.endsWith('.md'))
+      .filter((f) => readFileSync(join(dir, f), 'utf8').includes('--is-ancestor'))
+      .sort();
+    expect(hits).toEqual(['blackhole-state.md', 'merge-gate.md']);
+    const prohibitions = ref('merge-gate.md').split('\n').filter((l) => l.includes('--is-ancestor'));
+    expect(prohibitions).toHaveLength(1);
+    expect(prohibitions[0]).toMatch(/never/i);
   });
 });

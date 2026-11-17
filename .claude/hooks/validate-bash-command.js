@@ -12,7 +12,7 @@
 
 const { loadBashPatterns } = require('./utils/pattern-loader');
 const { matchFirstIgnoringNonExecutingText } = require('./utils/bash-context');
-const { evaluateWorktreeRemoval } = require('./utils/worktree-removal-guard');
+const { evaluateWorktreeRemoval, oversizeCommandDecision } = require('./utils/worktree-removal-guard');
 const { evaluateGitMainCloneMutation } = require('./utils/git-main-clone-guard');
 const { evaluateBashWriteTargets } = require('./utils/bash-write-target-guard');
 const { shouldDeferToMercure } = require('./utils/sibling-plugin-guard');
@@ -67,6 +67,11 @@ const main = () => {
     allowSilently();
     return;
   }
+
+  // Size cap (#1197), ahead of every matcher: the static patterns and the dynamic guards below
+  // are not all linear in the command length, and the native wrapper fails OPEN on its 5 s hook
+  // timeout, so an input too large to verify in time must be refused here rather than analysed.
+  if (handleTieredResult(oversizeCommandDecision(command), { tool, command, allowedTiers: BLOCK_ONLY })) return;
 
   let patterns;
   try {
