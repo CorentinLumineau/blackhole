@@ -163,7 +163,11 @@ plan shows no 5-hour row); the **Weekly** % and reset; **Workers allowed** with 
 threshold (`no_new_starts_at`, `stop_campaign_at`): `weekly X% reached around <day HH:MM UTC>`,
 or `not reached before the reset`, from the pace since the weekly window opened at 0%
 (`forecastWeekly()`); **Weekly target** (`usage_budget.weekly.target_at_reset`, when set); the reading's age; and **Usage windows**, the windows the reading shows and its source. With no current reading it says
-`usage not probed — <reason>`. Times are UTC, so every host prints the same page.
+`usage not probed — <reason>`, except when the cache is only older than `max_age_seconds` and still
+carries a current weekly window: then it shows that last reading, its age and, with a target, where
+the line from 0% at the window start to `target_at_reset` at the reset stands now
+(`weekly 21% at Tue 17 Nov 05:54 UTC, 4h 15m old (stale); target line 22.5% now`). Pacing still
+treats a stale cache as not probed. Times are UTC, so every host prints the same page.
 
 `--html` keeps its detail sections after these: in progress, waiting on you, waiting on
 something else by reason class (`elseClasses()`), up next, recently done, and a closed native
