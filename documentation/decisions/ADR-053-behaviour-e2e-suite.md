@@ -1,7 +1,7 @@
 ---
 type: adr
 summary: "Blackhole gets a behaviour e2e suite in four new tiers on top of verify and unit tests: a deterministic scenario harness over a PATH-shimmed fake forge with golden state, hook replay of mined real calls plus metamorphic fuzzing, a load check of all four build trees, and a live tier of claude plugin eval per-agent cases plus one sandboxed claude -p --bare mini-campaign graded on outcomes with a pinned model; coverage is a units x tiers matrix reported per row, enforced by a blocking verify check, and the suite ships as the theme of the release after the upcoming one, where it becomes a release gate"
-status: proposed
+status: accepted
 review_trigger: "on a new agent role, V-code, hook pattern, script entrypoint, queue transition, build target or user-visible behaviour; on a change to the forge CLI surface the shim serves; on a pinned-model change"
 created: 2026-11-17
 last_updated: 2026-11-17
@@ -16,10 +16,8 @@ related:
 
 # ADR-053 — Behaviour e2e suite and release gate
 
-> **Proposed** (design track, issue #1244), pending owner approval at § Gate. `proposed` is
-> outside the ADR status enum on purpose: `V-ADR-01` warns until the owner approves and the
-> value flips to `accepted` at carry time. Reconciled with
-> `research-plugin-e2e-testing.md` (same staging dir), whose tier numbering T0–T5 this ADR uses.
+> **Accepted** 2026-11-17 by the owner (design track, issue #1244). Reconciled with
+> `research-plugin-e2e-testing.md`, whose tier numbering T0–T5 this ADR uses.
 
 ## Requirements Framing
 

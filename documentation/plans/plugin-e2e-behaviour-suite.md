@@ -13,7 +13,7 @@ related:
 
 # Plan — plugin behaviour e2e suite (issue #1244)
 
-Design: ADR-053 (proposed, owner gate pending). Research: `research-plugin-e2e-testing.md`.
+Design: ADR-053 (accepted 2026-11-17). Research: `research-plugin-e2e-testing.md`.
 Plan base: `2c590fc6`. Pareto: Gain 9, Effort 7, Priority 36 (≥ 30).
 
 ## Objective
