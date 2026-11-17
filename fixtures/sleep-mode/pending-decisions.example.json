@@ -1,0 +1,30 @@
+{
+  "decisions": [
+    {
+      "id": "PD-1",
+      "question": "Ship the export rework as one PR or split it?",
+      "options": [
+        { "label": "One PR", "consequence": "One review, larger diff" },
+        { "label": "Split in two", "consequence": "Schema first, UI second" }
+      ],
+      "recommended": 1,
+      "evidence": "The plan touches 14 files across two layers",
+      "blocks": [12],
+      "gate": "split-sign-off",
+      "created_at": "2026-11-16T22:10:00.000Z"
+    },
+    {
+      "id": "PD-2",
+      "question": "Approve the design for the theme editor?",
+      "options": [
+        { "label": "Approve" },
+        { "label": "Rework" },
+        { "label": "Drop the feature" }
+      ],
+      "recommended": 0,
+      "blocks": [21, 22, 23],
+      "gate": "design-approval",
+      "created_at": "2026-11-16T23:40:00.000Z"
+    }
+  ]
+}

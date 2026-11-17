@@ -56,6 +56,9 @@ The same ownership covers the campaign-start status page: once the gate is answe
 the first fan-out, the main chat publishes or refreshes it (`status-page.md` § Refresh
 procedure), unless `status_page.enabled` is `false`.
 
+In sleep mode (`sleep-mode.md`) the main chat asks nothing in the foreground: every gate goes
+through `askOrPark()` and is parked until the wake-up round.
+
 ## Two-tier gate topology
 
 1. **Batched gate-first per wave.** Before fan-out, the foreground orchestrator collects every

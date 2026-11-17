@@ -141,6 +141,9 @@ Say any of:
 
 Coordinator spawns orchestrator; user does not need to paste a long prompt.
 
+Leaving for the night: `/blackhole sleep` — the coordinator relays nothing to the owner, every
+owner question is parked, and `/blackhole wake` asks them in one round (`sleep-mode.md`).
+
 ## Claude Code harness notes
 
 | Signal | Meaning | Wrong reaction |
