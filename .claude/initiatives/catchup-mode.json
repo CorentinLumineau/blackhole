@@ -1,14 +1,15 @@
 {
   "version": "2.0",
   "name": "catchup-mode",
-  "status": "in_progress",
+  "status": "completed",
   "currentMilestone": "M4",
   "currentPhase": "checkpoint",
-  "lastUpdated": "2026-11-17T15:30:00Z",
+  "lastUpdated": "2026-11-17T14:46:05Z",
   "progress": {
     "M1": "completed",
     "M2": "completed",
-    "M3": "completed"
+    "M3": "completed",
+    "M4": "completed"
   },
   "milestones": {
     "M1": {
@@ -25,6 +26,11 @@
       "name": "catchup mode with the full-config launch gate",
       "status": "completed",
       "baseSha": "3b5b9f51de7fcce89f8bcecab49d92b926b0d629"
+    },
+    "M4": {
+      "name": "Lane claim",
+      "status": "completed",
+      "baseSha": "0c068fdb83f41536ba5995e6f5037edf8861f6a4"
     }
   },
   "execConfig": {
@@ -47,7 +53,12 @@
       "milestone": "M3",
       "timestamp": "2026-11-17T15:30:00Z",
       "summary": "M3 shipped: catchup mode with full-config launch gate and pacing defaults; review ok (0 CRITICAL/HIGH, 2 MEDIUM, 3 LOW)"
+    },
+    {
+      "milestone": "M4",
+      "timestamp": "2026-11-17T14:46:05Z",
+      "summary": "M4 shipped: lane claim/release on three forge adapters, lane config replacing OWN_LANES, claim CLI; review ok (0 CRITICAL/HIGH, 1 MEDIUM, 2 LOW)"
     }
   ],
-  "nextAction": "Run M4 plan"
+  "nextAction": "Archive initiative; mercure git-issue claim convention (C5) in its own session; scheduled-task rollout after merge"
 }

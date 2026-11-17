@@ -1,13 +1,13 @@
 {
   "version": "3.0",
-  "focus": "catchup-mode",
-  "lastUpdated": "2026-11-17T15:30:00Z",
+  "focus": null,
+  "lastUpdated": "2026-11-17T14:46:05Z",
   "initiatives": [
     {
       "name": "catchup-mode",
       "displayName": "Catchup mode: weekly quota pacing (ADR-053)",
       "priority": 1,
-      "status": "in_progress",
+      "status": "completed",
       "dependsOn": [],
       "relatedTo": [
         "documentation/decisions/ADR-053-catchup-mode-quota-pacing.md"

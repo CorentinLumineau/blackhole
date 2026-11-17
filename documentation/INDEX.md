@@ -141,6 +141,7 @@
 | reviews/review-catchup-mode-m1-plugin-version-warning.md | Readiness review of catchup-mode M1 (plugin-version warning, launch-gate Sleep row): LGTM with two LOW notes | review | current | on file change |
 | reviews/review-catchup-mode-m2-usage-reading.md | Readiness review of catchup-mode M2 (usage provider chain, bun run usage, pace-floor, #1272 cache-reader extraction): LGTM with three LOW notes | review | current | on file change |
 | reviews/review-catchup-mode-m3-catchup-mode-launch-gate.md | Readiness review of catchup-mode M3 (usage-budget --floor, catchup config block, catchup mode and playbook, full-config launch gate with Pacing row): no CRITICAL or HIGH, two MEDIUM and three LOW notes | review | current | on file change |
+| reviews/review-catchup-mode-m4-lane-claim.md | x-review of catchup-mode M4 (lane claim, 1a80fca1...1ce5fb39): 0 CRITICAL, 0 HIGH, 1 MEDIUM, 2 LOW; focused tests green | review | current | on file change |
 | reviews/review-chore-content-gates-budget-orchestrator-runtime-dispatch-delegation-md-split-off.md | Review artifact for issue #705 (LGTM) | review | current | on file change |
 | reviews/review-chore-land-the-16-stranded-decision-log-md-rows-sitting-uncommitted-in-the-main.md | Review artifact for issue #749 (LGTM) | review | current | on file change |
 | reviews/review-ci-harden-the-self-hosted-pipeline-no-job-timeout-on-a-single-runner-plus-two-me.md | Review artifact for issue #988 (LGTM) | review | current | on file change |
