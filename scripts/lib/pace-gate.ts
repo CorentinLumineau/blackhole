@@ -1,4 +1,6 @@
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 // Usage-pace gate the orchestrator runs beside resource-gate.ts before each spawn round
 // (orchestrator-runtime.md § Background worker barrier). Input is Claude Code's statusline
@@ -56,6 +58,12 @@ const isWindow = (value: unknown): value is RateWindow =>
   value !== null &&
   typeof (value as RateWindow).used_percentage === 'number' &&
   typeof (value as RateWindow).resets_at === 'number';
+
+/** The rate-limit cache file: `resource_policy.pace.cache_path`, else the statusline default under `~/.claude/cache`. */
+export const rateLimitCachePath = (config: Record<string, unknown>): string => {
+  const pace = ((config.resource_policy ?? {}) as { pace?: { cache_path?: unknown } }).pace;
+  return typeof pace?.cache_path === 'string' ? pace.cache_path : path.join(os.homedir(), '.claude', 'cache', 'rate-limits.json');
+};
 
 export const readRateLimits = (
   cachePath: string,

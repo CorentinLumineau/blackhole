@@ -3,6 +3,7 @@ import * as path from 'path';
 import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
+import { readBudgetPanel } from './lib/campaign-status/budget.ts';
 import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
 import { fetchForgeCounts, fetchMergedPrs } from './lib/campaign-status/forge.ts';
 import { writeStatusData } from './lib/campaign-status/data.ts';
@@ -181,6 +182,7 @@ export async function collectStatusReport(
     mergedPrs,
     pluginVersion: readPluginVersion(),
     denyCounts: collectDenyCounts(campaignDir, queue.campaign_started_at ?? null),
+    budget: readBudgetPanel(config as Record<string, unknown>),
   });
   return { report, state, host };
 }
