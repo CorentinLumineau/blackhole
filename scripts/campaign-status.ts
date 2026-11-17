@@ -249,7 +249,7 @@ function readPrintOnly(campaignDir: string, config: Record<string, unknown>): bo
 }
 
 /**
- * `--summary`: the launch gate's seven rows and question cards. The Budget row reads the same
+ * `--summary`: the launch gate's eight rows and question cards. The Budget row reads the same
  * `BudgetPanel` the status page shows: built from `--usage` (restricted to `usage_budget.windows`)
  * when given, else from the host's usage source at `--now`, as `report.budget` is.
  */

@@ -9,3 +9,4 @@
 | Status page | https://claude.ai/code/artifact/abc · reachable (probed 5 min ago) · template v4 | The stored page opens from this account and is refreshed at every checkpoint. |
 | Kaizen and staging | kaizen off · staging carry on | No improvement hunts run; staged docs carry into each PR. |
 | Peers | solo | This session spends the usage budget alone; no other session is coordinated. |
+| Sleep mode | off | Every gate asks as it comes; `/blackhole sleep` parks owner questions for one wake-up round. |

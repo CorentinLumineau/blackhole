@@ -913,7 +913,7 @@ describe('status --summary (the launch summary)', () => {
     const proc = summary('--campaign-dir', FULL, '--json');
     expect(proc.exitCode).toBe(0);
     const parsed = JSON.parse(proc.stdout.toString());
-    expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual(['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers']);
+    expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual(['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep']);
     expect(Array.isArray(parsed.cards)).toBe(true);
   });
 
