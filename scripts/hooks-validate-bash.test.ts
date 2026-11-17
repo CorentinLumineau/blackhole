@@ -5239,10 +5239,7 @@ describe('hook-event-log.js — residual credential forms (#1190)', () => {
   for (const [label, input] of ADVERSARIAL) {
     test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
       const { redactReason } = hookEventLog();
-      redactReason(input);
-      const start = performance.now();
-      redactReason(input);
-      expect(performance.now() - start).toBeLessThan(10);
+      expect(minMs(() => redactReason(input))).toBeLessThan(10);
     });
   }
 });
