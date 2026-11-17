@@ -4542,7 +4542,7 @@ describe('hook-event-log.js — redact is bounded on adversarial input (#1195)',
       expect(result.exitCode).toBe(2);
       expect(permissionDecision(result.stdout)).toBe('deny');
       expect(readHookEvents(repo)).toHaveLength(1);
-      expect(readHookEvents(repo)[0]).toMatchObject({ decision: 'deny', pattern_id: 'rm-rf-root' });
+      expect(readHookEvents(repo)[0]).toMatchObject({ decision: 'deny', pattern_id: 'command-too-large-to-verify' });
       expect(elapsedMs).toBeLessThan(2500);
     });
   });
@@ -4595,9 +4595,10 @@ describe('PreToolUse deny decisions — every deny names a remedy or is explicit
     expect(sourceDecisions.length).toBeGreaterThan(10);
     const missing = sourceDecisions
       .filter((d) => !d.ids.every((id) => NON_DENY.has(id) || id in NO_ALTERNATIVE))
-      .filter((d) => !/Remedy:|remedyInside\(/.test(d.window))
+      .filter((d) => !/Remedy:|remedyInside\(|SPLIT_REMEDY/.test(d.window))
       .map((d) => d.label);
     expect(missing).toEqual([]);
+    expect(readSource('utils/worktree-removal-guard.js')).toMatch(/const SPLIT_REMEDY =\s*\n?\s*'Remedy: /);
   });
 
   test('every main-clone block reason carries a Remedy', () => {
