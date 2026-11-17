@@ -8,8 +8,8 @@ runs it (`claude-code-native.md` § Bootstrap gate ownership).
 
 ## When it runs
 
-`run` mode only. `status`, `handle #N`, `plan #N`, `implement #N`, `review #N`, `hunt [kind]` and
-`campaign-audit` load config with no gate.
+`run` mode only; every other mode loads config with no gate (`coordinator.md` § Bootstrap
+preflight lists them).
 
 | Bootstrap | What the gate does |
 |-----------|--------------------|
@@ -22,32 +22,22 @@ Bootstrap order, every `run` start:
 2. The 6-step form when a `coordinator.md` trigger condition holds.
 3. The summary and the status-page probe (§ Probe procedure).
 4. The questions (§ Questions), unless print-only (§ Print-only mode).
-5. `bun run doctor`; a non-zero exit stops the start.
-6. Publish or refresh the status page (`status-page.md` § Refresh procedure).
-7. Spawn or resume the orchestrator.
+5. The rest is `coordinator.md`'s, in its order: publish or refresh the status page, then
+   `bun run doctor` before the spawn (a non-zero exit stops it), then spawn or resume the
+   orchestrator.
 
 ## The summary
 
-```bash
-bun run status --summary [--usage <json>] [--json]
-```
+Run `bun run status --summary` and print its output; never hand-format the table. Its flags,
+rows and `--json` shape are documented once, in `coordinator-dashboard.md` § Command (Launch summary). The
+gate adds two steps of its own:
 
-One table, seven rows in this fixed order: Scope, Order, Merge, Budget, Status page, Kaizen and
-staging, Peers. Each row ends with a one-line consequence, so the table reads on its own. Run the
-command and print its output; never hand-format the table. The status page reads the same
-builder, so the two never disagree.
-
-- Budget row source: with no `--usage`, the row reads the host's usage source
-  (`scripts/lib/usage-source.ts`, host from `run-context.json`, else the environment), the same
-  `BudgetPanel` the status page shows (`status-page.md` § Page layout, **Usage budget**). On a Claude cloud or
-  Remote session, refresh that source first: pipe the newest `rate_limit_event` from
-  `list_events` to `bun run scripts/usage-probe.ts --from-events -` (`run-context.md`, Claude
-  usage sources). Cursor has no usage source, so the row says `usage not probed — <reason>` and
-  sizes workers from `parallel_max`.
-- `--usage '<json>'` overrides that source with the usage the harness reported directly (its
-  `get_usage` tool, `usage-probe` in `run-context.md`); `--now <epoch s>` pins the clock.
-- `--json` returns `{rows, cards}`; `cards` are the question cards (built by `gateCards`), which
-  § Questions sends as is.
+- Before the summary, refresh the Budget row's usage source on hosts that have one. On a Claude
+  cloud or Remote session, pipe the newest `rate_limit_event` from `list_events` to
+  `bun run scripts/usage-probe.ts --from-events -` (`run-context.md`, Claude usage sources). On
+  Cursor there is no source, so the row reads `not probed: cursor: no readable usage source,
+  usage-aware pacing not applied` and, with `usage_budget` on, its consequence is `Usage not
+  probed: workers are sized from parallel_max (<n>).`
 - Also run `bun run status config-summary` once: the coordinator's docs-governance drift guard
   copies its `Docs governance` lines verbatim into the spawn text.
 
@@ -79,8 +69,10 @@ also offers "Refresh template". Never delete the stored page to reset it (`statu
 
 ## Questions
 
-One Accept / Adjust question per adjustable row, at most 4 per card, so a full gate is 2 cards.
-Send the cards `gateCards` returns; every option carries its own description. Accept keeps the
+One Accept / Adjust question per adjustable row, at most 4 per card. Scope, Merge, Budget and
+Kaizen and staging are always adjustable, and so is Status page unless the host publishes no
+page: a full gate is 2 cards, or 1 card when the Status page row reads `none on this host`.
+Send the cards the `--json` output returns; every option carries its own description. Accept keeps the
 row as shown. Adjust opens only that row's form steps, never the whole form:
 
 | Row | Adjust opens |
@@ -101,7 +93,9 @@ answer), re-print the summary, and continue the bootstrap order.
 
 Print-only mode applies when sleep mode is on (`sleep_mode.enabled`), or the run context has no
 question channel (its route reports questions `none`, e.g. a headless run). The gate then prints
-the summary, asks nothing and never waits:
+the summary, asks nothing and never waits. It is not sleep mode's parking either: the
+`coordinator.md` 6-step form does not run, and nothing is parked through `askOrPark()`
+(`sleep-mode.md` § The choke point), so the gate leaves no pending decision behind:
 
 - every row counts as accepted;
 - `merge_mode` unset: refuse to start, with one line, `merge_mode is unset; print-only mode cannot

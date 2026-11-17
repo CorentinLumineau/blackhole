@@ -28,16 +28,24 @@ launch confirmation only.
 Launch summary — the launch gate's executive-summary table (`launch-gate.md` § The summary):
 
 ```bash
-bun run status --summary [--usage <json>] [--now <epoch s>] [--json]
+bun run status --summary [--usage <json>] [--now <epoch s>] [--json] [--campaign-dir <dir>] [--no-gh]
 ```
 
 Seven rows in fixed order (Scope, Order, Merge, Budget, Status page, Kaizen and staging, Peers),
-each with a one-line consequence. `--usage` is the harness's usage report (a malformed value
-exits `2`); without it the Budget row reads the host's usage source, the same panel as the
-status page's **Usage budget** (`not probed` only when that source has no current reading). `--json`
-prints `{rows, cards}`, adding the question cards. `--summary` takes only `--usage`, `--now` and
-`--json`, and cannot be combined with `--html`, `--data` or `config-summary`. With no `.blackhole` it prints the
-not-found message and exits `0`.
+each with a one-line consequence. The status page reads the same builder, so the two never
+disagree. `--summary` accepts only `--usage`, `--now`, `--json`, `--campaign-dir` and `--no-gh`,
+and cannot be combined with `--html`, `--out`, `--data` or `config-summary`.
+
+- `--usage '<json>'` is the harness's usage report (its `get_usage` tool; a malformed value exits
+  `2`). Without it the Budget row reads the host's usage source (`scripts/lib/usage-source.ts`,
+  host from `run-context.json`, else the environment), the same panel as the status page's
+  **Usage budget**. On Cursor, which has no source, the row reads `not probed: cursor: no
+  readable usage source, usage-aware pacing not applied`, and with `usage_budget` on its
+  consequence is `Usage not probed: workers are sized from parallel_max (<n>).`
+- `--now <epoch s>` pins the clock (whole seconds).
+- `--json` prints `{rows, cards}`: the rows plus the question cards `gateCards` builds (none in
+  print-only mode).
+- With no `.blackhole` it prints the not-found message and exits `0`.
 
 ## Status page
 
