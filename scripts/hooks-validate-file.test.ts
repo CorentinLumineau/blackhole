@@ -6,6 +6,7 @@ import * as path from 'path';
 import {
   PRETOOLUSE_HOOKS_DIR,
   readHookEvents,
+  runGit,
   runPreToolUseHook,
   withLinkedWorktree,
   withTempGitRepo,
@@ -350,10 +351,11 @@ describe('validate-file-changes.js', () => {
     }
   });
 
-  // #1226: a registered worktree whose directory was deleted without `git worktree remove` is
-  // reported `prunable`. Containment resolves a missing path to its nearest existing ancestor, so
-  // admitting it would trust the whole parent directory. A Write where it used to be is refused.
-  test('#1226: a prunable (deleted) linked worktree is not admitted as a root', async () => {
+  // #1226: a registered worktree whose directory was deleted without `git worktree remove` stays
+  // listed. Containment resolves a missing path to its nearest existing ancestor, so admitting it
+  // would trust the whole parent directory. It has no `.git` file left, so the back-link check
+  // refuses it, and a Write where it used to be is denied.
+  test('#1226: a deleted linked worktree is not admitted as a root', async () => {
     const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-campaign-${process.pid}-${Date.now()}`);
     try {
       await withLinkedWorktree(
@@ -372,6 +374,134 @@ describe('validate-file-changes.js', () => {
       );
     } finally {
       fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // #1226 security review: a registration entry is only a claim. With the Write tool alone, an
+  // agent can create `<common-dir>/worktrees/<name>/gitdir` naming another repository's `.git`,
+  // and `git worktree list` then reports that repository as a worktree of this one. A root is
+  // admitted only when the entry's own `.git` file points back into this repo's
+  // `worktrees/<name>`, so the other repository stays out of bounds.
+  test('#1226: a forged worktree registration pointing at another repository is not a root', async () => {
+    await withTempGitRepo('blackhole-1226-victim-', async (victimRepo) => {
+      await withLinkedWorktree('blackhole-hook-1226-', async (mainRepo) => {
+        const forged = path.join(mainRepo, '.git', 'worktrees', 'evil');
+        fs.mkdirSync(forged, { recursive: true });
+        fs.writeFileSync(path.join(forged, 'gitdir'), `${path.join(victimRepo, '.git')}\n`);
+
+        const target = path.join(victimRepo, '.github', 'workflows', 'pwn.yml');
+        const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+      });
+    });
+  });
+
+  // Same review, second shape: a genuine registration whose directory is moved away and replaced
+  // by a symlink to another repository. The registered path no longer resolves to itself, so it
+  // is refused even though git still lists it.
+  test('#1226: a registered worktree path swapped for a symlink to another repository is not a root', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-swap-${process.pid}-${Date.now()}`);
+    try {
+      await withTempGitRepo('blackhole-1226-victim-', async (victimRepo) => {
+        await withLinkedWorktree(
+          'blackhole-hook-1226-',
+          async (mainRepo, worktree) => {
+            fs.renameSync(worktree, `${worktree}-moved`);
+            fs.symlinkSync(victimRepo, worktree, 'dir');
+
+            const target = path.join(worktree, '.github', 'workflows', 'pwn.yml');
+            const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+            expect(result.exitCode).toBe(2);
+            expect(permissionDecision(result.stdout)).toBe('deny');
+            expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+          },
+          () => campaignParent,
+        );
+      });
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // The reverse half of the back-link: a `.git` file copied out of a genuine worktree into another
+  // directory points into this repo's `worktrees/<name>`, but that entry's own `gitdir` names the
+  // genuine worktree, not the copy. A forged registration for the copy is therefore refused.
+  test('#1226: a .git file copied from a genuine worktree does not make another directory a root', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-copy-${process.pid}-${Date.now()}`);
+    const victim = path.join(campaignParent, 'victim');
+    try {
+      await withLinkedWorktree(
+        'blackhole-hook-1226-',
+        async (mainRepo, worktree) => {
+          fs.mkdirSync(victim, { recursive: true });
+          fs.copyFileSync(path.join(worktree, '.git'), path.join(victim, '.git'));
+          const forged = path.join(mainRepo, '.git', 'worktrees', 'evil');
+          fs.mkdirSync(forged, { recursive: true });
+          fs.writeFileSync(path.join(forged, 'gitdir'), `${path.join(victim, '.git')}\n`);
+
+          const target = path.join(victim, 'pwned.ts');
+          const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+          expect(result.exitCode).toBe(2);
+          expect(permissionDecision(result.stdout)).toBe('deny');
+          expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+        },
+        () => campaignParent,
+      );
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // Same review, third shape: `git worktree list --porcelain` is newline-delimited, so a worktree
+  // added at a path containing `\n\nworktree <dir>` forges a whole record for `<dir>`. The listing
+  // is read NUL-delimited (`-z`), so the forged directory never appears as an entry.
+  test('#1226: a newline in a worktree path cannot forge a registration record', async () => {
+    const campaignParent = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-nl-${process.pid}-${Date.now()}`);
+    const victim = path.join(campaignParent, 'victim');
+    fs.mkdirSync(victim, { recursive: true });
+    try {
+      await withLinkedWorktree('blackhole-hook-1226-', async (mainRepo) => {
+        runGit(mainRepo, ['worktree', 'add', '--detach', '--quiet', path.join(campaignParent, `a\n\nworktree ${victim}`)]);
+
+        const target = path.join(victim, 'pwned.ts');
+        const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+      });
+    } finally {
+      fs.rmSync(campaignParent, { recursive: true, force: true });
+    }
+  });
+
+  // The breadth leg of linked-worktree admission: a genuinely registered worktree that IS $HOME
+  // (git creates the directory, so the back-pointer is real) must not become a root, or every
+  // file under the home directory would be writable.
+  test('#1226: a registered linked worktree at $HOME is not admitted as a root', async () => {
+    const fakeHome = path.join(fs.realpathSync(os.tmpdir()), `blackhole-1226-home-${process.pid}-${Date.now()}`);
+    const previousHome = process.env.HOME;
+    try {
+      await withLinkedWorktree('blackhole-hook-1226-', async (mainRepo) => {
+        runGit(mainRepo, ['worktree', 'add', '--detach', '--quiet', fakeHome]);
+        process.env.HOME = fakeHome;
+
+        const target = path.join(fakeHome, '.ssh', 'authorized_keys');
+        const result = await runPreToolUseHook(SCRIPT, { ...writePayload(target), cwd: mainRepo }, mainRepo);
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ tier: 'block', pattern_id: 'outside-worktree' });
+      });
+    } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      fs.rmSync(fakeHome, { recursive: true, force: true });
     }
   });
 
