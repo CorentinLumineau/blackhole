@@ -141,6 +141,31 @@ them.
    the resume report names what was discarded (mirrors #476's evidence table).
 7. **Run the Exit Invariants checklist** (below), then report.
 
+## Usage stop
+
+Not a fourth tier: the drain tier above, started by the spawn-round usage gate
+(`orchestrator-runtime.md` § Background worker barrier, Spawn step 1, `scripts/usage-budget.ts`)
+instead of the owner. `STOP-WORKERS` and `PACE-WAIT` are a drain-and-wake pause; `STOP-CAMPAIGN` is
+the same drain with no wake. It is never an abandon: never `--abandon`, never `stop --now`.
+
+1. **Drain** — run § Drain tier steps 2-4 unchanged: spawn nothing, let every in-flight worker
+   return, triage each return as usual, run the Exit Invariants checklist.
+2. **Leave the queue alone** — no queue entry is marked `failed` or `blocked`, no retry counter is
+   bumped, no ledger row is written for the stop itself; issues left `ready` stay `ready`.
+3. **Checkpoint**: `stopped_by: usage`, `stop_kind: drained`, `wake_at` = the verdict's `wake_at`
+   (epoch seconds; `null` for `STOP-CAMPAIGN`), and the verdict plus its first reason in Notes
+   (`checkpoint-protocol.md` § Checkpoint template).
+4. **Arm one wake at `wake_at`** — exactly one, its id noted in the checkpoint so a resume does not
+   arm a second. On `route.schedule: routine`, a one-off routine at `wake_at`
+   (`project-thread-mode.md` § Scheduling: routines); on `route.schedule: turn`, no timer exists,
+   so the report names `wake_at` and the next turn started at or after it resumes. No wake for
+   `wake_at: null`.
+5. **Report** per Exit Invariant 6: the verdict, the 5-hour and weekly %, `wake_at` in local time,
+   and that the campaign resumes on its own (or, for `STOP-CAMPAIGN`, on the owner's next `run`).
+6. **Resume** — the wake (or any turn after `wake_at`) runs `orchestrator-runtime.md` § Session
+   resume & recovery step 7: the spawn-round gates run again and the campaign continues from
+   `queue.json` as left. A turn before `wake_at` spawns nothing and ends.
+
 ## Exit Invariants (verbatim from #476 — every tier, `stop --now` verified explicitly below)
 
 - [ ] No `queue.json` entry left `in-flight` naming a worker that is not running (drain tier:
@@ -181,8 +206,8 @@ them.
 
 ## Checkpoint fields this mode owns
 
-See `checkpoint-protocol.md` § Fields: `stopped_by`, `stop_kind` (frontmatter), `worker_state`
-(per-row, `## In-flight workers`). `stop_kind` values now `drained` \| `killed` \| `flushed`
+See `checkpoint-protocol.md` § Fields: `stopped_by` (`user` \| `usage`), `stop_kind`, `wake_at`
+(frontmatter, `wake_at` set only by § Usage stop), `worker_state` (per-row, `## In-flight workers`). `stop_kind` values now `drained` \| `killed` \| `flushed`
 (issue #492) \| `null`; `worker_state` values now `drained` \| `flushed` (issue #492) \|
 `killed` — emitted per step 6's priority rule above, no longer reserved.
 

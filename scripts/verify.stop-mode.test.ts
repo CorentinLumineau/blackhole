@@ -3,7 +3,10 @@ import { read } from './checks/check-utils.ts';
 import {
   assertNoOrphanedInFlight,
   checkStopModeWiring,
+  checkUsageGateWiring,
+  findSpawnSitesMissingUsageGate,
   findUncitedFlushedMention,
+  findUsageStopViolations,
   runChecks,
 } from './checks/stop-mode.check.ts';
 
@@ -54,10 +57,9 @@ describe('checkStopModeWiring() against the real src/ files', () => {
 });
 
 describe('runChecks()', () => {
-  test('returns exactly one V-STOP-02 result', () => {
+  test('returns the V-STOP-02 and V-STOP-03 results', () => {
     const results = runChecks();
-    expect(results).toHaveLength(1);
-    expect(results[0].id).toBe('V-STOP-02');
+    expect(results.map((r) => r.id)).toEqual(['V-STOP-02', 'V-STOP-03']);
   });
 });
 
@@ -124,5 +126,68 @@ describe('findUncitedFlushedMention() (issue #492)', () => {
   test('checkpoint-protocol.md and phase-stop.md both cite #492 near every `flushed` mention', () => {
     expect(findUncitedFlushedMention(read('src/references/checkpoint-protocol.md'))).toBe(false);
     expect(findUncitedFlushedMention(read('src/references/phase-stop.md'))).toBe(false);
+  });
+});
+
+const USAGE_STOP_OK = [
+  '# Phase — Stop',
+  '',
+  '## Usage stop',
+  '',
+  'Runs the drain tier with `stopped_by: usage` and `wake_at`. Never `--abandon`.',
+  '',
+  '## Exit Invariants',
+  '',
+  'Kill every worker via `--abandon`.',
+].join('\n');
+
+describe('findUsageStopViolations()', () => {
+  test('a usage stop that drains, records stopped_by: usage and wake_at passes', () => {
+    expect(findUsageStopViolations(USAGE_STOP_OK)).toEqual([]);
+  });
+
+  test('fails when the usage stop routes to --abandon', () => {
+    const bad = USAGE_STOP_OK.replace('Never `--abandon`.', 'Then run the `--abandon` tier.');
+    expect(findUsageStopViolations(bad).join('; ')).toContain('routes to --abandon');
+  });
+
+  test('fails when the section is missing, or omits stopped_by: usage or wake_at', () => {
+    expect(findUsageStopViolations('# Phase — Stop\n\n## Drain tier\n')).toEqual(['phase-stop.md missing the ## Usage stop section']);
+    expect(findUsageStopViolations(USAGE_STOP_OK.replace('`stopped_by: usage`', 'a stop')).join('; ')).toContain('stopped_by: usage');
+    expect(findUsageStopViolations(USAGE_STOP_OK.replace('and `wake_at`', '')).join('; ')).toContain('wake_at');
+  });
+
+  test('fails when the usage stop marks a queue entry failed or blocked', () => {
+    const bad = USAGE_STOP_OK.replace('Never `--abandon`.', 'Set each issue `status: blocked`.');
+    expect(findUsageStopViolations(bad).join('; ')).toContain('failed or blocked');
+  });
+});
+
+describe('findSpawnSitesMissingUsageGate()', () => {
+  const site = (content: string) => [{ path: 'src/references/claude-code-native.md', content }];
+
+  test('flags a spawn block that cites pace-gate.ts without usage-budget.ts', () => {
+    const out = findSpawnSitesMissingUsageGate(site('Intro.\n\n1. Run `bun run scripts/pace-gate.ts` then spawn.\n'));
+    expect(out).toEqual(['src/references/claude-code-native.md: a block cites pace-gate.ts without usage-budget.ts']);
+  });
+
+  test('passes when the same block cites both gates', () => {
+    expect(findSpawnSitesMissingUsageGate(site('1. Run `scripts/pace-gate.ts` and `scripts/usage-budget.ts`.\n'))).toEqual([]);
+  });
+
+  test('a usage-budget.ts mention in another block does not cover the pace-gate.ts block', () => {
+    expect(findSpawnSitesMissingUsageGate(site('Run `pace-gate.ts`.\n\nElsewhere `usage-budget.ts`.\n'))).toHaveLength(1);
+  });
+});
+
+describe('checkUsageGateWiring() against the real src/ files', () => {
+  test('returns ok: true', () => {
+    const result = checkUsageGateWiring();
+    expect(result.detail ?? '').toBe('');
+    expect(result).toMatchObject({ id: 'V-STOP-03', ok: true });
+  });
+
+  test('the usage stop in the real phase-stop.md drains and never routes to --abandon', () => {
+    expect(findUsageStopViolations(read('src/references/phase-stop.md'))).toEqual([]);
   });
 });
