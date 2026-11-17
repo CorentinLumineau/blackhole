@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test';
 import * as teaCli from './lib/forge-adapter/tea-cli.ts';
+import * as ghCli from './lib/forge-adapter/cli.ts';
 import * as fs from 'fs';
 import { spawnSync } from 'child_process';
 import { makeTempDir } from './lib/fs.ts';
@@ -591,6 +592,52 @@ describe('Gitea parity: retarget, read-back, CI re-trigger notice and merge sett
       const { value, logs } = captureLogs(() => retargetAndVerify(child(), 'main', 'owner/repo', 'gitea'));
       expect(value).toBe(false);
       expect(logs.join('\n')).toContain('HTTP 422');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  const ghPr = (baseRef: string) => ({
+    number: 2403,
+    title: 't',
+    state: 'open',
+    head: { ref: 'blackhole/issue-2403', sha: 'abc' },
+    base: { ref: baseRef },
+  });
+
+  test('a GitHub retarget PATCHes then reads the base back; equality passes', () => {
+    const spy = spyOn(ghCli, 'runGhApi').mockImplementation((method: string) => ({
+      status: 0,
+      stdout: JSON.stringify(method === 'PATCH' ? { number: 2403 } : ghPr('main')),
+      stderr: '',
+      error: null,
+    }));
+    try {
+      const { value, logs } = captureLogs(() => retargetAndVerify(child(), 'main', 'owner/repo', 'github'));
+      expect(value).toBe(true);
+      expect(logs).toEqual(['#2403: retarget — base.ref == main']);
+      const calls = spy.mock.calls.map((c) => [c[0], c[1], c[2]]);
+      expect(calls).toEqual([
+        ['PATCH', 'repos/owner/repo/pulls/2403', { base: 'main' }],
+        ['GET', 'repos/owner/repo/pulls/2403', undefined],
+      ]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('a GitHub retarget whose PATCH errors fails closed without reading the base back', () => {
+    const spy = spyOn(ghCli, 'runGhApi').mockReturnValue({
+      status: 1,
+      stdout: '',
+      stderr: 'gh: Validation Failed (HTTP 422)',
+      error: null,
+    });
+    try {
+      const { value, logs } = captureLogs(() => retargetAndVerify(child(), 'main', 'owner/repo', 'github'));
+      expect(value).toBe(false);
+      expect(logs).toEqual(['#2403: retarget failed — base not read back: gh: Validation Failed (HTTP 422)']);
+      expect(spy.mock.calls.map((c) => c[0])).toEqual(['PATCH']);
     } finally {
       spy.mockRestore();
     }
