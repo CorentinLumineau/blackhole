@@ -23,9 +23,10 @@ export type TrunkRedResult = {
   groups: TrunkRedGroup[];
 };
 
-const RUNNER_PREFIX = /^(?:\/(?:home|Users)\/runner\/work\/[^/]+\/[^/]+\/|\/github\/workspace\/)/;
+const RUNNER_PREFIX =
+  /^(?:\/(?:home|Users)\/runner\/work\/[^/]+\/[^/]+\/|\/(?:[^/]+\/)*?_work\/[^/]+\/[^/]+\/|\/github\/workspace\/)/;
 
-/** Repo-relative form of a path: no leading `./`, no GitHub runner checkout prefix. */
+/** Repo-relative form of a path: no leading `./`, no hosted or self-hosted runner checkout prefix. */
 export function normalizeRepoPath(p: string): string {
   return p.replace(RUNNER_PREFIX, '').replace(/^(?:\.\/)+/, '');
 }
@@ -52,11 +53,26 @@ const VOLATILE = /\d{4}-\d{2}-\d{2}T[\d:.]+Z?|\b[0-9a-f]{7,40}\b|\d+/gi;
 const ERROR_LINE = /error|fail|✗|✕|expected|not assignable|cannot|unexpected/i;
 const GENERIC_LINE = /exited with code|Process completed with exit code/i;
 const WINDOW_RADIUS = 3;
+const RUN_LINE = /^(?:##\[group\])?Run\s/;
+const END_GROUP = /^##\[endgroup\]/;
+const ECHOED_SETTING = /^(?:\s|shell:|env:)/;
 
-/** Index of the line that identifies the failure, skipping blank and generic wrapper lines; -1 if none. */
+/** Index of the first line after a step's echoed `Run` preamble (command, script, shell and env lines); 0 when none. */
+function preambleEnd(lines: string[]): number {
+  const first = lines.findIndex((l) => l.trim() !== '');
+  if (first < 0 || !RUN_LINE.test(lines[first])) return 0;
+  const endGroup = lines.findIndex((l, i) => i > first && END_GROUP.test(l));
+  if (endGroup >= 0) return endGroup + 1;
+  let i = first + 1;
+  while (i < lines.length && ECHOED_SETTING.test(lines[i])) i++;
+  return i;
+}
+
+/** Index of the line that identifies the failure, past the preamble, skipping blank and generic wrapper lines; -1 if none. */
 function failureLineIndex(lines: string[]): number {
-  const usable = (l: string) => l.trim() !== '' && !GENERIC_LINE.test(l);
-  const hit = lines.findIndex((l) => usable(l) && ERROR_LINE.test(l));
+  const start = preambleEnd(lines);
+  const usable = (l: string, i: number) => i >= start && l.trim() !== '' && !GENERIC_LINE.test(l);
+  const hit = lines.findIndex((l, i) => usable(l, i) && ERROR_LINE.test(l));
   return hit >= 0 ? hit : lines.findIndex(usable);
 }
 
@@ -69,7 +85,7 @@ export function fingerprintLog(log: string): string {
   return createHash('sha1').update(normalized).digest('hex').slice(0, 12);
 }
 
-const PATH_RE = /(?:^|[\s("'=])((?:\.\/|\/)?(?:[\w.@-]+\/)*[\w.@-]+\.[A-Za-z][A-Za-z0-9]*)(?=[:(\s"')\],.;]|$)/g;
+const PATH_RE = /(?:^|[\s("'=[\]])((?:\.\/|\/)?(?:[\w.@-]+\/)*[\w.@-]+\.[A-Za-z][A-Za-z0-9]*)(?=[:(\s"')\],.;]|$)/g;
 
 /** Normalised repo-relative file paths named in a log, first-seen order, deduplicated. */
 export function pathsInLog(log: string): string[] {
@@ -86,7 +102,8 @@ export function failingPaths(log: string): string[] {
   const lines = log.split('\n');
   const idx = failureLineIndex(lines);
   if (idx < 0) return [];
-  return pathsInLog(lines.slice(Math.max(0, idx - WINDOW_RADIUS), idx + WINDOW_RADIUS + 1).join('\n'));
+  const from = Math.max(preambleEnd(lines), idx - WINDOW_RADIUS);
+  return pathsInLog(lines.slice(from, idx + WINDOW_RADIUS + 1).join('\n'));
 }
 
 const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === 'string');
