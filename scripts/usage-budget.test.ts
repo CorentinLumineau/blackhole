@@ -52,6 +52,14 @@ describe('usage-budget CLI', () => {
     });
   });
 
+  test('echoes the 5-hour and weekly % it judged, for pace-log --usage', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      expect(run(dir, ['--usage', usageJson(42, 61)]).out).toMatchObject({ five_hour_pct: 42, weekly_pct: 61 });
+      expect(run(dir, ['--usage', usageJson(42)]).out).toMatchObject({ five_hour_pct: 42, weekly_pct: null });
+      expect(run(dir, ['--usage', usageJson(42, 61)], {}).out).toMatchObject({ five_hour_pct: null, weekly_pct: null });
+    });
+  });
+
   test('reads the statusline cache through readRateLimits when --usage is absent', () => {
     withTempDir('usage-budget-cli', (dir) => {
       const cache = path.join(dir, 'rl.json');
@@ -94,6 +102,35 @@ describe('usage-budget CLI', () => {
       const r = run(dir, ['--usage', usageJson(1)], { usage_budget: { enabled: true, max_workers: 0 } });
       expect(r.code).toBe(2);
       expect(r.err).toContain('usage_budget.max_workers');
+    });
+  });
+});
+
+describe('usage-budget CLI weekly pacing', () => {
+  const weekOnly = (used: number, hours: number) => JSON.stringify({ seven_day: { used_percentage: used, resets_at: NOW + hours * HOUR } });
+  const paced = { usage_budget: { enabled: true, weekly: { target_at_reset: 100 }, rates: { orchestrator_weekly_pct_per_hour: 0.1, worker_weekly_pct_per_hour: 0.2 } } };
+
+  test('seven_day only with a target prints GO and the weekly fit', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      const r = run(dir, ['--usage', weekOnly(21, 110)], paced);
+      expect(r.code).toBe(0);
+      // (79/110 - 0.1)/0.2 = 3, within parallel_max 3
+      expect(r.out).toMatchObject({ verdict: 'GO', workers: 3, weekly_fit: 3 });
+      expect(r.err).toContain('weekly fit 3 worker(s) toward 100% at reset');
+    });
+  });
+  test('prints PACE-WAIT with its wake time', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      // 0.05% left over the 15-minute floor fits no worker before the reset
+      const r = run(dir, ['--usage', weekOnly(99.95, 1)], paced);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatchObject({ verdict: 'PACE-WAIT', workers: 0, wake_at: NOW + HOUR });
+      expect(r.err).toContain(`PACE-WAIT until ${NOW + HOUR}`);
+    });
+  });
+  test('a malformed --usage exits 2 even when the budget is disabled', () => {
+    withTempDir('usage-budget-cli', (dir) => {
+      expect(run(dir, ['--usage', '{nope'], {}).code).toBe(2);
     });
   });
 });

@@ -3,8 +3,11 @@ import * as path from 'path';
 import { readScope } from './forge-scope.ts';
 import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
+import { readBudgetPanel } from './lib/campaign-status/budget.ts';
 import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
-import { fetchForgeCounts, fetchMergedPrs } from './lib/campaign-status/forge.ts';
+import { crossRepoBlockersOf, fetchForgeCounts, fetchMergedPrs, readOpenIssues } from './lib/campaign-status/forge.ts';
+import { readPrLanding } from './lib/forge-adapter/pr-landing.ts';
+import { DONE_STATUSES } from './lib/campaign-status/queue.ts';
 import { writeStatusData } from './lib/campaign-status/data.ts';
 import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
@@ -135,6 +138,14 @@ const boardPrs = (queue: { issues?: Record<string, { status?: string; pr?: numbe
   return [...new Set([...named.filter((n) => open.has(n)), ...open])];
 };
 
+/** Queue issues not yet merged or closed: the ones a cross-repo dependency can still hold up. */
+const openQueueIssues = (queue: { issues?: Record<string, { status?: string }> }): Set<number> =>
+  new Set(
+    Object.entries(queue.issues ?? {})
+      .filter(([, i]) => !DONE_STATUSES.includes(i.status ?? ''))
+      .map(([n]) => Number(n)),
+  );
+
 /**
  * Loads the campaign and builds the one `StatusReport` every mode prints. `skipGh` makes no forge
  * call at all; otherwise, through the adapter of the configured forge (GitHub, Gitea or GitLab),
@@ -151,6 +162,8 @@ export async function collectStatusReport(
   report: StatusReport;
   state: ReturnType<typeof loadCampaignState>;
   host: { pace: string | null; drift: string | null };
+  /** Unmet cross-repo dependencies of open queue issues; undefined when the forge was not read. */
+  crossRepoBlockers?: ReturnType<typeof crossRepoBlockersOf>;
 }> {
   const state = loadCampaignState(campaignDir);
   const { config, queue, ledger, checkpoint, checkpointBody, decisions } = state;
@@ -158,11 +171,16 @@ export async function collectStatusReport(
   const resolved = resolveForgeForRepo(path.dirname(path.resolve(campaignDir)), config.forge);
   const forgeType = resolved.ok ? resolved.forge : config.forge && isForgeType(config.forge) ? config.forge : 'github';
   const source = skipGh || !config.repo ? null : (adapter ?? createForgeAdapter({ repo: config.repo, forge: forgeType }));
-  const forge = source
-    ? await fetchForgeCounts(scope, source)
+  // One open-issue read per run, shared by the counts and the cross-repo blockers.
+  const openIssues = source ? await readOpenIssues(source) : null;
+  const forge = source && openIssues
+    ? await fetchForgeCounts(scope, source, openIssues)
     : { openIssues: 0, openPrs: 0, ok: false, error: skipGh ? 'skipped' : 'no repo in config.json' };
   const prSignals = source && forge.ok ? await fetchPrSignals(source, boardPrs(queue, forge.openPrList)) : null;
   const mergedPrs = source && forge.ok ? await fetchMergedPrs(source) : null;
+  const crossRepoBlockers = openIssues
+    ? crossRepoBlockersOf(openIssues, openQueueIssues(queue), (repo, n) => readPrLanding(forgeType, repo, n))
+    : undefined;
   const host = readHostLines(campaignDir);
   const report = buildStatusReport({
     config,
@@ -181,8 +199,9 @@ export async function collectStatusReport(
     mergedPrs,
     pluginVersion: readPluginVersion(),
     denyCounts: collectDenyCounts(campaignDir, queue.campaign_started_at ?? null),
+    budget: readBudgetPanel(config as Record<string, unknown>),
   });
-  return { report, state, host };
+  return { report, state, host, crossRepoBlockers };
 }
 
 async function main() {
@@ -216,7 +235,7 @@ async function main() {
     }
     throw error;
   }
-  const { report, state, host } = collected;
+  const { report, state, host, crossRepoBlockers } = collected;
 
   if (mode === 'json' || mode === 'html' || mode === 'data') {
     // stdout carries the JSON, the page path or the row files, so the loud lines go to stderr.
@@ -245,6 +264,7 @@ async function main() {
     forge: report.forge,
     checkpointBody: state.checkpointBody,
     view: report,
+    crossRepoBlockers,
   });
 
   for (const alert of readStatusAlerts(campaignDir, state, report.generated_at)) console.log(alert.message);

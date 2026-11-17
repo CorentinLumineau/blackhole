@@ -7,6 +7,9 @@ User is **always** the source of truth for direction. Sync is automatic;
 
 Never instruct the model to call a question tool that is absent from the session schema.
 
+**First, `askOrPark()`** (`sleep-mode.md` § The choke point): when `sleep_mode.enabled` is `true`,
+no row below applies — the question is parked with `campaign-record.ts park` and asked on wake-up.
+
 | If the session exposes | Coordinator / orchestrator does |
 |------------------------|--------------------------------|
 | Cursor `AskQuestion` or ACP `cursor/ask_question` | Call it with the Gate Content Contract (R-003) payload |
@@ -110,7 +113,7 @@ Document in queue `notes: "clarify waived — narrow technical"` if proceeding.
 ```json
 {
   "status": "blocked",
-  "notes": "awaiting-user-clarification | awaiting-po-sign-off | awaiting-plan-approval"
+  "notes": "awaiting-user-clarification | awaiting-po-sign-off | awaiting-plan-approval | awaiting-owner-on-return"
 }
 ```
 

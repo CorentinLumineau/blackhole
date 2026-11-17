@@ -4,12 +4,14 @@ import { classifyBlocked, CLASS_PREVIEW, groupBlockedRows, waitReason, type Wait
 import { buildBoard, buildMoves, buildStreams, stageCounts } from './board.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
 import { buildBlockers, buildConfigRows, buildHeadline, buildLinks } from './overview.ts';
+import { NOT_PROBED } from './budget.ts';
 import { reconcileMerged } from './merged.ts';
 import { newestFirst, readScopeEntries } from './record.ts';
 import { computeStatusAlerts, isStateStale, newestStateWrite, stateAgeHours, statusPageEnabled } from './staleness.ts';
 import { computeStatusCounts, groupIssuesByPhase, QUEUE_STATUSES } from './queue.ts';
 import type {
   BlockedClass,
+  BudgetPanel,
   BlockedGroup,
   CheckpointMeta,
   ConfigSummaryInput,
@@ -55,6 +57,8 @@ export type StatusReportInput = {
   pluginVersion?: string | null;
   /** Hook deny/warn counts per rule (`collectDenyCounts`); absent ⇒ none. */
   denyCounts?: DenyCount[];
+  /** The usage-budget panel (`readBudgetPanel`); absent ⇒ not probed. */
+  budget?: BudgetPanel;
 };
 
 // Owner-clearable `awaiting-*` gates from queue-dag.md § Field rules (`notes`).
@@ -63,6 +67,7 @@ const OWNER_GATE_STEPS: Record<string, string> = {
   'awaiting-plan-approval': 'Owner: approve the plan',
   'awaiting-design-approval': 'Owner: approve the design',
   'awaiting-ruling-recheck': 'Owner: re-confirm the product ruling',
+  'awaiting-owner-on-return': 'Owner: answer the decision parked while you were away',
 };
 const ADDRESSES_OWNER = /^\s*owner:|needs-owner/i;
 
@@ -429,5 +434,6 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
     config_rows: buildConfigRows(config, input.pluginVersion ?? null),
     drift: reconciled.drift,
     deny_counts: input.denyCounts ?? [],
+    budget: input.budget ?? NOT_PROBED,
   };
 }

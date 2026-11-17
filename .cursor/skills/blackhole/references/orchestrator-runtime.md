@@ -25,11 +25,32 @@ parallel planners, implementers, reviewers):
 ### Spawn
 
 1. Every spawn round, run `bun run scripts/pace-gate.ts --current <planned batch> --max <parallel_max>`,
-   which reads the cached statusline `rate_limits`, to set this round's target: `STOP-NEW` spawns
-   nothing (let in-flight workers finish, checkpoint, tell the owner), `THROTTLE` targets one,
-   `HOLD` keeps the planned batch, `SCALE-UP` targets one more (only when another ready issue
-   exists, never above `parallel_max`), and `unavailable` or a non-zero exit keeps the planned
-   batch and logs the reason. Thresholds: `resource_policy.pace` (`config-template.md`).
+   which reads the cached statusline `rate_limits`, and
+   `bun run scripts/usage-budget.ts --parallel-max <parallel_max> [--usage '<usage-probe JSON>']`,
+   whose `--usage` is the harness usage probe's output (#1201; without it the same cache is read).
+   This round's target is the **smallest** of the pace target, the usage `workers` and (step 2) the
+   resource `batch_size`.
+   Pace gate: `STOP-NEW` spawns nothing (let in-flight workers finish, checkpoint, tell the owner),
+   `THROTTLE` targets one, `HOLD` keeps the planned batch, `SCALE-UP` targets one more (only when
+   another ready issue exists, never above `parallel_max`), and `unavailable` or a non-zero exit
+   keeps the planned batch and logs the reason. Thresholds: `resource_policy.pace`
+   (`config-template.md`).
+   Usage gate (`usage_budget`, `config-template.md`), every verdict:
+
+   | Verdict | Behaviour |
+   |---------|-----------|
+   | `GO` | Cap the target at `workers` |
+   | `unavailable` or a non-zero exit | No cut (`workers` is `parallel_max`); log the reason |
+   | `NO-NEW-STARTS` | Start no new issue (none leaves `ready`); workers that continue an issue already past handle still spawn at the other gates' target |
+   | `NO-SPAWN` | Spawn nothing this round; in-flight workers finish; the next turn re-runs the gates (no wake, the verdict carries no `wake_at`) |
+   | `STOP-WORKERS`, `PACE-WAIT` | **Drain and wake**: spawn nothing, let in-flight workers finish, then run `phase-stop.md` § Usage stop with the verdict's `wake_at` |
+   | `STOP-CAMPAIGN` | Drain and stop: `phase-stop.md` § Usage stop with `wake_at: null`, and tell the owner the weekly line was crossed |
+
+   Every usage verdict is a pause, the same as `STOP-NEW`.
+   Never on a usage stop:
+   - mark a queue entry `failed` or `blocked`, or write a ledger row for the stop
+   - bump `failed_attempts` or any retry counter
+   - route to `stop --abandon`, or kill or abort a worker
 2. When the round includes test/build-bearing workers (implementers, or any worker that runs
    `build`/`verify`/`test`), run `bun run scripts/resource-gate.ts --requested <target>` and spawn
    at most its `batch_size`; it can only cut the target, never raise it: `go` keeps it, `degrade`
@@ -37,16 +58,19 @@ parallel planners, implementers, reviewers):
    `unavailable` keeps it and logs the reason. A non-zero exit (bad flags or a malformed config)
    is handled as `unavailable`, with its stderr line logged. Thresholds: `resource_policy.gate`.
 3. Record the round: `bun run scripts/pace-log.ts --planned <planned batch> --pace '<pace-gate JSON>'
-   [--resource '<resource-gate JSON>']` appends the pace verdict, resource verdict, planned batch,
-   effective concurrency (the smaller of the two gates) and reasons to `.blackhole/pace-log.jsonl`
-   (newest 200 rounds kept). Run it even when a gate said `STOP-NEW` or `defer`; a non-zero exit is
-   logged and the turn goes on.
+   [--resource '<resource-gate JSON>'] [--usage '<usage-budget JSON>']` appends the pace verdict,
+   resource verdict, usage verdict (with its 5-hour %, weekly %, `workers` and `wake_at`), planned
+   batch, effective concurrency (the smallest of the gates) and reasons to
+   `.blackhole/pace-log.jsonl` (newest 200 rounds kept). Pass the usage-budget stdout unchanged.
+   Run it even when a gate said `STOP-NEW`, `defer` or a usage pause; a non-zero exit is logged and
+   the turn goes on.
    **STOP-NEW is a pause, never a failure**: the round spawns nothing, in-flight workers finish
    and are triaged as usual, `queue.json` and `findings-ledger.json` stay untouched (no issue
    marked `failed` or `blocked`, no ledger row, no retry counter bumped), the checkpoint notes
    "paused by pace gate" with the reason, and the turn ends. The next turn re-runs step 1 and
    resumes normally the first time the verdict is no longer `STOP-NEW`; `unavailable` resumes too.
-   Issues left `ready` stay `ready`. A `defer` from the resource gate is handled the same way.
+   Issues left `ready` stay `ready`. A `defer` from the resource gate and a `NO-SPAWN` from the
+   usage gate are handled the same way; the usage drain-and-wake verdicts add the wake below.
 4. Log `WAVE <N>: issues [...]` before the first spawn.
 5. Record each worker in `campaign-checkpoint.md` `## In-flight workers` with role, issue `#N`, spawn turn id, and (issue #422, gated by `docs_governance.enabled`/`companion_files`) the rulings ledger's `rulings_revision` at spawn time — see `checkpoint-protocol.md` § In-flight workers row format.
 
@@ -221,10 +245,19 @@ after reading checkpoint and forge sync:
    visibility opportunity, never a corruption risk. The next turn's step 1b (when workers spawn)
    or this same step 6 (next turn) will retry against whatever events remain on disk.
 
-7. **Resume after a pace pause**: when the latest `.blackhole/pace-log.jsonl` line has
-   `rate_limit_stop: true`, treat the previous turn as a pause, not a failure: no recovery action,
-   no re-route, no retry counter. Run the spawn-round gates (§ Background worker barrier, Spawn
-   steps 1-3) as usual; the campaign continues from `queue.json` exactly as it was left.
+7. **Resume after a pace or usage pause**: when the latest `.blackhole/pace-log.jsonl` line has
+   `rate_limit_stop: true` (a pace `STOP-NEW`, or a usage `NO-SPAWN`, `STOP-WORKERS`, `PACE-WAIT`
+   or `STOP-CAMPAIGN`), or the checkpoint carries `stopped_by: usage`, treat the previous turn as a
+   pause: run no recovery action and no re-route. A turn that starts
+   before the checkpoint's `wake_at` spawns nothing and ends (re-arming the wake if none is
+   scheduled, `phase-stop.md` § Usage stop); otherwise run the spawn-round gates (§ Background
+   worker barrier, Spawn steps 1-3) as usual, and clear `stopped_by`, `stop_kind` and `wake_at` the
+   first time the round spawns again. The campaign continues from `queue.json` exactly as it was
+   left.
+   Never on a usage stop:
+   - mark a paused issue `failed` or `blocked`
+   - bump `failed_attempts` or any retry counter
+   - kill, abort or `--abandon` a worker
 
 **MUST** complete `recovery-protocol.md` §5 orchestrator checklist before spawning
 `implementer` when any in-flight issue has a dirty worktree or recovery stash. Do not spawn

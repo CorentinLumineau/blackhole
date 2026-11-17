@@ -28,7 +28,7 @@ export const PHASE_PLAYBOOK_FILES = ['phase-handle.md', 'phase-plan.md', 'phase-
 export const REQUIRED_REFERENCES = ['review-core.md', 'worker-schemas.md', 'checkpoint-protocol.md'];
 
 /** Row count of `src/references/blackhole-vcodes.md`'s `| V-...` table (V-GROUND-01). */
-export const VCODE_TABLE_ROW_COUNT = 135;
+export const VCODE_TABLE_ROW_COUNT = 136;
 
 /** Vendored mercure V-code snapshot staleness window in days (V-MPARITY-02, issue #869). */
 export const MERCURE_VCODE_SNAPSHOT_STALE_DAYS = 90;
@@ -139,6 +139,8 @@ export const QUEUE_NOTES = [
   'awaiting-investigation',
   'awaiting-recovery-approval',
   'awaiting-ruling-recheck',
+  'awaiting-owner-on-return',
+  'waiting-on-trunk-fix',
   'clarify waived — narrow technical',
 ];
 

@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import { validateStateWrite } from './lib/state-write-guard.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { runGh } from './lib/forge-adapter/cli.ts';
+import { changePrBase } from './lib/forge-adapter/github-rest.ts';
+import { changeGiteaPrBase, giteaApiSlug } from './lib/forge-adapter/gitea.ts';
 import { readPrLanding, type PrLanding, type PrRowFetcher } from './lib/forge-adapter/pr-landing.ts';
 import { parseFlags, requireFlag, type Flags } from './lib/argv-flags.ts';
 import {
@@ -16,12 +17,13 @@ import {
   restackOnto,
   revParse,
   type ForgeParentState,
+  type LandingAction,
   type ParentLanding,
 } from './lib/stack-merge.ts';
 import { forgeParentState, parentLandedReport, parentMergeMethod } from './lib/stack-lifecycle.ts';
 import { effectiveParent } from './lib/stack-overlap.ts';
 import { readRepoMergeSettings } from './lib/forge-adapter/merge-settings.ts';
-import type { ForgeType, RepoMergeSettings } from './lib/forge-adapter/types.ts';
+import type { ForgeType, PrChangeBaseResult, RepoMergeSettings } from './lib/forge-adapter/types.ts';
 
 export { changedFileCount, childBranchFor };
 
@@ -75,6 +77,15 @@ export const findStackedChildren = (issues: QueueIssues, parentIssue: number): S
 
 export type RepairPlan = { child: StackedChild; commands: string[]; refusal: string | null };
 
+/** The retarget PATCH and its read-back, spelled for the forge's REST channel (`gh api` or `tea api`). */
+const retargetCommands = (forge: ForgeType, repoSlug: string, pr: number, base: string): string[] =>
+  forge === 'gitea'
+    ? [
+        `tea api -X PATCH repos/${giteaApiSlug(repoSlug)}/pulls/${pr} -d ${JSON.stringify(JSON.stringify({ base }))}`,
+        `tea api repos/${giteaApiSlug(repoSlug)}/pulls/${pr} (compare .base.ref)`,
+      ]
+    : [`gh api -X PATCH repos/${repoSlug}/pulls/${pr} -f base=${base}`, `gh api repos/${repoSlug}/pulls/${pr} --jq .base.ref`];
+
 /**
  * The exact command sequence for one child, in execution order, for a parent that landed as new
  * commits. A parent merged with a merge commit stops after the read-back: the child already
@@ -83,7 +94,7 @@ export type RepairPlan = { child: StackedChild; commands: string[]; refusal: str
  * deprecation before it ever applies the base change, so the REST PATCH form is the only one that
  * both works and can be read back.
  */
-export const planRepair = (child: StackedChild, base: string, repoSlug: string, repoRoot: string): RepairPlan => {
+export const planRepair = (child: StackedChild, base: string, repoSlug: string, repoRoot: string, forge: ForgeType = 'github'): RepairPlan => {
   if (child.parentTipSha === null) {
     return {
       child,
@@ -101,8 +112,7 @@ export const planRepair = (child: StackedChild, base: string, repoSlug: string, 
     child,
     commands: [
       `git -C ${repoRoot} fetch origin ${base}`,
-      `gh api -X PATCH repos/${repoSlug}/pulls/${child.pr} -f base=${base}`,
-      `gh api repos/${repoSlug}/pulls/${child.pr} --jq .base.ref`,
+      ...retargetCommands(forge, repoSlug, child.pr, base),
       `git -C ${repoRoot} merge-tree --write-tree --name-only --merge-base=${child.parentTipSha} ${child.branch} origin/${base}`,
       `git -C ${repoRoot} commit-tree <tree> -p ${child.branch} -p origin/${base} -m "Merge ${base} into ${child.branch} (replay from recorded parent tip)"`,
       `git -C ${repoRoot} push origin <merge-commit>:refs/heads/${child.branch}`,
@@ -112,7 +122,7 @@ export const planRepair = (child: StackedChild, base: string, repoSlug: string, 
 };
 
 /** The commands a late restack runs: merge the parent head into the child, then retarget it. */
-export const planRestack = (child: StackedChild, parentBranch: string, repoSlug: string, repoRoot: string): RepairPlan => {
+export const planRestack = (child: StackedChild, parentBranch: string, repoSlug: string, repoRoot: string, forge: ForgeType = 'github'): RepairPlan => {
   if (child.pr === null) {
     return { child, commands: [], refusal: `no PR recorded for #${child.issue} — nothing to retarget` };
   }
@@ -120,8 +130,7 @@ export const planRestack = (child: StackedChild, parentBranch: string, repoSlug:
     child,
     commands: [
       `git -C ${repoRoot} fetch origin ${parentBranch}`,
-      `gh api -X PATCH repos/${repoSlug}/pulls/${child.pr} -f base=${parentBranch}`,
-      `gh api repos/${repoSlug}/pulls/${child.pr} --jq .base.ref`,
+      ...retargetCommands(forge, repoSlug, child.pr, parentBranch),
       `git -C ${repoRoot} merge-tree --write-tree --name-only ${child.branch} origin/${parentBranch}`,
       `git -C ${repoRoot} commit-tree <tree> -p ${child.branch} -p origin/${parentBranch} -m "Merge ${parentBranch} into ${child.branch}"`,
       `git -C ${repoRoot} push origin <merge-commit>:refs/heads/${child.branch}`,
@@ -290,20 +299,57 @@ const readParentState = (flags: Flags, repoSlug: string, parentPr: number | null
   return landing === null ? null : forgeParentState(landing);
 };
 
-const retargetAndVerify = (child: StackedChild, base: string, repoSlug: string): boolean => {
-  const patch = runGh(['api', '-X', 'PATCH', `repos/${repoSlug}/pulls/${child.pr}`, '-f', `base=${base}`]);
-  if (patch.status !== 0) console.error(`#${child.issue}: retarget PATCH reported failure — verifying the observed base anyway`);
-  const readback = runGh(['api', `repos/${repoSlug}/pulls/${child.pr}`, '--jq', '.base.ref']);
-  const retarget = verifyRetarget(readback.stdout, base);
+/** PATCH then read back, through the forge adapter's REST channel. A failed call is a failed retarget, never an exception. */
+const changeBase = (forge: ForgeType, repoSlug: string, pr: number, base: string): PrChangeBaseResult => {
+  try {
+    if (forge === 'github') return changePrBase(repoSlug, pr, base);
+    if (forge === 'gitea') return changeGiteaPrBase(repoSlug, pr, base);
+    return { ok: false, base: null, detail: `no retarget channel for forge "${forge}"` };
+  } catch (error) {
+    return { ok: false, base: null, detail: (error as Error).message };
+  }
+};
+
+export const retargetAndVerify = (child: StackedChild, base: string, repoSlug: string, forge: ForgeType): boolean => {
+  const result = changeBase(forge, repoSlug, child.pr as number, base);
+  if (result.base === null) {
+    console.error(`#${child.issue}: retarget failed — base not read back: ${result.detail ?? 'unknown error'}`);
+    return false;
+  }
+  const retarget = verifyRetarget(result.base, base);
   console.log(`#${child.issue}: retarget — ${retarget.reason}`);
   return retarget.ok;
+};
+
+/**
+ * Gitea does not re-run CI when a PR's base changes, and no re-run endpoint is assumed (owner
+ * ruling: push-only). A recovery that pushed has already re-triggered CI; one that did not tells
+ * the operator to push. GitHub needs no notice.
+ */
+export const ciRetriggerNotice = (
+  forge: ForgeType,
+  child: StackedChild,
+  base: string,
+  action: LandingAction,
+  pushedSha: string | null,
+): string | null => {
+  if (forge !== 'gitea') return null;
+  return pushedSha === null
+    ? `ci-retrigger: #${child.issue} retargeted to ${base} with no push (${action}) — Gitea does not re-run CI on a base change; ` +
+        `push ${child.branch} to re-trigger it (this script calls no re-run endpoint)`
+    : `ci-retrigger: #${child.issue} retargeted to ${base} and pushed ${pushedSha} (${action}) — that push re-triggers CI; nothing else to do`;
+};
+
+const printCiRetrigger = (forge: ForgeType, child: StackedChild, base: string, action: LandingAction, pushedSha: string | null): void => {
+  const notice = ciRetriggerNotice(forge, child, base, action, pushedSha);
+  if (notice !== null) console.log(notice);
 };
 
 const gitFetch = (repoRoot: string, branch: string): boolean => realGit(repoRoot, ['fetch', '--quiet', 'origin', branch]).ok;
 
 const applyOneRepair = (
   plan: RepairPlan,
-  ctx: { base: string; repoSlug: string; repoRoot: string; queue: QueueJson; parentState: ForgeParentState; acceptPatchIdChange: boolean },
+  ctx: { base: string; repoSlug: string; repoRoot: string; queue: QueueJson; parentState: ForgeParentState; acceptPatchIdChange: boolean; forge: ForgeType },
 ): boolean => {
   const { child } = plan;
   const { base, repoSlug, repoRoot, queue } = ctx;
@@ -323,15 +369,17 @@ const applyOneRepair = (
   }
 
   const kind: ParentLanding = classifyParentLanding({ repoRoot, parentTip, target, forge: ctx.parentState });
-  console.log(`#${child.issue}: parent landing is "${kind}" — action ${landingAction(kind)}`);
+  const action = landingAction(kind);
+  console.log(`#${child.issue}: parent landing is "${kind}" — action ${action}`);
   const expectedFiles = changedFileCount(repoRoot, parentTip, child.branch);
 
-  if (!retargetAndVerify(child, base, repoSlug)) return false;
+  if (!retargetAndVerify(child, base, repoSlug, ctx.forge)) return false;
 
-  if (landingAction(kind) === 'retarget-only') {
+  if (action === 'retarget-only') {
     const observed = changedFileCount(repoRoot, target, child.branch, true);
     const counts = verifyChildFileCount(expectedFiles, observed);
     console.log(`#${child.issue}: repair — no commit, no push needed; ${counts.reason}`);
+    printCiRetrigger(ctx.forge, child, base, action, null);
     return counts.ok;
   }
 
@@ -356,7 +404,10 @@ const applyOneRepair = (
     console.error(`#${child.issue}: replay refused (${result.code}): ${result.reason}`);
     return false;
   }
-  if (result.status === 'up-to-date') return true;
+  if (result.status === 'up-to-date') {
+    printCiRetrigger(ctx.forge, child, base, action, null);
+    return true;
+  }
 
   if (!fastForwardLocal(repoRoot, result.sha)) {
     console.error(`#${child.issue}: pushed ${result.sha} but the local fast-forward failed (dirty tree, wrong HEAD or diverged local branch) — local ${child.branch} is stale`);
@@ -364,6 +415,7 @@ const applyOneRepair = (
   const counts = verifyPublishedReplay(repoRoot, target, result.sha, expectedFiles);
   console.log(`#${child.issue}: repair — ${counts.reason}; pushed ${result.sha} as a fast-forward`);
   console.log(`#${child.issue}: review_carry: ${result.reviewCarry}`);
+  printCiRetrigger(ctx.forge, child, base, action, result.sha);
   return counts.ok;
 };
 
@@ -391,7 +443,8 @@ const repair = (flags: Flags): number => {
     return 2;
   }
 
-  const plans = children.map((child) => planRepair(child, base, repoSlug, repoRoot));
+  const forge = forgeOf(flags);
+  const plans = children.map((child) => planRepair(child, base, repoSlug, repoRoot, forge));
   for (const plan of plans) {
     if (plan.refusal !== null) console.log(`#${plan.child.issue}: REFUSED — ${plan.refusal}`);
     else for (const command of plan.commands) console.log(`#${plan.child.issue}: ${command}`);
@@ -418,7 +471,7 @@ const repair = (flags: Flags): number => {
   }
   const acceptPatchIdChange = flags['accept-patch-id-change'] === true;
   for (const plan of plans) {
-    if (!applyOneRepair(plan, { base, repoSlug, repoRoot, queue, parentState, acceptPatchIdChange })) return 1;
+    if (!applyOneRepair(plan, { base, repoSlug, repoRoot, queue, parentState, acceptPatchIdChange, forge })) return 1;
   }
   console.log(`Repaired ${plans.length} stacked child(ren) of #${parentIssue}.`);
   return 0;
@@ -456,7 +509,8 @@ const restack = (flags: Flags): number => {
     branch: childBranchFor(childIssue),
     parentTipSha: entry.parent_tip_sha ?? null,
   };
-  const plan = planRestack(child, parentBranch, repoSlug, repoRoot);
+  const forge = forgeOf(flags);
+  const plan = planRestack(child, parentBranch, repoSlug, repoRoot, forge);
   if (plan.refusal !== null) {
     console.error(`#${childIssue}: REFUSED — ${plan.refusal}`);
     return 1;
@@ -476,7 +530,7 @@ const restack = (flags: Flags): number => {
     console.error(`#${childIssue}: cannot resolve origin/${parentBranch}`);
     return 1;
   }
-  if (!retargetAndVerify(child, parentBranch, repoSlug)) return 1;
+  if (!retargetAndVerify(child, parentBranch, repoSlug, forge)) return 1;
 
   const forcePushed = child.parentTipSha !== null && !isAncestor(repoRoot, child.parentTipSha, parentHead);
   const push = { remote: 'origin', queue };
@@ -498,8 +552,10 @@ const restack = (flags: Flags): number => {
   if (result.status === 'merged') {
     fastForwardLocal(repoRoot, result.sha);
     console.log(`#${childIssue}: restacked onto ${parentBranch} with ${result.sha} as a fast-forward push`);
+    printCiRetrigger(forge, child, parentBranch, 'restack', result.sha);
   } else {
     console.log(`#${childIssue}: already contains ${parentBranch}`);
+    printCiRetrigger(forge, child, parentBranch, 'restack', null);
   }
 
   recordParentTip(queue, childIssue, parentHead, parentIssue);
@@ -559,7 +615,7 @@ const USAGE = `Usage:
       --repo-slug <owner/repo> --base <branch> --parent-issue <M> \\
       [--child-issue <N> --apply] [--parent-state merged|closed-unmerged] [--forge <github|gitea>] [--accept-patch-id-change]
   bun run scripts/stack-repair.ts restack --queue <path> --repo-root <abs> \\
-      --repo-slug <owner/repo> --child-issue <N> (--parent-issue <M> | --parent-branch <b>) [--parent-pr <P>] [--apply]
+      --repo-slug <owner/repo> --child-issue <N> (--parent-issue <M> | --parent-branch <b>) [--parent-pr <P>] [--forge <github|gitea>] [--apply]
   bun run scripts/stack-repair.ts parent-landed --repo-slug <owner/repo> [--forge <github|gitea>] (--parent-pr <P> | --queue <path> --child-issue <N>) [--parent-state open|merged|closed-unmerged]
       (exit 0 merged, 1 open, 4 closed unmerged, 3 unreadable)
   bun run scripts/stack-repair.ts merge-method --queue <path> --repo-slug <owner/repo> [--forge <github|gitea>] --issue <N>   (exit 3: hold)`;

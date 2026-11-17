@@ -36,6 +36,19 @@ const permissionDecision = (stdout: string): string | undefined =>
 const permissionReason = (stdout: string): string | undefined =>
   JSON.parse(stdout).hookSpecificOutput?.permissionDecisionReason;
 
+/** Minimum wall time of `runs` calls after one warm-up call: the minimum damps scheduler noise, so a
+ * timing budget measures the code, not a busy CI runner. */
+const minMs = (run: () => unknown, runs = 3): number => {
+  run();
+  let best = Infinity;
+  for (let i = 0; i < runs; i += 1) {
+    const start = performance.now();
+    run();
+    best = Math.min(best, performance.now() - start);
+  }
+  return best;
+};
+
 describe('validate-bash-command.js', () => {
   test('block tier: `rm -rf /` is denied with exit 2, a stderr reason, and a durable block event', async () => {
     await withTempGitRepo('blackhole-hook-bash-', async (repo) => {
@@ -799,6 +812,8 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
       expect(permissionDecision(result.stdout)).toBe('deny');
       expect(permissionReason(result.stdout)).toMatch(/verify/i);
       expect(permissionReason(result.stdout)).toMatch(/refs\/pull/i);
+      // says the check could not run, not that the worktree was found unsafe
+      expect(permissionReason(result.stdout)).toMatch(/not confirmed unsafe/i);
 
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
@@ -825,6 +840,7 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
         expect(permissionReason(result.stdout)).toMatch(/remote/i);
+        expect(permissionReason(result.stdout)).toMatch(/Remedy: push/);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -855,6 +871,8 @@ describe('validate-bash-command.js — worktree-removal guard (#532)', () => {
 
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toMatch(/--force also bypasses/);
+        expect(permissionReason(result.stdout)).toContain(`Remedy: push first (git -C ${worktree} push origin <branch>:<branch>)`);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -1439,6 +1457,7 @@ describe('validate-bash-command.js — worktree-removal guard global-option and 
 
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(permissionReason(result.stdout)).toContain(`Remedy: push first (git -C ${worktree} push origin`);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -1920,6 +1939,8 @@ describe('validate-bash-command.js — rm-shaped worktree removal (#803)', () =>
         expect(result.exitCode).toBe(2);
         expect(permissionDecision(result.stdout)).toBe('deny');
         expect(permissionReason(result.stdout)).toMatch(/remote/i);
+        expect(permissionReason(result.stdout)).toMatch(/a recursive rm performs none of the checks/);
+        expect(permissionReason(result.stdout)).toContain(`Remedy: push first (git -C ${worktree} push origin`);
 
         const events = readHookEvents(mainRepo);
         expect(events).toHaveLength(1);
@@ -3014,6 +3035,9 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       expect(result.exitCode).toBe(2);
       expect(permissionDecision(result.stdout)).toBe('deny');
       expect(permissionReason(result.stdout)).toMatch(/assigned worktree/i);
+      // names the form that would pass: the same file name under the assigned root
+      expect(permissionReason(result.stdout)).toContain(`Remedy: write inside ${worktree}`);
+      expect(permissionReason(result.stdout)).toContain(path.join(worktree, 'foo.txt'));
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
@@ -3144,6 +3168,21 @@ describe('validate-bash-command.js — bash write-target worktree containment (#
       expect(result.stdout.trim()).toBe('');
       const events = readHookEvents(mainRepo);
       expect(events).toHaveLength(1);
+      expect(events[0].reason).toContain('not confirmed unsafe');
+      // the recorded event truncates the reason, so read the full text from the guard itself
+      const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+      const previous = process.env.BLACKHOLE_ASSIGNED_WORKTREE;
+      process.env.BLACKHOLE_ASSIGNED_WORKTREE = worktree;
+      try {
+        const verdict = evaluateBashWriteTargets(`python3 -c "open('/tmp/x','w').write('y')"`, worktree);
+        expect(verdict.tier).toBe('warn');
+        expect(verdict.reason).toContain(
+          'Remedy: use a literal absolute path under the assigned worktree, or the Write/Edit tools.',
+        );
+      } finally {
+        if (previous === undefined) delete process.env.BLACKHOLE_ASSIGNED_WORKTREE;
+        else process.env.BLACKHOLE_ASSIGNED_WORKTREE = previous;
+      }
       expect(events[0]).toMatchObject({
         tier: 'warn',
         pattern_id: 'bash-write-target-unresolvable',
@@ -4468,6 +4507,809 @@ describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
   }
 });
 
+// `redact` runs inside `recordEvent`, which the deny path calls before emitting its verdict; a
+// superlinear redaction pass over attacker-sized input would time the hook out and the native
+// wrapper fails open. Timing is the minimum of 3 runs after a warm-up to damp scheduler noise.
+describe('hook-event-log.js — redact is bounded on adversarial input (#1195)', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+
+  test('redact of a 220 KB repeated-keyword input completes in under 50 ms', () => {
+    const { redact } = hookEventLog();
+    const input = 'a_password_'.repeat(20000);
+    expect(minMs(() => redact(input))).toBeLessThan(50);
+  });
+
+  test('SECRET_KV alone over a 2,400-char repeated-keyword input completes in under 5 ms', () => {
+    const { SECRET_KV } = hookEventLog();
+    const input = 'a_password_'.repeat(220).slice(0, 2400);
+    expect(minMs(() => input.replace(SECRET_KV, '***'))).toBeLessThan(5);
+  });
+
+  test('a secret inside the window is still masked and the output is capped at 300', () => {
+    const { redact } = hookEventLog();
+    const out = redact(`db_password=hunter2hunter2 ${'x'.repeat(5000)}`);
+    expect(out).toContain('db_password=***');
+    expect(out).not.toContain('hunter2');
+    expect(out.length).toBeLessThanOrEqual(300);
+  });
+
+  test('a ~250 KB command containing a blocked operation is still denied with exit 2 and recorded', async () => {
+    await withTempGitRepo('blackhole-hook-1195-', async (repo) => {
+      const command = `rm -rf / ; ${'a_password_'.repeat(22000)}`;
+      expect(command.length).toBeGreaterThan(240_000);
+
+      const start = performance.now();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), repo);
+      const elapsedMs = performance.now() - start;
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(readHookEvents(repo)).toHaveLength(1);
+      expect(readHookEvents(repo)[0]).toMatchObject({ decision: 'deny', pattern_id: 'command-too-large-to-verify' });
+      expect(elapsedMs).toBeLessThan(2500);
+    });
+  });
+});
+
+// Drift guard for the "name the passing alternative" rule: every deny decision the PreToolUse
+// guards can emit carries a `Remedy:` clause, unless its id is listed below as having no safe
+// alternative to name. Ids and reasons are read from the guard sources and the pattern JSON, so a
+// deny added without a remedy (or an allow-list entry whose decision is gone) fails here.
+describe('PreToolUse deny decisions — every deny names a remedy or is explicitly allow-listed', () => {
+  const hooksRoot = path.resolve(import.meta.dir, '..', 'templates', 'hooks', 'pretooluse');
+  const readSource = (rel: string) => fs.readFileSync(path.join(hooksRoot, rel), 'utf8');
+  const readPatterns = (rel: string) => JSON.parse(readSource(rel));
+
+  /** Deny ids with no safe alternative to name, each with the reason it stays remedy-free. */
+  const NO_ALTERNATIVE: Record<string, string> = {
+    'rm-rf-root': 'no legitimate use inside a worktree; deleting the root filesystem has no safe variant',
+    'rm-no-preserve-root': 'no legitimate use inside a worktree; it only exists to defeat the root-delete guard',
+    mkfs: 'no legitimate use inside a worktree; formatting a filesystem is never part of a task',
+    'fork-bomb': 'no legitimate use; it has no non-destructive form',
+    'hook-input-parse-failure': 'fail-closed on a malformed hook payload; nothing for the caller to change',
+    'uncaught-validator-error': 'fail-closed on a validator crash; nothing for the caller to change',
+    'worktree-root-resolution-failure': 'fail-closed on broken git; nothing for the caller to change',
+  };
+  /** Ids emitted next to a pattern_id that are not denials. */
+  const NON_DENY = new Set(['sibling-plugin-defer', 'main-clone-target-unresolvable']);
+
+  const decisionWindows = (rel: string, key: RegExp) => {
+    const src = readSource(rel);
+    const hits = [...src.matchAll(key)];
+    return hits.map((m, i) => {
+      const end = Math.min(hits[i + 1]?.index ?? src.length, m.index! + 1800);
+      const expr = m[1].trim();
+      return {
+        ids: [...expr.matchAll(/'([a-z0-9-]+)'/g)].map((x) => x[1]),
+        label: expr,
+        window: src.slice(m.index!, end),
+      };
+    });
+  };
+
+  const sourceDecisions = [
+    ...decisionWindows('validate-bash-command.js', /patternId:\s*([^\n]*)/g),
+    ...decisionWindows('validate-file-changes.js', /(?:pattern_id|patternId):\s*([^\n]*)/g),
+    ...decisionWindows('utils/bash-write-target-guard.js', /pattern_id:\s*([^\n]*)/g),
+    ...decisionWindows('utils/worktree-removal-guard.js', /pattern_id:\s*([^\n]*)/g),
+  ].filter((d) => d.ids.length > 0 || d.label.startsWith('shape.'));
+
+  test('every literal or shape-driven deny in the guard sources carries a Remedy or is allow-listed', () => {
+    expect(sourceDecisions.length).toBeGreaterThan(10);
+    const missing = sourceDecisions
+      .filter((d) => !d.ids.every((id) => NON_DENY.has(id) || id in NO_ALTERNATIVE))
+      .filter((d) => !/Remedy:|remedyInside\(|SPLIT_REMEDY/.test(d.window))
+      .map((d) => d.label);
+    expect(missing).toEqual([]);
+    expect(readSource('utils/worktree-removal-guard.js')).toMatch(/const SPLIT_REMEDY =\s*\n?\s*'Remedy: /);
+  });
+
+  test('every main-clone block reason carries a Remedy', () => {
+    const src = readSource('utils/git-main-clone-guard.js');
+    expect(/const REMEDY = 'Remedy:/.test(src)).toBe(true);
+    const table = src.slice(src.indexOf('const REASON_BY_PATTERN'));
+    const blockIds = [...src.matchAll(/tier: 'block', patternId: '([a-z-]+)'/g)].map((m) => m[1]);
+    expect(blockIds.length).toBeGreaterThanOrEqual(6);
+    for (const id of blockIds) {
+      const start = table.indexOf(`'${id}':`);
+      expect(start).toBeGreaterThan(-1);
+      const entry = table.slice(start, table.indexOf("\n  '", start + 1));
+      expect(entry.includes('${REMEDY}') || /Remedy:/.test(entry)).toBe(true);
+    }
+  });
+
+  test('pattern JSON: traversal and bash block reasons carry a Remedy unless allow-listed', () => {
+    const file = readPatterns('patterns/file-patterns.json');
+    for (const entry of file.pathTraversal) expect(entry.reason).toMatch(/Remedy: use an absolute path inside/);
+    const bash = readPatterns('patterns/bash-patterns.json');
+    const jsonDeny = bash.blockPatterns;
+    for (const e of jsonDeny) expect(/Remedy:/.test(e.reason) || e.id in NO_ALTERNATIVE).toBe(true);
+    const liveIds = new Set([...jsonDeny.map((e: { id: string }) => e.id), ...sourceDecisions.flatMap((d) => d.ids)]);
+    for (const id of Object.keys(NO_ALTERNATIVE)) expect(liveIds.has(id)).toBe(true);
+  });
+});
+
+// Issue #1197: the dynamic guards' clause scan was quadratic in the clause count, so a long
+// separator run pushed the hook past the native wrapper's 5 s timeout, which fails OPEN.
+// Linear scanning plus an oversize fail-closed cap keep every verdict inside the budget.
+describe('validate-bash-command.js — clause-scan cost bound (#1197)', () => {
+  const requireGuard = () =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'worktree-removal-guard.js'));
+  const SIZE_CAP = 32 * 1024;
+
+  for (const [label, unit] of [['`;`', ';'], ['`| `', '| ']] as const) {
+    test(`#1197: 120 KB of ${label} followed by \`git checkout -- f\` is still denied in under 2.5 s`, async () => {
+      await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo) => {
+        const command = `${unit.repeat(Math.floor((120 * 1024) / unit.length))} git checkout -- f`;
+        const start = performance.now();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+        const elapsed = performance.now() - start;
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(elapsed).toBeLessThan(2500);
+      });
+    });
+  }
+
+  for (const [label, unit] of [['`;`', ';'], ['`| `', '| ']] as const) {
+    test(`#1197: 30 KB of ${label} (under the cap) is verified, not refused, and \`git checkout -- f\` is denied for its own reason`, async () => {
+      await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo) => {
+        const command = `${unit.repeat(Math.floor((30 * 1024) / unit.length))} git checkout -- f`;
+        const start = performance.now();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+        const elapsed = performance.now() - start;
+
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'main-clone-checkout-path' });
+        expect(elapsed).toBeLessThan(2500);
+      });
+    });
+  }
+
+  test('#1197: 30 KB of nested `(` openers is refused fail-closed within the time budget', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo) => {
+      const command = `${'('.repeat(30 * 1024)}git checkout -- f`;
+      const start = performance.now();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+      const elapsed = performance.now() - start;
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'command-too-complex-to-verify' });
+      expect(permissionReason(result.stdout)).toMatch(/Remedy: .*split/i);
+      expect(elapsed).toBeLessThan(2500);
+    });
+  });
+
+  test('#1197: findRemovalInvocations on 240 KB of `;` finishes in under 100 ms', () => {
+    const { findRemovalInvocations } = requireGuard();
+    const command = `${';'.repeat(240 * 1024)} git checkout -- f`;
+    expect(minMs(() => findRemovalInvocations(command, os.tmpdir()))).toBeLessThan(100);
+  });
+
+  test('#1197: findRemovalInvocations still reports the invocation after a long separator run', () => {
+    const { findRemovalInvocations } = requireGuard();
+    const found = findRemovalInvocations(`${';'.repeat(5000)} git checkout -- f`, os.tmpdir());
+    expect(found.map((invocation: { kind: string }) => invocation.kind)).toEqual(['git-mutation']);
+  });
+
+  test('#1197: an oversize command is denied fail-closed with its own pattern_id and a Remedy', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const command = `echo ${'a'.repeat(SIZE_CAP + 1024)}`;
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/Remedy: .*split/i);
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block', pattern_id: 'command-too-large-to-verify' });
+    });
+  });
+
+  test('#1197: a large allowed command under the cap (a heredoc writing inside the worktree) is still allowed', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const body = 'x'.repeat(100).concat('\n').repeat(Math.floor((SIZE_CAP - 4096) / 101));
+      const command = `cat > ${path.join(worktree, 'big.txt')} <<'EOF'\n${body}EOF\n`;
+      expect(command.length).toBeLessThan(SIZE_CAP);
+      expect(command.length).toBeGreaterThan(SIZE_CAP - 8192);
+      const payload = { ...bashPayload(command), cwd: worktree };
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+  for (const targets of [2000, 8000]) {
+    test(`#1197: \`rm -r\` repeating one target ${targets} times reaches a verdict in under 2.5 s`, async () => {
+      await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+        const command = `rm -r${' a'.repeat(targets)}`;
+        const start = performance.now();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
+        const elapsed = performance.now() - start;
+
+        expect(result.exitCode).toBe(0);
+        expect(elapsed).toBeLessThan(2500);
+      });
+    });
+  }
+
+  test('#1197: `rm -r` naming more than 64 distinct targets is refused fail-closed with a Remedy', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const names = Array.from({ length: 200 }, (_, n) => `d${n}`).join(' ');
+      const start = performance.now();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`rm -r ${names}`), worktree);
+      const elapsed = performance.now() - start;
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'too-many-removal-targets' });
+      expect(permissionReason(result.stdout)).toMatch(/Remedy: .*batches/i);
+      expect(elapsed).toBeLessThan(2500);
+    });
+  });
+
+  test('#1197: a short `rm -rf a b c` is not refused', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('rm -rf a b c'), worktree);
+      expect(result.exitCode).toBe(0);
+    });
+  });
+  test('#1197: 2,000 `git clean -fd` clauses then a main-clone one are denied in under 2.5 s (identity probes are memoized)', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const command = `${'git clean -fd; '.repeat(2000)}git -C ${mainRepo} clean -fd`;
+      const start = performance.now();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
+      const elapsed = performance.now() - start;
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'main-clone-clean' });
+      expect(elapsed).toBeLessThan(2500);
+    });
+  });
+
+  test('#1197: more than 64 distinct git target directories are refused fail-closed with a Remedy', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const command = Array.from({ length: 100 }, (_, n) => `git -C /nonexistent-1197/d${n} clean -fd`).join('; ');
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'too-many-git-targets' });
+      expect(permissionReason(result.stdout)).toMatch(/Remedy: .*split/i);
+    });
+  });
+
+  const cdChains: [string, string][] = [
+    ['a 30-link `cd d0 || cd d1 …` chain', Array.from({ length: 30 }, (_, n) => `cd d${n}`).join(' || ')],
+    ['a 30-link `nohup cd` chain', Array.from({ length: 30 }, (_, n) => `nohup cd d${n}`).join('; ')],
+  ];
+  for (const [label, chain] of cdChains) {
+    test(`#1197: ${label} followed by \`rm -rf x\` reaches a verdict in under 2.5 s`, async () => {
+      await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+        const start = performance.now();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(`${chain}; rm -rf x`), worktree);
+        const elapsed = performance.now() - start;
+
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'command-too-complex-to-verify' });
+        expect(elapsed).toBeLessThan(2500);
+      });
+    });
+  }
+
+  test('#1197: a short `cd a || cd b; rm -rf x` is not refused', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload('cd a || cd b; rm -rf x'), worktree);
+      expect(result.exitCode).toBe(0);
+    });
+  });
+});
+
+describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes (#1179)', () => {
+  const guard = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
+  type Verdict = { tier: string; pattern_id: string; reason: string } | null;
+
+  // `@OUT@` stands for a path outside the assigned worktree (the main clone).
+  const evaluate = async (command: string): Promise<Verdict> => {
+    let result: Verdict = null;
+    await withLinkedWorktree('blackhole-hook-1179-', async (mainRepo, worktree) => {
+      result = guard.evaluateBashWriteTargets(command.replaceAll('@OUT@', mainRepo), worktree);
+    });
+    return result;
+  };
+
+  const FALSE_POSITIVES = [
+    "sed -i 's/<A>/#1174/g' foo.txt",
+    "sed 's/<A>/x/g;s/b/c/' foo.txt",
+    "grep 'a>b' foo.txt | wc -l",
+    'grep "a>b" foo.txt',
+    "grep -E 'a>b|c' foo.txt",
+  ];
+  // known false positive: perl is not an inert filter, so `perl -ne 'print if /a>b/' f` stays WARN.
+
+  for (const command of FALSE_POSITIVES) {
+    test(`not a redirect: ${command}`, async () => {
+      expect(await evaluate(command)).toBeNull();
+    });
+  }
+
+  test('unquoted `sed -i s/<A>/#1174/g f` is a true redirect: blocked, with the quote-it hint', async () => {
+    const result = await evaluate('sed -i s/<A>/#1174/g foo.txt');
+    expect(result).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    expect(result!.reason).toContain('This looks like a sed/regex expression; quote it.');
+  });
+
+  // Commands that run a quoted argument as shell or write from it; `t` is the quoted payload.
+  const QUOTED_EXECUTOR_ROWS = (t: string) => [
+    `su -lc '${t}' root`,
+    `sudo -s '${t}'`,
+    `sudo -i '${t}'`,
+    `script -qc '${t}' /dev/null`,
+    `tmux new-session '${t}'`,
+    `tmux new -d '${t}'`,
+    `tmux send-keys '${t}' Enter`,
+    `screen -dm '${t}'`,
+    `sg wheel '${t}'`,
+    `sed '1e ${t}' f`,
+    `sed 's/.*/${t}/e' f`,
+    `man -P '${t}' ls`,
+    `tar --to-command='${t}'`,
+    `tar --checkpoint-action=exec='${t}'`,
+    `mysql -e '\\! ${t}'`,
+    `sqlite3 :memory: '.shell ${t}'`,
+    `vi '+!${t}'`,
+    `ssh -o ProxyCommand='${t}' h`,
+    `git config alias.x '!${t}'`,
+    `systemd-run --user '${t}'`,
+    `xterm -e '${t}'`,
+  ];
+
+  // Allowlist-bypass shapes: a command word that is not the bare grep/sed filter.
+  const ALLOWLIST_BYPASS_ROWS = (t: string) => [
+    `git grep -O'${t}' x`,
+    `git grep --open-files-in-pager='${t}' x`,
+    `git grep --open='${t}' x`,
+    `GIT_EXTERNAL_DIFF='${t}' git diff`,
+    `GIT_EXTERNAL_DIFF='${t}' git log -p`,
+    `GIT_PAGER='${t}' git log`,
+    `PAGER='${t}' git log`,
+    `PATH=. grep '${t}'`,
+    `PATH=/tmp grep '${t}'`,
+    `./grep '${t}'`,
+    `/tmp/grep '${t}'`,
+    `/tmp/git log '${t}'`,
+    `./sort '${t}'`,
+    `grep(){ tmux new "$1"; }; grep '${t}'`,
+    `function grep { sudo -s "$1"; }; grep '${t}'`,
+    `git(){ sudo -s "$1"; }; git log '${t}'`,
+    `function git { tmux new "$1"; }; git log '${t}'`,
+    `ag --pag='${t}' x`,
+    `ack --pa='${t}' x`,
+  ];
+
+  // Every row must block (the base tier before #1179). `O` is replaced by the main clone path.
+  const MUST_BLOCK = [
+    'echo hi > @OUT@/x',
+    'cmd >@OUT@/x',
+    'cat a >> @OUT@/b',
+    'true; echo hi > @OUT@/x',
+    'true && echo hi > @OUT@/x',
+    'echo hi | cat > @OUT@/x',
+    'cmd 2> @OUT@/x',
+    'cmd &> @OUT@/x',
+    'cmd >| @OUT@/x',
+    'echo hi > "@OUT@/x"',
+    "echo hi > '@OUT@/x'",
+    'sed s/a/b/>@OUT@/x',
+    "sed 's/a>b/c/' f > @OUT@/x",
+    'sed s/x>@OUT@/x f',
+    'sed s/a>>@OUT@/x/g f',
+    'sed y/a>@OUT@/x/ f',
+    'sed s/a/b>@OUT@/x',
+    'sed -i s/a>@OUT@/x/ y',
+    'touch sed s/a>@OUT@/x/',
+    'xargs sed s/a>@OUT@/x/',
+    'env sed s/a>@OUT@/x/ f',
+    '/usr/bin/sed s/a>@OUT@/x/ f',
+    "cat \\' > @OUT@/x ; cat \\'",
+    "cat x \\' > @OUT@/x \\'",
+    'cat \\" > @OUT@/x ; cat \\"',
+    "cat $'\\'' > @OUT@/x ; cat ''",
+    "cat $'\\'' > @OUT@/x ; cat 'z'",
+    "cat x \\\\\\' > @OUT@/x \\\\\\'",
+    'x="$(cat ")" > @OUT@/x ; cat ")")"',
+    'cat "$(cat ")" > @OUT@/x ; cat ")")"',
+    ...QUOTED_EXECUTOR_ROWS('echo a > @OUT@/x ; true'),
+    ...QUOTED_EXECUTOR_ROWS('echo a >@OUT@/x ; true'),
+    ...ALLOWLIST_BYPASS_ROWS('echo a > @OUT@/x ; true'),
+    ...ALLOWLIST_BYPASS_ROWS('echo a >@OUT@/x ; true'),
+    "cat x >| '@OUT@/x'",
+    "cat x >|'@OUT@/x'",
+    'cat x >|"@OUT@/x"',
+    "cat x 2>| '@OUT@/x'",
+  ];
+
+  for (const command of MUST_BLOCK) {
+    test(`still blocks: ${command}`, async () => {
+      expect(await evaluate(command)).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    });
+  }
+
+  // Quoted text executed as shell: the base tier (warn) must be kept exactly.
+  const BASE_WARN = [
+    "trap 'echo a > @OUT@/x' EXIT",
+    "alias ll='cat > @OUT@/x'",
+    "watch 'echo a > @OUT@/x'",
+    "x='cat > @OUT@/x'; eval \"$x\"",
+    "cat <<< 'echo a > @OUT@/x' | sh",
+    "export BASH_ENV='x > @OUT@/x'",
+    "perl -e 'system(\"echo a > @OUT@/x\")'",
+    'sed s{a>{@OUT@/x{ f',
+    "bash -c 'echo hi > @OUT@/x'",
+    'eval "echo hi > @OUT@/x"',
+  ];
+
+  for (const command of BASE_WARN) {
+    test(`keeps the base warn tier: ${command}`, async () => {
+      expect(await evaluate(command)).toMatchObject({ tier: 'warn' });
+    });
+  }
+
+  test('`$(...)` in double quotes keeps the base warn tier and pattern', async () => {
+    expect(await evaluate('echo "$(echo hi > @OUT@/x)"')).toMatchObject({
+      tier: 'warn',
+      pattern_id: 'bash-write-target-unresolvable',
+    });
+  });
+
+  test('sed -n substitution and rg are masked; removed filters keep base behaviour', async () => {
+    for (const command of ["sed -n 's/a>b/c/p' f", "rg 'a>b' f"]) {
+      expect(await evaluate(command)).toBeNull();
+    }
+    for (const command of ["sort 'a>b' -o @OUT@/x", "git log --format='%h>%s' | wc -l"]) {
+      expect(await evaluate(command)).toMatchObject({ tier: 'warn' });
+    }
+  });
+
+  test('sed with an `e` flag keeps its quoted text visible', async () => {
+    expect(await evaluate("sed 's/a>b/c/e' f")).not.toBeNull();
+  });
+
+  test('a block on an ordinary path carries no regex hint', async () => {
+    const result = await evaluate('echo hi > @OUT@/x');
+    expect(result!.reason).not.toContain('sed/regex expression');
+  });
+});
+
+describe('hook-event-log.js — redact length caps', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  const longReason = `${filler} Remedy: run the command from inside the assigned worktree.`;
+
+  test('reason cap keeps a Remedy clause that sits past the 300-char detail cap', () => {
+    const { redact, redactReason } = hookEventLog();
+    expect(redact(longReason)).not.toContain('Remedy:');
+    expect(redactReason(longReason)).toBe(longReason);
+  });
+
+  test('redactReason caps at exactly 2000 chars', () => {
+    const { redactReason } = hookEventLog();
+    expect(redactReason('x'.repeat(3000)).length).toBe(2000);
+  });
+
+  test('redactReason masks a credential placed after the detail cap and keeps the Remedy clause', () => {
+    const { redactReason } = hookEventLog();
+    const out = redactReason(`${filler} leaked GITHUB_TOKEN=abcdef123456 here. Remedy: rotate it.`);
+    expect(out).toContain('GITHUB_TOKEN=***');
+    expect(out).not.toContain('abcdef123456');
+    expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+  });
+
+  test('through the hook: a recorded reason over 300 chars keeps its Remedy clause while detail stays <= 300', async () => {
+    await withLinkedWorktree('blackhole-hook-1181-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git checkout throwaway -- ${'a'.repeat(500)}`), mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      const reason = events[0].reason as string;
+      expect(reason.length).toBeGreaterThan(300);
+      expect(reason).toContain('Remedy:');
+      expect(reason.trimEnd().endsWith('.')).toBe(true);
+      expect((events[0].detail as string).length).toBeLessThanOrEqual(300);
+    });
+  });
+});
+
+describe('hook-event-log.js — keyword-less credential masking', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  // Fake values built by concatenation so no token-shaped literal sits in source for secret scanners.
+  const ghp = 'ghp' + '_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4';
+  const ghs = 'ghs' + '_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8N7m6';
+  const pat = 'github' + '_pat_' + '11ABCDEFG0abcdefghij_klmnopqrstuvwxyz0123';
+  const aws = 'AKIA' + 'IOSFODNN7EXAMPLE';
+  const awsTemp = 'ASIA' + 'IOSFODNN7EXAMPLE';
+  const filler = 'x'.repeat(450);
+
+  const FORMS: Array<{ label: string; input: string; secret: string; masked: string }> = [
+    { label: 'ghp_ token', input: `curl -H x ${ghp} end`, secret: ghp, masked: 'ghp_***' },
+    { label: 'ghs_ token', input: `use ${ghs} now`, secret: ghs, masked: 'ghs_***' },
+    { label: 'github_pat_ token', input: `export ${pat}`, secret: pat, masked: 'github_pat_***' },
+    { label: 'AWS AKIA key', input: `id ${aws} used`, secret: aws, masked: 'AKIA***' },
+    { label: 'AWS ASIA key', input: `id ${awsTemp} used`, secret: awsTemp, masked: 'ASIA***' },
+    {
+      label: 'URL userinfo',
+      input: 'git clone https://deploy:hunter2pw@example.com/org/repo.git',
+      secret: 'hunter2pw',
+      masked: 'https://deploy:***@example.com/org/repo.git',
+    },
+    { label: '--password with a short value', input: 'mysql --password ab -h db', secret: 'password ab', masked: '--password ***' },
+    { label: '--password= with a short value', input: 'mysql --password=ab -h db', secret: '=ab', masked: '--password=***' },
+    { label: '--password with a long value', input: 'mysql --password correcthorse -h db', secret: 'correcthorse', masked: '--password ***' },
+  ];
+
+  for (const form of FORMS) {
+    test(`redact masks ${form.label}`, () => {
+      const out = hookEventLog().redact(form.input);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+    });
+
+    test(`redactReason masks ${form.label} placed after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${form.input} Remedy: rotate it.`);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+      expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+    });
+  }
+
+  test('through the hook: a token in a blocked command is masked in the recorded detail and reason', async () => {
+    await withLinkedWorktree('blackhole-hook-1188-', async (mainRepo) => {
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(`git checkout throwaway -- ${ghp}`), mainRepo);
+
+      expect(result.exitCode).toBe(2);
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      const recorded = JSON.stringify(events[0]);
+      expect(recorded).not.toContain(ghp);
+      expect(recorded).toContain('ghp_***');
+    });
+  });
+
+  const ADVERSARIAL: Array<[string, string]> = [
+    ['ghp_ run', 'ghp_'.repeat(500)],
+    ['github_pat_ run', 'github_pat_'.repeat(180)],
+    ['AKIA run', 'AKIA'.repeat(500)],
+    ['scheme-like run', 'a'.repeat(2000)],
+    ['scheme with endless userinfo', `https://${'u'.repeat(1990)}`],
+    ['userinfo colon run', `a://${':'.repeat(1990)}`],
+    ['--password then whitespace', `--password${' '.repeat(1980)}`],
+    ['repeated --password', '--password '.repeat(180)],
+  ];
+
+  for (const [label, input] of ADVERSARIAL) {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+      const { redactReason } = hookEventLog();
+      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+    });
+  }
+
+  test('unrelated text is left unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    const unchanged = [
+      'git -C /home/dev/work/blackhole/src status',
+      'commit 7a1f23b67d3342712cdc588e874e2b99843f3514 is fine',
+      'the ghp prefix without an underscore stays, as does ghpAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      'fetch https://example.com/path?q=1 and ssh://git@example.com/repo.git',
+      'AKIA is short, and AKIAshort stays',
+    ];
+    for (const text of unchanged) {
+      expect(redact(text)).toBe(text);
+      expect(redactReason(text)).toBe(text);
+    }
+  });
+});
+
+describe('hook-event-log.js — space-separated secret flags', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  const value = 'abcdefgh1234';
+
+  const MASKED: Array<[string, string, string]> = [
+    ['--token', `run --token ${value} now`, '--token ***'],
+    ['--api-key', `run --api-key ${value} now`, '--api-key ***'],
+    ['--secret', `run --secret ${value} now`, '--secret ***'],
+    ['-token', `run -token ${value} now`, '-token ***'],
+    ['--with-token', `gh auth login --with-token ${value} now`, '--with-token ***'],
+    ['Bearer', `curl -H "Authorization: Bearer ${value}" now`, 'Bearer ***'],
+  ];
+
+  for (const [label, input, masked] of MASKED) {
+    test(`redactReason masks ${label} after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${input}`);
+      expect(out).toContain(masked);
+      expect(out).not.toContain(value);
+    });
+  }
+
+  test('flags that merely start with a secret keyword stay unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    for (const text of ['--token-file /path/to/file', '--secret-name foo', '--tokenizer x']) {
+      expect(redactReason(`${filler} ${text}`)).toBe(`${filler} ${text}`);
+      expect(redact(text)).toBe(text);
+    }
+  });
+});
+
+describe('hook-event-log.js — residual credential forms (#1190)', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  // Fake values built by concatenation so no credential-shaped literal sits in source for secret scanners.
+  const pw = 'hun' + 'ter2' + 'pw';
+  const pwAt = 'hun' + 'ter@2' + 'pw';
+  const aws = 'AKIA' + 'IOSFODNN7EXAMPLE';
+  const b64 = 'dXNlcjpw' + 'YXNzd29yZA==';
+
+  const FORMS: Array<{ label: string; input: string; secret: string; masked: string }> = [
+    { label: '--password with a double-quoted value containing spaces', input: 'db --password "correct horse battery" -h x', secret: 'horse', masked: '--password "***" -h x' },
+    { label: '--password with a single-quoted value containing spaces', input: "db --password 'correct horse battery' -h x", secret: 'horse', masked: "--password '***' -h x" },
+    { label: '--password= with a quoted value containing spaces', input: 'db --password="correct horse" -h x', secret: 'horse', masked: '--password="***" -h x' },
+    { label: 'mysql -p<value>', input: `mysql -u root -p${pw} -h db`, secret: pw, masked: 'mysql -u root -p*** -h db' },
+    { label: 'mysqldump -p<value>', input: `mysqldump -u root -p${pw} app`, secret: pw, masked: '-p*** app' },
+    { label: 'mariadb -p<value>', input: `mariadb -p${pw}`, secret: pw, masked: 'mariadb -p***' },
+    { label: 'URL userinfo with an unencoded @ in the password', input: `git clone https://deploy:${pwAt}@example.com/org/repo.git`, secret: 'ter@2', masked: 'https://deploy:***@example.com/org/repo.git' },
+    { label: 'AKIA key followed by an underscore', input: `id ${aws}_BACKUP used`, secret: aws, masked: 'AKIA***_BACKUP' },
+    { label: 'AKIA key followed by lowercase alphanumerics', input: `id ${aws}abc used`, secret: aws, masked: 'AKIA***abc' },
+    { label: 'JSON "password" key', input: `{"password":"${pw}"}`, secret: pw, masked: '{"password":"***"}' },
+    { label: 'JSON "token" key', input: `{"token":"${pw}"}`, secret: pw, masked: '{"token":"***"}' },
+    { label: 'JSON "aws_secret_access_key" key', input: `{"aws_secret_access_key":"${pw}"}`, secret: pw, masked: '"aws_secret_access_key":"***"' },
+    { label: 'JSON key with spaces around the colon', input: `{"password" : "${pw}"}`, secret: pw, masked: '"password" : "***"' },
+    { label: 'Authorization: Basic', input: `curl -H "Authorization: Basic ${b64}" x`, secret: b64, masked: 'Authorization: Basic ***"' },
+    { label: 'Authorization: token', input: `curl -H "Authorization: token ${pw}" x`, secret: pw, masked: 'Authorization: token ***"' },
+    { label: 'curl -u user:pass', input: `curl -u admin:${pw} https://example.com/x`, secret: pw, masked: '-u admin:*** https://example.com/x' },
+    { label: 'curl -u after other flags', input: `curl -sS -L -H x -X POST -u admin:${pw} https://example.com/x`, secret: pw, masked: '-u admin:***' },
+    { label: 'curl -uuser:pass', input: `curl -uadmin:${pw} https://example.com/x`, secret: pw, masked: '-uadmin:***' },
+    { label: 'curl --user user:pass', input: `curl --user admin:${pw} https://example.com/x`, secret: pw, masked: '--user admin:***' },
+    { label: 'curl --user=user:pass', input: `curl --user=admin:${pw} https://example.com/x`, secret: pw, masked: '--user=admin:***' },
+    { label: 'curl -u with a quoted user:pass', input: `curl -u 'admin:${pw}' https://example.com/x`, secret: pw, masked: "-u 'admin:***'" },
+  ];
+
+  for (const form of FORMS) {
+    test(`redactReason masks ${form.label} placed after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${form.input} Remedy: rotate it.`);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+      expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+    });
+  }
+
+  test('negatives: look-alike text is left unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    const unchanged = [
+      'curl -u user https://example.com',
+      'curl -u user https://example.com:8080/x',
+      'ssh -p 22 host',
+      'mkdir -p dir/sub',
+      'docker run -p 8080:80 img',
+      'curl -p8080 x',
+      'mysql -p -h db',
+      'mysql -P 3306 -h db',
+      'mysql --port 3306',
+      'commit 7a1f23b67d3342712cdc588e874e2b99843f3514 is fine',
+      'git -C /home/dev/work/blackhole/src status',
+      'db --password-file /run/secrets/pw',
+      'db --password-stdin',
+      'git clone git@github.com:org/repo.git',
+      'git clone ssh://git@example.com/org/repo.git',
+      'ping user@host and mail dev@example.com',
+      'fetch https://example.com:8080/a@b',
+      'Basic authentication is documented in the Authorization header section',
+      'the token is stored elsewhere and the password is unknown',
+      'AKIA' + 'IOSFODNN7EXAMPLE' + 'X',
+    ];
+    for (const text of unchanged) {
+      expect(redact(text)).toBe(text);
+      expect(redactReason(`${filler} ${text}`)).toBe(`${filler} ${text}`);
+    }
+  });
+
+  const ADVERSARIAL: Array<[string, string]> = [
+    ['unterminated quoted --password', `--password "${'a '.repeat(100_000)}`],
+    ['repeated quoted --password openers', '--password "'.repeat(16_600)],
+    ['repeated mysql', 'mysql '.repeat(33_000)],
+    ['mysql with a long token run and no -p', `mysql ${'a '.repeat(100_000)}`],
+    ['mysql followed by one huge token', `mysql ${'a'.repeat(200_000)}`],
+    ['URL userinfo run of @', `https://u:${'@'.repeat(200_000)}`],
+    ['URL userinfo long unterminated password', `https://u:${'p'.repeat(200_000)}`],
+    ['repeated URL userinfo openers', 'a://u:'.repeat(33_000)],
+    ['repeated AKIA', 'AKIA'.repeat(50_000)],
+    ['AKIA followed by endless capitals', `AKIA${'A'.repeat(200_000)}`],
+    ['JSON key then endless whitespace', `"password${'"'.repeat(1)}${' '.repeat(200_000)}`],
+    ['repeated JSON keys', '"password" '.repeat(18_000)],
+    ['repeated Authorization openers', 'Authorization:'.repeat(14_000)],
+    ['Authorization: Basic then endless value', `Authorization: Basic ${'a'.repeat(200_000)}`],
+    ['Authorization then endless whitespace', `Authorization${' '.repeat(200_000)}`],
+    ['repeated curl', 'curl '.repeat(40_000)],
+    ['repeated curl -u', 'curl -u '.repeat(25_000)],
+    ['repeated --user', '--user '.repeat(28_000)],
+    ['--user then endless user without colon', `--user ${'a'.repeat(200_000)}`],
+    ['curl -u then endless colons', `curl -u a${':'.repeat(200_000)}`],
+  ];
+
+  for (const [label, input] of ADVERSARIAL) {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+      const { redactReason } = hookEventLog();
+      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+    });
+  }
+});
+describe('hook-event-log.js — quoted values and client password env vars (#1192)', () => {
+  const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
+  const filler = 'x'.repeat(450);
+  // Fake values built by concatenation so no credential-shaped literal sits in source for secret scanners.
+  const phrase = 'my pa' + 'ss phr' + 'ase';
+  const hunter = 'hun' + 'ter 22';
+  const twoWords = 'p' + 'w w' + 'x';
+  const single = 'hun' + 'ter2' + 'pw';
+
+  const FORMS: Array<{ label: string; input: string; secret: string; masked: string }> = [
+    { label: 'KV double-quoted value with spaces', input: `{"password":"${phrase}"}`, secret: 'phr' + 'ase', masked: '{"password":"***"}' },
+    { label: 'KV double-quoted value with spaces after a spaced colon', input: `{"password": "${hunter}"}`, secret: 'ter 22', masked: '{"password": "***"}' },
+    { label: 'KV single-quoted value with spaces', input: `password='${phrase}' next`, secret: 'phr' + 'ase', masked: "password='***' next" },
+    { label: 'curl -u quoted user:pass with spaces', input: `curl -u 'admin:${hunter}' https://example.com/x`, secret: 'ter 22', masked: "-u 'admin:***' https://example.com/x" },
+    { label: 'curl --user quoted user:pass with spaces', input: `curl --user "u:${twoWords}" https://example.com/x`, secret: 'w w', masked: '--user "u:***" https://example.com/x' },
+    { label: 'bare --user quoted user:pass with spaces', input: `tool --user="u:${twoWords}" go`, secret: 'w w', masked: '--user="u:***" go' },
+    { label: 'PGPASSWORD before a command', input: `PGPASSWORD=${single} psql -h db`, secret: single, masked: 'PGPASSWORD=*** psql -h db' },
+    { label: 'PGPASSWORD with a quoted value', input: `PGPASSWORD="${phrase}" psql`, secret: 'phr' + 'ase', masked: 'PGPASSWORD="***" psql' },
+    { label: 'export PGPASSWORD', input: `export PGPASSWORD=${single}`, secret: single, masked: 'export PGPASSWORD=***' },
+    { label: 'MYSQL_PWD before a command', input: `MYSQL_PWD=${single} mysql -u root`, secret: single, masked: 'MYSQL_PWD=*** mysql -u root' },
+    { label: 'MYSQL_PWD with a short value', input: 'MYSQL_PWD=ab mysql', secret: '=ab', masked: 'MYSQL_PWD=*** mysql' },
+  ];
+
+  for (const form of FORMS) {
+    test(`redactReason masks ${form.label} placed after 400+ chars of filler`, () => {
+      const out = hookEventLog().redactReason(`${filler} ${form.input} Remedy: rotate it.`);
+      expect(out).toContain(form.masked);
+      expect(out).not.toContain(form.secret);
+      expect(out.endsWith('Remedy: rotate it.')).toBe(true);
+    });
+  }
+
+  test('negatives: look-alike text is left unchanged', () => {
+    const { redact, redactReason } = hookEventLog();
+    const unchanged = [
+      '{"password_hint":"my first pet"}',
+      '{"tokens":["a b"]}',
+      'curl -u user https://example.com',
+      'PG_HOST=x psql',
+      'PGHOST=db psql',
+    ];
+    for (const text of unchanged) {
+      expect(redact(text)).toBe(text);
+      expect(redactReason(`${filler} ${text}`)).toBe(`${filler} ${text}`);
+    }
+  });
+
+  const ADVERSARIAL: Array<[string, string]> = [
+    ['unterminated quoted KV value', `"password":"${'a '.repeat(100_000)}`],
+    ['repeated unterminated quoted KV openers', '"password":"'.repeat(16_600)],
+    ['repeated single-quoted KV openers', "password: '".repeat(18_000)],
+    ['unterminated quoted curl -u', `curl -u '${'a:b '.repeat(50_000)}`],
+    ['repeated unterminated curl -u openers', "curl -u 'a:".repeat(18_000)],
+    ['repeated unterminated --user openers', '--user "a:'.repeat(22_000)],
+    ['unterminated quoted PGPASSWORD', `PGPASSWORD="${'a '.repeat(100_000)}`],
+    ['repeated PGPASSWORD openers', 'PGPASSWORD="'.repeat(16_000)],
+    ['PGPASSWORD then endless value', `PGPASSWORD=${'a'.repeat(200_000)}`],
+    ['repeated MYSQL_PWD', 'MYSQL_PWD='.repeat(20_000)],
+  ];
+
+  for (const [label, input] of ADVERSARIAL) {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+      const { redactReason } = hookEventLog();
+      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+    });
+  }
+});
 
 // The fork-bomb pattern's leading identifier group used to restart its greedy run at every
 // offset inside a long identifier, backtracking quadratically (8.4 s on 120 KB of `a`) — past the
