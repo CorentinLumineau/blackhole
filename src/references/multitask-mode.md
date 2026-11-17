@@ -207,11 +207,14 @@ already running.
 
 ### Plans with only a weekly window
 
-A plan may report only a `seven_day` window, with no `five_hour` one. There is then no 5-hour fit,
-and the pool comes from the weekly leg alone (`weekly_fit`), which needs
-`usage_budget.weekly.target_at_reset`. Without a target the gate returns `unavailable`, which cuts
-nothing (`workers` = `parallel_max`), so shared pacing is in effect off. Set `target_at_reset`
-before running `manager`/`peer` on such a plan.
+A plan may report only a `seven_day` window, with no `five_hour` one; the windows are detected
+from the reading (`usage-source.ts`), so no config says so. There is then no 5-hour fit, and the
+weekly rules alone gate. With `usage_budget.weekly.target_at_reset` set, the pool comes from the
+weekly leg (`weekly_fit`). Without a target the verdict is `GO` capped at
+min(`max_workers`, `parallel_max`), and the weekly lines still stop the run: `NO-NEW-STARTS` at
+`weekly.no_new_starts_at` (default 78%) and `STOP-CAMPAIGN` at `weekly.stop_campaign_at` (default
+80%). The cap does not track the weekly pace, so set `target_at_reset` when `manager`/`peer`
+should share the weekly headroom evenly.
 
 ## User starting the campaign
 

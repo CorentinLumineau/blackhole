@@ -5,16 +5,20 @@ import { readJsonFile } from './lib/fs.ts';
 import {
   evaluatePaceGate,
   readBaseline,
-  readRateLimits,
   resolvePaceGateThresholds,
   resolveRateLimitCachePath,
   rollBaseline,
   type BaselineInput,
 } from './lib/pace-gate.ts';
+import type { Host } from './lib/run-context.ts';
+import { resolveHost, usageSourceFor, type UsageSource } from './lib/usage-source.ts';
 
-// Usage: bun run scripts/pace-gate.ts --current <n> --max <n> [--cache <path>] [--config <path>] [--now <epoch s>]
+// Usage: bun run scripts/pace-gate.ts --current <n> --max <n> [--cache <path>] [--host claude|cursor] [--config <path>] [--now <epoch s>]
+// Reads the host's usage source (usage-source.ts), as usage-budget.ts does: the rate-limit cache on
+// Claude, none on Cursor or an unknown host (verdict unavailable with the reason). The host is
+// --host, else the one run-context.json beside the config records, else the environment's.
 // Prints the verdict JSON on stdout; exit 0 on any verdict, 2 on bad usage or a malformed config.
-const usage = 'usage: pace-gate.ts --current <n> --max <n> [--cache <path>] [--config <path>] [--now <epoch s>]';
+const usage = 'usage: pace-gate.ts --current <n> --max <n> [--cache <path>] [--host claude|cursor] [--config <path>] [--now <epoch s>]';
 const flags = parseFlags(process.argv.slice(2));
 const intFlag = (name: string): number | null => {
   const value = Number(flags[name]);
@@ -23,13 +27,16 @@ const intFlag = (name: string): number | null => {
 const current = intFlag('current');
 const max = intFlag('max');
 const now = typeof flags.now === 'string' ? intFlag('now') : Math.floor(Date.now() / 1000);
-if (current === null || max === null || now === null) {
+const hostFlag = flags.host;
+if (current === null || max === null || now === null || (hostFlag !== undefined && hostFlag !== 'claude' && hostFlag !== 'cursor')) {
   console.error(usage);
   process.exit(2);
 }
 
 const configPath = typeof flags.config === 'string' ? flags.config : '.blackhole/config.json';
+const host: Host = (hostFlag as Host | undefined) ?? resolveHost(path.dirname(configPath), process.env);
 let thresholds;
+let source: UsageSource;
 let cachePath = typeof flags.cache === 'string' ? flags.cache : '';
 let baselinePath = '';
 try {
@@ -37,13 +44,14 @@ try {
   thresholds = resolvePaceGateThresholds(config);
   const pace = ((config.resource_policy ?? {}) as { pace?: { baseline_path?: unknown } }).pace;
   if (!cachePath) cachePath = resolveRateLimitCachePath(config);
+  source = usageSourceFor(host, config, { cachePath });
   baselinePath = typeof pace?.baseline_path === 'string' ? pace.baseline_path : path.join(path.dirname(cachePath), 'pace-baseline.json');
 } catch (error) {
   console.error(`pace-gate: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(2);
 }
 
-const { limits, reason } = readRateLimits(cachePath, now, thresholds.maxAgeSeconds);
+const { limits, reason } = source.read(now);
 // The run that records a day's or session's baseline has nothing to compare against yet; a missing
 // or corrupt baseline file is replaced and that run reports the compartments unavailable with why.
 let compartments: BaselineInput | undefined;
