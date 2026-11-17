@@ -4,8 +4,14 @@ import {
   COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
   CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
   SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS,
+  LAUNCH_GATE_REQUIRED_MARKERS,
+  checkConfigConfirmationGate,
   runChecks,
 } from './checks/config-gate.check.ts';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+const read = (rel: string): string => readFileSync(join(import.meta.dir, '..', rel), 'utf-8');
 
 // Fixture-level red/green for V-CONFGATE-01, modeled on verify.single-writer.test.ts. The check
 // itself reads the real src/ files; these fixtures pin the marker contract independently so a
@@ -14,10 +20,26 @@ import {
 const COORDINATOR_FIXTURE_FIXED = `
 **Skip steps 1-6 only on routine resume** — i.e. when config.json already exists.
 
-**Routine resume confirmation gate** — before spawning or resuming the orchestrator, print
-\`renderConfigSummary\` (\`scripts/campaign-status.ts\`), then \`AskQuestion\`:
-"Proceed with this config (default)" | "Reconfigure". On Reconfigure, run steps 1-6 from step 1.
-This confirmation gate fires on \`run\` mode only — status and the per-phase modes are unaffected.
+**Routine resume confirmation gate** — when the mode is \`run\`, run the launch gate in
+\`references/launch-gate.md\` before spawning or resuming the orchestrator.
+
+- **Fail closed on docs_governance drift**: STOP if the spawn text disagrees with config-summary.
+
+This confirmation fires on \`run\` mode only — status and the per-phase modes are unaffected.
+`;
+
+const LAUNCH_GATE_FIXTURE_FIXED = `
+# Launch Gate
+
+Run \`bun run status --summary --json\`, print the table, then one Accept / Adjust per section.
+Record the probe with \`scripts/status-probe.ts record\`; it writes \`last_probe\`.
+Print-only mode asks nothing and never waits.
+`;
+
+const LAUNCH_GATE_FIXTURE_STALE = `
+# Launch Gate
+
+Print the raw config, then Proceed or Reconfigure.
 `;
 
 const COORDINATOR_FIXTURE_STALE = `
@@ -58,6 +80,10 @@ describe('V-CONFGATE-01 marker contract', () => {
     );
   });
 
+  test('launch-gate.md must carry the summary, per-section choice, probe and print-only clause', () => {
+    expectMarkerContract(LAUNCH_GATE_FIXTURE_FIXED, LAUNCH_GATE_FIXTURE_STALE, LAUNCH_GATE_REQUIRED_MARKERS);
+  });
+
   test('claude-code-native.md must state Pattern C gate ownership', () => {
     expectMarkerContract(
       CLAUDE_NATIVE_FIXTURE_FIXED,
@@ -82,6 +108,7 @@ describe('V-CONFGATE-01 marker contract', () => {
       COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
       CLAUDE_NATIVE_GATE_OWNERSHIP_REQUIRED_MARKERS,
       SKILL_PHASE0_GATE_LINK_REQUIRED_MARKERS,
+      LAUNCH_GATE_REQUIRED_MARKERS,
     ]) {
       expectMarkersSubstantive(markers);
     }
@@ -103,5 +130,36 @@ describe('config-gate runChecks() against the real src/ files', () => {
     // On failure, surface which marker/file is missing rather than a bare `false`.
     expect(result.detail ?? '').toBe('');
     expect(result.ok).toBe(true);
+  });
+});
+
+// Each file the check reads, swapped one at a time for a copy missing one marker: the check
+// must fail and name that file and marker. This is what proves the real-tree pass is not vacuous.
+describe('config-gate check fails on the real files with one marker removed', () => {
+  const realFiles = (): Record<string, string> => ({
+    'src/agents/coordinator.md': read('src/agents/coordinator.md'),
+    'src/references/launch-gate.md': read('src/references/launch-gate.md'),
+    'src/references/claude-code-native.md': read('src/references/claude-code-native.md'),
+    'src/SKILL.md': read('src/SKILL.md'),
+  });
+
+  test('launch-gate.md without last_probe fails', () => {
+    const files = realFiles();
+    files['src/references/launch-gate.md'] = files['src/references/launch-gate.md'].replaceAll('last_probe', 'probe');
+    const result = checkConfigConfirmationGate(files);
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe('launch-gate.md missing "last_probe"');
+  });
+
+  test('coordinator.md without the launch-gate.md pointer fails', () => {
+    const files = realFiles();
+    files['src/agents/coordinator.md'] = files['src/agents/coordinator.md'].replaceAll('launch-gate.md', 'a gate');
+    const result = checkConfigConfirmationGate(files);
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe('coordinator.md missing "launch-gate.md"');
+  });
+
+  test('the unmodified real files pass', () => {
+    expect(checkConfigConfirmationGate(realFiles())).toEqual({ id: 'V-CONFGATE-01', ok: true });
   });
 });

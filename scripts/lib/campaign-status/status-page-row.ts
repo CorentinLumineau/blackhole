@@ -42,7 +42,9 @@ export function statusPageRow(p: StatusPageInput): LaunchRow {
   const { url, template_version: stored, last_probe: probe } = p.artifact;
   const staleTemplate = p.templateVersion !== null && typeof stored === 'number' && stored < p.templateVersion;
   const template = typeof stored === 'number' ? `template v${stored}${staleTemplate ? `, refresh template to v${p.templateVersion}` : ''}` : 'template unknown';
-  const ageMin = probe ? (Date.parse(p.nowIso) - Date.parse(probe.at)) / 60_000 : NaN;
+  // Whole seconds on both sides: the summary's clock is whole seconds, a recorded probe carries milliseconds.
+  const wholeSecondMs = (iso: string) => Math.floor(Date.parse(iso) / 1000) * 1000;
+  const ageMin = probe ? (wholeSecondMs(p.nowIso) - wholeSecondMs(probe.at)) / 60_000 : NaN;
   const current = probe !== undefined && probe.url === url && ageMin >= 0 && ageMin < PROBE_FRESH_MINUTES;
   const extra = staleTemplate ? [REFRESH] : [];
   if (current && !probe.ok) {

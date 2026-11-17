@@ -3,6 +3,7 @@ import * as path from 'path';
 import { root, read, type CheckResult } from './check-utils.ts';
 import { expandIncludes } from '../lib/build/content.ts';
 import { expandVcodeTableKey, parseVcodeTableRows, vcodeFamily, walkMdFilesAbs } from '../lib/check-common.ts';
+import { markdownHeadings, sectionEnd } from '../lib/markdown-headings.ts';
 
 // Issue #565 — vcode-citation.check.ts: resolves every `blackhole-vcodes.md` row's `Primary
 // enforcement site` cell to an actual file + section, and asserts the row's code appears inside
@@ -63,42 +64,23 @@ const resolveFile = (fileRef: string, idx: Map<string, string>): string | null =
 
 // Numeric `§N` → a `^#{2,4} N. ` heading; named `§ Name` → a heading whose text (stripped of
 // `#`/backticks) equals or starts with `Name`; `null` → no resolution attempted (immediate
-// whole-file fallback). Body spans to the next heading of equal-or-higher level, or EOF. Returns
+// whole-file fallback). Body spans to the next heading of equal-or-higher level, or EOF; `#` lines
+// inside fenced code blocks are not headings (markdown-headings.ts). Returns
 // `null` when a *given* section ref fails to resolve — the caller (scanVcodeCitations) treats
 // that the same as a `null` ref: whole-file fallback, never `V-CITE-01` by itself. See that
 // caller for the rationale (the `orchestrator-runtime.md § Triage step 1b` case).
 export const resolveSection = (fileContent: string, sectionRef: string | null): { body: string } | null => {
   if (sectionRef === null) return { body: fileContent };
   const lines = fileContent.split('\n');
-  const isNumeric = /^§\d+$/.test(sectionRef);
-  const headingRe = isNumeric ? new RegExp(`^#{2,4}\\s*${sectionRef.slice(1)}\\.\\s`) : null;
-
-  let startIdx = -1;
-  let level = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const hm = lines[i].match(/^(#{1,6})\s+(.*)$/);
-    if (!hm) continue;
-    const matches = isNumeric ? headingRe!.test(lines[i]) : (() => {
-      const text = hm[2].replace(/`/g, '').trim();
-      return text === sectionRef || text.startsWith(sectionRef as string);
-    })();
-    if (matches) {
-      startIdx = i;
-      level = hm[1].length;
-      break;
-    }
-  }
-  if (startIdx === -1) return null;
-
-  let endIdx = lines.length;
-  for (let i = startIdx + 1; i < lines.length; i++) {
-    const hm = lines[i].match(/^(#+)\s/);
-    if (hm && hm[1].length <= level) {
-      endIdx = i;
-      break;
-    }
-  }
-  return { body: lines.slice(startIdx, endIdx).join('\n') };
+  const headingRe = /^§\d+$/.test(sectionRef) ? new RegExp(`^#{2,4}\\s*${sectionRef.slice(1)}\\.\\s`) : null;
+  const headings = markdownHeadings(lines);
+  const start = headings.find((h) => {
+    if (headingRe) return headingRe.test(lines[h.line]);
+    const text = h.text.replace(/`/g, '').trim();
+    return text === sectionRef || text.startsWith(sectionRef);
+  });
+  if (!start) return null;
+  return { body: lines.slice(start.line, sectionEnd(headings, start, lines.length)).join('\n') };
 };
 
 // Combined-code keys (`V-ADA-05/06/07`) split into sub-codes; satisfied if at least one

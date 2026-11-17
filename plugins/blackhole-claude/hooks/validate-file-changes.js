@@ -42,8 +42,8 @@ const remedyInside = (root, filePath) =>
 
 /** True when `filePath` resolves inside ANY of `roots` — the main clone plus every accepted
  * linked worktree of the same repo family (see `allWorktreeRoots`'s docstring for why "any", not
- * just the one worktree the hook process happens to be sitting in, and for how the root set
- * itself is narrowed — #510). Reuses `isUnderRoot`'s realpath-based containment check rather than
+ * just the one worktree the hook process happens to be sitting in, and for which registered
+ * worktrees it accepts). Reuses `isUnderRoot`'s realpath-based containment check rather than
  * re-deriving it (`V-INT-02`) — the same resolution `allWorktreeRoots` uses to compare
  * `scratchpad_dir` against discovered roots. */
 const isInsideAnyRoot = (filePath, roots) => roots.some((root) => isUnderRoot(filePath, root));
