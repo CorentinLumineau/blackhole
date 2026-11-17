@@ -34,7 +34,7 @@
  */
 
 const path = require('path');
-const { computeMaskedSpans } = require('./bash-context');
+const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand } = require('./shell-lexer');
 const { readAssignedWorktreeRoot, isUnderRoot } = require('./hook-event-log');
 const { isLiteralPathArg } = require('./worktree-removal-guard');
@@ -898,10 +898,11 @@ const shellReadsStdinScript = (args) => {
 /** A single `|` (or `|&`) pipe — never the `||` operator — and the clause text it feeds. */
 const PIPE_INTO_RE = /(?<!\|)\|&?(?!\|)([^;|&\n]*)/g;
 
-/** True when a pipe feeds a shell that reads its script from stdin (`… | sh`, `… | bash -s`): the
- * piped text runs as commands this module never sees, so the call is unresolvable. A shell given
- * a script file or `-c` reads its commands from there, not from the pipe. */
-const hasPipedShellScript = (visible) => {
+/** True when a pipe feeds a shell or an interpreter that reads its script from stdin (`… | sh`,
+ * `… | bash -s`, `… | node`, `… | python3 -`): the piped text runs as code this module never
+ * sees, so the call is unresolvable. One given a script file, `-c`/`-e` or a module reads its code
+ * from there, not from the pipe. */
+const hasPipedScript = (visible) => {
   PIPE_INTO_RE.lastIndex = 0;
   let match = PIPE_INTO_RE.exec(visible);
   while (match !== null) {
@@ -915,6 +916,10 @@ const hasPipedShellScript = (visible) => {
     // `sudo sh`) cannot hide it.
     const shellIdx = tokens.findIndex((t) => SHELL_NAMES.some((name) => isCommandToken(t, name)));
     if (shellIdx !== -1 && shellReadsStdinScript(positionalArgsBeforeRedirect(tokens, shellIdx + 1))) return true;
+    const interpreter = findInterpreter(tokens);
+    if (interpreter && interpreterReadsStdinScript(interpreter.entry, positionalArgsBeforeRedirect(tokens, interpreter.idx + 1))) {
+      return true;
+    }
     match = PIPE_INTO_RE.exec(visible);
   }
   return false;
@@ -984,16 +989,45 @@ const INTERPRETERS = [
   {
     name: /^(?:node(?:js)?[0-9.]*|bun)$/,
     scriptFlag: (t) => /^-[a-zA-Z]*[ep]$/.test(t) || ['--eval', '--print'].some((n) => isLongOptionPrefix(t.split('=')[0], n)),
+    valueOption: (t) =>
+      /^(?:-[rC]|--(?:require|import|loader|experimental-loader|conditions|env-file|preload|cwd|config|title))$/.test(t),
     writeCall: (script) => JS_WRITE_CALL_RE.test(script),
   },
   {
     name: /^(?:perl|ruby)[0-9.]*$/,
     scriptFlag: (t) => /^-[a-zA-Z]*[eE]/.test(t),
     always: (t) => /^-[a-zA-Z]*i/.test(t),
+    valueOption: (t) => /^-[IMmrC]$/.test(t),
     writeCall: (script) => PERL_RUBY_WRITE_CALL_RE.test(script),
   },
-  { name: /^(?:python|pypy|py)[0-9.]*$/, always: (t) => /^-[a-zA-Z]*c/.test(t) },
+  {
+    name: /^(?:python|pypy|py)[0-9.]*$/,
+    always: (t) => /^-[a-zA-Z]*c/.test(t),
+    valueOption: (t) => /^-[WXQ]$|^--check-hash-based-pycs$/.test(t),
+  },
 ];
+
+/** True when an interpreter given `args` reads its script from stdin: a `-` operand, or no
+ * operand at all. A value-taking option's value is skipped, so it is not mistaken for a script
+ * file. The word after `-e`/`-c` and the module after `-m` read as operands, so stdin is data. */
+const interpreterReadsStdinScript = ({ valueOption }, args) => {
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '-') return true;
+    if (valueOption(t)) i++;
+    else if (!t.startsWith('-')) return false;
+  }
+  return true;
+};
+
+/** The interpreter entry a clause runs and the index of its command word, or null. */
+const findInterpreter = (tokens) => {
+  for (const entry of INTERPRETERS) {
+    const idx = tokens.findIndex((t) => entry.name.test(commandName(t)));
+    if (idx !== -1) return { entry, idx };
+  }
+  return null;
+};
 
 /** The command a word names once the shell has removed its quotes and escapes (`\node`,
  * `'node'`, `/usr/bin/node` all name `node`). */
@@ -1014,24 +1048,43 @@ const isGrepHeadClause = (tokens) =>
 
 /** True when an interpreter in the clause runs an inline script that may write. In a grep clause
  * (`git grep -n perl -i`, `grep -e ruby`) an interpreter name is a search pattern, not a command. */
-const hasInterpreterWrite = (tokens) =>
+const hasInterpreterWrite = (tokens, heredocText) =>
   !isGrepHeadClause(tokens) &&
-  INTERPRETERS.some(({ name, scriptFlag, always, writeCall }) => {
+  INTERPRETERS.some((entry) => {
+    const { name, scriptFlag, always, writeCall } = entry;
     const idx = tokens.findIndex((t) => name.test(commandName(t)));
     if (idx === -1) return false;
     const args = positionalArgsBeforeRedirect(tokens, idx + 1);
     if (always && args.some(always)) return true;
-    return Boolean(scriptFlag && args.some(scriptFlag) && writeCall(unescapeDoubleQuoted(args.join(' '))));
+    if (scriptFlag && args.some(scriptFlag)) {
+      return Boolean(writeCall && writeCall(unescapeDoubleQuoted(args.join(' '))));
+    }
+    const script = stdinRedirectScript(tokens, idx, heredocText);
+    if (script === null || !interpreterReadsStdinScript(entry, args)) return false;
+    // Python has no write-call check: its `open` reads and writes alike, as for `-c`.
+    return !writeCall || writeCall(unescapeDoubleQuoted(script));
   });
 
+/** The script a heredoc (`<<`) or here-string (`<<<`) after the command word at `idx` feeds on
+ * stdin, or null when the clause has neither. A heredoc yields `heredocText`, every heredoc body
+ * in the command: checking more text than the clause's own body only ever adds a warning. */
+const stdinRedirectScript = (tokens, idx, heredocText) => {
+  for (let i = idx + 1; i < tokens.length; i++) {
+    if (tokens[i].startsWith('<<<')) return [tokens[i].slice(3), ...tokens.slice(i + 1)].join(' ');
+    if (tokens[i].startsWith('<<')) return heredocText;
+  }
+  return null;
+};
+
 /** True when a clause is write-shaped but unresolvable: its leading command word is one of
- * `UNRESOLVABLE_WRITE_COMMANDS`, or an interpreter in it runs an inline script that may write. */
-const hasUnresolvableCommand = (tokens) =>
-  UNRESOLVABLE_WRITE_COMMANDS.some((name) => isCommandToken(tokens[0], name)) || hasInterpreterWrite(tokens);
+ * `UNRESOLVABLE_WRITE_COMMANDS`, or an interpreter in it runs an inline or stdin script that may
+ * write. */
+const hasUnresolvableCommand = (tokens, heredocText) =>
+  UNRESOLVABLE_WRITE_COMMANDS.some((name) => isCommandToken(tokens[0], name)) || hasInterpreterWrite(tokens, heredocText);
 
 /** Literal write targets in one view of the command, and whether anything write-shaped in it
  * cannot be resolved. */
-const collectWriteSignals = (visible) => {
+const collectWriteSignals = (visible, heredocText) => {
   const literalTargets = [];
   let unresolvable = false;
   const add = (raw) => {
@@ -1045,10 +1098,10 @@ const collectWriteSignals = (visible) => {
     const tokens = tokenize(clause);
     if (tokens.length === 0) continue;
     [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens), ...findOptionWriteTargets(tokens)].forEach(add);
-    if (hasUnresolvableCommand(tokens)) unresolvable = true;
+    if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
   }
 
-  if (hasPipedShellScript(visible)) unresolvable = true;
+  if (hasPipedScript(visible)) unresolvable = true;
   if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => tokenize(c).some((t) => isCommandToken(t, 'git')))) {
     unresolvable = true;
   }
@@ -1071,8 +1124,10 @@ const evaluateBashWriteTargets = (command, cwd) => {
   const literalTargets = [];
   let unresolvable = false;
 
+  const heredocMask = computeHeredocBodyMask(command);
+  const heredocText = command.replace(/[\s\S]/g, (ch, i) => (heredocMask[i] ? ch : ' '));
   for (const visible of visibleViews(command)) {
-    const signals = collectWriteSignals(visible);
+    const signals = collectWriteSignals(visible, heredocText);
     for (const target of signals.literalTargets) literalTargets.push({ target, visible });
     if (signals.unresolvable) unresolvable = true;
   }
@@ -1104,7 +1159,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
         // hook-event-log.js), so the verdict comes first and the list of causes after it.
         'Bash command looks write-shaped but its target could not be resolved by static ' +
         'inspection — cannot verify assigned-worktree containment (not confirmed unsafe). Cause: ' +
-        'a dynamic argument, a script piped into a shell, an interpreter one-liner (node -e, ' +
+        'a dynamic argument, a script fed to a shell or interpreter on stdin, an interpreter one-liner (node -e, ' +
         'python -c, perl -i), a sed e command or an awk program, whose writes the command string ' +
         'does not show. Remedy: use a literal absolute path under the assigned worktree, or the ' +
         'Write/Edit tools.',
