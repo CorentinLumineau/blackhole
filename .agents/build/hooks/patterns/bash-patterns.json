@@ -12,7 +12,7 @@
       "id": "rm-rf-home",
       "pattern": "\\brm\\s+(?=[^|;&\\n]*(?:-[a-zA-Z]*r[a-zA-Z]*\\b|--recursive\\b))[^|;&\\n]*\\s[\"']?(~/?|\\$HOME/?|\\$\\{HOME\\}/?)[\"']?(?=[\\s;&|'\")`]|$)",
       "flags": "i",
-      "reason": "Recursive delete targeting the home directory"
+      "reason": "Recursive delete targeting the home directory — Remedy: delete the specific subpath you mean, not the home directory"
     },
     {
       "id": "rm-no-preserve-root",
@@ -24,7 +24,7 @@
       "id": "disk-device-write",
       "pattern": ">\\s*[\"']?/dev/(sd[a-z]|hd[a-z]|nvme\\d|vd[a-z])",
       "flags": "i",
-      "reason": "Redirect writes directly to a raw disk device"
+      "reason": "Redirect writes directly to a raw disk device — Remedy: write to a regular file inside the worktree instead"
     },
     {
       "id": "mkfs",
@@ -36,23 +36,23 @@
       "id": "dd-to-device",
       "pattern": "\\bdd\\s[^|;&]*\\bof=[\"']?/dev/",
       "flags": "i",
-      "reason": "Raw block-device write via dd"
+      "reason": "Raw block-device write via dd — Remedy: write to a regular file (of=<file>) inside the worktree"
     },
     {
       "id": "curl-pipe-shell",
       "pattern": "\\bcurl\\b[^|]*\\|\\s*[\"']?((?:sudo|env|nice)\\s+)*[\"']?(ba|z|k|da)?sh\\b",
       "flags": "i",
-      "reason": "Piped remote execution (curl | sh)"
+      "reason": "Piped remote execution (curl | sh) — Remedy: download to a file, inspect it, then run it"
     },
     {
       "id": "wget-pipe-shell",
       "pattern": "\\bwget\\b[^|]*\\|\\s*[\"']?((?:sudo|env|nice)\\s+)*[\"']?(ba|z|k|da)?sh\\b",
       "flags": "i",
-      "reason": "Piped remote execution (wget | sh)"
+      "reason": "Piped remote execution (wget | sh) — Remedy: download to a file, inspect it, then run it"
     },
     {
       "id": "fork-bomb",
-      "pattern": "([A-Za-z0-9_:]+)\\s*\\(\\)\\s*\\{\\s*\\1\\s*\\|\\s*\\1\\s*&?\\s*\\}\\s*;?\\s*\\1",
+      "pattern": "(?<![A-Za-z0-9_:])([A-Za-z0-9_:]+)\\s*\\(\\)\\s*\\{\\s*\\1\\s*\\|\\s*\\1\\s*&?\\s*\\}\\s*;?\\s*\\1",
       "flags": "",
       "reason": "Fork bomb"
     },
@@ -60,7 +60,7 @@
       "id": "chmod-777-root",
       "pattern": "\\bchmod\\s+((-R|--recursive)\\s+)?(0?777|a[+=]rwx|ugo[+=]rwx)\\s+[\"']?(/{1,2}|/\\.)[\"']?(?=[\\s;&|'\")`]|$)",
       "flags": "i",
-      "reason": "World-writable permissions on a system path"
+      "reason": "World-writable permissions on a system path — Remedy: use a narrower mode on the specific path"
     }
   ],
   "warnPatterns": [

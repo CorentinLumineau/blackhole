@@ -66,7 +66,7 @@ export type InstallStateFileParams = {
   allowShrink?: boolean;
 };
 
-/** Write protocol steps 1-4: snapshot the live file into `archiveDir`, write the candidate to
+/** Write protocol steps 1-4: snapshot the live file (when one exists) into `archiveDir`, write the candidate to
  *  `<livePath>.tmp`, validate it, then atomically install it. A refused candidate leaves the live
  *  file untouched and the `.tmp` removed. */
 export const installStateFile = ({
@@ -79,7 +79,8 @@ export const installStateFile = ({
   fs.mkdirSync(archiveDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const base = path.basename(livePath, path.extname(livePath));
-  fs.copyFileSync(livePath, path.join(archiveDir, `${base}-${timestamp}.json`));
+  // A first write has nothing to snapshot yet.
+  if (fs.existsSync(livePath)) fs.copyFileSync(livePath, path.join(archiveDir, `${base}-${timestamp}.json`));
 
   const tmpPath = `${livePath}.tmp`;
   fs.writeFileSync(tmpPath, content, 'utf-8');

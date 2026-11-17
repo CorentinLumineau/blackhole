@@ -126,42 +126,30 @@ const tokenize = (text) => {
  * match `worktree-removal-guard.js`'s `findClauseStartIndices` — that guard needs the opposite
  * policy for its own, equally load-bearing reason (see that function's own `QUOTE POLICY:` note).
  */
-const splitClauses = (visible) => {
-  const clauses = [];
-  let current = '';
+const clauseRanges = (visible) => {
+  const ranges = [];
+  let start = 0;
   let i = 0;
   const n = visible.length;
   while (i < n) {
     const ch = visible[i];
     if (ch === "'" || ch === '"') {
-      const end = skipQuotedSpan(visible, i, n);
-      current += visible.slice(i, end);
-      i = end;
+      i = skipQuotedSpan(visible, i, n);
       continue;
     }
-    if (ch === ';' || ch === '|' || ch === '\n') {
-      clauses.push(current);
-      current = '';
-      i++;
-      continue;
+    const isSeparator =
+      ch === ';' || (ch === '|' && visible[i - 1] !== '>') || ch === '\n' || (ch === '&' && !isRedirectAmpersand(visible, i));
+    if (isSeparator) {
+      ranges.push([start, i]);
+      start = i + 1;
     }
-    if (ch === '&') {
-      if (isRedirectAmpersand(visible, i)) {
-        current += ch;
-        i++;
-        continue;
-      }
-      clauses.push(current);
-      current = '';
-      i++;
-      continue;
-    }
-    current += ch;
     i++;
   }
-  clauses.push(current);
-  return clauses;
+  ranges.push([start, n]);
+  return ranges;
 };
+
+const splitClauses = (visible) => clauseRanges(visible).map(([start, end]) => visible.slice(start, end));
 
 /** True when `token` names `command` — either exactly, or as the final path segment of an
  * absolute/relative invocation (`/usr/bin/sed` still names `sed`). */
@@ -170,6 +158,118 @@ const isCommandToken = (token, command) => token === command || token.endsWith(`
 /** True when a fd-duplication argument (`&1`, `&2`, ...) rather than a real file path — the one
  * shape `>`/`>>`/`&>` legitimately precede without naming a file (`2>&1`, `>&2`). */
 const isFdDuplicationTarget = (token) => /^&\d+$/.test(token);
+
+/** Whole-command signals that quoted text may be executed as shell (or smuggles a quote the
+ * span walker would misread). Any hit disables `maskRedirectNoise` entirely: masking is only safe
+ * when no quoted span can be command text. */
+const SHELL_EXEC_RE = new RegExp(
+  [
+    '(?:^|[\\s;&|(`])(?:\\S*/)?(?:bash|sh|zsh|dash|ksh|eval|source|trap|alias|watch|at|parallel|xargs)(?=$|[\\s;&|)])',
+    '(?:^|\\s)-c(?=$|\\s)',
+    'BASH_ENV=|PROMPT_COMMAND=',
+    '<<<',
+    '\\b(?:perl|ruby|node|bun|php|lua|python[0-9.]*)\\b[^;|&\\n]*\\s-[a-zA-Z]*[ecr]\\b',
+  ].join('|'),
+);
+
+/** Constructs inside which bash nests or reinterprets quotes, so this module's flat quote pairing
+ * cannot be trusted anywhere in the command: command/process substitution, parameter expansion,
+ * escapes, `$'..'`/`$".."` strings and here-strings. */
+const QUOTE_REINTERPRETING_RE = /\$\(|`|\$\{|\\|\$['"]|<<<|<\(|>\(/;
+
+/** The only commands whose quoted spans `maskRedirectNoise` may blank (the reported false positives
+ * are grep and sed). An allowlist, because the commands that execute or write from a quoted
+ * argument cannot be enumerated; every other clause keeps its quoted spans visible. */
+const INERT_GREP_COMMANDS = new Set(['grep', 'egrep', 'fgrep', 'rg']);
+
+/** rg options that run a decompressor/preprocessor, plus any unique prefix of them. */
+const RG_COMMAND_OPTIONS = ['--pre', '--pre-glob', '--hostname-bin', '--search-zip'];
+
+/** Whole-command constructs that can redefine what a bare command word means: a function
+ * definition, alias/hash/enable/builtin, or a PATH change. */
+const COMMAND_REBINDING_RE = new RegExp(
+  '(?:^|[;&|\\s(])(?:function\\s+[\\w.-]+|[\\w.-]+\\s*\\(\\s*\\)\\s*\\{)|\\b(?:alias|unalias|hash|enable|builtin)\\b|\\bPATH=|export\\s+PATH',
+);
+
+/** `-f`/`--file` (a pattern file) and, for rg, a decompressor/preprocessor option disqualify a
+ * clause; neither runs a command in grep, but the rule is kept simple and read-only. */
+const hasDisqualifyingOption = (head, args) =>
+  args.some((t) => {
+    if (/^-[a-zA-Z]*f/.test(t) || t === '--file' || t.startsWith('--file=')) return true;
+    if (head !== 'rg') return false;
+    if (/^-[a-zA-Z]*z/.test(t)) return true;
+    const name = t.startsWith('--') ? t.split('=')[0] : '';
+    return name.length > 2 && RG_COMMAND_OPTIONS.some((opt) => opt.startsWith(name));
+  });
+
+/** A sed script made only of `s<d>re<d>repl<d>flags` commands whose flags cannot be `e` or `w`. */
+const SED_SUBST_SCRIPT_RE = /^(?:s([^\w\s\\;])(?:(?!\1)[^\n])*\1(?:(?!\1)[^\n])*\1[gIiMmp0-9]*(?:;|$))+$/;
+const SED_PLAIN_OPTION_RE = /^(?:-[nEr]+|-i|-i\.\w+|--in-place(?:=\S+)?|--quiet|--regexp-extended)$/;
+
+/** sed is inert for masking only with exactly one quoted script that is pure `s///` (no `e`/`w`
+ * command or flag) and no `-f`/`-s`/`-e` option. `-i` is allowed: its write target is resolved by
+ * `findSedTargets`, not by the redirect scan. */
+const isInertSed = (args) => {
+  const scripts = args.filter((t) => t[0] === "'" || t[0] === '"');
+  if (scripts.length !== 1) return false;
+  if (!SED_SUBST_SCRIPT_RE.test(stripQuotes(scripts[0]))) return false;
+  return args.every((t) => t === scripts[0] || SED_PLAIN_OPTION_RE.test(t) || !t.startsWith('-'));
+};
+
+/** True when a clause's command word is a bare, unquoted, unprefixed grep-family command or a pure
+ * `s///` sed. A leading `VAR=val`, a path (`./grep`, `/tmp/grep`) or any quoting disqualifies it:
+ * the word may then name something else than the filter. */
+const isInertClause = (tokens) => {
+  if (tokens.length === 0 || !/^[A-Za-z]+$/.test(tokens[0])) return false;
+  const head = tokens[0];
+  const args = tokens.slice(1);
+  if (INERT_GREP_COMMANDS.has(head)) return !hasDisqualifyingOption(head, args);
+  return head === 'sed' && isInertSed(args);
+};
+
+const REDIRECT_OPERATOR_TAIL_RE = /(?:&>>|&>|>>|>&|>\||>)\s*$/;
+
+/** A quoted span `text[start..end)` is inert text (cannot hide a write target) unless it is a
+ * redirect's own target (`> "/x"`), unterminated, contains another quote character, or is a
+ * double-quoted span carrying a command substitution (`"$(echo x > /etc/y)"`). */
+const isInertQuotedSpan = (text, start, end) => {
+  const span = text.slice(start, end);
+  if (span.length < 2 || span[span.length - 1] !== span[0]) return false;
+  if (/['"]/.test(span.slice(1, -1))) return false;
+  if (REDIRECT_OPERATOR_TAIL_RE.test(text.slice(0, start))) return false;
+  return !(span[0] === '"' && (span.includes('$(') || span.includes('`')));
+};
+
+/** Copy of `visible` with the contents of inert quoted spans blanked (`grep 'a>b'`), for the
+ * whole-command `REDIRECT_RE` scan only; positions are preserved. Fails closed: spans are blanked
+ * only inside a clause whose command is an inert filter, and only when nothing in the command
+ * nests or reinterprets quotes or may execute quoted text; otherwise `visible` is returned
+ * unchanged (base behaviour), so masking can never turn a deny into an allow. Unquoted text is never masked: an unquoted
+ * `sed s/<A>/x/` really is a redirect in bash. */
+const maskRedirectNoise = (visible) => {
+  if (SHELL_EXEC_RE.test(visible) || QUOTE_REINTERPRETING_RE.test(visible) || COMMAND_REBINDING_RE.test(visible)) {
+    return visible;
+  }
+  const chars = visible.split('');
+  for (const [start, end] of clauseRanges(visible)) {
+    const text = visible.slice(start, end);
+    if (!isInertClause(tokenize(text))) continue;
+    let i = 0;
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch !== "'" && ch !== '"') {
+        i++;
+        continue;
+      }
+      const spanEnd = skipQuotedSpan(text, i, text.length);
+      if (isInertQuotedSpan(text, i, spanEnd)) {
+        for (let k = start + i + 1; k < start + spanEnd - 1; k++) chars[k] = ' ';
+      }
+      i = spanEnd;
+    }
+  }
+  return chars.join('');
+};
 
 const REDIRECT_RE = /(&>>|&>|>>|>&|>\||>)\s*(\S+)?/g;
 
@@ -320,6 +420,229 @@ const findCopyMoveTargets = (tokens) => {
   return [];
 };
 
+/** True when `word` (the part of a `--long` token before any `=`) names `name` the way getopt_long
+ * and git's parse-options accept it: exactly, or as an abbreviation of at least `--` plus one
+ * letter. An ambiguous abbreviation is counted too — over-matching only adds a target. */
+const isLongOptionPrefix = (word, name) => word.length >= 3 && name.startsWith(word);
+
+/** The value of a long option `--name=VALUE` or `--name VALUE` (or any abbreviation of `--name`)
+ * at `args[i]`, with the index of the last token it consumed; null when `args[i]` is not that
+ * option. */
+const longOptionValue = (args, i, name) => {
+  const t = args[i];
+  if (!t.startsWith('--')) return null;
+  const eq = t.indexOf('=');
+  if (!isLongOptionPrefix(eq === -1 ? t : t.slice(0, eq), name)) return null;
+  if (eq !== -1) return { value: t.slice(eq + 1), last: i };
+  return { value: args[i + 1] ?? UNRESOLVABLE_TARGET, last: i + 1 };
+};
+
+/** `sort` short options that take a value (`-k`, `-t`, `-S`, `-T`, `-o`). */
+const SORT_VALUE_SHORT = new Set(['k', 't', 'S', 'T', 'o']);
+
+/** `sort -o FILE` / `-oFILE` / a cluster ending in `o` (`-ro FILE`) / `--output[=]FILE` write
+ * targets. GNU sort permutes options, so the option counts wherever it sits. A short cluster is
+ * walked getopt-style: the first value-taking letter consumes the rest of the cluster or the next
+ * token, so `-k1o` is a key spec, never an output. */
+const sortTargets = (args) => {
+  const targets = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--') break;
+    const long = longOptionValue(args, i, '--output');
+    if (long) {
+      targets.push(stripQuotes(long.value));
+      i = long.last;
+      continue;
+    }
+    if (!/^-[^-]/.test(t)) continue;
+    for (let c = 1; c < t.length; c++) {
+      if (!SORT_VALUE_SHORT.has(t[c])) continue;
+      const attached = t.slice(c + 1);
+      const value = attached || args[++i] || UNRESOLVABLE_TARGET;
+      if (t[c] === 'o') targets.push(stripQuotes(value));
+      break;
+    }
+  }
+  return targets;
+};
+
+/** `uniq` short options whose value is the next token when not attached. */
+const UNIQ_VALUE_SHORT = /^-[a-zA-Z]*[fsw]$/;
+const UNIQ_VALUE_LONG = ['--skip-fields', '--skip-chars', '--check-chars'];
+
+/** True when `t` takes the next token as its value: a short cluster ending in `-f`/`-s`/`-w`, or a
+ * `=`-less abbreviation of a value-taking long option. */
+const isUniqValueOption = (t) =>
+  UNIQ_VALUE_SHORT.test(t) || (t.startsWith('--') && !t.includes('=') && UNIQ_VALUE_LONG.some((n) => isLongOptionPrefix(t, n)));
+
+/** `uniq [OPTION]... [INPUT [OUTPUT]]` writes its second operand; `-` means stdout. */
+const uniqTargets = (args) => {
+  const operands = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--') {
+      operands.push(...args.slice(i + 1));
+      break;
+    }
+    if (isUniqValueOption(t)) i++;
+    else if (t === '-' || !t.startsWith('-')) operands.push(t);
+  }
+  const out = operands[1];
+  return out === undefined || out === '-' ? [] : [stripQuotes(out)];
+};
+
+/** git global options that take the next token as their value when not written `--name=value`. */
+const GIT_VALUE_GLOBALS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env', '--attr-source']);
+
+/** Walks git's global options (everything before the subcommand) and returns the directories a
+ * relative output path may resolve against, plus the subcommand index. Each `-C DIR` moves the
+ * working directory relative to the previous one; `--git-dir`/`--work-tree` can make git resolve
+ * relative paths elsewhere, so their directories become extra candidate bases (every candidate
+ * is checked — over-matching only adds a target). Segments are joined once at the end, keeping
+ * the walk linear in the number of `-C` options. */
+const gitGlobalBases = (args) => {
+  let segments = [];
+  const extra = [];
+  let i = 0;
+  for (; i < args.length && args[i].startsWith('-') && args[i] !== '--'; i++) {
+    const t = args[i];
+    const eq = t.indexOf('=');
+    const name = t.startsWith('--') && eq !== -1 ? t.slice(0, eq) : t;
+    if (!GIT_VALUE_GLOBALS.has(name)) continue;
+    const value = stripQuotes(eq !== -1 && t.startsWith('--') ? t.slice(eq + 1) : (args[++i] ?? UNRESOLVABLE_TARGET));
+    if (name === '-C' && value) {
+      if (path.isAbsolute(value)) segments = [value];
+      else segments.push(value);
+    } else if (name === '--git-dir' || name === '--work-tree') {
+      extra.push({ name, value });
+    }
+  }
+  const cwdBase = segments.length > 0 ? path.join(...segments) : '';
+  const bases = [cwdBase];
+  for (const { name, value } of extra) {
+    const dir = path.isAbsolute(value) || !cwdBase ? value : path.join(cwdBase, value);
+    bases.push(dir);
+    // A git dir is usually `<work tree>/.git`, so its parent is a likely work tree too.
+    if (name === '--git-dir') bases.push(path.dirname(dir));
+  }
+  return { bases, subIdx: i };
+};
+
+/** `format-patch -o DIR` / `-oDIR` / `--output-directory[=]DIR` (or an abbreviation) value at
+ * `args[i]`, with the index of the last token it consumed; null when `args[i]` is not that option. */
+const formatPatchDirValue = (args, i) => {
+  const t = args[i];
+  if (t === '-o') return { value: args[i + 1] ?? UNRESOLVABLE_TARGET, last: i + 1 };
+  if (/^-o./.test(t)) return { value: t.slice(2), last: i };
+  return longOptionValue(args, i, '--output-directory');
+};
+
+/** `git … --output[=]FILE` (the diff family: `diff`, `log -p`, `show`, `format-patch`) and
+ * `git format-patch -o DIR` write targets. git resolves a relative path against its working
+ * directory, so each relative target is checked under every base `gitGlobalBases` returns (a
+ * dynamic base makes the joined target dynamic, i.e. WARN). */
+const gitOutputTargets = (args) => {
+  const { bases, subIdx } = gitGlobalBases(args);
+  const isFormatPatch = args[subIdx] === 'format-patch';
+  const values = [];
+  for (let i = subIdx + 1; i < args.length; i++) {
+    if (args[i] === '--') break;
+    const opt = (isFormatPatch && formatPatchDirValue(args, i)) || longOptionValue(args, i, '--output');
+    if (opt) {
+      values.push(stripQuotes(opt.value));
+      i = opt.last;
+    }
+  }
+  const targets = [];
+  for (const value of values) {
+    if (path.isAbsolute(value) || value === UNRESOLVABLE_TARGET) targets.push(value);
+    else for (const base of bases) targets.push(base ? path.join(base, value) : value);
+  }
+  return targets;
+};
+
+/** `yq -i|--inplace` rewrites its file operands. The expression operand cannot be told from a
+ * file without parsing yq's own flag set, so every operand is checked: an expression resolves to
+ * an in-root relative path (harmless) or, when dynamic, to the warn tier. */
+const yqTargets = (args) => {
+  const inPlace = args.some((t) => {
+    if (t.startsWith('--')) return isLongOptionPrefix(t.split('=')[0], '--inplace');
+    // A short cluster carrying `i` (`-i`, `-Pi`); checked without a backtracking regex.
+    return t.startsWith('-') && t.includes('i') && /^-[a-zA-Z]+$/.test(t);
+  });
+  if (!inPlace) return [];
+  return args.filter((t) => !t.startsWith('-')).map(stripQuotes);
+};
+
+/** Commands that look read-only but write a file through an option or operand (#1184). */
+const OPTION_WRITE_COMMANDS = [
+  ['sort', sortTargets],
+  ['uniq', uniqTargets],
+  ['git', gitOutputTargets],
+  ['yq', yqTargets],
+];
+
+/** Write targets of every option-writing command in one clause. Like the tee/sed/cp finders, the
+ * command word is found anywhere in the clause, so a wrapper with its own value (`nice -n 5`,
+ * `timeout 5`, `env X=1`) never hides it; a command name that is merely an argument
+ * (`grep uniq a b`) is over-matched, which only ever adds a target. */
+const findOptionWriteTargets = (tokens) => {
+  const targets = [];
+  for (const [name, extract] of OPTION_WRITE_COMMANDS) {
+    const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
+    if (cmdIdx !== -1) targets.push(...extract(positionalArgsBeforeRedirect(tokens, cmdIdx + 1)));
+  }
+  return targets;
+};
+
+const SHELL_NAMES = ['sh', 'bash', 'dash', 'zsh', 'ksh'];
+
+/** Shell options whose value is the next token (`-o pipefail`, `+O extglob`, `--rcfile f`). */
+const isShellValueOption = (t) => /^[-+][a-zA-Z]*[oO]$/.test(t) || t === '--rcfile' || t === '--init-file';
+
+/** True when a shell invoked with `args` reads its script from stdin: `-s` is given, or no script
+ * operand follows the options, and no `-c` supplies the script inline. */
+const shellReadsStdinScript = (args) => {
+  let stdinFlag = false;
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '--' || t === '-') return !args.slice(i + 1).length || stdinFlag || t === '-';
+    if (isShellValueOption(t)) {
+      i++;
+      continue;
+    }
+    if (/^-[a-zA-Z]+$/.test(t)) {
+      if (t.includes('c')) return false;
+      if (t.includes('s')) stdinFlag = true;
+      continue;
+    }
+    if (t.startsWith('-') || t.startsWith('+')) continue;
+    return stdinFlag;
+  }
+  return true;
+};
+
+/** A single `|` (or `|&`) pipe — never the `||` operator — and the clause text it feeds. */
+const PIPE_INTO_RE = /(?<!\|)\|&?(?!\|)([^;|&\n]*)/g;
+
+/** True when a pipe feeds a shell that reads its script from stdin (`… | sh`, `… | bash -s`): the
+ * piped text runs as commands this module never sees, so the call is unresolvable. A shell given
+ * a script file or `-c` reads its commands from there, not from the pipe. */
+const hasPipedShellScript = (visible) => {
+  PIPE_INTO_RE.lastIndex = 0;
+  let match = PIPE_INTO_RE.exec(visible);
+  while (match !== null) {
+    const tokens = tokenize(match[1]);
+    // Found anywhere in the piped clause, like the other finders, so a wrapper (`env bash`,
+    // `sudo sh`) cannot hide it.
+    const shellIdx = tokens.findIndex((t) => SHELL_NAMES.some((name) => isCommandToken(t, name)));
+    if (shellIdx !== -1 && shellReadsStdinScript(positionalArgsBeforeRedirect(tokens, shellIdx + 1))) return true;
+    match = PIPE_INTO_RE.exec(visible);
+  }
+  return false;
+};
+
 /** `isLiteralPathArg` (from `worktree-removal-guard.js`) excludes shell metacharacters that make a
  * target dynamic (`$`, `` ` ``, `*`, `?`, `[`, `]`, `{`, `}`) but not bash tilde (`~`) expansion —
  * a target like `~/foo.txt` passes it as "literal," yet `path.resolve(cwd, target)` never performs
@@ -356,6 +679,10 @@ const isStreamDeviceTarget = (rawTarget, visible) => {
   return (target === '/dev/stdout' || target === '/dev/stderr') && !MAY_REBIND_STREAM_FD_RE.test(visible);
 };
 
+/** A target that starts `/#` or carries regex metacharacters is probably a sed/regex fragment
+ * (`s/<A>/#1174/g` read as `/#1174/g`), not a path the author meant to write. */
+const looksLikeRegexFragment = (target) => target.startsWith('/#') || /[\\^$*+?()[\]{}|]/.test(target);
+
 /** True when one clause's leading command word is a write-shaped command this module cannot
  * resolve statically (see `UNRESOLVABLE_WRITE_COMMANDS`'s docstring). */
 const hasUnresolvableCommand = (tokens) => {
@@ -390,7 +717,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
   const literalTargets = [];
   let unresolvable = false;
 
-  for (const raw of findRedirectTargets(visible)) {
+  for (const raw of findRedirectTargets(maskRedirectNoise(visible))) {
     if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
     else unresolvable = true;
   }
@@ -399,7 +726,9 @@ const evaluateBashWriteTargets = (command, cwd) => {
     const tokens = tokenize(clause);
     if (tokens.length === 0) continue;
 
-    for (const raw of [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens)]) {
+    for (const raw of [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens),
+      ...findOptionWriteTargets(tokens),
+    ]) {
       if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
       else unresolvable = true;
     }
@@ -407,14 +736,22 @@ const evaluateBashWriteTargets = (command, cwd) => {
     if (hasUnresolvableCommand(tokens)) unresolvable = true;
   }
 
+  if (hasPipedShellScript(visible)) unresolvable = true;
+
   for (const target of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.isAbsolute(target) ? target : path.resolve(cwd, target);
     if (!isUnderRoot(resolvedPath, assignedRoot)) {
+      const hint = looksLikeRegexFragment(target)
+        ? ' This looks like a sed/regex expression; quote it.'
+        : '';
       return {
         tier: 'block',
         pattern_id: 'bash-outside-assigned-worktree',
-        reason: `Bash write target resolves outside the assigned worktree root (${assignedRoot}): ${resolvedPath}`,
+        reason:
+          `Bash write target resolves outside the assigned worktree root (${assignedRoot}): ${resolvedPath}. ` +
+          `Remedy: write inside ${assignedRoot} instead (e.g. ${path.join(assignedRoot, path.basename(resolvedPath))}) ` +
+          `and use a literal absolute path, or the Write/Edit tools.${hint}`,
       };
     }
   }
@@ -424,10 +761,13 @@ const evaluateBashWriteTargets = (command, cwd) => {
       tier: 'warn',
       pattern_id: 'bash-write-target-unresolvable',
       reason:
+        // The event log keeps only the first 300 characters of a reason (MAX_DETAIL_CHARS in
+        // hook-event-log.js), so the verdict comes first and the list of causes after it.
         'Bash command looks write-shaped but its target could not be resolved by static ' +
-        'inspection (a dynamic argument, or a command like python3 -c/perl -i/awk whose ' +
-        'write behavior cannot be determined from the command string alone) — cannot verify ' +
-        'assigned-worktree containment',
+        'inspection — cannot verify assigned-worktree containment (not confirmed unsafe). Cause: ' +
+        'a dynamic argument, a script piped into a shell, or a command like python3 -c/perl -i/awk ' +
+        'whose writes the command string does not show. Remedy: use a literal absolute path under ' +
+        'the assigned worktree, or the Write/Edit tools.',
     };
   }
 

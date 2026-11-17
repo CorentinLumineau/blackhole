@@ -77,6 +77,7 @@ Committed template: `.blackhole/config.json`
 | `autonomy.note` | no | Freeform note on how the autonomy grant interacts with other config (e.g. `merge_mode`) |
 | `worker_model_policy` | no | `cost-optimized` (default) — per-spawn model from role/track/route tier matrix, cheapest capable slug on current harness (`model-routing.md`); `inherit` — parent session model, no `model` override (v0.6.1 behavior) |
 | `worker_effort_policy` | no | `cost-optimized` (default when field present) — per-spawn reasoning effort folded into the resolved task tier (`model-routing.md` § Harness tier ladders); `inherit` — omit effort parameters, session inheritance (mirror `worker_model_policy: inherit`). When absent, tier-folded effort defaults apply under `cost-optimized` semantics |
+| `sleep_mode.enabled` | no | Sleep mode (`sleep-mode.md`): `true` ⇒ the campaign never asks the owner; every owner question is parked in `pending-decisions.json` and asked in one batched round on wake-up. **Resolution**: absent or `false` (default) ⇒ awake, every gate asks as before |
 | `entry_mode` | no | `multitask` (default) — coordinator + orchestrator; `direct` = legacy single session |
 | `merge_mode` | **yes at bootstrap** | `"immediate"` \| `"gated-batch"` (ADR-005) \| `"leave-open"` (ADR-006) — **no default** (ruling R-002, `documentation/reference/product-principles.md`): an absent or invalid value is a bootstrap-blocking condition, not a silent fallback; see the contract note below. `immediate`: each **low-risk** green campaign PR squash-merges as soon as it reaches LGTM; any other PR stays open with `needs-chef` (`merge-gate.md` § 9). `gated-batch` waits for all in-scope PRs (per `scope_milestone`/`scope_labels`) to reach LGTM, then merges one low-risk PR at a time in `merge_after` dependency order; high-risk siblings still get `needs-chef`. `leave-open`: blackhole never merges — every PR is driven to LGTM and left open for human review/merge; an LGTM'd open PR counts as *delivered* for campaign-complete purposes; `merged_by: blackhole` is never set for these issues; `fixed-in-pr` ledger rows stay `fixed-in-pr` until the human merge is later observed by a sync; high-risk green PRs still receive `needs-chef`; see `phase-loop.md` § Merge protocol and `merge-gate.md` |
 | `display_targets` | no | Array of viewport widths in px (e.g. `[412, 700, 2560]`) to capture visual evidence at for UI-affecting PRs (ADR-018); absent or empty (default) ⇒ both the implementer's capture step and the reviewer's Visual Evidence Audit are no-ops |
@@ -121,13 +122,17 @@ Committed template: `.blackhole/config.json`
 | `resource_policy.pace.throttle_ratio` | no | Seven-day pace (used share ÷ elapsed share) above which the round is capped at one worker (default `1.2`) |
 | `resource_policy.pace.scale_up_ratio` | no | Seven-day pace below which one more worker is allowed, up to `parallel_max` (default `0.7`) |
 | `usage_budget.enabled` | no | Master switch for `scripts/usage-budget.ts`, the usage-aware pacing gate (default `false`; `false` ⇒ verdict `unavailable`, `workers` = `parallel_max`, campaigns unchanged). **Resolution**: absent block or key ⇒ the defaults in this block; a wrong type throws with the key path |
+| `usage_budget.windows` | no | Which rate-limit windows the gate reads (default `null` = auto-detect: the windows present in the usage reading, so a plan whose reading carries no `five_hour` window gates on the weekly window alone with no config; a non-empty list of `five_hour`, `seven_day` keeps only those). Read through `scripts/lib/usage-source.ts` and by `usage-budget.ts --usage`. **Resolution**: absent or `null` ⇒ auto-detect; any other value that is not a non-empty list of those names throws with the key path |
 | `usage_budget.five_hour.no_spawn_at` | no | 5-hour `used_percentage` at or above which no new worker spawns, in-flight workers finish (default `85`; must be `>` 0 and `<` `stop_workers_at`) |
 | `usage_budget.five_hour.stop_workers_at` | no | 5-hour `used_percentage` at or above which workers stop and the campaign waits for the window reset (default `90`; `<= 100`). Also the ceiling `workers` is sized against |
-| `usage_budget.weekly.no_new_starts_at` | no | Weekly (`seven_day`) `used_percentage` at or above which no new chain starts, in-flight chains finish (default `78`; must be `>` 0 and `<` `stop_campaign_at`) |
-| `usage_budget.weekly.stop_campaign_at` | no | Weekly `used_percentage` at or above which the campaign drains and stops (default `80`; `<= 100`) |
+| `usage_budget.weekly.no_new_starts_at` | no | Weekly (`seven_day`) `used_percentage` at or above which no new chain starts, in-flight chains finish (default `78`, or `target_at_reset` when that is set; must be `>` 0 and `<` `stop_campaign_at`, or with a target `>=` `target_at_reset` and `<=` `stop_campaign_at`). With a target, crossing it is `PACE-WAIT` until the weekly reset instead of `NO-NEW-STARTS` |
+| `usage_budget.weekly.stop_campaign_at` | no | Weekly `used_percentage` at or above which the campaign drains and stops (default `80`, or `target_at_reset` when that is set; `<= 100`; with a target an explicit value below it is rejected) |
+| `usage_budget.weekly.target_at_reset` | no | Weekly `used_percentage` to land on exactly at the weekly reset (default `null` = no weekly pacing, an explicit `null` is the same as absent; number in (0, 100]). When set, workers = min(5-hour fit, weekly fit), weekly fit = `floor((headroom per hour to the target - orchestrator weekly rate) / worker weekly rate)` with the hours to the reset floored at 15 minutes; a weekly fit below 1 is `PACE-WAIT` with `wake_at` = when one worker fits again. Without a `five_hour` window the weekly fit alone sizes the round; with no target either, the weekly lines gate and `max_workers` caps the round |
 | `usage_budget.rates.orchestrator_pct_per_hour` | no | Calibrated 5-hour percentage points per hour the orchestrator session itself burns (default `6`; `> 0`) |
 | `usage_budget.rates.worker_pct_per_hour` | no | Calibrated 5-hour percentage points per hour one worker burns (default `7`; `> 0`) |
-| `usage_budget.max_workers` | no | Ceiling on the worker count `GO` returns (default `4`; integer `>= 1`) |
+| `usage_budget.rates.orchestrator_weekly_pct_per_hour` | no | Weekly percentage points per hour the orchestrator burns, used by `target_at_reset` pacing; a valid measured rate wins over it (default `0.1`; `> 0`). The default is a starting point, to be replaced by probe calibration (#1201) |
+| `usage_budget.rates.worker_weekly_pct_per_hour` | no | Weekly percentage points per hour one worker burns, used by `target_at_reset` pacing; a valid measured rate wins over it (default `0.15`; `> 0`). The default is a starting point, to be replaced by probe calibration (#1201) |
+| `usage_budget.max_workers` | no | Ceiling on the worker count `GO` returns, together with `parallel_max` (the smaller wins; default `4`; integer `>= 1`) |
 | `usage_budget.coordination.role` | no | `solo`, `manager` or `peer`: how this session shares one budget with others (default `solo`) |
 | `usage_budget.coordination.manager_session` | no | Session that grants worker slots; required non-empty when `role` is `peer` (default `null`) |
 | `usage_budget.coordination.peer_floor` | no | Worker slots a peer may always use without a grant (default `1`; integer `>= 0`) |
@@ -229,6 +234,7 @@ Runtime state files (gitignored in consumer repos):
 | `plans/<issue>.md` | Implementation plans |
 | `campaign-checkpoint.md` | Resume summary (see `checkpoint-protocol.md`) |
 | `owner-decisions.json` | The owner's decisions, one dated line each (`status-page.md` § What the orchestrator records) |
+| `pending-decisions.json` | Owner questions parked by sleep mode, asked in one round on wake-up (`sleep-mode.md`) |
 
 On first bootstrap, copy template to runtime if missing fields — do not
 overwrite existing runtime config without user confirmation.
@@ -256,6 +262,9 @@ scope; only the rotation tunable is registered.
 The `usage_budget` keys above are frozen: later work may add behavior that reads them but does not
 rename, remove or retype one. The executive-summary launch gate's Budget row may read
 `usage_budget.enabled`, `usage_budget.five_hour.*`, `usage_budget.weekly.*` and
-`usage_budget.max_workers`; the `rates` and `coordination` keys are pacing internals. The gate is
+`usage_budget.max_workers`; the `rates` and `coordination` keys are pacing internals.
+`usage_budget.weekly.target_at_reset`, `usage_budget.rates.orchestrator_weekly_pct_per_hour` and
+`usage_budget.rates.worker_weekly_pct_per_hour` (issue #1200) join the frozen set on the same terms;
+the verdict `PACE-WAIT` (drain, wake at `wake_at`, resume) is part of the gate's output contract. The gate is
 `scripts/usage-budget.ts`; it sits beside the pace gate (`resource_policy.pace`), which is unchanged.
 <!-- GENERATED by scripts/build.ts from src/references/config-template.md — do not hand-edit -->

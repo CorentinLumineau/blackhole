@@ -1,3 +1,5 @@
+import type { UsageVerdictName } from '../usage-budget.ts';
+
 // Mirrors the `route` object SSOT — `queue-dag.md` § `route` object. Field names and enum
 // values are frozen there; this type must not rename or add fields (V-INT-01 / V-DRY-01).
 // omits: needs_brainstorm, needs_analysis, docs_impact, ui, confidence.docs, confidence.brainstorm, confidence.analysis, confidence.ui — not read by campaign-status.ts's current consumers (V-SHAPE-01 declared narrowing).
@@ -27,6 +29,8 @@ export type QueueIssue = {
   /** Forge labels mirrored by the forge sync; `in-progress:*` / `agent:*` name the lane that owns the issue. */
   labels?: string[];
   depends_on?: number[];
+  /** What the last PR-dependency sync saw on the forge (forge-sync.md § 6.8). */
+  forge_deps?: { synced: string[]; body_cross: string[] };
   size?: string;
   review_iteration?: number;
   rounds_to_lgtm?: number;
@@ -169,7 +173,7 @@ export type MergedPr = { number: number; title: string; mergedAt: string; closes
 /** A queue entry the forge contradicts: the queue says `queue`, the forge says its PR is merged. */
 export type QueueDrift = { issue: number; pr: number; title: string; queue: string; forge: 'merged' };
 
-export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html' | 'data';
+export type StatusMode = 'dashboard' | 'config-summary' | 'json' | 'html' | 'data' | 'summary';
 
 export type StatusArgs = {
   mode: StatusMode;
@@ -179,6 +183,12 @@ export type StatusArgs = {
   outPath: string | null;
   /** `--data` only: absolute directory the row files are written to; null otherwise. */
   dataDir: string | null;
+  /** `--summary` only: the raw `--usage` JSON (parsed by `main`, which exits 2 on a malformed one); null otherwise. */
+  usage: string | null;
+  /** `--summary` only: `--now` in epoch seconds; null ⇒ the clock. */
+  now: number | null;
+  /** `--summary --json`: print the rows and the question cards as JSON. */
+  summaryJson: boolean;
 };
 
 /** Queue and ledger counts — the single computation both the text dashboard and the report read. */
@@ -360,6 +370,37 @@ export type StatusReport = {
   drift: QueueDrift[];
   /** Hook deny and warn events per `pattern_id` since the campaign started, live and archived, most frequent first. Additive. */
   deny_counts: DenyCount[];
+  /** The usage reading and the usage-budget verdict for it (`budget.ts`); `probed: false` when no reading was found. Additive. */
+  budget: BudgetPanel;
+};
+
+/** The status page's usage-budget panel. Times are ISO 8601; every number is null when the window or the reading is absent. */
+export type BudgetPanel = {
+  /** Whether a current rate-limit reading was read; false ⇒ the page says "usage not probed". */
+  probed: boolean;
+  /** Why no reading was read; null when `probed`. */
+  reason: string | null;
+  /** Seconds since the rate-limit cache was written. */
+  age_seconds: number | null;
+  /** Only set when the plan has a current five_hour window. */
+  five_hour_pct: number | null;
+  five_hour_resets_at: string | null;
+  weekly_pct: number | null;
+  /** The weekly (seven_day) reset. */
+  resets_at: string | null;
+  /** `workersAllowed()`'s count, or `parallel_max` when the verdict is `unavailable`. */
+  workers_allowed: number | null;
+  verdict: UsageVerdictName | null;
+  verdict_reasons: string[];
+  /**
+   * The weekly pace since the window opened, and when it reaches each distinct weekly threshold
+   * (`no_new_starts_at`, `stop_campaign_at`): `at` null when not before the reset or already crossed. Null without a weekly window.
+   */
+  forecast: { pct_per_hour: number | null; reaches: Array<{ pct: number; at: string | null }> } | null;
+  /** The usage source the reading came from (`usage-source.ts`); null when not probed. */
+  source: 'rate-limit-cache' | 'none' | null;
+  /** The windows the reading shows: `five_hour` only when the plan has one. */
+  windows: Array<'five_hour' | 'seven_day'>;
 };
 
 /** A status colour name. Text always carries the meaning; the colour only repeats it. */

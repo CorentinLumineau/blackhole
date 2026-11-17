@@ -1,0 +1,25 @@
+﻿2026-08-12T10:00:00.1234567Z Current runner version: '2.319.1'
+2026-08-12T10:00:00.2000000Z ##[group]Operating System
+2026-08-12T10:00:00.2000000Z Ubuntu
+2026-08-12T10:00:00.2000000Z 24.04.1
+2026-08-12T10:00:00.2000000Z ##[endgroup]
+2026-08-12T10:00:01.0000000Z ##[group]Run actions/checkout@v4
+2026-08-12T10:00:01.0000000Z with:
+2026-08-12T10:00:01.0000000Z   repository: CorentinLumineau/blackhole
+2026-08-12T10:00:01.0000000Z   fetch-depth: 1
+2026-08-12T10:00:01.0000000Z ##[endgroup]
+2026-08-12T10:00:02.0000000Z Syncing repository: CorentinLumineau/blackhole
+2026-08-12T10:00:03.0000000Z ##[group]Run bun test --fail-fast
+2026-08-12T10:00:03.0000000Z bun test --fail-fast
+2026-08-12T10:00:03.0000000Z shell: /usr/bin/bash -e {0}
+2026-08-12T10:00:03.0000000Z env:
+2026-08-12T10:00:03.0000000Z   CI: true
+2026-08-12T10:00:03.0000000Z ##[endgroup]
+2026-08-12T10:00:04.0000000Z bun test v1.3.0 (abc1234f)
+2026-08-12T10:00:05.0000000Z FAIL src/a.test.ts
+2026-08-12T10:00:05.0100000Z   ● adds numbers
+2026-08-12T10:00:05.0200000Z     expect(received).toBe(expected)
+2026-08-12T10:00:05.1000000Z ##[error]Process completed with exit code 1.
+2026-08-12T10:00:06.0000000Z Post job cleanup.
+2026-08-12T10:00:06.1000000Z [command]/usr/bin/git version
+2026-08-12T10:00:06.2000000Z Cleaning up orphan processes

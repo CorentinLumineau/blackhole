@@ -94,6 +94,7 @@ definition of the shape; bump `schema_version` on a breaking change):
 | `recently_done` | Newest merged/closed items, highest PR then issue number first (the queue holds no merge time), at most 5 |
 | `ledger_open` | Every open finding, BLOCK first then most recent (`id`, `vcode`, `severity`, `summary`, `issue_ref`) |
 | `deny_counts` | PreToolUse hook `deny` (`tier: block`) and `warn` events per `pattern_id` (`pattern_id`, `deny`, `warn`) since the campaign started, from live and archived `.blackhole/hook-events`, most frequent first. Additive; the dashboard's **Hook denials** section lists the top 5 |
+| `budget` | The usage-budget panel (`scripts/lib/campaign-status/budget.ts`): `probed`, `reason` (why not probed, else `null`), `age_seconds`, `five_hour_pct` and `five_hour_resets_at` (`null` when the plan has no current five_hour window), `weekly_pct`, `resets_at` (the weekly reset), `workers_allowed`, `verdict` and `verdict_reasons` (`workersAllowed()`, or `unavailable` with `parallel_max` when `usage_budget` is off or invalid), and `forecast` (`{pct_per_hour, reaches: [{pct, at}]}`, one entry per distinct weekly threshold, `at` `null` when not reached before the reset; `null` without a weekly window), `source` (`rate-limit-cache`, or `null` when not probed) and `windows` (the windows the reading shows, `five_hour` only when the plan has one). Times are ISO 8601. With no reading, `probed: false` and every number `null`; the page says `usage not probed`. Additive |
 | `host` | `pace` (the pace line or `null`) and `notes` (plugin-drift lines) |
 | `scope_record` | `recorded` and the `entries` of `config.json` `campaign_scope` (`kind`, `text`, `set_at`, optional `reason`, `refs`, `filter`); malformed entries are dropped. Additive |
 | `decisions` | `owner-decisions.json`, newest first (`date`, `text`, optional `refs`). Additive |
@@ -150,7 +151,9 @@ The status script emits markdown with:
 
 1. **Header** — scope (milestone/labels), orchestrator turn, queue `refreshed_at`
 2. **Counts** — the report's `headline` and stage board counts, the owner's moves, the recorded
-   scope ("Scope not recorded" when none) and the three newest decisions, then forge open issues/PRs, queue active/done/in-flight/blocked/ready, ledger
+   scope ("Scope not recorded" when none), the three newest decisions and a **Usage budget**
+   section (5-hour % only with a five_hour window, weekly % and reset, workers allowed, the
+   `weekly X% reached around HH:MM` forecast, or `usage not probed`), then forge open issues/PRs, queue active/done/in-flight/blocked/ready, ledger
    severities, and a **Queue health** verdict (`✓ HEALTHY` / `⚠ STALLED` / `✗ DEGRADED`) computed
    from forge availability plus the blocked/in-flight counts already shown here. Scoped
    deliberately narrow: it says nothing about plugin-cache drift or doc-tree health — those are

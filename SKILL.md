@@ -45,6 +45,7 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 | `hunt [kind]` | `hunt`, `hunt <kind>` | Orchestrator — manual kaizen wave (`kaizen.trigger: manual`, or any time regardless of trigger) |
 | `stop` (drain, default) | `stop`, `pause`, `drain the campaign` | Orchestrator (foreground, Pattern C/A) or Coordinator relay → orchestrator (Pattern B) — see `phase-stop.md` |
 | `stop --abandon` | `stop --abandon`, `abandon`, `kill`, `abort`, `force stop` | Orchestrator/Coordinator, explicit opt-in only — see `phase-stop.md` |
+| `sleep` / `wake` | `sleep`, "I'm leaving" / `wake`, the owner's first message back | Coordinator or main-chat orchestrator — park every owner question, then ask them in one batched round ([sleep-mode.md](references/sleep-mode.md)) |
 | `campaign-audit` | `audit`, `campaign audit` | Read-only protocol conformance check |
 
 ## Phase 0: Bootstrap (ALL modes)

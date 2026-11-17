@@ -525,6 +525,20 @@ describe('installStateFile', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test('a first write (no live file yet) installs the candidate with no snapshot', () => {
+    const dir = makeTempDir('install-state-first-');
+    try {
+      const livePath = path.join(dir, 'pending-decisions.json');
+      const archiveDir = path.join(dir, 'archive');
+      const content = JSON.stringify({ decisions: [{ id: 'PD-1' }] });
+      expect(installStateFile({ livePath, archiveDir, content, entityKey: 'decisions' })).toEqual({ ok: true });
+      expect(fs.readFileSync(livePath, 'utf-8')).toBe(content);
+      expect(fs.readdirSync(archiveDir)).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('validateStateWrite — queue entry status and phase', () => {

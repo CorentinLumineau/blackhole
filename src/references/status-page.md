@@ -102,14 +102,17 @@ the plugin version).
 
 One Data dashboard per campaign, laid out by `templates/status-dashboard/index.html` (resolve it
 from `${BLACKHOLE_PLUGIN_ROOT:-.}`). Its datasets are `overview`, `moves`, `blockers`, `board`,
-`streams`, `scope`, `config`, `decisions`, `links` and `denials` (the top 5 hook rules by deny and warn count; `STATUS_DATASET_IDS`; the ids and fields:
+`streams`, `scope`, `config`, `decisions`, `links`, `denials` (the top 5 hook rules by deny and warn count) and `budget` (the usage-budget rows, `budgetRows()`; `STATUS_DATASET_IDS`; the ids and fields:
 `scripts/lib/campaign-status/data.ts`). The page works STALE out in the reader's browser from
 `overview.last_activity_at` and `overview.stale_after_hours` (the one `STALE_AFTER_HOURS`), so a
 dashboard nobody refreshes stops saying running by itself; "x min ago" is computed when it is
 opened. Read `.blackhole/status-artifact.json`. Its shape is `{"url": "<claude.ai artifact link>",
 "kind": "data", "created_at": "<ISO8601>", "template_version": <n>, "template_sha256": "<hex>"}`;
 `template_sha256` (the SHA-256 of the `files/index.html` text last written) is absent on a
-dashboard published before template version 3.
+dashboard published before template version 3. An optional `last_probe` (`{at, ok, url,
+reason?}`) records whether the stored URL opened from this account at the last launch
+(the launch gate probes it before the first spawn of a `run`); only `scripts/status-probe.ts record` writes it, and every
+other step keeps it as is.
 
 - **File absent** (first publish for this campaign): create the dashboard **once** from the
   Data artifact type (`Artifact` `action: "quickstart"`, `intent: "other"`, then publish with the
@@ -208,14 +211,37 @@ sees at a glance where the run stands and what to do:
    stream); `--html` ships no script, so it has the table without the filter
 5. **Scope** (in, parked, deferred, blocked upstream, out; "Scope not recorded" when none is),
    **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest),
-   **Hook denials** (top 5 rules by deny and warn count, or `no hook denials recorded`)
+   **Hook denials** (top 5 rules by deny and warn count, or `no hook denials recorded`),
+   **Usage budget** — see below
+
+**Usage budget** (`scripts/lib/campaign-status/budget.ts`) reads the host's usage source
+(`usage-source.ts`; the host `run-context.json` records, else the environment's; Cursor has none, so
+the panel says `usage not probed — <reason>`): on Claude or an unknown host, the rate-limit cache
+`pace-gate.ts` and `usage-budget.ts` read (`resolveRateLimitCachePath`: `resource_policy.pace.cache_path`,
+else `~/.claude/cache/rate-limits.json`; stale past `resource_policy.pace.max_age_seconds`) and
+shows: the **5-hour** % and reset, only when the plan has a current five_hour window (a weekly-only
+plan shows no 5-hour row); the **Weekly** % and reset; **Workers allowed** with the
+`workersAllowed()` verdict and its first reason (`unavailable` with `parallel_max` when
+`usage_budget` is off or invalid, as the CLI returns); one **Forecast** row per distinct weekly
+threshold (`no_new_starts_at`, `stop_campaign_at`): `weekly X% reached around <day HH:MM UTC>`,
+or `not reached before the reset`, from the pace since the weekly window opened at 0%
+(`forecastWeekly()`); the reading's age; and **Usage windows**, the windows the reading shows and its source. With no current reading it says
+`usage not probed — <reason>`. Times are UTC, so every host prints the same page.
 
 `--html` keeps its detail sections after these: in progress, waiting on you, waiting on
 something else by reason class (`elseClasses()`), up next, recently done, and a closed native
 `<details>` with host, checkpoint notes, open findings and the top 5 hook rules by deny and warn count
 (`deny_counts`; `no hook denials recorded` when empty). The text dashboard (`dashboard.ts`)
-is shorter: it prints the headline, the board counts, your move, the scope and the newest
-decisions above its queue sections, with no card list and no workstreams.
+is shorter: it prints the headline, the board counts, your move, the scope, the newest
+decisions and a **Usage budget** section (the same rows) above its queue sections, with no card list and no workstreams.
+Among its queue sections, **Merge next** numbers every open PR in the order to merge it
+(`mergeNextOrder`, `scripts/lib/merge-next.ts`): CI-fix PRs first, then parents, then children,
+ordered over stack edges (`effectiveParent`), `depends_on` and trunk-red parking. A forge-declared dependency (a "blocked by" edge or a stacked base set on the forge) is a `depends_on` edge after the sync (`forge-sync.md` § 6.8), so it shows exactly like a campaign-declared one. The CI-fix tier is
+the trunk-red base fixes the `waiting-on-trunk-fix #N` notes name (`trunkFixIssues`). Each line names
+its blocker — `waits on #N (stacked on)`, `waits on #N (depends on)`, `waits on #N (trunk fix)`,
+`waits on owner/repo#N (cross-repo, …)` (an unmet body line, `forge-sync.md` § 6.7, or a cross-repo edge declared on the PR, § 6.8),
+`blocked: <notes>`, `after CI fix #N`, or `none` — and a loop of edges is printed as a `Cycle, not ordered` line instead of being walked.
+It sits above "Stacked PR merge order", which it does not replace.
 Visual rules: R-006 (`documentation/reference/product-principles.md`).
 
 ## State file

@@ -434,6 +434,11 @@ describe('buildStatusReport — state banner and recently_done', () => {
     expect(r.state.next_action).toBe('Owner: approve the plan (#5)');
   });
 
+  test('an item parked by sleep mode asks the owner to answer the parked decision', () => {
+    const r = build({ issues: { '6': { title: 'g', status: 'blocked', phase: 'plan', notes: 'awaiting-owner-on-return' } } });
+    expect(r.state.next_action).toBe('Owner: answer the decision parked while you were away (#6)');
+  });
+
   test('waiting_on_owner items carry a pr_url when they have a PR', () => {
     const r = build({
       issues: { '5': { title: 'g', status: 'blocked', phase: 'review', pr: 9, notes: 'awaiting-user-clarification' } },

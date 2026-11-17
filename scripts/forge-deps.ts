@@ -1,3 +1,5 @@
+import type { PrLanding, PrLandingState } from './lib/forge-adapter/pr-landing.ts';
+
 const DEP_LINE_RE =
   /^(?:blocked by|depends on|after)\s+#(\d+)(?:\s+merges)?\s*$/i;
 
@@ -22,6 +24,84 @@ export function parseDependsFromBody(body: string): number[] {
   }
 
   return deps;
+}
+
+/** Same keywords as `DEP_LINE_RE`, naming a PR in another repo: `Depends on owner/repo#N`. */
+const CROSS_REPO_DEP_LINE_RE =
+  /^(?:blocked by|depends on|after)\s+([A-Za-z0-9][\w.-]*\/[\w.-]+)#(\d+)(?:\s+merges)?\s*$/i;
+
+/** A dependency on pull request `number` of `repo` (`owner/repo`) on the campaign's forge. */
+export type CrossRepoDep = { repo: string; number: number };
+
+/**
+ * The cross-repo dependency lines of an issue body, in order, deduped. These live only in the
+ * body (no queue.json field): `mergeDependsIntoBody` never matches them, so a same-repo
+ * write-back keeps them. A line that is not exactly `<keyword> owner/repo#N` is ignored.
+ */
+export function parseCrossRepoDepsFromBody(body: string): CrossRepoDep[] {
+  const seen = new Set<string>();
+  const deps: CrossRepoDep[] = [];
+  for (const line of body.split('\n')) {
+    const match = line.trim().match(CROSS_REPO_DEP_LINE_RE);
+    if (!match) continue;
+    const dep = { repo: match[1], number: Number(match[2]) };
+    const key = `${dep.repo}#${dep.number}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deps.push(dep);
+  }
+  return deps;
+}
+
+/** Why a cross-repo dependency is still unmet: its PR's landing, or `unreadable` when the forge read failed. */
+export type CrossRepoDepState = Exclude<PrLandingState, 'merged'> | 'unreadable';
+
+export type CrossRepoBlocker = { issue: number; dep: CrossRepoDep; state: CrossRepoDepState };
+
+/** Reads the landing of PR `number` in `repo`; null when it cannot be read. */
+export type CrossRepoLandingReader = (repo: string, number: number) => PrLanding | null;
+
+/**
+ * The unmet cross-repo dependencies of `issues`: their body lines plus the ones declared only on
+ * the forge (`forgeDeclared`, from each queue issue's `forge_deps`, forge-sync.md § 6.8), each once.
+ * Only the other repo's forge merged state satisfies one; an unreadable PR (null or a throwing
+ * read) stays a blocker, never satisfied.
+ */
+export function crossRepoBlockers(
+  issues: { number: number; body: string }[],
+  read: CrossRepoLandingReader,
+  forgeDeclared: Map<number, CrossRepoDep[]> = new Map(),
+): CrossRepoBlocker[] {
+  const blockers: CrossRepoBlocker[] = [];
+  for (const issue of issues) {
+    const deps = [...parseCrossRepoDepsFromBody(issue.body), ...(forgeDeclared.get(issue.number) ?? [])];
+    const seen = new Set<string>();
+    for (const dep of deps) {
+      const key = `${dep.repo}#${dep.number}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      let landing: PrLanding | null;
+      try {
+        landing = read(dep.repo, dep.number);
+      } catch {
+        landing = null;
+      }
+      if (landing?.state === 'merged') continue;
+      blockers.push({ issue: issue.number, dep, state: landing ? landing.state : 'unreadable' });
+    }
+  }
+  return blockers;
+}
+
+const BLOCKER_REASON: Record<CrossRepoDepState, string> = {
+  open: 'not merged yet',
+  'closed-unmerged': 'closed without merging',
+  unreadable: 'merged state unreadable, treated as unmet',
+};
+
+/** The blocker text of one unmet dependency, as a "Merge next" item names it. */
+export function crossRepoBlockerText(b: CrossRepoBlocker): string {
+  return `waits on ${b.dep.repo}#${b.dep.number} (cross-repo, ${BLOCKER_REASON[b.state]})`;
 }
 
 function isDepLine(line: string): boolean {
@@ -72,8 +152,15 @@ export function mergeDependsIntoBody(body: string, dependsOn: number[]): string 
     nonDepLines.push(line);
   }
 
-  const depLines = targetDeps.map(formatDepLine);
+  return placeDependencyLines(nonDepLines, targetDeps.map(formatDepLine));
+}
 
+/**
+ * Puts `depLines` at the top of the body's `## Dependencies` section (appending the section when
+ * there is none) and returns the body. `nonDepLines` is the body already stripped of the lines
+ * the caller owns; everything else, prose inside the section included, is kept in order.
+ */
+export function placeDependencyLines(nonDepLines: string[], depLines: string[]): string {
   if (depLines.length === 0) {
     return trimTrailingBlankLines(nonDepLines).join('\n');
   }
