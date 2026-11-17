@@ -1,5 +1,6 @@
 import { readScope, type CampaignScope } from '../../forge-scope.ts';
 import { classPreview, groupBlockedRows, waitReason } from './blocked-classes.ts';
+import { formatMergeNextItem, mergeNextOrder } from '../merge-next.ts';
 import { formatStackMergeOrder, stackMergeOrder } from '../stack-parent.ts';
 import { safePatternId, topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
@@ -299,6 +300,20 @@ export function renderQueueHealthLine(verdict: QueueHealth, blockedCount: number
   return `**Queue health:** ${QUEUE_HEALTH_ICON[verdict]} ${label}`;
 }
 
+/** Every open PR in the order to merge it (`mergeNextOrder`), each with its blocker; `ciFixIssues` merge first. */
+export function renderMergeNextSection(issues: Record<string, QueueIssue>, ciFixIssues: number[] = []): string[] {
+  const { items, cycles } = mergeNextOrder(issues, ciFixIssues);
+  if (items.length === 0 && cycles.length === 0) return [];
+  const shown = items.slice(0, SECTION_CAP);
+  return [
+    '### Merge next',
+    ...shown.map((item, i) => `${i + 1}. ${formatMergeNextItem(item)}`),
+    ...capOverflowLine(items.length, shown.length),
+    ...cycles.map((c) => `- **Cycle, not ordered:** ${c.map((n) => `#${n}`).join(', ')} — their stack or depends_on edges loop`),
+    '',
+  ];
+}
+
 export function renderStackMergeOrderSection(issues: Record<string, QueueIssue>): string[] {
   const stacks = stackMergeOrder(issues);
   if (stacks.length === 0) return [];
@@ -406,6 +421,7 @@ export function formatDashboard(opts: {
   lines.push(...renderReadySection(ready));
   lines.push(...renderRoutingSection(active));
   lines.push(...renderWavesSection(issues));
+  lines.push(...renderMergeNextSection(issues));
   lines.push(...renderStackMergeOrderSection(issues));
   lines.push(...renderCompletedSection(done));
   lines.push(...renderFiledSection(filed));

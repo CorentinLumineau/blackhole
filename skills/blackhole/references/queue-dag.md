@@ -273,7 +273,10 @@ overlapping paths, in any `merge_mode` — then:
 4. Post the merge order for the stack as a PR comment on each open stacked child PR, and edit that
    comment (do not add a new one) whenever the stack changes — a PR opens, merges, or closes. The
    order is `formatStackMergeOrder(stackMergeOrder(issues))` (`scripts/lib/stack-parent.ts`), the
-   same text the dashboard's "Stacked PR merge order" section renders.
+   same text the dashboard's "Stacked PR merge order" section renders. Across every open PR, not
+   one stack, the dashboard's "Merge next" list (`mergeNextOrder`, `scripts/lib/merge-next.ts`)
+   gives the order to merge them in: CI-fix PRs, then parents, then children, with stack edges and
+   `depends_on` as the edges, each PR's blocker named and an edge loop reported, never walked.
 5. A fix-round push to the parent is **not** propagated eagerly. The child's three-dot diff against
    its parent branch is unchanged by new parent commits, so the parent branch is merged into the
    child (a normal merge and push, never a rebase or force-push) only when the child is
