@@ -197,6 +197,13 @@ describe('fingerprintLog / pathsInLog', () => {
     expect(fingerprintLog(a)).not.toBe(fingerprintLog('Run bun test\n  ● adds B'));
   });
 
+  test('an indented failure line followed by more output is the fingerprint line, not the line after it', () => {
+    const a = 'Run bun test\n  ✗ adds A\nRan 3 tests';
+    const b = 'Run bun test\n  ✗ adds B\nRan 3 tests';
+    expect(fingerprintLog(a)).not.toBe(fingerprintLog(b));
+    expect(fingerprintLog(a)).toBe(fingerprintLog('  ✗ adds A'));
+  });
+
   test('ISO timestamp and BOM prefixes are stripped before matching', () => {
     const ts = (l: string) => `2026-08-12T10:00:03.1234567Z ${l}`;
     const log = (f: string) =>
