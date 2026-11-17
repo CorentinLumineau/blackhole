@@ -145,7 +145,7 @@ place that turns usage into a worker count.
 
 ### Messages
 
-Three plain-text messages, one per line, sent over the host's cross-session message tool
+Four plain-text messages, one per line, sent over the host's cross-session message tool
 (per-harness mapping: `claude-code-native.md` § Cross-session budget transport):
 
 | Message | Direction | Body |
@@ -153,17 +153,43 @@ Three plain-text messages, one per line, sent over the host's cross-session mess
 | `slot-request` | peer → manager | `slot-request session=<peer session> want=<N> verdict=<peer's own gate verdict>` |
 | `slot-grant` | manager → peer | `slot-grant session=<peer session> slots=<M>` — `M` may be `0` |
 | `worker-done` | peer → manager | `worker-done session=<peer session> slots=<K>` — returns `K` slots when workers finish |
+| `heartbeat` | peer → manager | `heartbeat session=<peer session> running=<R>` — renews the peer's lease (below) |
 
 The manager's free slots are its pool minus its own running workers, minus every slot granted and
-not yet returned by `worker-done`, minus `peer_floor` for each peer it knows of. A grant never
-exceeds the free slots. The manager re-runs its gate before each grant; a verdict other than `GO`
-grants `0`.
+not yet returned or expired, minus `peer_floor` for each known peer. A session becomes a known
+peer the moment any of its messages arrives, even one the manager has never seen before, so its
+floor is reserved from that message on. A grant never exceeds the free slots.
+
+### Verdicts
+
+Both sides read the gate verdict the way the spawn round does (`orchestrator-runtime.md`
+§ Background worker barrier, Spawn — the usage-gate verdict table, issue #1213). The manager re-runs its gate
+before each grant; a peer runs the smaller of its own verdict's count and its grant plus
+`peer_floor`.
+
+| Verdict | Manager grants | Peer runs |
+|---|---|---|
+| `GO` | Up to the free slots | Its grant plus `peer_floor`, capped by its own `workers` |
+| `unavailable` (or a non-zero exit) | No cut: the pool is `workers` = `parallel_max`, granted as under `GO`; the reason is logged | No cut from its own gate; still bounded by its grant plus `peer_floor` |
+| `NO-NEW-STARTS` | Slots only for workers that continue an issue already past handle; none for a new start | The same: no issue leaves `ready`; in-flight workers continue |
+| `NO-SPAWN` | `0`; slots already granted stay held until returned or expired | No new spawn; in-flight workers finish |
+| `STOP-WORKERS`, `PACE-WAIT`, `STOP-CAMPAIGN` | `0` | No new spawn; drain per `phase-stop.md` § Usage stop |
+
+### Grant lease
+
+Every grant and every floor reservation is a lease. Each message a peer sends renews its lease;
+a peer holding granted slots or running workers sends `heartbeat` at least every 20 minutes (the
+same interval as the CI check-in, `project-thread-mode.md` § Scheduling: routines). When 20 minutes pass
+with no message from a peer, the manager frees every slot granted to it, releases its floor
+reservation and stops counting it as known. A peer that died or lost its context mid-round
+therefore leaks its slots for at most one lease. A peer whose lease lapsed but is still alive
+treats its grant as gone, runs `peer_floor` only, and sends a fresh `slot-request`.
 
 ### Peer floor
 
 `peer_floor` is the number of workers a peer may always run without a grant (default `1`; `0`
 makes every worker wait on a grant). It is counted inside the manager's pool, never on top of
-it, and it never overrides the peer's own gate: a peer whose own verdict is not `GO` runs `0`.
+it, and it never overrides the peer's own gate verdict (table above).
 
 ### No-reply timeout
 
@@ -176,9 +202,9 @@ already running.
 
 A plan may report only a `seven_day` window, with no `five_hour` one. There is then no 5-hour fit,
 and the pool comes from the weekly leg alone (`weekly_fit`), which needs
-`usage_budget.weekly.target_at_reset`. Without a target the gate returns `unavailable` and
-`workers` = `parallel_max`: a per-session ceiling, not a shared budget, so the manager must not
-hand it out as a pool. Set `target_at_reset` before running `manager`/`peer` on such a plan.
+`usage_budget.weekly.target_at_reset`. Without a target the gate returns `unavailable`, which cuts
+nothing (`workers` = `parallel_max`), so shared pacing is in effect off. Set `target_at_reset`
+before running `manager`/`peer` on such a plan.
 
 ## User starting the campaign
 
