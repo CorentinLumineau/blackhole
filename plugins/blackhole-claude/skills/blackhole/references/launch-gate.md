@@ -37,10 +37,17 @@ staging, Peers. Each row ends with a one-line consequence, so the table reads on
 command and print its output; never hand-format the table. The status page reads the same
 builder, so the two never disagree.
 
-- `--usage` passes the usage the harness reported (its `get_usage` tool, `usage-probe` in
-  `run-context.md`). Without it the Budget row says `not probed` and sizes workers from
-  `parallel_max`.
-- `--json` returns the rows and the question cards (`gateCards`), which § Questions sends as is.
+- Budget row source: with no `--usage`, the row reads the host's usage source
+  (`scripts/lib/usage-source.ts`, host from `run-context.json`, else the environment), the same
+  `BudgetPanel` the status page shows (`status-page.md` § Page layout, **Usage budget**). On a Claude cloud or
+  Remote session, refresh that source first: pipe the newest `rate_limit_event` from
+  `list_events` to `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/usage-probe.ts --from-events -` (`run-context.md`, Claude
+  usage sources). Cursor has no usage source, so the row says `usage not probed — <reason>` and
+  sizes workers from `parallel_max`.
+- `--usage '<json>'` overrides that source with the usage the harness reported directly (its
+  `get_usage` tool, `usage-probe` in `run-context.md`); `--now <epoch s>` pins the clock.
+- `--json` returns `{rows, cards}`; `cards` are the question cards (built by `gateCards`), which
+  § Questions sends as is.
 - Also run `bun run status config-summary` once: the coordinator's docs-governance drift guard
   copies its `Docs governance` lines verbatim into the spawn text.
 
@@ -54,8 +61,16 @@ longer opens must surface before the first spawn, not on the first failed refres
 2. When the summary's Status page row carries `probe_needed.url`, probe that URL: an
    `ArtifactData` `list` of `datasets` on it.
 3. Record the result into `status-artifact.json`'s `last_probe` (`{at, ok, url, reason?}`) with
-   the `status-probe.ts record --ok|--fail` recorder (`scripts/status-probe.ts`). It writes
-   atomically, keeps every other key, and leaves an unchanged probe under 24 h old alone.
+   the recorder (`scripts/status-probe.ts`):
+
+   ```bash
+   bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/status-probe.ts record --ok
+   bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/status-probe.ts record --fail --reason "<why>"
+   ```
+
+   `--url` defaults to the stored `url`. It writes atomically, keeps every other key, and leaves
+   an unchanged, still-fresh probe alone (`PROBE_FRESH_MINUTES`). Exit `2` (usage error, or a
+   missing, malformed or url-less file) leaves the file untouched.
 4. Re-run the summary so the Status page row shows the probed state.
 
 A failed probe offers, before the first spawn: reuse another artifact (pick one from `Artifact`
@@ -73,7 +88,7 @@ row as shown. Adjust opens only that row's form steps, never the whole form:
 | Scope | Step 1 (scope and the targeted-issues preview) |
 | Order | Display only: bugs first, then Pareto order; stacking is always on |
 | Merge | Step 2, then step 3 when the answer is gated batch |
-| Budget | Step 4 (`parallel_max`); the `usage_budget` thresholds are edited in `config.json` |
+| Budget | Step 4 (`parallel_max`); the `usage_budget` thresholds are edited in `config.json`; a stale or missing reading is refreshed with `usage-probe.ts`, then the summary re-runs |
 | Status page | Reuse the stored page, reuse another, publish new, or refresh template |
 | Kaizen and staging | Step 5 |
 | Peers | Display only: the configured `usage_budget.coordination.role` |

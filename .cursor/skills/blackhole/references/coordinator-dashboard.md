@@ -28,13 +28,15 @@ launch confirmation only.
 Launch summary — the launch gate's executive-summary table (`launch-gate.md` § The summary):
 
 ```bash
-bun run status --summary [--usage <json>] [--now <iso>] [--json]
+bun run status --summary [--usage <json>] [--now <epoch s>] [--json]
 ```
 
 Seven rows in fixed order (Scope, Order, Merge, Budget, Status page, Kaizen and staging, Peers),
 each with a one-line consequence. `--usage` is the harness's usage report (a malformed value
-exits `2`); without it the Budget row reads `not probed`. `--json` adds the question cards.
-`--summary` cannot be combined with `--html` or `--data`. With no `.blackhole` it prints the
+exits `2`); without it the Budget row reads the host's usage source, the same panel as the
+status page's **Usage budget** (`not probed` only when that source has no current reading). `--json`
+prints `{rows, cards}`, adding the question cards. `--summary` takes only `--usage`, `--now` and
+`--json`, and cannot be combined with `--html`, `--data` or `config-summary`. With no `.blackhole` it prints the
 not-found message and exits `0`.
 
 ## Status page
