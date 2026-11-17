@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { findMissingGateMarkers } from './lib/check-common.ts';
 import { expectMarkerContract, expectMarkersSubstantive } from './lib/marker-fixture-test.ts';
 import {
   COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
@@ -25,7 +26,7 @@ const COORDINATOR_FIXTURE_FIXED = `
 
 - **Fail closed on docs_governance drift**: STOP if the spawn text disagrees with config-summary.
 
-This confirmation fires on \`run\` mode only — status and the per-phase modes are unaffected.
+This confirmation fires on \`run\` and \`catchup\` modes only — status and the per-phase modes are unaffected.
 `;
 
 const LAUNCH_GATE_FIXTURE_FIXED = `
@@ -33,13 +34,22 @@ const LAUNCH_GATE_FIXTURE_FIXED = `
 
 Run \`bun run status --summary --json\`, print the table, then one Accept / Adjust per section.
 Record the probe with \`scripts/status-probe.ts record\`; it writes \`last_probe\`.
-Print-only mode asks nothing and never waits.
+Print-only mode asks nothing and never waits. A catchup adds the Pacing row.
 `;
 
 const LAUNCH_GATE_FIXTURE_STALE = `
 # Launch Gate
 
 Print the raw config, then Proceed or Reconfigure.
+`;
+
+// The pre-catchup wording: a run-only gate must fail the widened markers.
+const COORDINATOR_FIXTURE_RUN_ONLY = `
+**Routine resume confirmation gate** — see \`launch-gate.md\`.
+
+- **Fail closed on docs_governance drift**: STOP.
+
+This confirmation fires on \`run\` mode only.
 `;
 
 const COORDINATOR_FIXTURE_STALE = `
@@ -51,7 +61,7 @@ const CLAUDE_NATIVE_FIXTURE_FIXED = `
 ## Bootstrap gate ownership
 
 On Pattern C the foreground orchestrator owns the Campaign launch configuration gate — including
-the routine resume confirmation gate — for every \`run\`-mode turn, before its first fan-out.
+the routine resume confirmation gate — for every \`run\`- or \`catchup\`-mode turn, before its first fan-out.
 `;
 
 const CLAUDE_NATIVE_FIXTURE_STALE = `
@@ -63,7 +73,7 @@ All queue.json and findings-ledger.json mutations happen in the foreground orche
 const SKILL_FIXTURE_FIXED = `
 1. **Config** — \`.blackhole/config.json\`. In \`run\` mode this step runs the
    Campaign launch configuration gate: the full 6-step form, or otherwise the lightweight
-   routine resume confirmation gate. Gate applies in \`run\` mode only — every other
+   routine resume confirmation gate. Gate applies in \`run\` and \`catchup\` modes only — every other
    mode loads config with no confirm step.
 `;
 
@@ -78,6 +88,10 @@ describe('V-CONFGATE-01 marker contract', () => {
       COORDINATOR_FIXTURE_STALE,
       COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS,
     );
+  });
+
+  test('a run-only coordinator gate fails the widened marker', () => {
+    expect(findMissingGateMarkers(COORDINATOR_FIXTURE_RUN_ONLY, COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS)).toEqual(['run` and `catchup` modes only']);
   });
 
   test('launch-gate.md must carry the summary, per-section choice, probe and print-only clause', () => {

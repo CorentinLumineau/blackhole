@@ -1,7 +1,7 @@
 import { read, type CheckResult } from './check-utils.ts';
 
 // A permanent regression guard, not a one-time migration check: the closed allowlist below names
-// exactly the 16 scripts/** CLI entrypoints migrated onto scripts/lib/argv-flags.ts's shared
+// exactly the 19 scripts/** CLI entrypoints migrated onto scripts/lib/argv-flags.ts's shared
 // parseFlags/requireFlag pair (each previously hand-rolled its own ~10-line argv loop —
 // V-INT-02/V-DRY-01). Deliberately excludes scripts/lib/campaign-status/cli.ts's parseStatusArgs (subcommand dispatch, a different concern
 // from flag/value pairs — never a variant of this one). An open scripts/** regex detector was
@@ -14,16 +14,19 @@ const TARGET_SCRIPTS = [
   'scripts/carry-staged-artifacts.ts',
   'scripts/check-review-artifact.ts',
   'scripts/ci-diagnosis.ts',
+  'scripts/claim.ts',
   'scripts/decision-log-append.ts',
   'scripts/design-aggregate.ts',
   'scripts/lib/companion-file-sync.ts',
   'scripts/lib/state-write-guard.ts',
   'scripts/merge-base-guard.ts',
+  'scripts/pace-floor.ts',
   'scripts/plan-quality-gate.ts',
   'scripts/promote-review-artifact.ts',
   'scripts/review-aggregate.ts',
   'scripts/stack-repair.ts',
   'scripts/triage-deferred-findings.ts',
+  'scripts/usage.ts',
   'scripts/v-test09-hooks-claim.ts',
   'scripts/validate-worker-json.ts',
 ];
@@ -34,7 +37,7 @@ const IMPORT_REGEX = /import\s*\{[^}]*\b(parseFlags|requireFlag)\b[^}]*\}\s*from
 
 // An actual call to either function — the import alone is satisfiable by a file that imports
 // the module but keeps calling its own pre-existing hand-rolled loop (a future-drift hole, not
-// present in any of the 16 files today, but worth closing while cheap).
+// present in any of the 19 files today, but worth closing while cheap).
 const CALL_REGEX = /\b(parseFlags|requireFlag)\s*\(/;
 
 // Content-first predicate (same testability shape as cwd-pin-guard.check.ts's

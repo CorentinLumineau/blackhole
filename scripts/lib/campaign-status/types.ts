@@ -190,6 +190,17 @@ export type StatusArgs = {
   now: number | null;
   /** `--summary --json`: print the rows and the question cards as JSON. */
   summaryJson: boolean;
+  /** `--summary --mode catchup` only: the catchup flags; null for `--mode run` (the default) and every other mode. */
+  catchup: CatchupArgs | null;
+};
+
+/** The catchup flags of `--summary --mode catchup`; each override is for this invocation only. */
+export type CatchupArgs = {
+  usageFile: string | null;
+  floorPct: number | null;
+  noSpawnAt: number | null;
+  stopWorkersAt: number | null;
+  lane: string | null;
 };
 
 /** Queue and ledger counts — the single computation both the text dashboard and the report read. */
@@ -456,7 +467,9 @@ export type IssueRow = { num: number; issue: QueueIssue };
 
 /** The launch summary's rows, in display order (`launch-summary.ts`). */
 export const LAUNCH_ROW_KEYS = ['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep'] as const;
-export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];
+/** The catchup summary's rows: the run rows plus Pacing, in display order. */
+export const CATCHUP_ROW_KEYS = ['scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep'] as const;
+export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number] | (typeof CATCHUP_ROW_KEYS)[number];
 
 export type GateOption = { label: string; description: string };
 

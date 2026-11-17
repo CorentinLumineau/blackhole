@@ -1,5 +1,6 @@
 import * as fs from 'fs';
-import { readRateLimits, resolvePaceGateThresholds, type RateLimits } from '../pace-gate.ts';
+import { readRateLimits, type RateLimits } from '../rate-limit-cache.ts';
+import { resolvePaceGateThresholds } from '../pace-gate.ts';
 import type { Host } from '../run-context.ts';
 import { forecastWeekly, resolveUsageBudget, resolveUsageWindows, weeklyPace, workersAllowed, USAGE_WINDOWS, type UsageBudgetConfig, type UsageVerdict, type WeeklyPace, type WeeklyReading } from '../usage-budget.ts';
 import { readUsageHistory } from '../usage-history.ts';
@@ -52,10 +53,11 @@ export const NOT_PROBED: BudgetPanel = {
 const targetOf = (config: Record<string, unknown>): number | null => resolveBudgetSettings(config).budget?.weekly.target_at_reset ?? null;
 
 /** The verdict the usage-budget CLI returns for this reading: `unavailable` when the budget is off or its config is invalid. */
-function verdictFor(limits: RateLimits, now: number, config: Record<string, unknown>): { verdict: UsageVerdict; budget: UsageBudgetConfig | null } {
+function verdictFor(limits: RateLimits, now: number, config: Record<string, unknown>, override?: UsageBudgetConfig): { verdict: UsageVerdict; budget: UsageBudgetConfig | null } {
   const parallelMax = parallelMaxOf(config);
   const off = (reason: string): UsageVerdict => ({ verdict: 'unavailable', workers: parallelMax, reasons: [reason], wake_at: null, hours_to_reset: null, weekly_fit: null });
-  const settings = resolveBudgetSettings(config);
+  // A catchup passes its floor budget (catchup.ts floorBudget): already resolved, always enabled.
+  const settings = override ? { budget: override, invalid: null } : resolveBudgetSettings(config);
   if (settings.invalid !== null) return { verdict: off(`usage_budget config invalid: ${settings.invalid}`), budget: null };
   const { budget } = settings;
   return { verdict: budget.enabled ? workersAllowed(limits, now, budget, parallelMax) : off('usage_budget disabled'), budget };
@@ -90,6 +92,8 @@ export function buildBudgetPanel(input: {
   now: number;
   config: Record<string, unknown>;
   source?: UsageSourceName;
+  /** The resolved budget to judge by instead of `config.usage_budget` (the catchup's floor budget). */
+  budget?: UsageBudgetConfig;
   /** The reading of a cache past its max age, kept for display only. */
   stale?: { limits: RateLimits; ageSeconds: number } | null;
   /** Earlier weekly readings (`usage-history.jsonl`), for the pace row. */
@@ -108,7 +112,7 @@ export function buildBudgetPanel(input: {
       pace: paceOf(history, stale?.limits ?? null, stale?.ageSeconds ?? null, now, target),
     };
   }
-  const { verdict, budget } = verdictFor(limits, now, config);
+  const { verdict, budget } = verdictFor(limits, now, config, input.budget);
   const five = limits.five_hour && limits.five_hour.resets_at > now ? limits.five_hour : undefined;
   const week = limits.seven_day && limits.seven_day.resets_at > now ? limits.seven_day : undefined;
   let forecast: BudgetPanel['forecast'] = null;
@@ -143,8 +147,8 @@ export function buildBudgetPanel(input: {
   };
 }
 
-/** Reads `host`'s usage source (`usage-source.ts`): the rate-limit cache the config names on Claude, none elsewhere; `historyPath` is the campaign's `usage-history.jsonl`. */
-export function readBudgetPanel(config: Record<string, unknown>, host: Host, now: number = Math.floor(Date.now() / 1000), historyPath: string | null = null): BudgetPanel {
+/** Reads `host`'s usage source (`usage-source.ts`): the rate-limit cache the config names on Claude, none elsewhere; `historyPath` is the campaign's `usage-history.jsonl`, `budget` the catchup's floor budget. */
+export function readBudgetPanel(config: Record<string, unknown>, host: Host, now: number = Math.floor(Date.now() / 1000), historyPath: string | null = null, budget?: UsageBudgetConfig): BudgetPanel {
   let reading;
   let cachePath: string | null = null;
   try {
@@ -168,16 +172,16 @@ export function readBudgetPanel(config: Record<string, unknown>, host: Host, now
     if (kept) stale = { limits: kept, ageSeconds };
   }
   const history = historyPath ? readUsageHistory(historyPath) : [];
-  return buildBudgetPanel({ limits: reading.limits, reason: reading.reason, ageSeconds, now, config, source: reading.source, stale, history });
+  return buildBudgetPanel({ limits: reading.limits, reason: reading.reason, ageSeconds, now, config, source: reading.source, budget, stale, history });
 }
 
 /** The panel for a reading the harness reported (`--usage`), restricted to `usage_budget.windows` as the usage source and usage-budget.ts restrict it. */
-export function givenBudgetPanel(usage: RateLimits, config: Record<string, unknown>, now: number): BudgetPanel {
+export function givenBudgetPanel(usage: RateLimits, config: Record<string, unknown>, now: number, budget?: UsageBudgetConfig): BudgetPanel {
   const settings = resolveBudgetSettings(config);
   // An invalid config is shown by the panel's own `unavailable` verdict; the reading is kept whole.
   const kept = settings.invalid === null ? restrictWindows(usage, settings.budget.windows).limits : usage;
   const reason = kept ? null : 'usage_budget.windows leaves none of the --usage windows';
-  return buildBudgetPanel({ limits: kept, reason, ageSeconds: 0, now, config });
+  return buildBudgetPanel({ limits: kept, reason, ageSeconds: 0, now, config, budget });
 }
 
 const WINDOW_LABELS = { five_hour: '5-hour', seven_day: 'weekly' } as const;

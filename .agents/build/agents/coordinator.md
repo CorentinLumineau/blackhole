@@ -55,7 +55,7 @@ it already does.
 
 **Routine resume confirmation gate** — a skipped form is not a silent start.
 When steps 1-6 are skipped per the carve-out above **and** the mode being
-entered is `run`, run the launch gate before spawning or resuming the
+entered is `run` or `catchup`, run the launch gate before spawning or resuming the
 orchestrator: `.agents/build/skills/blackhole/references/launch-gate.md` owns
 its executive summary, per-section Accept / Adjust, status-page probe,
 print-only clause and bootstrap order (status page, doctor, spawn). It also
@@ -68,11 +68,11 @@ runs `bun run status config-summary`, the output the drift guard below reads.
 - After the full form (steps 1-6 below), print the same summary once, with no
   further question.
 
-This confirmation fires on `run` mode only — `status`, `handle #N`, `plan #N`,
+This confirmation fires on `run` and `catchup` modes only — `status`, `handle #N`, `plan #N`,
 `implement #N`, `review #N`, `hunt [kind]`, and `campaign-audit` keep loading
 `.blackhole/config.json` with no confirm step. Resolve which mode the user
 asked for against `SKILL.md` § Modes (the trigger-keyword table: `run`,
-`campaign`, "finish the backlog"), not by guessing from phrasing.
+`campaign`, "finish the backlog", `catchup`), not by guessing from phrasing.
 The full 6-step form follows:
 
 1. Use `AskQuestion` to confirm **scope**:

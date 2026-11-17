@@ -1,4 +1,5 @@
 import { DONE_STATUSES } from './queue.ts';
+import { laneOfLabel, ownLanes } from '../lane.ts';
 import type { BlockedClassKind, IssueRow, QueueIssue } from './types.ts';
 
 // Shared by report.ts (the page and `--data`/`--json` feed) and dashboard.ts (the text view). It sits
@@ -23,29 +24,25 @@ export function waitReason(issue: QueueIssue, issues: Record<string, QueueIssue>
   return { waitsOn: unmet ? 'dependency' : 'other', owner: false };
 }
 
-// The campaign's own lanes: the contributor contract gives Claude and Blackhole `claude/*` / `blackhole/*`.
-// No config key declares them, so they are fixed here. Any other `in-progress:*` / `agent:*` lane is foreign.
-const OWN_LANES = new Set(['claude', 'blackhole']);
-const LANE_LABEL = /^(?:in-progress|agent):(.+)$/;
-
-/** The first `in-progress:*` / `agent:*` label naming a lane other than the campaign's own, or null. */
-export function foreignLaneLabel(labels: readonly string[]): string | null {
+/** The first `in-progress:*` / `agent:*` label naming a lane other than the campaign's own, or null. Without a lane the own set is the legacy `claude` and `blackhole`. */
+export function foreignLaneLabel(labels: readonly string[], lane?: string | null): string | null {
+  const own = ownLanes(lane);
   return (
     labels.find((label) => {
-      const lane = LANE_LABEL.exec(label)?.[1];
-      return lane != null && !OWN_LANES.has(lane);
+      const named = laneOfLabel(label);
+      return named !== null && !own.has(named);
     }) ?? null
   );
 }
 
-/** A branch of the campaign's own lanes: `claude/…` or `blackhole/…` (V-BRANCH-03). Every other branch, a fork's `patch-1` included, is someone else's. */
+/** A branch of the legacy own lanes: `claude/…` or `blackhole/…` (V-BRANCH-03). Every other branch, a fork's `patch-1` included, is someone else's. */
 export function isOwnLaneBranch(branch: string): boolean {
   const lane = /^([^/]+)\//.exec(branch)?.[1];
-  return lane != null && OWN_LANES.has(lane);
+  return lane != null && ownLanes(null).has(lane);
 }
 
-function inForeignLane(issue: QueueIssue): boolean {
-  return foreignLaneLabel(issue.labels ?? []) !== null;
+function inForeignLane(issue: QueueIssue, lane?: string | null): boolean {
+  return foreignLaneLabel(issue.labels ?? [], lane) !== null;
 }
 
 // Display order: the campaign's own waits first, another lane's last (not the campaign's work).
@@ -60,8 +57,8 @@ export const BLOCKED_CLASS_LABELS: [BlockedClassKind, string][] = [
 ];
 
 /** The one classifier for a blocked non-owner issue. First match wins: lane, tracking, sequence, dependency. */
-export function classifyBlocked(issue: QueueIssue, issues: Record<string, QueueIssue>): BlockedClassKind {
-  if (inForeignLane(issue)) return 'another_lane';
+export function classifyBlocked(issue: QueueIssue, issues: Record<string, QueueIssue>, lane?: string | null): BlockedClassKind {
+  if (inForeignLane(issue, lane)) return 'another_lane';
   const notes = issue.notes ?? '';
   if (/\btracking issue\b/i.test(notes)) return 'tracking_issue';
   if (/\bin sequence\b/i.test(notes)) return 'sequenced_phase';
@@ -77,11 +74,11 @@ export function classifyBlocked(issue: QueueIssue, issues: Record<string, QueueI
 export type BlockedRowGroup = { kind: BlockedClassKind; label: string; rows: IssueRow[] };
 
 /** Non-owner blocked rows grouped by reason class, in display order; empty classes are left out. */
-export function groupBlockedRows(blocked: IssueRow[], issues: Record<string, QueueIssue>): BlockedRowGroup[] {
+export function groupBlockedRows(blocked: IssueRow[], issues: Record<string, QueueIssue>, lane?: string | null): BlockedRowGroup[] {
   const byKind = new Map<BlockedClassKind, IssueRow[]>();
   for (const row of blocked) {
     if (waitReason(row.issue, issues).owner) continue;
-    const kind = classifyBlocked(row.issue, issues);
+    const kind = classifyBlocked(row.issue, issues, lane);
     byKind.set(kind, [...(byKind.get(kind) ?? []), row]);
   }
   return BLOCKED_CLASS_LABELS.filter(([kind]) => byKind.has(kind)).map(([kind, label]) => ({

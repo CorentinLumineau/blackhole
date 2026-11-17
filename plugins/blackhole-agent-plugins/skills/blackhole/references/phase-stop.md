@@ -6,6 +6,8 @@ god-step (extension-tax). Not a five-phase-lifecycle playbook — it composes wi
 handle/plan/implement/review at any point in a turn without replacing any of them (`SKILL.md` §
 Five-phase lifecycle is unaffected).
 
+A `catchup` (`phase-catchup.md`) is a `run` for all three tiers below.
+
 ## Three tiers — nothing more, nothing less
 
 | Tier | Trigger keywords | Behavior |
@@ -32,6 +34,7 @@ normal turn is step 3.
    wait). No new mechanism; do not poll, do not interrupt.
 3. **Do not spawn the next wave** — the entire behavioral change. Triage every completed worker
    exactly as `orchestrator-runtime.md` § Background worker barrier § Triage already specifies.
+   Release a claim that has no open own PR (`orchestrator-dispatch.md` § Lane claim and release).
 4. **Run the Exit Invariants checklist** (below) before reporting.
 5. **Checkpoint**: `stopped_by: user`, `stop_kind: drained` (`checkpoint-protocol.md` §
    Checkpoint template).
@@ -126,7 +129,8 @@ them.
 2. **Reset, don't drift** — for each just-killed worker's issue, set `queue.json` `status` back
    to `ready` (or `blocked` with `notes: recovery-needed` if step 3 finds a dirty worktree) and
    remove its row from `## In-flight workers`. This is a direct action the stop procedure
-   performs itself — the orchestrator already knows no worker is running. It is not the
+   performs itself — the orchestrator already knows no worker is running. Release each reset
+   issue's claim (`orchestrator-dispatch.md` § Lane claim and release). It is not the
    `recovery-protocol.md` §9 drift-detection case: §9 detects a worker that finished silently and
    left an artifact; an abandoned worker leaves no artifact to detect.
 3. **Worktree dirty-check** — for every affected worktree, run `recovery-protocol.md` §2

@@ -1,5 +1,6 @@
 import { readScope } from '../../forge-scope.ts';
 import { issueWebUrl, prWebUrl, repoWebUrl } from '../forge-detection.ts';
+import { readLaneConfig } from '../lane.ts';
 import { classifyBlocked, CLASS_PREVIEW, groupBlockedRows, waitReason, type WaitReason } from './blocked-classes.ts';
 import { buildBoard, buildMoves, buildStreams, stageCounts } from './board.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
@@ -35,7 +36,7 @@ import type {
 export { classifyBlocked, CLASS_PREVIEW };
 
 export type StatusReportInput = {
-  config: ConfigSummaryInput & { repo?: string; forge?: string };
+  config: ConfigSummaryInput & { repo?: string; forge?: string; catchup?: unknown };
   queue: QueueJson;
   ledger: LedgerJson;
   checkpoint: CheckpointMeta;
@@ -76,8 +77,8 @@ const OWNER_GATE_STEPS: Record<string, string> = {
 };
 const ADDRESSES_OWNER = /^\s*owner:|needs-owner/i;
 
-function classifyBlockedRows(blocked: IssueRow[], issues: Record<string, QueueIssue>): BlockedClass[] {
-  return groupBlockedRows(blocked, issues).map(({ kind, label, rows }) => {
+function classifyBlockedRows(blocked: IssueRow[], issues: Record<string, QueueIssue>, lane: string | null): BlockedClass[] {
+  return groupBlockedRows(blocked, issues, lane).map(({ kind, label, rows }) => {
     const items = rows.map((row) => toItem(row, waitReason(row.issue, issues)));
     const attention = kind !== 'another_lane' && items.some((i) => ADDRESSES_OWNER.test(i.notes ?? ''));
     return { class: kind, label, count: items.length, attention, issues: items };
@@ -342,7 +343,7 @@ export function buildStatusReport(input: StatusReportInput): StatusReport {
       pr_url: item.pr != null ? prWebUrl(forgeKind, forgeHost, config.repo ?? '', item.pr) || null : null,
     }));
 
-  const blockedClasses = classifyBlockedRows(blocked, issues);
+  const blockedClasses = classifyBlockedRows(blocked, issues, readLaneConfig(config).lane);
   const unclassifiedItems = unclassified.map((r) => ({ ...toItem(r), next_step: unclassifiedStep(r.issue) }));
   const untracked = untrackedPrs(issues, forge);
   const scopeEntries = readScopeEntries(config);

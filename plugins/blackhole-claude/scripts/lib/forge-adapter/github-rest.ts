@@ -13,6 +13,8 @@ export type RestIssueRow = {
   milestone: { title: string } | null;
   state: string;
   closed_at?: string | null;
+  updated_at?: string | null;
+  assignees?: Array<{ login: string }> | null;
   pull_request?: unknown;
 };
 
@@ -24,6 +26,7 @@ export type RestPrRow = {
   base?: { ref: string; repo?: { full_name: string } | null };
   draft?: boolean;
   created_at?: string | null;
+  updated_at?: string | null;
   state: string;
   merged_at: string | null;
   labels?: Array<{ name: string } | string>;
@@ -44,6 +47,8 @@ export const mapRestIssue = (row: RestIssueRow): ForgeIssue => ({
   labels: row.labels.map((l) => ({ name: typeof l === 'string' ? l : l.name })),
   milestone: row.milestone ? { title: row.milestone.title } : null,
   state: row.state.toLowerCase() === 'closed' ? 'CLOSED' : 'OPEN',
+  ...(row.assignees ? { assignees: row.assignees.map((a) => a.login) } : {}),
+  ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
 });
 
 /** A deleted fork reads as `head.repo: null`; it is a fork all the same. Unknown without a base repo. */
@@ -63,6 +68,7 @@ export const mapRestPr = (row: RestPrRow): ForgePr => ({
   headRepoIsFork: isForkHead(row),
   draft: row.draft,
   createdAt: row.created_at,
+  ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
   state: row.merged_at ? 'MERGED' : row.state.toLowerCase() === 'closed' ? 'CLOSED' : 'OPEN',
   mergedAt: row.merged_at,
   labels: row.labels?.map((l) => (typeof l === 'string' ? l : l.name)),

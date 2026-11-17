@@ -1,4 +1,4 @@
-import type { RateLimits } from './pace-gate.ts';
+import { RATE_WINDOW_NAMES, type RateLimits } from './rate-limit-cache.ts';
 
 // Usage-budget gate: owner-set two-tier thresholds per rate-limit window, and a worker count
 // derived from the tokens left until the 5-hour window resets and, when `weekly.target_at_reset`
@@ -7,7 +7,7 @@ import type { RateLimits } from './pace-gate.ts';
 // clock reads. Anything unreadable is `unavailable`, which fails open with the caller's
 // `parallel_max` and always carries a reason.
 
-export const USAGE_WINDOWS = ['five_hour', 'seven_day'] as const;
+export const USAGE_WINDOWS = RATE_WINDOW_NAMES;
 export type UsageWindow = (typeof USAGE_WINDOWS)[number];
 
 export type UsageBudgetConfig = {
@@ -26,7 +26,7 @@ export type UsageBudgetConfig = {
   coordination: { role: 'manager' | 'peer' | 'solo'; manager_session: string | null; peer_floor: number };
 };
 
-export type UsageVerdictName = 'GO' | 'NO-SPAWN' | 'STOP-WORKERS' | 'NO-NEW-STARTS' | 'STOP-CAMPAIGN' | 'PACE-WAIT' | 'unavailable';
+export type UsageVerdictName = 'GO' | 'NO-SPAWN' | 'STOP-WORKERS' | 'NO-NEW-STARTS' | 'STOP-CAMPAIGN' | 'PACE-WAIT' | 'SKIP' | 'unavailable';
 
 export type UsageVerdict = {
   verdict: UsageVerdictName;
@@ -64,22 +64,22 @@ const ROLES = ['manager', 'peer', 'solo'];
 const MIN_SECONDS_TO_RESET = 900;
 const HOUR = 3600;
 
-const section = (block: Record<string, unknown>, key: string): Record<string, unknown> => {
+export const section = (block: Record<string, unknown>, key: string, prefix = 'usage_budget'): Record<string, unknown> => {
   const value = block[key];
   if (value === undefined) return {};
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`usage_budget.${key} must be an object`);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`${prefix}.${key} must be an object`);
   return value as Record<string, unknown>;
 };
 
-const pick = <T>(src: Record<string, unknown>, key: string, path: string, fallback: T, ok: (v: unknown) => boolean, want: string): T => {
+export const pick = <T>(src: Record<string, unknown>, key: string, path: string, fallback: T, ok: (v: unknown) => boolean, want: string): T => {
   const value = src[key];
   if (value === undefined) return fallback;
   if (!ok(value)) throw new Error(`${path} must be ${want}`);
   return value as T;
 };
 
-const isPct = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 100;
-const isPositive = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0;
+export const isPct = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 100;
+export const isPositive = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0;
 
 /** `usage_budget.windows`: absent or null auto-detects from the reading; a list keeps only those windows. */
 export const resolveUsageWindows = (config: Record<string, unknown>): UsageWindow[] | null => {

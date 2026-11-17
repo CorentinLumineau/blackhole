@@ -137,3 +137,22 @@ describe('forge-sync from a fresh checkout (only config.json)', () => {
     expect(fs.readdirSync(campaign()).filter((f) => f.endsWith('.tmp'))).toEqual([]);
   });
 });
+
+describe('forge-sync --lane', () => {
+  const adapter = () => fakeForge({ issues: [issue(1, { labels: [{ name: 'in-progress:acct-a' }] }), issue(2, { labels: [{ name: 'in-progress:claude' }] })], prs: { all: [], open: [] } });
+
+  test('the lane reaches the sync: the legacy pair is foreign under it', async () => {
+    const r = synced(await runForgeSync(campaign(), { adapter: adapter(), now: NOW, lane: 'acct-a' }));
+    expect(r.queue.issues['1']).toMatchObject({ status: 'ready' });
+    expect(r.queue.issues['2']).toMatchObject({ status: 'blocked' });
+  });
+
+  test('catchup.lane in config.json is the default, and no lane keeps the legacy rule', async () => {
+    const config = path.join(campaign(), 'config.json');
+    const base = JSON.parse(fs.readFileSync(config, 'utf8'));
+    fs.writeFileSync(config, JSON.stringify({ ...base, catchup: { lane: 'acct-a' } }));
+    expect(synced(await runForgeSync(campaign(), { adapter: adapter(), now: NOW })).queue.issues['2']).toMatchObject({ status: 'blocked' });
+    fs.writeFileSync(config, JSON.stringify(base));
+    expect(synced(await runForgeSync(campaign(), { adapter: adapter(), now: NOW })).queue.issues['2']).toMatchObject({ status: 'ready' });
+  });
+});

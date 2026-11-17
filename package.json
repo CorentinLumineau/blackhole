@@ -13,6 +13,9 @@
     "status": "bun run scripts/campaign-status.ts",
     "forge-sync": "bun run scripts/forge-sync.ts",
     "record": "bun run scripts/campaign-record.ts",
+    "usage": "bun run scripts/usage.ts",
+    "claim": "bun run scripts/claim.ts",
+    "pace-floor": "bun run scripts/pace-floor.ts",
     "sync:shadcn": "bun run scripts/sync-shadcn-skill.ts",
     "test": "bun test --timeout 60000"
   },

@@ -3,7 +3,7 @@ import { findUnregisteredConfigKeys, flattenConfigKeys, parseConfigTemplateKeys 
 import * as fs from 'fs';
 import * as path from 'path';
 import { root } from './build/paths.ts';
-import type { RateLimits } from './pace-gate.ts';
+import type { RateLimits } from './rate-limit-cache.ts';
 import { DEFAULT_USAGE_BUDGET, forecastWeekly, resolveUsageBudget, weeklyPace, workersAllowed, type UsageBudgetConfig, type WeeklyReading } from './usage-budget.ts';
 
 const NOW = 1_800_000_000;
