@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { RateLimits } from '../pace-gate.ts';
+import type { RateLimits } from '../rate-limit-cache.ts';
 import { buildBudgetPanel, NOT_PROBED } from './budget.ts';
 import {
   budgetRow,

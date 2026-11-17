@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { resolveRateLimitCachePath, type RateLimits } from './lib/pace-gate.ts';
+import { resolveRateLimitCachePath, type RateLimits } from './lib/rate-limit-cache.ts';
 
 // Usage: bun run scripts/usage-probe.ts --from-events <file|-> [--cache <path>] [--config <path>] [--now <epoch s>]
 // Turns raw `rate_limit_event` JSON (what the claude-code-remote `list_events` tool returns, either

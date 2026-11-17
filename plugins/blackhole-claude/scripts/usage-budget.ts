@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
 import * as path from 'path';
-import type { RateLimits, RateWindow } from './lib/pace-gate.ts';
+import type { RateLimits, RateWindow } from './lib/rate-limit-cache.ts';
 import type { Host } from './lib/run-context.ts';
 import { resolveUsageBudget, workersAllowed, type UsageVerdict } from './lib/usage-budget.ts';
 import { resolveHost, restrictWindows, usageSourceFor, type UsageSource } from './lib/usage-source.ts';

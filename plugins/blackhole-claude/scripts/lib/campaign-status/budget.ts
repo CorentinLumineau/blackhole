@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import type { RateLimits } from '../pace-gate.ts';
+import type { RateLimits } from '../rate-limit-cache.ts';
 import type { Host } from '../run-context.ts';
 import { forecastWeekly, resolveUsageBudget, workersAllowed, USAGE_WINDOWS, type UsageBudgetConfig, type UsageVerdict } from '../usage-budget.ts';
 import { restrictWindows, usageSourceFor, type UsageSourceName } from '../usage-source.ts';

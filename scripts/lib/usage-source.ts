@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { readJsonFile } from './fs.ts';
-import { readRateLimits, resolvePaceGateThresholds, resolveRateLimitCachePath, type RateLimits } from './pace-gate.ts';
+import { resolvePaceGateThresholds } from './pace-gate.ts';
+import { readRateLimits, resolveRateLimitCachePath, type RateLimits } from './rate-limit-cache.ts';
 import { detectHost, type Host } from './run-context.ts';
 import { resolveUsageWindows, USAGE_WINDOWS, type UsageWindow } from './usage-budget.ts';
 

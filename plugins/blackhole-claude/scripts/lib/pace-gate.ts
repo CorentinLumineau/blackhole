@@ -1,6 +1,5 @@
 import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import type { RateLimits, RateWindow } from './rate-limit-cache.ts';
 
 // Usage-pace gate the orchestrator runs beside resource-gate.ts before each spawn round
 // (orchestrator-runtime.md § Background worker barrier). Input is Claude Code's statusline
@@ -9,9 +8,6 @@ import * as path from 'path';
 // epoch seconds, and either window may be absent. Weekly-first: the seven-day window decides
 // THROTTLE/SCALE-UP; either window can force STOP-NEW. Anything unreadable is `unavailable`,
 // which fails open with the current concurrency but always carries a reason.
-
-export type RateWindow = { used_percentage: number; resets_at: number };
-export type RateLimits = { five_hour?: RateWindow; seven_day?: RateWindow };
 
 export type PaceGateThresholds = {
   maxAgeSeconds: number;
@@ -51,53 +47,6 @@ type WindowName = keyof typeof WINDOW_SECONDS;
 export const windowPace = (w: RateWindow, lengthSeconds: number, now: number): number => {
   const elapsed = Math.min(1, Math.max(0.01, 1 - (w.resets_at - now) / lengthSeconds));
   return w.used_percentage / 100 / elapsed;
-};
-
-const isWindow = (value: unknown): value is RateWindow =>
-  typeof value === 'object' &&
-  value !== null &&
-  typeof (value as RateWindow).used_percentage === 'number' &&
-  typeof (value as RateWindow).resets_at === 'number';
-
-/** The one rate-limit cache every reader and writer shares: `resource_policy.pace.cache_path`, else
- * the statusline default `~/.claude/cache/rate-limits.json`. */
-export const resolveRateLimitCachePath = (config: Record<string, unknown>): string => {
-  const pace = ((config.resource_policy ?? {}) as { pace?: { cache_path?: unknown } }).pace;
-  return typeof pace?.cache_path === 'string' ? pace.cache_path : path.join(os.homedir(), '.claude', 'cache', 'rate-limits.json');
-};
-
-export const readRateLimits = (
-  cachePath: string,
-  now: number,
-  maxAgeSeconds: number,
-): { limits: RateLimits | null; reason: string | null } => {
-  let raw: string;
-  let ageSeconds: number;
-  try {
-    raw = fs.readFileSync(cachePath, 'utf-8');
-    ageSeconds = Math.round(now - fs.statSync(cachePath).mtimeMs / 1000);
-  } catch {
-    return { limits: null, reason: `no rate-limit cache at ${cachePath}` };
-  }
-  if (ageSeconds > maxAgeSeconds) {
-    return { limits: null, reason: `rate-limit cache stale (${ageSeconds}s > ${maxAgeSeconds}s)` };
-  }
-  let payload: { rate_limits?: Record<string, unknown> };
-  try {
-    payload = JSON.parse(raw);
-  } catch {
-    return { limits: null, reason: `rate-limit cache at ${cachePath} is not valid JSON` };
-  }
-  const limits: RateLimits = {};
-  for (const name of Object.keys(WINDOW_SECONDS) as WindowName[]) {
-    const w = payload.rate_limits?.[name];
-    // A window past its reset no longer applies; Claude Code drops it the same way.
-    if (isWindow(w) && w.resets_at > now) limits[name] = w;
-  }
-  if (!limits.five_hour && !limits.seven_day) {
-    return { limits: null, reason: 'rate-limit cache carries no current five_hour or seven_day window' };
-  }
-  return { limits, reason: null };
 };
 
 // Budget compartments: the remaining weekly allowance split into per-day and per-five-hour-session

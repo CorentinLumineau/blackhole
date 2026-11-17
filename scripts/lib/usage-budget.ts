@@ -1,4 +1,4 @@
-import type { RateLimits } from './pace-gate.ts';
+import { RATE_WINDOW_NAMES, type RateLimits } from './rate-limit-cache.ts';
 
 // Usage-budget gate: owner-set two-tier thresholds per rate-limit window, and a worker count
 // derived from the tokens left until the 5-hour window resets and, when `weekly.target_at_reset`
@@ -7,7 +7,7 @@ import type { RateLimits } from './pace-gate.ts';
 // clock reads. Anything unreadable is `unavailable`, which fails open with the caller's
 // `parallel_max` and always carries a reason.
 
-export const USAGE_WINDOWS = ['five_hour', 'seven_day'] as const;
+export const USAGE_WINDOWS = RATE_WINDOW_NAMES;
 export type UsageWindow = (typeof USAGE_WINDOWS)[number];
 
 export type UsageBudgetConfig = {

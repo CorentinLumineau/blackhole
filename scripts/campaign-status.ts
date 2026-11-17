@@ -18,7 +18,7 @@ import { renderStatusHtml } from './lib/campaign-status/html.ts';
 import { readPublishState, readStatusAlerts, statusPageEnabled } from './lib/campaign-status/staleness.ts';
 import { buildLaunchSummary, gateCards, renderLaunchSummary } from './lib/campaign-status/launch-summary.ts';
 import type { StatusArtifact, StatusPageInput } from './lib/campaign-status/status-page-row.ts';
-import type { RateLimits } from './lib/pace-gate.ts';
+import type { RateLimits } from './lib/rate-limit-cache.ts';
 import { parseUsage } from './usage-budget.ts';
 import { buildStatusReport } from './lib/campaign-status/report.ts';
 import { CampaignNotFoundError, loadCampaignState } from './lib/campaign-status/state.ts';
