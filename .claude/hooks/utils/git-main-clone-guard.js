@@ -41,7 +41,13 @@
  */
 
 const path = require('path');
-const { findRemovalInvocations, extractGitRepoOverride } = require('./worktree-removal-guard');
+const {
+  findRemovalInvocations,
+  extractGitRepoOverride,
+  oversizeCommandDecision,
+  scanBudgetExceededDecision,
+  SCAN_BUDGET_EXCEEDED,
+} = require('./worktree-removal-guard');
 const { worktreeRoot, mainCloneRoot } = require('./hook-event-log');
 
 /** True when `argTokens` carries any of `longNames` verbatim, or a bundled short-option token
@@ -178,7 +184,10 @@ const resolveDecision = (match, repoOverride, resolutionCwds) => {
  * shape (ADR-029's established convention).
  */
 const evaluateGitMainCloneMutation = (command, cwd) => {
+  const oversize = oversizeCommandDecision(command);
+  if (oversize) return oversize;
   const invocations = findRemovalInvocations(command, cwd);
+  if (invocations.some((invocation) => invocation.kind === SCAN_BUDGET_EXCEEDED)) return scanBudgetExceededDecision();
   for (const invocation of invocations) {
     if (invocation.kind !== 'git-mutation') continue;
     const match = classify(invocation.subcommand, invocation.argTokens);

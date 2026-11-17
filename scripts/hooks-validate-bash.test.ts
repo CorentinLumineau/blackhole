@@ -4468,3 +4468,108 @@ describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
   }
 });
 
+
+// Issue #1197: the dynamic guards' clause scan was quadratic in the clause count, so a long
+// separator run pushed the hook past the native wrapper's 5 s timeout, which fails OPEN.
+// Linear scanning plus an oversize fail-closed cap keep every verdict inside the budget.
+describe('validate-bash-command.js — clause-scan cost bound (#1197)', () => {
+  const requireGuard = () =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'worktree-removal-guard.js'));
+  const SIZE_CAP = 64 * 1024;
+
+  const minMs = (run: () => void, runs = 3): number => {
+    run(); // warm-up
+    let best = Infinity;
+    for (let i = 0; i < runs; i += 1) {
+      const start = performance.now();
+      run();
+      best = Math.min(best, performance.now() - start);
+    }
+    return best;
+  };
+
+  for (const [label, unit] of [['`;`', ';'], ['`| `', '| ']] as const) {
+    test(`#1197: 120 KB of ${label} followed by \`git checkout -- f\` is still denied in under 2.5 s`, async () => {
+      await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo) => {
+        const command = `${unit.repeat(Math.floor((120 * 1024) / unit.length))} git checkout -- f`;
+        const start = performance.now();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+        const elapsed = performance.now() - start;
+
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+        expect(elapsed).toBeLessThan(2500);
+      });
+    });
+  }
+
+  for (const [label, unit] of [['`;`', ';'], ['`| `', '| ']] as const) {
+    test(`#1197: 60 KB of ${label} (under the cap) is verified, not refused, and \`git checkout -- f\` is denied for its own reason`, async () => {
+      await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo) => {
+        const command = `${unit.repeat(Math.floor((60 * 1024) / unit.length))} git checkout -- f`;
+        const start = performance.now();
+        const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+        const elapsed = performance.now() - start;
+
+        expect(result.exitCode).toBe(2);
+        expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'main-clone-checkout-path' });
+        expect(elapsed).toBeLessThan(2500);
+      });
+    });
+  }
+
+  test('#1197: 60 KB of nested `(` openers is refused fail-closed within the time budget', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo) => {
+      const command = `${'('.repeat(60 * 1024)}git checkout -- f`;
+      const start = performance.now();
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), mainRepo);
+      const elapsed = performance.now() - start;
+
+      expect(result.exitCode).toBe(2);
+      expect(readHookEvents(mainRepo)[0]).toMatchObject({ pattern_id: 'command-too-complex-to-verify' });
+      expect(permissionReason(result.stdout)).toMatch(/Remedy: .*split/i);
+      expect(elapsed).toBeLessThan(2500);
+    });
+  });
+
+  test('#1197: findRemovalInvocations on 240 KB of `;` finishes in under 100 ms', () => {
+    const { findRemovalInvocations } = requireGuard();
+    const command = `${';'.repeat(240 * 1024)} git checkout -- f`;
+    expect(minMs(() => findRemovalInvocations(command, os.tmpdir()))).toBeLessThan(100);
+  });
+
+  test('#1197: findRemovalInvocations still reports the invocation after a long separator run', () => {
+    const { findRemovalInvocations } = requireGuard();
+    const found = findRemovalInvocations(`${';'.repeat(5000)} git checkout -- f`, os.tmpdir());
+    expect(found.map((invocation: { kind: string }) => invocation.kind)).toEqual(['git-mutation']);
+  });
+
+  test('#1197: an oversize command is denied fail-closed with its own pattern_id and a Remedy', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const command = `echo ${'a'.repeat(SIZE_CAP + 1024)}`;
+      const result = await runPreToolUseHook(SCRIPT, bashPayload(command), worktree);
+
+      expect(result.exitCode).toBe(2);
+      expect(permissionDecision(result.stdout)).toBe('deny');
+      expect(permissionReason(result.stdout)).toMatch(/Remedy: .*split/i);
+      const events = readHookEvents(mainRepo);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ decision: 'deny', tier: 'block', pattern_id: 'command-too-large-to-verify' });
+    });
+  });
+
+  test('#1197: a large allowed command under the cap (a heredoc writing inside the worktree) is still allowed', async () => {
+    await withLinkedWorktree('blackhole-hook-1197-', async (mainRepo, worktree) => {
+      const body = 'x'.repeat(100).concat('\n').repeat(Math.floor((SIZE_CAP - 4096) / 101));
+      const command = `cat > ${path.join(worktree, 'big.txt')} <<'EOF'\n${body}EOF\n`;
+      expect(command.length).toBeLessThan(SIZE_CAP);
+      expect(command.length).toBeGreaterThan(SIZE_CAP - 8192);
+      const payload = { ...bashPayload(command), cwd: worktree };
+      const result = await runPreToolUseHook(SCRIPT, payload, worktree, PRETOOLUSE_HOOKS_DIR, undefined, worktree);
+
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(mainRepo)).toEqual([]);
+    });
+  });
+});
