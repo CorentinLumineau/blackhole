@@ -75,9 +75,19 @@ describe('bash-write-target-guard.js — backslash-newline redirects (#1183)', (
     });
   });
 
-  test('#1183: `\\<nl>` inside single quotes is literal and joins nothing', async () => {
+  test('#1183: `\\<nl>` inside single quotes is literal, so a quoted `>` stays quoted text', async () => {
     await withLinkedWorktree('blackhole-hook-1183-', async (_mainRepo, worktree) => {
-      expect(guard().evaluateBashWriteTargets("grep 'a\\\nb' f.txt", worktree)).toBeNull();
+      // Joined inside the quotes, `'>/etc/x'` would read as a redirect and warn.
+      expect(guard().evaluateBashWriteTargets("cat '>\\\n/etc/x' f", worktree)).toBeNull();
+    });
+  });
+
+  test('#1183: an escaped backslash before a newline is not a continuation', async () => {
+    await withLinkedWorktree('blackhole-hook-1183-', async (mainRepo, worktree) => {
+      // `a\\` ends the echo; the next line is its own `sed -i` on an outside file. Read as a
+      // continuation, `sed` would be glued onto `a\` and the write lost.
+      const verdict = guard().evaluateBashWriteTargets(`echo a\\\\\nsed -i s/a/b/ ${path.join(mainRepo, 'x')}`, worktree);
+      expect(verdict).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
     });
   });
 });
@@ -205,6 +215,102 @@ describe('bash-write-target-guard.js — #1183 parsers stay linear', () => {
         const { evaluateBashWriteTargets } = guard();
         expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
       });
+    });
+  }
+});
+
+// Review of #1230 (#1183): script sources, unclean script words, and every parser branch.
+describe('bash-write-target-guard.js — #1183 review: sed script sources and script words', () => {
+  const verdictFor = async (build: (out: string) => string) => {
+    let verdict: unknown = undefined;
+    await withLinkedWorktree('blackhole-hook-1183-', async (mainRepo, worktree) => {
+      verdict = guard().evaluateBashWriteTargets(build(path.join(mainRepo, 'out')), worktree);
+    });
+    return verdict;
+  };
+
+  for (const build of [
+    (o: string) => `sed -i -f fix.sed ${o}`,
+    (o: string) => `sed -f s.sed -i ${o}`,
+    (o: string) => `sed --file=fix.sed -i ${o}`,
+    (o: string) => `sed -i --file fix.sed ${o}`,
+    (o: string) => `sed -nf fix.sed -i ${o}`,
+  ]) {
+    test(`#1183: \`${build('<outside>')}\` keeps the operand a file and is denied`, async () => {
+      expect(await verdictFor(build)).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    });
+  }
+
+  for (const build of [
+    (o: string) => `sed -n $'/a/{\nw ${o}\n}' f`,
+    (o: string) => `sed -n 's/a/b/w ${o}'<f`,
+    (o: string) => `sed -n 's/a/b/'w' ${o}' f`,
+    (o: string) => `sed -n 's/a/b/w '${o} f`,
+    (o: string) => `sed -n s/a/b/w\\ ${o} f`,
+    (o: string) => `sed "s/a/b/$X" ${o}`,
+  ]) {
+    test(`#1183: unclean script word \`${build('<outside>')}\` warns or blocks, never allows`, async () => {
+      expect(await verdictFor(build)).toMatchObject({ tier: expect.stringMatching(/^(warn|block)$/) });
+    });
+  }
+
+  test("#1183: `sed 'b a;w <outside>' f` (a label ends at `;`) is denied", async () => {
+    expect(await verdictFor((o) => `sed 'b a;w ${o}' f`)).toMatchObject({ tier: 'block' });
+  });
+
+  test("#1183: `sed 's/a/b/e' f` (the s///e flag) warns", async () => {
+    expect(await verdictFor(() => "sed 's/a/b/e' f")).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+  });
+
+  test('#1183: an escaped newline continues `a` text, so a `w` on the next line is text', async () => {
+    expect(await verdictFor((o) => `sed 'a foo\\\nw ${o}' f`)).toBeNull();
+  });
+});
+
+describe('bash-write-target-guard.js — #1183 review: interpreter calls, words and false positives', () => {
+  const verdict = async (command: string) => {
+    let result: unknown = undefined;
+    await withLinkedWorktree('blackhole-hook-1183-', async (_mainRepo, worktree) => {
+      result = guard().evaluateBashWriteTargets(command, worktree);
+    });
+    return result;
+  };
+
+  for (const command of [
+    "bun -e 'await Bun.$`touch x`'",
+    'bun -e "await Bun.\\$\\`touch x\\`"',
+    "ruby -e 'puts %x(touch x)'",
+    "perl -e 'print qx(touch x)'",
+    "ruby -e 'File.delete(\"x\")'",
+    "ruby -e 'File.new(\"x\", \"w\")'",
+    "perl -e 'sysopen(F, \"x\", 1)'",
+    "perl -e 'link \"a\", \"x\"'",
+    "perl -e 'dbmopen(%h, \"x\", 0644)'",
+    "node -e \"require('fs').linkSync('a', 'x')\"",
+    "node -e \"require('fs').mkdtempSync('x')\"",
+    "\\node -e \"require('fs').writeFileSync('x', '')\"",
+    "'node' -e \"require('fs').writeFileSync('x', '')\"",
+    "nodejs -e \"require('fs').writeFileSync('x', '')\"",
+    "node22 -e \"require('fs').writeFileSync('x', '')\"",
+    'py -c "print(1)"',
+    'pypy3 -c "print(1)"',
+  ]) {
+    test(`#1183: \`${command}\` warns`, async () => {
+      expect(await verdict(command)).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+    });
+  }
+
+  for (const command of [
+    "node -e 'process.stdout.write(\"hi\")'",
+    "node -e 'console.log(process.execPath)'",
+    "node -e 'console.log(/a(b)/.exec(\"ab\"))'",
+    "perl -ne 'print if /openssl/' f",
+    "node -e 'console.log(\"overwrite\")'",
+    'git grep -n perl -i',
+    'grep -e ruby -i f.txt',
+  ]) {
+    test(`#1183: read-only \`${command}\` stays allowed with no verdict`, async () => {
+      expect(await verdict(command)).toBeNull();
     });
   }
 });
