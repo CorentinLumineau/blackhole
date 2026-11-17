@@ -95,6 +95,19 @@ export const populateCodexFixtureTree = (destRoot: string): void => {
 
 export const PRETOOLUSE_HOOKS_DIR = path.join(root, 'templates', 'hooks', 'pretooluse');
 
+/** Minimum wall time of `runs` calls after one warm-up call: the minimum damps scheduler noise, so a
+ * timing budget measures the code, not a busy CI runner. Shared by every hook timing test. */
+export const minMs = (run: () => unknown, runs = 3): number => {
+  run();
+  let best = Infinity;
+  for (let i = 0; i < runs; i += 1) {
+    const start = performance.now();
+    run();
+    best = Math.min(best, performance.now() - start);
+  }
+  return best;
+};
+
 export type HookRunResult = { exitCode: number; stdout: string; stderr: string };
 
 /** Runs a PreToolUse hook script with `payload` on stdin. `hooksDir` is overridable so a suite can
