@@ -126,48 +126,64 @@ const entry = (route: string, target: string) => ({
   target_kind: 'new_file',
 });
 const manifest = (...entries: Array<ReturnType<typeof entry>>) => ({ issue: 1, updated_at: '2026-11-17T00:00:00.000Z', entries }) as never;
-const issueOf = (n: number, promised: string[], m: ReturnType<typeof manifest> | null): DocCarryIssue => ({ issue: n, promised, manifest: m });
+type M = ReturnType<typeof manifest> | null;
+const live = (n: number, promised: string[], m: M, phase = 'implement', extra: Partial<DocCarryIssue> = {}): DocCarryIssue => ({ issue: n, promised, manifest: m, phase, ...extra });
+const done = (n: number, promised: string[], m: M): DocCarryIssue => ({ issue: n, promised, manifest: m, done: true, phase: 'done' });
+const build = (issues: DocCarryIssue[], isCarried: (t: string) => boolean = () => false) => buildDocCarry({ enabled: true, issues, isCarried })!;
 const rowOf = (docCarry: Parameters<typeof buildRunPanel>[0]['docCarry']) => valueOf(runRows(buildRunPanel({ config: {}, runContext: null, pending: [], docCarry })), 'Doc carry');
 
-describe('buildDocCarry: promised vs staged vs carried', () => {
+describe('buildDocCarry: the live set leads, merged history is a tail', () => {
   test('governance off gives null and the row says so', () => {
-    expect(buildDocCarry({ enabled: false, issues: [issueOf(1, ['plan'], null)], isCarried: () => false })).toBeNull();
+    expect(buildDocCarry({ enabled: false, issues: [live(1, ['plan'], null)], isCarried: () => false })).toBeNull();
     expect(rowOf(null)).toBe('off (docs governance off)');
     expect(rowOf(undefined)).toBe('off (docs governance off)');
   });
 
-  test('nothing routed prints zeros and no gaps', () => {
-    const dc = buildDocCarry({ enabled: true, issues: [], isCarried: () => false });
-    expect(dc).toEqual({ promised: 0, staged: 0, carried: 0, gaps: [] });
-    expect(rowOf(dc)).toBe('promised 0 · staged 0 · carried 0');
+  test('nothing routed prints zeros and no tail', () => {
+    expect(rowOf(build([]))).toBe('routes promised 0 · staged 0 · docs carried 0');
   });
 
-  test('plan and design promised with only plan staged is promised 2, staged 1, gap 1/2', () => {
-    const dc = buildDocCarry({ enabled: true, issues: [issueOf(7, ['plan', 'design'], manifest(entry('plan', 'documentation/plans/a.md')))], isCarried: () => false });
-    expect(dc).toEqual({ promised: 2, staged: 1, carried: 0, gaps: [{ issue: 7, staged: 1, promised: 2 }] });
-    expect(rowOf(dc)).toBe('promised 2 · staged 1 · carried 0 · gaps: #7 1/2');
+  test('a live implement issue with plan and design promised and only plan staged is named, 1/2', () => {
+    const dc = build([live(7, ['plan', 'design'], manifest(entry('plan', 'documentation/plans/a.md')))]);
+    expect(dc).toMatchObject({ promised: 2, staged: 1, carried: 0, gaps: [{ issue: 7, staged: 1, promised: 2 }] });
+    expect(rowOf(dc)).toBe('routes promised 2 · staged 1 · docs carried 0 · gaps: #7 1/2');
+  });
+
+  test('a handle-phase issue counts in the headline but is never named (staged 0 is expected there)', () => {
+    const dc = build([live(3, ['plan'], null, 'handle')]);
+    expect(dc).toMatchObject({ promised: 1, staged: 0, gaps: [] });
+    expect(rowOf(dc)).toBe('routes promised 1 · staged 0 · docs carried 0');
   });
 
   test('carried counts staged new_file targets the stub reports present', () => {
-    const m = manifest(entry('plan', 'documentation/plans/a.md'));
-    const dc = buildDocCarry({ enabled: true, issues: [issueOf(1, ['plan'], m)], isCarried: (t) => t === 'documentation/plans/a.md' });
+    const dc = build([live(1, ['plan'], manifest(entry('plan', 'documentation/plans/a.md')))], (t) => t === 'documentation/plans/a.md');
     expect(dc).toMatchObject({ promised: 1, staged: 1, carried: 1, gaps: [] });
   });
 
-  test('a done issue without a manifest is excluded, one with a manifest is counted', () => {
-    const done = (n: number, m: ReturnType<typeof manifest> | null): DocCarryIssue => ({ ...issueOf(n, ['plan'], m), done: true });
-    const dc = buildDocCarry({ enabled: true, issues: [done(1, null), done(2, manifest(entry('plan', 'documentation/plans/b.md')))], isCarried: () => true });
-    expect(dc).toMatchObject({ promised: 1, staged: 1, carried: 1, gaps: [] });
+  test('merged issues (a legacy one with no manifest is left out) never touch the headline or the gaps; they make the history tail', () => {
+    const dc = build([done(1, ['plan', 'design'], null), done(2, ['plan'], manifest(entry('plan', 'documentation/plans/b.md'))), live(9, ['plan'], manifest(entry('plan', 'documentation/plans/c.md')))]);
+    expect(dc).toMatchObject({ promised: 1, staged: 1, gaps: [], history: { promised: 1, staged: 1 } });
+    expect(rowOf(dc)).toBe('routes promised 1 · staged 1 · docs carried 0 · history: 1/1 routes staged');
   });
 
-  test('four gaps print three and +1 more', () => {
-    const issues = [1, 2, 3, 4].map((n) => issueOf(n, ['plan'], null));
-    const dc = buildDocCarry({ enabled: true, issues, isCarried: () => false })!;
-    expect(dc.gaps).toHaveLength(4);
-    expect(rowOf(dc)).toBe('promised 4 · staged 0 · carried 0 · gaps: #1 0/1, #2 0/1, #3 0/1 +1 more');
+  test('gaps name later phases first, then newer issues, three at most, then +N more', () => {
+    const issues = [live(1, ['plan'], null, 'plan'), live(2, ['plan'], null, 'review'), live(3, ['plan'], null, 'implement'), live(4, ['plan'], null, 'plan'), live(5, ['plan'], null, 'implement')];
+    expect(rowOf(build(issues))).toBe('routes promised 5 · staged 0 · docs carried 0 · gaps: #2 0/1, #5 0/1, #3 0/1 +2 more');
   });
 
-  test('an unreadable manifest is said, never shown as zero', () => {
-    expect(rowOf({ error: 'bad manifest' })).toBe('unreadable (bad manifest)');
+  test('a live issue with no route and no manifest is counted unrouted, not skipped', () => {
+    const dc = build([live(1, [], null, 'implement', { unrouted: true }), live(2, [], null, 'handle', { unrouted: true })]);
+    expect(dc.unrouted).toBe(2);
+    expect(rowOf(dc)).toBe('routes promised 0 · staged 0 · docs carried 0 · unrouted 2');
+  });
+
+  test('one unreadable manifest is counted for that issue and the other totals stay', () => {
+    const dc = build([live(1, ['plan'], null, 'implement', { unreadable: true }), live(2, ['plan'], manifest(entry('plan', 'documentation/plans/a.md')))]);
+    expect(dc).toMatchObject({ promised: 1, staged: 1, unreadable: 1, gaps: [] });
+    expect(rowOf(dc)).toBe('routes promised 1 · staged 1 · docs carried 0 · unreadable 1');
+  });
+
+  test('a failure reading the whole campaign is said, never shown as zero', () => {
+    expect(rowOf({ error: 'bad queue' })).toBe('unreadable (bad queue)');
   });
 });

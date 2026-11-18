@@ -516,8 +516,20 @@ export type RunPanel = {
   doc_carry_error: string | null;
 };
 
-/** The Run panel's Doc carry totals, and the issues whose promised routes are not all staged. */
-export type DocCarry = { promised: number; staged: number; carried: number; gaps: Array<{ issue: number; staged: number; promised: number }> };
+/**
+ * The Run panel's Doc carry totals over the live (not done) issues: routes promised and staged, docs
+ * carried, issues with no route or an unreadable manifest, and the issues past `handle` whose promised
+ * routes are not all staged. `history` is the merged issues' routes promised/staged, null when none.
+ */
+export type DocCarry = {
+  promised: number;
+  staged: number;
+  carried: number;
+  unrouted: number;
+  unreadable: number;
+  gaps: Array<{ issue: number; staged: number; promised: number }>;
+  history: { promised: number; staged: number } | null;
+};
 
 /** One parked owner decision as the "Decisions waiting for you" panel lists it, most-blocking first. */
 export type PendingRow = {

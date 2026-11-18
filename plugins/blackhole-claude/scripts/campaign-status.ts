@@ -10,7 +10,7 @@ import { adjustPacing, applyOverrides, floorBudget, localUtcOffsetMinutes, readP
 import { DEFAULT_USAGE_BUDGET } from './lib/usage-budget.ts';
 import { isSleepMode, readPendingDecisions } from './lib/campaign-status/pending-decisions.ts';
 import { buildDocCarry, type DocCarryIssue, type DocCarryRead, type PendingRead } from './lib/campaign-status/run-state.ts';
-import { loadManifest } from './lib/carry-staged-artifacts.ts';
+import { loadManifest, type Manifest } from './lib/carry-staged-artifacts.ts';
 import { latestRoute, promisedRoutes } from './lib/route-artifacts.ts';
 import { resolveHost, usageSourceFor } from './lib/usage-source.ts';
 import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
@@ -239,13 +239,23 @@ function readDocCarry(campaignDir: string, config: Record<string, any>, queue: Q
   try {
     const repoRoot = path.dirname(campaignDir);
     const issues: DocCarryIssue[] = [];
-    for (const key of Object.keys(queue.issues ?? {})) {
+    for (const [key, q] of Object.entries(queue.issues ?? {})) {
       const n = Number(key);
+      const done = DONE_STATUSES.includes(q?.status ?? '');
       const route = latestRoute(ledger as never, queue as never, n);
-      const manifest = loadManifest(path.join(campaignDir, 'staged', key, 'manifest.json'));
-      const done = DONE_STATUSES.includes(queue.issues[key]?.status ?? '');
-      if (route === null && !manifest) continue;
-      issues.push({ issue: n, promised: route ? promisedRoutes(route) : [], manifest, done });
+      const base = { issue: n, done, phase: q?.phase, promised: route ? promisedRoutes(route) : [] };
+      let manifest: Manifest | null = null;
+      try {
+        manifest = loadManifest(path.join(campaignDir, 'staged', key, 'manifest.json'));
+      } catch {
+        if (!done) issues.push({ ...base, manifest: null, unreadable: true });
+        continue;
+      }
+      if (route === null && !manifest) {
+        if (!done) issues.push({ ...base, manifest: null, unrouted: true });
+        continue;
+      }
+      issues.push({ ...base, manifest });
     }
     return buildDocCarry({ enabled: true, issues, isCarried: (t) => fs.existsSync(path.join(repoRoot, t)) });
   } catch (error) {

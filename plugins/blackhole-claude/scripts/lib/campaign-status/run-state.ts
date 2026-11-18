@@ -13,24 +13,49 @@ export const RUN_ROW_KEYS = ['Run route', 'Sleep mode', 'Coordination', 'Doc car
 /** `pending-decisions.json` as read: its decisions, or why it could not be read. */
 export type PendingRead = PendingDecision[] | { error: string };
 
-/** One issue's promised routes and manifest; `done` issues count only when they have a manifest. */
-export type DocCarryIssue = { issue: number; promised: string[]; manifest: Manifest | null; done?: boolean };
+/**
+ * One issue's promised routes and manifest. `done` issues feed only the history tail; `unrouted`
+ * (no route, no manifest) and `unreadable` (malformed manifest) are counted, never hidden.
+ */
+export type DocCarryIssue = { issue: number; promised: string[]; manifest: Manifest | null; done?: boolean; phase?: string; unrouted?: boolean; unreadable?: boolean };
 
 /** How many issues with a gap the Doc carry row names before `+N more`. */
 const DOC_CARRY_GAPS_SHOWN = 3;
 
-/** Artifacts promised vs staged vs carried across the campaign; null when docs governance is off. */
+/** Phases past `handle`, where a promised route with no staged entry is a real silent stop; later first. */
+const GAP_PHASE_RANK: Record<string, number> = { plan: 1, implement: 2, review: 3 };
+
+/**
+ * Routes promised vs staged and docs carried over the live (not done) issues, merged history kept
+ * apart; null when docs governance is off. Gaps name only live issues past `handle`.
+ */
 export function buildDocCarry(input: { enabled: boolean; issues: DocCarryIssue[]; isCarried: (targetPath: string) => boolean }): DocCarry | null {
   if (!input.enabled) return null;
-  const out: DocCarry = { promised: 0, staged: 0, carried: 0, gaps: [] };
+  const out: DocCarry = { promised: 0, staged: 0, carried: 0, unrouted: 0, unreadable: 0, gaps: [], history: null };
   for (const i of input.issues) {
-    if (i.done && !i.manifest) continue;
+    if (i.done) {
+      if (!i.manifest) continue;
+      const hist = (out.history ??= { promised: 0, staged: 0 });
+      hist.promised += i.promised.length;
+      hist.staged += i.promised.length - dispatchGaps(i.promised, i.manifest).length;
+      continue;
+    }
+    if (i.unrouted) {
+      out.unrouted++;
+      continue;
+    }
+    if (i.unreadable) {
+      out.unreadable++;
+      continue;
+    }
     const staged = i.promised.length - dispatchGaps(i.promised, i.manifest).length;
     out.promised += i.promised.length;
     out.staged += staged;
     out.carried += collectDocCarry(i.manifest, input.isCarried).carried;
-    if (staged < i.promised.length) out.gaps.push({ issue: i.issue, staged, promised: i.promised.length });
+    if (staged < i.promised.length && (GAP_PHASE_RANK[i.phase ?? ''] ?? 0) > 0) out.gaps.push({ issue: i.issue, staged, promised: i.promised.length });
   }
+  const rank = (n: number): number => GAP_PHASE_RANK[input.issues.find((i) => i.issue === n)?.phase ?? ''] ?? 0;
+  out.gaps.sort((a, b) => rank(b.issue) - rank(a.issue) || b.issue - a.issue);
   return out;
 }
 
@@ -94,11 +119,15 @@ function docCarryValue(p: RunPanel): string {
   if (p.doc_carry_error) return `unreadable (${p.doc_carry_error})`;
   const d = p.doc_carry;
   if (!d) return 'off (docs governance off)';
-  const base = `promised ${d.promised} · staged ${d.staged} · carried ${d.carried}`;
-  if (d.gaps.length === 0) return base;
-  const shown = d.gaps.slice(0, DOC_CARRY_GAPS_SHOWN).map((g) => `#${g.issue} ${g.staged}/${g.promised}`).join(', ');
-  const more = d.gaps.length - DOC_CARRY_GAPS_SHOWN;
-  return `${base} · gaps: ${shown}${more > 0 ? ` +${more} more` : ''}`;
+  const parts = [`routes promised ${d.promised}`, `staged ${d.staged}`, `docs carried ${d.carried}`];
+  if (d.unrouted) parts.push(`unrouted ${d.unrouted}`);
+  if (d.unreadable) parts.push(`unreadable ${d.unreadable}`);
+  if (d.gaps.length) {
+    const more = d.gaps.length - DOC_CARRY_GAPS_SHOWN;
+    parts.push(`gaps: ${d.gaps.slice(0, DOC_CARRY_GAPS_SHOWN).map((g) => `#${g.issue} ${g.staged}/${g.promised}`).join(', ')}${more > 0 ? ` +${more} more` : ''}`);
+  }
+  if (d.history) parts.push(`history: ${d.history.staged}/${d.history.promised} routes staged`);
+  return parts.join(' · ');
 }
 
 /** The panel as key/value rows: the text dashboard, `--html` and the `run` dataset all print these. */
