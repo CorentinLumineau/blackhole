@@ -4,7 +4,6 @@ import * as os from 'os';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import {
-  bumpPackageVersion,
   findManifestVersionMismatches,
   MANIFEST_PATHS,
   normalizeTag,
@@ -358,15 +357,6 @@ describe('prepareRelease', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8')) as { version: string };
     expect(pkg.version).toBe(VERSION);
     expect(buildCalled).toBe(true);
-  });
-});
-
-describe('bumpPackageVersion', () => {
-  test('writes package.json version for cadence and prepare to share', () => {
-    const root = seedRepo({ pkgVersion: '0.0.1' });
-    bumpPackageVersion(root, VERSION);
-    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8')) as { version: string };
-    expect(pkg.version).toBe(VERSION);
   });
 });
 

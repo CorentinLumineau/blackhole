@@ -568,7 +568,7 @@ fourth `mergeEligible()` condition (same shape as § 6 / Step 0.6).
 | `prod-db` | paths combining prod/production with db/database/sql/postgres/mysql/mongo |
 | `migrations` | `migrations/`, `migrate/`, `prisma/migrations/`, alembic, knexfile, flyway |
 | `github-workflows` | `.github/workflows/**` |
-| `release-tag` | `scripts/release.ts`, `scripts/release-cadence.ts`, `.github/releases/`, `git-create-release`, `package.json` version bump |
+| `release-tag` | `scripts/release.ts`, `scripts/release-cadence.ts`, `scripts/lib/release-cadence.ts`, `.github/releases/`, `git-create-release`, `package.json` version bump |
 | `deletes-data` | deleted `data/`/`dumps/`/`*.sql`/`*.csv` files, or `DROP TABLE`/`TRUNCATE`/`DELETE FROM` in a non-test patch |
 
 Mechanical check (exit `0` automerge, `1` hold, `2` usage) — judgment is above, arithmetic is not

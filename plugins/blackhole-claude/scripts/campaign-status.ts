@@ -22,6 +22,8 @@ import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
 import { readPublishState, readStatusAlerts, statusPageEnabled } from './lib/campaign-status/staleness.ts';
 import { buildLaunchSummary, gateCards, renderLaunchSummary, type CatchupInput } from './lib/campaign-status/launch-summary.ts';
+import type { DetectResult } from './lib/peer-campaigns.ts';
+import { detectForCampaign } from './peer-campaigns.ts';
 import type { StatusArtifact, StatusPageInput } from './lib/campaign-status/status-page-row.ts';
 import type { RateLimits } from './lib/rate-limit-cache.ts';
 import { parseUsage } from './usage-budget.ts';
@@ -324,6 +326,19 @@ function readCatchup(config: Record<string, unknown>, host: ReturnType<typeof re
 }
 
 /**
+ * Peer detection for the Peers row (ADR-057). Undefined outside a git clone, so the row shows the
+ * configured role; a detection that throws inside a clone fails closed as one unreadable record.
+ */
+function readPeers(campaignDir: string): DetectResult | undefined {
+  try {
+    return detectForCampaign(campaignDir) ?? undefined;
+  } catch (error) {
+    console.error(`status --summary: peer detection failed: ${error instanceof Error ? error.message : String(error)}`);
+    return { verdict: 'unknown', reach: 'clone', unreadable: 1, unreadable_files: ['(detection failed)'], peers: [] };
+  }
+}
+
+/**
  * `--summary`: the launch gate's rows and question cards (eight for `run`, nine with Pacing for
  * `--mode catchup`). The Budget row reads the same `BudgetPanel` the status page shows: built from
  * `--usage` (restricted to `usage_budget.windows`) when given, else from the host's usage source at
@@ -357,6 +372,7 @@ async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJso
     budget: catchup?.budget ?? (usage ? givenBudgetPanel(usage, config, nowS) : readBudgetPanel(config, host, nowS, path.join(campaignDir, USAGE_HISTORY_FILE))),
     statusPage: readStatusPageInput(campaignDir, collected.state.config, nowIso),
     catchup: catchup?.input,
+    peers: readPeers(campaignDir),
   });
   const versionWarning = pluginVersionWarning(
     readPluginVersionCheck({ running: readPluginVersion(PLUGIN_ROOT), homeDir: os.homedir(), pluginName: projectIdentity.name }),

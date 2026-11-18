@@ -1,10 +1,13 @@
 name: Release Cadence
 
-# Every-N-merged-PR release cut (N = CADENCE_THRESHOLD in scripts/release-cadence.ts).
-# Checked on a schedule — not on each push to main — so a release bundles ~N PRs.
-# Cut job gated by repository variable RELEASE_CADENCE_ENABLED == 'true' (owner sets it).
+# Every-N-merged-PR release cut (N = CADENCE_THRESHOLD in scripts/lib/release-cadence.ts).
+# Cut job gated by repository variable RELEASE_CADENCE_ENABLED == 'true'
+# (owner enablement — see documentation/runbooks/release-cadence.md).
 # When disabled, `disabled-notice` surfaces a warning so skips are not silent.
-# Does not publish a GitHub Release: pushing the annotated tag lets release.yml do that.
+#
+# This workflow never publishes a GitHub Release. It commits notes, bumps
+# VERSIONED_MANIFESTS, and pushes an annotated v* tag; .github/workflows/release.yml
+# is the sole publisher.
 
 on:
   schedule:
@@ -18,7 +21,7 @@ on:
         default: false
 
 # One cut at a time; a running cut is never cancelled. GitHub keeps only one
-# *pending* run per group, so a queued force=true dispatch can be superseded by
+# pending run per group, so a queued force=true dispatch can be superseded by
 # the next cron run (which then skips if < N PRs). If that happens, dispatch
 # force=true again once the running cut finishes.
 concurrency:
@@ -34,7 +37,7 @@ jobs:
     steps:
       - name: Surface disabled bootstrap gate
         run: |
-          echo "::warning title=Release Cadence disabled::RELEASE_CADENCE_ENABLED is not 'true'. Every-N-PR cuts are skipped. Owner enablement: gh variable set RELEASE_CADENCE_ENABLED -b true — see documentation/runbooks/release-cadence.md."
+          echo "::warning title=Release Cadence disabled::RELEASE_CADENCE_ENABLED is not 'true'. Every-N-PR cuts are skipped. Owner enablement: gh variable set RELEASE_CADENCE_ENABLED -b true — see documentation/runbooks/release-cadence.md. Agents must not set this variable."
 
   cut:
     if: vars.RELEASE_CADENCE_ENABLED == 'true'
@@ -42,11 +45,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write
-      pull-requests: read
-      issues: write
-      actions: read
-      checks: read
+      contents: write        # git push main + release tag
+      pull-requests: read    # gh api repos/.../pulls
+      issues: write          # file/comment the persistent-failure tracking issue
+      actions: read          # Verify workflow conclusion on the tip SHA
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -54,9 +56,12 @@ jobs:
           persist-credentials: true
           token: ${{ github.token }}
 
+      - name: Fetch tags
+        run: git fetch --tags --force origin
+
       # A run checks out github.sha, the main tip when the run was created.
-      # A run that queued can start after another cut landed. Skip instead of
-      # failing: the next schedule cuts from the live tip.
+      # A run that queued for hours can start after another cut landed.
+      # Skip instead of failing: the next schedule cuts from the live tip.
       - name: Skip a run that main has outrun
         id: fresh
         run: |
@@ -69,10 +74,6 @@ jobs:
             echo "stale=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Ensure local main matches this SHA
-        if: steps.fresh.outputs.stale == 'false'
-        run: git checkout -B main ${{ github.sha }}
-
       - uses: ./.github/actions/setup-bun
         if: steps.fresh.outputs.stale == 'false'
 
@@ -80,12 +81,28 @@ jobs:
         if: steps.fresh.outputs.stale == 'false'
         run: bun install --frozen-lockfile
 
-      - name: Cut release (gate + prepare + tag + push)
+      # Optional Haiku notes: CLAUDE_CODE_OAUTH_TOKEN is passed only to this step.
+      # If the secret is absent, the CLI install is skipped and notes stay deterministic.
+      # A failed/timed-out/invalid model call never fails the cut.
+      - name: Cut release (gate + notes + optional Haiku + tag)
         if: steps.fresh.outputs.stale == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           CI: true
+          RELEASE_CADENCE_ENABLED: ${{ vars.RELEASE_CADENCE_ENABLED }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
+          set -euo pipefail
+          # Install is best-effort: a failed CLI fetch must not block the cut.
+          # Deterministic notes are the fallback (scripts/release-cadence.ts).
+          if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            prefix="${RUNNER_TEMP:-/tmp}/claude-code"
+            if npm i --prefix "$prefix" @anthropic-ai/claude-code@2.1.296; then
+              export PATH="$prefix/node_modules/.bin:$PATH"
+            else
+              echo "::warning title=Haiku notes skipped::Claude Code install failed; cadence will use deterministic notes."
+            fi
+          fi
           ARGS=(--cut)
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
             ARGS+=(--force)
@@ -103,6 +120,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: "open",
+              labels: "blackhole/backlog",
               per_page: 100,
             });
             const existing = open.find(
@@ -137,12 +155,15 @@ jobs:
               `Failing run: ${runUrl}`,
               ``,
               `No release will be cut until this is fixed — see documentation/runbooks/release-cadence.md.`,
+              ``,
+              `Pareto: gain=8 effort=3 priority=64`,
             ].join("\n");
 
             const open = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: "open",
+              labels: "blackhole/backlog",
               per_page: 100,
             });
             const existing = open.find(
@@ -165,5 +186,6 @@ jobs:
               repo: context.repo.repo,
               title,
               body,
+              labels: ["blackhole/backlog"],
             });
             core.notice(`Opened tracking issue #${created.data.number}`);
