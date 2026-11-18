@@ -5,6 +5,7 @@ import { spawnSync } from 'child_process';
 import { root } from './lib/build/paths.ts';
 import { withTempDir } from './lib/test-fixtures.ts';
 import { eventsToRateLimits } from './usage-probe.ts';
+import { readUsageHistory } from './lib/usage-history.ts';
 
 const probe = path.join(root, 'scripts', 'usage-probe.ts');
 const budget = path.join(root, 'scripts', 'usage-budget.ts');
@@ -33,6 +34,8 @@ const runProbe = (dir: string, input: string, extra: string[] = []) => {
   fs.writeFileSync(file, input);
   const r = spawnSync('bun', ['run', probe, '--from-events', file, '--now', String(NOW), ...extra], {
     encoding: 'utf-8',
+    // In the temp dir, so the default .blackhole/usage-history.jsonl lands there, not in the repo.
+    cwd: dir,
     env: { PATH: process.env.PATH ?? '' },
   });
   return { code: r.status, out: r.stdout.trim(), err: r.stderr };
@@ -215,6 +218,32 @@ describe('usage-probe CLI', () => {
       const verdict = JSON.parse(r.stdout);
       expect(verdict.verdict).not.toBe('unavailable');
       expect(verdict.reasons.join(' ')).not.toContain('rate-limit cache');
+    });
+  });
+
+  test('each weekly reading is appended to usage-history.jsonl beside the config, once per observed_at', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const cache = path.join(dir, 'rl.json');
+      const configPath = path.join(dir, 'state', 'config.json');
+      fs.mkdirSync(path.dirname(configPath));
+      fs.writeFileSync(configPath, JSON.stringify({ resource_policy: { pace: { cache_path: cache } } }));
+      const week = (u: number) => ({ seven_day: { utilization: u, resetsAt: NOW + 3 * DAY } });
+      expect(runProbe(dir, JSON.stringify(event(week(0.21), NOW - 600)), ['--config', configPath]).code).toBe(0);
+      expect(runProbe(dir, JSON.stringify(event(week(0.36), NOW - 60)), ['--config', configPath]).code).toBe(0);
+      expect(runProbe(dir, JSON.stringify(event(week(0.36), NOW - 60)), ['--config', configPath]).code).toBe(0);
+      expect(readUsageHistory(path.join(dir, 'state', 'usage-history.jsonl'))).toEqual([
+        { observed_at: NOW - 600, used_percentage: 21, resets_at: NOW + 3 * DAY },
+        { observed_at: NOW - 60, used_percentage: 36, resets_at: NOW + 3 * DAY },
+      ]);
+    });
+  });
+
+  test('a five_hour-only reading adds no history line', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const configPath = path.join(dir, 'config.json');
+      fs.writeFileSync(configPath, JSON.stringify({ resource_policy: { pace: { cache_path: path.join(dir, 'rl.json') } } }));
+      expect(runProbe(dir, JSON.stringify(event({ five_hour: { utilization: 0.1, resetsAt: NOW + 3600 } })), ['--config', configPath]).code).toBe(0);
+      expect(fs.existsSync(path.join(dir, 'usage-history.jsonl'))).toBe(false);
     });
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { formatDashboard } from './dashboard.ts';
 import { buildStatusReport } from './report.ts';
-import { classifyBlocked, classPreview, groupBlockedRows } from './blocked-classes.ts';
+import { classifyBlocked, classPreview, foreignLaneLabel, groupBlockedRows } from './blocked-classes.ts';
 import type { QueueIssue, QueueJson } from './types.ts';
 
 const blocked = (title: string, notes: string, extra: Partial<QueueIssue> = {}): QueueIssue => ({
@@ -103,5 +103,18 @@ describe('single-source classifier (V-DRY)', () => {
     expect(groups.map((g) => g.kind)).toEqual(['tracking_issue', 'dependency', 'another_lane']);
     expect(classPreview([1, 2, 3, 4, 5], 5)).toEqual({ first: [1, 2, 3], more: 2 });
     expect(classPreview([1], 1)).toEqual({ first: [1], more: 0 });
+  });
+
+  test('foreignLaneLabel follows the configured lane, with the legacy pair as the fallback', () => {
+    expect(foreignLaneLabel(['in-progress:cursor'])).toBe('in-progress:cursor');
+    expect(foreignLaneLabel(['in-progress:claude'])).toBeNull();
+    expect(foreignLaneLabel(['in-progress:claude'], 'acct-a')).toBe('in-progress:claude');
+    expect(foreignLaneLabel(['in-progress:acct-a'], 'acct-a')).toBeNull();
+  });
+
+  test('classifyBlocked treats the own lane label as not another lane', () => {
+    const own = blocked('own', 'depends on upstream', { labels: ['in-progress:acct-a'] });
+    expect(classifyBlocked(own, issues, 'acct-a')).toBe('dependency');
+    expect(classifyBlocked(own, issues)).toBe('another_lane');
   });
 });

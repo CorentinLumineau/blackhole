@@ -376,3 +376,76 @@ describe('createForgeAdapter gitlab', () => {
     expect(adapter.forge).toBe('gitlab');
   });
 });
+
+describe('GitLabForgeAdapter claim and release', () => {
+  const fresh = new Date(Date.now() - 3_600_000).toISOString();
+  const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
+  const issue = (extra: Record<string, unknown> = {}) => ({ iid: 7, title: 't', state: 'opened', labels: [], assignees: [], updated_at: fresh, ...extra });
+  const adapter = new GitLabForgeAdapter('group/project');
+  let apiSpy: ReturnType<typeof spyOn<typeof glabCli, 'runGlabText'>>;
+  let textCalls: string[][] = [];
+  let jsonSpy: ReturnType<typeof spyOn<typeof glabCli, 'runGlabJson'>> | undefined;
+
+  const mockGlab = (reply: (endpoint: string) => unknown) => {
+    textCalls = [];
+    apiSpy = spyOn(glabCli, 'runGlabText').mockImplementation(((args: string[]) => {
+      textCalls.push(args);
+      return args[0] === 'api' ? JSON.stringify(reply(args[1])) : '';
+    }) as never);
+  };
+  afterEach(() => {
+    apiSpy?.mockRestore();
+    jsonSpy?.mockRestore();
+    jsonSpy = undefined;
+  });
+  const apiWrites = () => textCalls.filter((a) => a[0] === 'api' && a[3] === 'PUT').map((a) => a[1]);
+  const issueEndpoint = 'projects/group%2Fproject/issues/7';
+
+  test('claim labels the issue then PUTs the union of assignee ids', async () => {
+    mockGlab((e) => (e.startsWith('users?') ? [{ id: 99 }] : issue({ assignees: [{ id: 5, username: 'other' }] })));
+    expect(await adapter.claim(7, 'acct-a', 'me')).toEqual({ verdict: 'CLAIMED' });
+    expect(textCalls).toContainEqual(['issue', 'update', '7', '--repo', 'group/project', '--label', 'in-progress:acct-a']);
+    expect(apiWrites()).toEqual([`${issueEndpoint}?assignee_ids[]=5&assignee_ids[]=99`]);
+  });
+
+  test('a live foreign claim is HELD and writes nothing', async () => {
+    mockGlab((e) => (e.includes('merge_requests') ? [] : issue({ labels: ['in-progress:acct-b'] })));
+    jsonSpy = spyOn(glabCli, 'runGlabJson').mockReturnValue([]);
+    expect(await adapter.claim(7, 'acct-a', 'me')).toEqual({ verdict: 'HELD', held_by: 'acct-b' });
+    expect(textCalls.some((a) => a[0] === 'issue')).toBe(false);
+    expect(apiWrites()).toEqual([]);
+  });
+
+  test('a stale claim is reclaimed and the stale label is removed', async () => {
+    let reads = 0;
+    mockGlab((e) => (e.startsWith('users?') ? [{ id: 99 }] : issue({ labels: [reads++ === 0 ? 'in-progress:acct-b' : 'in-progress:acct-a'], updated_at: stale })));
+    jsonSpy = spyOn(glabCli, 'runGlabJson').mockReturnValue([]);
+    expect(await adapter.claim(7, 'acct-a', 'me')).toEqual({ verdict: 'RECLAIMED' });
+    expect(textCalls).toContainEqual(['issue', 'update', '7', '--repo', 'group/project', '--unlabel', 'in-progress:acct-b']);
+  });
+
+  test('release PUTs the id list without the user', async () => {
+    mockGlab((e) => {
+      if (e === 'user') return { username: 'me' };
+      if (e.startsWith('users?')) return [{ id: 99 }];
+      return issue({ labels: ['in-progress:acct-a'], assignees: [{ id: 99, username: 'me' }, { id: 5, username: 'other' }] });
+    });
+    expect(await adapter.release(7, 'acct-a')).toEqual({ verdict: 'RELEASED' });
+    expect(apiWrites()).toEqual([`${issueEndpoint}?assignee_ids[]=5`]);
+  });
+
+  test('viewerLogin reads the authenticated username', async () => {
+    mockGlab(() => ({ username: 'me' }));
+    expect(await adapter.viewerLogin()).toBe('me');
+  });
+
+  test('issueList maps assignees and updated_at, and omits them when absent', async () => {
+    jsonSpy = spyOn(glabCli, 'runGlabJson').mockReturnValue([
+      { iid: 1, title: 'a', updated_at: 'U', assignees: [{ id: 1, username: 'me' }] },
+      { iid: 2, title: 'b' },
+    ]);
+    const [withFields, without] = await adapter.issueList();
+    expect(withFields).toMatchObject({ assignees: ['me'], updatedAt: 'U' });
+    expect(without).not.toHaveProperty('updatedAt');
+  });
+});

@@ -676,3 +676,17 @@ describe('buildStatusReport — entries no section claims, and PRs no entry name
     expect(html).toContain('fix: trunk build');
   });
 });
+
+describe('buildStatusReport — configured lane', () => {
+  const laneReport = (lane: string | null) => {
+    const state = loadCampaignState(fixtureCampaign());
+    const queue = { ...state.queue, issues: { '1': { title: 'own', phase: 'handle', status: 'blocked', notes: 'depends on upstream', labels: ['in-progress:acct-a'] } } } as QueueJson;
+    const config = { ...state.config, ...(lane ? { catchup: { lane } } : {}) };
+    return buildStatusReport({ ...state, config, queue, forge: FORGE_OK, paceLine: null, hostNotes: [], generatedAt: GENERATED_AT });
+  };
+
+  test('an own-lane label is a dependency under the lane, another lane without it', () => {
+    expect(laneReport('acct-a').blocked_classes.map((c) => c.class)).toEqual(['dependency']);
+    expect(laneReport(null).blocked_classes.map((c) => c.class)).toEqual(['another_lane']);
+  });
+});

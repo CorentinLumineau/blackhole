@@ -1,6 +1,10 @@
 import { runTea, runTeaApiJson, runTeaJson, runTeaText } from './tea-cli.ts';
+import { claimIssue, latestClosingPrActivity, releaseIssue, type ClaimOps } from './claim.ts';
 import { isUnavailable, readDependencies, writeDependencies, type BodyChannel, type NativeDependencyChannel, type NativeEdge } from './dependencies.ts';
 import type {
+  ClaimLease,
+  ClaimResult,
+  ReleaseResult,
   DependencyRef,
   DependencyTarget,
   ForgeAdapter,
@@ -25,6 +29,9 @@ type TeaIssueRow = {
   labels?: Array<{ name: string } | string>;
   milestone?: { title: string } | string | null;
   state?: string;
+  updated_at?: string | null;
+  updated?: string | null;
+  assignees?: Array<{ login?: string; username?: string } | string> | null;
 };
 
 /** Gitea REST pull request row, as `tea api` prints it. */
@@ -37,6 +44,7 @@ type GiteaApiPrRow = {
   merged_at?: string | null;
   draft?: boolean;
   created_at?: string | null;
+  updated_at?: string | null;
   mergeable?: boolean | null;
   labels?: Array<{ name: string }> | null;
   head: { ref: string; sha: string; repo?: { full_name: string } | null };
@@ -89,6 +97,7 @@ export const mapGiteaApiPr = (row: GiteaApiPrRow): ForgePr => {
     headRepoIsFork: baseRepo && row.head.repo !== undefined ? row.head.repo === null || row.head.repo.full_name !== baseRepo : undefined,
     draft: row.draft,
     createdAt: row.created_at,
+    ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
     state: merged ? 'MERGED' : (row.state ?? 'open').toLowerCase() === 'closed' ? 'CLOSED' : 'OPEN',
     mergedAt: row.merged_at ?? null,
     labels: row.labels?.map((l) => l.name),
@@ -149,6 +158,13 @@ function normalizeMilestone(m: TeaIssueRow['milestone']): { title: string } | nu
   return m;
 }
 
+/** `updated_at` (REST) or `updated` (`tea` JSON); assignees as logins or as user objects. */
+function claimFields(row: TeaIssueRow): Pick<ForgeIssue, 'assignees' | 'updatedAt'> {
+  const updatedAt = row.updated_at ?? row.updated;
+  const assignees = row.assignees?.map((a) => (typeof a === 'string' ? a : (a.login ?? a.username ?? ''))).filter(Boolean);
+  return { ...(assignees ? { assignees } : {}), ...(updatedAt ? { updatedAt } : {}) };
+}
+
 function mapIssue(row: TeaIssueRow): ForgeIssue {
   const state = (row.state ?? 'open').toUpperCase();
   return {
@@ -158,6 +174,7 @@ function mapIssue(row: TeaIssueRow): ForgeIssue {
     labels: normalizeLabels(row.labels),
     milestone: normalizeMilestone(row.milestone),
     state: state === 'CLOSED' ? 'CLOSED' : 'OPEN',
+    ...claimFields(row),
   };
 }
 
@@ -408,6 +425,45 @@ export class GiteaForgeAdapter implements ForgeAdapter {
   // workflows), so CI is the combined commit status of the PR's head commit, read through the REST
   // API. A failed read throws rather than returning `[]`: an empty list means "no status was
   // reported" and a caller must never be able to mistake a swallowed failure for it (issue #864).
+  async claim(issue: number, lane: string, user: string, lease?: ClaimLease): Promise<ClaimResult> {
+    return claimIssue(this.claimOps(), issue, lane, user, lease);
+  }
+
+  async release(issue: number, lane: string): Promise<ReleaseResult> {
+    return releaseIssue(this.claimOps(), issue, lane, await this.viewerLogin());
+  }
+
+  async viewerLogin(): Promise<string> {
+    return runTeaApiJson<{ login: string }>('GET', 'user').data.login;
+  }
+
+  /** Gitea resolves labels by name and fails on an unknown one, so `ensureLabel` creates it; assignees are replaced as a whole list. */
+  private claimOps(): ClaimOps {
+    const endpoint = (issue: number) => `repos/${this.apiSlug()}/issues/${issue}`;
+    const setAssignees = (issue: number, assignees: string[]) => {
+      runTeaApiJson('PATCH', endpoint(issue), { assignees });
+    };
+    return {
+      read: async (issue) => {
+        const row = runTeaApiJson<TeaIssueRow>('GET', endpoint(issue)).data;
+        const mapped = mapIssue(row);
+        return { state: mapped.state, labels: mapped.labels.map((l) => l.name), assignees: mapped.assignees ?? [], updatedAt: mapped.updatedAt };
+      },
+      prActivity: async (issue) => latestClosingPrActivity(this.listPrsRest('open', 100), issue),
+      ensureLabel: async (label) => {
+        try {
+          runTeaText(['labels', 'create', ...this.repoFlag(), '--name', label, '--color', '#1d76db']);
+        } catch (error) {
+          if (!/already exists/i.test(String(error))) throw error;
+        }
+      },
+      labelAdd: (issue, label) => this.labelAdd({ type: 'issue', number: issue }, [label]),
+      labelRemove: (issue, label) => this.labelRemove({ type: 'issue', number: issue }, [label]),
+      assign: async (issue, user, current) => setAssignees(issue, [...current, user]),
+      unassign: async (issue, user, current) => setAssignees(issue, current.filter((a) => a !== user)),
+    };
+  }
+
   async prChecks(number: number): Promise<ForgeCheck[]> {
     const sha = (await this.prView(number)).headRefOid;
     if (!sha) throw new Error(`PR #${number} reports no head commit to read CI for`);

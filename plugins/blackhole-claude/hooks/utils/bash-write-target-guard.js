@@ -260,12 +260,6 @@ const INERT_GREP_COMMANDS = new Set(['grep', 'egrep', 'fgrep', 'rg']);
 /** rg options that run a decompressor/preprocessor, plus any unique prefix of them. */
 const RG_COMMAND_OPTIONS = ['--pre', '--pre-glob', '--hostname-bin', '--search-zip'];
 
-/** Whole-command constructs that can redefine what a bare command word means: a function
- * definition, alias/hash/enable/builtin, or a PATH change. */
-const COMMAND_REBINDING_RE = new RegExp(
-  '(?:^|[;&|\\s(])(?:function\\s+[\\w.-]+|[\\w.-]+\\s*\\(\\s*\\)\\s*\\{)|\\b(?:alias|unalias|hash|enable|builtin)\\b|\\bPATH=|export\\s+PATH',
-);
-
 /** `-f`/`--file` (a pattern file) and, for rg, a decompressor/preprocessor option disqualify a
  * clause; neither runs a command in grep, but the rule is kept simple and read-only. */
 const hasDisqualifyingOption = (head, args) =>
@@ -291,16 +285,47 @@ const isInertSed = (args) => {
   return args.every((t) => t === scripts[0] || SED_PLAIN_OPTION_RE.test(t) || !t.startsWith('-'));
 };
 
+/** An unquoted `(`, `)`, `{` or `}` in a token makes the clause a function definition or a group,
+ * not a filter invocation: `grep () ( ... )` redefines the word instead of running it. */
+const hasUnquotedGrouping = (token) => /[(){}]/.test(token.replace(/'[^']*'|"[^"]*"/g, ''));
+
 /** True when a clause's command word is a bare, unquoted, unprefixed grep-family command or a pure
  * `s///` sed. A leading `VAR=val`, a path (`./grep`, `/tmp/grep`) or any quoting disqualifies it:
  * the word may then name something else than the filter. */
 const isInertClause = (tokens) => {
-  if (tokens.length === 0 || !/^[A-Za-z]+$/.test(tokens[0])) return false;
+  if (tokens.length === 0 || tokens.some(hasUnquotedGrouping) || !/^[A-Za-z]+$/.test(tokens[0])) return false;
   const head = tokens[0];
   const args = tokens.slice(1);
   if (INERT_GREP_COMMANDS.has(head)) return !hasDisqualifyingOption(head, args);
   return head === 'sed' && isInertSed(args);
 };
+
+/** Read-only filters that may sit beside an inert grep/sed clause without turning masking off. */
+const PASSIVE_FILTER_COMMANDS = new Set(['wc', 'head', 'tail', 'sort', 'cat', 'uniq', 'cut']);
+const SORT_PLAIN_OPTION_RE = /^-[nrufbdiMhVgs]+$/;
+
+/** True for a bare allowlisted filter clause that cannot write: no redirect operator in any token,
+ * `sort` without an output/compress option, `uniq` with at most one positional argument (the
+ * second names an output file). */
+const isPassiveFilterClause = (tokens) => {
+  if (tokens.length === 0 || tokens.some(hasUnquotedGrouping) || !PASSIVE_FILTER_COMMANDS.has(tokens[0])) return false;
+  const args = tokens.slice(1);
+  if (args.some((t) => /[<>]/.test(t))) return false;
+  if (tokens[0] === 'sort') return args.every((t) => !t.startsWith('-') || SORT_PLAIN_OPTION_RE.test(t));
+  if (tokens[0] === 'uniq') return args.filter((t) => !t.startsWith('-')).length <= 1;
+  return true;
+};
+
+/** Masking is safe only when every clause of the command is a passive filter: any other statement
+ * (assignment, `unset`, `printf -v`, `read`, `cd`, ...) may rebind what a bare `grep`/`sed` word
+ * runs, so it disables masking for the whole command. Empty clauses (`&&`, `||`) are neutral. */
+const isEveryClausePassive = (visible) =>
+  clauseRanges(visible).every(([start, end]) => {
+    const text = visible.slice(start, end);
+    if (text.trim() === '') return true;
+    const tokens = tokenize(text);
+    return isInertClause(tokens) || isPassiveFilterClause(tokens);
+  });
 
 const REDIRECT_OPERATOR_TAIL_RE = /(?:&>>|&>|>>|>&|>\||>)\s*$/;
 
@@ -317,14 +342,16 @@ const isInertQuotedSpan = (text, start, end) => {
 
 /** Copy of `visible` with the contents of inert quoted spans blanked (`grep 'a>b'`), for the
  * whole-command `REDIRECT_RE` scan only; positions are preserved. Fails closed: spans are blanked
- * only inside a clause whose command is an inert filter, and only when nothing in the command
- * nests or reinterprets quotes or may execute quoted text; otherwise `visible` is returned
+ * only inside a clause whose command is an inert filter, and only when every clause of the command
+ * is an inert or passive filter (`isEveryClausePassive`) and nothing nests or reinterprets quotes
+ * or may execute quoted text; otherwise `visible` is returned
  * unchanged (base behaviour), so masking can never turn a deny into an allow. Unquoted text is never masked: an unquoted
  * `sed s/<A>/x/` really is a redirect in bash. */
 const maskRedirectNoise = (visible) => {
-  if (SHELL_EXEC_RE.test(visible) || QUOTE_REINTERPRETING_RE.test(visible) || COMMAND_REBINDING_RE.test(visible)) {
+  if (SHELL_EXEC_RE.test(visible) || QUOTE_REINTERPRETING_RE.test(visible)) {
     return visible;
   }
+  if (!isEveryClausePassive(visible)) return visible;
   const chars = visible.split('');
   for (const [start, end] of clauseRanges(visible)) {
     const text = visible.slice(start, end);

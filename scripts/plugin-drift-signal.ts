@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
-import { hashDirectory } from './lib/plugin-drift.ts';
+import { hashDirectory, PLUGIN_MARKETPLACE } from './lib/plugin-drift.ts';
 import { enumerateHookSources, type HookSource } from './lib/hook-sources.ts';
 import { orderHookSources, type GitResolver, type OrderingResult, type VetoPair, type OrderingOutcomeKind, type SourceRelation } from './lib/hook-source-ordering.ts';
 import { readOriginUrl } from './lib/forge-detection.ts';
@@ -20,7 +20,6 @@ import { projectIdentity } from './project-identity.ts';
 // reproduction this issue is named for). `installed_present`/`hooks_hash_match` are retained
 // below as a derived roll-up so `renderPluginDriftWarning` keeps working unmodified.
 
-const MARKETPLACE_NAME = 'blackhole-marketplace';
 const BLACKHOLE_REMOTE_MARKER = 'corentinlumineau/blackhole';
 
 // ADR-044 § Assumption Audit A-5 — "an enabled plugin whose own bundled settings register a
@@ -168,7 +167,7 @@ function main(): void {
     projectSettingsLocalPath: path.join(repoRoot, '.claude', 'settings.local.json'),
     userSettingsPath: path.join(os.homedir(), '.claude', 'settings.json'),
     installedPluginsPath: path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'),
-    pluginKey: `${projectIdentity.name}@${MARKETPLACE_NAME}`,
+    pluginKey: `${projectIdentity.name}@${PLUGIN_MARKETPLACE}`,
     readFile: (p) => {
       try {
         return fs.readFileSync(p, 'utf-8');
