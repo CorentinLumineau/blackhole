@@ -116,6 +116,11 @@ const stripQuotes = (token) => {
   return token;
 };
 
+/** `stripQuotes` for a write-target word. A word holding a backslash keeps its quotes, so
+ * `unescapeTarget` applies the rule of the quote the backslash sits in (inside `"…"` bash keeps a
+ * backslash before an ordinary character) instead of the unquoted rule on already-stripped text. */
+const stripTargetQuotes = (token) => (token.includes('\\') ? token : stripQuotes(token));
+
 /** Quote-aware whitespace tokenizer over an already-visible (masked spans blanked) substring —
  * a quoted span (e.g. a sed script `'s/a/b/'`) is kept as one token, quotes intact, so
  * `stripQuotes` can later decide whether to unwrap it. A backslash-escaped character (`x\ y`)
@@ -404,7 +409,7 @@ const findRedirectTargets = (visible) => {
     const raw = match[2];
     const isFdDup = match[1] === '>&' ? raw && isFdDupOperand(raw) : raw && isFdDuplicationTarget(raw);
     if (raw && !isFdDup) {
-      targets.push(stripQuotes(raw));
+      targets.push(stripTargetQuotes(raw));
     }
     match = REDIRECT_RE.exec(visible);
   }
@@ -443,7 +448,7 @@ const findTeeTargets = (tokens) => {
   if (cmdIdx === -1) return [];
   return positionalArgsBeforeRedirect(tokens, cmdIdx + 1)
     .filter((t) => !t.startsWith('-'))
-    .map(stripQuotes);
+    .map(stripTargetQuotes);
 };
 
 /** sed short options that take a value: the script (`-e`), a script file (`-f`), a line length. */
@@ -639,8 +644,8 @@ const truncateTargets = (args) => {
   for (let i = 0; i < args.length; i++) {
     const t = args[i];
     if (TRUNCATE_VALUE_OPTIONS.has(t)) i++;
-    else if (t === '--') files.push(...args.slice(i + 1).map(stripQuotes));
-    else if (!t.startsWith('-')) files.push(stripQuotes(t));
+    else if (t === '--') files.push(...args.slice(i + 1).map(stripTargetQuotes));
+    else if (!t.startsWith('-')) files.push(stripTargetQuotes(t));
     if (t === '--') break;
   }
   return files;
@@ -661,7 +666,7 @@ const rsyncTargets = (args) => {
   const tail = dashIdx === -1 ? [] : args.slice(dashIdx + 1);
   const firstPos = head.findIndex((t) => !t.startsWith('-'));
   const optionAfterPositional = firstPos !== -1 && head.slice(firstPos + 1).some((t) => t.startsWith('-'));
-  const positional = [...head.filter((t) => !t.startsWith('-')), ...tail].map(stripQuotes);
+  const positional = [...head.filter((t) => !t.startsWith('-')), ...tail].map(stripTargetQuotes);
   if (positional.length < 2) return [];
   if (optionAfterPositional) {
     return [...positional.slice(1).filter((t) => !isRemoteRsyncPath(t)), UNRESOLVABLE_TARGET];
@@ -680,18 +685,18 @@ const findCopyMoveTargets = (tokens) => {
     const cmdIdx = findCommand(tokens, name);
     if (cmdIdx === -1) continue;
     const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
-    if (name === 'dd') return args.filter((t) => t.startsWith('of=')).map((t) => stripQuotes(t.slice(3)));
+    if (name === 'dd') return args.filter((t) => t.startsWith('of=')).map((t) => stripTargetQuotes(t.slice(3)));
     if (name === 'truncate') return truncateTargets(args);
     if (name === 'rsync') return rsyncTargets(args);
     // `install -d`/`--directory` creates every positional as a directory: all are write targets.
     if (name === 'install' && args.some((t) => t === '--directory' || /^-[a-zA-Z]*d[a-zA-Z]*$/.test(t))) {
-      return args.filter((t) => !t.startsWith('-')).map(stripQuotes);
+      return args.filter((t) => !t.startsWith('-')).map(stripTargetQuotes);
     }
     const { dir, rest } = splitTargetDirectory(args);
     if (dir === null && rest.length < 2) continue;
     const written = dir !== null ? [dir] : [rest[rest.length - 1]];
     if (name === 'mv') written.push(...rest);
-    return written.map(stripQuotes);
+    return written.map(stripTargetQuotes);
   }
   return [];
 };
@@ -1192,6 +1197,13 @@ const isStreamDeviceTarget = (rawTarget, visible) => {
   return (target === '/dev/stdout' || target === '/dev/stderr') && !MAY_REBIND_STREAM_FD_RE.test(visible);
 };
 
+/** True when a path holding a backslash is not lexically under `root`. `isUnderRoot` resolves
+ * through `fs.realpathSync`, which Bun runs with `\` as a separator, so `<root parent>/\wt` reads as
+ * `<root parent>/wt` while the shell writes a file literally named `\wt`. Only a backslash path is
+ * checked this way, so symlinked spellings of an ordinary target keep going through `isUnderRoot`. */
+const escapesRootLexically = (resolvedPath, root) =>
+  resolvedPath.includes('\\') && resolvedPath !== root && !resolvedPath.startsWith(root + path.sep);
+
 /** A target that starts `/#` or carries regex metacharacters is probably a sed/regex fragment
  * (`s/<A>/#1174/g` read as `/#1174/g`), not a path the author meant to write. */
 const looksLikeRegexFragment = (target) => target.startsWith('/#') || /[\\^$*+?()[\]{}|]/.test(target);
@@ -1640,7 +1652,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
   for (const { target, dir, visible } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.resolve(dir, target);
-    if (!isUnderRoot(resolvedPath, assignedRoot)) {
+    if (!isUnderRoot(resolvedPath, assignedRoot) || escapesRootLexically(resolvedPath, assignedRoot)) {
       const hint = looksLikeRegexFragment(target)
         ? ' This looks like a sed/regex expression; quote it.'
         : '';

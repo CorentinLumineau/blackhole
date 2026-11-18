@@ -123,7 +123,6 @@ Any of these makes the command unresolvable:
 | R6 | Shell `-c` strings and `bash -a`: `bash -c 'GIT_TRACE=/x git status'` | #1318 |
 | R7 | `envChdirBase` reading quoted or abbreviated `-C` for relative targets | #1282 (F-00592) |
 | R8 | `$"…"` command names | #1290 |
-| R9 | `normalizeShellWord` backslash inside double quotes for non-trace targets | #1308 (F-00593) |
 | R10 | A quoted or assembled `NAME=VALUE` read by a non-`env` program (`make "GIT_TRACE=/x"`, `xargs -I{} env "GIT_TRACE={}"`) | append to #1283 |
 | R11 | git config trace targets (`git -c trace2.eventTarget=…`, config includes) | F-00563 (deferred) |
 | R12 | `GIT_EXEC_ENV_RE`'s `runsGit` gate misses git inside `$(…)` (`GIT_EXTERNAL_DIFF=/x; export GIT_EXTERNAL_DIFF; echo "$(git diff)"`). Pre-existing on main and not a trace variable | file an issue (none found) |
@@ -142,7 +141,7 @@ of these:
 - **Regression**: it makes a row in the § Closure table's "allow (correct)" column, or one of the
   everyday commands in § WARN volume, produce a hook event.
 
-Everything else is not a BLOCK. If an attack uses only a named residual R1-R14, cite the
+Everything else is not a BLOCK. If an attack uses only a named residual R1-R8 or R10-R14, cite the
 residual id as a NOTE. If it shows a new mechanism outside every slot, the reviewer proposes
 a new residual row with an issue to file (WARN), and it does not block #1246. A reviewer may
 not add a parsing obligation that is outside this contract. A reviewer who believes the
@@ -174,7 +173,7 @@ rows 71-84 were run by the round-10 planner against a scratch repo with a linked
 | 13 | it7 | `read GIT_TRACE <<< <m>/x; export GIT_TRACE; git status` | warn | WARN | T2-6 |
 | 14 | it7 | `env '-C' <m> tee x` (F-00592) | allow | residual | R7 #1282 |
 | 15 | it7 | `export "GIT_TRACE=<m>/.worktrees/\wt"` (F-00593 trace instance) | allow | WARN | T2-3 (backslash makes it opaque) |
-| 16 | it7 | `echo x > "<m>/.worktrees/\wt"` (F-00593 generic) | allow | residual | R9 #1308 |
+| 16 | it7 | `echo x > "<m>/.worktrees/\wt"` (F-00593 generic) | deny | BLOCK | `normalizeShellWord` keeps the backslash inside double quotes (#1308) |
 | 17 | it7 | `$"cp" a <m>/b`, `$"tee" <m>/x` | allow | residual | R8 #1290 |
 | 18 | it8 | `BS='\'; env -S "A=1${BS}_GIT_TRACE=<m>/x git status"` | warn | WARN | T2-1 |
 | 19 | it8 | `X=' '; env -S "A=1${X}GIT_TRACE=…"` | warn | WARN | T2-1 |
