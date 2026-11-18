@@ -34,12 +34,11 @@ CI reads `.github/releases/${TAG}.md` when the file exists; otherwise falls back
    ```bash
    bun run release prepare vX.Y.Z
    ```
-   `prepare` bumps `package.json` and then runs `bun run build --all` internally, regenerating
-   the 5 version-carrying manifests (`.claude-plugin/plugin.json`,
+   `prepare` bumps `package.json` and then runs `bun run build` internally, regenerating
+   the 7 version-carrying manifests (`.claude-plugin/plugin.json`,
    `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`, `.gemini-plugin/plugin.json`,
-   `plugins/blackhole/plugin.json`) — no separate manual build step is needed. If a rebuild is
-   ever done manually, use `bun run build --all` (not plain `bun run build`), which misses the
-   gemini and `plugins/blackhole` targets.
+   `plugins/blackhole/plugin.json`, `plugins/blackhole-agent-plugins/plugin.json`,
+   `plugins/blackhole-claude/.claude-plugin/plugin.json`) — no separate manual build step is needed.
 3. **Edit notes** — `.github/releases/vX.Y.Z.md`
    - Use [TEMPLATE.md](../../../.github/releases/TEMPLATE.md) and the prior release as reference
    - **v0.1.0** (first release only): full product overview — goal, flow, agents, install
@@ -55,7 +54,8 @@ CI reads `.github/releases/${TAG}.md` when the file exists; otherwise falls back
    git add .github/releases/vX.Y.Z.md package.json \
      .claude-plugin/plugin.json .claude-plugin/marketplace.json \
      .codex-plugin/plugin.json .gemini-plugin/plugin.json \
-     plugins/blackhole/plugin.json
+     plugins/blackhole/plugin.json plugins/blackhole-agent-plugins/plugin.json \
+     plugins/blackhole-claude/.claude-plugin/plugin.json
    git commit -m "docs: add vX.Y.Z release notes"
    git push origin main
    ```
@@ -71,7 +71,7 @@ CI reads `.github/releases/${TAG}.md` when the file exists; otherwise falls back
 8. **Close milestone** (when `vX.Y.Z` was the active roadmap milestone)
    - Confirm zero open issues on that milestone: `gh issue list --milestone "vX.Y.Z" --state open`
    - Close via GitHub UI or API — **only after** step 7 succeeds
-   - See `.cursor/rules/release-milestone-governance.mdc` for project policy
+   - See `.github/rules/release-milestone-governance.mdc` for project policy
 
 ## Retagging an existing release
 
