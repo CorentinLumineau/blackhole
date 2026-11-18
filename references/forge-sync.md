@@ -41,7 +41,7 @@ writes `queue.json` through the state write guard (`blackhole-state.md` § Write
   lane the legacy `claude` and `blackhole` lanes are the own ones. An `in-progress:*` claim of
   another lane whose issue and open closing PR show no activity for `catchup.claim_lease_hours` is
   stale: the entry stays `ready` and the next claim takes it over (`agent:*` never leases);
-- links the campaign's own open PR (see above), a closing keyword first, else a `claude|blackhole/issue-N` branch;
+- links the campaign's own open PR (see above), a closing keyword first, else a `claude|blackhole/issue-N` branch (an optional `-<slug>` is allowed);
 - marks an issue `merged` only for a merged PR whose body closes it (`Closes`/`Fixes`/`Resolves
   #N`, as `reconcileMerged`), `closed` when the forge closed it; a forge-open issue stays open.
 

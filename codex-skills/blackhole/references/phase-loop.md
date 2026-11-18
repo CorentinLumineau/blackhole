@@ -183,7 +183,7 @@ D5 narrowing as Step 0.5 above).
    `bun run scripts/merge-risk.ts --name-status <abs> [--patches <abs>] --head-ref <branch>`
    (pass `--patches` from `gh pr diff <n>` so `deletes-data` sees SQL, not only deleted paths).
    Exit 0 (`automerge: true`): CI is already green from step 1, the PR is blackhole's own
-   (`blackhole/issue-N`), and the diff touches none of the high-risk categories — `gh pr merge
+   (`blackhole/issue-N[-slug]`), and the diff touches none of the high-risk categories — `gh pr merge
    <flag>` where `<flag>` comes from `bun run scripts/stack-repair.ts merge-method --queue <abs
    queue.json> --repo-slug <owner/repo> --forge <config.forge> --issue <N>`: `--merge` when the PR has open stacked
    children and the repo allows merge commits, `--squash` otherwise; exit 3 (`hold: true`) when the repo's merge settings are unreadable and the PR has open stacked children: do not merge this turn (`merge-gate.md` § 9; use `&&`
