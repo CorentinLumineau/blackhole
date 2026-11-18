@@ -172,7 +172,7 @@ The status script emits markdown with:
 
 1. **Header** — scope (milestone/labels), orchestrator turn, queue `refreshed_at`
 2. **Counts** — the report's `headline` and stage board counts, the owner's moves, the recorded
-   scope ("Scope not recorded" when none), the three newest decisions and a **Usage budget**
+   scope (the header's scope label when none is recorded), the three newest decisions and a **Usage budget**
    section (5-hour % only with a five_hour window, weekly % and reset, workers allowed, the
    `weekly X% reached around HH:MM` forecast, or `usage not probed`), a **Run** section (run
    route, sleep mode with its parked count, coordination) and, when any is parked,
@@ -196,8 +196,8 @@ The status script emits markdown with:
    merged/closed deps count as satisfied). Dependency cycles surface in an **Unresolved** line,
    never silently dropped. Omitted when there are no active issues. Capped at 10 `Wave N` lines
    with a `…and N more` line beyond that.
-8. **Completed** — merged/closed in queue
-9. **Issues filed** — ledger rows with `deferred_to_issue` (discovery filings)
+8. **Completed** — merged/closed in queue, newest (highest issue number) first, capped at 10 with a `…and N more` line beyond that
+9. **Issues filed** — ledger rows with `deferred_to_issue` (discovery filings), newest (highest issue number) first, capped at 10 with a `…and N more` line beyond that
 10. **Ledger open** — top open V-code findings, capped at 10 with a `…and N more` line beyond
     that.
 11. **Hook denials** — top 5 hook rules by deny and warn count, or `no hook denials recorded`

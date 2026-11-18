@@ -79,7 +79,10 @@ through `askOrPark()` and is parked until the wake-up round.
 ## Per-issue chain granularity
 
 One orchestration unit is one issue chain — handle → plan → implement → review for a single
-issue — not one unit per wave. Earliest-finish chains merge and unblock dependents without
+issue — not one unit per wave. Between plan and implement, each chain runs
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/route-artifacts.ts --issue <N> --campaign-dir <abs repo-root>/.blackhole --phase dispatch`
+(`V-AUTO-03`): any non-zero exit means the chain does not spawn the implementer; exit 1 = the route's
+plan/investigator artifact was never staged (stage it, route back to plan), exit 2 = fix the invocation. Earliest-finish chains merge and unblock dependents without
 waiting for wave stragglers, which is what per-issue granularity buys over wave-grained
 scheduling.
 

@@ -130,7 +130,7 @@ jobs:
           if [ ! -f ".github/releases/${TAG}.md" ]; then
             echo "Error: Missing .github/releases/${TAG}.md for annotated tag ${TAG}."
             echo "Run: bun run release prepare ${TAG}"
-            echo "See: .github/skills/create-release/SKILL.md"
+            echo "See: .claude/skills/prj-create-release/SKILL.md"
             exit 1
           fi
           echo "Release notes file present for ${TAG}"

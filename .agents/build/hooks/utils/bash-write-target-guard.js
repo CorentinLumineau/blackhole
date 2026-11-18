@@ -969,12 +969,19 @@ const DECLARERS = new Set(['export', 'declare', 'typeset', 'local', 'readonly'])
  * the shell expects one (a command word, so `env "GIT_TRACE=/x" git`, an `env` operand holding `=`
  * before its command, or any operand of `export` once a declarer opens the clause, whatever bare
  * names precede it),
- * so `git commit -m 'GIT_TRACE=/x'` names no trace. Each target is `{ value, literal }`: a literal
+ * so `git commit -m 'GIT_TRACE=/x'` names no trace. Returns `{ targets, unresolvable, bareExport }`.
+ * `unresolvable` fails closed where `env` cannot be read exactly: an option word that is not one
+ * of `ENV_OPTION_RE`'s exact spellings (getopt_long also accepts any unambiguous abbreviation,
+ * `--uns`), or a `-S` string holding a backslash (`\_` separates words there). `bareExport` marks
+ * a declarer exporting a trace name with no value (`export GIT_TRACE`), whose value was set
+ * elsewhere (`read`, `printf -v`). Each target is `{ value, literal }`: a literal
  * value is the exact file name git opens, even when it holds a quote or a `$`; a value the shell
  * rewrites (`$LOG`, `` `pwd` ``, `~/t`) or may expand (a glob or brace character, which `env` and
  * `export` operands expand) is returned as written with `literal: false`, so it is unresolvable. */
 const findGitTraceTargets = (tokens) => {
   const targets = [];
+  let unresolvable = false;
+  let bareExport = false;
   const addTrace = (word) => {
     const { text, dynamic } = normalizeShellWord(word);
     const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(word) : text)?.[1];
@@ -983,8 +990,12 @@ const findGitTraceTargets = (tokens) => {
     else if (path.isAbsolute(value)) targets.push({ value, literal: true });
   };
   // `env -S STRING` removes STRING's own quotes, splits it into words and reads their assignments
-  // like its own operands; a word holding an expansion stays dynamic.
-  const addSplitString = (value) => value.replace(/["']/g, '').split(/\s+/).forEach(addTrace);
+  // like its own operands; a word holding an expansion stays dynamic. A backslash in the word as
+  // written fails closed too, since the shell's own quote removal may keep it.
+  const addSplitString = (value, word) => {
+    if (word.includes('\\')) unresolvable = true;
+    else value.replace(/["']/g, '').split(/\s+/).forEach(addTrace);
+  };
   const positions = commandPositions(tokens);
   let declaring = false;
   let envOperands = false;
@@ -992,7 +1003,7 @@ const findGitTraceTargets = (tokens) => {
   tokens.forEach((token, i) => {
     const decoded = decodeQuotedWord(token);
     if (envValueNext) {
-      if (envValueNext.split) addSplitString(unquoteWord(decoded));
+      if (envValueNext.split) addSplitString(unquoteWord(decoded), token);
       envValueNext = null;
       return;
     }
@@ -1001,32 +1012,43 @@ const findGitTraceTargets = (tokens) => {
     const envOption = envOperands && unquoteWord(decoded).startsWith('-');
     const envAssignment = envOperands && !envOption && decoded.includes('=');
     const assignmentSlot = positions.has(i) || declaring || envAssignment;
+    if (declaring && /^GIT_TRACE\w*$/.test(unquoteWord(decoded))) bareExport = true;
     declaring ||= DECLARERS.has(commandName(token));
     if (positions.has(i) && commandName(token) === 'env') envOperands = true;
     else if (envOption) {
       const option = envValueOption(unquoteWord(decoded));
-      if (option?.value === null) envValueNext = option;
-      else if (option?.split) addSplitString(option.value);
+      if (option === undefined) {
+        unresolvable = true;
+        envOperands = false;
+      } else if (option.value === null) envValueNext = option;
+      else if (option.split) addSplitString(option.value, token);
     } else if (envOperands && !envAssignment) envOperands = false;
     if ((token[0] === "'" || token[0] === '"') && !assignmentSlot) return;
     // The shell decodes an unquoted `$'…'` or `$"…"` before `env` or `export` sees the word, so
     // where an assignment is expected the name is read from the decoded word.
     addTrace(assignmentSlot ? decoded : token);
   });
-  return targets;
+  return { targets, unresolvable, bareExport };
 };
 
-/** The value an `env` option takes, for an unquoted option word: `-u NAME`, `-C DIR`,
- * `-a NAME` and `-S STRING` (also clustered, `-iu NAME`, or glued, `-uNAME`) and `--unset`,
- * `--chdir`, `--argv0`, `--split-string` (also with `=VALUE`). Returns `{ split, value }`, where
- * `value` is null when the value is the next word and `split` marks a `-S` string; undefined for
- * an option with no value. */
+/** Every `env` option word GNU env accepts, spelled exactly: a cluster of the no-value letters
+ * `i`, `0`, `v`, optionally ending in a value letter `u`, `C`, `S` or `a` with its value glued
+ * (`-iuNAME`) or as the next word; a bare `-`; `--`; and the full long names, the value-taking
+ * ones also with `=VALUE`. */
+const ENV_OPTION_RE =
+  /^(?:-[i0v]*(?:([uCSa])([\s\S]*))?|--|--(?:ignore-environment|null|debug|help|version|list-signal-handling)|--(?:default-signal|ignore-signal|block-signal)(?:=[\s\S]*)?|--(unset|chdir|argv0|split-string)(?:=([\s\S]*))?)$/;
+
+/** The value an exact `env` option word (`ENV_OPTION_RE`) takes: `{ split, value }`, where `value`
+ * is null when the value is the next word, the glued or `=` text otherwise, and `split` marks a
+ * `-S` string; `{ split: false, value: '' }` for an option with no value; undefined for a word
+ * that is not an exact option. */
 const envValueOption = (option) => {
-  const long = /^--(unset|chdir|argv0|split-string)(?:=([\s\S]*))?$/.exec(option);
-  if (long) return { split: long[1] === 'split-string', value: long[2] ?? null };
-  const short = /^-[a-zA-Z]*?([uCSa])([\s\S]*)$/.exec(option);
-  if (short) return { split: short[1] === 'S', value: short[2] || null };
-  return undefined;
+  const match = ENV_OPTION_RE.exec(option);
+  if (!match) return undefined;
+  const [, short, glued, long, longValue] = match;
+  if (short) return { split: short === 'S', value: glued || null };
+  if (long) return { split: long === 'split-string', value: longValue ?? null };
+  return { split: false, value: '' };
 };
 
 const SHELL_NAMES = ['sh', 'bash', 'dash', 'zsh', 'ksh'];
@@ -1454,6 +1476,7 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   let state = initialState;
   const saved = [];
   let clauseBase = null; // set while a clause runs `env -C DIR`
+  let bareTraceExport = false;
   const add = (raw) => {
     const base = clauseBase || state;
     const target = unescapeTarget(raw);
@@ -1499,10 +1522,13 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
         ...findOptionWriteTargets(tokens),
       ].forEach(add);
       // A literal trace value is the exact file name git opens, so it skips the shell-word checks.
-      for (const { value, literal } of findGitTraceTargets(tokens)) {
+      const trace = findGitTraceTargets(tokens);
+      for (const { value, literal } of trace.targets) {
         if (literal) literalTargets.push({ target: value, dirs: [cwd] });
         else add(value);
       }
+      if (trace.unresolvable) unresolvable = true;
+      if (trace.bareExport) bareTraceExport = true;
       if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
       if (tokens.some((t) => t.startsWith('CDPATH='))) cdpath = true;
       // A pipeline element or background job runs in a subshell: its `cd` moves only that subshell,
@@ -1517,9 +1543,10 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   }
 
   if (hasPipedScript(visible)) unresolvable = true;
-  if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => findCommand(tokenize(c), 'git') !== -1)) {
-    unresolvable = true;
-  }
+  // A trace name exported with no value carries one set elsewhere, so git may write to any file.
+  const runsGit = () => splitClauses(visible).some((c) => findCommand(tokenize(c), 'git') !== -1);
+  if (bareTraceExport && runsGit()) unresolvable = true;
+  if (GIT_EXEC_ENV_RE.test(visible) && runsGit()) unresolvable = true;
   return { literalTargets, unresolvable };
 };
 

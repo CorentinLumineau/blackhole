@@ -117,23 +117,28 @@ export function renderWavesSection(issues: Record<string, QueueIssue>): string[]
   return lines;
 }
 
+// Newest first: queue and ledger carry no completion timestamp, and forge issue numbers only grow.
 function renderCompletedSection(done: IssueRow[]): string[] {
   if (done.length === 0) return [];
+  const shown = [...done].sort((a, b) => b.num - a.num).slice(0, SECTION_CAP);
   return [
     '### Completed (queue)',
-    done
+    shown
       .map(({ num, issue }) => `#${num}${issue.pr != null ? ` → PR #${issue.pr}` : ''}`)
       .join(' · '),
+    ...capOverflowLine(done.length, shown.length),
     '',
   ];
 }
 
 function renderFiledSection(filed: ReturnType<typeof discoveryFilings>): string[] {
   if (filed.length === 0) return [];
+  const shown = [...filed].sort((a, b) => b.issue - a.issue).slice(0, SECTION_CAP);
   const lines: string[] = ['### Issues filed (deferred discoveries)'];
-  for (const f of filed) {
+  for (const f of shown) {
     lines.push(`- **#${f.issue}** — ${f.summary} (\`${f.vcode}\`)`);
   }
+  lines.push(...capOverflowLine(filed.length, shown.length));
   lines.push('');
   return lines;
 }
@@ -346,7 +351,7 @@ export type DashboardView = Pick<StatusReport, 'headline' | 'stage_counts' | 'mo
 const DECISIONS_SHOWN = 3;
 
 // The page's header in text: headline, board counts, the owner's moves, the scope and the latest decisions.
-export function renderViewSection(view: DashboardView): string[] {
+export function renderViewSection(view: DashboardView, scopeLabel: string): string[] {
   const c = view.stage_counts;
   const lines = [
     `**Headline:** ${view.headline.text}${view.headline.source === 'generated' ? ' _(generated)_' : ''}`,
@@ -357,7 +362,7 @@ export function renderViewSection(view: DashboardView): string[] {
     lines.push('### Your move', ...view.moves.map((m, i) => `${i + 1}. ${m.text}`), '');
   }
   lines.push('### Scope');
-  if (!view.scope_record.recorded) lines.push('Scope not recorded');
+  if (!view.scope_record.recorded) lines.push(scopeLabel);
   for (const e of view.scope_record.entries) {
     const refs = e.refs?.length ? ` (${e.refs.map((n) => `#${n}`).join(', ')})` : '';
     lines.push(`- **${SCOPE_LABELS[e.kind]}:** ${e.text}${refs}${e.reason ? ` — ${e.reason}` : ''} · since ${e.set_at}`);
@@ -446,7 +451,7 @@ export function formatDashboard(opts: {
   });
   lines.push(renderQueueHealthLine(queueHealth, blocked.length));
   lines.push('');
-  if (view) lines.push(...renderViewSection(view));
+  if (view) lines.push(...renderViewSection(view, scopeLabel));
   if (view?.budget) lines.push(...renderBudgetSection(view.budget));
   if (view?.run && view.pending_decisions) lines.push(...renderRunSection({ run: view.run, pending_decisions: view.pending_decisions }));
 
