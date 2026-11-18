@@ -755,6 +755,19 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
       expect(await verdict(build)).toMatchObject(BLOCK);
     });
   }
+  // A `-S` string holding an expansion, and a value with glob or brace characters (which `env` and
+  // `export` operands expand), name a trace file that is not known statically.
+  for (const build of [
+    () => 'env -S "GIT_TRACE=$LOG git status"',
+    () => 'env --split-string="GIT_TRACE=$LOG git status"',
+    () => 'env -S"GIT_TRACE=$LOG git status"',
+    (_m: string, w: string) => `env GIT_TRACE=${w}/* git status`,
+    (_m: string, w: string) => `export GIT_TRACE=${w}/{a,b}; git status`,
+  ]) {
+    test(`#1246: \`${build('<main>', '<wt>')}\` warns (the trace file is not known statically)`, async () => {
+      expect(await verdict(build)).toMatchObject(WARN);
+    });
+  }
   for (const build of [
     (m: string) => `env --unset B git commit -m "GIT_TRACE=${m}/x"`,
     (_m: string, w: string) => `env -S "GIT_TRACE=${w}/x git status"`,

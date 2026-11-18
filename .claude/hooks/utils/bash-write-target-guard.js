@@ -37,7 +37,7 @@ const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC, decodeQuotedWord } = require('./shell-lexer');
 const { readAssignedWorktreeRoot, isUnderRoot } = require('./hook-event-log');
-const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
+const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, unquoteWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
  * string at all — the residual gap ADR-029 accepts and downgrades to WARN rather than a silent
@@ -959,20 +959,21 @@ const DECLARERS = new Set(['export', 'declare', 'typeset', 'local', 'readonly'])
  * before its command, or any operand of `export` once a declarer opens the clause, whatever bare
  * names precede it),
  * so `git commit -m 'GIT_TRACE=/x'` names no trace. Each target is `{ value, literal }`: a literal
- * value is the exact file name git opens, whatever characters it holds; a value the shell
- * rewrites (`$LOG`, `` `pwd` ``, `~/t`) is returned as written with `literal: false`, so it is
- * unresolvable. */
+ * value is the exact file name git opens, even when it holds a quote or a `$`; a value the shell
+ * rewrites (`$LOG`, `` `pwd` ``, `~/t`) or may expand (a glob or brace character, which `env` and
+ * `export` operands expand) is returned as written with `literal: false`, so it is unresolvable. */
 const findGitTraceTargets = (tokens) => {
   const targets = [];
   const addTrace = (word) => {
     const { text, dynamic } = normalizeShellWord(word);
     const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(word) : text)?.[1];
     if (value === undefined) return;
-    if (dynamic || value.startsWith('~')) targets.push({ value, literal: false });
+    if (dynamic || value.startsWith('~') || /[*?[\]{}]/.test(value)) targets.push({ value, literal: false });
     else if (path.isAbsolute(value)) targets.push({ value, literal: true });
   };
-  // `env -S STRING` splits STRING into words and reads its assignments like its own operands.
-  const addSplitString = (value) => value.split(/\s+/).forEach(addTrace);
+  // `env -S STRING` removes STRING's own quotes, splits it into words and reads their assignments
+  // like its own operands; a word holding an expansion stays dynamic.
+  const addSplitString = (value) => value.replace(/["']/g, '').split(/\s+/).forEach(addTrace);
   const positions = commandPositions(tokens);
   let declaring = false;
   let envOperands = false;
@@ -980,19 +981,19 @@ const findGitTraceTargets = (tokens) => {
   tokens.forEach((token, i) => {
     const decoded = decodeQuotedWord(token);
     if (envValueNext) {
-      if (envValueNext.split) addSplitString(unquote(decoded));
+      if (envValueNext.split) addSplitString(unquoteWord(decoded));
       envValueNext = null;
       return;
     }
     // `env` reads every operand holding `=` as an assignment, quoted or not, up to its command;
     // an operand starting with `-` once its quotes are removed is an option instead.
-    const envOption = envOperands && unquote(decoded).startsWith('-');
+    const envOption = envOperands && unquoteWord(decoded).startsWith('-');
     const envAssignment = envOperands && !envOption && decoded.includes('=');
     const assignmentSlot = positions.has(i) || declaring || envAssignment;
     declaring ||= DECLARERS.has(commandName(token));
     if (positions.has(i) && commandName(token) === 'env') envOperands = true;
     else if (envOption) {
-      const option = envValueOption(unquote(decoded));
+      const option = envValueOption(unquoteWord(decoded));
       if (option?.value === null) envValueNext = option;
       else if (option?.split) addSplitString(option.value);
     } else if (envOperands && !envAssignment) envOperands = false;
@@ -1002,12 +1003,6 @@ const findGitTraceTargets = (tokens) => {
     addTrace(assignmentSlot ? decoded : token);
   });
   return targets;
-};
-
-/** `word` once the shell has removed its quotes, or `word` itself when it holds an expansion. */
-const unquote = (word) => {
-  const { text, dynamic } = normalizeShellWord(word);
-  return dynamic ? word : text;
 };
 
 /** The value an `env` option takes, for an unquoted option word: `-u NAME`, `-C DIR`,
