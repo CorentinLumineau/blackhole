@@ -49,7 +49,9 @@ writes `queue.json` through the state write guard (`blackhole-state.md` § Write
   not while `detect` reports unreadable records (fail closed). An entry held this way is not
   claimed back in this session's own heartbeat, so a peer's claim is never mirrored. When two
   sessions hold one issue for each other, the lower session id reclaims it once the claim is gone
-  and the higher keeps its hold while that peer is live, so exactly one session claims it;
+  and the higher keeps its hold while that peer is live, so one session claims it. The higher id
+  cannot see why the peer dropped its claim: if the peer keeps heartbeating without claiming the
+  issue, nobody claims it until that peer's record lapses (one lease);
 - links the campaign's own open PR (see above), a closing keyword first, else a `claude|blackhole/issue-N` branch (an optional `-<slug>` is allowed);
 - marks an issue `merged` only for a merged PR whose body closes it (`Closes`/`Fixes`/`Resolves
   #N`, as `reconcileMerged`), `closed` when the forge closed it; a forge-open issue stays open.

@@ -238,8 +238,8 @@ export function run(argv: string[], deps: RegistryDeps = realDeps): { code: numb
       return { code: 0, out: heartbeat(campaignDir, clone, turn, hostSession, deps) };
     } catch (error) {
       if (error instanceof HeartbeatRefused) return { code: 1, err: `peer-campaigns: ${error.message}` };
-      const { code, path: failed } = error as NodeJS.ErrnoException;
-      if (typeof code === 'string' && /^E[A-Z0-9]+$/.test(code)) return { code: 1, err: `peer-campaigns: heartbeat could not be written (${code}): ${failed ?? clone.registry}` };
+      const { code } = error as NodeJS.ErrnoException;
+      if (typeof code === 'string' && /^E[A-Z0-9]+$/.test(code)) return { code: 1, err: `peer-campaigns: heartbeat could not be written (${code}): ${clone.registry}` };
       throw error;
     }
   }

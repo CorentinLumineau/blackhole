@@ -268,7 +268,7 @@ describe('peer-campaigns heartbeat write failure', () => {
     try {
       const r = run(['heartbeat', '--campaign-dir', campaign(wt2), '--turn', '41']);
       expect(r.code).toBe(1);
-      expect(r.err).toMatch(/^peer-campaigns: heartbeat could not be written \(EACCES\): .+\.json(\.tmp)?$/);
+      expect(r.err).toMatch(/^peer-campaigns: heartbeat could not be written \(EACCES\): .+campaigns$/);
       expect(r.err).not.toContain('\n');
       expect(r.err).not.toMatch(/^\s+at /m);
     } finally {

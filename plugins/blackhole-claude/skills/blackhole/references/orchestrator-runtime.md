@@ -271,7 +271,7 @@ after reading checkpoint and forge sync:
      files `detect` lists;
    - dispatch no issue in a live peer's `claims[]`; with `unknown`, whose claims cannot be read,
      spawn no new worker this turn (in-flight workers finish) and check again next turn, since a
-     readable-but-corrupt entry lapses one lease after its mtime. An entry the registry listed but whose `lstat` was refused
+     corrupt, non-regular or read-denied entry that still has an mtime lapses one lease after it. An entry the registry listed but whose `lstat` was refused
      (EACCES) has no mtime and stays `unknown` until its permissions are corrected or the file is
      removed: dating it by the registry directory's mtime would let unrelated writes refresh or
      age out an unreadable entry, which loosens the read;

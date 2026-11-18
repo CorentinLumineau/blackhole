@@ -189,6 +189,25 @@ describe('forge-sync peer holds (ADR-057)', () => {
     expect(r.queue.issues['1']).toMatchObject({ status: 'ready', notes: null, pr: 10 });
   });
 
+  describe('the session token and the live peers reach the tie-break', () => {
+    const HIGH = 'b0000000-0000-4000-8000-000000000002';
+    const LOW = '00000000-0000-4000-8000-000000000003';
+    const withToken = async (self: string) => {
+      fs.mkdirSync(path.join(campaign(), '.tmp'), { recursive: true });
+      fs.writeFileSync(path.join(campaign(), '.tmp', 'campaign-session.json'), JSON.stringify({ session: self }));
+      await runForgeSync(campaign(), { adapter: adapter(), now: NOW, peers: detected({ peers: [peer([1])] }) });
+      return synced(await runForgeSync(campaign(), { adapter: adapter(), now: NOW, peers: detected({ peers: [peer([])] }) }));
+    };
+
+    test('the higher session id keeps a hold its live peer no longer claims', async () => {
+      expect((await withToken(HIGH)).queue.issues['1']).toMatchObject({ status: 'blocked', notes: `another session: ${PEER}`, pr: null });
+    });
+
+    test('the lower session id releases it and links its PR', async () => {
+      expect((await withToken(LOW)).queue.issues['1']).toMatchObject({ status: 'ready', notes: null, pr: 10 });
+    });
+  });
+
   test('by default the registry of the clone is read: a heartbeat in one worktree holds its claim in the other', async () => {
     const git = (cwd: string, args: string[]) => {
       const out = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf-8' });
