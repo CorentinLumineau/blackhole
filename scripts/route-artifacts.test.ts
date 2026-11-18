@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { makeTempDir } from './lib/fs.ts';
 
-// Issue #1278 — CLI exit-code contract for scripts/route-artifacts.ts against tmp campaign dirs.
+// CLI exit-code contract for scripts/route-artifacts.ts against tmp campaign dirs.
 const root = path.resolve(import.meta.dirname);
 const script = path.join(root, 'route-artifacts.ts');
 
@@ -51,6 +51,20 @@ describe('route-artifacts CLI — usage', () => {
   });
   test('--phase pr without --diff-file exits 2', async () => {
     expect((await run(['--issue', '7', '--campaign-dir', dir, '--phase', 'pr'])).code).toBe(2);
+  });
+});
+
+describe('route-artifacts CLI — campaign dir validity', () => {
+  test('missing config.json exits 2, never skipped', async () => {
+    const r = await dispatch();
+    expect(r.code).toBe(2);
+    expect(r.stdout).not.toContain('skipped');
+  });
+  test('nonexistent campaign dir exits 2', async () => {
+    expect((await run(['--issue', '7', '--campaign-dir', path.join(dir, 'nope', '.blackhole'), '--phase', 'dispatch'])).code).toBe(2);
+  });
+  test('relative campaign dir exits 2', async () => {
+    expect((await run(['--issue', '7', '--campaign-dir', '.blackhole', '--phase', 'dispatch'])).code).toBe(2);
   });
 });
 

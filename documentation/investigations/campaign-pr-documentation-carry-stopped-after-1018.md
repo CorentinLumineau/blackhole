@@ -13,8 +13,8 @@ related: [documentation/decisions/ADR-021-durable-artifact-staging.md, documenta
 ## Symptom
 
 Owner feedback of 2026-11-18: campaign PRs do not publish ADR, plan, analysis or investigation
-artifacts the way the mercure workflow does. Measured on the repo: 3 of the last 40 merged PRs
-touch `documentation/`. `.blackhole/staged/` holds 79 issue folders and the newest manifest
+artifacts the way the mercure workflow does. Measured on the repo: 7 of the last 40 merged PRs
+touch `documentation/` (measured 2026-11-18 with `gh pr list --state merged --limit 40 --json files`). `.blackhole/staged/` holds 79 issue folders and the newest manifest
 belongs to issue 1018 (declared 2026-10-14).
 
 ## Which link broke

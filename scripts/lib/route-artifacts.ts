@@ -1,6 +1,6 @@
 import { validateEntries, type Manifest } from './carry-staged-artifacts.ts';
 
-// Issue #1278 (V-AUTO-03) — pure checks that a route's promised documentation artifacts were
+// V-AUTO-03 — pure checks that a route's promised documentation artifacts were
 // staged (dispatch) and carried (PR). The manifest loader and entry validator are
 // `carry-staged-artifacts.ts`'s; this module only compares their output against the route flags.
 
