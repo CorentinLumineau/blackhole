@@ -164,8 +164,13 @@ describe('--json, --html and the text dashboard show the same facts', () => {
         expect(text).not.toContain('Scope not recorded');
         expect(html).not.toContain('Scope not recorded');
         const label = formatScopeLabel(r.campaign.scope, 'plain');
-        expect(text).toContain(label);
-        expect(html).toContain(label);
+        const section = (doc: string, open: string, close: string): string => {
+          const from = doc.indexOf(open);
+          const to = doc.indexOf(close, from + open.length);
+          return doc.slice(from, to === -1 ? undefined : to);
+        };
+        expect(section(text, '### Scope', '\n### ')).toContain(label);
+        expect(section(html, '<h2>Scope', '<h2>', )).toContain(label);
         expect(buildStatusData(r).scope[0].text).toBe(label);
       }
       expect(html.indexOf('<h2>Scope')).toBeLessThan(html.indexOf('<h2>In progress'));
