@@ -15,7 +15,7 @@ import { syncQueue, type SyncResult } from './lib/forge-sync.ts';
 // Builds or refreshes `.blackhole/queue.json` from the forge (`forge-sync.md` § Queue builder script):
 // open and closed issues plus open and merged PRs, read through the configured forge's adapter.
 // Works from a fresh checkout holding only `config.json`: it also creates an empty findings ledger,
-// so `bun run status` can render the page right after. Nothing is written when a forge read fails,
+// so `scripts/campaign-status.ts` can render the page right after. Nothing is written when a forge read fails,
 // and nothing is read when `auto_sync` is false (the queue is kept offline).
 //
 // Single writer: the orchestrator is the only writer of `queue.json` (`blackhole-state.md`
@@ -23,7 +23,7 @@ import { syncQueue, type SyncResult } from './lib/forge-sync.ts';
 // runs (bootstrap, a fresh checkout). To keep the window for a lost concurrent write small, the
 // queue is read again just before the write and the sync is re-applied to that copy.
 
-const USAGE = 'Usage: bun run forge-sync [--campaign-dir <dir>] [--lane <name>] [--dry-run]';
+const USAGE = 'Usage: bun run scripts/forge-sync.ts [--campaign-dir <dir>] [--lane <name>] [--dry-run]';
 const ISSUE_LIMIT = 1000;
 
 type Config = { auto_sync?: boolean; repo?: string; forge?: string; scope_milestone?: string; scope_labels?: string[]; default_touch_paths?: string[]; size_label_prefix?: string; catchup?: unknown };

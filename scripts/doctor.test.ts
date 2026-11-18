@@ -10,6 +10,7 @@ import {
   checkStaleGlobalSkill,
   exitCodeFromChecks,
   isBlackholeCheckout,
+  checkoutSkipNote,
   runDoctorChecks,
   shouldRunGhAuth,
   validateConfigJson,
@@ -314,5 +315,15 @@ describe('runDoctorChecks repo root', () => {
     );
     expect(checks[0]).toEqual({ id: 'D-VERIFY-01', severity: 'BLOCK', ok: true });
     expect(checks.find((c) => c.id === 'D-AGENTS-01')?.ok).toBe(false);
+  });
+});
+
+describe('checkoutSkipNote', () => {
+  test('outside a checkout, names the skipped checkout-only checks once', () => {
+    expect(checkoutSkipNote(false)).toBe('  - D-VERIFY-01, D-AGENTS-01 — skipped (not a blackhole checkout)');
+  });
+
+  test('inside a checkout, prints nothing', () => {
+    expect(checkoutSkipNote(true)).toBeNull();
   });
 });

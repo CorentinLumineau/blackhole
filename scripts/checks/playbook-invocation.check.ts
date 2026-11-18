@@ -1,4 +1,4 @@
-import { buildInputModuleDirs, listFiles } from '../lib/check-common.ts';
+import { buildInputModuleDirs, escapeRegExp, listFiles } from '../lib/check-common.ts';
 import { read, type CheckResult } from './check-utils.ts';
 
 // V-INVOKE-01 (ADR-056): playbook prose runs bundled scripts by source path
@@ -25,8 +25,6 @@ export const flaggedAliases = (scripts: Record<string, string>): string[] =>
     .filter((name) => !MAINTAINER_ALIASES.has(name))
     .sort();
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 // Runner forms an agent could type: `bun run [--cwd <x>] <alias>`, `bun <alias>`, `npm run <alias>`.
 // The trailing lookahead keeps `status-page` or `verify:codex` from matching a shorter alias.
 const aliasRegex = (aliases: string[]): RegExp =>
@@ -37,7 +35,6 @@ const aliasRegex = (aliases: string[]): RegExp =>
   );
 
 export const findAliasInvocations = (content: string, label: string, aliases: string[]): string[] => {
-  if (!aliases.length) return [];
   const regex = aliasRegex(aliases);
   return content.split('\n').flatMap((line, idx) => (regex.test(line) ? [`${label}:${idx + 1}`] : []));
 };
@@ -47,15 +44,22 @@ export const findAliasInvocations = (content: string, label: string, aliases: st
 const SWEEP_DIRS = ['src/agents', 'src/references'];
 const SWEEP_FILES = ['src/SKILL.md'];
 
-const sweepTargets = (): string[] => [
-  ...[...SWEEP_DIRS, ...buildInputModuleDirs()].flatMap((dir) => listFiles(dir).map((file) => `${dir}/${file}`)),
-  ...SWEEP_FILES,
-];
+const packageScripts = (): Record<string, string> =>
+  (JSON.parse(read('package.json')) as { scripts?: Record<string, string> }).scripts ?? {};
 
-const checkPlaybookInvocation = (): CheckResult => {
-  const scripts = (JSON.parse(read('package.json')) as { scripts?: Record<string, string> }).scripts ?? {};
+export const checkPlaybookInvocation = (
+  scripts: Record<string, string> = packageScripts(),
+  sweepDirs: string[] = [...SWEEP_DIRS, ...buildInputModuleDirs()],
+): CheckResult => {
   const aliases = flaggedAliases(scripts);
-  const violations = sweepTargets().flatMap((target) => findAliasInvocations(read(target), target, aliases));
+  if (!aliases.length) {
+    return { id: 'V-INVOKE-01', ok: false, detail: 'no package.json script alias left to guard (scripts missing or all exempt)' };
+  }
+  // A renamed or emptied sweep dir would otherwise pass while sweeping nothing.
+  const emptyDir = sweepDirs.find((dir) => listFiles(dir).length === 0);
+  if (emptyDir) return { id: 'V-INVOKE-01', ok: false, detail: `sweep dir ${emptyDir} is missing or has no .md files` };
+  const targets = [...sweepDirs.flatMap((dir) => listFiles(dir).map((file) => `${dir}/${file}`)), ...SWEEP_FILES];
+  const violations = targets.flatMap((target) => findAliasInvocations(read(target), target, aliases));
   if (violations.length) return { id: 'V-INVOKE-01', ok: false, detail: violations.join('; ') };
   return { id: 'V-INVOKE-01', ok: true };
 };

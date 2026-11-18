@@ -2,6 +2,7 @@ import { describe, expect, test, beforeEach, afterEach, spyOn } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { STATUS_COMMAND } from './lib/campaign-status/cli.ts';
 import {
   buildDedupeKey,
   checkpointInFlightWorkersNonEmpty,
@@ -312,7 +313,7 @@ describe('DOORBELL_MESSAGE', () => {
   test('mentions resume-request.json and coordinator flow', () => {
     expect(DOORBELL_MESSAGE).toContain('resume-request.json');
     expect(DOORBELL_MESSAGE).not.toContain('bun run status');
-    expect(DOORBELL_MESSAGE).toContain(`bun run "${path.join(import.meta.dir, 'campaign-status.ts')}"`);
+    expect(DOORBELL_MESSAGE).toContain(`${STATUS_COMMAND} (full dashboard)`);
   });
 });
 

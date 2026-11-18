@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  checkPlaybookInvocation,
   findAliasInvocations,
   flaggedAliases,
   runChecks,
@@ -65,5 +66,29 @@ describe('runChecks', () => {
     expect(result.id).toBe('V-INVOKE-01');
     expect(result.detail).toBeUndefined();
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('checkPlaybookInvocation fails closed', () => {
+  test('a missing sweep directory fails instead of sweeping nothing', () => {
+    const result = checkPlaybookInvocation(PACKAGE_SCRIPTS, ['src/agents', 'src/no-such-dir']);
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe('sweep dir src/no-such-dir is missing or has no .md files');
+  });
+
+  test('a directory with no markdown files fails', () => {
+    const result = checkPlaybookInvocation(PACKAGE_SCRIPTS, ['scripts/checks']);
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe('sweep dir scripts/checks is missing or has no .md files');
+  });
+
+  test('an empty flagged alias set fails instead of matching nothing', () => {
+    const result = checkPlaybookInvocation({ build: 'bun run scripts/build.ts' }, ['src/agents']);
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe('no package.json script alias left to guard (scripts missing or all exempt)');
+  });
+
+  test('a healthy sweep with live aliases passes', () => {
+    expect(checkPlaybookInvocation(PACKAGE_SCRIPTS, ['src/agents'])).toEqual({ id: 'V-INVOKE-01', ok: true });
   });
 });

@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { buildStatusReport } from './report.ts';
 import { buildStatusData, STATUS_DATASET_IDS, writeStatusData } from './data.ts';
-import { parseStatusArgs } from './cli.ts';
+import { parseStatusArgs, STATUS_COMMAND } from './cli.ts';
 import { fixtureReport as report } from './data-fixture.ts';
 import { STALE_AFTER_HOURS } from './staleness.ts';
 import type { QueueJson } from './types.ts';
@@ -106,6 +106,11 @@ describe('parseStatusArgs --data', () => {
   test('--data without a value, or followed by a flag, throws instead of printing the text dashboard', () => {
     expect(() => parseStatusArgs(['--data'])).toThrow(/--data requires a directory/);
     expect(() => parseStatusArgs(['--data', '--no-gh'])).toThrow(/--data requires a directory/);
+  });
+
+  test('the usage line names the script by absolute path, not the package.json alias', () => {
+    expect(STATUS_COMMAND).toBe(`bun run "${path.resolve(import.meta.dir, '..', '..', 'campaign-status.ts')}"`);
+    expect(() => parseStatusArgs(['--data'])).toThrow(`Usage: ${STATUS_COMMAND} [config-summary]`);
   });
 
   test('--out still requires --html', () => {

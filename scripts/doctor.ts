@@ -272,6 +272,13 @@ function printCheck(check: DoctorCheck): void {
   console.log(`  ${displayIcon} ${check.id}${check.detail ? ` — ${check.detail}` : ''}`);
 }
 
+const CHECKOUT_ONLY_CHECK_IDS = ['D-VERIFY-01', 'D-AGENTS-01'] as const;
+
+/** One printed line naming the checkout-only checks `runDoctorChecks` skipped, or null when none were. */
+export function checkoutSkipNote(inCheckout: boolean): string | null {
+  return inCheckout ? null : `  - ${CHECKOUT_ONLY_CHECK_IDS.join(', ')} — skipped (not a blackhole checkout)`;
+}
+
 /**
  * Runs the doctor against the campaign in `repoRoot`, the working directory by default: an
  * installed plugin is invoked from the consumer repo, so the plugin's own directory is never the
@@ -322,6 +329,8 @@ function main(): void {
   console.log('blackhole doctor\n');
 
   const checks = runDoctorChecks();
+  const skipNote = checkoutSkipNote(isBlackholeCheckout(process.cwd()));
+  if (skipNote) console.log(skipNote);
   let blockPassed = 0;
   let blockTotal = 0;
   let warnCount = 0;

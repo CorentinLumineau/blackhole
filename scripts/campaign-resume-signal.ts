@@ -14,6 +14,7 @@ import {
   type Role,
 } from './validate-worker-json';
 import { checkpointSection } from './lib/campaign-status/dashboard.ts';
+import { STATUS_COMMAND } from './lib/campaign-status/cli.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 
@@ -88,10 +89,7 @@ const USER_GATE_PATTERN = /awaiting-user|awaiting-plan|awaiting-design/i;
 
 const COALESCE_MS = 5_000;
 
-/** Absolute so the hook's follow-up resolves from any cwd, inside or outside a checkout (ADR-056). */
-const CAMPAIGN_STATUS_SCRIPT = path.join(import.meta.dir, 'campaign-status.ts');
-
-export const DOORBELL_MESSAGE = `Blackhole: pending resume-request.json. Run coordinator turn flow — bun run "${CAMPAIGN_STATUS_SCRIPT}" (full dashboard), then resume orchestrator with interrupt:false if work remains and queue is not user-blocked. Ack resume-request.json after resume.`;
+export const DOORBELL_MESSAGE = `Blackhole: pending resume-request.json. Run coordinator turn flow — ${STATUS_COMMAND} (full dashboard), then resume orchestrator with interrupt:false if work remains and queue is not user-blocked. Ack resume-request.json after resume.`;
 
 export function resolveCampaignAgent(input: HookInput): CampaignAgent | null {
   if (input.subagent_type && input.subagent_type in AGENT_FROM_TYPE) {
