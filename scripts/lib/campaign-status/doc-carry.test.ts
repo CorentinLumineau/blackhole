@@ -50,7 +50,7 @@ describe('Doc carry through collectStatusReport', () => {
       {
         '1': { status: 'merged', phase: 'done', route }, // merged, no manifest: left out of history
         '2': { status: 'merged', phase: 'done', route, pr: 5 }, // merged with a manifest and a gap: history 1/2
-        '3': { status: 'ready', phase: 'handle', route }, // handle: headline only
+        '3': { status: 'ready', phase: 'handle', route }, // handle: not counted
         '4': { status: 'in-flight', phase: 'implement', route }, // implement with a gap: named
         '5': { status: 'in-flight', phase: 'implement' }, // no route, no manifest: unrouted
         '6': { status: 'in-flight', phase: 'plan', route }, // malformed manifest: unreadable
@@ -65,7 +65,7 @@ describe('Doc carry through collectStatusReport', () => {
     );
     fs.mkdirSync(path.join(path.dirname(dir), 'documentation/plans'), { recursive: true });
     fs.writeFileSync(path.join(path.dirname(dir), 'documentation/plans/seven.md'), 'x');
-    // live promised: #3 2, #4 2, #7 2 = 6 (the unreadable #6 is not counted); staged: #4 1, #7 2 = 3; carried: #7 has two entries on one existing target = 2
-    expect(await rowOf(dir)).toBe('routes promised 6 · staged 3 · docs carried 2 · unrouted 1 · unreadable 1 · gaps: #4 1/2 · history: 1/2 routes staged');
+    // live promised past handle: #4 2, #7 2 = 4 (handle #3 and the unreadable #6 are not counted); staged: #4 1, #7 2 = 3; carried: #7 has two entries on one existing target = 2
+    expect(await rowOf(dir)).toBe('routes promised 4 · staged 3 · docs carried 2 · unrouted #5 · unreadable 1 · gaps: #4 1/2 · history: 1/2 routes staged');
   });
 });

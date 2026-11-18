@@ -27,11 +27,12 @@ const GAP_PHASE_RANK: Record<string, number> = { plan: 1, implement: 2, review: 
 
 /**
  * Routes promised vs staged and docs carried over the live (not done) issues, merged history kept
- * apart; null when docs governance is off. Gaps name only live issues past `handle`.
+ * apart; null when docs governance is off. Only live issues past `handle` count: a handle-phase
+ * issue has staged nothing yet, so counting its promised routes would read as missing work.
  */
 export function buildDocCarry(input: { enabled: boolean; issues: DocCarryIssue[]; isCarried: (targetPath: string) => boolean }): DocCarry | null {
   if (!input.enabled) return null;
-  const out: DocCarry = { promised: 0, staged: 0, carried: 0, unrouted: 0, unreadable: 0, gaps: [], history: null };
+  const out: DocCarry = { promised: 0, staged: 0, carried: 0, unrouted: [], unreadable: 0, gaps: [], history: null };
   for (const i of input.issues) {
     if (i.done) {
       if (!i.manifest) continue;
@@ -40,8 +41,9 @@ export function buildDocCarry(input: { enabled: boolean; issues: DocCarryIssue[]
       hist.staged += i.promised.length - dispatchGaps(i.promised, i.manifest).length;
       continue;
     }
+    if ((GAP_PHASE_RANK[i.phase ?? ''] ?? 0) === 0) continue;
     if (i.unrouted) {
-      out.unrouted++;
+      out.unrouted.push(i.issue);
       continue;
     }
     if (i.unreadable) {
@@ -52,7 +54,7 @@ export function buildDocCarry(input: { enabled: boolean; issues: DocCarryIssue[]
     out.promised += i.promised.length;
     out.staged += staged;
     out.carried += collectDocCarry(i.manifest, input.isCarried).carried;
-    if (staged < i.promised.length && (GAP_PHASE_RANK[i.phase ?? ''] ?? 0) > 0) out.gaps.push({ issue: i.issue, staged, promised: i.promised.length });
+    if (staged < i.promised.length) out.gaps.push({ issue: i.issue, staged, promised: i.promised.length });
   }
   const rank = (n: number): number => GAP_PHASE_RANK[input.issues.find((i) => i.issue === n)?.phase ?? ''] ?? 0;
   out.gaps.sort((a, b) => rank(b.issue) - rank(a.issue) || b.issue - a.issue);
@@ -115,16 +117,20 @@ function coordinationValue(p: RunPanel): string {
   return 'solo';
 }
 
+const namedShown = (items: string[]): string => {
+  const more = items.length - DOC_CARRY_GAPS_SHOWN;
+  return `${items.slice(0, DOC_CARRY_GAPS_SHOWN).join(', ')}${more > 0 ? ` +${more} more` : ''}`;
+};
+
 function docCarryValue(p: RunPanel): string {
   if (p.doc_carry_error) return `unreadable (${p.doc_carry_error})`;
   const d = p.doc_carry;
   if (!d) return 'off (docs governance off)';
   const parts = [`routes promised ${d.promised}`, `staged ${d.staged}`, `docs carried ${d.carried}`];
-  if (d.unrouted) parts.push(`unrouted ${d.unrouted}`);
+  if (d.unrouted.length) parts.push(`unrouted ${namedShown(d.unrouted.map((n) => `#${n}`))}`);
   if (d.unreadable) parts.push(`unreadable ${d.unreadable}`);
   if (d.gaps.length) {
-    const more = d.gaps.length - DOC_CARRY_GAPS_SHOWN;
-    parts.push(`gaps: ${d.gaps.slice(0, DOC_CARRY_GAPS_SHOWN).map((g) => `#${g.issue} ${g.staged}/${g.promised}`).join(', ')}${more > 0 ? ` +${more} more` : ''}`);
+    parts.push(`gaps: ${namedShown(d.gaps.map((g) => `#${g.issue} ${g.staged}/${g.promised}`))}`);
   }
   if (d.history) parts.push(`history: ${d.history.staged}/${d.history.promised} routes staged`);
   return parts.join(' · ');
