@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ForgeIssue, ForgePr } from './forge-adapter/types.ts';
 import { syncQueue } from './forge-sync.ts';
+import { claimsOf, peerClaims } from './peer-campaigns.ts';
 
 const NOW = '2026-11-17T12:00:00.000Z';
 const issue = (number: number, extra: Partial<ForgeIssue> = {}): ForgeIssue => ({
@@ -357,5 +358,53 @@ describe('syncQueue — another session (peer claims)', () => {
     const held = sync({ queue: ready(7), issues: [issue(7)], peerClaims: { '7': PEER } }).queue;
     const other = 'b0000000-0000-4000-8000-000000000002';
     expect(sync({ queue: held, issues: [issue(7)], peerClaims: { '7': other } }).queue.issues['7']).toMatchObject({ status: 'blocked', notes: `another session: ${other}` });
+  });
+});
+
+describe('syncQueue — mutual peer hold tie-break', () => {
+  const LOW = 'a1b2c3d4-0000-4000-8000-000000000001';
+  const HIGH = 'b0000000-0000-4000-8000-000000000002';
+  const ownPr = pr(70, { headRefName: 'blackhole/issue-7', body: 'Closes #7' });
+  const bothHold = (self: string, peer: string) => ({ issues: { '7': { title: 't7', phase: 'review', status: 'blocked', pr: null, notes: `another session: ${peer}` } } });
+  const run = (self: string, peer: string, over: Partial<Parameters<typeof syncQueue>[0]> = {}) =>
+    sync({ queue: bothHold(self, peer), issues: [issue(7)], prs: [ownPr], peerClaims: {}, selfSession: self, livePeerSessions: [peer], ...over });
+
+  test('the lower session id reclaims a hold its live peer no longer claims', () => {
+    expect(run(LOW, HIGH).queue.issues['7']).toMatchObject({ status: 'ready', notes: null, pr: 70 });
+  });
+
+  test('the higher session id keeps the hold while the peer is live', () => {
+    expect(run(HIGH, LOW).queue.issues['7']).toMatchObject({ status: 'blocked', notes: `another session: ${LOW}` });
+  });
+
+  test('the higher session id releases once the peer leaves the live list', () => {
+    expect(run(HIGH, LOW, { livePeerSessions: [] }).queue.issues['7']).toMatchObject({ status: 'ready', notes: null });
+  });
+
+  test('without a self session the hold is released as before', () => {
+    expect(run(HIGH, LOW, { selfSession: undefined, livePeerSessions: undefined }).queue.issues['7']).toMatchObject({ status: 'ready' });
+  });
+
+  test('unreadable peer records keep the hold for either id', () => {
+    expect(run(LOW, HIGH, { peersUnreadable: true }).queue.issues['7']).toMatchObject({ status: 'blocked', notes: `another session: ${HIGH}` });
+  });
+
+  test('a lockstep two-session simulation settles on one claimant from turn 2 on, with no flipping', () => {
+    type Q = NonNullable<Parameters<typeof syncQueue>[0]['queue']>;
+    const start = (): Q => ({ issues: { '7': { title: 't7', phase: 'review', status: 'ready', pr: 70, notes: null } } });
+    const q: Record<string, Q> = { [LOW]: start(), [HIGH]: start() };
+    const claimants: string[][] = [];
+    for (let turn = 1; turn <= 4; turn++) {
+      // Both sessions read the registry as the previous turn left it, then both publish.
+      const registry = { [LOW]: claimsOf(q[LOW]), [HIGH]: claimsOf(q[HIGH]) };
+      const next: Record<string, Q> = {};
+      for (const [self, peer] of [[LOW, HIGH], [HIGH, LOW]] as const) {
+        const peers = peerClaims([{ session: peer, claims: registry[peer] }]);
+        next[self] = syncQueue({ queue: q[self], issues: [issue(7)], prs: [ownPr], scope: {}, config: {}, now: NOW, peerClaims: peers, selfSession: self, livePeerSessions: [peer] }).queue as Q;
+      }
+      Object.assign(q, next);
+      claimants.push([LOW, HIGH].filter((s) => claimsOf(q[s]).includes(7)));
+    }
+    expect(claimants.slice(1)).toEqual([[LOW], [LOW], [LOW]]);
   });
 });

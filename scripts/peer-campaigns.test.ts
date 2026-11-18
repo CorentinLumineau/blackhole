@@ -259,6 +259,29 @@ describe('peer-campaigns: worktree paths', () => {
   });
 });
 
+describe('peer-campaigns heartbeat write failure', () => {
+  const asRoot = process.getuid?.() === 0;
+
+  test.skipIf(asRoot)('an unwritable registry exits 1 with one line and no stack trace', () => {
+    fs.mkdirSync(registry, { recursive: true });
+    fs.chmodSync(registry, 0o555);
+    try {
+      const r = run(['heartbeat', '--campaign-dir', campaign(wt2), '--turn', '41']);
+      expect(r.code).toBe(1);
+      expect(r.err).toMatch(/^peer-campaigns: heartbeat could not be written \(EACCES\): .+\.json(\.tmp)?$/);
+      expect(r.err).not.toContain('\n');
+      expect(r.err).not.toMatch(/^\s+at /m);
+    } finally {
+      fs.chmodSync(registry, 0o755);
+    }
+  });
+
+  test('a non-filesystem error from the heartbeat still propagates', () => {
+    const deps: RegistryDeps = { ...realDeps, hostname: () => { throw new TypeError('boom'); } };
+    expect(() => run(['heartbeat', '--campaign-dir', campaign(wt2), '--turn', '42'], deps)).toThrow('boom');
+  });
+});
+
 describe('peer-campaigns in process: refusal and lstat', () => {
   test('a host a peer could not read is refused with exit 1 and no record', () => {
     const before = registryFiles().length;

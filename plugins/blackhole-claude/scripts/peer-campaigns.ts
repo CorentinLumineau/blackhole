@@ -32,7 +32,8 @@ import {
 // `<git common dir>/blackhole/campaigns/<session>.json`, shared by every worktree of the clone and
 // never pushed. This session's id lives in `<campaign dir>/.tmp/campaign-session.json`.
 // Exit 0 on success; 1 when the git common dir cannot be resolved, or when heartbeat refuses a
-// worktree, host or host session its peers could not read (nothing is written); 2 on a usage error.
+// worktree, host or host session its peers could not read (nothing is written), or when the record
+// cannot be written (one line with the errno code); 2 on a usage error.
 
 const USAGE =
   'Usage: bun run scripts/peer-campaigns.ts <heartbeat --turn <n> [--host-session <id>] | detect | release> [--campaign-dir <dir>]';
@@ -87,7 +88,8 @@ const readOptionalJson = (file: string): unknown => {
   }
 };
 
-const readToken = (campaignDir: string): string | null => {
+/** This session's id from its token file; null when none was minted yet. */
+export const readSessionToken = (campaignDir: string): string | null => {
   const session = (readOptionalJson(path.join(campaignDir, SESSION_TOKEN_FILE)) as { session?: unknown } | null)?.session;
   return isSessionId(session) ? session : null;
 };
@@ -144,7 +146,7 @@ const readCoordination = (campaignDir: string): Coordination => {
 
 /** This session's identity. Read-only: an absent token matches no record by session, only by worktree. */
 function selfIdentity(campaignDir: string, clone: Clone, entries: RegistryEntry[], deps: RegistryDeps): SelfIdentity {
-  const session = readToken(campaignDir) ?? '';
+  const session = readSessionToken(campaignDir) ?? '';
   const own = recordsOf(entries).find((r) => r.session === session);
   return {
     session,
@@ -178,7 +180,7 @@ function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession:
       `worktree ${JSON.stringify(clone.worktree)}, host ${JSON.stringify(host)} or --host-session cannot be recorded: peers would read the record as unreadable (no ", $, backtick, \\ or control characters)`,
     );
   }
-  let session = readToken(campaignDir);
+  let session = readSessionToken(campaignDir);
   if (!session) {
     session = deps.newSession();
     fs.mkdirSync(path.join(campaignDir, '.tmp'), { recursive: true });
@@ -208,7 +210,7 @@ function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession:
 }
 
 function release(campaignDir: string, clone: Clone): string {
-  const session = readToken(campaignDir);
+  const session = readSessionToken(campaignDir);
   const file = session ? path.join(clone.registry, `${session}.json`) : null;
   if (!file || !fs.existsSync(file)) return 'Release: no record for this session.';
   fs.rmSync(file, { force: true });
@@ -236,6 +238,8 @@ export function run(argv: string[], deps: RegistryDeps = realDeps): { code: numb
       return { code: 0, out: heartbeat(campaignDir, clone, turn, hostSession, deps) };
     } catch (error) {
       if (error instanceof HeartbeatRefused) return { code: 1, err: `peer-campaigns: ${error.message}` };
+      const { code, path: failed } = error as NodeJS.ErrnoException;
+      if (typeof code === 'string' && /^E[A-Z0-9]+$/.test(code)) return { code: 1, err: `peer-campaigns: heartbeat could not be written (${code}): ${failed ?? clone.registry}` };
       throw error;
     }
   }

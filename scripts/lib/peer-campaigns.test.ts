@@ -144,7 +144,7 @@ describe('claimsOf', () => {
     expect(claimsOf(null)).toEqual([]);
   });
 
-  test('an entry held for another session is not claimed back, so two sessions never hold each other', () => {
+  test('an entry held for another session is not claimed back, so a peer claim is never mirrored back', () => {
     const claims = claimsOf({
       issues: {
         '1': { status: 'blocked', pr: 50, notes: `${ANOTHER_SESSION} b0000000-0000-4000-8000-000000000002` },
