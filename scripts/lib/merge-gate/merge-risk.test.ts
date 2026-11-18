@@ -137,7 +137,9 @@ describe('isBlackholeCampaignBranch', () => {
     expect(isBlackholeCampaignBranch('blackhole/issue-12')).toBe(true);
     expect(isBlackholeCampaignBranch('origin/blackhole/issue-12')).toBe(true);
     expect(isBlackholeCampaignBranch('refs/heads/blackhole/issue-12')).toBe(true);
-    expect(isBlackholeCampaignBranch('blackhole/issue-12-fix')).toBe(false);
+    expect(isBlackholeCampaignBranch('blackhole/issue-1239-cd-tracking')).toBe(true);
+    expect(isBlackholeCampaignBranch('blackhole/issue-12-')).toBe(false);
+    expect(isBlackholeCampaignBranch('claude/issue-12-fix')).toBe(false);
     expect(isBlackholeCampaignBranch('cursor/foo')).toBe(false);
     expect(isBlackholeCampaignBranch(null)).toBe(true);
   });

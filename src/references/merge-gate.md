@@ -536,8 +536,8 @@ mistaken for a verified base-ref landing.
 | Post-merge `git log <target_branch> --grep=#<PR>` finds nothing after the retry budget | Terminal (§ 8, step 4.7, exit `1`) — the merge did not land on the base ref; never reclassified as replication lag, `merged_into` stays absent, and the issue does not advance to `done` |
 | Post-merge `git fetch`/`git log` exits non-zero, or `target_branch` resolves to no ref | Exit `3` (§ 8, step 4.7) — reported as *verification could not run*, never as a miss and never as `ok`; `merged_into` stays absent and the issue does not advance to `done`, but the failure names the transport, not the landing |
 | `merged_into` absent on an older `merged` row | `mergedIntoVerdict()` reports `unknown`, not `base` — an unverified landing stays visibly unverified rather than being backfilled by assumption |
-| Green CI, low-risk campaign PR (`blackhole/issue-N`, none of the § 9 categories) | `phase-loop.md` step 4 squash-merges (`automerge: true`) |
-| Green CI, but the diff touches a § 9 high-risk category (or head is not `blackhole/issue-N`) | Step 4 **does not merge**. Label `needs-chef`, comment the script's `comment` field, leave the PR open for Chef |
+| Green CI, low-risk campaign PR (`blackhole/issue-N` or `blackhole/issue-N-<slug>`, none of the § 9 categories) | `phase-loop.md` step 4 squash-merges (`automerge: true`) |
+| Green CI, but the diff touches a § 9 high-risk category (or head is not `blackhole/issue-N[-slug]`) | Step 4 **does not merge**. Label `needs-chef`, comment the script's `comment` field, leave the PR open for Chef |
 | `needs-chef` already on the PR from a prior turn | Do not post a second `needs-chef:` comment; re-evaluate next turn if the diff changed |
 | `DELETE FROM` / `DROP TABLE` only in a test or fixture file | Not `deletes-data` — `isTestPath()` excludes it |
 | `merge_mode: leave-open`, high-risk, CI green | Same hold half (label + comment); still no `gh pr merge` |
@@ -556,7 +556,7 @@ diff is low-risk. Any other PR that has reached this point stays open for Chef (
 owner) with label `needs-chef` and a short comment saying why. This is a PR-quality signal, not a
 fourth `mergeEligible()` condition (same shape as § 6 / Step 0.6).
 
-**Own PR:** head ref is `blackhole/issue-N` (`V-BRANCH-03`). An omitted head ref is treated as own
+**Own PR:** head ref is `blackhole/issue-N` or `blackhole/issue-N-<slug>` (`V-BRANCH-03`). An omitted head ref is treated as own
 (the merge protocol already only considers campaign issues). Any other head is a hold.
 
 **Low-risk:** the changed-file list (and optional unified diff) touches **none** of:

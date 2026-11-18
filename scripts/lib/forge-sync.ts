@@ -1,3 +1,4 @@
+import { CAMPAIGN_BRANCH_TAIL } from './campaign-branch.ts';
 import { parseDependsFromBody, parseEpicParentFromBody } from '../forge-deps.ts';
 import { issueMatchesScope, type CampaignScope } from '../forge-scope.ts';
 import type { ForgeIssue, ForgePr } from './forge-adapter/types.ts';
@@ -43,7 +44,7 @@ export const ANOTHER_LANE = 'another lane:';
 export const OPEN_PR = 'open PR:';
 const LANE_NOTE = /^(?:another lane|open PR): \S+$/;
 /** A campaign branch names its issue: `claude/issue-N…` or `blackhole/issue-N…`. */
-const BRANCH_ISSUE_RE = /^(?:claude|blackhole)\/issue-(\d+)(?:\D|$)/;
+const BRANCH_ISSUE_RE = new RegExp(String.raw`^(?:claude|blackhole)\/${CAMPAIGN_BRANCH_TAIL}$`);
 /** Dependency bots: their PR is an open PR, not another agent lane. */
 const BOT_BRANCH = /^(?:renovate|dependabot)\//;
 
