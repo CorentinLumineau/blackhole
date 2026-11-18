@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { root } from './paths.ts';
 import {
   PLUGIN_ROOT_NOTE,
+  SESSION_START_EXPORT_COMMAND,
   claudePluginRuntimeErrors,
   listRuntimeScriptEntrypoints,
   rewriteScriptInvocations,
@@ -129,6 +131,75 @@ describe('finalized Claude bundle', () => {
       expect(errors.some((e) => e.includes('missing runtime script scripts/forge-scope.ts'))).toBe(true);
       expect(errors.some((e) => e.includes('agents/router.md cites repo-relative'))).toBe(true);
       expect(errors.some((e) => e.includes('SessionStart'))).toBe(true);
+    });
+  });
+});
+
+const hasDash = spawnSync('dash', ['-c', ':']).status === 0;
+const HOOK_PATHS = ['/plain/path', '/with space/p', "/it's/p", '/d$ollar/p', '/back`tick`/p'];
+
+const runHook = (shell: string, dir: string, env: Record<string, string>, seed?: string) => {
+  const envFile = path.join(dir, 'env.sh');
+  if (seed !== undefined) fs.writeFileSync(envFile, seed);
+  const useFile = env.CLAUDE_ENV_FILE !== '';
+  const res = spawnSync(shell, ['-c', SESSION_START_EXPORT_COMMAND], {
+    env: { PATH: process.env.PATH ?? '', ...(useFile ? { CLAUDE_ENV_FILE: envFile } : {}), ...env, CLAUDE_ENV_FILE: useFile ? envFile : '' },
+    encoding: 'utf-8',
+  });
+  return { status: res.status, stderr: res.stderr, envFile: fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf-8') : null, file: envFile };
+};
+
+const sourced = (file: string): string =>
+  spawnSync('bash', ['-c', 'set -e; . "$1"; printf %s "$BLACKHOLE_PLUGIN_ROOT"', 'x', file], { encoding: 'utf-8' }).stdout;
+
+describe.each([['sh', true], ['dash', hasDash]] as const)('SESSION_START_EXPORT_COMMAND under %s', (shell, available) => {
+  const t = available ? test : test.skip;
+  for (const p of HOOK_PATHS) {
+    t(`round-trips ${JSON.stringify(p)} byte-exactly`, () => {
+      withTempDir('hook-rt', (dir) => {
+        const r = runHook(shell, dir, { CLAUDE_PLUGIN_ROOT: p });
+        expect(r.status).toBe(0);
+        expect(r.stderr).toBe('');
+        expect(sourced(r.file)).toBe(p);
+      });
+    });
+  }
+  t('recovers from a poisoned newline-less prefix left by an older version', () => {
+    withTempDir('hook-poison', (dir) => {
+      const r = runHook(shell, dir, { CLAUDE_PLUGIN_ROOT: '/real/path' }, 'export BLACKHOLE_PLUGIN_ROOT=');
+      expect(sourced(r.file)).toBe('/real/path');
+    });
+  });
+  t('a double run leaves two valid export lines', () => {
+    withTempDir('hook-twice', (dir) => {
+      runHook(shell, dir, { CLAUDE_PLUGIN_ROOT: '/real/path' });
+      const r = runHook(shell, dir, { CLAUDE_PLUGIN_ROOT: '/real/path' });
+      expect(sourced(r.file)).toBe('/real/path');
+      expect((r.envFile ?? '').split('\n').filter((l) => l.startsWith('export BLACKHOLE_PLUGIN_ROOT=')).length).toBe(2);
+    });
+  });
+  t('warns and writes nothing when CLAUDE_ENV_FILE is unset', () => {
+    withTempDir('hook-noenv', (dir) => {
+      const r = runHook(shell, dir, { CLAUDE_ENV_FILE: '', CLAUDE_PLUGIN_ROOT: '/real/path' });
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain('BLACKHOLE_PLUGIN_ROOT');
+      expect(r.envFile).toBeNull();
+    });
+  });
+  t('warns and writes nothing when CLAUDE_PLUGIN_ROOT is unset', () => {
+    withTempDir('hook-noroot', (dir) => {
+      const r = runHook(shell, dir, {});
+      expect(r.status).toBe(0);
+      expect(r.stderr).toContain('BLACKHOLE_PLUGIN_ROOT');
+      expect(r.envFile).toBeNull();
+    });
+  });
+  t('is silent and writes nothing when the variable is already pinned', () => {
+    withTempDir('hook-pinned', (dir) => {
+      const r = runHook(shell, dir, { CLAUDE_PLUGIN_ROOT: '/real/path', BLACKHOLE_PLUGIN_ROOT: '/pinned' });
+      expect(r.status).toBe(0);
+      expect(r.stderr).toBe('');
+      expect(r.envFile).toBeNull();
     });
   });
 });
