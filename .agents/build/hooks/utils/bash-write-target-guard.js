@@ -1180,7 +1180,7 @@ const unescapeTarget = (raw) => {
  * `--chdir=DIR`), which starts its command in DIR; null when the clause has no such option, and
  * `unknown` when a DIR cannot be read statically. Chained options resolve in order. */
 const envChdirBase = (tokens, dirs) => {
-  const idx = tokens.findIndex((t) => isCommandToken(t, 'env'));
+  const idx = findCommand(tokens, 'env');
   if (idx === -1) return null;
   let base = null;
   for (let i = idx + 1; i < tokens.length; i++) {
