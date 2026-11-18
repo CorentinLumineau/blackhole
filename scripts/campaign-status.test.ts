@@ -884,6 +884,19 @@ describe('status --summary (the launch summary)', () => {
   const FULL = path.join(root, 'fixtures/campaign-status/full');
   const summary = (...args: string[]) =>
     Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--summary', '--no-gh', ...args], cwd: root, stdout: 'pipe', stderr: 'pipe' });
+  // A temp HOME whose installed_plugins.json carries one blackhole row at `version`.
+  const homeWithRow = (version: string): Record<string, string> => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-home-'));
+    tempDirs.push(home);
+    fs.mkdirSync(path.join(home, '.claude', 'plugins'), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, '.claude', 'plugins', 'installed_plugins.json'),
+      JSON.stringify({ plugins: { 'blackhole@blackhole-marketplace': [{ scope: 'user', version }] } }),
+    );
+    return { ...(process.env as Record<string, string>), HOME: home };
+  };
+  const summaryWithEnv = (env: Record<string, string>, ...args: string[]) =>
+    Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--summary', '--no-gh', ...args], cwd: root, env, stdout: 'pipe', stderr: 'pipe' });
 
   test('parses --summary with --usage, --now and --json', () => {
     const parsed = parseStatusArgs(['--summary', '--usage', '{"five_hour":{}}', '--now', '1700000000', '--json']);
@@ -900,12 +913,12 @@ describe('status --summary (the launch summary)', () => {
     expect(() => parseStatusArgs(['--now', '1'])).toThrow(/--summary/);
   });
 
-  test('prints the seven-row table for the fixture campaign', () => {
+  test('prints the eight-row table for the fixture campaign', () => {
     const proc = summary('--campaign-dir', FULL, '--now', '1763026200');
     expect(proc.exitCode).toBe(0);
     const out = proc.stdout.toString();
     expect(out).toContain('## Launch summary');
-    for (const label of ['Scope', 'Order', 'Merge', 'Budget', 'Status page', 'Kaizen and staging', 'Peers']) expect(out).toContain(`| ${label} |`);
+    for (const label of ['Scope', 'Order', 'Merge', 'Budget', 'Status page', 'Kaizen and staging', 'Peers', 'Sleep mode']) expect(out).toContain(`| ${label} |`);
     expect(out).toContain('pacing off');
   });
 
@@ -915,6 +928,52 @@ describe('status --summary (the launch summary)', () => {
     const parsed = JSON.parse(proc.stdout.toString());
     expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual(['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep']);
     expect(Array.isArray(parsed.cards)).toBe(true);
+  });
+
+  test('a newer installed plugin version adds exactly one warning line, in text and in --json', () => {
+    const env = homeWithRow('999.0.0');
+    const text = summaryWithEnv(env, '--campaign-dir', FULL, '--now', '1763026200').stdout.toString();
+    const quoted = text.split('\n').filter((l) => l.startsWith('> '));
+    expect(quoted).toHaveLength(1);
+    expect(quoted[0]).toContain('999.0.0');
+    const json = JSON.parse(summaryWithEnv(env, '--campaign-dir', FULL, '--json').stdout.toString());
+    expect(json.warnings).toHaveLength(1);
+  });
+
+  test('no newer installed version: warnings is empty and no blockquote line prints', () => {
+    const env = homeWithRow('0.0.1');
+    expect(summaryWithEnv(env, '--campaign-dir', FULL, '--now', '1763026200').stdout.toString().split('\n').some((l) => l.startsWith('> '))).toBe(false);
+    expect(JSON.parse(summaryWithEnv(env, '--campaign-dir', FULL, '--json').stdout.toString()).warnings).toEqual([]);
+  });
+
+  test('--mode catchup parses the catchup flags; inline --usage and stray catchup flags are rejected', () => {
+    const parsed = parseStatusArgs(['--summary', '--mode', 'catchup', '--floor', '80', '--lane', 'b', '--no-spawn-at', '70']);
+    expect(parsed.catchup).toMatchObject({ floorPct: 80, lane: 'b', noSpawnAt: 70, stopWorkersAt: null, usageFile: null });
+    expect(parseStatusArgs(['--summary']).catchup).toBeNull();
+    expect(() => parseStatusArgs(['--summary', '--mode', 'catchup', '--usage', '{}'])).toThrow(/--usage-file/);
+    expect(() => parseStatusArgs(['--summary', '--floor', '80'])).toThrow(/--mode catchup/);
+    expect(() => parseStatusArgs(['--summary', '--mode', 'catchup', '--floor', '101'])).toThrow(/--floor/);
+    expect(() => parseStatusArgs(['--summary', '--mode', 'other'])).toThrow(/--mode/);
+  });
+
+  test('--mode catchup --usage-file prints nine rows and the pacing object; run mode keeps eight', () => {
+    const NOW_FRI = '1794562200';
+    const file = path.join(FULL, 'usage.catchup.json');
+    const catchup = summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage-file', file, '--now', NOW_FRI, '--json');
+    expect(catchup.exitCode).toBe(0);
+    const parsed = JSON.parse(catchup.stdout.toString());
+    expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual(['scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep']);
+    expect(parsed.pacing).toMatchObject({ status: 'ok', floor_pct: 61.25, shortfall_pct: 11.25 });
+    expect(JSON.parse(summary('--campaign-dir', FULL, '--now', NOW_FRI, '--json').stdout.toString()).rows).toHaveLength(8);
+    const adjusted = JSON.parse(summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage-file', file, '--floor', '80', '--now', NOW_FRI, '--json').stdout.toString());
+    expect(adjusted.pacing).toMatchObject({ floor_pct: 80, shortfall_pct: 30 });
+  });
+
+  test('catchup exits 2 on inline --usage, a stray --floor, a bad override and a missing usage file', () => {
+    expect(summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage', '{}').exitCode).toBe(2);
+    expect(summary('--campaign-dir', FULL, '--floor', '80').exitCode).toBe(2);
+    expect(summary('--campaign-dir', FULL, '--mode', 'catchup', '--no-spawn-at', '90', '--stop-workers-at', '80').exitCode).toBe(2);
+    expect(summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage-file', '/nonexistent/usage.json').exitCode).toBe(2);
   });
 
   test('a malformed --usage exits 2', () => {

@@ -115,4 +115,14 @@ describe('runChecks live tree', () => {
     });
     expect(findUnregisteredConfigKeys(configKeys, templateKeys)).toEqual([]);
   });
+
+  test('live template registers the seven catchup keys', () => {
+    const templateKeys = parseConfigTemplateKeys(read('src/references/config-template.md'));
+    const configKeys = flattenConfigKeys({
+      catchup: { pct_per_weekday: 17.5, five_hour: { no_spawn_at: 75, stop_workers_at: 80 }, lane: null, claim_lease_hours: 24, day_end_hour: 18 },
+    });
+    expect(configKeys).toHaveLength(6);
+    expect(findUnregisteredConfigKeys(configKeys, templateKeys)).toEqual([]);
+    expect(templateKeys.has('catchup')).toBe(true);
+  });
 });

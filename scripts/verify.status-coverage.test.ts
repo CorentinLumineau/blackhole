@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { describe, expect, test } from 'bun:test';
 import {
   COVERAGE_HEADING,
@@ -109,5 +110,12 @@ describe('V-CONFIG-03 status page coverage', () => {
 
   test('the live config-template.md and template pass', () => {
     expect(runChecks()).toEqual([{ id: 'V-CONFIG-03', ok: true }]);
+  });
+
+  test('the live template declares catchup as none, with a reason', () => {
+    const rows = parseCoverageTable(readFileSync('src/references/config-template.md', 'utf-8'));
+    const row = rows.find((r) => r.block === 'catchup');
+    expect(row).toMatchObject({ dataset: 'none', rows: [] });
+    expect(row?.reason).not.toBe('');
   });
 });

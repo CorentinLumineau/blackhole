@@ -1,6 +1,10 @@
 import { runGlab, runGlabJson, runGlabText } from './glab-cli.ts';
+import { claimIssue, latestClosingPrActivity, releaseIssue, type ClaimOps } from './claim.ts';
 import { isUnavailable, readDependencies, writeDependencies, type BodyChannel, type NativeDependencyChannel } from './dependencies.ts';
 import type {
+  ClaimLease,
+  ClaimResult,
+  ReleaseResult,
   DependencyRef,
   DependencyTarget,
   ForgeAdapter,
@@ -25,6 +29,8 @@ type GlabIssueRow = {
   labels?: string[];
   milestone?: { title: string } | null;
   state?: string;
+  updated_at?: string | null;
+  assignees?: Array<{ id?: number; username?: string }> | null;
 };
 
 type GlabMrRow = {
@@ -39,6 +45,7 @@ type GlabMrRow = {
   merged_at?: string | null;
   mergedAt?: string | null;
   labels?: string[];
+  updated_at?: string | null;
   has_conflicts?: boolean;
 };
 
@@ -67,6 +74,8 @@ function mapIssue(row: GlabIssueRow): ForgeIssue {
     labels: (row.labels ?? []).map((name) => ({ name })),
     milestone: row.milestone ?? null,
     state: state === 'CLOSED' ? 'CLOSED' : 'OPEN',
+    ...(row.assignees ? { assignees: row.assignees.map((a) => a.username ?? '').filter(Boolean) } : {}),
+    ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
   };
 }
 
@@ -82,6 +91,7 @@ function mapMr(row: GlabMrRow): ForgePr {
     state,
     mergedAt: row.mergedAt ?? row.merged_at ?? null,
     labels: row.labels,
+    ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
     mergeable: row.has_conflicts === undefined ? undefined : !row.has_conflicts,
   };
 }
@@ -283,6 +293,50 @@ export class GitLabForgeAdapter implements ForgeAdapter {
   // shape that `gitea.ts`/`github.ts` both honor (V-SOLID-03). Reading GitLab's public REST API
   // directly via `glab api` (parallel to `runGhApiJson` in cli.ts) gives one row per real
   // pipeline job instead.
+  async claim(issue: number, lane: string, user: string, lease?: ClaimLease): Promise<ClaimResult> {
+    return claimIssue(this.claimOps(), issue, lane, user, lease);
+  }
+
+  async release(issue: number, lane: string): Promise<ReleaseResult> {
+    return releaseIssue(this.claimOps(), issue, lane, await this.viewerLogin());
+  }
+
+  async viewerLogin(): Promise<string> {
+    return glabApiJson<{ username: string }>('user').username;
+  }
+
+  /**
+   * GitLab creates a label on first use, so `ensureLabel` is a no-op. Assignees are set as a whole
+   * id list in the query string, so the existing `glabApiJson` helper needs no body flag.
+   */
+  private claimOps(): ClaimOps {
+    const endpoint = (issue: number) => `projects/${encodeURIComponent(this.repo)}/issues/${issue}`;
+    const userId = (username: string): number => {
+      const [found] = glabApiJson<Array<{ id: number }>>(`users?username=${encodeURIComponent(username)}`);
+      if (!found) throw new Error(`GitLab user ${username} not found`);
+      return found.id;
+    };
+    const setAssignees = (issue: number, ids: number[]) => {
+      glabApiJson(`${endpoint(issue)}?${ids.length ? ids.map((id) => `assignee_ids[]=${id}`).join('&') : 'assignee_ids[]='}`, 'PUT');
+    };
+    const idsOf = (issue: number): number[] => (glabApiJson<GlabIssueRow>(endpoint(issue)).assignees ?? []).flatMap((a) => (a.id === undefined ? [] : [a.id]));
+    return {
+      read: async (issue) => {
+        const mapped = mapIssue(glabApiJson<GlabIssueRow>(endpoint(issue)));
+        return { state: mapped.state, labels: mapped.labels.map((l) => l.name), assignees: mapped.assignees ?? [], updatedAt: mapped.updatedAt };
+      },
+      prActivity: async (issue) => latestClosingPrActivity(await this.prList({ state: 'open', limit: 100 }), issue),
+      ensureLabel: async () => {},
+      labelAdd: (issue, label) => this.labelAdd({ type: 'issue', number: issue }, [label]),
+      labelRemove: (issue, label) => this.labelRemove({ type: 'issue', number: issue }, [label]),
+      assign: async (issue, user) => setAssignees(issue, [...new Set([...idsOf(issue), userId(user)])]),
+      unassign: async (issue, user) => {
+        const id = userId(user);
+        setAssignees(issue, idsOf(issue).filter((x) => x !== id));
+      },
+    };
+  }
+
   async prChecks(number: number): Promise<ForgeCheck[]> {
     const project = encodeURIComponent(this.repo);
     const pipelines = runGlabJson<Array<{ id: number }>>([

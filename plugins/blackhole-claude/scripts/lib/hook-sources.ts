@@ -1,5 +1,6 @@
 import * as path from 'path';
 import { root } from './build/paths.ts';
+import { readInstalledPluginRows, type InstalledPluginRow } from './plugin-drift.ts';
 
 // Issue #969, Task 5 — `extractCommandPath` and the candidate-row filter below used to be
 // private to this file; they now live in `templates/hooks/pretooluse/utils/installed-plugin-
@@ -38,16 +39,6 @@ export type HookSource = {
   version: string | null;
   commit_sha: string | null;
 };
-
-type InstalledPluginRow = {
-  scope?: unknown;
-  projectPath?: unknown;
-  installPath?: unknown;
-  version?: unknown;
-  gitCommitSha?: unknown;
-};
-
-type InstalledPluginsFile = { plugins?: Record<string, InstalledPluginRow[]> };
 
 type PreToolUseHookCommand = { command?: unknown };
 type PreToolUseEntry = { matcher?: unknown; hooks?: PreToolUseHookCommand[] };
@@ -110,8 +101,7 @@ function enumerateRepoBuildSource(inputs: HookSourceInputs): HookSource {
 // read from a specification (ADR-044 § Assumption Audit) — this function never adjudicates it;
 // every candidate is reported, none picked.
 function enumeratePluginCacheSources(inputs: HookSourceInputs): HookSource[] {
-  const file = readJson<InstalledPluginsFile>(inputs.readFile, inputs.installedPluginsPath);
-  const rows = file?.plugins?.[inputs.pluginKey] ?? [];
+  const rows = readInstalledPluginRows(inputs.readFile, inputs.installedPluginsPath, inputs.pluginKey);
   const candidates: InstalledPluginRow[] = selectCandidateInstalledPluginRows(rows, inputs.repoRoot);
 
   if (candidates.length === 0) {

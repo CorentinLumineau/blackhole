@@ -49,14 +49,14 @@ function renderInFlightSection(inFlight: IssueRow[]): string[] {
 }
 
 // One line per owner gate (the owner can act on each), then one line per reason class.
-function renderBlockedSection(blocked: IssueRow[], issues: Record<string, QueueIssue>): string[] {
+function renderBlockedSection(blocked: IssueRow[], issues: Record<string, QueueIssue>, lane?: string | null): string[] {
   if (blocked.length === 0) return [];
   const lines: string[] = ['### Blocked'];
   for (const { num, issue } of blocked) {
     if (!waitReason(issue, issues).owner) continue;
     lines.push(`- **#${num}** ${issue.title ?? ''} — ${issue.notes ?? 'blocked'}`);
   }
-  for (const { label, rows } of groupBlockedRows(blocked, issues)) {
+  for (const { label, rows } of groupBlockedRows(blocked, issues, lane)) {
     const { first, more } = classPreview(rows, rows.length);
     const refs = first.map((r) => `#${r.num}`).join(', ');
     lines.push(`- **${label}** (${rows.length}): ${refs}${more > 0 ? ` and ${more} more` : ''}`);
@@ -406,8 +406,10 @@ export function formatDashboard(opts: {
   view?: DashboardView;
   /** Unmet cross-repo dependencies, named in "Merge next"; absent ⇒ none computed (no forge read), null ⇒ the read failed. */
   crossRepoBlockers?: CrossRepoBlocker[] | null;
+  /** The account's lane; another lane's label is what makes a row `another_lane`. Absent ⇒ the legacy own lanes. */
+  lane?: string | null;
 }): string {
-  const { scope, checkpoint, queue, ledger, forge, checkpointBody, view, crossRepoBlockers } = opts;
+  const { scope, checkpoint, queue, ledger, forge, checkpointBody, view, crossRepoBlockers, lane } = opts;
   const issues = queue.issues ?? {};
   const findings = ledger.findings ?? [];
   const { active, done, inFlight, blocked, ready, unclassified } = groupIssuesByPhase(issues);
@@ -449,7 +451,7 @@ export function formatDashboard(opts: {
   if (view?.run && view.pending_decisions) lines.push(...renderRunSection({ run: view.run, pending_decisions: view.pending_decisions }));
 
   lines.push(...renderInFlightSection(inFlight));
-  lines.push(...renderBlockedSection(blocked, issues));
+  lines.push(...renderBlockedSection(blocked, issues, lane));
   lines.push(...renderUnclassifiedSection(unclassified));
   lines.push(...renderReadySection(ready));
   lines.push(...renderRoutingSection(active));

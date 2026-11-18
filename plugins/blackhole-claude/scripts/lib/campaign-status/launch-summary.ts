@@ -1,11 +1,12 @@
 import { readScope } from '../../forge-scope.ts';
+import { adjustPacing, type CatchupConfig, type Pacing } from '../catchup.ts';
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetConfig } from '../usage-budget.ts';
 import { parallelMaxOf, resolveBudgetSettings, when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
 import { isSleepMode, QUESTIONS_PER_CARD } from './pending-decisions.ts';
 import { readSleepSession } from './sleep-session.ts';
 import { statusPageRow, type StatusPageInput } from './status-page-row.ts';
-import { LAUNCH_ROW_KEYS, type BudgetPanel, type ConfigSummaryInput, type GateOption, type LaunchRow, type LaunchRowKey, type StatusReport } from './types.ts';
+import { CATCHUP_ROW_KEYS, LAUNCH_ROW_KEYS, type BudgetPanel, type ConfigSummaryInput, type GateOption, type LaunchRow, type LaunchRowKey, type StatusReport } from './types.ts';
 
 // The executive-summary launch gate: one row per section, each with a one-line consequence, and
 // the Accept / Adjust question cards built from those rows. Pure: every input is already read;
@@ -13,7 +14,7 @@ import { LAUNCH_ROW_KEYS, type BudgetPanel, type ConfigSummaryInput, type GateOp
 // `BudgetPanel` (`budget.ts`), so the gate and the page never disagree.
 
 // Re-exported: callers import the row keys and row types from here.
-export { LAUNCH_ROW_KEYS };
+export { CATCHUP_ROW_KEYS, LAUNCH_ROW_KEYS };
 export type { GateOption, LaunchRow, LaunchRowKey };
 
 /** A consequence must read on its own on a card line. */
@@ -27,7 +28,14 @@ export type LaunchSummaryInput = {
   config: ConfigSummaryInput & Record<string, unknown>;
   budget: BudgetPanel;
   statusPage: StatusPageInput;
+  /** Present for `catchup` mode: nine rows with Pacing and the floor budget; absent: the eight run rows. */
+  catchup?: CatchupInput;
 };
+
+/** The catchup launch inputs (ADR-054 C2): the effective preset after the invocation's overrides, the
+ * effective floor (null when usage is unreadable), the pace reading and the floor budget the Budget
+ * row judges by; or the invalid-block message, shown on the Pacing row instead of a throw. */
+export type CatchupInput = { invalid: string } | { preset: CatchupConfig; floorPct: number | null; pacing: Pacing; budget: UsageBudgetConfig };
 
 const ACCEPT: GateOption = { label: 'Accept', description: 'Keep this section as shown.' };
 
@@ -37,6 +45,7 @@ const ADJUST: Partial<Record<LaunchRowKey, string>> = {
   budget: 'Open step 4 (parallel_max); usage_budget thresholds are edited in config.json.',
   status_page: 'Turn the status page on or off in config.json.',
   kaizen_staging: 'Open step 5: the kaizen block.',
+  pacing: 'Change the floor, the 5h caps or the lane for this invocation only; config.json is untouched.',
 };
 
 const MERGE_MODES: GateOption[] = [
@@ -93,9 +102,10 @@ function mergeRow(mode: string | undefined): LaunchRow {
   };
 }
 
-type BudgetState = { b: BudgetPanel; settings: UsageBudgetConfig; invalid: string | null; workers: number; parallelMax: number };
+type BudgetState = { b: BudgetPanel; settings: UsageBudgetConfig; invalid: string | null; workers: number; parallelMax: number; catchup: boolean };
 
-function budgetConsequence({ b, settings, invalid, workers, parallelMax }: BudgetState): string {
+function budgetConsequence({ b, settings, invalid, workers, parallelMax, catchup }: BudgetState): string {
+  if (catchup && (!b.probed || b.verdict === 'unavailable' || b.verdict === null || b.weekly_pct === null)) return 'Usage unreadable: the catchup skips and spawns nothing (fail-closed).';
   if (invalid) return `usage_budget is invalid, so pacing is unavailable: workers are sized from parallel_max (${parallelMax}).`;
   if (!settings.enabled) return `Usage pacing is off: up to ${plural(parallelMax, 'worker')} run whatever the usage.`;
   if (!b.probed) return `Usage not probed: workers are sized from parallel_max (${parallelMax}).`;
@@ -136,8 +146,9 @@ function forecastText(b: BudgetPanel, stopAt: number): string {
 }
 
 /** The Budget row, from the status page's panel plus the thresholds `config.json` sets. */
-export function budgetRow(b: BudgetPanel, config: Record<string, unknown>): LaunchRow {
-  const { settings, invalid } = rowSettings(config);
+export function budgetRow(b: BudgetPanel, config: Record<string, unknown>, floorBudget?: UsageBudgetConfig): LaunchRow {
+  const catchup = floorBudget !== undefined;
+  const { settings, invalid } = floorBudget ? { settings: floorBudget, invalid: null } : rowSettings(config);
   const parallelMax = parallelMaxOf(config);
   const weekly = weeklyOnly(b, settings);
   const sized = invalid !== null || !settings.enabled || !b.probed || b.verdict === 'unavailable' || b.workers_allowed === null;
@@ -151,16 +162,52 @@ export function budgetRow(b: BudgetPanel, config: Record<string, unknown>): Laun
     : [b.reason ? `not probed: ${b.reason}` : 'not probed'];
   const { no_spawn_at, stop_workers_at } = settings.five_hour;
   const { no_new_starts_at, stop_campaign_at, target_at_reset } = settings.weekly;
+  // A catchup's two weekly lines are the one floor.
+  const weeklyLines = catchup ? `${stop_campaign_at}%` : `${no_new_starts_at}/${stop_campaign_at}%`;
   const parts = [
     head,
     ...usage,
     sized ? `${plural(workers, 'worker')} (parallel_max)` : `${plural(workers, 'worker')} allowed`,
-    weekly ? `stops weekly ${no_new_starts_at}/${stop_campaign_at}%` : `stops 5h ${no_spawn_at}/${stop_workers_at}%, weekly ${no_new_starts_at}/${stop_campaign_at}%`,
+    weekly ? `stops weekly ${weeklyLines}` : `stops 5h ${no_spawn_at}/${stop_workers_at}%, weekly ${weeklyLines}`,
     ...(target_at_reset === null ? [] : [`target ${target_at_reset}% at weekly reset`]),
     ...(b.probed ? [forecastText(b, stop_campaign_at)] : []),
   ].filter(Boolean);
-  const consequence = budgetConsequence({ b, settings, invalid, workers, parallelMax });
+  const consequence = budgetConsequence({ b, settings, invalid, workers, parallelMax, catchup });
   return { key: 'budget', label: 'Budget', header: 'Budget', value: parts.join(' · '), consequence, adjustable: true };
+}
+
+const PACING_BASE = { key: 'pacing' as const, label: 'Pacing', header: 'Pacing', adjustable: true };
+
+/** The Pacing row of a catchup (ADR-054 C2): the reading, the floor, the shortfall, the 5h caps and the lane. */
+export function pacingRow(input: CatchupInput): LaunchRow {
+  if ('invalid' in input) {
+    return { ...PACING_BASE, value: `catchup config invalid: ${input.invalid}`, consequence: 'catchup config is invalid, so the catchup cannot start.' };
+  }
+  const { preset, floorPct } = input;
+  const pacing = adjustPacing(input.pacing, floorPct);
+  const tail = `5h caps ${preset.five_hour.no_spawn_at}/${preset.five_hour.stop_workers_at} · lane ${preset.lane ?? 'unset'}`;
+  if (pacing.status !== 'ok' || floorPct === null || pacing.used_pct === null || pacing.shortfall_pct === null) {
+    const why = pacing.status === 'unreadable' ? 'usage unreadable' : 'no weekly window';
+    return {
+      ...PACING_BASE,
+      value: `plan ${pacing.plan} · ${why}${pacing.reason ? ` (${pacing.reason})` : ''} · ${tail}`,
+      consequence: `${pacing.status === 'unreadable' ? 'Usage is unreadable' : 'The reading has no weekly window'}: the catchup skips (fail-closed).`,
+    };
+  }
+  const shortfall = pacing.shortfall_pct;
+  const floorText = floorPct === input.pacing.floor_pct ? `floor ${pct(floorPct)} (${input.pacing.credits} credits x ${preset.pct_per_weekday})` : `floor ${pct(floorPct)} (adjusted)`;
+  const value = [
+    `plan ${pacing.plan}`,
+    `weekly ${pct(pacing.used_pct)}${pacing.resets_at ? ` (resets ${when(new Date(pacing.resets_at * 1000).toISOString())})` : ''}`,
+    floorText,
+    `shortfall ${pct(shortfall)}`,
+    tail,
+  ].join(' · ');
+  const consequence =
+    shortfall > 0
+      ? `Spends about ${Number(shortfall.toFixed(2))} points of weekly quota on backlog work and stops at ${pct(floorPct)}; 5h spawns stop at ${preset.five_hour.no_spawn_at}%, workers at ${preset.five_hour.stop_workers_at}%.`
+      : 'Usage is at or above the floor: the catchup exits without spawning.';
+  return { ...PACING_BASE, value, consequence };
 }
 
 const TRIGGERS: Record<string, string> = { 'on-empty': 'when the queue empties', manual: 'only on request' };
@@ -204,21 +251,26 @@ export function sleepRow(config: Record<string, unknown>): LaunchRow {
   };
 }
 
-/** The eight rows, in `LAUNCH_ROW_KEYS` order. */
-export function buildLaunchSummary({ report, config, budget, statusPage }: LaunchSummaryInput): LaunchRow[] {
-  return [
-    scopeRow(report, config), orderRow(), mergeRow(config.merge_mode), budgetRow(budget, config),
+/** The eight run rows in `LAUNCH_ROW_KEYS` order; with `catchup`, the nine rows in `CATCHUP_ROW_KEYS` order. */
+export function buildLaunchSummary({ report, config, budget, statusPage, catchup }: LaunchSummaryInput): LaunchRow[] {
+  const floorBudget = catchup && !('invalid' in catchup) ? catchup.budget : undefined;
+  const rows = [
+    scopeRow(report, config), orderRow(), mergeRow(config.merge_mode), budgetRow(budget, config, floorBudget),
     statusPageRow(statusPage), kaizenRow(config), peersRow(config), sleepRow(config),
   ];
+  if (!catchup) return rows;
+  rows.splice(3, 0, pacingRow(catchup));
+  return rows;
 }
 
 const cell = (s: string): string => s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
-/** The summary as one markdown table, the text the launch gate prints verbatim. */
-export function renderLaunchSummary(rows: LaunchRow[]): string {
+/** The summary as one markdown table, the text the launch gate prints verbatim; each warning is a `> ` line above it. */
+export function renderLaunchSummary(rows: LaunchRow[], warnings: string[] = []): string {
   return [
     '## Launch summary',
     '',
+    ...(warnings.length ? [...warnings.map((w) => `> ${w}`), ''] : []),
     '| Section | Now | Consequence |',
     '|---------|-----|-------------|',
     ...rows.map((r) => `| ${r.label} | ${cell(r.value)} | ${cell(r.consequence)} |`),

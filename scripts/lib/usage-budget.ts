@@ -1,4 +1,4 @@
-import type { RateLimits } from './pace-gate.ts';
+import { RATE_WINDOW_NAMES, type RateLimits } from './rate-limit-cache.ts';
 
 // Usage-budget gate: owner-set two-tier thresholds per rate-limit window, and a worker count
 // derived from the tokens left until the 5-hour window resets and, when `weekly.target_at_reset`
@@ -7,7 +7,7 @@ import type { RateLimits } from './pace-gate.ts';
 // clock reads. Anything unreadable is `unavailable`, which fails open with the caller's
 // `parallel_max` and always carries a reason.
 
-export const USAGE_WINDOWS = ['five_hour', 'seven_day'] as const;
+export const USAGE_WINDOWS = RATE_WINDOW_NAMES;
 export type UsageWindow = (typeof USAGE_WINDOWS)[number];
 
 export type UsageBudgetConfig = {
@@ -26,7 +26,7 @@ export type UsageBudgetConfig = {
   coordination: { role: 'manager' | 'peer' | 'solo'; manager_session: string | null; peer_floor: number };
 };
 
-export type UsageVerdictName = 'GO' | 'NO-SPAWN' | 'STOP-WORKERS' | 'NO-NEW-STARTS' | 'STOP-CAMPAIGN' | 'PACE-WAIT' | 'unavailable';
+export type UsageVerdictName = 'GO' | 'NO-SPAWN' | 'STOP-WORKERS' | 'NO-NEW-STARTS' | 'STOP-CAMPAIGN' | 'PACE-WAIT' | 'SKIP' | 'unavailable';
 
 export type UsageVerdict = {
   verdict: UsageVerdictName;
@@ -64,22 +64,22 @@ const ROLES = ['manager', 'peer', 'solo'];
 const MIN_SECONDS_TO_RESET = 900;
 const HOUR = 3600;
 
-const section = (block: Record<string, unknown>, key: string): Record<string, unknown> => {
+export const section = (block: Record<string, unknown>, key: string, prefix = 'usage_budget'): Record<string, unknown> => {
   const value = block[key];
   if (value === undefined) return {};
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`usage_budget.${key} must be an object`);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`${prefix}.${key} must be an object`);
   return value as Record<string, unknown>;
 };
 
-const pick = <T>(src: Record<string, unknown>, key: string, path: string, fallback: T, ok: (v: unknown) => boolean, want: string): T => {
+export const pick = <T>(src: Record<string, unknown>, key: string, path: string, fallback: T, ok: (v: unknown) => boolean, want: string): T => {
   const value = src[key];
   if (value === undefined) return fallback;
   if (!ok(value)) throw new Error(`${path} must be ${want}`);
   return value as T;
 };
 
-const isPct = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 100;
-const isPositive = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0;
+export const isPct = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 100;
+export const isPositive = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0;
 
 /** `usage_budget.windows`: absent or null auto-detects from the reading; a list keeps only those windows. */
 export const resolveUsageWindows = (config: Record<string, unknown>): UsageWindow[] | null => {
@@ -261,6 +261,17 @@ export const workersAllowed = (
   return { ...base, verdict: 'GO', workers, wake_at: null, reasons };
 };
 
+/** Least-squares slope (pct per second) through the samples and their means; null with fewer than two distinct times. */
+const linearFit = (samples: WeeklySample[]): { slope: number; meanT: number; meanU: number } | null => {
+  const n = samples.length;
+  if (n < 2) return null;
+  const meanT = samples.reduce((s, p) => s + p.at, 0) / n;
+  const meanU = samples.reduce((s, p) => s + p.used_percentage, 0) / n;
+  const denom = samples.reduce((s, p) => s + (p.at - meanT) ** 2, 0);
+  if (denom === 0) return null;
+  return { slope: samples.reduce((s, p) => s + (p.at - meanT) * (p.used_percentage - meanU), 0) / denom, meanT, meanU };
+};
+
 /** Linear fit of weekly usage over probe samples, and when each weekly threshold would be reached.
  * A threshold already crossed, a non-positive slope or fewer than two samples give null. */
 export const forecastWeekly = (
@@ -269,18 +280,56 @@ export const forecastWeekly = (
   weekly: UsageBudgetConfig['weekly'],
 ): WeeklyForecast => {
   const none: WeeklyForecast = { pct_per_hour: null, reaches_at_pct: { no_new_starts_at: null, stop_campaign_at: null } };
-  if (samples.length < 2) return none;
-  const n = samples.length;
-  const meanT = samples.reduce((s, p) => s + p.at, 0) / n;
-  const meanU = samples.reduce((s, p) => s + p.used_percentage, 0) / n;
-  const denom = samples.reduce((s, p) => s + (p.at - meanT) ** 2, 0);
-  if (denom === 0) return none;
-  const slope = samples.reduce((s, p) => s + (p.at - meanT) * (p.used_percentage - meanU), 0) / denom; // pct per second
-  if (!(slope > 0)) return none;
-  const current = meanU + slope * (now - meanT);
+  const fit = linearFit(samples);
+  if (!fit || !(fit.slope > 0)) return none;
+  const { slope } = fit;
+  const current = fit.meanU + slope * (now - fit.meanT);
   const reach = (threshold: number): number | null => (current >= threshold ? null : Math.round(now + (threshold - current) / slope));
   return {
     pct_per_hour: slope * HOUR,
     reaches_at_pct: { no_new_starts_at: reach(weekly.no_new_starts_at), stop_campaign_at: reach(weekly.stop_campaign_at) },
   };
+};
+
+/** One weekly reading as `.blackhole/usage-history.jsonl` keeps it (`usage-history.ts`); times in epoch seconds. */
+export type WeeklyReading = { observed_at: number; used_percentage: number; resets_at: number };
+export type PaceVerdictName = 'accelerate' | 'on track' | 'decelerate' | 'unknown';
+export type WeeklyPace = {
+  verdict: PaceVerdictName;
+  recent_pct_per_hour: number | null;
+  required_pct_per_hour: number | null;
+  /** Used minus the straight line from this window's first reading to the target at the reset; positive is over. */
+  points_vs_line: number | null;
+  /** Why the verdict is `unknown`; null otherwise. */
+  reason: string | null;
+};
+/** Hours of history the recent rate is measured over (issue #1261). */
+export const PACE_RATE_WINDOW_HOURS = 3;
+/** Recent rate within this fraction of the required rate is `on track`. */
+const PACE_TOLERANCE = 0.15;
+/** Readings whose reset is within this of the newest one belong to the same weekly window. */
+const SAME_WINDOW_SECONDS = HOUR;
+
+/**
+ * Whether the run spends too fast or too slow to land on `target` at the weekly reset: the slope
+ * over the readings of the last `windowHours` (the two newest when fewer) against the rate the
+ * headroom needs. Visibility only; nothing throttles on it.
+ */
+export const weeklyPace = (readings: WeeklyReading[], now: number, target: number | null, windowHours = PACE_RATE_WINDOW_HOURS): WeeklyPace => {
+  const unknown = (reason: string): WeeklyPace => ({ verdict: 'unknown', recent_pct_per_hour: null, required_pct_per_hour: null, points_vs_line: null, reason });
+  if (target === null) return unknown('no weekly target_at_reset');
+  const sorted = [...readings].sort((a, b) => a.observed_at - b.observed_at);
+  const newest = sorted.at(-1);
+  const inWindow = newest ? sorted.filter((r) => Math.abs(r.resets_at - newest.resets_at) < SAME_WINDOW_SECONDS) : [];
+  if (!newest || inWindow.length < 2) return unknown('fewer than 2 weekly readings in this window');
+  if (now >= newest.resets_at) return unknown('the weekly window has reset');
+  const recentSet = inWindow.filter((r) => r.observed_at >= newest.observed_at - windowHours * HOUR);
+  const fit = linearFit((recentSet.length >= 2 ? recentSet : inWindow.slice(-2)).map((r) => ({ at: r.observed_at, used_percentage: r.used_percentage })));
+  if (!fit) return unknown('the readings share one time');
+  const recent = Math.max(0, fit.slope * HOUR);
+  const required = Math.max(0, (target - newest.used_percentage) / ((newest.resets_at - now) / HOUR));
+  const first = inWindow[0];
+  const line = first.used_percentage + ((target - first.used_percentage) * (newest.observed_at - first.observed_at)) / (newest.resets_at - first.observed_at);
+  const verdict: PaceVerdictName = recent < (1 - PACE_TOLERANCE) * required ? 'accelerate' : recent > (1 + PACE_TOLERANCE) * required ? 'decelerate' : 'on track';
+  return { verdict, recent_pct_per_hour: recent, required_pct_per_hour: required, points_vs_line: newest.used_percentage - line, reason: null };
 };

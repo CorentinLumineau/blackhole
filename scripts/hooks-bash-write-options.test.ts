@@ -646,6 +646,22 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
     });
   }
 
+  // An ANSI-C `$'...'` word is read as unresolvable, so a trace assignment spelled with one warns
+  // wherever the shell expects an assignment, and is never silent.
+  for (const build of [
+    (m: string) => `env $'GIT_TRACE=${m}/x' git status`,
+    (m: string) => `export A $'GIT_TRACE=${m}/x'; git status`,
+    (m: string) => `export $'GIT_TRACE=${m}/x'; git status`,
+    (m: string) => `env $'GIT_TRACE'=${m}/x git status`,
+    (m: string) => `export A $'GIT_TRACE'=${m}/x; git status`,
+    (m: string) => `export GIT_$'TRACE'=${m}/x; git status`,
+    (m: string) => `env GIT_$'TRACE'=${m}/x git status`,
+  ]) {
+    test(`#1246: \`${build('<main>')}\` warns (an ANSI-C quoted trace assignment is never silent)`, async () => {
+      expect(await verdict((m) => build(m))).toMatchObject(WARN);
+    });
+  }
+
   for (const value of ['1', 'true', 'TRUE', '0', 'false', '', ...'23456789']) {
     test(`#1246: \`GIT_TRACE=${value} git status\` (stderr, off or an fd) stays allowed`, async () => {
       expect(await verdict(() => `GIT_TRACE=${value} git status`)).toBeNull();
@@ -665,6 +681,8 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
     () => 'export "GIT_TRACE=true"; git status',
     () => 'export FOO "BAR=1"; git status',
     () => 'export FOO "GIT_TRACE=true"; git status',
+    () => "git commit -m $'GIT_TRACE=/etc/x'",
+    () => "echo $'GIT_TRACE=/etc/x'",
     () => 'export FOO="GIT_TRACE=/etc/x"; git status',
     (m: string) => `GIT_DIR=${m}/.git git log`,
   ]) {

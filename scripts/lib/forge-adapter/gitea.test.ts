@@ -438,7 +438,90 @@ describe('GiteaForgeAdapter', () => {
       await expect(new GiteaForgeAdapter('host/owner/repo').prChecks(9)).rejects.toThrow('head commit');
     });
   });
+});
 
+describe('GiteaForgeAdapter claim and release', () => {
+  const fresh = new Date(Date.now() - 3_600_000).toISOString();
+  const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
+  const row = (extra: Record<string, unknown> = {}) => ({ number: 7, title: 't', state: 'open', labels: [], assignees: [], updated_at: fresh, ...extra });
+  let apiSpy: ReturnType<typeof spyOn<typeof teaCli, 'runTeaApiJson'>>;
+  let textSpy: ReturnType<typeof spyOn<typeof teaCli, 'runTeaText'>>;
+  let apiCalls: Array<{ method: string; endpoint: string; body: unknown }> = [];
+
+  const mock$ = (reply: (method: string, endpoint: string) => unknown, text: (argv: string[]) => string = () => '') => {
+    apiCalls = [];
+    apiSpy = spyOn(teaCli, 'runTeaApiJson').mockImplementation(((method: string, endpoint: string, body?: unknown) => {
+      apiCalls.push({ method, endpoint, body });
+      return { data: reply(method, endpoint), headers: '' };
+    }) as never);
+    textSpy = spyOn(teaCli, 'runTeaText').mockImplementation(text as never);
+  };
+  afterEach(() => {
+    apiSpy?.mockRestore();
+    textSpy?.mockRestore();
+  });
+  const adapter = new GiteaForgeAdapter('host/owner/repo');
+
+  test('claim creates the label, adds it and PATCHes the assignee list with the user kept alongside others', async () => {
+    mock$(() => row({ assignees: [{ login: 'other' }] }));
+    expect(await adapter.claim(7, 'acct-a', 'me')).toEqual({ verdict: 'CLAIMED' });
+    expect(textSpy).toHaveBeenCalledWith(['labels', 'create', '--repo', 'host/owner/repo', '--name', 'in-progress:acct-a', '--color', '#1d76db']);
+    expect(textSpy).toHaveBeenCalledWith(['issue', 'edit', '7', '--repo', 'host/owner/repo', '--add-labels', 'in-progress:acct-a']);
+    expect(apiCalls.find((c) => c.method === 'PATCH')).toEqual({ method: 'PATCH', endpoint: 'repos/owner/repo/issues/7', body: { assignees: ['other', 'me'] } });
+  });
+
+  test('an existing label is not an error, any other failure is', async () => {
+    mock$(() => row(), (argv) => {
+      if (argv[0] === 'labels') throw new Error('label already exists');
+      return '';
+    });
+    expect((await adapter.claim(7, 'acct-a', 'me')).verdict).toBe('CLAIMED');
+    textSpy.mockRestore();
+    textSpy = spyOn(teaCli, 'runTeaText').mockImplementation(((argv: string[]) => {
+      if (argv[0] === 'labels') throw new Error('HTTP 500');
+      return '';
+    }) as never);
+    await expect(adapter.claim(7, 'acct-a', 'me')).rejects.toThrow('HTTP 500');
+  });
+
+  test('a live foreign claim is HELD and writes nothing', async () => {
+    mock$((_m, endpoint) => (endpoint.includes('/pulls') ? [] : row({ labels: [{ name: 'in-progress:acct-b' }] })));
+    expect(await adapter.claim(7, 'acct-a', 'me')).toEqual({ verdict: 'HELD', held_by: 'acct-b' });
+    expect(textSpy).not.toHaveBeenCalled();
+    expect(apiCalls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  test('a stale claim is reclaimed', async () => {
+    let reads = 0;
+    mock$((_m, endpoint) => (endpoint.includes('/pulls') ? [] : row({ labels: [{ name: reads++ === 0 ? 'in-progress:acct-b' : 'in-progress:acct-a' }], updated_at: stale })));
+    expect(await adapter.claim(7, 'acct-a', 'me')).toEqual({ verdict: 'RECLAIMED' });
+    expect(textSpy).toHaveBeenCalledWith(['issue', 'edit', '7', '--repo', 'host/owner/repo', '--remove-labels', 'in-progress:acct-b']);
+  });
+
+  test('release drops only the user from the assignee list', async () => {
+    mock$((_m, endpoint) => (endpoint === 'user' ? { login: 'me' } : row({ labels: [{ name: 'in-progress:acct-a' }], assignees: [{ login: 'me' }, { login: 'other' }] })));
+    expect(await adapter.release(7, 'acct-a')).toEqual({ verdict: 'RELEASED' });
+    expect(apiCalls.find((c) => c.method === 'PATCH')?.body).toEqual({ assignees: ['other'] });
+  });
+
+  test('viewerLogin reads GET user', async () => {
+    mock$(() => ({ login: 'me' }));
+    expect(await adapter.viewerLogin()).toBe('me');
+  });
+
+  test('both update-time spellings and both assignee shapes map', async () => {
+    const rows = [
+      { index: 1, title: 'a', updated: 'U1', assignees: ['me'] },
+      { index: 2, title: 'b', updated_at: 'U2', assignees: [{ login: 'you' }] },
+      { index: 3, title: 'c' },
+    ];
+    const spy = spyOn(teaCli, 'runTeaJson').mockReturnValue(rows);
+    const out = await adapter.issueList();
+    spy.mockRestore();
+    expect(out[0]).toMatchObject({ updatedAt: 'U1', assignees: ['me'] });
+    expect(out[1]).toMatchObject({ updatedAt: 'U2', assignees: ['you'] });
+    expect(out[2]).not.toHaveProperty('updatedAt');
+  });
 });
 
 describe('createForgeAdapter gitea', () => {
