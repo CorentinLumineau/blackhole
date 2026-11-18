@@ -1114,6 +1114,31 @@ const cdDestinations = (word, cdArgs, dirs, cdpath) => {
   return dirs.map((dir) => path.resolve(dir, text));
 };
 
+/** The base a clause's relative targets resolve against when it runs `env -C DIR` (or
+ * `--chdir=DIR`), which starts its command in DIR; null when the clause has no such option, and
+ * `unknown` when a DIR cannot be read statically. Chained options resolve in order. */
+const envChdirBase = (tokens, dirs) => {
+  const idx = tokens.findIndex((t) => isCommandToken(t, 'env'));
+  if (idx === -1) return null;
+  let base = null;
+  for (let i = idx + 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    let value;
+    if (t === '-C' || t === '--chdir') value = tokens[++i];
+    else if (t.startsWith('--chdir=')) value = t.slice('--chdir='.length);
+    else if (/^-C./.test(t)) value = t.slice(2);
+    else if (t === '-u' || t === '--unset') {
+      i++;
+      continue;
+    } else if (t.startsWith('-') || /^\w+=/.test(t)) continue;
+    else break;
+    const text = value === undefined ? null : stripQuotes(value);
+    if (text === null || !isResolvableLiteralTarget(text)) return { dirs: [], unknown: true };
+    base = { dirs: (base ? base.dirs : dirs).map((dir) => path.resolve(dir, text)), unknown: false };
+  }
+  return base;
+};
+
 /** Words that open and close a compound command (`if … fi`, loops, `case … esac`, `{ … }`). */
 const COMPOUND_OPENERS = new Set(['if', 'while', 'until', 'for', 'select', 'case', '{']);
 const COMPOUND_CLOSERS = new Set(['fi', 'done', 'esac', '}']);
@@ -1188,12 +1213,14 @@ const collectWriteSignals = (visible, heredocText, cwd) => {
   let unresolvable = false;
   let state = { dirs: [cwd], unknown: false };
   const saved = [];
+  let clauseBase = null; // set while a clause runs `env -C DIR`
   const add = (raw) => {
+    const base = clauseBase || state;
     if (!isResolvableLiteralTarget(raw)) unresolvable = true;
     else if (path.isAbsolute(raw)) literalTargets.push({ target: raw, dirs: [cwd] });
     else {
-      literalTargets.push({ target: raw, dirs: state.dirs });
-      if (state.unknown) unresolvable = true;
+      literalTargets.push({ target: raw, dirs: base.dirs });
+      if (base.unknown) unresolvable = true;
     }
   };
 
@@ -1219,7 +1246,9 @@ const collectWriteSignals = (visible, heredocText, cwd) => {
     const k = skipCompoundWords(tokens, nest);
     const inCase = nest.cases > 0;
     if (!inCase) for (let p = 0; p < opening.replace(/\s/g, '').length; p++) saved.push({ state, list }), (list = []);
+    clauseBase = null; // a redirect is opened by the shell itself, before `env` changes directory
     findRedirectTargets(redirectView.slice(from, to)).forEach(add);
+    clauseBase = tokens.length > 0 ? envChdirBase(tokens, state.dirs) : null;
     if (tokens.length > 0) {
       [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens), ...findOptionWriteTargets(tokens)].forEach(add);
       if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
