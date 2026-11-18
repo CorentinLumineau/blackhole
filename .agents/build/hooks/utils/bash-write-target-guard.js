@@ -35,9 +35,9 @@
 
 const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
-const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC, decodeQuotedWord } = require('./shell-lexer');
+const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC } = require('./shell-lexer');
 const { readAssignedWorktreeRoot, isUnderRoot } = require('./hook-event-log');
-const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, unquoteWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
+const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
  * string at all — the residual gap ADR-029 accepts and downgrades to WARN rather than a silent
@@ -948,106 +948,143 @@ const findOptionWriteTargets = (tokens) => {
   return targets;
 };
 
-/** `set -a` or `set -o allexport`, which exports every variable assigned afterwards. */
-const ALLEXPORT_RE = /\bset\s+(?:[-+][a-zA-Z]*\s+)*(?:-[a-zA-Z]*a[a-zA-Z]*|-o\s+allexport)\b/;
-
 /** Builtins whose operands are assignments (`export "GIT_TRACE=/x"`). */
 const DECLARERS = new Set(['export', 'declare', 'typeset', 'local', 'readonly']);
 
-/** Files git appends a trace to (`GIT_TRACE=/x`, `GIT_TRACE2_EVENT=<dir>`, …) from assignments
- * anywhere in one clause — a prefix, `export` or `env` alike, appended with `+=` or not. Git
- * writes only to an absolute value: `1`, `true`, `0`, `false` and `2`–`9` mean stderr, off or an
- * fd, and any other value is ignored. A word that starts with a quote is an assignment only where
- * the shell expects one (a command word, so `env "GIT_TRACE=/x" git`, an `env` operand holding `=`
- * before its command, or any operand of `export` once a declarer opens the clause, whatever bare
- * names precede it),
- * so `git commit -m 'GIT_TRACE=/x'` names no trace. Returns `{ targets, unresolvable }`.
- * `unresolvable` fails closed where the trace file cannot be read exactly: an `env` option word
- * that is not one of `ENV_OPTION_RE`'s exact spellings (getopt_long also accepts any unambiguous
- * abbreviation, `--uns`), a `-S` string holding a quote, `$`, backtick or backslash, a declarer
- * exporting a trace name with no value (`export GIT_TRACE`, set elsewhere by `read` or
- * `printf -v`), and a trace name spelled with a brace (`GIT_TRACE{,}`). Each target is `{ value, literal }`: a literal
- * value is the exact file name git opens, even when it holds a quote or a `$`; a value the shell
- * rewrites (`$LOG`, `` `pwd` ``, `~/t`) or may expand (a glob or brace character, which `env` and
- * `export` operands expand) is returned as written with `literal: false`, so it is unresolvable. */
-const findGitTraceTargets = (tokens) => {
+/** Declarers whose `-n` makes a nameref (`declare -n R=GIT_TRACE`); `export -n` un-exports. */
+const NAMEREF_DECLARERS = new Set(['declare', 'typeset', 'local']);
+
+/** A trace variable git reads, case-sensitively. */
+const TRACE_NAME_RE = /^GIT_TRACE\w*$/;
+
+/** Raw text that makes a word opaque: its expansion cannot be read from the command string. */
+const OPAQUE_RE = /[$`\\{}]/;
+
+/** A plain unquoted `NAME=VALUE` or `NAME+=VALUE` word: its name and its raw value. */
+const PLAIN_ASSIGNMENT_RE = /^([A-Za-z_]\w*)\+?=([\s\S]*)$/;
+
+/** A word that is a redirect (`>`, `2>&1`, `<<<`, `&>f`), and one whose target is the next word. */
+const REDIRECT_WORD_RE = /^[0-9&]*[<>]/;
+const REDIRECT_ONLY_WORD_RE = /^[0-9&]*(?:[<>]+|>&|<&)$/;
+
+/** Net `(` minus `)` and the backtick count outside quotes in `word`, escaped ones excluded:
+ * how far the word opens a `$(`, `(` or backtick that later words of the clause continue. */
+const openingDelta = (word) => {
+  let parens = 0;
+  let ticks = 0;
+  for (let i = 0; i < word.length; i++) {
+    const c = word[i];
+    if (c === '\\') i++;
+    else if (c === "'" || c === '"') i = skipQuotedSpan(word, i, word.length) - 1;
+    else if (c === '(') parens++;
+    else if (c === ')') parens--;
+    else if (c === '`') ticks++;
+  }
+  return { parens, ticks };
+};
+
+/** Index of the clause's command word for the trace scan: `k` (from `skipCompoundWords`) moved
+ * past a `case WORD in` head, a `function NAME` head and, inside a `case`, a `PATTERN)` word. */
+const traceCommandStart = (tokens, k, inCase) => {
+  let i = k;
+  if (tokens[i - 1] === 'case' && tokens[i + 1] === 'in') i += 2;
+  if (tokens[i] === 'function') i += 2;
+  if ((inCase || i > k) && /\)$/.test(tokens[i] ?? '')) i++;
+  return i;
+};
+
+/**
+ * Trace-file writes (`GIT_TRACE*`) in one clause, by the guard contract in
+ * `documentation/investigations/issue-1246-guard-contract.md`. A word is exact when its raw text
+ * holds none of `$`, backtick, `\`, `{` or `}`, so its quote removal (`normalizeShellWord`) is
+ * what bash produces; any other word is opaque. A slot word is one the shell or `env` reads as
+ * `NAME=VALUE`: a command-position word, an `env` operand before its command, a declarer operand.
+ * An exact trace assignment (a plain one anywhere, a quoted one in a slot) yields its absolute
+ * value as a target; git ignores a relative value. A slot word whose name or value cannot be read
+ * exactly, an `env` option that is not an exact spelling (every `-S` included), a bare or opaque
+ * declarer operand, and a nameref declarer make the clause unresolvable. `allexport` reports a
+ * `set`/`shopt` that may turn on allexport; the caller weighs it against the whole command.
+ */
+const findGitTraceTargets = (tokens, k, inCase) => {
   const targets = [];
   let unresolvable = false;
-  const addTrace = (word) => {
-    const { text, dynamic } = normalizeShellWord(word);
-    const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(word) : text)?.[1];
-    if (value === undefined) return;
-    if (dynamic || value.startsWith('~') || /[*?[\]{}]/.test(value)) targets.push({ value, literal: false });
-    else if (path.isAbsolute(value)) targets.push({ value, literal: true });
+  let allexport = false;
+  const start = traceCommandStart(tokens, k, inCase);
+  const positions = new Set([...commandPositions(tokens.slice(start))].map((p) => p + start));
+  // `value` is the exact text of a trace value, or null when it cannot be read exactly.
+  const judge = (value) => {
+    if (value === null || /[*?[\]]/.test(value) || value.startsWith('~')) unresolvable = true;
+    else if (path.isAbsolute(value)) targets.push(value);
   };
-  // `env -S STRING` splits STRING into words and reads their assignments like its own operands. It
-  // is split here only when it holds no quote, `$`, backtick or backslash, neither in the word as
-  // written nor in the text `env` receives (the shell expands `$X` and `$(…)`, and `env` itself
-  // processes quotes, `\_` and `${VAR}`); otherwise the whole command is unresolvable.
-  const addSplitString = (value, word) => {
-    const { text, dynamic } = normalizeShellWord(word);
-    if (dynamic || /[\\$`]/.test(word) || /['"\\$`]/.test(text)) unresolvable = true;
-    else value.split(/\s+/).forEach(addTrace);
+  const slot = (word, exact, text, plain) => {
+    if (plain) return; // already judged as a plain assignment
+    if (!exact) unresolvable ||= word.includes('=');
+    else if (/^GIT_TRACE\w*\+?=/.test(text)) judge(text.slice(text.indexOf('=') + 1));
   };
-  const positions = commandPositions(tokens);
-  let declaring = false;
-  let envOperands = false;
-  let envValueNext = null;
-  tokens.forEach((token, i) => {
-    const decoded = decodeQuotedWord(token);
-    if (envValueNext) {
-      if (envValueNext.split) addSplitString(unquoteWord(decoded), token);
-      envValueNext = null;
+  let run = null; // `env`, a declarer, `set` or `shopt`, whose operands follow
+  let [skipNext, parens, ticks, shoptO, halted] = [false, 0, 0, false, false];
+  tokens.forEach((word, i) => {
+    const exact = !OPAQUE_RE.test(word);
+    const text = exact ? normalizeShellWord(word).text : null;
+    const plain = PLAIN_ASSIGNMENT_RE.exec(word);
+    if (plain && TRACE_NAME_RE.test(plain[1])) judge(OPAQUE_RE.test(plain[2]) ? null : normalizeShellWord(plain[2]).text);
+    const continued = parens > 0 || ticks % 2 === 1;
+    const delta = openingDelta(word);
+    [parens, ticks] = [Math.max(0, parens + delta.parens), ticks + delta.ticks];
+    if (continued || halted || i < start) return;
+    if (skipNext || REDIRECT_WORD_RE.test(word)) {
+      skipNext = !skipNext && REDIRECT_ONLY_WORD_RE.test(word);
       return;
     }
-    // `env` reads every operand holding `=` as an assignment, quoted or not, up to its command;
-    // an operand starting with `-` once its quotes are removed is an option instead.
-    const envOption = envOperands && unquoteWord(decoded).startsWith('-');
-    const envAssignment = envOperands && !envOption && decoded.includes('=');
-    const assignmentSlot = positions.has(i) || declaring || envAssignment;
-    // A trace name exported with no value carries one set elsewhere, and one spelled with a brace
-    // (`GIT_TRACE{,}`) expands to names this scan cannot list: either way the trace file is unknown.
-    const [name, ...value] = unquoteWord(decoded).split('=');
-    const bareName = name.replace(/[{},]/g, '');
-    if (/^GIT_TRACE/.test(bareName) && ((declaring && value.length === 0) || (assignmentSlot && bareName !== name))) {
-      unresolvable = true;
+    let command = positions.has(i);
+    if (run === 'env') {
+      if (!exact || text.startsWith('-')) {
+        const option = exact ? envValueOption(text) : undefined;
+        if (option) skipNext = option.value === null;
+        else [unresolvable, halted] = [true, true]; // the rest of `env` cannot be read
+        return;
+      }
+      if (text.includes('=')) return slot(word, exact, text, plain);
+      command = true; // env's command
+    } else if (run && !command) {
+      if (run === 'set') allexport ||= !exact || /^-[a-zA-Z]*a/.test(text) || text === 'allexport';
+      else if (run === 'shopt') {
+        shoptO ||= exact && /^-[a-z]*o/.test(text);
+        allexport ||= shoptO && text === 'allexport';
+      } else if (exact && text.startsWith('-')) unresolvable ||= NAMEREF_DECLARERS.has(run) && /^-[a-zA-Z]*n/.test(text);
+      else if (!exact && !plain) unresolvable = true;
+      else {
+        slot(word, exact, text, plain);
+        unresolvable ||= exact && TRACE_NAME_RE.test(text);
+      }
+      return;
     }
-    declaring ||= DECLARERS.has(commandName(token));
-    if (positions.has(i) && commandName(token) === 'env') envOperands = true;
-    else if (envOption) {
-      const option = envValueOption(unquoteWord(decoded));
-      if (option === undefined) {
-        unresolvable = true;
-        envOperands = false;
-      } else if (option.value === null) envValueNext = option;
-      else if (option.split) addSplitString(option.value, token);
-    } else if (envOperands && !envAssignment) envOperands = false;
-    if ((token[0] === "'" || token[0] === '"') && !assignmentSlot) return;
-    // The shell decodes an unquoted `$'…'` or `$"…"` before `env` or `export` sees the word, so
-    // where an assignment is expected the name is read from the decoded word.
-    addTrace(assignmentSlot ? decoded : token);
+    if (!command) return;
+    const name = commandName(word);
+    run = name === 'env' || name === 'set' || name === 'shopt' || DECLARERS.has(name) ? name : null;
+    if (!run) slot(word, exact, text, plain);
   });
-  return { targets, unresolvable };
+  return { targets, unresolvable, allexport };
 };
 
 /** Every `env` option word GNU env accepts, spelled exactly: a cluster of the no-value letters
- * `i`, `0`, `v`, optionally ending in a value letter `u`, `C`, `S` or `a` with its value glued
+ * `i`, `0`, `v`, optionally ending in a value letter `u`, `C` or `a` with its value glued
  * (`-iuNAME`) or as the next word; a bare `-`; `--`; and the full long names, the value-taking
- * ones also with `=VALUE`. */
+ * ones also with `=VALUE`. `-S` and its long form are deliberately absent: the string is never read,
+ * so every spelling of it is an unknown option. */
 const ENV_OPTION_RE =
-  /^(?:-[i0v]*(?:([uCSa])([\s\S]*))?|--|--(?:ignore-environment|null|debug|help|version|list-signal-handling)|--(?:default-signal|ignore-signal|block-signal)(?:=[\s\S]*)?|--(unset|chdir|argv0|split-string)(?:=([\s\S]*))?)$/;
+  /^(?:-[i0v]*(?:([uCa])([\s\S]*))?|--|--(?:ignore-environment|null|debug|help|version|list-signal-handling)|--(?:default-signal|ignore-signal|block-signal)(?:=[\s\S]*)?|--(unset|chdir|argv0)(?:=([\s\S]*))?)$/;
 
-/** The value an exact `env` option word (`ENV_OPTION_RE`) takes: `{ split, value }`, where `value`
- * is null when the value is the next word, the glued or `=` text otherwise, and `split` marks a
- * `-S` string; `{ split: false, value: '' }` for an option with no value; undefined for a word
- * that is not an exact option. */
+/** The value an exact `env` option word (`ENV_OPTION_RE`) takes: `{ value }`, null when the value
+ * is the next word, the glued or `=` text otherwise, `''` for an option with no value; undefined
+ * for a word that is not an exact option. */
 const envValueOption = (option) => {
   const match = ENV_OPTION_RE.exec(option);
   if (!match) return undefined;
   const [, short, glued, long, longValue] = match;
-  if (short) return { split: short === 'S', value: glued || null };
-  if (long) return { split: long === 'split-string', value: longValue ?? null };
-  return { split: false, value: '' };
+  if (short) return { value: glued || null };
+  if (long) return { value: longValue ?? null };
+  return { value: '' };
 };
 
 const SHELL_NAMES = ['sh', 'bash', 'dash', 'zsh', 'ksh'];
@@ -1404,6 +1441,7 @@ const collectWriteSignals = (visible, heredocText, cwd) => {
   let state = { dirs: [cwd], unknown: false };
   const saved = [];
   let clauseBase = null; // set while a clause runs `env -C DIR`
+  let allexport = false;
   const add = (raw) => {
     const base = clauseBase || state;
     const target = unescapeTarget(raw);
@@ -1447,13 +1485,11 @@ const collectWriteSignals = (visible, heredocText, cwd) => {
         ...findCopyMoveTargets(tokens),
         ...findOptionWriteTargets(tokens),
       ].forEach(add);
-      // A literal trace value is the exact file name git opens, so it skips the shell-word checks.
-      const trace = findGitTraceTargets(tokens);
-      for (const { value, literal } of trace.targets) {
-        if (literal) literalTargets.push({ target: value, dirs: [cwd] });
-        else add(value);
-      }
+      // A trace value is the exact file name git opens, so it skips the shell-word checks.
+      const trace = findGitTraceTargets(tokens, k, inCase);
+      for (const target of trace.targets) literalTargets.push({ target, dirs: [cwd] });
       if (trace.unresolvable) unresolvable = true;
+      if (trace.allexport) allexport = true;
       if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
       if (tokens.some((t) => t.startsWith('CDPATH='))) cdpath = true;
       // A pipeline element or background job runs in a subshell: its `cd` moves only that subshell,
@@ -1468,8 +1504,9 @@ const collectWriteSignals = (visible, heredocText, cwd) => {
   }
 
   if (hasPipedScript(visible)) unresolvable = true;
-  // Under `set -a` a builtin that assigns (`read GIT_TRACE`, `printf -v GIT_TRACE`) also exports.
-  if (ALLEXPORT_RE.test(visible) && visible.includes('GIT_TRACE')) unresolvable = true;
+  // Under allexport a builtin that assigns (`read GIT_TRACE`, `printf -v GIT_TRACE`) also exports,
+  // so a command that turns it on and mentions a trace name at all is unresolvable.
+  if (allexport && /GIT_|TRACE/.test(visible.replace(/['"\\]/g, ''))) unresolvable = true;
   if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => findCommand(tokenize(c), 'git') !== -1)) {
     unresolvable = true;
   }
