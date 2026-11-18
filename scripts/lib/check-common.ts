@@ -89,6 +89,9 @@ export const findAdrFileByNumber = (decisionsDir: string, adrRef: string): strin
   return found ? path.join(decisionsDir, found) : null;
 };
 
+/** Escapes `value` for literal use inside a `RegExp` source. */
+export const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export const listFiles = (dir: string, ext = '.md'): string[] => {
   const full = path.join(root, dir);
   if (!fs.existsSync(full)) return [];

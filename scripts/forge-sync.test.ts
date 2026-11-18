@@ -156,3 +156,11 @@ describe('forge-sync --lane', () => {
     expect(synced(await runForgeSync(campaign(), { adapter: adapter(), now: NOW })).queue.issues['2']).toMatchObject({ status: 'ready' });
   });
 });
+
+describe('forge-sync usage', () => {
+  test('an unknown flag prints usage naming the script path, not the package.json alias', () => {
+    const out = Bun.spawnSync(['bun', 'run', path.join(import.meta.dir, 'forge-sync.ts'), '--bogus'], { cwd: os.tmpdir() });
+    expect(out.exitCode).toBe(2);
+    expect(out.stderr.toString()).toContain('Usage: bun run scripts/forge-sync.ts [--campaign-dir <dir>]');
+  });
+});

@@ -42,7 +42,8 @@ Claude Code, Cursor, Antigravity, Codex CLI, and the `skills.sh` registry.
 /blackhole run
 
 # Sync forge, show backlog dashboard, refresh the status page
-# (bun run status --html writes .blackhole/.tmp/status.html; --json for the raw report)
+# (bun run "$BLACKHOLE_PLUGIN_ROOT"/scripts/campaign-status.ts --html writes
+#  .blackhole/.tmp/status.html; --json for the raw report)
 @blackhole status
 ```
 
@@ -67,7 +68,9 @@ Set `"forge"` explicitly in `.blackhole/config.json`, or omit it to auto-detect 
 host **fails bootstrap loudly** — this prevents a `gh` session authenticated to github.com from
 silently targeting a Gitea-hosted repo.
 
-Run `bun run doctor` to verify the configured backend's CLI is installed and authenticated.
+Run `bun run "$BLACKHOLE_PLUGIN_ROOT"/scripts/doctor.ts` from the campaign repo to verify the
+configured backend's CLI is installed and authenticated (`bun run doctor` works in a blackhole
+checkout only).
 
 ---
 

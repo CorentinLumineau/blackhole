@@ -86,7 +86,7 @@ Hook **must not** mutate `queue.json`, `findings-ledger.json`, or plan files.
 
 ```json
 {
-  "followup_message": "Blackhole: pending resume-request.json. Run coordinator turn flow — bun run status (full dashboard), then resume orchestrator with interrupt:false if work remains and queue is not user-blocked. Ack resume-request.json after resume."
+  "followup_message": "Blackhole: pending resume-request.json. Run coordinator turn flow — bun run \"<plugin root>/scripts/campaign-status.ts\" (full dashboard), then resume orchestrator with interrupt:false if work remains and queue is not user-blocked. Ack resume-request.json after resume."
 }
 ```
 
@@ -99,7 +99,7 @@ Hook **must not** mutate `queue.json`, `findings-ledger.json`, or plan files.
 | 3 | orchestrator | WAVE 0: spawn 2–4 `router` workers, barrier-wait, triage, turn-end | checkpoint workers empty |
 | 4 | orchestrator | END TURN with ready work remaining | `subagentStop` fires |
 | 5 | resume hook | writes `resume-request.json`, emits coordinator `followup_message` | file present; coordinator wakes |
-| 6 | coordinator | `bun run status` → full dashboard → resume orchestrator | next turn without user chat |
+| 6 | coordinator | `bun run scripts/campaign-status.ts` → full dashboard → resume orchestrator | next turn without user chat |
 | 7 | coordinator | delete/ack `resume-request.json` | file absent |
 | 8 | negative | set `notes: awaiting-plan-approval` on in-flight issue, repeat step 4 | hook exits 0, **no** file, **no** followup |
 
@@ -262,7 +262,7 @@ Ordinary commands stay far below every limit: the longest of 12,893 observed rea
 
 `detail` on an `error`-tier (`hook-exec-failure`) record is no longer the bare `"process exit code N"` literal (ADR-042 item 5): the wrapper (`scripts/lib/build/claude-native-settings.ts`) captures the validator subprocess's own stderr to a temp file, appends a `(timeout)`/`(crash)` discriminator (elapsed wall-clock time against the wrapper's own 5-second hook timeout — a coarse heuristic, since a genuine harness-level kill leaves nothing running to observe its own cause) and, when non-empty, a ≤300-char tail of that stderr — the same length cap `block`/`warn`-tier `detail` already carries. No stdin/command replay is added.
 
-Unlike `block`/`warn`-tier `detail`, this `error`-tier stderr tail is **not** run through `redact()` — it is captured directly by the shell wrapper, which deliberately does not reimplement `hook-event-log.js`'s `redact()` in shell (V-INT-02): duplicating that masking logic in Bash would be a second, drifting definition of what counts as a credential literal. This is an accepted, unmitigated gap: a validator crash whose uncaught error message happens to include a credential fragment would be captured verbatim into `.blackhole/hook-events/`, folded into the ledger `summary`, and rendered on `bun run status` — a persistent, lower-trust artifact, unlike the transient process stderr it was read from. Closing this (e.g. a small shared masking script both `hook-event-log.js` and the wrapper can invoke) is out of scope for ADR-042 and would need its own change.
+Unlike `block`/`warn`-tier `detail`, this `error`-tier stderr tail is **not** run through `redact()` — it is captured directly by the shell wrapper, which deliberately does not reimplement `hook-event-log.js`'s `redact()` in shell (V-INT-02): duplicating that masking logic in Bash would be a second, drifting definition of what counts as a credential literal. This is an accepted, unmitigated gap: a validator crash whose uncaught error message happens to include a credential fragment would be captured verbatim into `.blackhole/hook-events/`, folded into the ledger `summary`, and rendered on `bun run scripts/campaign-status.ts` — a persistent, lower-trust artifact, unlike the transient process stderr it was read from. Closing this (e.g. a small shared masking script both `hook-event-log.js` and the wrapper can invoke) is out of scope for ADR-042 and would need its own change.
 
 ## PermissionDenied hook (Claude Code, not installed)
 

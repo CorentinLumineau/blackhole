@@ -32,7 +32,7 @@ This confirmation fires on \`run\` and \`catchup\` modes only — status and the
 const LAUNCH_GATE_FIXTURE_FIXED = `
 # Launch Gate
 
-Run \`bun run status --summary --json\`, print the table, then one Accept / Adjust per section.
+Run \`bun run scripts/campaign-status.ts --summary --json\`, print the table, then one Accept / Adjust per section.
 Record the probe with \`scripts/status-probe.ts record\`; it writes \`last_probe\`.
 Print-only mode asks nothing and never waits. A catchup adds the Pacing row.
 `;

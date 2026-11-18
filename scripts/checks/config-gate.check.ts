@@ -25,7 +25,7 @@ export const COORDINATOR_ROUTINE_RESUME_REQUIRED_MARKERS = [
 ];
 
 export const LAUNCH_GATE_REQUIRED_MARKERS = [
-  'status --summary',
+  'campaign-status.ts --summary',
   'Accept / Adjust',
   'status-probe.ts record',
   'last_probe',

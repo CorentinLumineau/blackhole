@@ -1,4 +1,4 @@
-import { buildInputModuleDirs, listFiles } from '../lib/check-common.ts';
+import { buildInputModuleDirs, escapeRegExp, listFiles } from '../lib/check-common.ts';
 import { read, type CheckResult } from './check-utils.ts';
 
 // Issue #798 — cwd-pin-guard.check.ts: matches verify.cwd-pin-guard.test.ts.
@@ -18,8 +18,6 @@ const TARGET_SCRIPTS = [
   'scripts/lib/companion-file-sync.ts',
   'scripts/plan-quality-gate.ts',
 ];
-
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Optional `--cwd <value>` clause immediately after `bun run`. `<value>` may be a single
 // non-space token, or a `<...>`/`` `...` ``-bracketed placeholder that itself contains spaces
