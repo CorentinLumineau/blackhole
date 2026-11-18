@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { readJsonFile } from './lib/fs.ts';
+import { VERSIONED_MANIFESTS } from './lib/build/manifests.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -68,16 +69,7 @@ function build(): void {
   execSync('bun run build', { cwd: root, stdio: 'inherit' });
 }
 
-export const MANIFEST_PATHS: Array<{ path: string; versionOf: (json: unknown) => string | undefined }> = [
-  { path: '.claude-plugin/plugin.json', versionOf: (json) => (json as { version?: string }).version },
-  {
-    path: '.claude-plugin/marketplace.json',
-    versionOf: (json) => (json as { plugins?: Array<{ version?: string }> }).plugins?.[0]?.version,
-  },
-  { path: '.codex-plugin/plugin.json', versionOf: (json) => (json as { version?: string }).version },
-  { path: '.gemini-plugin/plugin.json', versionOf: (json) => (json as { version?: string }).version },
-  { path: 'plugins/blackhole/plugin.json', versionOf: (json) => (json as { version?: string }).version },
-];
+export const MANIFEST_PATHS = VERSIONED_MANIFESTS;
 
 export function findManifestVersionMismatches(
   pkgVersion: string,

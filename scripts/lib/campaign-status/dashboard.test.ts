@@ -293,3 +293,79 @@ describe('formatDashboard — configured lane', () => {
     expect(formatDashboard(base as never)).toContain('**Another lane** (1)');
   });
 });
+
+describe('formatDashboard — Completed, Issues filed and Scope are bounded and recent-first', () => {
+  const baseOpts = {
+    checkpoint: { orchestrator_turn_id: 1 },
+    queue: { refreshed_at: '2026-09-06T00:00:00.000Z', issues: {} as Record<string, QueueIssue> },
+    ledger: { findings: [] as LedgerFinding[] },
+    forge: { openIssues: 0, openPrs: 0, ok: true },
+  };
+  const section = (out: string, heading: string): string[] => {
+    const lines = out.split('\n');
+    const start = lines.indexOf(heading);
+    const rest = lines.slice(start + 1);
+    const end = rest.findIndex((l) => l.startsWith('### '));
+    return (end === -1 ? rest : rest.slice(0, end)).filter((l) => l !== '');
+  };
+
+  test('25 done entries render the 10 highest ids, descending, plus an overflow line', () => {
+    const issues: Record<string, QueueIssue> = {};
+    for (let i = 1; i <= 25; i++) issues[String(i)] = { title: `T${i}`, phase: 'merged', status: 'merged', pr: 100 + i } as QueueIssue;
+    const out = formatDashboard({ ...baseOpts, queue: { ...baseOpts.queue, issues } });
+    const body = section(out, '### Completed (queue)');
+    expect(body[0]).toBe(
+      [25, 24, 23, 22, 21, 20, 19, 18, 17, 16].map((n) => `#${n} → PR #${100 + n}`).join(' · '),
+    );
+    expect(body[1]).toBe('- …and 15 more');
+    expect(body).toHaveLength(2);
+  });
+
+  test('10 or fewer done entries print no overflow line', () => {
+    const issues: Record<string, QueueIssue> = {};
+    for (let i = 1; i <= 10; i++) issues[String(i)] = { title: `T${i}`, phase: 'merged', status: 'merged' } as QueueIssue;
+    const out = formatDashboard({ ...baseOpts, queue: { ...baseOpts.queue, issues } });
+    const body = section(out, '### Completed (queue)');
+    expect(body).toEqual(['#10 · #9 · #8 · #7 · #6 · #5 · #4 · #3 · #2 · #1']);
+  });
+
+  test('15 filings in ascending order render the 10 highest, descending, plus an overflow line', () => {
+    const findings: LedgerFinding[] = [];
+    for (let i = 1; i <= 15; i++) {
+      findings.push({ status: 'deferred', deferred_to_issue: 1000 + i, summary: `S${i}`, vcode: 'V-X' } as LedgerFinding);
+    }
+    const out = formatDashboard({ ...baseOpts, ledger: { findings } });
+    const body = section(out, '### Issues filed (deferred discoveries)');
+    expect(body.slice(0, 10).map((l) => l.match(/#(\d+)/)?.[1])).toEqual(
+      ['1015', '1014', '1013', '1012', '1011', '1010', '1009', '1008', '1007', '1006'],
+    );
+    expect(body[10]).toBe('- …and 5 more');
+    expect(body).toHaveLength(11);
+  });
+
+  const view = (recorded: boolean) => ({
+    headline: { text: 'h', source: 'recorded' },
+    stage_counts: { done: 0, in_review: 0, on_you: 0, blocked: 0, parked: 0, not_started: 0 },
+    moves: [],
+    scope_record: recorded
+      ? { recorded: true, entries: [{ kind: 'focus', text: 'only X', set_at: '2026-09-01' }] }
+      : { recorded: false, entries: [] },
+    decisions: [],
+    forge_checked: true,
+  });
+
+  test('an unrecorded scope prints the shared scope label, never "Scope not recorded"', () => {
+    const out = formatDashboard({ ...baseOpts, scope: { milestone: 'v2' }, view: view(false) } as never);
+    expect(section(out, '### Scope')).toEqual(['milestone **v2**']);
+    expect(out).not.toContain('Scope not recorded');
+    const all = formatDashboard({ ...baseOpts, view: view(false) } as never);
+    expect(section(all, '### Scope')).toEqual(['all open issues']);
+  });
+
+  test('recorded scope entries print as before with no label line added', () => {
+    const out = formatDashboard({ ...baseOpts, scope: { milestone: 'v2' }, view: view(true) } as never);
+    const body = section(out, '### Scope');
+    expect(body).toHaveLength(1);
+    expect(body[0]).toContain('only X');
+  });
+});

@@ -39,26 +39,28 @@ describe('tea-cli', () => {
     expect(result).toEqual({ status: 0, stdout: 'logged in\n', stderr: '', error: null });
   });
 
-  test('runTeaJson appends --json when absent from the input args', () => {
+  test('runTeaJson appends --output json when absent from the input args', () => {
     spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('[{"index":3,"title":"issue"}]', 0));
 
     runTeaJson(['issues', 'list']);
 
-    expect(spawnSyncSpy).toHaveBeenCalledWith('tea', ['issues', 'list', '--json'], {
+    expect(spawnSyncSpy).toHaveBeenCalledWith('tea', ['issues', 'list', '--output', 'json'], {
       encoding: 'utf-8',
       maxBuffer: FORGE_CLI_MAX_BUFFER,
     });
+    expect(spawnSyncSpy.mock.calls[0][1]).not.toContain('--json');
   });
 
-  test('runTeaJson does not duplicate --json when already present', () => {
+  test.each([
+    [['issues', 'list', '--output', 'json']],
+    [['issues', 'list', '-o', 'json']],
+    [['issues', 'list', '--output=json']],
+  ])('runTeaJson does not add a second output flag to %j', (args) => {
     spawnSyncSpy = spyOn(childProcess, 'spawnSync').mockReturnValue(mockSpawnResult('[]', 0));
 
-    runTeaJson(['issues', 'list', '--json']);
+    runTeaJson(args);
 
-    expect(spawnSyncSpy).toHaveBeenCalledWith('tea', ['issues', 'list', '--json'], {
-      encoding: 'utf-8',
-      maxBuffer: FORGE_CLI_MAX_BUFFER,
-    });
+    expect(spawnSyncSpy.mock.calls[0][1]).toEqual(args);
   });
 
   test('runTeaJson parses stdout JSON and returns it', () => {
