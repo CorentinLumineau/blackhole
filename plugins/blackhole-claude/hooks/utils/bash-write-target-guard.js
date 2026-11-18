@@ -895,8 +895,9 @@ const shellReadsStdinScript = (args) => {
   return true;
 };
 
-/** A single `|` (or `|&`) pipe — never the `||` operator — and the clause text it feeds. */
-const PIPE_INTO_RE = /(?<!\|)\|&?(?!\|)([^;|&\n]*)/g;
+/** A single `|` (or `|&`) pipe — never the `||` operator — and the clause text it feeds; a newline
+ * after the pipe continues the command, so the clause starts on the next line. */
+const PIPE_INTO_RE = /(?<!\|)\|&?(?!\|)\s*([^;|&\n]*)/g;
 
 /** True when a pipe feeds a shell or an interpreter that reads its script from stdin (`… | sh`,
  * `… | bash -s`, `… | node`, `… | python3 -`): the piped text runs as code this module never
@@ -1080,12 +1081,14 @@ const hasInterpreterWrite = (tokens, heredocText) =>
  * (`node < script.js`, `node <&3`): a script the command string does not show. */
 const STDIN_FROM_FILE = Symbol('stdin from a file');
 
-/** The script a heredoc (`<<`), here-string (`<<<`) or input file (`<`) after the command word at
- * `idx` feeds on stdin, fd `0` named or not, or null when the clause has none. A heredoc yields
- * `heredocText`, every heredoc body in the command: checking more text than the clause's own body
- * only ever adds a warning. */
+/** The script a heredoc (`<<`), here-string (`<<<`) or input file (`<`) in the clause feeds on
+ * stdin, fd `0` named or not, or null when the clause has none. A redirect may precede the command
+ * word (`< evil.js node`), so every token but the command word at `idx` is scanned. A heredoc
+ * yields `heredocText`, every heredoc body in the command: checking more text than the clause's
+ * own body only ever adds a warning. */
 const stdinRedirectScript = (tokens, idx, heredocText) => {
-  for (let i = idx + 1; i < tokens.length; i++) {
+  for (let i = 0; i < tokens.length; i++) {
+    if (i === idx) continue;
     const here = /^0?<<<(.*)$/s.exec(tokens[i]);
     if (here) return [here[1], ...tokens.slice(i + 1)].join(' ');
     if (/^0?<</.test(tokens[i])) return heredocText;
