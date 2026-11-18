@@ -5007,10 +5007,12 @@ describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes
     });
   }
 
-  test('`$(...)` in double quotes keeps the base warn tier and pattern', async () => {
+  // Clauses are scanned one by one (#1239), so the literal target inside `$(...)` is read whole
+  // and the real write it names blocks instead of only warning.
+  test('`$(...)` in double quotes with a literal outside target blocks', async () => {
     expect(await evaluate('echo "$(echo hi > @OUT@/x)"')).toMatchObject({
-      tier: 'warn',
-      pattern_id: 'bash-write-target-unresolvable',
+      tier: 'block',
+      pattern_id: 'bash-outside-assigned-worktree',
     });
   });
 

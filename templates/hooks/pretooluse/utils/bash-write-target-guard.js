@@ -37,7 +37,7 @@ const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand } = require('./shell-lexer');
 const { readAssignedWorktreeRoot, isUnderRoot } = require('./hook-event-log');
-const { isLiteralPathArg } = require('./worktree-removal-guard');
+const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
  * string at all — the residual gap ADR-029 accepts and downgrades to WARN rather than a silent
@@ -110,7 +110,8 @@ const stripQuotes = (token) => {
 
 /** Quote-aware whitespace tokenizer over an already-visible (masked spans blanked) substring —
  * a quoted span (e.g. a sed script `'s/a/b/'`) is kept as one token, quotes intact, so
- * `stripQuotes` can later decide whether to unwrap it. */
+ * `stripQuotes` can later decide whether to unwrap it. A backslash-escaped character (`x\ y`)
+ * never splits a word. */
 const tokenize = (text) => {
   const tokens = [];
   let current = '';
@@ -124,6 +125,12 @@ const tokenize = (text) => {
         current = '';
       }
       i++;
+      continue;
+    }
+    if (ch === '\\' && i + 1 < n) {
+      // An escaped character, space included, stays in the word: `x\ y` is one word.
+      current += text.slice(i, i + 2);
+      i += 2;
       continue;
     }
     if (ch === "'" || ch === '"') {
@@ -183,9 +190,45 @@ const clauseRanges = (visible) => {
 
 const splitClauses = (visible) => clauseRanges(visible).map(([start, end]) => visible.slice(start, end));
 
-/** True when `token` names `command` — either exactly, or as the final path segment of an
- * absolute/relative invocation (`/usr/bin/sed` still names `sed`). */
-const isCommandToken = (token, command) => token === command || token.endsWith(`/${command}`);
+/** Words after which the next word is again a command: wrappers that run the rest of the clause
+ * (`sudo`, `env`, `timeout 5`, …) and the keywords a command may follow (`then`, `do`, `!`, …). */
+const COMMAND_PREFIXES = new Set([
+  'sudo', 'doas', 'env', 'nice', 'nohup', 'timeout', 'command', 'exec', 'time', 'stdbuf', 'ionice',
+  'builtin', 'xargs', 'chronic', 'unbuffer', 'if', 'then', 'else', 'elif', 'while', 'until', 'do', '!', '{',
+]);
+
+/** Wrapper options whose value is the next word (`sudo -u bob`, `nice -n 5`, `env -C dir`). */
+const PREFIX_VALUE_OPTIONS = new Set(['-u', '-g', '-n', '-C', '-k', '-p', '-I', '-L', '-P', '-o', '-e']);
+
+/** Indices of the words in a clause that run as commands: the first word after any `NAME=value`
+ * assignments, and the word after each wrapper or keyword together with its options. */
+const commandPositions = (tokens) => {
+  const positions = new Set();
+  let i = 0;
+  while (i < tokens.length) {
+    while (i < tokens.length && /^[A-Za-z_]\w*=/.test(tokens[i])) i++;
+    if (i >= tokens.length) break;
+    positions.add(i);
+    if (!COMMAND_PREFIXES.has(commandName(tokens[i]))) break;
+    i++;
+    while (i < tokens.length && (tokens[i].startsWith('-') || /^\d+(?:\.\d+)?[smhd]?$/.test(tokens[i]))) {
+      i += PREFIX_VALUE_OPTIONS.has(tokens[i]) ? 2 : 1;
+    }
+  }
+  return positions;
+};
+
+/** Index of the first word in `tokens` that runs a command `isName` accepts, or -1. A bare word
+ * counts anywhere in the clause, so a wrapper this module does not know (`find -exec cp …`) never
+ * hides it. A quoted or escaped spelling (`'sed'`, `\cp`, `$'tee'`) counts only where a command
+ * runs, so a quoted grep pattern (`grep -rn "tee" .`) is not mistaken for one. */
+const findCommandIndex = (tokens, isName) => {
+  const positions = commandPositions(tokens);
+  return tokens.findIndex((t, i) => isName(t.slice(t.lastIndexOf('/') + 1)) || (positions.has(i) && isName(commandName(t))));
+};
+
+/** `findCommandIndex` for one command name. */
+const findCommand = (tokens, name) => findCommandIndex(tokens, (n) => n === name);
 
 /** True when a fd-duplication argument (`&1`, `&2`, ...) rather than a real file path — the one
  * shape `>`/`>>`/`&>` legitimately precede without naming a file (`2>&1`, `>&2`). */
@@ -367,15 +410,25 @@ const positionalArgsBeforeRedirect = (tokens, startIdx) => {
   for (let i = startIdx; i < tokens.length; i++) {
     const token = tokens[i];
     if (token.startsWith('<') || token.startsWith('>') || token.startsWith('&')) break;
-    args.push(token);
+    args.push(asStaticWord(token));
   }
   return args;
+};
+
+/** A word spelled with quotes or escapes (`'-i'`, `"format-patch"`, `\-o`, `'of=/x'`) is the
+ * word the command receives, so it is read in its unquoted form. A word whose quotes protect
+ * something the shell would otherwise act on (`--format="{x,y}"`, `--expression='$w f'`) is kept
+ * exactly as written, so later checks still see those characters as quoted. */
+const asStaticWord = (token) => {
+  if (!/['"\\]/.test(token)) return token;
+  const { text, dynamic } = normalizeShellWord(token);
+  return !dynamic && /^[\w.,:+=@%/-]+$/.test(text) ? text : token;
 };
 
 /** `tee [-a|--append] <target...>` write targets in one clause — every non-flag positional
  * argument after the command word, up to the first redirect/pipe. */
 const findTeeTargets = (tokens) => {
-  const cmdIdx = tokens.findIndex((t) => isCommandToken(t, 'tee'));
+  const cmdIdx = findCommand(tokens, 'tee');
   if (cmdIdx === -1) return [];
   return positionalArgsBeforeRedirect(tokens, cmdIdx + 1)
     .filter((t) => !t.startsWith('-'))
@@ -542,7 +595,7 @@ const parseSedScript = (script) => {
  * script writes, and an unresolvable target when the script runs a shell command or a script word
  * is not clean (its real text is not the text this module reads). */
 const findSedTargets = (tokens) => {
-  const cmdIdx = tokens.findIndex((t) => isCommandToken(t, 'sed'));
+  const cmdIdx = findCommand(tokens, 'sed');
   if (cmdIdx === -1) return [];
   const { script, files, inPlace, unclean } = parseSedArgs(positionalArgsBeforeRedirect(tokens, cmdIdx + 1));
   const written = parseSedScript(script);
@@ -613,7 +666,7 @@ const rsyncTargets = (args) => {
  * target-directory means there is no destination to evaluate (`cp --help`, a malformed call). */
 const findCopyMoveTargets = (tokens) => {
   for (const name of ['cp', 'mv', 'install', 'ln', 'truncate', 'dd', 'rsync']) {
-    const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
+    const cmdIdx = findCommand(tokens, name);
     if (cmdIdx === -1) continue;
     const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
     if (name === 'dd') return args.filter((t) => t.startsWith('of=')).map((t) => stripQuotes(t.slice(3)));
@@ -889,7 +942,7 @@ const OPTION_WRITE_COMMANDS = [
 const findOptionWriteTargets = (tokens) => {
   const targets = [];
   for (const [name, extract] of OPTION_WRITE_COMMANDS) {
-    const cmdIdx = tokens.findIndex((t) => isCommandToken(t, name));
+    const cmdIdx = findCommand(tokens, name);
     if (cmdIdx !== -1) targets.push(...extract(positionalArgsBeforeRedirect(tokens, cmdIdx + 1)));
   }
   return targets;
@@ -942,7 +995,7 @@ const hasPipedScript = (visible) => {
     }
     // Found anywhere in the piped clause, like the other finders, so a wrapper (`env bash`,
     // `sudo sh`) cannot hide it.
-    const shellIdx = tokens.findIndex((t) => SHELL_NAMES.some((name) => isCommandToken(t, name)));
+    const shellIdx = findCommandIndex(tokens, (name) => SHELL_NAMES.includes(name));
     if (shellIdx !== -1 && shellReadsStdinScript(positionalArgsBeforeRedirect(tokens, shellIdx + 1))) return true;
     const interpreter = findInterpreter(tokens);
     if (interpreter && interpreterReadsStdinScript(interpreter.entry, positionalArgsBeforeRedirect(tokens, interpreter.idx + 1))) {
@@ -1068,11 +1121,19 @@ const findInterpreter = (tokens) => {
 };
 
 /** The command a word names once the shell has removed its quotes and escapes (`\node`,
- * `'node'`, `/usr/bin/node` all name `node`). */
+ * `'node'`, `$'node'`, `/usr/bin/node` all name `node`). */
 const commandName = (word) => {
-  const bare = word.replace(/['"\\]/g, '');
+  const bare = word.replace(/\$'((?:\\.|[^'\\])*)'/g, (_, body) => decodeAnsiC(body)).replace(/['"\\]/g, '');
   return bare.slice(bare.lastIndexOf('/') + 1);
 };
+
+/** The text of an ANSI-C quoted `$'…'` body as far as a command name needs it: `\xHH` and octal
+ * `\NNN` decoded, any other escaped character kept as itself. */
+const decodeAnsiC = (body) =>
+  body.replace(/\\(x[0-9a-fA-F]{1,2}|[0-7]{1,3}|[\s\S])/g, (_, e) => {
+    if (e[0] === 'x' && e.length > 1) return String.fromCharCode(parseInt(e.slice(1), 16));
+    return /^[0-7]/.test(e) ? String.fromCharCode(parseInt(e, 8)) : e;
+  });
 
 /** Script text as the interpreter receives it: inside double quotes the shell drops the
  * backslash before `$`, `` ` ``, `"` and `\`, so `Bun.\$\`…\`` arrives as `` Bun.$`…` ``. */
@@ -1128,29 +1189,180 @@ const stdinRedirectScript = (tokens, idx, heredocText) => {
  * `UNRESOLVABLE_WRITE_COMMANDS`, or an interpreter in it runs an inline or stdin script that may
  * write. */
 const hasUnresolvableCommand = (tokens, heredocText) =>
-  UNRESOLVABLE_WRITE_COMMANDS.some((name) => isCommandToken(tokens[0], name)) || hasInterpreterWrite(tokens, heredocText);
+  UNRESOLVABLE_WRITE_COMMANDS.includes(commandName(tokens[0])) || hasInterpreterWrite(tokens, heredocText);
 
-/** Literal write targets in one view of the command, and whether anything write-shaped in it
- * cannot be resolved. */
-const collectWriteSignals = (visible, heredocText) => {
+/** The directory a `cd`/`pushd`/`popd` moves to from each of `dirs`, or null when its target
+ * cannot be read statically (`cd "$D"`, `cd -`, a bare `cd` or `popd`, `cd ~`, a glob, `pushd +1`), or when a
+ * `CDPATH` set in the command may redirect a relative target that does not start with `.`. */
+const cdDestinations = (word, cdArgs, dirs, cdpath) => {
+  if (word !== 'cd' && cdArgs.some((t) => /^[+-]/.test(t))) return null;
+  const text = extractCdTargetText(cdArgs);
+  if (text === null || !isResolvableLiteralTarget(text)) return null;
+  if (cdpath && !path.isAbsolute(text) && !text.startsWith('.')) return null;
+  return dirs.map((dir) => path.resolve(dir, text));
+};
+
+/** A write target as the command receives it: the shell drops a backslash before any character,
+ * so `\\/etc/x` writes `/etc/x`. A dynamic word is kept as written, and its `$` makes it unresolvable. */
+const unescapeTarget = (raw) => {
+  if (!raw.includes('\\')) return raw;
+  const { text, dynamic } = normalizeShellWord(raw);
+  return dynamic ? raw : text;
+};
+
+/** The base a clause's relative targets resolve against when it runs `env -C DIR` (or
+ * `--chdir=DIR`), which starts its command in DIR; null when the clause has no such option, and
+ * `unknown` when a DIR cannot be read statically. Chained options resolve in order. */
+const envChdirBase = (tokens, dirs) => {
+  const idx = findCommand(tokens, 'env');
+  if (idx === -1) return null;
+  let base = null;
+  for (let i = idx + 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    let value;
+    if (t === '-C' || t === '--chdir') value = tokens[++i];
+    else if (t.startsWith('--chdir=')) value = t.slice('--chdir='.length);
+    else if (/^-C./.test(t)) value = t.slice(2);
+    else if (t === '-u' || t === '--unset') {
+      i++;
+      continue;
+    } else if (t.startsWith('-') || /^\w+=/.test(t)) continue;
+    else break;
+    const text = value === undefined ? null : stripQuotes(value);
+    if (text === null || !isResolvableLiteralTarget(text)) return { dirs: [], unknown: true };
+    base = { dirs: (base ? base.dirs : dirs).map((dir) => path.resolve(dir, text)), unknown: false };
+  }
+  return base;
+};
+
+/** Words that open and close a compound command (`if … fi`, loops, `case … esac`, `{ … }`). */
+const COMPOUND_OPENERS = new Set(['if', 'while', 'until', 'for', 'select', 'case', '{']);
+const COMPOUND_CLOSERS = new Set(['fi', 'done', 'esac', '}']);
+
+/** Index of the clause's command word past compound keywords and a function header (`f()`),
+ * updating `compound` (open compound commands) and `cases` (open `case`s). A word such as
+ * `then` or `y)` is not skipped: a `cd` past it is found as an argument-position `cd`, which only
+ * ever adds a candidate, the same as any `cd` inside a compound command. */
+const skipCompoundWords = (tokens, nest) => {
+  let k = 0;
+  while (k < tokens.length) {
+    const word = tokens[k];
+    if (COMPOUND_OPENERS.has(word)) {
+      nest.compound++;
+      if (word === 'case') nest.cases++;
+    } else if (COMPOUND_CLOSERS.has(word)) {
+      nest.compound = Math.max(0, nest.compound - 1);
+      if (word === 'esac') nest.cases = Math.max(0, nest.cases - 1);
+    } else if (!/^[\w.:-]+\(\)$/.test(word)) {
+      break;
+    }
+    k++;
+  }
+  return k;
+};
+
+/** The directories the shell may stand in after a clause whose command starts at `tokens[k]`.
+ * `union` adds a `cd`'s destination to the candidates instead of replacing them, for a `cd` that
+ * may not run; a `cd` past the command word (`command cd`, `echo cd x`) may be an argument, so it
+ * only ever adds. A `cd` whose target cannot be read makes the base `unknown`, so
+ * later relative targets warn. */
+const applyCd = (state, tokens, k, union, cdpath) => {
+  const isCd = (t) => ['cd', 'pushd', 'popd'].includes(normalizeShellWord(t).text);
+  const certain = k < tokens.length && isCd(tokens[k]);
+  const idx = certain ? k : tokens.findIndex((t, i) => i > k && isCd(t));
+  if (idx === -1) return state;
+  const word = normalizeShellWord(tokens[idx]).text;
+  const keep = union || !certain;
+  const moved = cdDestinations(word, tokens.slice(idx + 1), state.dirs, cdpath);
+  if (moved === null) return { dirs: keep ? state.dirs : [], unknown: true };
+  const dirs = [...new Set(keep ? [...state.dirs, ...moved] : moved)];
+  if (dirs.length > MAX_CWD_CANDIDATES) return { dirs: state.dirs, unknown: true };
+  return { dirs, unknown: state.unknown };
+};
+
+/** Every directory any of `states` may stand in. */
+const unionStates = (states) => ({
+  dirs: [...new Set(states.flatMap((st) => st.dirs))],
+  unknown: states.some((st) => st.unknown),
+});
+
+/** How the clause at `[start, end)` joins its neighbours: the operator before it (`and`, `or`,
+ * `pipe`, `bg` or `seq` for `;`, a newline or the start) and whether it runs in a pipeline or in
+ * the background, where a `cd` changes only a subshell's directory. */
+const clauseLinks = (visible, start, end) => {
+  const [b1, b2] = [visible[start - 1], visible[start - 2]];
+  const before =
+    b1 === '&' ? (b2 === '&' ? 'and' : b2 === '|' ? 'pipe' : 'bg') : b1 === '|' ? (b2 === '|' ? 'or' : 'pipe') : 'seq';
+  const [a1, a2] = [visible[end], visible[end + 1]];
+  const subshell = before === 'pipe' || (a1 === '|' && a2 !== '|') || (a1 === '&' && a2 !== '&');
+  return { before, subshell };
+};
+
+/** Write targets in one view of the command, each with the directories a relative target
+ * resolves against (`dirs`, and `unknown` when a `cd` hid one), and whether anything
+ * write-shaped cannot be resolved. Clauses are walked in order so a `cd` moves the base of every
+ * later clause it surely precedes; a `cd` that may not run (after `||`, inside a compound command
+ * or function, or anywhere in an `&&` list once a `;` ends it) leaves every earlier base possible;
+ * a subshell `( … )` restores the base it opened with. */
+const collectWriteSignals = (visible, heredocText, cwd) => {
   const literalTargets = [];
   let unresolvable = false;
+  let state = { dirs: [cwd], unknown: false };
+  const saved = [];
+  let clauseBase = null; // set while a clause runs `env -C DIR`
   const add = (raw) => {
-    if (isResolvableLiteralTarget(raw)) literalTargets.push(raw);
-    else unresolvable = true;
+    const base = clauseBase || state;
+    const target = unescapeTarget(raw);
+    if (!isResolvableLiteralTarget(target)) unresolvable = true;
+    else if (path.isAbsolute(target)) literalTargets.push({ target, dirs: [cwd] });
+    else {
+      literalTargets.push({ target, dirs: base.dirs });
+      if (base.unknown) unresolvable = true;
+    }
   };
 
-  findRedirectTargets(maskRedirectNoise(visible)).forEach(add);
-
-  for (const clause of splitClauses(visible)) {
-    const tokens = tokenize(clause);
-    if (tokens.length === 0) continue;
-    [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens), ...findOptionWriteTargets(tokens)].forEach(add);
-    if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
+  const redirectView = maskRedirectNoise(visible);
+  // `list` holds the base after each clause of the current `&&`/`||` list: when a `;` or newline
+  // ends it, any of them may be where the shell stands, since a later link may not have run.
+  let list = [];
+  const nest = { compound: 0, cases: 0 };
+  let cdpath = false;
+  for (const [start, end] of clauseRanges(visible)) {
+    const links = clauseLinks(visible, start, end);
+    if (visible.slice(start, end).trim() && (links.before === 'seq' || links.before === 'bg') && list.length > 0) {
+      state = unionStates(list);
+      list = [];
+    }
+    // Subshell parens around the clause are syntax, not part of its first or last word; inside a
+    // `case`, a trailing `)` closes a pattern instead.
+    const opening = visible.slice(start, end).match(/^[\s(]*/)[0];
+    let to = end;
+    while (to > start + opening.length && /[\s)]/.test(visible[to - 1])) to--;
+    const from = start + opening.length;
+    const tokens = tokenize(visible.slice(from, to));
+    const k = skipCompoundWords(tokens, nest);
+    const inCase = nest.cases > 0;
+    if (!inCase) for (let p = 0; p < opening.replace(/\s/g, '').length; p++) saved.push({ state, list }), (list = []);
+    clauseBase = null; // a redirect is opened by the shell itself, before `env` changes directory
+    findRedirectTargets(redirectView.slice(from, to)).forEach(add);
+    clauseBase = tokens.length > 0 ? envChdirBase(tokens, state.dirs) : null;
+    if (tokens.length > 0) {
+      [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findCopyMoveTargets(tokens), ...findOptionWriteTargets(tokens)].forEach(add);
+      if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
+      if (tokens.some((t) => t.startsWith('CDPATH='))) cdpath = true;
+      // A pipeline element or background job runs in a subshell: its `cd` moves only that subshell,
+      // which a `( … )` around it tracks and restores.
+      if (!links.subshell || opening.includes('(')) state = applyCd(state, tokens, k, links.before === 'or' || nest.compound > 0, cdpath);
+    }
+    const closing = visible.slice(to, end).replace(/\s/g, '').length;
+    if (!inCase) {
+      for (let p = 0; p < closing && saved.length > 0; p++) ({ state, list } = saved.pop());
+    }
+    list.push(state);
   }
 
   if (hasPipedScript(visible)) unresolvable = true;
-  if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => tokenize(c).some((t) => isCommandToken(t, 'git')))) {
+  if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => findCommand(tokenize(c), 'git') !== -1)) {
     unresolvable = true;
   }
   return { literalTargets, unresolvable };
@@ -1175,14 +1387,16 @@ const evaluateBashWriteTargets = (command, cwd) => {
   const heredocMask = computeHeredocBodyMask(command);
   const heredocText = command.replace(/[\s\S]/g, (ch, i) => (heredocMask[i] ? ch : ' '));
   for (const visible of visibleViews(command)) {
-    const signals = collectWriteSignals(visible, heredocText);
-    for (const target of signals.literalTargets) literalTargets.push({ target, visible });
+    const signals = collectWriteSignals(visible, heredocText, cwd);
+    for (const { target, dirs } of signals.literalTargets) {
+      for (const dir of dirs) literalTargets.push({ target, dir, visible });
+    }
     if (signals.unresolvable) unresolvable = true;
   }
 
-  for (const { target, visible } of literalTargets) {
+  for (const { target, dir, visible } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
-    const resolvedPath = path.isAbsolute(target) ? target : path.resolve(cwd, target);
+    const resolvedPath = path.resolve(dir, target);
     if (!isUnderRoot(resolvedPath, assignedRoot)) {
       const hint = looksLikeRegexFragment(target)
         ? ' This looks like a sed/regex expression; quote it.'
