@@ -181,13 +181,15 @@ In worktree:
 <lint-command> && <test-command>
 ```
 
-When the diff touches `src/` or anything that regenerates committed build-output trees
-(`.cursor/`, `.claude/`, `skills/`, `codex-*`, `.agents/build/`, etc.), run the full gate in
-this order **before opening the PR**:
+On **every PR**, whatever paths changed, run the full gate in this order **before opening the
+PR**. Hook source (`templates/hooks/**`), `scripts/**` (copied into `plugins/*/scripts`) and
+`src/**` all regenerate committed build-output trees (all trees per
+`scripts/lib/build/targets.ts`), so a diff that does not look like a build input can still dirty
+the tree; when the tree is already clean the build is a no-op:
 
 ```bash
 bun run build
-# commit source + regenerated output together
+git status --porcelain   # any path changed: commit source + regenerated output together
 bun run verify
 ```
 
