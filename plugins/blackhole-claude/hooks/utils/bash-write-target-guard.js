@@ -217,12 +217,6 @@ const INERT_GREP_COMMANDS = new Set(['grep', 'egrep', 'fgrep', 'rg']);
 /** rg options that run a decompressor/preprocessor, plus any unique prefix of them. */
 const RG_COMMAND_OPTIONS = ['--pre', '--pre-glob', '--hostname-bin', '--search-zip'];
 
-/** Whole-command constructs that can redefine what a bare command word means: a function
- * definition, alias/hash/enable/builtin, or a PATH change. */
-const COMMAND_REBINDING_RE = new RegExp(
-  '(?:^|[;&|\\s(])(?:function\\s+[\\w.-]+|[\\w.-]+\\s*\\(\\s*\\)\\s*\\{)|\\b(?:alias|unalias|hash|enable|builtin)\\b|\\bPATH=|export\\s+PATH',
-);
-
 /** `-f`/`--file` (a pattern file) and, for rg, a decompressor/preprocessor option disqualify a
  * clause; neither runs a command in grep, but the rule is kept simple and read-only. */
 const hasDisqualifyingOption = (head, args) =>
@@ -301,12 +295,13 @@ const isInertQuotedSpan = (text, start, end) => {
 
 /** Copy of `visible` with the contents of inert quoted spans blanked (`grep 'a>b'`), for the
  * whole-command `REDIRECT_RE` scan only; positions are preserved. Fails closed: spans are blanked
- * only inside a clause whose command is an inert filter, and only when nothing in the command
- * nests or reinterprets quotes or may execute quoted text; otherwise `visible` is returned
+ * only inside a clause whose command is an inert filter, and only when every clause of the command
+ * is an inert or passive filter (`isEveryClausePassive`) and nothing nests or reinterprets quotes
+ * or may execute quoted text; otherwise `visible` is returned
  * unchanged (base behaviour), so masking can never turn a deny into an allow. Unquoted text is never masked: an unquoted
  * `sed s/<A>/x/` really is a redirect in bash. */
 const maskRedirectNoise = (visible) => {
-  if (SHELL_EXEC_RE.test(visible) || QUOTE_REINTERPRETING_RE.test(visible) || COMMAND_REBINDING_RE.test(visible)) {
+  if (SHELL_EXEC_RE.test(visible) || QUOTE_REINTERPRETING_RE.test(visible)) {
     return visible;
   }
   if (!isEveryClausePassive(visible)) return visible;

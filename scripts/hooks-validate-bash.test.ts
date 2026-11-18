@@ -4956,6 +4956,18 @@ describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes
     });
   }
 
+  // The writer's own target stays inside the worktree, so only the masking fence can produce the block.
+  test('uniq with an output operand and sort with an output option disable masking', async () => {
+    for (const command of [
+      "grep 'cat >@OUT@/x ; true' f | uniq in out.txt",
+      "grep 'cat >@OUT@/x ; true' f | sort -o out.txt",
+      "grep 'cat >@OUT@/x ; true' f | sort --output=out.txt",
+      "grep 'cat >@OUT@/x ; true' f | sort -T /tmp",
+    ]) {
+      expect(await evaluate(command)).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+    }
+  });
+
   test('grep piped into allowlisted passive filters stays masked', async () => {
     for (const command of ["grep 'a>b' f | sort | uniq | head -5", "grep 'a>b' f | cut -d: -f1 | wc -l", "grep 'a>b' f && cat g"]) {
       expect(await evaluate(command)).toBeNull();
