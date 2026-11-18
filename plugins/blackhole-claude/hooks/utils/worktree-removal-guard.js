@@ -1461,6 +1461,7 @@ module.exports = {
   SCAN_BUDGET_EXCEEDED,
   MAX_ANALYZABLE_COMMAND_CHARS,
   MAX_REMOVAL_TARGET_PROBES,
+  MAX_CWD_CANDIDATES,
   checkUnpushedCommits,
   checkDetachedReachability,
   checkDirtyWorktree,

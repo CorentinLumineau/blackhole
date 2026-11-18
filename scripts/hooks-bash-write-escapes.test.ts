@@ -95,4 +95,50 @@ describe('bash-write-target-guard.js — backslash-escaped and quoted words (#12
       expect(await verdict(build)).toBeNull();
     });
   }
+
+  // Review of the #1243 fix: quoted subcommands and option words, ANSI-C command words, and a
+  // quoted command name that is only an argument (a grep pattern) and runs nothing.
+  for (const [label, build] of [
+    ["`git -C <main> 'format-patch' -1`", (m: string) => `git -C ${m} 'format-patch' -1`],
+    ['`git -C <main> "format-patch" -1`', (m: string) => `git -C ${m} "format-patch" -1`],
+    ['`git -C <main> format\\-patch -1`', (m: string) => `git -C ${m} format\\-patch -1`],
+    ["`cd <main> && git 'format-patch' -1`", (m: string) => `cd ${m} && git 'format-patch' -1`],
+    ["`git 'format-patch' -o <main> -1`", (m: string) => `git 'format-patch' -o ${m} -1`],
+    ["`git '-C' <main> format-patch -1`", (m: string) => `git '-C' ${m} format-patch -1`],
+    ["`git format-patch '-o' <main> -1`", (m: string) => `git format-patch '-o' ${m} -1`],
+    ["`git diff '--output' <main>/x`", (m: string) => `git diff '--output' ${m}/x`],
+    ["`dd 'of=<main>/x'`", (m: string) => `dd 'of=${m}/x'`],
+    ["`$'sed' -i s/a/b/ <main>/x`", (m: string) => `$'sed' -i s/a/b/ ${m}/x`],
+    ["`$'tee' <main>/x`", (m: string) => `echo x | $'tee' ${m}/x`],
+    ["`$'cp' a <main>/x`", (m: string) => `$'cp' a ${m}/x`],
+    ["`$'\\x63p' a <main>/x` (ANSI-C escape)", (m: string) => `$'\\x63p' a ${m}/x`],
+    ["`$'\\143p' a <main>/x` (ANSI-C octal)", (m: string) => `$'\\143p' a ${m}/x`],
+    ["`c''p a <main>/x`", (m: string) => `c''p a ${m}/x`],
+    ['`"c"p a <main>/x`', (m: string) => `"c"p a ${m}/x`],
+    ["`sudo 'cp' a <main>/x`", (m: string) => `sudo 'cp' a ${m}/x`],
+    ["`sudo -u bob 'cp' a <main>/x`", (m: string) => `sudo -u bob 'cp' a ${m}/x`],
+    ["`env X=1 'tee' <main>/x`", (m: string) => `echo x | env X=1 'tee' ${m}/x`],
+    ["`timeout 5 'cp' a <main>/x`", (m: string) => `timeout 5 'cp' a ${m}/x`],
+    ['`X=1 \\cp a <main>/x`', (m: string) => `X=1 \\cp a ${m}/x`],
+    ['`flock /tmp/l cp a <main>/x` (a bare command word after an unknown wrapper)', (m: string) => `flock /tmp/l cp a ${m}/x`],
+  ] as const) {
+    test(`#1243: ${label} is denied`, async () => {
+      expect(await verdict(build)).toMatchObject(BLOCK);
+    });
+  }
+
+  for (const [label, build] of [
+    ['`grep -rn "tee" /usr/lib/node_modules`', () => 'grep -rn "tee" /usr/lib/node_modules'],
+    ["`grep -n 'cp' /etc/hosts <main>/README.md`", (m: string) => `grep -n 'cp' /etc/hosts ${m}/README.md`],
+    ['`git log --grep "tee" -- <main>`', (m: string) => `git log --grep "tee" -- ${m}`],
+    ['`grep "uniq" a /etc/b`', () => 'grep "uniq" a /etc/b'],
+    ['`rg "sed" <main>/src`', (m: string) => `rg "sed" ${m}/src`],
+    ['`grep -rln "install" /usr/share/doc`', () => 'grep -rln "install" /usr/share/doc'],
+    ["`echo 'mv' a /etc/b`", () => "echo 'mv' a /etc/b"],
+    ['`git log --format="{x,y}"`', () => 'git log --format="{x,y}"'],
+  ] as const) {
+    test(`#1243: ${label} (a quoted command name as an argument) stays allowed`, async () => {
+      expect(await verdict(build)).toBeNull();
+    });
+  }
 });
