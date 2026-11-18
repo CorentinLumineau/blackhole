@@ -259,6 +259,33 @@ const isInertClause = (tokens) => {
   return head === 'sed' && isInertSed(args);
 };
 
+/** Read-only filters that may sit beside an inert grep/sed clause without turning masking off. */
+const PASSIVE_FILTER_COMMANDS = new Set(['wc', 'head', 'tail', 'sort', 'cat', 'uniq', 'cut']);
+const SORT_PLAIN_OPTION_RE = /^-[nrufbdiMhVgs]+$/;
+
+/** True for a bare allowlisted filter clause that cannot write: no redirect operator in any token,
+ * `sort` without an output/compress option, `uniq` with at most one positional argument (the
+ * second names an output file). */
+const isPassiveFilterClause = (tokens) => {
+  if (tokens.length === 0 || !PASSIVE_FILTER_COMMANDS.has(tokens[0])) return false;
+  const args = tokens.slice(1);
+  if (args.some((t) => /[<>]/.test(t))) return false;
+  if (tokens[0] === 'sort') return args.every((t) => !t.startsWith('-') || SORT_PLAIN_OPTION_RE.test(t));
+  if (tokens[0] === 'uniq') return args.filter((t) => !t.startsWith('-')).length <= 1;
+  return true;
+};
+
+/** Masking is safe only when every clause of the command is a passive filter: any other statement
+ * (assignment, `unset`, `printf -v`, `read`, `cd`, ...) may rebind what a bare `grep`/`sed` word
+ * runs, so it disables masking for the whole command. Empty clauses (`&&`, `||`) are neutral. */
+const isEveryClausePassive = (visible) =>
+  clauseRanges(visible).every(([start, end]) => {
+    const text = visible.slice(start, end);
+    if (text.trim() === '') return true;
+    const tokens = tokenize(text);
+    return isInertClause(tokens) || isPassiveFilterClause(tokens);
+  });
+
 const REDIRECT_OPERATOR_TAIL_RE = /(?:&>>|&>|>>|>&|>\||>)\s*$/;
 
 /** A quoted span `text[start..end)` is inert text (cannot hide a write target) unless it is a
@@ -282,6 +309,7 @@ const maskRedirectNoise = (visible) => {
   if (SHELL_EXEC_RE.test(visible) || QUOTE_REINTERPRETING_RE.test(visible) || COMMAND_REBINDING_RE.test(visible)) {
     return visible;
   }
+  if (!isEveryClausePassive(visible)) return visible;
   const chars = visible.split('');
   for (const [start, end] of clauseRanges(visible)) {
     const text = visible.slice(start, end);
