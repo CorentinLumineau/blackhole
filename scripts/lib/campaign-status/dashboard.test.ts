@@ -279,3 +279,17 @@ describe('renderMergeNextSection', () => {
     );
   });
 });
+
+describe('formatDashboard — configured lane', () => {
+  const base = {
+    checkpoint: { orchestrator_turn_id: 1 },
+    queue: { refreshed_at: '2026-09-06T00:00:00.000Z', issues: { '1': { title: 'own', status: 'blocked', notes: 'depends on upstream', labels: ['in-progress:acct-a'] } } },
+    ledger: { findings: [] },
+    forge: { openIssues: 0, openPrs: 0, ok: true },
+  };
+
+  test('the own lane label does not make a row another lane', () => {
+    expect(formatDashboard({ ...base, lane: 'acct-a' } as never)).toContain('**Dependency / upstream** (1)');
+    expect(formatDashboard(base as never)).toContain('**Another lane** (1)');
+  });
+});

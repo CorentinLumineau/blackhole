@@ -145,3 +145,47 @@ describe('run-context CLI usage_budget wiring', () => {
     });
   });
 });
+
+describe('run-context CLI plugin version warning', () => {
+  const TOOLS = 'agent,background-agents,ask-decision,github-mcp';
+  const ENV = { CLAUDECODE: '1', CLAUDE_CODE_PROJECTS_SESSION: '1' };
+  const WARN = /warn: blackhole \S+ is running but \S+ is installed/;
+  const withHome = (version: string, body: (home: string, project: string) => void) =>
+    withTempDir('run-context-home', (home) =>
+      withTempDir('run-context-project', (project) => {
+        fs.mkdirSync(path.join(home, '.claude', 'plugins'), { recursive: true });
+        fs.writeFileSync(
+          path.join(home, '.claude', 'plugins', 'installed_plugins.json'),
+          JSON.stringify({ plugins: { 'blackhole@blackhole-marketplace': [{ scope: 'user', version }] } }),
+        );
+        body(home, project);
+      }),
+    );
+  const recordOf = (project: string) => JSON.parse(fs.readFileSync(path.join(project, '.blackhole', 'run-context.json'), 'utf-8'));
+
+  test('a newer installed version prints a warn line with both versions, keeps exit 0 and records plugin.behind', () => {
+    withHome('999.0.0', (home, project) => {
+      const res = run(['--tools', TOOLS], project, { ...ENV, HOME: home });
+      expect(res.status).toBe(0);
+      expect(res.stdout).toMatch(WARN);
+      expect(res.stdout).toContain('999.0.0');
+      expect(res.stdout).not.toContain('missing:');
+      expect(recordOf(project).plugin).toMatchObject({ behind: true, newest: '999.0.0' });
+    });
+  });
+
+  test('no newer version: no plugin warn line and plugin.behind is false', () => {
+    withHome('0.0.1', (home, project) => {
+      const res = run(['--tools', TOOLS], project, { ...ENV, HOME: home });
+      expect(res.status).toBe(0);
+      expect(res.stdout).not.toMatch(WARN);
+      expect(recordOf(project).plugin.behind).toBe(false);
+    });
+  });
+
+  test('--no-write still prints the warn line', () => {
+    withHome('999.0.0', (home, project) => {
+      expect(run(['--tools', TOOLS, '--no-write'], project, { ...ENV, HOME: home }).stdout).toMatch(WARN);
+    });
+  });
+});

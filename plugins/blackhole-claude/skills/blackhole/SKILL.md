@@ -1,6 +1,7 @@
 ---
 name: blackhole
 description: Orchestrates backlog campaign until zero open issues and PRs. Multitask Mode entry via coordinator. Auto-syncs GitHub issues, clarifies/splits any size, five-phase lifecycle, V-code ledger. Use for finish the backlog, backlog campaign, /blackhole, orchestrate issues, split issues, bc-run, bc-status.
+argument-hint: "[run | catchup | stop]"
 disable-model-invocation: true
 ---
 
@@ -39,13 +40,14 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 | Mode | Trigger | Who runs it |
 |------|---------|-------------|
 | `run` | `run`, `campaign`, "finish the backlog" | Coordinator spawns orchestrator |
+| `catchup` | `catchup`, "burn the weekly quota down to the pace floor" | Coordinator spawns orchestrator — gated by `usage-budget.ts --floor` ([phase-catchup.md](references/phase-catchup.md)) |
 | `status` | default, `status`, `sync` | Coordinator or orchestrator — auto-sync + dashboard, then refresh the status page ([status-page.md](references/status-page.md)) |
 | `handle #N` | `handle #N` | Orchestrator — phase 1 only |
 | `plan #N` | `plan #N` | Orchestrator — phase 2 only |
 | `implement #N` | `implement #N` | Orchestrator — phase 3 only |
 | `review #N` | `review #N` | Orchestrator — phase 4 only |
 | `hunt [kind]` | `hunt`, `hunt <kind>` | Orchestrator — manual kaizen wave (`kaizen.trigger: manual`, or any time regardless of trigger) |
-| `stop` (drain, default) | `stop`, `pause`, `drain the campaign` | Orchestrator (foreground, Pattern C/A) or Coordinator relay → orchestrator (Pattern B) — see `phase-stop.md` |
+| `stop` (drain, default) | `stop`, `pause`, `drain the campaign` (drains a `catchup` like a `run`) | Orchestrator (foreground, Pattern C/A) or Coordinator relay → orchestrator (Pattern B) — see `phase-stop.md` |
 | `stop --abandon` | `stop --abandon`, `abandon`, `kill`, `abort`, `force stop` | Orchestrator/Coordinator, explicit opt-in only — see `phase-stop.md` |
 | `sleep` / `wake` | `sleep`, "I'm leaving" / `wake`, the owner's first message back | Coordinator or main-chat orchestrator — park every owner question, then ask them in one batched round ([sleep-mode.md](references/sleep-mode.md)) |
 | `campaign-audit` | `audit`, `campaign audit` | Read-only protocol conformance check |
@@ -54,13 +56,13 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 
 **Native forge sync** — automatic, never AskQuestion to confirm.
 
-1. **Config** — `.blackhole/config.json` (from `config-template.md` in this repo). In `run` mode
+1. **Config** — `.blackhole/config.json` (from `config-template.md` in this repo). In `run` and `catchup` modes
    this step also runs the **Campaign launch configuration gate** (`coordinator.md` § Bootstrap
    preflight, the SSOT): either the full 6-step form (first bootstrap, post-campaign restart, or
    explicit reconfigure) or otherwise the lightweight
    routine resume confirmation gate — the executive summary, then Accept / Adjust per section
    ([launch-gate.md](references/launch-gate.md)).
-   The gate applies in `run` mode only; every other mode in the table above loads config with no
+   The gate applies in `run` and `catchup` modes only; every other mode in the table above loads config with no
    confirm step.
 2. **Companion-file scaffold** — gated by `docs_governance.companion_files` (default `true`,
    config already loaded from step 1); skip entirely when `docs_governance.enabled` does not
@@ -89,7 +91,7 @@ Direct `/blackhole run` or `/goal` in a single session: act as orchestrator (leg
 5. **Forge sync** — if `auto_sync` true (default): `gh auth status` then [forge-sync.md](references/forge-sync.md). Sandbox: `full_network`.
 6. **Dashboard** — print the text dashboard: open issues/PRs, new since sync, in-flight, LEDGER
    OPEN, ready set
-7. **Status page** — in `run` mode, publish or refresh the campaign's status page before the
+7. **Status page** — in `run` and `catchup` modes, publish or refresh the campaign's status page before the
    first spawn ([status-page.md](references/status-page.md) § Refresh procedure), unless
    `status_page.enabled` is `false`. Printing step 6 does not do this: the page is a separate
    published view.

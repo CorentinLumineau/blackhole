@@ -21,6 +21,7 @@ import {
 } from './lib/campaign-status/pending-decisions.ts';
 import { SCOPE_KINDS, type QueueIssue, type ScopeEntry, type ScopeKind } from './lib/campaign-status/types.ts';
 import { readBudgetPanel, when } from './lib/campaign-status/budget.ts';
+import { USAGE_HISTORY_FILE } from './lib/usage-history.ts';
 import { buildWakeReport, doneIssues, planWakeUps, readSleepSession, sleepOff, sleepOn } from './lib/campaign-status/sleep-session.ts';
 import { releaseHold, resolveStateStore, systemHoldDeps, takeHold, type HoldDeps } from './lib/campaign-status/sleep-hold.ts';
 import { resolveHost } from './lib/usage-source.ts';
@@ -128,7 +129,7 @@ function readQueueIssues(campaignDir: string): Record<string, QueueIssue> | null
 
 /** The status page's budget panel for this host, now. */
 const readBudget = (campaignDir: string, config: Record<string, unknown>, now: Date) =>
-  readBudgetPanel(config, resolveHost(campaignDir, process.env), Math.floor(now.getTime() / 1000));
+  readBudgetPanel(config, resolveHost(campaignDir, process.env), Math.floor(now.getTime() / 1000), path.join(campaignDir, USAGE_HISTORY_FILE));
 
 /** `usage_budget.coordination.role`; an invalid block counts as solo, so no peer is woken on a guess. */
 function coordinationRole(config: Record<string, unknown>): string {

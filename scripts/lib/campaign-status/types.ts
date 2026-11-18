@@ -1,4 +1,4 @@
-import type { UsageVerdictName } from '../usage-budget.ts';
+import type { UsageVerdictName, WeeklyPace } from '../usage-budget.ts';
 
 // Mirrors the `route` object SSOT — `queue-dag.md` § `route` object. Field names and enum
 // values are frozen there; this type must not rename or add fields (V-INT-01 / V-DRY-01).
@@ -190,6 +190,17 @@ export type StatusArgs = {
   now: number | null;
   /** `--summary --json`: print the rows and the question cards as JSON. */
   summaryJson: boolean;
+  /** `--summary --mode catchup` only: the catchup flags; null for `--mode run` (the default) and every other mode. */
+  catchup: CatchupArgs | null;
+};
+
+/** The catchup flags of `--summary --mode catchup`; each override is for this invocation only. */
+export type CatchupArgs = {
+  usageFile: string | null;
+  floorPct: number | null;
+  noSpawnAt: number | null;
+  stopWorkersAt: number | null;
+  lane: string | null;
 };
 
 /** Queue and ledger counts — the single computation both the text dashboard and the report read. */
@@ -406,8 +417,16 @@ export type BudgetPanel = {
   source: 'rate-limit-cache' | 'none' | null;
   /** The windows the reading shows: `five_hour` only when the plan has one. */
   windows: Array<'five_hour' | 'seven_day'>;
+  /** Spending pace against `target_at_reset` over the usage history (`weeklyPace`); shown on every panel, `unknown` with a reason when it cannot be judged. */
+  pace: WeeklyPace;
   /** `usage_budget.weekly.target_at_reset`: the weekly % the pace aims to land on at the reset; null when unset or invalid. */
   target_at_reset: number | null;
+  /**
+   * The last weekly reading of a cache older than `resource_policy.pace.max_age_seconds`, shown so the page is not blind
+   * while `probed` stays false for pacing: its %, when it was written, its age, and where the line from 0% at the window
+   * start to `target_at_reset` at the reset stands now (null without a target). Null when not stale or no weekly window is current. Additive.
+   */
+  stale: { weekly_pct: number; read_at: string; age_seconds: number; target_line_pct: number | null } | null;
 };
 
 /** A status colour name. Text always carries the meaning; the colour only repeats it. */
@@ -448,7 +467,9 @@ export type IssueRow = { num: number; issue: QueueIssue };
 
 /** The launch summary's rows, in display order (`launch-summary.ts`). */
 export const LAUNCH_ROW_KEYS = ['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep'] as const;
-export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];
+/** The catchup summary's rows: the run rows plus Pacing, in display order. */
+export const CATCHUP_ROW_KEYS = ['scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep'] as const;
+export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number] | (typeof CATCHUP_ROW_KEYS)[number];
 
 export type GateOption = { label: string; description: string };
 

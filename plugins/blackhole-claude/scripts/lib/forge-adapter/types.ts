@@ -8,6 +8,10 @@ export interface ForgeIssue {
   labels: Array<{ name: string }>;
   milestone: { title: string } | null;
   state: 'OPEN' | 'CLOSED';
+  /** Assignee logins; absent when the channel does not report them. */
+  assignees?: string[];
+  /** Last update time; absent when the channel does not report it. */
+  updatedAt?: string | null;
 }
 
 export interface ForgePr {
@@ -22,6 +26,8 @@ export interface ForgePr {
   headRepoIsFork?: boolean;
   draft?: boolean;
   createdAt?: string | null;
+  /** Last update time; absent when the channel does not report it. */
+  updatedAt?: string | null;
   state: 'OPEN' | 'CLOSED' | 'MERGED';
   mergedAt: string | null;
   /** Label names; absent when the channel does not report them. */
@@ -125,6 +131,25 @@ export interface ForgeDependencies {
   blockedBy: DependencyRef[];
 }
 
+/**
+ * One claim of an issue for a lane (ADR-054 C4). `HELD`: another lane holds a live claim (`held_by`).
+ * `RECLAIMED`: a stale claim was taken over. `CLOSED`: the issue is closed, nothing was written.
+ */
+export interface ClaimResult {
+  verdict: 'CLAIMED' | 'ALREADY-OWN' | 'RECLAIMED' | 'HELD' | 'CLOSED';
+  held_by?: string;
+}
+
+export interface ReleaseResult {
+  verdict: 'RELEASED' | 'NOT-HELD';
+}
+
+export interface ClaimLease {
+  leaseHours: number;
+  /** Epoch ms; defaults to the clock. */
+  now?: number;
+}
+
 export interface ForgeAdapterConfig {
   repo: string;
   forge?: ForgeType;
@@ -164,4 +189,14 @@ export interface ForgeAdapter {
    * set already matches. Returns the set read back after the write.
    */
   setDependencies(target: DependencyTarget, blockedBy: DependencyRef[]): Promise<ForgeDependencies>;
+
+  /**
+   * Claims the issue for `lane`: adds `in-progress:<lane>` and assigns `user`. A live claim of
+   * another lane answers `HELD` and writes nothing; a claim stale past the lease is taken over.
+   */
+  claim(issue: number, lane: string, user: string, lease?: ClaimLease): Promise<ClaimResult>;
+  /** Removes the lane label and the authenticated user's assignment; `NOT-HELD` writes nothing. */
+  release(issue: number, lane: string): Promise<ReleaseResult>;
+  /** The login the forge CLI is authenticated as. */
+  viewerLogin(): Promise<string>;
 }

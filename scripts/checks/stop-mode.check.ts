@@ -145,7 +145,7 @@ export const findSpawnSitesMissingUsageGate = (files: { path: string; content: s
 const SPAWN_SITE_DIRS = ['src/references', 'src/agents'];
 // The three pattern spawn sites must each cite the usage gate, so a deleted citation cannot pass
 // the block rule above by also deleting the pace-gate one.
-const PATTERN_SPAWN_SITES = ['src/references/orchestrator-runtime.md', 'src/references/claude-code-native.md', 'src/references/project-thread-mode.md'];
+const PATTERN_SPAWN_SITES = ['src/references/orchestrator-runtime.md', 'src/references/claude-code-native.md', 'src/references/project-thread-mode.md', 'src/references/phase-catchup.md'];
 
 // V-STOP-02: static conformance — SKILL.md cites phase-stop.md; phase-stop.md cites
 // recovery-protocol.md §9 by reference (never restates its heal-actions steps);
@@ -158,6 +158,7 @@ export const checkStopModeWiring = (): CheckResult => {
   const errors: string[] = [];
 
   if (!skill.includes('phase-stop.md')) errors.push('SKILL.md missing phase-stop.md citation');
+  if (!phaseStop.includes('catchup')) errors.push('phase-stop.md does not say a catchup drains like a run');
   if (!phaseStop.includes('recovery-protocol.md') || !phaseStop.includes('§9')) {
     errors.push('phase-stop.md missing recovery-protocol.md §9 citation');
   }
@@ -205,6 +206,7 @@ export const checkUsageGateWiring = (): CheckResult => {
   for (const site of PATTERN_SPAWN_SITES) {
     if (!read(site).includes('usage-budget.ts')) errors.push(`${site} does not cite usage-budget.ts`);
   }
+  if (!read('src/references/phase-catchup.md').includes('--floor')) errors.push('phase-catchup.md does not cite --floor');
   errors.push(...findUsageStopViolations(read('src/references/phase-stop.md')));
   errors.push(...findUsageRuntimeViolations(read('src/references/orchestrator-runtime.md')));
   if (errors.length) return { id: 'V-STOP-03', ok: false, detail: errors.join('; ') };

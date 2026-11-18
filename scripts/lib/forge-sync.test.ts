@@ -224,3 +224,69 @@ describe('syncQueue — round 2: gates survive, own branches only', () => {
   });
 });
 
+
+describe('syncQueue — lane ownership and the claim lease', () => {
+  const nowMs = Date.parse(NOW);
+  const ago = (h: number): string => new Date(nowMs - h * 3_600_000).toISOString();
+  const withLabel = (n: number, label: string, extra: Partial<ForgeIssue> = {}) => issue(n, { labels: [{ name: label }], ...extra });
+  const lane = { lane: 'acct-a' };
+
+  test('under a lane only its own label is not foreign; the legacy pair is foreign', () => {
+    const r = sync({ ...lane, issues: [withLabel(1, 'in-progress:acct-a'), withLabel(2, 'in-progress:acct-b'), withLabel(3, 'in-progress:claude'), withLabel(4, 'agent:cursor')] });
+    expect(r.queue.issues['1']).toMatchObject({ status: 'ready' });
+    expect(r.queue.issues['2']).toMatchObject({ status: 'blocked', notes: 'another lane: in-progress:acct-b' });
+    expect(r.queue.issues['3']).toMatchObject({ status: 'blocked' });
+    expect(r.queue.issues['4']).toMatchObject({ status: 'blocked' });
+  });
+
+  test('a claim stale past the lease is ignored; a fresh or untimed one holds', () => {
+    const r = sync({ ...lane, issues: [withLabel(1, 'in-progress:acct-b', { updatedAt: ago(25) }), withLabel(2, 'in-progress:acct-b', { updatedAt: ago(23) }), withLabel(3, 'in-progress:acct-b')] });
+    expect(r.queue.issues['1']).toMatchObject({ status: 'ready' });
+    expect(r.queue.issues['2']).toMatchObject({ status: 'blocked' });
+    expect(r.queue.issues['3']).toMatchObject({ status: 'blocked' });
+  });
+
+  test('the lease follows claimLeaseHours', () => {
+    const r = sync({ ...lane, claimLeaseHours: 6, issues: [withLabel(1, 'in-progress:acct-b', { updatedAt: ago(7) })] });
+    expect(r.queue.issues['1']).toMatchObject({ status: 'ready' });
+  });
+
+  test('an open PR closing the issue with recent activity keeps a stale claim held', () => {
+    const r = sync({ ...lane, issues: [withLabel(1, 'in-progress:acct-b', { updatedAt: ago(30) })], prs: [pr(10, { headRefName: 'cursor/x', body: 'Closes #1', updatedAt: ago(1) })] });
+    expect(r.queue.issues['1']).toMatchObject({ status: 'blocked' });
+  });
+
+  test('a stale claim whose open PR is also inactive frees the issue and links no PR', () => {
+    const r = sync({ ...lane, issues: [withLabel(1, 'in-progress:acct-b', { updatedAt: ago(30) })], prs: [pr(10, { headRefName: 'cursor/x', body: 'Closes #1', updatedAt: ago(30) })] });
+    expect(r.queue.issues['1']).toMatchObject({ status: 'ready', pr: null });
+  });
+
+  test('agent labels never lease', () => {
+    const r = sync({ ...lane, issues: [withLabel(1, 'agent:cursor', { updatedAt: ago(48) })] });
+    expect(r.queue.issues['1']).toMatchObject({ status: 'blocked' });
+  });
+
+  test('a stale label this sync once wrote goes back to ready', () => {
+    const queue = { issues: { '1': { title: 't', phase: 'handle', status: 'blocked', pr: null, notes: 'another lane: in-progress:acct-b' } } };
+    const r = sync({ ...lane, queue, issues: [withLabel(1, 'in-progress:acct-b', { updatedAt: ago(30) })] });
+    expect(r.queue.issues['1']).toMatchObject({ status: 'ready', notes: null });
+  });
+
+  test('the own lane label makes a PR the campaign PR whatever its branch', () => {
+    const r = sync({ ...lane, issues: [withLabel(9, 'in-progress:acct-a')], prs: [pr(90, { headRefName: 'foo/issue-9', body: 'Closes #9' })] });
+    expect(r.queue.issues['9']).toMatchObject({ pr: 90 });
+    expect(r.linked).toEqual([9]);
+  });
+
+  test('another lane label keeps a campaign-prefixed PR from being linked', () => {
+    const r = sync({ ...lane, issues: [withLabel(9, 'in-progress:acct-b')], prs: [pr(90, { headRefName: 'blackhole/issue-9', body: 'Closes #9' })] });
+    expect(r.queue.issues['9']).toMatchObject({ status: 'blocked', pr: null });
+    expect(r.linked).toEqual([]);
+  });
+
+  test('with no lane label the branch prefix still decides', () => {
+    const r = sync({ ...lane, issues: [issue(4), issue(5)], prs: [pr(40, { headRefName: 'blackhole/issue-4', body: 'Closes #4' }), pr(50, { headRefName: 'cursor/x', body: 'Closes #5' })] });
+    expect(r.queue.issues['4']).toMatchObject({ pr: 40 });
+    expect(r.queue.issues['5']).toMatchObject({ status: 'blocked', notes: 'another lane: cursor/x' });
+  });
+});
