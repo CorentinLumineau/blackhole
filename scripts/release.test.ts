@@ -2,6 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { execSync } from 'child_process';
 import {
   findManifestVersionMismatches,
   MANIFEST_PATHS,
@@ -152,6 +153,50 @@ describe('findManifestVersionMismatches', () => {
     manifests['.claude-plugin/marketplace.json'] = { version: '1.0.0', plugins: [{ version: '0.9.0' }] };
 
     expect(findManifestVersionMismatches('1.0.0', manifests)).toEqual(['.claude-plugin/marketplace.json']);
+  });
+});
+
+describe('MANIFEST_PATHS registry coverage', () => {
+  const repoRoot = path.resolve(import.meta.dir, '..');
+  const readJson = (rel: string): unknown => JSON.parse(fs.readFileSync(path.join(repoRoot, rel), 'utf8'));
+  const pkgVersion = (readJson('package.json') as { version: string }).version;
+
+  test('lists exactly the 7 version-carrying manifests', () => {
+    expect(MANIFEST_PATHS.map((m) => m.path).sort()).toEqual([
+      '.claude-plugin/marketplace.json',
+      '.claude-plugin/plugin.json',
+      '.codex-plugin/plugin.json',
+      '.gemini-plugin/plugin.json',
+      'plugins/blackhole-agent-plugins/plugin.json',
+      'plugins/blackhole-claude/.claude-plugin/plugin.json',
+      'plugins/blackhole/plugin.json',
+    ]);
+  });
+
+  test('every tracked versioned manifest is registered and every registered one matches package.json', () => {
+    const registered = new Set(MANIFEST_PATHS.map((m) => m.path));
+    const tracked = execSync('git ls-files', { cwd: repoRoot, encoding: 'utf8' })
+      .split('\n')
+      .filter((f) => /(^|\/)(plugin|marketplace)\.json$/.test(f) && !f.includes('fixtures/'));
+    const versioned = tracked.filter((f) => {
+      const json = readJson(f) as { version?: unknown; plugins?: Array<{ version?: unknown }> };
+      return json.version !== undefined || json.plugins?.[0]?.version !== undefined;
+    });
+    expect(versioned.filter((f) => !registered.has(f))).toEqual([]);
+    for (const { path: p, versionOf } of MANIFEST_PATHS) {
+      expect(versionOf(readJson(p))).toBe(pkgVersion);
+    }
+  });
+
+  test.each([
+    'plugins/blackhole-claude/.claude-plugin/plugin.json',
+    'plugins/blackhole-agent-plugins/plugin.json',
+  ])('flags a stale %s', (stale) => {
+    const manifests: Record<string, unknown> = {};
+    for (const { path: p } of MANIFEST_PATHS) manifests[p] = { version: '2.0.0' };
+    manifests['.claude-plugin/marketplace.json'] = { plugins: [{ version: '2.0.0' }] };
+    manifests[stale] = { version: '1.0.0' };
+    expect(findManifestVersionMismatches('2.0.0', manifests)).toEqual([stale]);
   });
 });
 

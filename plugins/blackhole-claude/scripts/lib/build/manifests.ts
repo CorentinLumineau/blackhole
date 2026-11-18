@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { projectIdentity } from '../../project-identity.ts';
-import { CLAUDE_DISTRIBUTION_ROOT } from './paths.ts';
+import { AGENT_PLUGINS_DISTRIBUTION_ROOT, CLAUDE_DISTRIBUTION_ROOT, DISTRIBUTION_ROOT } from './paths.ts';
 
 export const AGENT_PLUGINS_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
 
@@ -93,3 +93,29 @@ export const buildClaudeMarketplace = (pluginMeta: ReturnType<typeof buildClaude
   owner: { name: 'CorentinLumineau' },
   plugins: [{ ...pluginMeta, source: `./${CLAUDE_DISTRIBUTION_ROOT.split(path.sep).join('/')}` }],
 });
+
+const topLevelVersion = (json: unknown): string | undefined => (json as { version?: string }).version;
+
+/**
+ * Every manifest the build writes that carries the plugin version. `release.ts` derives its
+ * version-sync check from this list; `release.test.ts` fails when a tracked versioned manifest
+ * is missing from it.
+ */
+export const VERSIONED_MANIFESTS: Array<{ path: string; versionOf: (json: unknown) => string | undefined }> = [
+  { path: '.claude-plugin/plugin.json', versionOf: topLevelVersion },
+  {
+    path: '.claude-plugin/marketplace.json',
+    versionOf: (json) => (json as { plugins?: Array<{ version?: string }> }).plugins?.[0]?.version,
+  },
+  { path: '.codex-plugin/plugin.json', versionOf: topLevelVersion },
+  { path: '.gemini-plugin/plugin.json', versionOf: topLevelVersion },
+  { path: path.posix.join(...DISTRIBUTION_ROOT.split(path.sep), 'plugin.json'), versionOf: topLevelVersion },
+  {
+    path: path.posix.join(...CLAUDE_DISTRIBUTION_ROOT.split(path.sep), '.claude-plugin', 'plugin.json'),
+    versionOf: topLevelVersion,
+  },
+  {
+    path: path.posix.join(...AGENT_PLUGINS_DISTRIBUTION_ROOT.split(path.sep), 'plugin.json'),
+    versionOf: topLevelVersion,
+  },
+];

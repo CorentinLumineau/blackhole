@@ -58,7 +58,7 @@ See [README.md](README.md#-installation-paths) for Cursor submodule, Claude mark
 
 ## Maintainer — releases & milestones
 
-Each semver milestone (`v0.4.1`, `v0.4.2`, …) is closed **only** by publishing its matching release via [`.claude/skills/prj-create-release/SKILL.md`](.claude/skills/prj-create-release/SKILL.md). The CLI backing that skill is [`scripts/release.ts`](scripts/release.ts) — run `bun run release prepare|validate|tag|push vX.Y.Z`. Project rule: [`.cursor/rules/release-milestone-governance.mdc`](.cursor/rules/release-milestone-governance.mdc).
+Each semver milestone (`v0.4.1`, `v0.4.2`, …) is closed **only** by publishing its matching release via [`.claude/skills/prj-create-release/SKILL.md`](.claude/skills/prj-create-release/SKILL.md). The CLI backing that skill is [`scripts/release.ts`](scripts/release.ts) — run `bun run release prepare|validate|tag|push vX.Y.Z`. Project rule: [`.github/rules/release-milestone-governance.mdc`](.github/rules/release-milestone-governance.mdc).
 
 ## Maintainer — upstream sync
 
