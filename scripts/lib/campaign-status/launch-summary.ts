@@ -1,6 +1,7 @@
 import { readScope } from '../../forge-scope.ts';
 import { adjustPacing, type CatchupConfig, type Pacing } from '../catchup.ts';
 import { joinTarget, type DetectedPeer, type DetectResult } from '../peer-campaigns.ts';
+import { WEEK_HOURS } from '../pace-floor.ts';
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetConfig } from '../usage-budget.ts';
 import { parallelMaxOf, resolveBudgetSettings, when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
@@ -198,7 +199,7 @@ export function pacingRow(input: CatchupInput): LaunchRow {
     };
   }
   const shortfall = pacing.shortfall_pct;
-  const floorText = floorPct === input.pacing.floor_pct ? `floor ${pct(floorPct)} (${input.pacing.credits} credits x ${preset.pct_per_weekday})` : `floor ${pct(floorPct)} (adjusted)`;
+  const floorText = floorPct === input.pacing.floor_pct ? `floor ${pct(floorPct)} (${Number((input.pacing.elapsed_h ?? 0).toFixed(1))} h / ${WEEK_HOURS} h x ${pct(input.pacing.target_pct ?? preset.weekly_target_pct)})` : `floor ${pct(floorPct)} (adjusted)`;
   const value = [
     `plan ${pacing.plan}`,
     `weekly ${pct(pacing.used_pct)}${pacing.resets_at ? ` (resets ${when(new Date(pacing.resets_at * 1000).toISOString())})` : ''}`,

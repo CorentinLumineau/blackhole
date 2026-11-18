@@ -997,10 +997,10 @@ describe('status --summary (the launch summary)', () => {
     expect(catchup.exitCode).toBe(0);
     const parsed = JSON.parse(catchup.stdout.toString());
     expect(parsed.rows.map((r: { key: string }) => r.key)).toEqual(['scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep']);
-    expect(parsed.pacing).toMatchObject({ status: 'ok', floor_pct: 61.25, shortfall_pct: 11.25 });
+    expect(parsed.pacing).toMatchObject({ status: 'ok', floor_pct: 45.71, elapsed_h: 96, target_pct: 80, shortfall_pct: 15.71 });
     expect(JSON.parse(summary('--campaign-dir', FULL, '--now', NOW_FRI, '--json').stdout.toString()).rows).toHaveLength(8);
     const adjusted = JSON.parse(summary('--campaign-dir', FULL, '--mode', 'catchup', '--usage-file', file, '--floor', '80', '--now', NOW_FRI, '--json').stdout.toString());
-    expect(adjusted.pacing).toMatchObject({ floor_pct: 80, shortfall_pct: 30 });
+    expect(adjusted.pacing).toMatchObject({ floor_pct: 80, shortfall_pct: 50 });
   });
 
   test('catchup exits 2 on inline --usage, a stray --floor, a bad override and a missing usage file', () => {

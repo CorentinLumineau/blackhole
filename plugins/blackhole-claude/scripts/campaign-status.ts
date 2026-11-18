@@ -6,7 +6,7 @@ import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { readLaneConfig } from './lib/lane.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { buildBudgetPanel, givenBudgetPanel, readBudgetPanel, resolveBudgetSettings } from './lib/campaign-status/budget.ts';
-import { adjustPacing, applyOverrides, floorBudget, localUtcOffsetMinutes, readPacing, resolveCatchup } from './lib/catchup.ts';
+import { adjustPacing, applyOverrides, floorBudget, readPacing, resolveCatchup } from './lib/catchup.ts';
 import { DEFAULT_USAGE_BUDGET } from './lib/usage-budget.ts';
 import { isSleepMode, readPendingDecisions } from './lib/campaign-status/pending-decisions.ts';
 import { buildDocCarry, type DocCarryIssue, type DocCarryRead, type PendingRead } from './lib/campaign-status/run-state.ts';
@@ -313,7 +313,7 @@ function readCatchup(config: Record<string, unknown>, host: ReturnType<typeof re
     preset = applyOverrides(preset, { floor_pct: flags.floorPct ?? undefined, no_spawn_at: flags.noSpawnAt ?? undefined, stop_workers_at: flags.stopWorkersAt ?? undefined, lane: flags.lane ?? undefined });
     const source = usageSourceFor(host, config, { usageFile: flags.usageFile ?? undefined });
     const reading = source.read(nowS);
-    const pacing = readPacing(source.report(nowS), preset, nowS, localUtcOffsetMinutes(nowS));
+    const pacing = readPacing(source.report(nowS), preset, nowS);
     const floorPct = flags.floorPct ?? pacing.floor_pct;
     const settings = resolveBudgetSettings(config);
     const budget = floorBudget(settings.invalid === null ? settings.budget : DEFAULT_USAGE_BUDGET, preset, floorPct ?? 100);

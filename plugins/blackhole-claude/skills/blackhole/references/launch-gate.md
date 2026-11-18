@@ -58,7 +58,7 @@ gate adds two steps of its own:
 (`catchup` block, `config-template.md`) pre-fills what the run gate leaves to `usage_budget`:
 
 - Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --summary --mode catchup [--usage-file <path>] --json` instead of the plain
-  summary. The rows are the run rows plus **Pacing**: the usage reading, the floor, the shortfall,
+  summary. The rows are the run rows plus **Pacing**: the usage reading, the floor (`floor 45.71% (96 h / 168 h x 80%)`: hours elapsed of the week times the weekly target), the shortfall,
   the 5h caps and the lane. The Budget row judges by the floor budget.
 - Every value stays adjustable for this invocation only, as in a run: re-print the summary with
   `--floor <pct>`, `--no-spawn-at <pct>`, `--stop-workers-at <pct>` or `--lane <name>`. Nothing

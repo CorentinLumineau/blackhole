@@ -268,11 +268,13 @@ describe('the catchup launch summary', () => {
   };
   const input = (over: { report?: UsageReport; overrides?: Parameters<typeof applyOverrides>[1] } = {}): Extract<CatchupInput, { preset: unknown }> => {
     const preset = applyOverrides(DEFAULT_CATCHUP, over.overrides ?? {});
-    const pacing = readPacing(over.report ?? fileReport(), preset, NOW, 0);
+    const pacing = readPacing(over.report ?? fileReport(), preset, NOW);
     const floorPct = over.overrides?.floor_pct ?? pacing.floor_pct;
     return { preset, floorPct, pacing, budget: floorBudget(DEFAULT_USAGE_BUDGET, preset, floorPct ?? 100) };
   };
-  const rowsFor = (catchup: CatchupInput, limits: RateLimits | null = USAGE): LaunchRow[] => {
+  // The same reading as `usage.catchup.json`, so the Budget row agrees with the Pacing row.
+  const CATCHUP_LIMITS: RateLimits = { five_hour: USAGE.five_hour, seven_day: { used_percentage: 30, resets_at: NOW + 72 * HOUR } };
+  const rowsFor = (catchup: CatchupInput, limits: RateLimits | null = CATCHUP_LIMITS): LaunchRow[] => {
     const budget = 'budget' in catchup ? catchup.budget : undefined;
     const b = limits ? buildBudgetPanel({ limits, reason: null, ageSeconds: 0, now: NOW, config: SAMPLE_CONFIG, budget }) : { ...NOT_PROBED, reason: 'no usage' };
     return buildLaunchSummary({ report, config: SAMPLE_CONFIG, budget: b, statusPage: PAGE, catchup });
@@ -290,8 +292,8 @@ describe('the catchup launch summary', () => {
   });
 
   test('Pacing shows the floor and the shortfall, Budget the 5h caps; equals the committed fixture', () => {
-    expect(pacingOf(rows).value).toContain('floor 61.25%');
-    expect(pacingOf(rows).value).toContain('shortfall 11.25%');
+    expect(pacingOf(rows).value).toContain('floor 45.71% (96 h / 168 h x 80%)');
+    expect(pacingOf(rows).value).toContain('shortfall 15.71%');
     expect(pacingOf(rows).value).toContain('lane unset');
     expect(rows.find((r) => r.key === 'budget')?.value).toContain('5h 75/80');
     expect(renderLaunchSummary(rows)).toBe(fs.readFileSync(EXPECTED_CATCHUP, 'utf-8'));
