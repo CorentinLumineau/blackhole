@@ -132,6 +132,75 @@ describe('bash-write-target-guard.js — a kept backslash in a double-quoted tar
   });
 });
 
+// A quote or backslash that is part of a directory name must not be read as shell syntax a second
+// time: the name `a"b` is a symlink to the main clone, and bash writes through it. The guard does
+// not resolve a literal path that holds a quote character, so the verdict is the unresolvable
+// warning, never a silent allow.
+describe('bash-write-target-guard.js — quotes inside a literal path (#1308)', () => {
+  const evaluate = (command: string, cwd: string) =>
+    utils('bash-write-target-guard.js').evaluateBashWriteTargets(command, cwd);
+
+  test('a double-quoted path through a symlink named a"b into the main clone warns', async () => {
+    await withLinkedWorktree('blackhole-hook-1308-', async (mainRepo, worktree) => {
+      fs.symlinkSync(mainRepo, `${worktree}/a"b`);
+      const command = `echo x > "${worktree}/a\\"b/p\\q"`;
+      expect(evaluate(command, worktree)).toMatchObject(WARN);
+    });
+  });
+
+  for (const [label, spelled] of [
+    ['w"t', 'w\\"t'],
+    ["w't", "w't"],
+    ["w\\'t (kept backslash before a quote)", "w\\'t"],
+  ] as const) {
+    test(`a sibling directory named ${label} is not read as an in-root path (warn)`, async () => {
+      await withLinkedWorktree('blackhole-hook-1308-', async (_mainRepo, worktree) => {
+        const command = `echo x > "${path.dirname(worktree)}/${spelled}/a\\b"`;
+        expect(evaluate(command, worktree)).toMatchObject(WARN);
+      });
+    });
+  }
+
+  for (const [label, build] of [
+    ["sed -n 'w <P>/\\wt'", (w: string) => `sed -n 'w ${sibling(w)}' f`],
+    ["sed 's/h/H/w <P>/\\wt'", (w: string) => `sed 's/h/H/w ${sibling(w)}' f`],
+    ["sed -n 'W <P>/\\wt'", (w: string) => `sed -n 'W ${sibling(w)}' f`],
+  ] as const) {
+    test(`${label} writes outside the worktree and is denied`, async () => {
+      await withLinkedWorktree('blackhole-hook-1308-', async (_mainRepo, worktree) => {
+        expect(evaluate(build(worktree), worktree)).toMatchObject(BLOCK);
+      });
+    });
+  }
+
+  test('a backslash path spelled through a symlink to the worktree is allowed with cwd at the real worktree', async () => {
+    await withLinkedWorktree('blackhole-hook-1308-', async (_mainRepo, worktree) => {
+      const link = `${worktree}-link`;
+      fs.symlinkSync(worktree, link);
+      try {
+        expect(evaluate(`echo x > "${link}/a\\b"`, worktree)).toBeNull();
+      } finally {
+        fs.rmSync(link, { force: true });
+      }
+    });
+  });
+
+  test('BLACKHOLE_ASSIGNED_WORKTREE naming an unregistered directory does not widen containment', async () => {
+    await withLinkedWorktree('blackhole-hook-1308-', async (_mainRepo, worktree) => {
+      const other = fs.mkdtempSync(path.join(path.dirname(worktree), 'unregistered-'));
+      const saved = process.env.BLACKHOLE_ASSIGNED_WORKTREE;
+      process.env.BLACKHOLE_ASSIGNED_WORKTREE = other;
+      try {
+        expect(evaluate(`echo x > "${other}/x\\y"`, worktree)).toMatchObject(BLOCK);
+      } finally {
+        if (saved === undefined) delete process.env.BLACKHOLE_ASSIGNED_WORKTREE;
+        else process.env.BLACKHOLE_ASSIGNED_WORKTREE = saved;
+        fs.rmSync(other, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
 describe('worktree-removal-guard — a quoted removal still resolves', () => {
   test('rm -rf "<worktree>" with no backslash is still refused', async () => {
     await withLinkedWorktree('blackhole-hook-1308-', async (mainRepo, worktree) => {
