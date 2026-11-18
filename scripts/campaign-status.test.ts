@@ -560,7 +560,7 @@ describe('renderConfigSummary', () => {
   // can drift from the dashboard's. Both render the shared formatScopeLabel output verbatim.
   test('scope wording is byte-identical to the dashboard for the same scope', () => {
     const config = { scope_labels: ['size:xs', 'track:standard'] };
-    const expected = formatScopeLabel({ labels: config.scope_labels });
+    const expected = formatScopeLabel({ labels: config.scope_labels }, 'markdown');
 
     expect(expected).toBe('labels `size:xs`, `track:standard`');
     expect(renderConfigSummary(config)).toContain(expected);

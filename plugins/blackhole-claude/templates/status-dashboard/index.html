@@ -1,5 +1,5 @@
 <meta name="dash-one-writer">
-<meta name="bh-template-version" content="7">
+<meta name="bh-template-version" content="8">
 <style>
   /* Colours: the artifact page's own tokens, with a fallback for a page that defines none. --cd-info,
      the warm "your move" panel and the done column have no page token, so they are set here. */
@@ -382,7 +382,7 @@
       const dd = mk('dd', '', '');
       dd.append(mk('span', '', String(r.text || ''), { source: 'scope', field: 'text', row: i }));
       if (r.reason) dd.append(document.createTextNode(' — '), mk('span', '', String(r.reason), { source: 'scope', field: 'reason', row: i }));
-      dd.append(mk('span', 'cd-muted', ' · since ' + String(r.date || '')));
+      if (r.date) dd.append(mk('span', 'cd-muted', ' · since ' + String(r.date)));
       out.push(dd);
     });
     return out;

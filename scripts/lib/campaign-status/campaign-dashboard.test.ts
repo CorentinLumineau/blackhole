@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { collectStatusReport } from '../../campaign-status.ts';
 import { formatDashboard } from './dashboard.ts';
+import { formatScopeLabel } from './scope-label.ts';
 import { buildStatusData } from './data.ts';
 import { fakeForge, prRow } from './forge-fake.ts';
 import { renderStatusHtml } from './html.ts';
@@ -135,7 +136,7 @@ describe('a campaign with nothing recorded', () => {
 
   test('every dataset the page reads is present, empty ones as empty arrays', () => {
     const data = buildStatusData(r);
-    expect(data.scope).toEqual([]);
+    expect(data.scope).toEqual([{ kind: 'Filter', text: 'all open issues', reason: null, date: null }]);
     expect(data.decisions).toEqual([]);
     expect(data.moves).toEqual([]);
     expect(data.overview[0].headline_source).toBe('generated');
@@ -161,7 +162,11 @@ describe('--json, --html and the text dashboard show the same facts', () => {
       }
       if (!r.scope_record.recorded) {
         expect(text).not.toContain('Scope not recorded');
-        expect(html).toContain('Scope not recorded');
+        expect(html).not.toContain('Scope not recorded');
+        const label = formatScopeLabel(r.campaign.scope, 'plain');
+        expect(text).toContain(label);
+        expect(html).toContain(label);
+        expect(buildStatusData(r).scope[0].text).toBe(label);
       }
       expect(html.indexOf('<h2>Scope')).toBeLessThan(html.indexOf('<h2>In progress'));
     });
