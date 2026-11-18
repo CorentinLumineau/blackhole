@@ -144,17 +144,26 @@ export function livePeers(records: PeerRecord[], self: SelfIdentity, nowMs: numb
   return records.filter((r) => !isSelf(r, self) && !tooFuture(r, nowMs) && nowMs - Date.parse(r.heartbeat_at) <= leaseMs);
 }
 
+/**
+ * The note forge-sync writes on an entry held for a live peer: `another session: <session id>`.
+ * Such an entry is the peer's, so `claimsOf` never claims it back.
+ */
+export const ANOTHER_SESSION = 'another session:';
+
 /** Issue number (as a queue key) → the live peer session that claims it. */
-export function peerClaims(peers: PeerRecord[]): Record<string, string> {
+export function peerClaims(peers: Pick<PeerRecord, 'session' | 'claims'>[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const p of peers) for (const n of p.claims) out[String(n)] = p.session;
   return out;
 }
 
-/** What this session claims: every non-done queue entry that is `in-flight` or carries a PR. */
+/** True for a queue note holding the entry for a live peer (`ANOTHER_SESSION`). */
+export const isPeerHold = (notes: string | null | undefined): boolean => (notes ?? '').startsWith(`${ANOTHER_SESSION} `);
+
+/** What this session claims: every non-done queue entry that is `in-flight`, or carries a PR and is not held for a peer. */
 export function claimsOf(queue: QueueJson | null): number[] {
   return Object.entries(queue?.issues ?? {})
-    .filter(([, e]) => !DONE_STATUSES.includes(e.status ?? '') && (e.status === 'in-flight' || (e.pr ?? null) !== null))
+    .filter(([, e]) => !DONE_STATUSES.includes(e.status ?? '') && (e.status === 'in-flight' || ((e.pr ?? null) !== null && !isPeerHold(e.notes))))
     .map(([n]) => Number(n))
     .filter(isIssueNumber)
     .sort((a, b) => a - b);

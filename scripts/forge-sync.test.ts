@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -7,6 +8,8 @@ import { runForgeSync, summaryLine, type ForgeSyncOutcome } from './forge-sync.t
 import type { SyncResult } from './lib/forge-sync.ts';
 import { fakeForge, prRow } from './lib/campaign-status/forge-fake.ts';
 import type { ForgeIssue } from './lib/forge-adapter/types.ts';
+import type { DetectedPeer, DetectResult } from './lib/peer-campaigns.ts';
+import { run as peerCampaigns } from './peer-campaigns.ts';
 
 const NOW = '2026-11-17T12:00:00.000Z';
 const issue = (number: number, extra: Partial<ForgeIssue> = {}): ForgeIssue => ({ number, title: `Issue ${number}`, body: '', labels: [], milestone: null, state: 'OPEN', ...extra });
@@ -154,6 +157,59 @@ describe('forge-sync --lane', () => {
     expect(synced(await runForgeSync(campaign(), { adapter: adapter(), now: NOW })).queue.issues['2']).toMatchObject({ status: 'blocked' });
     fs.writeFileSync(config, JSON.stringify(base));
     expect(synced(await runForgeSync(campaign(), { adapter: adapter(), now: NOW })).queue.issues['2']).toMatchObject({ status: 'ready' });
+  });
+});
+
+describe('forge-sync peer holds (ADR-057)', () => {
+  const PEER = 'a1b2c3d4-0000-4000-8000-000000000001';
+  const own = prRow(10, { headRefName: 'blackhole/issue-1-export', body: 'Closes #1' });
+  const adapter = () => fakeForge({ issues: [issue(1), issue(2)], prs: { all: [own], open: [own] }, views: { 10: own }, checks: { 10: [] } });
+  const peer = (claims: number[]): DetectedPeer => ({
+    session: PEER, worktree: '/repo/wt-a', host: 'box', host_session: null, role: 'solo', manager_session: null,
+    turn: 3, heartbeat_at: NOW, heartbeat_age_minutes: 1, claims, names_me: false, coordinated: true,
+  });
+  const detected = (over: Partial<DetectResult>): DetectResult => ({ verdict: 'peers', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [], ...over });
+
+  test('every live peer claim is held, coordinated peers included, and its PR is not linked', async () => {
+    const r = synced(await runForgeSync(campaign(), { adapter: adapter(), now: NOW, peers: detected({ peers: [peer([1])] }) }));
+    expect(r.queue.issues['1']).toMatchObject({ status: 'blocked', notes: `another session: ${PEER}`, pr: null });
+    expect(r.queue.issues['2']).toMatchObject({ status: 'ready' });
+    expect(r.linked).toEqual([]);
+  });
+
+  test('unreadable peer records keep an existing hold (fail closed)', async () => {
+    await runForgeSync(campaign(), { adapter: adapter(), now: NOW, peers: detected({ peers: [peer([1])] }) });
+    const r = synced(await runForgeSync(campaign(), { adapter: adapter(), now: NOW, peers: detected({ verdict: 'unknown', unreadable: 1, unreadable_files: ['x.json'] }) }));
+    expect(r.queue.issues['1']).toMatchObject({ status: 'blocked', notes: `another session: ${PEER}`, pr: null });
+  });
+
+  test('a solo detection releases the hold and links the PR', async () => {
+    await runForgeSync(campaign(), { adapter: adapter(), now: NOW, peers: detected({ peers: [peer([1])] }) });
+    const r = synced(await runForgeSync(campaign(), { adapter: adapter(), now: NOW, peers: detected({ verdict: 'solo' }) }));
+    expect(r.queue.issues['1']).toMatchObject({ status: 'ready', notes: null, pr: 10 });
+  });
+
+  test('by default the registry of the clone is read: a heartbeat in one worktree holds its claim in the other', async () => {
+    const git = (cwd: string, args: string[]) => {
+      const out = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf-8' });
+      if (out.status !== 0) throw new Error(`git ${args.join(' ')}: ${out.stderr}`);
+    };
+    const wtA = path.join(dir, 'a');
+    const wtB = path.join(dir, 'b');
+    fs.mkdirSync(wtA);
+    git(wtA, ['init', '-q', '-b', 'main']);
+    git(wtA, ['-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init']);
+    git(wtA, ['worktree', 'add', '-q', '-b', 'side', wtB]);
+    fs.mkdirSync(path.join(wtA, '.blackhole'));
+    fs.writeFileSync(path.join(wtA, '.blackhole', 'queue.json'), JSON.stringify({ issues: { '1': { status: 'in-flight', phase: 'implement', pr: null } } }));
+    expect(peerCampaigns(['heartbeat', '--turn', '1', '--campaign-dir', path.join(wtA, '.blackhole')]).code).toBe(0);
+    const campaignB = path.join(wtB, '.blackhole');
+    fs.mkdirSync(campaignB);
+    fs.copyFileSync(path.join(campaign(), 'config.json'), path.join(campaignB, 'config.json'));
+    const r = synced(await runForgeSync(campaignB, { adapter: adapter(), now: new Date().toISOString(), dryRun: true }));
+    expect(r.queue.issues['1']).toMatchObject({ status: 'blocked', pr: null });
+    expect(String(r.queue.issues['1'].notes)).toStartWith('another session: ');
+    expect(r.queue.issues['2']).toMatchObject({ status: 'ready' });
   });
 });
 

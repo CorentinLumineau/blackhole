@@ -266,8 +266,9 @@ function peersRow(config: Record<string, unknown>, detected: DetectResult | unde
   const { unreadable } = detected;
   if (open.length || unreadable) {
     // Only an uncoordinated peer can be joined: a coordinated one already shares this budget, and
-    // its `manager_session` may be this session's own id.
-    const join = joinTarget(open);
+    // its `manager_session` may be this session's own id. A session that peers already name as
+    // their manager never joins another: their slot requests would go unanswered.
+    const join = detected.peers.some((p) => p.names_me) ? null : joinTarget(open);
     const list = open.map((p) => `${peerName(p)} (turn ${p.turn}, heartbeat ${p.heartbeat_age_minutes}m ago)`).join(', ');
     const names = detected.unreadable_files;
     const unread = `${unreadable} unreadable: ${names.slice(0, MAX_NAMED_UNREADABLE).join(', ')}${names.length > MAX_NAMED_UNREADABLE ? ', …' : ''}`;

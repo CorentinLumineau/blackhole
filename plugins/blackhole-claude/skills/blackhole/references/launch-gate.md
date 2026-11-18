@@ -24,7 +24,10 @@ Bootstrap order, every `run` start:
 2. Peer detection (ADR-057, `multitask-mode.md` § Peer campaign registry): run
    `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/peer-campaigns.ts heartbeat --turn 0` (add `--host-session <id>` on a host
    with a cross-session transport), so a peer bootstrapping at the same moment sees this one.
-   The summary's Peers row then reads `detect` itself.
+   The summary's Peers row then reads `detect` itself. A non-zero exit means no record was
+   written, so a peer could not see this session: restate its stderr line and stop the bootstrap
+   before any spawn. Exit 1 is an unresolvable git common dir, or a worktree path or host a peer
+   could not read; exit 2 is a usage error.
 3. The 6-step form when a `coordinator.md` trigger condition holds.
 4. The summary and the status-page probe (§ Probe procedure).
 5. The questions (§ Questions), unless print-only (§ Print-only mode).
@@ -119,7 +122,9 @@ ignored, and this session never starts as `solo` beside it.
 - **Join as peer**: offered only when an uncoordinated live peer gives a manager to join (a host
   listed in `claude-code-native.md` § Cross-session budget transport records `host_session`). The
   option names it: a live `manager` record, else the manager a live peer follows, else a solo
-  peer's `host_session`; coordinated peers are never a join target. Write
+  peer's `host_session`; coordinated peers are never a join target. Never offered while a live
+  peer names this session as its manager (`names_me`): joining would leave that peer's slot
+  requests unanswered. Write
   `usage_budget.coordination.role: peer` and `manager_session: <that id>` as step 6 does, then
   continue.
 - **Take over after drain**: release, spawn nothing, and re-run the gate on the next resume. It
@@ -159,7 +164,8 @@ exception, the peer question:
   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts park --gate peers --question "Another campaign may be running
   in this clone: stop, join it, or take over after it drains?" --options "Stop|Join as peer: only
   when the evidence names a manager to join|Take over after drain" --recommended "Take over after
-  drain" --evidence "<the Peers row value>; join: <id, or none>"`. A Join answer when the evidence
+  drain" --evidence "<the Peers row value>; join: <id, or none>"` (`none` whenever the row offers no
+  Join). A Join answer when the evidence
   says `join: none` is treated as Take over. With no question channel and sleep mode off, refusing
   is enough;
 - a failed probe or an unreachable page: say so in one line and continue without the page; the

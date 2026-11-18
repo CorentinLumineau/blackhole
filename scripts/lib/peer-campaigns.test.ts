@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  ANOTHER_SESSION,
   claimsOf,
   detectPeers,
   isSessionId,
@@ -117,6 +118,11 @@ describe('peerClaims', () => {
     const b = record({ session: 'b0000000-0000-4000-8000-000000000002', worktree: '/repo/wt-b', claims: [7] });
     expect(peerClaims([a, b])).toEqual({ '1240': a.session, '1241': a.session, '7': b.session });
   });
+
+  test('takes detected peers as well as records', () => {
+    const detected: Pick<DetectedPeer, 'session' | 'claims'>[] = [{ session: 'c0000000-0000-4000-8000-000000000003', claims: [9] }];
+    expect(peerClaims(detected)).toEqual({ '9': 'c0000000-0000-4000-8000-000000000003' });
+  });
 });
 
 describe('claimsOf', () => {
@@ -136,6 +142,17 @@ describe('claimsOf', () => {
 
   test('no queue claims nothing', () => {
     expect(claimsOf(null)).toEqual([]);
+  });
+
+  test('an entry held for another session is not claimed back, so two sessions never hold each other', () => {
+    const claims = claimsOf({
+      issues: {
+        '1': { status: 'blocked', pr: 50, notes: `${ANOTHER_SESSION} b0000000-0000-4000-8000-000000000002` },
+        '2': { status: 'in-flight', pr: 51, notes: `${ANOTHER_SESSION} b0000000-0000-4000-8000-000000000002` },
+        '3': { status: 'blocked', pr: 52, notes: 'another sessions: not the hold note' },
+      },
+    });
+    expect(claims).toEqual([2, 3]);
   });
 });
 
