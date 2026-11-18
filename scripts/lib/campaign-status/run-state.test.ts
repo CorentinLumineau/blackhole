@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { PendingDecision } from './pending-decisions.ts';
-import { buildRunPanel, pendingRows, RUN_ROW_KEYS, runRows } from './run-state.ts';
+import { buildDocCarry, buildRunPanel, pendingRows, RUN_ROW_KEYS, runRows, type DocCarryIssue } from './run-state.ts';
 
 const decision = (id: string, blocks: number[], created_at = '2026-11-16T10:00:00.000Z'): PendingDecision => ({
   id,
@@ -21,7 +21,7 @@ const RUN_CONTEXT = {
 const valueOf = (rows: Array<{ key: string; value: string }>, key: string): string | undefined => rows.find((r) => r.key === key)?.value;
 
 describe('run panel: route, sleep mode and coordination', () => {
-  test('always emits the three rows, in RUN_ROW_KEYS order, whatever is recorded', () => {
+  test('always emits the four rows, in RUN_ROW_KEYS order, whatever is recorded', () => {
     expect(runRows(buildRunPanel({ config: {}, runContext: null, pending: [] })).map((r) => r.key)).toEqual([...RUN_ROW_KEYS]);
     expect(runRows(buildRunPanel({ config: { sleep_mode: { enabled: true } }, runContext: RUN_CONTEXT, pending: [decision('PD-1', [3])] })).map((r) => r.key)).toEqual([...RUN_ROW_KEYS]);
   });
@@ -113,5 +113,77 @@ describe('the run panel and the parked decisions on every surface', () => {
     expect(html).toContain('Decisions waiting for you <span class="count">1</span>');
     expect(html).toContain('Sleep mode: off · 1 parked decision');
     expect(html).toContain('Run route: not recorded');
+  });
+});
+
+const entry = (route: string, target: string) => ({
+  route,
+  sub_mode: null,
+  produced_by: 'planner',
+  declared_at: '2026-11-17T00:00:00.000Z',
+  staged_path: `.blackhole/staged/1/${route}.md`,
+  target_path: target,
+  target_kind: 'new_file',
+});
+const manifest = (...entries: Array<ReturnType<typeof entry>>) => ({ issue: 1, updated_at: '2026-11-17T00:00:00.000Z', entries }) as never;
+type M = ReturnType<typeof manifest> | null;
+const live = (n: number, promised: string[], m: M, phase = 'implement', extra: Partial<DocCarryIssue> = {}): DocCarryIssue => ({ issue: n, promised, manifest: m, phase, ...extra });
+const done = (n: number, promised: string[], m: M): DocCarryIssue => ({ issue: n, promised, manifest: m, done: true, phase: 'done' });
+const build = (issues: DocCarryIssue[], isCarried: (t: string) => boolean = () => false) => buildDocCarry({ enabled: true, issues, isCarried })!;
+const rowOf = (docCarry: Parameters<typeof buildRunPanel>[0]['docCarry']) => valueOf(runRows(buildRunPanel({ config: {}, runContext: null, pending: [], docCarry })), 'Doc carry');
+
+describe('buildDocCarry: the live set leads, merged history is a tail', () => {
+  test('governance off gives null and the row says so', () => {
+    expect(buildDocCarry({ enabled: false, issues: [live(1, ['plan'], null)], isCarried: () => false })).toBeNull();
+    expect(rowOf(null)).toBe('off (docs governance off)');
+    expect(rowOf(undefined)).toBe('off (docs governance off)');
+  });
+
+  test('nothing routed prints zeros and no tail', () => {
+    expect(rowOf(build([]))).toBe('routes promised 0 · staged 0 · docs carried 0');
+  });
+
+  test('a live implement issue with plan and design promised and only plan staged is named, 1/2', () => {
+    const dc = build([live(7, ['plan', 'design'], manifest(entry('plan', 'documentation/plans/a.md')))]);
+    expect(dc).toMatchObject({ promised: 2, staged: 1, carried: 0, gaps: [{ issue: 7, staged: 1, promised: 2 }] });
+    expect(rowOf(dc)).toBe('routes promised 2 · staged 1 · docs carried 0 · gaps: #7 1/2');
+  });
+
+  test('a handle-phase issue counts in the headline but is never named (staged 0 is expected there)', () => {
+    const dc = build([live(3, ['plan'], null, 'handle')]);
+    expect(dc).toMatchObject({ promised: 1, staged: 0, gaps: [] });
+    expect(rowOf(dc)).toBe('routes promised 1 · staged 0 · docs carried 0');
+  });
+
+  test('carried counts staged new_file targets the stub reports present', () => {
+    const dc = build([live(1, ['plan'], manifest(entry('plan', 'documentation/plans/a.md')))], (t) => t === 'documentation/plans/a.md');
+    expect(dc).toMatchObject({ promised: 1, staged: 1, carried: 1, gaps: [] });
+  });
+
+  test('merged issues (a legacy one with no manifest is left out) never touch the headline or the gaps; they make the history tail', () => {
+    const dc = build([done(1, ['plan', 'design'], null), done(2, ['plan'], manifest(entry('plan', 'documentation/plans/b.md'))), live(9, ['plan'], manifest(entry('plan', 'documentation/plans/c.md')))]);
+    expect(dc).toMatchObject({ promised: 1, staged: 1, gaps: [], history: { promised: 1, staged: 1 } });
+    expect(rowOf(dc)).toBe('routes promised 1 · staged 1 · docs carried 0 · history: 1/1 routes staged');
+  });
+
+  test('gaps name later phases first, then newer issues, three at most, then +N more', () => {
+    const issues = [live(1, ['plan'], null, 'plan'), live(2, ['plan'], null, 'review'), live(3, ['plan'], null, 'implement'), live(4, ['plan'], null, 'plan'), live(5, ['plan'], null, 'implement')];
+    expect(rowOf(build(issues))).toBe('routes promised 5 · staged 0 · docs carried 0 · gaps: #2 0/1, #5 0/1, #3 0/1 +2 more');
+  });
+
+  test('a live issue with no route and no manifest is counted unrouted, not skipped', () => {
+    const dc = build([live(1, [], null, 'implement', { unrouted: true }), live(2, [], null, 'handle', { unrouted: true })]);
+    expect(dc.unrouted).toBe(2);
+    expect(rowOf(dc)).toBe('routes promised 0 · staged 0 · docs carried 0 · unrouted 2');
+  });
+
+  test('one unreadable manifest is counted for that issue and the other totals stay', () => {
+    const dc = build([live(1, ['plan'], null, 'implement', { unreadable: true }), live(2, ['plan'], manifest(entry('plan', 'documentation/plans/a.md')))]);
+    expect(dc).toMatchObject({ promised: 1, staged: 1, unreadable: 1, gaps: [] });
+    expect(rowOf(dc)).toBe('routes promised 1 · staged 1 · docs carried 0 · unreadable 1');
+  });
+
+  test('a failure reading the whole campaign is said, never shown as zero', () => {
+    expect(rowOf({ error: 'bad queue' })).toBe('unreadable (bad queue)');
   });
 });

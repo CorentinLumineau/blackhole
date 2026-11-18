@@ -53,7 +53,7 @@ const usage = (): never => {
   console.error(
     'Usage: bun run scripts/stack-check.ts --pr <N> [--fix] [--open-prs <snapshot.json>]\n' +
       '       bun run scripts/stack-check.ts --pr <N> --repo-slug <owner/repo> [--repo-root <abs>] [--forge github|gitea|gitlab]\n' +
-      '--open-prs serves the mcp channel, where scripts cannot reach the forge: a shared file counts as the overlap.\n' +
+      '--open-prs serves the mcp channel, where scripts cannot reach the forge: a shared file other than a regenerated one counts as the overlap.\n' +
       'Exit: 0 ok, 1 overlapping and not stacked, 2 usage, 3 could not check.',
   );
   return process.exit(2);
