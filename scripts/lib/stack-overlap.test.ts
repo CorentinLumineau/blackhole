@@ -333,11 +333,23 @@ describe('mergeTreeVerdict (real git)', () => {
     const run = runner(indexFixture('1', '8'));
     expect(run(['merge-tree', '--write-tree', '--no-messages', 'p1', 'p2']).code).toBe(1);
     expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('clean');
+    const snap = snapshot(
+      spr(7, ['a.ts', 'documentation/INDEX.md'], { headRefName: 'p1' }),
+      spr(9, ['a.ts', 'documentation/INDEX.md'], { headRefName: 'p2' }),
+    );
+    const viaGit = pickParent(9, snap, { conflicts: (me, other) => mergeTreeVerdict(run, me.headRefName, other.headRefName) });
+    expect(viaGit).toEqual({ kind: 'none' });
   });
 
   test('#1303 git channel: a same-line source conflict beside the INDEX row still conflicts', () => {
     const run = runner(indexFixture('1', '1'));
     expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('conflict');
+    const snap = snapshot(
+      spr(7, ['a.ts', 'documentation/INDEX.md'], { headRefName: 'p1' }),
+      spr(9, ['a.ts', 'documentation/INDEX.md'], { headRefName: 'p2' }),
+    );
+    const viaGit = pickParent(9, snap, { conflicts: (me, other) => mergeTreeVerdict(run, me.headRefName, other.headRefName) });
+    expect(viaGit).toMatchObject({ kind: 'stack', parent: 7 });
   });
 
   test('#1303 an exit-1 merge-tree with an empty conflicted-path list stays a conflict', () => {
