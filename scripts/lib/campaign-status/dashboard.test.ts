@@ -369,3 +369,13 @@ describe('formatDashboard — Completed, Issues filed and Scope are bounded and 
     expect(body[0]).toContain('only X');
   });
 });
+
+describe('renderRunSection: Doc carry line', () => {
+  test('prints a Doc carry line under ### Run', async () => {
+    const { renderRunSection } = await import('./dashboard.ts');
+    const { fixtureReport } = await import('./data-fixture.ts');
+    const lines = renderRunSection(fixtureReport());
+    expect(lines.indexOf('### Run')).toBe(0);
+    expect(lines).toContain('- **Doc carry:** off (docs governance off)');
+  });
+});

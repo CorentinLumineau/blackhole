@@ -511,6 +511,24 @@ export type RunPanel = {
   /** `usage_budget.coordination`; null when `usage_budget` is invalid (`coordination_invalid`). */
   coordination: { role: 'manager' | 'peer' | 'solo'; manager_session: string | null; peer_floor: number } | null;
   coordination_invalid: string | null;
+  /** Artifacts promised vs staged vs carried; null when docs governance is off (or `doc_carry_error` is set). */
+  doc_carry: DocCarry | null;
+  doc_carry_error: string | null;
+};
+
+/**
+ * The Run panel's Doc carry totals over the live (not done) issues: routes promised and staged, docs
+ * carried, issues with no route or an unreadable manifest, and the issues past `handle` whose promised
+ * routes are not all staged. `history` is the merged issues' routes promised/staged, null when none.
+ */
+export type DocCarry = {
+  promised: number;
+  staged: number;
+  carried: number;
+  unrouted: number;
+  unreadable: number;
+  gaps: Array<{ issue: number; staged: number; promised: number }>;
+  history: { promised: number; staged: number } | null;
 };
 
 /** One parked owner decision as the "Decisions waiting for you" panel lists it, most-blocking first. */
