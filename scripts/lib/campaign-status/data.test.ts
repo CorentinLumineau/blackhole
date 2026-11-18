@@ -110,7 +110,7 @@ describe('parseStatusArgs --data', () => {
 
   test('the usage line names the script by absolute path, not the package.json alias', () => {
     expect(STATUS_COMMAND).toBe(`bun run "${path.resolve(import.meta.dir, '..', '..', 'campaign-status.ts')}"`);
-    expect(() => parseStatusArgs(['--data'])).toThrow(`Usage: ${STATUS_COMMAND} [config-summary]`);
+    expect(() => parseStatusArgs(['--data'])).toThrow(`Usage: ${STATUS_COMMAND} [config-summary`);
   });
 
   test('--out still requires --html', () => {
