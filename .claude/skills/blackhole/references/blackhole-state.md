@@ -44,6 +44,12 @@ Mutations to `.blackhole/queue.json` and
 | `.tmp/sleep-hold.json` | `{pid, tool, started_at, identity}` of the keep-awake inhibitor sleep mode holds on a local host, written by `scripts/campaign-record.ts sleep --on` and removed by `sleep --off`/`wake` (gitignored, local only; see `sleep-mode.md` § Keeps itself alive) |
 | `.tmp/status.html` | Latest rendered status page, rewritten by `bun run scripts/campaign-status.ts --html` (gitignored, local only) |
 
+Outside `.blackhole/`, the peer campaign registry (ADR-057) lives in the clone's git common dir,
+`<git common dir>/blackhole/campaigns/<session>.json`: one heartbeat record per live campaign
+session, shared by every worktree of the clone, written only by `scripts/peer-campaigns.ts`. It
+is local and never on the state branch; this session's own id is `.tmp/campaign-session.json`
+(see `multitask-mode.md` § Peer campaign registry).
+
 On a machine whose disk does not outlive the session (`state_store: branch`), these files are
 also kept on the `blackhole/state` branch: pushed at every turn end and restored on resume
 (`state-branch.md`). `archive/`, `hook-events/`, `.tmp/`, `*.tmp` and the per-machine signals

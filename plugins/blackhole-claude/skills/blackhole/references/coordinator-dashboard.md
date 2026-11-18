@@ -41,7 +41,12 @@ inline `--usage` is refused with it (exit `2`), and the catchup flags are refuse
 Run form: eight rows in fixed order (Scope, Order, Merge, Budget, Status page, Kaizen and staging, Peers,
 Sleep mode),
 each with a one-line consequence. The status page reads the same builder, so the two never
-disagree. `--summary` accepts only `--usage`, `--now`, `--json`, `--campaign-dir` and `--no-gh`,
+disagree. The Peers row reads `scripts/peer-campaigns.ts detect` (ADR-057) and states its reach:
+`solo (no live peer in this clone)` when clean, the configured role alone outside a git clone,
+`manager of N live peers in this clone` for peers naming this session, and
+`N live peers in this clone: <worktree> (turn T, heartbeat Mm ago)` for an uncoordinated peer,
+which also makes the row the gate's stop / join / take-over question (`launch-gate.md` §
+Questions). `--summary` accepts only `--usage`, `--now`, `--json`, `--campaign-dir` and `--no-gh`,
 and cannot be combined with `--html`, `--out`, `--data` or `config-summary`.
 
 - `--usage '<json>'` is the harness's usage report (its `get_usage` tool; a malformed value exits

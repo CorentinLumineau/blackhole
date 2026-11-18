@@ -22,6 +22,7 @@ import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
 import { readPublishState, readStatusAlerts, statusPageEnabled } from './lib/campaign-status/staleness.ts';
 import { buildLaunchSummary, gateCards, renderLaunchSummary, type CatchupInput } from './lib/campaign-status/launch-summary.ts';
+import { detectForCampaign } from './peer-campaigns.ts';
 import type { StatusArtifact, StatusPageInput } from './lib/campaign-status/status-page-row.ts';
 import type { RateLimits } from './lib/rate-limit-cache.ts';
 import { parseUsage } from './usage-budget.ts';
@@ -329,6 +330,16 @@ function readCatchup(config: Record<string, unknown>, host: ReturnType<typeof re
  * `--usage` (restricted to `usage_budget.windows`) when given, else from the host's usage source at
  * `--now`, as `report.budget` is. A catchup reads `--usage-file` through the same source chain.
  */
+/** Peer detection for the Peers row (ADR-057); undefined outside a git clone or on a read error, so the row shows the configured role. */
+function readPeers(campaignDir: string) {
+  try {
+    return detectForCampaign(campaignDir) ?? undefined;
+  } catch (error) {
+    console.error(`status --summary: peer detection skipped: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  }
+}
+
 async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJson: string | null, now: number | null, asJson: boolean, catchupFlags: CatchupArgs | null) {
   let usage: RateLimits | null = null;
   if (usageJson !== null) {
@@ -357,6 +368,7 @@ async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJso
     budget: catchup?.budget ?? (usage ? givenBudgetPanel(usage, config, nowS) : readBudgetPanel(config, host, nowS, path.join(campaignDir, USAGE_HISTORY_FILE))),
     statusPage: readStatusPageInput(campaignDir, collected.state.config, nowIso),
     catchup: catchup?.input,
+    peers: readPeers(campaignDir),
   });
   const versionWarning = pluginVersionWarning(
     readPluginVersionCheck({ running: readPluginVersion(PLUGIN_ROOT), homeDir: os.homedir(), pluginName: projectIdentity.name }),

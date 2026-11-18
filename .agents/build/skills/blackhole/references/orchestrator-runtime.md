@@ -24,6 +24,9 @@ parallel planners, implementers, reviewers):
 
 ### Spawn
 
+Every spawn round, and again at Triage, refreshes the peer heartbeat (§ Session resume & recovery
+step 8), so a long turn keeps its claims live.
+
 1. Every spawn round, run `bun run scripts/pace-gate.ts --current <planned batch> --max <parallel_max>`,
    which reads the cached statusline `rate_limits`, and
    `bun run scripts/usage-budget.ts --parallel-max <parallel_max> [--usage '<usage-probe JSON>']`,
@@ -258,6 +261,12 @@ after reading checkpoint and forge sync:
    - mark a paused issue `failed` or `blocked`
    - bump `failed_attempts` or any retry counter
    - kill, abort or `--abandon` a worker
+
+8. **Peer heartbeat** (ADR-057): run `bun run scripts/peer-campaigns.ts heartbeat --turn <n>`
+   (`--host-session <id>` where the host has a cross-session transport, `claude-code-native.md`
+   § Cross-session budget transport). Every wake is a turn start, so a sleeping campaign
+   refreshes its record at least every 20 minutes, inside the 40-minute lease. A non-zero exit
+   is logged and the turn proceeds. Registry: `multitask-mode.md` § Peer campaign registry.
 
 **MUST** complete `recovery-protocol.md` §5 orchestrator checklist before spawning
 `implementer` when any in-flight issue has a dirty worktree or recovery stash. Do not spawn

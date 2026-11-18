@@ -20,6 +20,7 @@ import {
 import { buildStatusReport } from './report.ts';
 import type { StatusPageInput } from './status-page-row.ts';
 import { loadCampaignState } from './state.ts';
+import type { DetectedPeer, DetectResult } from '../peer-campaigns.ts';
 import type { BudgetPanel, ForgeCounts, PrSignal } from './types.ts';
 
 const panel = (config: Record<string, unknown>, limits: RateLimits | null, now = NOW): BudgetPanel =>
@@ -337,5 +338,73 @@ describe('the catchup launch summary', () => {
     const r = rowsFor(input({ report: none }), null);
     expect(pacingOf(r).consequence).toContain('fail-closed');
     expect(r.find((x) => x.key === 'budget')?.consequence).toContain('the catchup skips');
+  });
+});
+
+describe('Peers row with peer detection', () => {
+  const peer = (over: Partial<DetectedPeer> = {}): DetectedPeer => ({
+    session: 'a1b2c3d4-0000-4000-8000-000000000001',
+    worktree: '/repo/.claude/worktrees/other',
+    host: 'box',
+    host_session: null,
+    role: 'solo',
+    manager_session: null,
+    turn: 12,
+    heartbeat_at: NOW_ISO,
+    heartbeat_age_minutes: 5,
+    claims: [1240],
+    names_me: false,
+    coordinated: false,
+    ...over,
+  });
+  const rowFor = (peers: DetectResult | undefined, config = SAMPLE_CONFIG) =>
+    buildLaunchSummary({ report, config, budget: panel(config, USAGE), statusPage: PAGE, peers }).find((r) => r.key === 'peers') as LaunchRow;
+  const askedPeers = (row: LaunchRow) =>
+    gateCards([row], { printOnly: false }).flatMap((c) => c.questions).find((q) => q.row === 'peers');
+
+  test('no detection keeps the configured role text', () => {
+    expect(rowFor(undefined).value).toBe('solo');
+    expect(rowFor(undefined).adjustable).toBe(false);
+  });
+
+  test('a clean detection states its reach, never a bare solo', () => {
+    const row = rowFor({ verdict: 'solo', reach: 'clone', peers: [] });
+    expect(row.value).toBe('solo (no live peer in this clone)');
+    expect(row.adjustable).toBe(false);
+  });
+
+  test('a live peer names its worktree, turn and heartbeat age, and the gate asks', () => {
+    const row = rowFor({ verdict: 'peers', reach: 'clone', peers: [peer()] });
+    expect(row.value).toBe('1 live peer in this clone: other (turn 12, heartbeat 5m ago)');
+    expect(row.consequence).toContain('never starts as solo');
+    expect(row.consequence.length).toBeLessThanOrEqual(MAX_CONSEQUENCE_CHARS);
+    expect(askedPeers(row)?.options.map((o) => o.label)).toEqual(['Stop', 'Take over after drain']);
+  });
+
+  test('join as peer is offered only when a live peer has a host_session', () => {
+    const row = rowFor({ verdict: 'peers', reach: 'clone', peers: [peer({ host_session: 'session_x' })] });
+    const options = askedPeers(row)?.options ?? [];
+    expect(options.map((o) => o.label)).toEqual(['Stop', 'Join as peer', 'Take over after drain']);
+    expect(options[1].description).toContain('session_x');
+    for (const o of options) expect(o.description.length).toBeGreaterThan(0);
+  });
+
+  test('print-only mode still asks nothing', () => {
+    const row = rowFor({ verdict: 'peers', reach: 'clone', peers: [peer()] });
+    expect(gateCards([row], { printOnly: true })).toEqual([]);
+  });
+
+  test('a peer that names this solo session as its manager is coordinated: no question, act as manager', () => {
+    const row = rowFor({ verdict: 'peers', reach: 'clone', peers: [peer({ role: 'peer', names_me: true, coordinated: true })] });
+    expect(row.adjustable).toBe(false);
+    expect(row.value).toBe('manager of 1 live peer in this clone: other');
+    expect(row.consequence).toContain('grants worker slots');
+  });
+
+  test('the manager this peer joined is coordinated: no question', () => {
+    const config = { ...SAMPLE_CONFIG, usage_budget: { enabled: true, coordination: { role: 'peer', manager_session: 'session_x' } } };
+    const row = rowFor({ verdict: 'peers', reach: 'clone', peers: [peer({ host_session: 'session_x', role: 'manager', coordinated: true })] }, config);
+    expect(row.adjustable).toBe(false);
+    expect(row.value).toBe('peer of session_x');
   });
 });

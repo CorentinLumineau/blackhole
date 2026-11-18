@@ -59,7 +59,8 @@ Spawn prompt text, model/effort policy, and mis-spawn hazard detail: `campaign-p
 - Use `interrupt: true` except the explicit `stop --abandon` tier or safety-critical policy — see
   `phase-stop.md`. A bare `stop` (drain, default) is relayed as a normal resume message
   (`interrupt: false`), never a hard kill.
-- Spawn a second orchestrator while first is live
+- Spawn a second orchestrator while first is live, in this session or in a live peer campaign on
+  the same clone (§ Peer campaign registry)
 - Re-paste full campaign-prompt on routine resume — only user message
 - Spawn the orchestrator via built-in `subagent_type` enums — see mis-spawn hazard in `campaign-prompt.md` § Coordinator usage
 
@@ -142,6 +143,25 @@ place that turns usage into a worker count.
 | `solo` (default) | This session sizes its own rounds from its own gate verdict. The budget is per-session; nothing is exchanged |
 | `manager` | This session owns the shared pool: the `workers` its own gate returns. It grants worker slots to peers and runs its own workers out of the same pool |
 | `peer` | This session asks `coordination.manager_session` for slots before each round and uses only what it was granted, plus `coordination.peer_floor` |
+
+A `solo` session whose `detect` lists a live peer naming it as `manager_session` (`names_me`)
+acts as manager for that peer: it answers the peer's messages below as a `manager` would.
+
+### Peer campaign registry
+
+ADR-057. Each campaign session keeps one record at
+`<git common dir>/blackhole/campaigns/<session>.json`, shared by every worktree of the clone,
+written by `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/peer-campaigns.ts heartbeat --turn <n>` and removed by `release`. A
+record names the worktree, host, role, `manager_session`, turn and `claims[]`: every non-done
+queue entry that is `in-flight` or carries a `pr`. It stays live for 40 minutes after its last
+heartbeat, the same lease as § Grant lease. This session's own id lives in
+`.blackhole/.tmp/campaign-session.json`; a record from the same worktree on the same host also
+reads as self, so a lost token never reports this campaign as its own peer.
+
+`detect` prints `{verdict, reach: "clone", peers[]}`. It is read-only and only reaches this clone:
+a campaign in another clone or on another machine is not seen. A peer counts as coordinated
+when it names this session as manager, or it is the manager this session joined; the launch
+gate asks only about the others (`launch-gate.md` § Questions).
 
 ### Messages
 

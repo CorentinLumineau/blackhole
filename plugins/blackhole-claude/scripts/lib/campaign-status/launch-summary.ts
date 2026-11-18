@@ -1,5 +1,6 @@
 import { readScope } from '../../forge-scope.ts';
 import { adjustPacing, type CatchupConfig, type Pacing } from '../catchup.ts';
+import type { DetectedPeer, DetectResult } from '../peer-campaigns.ts';
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetConfig } from '../usage-budget.ts';
 import { parallelMaxOf, resolveBudgetSettings, when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
@@ -30,6 +31,8 @@ export type LaunchSummaryInput = {
   statusPage: StatusPageInput;
   /** Present for `catchup` mode: nine rows with Pacing and the floor budget; absent: the eight run rows. */
   catchup?: CatchupInput;
+  /** `scripts/peer-campaigns.ts detect`; absent when detection did not run (no git clone): the row shows the configured role only. */
+  peers?: DetectResult;
 };
 
 /** The catchup launch inputs (ADR-054 C2): the effective preset after the invocation's overrides, the
@@ -227,7 +230,19 @@ function kaizenRow(config: ConfigSummaryInput & { kaizen?: { trigger?: string; l
   };
 }
 
-function peersRow(config: Record<string, unknown>): LaunchRow {
+const PEER_STOP: GateOption = { label: 'Stop', description: 'End this bootstrap and release this session; the other campaign keeps the clone.' };
+const PEER_TAKE_OVER: GateOption = {
+  label: 'Take over after drain',
+  description: 'Spawn nothing now; re-run detect on each resume and start once no live peer remains.',
+};
+const peerJoin = (hostSession: string): GateOption => ({
+  label: 'Join as peer',
+  description: `Write usage_budget.coordination role peer, manager_session ${hostSession}, and share its usage budget.`,
+});
+const peerName = (p: DetectedPeer): string => p.worktree.split('/').filter(Boolean).pop() ?? p.worktree;
+
+/** The configured coordination role, before peer detection. */
+function rolePeersRow(config: Record<string, unknown>): LaunchRow {
   const { role, manager_session, peer_floor } = rowSettings(config).settings.coordination;
   const base = { key: 'peers' as const, label: 'Peers', header: 'Peers', adjustable: false };
   if (role === 'manager') return { ...base, value: 'manager', consequence: 'This session grants worker slots to the peer sessions sharing its usage budget.' };
@@ -235,6 +250,37 @@ function peersRow(config: Record<string, unknown>): LaunchRow {
     return { ...base, value: `peer of ${manager_session}`, consequence: `Beyond ${plural(peer_floor, 'worker')}, this session waits for slots granted by ${manager_session}.` };
   }
   return { ...base, value: 'solo', consequence: 'This session spends the usage budget alone; no other session is coordinated.' };
+}
+
+/**
+ * Peers (ADR-057). A live peer not yet coordinated with this session turns the row into the gate's
+ * stop / join / take-over question; a coordinated peer (it names this session as manager, or it is
+ * the manager this session joined) never asks again. A clean detection says its reach.
+ */
+function peersRow(config: Record<string, unknown>, detected: DetectResult | undefined): LaunchRow {
+  const row = rolePeersRow(config);
+  if (!detected) return row;
+  const open = detected.peers.filter((p) => !p.coordinated);
+  if (open.length) {
+    const join = open.find((p) => p.host_session !== null)?.host_session;
+    const list = open.map((p) => `${peerName(p)} (turn ${p.turn}, heartbeat ${p.heartbeat_age_minutes}m ago)`).join(', ');
+    return {
+      ...row,
+      value: `${plural(open.length, 'live peer')} in this clone: ${list}`,
+      consequence: 'Another campaign runs in this clone: stop, join it, or take over after it drains; this session never starts as solo.',
+      adjustable: true,
+      options: join ? [PEER_STOP, peerJoin(join), PEER_TAKE_OVER] : [PEER_STOP, PEER_TAKE_OVER],
+    };
+  }
+  const naming = detected.peers.filter((p) => p.names_me);
+  if (naming.length && rowSettings(config).settings.coordination.role === 'solo') {
+    return {
+      ...row,
+      value: `manager of ${plural(naming.length, 'live peer')} in this clone: ${naming.map(peerName).join(', ')}`,
+      consequence: 'A live peer runs as peer of this session, so it acts as manager and grants worker slots from its usage budget.',
+    };
+  }
+  return detected.peers.length ? row : { ...row, value: `${row.value} (no live peer in this clone)` };
 }
 
 /** Sleep mode (`sleep-mode.md`): display-only, since the gate itself is print-only while it is on. */
@@ -252,11 +298,11 @@ export function sleepRow(config: Record<string, unknown>): LaunchRow {
 }
 
 /** The eight run rows in `LAUNCH_ROW_KEYS` order; with `catchup`, the nine rows in `CATCHUP_ROW_KEYS` order. */
-export function buildLaunchSummary({ report, config, budget, statusPage, catchup }: LaunchSummaryInput): LaunchRow[] {
+export function buildLaunchSummary({ report, config, budget, statusPage, catchup, peers }: LaunchSummaryInput): LaunchRow[] {
   const floorBudget = catchup && !('invalid' in catchup) ? catchup.budget : undefined;
   const rows = [
     scopeRow(report, config), orderRow(), mergeRow(config.merge_mode), budgetRow(budget, config, floorBudget),
-    statusPageRow(statusPage), kaizenRow(config), peersRow(config), sleepRow(config),
+    statusPageRow(statusPage), kaizenRow(config), peersRow(config, peers), sleepRow(config),
   ];
   if (!catchup) return rows;
   rows.splice(3, 0, pacingRow(catchup));
