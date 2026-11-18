@@ -6,10 +6,11 @@ import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { checkRouteArtifacts, dispatchGaps, latestRoute, promisedRoutes } from './lib/route-artifacts.ts';
 
-// Issue #1278 (V-AUTO-03) — route-artifact gate. `--phase dispatch` (before spawning an
+// V-AUTO-03 — route-artifact gate. `--phase dispatch` (before spawning an
 // implementer) asserts every route the issue's route promised has a staged manifest entry;
 // `--phase pr` additionally asserts each staged `new_file` target is in the PR's changed files.
-// `--campaign-dir` is the absolute `.blackhole` directory. Exit 0 pass or skipped, 1 gap, 2 usage.
+// `--campaign-dir` is the absolute `.blackhole` directory and must hold `config.json`: a relative,
+// absent or config-less directory is a usage error, never a skip. Exit 0 pass or skipped, 1 gap, 2 usage.
 // A consumer-repo caller pins Bun's `--cwd` to the plugin root, as for carry-staged-artifacts.ts.
 const usage = (): never => {
   console.error(
@@ -27,6 +28,10 @@ const diffFile = flags['diff-file'];
 if (!Number.isInteger(issue) || issue <= 0 || typeof campaignDir !== 'string') usage();
 if (phase !== 'dispatch' && phase !== 'pr') usage();
 if (phase === 'pr' && typeof diffFile !== 'string') usage();
+if (!path.isAbsolute(campaignDir as string) || !fs.existsSync(path.join(campaignDir as string, 'config.json'))) {
+  console.error(`route-artifacts: --campaign-dir must be an absolute directory containing config.json: ${campaignDir}`);
+  process.exit(2);
+}
 
 const readIfPresent = (name: string): any => {
   const file = path.join(campaignDir as string, name);

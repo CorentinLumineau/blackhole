@@ -655,9 +655,9 @@ instructions: |
       `.blackhole/plans/issue-N(-design)?.md` suffix with `.blackhole/staged/N/manifest.json`, where
       `N` is the issue number from this PR's `Closes #N`/`Fixes #N` linkage (§ PR & Git Hygiene).
   *   **Vacuous gate — absent or empty manifest**: the manifest does not exist or has an empty
-      `entries[]` — emit no `V-AUTO-02` findings only when the issue's route promised nothing
-      (`V-AUTO-03` below decides that); with governance on, a promised route with no manifest is
-      `V-AUTO-03`, never a pass.
+      `entries[]` — emit no `V-AUTO-02` findings: a route that declared nothing is unaffected
+      (`V-AUTO-03` below decides what the route promised); with governance on, a promised route with
+      no manifest is `V-AUTO-03`, never a pass.
   *   **Malformed entry — confidence-banded, never a silent pass**: an entry missing a required field
       (`route`, `sub_mode`, `produced_by`, `declared_at`, `staged_path`, `target_path`,
       `target_kind`) is not "absent." Score it in § Confidence-Based Finding Filtering &
@@ -698,7 +698,8 @@ instructions: |
       is always promised, plus `design`/`analyze`/`investigate`/`research` per the `needs_*` flags.
   *   **Finding**: exit 1 — a promised route with no staged entry, an absent route or manifest, or a
       staged `new_file` target missing from the diff — is `V-AUTO-03`, severity `BLOCK`, citing the
-      stderr gap lines. Exit 0 `skipped` means governance is off: emit nothing.
+      stderr gap lines. Exit 0 `skipped` means `config.json` exists and governance is off: emit
+      nothing. Exit 2 (relative, absent or config-less campaign dir) is a usage error, never a skip.
 
   ### Comment Discipline Audit (`V-DOC-05`, `V-DOC-06`, `V-DOC-07`)
   *   **Detection**: fires on any diff that adds or modifies a source-code comment (block or line

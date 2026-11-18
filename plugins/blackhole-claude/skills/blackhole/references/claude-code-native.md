@@ -74,14 +74,15 @@ through `askOrPark()` and is parked until the wake-up round.
    (`orchestrator-runtime.md` § Background worker barrier, Spawn steps 1-3): `scripts/pace-gate.ts`,
    `scripts/usage-budget.ts` and, for test/build-bearing workers, `scripts/resource-gate.ts`. The
    fan-out is at most the smallest of their counts, and a usage stop drains and wakes per
-   `phase-stop.md` § Usage stop. Per issue, also run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/route-artifacts.ts --issue <N>
-   --campaign-dir <abs repo-root>/.blackhole --phase dispatch` (`V-AUTO-03`): exit 1 means the route's
-   plan/investigator artifact was never staged, so do not spawn the implementer; run the missing step first.
+   `phase-stop.md` § Usage stop.
 
 ## Per-issue chain granularity
 
 One orchestration unit is one issue chain — handle → plan → implement → review for a single
-issue — not one unit per wave. Earliest-finish chains merge and unblock dependents without
+issue — not one unit per wave. Between plan and implement, each chain runs
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/route-artifacts.ts --issue <N> --campaign-dir <abs repo-root>/.blackhole --phase dispatch`
+(`V-AUTO-03`): exit 1 means the route's plan/investigator artifact was never staged, so the chain does not
+spawn the implementer and runs the missing step first. Earliest-finish chains merge and unblock dependents without
 waiting for wave stragglers, which is what per-issue granularity buys over wave-grained
 scheduling.
 

@@ -6,6 +6,7 @@
 - [ ] queue.json: status NOT blocked for user gates
 - [ ] Plan approved (or narrow technical waive documented)
 - [ ] queue.json: phase implement, status in-flight
+- [ ] Route-artifact gate (V-AUTO-03): `bun run scripts/route-artifacts.ts --issue <issue> --campaign-dir <abs repo-root>/.blackhole --phase dispatch`; exit 1 → do not spawn the implementer, run the missing plan/investigator step first (a consumer repo pins `--cwd <plugin root>`)
 - [ ] git worktree prune (V-WORKTREE-01)
 - [ ] bun run scripts/stack-parent.ts --queue .blackhole/queue.json --issue <issue> --repo-slug <owner/repo> --repo-root <abs> --forge <config.forge> (queue-dag.md Step 3b; `scripts/stack-check.ts --pr <P>` gates the opened PR, `phase-loop.md` Step 0.4); a named parent replaces `origin/main` below with `origin/blackhole/issue-<parent>` and the PR uses `--base blackhole/issue-<parent>`
 - [ ] git worktree add --no-track <scratchpad>/wt-<issue> -b blackhole/issue-<issue> origin/main (V-BRANCH-03, issue #516)
@@ -14,7 +15,6 @@
 - [ ] Branch Tracking Sweep clean before this wave's dispatch → orchestrator-dispatch.md § Branch Tracking Sweep (issue #516)
 - [ ] install dependencies in worktree (e.g. `npm install`, `bun install`, etc.)
 - [ ] Target-repo setup (existence-gated allowlist — first present wins; see § Target-repo setup below)
-- [ ] Route-artifact gate (V-AUTO-03): `bun run scripts/route-artifacts.ts --issue <issue> --campaign-dir <abs repo-root>/.blackhole --phase dispatch`; exit 1 → do not spawn the implementer, run the missing plan/investigator step first (a consumer repo pins `--cwd <plugin root>`)
 - [ ] Spawn implementer worker (run_in_background: true)
 - [ ] Worker returns new_findings[] — orchestrator appends to ledger
 - [ ] Worker returns companion_repairs[] — orchestrator matches (vcode, file) against open/deferred V-ADA-01/V-ADA-05 ledger rows and sets fixed-in-pr (findings-ledger.md § Status transitions)
