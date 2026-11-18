@@ -968,6 +968,12 @@ const findGitTraceTargets = (tokens) => {
     declaring ||= DECLARERS.has(commandName(token));
     if ((token[0] === "'" || token[0] === '"') && !assignmentSlot) return;
     const { text, dynamic } = normalizeShellWord(token);
+    // An ANSI-C `$'...'` word is not decoded, so where an assignment is expected one that still
+    // names `GIT_TRACE` once its quotes are dropped is unresolvable, never silent.
+    if (assignmentSlot && dynamic && token.includes("$'") && token.replace(/\$?['"]/g, '').includes('GIT_TRACE')) {
+      targets.push(UNRESOLVABLE_TARGET);
+      return;
+    }
     const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(token) : text)?.[1];
     if (value === undefined) return;
     if (dynamic) targets.push(value);
