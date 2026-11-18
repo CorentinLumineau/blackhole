@@ -245,7 +245,9 @@ branch.
 
 ### Step 3 — Conflict filter
 
-For each pair in ready set, if `touch_paths` globs overlap on likely files,
+For each pair in ready set, first remove `REGENERATED_PATHS` members (`scripts/lib/stack-overlap.ts`,
+ADR-055) from each issue's `touch_paths`; an issue whose list holds only such files has no
+overlap. Then, if the remaining `touch_paths` globs overlap on likely files,
 keep the issue earlier in `user_queue_order`. Defer the other (set `blocked`
 with note `overlap with #N`) only while the blocker has no PR yet; once the blocker has an open PR, Step 3b stacks the issue on
 it instead. The stack depth cap is not applied at dispatch (`pickStackParent` has none): it is

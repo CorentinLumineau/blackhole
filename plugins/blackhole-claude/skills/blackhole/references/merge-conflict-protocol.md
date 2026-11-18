@@ -36,8 +36,11 @@ A conflict hunk is **mechanical** iff it matches one of:
    (running it a second time produces a byte-identical tree) before trusting the regenerated
    file — never trust the path alone.
    The regenerated root index `documentation/INDEX.md` (a `REGENERATED_PATHS` member, ADR-055)
-   belongs here too: discard both sides, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/generate-doc-index.ts --write`, then
-   require `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/generate-doc-index.ts --check` to exit `0`.
+   belongs here too, but only in blackhole's own repo (Scope-1): discard both sides, run
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/generate-doc-index.ts --write`, then require
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/generate-doc-index.ts --check` to exit `0`. The script resolves the plugin
+   checkout root and takes no `--repo-root`, so in a consumer repo a conflicted root index is
+   class 3 (pure two-sided insertion), per ADR-055 A4.
 2. **Recognized lockfile** (`bun.lockb`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, or
    the project's equivalent). Resolution: discard both sides, regenerate via the project's
    install command.
