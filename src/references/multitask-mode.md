@@ -158,10 +158,12 @@ heartbeat, the same lease as § Grant lease. This session's own id lives in
 `.blackhole/.tmp/campaign-session.json`; a record from the same worktree on the same host also
 reads as self, so a lost token never reports this campaign as its own peer.
 
-`detect` prints `{verdict, reach: "clone", unreadable, peers[]}`. It is read-only and only reaches
+`detect` prints `{verdict, reach: "clone", unreadable, unreadable_files, peers[]}`. It is read-only and only reaches
 this clone: a campaign in another clone or on another machine is not seen. It fails closed: a
-record written within the lease that cannot be read or trusted counts in `unreadable`, and the
-verdict is `unknown`, never `solo`. A peer counts as coordinated when it names this session as
+registry entry whose mtime is within one lease of now and that cannot be read or trusted (not a
+regular file, unparseable, another version, misnamed, dated too far ahead) counts in `unreadable`
+and is named in `unreadable_files`, and the verdict is `unknown`, never `solo`. `heartbeat` refuses
+(exit 1, nothing written) a worktree or host its peers could not read. A peer counts as coordinated when it names this session as
 manager, it is the manager this session joined, or it is a peer of that same manager; the launch
 gate asks only about the others (`launch-gate.md` § Questions).
 

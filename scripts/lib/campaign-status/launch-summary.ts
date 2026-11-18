@@ -239,6 +239,8 @@ const peerJoin = (hostSession: string): GateOption => ({
   label: 'Join as peer',
   description: `Write usage_budget.coordination role peer, manager_session ${hostSession}, and share its usage budget.`,
 });
+/** How many unreadable registry files the Peers row names before it only counts. */
+const MAX_NAMED_UNREADABLE = 3;
 const peerName = (p: DetectedPeer): string => p.worktree.split('/').filter(Boolean).pop() ?? p.worktree;
 
 /** The configured coordination role, before peer detection. */
@@ -263,9 +265,12 @@ function peersRow(config: Record<string, unknown>, detected: DetectResult | unde
   const open = detected.peers.filter((p) => !p.coordinated);
   const { unreadable } = detected;
   if (open.length || unreadable) {
-    const join = open.length ? joinTarget(detected.peers) : null;
+    // Only an uncoordinated peer can be joined: a coordinated one already shares this budget, and
+    // its `manager_session` may be this session's own id.
+    const join = joinTarget(open);
     const list = open.map((p) => `${peerName(p)} (turn ${p.turn}, heartbeat ${p.heartbeat_age_minutes}m ago)`).join(', ');
-    const unread = plural(unreadable, 'unreadable record');
+    const names = detected.unreadable_files;
+    const unread = `${unreadable} unreadable: ${names.slice(0, MAX_NAMED_UNREADABLE).join(', ')}${names.length > MAX_NAMED_UNREADABLE ? ', …' : ''}`;
     const value = !open.length ? `unknown (${unread})` : `${plural(open.length, 'live peer')} in this clone: ${list}${unreadable ? `; ${unread}` : ''}`;
     return {
       ...row,

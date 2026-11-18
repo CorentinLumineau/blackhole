@@ -266,7 +266,16 @@ after reading checkpoint and forge sync:
    (`--host-session <id>` where the host has a cross-session transport, `claude-code-native.md`
    § Cross-session budget transport), then `detect`: a live peer naming this `solo` session as
    its `manager_session` makes it act as manager (`multitask-mode.md` § Shared usage budget),
-   and an uncoordinated peer is reported to the owner. Nothing refreshes the record between
+   and an uncoordinated peer or an `unknown` verdict mid-campaign is handled this turn:
+   - report it to the owner in the turn's status line, naming the peer worktrees or the unreadable
+     files `detect` lists;
+   - dispatch no issue in a live peer's `claims[]`; with `unknown`, whose claims cannot be read,
+     spawn no new worker this turn (in-flight workers finish) and check again next turn, since an
+     unreadable entry lapses one lease after its mtime;
+   - under sleep mode, park it once with `launch-gate.md` § Print-only mode's fixed question and
+     option set; a re-park on a later turn merges into the same pending decision.
+
+   Nothing refreshes the record between
    turns: it is written at turn start, at each spawn round and at Triage only. A campaign whose
    next turn starts more than 40 minutes after its last heartbeat (a usage pause, an idle wait,
    a host with no wake scheduled inside the lease) lapses and is invisible to peers until that

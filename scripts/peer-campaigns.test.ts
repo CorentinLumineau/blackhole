@@ -3,7 +3,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { makeTempDir } from './lib/fs.ts';
-import { detectForCampaign, realDeps, run, type RegistryDeps } from './peer-campaigns.ts';
+import { detectForCampaign, readRegistry, realDeps, run, type RegistryDeps } from './peer-campaigns.ts';
 
 // Two worktrees of one throwaway clone: the registry must be shared through the git common dir.
 // Every path is absolute and the CLI runs with cwd at the temp root, so nothing reaches this
@@ -72,7 +72,7 @@ describe('peer-campaigns CLI', () => {
   test('detect is read-only: no registry and no token are created', () => {
     const r = cli(['detect', '--campaign-dir', campaign(wt2)]);
     expect(r.code).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual({ verdict: 'solo', reach: 'clone', unreadable: 0, peers: [] });
+    expect(JSON.parse(r.stdout)).toEqual({ verdict: 'solo', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [] });
     expect(fs.existsSync(registry)).toBe(false);
     expect(fs.existsSync(path.join(campaign(wt2), '.tmp', 'campaign-session.json'))).toBe(false);
   });
@@ -121,7 +121,7 @@ describe('peer-campaigns CLI', () => {
 
   test('after release in worktree 1, worktree 2 is solo with reach clone', () => {
     expect(cli(['release', '--campaign-dir', campaign(wt1)]).code).toBe(0);
-    expect(JSON.parse(cli(['detect', '--campaign-dir', campaign(wt2)]).stdout)).toEqual({ verdict: 'solo', reach: 'clone', unreadable: 0, peers: [] });
+    expect(JSON.parse(cli(['detect', '--campaign-dir', campaign(wt2)]).stdout)).toEqual({ verdict: 'solo', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [] });
   });
 
   test('a campaign dir outside any git repo exits 1', () => {
@@ -184,6 +184,130 @@ describe('peer-campaigns fails closed on unreadable registry content', () => {
       expect(detectWt2()).toMatchObject({ verdict: 'unknown', unreadable: 1 });
     } finally {
       fs.chmodSync(registry, 0o755);
+    }
+  });
+});
+
+describe('peer-campaigns: entries that are not plain record files', () => {
+  const detectWt2 = () => JSON.parse(cli(['detect', '--campaign-dir', campaign(wt2)]).stdout);
+
+  test('a directory named *.json and a dangling symlink are unreadable, and named', () => {
+    fs.mkdirSync(registry, { recursive: true });
+    const dir = path.join(registry, 'dir.json');
+    const link = path.join(registry, 'link.json');
+    fs.mkdirSync(dir);
+    fs.symlinkSync(path.join(root, 'nowhere.json'), link);
+    try {
+      expect(detectWt2()).toMatchObject({ verdict: 'unknown', unreadable: 2, unreadable_files: ['dir.json', 'link.json'] });
+    } finally {
+      fs.rmSync(dir, { recursive: true });
+      fs.rmSync(link);
+    }
+  });
+
+  test('a directory named *.json lapses by its own mtime, like any record', () => {
+    fs.mkdirSync(registry, { recursive: true });
+    const dir = path.join(registry, 'stale-dir.json');
+    fs.mkdirSync(dir);
+    const old = new Date(Date.now() - 90 * 60_000);
+    fs.utimesSync(dir, old, old);
+    try {
+      expect(detectWt2()).toMatchObject({ verdict: 'solo', unreadable: 0 });
+    } finally {
+      fs.rmSync(dir, { recursive: true });
+    }
+  });
+
+  test('a garbage file whose mtime is more than one lease ahead lapses', () => {
+    fs.mkdirSync(registry, { recursive: true });
+    const future = path.join(registry, 'future.json');
+    fs.writeFileSync(future, 'garbage');
+    const ahead = new Date(Date.now() + 120 * 60_000);
+    fs.utimesSync(future, ahead, ahead);
+    try {
+      expect(detectWt2()).toMatchObject({ verdict: 'solo', unreadable: 0 });
+    } finally {
+      fs.rmSync(future);
+    }
+  });
+});
+
+describe('peer-campaigns: worktree paths', () => {
+  test("a worktree under R&D/wt it's heartbeats and is seen by its peers", () => {
+    const odd = path.join(root, 'R&D', "wt it's");
+    fs.mkdirSync(path.dirname(odd), { recursive: true });
+    git(wt1, ['worktree', 'add', '-q', '-b', 'odd', odd]);
+    fs.mkdirSync(campaign(odd));
+    try {
+      expect(cli(['heartbeat', '--campaign-dir', campaign(odd), '--turn', '3']).code).toBe(0);
+      const out = JSON.parse(cli(['detect', '--campaign-dir', campaign(wt2)]).stdout);
+      expect(out.peers.map((p: { worktree: string }) => p.worktree)).toContain(fs.realpathSync(odd));
+    } finally {
+      cli(['release', '--campaign-dir', campaign(odd)]);
+    }
+  });
+
+  test('a worktree path a peer could not read is refused at heartbeat, writing nothing', () => {
+    const bad = path.join(root, 'cost$dir');
+    git(wt1, ['worktree', 'add', '-q', '-b', 'bad', bad]);
+    fs.mkdirSync(campaign(bad));
+    const before = registryFiles().length;
+    const r = cli(['heartbeat', '--campaign-dir', campaign(bad), '--turn', '1']);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain('cannot be recorded');
+    expect(registryFiles()).toHaveLength(before);
+  });
+});
+
+describe('peer-campaigns in process: refusal and lstat', () => {
+  test('a host a peer could not read is refused with exit 1 and no record', () => {
+    const before = registryFiles().length;
+    const r = run(['heartbeat', '--campaign-dir', campaign(wt2), '--turn', '4'], { ...realDeps, hostname: () => 'box"$(id)' });
+    expect(r.code).toBe(1);
+    expect(r.err).toContain('cannot be recorded');
+    expect(registryFiles()).toHaveLength(before);
+  });
+
+  test("a first heartbeat mints this session's token, then release removes the record", () => {
+    fs.rmSync(path.join(campaign(wt1), '.tmp', 'campaign-session.json'), { force: true });
+    expect(run(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '30']).code).toBe(0);
+    const token = JSON.parse(fs.readFileSync(path.join(campaign(wt1), '.tmp', 'campaign-session.json'), 'utf-8')).session;
+    expect(registryFiles()).toContain(`${token}.json`);
+    expect(run(['release', '--campaign-dir', campaign(wt1)]).out).toContain(token);
+  });
+
+  test('readRegistry lstats every entry: a dir and a dangling link have no text and keep their own mtime', () => {
+    const reg = makeTempDir('peer-registry');
+    try {
+      fs.mkdirSync(path.join(reg, 'dir.json'));
+      fs.symlinkSync(path.join(reg, 'missing'), path.join(reg, 'link.json'));
+      fs.writeFileSync(path.join(reg, 'ok.json'), '{}');
+      fs.writeFileSync(path.join(reg, 'ok.json.tmp'), '{}');
+      const old = new Date(Date.now() - 90 * 60_000);
+      fs.utimesSync(path.join(reg, 'dir.json'), old, old);
+      const { entries, dirError } = readRegistry(reg);
+      expect(dirError).toBe(false);
+      const byName = Object.fromEntries(entries.map((e) => [e.file, e]));
+      expect(Object.keys(byName).sort()).toEqual(['dir.json', 'link.json', 'ok.json']);
+      expect(byName['dir.json'].text).toBeNull();
+      expect(byName['dir.json'].mtimeMs).toBeLessThan(Date.now() - 80 * 60_000);
+      expect(byName['link.json'].text).toBeNull();
+      expect(byName['ok.json'].text).toBe('{}');
+    } finally {
+      fs.rmSync(reg, { recursive: true, force: true });
+    }
+  });
+
+  test('readRegistry reports an unlistable dir and an absent one apart', () => {
+    expect(readRegistry(path.join(root, 'no-such-registry'))).toEqual({ entries: [], dirError: false });
+    if (process.getuid?.() === 0) return;
+    const reg = makeTempDir('peer-registry-locked');
+    fs.chmodSync(reg, 0o000);
+    try {
+      expect(readRegistry(reg).dirError).toBe(true);
+    } finally {
+      fs.chmodSync(reg, 0o755);
+      fs.rmSync(reg, { recursive: true, force: true });
     }
   });
 });

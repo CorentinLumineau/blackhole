@@ -368,13 +368,13 @@ describe('Peers row with peer detection', () => {
   });
 
   test('a clean detection states its reach, never a bare solo', () => {
-    const row = rowFor({ verdict: 'solo', reach: 'clone', unreadable: 0, peers: [] });
+    const row = rowFor({ verdict: 'solo', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [] });
     expect(row.value).toBe('solo (no live peer in this clone)');
     expect(row.adjustable).toBe(false);
   });
 
   test('a live peer names its worktree, turn and heartbeat age, and the gate asks', () => {
-    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, peers: [peer()] });
+    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [peer()] });
     expect(row.value).toBe('1 live peer in this clone: other (turn 12, heartbeat 5m ago)');
     expect(row.consequence).toContain('never starts as solo');
     expect(row.consequence.length).toBeLessThanOrEqual(MAX_CONSEQUENCE_CHARS);
@@ -382,7 +382,7 @@ describe('Peers row with peer detection', () => {
   });
 
   test('join as peer is offered only when a live peer has a host_session', () => {
-    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, peers: [peer({ host_session: 'session_x' })] });
+    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [peer({ host_session: 'session_x' })] });
     const options = askedPeers(row)?.options ?? [];
     expect(options.map((o) => o.label)).toEqual(['Stop', 'Join as peer', 'Take over after drain']);
     expect(options[1].description).toContain('session_x');
@@ -390,12 +390,12 @@ describe('Peers row with peer detection', () => {
   });
 
   test('print-only mode still asks nothing', () => {
-    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, peers: [peer()] });
+    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [peer()] });
     expect(gateCards([row], { printOnly: true })).toEqual([]);
   });
 
   test('a peer that names this solo session as its manager is coordinated: no question, act as manager', () => {
-    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, peers: [peer({ role: 'peer', names_me: true, coordinated: true })] });
+    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [peer({ role: 'peer', names_me: true, coordinated: true })] });
     expect(row.adjustable).toBe(false);
     expect(row.value).toBe('manager of 1 live peer in this clone: other');
     expect(row.consequence).toContain('grants worker slots');
@@ -403,32 +403,53 @@ describe('Peers row with peer detection', () => {
 
   test('the manager this peer joined is coordinated: no question', () => {
     const config = { ...SAMPLE_CONFIG, usage_budget: { enabled: true, coordination: { role: 'peer', manager_session: 'session_x' } } };
-    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, peers: [peer({ host_session: 'session_x', role: 'manager', coordinated: true })] }, config);
+    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [peer({ host_session: 'session_x', role: 'manager', coordinated: true })] }, config);
     expect(row.adjustable).toBe(false);
     expect(row.value).toBe('peer of session_x');
   });
   test('join targets the manager, not the first peer listed', () => {
     const solo = peer({ session: 'a0000000-0000-4000-8000-000000000001', host_session: 'session_solo' });
     const mgr = peer({ session: 'c0000000-0000-4000-8000-000000000003', worktree: '/repo/wt-mgr', role: 'manager', host_session: 'session_mgr' });
-    const options = askedPeers(rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, peers: [solo, mgr] }))?.options ?? [];
+    const options = askedPeers(rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [solo, mgr] }))?.options ?? [];
     expect(options.find((o) => o.label === 'Join as peer')?.description).toContain('session_mgr');
   });
 
   test('unreadable records fail closed: unknown, and the gate asks stop or take over', () => {
-    const row = rowFor({ verdict: 'unknown', reach: 'clone', unreadable: 2, peers: [] });
-    expect(row.value).toBe('unknown (2 unreadable records)');
+    const row = rowFor({ verdict: 'unknown', reach: 'clone', unreadable: 2, unreadable_files: ['a.json', 'b.json'], peers: [] });
+    expect(row.value).toBe('unknown (2 unreadable: a.json, b.json)');
     expect(row.consequence.length).toBeLessThanOrEqual(MAX_CONSEQUENCE_CHARS);
     expect(askedPeers(row)?.options.map((o) => o.label)).toEqual(['Stop', 'Take over after drain']);
   });
 
   test('unreadable records beside a live peer are named after it', () => {
-    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 1, peers: [peer()] });
-    expect(row.value).toBe('1 live peer in this clone: other (turn 12, heartbeat 5m ago); 1 unreadable record');
+    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 1, unreadable_files: ['x.json'], peers: [peer()] });
+    expect(row.value).toBe('1 live peer in this clone: other (turn 12, heartbeat 5m ago); 1 unreadable: x.json');
   });
 
   test('unreadable records with only coordinated peers still ask', () => {
-    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 1, peers: [peer({ role: 'peer', names_me: true, coordinated: true })] });
+    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 1, unreadable_files: ['x.json'], peers: [peer({ role: 'peer', names_me: true, coordinated: true })] });
     expect(row.adjustable).toBe(true);
-    expect(row.value).toBe('unknown (1 unreadable record)');
+    expect(row.value).toBe('unknown (1 unreadable: x.json)');
+  });
+  test('a manager with a coordinated peer is never offered to join itself when a newcomer arrives', () => {
+    const config = { ...SAMPLE_CONFIG, usage_budget: { enabled: true, coordination: { role: 'manager' } } };
+    const mine = peer({ session: 'b0000000-0000-4000-8000-000000000002', role: 'peer', host_session: 'session_sub', manager_session: 'session_me', names_me: true, coordinated: true });
+    const newcomer = peer({ session: 'd0000000-0000-4000-8000-000000000004', worktree: '/repo/wt-new' });
+    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [mine, newcomer] }, config);
+    expect(askedPeers(row)?.options.map((o) => o.label)).toEqual(['Stop', 'Take over after drain']);
+    expect(row.value).toBe('1 live peer in this clone: wt-new (turn 12, heartbeat 5m ago)');
+  });
+
+  test('no Join when no open peer can be joined, even if a coordinated one could', () => {
+    const joined = peer({ session: 'c0000000-0000-4000-8000-000000000003', role: 'manager', host_session: 'session_mgr', coordinated: true });
+    const open = peer({ session: 'd0000000-0000-4000-8000-000000000004', worktree: '/repo/wt-new' });
+    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [joined, open] });
+    expect(askedPeers(row)?.options.map((o) => o.label)).toEqual(['Stop', 'Take over after drain']);
+  });
+
+  test('more than three unreadable files are named three and counted', () => {
+    const files = ['a.json', 'b.json', 'c.json', 'd.json'];
+    const row = rowFor({ verdict: 'unknown', reach: 'clone', unreadable: 4, unreadable_files: files, peers: [] });
+    expect(row.value).toBe('unknown (4 unreadable: a.json, b.json, c.json, …)');
   });
 });

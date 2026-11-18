@@ -31,7 +31,8 @@ import {
 // All take --campaign-dir (default ./.blackhole). Records live in
 // `<git common dir>/blackhole/campaigns/<session>.json`, shared by every worktree of the clone and
 // never pushed. This session's id lives in `<campaign dir>/.tmp/campaign-session.json`.
-// Exit 0 on success, 1 when the git common dir cannot be resolved, 2 on a usage error.
+// Exit 0 on success; 1 when the git common dir cannot be resolved, or when heartbeat refuses a
+// worktree, host or host session its peers could not read (nothing is written); 2 on a usage error.
 
 const USAGE =
   'Usage: bun run scripts/peer-campaigns.ts <heartbeat --turn <n> [--host-session <id>] | detect | release> [--campaign-dir <dir>]';
@@ -84,7 +85,12 @@ const readToken = (campaignDir: string): string | null => {
   return isSessionId(session) ? session : null;
 };
 
-/** Every `*.json` file of the registry (`*.json.tmp` writes in progress are skipped); `dirError` when the dir exists but cannot be listed. */
+/**
+ * Every `*.json` entry of the registry (`*.json.tmp` writes in progress are skipped); `dirError`
+ * when the dir exists but cannot be listed. Entries are `lstat`ed, never followed: anything but a
+ * regular file (a directory, a symlink) has no text and keeps its own mtime, so it lapses like a
+ * record does.
+ */
 export function readRegistry(registry: string): { entries: RegistryEntry[]; dirError: boolean } {
   if (!fs.existsSync(registry)) return { entries: [], dirError: false };
   let names: string[];
@@ -93,12 +99,19 @@ export function readRegistry(registry: string): { entries: RegistryEntry[]; dirE
   } catch {
     return { entries: [], dirError: true };
   }
-  const entries = names.map((file): RegistryEntry => {
+  const entries = names.flatMap((file): RegistryEntry[] => {
     const full = path.join(registry, file);
+    let stat: fs.Stats;
     try {
-      return { file, text: fs.readFileSync(full, 'utf-8'), mtimeMs: fs.statSync(full).mtimeMs };
+      stat = fs.lstatSync(full);
     } catch {
-      return { file, text: null, mtimeMs: Date.now() };
+      return []; // removed between the listing and the lstat: a release, not an unreadable record
+    }
+    if (!stat.isFile()) return [{ file, text: null, mtimeMs: stat.mtimeMs }];
+    try {
+      return [{ file, text: fs.readFileSync(full, 'utf-8'), mtimeMs: stat.mtimeMs }];
+    } catch {
+      return [{ file, text: null, mtimeMs: stat.mtimeMs }];
     }
   });
   return { entries, dirError: false };
@@ -145,7 +158,17 @@ function detectIn(campaignDir: string, clone: Clone, deps: RegistryDeps): Detect
   return detectPeers(entries, selfIdentity(campaignDir, clone, entries, deps), deps.nowMs(), { dirError });
 }
 
+/** A heartbeat whose record would not parse back: nothing is written. */
+class HeartbeatRefused extends Error {}
+
 function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession: string | null, deps: RegistryDeps): string {
+  const host = deps.hostname();
+  const probe = { version: 1, session: 'probe', worktree: clone.worktree, host, host_session: hostSession, role: 'solo', manager_session: null, turn, started_at: new Date(0).toISOString(), heartbeat_at: new Date(0).toISOString(), claims: [] };
+  if (!parseRecord(JSON.stringify(probe))) {
+    throw new HeartbeatRefused(
+      `worktree ${JSON.stringify(clone.worktree)}, host ${JSON.stringify(host)} or --host-session cannot be recorded: peers would read the record as unreadable (no ", $, backtick, \\ or control characters)`,
+    );
+  }
   let session = readToken(campaignDir);
   if (!session) {
     session = deps.newSession();
@@ -154,7 +177,6 @@ function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession:
   }
   fs.mkdirSync(clone.registry, { recursive: true });
   const records = recordsOf(readRegistry(clone.registry).entries);
-  const host = deps.hostname();
   const self: SelfIdentity = { session, worktree: clone.worktree, host, host_session: null, manager_session: null };
   const own = records.find((r) => r.session === session);
   // An older session's record in this worktree is this campaign before its token was lost.
@@ -200,7 +222,14 @@ export function run(argv: string[], deps: RegistryDeps = realDeps): { code: numb
   const campaignDir = path.resolve(optional(flags, 'campaign-dir') ?? '.blackhole');
   const clone = resolveClone(campaignDir, deps);
   if (!clone) return { code: 1, err: `peer-campaigns: cannot resolve the git common dir for ${campaignDir}` };
-  if (sub === 'heartbeat') return { code: 0, out: heartbeat(campaignDir, clone, turn, hostSession, deps) };
+  if (sub === 'heartbeat') {
+    try {
+      return { code: 0, out: heartbeat(campaignDir, clone, turn, hostSession, deps) };
+    } catch (error) {
+      if (error instanceof HeartbeatRefused) return { code: 1, err: `peer-campaigns: ${error.message}` };
+      throw error;
+    }
+  }
   if (sub === 'release') return { code: 0, out: release(campaignDir, clone) };
   return { code: 0, out: JSON.stringify(detectIn(campaignDir, clone, deps), null, 2) };
 }

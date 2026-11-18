@@ -68,13 +68,20 @@ describe('parseRecord', () => {
     expect(isSessionId('a1b2c3d4-0000-4000-8000-000000000001')).toBe(true);
   });
 
-  test('worktree, host and session strings that could carry command text are rejected', () => {
+  test('worktree, host and session strings that could break a double-quoted argument are rejected', () => {
     expect(parseRecord(JSON.stringify(record({ worktree: 'relative/path' })))).toBeNull();
     expect(parseRecord(JSON.stringify(record({ worktree: '/repo\n$(rm -rf ~)' })))).toBeNull();
-    expect(parseRecord(JSON.stringify(record({ host: 'box; touch /tmp/x' })))).toBeNull();
+    for (const bad of ['/repo/a"b', '/repo/$HOME', '/repo/`id`', '/repo/a\\b']) expect(parseRecord(JSON.stringify(record({ worktree: bad })))).toBeNull();
+    expect(parseRecord(JSON.stringify(record({ host: 'box$(id)' })))).toBeNull();
+    expect(parseRecord(JSON.stringify(record({ host: 'box with space' })))).toBeNull();
     expect(parseRecord(JSON.stringify(record({ host_session: 'a" --gate x' })))).toBeNull();
     expect(parseRecord(JSON.stringify(record({ manager_session: '`id`' })))).toBeNull();
     expect(parseRecord(JSON.stringify(record({ host_session: 'session_01AbC:2' })))).not.toBeNull();
+  });
+
+  test("ordinary path punctuation is accepted: /home/x/R&D/wt it's", () => {
+    expect(parseRecord(JSON.stringify(record({ worktree: "/home/x/R&D/wt it's" })))?.worktree).toBe("/home/x/R&D/wt it's");
+    expect(parseRecord(JSON.stringify(record({ worktree: 'C:/work/repo' })))).not.toBeNull();
   });
 });
 
@@ -138,6 +145,7 @@ describe('detectPeers', () => {
       verdict: 'solo',
       reach: 'clone',
       unreadable: 0,
+      unreadable_files: [],
       peers: [],
     });
   });
@@ -187,7 +195,13 @@ describe('detectPeers', () => {
     const skewed = entry(JSON.stringify({ ...record(), version: 2 }), 1, 'skewed.json');
     const garbage = entry('{"version":1,', 1);
     const misnamed = entry(record(), 1, 'not-the-session.json');
-    expect(detectPeers([skewed, garbage, misnamed], self, NOW)).toEqual({ verdict: 'unknown', reach: 'clone', unreadable: 3, peers: [] });
+    expect(detectPeers([skewed, garbage, misnamed], self, NOW)).toEqual({
+      verdict: 'unknown',
+      reach: 'clone',
+      unreadable: 3,
+      unreadable_files: ['garbage.json', 'not-the-session.json', 'skewed.json'],
+      peers: [],
+    });
   });
 
   test('an unreadable file older than the lease is dead and not counted', () => {
@@ -204,7 +218,24 @@ describe('detectPeers', () => {
   });
 
   test('an unreadable registry dir counts as one unreadable entry', () => {
-    expect(detectPeers([], self, NOW, { dirError: true })).toEqual({ verdict: 'unknown', reach: 'clone', unreadable: 1, peers: [] });
+    expect(detectPeers([], self, NOW, { dirError: true })).toEqual({
+      verdict: 'unknown',
+      reach: 'clone',
+      unreadable: 1,
+      unreadable_files: ['(registry dir)'],
+      peers: [],
+    });
+  });
+
+  test('an unreadable file with a future mtime lapses: beyond one lease ahead it is not counted', () => {
+    expect(detectPeers([entry('garbage', -39)], self, NOW).unreadable).toBe(1);
+    expect(detectPeers([entry('garbage', -41)], self, NOW).unreadable).toBe(0);
+  });
+
+  test('a non-regular entry (text null) counts by its own mtime', () => {
+    const dir: RegistryEntry = { file: 'dir.json', text: null, mtimeMs: NOW - 60_000 };
+    const old: RegistryEntry = { file: 'old.json', text: null, mtimeMs: NOW - 90 * 60_000 };
+    expect(detectPeers([dir, old], self, NOW)).toMatchObject({ unreadable: 1, unreadable_files: ['dir.json'] });
   });
 });
 

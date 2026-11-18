@@ -45,7 +45,7 @@ disagree. The Peers row reads `scripts/peer-campaigns.ts detect` (ADR-057) and s
 `solo (no live peer in this clone)` when clean, the configured role alone outside a git clone,
 `manager of N live peers in this clone` for peers naming this session, and
 `N live peers in this clone: <worktree> (turn T, heartbeat Mm ago)` for an uncoordinated peer,
-and `unknown (N unreadable records)` when records cannot be read; either makes the row the gate's stop / join / take-over question (`launch-gate.md` §
+and `unknown (N unreadable: <file names>)` when records cannot be read; either makes the row the gate's stop / join / take-over question (`launch-gate.md` §
 Questions). `--summary` accepts only `--usage`, `--now`, `--json`, `--campaign-dir` and `--no-gh`,
 and cannot be combined with `--html`, `--out`, `--data` or `config-summary`.
 

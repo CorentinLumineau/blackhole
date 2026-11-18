@@ -58,15 +58,29 @@ export type DetectedPeer = Pick<
   coordinated: boolean;
 };
 
-/** `unknown`: no readable live peer, but `unreadable` fresh records might be one; the gate treats it like a live peer. */
-export type DetectResult = { verdict: 'solo' | 'peers' | 'unknown'; reach: 'clone'; unreadable: number; peers: DetectedPeer[] };
+/**
+ * `unknown`: no readable live peer, but `unreadable` fresh entries might be one; the gate treats it
+ * like a live peer. `unreadable_files` names them (sorted) so the owner can remove them.
+ */
+export type DetectResult = {
+  verdict: 'solo' | 'peers' | 'unknown';
+  reach: 'clone';
+  unreadable: number;
+  unreadable_files: string[];
+  peers: DetectedPeer[];
+};
 
-// Every string a record carries can reach a gate line or a command the owner's answer runs, so
-// each is held to a shape that cannot carry quotes, shell syntax or line breaks.
+/** Stands for the registry dir itself in `unreadable_files` when it cannot be listed. */
+export const REGISTRY_DIR_UNREADABLE = '(registry dir)';
+
+// The worktree and host reach the gate only inside a double-quoted `--evidence "<row value>"`
+// argument, so they may not carry what a double quote does not neutralise: `"`, `$`, a backtick,
+// `\` or a control character. Session ids become file names and option text, so they stay
+// strict. Git prints Windows toplevels with forward slashes (`C:/...`).
 const SESSION_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const HOST_SESSION = /^[A-Za-z0-9._:-]{1,128}$/;
-const HOST = /^[A-Za-z0-9._-]{1,253}$/;
-const WORKTREE = /^(?:\/|[A-Za-z]:[\\/])[^\x00-\x1f\x7f"'`$;|&<>]{0,4095}$/;
+const HOST = /^[^\x00-\x20\x7f"$`\\]{1,253}$/;
+const WORKTREE = /^(?:\/|[A-Za-z]:\/)[^\x00-\x1f\x7f"$`\\]{0,4095}$/;
 
 /** True for a session id usable as a registry file name: letters, digits, `_` and `-`, 64 at most. */
 export const isSessionId = (v: unknown): v is string => typeof v === 'string' && SESSION_ID.test(v);
@@ -146,27 +160,32 @@ export function claimsOf(queue: QueueJson | null): number[] {
     .sort((a, b) => a - b);
 }
 
+/** Within one lease of now, either way: an mtime further ahead is as untrusted as one further back. */
+const fresh = (mtimeMs: number, nowMs: number): boolean => Math.abs(nowMs - mtimeMs) <= PEER_LEASE_MS;
+
 /**
- * Splits registry entries into readable records and an `unreadable` count. A file whose text does
- * not parse, whose name is not `<session>.json`, or whose heartbeat is dated beyond now + lease is
- * unreadable while the file itself was written within the lease; an older one is dead like any
- * expired record. This session's own file is never counted: its next heartbeat rewrites it.
+ * Splits registry entries into readable records and the unreadable file names. An entry that is
+ * not a regular file (text null), does not parse, is not named `<session>.json`, or carries a
+ * heartbeat dated beyond now + lease is unreadable while its mtime is fresh; outside that window it
+ * is dead like any expired record, so no entry holds the gate forever. This session's own file is
+ * never counted: its next heartbeat rewrites it.
  */
-function readEntries(entries: RegistryEntry[], self: SelfIdentity, nowMs: number): { records: PeerRecord[]; unreadable: number } {
+function readEntries(entries: RegistryEntry[], self: SelfIdentity, nowMs: number): { records: PeerRecord[]; unreadable: string[] } {
   const records: PeerRecord[] = [];
-  let unreadable = 0;
+  const unreadable: string[] = [];
   for (const e of entries) {
     const r = e.text === null ? null : parseRecord(e.text);
     if (r && `${r.session}.json` === e.file && !tooFuture(r, nowMs)) records.push(r);
-    else if (e.file !== `${self.session}.json` && nowMs - e.mtimeMs <= PEER_LEASE_MS) unreadable++;
+    else if (e.file !== `${self.session}.json` && fresh(e.mtimeMs, nowMs)) unreadable.push(e.file);
   }
-  return { records, unreadable };
+  return { records, unreadable: unreadable.sort() };
 }
 
 /** The `detect` verdict: live peers with their age and coordination, plus the unreadable count (an unreadable dir counts one). */
 export function detectPeers(entries: RegistryEntry[], self: SelfIdentity, nowMs: number, { dirError = false } = {}): DetectResult {
   const read = readEntries(entries, self, nowMs);
-  const unreadable = read.unreadable + (dirError ? 1 : 0);
+  const unreadable_files = dirError ? [REGISTRY_DIR_UNREADABLE, ...read.unreadable] : read.unreadable;
+  const unreadable = unreadable_files.length;
   const peers = livePeers(read.records, self, nowMs).map((r): DetectedPeer => {
     const names_me = self.host_session !== null && r.manager_session === self.host_session;
     const joined = self.manager_session !== null && r.host_session === self.manager_session;
@@ -186,7 +205,7 @@ export function detectPeers(entries: RegistryEntry[], self: SelfIdentity, nowMs:
       coordinated: names_me || joined || sibling,
     };
   });
-  return { verdict: peers.length ? 'peers' : unreadable ? 'unknown' : 'solo', reach: 'clone', unreadable, peers };
+  return { verdict: peers.length ? 'peers' : unreadable ? 'unknown' : 'solo', reach: 'clone', unreadable, unreadable_files, peers };
 }
 
 /**

@@ -334,7 +334,7 @@ function readPeers(campaignDir: string): DetectResult | undefined {
     return detectForCampaign(campaignDir) ?? undefined;
   } catch (error) {
     console.error(`status --summary: peer detection failed: ${error instanceof Error ? error.message : String(error)}`);
-    return { verdict: 'unknown', reach: 'clone', unreadable: 1, peers: [] };
+    return { verdict: 'unknown', reach: 'clone', unreadable: 1, unreadable_files: ['(detection failed)'], peers: [] };
   }
 }
 
