@@ -5,6 +5,7 @@ import { runRows } from './run-state.ts';
 import { SCOPE_LABELS } from './record.ts';
 import { topDenyCounts } from './deny-counts.ts';
 import { campaignName } from './report.ts';
+import { formatScopeLabel } from './scope-label.ts';
 import { STALE_AFTER_HOURS } from './staleness.ts';
 import type { ScopeKind, StatusReport } from './types.ts';
 
@@ -46,6 +47,7 @@ function overviewRow(r: StatusReport): StatusDataRow {
 }
 
 function scopeRows(r: StatusReport): StatusDataRow[] {
+  if (!r.scope_record.recorded) return [{ kind: 'Filter', text: formatScopeLabel(r.campaign.scope), reason: null, date: null }];
   return [...r.scope_record.entries]
     .map((e, i) => ({ e, i }))
     .sort((a, b) => SCOPE_ORDER.indexOf(a.e.kind) - SCOPE_ORDER.indexOf(b.e.kind) || a.i - b.i)

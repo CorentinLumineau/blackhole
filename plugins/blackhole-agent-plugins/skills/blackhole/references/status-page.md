@@ -79,7 +79,7 @@ bun scripts/campaign-record.ts decision --text "Park the theme editor: another t
 one when the gate runs again. An entry naming `--refs` takes those issues from older entries, so
 re-including a parked issue moves it. A missing headline or blocker section is not an error: the
 page then shows one generated from the counts (what waits on the owner, how many are in review,
-what blocks most), and a campaign with no recorded scope shows "Scope not recorded".
+what blocks most), and a campaign with no recorded scope shows its issue filter (`all open issues` when none is set).
 
 Derived, never recorded: the stage of each card (queue state, the scope entry naming it, and the
 PR's review label, CI and mergeability when the forge is read), the workstream of each issue
@@ -130,7 +130,7 @@ sees at a glance where the run stands and what to do:
 4. **Workstreams** — done / in review / left / next per stream. On the Data dashboard a stream
    button above the board, or a row, shows only that stream (no buttons when there is one
    stream); `--html` ships no script, so it has the table without the filter
-5. **Scope** (in, parked, deferred, blocked upstream, out; "Scope not recorded" when none is),
+5. **Scope** (in, parked, deferred, blocked upstream, out; the issue filter, `all open issues` when none is set, when no entry is recorded),
    **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest),
    **Hook denials** (top 5 rules by deny and warn count, or `no hook denials recorded`),
    **Usage budget** — see below — and **Run**: the run route from `run-context.json` (pattern,

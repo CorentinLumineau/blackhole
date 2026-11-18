@@ -24,6 +24,7 @@ describe('status dashboard template — the Data type page contract', () => {
 
   test('carries an integer template version marker', () => {
     expect(TEMPLATE).toMatch(/<meta name="bh-template-version" content="\d+">/);
+    expect(TEMPLATE).toContain('<meta name="bh-template-version" content="8">');
   });
 
   test('writes values with textContent only: no innerHTML, no inline handlers', () => {
@@ -109,6 +110,10 @@ describe('status dashboard template — the Data type page contract', () => {
     for (const name of lists) expect(TEMPLATE).toMatch(new RegExp(`data-empty="${name}" hidden>[^<]+<`));
     expect(TEMPLATE).toContain('data-empty="scope" hidden>Scope not recorded.<');
     expect(TEMPLATE).toContain("'Nothing here.'");
+  });
+
+  test('a scope row with no date does not print " · since"', () => {
+    expect(TEMPLATE).toMatch(/if \(r\.date\) dd\.append\(mk\('span', 'cd-muted', ' · since '/);
   });
 
   test('has no second staleness constant: the threshold comes from the summary row', () => {
