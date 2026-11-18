@@ -55,6 +55,10 @@ const ESCAPED_TARGETS: Array<[string, (m: string) => string]> = [
   // An escaped quote in ANSI-C `$'…'` does not end the span, so the `;` after it still splits.
   ["`echo $'\\''; cp a <main>/x`", (m) => `echo $'\\''; cp a ${m}/x`],
   ["`echo $'a\\'b'; cp a <main>/x`", (m) => `echo $'a\\'b'; cp a ${m}/x`],
+  // An escaped backslash does not escape the `$` after it, so `$'…'` is still ANSI-C.
+  ["`echo \\\\$'\\''; cp a <main>/x`", (m) => `echo \\\\$'\\''; cp a ${m}/x`],
+  ["`echo \\$$'\\''; cp a <main>/x`", (m) => `echo \\$$'\\''; cp a ${m}/x`],
+  ["`echo $$$'\\''; cp a <main>/x` (`$$` then `$'`)", (m) => `echo $$$'\\''; cp a ${m}/x`],
 ];
 
 const ESCAPED_WORDS: Array<[string, (m: string) => string]> = [
@@ -145,6 +149,8 @@ describe('bash-write-target-guard.js — backslash-escaped and quoted words (#12
     ["`echo $'it\\'s' > f` writes inside the worktree", () => "echo $'it\\'s' > f"],
     ["`echo $'\\'' > f` writes inside the worktree", () => "echo $'\\'' > f"],
     ["`echo $'\\''; echo done` has no write target", () => "echo $'\\''; echo done"],
+    ["`echo \\$'\\''x' > f` (escaped `$`: plain quotes)", () => "echo \\$'\\''x' > f"],
+    ["`echo $$'a' > f` (`$$` then a plain span)", () => "echo $$'a' > f"],
   ] as const) {
     test(`#1243: ${label} stays allowed`, async () => {
       expect(await verdict(build)).toBeNull();

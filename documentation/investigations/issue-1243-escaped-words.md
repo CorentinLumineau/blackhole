@@ -33,7 +33,9 @@ read the raw spelling and gave those commands no verdict. Two shapes survived th
 - `tokenize` keeps a backslash and the character after it in the current word, so `x\ y` is one
   word; `unescapeTarget` then reads it as `x y`.
 - `skipQuotedSpan` lets a backslash consume the next character in a `$'…'` span. `isAnsiCQuote`
-  accepts the `'` only after a `$` that is neither escaped (`\$'`) nor the second half of `$$`.
+  accepts the `'` only when the run of unescaped `$` before it has odd length. A `$` is escaped by an
+  odd number of backslashes (`\$'` is plain, `\\$'` is ANSI-C), and `$$` is the process id (`$$'` is
+  plain, `$$$'` is ANSI-C).
 - The command finder reads quoted, escaped and ANSI-C spellings of a command name through
   `commandName`/`findCommand`, only at positions where a command runs, so a quoted grep pattern
   stays allowed.
@@ -45,6 +47,7 @@ Tests: `scripts/hooks-bash-write-escapes.test.ts`.
 - A backslash-newline line continuation inside a word is not joined by the tokenizer; #1252 handles
   it for command substitutions only.
 - A `$` before the quote that is itself the result of an expansion (`$$'…'`) keeps the plain
-  single-quote reading, which can only over-read the span.
+  single-quote reading, which can only over-read the span; an escaped backslash before the `$` no
+  longer hides the ANSI-C span.
 - Any other ANSI-C escape that names a quote (`\x27`, `\047`) is decoded for a command name but
   not when it appears inside a masked span.
