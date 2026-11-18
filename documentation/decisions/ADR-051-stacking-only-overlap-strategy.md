@@ -4,7 +4,7 @@ summary: "A campaign PR that would conflict with any open PR in the target repo 
 status: accepted
 review_trigger: "on a change to the forge's PR retargeting behavior, or on a request for a stacking toggle"
 created: 2026-11-11
-last_updated: 2026-11-11
+last_updated: 2026-11-18
 related:
   - documentation/decisions/ADR-027-forge-adapter-interface.md
   - documentation/decisions/ADR-048-github-rest-forge-channel.md
@@ -62,3 +62,21 @@ never saw.
 - External AI reviewers re-review the new child head; the campaign posts diff-equivalence evidence.
 - The adapters gain `prFiles` and `prChangeBase`; Gitea support is verified by a live probe
   recorded in the M1 PR.
+
+## Post-acceptance amendments
+
+- **2026-11-18 — D1 refined for regenerated files (#1303, ruling R-005, ADR-055).** A path in
+  `REGENERATED_PATHS` (`scripts/lib/stack-overlap.ts`; today only the generated root
+  `documentation/INDEX.md`) is no overlap: it is dropped before the shared-file prefilter, and a
+  `git merge-tree` conflict whose conflicted paths all lie in it reads as clean. A conflict in any
+  other file still stacks, and an empty or unreadable conflicted-path list is never clean. The
+  same filter applies at dispatch (`pickStackParent`). Rationale: R-005 exists so every PR merges
+  smoothly; stacking unrelated doc-carrying PRs on that one file serialized them behind any
+  owner-held parent, while two siblings' sorted index rows either merge textually or are
+  regenerated mechanically (ADR-055 § Alternatives). Who regenerates and when: on a clean
+  textual merge the sorted rows union correctly; when a sibling merges first into the same gap,
+  the later PR goes CONFLICTING and the Step 0.5 `implementer` in conflict-resolution mode runs
+  `bun run scripts/generate-doc-index.ts --write` (`merge-conflict-protocol.md` § Classification
+  rule, item 1). `V-DOCHEALTH-04` on the PR head and on `main` is the blocking backstop. The
+  predicate stays a real merge-tree conflict, with no toggle and no config key; owner-approved
+  2026-11-18.

@@ -106,3 +106,10 @@ describe('parseStatusArgs --data', () => {
     expect(() => parseStatusArgs(['--data', 'd', '--out', 'x'])).toThrow(/--out requires --html/);
   });
 });
+
+describe('buildStatusData: run dataset', () => {
+  test('has four rows, Doc carry last', () => {
+    const run = buildStatusData(report()).run;
+    expect(run.map((r) => r.key)).toEqual(['Run route', 'Sleep mode', 'Coordination', 'Doc carry']);
+  });
+});

@@ -58,10 +58,11 @@ operator never matched it.
   and `export` operands are expanded.
 - An `env` option that takes a value (`-u`, `-C`, `-S`, `-a`, `--unset`, `--chdir`,
   `--split-string`, `--argv0`, also quoted, clustered as `-iu` or with `=`) consumes its value
-  without ending the assignments, so `env --unset B "GIT_TRACE=/x" git` is read. A `-S` string
-  is split into words and each is judged like an assignment; a `-S` string holding an expansion
-  (`env -S "GIT_TRACE=$LOG git"`) is unresolvable. Any other option word, including an
-  abbreviated long option, and a `-S` string holding a backslash fail closed (warn).
+  without ending the assignments, so `env --unset B "GIT_TRACE=/x" git` is read. Any other option
+  word, including an abbreviated long option, fails closed (warn). A `-S` string is split on whitespace and read like `env`'s own operands only when it holds no
+  quote (`'` or `"`), `$`, backtick or backslash, neither in the word as written nor in the text
+  `env` receives; otherwise the whole command is unresolvable and warns, since the shell expands
+  `$X` and `$(…)` and `env` itself processes quotes, `\_` and `${VAR}` in that string.
 - A dynamic value (`$LOG`, `` `pwd` ``, `~/t`) is unresolvable and warns, as for the unquoted form.
 - Values git ignores (`1`, `true`, `0`, `false`, `2`–`9`, relative paths) stay allowed.
 
@@ -72,9 +73,15 @@ Tests: `scripts/hooks-bash-write-options.test.ts`, section `GIT_TRACE* variables
 - A trace variable set through `git -c`, a config include, or a shell function that exports it is
   not seen; `git -c` execution keys are covered separately.
 - `env` is read fail-closed: an option word that is not an exact known spelling (getopt_long
-  also accepts unambiguous abbreviations such as `--uns`), or a `-S` string holding a backslash
-  (`\_` separates words there), makes the command unresolvable and it warns. A `-S` string
-  without one is split on whitespace and read like `env`'s own operands.
+  also accepts unambiguous abbreviations such as `--uns`) makes the command unresolvable and it
+  warns. A `-S` string is split on whitespace and read like `env`'s own operands only when it holds no
+  quote (`'` or `"`), `$`, backtick or backslash, neither in the word as written nor in the text
+  `env` receives; otherwise the whole command is unresolvable and warns, since the shell expands
+  `$X` and `$(…)` and `env` itself processes quotes, `\_` and `${VAR}` in that string.
 - A trace name exported with no value (`printf -v GIT_TRACE …; export GIT_TRACE`) carries a
-  value set elsewhere, so a command that also runs git warns.
+  value set elsewhere, and one spelled with a brace (`export GIT_TRACE{,}`) expands to names the
+  scan cannot list, so either warns whatever the command runs (git may start in a subshell,
+  `bash -c` or a command substitution). A command that turns on `set -a` / `set -o allexport`
+  and mentions `GIT_TRACE` warns too, since a later `read` or `printf -v` exports the value; a
+  `set -a` spelled dynamically, or one in an earlier command of the session, is not seen.
 - `GIT_TRACE` assigned through `eval` or a variable (`export "$NAME=/x"`) is dynamic and not read.

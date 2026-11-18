@@ -791,8 +791,39 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
       expect(await verdict(build)).toMatchObject(WARN);
     });
   }
-  for (const build of [() => 'export GIT_TRACE; echo done', () => 'env --ignore-environment --null git status']) {
-    test(`#1246: \`${build()}\` stays allowed`, async () => {
+
+  // Structural rules. A `-S` string is split only when, as written and as `env` receives it, it
+  // holds no quote, `$`, backtick or backslash. A trace name exported with no value, or exported
+  // under brace expansion, or set by a builtin under `set -a`, warns whatever the command runs
+  // (git may run in a subshell, `bash -c` or a substitution).
+  for (const build of [
+    (m: string) => `BS='\\'; env -S "A=1\${BS}_GIT_TRACE=${m}/x git status"`,
+    (m: string) => `X=' '; env -S "A=1\${X}GIT_TRACE=${m}/x git status"`,
+    (m: string) => `env -S "A=1$(printf ' ')GIT_TRACE=${m}/x git status"`,
+    (m: string) => `env -S 'A=1\${NOPE}GIT_TRACE=${m}/x git status'`,
+    (m: string, w: string) => `env -S "GIT_TRACE='${w}/a /${path.relative(`${w}/a `, `${m}/x`)}'" git status`,
+    () => 'export GIT_TRACE; (git status)',
+    () => "export GIT_TRACE; bash -c 'git status'",
+    () => 'export GIT_TRACE; echo "$(git status)"',
+    () => 'export GIT_TRACE; echo done',
+    () => 'export GIT_TRACE{,}; git status',
+    () => "export 'GIT_TRACE'; git status",
+    (m: string) => `export GIT_TRACE{,}=${m}/x; git status`,
+    (m: string) => `set -a; printf -v GIT_TRACE %s ${m}/x; git status`,
+    () => 'set -o allexport; read GIT_TRACE < f; git status',
+  ]) {
+    test(`#1246: \`${build('<main>', '<wt>')}\` warns (structural fail-closed)`, async () => {
+      expect(await verdict(build)).toMatchObject(WARN);
+    });
+  }
+  for (const build of [
+    () => 'env --ignore-environment --null git status',
+    () => 'env FOO=1 git status',
+    () => 'env -i PATH=/usr/bin git log',
+    () => 'env -S "FOO=1 git status"',
+    () => 'set -a; FOO=1; git status',
+  ]) {
+    test(`#1246: \`${build()}\` stays allowed (structural)`, async () => {
       expect(await verdict(build)).toBeNull();
     });
   }

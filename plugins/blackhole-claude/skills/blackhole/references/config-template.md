@@ -311,6 +311,7 @@ write or no template panel draws, a row the dataset does not emit, or `none` wit
 | `adaptive_routing` | none | — | Per-issue routing internals; the text dashboard's Routing section shows each route |
 | `router_confidence_thresholds` | none | — | Routing internals, as `adaptive_routing` |
 | `docs_governance` | `config` | Docs governance | |
+| `docs_governance.write_governance` | `run` | Doc carry | Artifacts promised vs staged vs carried; `off` when governance is off |
 | `kaizen` | `config` | Kaizen | |
 | `incident_mode` | `config` | Concurrency | |
 | `autonomy` | `config` | Autonomy | |

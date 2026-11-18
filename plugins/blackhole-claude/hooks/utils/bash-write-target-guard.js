@@ -959,6 +959,9 @@ const findOptionWriteTargets = (tokens) => {
   return targets;
 };
 
+/** `set -a` or `set -o allexport`, which exports every variable assigned afterwards. */
+const ALLEXPORT_RE = /\bset\s+(?:[-+][a-zA-Z]*\s+)*(?:-[a-zA-Z]*a[a-zA-Z]*|-o\s+allexport)\b/;
+
 /** Builtins whose operands are assignments (`export "GIT_TRACE=/x"`). */
 const DECLARERS = new Set(['export', 'declare', 'typeset', 'local', 'readonly']);
 
@@ -969,19 +972,18 @@ const DECLARERS = new Set(['export', 'declare', 'typeset', 'local', 'readonly'])
  * the shell expects one (a command word, so `env "GIT_TRACE=/x" git`, an `env` operand holding `=`
  * before its command, or any operand of `export` once a declarer opens the clause, whatever bare
  * names precede it),
- * so `git commit -m 'GIT_TRACE=/x'` names no trace. Returns `{ targets, unresolvable, bareExport }`.
- * `unresolvable` fails closed where `env` cannot be read exactly: an option word that is not one
- * of `ENV_OPTION_RE`'s exact spellings (getopt_long also accepts any unambiguous abbreviation,
- * `--uns`), or a `-S` string holding a backslash (`\_` separates words there). `bareExport` marks
- * a declarer exporting a trace name with no value (`export GIT_TRACE`), whose value was set
- * elsewhere (`read`, `printf -v`). Each target is `{ value, literal }`: a literal
+ * so `git commit -m 'GIT_TRACE=/x'` names no trace. Returns `{ targets, unresolvable }`.
+ * `unresolvable` fails closed where the trace file cannot be read exactly: an `env` option word
+ * that is not one of `ENV_OPTION_RE`'s exact spellings (getopt_long also accepts any unambiguous
+ * abbreviation, `--uns`), a `-S` string holding a quote, `$`, backtick or backslash, a declarer
+ * exporting a trace name with no value (`export GIT_TRACE`, set elsewhere by `read` or
+ * `printf -v`), and a trace name spelled with a brace (`GIT_TRACE{,}`). Each target is `{ value, literal }`: a literal
  * value is the exact file name git opens, even when it holds a quote or a `$`; a value the shell
  * rewrites (`$LOG`, `` `pwd` ``, `~/t`) or may expand (a glob or brace character, which `env` and
  * `export` operands expand) is returned as written with `literal: false`, so it is unresolvable. */
 const findGitTraceTargets = (tokens) => {
   const targets = [];
   let unresolvable = false;
-  let bareExport = false;
   const addTrace = (word) => {
     const { text, dynamic } = normalizeShellWord(word);
     const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(word) : text)?.[1];
@@ -989,12 +991,14 @@ const findGitTraceTargets = (tokens) => {
     if (dynamic || value.startsWith('~') || /[*?[\]{}]/.test(value)) targets.push({ value, literal: false });
     else if (path.isAbsolute(value)) targets.push({ value, literal: true });
   };
-  // `env -S STRING` removes STRING's own quotes, splits it into words and reads their assignments
-  // like its own operands; a word holding an expansion stays dynamic. A backslash in the word as
-  // written fails closed too, since the shell's own quote removal may keep it.
+  // `env -S STRING` splits STRING into words and reads their assignments like its own operands. It
+  // is split here only when it holds no quote, `$`, backtick or backslash, neither in the word as
+  // written nor in the text `env` receives (the shell expands `$X` and `$(…)`, and `env` itself
+  // processes quotes, `\_` and `${VAR}`); otherwise the whole command is unresolvable.
   const addSplitString = (value, word) => {
-    if (word.includes('\\')) unresolvable = true;
-    else value.replace(/["']/g, '').split(/\s+/).forEach(addTrace);
+    const { text, dynamic } = normalizeShellWord(word);
+    if (dynamic || /[\\$`]/.test(word) || /['"\\$`]/.test(text)) unresolvable = true;
+    else value.split(/\s+/).forEach(addTrace);
   };
   const positions = commandPositions(tokens);
   let declaring = false;
@@ -1012,7 +1016,13 @@ const findGitTraceTargets = (tokens) => {
     const envOption = envOperands && unquoteWord(decoded).startsWith('-');
     const envAssignment = envOperands && !envOption && decoded.includes('=');
     const assignmentSlot = positions.has(i) || declaring || envAssignment;
-    if (declaring && /^GIT_TRACE\w*$/.test(unquoteWord(decoded))) bareExport = true;
+    // A trace name exported with no value carries one set elsewhere, and one spelled with a brace
+    // (`GIT_TRACE{,}`) expands to names this scan cannot list: either way the trace file is unknown.
+    const [name, ...value] = unquoteWord(decoded).split('=');
+    const bareName = name.replace(/[{},]/g, '');
+    if (/^GIT_TRACE/.test(bareName) && ((declaring && value.length === 0) || (assignmentSlot && bareName !== name))) {
+      unresolvable = true;
+    }
     declaring ||= DECLARERS.has(commandName(token));
     if (positions.has(i) && commandName(token) === 'env') envOperands = true;
     else if (envOption) {
@@ -1028,7 +1038,7 @@ const findGitTraceTargets = (tokens) => {
     // where an assignment is expected the name is read from the decoded word.
     addTrace(assignmentSlot ? decoded : token);
   });
-  return { targets, unresolvable, bareExport };
+  return { targets, unresolvable };
 };
 
 /** Every `env` option word GNU env accepts, spelled exactly: a cluster of the no-value letters
@@ -1476,7 +1486,6 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   let state = initialState;
   const saved = [];
   let clauseBase = null; // set while a clause runs `env -C DIR`
-  let bareTraceExport = false;
   const add = (raw) => {
     const base = clauseBase || state;
     const target = unescapeTarget(raw);
@@ -1528,7 +1537,6 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
         else add(value);
       }
       if (trace.unresolvable) unresolvable = true;
-      if (trace.bareExport) bareTraceExport = true;
       if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
       if (tokens.some((t) => t.startsWith('CDPATH='))) cdpath = true;
       // A pipeline element or background job runs in a subshell: its `cd` moves only that subshell,
@@ -1543,10 +1551,11 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   }
 
   if (hasPipedScript(visible)) unresolvable = true;
-  // A trace name exported with no value carries one set elsewhere, so git may write to any file.
-  const runsGit = () => splitClauses(visible).some((c) => findCommand(tokenize(c), 'git') !== -1);
-  if (bareTraceExport && runsGit()) unresolvable = true;
-  if (GIT_EXEC_ENV_RE.test(visible) && runsGit()) unresolvable = true;
+  // Under `set -a` a builtin that assigns (`read GIT_TRACE`, `printf -v GIT_TRACE`) also exports.
+  if (ALLEXPORT_RE.test(visible) && visible.includes('GIT_TRACE')) unresolvable = true;
+  if (GIT_EXEC_ENV_RE.test(visible) && splitClauses(visible).some((c) => findCommand(tokenize(c), 'git') !== -1)) {
+    unresolvable = true;
+  }
   return { literalTargets, unresolvable };
 };
 

@@ -2,7 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { buildDocIndexRows, diffDocIndexRows, renderDocIndexTable, renderFullIndexFile } from './doc-index-generate.ts';
+import {
+  buildDocIndexRows,
+  diffDocIndexRows,
+  renderDocIndexTable,
+  renderFullIndexFile,
+  renderRootIndexFile,
+  ROOT_DOC_INDEX_PATH,
+} from './doc-index-generate.ts';
 import { byPathByteOrder, renderIndexRowLine } from './check-common.ts';
 import { makeTempDir } from './fs.ts';
 
@@ -216,5 +223,37 @@ describe('renderFullIndexFile (issue #832, Task 5 — hoisted from generate-doc-
     const docsDir = path.join(import.meta.dir, '..', '..', 'documentation');
     const cliOutput = execFileSync('bun', ['run', cliPath], { encoding: 'utf-8' });
     expect(cliOutput).toBe(renderFullIndexFile(docsDir));
+  });
+});
+
+describe('renderRootIndexFile (#1303)', () => {
+  const fixture = (dir: string): void =>
+    write(
+      dir,
+      'audits/foo.md',
+      doc({ type: 'audit', summary: JSON.stringify('An audit doc'), status: 'current', review_trigger: JSON.stringify('on release') })
+    );
+
+  test('keeps the existing two-line title block and replaces everything below it with the generated table', () => {
+    withFixtureDir((dir) => {
+      fixture(dir);
+      const existing = '# My Index\n\n| path | stale |\n| x | y |\n';
+      const out = renderRootIndexFile(existing, dir);
+      expect(out.split('\n').slice(0, 2)).toEqual(['# My Index', '']);
+      expect(out).toBe(`# My Index\n\n${renderFullIndexFile(dir)}`);
+      expect(out).toContain(renderDocIndexTable(buildDocIndexRows(dir)));
+      expect(out).not.toContain('| x | y |');
+    });
+  });
+
+  test('a missing file gets the default title block', () => {
+    withFixtureDir((dir) => {
+      fixture(dir);
+      expect(renderRootIndexFile(null, dir)).toBe(`# Documentation Index\n\n${renderFullIndexFile(dir)}`);
+    });
+  });
+
+  test('ROOT_DOC_INDEX_PATH names the root index the generator writes', () => {
+    expect(ROOT_DOC_INDEX_PATH).toBe('documentation/INDEX.md');
   });
 });
