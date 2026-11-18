@@ -240,10 +240,15 @@ Optional pre-commit build hook: `bash scripts/install-hook.sh`
 
 ## Maintainer: Creating a release
 
-**Must** use the release skill for every published tag — see
+Automated every-20-merged-PR cadence (owner-gated by `RELEASE_CADENCE_ENABLED`) is documented in
+[documentation/runbooks/release-cadence.md](documentation/runbooks/release-cadence.md). Agents must
+not set that variable or the optional `CLAUDE_CODE_OAUTH_TOKEN` secret.
+
+Off-cadence / hotfix tags **must** use the release skill — see
 [`.claude/skills/prj-create-release/SKILL.md`](.claude/skills/prj-create-release/SKILL.md). The CLI is
 [`scripts/release.ts`](scripts/release.ts) (`bun run release …`); every tag needs a matching
-`.github/releases/vX.Y.Z.md` committed on `main` first.
+`.github/releases/vX.Y.Z.md` committed on `main` first. `.github/workflows/release.yml` is the
+sole GitHub Release publisher.
 
 ```bash
 bun run release prepare vX.Y.Z
