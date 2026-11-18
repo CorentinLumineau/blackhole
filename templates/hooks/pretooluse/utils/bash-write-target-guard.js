@@ -110,7 +110,8 @@ const stripQuotes = (token) => {
 
 /** Quote-aware whitespace tokenizer over an already-visible (masked spans blanked) substring —
  * a quoted span (e.g. a sed script `'s/a/b/'`) is kept as one token, quotes intact, so
- * `stripQuotes` can later decide whether to unwrap it. */
+ * `stripQuotes` can later decide whether to unwrap it. A backslash-escaped character (`x\ y`)
+ * never splits a word. */
 const tokenize = (text) => {
   const tokens = [];
   let current = '';
@@ -124,6 +125,12 @@ const tokenize = (text) => {
         current = '';
       }
       i++;
+      continue;
+    }
+    if (ch === '\\' && i + 1 < n) {
+      // An escaped character, space included, stays in the word: `x\ y` is one word.
+      current += text.slice(i, i + 2);
+      i += 2;
       continue;
     }
     if (ch === "'" || ch === '"') {
