@@ -118,13 +118,42 @@ const decodeAnsiC = (body) => {
   return nul === -1 ? text : text.slice(0, nul);
 };
 
-/** `word` with each ANSI-C `$'…'` span replaced by its decoded text and each locale-quoted
- * `$"…"` opener replaced by a plain `"`, so the result reads like the word the shell hands the
- * command. Decoded characters that the quote-removal pass would reinterpret (`\`, quotes, `$`,
- * a backtick) are backslash-escaped, which keeps a decoded `$` literal. */
-const decodeQuotedWord = (word) =>
-  word
-    .replace(/\$'((?:\\[\s\S]|[^'\\])*)'/g, (_, body) => decodeAnsiC(body).replace(/[\\'"$`]/g, '\\$&'))
-    .replace(/\$"/g, '"');
+/** `word` with each unquoted ANSI-C `$'…'` span replaced by its decoded text and each unquoted
+ * locale-quoted `$"…"` opener replaced by a plain `"`, so the result reads like the word the shell
+ * hands the command before its quote removal. Decoded characters that quote removal would
+ * reinterpret (`\`, quotes, `$`, a backtick) are backslash-escaped, which keeps a decoded `$`
+ * literal. Inside `"…"` or `'…'` the shell leaves `$'` and `$"` as text: a single-quoted span is
+ * kept as written, and in a double-quoted span a `$` before a quote is escaped to `\$`, which quote
+ * removal turns back into the literal `$` bash keeps there. */
+const decodeQuotedWord = (word) => {
+  const n = word.length;
+  let out = '';
+  let i = 0;
+  while (i < n) {
+    const ch = word[i];
+    if (ch === '\\' || (ch === '$' && word[i + 1] === '$')) {
+      out += word.slice(i, i + 2);
+      i += 2;
+    } else if (ch === '$' && word[i + 1] === "'") {
+      const end = skipQuotedSpan(word, i + 1, n);
+      const body = word.slice(i + 2, word[end - 1] === "'" ? end - 1 : end);
+      out += decodeAnsiC(body).replace(/[\\'"$`]/g, '\\$&');
+      i = end;
+    } else if (ch === '"' || (ch === '$' && word[i + 1] === '"')) {
+      const start = ch === '$' ? i + 1 : i;
+      const end = skipQuotedSpan(word, start, n);
+      out += word.slice(start, end).replace(/\\[\s\S]|\$(?=["'])/g, (m) => (m === '$' ? '\\$' : m));
+      i = end;
+    } else if (ch === "'") {
+      const end = skipQuotedSpan(word, i, n);
+      out += word.slice(i, end);
+      i = end;
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
+};
 
 module.exports = { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC, decodeQuotedWord };

@@ -38,7 +38,7 @@ operator never matched it.
   `git commit -m 'GIT_TRACE=/x'` and `echo "GIT_TRACE=/x"` stay allowed. Every `env` operand
   holding `=` before its command is an assignment too, so `env "A=1" "GIT_TRACE=/x" git` is read.
 - Where the shell expects an assignment (a command word, or any operand after a declarer), the
-  word is decoded before `env` or `export` sees it: ANSI-C `$'...'` (`\xHH`, octal `\N` to
+  word's unquoted spans are decoded before `env` or `export` sees it: ANSI-C `$'...'` (`\xHH`, octal `\N` to
   `\NNN`, `\u`, `\U`, `\cX` and the one-letter escapes) and locale-quoted `$"..."`. As in bash,
   each `$'...'` span ends at its first NUL (`\x00`, `\0`, `\400`, `\c@`, `\u0000`, ...), so
   `$'GIT_TRACE=/x\x00/../wt/y'` names `/x`; the text after the span is kept (`a$'x\0y'b` is
@@ -51,6 +51,13 @@ operator never matched it.
   compared against the root. A decoded `$` stays literal (`$'GIT_TRACE=$LOG'` is the text `$LOG`).
   Elsewhere (`echo $'GIT_TRACE=/x'`, `git commit -m $'GIT_TRACE=/x'`) the word is data. The
   decoder is `decodeAnsiC` / `decodeQuotedWord` in `shell-lexer.js`, shared with `commandName`.
+  Inside double or single quotes bash leaves `$'...'` and `$"..."` as text, so
+  `export "GIT_TRACE=/m/a$'\x2f..'"` names the literal file `a$'\x2f..'` under `/m`, and a
+  literal trace value is compared as the exact name git opens, whatever characters it holds.
+- An `env` option that takes a value (`-u`, `-C`, `-S`, `-a`, `--unset`, `--chdir`,
+  `--split-string`, `--argv0`, also quoted, clustered as `-iu` or with `=`) consumes its value
+  without ending the assignments, so `env --unset B "GIT_TRACE=/x" git` is read. A `-S` string
+  is split into words and each is judged like an assignment.
 - A dynamic value (`$LOG`, `` `pwd` ``, `~/t`) is unresolvable and warns, as for the unquoted form.
 - Values git ignores (`1`, `true`, `0`, `false`, `2`–`9`, relative paths) stay allowed.
 
