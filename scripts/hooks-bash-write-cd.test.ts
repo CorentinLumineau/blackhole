@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
+import { minMs, PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
 
 // Issue #1239: a `cd` earlier in the same command moves the directory a relative write target
 // resolves against. `cd <main-clone> && git format-patch -1` and `cd <main-clone> && echo x > f`
@@ -100,6 +100,76 @@ describe('bash-write-target-guard.js — a preceding cd moves relative write tar
   ] as const) {
     test(`#1239: ${label} stays allowed with no verdict`, async () => {
       expect(await verdict(build)).toBeNull();
+    });
+  }
+
+  // Review of the #1239 fix: a cd that may not run (after `&&`/`||`, inside a compound command or a
+  // function, in a pipeline or in the background) must not replace the base for later clauses.
+  for (const [label, build] of [
+    ['`cd <main>; false && cd <wt>; echo x > f`', (m: string, w: string) => `cd ${m}; false && cd ${w}; echo x > f`],
+    ['the same chain split by newlines', (m: string, w: string) => `cd ${m}\nfalse && cd ${w}\necho x > f`],
+    ['`if false; then cd <wt>; fi`', (m: string, w: string) => `cd ${m}; if false; then cd ${w}; fi; echo x > f`],
+    ['`if` over several lines', (m: string, w: string) => `cd ${m}\nif false\nthen\ncd ${w}\nfi\necho x > f`],
+    ['a `while` body', (m: string, w: string) => `cd ${m}; while false; do cd ${w}; done; echo x > f`],
+    ['a `for` body', (m: string, w: string) => `cd ${m}; for d in a; do cd ${w}; done; echo x > f`],
+    ['a function body', (m: string, w: string) => `cd ${m}; f() { cd ${w}; }; echo x > f`],
+    ['a function body over several lines', (m: string, w: string) => `cd ${m}\nf() {\ncd ${w}\n}\necho x > f`],
+    ['`cd <wt> | cat` (a pipeline runs in a subshell)', (m: string, w: string) => `cd ${m}; cd ${w} | cat; echo x > f`],
+    ['`… && true &` (the backgrounded list may have left the base where it was)', (m: string, w: string) => `cd ${m}; false && cd ${w} && true & echo x > f`],
+    ['`cd <wt> &` (a background job runs in a subshell)', (m: string, w: string) => `cd ${m}; cd ${w} & echo x > f`],
+    ['a case pattern `)` inside a subshell', (m: string) => `( cd ${m}\ncase y in y) echo x > f;; esac )`],
+    ['a case pattern `)` on its own line inside a subshell', (m: string) => `( cd ${m}\ncase y in y)\necho x > f;; esac )`],
+    ['a `cd` in a case arm on the `case` line', (m: string) => `case y in y) cd ${m};; esac; echo x > f`],
+    ['a case arm after `case … in` on its own line', (m: string) => `cd ${m}\ncase y in\ny) echo x > f;;\nesac`],
+    ['`pushd <main> && echo x > f`', (m: string) => `pushd ${m} && echo x > f`],
+    ['`pushd <main> >/dev/null; echo x > f`', (m: string) => `pushd ${m} >/dev/null; echo x > f`],
+  ] as const) {
+    test(`#1239: ${label} is denied`, async () => {
+      expect(await verdict(build)).toMatchObject(BLOCK);
+    });
+  }
+
+  for (const [label, build] of [
+    ['`CDPATH=<main>/.. cd <name> && echo x > f`', (m: string) => `CDPATH=${path.dirname(m)} cd ${path.basename(m)} && echo x > f`],
+    ['`export CDPATH=/x; cd sub && echo x > f`', () => 'export CDPATH=/x; cd sub && echo x > f'],
+    ['`pushd +1 && echo x > f`', () => 'pushd +1 && echo x > f'],
+    ['`pushd <main> && popd && echo x > f`', (m: string) => `pushd ${m} && popd && echo x > f`],
+  ] as const) {
+    test(`#1239: ${label} warns`, async () => {
+      expect(await verdict(build)).toMatchObject(WARN);
+    });
+  }
+
+  for (const [label, build] of [
+    ['`cd <main> | cat; echo x > f`', (m: string) => `cd ${m} | cat; echo x > f`],
+    ['`cd <main> & echo x > f`', (m: string) => `cd ${m} & echo x > f`],
+    ['`cd <wt>; false && cd sub; echo x > f`', (_m: string, w: string) => `cd ${w}; false && cd sub; echo x > f`],
+    ['`CDPATH=/x cd ./sub && echo x > f` (CDPATH skips ./)', () => 'CDPATH=/x cd ./sub && echo x > f'],
+    ['`if true; then echo x > f; fi`', () => 'if true; then echo x > f; fi'],
+    // A closed compound command no longer makes a later `cd` uncertain.
+    ['`fi` closes the `if`', (m: string, w: string) => `cd ${m}; if true; then true; fi; cd ${w}; echo x > f`],
+    ['`done` closes the loop', (m: string, w: string) => `cd ${m}; while false; do true; done; cd ${w}; echo x > f`],
+    ['`}` closes the group', (m: string, w: string) => `cd ${m}; { true; }; cd ${w}; echo x > f`],
+    ['`esac` closes the case, so a later subshell restores its base', (m: string) => `case y in y) true;; esac; (cd ${m}); echo x > f`],
+    ['a `(` pattern inside a case is not a subshell', (m: string) => `( cd ${m}\ncase y in\n(y) true;;\nesac\n); echo x > f`],
+    ['a `cd` receiving a pipe runs in a subshell', (m: string) => `true | cd ${m}; echo x > f`],
+    ['a `cd` receiving `|&` runs in a subshell', (m: string) => `true |& cd ${m}; echo x > f`],
+  ] as const) {
+    test(`#1239: ${label} stays allowed with no verdict`, async () => {
+      expect(await verdict(build)).toBeNull();
+    });
+  }
+
+  // The trailing-paren scan was quadratic in a long run of spaces or `)` inside a clause.
+  for (const [label, command] of [
+    ['32 KiB of spaces mid-clause', `printf '%s' x${' '.repeat(32_000)}y > f`],
+    ['32 KiB of `)` mid-clause', `echo ${')'.repeat(32_700)}x`],
+  ] as const) {
+    test(`#1239: ${label} is scanned in linear time`, async () => {
+      await withLinkedWorktree('blackhole-hook-1239-', async (_mainRepo, worktree) => {
+        const { evaluateBashWriteTargets } = guard();
+        expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(100);
+      });
     });
   }
 });
