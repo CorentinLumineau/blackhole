@@ -4942,6 +4942,13 @@ describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes
     `true || unset PATH; grep '${t}'`,
     `sort -o f x; grep '${t}'`,
     `cat x > f; grep '${t}'`,
+    `grep () ( awk 'BEGIN{system(ARGV[1])}' "$1" ) ; grep '${t}'`,
+    `grep ()( awk 'BEGIN{system(ARGV[1])}' "$1" ) ; grep '${t}'`,
+    `rg () ( awk 'BEGIN{system(ARGV[1])}' "$1" ) ; grep '${t}'`,
+    `cut () ( x ) ; grep '${t}'`,
+    `head () ( true ) ; grep '${t}'`,
+    `grep ()\n( awk 'BEGIN{system(ARGV[1])}' "$1" )\ngrep '${t}'`,
+    `head () { true; } ; grep '${t}'`,
   ];
 
   for (const command of [

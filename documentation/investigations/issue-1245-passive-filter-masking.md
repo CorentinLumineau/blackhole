@@ -41,5 +41,5 @@ Rows pin all 19 forms plus the `uniq` and `sort` fences, and the original allow 
   `cd sub && grep 'a>b' f`, `grep ... | sort -k1 | head`. Widen the allowlist only on evidence of noise.
 - Independent siblings, out of scope here: #1237 (python/node from stdin), #1239
   (`cd <main> && echo x > f`), #1243 (`\/path`), #1246 (`GIT_TRACE=`), #1252 (`$(...)`, `<(...)`).
-- Installed plugin copies pick the fix up only after a version bump (V-PLUGIN-01 is awaiting an
-  owner ruling; no bump in this PR).
+- Installed plugin copies pick the fix up only after a version bump (V-PLUGIN-01 is waived per the
+  2026-11-18 owner ruling: no per-PR bump, chore(release) bumps).

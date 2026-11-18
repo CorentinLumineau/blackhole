@@ -242,11 +242,15 @@ const isInertSed = (args) => {
   return args.every((t) => t === scripts[0] || SED_PLAIN_OPTION_RE.test(t) || !t.startsWith('-'));
 };
 
+/** An unquoted `(`, `)`, `{` or `}` in a token makes the clause a function definition or a group,
+ * not a filter invocation: `grep () ( ... )` redefines the word instead of running it. */
+const hasUnquotedGrouping = (token) => /[(){}]/.test(token.replace(/'[^']*'|"[^"]*"/g, ''));
+
 /** True when a clause's command word is a bare, unquoted, unprefixed grep-family command or a pure
  * `s///` sed. A leading `VAR=val`, a path (`./grep`, `/tmp/grep`) or any quoting disqualifies it:
  * the word may then name something else than the filter. */
 const isInertClause = (tokens) => {
-  if (tokens.length === 0 || !/^[A-Za-z]+$/.test(tokens[0])) return false;
+  if (tokens.length === 0 || tokens.some(hasUnquotedGrouping) || !/^[A-Za-z]+$/.test(tokens[0])) return false;
   const head = tokens[0];
   const args = tokens.slice(1);
   if (INERT_GREP_COMMANDS.has(head)) return !hasDisqualifyingOption(head, args);
@@ -261,7 +265,7 @@ const SORT_PLAIN_OPTION_RE = /^-[nrufbdiMhVgs]+$/;
  * `sort` without an output/compress option, `uniq` with at most one positional argument (the
  * second names an output file). */
 const isPassiveFilterClause = (tokens) => {
-  if (tokens.length === 0 || !PASSIVE_FILTER_COMMANDS.has(tokens[0])) return false;
+  if (tokens.length === 0 || tokens.some(hasUnquotedGrouping) || !PASSIVE_FILTER_COMMANDS.has(tokens[0])) return false;
   const args = tokens.slice(1);
   if (args.some((t) => /[<>]/.test(t))) return false;
   if (tokens[0] === 'sort') return args.every((t) => !t.startsWith('-') || SORT_PLAIN_OPTION_RE.test(t));
