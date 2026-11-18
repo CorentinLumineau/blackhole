@@ -936,7 +936,8 @@ const DECLARERS = new Set(['export', 'declare', 'typeset', 'local', 'readonly'])
  * anywhere in one clause — a prefix, `export` or `env` alike, appended with `+=` or not. Git
  * writes only to an absolute value: `1`, `true`, `0`, `false` and `2`–`9` mean stderr, off or an
  * fd, and any other value is ignored. A word that starts with a quote is an assignment only where
- * the shell expects one (a command word, so `env "GIT_TRACE=/x" git`, or an operand of `export`),
+ * the shell expects one (a command word, so `env "GIT_TRACE=/x" git`, or any operand of `export`
+ * once a declarer opens the clause, whatever bare names precede it),
  * so `git commit -m 'GIT_TRACE=/x'` names no trace. A value the shell rewrites (`$LOG`,
  * `` `pwd` ``, `~/t`) is returned as written, so it is unresolvable. */
 const findGitTraceTargets = (tokens) => {
@@ -945,7 +946,7 @@ const findGitTraceTargets = (tokens) => {
   let declaring = false;
   tokens.forEach((token, i) => {
     const assignmentSlot = positions.has(i) || declaring;
-    declaring = DECLARERS.has(commandName(token)) || (declaring && (token.startsWith('-') || /^['"]?[A-Za-z_]\w*\+?=/.test(token)));
+    declaring ||= DECLARERS.has(commandName(token));
     if ((token[0] === "'" || token[0] === '"') && !assignmentSlot) return;
     const { text, dynamic } = normalizeShellWord(token);
     const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(token) : text)?.[1];

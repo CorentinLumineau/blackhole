@@ -32,7 +32,9 @@ operator never matched it.
 - The token is dequoted with `normalizeShellWord` before the match, and the pattern accepts `+=`.
 - A word that starts with a quote counts as an assignment only where the shell expects one: a
   command word (`env "GIT_TRACE=/x" git`, also behind `sudo env` and `env -i`) or an operand of
-  `export`/`declare`/`typeset`/`local`/`readonly`. A quoted word elsewhere is data, so
+  `export`/`declare`/`typeset`/`local`/`readonly`. Once one of those opens a clause, every later
+  operand is scanned, so a bare name before it (`export FOO "GIT_TRACE=/x"`) does not end the scan.
+  A quoted word elsewhere is data, so
   `git commit -m 'GIT_TRACE=/x'` and `echo "GIT_TRACE=/x"` stay allowed.
 - A dynamic value (`$LOG`, `` `pwd` ``, `~/t`) is unresolvable and warns, as for the unquoted form.
 - Values git ignores (`1`, `true`, `0`, `false`, `2`–`9`, relative paths) stay allowed.
