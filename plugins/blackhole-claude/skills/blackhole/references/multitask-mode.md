@@ -153,7 +153,8 @@ ADR-057. Each campaign session keeps one record at
 `<git common dir>/blackhole/campaigns/<session>.json`, shared by every worktree of the clone,
 written by `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/peer-campaigns.ts heartbeat --turn <n>` and removed by `release`. A
 record names the worktree, host, role, `manager_session`, turn and `claims[]`: every non-done
-queue entry that is `in-flight` or carries a `pr`. It stays live for 40 minutes after its last
+queue entry that is `in-flight`, or carries a `pr` and is not held for a peer
+(`another session:`, [forge-sync.md](forge-sync.md) § Queue builder script). It stays live for 40 minutes after its last
 heartbeat, the same lease as § Grant lease. This session's own id lives in
 `.blackhole/.tmp/campaign-session.json`; a record from the same worktree on the same host also
 reads as self, so a lost token never reports this campaign as its own peer.

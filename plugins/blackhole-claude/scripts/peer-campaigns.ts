@@ -62,13 +62,20 @@ export const realDeps: RegistryDeps = {
 
 type Clone = { worktree: string; registry: string };
 
+/**
+ * A worktree path as a record carries it: forward slashes on Windows, where `realpath` gives
+ * backslashes the record format refuses (git itself prints `C:/...`). Elsewhere a backslash is a
+ * real file-name character, so the path is kept as is and heartbeat refuses it.
+ */
+export const recordedWorktree = (p: string, sep: string = path.sep): string => (sep === '\\' ? p.replaceAll('\\', '/') : p);
+
 /** The worktree toplevel and registry dir for a campaign dir, resolved from its parent; null outside a git repo. */
 export function resolveClone(campaignDir: string, deps: RegistryDeps): Clone | null {
   const base = path.dirname(path.resolve(campaignDir));
   const top = deps.git(base, ['rev-parse', '--show-toplevel']);
   const common = deps.git(base, ['rev-parse', '--git-common-dir']);
   if (top.status !== 0 || common.status !== 0 || !top.stdout || !common.stdout) return null;
-  return { worktree: fs.realpathSync(top.stdout), registry: path.join(path.resolve(base, common.stdout), REGISTRY_DIR) };
+  return { worktree: recordedWorktree(fs.realpathSync(top.stdout)), registry: path.join(path.resolve(base, common.stdout), REGISTRY_DIR) };
 }
 
 const readOptionalJson = (file: string): unknown => {
@@ -89,9 +96,10 @@ const readToken = (campaignDir: string): string | null => {
  * Every `*.json` entry of the registry (`*.json.tmp` writes in progress are skipped); `dirError`
  * when the dir exists but cannot be listed. Entries are `lstat`ed, never followed: anything but a
  * regular file (a directory, a symlink) has no text and keeps its own mtime, so it lapses like a
- * record does.
+ * record does. An entry gone before its `lstat` (ENOENT) was released and is skipped; any other
+ * `lstat` failure has no mtime, so it is dated `nowMs` and reads as a fresh unreadable entry.
  */
-export function readRegistry(registry: string): { entries: RegistryEntry[]; dirError: boolean } {
+export function readRegistry(registry: string, nowMs: number = Date.now()): { entries: RegistryEntry[]; dirError: boolean } {
   if (!fs.existsSync(registry)) return { entries: [], dirError: false };
   let names: string[];
   try {
@@ -104,8 +112,9 @@ export function readRegistry(registry: string): { entries: RegistryEntry[]; dirE
     let stat: fs.Stats;
     try {
       stat = fs.lstatSync(full);
-    } catch {
-      return []; // removed between the listing and the lstat: a release, not an unreadable record
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      return [{ file, text: null, mtimeMs: nowMs }];
     }
     if (!stat.isFile()) return [{ file, text: null, mtimeMs: stat.mtimeMs }];
     try {
@@ -154,7 +163,7 @@ export function detectForCampaign(campaignDir: string, deps: RegistryDeps = real
 }
 
 function detectIn(campaignDir: string, clone: Clone, deps: RegistryDeps): DetectResult {
-  const { entries, dirError } = readRegistry(clone.registry);
+  const { entries, dirError } = readRegistry(clone.registry, deps.nowMs());
   return detectPeers(entries, selfIdentity(campaignDir, clone, entries, deps), deps.nowMs(), { dirError });
 }
 
@@ -176,7 +185,7 @@ function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession:
     writeJsonAtomic(path.join(campaignDir, SESSION_TOKEN_FILE), { session });
   }
   fs.mkdirSync(clone.registry, { recursive: true });
-  const records = recordsOf(readRegistry(clone.registry).entries);
+  const records = recordsOf(readRegistry(clone.registry, deps.nowMs()).entries);
   const self: SelfIdentity = { session, worktree: clone.worktree, host, host_session: null, manager_session: null };
   const own = records.find((r) => r.session === session);
   // An older session's record in this worktree is this campaign before its token was lost.

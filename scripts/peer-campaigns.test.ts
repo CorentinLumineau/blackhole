@@ -3,7 +3,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { makeTempDir } from './lib/fs.ts';
-import { detectForCampaign, readRegistry, realDeps, run, type RegistryDeps } from './peer-campaigns.ts';
+import { detectForCampaign, readRegistry, realDeps, recordedWorktree, run, type RegistryDeps } from './peer-campaigns.ts';
 
 // Two worktrees of one throwaway clone: the registry must be shared through the git common dir.
 // Every path is absolute and the CLI runs with cwd at the temp root, so nothing reaches this
@@ -296,6 +296,24 @@ describe('peer-campaigns in process: refusal and lstat', () => {
     } finally {
       fs.rmSync(reg, { recursive: true, force: true });
     }
+  });
+
+  test('an entry that lists but cannot be lstat-ed (EACCES) is unreadable and fresh, never skipped', () => {
+    if (process.getuid?.() === 0) return; // root lstats through a 0444 dir anyway
+    const reg = makeTempDir('peer-registry-noexec');
+    fs.writeFileSync(path.join(reg, 'locked.json'), '{}');
+    fs.chmodSync(reg, 0o444);
+    try {
+      expect(readRegistry(reg, 1_000_000)).toEqual({ entries: [{ file: 'locked.json', text: null, mtimeMs: 1_000_000 }], dirError: false });
+    } finally {
+      fs.chmodSync(reg, 0o755);
+      fs.rmSync(reg, { recursive: true, force: true });
+    }
+  });
+
+  test('a Windows worktree is recorded with forward slashes; a POSIX path is kept as is', () => {
+    expect(recordedWorktree('C:\\Users\\me\\repo\\wt', '\\')).toBe('C:/Users/me/repo/wt');
+    expect(recordedWorktree('/repo/odd\\name', '/')).toBe('/repo/odd\\name');
   });
 
   test('readRegistry reports an unlistable dir and an absent one apart', () => {

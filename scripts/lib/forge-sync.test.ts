@@ -299,3 +299,63 @@ describe('syncQueue — lane ownership and the claim lease', () => {
     expect(r.queue.issues['5']).toMatchObject({ status: 'blocked', notes: 'another lane: cursor/x' });
   });
 });
+
+describe('syncQueue — another session (peer claims)', () => {
+  const PEER = 'a1b2c3d4-0000-4000-8000-000000000001';
+  const ready = (n: number, extra: Record<string, unknown> = {}) => ({ issues: { [String(n)]: { title: `t${n}`, phase: 'handle', status: 'ready', pr: null, ...extra } } });
+  const ownPr = (n: number) => pr(n * 10, { headRefName: `blackhole/issue-${n}`, body: `Closes #${n}` });
+
+  test('hold: a peer-claimed ready entry with an own-branch open PR turns blocked and is not linked', () => {
+    const r = sync({ queue: ready(7), issues: [issue(7)], prs: [ownPr(7)], peerClaims: { '7': PEER } });
+    expect(r.queue.issues['7']).toMatchObject({ status: 'blocked', notes: `another session: ${PEER}`, pr: null });
+    expect(r.linked).toEqual([]);
+  });
+
+  test('a freshly ingested issue a peer claims is held, never ready', () => {
+    const r = sync({ issues: [issue(8)], peerClaims: { '8': PEER } });
+    expect(r.queue.issues['8']).toMatchObject({ status: 'blocked', notes: `another session: ${PEER}` });
+  });
+
+  test('release: with the claim gone the entry is back to ready and its own PR links', () => {
+    const held = sync({ queue: ready(7), issues: [issue(7)], prs: [ownPr(7)], peerClaims: { '7': PEER } }).queue;
+    const r = sync({ queue: held, issues: [issue(7)], prs: [ownPr(7)] });
+    expect(r.queue.issues['7']).toMatchObject({ status: 'ready', notes: null, pr: 70 });
+    expect(r.linked).toEqual([7]);
+  });
+
+  test('precedence: a foreign-lane label note wins over the peer note', () => {
+    const r = sync({ queue: ready(7), issues: [issue(7, { labels: [{ name: 'agent:cursor' }] })], peerClaims: { '7': PEER } });
+    expect(r.queue.issues['7']).toMatchObject({ status: 'blocked', notes: 'another lane: agent:cursor' });
+  });
+
+  test('an in-flight entry is never touched, and its own PR is not linked while a peer claims it', () => {
+    const queue = { issues: { '6': { title: 'six', phase: 'implement', status: 'in-flight', pr: null, notes: 'worker on it' } } };
+    const r = sync({ queue, issues: [issue(6)], prs: [ownPr(6)], peerClaims: { '6': PEER } });
+    expect(r.queue.issues['6']).toMatchObject({ status: 'in-flight', phase: 'implement', pr: null, notes: 'worker on it' });
+    expect(r.linked).toEqual([]);
+  });
+
+  test('a peer-claimed entry blocked by a gate keeps its note and its open own-branch PR is not linked', () => {
+    const r = sync({ queue: ready(5, { status: 'blocked', notes: 'awaiting-owner: scope' }), issues: [issue(5)], prs: [ownPr(5)], peerClaims: { '5': PEER } });
+    expect(r.queue.issues['5']).toMatchObject({ status: 'blocked', notes: 'awaiting-owner: scope', pr: null });
+    expect(r.linked).toEqual([]);
+  });
+
+  test('fail closed: with unreadable peer records a held entry stays held', () => {
+    const held = sync({ queue: ready(7), issues: [issue(7)], prs: [ownPr(7)], peerClaims: { '7': PEER } }).queue;
+    const r = sync({ queue: held, issues: [issue(7)], prs: [ownPr(7)], peerClaims: {}, peersUnreadable: true });
+    expect(r.queue.issues['7']).toMatchObject({ status: 'blocked', notes: `another session: ${PEER}`, pr: null });
+    expect(r.linked).toEqual([]);
+  });
+
+  test('unreadable peer records alone hold nothing new', () => {
+    const r = sync({ queue: ready(7), issues: [issue(7)], peerClaims: {}, peersUnreadable: true });
+    expect(r.queue.issues['7']).toMatchObject({ status: 'ready' });
+  });
+
+  test('a peer claim moves to the new session id when another peer takes it', () => {
+    const held = sync({ queue: ready(7), issues: [issue(7)], peerClaims: { '7': PEER } }).queue;
+    const other = 'b0000000-0000-4000-8000-000000000002';
+    expect(sync({ queue: held, issues: [issue(7)], peerClaims: { '7': other } }).queue.issues['7']).toMatchObject({ status: 'blocked', notes: `another session: ${other}` });
+  });
+});

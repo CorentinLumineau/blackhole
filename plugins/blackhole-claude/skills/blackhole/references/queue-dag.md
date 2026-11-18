@@ -213,6 +213,10 @@ An issue is **ready** when ALL hold:
 4. No active `migration_slot` holder unless this issue holds the slot
 5. Issue is open on forge **within campaign scope** (`gh issue view --json state` plus
    `issueMatchesScope` when `scope_milestone` / `scope_labels` are configured)
+6. No live peer campaign in this clone claims it (ADR-057, `multitask-mode.md` § Peer campaign
+   registry). Forge sync holds a claimed entry `blocked` with `notes: another session: <session
+   id>` and never links its PR; the hold lifts in forge sync once the claim is gone, and stays
+   while peer records are unreadable ([forge-sync.md](forge-sync.md) § Queue builder script)
 
 A cross-repo `Depends on owner/repo#N` line does **not** gate this ready set: it lives only in the
 issue body, never in `depends_on`, and no queue or board code reads it. Only the status page

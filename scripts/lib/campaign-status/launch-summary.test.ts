@@ -440,6 +440,13 @@ describe('Peers row with peer detection', () => {
     expect(row.value).toBe('1 live peer in this clone: wt-new (turn 12, heartbeat 5m ago)');
   });
 
+  test('no Join while a live peer runs as peer of this session: joining would orphan its slot requests', () => {
+    const mine = peer({ session: 'b0000000-0000-4000-8000-000000000002', role: 'peer', host_session: 'session_sub', manager_session: 'session_me', names_me: true, coordinated: true });
+    const newcomer = peer({ session: 'd0000000-0000-4000-8000-000000000004', worktree: '/repo/wt-new', host_session: 'session_new' });
+    const row = rowFor({ verdict: 'peers', reach: 'clone', unreadable: 0, unreadable_files: [], peers: [mine, newcomer] });
+    expect(askedPeers(row)?.options.map((o) => o.label)).toEqual(['Stop', 'Take over after drain']);
+  });
+
   test('no Join when no open peer can be joined, even if a coordinated one could', () => {
     const joined = peer({ session: 'c0000000-0000-4000-8000-000000000003', role: 'manager', host_session: 'session_mgr', coordinated: true });
     const open = peer({ session: 'd0000000-0000-4000-8000-000000000004', worktree: '/repo/wt-new' });

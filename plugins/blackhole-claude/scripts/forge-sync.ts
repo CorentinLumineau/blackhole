@@ -11,6 +11,8 @@ import type { QueueJson } from './lib/campaign-status/types.ts';
 import { installStateFile } from './lib/state-write-guard.ts';
 import { readLaneConfig } from './lib/lane.ts';
 import { syncQueue, type SyncResult } from './lib/forge-sync.ts';
+import { peerClaims, type DetectResult } from './lib/peer-campaigns.ts';
+import { detectForCampaign } from './peer-campaigns.ts';
 
 // Builds or refreshes `.blackhole/queue.json` from the forge (`forge-sync.md` § Queue builder script):
 // open and closed issues plus open and merged PRs, read through the configured forge's adapter.
@@ -57,8 +59,15 @@ function install(livePath: string, archiveDir: string, value: unknown, entityKey
   if (!written.ok) throw new Error(`Refused to write ${livePath}: ${written.reason}`);
 }
 
-/** Reads the forge and writes `queue.json` (and an empty ledger when none exists). `adapter` replaces the configured forge's, for a test. */
-export async function runForgeSync(campaignDir: string, opts: { adapter?: ForgeAdapter; now?: string; dryRun?: boolean; lane?: string } = {}): Promise<ForgeSyncOutcome> {
+/**
+ * Reads the forge and writes `queue.json` (and an empty ledger when none exists). `adapter` replaces
+ * the configured forge's, and `peers` the clone's peer registry read (`peer-campaigns.ts detect`,
+ * read-only), for a test. Outside a git repo there is no registry, so no peer.
+ */
+export async function runForgeSync(
+  campaignDir: string,
+  opts: { adapter?: ForgeAdapter; now?: string; dryRun?: boolean; lane?: string; peers?: DetectResult | null } = {},
+): Promise<ForgeSyncOutcome> {
   const configPath = path.join(campaignDir, 'config.json');
   if (!fs.existsSync(configPath)) throw new Error(`No ${configPath}: forge-sync builds the queue of an existing campaign config.`);
   const config = readJsonFile(configPath, configPath) as Config;
@@ -73,7 +82,9 @@ export async function runForgeSync(campaignDir: string, opts: { adapter?: ForgeA
   const now = opts.now ?? new Date().toISOString();
   const laneConfig = readLaneConfig(config);
   const lane = opts.lane ?? laneConfig.lane;
-  const sync = (queue: QueueJson | null) => syncQueue({ queue, issues, prs, scope, config, now, lane, claimLeaseHours: laneConfig.leaseHours });
+  const detected = opts.peers === undefined ? detectForCampaign(campaignDir) : opts.peers;
+  const peers = { peerClaims: peerClaims(detected?.peers ?? []), peersUnreadable: (detected?.unreadable ?? 0) > 0 };
+  const sync = (queue: QueueJson | null) => syncQueue({ queue, issues, prs, scope, config, now, lane, claimLeaseHours: laneConfig.leaseHours, ...peers });
   if (opts.dryRun) return sync(first.queue);
 
   // Re-read: a write made while the forge was being read is kept, and the sync applies on top of it.
