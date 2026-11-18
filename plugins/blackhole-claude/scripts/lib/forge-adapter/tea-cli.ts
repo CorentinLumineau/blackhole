@@ -9,8 +9,12 @@ export function runTea(args: string[]): TeaSpawnResult {
   return toForgeSpawnResult('tea', args, result);
 }
 
+const hasOutputFlag = (args: string[]): boolean =>
+  args.some((a) => a === '--output' || a === '-o' || a.startsWith('--output=') || a.startsWith('-o='));
+
+/** tea 0.14.2 has no `--json`; list commands take `--output json` and print only the `--fields` asked for. */
 export function runTeaJson<T>(args: string[]): T {
-  const jsonArgs = args.includes('--json') ? args : [...args, '--json'];
+  const jsonArgs = hasOutputFlag(args) ? args : [...args, '--output', 'json'];
   const result = runTea(jsonArgs);
   if (result.status !== 0) {
     throw new Error(result.stderr.trim() || result.stdout.trim() || `tea ${args.join(' ')} failed`);
