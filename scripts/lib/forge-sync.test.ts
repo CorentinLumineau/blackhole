@@ -173,6 +173,15 @@ describe('syncQueue — what a PR may claim', () => {
   test('with no closing PR, the branch match links the PR', () => {
     expect(sync({ issues: [issue(9)], prs: [pr(90, { headRefName: 'blackhole/issue-9-x', body: 'Part of #9' })] }).queue.issues['9'].pr).toBe(90);
   });
+
+  test.each([
+    ['blackhole/issue-12-slug', 120],
+    ['blackhole/issue-12_x', undefined],
+    ['blackhole/issue-12/x', undefined],
+  ])('branch %s links PR %s', (headRefName, linked) => {
+    const r = sync({ issues: [issue(12)], prs: [pr(120, { headRefName, body: 'Part of #12' })] });
+    expect(r.queue.issues['12'].pr ?? undefined).toBe(linked);
+  });
 });
 
 describe('syncQueue — user_queue_order', () => {

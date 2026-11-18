@@ -429,5 +429,9 @@ describe('no history rewriting', () => {
       expect(() => assertAllowedGit(args)).toThrow();
     }
     expect(() => assertAllowedGit(['push', 'origin', `${sha}:refs/heads/blackhole/issue-2`])).not.toThrow();
+    expect(() => assertAllowedGit(['push', 'origin', `${sha}:refs/heads/blackhole/issue-2-some-slug`])).not.toThrow();
+    for (const tail of ['blackhole/issue-2x', 'blackhole/issue-2-', 'blackhole/issue-2/extra', 'claude/issue-2-x']) {
+      expect(() => assertAllowedGit(['push', 'origin', `${sha}:refs/heads/${tail}`])).toThrow();
+    }
   });
 });

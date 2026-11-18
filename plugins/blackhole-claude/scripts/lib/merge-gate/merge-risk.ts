@@ -2,6 +2,8 @@
 // itself. Pure function of the PR's changed files (and optional patches / head ref); the
 // label, comment, and `gh pr merge` call stay in phase-loop.md.
 
+import { isBlackholeBranchName } from '../campaign-branch.ts';
+
 export const RISK_CATEGORIES = [
   'auth-login',
   'secrets-env',
@@ -105,12 +107,12 @@ const DATA_DIR = /(^|\/)(data|dumps?|backups?|seeds?)\//i;
 const DATA_EXT = /\.(sql|dump|csv)$/i;
 const DESTRUCTIVE_SQL = /\b(DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE(\s+TABLE)?|DELETE\s+FROM)\b/i;
 
-/** True when `headRef` is a campaign worker branch (`blackhole/issue-N`). Absent/empty is treated
+/** True when `headRef` is a campaign worker branch (`blackhole/issue-N` or `blackhole/issue-N-<slug>`). Absent/empty is treated
  * as own-PR: the merge protocol already only considers campaign issues. */
 export const isBlackholeCampaignBranch = (headRef?: string | null): boolean => {
   if (!headRef) return true;
   const name = headRef.replace(/^refs\/heads\//, '').replace(/^origin\//, '');
-  return /^blackhole\/issue-\d+$/.test(name);
+  return isBlackholeBranchName(name);
 };
 
 export const filesFromNameStatus = (text: string): ChangedFile[] => {
@@ -180,7 +182,7 @@ export const buildNeedsChefComment = (opts: {
   ];
   if (!opts.own_pr) {
     lines.push(
-      `- not a blackhole campaign PR (head is \`${opts.headRef}\`, expected \`blackhole/issue-N\`)`,
+      `- not a blackhole campaign PR (head is \`${opts.headRef}\`, expected \`blackhole/issue-N[-slug]\`)`,
     );
   }
   for (const reason of opts.reasons) {

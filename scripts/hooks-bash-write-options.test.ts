@@ -646,9 +646,10 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
     });
   }
 
-  // The shell decodes an ANSI-C `$'...'` word (hex, octal, `\u`, `\U` and the one-letter escapes)
-  // and a locale-quoted `$"..."` word before `env` or `export` sees it, so a trace assignment
-  // spelled with either is judged by what it decodes to, wherever the shell expects an assignment.
+  // The shell decodes an unquoted ANSI-C `$'...'` span (hex, octal, `\u`, `\U` and the one-letter
+  // escapes) and an unquoted locale-quoted `$"..."` span before `env` or `export` sees the word, so
+  // a trace assignment spelled with either is judged by what it decodes to, wherever the shell
+  // expects an assignment.
   for (const build of [
     (m: string) => `env $'GIT_TRACE=${m}/x' git status`,
     (m: string) => `export A $'GIT_TRACE=${m}/x'; git status`,
@@ -677,16 +678,106 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
     });
   }
 
-  for (const command of [
-    "env $'GIT_TRACE=$LOG' git status",
-    "env $'GIT_TRAC\\x45'=$LOG git status",
-    'env $"GIT_TRACE=$LOG" git status',
-  ]) {
-    test(`#1246: \`${command}\` is judged by its decoded value`, async () => {
-      const result = await verdict(() => command);
-      expect(result === null || (result as { tier: string }).tier === 'warn').toBe(true);
+  // Inside `$'...'` a `$` is literal text, so `$LOG` there is a relative value git ignores; outside
+  // it (or inside `$"..."`) it is a real expansion and the trace file is unknown.
+  test("#1246: `env $'GIT_TRACE=$LOG' git status` stays allowed (a literal, relative `$LOG`)", async () => {
+    expect(await verdict(() => "env $'GIT_TRACE=$LOG' git status")).toBeNull();
+  });
+  for (const command of ["env $'GIT_TRAC\\x45'=$LOG git status", 'env $"GIT_TRACE=$LOG" git status']) {
+    test(`#1246: \`${command}\` warns (the decoded name carries an expanded value)`, async () => {
+      expect(await verdict(() => command)).toMatchObject(WARN);
     });
   }
+
+  // Bash ends each `$'...'` span at its first NUL, so the text after the NUL inside that span never
+  // reaches git: `<main>/x\x00/../wt/y` names `<main>/x`, not a file in the worktree.
+  const tail = (m: string, w: string) => path.relative(`${m}/x`, `${w}/y`);
+  for (const nul of ['\\x00', '\\000', '\\400', '\\c@', '\\0', '\\00', '\\u0000', '\\x0']) {
+    for (const build of [
+      (m: string, w: string) => `export $'GIT_TRACE=${m}/x${nul}/${tail(m, w)}'; git status`,
+      (m: string, w: string) => `env $'GIT_TRACE=${m}/x${nul}/${tail(m, w)}' git status`,
+      (m: string, w: string) => `$'GIT_TRACE=${m}/x${nul}/${tail(m, w)}' git status`,
+      (m: string, w: string) => `export GIT_TRACE=$'${m}/x${nul}/${tail(m, w)}'; git status`,
+    ]) {
+      test(`#1246: \`${build('<main>', '<wt>')}\` is denied (the span ends at its NUL)`, async () => {
+        expect(await verdict(build)).toMatchObject(BLOCK);
+      });
+    }
+  }
+  for (const build of [
+    // `\c\\` takes both backslashes, so the `x00` after it is text, not a NUL.
+    (m: string, w: string) => `export $'GIT_TRACE=${w}/a\\c\\\\x00/${path.relative(`${w}/a\x1cx00`, `${m}/y`)}'; git status`,
+    // A NUL also ends a span that spells the command word.
+    (m: string) => `$'tee\\x00z' ${m}/x`,
+    (m: string) => `$'cp\\x00z' a ${m}/x`,
+    (m: string) => `$'export\\x00z' "GIT_TRACE=${m}/x"; git status`,
+    // `env` reads every operand holding `=` as an assignment, quoted or not, up to its command.
+    (m: string) => `env "A=1" "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env 'A=1' $'GIT_TRACE=${m}/x' git status`,
+    (m: string) => `env -u B "A=1" "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env $'GIT_TRAC\\x4'=/tmp/t $'GIT_TRAC\\x45=${m}/x' git status`,
+  ]) {
+    test(`#1246: \`${build('<main>', '<wt>')}\` is denied`, async () => {
+      expect(await verdict(build)).toMatchObject(BLOCK);
+    });
+  }
+  // Inside double or single quotes `$'...'` and `$"..."` are literal text, never decoded: the trace
+  // file is the name exactly as written, a component under the main clone here.
+  const escapedTo = (from: string, to: string) => path.relative(from, to).split('/').join('\\x2f');
+  for (const build of [
+    (m: string, w: string) => `export "GIT_TRACE=${m}/evil$'\\x2f${escapedTo(`${m}/evil`, `${w}/z`)}'"; git status`,
+    (m: string, w: string) => `export "GIT_TRACE=${w}/a$'\\x00/${path.relative(`${w}/x`, `${m}/y`)}'"; git status`,
+    (m: string, w: string) => `env "GIT_TRACE=${m}/evil$'\\x2f${escapedTo(`${m}/evil`, `${w}/z`)}'" git status`,
+    (m: string, w: string) => `export 'GIT_TRACE=${m}/evil$"\\x2f${escapedTo(`${m}/evil`, `${w}/z`)}"'; git status`,
+  ]) {
+    test(`#1246: \`${build('<main>', '<wt>')}\` is denied (a quoted \`$'\` is literal)`, async () => {
+      expect(await verdict(build)).toMatchObject(BLOCK);
+    });
+  }
+
+  // An `env` option that takes a value (`-u`, `-C`, `-S` and their long forms, quoted or not)
+  // consumes the next word without ending the assignments; a `-S` string is split into words.
+  for (const build of [
+    (m: string) => `env --unset B "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env --unset=B "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env --chdir /tmp "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env '-u' B "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env "--unset" B "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env -iu B "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env -C /tmp 'GIT_TRACE=${m}/x' git status`,
+    (m: string) => `env -S "GIT_TRACE=${m}/x git status"`,
+    (m: string) => `env --split-string "A=1 GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env --split-string="GIT_TRACE=${m}/x git status"`,
+    (m: string) => `env -iS"GIT_TRACE=${m}/x git status"`,
+    (m: string) => `env --argv0 g "GIT_TRACE=${m}/x" git status`,
+  ]) {
+    test(`#1246: \`${build('<main>')}\` is denied (an env option value never ends the assignments)`, async () => {
+      expect(await verdict(build)).toMatchObject(BLOCK);
+    });
+  }
+  for (const build of [
+    (m: string) => `env --unset B git commit -m "GIT_TRACE=${m}/x"`,
+    (_m: string, w: string) => `env -S "GIT_TRACE=${w}/x git status"`,
+  ]) {
+    test(`#1246: \`${build('<main>', '<wt>')}\` stays allowed`, async () => {
+      expect(await verdict(build)).toBeNull();
+    });
+  }
+
+  for (const build of [
+    // The span is cut at its NUL rather than the word being refused, so a worktree path stays allowed.
+    (m: string, w: string) => `export $'GIT_TRACE=${w}/x\\x00/${path.relative(`${w}/x`, `${m}/y`)}'; git status`,
+    (m: string) => `env "A=1" git commit -m "GIT_TRACE=${m}/x"`,
+  ]) {
+    test(`#1246: \`${build('<main>', '<wt>')}\` stays allowed`, async () => {
+      expect(await verdict(build)).toBeNull();
+    });
+  }
+  test("#1246: a NUL ends only its own span (`$'<main>/x\\x00'/<tail>` keeps the tail)", async () => {
+    // `a$'x\0y'b` is `axb`, so the unquoted tail after the span is still part of the word.
+    expect(await verdict((m, w) => `export $'GIT_TRACE=${m}/x\\x00'/${tail(m, w)}; git status`)).toBeNull();
+    expect(await verdict((m, w) => `export $'GIT_TRACE=${w}/x\\x00'/${path.relative(`${w}/x`, `${m}/y`)}; git status`)).toMatchObject(BLOCK);
+  });
 
   for (const build of [
     () => "env $'GIT_TRAC\\x45=1' git status",

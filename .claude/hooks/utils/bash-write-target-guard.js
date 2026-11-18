@@ -966,28 +966,72 @@ const DECLARERS = new Set(['export', 'declare', 'typeset', 'local', 'readonly'])
  * anywhere in one clause — a prefix, `export` or `env` alike, appended with `+=` or not. Git
  * writes only to an absolute value: `1`, `true`, `0`, `false` and `2`–`9` mean stderr, off or an
  * fd, and any other value is ignored. A word that starts with a quote is an assignment only where
- * the shell expects one (a command word, so `env "GIT_TRACE=/x" git`, or any operand of `export`
- * once a declarer opens the clause, whatever bare names precede it),
- * so `git commit -m 'GIT_TRACE=/x'` names no trace. A value the shell rewrites (`$LOG`,
- * `` `pwd` ``, `~/t`) is returned as written, so it is unresolvable. */
+ * the shell expects one (a command word, so `env "GIT_TRACE=/x" git`, an `env` operand holding `=`
+ * before its command, or any operand of `export` once a declarer opens the clause, whatever bare
+ * names precede it),
+ * so `git commit -m 'GIT_TRACE=/x'` names no trace. Each target is `{ value, literal }`: a literal
+ * value is the exact file name git opens, whatever characters it holds; a value the shell
+ * rewrites (`$LOG`, `` `pwd` ``, `~/t`) is returned as written with `literal: false`, so it is
+ * unresolvable. */
 const findGitTraceTargets = (tokens) => {
   const targets = [];
-  const positions = commandPositions(tokens);
-  let declaring = false;
-  tokens.forEach((token, i) => {
-    const assignmentSlot = positions.has(i) || declaring;
-    declaring ||= DECLARERS.has(commandName(token));
-    if ((token[0] === "'" || token[0] === '"') && !assignmentSlot) return;
-    // The shell decodes `$'…'` and `$"…"` before `env` or `export` sees the word, so where an
-    // assignment is expected the name is read from the decoded word.
-    const word = assignmentSlot ? decodeQuotedWord(token) : token;
+  const addTrace = (word) => {
     const { text, dynamic } = normalizeShellWord(word);
     const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(word) : text)?.[1];
     if (value === undefined) return;
-    if (dynamic) targets.push(value);
-    else if (path.isAbsolute(value) || value.startsWith('~')) targets.push(value);
+    if (dynamic || value.startsWith('~')) targets.push({ value, literal: false });
+    else if (path.isAbsolute(value)) targets.push({ value, literal: true });
+  };
+  // `env -S STRING` splits STRING into words and reads its assignments like its own operands.
+  const addSplitString = (value) => value.split(/\s+/).forEach(addTrace);
+  const positions = commandPositions(tokens);
+  let declaring = false;
+  let envOperands = false;
+  let envValueNext = null;
+  tokens.forEach((token, i) => {
+    const decoded = decodeQuotedWord(token);
+    if (envValueNext) {
+      if (envValueNext.split) addSplitString(unquote(decoded));
+      envValueNext = null;
+      return;
+    }
+    // `env` reads every operand holding `=` as an assignment, quoted or not, up to its command;
+    // an operand starting with `-` once its quotes are removed is an option instead.
+    const envOption = envOperands && unquote(decoded).startsWith('-');
+    const envAssignment = envOperands && !envOption && decoded.includes('=');
+    const assignmentSlot = positions.has(i) || declaring || envAssignment;
+    declaring ||= DECLARERS.has(commandName(token));
+    if (positions.has(i) && commandName(token) === 'env') envOperands = true;
+    else if (envOption) {
+      const option = envValueOption(unquote(decoded));
+      if (option?.value === null) envValueNext = option;
+      else if (option?.split) addSplitString(option.value);
+    } else if (envOperands && !envAssignment) envOperands = false;
+    if ((token[0] === "'" || token[0] === '"') && !assignmentSlot) return;
+    // The shell decodes an unquoted `$'…'` or `$"…"` before `env` or `export` sees the word, so
+    // where an assignment is expected the name is read from the decoded word.
+    addTrace(assignmentSlot ? decoded : token);
   });
   return targets;
+};
+
+/** `word` once the shell has removed its quotes, or `word` itself when it holds an expansion. */
+const unquote = (word) => {
+  const { text, dynamic } = normalizeShellWord(word);
+  return dynamic ? word : text;
+};
+
+/** The value an `env` option takes, for an unquoted option word: `-u NAME`, `-C DIR`,
+ * `-a NAME` and `-S STRING` (also clustered, `-iu NAME`, or glued, `-uNAME`) and `--unset`,
+ * `--chdir`, `--argv0`, `--split-string` (also with `=VALUE`). Returns `{ split, value }`, where
+ * `value` is null when the value is the next word and `split` marks a `-S` string; undefined for
+ * an option with no value. */
+const envValueOption = (option) => {
+  const long = /^--(unset|chdir|argv0|split-string)(?:=([\s\S]*))?$/.exec(option);
+  if (long) return { split: long[1] === 'split-string', value: long[2] ?? null };
+  const short = /^-[a-zA-Z]*?([uCSa])([\s\S]*)$/.exec(option);
+  if (short) return { split: short[1] === 'S', value: short[2] || null };
+  return undefined;
 };
 
 const SHELL_NAMES = ['sh', 'bash', 'dash', 'zsh', 'ksh'];
@@ -1458,8 +1502,12 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
         ...findSedTargets(tokens),
         ...findCopyMoveTargets(tokens),
         ...findOptionWriteTargets(tokens),
-        ...findGitTraceTargets(tokens),
       ].forEach(add);
+      // A literal trace value is the exact file name git opens, so it skips the shell-word checks.
+      for (const { value, literal } of findGitTraceTargets(tokens)) {
+        if (literal) literalTargets.push({ target: value, dirs: [cwd] });
+        else add(value);
+      }
       if (hasUnresolvableCommand(tokens, heredocText)) unresolvable = true;
       if (tokens.some((t) => t.startsWith('CDPATH='))) cdpath = true;
       // A pipeline element or background job runs in a subshell: its `cd` moves only that subshell,

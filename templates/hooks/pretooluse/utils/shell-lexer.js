@@ -96,28 +96,64 @@ const isRedirectAmpersand = (text, i) => {
 /** One-letter ANSI-C escapes (`\n`, `\t`, …); `\e`, `\E` are ESC, `\a` is BEL. */
 const ANSI_C_SIMPLE = { a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' };
 
-/** The text bash makes of an ANSI-C `$'…'` body: `\xHH`, octal `\NNN`, `\uHHHH`, `\UHHHHHHHH`,
- * `\cX` and the one-letter escapes decoded; any other escaped character (`\\`, `\'`, `\"`, `\?`,
- * and an unknown letter) keeps its own text, with the backslash only for an unknown one, as bash
- * does. A code point above U+10FFFF is not a character and decodes to nothing. */
-const decodeAnsiC = (body) =>
-  body.replace(/\\(x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{1,4}|U[0-9a-fA-F]{1,8}|[0-7]{1,3}|c[\s\S]|[\s\S])/g, (_, e) => {
+/** The text bash makes of an ANSI-C `$'…'` body: `\xHH`, octal `\N` to `\NNN`, `\uHHHH`,
+ * `\UHHHHHHHH`, `\cX` (`\c?` is DEL, `\c\\` takes both backslashes) and the one-letter escapes
+ * decoded; any other escaped character (`\\`, `\'`, `\"`, `\?`, and an unknown letter) keeps its
+ * own text, with the backslash only for an unknown one. Bash ends the span at its first NUL, so
+ * the result stops there too. A code point above U+10FFFF decodes to nothing. One known
+ * difference: a byte at or above 0x80 decodes to that code point, where bash emits the raw byte;
+ * no name character or path separator is spelled that way. */
+const decodeAnsiC = (body) => {
+  const text = body.replace(/\\(x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{1,4}|U[0-9a-fA-F]{1,8}|[0-7]{1,3}|c\\\\|c[\s\S]|[\s\S])/g, (_, e) => {
+    if (e[0] >= '0' && e[0] <= '7') return String.fromCharCode(parseInt(e, 8) & 0xff);
     if (e.length > 1) {
-      if (e[0] === 'c') return String.fromCharCode(e.charCodeAt(1) & 0x1f);
-      const code = e[0] >= '0' && e[0] <= '7' ? parseInt(e, 8) & 0xff : parseInt(e.slice(1), 16);
+      if (e[0] === 'c') return e[1] === '?' ? '\x7f' : String.fromCharCode(e.charCodeAt(1) & 0x1f);
+      const code = parseInt(e.slice(1), 16);
       return code > 0x10ffff ? '' : String.fromCodePoint(code);
     }
     if (e in ANSI_C_SIMPLE) return ANSI_C_SIMPLE[e];
     return /[\\'"?]/.test(e) ? e : `\\${e}`;
   });
+  const nul = text.indexOf('\0');
+  return nul === -1 ? text : text.slice(0, nul);
+};
 
-/** `word` with each ANSI-C `$'…'` span replaced by its decoded text and each locale-quoted
- * `$"…"` opener replaced by a plain `"`, so the result reads like the word the shell hands the
- * command. Decoded characters that the quote-removal pass would reinterpret (`\`, quotes, `$`,
- * a backtick) are backslash-escaped, which keeps a decoded `$` literal. */
-const decodeQuotedWord = (word) =>
-  word
-    .replace(/\$'((?:\\[\s\S]|[^'\\])*)'/g, (_, body) => decodeAnsiC(body).replace(/[\\'"$`]/g, '\\$&'))
-    .replace(/\$"/g, '"');
+/** `word` with each unquoted ANSI-C `$'…'` span replaced by its decoded text and each unquoted
+ * locale-quoted `$"…"` opener replaced by a plain `"`, so the result reads like the word the shell
+ * hands the command before its quote removal. Decoded characters that quote removal would
+ * reinterpret (`\`, quotes, `$`, a backtick) are backslash-escaped, which keeps a decoded `$`
+ * literal. Inside `"…"` or `'…'` the shell leaves `$'` and `$"` as text: a single-quoted span is
+ * kept as written, and in a double-quoted span a `$` before a quote is escaped to `\$`, which quote
+ * removal turns back into the literal `$` bash keeps there. */
+const decodeQuotedWord = (word) => {
+  const n = word.length;
+  let out = '';
+  let i = 0;
+  while (i < n) {
+    const ch = word[i];
+    if (ch === '\\' || (ch === '$' && word[i + 1] === '$')) {
+      out += word.slice(i, i + 2);
+      i += 2;
+    } else if (ch === '$' && word[i + 1] === "'") {
+      const end = skipQuotedSpan(word, i + 1, n);
+      const body = word.slice(i + 2, word[end - 1] === "'" ? end - 1 : end);
+      out += decodeAnsiC(body).replace(/[\\'"$`]/g, '\\$&');
+      i = end;
+    } else if (ch === '"' || (ch === '$' && word[i + 1] === '"')) {
+      const start = ch === '$' ? i + 1 : i;
+      const end = skipQuotedSpan(word, start, n);
+      out += word.slice(start, end).replace(/\\[\s\S]|\$(?=["'])/g, (m) => (m === '$' ? '\\$' : m));
+      i = end;
+    } else if (ch === "'") {
+      const end = skipQuotedSpan(word, i, n);
+      out += word.slice(i, end);
+      i = end;
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
+};
 
 module.exports = { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC, decodeQuotedWord };
