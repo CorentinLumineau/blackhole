@@ -25,7 +25,7 @@ Two `run` campaigns on one clone and one account ran at once without either noti
 Option B. Each campaign session keeps one heartbeat record under `$(git rev-parse --git-common-dir)/blackhole/campaigns/<session>.json`:
 
 - **Contents**: `session`, `worktree`, `host`, `host_session`, `role`, `turn`, `heartbeat_at` and `claims[]`. The claims are every non-done queue entry that is `in-flight` or carries an open `pr`.
-- **Refresh**: at each orchestrator turn start, at each wake (20 minutes or less) and at each dispatch.
+- **Refresh**: at each orchestrator turn start (every wake included), at each spawn round and at triage. Nothing refreshes it between turns, so a campaign idle or paused for longer than the lease is invisible to peers until its next turn.
 - **Removal**: on stop and on campaign complete.
 - **Liveness**: a record is live within a 40-minute lease, the grant lease in `multitask-mode.md`.
 
@@ -142,7 +142,7 @@ There are four consumers, so `## Dependency Blast-Radius` is required in the pla
 | A forged registry file is out of the threat model | ✓ | It needs local write to `.git/`, the same trust as `queue.json` |
 | Two sessions can still race one dispatch between syncs | ~ | The heartbeat at dispatch shrinks the window to seconds; `claim.ts` is unchanged |
 | A stale record from a crashed session clears by itself | ✓ | Lease expiry. "Take over after drain" resolves to it |
-| An idle live session keeps its lease | ~ | Heartbeat also at each orchestrator wake (≤20 min, the CI check-in cadence); a host with no wake under 40 min lapses and its holds release |
+| An idle live session keeps its lease | ~ | Only while a turn starts within the lease: heartbeats run at turn start, spawn rounds and triage, never between turns. A paused or idle session past 40 minutes lapses and is invisible until its next turn; a stopped one releases its record |
 | A second session in the same worktree is visible | ✗ | It shares the local token and the `.blackhole/` dir, so it reads as self. Out of scope: one `.blackhole/` already allows one campaign (`multitask-mode.md`) |
 | Join as peer works on every host | ◐ | Needs a cross-session message tool (`claude-code-native.md` § Cross-session budget transport, Remote only today). Elsewhere `host_session` is null, so the gate offers only stop / take over |
 | Two bootstraps at the same moment both read solo | ~ | The gate runs `heartbeat` before `detect`, so the later one sees the earlier |

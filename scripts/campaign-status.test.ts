@@ -882,8 +882,17 @@ describe('main() CLI entrypoint — no campaign directory', () => {
 
 describe('status --summary (the launch summary)', () => {
   const FULL = path.join(root, 'fixtures/campaign-status/full');
+  // The fixtures sit inside this checkout. A git ceiling at the checkout root stops peer detection
+  // from resolving the checkout's own git common dir, where a live campaign's registry may be.
+  const HERMETIC = { GIT_CEILING_DIRECTORIES: root };
   const summary = (...args: string[]) =>
-    Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--summary', '--no-gh', ...args], cwd: root, stdout: 'pipe', stderr: 'pipe' });
+    Bun.spawnSync({
+      cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--summary', '--no-gh', ...args],
+      cwd: root,
+      env: { ...(process.env as Record<string, string>), ...HERMETIC },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
   // A temp HOME whose installed_plugins.json carries one blackhole row at `version`.
   const homeWithRow = (version: string): Record<string, string> => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-home-'));
@@ -896,7 +905,32 @@ describe('status --summary (the launch summary)', () => {
     return { ...(process.env as Record<string, string>), HOME: home };
   };
   const summaryWithEnv = (env: Record<string, string>, ...args: string[]) =>
-    Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--summary', '--no-gh', ...args], cwd: root, env, stdout: 'pipe', stderr: 'pipe' });
+    Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', '--summary', '--no-gh', ...args], cwd: root, env: { ...env, ...HERMETIC }, stdout: 'pipe', stderr: 'pipe' });
+
+  test('the fixture campaign is outside any clone for peer detection: Peers shows the configured role', () => {
+    const peers = JSON.parse(summary('--campaign-dir', FULL, '--json').stdout.toString()).rows.find((r: { key: string }) => r.key === 'peers');
+    expect(peers.value).toBe('solo');
+  });
+
+  test('a live peer record in a temp clone turns the Peers row into the gate question', () => {
+    const clone = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-peer-'));
+    tempDirs.push(clone);
+    expect(childProcess.spawnSync('git', ['-C', clone, 'init', '-q']).status).toBe(0);
+    const dir = path.join(clone, '.blackhole');
+    fs.cpSync(FULL, dir, { recursive: true });
+    const registry = path.join(clone, '.git', 'blackhole', 'campaigns');
+    fs.mkdirSync(registry, { recursive: true });
+    const session = 'a1b2c3d4-0000-4000-8000-000000000001';
+    const now = new Date().toISOString();
+    fs.writeFileSync(
+      path.join(registry, `${session}.json`),
+      JSON.stringify({ version: 1, session, worktree: '/elsewhere/wt-peer', host: 'otherbox', host_session: null, role: 'solo', manager_session: null, turn: 42, started_at: now, heartbeat_at: now, claims: [7] }),
+    );
+    const out = JSON.parse(summary('--campaign-dir', dir, '--json').stdout.toString());
+    expect(out.rows.find((r: { key: string }) => r.key === 'peers').value).toBe('1 live peer in this clone: wt-peer (turn 42, heartbeat 0m ago)');
+    const question = out.cards.flatMap((c: { questions: Array<{ row: string; options: Array<{ label: string }> }> }) => c.questions).find((q: { row: string }) => q.row === 'peers');
+    expect(question.options.map((o: { label: string }) => o.label)).toEqual(['Stop', 'Take over after drain']);
+  });
 
   test('parses --summary with --usage, --now and --json', () => {
     const parsed = parseStatusArgs(['--summary', '--usage', '{"five_hour":{}}', '--now', '1700000000', '--json']);

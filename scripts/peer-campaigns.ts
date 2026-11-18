@@ -10,6 +10,7 @@ import { readJsonFile } from './lib/fs.ts';
 import {
   claimsOf,
   detectPeers,
+  isHostSession,
   isSelf,
   isSessionId,
   parseRecord,
@@ -17,13 +18,14 @@ import {
   type DetectResult,
   type PeerRecord,
   type PeerRole,
+  type RegistryEntry,
   type SelfIdentity,
 } from './lib/peer-campaigns.ts';
 
 // The peer campaign registry (ADR-057, `multitask-mode.md` § Peer campaign registry):
 //
 //   heartbeat --turn <n> [--host-session <id>]   write or refresh this session's record
-//   detect                                        print {verdict, reach, peers[]} as JSON; read-only
+//   detect                                        print {verdict, reach, unreadable, peers[]} as JSON; read-only
 //   release                                       remove this session's record
 //
 // All take --campaign-dir (default ./.blackhole). Records live in
@@ -33,7 +35,9 @@ import {
 
 const USAGE =
   'Usage: bun run scripts/peer-campaigns.ts <heartbeat --turn <n> [--host-session <id>] | detect | release> [--campaign-dir <dir>]';
+/** The registry dir, relative to the git common dir. */
 export const REGISTRY_DIR = path.join('blackhole', 'campaigns');
+/** This session's id (`{"session": "<id>"}`), relative to the campaign dir. */
 export const SESSION_TOKEN_FILE = path.join('.tmp', 'campaign-session.json');
 
 export type RegistryDeps = {
@@ -44,6 +48,7 @@ export type RegistryDeps = {
   newSession: () => string;
 };
 
+/** The real git, hostname, clock and UUID source; tests pass their own `RegistryDeps`. */
 export const realDeps: RegistryDeps = {
   git: (cwd, args) => {
     const r = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf-8' });
@@ -79,35 +84,46 @@ const readToken = (campaignDir: string): string | null => {
   return isSessionId(session) ? session : null;
 };
 
-/** Every parseable record in the registry; torn, foreign and `*.tmp` files are skipped. */
-export function readRegistry(registry: string): PeerRecord[] {
-  if (!fs.existsSync(registry)) return [];
-  return fs
-    .readdirSync(registry)
-    .filter((f) => f.endsWith('.json'))
-    .flatMap((f) => {
-      try {
-        const r = parseRecord(fs.readFileSync(path.join(registry, f), 'utf-8'));
-        return r && `${r.session}.json` === f ? [r] : [];
-      } catch {
-        return [];
-      }
-    });
+/** Every `*.json` file of the registry (`*.json.tmp` writes in progress are skipped); `dirError` when the dir exists but cannot be listed. */
+export function readRegistry(registry: string): { entries: RegistryEntry[]; dirError: boolean } {
+  if (!fs.existsSync(registry)) return { entries: [], dirError: false };
+  let names: string[];
+  try {
+    names = fs.readdirSync(registry).filter((f) => f.endsWith('.json'));
+  } catch {
+    return { entries: [], dirError: true };
+  }
+  const entries = names.map((file): RegistryEntry => {
+    const full = path.join(registry, file);
+    try {
+      return { file, text: fs.readFileSync(full, 'utf-8'), mtimeMs: fs.statSync(full).mtimeMs };
+    } catch {
+      return { file, text: null, mtimeMs: Date.now() };
+    }
+  });
+  return { entries, dirError: false };
 }
+
+/** The parseable, correctly named records of a registry read, for heartbeat's own bookkeeping. */
+const recordsOf = (entries: RegistryEntry[]): PeerRecord[] =>
+  entries.flatMap((e) => {
+    const r = e.text === null ? null : parseRecord(e.text);
+    return r && `${r.session}.json` === e.file ? [r] : [];
+  });
 
 type Coordination = { role: PeerRole; manager_session: string | null };
 const readCoordination = (campaignDir: string): Coordination => {
   const c = (readOptionalJson(path.join(campaignDir, 'config.json')) as { usage_budget?: { coordination?: Record<string, unknown> } } | null)
     ?.usage_budget?.coordination;
   const role = PEER_ROLES.includes(c?.role as PeerRole) ? (c?.role as PeerRole) : 'solo';
-  const manager = typeof c?.manager_session === 'string' && c.manager_session ? c.manager_session : null;
+  const manager = isHostSession(c?.manager_session) ? c.manager_session : null;
   return { role, manager_session: manager };
 };
 
 /** This session's identity. Read-only: an absent token matches no record by session, only by worktree. */
-function selfIdentity(campaignDir: string, clone: Clone, records: PeerRecord[], deps: RegistryDeps): SelfIdentity {
+function selfIdentity(campaignDir: string, clone: Clone, entries: RegistryEntry[], deps: RegistryDeps): SelfIdentity {
   const session = readToken(campaignDir) ?? '';
-  const own = records.find((r) => r.session === session);
+  const own = recordsOf(entries).find((r) => r.session === session);
   return {
     session,
     worktree: clone.worktree,
@@ -121,8 +137,12 @@ function selfIdentity(campaignDir: string, clone: Clone, records: PeerRecord[], 
 export function detectForCampaign(campaignDir: string, deps: RegistryDeps = realDeps): DetectResult | null {
   const clone = resolveClone(campaignDir, deps);
   if (!clone) return null;
-  const records = readRegistry(clone.registry);
-  return detectPeers(records, selfIdentity(campaignDir, clone, records, deps), deps.nowMs());
+  return detectIn(campaignDir, clone, deps);
+}
+
+function detectIn(campaignDir: string, clone: Clone, deps: RegistryDeps): DetectResult {
+  const { entries, dirError } = readRegistry(clone.registry);
+  return detectPeers(entries, selfIdentity(campaignDir, clone, entries, deps), deps.nowMs(), { dirError });
 }
 
 function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession: string | null, deps: RegistryDeps): string {
@@ -133,7 +153,7 @@ function heartbeat(campaignDir: string, clone: Clone, turn: number, hostSession:
     writeJsonAtomic(path.join(campaignDir, SESSION_TOKEN_FILE), { session });
   }
   fs.mkdirSync(clone.registry, { recursive: true });
-  const records = readRegistry(clone.registry);
+  const records = recordsOf(readRegistry(clone.registry).entries);
   const host = deps.hostname();
   const self: SelfIdentity = { session, worktree: clone.worktree, host, host_session: null, manager_session: null };
   const own = records.find((r) => r.session === session);
@@ -182,8 +202,7 @@ export function run(argv: string[], deps: RegistryDeps = realDeps): { code: numb
   if (!clone) return { code: 1, err: `peer-campaigns: cannot resolve the git common dir for ${campaignDir}` };
   if (sub === 'heartbeat') return { code: 0, out: heartbeat(campaignDir, clone, turn, hostSession, deps) };
   if (sub === 'release') return { code: 0, out: release(campaignDir, clone) };
-  const records = readRegistry(clone.registry);
-  return { code: 0, out: JSON.stringify(detectPeers(records, selfIdentity(campaignDir, clone, records, deps), deps.nowMs()), null, 2) };
+  return { code: 0, out: JSON.stringify(detectIn(campaignDir, clone, deps), null, 2) };
 }
 
 if (import.meta.main) {

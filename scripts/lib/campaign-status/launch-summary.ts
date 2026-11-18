@@ -1,6 +1,6 @@
 import { readScope } from '../../forge-scope.ts';
 import { adjustPacing, type CatchupConfig, type Pacing } from '../catchup.ts';
-import type { DetectedPeer, DetectResult } from '../peer-campaigns.ts';
+import { joinTarget, type DetectedPeer, type DetectResult } from '../peer-campaigns.ts';
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetConfig } from '../usage-budget.ts';
 import { parallelMaxOf, resolveBudgetSettings, when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
@@ -261,13 +261,18 @@ function peersRow(config: Record<string, unknown>, detected: DetectResult | unde
   const row = rolePeersRow(config);
   if (!detected) return row;
   const open = detected.peers.filter((p) => !p.coordinated);
-  if (open.length) {
-    const join = open.find((p) => p.host_session !== null)?.host_session;
+  const { unreadable } = detected;
+  if (open.length || unreadable) {
+    const join = open.length ? joinTarget(detected.peers) : null;
     const list = open.map((p) => `${peerName(p)} (turn ${p.turn}, heartbeat ${p.heartbeat_age_minutes}m ago)`).join(', ');
+    const unread = plural(unreadable, 'unreadable record');
+    const value = !open.length ? `unknown (${unread})` : `${plural(open.length, 'live peer')} in this clone: ${list}${unreadable ? `; ${unread}` : ''}`;
     return {
       ...row,
-      value: `${plural(open.length, 'live peer')} in this clone: ${list}`,
-      consequence: 'Another campaign runs in this clone: stop, join it, or take over after it drains; this session never starts as solo.',
+      value,
+      consequence: open.length
+        ? 'Another campaign runs in this clone: stop, join it, or take over after it drains; this session never starts as solo.'
+        : 'Unreadable peer records may be a live campaign: stop, or take over once they clear; never starts as solo.',
       adjustable: true,
       options: join ? [PEER_STOP, peerJoin(join), PEER_TAKE_OVER] : [PEER_STOP, PEER_TAKE_OVER],
     };

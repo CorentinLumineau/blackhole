@@ -3,11 +3,14 @@ import {
   claimsOf,
   detectPeers,
   isSessionId,
+  joinTarget,
   livePeers,
   parseRecord,
   PEER_LEASE_MINUTES,
   peerClaims,
+  type DetectedPeer,
   type PeerRecord,
+  type RegistryEntry,
   type SelfIdentity,
 } from './peer-campaigns.ts';
 
@@ -37,6 +40,13 @@ const self: SelfIdentity = {
   manager_session: null,
 };
 
+/** A registry file holding `r` (or raw text), written `mtimeAgo` minutes before NOW. */
+const entry = (r: PeerRecord | string, mtimeAgo = 0, file?: string): RegistryEntry => ({
+  file: file ?? (typeof r === 'string' ? 'garbage.json' : `${r.session}.json`),
+  text: typeof r === 'string' ? r : JSON.stringify(r),
+  mtimeMs: NOW - mtimeAgo * 60_000,
+});
+
 describe('parseRecord', () => {
   test('a well-formed record round-trips', () => {
     expect(parseRecord(JSON.stringify(record()))).toEqual(record());
@@ -57,6 +67,15 @@ describe('parseRecord', () => {
     expect(isSessionId('../x')).toBe(false);
     expect(isSessionId('a1b2c3d4-0000-4000-8000-000000000001')).toBe(true);
   });
+
+  test('worktree, host and session strings that could carry command text are rejected', () => {
+    expect(parseRecord(JSON.stringify(record({ worktree: 'relative/path' })))).toBeNull();
+    expect(parseRecord(JSON.stringify(record({ worktree: '/repo\n$(rm -rf ~)' })))).toBeNull();
+    expect(parseRecord(JSON.stringify(record({ host: 'box; touch /tmp/x' })))).toBeNull();
+    expect(parseRecord(JSON.stringify(record({ host_session: 'a" --gate x' })))).toBeNull();
+    expect(parseRecord(JSON.stringify(record({ manager_session: '`id`' })))).toBeNull();
+    expect(parseRecord(JSON.stringify(record({ host_session: 'session_01AbC:2' })))).not.toBeNull();
+  });
 });
 
 describe('livePeers', () => {
@@ -67,8 +86,9 @@ describe('livePeers', () => {
     expect(livePeers([record({ heartbeat_at: minutesAgo(41) })], self, NOW)).toHaveLength(0);
   });
 
-  test('a heartbeat dated in the future counts as live', () => {
-    expect(livePeers([record({ heartbeat_at: minutesAgo(-3) })], self, NOW)).toHaveLength(1);
+  test('a future heartbeat is capped at now + lease: 39 minutes ahead is live, 41 ahead is not', () => {
+    expect(livePeers([record({ heartbeat_at: minutesAgo(-39) })], self, NOW)).toHaveLength(1);
+    expect(livePeers([record({ heartbeat_at: minutesAgo(-41) })], self, NOW)).toHaveLength(0);
   });
 
   test('the self session is excluded', () => {
@@ -114,11 +134,16 @@ describe('claimsOf', () => {
 
 describe('detectPeers', () => {
   test('no live peer is solo, and reach is stated as the clone', () => {
-    expect(detectPeers([record({ heartbeat_at: minutesAgo(90) })], self, NOW)).toEqual({ verdict: 'solo', reach: 'clone', peers: [] });
+    expect(detectPeers([entry(record({ heartbeat_at: minutesAgo(90) }), 90)], self, NOW)).toEqual({
+      verdict: 'solo',
+      reach: 'clone',
+      unreadable: 0,
+      peers: [],
+    });
   });
 
   test('a live peer is reported with its age and claims', () => {
-    const result = detectPeers([record()], self, NOW);
+    const result = detectPeers([entry(record())], self, NOW);
     expect(result.verdict).toBe('peers');
     expect(result.peers).toHaveLength(1);
     expect(result.peers[0]).toMatchObject({
@@ -133,21 +158,84 @@ describe('detectPeers', () => {
 
   test('a peer whose manager_session is my host_session names me and is coordinated', () => {
     const me = { ...self, host_session: 'session_me' };
-    const [peer] = detectPeers([record({ role: 'peer', manager_session: 'session_me' })], me, NOW).peers;
+    const [peer] = detectPeers([entry(record({ role: 'peer', manager_session: 'session_me' }))], me, NOW).peers;
     expect(peer.names_me).toBe(true);
     expect(peer.coordinated).toBe(true);
   });
 
   test('the peer I joined as manager is coordinated, so the gate does not ask again', () => {
     const me = { ...self, manager_session: 'session_mgr' };
-    const [peer] = detectPeers([record({ host_session: 'session_mgr', role: 'manager' })], me, NOW).peers;
+    const [peer] = detectPeers([entry(record({ host_session: 'session_mgr', role: 'manager' }))], me, NOW).peers;
     expect(peer.names_me).toBe(false);
     expect(peer.coordinated).toBe(true);
   });
 
+  test('two peers of one manager are coordinated with each other', () => {
+    const me = { ...self, manager_session: 'session_mgr' };
+    const sibling = record({ session: 'b0000000-0000-4000-8000-000000000002', role: 'peer', manager_session: 'session_mgr' });
+    const [peer] = detectPeers([entry(sibling)], me, NOW).peers;
+    expect(peer.coordinated).toBe(true);
+  });
+
   test('a null host_session never matches a null manager_session', () => {
-    const [peer] = detectPeers([record()], self, NOW).peers;
+    const [peer] = detectPeers([entry(record())], self, NOW).peers;
     expect(peer.names_me).toBe(false);
     expect(peer.coordinated).toBe(false);
+  });
+
+  test('fresh unreadable files fail closed: version 2, garbage JSON and a misnamed file each count', () => {
+    const skewed = entry(JSON.stringify({ ...record(), version: 2 }), 1, 'skewed.json');
+    const garbage = entry('{"version":1,', 1);
+    const misnamed = entry(record(), 1, 'not-the-session.json');
+    expect(detectPeers([skewed, garbage, misnamed], self, NOW)).toEqual({ verdict: 'unknown', reach: 'clone', unreadable: 3, peers: [] });
+  });
+
+  test('an unreadable file older than the lease is dead and not counted', () => {
+    expect(detectPeers([entry('garbage', 41)], self, NOW)).toMatchObject({ verdict: 'solo', unreadable: 0 });
+  });
+
+  test('a record dated beyond now + lease is untrusted: unreadable while its file is fresh', () => {
+    expect(detectPeers([entry(record({ heartbeat_at: minutesAgo(-120) }), 0)], self, NOW)).toMatchObject({ verdict: 'unknown', unreadable: 1 });
+    expect(detectPeers([entry(record({ heartbeat_at: minutesAgo(-120) }), 60)], self, NOW)).toMatchObject({ verdict: 'solo', unreadable: 0 });
+  });
+
+  test('my own unreadable file is not counted: the next heartbeat rewrites it', () => {
+    expect(detectPeers([entry('garbage', 0, `${self.session}.json`)], self, NOW).unreadable).toBe(0);
+  });
+
+  test('an unreadable registry dir counts as one unreadable entry', () => {
+    expect(detectPeers([], self, NOW, { dirError: true })).toEqual({ verdict: 'unknown', reach: 'clone', unreadable: 1, peers: [] });
+  });
+});
+
+describe('joinTarget', () => {
+  const peer = (over: Partial<DetectedPeer>): DetectedPeer => ({
+    ...record(),
+    heartbeat_age_minutes: 0,
+    names_me: false,
+    coordinated: false,
+    ...over,
+  });
+  const solo = peer({ session: 'a0000000-0000-4000-8000-000000000001', host_session: 'session_solo' });
+  const sub = peer({ session: 'b0000000-0000-4000-8000-000000000002', role: 'peer', host_session: 'session_sub', manager_session: 'session_mgr' });
+  const mgr = peer({ session: 'c0000000-0000-4000-8000-000000000003', role: 'manager', host_session: 'session_mgr' });
+
+  test('a manager record is preferred, whatever the order', () => {
+    expect(joinTarget([solo, sub, mgr])).toBe('session_mgr');
+    expect(joinTarget([mgr, sub, solo])).toBe('session_mgr');
+  });
+
+  test('without a manager record, a peer names its manager', () => {
+    expect(joinTarget([solo, sub])).toBe('session_mgr');
+    expect(joinTarget([sub, solo])).toBe('session_mgr');
+  });
+
+  test('only solo peers: the one with a host_session, by session order', () => {
+    const other = peer({ session: 'd0000000-0000-4000-8000-000000000004', host_session: 'session_other' });
+    expect(joinTarget([other, solo])).toBe('session_solo');
+  });
+
+  test('no host_session anywhere: no join target', () => {
+    expect(joinTarget([peer({})])).toBeNull();
   });
 });

@@ -266,9 +266,13 @@ after reading checkpoint and forge sync:
    (`--host-session <id>` where the host has a cross-session transport, `claude-code-native.md`
    § Cross-session budget transport), then `detect`: a live peer naming this `solo` session as
    its `manager_session` makes it act as manager (`multitask-mode.md` § Shared usage budget),
-   and an uncoordinated peer is reported to the owner. Every wake is a turn start, so a sleeping campaign
-   refreshes its record at least every 20 minutes, inside the 40-minute lease. A non-zero exit
-   is logged and the turn proceeds. Registry: `multitask-mode.md` § Peer campaign registry.
+   and an uncoordinated peer is reported to the owner. Nothing refreshes the record between
+   turns: it is written at turn start, at each spawn round and at Triage only. A campaign whose
+   next turn starts more than 40 minutes after its last heartbeat (a usage pause, an idle wait,
+   a host with no wake scheduled inside the lease) lapses and is invisible to peers until that
+   turn. A stopped campaign releases its record (`phase-stop.md`) and is invisible until it is
+   resumed. A non-zero exit is logged and the turn proceeds. Registry: `multitask-mode.md` §
+   Peer campaign registry.
 
 **MUST** complete `recovery-protocol.md` §5 orchestrator checklist before spawning
 `implementer` when any in-flight issue has a dirty worktree or recovery stash. Do not spawn

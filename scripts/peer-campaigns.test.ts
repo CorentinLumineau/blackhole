@@ -72,7 +72,7 @@ describe('peer-campaigns CLI', () => {
   test('detect is read-only: no registry and no token are created', () => {
     const r = cli(['detect', '--campaign-dir', campaign(wt2)]);
     expect(r.code).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual({ verdict: 'solo', reach: 'clone', peers: [] });
+    expect(JSON.parse(r.stdout)).toEqual({ verdict: 'solo', reach: 'clone', unreadable: 0, peers: [] });
     expect(fs.existsSync(registry)).toBe(false);
     expect(fs.existsSync(path.join(campaign(wt2), '.tmp', 'campaign-session.json'))).toBe(false);
   });
@@ -121,7 +121,7 @@ describe('peer-campaigns CLI', () => {
 
   test('after release in worktree 1, worktree 2 is solo with reach clone', () => {
     expect(cli(['release', '--campaign-dir', campaign(wt1)]).code).toBe(0);
-    expect(JSON.parse(cli(['detect', '--campaign-dir', campaign(wt2)]).stdout)).toEqual({ verdict: 'solo', reach: 'clone', peers: [] });
+    expect(JSON.parse(cli(['detect', '--campaign-dir', campaign(wt2)]).stdout)).toEqual({ verdict: 'solo', reach: 'clone', unreadable: 0, peers: [] });
   });
 
   test('a campaign dir outside any git repo exits 1', () => {
@@ -156,5 +156,34 @@ describe('peer-campaigns in process, with injected deps', () => {
     expect(run(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '-1']).code).toBe(2);
     expect(run(['detect', '--turn', '3']).code).toBe(2);
     expect(run(['heartbeat', '--turn', '3', '--host-session', ' ']).code).toBe(2);
+  });
+});
+
+describe('peer-campaigns fails closed on unreadable registry content', () => {
+  const detectWt2 = () => JSON.parse(cli(['detect', '--campaign-dir', campaign(wt2)]).stdout);
+
+  test('a fresh garbage record and a version-skewed record read as unknown, never solo', () => {
+    fs.mkdirSync(registry, { recursive: true });
+    const garbage = path.join(registry, 'garbage.json');
+    const skewed = path.join(registry, 'b0000000-0000-4000-8000-000000000002.json');
+    fs.writeFileSync(garbage, '{"version":1,');
+    fs.writeFileSync(skewed, JSON.stringify({ version: 2, session: 'b0000000-0000-4000-8000-000000000002' }));
+    try {
+      expect(detectWt2()).toMatchObject({ verdict: 'unknown', unreadable: 2, peers: [] });
+    } finally {
+      fs.rmSync(garbage);
+      fs.rmSync(skewed);
+    }
+  });
+
+  test('an unreadable registry dir reads as unknown', () => {
+    if (process.getuid?.() === 0) return; // root reads a 000 dir anyway
+    fs.mkdirSync(registry, { recursive: true });
+    fs.chmodSync(registry, 0o000);
+    try {
+      expect(detectWt2()).toMatchObject({ verdict: 'unknown', unreadable: 1 });
+    } finally {
+      fs.chmodSync(registry, 0o755);
+    }
   });
 });
