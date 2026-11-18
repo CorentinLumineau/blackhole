@@ -30,10 +30,22 @@
  * single-consumer-file primitive gains nothing from living in a shared module (V-YAGNI-03).
  */
 
-/** True when the `'` at `start` opens an ANSI-C `$'…'` span: it follows a `$` that is neither
- * escaped nor the second half of `$$`. */
-const isAnsiCQuote = (text, start) =>
-  text[start] === "'" && text[start - 1] === '$' && text[start - 2] !== '\\' && text[start - 2] !== '$';
+/** True when the `'` at `start` opens an ANSI-C `$'…'` span: the unescaped `$` run just before
+ * it has odd length (`$$` is the process id, so `$$'` is a plain quote; `$$$'` is not). A `$` is
+ * escaped when an odd number of backslashes precede it (`\$'` is plain, `\\$'` is not). */
+const isAnsiCQuote = (text, start) => {
+  if (text[start] !== "'") return false;
+  let dollars = 0;
+  let i = start - 1;
+  while (text[i] === '$') {
+    let slashes = 0;
+    while (text[i - 1 - slashes] === '\\') slashes++;
+    if (slashes % 2 === 1) break;
+    dollars++;
+    i--;
+  }
+  return dollars % 2 === 1;
+};
 
 /**
  * Skips a quoted span starting at `start` (the index of the opening `'` or `"`), bounded by
