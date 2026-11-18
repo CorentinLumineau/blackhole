@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { DEFAULT_CATCHUP, applyOverrides, floorBudget, localUtcOffsetMinutes, readPacing, resolveCatchup, workersAtFloor } from './catchup.ts';
+import { DEFAULT_CATCHUP, applyOverrides, floorBudget, readPacing, resolveCatchup, workersAtFloor } from './catchup.ts';
 import { resolveUsageBudget } from './usage-budget.ts';
 import type { UsageReport } from './usage-source.ts';
 
@@ -15,23 +15,38 @@ const limits = (week: number | null, five: number | null) => ({
 
 describe('resolveCatchup', () => {
   test('the empty block is the defaults', () => {
-    expect(resolveCatchup({})).toEqual({ pct_per_weekday: 17.5, five_hour: { no_spawn_at: 75, stop_workers_at: 80 }, lane: null, claim_lease_hours: 24, day_end_hour: 18 });
+    expect(resolveCatchup({})).toEqual({ weekly_target_pct: 80, five_hour: { no_spawn_at: 75, stop_workers_at: 80 }, lane: null, claim_lease_hours: 24 });
   });
   test('a partial block merges over the defaults', () => {
-    const c = resolveCatchup({ catchup: { pct_per_weekday: 20, five_hour: { no_spawn_at: 60 }, lane: 'acct-b' } });
-    expect(c).toMatchObject({ pct_per_weekday: 20, lane: 'acct-b', claim_lease_hours: 24 });
+    const c = resolveCatchup({ catchup: { weekly_target_pct: 60, five_hour: { no_spawn_at: 60 }, lane: 'acct-b' } });
+    expect(c).toMatchObject({ weekly_target_pct: 60, lane: 'acct-b', claim_lease_hours: 24 });
     expect(c.five_hour).toEqual({ no_spawn_at: 60, stop_workers_at: 80 });
   });
   test.each([
     [{ catchup: 3 }, 'catchup must be an object'],
-    [{ catchup: { pct_per_weekday: 0 } }, 'catchup.pct_per_weekday'],
+    [{ catchup: { weekly_target_pct: 0 } }, 'catchup.weekly_target_pct'],
+    [{ catchup: { weekly_target_pct: 101 } }, 'catchup.weekly_target_pct'],
+    [{ catchup: { weekly_target_pct: 'x' } }, 'catchup.weekly_target_pct'],
     [{ catchup: { five_hour: 'x' } }, 'catchup.five_hour must be an object'],
     [{ catchup: { five_hour: { no_spawn_at: 80, stop_workers_at: 80 } } }, 'catchup.five_hour.no_spawn_at must be less than'],
     [{ catchup: { lane: 'Bad Lane' } }, 'catchup.lane'],
     [{ catchup: { claim_lease_hours: 0 } }, 'catchup.claim_lease_hours'],
-    [{ catchup: { day_end_hour: 25 } }, 'catchup.day_end_hour'],
   ])('%j throws naming the key path', (config, message) => {
     expect(() => resolveCatchup(config as Record<string, unknown>)).toThrow(message);
+  });
+  const PCT_MESSAGE =
+    'catchup.pct_per_weekday was removed (ADR-054 amendment): the pace floor is now linear over all 168 h of the week. Delete it and set catchup.weekly_target_pct instead (a number in (0, 100], default 80; the old 17.5 x 5 weekdays equals 87.5).';
+  const HOUR_MESSAGE = 'catchup.day_end_hour was removed (ADR-054 amendment): the pace floor no longer follows working days. Delete it from config.json.';
+  test.each([
+    ['pct_per_weekday', 17.5, PCT_MESSAGE],
+    ['pct_per_weekday', null, PCT_MESSAGE],
+    ['day_end_hour', 18, HOUR_MESSAGE],
+    ['day_end_hour', null, HOUR_MESSAGE],
+  ])('removed key %s=%j is rejected with the exact message (regression for 1293)', (key, value, message) => {
+    expect(() => resolveCatchup({ catchup: { [key]: value } })).toThrow(new Error(message));
+  });
+  test('with both removed keys present the first reported is pct_per_weekday', () => {
+    expect(() => resolveCatchup({ catchup: { day_end_hour: 18, pct_per_weekday: 17.5 } })).toThrow(new Error(PCT_MESSAGE));
   });
 });
 
@@ -110,26 +125,21 @@ const report = (over: Partial<UsageReport>): UsageReport => ({
 });
 
 describe('readPacing', () => {
-  test('Fri 09:30Z, week 50%: floor 61.25, credits 3.5, shortfall 11.25', () => {
-    const p = readPacing(report({ windows: [{ name: 'seven_day', used_pct: 50, resets_at: RESET }, { name: 'five_hour', used_pct: 40, resets_at: NOW + 2 * HOUR }] }), preset, NOW, 0);
-    expect(p).toMatchObject({ status: 'ok', floor_pct: 61.25, credits: 3.5, shortfall_pct: 11.25, used_pct: 50, five_hour_pct: 40, resets_at: RESET });
+  test('Fri 09:30Z of a Mon 09:30Z reset, week 30%: 96 h elapsed, floor 45.71, shortfall 15.71', () => {
+    const p = readPacing(report({ windows: [{ name: 'seven_day', used_pct: 30, resets_at: RESET }, { name: 'five_hour', used_pct: 40, resets_at: NOW + 2 * HOUR }] }), preset, NOW);
+    expect(p).toMatchObject({ status: 'ok', floor_pct: 45.71, elapsed_h: 96, target_pct: 80, shortfall_pct: 15.71, used_pct: 30, five_hour_pct: 40, resets_at: RESET });
   });
   test('no source is unreadable', () => {
-    expect(readPacing(report({ source: 'none', reason: 'cache stale' }), preset, NOW, 0)).toMatchObject({ status: 'unreadable', floor_pct: null, reason: 'cache stale' });
+    expect(readPacing(report({ source: 'none', reason: 'cache stale' }), preset, NOW)).toMatchObject({ status: 'unreadable', floor_pct: null, elapsed_h: null, target_pct: null, reason: 'cache stale' });
   });
   test('plan none and five-hour-only are no-weekly', () => {
-    expect(readPacing(report({ plan: 'none' }), preset, NOW, 0)).toMatchObject({ status: 'no-weekly', reason: 'no plan limits' });
-    const five = readPacing(report({ windows: [{ name: 'five_hour', used_pct: 40, resets_at: NOW + HOUR }] }), preset, NOW, 0);
+    expect(readPacing(report({ plan: 'none' }), preset, NOW)).toMatchObject({ status: 'no-weekly', reason: 'no plan limits' });
+    const five = readPacing(report({ windows: [{ name: 'five_hour', used_pct: 40, resets_at: NOW + HOUR }] }), preset, NOW);
     expect(five).toMatchObject({ status: 'no-weekly', five_hour_pct: 40 });
   });
   test('the preset scales the floor', () => {
-    const p = readPacing(report({ windows: [{ name: 'seven_day', used_pct: 50, resets_at: RESET }] }), { ...preset, pct_per_weekday: 20 }, NOW, 0);
-    expect(p.floor_pct).toBe(70);
+    const p = readPacing(report({ windows: [{ name: 'seven_day', used_pct: 50, resets_at: RESET }] }), { ...preset, weekly_target_pct: 60 }, NOW);
+    expect(p.floor_pct).toBe(34.29);
   });
 });
 
-describe('localUtcOffsetMinutes', () => {
-  test('is a finite number of minutes', () => {
-    expect(Number.isFinite(localUtcOffsetMinutes(NOW))).toBe(true);
-  });
-});

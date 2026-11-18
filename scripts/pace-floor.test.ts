@@ -32,13 +32,13 @@ describe('pace-floor CLI', () => {
       const r = run(dir, ['--usage', usageFile(dir, week)]);
       expect(r.code).toBe(0);
       expect(r.stdout.trim().split('\n')).toHaveLength(1);
-      expect(r.out).toMatchObject({ status: 'ok', floor_pct: 61.25, credits: 3.5, shortfall_pct: 11.25, used_pct: 50, plan: 'max', source: 'usage-file' });
+      expect(r.out).toMatchObject({ status: 'ok', floor_pct: 45.71, elapsed_h: 96, target_pct: 80, shortfall_pct: 0, used_pct: 50, plan: 'max', source: 'usage-file' });
     });
   });
 
-  test('catchup.pct_per_weekday scales the floor', () => {
+  test('catchup.weekly_target_pct scales the floor', () => {
     withTempDir('pace-floor-cli', (dir) => {
-      expect(run(dir, ['--usage', usageFile(dir, week)], { catchup: { pct_per_weekday: 20 } }).out.floor_pct).toBe(70);
+      expect(run(dir, ['--usage', usageFile(dir, week)], { catchup: { weekly_target_pct: 60 } }).out.floor_pct).toBe(34.29);
     });
   });
 
@@ -64,7 +64,17 @@ describe('pace-floor CLI', () => {
       expect(run(dir, ['--usage', bad]).code).toBe(2);
       expect(run(dir, ['--now', 'abc']).code).toBe(2);
       expect(run(dir, ['--wat']).code).toBe(2);
-      expect(run(dir, ['--usage', usageFile(dir, week)], { catchup: { day_end_hour: 99 } }).code).toBe(2);
+    });
+  });
+
+  test.each([
+    ['pct_per_weekday', 'catchup.pct_per_weekday was removed (ADR-054 amendment): the pace floor is now linear over all 168 h of the week.'],
+    ['day_end_hour', 'catchup.day_end_hour was removed (ADR-054 amendment): the pace floor no longer follows working days.'],
+  ])('a stale removed key %s exits 2 with the removal message', (key, message) => {
+    withTempDir('pace-floor-cli', (dir) => {
+      const r = run(dir, ['--usage', usageFile(dir, week)], { catchup: { [key]: 1 } });
+      expect(r.code).toBe(2);
+      expect(r.err).toContain(message);
     });
   });
 });
