@@ -37,6 +37,25 @@ hide the clauses after it.
 Tests: `scripts/hooks-bash-write-substitutions.test.ts` (each form is denied into the main clone,
 allowed into the worktree, and a continuation that opens nothing stays allowed).
 
+## Quote-masking is decided once for the whole command
+
+A substitution body runs in the outer shell, so it inherits the outer `PATH`, `BASH_CMDS` and
+functions. `maskRedirectNoise` blanks quoted spans (`grep 'a>b'`) only when nothing can rebind what
+a bare `grep` runs, and #1249 decided that per command. Scanning each body as its own command
+dropped the outer clauses from that decision: `unset PATH; echo $(grep '<payload>')` was masked
+inside the body and returned no verdict, although it blocks on `main`.
+
+`evaluateBashWriteTargets` now computes `maskingAllowed` (no `SHELL_EXEC_RE` or
+`QUOTE_REINTERPRETING_RE` hit, every clause passive) for the outer text and every body, and masks
+only when all of them pass. `unset PATH; echo $(grep …)`, `PATH=.; echo "$(grep …)"`,
+`BASH_CMDS[grep]=./g; cat <(grep …)`, `grep() { eval "$1"; }; echo $(grep …)` and
+`echo $(cd <main> && echo hi > f)` block again; `echo $(unset PATH; grep …)` still blocks. The 30
+`REBINDING_ROWS` (now shared from `scripts/lib/test-fixtures.ts`) run wrapped in `$(…)`, backticks,
+`"$(…)"` and `<(…)`, and with the rebinding outside each form. Cost: a command whose outer clauses
+are not all passive filters (`echo $(grep 'a>b' f)`, since `echo` is not on the passive list) keeps
+the pre-#1252 behaviour and reads a quoted `>` inside the body as a redirect (a warn or block, as
+on `main`).
+
 ## Residual risks
 
 - A line continuation elsewhere (inside a command word, or between a command and its operands) is

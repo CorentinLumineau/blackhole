@@ -348,18 +348,21 @@ const isInertQuotedSpan = (text, start, end) => {
   return !(span[0] === '"' && (span.includes('$(') || span.includes('`')));
 };
 
+/** True when masking may run on `visible`: nothing in it executes quoted text or nests quotes, and
+ * every clause is a passive filter (`isEveryClausePassive`). A substitution body runs in the outer
+ * shell, so the verdict is the AND of this over the command and every body (`evaluateBashWriteTargets`),
+ * never a body's alone: a rebinding statement outside the body still changes what its `grep` runs. */
+const maskingAllowed = (visible) =>
+  !SHELL_EXEC_RE.test(visible) && !QUOTE_REINTERPRETING_RE.test(visible) && isEveryClausePassive(visible);
+
 /** Copy of `visible` with the contents of inert quoted spans blanked (`grep 'a>b'`), for the
  * whole-command `REDIRECT_RE` scan only; positions are preserved. Fails closed: spans are blanked
- * only inside a clause whose command is an inert filter, and only when every clause of the command
- * is an inert or passive filter (`isEveryClausePassive`) and nothing nests or reinterprets quotes
- * or may execute quoted text; otherwise `visible` is returned
+ * only inside a clause whose command is an inert filter, and only when `allowed` (`maskingAllowed`,
+ * decided once for the whole command and its substitution bodies); otherwise `visible` is returned
  * unchanged (base behaviour), so masking can never turn a deny into an allow. Unquoted text is never masked: an unquoted
  * `sed s/<A>/x/` really is a redirect in bash. */
-const maskRedirectNoise = (visible) => {
-  if (SHELL_EXEC_RE.test(visible) || QUOTE_REINTERPRETING_RE.test(visible)) {
-    return visible;
-  }
-  if (!isEveryClausePassive(visible)) return visible;
+const maskRedirectNoise = (visible, allowed) => {
+  if (!allowed) return visible;
   const chars = visible.split('');
   for (const [start, end] of clauseRanges(visible)) {
     const text = visible.slice(start, end);
@@ -1406,7 +1409,7 @@ const clauseLinks = (visible, start, end) => {
  * or function, or anywhere in an `&&` list once a `;` ends it) leaves every earlier base possible;
  * a subshell `( … )` restores the base it opened with. Each substitution placeholder
  * in a clause is handed to `onSubstitution` with the base its body runs in. */
-const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitution) => {
+const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitution, maskAllowed) => {
   const literalTargets = [];
   let unresolvable = false;
   let state = initialState;
@@ -1423,7 +1426,7 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
     }
   };
 
-  const redirectView = maskRedirectNoise(visible);
+  const redirectView = maskRedirectNoise(visible, maskAllowed);
   // `list` holds the base after each clause of the current `&&`/`||` list: when a `;` or newline
   // ends it, any of them may be where the shell stands, since a later link may not have run.
   let list = [];
@@ -1504,12 +1507,13 @@ const evaluateBashWriteTargets = (command, cwd) => {
       queue.push([bodies[idx], state]);
     }
   };
+  const maskAllowed = [queue[0][0], ...bodies].every((text) => visibleViews(text).every(maskingAllowed));
   for (let q = 0; q < queue.length; q++) {
     const [text, state] = queue[q];
     const heredocMask = computeHeredocBodyMask(text);
     const heredocText = text.replace(/[\s\S]/g, (ch, i) => (heredocMask[i] ? ch : ' '));
     for (const visible of visibleViews(text)) {
-      const signals = collectWriteSignals(visible, heredocText, cwd, state, enqueue);
+      const signals = collectWriteSignals(visible, heredocText, cwd, state, enqueue, maskAllowed);
       for (const { target, dirs } of signals.literalTargets) {
         for (const dir of dirs) literalTargets.push({ target, dir, visible });
       }

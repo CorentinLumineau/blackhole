@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import * as path from 'path';
-import { minMs, PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
+import { minMs, PRETOOLUSE_HOOKS_DIR, readHookEvents, REBINDING_ROWS, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
 
 // Issue #1252: the commands inside `$(…)`, backticks, `<(…)` and `>(…)` run, so the guard scans
 // each substitution body as its own clause set — nested bodies included — in linear time.
@@ -150,6 +150,72 @@ describe('bash-write-target-guard.js — writes inside command and process subst
         expect(evaluateBashWriteTargets(command, worktree)).toMatchObject(BLOCK);
         expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
       });
+    });
+  }
+});
+
+// A substitution body runs in the outer shell, so a rebinding statement anywhere in the command
+// (outside the body included) keeps quote-masking off for every body: the verdict is decided once
+// for the whole command.
+describe('bash-write-target-guard.js — substitution bodies share the whole command’s masking gate (#1252)', () => {
+  const PAYLOAD = 'cat > <main>/x ; true';
+  const rows = () => REBINDING_ROWS(PAYLOAD);
+  const verdictOf = (build: (main: string) => string) => verdictAt((m) => build(m).replaceAll('<main>', m), 'main');
+
+  // The whole of the command is wrapped, so the rebinding sits inside the body.
+  const WRAPS: Array<[string, (row: string) => string]> = [
+    ['`$(…)`', (r) => `echo $(${r})`],
+    ['backticks', (r) => `echo \`${r}\``],
+    ['`"$(…)"`', (r) => `echo "$(${r})"`],
+    ['`<(…)`', (r) => `cat <(${r})`],
+  ];
+
+  test('#1252: the rebinding rows number 30', () => {
+    expect(rows()).toHaveLength(30);
+  });
+
+  for (const [label, wrap] of WRAPS) {
+    for (const [i, row] of rows().entries()) {
+      test(`#1252: rebinding row ${i + 1} wrapped in ${label} is denied: ${JSON.stringify(row)}`, async () => {
+        expect(await verdictOf(() => wrap(row))).toMatchObject(BLOCK);
+      });
+    }
+  }
+
+  // The rebinding stays outside the substitution that runs the filter.
+  const OUTER: Array<[string, (cmd: string, t: string) => string]> = [
+    ['`$(…)`', (cmd, t) => `echo $(${cmd} '${t}')`],
+    ['`"$(…)"`', (cmd, t) => `echo "$(${cmd} '${t}')"`],
+    ['backticks', (cmd, t) => `echo \`${cmd} '${t}'\``],
+    ['`<(…)`', (cmd, t) => `cat <(${cmd} '${t}')`],
+  ];
+  for (const [label, inner] of OUTER) {
+    for (const [i, row] of rows().entries()) {
+      const outer = row.replace(/(grep|rg) '[^']*'$/, (_, cmd) => inner(cmd, PAYLOAD));
+      test(`#1252: rebinding row ${i + 1} outside ${label} is denied: ${JSON.stringify(outer)}`, async () => {
+        expect(outer).not.toBe(row);
+        expect(await verdictOf(() => outer)).toMatchObject(BLOCK);
+      });
+    }
+  }
+
+  for (const build of [
+    () => "unset PATH; echo $(grep 'echo hi > <main>/x ; true')",
+    () => "PATH=.; echo \"$(grep 'echo hi > <main>/x ; true')\"",
+    () => "BASH_CMDS[grep]=./g; cat <(grep 'echo hi > <main>/x ; true')",
+    () => "grep() { eval \"$1\"; }; echo $(grep 'echo hi > <main>/x ; true')",
+    () => "echo $(unset PATH; grep 'echo hi > <main>/x ; true')",
+    () => 'echo $(cd <main> && echo hi > f)',
+  ]) {
+    test(`#1252: \`${build()}\` is denied`, async () => {
+      expect(await verdictOf(build)).toMatchObject(BLOCK);
+    });
+  }
+
+  // Masking still applies where the whole command is passive (`echo` is not on the passive list).
+  for (const command of ["cat $(grep 'a>b' f)", 'cat "$(grep \'a>b\' f)"', "cat <(grep 'a>b' f)", "cat `grep 'a>b' f`"]) {
+    test(`#1252: \`${command}\` (every clause passive) stays allowed`, async () => {
+      expect(await verdictOf(() => command)).toBeNull();
     });
   }
 });

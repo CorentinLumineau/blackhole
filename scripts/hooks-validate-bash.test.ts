@@ -7,6 +7,7 @@ import {
   minMs,
   PRETOOLUSE_HOOKS_DIR,
   readHookEvents,
+  REBINDING_ROWS,
   runPreToolUseHook,
   withLinkedWorktree,
   withRemoteTrackedWorktree,
@@ -4917,39 +4918,6 @@ describe('bash-write-target-guard.js — redirect scan ignores `>` inside quotes
     "cat x 2>| '@OUT@/x'",
   ];
 
-  // Statements that can rebind what a bare grep/rg/sed word runs: masking must stay off.
-  const REBINDING_ROWS = (t: string) => [
-    `unset PATH; grep '${t}'`,
-    `unset -v PATH; grep '${t}'`,
-    `unset PATH\ngrep '${t}'`,
-    `BASH_CMDS[grep]=./grep; grep '${t}'`,
-    `BASH_CMDS[rg]=./s; rg '${t}'`,
-    `printf -v PATH . ; grep '${t}'`,
-    `read -r PATH < f; grep '${t}'`,
-    `mapfile PATH < f; grep '${t}'`,
-    `shopt -s expand_aliases\nBASH_ALIASES[grep]='tmux new'\ngrep '${t}'`,
-    `BASH_ALIASES[grep]='tmux new' && grep '${t}'`,
-    `PATH=. && grep '${t}'`,
-    `cd sub && grep '${t}'`,
-    `declare PATH=. ; grep '${t}'`,
-    `export PATH=.; grep '${t}'`,
-    `hash -p ./g grep; grep '${t}'`,
-    `enable -f ./x grep; grep '${t}'`,
-    `command -p x; grep '${t}'`,
-    `{ unset PATH; } ; grep '${t}'`,
-    `( unset PATH ) ; grep '${t}'`,
-    `true & unset PATH & grep '${t}'`,
-    `true || unset PATH; grep '${t}'`,
-    `sort -o f x; grep '${t}'`,
-    `cat x > f; grep '${t}'`,
-    `grep () ( awk 'BEGIN{system(ARGV[1])}' "$1" ) ; grep '${t}'`,
-    `grep ()( awk 'BEGIN{system(ARGV[1])}' "$1" ) ; grep '${t}'`,
-    `rg () ( awk 'BEGIN{system(ARGV[1])}' "$1" ) ; grep '${t}'`,
-    `cut () ( x ) ; grep '${t}'`,
-    `head () ( true ) ; grep '${t}'`,
-    `grep ()\n( awk 'BEGIN{system(ARGV[1])}' "$1" )\ngrep '${t}'`,
-    `head () { true; } ; grep '${t}'`,
-  ];
 
   for (const command of [
     ...REBINDING_ROWS('cat > @OUT@/x ; true'),
