@@ -288,11 +288,11 @@ describe('GiteaForgeAdapter', () => {
   describe('create through REST (tea 0.14.2 has no JSON output for create)', () => {
     let apiSpy: ReturnType<typeof spyOn<typeof teaCli, 'runTeaApiJson'>>;
     let calls: Array<{ method: string; endpoint: string; body: unknown }>;
-    const mockApi = (reply: (method: string, endpoint: string) => unknown) => {
+    const mockApi = (reply: (method: string, endpoint: string) => unknown, headers = '') => {
       calls = [];
       apiSpy = spyOn(teaCli, 'runTeaApiJson').mockImplementation(((method: string, endpoint: string, body?: unknown) => {
         calls.push({ method, endpoint, body });
-        return { data: reply(method, endpoint), headers: '' };
+        return { data: reply(method, endpoint), headers };
       }) as never);
     };
     afterEach(() => apiSpy?.mockRestore());
@@ -350,6 +350,26 @@ describe('GiteaForgeAdapter', () => {
         return page === 1 ? [{ id: 1, name: 'a' }] : page === 2 ? [{ id: 2, name: 'b' }] : [];
       });
       await new GiteaForgeAdapter('host/owner/repo').issueCreate({ title: 't', body: 'b', labels: ['b'] });
+      expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({ labels: [2] });
+    });
+
+    test('issueCreate stops after one GET when X-Total-Count is already reached', async () => {
+      mockApi(
+        (method) => (method === 'POST' ? { number: 4, title: 't', body: 'b', labels: [], state: 'open' } : [{ id: 1, name: 'a' }, { id: 2, name: 'b' }]),
+        'HTTP/1.1 200 OK\nX-Total-Count: 2\n',
+      );
+      await new GiteaForgeAdapter('host/owner/repo').issueCreate({ title: 't', body: 'b', labels: ['b'] });
+      expect(calls.filter((c) => c.method === 'GET').length).toBe(1);
+    });
+
+    test('issueCreate keeps walking while X-Total-Count exceeds the labels read, then stops at the total', async () => {
+      mockApi((method, endpoint) => {
+        if (method === 'POST') return { number: 4, title: 't', body: 'b', labels: [], state: 'open' };
+        const page = Number(/page=(\d+)/.exec(endpoint)?.[1]);
+        return page === 1 ? [{ id: 1, name: 'a' }] : page === 2 ? [{ id: 2, name: 'b' }] : [{ id: 3, name: 'c' }];
+      }, 'HTTP/1.1 200 OK\nX-Total-Count: 2\n');
+      await new GiteaForgeAdapter('host/owner/repo').issueCreate({ title: 't', body: 'b', labels: ['b'] });
+      expect(calls.filter((c) => c.method === 'GET').length).toBe(2);
       expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({ labels: [2] });
     });
 
