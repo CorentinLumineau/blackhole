@@ -6,10 +6,10 @@ import {
   evaluatePaceGate,
   readBaseline,
   resolvePaceGateThresholds,
-  resolveRateLimitCachePath,
   rollBaseline,
   type BaselineInput,
 } from './lib/pace-gate.ts';
+import { resolveRateLimitCachePath } from './lib/rate-limit-cache.ts';
 import type { Host } from './lib/run-context.ts';
 import { resolveHost, usageSourceFor, type UsageSource } from './lib/usage-source.ts';
 

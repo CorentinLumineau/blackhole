@@ -1,6 +1,6 @@
 {
   "name": "blackhole",
-  "version": "0.28.0",
+  "version": "0.30.1",
   "description": "Agent-agnostic backlog campaign orchestrator to empty the forge backlog.",
   "scripts": {
     "build": "bun run scripts/build.ts",
@@ -13,6 +13,9 @@
     "status": "bun run scripts/campaign-status.ts",
     "forge-sync": "bun run scripts/forge-sync.ts",
     "record": "bun run scripts/campaign-record.ts",
+    "usage": "bun run scripts/usage.ts",
+    "claim": "bun run scripts/claim.ts",
+    "pace-floor": "bun run scripts/pace-floor.ts",
     "sync:shadcn": "bun run scripts/sync-shadcn-skill.ts",
     "test": "bun test --timeout 60000"
   },

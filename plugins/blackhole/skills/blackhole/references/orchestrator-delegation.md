@@ -195,6 +195,7 @@ queue entry in `plan`, `implement`, or `review` with `status: in-flight` (use
 
 If either is missing, stay in Phase 2 Plan — spawn or re-spawn `planner`.
 Queue entry must be `phase: implement`, `status: ready` before implement spawn.
+With a lane set, claim the issue first: `orchestrator-dispatch.md` § Lane claim and release.
 
 **Before spawning a `implementer` or `reviewer`**, prepend a
 `<PLAN_CONTEXT>` block (see

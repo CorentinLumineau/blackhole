@@ -36,6 +36,7 @@ Mutations to `.blackhole/queue.json` and
 | `archive/hook-events-<ts>/` | Consumed PreToolUse hook-event files, archived rather than deleted once ingested (gitignored, ADR-042/#893) |
 | `doc-health.json` | Doc-tree health signal, Scope-1 only (gitignored, see § Doc-Health Signal) |
 | `pace-log.jsonl` | Per-spawn-round pace/resource verdicts, planned batch and effective concurrency, newest 200 lines (gitignored, written by `scripts/pace-log.ts`, diagnostic only) |
+| `usage-history.jsonl` | Weekly usage readings (`observed_at`, `used_percentage`, `resets_at`), one per `observed_at`, newest 200 lines (gitignored, appended by `scripts/usage-probe.ts`, read by the status page's Pace row) |
 | `run-context.json` | What this run can do and the route resolved from it, rewritten at every bootstrap and resume (see `run-context.md`) |
 | `owner-decisions.json` | `{"decisions": [{date, text, refs?}]}` — the owner's answers and scope/priority instructions, appended only by `scripts/campaign-record.ts decision` (gitignored; travels on the state branch; see `status-page.md` § What the orchestrator records) |
 | `pending-decisions.json` | `{"next_id", "decisions": [{id, question, options, recommended, evidence?, blocks, gate?, created_at}]}` — owner questions parked while `sleep_mode.enabled` is `true`, written only by `scripts/campaign-record.ts park`/`resolve` through the write guard (entity key `decisions`; gitignored; travels on the state branch; see `sleep-mode.md`) |
@@ -46,7 +47,7 @@ Mutations to `.blackhole/queue.json` and
 On a machine whose disk does not outlive the session (`state_store: branch`), these files are
 also kept on the `blackhole/state` branch: pushed at every turn end and restored on resume
 (`state-branch.md`). `archive/`, `hook-events/`, `.tmp/`, `*.tmp` and the per-machine signals
-(`run-context.json`, `plugin-drift.json`, `doc-health.json`, `pace-log.jsonl`) stay local.
+(`run-context.json`, `plugin-drift.json`, `doc-health.json`, `pace-log.jsonl`, `usage-history.jsonl`) stay local.
 
 Full schemas: `plugins/blackhole/skills/blackhole/references/findings-ledger.md`,
 `queue-dag.md`.

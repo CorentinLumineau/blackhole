@@ -43,7 +43,7 @@ single writer for campaign state regardless of which pattern is active.
 
 Pattern C has no coordinator, so nothing else can run the campaign's launch-time config gate. The
 foreground orchestrator (main chat) therefore **owns the Campaign launch configuration gate** for
-every `run`-mode campaign start — including the lightweight
+every `run`- or `catchup`-mode campaign start — including the lightweight
 routine resume confirmation gate that fires when `.blackhole/config.json` already exists — and
 must execute it **before** its first fan-out, never after workers are already in flight.
 
