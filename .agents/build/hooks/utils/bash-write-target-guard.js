@@ -921,20 +921,30 @@ const findOptionWriteTargets = (tokens) => {
   return targets;
 };
 
+/** Builtins whose operands are assignments (`export "GIT_TRACE=/x"`). */
+const DECLARERS = new Set(['export', 'declare', 'typeset', 'local', 'readonly']);
+
 /** Files git appends a trace to (`GIT_TRACE=/x`, `GIT_TRACE2_EVENT=<dir>`, …) from assignments
- * anywhere in one clause — a prefix, `export` or `env` alike. Git writes only to an absolute
- * value: `1`, `true`, `0`, `false` and `2`–`9` mean stderr, off or an fd, and any other value is
- * ignored. A value the shell rewrites (`$LOG`, `` `pwd` ``, `~/t`) is returned as written, so it
- * is unresolvable. */
+ * anywhere in one clause — a prefix, `export` or `env` alike, appended with `+=` or not. Git
+ * writes only to an absolute value: `1`, `true`, `0`, `false` and `2`–`9` mean stderr, off or an
+ * fd, and any other value is ignored. A word that starts with a quote is an assignment only where
+ * the shell expects one (a command word, so `env "GIT_TRACE=/x" git`, or an operand of `export`),
+ * so `git commit -m 'GIT_TRACE=/x'` names no trace. A value the shell rewrites (`$LOG`,
+ * `` `pwd` ``, `~/t`) is returned as written, so it is unresolvable. */
 const findGitTraceTargets = (tokens) => {
   const targets = [];
-  for (const token of tokens) {
-    const value = /^GIT_TRACE\w*=([\s\S]*)$/.exec(token)?.[1];
-    if (value === undefined) continue;
-    const { text, dynamic } = normalizeShellWord(value);
+  const positions = commandPositions(tokens);
+  let declaring = false;
+  tokens.forEach((token, i) => {
+    const assignmentSlot = positions.has(i) || declaring;
+    declaring = DECLARERS.has(commandName(token)) || (declaring && (token.startsWith('-') || /^['"]?[A-Za-z_]\w*\+?=/.test(token)));
+    if ((token[0] === "'" || token[0] === '"') && !assignmentSlot) return;
+    const { text, dynamic } = normalizeShellWord(token);
+    const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(token) : text)?.[1];
+    if (value === undefined) return;
     if (dynamic) targets.push(value);
-    else if (path.isAbsolute(text) || text.startsWith('~')) targets.push(text);
-  }
+    else if (path.isAbsolute(value) || value.startsWith('~')) targets.push(value);
+  });
   return targets;
 };
 
