@@ -955,21 +955,28 @@ const DECLARERS = new Set(['export', 'declare', 'typeset', 'local', 'readonly'])
  * anywhere in one clause — a prefix, `export` or `env` alike, appended with `+=` or not. Git
  * writes only to an absolute value: `1`, `true`, `0`, `false` and `2`–`9` mean stderr, off or an
  * fd, and any other value is ignored. A word that starts with a quote is an assignment only where
- * the shell expects one (a command word, so `env "GIT_TRACE=/x" git`, or any operand of `export`
- * once a declarer opens the clause, whatever bare names precede it),
+ * the shell expects one (a command word, so `env "GIT_TRACE=/x" git`, an `env` operand holding `=`
+ * before its command, or any operand of `export` once a declarer opens the clause, whatever bare
+ * names precede it),
  * so `git commit -m 'GIT_TRACE=/x'` names no trace. A value the shell rewrites (`$LOG`,
  * `` `pwd` ``, `~/t`) is returned as written, so it is unresolvable. */
 const findGitTraceTargets = (tokens) => {
   const targets = [];
   const positions = commandPositions(tokens);
   let declaring = false;
+  let envOperands = false;
   tokens.forEach((token, i) => {
-    const assignmentSlot = positions.has(i) || declaring;
+    const decoded = decodeQuotedWord(token);
+    // `env` reads every operand holding `=` as an assignment, quoted or not, up to its command.
+    const envAssignment = envOperands && decoded.includes('=');
+    const assignmentSlot = positions.has(i) || declaring || envAssignment;
     declaring ||= DECLARERS.has(commandName(token));
+    if (positions.has(i) && commandName(token) === 'env') envOperands = true;
+    else if (envOperands && !envAssignment && !token.startsWith('-') && !PREFIX_VALUE_OPTIONS.has(tokens[i - 1])) envOperands = false;
     if ((token[0] === "'" || token[0] === '"') && !assignmentSlot) return;
     // The shell decodes `$'…'` and `$"…"` before `env` or `export` sees the word, so where an
     // assignment is expected the name is read from the decoded word.
-    const word = assignmentSlot ? decodeQuotedWord(token) : token;
+    const word = assignmentSlot ? decoded : token;
     const { text, dynamic } = normalizeShellWord(word);
     const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(word) : text)?.[1];
     if (value === undefined) return;

@@ -35,10 +35,16 @@ operator never matched it.
   `export`/`declare`/`typeset`/`local`/`readonly`. Once one of those opens a clause, every later
   operand is scanned, so a bare name before it (`export FOO "GIT_TRACE=/x"`) does not end the scan.
   A quoted word elsewhere is data, so
-  `git commit -m 'GIT_TRACE=/x'` and `echo "GIT_TRACE=/x"` stay allowed.
+  `git commit -m 'GIT_TRACE=/x'` and `echo "GIT_TRACE=/x"` stay allowed. Every `env` operand
+  holding `=` before its command is an assignment too, so `env "A=1" "GIT_TRACE=/x" git` is read.
 - Where the shell expects an assignment (a command word, or any operand after a declarer), the
-  word is decoded the way the shell decodes it before `env` or `export` sees it: ANSI-C `$'...'`
-  (`\xHH`, octal, `\u`, `\U`, `\cX` and the one-letter escapes) and locale-quoted `$"..."`. The
+  word is decoded before `env` or `export` sees it: ANSI-C `$'...'` (`\xHH`, octal `\N` to
+  `\NNN`, `\u`, `\U`, `\cX` and the one-letter escapes) and locale-quoted `$"..."`. As in bash,
+  each `$'...'` span ends at its first NUL (`\x00`, `\0`, `\400`, `\c@`, `\u0000`, ...), so
+  `$'GIT_TRACE=/x\x00/../wt/y'` names `/x`; the text after the span is kept (`a$'x\0y'b` is
+  `axb`). The decoder matches bash's `printf %s $'...'` on every escape except a byte at or above
+  0x80, which it decodes to that code point where bash emits the raw byte; no name character or
+  path separator is spelled that way, so no verdict depends on it. The
   decoded name and value are then judged like any other assignment, so `env $'GIT_TRACE=/x' git`,
   `export $'GIT_TRAC\x45=/x'`, `export $'\107IT_TRACE=/x'`, `env $'GIT_TRACE=/x' git`,
   `export GIT_$'TRACE'=/x` and `export $"GIT_TRACE=/x"` all resolve to `GIT_TRACE=/x` and are

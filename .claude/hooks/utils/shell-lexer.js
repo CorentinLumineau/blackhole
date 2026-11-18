@@ -96,20 +96,27 @@ const isRedirectAmpersand = (text, i) => {
 /** One-letter ANSI-C escapes (`\n`, `\t`, …); `\e`, `\E` are ESC, `\a` is BEL. */
 const ANSI_C_SIMPLE = { a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' };
 
-/** The text bash makes of an ANSI-C `$'…'` body: `\xHH`, octal `\NNN`, `\uHHHH`, `\UHHHHHHHH`,
- * `\cX` and the one-letter escapes decoded; any other escaped character (`\\`, `\'`, `\"`, `\?`,
- * and an unknown letter) keeps its own text, with the backslash only for an unknown one, as bash
- * does. A code point above U+10FFFF is not a character and decodes to nothing. */
-const decodeAnsiC = (body) =>
-  body.replace(/\\(x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{1,4}|U[0-9a-fA-F]{1,8}|[0-7]{1,3}|c[\s\S]|[\s\S])/g, (_, e) => {
+/** The text bash makes of an ANSI-C `$'…'` body: `\xHH`, octal `\N` to `\NNN`, `\uHHHH`,
+ * `\UHHHHHHHH`, `\cX` (`\c?` is DEL, `\c\\` takes both backslashes) and the one-letter escapes
+ * decoded; any other escaped character (`\\`, `\'`, `\"`, `\?`, and an unknown letter) keeps its
+ * own text, with the backslash only for an unknown one. Bash ends the span at its first NUL, so
+ * the result stops there too. A code point above U+10FFFF decodes to nothing. One known
+ * difference: a byte at or above 0x80 decodes to that code point, where bash emits the raw byte;
+ * no name character or path separator is spelled that way. */
+const decodeAnsiC = (body) => {
+  const text = body.replace(/\\(x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{1,4}|U[0-9a-fA-F]{1,8}|[0-7]{1,3}|c\\\\|c[\s\S]|[\s\S])/g, (_, e) => {
+    if (e[0] >= '0' && e[0] <= '7') return String.fromCharCode(parseInt(e, 8) & 0xff);
     if (e.length > 1) {
-      if (e[0] === 'c') return String.fromCharCode(e.charCodeAt(1) & 0x1f);
-      const code = e[0] >= '0' && e[0] <= '7' ? parseInt(e, 8) & 0xff : parseInt(e.slice(1), 16);
+      if (e[0] === 'c') return e[1] === '?' ? '\x7f' : String.fromCharCode(e.charCodeAt(1) & 0x1f);
+      const code = parseInt(e.slice(1), 16);
       return code > 0x10ffff ? '' : String.fromCodePoint(code);
     }
     if (e in ANSI_C_SIMPLE) return ANSI_C_SIMPLE[e];
     return /[\\'"?]/.test(e) ? e : `\\${e}`;
   });
+  const nul = text.indexOf('\0');
+  return nul === -1 ? text : text.slice(0, nul);
+};
 
 /** `word` with each ANSI-C `$'…'` span replaced by its decoded text and each locale-quoted
  * `$"…"` opener replaced by a plain `"`, so the result reads like the word the shell hands the
