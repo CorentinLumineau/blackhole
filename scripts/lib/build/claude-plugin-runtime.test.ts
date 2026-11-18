@@ -136,7 +136,11 @@ describe('finalized Claude bundle', () => {
 });
 
 const hasDash = spawnSync('dash', ['-c', ':']).status === 0;
-const HOOK_PATHS = ['/plain/path', '/with space/p', "/it's/p", '/d$ollar/p', '/back`tick`/p'];
+const SENTINEL = '/tmp/blackhole-hook-sentinel-never-created';
+const HOOK_PATHS = [
+  '/plain/path', '/with space/p', "/it's/p", '/d$ollar/p', '/back`tick`/p',
+  '/new\nline/p', "/q'\\''q/p", `/cmd$(touch ${SENTINEL})/p`, '/fmt%s%n%d/p',
+];
 
 const runHook = (shell: string, dir: string, env: Record<string, string>, seed?: string) => {
   const envFile = path.join(dir, 'env.sh');
@@ -161,12 +165,13 @@ describe.each([['sh', true], ['dash', hasDash]] as const)('SESSION_START_EXPORT_
         expect(r.status).toBe(0);
         expect(r.stderr).toBe('');
         expect(sourced(r.file)).toBe(p);
+        expect(fs.existsSync(SENTINEL)).toBe(false);
       });
     });
   }
   t('recovers from a poisoned newline-less prefix left by an older version', () => {
     withTempDir('hook-poison', (dir) => {
-      const r = runHook(shell, dir, { CLAUDE_PLUGIN_ROOT: '/real/path' }, 'export BLACKHOLE_PLUGIN_ROOT=');
+      const r = runHook(shell, dir, { CLAUDE_PLUGIN_ROOT: '/real/path' }, '# stale note');
       expect(sourced(r.file)).toBe('/real/path');
     });
   });

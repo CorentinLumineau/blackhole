@@ -21,9 +21,9 @@ export const PLUGIN_ROOT_SHELL_EXPR = '"${BLACKHOLE_PLUGIN_ROOT:-.}"';
  * variable; warns on stderr when it cannot export; always exits 0 so it never blocks a session. */
 export const SESSION_START_EXPORT_COMMAND =
   '[ -z "$BLACKHOLE_PLUGIN_ROOT" ] || exit 0; ' +
-  'if [ -n "$CLAUDE_ENV_FILE" ] && [ -n "$CLAUDE_PLUGIN_ROOT" ]; then ' +
-  'printf "\\nexport BLACKHOLE_PLUGIN_ROOT=\'%s\'\\n" ' +
-  '"$(printf %s "$CLAUDE_PLUGIN_ROOT" | sed "s/\'/\'\\\\\\\\\'\'/g")" >> "$CLAUDE_ENV_FILE"; ' +
+  'r=; if [ -n "$CLAUDE_ENV_FILE" ] && [ -n "$CLAUDE_PLUGIN_ROOT" ]; then ' +
+  'r=$(printf %s "$CLAUDE_PLUGIN_ROOT" | sed "s/\'/\'\\\\\\\\\'\'/g"); fi; ' +
+  'if [ -n "$r" ]; then printf "\\nexport BLACKHOLE_PLUGIN_ROOT=\'%s\'\\n" "$r" >> "$CLAUDE_ENV_FILE"; ' +
   'else echo "blackhole: cannot export BLACKHOLE_PLUGIN_ROOT (CLAUDE_ENV_FILE or CLAUDE_PLUGIN_ROOT unset); scripts will not resolve" >&2; fi; ' +
   'exit 0';
 

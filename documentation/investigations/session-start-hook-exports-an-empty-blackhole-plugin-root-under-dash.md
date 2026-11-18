@@ -5,7 +5,7 @@ status: current
 review_trigger: "on file change"
 created: 2026-11-18
 last_updated: 2026-11-18
-related: [documentation/plans/plan-fail-loudly-when-blackhole-plugin-root-is-unset.md]
+related: [documentation/plans/plan-session-start-hook-posix-plugin-root-export.md]
 ---
 
 # BLACKHOLE_PLUGIN_ROOT exported empty by the SessionStart hook (issue 1269)
@@ -30,4 +30,4 @@ Claude Code docs (code.claude.com/docs/en/hooks): shell-form hooks run via `sh -
 2. Warn on stderr when the export cannot be written (`CLAUDE_ENV_FILE` or `CLAUDE_PLUGIN_ROOT` missing).
 3. Fail-loud replacement of the `:-.` fallback is deferred to issue 1328, after a fresh-session confirmation that the variable is now populated.
 
-Plan: `documentation/plans/plan-fail-loudly-when-blackhole-plugin-root-is-unset.md`.
+Plan: `documentation/plans/plan-session-start-hook-posix-plugin-root-export.md`. Fail-loud replacement of the `:-.` fallback is tracked in #1328.
