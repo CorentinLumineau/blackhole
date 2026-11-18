@@ -36,7 +36,7 @@
 const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC } = require('./shell-lexer');
-const { readAssignedWorktreeRoot, isUnderRoot } = require('./hook-event-log');
+const { readAssignedWorktreeRoot, isUnderRoot, resolveExistingAncestor } = require('./hook-event-log');
 const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
@@ -116,10 +116,15 @@ const stripQuotes = (token) => {
   return token;
 };
 
-/** `stripQuotes` for a write-target word. A word holding a backslash keeps its quotes, so
- * `unescapeTarget` applies the rule of the quote the backslash sits in (inside `"…"` bash keeps a
- * backslash before an ordinary character) instead of the unquoted rule on already-stripped text. */
-const stripTargetQuotes = (token) => (token.includes('\\') ? token : stripQuotes(token));
+/** `stripQuotes` for a write-target word. A word holding a backslash is read the way the shell
+ * reads it (inside `"…"` a backslash survives before an ordinary character) and its surviving
+ * backslashes are doubled, so the unquoted-rule pass `unescapeTarget` runs later gives back the
+ * literal path. A dynamic word stays as written and so stays unresolvable. */
+const stripTargetQuotes = (token) => {
+  if (!token.includes('\\')) return stripQuotes(token);
+  const { text, dynamic } = normalizeShellWord(token);
+  return dynamic ? token : text.replace(/\\/g, '\\\\');
+};
 
 /** Quote-aware whitespace tokenizer over an already-visible (masked spans blanked) substring —
  * a quoted span (e.g. a sed script `'s/a/b/'`) is kept as one token, quotes intact, so
@@ -512,7 +517,7 @@ const parseSedArgs = (args) => {
   }
   if (!hasScriptSource && operands.length > 0) scripts.push(operands.shift());
   const unclean = scripts.some((w) => !isCleanSedWord(w));
-  return { script: scripts.map(stripQuotes).join('\n'), files: operands.map(stripQuotes), inPlace, unclean };
+  return { script: scripts.map(stripQuotes).join('\n'), files: operands.map(stripTargetQuotes), inPlace, unclean };
 };
 
 /** sed commands that take no argument (`l`, `q`, `Q`, `L` take an optional number). */
@@ -685,7 +690,13 @@ const findCopyMoveTargets = (tokens) => {
     const cmdIdx = findCommand(tokens, name);
     if (cmdIdx === -1) continue;
     const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
-    if (name === 'dd') return args.filter((t) => t.startsWith('of=')).map((t) => stripTargetQuotes(t.slice(3)));
+    if (name === 'dd') {
+      return args.flatMap((t) => {
+        if (t.startsWith('of=')) return [stripTargetQuotes(t.slice(3))];
+        const word = stripTargetQuotes(t);
+        return word.startsWith('of=') ? [word.slice(3)] : [];
+      });
+    }
     if (name === 'truncate') return truncateTargets(args);
     if (name === 'rsync') return rsyncTargets(args);
     // `install -d`/`--directory` creates every positional as a directory: all are write targets.
@@ -732,7 +743,7 @@ const sortTargets = (args) => {
     if (t === '--') break;
     const long = longOptionValue(args, i, '--output');
     if (long) {
-      targets.push(stripQuotes(long.value));
+      targets.push(stripTargetQuotes(long.value));
       i = long.last;
       continue;
     }
@@ -741,7 +752,7 @@ const sortTargets = (args) => {
       if (!SORT_VALUE_SHORT.has(t[c])) continue;
       const attached = t.slice(c + 1);
       const value = attached || args[++i] || UNRESOLVABLE_TARGET;
-      if (t[c] === 'o') targets.push(stripQuotes(value));
+      if (t[c] === 'o') targets.push(stripTargetQuotes(value));
       break;
     }
   }
@@ -770,7 +781,7 @@ const uniqTargets = (args) => {
     else if (t === '-' || !t.startsWith('-')) operands.push(t);
   }
   const out = operands[1];
-  return out === undefined || out === '-' ? [] : [stripQuotes(out)];
+  return out === undefined || out === '-' ? [] : [stripTargetQuotes(out)];
 };
 
 /** git global options that take the next token as their value when not written `--name=value`. */
@@ -863,7 +874,8 @@ const gitGlobalBases = (args) => {
     const eq = t.indexOf('=');
     const name = t.startsWith('--') && eq !== -1 ? t.slice(0, eq) : t;
     if (!GIT_VALUE_GLOBALS.has(name)) continue;
-    const value = stripQuotes(eq !== -1 && t.startsWith('--') ? t.slice(eq + 1) : (args[++i] ?? UNRESOLVABLE_TARGET));
+    const rawValue = eq !== -1 && t.startsWith('--') ? t.slice(eq + 1) : (args[++i] ?? UNRESOLVABLE_TARGET);
+    const value = stripQuotes(rawValue);
     if (name === '-c' || name === '--config-env') {
       const setting = splitGitSetting(value);
       if (isGitExecConfig(setting)) execConfig = true;
@@ -872,11 +884,12 @@ const gitGlobalBases = (args) => {
         outputDirectory = name === '-c' && !setting.dynamicValue ? setting.value : UNRESOLVABLE_TARGET;
       }
     }
-    if (name === '-C' && value) {
-      if (path.isAbsolute(value)) segments = [value];
-      else segments.push(value);
+    const dirValue = stripTargetQuotes(rawValue);
+    if (name === '-C' && dirValue) {
+      if (path.isAbsolute(dirValue)) segments = [dirValue];
+      else segments.push(dirValue);
     } else if (name === '--git-dir' || name === '--work-tree') {
-      extra.push({ name, value });
+      extra.push({ name, value: dirValue });
     }
   }
   const cwdBase = segments.length > 0 ? path.join(...segments) : '';
@@ -915,7 +928,7 @@ const gitOutputTargets = (args) => {
     if (args[i] === '--') break;
     const opt = (isFormatPatch && formatPatchDirValue(args, i)) || longOptionValue(args, i, '--output');
     if (opt) {
-      values.push(stripQuotes(opt.value));
+      values.push(stripTargetQuotes(opt.value));
       i = opt.last;
     }
   }
@@ -940,7 +953,7 @@ const yqTargets = (args) => {
     return t.startsWith('-') && t.includes('i') && /^-[a-zA-Z]+$/.test(t);
   });
   if (!inPlace) return [];
-  return args.filter((t) => !t.startsWith('-')).map(stripQuotes);
+  return args.filter((t) => !t.startsWith('-')).map(stripTargetQuotes);
 };
 
 /** Commands that look read-only but write a file through an option or operand (#1184). */
@@ -1197,12 +1210,28 @@ const isStreamDeviceTarget = (rawTarget, visible) => {
   return (target === '/dev/stdout' || target === '/dev/stderr') && !MAY_REBIND_STREAM_FD_RE.test(visible);
 };
 
-/** True when a path holding a backslash is not lexically under `root`. `isUnderRoot` resolves
- * through `fs.realpathSync`, which Bun runs with `\` as a separator, so `<root parent>/\wt` reads as
- * `<root parent>/wt` while the shell writes a file literally named `\wt`. Only a backslash path is
- * checked this way, so symlinked spellings of an ordinary target keep going through `isUnderRoot`. */
-const escapesRootLexically = (resolvedPath, root) =>
-  resolvedPath.includes('\\') && resolvedPath !== root && !resolvedPath.startsWith(root + path.sep);
+/** Every spelling of the assigned root a target may legitimately use: its real path, the
+ * `BLACKHOLE_ASSIGNED_WORKTREE` value as written, and each ancestor of `cwd` that resolves to it
+ * (a symlinked cwd or worktree path). */
+const lexicalRoots = (cwd, realRoot) => {
+  const roots = new Set([realRoot]);
+  const declared = process.env.BLACKHOLE_ASSIGNED_WORKTREE;
+  if (typeof declared === 'string' && declared.trim()) roots.add(path.resolve(declared.trim()));
+  for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
+    if (resolveExistingAncestor(dir) === realRoot) roots.add(dir);
+    if (path.dirname(dir) === dir) break;
+  }
+  return roots;
+};
+
+/** True when a path holding a backslash is lexically under none of the root's spellings.
+ * `isUnderRoot` resolves through `fs.realpathSync`, which Bun runs with `\` as a separator, so
+ * `<root parent>/\wt` reads as `<root parent>/wt` while the shell writes a file literally named
+ * `\wt`. Only a backslash path is checked this way, so symlinked spellings of an ordinary target
+ * keep going through `isUnderRoot`. */
+const escapesRootLexically = (resolvedPath, cwd, realRoot) =>
+  resolvedPath.includes('\\') &&
+  [...lexicalRoots(cwd, realRoot)].every((root) => resolvedPath !== root && !resolvedPath.startsWith(root + path.sep));
 
 /** A target that starts `/#` or carries regex metacharacters is probably a sed/regex fragment
  * (`s/<A>/#1174/g` read as `/#1174/g`), not a path the author meant to write. */
@@ -1652,7 +1681,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
   for (const { target, dir, visible } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.resolve(dir, target);
-    if (!isUnderRoot(resolvedPath, assignedRoot) || escapesRootLexically(resolvedPath, assignedRoot)) {
+    if (!isUnderRoot(resolvedPath, assignedRoot) || escapesRootLexically(resolvedPath, cwd, assignedRoot)) {
       const hint = looksLikeRegexFragment(target)
         ? ' This looks like a sed/regex expression; quote it.'
         : '';

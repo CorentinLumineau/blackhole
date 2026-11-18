@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
 import * as path from 'path';
 import { PRETOOLUSE_HOOKS_DIR, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
 
@@ -58,6 +59,48 @@ describe('bash-write-target-guard.js — a kept backslash in a double-quoted tar
       expect(await verdict(build)).toMatchObject(BLOCK);
     });
   }
+
+  // Every write-target finder reads a double-quoted word the way the shell does.
+  for (const [label, build] of [
+    ['sed -i', (_m: string, w: string) => `sed -i s/a/b/ "${sibling(w)}"`],
+    ['sort -o', (_m: string, w: string) => `sort -o "${sibling(w)}" a`],
+    ['sort --output', (_m: string, w: string) => `sort --output="${sibling(w)}" a`],
+    ['uniq', (_m: string, w: string) => `uniq a "${sibling(w)}"`],
+    ['git format-patch --output-directory', (_m: string, w: string) => `git format-patch --output-directory "${sibling(w)}" -1`],
+    ['git -C base', (_m: string, w: string) => `git -C "${sibling(w)}" format-patch -1`],
+    ['yq -i', (_m: string, w: string) => `yq -i .a=1 "${sibling(w)}"`],
+    ['dd of=', (_m: string, w: string) => `dd if=a of="${sibling(w)}"`],
+    ['dd "of=…"', (_m: string, w: string) => `dd if=a "of=${sibling(w)}"`],
+    ['truncate', (_m: string, w: string) => `truncate -s 0 "${sibling(w)}"`],
+    ['rsync', (_m: string, w: string) => `rsync a "${sibling(w)}"`],
+    ['install -d', (_m: string, w: string) => `install -d "${sibling(w)}"`],
+  ] as const) {
+    test(`${label} to "<worktree parent>/\\<worktree name>" is denied`, async () => {
+      expect(await verdict(build)).toMatchObject(BLOCK);
+    });
+  }
+
+  // A backslash in a `-c` setting value counts as shell-rewritten, so the directory is never
+  // resolved: the verdict is the unresolvable warning, never a silent allow.
+  test('git -c format.outputDirectory with a backslash is unresolvable (warn)', async () => {
+    const build = (_m: string, w: string) => `git -c "format.outputDirectory=${sibling(w)}" format-patch -1`;
+    expect(await verdict(build)).toMatchObject(WARN);
+  });
+
+  test('a double-quoted backslash path under a symlinked worktree spelling is allowed', async () => {
+    await withLinkedWorktree('blackhole-hook-1308-', async (_mainRepo, worktree) => {
+      const link = `${worktree}-link`;
+      fs.symlinkSync(worktree, link);
+      try {
+        for (const target of [`${link}/a\\b`, `${link}/ab`]) {
+          const result = utils('bash-write-target-guard.js').evaluateBashWriteTargets(`echo x > "${target}"`, link);
+          expect(result).toBeNull();
+        }
+      } finally {
+        fs.rmSync(link, { force: true });
+      }
+    });
+  });
 
   for (const [label, build] of [
     ['GIT_TRACE assignment', (m: string) => `GIT_TRACE="${m}/.worktrees/\\wt" git status`],

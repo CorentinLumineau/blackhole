@@ -37,8 +37,8 @@ Terms used below:
   `skipQuotedSpan`, and ignore backslash-escaped parens.
 - **Exact word**: a word with none of `$`, backtick, `\`, `{` or `}` in its raw text. Its text
   after `normalizeShellWord` is exactly what bash produces, because single and double quotes
-  then carry only literal text. The backslash exclusion also keeps the `normalizeShellWord`
-  double-quote backslash bug (#1308 / F-00593) away from any trace verdict.
+  then carry only literal text. A word holding a backslash is opaque, so a quoted trace word
+  with a backslash stays on Tier 2.
 - **Opaque word**: any other word. Its text after expansion cannot be read from the command
   string.
 - **Trace name**: `/^GIT_TRACE\w*$/`, matched case-sensitively, as git reads it.
