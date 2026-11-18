@@ -35,7 +35,7 @@
 
 const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
-const { skipQuotedSpan, isRedirectAmpersand } = require('./shell-lexer');
+const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC, decodeQuotedWord } = require('./shell-lexer');
 const { readAssignedWorktreeRoot, isUnderRoot } = require('./hook-event-log');
 const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
 
@@ -975,14 +975,11 @@ const findGitTraceTargets = (tokens) => {
     const assignmentSlot = positions.has(i) || declaring;
     declaring ||= DECLARERS.has(commandName(token));
     if ((token[0] === "'" || token[0] === '"') && !assignmentSlot) return;
-    const { text, dynamic } = normalizeShellWord(token);
-    // An ANSI-C `$'...'` word is not decoded, so where an assignment is expected one that still
-    // names `GIT_TRACE` once its quotes are dropped is unresolvable, never silent.
-    if (assignmentSlot && dynamic && token.includes("$'") && token.replace(/\$?['"]/g, '').includes('GIT_TRACE')) {
-      targets.push(UNRESOLVABLE_TARGET);
-      return;
-    }
-    const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(token) : text)?.[1];
+    // The shell decodes `$'…'` and `$"…"` before `env` or `export` sees the word, so where an
+    // assignment is expected the name is read from the decoded word.
+    const word = assignmentSlot ? decodeQuotedWord(token) : token;
+    const { text, dynamic } = normalizeShellWord(word);
+    const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(word) : text)?.[1];
     if (value === undefined) return;
     if (dynamic) targets.push(value);
     else if (path.isAbsolute(value) || value.startsWith('~')) targets.push(value);
@@ -1168,14 +1165,6 @@ const commandName = (word) => {
   const bare = word.replace(/\$'((?:\\.|[^'\\])*)'/g, (_, body) => decodeAnsiC(body)).replace(/['"\\]/g, '');
   return bare.slice(bare.lastIndexOf('/') + 1);
 };
-
-/** The text of an ANSI-C quoted `$'…'` body as far as a command name needs it: `\xHH` and octal
- * `\NNN` decoded, any other escaped character kept as itself. */
-const decodeAnsiC = (body) =>
-  body.replace(/\\(x[0-9a-fA-F]{1,2}|[0-7]{1,3}|[\s\S])/g, (_, e) => {
-    if (e[0] === 'x' && e.length > 1) return String.fromCharCode(parseInt(e.slice(1), 16));
-    return /^[0-7]/.test(e) ? String.fromCharCode(parseInt(e, 8)) : e;
-  });
 
 /** Script text as the interpreter receives it: inside double quotes the shell drops the
  * backslash before `$`, `` ` ``, `"` and `\`, so `Bun.\$\`…\`` arrives as `` Bun.$`…` ``. */

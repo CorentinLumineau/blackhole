@@ -36,11 +36,15 @@ operator never matched it.
   operand is scanned, so a bare name before it (`export FOO "GIT_TRACE=/x"`) does not end the scan.
   A quoted word elsewhere is data, so
   `git commit -m 'GIT_TRACE=/x'` and `echo "GIT_TRACE=/x"` stay allowed.
-- An ANSI-C `$'...'` word is not decoded. Where the shell expects an assignment (a command word, or
-  any operand after a declarer), one that still names `GIT_TRACE` once its quotes are dropped warns:
-  `env $'GIT_TRACE=/x' git`, `export A $'GIT_TRACE=/x'`, `env $'GIT_TRACE'=/x git`,
-  `export GIT_$'TRACE'=/x`. Fail closed by design: decoding `$'\x2f...'` is not attempted, so the
-  path is never compared against the root. Elsewhere (`echo $'GIT_TRACE=/x'`) the word is data.
+- Where the shell expects an assignment (a command word, or any operand after a declarer), the
+  word is decoded the way the shell decodes it before `env` or `export` sees it: ANSI-C `$'...'`
+  (`\xHH`, octal, `\u`, `\U`, `\cX` and the one-letter escapes) and locale-quoted `$"..."`. The
+  decoded name and value are then judged like any other assignment, so `env $'GIT_TRACE=/x' git`,
+  `export $'GIT_TRAC\x45=/x'`, `export $'\107IT_TRACE=/x'`, `env $'GIT_TRACE=/x' git`,
+  `export GIT_$'TRACE'=/x` and `export $"GIT_TRACE=/x"` all resolve to `GIT_TRACE=/x` and are
+  compared against the root. A decoded `$` stays literal (`$'GIT_TRACE=$LOG'` is the text `$LOG`).
+  Elsewhere (`echo $'GIT_TRACE=/x'`, `git commit -m $'GIT_TRACE=/x'`) the word is data. The
+  decoder is `decodeAnsiC` / `decodeQuotedWord` in `shell-lexer.js`, shared with `commandName`.
 - A dynamic value (`$LOG`, `` `pwd` ``, `~/t`) is unresolvable and warns, as for the unquoted form.
 - Values git ignores (`1`, `true`, `0`, `false`, `2`–`9`, relative paths) stay allowed.
 
