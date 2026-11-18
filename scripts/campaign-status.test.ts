@@ -1148,6 +1148,10 @@ describe('usage-caps subcommand', () => {
       expect(low.stderr.toString()).toContain('stop_workers_at');
       expect(low.stdout.toString()).toBe('');
       expect(run(dir, '--enabled', 'true', '--stop-workers-at', 'abc').exitCode).toBe(2);
+      const typo = run(dir, '--enabled', 'true', '--stop-worker-at', '50');
+      expect(typo.exitCode).toBe(2);
+      expect(typo.stderr.toString()).toContain('--stop-worker-at');
+      expect(typo.stdout.toString()).toBe('');
       expect(run(dir, '--enabled', 'maybe').exitCode).toBe(2);
       expect(run(dir, '--stop-workers-at', '50').exitCode).toBe(2);
     } finally {

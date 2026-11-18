@@ -129,7 +129,7 @@ describe('the Budget row', () => {
     { name: 'STOP-WORKERS (reset time shown)', config: on(), usage: usage(91, 20), value: ['STOP-WORKERS', '0 workers allowed'], consequence: /Fri 13 Nov 11:30 UTC/ },
     { name: 'NO-NEW-STARTS', config: on(), usage: usage(10, 79), value: ['NO-NEW-STARTS'], consequence: /No new chain/ },
     { name: 'STOP-CAMPAIGN', config: on(), usage: usage(10, 81), value: ['STOP-CAMPAIGN'], consequence: /drains and stops/ },
-    { name: 'usage null: not probed, parallel_max', config: on(), usage: null, value: ['not probed', '3 workers (parallel_max)'], consequence: /usage not probed.*parallel_max/ },
+    { name: 'usage null: not probed, parallel_max', config: on(), usage: null, value: ['not probed', '3 workers (parallel_max)'], consequence: /usage not probed.*up to 3 workers \(parallel_max\)/ },
     { name: 'invalid usage_budget: unavailable, never a throw', config: { parallel_max: 3, usage_budget: { enabled: 'yes' } }, usage: usage(10, 20), value: ['unavailable', '3 workers (parallel_max)'], consequence: /invalid/ },
   ];
   for (const c of cases) {
@@ -211,7 +211,7 @@ describe('the Budget row without a usage limit', () => {
       const { row, q } = budgetCard(c.config, c.limits);
       expect(row.consequence).toStartWith('No usage limit:');
       expect(row.consequence).toMatch(c.reason);
-      expect(row.consequence).toContain('parallel_max');
+      expect(row.consequence).toMatch(/up to 3 workers \(parallel_max\)/);
       expect(row.consequence.length).toBeLessThanOrEqual(MAX_CONSEQUENCE_CHARS);
       expect(q.question).toStartWith('Budget: No usage limit:');
     });
@@ -221,6 +221,20 @@ describe('the Budget row without a usage limit', () => {
       for (const o of q.options) expect(o.description.length).toBeGreaterThan(0);
     });
   }
+  test('a probed reading with no current window enforces nothing and reads as no limit', () => {
+    const config = { parallel_max: 3, usage_budget: { enabled: true } };
+    const b = panel(config, {});
+    expect(b.verdict).toBe('unavailable');
+    const { row, q } = budgetCard(config, {});
+    expect(row.consequence).toStartWith('No usage limit: no current usage window');
+    expect(row.consequence).toMatch(/up to 3 workers \(parallel_max\)/);
+    expect(q.options.map((o) => o.label)).toEqual(['Set usage caps', 'Run with no limit']);
+  });
+  test('Run with no limit says it leaves usage_budget as it is, true in all three states', () => {
+    const { q } = budgetCard({ parallel_max: 3 }, usage);
+    expect(q.options[1].description).toContain('as it is');
+    expect(q.options[1].description).not.toContain('pacing off');
+  });
   test('pacing off keeps the "whatever the usage" clause', () => {
     expect(budgetCard({ parallel_max: 3 }, usage).row.consequence).toContain('whatever the usage');
   });
@@ -269,6 +283,10 @@ describe('usageCapsPatch', () => {
   test('rejects a stop line the resolver cannot derive a no-spawn line from', () => {
     expect(() => usageCapsPatch({ enabled: true, stopWorkersAt: 5, targetAtReset: null }, {})).toThrow(/stop_workers_at/);
     expect(() => usageCapsPatch({ enabled: true, stopWorkersAt: 101, targetAtReset: null }, {})).toThrow(/stop_workers_at/);
+  });
+  test('names the pre-existing key that makes the merged block invalid', () => {
+    expect(() => usageCapsPatch({ enabled: true, stopWorkersAt: 50, targetAtReset: null }, { max_workers: 0 })).toThrow(/max_workers/);
+    expect(() => usageCapsPatch({ enabled: true, stopWorkersAt: null, targetAtReset: 90 }, { weekly: { stop_campaign_at: 80 } })).toThrow(/stop_campaign_at/);
   });
   test('rejects a target outside (0, 100]', () => {
     expect(() => usageCapsPatch({ enabled: true, stopWorkersAt: null, targetAtReset: 0 }, {})).toThrow(/target_at_reset/);

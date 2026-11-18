@@ -30,7 +30,7 @@ import { parseUsage } from './usage-budget.ts';
 import { buildStatusReport } from './lib/campaign-status/report.ts';
 import { CampaignNotFoundError, loadCampaignState } from './lib/campaign-status/state.ts';
 import { readJsonFile } from './lib/fs.ts';
-import { parseFlags } from './lib/argv-flags.ts';
+import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { createForgeAdapter } from './lib/forge-adapter/index.ts';
 import type { ForgeAdapter } from './lib/forge-adapter/types.ts';
 import { isForgeType, resolveForgeForRepo } from './lib/forge-detection.ts';
@@ -393,6 +393,8 @@ const USAGE_CAPS_USAGE = 'Usage: campaign-status.ts usage-caps --enabled <true|f
 function printUsageCaps(argv: string[]): void {
   try {
     const flags = parseFlags(argv);
+    const unknown = unknownFlagKeys(flags, ['enabled', 'stop-workers-at', 'target-at-reset', 'campaign-dir']);
+    if (unknown.length > 0) throw new Error(`unknown flag ${unknown.map((k) => `--${k}`).join(', ')}. ${USAGE_CAPS_USAGE}`);
     const num = (name: string): number | null => {
       const v = flags[name];
       if (v === undefined) return null;
