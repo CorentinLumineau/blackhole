@@ -74,7 +74,9 @@ through `askOrPark()` and is parked until the wake-up round.
    (`orchestrator-runtime.md` § Background worker barrier, Spawn steps 1-3): `scripts/pace-gate.ts`,
    `scripts/usage-budget.ts` and, for test/build-bearing workers, `scripts/resource-gate.ts`. The
    fan-out is at most the smallest of their counts, and a usage stop drains and wakes per
-   `phase-stop.md` § Usage stop.
+   `phase-stop.md` § Usage stop. Per issue, also run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/route-artifacts.ts --issue <N>
+   --campaign-dir <abs repo-root>/.blackhole --phase dispatch` (`V-AUTO-03`): exit 1 means the route's
+   plan/investigator artifact was never staged, so do not spawn the implementer; run the missing step first.
 
 ## Per-issue chain granularity
 

@@ -14,6 +14,7 @@
 - [ ] Branch Tracking Sweep clean before this wave's dispatch → orchestrator-dispatch.md § Branch Tracking Sweep (issue #516)
 - [ ] install dependencies in worktree (e.g. `npm install`, `bun install`, etc.)
 - [ ] Target-repo setup (existence-gated allowlist — first present wins; see § Target-repo setup below)
+- [ ] Route-artifact gate (V-AUTO-03): `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/route-artifacts.ts --issue <issue> --campaign-dir <abs repo-root>/.blackhole --phase dispatch`; exit 1 → do not spawn the implementer, run the missing plan/investigator step first (a consumer repo pins `--cwd <plugin root>`)
 - [ ] Spawn implementer worker (run_in_background: true)
 - [ ] Worker returns new_findings[] — orchestrator appends to ledger
 - [ ] Worker returns companion_repairs[] — orchestrator matches (vcode, file) against open/deferred V-ADA-01/V-ADA-05 ledger rows and sets fixed-in-pr (findings-ledger.md § Status transitions)
