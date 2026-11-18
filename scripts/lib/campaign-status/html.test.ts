@@ -126,6 +126,20 @@ describe('renderStatusHtml — self-contained page', () => {
     expect(html).toContain('Plugin cache drift');
   });
 
+  test('an unrecorded scope prints the shared label, never "Scope not recorded"', () => {
+    const scopeOf = (config: Record<string, unknown>) => {
+      const page = renderStatusHtml(report({ issues: {} }, { config: { repo: 'acme/widgets', ...config } }));
+      const from = page.indexOf('<h2>Scope');
+      const to = page.indexOf('<h2>', from + 1);
+      return page.slice(from, to === -1 ? undefined : to);
+    };
+    const milestone = scopeOf({ scope_milestone: 'v2' });
+    expect(milestone).toContain('milestone v2');
+    expect(milestone).not.toContain('Scope not recorded');
+    expect(scopeOf({ scope_labels: ['a', 'b'] })).toContain('labels a, b');
+    expect(scopeOf({})).toContain('all open issues');
+  });
+
   test('empty campaign still renders every section with an empty-state line', () => {
     const page = renderStatusHtml(report({ issues: {} }, { config: {}, checkpointBody: '', paceLine: null, hostNotes: [] }));
     expect(page).toContain('<title>Blackhole status — all open issues</title>');

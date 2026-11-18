@@ -6,6 +6,7 @@ import { buildBoard, buildMoves, buildStreams, stageCounts } from './board.ts';
 import { checkpointSection, computeQueueHealth, sortOpenFindings } from './dashboard.ts';
 import { buildBlockers, buildConfigRows, buildHeadline, buildLinks } from './overview.ts';
 import { NOT_PROBED } from './budget.ts';
+import { formatScopeLabel } from './scope-label.ts';
 import { buildRunPanel, pendingRows, type DocCarryRead, type PendingRead } from './run-state.ts';
 import { reconcileMerged } from './merged.ts';
 import { newestFirst, readScopeEntries } from './record.ts';
@@ -223,9 +224,7 @@ export function elseClasses(r: Pick<StatusReport, 'blocked_classes' | 'unclassif
 export function campaignName(report: Pick<StatusReport, 'campaign'>): string {
   const { repo, scope } = report.campaign;
   if (repo) return repo;
-  if (scope.milestone) return `milestone ${scope.milestone}`;
-  if (scope.labels.length) return `labels ${scope.labels.join(', ')}`;
-  return 'all open issues';
+  return formatScopeLabel(scope);
 }
 
 /** What the owner has to do for an owner item: its note without the gate token, else the generic next step. */

@@ -1,4 +1,5 @@
 import { checkpointSection, hasCheckpointSection } from './dashboard.ts';
+import { formatScopeLabel } from './scope-label.ts';
 import type { BlockedClass, BoardItem, ConfigSummaryInput, QueueDrift, StageCounts, StatusReport, Tone } from './types.ts';
 
 // The header of the status page: the headline, what blocks the run, the quick links and the config
@@ -90,11 +91,7 @@ export function buildLinks(repoUrl: string | null, forge: string, configured: Co
   return out;
 }
 
-const scopeFilter = (c: ConfigSummaryInput): string => {
-  if (c.scope_milestone) return `milestone ${c.scope_milestone}${c.scope_labels?.length ? ` and labels ${c.scope_labels.join(', ')}` : ''}`;
-  if (c.scope_labels?.length) return `labels ${c.scope_labels.join(', ')}`;
-  return 'all open issues';
-};
+const scopeFilter = (c: ConfigSummaryInput): string => formatScopeLabel({ milestone: c.scope_milestone, labels: c.scope_labels });
 
 // Absent block or `enabled` not true ⇒ off (config-template.md's `docs_governance.enabled` row);
 // staging carry follows `write_governance`, default on.

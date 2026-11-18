@@ -2,8 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { buildStatusReport } from './report.ts';
 import { buildStatusData, STATUS_DATASET_IDS, writeStatusData } from './data.ts';
-import { parseStatusArgs } from './cli.ts';
+import { parseStatusArgs, STATUS_COMMAND } from './cli.ts';
 import { fixtureReport as report } from './data-fixture.ts';
 import { STALE_AFTER_HOURS } from './staleness.ts';
 import type { QueueJson } from './types.ts';
@@ -48,6 +49,11 @@ describe('buildStatusData — one source with --json', () => {
 
   test('scope rows carry the kind word, the text, the reason and the date', () => {
     expect(data.scope).toEqual([{ kind: 'In', text: 'Open issues in milestone v1.0', reason: 'set at launch', date: '2026-11-10' }]);
+  });
+
+  test('an unrecorded scope is one Filter row carrying the shared label and no date', () => {
+    const bare = buildStatusReport({ config: { repo: 'acme/widgets', scope_milestone: 'v2' }, queue: { issues: {} }, ledger: { findings: [] }, checkpoint: {}, checkpointBody: '', forge: { openIssues: 0, openPrs: 0, ok: false }, paceLine: null, hostNotes: [], generatedAt: '2026-11-11T12:00:00.000Z' });
+    expect(buildStatusData(bare).scope).toEqual([{ kind: 'Filter', text: 'milestone v2', reason: null, date: null }]);
   });
 
   test('every dataset is an array of flat objects', () => {
@@ -100,6 +106,11 @@ describe('parseStatusArgs --data', () => {
   test('--data without a value, or followed by a flag, throws instead of printing the text dashboard', () => {
     expect(() => parseStatusArgs(['--data'])).toThrow(/--data requires a directory/);
     expect(() => parseStatusArgs(['--data', '--no-gh'])).toThrow(/--data requires a directory/);
+  });
+
+  test('the usage line names the script by absolute path, not the package.json alias', () => {
+    expect(STATUS_COMMAND).toBe(`bun run "${path.resolve(import.meta.dir, '..', '..', 'campaign-status.ts')}"`);
+    expect(() => parseStatusArgs(['--data'])).toThrow(`Usage: ${STATUS_COMMAND} [config-summary]`);
   });
 
   test('--out still requires --html', () => {

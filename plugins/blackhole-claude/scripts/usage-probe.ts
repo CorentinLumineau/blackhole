@@ -5,7 +5,11 @@ import { readJsonFile } from './lib/fs.ts';
 import { resolveRateLimitCachePath, type RateLimits } from './lib/rate-limit-cache.ts';
 import { appendUsageReading, USAGE_HISTORY_FILE } from './lib/usage-history.ts';
 
-// Usage: bun run scripts/usage-probe.ts --from-events <file|-> [--cache <path>] [--config <path>] [--now <epoch s>]
+// Usage: bun run scripts/usage-probe.ts (--from-events <file|-> | --from-ccd-usage <file|->) [--cache <path>] [--config <path>] [--now <epoch s>]
+// --from-ccd-usage takes the Claude desktop app's `get_usage` JSON: `plan.windows[]` rows
+// `{label, percentUsed (0-100), resetsAt (ISO or epoch s)}`; "5-hour limit" becomes five_hour and
+// "Weekly · all models" becomes seven_day, per-model rows are ignored. That payload has no event time,
+// so the reading is dated now.
 // Turns raw `rate_limit_event` JSON (what the claude-code-remote `list_events` tool returns, either
 // one event or its `{"ccr":{"data":[...]}}` wrapper, newest event wins) into the normalized
 // RateLimits shape and writes it to the statusline rate-limit cache, so pace-gate.ts and
@@ -15,7 +19,7 @@ import { appendUsageReading, USAGE_HISTORY_FILE } from './lib/usage-history.ts';
 // the config (`.blackhole/` by default), which the status page's pace row reads.
 // Exit 0 written; 1 no current window in the event (nothing written); 2 bad usage or malformed input,
 // including a missing or unparseable `created_at` (nothing written); 3 the cache or the usage history could not be written.
-const USAGE = 'usage: usage-probe.ts --from-events <file|-> [--cache <path>] [--config <path>] [--now <epoch s>]';
+const USAGE = 'usage: usage-probe.ts (--from-events <file|-> | --from-ccd-usage <file|->) [--cache <path>] [--config <path>] [--now <epoch s>]';
 const WINDOWS = ['five_hour', 'seven_day'] as const;
 
 export class NoCurrentWindow extends Error {}
@@ -70,16 +74,54 @@ export const eventsToRateLimits = (raw: string, now: number): { limits: RateLimi
   return { limits, observedAt: Math.min(eventTime(event), now) };
 };
 
+const CCD_LABELS: Array<[RegExp, (typeof WINDOWS)[number]]> = [
+  [/^5[- ]hour limit$/, 'five_hour'],
+  [/^weekly all models$/, 'seven_day'],
+];
+const normalizeLabel = (label: string): string => label.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+export const ccdUsageToRateLimits = (raw: string, now: number): { limits: RateLimits; observedAt: number } => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('input is not valid JSON');
+  }
+  const rows = isObject(parsed) && isObject(parsed.plan) ? parsed.plan.windows : undefined;
+  if (!Array.isArray(rows)) throw new Error('input carries no plan.windows array');
+  const limits: RateLimits = {};
+  for (const row of rows) {
+    if (!isObject(row) || typeof row.label !== 'string') continue;
+    const name = CCD_LABELS.find(([re]) => re.test(normalizeLabel(row.label as string)))?.[1];
+    if (!name) continue;
+    const { percentUsed, resetsAt } = row;
+    if (typeof percentUsed !== 'number' || !(percentUsed >= 0 && percentUsed <= 100)) {
+      throw new Error(`${name} percentUsed must be a number 0-100`);
+    }
+    const resets = typeof resetsAt === 'string' ? Math.floor(Date.parse(resetsAt) / 1000) : resetsAt;
+    if (typeof resets !== 'number' || !Number.isFinite(resets) || resets <= 0) {
+      throw new Error(`${name} resetsAt must be an ISO-8601 string or epoch seconds > 0`);
+    }
+    if (resets <= now) continue;
+    limits[name] = { used_percentage: percentUsed, resets_at: resets };
+  }
+  if (!limits.five_hour && !limits.seven_day) throw new NoCurrentWindow('get_usage carries no current 5-hour or weekly all-models window');
+  return { limits, observedAt: now };
+};
+
 const main = (): void => {
   const fail = (message: string, code = 2): never => {
     console.error(`usage-probe: ${message}${code === 2 ? `\n${USAGE}` : ''}`);
     process.exit(code);
   };
   const flags = parseFlags(process.argv.slice(2));
-  const unknown = unknownFlagKeys(flags, ['from-events', 'cache', 'config', 'now']);
+  const unknown = unknownFlagKeys(flags, ['from-events', 'from-ccd-usage', 'cache', 'config', 'now']);
   if (unknown.length) fail(`unknown flag(s): ${unknown.map((k) => `--${k}`).join(', ')}`);
-  const source = flags['from-events'];
-  if (typeof source !== 'string') fail('--from-events <file|-> is required');
+  const events = flags['from-events'];
+  const ccdUsage = flags['from-ccd-usage'];
+  if ((events === undefined) === (ccdUsage === undefined)) fail('exactly one of --from-events or --from-ccd-usage is required');
+  const source = events ?? ccdUsage;
+  if (typeof source !== 'string') fail('the source flag needs a <file|-> value');
   const nowFlag = Number(flags.now);
   if (flags.now !== undefined && !(typeof flags.now === 'string' && Number.isInteger(nowFlag) && nowFlag >= 0)) {
     fail('--now must be a non-negative integer');
@@ -98,15 +140,16 @@ const main = (): void => {
   }
 
   let reading: ReturnType<typeof eventsToRateLimits>;
+  const fromCcd = ccdUsage !== undefined;
   try {
-    reading = eventsToRateLimits(raw, now);
+    reading = fromCcd ? ccdUsageToRateLimits(raw, now) : eventsToRateLimits(raw, now);
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error), error instanceof NoCurrentWindow ? 1 : 2);
   }
   const { limits, observedAt } = reading;
   try {
     fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-    fs.writeFileSync(`${cachePath}.tmp`, JSON.stringify({ rate_limits: limits, source: 'rate_limit_event', observed_at: observedAt }));
+    fs.writeFileSync(`${cachePath}.tmp`, JSON.stringify({ rate_limits: limits, source: fromCcd ? 'ccd_get_usage' : 'rate_limit_event', observed_at: observedAt }));
     fs.renameSync(`${cachePath}.tmp`, cachePath);
     fs.utimesSync(cachePath, observedAt, observedAt);
   } catch (error) {

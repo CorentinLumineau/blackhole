@@ -28,6 +28,19 @@ describe('queue-dag Step 3 conflict filter', () => {
     expect(body).not.toMatch(/stack depth cap\s+is reached/);
     expect(body).toMatch(/stack-check\.ts/);
   });
+
+  test('drops REGENERATED_PATHS members from touch_paths before comparing', () => {
+    expect(body).toContain('REGENERATED_PATHS');
+  });
+});
+
+describe('merge-conflict-protocol class 1 root index step', () => {
+  const body = section(ref('merge-conflict-protocol.md'), '## Classification rule');
+
+  test('scopes the generate-doc-index regenerate to Scope-1 and sends consumer repos to class 3', () => {
+    expect(body).toContain('Scope-1');
+    expect(body).toContain('class 3');
+  });
 });
 
 describe('parent-landed doc rule', () => {

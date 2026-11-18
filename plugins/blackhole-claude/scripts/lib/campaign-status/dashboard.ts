@@ -7,6 +7,7 @@ import { budgetRows } from './budget.ts';
 import { runRows } from './run-state.ts';
 import { safePatternId, topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
+import { formatScopeLabel } from './scope-label.ts';
 import {
   computeStatusCounts,
   computeWaves,
@@ -220,13 +221,7 @@ function renderActiveWorkersSection(checkpointBody: string | undefined): string[
   return ['### Active workers', workerSection, ''];
 }
 
-// Single scope-label formatter, shared by the dashboard header and renderConfigSummary so the
-// two can never drift into two wordings for the same scope (V-DRY-01 / V-INT-02).
-export function formatScopeLabel(scope?: CampaignScope): string {
-  if (scope?.milestone) return `milestone **${scope.milestone}**`;
-  if (scope?.labels?.length) return `labels ${scope.labels.map((l) => `\`${l}\``).join(', ')}`;
-  return 'all open issues';
-}
+export { formatScopeLabel };
 
 const onOff = (v: boolean | undefined, dflt: boolean): string => ((v ?? dflt) ? 'on' : 'off');
 const enabledLabel = (v: boolean | undefined, dflt: boolean): string =>
@@ -247,7 +242,7 @@ export function renderConfigSummary(config: ConfigSummaryInput): string {
   return [
     '## Campaign configuration',
     '',
-    `**Scope:** ${formatScopeLabel(readScope(config))}`,
+    `**Scope:** ${formatScopeLabel(readScope(config), 'markdown')}`,
     `**Merge mode:** ${config.merge_mode ?? 'unset (bootstrap-blocking)'}`,
     `**Parallel max:** ${config.parallel_max ?? 4}`,
     `**Kaizen:** ${enabledLabel(kz, false)}`,
@@ -420,7 +415,7 @@ export function formatDashboard(opts: {
   const { active, done, inFlight, blocked, ready, unclassified } = groupIssuesByPhase(issues);
   const { queue: q, ledger: ledgerCounts } = computeStatusCounts(issues, findings);
   const filed = discoveryFilings(findings);
-  const scopeLabel = formatScopeLabel(scope);
+  const scopeLabel = formatScopeLabel(scope, 'markdown');
 
   const lines: string[] = [];
 

@@ -1,7 +1,7 @@
 # Status Page — One Live View of the Campaign
 
 The owner checks campaign state on one page instead of asking the agent. The page is fed by
-`bun run status --json` (the same counts as the text dashboard, `coordinator-dashboard.md`
+`bun run scripts/campaign-status.ts --json` (the same counts as the text dashboard, `coordinator-dashboard.md`
 § Status page) and published to **one** place per harness. It never gets a second link. Claude
 Code shows a live Data dashboard (`--data`); `--html` is the Cursor and local-file view.
 
@@ -15,7 +15,7 @@ everything below; the text dashboard is unaffected.
 | Campaign start, after bootstrap and before the first spawn | `coordinator` (Pattern B) or the main-chat orchestrator (Pattern C) |
 | Every checkpoint write — `checkpoint-protocol.md` § Write order, step 5 | `orchestrator` |
 | The main chat hands the turn back while workers are still in flight (Pattern C) | main-chat orchestrator |
-| `status` mode / the owner asks for status | whoever runs `bun run status` |
+| `status` mode / the owner asks for status | whoever runs `bun run scripts/campaign-status.ts` |
 
 A refresh is cheap and idempotent: regenerate, then update the existing view. Online it reads the
 forge counts, then two adapter reads per open PR the board shows (`prView` for the review label and
@@ -79,7 +79,7 @@ bun scripts/campaign-record.ts decision --text "Park the theme editor: another t
 one when the gate runs again. An entry naming `--refs` takes those issues from older entries, so
 re-including a parked issue moves it. A missing headline or blocker section is not an error: the
 page then shows one generated from the counts (what waits on the owner, how many are in review,
-what blocks most), and a campaign with no recorded scope shows "Scope not recorded".
+what blocks most), and a campaign with no recorded scope shows its issue filter (`all open issues` when none is set).
 
 Derived, never recorded: the stage of each card (queue state, the scope entry naming it, and the
 PR's review label, CI and mergeability when the forge is read), the workstream of each issue
@@ -90,9 +90,9 @@ the plugin version).
 ## Refresh procedure
 
 1. Render the view for this harness. Claude Code publishes a live **Data dashboard** fed by
-   `bun run status --data .blackhole/.tmp/status-data` (one `<id>.json` row file per dataset,
+   `bun run scripts/campaign-status.ts --data .blackhole/.tmp/status-data` (one `<id>.json` row file per dataset,
    derived from the same `StatusReport` as `--json`, so the counts never diverge); every other
-   harness renders `bun run status --html`, which writes `.blackhole/.tmp/status.html` (override
+   harness renders `bun run scripts/campaign-status.ts --html`, which writes `.blackhole/.tmp/status.html` (override
    with `--out <path>`) and prints the path. `--html` escapes every value and loads nothing from
    the network. With no `queue.json` yet (a fresh checkout holding only
    `config.json`), run `bun run scripts/forge-sync.ts` first: it builds the queue and an empty ledger from
@@ -120,7 +120,7 @@ other step keeps it as is.
   Data artifact type (`Artifact` `action: "quickstart"`, `intent: "other"`, then publish with the
   returned `type_url`, a `title` and `auto_open: "after_first_write"`; the page declares the
   `assets` capability). Then:
-  1. `bun run status --data .blackhole/.tmp/status-data`.
+  1. `bun run scripts/campaign-status.ts --data .blackhole/.tmp/status-data`.
   2. Upload each row file as an asset (`Artifact` `url`, `asset: true`, `file_path`; a text file
      goes in a call of its own). Each result gives the file's `/_blob/<id>` url.
   3. Write, in one `ArtifactData` `batch`: `dash/meta` (`{title}`), one `datasets/<id>` per file
@@ -174,7 +174,7 @@ other step keeps it as is.
 {{#cursor}}
 ### Cursor (Canvas present)
 
-- Refresh the canvas named exactly **`Blackhole status`**, with `bun run status --json` as its
+- Refresh the canvas named exactly **`Blackhole status`**, with `bun run scripts/campaign-status.ts --json` as its
   data source. The JSON shape is the `StatusReport` type
   (`scripts/lib/campaign-status/types.ts`); render the same sections as the HTML page, in
   the same order (§ Page layout below).
@@ -185,7 +185,7 @@ other step keeps it as is.
 
 ### Any other harness, or no artifact/canvas tool
 
-Run `bun run status --html`, then print the path once per session (`📄 Status page: .blackhole/.tmp/status.html`).
+Run `bun run scripts/campaign-status.ts --html`, then print the path once per session (`📄 Status page: .blackhole/.tmp/status.html`).
 Later refreshes rewrite the same file silently.
 
 ## Page layout
@@ -213,7 +213,7 @@ sees at a glance where the run stands and what to do:
 4. **Workstreams** — done / in review / left / next per stream. On the Data dashboard a stream
    button above the board, or a row, shows only that stream (no buttons when there is one
    stream); `--html` ships no script, so it has the table without the filter
-5. **Scope** (in, parked, deferred, blocked upstream, out; "Scope not recorded" when none is),
+5. **Scope** (in, parked, deferred, blocked upstream, out; the issue filter, `all open issues` when none is set, when no entry is recorded),
    **Config**, **Your decisions** (newest first; the Data dashboard shows four and folds the rest),
    **Hook denials** (top 5 rules by deny and warn count, or `no hook denials recorded`),
    **Usage budget** — see below — and **Run**: the run route from `run-context.json` (pattern,

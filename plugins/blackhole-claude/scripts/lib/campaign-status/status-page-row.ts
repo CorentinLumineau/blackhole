@@ -1,3 +1,4 @@
+import { STATUS_COMMAND } from './cli.ts';
 import type { GateOption, LaunchRow } from './types.ts';
 
 // The launch summary's Status page row: whether the stored page opens from this account (its
@@ -31,10 +32,10 @@ const accept = (description: string): GateOption => ({ label: 'Accept', descript
 export function statusPageRow(p: StatusPageInput): LaunchRow {
   const base = { key: 'status_page' as const, label: 'Status page', header: 'Status page', adjustable: true };
   if (!p.enabled) {
-    return { ...base, value: 'off (status_page.enabled is false)', consequence: 'No page is published; follow the run with bun run status.' };
+    return { ...base, value: 'off (status_page.enabled is false)', consequence: `No page is published; follow the run with ${STATUS_COMMAND}.` };
   }
   if (!p.publishExpected) {
-    return { ...base, adjustable: false, value: 'none on this host', consequence: 'This host has no artifact tool; follow the run with bun run status.' };
+    return { ...base, adjustable: false, value: 'none on this host', consequence: `This host has no artifact tool; follow the run with ${STATUS_COMMAND}.` };
   }
   if (!p.artifact?.url) {
     return { ...base, value: 'never published', consequence: 'A new page is published before the first spawn.', options: [accept('Publish a new page before the first spawn.'), REUSE] };

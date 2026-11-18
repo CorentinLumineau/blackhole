@@ -8,7 +8,6 @@ import type { ForgeType } from './lib/forge-adapter/types.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { AGENT_NAMES } from './lib/build/facts.ts';
 
-const root = path.resolve(import.meta.dirname, '..');
 const DEFAULT_CONFIG_PATH = '.blackhole/config.json';
 
 export type CheckSeverity = 'BLOCK' | 'WARN';
@@ -161,6 +160,17 @@ export function checkPluginVersionDrift(repoRoot: string, homeDir: string): Doct
   };
 }
 
+/** True when `repoRoot` is a blackhole source checkout, the one tree where `bun run verify` exists. */
+export function isBlackholeCheckout(repoRoot: string): boolean {
+  const pkgPath = path.join(repoRoot, 'package.json');
+  if (!fs.existsSync(pkgPath) || !fs.existsSync(path.join(repoRoot, 'scripts', 'verify.ts'))) return false;
+  try {
+    return (readJsonFile(pkgPath, pkgPath) as { name?: unknown }).name === 'blackhole';
+  } catch {
+    return false;
+  }
+}
+
 export function exitCodeFromChecks(checks: DoctorCheck[]): number {
   const blockFailed = checks.some((c) => c.severity === 'BLOCK' && !c.ok);
   return blockFailed ? 1 : 0;
@@ -244,11 +254,9 @@ function runForgeAuthCheck(forge: ForgeType): DoctorCheck {
   return { id: 'D-GH-01', severity: 'BLOCK', ok: true, detail: status.host ?? undefined };
 }
 
-function runGhAuth(): DoctorCheck {
-  const configPath = resolveConfigPath(root);
-  const config = readJsonFile(configPath, configPath) as Record<string, unknown>;
+function runGhAuth(repoRoot: string, config: Record<string, unknown>): DoctorCheck {
   const resolved = resolveForgeForRepo(
-    root,
+    repoRoot,
     typeof config.forge === 'string' ? config.forge : undefined,
   );
   if (!resolved.ok) {
@@ -264,10 +272,24 @@ function printCheck(check: DoctorCheck): void {
   console.log(`  ${displayIcon} ${check.id}${check.detail ? ` — ${check.detail}` : ''}`);
 }
 
-export function runDoctorChecks(repoRoot: string = root): DoctorCheck[] {
+const CHECKOUT_ONLY_CHECK_IDS = ['D-VERIFY-01', 'D-AGENTS-01'] as const;
+
+/** One printed line naming the checkout-only checks `runDoctorChecks` skipped, or null when none were. */
+export function checkoutSkipNote(inCheckout: boolean): string | null {
+  return inCheckout ? null : `  - ${CHECKOUT_ONLY_CHECK_IDS.join(', ')} — skipped (not a blackhole checkout)`;
+}
+
+/**
+ * Runs the doctor against the campaign in `repoRoot`, the working directory by default: an
+ * installed plugin is invoked from the consumer repo, so the plugin's own directory is never the
+ * campaign. `D-VERIFY-01` and `D-AGENTS-01` only run in a blackhole checkout: they check the
+ * checkout's own build (`bun run verify`, `bun run build` output), which a consumer repo has not got.
+ */
+export function runDoctorChecks(repoRoot: string = process.cwd()): DoctorCheck[] {
   const checks: DoctorCheck[] = [];
 
-  checks.push(runVerify(repoRoot));
+  const inCheckout = isBlackholeCheckout(repoRoot);
+  if (inCheckout) checks.push(runVerify(repoRoot));
 
   const configPath = resolveConfigPath(repoRoot);
   checks.push(checkConfigExists(configPath));
@@ -281,12 +303,12 @@ export function runDoctorChecks(repoRoot: string = root): DoctorCheck[] {
         checkForgeResolution(repoRoot, config),
       );
       if (shouldRunGhAuth(config) && checks[checks.length - 1].ok) {
-        checks.push(runGhAuth());
+        checks.push(runGhAuth(repoRoot, config));
       }
     }
   }
 
-  checks.push(checkCursorAgents(repoRoot));
+  if (inCheckout) checks.push(checkCursorAgents(repoRoot));
 
   const homeDir = os.homedir();
   checks.push(checkStaleGlobalSkill(homeDir));
@@ -307,6 +329,8 @@ function main(): void {
   console.log('blackhole doctor\n');
 
   const checks = runDoctorChecks();
+  const skipNote = checkoutSkipNote(isBlackholeCheckout(process.cwd()));
+  if (skipNote) console.log(skipNote);
   let blockPassed = 0;
   let blockTotal = 0;
   let warnCount = 0;

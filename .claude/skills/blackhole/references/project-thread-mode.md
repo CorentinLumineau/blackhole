@@ -34,7 +34,7 @@ parked questions are posted together, at most four per batch.
 The thread's status checklist replaces the coordinator dashboard (`coordinator-dashboard.md`).
 At every turn end, after the checkpoint write order, refresh it: one line per in-flight issue
 with its phase, then the ready-set size and open BLOCK findings, using the dashboard's own
-numbers (`bun run status`). Post a thread reply only for a result, a blocker, or a decision the
+numbers (`bun run scripts/campaign-status.ts`). Post a thread reply only for a result, a blocker, or a decision the
 user must make.
 
 ## CI wait: PR events

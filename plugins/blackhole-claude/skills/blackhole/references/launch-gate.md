@@ -25,12 +25,12 @@ Bootstrap order, every `run` start:
 3. The summary and the status-page probe (§ Probe procedure).
 4. The questions (§ Questions), unless print-only (§ Print-only mode).
 5. The rest is `coordinator.md`'s, in its order: publish or refresh the status page, then
-   `bun run doctor` before the spawn (a non-zero exit stops it), then spawn or resume the
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/doctor.ts` before the spawn (a non-zero exit stops it), then spawn or resume the
    orchestrator.
 
 ## The summary
 
-Run `bun run status --summary` and print its output; never hand-format the table. Its flags,
+Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --summary` and print its output; never hand-format the table. Its flags,
 rows and `--json` shape are documented once, in `coordinator-dashboard.md` § Command (Launch summary). The
 gate adds two steps of its own:
 
@@ -42,7 +42,7 @@ gate adds two steps of its own:
   probed: workers are sized from parallel_max (<n>).`
 - The summary carries the same plugin-version warning as a `> ` line under its heading, in every
   mode including print-only; it never becomes a question.
-- Also run `bun run status config-summary` once: the coordinator's docs-governance drift guard
+- Also run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts config-summary` once: the coordinator's docs-governance drift guard
   copies its `Docs governance` lines verbatim into the spawn text.
 
 ## Catchup form
@@ -50,7 +50,7 @@ gate adds two steps of its own:
 `/blackhole catchup` (`phase-catchup.md`) runs this gate with the full config, and the pacing preset
 (`catchup` block, `config-template.md`) pre-fills what the run gate leaves to `usage_budget`:
 
-- Run `bun run status --summary --mode catchup [--usage-file <path>] --json` instead of the plain
+- Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --summary --mode catchup [--usage-file <path>] --json` instead of the plain
   summary. The rows are the run rows plus **Pacing**: the usage reading, the floor, the shortfall,
   the 5h caps and the lane. The Budget row judges by the floor budget.
 - Every value stays adjustable for this invocation only, as in a run: re-print the summary with

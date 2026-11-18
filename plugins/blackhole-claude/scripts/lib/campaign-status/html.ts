@@ -5,6 +5,7 @@ import { budgetRows } from './budget.ts';
 import { runRows } from './run-state.ts';
 import { topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
+import { formatScopeLabel } from './scope-label.ts';
 import { campaignName, elseClasses, inProgressItems, ownerDetail, readyToMergeDetail } from './report.ts';
 import type { BlockedClass, BoardItem, ReadyToMergeItem, StatusItem, StatusReport, StatusStateKind, Tone } from './types.ts';
 
@@ -147,7 +148,7 @@ function streamsSection(r: StatusReport): string {
 }
 
 function scopeSection(r: StatusReport): string {
-  if (!r.scope_record.recorded) return section('Scope', empty('Scope not recorded'));
+  if (!r.scope_record.recorded) return section('Scope', `<p>${escapeHtml(formatScopeLabel(r.campaign.scope))}</p>`);
   const rows = r.scope_record.entries.map((e) => {
     const refs = e.refs?.length ? ` (${e.refs.map((n) => `#${n}`).join(', ')})` : '';
     const why = e.reason ? ` — ${e.reason}` : '';
