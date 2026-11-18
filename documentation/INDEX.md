@@ -236,4 +236,5 @@
 | reviews/review-test-hooks-hook-event-triage-test-ts-asserts-a-clean-repo-root-3-tests-fail-on-a.md | Review artifact for issue #981 (LGTM) | review | current | on file change |
 | reviews/review-test-state-write-guard-s-zero-collapse-refusal-is-untested-the-one-branch-that-p.md | Review artifact for issue #983 (LGTM) | review | current | on file change |
 | runbooks/cloud-agent-plugins.md | Cloud Agents on this repo install Mercure and Blackhole from GitHub, not the marketplace cache | runbook | current | on file change |
+| runbooks/release-cadence.md | Day-2 operations for the every-20-merged-PR release cadence: owner enablement, optional Haiku notes, force cuts, and failure recovery | runbook | current | on release workflow, release-cadence, or release script change |
 | runbooks/shadcn-skill.md | Blackhole vendors the official shadcn/ui skill at a pinned commit and loads it for UI work when components.json exists | runbook | current | on file change |

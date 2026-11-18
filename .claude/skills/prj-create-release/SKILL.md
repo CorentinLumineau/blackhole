@@ -11,6 +11,11 @@ disable-model-invocation: true
 Maintainer workflow for publishing a **product-focused** GitHub release.
 Every tag `vX.Y.Z` must have a matching notes file before the tag is pushed.
 
+Automated every-20-merged-PR cadence (when the owner has set `RELEASE_CADENCE_ENABLED=true`)
+is documented in [documentation/runbooks/release-cadence.md](../../../documentation/runbooks/release-cadence.md).
+This skill remains the off-cadence / hotfix path. Cadence reuses `bun run release` validate/tag/push
+and never publishes a GitHub Release itself. Agents must not set repo variables or secrets.
+
 ## Prerequisites
 
 - `gh auth status` succeeds
