@@ -1,3 +1,4 @@
+import { ROOT_DOC_INDEX_PATH } from './doc-index-generate.ts';
 import type { GitResult, OpenPrSnapshot, SnapshotPr } from './open-pr-snapshot.ts';
 
 // Stack-parent selection over the forge's PR graph (ADR-051). Pure: the snapshot and the
@@ -6,6 +7,17 @@ import type { GitResult, OpenPrSnapshot, SnapshotPr } from './open-pr-snapshot.t
 
 /** Longest stack the campaign builds. A constant, not a config key: a key is the start of an opt-out. */
 export const STACK_DEPTH_CAP = 4;
+
+/**
+ * Files that are never a stack overlap (ADR-055): each is regenerated wholesale from the merged
+ * tree, and a blocking verify check fails when it is stale, so a conflict confined to them is
+ * resolved by regenerating, never by ordering the PRs. A constant, like `STACK_DEPTH_CAP`.
+ */
+export const REGENERATED_PATHS: ReadonlySet<string> = new Set([ROOT_DOC_INDEX_PATH]);
+
+/** `files` minus the exact members of `regenerated`; the one filter every overlap site applies. */
+export const withoutRegenerated = (files: readonly string[], regenerated: ReadonlySet<string> = REGENERATED_PATHS): string[] =>
+  files.filter((f) => !regenerated.has(f));
 
 export type ConflictVerdict = 'conflict' | 'clean' | 'unknown';
 
@@ -81,12 +93,22 @@ export const chainTip = (
  * `git merge-tree --write-tree` of two revisions. Exit 0 merges clean. Exit 1 means conflicts only
  * when stdout opens with the result tree id: git also exits 1 for a revision it cannot resolve, and
  * an old git without `--write-tree` fails another way. Neither of those is ever read as clean.
+ * A conflict is clean only when its conflicted-path list (the lines after the tree id, up to the
+ * first blank line) is non-empty and every path is in `regenerated`; an empty list stays a conflict.
  */
-export const mergeTreeVerdict = (git: (args: string[]) => GitResult, a: string, b: string): ConflictVerdict => {
-  const r = git(['merge-tree', '--write-tree', '--no-messages', a, b]);
+export const mergeTreeVerdict = (
+  git: (args: string[]) => GitResult,
+  a: string,
+  b: string,
+  regenerated: ReadonlySet<string> = REGENERATED_PATHS,
+): ConflictVerdict => {
+  const r = git(['merge-tree', '--write-tree', '--no-messages', '--name-only', a, b]);
   if (r.code === 0) return 'clean';
-  if (r.code === 1 && /^[0-9a-f]{40,64}$/.test(r.stdout.split('\n')[0].trim())) return 'conflict';
-  return 'unknown';
+  const lines = r.stdout.split('\n');
+  if (r.code !== 1 || !/^[0-9a-f]{40,64}$/.test(lines[0].trim())) return 'unknown';
+  const blank = lines.indexOf('', 1);
+  const conflicted = lines.slice(1, blank === -1 ? lines.length : blank);
+  return conflicted.length > 0 && withoutRegenerated(conflicted, regenerated).length === 0 ? 'clean' : 'conflict';
 };
 
 /** `git rev-parse` of both PR refs must equal the snapshot heads, else the verdict would read a stale fetch. */
@@ -170,7 +192,7 @@ export const pickParent = (meNumber: number, snapshot: OpenPrSnapshot, opts: Pic
       unreadable = true;
       continue;
     }
-    if (!shares(me.files, other.files)) continue;
+    if (!shares(withoutRegenerated(me.files), withoutRegenerated(other.files))) continue;
     const verdict = opts.conflicts(me, other);
     if (verdict === 'conflict') overlapping.push(other);
     else if (verdict === 'unknown') undecided = true;

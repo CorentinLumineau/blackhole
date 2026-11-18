@@ -1,7 +1,13 @@
 #!/usr/bin/env bun
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildDocIndexRows, renderDocIndexTable, renderFullIndexFile } from './lib/doc-index-generate.ts';
+import {
+  buildDocIndexRows,
+  renderDocIndexTable,
+  renderFullIndexFile,
+  renderRootIndexFile,
+  ROOT_DOC_INDEX_PATH,
+} from './lib/doc-index-generate.ts';
 import { root } from './checks/check-utils.ts';
 
 // Issue #811 (ADR-031 Phase 1, Task 6) — thin CLI wrapper over doc-index-generate.ts. Default
@@ -11,10 +17,24 @@ import { root } from './checks/check-utils.ts';
 // tool, distinct from `bun run verify`'s own V-DOCHEALTH-01/02/04 gate (doc-health.check.ts,
 // glob-discovered independently). Issue #832 (ADR-031 Phase 2, Task 5) hoisted the
 // table-rendering logic into doc-index-generate.ts's `renderFullIndexFile` — this file's own
-// local `renderFullTable`/`HEADER` retired in favor of it.
+// local `renderFullTable`/`HEADER` retired in favor of it. `--write` regenerates the committed
+// file in place through the same renderer the carry-step uses (`renderRootIndexFile`); it is the
+// mechanical resolution for a conflict on that file (merge-conflict-protocol.md).
 
 const DOCS_DIR = path.join(root, 'documentation');
-const INDEX_PATH = path.join(DOCS_DIR, 'INDEX.md');
+const INDEX_PATH = path.join(root, ROOT_DOC_INDEX_PATH);
+
+function runWrite(): number {
+  const existing = fs.existsSync(INDEX_PATH) ? fs.readFileSync(INDEX_PATH, 'utf-8') : null;
+  try {
+    fs.writeFileSync(INDEX_PATH, renderRootIndexFile(existing, DOCS_DIR));
+  } catch (err) {
+    process.stderr.write(`generate-doc-index --write: cannot write ${ROOT_DOC_INDEX_PATH}: ${(err as Error).message}\n`);
+    return 1;
+  }
+  process.stdout.write(`generate-doc-index --write: regenerated ${ROOT_DOC_INDEX_PATH}\n`);
+  return 0;
+}
 
 function runCheck(): number {
   const generated = renderDocIndexTable(buildDocIndexRows(DOCS_DIR));
@@ -48,6 +68,9 @@ function runCheck(): number {
 function main(): void {
   if (process.argv.includes('--check')) {
     process.exit(runCheck());
+  }
+  if (process.argv.includes('--write')) {
+    process.exit(runWrite());
   }
   process.stdout.write(renderFullIndexFile(DOCS_DIR));
 }

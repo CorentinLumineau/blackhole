@@ -4,7 +4,7 @@ import { appendIndexRowIfAbsent, parseIndexTableRows, type RootIndexRow } from '
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { readJsonFile } from './fs.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
-import { renderFullIndexFile } from './doc-index-generate.ts';
+import { ROOT_DOC_INDEX_PATH, renderRootIndexFile } from './doc-index-generate.ts';
 
 // Mechanizes the mechanical two-thirds of `implementer.md` § Carry Staged Artifacts: the
 // manifest shape guard, `target_kind` dispatch, the 9-row frontmatter rewrite mapping
@@ -356,7 +356,7 @@ export const carryManifest = (
     // retired — the row is reproduced automatically from the promoted doc's own frontmatter
     // (see `regenerateRootIndex` below) rather than hand-appended from a paired staged fragment.
     // `documentation/decisions/INDEX.md` and `ARCHITECTURE.md` append_row entries are unaffected.
-    if (entry.target_path === 'documentation/INDEX.md') {
+    if (entry.target_path === ROOT_DOC_INDEX_PATH) {
       skipped.push({
         index,
         reason: 'root documentation/INDEX.md row appends are retired — regenerated automatically (ADR-031 Phase 2, issue #832)',
@@ -383,17 +383,15 @@ export const carryManifest = (
   // Issue #832 (ADR-031 Phase 2, Task 7b): auto-regenerate documentation/INDEX.md once, after the
   // per-entry loop, instead of the retired per-route `append_row` staging convention. Preserves
   // whatever the file's own leading title block already says (never invents/duplicates the
-  // heading text here) — only the generated table portion (`renderFullIndexFile`) is replaced.
+  // heading text here) — only the generated table portion (`renderRootIndexFile`) is replaced.
   if (regenerateRootIndex) {
-    const indexAbs = path.join(repoRoot, 'documentation', 'INDEX.md');
-    const titleBlock = fs.existsSync(indexAbs)
-      ? `${fs.readFileSync(indexAbs, 'utf-8').split('\n').slice(0, 2).join('\n')}\n`
-      : '# Documentation Index\n\n';
-    const written = writeCarryTarget(indexAbs, `${titleBlock}${renderFullIndexFile(path.join(repoRoot, 'documentation'))}`);
+    const indexAbs = path.join(repoRoot, ROOT_DOC_INDEX_PATH);
+    const existing = fs.existsSync(indexAbs) ? fs.readFileSync(indexAbs, 'utf-8') : null;
+    const written = writeCarryTarget(indexAbs, renderRootIndexFile(existing, path.join(repoRoot, 'documentation')));
     if (written.ok) {
-      carriedPaths.push('documentation/INDEX.md');
+      carriedPaths.push(ROOT_DOC_INDEX_PATH);
     } else {
-      skipped.push({ index: -1, reason: `write failed for target_path "documentation/INDEX.md": ${written.message}` });
+      skipped.push({ index: -1, reason: `write failed for target_path "${ROOT_DOC_INDEX_PATH}": ${written.message}` });
     }
   }
 
