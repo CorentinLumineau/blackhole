@@ -54,7 +54,7 @@ and cannot be combined with `--html`, `--out`, `--data` or `config-summary`.
   host from `run-context.json`, else the environment), the same panel as the status page's
   **Usage budget**. On Cursor, which has no source, the row reads `not probed: cursor: no
   readable usage source, usage-aware pacing not applied`, and with `usage_budget` on its
-  consequence is `Usage not probed: workers are sized from parallel_max (<n>).`
+  consequence is `No usage limit: usage not probed, so up to <n> workers (parallel_max) run whatever the usage.`
 - `--now <epoch s>` pins the clock (whole seconds).
 - `--json` prints `{rows, cards, warnings}`: the rows, the question cards `gateCards` builds (none
   in print-only mode) and the warnings. A warning (the running plugin is older than an installed

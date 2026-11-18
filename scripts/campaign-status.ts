@@ -21,7 +21,7 @@ import { writeStatusData } from './lib/campaign-status/data.ts';
 import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
 import { readPublishState, readStatusAlerts, statusPageEnabled } from './lib/campaign-status/staleness.ts';
-import { buildLaunchSummary, gateCards, renderLaunchSummary, type CatchupInput } from './lib/campaign-status/launch-summary.ts';
+import { buildLaunchSummary, gateCards, renderLaunchSummary, usageCapsPatch, type CatchupInput } from './lib/campaign-status/launch-summary.ts';
 import type { DetectResult } from './lib/peer-campaigns.ts';
 import { detectForCampaign } from './peer-campaigns.ts';
 import type { StatusArtifact, StatusPageInput } from './lib/campaign-status/status-page-row.ts';
@@ -30,6 +30,7 @@ import { parseUsage } from './usage-budget.ts';
 import { buildStatusReport } from './lib/campaign-status/report.ts';
 import { CampaignNotFoundError, loadCampaignState } from './lib/campaign-status/state.ts';
 import { readJsonFile } from './lib/fs.ts';
+import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { createForgeAdapter } from './lib/forge-adapter/index.ts';
 import type { ForgeAdapter } from './lib/forge-adapter/types.ts';
 import { isForgeType, resolveForgeForRepo } from './lib/forge-detection.ts';
@@ -386,7 +387,35 @@ async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJso
   console.log(renderLaunchSummary(rows, warnings));
 }
 
+const USAGE_CAPS_USAGE = 'Usage: campaign-status.ts usage-caps --enabled <true|false> [--stop-workers-at <6-100>] [--target-at-reset <1-100|none>] [--campaign-dir <dir>]';
+
+/** `usage-caps`: print the `usage_budget` block the owner's Adjust answers produce; the caller writes it. Exits 2 on a bad answer. */
+function printUsageCaps(argv: string[]): void {
+  try {
+    const flags = parseFlags(argv);
+    const unknown = unknownFlagKeys(flags, ['enabled', 'stop-workers-at', 'target-at-reset', 'campaign-dir']);
+    if (unknown.length > 0) throw new Error(`unknown flag ${unknown.map((k) => `--${k}`).join(', ')}. ${USAGE_CAPS_USAGE}`);
+    const num = (name: string): number | null => {
+      const v = flags[name];
+      if (v === undefined) return null;
+      const n = typeof v === 'string' ? Number(v) : NaN;
+      if (!Number.isFinite(n)) throw new Error(`--${name} requires a number. ${USAGE_CAPS_USAGE}`);
+      return n;
+    };
+    if (flags.enabled !== 'true' && flags.enabled !== 'false') throw new Error(`--enabled requires true or false. ${USAGE_CAPS_USAGE}`);
+    const target = flags['target-at-reset'] === 'none' ? null : flags['target-at-reset'] === undefined ? undefined : num('target-at-reset');
+    const campaignDir = typeof flags['campaign-dir'] === 'string' ? path.resolve(flags['campaign-dir']) : path.join(process.cwd(), '.blackhole');
+    const configPath = path.join(campaignDir, 'config.json');
+    const config = readJsonFile(configPath, configPath) as { usage_budget?: Record<string, unknown> };
+    console.log(JSON.stringify(usageCapsPatch({ enabled: flags.enabled === 'true', stopWorkersAt: num('stop-workers-at'), targetAtReset: target }, config.usage_budget ?? {}), null, 2));
+  } catch (error) {
+    console.error(`status usage-caps: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(2);
+  }
+}
+
 async function main() {
+  if (process.argv[2] === 'usage-caps') return printUsageCaps(process.argv.slice(3));
   let args: ReturnType<typeof parseStatusArgs>;
   try {
     args = parseStatusArgs(process.argv.slice(2));
