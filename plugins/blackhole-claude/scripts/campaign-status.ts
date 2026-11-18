@@ -9,7 +9,9 @@ import { buildBudgetPanel, givenBudgetPanel, readBudgetPanel, resolveBudgetSetti
 import { adjustPacing, applyOverrides, floorBudget, localUtcOffsetMinutes, readPacing, resolveCatchup } from './lib/catchup.ts';
 import { DEFAULT_USAGE_BUDGET } from './lib/usage-budget.ts';
 import { isSleepMode, readPendingDecisions } from './lib/campaign-status/pending-decisions.ts';
-import type { PendingRead } from './lib/campaign-status/run-state.ts';
+import { buildDocCarry, type DocCarryIssue, type DocCarryRead, type PendingRead } from './lib/campaign-status/run-state.ts';
+import { loadManifest } from './lib/carry-staged-artifacts.ts';
+import { latestRoute, promisedRoutes } from './lib/route-artifacts.ts';
 import { resolveHost, usageSourceFor } from './lib/usage-source.ts';
 import { collectDenyCounts } from './lib/campaign-status/deny-counts.ts';
 import { crossRepoBlockersOf, fetchForgeCounts, fetchMergedPrs, readOpenIssues } from './lib/campaign-status/forge.ts';
@@ -206,6 +208,7 @@ export async function collectStatusReport(
     budget: readBudgetPanel(config as Record<string, unknown>, resolveHost(campaignDir, process.env), undefined, path.join(campaignDir, USAGE_HISTORY_FILE)),
     runContext: readJsonOrNull(path.join(campaignDir, 'run-context.json')),
     pending: readPending(campaignDir),
+    docCarry: readDocCarry(campaignDir, config as Record<string, any>, queue, ledger),
   });
   return { report, state, host, crossRepoBlockers };
 }
@@ -228,6 +231,27 @@ const readJsonOrNull = (file: string): unknown => {
     return null;
   }
 };
+
+/** Doc carry totals from each issue's route and `staged/<n>/manifest.json`; null when docs governance is off (gate as `route-artifacts.ts`). */
+function readDocCarry(campaignDir: string, config: Record<string, any>, queue: QueueJson, ledger: LedgerJson): DocCarryRead {
+  const docs = config.docs_governance;
+  if (docs?.enabled !== true || docs?.write_governance === false) return null;
+  try {
+    const repoRoot = path.dirname(campaignDir);
+    const issues: DocCarryIssue[] = [];
+    for (const key of Object.keys(queue.issues ?? {})) {
+      const n = Number(key);
+      const route = latestRoute(ledger as never, queue as never, n);
+      const manifest = loadManifest(path.join(campaignDir, 'staged', key, 'manifest.json'));
+      const done = DONE_STATUSES.includes(queue.issues[key]?.status ?? '');
+      if (route === null && !manifest) continue;
+      issues.push({ issue: n, promised: route ? promisedRoutes(route) : [], manifest, done });
+    }
+    return buildDocCarry({ enabled: true, issues, isCarried: (t) => fs.existsSync(path.join(repoRoot, t)) });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
 
 /** `pending-decisions.json` for the page: a malformed file is shown as unreadable, never as none parked. */
 function readPending(campaignDir: string): PendingRead {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { PendingDecision } from './pending-decisions.ts';
-import { buildRunPanel, pendingRows, RUN_ROW_KEYS, runRows } from './run-state.ts';
+import { buildDocCarry, buildRunPanel, pendingRows, RUN_ROW_KEYS, runRows, type DocCarryIssue } from './run-state.ts';
 
 const decision = (id: string, blocks: number[], created_at = '2026-11-16T10:00:00.000Z'): PendingDecision => ({
   id,
@@ -21,7 +21,7 @@ const RUN_CONTEXT = {
 const valueOf = (rows: Array<{ key: string; value: string }>, key: string): string | undefined => rows.find((r) => r.key === key)?.value;
 
 describe('run panel: route, sleep mode and coordination', () => {
-  test('always emits the three rows, in RUN_ROW_KEYS order, whatever is recorded', () => {
+  test('always emits the four rows, in RUN_ROW_KEYS order, whatever is recorded', () => {
     expect(runRows(buildRunPanel({ config: {}, runContext: null, pending: [] })).map((r) => r.key)).toEqual([...RUN_ROW_KEYS]);
     expect(runRows(buildRunPanel({ config: { sleep_mode: { enabled: true } }, runContext: RUN_CONTEXT, pending: [decision('PD-1', [3])] })).map((r) => r.key)).toEqual([...RUN_ROW_KEYS]);
   });
@@ -113,5 +113,61 @@ describe('the run panel and the parked decisions on every surface', () => {
     expect(html).toContain('Decisions waiting for you <span class="count">1</span>');
     expect(html).toContain('Sleep mode: off · 1 parked decision');
     expect(html).toContain('Run route: not recorded');
+  });
+});
+
+const entry = (route: string, target: string) => ({
+  route,
+  sub_mode: null,
+  produced_by: 'planner',
+  declared_at: '2026-11-17T00:00:00.000Z',
+  staged_path: `.blackhole/staged/1/${route}.md`,
+  target_path: target,
+  target_kind: 'new_file',
+});
+const manifest = (...entries: Array<ReturnType<typeof entry>>) => ({ issue: 1, updated_at: '2026-11-17T00:00:00.000Z', entries }) as never;
+const issueOf = (n: number, promised: string[], m: ReturnType<typeof manifest> | null): DocCarryIssue => ({ issue: n, promised, manifest: m });
+const rowOf = (docCarry: Parameters<typeof buildRunPanel>[0]['docCarry']) => valueOf(runRows(buildRunPanel({ config: {}, runContext: null, pending: [], docCarry })), 'Doc carry');
+
+describe('buildDocCarry: promised vs staged vs carried', () => {
+  test('governance off gives null and the row says so', () => {
+    expect(buildDocCarry({ enabled: false, issues: [issueOf(1, ['plan'], null)], isCarried: () => false })).toBeNull();
+    expect(rowOf(null)).toBe('off (docs governance off)');
+    expect(rowOf(undefined)).toBe('off (docs governance off)');
+  });
+
+  test('nothing routed prints zeros and no gaps', () => {
+    const dc = buildDocCarry({ enabled: true, issues: [], isCarried: () => false });
+    expect(dc).toEqual({ promised: 0, staged: 0, carried: 0, gaps: [] });
+    expect(rowOf(dc)).toBe('promised 0 · staged 0 · carried 0');
+  });
+
+  test('plan and design promised with only plan staged is promised 2, staged 1, gap 1/2', () => {
+    const dc = buildDocCarry({ enabled: true, issues: [issueOf(7, ['plan', 'design'], manifest(entry('plan', 'documentation/plans/a.md')))], isCarried: () => false });
+    expect(dc).toEqual({ promised: 2, staged: 1, carried: 0, gaps: [{ issue: 7, staged: 1, promised: 2 }] });
+    expect(rowOf(dc)).toBe('promised 2 · staged 1 · carried 0 · gaps: #7 1/2');
+  });
+
+  test('carried counts staged new_file targets the stub reports present', () => {
+    const m = manifest(entry('plan', 'documentation/plans/a.md'));
+    const dc = buildDocCarry({ enabled: true, issues: [issueOf(1, ['plan'], m)], isCarried: (t) => t === 'documentation/plans/a.md' });
+    expect(dc).toMatchObject({ promised: 1, staged: 1, carried: 1, gaps: [] });
+  });
+
+  test('a done issue without a manifest is excluded, one with a manifest is counted', () => {
+    const done = (n: number, m: ReturnType<typeof manifest> | null): DocCarryIssue => ({ ...issueOf(n, ['plan'], m), done: true });
+    const dc = buildDocCarry({ enabled: true, issues: [done(1, null), done(2, manifest(entry('plan', 'documentation/plans/b.md')))], isCarried: () => true });
+    expect(dc).toMatchObject({ promised: 1, staged: 1, carried: 1, gaps: [] });
+  });
+
+  test('four gaps print three and +1 more', () => {
+    const issues = [1, 2, 3, 4].map((n) => issueOf(n, ['plan'], null));
+    const dc = buildDocCarry({ enabled: true, issues, isCarried: () => false })!;
+    expect(dc.gaps).toHaveLength(4);
+    expect(rowOf(dc)).toBe('promised 4 · staged 0 · carried 0 · gaps: #1 0/1, #2 0/1, #3 0/1 +1 more');
+  });
+
+  test('an unreadable manifest is said, never shown as zero', () => {
+    expect(rowOf({ error: 'bad manifest' })).toBe('unreadable (bad manifest)');
   });
 });

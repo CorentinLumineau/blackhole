@@ -511,7 +511,13 @@ export type RunPanel = {
   /** `usage_budget.coordination`; null when `usage_budget` is invalid (`coordination_invalid`). */
   coordination: { role: 'manager' | 'peer' | 'solo'; manager_session: string | null; peer_floor: number } | null;
   coordination_invalid: string | null;
+  /** Artifacts promised vs staged vs carried; null when docs governance is off (or `doc_carry_error` is set). */
+  doc_carry: DocCarry | null;
+  doc_carry_error: string | null;
 };
+
+/** The Run panel's Doc carry totals, and the issues whose promised routes are not all staged. */
+export type DocCarry = { promised: number; staged: number; carried: number; gaps: Array<{ issue: number; staged: number; promised: number }> };
 
 /** One parked owner decision as the "Decisions waiting for you" panel lists it, most-blocking first. */
 export type PendingRow = {
