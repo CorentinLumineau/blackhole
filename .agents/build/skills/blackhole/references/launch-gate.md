@@ -143,8 +143,10 @@ exception, the peer question:
 - `merge_mode` unset: refuse to start, with one line, `merge_mode is unset; print-only mode cannot
   ask for it (R-002)` — never pick a merge mode for the owner;
 - a live peer that is not yet coordinated (the Peers row offers a question): refuse to start and
-  release this session's record. Under sleep mode, first park the peer question with
-  `bun run scripts/campaign-record.ts park --gate peers` for the wake-up round. With no question
+  release this session's record. Under sleep mode, first park the peer question for the wake-up round:
+  `bun run scripts/campaign-record.ts park --gate peers --question "<the Peers row value>" --options
+  "Stop|Join as peer|Take over after drain" --recommended "Take over after drain"` (drop
+  `Join as peer` when the row does not offer it). With no question
   channel and sleep mode off, refusing is enough;
 - a failed probe or an unreachable page: say so in one line and continue without the page; the
   next interactive start offers the reuse / publish choice.

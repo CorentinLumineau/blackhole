@@ -264,7 +264,9 @@ after reading checkpoint and forge sync:
 
 8. **Peer heartbeat** (ADR-057): run `bun run scripts/peer-campaigns.ts heartbeat --turn <n>`
    (`--host-session <id>` where the host has a cross-session transport, `claude-code-native.md`
-   § Cross-session budget transport). Every wake is a turn start, so a sleeping campaign
+   § Cross-session budget transport), then `detect`: a live peer naming this `solo` session as
+   its `manager_session` makes it act as manager (`multitask-mode.md` § Shared usage budget),
+   and an uncoordinated peer is reported to the owner. Every wake is a turn start, so a sleeping campaign
    refreshes its record at least every 20 minutes, inside the 40-minute lease. A non-zero exit
    is logged and the turn proceeds. Registry: `multitask-mode.md` § Peer campaign registry.
 
