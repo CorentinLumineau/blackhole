@@ -42,6 +42,13 @@ const FORMS: Array<[string, (d: string) => string]> = [
   ['nested backticks', (d) => `echo \`echo \\\`cp a ${d}/x\\\`\``],
   ['`<(…)` inside `$(…)`', (d) => `echo "$(cat <(tee ${d}/x))"`],
   ['`$(…)` inside `>(…)`', (d) => `diff a >(echo $(cp a ${d}/x))`],
+  // The shell removes a backslash-newline before it reads the opener, so `$\<newline>(` is `$(`.
+  ['`$\\<newline>(…)` (line continuation)', (d) => `echo $\\\n(cp a ${d}/x)`],
+  ['`$\\<newline>(…)` in double quotes', (d) => `echo "$\\\n(cp a ${d}/x)"`],
+  ['`<\\<newline>(…)`', (d) => `cat <\\\n(cp a ${d}/x)`],
+  ['`>\\<newline>(…)`', (d) => `diff a >\\\n(tee ${d}/x)`],
+  ['several continuations before the paren', (d) => `echo $\\\n\\\n\\\n(cp a ${d}/x)`],
+  ['a continuation inside a nested `$(…)`', (d) => `echo $(echo $\\\n(cp a ${d}/x))`],
 ];
 
 describe('bash-write-target-guard.js — writes inside command and process substitutions (#1252)', () => {
@@ -62,6 +69,11 @@ describe('bash-write-target-guard.js — writes inside command and process subst
       expect(await verdictAt(build, 'wt')).toBeNull();
     });
   }
+
+  test('#1252: a line continuation that does not open a substitution stays allowed', async () => {
+    expect(await verdictAt(() => 'echo $\\\nHOME', 'wt')).toBeNull();
+    expect(await verdictAt(() => "echo '$\\\n(cp a /etc/x)'", 'wt')).toBeNull();
+  });
 
   // The outer target is the substitution's output, which is not known statically.
   test('#1252: a write inside `$(…)` that names an outer redirect target is denied, and warns when in-root', async () => {

@@ -1255,9 +1255,12 @@ const extractSubstitutions = (text, bodies) => {
       frame.out += placeholder(bodies.push(body) - 1);
       end = j + 1;
     } else if (ch === '$' || (!frame.inDouble && (ch === '<' || ch === '>'))) {
-      if (text[i + 1] === '(') {
+      // The shell drops a backslash-newline before it reads the opener, so `$\\<newline>(` is `$(`.
+      let open = i + 1;
+      while (text[open] === '\\' && text[open + 1] === '\n') open += 2;
+      if (text[open] === '(') {
         frames.push({ out: '', opener: ch + '(', inDouble: false, depth: 0 });
-        end = i + 2;
+        end = open + 1;
       } else frame.out += ch;
     } else if (frames.length > 1 && !frame.inDouble && ch === ')' && frame.depth === 0) {
       frames.pop();
