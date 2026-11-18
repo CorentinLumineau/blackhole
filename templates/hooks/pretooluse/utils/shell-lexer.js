@@ -30,15 +30,21 @@
  * single-consumer-file primitive gains nothing from living in a shared module (V-YAGNI-03).
  */
 
+/** True when the `'` at `start` opens an ANSI-C `$'…'` span: it follows a `$` that is neither
+ * escaped nor the second half of `$$`. */
+const isAnsiCQuote = (text, start) =>
+  text[start] === "'" && text[start - 1] === '$' && text[start - 2] !== '\\' && text[start - 2] !== '$';
+
 /**
  * Skips a quoted span starting at `start` (the index of the opening `'` or `"`), bounded by
  * `endBound` (never reads at or past it). Returns the index **just past** the matching closing
  * quote, or `endBound` when the span is unterminated within that bound.
  *
  * QUOTE POLICY: a backslash consumes the following character — extending the span past what
- * would otherwise be a closing quote — only when the span opened with `"`. A single-quoted span
- * (`'...'`) has no escape character at all to bash, so a backslash inside one is just another
- * literal character; this mirrors bash's own quoting rules, not an arbitrary design choice.
+ * would otherwise be a closing quote — when the span opened with `"` or with an ANSI-C `$'`
+ * (`$'\\''` is one span). A plain single-quoted span (`'...'`) has no escape character at all to
+ * bash, so a backslash inside one is just another literal character; this mirrors bash's own
+ * quoting rules, not an arbitrary design choice.
  *
  * Always returns a value strictly greater than `start`, including both degenerate inputs an
  * unbounded caller loop could otherwise spin on: an unterminated quote (returns `endBound`,
@@ -50,6 +56,11 @@ const skipQuotedSpan = (text, start, endBound) => {
   let j = start + 1;
   if (quote === '"') {
     while (j < endBound && text[j] !== '"') {
+      if (text[j] === '\\' && j + 1 < endBound) j += 2;
+      else j++;
+    }
+  } else if (isAnsiCQuote(text, start)) {
+    while (j < endBound && text[j] !== quote) {
       if (text[j] === '\\' && j + 1 < endBound) j += 2;
       else j++;
     }

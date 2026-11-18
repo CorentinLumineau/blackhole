@@ -80,6 +80,12 @@ describe('bash-write-target-guard.js — interpreters fed their script on stdin 
     "bun run - <<EOF\nawait Bun.write('/etc/x', 'y')\nEOF",
     'cat x.js | bun run -',
     "node --input-type commonjs - <<EOF\nrequire('fs').writeFileSync('/etc/x', 'y')\nEOF",
+    // A newline after the pipe, and a redirect written before the command word.
+    'cat x.js |\nnode',
+    'cat x.js |&\n  python3 -',
+    '< evil.js node',
+    '0< evil.py python3',
+    "<<< \"require('fs').unlinkSync('/etc/x')\" node",
   ]) {
     test(`#1237: \`${command.replace(/\n/g, '\\n')}\` warns`, async () => {
       expect(await verdict(command)).toMatchObject(WARN);

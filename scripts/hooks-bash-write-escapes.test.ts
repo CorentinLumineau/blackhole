@@ -42,6 +42,19 @@ const ESCAPED_TARGETS: Array<[string, (m: string) => string]> = [
   ['`git format-patch -o \\<main> -1`', (m) => `git format-patch -o \\${m} -1`],
   ['`git -C \\<main> format-patch -1`', (m) => `git -C \\${m} format-patch -1`],
   ['`echo x > <main>/a\\b` (escape inside the path)', (m) => `echo x > ${m}/a\\b`],
+  // A backslash-escaped space keeps the path in one word: the file is named `x y`.
+  ['`cp a <main>/x\\ y`', (m) => `cp a ${m}/x\\ y`],
+  ['`mv a <main>/x\\ y`', (m) => `mv a ${m}/x\\ y`],
+  ['`install -m 644 a <main>/x\\ y`', (m) => `install -m 644 a ${m}/x\\ y`],
+  ['`ln -s a <main>/x\\ y`', (m) => `ln -s a ${m}/x\\ y`],
+  ['`rsync a <main>/x\\ y`', (m) => `rsync a ${m}/x\\ y`],
+  ['`tee <main>/x\\ y`', (m) => `echo x | tee ${m}/x\\ y`],
+  ['`echo x > <main>/x\\ y`', (m) => `echo x > ${m}/x\\ y`],
+  ['`cp a <main>/x\\ y\\ z` (several escaped spaces)', (m) => `cp a ${m}/x\\ y\\ z`],
+  ['`cp a <main>/x\\\ty` (escaped tab)', (m) => `cp a ${m}/x\\\ty`],
+  // An escaped quote in ANSI-C `$'…'` does not end the span, so the `;` after it still splits.
+  ["`echo $'\\''; cp a <main>/x`", (m) => `echo $'\\''; cp a ${m}/x`],
+  ["`echo $'a\\'b'; cp a <main>/x`", (m) => `echo $'a\\'b'; cp a ${m}/x`],
 ];
 
 const ESCAPED_WORDS: Array<[string, (m: string) => string]> = [
@@ -124,6 +137,17 @@ describe('bash-write-target-guard.js — backslash-escaped and quoted words (#12
   ] as const) {
     test(`#1243: ${label} is denied`, async () => {
       expect(await verdict(build)).toMatchObject(BLOCK);
+    });
+  }
+
+  for (const [label, build] of [
+    ['`cp a x\\ y` writes inside the worktree', () => 'cp a x\\ y'],
+    ["`echo $'it\\'s' > f` writes inside the worktree", () => "echo $'it\\'s' > f"],
+    ["`echo $'\\'' > f` writes inside the worktree", () => "echo $'\\'' > f"],
+    ["`echo $'\\''; echo done` has no write target", () => "echo $'\\''; echo done"],
+  ] as const) {
+    test(`#1243: ${label} stays allowed`, async () => {
+      expect(await verdict(build)).toBeNull();
     });
   }
 
