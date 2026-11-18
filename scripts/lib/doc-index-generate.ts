@@ -65,6 +65,19 @@ const INDEX_TABLE_HEADER =
 export const renderFullIndexFile = (docsDir: string): string =>
   `${INDEX_TABLE_HEADER}\n${renderDocIndexTable(buildDocIndexRows(docsDir))}\n`;
 
+/** Repo-relative path of the root index this module generates. */
+export const ROOT_DOC_INDEX_PATH = 'documentation/INDEX.md';
+
+/**
+ * The whole root index file: the existing file's two-line title block (heading + blank line), or a
+ * default one when there is no file yet, followed by the generated table. Writes nothing; each
+ * caller owns its own file write.
+ */
+export const renderRootIndexFile = (existing: string | null, docsDir: string): string => {
+  const titleBlock = existing === null ? '# Documentation Index\n\n' : `${existing.split('\n').slice(0, 2).join('\n')}\n`;
+  return `${titleBlock}${renderFullIndexFile(docsDir)}`;
+};
+
 // Issue #832 (ADR-031 Phase 2) — the one shared diff `doc-health.check.ts`'s V-DOCHEALTH-01/02/04
 // checks all consume, computed once against the same `RootIndexRow[]` shape both the committed
 // table (`parseRootIndexRows`) and the generator (`buildDocIndexRows`) already produce, rather

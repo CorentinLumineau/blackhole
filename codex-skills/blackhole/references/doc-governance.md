@@ -199,6 +199,10 @@ is no second staged row file and no `append_row` manifest entry for this file to
 `V-DOCHEALTH-01`/`V-DOCHEALTH-02`/`V-DOCHEALTH-04`, all blocking) fails the build the moment the
 committed file and the live tree's frontmatter disagree, so there is no drift window for a
 hand-edit to introduce.
+Because the file is a pure function of the merged tree, two open PRs that both regenerate it
+are not a V-STACK-02 overlap (ADR-055, `REGENERATED_PATHS`): a PR that later goes conflicting on
+it resolves the conflict by running `bun run scripts/generate-doc-index.ts --write`
+(`merge-conflict-protocol.md` § Classification rule, item 1).
 
 **Row order (issue #743) — `documentation/decisions/INDEX.md` only**: that file (untouched by
 the generation mechanism above) still inserts rows in path-sorted order via the shared

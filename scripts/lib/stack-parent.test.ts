@@ -116,6 +116,20 @@ describe('pickStackParent', () => {
     };
     expect(pickStackParent(q, 11, { parentFiles: { '10': ['src/a/x.md'] } })).toBeNull();
   });
+  test('#1303 a parent PR changing only documentation/INDEX.md is a known no-overlap', () => {
+    const q = {
+      '10': { status: 'in-flight', pr: 100, touch_paths: ['documentation/INDEX.md'] },
+      '11': { status: 'ready', touch_paths: ['documentation/INDEX.md', 'scripts/x.ts'] },
+    };
+    expect(pickStackParent(q, 11, { parentFiles: { '10': ['documentation/INDEX.md'] } })).toBeNull();
+  });
+  test('#1303 touch_paths sharing only documentation/INDEX.md do not stack', () => {
+    const q = {
+      '10': { status: 'in-flight', pr: 100, touch_paths: ['documentation/INDEX.md'] },
+      '11': { status: 'ready', touch_paths: ['documentation/INDEX.md', 'scripts/x.ts'] },
+    };
+    expect(pickStackParent(q, 11)).toBeNull();
+  });
 });
 
 describe('stackMergeOrder', () => {

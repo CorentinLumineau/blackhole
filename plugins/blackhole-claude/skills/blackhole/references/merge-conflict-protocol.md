@@ -35,6 +35,9 @@ A conflict hunk is **mechanical** iff it matches one of:
    markers, run the project's build command, and require it to exit `0` and be idempotent
    (running it a second time produces a byte-identical tree) before trusting the regenerated
    file — never trust the path alone.
+   The regenerated root index `documentation/INDEX.md` (a `REGENERATED_PATHS` member, ADR-055)
+   belongs here too: discard both sides, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/generate-doc-index.ts --write`, then
+   require `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/generate-doc-index.ts --check` to exit `0`.
 2. **Recognized lockfile** (`bun.lockb`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, or
    the project's equivalent). Resolution: discard both sides, regenerate via the project's
    install command.

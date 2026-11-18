@@ -1,5 +1,5 @@
 import { childBranchFor } from '../stack-repair.ts';
-import { chainTip as graphChainTip, effectiveParent, reachesNode, type StackGraph } from './stack-overlap.ts';
+import { chainTip as graphChainTip, effectiveParent, reachesNode, withoutRegenerated, type StackGraph } from './stack-overlap.ts';
 
 // Dispatch-time stack-parent selection (queue-dag.md § Step 3b). A ready issue whose touch_paths
 // overlap an issue that already has an open, unmerged PR is cut from that PR's branch instead of
@@ -65,13 +65,13 @@ export type StackParentOptions = {
   parentFiles?: Record<string, string[]>;
 };
 
-/** Narrowed paths only: each default member and each broad/root-only glob is dropped individually. */
+/** Narrowed paths only: each default member, regenerated file and broad/root-only glob is dropped individually. */
 const knownPaths = (paths: string[] | undefined, defaults: string[] | undefined): string[] =>
-  (paths ?? []).filter((g) => !defaults?.includes(g) && !isBroad(g));
+  withoutRegenerated(paths ?? []).filter((g) => !defaults?.includes(g) && !isBroad(g));
 
-/** Paths that may match concrete files: broad globs count here, as real files are evidence; prefixless ones never do. */
+/** Paths that may match concrete files: broad globs count here, as real files are evidence; prefixless and regenerated ones never do. */
 const matchablePaths = (paths: string[] | undefined, defaults: string[] | undefined): string[] =>
-  (paths ?? []).filter((g) => !defaults?.includes(g) && staticPrefix(g) !== '');
+  withoutRegenerated(paths ?? []).filter((g) => !defaults?.includes(g) && staticPrefix(g) !== '');
 
 /** The open-PR issues of a queue as a stack graph: edges are `stacked_on`, nodes are issues with an open PR. */
 const queueGraph = (issues: Record<string, StackCandidate>): StackGraph => ({
@@ -107,7 +107,8 @@ export const pickStackParent = (
     .filter(({ n, v }) => {
       if (n === issue || v.pr == null || CLOSED_STATUSES.has(v.status ?? '')) return false;
       const files = opts.parentFiles?.[String(n)];
-      if (files?.length) return globsMatchFiles(matchable, files);
+      // A list holding only regenerated files filters to empty: a known no-overlap, not unknown.
+      if (files?.length) return globsMatchFiles(matchable, withoutRegenerated(files));
       const theirs = knownPaths(v.touch_paths, opts.defaultTouchPaths);
       return mine.length > 0 && theirs.length > 0 && touchPathsOverlap(mine, theirs);
     })

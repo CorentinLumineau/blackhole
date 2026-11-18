@@ -102,6 +102,24 @@ describe('pickParent', () => {
     expect(asked).toEqual([[9, 7]]);
   });
 
+  test('#1303 mcp channel: two PRs sharing only the regenerated documentation/INDEX.md never reach the decider', () => {
+    const asked: number[] = [];
+    const snap = snapshot(spr(7, ['documentation/INDEX.md', 'x.ts']), spr(9, ['documentation/INDEX.md', 'y.ts']));
+    const result = pickParent(9, snap, {
+      conflicts: (_me, other) => {
+        asked.push(other.number);
+        return 'conflict';
+      },
+    });
+    expect(result).toEqual({ kind: 'none' });
+    expect(asked).toEqual([]);
+  });
+
+  test('#1303 a real source conflict still stacks when documentation/INDEX.md is also shared', () => {
+    const snap = snapshot(spr(7, ['a.ts', 'documentation/INDEX.md']), spr(9, ['a.ts', 'documentation/INDEX.md']));
+    expect(pickParent(9, snap, { conflicts: always('conflict') })).toMatchObject({ kind: 'stack', parent: 7 });
+  });
+
   test('an undecidable merge-tree is unknown, never none', () => {
     const snap = snapshot(spr(7, ['a.ts']), spr(9, ['a.ts']));
     expect(pickParent(9, snap, { conflicts: always('unknown') })).toMatchObject({ kind: 'unknown' });
@@ -270,6 +288,61 @@ describe('mergeTreeVerdict (real git)', () => {
     expect(mergeTreeVerdict(run, 'a', 'b')).toBe('conflict');
     expect(mergeTreeVerdict(run, 'a', 'c')).toBe('clean');
     expect(mergeTreeVerdict(run, 'a', 'no-such-rev')).toBe('unknown');
+  });
+
+  // p1 and p2 each insert their own row right after the same INDEX row, a genuine merge-tree
+  // conflict on INDEX.md; the line arguments pick which a.ts line each side edits ('' = none).
+  const indexFixture = (p1Line: string, p2Line: string): string => {
+    const repo = makeTempDir('merge-tree-regenerated');
+    dirs.push(repo);
+    git(repo, 'init', '-q', '-b', 'main');
+    fs.mkdirSync(path.join(repo, 'documentation'));
+    fs.writeFileSync(path.join(repo, 'documentation/INDEX.md'), '| a |\n| m |\n| z |\n');
+    fs.writeFileSync(path.join(repo, 'a.ts'), '1\n2\n3\n4\n5\n6\n7\n8\n');
+    fs.writeFileSync(path.join(repo, 'b.ts'), 'b\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'base');
+    const side = (branch: string, row: string, line: string) => {
+      git(repo, 'checkout', '-q', '-b', branch, 'main');
+      fs.writeFileSync(path.join(repo, 'documentation/INDEX.md'), `| a |\n| m |\n| ${row} |\n| z |\n`);
+      if (line) {
+        const lines = fs.readFileSync(path.join(repo, 'a.ts'), 'utf-8').split('\n');
+        lines[Number(line) - 1] = `${branch}-edit`;
+        fs.writeFileSync(path.join(repo, 'a.ts'), lines.join('\n'));
+      }
+      git(repo, 'commit', '-q', '-am', branch);
+    };
+    side('p1', 'n1', p1Line);
+    side('p2', 'n2', p2Line);
+    return repo;
+  };
+
+  test('#1303 git channel: a conflict confined to documentation/INDEX.md is clean, and pickParent gives none', () => {
+    const run = runner(indexFixture('', ''));
+    expect(run(['merge-tree', '--write-tree', '--no-messages', 'p1', 'p2']).code).toBe(1);
+    expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('clean');
+    const snap = snapshot(
+      spr(7, ['documentation/INDEX.md'], { headRefName: 'p1' }),
+      spr(9, ['documentation/INDEX.md', 'b.ts'], { headRefName: 'p2' }),
+    );
+    const viaGit = pickParent(9, snap, { conflicts: (me, other) => mergeTreeVerdict(run, me.headRefName, other.headRefName) });
+    expect(viaGit).toEqual({ kind: 'none' });
+  });
+
+  test('#1303 git channel: a mixed pair whose only conflict is the INDEX row is clean', () => {
+    const run = runner(indexFixture('1', '8'));
+    expect(run(['merge-tree', '--write-tree', '--no-messages', 'p1', 'p2']).code).toBe(1);
+    expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('clean');
+  });
+
+  test('#1303 git channel: a same-line source conflict beside the INDEX row still conflicts', () => {
+    const run = runner(indexFixture('1', '1'));
+    expect(mergeTreeVerdict(run, 'p1', 'p2')).toBe('conflict');
+  });
+
+  test('#1303 an exit-1 merge-tree with an empty conflicted-path list stays a conflict', () => {
+    const oidOnly = () => ({ code: 1, stdout: `${'a'.repeat(40)}\n`, stderr: '' });
+    expect(mergeTreeVerdict(oidOnly, 'x', 'y')).toBe('conflict');
   });
 });
 
