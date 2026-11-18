@@ -26,6 +26,35 @@ describe('GiteaForgeAdapter', () => {
     expect(issues[0].state).toBe('OPEN');
   });
 
+  test('issueList asks tea for json with an explicit field list that keeps body, labels, milestone, updated and assignees', async () => {
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue([]);
+    await new GiteaForgeAdapter('host/owner/repo').issueList();
+    const argv = runTeaJsonSpy.mock.calls[0][0] as string[];
+    expect(argv).not.toContain('--json');
+    const fields = argv[argv.indexOf('--fields') + 1].split(',');
+    expect(fields).toEqual(expect.arrayContaining(['index', 'title', 'body', 'state', 'labels', 'milestone', 'updated', 'assignees']));
+  });
+
+  test('issueList maps the string-valued cells tea 0.14.2 prints (index, comma-joined labels and assignees)', async () => {
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue([
+      { index: '12', title: 't', body: 'b', state: 'open', labels: 'bug,in-progress:acct-a', milestone: 'M1', updated: '2026-11-18T14:59:42Z', assignees: 'a,b' },
+      { index: '13', title: 'u', body: '', state: 'closed', labels: '', milestone: '', updated: '2026-11-18T14:59:42Z', assignees: '' },
+    ]);
+    const issues = await new GiteaForgeAdapter('host/owner/repo').issueList();
+    expect(issues[0]).toMatchObject({ number: 12, body: 'b', labels: [{ name: 'bug' }, { name: 'in-progress:acct-a' }], milestone: { title: 'M1' }, assignees: ['a', 'b'] });
+    expect(issues[1]).toMatchObject({ number: 13, labels: [], milestone: null, state: 'CLOSED' });
+  });
+
+  test('prList without a state asks tea for json with fields that carry body and head', async () => {
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue([{ index: '7', title: 'pull', body: 'x', head: 'feature', state: 'open' }]);
+    const prs = await new GiteaForgeAdapter('host/owner/repo').prList();
+    const argv = runTeaJsonSpy.mock.calls[0][0] as string[];
+    expect(argv.slice(0, 2)).toEqual(['pulls', 'list']);
+    expect(argv).not.toContain('--json');
+    expect(argv[argv.indexOf('--fields') + 1].split(',')).toEqual(expect.arrayContaining(['index', 'title', 'body', 'state', 'head']));
+    expect(prs[0]).toMatchObject({ number: 7, headRefName: 'feature', body: 'x', state: 'OPEN' });
+  });
+
   test('prList maps pull requests to ForgePr', async () => {
     runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue([
       {
@@ -223,23 +252,51 @@ describe('GiteaForgeAdapter', () => {
     runTeaTextSpy.mockRestore();
   });
 
-  test('issueCreate maps the created tea issue row', async () => {
-    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue({
-      index: 21,
-      title: 'New bug',
-      content: 'Steps to reproduce',
-      labels: ['bug'],
-      state: 'open',
+  describe('create through REST (tea 0.14.2 has no JSON output for create)', () => {
+    let apiSpy: ReturnType<typeof spyOn<typeof teaCli, 'runTeaApiJson'>>;
+    let calls: Array<{ method: string; endpoint: string; body: unknown }>;
+    const mockApi = (reply: (method: string, endpoint: string) => unknown) => {
+      calls = [];
+      apiSpy = spyOn(teaCli, 'runTeaApiJson').mockImplementation(((method: string, endpoint: string, body?: unknown) => {
+        calls.push({ method, endpoint, body });
+        return { data: reply(method, endpoint), headers: '' };
+      }) as never);
+    };
+    afterEach(() => apiSpy?.mockRestore());
+
+    test('issueCreate resolves label names to ids, POSTs, and maps the REST row; spawns no tea create', async () => {
+      const textSpy = spyOn(teaCli, 'runTeaText').mockReturnValue('');
+      runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue(null as never);
+      mockApi((method, endpoint) =>
+        method === 'GET'
+          ? [{ id: 5, name: 'bug' }, { id: 6, name: 'other' }]
+          : { number: 21, title: 'New bug', body: 'Steps to reproduce', labels: [{ name: 'bug' }], state: 'open', milestone: null },
+      );
+      const issue = await new GiteaForgeAdapter('host/owner/repo').issueCreate({ title: 'New bug', body: 'Steps to reproduce', labels: ['bug'] });
+      expect(calls.find((c) => c.method === 'POST')).toEqual({
+        method: 'POST',
+        endpoint: 'repos/owner/repo/issues',
+        body: { title: 'New bug', body: 'Steps to reproduce', labels: [5] },
+      });
+      expect(runTeaJsonSpy).not.toHaveBeenCalled();
+      expect(textSpy).not.toHaveBeenCalled();
+      textSpy.mockRestore();
+      expect(issue).toEqual({ number: 21, title: 'New bug', body: 'Steps to reproduce', labels: [{ name: 'bug' }], milestone: null, state: 'OPEN' });
     });
-    const adapter = new GiteaForgeAdapter('host/owner/repo');
-    const issue = await adapter.issueCreate({ title: 'New bug', body: 'Steps to reproduce', labels: ['bug'] });
-    expect(issue).toEqual({
-      number: 21,
-      title: 'New bug',
-      body: 'Steps to reproduce',
-      labels: [{ name: 'bug' }],
-      milestone: null,
-      state: 'OPEN',
+
+    test('issueCreate names the missing label instead of creating the issue unlabelled', async () => {
+      mockApi(() => [{ id: 5, name: 'bug' }]);
+      await expect(new GiteaForgeAdapter('host/owner/repo').issueCreate({ title: 't', body: 'b', labels: ['nope'] })).rejects.toThrow(/nope/);
+      expect(calls.some((c) => c.method === 'POST')).toBe(false);
+    });
+
+    test('prCreate POSTs title, body, head and base and maps the REST row', async () => {
+      mockApi(() => apiPr(30, { title: 'Add feature', body: 'description', head: { ref: 'feature-branch', sha: 'abc', repo: { full_name: 'owner/repo' } } }));
+      const pr = await new GiteaForgeAdapter('host/owner/repo').prCreate({ title: 'Add feature', body: 'description', head: 'feature-branch', base: 'main' });
+      expect(calls).toEqual([
+        { method: 'POST', endpoint: 'repos/owner/repo/pulls', body: { title: 'Add feature', body: 'description', head: 'feature-branch', base: 'main' } },
+      ]);
+      expect(pr).toMatchObject({ number: 30, title: 'Add feature', body: 'description', headRefName: 'feature-branch', baseRefName: 'main', state: 'OPEN' });
     });
   });
 
@@ -275,32 +332,6 @@ describe('GiteaForgeAdapter', () => {
       'looking into it',
     ]);
     runTeaTextSpy.mockRestore();
-  });
-
-  test('prCreate maps the created tea pull row', async () => {
-    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue({
-      index: 30,
-      title: 'Add feature',
-      body: 'description',
-      head: { name: 'feature-branch' },
-      state: 'open',
-      merged_at: null,
-    });
-    const adapter = new GiteaForgeAdapter('host/owner/repo');
-    const pr = await adapter.prCreate({
-      title: 'Add feature',
-      body: 'description',
-      head: 'feature-branch',
-      base: 'main',
-    });
-    expect(pr).toEqual({
-      number: 30,
-      title: 'Add feature',
-      body: 'description',
-      headRefName: 'feature-branch',
-      state: 'OPEN',
-      mergedAt: null,
-    });
   });
 
   test('prComment pins the exact tea argv', async () => {

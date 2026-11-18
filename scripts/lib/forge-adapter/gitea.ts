@@ -21,17 +21,17 @@ import type {
 } from './types.ts';
 
 type TeaIssueRow = {
-  index?: number;
+  index?: number | string;
   number?: number;
   title: string;
   content?: string;
   body?: string;
-  labels?: Array<{ name: string } | string>;
+  labels?: Array<{ name: string } | string> | string;
   milestone?: { title: string } | string | null;
   state?: string;
   updated_at?: string | null;
   updated?: string | null;
-  assignees?: Array<{ login?: string; username?: string } | string> | null;
+  assignees?: Array<{ login?: string; username?: string } | string> | string | null;
 };
 
 /** Gitea REST pull request row, as `tea api` prints it. */
@@ -69,6 +69,7 @@ const API_PAGE = 50;
 const MAX_FILE_PAGES = 60;
 const MAX_PR_PAGES = 100;
 const MAX_STATUS_PAGES = 20;
+const MAX_LABEL_PAGES = 20;
 
 const STATUS_CONCLUSION: Record<string, ForgeCheck['conclusion']> = {
   success: 'SUCCESS',
@@ -128,27 +129,31 @@ export const changeGiteaPrBase = (repo: string, number: number, base: string): P
 };
 
 type TeaPrRow = {
-  index?: number;
+  index?: number | string;
   number?: number;
   title: string;
   body?: string;
-  head?: { name: string };
+  head?: { name: string } | string;
   headRefName?: string;
   state?: string;
   merged_at?: string | null;
   mergedAt?: string | null;
 };
 
+/** `tea ... --output json` prints every cell as a string, `index` and the comma-joined lists included. */
 function issueNumber(row: TeaIssueRow): number {
-  return row.number ?? row.index ?? 0;
+  return row.number ?? Number(row.index ?? 0);
 }
 
 function prNumber(row: TeaPrRow): number {
-  return row.number ?? row.index ?? 0;
+  return row.number ?? Number(row.index ?? 0);
 }
+
+const splitCsv = (cell: string): string[] => cell.split(',').map((v) => v.trim()).filter(Boolean);
 
 function normalizeLabels(labels: TeaIssueRow['labels']): Array<{ name: string }> {
   if (!labels) return [];
+  if (typeof labels === 'string') return splitCsv(labels).map((name) => ({ name }));
   return labels.map((l) => (typeof l === 'string' ? { name: l } : l));
 }
 
@@ -161,7 +166,8 @@ function normalizeMilestone(m: TeaIssueRow['milestone']): { title: string } | nu
 /** `updated_at` (REST) or `updated` (`tea` JSON); assignees as logins or as user objects. */
 function claimFields(row: TeaIssueRow): Pick<ForgeIssue, 'assignees' | 'updatedAt'> {
   const updatedAt = row.updated_at ?? row.updated;
-  const assignees = row.assignees?.map((a) => (typeof a === 'string' ? a : (a.login ?? a.username ?? ''))).filter(Boolean);
+  const raw = typeof row.assignees === 'string' ? splitCsv(row.assignees) : row.assignees;
+  const assignees = raw?.map((a) => (typeof a === 'string' ? a : (a.login ?? a.username ?? ''))).filter(Boolean);
   return { ...(assignees ? { assignees } : {}), ...(updatedAt ? { updatedAt } : {}) };
 }
 
@@ -186,11 +192,15 @@ function mapPr(row: TeaPrRow): ForgePr {
     number: prNumber(row),
     title: row.title,
     body: row.body ?? '',
-    headRefName: row.headRefName ?? row.head?.name ?? '',
+    headRefName: row.headRefName ?? (typeof row.head === 'string' ? row.head : row.head?.name) ?? '',
     state,
     mergedAt: row.mergedAt ?? row.merged_at ?? null,
   };
 }
+
+// tea's default field set omits `body`, which `mapIssue`/`mapPr` need.
+const ISSUE_LIST_FIELDS = 'index,title,body,state,labels,milestone,updated,assignees';
+const PR_LIST_FIELDS = 'index,title,body,state,head';
 
 export class GiteaForgeAdapter implements ForgeAdapter {
   readonly forge = 'gitea' as const;
@@ -230,26 +240,33 @@ export class GiteaForgeAdapter implements ForgeAdapter {
   }
 
   async issueList(filter: IssueListFilter = {}): Promise<ForgeIssue[]> {
-    const args = ['issues', 'list', ...this.repoFlag(), '--limit', String(filter.limit ?? 200)];
+    const args = ['issues', 'list', ...this.repoFlag(), '--fields', ISSUE_LIST_FIELDS, '--limit', String(filter.limit ?? 200)];
     if (filter.state && filter.state !== 'all') args.push('--state', filter.state);
     const rows = runTeaJson<TeaIssueRow[] | { issues: TeaIssueRow[] }>(args);
     const list = Array.isArray(rows) ? rows : rows.issues;
     return list.map(mapIssue);
   }
 
+  /** `tea issue create` has no JSON output, so the issue is created through REST and its row is mapped as read. */
   async issueCreate(params: IssueCreateParams): Promise<ForgeIssue> {
-    const args = [
-      'issue',
-      'create',
-      ...this.repoFlag(),
-      '--title',
-      params.title,
-      '--description',
-      params.body,
-    ];
-    if (params.labels?.length) args.push('--labels', params.labels.join(','));
-    const created = runTeaJson<TeaIssueRow>(args);
-    return mapIssue(created);
+    const body: Record<string, unknown> = { title: params.title, body: params.body };
+    if (params.labels?.length) body.labels = this.labelIds(params.labels);
+    return mapIssue(runTeaApiJson<TeaIssueRow>('POST', `repos/${this.apiSlug()}/issues`, body).data);
+  }
+
+  /** Gitea's REST create takes label ids; an unknown name fails here rather than filing the issue unlabelled. */
+  private labelIds(names: string[]): number[] {
+    const ids = new Map<string, number>();
+    for (let page = 1; page <= MAX_LABEL_PAGES; page++) {
+      const { data } = runTeaApiJson<Array<{ id: number; name: string }>>('GET', `repos/${this.apiSlug()}/labels?page=${page}&limit=${API_PAGE}`);
+      for (const l of data) ids.set(l.name, l.id);
+      if (data.length < API_PAGE) break;
+    }
+    return names.map((name) => {
+      const id = ids.get(name);
+      if (id === undefined) throw new Error(`label "${name}" does not exist in ${this.repo}`);
+      return id;
+    });
   }
 
   async issueEdit(number: number, params: IssueEditParams): Promise<void> {
@@ -376,7 +393,7 @@ export class GiteaForgeAdapter implements ForgeAdapter {
 
   async prList(filter: { state?: 'open' | 'closed' | 'all'; limit?: number } = {}): Promise<ForgePr[]> {
     if (filter.state) return this.listPrsRest(filter.state, filter.limit ?? 100);
-    const args = ['pulls', 'list', ...this.repoFlag(), '--limit', String(filter.limit ?? 100)];
+    const args = ['pulls', 'list', ...this.repoFlag(), '--fields', PR_LIST_FIELDS, '--limit', String(filter.limit ?? 100)];
     if (filter.state && filter.state !== 'all') args.push('--state', filter.state);
     const rows = runTeaJson<TeaPrRow[] | { pulls: TeaPrRow[] }>(args);
     const list = Array.isArray(rows) ? rows : rows.pulls;
@@ -389,20 +406,8 @@ export class GiteaForgeAdapter implements ForgeAdapter {
   }
 
   async prCreate(params: PrCreateParams): Promise<ForgePr> {
-    const args = [
-      'pull',
-      'create',
-      ...this.repoFlag(),
-      '--title',
-      params.title,
-      '--description',
-      params.body,
-      '--head',
-      params.head,
-      '--base',
-      params.base,
-    ];
-    return mapPr(runTeaJson<TeaPrRow>(args));
+    const body = { title: params.title, body: params.body, head: params.head, base: params.base };
+    return mapGiteaApiPr(runTeaApiJson<GiteaApiPrRow>('POST', `repos/${this.apiSlug()}/pulls`, body).data);
   }
 
   async prComment(number: number, body: string): Promise<void> {
