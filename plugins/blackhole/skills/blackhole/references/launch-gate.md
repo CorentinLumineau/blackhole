@@ -21,10 +21,14 @@ Bootstrap order, every `run` start:
 1. Resolve the run context (`run-context.md`); on `state_store: branch`, pull the state branch. A
    `warn:` line saying the running plugin is older than an installed version is part of its output:
    restate it verbatim, never drop it.
-2. The 6-step form when a `coordinator.md` trigger condition holds.
-3. The summary and the status-page probe (§ Probe procedure).
-4. The questions (§ Questions), unless print-only (§ Print-only mode).
-5. The rest is `coordinator.md`'s, in its order: publish or refresh the status page, then
+2. Peer detection (ADR-057, `multitask-mode.md` § Peer campaign registry): run
+   `bun run scripts/peer-campaigns.ts heartbeat --turn 0` (add `--host-session <id>` on a host
+   with a cross-session transport), so a peer bootstrapping at the same moment sees this one.
+   The summary's Peers row then reads `detect` itself.
+3. The 6-step form when a `coordinator.md` trigger condition holds.
+4. The summary and the status-page probe (§ Probe procedure).
+5. The questions (§ Questions), unless print-only (§ Print-only mode).
+6. The rest is `coordinator.md`'s, in its order: publish or refresh the status page, then
    `bun run scripts/doctor.ts` before the spawn (a non-zero exit stops it), then spawn or resume the
    orchestrator.
 
@@ -103,10 +107,31 @@ row as shown. Adjust opens only that row's form steps, never the whole form:
 | Budget | Step 4 (`parallel_max`); the `usage_budget` thresholds are edited in `config.json`; a stale or missing reading is refreshed with `usage-probe.ts`, then the summary re-runs |
 | Status page | Reuse the stored page, reuse another, publish new, or refresh template |
 | Kaizen and staging | Step 5 |
-| Peers | Display only: the configured `usage_budget.coordination.role` |
+| Peers | Display only (the configured role, or `solo (no live peer in this clone)`), unless a live peer is not yet coordinated with this session, or `unknown (N unreadable: <files>)`: then the peer question below |
 | Sleep mode | Display only: sleep mode on or off; while on the whole gate is print-only |
 
 With `merge_mode` unset the Merge card has no Accept option (R-002): the owner must pick one.
+
+The Peers question has no Accept option either: a live peer campaign in this clone is never
+ignored, and this session never starts as `solo` beside it.
+
+- **Stop**: run `bun run scripts/peer-campaigns.ts release`, then end the bootstrap.
+- **Join as peer**: offered only when an uncoordinated live peer gives a manager to join (a host
+  listed in `claude-code-native.md` § Cross-session budget transport records `host_session`). The
+  option names it: a live `manager` record, else the manager a live peer follows, else a solo
+  peer's `host_session`; coordinated peers are never a join target. Write
+  `usage_budget.coordination.role: peer` and `manager_session: <that id>` as step 6 does, then
+  continue.
+- **Take over after drain**: release, spawn nothing, and re-run the gate on the next resume. It
+  starts once `detect` finds no live peer (the record is released or its 40-minute lease lapsed).
+
+Unreadable records fail closed: a registry entry whose mtime is within one lease of now and that
+is not a regular file, cannot be parsed, is another version, or is dated beyond one lease ahead
+reads `unknown (N unreadable: <file names>)` and is asked about like a live peer, with Stop and
+Take over only. The owner can remove a named file from `<git common dir>/blackhole/campaigns/`.
+
+Release on every refusal too. A waiting session that kept its record would block the other side's
+next bootstrap.
 After the adjusted steps, write the answers as step 6 does (atomic write, one decision record per
 answer), re-print the summary, and continue the bootstrap order.
 
@@ -118,11 +143,25 @@ catchup runs: sleep mode on, summary printed, every row accepted, then the `--fl
 The gate then prints
 the summary, asks nothing and never waits. It is not sleep mode's parking either: the
 `coordinator.md` 6-step form does not run, and nothing is parked through `askOrPark()`
-(`sleep-mode.md` § The choke point), so the gate leaves no pending decision behind:
+(`sleep-mode.md` § The choke point), so the gate leaves no pending decision behind, with one
+exception, the peer question:
 
 - every row counts as accepted;
 - `merge_mode` unset: refuse to start, with one line, `merge_mode is unset; print-only mode cannot
   ask for it (R-002)` — never pick a merge mode for the owner;
+- a live peer that is not yet coordinated, or unreadable peer records (the Peers row offers a
+  question): refuse to start and release this session's record. Under sleep mode, first park the
+  peer question for the wake-up round. The question text and the option set are always the same,
+  so a re-park on the next wake merges into the pending decision instead of failing (`park`
+  refuses the same question with a different option set). Join is always listed; the evidence
+  says whether it applies, and the row's details (worktree, turn, heartbeat age, unreadable files)
+  go in `--evidence` only:
+  `bun run scripts/campaign-record.ts park --gate peers --question "Another campaign may be running
+  in this clone: stop, join it, or take over after it drains?" --options "Stop|Join as peer: only
+  when the evidence names a manager to join|Take over after drain" --recommended "Take over after
+  drain" --evidence "<the Peers row value>; join: <id, or none>"`. A Join answer when the evidence
+  says `join: none` is treated as Take over. With no question channel and sleep mode off, refusing
+  is enough;
 - a failed probe or an unreachable page: say so in one line and continue without the page; the
   next interactive start offers the reuse / publish choice.
 <!-- GENERATED by scripts/build.ts from src/references/launch-gate.md — do not hand-edit -->
