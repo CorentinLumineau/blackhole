@@ -1,0 +1,346 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { spawnSync } from 'child_process';
+import { checkForgeAuthSync } from './lib/forge-doctor.ts';
+import { resolveForgeForRepo } from './lib/forge-detection.ts';
+import type { ForgeType } from './lib/forge-adapter/types.ts';
+import { readJsonFile } from './lib/fs.ts';
+import { AGENT_NAMES } from './lib/build/facts.ts';
+
+const DEFAULT_CONFIG_PATH = '.blackhole/config.json';
+
+export type CheckSeverity = 'BLOCK' | 'WARN';
+export type DoctorCheck = { id: string; severity: CheckSeverity; ok: boolean; detail?: string };
+
+export const EXPECTED_BC_AGENTS = AGENT_NAMES.map((name) => `${name}.md`);
+
+/** Stale skill directory names one and two generations back (DR-2, #64). */
+const LEGACY_SKILL_NAMES = ['bc-campaign', 'backlog-campaign'] as const;
+
+const REQUIRED_CONFIG_KEYS = ['repo', 'target_branch', 'forge'] as const;
+
+export function validateConfigJson(content: string): { ok: boolean; detail?: string } {
+  let config: Record<string, unknown>;
+  try {
+    config = JSON.parse(content) as Record<string, unknown>;
+  } catch {
+    return { ok: false, detail: 'invalid JSON' };
+  }
+
+  for (const key of REQUIRED_CONFIG_KEYS) {
+    if (!config[key] || typeof config[key] !== 'string') {
+      return { ok: false, detail: `missing or invalid ${key}` };
+    }
+  }
+
+  return { ok: true };
+}
+
+export function checkCursorAgents(repoRoot: string): DoctorCheck {
+  const agentsDir = path.join(repoRoot, '.cursor', 'agents');
+  if (!fs.existsSync(agentsDir)) {
+    return {
+      id: 'D-AGENTS-01',
+      severity: 'BLOCK',
+      ok: false,
+      detail: '.cursor/agents/ missing — run `bun run build`',
+    };
+  }
+
+  const bcAgents = fs
+    .readdirSync(agentsDir)
+    .filter((f) => (EXPECTED_BC_AGENTS as readonly string[]).includes(f));
+
+  const missing = EXPECTED_BC_AGENTS.filter((name) => !bcAgents.includes(name));
+  if (missing.length > 0) {
+    return {
+      id: 'D-AGENTS-01',
+      severity: 'BLOCK',
+      ok: false,
+      detail: `expected ${EXPECTED_BC_AGENTS.length} agent .md files, found ${bcAgents.length} — run \`bun run build\` (missing: ${missing.join(', ')})`,
+    };
+  }
+
+  return { id: 'D-AGENTS-01', severity: 'BLOCK', ok: true };
+}
+
+export function shouldRunGhAuth(config: Record<string, unknown>): boolean {
+  if (config.auto_sync === false) return false;
+  return true;
+}
+
+/** @deprecated alias — use shouldRunGhAuth; checks forge CLI auth for any backend */
+export const shouldRunForgeAuth = shouldRunGhAuth;
+
+export function checkStaleGlobalSkill(homeDir: string): DoctorCheck {
+  for (const name of LEGACY_SKILL_NAMES) {
+    const stalePath = path.join(homeDir, '.agents', 'skills', name);
+    if (fs.existsSync(stalePath)) {
+      return {
+        id: 'D-SKILL-01',
+        severity: 'WARN',
+        ok: false,
+        detail: `stale skill at ${stalePath} — remove or migrate to blackhole`,
+      };
+    }
+  }
+  return { id: 'D-SKILL-01', severity: 'WARN', ok: true };
+}
+
+export function resolveSymlinkTarget(linkPath: string): string {
+  const target = fs.readlinkSync(linkPath);
+  return path.isAbsolute(target) ? target : path.resolve(path.dirname(linkPath), target);
+}
+
+/** One id per legacy Gemini plugin path (DR-2, #64) — zipped by index, not derived from a ternary. */
+const GEMINI_CHECK_IDS = ['D-GEMINI-01', 'D-GEMINI-02', 'D-GEMINI-03', 'D-GEMINI-04'] as const;
+
+export function checkGeminiSymlinks(paths: string[]): DoctorCheck[] {
+  return paths.map((linkPath, index) => {
+    const id = GEMINI_CHECK_IDS[index];
+
+    let stat: fs.Stats;
+    try {
+      stat = fs.lstatSync(linkPath);
+    } catch {
+      return { id, severity: 'WARN', ok: true };
+    }
+
+    if (!stat.isSymbolicLink()) {
+      return { id, severity: 'WARN', ok: true };
+    }
+
+    const resolved = resolveSymlinkTarget(linkPath);
+    if (fs.existsSync(resolved)) {
+      return { id, severity: 'WARN', ok: true };
+    }
+
+    return {
+      id,
+      severity: 'WARN',
+      ok: false,
+      detail: `broken symlink ${linkPath} → ${resolved}`,
+    };
+  });
+}
+
+/** Plugin key the Claude marketplace install is recorded under in installed_plugins.json. */
+const CLAUDE_PLUGIN_KEY = 'blackhole@blackhole-marketplace';
+
+/**
+ * WARN when a project vendors blackhole (vendor/blackhole) at a different version from the Claude
+ * plugin installed for it. Agents load from the plugin while `--cwd` script invocations resolve
+ * into the vendored copy, so a mismatch runs prompts and scripts from two different releases.
+ */
+export function checkPluginVersionDrift(repoRoot: string, homeDir: string): DoctorCheck {
+  const id = 'Vendored blackhole matches installed Claude plugin';
+  const vendoredPkg = path.join(repoRoot, 'vendor', 'blackhole', 'package.json');
+  const installedPath = path.join(homeDir, '.claude', 'plugins', 'installed_plugins.json');
+  if (!fs.existsSync(vendoredPkg) || !fs.existsSync(installedPath)) return { id, severity: 'WARN', ok: true };
+  let vendored: unknown;
+  let rows: unknown;
+  try {
+    vendored = (readJsonFile(vendoredPkg, vendoredPkg) as { version?: unknown }).version;
+    rows = (readJsonFile(installedPath, installedPath) as { plugins?: Record<string, unknown> }).plugins?.[CLAUDE_PLUGIN_KEY];
+  } catch {
+    return { id, severity: 'WARN', ok: false, detail: 'could not read vendor/blackhole/package.json or installed_plugins.json' };
+  }
+  const versions = (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && (row.scope === 'user' || (row.scope === 'project' && row.projectPath === repoRoot)))
+    .map((row) => row.version)
+    .filter((v): v is string => typeof v === 'string');
+  const mismatched = versions.filter((v) => v !== vendored);
+  if (!mismatched.length) return { id, severity: 'WARN', ok: true };
+  return {
+    id,
+    severity: 'WARN',
+    ok: false,
+    detail: `vendor/blackhole is ${String(vendored)}, installed plugin is ${mismatched.join(', ')}; update one so both match`,
+  };
+}
+
+/** True when `repoRoot` is a blackhole source checkout, the one tree where `bun run verify` exists. */
+export function isBlackholeCheckout(repoRoot: string): boolean {
+  const pkgPath = path.join(repoRoot, 'package.json');
+  if (!fs.existsSync(pkgPath) || !fs.existsSync(path.join(repoRoot, 'scripts', 'verify.ts'))) return false;
+  try {
+    return (readJsonFile(pkgPath, pkgPath) as { name?: unknown }).name === 'blackhole';
+  } catch {
+    return false;
+  }
+}
+
+export function exitCodeFromChecks(checks: DoctorCheck[]): number {
+  const blockFailed = checks.some((c) => c.severity === 'BLOCK' && !c.ok);
+  return blockFailed ? 1 : 0;
+}
+
+function resolveConfigPath(repoRoot: string): string {
+  if (process.env.CAMPAIGN_CONFIG) {
+    return process.env.CAMPAIGN_CONFIG;
+  }
+  return path.join(repoRoot, DEFAULT_CONFIG_PATH);
+}
+
+function runVerify(repoRoot: string): DoctorCheck {
+  if (process.env.DOCTOR_SKIP_VERIFY === '1') {
+    return { id: 'D-VERIFY-01', severity: 'BLOCK', ok: true };
+  }
+
+  const result = spawnSync('bun', ['run', 'verify'], {
+    cwd: repoRoot,
+    stdio: 'pipe',
+    encoding: 'utf-8',
+  });
+
+  if (result.status !== 0) {
+    const detail =
+      result.stderr?.trim() || result.stdout?.trim() || `verify exited with code ${result.status}`;
+    return { id: 'D-VERIFY-01', severity: 'BLOCK', ok: false, detail };
+  }
+
+  return { id: 'D-VERIFY-01', severity: 'BLOCK', ok: true };
+}
+
+function checkConfigExists(configPath: string): DoctorCheck {
+  if (!fs.existsSync(configPath)) {
+    return {
+      id: 'D-CONFIG-01',
+      severity: 'BLOCK',
+      ok: false,
+      detail: `${configPath} not found`,
+    };
+  }
+  return { id: 'D-CONFIG-01', severity: 'BLOCK', ok: true };
+}
+
+function checkConfigValid(configPath: string): DoctorCheck {
+  const content = fs.readFileSync(configPath, 'utf-8');
+  const result = validateConfigJson(content);
+  if (!result.ok) {
+    return {
+      id: 'D-CONFIG-02',
+      severity: 'BLOCK',
+      ok: false,
+      detail: result.detail,
+    };
+  }
+  return { id: 'D-CONFIG-02', severity: 'BLOCK', ok: true };
+}
+
+function checkForgeResolution(
+  repoRoot: string,
+  config: Record<string, unknown>,
+): DoctorCheck {
+  const forgeField = typeof config.forge === 'string' ? config.forge : undefined;
+  const resolved = resolveForgeForRepo(repoRoot, forgeField);
+  if (!resolved.ok) {
+    return { id: 'D-FORGE-01', severity: 'BLOCK', ok: false, detail: resolved.detail };
+  }
+  return {
+    id: 'D-FORGE-01',
+    severity: 'BLOCK',
+    ok: true,
+    detail: `forge=${resolved.forge} (${resolved.source})`,
+  };
+}
+
+function runForgeAuthCheck(forge: ForgeType): DoctorCheck {
+  const status = checkForgeAuthSync(forge);
+  if (!status.ok) {
+    return { id: 'D-GH-01', severity: 'BLOCK', ok: false, detail: status.detail };
+  }
+  return { id: 'D-GH-01', severity: 'BLOCK', ok: true, detail: status.host ?? undefined };
+}
+
+function runGhAuth(repoRoot: string, config: Record<string, unknown>): DoctorCheck {
+  const resolved = resolveForgeForRepo(
+    repoRoot,
+    typeof config.forge === 'string' ? config.forge : undefined,
+  );
+  if (!resolved.ok) {
+    return { id: 'D-GH-01', severity: 'BLOCK', ok: false, detail: resolved.detail };
+  }
+  return runForgeAuthCheck(resolved.forge);
+}
+
+function printCheck(check: DoctorCheck): void {
+  const warnIcon = check.ok ? '✓' : '⚠';
+  const blockIcon = check.ok ? '✓' : '✗';
+  const displayIcon = check.severity === 'WARN' ? warnIcon : blockIcon;
+  console.log(`  ${displayIcon} ${check.id}${check.detail ? ` — ${check.detail}` : ''}`);
+}
+
+/**
+ * Runs the doctor against the campaign in `repoRoot`, the working directory by default: an
+ * installed plugin is invoked from the consumer repo, so the plugin's own directory is never the
+ * campaign. `D-VERIFY-01` and `D-AGENTS-01` only run in a blackhole checkout: they check the
+ * checkout's own build (`bun run verify`, `bun run build` output), which a consumer repo has not got.
+ */
+export function runDoctorChecks(repoRoot: string = process.cwd()): DoctorCheck[] {
+  const checks: DoctorCheck[] = [];
+
+  const inCheckout = isBlackholeCheckout(repoRoot);
+  if (inCheckout) checks.push(runVerify(repoRoot));
+
+  const configPath = resolveConfigPath(repoRoot);
+  checks.push(checkConfigExists(configPath));
+
+  if (checks[checks.length - 1].ok) {
+    checks.push(checkConfigValid(configPath));
+
+    if (checks[checks.length - 1].ok) {
+      const config = readJsonFile(configPath, configPath) as Record<string, unknown>;
+      checks.push(
+        checkForgeResolution(repoRoot, config),
+      );
+      if (shouldRunGhAuth(config) && checks[checks.length - 1].ok) {
+        checks.push(runGhAuth(repoRoot, config));
+      }
+    }
+  }
+
+  if (inCheckout) checks.push(checkCursorAgents(repoRoot));
+
+  const homeDir = os.homedir();
+  checks.push(checkStaleGlobalSkill(homeDir));
+  checks.push(checkPluginVersionDrift(repoRoot, homeDir));
+
+  const geminiPaths = [
+    path.join(homeDir, '.gemini', 'config', 'plugins', 'backlog-campaign'),
+    path.join(repoRoot, '.agents', 'plugins', 'backlog-campaign'),
+    path.join(homeDir, '.gemini', 'config', 'plugins', 'bc-campaign'),
+    path.join(repoRoot, '.agents', 'plugins', 'bc-campaign'),
+  ];
+  checks.push(...checkGeminiSymlinks(geminiPaths));
+
+  return checks;
+}
+
+function main(): void {
+  console.log('blackhole doctor\n');
+
+  const checks = runDoctorChecks();
+  let blockPassed = 0;
+  let blockTotal = 0;
+  let warnCount = 0;
+
+  for (const check of checks) {
+    printCheck(check);
+    if (check.severity === 'BLOCK') {
+      blockTotal++;
+      if (check.ok) blockPassed++;
+    } else if (!check.ok) {
+      warnCount++;
+    }
+  }
+
+  console.log(`\n${blockPassed} BLOCK passed, ${warnCount} WARN`);
+
+  process.exit(exitCodeFromChecks(checks));
+}
+
+if (import.meta.main) {
+  main();
+}

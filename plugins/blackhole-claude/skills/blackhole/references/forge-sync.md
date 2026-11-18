@@ -46,7 +46,7 @@ writes `queue.json` through the state write guard (`blackhole-state.md` § Write
   #N`, as `reconcileMerged`), `closed` when the forge closed it; a forge-open issue stays open.
 
 It never removes an entry. On a fresh checkout holding only `config.json` it also writes an empty
-`findings-ledger.json`, so `bun run status` can publish the page right after. A failed forge read
+`findings-ledger.json`, so `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` can publish the page right after. A failed forge read
 writes nothing (exit 1); `auto_sync: false` reads and writes nothing; `--dry-run` prints the queue.
 The orchestrator stays the single writer: run it in the orchestrator's turn or when none runs; the
 queue is re-read just before the write and the sync re-applied to that copy. Write-back (§ 6.5),
@@ -277,7 +277,7 @@ If issue body or branch name contains `fixes #N` / `closes #N`, link `pr` on
 queue entry for issue N.
 
 An open PR that links no queue issue (work opened without one: a trunk fix, a dependency bump, a
-branch sync) is not adopted into `queue.json`, whose entries are issues. `bun run status` lists it
+branch sync) is not adopted into `queue.json`, whose entries are issues. `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` lists it
 instead, from the open-PR list it already fetches, under **Open PR with no queue entry**
 (`untracked_prs`, `coordinator-dashboard.md` § Status page), until a queue entry names it or it closes.
 

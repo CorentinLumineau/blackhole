@@ -22,7 +22,7 @@ asks as it always has. Never hand-edit it; the toggle is a script:
 `run-context.json` and prints `sleep mode on: owner questions are parked` with the hold's state
 when it is on, so every resume sees it. `keep_awake` is `{held: true, tool, pid, since}` or
 `{held: false, reason}` (§ Keeps itself alive). The
-launch summary (`bun run status --summary`) carries a display-only **Sleep mode** row. What the
+launch summary (`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --summary`) carries a display-only **Sleep mode** row. What the
 launch gate does while sleep mode is on is `launch-gate.md` § Print-only mode's.
 
 ## The choke point: `askOrPark()`

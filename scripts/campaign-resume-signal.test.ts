@@ -311,7 +311,8 @@ describe('logged-swallow sites (#864)', () => {
 describe('DOORBELL_MESSAGE', () => {
   test('mentions resume-request.json and coordinator flow', () => {
     expect(DOORBELL_MESSAGE).toContain('resume-request.json');
-    expect(DOORBELL_MESSAGE).toContain('bun run status');
+    expect(DOORBELL_MESSAGE).not.toContain('bun run status');
+    expect(DOORBELL_MESSAGE).toContain(`bun run "${path.join(import.meta.dir, 'campaign-status.ts')}"`);
   });
 });
 

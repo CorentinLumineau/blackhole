@@ -4,7 +4,7 @@ summary: "Blast-radius reference for shared check-utils.ts consumers across scri
 status: current
 review_trigger: "on check-utils.ts or scripts/checks/*.check.ts import change"
 created: 2026-07-26
-last_updated: 2026-09-07
+last_updated: 2026-11-18
 related:
   - scripts/checks/check-utils.ts
   - scripts/verify.ts
@@ -110,6 +110,7 @@ closing the recurring six-time drift — #410/#462/#498/#570/#882/#945 — this 
 | `scripts/checks/pareto-filing-gate.check.ts` | `root`, `read`, `CheckResult` | Pareto filing-gate checks |
 | `scripts/checks/parity-matrix.check.ts` | `root`, `CheckResult` | Platform parity matrix checks |
 | `scripts/checks/plan-quality-gate.check.ts` | `root`, `read`, `CheckResult` | Plan quality gate checks |
+| `scripts/checks/playbook-invocation.check.ts` | `read`, `CheckResult` | Playbook alias-invocation checks (V-INVOKE-01) |
 | `scripts/checks/playbook.check.ts` | `root`, `read`, `CheckResult` | Playbook / phase doc checks |
 | `scripts/checks/prose-heredoc.check.ts` | `read`, `CheckResult` | Agent-prose heredoc checks |
 | `scripts/checks/queue-coherence.check.ts` | `root`, `CheckResult` | Live `.blackhole/queue.json` coherence checks |
@@ -182,7 +183,7 @@ rg -l "from ['\"].*check-utils" scripts/checks/*.check.ts scripts/verify.ts | wc
 #    comment ("Dependency blast-radius (N direct consumers)") should always match — and, as of
 #    issue #960, is now mechanically enforced by V-BLASTRADIUS-01
 #    (scripts/checks/check-utils-blast-radius.check.ts) rather than only prescribed here.
-rg -l "from ['\"].*check-utils" scripts --glob '!wt-*' | wc -l                        # 95
+rg -l "from ['\"].*check-utils" scripts --glob '!wt-*' | wc -l                        # 96
 
 # 3. Files anywhere under scripts/ that import the `read` symbol specifically — a subset of
 #    #2, orthogonal to #1 (a file can import `read` without being a *.check.ts module, e.g.

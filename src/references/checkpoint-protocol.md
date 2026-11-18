@@ -27,7 +27,7 @@ On every orchestrator turn end, persist in this order:
    the checked-out branch, and a failed push blocks ending the turn like any other write failure
    (`state-branch.md`).
 5. Unless `status_page.enabled` is `false`, refresh the status page
-   (`bun run status --data` on Claude Code, `--html` elsewhere, then the per-harness view — `status-page.md` § Refresh procedure).
+   (`bun run scripts/campaign-status.ts --data` on Claude Code, `--html` elsewhere, then the per-harness view — `status-page.md` § Refresh procedure).
    It reads the checkpoint's `## Headline` and `## Blocking the run` written in step 3, so a
    checkpoint is written before every refresh that should show a new headline. A failed refresh
    is reported in one line and does not block ending the turn.

@@ -9,6 +9,8 @@ import {
   checkPluginVersionDrift,
   checkStaleGlobalSkill,
   exitCodeFromChecks,
+  isBlackholeCheckout,
+  runDoctorChecks,
   shouldRunGhAuth,
   validateConfigJson,
   type DoctorCheck,
@@ -258,5 +260,59 @@ describe('checkPluginVersionDrift', () => {
     expect(check.severity).toBe('WARN');
     expect(check.detail).toContain('0.21.0');
     expect(check.detail).toContain('0.22.3');
+  });
+});
+
+describe('runDoctorChecks repo root', () => {
+  const withEnv = <T>(env: Record<string, string | undefined>, fn: () => T): T => {
+    const saved = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+    for (const [k, v] of Object.entries(env)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    try {
+      return fn();
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  };
+
+  const makeCheckout = (): string => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-checkout-'));
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'blackhole' }));
+    fs.mkdirSync(path.join(dir, 'scripts'));
+    fs.writeFileSync(path.join(dir, 'scripts', 'verify.ts'), '');
+    return dir;
+  };
+
+  test('a consumer repo is not a blackhole checkout', () => {
+    const consumer = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-consumer-'));
+    fs.writeFileSync(path.join(consumer, 'package.json'), JSON.stringify({ name: 'some-app' }));
+    expect(isBlackholeCheckout(consumer)).toBe(false);
+    expect(isBlackholeCheckout(makeCheckout())).toBe(true);
+  });
+
+  test('outside a checkout, verify is not run and the missing config is the BLOCK failure', () => {
+    const consumer = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-consumer-'));
+    const checks = withEnv({ DOCTOR_SKIP_VERIFY: undefined, CAMPAIGN_CONFIG: undefined }, () =>
+      runDoctorChecks(consumer),
+    );
+    expect(checks.map((c) => c.id)).not.toContain('D-VERIFY-01');
+    expect(checks.map((c) => c.id)).not.toContain('D-AGENTS-01');
+    const config = checks.find((c) => c.id === 'D-CONFIG-01');
+    expect(config?.ok).toBe(false);
+    expect(config?.detail).toContain(path.join(consumer, '.blackhole', 'config.json'));
+  });
+
+  test('inside a checkout, verify still runs', () => {
+    const checkout = makeCheckout();
+    const checks = withEnv({ DOCTOR_SKIP_VERIFY: '1', CAMPAIGN_CONFIG: undefined }, () =>
+      runDoctorChecks(checkout),
+    );
+    expect(checks[0]).toEqual({ id: 'D-VERIFY-01', severity: 'BLOCK', ok: true });
+    expect(checks.find((c) => c.id === 'D-AGENTS-01')?.ok).toBe(false);
   });
 });

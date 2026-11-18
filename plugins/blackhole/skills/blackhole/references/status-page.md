@@ -1,7 +1,7 @@
 # Status Page — One Live View of the Campaign
 
 The owner checks campaign state on one page instead of asking the agent. The page is fed by
-`bun run status --json` (the same counts as the text dashboard, `coordinator-dashboard.md`
+`bun run scripts/campaign-status.ts --json` (the same counts as the text dashboard, `coordinator-dashboard.md`
 § Status page) and published to **one** place per harness. It never gets a second link. Claude
 Code shows a live Data dashboard (`--data`); `--html` is the Cursor and local-file view.
 
@@ -15,7 +15,7 @@ everything below; the text dashboard is unaffected.
 | Campaign start, after bootstrap and before the first spawn | `coordinator` (Pattern B) or the main-chat orchestrator (Pattern C) |
 | Every checkpoint write — `checkpoint-protocol.md` § Write order, step 5 | `orchestrator` |
 | The main chat hands the turn back while workers are still in flight (Pattern C) | main-chat orchestrator |
-| `status` mode / the owner asks for status | whoever runs `bun run status` |
+| `status` mode / the owner asks for status | whoever runs `bun run scripts/campaign-status.ts` |
 
 A refresh is cheap and idempotent: regenerate, then update the existing view. Online it reads the
 forge counts, then two adapter reads per open PR the board shows (`prView` for the review label and
@@ -90,9 +90,9 @@ the plugin version).
 ## Refresh procedure
 
 1. Render the view for this harness. Claude Code publishes a live **Data dashboard** fed by
-   `bun run status --data .blackhole/.tmp/status-data` (one `<id>.json` row file per dataset,
+   `bun run scripts/campaign-status.ts --data .blackhole/.tmp/status-data` (one `<id>.json` row file per dataset,
    derived from the same `StatusReport` as `--json`, so the counts never diverge); every other
-   harness renders `bun run status --html`, which writes `.blackhole/.tmp/status.html` (override
+   harness renders `bun run scripts/campaign-status.ts --html`, which writes `.blackhole/.tmp/status.html` (override
    with `--out <path>`) and prints the path. `--html` escapes every value and loads nothing from
    the network. With no `queue.json` yet (a fresh checkout holding only
    `config.json`), run `bun run scripts/forge-sync.ts` first: it builds the queue and an empty ledger from
@@ -102,7 +102,7 @@ the plugin version).
 
 ### Any other harness, or no artifact/canvas tool
 
-Run `bun run status --html`, then print the path once per session (`📄 Status page: .blackhole/.tmp/status.html`).
+Run `bun run scripts/campaign-status.ts --html`, then print the path once per session (`📄 Status page: .blackhole/.tmp/status.html`).
 Later refreshes rewrite the same file silently.
 
 ## Page layout
