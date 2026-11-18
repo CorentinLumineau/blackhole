@@ -646,8 +646,9 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
     });
   }
 
-  // An ANSI-C `$'...'` word is read as unresolvable, so a trace assignment spelled with one warns
-  // wherever the shell expects an assignment, and is never silent.
+  // The shell decodes an ANSI-C `$'...'` word (hex, octal, `\u`, `\U` and the one-letter escapes)
+  // and a locale-quoted `$"..."` word before `env` or `export` sees it, so a trace assignment
+  // spelled with either is judged by what it decodes to, wherever the shell expects an assignment.
   for (const build of [
     (m: string) => `env $'GIT_TRACE=${m}/x' git status`,
     (m: string) => `export A $'GIT_TRACE=${m}/x'; git status`,
@@ -656,9 +657,47 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
     (m: string) => `export A $'GIT_TRACE'=${m}/x; git status`,
     (m: string) => `export GIT_$'TRACE'=${m}/x; git status`,
     (m: string) => `env GIT_$'TRACE'=${m}/x git status`,
+    (m: string) => `export $'GIT_TRAC\\x45=${m}/x'`,
+    (m: string) => `export $'GIT\\x5fTRACE=${m}/x'`,
+    (m: string) => `env $'\\x47IT_TRACE=${m}/x' git status`,
+    (m: string) => `export $'\\107IT_TRACE=${m}/x'`,
+    (m: string) => `env $'GIT_\\x54RACE=${m}/x' git status`,
+    (m: string) => `env $'GIT_T\\122ACE=${m}/x' git status`,
+    (m: string) => `env $'GIT_TRAC\\u0045=${m}/x' git status`,
+    (m: string) => `env $'GIT_TRAC\\U00000045=${m}/x' git status`,
+    (m: string) => `env $'GIT_TRAC\\x4' git status; env $'GIT_TRACE=${m}/x' git status`,
+    (m: string) => `env $'GIT_TRACE=\\x${[...m].map((c) => c.charCodeAt(0).toString(16)).join('\\x')}/x' git status`,
+    (m: string) => `export $"GIT_TRACE=${m}/x"`,
+    (m: string) => `env $"GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env $"GIT_TRACE"=${m}/x git status`,
+    (m: string) => `export A $"GIT_TRACE=${m}/x"; git status`,
   ]) {
-    test(`#1246: \`${build('<main>')}\` warns (an ANSI-C quoted trace assignment is never silent)`, async () => {
-      expect(await verdict((m) => build(m))).toMatchObject(WARN);
+    test(`#1246: \`${build('<main>')}\` is denied (a decoded trace assignment is judged by its value)`, async () => {
+      expect(await verdict((m) => build(m))).toMatchObject(BLOCK);
+    });
+  }
+
+  for (const command of [
+    "env $'GIT_TRACE=$LOG' git status",
+    "env $'GIT_TRAC\\x45'=$LOG git status",
+    'env $"GIT_TRACE=$LOG" git status',
+  ]) {
+    test(`#1246: \`${command}\` is judged by its decoded value`, async () => {
+      const result = await verdict(() => command);
+      expect(result === null || (result as { tier: string }).tier === 'warn').toBe(true);
+    });
+  }
+
+  for (const build of [
+    () => "env $'GIT_TRAC\\x45=1' git status",
+    () => "env $'GIT_TRAC\\u0045=true' git status",
+    () => "export $'FOO\\x41=/etc/x'; git status",
+    () => "export $'GIT_TRAC\\x58=/etc/x'; git status",
+    () => 'export $"FOO=/etc/x"; git status',
+    (_m: string, w: string) => `env $'GIT_TRAC\\x45=${w}/x' git status`,
+  ]) {
+    test(`#1246: \`${build('<main>', '<wt>')}\` stays allowed`, async () => {
+      expect(await verdict(build)).toBeNull();
     });
   }
 
