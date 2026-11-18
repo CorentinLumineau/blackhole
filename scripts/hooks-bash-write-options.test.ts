@@ -610,6 +610,17 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
     ['escaped value', (m: string) => `GIT_TRACE=\\${m}/t git status`],
     ['GIT_TRACE2_EVENT naming a directory', (m: string) => `GIT_TRACE2_EVENT=${m} git status`],
     ['a later family member', (m: string) => `GIT_TRACE_PACK_ACCESS=${m}/t git status`],
+    // A whole-word-quoted assignment, `+=`, and a quoted name, where the shell expects an assignment.
+    ['env with a quoted assignment', (m: string) => `env "GIT_TRACE=${m}/x" git status`],
+    ['env with a single-quoted assignment', (m: string) => `env 'GIT_TRACE=${m}/x' git status`],
+    ['env with an option before a quoted assignment', (m: string) => `env -i "GIT_TRACE=${m}/x" git status`],
+    ['a wrapper before env', (m: string) => `sudo env "GIT_TRACE_PACKET=${m}/t" git fetch`],
+    ['export with a quoted assignment', (m: string) => `export "GIT_TRACE=${m}/x"; git status`],
+    ['export after another assignment', (m: string) => `export A=1 "GIT_TRACE=${m}/x"; git status`],
+    ['a quoted variable name', (m: string) => `env 'GIT_TRACE'=${m}/x git status`],
+    ['`+=` on a prefix assignment', (m: string) => `GIT_TRACE+=${m}/x git status`],
+    ['`+=` through export', (m: string) => `export GIT_TRACE+=${m}/x; git status`],
+    ['`+=` through env with a quoted word', (m: string) => `env "GIT_TRACE+=${m}/x" git status`],
   ] as const) {
     test(`#1246: ${label} is denied`, async () => {
       expect(await verdict(build)).toMatchObject(BLOCK);
@@ -618,6 +629,12 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
 
   for (const command of ['GIT_TRACE=$LOG git status', 'GIT_TRACE="$HOME/t" git status', 'GIT_TRACE=`pwd`/t git status', 'GIT_TRACE=~/t git status']) {
     test(`#1246: \`${command}\` warns (the trace file is not known statically)`, async () => {
+      expect(await verdict(() => command)).toMatchObject(WARN);
+    });
+  }
+
+  for (const command of ['env "GIT_TRACE=$LOG" git status', 'export "GIT_TRACE=$HOME/t"; git status', 'GIT_TRACE+=$LOG git status']) {
+    test(`#1246: \`${command}\` warns (a quoted or appended trace file is not known statically)`, async () => {
       expect(await verdict(() => command)).toMatchObject(WARN);
     });
   }
@@ -635,6 +652,11 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
     () => 'GIT_TRACE2_ENV_VARS=HOME,PATH git status',
     () => 'GIT_TRACE_REDACT=0 git status',
     () => "git commit -m 'GIT_TRACE=/etc/x'",
+    () => 'echo "GIT_TRACE=/etc/x"',
+    () => 'grep "GIT_TRACE=/etc/x" notes.txt',
+    () => 'env "GIT_TRACE=1" git status',
+    () => 'export "GIT_TRACE=true"; git status',
+    () => 'export FOO="GIT_TRACE=/etc/x"; git status',
     (m: string) => `GIT_DIR=${m}/.git git log`,
   ]) {
     test(`#1246: \`${build('<main>', '<wt>')}\` stays allowed`, async () => {

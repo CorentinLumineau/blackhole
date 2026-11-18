@@ -118,7 +118,8 @@ const stripQuotes = (token) => {
 
 /** Quote-aware whitespace tokenizer over an already-visible (masked spans blanked) substring —
  * a quoted span (e.g. a sed script `'s/a/b/'`) is kept as one token, quotes intact, so
- * `stripQuotes` can later decide whether to unwrap it. */
+ * `stripQuotes` can later decide whether to unwrap it. A backslash-escaped character (`x\ y`)
+ * never splits a word. */
 const tokenize = (text) => {
   const tokens = [];
   let current = '';
@@ -132,6 +133,12 @@ const tokenize = (text) => {
         current = '';
       }
       i++;
+      continue;
+    }
+    if (ch === '\\' && i + 1 < n) {
+      // An escaped character, space included, stays in the word: `x\ y` is one word.
+      current += text.slice(i, i + 2);
+      i += 2;
       continue;
     }
     if (ch === "'" || ch === '"') {
@@ -922,20 +929,30 @@ const findOptionWriteTargets = (tokens) => {
   return targets;
 };
 
+/** Builtins whose operands are assignments (`export "GIT_TRACE=/x"`). */
+const DECLARERS = new Set(['export', 'declare', 'typeset', 'local', 'readonly']);
+
 /** Files git appends a trace to (`GIT_TRACE=/x`, `GIT_TRACE2_EVENT=<dir>`, …) from assignments
- * anywhere in one clause — a prefix, `export` or `env` alike. Git writes only to an absolute
- * value: `1`, `true`, `0`, `false` and `2`–`9` mean stderr, off or an fd, and any other value is
- * ignored. A value the shell rewrites (`$LOG`, `` `pwd` ``, `~/t`) is returned as written, so it
- * is unresolvable. */
+ * anywhere in one clause — a prefix, `export` or `env` alike, appended with `+=` or not. Git
+ * writes only to an absolute value: `1`, `true`, `0`, `false` and `2`–`9` mean stderr, off or an
+ * fd, and any other value is ignored. A word that starts with a quote is an assignment only where
+ * the shell expects one (a command word, so `env "GIT_TRACE=/x" git`, or an operand of `export`),
+ * so `git commit -m 'GIT_TRACE=/x'` names no trace. A value the shell rewrites (`$LOG`,
+ * `` `pwd` ``, `~/t`) is returned as written, so it is unresolvable. */
 const findGitTraceTargets = (tokens) => {
   const targets = [];
-  for (const token of tokens) {
-    const value = /^GIT_TRACE\w*=([\s\S]*)$/.exec(token)?.[1];
-    if (value === undefined) continue;
-    const { text, dynamic } = normalizeShellWord(value);
+  const positions = commandPositions(tokens);
+  let declaring = false;
+  tokens.forEach((token, i) => {
+    const assignmentSlot = positions.has(i) || declaring;
+    declaring = DECLARERS.has(commandName(token)) || (declaring && (token.startsWith('-') || /^['"]?[A-Za-z_]\w*\+?=/.test(token)));
+    if ((token[0] === "'" || token[0] === '"') && !assignmentSlot) return;
+    const { text, dynamic } = normalizeShellWord(token);
+    const value = /^GIT_TRACE\w*\+?=([\s\S]*)$/.exec(dynamic ? stripQuotes(token) : text)?.[1];
+    if (value === undefined) return;
     if (dynamic) targets.push(value);
-    else if (path.isAbsolute(text) || text.startsWith('~')) targets.push(text);
-  }
+    else if (path.isAbsolute(value) || value.startsWith('~')) targets.push(value);
+  });
   return targets;
 };
 
@@ -966,8 +983,9 @@ const shellReadsStdinScript = (args) => {
   return true;
 };
 
-/** A single `|` (or `|&`) pipe — never the `||` operator — and the clause text it feeds. */
-const PIPE_INTO_RE = /(?<!\|)\|&?(?!\|)([^;|&\n]*)/g;
+/** A single `|` (or `|&`) pipe — never the `||` operator — and the clause text it feeds; a newline
+ * after the pipe continues the command, so the clause starts on the next line. */
+const PIPE_INTO_RE = /(?<!\|)\|&?(?!\|)\s*([^;|&\n]*)/g;
 
 /** True when a pipe feeds a shell or an interpreter that reads its script from stdin (`… | sh`,
  * `… | bash -s`, `… | node`, `… | python3 -`): the piped text runs as code this module never
@@ -1159,12 +1177,14 @@ const hasInterpreterWrite = (tokens, heredocText) =>
  * (`node < script.js`, `node <&3`): a script the command string does not show. */
 const STDIN_FROM_FILE = Symbol('stdin from a file');
 
-/** The script a heredoc (`<<`), here-string (`<<<`) or input file (`<`) after the command word at
- * `idx` feeds on stdin, fd `0` named or not, or null when the clause has none. A heredoc yields
- * `heredocText`, every heredoc body in the command: checking more text than the clause's own body
- * only ever adds a warning. */
+/** The script a heredoc (`<<`), here-string (`<<<`) or input file (`<`) in the clause feeds on
+ * stdin, fd `0` named or not, or null when the clause has none. A redirect may precede the command
+ * word (`< evil.js node`), so every token but the command word at `idx` is scanned. A heredoc
+ * yields `heredocText`, every heredoc body in the command: checking more text than the clause's
+ * own body only ever adds a warning. */
 const stdinRedirectScript = (tokens, idx, heredocText) => {
-  for (let i = idx + 1; i < tokens.length; i++) {
+  for (let i = 0; i < tokens.length; i++) {
+    if (i === idx) continue;
     const here = /^0?<<<(.*)$/s.exec(tokens[i]);
     if (here) return [here[1], ...tokens.slice(i + 1)].join(' ');
     if (/^0?<</.test(tokens[i])) return heredocText;
@@ -1265,6 +1285,31 @@ const unescapeTarget = (raw) => {
   return dynamic ? raw : text;
 };
 
+/** The base a clause's relative targets resolve against when it runs `env -C DIR` (or
+ * `--chdir=DIR`), which starts its command in DIR; null when the clause has no such option, and
+ * `unknown` when a DIR cannot be read statically. Chained options resolve in order. */
+const envChdirBase = (tokens, dirs) => {
+  const idx = findCommand(tokens, 'env');
+  if (idx === -1) return null;
+  let base = null;
+  for (let i = idx + 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    let value;
+    if (t === '-C' || t === '--chdir') value = tokens[++i];
+    else if (t.startsWith('--chdir=')) value = t.slice('--chdir='.length);
+    else if (/^-C./.test(t)) value = t.slice(2);
+    else if (t === '-u' || t === '--unset') {
+      i++;
+      continue;
+    } else if (t.startsWith('-') || /^\w+=/.test(t)) continue;
+    else break;
+    const text = value === undefined ? null : stripQuotes(value);
+    if (text === null || !isResolvableLiteralTarget(text)) return { dirs: [], unknown: true };
+    base = { dirs: (base ? base.dirs : dirs).map((dir) => path.resolve(dir, text)), unknown: false };
+  }
+  return base;
+};
+
 /** Words that open and close a compound command (`if … fi`, loops, `case … esac`, `{ … }`). */
 const COMPOUND_OPENERS = new Set(['if', 'while', 'until', 'for', 'select', 'case', '{']);
 const COMPOUND_CLOSERS = new Set(['fi', 'done', 'esac', '}']);
@@ -1340,13 +1385,15 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   let unresolvable = false;
   let state = initialState;
   const saved = [];
+  let clauseBase = null; // set while a clause runs `env -C DIR`
   const add = (raw) => {
+    const base = clauseBase || state;
     const target = unescapeTarget(raw);
     if (!isResolvableLiteralTarget(target)) unresolvable = true;
     else if (path.isAbsolute(target)) literalTargets.push({ target, dirs: [cwd] });
     else {
-      literalTargets.push({ target, dirs: state.dirs });
-      if (state.unknown) unresolvable = true;
+      literalTargets.push({ target, dirs: base.dirs });
+      if (base.unknown) unresolvable = true;
     }
   };
 
@@ -1373,7 +1420,9 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
     const k = skipCompoundWords(tokens, nest);
     const inCase = nest.cases > 0;
     if (!inCase) for (let p = 0; p < opening.replace(/\s/g, '').length; p++) saved.push({ state, list }), (list = []);
+    clauseBase = null; // a redirect is opened by the shell itself, before `env` changes directory
     findRedirectTargets(redirectView.slice(from, to)).forEach(add);
+    clauseBase = tokens.length > 0 ? envChdirBase(tokens, state.dirs) : null;
     if (tokens.length > 0) {
       [
         ...findTeeTargets(tokens),

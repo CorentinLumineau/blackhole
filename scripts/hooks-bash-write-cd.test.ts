@@ -57,6 +57,11 @@ describe('bash-write-target-guard.js — a preceding cd moves relative write tar
     ['`cd sub && cd <main> && echo x > f` (the last cd wins)', (m: string) => `cd sub && cd ${m} && echo x > f`],
     ["`cd '<main>' && echo x > f` (quoted cd target)", (m: string) => `cd '${m}' && echo x > f`],
     ['`cd -P <main> && echo x > f` (cd option)', (m: string) => `cd -P ${m} && echo x > f`],
+    // `env -C DIR` runs its command in DIR, so a relative target resolves there.
+    ['`env -C <main> tee f`', (m: string) => `echo x | env -C ${m} tee f`],
+    ['`env --chdir=<main> tee f`', (m: string) => `echo x | env --chdir=${m} tee f`],
+    ['`env -C<main> cp a b`', (m: string) => `env -C${m} cp a b`],
+    ["`env -u X -C '<main>' tee f`", (m: string) => `echo x | env -u X -C '${m}' tee f`],
     // `||`: either cd may be the one that ran, so both directories are checked.
     ['`cd <main> || cd <wt> && echo x > f`', (m: string, w: string) => `cd ${m} || cd ${w} && echo x > f`],
     ['`cd <wt> || cd <main> && echo x > f`', (m: string, w: string) => `cd ${w} || cd ${m} && echo x > f`],
@@ -146,6 +151,9 @@ describe('bash-write-target-guard.js — a preceding cd moves relative write tar
     ['`cd <wt>; false && cd sub; echo x > f`', (_m: string, w: string) => `cd ${w}; false && cd sub; echo x > f`],
     ['`CDPATH=/x cd ./sub && echo x > f` (CDPATH skips ./)', () => 'CDPATH=/x cd ./sub && echo x > f'],
     ['`if true; then echo x > f; fi`', () => 'if true; then echo x > f; fi'],
+    ['`env -C <wt> tee f` stays inside the worktree', (_m: string, w: string) => `echo x | env -C ${w} tee f`],
+    ['`env -C sub tee f` stays inside the worktree', () => 'echo x | env -C sub tee f'],
+    ['a redirect is not moved by `env -C` of an earlier clause', (m: string) => `env -C ${m} true; echo x > f`],
     // A closed compound command no longer makes a later `cd` uncertain.
     ['`fi` closes the `if`', (m: string, w: string) => `cd ${m}; if true; then true; fi; cd ${w}; echo x > f`],
     ['`done` closes the loop', (m: string, w: string) => `cd ${m}; while false; do true; done; cd ${w}; echo x > f`],
