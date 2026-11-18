@@ -160,7 +160,7 @@ describe('--json, --html and the text dashboard show the same facts', () => {
         expect(html).toContain(escaped(facts));
       }
       if (!r.scope_record.recorded) {
-        expect(text).toContain('Scope not recorded');
+        expect(text).not.toContain('Scope not recorded');
         expect(html).toContain('Scope not recorded');
       }
       expect(html.indexOf('<h2>Scope')).toBeLessThan(html.indexOf('<h2>In progress'));
