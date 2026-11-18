@@ -1476,4 +1476,5 @@ module.exports = {
   isCommandWordStart,
   findClauseStartIndices,
   normalizeShellWord,
+  unquoteWord,
 };

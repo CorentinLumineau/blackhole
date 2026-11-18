@@ -53,11 +53,14 @@ operator never matched it.
   decoder is `decodeAnsiC` / `decodeQuotedWord` in `shell-lexer.js`, shared with `commandName`.
   Inside double or single quotes bash leaves `$'...'` and `$"..."` as text, so
   `export "GIT_TRACE=/m/a$'\x2f..'"` names the literal file `a$'\x2f..'` under `/m`, and a
-  literal trace value is compared as the exact name git opens, whatever characters it holds.
+  literal trace value is compared as the exact name git opens, even when it holds a quote or a
+  `$`. A value with a glob or brace character (`*`, `?`, `[`, `{`) is unresolvable, since `env`
+  and `export` operands are expanded.
 - An `env` option that takes a value (`-u`, `-C`, `-S`, `-a`, `--unset`, `--chdir`,
   `--split-string`, `--argv0`, also quoted, clustered as `-iu` or with `=`) consumes its value
   without ending the assignments, so `env --unset B "GIT_TRACE=/x" git` is read. A `-S` string
-  is split into words and each is judged like an assignment.
+  is split into words and each is judged like an assignment; a `-S` string holding an expansion
+  (`env -S "GIT_TRACE=$LOG git"`) is unresolvable.
 - A dynamic value (`$LOG`, `` `pwd` ``, `~/t`) is unresolvable and warns, as for the unquoted form.
 - Values git ignores (`1`, `true`, `0`, `false`, `2`–`9`, relative paths) stay allowed.
 
