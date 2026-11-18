@@ -10,7 +10,7 @@ describe('GiteaForgeAdapter', () => {
   });
 
   test('issueList normalizes tea issue rows', async () => {
-    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue([
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValueOnce([
       {
         index: 3,
         title: 'Gitea issue',
@@ -18,7 +18,7 @@ describe('GiteaForgeAdapter', () => {
         labels: ['bug'],
         state: 'open',
       },
-    ]);
+    ]).mockReturnValue([]);
     const adapter = new GiteaForgeAdapter('host/owner/repo');
     const issues = await adapter.issueList();
     expect(issues[0].number).toBe(3);
@@ -36,17 +36,50 @@ describe('GiteaForgeAdapter', () => {
   });
 
   test('issueList maps the string-valued cells tea 0.14.2 prints (index, comma-joined labels and assignees)', async () => {
-    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue([
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValueOnce([
       { index: '12', title: 't', body: 'b', state: 'open', labels: 'bug,in-progress:acct-a', milestone: 'M1', updated: '2026-11-18T14:59:42Z', assignees: 'a,b' },
       { index: '13', title: 'u', body: '', state: 'closed', labels: '', milestone: '', updated: '2026-11-18T14:59:42Z', assignees: '' },
-    ]);
+    ]).mockReturnValue([]);
     const issues = await new GiteaForgeAdapter('host/owner/repo').issueList();
     expect(issues[0]).toMatchObject({ number: 12, body: 'b', labels: [{ name: 'bug' }, { name: 'in-progress:acct-a' }], milestone: { title: 'M1' }, assignees: ['a', 'b'] });
     expect(issues[1]).toMatchObject({ number: 13, labels: [], milestone: null, state: 'CLOSED' });
   });
 
+  const pageOf = (from: number, n: number) => Array.from({ length: n }, (_, i) => ({ index: String(from + i), title: `t${from + i}`, state: 'open' }));
+
+  test('issueList walks --page until an empty page, because tea clamps a page to the server maximum', async () => {
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockImplementation(((args: string[]) => {
+      const page = Number(args[args.indexOf('--page') + 1]);
+      return page === 1 ? pageOf(1, 50) : page === 2 ? pageOf(51, 50) : page === 3 ? pageOf(101, 7) : [];
+    }) as never);
+    const issues = await new GiteaForgeAdapter('host/owner/repo').issueList();
+    expect(issues).toHaveLength(107);
+    expect(issues[106].number).toBe(107);
+    expect(runTeaJsonSpy.mock.calls.length).toBe(4);
+  });
+
+  test('issueList stops at the requested limit', async () => {
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockImplementation(((args: string[]) => (args[args.indexOf('--page') + 1] === '1' ? pageOf(1, 50) : pageOf(51, 50))) as never);
+    const issues = await new GiteaForgeAdapter('host/owner/repo').issueList({ limit: 60 });
+    expect(issues).toHaveLength(60);
+  });
+
+  test('issueList throws when pages never end', async () => {
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue(pageOf(1, 50) as never);
+    await expect(new GiteaForgeAdapter('host/owner/repo').issueList({ limit: 1_000_000 })).rejects.toThrow(/pages/);
+  });
+
+  test('prList without a state walks --page until an empty page', async () => {
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockImplementation(((args: string[]) => {
+      const page = Number(args[args.indexOf('--page') + 1]);
+      return page === 1 ? pageOf(1, 50) : page === 2 ? pageOf(51, 3) : [];
+    }) as never);
+    const prs = await new GiteaForgeAdapter('host/owner/repo').prList();
+    expect(prs).toHaveLength(53);
+  });
+
   test('prList without a state asks tea for json with fields that carry body and head', async () => {
-    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue([{ index: '7', title: 'pull', body: 'x', head: 'feature', state: 'open' }]);
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValueOnce([{ index: '7', title: 'pull', body: 'x', head: 'feature', state: 'open' }]).mockReturnValue([]);
     const prs = await new GiteaForgeAdapter('host/owner/repo').prList();
     const argv = runTeaJsonSpy.mock.calls[0][0] as string[];
     expect(argv.slice(0, 2)).toEqual(['pulls', 'list']);
@@ -56,7 +89,7 @@ describe('GiteaForgeAdapter', () => {
   });
 
   test('prList maps pull requests to ForgePr', async () => {
-    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue([
+    runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValueOnce([
       {
         index: 7,
         title: 'pull',
@@ -65,7 +98,7 @@ describe('GiteaForgeAdapter', () => {
         state: 'open',
         merged_at: null,
       },
-    ]);
+    ]).mockReturnValue([]);
     const adapter = new GiteaForgeAdapter('host/owner/repo');
     const prs = await adapter.prList();
     expect(prs[0].number).toBe(7);
@@ -269,7 +302,7 @@ describe('GiteaForgeAdapter', () => {
       runTeaJsonSpy = spyOn(teaCli, 'runTeaJson').mockReturnValue(null as never);
       mockApi((method, endpoint) =>
         method === 'GET'
-          ? [{ id: 5, name: 'bug' }, { id: 6, name: 'other' }]
+          ? endpoint.includes('page=1&') ? [{ id: 5, name: 'bug' }, { id: 6, name: 'other' }] : []
           : { number: 21, title: 'New bug', body: 'Steps to reproduce', labels: [{ name: 'bug' }], state: 'open', milestone: null },
       );
       const issue = await new GiteaForgeAdapter('host/owner/repo').issueCreate({ title: 'New bug', body: 'Steps to reproduce', labels: ['bug'] });
@@ -285,8 +318,44 @@ describe('GiteaForgeAdapter', () => {
     });
 
     test('issueCreate names the missing label instead of creating the issue unlabelled', async () => {
-      mockApi(() => [{ id: 5, name: 'bug' }]);
+      mockApi((_m, endpoint) => (endpoint.includes('page=1&') ? [{ id: 5, name: 'bug' }] : []));
       await expect(new GiteaForgeAdapter('host/owner/repo').issueCreate({ title: 't', body: 'b', labels: ['nope'] })).rejects.toThrow(/nope/);
+      expect(calls.some((c) => c.method === 'POST')).toBe(false);
+    });
+
+    test('issueCreate without labels makes no label request', async () => {
+      mockApi(() => ({ number: 2, title: 't', body: 'b', labels: [], state: 'open' }));
+      await new GiteaForgeAdapter('host/owner/repo').issueCreate({ title: 't', body: 'b' });
+      expect(calls.map((c) => c.method)).toEqual(['POST']);
+      expect(calls[0].body).toEqual({ title: 't', body: 'b' });
+    });
+
+    test('issueCreate finds a label on a later page and stops at the first empty page', async () => {
+      const full = Array.from({ length: 50 }, (_, i) => ({ id: i + 1, name: `l${i + 1}` }));
+      mockApi((method, endpoint) => {
+        if (method === 'POST') return { number: 3, title: 't', body: 'b', labels: [], state: 'open' };
+        if (endpoint.includes('page=1&')) return full;
+        if (endpoint.includes('page=2&')) return [{ id: 99, name: 'late' }];
+        return [];
+      });
+      await new GiteaForgeAdapter('host/owner/repo').issueCreate({ title: 't', body: 'b', labels: ['late', 'l3'] });
+      expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({ labels: [99, 3] });
+      expect(calls.filter((c) => c.method === 'GET').length).toBe(3);
+    });
+
+    test('issueCreate walks past a server page cap smaller than the requested limit', async () => {
+      mockApi((method, endpoint) => {
+        if (method === 'POST') return { number: 3, title: 't', body: 'b', labels: [], state: 'open' };
+        const page = Number(/page=(\d+)/.exec(endpoint)?.[1]);
+        return page === 1 ? [{ id: 1, name: 'a' }] : page === 2 ? [{ id: 2, name: 'b' }] : [];
+      });
+      await new GiteaForgeAdapter('host/owner/repo').issueCreate({ title: 't', body: 'b', labels: ['b'] });
+      expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({ labels: [2] });
+    });
+
+    test('issueCreate throws when the label pages never end', async () => {
+      mockApi((method) => (method === 'GET' ? [{ id: 1, name: 'a' }] : {}));
+      await expect(new GiteaForgeAdapter('host/owner/repo').issueCreate({ title: 't', body: 'b', labels: ['a'] })).rejects.toThrow(/pages/);
       expect(calls.some((c) => c.method === 'POST')).toBe(false);
     });
 

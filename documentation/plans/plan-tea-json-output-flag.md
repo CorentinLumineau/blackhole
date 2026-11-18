@@ -1,6 +1,6 @@
 ---
 type: plan
-summary: "Plan for making Gitea adapter tea calls work on tea 0.14.2 (output flag, create calls)"
+summary: "Plan for making Gitea adapter tea calls work on tea 0.14.2 (output flag, paged lists, REST create)"
 status: current
 review_trigger: "on file change"
 created: 2026-11-18
@@ -38,7 +38,8 @@ No `src/**` build source and no `templates/hooks/**` file is touched, so no `bun
 2. **`runTeaJson`**: append `--output json` instead of `--json`; stay idempotent when the args already carry `--output`, `-o`, or `--json`-free input; never emit `--json`.
 3. **`issueList`**: add `--fields index,title,body,state,labels,milestone,updated,assignees` (confirm names against `tea issues list --help` and the live JSON of one scratch call) so `mapIssue` keeps body, labels, milestone, `updatedAt`, assignees. Verify `labels` arrives as a string or array and that `normalizeLabels` handles it; if tea emits one comma-joined string, add the split in `gitea.ts` with a test.
 4. **`prList` (no-state branch)**: same treatment with the `pulls list` field set `mapPr` needs (read `TeaPrRow`); add `--fields` accordingly.
-5. **`issueCreate` and `prCreate`**: stop routing through `runTeaJson`. Run the create with `runTeaText`, read the new issue or PR number from tea's printed URL or index, then read the row back through the existing `runTeaApiJson` REST path (`GET repos/<slug>/issues/N`, `.../pulls/N`, the same mechanism `prView` already uses). If tea 0.14.2's create output does not expose the number, fall back to `tea api POST` with label-name to id resolution via `GET repos/<slug>/labels`. Choose by running the real command against a scratch repo; record the observed output in the PR body.
+5. **Shipped design (supersedes the text of step 5 below)**: `issueCreate` and `prCreate` use REST `POST repos/<slug>/issues|pulls` through `runTeaApiJson` directly, because `tea issue create` / `tea pull create` have no JSON output and their printed text was not relied on. Label names resolve to ids through a paged `GET repos/<slug>/labels` that stops on an empty page or `X-Total-Count`; an unknown label throws. `issueList` and `prList` walk `--page` (page size 50, Gitea's clamp) until an empty page, because `--limit` is per page.
+5a. **Original step 5**: stop routing through `runTeaJson`. Run the create with `runTeaText`, read the new issue or PR number from tea's printed URL or index, then read the row back through the existing `runTeaApiJson` REST path (`GET repos/<slug>/issues/N`, `.../pulls/N`, the same mechanism `prView` already uses). If tea 0.14.2's create output does not expose the number, fall back to `tea api POST` with label-name to id resolution via `GET repos/<slug>/labels`. Choose by running the real command against a scratch repo; record the observed output in the PR body.
 6. **Pagination check (advisory)**: `issueList` passes `--limit 200`, which tea treats per page. Confirm one page returns all open issues on a repo with 100+ (the ssl-management case in the issue); if tea caps below 200, loop `--page` until a short page and add a test. Report, do not widen scope, if it already works.
 7. Run `tea issues list --help`-based live smoke: `tea issues list --repo <slug> -o json --fields index,title,state --limit 2` parses as JSON.
 

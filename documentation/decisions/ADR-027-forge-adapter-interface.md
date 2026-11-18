@@ -171,14 +171,14 @@ export interface ForgeAdapter {
 
 ### JSON normalization strategy
 
-Each backend CLI exposes JSON output (`gh --json`, `tea --json`, `glab --output json`), but field
+Each backend CLI exposes JSON output (`gh --json`, `tea --output json --fields ...`, `glab --output json`), but field
 names and nesting differ. **Normalization happens inside the adapter** — callers never branch on
 forge type.
 
 | Capability | GitHub (`gh`) | Gitea (`tea`) | GitLab (`glab`) |
 |------------|---------------|---------------|-----------------|
 | PR vocabulary | `pr` | `pull` / `pull request` | `merge_request` → mapped to `ForgePr` |
-| Issue list | `gh issue list --json` | `tea issues list --json` | `glab issue list --output json` |
+| Issue list | `gh issue list --json` | `tea issues list --output json --fields ...` (paged with `--page`) | `glab issue list --output json` |
 | CI status | `gh pr checks` | combined commit status of the PR head, via `tea api` (`tea` has no per-PR CI command) | `glab ci status` / pipeline |
 | Auth | `gh auth status` | `tea login status` | `glab auth status` |
 

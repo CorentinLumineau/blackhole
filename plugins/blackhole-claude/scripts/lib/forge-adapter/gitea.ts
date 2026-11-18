@@ -70,6 +70,7 @@ const MAX_FILE_PAGES = 60;
 const MAX_PR_PAGES = 100;
 const MAX_STATUS_PAGES = 20;
 const MAX_LABEL_PAGES = 20;
+const MAX_LIST_PAGES = 100;
 
 const STATUS_CONCLUSION: Record<string, ForgeCheck['conclusion']> = {
   success: 'SUCCESS',
@@ -202,6 +203,23 @@ function mapPr(row: TeaPrRow): ForgePr {
 const ISSUE_LIST_FIELDS = 'index,title,body,state,labels,milestone,updated,assignees';
 const PR_LIST_FIELDS = 'index,title,body,state,head';
 
+/**
+ * `tea ... list --limit` is a page size that Gitea clamps to its maximum, so one call returns at most
+ * that many rows however large `--limit` is. Walks `--page` until an empty page or `limit` rows; a
+ * short page is not the end because the clamp is invisible to the caller.
+ */
+function listTeaPages<T>(base: string[], limit: number, key: 'issues' | 'pulls'): T[] {
+  const out: T[] = [];
+  for (let page = 1; page <= MAX_LIST_PAGES; page++) {
+    const rows = runTeaJson<T[] | Record<string, T[]>>([...base, '--limit', String(API_PAGE), '--page', String(page)]);
+    const list = Array.isArray(rows) ? rows : rows[key];
+    if (list.length === 0) return out;
+    out.push(...list);
+    if (out.length >= limit) return out.slice(0, limit);
+  }
+  throw new Error(`tea ${base[0]} list passed ${MAX_LIST_PAGES} pages`);
+}
+
 export class GiteaForgeAdapter implements ForgeAdapter {
   readonly forge = 'gitea' as const;
 
@@ -240,11 +258,9 @@ export class GiteaForgeAdapter implements ForgeAdapter {
   }
 
   async issueList(filter: IssueListFilter = {}): Promise<ForgeIssue[]> {
-    const args = ['issues', 'list', ...this.repoFlag(), '--fields', ISSUE_LIST_FIELDS, '--limit', String(filter.limit ?? 200)];
-    if (filter.state && filter.state !== 'all') args.push('--state', filter.state);
-    const rows = runTeaJson<TeaIssueRow[] | { issues: TeaIssueRow[] }>(args);
-    const list = Array.isArray(rows) ? rows : rows.issues;
-    return list.map(mapIssue);
+    const base = ['issues', 'list', ...this.repoFlag(), '--fields', ISSUE_LIST_FIELDS];
+    if (filter.state && filter.state !== 'all') base.push('--state', filter.state);
+    return listTeaPages<TeaIssueRow>(base, filter.limit ?? 200, 'issues').map(mapIssue);
   }
 
   /** `tea issue create` has no JSON output, so the issue is created through REST and its row is mapped as read. */
@@ -257,10 +273,14 @@ export class GiteaForgeAdapter implements ForgeAdapter {
   /** Gitea's REST create takes label ids; an unknown name fails here rather than filing the issue unlabelled. */
   private labelIds(names: string[]): number[] {
     const ids = new Map<string, number>();
-    for (let page = 1; page <= MAX_LABEL_PAGES; page++) {
-      const { data } = runTeaApiJson<Array<{ id: number; name: string }>>('GET', `repos/${this.apiSlug()}/labels?page=${page}&limit=${API_PAGE}`);
+    let done = false;
+    for (let page = 1; !done; page++) {
+      if (page > MAX_LABEL_PAGES) throw new Error(`label list passed ${MAX_LABEL_PAGES} pages`);
+      const { data, headers } = runTeaApiJson<Array<{ id: number; name: string }>>('GET', `repos/${this.apiSlug()}/labels?page=${page}&limit=${API_PAGE}`);
       for (const l of data) ids.set(l.name, l.id);
-      if (data.length < API_PAGE) break;
+      // A server may cap a page below the requested limit, so a short page is not the last one.
+      const total = totalCount(headers);
+      done = data.length === 0 || (total !== null && ids.size >= total);
     }
     return names.map((name) => {
       const id = ids.get(name);
@@ -285,7 +305,7 @@ export class GiteaForgeAdapter implements ForgeAdapter {
   }
 
   /**
-   * Pull requests of one state through the REST API, because `tea pulls list --json` reports neither
+   * Pull requests of one state through the REST API, because `tea pulls list` reports neither
    * the base branch, the head repository nor the merge time. Pages until the server's X-Total-Count
    * is read; an empty page before that total is an error, so a server page cap never truncates the
    * list silently.
@@ -393,14 +413,10 @@ export class GiteaForgeAdapter implements ForgeAdapter {
 
   async prList(filter: { state?: 'open' | 'closed' | 'all'; limit?: number } = {}): Promise<ForgePr[]> {
     if (filter.state) return this.listPrsRest(filter.state, filter.limit ?? 100);
-    const args = ['pulls', 'list', ...this.repoFlag(), '--fields', PR_LIST_FIELDS, '--limit', String(filter.limit ?? 100)];
-    if (filter.state && filter.state !== 'all') args.push('--state', filter.state);
-    const rows = runTeaJson<TeaPrRow[] | { pulls: TeaPrRow[] }>(args);
-    const list = Array.isArray(rows) ? rows : rows.pulls;
-    return list.map(mapPr);
+    return listTeaPages<TeaPrRow>(['pulls', 'list', ...this.repoFlag(), '--fields', PR_LIST_FIELDS], filter.limit ?? 100, 'pulls').map(mapPr);
   }
 
-  /** The REST row, because `tea pull view --json` reports neither labels, mergeability nor the head sha. */
+  /** The REST row, because `tea pull view` reports neither labels, mergeability nor the head sha. */
   async prView(number: number): Promise<ForgePr> {
     return mapGiteaApiPr(runTeaApiJson<GiteaApiPrRow>('GET', `repos/${this.apiSlug()}/pulls/${number}`).data);
   }
