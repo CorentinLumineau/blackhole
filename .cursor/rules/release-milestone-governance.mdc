@@ -35,6 +35,10 @@ When all issues on milestone `vX.Y.Z` are done:
 - Cutting a release tag that does not match the milestone semver being closed
 - Retagging or force-pushing tags without user approval
 
+## Automated cadence
+
+When `RELEASE_CADENCE_ENABLED` is `true`, `.github/workflows/release-cadence.yml` may cut a `vX.Y.Z` tag every 20 merged PRs. That path still uses `scripts/release.ts` + `.github/workflows/release.yml` to publish; it does **not** close a milestone. Close milestones only through the required workflow above.
+
 ## Campaign scope alignment
 
 When running blackhole against a milestone, set `scope_milestone` in `.blackhole/config.json` to the **same** semver title. Finish the campaign, then cut the release and close the milestone in one maintainer pass.
