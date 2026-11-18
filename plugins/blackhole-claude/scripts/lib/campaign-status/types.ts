@@ -356,7 +356,7 @@ export type StatusReport = {
     /** Plugin-drift and other environment lines the text dashboard prints after the counts. */
     notes: string[];
   };
-  /** The recorded campaign scope; `recorded: false` when `config.json` has none ("Scope not recorded"). Additive. */
+  /** The recorded campaign scope; `recorded: false` when `config.json` has none; surfaces then print the shared label from `scope-label.ts`. Additive. */
   scope_record: { recorded: boolean; entries: ScopeEntry[] };
   /** The owner's decisions, newest first. Additive. */
   decisions: OwnerDecision[];
@@ -518,14 +518,14 @@ export type RunPanel = {
 
 /**
  * The Run panel's Doc carry totals over the live (not done) issues: routes promised and staged, docs
- * carried, issues with no route or an unreadable manifest, and the issues past `handle` whose promised
+ * carried, issues with no route (named) or an unreadable manifest, and the issues past `handle` whose promised
  * routes are not all staged. `history` is the merged issues' routes promised/staged, null when none.
  */
 export type DocCarry = {
   promised: number;
   staged: number;
   carried: number;
-  unrouted: number;
+  unrouted: number[];
   unreadable: number;
   gaps: Array<{ issue: number; staged: number; promised: number }>;
   history: { promised: number; staged: number } | null;

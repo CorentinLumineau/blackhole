@@ -127,8 +127,12 @@ describe('renderStatusHtml — self-contained page', () => {
   });
 
   test('an unrecorded scope prints the shared label, never "Scope not recorded"', () => {
-    const scopeOf = (config: Record<string, unknown>) =>
-      renderStatusHtml(report({ issues: {} }, { config: { repo: 'acme/widgets', ...config } }));
+    const scopeOf = (config: Record<string, unknown>) => {
+      const page = renderStatusHtml(report({ issues: {} }, { config: { repo: 'acme/widgets', ...config } }));
+      const from = page.indexOf('<h2>Scope');
+      const to = page.indexOf('<h2>', from + 1);
+      return page.slice(from, to === -1 ? undefined : to);
+    };
     const milestone = scopeOf({ scope_milestone: 'v2' });
     expect(milestone).toContain('milestone v2');
     expect(milestone).not.toContain('Scope not recorded');
