@@ -107,7 +107,7 @@ row as shown. Adjust opens only that row's form steps, never the whole form:
 | Order | Display only: bugs first, then Pareto order; stacking is always on |
 | Merge | Step 2, then step 3 when the answer is gated batch |
 | Pacing | Catchup only: the floor, the 5h caps or the lane, for this invocation only; `config.json` is untouched |
-| Budget | Step 4 (`parallel_max`); the `usage_budget` thresholds are edited in `config.json`; a stale or missing reading is refreshed with `usage-probe.ts`, then the summary re-runs |
+| Budget | Step 4 (`parallel_max`, then the usage caps: `enabled`, the 5-hour stop line, the weekly target); a stale or missing reading is refreshed with `usage-probe.ts`, then the summary re-runs |
 | Status page | Reuse the stored page, reuse another, publish new, or refresh template |
 | Kaizen and staging | Step 5 |
 | Peers | Display only (the configured role, or `solo (no live peer in this clone)`), unless a live peer is not yet coordinated with this session, or `unknown (N unreadable: <files>)`: then the peer question below |
@@ -139,6 +139,10 @@ Release on every refusal too. A waiting session that kept its record would block
 next bootstrap.
 After the adjusted steps, write the answers as step 6 does (atomic write, one decision record per
 answer), re-print the summary, and continue the bootstrap order.
+With no usage limit (`usage_budget` invalid, `enabled` false, or enabled with no reading; a catchup
+is excluded, it fails closed) the Budget question begins `No usage limit:` and offers `Set usage
+caps` then `Run with no limit`, not Accept; `Set usage caps` opens the Budget Adjust form, and its
+answers become the `usage_budget` block `campaign-status.ts usage-caps` prints.
 
 ## Print-only mode
 

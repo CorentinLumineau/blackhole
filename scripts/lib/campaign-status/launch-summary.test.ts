@@ -15,6 +15,7 @@ import {
   LAUNCH_ROW_KEYS,
   MAX_CONSEQUENCE_CHARS,
   renderLaunchSummary,
+  usageCapsPatch,
   type LaunchRow,
 } from './launch-summary.ts';
 import { buildStatusReport } from './report.ts';
@@ -128,7 +129,7 @@ describe('the Budget row', () => {
     { name: 'STOP-WORKERS (reset time shown)', config: on(), usage: usage(91, 20), value: ['STOP-WORKERS', '0 workers allowed'], consequence: /Fri 13 Nov 11:30 UTC/ },
     { name: 'NO-NEW-STARTS', config: on(), usage: usage(10, 79), value: ['NO-NEW-STARTS'], consequence: /No new chain/ },
     { name: 'STOP-CAMPAIGN', config: on(), usage: usage(10, 81), value: ['STOP-CAMPAIGN'], consequence: /drains and stops/ },
-    { name: 'usage null: not probed, parallel_max', config: on(), usage: null, value: ['not probed', '3 workers (parallel_max)'], consequence: /parallel_max \(3\)/ },
+    { name: 'usage null: not probed, parallel_max', config: on(), usage: null, value: ['not probed', '3 workers (parallel_max)'], consequence: /usage not probed.*parallel_max/ },
     { name: 'invalid usage_budget: unavailable, never a throw', config: { parallel_max: 3, usage_budget: { enabled: 'yes' } }, usage: usage(10, 20), value: ['unavailable', '3 workers (parallel_max)'], consequence: /invalid/ },
   ];
   for (const c of cases) {
@@ -190,6 +191,88 @@ describe('the Budget row', () => {
     expect(withForecast.value).toContain('forecast 0.6%/h, weekly stop Sun 15 Nov 11:54 UTC');
     const noWeek = budgetRow(panel(on(), { five_hour: { used_percentage: 10, resets_at: NOW + HOUR } }), on());
     expect(noWeek.value).toContain('no forecast yet');
+  });
+});
+
+describe('the Budget row without a usage limit', () => {
+  const usage: RateLimits = { five_hour: { used_percentage: 10, resets_at: NOW + 2 * HOUR }, seven_day: { used_percentage: 20, resets_at: NOW + 48 * HOUR } };
+  const budgetCard = (config: Record<string, unknown>, limits: RateLimits | null) => {
+    const row = budgetRow(panel(config, limits), config);
+    const q = gateCards([row], { printOnly: false })[0].questions[0];
+    return { row, q };
+  };
+  const limitless = [
+    { name: 'pacing off', config: { parallel_max: 3 }, limits: usage, reason: /pacing is off/ },
+    { name: 'invalid usage_budget', config: { parallel_max: 3, usage_budget: { enabled: 'yes' } }, limits: usage, reason: /usage_budget is invalid/ },
+    { name: 'enabled but not probed', config: { parallel_max: 3, usage_budget: { enabled: true } }, limits: null, reason: /usage not probed/ },
+  ];
+  for (const c of limitless) {
+    test(`${c.name}: the consequence opens with "No usage limit:" and keeps the reason and worker count`, () => {
+      const { row, q } = budgetCard(c.config, c.limits);
+      expect(row.consequence).toStartWith('No usage limit:');
+      expect(row.consequence).toMatch(c.reason);
+      expect(row.consequence).toContain('parallel_max');
+      expect(row.consequence.length).toBeLessThanOrEqual(MAX_CONSEQUENCE_CHARS);
+      expect(q.question).toStartWith('Budget: No usage limit:');
+    });
+    test(`${c.name}: Set usage caps comes first and Run with no limit is a labelled choice, never Accept`, () => {
+      const { q } = budgetCard(c.config, c.limits);
+      expect(q.options.map((o) => o.label)).toEqual(['Set usage caps', 'Run with no limit']);
+      for (const o of q.options) expect(o.description.length).toBeGreaterThan(0);
+    });
+  }
+  test('pacing off keeps the "whatever the usage" clause', () => {
+    expect(budgetCard({ parallel_max: 3 }, usage).row.consequence).toContain('whatever the usage');
+  });
+  test('a limit that is enforced stays Accept / Adjust', () => {
+    const config = { parallel_max: 3, usage_budget: { enabled: true } };
+    for (const l of [usage, { ...usage, five_hour: { used_percentage: 86, resets_at: NOW + 2 * HOUR } }, { ...usage, five_hour: { used_percentage: 91, resets_at: NOW + 2 * HOUR } }]) {
+      const { row, q } = budgetCard(config, l);
+      expect(row.consequence).not.toContain('No usage limit');
+      expect(q.options.map((o) => o.label)).toEqual(['Accept', 'Adjust']);
+    }
+  });
+  test('the Adjust text names the usage caps', () => {
+    const q = gateCards([budgetRow(panel({ parallel_max: 3, usage_budget: { enabled: true } }, usage), { parallel_max: 3, usage_budget: { enabled: true } })], { printOnly: false })[0].questions[0];
+    expect(q.options[1].description).toContain('usage caps');
+  });
+  test('catchup Budget is never "No usage limit"', () => {
+    const row = budgetRow({ ...NOT_PROBED }, { parallel_max: 3 }, DEFAULT_USAGE_BUDGET);
+    expect(row.consequence).not.toContain('No usage limit');
+    expect(row.options).toBeUndefined();
+  });
+});
+
+describe('usageCapsPatch', () => {
+  test("the owner's example: 50% on 5h windows, 80% at reset", () => {
+    expect(usageCapsPatch({ enabled: true, stopWorkersAt: 50, targetAtReset: 80 }, {})).toEqual({
+      enabled: true,
+      five_hour: { no_spawn_at: 45, stop_workers_at: 50 },
+      weekly: { target_at_reset: 80 },
+    });
+  });
+  test('merges over existing keys and never drops rates or coordination', () => {
+    const current = { max_workers: 2, rates: { worker_pct_per_hour: 9 }, coordination: { role: 'solo', peer_floor: 2 }, five_hour: { custom: 1 }, weekly: { no_new_starts_at: 70 } };
+    const out = usageCapsPatch({ enabled: true, stopWorkersAt: 60, targetAtReset: 70 }, current);
+    expect(out.max_workers).toBe(2);
+    expect(out.rates).toEqual({ worker_pct_per_hour: 9 });
+    expect(out.coordination).toEqual({ role: 'solo', peer_floor: 2 });
+    expect(out.five_hour).toEqual({ custom: 1, no_spawn_at: 55, stop_workers_at: 60 });
+    expect(out.weekly).toEqual({ no_new_starts_at: 70, target_at_reset: 70 });
+  });
+  test('target none writes target_at_reset null; an absent stop line leaves five_hour alone', () => {
+    expect(usageCapsPatch({ enabled: true, stopWorkersAt: null, targetAtReset: null }, {})).toEqual({ enabled: true, weekly: { target_at_reset: null } });
+  });
+  test('enabled false is written without touching thresholds', () => {
+    expect(usageCapsPatch({ enabled: false, stopWorkersAt: null, targetAtReset: undefined }, { five_hour: { no_spawn_at: 40, stop_workers_at: 50 } })).toEqual({ enabled: false, five_hour: { no_spawn_at: 40, stop_workers_at: 50 } });
+  });
+  test('rejects a stop line the resolver cannot derive a no-spawn line from', () => {
+    expect(() => usageCapsPatch({ enabled: true, stopWorkersAt: 5, targetAtReset: null }, {})).toThrow(/stop_workers_at/);
+    expect(() => usageCapsPatch({ enabled: true, stopWorkersAt: 101, targetAtReset: null }, {})).toThrow(/stop_workers_at/);
+  });
+  test('rejects a target outside (0, 100]', () => {
+    expect(() => usageCapsPatch({ enabled: true, stopWorkersAt: null, targetAtReset: 0 }, {})).toThrow(/target_at_reset/);
+    expect(() => usageCapsPatch({ enabled: true, stopWorkersAt: null, targetAtReset: 101 }, {})).toThrow(/target_at_reset/);
   });
 });
 

@@ -1100,3 +1100,58 @@ describe('status --summary (the launch summary)', () => {
     expect(proc.stderr.toString()).toBe('');
   });
 });
+
+describe('usage-caps subcommand', () => {
+  const run = (campaign: string, ...flags: string[]) =>
+    Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', 'usage-caps', '--campaign-dir', campaign, ...flags], cwd: root, stdout: 'pipe', stderr: 'pipe' });
+  const campaignWith = (config: object): string => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-usage-caps-'));
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(config));
+    return dir;
+  };
+
+  test('prints the merged usage_budget block and exits 0, leaving config.json untouched', () => {
+    const dir = campaignWith({ parallel_max: 3, usage_budget: { max_workers: 2, rates: { worker_pct_per_hour: 9 } } });
+    try {
+      const before = fs.readFileSync(path.join(dir, 'config.json'), 'utf-8');
+      const proc = run(dir, '--enabled', 'true', '--stop-workers-at', '50', '--target-at-reset', '80');
+      expect(proc.exitCode).toBe(0);
+      expect(JSON.parse(proc.stdout.toString())).toEqual({
+        max_workers: 2,
+        rates: { worker_pct_per_hour: 9 },
+        enabled: true,
+        five_hour: { no_spawn_at: 45, stop_workers_at: 50 },
+        weekly: { target_at_reset: 80 },
+      });
+      expect(fs.readFileSync(path.join(dir, 'config.json'), 'utf-8')).toBe(before);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('--target-at-reset none clears the target', () => {
+    const dir = campaignWith({ usage_budget: { weekly: { target_at_reset: 60 } } });
+    try {
+      const proc = run(dir, '--enabled', 'true', '--target-at-reset', 'none');
+      expect(proc.exitCode).toBe(0);
+      expect(JSON.parse(proc.stdout.toString()).weekly).toEqual({ target_at_reset: null });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('exits 2 with the validation message on an invalid stop line, a bad flag value or a missing --enabled', () => {
+    const dir = campaignWith({});
+    try {
+      const low = run(dir, '--enabled', 'true', '--stop-workers-at', '5');
+      expect(low.exitCode).toBe(2);
+      expect(low.stderr.toString()).toContain('stop_workers_at');
+      expect(low.stdout.toString()).toBe('');
+      expect(run(dir, '--enabled', 'true', '--stop-workers-at', 'abc').exitCode).toBe(2);
+      expect(run(dir, '--enabled', 'maybe').exitCode).toBe(2);
+      expect(run(dir, '--stop-workers-at', '50').exitCode).toBe(2);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
