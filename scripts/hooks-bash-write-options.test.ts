@@ -768,6 +768,34 @@ describe('bash-write-target-guard.js — GIT_TRACE* variables write files (#1246
       expect(await verdict(build)).toMatchObject(WARN);
     });
   }
+
+  // Fail closed: an `env` option word that is not an exact known option (getopt_long accepts any
+  // unambiguous abbreviation), a `-S` string holding a backslash (`\_` is a separator there), and
+  // a bare `export GIT_TRACE` of a value set elsewhere in a command that runs git all warn.
+  for (const build of [
+    (m: string) => `env --uns B "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env --u B "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env --ch /tmp "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env --split "A=1 GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env '--uns' B "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env --frobnicate B "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env -x B "GIT_TRACE=${m}/x" git status`,
+    (m: string) => `env -S 'A=1\\_GIT_TRACE=${m}/x git status'`,
+    (m: string) => `env -S"A=1\\_GIT_TRACE=${m}/x git status"`,
+    (m: string) => `env --split-string='A=1\\_GIT_TRACE=${m}/x' git status`,
+    (m: string) => `printf -v GIT_TRACE %s ${m}/x; export GIT_TRACE; git status`,
+    () => 'read GIT_TRACE < f; export A GIT_TRACE; git status',
+    () => 'declare -x GIT_TRACE_PACKET; git fetch',
+  ]) {
+    test(`#1246: \`${build('<main>')}\` warns (fails closed)`, async () => {
+      expect(await verdict(build)).toMatchObject(WARN);
+    });
+  }
+  for (const build of [() => 'export GIT_TRACE; echo done', () => 'env --ignore-environment --null git status']) {
+    test(`#1246: \`${build()}\` stays allowed`, async () => {
+      expect(await verdict(build)).toBeNull();
+    });
+  }
   for (const build of [
     (m: string) => `env --unset B git commit -m "GIT_TRACE=${m}/x"`,
     (_m: string, w: string) => `env -S "GIT_TRACE=${w}/x git status"`,
