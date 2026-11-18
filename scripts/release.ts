@@ -54,6 +54,18 @@ function writePkg(pkgPath: string, pkg: { version: string; [k: string]: unknown 
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
 }
 
+/** Bump `package.json` version. Cadence and `prepare` share this so the 7 manifests rebuild from one write. */
+export function bumpPackageVersion(repoRoot: string, version: string): void {
+  const { pkgPath } = repoPaths(repoRoot);
+  const pkg = readPkg(pkgPath);
+  pkg.version = version;
+  writePkg(pkgPath, pkg);
+}
+
+export function notesFilePath(repoRoot: string, tag: string): string {
+  return notesPath(repoPaths(repoRoot).releasesDir, tag);
+}
+
 function createGit(repoRoot: string, deps?: ReleaseDeps) {
   return (cmd: string): string => {
     if (deps?.execGit) {
@@ -170,20 +182,18 @@ export function prepareRelease(repoRoot: string, tag: string, deps?: ReleaseDeps
   template = template.replaceAll('vX.Y.Z', tag).replaceAll('X.Y.Z', version);
   fs.writeFileSync(dest, template, 'utf-8');
 
-  const pkg = readPkg(pkgPath);
-  pkg.version = version;
-  writePkg(pkgPath, pkg);
+  bumpPackageVersion(repoRoot, version);
 
   (deps?.build ?? build)();
 
   console.log(`Created ${path.relative(repoRoot, dest)}`);
   console.log(`Bumped package.json → ${version}`);
-  console.log(`Ran bun run build — regenerated the 5 version-carrying manifests`);
+  console.log(`Ran bun run build — regenerated the 7 version-carrying manifests`);
   console.log('');
   console.log('Next steps:');
   console.log(`  1. Edit ${path.relative(repoRoot, dest)} with product-focused release notes`);
   console.log(`  2. bun run release validate ${tag}`);
-  console.log(`  3. Commit notes + package.json + the 5 regenerated manifests, then push`);
+  console.log(`  3. Commit notes + package.json + the 7 regenerated manifests, then push`);
   console.log(`  4. bun run release tag ${tag}`);
   console.log(`  5. bun run release push ${tag}`);
 }

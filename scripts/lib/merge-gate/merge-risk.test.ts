@@ -39,6 +39,7 @@ describe('classifyMergeRisk', () => {
       { path: 'prisma/migrations/20240101_add_users/migration.sql', category: 'migrations' },
       { path: '.github/workflows/ci.yml', category: 'github-workflows' },
       { path: 'scripts/release.ts', category: 'release-tag' },
+      { path: 'scripts/release-cadence.ts', category: 'release-tag' },
       { path: '.github/releases/v1.0.0.md', category: 'release-tag' },
     ];
     for (const { path: p, category } of cases) {

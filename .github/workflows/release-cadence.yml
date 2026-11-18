@@ -1,0 +1,169 @@
+name: Release Cadence
+
+# Every-N-merged-PR release cut (N = CADENCE_THRESHOLD in scripts/release-cadence.ts).
+# Checked on a schedule — not on each push to main — so a release bundles ~N PRs.
+# Cut job gated by repository variable RELEASE_CADENCE_ENABLED == 'true' (owner sets it).
+# When disabled, `disabled-notice` surfaces a warning so skips are not silent.
+# Does not publish a GitHub Release: pushing the annotated tag lets release.yml do that.
+
+on:
+  schedule:
+    # Every 2 hours, at :17 to stay off the top-of-hour cron rush.
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Cut release even when N < CADENCE_THRESHOLD (maintainer emergency)"
+        type: boolean
+        default: false
+
+# One cut at a time; a running cut is never cancelled. GitHub keeps only one
+# *pending* run per group, so a queued force=true dispatch can be superseded by
+# the next cron run (which then skips if < N PRs). If that happens, dispatch
+# force=true again once the running cut finishes.
+concurrency:
+  group: release-cadence
+  cancel-in-progress: false
+
+jobs:
+  disabled-notice:
+    if: vars.RELEASE_CADENCE_ENABLED != 'true'
+    name: cadence-disabled (notice)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Surface disabled bootstrap gate
+        run: |
+          echo "::warning title=Release Cadence disabled::RELEASE_CADENCE_ENABLED is not 'true'. Every-N-PR cuts are skipped. Owner enablement: gh variable set RELEASE_CADENCE_ENABLED -b true — see documentation/runbooks/release-cadence.md."
+
+  cut:
+    if: vars.RELEASE_CADENCE_ENABLED == 'true'
+    name: cut-release (gate + prepare + tag)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: read
+      issues: write
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ github.token }}
+
+      # A run checks out github.sha, the main tip when the run was created.
+      # A run that queued can start after another cut landed. Skip instead of
+      # failing: the next schedule cuts from the live tip.
+      - name: Skip a run that main has outrun
+        id: fresh
+        run: |
+          git fetch --quiet origin main
+          live=$(git rev-parse origin/main)
+          if [ "$live" != "${{ github.sha }}" ]; then
+            echo "::notice title=Release Cadence superseded::Created on ${{ github.sha }}, main is now $live. Skipping; the next schedule (or a new dispatch) cuts from the live tip."
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure local main matches this SHA
+        if: steps.fresh.outputs.stale == 'false'
+        run: git checkout -B main ${{ github.sha }}
+
+      - uses: ./.github/actions/setup-bun
+        if: steps.fresh.outputs.stale == 'false'
+
+      - name: bun install --frozen-lockfile
+        if: steps.fresh.outputs.stale == 'false'
+        run: bun install --frozen-lockfile
+
+      - name: Cut release (gate + prepare + tag + push)
+        if: steps.fresh.outputs.stale == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI: true
+        run: |
+          ARGS=(--cut)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            ARGS+=(--force)
+          fi
+          bun run release-cadence "${ARGS[@]}"
+
+      - name: Close the failing-cut issue
+        if: success() && steps.fresh.outputs.stale == 'false'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const title = "release-cadence cut is failing on main";
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = open.find(
+              (issue) => !issue.pull_request && issue.title === title,
+            );
+            if (!existing) return;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              body: `A later cut succeeded: ${runUrl}. Closing.`,
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              state: "closed",
+              state_reason: "completed",
+            });
+            core.notice(`Closed tracking issue #${existing.number}`);
+
+      - name: Report failing cut
+        if: failure()
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const title = "release-cadence cut is failing on main";
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `The release-cadence cut job failed.`,
+              ``,
+              `Failing run: ${runUrl}`,
+              ``,
+              `No release will be cut until this is fixed — see documentation/runbooks/release-cadence.md.`,
+            ].join("\n");
+
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = open.find(
+              (issue) => !issue.pull_request && issue.title === title,
+            );
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+              core.notice(`Commented on existing tracking issue #${existing.number}`);
+              return;
+            }
+
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+            });
+            core.notice(`Opened tracking issue #${created.data.number}`);
