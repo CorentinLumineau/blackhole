@@ -137,7 +137,11 @@ The full 6-step form follows:
    `five_hour.no_spawn_at` as the stop line minus 5, keeps `rates` and
    `coordination`, prints the merged `usage_budget` block and exits 2 with the
    reason when the block is invalid (ask again). Step 6 writes that block.
-   "Run with no limit" leaves `usage_budget.enabled` false and records
+   When the error names a key the owner did not just answer (an existing
+   `usage_budget` value that is invalid, or a weekly line below the new
+   target), report it and offer "Run with no limit" or "Fix config.json by
+   hand", never a loop of the same questions. "Run with no limit" writes
+   nothing: `usage_budget` stays exactly as it is, and the coordinator records
    `usage limit: none (owner accepted)` as a decision.
 
 5. **Kaizen** — use `AskQuestion` to confirm the `kaizen` block

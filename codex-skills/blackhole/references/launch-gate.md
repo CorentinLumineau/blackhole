@@ -95,7 +95,7 @@ also offers "Refresh template". Never delete the stored page to reset it (`statu
 
 ## Questions
 
-One Accept / Adjust question per adjustable row, at most 4 per card. Scope, Merge, Budget and
+One Accept / Adjust question per adjustable row (Budget with no usage limit asks Set usage caps / Run with no limit instead), at most 4 per card. Scope, Merge, Budget and
 Kaizen and staging (and Pacing in a catchup) are always adjustable, and so is Status page unless the host publishes no
 page: a full gate is 2 cards, or 1 card when the Status page row reads `none on this host`.
 Send the cards the `--json` output returns; every option carries its own description. Accept keeps the
@@ -139,7 +139,7 @@ Release on every refusal too. A waiting session that kept its record would block
 next bootstrap.
 After the adjusted steps, write the answers as step 6 does (atomic write, one decision record per
 answer), re-print the summary, and continue the bootstrap order.
-With no usage limit (`usage_budget` invalid, `enabled` false, or enabled with no reading; a catchup
+With no usage limit (`usage_budget` invalid, `enabled` false, or enabled with no reading or no current usage window; a catchup
 is excluded, it fails closed) the Budget question begins `No usage limit:` and offers `Set usage
 caps` then `Run with no limit`, not Accept; `Set usage caps` opens the Budget Adjust form, and its
 answers become the `usage_budget` block `campaign-status.ts usage-caps` prints.

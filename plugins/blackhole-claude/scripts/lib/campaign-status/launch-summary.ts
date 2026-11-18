@@ -108,12 +108,12 @@ function mergeRow(mode: string | undefined): LaunchRow {
 
 const NO_LIMIT = 'No usage limit:';
 
-/** The row enforces no usage cap on the run: invalid block, pacing off, or no reading. A catchup fails closed instead, so it is never unlimited. */
-const noLimit = (b: BudgetPanel, invalid: string | null, settings: UsageBudgetConfig, catchup: boolean): boolean => !catchup && (invalid !== null || !settings.enabled || !b.probed);
+/** The row enforces no usage cap on the run: invalid block, pacing off, no reading, or a reading with no current window. A catchup fails closed instead, so it is never unlimited. */
+const noLimit = (b: BudgetPanel, invalid: string | null, settings: UsageBudgetConfig, catchup: boolean): boolean => !catchup && (invalid !== null || !settings.enabled || !b.probed || b.verdict === 'unavailable');
 
 const NO_LIMIT_OPTIONS: GateOption[] = [
   { label: 'Set usage caps', description: 'Open step 4: parallel_max, then enabled, the 5-hour stop line and the weekly target.' },
-  { label: 'Run with no limit', description: 'Keep pacing off: workers run up to parallel_max whatever the usage; recorded as your decision.' },
+  { label: 'Run with no limit', description: 'Leave usage_budget as it is: workers run up to parallel_max whatever the usage; recorded as your decision.' },
 ];
 
 type BudgetState = { b: BudgetPanel; settings: UsageBudgetConfig; invalid: string | null; workers: number; parallelMax: number; catchup: boolean };
@@ -124,6 +124,7 @@ function budgetConsequence({ b, settings, invalid, workers, parallelMax, catchup
   if (invalid) return unlimited('usage_budget is invalid');
   if (!settings.enabled) return unlimited('pacing is off');
   if (!b.probed) return unlimited('usage not probed');
+  if (b.verdict === 'unavailable') return unlimited('no current usage window');
   const t = { ...settings.five_hour, ...settings.weekly };
   switch (b.verdict) {
     case 'GO': {
