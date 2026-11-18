@@ -1,4 +1,5 @@
 import { spawnSync } from 'child_process';
+import { CAMPAIGN_BRANCH_TAIL } from './campaign-branch.ts';
 
 // Merge-only stacked-PR recovery. Every operation here produces a NEW commit on top of the
 // child's remote head and publishes it as a fast-forward push, so history is only ever appended.
@@ -28,7 +29,7 @@ const ALLOWED_SUBCOMMANDS = new Set([
   'merge',
 ]);
 
-const PUSH_REFSPEC = /^[0-9a-f]{40}:refs\/heads\/blackhole\/issue-\d+$/;
+const PUSH_REFSPEC = new RegExp(String.raw`^[0-9a-f]{40}:refs\/heads\/blackhole\/${CAMPAIGN_BRANCH_TAIL}$`);
 
 /** Throws when `args` is not an operation this module is allowed to run. */
 export const assertAllowedGit = (args: string[]): void => {
@@ -43,7 +44,7 @@ export const assertAllowedGit = (args: string[]): void => {
     const rest = args.slice(args.indexOf('push') + 1);
     const [remote, refspec, ...extra] = rest;
     if (extra.length > 0 || remote === undefined || remote.startsWith('-') || refspec === undefined || !PUSH_REFSPEC.test(refspec)) {
-      throw new Error(`push must be exactly "<remote> <sha>:refs/heads/blackhole/issue-N" (got: ${rest.join(' ')})`);
+      throw new Error(`push must be exactly "<remote> <sha>:refs/heads/blackhole/issue-N[-slug]" (got: ${rest.join(' ')})`);
     }
   }
 };
