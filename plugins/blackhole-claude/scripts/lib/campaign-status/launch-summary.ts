@@ -69,7 +69,7 @@ function scopeRow(report: StatusReport, config: ConfigSummaryInput & { repo?: st
     key: 'scope',
     label: 'Scope',
     header: 'Scope',
-    value: `${config.repo ?? 'no repo'} · ${formatScopeLabel(readScope(config))} · ${q.ready} ready / ${q.blocked} blocked / ${q.in_flight} in flight · ${forge}`,
+    value: `${config.repo ?? 'no repo'} · ${formatScopeLabel(readScope(config), 'markdown')} · ${q.ready} ready / ${q.blocked} blocked / ${q.in_flight} in flight · ${forge}`,
     consequence: 'The campaign works only these issues; anything outside the filter is left alone.',
     adjustable: true,
   };

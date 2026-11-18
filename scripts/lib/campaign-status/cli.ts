@@ -7,8 +7,11 @@ const projectRoot = (): string => process.cwd();
 
 const resolveFromRoot = (p: string): string => (path.isAbsolute(p) ? p : path.join(projectRoot(), p));
 
+/** The status command by absolute path: it resolves from any cwd, inside or outside a checkout (ADR-056). */
+export const STATUS_COMMAND = `bun run "${path.resolve(import.meta.dir, '..', '..', 'campaign-status.ts')}"`;
+
 const USAGE =
-  'Usage: bun run status [config-summary] [--json | --html [--out <path>] | --data <dir> | --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [catchup only: --usage-file <path> --floor <pct> --no-spawn-at <pct> --stop-workers-at <pct> --lane <name>]] [--campaign-dir <dir>] [--no-gh]';
+  `Usage: ${STATUS_COMMAND} [config-summary] [--json | --html [--out <path>] | --data <dir> | --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [catchup only: --usage-file <path> --floor <pct> --no-spawn-at <pct> --stop-workers-at <pct> --lane <name>]] [--campaign-dir <dir>] [--no-gh]`;
 
 const pctFlag = (flags: Record<string, string>, name: string): number | null => {
   if (flags[name] === undefined) return null;

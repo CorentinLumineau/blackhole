@@ -369,7 +369,7 @@ above is what closes the gap, not a reason to treat the spawn prompt as self-aut
 Applies when a lane is set (`catchup.lane` in `config.json`, or `--lane` for one invocation); with no
 lane every claim answers `SKIP` and dispatch is unchanged. The claim is the account's statement on the
 forge: the label `in-progress:<lane>` plus the assignee, under the `catchup.claim_lease_hours` lease.
-`scripts/claim.ts` (`bun run claim`) is the one command; it prints one JSON line `{verdict, issue,
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/claim.ts` is the one command; it prints one JSON line `{verdict, issue,
 lane, user, held_by}`.
 
 **Claim before dispatch.** Before the status moves to `in-flight`, run

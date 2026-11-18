@@ -149,10 +149,15 @@ describe('buildDocCarry: the live set leads, merged history is a tail', () => {
     expect(rowOf(dc)).toBe('routes promised 2 · staged 1 · docs carried 0 · gaps: #7 1/2');
   });
 
-  test('a handle-phase issue counts in the headline but is never named (staged 0 is expected there)', () => {
+  test('a handle-phase issue adds nothing to the headline or the gaps (staged 0 is expected there)', () => {
     const dc = build([live(3, ['plan'], null, 'handle')]);
-    expect(dc).toMatchObject({ promised: 1, staged: 0, gaps: [] });
-    expect(rowOf(dc)).toBe('routes promised 1 · staged 0 · docs carried 0');
+    expect(dc).toMatchObject({ promised: 0, staged: 0, gaps: [] });
+    expect(rowOf(dc)).toBe('routes promised 0 · staged 0 · docs carried 0');
+  });
+
+  test('a handle issue beside an implement issue: only the past-handle routes are counted', () => {
+    const dc = build([live(3, ['plan', 'design'], null, 'handle'), live(4, ['plan'], manifest(entry('plan', 'documentation/plans/a.md')))]);
+    expect(dc).toMatchObject({ promised: 1, staged: 1, gaps: [] });
   });
 
   test('carried counts staged new_file targets the stub reports present', () => {
@@ -171,10 +176,15 @@ describe('buildDocCarry: the live set leads, merged history is a tail', () => {
     expect(rowOf(build(issues))).toBe('routes promised 5 · staged 0 · docs carried 0 · gaps: #2 0/1, #5 0/1, #3 0/1 +2 more');
   });
 
-  test('a live issue with no route and no manifest is counted unrouted, not skipped', () => {
+  test('a live issue past handle with no route and no manifest is named unrouted; a handle one is not', () => {
     const dc = build([live(1, [], null, 'implement', { unrouted: true }), live(2, [], null, 'handle', { unrouted: true })]);
-    expect(dc.unrouted).toBe(2);
-    expect(rowOf(dc)).toBe('routes promised 0 · staged 0 · docs carried 0 · unrouted 2');
+    expect(dc.unrouted).toEqual([1]);
+    expect(rowOf(dc)).toBe('routes promised 0 · staged 0 · docs carried 0 · unrouted #1');
+  });
+
+  test('unrouted issues are named in encounter order and truncated with +N more', () => {
+    const dc = build([1, 2, 3, 4, 5].map((n) => live(n, [], null, 'review', { unrouted: true })));
+    expect(rowOf(dc)).toBe('routes promised 0 · staged 0 · docs carried 0 · unrouted #1, #2, #3 +2 more');
   });
 
   test('one unreadable manifest is counted for that issue and the other totals stay', () => {

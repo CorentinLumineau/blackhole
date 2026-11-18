@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { STATUS_COMMAND } from './cli.ts';
 import { statusPageRow, PROBE_FRESH_MINUTES, type StatusPageInput } from './status-page-row.ts';
 
 const NOW_ISO = '2026-11-13T09:30:00.000Z';
@@ -22,14 +23,14 @@ describe('the Status page row', () => {
   test('disabled', () => {
     const row = statusPageRow(page({ enabled: false }));
     expect(row.value).toBe('off (status_page.enabled is false)');
-    expect(row.consequence).toBe('No page is published; follow the run with bun run status.');
+    expect(row.consequence).toBe(`No page is published; follow the run with ${STATUS_COMMAND}.`);
     expect(row.probe_needed).toBeUndefined();
   });
 
   test('the host publishes none', () => {
     const row = statusPageRow(page({ publishExpected: false }));
     expect(row.value).toBe('none on this host');
-    expect(row.consequence).toBe('This host has no artifact tool; follow the run with bun run status.');
+    expect(row.consequence).toBe(`This host has no artifact tool; follow the run with ${STATUS_COMMAND}.`);
     expect(row.adjustable).toBe(false);
   });
 

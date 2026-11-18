@@ -59,7 +59,7 @@ entered is `run` or `catchup`, run the launch gate before spawning or resuming t
 orchestrator: `.agents/build/skills/blackhole/references/launch-gate.md` owns
 its executive summary, per-section Accept / Adjust, status-page probe,
 print-only clause and bootstrap order (status page, doctor, spawn). It also
-runs `bun run status config-summary`, the output the drift guard below reads.
+runs `bun run scripts/campaign-status.ts config-summary`, the output the drift guard below reads.
 
 - **Fail closed on docs_governance drift**: if any orchestrator/campaign spawn text you are
   about to send (or resume with) states `write_governance` on/off differently from the
@@ -160,19 +160,19 @@ The full 6-step form follows:
    `bun scripts/campaign-record.ts scope --kind in --text "<the step-1 filter in words, e.g. Open issues in milestone v2.0>" --filter`,
    plus one `scope` line per thing the owner named as parked, deferred, blocked
    upstream or out, and `bun scripts/campaign-record.ts decision --text "<answer>"`
-   per answer. Re-run `bun run status`, print the full dashboard and publish the
+   per answer. Re-run `bun run scripts/campaign-status.ts`, print the full dashboard and publish the
    status page (`status-page.md` § Refresh procedure; see § Campaign
    visibility, item 1), then proceed to spawn/resume the orchestrator.
 
-Before spawning the background `orchestrator`, run `bun run doctor` from the campaign repo root. If the command exits non-zero, report the failing BLOCK checks to the user and **do not** spawn the orchestrator until they are resolved. WARN checks may be reported but do not block the campaign.
+Before spawning the background `orchestrator`, run `bun run scripts/doctor.ts` from the campaign repo root. If the command exits non-zero, report the failing BLOCK checks to the user and **do not** spawn the orchestrator until they are resolved. WARN checks may be reported but do not block the campaign.
 
 ### Campaign visibility
 
 Per `coordinator-dashboard.md`, print the **full** dashboard markdown to the user (not a one-line summary):
 
-1. **Before spawning orchestrator** — run `bun run status` and print the complete output, then publish or refresh the status page (`status-page.md` § Refresh procedure) unless `status_page.enabled` is `false`. This holds on every `run` start, first bootstrap and routine resume alike. The printed dashboard is not the page.
-2. **After orchestrator background turn completes** — run `bun run status`, print the complete output, then resume the orchestrator if work remains and the queue is not blocked on user input. The coordinator does **not** monitor individual worker completions — the orchestrator's in-turn barrier owns that; resume only on orchestrator idle, not per-worker idle (#152 auto-resume is out of scope).
-3. **On user status request** — run `bun run status` and print the complete output; do not spawn workers.
+1. **Before spawning orchestrator** — run `bun run scripts/campaign-status.ts` and print the complete output, then publish or refresh the status page (`status-page.md` § Refresh procedure) unless `status_page.enabled` is `false`. This holds on every `run` start, first bootstrap and routine resume alike. The printed dashboard is not the page.
+2. **After orchestrator background turn completes** — run `bun run scripts/campaign-status.ts`, print the complete output, then resume the orchestrator if work remains and the queue is not blocked on user input. The coordinator does **not** monitor individual worker completions — the orchestrator's in-turn barrier owns that; resume only on orchestrator idle, not per-worker idle (#152 auto-resume is out of scope).
+3. **On user status request** — run `bun run scripts/campaign-status.ts` and print the complete output; do not spawn workers.
 
 **Anti-pattern:** "Turn N complete" without printing the dashboard.
 
@@ -212,7 +212,7 @@ When the user enters a message in the chat:
     *   If the user suggests a feature, codebase improvement, styling refactoring, performance optimization, or UI polish: check if it matches an existing issue.
     *   If it is vague, use `AskQuestion` to clarify the requirements.
     *   Once defined, **apply the Pareto-gating rule**: estimate **Gain (1-10)** and **Effort (1-10)**, and compute $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$.
-    *   If $\text{Priority} \ge 30$, file a GitHub issue natively (`gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)`). On success, print `📋 Filed #N — <title> (milestone <M>)` then re-run `bun run status` if the campaign is active.
+    *   If $\text{Priority} \ge 30$, file a GitHub issue natively (`gh issue create --title "[Discovery] <Name>" --body "..." $(bun scripts/forge-scope.ts create-args)`). On success, print `📋 Filed #N — <title> (milestone <M>)` then re-run `bun run scripts/campaign-status.ts` if the campaign is active.
     *   If $\text{Priority} < 30$, log it as `status: archived` in `findings-ledger.json` and inform the user of the low ROI triage (do not file an issue).
 2.  **Resolving Blockers**:
     *   If the orchestrator is blocked (`notes: awaiting-user-clarification`, `awaiting-plan-approval`, `awaiting-design-approval`, `awaiting-ruling-recheck`, `merge-conflict-semantic:<files>`, or `merge-order cycle with #N` — ADR-005, `merge-gate.md` § 2 — in `queue.json`), parse the user's response.
@@ -230,7 +230,7 @@ When the user enters a message in the chat:
     *   Record the answer as a decision, and any scope change it makes (`clarify-gates.md` § Chat feedback intake, item 6).
     *   Update the queue notes and `resume` the orchestrator with `interrupt: false`, passing the user's clarification details.
 3.  **Status Requests**:
-    *   If the user asks for campaign status, run `bun run status` and print the **full** markdown dashboard to the user. Do not resume or spawn new workers.
+    *   If the user asks for campaign status, run `bun run scripts/campaign-status.ts` and print the **full** markdown dashboard to the user. Do not resume or spawn new workers.
 4.  **Enforcing Gates, TDD & Contracts**:
     *   Ensure any new task spawned by the orchestrator utilizes the strict **5-field contract** (Objective, Output Format, Scope Boundaries, Tool Guidance, Stop Condition).
     *   Verify that all code modifications comply with Quality Gates (V-codes) and establish a TDD baseline (tests run before modifications).
@@ -239,7 +239,7 @@ When the user enters a message in the chat:
     *   Re-write the confirmed `scope_labels`/`scope_milestone`/`merge_mode`/`parallel_max`/`kaizen` fields into `.blackhole/config.json`, and record the new scope and the decision as step 6 of the gate does.
     *   A narrower scope change that needs no form ("park #12", "add the dependency bumps", "that one is blocked upstream") is recorded directly with `bun scripts/campaign-record.ts scope …` and `… decision …` (`clarify-gates.md` § Chat feedback intake, item 6).
     *   You are the one writer of every owner answer you relay: record it before you pass it to the orchestrator, which does not record a relayed answer again (`clarify-gates.md` § Chat feedback intake, item 6).
-    *   After updating, re-run `bun run status` and print the full dashboard so the user sees the effect of the change immediately.
+    *   After updating, re-run `bun run scripts/campaign-status.ts` and print the full dashboard so the user sees the effect of the change immediately.
 
 ---
 

@@ -4,7 +4,7 @@ import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { root } from './lib/build/paths.ts';
 import { withTempDir } from './lib/test-fixtures.ts';
-import { eventsToRateLimits } from './usage-probe.ts';
+import { ccdUsageToRateLimits, eventsToRateLimits, NoCurrentWindow } from './usage-probe.ts';
 import { readUsageHistory } from './lib/usage-history.ts';
 
 const probe = path.join(root, 'scripts', 'usage-probe.ts');
@@ -244,6 +244,137 @@ describe('usage-probe CLI', () => {
       fs.writeFileSync(configPath, JSON.stringify({ resource_policy: { pace: { cache_path: path.join(dir, 'rl.json') } } }));
       expect(runProbe(dir, JSON.stringify(event({ five_hour: { utilization: 0.1, resetsAt: NOW + 3600 } })), ['--config', configPath]).code).toBe(0);
       expect(fs.existsSync(path.join(dir, 'usage-history.jsonl'))).toBe(false);
+    });
+  });
+});
+
+const R5 = NOW + 3600;
+const R7 = NOW + 3 * DAY;
+const ccd = (windows: Array<{ label: string; percentUsed: unknown; resetsAt: unknown }>) => JSON.stringify({ plan: { status: 'ok', windows } });
+const standard = ccd([
+  { label: '5-hour limit', percentUsed: 12, resetsAt: R5 },
+  { label: 'Weekly \u00b7 all models', percentUsed: 42, resetsAt: R7 },
+  { label: 'Weekly \u00b7 Opus', percentUsed: 90, resetsAt: R7 },
+]);
+
+describe('ccdUsageToRateLimits', () => {
+  test('maps the 5-hour and weekly all-models rows and ignores per-model rows', () => {
+    expect(ccdUsageToRateLimits(standard, NOW).limits).toEqual({
+      five_hour: { used_percentage: 12, resets_at: R5 },
+      seven_day: { used_percentage: 42, resets_at: R7 },
+    });
+  });
+
+  test('dates the reading now', () => {
+    expect(ccdUsageToRateLimits(standard, NOW).observedAt).toBe(NOW);
+  });
+
+  test('an ISO resetsAt equals the same epoch', () => {
+    const iso = new Date(R7 * 1000).toISOString();
+    const raw = ccd([{ label: 'Weekly \u00b7 all models', percentUsed: 5, resetsAt: iso }]);
+    expect(ccdUsageToRateLimits(raw, NOW).limits.seven_day).toEqual({ used_percentage: 5, resets_at: R7 });
+  });
+
+  test('an elapsed window is dropped', () => {
+    const raw = ccd([
+      { label: '5-hour limit', percentUsed: 12, resetsAt: NOW - 1 },
+      { label: 'Weekly \u00b7 all models', percentUsed: 42, resetsAt: R7 },
+    ]);
+    expect(ccdUsageToRateLimits(raw, NOW).limits).toEqual({ seven_day: { used_percentage: 42, resets_at: R7 } });
+  });
+
+  test('per-model-only input has no current window', () => {
+    const raw = ccd([{ label: 'Weekly \u00b7 Opus', percentUsed: 90, resetsAt: R7 }]);
+    expect(() => ccdUsageToRateLimits(raw, NOW)).toThrow(NoCurrentWindow);
+  });
+
+  test.each([101, -1, '12', null])('percentUsed %p is rejected', (bad) => {
+    const raw = ccd([{ label: '5-hour limit', percentUsed: bad, resetsAt: R5 }]);
+    expect(() => ccdUsageToRateLimits(raw, NOW)).toThrow(/percentUsed/);
+  });
+
+  test('an unparseable resetsAt is rejected', () => {
+    const raw = ccd([{ label: '5-hour limit', percentUsed: 5, resetsAt: 'soon' }]);
+    expect(() => ccdUsageToRateLimits(raw, NOW)).toThrow(/resetsAt/);
+  });
+
+  test('a missing plan.windows is rejected', () => {
+    expect(() => ccdUsageToRateLimits('{"plan":{"status":"not_applicable"}}', NOW)).toThrow(/plan\.windows/);
+    expect(() => ccdUsageToRateLimits('{nope', NOW)).toThrow(/not valid JSON/);
+  });
+});
+
+describe('usage-probe --from-ccd-usage CLI', () => {
+  const run = (dir: string, args: string[], input?: string) =>
+    spawnSync('bun', ['run', probe, ...args, '--now', String(NOW)], { encoding: 'utf-8', cwd: dir, input, env: { PATH: process.env.PATH ?? '' } });
+
+  test('a file writes the cache, dates it now and appends one weekly history line', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const cache = path.join(dir, 'rl.json');
+      const file = path.join(dir, 'usage.json');
+      fs.writeFileSync(file, standard);
+      const r = run(dir, ['--from-ccd-usage', file, '--cache', cache]);
+      expect(r.status).toBe(0);
+      const written = JSON.parse(fs.readFileSync(cache, 'utf-8'));
+      expect(written.rate_limits.five_hour.used_percentage).toBe(12);
+      expect(written.rate_limits.seven_day.used_percentage).toBe(42);
+      expect(written.source).toBe('ccd_get_usage');
+      expect(written.observed_at).toBe(NOW);
+      expect(Math.floor(fs.statSync(cache).mtimeMs / 1000)).toBe(NOW);
+      expect(readUsageHistory(path.join(dir, '.blackhole', 'usage-history.jsonl')).length).toBe(1);
+    });
+  });
+
+  test('stdin works the same', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const cache = path.join(dir, 'rl.json');
+      const r = run(dir, ['--from-ccd-usage', '-', '--cache', cache], standard);
+      expect(r.status).toBe(0);
+      expect(JSON.parse(fs.readFileSync(cache, 'utf-8')).rate_limits.seven_day.used_percentage).toBe(42);
+    });
+  });
+
+  test('per-model-only input exits 1 and writes nothing', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const cache = path.join(dir, 'rl.json');
+      const r = run(dir, ['--from-ccd-usage', '-', '--cache', cache], ccd([{ label: 'Weekly \u00b7 Opus', percentUsed: 9, resetsAt: R7 }]));
+      expect(r.status).toBe(1);
+      expect(fs.existsSync(cache)).toBe(false);
+    });
+  });
+
+  test('a percentUsed of 101 exits 2 and writes nothing', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const cache = path.join(dir, 'rl.json');
+      const r = run(dir, ['--from-ccd-usage', '-', '--cache', cache], ccd([{ label: '5-hour limit', percentUsed: 101, resetsAt: R5 }]));
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain('percentUsed');
+      expect(fs.existsSync(cache)).toBe(false);
+    });
+  });
+
+  test('both source flags, or neither, exits 2 with the usage line', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const both = run(dir, ['--from-ccd-usage', '-', '--from-events', '-'], standard);
+      expect(both.status).toBe(2);
+      expect(both.stderr).toContain('usage:');
+      const neither = run(dir, [], '');
+      expect(neither.status).toBe(2);
+      expect(neither.stderr).toContain('usage:');
+    });
+  });
+
+  test('the written cache lifts usage-budget out of unavailable', () => {
+    withTempDir('usage-probe-cli', (dir) => {
+      const cache = path.join(dir, 'rl.json');
+      const configPath = path.join(dir, 'config.json');
+      fs.writeFileSync(configPath, JSON.stringify({ usage_budget: { enabled: true }, resource_policy: { pace: { cache_path: cache } } }));
+      expect(run(dir, ['--from-ccd-usage', '-', '--config', configPath], standard).status).toBe(0);
+      const r = spawnSync('bun', ['run', budget, '--config', configPath, '--now', String(NOW), '--parallel-max', '10'], { encoding: 'utf-8', env: { PATH: process.env.PATH ?? '' } });
+      expect(r.status).toBe(0);
+      const verdict = JSON.parse(r.stdout);
+      expect(verdict.verdict).not.toBe('unavailable');
+      expect(verdict.reasons.join(' ')).not.toContain('rate-limit cache');
     });
   });
 });
