@@ -73,6 +73,12 @@ describe('buildPaceRecord with a usage-budget verdict', () => {
     });
   }
 
+  test('SKIP (catchup fail-closed) is accepted and is a rate-limit stop', () => {
+    const r = buildPaceRecord(NOW, 3, { ...pace, verdict: 'HOLD', concurrency: 3 }, null, usage('SKIP', 0) as never);
+    expect(r).toMatchObject({ effective: 0, rate_limit_stop: true });
+    expect(isUsageRecordVerdict(usage('SKIP', 0))).toBe(true);
+  });
+
   test('unavailable and NO-NEW-STARTS do not cut the count', () => {
     for (const verdict of ['unavailable', 'NO-NEW-STARTS']) {
       const r = buildPaceRecord(NOW, 3, { ...pace, verdict: 'HOLD', concurrency: 3 }, null, usage(verdict, verdict === 'unavailable' ? 3 : 0) as never);

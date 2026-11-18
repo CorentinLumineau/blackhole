@@ -2,14 +2,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readScope } from './forge-scope.ts';
-import { createForgeAdapter } from './lib/forge-adapter/index.ts';
+import { adapterForCampaign } from './lib/forge-adapter/for-campaign.ts';
 import type { ForgeAdapter, ForgeIssue } from './lib/forge-adapter/types.ts';
-import { isForgeType, resolveForgeForRepo } from './lib/forge-detection.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { MERGED_PR_LIMIT } from './lib/campaign-status/forge.ts';
 import { DONE_STATUSES } from './lib/campaign-status/queue.ts';
 import type { QueueJson } from './lib/campaign-status/types.ts';
 import { installStateFile } from './lib/state-write-guard.ts';
+import { readLaneConfig } from './lib/lane.ts';
 import { syncQueue, type SyncResult } from './lib/forge-sync.ts';
 
 // Builds or refreshes `.blackhole/queue.json` from the forge (`forge-sync.md` § Queue builder script):
@@ -23,10 +23,10 @@ import { syncQueue, type SyncResult } from './lib/forge-sync.ts';
 // runs (bootstrap, a fresh checkout). To keep the window for a lost concurrent write small, the
 // queue is read again just before the write and the sync is re-applied to that copy.
 
-const USAGE = 'Usage: bun run forge-sync [--campaign-dir <dir>] [--dry-run]';
+const USAGE = 'Usage: bun run forge-sync [--campaign-dir <dir>] [--lane <name>] [--dry-run]';
 const ISSUE_LIMIT = 1000;
 
-type Config = { auto_sync?: boolean; repo?: string; forge?: string; scope_milestone?: string; scope_labels?: string[]; default_touch_paths?: string[]; size_label_prefix?: string };
+type Config = { auto_sync?: boolean; repo?: string; forge?: string; scope_milestone?: string; scope_labels?: string[]; default_touch_paths?: string[]; size_label_prefix?: string; catchup?: unknown };
 
 /** Open issues, plus closed ones only when a live queue entry is missing from the open list. */
 async function readIssues(adapter: ForgeAdapter, queue: QueueJson | null): Promise<ForgeIssue[]> {
@@ -58,7 +58,7 @@ function install(livePath: string, archiveDir: string, value: unknown, entityKey
 }
 
 /** Reads the forge and writes `queue.json` (and an empty ledger when none exists). `adapter` replaces the configured forge's, for a test. */
-export async function runForgeSync(campaignDir: string, opts: { adapter?: ForgeAdapter; now?: string; dryRun?: boolean } = {}): Promise<ForgeSyncOutcome> {
+export async function runForgeSync(campaignDir: string, opts: { adapter?: ForgeAdapter; now?: string; dryRun?: boolean; lane?: string } = {}): Promise<ForgeSyncOutcome> {
   const configPath = path.join(campaignDir, 'config.json');
   if (!fs.existsSync(configPath)) throw new Error(`No ${configPath}: forge-sync builds the queue of an existing campaign config.`);
   const config = readJsonFile(configPath, configPath) as Config;
@@ -66,14 +66,14 @@ export async function runForgeSync(campaignDir: string, opts: { adapter?: ForgeA
   if (!config.repo && !opts.adapter) throw new Error(`${configPath} has no "repo": the forge cannot be read.`);
   const queuePath = path.join(campaignDir, 'queue.json');
   const first = readQueue(queuePath);
-  const resolved = resolveForgeForRepo(path.dirname(path.resolve(campaignDir)), config.forge);
-  const forge = resolved.ok ? resolved.forge : config.forge && isForgeType(config.forge) ? config.forge : 'github';
-  const adapter = opts.adapter ?? createForgeAdapter({ repo: config.repo as string, forge });
+  const adapter = opts.adapter ?? adapterForCampaign(campaignDir, { repo: config.repo as string, forge: config.forge });
   const scope = readScope(config);
   const issues = await readIssues(adapter, first.queue);
   const prs = await adapter.prList({ state: 'all', limit: MERGED_PR_LIMIT });
   const now = opts.now ?? new Date().toISOString();
-  const sync = (queue: QueueJson | null) => syncQueue({ queue, issues, prs, scope, config, now });
+  const laneConfig = readLaneConfig(config);
+  const lane = opts.lane ?? laneConfig.lane;
+  const sync = (queue: QueueJson | null) => syncQueue({ queue, issues, prs, scope, config, now, lane, claimLeaseHours: laneConfig.leaseHours });
   if (opts.dryRun) return sync(first.queue);
 
   // Re-read: a write made while the forge was being read is kept, and the sync applies on top of it.
@@ -88,7 +88,7 @@ export async function runForgeSync(campaignDir: string, opts: { adapter?: ForgeA
 
 async function main(): Promise<void> {
   const flags = parseFlags(process.argv.slice(2));
-  const unknown = unknownFlagKeys(flags, ['campaign-dir', 'dry-run']);
+  const unknown = unknownFlagKeys(flags, ['campaign-dir', 'dry-run', 'lane']);
   if (unknown.length) {
     console.error(`Unknown flag(s): ${unknown.join(', ')}\n${USAGE}`);
     process.exit(2);
@@ -96,7 +96,7 @@ async function main(): Promise<void> {
   const dir = typeof flags['campaign-dir'] === 'string' ? flags['campaign-dir'] : '.blackhole';
   const campaignDir = path.resolve(process.cwd(), dir);
   try {
-    const result = await runForgeSync(campaignDir, { dryRun: flags['dry-run'] === true });
+    const result = await runForgeSync(campaignDir, { dryRun: flags['dry-run'] === true, lane: typeof flags.lane === 'string' ? flags.lane : undefined });
     if ('skipped' in result) return console.log(`Forge sync skipped: ${result.skipped}`);
     if (flags['dry-run'] === true) console.log(JSON.stringify(result.queue, null, 2));
     const config = readJsonFile(path.join(campaignDir, 'config.json'), 'config.json') as Config;

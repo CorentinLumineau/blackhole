@@ -275,6 +275,58 @@ describe('GitHubForgeAdapter (REST)', () => {
     mockApi(() => ({ status: 1, stdout: '', stderr: 'gh: Bad credentials (HTTP 401)' }));
     expect(await adapter.authStatus()).toMatchObject({ ok: false, detail: 'gh: Bad credentials (HTTP 401)' });
   });
+
+  describe('claim and release', () => {
+    const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
+    const fresh = new Date(Date.now() - 3_600_000).toISOString();
+
+    test('claim posts the label then the assignee and returns CLAIMED', async () => {
+      mockApi(() => ({ stdout: issueRow(7, { labels: [], assignees: [], updated_at: fresh }) }));
+      expect(await adapter.claim(7, 'acct-a', 'me')).toEqual({ verdict: 'CLAIMED' });
+      const writes = calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.endpoint}`);
+      expect(writes).toEqual(['POST repos/owner/repo/issues/7/labels', 'POST repos/owner/repo/issues/7/assignees']);
+      expect(calls.find((c) => c.endpoint.endsWith('/labels'))?.body).toEqual({ labels: ['in-progress:acct-a'] });
+      expect(calls.find((c) => c.endpoint.endsWith('/assignees'))?.body).toEqual({ assignees: ['me'] });
+    });
+
+    test('a live foreign claim is HELD with no write', async () => {
+      mockApi((_m, endpoint) => (endpoint.endsWith('/pulls?state=open&per_page=100&page=1') ? { stdout: [] } : { stdout: issueRow(7, { labels: [{ name: 'in-progress:acct-b' }], updated_at: fresh }) }));
+      expect(await adapter.claim(7, 'acct-a', 'me')).toEqual({ verdict: 'HELD', held_by: 'acct-b' });
+      expect(calls.every((c) => c.method === 'GET')).toBe(true);
+    });
+
+    test('a stale foreign claim is reclaimed', async () => {
+      let reads = 0;
+      mockApi((method, endpoint) => {
+        if (endpoint.includes('/pulls')) return { stdout: [] };
+        if (method === 'GET') return { stdout: issueRow(7, { labels: reads++ === 0 ? [{ name: 'in-progress:acct-b' }] : [{ name: 'in-progress:acct-a' }], updated_at: stale }) };
+        return { stdout: {} };
+      });
+      expect(await adapter.claim(7, 'acct-a', 'me')).toEqual({ verdict: 'RECLAIMED' });
+      expect(calls.some((c) => c.method === 'DELETE' && c.endpoint.endsWith('/labels/in-progress%3Aacct-b'))).toBe(true);
+    });
+
+    test('release removes the lane label and the assignee', async () => {
+      mockApi((_m, endpoint) => (endpoint === 'user' ? { stdout: { login: 'me' } } : { stdout: issueRow(7, { labels: [{ name: 'in-progress:acct-a' }], assignees: [{ login: 'me' }] }) }));
+      expect(await adapter.release(7, 'acct-a')).toEqual({ verdict: 'RELEASED' });
+      expect(calls.some((c) => c.method === 'DELETE' && c.endpoint.includes('/labels/'))).toBe(true);
+      expect(calls.find((c) => c.method === 'DELETE' && c.endpoint.endsWith('/assignees'))?.body).toEqual({ assignees: ['me'] });
+    });
+
+    test('viewerLogin reads GET user', async () => {
+      mockApi(() => ({ stdout: { login: 'me' } }));
+      expect(await adapter.viewerLogin()).toBe('me');
+      expect(calls[0]).toMatchObject({ method: 'GET', endpoint: 'user' });
+    });
+
+    test('issueList maps assignees and updatedAt, and omits them when absent', async () => {
+      mockApi(() => ({ stdout: [issueRow(1, { assignees: [{ login: 'me' }], updated_at: 'T' }), issueRow(2)] }));
+      const [withFields, without] = await adapter.issueList();
+      expect(withFields).toMatchObject({ assignees: ['me'], updatedAt: 'T' });
+      expect(without).not.toHaveProperty('updatedAt');
+      expect(without).not.toHaveProperty('assignees');
+    });
+  });
 });
 
 describe('repoSlugFromOrigin', () => {

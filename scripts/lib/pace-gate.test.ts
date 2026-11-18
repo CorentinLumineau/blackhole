@@ -7,14 +7,12 @@ import {
   evaluatePaceGate,
   readBaseline,
   rollBaseline,
-  readRateLimits,
   resolvePaceGateThresholds,
   windowPace,
-  type RateLimits,
   type Baseline,
-  type RateWindow,
 } from './pace-gate.ts';
 import { makeTempDir } from './fs.ts';
+import type { RateLimits, RateWindow } from './rate-limit-cache.ts';
 
 const SCRIPT_PATH = path.join(import.meta.dir, '..', 'pace-gate.ts');
 const NOW = 1_800_000_000;
@@ -100,30 +98,6 @@ describe('evaluatePaceGate', () => {
     const v = evaluatePaceGate(null, 3, 6, NOW, DEFAULT_PACE_GATE);
     expect(v).toMatchObject({ verdict: 'unavailable', concurrency: 3 });
     expect(v.reasons[0]).toContain('unavailable');
-  });
-});
-
-describe('readRateLimits', () => {
-  test('reads rate_limits from a cached statusline payload', () => {
-    const file = cacheFile({ model: {}, rate_limits: limits([50, DAY], [10, HOUR]) });
-    expect(readRateLimits(file, NOW, 600).limits?.seven_day?.used_percentage).toBe(50);
-  });
-
-  test('a stale cache is unavailable, with its age in the reason', () => {
-    const r = readRateLimits(cacheFile({ rate_limits: limits([50, DAY], [10, HOUR]) }, 3600), NOW, 600);
-    expect(r.limits).toBeNull();
-    expect(r.reason).toContain('stale');
-  });
-
-  test('a missing file, malformed JSON, or a payload with no windows is unavailable', () => {
-    expect(readRateLimits('/nonexistent/rate-limits.json', NOW, 600).limits).toBeNull();
-    expect(readRateLimits(cacheFile('{not json'), NOW, 600).limits).toBeNull();
-    expect(readRateLimits(cacheFile({ rate_limits: {} }), NOW, 600).limits).toBeNull();
-  });
-
-  test('a window whose resets_at has passed is dropped, as Claude Code does', () => {
-    const file = cacheFile({ rate_limits: { five_hour: { used_percentage: 90, resets_at: NOW - 1 }, seven_day: win(10, DAY, 7 * DAY) } });
-    expect(readRateLimits(file, NOW, 600).limits?.five_hour).toBeUndefined();
   });
 });
 
