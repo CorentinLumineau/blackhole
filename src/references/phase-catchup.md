@@ -24,9 +24,9 @@ Set `catchup.lane` per account before a second account runs on the same repo (th
    `pace-floor` as `--usage <file>`, and to the gate as `--usage-file <file>` (the gate's own
    `--usage` takes inline JSON).
 3. **Compute the floor.** `bun run scripts/pace-floor.ts [--usage <file>]` prints `status`, `floor_pct`,
-   `credits` and `shortfall_pct`. `unreadable` or `no-weekly` means log the reason and exit. A
-   `floor_pct` of 0 (just after the weekly reset, before that day ends) is a valid floor: pass it to
-   the gate, which returns `STOP-CAMPAIGN`.
+   `elapsed_h`, `target_pct` and `shortfall_pct`. `unreadable` or `no-weekly` means log the reason and
+   exit. A `floor_pct` of 0 (the instant the week starts) is a valid floor: pass it to the gate, which
+   returns `STOP-CAMPAIGN`.
 4. **Gate.** `bun run scripts/usage-budget.ts --parallel-max <n> --floor <pct> [--usage-file <file>]`
    (the sibling pace gate, `pace-gate.ts`, is unchanged and runs beside it in every spawn round).
    `--floor` is for this invocation only, forces the gate on and never writes `config.json`:

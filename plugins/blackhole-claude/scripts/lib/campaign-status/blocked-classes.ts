@@ -1,5 +1,6 @@
 import { DONE_STATUSES } from './queue.ts';
 import { laneOfLabel, ownLanes } from '../lane.ts';
+import { isPeerHold } from '../peer-campaigns.ts';
 import type { BlockedClassKind, IssueRow, QueueIssue } from './types.ts';
 
 // Shared by report.ts (the page and `--data`/`--json` feed) and dashboard.ts (the text view). It sits
@@ -56,9 +57,9 @@ export const BLOCKED_CLASS_LABELS: [BlockedClassKind, string][] = [
   ['another_lane', 'Another lane'],
 ];
 
-/** The one classifier for a blocked non-owner issue. First match wins: lane, tracking, sequence, dependency. */
+/** The one classifier for a blocked non-owner issue. First match wins: lane or peer session, tracking, sequence, dependency. */
 export function classifyBlocked(issue: QueueIssue, issues: Record<string, QueueIssue>, lane?: string | null): BlockedClassKind {
-  if (inForeignLane(issue, lane)) return 'another_lane';
+  if (inForeignLane(issue, lane) || isPeerHold(issue.notes)) return 'another_lane';
   const notes = issue.notes ?? '';
   if (/\btracking issue\b/i.test(notes)) return 'tracking_issue';
   if (/\bin sequence\b/i.test(notes)) return 'sequenced_phase';

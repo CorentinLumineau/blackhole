@@ -143,6 +143,25 @@ The full 6-step form follows:
    onto the existing `parallel_max` field (`config-template.md`) — do not
    invent a new field name.
 
+   Then the usage caps, asked when the Budget card is answered "Set usage
+   caps" or "Adjust" (never when it is "Accept" or "Run with no limit"). Show
+   the current `usage_budget` values and suggest no numbers: (a) `enabled`,
+   yes or no; (b) the 5-hour stop line `five_hour.stop_workers_at`, a percent
+   from 6 to 100, skipped when the plan has no 5-hour window (weekly-only);
+   (c) the weekly `weekly.target_at_reset`, a percent in (0, 100] or none. Free
+   numbers use a text question. Turn the answers into the block with
+   `bun run scripts/campaign-status.ts usage-caps --enabled <true|false>
+   [--stop-workers-at <n>] [--target-at-reset <n|none>]`: it derives
+   `five_hour.no_spawn_at` as the stop line minus 5, keeps `rates` and
+   `coordination`, prints the merged `usage_budget` block and exits 2 with the
+   reason when the block is invalid (ask again). Step 6 writes that block.
+   When the error names a key the owner did not just answer (an existing
+   `usage_budget` value that is invalid, or a weekly line below the new
+   target), report it and offer "Run with no limit" or "Fix config.json by
+   hand", never a loop of the same questions. "Run with no limit" writes
+   nothing: `usage_budget` stays exactly as it is, and the coordinator records
+   `usage limit: none (owner accepted)` as a decision.
+
 5. **Kaizen** — use `AskQuestion` to confirm the `kaizen` block
    (`config-template.md`), with the current config value (or the template
    defaults — `enabled: false`) pre-selected: "Keep current kaizen settings
@@ -171,8 +190,8 @@ The full 6-step form follows:
 
 6. Copy the committed template to `.blackhole/config.json` if it does not yet
    exist, then write the confirmed `scope_labels`/`scope_milestone`/
-   `merge_mode`/`parallel_max`/`kaizen` values (and any adjusted `merge_after`
-   arrays from step 3) into it atomically (`blackhole-state.md` § Write
+   `merge_mode`/`parallel_max`/`kaizen` values, the `usage_budget` block step 4
+   printed (and any adjusted `merge_after` arrays from step 3) into it atomically (`blackhole-state.md` § Write
    protocol). Record the confirmed scope in words, then each answer of the form
    as a decision (`status-page.md` § What the orchestrator records):
    `bun scripts/campaign-record.ts scope --kind in --text "<the step-1 filter in words, e.g. Open issues in milestone v2.0>" --filter`,

@@ -7,6 +7,7 @@ import { closedIssues } from './campaign-status/merged.ts';
 import { latestClosingPrActivity } from './forge-adapter/claim.ts';
 import { DEFAULT_CLAIM_LEASE_HOURS, isClaimStale, LANE_LABEL_PREFIX, laneOfLabel } from './lane.ts';
 import { DONE_STATUSES } from './campaign-status/queue.ts';
+import { ANOTHER_SESSION, isPeerHold } from './peer-campaigns.ts';
 import type { QueueIssue, QueueJson } from './campaign-status/types.ts';
 
 // `forge-sync.md` § Sync protocol steps 4, 5, 6 and 7 as one pure function: the queue as the forge
@@ -30,6 +31,10 @@ export type SyncInput = {
   lane?: string | null;
   /** Hours without issue or PR activity before another lane's `in-progress:*` claim is stale; used with a lane. */
   claimLeaseHours?: number;
+  /** Issue number (queue key) → the live peer session claiming it (ADR-057, `peerClaims`). Absent: no peer. */
+  peerClaims?: Record<string, string>;
+  /** Peer records exist that could not be read: an `another session:` hold is kept, since its peer may be one of them. */
+  peersUnreadable?: boolean;
 };
 
 export type SyncResult = {
@@ -39,10 +44,10 @@ export type SyncResult = {
   linked: number[];
 };
 
-/** The notes this sync writes on a ready entry held elsewhere; only these exact notes are cleared again. */
+/** The notes this sync writes on a ready entry held elsewhere (with `ANOTHER_SESSION` for a peer campaign); only these exact notes are cleared again. */
 export const ANOTHER_LANE = 'another lane:';
 export const OPEN_PR = 'open PR:';
-const LANE_NOTE = /^(?:another lane|open PR): \S+$/;
+const LANE_NOTE = /^(?:another lane|open PR|another session): \S+$/;
 /** A campaign branch names its issue: `claude/issue-N…` or `blackhole/issue-N…`. */
 const BRANCH_ISSUE_RE = new RegExp(String.raw`^(?:claude|blackhole)\/${CAMPAIGN_BRANCH_TAIL}$`);
 /** Dependency bots: their PR is an open PR, not another agent lane. */
@@ -187,9 +192,13 @@ export function syncQueue(input: SyncInput): SyncResult {
     const isStale = stale.has(key);
     const label = state ? foreignLaneLabel(liveLabels(key), lane) : null;
     const prHold = isStale ? null : (open.foreign.get(n) ?? null);
-    let next = state ? applyLane(entry, label ? `${ANOTHER_LANE} ${label}` : prHold) : entry;
+    const peer = input.peerClaims?.[key];
+    const keptPeerHold = input.peersUnreadable && isPeerHold(entry.notes) ? entry.notes : null;
+    const peerHold = peer ? `${ANOTHER_SESSION} ${peer}` : keptPeerHold;
+    let next = state ? applyLane(entry, label ? `${ANOTHER_LANE} ${label}` : (peerHold ?? prHold)) : entry;
     const ownPr = open.own.get(n);
-    if (ownPr && next.pr !== ownPr.number && !isLaneNote(next.notes)) {
+    // A peer's PR is never adopted as this session's own, whatever the entry's status or note.
+    if (ownPr && next.pr !== ownPr.number && !isLaneNote(next.notes) && !peer) {
       next = { ...next, pr: ownPr.number, phase: next.phase === 'implement' ? 'review' : next.phase };
       linked.push(n);
     }

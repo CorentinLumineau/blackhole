@@ -1,10 +1,10 @@
 ---
 type: adr
-summary: "A catchup mode burns the weekly plan quota up to a weekday pace floor (17.5% per weekday credit, derived from the reset time) through the existing campaign run: usage-budget.ts gains a fail-closed --floor flag, usage is read through a host-agnostic provider chain, and issues are claimed with an account-stable lane label and assignee under a lease before any work starts"
+summary: "A catchup mode burns the weekly plan quota up to a linear weekly pace floor (a configurable target, default 80%, reached at the reset) through the existing campaign run: usage-budget.ts gains a fail-closed --floor flag, usage is read through a host-agnostic provider chain, and issues are claimed with an account-stable lane label and assignee under a lease before any work starts"
 status: accepted
 review_trigger: "on a change to plan usage windows, the usage provider chain, or the lane claim convention"
 created: 2026-11-17
-last_updated: 2026-11-17
+last_updated: 2026-11-18
 related:
   - documentation/brainstorms/weekly-quota-pacing.md
   - documentation/decisions/ADR-027-forge-adapter-interface.md
@@ -63,7 +63,7 @@ stop.
 flowchart TD
   T[Desktop scheduled task<br/>weekdays 18:00 + re-fire per 5h reset<br/>weekend every 5h] --> M
   H[Owner: /blackhole catchup] --> M
-  M[C2 catchup mode] --> F[C1 pace-floor.ts<br/>credits from reset time to floor, shortfall]
+  M[C2 catchup mode] --> F[C1 pace-floor.ts<br/>linear floor over 168 h, shortfall]
   M --> U[C6 usage provider chain<br/>--usage file / statusline cache / probe / live endpoint]
   F --> G[C3 usage-budget.ts --floor<br/>fail-closed, stop at floor, 5h 75/80]
   U --> G
@@ -77,13 +77,13 @@ flowchart TD
 
 | # | Component | Responsibility | New or extended |
 |---|---|---|---|
-| C1 | `scripts/lib/pace-floor.ts` | Pure function: given now, the weekly `resets_at`, `pct_per_weekday` and the working day bounds, returns the floor and the shortfall. Credits are derived from the reset timestamp: the reset weekday counts ½ (from the reset hour), every other Mon-Fri counts 1 at its day end, and the half day before the next reset closes the week. The Tuesday curve is therefore an output, not a constant | New |
+| C1 | `scripts/lib/pace-floor.ts` | Pure function: given now, the weekly `resets_at` and `weekly_target_pct`, returns the floor, the elapsed hours and the shortfall. The floor is linear over all 168 h of the week: `weekly_target_pct x elapsed_h / 168`, where `elapsed_h` is the time since `resets_at - 7d` clamped to 0-168. Weekends count like weekdays, so the curve is an output of the reset time, not a constant | New; reparameterized (see § Post-acceptance amendments) |
 | C2 | `catchup` mode (`SKILL.md` Modes row, `src/references/phase-catchup.md`) | Entry point, used the same way as `run` and `stop`: `/blackhole run`, `/blackhole catchup`, `/blackhole stop`. Runs C3, logs and exits on SKIP/WAIT, otherwise starts the campaign. Before the first spawn it runs the existing launch gate (`launch-gate.md`), widened from `run` only to `run` and `catchup`. The gate behaves the same for both modes: it prints the whole configuration as an executive summary and asks Accept/Adjust per section. For `catchup`, the rows come pre-filled with the pacing preset as defaults: the floor from C1, the 5h caps (75/80) and the lane. Every row stays adjustable, exactly as in `run`. A pacing section adds the usage reading (plan, every window with used % and reset) and the shortfall. Adjustments apply to that invocation only, never to `config.json`. A scheduled catchup has nobody to answer, so it runs in the gate's existing print-only mode (sleep mode on, or no question channel): the summary is printed and every row counts as accepted. `stop` drains a catchup exactly as it drains a run. The playbook also holds the scheduled-task prompt template, so cloning per account is copy and set `lane` | New (`launch-gate.md` § When it runs extended) |
 | C3 | `scripts/usage-budget.ts --floor <pct>` | One usage gate, not a second implementation. With `--floor`, unreadable usage is SKIP (fail-closed). The floor replaces `stop_campaign_at` for this invocation only, and the 5h lines come from the `catchup` config block (`no_spawn_at: 75`, `stop_workers_at: 80`). `config.json` is never mutated | Extended |
 | C4 | Lane claim (forge adapter `claim`/`release`, `forge-sync`, `blocked-classes.ts`) | Before work: add `in-progress:<lane>` and assign the account user. Release on merge, stop or failure. `lane` is an account-stable config key that replaces the hardcoded `OWN_LANES`. An issue counts as "own" when it carries the own lane label, not because of a `blackhole/` branch prefix. A claim with no branch or PR activity past `claim_lease_hours` is stale and reclaimable | Extended (adapter interface) |
 | C5 | mercure `git-issue` implement | Writes and respects the same label and assignee convention, so interactive sessions are visible to campaigns | Separate PR, mercure repo |
 | C6 | `scripts/usage.ts` + `usage-source.ts` provider chain | Prints one normalized reading on any host, and that reading describes the subscription fully: `plan` (e.g. Pro, Max, or `none` for API-key, Bedrock or Vertex billing, where plan limits do not apply), `windows[]` (only the windows the plan actually has: 5-hour, weekly all-models, and each per-model weekly window, each with `used_pct` and `resets_at`), `extra_usage` (enabled, currency), `source` and `read_at`. A plan without a 5-hour window gates on the weekly window alone, and a plan with no windows makes `catchup` a SKIP with reason `no plan limits`. Ordered providers, first usable wins: (1) explicit `--usage <file>`, which the desktop scheduled task fills from the app's own usage tool and any agent can fill; (2) the statusline rate-limit cache, on an interactive CLI; (3) the `rate_limit_event` probe, on cloud and remote; (4) the account's live usage endpoint, if verified (see Key Assumptions). No provider gives `none` with a reason, and C3 turns that into SKIP | Extended |
-| — | `catchup` config block | `pct_per_weekday` (17.5), `five_hour` caps (75/80), `lane`, `claim_lease_hours`, working-day end hour | New keys (`V-CONFIG-02`, `V-CONFIG-03` status dataset) |
+| — | `catchup` config block | `weekly_target_pct` (80), `five_hour` caps (75/80), `lane`, `claim_lease_hours` | New keys (`V-CONFIG-02`, `V-CONFIG-03` status dataset) |
 
 The scheduled task stays outside the repo, as a desktop app or cloud routine schedule. Because the
 mode is native, the task's prompt is one line plus the usage hand-off, and a local host's missing
@@ -160,3 +160,18 @@ one account is unsafe until then.
   Collision safety between them comes from C4, not from usage.
 - A week with no ready issues still wastes quota. `catchup` can only spend tokens on real backlog
   work, and it reports "no ready work" as its own skip reason.
+
+## Post-acceptance amendments
+
+- 2026-11-18 (issue #1293, owner ruling of that date): C1's weekday-credit staircase is replaced by a
+  linear floor over the whole week. The staircase credited 17.5 points per finished Mon-Fri weekday
+  (`pct_per_weekday`, with a working-day end hour `day_end_hour`), so the floor lagged the clock by up
+  to 17.5 points inside a weekday, stayed flat from Friday evening to Monday evening and ignored the
+  hours left before `resets_at`; at Wed 13:00Z of a Sat 20:00Z reset it showed 35% where the linear
+  value is 42.38%. The floor is now `weekly_target_pct x elapsed_h / 168` with `weekly_target_pct` in
+  (0, 100], default 80, and `computePaceFloor` returns `{ floor_pct, elapsed_h, target_pct,
+  shortfall_pct }`. The 87.5 floor in Context was the owner's earlier figure and is now one
+  configurable value (default 80). `catchup.pct_per_weekday` and `catchup.day_end_hour` are removed:
+  `resolveCatchup` throws a message naming the replacement when either is present, even as `null`,
+  and no auto-migration runs. The decision itself (a pace floor gated fail-closed by `--floor`) is
+  unchanged.

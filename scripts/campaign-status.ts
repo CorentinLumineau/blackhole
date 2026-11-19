@@ -6,7 +6,7 @@ import { parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { readLaneConfig } from './lib/lane.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { buildBudgetPanel, givenBudgetPanel, readBudgetPanel, resolveBudgetSettings } from './lib/campaign-status/budget.ts';
-import { adjustPacing, applyOverrides, floorBudget, localUtcOffsetMinutes, readPacing, resolveCatchup } from './lib/catchup.ts';
+import { adjustPacing, applyOverrides, floorBudget, readPacing, resolveCatchup } from './lib/catchup.ts';
 import { DEFAULT_USAGE_BUDGET } from './lib/usage-budget.ts';
 import { isSleepMode, readPendingDecisions } from './lib/campaign-status/pending-decisions.ts';
 import { buildDocCarry, type DocCarryIssue, type DocCarryRead, type PendingRead } from './lib/campaign-status/run-state.ts';
@@ -21,13 +21,16 @@ import { writeStatusData } from './lib/campaign-status/data.ts';
 import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
 import { readPublishState, readStatusAlerts, statusPageEnabled } from './lib/campaign-status/staleness.ts';
-import { buildLaunchSummary, gateCards, renderLaunchSummary, type CatchupInput } from './lib/campaign-status/launch-summary.ts';
+import { buildLaunchSummary, gateCards, renderLaunchSummary, usageCapsPatch, type CatchupInput } from './lib/campaign-status/launch-summary.ts';
+import type { DetectResult } from './lib/peer-campaigns.ts';
+import { detectForCampaign } from './peer-campaigns.ts';
 import type { StatusArtifact, StatusPageInput } from './lib/campaign-status/status-page-row.ts';
 import type { RateLimits } from './lib/rate-limit-cache.ts';
 import { parseUsage } from './usage-budget.ts';
 import { buildStatusReport } from './lib/campaign-status/report.ts';
 import { CampaignNotFoundError, loadCampaignState } from './lib/campaign-status/state.ts';
 import { readJsonFile } from './lib/fs.ts';
+import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { createForgeAdapter } from './lib/forge-adapter/index.ts';
 import type { ForgeAdapter } from './lib/forge-adapter/types.ts';
 import { isForgeType, resolveForgeForRepo } from './lib/forge-detection.ts';
@@ -311,7 +314,7 @@ function readCatchup(config: Record<string, unknown>, host: ReturnType<typeof re
     preset = applyOverrides(preset, { floor_pct: flags.floorPct ?? undefined, no_spawn_at: flags.noSpawnAt ?? undefined, stop_workers_at: flags.stopWorkersAt ?? undefined, lane: flags.lane ?? undefined });
     const source = usageSourceFor(host, config, { usageFile: flags.usageFile ?? undefined });
     const reading = source.read(nowS);
-    const pacing = readPacing(source.report(nowS), preset, nowS, localUtcOffsetMinutes(nowS));
+    const pacing = readPacing(source.report(nowS), preset, nowS);
     const floorPct = flags.floorPct ?? pacing.floor_pct;
     const settings = resolveBudgetSettings(config);
     const budget = floorBudget(settings.invalid === null ? settings.budget : DEFAULT_USAGE_BUDGET, preset, floorPct ?? 100);
@@ -320,6 +323,19 @@ function readCatchup(config: Record<string, unknown>, host: ReturnType<typeof re
   } catch (error) {
     console.error(`status --summary: ${error instanceof Error ? error.message : String(error)}`);
     return process.exit(2);
+  }
+}
+
+/**
+ * Peer detection for the Peers row (ADR-057). Undefined outside a git clone, so the row shows the
+ * configured role; a detection that throws inside a clone fails closed as one unreadable record.
+ */
+function readPeers(campaignDir: string): DetectResult | undefined {
+  try {
+    return detectForCampaign(campaignDir) ?? undefined;
+  } catch (error) {
+    console.error(`status --summary: peer detection failed: ${error instanceof Error ? error.message : String(error)}`);
+    return { verdict: 'unknown', reach: 'clone', unreadable: 1, unreadable_files: ['(detection failed)'], peers: [] };
   }
 }
 
@@ -357,6 +373,7 @@ async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJso
     budget: catchup?.budget ?? (usage ? givenBudgetPanel(usage, config, nowS) : readBudgetPanel(config, host, nowS, path.join(campaignDir, USAGE_HISTORY_FILE))),
     statusPage: readStatusPageInput(campaignDir, collected.state.config, nowIso),
     catchup: catchup?.input,
+    peers: readPeers(campaignDir),
   });
   const versionWarning = pluginVersionWarning(
     readPluginVersionCheck({ running: readPluginVersion(PLUGIN_ROOT), homeDir: os.homedir(), pluginName: projectIdentity.name }),
@@ -370,7 +387,35 @@ async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJso
   console.log(renderLaunchSummary(rows, warnings));
 }
 
+const USAGE_CAPS_USAGE = 'Usage: campaign-status.ts usage-caps --enabled <true|false> [--stop-workers-at <6-100>] [--target-at-reset <1-100|none>] [--campaign-dir <dir>]';
+
+/** `usage-caps`: print the `usage_budget` block the owner's Adjust answers produce; the caller writes it. Exits 2 on a bad answer. */
+function printUsageCaps(argv: string[]): void {
+  try {
+    const flags = parseFlags(argv);
+    const unknown = unknownFlagKeys(flags, ['enabled', 'stop-workers-at', 'target-at-reset', 'campaign-dir']);
+    if (unknown.length > 0) throw new Error(`unknown flag ${unknown.map((k) => `--${k}`).join(', ')}. ${USAGE_CAPS_USAGE}`);
+    const num = (name: string): number | null => {
+      const v = flags[name];
+      if (v === undefined) return null;
+      const n = typeof v === 'string' ? Number(v) : NaN;
+      if (!Number.isFinite(n)) throw new Error(`--${name} requires a number. ${USAGE_CAPS_USAGE}`);
+      return n;
+    };
+    if (flags.enabled !== 'true' && flags.enabled !== 'false') throw new Error(`--enabled requires true or false. ${USAGE_CAPS_USAGE}`);
+    const target = flags['target-at-reset'] === 'none' ? null : flags['target-at-reset'] === undefined ? undefined : num('target-at-reset');
+    const campaignDir = typeof flags['campaign-dir'] === 'string' ? path.resolve(flags['campaign-dir']) : path.join(process.cwd(), '.blackhole');
+    const configPath = path.join(campaignDir, 'config.json');
+    const config = readJsonFile(configPath, configPath) as { usage_budget?: Record<string, unknown> };
+    console.log(JSON.stringify(usageCapsPatch({ enabled: flags.enabled === 'true', stopWorkersAt: num('stop-workers-at'), targetAtReset: target }, config.usage_budget ?? {}), null, 2));
+  } catch (error) {
+    console.error(`status usage-caps: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(2);
+  }
+}
+
 async function main() {
+  if (process.argv[2] === 'usage-caps') return printUsageCaps(process.argv.slice(3));
   let args: ReturnType<typeof parseStatusArgs>;
   try {
     args = parseStatusArgs(process.argv.slice(2));

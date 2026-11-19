@@ -95,7 +95,7 @@ const PATH_RULES: PathRule[] = [
   {
     category: 'release-tag',
     test: (p) =>
-      /(^|\/)scripts\/release\.ts$/i.test(p) ||
+      /(^|\/)scripts\/(lib\/)?release(-cadence)?\.ts$/i.test(p) ||
       /^\.github\/releases\//.test(p) ||
       /(^|\/)(git-create-release|prj-create-release)\//i.test(p) ||
       /(^|\/)(\.releaserc|release-please|semantic-release)/i.test(p) ||

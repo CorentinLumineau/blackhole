@@ -54,6 +54,13 @@ writes `queue.json` through the state write guard (`blackhole-state.md` § Write
   lane the legacy `claude` and `blackhole` lanes are the own ones. An `in-progress:*` claim of
   another lane whose issue and open closing PR show no activity for `catchup.claim_lease_hours` is
   stale: the entry stays `ready` and the next claim takes it over (`agent:*` never leases);
+- holds every issue a live peer campaign in this clone claims (ADR-057: the peer's `in-flight`
+  entries and its entries carrying a `pr`, read with `scripts/peer-campaigns.ts detect`,
+  coordinated peers included) the same way, with `another session: <session id>`. A lane label
+  note wins over it. An `in-flight` entry keeps its status, and a claimed issue's open PR is never
+  linked, whatever its status or note. The hold goes back to `ready` once the claim is gone, but
+  not while `detect` reports unreadable records (fail closed). An entry held this way is not
+  claimed back in this session's own heartbeat, so two sessions never hold each other;
 - links the campaign's own open PR (see above), a closing keyword first, else a `claude|blackhole/issue-N` branch (an optional `-<slug>` is allowed);
 - marks an issue `merged` only for a merged PR whose body closes it (`Closes`/`Fixes`/`Resolves
   #N`, as `reconcileMerged`), `closed` when the forge closed it; a forge-open issue stays open.

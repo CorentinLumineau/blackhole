@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
-import { localUtcOffsetMinutes, readPacing, resolveCatchup } from './lib/catchup.ts';
+import { readPacing, resolveCatchup } from './lib/catchup.ts';
 import { readJsonFile } from './lib/fs.ts';
 import type { Host } from './lib/run-context.ts';
 import { resolveHost, usageSourceFor } from './lib/usage-source.ts';
@@ -9,9 +9,9 @@ import { resolveHost, usageSourceFor } from './lib/usage-source.ts';
 // Usage: bun run scripts/pace-floor.ts [--usage <file>] [--cache <path>] [--host claude|cursor]
 //        [--config <path>] [--now <epoch s>]
 // Prints the catchup pace floor (ADR-054 C1) as one JSON line: status (ok | unreadable | no-weekly),
-// floor_pct (null unless ok), credits, shortfall_pct, used_pct, resets_at, plan, source, reason.
+// floor_pct (null unless ok), elapsed_h, target_pct, shortfall_pct, used_pct, resets_at, plan, source, reason.
 // The reading comes from the same provider chain as usage.ts (`--usage` is a FILE PATH); the
-// schedule comes from the `catchup` config block. Exit 0 on every status, 2 on bad usage, a broken
+// weekly target comes from the `catchup` config block. Exit 0 on every status, 2 on bad usage, a broken
 // `--usage` file or an invalid config.
 const USAGE = 'usage: pace-floor.ts [--usage <file>] [--cache <path>] [--host claude|cursor] [--config <path>] [--now <epoch s>]';
 const fail = (message: string): never => {
@@ -37,13 +37,14 @@ const main = (): void => {
       cachePath: typeof flags.cache === 'string' ? flags.cache : undefined,
       usageFile: typeof flags.usage === 'string' ? flags.usage : undefined,
     }).report(now);
-    const pacing = readPacing(report, preset, now, localUtcOffsetMinutes(now));
+    const pacing = readPacing(report, preset, now);
     if (pacing.reason) console.error(`pace-floor: ${pacing.status}: ${pacing.reason}`);
     console.log(
       JSON.stringify({
         status: pacing.status,
         floor_pct: pacing.floor_pct,
-        credits: pacing.credits,
+        elapsed_h: pacing.elapsed_h,
+        target_pct: pacing.target_pct,
         shortfall_pct: pacing.shortfall_pct,
         used_pct: pacing.used_pct,
         resets_at: pacing.resets_at,

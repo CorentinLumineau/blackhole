@@ -1,5 +1,7 @@
 import { readScope } from '../../forge-scope.ts';
 import { adjustPacing, type CatchupConfig, type Pacing } from '../catchup.ts';
+import { joinTarget, type DetectedPeer, type DetectResult } from '../peer-campaigns.ts';
+import { WEEK_HOURS } from '../pace-floor.ts';
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetConfig } from '../usage-budget.ts';
 import { parallelMaxOf, resolveBudgetSettings, when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
@@ -30,6 +32,8 @@ export type LaunchSummaryInput = {
   statusPage: StatusPageInput;
   /** Present for `catchup` mode: nine rows with Pacing and the floor budget; absent: the eight run rows. */
   catchup?: CatchupInput;
+  /** `scripts/peer-campaigns.ts detect`; absent when detection did not run (no git clone): the row shows the configured role only. */
+  peers?: DetectResult;
 };
 
 /** The catchup launch inputs (ADR-054 C2): the effective preset after the invocation's overrides, the
@@ -42,7 +46,7 @@ const ACCEPT: GateOption = { label: 'Accept', description: 'Keep this section as
 const ADJUST: Partial<Record<LaunchRowKey, string>> = {
   scope: 'Open step 1: the scope filter and the targeted-issues preview.',
   merge: 'Open step 2, then step 3 when the answer is gated batch.',
-  budget: 'Open step 4 (parallel_max); usage_budget thresholds are edited in config.json.',
+  budget: 'Open step 4: parallel_max, then the usage caps (enabled, 5-hour stop line, weekly target).',
   status_page: 'Turn the status page on or off in config.json.',
   kaizen_staging: 'Open step 5: the kaizen block.',
   pacing: 'Change the floor, the 5h caps or the lane for this invocation only; config.json is untouched.',
@@ -102,13 +106,25 @@ function mergeRow(mode: string | undefined): LaunchRow {
   };
 }
 
+const NO_LIMIT = 'No usage limit:';
+
+/** The row enforces no usage cap on the run: invalid block, pacing off, no reading, or a reading with no current window. A catchup fails closed instead, so it is never unlimited. */
+const noLimit = (b: BudgetPanel, invalid: string | null, settings: UsageBudgetConfig, catchup: boolean): boolean => !catchup && (invalid !== null || !settings.enabled || !b.probed || b.verdict === 'unavailable');
+
+const NO_LIMIT_OPTIONS: GateOption[] = [
+  { label: 'Set usage caps', description: 'Open step 4: parallel_max, then enabled, the 5-hour stop line and the weekly target.' },
+  { label: 'Run with no limit', description: 'Leave usage_budget as it is: workers run up to parallel_max whatever the usage; recorded as your decision.' },
+];
+
 type BudgetState = { b: BudgetPanel; settings: UsageBudgetConfig; invalid: string | null; workers: number; parallelMax: number; catchup: boolean };
 
 function budgetConsequence({ b, settings, invalid, workers, parallelMax, catchup }: BudgetState): string {
   if (catchup && (!b.probed || b.verdict === 'unavailable' || b.verdict === null || b.weekly_pct === null)) return 'Usage unreadable: the catchup skips and spawns nothing (fail-closed).';
-  if (invalid) return `usage_budget is invalid, so pacing is unavailable: workers are sized from parallel_max (${parallelMax}).`;
-  if (!settings.enabled) return `Usage pacing is off: up to ${plural(parallelMax, 'worker')} run whatever the usage.`;
-  if (!b.probed) return `Usage not probed: workers are sized from parallel_max (${parallelMax}).`;
+  const unlimited = (why: string) => `${NO_LIMIT} ${why}, so up to ${plural(parallelMax, 'worker')} (parallel_max) run whatever the usage.`;
+  if (invalid) return unlimited('usage_budget is invalid');
+  if (!settings.enabled) return unlimited('pacing is off');
+  if (!b.probed) return unlimited('usage not probed');
+  if (b.verdict === 'unavailable') return unlimited('no current usage window');
   const t = { ...settings.five_hour, ...settings.weekly };
   switch (b.verdict) {
     case 'GO': {
@@ -173,7 +189,8 @@ export function budgetRow(b: BudgetPanel, config: Record<string, unknown>, floor
     ...(b.probed ? [forecastText(b, stop_campaign_at)] : []),
   ].filter(Boolean);
   const consequence = budgetConsequence({ b, settings, invalid, workers, parallelMax, catchup });
-  return { key: 'budget', label: 'Budget', header: 'Budget', value: parts.join(' · '), consequence, adjustable: true };
+  const options = noLimit(b, invalid, settings, catchup) ? { options: NO_LIMIT_OPTIONS } : {};
+  return { key: 'budget', label: 'Budget', header: 'Budget', value: parts.join(' · '), consequence, adjustable: true, ...options };
 }
 
 const PACING_BASE = { key: 'pacing' as const, label: 'Pacing', header: 'Pacing', adjustable: true };
@@ -195,7 +212,7 @@ export function pacingRow(input: CatchupInput): LaunchRow {
     };
   }
   const shortfall = pacing.shortfall_pct;
-  const floorText = floorPct === input.pacing.floor_pct ? `floor ${pct(floorPct)} (${input.pacing.credits} credits x ${preset.pct_per_weekday})` : `floor ${pct(floorPct)} (adjusted)`;
+  const floorText = floorPct === input.pacing.floor_pct ? `floor ${pct(floorPct)} (${Number((input.pacing.elapsed_h ?? 0).toFixed(1))} h / ${WEEK_HOURS} h x ${pct(input.pacing.target_pct ?? preset.weekly_target_pct)})` : `floor ${pct(floorPct)} (adjusted)`;
   const value = [
     `plan ${pacing.plan}`,
     `weekly ${pct(pacing.used_pct)}${pacing.resets_at ? ` (resets ${when(new Date(pacing.resets_at * 1000).toISOString())})` : ''}`,
@@ -227,7 +244,21 @@ function kaizenRow(config: ConfigSummaryInput & { kaizen?: { trigger?: string; l
   };
 }
 
-function peersRow(config: Record<string, unknown>): LaunchRow {
+const PEER_STOP: GateOption = { label: 'Stop', description: 'End this bootstrap and release this session; the other campaign keeps the clone.' };
+const PEER_TAKE_OVER: GateOption = {
+  label: 'Take over after drain',
+  description: 'Spawn nothing now; re-run detect on each resume and start once no live peer remains.',
+};
+const peerJoin = (hostSession: string): GateOption => ({
+  label: 'Join as peer',
+  description: `Write usage_budget.coordination role peer, manager_session ${hostSession}, and share its usage budget.`,
+});
+/** How many unreadable registry files the Peers row names before it only counts. */
+const MAX_NAMED_UNREADABLE = 3;
+const peerName = (p: DetectedPeer): string => p.worktree.split('/').filter(Boolean).pop() ?? p.worktree;
+
+/** The configured coordination role, before peer detection. */
+function rolePeersRow(config: Record<string, unknown>): LaunchRow {
   const { role, manager_session, peer_floor } = rowSettings(config).settings.coordination;
   const base = { key: 'peers' as const, label: 'Peers', header: 'Peers', adjustable: false };
   if (role === 'manager') return { ...base, value: 'manager', consequence: 'This session grants worker slots to the peer sessions sharing its usage budget.' };
@@ -235,6 +266,46 @@ function peersRow(config: Record<string, unknown>): LaunchRow {
     return { ...base, value: `peer of ${manager_session}`, consequence: `Beyond ${plural(peer_floor, 'worker')}, this session waits for slots granted by ${manager_session}.` };
   }
   return { ...base, value: 'solo', consequence: 'This session spends the usage budget alone; no other session is coordinated.' };
+}
+
+/**
+ * Peers (ADR-057). A live peer not yet coordinated with this session turns the row into the gate's
+ * stop / join / take-over question; a coordinated peer (it names this session as manager, or it is
+ * the manager this session joined) never asks again. A clean detection says its reach.
+ */
+function peersRow(config: Record<string, unknown>, detected: DetectResult | undefined): LaunchRow {
+  const row = rolePeersRow(config);
+  if (!detected) return row;
+  const open = detected.peers.filter((p) => !p.coordinated);
+  const { unreadable } = detected;
+  if (open.length || unreadable) {
+    // Only an uncoordinated peer can be joined: a coordinated one already shares this budget, and
+    // its `manager_session` may be this session's own id. A session that peers already name as
+    // their manager never joins another: their slot requests would go unanswered.
+    const join = detected.peers.some((p) => p.names_me) ? null : joinTarget(open);
+    const list = open.map((p) => `${peerName(p)} (turn ${p.turn}, heartbeat ${p.heartbeat_age_minutes}m ago)`).join(', ');
+    const names = detected.unreadable_files;
+    const unread = `${unreadable} unreadable: ${names.slice(0, MAX_NAMED_UNREADABLE).join(', ')}${names.length > MAX_NAMED_UNREADABLE ? ', …' : ''}`;
+    const value = !open.length ? `unknown (${unread})` : `${plural(open.length, 'live peer')} in this clone: ${list}${unreadable ? `; ${unread}` : ''}`;
+    return {
+      ...row,
+      value,
+      consequence: open.length
+        ? 'Another campaign runs in this clone: stop, join it, or take over after it drains; this session never starts as solo.'
+        : 'Unreadable peer records may be a live campaign: stop, or take over once they clear; never starts as solo.',
+      adjustable: true,
+      options: join ? [PEER_STOP, peerJoin(join), PEER_TAKE_OVER] : [PEER_STOP, PEER_TAKE_OVER],
+    };
+  }
+  const naming = detected.peers.filter((p) => p.names_me);
+  if (naming.length && rowSettings(config).settings.coordination.role === 'solo') {
+    return {
+      ...row,
+      value: `manager of ${plural(naming.length, 'live peer')} in this clone: ${naming.map(peerName).join(', ')}`,
+      consequence: 'A live peer runs as peer of this session, so it acts as manager and grants worker slots from its usage budget.',
+    };
+  }
+  return detected.peers.length ? row : { ...row, value: `${row.value} (no live peer in this clone)` };
 }
 
 /** Sleep mode (`sleep-mode.md`): display-only, since the gate itself is print-only while it is on. */
@@ -252,11 +323,11 @@ export function sleepRow(config: Record<string, unknown>): LaunchRow {
 }
 
 /** The eight run rows in `LAUNCH_ROW_KEYS` order; with `catchup`, the nine rows in `CATCHUP_ROW_KEYS` order. */
-export function buildLaunchSummary({ report, config, budget, statusPage, catchup }: LaunchSummaryInput): LaunchRow[] {
+export function buildLaunchSummary({ report, config, budget, statusPage, catchup, peers }: LaunchSummaryInput): LaunchRow[] {
   const floorBudget = catchup && !('invalid' in catchup) ? catchup.budget : undefined;
   const rows = [
     scopeRow(report, config), orderRow(), mergeRow(config.merge_mode), budgetRow(budget, config, floorBudget),
-    statusPageRow(statusPage), kaizenRow(config), peersRow(config), sleepRow(config),
+    statusPageRow(statusPage), kaizenRow(config), peersRow(config, peers), sleepRow(config),
   ];
   if (!catchup) return rows;
   rows.splice(3, 0, pacingRow(catchup));
@@ -293,4 +364,32 @@ export function gateCards(rows: LaunchRow[], { printOnly }: { printOnly: boolean
   const cards: GateCard[] = [];
   for (let i = 0; i < questions.length; i += QUESTIONS_PER_CARD) cards.push({ questions: questions.slice(i, i + QUESTIONS_PER_CARD) });
   return cards;
+}
+
+/** The inputs of the Adjust flow's usage questions; `stopWorkersAt` null leaves the 5-hour lines as they are. */
+export type UsageCapsAnswers = { enabled: boolean; stopWorkersAt: number | null; targetAtReset?: number | null };
+
+/** The 5-hour no-spawn line sits this far under the stop line, the gap of the shipped 85/90 defaults. */
+const NO_SPAWN_GAP = 5;
+
+/**
+ * The `usage_budget` block after the owner's answers: `current` with `enabled`, the 5-hour pair
+ * (`no_spawn_at = stop_workers_at - 5`) and `weekly.target_at_reset` merged in; every other key
+ * (rates, coordination, windows) is kept. `targetAtReset` undefined leaves the target alone, null clears it.
+ * Throws when the result fails `resolveBudgetSettings`, with the resolver's message.
+ */
+export function usageCapsPatch(answers: UsageCapsAnswers, current: Record<string, unknown>): Record<string, unknown> {
+  const { enabled, stopWorkersAt, targetAtReset } = answers;
+  const patch: Record<string, unknown> = { ...current, enabled };
+  if (stopWorkersAt !== null) {
+    if (!(stopWorkersAt > NO_SPAWN_GAP && stopWorkersAt <= 100)) throw new Error(`usage_budget.five_hour.stop_workers_at must be a number in (${NO_SPAWN_GAP}, 100]`);
+    patch.five_hour = { ...(current.five_hour as Record<string, unknown> | undefined), no_spawn_at: stopWorkersAt - NO_SPAWN_GAP, stop_workers_at: stopWorkersAt };
+  }
+  if (targetAtReset !== undefined) {
+    if (targetAtReset !== null && !(targetAtReset > 0 && targetAtReset <= 100)) throw new Error('usage_budget.weekly.target_at_reset must be a number in (0, 100] or null');
+    patch.weekly = { ...(current.weekly as Record<string, unknown> | undefined), target_at_reset: targetAtReset };
+  }
+  const resolved = resolveBudgetSettings({ usage_budget: patch });
+  if (resolved.invalid !== null) throw new Error(resolved.invalid);
+  return patch;
 }
