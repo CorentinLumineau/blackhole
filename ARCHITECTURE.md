@@ -358,7 +358,7 @@ co-located `*.test.ts`.
 - Campaign implementers must never delegate a PR fix back to an external review bot (e.g.
   posting `/git-fix-pr` when ActionMan/workclaude is installed on the consumer forge) — findings
   are applied in-process and the bot's verdict is re-checked on the new HEAD SHA. (ADR-026)
-- Every top-level config block is declared in config-template.md § Status page coverage with a launch summary row or Other config, and the launch summary lists every config key no row claims by name, so no config reaches a run unseen at the launch gate (ADR-058)
+- Every launch summary row declares the config keys it reads (`LAUNCH_ROW_CLAIMS`, a test proves each claimed key is read), and the Other config row lists every key no row claims by name, so no config reaches a run unseen at the launch gate (ADR-058)
 
 ---
 

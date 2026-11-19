@@ -19,6 +19,8 @@ export const LAUNCH_ROW_CLAIMS: Record<LaunchRowKey, readonly RowClaim[]> = {
   scope: ['repo', 'scope_milestone', 'scope_labels'],
   order: [],
   merge: ['merge_mode'],
+  // `catchup` is claimed whole because the Pacing row is where a catchup's settings are shown: a run names only that the preset
+  // exists (its values belong to the catchup form's own Pacing row), so the block is not repeated key by key in Other config.
   pacing: [{ block: 'usage_budget', keys: ['enabled', 'five_hour', 'weekly', 'windows', 'max_workers'] }, 'catchup'],
   budget: ['parallel_max'],
   status_page: ['status_page'],

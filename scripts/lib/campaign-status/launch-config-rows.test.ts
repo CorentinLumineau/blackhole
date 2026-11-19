@@ -31,7 +31,7 @@ const LIVE: Record<string, unknown> = {
   status_page: { enabled: true },
   target_branch: 'main',
   forge: 'github',
-  parallel_max: 4,
+  parallel_max: 6,
   scratchpad_dir: '/tmp/campaign',
   size_label_prefix: 'size:',
   default_touch_paths: ['src/**'],
@@ -108,7 +108,12 @@ describe('LAUNCH_ROW_CLAIMS', () => {
 
   test('every claimed key is read: removing it from a config carrying all claimed keys changes the owning row', () => {
     // Staging reads `enabled && write_governance !== false`: each key is observable only while the other is not masking it.
-    const variants = [LIVE, { ...LIVE, docs_governance: { ...(LIVE.docs_governance as object), write_governance: true } }];
+    // Budget shows parallel_max only when pacing is off, and Sleep mode differs only while on: each gets its own variant.
+    const variants = [
+      LIVE,
+      { ...LIVE, docs_governance: { ...(LIVE.docs_governance as object), write_governance: true } },
+      { ...LIVE, usage_budget: { ...(LIVE.usage_budget as object), enabled: false }, sleep_mode: { enabled: true } },
+    ];
     const checked: string[] = [];
     for (const [rowKey, claims] of Object.entries(LAUNCH_ROW_CLAIMS) as [LaunchRowKey, readonly RowClaim[]][]) {
       for (const claim of claims) {
@@ -117,7 +122,8 @@ describe('LAUNCH_ROW_CLAIMS', () => {
           // A block the fixture does not carry cannot be reduced: the fixture must carry every claim.
           expect(block in LIVE).toBe(true);
           if (key !== undefined) expect(key in (LIVE[block] as Record<string, unknown>)).toBe(true);
-          if (rowKey === 'status_page' || rowKey === 'scope' || rowKey === 'merge' || rowKey === 'budget' || rowKey === 'sleep') continue;
+          // The Status page row is built from the page's own state (`statusPage`), not from `config.status_page`: no config variant can reach it.
+          if (rowKey === 'status_page') continue;
           const changed = variants.some((v) => shown(rowsOf(without(v, block, key)), rowKey) !== shown(rowsOf(v), rowKey));
           expect({ row: rowKey, block, key, changed }).toEqual({ row: rowKey, block, key, changed: true });
           checked.push(`${rowKey}:${block}${key ? `.${key}` : ''}`);
@@ -128,7 +134,7 @@ describe('LAUNCH_ROW_CLAIMS', () => {
     expect(checked).toContain('pacing:usage_budget.max_workers');
     expect(checked).toContain('pacing:catchup');
     expect(checked).toContain('peers:usage_budget.coordination');
-    expect(checked).toHaveLength(24);
+    expect(checked).toHaveLength(30);
   });
 
   test('every built row carries the label LAUNCH_ROW_LABELS names for its key', () => {

@@ -1,7 +1,7 @@
 # Launch Gate — Executive Summary Before the First Spawn
 
 The launch gate shows the owner, on one screen, what a `run` or `catchup` will do, what it will cost and where
-to watch it, then asks one question per section. `catchup` mode uses the same gate with one more row (§ Catchup form). It replaces the raw config print the routine
+to watch it, then asks one question per section. `catchup` mode uses the same gate with its own Pacing row (§ Catchup form). It replaces the raw config print the routine
 resume confirmation gate used to show. The trigger conditions and the full 6-step form stay in
 `coordinator.md` § Bootstrap preflight; this file owns the gate's body. On Pattern C the main chat
 runs it (`claude-code-native.md` § Bootstrap gate ownership).

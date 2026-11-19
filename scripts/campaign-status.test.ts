@@ -947,7 +947,7 @@ describe('status --summary (the launch summary)', () => {
     expect(() => parseStatusArgs(['--now', '1'])).toThrow(/--summary/);
   });
 
-  test('prints the eight-row table for the fixture campaign', () => {
+  test('prints the 13-row table for the fixture campaign', () => {
     const proc = summary('--campaign-dir', FULL, '--now', '1763026200');
     expect(proc.exitCode).toBe(0);
     const out = proc.stdout.toString();
