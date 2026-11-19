@@ -294,7 +294,7 @@ function readPrintOnly(campaignDir: string, config: Record<string, unknown>): bo
 }
 
 /**
- * `--summary`: the launch gate's eight rows and question cards. The Budget row reads the same
+ * `--summary`: the launch gate's 13 rows and question cards. The Budget row reads the same
  * `BudgetPanel` the status page shows: built from `--usage` (restricted to `usage_budget.windows`)
  * when given, else from the host's usage source at `--now`, as `report.budget` is.
  */
@@ -340,7 +340,7 @@ function readPeers(campaignDir: string): DetectResult | undefined {
 }
 
 /**
- * `--summary`: the launch gate's rows and question cards (eight for `run`, nine with Pacing for
+ * `--summary`: the launch gate's rows and question cards (13 for `run` and for
  * `--mode catchup`). The Budget row reads the same `BudgetPanel` the status page shows: built from
  * `--usage` (restricted to `usage_budget.windows`) when given, else from the host's usage source at
  * `--now`, as `report.budget` is. A catchup reads `--usage-file` through the same source chain.

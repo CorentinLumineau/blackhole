@@ -1,7 +1,7 @@
 # Launch Gate — Executive Summary Before the First Spawn
 
 The launch gate shows the owner, on one screen, what a `run` or `catchup` will do, what it will cost and where
-to watch it, then asks one question per section. `catchup` mode uses the same gate with one more row (§ Catchup form). It replaces the raw config print the routine
+to watch it, then asks one question per section. `catchup` mode uses the same gate with its own Pacing row (§ Catchup form). It replaces the raw config print the routine
 resume confirmation gate used to show. The trigger conditions and the full 6-step form stay in
 `coordinator.md` § Bootstrap preflight; this file owns the gate's body. On Pattern C the main chat
 runs it (`claude-code-native.md` § Bootstrap gate ownership).
@@ -47,6 +47,10 @@ gate adds two steps of its own:
   Cursor there is no source, so the row reads `not probed: cursor: no readable usage source,
   usage-aware pacing not applied` and, with `usage_budget` on, its consequence is `Usage not
   probed: workers are sized from parallel_max (<n>).`
+- The summary shows every top-level `config.json` block, or names it. Pacing, Autonomy, Resource policy and
+  Wave scheduling are display-only rows, and **Other config** lists by name, never by value, every key no
+  row shows, so no config reaches a run unseen. Which row claims which key is `LAUNCH_ROW_CLAIMS`
+  (`scripts/lib/campaign-status/launch-config-rows.ts`).
 - The summary carries the same plugin-version warning as a `> ` line under its heading, in every
   mode including print-only; it never becomes a question.
 - Also run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts config-summary` once: the coordinator's docs-governance drift guard
@@ -58,7 +62,7 @@ gate adds two steps of its own:
 (`catchup` block, `config-template.md`) pre-fills what the run gate leaves to `usage_budget`:
 
 - Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --summary --mode catchup [--usage-file <path>] --json` instead of the plain
-  summary. The rows are the run rows plus **Pacing**: the usage reading, the floor (`floor 45.71% (96 h / 168 h x 80%)`: hours elapsed of the week times the weekly target), the shortfall,
+  summary. The rows are the run's 13, with the run's Pacing row swapped for the catchup's **Pacing**: the usage reading, the floor (`floor 45.71% (96 h / 168 h x 80%)`: hours elapsed of the week times the weekly target), the shortfall,
   the 5h caps and the lane. The Budget row judges by the floor budget.
 - Every value stays adjustable for this invocation only, as in a run: re-print the summary with
   `--floor <pct>`, `--no-spawn-at <pct>`, `--stop-workers-at <pct>` or `--lane <name>`. Nothing
@@ -106,10 +110,13 @@ row as shown. Adjust opens only that row's form steps, never the whole form:
 | Scope | Step 1 (scope and the targeted-issues preview) |
 | Order | Display only: bugs first, then Pareto order; stacking is always on |
 | Merge | Step 2, then step 3 when the answer is gated batch |
-| Pacing | Catchup only: the floor, the 5h caps or the lane, for this invocation only; `config.json` is untouched |
+| Pacing (catchup) | The floor, the 5h caps or the lane, for this invocation only; `config.json` is untouched |
+| Pacing (run) | Display only: `usage_budget` absent, disabled or on, its thresholds, the pace gate's max age and where the reading came from |
 | Budget | Step 4 (`parallel_max`, then the usage caps: `enabled`, the 5-hour stop line, the weekly target); a stale or missing reading is refreshed with `usage-probe.ts`, then the summary re-runs |
 | Status page | Reuse the stored page, reuse another, publish new, or refresh template |
 | Kaizen and staging | Step 5 |
+| Autonomy, Resource policy, Wave scheduling | Display only: edit the block in `config.json` to change it |
+| Other config | Display only: the key names no row shows; never a value |
 | Peers | Display only (the configured role, or `solo (no live peer in this clone)`), unless a live peer is not yet coordinated with this session, or `unknown (N unreadable: <files>)`: then the peer question below |
 | Sleep mode | Display only: sleep mode on or off; while on the whole gate is print-only |
 

@@ -465,11 +465,12 @@ export type StageCounts = {
 
 export type IssueRow = { num: number; issue: QueueIssue };
 
-/** The launch summary's rows, in display order (`launch-summary.ts`). */
-export const LAUNCH_ROW_KEYS = ['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep'] as const;
-/** The catchup summary's rows: the run rows plus Pacing, in display order. */
-export const CATCHUP_ROW_KEYS = ['scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep'] as const;
-export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number] | (typeof CATCHUP_ROW_KEYS)[number];
+/** The launch summary's rows, in display order, for a run and for a catchup alike (`launch-summary.ts`). */
+export const LAUNCH_ROW_KEYS = [
+  'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
+  'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'sleep', 'other_config',
+] as const;
+export type LaunchRowKey = (typeof LAUNCH_ROW_KEYS)[number];
 
 export type GateOption = { label: string; description: string };
 

@@ -5,10 +5,11 @@ import { WEEK_HOURS } from '../pace-floor.ts';
 import { DEFAULT_USAGE_BUDGET, type UsageBudgetConfig } from '../usage-budget.ts';
 import { parallelMaxOf, resolveBudgetSettings, when } from './budget.ts';
 import { formatScopeLabel } from './dashboard.ts';
+import { autonomyRow, otherConfigRow, plural, resourcePolicyRow, runPacingRow, waveSchedulingRow } from './launch-config-rows.ts';
 import { isSleepMode, QUESTIONS_PER_CARD } from './pending-decisions.ts';
 import { readSleepSession } from './sleep-session.ts';
 import { statusPageRow, type StatusPageInput } from './status-page-row.ts';
-import { CATCHUP_ROW_KEYS, LAUNCH_ROW_KEYS, type BudgetPanel, type ConfigSummaryInput, type GateOption, type LaunchRow, type LaunchRowKey, type StatusReport } from './types.ts';
+import { LAUNCH_ROW_KEYS, type BudgetPanel, type ConfigSummaryInput, type GateOption, type LaunchRow, type LaunchRowKey, type StatusReport } from './types.ts';
 
 // The executive-summary launch gate: one row per section, each with a one-line consequence, and
 // the Accept / Adjust question cards built from those rows. Pure: every input is already read;
@@ -16,7 +17,7 @@ import { CATCHUP_ROW_KEYS, LAUNCH_ROW_KEYS, type BudgetPanel, type ConfigSummary
 // `BudgetPanel` (`budget.ts`), so the gate and the page never disagree.
 
 // Re-exported: callers import the row keys and row types from here.
-export { CATCHUP_ROW_KEYS, LAUNCH_ROW_KEYS };
+export { LAUNCH_ROW_KEYS };
 export type { GateOption, LaunchRow, LaunchRowKey };
 
 /** A consequence must read on its own on a card line. */
@@ -30,7 +31,7 @@ export type LaunchSummaryInput = {
   config: ConfigSummaryInput & Record<string, unknown>;
   budget: BudgetPanel;
   statusPage: StatusPageInput;
-  /** Present for `catchup` mode: nine rows with Pacing and the floor budget; absent: the eight run rows. */
+  /** Present for `catchup` mode: the Pacing row shows the floor reading and the Budget row the floor budget; absent: the run's Pacing row. */
   catchup?: CatchupInput;
   /** `scripts/peer-campaigns.ts detect`; absent when detection did not run (no git clone): the row shows the configured role only. */
   peers?: DetectResult;
@@ -59,7 +60,6 @@ const MERGE_MODES: GateOption[] = [
 ];
 
 const pct = (x: number): string => `${Number(x.toFixed(2))}%`;
-const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 /** The `usage_budget` the rows show: the resolved one, or the defaults when it is invalid (then `invalid` says why). */
 function rowSettings(config: Record<string, unknown>): { settings: UsageBudgetConfig; invalid: string | null } {
   const r = resolveBudgetSettings(config);
@@ -322,16 +322,16 @@ export function sleepRow(config: Record<string, unknown>): LaunchRow {
   };
 }
 
-/** The eight run rows in `LAUNCH_ROW_KEYS` order; with `catchup`, the nine rows in `CATCHUP_ROW_KEYS` order. */
+/** The 13 rows in `LAUNCH_ROW_KEYS` order, for a run and for a catchup; a catchup swaps in its own Pacing row. */
 export function buildLaunchSummary({ report, config, budget, statusPage, catchup, peers }: LaunchSummaryInput): LaunchRow[] {
   const floorBudget = catchup && !('invalid' in catchup) ? catchup.budget : undefined;
-  const rows = [
-    scopeRow(report, config), orderRow(), mergeRow(config.merge_mode), budgetRow(budget, config, floorBudget),
-    statusPageRow(statusPage), kaizenRow(config), peersRow(config, peers), sleepRow(config),
+  return [
+    scopeRow(report, config), orderRow(), mergeRow(config.merge_mode),
+    catchup ? pacingRow(catchup) : runPacingRow(config, budget),
+    budgetRow(budget, config, floorBudget), statusPageRow(statusPage), kaizenRow(config),
+    autonomyRow(config), resourcePolicyRow(config), waveSchedulingRow(config),
+    peersRow(config, peers), sleepRow(config), otherConfigRow(config),
   ];
-  if (!catchup) return rows;
-  rows.splice(3, 0, pacingRow(catchup));
-  return rows;
 }
 
 const cell = (s: string): string => s.replace(/\|/g, '\\|').replace(/\n/g, ' ');

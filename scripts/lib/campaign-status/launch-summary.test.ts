@@ -8,7 +8,6 @@ import type { UsageReport } from '../usage-source.ts';
 import { buildBudgetPanel, NOT_PROBED } from './budget.ts';
 import {
   budgetRow,
-  CATCHUP_ROW_KEYS,
   type CatchupInput,
   buildLaunchSummary,
   gateCards,
@@ -85,8 +84,11 @@ describe('the launch summary of the full fixture', () => {
     expect(renderLaunchSummary(rows, ['W1', 'W2']).split('\n').slice(0, 5)).toEqual(['## Launch summary', '', '> W1', '> W2', '']);
   });
 
-  test('exactly eight rows, in fixed order', () => {
-    expect(rows.map((r) => r.key)).toEqual(['scope', 'order', 'merge', 'budget', 'status_page', 'kaizen_staging', 'peers', 'sleep']);
+  test('exactly 13 rows, in fixed order', () => {
+    expect(rows.map((r) => r.key)).toEqual([
+      'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',
+      'autonomy', 'resource_policy', 'wave_scheduling', 'peers', 'sleep', 'other_config',
+    ]);
     expect([...LAUNCH_ROW_KEYS]).toEqual(rows.map((r) => r.key));
   });
 
@@ -387,9 +389,9 @@ describe('the catchup launch summary', () => {
     expect(renderLaunchSummary(fullRows())).toBe(fs.readFileSync(EXPECTED, 'utf-8'));
   });
 
-  test('nine rows in CATCHUP_ROW_KEYS order; without Pacing they are the run keys', () => {
-    expect(rows.map((r) => r.key)).toEqual([...CATCHUP_ROW_KEYS]);
-    expect([...CATCHUP_ROW_KEYS].filter((k) => k !== 'pacing')).toEqual([...LAUNCH_ROW_KEYS]);
+  test('13 rows in LAUNCH_ROW_KEYS order, the same keys as a run', () => {
+    expect(rows.map((r) => r.key)).toEqual([...LAUNCH_ROW_KEYS]);
+    expect(rows.map((r) => r.key)).toEqual(fullRows().map((r) => r.key));
   });
 
   test('Pacing shows the floor and the shortfall, Budget the 5h caps; equals the committed fixture', () => {
