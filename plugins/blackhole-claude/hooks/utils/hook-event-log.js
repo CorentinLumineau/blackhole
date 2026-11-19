@@ -737,6 +737,51 @@ const allowSilently = () => process.exit(0);
  * prevent. Same helper for both failure sites — pattern load (main() below) and stdin parse
  * (readHookInput's caller, above) — distinguished only by `patternId`/`label` so the record and
  * the stderr message say which one actually failed. */
+/** The campaign state dir (`<main clone>/.blackhole`) as a write root for campaign agents whose
+ * assigned root is a linked worktree: the protocol has them write `plans/`, `staged/`, the queue
+ * and ledger there, and no worktree root contains it. Returns its realpath, or `null` — and then
+ * grants nothing — unless the main clone resolves, `config.json` exists in it (a stray directory
+ * in an unrelated repo earns no trust), and the realpath is not a broad root (a `.blackhole`
+ * symlinked at $HOME or a temp root must not widen the guard). Derived from the main clone, never
+ * from the worktree, so a link a worker plants in its own tree cannot mint trust. */
+const campaignStateRoot = (cwd = process.cwd()) => {
+  const mainClone = mainCloneRoot(cwd);
+  if (!mainClone) return null;
+  const dir = path.join(mainClone, '.blackhole');
+  if (!fs.existsSync(path.join(dir, 'config.json'))) return null;
+  const real = resolveExistingAncestor(dir);
+  return isTooBroadRoot(path.resolve(dir)) || isTooBroadRoot(real) ? null : real;
+};
+
+/** `segments` (relative to the state root) that name a path only the hook or the orchestrator may
+ * write: the hook event log (`hook-events/`, `archive/hook-events-*`) — its deny records are the
+ * audit trail — and `config.json`. */
+const isProtectedStateSegments = ([first, second]) =>
+  first === 'config.json' ||
+  first === 'hook-events' ||
+  (first === 'archive' && typeof second === 'string' && second.startsWith('hook-events-'));
+
+/** True when `candidate` may be written under the trusted state root: inside it by realpath, and
+ * not protected. Protection is judged two ways, since `resolveExistingAncestor` drops the
+ * not-yet-existing tail of a new file: on the realpath of the existing part (a symlink pointing
+ * at a protected directory) and on the lexical tail below the deepest prefix that really is the
+ * state root (a protected directory that does not exist yet). */
+const isStateDirTrustedPath = (candidate, stateRoot) => {
+  if (!stateRoot || !isUnderRoot(candidate, stateRoot)) return false;
+  if (isProtectedStateSegments(path.relative(stateRoot, resolveExistingAncestor(candidate)).split(path.sep))) return false;
+  const segments = path.resolve(candidate).split(path.sep).filter(Boolean);
+  for (let k = segments.length; k > 0; k--) {
+    let real;
+    try {
+      real = fs.realpathSync(path.sep + segments.slice(0, k).join(path.sep));
+    } catch {
+      continue;
+    }
+    if (real === stateRoot) return !isProtectedStateSegments(segments.slice(k));
+  }
+  return true;
+};
+
 /** True only when `<mainClone>/.blackhole/config.json` is absent (`ENOENT`) — the fail-closed
  * "no live campaign" read shared by `sibling-plugin-guard.js`'s defer gate and the hook-event
  * rotation gate `recordEvent` above wires up: present, or any other stat outcome (an unreadable
@@ -775,6 +820,8 @@ module.exports = {
   SECRET_KV,
   worktreeRoot,
   mainCloneRoot,
+  campaignStateRoot,
+  isStateDirTrustedPath,
   allWorktreeRoots,
   resolveExistingAncestor,
   isUnderRoot,

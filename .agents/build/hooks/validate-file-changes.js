@@ -22,6 +22,8 @@ const {
   readHookInput,
   allWorktreeRoots,
   isUnderRoot,
+  campaignStateRoot,
+  isStateDirTrustedPath,
   isAcceptableScratchpadDir,
   readAssignedWorktreeRoot,
   worktreeRoot,
@@ -138,9 +140,11 @@ const main = () => {
   // used for a malformed hook payload and a pattern-load failure above.
   let assignedRoot;
   let roots;
+  let stateRoot = null;
   try {
     assignedRoot = readAssignedWorktreeRoot(cwd);
     roots = assignedRoot ? [assignedRoot] : allWorktreeRoots(cwd);
+    if (roots) stateRoot = campaignStateRoot(cwd);
   } catch (error) {
     failClosed({
       hook: HOOK,
@@ -156,7 +160,7 @@ const main = () => {
   // wherever its own permissions allow (ADR-047, utils/campaign-scope.js).
   const scoped = isCampaignScoped(input, assignedRoot);
   if (scoped && roots) {
-    if (filePath && !isInsideAnyRoot(filePath, roots)) {
+    if (filePath && !isInsideAnyRoot(filePath, roots) && !isStateDirTrustedPath(filePath, stateRoot)) {
       denyAndRecord({
         hook: HOOK,
         tool,

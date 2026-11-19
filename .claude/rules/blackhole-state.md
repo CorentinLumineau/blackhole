@@ -50,6 +50,8 @@ session, shared by every worktree of the clone, written only by `scripts/peer-ca
 is local and never on the state branch; this session's own id is `.tmp/campaign-session.json`
 (see `multitask-mode.md` § Peer campaign registry).
 
+The PreToolUse write guards trust this directory (minus `config.json` and `hook-events/`) for campaign workers writing from a linked worktree: `templates/hooks/pretooluse/README.md` § Campaign state dir trust.
+
 On a machine whose disk does not outlive the session (`state_store: branch`), these files are
 also kept on the `blackhole/state` branch: pushed at every turn end and restored on resume
 (`state-branch.md`). `archive/`, `hook-events/`, `.tmp/`, `*.tmp` and the per-machine signals

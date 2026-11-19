@@ -62,6 +62,19 @@ An ordinary session that happens to load the plugin is left alone by those two g
 other guard (destructive patterns, sensitive files, system paths, traversal, Bash write targets,
 worktree removal) applies to every call.
 
+## Campaign state dir trust
+
+For campaign-scoped callers, both write guards (`validate-file-changes.js` and the Bash write
+guard) treat the main clone's `.blackhole/` as a second allowed root, so workers can write
+`plans/`, `staged/<issue>/`, `queue.json`, `findings-ledger.json` and their `.tmp` files from a
+linked worktree. The root (`campaignStateRoot` in `utils/hook-event-log.js`) exists only when the
+main clone resolves, `.blackhole/config.json` exists, and the realpath is not a broad directory;
+it is derived from the main clone, so a link planted inside a worktree cannot mint it. Inside it
+`config.json`, `hook-events/` and `archive/hook-events-*` stay denied: the hook event log is the
+audit trail and only the hook writes it. Every other main-clone path keeps its protection, and a
+Bash target built from a shell variable is never expanded: it stays the one warn-and-record
+`bash-write-target-unresolvable` tier.
+
 ## Sibling mercure defer (issue #870, health leg issue #969)
 
 blackhole's fork of these two hooks (`validate-bash-command.js`, `validate-file-changes.js`)

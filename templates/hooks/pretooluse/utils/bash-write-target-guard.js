@@ -15,12 +15,14 @@
  * Two tiers, matching this hook's own two-tier vocabulary (`validate-bash-command.js`'s module
  * docstring):
  *  - a **resolvable** target (a literal path this module can compute without executing anything)
- *    that resolves outside the assigned root → `block` (`bash-outside-assigned-worktree`).
+ *    that resolves outside the assigned root → `block` (`bash-outside-assigned-worktree`). The
+ *    campaign state dir (`campaignStateRoot`) counts as inside, minus its protected paths.
  *  - a **write-shaped-but-unresolvable** command — a dynamic target (`$VAR`, `$(cmd)`, a glob),
  *    or a command whose write behavior cannot be determined by inspecting the command string at
  *    all (`python3 -c`, `perl -i`, `awk`) → `warn` and record
  *    (`bash-write-target-unresolvable`), never a silent allow (ADR-029's accepted residual risk:
- *    command-string parsing cannot enumerate every write idiom).
+ *    command-string parsing cannot enumerate every write idiom). A variable-built target is never
+ *    expanded: it is always this one warn-and-record tier, whatever path it would resolve to.
  *
  * The check runs whenever `readAssignedWorktreeRoot` resolves a root — the declared
  * `BLACKHOLE_ASSIGNED_WORKTREE`, or the cwd-derived tier, so any session whose cwd is a linked
@@ -36,7 +38,7 @@
 const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC } = require('./shell-lexer');
-const { readAssignedWorktreeRoot, isUnderRoot } = require('./hook-event-log');
+const { readAssignedWorktreeRoot, isUnderRoot, campaignStateRoot, isStateDirTrustedPath } = require('./hook-event-log');
 const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
@@ -1611,6 +1613,7 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
 const evaluateBashWriteTargets = (command, cwd) => {
   const assignedRoot = readAssignedWorktreeRoot(cwd);
   if (!assignedRoot) return null;
+  const stateRoot = campaignStateRoot(cwd);
 
   const literalTargets = [];
   let unresolvable = false;
@@ -1643,7 +1646,7 @@ const evaluateBashWriteTargets = (command, cwd) => {
   for (const { target, dir, visible } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.resolve(dir, target);
-    if (!isUnderRoot(resolvedPath, assignedRoot)) {
+    if (!isUnderRoot(resolvedPath, assignedRoot) && !isStateDirTrustedPath(resolvedPath, stateRoot)) {
       const hint = looksLikeRegexFragment(target)
         ? ' This looks like a sed/regex expression; quote it.'
         : '';
