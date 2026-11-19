@@ -755,20 +755,42 @@ const campaignStateRoot = (cwd = process.cwd()) => {
 
 /** `segments` (relative to the state root) that name a path only the hook or the orchestrator may
  * write: the hook event log (`hook-events/`, `archive/hook-events-*`) — its deny records are the
- * audit trail — and `config.json`. */
-const isProtectedStateSegments = ([first, second]) =>
-  first === 'config.json' ||
-  first === 'hook-events' ||
-  (first === 'archive' && typeof second === 'string' && second.startsWith('hook-events-'));
+ * audit trail — and `config.json`. Matched case-insensitively so a case-insensitive filesystem
+ * cannot reach them through another spelling. */
+const isProtectedStateSegments = (segments) => {
+  const [first, second] = segments.map((segment) => segment.toLowerCase());
+  return (
+    first === 'config.json' ||
+    first === 'hook-events' ||
+    (first === 'archive' && typeof second === 'string' && second.startsWith('hook-events-'))
+  );
+};
 
-/** True when `candidate` may be written under the trusted state root: inside it by realpath, and
- * not protected. Protection is judged two ways, since `resolveExistingAncestor` drops the
- * not-yet-existing tail of a new file: on the realpath of the existing part (a symlink pointing
- * at a protected directory) and on the lexical tail below the deepest prefix that really is the
- * state root (a protected directory that does not exist yet). */
+const relativeSegments = (root, target) => path.relative(root, target).split(path.sep).filter(Boolean);
+
+/** The state root and `archive/` are never a write target themselves: a directory destination
+ * (`cp x <state>/`, `mv x <state>`, `cp -t <state> x`, `ln -sf x <state>`) lands the source under
+ * its own name inside it, which can be `config.json` or a `hook-events` entry. Modelling every
+ * writer's per-source destination is open-ended, so the conservative rule refuses the two
+ * directories that sit above a protected path; a write names a file below them. */
+const isStateContainerSegments = (segments) =>
+  segments.length === 0 || (segments.length === 1 && segments[0].toLowerCase() === 'archive');
+
+/** True when `candidate` may be written under the trusted state root: inside it by realpath, not
+ * protected, and not the state root or `archive/` itself. Protection is judged two ways, since
+ * `resolveExistingAncestor` drops the not-yet-existing tail of a new file: on the realpath of the
+ * existing part (a symlink pointing at a protected directory) and on the lexical tail below the
+ * deepest prefix that really is the state root (a protected directory that does not exist yet). */
 const isStateDirTrustedPath = (candidate, stateRoot) => {
   if (!stateRoot || !isUnderRoot(candidate, stateRoot)) return false;
-  if (isProtectedStateSegments(path.relative(stateRoot, resolveExistingAncestor(candidate)).split(path.sep))) return false;
+  if (isProtectedStateSegments(relativeSegments(stateRoot, resolveExistingAncestor(candidate)))) return false;
+  let exact = null;
+  try {
+    exact = fs.realpathSync(path.resolve(candidate));
+  } catch {
+    // not created yet: the lexical tail below decides
+  }
+  if (exact !== null && isStateContainerSegments(relativeSegments(stateRoot, exact))) return false;
   const segments = path.resolve(candidate).split(path.sep).filter(Boolean);
   for (let k = segments.length; k > 0; k--) {
     let real;
@@ -777,7 +799,10 @@ const isStateDirTrustedPath = (candidate, stateRoot) => {
     } catch {
       continue;
     }
-    if (real === stateRoot) return !isProtectedStateSegments(segments.slice(k));
+    if (real === stateRoot) {
+      const tail = segments.slice(k);
+      return !isProtectedStateSegments(tail) && !isStateContainerSegments(tail);
+    }
   }
   return true;
 };

@@ -111,17 +111,35 @@ describe('state dir trust: Write/Edit hook', () => {
     });
   });
 
-  test('grants no trust when .blackhole is a symlink to a broad directory', async () => {
+  test('grants no trust when .blackhole is a symlink to a broad directory that holds a config.json', async () => {
     await withLinkedWorktree('blackhole-state-broad-', async (main, wt) => {
-      const target = fs.mkdtempSync(path.join(os.tmpdir(), 'state-broad-'));
+      const broad = fs.realpathSync(os.tmpdir());
+      const planted = path.join(broad, 'config.json');
+      expect(fs.existsSync(planted)).toBe(false);
       try {
-        fs.writeFileSync(path.join(target, 'config.json'), '{}');
-        fs.symlinkSync(os.tmpdir(), path.join(main, '.blackhole'));
-        expect((await writeAt(path.join(os.tmpdir(), 'state-broad-probe.md'), wt)).exitCode).toBe(2);
+        fs.writeFileSync(planted, '{}');
+        fs.symlinkSync(broad, path.join(main, '.blackhole'));
+        expect((await writeAt(path.join(broad, `state-broad-probe-${process.pid}.md`), wt)).exitCode).toBe(2);
       } finally {
         fs.rmSync(path.join(main, '.blackhole'), { force: true });
-        fs.rmSync(target, { recursive: true, force: true });
+        fs.rmSync(planted, { force: true });
       }
+    });
+  });
+
+  test('protected names match case-insensitively', async () => {
+    await withState(async (_main, wt, state) => {
+      for (const rel of ['Config.JSON', 'Hook-Events/e.json', 'archive/HOOK-EVENTS-1/e.json']) {
+        expect((await writeAt(path.join(state, rel), wt)).exitCode).toBe(2);
+      }
+      expect((await bashAt(`echo x > ${state}/CONFIG.json`, wt)).exitCode).toBe(2);
+    });
+  });
+
+  test('denies the state root and archive directory themselves as Write targets', async () => {
+    await withState(async (_main, wt, state) => {
+      expect((await writeAt(state, wt)).exitCode).toBe(2);
+      expect((await writeAt(path.join(state, 'archive'), wt)).exitCode).toBe(2);
     });
   });
 
@@ -217,6 +235,38 @@ describe('state dir trust: Bash write guard', () => {
       const state = path.join(fs.realpathSync(main), '.blackhole');
       fs.mkdirSync(path.join(state, 'plans'), { recursive: true });
       expect((await bashAt(`echo x > ${state}/plans/a.md`, wt)).exitCode).toBe(2);
+    });
+  });
+
+  test('directory-destination writers cannot reach the protected paths', async () => {
+    await withState(async (_main, wt, state) => {
+      fs.mkdirSync(path.join(wt, 'src'), { recursive: true });
+      for (const cmd of [
+        `cp config.json ${state}/`,
+        `mv config.json ${state}`,
+        `cp -t ${state} config.json`,
+        `cp --target-directory=${state} config.json`,
+        `install -t ${state} config.json`,
+        `cp -r hook-events ${state}`,
+        `cp hook-events-1 ${state}/archive/`,
+        `cp -rT src ${state}`,
+        `cp -r src/. ${state}/`,
+        `rsync -a src/ ${state}/`,
+        `ln -sf X ${state}`,
+        `cp config.json ${state}/plans/..`,
+        `cd ${state} && cp x .`,
+      ]) {
+        const result = await bashAt(cmd, wt);
+        expect([cmd, result.exitCode, readHookEvents(_main).at(-1)?.tier]).toEqual([cmd, 2, 'block']);
+      }
+    });
+  });
+
+  test('ordinary copies into plans/ and the queue rename still work', async () => {
+    await withState(async (_main, wt, state) => {
+      for (const cmd of [`cp x ${state}/plans/`, `mv ${state}/queue.json.tmp ${state}/queue.json`]) {
+        expect([cmd, (await bashAt(cmd, wt)).exitCode]).toEqual([cmd, 0]);
+      }
     });
   });
 });
