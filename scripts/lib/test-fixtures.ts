@@ -113,8 +113,10 @@ export const minMs = (run: () => unknown, runs = 3): number => {
  * more. A ratio cancels a uniform slowdown from a busy runner, which an absolute millisecond budget
  * cannot; the 1 ms denominator floor keeps a sub-millisecond small run from dividing by timer noise,
  * and a failing pair is re-measured once so a single load spike cannot fail a linear parser. With
- * the defaults a linear evaluator measures about 4 and a quadratic one about 16. Inputs are built
- * before timing starts. */
+ * the defaults a linear evaluator measures about 4 and a quadratic one about 16. The limit is 12,
+ * not the geometric mean 8: a linear parser measured 9-10 on a shared CI runner, where the larger
+ * input pays extra GC and cache cost. A larger factor is not an alternative, since it pushes the
+ * big input past the 5 s per-test timeout. Inputs are built before timing starts. */
 export const expectLinearTime = <T>(options: {
   build: (size: number) => T;
   run: (input: T) => unknown;
@@ -123,7 +125,7 @@ export const expectLinearTime = <T>(options: {
   runs?: number;
   maxRatio?: number;
 }): void => {
-  const { build, run, n, factor = 4, runs = 5, maxRatio = 8 } = options;
+  const { build, run, n, factor = 4, runs = 5, maxRatio = 12 } = options;
   const small = build(n);
   const large = build(n * factor);
   const measure = () => {
