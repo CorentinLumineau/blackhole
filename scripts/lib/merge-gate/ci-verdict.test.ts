@@ -11,7 +11,7 @@ const fixture = (name: string) => {
 };
 
 describe('ciVerdict (ADR-050)', () => {
-  test('a recorded PR-event checks snapshot is green: skipped counts as passing', () => {
+  test('a recorded PR-event checks snapshot is green: a skipped check does not fail it', () => {
     expect(ciVerdict(checksFromSnapshot(fixture('pr-event-green.json')))).toEqual({
       verdict: 'green',
       failing: [],
@@ -33,6 +33,54 @@ describe('ciVerdict (ADR-050)', () => {
     expect(ciVerdict([{ name: 'verify', status: 'QUEUED', conclusion: null }]).verdict).toBe('pending');
     expect(ciVerdict([]).verdict).toBe('pending');
     expect(ciVerdict([{ name: 'Vercel', status: 'COMPLETED', conclusion: 'FAILURE' }]).verdict).toBe('pending');
+  });
+
+  test('an all-skipped set proves nothing ran, so it is pending, never green', () => {
+    const skipped = (name: string) => ({ name, status: 'COMPLETED' as const, conclusion: 'SKIPPED' as const });
+    expect(ciVerdict([skipped('a'), skipped('b')]).verdict).toBe('pending');
+  });
+
+  describe('requiredChecks', () => {
+    const REPORT = 'ci-main / ci-report (pull_request)';
+    const done = (name: string, conclusion: 'SUCCESS' | 'SKIPPED' | 'FAILURE') => ({ name, status: 'COMPLETED' as const, conclusion });
+    const gatedOut = [done('ci-main / detect (pull_request)', 'SUCCESS'), done(REPORT, 'SKIPPED'), done('ci-main / test (pull_request)', 'SKIPPED')];
+
+    test('detect passing while the rest is skipped is pending when the report check is required', () => {
+      const result = ciVerdict(gatedOut, { requiredChecks: [REPORT] });
+      expect(result.verdict).toBe('pending');
+      expect(result.pending).toEqual([REPORT]);
+    });
+
+    test('a missing required check is pending', () => {
+      expect(ciVerdict([done('detect', 'SUCCESS')], { requiredChecks: [REPORT] }).pending).toEqual([REPORT]);
+    });
+
+    test('a present, successful required check is green', () => {
+      expect(ciVerdict([done('detect', 'SUCCESS'), done(REPORT, 'SUCCESS')], { requiredChecks: [REPORT] }).verdict).toBe('green');
+    });
+
+    test('a failed required check is red', () => {
+      const result = ciVerdict([done('detect', 'SUCCESS'), done(REPORT, 'FAILURE')], { requiredChecks: [REPORT] });
+      expect(result).toMatchObject({ verdict: 'red', failing: [REPORT] });
+    });
+
+    test('a queued required check is pending and the name match is exact', () => {
+      expect(ciVerdict([done('detect', 'SUCCESS'), { name: REPORT, status: 'QUEUED', conclusion: null }], { requiredChecks: [REPORT] }).verdict).toBe('pending');
+      expect(ciVerdict([done('detect', 'SUCCESS'), done('ci-report', 'SUCCESS')], { requiredChecks: [REPORT] }).verdict).toBe('pending');
+    });
+
+    test('without requiredChecks only the all-skipped rule changes the old behaviour', () => {
+      expect(ciVerdict([done('detect', 'SUCCESS'), done(REPORT, 'SKIPPED')]).verdict).toBe('green');
+    });
+
+    test('the CLI repeats --required and exits 3 while a required check is missing', () => {
+      const run = (args: string[]) => spawnSync('bun', ['run', path.join(root, 'scripts', 'ci-verdict.ts'), ...args], { encoding: 'utf-8' });
+      const checks = path.join(root, 'fixtures', 'ci-verdict', 'pr-event-green.json');
+      expect(run(['--checks', checks, '--required', 'Protocol Conformance']).status).toBe(0);
+      const pending = run(['--checks', checks, '--required', 'Protocol Conformance', '--required', 'nope']);
+      expect(pending.status).toBe(3);
+      expect(JSON.parse(pending.stdout).pending).toEqual(['nope']);
+    });
   });
 
   test('cancelled and action-required conclusions are red', () => {

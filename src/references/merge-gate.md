@@ -35,6 +35,17 @@ protocol step 2's, unchanged.
   driven (`project-thread-mode.md` § CI wait). Either way, the green/red/pending verdict comes from
   `bun run scripts/ci-verdict.ts --checks <file>` over the checks snapshot, Vercel previews
   excluded.
+- **Nothing executed is not green.** When no gating check COMPLETED with a conclusion other than
+  SKIPPED (every check skipped, or none reported), the verdict is `pending`. A review-gated PR
+  without its accepting label is the typical case: dozens of skipped checks plus one cheap
+  executed one are not evidence of testing.
+- **`merge_ready.required_checks`** (campaign config, optional string array, e.g.
+  `["ci-main / ci-report (pull_request)"]`): evidence checks that must have run and succeeded.
+  Pass each as a repeatable `--required <name>` to `scripts/ci-verdict.ts`
+  (`ciVerdict(checks, { requiredChecks })`). Names match exactly the check name the forge reports
+  (GitHub check-run `name`, or Gitea/GitHub commit-status `context`). Missing, queued or SKIPPED is
+  `pending`; any other completed conclusion than SUCCESS is `red`. This implements
+  `merge_ready.skipped_is_not_green` for the all-skipped case.
 - **Interval**: poll `gh pr checks <n>` every 60s while the background CI-wait
   is outstanding.
 - **Cap**: 20 minutes of total CI-wait per PR before the 2-retry/reclassify
