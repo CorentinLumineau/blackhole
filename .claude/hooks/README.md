@@ -94,6 +94,43 @@ file with one hard link. Anything else under `.blackhole/` (a directory destinat
 block as any other main-clone path. A Bash target built from a shell variable is never expanded:
 it stays the one warn-and-record `bash-write-target-unresolvable` tier.
 
+## Trusted write roots (scratchpad and cross-repo worktrees)
+
+`trustedWriteRoots(cwd, input)` in `utils/hook-event-log.js` is the one place that names the extra
+roots a campaign-scoped caller may write beyond its assigned worktree; the Write/Edit hook and the
+Bash write guard both call it, so a root is never trusted by one tool and refused by the other.
+
+- **Scratchpad**: the payload's `scratchpad_dir` (the real PreToolUse payload carries it; it has no
+  field for additional working directories), the configured `scratchpad_dir`, and
+  `BLACKHOLE_SCRATCHPAD_DIR`. Each must be an existing directory that is not broad (never `/`,
+  `$HOME` or a bare temp root, judged on the path and on its realpath).
+- **Cross-repo worktrees**: the union of `permissions.additionalDirectories` from two settings
+  sources only: the user file `~/.claude/settings.json`, and `.claude/settings.json` plus
+  `.claude/settings.local.json` of the harness project dir `CLAUDE_PROJECT_DIR`. The project dir is
+  read only when it is an existing directory a worker cannot write: not inside the assigned root, a
+  scratchpad or an admitted root, not strictly inside the cwd's repo, and not a linked worktree
+  (its `.git` is a pointer file). For a session in the main clone the project dir is that clone, so
+  the owner's project and local settings count; for a worker in a linked worktree only the user file
+  does unless the project dir is elsewhere. Nothing is derived from git metadata a worker can write
+  (a forged `.git` pointer can name any clone), so the main clone's own settings files are protected
+  from writes but never read. An entry is admitted only when it is a registered linked worktree (not
+  a main clone, not a symlink) of a repo whose main clone has `.blackhole/config.json`; at most 16
+  entries are read per call. Anything else is dropped. Directories added only for one session with
+  `--add-dir` are in neither the payload nor a settings file, so they stay uncovered: persist the
+  directory in a settings file, or work from the repo's own worktree.
+
+A root that spans a main clone, a campaign state dir or a settings file, or lies inside a state dir
+or a `.git` dir, is dropped. `mainCloneRoot` refuses a main clone
+that resolves inside the worktree pointing at it (a forged `.git` pointer). Settings file names are
+matched case-insensitively. Inside an admitted root a Write/Edit target must have no `..` segment, resolve inside it
+through every symlink, and have an absent or plain-file leaf (one hard link); the Bash guard allows
+only the two write shapes of the state-dir allow-list above (redirect/`tee`, single-file
+`cp`/`mv`/`install`), so a directory destination, a recursive copy, a link or `rsync` into one of
+these roots keeps the block.
+
+The three settings files are never a worker's to write (`settings-roots-write` for Write/Edit,
+`bash-settings-roots-write` for Bash): editing one would widen the roots of the next call.
+
 ## Sibling mercure defer (issue #870, health leg issue #969)
 
 blackhole's fork of these two hooks (`validate-bash-command.js`, `validate-file-changes.js`)

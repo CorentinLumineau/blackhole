@@ -59,6 +59,8 @@ is local and never on the state branch; this session's own id is `.tmp/campaign-
 
 The PreToolUse write guards trust this directory (minus `config.json` and `hook-events/`) for campaign workers writing from a linked worktree, for single-file writes only: a Write/Edit, a redirect or `tee` to a file, or a `cp`/`install` of one regular file (a `mv` only between two paths inside it) to an explicit file path, and never through a symlink or hard link. Write the `.tmp` file and the `mv` in separate Bash calls. Full rule: `templates/hooks/pretooluse/README.md` § Campaign state dir trust.
 
+The same guards also trust the validated harness scratchpad and the linked worktrees of other blackhole repos named in `permissions.additionalDirectories` (`trustedWriteRoots`), and refuse any worker write to the settings files that list them. Session-only `--add-dir` directories are not covered. Full rule: `templates/hooks/pretooluse/README.md` § Trusted write roots.
+
 On a machine whose disk does not outlive the session (`state_store: branch`), these files are
 also kept on the `blackhole/state` branch: pushed at every turn end and restored on resume
 (`state-branch.md`). `archive/`, `hook-events/`, `.tmp/`, `*.tmp` and the per-machine signals

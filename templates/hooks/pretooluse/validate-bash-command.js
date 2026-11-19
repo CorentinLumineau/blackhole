@@ -121,7 +121,7 @@ const main = () => {
   // (`validate-file-changes.js`, Write/Edit only) to Bash file-write commands — see
   // bash-write-target-guard.js's module docstring. No-op when BLACKHOLE_ASSIGNED_WORKTREE is
   // unset (byte-identical to today).
-  const writeTarget = evaluateBashWriteTargets(command, cwd);
+  const writeTarget = evaluateBashWriteTargets(command, cwd, input);
   if (handleTieredResult(writeTarget, { tool, command, allowedTiers: BLOCK_OR_WARN })) return;
 
   // A static warnPattern match is warn-only by construction: the verdict is built here with
