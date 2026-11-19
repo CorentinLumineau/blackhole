@@ -31,15 +31,15 @@ Launch summary — the launch gate's executive-summary table (`launch-gate.md` �
 bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [--campaign-dir <dir>] [--no-gh]
 ```
 
-Catchup form (`--mode catchup`, `launch-gate.md` § Catchup form): nine rows, the run rows with
-**Pacing** after Merge. It adds `--usage-file <path>` (the usage reading as a file, the same
+Catchup form (`--mode catchup`, `launch-gate.md` § Catchup form): the same 13 rows, with the
+catchup's own **Pacing** row (the floor reading) in the run's Pacing slot. It adds `--usage-file <path>` (the usage reading as a file, the same
 hand-off `usage.ts --usage` and `pace-floor.ts --usage` take as a path), and the invocation-only
 overrides `--floor <pct>`, `--no-spawn-at <pct>`, `--stop-workers-at <pct>` and `--lane <name>`;
 inline `--usage` is refused with it (exit `2`), and the catchup flags are refused without it.
 `--json` adds a `pacing` object (the reading, the effective floor and the effective preset).
 
-Run form: eight rows in fixed order (Scope, Order, Merge, Budget, Status page, Kaizen and staging, Peers,
-Sleep mode),
+Run form: 13 rows in fixed order (Scope, Order, Merge, Pacing, Budget, Status page, Kaizen and staging,
+Autonomy, Resource policy, Wave scheduling, Peers, Sleep mode, Other config),
 each with a one-line consequence. The status page reads the same builder, so the two never
 disagree. The Peers row reads `scripts/peer-campaigns.ts detect` (ADR-057) and states its reach:
 `solo (no live peer in this clone)` when clean, the configured role alone outside a git clone,
