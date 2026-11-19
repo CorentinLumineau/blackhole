@@ -137,6 +137,18 @@ const stripQuotes = (token) => {
  * bash keeps a backslash before an ordinary character). */
 const stripTargetQuotes = (token) => (token.includes('\\') ? token : stripQuotes(token));
 
+/** `stripTargetQuotes` for a write-target operand, except that a word spelled with adjacent quote
+ * segments (`'/dir/'file`), which `stripQuotes` cannot unwrap, is decoded the way the shell joins
+ * it and handed on as the literal path, so it reaches the containment check. `quoteSplit` keeps
+ * such a name at the warn tier inside the root: no spelling of it is allowed that was not allowed
+ * before. A word that cannot be read statically stays as written. */
+const targetWord = (token) => {
+  const word = stripTargetQuotes(token);
+  if (token.includes('\\') || !/['"]/.test(word)) return word;
+  const { text, dynamic } = normalizeShellWord(token);
+  return dynamic ? word : { literal: text, quoteSplit: true };
+};
+
 /** A write target whose text is already the literal path: `unescapeTarget` must not read it again,
  * or a quote or backslash that is part of the name would be taken for shell syntax. */
 const literalTarget = (literal) => ({ literal });
@@ -442,7 +454,7 @@ const findRedirectTargets = (visible) => {
     const raw = match[2];
     const isFdDup = match[1] === '>&' ? raw && isFdDupOperand(raw) : raw && isFdDuplicationTarget(raw);
     if (raw && !isFdDup) {
-      targets.push(stripTargetQuotes(raw));
+      targets.push(targetWord(raw));
     }
     match = REDIRECT_RE.exec(visible);
   }
@@ -464,6 +476,24 @@ const positionalArgsBeforeRedirect = (tokens, startIdx) => {
   return args;
 };
 
+/** `positionalArgsBeforeRedirect`, except that a redirect word (`2>/dev/null`, `2>&1`, `&>f`) or an
+ * operator-only one (`2>`, `<<<`) and the word it takes are dropped and scanning goes on, so an
+ * operand after a mid-command redirect is still seen. The redirect target itself is judged by
+ * `findRedirectTargets`. */
+const positionalArgsSkippingRedirects = (tokens, startIdx) => {
+  const args = [];
+  let skipNext = false;
+  for (let i = startIdx; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (skipNext || REDIRECT_WORD_RE.test(token)) {
+      skipNext = !skipNext && REDIRECT_ONLY_WORD_RE.test(token);
+      continue;
+    }
+    args.push(asStaticWord(token));
+  }
+  return args;
+};
+
 /** A word spelled with quotes or escapes (`'-i'`, `"format-patch"`, `\-o`, `'of=/x'`) is the
  * word the command receives, so it is read in its unquoted form. A word whose quotes protect
  * something the shell would otherwise act on (`--format="{x,y}"`, `--expression='$w f'`) is kept
@@ -479,9 +509,9 @@ const asStaticWord = (token) => {
 const findTeeTargets = (tokens) => {
   const cmdIdx = findCommand(tokens, 'tee');
   if (cmdIdx === -1) return [];
-  return positionalArgsBeforeRedirect(tokens, cmdIdx + 1)
+  return positionalArgsSkippingRedirects(tokens, cmdIdx + 1)
     .filter((t) => !t.startsWith('-'))
-    .map(stripTargetQuotes);
+    .map(targetWord);
 };
 
 /** sed short options that take a value: the script (`-e`), a script file (`-f`), a line length. */
@@ -545,7 +575,7 @@ const parseSedArgs = (args) => {
   }
   if (!hasScriptSource && operands.length > 0) scripts.push(operands.shift());
   const unclean = scripts.some((w) => !isCleanSedWord(w));
-  return { script: scripts.map(literalWord).join('\n'), files: operands.map(stripTargetQuotes), inPlace, unclean };
+  return { script: scripts.map(literalWord).join('\n'), files: operands.map(targetWord), inPlace, unclean };
 };
 
 /** sed commands that take no argument (`l`, `q`, `Q`, `L` take an optional number). */
@@ -646,7 +676,7 @@ const parseSedScript = (script) => {
 const findSedTargets = (tokens) => {
   const cmdIdx = findCommand(tokens, 'sed');
   if (cmdIdx === -1) return [];
-  const { script, files, inPlace, unclean } = parseSedArgs(positionalArgsBeforeRedirect(tokens, cmdIdx + 1));
+  const { script, files, inPlace, unclean } = parseSedArgs(positionalArgsSkippingRedirects(tokens, cmdIdx + 1));
   const written = parseSedScript(script);
   return [
     ...(inPlace ? files : []),
@@ -655,20 +685,58 @@ const findSedTargets = (tokens) => {
   ];
 };
 
-/** Destination directory named by `-t DIR`, `-tDIR`, a short cluster ending in `t` (`-pt DIR`),
- * `--target-directory=DIR` or `--target-directory DIR`, plus the remaining non-flag arguments
- * (sources). `dir` is null when no target-directory option is present. */
-const splitTargetDirectory = (args) => {
+/** Per command, the short option letters that take no value and those that take one (`-m MODE`,
+ * `-t DIR`, `-S SUFFIX`), and the long options that take their value as the next word. A long
+ * option written `--name=VALUE` needs no entry. */
+const COPY_OPTIONS = {
+  cp: { flags: 'abcdfHiLlnPpRrsTuvxZ', values: 'tS', long: ['--suffix', '--no-preserve', '--sparse'] },
+  mv: { flags: 'bfinTuvZ', values: 'tS', long: ['--suffix'] },
+  install: { flags: 'bCcdDpsTvZ', values: 'mogtS', long: ['--suffix', '--mode', '--owner', '--group', '--strip-program'] },
+  ln: { flags: 'bdfFiLnPrsTv', values: 'tS', long: ['--suffix'] },
+};
+const COPY_LONG_FLAGS = new Set([
+  '--force', '--interactive', '--no-clobber', '--preserve', '--verbose', '--recursive', '--archive', '--link',
+  '--symbolic-link', '--symbolic', '--update', '--backup', '--parents', '--dereference', '--no-dereference',
+  '--no-target-directory', '--directory', '--compare', '--preserve-timestamps', '--help', '--version',
+]);
+
+/** The operands of a `cp`/`mv`/`install`/`ln` call: the destination directory named by `-t DIR`,
+ * `-tDIR`, a short cluster ending in `t` (`-pt DIR`), `--target-directory[=]DIR` or an abbreviation
+ * of it (null when none), and the positional words. GNU getopt permutes options, so an option
+ * after the destination still counts: a value option consumes its value, a flag consumes nothing.
+ * `ambiguous` is true when an option is not one this table knows: its value, if it takes one,
+ * cannot be told from a positional. */
+const copyOperands = (name, args) => {
+  const known = COPY_OPTIONS[name];
   let dir = null;
-  const rest = [];
+  let ambiguous = false;
+  const positional = [];
   for (let i = 0; i < args.length; i++) {
     const t = args[i];
-    if (t.startsWith('--target-directory=')) dir = t.slice('--target-directory='.length);
-    else if (t === '--target-directory' || /^-[a-zA-Z]*t$/.test(t)) dir = args[++i] ?? dir;
-    else if (/^-t.+/.test(t)) dir = t.slice(2);
-    else if (!t.startsWith('-')) rest.push(t);
+    if (t === '--') {
+      positional.push(...args.slice(i + 1));
+      break;
+    }
+    const target = longOptionValue(args, i, '--target-directory');
+    if (target) {
+      dir = target.value;
+      i = target.last;
+    } else if (t.startsWith('--')) {
+      if (t.includes('=') || COPY_LONG_FLAGS.has(t)) continue;
+      if (known.long.includes(t)) i++;
+      else ambiguous = true;
+    } else if (t.length > 1 && t.startsWith('-')) {
+      for (let c = 1; c < t.length; c++) {
+        if (known.values.includes(t[c])) {
+          const value = t.slice(c + 1) || (args[++i] ?? UNRESOLVABLE_TARGET);
+          if (t[c] === 't') dir = value;
+          break;
+        }
+        if (!known.flags.includes(t[c])) ambiguous = true;
+      }
+    } else positional.push(t);
   }
-  return { dir, rest };
+  return { dir, positional, ambiguous };
 };
 
 /** `truncate` options that consume the following token as their value, so it is not a file. */
@@ -681,8 +749,8 @@ const truncateTargets = (args) => {
   for (let i = 0; i < args.length; i++) {
     const t = args[i];
     if (TRUNCATE_VALUE_OPTIONS.has(t)) i++;
-    else if (t === '--') files.push(...args.slice(i + 1).map(stripTargetQuotes));
-    else if (!t.startsWith('-')) files.push(stripTargetQuotes(t));
+    else if (t === '--') files.push(...args.slice(i + 1).map(targetWord));
+    else if (!t.startsWith('-')) files.push(targetWord(t));
     if (t === '--') break;
   }
   return files;
@@ -703,13 +771,13 @@ const rsyncTargets = (args) => {
   const tail = dashIdx === -1 ? [] : args.slice(dashIdx + 1);
   const firstPos = head.findIndex((t) => !t.startsWith('-'));
   const optionAfterPositional = firstPos !== -1 && head.slice(firstPos + 1).some((t) => t.startsWith('-'));
-  const positional = [...head.filter((t) => !t.startsWith('-')), ...tail].map(stripTargetQuotes);
+  const words = [...head.filter((t) => !t.startsWith('-')), ...tail];
+  const positional = words.map(stripTargetQuotes);
   if (positional.length < 2) return [];
   if (optionAfterPositional) {
-    return [...positional.slice(1).filter((t) => !isRemoteRsyncPath(t)), UNRESOLVABLE_TARGET];
+    return [...words.slice(1).filter((_, i) => !isRemoteRsyncPath(positional[i + 1])).map(targetWord), UNRESOLVABLE_TARGET];
   }
-  const dest = positional[positional.length - 1];
-  return isRemoteRsyncPath(dest) ? [] : [dest];
+  return isRemoteRsyncPath(positional[positional.length - 1]) ? [] : [targetWord(words[words.length - 1])];
 };
 
 /** `cp`/`mv`/`install`/`ln <source...> <dest>` write targets in one clause. Without a
@@ -721,7 +789,7 @@ const findCopyMoveWrites = (tokens) => {
   for (const name of ['cp', 'mv', 'install', 'ln', 'truncate', 'dd', 'rsync']) {
     const cmdIdx = findCommand(tokens, name);
     if (cmdIdx === -1) continue;
-    const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
+    const args = positionalArgsSkippingRedirects(tokens, cmdIdx + 1);
     const plain = (targets) => targets.map((target) => ({ target }));
     if (name === 'dd') {
       return plain(
@@ -736,14 +804,21 @@ const findCopyMoveWrites = (tokens) => {
     if (name === 'rsync') return plain(rsyncTargets(args));
     // `install -d`/`--directory` creates every positional as a directory: all are write targets.
     if (name === 'install' && args.some((t) => t === '--directory' || /^-[a-zA-Z]*d[a-zA-Z]*$/.test(t))) {
-      return plain(args.filter((t) => !t.startsWith('-')).map(stripTargetQuotes));
+      return plain(args.filter((t) => !t.startsWith('-')).map(targetWord));
     }
-    const { dir, rest } = splitTargetDirectory(args);
+    const { dir, positional: rest, ambiguous } = copyOperands(name, args);
     if (dir === null && rest.length < 2) continue;
+    // An option this module does not know may take a value that looks like a positional, so the
+    // destination is uncertain: every positional except the first source is checked and the
+    // clause also warns (the `rsyncTargets` rule). `mv` and `-t DIR` calls check them all.
+    if (ambiguous) {
+      const sources = name === 'mv' || dir !== null ? rest : rest.slice(1);
+      return [...(dir !== null ? [dir] : []), ...sources, UNRESOLVABLE_TARGET].map((t) => ({ target: targetWord(t) }));
+    }
     // `shape` lets a cp/mv/install target qualify for state-dir trust (`isTrustedStateWrite`).
     const shape = name === 'ln' ? undefined : { name, args };
-    const written = [{ target: stripTargetQuotes(dir !== null ? dir : rest[rest.length - 1]), shape }];
-    if (name === 'mv') written.push(...(dir !== null ? rest : rest.slice(0, -1)).map((t) => ({ target: stripTargetQuotes(t), shape })));
+    const written = [{ target: targetWord(dir !== null ? dir : rest[rest.length - 1]), shape }];
+    if (name === 'mv') written.push(...(dir !== null ? rest : rest.slice(0, -1)).map((t) => ({ target: targetWord(t), shape })));
     return written;
   }
   return [];
@@ -780,7 +855,7 @@ const sortTargets = (args) => {
     if (t === '--') break;
     const long = longOptionValue(args, i, '--output');
     if (long) {
-      targets.push(stripTargetQuotes(long.value));
+      targets.push(targetWord(long.value));
       i = long.last;
       continue;
     }
@@ -789,7 +864,7 @@ const sortTargets = (args) => {
       if (!SORT_VALUE_SHORT.has(t[c])) continue;
       const attached = t.slice(c + 1);
       const value = attached || args[++i] || UNRESOLVABLE_TARGET;
-      if (t[c] === 'o') targets.push(stripTargetQuotes(value));
+      if (t[c] === 'o') targets.push(targetWord(value));
       break;
     }
   }
@@ -818,7 +893,7 @@ const uniqTargets = (args) => {
     else if (t === '-' || !t.startsWith('-')) operands.push(t);
   }
   const out = operands[1];
-  return out === undefined || out === '-' ? [] : [stripTargetQuotes(out)];
+  return out === undefined || out === '-' ? [] : [targetWord(out)];
 };
 
 /** git global options that take the next token as their value when not written `--name=value`. */
@@ -990,7 +1065,7 @@ const yqTargets = (args) => {
     return t.startsWith('-') && t.includes('i') && /^-[a-zA-Z]+$/.test(t);
   });
   if (!inPlace) return [];
-  return args.filter((t) => !t.startsWith('-')).map(stripTargetQuotes);
+  return args.filter((t) => !t.startsWith('-')).map(targetWord);
 };
 
 /** Commands that look read-only but write a file through an option or operand (#1184). */
@@ -1009,7 +1084,7 @@ const findOptionWriteTargets = (tokens) => {
   const targets = [];
   for (const [name, extract] of OPTION_WRITE_COMMANDS) {
     const cmdIdx = findCommand(tokens, name);
-    if (cmdIdx !== -1) targets.push(...extract(positionalArgsBeforeRedirect(tokens, cmdIdx + 1)));
+    if (cmdIdx !== -1) targets.push(...extract(positionalArgsSkippingRedirects(tokens, cmdIdx + 1)));
   }
   return targets;
 };
@@ -1600,6 +1675,7 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   const add = (raw, shape) => {
     const base = clauseBase || state;
     const target = typeof raw === 'object' ? raw.literal : unescapeTarget(raw);
+    if (typeof raw === 'object' && raw.quoteSplit) unresolvable = true;
     const decoded = typeof raw === 'object' || (raw.includes('\\') && target !== raw);
     if (!isResolvableLiteralTarget(target, decoded)) unresolvable = true;
     else if (path.isAbsolute(target)) literalTargets.push({ target, dirs: [cwd], shape });

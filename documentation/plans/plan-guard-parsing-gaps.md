@@ -47,6 +47,12 @@ writer that produces no target at all (rm, tar, curl, ...). The allow-list needs
 | 2 | Kernel-faithful resolution | (c) `cd`/`..` through a symlink, (d) same-command link then write, worktree-side hard link, Write/Edit dangling-symlink leaf | m |
 | 3 | Unmodelled writers | protected-target deny for every non-reader command; warn-tier for known mutators outside the worktree; link planting via interpreters stays warn | m |
 
+**Owner decision (campaign decisions 21/23): only PR 1 is built.** PRs 2 and 3 are not built; their
+gaps (kernel-faithful resolution, unmodelled writers) are documented residual risk, covered by the
+sandbox direction tracked in #1357. Issue #1347 stays open as the residual-risk record. PR 1 also
+routes the adjacent-quote word sites (redirect, tee, cp/mv/install, truncate, rsync, sed -i,
+sort -o, uniq, yq -i) through the literal-word decoder.
+
 PR 1 is highest value per effort (a one-line-class parser fix per site) and unblocks the owner
 contract for the two most direct bypasses. PR 3 depends on PR 2's resolver. Splitting beyond three
 would only create stacked PRs on one 1715-line file (V-STACK-02).
