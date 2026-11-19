@@ -137,6 +137,18 @@ const stripQuotes = (token) => {
  * bash keeps a backslash before an ordinary character). */
 const stripTargetQuotes = (token) => (token.includes('\\') ? token : stripQuotes(token));
 
+/** True when a quote opens in `token` and never closes: a word cut out of text that was itself
+ * quoted (`'echo a > /x'` read from inside), whose quote removal would be a guess. */
+const hasUnterminatedQuote = (token) => {
+  let open = null;
+  for (const ch of token) {
+    if (open) {
+      if (ch === open) open = null;
+    } else if (ch === "'" || ch === '"') open = ch;
+  }
+  return open !== null;
+};
+
 /** `stripTargetQuotes` for a write-target operand, except that a word spelled with adjacent quote
  * segments (`'/dir/'file`), which `stripQuotes` cannot unwrap, is decoded the way the shell joins
  * it and handed on as the literal path, so it reaches the containment check. `quoteSplit` keeps
@@ -144,7 +156,7 @@ const stripTargetQuotes = (token) => (token.includes('\\') ? token : stripQuotes
  * before. A word that cannot be read statically stays as written. */
 const targetWord = (token) => {
   const word = stripTargetQuotes(token);
-  if (token.includes('\\') || !/['"]/.test(word)) return word;
+  if (token.includes('\\') || !/['"]/.test(word) || hasUnterminatedQuote(token)) return word;
   const { text, dynamic } = normalizeShellWord(token);
   return dynamic ? word : { literal: text, quoteSplit: true };
 };
