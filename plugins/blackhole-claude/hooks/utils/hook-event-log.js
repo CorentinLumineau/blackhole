@@ -830,8 +830,8 @@ const isStateDirTrustedPath = (candidate, stateRoot) => {
  * the hook's deadline. */
 const MAX_EXTRA_ROOT_CANDIDATES = 16;
 
-/** The user, project and local settings files `permissions.additionalDirectories` is read from, and
- * that a worker may never write: `~/.claude/settings.json`, and `.claude/settings.json` plus
+/** The user, project and local settings files that carry `permissions.additionalDirectories` and that
+ * a worker may never write: `~/.claude/settings.json`, and `.claude/settings.json` plus
  * `.claude/settings.local.json` under `CLAUDE_PROJECT_DIR` and under the main clone of `cwd` (never
  * the worker's own worktree copy, which a worker can edit). `mainClone` is `mainCloneRoot(cwd)`. */
 const settingsFileCandidates = (cwd, mainClone = mainCloneRoot(cwd)) => {
@@ -881,6 +881,20 @@ const overlapsProtectedPaths = (root, mainClones, settingsFiles) =>
   ) ||
   settingsFiles.some((file) => isUnderRoot(file, root));
 
+/** True when `project` (`CLAUDE_PROJECT_DIR`, set by the harness) may be read for roots: an existing
+ * absolute directory the worker cannot write: not inside or equal to one of the writable `roots`
+ * (assigned root, scratchpad and extra roots found so far), not strictly inside the nearest repo of
+ * `cwd`, and not a linked worktree (its `.git` is a pointer file), which is where workers write. A
+ * session in the main clone has that clone as its project dir, so the owner's project and local
+ * settings still count there. */
+const isHarnessProjectDir = (project, cwd, writableRoots) => {
+  if (!path.isAbsolute(project) || !isExistingDirectory(project)) return false;
+  if (readPointerFile(path.join(project, '.git')) !== null) return false;
+  if (writableRoots.some((root) => root && isUnderRoot(project, root))) return false;
+  const top = nearestGitRoot(cwd);
+  return !(top && resolveExistingAncestor(project) !== resolveExistingAncestor(top) && isUnderRoot(project, top));
+};
+
 /** The realpath of a declared `additionalDirectories` entry when it is a registered, back-linked
  * linked worktree of a repo with a campaign config, else null. The cheap checks run before any git
  * call, so a plain directory or a main clone costs no process spawn. */
@@ -912,17 +926,10 @@ const campaignWorktreeRoot = (entry) => {
  * an unreadable or malformed settings file contributes none. A git failure for one entry drops that
  * entry; the one for `cwd` itself propagates like every other resolver here. Callers judge a path
  * with `isTrustedExtraPath`; `mainClone` (`mainCloneRoot(cwd)`) and `assignedRoot` are passed by a
- * caller that already has them. A settings file under the call's own linked worktree or assigned
- * root is never read as a source of roots. */
+ * caller that already has them. Settings sources: the user file and the harness project dir's
+ * files (`isHarnessProjectDir`); the main clone's own files stay write-protected but are not read. */
 const trustedWriteRoots = (cwd = process.cwd(), input = {}, { mainClone = mainCloneRoot(cwd), assignedRoot = null } = {}) => {
   const settingsFiles = settingsFileCandidates(cwd, mainClone);
-  // A settings file inside a worktree the worker writes (its cwd worktree, its assigned root) is
-  // the worker's own file: it can plant one and grant itself roots. Only the user's and the main
-  // clone's files count; a session sitting in the main clone itself is not a worker's worktree.
-  const workerRoots = [nearestGitRoot(cwd), assignedRoot].filter(
-    (root) => root && !(mainClone && resolveExistingAncestor(root) === resolveExistingAncestor(mainClone)),
-  );
-  const trustedSources = settingsFiles.filter((file) => !workerRoots.some((root) => isUnderRoot(file, root)));
   const mainClones = mainClone ? [mainClone] : [];
   const roots = new Set();
   const admit = (dir, clones) => {
@@ -930,19 +937,38 @@ const trustedWriteRoots = (cwd = process.cwd(), input = {}, { mainClone = mainCl
     if (!overlapsProtectedPaths(real, clones, settingsFiles)) roots.add(real);
   };
 
+  // Kept even when `admit` drops one for spanning a settings file: a worker can still write there.
+  const scratchpadDirs = [];
   const scratchpads = [input && input.scratchpad_dir, mainClone && readScratchpadDir(mainClone), process.env.BLACKHOLE_SCRATCHPAD_DIR];
   for (const dir of scratchpads) {
-    if (typeof dir === 'string' && isAcceptableScratchpadDir(dir) && isExistingDirectory(dir)) admit(dir, mainClones);
+    if (typeof dir === 'string' && isAcceptableScratchpadDir(dir) && isExistingDirectory(dir)) {
+      scratchpadDirs.push(resolveExistingAncestor(dir));
+      admit(dir, mainClones);
+    }
   }
 
-  const declared = trustedSources.flatMap(readAdditionalDirectories).map((dir) => (dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(2)) : dir));
-  for (const entry of [...new Set(declared)].slice(0, MAX_EXTRA_ROOT_CANDIDATES)) {
-    try {
-      const dir = campaignWorktreeRoot(entry);
-      if (dir) admit(dir, [...mainClones, mainCloneRoot(dir)]);
-    } catch {
-      // An entry git cannot resolve is dropped: narrower, never wider.
+  // Trust sources are only the user's own settings file and the settings of the harness project
+  // dir. Nothing here is derived from git metadata a worker can write (a forged `.git` pointer
+  // names any clone), and a project dir the worker can write to is never a source.
+  const considered = new Set();
+  const considerDeclared = (files) => {
+    const entries = files.flatMap(readAdditionalDirectories).map((dir) => (dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(2)) : dir));
+    for (const entry of entries) {
+      if (considered.size >= MAX_EXTRA_ROOT_CANDIDATES) break;
+      if (considered.has(entry)) continue;
+      considered.add(entry);
+      try {
+        const dir = campaignWorktreeRoot(entry);
+        if (dir) admit(dir, [...mainClones, mainCloneRoot(dir)]);
+      } catch {
+        // An entry git cannot resolve is dropped: narrower, never wider.
+      }
     }
+  };
+  considerDeclared([path.join(os.homedir(), '.claude', 'settings.json')]);
+  const project = process.env.CLAUDE_PROJECT_DIR;
+  if (typeof project === 'string' && isHarnessProjectDir(project, cwd, [assignedRoot, ...scratchpadDirs, ...roots])) {
+    considerDeclared([path.join(project, '.claude', 'settings.json'), path.join(project, '.claude', 'settings.local.json')]);
   }
   return [...roots];
 };

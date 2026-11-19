@@ -104,18 +104,23 @@ Bash write guard both call it, so a root is never trusted by one tool and refuse
   field for additional working directories), the configured `scratchpad_dir`, and
   `BLACKHOLE_SCRATCHPAD_DIR`. Each must be an existing directory that is not broad (never `/`,
   `$HOME` or a bare temp root, judged on the path and on its realpath).
-- **Cross-repo worktrees**: the union of `permissions.additionalDirectories` from
-  `~/.claude/settings.json`, `<project>/.claude/settings.json` and `<project>/.claude/settings.local.json`
-  (`<project>` is `CLAUDE_PROJECT_DIR` and the main clone of the call's cwd). An entry is admitted
-  only when it is a registered linked worktree (not a main clone, not a symlink) of a repo whose main
-  clone has `.blackhole/config.json`; at most 16 entries are read per call. Anything else is dropped.
-  Directories added only for one session with `--add-dir` are in neither the payload nor a
-  settings file, so they stay uncovered: persist the directory in a settings file, or work from the
-  repo's own worktree.
+- **Cross-repo worktrees**: the union of `permissions.additionalDirectories` from two settings
+  sources only: the user file `~/.claude/settings.json`, and `.claude/settings.json` plus
+  `.claude/settings.local.json` of the harness project dir `CLAUDE_PROJECT_DIR`. The project dir is
+  read only when it is an existing directory a worker cannot write: not inside the assigned root, a
+  scratchpad or an admitted root, not strictly inside the cwd's repo, and not a linked worktree
+  (its `.git` is a pointer file). For a session in the main clone the project dir is that clone, so
+  the owner's project and local settings count; for a worker in a linked worktree only the user file
+  does unless the project dir is elsewhere. Nothing is derived from git metadata a worker can write
+  (a forged `.git` pointer can name any clone), so the main clone's own settings files are protected
+  from writes but never read. An entry is admitted only when it is a registered linked worktree (not
+  a main clone, not a symlink) of a repo whose main clone has `.blackhole/config.json`; at most 16
+  entries are read per call. Anything else is dropped. Directories added only for one session with
+  `--add-dir` are in neither the payload nor a settings file, so they stay uncovered: persist the
+  directory in a settings file, or work from the repo's own worktree.
 
 A root that spans a main clone, a campaign state dir or a settings file, or lies inside a state dir
-or a `.git` dir, is dropped. A settings file inside the call's own linked worktree or assigned root
-is never read as a source of roots (a worker could plant one); `mainCloneRoot` refuses a main clone
+or a `.git` dir, is dropped. `mainCloneRoot` refuses a main clone
 that resolves inside the worktree pointing at it (a forged `.git` pointer). Settings file names are
 matched case-insensitively. Inside an admitted root a Write/Edit target must have no `..` segment, resolve inside it
 through every symlink, and have an absent or plain-file leaf (one hard link); the Bash guard allows

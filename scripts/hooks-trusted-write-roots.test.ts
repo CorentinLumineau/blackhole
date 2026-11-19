@@ -179,7 +179,9 @@ describe('cross-repo leg: declared linked worktrees of blackhole repos', () => {
     await withWorld(async (w) => {
       for (const where of ['home', 'project', 'local'] as const) {
         w.declare(where, [w.wtB]);
-        expect(await w.both(path.join(w.wtB, `${where}.txt`))).toBe('allow');
+        const env = where === 'home' ? undefined : { CLAUDE_PROJECT_DIR: w.mainA };
+        expect(await w.both(path.join(w.wtB, `${where}.txt`), { env })).toBe('allow');
+        expect(await w.both(path.join(w.wtB, `${where}-unset.txt`))).toBe(where === 'home' ? 'allow' : 'deny');
         fs.rmSync(path.join(w.home, '.claude'), { recursive: true, force: true });
         fs.rmSync(path.join(w.mainA, '.claude'), { recursive: true, force: true });
       }
@@ -195,6 +197,10 @@ describe('cross-repo leg: declared linked worktrees of blackhole repos', () => {
         expect(await w.both(path.join(w.wtB, 'p.txt'), { env: { CLAUDE_PROJECT_DIR: project } })).toBe('allow');
         w.declare('home', [w.wtB]);
         expect((await w.write(path.join(w.wtB, 'm.txt'), { cwd: w.mainA })).verdict).toBe('allow');
+        w.declare('local', [w.wtB]);
+        fs.rmSync(path.join(w.home, '.claude'), { recursive: true, force: true });
+        const session = { cwd: w.mainA, env: { CLAUDE_PROJECT_DIR: w.mainA } };
+        expect((await w.write(path.join(w.wtB, 'n.txt'), session)).verdict).toBe('allow');
       } finally {
         fs.rmSync(project, { recursive: true, force: true });
       }
@@ -355,6 +361,75 @@ describe('a settings file the worker controls is never a trust source', () => {
       fs.writeFileSync(path.join(w.wtA, '.git'), `gitdir: ${path.join(fake, '.git')}\n`);
       expect(await w.both(path.join(w.wtB, 'x.txt'))).toBe('deny');
       expect(await w.both(path.join(w.scratch, 'x.txt'))).toBe('deny');
+    });
+  });
+});
+
+describe('the settings trust sources are only the user file and the harness project dir', () => {
+  const grant = (dir: string, target: string) => {
+    fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { additionalDirectories: [target] } }));
+  };
+  const point = (worktree: string, clone: string) => {
+    fs.rmSync(path.join(worktree, '.git'), { recursive: true, force: true });
+    fs.writeFileSync(path.join(worktree, '.git'), `gitdir: ${path.join(clone, '.git')}\n`);
+  };
+
+  test('B: a forged clone placed in the scratchpad, pointed at by the worktree .git', async () => {
+    await withWorld(async (w) => {
+      const clone = path.join(w.scratch, 'F');
+      fs.mkdirSync(clone);
+      runGit(clone, ['init', '--quiet']);
+      grant(clone, w.wtB);
+      point(w.wtA, clone);
+      expect(await w.both(path.join(w.wtB, 'x.txt'), { payload: { scratchpad_dir: w.scratch } })).toBe('deny');
+    });
+  });
+
+  test('C: a planted nested .git under cwd that names a sibling clone', async () => {
+    await withWorld(async (w) => {
+      const clone = path.join(w.wtA, 'F');
+      const sub = path.join(w.wtA, 'sub');
+      for (const dir of [clone, sub]) fs.mkdirSync(dir);
+      runGit(clone, ['init', '--quiet']);
+      grant(clone, w.wtB);
+      fs.writeFileSync(path.join(sub, '.git'), `gitdir: ${path.join(clone, '.git')}\n`);
+      expect(await w.both(path.join(w.wtB, 'x.txt'), { cwd: sub })).toBe('deny');
+    });
+  });
+
+  test('D: cwd inside a real nested repo of the worktree', async () => {
+    await withWorld(async (w) => {
+      const nested = path.join(w.wtA, 'F');
+      fs.mkdirSync(nested);
+      runGit(nested, ['init', '--quiet']);
+      grant(nested, w.wtB);
+      // The Bash guard has no assigned root when cwd is a repo's own clone, so only Write decides.
+      expect((await w.write(path.join(w.wtB, 'x.txt'), { cwd: nested })).verdict).toBe('deny');
+    });
+  });
+
+  test('a harness project dir under the worker worktree, the scratchpad or a linked worktree is not a source', async () => {
+    await withWorld(async (w) => {
+      const inWorktree = path.join(w.wtA, 'proj');
+      const inScratch = path.join(w.scratch, 'proj');
+      for (const dir of [inWorktree, inScratch, w.wtA]) {
+        fs.mkdirSync(dir, { recursive: true });
+        grant(dir, w.wtB);
+        const opts = { env: { CLAUDE_PROJECT_DIR: dir }, payload: { scratchpad_dir: w.scratch } };
+        const got = [await w.write(path.join(w.wtB, 'x.txt'), opts), await w.bash(`echo x > ${path.join(w.wtB, 'x.txt')}`, opts)].map((r) => r.verdict);
+        expect([dir, got]).toEqual([dir, ['deny', 'deny']]);
+      }
+    });
+  });
+
+  test('a main-clone session trusts its own project settings; a worker session trusts the user file', async () => {
+    await withWorld(async (w) => {
+      grant(w.mainA, w.wtB);
+      const session = { cwd: w.mainA, env: { CLAUDE_PROJECT_DIR: w.mainA } };
+      expect((await w.write(path.join(w.wtB, 'a.txt'), session)).verdict).toBe('allow');
+      w.declare('home', [w.wtB]);
+      expect(await w.both(path.join(w.wtB, 'b.txt'))).toBe('allow');
     });
   });
 });
