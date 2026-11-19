@@ -133,18 +133,17 @@ describe('bash-write-target-guard.js — a kept backslash in a double-quoted tar
 });
 
 // A quote or backslash that is part of a directory name must not be read as shell syntax a second
-// time: the name `a"b` is a symlink to the main clone, and bash writes through it. The guard does
-// not resolve a literal path that holds a quote character, so the verdict is the unresolvable
-// warning, never a silent allow.
+// time: the name `a"b` is a symlink to the main clone, and bash writes through it. The decoded path
+// goes on to containment, so a name holding a quote that resolves outside the worktree is denied.
 describe('bash-write-target-guard.js — quotes inside a literal path (#1308)', () => {
   const evaluate = (command: string, cwd: string) =>
     utils('bash-write-target-guard.js').evaluateBashWriteTargets(command, cwd);
 
-  test('a double-quoted path through a symlink named a"b into the main clone warns', async () => {
+  test('a double-quoted path through a symlink named a"b into the main clone is denied', async () => {
     await withLinkedWorktree('blackhole-hook-1308-', async (mainRepo, worktree) => {
       fs.symlinkSync(mainRepo, `${worktree}/a"b`);
       const command = `echo x > "${worktree}/a\\"b/p\\q"`;
-      expect(evaluate(command, worktree)).toMatchObject(WARN);
+      expect(evaluate(command, worktree)).toMatchObject(BLOCK);
     });
   });
 
@@ -153,10 +152,10 @@ describe('bash-write-target-guard.js — quotes inside a literal path (#1308)', 
     ["w't", "w't"],
     ["w\\'t (kept backslash before a quote)", "w\\'t"],
   ] as const) {
-    test(`a sibling directory named ${label} is not read as an in-root path (warn)`, async () => {
+    test(`a sibling directory named ${label} is outside the worktree and is denied`, async () => {
       await withLinkedWorktree('blackhole-hook-1308-', async (_mainRepo, worktree) => {
         const command = `echo x > "${path.dirname(worktree)}/${spelled}/a\\b"`;
-        expect(evaluate(command, worktree)).toMatchObject(WARN);
+        expect(evaluate(command, worktree)).toMatchObject(BLOCK);
       });
     });
   }
@@ -169,6 +168,33 @@ describe('bash-write-target-guard.js — quotes inside a literal path (#1308)', 
     test(`${label} writes outside the worktree and is denied`, async () => {
       await withLinkedWorktree('blackhole-hook-1308-', async (_mainRepo, worktree) => {
         expect(evaluate(build(worktree), worktree)).toMatchObject(BLOCK);
+      });
+    });
+  }
+
+  test('a quote-and-backslash target outside the worktree stays denied (was denied before #1308)', async () => {
+    await withLinkedWorktree('blackhole-hook-1308-', async (mainRepo, worktree) => {
+      expect(evaluate(`echo x > "${mainRepo}/a\\"b\\c"`, worktree)).toMatchObject(BLOCK);
+    });
+  });
+
+  // Every writer decodes a quoted word once, then checks containment, so an escaped quote in a
+  // name outside the worktree is denied for each of them.
+  for (const [label, build] of [
+    ['sed -i', (t: string) => `sed -i s/a/b/ "${t}"`],
+    ['sort -o', (t: string) => `sort -o "${t}" a`],
+    ['sort --output', (t: string) => `sort --output="${t}" a`],
+    ['uniq', (t: string) => `uniq a "${t}"`],
+    ['git -C', (t: string) => `git -C "${t}" format-patch -1`],
+    ['git format-patch --output-directory', (t: string) => `git format-patch --output-directory "${t}" -1`],
+    ['yq -i', (t: string) => `yq -i .a=1 "${t}"`],
+    ['dd of=', (t: string) => `dd if=a of="${t}"`],
+    ['dd "of=…"', (t: string) => `dd if=a "of=${t}"`],
+    ['tee', (t: string) => `echo x | tee "${t}"`],
+  ] as const) {
+    test(`${label} to a quote-and-backslash name outside the worktree is denied`, async () => {
+      await withLinkedWorktree('blackhole-hook-1308-', async (mainRepo, worktree) => {
+        expect(evaluate(build(`${mainRepo}/a\\"b\\c`), worktree)).toMatchObject(BLOCK);
       });
     });
   }

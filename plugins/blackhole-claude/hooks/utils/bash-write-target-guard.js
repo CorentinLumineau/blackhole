@@ -1202,7 +1202,10 @@ const hasPipedScript = (visible) => {
  * `worktree-removal-guard.js`'s pre-existing `isLiteralPathArg` call is unaffected (see that
  * module's own containment check, which fails closed on an unresolvable path rather than allowing
  * it — a different, non-silent-allow failure mode, tracked separately rather than fixed here). */
-const isResolvableLiteralTarget = (raw) => isLiteralPathArg(raw) && !raw.startsWith('~');
+const isResolvableLiteralTarget = (raw, decoded = false) =>
+  // A decoded name is the exact path the command writes, so a quote in it is a character of the
+  // name, not syntax: it goes on to containment instead of being treated as unreadable.
+  isLiteralPathArg(decoded ? raw.replace(/['"]/g, '') : raw) && !raw.startsWith('~');
 
 /** Any input redirect (`< f`, `2< f`, `<&`) or `exec` can put a file on the session's stdout or
  * stderr — directly, or via a later dup such as `1>&0` — after which writing `/dev/stdout` or
@@ -1574,7 +1577,8 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   const add = (raw) => {
     const base = clauseBase || state;
     const target = typeof raw === 'object' ? raw.literal : unescapeTarget(raw);
-    if (!isResolvableLiteralTarget(target)) unresolvable = true;
+    const decoded = typeof raw === 'object' || (raw.includes('\\') && target !== raw);
+    if (!isResolvableLiteralTarget(target, decoded)) unresolvable = true;
     else if (path.isAbsolute(target)) literalTargets.push({ target, dirs: [cwd] });
     else {
       literalTargets.push({ target, dirs: base.dirs });
