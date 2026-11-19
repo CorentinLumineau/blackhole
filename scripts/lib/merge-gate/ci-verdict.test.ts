@@ -81,6 +81,14 @@ describe('ciVerdict (ADR-050)', () => {
       expect(pending.status).toBe(3);
       expect(JSON.parse(pending.stdout).pending).toEqual(['nope']);
     });
+
+    test('a --required without a value is a usage error, never a skipped check', () => {
+      const run = (args: string[]) => spawnSync('bun', ['run', path.join(root, 'scripts', 'ci-verdict.ts'), ...args], { encoding: 'utf-8' });
+      const checks = path.join(root, 'fixtures', 'ci-verdict', 'pr-event-green.json');
+      expect(run(['--checks', checks, '--required']).status).toBe(2);
+      expect(run(['--required', '--checks', checks]).status).toBe(2);
+      expect(run(['--checks', checks, '--required', '']).status).toBe(2);
+    });
   });
 
   test('cancelled and action-required conclusions are red', () => {

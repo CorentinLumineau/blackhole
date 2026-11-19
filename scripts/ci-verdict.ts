@@ -9,9 +9,20 @@ const USAGE = 'Usage: bun run scripts/ci-verdict.ts --checks <file> [--required 
   '  --required: exact check name that must have run and succeeded (repeatable; campaign merge_ready.required_checks)\n' +
   '  <file>: REST or GitHub MCP check-runs JSON, a combined-status JSON, both merged, or a ForgeCheck[] array';
 
-// parseFlags keeps one value per key, so the repeatable --required is collected here.
-const requiredFromArgv = (argv: string[]): string[] =>
-  argv.flatMap((arg, i) => (arg === '--required' && argv[i + 1] !== undefined && !argv[i + 1].startsWith('--') ? [argv[i + 1]] : []));
+// parseFlags keeps one value per key, so the repeatable --required is collected here. A --required
+// without a usable value (last token, followed by a flag, or empty) is a usage error, never a
+// silently skipped evidence check: the merge gate must fail closed.
+const requiredFromArgv = (argv: string[]): string[] | null => {
+  const names: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] !== '--required') continue;
+    const value = argv[i + 1];
+    if (value === undefined || value === '' || value.startsWith('--')) return null;
+    names.push(value);
+    i++;
+  }
+  return names;
+};
 
 const main = (): number => {
   const argv = process.argv.slice(2);
@@ -20,9 +31,14 @@ const main = (): number => {
     console.error(USAGE);
     return 2;
   }
+  const requiredChecks = requiredFromArgv(argv);
+  if (requiredChecks === null) {
+    console.error(USAGE);
+    return 2;
+  }
   let result;
   try {
-    result = ciVerdict(checksFromSnapshot(readJsonFile(flags.checks, flags.checks)), { requiredChecks: requiredFromArgv(argv) });
+    result = ciVerdict(checksFromSnapshot(readJsonFile(flags.checks, flags.checks)), { requiredChecks });
   } catch (error) {
     console.error(`${(error as Error).message}\n${USAGE}`);
     return 2;

@@ -41,11 +41,14 @@ protocol step 2's, unchanged.
   executed one are not evidence of testing.
 - **`merge_ready.required_checks`** (campaign config, optional string array, e.g.
   `["ci-main / ci-report (pull_request)"]`): evidence checks that must have run and succeeded.
-  Pass each as a repeatable `--required <name>` to `scripts/ci-verdict.ts`
+  The merge step MUST pass one repeatable `--required <name>` per config entry to
+  `scripts/ci-verdict.ts` (the CLI does not read the campaign config, so an omitted flag keeps
+  the all-skipped rule only)
   (`ciVerdict(checks, { requiredChecks })`). Names match exactly the check name the forge reports
   (GitHub check-run `name`, or Gitea/GitHub commit-status `context`). Missing, queued or SKIPPED is
   `pending`; any other completed conclusion than SUCCESS is `red`. This implements
-  `merge_ready.skipped_is_not_green` for the all-skipped case.
+  `merge_ready.skipped_is_not_green` for the all-skipped case only: a set with one executed
+  success plus skipped checks stays green unless `required_checks` names the evidence check.
 - **Interval**: poll `gh pr checks <n>` every 60s while the background CI-wait
   is outstanding.
 - **Cap**: 20 minutes of total CI-wait per PR before the 2-retry/reclassify
