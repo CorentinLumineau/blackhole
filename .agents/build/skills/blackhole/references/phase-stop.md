@@ -208,6 +208,9 @@ Never on a usage stop:
   variable-indirection form so `pkill` does not kill its own wrapper shell (**`stop --now` tier:
   identical to `--abandon` tier — fires only if step 4's fallback actually killed a worker; a
   fully-cooperative `stop --now` never touches the watchdog, same as drain**)
+- [ ] This session's peer record is removed with `bun run scripts/peer-campaigns.ts release`
+  (ADR-057, `multitask-mode.md` § Peer campaign registry), so a peer campaign's next bootstrap
+  does not wait out the 40-minute lease; every tier
 - [ ] The report states the exact command to resume and what will happen first (**`stop --now`
   tier: additionally names which workers cooperated, flushed (issue #492) a partial result, or
   were abandoned, per step 7 above — the resumer needs to know which issues may carry a partial

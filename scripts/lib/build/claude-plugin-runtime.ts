@@ -12,11 +12,20 @@ import { root, srcDir, CLAUDE_DISTRIBUTION_AGENT_DIR } from './paths.ts';
  * directory, which is the self-hosting layout (blackhole's own checkout). */
 export const PLUGIN_ROOT_SHELL_EXPR = '"${BLACKHOLE_PLUGIN_ROOT:-.}"';
 
-/** SessionStart command that exports the plugin root for every later Bash call. A no-op when
- * the env file or plugin root is unavailable, or when the user already pinned the variable. */
+/** SessionStart command that exports the plugin root for every later Bash call. Claude Code runs
+ * shell-form hooks through `sh -c`, which is dash on many Linux hosts, so this must stay strict
+ * POSIX: the bash-only quoting directive of printf aborts after the prefix, leaving an empty export
+ * that `exit 0` hides. The value is single-quoted with the `'\''` escape so spaces, quotes, `$` and
+ * backticks stay inert when bash sources the env file, and the leading newline terminates any
+ * newline-less prefix an older version left behind. Silent when the user already pinned the
+ * variable; warns on stderr when it cannot export; always exits 0 so it never blocks a session. */
 export const SESSION_START_EXPORT_COMMAND =
-  '[ -n "$CLAUDE_ENV_FILE" ] && [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -z "$BLACKHOLE_PLUGIN_ROOT" ] && ' +
-  'printf \'export BLACKHOLE_PLUGIN_ROOT=%q\\n\' "$CLAUDE_PLUGIN_ROOT" >> "$CLAUDE_ENV_FILE"; exit 0';
+  '[ -z "$BLACKHOLE_PLUGIN_ROOT" ] || exit 0; ' +
+  'r=; if [ -n "$CLAUDE_ENV_FILE" ] && [ -n "$CLAUDE_PLUGIN_ROOT" ]; then ' +
+  'r=$(printf %s "$CLAUDE_PLUGIN_ROOT" | sed "s/\'/\'\\\\\\\\\'\'/g"); fi; ' +
+  'if [ -n "$r" ]; then printf "\\nexport BLACKHOLE_PLUGIN_ROOT=\'%s\'\\n" "$r" >> "$CLAUDE_ENV_FILE"; ' +
+  'else echo "blackhole: cannot export BLACKHOLE_PLUGIN_ROOT (CLAUDE_ENV_FILE or CLAUDE_PLUGIN_ROOT unset); scripts will not resolve" >&2; fi; ' +
+  'exit 0';
 
 /** Added to the bundle's SKILL.md: Claude Code expands the placeholder in skill and agent bodies,
  * but not inside reference files an agent opens with Read, so the agent has to resolve it. */

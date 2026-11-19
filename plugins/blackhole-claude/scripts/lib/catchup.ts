@@ -1,30 +1,34 @@
 import type { UsageReport } from './usage-source.ts';
-import { DEFAULT_DAY_END_HOUR, DEFAULT_PCT_PER_WEEKDAY, computePaceFloor } from './pace-floor.ts';
+import { DEFAULT_WEEKLY_TARGET_PCT, computePaceFloor } from './pace-floor.ts';
 import { DEFAULT_CLAIM_LEASE_HOURS, LANE_NAME } from './lane.ts';
 import type { RateLimits } from './rate-limit-cache.ts';
 import { isPct, isPositive, pick, section, workersAllowed, type MeasuredWeeklyRates, type UsageBudgetConfig, type UsageVerdict } from './usage-budget.ts';
 
 // Catchup mode (ADR-054 C2, C3): the pacing preset, its invocation-only overrides, and the floor
 // gate. The floor replaces the weekly lines for one invocation; unreadable usage fails closed with
-// `SKIP`. Pure except `localUtcOffsetMinutes`, the one named clock read.
+// `SKIP`. Pure: every instant is passed in.
 
 export type CatchupConfig = {
-  pct_per_weekday: number;
+  weekly_target_pct: number;
   five_hour: { no_spawn_at: number; stop_workers_at: number };
   lane: string | null;
   claim_lease_hours: number;
-  day_end_hour: number;
 };
 
 export const DEFAULT_CATCHUP: CatchupConfig = {
-  pct_per_weekday: DEFAULT_PCT_PER_WEEKDAY,
+  weekly_target_pct: DEFAULT_WEEKLY_TARGET_PCT,
   five_hour: { no_spawn_at: 75, stop_workers_at: 80 },
   lane: null,
   claim_lease_hours: DEFAULT_CLAIM_LEASE_HOURS,
-  day_end_hour: DEFAULT_DAY_END_HOUR,
 };
 
 const P = 'catchup';
+
+/** Keys the pace floor no longer reads: a config still carrying one fails loudly instead of being ignored. */
+export const REMOVED_CATCHUP_KEYS: Readonly<Record<string, string>> = {
+  pct_per_weekday: `${P}.pct_per_weekday was removed (ADR-054 amendment): the pace floor is now linear over all 168 h of the week. Delete it and set ${P}.weekly_target_pct instead (a number in (0, 100], default 80; the old 17.5 x 5 weekdays equals 87.5).`,
+  day_end_hour: `${P}.day_end_hour was removed (ADR-054 amendment): the pace floor no longer follows working days. Delete it from config.json.`,
+};
 
 const validate = (c: CatchupConfig, keyPath: { no_spawn: string; stop_workers: string }): CatchupConfig => {
   if (c.five_hour.no_spawn_at >= c.five_hour.stop_workers_at) {
@@ -38,16 +42,16 @@ export const resolveCatchup = (config: Record<string, unknown>): CatchupConfig =
   const raw = (config.catchup ?? {}) as unknown;
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error(`${P} must be an object`);
   const block = raw as Record<string, unknown>;
+  for (const [key, message] of Object.entries(REMOVED_CATCHUP_KEYS)) if (key in block) throw new Error(message);
   const five = section(block, 'five_hour', P);
   const resolved: CatchupConfig = {
-    pct_per_weekday: pick(block, 'pct_per_weekday', `${P}.pct_per_weekday`, d.pct_per_weekday, isPct, 'a number in (0, 100]'),
+    weekly_target_pct: pick(block, 'weekly_target_pct', `${P}.weekly_target_pct`, d.weekly_target_pct, isPct, 'a number in (0, 100]'),
     five_hour: {
       no_spawn_at: pick(five, 'no_spawn_at', `${P}.five_hour.no_spawn_at`, d.five_hour.no_spawn_at, isPct, 'a number in (0, 100]'),
       stop_workers_at: pick(five, 'stop_workers_at', `${P}.five_hour.stop_workers_at`, d.five_hour.stop_workers_at, isPct, 'a number in (0, 100]'),
     },
     lane: pick<string | null>(block, 'lane', `${P}.lane`, d.lane, (v) => v === null || (typeof v === 'string' && LANE_NAME.test(v)), 'null or a name matching [a-z0-9][a-z0-9._-]*'),
     claim_lease_hours: pick(block, 'claim_lease_hours', `${P}.claim_lease_hours`, d.claim_lease_hours, isPositive, 'a number > 0'),
-    day_end_hour: pick(block, 'day_end_hour', `${P}.day_end_hour`, d.day_end_hour, (v) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 24, 'an integer 1-24'),
   };
   return validate(resolved, { no_spawn: `${P}.five_hour.no_spawn_at`, stop_workers: `${P}.five_hour.stop_workers_at` });
 };
@@ -121,17 +125,18 @@ export type Pacing = {
   resets_at: number | null;
   five_hour_pct: number | null;
   floor_pct: number | null;
-  credits: number | null;
+  elapsed_h: number | null;
+  target_pct: number | null;
   shortfall_pct: number | null;
   reason: string | null;
 };
 
 /** The pace reading for the launch summary and `pace-floor.ts`: where the week stands against the floor. */
-export const readPacing = (report: UsageReport, preset: CatchupConfig, now: number, utcOffsetMinutes: number): Pacing => {
+export const readPacing = (report: UsageReport, preset: CatchupConfig, now: number): Pacing => {
   const week = report.windows.find((w) => w.name === 'seven_day' && w.resets_at > now);
   const five = report.windows.find((w) => w.name === 'five_hour' && w.resets_at > now);
   const base = { plan: report.plan, used_pct: week?.used_pct ?? null, resets_at: week?.resets_at ?? null, five_hour_pct: five?.used_pct ?? null };
-  const none = { floor_pct: null, credits: null, shortfall_pct: null };
+  const none = { floor_pct: null, elapsed_h: null, target_pct: null, shortfall_pct: null };
   if (report.source === 'none') return { ...base, ...none, status: 'unreadable', reason: report.reason ?? 'usage unreadable' };
   if (!week) {
     const reason = report.plan === 'none' || report.windows.length === 0 ? 'no plan limits' : 'no current seven_day window';
@@ -141,11 +146,9 @@ export const readPacing = (report: UsageReport, preset: CatchupConfig, now: numb
     now,
     resetsAt: week.resets_at,
     usedPct: week.used_pct,
-    pctPerWeekday: preset.pct_per_weekday,
-    dayEndHour: preset.day_end_hour,
-    utcOffsetMinutes,
+    weeklyTargetPct: preset.weekly_target_pct,
   });
-  return { ...base, status: 'ok', floor_pct: floor.floor_pct, credits: floor.credits, shortfall_pct: floor.shortfall_pct, reason: null };
+  return { ...base, status: 'ok', floor_pct: floor.floor_pct, elapsed_h: floor.elapsed_h, target_pct: floor.target_pct, shortfall_pct: floor.shortfall_pct, reason: null };
 };
 
 /** `pacing` against an owner-adjusted floor: the shortfall follows the floor; other fields are kept. */
@@ -153,6 +156,3 @@ export const adjustPacing = (pacing: Pacing, floor: number | null): Pacing => {
   if (pacing.status !== 'ok' || floor === null || pacing.used_pct === null) return pacing;
   return { ...pacing, floor_pct: floor, shortfall_pct: Math.max(0, Math.round((floor - pacing.used_pct) * 100) / 100) };
 };
-
-/** The one impure helper: the local UTC offset in force at `now` (epoch seconds), in minutes. */
-export const localUtcOffsetMinutes = (now: number): number => -new Date(now * 1000).getTimezoneOffset();

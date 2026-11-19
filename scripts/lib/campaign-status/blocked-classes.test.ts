@@ -117,4 +117,10 @@ describe('single-source classifier (V-DRY)', () => {
     expect(classifyBlocked(own, issues, 'acct-a')).toBe('dependency');
     expect(classifyBlocked(own, issues)).toBe('another_lane');
   });
+
+  test('an issue held for a live peer campaign (another session: note) is in the another-lane class', () => {
+    const held = blocked('peer', 'another session: a1b2c3d4-0000-4000-8000-000000000001');
+    expect(classifyBlocked(held, issues)).toBe('another_lane');
+    expect(classifyBlocked(blocked('near miss', 'another sessions: not the hold'), issues)).toBe('other');
+  });
 });
