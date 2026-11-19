@@ -12,7 +12,7 @@ import { installStateFile } from './lib/state-write-guard.ts';
 import { readLaneConfig } from './lib/lane.ts';
 import { syncQueue, type SyncResult } from './lib/forge-sync.ts';
 import { peerClaims, type DetectResult } from './lib/peer-campaigns.ts';
-import { detectForCampaign } from './peer-campaigns.ts';
+import { detectForCampaign, readSessionToken } from './peer-campaigns.ts';
 
 // Builds or refreshes `.blackhole/queue.json` from the forge (`forge-sync.md` § Queue builder script):
 // open and closed issues plus open and merged PRs, read through the configured forge's adapter.
@@ -83,7 +83,12 @@ export async function runForgeSync(
   const laneConfig = readLaneConfig(config);
   const lane = opts.lane ?? laneConfig.lane;
   const detected = opts.peers === undefined ? detectForCampaign(campaignDir) : opts.peers;
-  const peers = { peerClaims: peerClaims(detected?.peers ?? []), peersUnreadable: (detected?.unreadable ?? 0) > 0 };
+  const peers = {
+    peerClaims: peerClaims(detected?.peers ?? []),
+    peersUnreadable: (detected?.unreadable ?? 0) > 0,
+    selfSession: readSessionToken(campaignDir) ?? undefined,
+    livePeerSessions: (detected?.peers ?? []).map((p) => p.session),
+  };
   const sync = (queue: QueueJson | null) => syncQueue({ queue, issues, prs, scope, config, now, lane, claimLeaseHours: laneConfig.leaseHours, ...peers });
   if (opts.dryRun) return sync(first.queue);
 
