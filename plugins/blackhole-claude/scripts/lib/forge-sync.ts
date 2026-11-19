@@ -35,6 +35,10 @@ export type SyncInput = {
   peerClaims?: Record<string, string>;
   /** Peer records exist that could not be read: an `another session:` hold is kept, since its peer may be one of them. */
   peersUnreadable?: boolean;
+  /** This session's id; with `livePeerSessions` it breaks a mutual hold (the higher id yields while the peer is live). */
+  selfSession?: string;
+  /** Sessions of the live peers, claiming or not. */
+  livePeerSessions?: string[];
 };
 
 export type SyncResult = {
@@ -103,6 +107,16 @@ function mergedPrIndex(prs: ForgePr[]): Map<number, ForgePr> {
     for (const n of closedIssues(p.body ?? '')) if (!merged.has(n)) merged.set(n, p);
   }
   return merged;
+}
+
+/**
+ * A hold for a peer that no longer claims the entry. Two sessions holding one issue for each other
+ * both stop claiming it, so both would release it in the same turn and hold it again the next: the
+ * higher session id keeps the hold while the peer is live, so the lower id reclaims it alone.
+ */
+function yieldsToPeer(notes: string | null | undefined, input: SyncInput): boolean {
+  const peer = (notes ?? '').slice(ANOTHER_SESSION.length).trim();
+  return input.selfSession !== undefined && input.selfSession > peer && (input.livePeerSessions ?? []).includes(peer);
 }
 
 function ingest(i: ForgeIssue, input: SyncInput, sizePrefix: string): SyncedEntry {
@@ -193,7 +207,7 @@ export function syncQueue(input: SyncInput): SyncResult {
     const label = state ? foreignLaneLabel(liveLabels(key), lane) : null;
     const prHold = isStale ? null : (open.foreign.get(n) ?? null);
     const peer = input.peerClaims?.[key];
-    const keptPeerHold = input.peersUnreadable && isPeerHold(entry.notes) ? entry.notes : null;
+    const keptPeerHold = isPeerHold(entry.notes) && (input.peersUnreadable || yieldsToPeer(entry.notes, input)) ? entry.notes : null;
     const peerHold = peer ? `${ANOTHER_SESSION} ${peer}` : keptPeerHold;
     let next = state ? applyLane(entry, label ? `${ANOTHER_LANE} ${label}` : (peerHold ?? prHold)) : entry;
     const ownPr = open.own.get(n);

@@ -26,8 +26,8 @@ Bootstrap order, every `run` start:
    with a cross-session transport), so a peer bootstrapping at the same moment sees this one.
    The summary's Peers row then reads `detect` itself. A non-zero exit means no record was
    written, so a peer could not see this session: restate its stderr line and stop the bootstrap
-   before any spawn. Exit 1 is an unresolvable git common dir, or a worktree path or host a peer
-   could not read; exit 2 is a usage error.
+   before any spawn. Exit 1 is an unresolvable git common dir, a worktree path or host a peer
+   could not read, or a record that could not be written (one line naming the errno code and the registry directory); exit 2 is a usage error.
 3. The 6-step form when a `coordinator.md` trigger condition holds.
 4. The summary and the status-page probe (§ Probe procedure).
 5. The questions (§ Questions), unless print-only (§ Print-only mode).
