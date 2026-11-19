@@ -36,17 +36,19 @@ Effort 2, Priority 54 (>= 30).
   - Easy: make TABLE mandatory (`TRUNCATE\s+TABLE`). Fixes the false positive but loses the real,
     valid statement `TRUNCATE x;` (PostgreSQL, MySQL, SQL Server do not need TABLE), which is a
     silent false negative on the one category this gate exists to catch.
-  - Hard (chosen): keep the keyword but require SQL statement shape for the bare form: `TRUNCATE`
-    at statement start (line start after the diff marker and whitespace, or after `;`), then one
-    (optionally quoted/qualified) identifier, then `;` or end of line. `TRUNCATE\s+TABLE` stays
-    matched anywhere, case-insensitive. The shape cannot match `'truncate',`, `=== 'truncate'`,
-    `truncateTargets(`, or prose like "dd, truncate, …".
+  - Hard (chosen, revised in fix round 1): keep the keyword but require a name-like token after it:
+    `TRUNCATE`, whitespace, then an identifier char, a `"`/backtick/`[` quoted identifier, `${`, `$N`,
+    `:name`, `ONLY` or `TABLE` (case-insensitive, word boundary before). `TRUNCATE TABLE` therefore
+    matches anywhere. A quote (`'truncate'`), comma (`truncate, ...`), `(` or `=` right after the word,
+    or a longer identifier (`truncateTargets(`) does not match. The first draft required full statement
+    shape (line start, identifier list, `;`/EOL) and missed `TRUNCATE users CASCADE;`, trailing comments,
+    `IF ... THEN TRUNCATE foo;`, and SQL inside code strings; the simpler rule catches all of them.
   - Rejected: exempt the PreToolUse hook sources by path. It hides real SQL added to those paths
     and adds a third exemption mechanism next to `isKeywordScanExempt` (V-INT-04).
   - Rejected: uppercase-only bare `TRUNCATE`. Lowercase `truncate x;` is valid SQL.
-- **Choice**: statement-shape matching for the bare form; TABLE form unchanged.
-- **Rationale**: slightly more regex now buys zero loss of true positives. Residual risk: prose that
-  starts a line with `truncate <word>;` (accepted, documented in a test).
+- **Choice**: name-like-token-after-keyword matching; no true positive the old regex caught on real SQL is lost.
+- **Rationale**: slightly more regex now buys zero loss of true positives. Residual risk: prose such
+  as `truncate logs` (the word followed by a name) still raises (accepted, conservative, documented in a test).
 - **Confidence**: High.
 
 ## Touch-Paths
@@ -54,7 +56,7 @@ Effort 2, Priority 54 (>= 30).
 - `scripts/lib/merge-gate/merge-risk.ts` (the `DESTRUCTIVE_SQL` constant only)
 - `scripts/lib/merge-gate/merge-risk.test.ts`
 - `src/references/merge-gate.md` (line ~572, the `deletes-data` row: state that bare `TRUNCATE` counts
-  only as a statement, `TRUNCATE TABLE x` or `TRUNCATE x;`) plus all generated dist trees per
+  only when followed by a table name, `TRUNCATE TABLE x` or `TRUNCATE x`) plus all generated dist trees per
   `scripts/lib/build/targets.ts` (regenerate with `bun run build`, never hand-edit; this covers
   `plugins/blackhole-claude/scripts/lib/merge-gate/merge-risk.ts` and the built `merge-gate.md` copies)
 - Version bump is NOT planned: no `templates/hooks/**` change (V-PLUGIN-01 not triggered).
@@ -79,11 +81,11 @@ Effort 2, Priority 54 (>= 30).
      migration path.
    - Run only this test file through `with-test-lock`; confirm the "must NOT" cases fail first.
 2. **Green**: replace the `TRUNCATE(\s+TABLE)?` alternative with `TRUNCATE\s+TABLE` and add a separate
-   statement-shape regex (or a second alternative) for the bare form; keep `DROP`/`DELETE FROM` untouched.
+   name-like-token rule (`TRUNCATE\s+[\w"`[$:]`); keep `DROP`/`DELETE FROM` untouched.
    Evaluate both in the one `DESTRUCTIVE_SQL.test(...)` call site at line 232 (or a tiny helper), no new
    exemption mechanism.
 3. Edit the `merge-gate.md` row, then `bun run build` to regenerate dist trees.
-4. Scout check: one improvement inside the changed constant's comment (state why the bare form is shaped).
+4. Scout check: one improvement inside the changed constant's comment (state why the keyword needs a name-like token).
    No issue numbers in source comments (V-DOC-06); the issue number lives only in a test name.
 
 ## Acceptance Criteria
@@ -93,7 +95,7 @@ Effort 2, Priority 54 (>= 30).
 - **AC2**: every "must raise" case in step 1 returns `deletes-data` for the production-code, `.sql` and
   migration paths (test: the new cases pass).
 - **AC3**: all pre-existing cases in `merge-risk.test.ts` still pass unchanged.
-- **AC4**: `grep -n "TRUNCATE" src/references/merge-gate.md` shows the row describing the statement form,
+- **AC4**: `grep -n "TRUNCATE" src/references/merge-gate.md` shows the row describing the name-token rule,
   and `bun run build` leaves no diff between `src/` and generated trees (CI `V-TREE-01`/build-sync green).
 - **AC5**: touch-paths respected: `git diff --name-only origin/main` lists only the Touch-Paths plus
   generated copies and this plan.
@@ -108,4 +110,4 @@ Effort 2, Priority 54 (>= 30).
 
 ## Open Questions
 
-- Accept the residual prose false positive (a line starting `truncate <word>;`)? Plan assumes yes.
+- Accept the residual prose false positive (`truncate <word>` in prose)? Plan assumes yes.

@@ -114,15 +114,12 @@ const DATA_DIR = /(^|\/)(data|dumps?|backups?|seeds?)\//i;
 const DATA_EXT = /\.(sql|dump|csv)$/i;
 // csv is a deletion signal (DATA_EXT) but not a keyword-scan target: it holds rows, not statements.
 const SCANNED_DATA_EXT = /\.(sql|dump)$/i;
-// `truncate` is also a shell command, an identifier prefix and English, so the bare form (TABLE is
-// optional in SQL) counts only in statement shape: at a line or `;` start, one or more optionally
-// quoted/qualified identifiers, then `;` or end of line. `TRUNCATE TABLE` matches anywhere.
-const SQL_IDENT = String.raw`(?:"[^"\n]+"|\`[^\`\n]+\`|\[[^\]\n]+\]|\w+)(?:\.(?:"[^"\n]+"|\`[^\`\n]+\`|\[[^\]\n]+\]|\w+))*`;
-const BARE_TRUNCATE = String.raw`(?:^[+\- ]?|;)[ \t]*TRUNCATE[ \t]+(?:ONLY[ \t]+)?${SQL_IDENT}(?:[ \t]*,[ \t]*${SQL_IDENT})*[ \t]*(?:;|$)`;
-const DESTRUCTIVE_SQL = new RegExp(
-  String.raw`\b(?:DROP\s+(?:TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE|DELETE\s+FROM)\b|${BARE_TRUNCATE}`,
-  'im',
-);
+// `truncate` is also a shell command, an identifier prefix and English, and TABLE is optional in SQL,
+// so the keyword counts only when whitespace and then a name-like token follow it (identifier char,
+// quote/bracket identifier, `${`, `$N`, `:name`, ONLY, TABLE). A quote, comma, `(` or `=` right
+// after it, or a longer identifier such as `truncateTargets`, does not match. Prose such as
+// `truncate logs` still raises: conservative by design.
+const DESTRUCTIVE_SQL = /\b(?:DROP\s+(?:TABLE|DATABASE|SCHEMA)|DELETE\s+FROM|TRUNCATE\s+[\w"`[$:])/i;
 
 const MIGRATIONS_RULE = PATH_RULES.find((r) => r.category === 'migrations');
 

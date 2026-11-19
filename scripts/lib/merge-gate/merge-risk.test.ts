@@ -193,13 +193,28 @@ describe('deletes-data keyword scan scope', () => {
       '+TRUNCATE sessions',
       '+ DROP TABLE t;  TRUNCATE sessions;',
       '+ await db.exec(`TRUNCATE TABLE sessions`);',
+      '+ TRUNCATE users CASCADE;',
+      '+ TRUNCATE users RESTART IDENTITY CASCADE;',
+      '+ TRUNCATE a, b CASCADE;',
+      '+ TRUNCATE users -- wipe',
+      '+ TRUNCATE users /* wipe */;',
+      '+ IF x THEN TRUNCATE foo; END IF;',
+      "+ EXECUTE 'TRUNCATE users';",
+      '+ db.query(`TRUNCATE ${t}`)',
+      '+ db.query("TRUNCATE users")',
+      '+ psql -c "TRUNCATE users"',
+      '+ TRUNCATE $1;',
+      '+ TRUNCATE :t;',
+      '+ TRUNCATE ONLY users;',
+      '+ TRUNCATE `users`;',
+      '+ TRUNCATE [dbo].[users];',
     ];
     for (const p of ['src/cleanup.ts', 'ops/reset.sql', 'db/migrations/002.sql']) {
       for (const line of lines) expect(cats(p, line)).toContain('deletes-data');
     }
   });
-  test('residual: a prose line shaped like a truncate statement still raises (conservative)', () => {
-    expect(cats('src/notes.ts', '+ truncate logs;')).toContain('deletes-data');
+  test('residual: prose that follows the word truncate with a name still raises (conservative)', () => {
+    expect(cats('src/notes.ts', '+ truncate logs')).toContain('deletes-data');
   });
   test('production code with DELETE FROM still raises deletes-data', () => {
     expect(cats('src/cleanup.ts', '+ DELETE FROM users')).toContain('deletes-data');
