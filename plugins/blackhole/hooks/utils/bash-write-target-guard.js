@@ -217,11 +217,14 @@ const commandPositions = (tokens) => {
     while (i < tokens.length && /^[A-Za-z_]\w*=/.test(tokens[i])) i++;
     if (i >= tokens.length) break;
     positions.add(i);
-    if (!COMMAND_PREFIXES.has(commandName(tokens[i]))) break;
+    const prefix = commandName(tokens[i]);
+    if (!COMMAND_PREFIXES.has(prefix)) break;
     i++;
     while (i < tokens.length && (tokens[i].startsWith('-') || /^\d+(?:\.\d+)?[smhd]?$/.test(tokens[i]))) {
       i += PREFIX_VALUE_OPTIONS.has(tokens[i]) ? 2 : 1;
     }
+    // `env` reads NAME=VALUE operands after quote removal, so `env "A=1" 'tee'` runs `tee`.
+    if (prefix === 'env') while (i < tokens.length && tokens[i].includes('=')) i++;
   }
   return positions;
 };
