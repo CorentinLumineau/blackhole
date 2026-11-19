@@ -569,7 +569,7 @@ fourth `mergeEligible()` condition (same shape as § 6 / Step 0.6).
 | `migrations` | `migrations/`, `migrate/`, `prisma/migrations/`, alembic, knexfile, flyway |
 | `github-workflows` | `.github/workflows/**` |
 | `release-tag` | `scripts/release.ts`, `scripts/release-cadence.ts`, `scripts/lib/release-cadence.ts`, `.github/releases/`, `git-create-release`, `package.json` version bump |
-| `deletes-data` | deleted `data/`/`dumps/`/`*.sql`/`*.csv` files, or `DROP TABLE`/`TRUNCATE`/`DELETE FROM` in a patch to a `.sql`/`.dump`/migration file or to non-test, non-markdown code (the classifier's own source and its built copies are exempt) |
+| `deletes-data` | deleted `data/`/`dumps/`/`*.sql`/`*.csv` files, or `DROP TABLE`/`TRUNCATE TABLE x`/`DELETE FROM`, or a bare `TRUNCATE x;` statement (the word `truncate` in shell commands, identifiers or prose does not count), in a patch to a `.sql`/`.dump`/migration file or to non-test, non-markdown code (the classifier's own source and its built copies are exempt) |
 
 Mechanical check (exit `0` automerge, `1` hold, `2` usage) — judgment is above, arithmetic is not
 here:
