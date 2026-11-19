@@ -814,6 +814,7 @@ const isStateDirTrustedPath = (candidate, stateRoot) => {
   return !isProtectedStateSegments(segments) && !isStateContainerSegments(segments) && isPlainLeaf(path.resolve(candidate));
 };
 
+<<<<<<< HEAD
 /** Entries of `permissions.additionalDirectories` considered per call, so a long list cannot stall
  * the hook's deadline. */
 const MAX_EXTRA_ROOT_CANDIDATES = 16;
@@ -932,6 +933,8 @@ const isTrustedExtraPath = (candidate, roots) => {
   return roots.some((root) => real.startsWith(root + path.sep)) && isPlainLeaf(path.resolve(candidate));
 };
 
+=======
+>>>>>>> origin/main
 /** True only when `<mainClone>/.blackhole/config.json` is absent (`ENOENT`) — the fail-closed
  * "no live campaign" read shared by `sibling-plugin-guard.js`'s defer gate and the hook-event
  * rotation gate `recordEvent` above wires up: present, or any other stat outcome (an unreadable
@@ -972,10 +975,13 @@ module.exports = {
   mainCloneRoot,
   campaignStateRoot,
   isStateDirTrustedPath,
+<<<<<<< HEAD
   trustedWriteRoots,
   isTrustedExtraPath,
   settingsFileCandidates,
   isSettingsFilePath,
+=======
+>>>>>>> origin/main
   allWorktreeRoots,
   resolveExistingAncestor,
   isUnderRoot,
