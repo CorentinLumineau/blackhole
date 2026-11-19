@@ -6,6 +6,7 @@ status: current
 review_trigger: "on rule update"
 created: 2026-11-19
 last_updated: 2026-11-19
+plan_base_commit: a35a01fb80f3ede9d64ce9bb80e9a8a96998b71f
 related: [plans/plan-hook-schemas-md-overstates-the-v-hook-visibility-guarantee-for-foreign-pretoolus.md]
 ---
 

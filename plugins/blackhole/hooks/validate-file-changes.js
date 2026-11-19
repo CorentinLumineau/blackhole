@@ -24,8 +24,13 @@ const {
   isUnderRoot,
   campaignStateRoot,
   isStateDirTrustedPath,
+  trustedWriteRoots,
+  isTrustedExtraPath,
+  settingsFileCandidates,
+  isSettingsFilePath,
   isAcceptableScratchpadDir,
   readAssignedWorktreeRoot,
+  mainCloneRoot,
   worktreeRoot,
   recordEvent,
   denyAndRecord,
@@ -141,10 +146,15 @@ const main = () => {
   let assignedRoot;
   let roots;
   let stateRoot = null;
+  let extraRoots = [];
+  let settingsFiles = [];
   try {
     assignedRoot = readAssignedWorktreeRoot(cwd);
     roots = assignedRoot ? [assignedRoot] : allWorktreeRoots(cwd);
     if (roots) stateRoot = campaignStateRoot(cwd);
+    const mainClone = mainCloneRoot(cwd);
+    extraRoots = trustedWriteRoots(cwd, input, mainClone);
+    settingsFiles = settingsFileCandidates(cwd, mainClone);
   } catch (error) {
     failClosed({
       hook: HOOK,
@@ -159,8 +169,28 @@ const main = () => {
   // Containment exists for campaign workers; an ordinary session in the same repo may write
   // wherever its own permissions allow (ADR-047, utils/campaign-scope.js).
   const scoped = isCampaignScoped(input, assignedRoot);
+  // The settings files `trustedWriteRoots` reads are never a worker's to write: editing one would
+  // widen the roots of the next call.
+  if (scoped && filePath && isSettingsFilePath(filePath, settingsFiles)) {
+    denyAndRecord({
+      hook: HOOK,
+      tool,
+      pattern_id: 'settings-roots-write',
+      reason:
+        'Write target is a Claude Code settings file that lists the directories campaign agents may write (permissions.additionalDirectories). ' +
+        'Remedy: ask the owner to change it; a worker never edits it',
+      detail: filePath,
+      cwd,
+    });
+    return;
+  }
   if (scoped && roots) {
-    if (filePath && !isInsideAnyRoot(filePath, roots) && !isStateDirTrustedPath(filePath, stateRoot)) {
+    if (
+      filePath &&
+      !isInsideAnyRoot(filePath, roots) &&
+      !isStateDirTrustedPath(filePath, stateRoot) &&
+      !isTrustedExtraPath(filePath, extraRoots)
+    ) {
       denyAndRecord({
         hook: HOOK,
         tool,

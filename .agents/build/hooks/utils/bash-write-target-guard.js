@@ -17,7 +17,9 @@
  *  - a **resolvable** target (a literal path this module can compute without executing anything)
  *    that resolves outside the assigned root → `block` (`bash-outside-assigned-worktree`). A
  *    target in the campaign state dir (`campaignStateRoot`) is exempt only when written in one of
- *    the shapes `state-dir-write-shape.js` allows.
+ *    the shapes `state-dir-write-shape.js` allows; so is a target in an extra root from
+ *    `trustedWriteRoots` (the validated scratchpad, declared cross-repo campaign worktrees).
+ *    A settings file listing those roots is never a permitted target (`bash-settings-roots-write`).
  *  - a **write-shaped-but-unresolvable** command — a dynamic target (`$VAR`, `$(cmd)`, a glob),
  *    or a command whose write behavior cannot be determined by inspecting the command string at
  *    all (`python3 -c`, `perl -i`, `awk`) → `warn` and record
@@ -39,8 +41,17 @@
 const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC } = require('./shell-lexer');
-const { readAssignedWorktreeRoot, isUnderRoot, campaignStateRoot } = require('./hook-event-log');
-const { FILE_WRITE, isTrustedStateWrite } = require('./state-dir-write-shape');
+const {
+  readAssignedWorktreeRoot,
+  mainCloneRoot,
+  isUnderRoot,
+  campaignStateRoot,
+  trustedWriteRoots,
+  isTrustedExtraPath,
+  settingsFileCandidates,
+  isSettingsFilePath,
+} = require('./hook-event-log');
+const { FILE_WRITE, isTrustedShapedWrite, isTrustedStateWrite } = require('./state-dir-write-shape');
 const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
@@ -1612,10 +1623,14 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
  * also present — never both in the same result (a confirmed out-of-bounds write is the more
  * actionable signal).
  */
-const evaluateBashWriteTargets = (command, cwd) => {
+const evaluateBashWriteTargets = (command, cwd, input = {}) => {
   const assignedRoot = readAssignedWorktreeRoot(cwd);
   if (!assignedRoot) return null;
   const stateRoot = campaignStateRoot(cwd);
+  const mainClone = mainCloneRoot(cwd);
+  const extraRoots = trustedWriteRoots(cwd, input, mainClone);
+  const settingsFiles = settingsFileCandidates(cwd, mainClone);
+  const isExtraPath = (p) => isTrustedExtraPath(p, extraRoots);
 
   const literalTargets = [];
   let unresolvable = false;
@@ -1648,7 +1663,20 @@ const evaluateBashWriteTargets = (command, cwd) => {
   for (const { target, dir, visible, shape } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.resolve(dir, target);
-    if (!isUnderRoot(resolvedPath, assignedRoot) && !isTrustedStateWrite({ target, shape }, resolvedPath, dir, stateRoot)) {
+    if (isSettingsFilePath(resolvedPath, settingsFiles)) {
+      return {
+        tier: 'block',
+        pattern_id: 'bash-settings-roots-write',
+        reason:
+          `Bash write target is a Claude Code settings file that lists the directories campaign agents may write (permissions.additionalDirectories): ${resolvedPath}. ` +
+          'Remedy: ask the owner to change it; a worker never edits it.',
+      };
+    }
+    if (
+      !isUnderRoot(resolvedPath, assignedRoot) &&
+      !isTrustedStateWrite({ target, shape }, resolvedPath, dir, stateRoot) &&
+      !isTrustedShapedWrite({ target, shape }, resolvedPath, dir, isExtraPath)
+    ) {
       const hint = looksLikeRegexFragment(target)
         ? ' This looks like a sed/regex expression; quote it.'
         : '';

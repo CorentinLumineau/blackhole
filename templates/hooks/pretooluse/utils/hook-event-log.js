@@ -814,6 +814,124 @@ const isStateDirTrustedPath = (candidate, stateRoot) => {
   return !isProtectedStateSegments(segments) && !isStateContainerSegments(segments) && isPlainLeaf(path.resolve(candidate));
 };
 
+/** Entries of `permissions.additionalDirectories` considered per call, so a long list cannot stall
+ * the hook's deadline. */
+const MAX_EXTRA_ROOT_CANDIDATES = 16;
+
+/** The user, project and local settings files `permissions.additionalDirectories` is read from, and
+ * that a worker may never write: `~/.claude/settings.json`, and `.claude/settings.json` plus
+ * `.claude/settings.local.json` under `CLAUDE_PROJECT_DIR` and under the main clone of `cwd` (never
+ * the worker's own worktree copy, which a worker can edit). `mainClone` is `mainCloneRoot(cwd)`. */
+const settingsFileCandidates = (cwd, mainClone = mainCloneRoot(cwd)) => {
+  const projectDirs = [];
+  const declared = process.env.CLAUDE_PROJECT_DIR;
+  if (typeof declared === 'string' && path.isAbsolute(declared)) projectDirs.push(declared);
+  if (mainClone) projectDirs.push(mainClone);
+  const files = [path.join(os.homedir(), '.claude', 'settings.json')];
+  for (const dir of projectDirs) {
+    files.push(path.join(dir, '.claude', 'settings.json'), path.join(dir, '.claude', 'settings.local.json'));
+  }
+  return [...new Set(files)];
+};
+
+const readAdditionalDirectories = (file) => {
+  try {
+    const dirs = JSON.parse(fs.readFileSync(file, 'utf-8')).permissions.additionalDirectories;
+    return Array.isArray(dirs) ? dirs.filter((dir) => typeof dir === 'string') : [];
+  } catch {
+    return [];
+  }
+};
+
+/** True when `candidate` resolves, through any symlink, to one of the settings `files`. An existing
+ * target is compared by realpath (`resolveExistingAncestor`, linear in the path depth: this runs on
+ * every write target, and a deep one must stay cheap). A target that does not exist yet can only
+ * become a settings file under that file's own name, so the exact `realpathWithTail` comparison runs
+ * only then. */
+const isSettingsFilePath = (candidate, files) => {
+  const existing = files.filter((file) => fs.existsSync(file));
+  const real = resolveExistingAncestor(candidate);
+  if (existing.some((file) => resolveExistingAncestor(file) === real)) return true;
+  const name = path.basename(path.resolve(candidate));
+  if (!files.some((file) => path.basename(file) === name)) return false;
+  const full = realpathWithTail(candidate);
+  return files.some((file) => realpathWithTail(file) === full);
+};
+
+/** True when a root would span something the guards protect: a main clone (so its tracked files),
+ * a campaign state dir or a settings file, or lies inside a state dir. */
+const overlapsProtectedPaths = (root, mainClones, settingsFiles) =>
+  mainClones.some((clone) => isUnderRoot(clone, root) || isUnderRoot(root, path.join(clone, '.blackhole'))) ||
+  settingsFiles.some((file) => isUnderRoot(file, root));
+
+/** The realpath of a declared `additionalDirectories` entry when it is a registered, back-linked
+ * linked worktree of a repo with a campaign config, else null. The cheap checks run before any git
+ * call, so a plain directory or a main clone costs no process spawn. */
+const campaignWorktreeRoot = (entry) => {
+  if (!isAcceptableScratchpadDir(entry) || !isExistingDirectory(entry)) return null;
+  const dir = path.resolve(entry);
+  const pointer = readPointerFile(path.join(dir, '.git'));
+  if (realpathOrNull(dir) !== dir || !pointer || !pointer.startsWith('gitdir: ')) return null;
+  const top = worktreeRoot(dir);
+  if (!top || realpathOrNull(top) !== dir) return null;
+  const commonDir = path.resolve(dir, git(['rev-parse', '--git-common-dir'], dir));
+  if (!isTrustedLinkedWorktree(dir, commonDir) || campaignStateRoot(dir) === null) return null;
+  return dir;
+};
+
+/** Extra containment roots a campaign agent may write beyond its assigned worktree, the one place
+ * both guards (`validate-file-changes.js`, `bash-write-target-guard.js`) read them from, so a root
+ * is never trusted by one tool and refused by the other. Two sources, every candidate validated:
+ *  1. the harness scratchpad: the payload's `scratchpad_dir`, the configured `scratchpad_dir` and
+ *     `BLACKHOLE_SCRATCHPAD_DIR`, each an existing directory that is not broad
+ *     (`isAcceptableScratchpadDir`);
+ *  2. linked worktrees of other repos named in `permissions.additionalDirectories` of the user,
+ *     project and local settings files (`settingsFileCandidates`): only a registered linked worktree
+ *     (never a main clone, never a symlink) of a repo whose main clone holds `.blackhole/config.json`
+ *     (`campaignStateRoot`), at most `MAX_EXTRA_ROOT_CANDIDATES` entries per call.
+ * A root that spans a main clone, a campaign state dir or a settings file, or sits inside a state
+ * dir, is dropped, so trusting it can never reach what those guard. Session-only `--add-dir`
+ * directories are not in the payload or the settings files and stay uncovered. Returns realpaths;
+ * an unreadable or malformed settings file contributes none. A git failure for one entry drops that
+ * entry; the one for `cwd` itself propagates like every other resolver here. Callers judge a path
+ * with `isTrustedExtraPath`; `mainClone` is `mainCloneRoot(cwd)`, passed by a caller that already has
+ * it to save a git spawn on the hot path. */
+const trustedWriteRoots = (cwd = process.cwd(), input = {}, mainClone = mainCloneRoot(cwd)) => {
+  const settingsFiles = settingsFileCandidates(cwd, mainClone);
+  const mainClones = mainClone ? [mainClone] : [];
+  const roots = new Set();
+  const admit = (dir, clones) => {
+    const real = resolveExistingAncestor(dir);
+    if (!overlapsProtectedPaths(real, clones, settingsFiles)) roots.add(real);
+  };
+
+  const scratchpads = [input && input.scratchpad_dir, mainClone && readScratchpadDir(mainClone), process.env.BLACKHOLE_SCRATCHPAD_DIR];
+  for (const dir of scratchpads) {
+    if (typeof dir === 'string' && isAcceptableScratchpadDir(dir) && isExistingDirectory(dir)) admit(dir, mainClones);
+  }
+
+  const declared = settingsFiles.flatMap(readAdditionalDirectories).map((dir) => (dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(2)) : dir));
+  for (const entry of [...new Set(declared)].slice(0, MAX_EXTRA_ROOT_CANDIDATES)) {
+    try {
+      const dir = campaignWorktreeRoot(entry);
+      if (dir) admit(dir, [...mainClones, mainCloneRoot(dir)]);
+    } catch {
+      // An entry git cannot resolve is dropped: narrower, never wider.
+    }
+  }
+  return [...roots];
+};
+
+/** True when `candidate` may be written under one of the `roots` `trustedWriteRoots` returned: no
+ * `..` segment, inside a root once resolved (`realpathWithTail`, so an alias through any symlink is
+ * judged where it lands), and a plain leaf (`isPlainLeaf`: a link or an existing directory is not a
+ * file target). */
+const isTrustedExtraPath = (candidate, roots) => {
+  if (roots.length === 0 || candidate.split(path.sep).includes('..')) return false;
+  const real = realpathWithTail(candidate);
+  return roots.some((root) => real.startsWith(root + path.sep)) && isPlainLeaf(path.resolve(candidate));
+};
+
 /** True only when `<mainClone>/.blackhole/config.json` is absent (`ENOENT`) — the fail-closed
  * "no live campaign" read shared by `sibling-plugin-guard.js`'s defer gate and the hook-event
  * rotation gate `recordEvent` above wires up: present, or any other stat outcome (an unreadable
@@ -854,6 +972,10 @@ module.exports = {
   mainCloneRoot,
   campaignStateRoot,
   isStateDirTrustedPath,
+  trustedWriteRoots,
+  isTrustedExtraPath,
+  settingsFileCandidates,
+  isSettingsFilePath,
   allWorktreeRoots,
   resolveExistingAncestor,
   isUnderRoot,
