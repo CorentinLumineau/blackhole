@@ -8,6 +8,7 @@ import {
   classifyMergeRisk,
   filesFromNameStatus,
   isBlackholeCampaignBranch,
+  isDocPath,
   isTestPath,
   NEEDS_CHEF_COMMENT_PREFIX,
   parseMergeRiskSnapshot,
@@ -131,6 +132,45 @@ describe('classifyMergeRisk', () => {
     expect(verdict.comment).toContain('.github/workflows');
     expect(verdict.comment).toContain('migrations');
     expect(verdict.comment).toContain('Chef (orchestrator)');
+  });
+});
+
+describe('deletes-data keyword scan scope', () => {
+  const classify = (p: string, patch: string) =>
+    classifyMergeRisk({ files: [file(p)], patches: [{ path: p, patch }], headRef: 'blackhole/issue-1' });
+  const cats = (p: string, patch: string) => classify(p, patch).reasons.map((r) => r.category);
+
+  test('docs-only diff mentioning DROP TABLE is low risk and automerges', () => {
+    const v = classify('documentation/merge-gate.md', '+ DROP TABLE accounts');
+    expect(v.reasons).toEqual([]);
+    expect(v.automerge).toBe(true);
+  });
+  test('test file mentioning DELETE FROM is not deletes-data', () => {
+    expect(cats('scripts/lib/foo.test.ts', '+ DELETE FROM users')).not.toContain('deletes-data');
+  });
+  test("the matcher's own source quoting the keywords is not deletes-data", () => {
+    expect(cats('scripts/lib/merge-gate/merge-risk.ts', '+ DELETE FROM')).not.toContain('deletes-data');
+  });
+  test('migration and .sql files with destructive SQL still raise deletes-data', () => {
+    expect(cats('db/migrations/001.sql', '+ DROP TABLE t')).toContain('deletes-data');
+    expect(cats('ops/reset.sql', '+ DROP TABLE t')).toContain('deletes-data');
+  });
+  test('a .sql file under a test or docs directory still raises deletes-data', () => {
+    expect(cats('tests/seed.sql', '+ DROP TABLE t')).toContain('deletes-data');
+    expect(cats('documentation/example.sql', '+ TRUNCATE TABLE t')).toContain('deletes-data');
+  });
+  test('production code with DELETE FROM still raises deletes-data', () => {
+    expect(cats('src/cleanup.ts', '+ DELETE FROM users')).toContain('deletes-data');
+  });
+});
+
+describe('isDocPath', () => {
+  test('matches documentation and docs markdown, not code', () => {
+    expect(isDocPath('documentation/x.md')).toBe(true);
+    expect(isDocPath('docs/guide/a.mdx')).toBe(true);
+    expect(isDocPath('README.md')).toBe(true);
+    expect(isDocPath('src/a.ts')).toBe(false);
+    expect(isDocPath('documentation/example.sql')).toBe(false);
   });
 });
 

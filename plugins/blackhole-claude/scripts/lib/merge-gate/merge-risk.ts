@@ -52,6 +52,13 @@ const posix = (p: string): string => p.replace(/\\/g, '/').replace(/^\.\//, '');
 export const isTestPath = (p: string): boolean =>
   /(^|\/)(test|tests|__tests__|spec|fixtures)\//i.test(p) || /\.(test|spec)\.[jt]sx?$/.test(p);
 
+/** Documentation paths: markdown under `documentation/` or `docs/`, plus root-level markdown. */
+export const isDocPath = (p: string): boolean =>
+  /\.mdx?$/i.test(p) && (/^(documentation|docs)\//i.test(p) || !p.includes('/'));
+
+/** The classifier's own source quotes the destructive keywords as regex data. */
+const MATCHER_SOURCE = 'scripts/lib/merge-gate/merge-risk.ts';
+
 type PathRule = { category: RiskCategory; test: (p: string) => boolean };
 
 const PATH_RULES: PathRule[] = [
@@ -106,6 +113,14 @@ const PATH_RULES: PathRule[] = [
 const DATA_DIR = /(^|\/)(data|dumps?|backups?|seeds?)\//i;
 const DATA_EXT = /\.(sql|dump|csv)$/i;
 const DESTRUCTIVE_SQL = /\b(DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE(\s+TABLE)?|DELETE\s+FROM)\b/i;
+
+const MIGRATIONS_RULE = PATH_RULES.find((r) => r.category === 'migrations');
+
+/** Real data files are always keyword-scanned, even under a test or docs directory. */
+const isDataFile = (p: string): boolean => /\.(sql|dump)$/i.test(p) || (MIGRATIONS_RULE?.test(p) ?? false);
+
+const isKeywordScanExempt = (p: string): boolean =>
+  !isDataFile(p) && (isTestPath(p) || isDocPath(p) || p === MATCHER_SOURCE);
 
 /** True when `headRef` is a campaign worker branch (`blackhole/issue-N` or `blackhole/issue-N-<slug>`). Absent/empty is treated
  * as own-PR: the merge protocol already only considers campaign issues. */
@@ -212,9 +227,10 @@ export const classifyMergeRisk = (input: {
 
   for (const patch of input.patches ?? []) {
     const p = posix(patch.path);
-    if (isTestPath(p)) continue;
-    if (DESTRUCTIVE_SQL.test(patch.patch)) addPath(bucket, 'deletes-data', p);
-    if (/(^|\/)package\.json$/.test(p) && versionChanged(patch.patch)) addPath(bucket, 'release-tag', p);
+    if (!isKeywordScanExempt(p) && DESTRUCTIVE_SQL.test(patch.patch)) addPath(bucket, 'deletes-data', p);
+    if (!isTestPath(p) && /(^|\/)package\.json$/.test(p) && versionChanged(patch.patch)) {
+      addPath(bucket, 'release-tag', p);
+    }
   }
 
   const reasons: MergeRiskReason[] = RISK_CATEGORIES.filter((c) => bucket.has(c)).map((category) => ({
