@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { minMs, PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
+import { expectLinearTime, PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
 
 // Issue #1239: a `cd` earlier in the same command moves the directory a relative write target
 // resolves against. `cd <main-clone> && git format-patch -1` and `cd <main-clone> && echo x > f`
@@ -169,14 +169,14 @@ describe('bash-write-target-guard.js — a preceding cd moves relative write tar
   }
 
   // The trailing-paren scan was quadratic in a long run of spaces or `)` inside a clause.
-  for (const [label, command] of [
-    ['32 KiB of spaces mid-clause', `printf '%s' x${' '.repeat(32_000)}y > f`],
-    ['32 KiB of `)` mid-clause', `echo ${')'.repeat(32_700)}x`],
+  for (const [label, build, size] of [
+    ['32 KiB of spaces mid-clause', (k: number) => `printf '%s' x${' '.repeat(k)}y > f`, 32_000],
+    ['32 KiB of `)` mid-clause', (k: number) => `echo ${')'.repeat(k)}x`, 32_700],
   ] as const) {
     test(`#1239: ${label} is scanned in linear time`, async () => {
       await withLinkedWorktree('blackhole-hook-1239-', async (_mainRepo, worktree) => {
         const { evaluateBashWriteTargets } = guard();
-        expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(100);
+        expectLinearTime({ build, run: (command) => evaluateBashWriteTargets(command, worktree), n: size / 4 });
       });
     });
   }

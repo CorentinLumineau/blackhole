@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import * as path from 'path';
-import { minMs, PRETOOLUSE_HOOKS_DIR, readHookEvents, REBINDING_ROWS, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
+import { expectLinearTime, PRETOOLUSE_HOOKS_DIR, readHookEvents, REBINDING_ROWS, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
 
 // Issue #1252: the commands inside `$(…)`, backticks, `<(…)` and `>(…)` run, so the guard scans
 // each substitution body as its own clause set — nested bodies included — in linear time.
@@ -135,20 +135,20 @@ describe('bash-write-target-guard.js — writes inside command and process subst
   }
 
   // A quadratic rescan of nested bodies took seconds at this size; a linear one is well under.
-  for (const [label, build] of [
-    ['nested `$(`', (m: string) => `echo ${'$('.repeat(10_900)}echo hi > ${m}/x${')'.repeat(10_900)}`],
-    ['sequential `$(…)`', (m: string) => `echo ${'$(true) '.repeat(3_950)}$(echo hi > ${m}/x)`],
-    ['sequential `<(…)`', (m: string) => `cat ${'<(true) '.repeat(3_950)}<(echo hi > ${m}/x)`],
-    ['nested `"$(`', (m: string) => `echo ${'"$('.repeat(6_200)}echo hi > ${m}/x${')"'.repeat(6_200)}`],
+  for (const [label, build, reps] of [
+    ['nested `$(`', (m: string, k: number) => `echo ${'$('.repeat(k)}echo hi > ${m}/x${')'.repeat(k)}`, 10_900],
+    ['sequential `$(…)`', (m: string, k: number) => `echo ${'$(true) '.repeat(k)}$(echo hi > ${m}/x)`, 3_950],
+    ['sequential `<(…)`', (m: string, k: number) => `cat ${'<(true) '.repeat(k)}<(echo hi > ${m}/x)`, 3_950],
+    ['nested `"$(`', (m: string, k: number) => `echo ${'"$('.repeat(k)}echo hi > ${m}/x${')"'.repeat(k)}`, 6_200],
   ] as const) {
     test(`#1252: ${label} at the 32 KiB cap is scanned in linear time and still denied`, async () => {
       await withLinkedWorktree('blackhole-hook-1252-', async (mainRepo, worktree) => {
-        const command = build(mainRepo);
+        const command = build(mainRepo, reps);
         expect(command.length).toBeLessThanOrEqual(32 * 1024);
         expect(command.length).toBeGreaterThan(30 * 1024);
         const { evaluateBashWriteTargets } = guard();
         expect(evaluateBashWriteTargets(command, worktree)).toMatchObject(BLOCK);
-        expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
+        expectLinearTime({ build: (k) => build(mainRepo, k), run: (input) => evaluateBashWriteTargets(input, worktree), n: Math.floor(reps / 4) });
       });
     });
   }

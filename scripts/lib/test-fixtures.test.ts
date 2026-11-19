@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  expectLinearTime,
   populateClaudeFixtureTree,
   populateCodexFixtureTree,
   populateGeminiDistributionTree,
@@ -149,5 +150,32 @@ describe('withLinkedWorktree — silent git failure surfaces immediately (#756/#
     }
     expect(caught).toBeInstanceOf(Error);
     expect((caught as Error).message).toMatch(/git worktree add.*not a git repository/s);
+  });
+});
+
+describe('expectLinearTime', () => {
+  const spin = (iterations: number): number => {
+    let acc = 0;
+    for (let i = 0; i < iterations; i += 1) acc = (acc + i) | 0;
+    return acc;
+  };
+
+  test('accepts a linear function', () => {
+    expectLinearTime({ build: (size) => size, run: (size) => spin(size * 40_000), n: 4 });
+  });
+
+  test('accepts a constant-time function', () => {
+    expectLinearTime({ build: (size) => size, run: () => spin(1000), n: 4 });
+  });
+
+  test('rejects a quadratic function and reports the ratio', () => {
+    // 4n = 40: 40 * 40 * 40_000 iterations is well over 20 ms.
+    expect(() => expectLinearTime({ build: (size) => size, run: (size) => spin(size * size * 40_000), n: 10 })).toThrow(
+      /not linear: size 10 -> 40 .*ratio \d+/,
+    );
+  });
+
+  test('honours an explicit factor and ratio limit', () => {
+    expect(() => expectLinearTime({ build: (size) => size, run: (size) => spin(size * size * 40_000), n: 10, factor: 2, maxRatio: 3 })).toThrow(/limit 3/);
   });
 });

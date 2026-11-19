@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { minMs, PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
+import { expectLinearTime, PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
 
 // Issue #1184: commands that look read-only but carry a file-writing option (`sort -o`, `uniq`'s
 // second positional, `git diff|log|show --output`, `yq -i`) must resolve that option's target
@@ -194,9 +194,7 @@ describe('bash-write-target-guard.js — #1184 review: linear-time option scan',
   test('#1184: an 80k-character `-iii…` yq flag is evaluated in linear time', async () => {
     await withLinkedWorktree('blackhole-hook-1184-', async (_mainRepo, worktree) => {
       const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
-      const command = `yq -${'i'.repeat(80_000)}! a.yaml`;
-      // The quadratic regex took ~2.5 s on this input; a linear scan is a few milliseconds.
-      expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
+      expectLinearTime({ build: (k) => `yq -${'i'.repeat(k)}! a.yaml`, run: (command) => evaluateBashWriteTargets(command, worktree), n: 20_000 });
     });
   });
 });
@@ -252,9 +250,7 @@ describe('validate-bash-command.js — #1184 re-review: git globals, format-patc
   test('#1184: 16k chained `-C a` options are evaluated in linear time', async () => {
     await withLinkedWorktree('blackhole-hook-1184-', async (_mainRepo, worktree) => {
       const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
-      const command = `git ${'-C a '.repeat(16_000)}diff --output=o1`;
-      // The repeated path.join took ~6.9 s here, past the 5 s hook timeout (fail-open).
-      expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(500);
+      expectLinearTime({ build: (k) => `git ${'-C a '.repeat(k)}diff --output=o1`, run: (command) => evaluateBashWriteTargets(command, worktree), n: 4_000 });
     });
   });
 });
@@ -268,22 +264,19 @@ describe('bash-write-target-guard.js — #1222 deep-path containment stays linea
   test('#1222: 64k chained `-C a` options are evaluated in linear time', async () => {
     await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
       const { evaluateBashWriteTargets } = guard();
-      const command = `git ${'-C a '.repeat(64_000)}diff --output=o1`;
-      // The bottom-up ancestor walk took ~4 s here (16k: ~0.4 s); a linear walk is well under 250 ms.
-      expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
+      expectLinearTime({ build: (k) => `git ${'-C a '.repeat(k)}diff --output=o1`, run: (command) => evaluateBashWriteTargets(command, worktree), n: 16_000 });
     });
   });
 
-  // Direct timings of the resolver itself: the bottom-up walk took ~1.8 s on the 32k-deep missing
-  // path, and the plain top-down walk ~70 ms on the deep existing tree (quadratic in its depth).
-  test('#1222: resolveExistingAncestor on a 32k-deep missing path stays fast', () => {
+  // Direct timings of the resolver itself: a missing 32k-deep path, and a deep existing tree.
+  test('#1222: resolveExistingAncestor on a 32k-deep missing path stays linear', () => {
     const { resolveExistingAncestor } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
     const deep = path.join(os.tmpdir(), 'a/'.repeat(32_000), 'x');
     expect(resolveExistingAncestor(deep)).toBe(fs.realpathSync(os.tmpdir()));
-    expect(minMs(() => resolveExistingAncestor(deep))).toBeLessThan(100);
+    expectLinearTime({ build: (k) => path.join(os.tmpdir(), 'a/'.repeat(k), 'x'), run: (target) => resolveExistingAncestor(target), n: 8_000 });
   });
 
-  test('#1222: resolveExistingAncestor under a deep existing tree behind a symlink stays fast', () => {
+  test('#1222: resolveExistingAncestor under a deep existing tree behind a symlink stays linear', () => {
     const { resolveExistingAncestor } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
     const base = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-hook-1222-deep-'));
     try {
@@ -294,7 +287,14 @@ describe('bash-write-target-guard.js — #1222 deep-path containment stays linea
       fs.mkdirSync(path.join(base, 'real', tree), { recursive: true });
       const target = path.join(base, 'link', tree, 'missing', 'x');
       expect(resolveExistingAncestor(target)).toBe(fs.realpathSync(path.join(base, 'real', tree)));
-      expect(minMs(() => resolveExistingAncestor(target))).toBeLessThan(30);
+      // Depth is bounded by PATH_MAX, so the step is 2x with a proportionally lower ratio limit.
+      expectLinearTime({
+        build: (k) => path.join(base, 'link', 'a/'.repeat(k), 'missing', 'x'),
+        run: (p) => resolveExistingAncestor(p),
+        n: Math.floor(depth / 2),
+        factor: 2,
+        maxRatio: 3,
+      });
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
@@ -303,8 +303,12 @@ describe('bash-write-target-guard.js — #1222 deep-path containment stays linea
   test('#1222: a 32k-character `-c` key is matched in linear time', async () => {
     await withLinkedWorktree('blackhole-hook-1222-', async (_mainRepo, worktree) => {
       const { evaluateBashWriteTargets } = require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'bash-write-target-guard.js'));
-      for (const key of [`sendemail.${'a.'.repeat(16_000)}x`, `diff.${'a.'.repeat(16_000)}x`, `includeIf.${'a.'.repeat(16_000)}x`]) {
-        expect(minMs(() => evaluateBashWriteTargets(`git -c ${key}=1 log`, worktree))).toBeLessThan(250);
+      for (const family of ['sendemail', 'diff', 'includeIf']) {
+        expectLinearTime({
+          build: (k) => `git -c ${family}.${'a.'.repeat(k)}x=1 log`,
+          run: (command) => evaluateBashWriteTargets(command, worktree),
+          n: 4_000,
+        });
       }
     });
   });
