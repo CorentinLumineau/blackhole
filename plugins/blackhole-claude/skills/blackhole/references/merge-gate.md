@@ -539,7 +539,7 @@ mistaken for a verified base-ref landing.
 | Green CI, low-risk campaign PR (`blackhole/issue-N` or `blackhole/issue-N-<slug>`, none of the § 9 categories) | `phase-loop.md` step 4 squash-merges (`automerge: true`) |
 | Green CI, but the diff touches a § 9 high-risk category (or head is not `blackhole/issue-N[-slug]`) | Step 4 **does not merge**. Label `needs-chef`, comment the script's `comment` field, leave the PR open for Chef |
 | `needs-chef` already on the PR from a prior turn | Do not post a second `needs-chef:` comment; re-evaluate next turn if the diff changed |
-| `DELETE FROM` / `DROP TABLE` only in a test or fixture file | Not `deletes-data` — `isTestPath()` excludes it |
+| `DELETE FROM` / `DROP TABLE` only in a test, fixture or markdown file, or in the classifier's own source (including its built copies) | Not `deletes-data` — `isTestPath()`, `isDocPath()` (any `.md`/`.mdx`) and the matcher's own path suffix are exempt; a `.sql`/`.dump` or migration path is always scanned, even under a test or docs directory |
 | `merge_mode: leave-open`, high-risk, CI green | Same hold half (label + comment); still no `gh pr merge` |
 
 ## 9. `classifyMergeRisk(pr) -> automerge | needs-chef` — low-risk merge gate
@@ -569,7 +569,7 @@ fourth `mergeEligible()` condition (same shape as § 6 / Step 0.6).
 | `migrations` | `migrations/`, `migrate/`, `prisma/migrations/`, alembic, knexfile, flyway |
 | `github-workflows` | `.github/workflows/**` |
 | `release-tag` | `scripts/release.ts`, `scripts/release-cadence.ts`, `scripts/lib/release-cadence.ts`, `.github/releases/`, `git-create-release`, `package.json` version bump |
-| `deletes-data` | deleted `data/`/`dumps/`/`*.sql`/`*.csv` files, or `DROP TABLE`/`TRUNCATE`/`DELETE FROM` in a non-test patch |
+| `deletes-data` | deleted `data/`/`dumps/`/`*.sql`/`*.csv` files, or `DROP TABLE`/`TRUNCATE`/`DELETE FROM` in a patch to a `.sql`/`.dump`/migration file or to non-test, non-markdown code (the classifier's own source and its built copies are exempt) |
 
 Mechanical check (exit `0` automerge, `1` hold, `2` usage) — judgment is above, arithmetic is not
 here:
