@@ -389,8 +389,20 @@ const normalizeShellWord = (word) => {
       let j = i + 1;
       while (j < n && word[j] !== '"') {
         if (word[j] === '\\' && j + 1 < n) {
-          text += word[j + 1];
-          j += 2;
+          const next = word[j + 1];
+          // Inside double quotes bash drops a backslash only before `$`, a backtick, `"`, `\`
+          // or a newline (a backslash-newline pair vanishes); before any other character it stays.
+          if (next === '\n') {
+            j += 2;
+            continue;
+          }
+          if (next === '$' || next === '`' || next === '"' || next === '\\') {
+            text += next;
+            j += 2;
+            continue;
+          }
+          text += word[j];
+          j += 1;
           continue;
         }
         if (word[j] === '$' || word[j] === '`') return { text: null, dynamic: true };
