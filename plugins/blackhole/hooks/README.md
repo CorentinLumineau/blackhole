@@ -113,8 +113,11 @@ Bash write guard both call it, so a root is never trusted by one tool and refuse
   settings file, so they stay uncovered: persist the directory in a settings file, or work from the
   repo's own worktree.
 
-A root that spans a main clone, a campaign state dir or a settings file, or lies inside a state dir,
-is dropped. Inside an admitted root a Write/Edit target must have no `..` segment, resolve inside it
+A root that spans a main clone, a campaign state dir or a settings file, or lies inside a state dir
+or a `.git` dir, is dropped. A settings file inside the call's own linked worktree or assigned root
+is never read as a source of roots (a worker could plant one); `mainCloneRoot` refuses a main clone
+that resolves inside the worktree pointing at it (a forged `.git` pointer). Settings file names are
+matched case-insensitively. Inside an admitted root a Write/Edit target must have no `..` segment, resolve inside it
 through every symlink, and have an absent or plain-file leaf (one hard link); the Bash guard allows
 only the two write shapes of the state-dir allow-list above (redirect/`tee`, single-file
 `cp`/`mv`/`install`), so a directory destination, a recursive copy, a link or `rsync` into one of

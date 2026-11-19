@@ -153,7 +153,7 @@ const main = () => {
     roots = assignedRoot ? [assignedRoot] : allWorktreeRoots(cwd);
     if (roots) stateRoot = campaignStateRoot(cwd);
     const mainClone = mainCloneRoot(cwd);
-    extraRoots = trustedWriteRoots(cwd, input, mainClone);
+    extraRoots = trustedWriteRoots(cwd, input, { mainClone, assignedRoot });
     settingsFiles = settingsFileCandidates(cwd, mainClone);
   } catch (error) {
     failClosed({

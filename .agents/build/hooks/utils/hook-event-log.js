@@ -154,12 +154,21 @@ const worktreeRoot = (cwd = process.cwd()) => {
  * apart. Absent → routine, return `null`; present → anomalous, propagate the original error so
  * callers fail closed instead of silently dropping what depends on this root. */
 const mainCloneRoot = (cwd = process.cwd()) => {
+  let clone;
   try {
-    return path.dirname(path.resolve(cwd, git(['rev-parse', '--git-common-dir'], cwd)));
+    clone = path.dirname(path.resolve(cwd, git(['rev-parse', '--git-common-dir'], cwd)));
   } catch (error) {
     if (!hasGitMarkerInAncestry(cwd)) return null;
     throw error;
   }
+  // A `.git` pointer a worker forged inside its own worktree names a main clone it controls, whose
+  // `.blackhole/config.json` and `.claude/settings*.json` would then be read as the campaign's.
+  // The real main clone is never strictly inside the worktree that points at it.
+  const top = nearestGitRoot(cwd);
+  if (top && resolveExistingAncestor(clone) !== resolveExistingAncestor(top) && isUnderRoot(clone, top)) {
+    throw new Error(`main clone ${clone} resolves inside the worktree ${top}: refusing a forged .git pointer`);
+  }
+  return clone;
 };
 
 /** Realpath of the nearest existing ancestor of `p` — `p` itself if it already exists (following
@@ -213,15 +222,18 @@ const resolveExistingAncestor = (p) => {
  * bucket produces the identical exit code and message for both, so no amount of enumerating
  * exit codes or message substrings can recover a distinction git itself never made on that path.
  * A positive, independently-computed fact is the only thing that can. */
-const hasGitMarkerInAncestry = (cwd) => {
+/** The nearest ancestor of `cwd` (or `cwd` itself) holding a `.git` entry, or null. */
+const nearestGitRoot = (cwd) => {
   let current = path.resolve(cwd);
   for (;;) {
-    if (fs.existsSync(path.join(current, '.git'))) return true;
+    if (fs.existsSync(path.join(current, '.git'))) return current;
     const parent = path.dirname(current);
-    if (parent === current) return false;
+    if (parent === current) return null;
     current = parent;
   }
 };
+
+const hasGitMarkerInAncestry = (cwd) => nearestGitRoot(cwd) !== null;
 
 /** True when `candidate` resolves inside (or as) `root`, both realpath'd through
  * `resolveExistingAncestor` first — the comparison must run on resolved paths on both sides, since
@@ -847,21 +859,26 @@ const readAdditionalDirectories = (file) => {
  * target is compared by realpath (`resolveExistingAncestor`, linear in the path depth: this runs on
  * every write target, and a deep one must stay cheap). A target that does not exist yet can only
  * become a settings file under that file's own name, so the exact `realpathWithTail` comparison runs
- * only then. */
+ * only then, compared case-insensitively like the state-dir protected names. */
 const isSettingsFilePath = (candidate, files) => {
   const existing = files.filter((file) => fs.existsSync(file));
   const real = resolveExistingAncestor(candidate);
   if (existing.some((file) => resolveExistingAncestor(file) === real)) return true;
   const name = path.basename(path.resolve(candidate));
-  if (!files.some((file) => path.basename(file) === name)) return false;
-  const full = realpathWithTail(candidate);
-  return files.some((file) => realpathWithTail(file) === full);
+  if (!files.some((file) => path.basename(file).toLowerCase() === name.toLowerCase())) return false;
+  const full = realpathWithTail(candidate).toLowerCase();
+  return files.some((file) => realpathWithTail(file).toLowerCase() === full);
 };
 
 /** True when a root would span something the guards protect: a main clone (so its tracked files),
- * a campaign state dir or a settings file, or lies inside a state dir. */
+ * a campaign state dir or a settings file, or lies inside a state dir or a `.git` dir. */
 const overlapsProtectedPaths = (root, mainClones, settingsFiles) =>
-  mainClones.some((clone) => isUnderRoot(clone, root) || isUnderRoot(root, path.join(clone, '.blackhole'))) ||
+  mainClones.some(
+    (clone) =>
+      isUnderRoot(clone, root) ||
+      isUnderRoot(root, path.join(clone, '.blackhole')) ||
+      isUnderRoot(root, path.join(clone, '.git')),
+  ) ||
   settingsFiles.some((file) => isUnderRoot(file, root));
 
 /** The realpath of a declared `additionalDirectories` entry when it is a registered, back-linked
@@ -894,10 +911,18 @@ const campaignWorktreeRoot = (entry) => {
  * directories are not in the payload or the settings files and stay uncovered. Returns realpaths;
  * an unreadable or malformed settings file contributes none. A git failure for one entry drops that
  * entry; the one for `cwd` itself propagates like every other resolver here. Callers judge a path
- * with `isTrustedExtraPath`; `mainClone` is `mainCloneRoot(cwd)`, passed by a caller that already has
- * it to save a git spawn on the hot path. */
-const trustedWriteRoots = (cwd = process.cwd(), input = {}, mainClone = mainCloneRoot(cwd)) => {
+ * with `isTrustedExtraPath`; `mainClone` (`mainCloneRoot(cwd)`) and `assignedRoot` are passed by a
+ * caller that already has them. A settings file under the call's own linked worktree or assigned
+ * root is never read as a source of roots. */
+const trustedWriteRoots = (cwd = process.cwd(), input = {}, { mainClone = mainCloneRoot(cwd), assignedRoot = null } = {}) => {
   const settingsFiles = settingsFileCandidates(cwd, mainClone);
+  // A settings file inside a worktree the worker writes (its cwd worktree, its assigned root) is
+  // the worker's own file: it can plant one and grant itself roots. Only the user's and the main
+  // clone's files count; a session sitting in the main clone itself is not a worker's worktree.
+  const workerRoots = [nearestGitRoot(cwd), assignedRoot].filter(
+    (root) => root && !(mainClone && resolveExistingAncestor(root) === resolveExistingAncestor(mainClone)),
+  );
+  const trustedSources = settingsFiles.filter((file) => !workerRoots.some((root) => isUnderRoot(file, root)));
   const mainClones = mainClone ? [mainClone] : [];
   const roots = new Set();
   const admit = (dir, clones) => {
@@ -910,7 +935,7 @@ const trustedWriteRoots = (cwd = process.cwd(), input = {}, mainClone = mainClon
     if (typeof dir === 'string' && isAcceptableScratchpadDir(dir) && isExistingDirectory(dir)) admit(dir, mainClones);
   }
 
-  const declared = settingsFiles.flatMap(readAdditionalDirectories).map((dir) => (dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(2)) : dir));
+  const declared = trustedSources.flatMap(readAdditionalDirectories).map((dir) => (dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(2)) : dir));
   for (const entry of [...new Set(declared)].slice(0, MAX_EXTRA_ROOT_CANDIDATES)) {
     try {
       const dir = campaignWorktreeRoot(entry);

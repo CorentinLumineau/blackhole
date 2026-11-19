@@ -311,6 +311,74 @@ describe('settings files that hold the roots are never written by a worker', () 
   });
 });
 
+describe('a settings file the worker controls is never a trust source', () => {
+  const forge = (dir: string, grant: string) => {
+    fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { additionalDirectories: [grant] } }));
+  };
+
+  test('a forged project settings file inside the assigned worktree grants nothing, however it was copied in', async () => {
+    await withWorld(async (w) => {
+      const env = { CLAUDE_PROJECT_DIR: w.wtA };
+      const staged = path.join(w.wtA, 'stage', 'settings.local.json');
+      fs.mkdirSync(path.dirname(staged), { recursive: true });
+      fs.writeFileSync(staged, JSON.stringify({ permissions: { additionalDirectories: [w.wtB] } }));
+      const dest = path.join(w.wtA, '.claude');
+      for (const command of [`cp ${staged} ${dest}/`, `cp -t ${dest} ${staged}`, `mv ${staged} ${dest}/`, `install ${staged} ${dest}/`]) {
+        await w.bash(command, { env });
+        forge(w.wtA, w.wtB);
+        expect([command, await w.both(path.join(w.wtB, 'grant.txt'), { env })]).toEqual([command, 'deny']);
+        fs.rmSync(dest, { recursive: true, force: true });
+        fs.mkdirSync(path.dirname(staged), { recursive: true });
+        fs.writeFileSync(staged, '{}');
+      }
+    });
+  });
+
+  test('the same holds with an assigned worktree declared, and for the cwd worktree copy of the project settings', async () => {
+    await withWorld(async (w) => {
+      forge(w.wtA, w.wtB);
+      const declared = { CLAUDE_PROJECT_DIR: w.wtA, BLACKHOLE_ASSIGNED_WORKTREE: w.wtA };
+      expect(await w.both(path.join(w.wtB, 'x.txt'), { env: declared })).toBe('deny');
+      expect(await w.both(path.join(w.wtB, 'y.txt'))).toBe('deny');
+    });
+  });
+
+  test('a forged .git pointer that makes the main clone a worker-controlled directory grants nothing', async () => {
+    await withWorld(async (w) => {
+      const fake = path.join(w.wtA, 'fake');
+      fs.mkdirSync(fake);
+      runGit(fake, ['init', '--quiet']);
+      forge(fake, w.wtB);
+      writeCampaignConfig(fake, { forge: 'github', scratchpad_dir: w.scratch });
+      fs.rmSync(path.join(w.wtA, '.git'));
+      fs.writeFileSync(path.join(w.wtA, '.git'), `gitdir: ${path.join(fake, '.git')}\n`);
+      expect(await w.both(path.join(w.wtB, 'x.txt'))).toBe('deny');
+      expect(await w.both(path.join(w.scratch, 'x.txt'))).toBe('deny');
+    });
+  });
+});
+
+describe('extra roots and settings names are hardened', () => {
+  test('a root under the main clone .git is dropped', async () => {
+    await withWorld(async (w) => {
+      const hooks = path.join(w.mainA, '.git', 'hooks');
+      fs.mkdirSync(hooks, { recursive: true });
+      expect(await w.both(path.join(hooks, 'pre-commit'), { payload: { scratchpad_dir: hooks } })).toBe('deny');
+    });
+  });
+
+  test('settings file names match case-insensitively', async () => {
+    await withWorld(async (w) => {
+      const env = { CLAUDE_PROJECT_DIR: w.wtA };
+      for (const name of ['Settings.Local.JSON', 'SETTINGS.json']) {
+        expect((await w.write(path.join(w.wtA, '.claude', name), { env })).patternId).toBe('settings-roots-write');
+        expect((await w.bash(`echo x > ${path.join(w.wtA, '.claude', name)}`, { env })).verdict).toBe('deny');
+      }
+    });
+  });
+});
+
 describe('Bash writes into a newly trusted root are limited to the plain file shapes', () => {
   test('redirect, tee and single-file cp/mv/install into the scratchpad and a declared worktree are allowed', async () => {
     await withWorld(async (w) => {

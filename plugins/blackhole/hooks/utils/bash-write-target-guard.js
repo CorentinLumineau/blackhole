@@ -1628,7 +1628,7 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
   if (!assignedRoot) return null;
   const stateRoot = campaignStateRoot(cwd);
   const mainClone = mainCloneRoot(cwd);
-  const extraRoots = trustedWriteRoots(cwd, input, mainClone);
+  const extraRoots = trustedWriteRoots(cwd, input, { mainClone, assignedRoot });
   const settingsFiles = settingsFileCandidates(cwd, mainClone);
   const isExtraPath = (p) => isTrustedExtraPath(p, extraRoots);
 
