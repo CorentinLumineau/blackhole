@@ -768,43 +768,50 @@ const isProtectedStateSegments = (segments) => {
 
 const relativeSegments = (root, target) => path.relative(root, target).split(path.sep).filter(Boolean);
 
-/** The state root and `archive/` are never a write target themselves: a directory destination
- * (`cp x <state>/`, `mv x <state>`, `cp -t <state> x`, `ln -sf x <state>`) lands the source under
- * its own name inside it, which can be `config.json` or a `hook-events` entry. Modelling every
- * writer's per-source destination is open-ended, so the conservative rule refuses the two
- * directories that sit above a protected path; a write names a file below them. */
+/** The state root and `archive/` are never a write target themselves: both sit directly above a
+ * protected path, so a write naming either could land on one. A write names a file below them. */
 const isStateContainerSegments = (segments) =>
   segments.length === 0 || (segments.length === 1 && segments[0].toLowerCase() === 'archive');
 
-/** True when `candidate` may be written under the trusted state root: inside it by realpath, not
- * protected, and not the state root or `archive/` itself. Protection is judged two ways, since
- * `resolveExistingAncestor` drops the not-yet-existing tail of a new file: on the realpath of the
- * existing part (a symlink pointing at a protected directory) and on the lexical tail below the
- * deepest prefix that really is the state root (a protected directory that does not exist yet). */
-const isStateDirTrustedPath = (candidate, stateRoot) => {
-  if (!stateRoot || !isUnderRoot(candidate, stateRoot)) return false;
-  if (isProtectedStateSegments(relativeSegments(stateRoot, resolveExistingAncestor(candidate)))) return false;
-  let exact = null;
+/** True when the leaf at `candidate` is absent or a regular file with no second hard link: a write
+ * through a symlink or a hard link lands on another file, possibly `config.json` or the event log,
+ * and an existing directory is not a file target. */
+const isPlainLeaf = (candidate) => {
+  let stat;
   try {
-    exact = fs.realpathSync(path.resolve(candidate));
+    stat = fs.lstatSync(candidate);
   } catch {
-    // not created yet: the lexical tail below decides
+    return true;
   }
-  if (exact !== null && isStateContainerSegments(relativeSegments(stateRoot, exact))) return false;
-  const segments = path.resolve(candidate).split(path.sep).filter(Boolean);
-  for (let k = segments.length; k > 0; k--) {
-    let real;
+  return stat.isFile() && stat.nlink === 1;
+};
+
+/** `p` resolved the way the kernel will open it: the realpath of its deepest existing ancestor
+ * joined with the segments that do not exist yet. */
+const realpathWithTail = (p) => {
+  const tail = [];
+  let current = path.resolve(p);
+  for (;;) {
     try {
-      real = fs.realpathSync(path.sep + segments.slice(0, k).join(path.sep));
+      return path.join(fs.realpathSync(current), ...tail);
     } catch {
-      continue;
-    }
-    if (real === stateRoot) {
-      const tail = segments.slice(k);
-      return !isProtectedStateSegments(tail) && !isStateContainerSegments(tail);
+      const parent = path.dirname(current);
+      if (parent === current) return path.resolve(p);
+      tail.unshift(path.basename(current));
+      current = parent;
     }
   }
-  return true;
+};
+
+/** True when `candidate` may be written under the trusted state root: no `..` segment, inside it
+ * once resolved (`realpathWithTail`, so an alias through any symlink is judged where it lands),
+ * not protected, not the state root or `archive/` itself, and with a plain leaf (`isPlainLeaf`). */
+const isStateDirTrustedPath = (candidate, stateRoot) => {
+  if (!stateRoot || candidate.split(path.sep).includes('..')) return false;
+  const real = realpathWithTail(candidate);
+  if (real !== stateRoot && !real.startsWith(stateRoot + path.sep)) return false;
+  const segments = relativeSegments(stateRoot, real);
+  return !isProtectedStateSegments(segments) && !isStateContainerSegments(segments) && isPlainLeaf(path.resolve(candidate));
 };
 
 /** True only when `<mainClone>/.blackhole/config.json` is absent (`ENOENT`) — the fail-closed

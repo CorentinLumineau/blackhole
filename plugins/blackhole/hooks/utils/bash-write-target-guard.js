@@ -15,8 +15,9 @@
  * Two tiers, matching this hook's own two-tier vocabulary (`validate-bash-command.js`'s module
  * docstring):
  *  - a **resolvable** target (a literal path this module can compute without executing anything)
- *    that resolves outside the assigned root → `block` (`bash-outside-assigned-worktree`). The
- *    campaign state dir (`campaignStateRoot`) counts as inside, minus its protected paths.
+ *    that resolves outside the assigned root → `block` (`bash-outside-assigned-worktree`). A
+ *    target in the campaign state dir (`campaignStateRoot`) is exempt only when written in one of
+ *    the shapes `state-dir-write-shape.js` allows.
  *  - a **write-shaped-but-unresolvable** command — a dynamic target (`$VAR`, `$(cmd)`, a glob),
  *    or a command whose write behavior cannot be determined by inspecting the command string at
  *    all (`python3 -c`, `perl -i`, `awk`) → `warn` and record
@@ -38,8 +39,8 @@
 const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC } = require('./shell-lexer');
-const { readAssignedWorktreeRoot, isUnderRoot, campaignStateRoot, isStateDirTrustedPath } = require('./hook-event-log');
-const { judgeStateDestination } = require('./state-dir-landing');
+const { readAssignedWorktreeRoot, isUnderRoot, campaignStateRoot } = require('./hook-event-log');
+const { FILE_WRITE, isTrustedStateWrite } = require('./state-dir-write-shape');
 const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
@@ -686,23 +687,20 @@ const findCopyMoveWrites = (tokens) => {
     const cmdIdx = findCommand(tokens, name);
     if (cmdIdx === -1) continue;
     const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
-    const flags = args.filter((t) => t.startsWith('-'));
     const plain = (targets) => targets.map((target) => ({ target }));
     if (name === 'dd') return plain(args.filter((t) => t.startsWith('of=')).map((t) => stripQuotes(t.slice(3))));
     if (name === 'truncate') return plain(truncateTargets(args));
-    if (name === 'rsync') {
-      const positional = args.filter((t) => !t.startsWith('-')).map(stripQuotes);
-      return rsyncTargets(args).map((target) => ({ target, meta: { name, flags, sources: positional.slice(0, -1) } }));
-    }
+    if (name === 'rsync') return plain(rsyncTargets(args));
     // `install -d`/`--directory` creates every positional as a directory: all are write targets.
     if (name === 'install' && args.some((t) => t === '--directory' || /^-[a-zA-Z]*d[a-zA-Z]*$/.test(t))) {
       return plain(args.filter((t) => !t.startsWith('-')).map(stripQuotes));
     }
     const { dir, rest } = splitTargetDirectory(args);
     if (dir === null && rest.length < 2) continue;
-    const sources = (dir !== null ? rest : rest.slice(0, -1)).map(stripQuotes);
-    const written = [{ target: stripQuotes(dir !== null ? dir : rest[rest.length - 1]), meta: { name, flags, sources } }];
-    if (name === 'mv') written.push(...plain(rest.map(stripQuotes)));
+    // `shape` lets a cp/mv/install target qualify for state-dir trust (`isTrustedStateWrite`).
+    const shape = name === 'ln' ? undefined : { name, args };
+    const written = [{ target: stripQuotes(dir !== null ? dir : rest[rest.length - 1]), shape }];
+    if (name === 'mv') written.push(...(dir !== null ? rest : rest.slice(0, -1)).map((t) => ({ target: stripQuotes(t), shape })));
     return written;
   }
   return [];
@@ -1536,13 +1534,13 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   const saved = [];
   let clauseBase = null; // set while a clause runs `env -C DIR`
   let allexport = false;
-  const add = (raw, meta) => {
+  const add = (raw, shape) => {
     const base = clauseBase || state;
     const target = unescapeTarget(raw);
     if (!isResolvableLiteralTarget(target)) unresolvable = true;
-    else if (path.isAbsolute(target)) literalTargets.push({ target, dirs: [cwd], meta });
+    else if (path.isAbsolute(target)) literalTargets.push({ target, dirs: [cwd], shape });
     else {
-      literalTargets.push({ target, dirs: base.dirs, meta });
+      literalTargets.push({ target, dirs: base.dirs, shape });
       if (base.unknown) unresolvable = true;
     }
   };
@@ -1571,11 +1569,12 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
     const inCase = nest.cases > 0;
     if (!inCase) for (let p = 0; p < opening.replace(/\s/g, '').length; p++) saved.push({ state, list }), (list = []);
     clauseBase = null; // a redirect is opened by the shell itself, before `env` changes directory
-    findRedirectTargets(redirectView.slice(from, to)).forEach((t) => add(t));
+    findRedirectTargets(redirectView.slice(from, to)).forEach((t) => add(t, FILE_WRITE));
     clauseBase = tokens.length > 0 ? envChdirBase(tokens, state.dirs) : null;
     if (tokens.length > 0) {
-      [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findOptionWriteTargets(tokens)].forEach((t) => add(t));
-      for (const { target, meta } of findCopyMoveWrites(tokens)) add(target, meta);
+      findTeeTargets(tokens).forEach((t) => add(t, FILE_WRITE));
+      [...findSedTargets(tokens), ...findOptionWriteTargets(tokens)].forEach((t) => add(t));
+      for (const { target, shape } of findCopyMoveWrites(tokens)) add(target, shape);
       // A trace value is the exact file name git opens, so it skips the shell-word checks.
       const trace = findGitTraceTargets(tokens, k, inCase);
       for (const target of trace.targets) literalTargets.push({ target, dirs: [cwd] });
@@ -1639,23 +1638,17 @@ const evaluateBashWriteTargets = (command, cwd) => {
     const heredocText = text.replace(/[\s\S]/g, (ch, i) => (heredocMask[i] ? ch : ' '));
     for (const visible of visibleViews(text)) {
       const signals = collectWriteSignals(visible, heredocText, cwd, state, enqueue, maskAllowed);
-      for (const { target, dirs, meta } of signals.literalTargets) {
-        for (const dir of dirs) literalTargets.push({ target, dir, visible, meta });
+      for (const { target, dirs, shape } of signals.literalTargets) {
+        for (const dir of dirs) literalTargets.push({ target, dir, visible, shape });
       }
       if (signals.unresolvable) unresolvable = true;
     }
   }
 
-  for (const { target, dir, visible, meta } of literalTargets) {
+  for (const { target, dir, visible, shape } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.resolve(dir, target);
-    const insideAssigned = isUnderRoot(resolvedPath, assignedRoot);
-    const stateVerdict =
-      !insideAssigned && isStateDirTrustedPath(resolvedPath, stateRoot)
-        ? judgeStateDestination(meta, resolvedPath, dir, stateRoot)
-        : 'unsafe';
-    if (stateVerdict === 'unknown') unresolvable = true;
-    if (!insideAssigned && stateVerdict === 'unsafe') {
+    if (!isUnderRoot(resolvedPath, assignedRoot) && !isTrustedStateWrite({ target, shape }, resolvedPath, dir, stateRoot)) {
       const hint = looksLikeRegexFragment(target)
         ? ' This looks like a sed/regex expression; quote it.'
         : '';
