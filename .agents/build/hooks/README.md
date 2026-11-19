@@ -62,6 +62,38 @@ An ordinary session that happens to load the plugin is left alone by those two g
 other guard (destructive patterns, sensitive files, system paths, traversal, Bash write targets,
 worktree removal) applies to every call.
 
+## Campaign state dir trust
+
+For campaign-scoped callers, both write guards (`validate-file-changes.js` and the Bash write
+guard) treat the main clone's `.blackhole/` as a second allowed root, so workers can write
+`plans/`, `staged/<issue>/`, `queue.json`, `findings-ledger.json` and their `.tmp` files from a
+linked worktree. The root (`campaignStateRoot` in `utils/hook-event-log.js`) exists only when the
+main clone resolves, `.blackhole/config.json` exists, and the realpath is not a broad directory;
+it is derived from the main clone, so a link planted inside a worktree cannot mint it.
+
+Trust is an allow-list of write shapes (`utils/state-dir-write-shape.js`), because the guard
+judges a path while the shell picks the file actually written. In the Bash guard, a target under
+`.blackhole/` is trusted only when it is written by:
+
+1. a redirect (`>`, `>>`, `>|`, `&>`, a heredoc to a file) or `tee`/`tee -a` naming a file; or
+2. `cp`, `mv` or `install` with exactly one source that exists as a regular file (not a symlink
+   or directory) to an explicit file destination, using only `-f -i -n -p -v`,
+   `install -m <mode>`/`-C` and their exact long names. A `mv` source must itself be a trusted
+   path inside `.blackhole/`: `mv` keeps the source's inode, and an earlier clause of the same
+   command could swap a worktree file for a link before it runs. To move a worktree file in, `cp`
+   it.
+
+Every trusted path (Bash or Write/Edit) must also have no `..` segment (a Bash target must be
+plain path text: no quote, expansion, glob or glued operator), resolve inside the state root
+once every symlink on the way is followed (an alias from the worktree is judged where it lands),
+not be `config.json`, `hook-events/`, `archive/hook-events-*`
+(case-insensitive), the root or `archive/` itself, and have a leaf that is absent or a regular
+file with one hard link. Anything else under `.blackhole/` (a directory destination such as
+`cp x .blackhole/plans/`, `-t`/`-T`, a recursive or archive copy, `rsync`, `ln`, `cp -s/-l`,
+`install -d/-D`, `sed -i`, `dd`, `truncate`, a `mv` whose source is outside `.blackhole/` or does not exist yet) gets the same
+block as any other main-clone path. A Bash target built from a shell variable is never expanded:
+it stays the one warn-and-record `bash-write-target-unresolvable` tier.
+
 ## Sibling mercure defer (issue #870, health leg issue #969)
 
 blackhole's fork of these two hooks (`validate-bash-command.js`, `validate-file-changes.js`)

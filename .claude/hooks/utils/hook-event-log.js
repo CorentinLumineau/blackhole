@@ -737,6 +737,83 @@ const allowSilently = () => process.exit(0);
  * prevent. Same helper for both failure sites — pattern load (main() below) and stdin parse
  * (readHookInput's caller, above) — distinguished only by `patternId`/`label` so the record and
  * the stderr message say which one actually failed. */
+/** The campaign state dir (`<main clone>/.blackhole`) as a write root for campaign agents whose
+ * assigned root is a linked worktree: the protocol has them write `plans/`, `staged/`, the queue
+ * and ledger there, and no worktree root contains it. Returns its realpath, or `null` — and then
+ * grants nothing — unless the main clone resolves, `config.json` exists in it (a stray directory
+ * in an unrelated repo earns no trust), and the realpath is not a broad root (a `.blackhole`
+ * symlinked at $HOME or a temp root must not widen the guard). Derived from the main clone, never
+ * from the worktree, so a link a worker plants in its own tree cannot mint trust. */
+const campaignStateRoot = (cwd = process.cwd()) => {
+  const mainClone = mainCloneRoot(cwd);
+  if (!mainClone) return null;
+  const dir = path.join(mainClone, '.blackhole');
+  if (!fs.existsSync(path.join(dir, 'config.json'))) return null;
+  const real = resolveExistingAncestor(dir);
+  return isTooBroadRoot(path.resolve(dir)) || isTooBroadRoot(real) ? null : real;
+};
+
+/** `segments` (relative to the state root) that name a path only the hook or the orchestrator may
+ * write: the hook event log (`hook-events/`, `archive/hook-events-*`) — its deny records are the
+ * audit trail — and `config.json`. Matched case-insensitively so a case-insensitive filesystem
+ * cannot reach them through another spelling. */
+const isProtectedStateSegments = (segments) => {
+  const [first, second] = segments.map((segment) => segment.toLowerCase());
+  return (
+    first === 'config.json' ||
+    first === 'hook-events' ||
+    (first === 'archive' && typeof second === 'string' && second.startsWith('hook-events-'))
+  );
+};
+
+const relativeSegments = (root, target) => path.relative(root, target).split(path.sep).filter(Boolean);
+
+/** The state root and `archive/` are never a write target themselves: both sit directly above a
+ * protected path, so a write naming either could land on one. A write names a file below them. */
+const isStateContainerSegments = (segments) =>
+  segments.length === 0 || (segments.length === 1 && segments[0].toLowerCase() === 'archive');
+
+/** True when the leaf at `candidate` is absent or a regular file with no second hard link: a write
+ * through a symlink or a hard link lands on another file, possibly `config.json` or the event log,
+ * and an existing directory is not a file target. */
+const isPlainLeaf = (candidate) => {
+  let stat;
+  try {
+    stat = fs.lstatSync(candidate);
+  } catch {
+    return true;
+  }
+  return stat.isFile() && stat.nlink === 1;
+};
+
+/** `p` resolved the way the kernel will open it: the realpath of its deepest existing ancestor
+ * joined with the segments that do not exist yet. */
+const realpathWithTail = (p) => {
+  const tail = [];
+  let current = path.resolve(p);
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(current), ...tail);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return path.resolve(p);
+      tail.unshift(path.basename(current));
+      current = parent;
+    }
+  }
+};
+
+/** True when `candidate` may be written under the trusted state root: no `..` segment, inside it
+ * once resolved (`realpathWithTail`, so an alias through any symlink is judged where it lands),
+ * not protected, not the state root or `archive/` itself, and with a plain leaf (`isPlainLeaf`). */
+const isStateDirTrustedPath = (candidate, stateRoot) => {
+  if (!stateRoot || candidate.split(path.sep).includes('..')) return false;
+  const real = realpathWithTail(candidate);
+  if (real !== stateRoot && !real.startsWith(stateRoot + path.sep)) return false;
+  const segments = relativeSegments(stateRoot, real);
+  return !isProtectedStateSegments(segments) && !isStateContainerSegments(segments) && isPlainLeaf(path.resolve(candidate));
+};
+
 /** True only when `<mainClone>/.blackhole/config.json` is absent (`ENOENT`) — the fail-closed
  * "no live campaign" read shared by `sibling-plugin-guard.js`'s defer gate and the hook-event
  * rotation gate `recordEvent` above wires up: present, or any other stat outcome (an unreadable
@@ -775,6 +852,8 @@ module.exports = {
   SECRET_KV,
   worktreeRoot,
   mainCloneRoot,
+  campaignStateRoot,
+  isStateDirTrustedPath,
   allWorktreeRoots,
   resolveExistingAncestor,
   isUnderRoot,
