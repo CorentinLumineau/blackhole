@@ -32,13 +32,14 @@
  * argument) as a write target, exactly like `validate-file-changes.js` only ever evaluates a
  * write's own target — a source outside the assigned root (the ordinary shape of reading a shared
  * reference file) must never itself trigger a deny. `mv` is the exception: it unlinks its
- * sources, so every positional argument is a write target (see `findCopyMoveTargets`).
+ * sources, so every positional argument is a write target (see `findCopyMoveWrites`).
  */
 
 const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC } = require('./shell-lexer');
 const { readAssignedWorktreeRoot, isUnderRoot, campaignStateRoot, isStateDirTrustedPath } = require('./hook-event-log');
+const { judgeStateDestination } = require('./state-dir-landing');
 const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
@@ -680,23 +681,29 @@ const rsyncTargets = (args) => {
  * directory is the destination and every positional is a source. `mv` also unlinks its sources,
  * so all of its positional arguments count. Fewer than two positional arguments and no
  * target-directory means there is no destination to evaluate (`cp --help`, a malformed call). */
-const findCopyMoveTargets = (tokens) => {
+const findCopyMoveWrites = (tokens) => {
   for (const name of ['cp', 'mv', 'install', 'ln', 'truncate', 'dd', 'rsync']) {
     const cmdIdx = findCommand(tokens, name);
     if (cmdIdx === -1) continue;
     const args = positionalArgsBeforeRedirect(tokens, cmdIdx + 1);
-    if (name === 'dd') return args.filter((t) => t.startsWith('of=')).map((t) => stripQuotes(t.slice(3)));
-    if (name === 'truncate') return truncateTargets(args);
-    if (name === 'rsync') return rsyncTargets(args);
+    const flags = args.filter((t) => t.startsWith('-'));
+    const plain = (targets) => targets.map((target) => ({ target }));
+    if (name === 'dd') return plain(args.filter((t) => t.startsWith('of=')).map((t) => stripQuotes(t.slice(3))));
+    if (name === 'truncate') return plain(truncateTargets(args));
+    if (name === 'rsync') {
+      const positional = args.filter((t) => !t.startsWith('-')).map(stripQuotes);
+      return rsyncTargets(args).map((target) => ({ target, meta: { name, flags, sources: positional.slice(0, -1) } }));
+    }
     // `install -d`/`--directory` creates every positional as a directory: all are write targets.
     if (name === 'install' && args.some((t) => t === '--directory' || /^-[a-zA-Z]*d[a-zA-Z]*$/.test(t))) {
-      return args.filter((t) => !t.startsWith('-')).map(stripQuotes);
+      return plain(args.filter((t) => !t.startsWith('-')).map(stripQuotes));
     }
     const { dir, rest } = splitTargetDirectory(args);
     if (dir === null && rest.length < 2) continue;
-    const written = dir !== null ? [dir] : [rest[rest.length - 1]];
-    if (name === 'mv') written.push(...rest);
-    return written.map(stripQuotes);
+    const sources = (dir !== null ? rest : rest.slice(0, -1)).map(stripQuotes);
+    const written = [{ target: stripQuotes(dir !== null ? dir : rest[rest.length - 1]), meta: { name, flags, sources } }];
+    if (name === 'mv') written.push(...plain(rest.map(stripQuotes)));
+    return written;
   }
   return [];
 };
@@ -1529,13 +1536,13 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   const saved = [];
   let clauseBase = null; // set while a clause runs `env -C DIR`
   let allexport = false;
-  const add = (raw) => {
+  const add = (raw, meta) => {
     const base = clauseBase || state;
     const target = unescapeTarget(raw);
     if (!isResolvableLiteralTarget(target)) unresolvable = true;
-    else if (path.isAbsolute(target)) literalTargets.push({ target, dirs: [cwd] });
+    else if (path.isAbsolute(target)) literalTargets.push({ target, dirs: [cwd], meta });
     else {
-      literalTargets.push({ target, dirs: base.dirs });
+      literalTargets.push({ target, dirs: base.dirs, meta });
       if (base.unknown) unresolvable = true;
     }
   };
@@ -1564,15 +1571,11 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
     const inCase = nest.cases > 0;
     if (!inCase) for (let p = 0; p < opening.replace(/\s/g, '').length; p++) saved.push({ state, list }), (list = []);
     clauseBase = null; // a redirect is opened by the shell itself, before `env` changes directory
-    findRedirectTargets(redirectView.slice(from, to)).forEach(add);
+    findRedirectTargets(redirectView.slice(from, to)).forEach((t) => add(t));
     clauseBase = tokens.length > 0 ? envChdirBase(tokens, state.dirs) : null;
     if (tokens.length > 0) {
-      [
-        ...findTeeTargets(tokens),
-        ...findSedTargets(tokens),
-        ...findCopyMoveTargets(tokens),
-        ...findOptionWriteTargets(tokens),
-      ].forEach(add);
+      [...findTeeTargets(tokens), ...findSedTargets(tokens), ...findOptionWriteTargets(tokens)].forEach((t) => add(t));
+      for (const { target, meta } of findCopyMoveWrites(tokens)) add(target, meta);
       // A trace value is the exact file name git opens, so it skips the shell-word checks.
       const trace = findGitTraceTargets(tokens, k, inCase);
       for (const target of trace.targets) literalTargets.push({ target, dirs: [cwd] });
@@ -1636,17 +1639,23 @@ const evaluateBashWriteTargets = (command, cwd) => {
     const heredocText = text.replace(/[\s\S]/g, (ch, i) => (heredocMask[i] ? ch : ' '));
     for (const visible of visibleViews(text)) {
       const signals = collectWriteSignals(visible, heredocText, cwd, state, enqueue, maskAllowed);
-      for (const { target, dirs } of signals.literalTargets) {
-        for (const dir of dirs) literalTargets.push({ target, dir, visible });
+      for (const { target, dirs, meta } of signals.literalTargets) {
+        for (const dir of dirs) literalTargets.push({ target, dir, visible, meta });
       }
       if (signals.unresolvable) unresolvable = true;
     }
   }
 
-  for (const { target, dir, visible } of literalTargets) {
+  for (const { target, dir, visible, meta } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.resolve(dir, target);
-    if (!isUnderRoot(resolvedPath, assignedRoot) && !isStateDirTrustedPath(resolvedPath, stateRoot)) {
+    const insideAssigned = isUnderRoot(resolvedPath, assignedRoot);
+    const stateVerdict =
+      !insideAssigned && isStateDirTrustedPath(resolvedPath, stateRoot)
+        ? judgeStateDestination(meta, resolvedPath, dir, stateRoot)
+        : 'unsafe';
+    if (stateVerdict === 'unknown') unresolvable = true;
+    if (!insideAssigned && stateVerdict === 'unsafe') {
       const hint = looksLikeRegexFragment(target)
         ? ' This looks like a sed/regex expression; quote it.'
         : '';

@@ -269,4 +269,69 @@ describe('state dir trust: Bash write guard', () => {
       }
     });
   });
+
+  test('a link cannot be planted inside the state dir, in any form', async () => {
+    await withState(async (main, wt, state) => {
+      for (const cmd of [
+        `ln -s ../config.json ${state}/staged/config.json`,
+        `ln -sf ../config.json ${state}/plans/config.json`,
+        `ln ../config.json ${state}/staged/c`,
+        `ln -s ../hook-events/e.json ${state}/plans/e.json`,
+        `cp -s ${wt}/x ${state}/plans/x`,
+        `ln -s ../config.json ${state}/staged/config.json && cp config.json ${state}/staged/`,
+      ]) {
+        const result = await bashAt(cmd, wt);
+        expect([cmd, result.exitCode, readHookEvents(main).at(-1)?.tier]).toEqual([cmd, 2, 'block']);
+      }
+    });
+  });
+
+  test('a symlink moved or copied as a link into the state dir is refused', async () => {
+    await withState(async (main, wt, state) => {
+      fs.symlinkSync(path.join(state, 'config.json'), path.join(wt, 'lnk'));
+      for (const cmd of [`mv lnk ${state}/plans/lnk`, `cp -P lnk ${state}/plans/lnk`, `cp -a lnk ${state}/plans/`]) {
+        const result = await bashAt(cmd, wt);
+        expect([cmd, result.exitCode, readHookEvents(main).at(-1)?.tier]).toEqual([cmd, 2, 'block']);
+      }
+    });
+  });
+
+  test('a directory destination whose entry is a planted link onto a protected path is refused', async () => {
+    await withState(async (main, wt, state) => {
+      fs.writeFileSync(path.join(state, 'config.json'), '{}');
+      fs.writeFileSync(path.join(state, 'hook-events', 'e.json'), '{}');
+      fs.symlinkSync('../config.json', path.join(state, 'staged', 'config.json'));
+      fs.symlinkSync('../config.json', path.join(state, 'plans', 'config.json'));
+      fs.symlinkSync('../hook-events/e.json', path.join(state, 'plans', 'e.json'));
+      for (const cmd of [
+        `cp config.json ${state}/staged/`,
+        `cp config.json ${state}/plans/`,
+        `cp e.json ${state}/plans/`,
+        `mv config.json ${state}/staged/`,
+        `install -t ${state}/staged config.json`,
+        `cp -t ${state}/plans config.json`,
+        `rsync config.json ${state}/staged/`,
+      ]) {
+        const result = await bashAt(cmd, wt);
+        expect([cmd, result.exitCode, readHookEvents(main).at(-1)?.tier]).toEqual([cmd, 2, 'block']);
+      }
+    });
+  });
+
+  test('a dynamic source into an existing state directory is recorded, not silently trusted', async () => {
+    await withState(async (main, wt, state) => {
+      const result = await bashAt(`cp "$SRC" ${state}/plans/`, wt);
+      expect(result.exitCode).toBe(0);
+      expect(readHookEvents(main).at(-1)).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+    });
+  });
+
+  test('regular copies into plans/ and staged/<issue>/ and the queue rename still work', async () => {
+    await withState(async (_main, wt, state) => {
+      fs.writeFileSync(path.join(state, 'plans', 'x'), 'old');
+      for (const cmd of [`cp x ${state}/plans/`, `cp x ${state}/staged/1/`, `mv ${state}/queue.json.tmp ${state}/queue.json`]) {
+        expect([cmd, (await bashAt(cmd, wt)).exitCode]).toEqual([cmd, 0]);
+      }
+    });
+  });
 });
