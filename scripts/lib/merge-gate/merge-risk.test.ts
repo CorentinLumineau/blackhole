@@ -159,6 +159,17 @@ describe('deletes-data keyword scan scope', () => {
     expect(cats('tests/seed.sql', '+ DROP TABLE t')).toContain('deletes-data');
     expect(cats('documentation/example.sql', '+ TRUNCATE TABLE t')).toContain('deletes-data');
   });
+  test('generated copies of the matcher and of docs are exempt too', () => {
+    const kw = '+ DELETE FROM x; DROP TABLE y';
+    expect(cats('plugins/blackhole-claude/scripts/lib/merge-gate/merge-risk.ts', kw)).not.toContain('deletes-data');
+    expect(cats('.claude/skills/blackhole/references/merge-gate.md', kw)).not.toContain('deletes-data');
+    expect(cats('src/guide.md', kw)).not.toContain('deletes-data');
+    expect(cats('packages/x/docs/a.md', kw)).not.toContain('deletes-data');
+    expect(cats('NOTES.mdx', kw)).not.toContain('deletes-data');
+  });
+  test('a .dump under a test directory still raises deletes-data', () => {
+    expect(cats('tests/data.dump', '+ DROP TABLE t')).toContain('deletes-data');
+  });
   test('production code with DELETE FROM still raises deletes-data', () => {
     expect(cats('src/cleanup.ts', '+ DELETE FROM users')).toContain('deletes-data');
   });
@@ -171,6 +182,9 @@ describe('isDocPath', () => {
     expect(isDocPath('README.md')).toBe(true);
     expect(isDocPath('src/a.ts')).toBe(false);
     expect(isDocPath('documentation/example.sql')).toBe(false);
+    expect(isDocPath('src/guide.md')).toBe(true);
+    expect(isDocPath('packages/x/docs/a.md')).toBe(true);
+    expect(isDocPath('NOTES.mdx')).toBe(true);
   });
 });
 

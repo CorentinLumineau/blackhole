@@ -52,12 +52,12 @@ const posix = (p: string): string => p.replace(/\\/g, '/').replace(/^\.\//, '');
 export const isTestPath = (p: string): boolean =>
   /(^|\/)(test|tests|__tests__|spec|fixtures)\//i.test(p) || /\.(test|spec)\.[jt]sx?$/.test(p);
 
-/** Documentation paths: markdown under `documentation/` or `docs/`, plus root-level markdown. */
-export const isDocPath = (p: string): boolean =>
-  /\.mdx?$/i.test(p) && (/^(documentation|docs)\//i.test(p) || !p.includes('/'));
+/** Documentation paths: any markdown file (this repo's docs are source, and its build copies them into several trees). */
+export const isDocPath = (p: string): boolean => /\.mdx?$/i.test(p);
 
-/** The classifier's own source quotes the destructive keywords as regex data. */
-const MATCHER_SOURCE = 'scripts/lib/merge-gate/merge-risk.ts';
+/** The classifier quotes the destructive keywords as regex data; matched by suffix so the built copies are exempt too. */
+const MATCHER_SOURCE_SUFFIX = 'scripts/lib/merge-gate/merge-risk.ts';
+const isMatcherSource = (p: string): boolean => p === MATCHER_SOURCE_SUFFIX || p.endsWith(`/${MATCHER_SOURCE_SUFFIX}`);
 
 type PathRule = { category: RiskCategory; test: (p: string) => boolean };
 
@@ -112,15 +112,17 @@ const PATH_RULES: PathRule[] = [
 
 const DATA_DIR = /(^|\/)(data|dumps?|backups?|seeds?)\//i;
 const DATA_EXT = /\.(sql|dump|csv)$/i;
+// csv is a deletion signal (DATA_EXT) but not a keyword-scan target: it holds rows, not statements.
+const SCANNED_DATA_EXT = /\.(sql|dump)$/i;
 const DESTRUCTIVE_SQL = /\b(DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE(\s+TABLE)?|DELETE\s+FROM)\b/i;
 
 const MIGRATIONS_RULE = PATH_RULES.find((r) => r.category === 'migrations');
 
 /** Real data files are always keyword-scanned, even under a test or docs directory. */
-const isDataFile = (p: string): boolean => /\.(sql|dump)$/i.test(p) || (MIGRATIONS_RULE?.test(p) ?? false);
+const isDataFile = (p: string): boolean => SCANNED_DATA_EXT.test(p) || (MIGRATIONS_RULE?.test(p) ?? false);
 
 const isKeywordScanExempt = (p: string): boolean =>
-  !isDataFile(p) && (isTestPath(p) || isDocPath(p) || p === MATCHER_SOURCE);
+  !isDataFile(p) && (isTestPath(p) || isDocPath(p) || isMatcherSource(p));
 
 /** True when `headRef` is a campaign worker branch (`blackhole/issue-N` or `blackhole/issue-N-<slug>`). Absent/empty is treated
  * as own-PR: the merge protocol already only considers campaign issues. */
