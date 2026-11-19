@@ -31,7 +31,7 @@ operator never matched it.
 
 The guard follows the three-tier contract in
 [`issue-1246-guard-contract.md`](issue-1246-guard-contract.md): what resolves and blocks, what
-warns, and the named residuals R1-R14. That document is normative; this one keeps the narrative.
+warns, and the named residuals R1-R8 and R10-R14. That document is normative; this one keeps the narrative.
 
 History: review rounds 6 to 9 of PR #1257 grew per-spelling decoding (`$'…'` decoding, an
 `env -S` splitter, a raw-text `set -a` match), and each round found holes in the parsing the
