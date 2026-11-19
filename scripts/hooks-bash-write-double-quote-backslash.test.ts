@@ -199,6 +199,43 @@ describe('bash-write-target-guard.js — quotes inside a literal path (#1308)', 
     });
   }
 
+  // A word of adjacent quoted and unquoted segments is one path once the shell joins them: the
+  // directory it names must reach containment, never be read as a relative name.
+  for (const [label, build] of [
+    ['git format-patch -o', (d: string, n: string) => `git format-patch -1 -o "${d}/"${n}`],
+    ['git format-patch --output-directory=', (d: string, n: string) => `git format-patch -1 --output-directory="${d}/"${n}`],
+    ['git format-patch --output=', (d: string, n: string) => `git format-patch -1 --output="${d}/"${n}`],
+    ['git -C', (d: string, n: string) => `git -C "${d}/"${n} format-patch -1`],
+    ['dd of=', (d: string, n: string) => `dd if=a of="${d}/"${n}`],
+    ['sed w', (d: string, n: string) => `sed -n 'w '${d}/${n} in`],
+    ['sed W', (d: string, n: string) => `sed -n 'W '${d}/${n} in`],
+    ['sed s///w', (d: string, n: string) => `sed -n 's/a/b/w '${d}/${n} in`],
+  ] as const) {
+    for (const name of [`'a"b'`, `"a'b"`, `'x\\\\'`, `"a"'b'`, `'a'"b\\\\c"`, `x\\\\`]) {
+      test(`${label} with an adjacent-quote word ${name} outside the worktree is denied`, async () => {
+        await withLinkedWorktree('blackhole-hook-1308-', async (mainRepo, worktree) => {
+          for (const dir of ['/etc', '/tmp', mainRepo, path.dirname(worktree)]) {
+            expect(evaluate(build(dir, name), worktree)).toMatchObject(BLOCK);
+          }
+        });
+      });
+    }
+  }
+
+  test('git format-patch -o with an adjacent-quote word inside the worktree is only a warning', async () => {
+    await withLinkedWorktree('blackhole-hook-1308-', async (_mainRepo, worktree) => {
+      expect(evaluate(`git format-patch -1 -o "${worktree}/"'a"b'`, worktree)).toMatchObject(WARN);
+    });
+  });
+
+  test('sed w with a backslash file name spelled as adjacent quoted segments is denied', async () => {
+    await withLinkedWorktree('blackhole-hook-1308-', async (_mainRepo, worktree) => {
+      for (const command of [`sed -n 'w '/etc/'x\\\\' in`, `sed -n 'w ''/etc/a\\\\b"c' in`, `sed -n 'w '/etc/'\\\\' in`]) {
+        expect(evaluate(command, worktree)).toMatchObject(BLOCK);
+      }
+    });
+  });
+
   test('a backslash path spelled through a symlink to the worktree is allowed with cwd at the real worktree', async () => {
     await withLinkedWorktree('blackhole-hook-1308-', async (_mainRepo, worktree) => {
       const link = `${worktree}-link`;

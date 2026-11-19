@@ -142,9 +142,11 @@ const stripTargetQuotes = (token) => (token.includes('\\') ? token : stripQuotes
 const literalTarget = (literal) => ({ literal });
 
 /** The literal text of a word as the shell passes it on, or the word as written when it cannot be
- * read statically (so it stays unresolvable). */
+ * read statically (so it stays unresolvable). Adjacent quoted and unquoted segments
+ * (`"/etc/"'a"b'`) are joined as the shell joins them, so no quote character is left to hide the
+ * directory the word starts with. */
 const literalWord = (token) => {
-  if (!token.includes('\\')) return stripQuotes(token);
+  if (!/[\\'"]/.test(token)) return token;
   const { text, dynamic } = normalizeShellWord(token);
   return dynamic ? token : text;
 };
@@ -543,7 +545,7 @@ const parseSedArgs = (args) => {
   }
   if (!hasScriptSource && operands.length > 0) scripts.push(operands.shift());
   const unclean = scripts.some((w) => !isCleanSedWord(w));
-  return { script: scripts.map(stripQuotes).join('\n'), files: operands.map(stripTargetQuotes), inPlace, unclean };
+  return { script: scripts.map(literalWord).join('\n'), files: operands.map(stripTargetQuotes), inPlace, unclean };
 };
 
 /** sed commands that take no argument (`l`, `q`, `Q`, `L` take an optional number). */
@@ -724,7 +726,7 @@ const findCopyMoveWrites = (tokens) => {
     if (name === 'dd') {
       return plain(
         args.flatMap((t) => {
-          if (t.startsWith('of=')) return [stripTargetQuotes(t.slice(3))];
+          if (t.startsWith('of=')) return [literalTarget(literalWord(t.slice(3)))];
           const word = literalWord(t);
           return word.startsWith('of=') ? [literalTarget(word.slice(3))] : [];
         }),
@@ -1740,6 +1742,9 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
           `and use a literal absolute path, or the Write/Edit tools.${hint}`,
       };
     }
+    // A name that holds a quote is a legal file name, but it stays a warning inside the root: no
+    // spelling of it is ever allowed that the guard did not allow before it decoded quotes.
+    if (/['"]/.test(target)) unresolvable = true;
   }
 
   if (unresolvable) {
