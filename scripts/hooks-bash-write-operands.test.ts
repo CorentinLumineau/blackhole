@@ -172,7 +172,17 @@ describe('a destination spelled with adjacent quote segments', () => {
 
   test('a quote-split name inside a wrapped double-quoted word keeps its quotes', async () => {
     await withState((state, _wt, run) => {
-      expect(run(`cp x "${state}/'config'.json"`)).not.toBeNull();
+      expect(run(`cp x "${state}/'config'.json"`)).toMatchObject(BLOCK);
+    });
+  });
+
+  test('a target whose quote never closes is warned on, never allowed or guessed at', async () => {
+    await withState((state, wt, run) => {
+      const warn = { tier: 'warn', pattern_id: 'bash-write-target-unresolvable' };
+      expect(run(`echo y > '${wt}/my file'`)).toMatchObject(warn);
+      expect(run(`echo y > '${state}/config.json`)).toMatchObject(warn);
+      expect(run(`echo y > "${wt}/my file`)).toMatchObject(warn);
+      expect(run(`bash -c 'echo hi > ${wt}/x'`)).toMatchObject(warn);
     });
   });
 
@@ -218,7 +228,15 @@ describe.skipIf(!process.env.GUARD_DIFFERENTIAL)('differential against origin/ma
       ];
       const spellings = (d: string) => {
         const i = d.lastIndexOf('/') + 1;
-        return [d, `'${d.slice(0, i)}'${d.slice(i)}`, `"${d.slice(0, i)}"${d.slice(i)}`, `"${d}"`, `'${d.slice(0, i)}'"${d.slice(i)}"`];
+        return [
+          d,
+          `'${d.slice(0, i)}'${d.slice(i)}`,
+          `"${d.slice(0, i)}"${d.slice(i)}`,
+          `"${d}"`,
+          `'${d.slice(0, i)}'"${d.slice(i)}"`,
+          `'${d}`,
+          `"${d}`,
+        ];
       };
       const templates: Array<(d: string) => string> = [
         (d) => `cp x ${d}`,
