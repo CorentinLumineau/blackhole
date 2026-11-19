@@ -172,3 +172,29 @@ describe('bash-write-target-guard.js — backslash-escaped and quoted words (#12
     });
   }
 });
+
+describe('bash-write-target-guard.js — env operands that contain `=` (#1295)', () => {
+  for (const [label, build] of [
+    ['`env "A=1" \'tee\' <main>/x`', (m: string) => `echo x | env "A=1" 'tee' ${m}/x`],
+    ["`env 'A=1' 'tee' <main>/x`", (m: string) => `echo x | env 'A=1' 'tee' ${m}/x`],
+    ['`env A="1" \'tee\' <main>/x`', (m: string) => `echo x | env A="1" 'tee' ${m}/x`],
+    ['`env "A=1" "B=2" \'tee\' <main>/x`', (m: string) => `echo x | env "A=1" "B=2" 'tee' ${m}/x`],
+    ['`env -u X "A=1" \'tee\' <main>/x`', (m: string) => `echo x | env -u X "A=1" 'tee' ${m}/x`],
+    ['`sudo env "A=1" \'tee\' <main>/x`', (m: string) => `echo x | sudo env "A=1" 'tee' ${m}/x`],
+    ['`env A=1 "B=2" \'cp\' a <main>/b`', (m: string) => `env A=1 "B=2" 'cp' a ${m}/b`],
+    ["`env A=1 'tee' <main>/x` (unquoted operand)", (m: string) => `echo x | env A=1 'tee' ${m}/x`],
+  ] as const) {
+    test(`#1295: ${label} is denied`, async () => {
+      expect(await verdict(build)).toMatchObject(BLOCK);
+    });
+  }
+
+  for (const [label, build] of [
+    ['`env "A=1" true`', () => 'env "A=1" true'],
+    ['`"A=1" \'tee\' <main>/x` (a quoted NAME=VALUE is the command word, not an assignment)', (m: string) => `echo x | "A=1" 'tee' ${m}/x`],
+  ] as const) {
+    test(`#1295: ${label} stays allowed`, async () => {
+      expect(await verdict(build)).toBeNull();
+    });
+  }
+});
