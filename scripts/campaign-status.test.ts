@@ -952,7 +952,7 @@ describe('status --summary (the launch summary)', () => {
     expect(proc.exitCode).toBe(0);
     const out = proc.stdout.toString();
     expect(out).toContain('## Launch summary');
-    for (const label of ['Scope', 'Order', 'Merge', 'Budget', 'Status page', 'Kaizen and staging', 'Peers', 'Sleep mode']) expect(out).toContain(`| ${label} |`);
+    for (const label of ['Scope', 'Order', 'Merge', 'Pacing', 'Budget', 'Status page', 'Kaizen and staging', 'Autonomy', 'Resource policy', 'Wave scheduling', 'Peers', 'Sleep mode', 'Other config']) expect(out).toContain(`| ${label} |`);
     expect(out).toContain('pacing off');
   });
 
