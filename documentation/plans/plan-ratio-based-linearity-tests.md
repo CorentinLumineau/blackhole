@@ -71,12 +71,12 @@ expectLinearTime({
 Algorithm:
 1. Build both inputs up front (construction time is excluded from timing).
 2. `t1 = minMs(() => run(small), runs)`, `tN = minMs(() => run(large), runs)`. The two measurements are taken back to back in the same process, so both see the same JIT state and a similar load level.
-3. `ratio = tN / max(t1, FLOOR_MS)` with `FLOOR_MS = 1`. Assert `ratio < MAX_RATIO` with `MAX_RATIO = 8`.
+3. `ratio = tN / max(t1, FLOOR_MS)` with `FLOOR_MS = 1`. Assert `ratio < MAX_RATIO` with `MAX_RATIO = 12`.
 4. On failure the message prints n, 4n, t1, tN and the ratio so a flake is diagnosable.
 
-Why 8: with a 4x size step a linear parser gives a ratio of about 4 and a quadratic one about 16. 8 is the geometric midpoint (sqrt(4*16) = 5.7) pushed up to leave headroom for cache effects and allocation growth, which push honest linear code to 5-6, while still being half the quadratic value. It cannot catch O(n^1.5) (ratio 8); the historical regressions (#1183, #1184, #1222, #1239, #1252, #1195, #1197) were all quadratic or worse, which is what the tests guard.
+Why 12: with a 4x size step a linear parser gives a ratio of about 4 and a quadratic one about 16. The original limit 8 (the geometric midpoint 5.7 pushed up) flaked on the shared CI runner, where linear parsers measured 9-10 because the larger input pays extra GC and cache cost; 12 sits above that and below the quadratic 16. The shipped value and its rationale live on the `expectLinearTime` JSDoc in `scripts/lib/test-fixtures.ts`. It cannot catch O(n^1.5) (ratio 8) and, at 12, only a regression that costs several times the fixed per-call cost at 4n (seconds-scale) is guaranteed to fail; the historical regressions (#1183, #1184, #1222, #1239, #1252, #1195, #1197) were all quadratic or worse and seconds-scale, which is what the tests guard.
 
-Why a floor: when `t1` is sub-millisecond, dividing by it measures timer noise. Flooring the denominator at 1 ms means a quadratic input must reach tN >= 8 ms to fail; a quadratic regression whose large input costs under 8 ms is below the 5 s hook timeout by three orders of magnitude and is not what these tests defend. To keep the floor from masking regressions, each test picks `n` so that `build(4n)` is the production worst case (the 32 KiB cap), and the mutation evidence (AC-4) shows each test fails with a quadratic term that is realistic, not an absurd one.
+Why a floor: when `t1` is sub-millisecond, dividing by it measures timer noise. Flooring the denominator at 1 ms means a quadratic input must reach tN >= 12 ms to fail; a quadratic regression whose large input costs under 12 ms is below the 5 s hook timeout by three orders of magnitude and is not what these tests defend. To keep the floor from masking regressions, each test picks `n` so that `build(4n)` is the production worst case (the 32 KiB cap), and the mutation evidence (AC-4) shows each test fails with a quadratic term that is realistic, not an absurd one.
 
 Why min-of-5 and same-process: the minimum discards scheduler preemption, the dominant load effect (one preempted run can be 5x). Ratio-of-minimums cancels a uniform slowdown (CPU frequency, shared core) that an absolute budget cannot. Residual risk: load that changes between the two measurements; mitigated by measuring back to back and by `runs = 5`. If CI still flakes, the helper retries the pair once before failing (decision below).
 
@@ -115,14 +115,14 @@ Rejected alternative (the harder path, kept as a follow-up): count parser steps 
 
 ## Execution Strategy & Stop Conditions
 
-- If the ratio for an unmutated test exceeds 8 in two clean (unloaded) runs, stop and re-derive `n` for that test (the input likely has a non-linear but legitimate component, e.g. a PATH_MAX-bounded tree) rather than raising the threshold.
+- If the ratio for an unmutated test exceeds 12 in two clean (unloaded) runs, stop and re-derive `n` for that test (the input likely has a non-linear but legitimate component, e.g. a PATH_MAX-bounded tree) rather than raising the threshold.
 - If any converted test does not fail under its mutation, abort that conversion and revert it to its old form, filing the gap in the PR body.
 - If a test cannot scale 4x (row 6: depth bounded by PATH_MAX), stop and use factor 2 with `MAX_RATIO` 3 for that call only, documented at the call site.
 - If a guard source edit seems necessary, abort and halt: that source is held by PR #1334.
 
 ## Risks
 
-- Row 6: depth is capped by PATH_MAX (~4096), so `4n` must be at most about 3,800 characters; base `n` is about 950 characters, where the walk is near 1 ms. The floor handles it; its mutation must be strong enough to cost over 8 ms at depth 4n.
+- Row 6: depth is capped by PATH_MAX (~4096), so `4n` must be at most about 3,800 characters; base `n` is about 950 characters, where the walk is near 1 ms. The floor handles it; its mutation must be strong enough to cost over 12 ms at depth 4n.
 - Row 11 (5 ms regex budget on 2,400 chars): at this size `t1` is far below the floor. Scale it to n=600 / 4n=2,400 and rely on the mutation proof; if the regex backtracking cannot be separated from noise at this size, enlarge both sizes (the quadratic-regex failure mode in #1195 is visible well beyond 2,400 chars).
 - V-TEST-11 (unfalsifiable test): the mutation evidence in task 5 is the guard against shipping a ratio test that cannot fail.
 
