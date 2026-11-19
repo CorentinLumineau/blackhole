@@ -9,12 +9,8 @@
  *     destination, using only the flags in `ALLOWED_FLAGS` (a `mv` source must be in the state
  *     dir too).
  * Every other shape (a directory destination, a recursive or archive copy, rsync, link creation,
-<<<<<<< HEAD
  * sed, dd, truncate, …) keeps the outside-assigned-worktree block. The extra roots from
  * `trustedWriteRoots` (scratchpad, declared cross-repo worktrees) use the same allow-list. The guard judges a path while
-=======
- * sed, dd, truncate, …) keeps the outside-assigned-worktree block. The guard judges a path while
->>>>>>> origin/main
  * the shell picks the file actually written, so only shapes where the two are the same path earn
  * trust; `isStateDirTrustedPath` then judges that path and its leaf.
  */
@@ -70,27 +66,18 @@ const lstatOrNull = (p) => {
  * against `dir`: the source exists as a regular file and the destination is not an existing
  * directory. `mv` keeps its source's inode, and an earlier clause of the same command can swap a
  * worktree file for a link before it runs, so its source must itself be a trusted state-dir path. */
-<<<<<<< HEAD
 const isSingleFileCopy = (meta, dir, isTrusted) => {
-=======
-const isSingleFileCopy = (meta, dir, stateRoot) => {
->>>>>>> origin/main
   const parsed = parseSingleFileCopy(meta.name, meta.args);
   if (!parsed || !isPlainFilePath(parsed.source) || !isPlainFilePath(parsed.dest)) return false;
   const sourcePath = path.resolve(dir, parsed.source);
   const source = lstatOrNull(sourcePath);
   if (!source || !source.isFile()) return false;
-<<<<<<< HEAD
   if (meta.name === 'mv' && !isTrusted(sourcePath)) return false;
-=======
-  if (meta.name === 'mv' && !isStateDirTrustedPath(sourcePath, stateRoot)) return false;
->>>>>>> origin/main
   const dest = lstatOrNull(path.resolve(dir, parsed.dest));
   return !dest || dest.isFile();
 };
 
 /** True when a write the guard resolved to `resolvedPath` (from `target` as written, relative to
-<<<<<<< HEAD
  * `dir`) is an allowed shape and `isTrusted` trusts the path it lands on (and, for `mv`, its
  * source). Every trusted root with a path predicate of its own shares this allow-list. */
 const isTrustedShapedWrite = ({ target, shape }, resolvedPath, dir, isTrusted) => {
@@ -103,12 +90,3 @@ const isTrustedStateWrite = (write, resolvedPath, dir, stateRoot) =>
   isTrustedShapedWrite(write, resolvedPath, dir, (p) => isStateDirTrustedPath(p, stateRoot));
 
 module.exports = { FILE_WRITE, isTrustedShapedWrite, isTrustedStateWrite };
-=======
- * `dir`) is trusted in the state dir: an allowed shape, and a path `isStateDirTrustedPath` trusts. */
-const isTrustedStateWrite = ({ target, shape }, resolvedPath, dir, stateRoot) => {
-  if (!shape || !isPlainFilePath(target) || !isStateDirTrustedPath(resolvedPath, stateRoot)) return false;
-  return shape === FILE_WRITE || isSingleFileCopy(shape, dir, stateRoot);
-};
-
-module.exports = { FILE_WRITE, isTrustedStateWrite };
->>>>>>> origin/main

@@ -94,7 +94,6 @@ file with one hard link. Anything else under `.blackhole/` (a directory destinat
 block as any other main-clone path. A Bash target built from a shell variable is never expanded:
 it stays the one warn-and-record `bash-write-target-unresolvable` tier.
 
-<<<<<<< HEAD
 ## Trusted write roots (scratchpad and cross-repo worktrees)
 
 `trustedWriteRoots(cwd, input)` in `utils/hook-event-log.js` is the one place that names the extra
@@ -124,8 +123,6 @@ these roots keeps the block.
 The three settings files are never a worker's to write (`settings-roots-write` for Write/Edit,
 `bash-settings-roots-write` for Bash): editing one would widen the roots of the next call.
 
-=======
->>>>>>> origin/main
 ## Sibling mercure defer (issue #870, health leg issue #969)
 
 blackhole's fork of these two hooks (`validate-bash-command.js`, `validate-file-changes.js`)

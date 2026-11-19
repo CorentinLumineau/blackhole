@@ -17,13 +17,9 @@
  *  - a **resolvable** target (a literal path this module can compute without executing anything)
  *    that resolves outside the assigned root → `block` (`bash-outside-assigned-worktree`). A
  *    target in the campaign state dir (`campaignStateRoot`) is exempt only when written in one of
-<<<<<<< HEAD
  *    the shapes `state-dir-write-shape.js` allows; so is a target in an extra root from
  *    `trustedWriteRoots` (the validated scratchpad, declared cross-repo campaign worktrees).
  *    A settings file listing those roots is never a permitted target (`bash-settings-roots-write`).
-=======
- *    the shapes `state-dir-write-shape.js` allows.
->>>>>>> origin/main
  *  - a **write-shaped-but-unresolvable** command — a dynamic target (`$VAR`, `$(cmd)`, a glob),
  *    or a command whose write behavior cannot be determined by inspecting the command string at
  *    all (`python3 -c`, `perl -i`, `awk`) → `warn` and record
@@ -45,7 +41,6 @@
 const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
 const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC } = require('./shell-lexer');
-<<<<<<< HEAD
 const {
   readAssignedWorktreeRoot,
   mainCloneRoot,
@@ -57,10 +52,6 @@ const {
   isSettingsFilePath,
 } = require('./hook-event-log');
 const { FILE_WRITE, isTrustedShapedWrite, isTrustedStateWrite } = require('./state-dir-write-shape');
-=======
-const { readAssignedWorktreeRoot, isUnderRoot, campaignStateRoot } = require('./hook-event-log');
-const { FILE_WRITE, isTrustedStateWrite } = require('./state-dir-write-shape');
->>>>>>> origin/main
 const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
@@ -1636,13 +1627,10 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
   const assignedRoot = readAssignedWorktreeRoot(cwd);
   if (!assignedRoot) return null;
   const stateRoot = campaignStateRoot(cwd);
-<<<<<<< HEAD
   const mainClone = mainCloneRoot(cwd);
   const extraRoots = trustedWriteRoots(cwd, input, mainClone);
   const settingsFiles = settingsFileCandidates(cwd, mainClone);
   const isExtraPath = (p) => isTrustedExtraPath(p, extraRoots);
-=======
->>>>>>> origin/main
 
   const literalTargets = [];
   let unresolvable = false;
@@ -1675,7 +1663,6 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
   for (const { target, dir, visible, shape } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.resolve(dir, target);
-<<<<<<< HEAD
     if (isSettingsFilePath(resolvedPath, settingsFiles)) {
       return {
         tier: 'block',
@@ -1690,9 +1677,6 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
       !isTrustedStateWrite({ target, shape }, resolvedPath, dir, stateRoot) &&
       !isTrustedShapedWrite({ target, shape }, resolvedPath, dir, isExtraPath)
     ) {
-=======
-    if (!isUnderRoot(resolvedPath, assignedRoot) && !isTrustedStateWrite({ target, shape }, resolvedPath, dir, stateRoot)) {
->>>>>>> origin/main
       const hint = looksLikeRegexFragment(target)
         ? ' This looks like a sed/regex expression; quote it.'
         : '';

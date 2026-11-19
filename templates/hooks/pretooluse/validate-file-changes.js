@@ -24,13 +24,10 @@ const {
   isUnderRoot,
   campaignStateRoot,
   isStateDirTrustedPath,
-<<<<<<< HEAD
   trustedWriteRoots,
   isTrustedExtraPath,
   settingsFileCandidates,
   isSettingsFilePath,
-=======
->>>>>>> origin/main
   isAcceptableScratchpadDir,
   readAssignedWorktreeRoot,
   mainCloneRoot,
@@ -149,21 +146,15 @@ const main = () => {
   let assignedRoot;
   let roots;
   let stateRoot = null;
-<<<<<<< HEAD
   let extraRoots = [];
   let settingsFiles = [];
-=======
->>>>>>> origin/main
   try {
     assignedRoot = readAssignedWorktreeRoot(cwd);
     roots = assignedRoot ? [assignedRoot] : allWorktreeRoots(cwd);
     if (roots) stateRoot = campaignStateRoot(cwd);
-<<<<<<< HEAD
     const mainClone = mainCloneRoot(cwd);
     extraRoots = trustedWriteRoots(cwd, input, mainClone);
     settingsFiles = settingsFileCandidates(cwd, mainClone);
-=======
->>>>>>> origin/main
   } catch (error) {
     failClosed({
       hook: HOOK,
@@ -194,16 +185,12 @@ const main = () => {
     return;
   }
   if (scoped && roots) {
-<<<<<<< HEAD
     if (
       filePath &&
       !isInsideAnyRoot(filePath, roots) &&
       !isStateDirTrustedPath(filePath, stateRoot) &&
       !isTrustedExtraPath(filePath, extraRoots)
     ) {
-=======
-    if (filePath && !isInsideAnyRoot(filePath, roots) && !isStateDirTrustedPath(filePath, stateRoot)) {
->>>>>>> origin/main
       denyAndRecord({
         hook: HOOK,
         tool,
