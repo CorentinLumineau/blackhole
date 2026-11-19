@@ -114,7 +114,12 @@ const DATA_DIR = /(^|\/)(data|dumps?|backups?|seeds?)\//i;
 const DATA_EXT = /\.(sql|dump|csv)$/i;
 // csv is a deletion signal (DATA_EXT) but not a keyword-scan target: it holds rows, not statements.
 const SCANNED_DATA_EXT = /\.(sql|dump)$/i;
-const DESTRUCTIVE_SQL = /\b(DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE(\s+TABLE)?|DELETE\s+FROM)\b/i;
+// `truncate` is also a shell command, an identifier prefix and English, and TABLE is optional in SQL,
+// so the keyword counts only when whitespace and then a name-like token follow it (identifier char,
+// quote/bracket identifier, `${`, `$N`, `:name`, ONLY, TABLE). A quote, comma, `(` or `=` right
+// after it, or a longer identifier such as `truncateTargets`, does not match. Prose such as
+// `truncate logs` still raises: conservative by design.
+const DESTRUCTIVE_SQL = /\b(?:DROP\s+(?:TABLE|DATABASE|SCHEMA)|DELETE\s+FROM|TRUNCATE\s+[\w"`[$:])/i;
 
 const MIGRATIONS_RULE = PATH_RULES.find((r) => r.category === 'migrations');
 

@@ -170,6 +170,52 @@ describe('deletes-data keyword scan scope', () => {
   test('a .dump under a test directory still raises deletes-data', () => {
     expect(cats('tests/data.dump', '+ DROP TABLE t')).toContain('deletes-data');
   });
+  test('shell and prose uses of the word truncate are not deletes-data (#1348)', () => {
+    const lines = [
+      "+ for (const name of ['cp', 'mv', 'install', 'ln', 'truncate', 'dd', 'rsync']) {",
+      "+ if (name === 'truncate') return plain(truncateTargets(args));",
+      '+ * sed, dd, truncate, …) keeps the outside-assigned-worktree block.',
+      '+`install -d/-D`, `sed -i`, `dd`, `truncate`, a `mv` whose source is outside…',
+      '+ truncate -s 0 file.log',
+      '+ const truncate = (s) => s.slice(0, 10);',
+    ];
+    for (const line of lines) {
+      expect(cats('scripts/lib/hooks/guard.ts', line)).not.toContain('deletes-data');
+    }
+  });
+  test('truncate statements and TRUNCATE TABLE raise deletes-data in code, .sql and migrations', () => {
+    const lines = [
+      '+ TRUNCATE TABLE sessions',
+      '+ truncate table sessions',
+      '+ TRUNCATE sessions;',
+      '+ TRUNCATE users, sessions;',
+      '+ TRUNCATE "public"."users";',
+      '+TRUNCATE sessions',
+      '+ DROP TABLE t;  TRUNCATE sessions;',
+      '+ await db.exec(`TRUNCATE TABLE sessions`);',
+      '+ TRUNCATE users CASCADE;',
+      '+ TRUNCATE users RESTART IDENTITY CASCADE;',
+      '+ TRUNCATE a, b CASCADE;',
+      '+ TRUNCATE users -- wipe',
+      '+ TRUNCATE users /* wipe */;',
+      '+ IF x THEN TRUNCATE foo; END IF;',
+      "+ EXECUTE 'TRUNCATE users';",
+      '+ db.query(`TRUNCATE ${t}`)',
+      '+ db.query("TRUNCATE users")',
+      '+ psql -c "TRUNCATE users"',
+      '+ TRUNCATE $1;',
+      '+ TRUNCATE :t;',
+      '+ TRUNCATE ONLY users;',
+      '+ TRUNCATE `users`;',
+      '+ TRUNCATE [dbo].[users];',
+    ];
+    for (const p of ['src/cleanup.ts', 'ops/reset.sql', 'db/migrations/002.sql']) {
+      for (const line of lines) expect(cats(p, line)).toContain('deletes-data');
+    }
+  });
+  test('residual: prose that follows the word truncate with a name still raises (conservative)', () => {
+    expect(cats('src/notes.ts', '+ truncate logs')).toContain('deletes-data');
+  });
   test('production code with DELETE FROM still raises deletes-data', () => {
     expect(cats('src/cleanup.ts', '+ DELETE FROM users')).toContain('deletes-data');
   });
