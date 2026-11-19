@@ -29,6 +29,10 @@ export type CiVerdictOptions = {
    * it (a GitHub check-run `name`, or a Gitea/GitHub commit-status `context` such as
    * `ci-main / ci-report (pull_request)`). Missing, queued or SKIPPED is pending; any other completed
    * conclusion than SUCCESS is red.
+   *
+   * This is the only way to catch a review-gated head where one cheap job succeeded and the rest
+   * were skipped; without it only the all-skipped rule applies. The CLI does not read the campaign
+   * config, so the merge step passes one `--required` per `merge_ready.required_checks` entry.
    */
   requiredChecks?: string[];
 };
