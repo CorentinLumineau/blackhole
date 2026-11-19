@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import * as path from 'path';
-import { minMs, PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
+import { expectLinearTime, PRETOOLUSE_HOOKS_DIR, readHookEvents, runPreToolUseHook, withLinkedWorktree } from './lib/test-fixtures.ts';
 
 // Issue #1183: three write shapes the bash write-target guard missed — a redirect split by a
 // backslash-newline continuation, sed's own `w`/`W` commands and `s///w` flag, and interpreter
@@ -201,19 +201,19 @@ describe('bash-write-target-guard.js — interpreter one-liners that write (#118
 describe('bash-write-target-guard.js — #1183 parsers stay linear', () => {
   // Inputs just under the 32 KiB command-size cap that validate-bash-command.js enforces first.
   const CAP = 32 * 1024 - 64;
-  const LARGE_INPUTS: Array<[string, string]> = [
-    ['backslash-newline continuations', `echo ${'a \\\n'.repeat(CAP / 4)}> out.txt`],
-    ['a long sed script of substitutions', `sed '${'s/a/b/;'.repeat(CAP / 7)}' f`],
-    ['a sed script of unterminated escapes', `sed 's/${'\\\\'.repeat(CAP / 2)}' f`],
-    ['a long sed address chain', `sed -n '${'/a/,/b/{'.repeat(CAP / 8)}' f`],
-    ['a long node -e script', `node -e "${'x=1;'.repeat(CAP / 4)}"`],
-    ['many interpreter words', 'node '.repeat(CAP / 5)],
+  const LARGE_INPUTS: Array<[string, (reps: number) => string, number]> = [
+    ['backslash-newline continuations', (k) => `echo ${'a \\\n'.repeat(k)}> out.txt`, CAP / 4],
+    ['a long sed script of substitutions', (k) => `sed '${'s/a/b/;'.repeat(k)}' f`, CAP / 7],
+    ['a sed script of unterminated escapes', (k) => `sed 's/${'\\\\'.repeat(k)}' f`, CAP / 2],
+    ['a long sed address chain', (k) => `sed -n '${'/a/,/b/{'.repeat(k)}' f`, CAP / 8],
+    ['a long node -e script', (k) => `node -e "${'x=1;'.repeat(k)}"`, CAP / 4],
+    ['many interpreter words', (k) => 'node '.repeat(k), CAP / 5],
   ];
-  for (const [label, command] of LARGE_INPUTS) {
-    test(`#1183: ${label} (${command.length} chars) is evaluated within 250 ms`, async () => {
+  for (const [label, build, reps] of LARGE_INPUTS) {
+    test(`#1183: ${label} (${build(reps).length} chars) is evaluated in linear time`, async () => {
       await withLinkedWorktree('blackhole-hook-1183-', async (_mainRepo, worktree) => {
         const { evaluateBashWriteTargets } = guard();
-        expect(minMs(() => evaluateBashWriteTargets(command, worktree))).toBeLessThan(250);
+        expectLinearTime({ build, run: (command) => evaluateBashWriteTargets(command, worktree), n: Math.floor(reps / 4) });
       });
     });
   }

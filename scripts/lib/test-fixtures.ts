@@ -108,6 +108,41 @@ export const minMs = (run: () => unknown, runs = 3): number => {
   return best;
 };
 
+/** Asserts `run` scales linearly: times it at size `n` and `n * factor` in one process (minimum of
+ * `runs` each, back to back) and fails when the large run costs `maxRatio` times the small one or
+ * more. A ratio cancels a uniform slowdown from a busy runner, which an absolute millisecond budget
+ * cannot; the 1 ms denominator floor keeps a sub-millisecond small run from dividing by timer noise,
+ * and a failing pair is re-measured once so a single load spike cannot fail a linear parser. With
+ * the defaults a linear evaluator measures about 4 and a quadratic one about 16. The limit is 12,
+ * not the geometric mean 8: a linear parser measured 9-10 on a shared CI runner, where the larger
+ * input pays extra GC and cache cost. A larger factor is not an alternative, since it pushes the
+ * big input past the 5 s per-test timeout. Inputs are built before timing starts. */
+export const expectLinearTime = <T>(options: {
+  build: (size: number) => T;
+  run: (input: T) => unknown;
+  n: number;
+  factor?: number;
+  runs?: number;
+  maxRatio?: number;
+}): void => {
+  const { build, run, n, factor = 4, runs = 5, maxRatio = 12 } = options;
+  const small = build(n);
+  const large = build(n * factor);
+  const measure = () => {
+    const tSmall = minMs(() => run(small), runs);
+    const tLarge = minMs(() => run(large), runs);
+    return { tSmall, tLarge, ratio: tLarge / Math.max(tSmall, 1) };
+  };
+  const first = measure();
+  if (first.ratio < maxRatio) return;
+  const second = measure();
+  if (second.ratio < maxRatio) return;
+  throw new Error(
+    `not linear: size ${n} -> ${n * factor} grew ${first.tSmall.toFixed(2)} ms -> ${first.tLarge.toFixed(2)} ms (ratio ${first.ratio.toFixed(1)}), ` +
+      `retry ${second.tSmall.toFixed(2)} ms -> ${second.tLarge.toFixed(2)} ms (ratio ${second.ratio.toFixed(1)}); limit ${maxRatio}`,
+  );
+};
+
 export type HookRunResult = { exitCode: number; stdout: string; stderr: string };
 
 /** Runs a PreToolUse hook script with `payload` on stdin. `hooksDir` is overridable so a suite can

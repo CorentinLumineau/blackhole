@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import {
-  minMs,
+  expectLinearTime,
   PRETOOLUSE_HOOKS_DIR,
   readHookEvents,
   REBINDING_ROWS,
@@ -4502,16 +4502,14 @@ describe('validate-bash-command.js — git with no subcommand (#1116)', () => {
 describe('hook-event-log.js — redact is bounded on adversarial input (#1195)', () => {
   const hookEventLog = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'hook-event-log.js'));
 
-  test('redact of a 220 KB repeated-keyword input completes in under 50 ms', () => {
+  test('redact of a 220 KB repeated-keyword input scales linearly', () => {
     const { redact } = hookEventLog();
-    const input = 'a_password_'.repeat(20000);
-    expect(minMs(() => redact(input))).toBeLessThan(50);
+    expectLinearTime({ build: (k) => 'a_password_'.repeat(k), run: (input) => redact(input), n: 5000 });
   });
 
-  test('SECRET_KV alone over a 2,400-char repeated-keyword input completes in under 5 ms', () => {
+  test('SECRET_KV alone over a 2,400-char repeated-keyword input scales linearly', () => {
     const { SECRET_KV } = hookEventLog();
-    const input = 'a_password_'.repeat(220).slice(0, 2400);
-    expect(minMs(() => input.replace(SECRET_KV, '***'))).toBeLessThan(5);
+    expectLinearTime({ build: (k) => 'a_password_'.repeat(220).slice(0, k), run: (input) => input.replace(SECRET_KV, '***'), n: 600 });
   });
 
   test('a secret inside the window is still masked and the output is capped at 300', () => {
@@ -4671,10 +4669,13 @@ describe('validate-bash-command.js — clause-scan cost bound (#1197)', () => {
     });
   });
 
-  test('#1197: findRemovalInvocations on 240 KB of `;` finishes in under 100 ms', () => {
+  test('#1197: findRemovalInvocations on 240 KB of `;` scales linearly', () => {
     const { findRemovalInvocations } = requireGuard();
-    const command = `${';'.repeat(240 * 1024)} git checkout -- f`;
-    expect(minMs(() => findRemovalInvocations(command, os.tmpdir()))).toBeLessThan(100);
+    expectLinearTime({
+      build: (k) => `${';'.repeat(k)} git checkout -- f`,
+      run: (command) => findRemovalInvocations(command, os.tmpdir()),
+      n: 60 * 1024,
+    });
   });
 
   test('#1197: findRemovalInvocations still reports the invocation after a long separator run', () => {
@@ -5113,9 +5114,10 @@ describe('hook-event-log.js — keyword-less credential masking', () => {
   ];
 
   for (const [label, input] of ADVERSARIAL) {
-    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in linear time`, () => {
       const { redactReason } = hookEventLog();
-      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+      // The input is a repetition, so a prefix of a quarter of it is the same shape at n.
+      expectLinearTime({ build: (k) => input.slice(0, Math.floor((input.length * k) / 4)), run: (text) => redactReason(text), n: 1 });
     });
   }
 
@@ -5262,9 +5264,10 @@ describe('hook-event-log.js — residual credential forms (#1190)', () => {
   ];
 
   for (const [label, input] of ADVERSARIAL) {
-    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in linear time`, () => {
       const { redactReason } = hookEventLog();
-      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+      // The input is a repetition, so a prefix of a quarter of it is the same shape at n.
+      expectLinearTime({ build: (k) => input.slice(0, Math.floor((input.length * k) / 4)), run: (text) => redactReason(text), n: 1 });
     });
   }
 });
@@ -5329,9 +5332,10 @@ describe('hook-event-log.js — quoted values and client password env vars (#119
   ];
 
   for (const [label, input] of ADVERSARIAL) {
-    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in under 10 ms`, () => {
+    test(`ReDoS guard: adversarial ${label} (${input.length} chars) redacts in linear time`, () => {
       const { redactReason } = hookEventLog();
-      expect(minMs(() => redactReason(input))).toBeLessThan(10);
+      // The input is a repetition, so a prefix of a quarter of it is the same shape at n.
+      expectLinearTime({ build: (k) => input.slice(0, Math.floor((input.length * k) / 4)), run: (text) => redactReason(text), n: 1 });
     });
   }
 });
@@ -5348,14 +5352,10 @@ describe('validate-bash-command.js — fork-bomb pattern stays linear on long id
     return new RegExp(entry.pattern, entry.flags);
   };
 
-  test('64 KB of identifier chars is scanned in under 50 ms', () => {
+  test('64 KB of identifier chars is scanned in linear time', () => {
     const re = forkBomb();
-    const input = 'a'.repeat(64 * 1024);
-    const start = performance.now();
-    const matched = re.test(input);
-    const elapsed = performance.now() - start;
-    expect(matched).toBe(false);
-    expect(elapsed).toBeLessThan(50);
+    expect(re.test('a'.repeat(64 * 1024))).toBe(false);
+    expectLinearTime({ build: (k) => 'a'.repeat(k), run: (input) => re.test(input), n: 16 * 1024 });
   });
 
   for (const command of [':(){ :|:& };:', 'bomb(){ bomb|bomb& };bomb', 'echo hi; f(){ f|f& };f']) {
