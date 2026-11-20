@@ -108,4 +108,42 @@ describe('usage CLI, desktop get_usage payload', () => {
       expect(r.err).not.toContain('plan is not none');
     });
   });
+
+  test('a payload mixing the desktop shape with top-level windows exits 2', () => {
+    withTempDir('usage-cli', (dir) => {
+      const file = path.join(dir, 'usage.json');
+      fs.writeFileSync(file, JSON.stringify({ ...desktop(rows), windows }));
+      const r = run(dir, ['--usage', file]);
+      expect(r.code).toBe(2);
+      expect(r.err).toMatch(/mixes the desktop get_usage shape/);
+    });
+  });
+
+  const expiredRows = rows.map((row) => ({ ...row, resetsAt: NOW - HOUR }));
+
+  test('an expired desktop file falls through to the rate-limit cache', () => {
+    withTempDir('usage-cli', (dir) => {
+      const file = path.join(dir, 'usage.json');
+      fs.writeFileSync(file, JSON.stringify(desktop(expiredRows)));
+      fs.utimesSync(file, NOW - 5, NOW - 5);
+      const cache = path.join(dir, 'rate-limits.json');
+      fs.writeFileSync(cache, JSON.stringify({ rate_limits: { seven_day: { used_percentage: 30, resets_at: NOW + 90 * HOUR } } }));
+      fs.utimesSync(cache, NOW - 10, NOW - 10);
+      const r = run(dir, ['--usage', file, '--cache', cache, '--host', 'claude']);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatchObject({ source: 'rate-limit-cache', provider: 'statusline', windows: [{ name: 'seven_day', used_pct: 30, resets_at: NOW + 90 * HOUR }] });
+    });
+  });
+
+  test('an expired desktop file with no cache reports source none', () => {
+    withTempDir('usage-cli', (dir) => {
+      const file = path.join(dir, 'usage.json');
+      fs.writeFileSync(file, JSON.stringify(desktop(expiredRows)));
+      fs.utimesSync(file, NOW - 5, NOW - 5);
+      const r = run(dir, ['--usage', file, '--cache', path.join(dir, 'missing.json'), '--host', 'claude']);
+      expect(r.code).toBe(0);
+      expect(r.out.source).toBe('none');
+      expect(r.out.reason).toContain('no current window');
+    });
+  });
 });

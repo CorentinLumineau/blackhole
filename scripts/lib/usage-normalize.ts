@@ -1,7 +1,8 @@
 // Shape adapters for a usage payload an agent or a host hands over as a file (usage.ts --usage).
 // Pure: no I/O, no clock. Three shapes are accepted: the normalized one (a `windows` array) and the
 // desktop `get_usage` / RateLimits one (top-level keys named like windows), and the raw desktop
-// `get_usage` tool output (`plan.windows` rows labelled like the app's usage screen).
+// `get_usage` tool output (`plan.windows` rows labelled like the app's usage screen). A payload mixing
+// that last shape with any top-level window form is rejected: no source is silently preferred.
 
 export class UsageFileError extends Error {}
 
@@ -90,6 +91,9 @@ export const ccdRowsToWindows = (rows: unknown[]): ReportWindow[] => {
 export const normalizeUsagePayload = (payload: unknown): NormalizedUsage => {
   if (!isRecord(payload)) throw new UsageFileError('usage payload must be a JSON object');
   const ccd = isRecord(payload.plan) && Array.isArray(payload.plan.windows) ? payload.plan : null;
+  if (ccd && (Array.isArray(payload.windows) || isRecord(payload.rate_limits) || Object.keys(payload).some((k) => WINDOW_NAME.test(k)))) {
+    throw new UsageFileError('usage payload mixes the desktop get_usage shape with top-level windows');
+  }
   const windows = ccd ? ccdRowsToWindows(ccd.windows as unknown[]) : collectWindows(payload);
   if (ccd && !windows.length) throw new UsageFileError('get_usage carries no 5-hour or weekly all-models window');
   const names = new Set(windows.map((w) => w.name));
