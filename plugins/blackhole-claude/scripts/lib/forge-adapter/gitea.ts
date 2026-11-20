@@ -59,7 +59,7 @@ const MAX_BLOCKER_PAGES = 20;
 type GiteaApiFile = { filename: string; previous_filename?: string };
 
 /** One commit status as Gitea reports it; `status` is pending, success, failure, error, warning or skipped. */
-type GiteaCommitStatus = { context: string; status: string; created_at?: string | null };
+type GiteaCommitStatus = { context: string; status: string };
 
 type GiteaCombinedStatus = { total_count?: number; statuses?: GiteaCommitStatus[] | null };
 
@@ -83,10 +83,7 @@ const STATUS_CONCLUSION: Record<string, ForgeCheck['conclusion']> = {
 /** A state this adapter does not know reads as still running: never as a pass, never as a failure. */
 export const mapGiteaStatus = (row: GiteaCommitStatus): ForgeCheck => {
   const conclusion = STATUS_CONCLUSION[row.status];
-  const startedAt = row.created_at ? { startedAt: row.created_at } : {};
-  return conclusion
-    ? { name: row.context, status: 'COMPLETED', conclusion, ...startedAt }
-    : { name: row.context, status: 'IN_PROGRESS', conclusion: null, ...startedAt };
+  return conclusion ? { name: row.context, status: 'COMPLETED', conclusion } : { name: row.context, status: 'IN_PROGRESS', conclusion: null };
 };
 
 export const mapGiteaApiPr = (row: GiteaApiPrRow): ForgePr => {

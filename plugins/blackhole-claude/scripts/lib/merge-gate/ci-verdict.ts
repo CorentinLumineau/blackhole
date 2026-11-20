@@ -1,4 +1,4 @@
-import { mapRestCheckRun, mapRestStatus, type RestCheckRun, type RestStatus } from '../forge-adapter/github-rest.ts';
+import { mapRestCheckRun, mapRestStatus, suiteProducers, type RestCheckRun, type RestStatus } from '../forge-adapter/github-rest.ts';
 import type { ForgeCheck } from '../forge-adapter/types.ts';
 
 // CI verdict for the merge gate (phase-loop.md § Merge protocol step 2, ADR-050). A pure function
@@ -23,13 +23,19 @@ export function isVercelPreviewCheck(name: string): boolean {
 
 const PASSING = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 
-/** Accepts a REST or MCP check-runs payload, a combined-status payload, both merged, or ForgeCheck[]. */
-export const checksFromSnapshot = (snapshot: unknown): ForgeCheck[] => {
+/**
+ * Accepts a REST or MCP check-runs payload, a combined-status payload, both merged, or ForgeCheck[].
+ * `runs` is the head's `actions/runs` payload; it names the workflow behind each check suite so reruns
+ * of one producer can supersede each other. Without it (or for a suite it does not name) a run carries
+ * no producer and is judged on its own.
+ */
+export const checksFromSnapshot = (snapshot: unknown, runs?: unknown): ForgeCheck[] => {
+  const suites = runs === undefined ? undefined : suiteProducers(runs);
   if (Array.isArray(snapshot)) return snapshot as ForgeCheck[];
   if (snapshot === null || typeof snapshot !== 'object') throw new Error('checks snapshot must be an object or an array');
   const { check_runs, statuses } = snapshot as { check_runs?: RestCheckRun[]; statuses?: RestStatus[] };
   if (!check_runs && !statuses) throw new Error('checks snapshot has neither check_runs nor statuses');
-  return [...(check_runs ?? []).map(mapRestCheckRun), ...(statuses ?? []).map(mapRestStatus)];
+  return [...(check_runs ?? []).map((row) => mapRestCheckRun(row, suites)), ...(statuses ?? []).map(mapRestStatus)];
 };
 
 export type CiVerdictOptions = {
@@ -46,35 +52,57 @@ export type CiVerdictOptions = {
   requiredChecks?: string[];
 };
 
-const startMs = (c: ForgeCheck): number => (c.startedAt ? Date.parse(c.startedAt) : NaN);
-
-/** Entries of `group` holding the maximal value of `key`; null when any entry lacks one (unorderable). */
-const newestBy = (group: ForgeCheck[], key: (c: ForgeCheck) => number): ForgeCheck[] | null => {
-  const values = group.map(key);
-  if (values.some((v) => Number.isNaN(v))) return null;
-  const max = Math.max(...values);
-  return group.filter((_, i) => values[i] === max);
+/** A start time is usable only when it parses to a moment after the epoch; the zero time of an unstarted run is not one. */
+const startMs = (c: ForgeCheck): number => {
+  const ms = c.startedAt ? Date.parse(c.startedAt) : NaN;
+  return ms > 0 ? ms : NaN;
 };
 
+const runIdOf = (c: ForgeCheck): number => (typeof c.runId === 'number' ? c.runId : NaN);
+
+/** Entries ordered newest first as tiers of entries that tie; one tier holding every entry when they cannot all be ordered. */
+const tiersNewestFirst = (group: ForgeCheck[]): ForgeCheck[][] => {
+  const tierBy = (entries: ForgeCheck[], key: (c: ForgeCheck) => number): ForgeCheck[][] | null => {
+    const values = entries.map(key);
+    if (values.some((v) => Number.isNaN(v))) return null;
+    return [...new Set(values)].sort((x, y) => y - x).map((v) => entries.filter((_, i) => values[i] === v));
+  };
+  const byRun = (entries: ForgeCheck[]) => tierBy(entries, runIdOf) ?? [entries];
+  const byStart = tierBy(group, startMs);
+  return byStart ? byStart.flatMap(byRun) : (tierBy(group, runIdOf) ?? [group]);
+};
+
+const isNonExecuting = (c: ForgeCheck): boolean => c.status === 'COMPLETED' && (c.conclusion === 'SKIPPED' || c.conclusion === 'NEUTRAL');
+
 /**
- * Keeps the latest run of each check name, so a run a later run replaced (a cancelled re-trigger) no
- * longer judges the head. Order is `startedAt`, then `runId`; neither is `completed_at`, which is null
- * for the newest run while it is still going. A name whose runs cannot all be ordered keeps every run,
- * so a non-passing one still fails the set: ordering data is never guessed.
+ * Keeps the latest run of each producer's check, so a run a later run replaced (a cancelled re-trigger)
+ * no longer judges the head. A check name alone does not identify a producer (two workflows can share a
+ * job name, one workflow can run on push and pull_request, a commit status can be named like a check
+ * run), so only runs carrying the same `producer` and `name` supersede each other; a run without a
+ * producer is always kept. Order is `startedAt`, then `runId`; neither is `completed_at`, which is null
+ * for the newest run while it is still going. A time is absent when missing, unparseable or at or
+ * before the epoch (the zero time of an unstarted run); with any absent time the group is ordered by
+ * `runId`, and a group that still cannot be ordered keeps every run: ordering data is never guessed.
+ * A newest run that is only SKIPPED or NEUTRAL proves nothing was fixed, so the nearest older run that
+ * actually executed stays too unless it passed.
  */
 export const latestPerName = (checks: ForgeCheck[]): ForgeCheck[] => {
-  const byName = new Map<string, ForgeCheck[]>();
-  for (const c of checks) byName.set(c.name, [...(byName.get(c.name) ?? []), c]);
+  const groups = new Map<string, ForgeCheck[]>();
   const kept = new Set<ForgeCheck>();
-  for (const group of byName.values()) {
-    if (group.length === 1) {
-      kept.add(group[0]);
-      continue;
+  for (const c of checks) {
+    if (c.producer === undefined) kept.add(c);
+    else groups.set(`${c.producer}\0${c.name}`, [...(groups.get(`${c.producer}\0${c.name}`) ?? []), c]);
+  }
+  for (const group of groups.values()) {
+    const [newest, ...older] = tiersNewestFirst(group);
+    for (const c of newest) kept.add(c);
+    if (!newest.every(isNonExecuting)) continue;
+    for (const tier of older) {
+      const executed = tier.filter((c) => !isNonExecuting(c));
+      if (executed.length === 0) continue;
+      for (const c of executed) if (!(c.status === 'COMPLETED' && c.conclusion === 'SUCCESS')) kept.add(c);
+      break;
     }
-    const byStart = newestBy(group, startMs);
-    const byRun = (entries: ForgeCheck[]) => newestBy(entries, (c) => c.runId ?? NaN);
-    const winners = byStart ? (byRun(byStart) ?? byStart) : (byRun(group) ?? group);
-    for (const c of winners) kept.add(c);
   }
   return checks.filter((c) => kept.has(c));
 };

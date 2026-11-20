@@ -35,8 +35,43 @@ export type RestPrRow = {
 
 export type RestPrFile = { filename: string; previous_filename?: string };
 
-export type RestCheckRun = { id?: number; name: string; status: string; conclusion: string | null; started_at?: string | null };
-export type RestStatus = { context: string; state: string; created_at?: string | null };
+export type RestCheckRun = {
+  id?: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  started_at?: string | null;
+  check_suite?: { id?: number } | null;
+};
+export type RestStatus = { id?: number; context: string; state: string; created_at?: string | null };
+
+/** `GET repos/{repo}/actions/runs?head_sha=<sha>&per_page=100`: the part that names a suite's workflow. */
+export type RestWorkflowRuns = {
+  workflow_runs: Array<{ check_suite_id?: number; workflow_id?: number; event?: string; head_branch?: string | null }>;
+};
+
+/**
+ * Producer of each check suite, by suite id. A check name does not identify one producer (two workflows
+ * can share a job name, one workflow can run on push and on pull_request), so a run is only judged
+ * against another run of the same producer, and only a key proved here counts: workflow, event and
+ * branch, which a rerun keeps and a different workflow, event or ref does not. An entry missing a
+ * field is skipped, and a suite claimed by two different keys is dropped as ambiguous: a run without
+ * a producer is never superseded, so every gap here fails closed.
+ */
+export const suiteProducers = (payload: unknown): Map<number, string> => {
+  const runs = (payload as RestWorkflowRuns | null)?.workflow_runs;
+  if (!Array.isArray(runs)) throw new Error('runs payload must be an object with a workflow_runs array');
+  const producers = new Map<number, string>();
+  const ambiguous = new Set<number>();
+  for (const { check_suite_id: suite, workflow_id: workflow, event, head_branch: branch } of runs) {
+    if (typeof suite !== 'number' || typeof workflow !== 'number' || typeof event !== 'string' || typeof branch !== 'string') continue;
+    const key = `actions:${workflow}:${event}:${branch}`;
+    if (producers.get(suite) !== undefined && producers.get(suite) !== key) ambiguous.add(suite);
+    producers.set(suite, key);
+  }
+  for (const suite of ambiguous) producers.delete(suite);
+  return producers;
+};
 
 const PAGE_SIZE = 100;
 
@@ -75,19 +110,24 @@ export const mapRestPr = (row: RestPrRow): ForgePr => ({
   mergeable: row.mergeable,
 });
 
-export const mapRestCheckRun = (row: RestCheckRun): ForgeCheck => ({
-  name: row.name,
-  status: row.status === 'in_progress' ? 'IN_PROGRESS' : row.status === 'completed' ? 'COMPLETED' : 'QUEUED',
-  conclusion: row.conclusion ? (row.conclusion.toUpperCase() as ForgeCheck['conclusion']) : null,
-  ...(row.started_at ? { startedAt: row.started_at } : {}),
-  ...(typeof row.id === 'number' ? { runId: row.id } : {}),
-});
+export const mapRestCheckRun = (row: RestCheckRun, suites?: Map<number, string>): ForgeCheck => {
+  const suite = row.check_suite?.id;
+  const producer = typeof suite === 'number' ? suites?.get(suite) : undefined;
+  return {
+    name: row.name,
+    status: row.status === 'in_progress' ? 'IN_PROGRESS' : row.status === 'completed' ? 'COMPLETED' : 'QUEUED',
+    conclusion: row.conclusion ? (row.conclusion.toUpperCase() as ForgeCheck['conclusion']) : null,
+    ...(row.started_at ? { startedAt: row.started_at } : {}),
+    ...(typeof row.id === 'number' ? { runId: row.id } : {}),
+    ...(producer ? { producer } : {}),
+  };
+};
 
 /** Legacy commit statuses, which `gh pr checks` also lists next to check runs. */
 export const mapRestStatus = (row: RestStatus): ForgeCheck => {
-  const startedAt = row.created_at ? { startedAt: row.created_at } : {};
-  if (row.state === 'pending') return { name: row.context, status: 'QUEUED', conclusion: null, ...startedAt };
-  return { name: row.context, status: 'COMPLETED', conclusion: row.state === 'success' ? 'SUCCESS' : 'FAILURE', ...startedAt };
+  const order = { ...(row.created_at ? { startedAt: row.created_at } : {}), ...(typeof row.id === 'number' ? { runId: row.id } : {}), producer: 'status' };
+  if (row.state === 'pending') return { name: row.context, status: 'QUEUED', conclusion: null, ...order };
+  return { name: row.context, status: 'COMPLETED', conclusion: row.state === 'success' ? 'SUCCESS' : 'FAILURE', ...order };
 };
 
 const query = (params: Record<string, string | number | undefined>): string =>
@@ -170,7 +210,15 @@ export const listChecks = (repo: string, sha: string): ForgeCheck[] => {
     `repos/${repo}/commits/${sha}/check-runs?per_page=${PAGE_SIZE}`,
   ).check_runs;
   const statuses = runGhApiRestJson<{ statuses: RestStatus[] }>('GET', `repos/${repo}/commits/${sha}/status`).statuses;
-  return [...runs.map(mapRestCheckRun), ...statuses.map(mapRestStatus)];
+  // The producer join is best effort: a token without `actions: read`, or a list cut at one page, leaves
+  // runs without a producer, which are judged one by one rather than collapsed.
+  let suites = new Map<number, string>();
+  try {
+    suites = suiteProducers(runGhApiRestJson('GET', `repos/${repo}/actions/runs?head_sha=${sha}&per_page=${PAGE_SIZE}`));
+  } catch {
+    // keep-all fallback
+  }
+  return [...runs.map((row) => mapRestCheckRun(row, suites)), ...statuses.map(mapRestStatus)];
 };
 
 /** Removing a label the issue does not carry is not an error, matching `gh issue edit`. */

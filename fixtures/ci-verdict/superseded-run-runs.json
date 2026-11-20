@@ -1,0 +1,9 @@
+{
+  "description": "GET repos/{repo}/actions/runs?head_sha=<sha>&per_page=100 for the head of superseded-run.json: both pr-lint suites belong to one workflow fired by one pull_request event, the Verify suite to another workflow",
+  "total_count": 3,
+  "workflow_runs": [
+    { "id": 9001, "check_suite_id": 121141391826, "workflow_id": 386981354, "event": "pull_request", "head_branch": "fix/superseded" },
+    { "id": 9002, "check_suite_id": 121141393769, "workflow_id": 386981354, "event": "pull_request", "head_branch": "fix/superseded" },
+    { "id": 9003, "check_suite_id": 121141391380, "workflow_id": 307277644, "event": "pull_request", "head_branch": "fix/superseded" }
+  ]
+}

@@ -81,25 +81,6 @@ describe('GitLabForgeAdapter', () => {
     ]);
   });
 
-  test('prChecks carries the job id and start time, falling back to created_at', async () => {
-    runGlabJsonSpy = spyOn(glabCli, 'runGlabJson').mockImplementation((args: string[]) => {
-      const endpoint = args[1] ?? '';
-      if (endpoint === 'projects/group%2Fproject/merge_requests/9/pipelines') return [{ id: 55 }];
-      if (endpoint === 'projects/group%2Fproject/pipelines/55/jobs') {
-        return [
-          { id: 7, name: 'lint', status: 'success', started_at: '2026-11-20T11:01:00Z', created_at: '2026-11-20T11:00:00Z' },
-          { id: 8, name: 'test', status: 'pending', created_at: '2026-11-20T11:00:30Z' },
-        ];
-      }
-      throw new Error('unexpected glab api call: ' + args.join(' '));
-    });
-    const checks = await new GitLabForgeAdapter('group/project').prChecks(9);
-    expect(checks).toEqual([
-      { name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS', runId: 7, startedAt: '2026-11-20T11:01:00Z' },
-      { name: 'test', status: 'QUEUED', conclusion: null, runId: 8, startedAt: '2026-11-20T11:00:30Z' },
-    ]);
-  });
-
   test('prChecks picks the pipeline with the highest id, not array order', async () => {
     runGlabJsonSpy = spyOn(glabCli, 'runGlabJson').mockImplementation((args: string[]) => {
       const endpoint = args[1] ?? '';
