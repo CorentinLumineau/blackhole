@@ -250,6 +250,7 @@
 | reviews/review-test-build-harness-integration-test-for-the-skills-sh-branch-of-model-routing-md.md | Review artifact for issue #713 (LGTM) | review | current | on file change |
 | reviews/review-test-carry-target-allowlist-reject-branch-is-untested-coverage-reads-100-but-the.md | Review artifact for issue #979 (LGTM) | review | current | on file change |
 | reviews/review-test-design-track-check-ts-s-two-check-functions-are-defined-but-never-called-by.md | Review artifact for issue #982 (LGTM) | review | current | on file change |
+| reviews/review-test-harden-expectlineartime-factor-2-row-headroom-pin-the-default-cover-the-ret.md | Review artifact for issue #1369 (LGTM) | review | current | on file change |
 | reviews/review-test-hooks-hook-event-triage-test-ts-asserts-a-clean-repo-root-3-tests-fail-on-a.md | Review artifact for issue #981 (LGTM) | review | current | on file change |
 | reviews/review-test-state-write-guard-s-zero-collapse-refusal-is-untested-the-one-branch-that-p.md | Review artifact for issue #983 (LGTM) | review | current | on file change |
 | reviews/review-usage-ts-pace-floor-ts-usage-reject-the-ccd-get-usage-payload-that-usage-probe-f.md | Review artifact for issue #1361 (LGTM) | review | current | on file change |
