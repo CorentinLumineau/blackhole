@@ -244,6 +244,7 @@
 | reviews/review-fix-review-v-test-09-unmeasurable-for-hooks-reporting-accuracy.md | Review artifact for issue #787 (LGTM) | review | current | on file change |
 | reviews/review-fix-scaffold-phase-0-journeys-md-companion-scaffold-creates-an-unindexed-doc-v-d.md | Review artifact for issue #728 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-marketplace-json-path-fix.md | Review of the marketplace.json path fix | review | final | on release |
+| reviews/review-merge-gate-unconfigured-civerdict-still-reads-detect-passed-everything-else-skip.md | Review artifact for issue #1380 (CHANGES REQUESTED) | review | current | on file change |
 | reviews/review-record-408-s-reversal-of-adr-007-r3-supersession-rule-with-declared-phrase-scan.md | Review artifact for issue #712 (LGTM) | review | current | on file change |
 | reviews/review-refactor-build-named-flags-plumbing-for-build-targets-v-tree-01-tree-registry-ch.md | Review artifact for issue #724 (LGTM, 2 deferred WARN) | review | current | on file change |
 | reviews/review-refactor-facts-retire-expected-check-count-derived-counter-and-its-string-litera.md | Review artifact for issue #704 (LGTM) | review | current | on file change |
