@@ -46,7 +46,41 @@ export type CiVerdictOptions = {
   requiredChecks?: string[];
 };
 
-export const ciVerdict = (checks: ForgeCheck[], options: CiVerdictOptions = {}): CiVerdict => {
+const startMs = (c: ForgeCheck): number => (c.startedAt ? Date.parse(c.startedAt) : NaN);
+
+/** Entries of `group` holding the maximal value of `key`; null when any entry lacks one (unorderable). */
+const newestBy = (group: ForgeCheck[], key: (c: ForgeCheck) => number): ForgeCheck[] | null => {
+  const values = group.map(key);
+  if (values.some((v) => Number.isNaN(v))) return null;
+  const max = Math.max(...values);
+  return group.filter((_, i) => values[i] === max);
+};
+
+/**
+ * Keeps the latest run of each check name, so a run a later run replaced (a cancelled re-trigger) no
+ * longer judges the head. Order is `startedAt`, then `runId`; neither is `completed_at`, which is null
+ * for the newest run while it is still going. A name whose runs cannot all be ordered keeps every run,
+ * so a non-passing one still fails the set: ordering data is never guessed.
+ */
+export const latestPerName = (checks: ForgeCheck[]): ForgeCheck[] => {
+  const byName = new Map<string, ForgeCheck[]>();
+  for (const c of checks) byName.set(c.name, [...(byName.get(c.name) ?? []), c]);
+  const kept = new Set<ForgeCheck>();
+  for (const group of byName.values()) {
+    if (group.length === 1) {
+      kept.add(group[0]);
+      continue;
+    }
+    const byStart = newestBy(group, startMs);
+    const byRun = (entries: ForgeCheck[]) => newestBy(entries, (c) => c.runId ?? NaN);
+    const winners = byStart ? (byRun(byStart) ?? byStart) : (byRun(group) ?? group);
+    for (const c of winners) kept.add(c);
+  }
+  return checks.filter((c) => kept.has(c));
+};
+
+export const ciVerdict = (allChecks: ForgeCheck[], options: CiVerdictOptions = {}): CiVerdict => {
+  const checks = latestPerName(allChecks);
   const ignored = checks.filter((c) => isVercelPreviewCheck(c.name)).map((c) => c.name);
   const gating = checks.filter((c) => !isVercelPreviewCheck(c.name));
   const pending = gating.filter((c) => c.status !== 'COMPLETED').map((c) => c.name);
@@ -88,7 +122,7 @@ export const requiredChecksFromConfig = (config: Record<string, unknown>): strin
 export const unconfiguredPendingMessage = (checks: ForgeCheck[], options: CiVerdictOptions): string | null => {
   const result = ciVerdict(checks, options);
   if (!result.missing_config) return null;
-  const skipped = checks
+  const skipped = latestPerName(checks)
     .filter((c) => !isVercelPreviewCheck(c.name) && c.status === 'COMPLETED' && c.conclusion === 'SKIPPED')
     .map((c) => c.name);
   return `ci-verdict: pending, ${REQUIRED_CHECKS_KEY} is not configured and ${skipped.length} gating check(s) were SKIPPED: ${skipped.join(', ')}. ` +

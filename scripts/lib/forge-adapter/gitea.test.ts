@@ -1,6 +1,6 @@
 import { describe, expect, mock, spyOn, test, afterEach } from 'bun:test';
 import * as teaCli from './tea-cli.ts';
-import { GiteaForgeAdapter } from './gitea.ts';
+import { GiteaForgeAdapter, mapGiteaStatus } from './gitea.ts';
 
 describe('GiteaForgeAdapter', () => {
   let runTeaJsonSpy: ReturnType<typeof spyOn<typeof teaCli, 'runTeaJson'>>;
@@ -651,4 +651,17 @@ describe('createForgeAdapter gitea', () => {
     expect(adapter.forge).toBe('gitea');
   });
 
+});
+
+describe('mapGiteaStatus ordering field', () => {
+  test('created_at becomes startedAt, and a row without it stays unordered', () => {
+    expect(mapGiteaStatus({ context: 'lint', status: 'success', created_at: '2026-11-20T11:00:00Z' })).toEqual({
+      name: 'lint',
+      status: 'COMPLETED',
+      conclusion: 'SUCCESS',
+      startedAt: '2026-11-20T11:00:00Z',
+    });
+    expect(mapGiteaStatus({ context: 'lint', status: 'pending', created_at: '2026-11-20T11:00:00Z' }).startedAt).toBe('2026-11-20T11:00:00Z');
+    expect(mapGiteaStatus({ context: 'lint', status: 'success' })).toEqual({ name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' });
+  });
 });

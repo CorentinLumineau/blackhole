@@ -54,6 +54,10 @@ export interface ForgeCheck {
     | 'SKIPPED'
     | 'ACTION_REQUIRED'
     | null;
+  /** ISO 8601 start of this run; with `runId` it orders several runs of one `name`, newest wins. */
+  startedAt?: string;
+  /** The forge's monotonic run id, used to break a `startedAt` tie. */
+  runId?: number;
 }
 
 export interface ForgeAuthStatus {

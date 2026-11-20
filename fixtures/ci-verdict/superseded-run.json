@@ -1,0 +1,10 @@
+{
+  "description": "Four check runs shaped like blackhole PR #1384 and #1360: pr-lint has a CANCELLED run superseded by a later SUCCESS run on the same head, listed older-first and unfiltered",
+  "total_count": 4,
+  "check_runs": [
+    { "id": 2001, "name": "pr-lint", "status": "completed", "conclusion": "cancelled", "started_at": "2026-11-20T11:29:49Z" },
+    { "id": 2003, "name": "pr-lint", "status": "completed", "conclusion": "success", "started_at": "2026-11-20T11:45:34Z" },
+    { "id": 2002, "name": "Protocol Conformance", "status": "completed", "conclusion": "success", "started_at": "2026-11-20T11:30:00Z" },
+    { "id": 2004, "name": "Release Notes Gate", "status": "completed", "conclusion": "skipped", "started_at": "2026-11-20T11:30:01Z" }
+  ]
+}

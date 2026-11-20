@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as childProcess from 'child_process';
 import { GitHubForgeAdapter } from './github.ts';
-import { repoSlugFromOrigin } from './github-rest.ts';
+import { mapRestCheckRun, mapRestStatus, repoSlugFromOrigin } from './github-rest.ts';
 
 // Every adapter call is `gh api -X <method> <endpoint> [--input -]` (ADR-048). The mock answers by
 // method + endpoint and records each call, so a test asserts both the REST request and the mapping.
@@ -355,5 +355,27 @@ describe('createForgeAdapter', () => {
     expect(() => createForgeAdapter({ repo: 'o/r', forge: 'bitbucket' as 'github' })).toThrow(
       /unsupported forge/,
     );
+  });
+});
+
+describe('check ordering fields', () => {
+  test('mapRestCheckRun carries the run id and start time so the latest run of a name can be told', () => {
+    expect(mapRestCheckRun({ id: 77, name: 'pr-lint', status: 'completed', conclusion: 'cancelled', started_at: '2026-11-20T11:29:49Z' })).toEqual({
+      name: 'pr-lint',
+      status: 'COMPLETED',
+      conclusion: 'CANCELLED',
+      runId: 77,
+      startedAt: '2026-11-20T11:29:49Z',
+    });
+  });
+
+  test('mapRestStatus carries created_at as the start time', () => {
+    expect(mapRestStatus({ context: 'ci/legacy', state: 'success', created_at: '2026-11-20T11:00:00Z' })).toEqual({
+      name: 'ci/legacy',
+      status: 'COMPLETED',
+      conclusion: 'SUCCESS',
+      startedAt: '2026-11-20T11:00:00Z',
+    });
+    expect(mapRestStatus({ context: 'ci/legacy', state: 'pending', created_at: '2026-11-20T11:00:00Z' }).startedAt).toBe('2026-11-20T11:00:00Z');
   });
 });

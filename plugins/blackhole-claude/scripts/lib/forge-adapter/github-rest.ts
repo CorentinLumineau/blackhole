@@ -35,8 +35,8 @@ export type RestPrRow = {
 
 export type RestPrFile = { filename: string; previous_filename?: string };
 
-export type RestCheckRun = { name: string; status: string; conclusion: string | null };
-export type RestStatus = { context: string; state: string };
+export type RestCheckRun = { id?: number; name: string; status: string; conclusion: string | null; started_at?: string | null };
+export type RestStatus = { context: string; state: string; created_at?: string | null };
 
 const PAGE_SIZE = 100;
 
@@ -79,12 +79,15 @@ export const mapRestCheckRun = (row: RestCheckRun): ForgeCheck => ({
   name: row.name,
   status: row.status === 'in_progress' ? 'IN_PROGRESS' : row.status === 'completed' ? 'COMPLETED' : 'QUEUED',
   conclusion: row.conclusion ? (row.conclusion.toUpperCase() as ForgeCheck['conclusion']) : null,
+  ...(row.started_at ? { startedAt: row.started_at } : {}),
+  ...(typeof row.id === 'number' ? { runId: row.id } : {}),
 });
 
 /** Legacy commit statuses, which `gh pr checks` also lists next to check runs. */
 export const mapRestStatus = (row: RestStatus): ForgeCheck => {
-  if (row.state === 'pending') return { name: row.context, status: 'QUEUED', conclusion: null };
-  return { name: row.context, status: 'COMPLETED', conclusion: row.state === 'success' ? 'SUCCESS' : 'FAILURE' };
+  const startedAt = row.created_at ? { startedAt: row.created_at } : {};
+  if (row.state === 'pending') return { name: row.context, status: 'QUEUED', conclusion: null, ...startedAt };
+  return { name: row.context, status: 'COMPLETED', conclusion: row.state === 'success' ? 'SUCCESS' : 'FAILURE', ...startedAt };
 };
 
 const query = (params: Record<string, string | number | undefined>): string =>

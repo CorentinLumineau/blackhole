@@ -345,12 +345,14 @@ export class GitLabForgeAdapter implements ForgeAdapter {
     ]);
     if (pipelines.length === 0) return [];
     const latest = pipelines.slice().sort((a, b) => b.id - a.id)[0];
-    const jobs = runGlabJson<Array<{ name: string; status: string }>>([
+    const jobs = runGlabJson<Array<{ id?: number; name: string; status: string; started_at?: string | null; created_at?: string | null }>>([
       'api',
       `projects/${project}/pipelines/${latest.id}/jobs`,
     ]);
     return jobs.map((job) => ({
       name: job.name,
+      ...(typeof job.id === 'number' ? { runId: job.id } : {}),
+      ...((job.started_at ?? job.created_at) ? { startedAt: (job.started_at ?? job.created_at) as string } : {}),
       status:
         job.status === 'running'
           ? 'IN_PROGRESS'
