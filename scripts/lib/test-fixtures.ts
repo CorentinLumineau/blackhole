@@ -97,13 +97,13 @@ export const PRETOOLUSE_HOOKS_DIR = path.join(root, 'templates', 'hooks', 'preto
 
 /** Minimum wall time of `runs` calls after one warm-up call: the minimum damps scheduler noise, so a
  * timing budget measures the code, not a busy CI runner. Shared by every hook timing test. */
-export const minMs = (run: () => unknown, runs = 3): number => {
+export const minMs = (run: () => unknown, runs = 3, now: () => number = () => performance.now()): number => {
   run();
   let best = Infinity;
   for (let i = 0; i < runs; i += 1) {
-    const start = performance.now();
+    const start = now();
     run();
-    best = Math.min(best, performance.now() - start);
+    best = Math.min(best, now() - start);
   }
   return best;
 };
@@ -116,7 +116,10 @@ export const minMs = (run: () => unknown, runs = 3): number => {
  * the defaults a linear evaluator measures about 4 and a quadratic one about 16. The limit is 12,
  * not the geometric mean 8: a linear parser measured 9-10 on a shared CI runner, where the larger
  * input pays extra GC and cache cost. A larger factor is not an alternative, since it pushes the
- * big input past the 5 s per-test timeout. Inputs are built before timing starts. */
+ * big input past the 5 s per-test timeout; a call whose depth is bounded by PATH_MAX uses factor 3
+ * with limit 6 (linear about 3, quadratic about 9). Inputs are built before timing starts. `now`
+ * replaces the real clock so a test can drive the measured times and exercise the limit, the floor
+ * and the retry deterministically. */
 export const expectLinearTime = <T>(options: {
   build: (size: number) => T;
   run: (input: T) => unknown;
@@ -124,13 +127,14 @@ export const expectLinearTime = <T>(options: {
   factor?: number;
   runs?: number;
   maxRatio?: number;
+  now?: () => number;
 }): void => {
-  const { build, run, n, factor = 4, runs = 5, maxRatio = 12 } = options;
+  const { build, run, n, factor = 4, runs = 5, maxRatio = 12, now } = options;
   const small = build(n);
   const large = build(n * factor);
   const measure = () => {
-    const tSmall = minMs(() => run(small), runs);
-    const tLarge = minMs(() => run(large), runs);
+    const tSmall = minMs(() => run(small), runs, now);
+    const tLarge = minMs(() => run(large), runs, now);
     return { tSmall, tLarge, ratio: tLarge / Math.max(tSmall, 1) };
   };
   const first = measure();
