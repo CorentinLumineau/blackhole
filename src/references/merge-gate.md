@@ -32,16 +32,15 @@ above): the poll/retry/rerun mechanics themselves are `phase-loop.md` § Merge
 protocol step 2's, unchanged.
 
 - **Applies to `ci_wait: poll` only.** With `ci_wait: pr-events` (run context) the wait is event
-  driven (`project-thread-mode.md` § CI wait). Either way, the green/red/pending verdict comes from
-  `bun run scripts/ci-verdict.ts --checks <file>` over the checks snapshot, Vercel previews
-  excluded.
+  driven (`project-thread-mode.md` § CI wait). Either way the verdict comes from `bun run
+  scripts/ci-verdict.ts --checks <file>`, which reads `merge_ready.required_checks` from the config
+  (`--required <name>` overrides). Nothing executed, or a required check missing or skipped, is
+  `pending`; with no list a skipped gating check warns on stderr. All-skipped PRs: set the list.
 - **Interval**: poll `gh pr checks <n>` every 60s while the background CI-wait
   is outstanding.
 - **Cap**: 20 minutes of total CI-wait per PR before the 2-retry/reclassify
-  path in `phase-loop.md` step 2 takes over. Chosen to sit above the
-  `V-PARETO-01` foreground->10 min threshold (this is a background wait, not a
-  foreground one) and well under the 40-45 min foreground waits this issue's
-  mining evidence flagged as excessive.
+  path in `phase-loop.md` step 2 takes over: above the `V-PARETO-01` foreground
+  10 min threshold (a background wait), well under the 40-45 min waits flagged as excessive.
 - **Reclassification**: governed entirely by `phase-loop.md` step 2's rules
   (`cancelled` → rerun once; "Base branch was modified" → re-fetch + retry
   once; 2-retry cap → `orchestrator-runtime.md` § Error Classification) — not
