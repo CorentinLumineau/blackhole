@@ -73,3 +73,39 @@ describe('usage CLI', () => {
     });
   });
 });
+
+describe('usage CLI, desktop get_usage payload', () => {
+  const desktop = (rows: unknown[]) => ({ plan: { status: 'ok', plan: 'Max', windows: rows, extraUsage: { enabled: false } } });
+  const rows = [
+    { label: '5-hour limit', percentUsed: 19, resetsAt: NOW + 2 * HOUR },
+    { label: 'Weekly \u00b7 all models', percentUsed: 27, resetsAt: NOW + 90 * HOUR },
+    { label: 'Weekly \u00b7 Fable', percentUsed: 60, resetsAt: NOW + 90 * HOUR },
+  ];
+
+  test('--usage accepts the raw payload: one JSON line, five_hour and seven_day', () => {
+    withTempDir('usage-cli', (dir) => {
+      const file = path.join(dir, 'usage.json');
+      fs.writeFileSync(file, JSON.stringify(desktop(rows)));
+      fs.utimesSync(file, NOW - 5, NOW - 5);
+      const r = run(dir, ['--usage', file]);
+      expect(r.code).toBe(0);
+      expect(r.out.source).toBe('usage-file');
+      expect(r.out.windows.map((w: { name: string }) => w.name)).toEqual(['five_hour', 'seven_day']);
+      expect(r.out.plan).toBe('max');
+    });
+  });
+
+  test.each([
+    ['percentUsed 101', [{ label: '5-hour limit', percentUsed: 101, resetsAt: NOW + HOUR }], /five_hour percentUsed/],
+    ['no mapped row', [{ label: 'Weekly \u00b7 Fable', percentUsed: 5, resetsAt: NOW + HOUR }], /no 5-hour or weekly/],
+  ])('%s exits 2 with a row-specific message', (_l, bad, re) => {
+    withTempDir('usage-cli', (dir) => {
+      const file = path.join(dir, 'usage.json');
+      fs.writeFileSync(file, JSON.stringify(desktop(bad)));
+      const r = run(dir, ['--usage', file]);
+      expect(r.code).toBe(2);
+      expect(r.err).toMatch(re);
+      expect(r.err).not.toContain('plan is not none');
+    });
+  });
+});

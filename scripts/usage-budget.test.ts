@@ -277,3 +277,20 @@ describe('usage-budget CLI --floor (catchup gate)', () => {
     });
   });
 });
+
+describe('usage-budget CLI, desktop get_usage payload', () => {
+  test('--usage-file accepts the raw payload and judges its windows', () => {
+    withTempDir('usage-budget-desktop', (dir) => {
+      const file = path.join(dir, 'usage.json');
+      fs.writeFileSync(file, JSON.stringify({ plan: { status: 'ok', plan: 'Max', windows: [
+        { label: '5-hour limit', percentUsed: 19, resetsAt: NOW + 4 * HOUR },
+        { label: 'Weekly \u00b7 all models', percentUsed: 27, resetsAt: NOW + 3 * 24 * HOUR },
+      ], extraUsage: { enabled: false } } }));
+      fs.utimesSync(file, NOW - 5, NOW - 5);
+      const r = run(dir, ['--parallel-max', '2', '--usage-file', file]);
+      expect(r.code).toBe(0);
+      expect(r.out.verdict).toBe('GO');
+      expect(r.out).toMatchObject({ five_hour_pct: 19, weekly_pct: 27 });
+    });
+  });
+});
