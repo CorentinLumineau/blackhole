@@ -35,7 +35,7 @@ protocol step 2's, unchanged.
   driven (`project-thread-mode.md` § CI wait). Either way the verdict comes from `bun run
   scripts/ci-verdict.ts --checks <file>`, which reads `merge_ready.required_checks` from the config
   (`--required <name>` overrides). Nothing executed, or a required check missing or skipped, is
-  `pending`; with no list a skipped gating check warns on stderr. All-skipped PRs: set the list.
+  `pending`; with no list any skipped gating check is `pending`, naming `merge_ready.required_checks`.
 - **Interval**: poll `gh pr checks <n>` every 60s while the background CI-wait
   is outstanding.
 - **Cap**: 20 minutes of total CI-wait per PR before the 2-retry/reclassify
