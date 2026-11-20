@@ -160,22 +160,74 @@ describe('expectLinearTime', () => {
     return acc;
   };
 
-  test('accepts a linear function', () => {
-    expectLinearTime({ build: (size) => size, run: (size) => spin(size * 40_000), n: 4 });
+  // Injected clock: `run` advances virtual time by a chosen cost, so the measured ratio is exact.
+  // `cost(size, call)` receives the size and how many times that size has been run so far.
+  const fakeClock = (cost: (size: number, call: number) => number) => {
+    let t = 0;
+    const calls = new Map<number, number>();
+    return {
+      now: () => t,
+      run: (size: number) => {
+        const call = (calls.get(size) ?? 0) + 1;
+        calls.set(size, call);
+        t += cost(size, call);
+      },
+      calls,
+    };
+  };
+  const SMALL = 10;
+  const LARGE = 40;
+  const measure = (cost: (size: number, call: number) => number, extra: { maxRatio?: number } = {}) => {
+    const clock = fakeClock(cost);
+    const attempt = () =>
+      expectLinearTime({ build: (size) => size, run: clock.run, n: SMALL, factor: 4, now: clock.now, ...extra });
+    return { clock, attempt };
+  };
+
+  test('default limit is 12: ratio 11.9 passes, 12.1 throws', () => {
+    expect(measure((size) => (size === SMALL ? 10 : 119)).attempt).not.toThrow();
+    expect(measure((size) => (size === SMALL ? 10 : 121)).attempt).toThrow(/limit 12/);
   });
 
-  test('accepts a constant-time function', () => {
-    expectLinearTime({ build: (size) => size, run: () => spin(1000), n: 4 });
+  test('ratio exactly at the limit fails', () => {
+    expect(measure((size) => (size === SMALL ? 10 : 120)).attempt).toThrow(/limit 12/);
   });
 
-  test('rejects a quadratic function and reports the ratio', () => {
-    // 4n = 40: 40 * 40 * 40_000 iterations is well over 20 ms.
-    expect(() => expectLinearTime({ build: (size) => size, run: (size) => spin(size * size * 40_000), n: 10 })).toThrow(
-      /not linear: size 10 -> 40 .*ratio \d+/,
-    );
+  test('retry passes after a spiked first pair', () => {
+    const runs = 5;
+    const { clock, attempt } = measure((size, call) => (size === SMALL ? 10 : call <= runs + 1 ? 500 : 40));
+    expect(attempt).not.toThrow();
+    expect(clock.calls.get(LARGE)).toBe(2 * (runs + 1));
+  });
+
+  test('fails when both pairs spike', () => {
+    expect(measure((size) => (size === SMALL ? 10 : 500)).attempt).toThrow(/retry .*limit 12/);
+  });
+
+  test('a sub-millisecond small run divides by the 1 ms floor', () => {
+    expect(measure((size) => (size === SMALL ? 0.1 : 11)).attempt).not.toThrow();
+  });
+
+  test('a linear function passes with the injected clock', () => {
+    expect(measure((size) => size).attempt).not.toThrow();
   });
 
   test('honours an explicit factor and ratio limit', () => {
-    expect(() => expectLinearTime({ build: (size) => size, run: (size) => spin(size * size * 40_000), n: 10, factor: 2, maxRatio: 3 })).toThrow(/limit 3/);
+    const clock = fakeClock((size) => size);
+    expect(() =>
+      expectLinearTime({ build: (size) => size, run: clock.run, n: SMALL, factor: 2, maxRatio: 1.5, now: clock.now }),
+    ).toThrow(/size 10 -> 20 .*limit 1.5/);
+  });
+
+  // Wiring check: the real clock is the default, so a genuinely quadratic function is rejected.
+  test('rejects a quadratic function with the real clock and reports a ratio far above the limit', () => {
+    let message = '';
+    try {
+      expectLinearTime({ build: (size) => size, run: (size) => spin(size * size * 40_000), n: 10, factor: 8 });
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toMatch(/not linear: size 10 -> 80 .*ratio \d+/);
+    expect(Number(/ratio (\d+(?:\.\d+)?)/.exec(message)?.[1])).toBeGreaterThanOrEqual(24);
   });
 });

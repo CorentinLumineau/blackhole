@@ -287,13 +287,13 @@ describe('bash-write-target-guard.js — #1222 deep-path containment stays linea
       fs.mkdirSync(path.join(base, 'real', tree), { recursive: true });
       const target = path.join(base, 'link', tree, 'missing', 'x');
       expect(resolveExistingAncestor(target)).toBe(fs.realpathSync(path.join(base, 'real', tree)));
-      // Depth is bounded by PATH_MAX, so the step is 2x with a proportionally lower ratio limit.
+      // Depth is bounded by PATH_MAX: factor 3 with limit 6, see expectLinearTime.
       expectLinearTime({
         build: (k) => path.join(base, 'link', 'a/'.repeat(k), 'missing', 'x'),
         run: (p) => resolveExistingAncestor(p),
-        n: Math.floor(depth / 2),
-        factor: 2,
-        maxRatio: 3,
+        n: Math.floor(depth / 3),
+        factor: 3,
+        maxRatio: 6,
       });
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
