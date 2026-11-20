@@ -78,3 +78,18 @@ describe('pace-floor CLI', () => {
     });
   });
 });
+
+describe('pace-floor CLI, desktop get_usage payload', () => {
+  test('--usage accepts the raw payload and prints a floor line', () => {
+    withTempDir('pace-floor-cli', (dir) => {
+      const raw = { plan: { status: 'ok', plan: 'Max', windows: [
+        { label: '5-hour limit', percentUsed: 19, resetsAt: NOW + 3600 },
+        { label: 'Weekly \u00b7 all models', percentUsed: 27, resetsAt: RESET },
+      ], extraUsage: { enabled: false } } };
+      const r = run(dir, ['--usage', usageFile(dir, raw)]);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatchObject({ status: 'ok', used_pct: 27, plan: 'max', source: 'usage-file' });
+      expect(typeof r.out.floor_pct).toBe('number');
+    });
+  });
+});

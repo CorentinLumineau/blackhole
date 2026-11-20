@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { UsageFileError, normalizeUsagePayload } from './usage-normalize.ts';
+import { UsageFileError, ccdRowsToWindows, normalizeUsagePayload } from './usage-normalize.ts';
 
 const NOW = 1_800_000_000;
 const HOUR = 3600;
@@ -73,5 +73,38 @@ describe('normalizeUsagePayload', () => {
     ['bad read_at', { read_at: 'x', windows: [normalized.windows[1]] }],
   ])('throws UsageFileError on %s', (_label, payload) => {
     expect(() => normalizeUsagePayload(payload)).toThrow(UsageFileError);
+  });
+});
+
+const ccdPayload = (windows: unknown[] = [
+  { label: '5-hour limit', percentUsed: 19, resetsAt: NOW + 2 * HOUR },
+  { label: 'Weekly \u00b7 all models', percentUsed: 27, resetsAt: NOW + 90 * HOUR },
+  { label: 'Weekly \u00b7 Fable', percentUsed: 60, resetsAt: NOW + 90 * HOUR },
+]) => ({ plan: { status: 'ok', plan: 'Max', windows, extraUsage: { enabled: false } } });
+
+describe('desktop get_usage payload', () => {
+  test('yields plan max, the two mapped windows and extra usage', () => {
+    expect(normalizeUsagePayload(ccdPayload())).toEqual({
+      plan: 'max',
+      windows: [
+        { name: 'five_hour', used_pct: 19, resets_at: NOW + 2 * HOUR },
+        { name: 'seven_day', used_pct: 27, resets_at: NOW + 90 * HOUR },
+      ],
+      extra_usage: { enabled: false, currency: null },
+      read_at: null,
+    });
+  });
+
+  test('an ISO resetsAt equals the same epoch', () => {
+    const iso = new Date((NOW + HOUR) * 1000).toISOString();
+    expect(ccdRowsToWindows([{ label: '5-hour limit', percentUsed: 5, resetsAt: iso }])).toEqual([{ name: 'five_hour', used_pct: 5, resets_at: NOW + HOUR }]);
+  });
+
+  test.each([
+    ['percentUsed 101', [{ label: '5-hour limit', percentUsed: 101, resetsAt: NOW }], /five_hour percentUsed/],
+    ['unparseable resetsAt', [{ label: 'Weekly \u00b7 all models', percentUsed: 5, resetsAt: 'soon' }], /seven_day resetsAt/],
+  ])('%s throws UsageFileError naming the row', (_l, rows, re) => {
+    expect(() => normalizeUsagePayload(ccdPayload(rows))).toThrow(UsageFileError);
+    expect(() => normalizeUsagePayload(ccdPayload(rows))).toThrow(re);
   });
 });

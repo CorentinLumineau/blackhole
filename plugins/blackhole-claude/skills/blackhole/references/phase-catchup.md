@@ -20,7 +20,7 @@ Set `catchup.lane` per account before a second account runs on the same repo (th
 
 1. **Resolve the run context** (`run-context.md`), as for any `run`.
 2. **Read usage.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/usage.ts` prints one normalized reading. On a host with only an app
-   usage tool (no statusline cache), write that tool's output to a file and pass it to `usage` and
+   usage tool (no statusline cache), write that tool's output to a file as is (the raw desktop `get_usage` payload is accepted) and pass it to `usage` and
    `pace-floor` as `--usage <file>`, and to the gate as `--usage-file <file>` (the gate's own
    `--usage` takes inline JSON).
 3. **Compute the floor.** `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/pace-floor.ts [--usage <file>]` prints `status`, `floor_pct`,

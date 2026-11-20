@@ -1,6 +1,7 @@
 // Shape adapters for a usage payload an agent or a host hands over as a file (usage.ts --usage).
-// Pure: no I/O, no clock. Two shapes are accepted: the normalized one (a `windows` array) and the
-// desktop `get_usage` / RateLimits one (top-level keys named like windows).
+// Pure: no I/O, no clock. Three shapes are accepted: the normalized one (a `windows` array) and the
+// desktop `get_usage` / RateLimits one (top-level keys named like windows), and the raw desktop
+// `get_usage` tool output (`plan.windows` rows labelled like the app's usage screen).
 
 export class UsageFileError extends Error {}
 
@@ -62,14 +63,39 @@ const collectWindows = (payload: Record<string, unknown>): ReportWindow[] => {
   return Object.keys(source).filter((k) => WINDOW_NAME.test(k)).map((k) => desktopWindow(k, source[k]));
 };
 
+const CCD_LABELS: Array<[RegExp, 'five_hour' | 'seven_day']> = [
+  [/^5[- ]hour limit$/, 'five_hour'],
+  [/^weekly all models$/, 'seven_day'],
+];
+const normalizeLabel = (label: string): string => label.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** Rows of the desktop `get_usage` `plan.windows`: only the 5-hour and weekly all-models rows map; others are ignored. */
+export const ccdRowsToWindows = (rows: unknown[]): ReportWindow[] => {
+  const windows: ReportWindow[] = [];
+  for (const row of rows) {
+    if (!isRecord(row) || typeof row.label !== 'string') continue;
+    const label = normalizeLabel(row.label);
+    const name = CCD_LABELS.find(([re]) => re.test(label))?.[1];
+    if (!name) continue;
+    const { percentUsed, resetsAt } = row;
+    if (typeof percentUsed !== 'number' || !(percentUsed >= 0 && percentUsed <= 100)) throw new UsageFileError(`${name} percentUsed must be a number 0-100`);
+    const resets = typeof resetsAt === 'string' ? Math.floor(Date.parse(resetsAt) / 1000) : resetsAt;
+    if (typeof resets !== 'number' || !Number.isFinite(resets) || resets <= 0) throw new UsageFileError(`${name} resetsAt must be an ISO-8601 string or epoch seconds > 0`);
+    windows.push({ name, used_pct: percentUsed, resets_at: resets });
+  }
+  return windows;
+};
+
 /** Throws UsageFileError (message without the file path; the caller prefixes it). */
 export const normalizeUsagePayload = (payload: unknown): NormalizedUsage => {
   if (!isRecord(payload)) throw new UsageFileError('usage payload must be a JSON object');
-  const windows = collectWindows(payload);
+  const ccd = isRecord(payload.plan) && Array.isArray(payload.plan.windows) ? payload.plan : null;
+  const windows = ccd ? ccdRowsToWindows(ccd.windows as unknown[]) : collectWindows(payload);
+  if (ccd && !windows.length) throw new UsageFileError('get_usage carries no 5-hour or weekly all-models window');
   const names = new Set(windows.map((w) => w.name));
   if (names.size !== windows.length) throw new UsageFileError('usage payload repeats a window name');
-  const plan = mapPlan(payload.plan);
+  const plan = mapPlan(ccd ? ccd.plan : payload.plan);
   if (!windows.length && plan !== 'none') throw new UsageFileError('usage payload carries no window and its plan is not none');
   const readAt = payload.read_at === undefined ? null : epochSeconds(payload.read_at, 'read_at');
-  return { plan, windows, extra_usage: extraUsage(payload.extra_usage), read_at: readAt };
+  return { plan, windows, extra_usage: extraUsage(ccd ? ccd.extraUsage : payload.extra_usage), read_at: readAt };
 };

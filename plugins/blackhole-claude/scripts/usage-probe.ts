@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
+import { ccdRowsToWindows } from './lib/usage-normalize.ts';
 import { resolveRateLimitCachePath, type RateLimits } from './lib/rate-limit-cache.ts';
 import { appendUsageReading, USAGE_HISTORY_FILE } from './lib/usage-history.ts';
 
@@ -74,12 +75,6 @@ export const eventsToRateLimits = (raw: string, now: number): { limits: RateLimi
   return { limits, observedAt: Math.min(eventTime(event), now) };
 };
 
-const CCD_LABELS: Array<[RegExp, (typeof WINDOWS)[number]]> = [
-  [/^5[- ]hour limit$/, 'five_hour'],
-  [/^weekly all models$/, 'seven_day'],
-];
-const normalizeLabel = (label: string): string => label.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-
 export const ccdUsageToRateLimits = (raw: string, now: number): { limits: RateLimits; observedAt: number } => {
   let parsed: unknown;
   try {
@@ -90,21 +85,14 @@ export const ccdUsageToRateLimits = (raw: string, now: number): { limits: RateLi
   const rows = isObject(parsed) && isObject(parsed.plan) ? parsed.plan.windows : undefined;
   if (!Array.isArray(rows)) throw new Error('input carries no plan.windows array');
   const limits: RateLimits = {};
-  for (const row of rows) {
-    if (!isObject(row) || typeof row.label !== 'string') continue;
-    const name = CCD_LABELS.find(([re]) => re.test(normalizeLabel(row.label as string)))?.[1];
-    if (!name) continue;
-    const { percentUsed, resetsAt } = row;
-    if (typeof percentUsed !== 'number' || !(percentUsed >= 0 && percentUsed <= 100)) {
-      throw new Error(`${name} percentUsed must be a number 0-100`);
-    }
-    const resets = typeof resetsAt === 'string' ? Math.floor(Date.parse(resetsAt) / 1000) : resetsAt;
-    if (typeof resets !== 'number' || !Number.isFinite(resets) || resets <= 0) {
-      throw new Error(`${name} resetsAt must be an ISO-8601 string or epoch seconds > 0`);
-    }
-    if (resets <= now) continue;
-    limits[name] = { used_percentage: percentUsed, resets_at: resets };
+  let windows;
+  try {
+    windows = ccdRowsToWindows(rows);
+  } catch (error) {
+    throw new Error((error as Error).message);
   }
+  // A window past its reset no longer applies.
+  for (const w of windows) if (w.resets_at > now) limits[w.name as (typeof WINDOWS)[number]] = { used_percentage: w.used_pct, resets_at: w.resets_at };
   if (!limits.five_hour && !limits.seven_day) throw new NoCurrentWindow('get_usage carries no current 5-hour or weekly all-models window');
   return { limits, observedAt: now };
 };
