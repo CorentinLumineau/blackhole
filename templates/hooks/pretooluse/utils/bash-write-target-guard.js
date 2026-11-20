@@ -710,6 +710,9 @@ const COPY_LONG_FLAGS = new Set([
   '--force', '--interactive', '--no-clobber', '--preserve', '--verbose', '--recursive', '--archive', '--link',
   '--symbolic-link', '--symbolic', '--update', '--backup', '--parents', '--dereference', '--no-dereference',
   '--no-target-directory', '--directory', '--compare', '--preserve-timestamps', '--help', '--version',
+  '--remove-destination', '--reflink', '--one-file-system', '--strip-trailing-slashes', '--attributes-only',
+  '--copy-contents', '--keep-directory-symlink', '--debug', '--context', '--relative', '--logical', '--physical',
+  '--no-copy', '--exchange', '--preserve-context', '--strip',
 ]);
 
 /** The operands of a `cp`/`mv`/`install`/`ln` call: the destination directory named by `-t DIR`,
@@ -1116,9 +1119,14 @@ const OPAQUE_RE = /[$`\\{}]/;
 /** A plain unquoted `NAME=VALUE` or `NAME+=VALUE` word: its name and its raw value. */
 const PLAIN_ASSIGNMENT_RE = /^([A-Za-z_]\w*)\+?=([\s\S]*)$/;
 
-/** A word that is a redirect (`>`, `2>&1`, `<<<`, `&>f`), and one whose target is the next word. */
-const REDIRECT_WORD_RE = /^[0-9&]*[<>]/;
-const REDIRECT_ONLY_WORD_RE = /^[0-9&]*(?:[<>]+|>&|<&)$/;
+/** A word that is a redirect (`>`, `2>&1`, `<<<`, `&>f`, `{fd}>f`), and one whose target is the
+ * next word. The operator set is bash's REDIRECTION grammar: an optional fd number, `&` or
+ * `{varname}` prefix, then `<`, `>`, `>>`, `<>`, `<<`, `<<<`, `>|`, `<<-`, `<&` or `>&`. A spaced
+ * operator this misses turns its target word into an operand, and for cp/install/ln/rsync the
+ * last operand is the destination, so the real destination would go unjudged. */
+const REDIRECT_PREFIX = String.raw`(?:[0-9&]*|\{[A-Za-z_]\w*\})`;
+const REDIRECT_WORD_RE = new RegExp(String.raw`^${REDIRECT_PREFIX}[<>]`);
+const REDIRECT_ONLY_WORD_RE = new RegExp(String.raw`^${REDIRECT_PREFIX}(?:[<>]+|>\||<<-|>&|<&)$`);
 
 /** Net `(` minus `)` and the backtick count outside quotes in `word`, escaped ones excluded:
  * how far the word opens a `$(`, `(` or backtick that later words of the clause continue. */

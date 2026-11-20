@@ -4,7 +4,7 @@ summary: "Issue #1347 plan: close the Bash and Write/Edit guard gaps that let a 
 status: current
 review_trigger: "on file change"
 created: 2026-11-19
-last_updated: 2026-11-19
+last_updated: 2026-11-20
 related: [decisions/ADR-029-bash-write-target-worktree-containment.md]
 ---
 
@@ -65,7 +65,10 @@ would only create stacked PRs on one 1715-line file (V-STACK-02).
    hook in `withLinkedWorktree` fixtures. The JSON records origin/main's verdict per row
    (`allow` < `warn` < `block`). The test fails when head's verdict is LESS severe than the baseline
    for any row. A row may only gain severity unless listed in an explicit `intentional_relaxations`
-   array that needs a reason (empty in all three PRs). The baseline is recorded once from the
+   array that needs a reason and a `same_as` command the shell runs identically; the relaxed row is
+   then held to that command's baseline. PR 1 lists 27, each a row main misread (a mid-command
+   redirect word, or a `{fd}>` named-fd redirect) whose `same_as` is the same command without that
+   redirect word. The baseline is recorded once from the
    `plan_base_commit` and extended (never re-recorded) by PRs 2 and 3. Snapshot over `git show
    origin/main:` because CI checkouts may not carry main's object.
 2. **Red before green**: each AC's test is written first and run against unmodified main to show it
@@ -281,6 +284,20 @@ o4 `curl -o /opt/f u`; o5 `xargs rm < list`; o6 `patch -d /opt < p`. Allow: o7 `
 | `parseSingleFileCopy` / `isSingleFileCopy` (`state-dir-write-shape.js`) | TRANSPARENT | receives operands without redirect words; trust shape unchanged | reasoned: b9 |
 | `resolveExistingAncestor` users in `validate-file-changes.js` | DEPRECATION | leaf check migrates to `physicalResolve`; helper stays for other callers | executed: `hooks-validate-file.test.ts` focused run |
 | generated copies (`plugins/*/hooks`, `.claude/hooks`, `.agents/build/hooks`) | TRANSPARENT | rebuilt, not hand-edited | executed: `bun run build` clean tree |
+| `findTeeTargets`, `findSedTargets` (sed files), `findOptionWriteTargets` (`sort -o`, `uniq`, `yq -i`; guard ~1098) | TRANSPARENT | now read operands through `positionalArgsSkippingRedirects`, so a spaced redirect operator and its word are dropped before the command's own options are parsed | executed: `bun test scripts/hooks-guard-differential.test.ts` (tee, sed, sort, uniq, yq templates) |
+| `truncate`, `rsync`, `dd`, `ln` through `findCopyMoveWrites` (guard ~804) | BREAKING (intended) | same reader; `ln`/`rsync` take the last operand as destination, so a missed redirect operator would demote the real destination | executed: differential `ln -sf x D >| ./log`, `rsync x D >| ./log` rows, and `hooks-bash-write-operands.test.ts` |
+| `targetWord` at every write-target site (`findRedirectTargets`, tee, sed files, truncate, rsync, sort, uniq, yq) | TRANSPARENT | decodes quote-split spellings; the quote-split matrix covers each site | executed: `bun test scripts/hooks-bash-write-operands.test.ts` |
+| `findGitTraceTargets` (guard ~1188) | TRANSPARENT | shares `REDIRECT_WORD_RE`/`REDIRECT_ONLY_WORD_RE`; a `{fd}>`/`>|`/`<<-` word now skips its target word instead of reading it as a slot word | executed: `bun test scripts/hooks-bash-write-options.test.ts` (GIT_TRACE rows) |
+
+## Scope Amendments
+
+- **Widen (PR 1)**: `documentation/plans/plan-guard-parsing-gaps.md` ships in PR 1 as the durable
+  plan, and `documentation/INDEX.md` is regenerated for its row (a pure function of the tree).
+- **Widen (PR 1)**: `scripts/fixtures/` is a new directory holding only the differential baseline.
+- **Deviation (T1.3)**: the differential calls `evaluateBashWriteTargets` in memory, the function
+  the hook runs, rather than spawning the hook per row: about 2,600 rows at one process each would
+  exceed CI's 60 s per-test timeout. The opt-in `GUARD_DIFFERENTIAL` block in
+  `hooks-bash-write-operands.test.ts` is removed; this file is the one differential.
 
 ## Threat Model (STRIDE)
 

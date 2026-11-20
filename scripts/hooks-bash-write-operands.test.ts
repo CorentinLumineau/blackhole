@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PRETOOLUSE_HOOKS_DIR, withLinkedWorktree, writeCampaignConfig } from './lib/test-fixtures.ts';
@@ -24,6 +23,10 @@ const withState = async (fn: (state: string, wt: string, run: (command: string) 
   });
 
 const BLOCK = { tier: 'block', pattern_id: 'bash-outside-assigned-worktree' };
+const SETTINGS_BLOCK = { tier: 'block', pattern_id: 'bash-settings-roots-write' };
+
+/** The main clone's own Claude Code settings file, which lists the roots workers may write. */
+const settingsOf = (state: string) => path.join(path.dirname(state), '.claude', 'settings.json');
 
 const DESTINATIONS = (state: string) => [
   `${state}/config.json`,
@@ -45,6 +48,7 @@ describe('a redirect word among cp/install/mv operands', () => {
     test(`${label}: every protected or outside destination is denied`, async () => {
       await withState((state, _wt, run) => {
         for (const dest of DESTINATIONS(state)) expect(run(build(dest))).toMatchObject(BLOCK);
+        expect(run(build(settingsOf(state)))).toMatchObject(SETTINGS_BLOCK);
       });
     });
   }
@@ -66,6 +70,29 @@ describe('a redirect word among cp/install/mv operands', () => {
   });
 });
 
+describe('a redirect operator written apart from its word, after the destination', () => {
+  const commands = ['cp x', 'install x', 'ln -sf x', 'rsync x', 'mv x'];
+  const redirects = ['>| ./log', '>| /dev/null', '2>| ./log', '{fd}> ./log', '{fd}>> ./log', '{fd}>/dev/null', '3<> ./log', '<<- EOF\nhi\nEOF'];
+  for (const redirect of redirects) {
+    test(`D ${redirect.split('\n')[0]}: every protected, outside or settings destination is denied`, async () => {
+      await withState((state, _wt, run) => {
+        for (const command of commands) {
+          for (const dest of DESTINATIONS(state)) expect(run(`${command} ${dest} ${redirect}`)).toMatchObject(BLOCK);
+          expect(run(`${command} ${settingsOf(state)} ${redirect}`)).toMatchObject(SETTINGS_BLOCK);
+        }
+      });
+    });
+  }
+
+  test('an in-worktree destination stays allowed', async () => {
+    await withState((_state, _wt, run) => {
+      for (const cmd of ['cp x ./y >| ./log', 'cp x ./y 2>| ./log', 'cp x ./y {fd}>/dev/null', 'cp x ./y {fd}> ./log', 'cp x ./y <<- EOF\nhi\nEOF']) {
+        expect(run(cmd)).toBeNull();
+      }
+    });
+  });
+});
+
 describe('an option after the destination of cp/install/mv', () => {
   const forms: Array<[string, (d: string) => string]> = [
     ['install x D -m 644', (d) => `install x ${d} -m 644`],
@@ -81,6 +108,7 @@ describe('an option after the destination of cp/install/mv', () => {
     test(`${label}: every protected or outside destination is not allowed`, async () => {
       await withState((state, _wt, run) => {
         for (const dest of DESTINATIONS(state)) expect(run(build(dest))).not.toBeNull();
+        expect(run(build(settingsOf(state)))).toMatchObject({ tier: 'block' });
       });
     });
   }
@@ -119,6 +147,23 @@ describe('an option after the destination of cp/install/mv', () => {
     await withState((state, _wt, run) => {
       expect(run(`install x ${state}/staged/1/f.json -m 644`)).toBeNull();
       expect(run(`install -m 644 x ${state}/staged/1/f.json`)).toBeNull();
+    });
+  });
+
+  test('a GNU long option that takes no value keeps the destination resolved', async () => {
+    const flagged: Array<[string, string[]]> = [
+      ['cp', ['--remove-destination', '--reflink', '--one-file-system', '--strip-trailing-slashes', '--attributes-only', '--copy-contents', '--keep-directory-symlink', '--debug', '--context']],
+      ['ln -s', ['--relative', '--logical', '--physical']],
+      ['mv', ['--no-copy', '--exchange', '--context']],
+      ['install', ['--preserve-context', '--strip', '--debug']],
+    ];
+    await withState((state, _wt, run) => {
+      for (const [command, flags] of flagged) {
+        for (const flag of flags) {
+          expect(run(`${command} x ./y ${flag}`)).toBeNull();
+          expect(run(`${command} x ${state}/config.json ${flag}`)).toMatchObject(BLOCK);
+        }
+      }
     });
   });
 
@@ -192,107 +237,4 @@ describe('a destination spelled with adjacent quote segments', () => {
       expect(run("cp x './y'")).toBeNull();
     });
   });
-});
-
-// Head versus origin/main over a generated matrix: head may be stricter than main, never looser.
-// Opt in with GUARD_DIFFERENTIAL=1 (needs `origin/main` in the local clone); main is loaded in memory.
-const loadMainGuard = () => {
-  const cache = new Map<string, unknown>();
-  const load = (name: string): unknown => {
-    if (cache.has(name)) return cache.get(name);
-    const source = execFileSync('git', ['show', `origin/main:templates/hooks/pretooluse/utils/${name}.js`], { encoding: 'utf-8' }).replace(/^#!.*\n/, '');
-    const mod = { exports: {} as unknown };
-    cache.set(name, mod.exports);
-    const req = (id: string) => (id.startsWith('./') ? load(id.slice(2).replace(/\.js$/, '')) : require(id));
-    new Function('require', 'module', 'exports', '__dirname', '__filename', source)(req, mod, mod.exports, UTILS, path.join(UTILS, `${name}.js`));
-    cache.set(name, mod.exports);
-    return mod.exports;
-  };
-  return load('bash-write-target-guard') as { evaluateBashWriteTargets: (c: string, cwd: string) => Verdict };
-};
-
-const RANK = (v: Verdict) => (v === null ? 0 : v.tier === 'warn' ? 1 : 2);
-
-describe.skipIf(!process.env.GUARD_DIFFERENTIAL)('differential against origin/main', () => {
-  test('no command main denies or warns on is allowed by head', async () => {
-    const main = loadMainGuard();
-    await withState((state, wt, run) => {
-      const dests = [
-        `${state}/config.json`,
-        `${state}/hook-events/e.json`,
-        `${state}/staged/1/f.json`,
-        '/etc/x',
-        './y',
-        `${wt}/z`,
-        'sub/w',
-      ];
-      const spellings = (d: string) => {
-        const i = d.lastIndexOf('/') + 1;
-        return [
-          d,
-          `'${d.slice(0, i)}'${d.slice(i)}`,
-          `"${d.slice(0, i)}"${d.slice(i)}`,
-          `"${d}"`,
-          `'${d.slice(0, i)}'"${d.slice(i)}"`,
-          `'${d}`,
-          `"${d}`,
-        ];
-      };
-      const templates: Array<(d: string) => string> = [
-        (d) => `cp x ${d}`,
-        (d) => `cp x ${d} 2>/dev/null`,
-        (d) => `cp x 2>/dev/null ${d}`,
-        (d) => `cp x ${d} 2>&1`,
-        (d) => `cp x ${d} &>/dev/null`,
-        (d) => `install x ${d} -m 644`,
-        (d) => `install -m 644 x ${d}`,
-        (d) => `install x ${d} --owner root`,
-        (d) => `install x ${d} --mode=644 2>&1`,
-        (d) => `cp x ${d} -S .bak`,
-        (d) => `cp x ${d} -f`,
-        (d) => `cp x ${d} --strange-option value`,
-        (d) => `cp -t ${d} x`,
-        (d) => `cp x -t ${d}`,
-        (d) => `mv x ${d} 2>&1`,
-        (d) => `mv x ${d} -f`,
-        (d) => `ln -s x ${d}`,
-        (d) => `echo y > ${d}`,
-        (d) => `echo y >> ${d} 2>&1`,
-        (d) => `echo y | tee ${d}`,
-        (d) => `echo y | tee -a ${d} 2>/dev/null`,
-        (d) => `truncate -s 0 ${d}`,
-        (d) => `rsync x ${d}`,
-        (d) => `rsync x ${d} --exclude y`,
-        (d) => `sed -i s/a/b/ ${d}`,
-        (d) => `sort -o ${d} x`,
-        (d) => `sort --output=${d} x`,
-        (d) => `uniq x ${d}`,
-        (d) => `yq -i . ${d}`,
-        (d) => `dd if=x of=${d}`,
-      ];
-      let compared = 0;
-      let stricter = 0;
-      let corrected = 0;
-      const looser: string[] = [];
-      for (const dest of dests) {
-        for (const spelled of spellings(dest)) {
-          for (const build of templates) {
-            const command = build(spelled);
-            const [before, after] = [main.evaluateBashWriteTargets(command, wt), run(command)];
-            compared++;
-            if (RANK(after) < RANK(before)) {
-              // A mid-command redirect word that main misread is corrected, not loosened, when head
-              // judges it exactly as the same command without the redirect word.
-              const bare = command.replace(' 2>/dev/null', '');
-              if (bare !== command && RANK(run(bare)) === RANK(after)) corrected++;
-              else looser.push(`${command}: main ${before?.tier ?? 'allow'} head ${after?.tier ?? 'allow'}`);
-            }
-            if (RANK(after) > RANK(before)) stricter++;
-          }
-        }
-      }
-      console.log(`differential: ${compared} commands, ${stricter} stricter, ${corrected} corrected, ${looser.length} looser`);
-      expect(looser).toEqual([]);
-    });
-  }, 600_000);
 });
