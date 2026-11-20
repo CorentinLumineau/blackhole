@@ -31,8 +31,8 @@ export type CiVerdictOptions = {
    * conclusion than SUCCESS is red.
    *
    * This is the only way to catch a review-gated head where one cheap job succeeded and the rest
-   * were skipped; without it only the all-skipped rule applies. The CLI does not read the campaign
-   * config, so the merge step passes one `--required` per `merge_ready.required_checks` entry.
+   * were skipped; without it only the all-skipped rule applies. The CLI fills it from
+   * `merge_ready.required_checks` (`requiredChecksFromConfig`) unless `--required` is given.
    */
   requiredChecks?: string[];
 };
@@ -58,4 +58,29 @@ export const ciVerdict = (checks: ForgeCheck[], options: CiVerdictOptions = {}):
   const executed = gating.some((c) => c.status === 'COMPLETED' && c.conclusion !== 'SKIPPED');
   const verdict = failing.length > 0 ? 'red' : pending.length > 0 || !executed ? 'pending' : 'green';
   return { verdict, failing, pending, ignored };
+};
+
+/** Reads `merge_ready.required_checks`; absent is an empty list, a wrong type throws (fail closed). */
+export const requiredChecksFromConfig = (config: Record<string, unknown>): string[] => {
+  const merge = config.merge_ready;
+  if (merge === undefined) return [];
+  const value = (merge as { required_checks?: unknown } | null)?.required_checks;
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((n) => typeof n !== 'string' || n === '')) {
+    throw new Error('config merge_ready.required_checks must be an array of non-empty check names');
+  }
+  return value as string[];
+};
+
+/**
+ * With no required list a SKIPPED gating check cannot be told from a legitimately path-filtered one,
+ * so the verdict stays as is; this names the skipped checks so the owner can see a head where one
+ * cheap job passed and the rest never ran. Null when there is nothing to flag.
+ */
+export const unconfiguredSkipWarning = (checks: ForgeCheck[], options: CiVerdictOptions): string | null => {
+  if ((options.requiredChecks ?? []).length > 0) return null;
+  const skipped = checks.filter((c) => !isVercelPreviewCheck(c.name) && c.status === 'COMPLETED' && c.conclusion === 'SKIPPED').map((c) => c.name);
+  if (skipped.length === 0) return null;
+  return `ci-verdict: no required checks configured (merge_ready.required_checks) and ${skipped.length} gating check(s) were SKIPPED: ${skipped.join(', ')}. ` +
+    'Green here does not prove those ran; set merge_ready.required_checks to the evidence check.';
 };

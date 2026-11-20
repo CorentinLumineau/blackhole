@@ -45,7 +45,7 @@ Project threads), replace the detached poll of `phase-loop.md` § Merge protocol
 1. Subscribe to the PR's activity right after the PR is created.
 2. End the turn instead of polling.
 3. On a CI event wake, read the PR's checks through the forge channel (`forge-channels.md`, row
-   "PR checks"), save the JSON, and run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/ci-verdict.ts --checks <file>`:
+   "PR checks"), save the JSON, and run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/ci-verdict.ts --checks <file>` (it reads `merge_ready.required_checks`, `merge-gate.md` § CI-wait poller contract):
    - exit `0` (green): continue with merge steps 2.5 to 5.
    - exit `1` (red): apply step 2's rules (rerun a cancelled run once, then `ci-diagnosis.md`).
    - exit `3` (pending): end the turn again.
