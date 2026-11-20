@@ -12,7 +12,7 @@ export type CiVerdict = {
   failing: string[];
   pending: string[];
   ignored: string[];
-  /** Set when the verdict is pending only because no required list is configured and a gating check was SKIPPED. */
+  /** Set when no required list is configured and a gating check was SKIPPED (the skip cannot be told from a path-filtered one); the verdict is then at least pending. */
   missing_config?: typeof REQUIRED_CHECKS_KEY;
 };
 
@@ -88,6 +88,9 @@ export const requiredChecksFromConfig = (config: Record<string, unknown>): strin
 export const unconfiguredPendingMessage = (checks: ForgeCheck[], options: CiVerdictOptions): string | null => {
   const result = ciVerdict(checks, options);
   if (!result.missing_config) return null;
-  return `ci-verdict: pending, ${REQUIRED_CHECKS_KEY} is not configured and ${result.pending.length} gating check(s) were SKIPPED: ${result.pending.join(', ')}. ` +
+  const skipped = checks
+    .filter((c) => !isVercelPreviewCheck(c.name) && c.status === 'COMPLETED' && c.conclusion === 'SKIPPED')
+    .map((c) => c.name);
+  return `ci-verdict: pending, ${REQUIRED_CHECKS_KEY} is not configured and ${skipped.length} gating check(s) were SKIPPED: ${skipped.join(', ')}. ` +
     `Set ${REQUIRED_CHECKS_KEY} to the evidence check(s) to resolve it.`;
 };

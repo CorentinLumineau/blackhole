@@ -169,6 +169,13 @@ describe('ciVerdict (ADR-050)', () => {
       expect(unconfiguredPendingMessage([done('verify', 'SUCCESS')], {})).toBeNull();
     });
 
+    test('the message names only the COMPLETED skipped checks when another gating check is still running', () => {
+      const running = { name: 'build', status: 'IN_PROGRESS' as const, conclusion: null };
+      const message = unconfiguredPendingMessage([running, done('docs', 'SKIPPED'), done('lint', 'SUCCESS')], {});
+      expect(message).toContain('1 gating check(s) were SKIPPED: docs.');
+      expect(message).not.toContain('build');
+    });
+
     test('a configured list on the green fixture exits 0 with no missing_config', () => {
       const config = tmp('config.json', { merge_ready: { required_checks: ['Protocol Conformance'] } });
       const run = cli(['--checks', path.join(root, 'fixtures', 'ci-verdict', 'pr-event-green.json'), '--config', config]);
