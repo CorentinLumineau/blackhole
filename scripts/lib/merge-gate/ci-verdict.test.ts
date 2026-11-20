@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { root } from '../build/paths.ts';
 import { readJsonFile } from '../fs.ts';
-import { checksFromSnapshot, ciVerdict, requiredChecksFromConfig, unconfiguredSkipWarning } from './ci-verdict.ts';
+import { checksFromSnapshot, ciVerdict, requiredChecksFromConfig, unconfiguredPendingMessage } from './ci-verdict.ts';
 
 const fixture = (name: string) => {
   const file = path.join(root, 'fixtures', 'ci-verdict', name);
@@ -13,8 +13,8 @@ const fixture = (name: string) => {
 };
 
 describe('ciVerdict (ADR-050)', () => {
-  test('a recorded PR-event checks snapshot is green: a skipped check does not fail it', () => {
-    expect(ciVerdict(checksFromSnapshot(fixture('pr-event-green.json')))).toEqual({
+  test('a recorded PR-event checks snapshot is green when configured: a skipped optional check does not fail it', () => {
+    expect(ciVerdict(checksFromSnapshot(fixture('pr-event-green.json')), { requiredChecks: ['Protocol Conformance'] })).toEqual({
       verdict: 'green',
       failing: [],
       pending: [],
@@ -71,8 +71,31 @@ describe('ciVerdict (ADR-050)', () => {
       expect(ciVerdict([done('detect', 'SUCCESS'), done('ci-report', 'SUCCESS')], { requiredChecks: [REPORT] }).verdict).toBe('pending');
     });
 
-    test('without requiredChecks only the all-skipped rule changes the old behaviour', () => {
-      expect(ciVerdict([done('detect', 'SUCCESS'), done(REPORT, 'SKIPPED')]).verdict).toBe('green');
+    test('unconfigured, the incident shape is pending, lists the skipped checks and names the missing key', () => {
+      const result = ciVerdict(gatedOut);
+      expect(result.verdict).toBe('pending');
+      expect(result.pending).toEqual([REPORT, 'ci-main / test (pull_request)']);
+      expect(result.missing_config).toBe('merge_ready.required_checks');
+    });
+
+    test('unconfigured, an ordinary pass plus a skipped optional check fails closed to pending', () => {
+      const result = ciVerdict([done('Protocol Conformance', 'SUCCESS'), done('Release Notes Gate', 'SKIPPED')]);
+      expect(result).toMatchObject({ verdict: 'pending', pending: ['Release Notes Gate'], missing_config: 'merge_ready.required_checks' });
+    });
+
+    test('configured, the same ordinary shape stays green and carries no missing_config', () => {
+      const result = ciVerdict([done('Protocol Conformance', 'SUCCESS'), done('Release Notes Gate', 'SKIPPED')], { requiredChecks: ['Protocol Conformance'] });
+      expect(result.verdict).toBe('green');
+      expect(result.missing_config).toBeUndefined();
+    });
+
+    test('unconfigured with nothing skipped is green; a failure beats a skip; a skipped Vercel check is ignored', () => {
+      const clean = ciVerdict([done('verify', 'SUCCESS')]);
+      expect(clean.verdict).toBe('green');
+      expect(clean.missing_config).toBeUndefined();
+      const red = ciVerdict([done('verify', 'FAILURE'), done('Release Notes Gate', 'SKIPPED')]);
+      expect(red).toMatchObject({ verdict: 'red', failing: ['verify'] });
+      expect(ciVerdict([done('verify', 'SUCCESS'), done('Vercel – preview', 'SKIPPED')]).verdict).toBe('green');
     });
 
     test('the CLI repeats --required and exits 3 while a required check is missing', () => {
@@ -109,14 +132,16 @@ describe('ciVerdict (ADR-050)', () => {
 
   test('the CLI exits 0 on green, 1 on red and 2 on a malformed call', () => {
     const run = (args: string[]) => spawnSync('bun', ['run', path.join(root, 'scripts', 'ci-verdict.ts'), ...args], { encoding: 'utf-8' });
-    const green = run(['--checks', path.join(root, 'fixtures', 'ci-verdict', 'pr-event-green.json')]);
+    const config = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ci-verdict-')), 'config.json');
+    fs.writeFileSync(config, JSON.stringify({ merge_ready: { required_checks: ['Protocol Conformance'] } }));
+    const green = run(['--checks', path.join(root, 'fixtures', 'ci-verdict', 'pr-event-green.json'), '--config', config]);
     expect(green.status).toBe(0);
     expect(JSON.parse(green.stdout).verdict).toBe('green');
-    expect(run(['--checks', path.join(root, 'fixtures', 'ci-verdict', 'pr-event-red.json')]).status).toBe(1);
+    expect(run(['--checks', path.join(root, 'fixtures', 'ci-verdict', 'pr-event-red.json'), '--config', config]).status).toBe(1);
     expect(run([]).status).toBe(2);
   });
 
-  describe('required checks from config and the unconfigured warning (#1364 incident shape)', () => {
+  describe('required checks from config and the unconfigured pending message (#1364 incident shape)', () => {
     const REPORT = 'ci-main / ci-report (pull_request)';
     const done = (name: string, conclusion: 'SUCCESS' | 'SKIPPED') => ({ name, status: 'COMPLETED' as const, conclusion });
     const incident = [done('ci-main / detect (pull_request)', 'SUCCESS'), done(REPORT, 'SKIPPED'), done('ci-main / test (pull_request)', 'SKIPPED')];
@@ -135,10 +160,27 @@ describe('ciVerdict (ADR-050)', () => {
       expect(() => requiredChecksFromConfig({ merge_ready: { required_checks: [''] } })).toThrow('merge_ready.required_checks');
     });
 
-    test('the warning names the skipped checks on the incident shape and stays silent when a required list is set or nothing is skipped', () => {
-      expect(unconfiguredSkipWarning(incident, {})).toContain(REPORT);
-      expect(unconfiguredSkipWarning(incident, { requiredChecks: [REPORT] })).toBeNull();
-      expect(unconfiguredSkipWarning([done('verify', 'SUCCESS')], {})).toBeNull();
+    test('the message names the skipped checks and the missing key on the incident shape and stays silent when a list is set or nothing is skipped', () => {
+      const message = unconfiguredPendingMessage(incident, {});
+      expect(message).toContain(REPORT);
+      expect(message).toContain('merge_ready.required_checks');
+      expect(message).toContain('pending');
+      expect(unconfiguredPendingMessage(incident, { requiredChecks: [REPORT] })).toBeNull();
+      expect(unconfiguredPendingMessage([done('verify', 'SUCCESS')], {})).toBeNull();
+    });
+
+    test('the message names only the COMPLETED skipped checks when another gating check is still running', () => {
+      const running = { name: 'build', status: 'IN_PROGRESS' as const, conclusion: null };
+      const message = unconfiguredPendingMessage([running, done('docs', 'SKIPPED'), done('lint', 'SUCCESS')], {});
+      expect(message).toContain('1 gating check(s) were SKIPPED: docs.');
+      expect(message).not.toContain('build');
+    });
+
+    test('a configured list on the green fixture exits 0 with no missing_config', () => {
+      const config = tmp('config.json', { merge_ready: { required_checks: ['Protocol Conformance'] } });
+      const run = cli(['--checks', path.join(root, 'fixtures', 'ci-verdict', 'pr-event-green.json'), '--config', config]);
+      expect(run.status).toBe(0);
+      expect(JSON.parse(run.stdout).missing_config).toBeUndefined();
     });
 
     test('the CLI takes the required list from the config, so the incident is pending, and --required overrides it', () => {
@@ -151,10 +193,14 @@ describe('ciVerdict (ADR-050)', () => {
       expect(overridden.status).toBe(0);
     });
 
-    test('an unconfigured incident shape warns loudly on stderr; a malformed config is a usage error', () => {
+    test('an unconfigured incident exits 3 with a pending verdict naming the key; a malformed config is a usage error', () => {
       const checks = tmp('checks.json', incident);
       const none = cli(['--checks', checks, '--config', path.join(os.tmpdir(), 'no-such-config.json')]);
-      expect(none.stderr).toContain('no required checks configured');
+      expect(none.status).toBe(3);
+      const out = JSON.parse(none.stdout);
+      expect(out).toMatchObject({ verdict: 'pending', missing_config: 'merge_ready.required_checks' });
+      expect(out.pending).toEqual([REPORT, 'ci-main / test (pull_request)']);
+      expect(none.stderr).toContain('merge_ready.required_checks');
       expect(none.stderr).toContain(REPORT);
       expect(cli(['--checks', checks, '--config', tmp('bad.json', { merge_ready: { required_checks: 'x' } })]).status).toBe(2);
     });

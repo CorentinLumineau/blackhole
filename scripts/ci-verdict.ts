@@ -1,7 +1,7 @@
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import * as fs from 'fs';
 import { readJsonFile } from './lib/fs.ts';
-import { checksFromSnapshot, ciVerdict, requiredChecksFromConfig, unconfiguredSkipWarning } from './lib/merge-gate/ci-verdict.ts';
+import { checksFromSnapshot, ciVerdict, requiredChecksFromConfig, unconfiguredPendingMessage } from './lib/merge-gate/ci-verdict.ts';
 
 // Merge-gate CI verdict from a checks snapshot file (ADR-050). Exit 0 green, 1 red, 3 pending,
 // 2 usage; the verdict JSON is printed either way.
@@ -44,8 +44,8 @@ const main = (): number => {
     const requiredChecks = flagRequired.length > 0 ? flagRequired
       : requiredChecksFromConfig(fs.existsSync(configPath) ? (readJsonFile(configPath, configPath) as Record<string, unknown>) : {});
     const checks = checksFromSnapshot(readJsonFile(flags.checks, flags.checks));
-    const warning = unconfiguredSkipWarning(checks, { requiredChecks });
-    if (warning) console.error(warning);
+    const message = unconfiguredPendingMessage(checks, { requiredChecks });
+    if (message) console.error(message);
     result = ciVerdict(checks, { requiredChecks });
   } catch (error) {
     console.error(`${(error as Error).message}\n${USAGE}`);

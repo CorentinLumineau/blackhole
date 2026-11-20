@@ -5,7 +5,16 @@ import type { ForgeCheck } from '../forge-adapter/types.ts';
 // of a checks snapshot, so the same verdict comes out whether the snapshot was polled with `gh`,
 // read over REST, returned by the GitHub MCP tools, or re-read after a PR-event wake.
 
-export type CiVerdict = { verdict: 'green' | 'red' | 'pending'; failing: string[]; pending: string[]; ignored: string[] };
+export const REQUIRED_CHECKS_KEY = 'merge_ready.required_checks';
+
+export type CiVerdict = {
+  verdict: 'green' | 'red' | 'pending';
+  failing: string[];
+  pending: string[];
+  ignored: string[];
+  /** Set when no required list is configured and a gating check was SKIPPED (the skip cannot be told from a path-filtered one); the verdict is then at least pending. */
+  missing_config?: typeof REQUIRED_CHECKS_KEY;
+};
 
 /** Vercel preview deployments are expected to fail on campaign PRs and never gate a merge. */
 export function isVercelPreviewCheck(name: string): boolean {
@@ -30,8 +39,8 @@ export type CiVerdictOptions = {
    * `ci-main / ci-report (pull_request)`). Missing, queued or SKIPPED is pending; any other completed
    * conclusion than SUCCESS is red.
    *
-   * This is the only way to catch a review-gated head where one cheap job succeeded and the rest
-   * were skipped; without it only the all-skipped rule applies. The CLI fills it from
+   * Without a list the gate fails closed: a SKIPPED gating check cannot be told from a path-filtered
+   * one, so it is pending and the result carries `missing_config`. The CLI fills this from
    * `merge_ready.required_checks` (`requiredChecksFromConfig`) unless `--required` is given.
    */
   requiredChecks?: string[];
@@ -53,11 +62,14 @@ export const ciVerdict = (checks: ForgeCheck[], options: CiVerdictOptions = {}):
       pending.push(name);
     }
   }
+  const skippedGating = gating.filter((c) => c.status === 'COMPLETED' && c.conclusion === 'SKIPPED').map((c) => c.name);
+  const missingConfig = (options.requiredChecks ?? []).length === 0 && failing.length === 0 && skippedGating.length > 0;
+  if (missingConfig) for (const name of skippedGating) if (!pending.includes(name)) pending.push(name);
   // A set where nothing executed (no gating check, or every one SKIPPED) proves no testing, so it is
   // pending, never a pass.
   const executed = gating.some((c) => c.status === 'COMPLETED' && c.conclusion !== 'SKIPPED');
   const verdict = failing.length > 0 ? 'red' : pending.length > 0 || !executed ? 'pending' : 'green';
-  return { verdict, failing, pending, ignored };
+  return missingConfig ? { verdict, failing, pending, ignored, missing_config: REQUIRED_CHECKS_KEY } : { verdict, failing, pending, ignored };
 };
 
 /** Reads `merge_ready.required_checks`; absent is an empty list, a wrong type throws (fail closed). */
@@ -72,15 +84,13 @@ export const requiredChecksFromConfig = (config: Record<string, unknown>): strin
   return value as string[];
 };
 
-/**
- * With no required list a SKIPPED gating check cannot be told from a legitimately path-filtered one,
- * so the verdict stays as is; this names the skipped checks so the owner can see a head where one
- * cheap job passed and the rest never ran. Null when there is nothing to flag.
- */
-export const unconfiguredSkipWarning = (checks: ForgeCheck[], options: CiVerdictOptions): string | null => {
-  if ((options.requiredChecks ?? []).length > 0) return null;
-  const skipped = checks.filter((c) => !isVercelPreviewCheck(c.name) && c.status === 'COMPLETED' && c.conclusion === 'SKIPPED').map((c) => c.name);
-  if (skipped.length === 0) return null;
-  return `ci-verdict: no required checks configured (merge_ready.required_checks) and ${skipped.length} gating check(s) were SKIPPED: ${skipped.join(', ')}. ` +
-    'Green here does not prove those ran; set merge_ready.required_checks to the evidence check.';
+/** Pending reason for the unconfigured fail-closed case; null when the verdict carries no `missing_config`. */
+export const unconfiguredPendingMessage = (checks: ForgeCheck[], options: CiVerdictOptions): string | null => {
+  const result = ciVerdict(checks, options);
+  if (!result.missing_config) return null;
+  const skipped = checks
+    .filter((c) => !isVercelPreviewCheck(c.name) && c.status === 'COMPLETED' && c.conclusion === 'SKIPPED')
+    .map((c) => c.name);
+  return `ci-verdict: pending, ${REQUIRED_CHECKS_KEY} is not configured and ${skipped.length} gating check(s) were SKIPPED: ${skipped.join(', ')}. ` +
+    `Set ${REQUIRED_CHECKS_KEY} to the evidence check(s) to resolve it.`;
 };
