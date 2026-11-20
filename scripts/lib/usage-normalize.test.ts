@@ -107,4 +107,18 @@ describe('desktop get_usage payload', () => {
     expect(() => normalizeUsagePayload(ccdPayload(rows))).toThrow(UsageFileError);
     expect(() => normalizeUsagePayload(ccdPayload(rows))).toThrow(re);
   });
+
+  test.each([
+    ['a windows array', { windows: [{ name: 'five_hour', used_pct: 5, resets_at: NOW + HOUR }] }],
+    ['a top-level five_hour key', { five_hour: { used_pct: 5, resets_at: NOW + HOUR } }],
+    ['a rate_limits object', { rate_limits: { five_hour: { used_pct: 5, resets_at: NOW + HOUR } } }],
+  ])('a desktop payload mixed with %s throws instead of picking one source', (_l, extra) => {
+    const mixed = { ...ccdPayload(), ...extra };
+    expect(() => normalizeUsagePayload(mixed)).toThrow(UsageFileError);
+    expect(() => normalizeUsagePayload(mixed)).toThrow(/mixes the desktop get_usage shape/);
+  });
+
+  test('a desktop payload with an unrelated top-level key such as read_at stays valid', () => {
+    expect(normalizeUsagePayload({ ...ccdPayload(), read_at: NOW - 5 }).read_at).toBe(NOW - 5);
+  });
 });
