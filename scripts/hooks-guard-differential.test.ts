@@ -8,8 +8,8 @@ import { PRETOOLUSE_HOOKS_DIR, withLinkedWorktree, writeCampaignConfig } from '.
 // grow in severity (allow < warn < block) against the committed baseline, which holds the verdicts
 // of the guard on main when each row was recorded. A row may relax only when it is listed in
 // `intentional_relaxations` with a reason and a `same_as` command that the shell runs identically
-// (the row without a redirect word main misread): the relaxed row is then held to that command's
-// baseline instead. A loosened row is never fixed by editing its baseline.
+// (the row without one redirect main misread, which the test checks): the relaxed row is then
+// held to that command's baseline instead. A loosened row is never fixed by editing its baseline.
 //
 // The baseline is committed rather than read from `origin/main` because a CI checkout may not
 // carry main's objects. To add rows for new corpus commands, run this file with
@@ -103,10 +103,42 @@ const TEMPLATES: Array<(d: string) => string> = [
   (d) => `cp x ${d} <<- EOF\nhi\nEOF`,
   (d) => `cp x ${d} <<EOF\nhi\nEOF`,
   (d) => `cp x ${d} --remove-destination`,
+  // A redirect operator glued to the destination, its word apart.
+  (d) => `cp x ${d}> ./log`,
+  (d) => `cp x ${d}>| ./log`,
+  (d) => `cp x ${d}>> ./log`,
+  (d) => `install x ${d}> ./log`,
+  (d) => `ln -sf x ${d}> ./log`,
+  (d) => `rsync x ${d}> ./log`,
+  (d) => `cp x ${d}<< EOF\nhi\nEOF`,
+  // The plan's must-DENY / must-ALLOW rows the forms above do not already spell.
+  (d) => `install x ${d} 2>&1`,
+  (d) => `install -m 644 x ${d} 2>/dev/null`,
+  (d) => `install x ${d} --mode=644`,
+  (d) => `install x ${d} -o root -g root`,
+  (d) => `tee ${d} < x`,
+  (d) => `cp /usr/share/doc/x ${d} 2>/dev/null`,
+  // The GIT_TRACE scan reads the same redirect grammar.
+  (d) => `env "GIT_TRACE=${d}" git status`,
+  (d) => `env >| ./log "GIT_TRACE=${d}" git status`,
+  (d) => `env 2>| ./log "GIT_TRACE=${d}" git status`,
+  (d) => `env {fd}> ./log "GIT_TRACE=${d}" git status`,
 ];
 
 const corpusFor = (dest: string) => spellings(dest).flatMap((spelled) => TEMPLATES.map((build) => build(spelled)));
 const CORPUS = DESTINATIONS.flatMap(corpusFor);
+
+/** Each spelling of `command` with one redirect removed, whether attached (`2>/dev/null`) or an
+ * operator and its word (`{fd}> ./log`): the commands a relaxation's `same_as` may name. */
+const withoutOneRedirectWord = (command: string) => {
+  const words = command.split(' ');
+  const drop = (k: number, n: number) => [...words.slice(0, k), ...words.slice(k + n)].join(' ');
+  return words.flatMap((word, k) => {
+    const redirect = /^(?:[0-9&]*|\{[A-Za-z_]\w*\})[<>]([<>|&-]*)(.*)$/.exec(word);
+    if (!redirect) return [];
+    return redirect[2] ? [drop(k, 1)] : [drop(k, 2)];
+  });
+};
 
 const readBaseline = (): Baseline => JSON.parse(fs.readFileSync(BASELINE_FILE, 'utf-8'));
 
@@ -188,7 +220,7 @@ describe('Bash write guard verdicts never loosen against the baseline', () => {
     for (const relaxation of baseline.intentional_relaxations) {
       expect(baseline.rows[relaxation.command]).toBeDefined();
       expect(baseline.rows[relaxation.same_as]).toBeDefined();
-      expect(relaxation.same_as).not.toBe(relaxation.command);
+      expect(withoutOneRedirectWord(relaxation.command)).toContain(relaxation.same_as);
       expect(relaxation.reason.trim().length).toBeGreaterThan(20);
     }
   });

@@ -93,6 +93,18 @@ describe('a redirect operator written apart from its word, after the destination
   });
 });
 
+describe('a redirect operator among env operands before a GIT_TRACE assignment', () => {
+  test('the trace file is still judged', async () => {
+    await withState((state, _wt, run) => {
+      for (const redirect of ['>| ./log', '2>| ./log', '{fd}> ./log', '<<- EOF']) {
+        for (const dest of [`${state}/config.json`, `${state}/hook-events/t`, '/etc/x']) {
+          expect(run(`env ${redirect} "GIT_TRACE=${dest}" git status\nhi\nEOF`)).toMatchObject(BLOCK);
+        }
+      }
+    });
+  });
+});
+
 describe('an option after the destination of cp/install/mv', () => {
   const forms: Array<[string, (d: string) => string]> = [
     ['install x D -m 644', (d) => `install x ${d} -m 644`],

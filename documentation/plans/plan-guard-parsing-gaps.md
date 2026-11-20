@@ -66,9 +66,9 @@ would only create stacked PRs on one 1715-line file (V-STACK-02).
    (`allow` < `warn` < `block`). The test fails when head's verdict is LESS severe than the baseline
    for any row. A row may only gain severity unless listed in an explicit `intentional_relaxations`
    array that needs a reason and a `same_as` command the shell runs identically; the relaxed row is
-   then held to that command's baseline. PR 1 lists 27, each a row main misread (a mid-command
+   then held to that command's baseline. PR 1 lists 63, each a row main misread (a mid-command
    redirect word, or a `{fd}>` named-fd redirect) whose `same_as` is the same command without that
-   redirect word. The baseline is recorded once from the
+   one redirect, which the test checks. The baseline is recorded once from the
    `plan_base_commit` and extended (never re-recorded) by PRs 2 and 3. Snapshot over `git show
    origin/main:` because CI checkouts may not carry main's object.
 2. **Red before green**: each AC's test is written first and run against unmodified main to show it
@@ -294,8 +294,11 @@ o4 `curl -o /opt/f u`; o5 `xargs rm < list`; o6 `patch -d /opt < p`. Allow: o7 `
 - **Widen (PR 1)**: `documentation/plans/plan-guard-parsing-gaps.md` ships in PR 1 as the durable
   plan, and `documentation/INDEX.md` is regenerated for its row (a pure function of the tree).
 - **Widen (PR 1)**: `scripts/fixtures/` is a new directory holding only the differential baseline.
+- **Deviation (T1.3)**: the corpus is the generated matrix (8 destinations x 7 spellings x 63
+  templates, which includes the a- and b-rows above); the existing suites' command rows were not
+  imported, since those suites already run in CI with their own assertions.
 - **Deviation (T1.3)**: the differential calls `evaluateBashWriteTargets` in memory, the function
-  the hook runs, rather than spawning the hook per row: about 2,600 rows at one process each would
+  the hook runs, rather than spawning the hook per row: about 3,500 rows at one process each would
   exceed CI's 60 s per-test timeout. The opt-in `GUARD_DIFFERENTIAL` block in
   `hooks-bash-write-operands.test.ts` is removed; this file is the one differential.
 
