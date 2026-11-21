@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import * as childProcess from 'child_process';
 import { GitHubForgeAdapter } from './github.ts';
-import { repoSlugFromOrigin } from './github-rest.ts';
+import { mapRestCheckRun, mapRestStatus, repoSlugFromOrigin, suiteProducers } from './github-rest.ts';
 
 // Every adapter call is `gh api -X <method> <endpoint> [--input -]` (ADR-048). The mock answers by
 // method + endpoint and records each call, so a test asserts both the REST request and the mapping.
@@ -91,32 +91,48 @@ describe('GitHubForgeAdapter (REST)', () => {
     expect(await adapter.prView(6)).toMatchObject({ mergeable: false, labels: ['ai-review:LGTM', 'bug'] });
   });
 
-  test('prChecks reads check runs and commit statuses for the head sha', async () => {
+  test('prChecks reads check runs and commit statuses for the head sha, and proves a producer through the workflow runs', async () => {
     mockApi((_m, endpoint) => {
       if (endpoint.endsWith('/pulls/7')) return { stdout: prRow(7) };
       if (endpoint.includes('/check-runs')) {
         return {
           stdout: {
             check_runs: [
-              { name: 'verify', status: 'completed', conclusion: 'success' },
-              { name: 'lint', status: 'in_progress', conclusion: null },
+              { id: 5, name: 'verify', status: 'completed', conclusion: 'success', started_at: '2026-11-20T11:00:00Z', check_suite: { id: 31 } },
+              { id: 6, name: 'lint', status: 'in_progress', conclusion: null, check_suite: { id: 99 } },
             ],
           },
         };
       }
-      return { stdout: { statuses: [{ context: 'Vercel', state: 'pending' }, { context: 'ci/legacy', state: 'error' }] } };
+      if (endpoint.includes('/actions/runs')) {
+        return { stdout: { workflow_runs: [{ check_suite_id: 31, workflow_id: 4, event: 'push', head_branch: 'feat' }] } };
+      }
+      return { stdout: { statuses: [{ id: 8, context: 'Vercel', state: 'pending', created_at: '2026-11-20T11:01:00Z' }, { context: 'ci/legacy', state: 'error' }] } };
     });
     expect(await adapter.prChecks(7)).toEqual([
-      { name: 'verify', status: 'COMPLETED', conclusion: 'SUCCESS' },
-      { name: 'lint', status: 'IN_PROGRESS', conclusion: null },
-      { name: 'Vercel', status: 'QUEUED', conclusion: null },
-      { name: 'ci/legacy', status: 'COMPLETED', conclusion: 'FAILURE' },
+      { name: 'verify', status: 'COMPLETED', conclusion: 'SUCCESS', runId: 5, startedAt: '2026-11-20T11:00:00Z', producer: 'actions:4:push:feat' },
+      { name: 'lint', status: 'IN_PROGRESS', conclusion: null, runId: 6 },
+      { name: 'Vercel', status: 'QUEUED', conclusion: null, runId: 8, startedAt: '2026-11-20T11:01:00Z', producer: 'status' },
+      { name: 'ci/legacy', status: 'COMPLETED', conclusion: 'FAILURE', producer: 'status' },
     ]);
     expect(calls.map((c) => c.endpoint)).toEqual([
       'repos/owner/repo/pulls/7',
       'repos/owner/repo/commits/abc123/check-runs?per_page=100',
       'repos/owner/repo/commits/abc123/status',
+      'repos/owner/repo/actions/runs?head_sha=abc123&per_page=100',
     ]);
+  });
+
+  test('prChecks degrades to producer-less checks when the workflow runs call fails, never throwing for it', async () => {
+    mockApi((_m, endpoint) => {
+      if (endpoint.endsWith('/pulls/7')) return { stdout: prRow(7) };
+      if (endpoint.includes('/check-runs')) {
+        return { stdout: { check_runs: [{ id: 5, name: 'verify', status: 'completed', conclusion: 'failure', check_suite: { id: 31 } }] } };
+      }
+      if (endpoint.includes('/actions/runs')) return { status: 1, stderr: 'HTTP 403: Resource not accessible by integration' };
+      return { stdout: { statuses: [] } };
+    });
+    expect(await adapter.prChecks(7)).toEqual([{ name: 'verify', status: 'COMPLETED', conclusion: 'FAILURE', runId: 5 }]);
   });
 
   test('issueCreate posts title, body and labels as JSON on stdin', async () => {
@@ -355,5 +371,57 @@ describe('createForgeAdapter', () => {
     expect(() => createForgeAdapter({ repo: 'o/r', forge: 'bitbucket' as 'github' })).toThrow(
       /unsupported forge/,
     );
+  });
+});
+
+describe('check producer fields', () => {
+  const wf = (suite: unknown, workflow: unknown, event: unknown = 'pull_request', branch: unknown = 'feat') =>
+    ({ check_suite_id: suite, workflow_id: workflow, event, head_branch: branch });
+
+  test('suiteProducers keys a suite by workflow, event and branch', () => {
+    const map = suiteProducers({ workflow_runs: [wf(1, 10), wf(2, 10), wf(3, 11, 'push', 'main')] });
+    expect(map.get(1)).toBe('actions:10:pull_request:feat');
+    expect(map.get(2)).toBe(map.get(1));
+    expect(map.get(3)).toBe('actions:11:push:main');
+    expect(map.get(4)).toBeUndefined();
+  });
+
+  test('suiteProducers skips an entry missing a field and drops a suite claimed by two different keys', () => {
+    const map = suiteProducers({
+      workflow_runs: [wf(1, undefined), wf('2', 10), wf(3, 10, null), wf(4, 10, 'push', null), wf(5, 10), wf(5, 11), wf(6, 10), wf(6, 10), wf(5, 10)],
+    });
+    expect([...map.keys()]).toEqual([6]);
+  });
+
+  test.each([[null], [[]], [{}], [{ workflow_runs: 'x' }], ['x']])('suiteProducers rejects the malformed payload %j', (payload) => {
+    expect(() => suiteProducers(payload)).toThrow('workflow_runs');
+  });
+
+  test('mapRestCheckRun carries the run id, start time and the producer its suite resolves to', () => {
+    const suites = suiteProducers({ workflow_runs: [wf(7, 10)] });
+    const row = { id: 77, name: 'pr-lint', status: 'completed', conclusion: 'cancelled', started_at: '2026-11-20T11:29:49Z', check_suite: { id: 7 } };
+    expect(mapRestCheckRun(row, suites)).toEqual({
+      name: 'pr-lint',
+      status: 'COMPLETED',
+      conclusion: 'CANCELLED',
+      runId: 77,
+      startedAt: '2026-11-20T11:29:49Z',
+      producer: 'actions:10:pull_request:feat',
+    });
+    expect(mapRestCheckRun(row).producer).toBeUndefined();
+    expect(mapRestCheckRun({ ...row, check_suite: { id: 8 } }, suites).producer).toBeUndefined();
+    expect(mapRestCheckRun({ ...row, check_suite: null }, suites).producer).toBeUndefined();
+  });
+
+  test('mapRestStatus marks a commit status as its own producer and carries created_at and id', () => {
+    expect(mapRestStatus({ id: 3, context: 'ci/legacy', state: 'success', created_at: '2026-11-20T11:00:00Z' })).toEqual({
+      name: 'ci/legacy',
+      status: 'COMPLETED',
+      conclusion: 'SUCCESS',
+      runId: 3,
+      startedAt: '2026-11-20T11:00:00Z',
+      producer: 'status',
+    });
+    expect(mapRestStatus({ context: 'ci/legacy', state: 'pending' })).toEqual({ name: 'ci/legacy', status: 'QUEUED', conclusion: null, producer: 'status' });
   });
 });

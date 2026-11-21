@@ -1,0 +1,10 @@
+{
+  "description": "Four check runs shaped like blackhole PR #1384 and #1360: pr-lint has a CANCELLED run superseded by a later SUCCESS run from another suite of the same workflow and event, listed older-first and unfiltered; pair it with superseded-run-runs.json, which names each suite's workflow",
+  "total_count": 4,
+  "check_runs": [
+    { "id": 2001, "name": "pr-lint", "status": "completed", "conclusion": "cancelled", "started_at": "2026-11-20T11:29:49Z", "check_suite": { "id": 121141391826 } },
+    { "id": 2003, "name": "pr-lint", "status": "completed", "conclusion": "success", "started_at": "2026-11-20T11:45:34Z", "check_suite": { "id": 121141393769 } },
+    { "id": 2002, "name": "Protocol Conformance", "status": "completed", "conclusion": "success", "started_at": "2026-11-20T11:30:00Z", "check_suite": { "id": 121141391380 } },
+    { "id": 2004, "name": "Release Notes Gate", "status": "completed", "conclusion": "skipped", "started_at": "2026-11-20T11:30:01Z", "check_suite": { "id": 121141391380 } }
+  ]
+}
