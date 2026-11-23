@@ -330,6 +330,21 @@ const QUOTE_REINTERPRETING_RE = /\$\(|`|\$\{|\\|\$['"]|<<<|<\(|>\(/;
  * argument cannot be enumerated; every other clause keeps its quoted spans visible. */
 const INERT_GREP_COMMANDS = new Set(['grep', 'egrep', 'fgrep', 'rg']);
 
+/** `gh issue|pr <sub>` and `git commit|tag` take their quoted arguments as message text (a body, a
+ * title, a commit or tag message) that they store or post, never run or write to a path: prose in
+ * it (`a -> /x`, `2>/dev/null.`) is not a redirect. Neither tool lets an alias shadow these
+ * subcommands, and a leading option (`git -c …`) disqualifies the clause. */
+const MESSAGE_SUBCOMMANDS = {
+  gh: { issue: ['comment', 'create', 'edit', 'close', 'reopen'], pr: ['comment', 'create', 'edit', 'review', 'close'] },
+  git: { commit: [], tag: [] },
+};
+
+const isMessageClause = (tokens) => {
+  const subs = MESSAGE_SUBCOMMANDS[tokens[0]]?.[tokens[1]];
+  if (!subs) return false;
+  return tokens[0] === 'git' || subs.includes(tokens[2]);
+};
+
 /** rg options that run a decompressor/preprocessor, plus any unique prefix of them. */
 const RG_COMMAND_OPTIONS = ['--pre', '--pre-glob', '--hostname-bin', '--search-zip'];
 
@@ -370,6 +385,7 @@ const isInertClause = (tokens) => {
   const head = tokens[0];
   const args = tokens.slice(1);
   if (INERT_GREP_COMMANDS.has(head)) return !hasDisqualifyingOption(head, args);
+  if (isMessageClause(tokens)) return true;
   return head === 'sed' && isInertSed(args);
 };
 
@@ -400,25 +416,59 @@ const isEveryClausePassive = (visible) =>
     return isInertClause(tokens) || isPassiveFilterClause(tokens);
   });
 
-const REDIRECT_OPERATOR_TAIL_RE = /(?:&>>|&>|>>|>&|>\||>)\s*$/;
+/** Text ending in a redirect operator, plus any unquoted start of its target word: a quoted span
+ * after it is part of that target (`> "/x"`, `>a"b c"`). */
+const REDIRECT_OPERATOR_TAIL_RE = /(?:&>>|&>|>>|>&|>\||>)\s*[^\s;&|<>]*$/;
 
-/** A quoted span `text[start..end)` is inert text (cannot hide a write target) unless it is a
- * redirect's own target (`> "/x"`), unterminated, contains another quote character, or is a
- * double-quoted span carrying a command substitution (`"$(echo x > /etc/y)"`). */
+/** A quoted span `text[start..end)` is inert text (cannot hide a write target) unless it is part
+ * of a redirect's target (`> "/x"`, `>a"b"`), unterminated, or a double-quoted span carrying a
+ * command substitution (`"$(echo x > /etc/y)"`). A quote of the other kind inside it is literal to
+ * bash (`"cat <<'EOF'"`). Where masking runs, `maskingAllowed` has refused any `\`, so no escaped
+ * quote can mis-pair a span; the outer view (`blankQuotedText`) is only ever added to the
+ * quote-blind scan, so a mis-paired span there cannot hide a target. */
 const isInertQuotedSpan = (text, start, end) => {
   const span = text.slice(start, end);
   if (span.length < 2 || span[span.length - 1] !== span[0]) return false;
-  if (/['"]/.test(span.slice(1, -1))) return false;
   if (REDIRECT_OPERATOR_TAIL_RE.test(text.slice(0, start))) return false;
   return !(span[0] === '"' && (span.includes('$(') || span.includes('`')));
+};
+
+/** Blanks, in `chars`, the contents of every inert quoted span (`isInertQuotedSpan`) of
+ * `text`, which starts at `offset` in the string `chars` was split from. Positions are kept. */
+const blankQuotedSpans = (chars, text, offset) => {
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch !== "'" && ch !== '"') {
+      i++;
+      continue;
+    }
+    const spanEnd = skipQuotedSpan(text, i, text.length);
+    if (isInertQuotedSpan(text, i, spanEnd)) {
+      for (let k = offset + i + 1; k < offset + spanEnd - 1; k++) chars[k] = ' ';
+    }
+    i = spanEnd;
+  }
+};
+
+/** `visible` with every inert quoted span blanked: the redirects bash itself opens for the outer
+ * command. Scanned in addition to (never instead of) the quote-blind view, so a quoted `->` cannot
+ * swallow the real redirect after it (`jq -n "a -> b" > /x`), while text a shell or interpreter
+ * runs from a quoted argument (`bash -c "… > /x; …"`) is still seen by the quote-blind scan. */
+const blankQuotedText = (visible) => {
+  const chars = visible.split('');
+  blankQuotedSpans(chars, visible, 0);
+  return chars.join('');
 };
 
 /** True when masking may run on `visible`: nothing in it executes quoted text or nests quotes, and
  * every clause is a passive filter (`isEveryClausePassive`). A substitution body runs in the outer
  * shell, so the verdict is the AND of this over the command and every body (`evaluateBashWriteTargets`),
- * never a body's alone: a rebinding statement outside the body still changes what its `grep` runs. */
+ * never a body's alone: a rebinding statement outside the body still changes what its `grep` runs.
+ * A shell word inside quoted text (`--body "run sh -c at noon"`) names no command: every clause
+ * head is already a bare allowlisted word, so it is only looked for outside quotes. */
 const maskingAllowed = (visible) =>
-  !SHELL_EXEC_RE.test(visible) && !QUOTE_REINTERPRETING_RE.test(visible) && isEveryClausePassive(visible);
+  !QUOTE_REINTERPRETING_RE.test(visible) && !SHELL_EXEC_RE.test(blankQuotedText(visible)) && isEveryClausePassive(visible);
 
 /** Copy of `visible` with the contents of inert quoted spans blanked (`grep 'a>b'`), for the
  * whole-command `REDIRECT_RE` scan only; positions are preserved. Fails closed: spans are blanked
@@ -431,20 +481,7 @@ const maskRedirectNoise = (visible, allowed) => {
   const chars = visible.split('');
   for (const [start, end] of clauseRanges(visible)) {
     const text = visible.slice(start, end);
-    if (!isInertClause(tokenize(text))) continue;
-    let i = 0;
-    while (i < text.length) {
-      const ch = text[i];
-      if (ch !== "'" && ch !== '"') {
-        i++;
-        continue;
-      }
-      const spanEnd = skipQuotedSpan(text, i, text.length);
-      if (isInertQuotedSpan(text, i, spanEnd)) {
-        for (let k = start + i + 1; k < start + spanEnd - 1; k++) chars[k] = ' ';
-      }
-      i = spanEnd;
-    }
+    if (isInertClause(tokenize(text))) blankQuotedSpans(chars, text, start);
   }
   return chars.join('');
 };
@@ -1711,6 +1748,7 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
   };
 
   const redirectView = maskRedirectNoise(visible, maskAllowed);
+  const outerRedirectView = blankQuotedText(visible);
   // `list` holds the base after each clause of the current `&&`/`||` list: when a `;` or newline
   // ends it, any of them may be where the shell stands, since a later link may not have run.
   let list = [];
@@ -1735,6 +1773,7 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
     if (!inCase) for (let p = 0; p < opening.replace(/\s/g, '').length; p++) saved.push({ state, list }), (list = []);
     clauseBase = null; // a redirect is opened by the shell itself, before `env` changes directory
     findRedirectTargets(redirectView.slice(from, to)).forEach((t) => add(t, FILE_WRITE));
+    findRedirectTargets(outerRedirectView.slice(from, to)).forEach((t) => add(t, FILE_WRITE));
     clauseBase = tokens.length > 0 ? envChdirBase(tokens, state.dirs) : null;
     if (tokens.length > 0) {
       findTeeTargets(tokens).forEach((t) => add(t, FILE_WRITE));
