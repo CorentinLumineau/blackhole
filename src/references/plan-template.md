@@ -11,6 +11,7 @@ task_type: bugfix | null
 threat_screen_passed: true | null
 ui_gate: pending | approved | null
 supersedes_adr: [ADR-NNN, ...] | null  # set when this plan knowingly reverses an accepted ADR decision — triggers V-ADR-06 leg 1
+package_root: <repo-relative dir> | null  # monorepo sub-package the Touch-Paths below are relative to (e.g. apps/invest); null when they are repo-relative
 ---
 
 # Plan - Issue #<Number>
@@ -21,6 +22,13 @@ supersedes_adr: [ADR-NNN, ...] | null  # set when this plan knowingly reverses a
 ## Touch-Paths
 - `file/path/A.ts`
 - `file/path/B.tsx`
+
+When `package_root` is set, each Touch-Path and Scope Amendment path is joined to it unless it
+already starts with it; write a repo-root file outside the package (a workflow, a doc) with a
+leading `/`, e.g. `` `/.github/workflows/ci.yml` ``. `package_root` scopes Touch-Paths and Scope
+Amendments only: `## Critical Files` paths stay repo-relative, since `critical_files_exist`
+resolves them against the repo root. An absolute root, a `..` segment, or a value with `<`, `|` or
+whitespace is ignored.
 
 ## Scope Amendments
 Appended by the orchestrator, not authored by the planner during Step 7 — the orchestrator
