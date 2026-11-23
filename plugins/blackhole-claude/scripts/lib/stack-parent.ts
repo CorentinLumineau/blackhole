@@ -1,4 +1,6 @@
 import { childBranchFor } from '../stack-repair.ts';
+import { headingSectionsOnce } from './markdown-headings.ts';
+import { extractBacktickPaths } from './plan-touch-path-ssot-pairs.ts';
 import { chainTip as graphChainTip, effectiveParent, reachesNode, withoutRegenerated, type StackGraph } from './stack-overlap.ts';
 
 // Dispatch-time stack-parent selection (queue-dag.md § Step 3b). A ready issue whose touch_paths
@@ -64,6 +66,43 @@ export type StackParentOptions = {
    */
   parentFiles?: Record<string, string[]>;
 };
+
+const AMENDMENT = /^- .*? — (widen|narrow) — `([^`]+)`/;
+
+/** The text of the first section whose heading is exactly `name` (case-insensitive), or ''. */
+const planSection = (plan: string, name: string): string =>
+  headingSectionsOnce(plan, (h) => h.text.toLowerCase() === name, () => false).primary?.text ?? '';
+
+/**
+ * A plan's effective Touch-Paths: the backtick paths under `## Touch-Paths`, plus each `widen` and
+ * minus each `narrow` line under `## Scope Amendments` (plan-template.md), in order, deduplicated.
+ */
+export const planTouchPaths = (plan: string): string[] => {
+  const paths = new Set(extractBacktickPaths(planSection(plan, 'touch-paths')));
+  for (const line of planSection(plan, 'scope amendments').split('\n')) {
+    const m = AMENDMENT.exec(line.trim());
+    if (m?.[1] === 'widen') paths.add(m[2]);
+    else if (m) paths.delete(m[2]);
+  }
+  return [...paths];
+};
+
+/**
+ * Queue issues with `touch_paths` replaced by their plan's Touch-Paths wherever `readPlan` returns a
+ * plan that declares some: a planned issue still carrying the config default globs would otherwise
+ * match every open PR touching `src/**` or `scripts/**`.
+ */
+export const withPlanTouchPaths = (
+  issues: Record<string, StackCandidate>,
+  readPlan: (issue: number) => string | null,
+): Record<string, StackCandidate> =>
+  Object.fromEntries(
+    Object.entries(issues).map(([k, v]) => {
+      const plan = readPlan(Number(k));
+      const paths = plan === null ? [] : planTouchPaths(plan);
+      return [k, paths.length ? { ...v, touch_paths: paths } : v];
+    }),
+  );
 
 /** Narrowed paths only: each default member, regenerated file and broad/root-only glob is dropped individually. */
 const knownPaths = (paths: string[] | undefined, defaults: string[] | undefined): string[] =>

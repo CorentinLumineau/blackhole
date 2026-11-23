@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseFlags, requireFlag } from './lib/argv-flags.ts';
 import { createForgeAdapter } from './lib/forge-adapter/index.ts';
@@ -7,7 +8,7 @@ import { adapterSnapshotIo, buildOpenPrSnapshot, PR_REF_PREFIX, type OpenPrSnaps
 import { recheckStack, snapshotParentFiles } from './lib/stack-lifecycle.ts';
 import { childBranchFor } from './lib/stack-merge.ts';
 import { verifiedPrMergeTree } from './lib/stack-overlap.ts';
-import { pickStackParent, type StackCandidate } from './lib/stack-parent.ts';
+import { pickStackParent, withPlanTouchPaths, type StackCandidate } from './lib/stack-parent.ts';
 
 // CLI for queue-dag.md Step 3b and Step 0.4. Both modes read the same bounded open-PR snapshot
 // (one fetch of the open PRs' heads, no per-PR API call).
@@ -15,6 +16,8 @@ import { pickStackParent, type StackCandidate } from './lib/stack-parent.ts';
 //   --pr <N>     re-check of an open campaign PR: prints the restack decision as JSON; exit 3 when
 //                the snapshot could not be read in full, because "could not look" is not "no overlap".
 // --repo-slug <owner/repo> and --repo-root <abs> locate the forge and the checkout; --forge defaults to github.
+// --plans-dir <abs> (default: `plans/` beside the queue file): in --issue mode, an issue whose
+// `issue-<N>.md` plan declares Touch-Paths is matched on those paths, not its queue touch_paths.
 const flags = parseFlags(process.argv.slice(2));
 const queuePath = requireFlag(flags, 'queue');
 const queue = readJsonFile(queuePath, queuePath) as { issues?: Record<string, StackCandidate> };
@@ -60,9 +63,14 @@ const dispatch = async (issue: number): Promise<number> => {
   if (parentFiles === undefined && flags['repo-slug'] !== undefined) {
     parentFiles = snapshotParentFiles(issues, await readSnapshot());
   }
+  const plansDir = typeof flags['plans-dir'] === 'string' ? flags['plans-dir'] : path.join(path.dirname(queuePath), 'plans');
+  const planned = withPlanTouchPaths(issues, (n) => {
+    const file = path.join(plansDir, `issue-${n}.md`);
+    return existsSync(file) ? readFileSync(file, 'utf8') : null;
+  });
   // No snapshot and no --parent-files: every open PR's files are unknown, so declared touch_paths decide.
   console.log(
-    JSON.stringify(pickStackParent(issues, issue, { parentFiles: parentFiles ?? {}, defaultTouchPaths: jsonFlag('default-touch-paths') as string[] | undefined })),
+    JSON.stringify(pickStackParent(planned, issue, { parentFiles: parentFiles ?? {}, defaultTouchPaths: jsonFlag('default-touch-paths') as string[] | undefined })),
   );
   return 0;
 };

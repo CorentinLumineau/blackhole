@@ -4,8 +4,10 @@ import {
   formatStackMergeOrder,
   globsMatchFiles,
   pickStackParent,
+  planTouchPaths,
   stackMergeOrder,
   touchPathsOverlap,
+  withPlanTouchPaths,
 } from './stack-parent.ts';
 
 describe('touchPathsOverlap', () => {
@@ -216,5 +218,77 @@ describe('stacked_on_pr edges (restack from a PR number)', () => {
   });
   test('pickStackParent does not stack an issue that already has a stacked_on_pr edge', () => {
     expect(pickStackParent(q, 9, { parentFiles: { '7': ['src/a/x.ts'] } })).toBeNull();
+  });
+});
+
+describe('plan Touch-Paths replace the queue default globs', () => {
+  const plan = [
+    '# Plan for #1376',
+    '',
+    '## Touch-Paths',
+    '',
+    '- `scripts/lib/foo.test.ts`',
+    '- `scripts/lib/foo.test.ts` (again)',
+    '',
+    '## Task Steps',
+    '',
+    '- edit `src/agents/planner.md`',
+  ].join('\n');
+
+  test('planTouchPaths reads only the Touch-Paths section', () => {
+    expect(planTouchPaths(plan)).toEqual(['scripts/lib/foo.test.ts']);
+  });
+  test('planTouchPaths is empty for a plan without the section', () => {
+    expect(planTouchPaths('# Plan\n\n## Objective\n\n- `src/a.ts`\n')).toEqual([]);
+  });
+
+  // Defaults `src/**`, `scripts/**`, `fixtures/**` overlap the open PR; the plan's one file does not.
+  const q = {
+    '1381': { status: 'in-flight', pr: 1385, touch_paths: ['scripts/lib/bar.ts'] },
+    '1376': { status: 'ready', pr: null, touch_paths: ['src/**', 'scripts/**', 'fixtures/**'] },
+  };
+  const parentFiles = { '1381': ['scripts/lib/bar.ts', 'src/references/x.md'] };
+
+  test('without the plan the default globs name an unrelated open PR as parent', () => {
+    expect(pickStackParent(q, 1376, { parentFiles })?.parent).toBe(1381);
+  });
+  test('with the plan applied, the unrelated open PR is not a parent', () => {
+    const planned = withPlanTouchPaths(q, (n) => (n === 1376 ? plan : null));
+    expect(planned['1376']!.touch_paths).toEqual(['scripts/lib/foo.test.ts']);
+    expect(planned['1381']!.touch_paths).toEqual(['scripts/lib/bar.ts']);
+    expect(pickStackParent(planned, 1376, { parentFiles })).toBeNull();
+  });
+  test('a plan with no Touch-Paths keeps the queue touch_paths', () => {
+    const planned = withPlanTouchPaths(q, () => '# Plan\n');
+    expect(planned['1376']!.touch_paths).toEqual(['src/**', 'scripts/**', 'fixtures/**']);
+  });
+});
+
+describe('plan Scope Amendments and heading match', () => {
+  const amended = [
+    '## Touch-Paths',
+    '',
+    '- `scripts/lib/foo.test.ts`',
+    '- `scripts/lib/old.ts`',
+    '',
+    '## Scope Amendments',
+    '',
+    '- 2026-11-23 — widen — `scripts/lib/bar.ts` — needed for the fix',
+    '- 2026-11-23 — narrow — `scripts/lib/old.ts` — out of scope',
+  ].join('\n');
+
+  test('widen adds a path and narrow drops one', () => {
+    expect(planTouchPaths(amended)).toEqual(['scripts/lib/foo.test.ts', 'scripts/lib/bar.ts']);
+  });
+  test('a widened path stacks on the open PR touching it', () => {
+    const q = {
+      '1381': { status: 'in-flight', pr: 1385 },
+      '1376': { status: 'ready', pr: null, touch_paths: ['src/**', 'scripts/**', 'fixtures/**'] },
+    };
+    const planned = withPlanTouchPaths(q, (n) => (n === 1376 ? amended : null));
+    expect(pickStackParent(planned, 1376, { parentFiles: { '1381': ['scripts/lib/bar.ts'] } })?.parent).toBe(1381);
+  });
+  test('a Touch-Paths Completeness Advisory heading is not the Touch-Paths section', () => {
+    expect(planTouchPaths('## Touch-Paths Completeness Advisory\n\n- `scripts/lib/build/facts.ts`\n')).toEqual([]);
   });
 });
