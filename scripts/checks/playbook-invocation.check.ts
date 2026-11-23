@@ -39,11 +39,9 @@ export const findAliasInvocations = (content: string, label: string, aliases: st
   return content.split('\n').flatMap((line, idx) => (regex.test(line) ? [`${label}:${idx + 1}`] : []));
 };
 
-// A bundled-script call inside `$(…)` that feeds another command's arguments hides its failure:
-// a non-zero exit (e.g. an unresolved plugin root) only ends the subshell, and the outer command
-// still runs with those arguments missing (#1490). The one safe shape is a hoisted assignment whose
-// status is checked: `name=$(bun scripts/x.ts …) || exit 1`, its value then used as `$name`.
-const SCRIPT_CALL_RE = /^\s*bun(?:\s+run(?:\s+--cwd\s+(?:<[^>]*>|`[^`]*`|"[^"]*"|\S+))?)?\s+scripts\/[\w./-]+\.ts\b/;
+// A bundled-script call, optionally after `VAR=value` words or a `cd <dir> &&`.
+const SCRIPT_CALL_RE =
+  /^\s*(?:(?:[A-Za-z_]\w*=\S*|cd\s+\S+\s*&&)\s+)*bun(?:\s+run(?:\s+--cwd\s+(?:<[^>]*>|`[^`]*`|"[^"]*"|\S+))?)?\s+scripts\/[\w./-]+\.ts\b/;
 
 // Index of the `)` closing the `$(` at `open`, or -1 when the line ends first.
 const closingParen = (line: string, open: number): number => {
@@ -55,13 +53,29 @@ const closingParen = (line: string, open: number): number => {
   return -1;
 };
 
+// `export`/`local`/`readonly`/`declare`/`typeset` return their own status, not the substitution's.
+const STATUS_MASKING_BUILTINS = new Set(['export', 'local', 'readonly', 'declare', 'typeset']);
+// Only a guard that leaves the script stops it: `|| exit|return`, or a `|| { … exit|return … }` group.
+const STOPPING_GUARD_RE = /^\s*\|\|\s*(?:(?:exit|return)\b|\{[^}]*\b(?:exit|return)\b)/;
+
+const isPlainAssignment = (prefix: string): boolean => {
+  const m = /(?:^|[\s;`(])([A-Za-z_]\w*=)$/.exec(prefix);
+  if (!m) return false;
+  const previous = prefix.slice(0, prefix.length - m[1].length).trimEnd().split(/[\s;`(]/).pop() ?? '';
+  return !STATUS_MASKING_BUILTINS.has(previous) && !previous.startsWith('-');
+};
+
 const isGuardedAssignment = (line: string, open: number, body: string, close: number): boolean =>
-  /(?:^|[\s;`(])[A-Za-z_]\w*=$/.test(line.slice(0, open)) &&
+  isPlainAssignment(line.slice(0, open)) &&
   !body.includes('|') &&
   !body.includes('$(') &&
   close !== -1 &&
-  /^\s*\|\|/.test(line.slice(close + 1));
+  STOPPING_GUARD_RE.test(line.slice(close + 1));
 
+// A bundled-script call inside `$(…)` that feeds another command's arguments hides its failure:
+// a non-zero exit (e.g. an unresolved plugin root) only ends the subshell, and the outer command
+// still runs with those arguments missing. The one safe shape is a plain hoisted assignment whose
+// status stops the script: `name=$(bun scripts/x.ts …) || exit 1`, its value then used as `$name`.
 export const findUnguardedSubstitutions = (content: string, label: string): string[] =>
   content.split('\n').flatMap((line, idx) => {
     for (let open = line.indexOf('$('); open !== -1; open = line.indexOf('$(', open + 2)) {

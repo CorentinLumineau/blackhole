@@ -61,9 +61,7 @@ describe('findAliasInvocations', () => {
   });
 });
 
-// A failure inside `$(…)` only exits the subshell: the outer command still runs, with the
-// substitution's arguments missing (#1490). Only a hoisted `name=$(bun … scripts/x.ts …) || …`
-// assignment stops on that failure.
+// Rationale: findUnguardedSubstitutions in playbook-invocation.check.ts.
 describe('findUnguardedSubstitutions', () => {
   const flags = (content: string) => findUnguardedSubstitutions(content, 'fixture.md');
 
@@ -76,6 +74,14 @@ describe('findUnguardedSubstitutions', () => {
     ['assignment with no failure guard', 'scope_args=$(bun scripts/forge-scope.ts list-args)'],
     ['assignment feeding a pipe', 'scope_args=$(bun scripts/forge-scope.ts list-args | tr -d x) || exit 1'],
     ['assignment guarded only by a later &&', 'scope_args=$(bun scripts/forge-scope.ts list-args) && gh issue list $scope_args'],
+    ['assignment whose guard is || true', 'x=$(bun scripts/a.ts) || true'],
+    ['assignment whose guard only echoes', 'x=$(bun scripts/a.ts) || echo oops'],
+    ['export assignment', 'export X=$(bun scripts/a.ts) || exit 1'],
+    ['local assignment', 'local X=$(bun scripts/a.ts) || exit 1'],
+    ['readonly assignment', 'readonly X=$(bun scripts/a.ts) || exit 1'],
+    ['declare with a flag', 'declare -g X=$(bun scripts/a.ts) || exit 1'],
+    ['inline substitution with an env prefix', 'gh issue list $(CAMPAIGN_CONFIG=/tmp/c.json bun scripts/forge-scope.ts list-args)'],
+    ['inline substitution after a cd', 'gh issue list $(cd /tmp && bun scripts/forge-scope.ts list-args)'],
   ])('flags %s', (_name, line) => {
     expect(flags(line)).toEqual(['fixture.md:1']);
   });
@@ -85,6 +91,9 @@ describe('findUnguardedSubstitutions', () => {
     ['hoisted assignment then use', '`scope_args=$(bun scripts/forge-scope.ts create-args) || exit 1; gh issue create $scope_args`'],
     ['hoisted bun run --cwd assignment', 'X=$(bun run --cwd . scripts/campaign-status.ts --data) || exit 1'],
     ['plain invocation', '`bun run scripts/campaign-status.ts --data`'],
+    ['guard that returns', 'x=$(bun scripts/a.ts) || return 1'],
+    ['guard group that exits', 'x=$(bun scripts/a.ts) || { echo "scope failed" >&2; exit 1; }'],
+    ['hoisted assignment with an env prefix', 'scope_args=$(CAMPAIGN_CONFIG=/tmp/c.json bun scripts/forge-scope.ts list-args) || exit 1'],
     ['substitution of a non-script command', 'N=$(gh pr list --json number | jq length)'],
   ])('does not flag %s', (_name, line) => {
     expect(flags(line)).toEqual([]);

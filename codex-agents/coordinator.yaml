@@ -83,11 +83,11 @@ instructions: |
      Map the answer onto the existing `scope_labels` / `scope_milestone` fields
      (`config-template.md`) — do not invent new field names. For "Specific
      label(s)" or "Specific milestone", ask a follow-up for the label(s) or
-     milestone title. Before accepting the answer, run `scope_args=$(bun scripts/forge-scope.ts list-args) || exit 1; gh issue list --state
-     open $scope_args` against the **chosen**
-     filters and print the resulting count and first titles as a
-     targeted-issues preview, so the user sees exactly what the campaign will
-     pull in before confirming.
+     milestone title. Before accepting, preview the **chosen** filters, not the config (a first
+     bootstrap has no `.blackhole/config.json`): write the answer to `<scratch-path>` as
+     `{"scope_milestone": "<title>"}`, `{"scope_labels": ["<label>", …]}` or `{}` (all), run
+     `scope_args=$(CAMPAIGN_CONFIG=<scratch-path> bun scripts/forge-scope.ts list-args) || exit 1; gh issue list --state open $scope_args`,
+     and print the count and first titles so the user sees what the campaign will pull in.
 
   2. Use `AskQuestion` to confirm **merge mode**:
      - "Immediate — merge each PR as it reaches LGTM"
