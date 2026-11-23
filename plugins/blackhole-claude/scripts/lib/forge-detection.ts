@@ -96,6 +96,22 @@ export function hostFromOrigin(url: string | null | undefined): string | null {
   }
 }
 
+/**
+ * The forge-agnostic origin parser: the host and the whole repository path after it (GitLab nested
+ * groups stay whole), `.git` and trailing slashes stripped, case-insensitively. Null when the origin
+ * names no host (a local path or `file://`) or the path has fewer than two segments.
+ */
+export function repoPathFromOrigin(url: string | null | undefined): { host: string; path: string } | null {
+  const trimmed = url?.trim().replace(/\/+$/, '').replace(/\.git$/i, '');
+  if (!trimmed) return null;
+  const parsed = trimmed.includes('://')
+    ? /^(?!file:)[a-z][a-z0-9+.-]*:\/\/(?:[^@/]*@)?([^/]+)\/(.+)$/i.exec(trimmed)
+    : /^(?:[^@/:]*@)?([^/:]+):(?!\/)(.+)$/.exec(trimmed);
+  if (!parsed) return null;
+  const path = parsed[2].split('/').filter(Boolean).join('/');
+  return path.includes('/') ? { host: parsed[1], path } : null;
+}
+
 export function resolveForgeForRepo(
   repoRoot: string,
   configForge?: string,

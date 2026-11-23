@@ -5,13 +5,16 @@ import type { CatchupArgs, StatusArgs, StatusMode } from './types.ts';
 // installed (a plugin cache or vendor/blackhole) — resolve it from the working directory.
 const projectRoot = (): string => process.cwd();
 
+/** `<project root>/.blackhole`, the campaign directory every subcommand defaults to. */
+export const defaultCampaignDir = (): string => path.join(projectRoot(), '.blackhole');
+
 const resolveFromRoot = (p: string): string => (path.isAbsolute(p) ? p : path.join(projectRoot(), p));
 
 /** The status command by absolute path: it resolves from any cwd, inside or outside a checkout (ADR-056). */
 export const STATUS_COMMAND = `bun run "${path.resolve(import.meta.dir, '..', '..', 'campaign-status.ts')}"`;
 
 const USAGE =
-  `Usage: ${STATUS_COMMAND} [config-summary | usage-caps --enabled <true|false> [--stop-workers-at <6-100>] [--target-at-reset <1-100|none>]] [--json | --html [--out <path>] | --data <dir> | --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [--unattended] [catchup only: --usage-file <path> --floor <pct> --no-spawn-at <pct> --stop-workers-at <pct> --lane <name>]] [--campaign-dir <dir>] [--no-gh]`;
+  `Usage: ${STATUS_COMMAND} [config-summary | target [--stated <repo>] [--json] | usage-caps --enabled <true|false> [--stop-workers-at <6-100>] [--target-at-reset <1-100|none>]] [--json | --html [--out <path>] | --data <dir> | --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [--unattended] [catchup only: --usage-file <path> --floor <pct> --no-spawn-at <pct> --stop-workers-at <pct> --lane <name>]] [--campaign-dir <dir>] [--no-gh]`;
 
 const pctFlag = (flags: Record<string, string>, name: string): number | null => {
   if (flags[name] === undefined) return null;
@@ -37,7 +40,7 @@ const catchupArgs = (flags: Record<string, string>): CatchupArgs => ({
  * back to the dashboard — a typo'd `config-sumary` must not print the wrong thing and exit 0.
  */
 export function parseStatusArgs(argv: string[]): StatusArgs {
-  let campaignDir = path.join(projectRoot(), '.blackhole');
+  let campaignDir = defaultCampaignDir();
   let skipGh = false;
   let mode: StatusMode = 'dashboard';
   let json = false;

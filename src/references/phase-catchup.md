@@ -18,7 +18,10 @@ Set `catchup.lane` per account before a second account runs on the same repo (th
 
 ## Steps
 
-1. **Resolve the run context** (`run-context.md`), as for any `run`.
+1. **Target check, then run context.** First run the target check (`launch-gate.md` § Target
+   check), which writes nothing: print the resolved repository and campaign directory, and ask
+   Continue here / Stop when the session's stated target names another repository. Then resolve
+   the run context (`run-context.md`), as for any `run`.
 2. **Read usage.** `bun run scripts/usage.ts` prints one normalized reading. On a host with only an app
    usage tool (no statusline cache), write that tool's output to a file as is (the raw desktop `get_usage` payload is accepted) and pass it to `usage` and
    `pace-floor` as `--usage <file>`, and to the gate as `--usage-file <file>` (the gate's own

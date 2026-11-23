@@ -1203,3 +1203,74 @@ describe('usage-caps subcommand', () => {
     }
   });
 });
+
+describe('the launch target (issue #1410)', () => {
+  const FULL = path.join(root, 'fixtures/campaign-status/full');
+  const HERMETIC = { ...(process.env as Record<string, string>), GIT_CEILING_DIRECTORIES: root };
+  const status = (...args: string[]) =>
+    Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', ...args], cwd: root, env: HERMETIC, stdout: 'pipe', stderr: 'pipe' });
+
+  test('the summary heading names owner/repo and the absolute campaign directory', () => {
+    const out = status('--summary', '--no-gh', '--campaign-dir', FULL).stdout.toString();
+    expect(out.split('\n')[0]).toBe(`## Launch summary — acme/widgets · ${FULL}`);
+    const json = JSON.parse(status('--summary', '--no-gh', '--campaign-dir', FULL, '--json').stdout.toString());
+    expect(json.target).toEqual({ repo: 'acme/widgets', campaign_dir: FULL, source: 'config' });
+  });
+
+  test('target prints the resolved target and exits 0 with no stated target or a matching one', () => {
+    const plain = status('target', '--campaign-dir', FULL);
+    expect(plain.exitCode).toBe(0);
+    expect(plain.stdout.toString().trim()).toBe(`Target: acme/widgets · ${FULL}`);
+    expect(status('target', '--campaign-dir', FULL, '--stated', 'widgets').exitCode).toBe(0);
+    expect(status('target', '--campaign-dir', FULL, '--stated', 'ACME/widgets').exitCode).toBe(0);
+  });
+
+  test('a stated target naming another repository exits 3 with the one Continue here / Stop question', () => {
+    const text = status('target', '--campaign-dir', FULL, '--stated', 'monorepo');
+    expect(text.exitCode).toBe(3);
+    expect(text.stdout.toString()).toContain(`Target: acme/widgets · ${FULL}`);
+    expect(text.stdout.toString()).toContain('monorepo');
+    const json = status('target', '--campaign-dir', FULL, '--stated', 'monorepo', '--json');
+    expect(json.exitCode).toBe(3);
+    const out = JSON.parse(json.stdout.toString());
+    expect(out).toMatchObject({ repo: 'acme/widgets', campaign_dir: FULL, stated: 'monorepo', mismatch: true });
+    expect(out.card.questions).toHaveLength(1);
+    expect(out.card.questions[0].options.map((o: { label: string }) => o.label)).toEqual(['Continue here', 'Stop']);
+  });
+
+  test('target needs no campaign yet: it falls back to the origin remote, and writes nothing', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-target-'));
+    try {
+      childProcess.execFileSync('git', ['init', '-q', dir]);
+      childProcess.execFileSync('git', ['-C', dir, 'remote', 'add', 'origin', 'git@github.com:someone/elsewhere.git']);
+      const campaign = path.join(dir, '.blackhole');
+      const proc = Bun.spawnSync({ cmd: ['bun', 'run', 'scripts/campaign-status.ts', 'target', '--campaign-dir', campaign, '--stated', 'monorepo', '--json'], cwd: root, stdout: 'pipe', stderr: 'pipe' });
+      expect(proc.exitCode).toBe(3);
+      expect(JSON.parse(proc.stdout.toString())).toMatchObject({ repo: 'someone/elsewhere', source: 'origin', mismatch: true });
+      expect(fs.existsSync(campaign)).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a malformed config.json exits 1 with one line naming the file, never a stack trace', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blackhole-target-bad-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'config.json'), '{ not json');
+      const proc = status('target', '--campaign-dir', dir);
+      expect(proc.exitCode).toBe(1);
+      expect(proc.stdout.toString()).toBe('');
+      const err = proc.stderr.toString().trim();
+      expect(err.split('\n')).toHaveLength(1);
+      expect(err).toStartWith('status target: ');
+      expect(err).toContain(path.join(dir, 'config.json'));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('target refuses an unknown flag or an empty --stated with exit 2', () => {
+    expect(status('target', '--campaign-dir', FULL, '--state', 'x').exitCode).toBe(2);
+    expect(status('target', '--campaign-dir', FULL, '--stated', '').exitCode).toBe(2);
+  });
+});

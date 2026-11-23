@@ -1,4 +1,5 @@
 import { isNotFound, runGhApi, runGhApiRestJson } from './cli.ts';
+import { repoPathFromOrigin } from '../forge-detection.ts';
 import type { ForgeCheck, ForgeIssue, ForgePr, IssueListFilter, PrChangeBaseResult } from './types.ts';
 
 // GitHub REST rows and their mapping to the forge types (ADR-048). Pure mappers are exported so
@@ -280,8 +281,9 @@ export const removeLabel = (repo: string, number: number, label: string): void =
   }
 };
 
-/** `owner/name` from a GitHub remote URL (https or ssh), or null. */
+/** `owner/name` from a GitHub remote URL (https or ssh), or null: `repoPathFromOrigin` with a GitHub host and exactly two segments. */
 export const repoSlugFromOrigin = (url: string | null): string | null => {
-  const match = url?.match(/github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
-  return match ? `${match[1]}/${match[2]}` : null;
+  const parsed = repoPathFromOrigin(url);
+  if (!parsed || !/(^|\.)github\.com(:\d+)?$/i.test(parsed.host)) return null;
+  return parsed.path.split('/').length === 2 ? parsed.path : null;
 };

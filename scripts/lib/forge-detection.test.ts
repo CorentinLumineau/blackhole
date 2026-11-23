@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { detectForgeFromOrigin, resolveForgeType } from './forge-detection.ts';
+import { detectForgeFromOrigin, repoPathFromOrigin, resolveForgeType } from './forge-detection.ts';
 
 describe('detectForgeFromOrigin', () => {
   test('detects GitHub', () => {
@@ -52,5 +52,28 @@ describe('resolveForgeType', () => {
       expect(result.forge).toBe('github');
       expect(result.source).toBe('origin');
     }
+  });
+});
+
+describe('repoPathFromOrigin', () => {
+  test('the whole path after the host, for scp-like, https and ssh origins', () => {
+    expect(repoPathFromOrigin('git@github.com:CorentinLumineau/blackhole.git')).toEqual({ host: 'github.com', path: 'CorentinLumineau/blackhole' });
+    expect(repoPathFromOrigin('https://github.com/o/r.GIT/')).toEqual({ host: 'github.com', path: 'o/r' });
+    expect(repoPathFromOrigin('ssh://git@git.example.lan:2222/AI/mercure.git')).toEqual({ host: 'git.example.lan:2222', path: 'AI/mercure' });
+  });
+
+  test('keeps GitLab nested groups whole', () => {
+    expect(repoPathFromOrigin('https://gitlab.com/grp/sub/repo.git')).toEqual({ host: 'gitlab.com', path: 'grp/sub/repo' });
+    expect(repoPathFromOrigin('git@gitlab.example.com:grp/sub/repo.git')).toEqual({ host: 'gitlab.example.com', path: 'grp/sub/repo' });
+  });
+
+  test('null without a host: local paths, file:// origins, or a path with fewer than two segments', () => {
+    expect(repoPathFromOrigin('/srv/git/repo.git')).toBeNull();
+    expect(repoPathFromOrigin('../other/repo')).toBeNull();
+    expect(repoPathFromOrigin('file:///srv/git/o/r.git')).toBeNull();
+    expect(repoPathFromOrigin('https://github.com/solo')).toBeNull();
+    expect(repoPathFromOrigin('blackhole')).toBeNull();
+    expect(repoPathFromOrigin(null)).toBeNull();
+    expect(repoPathFromOrigin('')).toBeNull();
   });
 });

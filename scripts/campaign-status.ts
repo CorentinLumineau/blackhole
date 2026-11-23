@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { readScope } from './forge-scope.ts';
-import { parseStatusArgs } from './lib/campaign-status/cli.ts';
+import { defaultCampaignDir, parseStatusArgs } from './lib/campaign-status/cli.ts';
 import { readLaneConfig } from './lib/lane.ts';
 import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dashboard.ts';
 import { buildBudgetPanel, givenBudgetPanel, readBudgetPanel, resolveBudgetSettings } from './lib/campaign-status/budget.ts';
@@ -22,6 +22,7 @@ import { fetchPrSignals } from './lib/campaign-status/pr-signals.ts';
 import { renderStatusHtml } from './lib/campaign-status/html.ts';
 import { readPublishState, readStatusAlerts, statusPageEnabled } from './lib/campaign-status/staleness.ts';
 import { buildLaunchSummary, gateCards, renderLaunchSummary, usageCapsPatch, type CatchupInput } from './lib/campaign-status/launch-summary.ts';
+import { resolveLaunchTarget, statedTargetMatches, targetCard, targetLine, type LaunchTarget } from './lib/campaign-status/launch-target.ts';
 import type { DetectResult } from './lib/peer-campaigns.ts';
 import { detectForCampaign } from './peer-campaigns.ts';
 import type { StatusArtifact, StatusPageInput } from './lib/campaign-status/status-page-row.ts';
@@ -33,7 +34,7 @@ import { readJsonFile } from './lib/fs.ts';
 import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { createForgeAdapter } from './lib/forge-adapter/index.ts';
 import type { ForgeAdapter } from './lib/forge-adapter/types.ts';
-import { isForgeType, resolveForgeForRepo } from './lib/forge-detection.ts';
+import { isForgeType, readOriginUrl, resolveForgeForRepo } from './lib/forge-detection.ts';
 import { formatPaceLine, readLatestPaceRecord } from './lib/pace-log.ts';
 import { USAGE_HISTORY_FILE } from './lib/usage-history.ts';
 import { forgeDeclaredCrossRepo } from './lib/pr-dependencies.ts';
@@ -391,12 +392,63 @@ async function printLaunchSummary(
     readPluginVersionCheck({ running: readPluginVersion(PLUGIN_ROOT), homeDir: os.homedir(), pluginName: projectIdentity.name }),
   );
   const warnings = versionWarning ? [versionWarning] : [];
+  const target = readLaunchTarget(campaignDir, collected.state.config.repo);
   if (asJson) {
     const pacing = catchup?.pacing ? { pacing: { ...catchup.pacing, preset: catchup.preset } } : {};
-    console.log(JSON.stringify({ rows, cards: gateCards(rows, { printOnly: readPrintOnly(campaignDir, unattended) }), warnings, ...pacing }, null, 2));
+    const targetJson = { repo: target.repo, campaign_dir: target.campaignDir, source: target.source };
+    console.log(JSON.stringify({ target: targetJson, rows, cards: gateCards(rows, { printOnly: readPrintOnly(campaignDir, unattended) }), warnings, ...pacing }, null, 2));
     return;
   }
-  console.log(renderLaunchSummary(rows, warnings));
+  console.log(renderLaunchSummary(rows, warnings, target));
+}
+
+/** The resolved launch target: `config.json`'s `repo`, else the campaign's repository origin remote. */
+function readLaunchTarget(campaignDir: string, configRepo: string | undefined): LaunchTarget {
+  const absolute = path.resolve(campaignDir);
+  return resolveLaunchTarget({ campaignDir: absolute, configRepo, originUrl: configRepo ? null : readOriginUrl(path.dirname(absolute)) });
+}
+
+const TARGET_USAGE = 'Usage: campaign-status.ts target [--stated <repo name, owner/repo or URL>] [--json] [--campaign-dir <dir>]';
+
+/**
+ * `target`: the first step of a `run` or `catchup` start, before any write (`launch-gate.md`
+ * § Target check). Prints the resolved repository and campaign directory; reads `config.json` when
+ * present and never needs a campaign. Exit 0: no stated target, or it names the resolved repository.
+ * Exit 3: it names another one (the output carries the one Continue here / Stop question). Exit 2:
+ * usage. Exit 1: `config.json` exists but cannot be read as JSON.
+ */
+function printTarget(argv: string[]): void {
+  let flags: ReturnType<typeof parseFlags>;
+  try {
+    flags = parseFlags(argv);
+    const unknown = unknownFlagKeys(flags, ['stated', 'json', 'campaign-dir']);
+    if (unknown.length > 0) throw new Error(`unknown flag ${unknown.map((k) => `--${k}`).join(', ')}. ${TARGET_USAGE}`);
+    if (flags.stated !== undefined && (typeof flags.stated !== 'string' || flags.stated.trim() === '')) throw new Error(`--stated requires a repository. ${TARGET_USAGE}`);
+    if (flags['campaign-dir'] !== undefined && typeof flags['campaign-dir'] !== 'string') throw new Error(`--campaign-dir requires a directory. ${TARGET_USAGE}`);
+  } catch (error) {
+    console.error(`status target: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(2);
+  }
+  const campaignDir = typeof flags['campaign-dir'] === 'string' ? path.resolve(flags['campaign-dir']) : defaultCampaignDir();
+  const configPath = path.join(campaignDir, 'config.json');
+  let config: { repo?: unknown } = {};
+  try {
+    if (fs.existsSync(configPath)) config = (readJsonFile(configPath, configPath) ?? {}) as { repo?: unknown };
+  } catch (error) {
+    console.error(`status target: ${configPath} is unreadable: ${(error instanceof Error ? error.message : String(error)).split('\n')[0]}`);
+    process.exit(1);
+  }
+  const target = readLaunchTarget(campaignDir, typeof config.repo === 'string' ? config.repo : undefined);
+  const stated = typeof flags.stated === 'string' ? flags.stated.trim() : null;
+  const mismatch = stated !== null && !statedTargetMatches(stated, target);
+  if (flags.json === true) {
+    const card = mismatch && stated !== null ? { card: targetCard(target, stated) } : {};
+    console.log(JSON.stringify({ repo: target.repo, campaign_dir: target.campaignDir, source: target.source, stated, mismatch, ...card }, null, 2));
+  } else {
+    console.log(targetLine(target));
+    if (mismatch) console.log(`Stated target ${stated} is not ${target.repo ?? 'a resolved repository'}: ask Continue here / Stop before any config write.`);
+  }
+  if (mismatch) process.exit(3);
 }
 
 const USAGE_CAPS_USAGE = 'Usage: campaign-status.ts usage-caps --enabled <true|false> [--stop-workers-at <6-100>] [--target-at-reset <1-100|none>] [--campaign-dir <dir>]';
@@ -428,6 +480,7 @@ function printUsageCaps(argv: string[]): void {
 
 async function main() {
   if (process.argv[2] === 'usage-caps') return printUsageCaps(process.argv.slice(3));
+  if (process.argv[2] === 'target') return printTarget(process.argv.slice(3));
   let args: ReturnType<typeof parseStatusArgs>;
   try {
     args = parseStatusArgs(process.argv.slice(2));

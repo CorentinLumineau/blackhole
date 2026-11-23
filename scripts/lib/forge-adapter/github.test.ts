@@ -436,6 +436,12 @@ describe('repoSlugFromOrigin', () => {
     expect(repoSlugFromOrigin('git@github.com:o/r.git')).toBe('o/r');
   });
 
+  test('wraps the forge-agnostic parser: GitHub hosts only, exactly owner/name', () => {
+    expect(repoSlugFromOrigin('https://github.com/a/b/c')).toBeNull();
+    expect(repoSlugFromOrigin('file:///srv/github.com/o/r')).toBeNull();
+    expect(repoSlugFromOrigin('git@github.com:o/r.GIT')).toBe('o/r');
+  });
+
   test('returns null for a non-GitHub or missing remote', () => {
     expect(repoSlugFromOrigin('https://gitlab.com/o/r')).toBeNull();
     expect(repoSlugFromOrigin(null)).toBeNull();
