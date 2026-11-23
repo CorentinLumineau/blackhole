@@ -307,6 +307,28 @@ describe('append_row dedup — ARCHITECTURE.md bullet-list discriminator (citati
     const second = appendConstraintBulletIfAbsent(first.content, analyzeBullet);
     expect(second.appended).toBe(false);
   });
+
+  test('heading absent -> existing bytes untouched, new section appended at end of file', () => {
+    const noHeading = '# ARCHITECTURE\n\nSome consumer prose that must stay intact.\n';
+    const result = appendConstraintBulletIfAbsent(noHeading, bullet);
+    expect(result.appended).toBe(true);
+    expect(result.content.startsWith(noHeading)).toBe(true);
+    expect(result.content).toBe(`${noHeading}\n## Active Constraints\n${bullet}\n`);
+    const second = appendConstraintBulletIfAbsent(result.content, bullet);
+    expect(second.appended).toBe(false);
+    expect(second.content).toBe(result.content);
+  });
+
+  test('heading absent, no trailing newline -> section still starts on its own line', () => {
+    const result = appendConstraintBulletIfAbsent('# ARCHITECTURE', bullet);
+    expect(result.content).toBe(`# ARCHITECTURE\n\n## Active Constraints\n${bullet}\n`);
+  });
+
+  test('empty (absent) file -> heading plus bullet', () => {
+    const result = appendConstraintBulletIfAbsent('', bullet);
+    expect(result.appended).toBe(true);
+    expect(result.content).toBe(`## Active Constraints\n${bullet}\n`);
+  });
 });
 
 describe('carryManifest — end-to-end against the blackhole-state.md § Staging worked example (reused fixture, not invented)', () => {
