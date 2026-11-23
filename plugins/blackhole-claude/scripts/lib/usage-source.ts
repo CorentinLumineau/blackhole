@@ -24,6 +24,8 @@ import { readUsageHistory } from './usage-history.ts';
 // window is refused, and the gates see no reading rather than another account's usage.
 
 /** How far a cached weekly `resets_at` may sit from the campaign's last probe and still be the same window. */
+// 900 s absorbs rounding between writers (event epoch seconds, desktop ISO time, statusline value) and stays
+// far below the hours that separate two accounts' weekly windows.
 export const SAME_WINDOW_TOLERANCE_SECONDS = 900;
 
 export type UsageSourceName = 'usage-file' | 'rate-limit-cache' | 'none';
@@ -149,15 +151,16 @@ const cursorProvider: Provider = {
 
 /** The source for `host`. Chain: the explicit `usageFile`, then the rate-limit cache (not on Cursor);
  * the first usable reading wins, except that a stale `usageFile` ends the chain with no reading.
- * `historyPath` (the campaign's usage-history.jsonl) anchors the cache to this campaign's account. Throws on an invalid `resource_policy.pace` or `usage_budget.windows`,
+ * `historyPath` (the campaign's usage-history.jsonl) anchors the cache to this campaign's account; it is required, so
+ * turning the check off is a deliberate `null`. Throws on an invalid `resource_policy.pace` or `usage_budget.windows`,
  * and a missing or malformed `usageFile` throws UsageFileError when read. */
-export const usageSourceFor = (host: Host, config: Record<string, unknown>, options: { cachePath?: string; usageFile?: string; historyPath?: string | null } = {}): UsageSource => {
+export const usageSourceFor = (host: Host, config: Record<string, unknown>, options: { historyPath: string | null; cachePath?: string; usageFile?: string }): UsageSource => {
   const maxAge = resolvePaceGateThresholds(config).maxAgeSeconds;
   const only = resolveUsageWindows(config);
   const cachePath = options.cachePath || resolveRateLimitCachePath(config);
   const chain: Provider[] = [];
   if (options.usageFile) chain.push(fileProvider(options.usageFile, maxAge));
-  chain.push(host === 'cursor' ? cursorProvider : cacheProvider(cachePath, maxAge, host, options.historyPath ?? null));
+  chain.push(host === 'cursor' ? cursorProvider : cacheProvider(cachePath, maxAge, host, options.historyPath));
   const name = chain[0].source;
   const usesCache = host !== 'cursor';
 

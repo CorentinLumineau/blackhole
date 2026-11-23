@@ -8,7 +8,7 @@ import { resolveCatchup, workersAtFloor, type CatchupConfig } from './lib/catchu
 import { resolveUsageBudget, workersAllowed, type UsageVerdict } from './lib/usage-budget.ts';
 import { UsageFileError } from './lib/usage-normalize.ts';
 import { resolveHost, restrictWindows, usageSourceFor, type UsageSource } from './lib/usage-source.ts';
-import { USAGE_HISTORY_FILE } from './lib/usage-history.ts';
+import { usageHistoryPathFor } from './lib/usage-history.ts';
 
 // Usage: bun run scripts/usage-budget.ts --parallel-max <n> [--usage '<json>' | --cache <path>]
 //        [--host claude|cursor] [--config <path>] [--now <epoch s>]
@@ -99,7 +99,7 @@ const main = (): void => {
     source = usageSourceFor(host, config, {
       cachePath: typeof flags.cache === 'string' ? flags.cache : undefined,
       usageFile,
-      historyPath: path.join(path.dirname(configPath), USAGE_HISTORY_FILE),
+      historyPath: usageHistoryPathFor(configPath),
     });
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));

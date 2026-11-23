@@ -12,7 +12,7 @@ import {
 import { resolveRateLimitCachePath } from './lib/rate-limit-cache.ts';
 import type { Host } from './lib/run-context.ts';
 import { resolveHost, usageSourceFor, type UsageSource } from './lib/usage-source.ts';
-import { USAGE_HISTORY_FILE } from './lib/usage-history.ts';
+import { usageHistoryPathFor } from './lib/usage-history.ts';
 
 // Usage: bun run scripts/pace-gate.ts --current <n> --max <n> [--cache <path>] [--host claude|cursor] [--config <path>] [--now <epoch s>]
 // Reads the host's usage source (usage-source.ts), as usage-budget.ts does: the rate-limit cache on
@@ -45,7 +45,7 @@ try {
   thresholds = resolvePaceGateThresholds(config);
   const pace = ((config.resource_policy ?? {}) as { pace?: { baseline_path?: unknown } }).pace;
   if (!cachePath) cachePath = resolveRateLimitCachePath(config);
-  source = usageSourceFor(host, config, { cachePath, historyPath: path.join(path.dirname(configPath), USAGE_HISTORY_FILE) });
+  source = usageSourceFor(host, config, { cachePath, historyPath: usageHistoryPathFor(configPath) });
   baselinePath = typeof pace?.baseline_path === 'string' ? pace.baseline_path : path.join(path.dirname(cachePath), 'pace-baseline.json');
 } catch (error) {
   console.error(`pace-gate: ${error instanceof Error ? error.message : String(error)}`);

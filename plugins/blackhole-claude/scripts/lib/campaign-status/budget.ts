@@ -4,7 +4,7 @@ import { resolvePaceGateThresholds } from '../pace-gate.ts';
 import type { Host } from '../run-context.ts';
 import { forecastWeekly, resolveUsageBudget, resolveUsageWindows, weeklyPace, workersAllowed, USAGE_WINDOWS, type UsageBudgetConfig, type UsageVerdict, type WeeklyPace, type WeeklyReading } from '../usage-budget.ts';
 import { readUsageHistory } from '../usage-history.ts';
-import { restrictWindows, usageSourceFor, type UsageSourceName } from '../usage-source.ts';
+import { foreignCacheReason, restrictWindows, usageSourceFor, type UsageSourceName } from '../usage-source.ts';
 import type { BudgetPanel } from './types.ts';
 
 // The status page's usage-budget panel: the rate-limit reading pace-gate.ts and usage-budget.ts
@@ -168,7 +168,9 @@ export function readBudgetPanel(config: Record<string, unknown>, host: Host, now
   let stale: { limits: RateLimits; ageSeconds: number } | null = null;
   if (!reading.limits && cachePath && ageSeconds !== null && ageSeconds > resolvePaceGateThresholds(config).maxAgeSeconds) {
     const last = readRateLimits(cachePath, now, Number.POSITIVE_INFINITY).limits;
-    const kept = last ? restrictWindows(last, resolveUsageWindows(config)).limits : null;
+    // Another account's last reading is not this campaign's, stale or not.
+    const ours = last && !foreignCacheReason(last, historyPath, now) ? last : null;
+    const kept = ours ? restrictWindows(ours, resolveUsageWindows(config)).limits : null;
     if (kept) stale = { limits: kept, ageSeconds };
   }
   const history = historyPath ? readUsageHistory(historyPath) : [];

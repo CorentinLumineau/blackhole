@@ -5,7 +5,7 @@ import { readPacing, resolveCatchup } from './lib/catchup.ts';
 import { readJsonFile } from './lib/fs.ts';
 import type { Host } from './lib/run-context.ts';
 import { resolveHost, usageSourceFor } from './lib/usage-source.ts';
-import { USAGE_HISTORY_FILE } from './lib/usage-history.ts';
+import { usageHistoryPathFor } from './lib/usage-history.ts';
 
 // Usage: bun run scripts/pace-floor.ts [--usage <file>] [--cache <path>] [--host claude|cursor]
 //        [--config <path>] [--now <epoch s>]
@@ -37,7 +37,7 @@ const main = (): void => {
     const report = usageSourceFor(host, config, {
       cachePath: typeof flags.cache === 'string' ? flags.cache : undefined,
       usageFile: typeof flags.usage === 'string' ? flags.usage : undefined,
-      historyPath: path.join(path.dirname(configPath), USAGE_HISTORY_FILE),
+      historyPath: usageHistoryPathFor(configPath),
     }).report(now);
     const pacing = readPacing(report, preset, now);
     if (pacing.reason) console.error(`pace-floor: ${pacing.status}: ${pacing.reason}`);
