@@ -178,8 +178,16 @@ const mainCloneRoot = (cwd = process.cwd()) => {
  * must resolve through that symlink too, not just through a symlinked ancestor directory — passing
  * the target path itself (not its dirname) is what makes `fs.realpathSync` see it. Shared by
  * `validate-file-changes.js`'s leaf-containment check and `allWorktreeRoots`'s root filter below
- * (#510) — one resolution path for both sides of every containment comparison (`V-INT-02`). */
-const resolveExistingAncestor = (p) => {
+ * (#510) — one resolution path for both sides of every containment comparison (`V-INT-02`).
+ *
+ * A dangling symlink is followed too: `realpathSync` fails on it, so without this a link planted
+ * toward a file that does not exist yet resolved to the link's own parent, while a write through
+ * it creates the file where the link points. The first segment that does not resolve is read with
+ * `readlinkSync` when it is a link, and the rest of the path is resolved from its target, up to
+ * `MAX_LINK_HOPS` links (the kernel's own `ELOOP` limit). */
+const MAX_LINK_HOPS = 40;
+
+const resolveExistingAncestor = (p, hops = 0) => {
   const resolved = path.resolve(p);
   try {
     return fs.realpathSync(resolved);
@@ -198,6 +206,7 @@ const resolveExistingAncestor = (p) => {
       }
     };
     let existing = root;
+    let depth = 0;
     let lo = 1;
     let hi = segments.length - 1;
     while (lo <= hi) {
@@ -207,10 +216,20 @@ const resolveExistingAncestor = (p) => {
         hi = mid - 1;
       } else {
         existing = real;
+        depth = mid;
         lo = mid + 1;
       }
     }
-    return existing;
+    // The segment after the deepest resolvable prefix either does not exist or is a link whose
+    // target does not (a dangling link, or a loop the hop limit ends).
+    let link = null;
+    try {
+      if (fs.lstatSync(prefix(depth + 1)).isSymbolicLink()) link = fs.readlinkSync(prefix(depth + 1));
+    } catch {
+      link = null;
+    }
+    if (link === null || hops >= MAX_LINK_HOPS) return existing;
+    return resolveExistingAncestor(path.resolve(existing, link, ...segments.slice(depth + 1)), hops + 1);
   }
 };
 

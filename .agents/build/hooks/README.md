@@ -95,6 +95,21 @@ file with one hard link. Anything else under `.blackhole/` (a directory destinat
 block as any other main-clone path. A Bash target built from a shell variable is never expanded:
 it stays the one warn-and-record `bash-write-target-unresolvable` tier.
 
+Writers that act on a path without a redirect (`utils/bash-path-writers.js`, #1347) reach the same
+containment check: `rm`/`rmdir`/`unlink`/`shred`, `touch`, `chmod`/`chown`/`chgrp`, `mkdir` and
+`rename` (every operand; `rename` also warns), `find -delete` and `find -fprint F`, `curl -o`/`-D`/
+`-c`/`--output-dir`/`-O`, `wget -O`/`-o`/`-P` (and the working directory when neither `-O` nor
+`-P` is given), `tar -cf F` and `tar -x` into `-C DIR` (or the working directory), `unzip -d DIR`
+(or the working directory), `patch` (its file operand, `-o`, `-r`, `-d DIR`), and a git subcommand
+that writes the working tree (`apply`, `checkout`, `restore`, `reset`, `clean`, …) into each
+`-C`/`--work-tree`/`--git-dir` base it names. An `xargs` or `find -exec` that runs a writer, `rename`,
+`tar -x -P`, `curl -K` and `wget -e` warn, since their targets are not in the command string. A hard
+link (`ln SRC LINK`) judges its source as a write, since a write to the link writes the source. A
+symbolic link whose target resolves into `.blackhole/` or a settings file is blocked; one toward any
+other path outside the worktree warns. Both write guards resolve a dangling symlink leaf through its
+link target (`resolveExistingAncestor`), so a link planted toward a file that does not exist yet is
+judged where the write would create it.
+
 ## Trusted write roots (scratchpad and cross-repo worktrees)
 
 `trustedWriteRoots(cwd, input)` in `utils/hook-event-log.js` is the one place that names the extra
@@ -127,7 +142,8 @@ matched case-insensitively. Inside an admitted root a Write/Edit target must hav
 through every symlink, and have an absent or plain-file leaf (one hard link); the Bash guard allows
 only the two write shapes of the state-dir allow-list above (redirect/`tee`, single-file
 `cp`/`mv`/`install`), so a directory destination, a recursive copy, a link or `rsync` into one of
-these roots keeps the block.
+these roots keeps the block. A path a command removes, creates or changes in place (`rm`, `touch`,
+`mkdir`, `chmod`, `find -delete`) is also allowed in these roots, never in `.blackhole/`.
 
 The three settings files are never a worker's to write (`settings-roots-write` for Write/Edit,
 `bash-settings-roots-write` for Bash): editing one would widen the roots of the next call.

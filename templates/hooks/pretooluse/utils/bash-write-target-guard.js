@@ -54,6 +54,12 @@ const {
 } = require('./hook-event-log');
 const { FILE_WRITE, isTrustedShapedWrite, isTrustedStateWrite } = require('./state-dir-write-shape');
 const { isLiteralPathArg, extractCdTargetText, normalizeShellWord, MAX_CWD_CANDIDATES } = require('./worktree-removal-guard');
+const { findPathWriterTargets, PATH_OP } = require('./bash-path-writers');
+
+/** Shape tag for the target a symbolic link will point at (`ln -s TARGET LINK`): a link toward
+ * the campaign state dir or a settings file is refused, so no later write in the worktree can
+ * reach them through it; a link elsewhere outside the worktree only warns. */
+const LINK_TARGET = 'link-target';
 
 /** Command words whose write behavior cannot be resolved by static inspection of the command
  * string at all — the residual gap ADR-029 accepts and downgrades to WARN rather than a silent
@@ -837,6 +843,27 @@ const rsyncTargets = (args) => {
   return isRemoteRsyncPath(positional[positional.length - 1]) ? [] : [targetWord(words[words.length - 1])];
 };
 
+/** The sources of an `ln` call as targets. A hard link shares its source's inode, so a later write
+ * to the link in the worktree writes the source: each source is judged as a write. A symbolic
+ * link's source is the text the link will hold, judged (`LINK_TARGET`) where it resolves from the
+ * link's directory — the `-t` directory, the destination or its parent, or the working directory
+ * for `ln -s TARGET` and `ln -sr`. */
+const linkSourceWrites = (args, dir, rest) => {
+  const symbolic = args.some((t) => t === '--symbolic' || /^-[a-zA-Z]*s[a-zA-Z]*$/.test(t));
+  const relative = args.some((t) => t === '--relative' || /^-[a-zA-Z]*r[a-zA-Z]*$/.test(t));
+  const sources = dir !== null || rest.length < 2 ? rest : rest.slice(0, -1);
+  if (!symbolic) return rest.length < 2 && dir === null ? [] : sources.map((t) => ({ target: targetWord(t) }));
+  const dest = dir !== null ? dir : rest.length >= 2 ? literalWord(rest[rest.length - 1]) : '.';
+  const linkDirs = dir !== null || rest.length < 2 || relative ? [dest] : [dest, path.dirname(dest)];
+  return sources.flatMap((t) => {
+    const word = literalWord(t);
+    if (path.isAbsolute(word) || !isResolvableLiteralTarget(word) || !isResolvableLiteralTarget(dest)) {
+      return [{ target: targetWord(t), shape: LINK_TARGET }];
+    }
+    return linkDirs.map((base) => ({ target: literalTarget(path.join(base, word)), shape: LINK_TARGET }));
+  });
+};
+
 /** `cp`/`mv`/`install`/`ln <source...> <dest>` write targets in one clause. Without a
  * target-directory option the last positional argument is the destination; with one, that
  * directory is the destination and every positional is a source. `mv` also unlinks its sources,
@@ -864,19 +891,23 @@ const findCopyMoveWrites = (tokens) => {
       return plain(args.filter((t) => !t.startsWith('-')).map(targetWord));
     }
     const { dir, positional: rest, ambiguous } = copyOperands(name, args);
-    if (dir === null && rest.length < 2) continue;
+    const links = name === 'ln' ? linkSourceWrites(args, dir, rest) : [];
+    if (dir === null && rest.length < 2) {
+      if (links.length > 0) return links;
+      continue;
+    }
     // An option this module does not know may take a value that looks like a positional, so the
     // destination is uncertain: every positional except the first source is checked and the
     // clause also warns (the `rsyncTargets` rule). `mv` and `-t DIR` calls check them all.
     if (ambiguous) {
       const sources = name === 'mv' || dir !== null ? rest : rest.slice(1);
-      return [...(dir !== null ? [dir] : []), ...sources, UNRESOLVABLE_TARGET].map((t) => ({ target: targetWord(t) }));
+      return [...(dir !== null ? [dir] : []), ...sources, UNRESOLVABLE_TARGET].map((t) => ({ target: targetWord(t) })).concat(links);
     }
     // `shape` lets a cp/mv/install target qualify for state-dir trust (`isTrustedStateWrite`).
     const shape = name === 'ln' ? undefined : { name, args };
     const written = [{ target: targetWord(dir !== null ? dir : rest[rest.length - 1]), shape }];
     if (name === 'mv') written.push(...(dir !== null ? rest : rest.slice(0, -1)).map((t) => ({ target: targetWord(t), shape })));
-    return written;
+    return written.concat(links);
   }
   return [];
 };
@@ -1101,6 +1132,11 @@ const gitOutputTargets = (args) => {
       i = opt.last;
     }
   }
+  // A subcommand that writes the working tree writes into every `-C`/`--work-tree` base it names.
+  if (GIT_WORKTREE_WRITERS.has(args[subIdx])) {
+    for (const base of bases) if (base) values.push(path.isAbsolute(base) ? base : `./${base}`);
+    if (args.slice(subIdx + 1).includes('--unsafe-paths')) values.push(UNRESOLVABLE_TARGET);
+  }
   const toStdout = args.slice(subIdx + 1).some((t) => t.startsWith('--') && isLongOptionPrefix(t, '--stdout'));
   // Without -o, format-patch writes into `format.outputDirectory` when set, else the working dir.
   if (isFormatPatch && !toStdout && !values.some((v) => v !== UNRESOLVABLE_TARGET)) values.push(outputDirectory || '.');
@@ -1111,6 +1147,12 @@ const gitOutputTargets = (args) => {
   }
   return targets;
 };
+
+/** git subcommands that write the working tree (or apply a patch to it). */
+const GIT_WORKTREE_WRITERS = new Set([
+  'apply', 'checkout', 'switch', 'restore', 'reset', 'stash', 'merge', 'pull', 'rebase', 'cherry-pick', 'revert',
+  'am', 'clean', 'rm', 'mv', 'read-tree', 'checkout-index', 'sparse-checkout', 'submodule',
+]);
 
 /** `yq -i|--inplace` rewrites its file operands. The expression operand cannot be told from a
  * file without parsing yq's own flag set, so every operand is checked: an expression resolves to
@@ -1720,6 +1762,14 @@ const clauseLinks = (visible, start, end) => {
   return { before, subshell };
 };
 
+/** The guard's own readers, handed to `bash-path-writers.js`. */
+const PATH_WRITER_HELPERS = {
+  findCommand,
+  argsAfter: (tokens, idx) => positionalArgsSkippingRedirects(tokens, idx + 1),
+  targetWord,
+  commandName,
+};
+
 /** Write targets in one view of the command, each with the directories a relative target
  * resolves against (`dirs`, and `unknown` when a `cd` hid one), and whether anything
  * write-shaped cannot be resolved. Clauses are walked in order so a `cd` moves the base of every
@@ -1779,6 +1829,9 @@ const collectWriteSignals = (visible, heredocText, cwd, initialState, onSubstitu
       findTeeTargets(tokens).forEach((t) => add(t, FILE_WRITE));
       [...findSedTargets(tokens), ...findOptionWriteTargets(tokens)].forEach((t) => add(t));
       for (const { target, shape } of findCopyMoveWrites(tokens)) add(target, shape);
+      const pathWriters = findPathWriterTargets(tokens, PATH_WRITER_HELPERS);
+      for (const { target, shape } of pathWriters.targets) add(target, shape);
+      if (pathWriters.unresolvable) unresolvable = true;
       // A trace value is the exact file name git opens, so it skips the shell-word checks.
       const trace = findGitTraceTargets(tokens, k, inCase);
       for (const target of trace.targets) literalTargets.push({ target, dirs: [cwd] });
@@ -1853,9 +1906,37 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
     }
   }
 
+  const realState = stateRoot && resolveExistingAncestor(stateRoot);
+  const isInState = (p) =>
+    Boolean(realState) && [path.resolve(p), resolveExistingAncestor(p)].some((q) => q === realState || q.startsWith(realState + path.sep));
+  const outsideRoot = (p) => !isUnderRoot(p, assignedRoot) || escapesRootLexically(p, assignedRoot);
   for (const { target, dir, visible, shape } of literalTargets) {
     if (isStreamDeviceTarget(target, visible)) continue;
     const resolvedPath = path.resolve(dir, target);
+    if (shape === LINK_TARGET) {
+      if (!outsideRoot(resolvedPath)) continue;
+      if (!isInState(resolvedPath) && !isSettingsFilePath(resolvedPath, settingsFiles)) {
+        unresolvable = true;
+        continue;
+      }
+      return {
+        tier: 'block',
+        pattern_id: 'bash-outside-assigned-worktree',
+        reason:
+          `Bash creates a symbolic link toward the campaign state dir or a settings file: ${resolvedPath}. ` +
+          'A write through it would land outside the assigned worktree. Remedy: link to a path inside the assigned worktree, or write the file there.',
+      };
+    }
+    // A path a command removes or creates in place is trusted in an extra root (the scratchpad),
+    // never in the campaign state dir.
+    if (
+      shape === PATH_OP &&
+      !target.split('/').includes('..') &&
+      extraRoots.some((root) => isUnderRoot(resolvedPath, root)) &&
+      !isInState(resolvedPath)
+    ) {
+      continue;
+    }
     if (isSettingsFilePath(resolvedPath, settingsFiles)) {
       return {
         tier: 'block',
@@ -1866,7 +1947,7 @@ const evaluateBashWriteTargets = (command, cwd, input = {}) => {
       };
     }
     if (
-      (!isUnderRoot(resolvedPath, assignedRoot) || escapesRootLexically(resolvedPath, assignedRoot)) &&
+      outsideRoot(resolvedPath) &&
       !isTrustedStateWrite({ target, shape }, resolvedPath, dir, stateRoot) &&
       !isTrustedShapedWrite({ target, shape }, resolvedPath, dir, isExtraPath)
     ) {

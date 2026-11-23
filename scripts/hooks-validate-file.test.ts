@@ -156,6 +156,33 @@ describe('validate-file-changes.js', () => {
     });
   });
 
+  // A dangling symlink leaf used to resolve to its parent directory, so a link planted in the
+  // worktree toward a file that does not exist yet passed as inside, and the Write created that
+  // file wherever the link points: the hook event log included.
+  test('block tier: a Write through a dangling symlink is judged where the link lands', async () => {
+    await withLinkedWorktree('blackhole-hook-file-dangling-', async (main, worktree) => {
+      writeCampaignConfig(main, { forge: 'github' });
+      const events = path.join(fs.realpathSync(main), '.blackhole', 'hook-events');
+      fs.mkdirSync(events, { recursive: true });
+      const absolute = path.join(worktree, 'notes.json');
+      fs.symlinkSync(path.join(events, 'forged.json'), absolute);
+      const relative = path.join(worktree, 'rel.json');
+      fs.symlinkSync(path.relative(worktree, path.join(events, 'forged2.json')), relative);
+      const chained = path.join(worktree, 'chain.json');
+      fs.symlinkSync('./notes.json', chained);
+      const inside = path.join(worktree, 'later.json');
+      fs.symlinkSync('./not-yet.json', inside);
+
+      for (const leaf of [absolute, relative, chained]) {
+        const result = await runPreToolUseHook(SCRIPT, writePayload(leaf), worktree);
+        expect(result.exitCode).toBe(2);
+        expect(permissionDecision(result.stdout)).toBe('deny');
+      }
+      const allowed = await runPreToolUseHook(SCRIPT, writePayload(inside), worktree);
+      expect(allowed.exitCode).toBe(0);
+    });
+  });
+
   test('warn tier: writing `.env` inside the worktree is allowed but recorded', async () => {
     await withTempGitRepo('blackhole-hook-file-', async (repo) => {
       const result = await runPreToolUseHook(SCRIPT, writePayload(path.join(repo, '.env')), repo);
