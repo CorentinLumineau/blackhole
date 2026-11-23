@@ -11,7 +11,7 @@ import {
   renderRootIndexFile,
   ROOT_DOC_INDEX_PATH,
 } from './doc-index-generate.ts';
-import { byPathByteOrder, renderIndexRowLine } from './check-common.ts';
+import { byPathByteOrder, parseIndexTableRows, renderIndexRowLine } from './check-common.ts';
 import { makeTempDir } from './fs.ts';
 
 // Issue #811 (ADR-031 Phase 1, Task 3/4) — the generator half of the "generated-artifact +
@@ -286,5 +286,19 @@ describe('renderRootIndexFile (#1303)', () => {
 
   test('ROOT_DOC_INDEX_PATH names the root index the generator writes', () => {
     expect(ROOT_DOC_INDEX_PATH).toBe('documentation/INDEX.md');
+  });
+});
+
+describe('a pipe in a frontmatter summary (issue #1414)', () => {
+  test('renders an escaped cell that parses back with no stale row', () => {
+    withFixtureDir((dir) => {
+      write(dir, 'audits/pipe.md', doc({ type: 'audit', summary: '"`string | null` return"', status: 'current', review_trigger: '"on a | b"' }));
+      const generated = buildDocIndexRows(dir);
+      const file = renderFullIndexFile(dir);
+      expect(file).toContain('| audits/pipe.md | `string \\| null` return | audit | current | on a \\| b |');
+      const committed = parseIndexTableRows(file);
+      expect(committed).toEqual(generated);
+      expect(diffDocIndexRows(committed, generated)).toEqual({ dangling: [], orphan: [], stale: [] });
+    });
   });
 });
