@@ -282,9 +282,12 @@ Enforced by `scripts/checks/staging-schema.check.ts`.
 
 Same atomic `.tmp` + `mv` read-modify-write as § Write protocol above, applied to
 `manifest.json`. Each producer (`planner`, `investigator`) appends only its own entries and never
-mutates another producer's row. This is **not** covered by § Single-writer invariant above — that
-invariant is scoped to `queue.json`/`findings-ledger.json` only. Concurrency safety here instead
-comes from `planner` and `investigator` never running for the same issue in the same phase
+mutates another producer's row. The first producer for an issue creates the file as the object
+shown above, `{issue, updated_at, entries: [...]}`, never a bare array of entries; every entry
+carries `declared_at`. A manifest of any other shape is refused by every reader
+(`scripts/lib/carry-staged-artifacts.ts` `loadManifest`) with an error naming this shape.
+This is **not** covered by § Single-writer invariant above — that invariant is scoped to
+`queue.json`/`findings-ledger.json` only. Concurrency safety here instead comes from `planner` and `investigator` never running for the same issue in the same phase
 (design-track `planner` runs in Phase 2; `analyze`/`investigate` `investigator` runs in Phase 1 or
 at escalation — never overlapping for one issue), so there is no lost-update race to close.
 
