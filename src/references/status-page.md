@@ -103,7 +103,7 @@ the plugin version).
 ### Claude Code (Artifact tool present)
 
 One Data dashboard per campaign, laid out by `templates/status-dashboard/index.html` (resolve it
-from `${BLACKHOLE_PLUGIN_ROOT:-.}`). Its datasets are `overview`, `moves`, `blockers`, `board`,
+from the plugin root (`$BLACKHOLE_PLUGIN_ROOT`; the repo root when self-hosting)). Its datasets are `overview`, `moves`, `blockers`, `board`,
 `streams`, `scope`, `config`, `decisions`, `links`, `denials` (the top 5 hook rules by deny and warn count), `budget` (the usage-budget rows, `budgetRows()`), `run` (`runRows()`: run route, decisions mode with its waiting count, coordination role) and `pending` (the parked owner decisions; `STATUS_DATASET_IDS`; the ids and fields:
 `scripts/lib/campaign-status/data.ts`). The page works STALE out in the reader's browser from
 `overview.last_activity_at` and `overview.stale_after_hours` (the one `STALE_AFTER_HOURS`), so a

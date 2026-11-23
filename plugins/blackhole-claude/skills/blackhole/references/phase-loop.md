@@ -64,7 +64,7 @@
 the dispatch decision. It runs at four points: (i) right after the implementer opens the PR, (ii)
 after every fix-round push and before review is requested, (iii) at every turn start for every open
 campaign PR, against that turn's single open-PR snapshot, and (iv) here, after step 0 and before
-step 0.5. Each point runs `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-parent.ts --queue <abs queue.json> --pr <P>
+step 0.5. Each point runs `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stack-parent.ts --queue <abs queue.json> --pr <P>
 --repo-slug <owner/repo> --repo-root <abs> --forge <config.forge>`, which prints one decision as JSON. Whether a
 parent has landed is never read from git ancestry: `stack-repair.ts parent-landed` (`merge-gate.md` § 7) answers it from the forge's merged state.
 
@@ -77,7 +77,7 @@ parent has landed is never read from git ancestry: `stack-repair.ts parent-lande
 | `hold` | A fork parent (`unstackable-parent:fork:#<N>`): hold this PR's merge until #<N> merges or closes |
 | `unknown` (exit 3) | The snapshot or a merge-tree check could not run. STOP this issue's merge for the turn and retry next turn; unknown never certifies "no overlap" |
 
-Gate (V-STACK-02): once the decision above is applied, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-check.ts --pr <P>
+Gate (V-STACK-02): once the decision above is applied, run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stack-check.ts --pr <P>
 --repo-slug <owner/repo> --repo-root <abs>` at the same four points. Exit 1 means the PR still
 overlaps an open PR it is not stacked on: do not request review and STOP this issue's merge for the
 turn. Exit 3 means the check could not run, which is never read as clear. Over the `mcp` channel
@@ -166,7 +166,7 @@ D5 narrowing as Step 0.5 above).
    `documentation/reviews/` + `documentation/INDEX.md`, commit and push on the PR branch. If
    promotion fails to land `documentation/reviews/review-{slug}.md` in the PR, **STOP** — do not
    call `gh pr merge`. Before merge (including consumer `merge-pr.sh` / Pattern B paths), run
-   `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/check-review-artifact.ts --config <abs> --issue <N>
+   `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/check-review-artifact.ts --config <abs> --issue <N>
    --title <title> --ledger <abs findings-ledger.json> --pr <P> --branch <branch> --head <sha>
    --repo-root <abs repo-root> --diff-file <abs paths.txt>` — `--head` is the reviewed head
    passed to promotion, not the post-promotion head (`implementer.md` § Promote Review Artifact);
@@ -181,11 +181,11 @@ D5 narrowing as Step 0.5 above).
 3. Run the project's build command in main clone (if applicable)
 4. **Low-risk automerge gate** (`merge-gate.md` § 9), then merge. Snapshot the PR's
    files (`gh pr diff <n> --name-status`) and run
-   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/merge-risk.ts --name-status <abs> [--patches <abs>] --head-ref <branch>`
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/merge-risk.ts --name-status <abs> [--patches <abs>] --head-ref <branch>`
    (pass `--patches` from `gh pr diff <n>` so `deletes-data` sees SQL, not only deleted paths).
    Exit 0 (`automerge: true`): CI is already green from step 1, the PR is blackhole's own
    (`blackhole/issue-N[-slug]`), and the diff touches none of the high-risk categories — `gh pr merge
-   <flag>` where `<flag>` comes from `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts merge-method --queue <abs
+   <flag>` where `<flag>` comes from `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stack-repair.ts merge-method --queue <abs
    queue.json> --repo-slug <owner/repo> --forge <config.forge> --issue <N>`: `--merge` when the PR has open stacked
    children and the repo allows merge commits, `--squash` otherwise; exit 3 (`hold: true`) when the repo's merge settings are unreadable and the PR has open stacked children: do not merge this turn (`merge-gate.md` § 9; use `&&`
    only, never `;`). Immediately after this command succeeds, in the
@@ -251,7 +251,7 @@ D5 narrowing as Step 0.5 above).
 
 For issue N, PR P:
 
-- Before resetting, record the final `review_iteration` as `rounds_to_lgtm` and the reviewed head SHAs as `reviewed_head_shas` on the `queue.json` entry, and copy `rounds_to_lgtm` onto each ledger row for the issue (`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/review-noise-report.ts` reads it)
+- Before resetting, record the final `review_iteration` as `rounds_to_lgtm` and the reviewed head SHAs as `reviewed_head_shas` on the `queue.json` entry, and copy `rounds_to_lgtm` onto each ledger row for the issue (`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/review-noise-report.ts` reads it)
 - Reset `review_iteration` to 0 on merge
 - `fixed-in-pr` → `resolved`, `resolved_at` set
 - `open` BLOCK on merged files → file new issue or `resolved` if obsolete
@@ -289,7 +289,7 @@ file or schedule discoveries until incident mode exits.
 - For every codebase improvement suggestion:
   1. Calculate the Priority score: $\text{Priority} = \text{Gain} \times (11 - \text{Effort})$.
   2. If $\text{Priority} \ge 30$:
-     - If not yet filed, execute `scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args) || exit 1; gh issue create --title "[Discovery] <Name>" --body "..." $scope_args` (explain context, gain, effort, and priority score).
+     - If not yet filed, execute `scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts create-args) || exit 1; gh issue create --title "[Discovery] <Name>" --body "..." $scope_args` (explain context, gain, effort, and priority score).
      - Map the ledger's `deferred_to_issue` field to the new issue ID.
      - The next auto-sync step reconciles the new issue into `queue.json` as a new campaign backlog item.
   3. If $\text{Priority} < 30$:
@@ -298,7 +298,7 @@ file or schedule discoveries until incident mode exits.
 ## Campaign complete
  
 ```
-scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts list-args) || exit 1
+scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts list-args) || exit 1
 gh issue list --state open $scope_args → []
 gh pr list --state open → [] (excluding LGTM'd `leave-open` PRs, which count as delivered)
 queue.json: no in-flight entries
@@ -319,7 +319,7 @@ else:
     campaign complete — proceed below
 ```
 
-On campaign complete, release the keep-awake hold: `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts keep-awake
+On campaign complete, release the keep-awake hold: `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts keep-awake
 --workers 0` (`keep-awake.md`).
 
 `kaizen.trigger` gates whether this on-empty check ever fires at all: it only applies when
@@ -377,7 +377,7 @@ increment, do not mark a dry wave, do not touch `hunt_state` at all. Re-evaluate
    files regardless of computed Priority (severity-term reconciliation — the hunter's shipped
    `worker-schemas.md` contract has no `CRITICAL` tier; `severity: BLOCK` stands in for the
    ADR's "CRITICAL", per the plan's Codebase Conventions "Severity-term reconciliation"
-   note). Findings that clear the gate are filed via the **existing** `scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args) || exit 1; gh issue create
+   note). Findings that clear the gate are filed via the **existing** `scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts create-args) || exit 1; gh issue create
    --title "..." --body "..." $scope_args` path (the same
    mechanism § Continuous Discovery of Improvements already uses — never a second filing code
    path, `V-INT-02`) with:

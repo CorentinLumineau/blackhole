@@ -24,7 +24,7 @@ An issue is epic-shaped when **any** of these hold:
 Use `issue-splitting.md` split triggers to decompose the epic into child issues.
 
 ```
-scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args) || exit 1
+scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts create-args) || exit 1
 gh issue create --title "Child: <concern>" \
   --body "Part of #<parent>
 ## Acceptance criteria

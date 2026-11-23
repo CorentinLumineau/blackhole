@@ -17,20 +17,20 @@ On every orchestrator turn end, persist in this order:
 1. `queue.json` (atomic tmp + mv)
 2. `findings-ledger.json` (atomic tmp + mv)
 3. `campaign-checkpoint.md` (when in-flight work exists). In an unattended invocation
-   (`--unattended`), first run `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts rearm` and arm each wake-up it
+   (`--unattended`), first run `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts rearm` and arm each wake-up it
    prints that is not already armed (`keep-awake.md` § Wake-ups), then write one `## Notes` line
    per armed wake-up, `wake-up armed: <at> <reasons> <routine id or "next turn">`, so a resume arms
    none twice. Then, in every invocation, reconcile the hold:
-   `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts keep-awake --workers <rows in ## In-flight workers> [--wake-armed]`
+   `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts keep-awake --workers <rows in ## In-flight workers> [--wake-armed]`
    (`--wake-armed` when a wake is armed; `keep-awake.md` § The rule)
 4. When `.blackhole/run-context.json` routes `state_store: branch` (the disk does not outlive the
    session), push the state from the main clone:
-   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/state-branch.ts push --message "chore(state): turn <orchestrator_turn_id>"`.
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/state-branch.ts push --message "chore(state): turn <orchestrator_turn_id>"`.
    It commits `.blackhole/` to the `blackhole/state` branch without touching the working tree or
    the checked-out branch, and a failed push blocks ending the turn like any other write failure
    (`state-branch.md`).
 5. Unless `status_page.enabled` is `false`, refresh the status page
-   (`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --data` on Claude Code, `--html` elsewhere, then the per-harness view — `status-page.md` § Refresh procedure).
+   (`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --data` on Claude Code, `--html` elsewhere, then the per-harness view — `status-page.md` § Refresh procedure).
    It reads the checkpoint's `## Headline` and `## Blocking the run` written in step 3, so a
    checkpoint is written before every refresh that should show a new headline. A failed refresh
    is reported in one line and does not block ending the turn.
@@ -101,7 +101,7 @@ See also: [recovery-protocol.md](recovery-protocol.md) (dirty worktree / mixed-i
 
 After context loss or session restart:
 
-0. On `state_store: branch`, restore state first: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/state-branch.ts pull`
+0. On `state_store: branch`, restore state first: `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/state-branch.ts pull`
    (`state-branch.md`). A fresh machine has no `.blackhole/` until this runs.
 1. Read `campaign-checkpoint.md` if present; else infer from `queue.json`
 2. Run forge sync (`forge-sync.md`)

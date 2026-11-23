@@ -43,7 +43,7 @@ $$\text{Priority} = \text{Gain} \times (11 - \text{Effort})$$
 
 | Priority | Orchestrator action |
 |----------|---------------------|
-| ≥ 30 | File GitHub issue (`scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args) || exit 1; gh issue create … $scope_args`); set `deferred_to_issue` |
+| ≥ 30 | File GitHub issue (`scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts create-args) || exit 1; gh issue create … $scope_args`); set `deferred_to_issue` |
 | < 30 | Archive in ledger; do not file issue |
 
 Aligns with `phase-loop.md` continuous discovery protocol.
@@ -306,7 +306,7 @@ primary full-audit dispatch with that one addition, not a fifth independent mode
 After `reviewer` completes, the orchestrator runs:
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/review-aggregate.ts \
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/review-aggregate.ts \
   --reviewer-file <path> \
   --issue-ref <N> \
   [--pr-ref <P>] \

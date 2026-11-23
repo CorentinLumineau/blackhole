@@ -80,7 +80,7 @@ campaign raises goes through `askOrPark()` and is parked until the owner runs `/
 
 One orchestration unit is one issue chain — handle → plan → implement → review for a single
 issue — not one unit per wave. Between plan and implement, each chain runs
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/route-artifacts.ts --issue <N> --campaign-dir <abs repo-root>/.blackhole --phase dispatch`
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/route-artifacts.ts --issue <N> --campaign-dir <abs repo-root>/.blackhole --phase dispatch`
 (`V-AUTO-03`): any non-zero exit means the chain does not spawn the implementer; exit 1 = the route's
 plan/investigator artifact was never staged (stage it, route back to plan), exit 2 = fix the invocation. Earliest-finish chains merge and unblock dependents without
 waiting for wave stragglers, which is what per-issue granularity buys over wave-grained
@@ -121,9 +121,9 @@ session as `solo` and tells the owner, rather than waiting on messages that can 
 
 The main chat has no coordinator to publish the status page, so it ends **every** turn with the
 same step Pattern B's orchestrator has in `checkpoint-protocol.md` § Write order: forge sync →
-write `queue.json` + `findings-ledger.json` + `campaign-checkpoint.md` → `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --data` →
-update the Data dashboard (`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --html` on the other harnesses; `status-page.md` § Refresh procedure), unless `status_page.enabled` is
-`false`. A turn that skips it leaves the page stale; `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` prints a loud line when the
+write `queue.json` + `findings-ledger.json` + `campaign-checkpoint.md` → `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --data` →
+update the Data dashboard (`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --html` on the other harnesses; `status-page.md` § Refresh procedure), unless `status_page.enabled` is
+`false`. A turn that skips it leaves the page stale; `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts` prints a loud line when the
 state stopped moving for more than `STALE_AFTER_HOURS` or the page was never published.
 
 "Every turn" includes a turn that hands back to the owner with workers still in flight. Pattern C

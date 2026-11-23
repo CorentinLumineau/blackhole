@@ -134,7 +134,7 @@ classification itself, or the ruling's scope, is ambiguous, `AskQuestion` before
 silently pick a branch.
 
 1. If ambiguous → AskQuestion
-2. If new work → file `scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args) || exit 1; gh issue create … $scope_args` (structured body) → auto-sync ingests
+2. If new work → file `scope_args=$(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts create-args) || exit 1; gh issue create … $scope_args` (structured body) → auto-sync ingests
 3. If queue reorder → update `user_queue_order` after user confirms
 4. If correction to in-flight issue → resume implement worker with scope update
 5. If a durable owner statement (chat message, issue comment, or clarify-gate answer) reads as a
@@ -147,10 +147,10 @@ silently pick a branch.
 
 6. Every owner answer — to a gate (clarify, plan, design, ruling, merge escalation, blocker) or as
    a scope or priority instruction — is recorded the same turn as one dated line:
-   `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts decision --text "<what the owner decided, one line>" [--refs <issues>]`.
+   `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts decision --text "<what the owner decided, one line>" [--refs <issues>]`.
    An answer that changes what the campaign covers ("add the dependency bumps", "park that, I do
    not own it") also updates the scope:
-   `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts scope --kind <in|parked|deferred|blocked-upstream|out> --text "<what>" [--refs <issues>] [--reason "<why>"]`.
+   `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts scope --kind <in|parked|deferred|blocked-upstream|out> --text "<what>" [--refs <issues>] [--reason "<why>"]`.
    One writer per pattern, so an answer is recorded once: in Pattern B the coordinator records
    every answer it relays, and the orchestrator records only an answer given to it directly, never
    one the coordinator relayed; in Pattern C the main-chat orchestrator records every answer.

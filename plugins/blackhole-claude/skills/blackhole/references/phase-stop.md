@@ -210,10 +210,10 @@ Never on a usage stop:
   variable-indirection form so `pkill` does not kill its own wrapper shell (**`stop --now` tier:
   identical to `--abandon` tier — fires only if step 4's fallback actually killed a worker; a
   fully-cooperative `stop --now` never touches the watchdog, same as drain**)
-- [ ] This session's peer record is removed with `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/peer-campaigns.ts release`
+- [ ] This session's peer record is removed with `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/peer-campaigns.ts release`
   (ADR-057, `multitask-mode.md` § Peer campaign registry), so a peer campaign's next bootstrap
   does not wait out the 40-minute lease; every tier. In the same step the keep-awake hold is
-  released with `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts keep-awake --workers 0` (`keep-awake.md`), except
+  released with `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts keep-awake --workers 0` (`keep-awake.md`), except
   a drain-and-wake usage stop (`STOP-WORKERS`, `PACE-WAIT`), which keeps it with `--wake-armed`
   until the wake
 - [ ] The report states the exact command to resume and what will happen first (**`stop --now`

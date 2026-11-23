@@ -27,7 +27,7 @@ Clarify and split (ALL issue sizes):
 - Get user sign-off on plan before implement workers when scope was unclear
 
 Docs governance spawn contract (binding when `docs_governance.enabled` resolves true):
-- Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts config-summary` and copy every `Docs governance*` line from that output
+- Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts config-summary` and copy every `Docs governance*` line from that output
   verbatim into SESSION_HANDOFF / orchestrator spawn text — never paraphrase on/off.
 - Never restate `write_governance` (or sibling subflags) from memory or coordinator prose.
 
