@@ -41,7 +41,8 @@ export const PLUGIN_ROOT_NOTE =
 
 // `bun scripts/x.ts`, `bun run scripts/x.ts`, or `bun run --cwd <dir> scripts/x.ts`. The `--cwd`
 // pin names the tree the script operates on (cwd-pin-guard.check.ts) and is kept as written; only
-// the script path moves to the plugin root, which never falls back to the pinned tree. `<dir>` takes the same shapes cwd-pin-guard.check.ts accepts.
+// the script path moves to the plugin root, which never falls back to the pinned tree. `<dir>`
+// takes the same shapes cwd-pin-guard.check.ts accepts.
 const INVOCATION_RE = /\bbun(\s+run(?:\s+--cwd\s+(?:<[^>]*>|`[^`]*`|"[^"]*"|\S+))?)?\s+scripts\/([\w./-]+\.ts)/g;
 // `bash scripts/x.sh`: the shell-script form of the same invocation. Only this exact form counts, so
 // a bare citation of a script and a consumer-owned `./scripts/setup.sh` are never shipped or rewritten.
