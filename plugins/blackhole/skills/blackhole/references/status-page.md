@@ -139,7 +139,9 @@ sees at a glance where the run stands and what to do:
 
 Every top-level config block names the dataset that shows it, or `none` with a reason, in
 `config-template.md` § Status page coverage (`V-CONFIG-03`): a run feature that adds config adds
-its row there, and its panel bumps `bh-template-version`.
+its row there, and its panel bumps `bh-template-version`; the row's `Launch summary` cell names the
+launch gate row or rows that show the block, or `Other config`. A sub-key no row claims still
+appears by name under Other config.
 
 **Usage budget** (`scripts/lib/campaign-status/budget.ts`) reads the host's usage source
 (`usage-source.ts`; the host `run-context.json` records, else the environment's; Cursor has none, so
