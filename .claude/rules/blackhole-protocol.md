@@ -61,8 +61,9 @@ Playbooks: `.claude/skills/blackhole/references/phase-*.md`
   installation until the version is bumped and the plugin is reinstalled (confirmed empirically:
   issue #800's three merged hook fixes, #761/#774/#777, were absent from the installed copy while
   both it and the repo build reported the identical version string). Refresh path: bump
-  `package.json`'s `version` → `bun run build` (regenerates all 5 version-carrying manifests,
-  `.claude-plugin/plugin.json` included) → `/plugin marketplace update <name>` → reinstall the
+  `package.json`'s `version` → `bun run build` (regenerates every version-carrying manifest
+  `VERSIONED_MANIFESTS` in `scripts/lib/build/manifests.ts` lists, `.claude-plugin/plugin.json`
+  included) → `/plugin marketplace update <name>` → reinstall the
   plugin. Same-version reinstall's cache-refresh semantics are undocumented by the platform
   (`.blackhole/plans/issue-800-research.md` § Assumption Audit) — when in doubt, use the
   documented unconditional fallback instead: `rm -rf ~/.claude/plugins/cache`, restart Claude
