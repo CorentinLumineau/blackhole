@@ -390,6 +390,38 @@ describe('bash-write-target-guard.js — redirect target glued to a clause opera
   });
 });
 
+// A redirect word also ends at an unquoted `<` or `>`: the next operator opens its own redirect, so
+// a target glued after a worktree target (`>W/a>M/x`) is still judged.
+describe('bash-write-target-guard.js — redirect target glued to a second redirect (#1338, #1452)', () => {
+  const FORMS: Array<[string, (w: string, m: string) => string]> = [
+    ['`>W/a>M/x`', (w, m) => `echo hi >${w}/a>${m}/x`],
+    ['`> W/a>>M/x`', (w, m) => `echo hi > ${w}/a>>${m}/x`],
+    ['`> W/a\\ b>M/x`', (w, m) => `echo hi > ${w}/a\\ b>${m}/x`],
+    ['`> "W/a"\\ b>M/x`', (w, m) => `echo hi > "${w}/a"\\ b>${m}/x`],
+    ["`> 'W/a b'>M/x`", (w, m) => `echo hi > '${w}/a b'>${m}/x`],
+    ['`> "W/a b">M/x`', (w, m) => `echo hi > "${w}/a b">${m}/x`],
+    ['`> "W/a"\'b c\'>M/x`', (w, m) => `echo hi > "${w}/a"'b c'>${m}/x`],
+    ['`>W/a&>M/x`', (w, m) => `echo hi >${w}/a&>${m}/x`],
+    ['`2>&1>M/x` (fd duplication glued to a file redirect)', (_w, m) => `echo hi 2>&1>${m}/x`],
+  ];
+
+  for (const [label, build] of FORMS) {
+    test(`#1452: ${label} is denied on the second target outside the worktree`, async () => {
+      await withLinkedWorktree('blackhole-hook-1452-', async (mainRepo, worktree) => {
+        const verdict = guard().evaluateBashWriteTargets(build(worktree, mainRepo), worktree);
+        expect(verdict).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+        expect(verdict.reason).toContain(`${path.join(mainRepo, 'x')}. Remedy`);
+      });
+    });
+  }
+
+  test('#1452: `>W/a<M/x` writes only W/a, so it has no verdict', async () => {
+    await withLinkedWorktree('blackhole-hook-1452-', async (mainRepo, worktree) => {
+      expect(guard().evaluateBashWriteTargets(`echo hi >${worktree}/a<${mainRepo}/x`, worktree)).toBeNull();
+    });
+  });
+});
+
 describe('shell-lexer.js — shellWordEnd (#1338)', () => {
   const lexer = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'shell-lexer.js'));
   const word = (text: string) => text.slice(0, lexer().shellWordEnd(text, 0));
@@ -402,6 +434,10 @@ describe('shell-lexer.js — shellWordEnd (#1338)', () => {
     ['"f; "x;', '"f; "x'],
     ["'a|b'&", "'a|b'"],
     ['f\\;g;', 'f\\;g'],
+    ['a>b', 'a'],
+    ['a<b', 'a'],
+    ['"a>b">c', '"a>b"'],
+    ['a\\>b>c', 'a\\>b'],
     [';', ''],
   ] as const) {
     test(`#1338: the word in \`${text}\` is \`${expected}\``, () => {

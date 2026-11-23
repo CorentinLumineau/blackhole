@@ -95,9 +95,11 @@ const isRedirectAmpersand = (text, i) => {
 
 /**
  * End index (exclusive) of the shell word starting at `start` in `text`, bounded by `endBound`:
- * the word ends at the first unquoted whitespace or clause operator character (`;`, `&`, `|`), as
- * bash ends it. A quoted span (`skipQuotedSpan`) is consumed whole, so `"f; "` stays one word, and
- * a backslash keeps the next character in the word (`f\;`). Returns `start` when the word is empty.
+ * the word ends at the first unquoted whitespace or metacharacter this reader knows (`;`, `&`, `|`,
+ * `<`, `>`), so `f;`, `f&&`, `f|cat` and `a>b` each end after `f` or `a`. `(` and `)` are not
+ * treated as word ends. A quoted span (`skipQuotedSpan`) is consumed whole, so `"f; "` stays one
+ * word, and a backslash keeps the next character in the word (`f\;`). Returns `start` when the
+ * word is empty.
  */
 const shellWordEnd = (text, start, endBound = text.length) => {
   let j = start;
@@ -105,7 +107,7 @@ const shellWordEnd = (text, start, endBound = text.length) => {
     const ch = text[j];
     if (ch === "'" || ch === '"') j = skipQuotedSpan(text, j, endBound);
     else if (ch === '\\' && j + 1 < endBound) j += 2;
-    else if (/[\s;&|]/.test(ch)) break;
+    else if (/[\s;&|<>]/.test(ch)) break;
     else j++;
   }
   return j;

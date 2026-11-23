@@ -455,12 +455,11 @@ const REDIRECT_RE = /(&>>|&>|>>|>&|>\||>)\s*/g;
  * file path (`>&file` is `&>file`). */
 const isFdDupOperand = (token) => /^(\d+|-)(?:[;&|)]|$)/.test(token);
 
-/** Every redirect-shaped write target in the full visible command — `>`, `>>`, `&>`, `&>>`
- * followed by a real file argument. Never a bare fd-duplication target (`&1`, `&2`) or a dangling
- * operator with nothing after it. Scanned across the whole command, not per clause: a redirect
- * operator's target binds to the nearest preceding command regardless of clause boundaries, so no
- * clause-scoping is needed here (unlike the command-argument scans below, which must not read
- * past their own clause). */
+/** Every redirect-shaped write target in `visible` — `>`, `>>`, `&>`, `&>>`, `>|`, `>&` followed by
+ * a real file argument. Never a bare fd-duplication target (`&1`, `&2`) or a dangling operator
+ * with nothing after it. The caller passes one clause at a time (`collectWriteSignals`). Each
+ * target is one shell word (`shellWordEnd`), so a glued `;`, `&`, `|`, `<` or `>` ends it, and a
+ * following `>` is scanned as its own redirect. */
 const findRedirectTargets = (visible) => {
   const targets = [];
   REDIRECT_RE.lastIndex = 0;
