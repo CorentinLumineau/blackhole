@@ -100,6 +100,12 @@ describe('parseDecideBaseline / legacySleepBaseline', () => {
     expect(legacySleepBaseline({ sleep_mode: { enabled: false } })).toBeNull();
     expect(legacySleepBaseline({})).toBeNull();
   });
+
+  test('a retired sleep baseline without weekly_pct still counts its done issues', () => {
+    expect(legacySleepBaseline({ sleep_mode: { enabled: true, since: '2026-11-18T16:15:56Z', baseline: { done: [942, 971] } } })).toEqual({
+      at: '2026-11-18T16:15:56Z', done: [942, 971], weekly_pct: null,
+    });
+  });
 });
 
 describe('campaign-record decide', () => {
@@ -137,6 +143,13 @@ describe('campaign-record decide', () => {
     expect(out.report).toContain('- Issues finished: 1 issue finished — #2.');
     expect(out.warning).toBe('config.json sleep_mode is retired and ignored (ADR-059 amendment): remove it; an unattended start passes --unattended');
     expect(Object.keys(out)).toEqual(['report', 'warning', 'total', 'blocked_items', 'cards']);
+  });
+
+  test('a retired sleep baseline with only done reports the issues finished since it', () => {
+    const dir = campaign({ sleep_mode: { enabled: true, since: '2026-11-16T20:00:00Z', baseline: { done: [1] } } }, QUEUE);
+    const out = JSON.parse(runRecord(['decide', '--campaign-dir', dir], NOW));
+    expect(out.report).toContain('- Last round: Mon 16 Nov 20:00 UTC.');
+    expect(out.report).toContain('- Issues finished: 1 issue finished — #2.');
   });
 
   test('a malformed baseline file is not measured, never a crash, and is replaced', () => {
