@@ -190,6 +190,8 @@ export type StatusArgs = {
   now: number | null;
   /** `--summary --json`: print the rows and the question cards as JSON. */
   summaryJson: boolean;
+  /** `--summary --unattended`: this invocation has no owner to ask, so the launch gate is print-only. */
+  unattended: boolean;
   /** `--summary --mode catchup` only: the catchup flags; null for `--mode run` (the default) and every other mode. */
   catchup: CatchupArgs | null;
 };
@@ -507,8 +509,8 @@ export type RunPanel = {
   } | null;
   /** `decisions.mode` resolved (`decisionsMode`): `park` unless the config opts into `ask`. */
   decisions_mode: 'park' | 'ask';
-  /** The owner is away (`sleep_mode.enabled`, `sleep-mode.md`). */
-  sleep_mode: boolean;
+  /** `config.json` still carries the retired `sleep_mode` block, which is ignored (`retiredSleepModeWarning`). */
+  retired_sleep_mode: boolean;
   /** Decisions parked in `pending-decisions.json`; null when the file is unreadable (`parked_error`). */
   parked: number | null;
   parked_error: string | null;

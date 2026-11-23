@@ -11,7 +11,7 @@ const resolveFromRoot = (p: string): string => (path.isAbsolute(p) ? p : path.jo
 export const STATUS_COMMAND = `bun run "${path.resolve(import.meta.dir, '..', '..', 'campaign-status.ts')}"`;
 
 const USAGE =
-  `Usage: ${STATUS_COMMAND} [config-summary | usage-caps --enabled <true|false> [--stop-workers-at <6-100>] [--target-at-reset <1-100|none>]] [--json | --html [--out <path>] | --data <dir> | --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [catchup only: --usage-file <path> --floor <pct> --no-spawn-at <pct> --stop-workers-at <pct> --lane <name>]] [--campaign-dir <dir>] [--no-gh]`;
+  `Usage: ${STATUS_COMMAND} [config-summary | usage-caps --enabled <true|false> [--stop-workers-at <6-100>] [--target-at-reset <1-100|none>]] [--json | --html [--out <path>] | --data <dir> | --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [--unattended] [catchup only: --usage-file <path> --floor <pct> --no-spawn-at <pct> --stop-workers-at <pct> --lane <name>]] [--campaign-dir <dir>] [--no-gh]`;
 
 const pctFlag = (flags: Record<string, string>, name: string): number | null => {
   if (flags[name] === undefined) return null;
@@ -45,6 +45,7 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
   let outPath: string | null = null;
   let dataDir: string | null = null;
   let summary = false;
+  let unattended = false;
   let usage: string | null = null;
   let now: number | null = null;
   let summaryMode = 'run';
@@ -81,6 +82,8 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
       i++;
     } else if (argv[i] === '--summary') {
       summary = true;
+    } else if (argv[i] === '--unattended') {
+      unattended = true;
     } else if (argv[i] === '--no-gh') {
       skipGh = true;
     } else if (argv[i] === '--json') {
@@ -98,6 +101,7 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
   if (summary && (html || dataDir || outPath || mode === 'config-summary')) {
     throw new Error(`--summary takes only --usage, --now and --json. ${USAGE}`);
   }
+  if (!summary && unattended) throw new Error(`--unattended requires --summary. ${USAGE}`);
   if (!summary && (usage !== null || now !== null)) throw new Error(`--usage and --now require --summary. ${USAGE}`);
   if (!summary && summaryMode !== 'run') throw new Error(`--mode requires --summary. ${USAGE}`);
   const given = Object.keys(catchupFlags);
@@ -105,7 +109,7 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
   if (summaryMode === 'catchup' && usage !== null) throw new Error(`--usage (inline) is not accepted with --mode catchup: pass --usage-file <path>. ${USAGE}`);
   if (summary) {
     const catchup = summaryMode === 'catchup' ? catchupArgs(catchupFlags) : null;
-    return { mode: 'summary', campaignDir, skipGh, outPath: null, dataDir: null, usage, now, summaryJson: json, catchup };
+    return { mode: 'summary', campaignDir, skipGh, outPath: null, dataDir: null, usage, now, summaryJson: json, catchup, unattended };
   }
   if (json && html) throw new Error(`Pass either --json or --html, not both. ${USAGE}`);
   if (dataDir && (json || html)) throw new Error(`Pass only one of --json, --html or --data. ${USAGE}`);
@@ -114,5 +118,5 @@ export function parseStatusArgs(argv: string[]): StatusArgs {
   if (html) mode = 'html';
   if (dataDir) mode = 'data';
 
-  return { mode, campaignDir, skipGh, outPath, dataDir, usage: null, now: null, summaryJson: false, catchup: null };
+  return { mode, campaignDir, skipGh, outPath, dataDir, usage: null, now: null, summaryJson: false, catchup: null, unattended: false };
 }

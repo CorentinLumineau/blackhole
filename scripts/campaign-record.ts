@@ -13,24 +13,32 @@ import {
 import {
   addPendingDecision,
   askOrPark,
-  isSleepMode,
   readPendingDecisions,
   resolvePendingDecision,
+  retiredSleepModeWarning,
   wakeBatch,
   writePendingDecisions,
   type PendingOption,
 } from './lib/campaign-status/pending-decisions.ts';
 import { SCOPE_KINDS, type QueueIssue, type ScopeEntry, type ScopeKind } from './lib/campaign-status/types.ts';
-import { readBudgetPanel, when } from './lib/campaign-status/budget.ts';
+import { readBudgetPanel } from './lib/campaign-status/budget.ts';
 import { USAGE_HISTORY_FILE } from './lib/usage-history.ts';
-import { buildDecideReport, buildWakeReport, doneIssues, planWakeUps, readSleepSession, sleepOff, sleepOn } from './lib/campaign-status/sleep-session.ts';
-import { releaseHold, resolveStateStore, systemHoldDeps, takeHold, type HoldDeps } from './lib/campaign-status/sleep-hold.ts';
+import {
+  buildDecideReport,
+  DECIDE_BASELINE_FILE,
+  doneIssues,
+  legacySleepBaseline,
+  parseDecideBaseline,
+  planWakeUps,
+  type DecideBaseline,
+} from './lib/campaign-status/decide-round.ts';
+import { reconcileHold, resolveStateStore, systemHoldDeps, type HoldDeps } from './lib/campaign-status/keep-awake.ts';
 import { resolveHost } from './lib/usage-source.ts';
 import { resolveUsageBudget } from './lib/usage-budget.ts';
 
 // Records what the owner said so the status page shows it without a hand-kept file
 // (`status-page.md` § What the orchestrator records), the owner questions parked for the decision
-// round (`decision-parking.md`), and the owner's absence (`sleep-mode.md`):
+// round (`decision-parking.md`), and the run's keep-awake hold (`keep-awake.md`):
 //
 //   scope    --kind <in|parked|deferred|blocked-upstream|out> --text "<what>" [--reason "<why>"]
 //            [--refs 12,14] [--filter] [--date YYYY-MM-DD]       → config.json campaign_scope.entries
@@ -38,11 +46,11 @@ import { resolveUsageBudget } from './lib/usage-budget.ts';
 //   park     --question "<q>" --options "A: why|B|C" --recommended A [--evidence "<text>"]
 //            [--refs 12,14] [--gate <name>]                      → pending-decisions.json
 //   ask                                                          → prints `ask` or `park` (askOrPark)
-//   decide                                                       → prints the report and the batched round as JSON; writes nothing
-//   sleep    --on | --off                                        → config.json sleep_mode (on records since + baseline);
-//                                                                  on takes the local keep-awake hold, off releases it (.tmp/sleep-hold.json)
-//   wake                                                         → sleep --off, then the decide round with the away report (not away: decide)
-//   rearm                                                        → prints the wake-ups to keep armed as JSON (sleep-mode.md § Keeps itself alive)
+//   decide                                                       → prints the report since the last round and the batched round as JSON;
+//                                                                  records this round's baseline in decide-baseline.json
+//   keep-awake --workers <n> [--wake-armed]                      → takes the local hold while n > 0 or a wake is armed, releases it otherwise
+//                                                                  (.tmp/keep-awake-hold.json)
+//   rearm                                                        → prints the wake-ups to keep armed as JSON (keep-awake.md § Wake-ups)
 //   resolve  --id PD-1 --answer "<text>" [--date YYYY-MM-DD]     → pending-decisions.json + owner-decisions.json
 //
 // All take --campaign-dir (default ./.blackhole). Re-running scope, decision or park changes nothing.
@@ -51,19 +59,19 @@ const USAGE =
   'Usage: bun scripts/campaign-record.ts scope --kind <in|parked|deferred|blocked-upstream|out> --text <text> ' +
   '[--reason <text>] [--refs 1,2] [--filter] [--date YYYY-MM-DD] | decision --text <text> [--refs 1,2] [--date YYYY-MM-DD] ' +
   '| park --question <text> --options "A: consequence|B" --recommended <label> [--evidence <text>] [--refs 1,2] [--gate <name>] ' +
-  '| ask | decide | sleep --on|--off | wake | rearm | resolve --id PD-<n> --answer <text> [--date YYYY-MM-DD] [--campaign-dir <dir>]';
+  '| ask | decide | keep-awake --workers <n> [--wake-armed] | rearm | resolve --id PD-<n> --answer <text> [--date YYYY-MM-DD] [--campaign-dir <dir>]';
 
 type Flags = {
-  kind?: string; text?: string; reason?: string; refs?: string; date?: string; filter: boolean; on: boolean; off: boolean; campaignDir: string;
+  kind?: string; text?: string; reason?: string; refs?: string; date?: string; filter: boolean; wakeArmed: boolean; campaignDir: string; workers?: string;
   question?: string; options?: string; recommended?: string; evidence?: string; gate?: string; id?: string; answer?: string;
 };
 
 function parseFlags(argv: string[]): Flags {
-  const flags: Flags = { filter: false, on: false, off: false, campaignDir: path.join(process.cwd(), '.blackhole') };
+  const flags: Flags = { filter: false, wakeArmed: false, campaignDir: path.join(process.cwd(), '.blackhole') };
   const valued: Record<string, keyof Flags> = {
     '--kind': 'kind', '--text': 'text', '--reason': 'reason', '--refs': 'refs', '--date': 'date', '--campaign-dir': 'campaignDir',
     '--question': 'question', '--options': 'options', '--recommended': 'recommended', '--evidence': 'evidence',
-    '--gate': 'gate', '--id': 'id', '--answer': 'answer',
+    '--gate': 'gate', '--id': 'id', '--answer': 'answer', '--workers': 'workers',
   };
   for (let i = 0; i < argv.length; i++) {
     const key = valued[argv[i]];
@@ -72,8 +80,10 @@ function parseFlags(argv: string[]): Flags {
       if (value === undefined || value.startsWith('--')) throw new Error(`${argv[i]} needs a value. ${USAGE}`);
       (flags as Record<string, unknown>)[key] = key === 'campaignDir' ? path.resolve(value) : value;
       i++;
-    } else if (argv[i] === '--filter' || argv[i] === '--on' || argv[i] === '--off') {
-      flags[argv[i].slice(2) as 'filter' | 'on' | 'off'] = true;
+    } else if (argv[i] === '--filter') {
+      flags.filter = true;
+    } else if (argv[i] === '--wake-armed') {
+      flags.wakeArmed = true;
     } else {
       throw new Error(`Unknown argument "${argv[i]}". ${USAGE}`);
     }
@@ -113,11 +123,30 @@ function dateOf(flags: Flags, now: Date): string {
   return d;
 }
 
-function readConfig(campaignDir: string): Record<string, unknown> & { sleep_mode?: Record<string, unknown> } {
+function readConfig(campaignDir: string): Record<string, unknown> {
   const configPath = path.join(campaignDir, 'config.json');
   if (!fs.existsSync(configPath)) throw new Error(`${configPath} is absent: the launch configuration gate writes it first.`);
-  return readJsonFile(configPath, configPath) as Record<string, unknown> & { sleep_mode?: Record<string, unknown> };
+  return readJsonFile(configPath, configPath) as Record<string, unknown>;
 }
+
+/** The last round's baseline; a missing or malformed file falls back once to a retired sleep baseline, else null. */
+function readDecideBaseline(campaignDir: string, config: Record<string, unknown>): DecideBaseline | null {
+  const file = path.join(campaignDir, DECIDE_BASELINE_FILE);
+  if (!fs.existsSync(file)) return legacySleepBaseline(config);
+  try {
+    return parseDecideBaseline(readJsonFile(file, file));
+  } catch {
+    return null;
+  }
+}
+
+/** What replaces each retired sleep-mode subcommand (ADR-059 amendment). */
+const RETIRED: Record<string, string> = {
+  sleep:
+    '`sleep` was retired (ADR-059 amendment): parking is the default, `run` and `catchup` hold keep-awake while work is in flight ' +
+    '(`keep-awake --workers <n>`), and an unattended start passes `--unattended`.',
+  wake: '`wake` was retired (ADR-059 amendment): run `/blackhole decide` (`campaign-record.ts decide`) for the report and the round.',
+};
 
 function readOptionalJson(file: string): unknown {
   return fs.existsSync(file) ? readJsonFile(file, file) : null;
@@ -144,10 +173,11 @@ function coordinationRole(config: Record<string, unknown>): string {
 
 /**
  * Runs one record command and returns the line to print. Throws on bad input; writes nothing then.
- * `hold` makes the keep-awake inhibitor's process calls (`sleep-hold.ts`); tests pass a fake.
+ * `hold` makes the keep-awake inhibitor's process calls (`keep-awake.ts`); tests pass a fake.
  */
 export function runRecord(argv: string[], now: Date = new Date(), hold: HoldDeps = systemHoldDeps): string {
   const [sub, ...rest] = argv;
+  if (sub !== undefined && Object.hasOwn(RETIRED, sub)) throw new Error(RETIRED[sub]);
   const flags = parseFlags(rest);
   if (!fs.existsSync(flags.campaignDir)) throw new Error(`No campaign found at ${flags.campaignDir}.`);
 
@@ -201,51 +231,25 @@ export function runRecord(argv: string[], now: Date = new Date(), hold: HoldDeps
 
   if (sub === 'ask') return askOrPark(readConfig(flags.campaignDir));
 
-  if (sub === 'sleep') {
-    if (flags.on === flags.off) throw new Error(`sleep takes --on or --off. ${USAGE}`);
-    const configPath = path.join(flags.campaignDir, 'config.json');
-    const config = readConfig(flags.campaignDir);
-    const waiting = readPendingDecisions(flags.campaignDir).decisions.length;
-    if (flags.off) {
-      writeJsonAtomic(configPath, sleepOff(config));
-      const released = releaseHold(flags.campaignDir, hold);
-      return `Sleep mode off: ${waiting} parked decision${waiting === 1 ? '' : 's'} wait for \`/blackhole decide\`.\n${released}`;
-    }
-    const issues = readQueueIssues(flags.campaignDir);
-    const baseline = { done: issues ? doneIssues(issues) : null, weekly_pct: readBudget(flags.campaignDir, config, now).weekly_pct };
-    const next = sleepOn(config, now.toISOString(), baseline);
-    writeJsonAtomic(configPath, next);
-    const held = takeHold(flags.campaignDir, resolveStateStore(flags.campaignDir, process.env), hold, now.toISOString());
-    return `Sleep mode on since ${when(readSleepSession(next).since ?? now.toISOString())}: owner questions are parked (${waiting} waiting).\n${held}`;
+  if (sub === 'keep-awake') {
+    const workers = Number(flags.workers);
+    if (flags.workers === undefined || !/^\d+$/.test(flags.workers)) throw new Error(`keep-awake needs --workers <n>, the workers in flight. ${USAGE}`);
+    const stateStore = resolveStateStore(flags.campaignDir, process.env);
+    return reconcileHold(flags.campaignDir, stateStore, hold, now.toISOString(), { workers, wakeArmed: flags.wakeArmed });
   }
 
-  // `wake` with the owner not away has no absence to end: it is the decide round, config untouched.
-  if (sub === 'decide' || (sub === 'wake' && !isSleepMode(readConfig(flags.campaignDir)))) {
-    // The round is the answer channel, not a gate: its cards ask directly, so nothing here changes
-    // parking or the owner's absence (`decision-parking.md` § Decide round).
+  if (sub === 'decide') {
+    // The round is the answer channel, not a gate: its cards ask directly, so parking is left as it
+    // was. It records its own baseline so the next round reports what ran since this one.
     const config = readConfig(flags.campaignDir);
     const batch = wakeBatch(readPendingDecisions(flags.campaignDir).decisions);
     const issues = readQueueIssues(flags.campaignDir);
     const budget = readBudget(flags.campaignDir, config, now);
-    const report = isSleepMode(config)
-      ? buildWakeReport({ ...readSleepSession(config), issues, budget, pending: batch.total, stillAway: true })
-      : buildDecideReport({ issues, budget, pending: batch.total });
-    return JSON.stringify({ report, ...batch }, null, 2);
-  }
-
-  if (sub === 'wake') {
-    // The owner is back: end the absence, then the same round as `decide`. Parking is untouched.
-    const config = readConfig(flags.campaignDir);
-    writeJsonAtomic(path.join(flags.campaignDir, 'config.json'), sleepOff(config));
-    const keep_awake = releaseHold(flags.campaignDir, hold);
-    const batch = wakeBatch(readPendingDecisions(flags.campaignDir).decisions);
-    const report = buildWakeReport({
-      ...readSleepSession(config),
-      issues: readQueueIssues(flags.campaignDir),
-      budget: readBudget(flags.campaignDir, config, now),
-      pending: batch.total,
-    });
-    return JSON.stringify({ report, keep_awake, ...batch }, null, 2);
+    const report = buildDecideReport({ baseline: readDecideBaseline(flags.campaignDir, config), issues, budget, pending: batch.total });
+    const next: DecideBaseline = { at: now.toISOString(), done: issues ? doneIssues(issues) : null, weekly_pct: budget.weekly_pct };
+    writeJsonAtomic(path.join(flags.campaignDir, DECIDE_BASELINE_FILE), next);
+    const warning = retiredSleepModeWarning(config);
+    return JSON.stringify({ report, ...(warning ? { warning } : {}), ...batch }, null, 2);
   }
 
   if (sub === 'rearm') {

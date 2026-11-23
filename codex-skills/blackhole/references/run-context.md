@@ -63,8 +63,10 @@ Claude usage sources, in probe order. All end in the one rate-limit cache (`reso
 
 Any host reads one normalized usage line with `bun run scripts/usage.ts [--usage <file>]`. Providers in order: the `--usage` file (a **file path** here, unlike `usage-budget.ts --usage`, which takes inline JSON; it holds the host's usage tool output in the normalized `windows` shape, the desktop shape, or the raw desktop `get_usage` payload as is: `plan.windows[]` rows labelled `5-hour limit` and `Weekly · all models` map exactly as in the probe row above, per-model rows are ignored, a payload mixing that shape with top-level windows (`windows`, `rate_limits` or a `five_hour`/`seven_day*` key) exits `2` (usage payload mixes the desktop get_usage shape with top-level windows), and `pace-floor.ts --usage` and `usage-budget.ts --usage-file` read the same shapes through the same converter), the statusline rate-limit cache, then the cache the probe wrote; the first usable reading wins. It prints one JSON line with `plan` (`pro`, `max`, `none` or `unknown`), `windows` (`five_hour`, `seven_day`, per-model weekly such as `seven_day_opus`, each with `used_pct` and `resets_at`), `extra_usage`, `source` (`usage-file`, `rate-limit-cache` or `none`), `provider` (`usage-file`, `statusline`, `probe` or `none`), `read_at` and `reason`. Exit `0` on every reading, including `source: none` (the reason also goes to stderr); `2` on bad usage, an unreadable or malformed `--usage` file, or an invalid config. A file older than `resource_policy.pace.max_age_seconds` is stale and the chain moves on.
 
-Sleep mode (the owner is away): the record also carries `sleep_mode: {enabled, since}` read from `config.json`, and the
-run prints `sleep mode on: …` while it is on (`sleep-mode.md` § Launch gate and run context).
+Keep-awake: the record also carries `keep_awake`, `{held: true, tool, pid, since}` or
+`{held: false, reason}`, and the run prints `keep-awake: held by …` while a hold is live
+(`keep-awake.md`). A `sleep_mode` block left in `config.json` from retired sleep mode prints
+`warn: config.json sleep_mode is retired and ignored …` and changes nothing.
 
 Plugin version: when the running plugin is older than the newest `installed_plugins.json` row or
 marketplace cache version, the run prints a `warn:` line (advisory, exit code unchanged) and the

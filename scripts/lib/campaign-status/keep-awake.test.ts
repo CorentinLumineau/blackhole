@@ -11,21 +11,24 @@ import {
   releaseHold,
   resolveStateStore,
   SETTLE_MS,
-  SLEEP_HOLD_FILE,
+  HOLD_FILE,
+  keepAwakeWanted,
+  LEGACY_SLEEP_HOLD_FILE,
+  reconcileHold,
   startInhibitor,
   systemHoldDeps,
   takeHold,
   type HoldDeps,
   type ProcState,
-} from './sleep-hold.ts';
+} from './keep-awake.ts';
 
-// The keep-awake hold of a sleeping campaign. The unit tests fake every process call, so none
+// The keep-awake hold a running campaign takes on a local host. The unit tests fake every process call, so none
 // starts a real caffeinate or systemd-inhibit; `systemHoldDeps` is exercised on plain `sh` and
 // `sleep` processes this file starts and stops itself.
 
 const dirs: string[] = [];
 function campaignDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-sleep-hold-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bh-keep-awake-'));
   dirs.push(dir);
   return dir;
 }
@@ -43,7 +46,7 @@ afterAll(() => {
 
 const NOW_ISO = '2026-11-17T02:00:00.000Z';
 const ID = (pid: number) => `Tue Nov 17 02:00:00 2026 caffeinate -i #${pid}`;
-const holdPath = (dir: string) => path.join(dir, SLEEP_HOLD_FILE);
+const holdPath = (dir: string) => path.join(dir, HOLD_FILE);
 const writeHold = (dir: string, record: Record<string, unknown>) => {
   fs.mkdirSync(path.dirname(holdPath(dir)), { recursive: true });
   fs.writeFileSync(holdPath(dir), JSON.stringify(record));
@@ -87,7 +90,7 @@ describe('inhibitorFor', () => {
     expect(inhibitorFor('darwin', () => true)).toEqual({ tool: 'caffeinate', command: ['caffeinate', '-i'] });
     expect(inhibitorFor('linux', (b) => b === 'systemd-inhibit')).toEqual({
       tool: 'systemd-inhibit',
-      command: ['systemd-inhibit', '--what=idle:sleep', '--who=blackhole', '--why=campaign sleep mode', '--mode=block', 'sleep', 'infinity'],
+      command: ['systemd-inhibit', '--what=idle:sleep', '--who=blackhole', '--why=campaign keep-awake', '--mode=block', 'sleep', 'infinity'],
     });
     expect(inhibitorFor('darwin', () => false)).toBeNull();
     expect(inhibitorFor('linux', (b) => b === 'caffeinate')).toBeNull();
@@ -97,7 +100,20 @@ describe('inhibitorFor', () => {
 
 describe('readHold', () => {
   test('lives under .tmp, so it is ignored wherever .blackhole/ is tracked and never travels', () => {
-    expect(SLEEP_HOLD_FILE).toBe(path.join('.tmp', 'sleep-hold.json'));
+    expect(HOLD_FILE).toBe(path.join('.tmp', 'keep-awake-hold.json'));
+  });
+
+  test('adopts a hold recorded under the retired sleep-mode name, so a live inhibitor is never orphaned', () => {
+    const dir = campaignDir();
+    fs.mkdirSync(path.join(dir, '.tmp'), { recursive: true });
+    fs.writeFileSync(path.join(dir, LEGACY_SLEEP_HOLD_FILE), JSON.stringify(record(42)));
+    expect(LEGACY_SLEEP_HOLD_FILE).toBe(path.join('.tmp', 'sleep-hold.json'));
+    expect(readHold(dir)).toEqual(record(42));
+    expect(fs.existsSync(path.join(dir, LEGACY_SLEEP_HOLD_FILE))).toBe(false);
+    expect(JSON.parse(fs.readFileSync(holdPath(dir), 'utf-8'))).toEqual(record(42));
+    const host = fakeHost('darwin', ['caffeinate'], { 42: ID(42) });
+    expect(releaseHold(dir, host.deps)).toBe('Keep-awake: released caffeinate (pid 42).');
+    expect(host.calls).toEqual(['kill 42']);
   });
 
   test('accepts a full record', () => {
@@ -126,7 +142,7 @@ describe('takeHold', () => {
   test('a local host starts the inhibitor and records its pid and identity', () => {
     const dir = campaignDir();
     const host = fakeHost('darwin', ['caffeinate']);
-    expect(takeHold(dir, 'local', host.deps, NOW_ISO)).toBe('Keep-awake: held by caffeinate (pid 500) until `sleep --off` or `wake`.');
+    expect(takeHold(dir, 'local', host.deps, NOW_ISO)).toBe('Keep-awake: held by caffeinate (pid 500) until the campaign drains or stops.');
     expect(host.calls).toEqual(['spawn caffeinate -i']);
     expect(readHold(dir)).toEqual({ pid: 500, tool: 'caffeinate', started_at: NOW_ISO, identity: ID(500) });
   });
@@ -146,7 +162,7 @@ describe('takeHold', () => {
       writeHold(dir, record(42));
       const host = fakeHost('darwin', ['caffeinate'], { ...procs });
       expect(takeHold(dir, 'local', host.deps, NOW_ISO)).toBe(
-        'Keep-awake: held by caffeinate (pid 500) until `sleep --off` or `wake`; stale pid 42 cleared.',
+        'Keep-awake: held by caffeinate (pid 500) until the campaign drains or stops; stale pid 42 cleared.',
       );
       expect(host.calls).toEqual(['spawn caffeinate -i']);
       expect(readHold(dir)?.pid).toBe(500);
@@ -298,7 +314,7 @@ describe('keepAwakeStatus', () => {
     delete procs[500];
     expect(keepAwakeStatus(dir, 'local', deps.identify)).toEqual({
       held: false,
-      reason: 'stale record: pid 500 is no longer the hold; `sleep --on` takes a new hold',
+      reason: 'stale record: pid 500 is no longer the hold; the next `keep-awake` takes a new hold',
     });
   });
 });
@@ -388,5 +404,46 @@ describe('systemHoldDeps on real processes', () => {
     pids.push(pid);
     expect(identity).toEndWith(' sleep 30');
     systemHoldDeps.kill(pid);
+  });
+});
+
+describe('keepAwakeWanted', () => {
+  test('held while a worker is in flight or a wake is armed, released otherwise', () => {
+    expect(keepAwakeWanted({ workers: 1, wakeArmed: false })).toBe(true);
+    expect(keepAwakeWanted({ workers: 0, wakeArmed: true })).toBe(true);
+    expect(keepAwakeWanted({ workers: 0, wakeArmed: false })).toBe(false);
+  });
+});
+
+describe('reconcileHold', () => {
+  test('a spawned worker takes the hold; a PACE-WAIT drain with its wake armed keeps it', () => {
+    const dir = campaignDir();
+    const host = fakeHost('darwin', ['caffeinate']);
+    expect(reconcileHold(dir, 'local', host.deps, NOW_ISO, { workers: 2, wakeArmed: false })).toBe(
+      'Keep-awake: held by caffeinate (pid 500) until the campaign drains or stops.',
+    );
+    expect(reconcileHold(dir, 'local', host.deps, NOW_ISO, { workers: 0, wakeArmed: true })).toBe(
+      'Keep-awake: already held by caffeinate (pid 500).',
+    );
+    expect(host.calls).toEqual(['spawn caffeinate -i']);
+  });
+
+  test('a drain, a stop or a STOP-CAMPAIGN (no worker, no wake) releases it', () => {
+    const dir = campaignDir();
+    const host = fakeHost('darwin', ['caffeinate']);
+    reconcileHold(dir, 'local', host.deps, NOW_ISO, { workers: 1, wakeArmed: false });
+    expect(reconcileHold(dir, 'local', host.deps, NOW_ISO, { workers: 0, wakeArmed: false })).toBe('Keep-awake: released caffeinate (pid 500).');
+    expect(host.calls).toEqual(['spawn caffeinate -i', 'kill 500']);
+    expect(fs.existsSync(holdPath(dir))).toBe(false);
+    expect(reconcileHold(dir, 'local', host.deps, NOW_ISO, { workers: 0, wakeArmed: false })).toBe('Keep-awake: nothing to release.');
+  });
+
+  test('an ephemeral host (state_store branch) never starts an inhibitor', () => {
+    const dir = campaignDir();
+    const host = fakeHost('darwin', ['caffeinate']);
+    expect(reconcileHold(dir, 'branch', host.deps, NOW_ISO, { workers: 3, wakeArmed: true })).toBe(
+      'Keep-awake: not held — ephemeral host (state_store: branch), nothing to inhibit.',
+    );
+    expect(host.calls).toEqual([]);
   });
 });

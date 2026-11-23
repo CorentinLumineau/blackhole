@@ -8,10 +8,8 @@ as "process the decisions" or "answer the decisions". Parking stays on after the
 ## Switch
 
 `config.json` → `decisions.mode` (`config-template.md`): `park` (the default when absent or any
-value other than `ask`) or `ask` (every gate asks as it comes). An owner who is away
-(`sleep_mode.enabled`, `sleep-mode.md`) is never asked, whatever the mode.
-`sleep_mode.enabled: false` is not an opt-out: every past `wake` wrote it, so only
-`decisions.mode: "ask"` turns parking off.
+value other than `ask`) or `ask` (every gate asks as it comes). Nothing else changes it: a
+`sleep_mode` block left from retired sleep mode is ignored with a warning (ADR-059 amendment).
 
 ## The choke point: `askOrPark()`
 
@@ -20,7 +18,7 @@ split sign-off, mockup gate, owner ruling, review rethink — goes through one c
 question channel is used (`clarify-gates.md` § C3 adapter). `askOrPark(config)`
 (`scripts/lib/campaign-status/pending-decisions.ts`) returns:
 
-- `ask` — `decisions.mode` is `ask` and the owner is not away: use the C3 adapter row for this session, unchanged.
+- `ask` — `decisions.mode` is `ask`: use the C3 adapter row for this session, unchanged.
 - `park` — otherwise: do not call any question tool. Park the question instead:
 
 ```bash
@@ -40,7 +38,8 @@ twice. The same question with different options is refused — reword it or reus
 **Owner-initiated rounds ask directly.** Rounds the owner starts are the answer channel itself,
 so `askOrPark()` does not apply to them: the launch configuration gate on an interactive start
 (`launch-gate.md` § Questions and the coordinator's bootstrap form; print-only mode is keyed on
-absence, never on `decisions.mode`), the decide round's cards below, and a follow-up question about
+the per-invocation `--unattended` flag or a run context with no question channel, never on
+`decisions.mode`), the decide round's cards below, and a follow-up question about
 a message the owner just sent (`coordinator.md` § Chat Feedback Intake Protocol).
 
 No playbook may skip the choke point: `scripts/checks/sleep-choke-point.check.ts` (`V-SLEEP-01`)
@@ -65,19 +64,23 @@ Write protocol, entity key `decisions`). `next_id` only grows, so an answered id
 Each decision: `id` (`PD-<n>`), `question`, `options`
 (2 to 4, each `{label, consequence?}`, labels distinct), `recommended` (index into `options`), optional `evidence`,
 `blocks` (issue or PR numbers waiting on it — the cost of waiting), optional `gate`, `created_at`.
-Schema and fixture: `pending-decisions.ts`, `fixtures/sleep-mode/pending-decisions.example.json`.
+Schema and fixture: `pending-decisions.ts`, `fixtures/decision-parking/pending-decisions.example.json`.
 
 ## Decide round
 
-1. `bun scripts/campaign-record.ts decide` prints the round as JSON and writes nothing: parking and
-   the owner's absence stay as they were (the owner may answer remotely while a machine they left
-   running keeps its hold). `wake` (`sleep-mode.md` § Wake-up) ends the absence first, then prints
-   the same round.
-2. Show the `report` field first, verbatim. With the owner present it is `## Before you decide`:
-   open PRs in merge order with each one's blocker (`mergeNextOrder`, `scripts/lib/merge-next.ts`),
-   usage now, and the number of decisions waiting. While away it is the away report
-   (`buildWakeReport`, `scripts/lib/campaign-status/sleep-session.ts`) plus a `Still away` line
-   naming `/blackhole wake`. A value that could not be read is named as such, never guessed.
+1. `bun scripts/campaign-record.ts decide` prints the round as JSON. Parking stays as it was, and
+   the keep-awake hold is untouched (the owner may answer from a phone while the machine runs
+   on). The only write is this round's baseline, `.blackhole/decide-baseline.json`
+   (`{at, done, weekly_pct}`: when, the issues done then, the weekly usage % then), which the next
+   round's report measures against. Every `decide` advances it, so a second `decide` straight
+   after the first reports nothing finished since.
+2. Show the `report` field first, verbatim: `## Since the last decide round` — when the last round
+   was, the issues finished since, open PRs in merge order with each one's blocker
+   (`mergeNextOrder`, `scripts/lib/merge-next.ts`), the weekly points used since, and the number of
+   decisions waiting (`buildDecideReport`, `scripts/lib/campaign-status/decide-round.ts`). The first
+   round has no baseline and says so (`not measured`); a campaign upgraded from retired sleep mode
+   uses that sleep baseline once. A value that could not be read is named as such, never guessed.
+   A `warning` field, when present, names a retired `sleep_mode` block to remove; show it too.
 3. Ask each entry of `cards` (at most four questions, the most-blocking first) as **one**
    AskUserQuestion call (or one set of decision cards, `project-thread-mode.md`), the recommended
    option first; more than four decisions means more cards, never a dropped question.

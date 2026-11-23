@@ -135,7 +135,7 @@ sees at a glance where the run stands and what to do:
    **Hook denials** (top 5 rules by deny and warn count, or `no hook denials recorded`),
    **Usage budget** — see below — and **Run**: the run route from `run-context.json` (pattern,
    host, state store, question and forge channels, any missing capability), the decisions mode with
-   the waiting count, `run /blackhole decide` and `owner away` while away, and the coordination role (solo, manager, or peer of its manager)
+   the waiting count, `run /blackhole decide`, `retired sleep_mode ignored` while that block remains in `config.json`, and the coordination role (solo, manager, or peer of its manager)
 
 Every top-level config block names the dataset that shows it, or `none` with a reason, in
 `config-template.md` § Status page coverage (`V-CONFIG-03`): a run feature that adds config adds

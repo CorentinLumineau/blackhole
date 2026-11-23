@@ -937,6 +937,12 @@ describe('status --summary (the launch summary)', () => {
     expect(parsed).toMatchObject({ mode: 'summary', usage: '{"five_hour":{}}', now: 1700000000, summaryJson: true });
   });
 
+  test('--unattended is per invocation and goes only with --summary', () => {
+    expect(parseStatusArgs(['--summary', '--json', '--unattended'])).toMatchObject({ mode: 'summary', unattended: true });
+    expect(parseStatusArgs(['--summary', '--json'])).toMatchObject({ unattended: false });
+    expect(() => parseStatusArgs(['--json', '--unattended'])).toThrow('--unattended requires --summary');
+  });
+
   test('--summary combined with --html or --data throws', () => {
     expect(() => parseStatusArgs(['--summary', '--html'])).toThrow(/--summary/);
     expect(() => parseStatusArgs(['--summary', '--data', 'd'])).toThrow(/--summary/);
@@ -1045,11 +1051,18 @@ describe('status --summary (the launch summary)', () => {
   const NOW_S = '1763026200';
   const runContext = (host: string, questions: string) => ({ context: { host: { value: host } }, route: { question_channel: questions } });
 
-  test('sleep_mode.enabled: print-only, no question card; default parking keeps the gate interactive', () => {
+  test('--unattended: print-only, no question card; default parking keeps the gate interactive', () => {
     const awake = summaryJson(tempCampaign({}));
     expect(awake.cards.length).toBeGreaterThan(0);
-    expect(summaryJson(tempCampaign({ decisions: { mode: 'park' }, sleep_mode: { enabled: false } })).cards.length).toBeGreaterThan(0);
-    expect(summaryJson(tempCampaign({ sleep_mode: { enabled: true } })).cards).toEqual([]);
+    expect(summaryJson(tempCampaign({ decisions: { mode: 'park' } })).cards.length).toBeGreaterThan(0);
+    expect(summaryJson(tempCampaign({}), '--unattended').cards).toEqual([]);
+  });
+
+  test('a retired sleep_mode block no longer makes the gate print-only: without --unattended it asks', () => {
+    const legacy = tempCampaign({ sleep_mode: { enabled: true, since: '2026-11-17T02:00:00.000Z' } });
+    const out = summaryJson(legacy);
+    expect(out.cards.length).toBeGreaterThan(0);
+    expect(row(out, 'decisions').value).toContain('retired sleep_mode ignored');
   });
 
   test('a run context with no question channel: no question card', () => {

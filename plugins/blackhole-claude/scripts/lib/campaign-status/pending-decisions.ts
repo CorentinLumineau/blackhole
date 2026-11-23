@@ -33,10 +33,14 @@ export type PendingDecision = {
   created_at: string;
 };
 
-/** True only when `config.json` says `sleep_mode.enabled: true`: the owner is away (`sleep-mode.md`). */
-export function isSleepMode(config: unknown): boolean {
-  const block = (config as { sleep_mode?: { enabled?: unknown } } | null)?.sleep_mode;
-  return block?.enabled === true;
+/**
+ * The warning for a `sleep_mode` block left in `config.json` after sleep mode was retired (ADR-059
+ * amendment), or null when there is none. The block is ignored, never an error: parking is the
+ * default, the keep-awake hold follows the run, and an unattended start passes `--unattended`.
+ */
+export function retiredSleepModeWarning(config: unknown): string | null {
+  if (typeof config !== 'object' || config === null || !Object.hasOwn(config, 'sleep_mode')) return null;
+  return 'config.json sleep_mode is retired and ignored (ADR-059 amendment): remove it; an unattended start passes --unattended';
 }
 
 export type DecisionsMode = 'park' | 'ask';
@@ -47,8 +51,8 @@ export const rawDecisionsMode = (config: unknown): unknown =>
 
 /**
  * `decisions.mode`: only an exact `"ask"` opts out of parking. Absent or anything else parks, since
- * parking never decides for the owner and never interrupts them. `sleep_mode.enabled: false` is
- * not read here: every past `wake` wrote it, so it says "the owner came back", not "ask me".
+ * parking never decides for the owner and never interrupts them. A retired `sleep_mode` block is
+ * never read here (`retiredSleepModeWarning`).
  */
 export function decisionsMode(config: unknown): DecisionsMode {
   return rawDecisionsMode(config) === 'ask' ? 'ask' : 'park';
@@ -56,10 +60,10 @@ export function decisionsMode(config: unknown): DecisionsMode {
 
 /**
  * The one choke point every owner question the campaign raises goes through: ask now, or park it
- * for `/blackhole decide`. An away owner is never asked, whatever the mode.
+ * for `/blackhole decide`. It follows `decisions.mode` alone.
  */
 export function askOrPark(config: unknown): 'ask' | 'park' {
-  return decisionsMode(config) === 'ask' && !isSleepMode(config) ? 'ask' : 'park';
+  return decisionsMode(config);
 }
 
 /** Why `d` is not a valid pending decision, or null when it is. */

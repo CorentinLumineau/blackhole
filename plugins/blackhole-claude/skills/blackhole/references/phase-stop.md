@@ -163,7 +163,9 @@ the same drain with no wake, and the list at the end of this section holds for a
    arm a second. On `route.schedule: routine`, a one-off routine at `wake_at`
    (`project-thread-mode.md` § Scheduling: routines); on `route.schedule: turn`, no timer exists,
    so the report names `wake_at` and the next turn started at or after it resumes. No wake for
-   `wake_at: null`.
+   `wake_at: null`. Then reconcile the keep-awake hold (`keep-awake.md`): `keep-awake --workers 0
+   --wake-armed` when a wake was armed, which keeps the machine up until it fires, or
+   `keep-awake --workers 0` for `STOP-CAMPAIGN`, which releases it.
 5. **Report** per Exit Invariant 6: the verdict, the 5-hour and weekly %, `wake_at` in local time,
    and that the campaign resumes on its own (or, for `STOP-CAMPAIGN`, on the owner's next `run`).
 6. **Resume** — the wake (or any turn after `wake_at`) runs `orchestrator-runtime.md` § Session
@@ -210,7 +212,10 @@ Never on a usage stop:
   fully-cooperative `stop --now` never touches the watchdog, same as drain**)
 - [ ] This session's peer record is removed with `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/peer-campaigns.ts release`
   (ADR-057, `multitask-mode.md` § Peer campaign registry), so a peer campaign's next bootstrap
-  does not wait out the 40-minute lease; every tier
+  does not wait out the 40-minute lease; every tier. In the same step the keep-awake hold is
+  released with `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts keep-awake --workers 0` (`keep-awake.md`), except
+  a drain-and-wake usage stop (`STOP-WORKERS`, `PACE-WAIT`), which keeps it with `--wake-armed`
+  until the wake
 - [ ] The report states the exact command to resume and what will happen first (**`stop --now`
   tier: additionally names which workers cooperated, flushed (issue #492) a partial result, or
   were abandoned, per step 7 above — the resumer needs to know which issues may carry a partial

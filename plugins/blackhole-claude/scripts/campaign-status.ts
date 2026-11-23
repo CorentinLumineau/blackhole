@@ -8,7 +8,7 @@ import { formatDashboard, renderConfigSummary } from './lib/campaign-status/dash
 import { buildBudgetPanel, givenBudgetPanel, readBudgetPanel, resolveBudgetSettings } from './lib/campaign-status/budget.ts';
 import { adjustPacing, applyOverrides, floorBudget, readPacing, resolveCatchup } from './lib/catchup.ts';
 import { DEFAULT_USAGE_BUDGET } from './lib/usage-budget.ts';
-import { isSleepMode, readPendingDecisions } from './lib/campaign-status/pending-decisions.ts';
+import { readPendingDecisions } from './lib/campaign-status/pending-decisions.ts';
 import { buildDocCarry, type DocCarryIssue, type DocCarryRead, type PendingRead } from './lib/campaign-status/run-state.ts';
 import { loadManifest, type Manifest } from './lib/carry-staged-artifacts.ts';
 import { latestRoute, promisedRoutes } from './lib/route-artifacts.ts';
@@ -287,10 +287,14 @@ function readStatusPageInput(campaignDir: string, config: Parameters<typeof stat
   };
 }
 
-/** The launch gate's print-only mode: the owner is away (`isSleepMode`), or the run context reports no question channel. Never `decisions.mode` (ADR-059 D5). */
-function readPrintOnly(campaignDir: string, config: Record<string, unknown>): boolean {
+/**
+ * The launch gate's print-only mode: this invocation is `--unattended` (the scheduled catchup), or
+ * the run context reports no question channel. Never config: not `decisions.mode` (ADR-059 D5), and
+ * not a retired `sleep_mode` block, so a forgotten flag can never silently skip an interactive gate.
+ */
+function readPrintOnly(campaignDir: string, unattended: boolean): boolean {
   const route = (readJsonOrNull(path.join(campaignDir, 'run-context.json')) ?? {}) as { route?: { question_channel?: unknown } };
-  return isSleepMode(config) || route.route?.question_channel === 'none';
+  return unattended || route.route?.question_channel === 'none';
 }
 
 /**
@@ -345,7 +349,15 @@ function readPeers(campaignDir: string): DetectResult | undefined {
  * `--usage` (restricted to `usage_budget.windows`) when given, else from the host's usage source at
  * `--now`, as `report.budget` is. A catchup reads `--usage-file` through the same source chain.
  */
-async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJson: string | null, now: number | null, asJson: boolean, catchupFlags: CatchupArgs | null) {
+async function printLaunchSummary(
+  campaignDir: string,
+  skipGh: boolean,
+  usageJson: string | null,
+  now: number | null,
+  asJson: boolean,
+  catchupFlags: CatchupArgs | null,
+  unattended: boolean,
+) {
   let usage: RateLimits | null = null;
   if (usageJson !== null) {
     try {
@@ -381,7 +393,7 @@ async function printLaunchSummary(campaignDir: string, skipGh: boolean, usageJso
   const warnings = versionWarning ? [versionWarning] : [];
   if (asJson) {
     const pacing = catchup?.pacing ? { pacing: { ...catchup.pacing, preset: catchup.preset } } : {};
-    console.log(JSON.stringify({ rows, cards: gateCards(rows, { printOnly: readPrintOnly(campaignDir, config) }), warnings, ...pacing }, null, 2));
+    console.log(JSON.stringify({ rows, cards: gateCards(rows, { printOnly: readPrintOnly(campaignDir, unattended) }), warnings, ...pacing }, null, 2));
     return;
   }
   console.log(renderLaunchSummary(rows, warnings));
@@ -423,9 +435,9 @@ async function main() {
     console.error(`status: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(2);
   }
-  const { mode, campaignDir, skipGh, outPath, dataDir, usage, now, summaryJson, catchup } = args;
+  const { mode, campaignDir, skipGh, outPath, dataDir, usage, now, summaryJson, catchup, unattended } = args;
 
-  if (mode === 'summary') return printLaunchSummary(campaignDir, skipGh, usage, now, summaryJson, catchup);
+  if (mode === 'summary') return printLaunchSummary(campaignDir, skipGh, usage, now, summaryJson, catchup, unattended);
 
   if (mode === 'config-summary') {
     // The routine-resume confirmation gate (coordinator.md § Bootstrap preflight) prints only

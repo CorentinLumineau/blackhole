@@ -3,40 +3,38 @@ import { when } from './budget.ts';
 import { DONE_STATUSES } from './queue.ts';
 import type { BudgetPanel, QueueIssue } from './types.ts';
 
-// Sleep mode, the owner's absence (`sleep-mode.md`): the `sleep_mode` block the toggle writes, the
-// wake-ups the campaign re-arms for itself while nobody is watching, and the reports the owner reads
-// before a decision round (`decision-parking.md`). Pure: `scripts/campaign-record.ts` does the I/O.
+// The decide round's report (`decision-parking.md` § Decide round): what ran since the last round,
+// measured against the baseline that round recorded in `decide-baseline.json`, and the wake-ups the
+// campaign re-arms for itself (`keep-awake.md` § Wake-ups). Pure: `scripts/campaign-record.ts` does the I/O.
+
+/** `.blackhole/decide-baseline.json`: written by every `decide`, read by the next one. */
+export const DECIDE_BASELINE_FILE = 'decide-baseline.json';
 
 /**
- * What was true when sleep mode went on, so the wake-up report can say what changed. `done` is
- * null when `queue.json` was absent then: nothing was measured, which is not "nothing was done".
+ * What was true at the last decide round, so the next report can say what changed. `done` is null
+ * when `queue.json` was absent then: nothing was measured, which is not "nothing was done".
  */
-export type SleepBaseline = { done: number[] | null; weekly_pct: number | null };
-type SleepBlock = { enabled?: unknown; since?: unknown; baseline?: SleepBaseline };
-type WithSleep = Record<string, unknown> & { sleep_mode?: SleepBlock };
+export type DecideBaseline = { at: string; done: number[] | null; weekly_pct: number | null };
 
-const block = (config: WithSleep): SleepBlock => config.sleep_mode ?? {};
-
-/** Turns sleep mode on. Already on ⇒ unchanged, so the first `since` and baseline stay. */
-export function sleepOn(config: WithSleep, nowIso: string, baseline: SleepBaseline): WithSleep {
-  if (block(config).enabled === true) return config;
-  return { ...config, sleep_mode: { ...block(config), enabled: true, since: nowIso, baseline } };
+/** A well-formed baseline, or null (absent, a hand edit, or a malformed file): the report then says "not measured". */
+export function parseDecideBaseline(raw: unknown): DecideBaseline | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const b = raw as Record<string, unknown>;
+  const atOk = typeof b.at === 'string' && !Number.isNaN(Date.parse(b.at));
+  const doneOk = b.done === null || (Array.isArray(b.done) && b.done.every(Number.isInteger));
+  const weeklyOk = b.weekly_pct === null || typeof b.weekly_pct === 'number';
+  return atOk && doneOk && weeklyOk ? { at: b.at as string, done: b.done as number[] | null, weekly_pct: b.weekly_pct as number | null } : null;
 }
 
-/** Turns sleep mode off and drops what only a sleeping session needs. */
-export function sleepOff(config: WithSleep): WithSleep {
-  const { since: _since, baseline: _baseline, ...rest } = block(config);
-  return { ...config, sleep_mode: { ...rest, enabled: false } };
-}
-
-/** `since` and `baseline` of the current sleep, each null when not recorded (a hand edit, or an older campaign). */
-export function readSleepSession(config: WithSleep): { since: string | null; baseline: SleepBaseline | null } {
-  const b = block(config);
-  const since = typeof b.since === 'string' && !Number.isNaN(Date.parse(b.since)) ? b.since : null;
-  const done = b.baseline?.done;
-  const weekly = b.baseline?.weekly_pct;
-  const ok = (done === null || (Array.isArray(done) && done.every(Number.isInteger))) && (weekly === null || typeof weekly === 'number');
-  return { since, baseline: ok ? (b.baseline as SleepBaseline) : null };
+/**
+ * The baseline retired sleep mode left in `config.json` (`sleep_mode.since` + `sleep_mode.baseline`),
+ * used once when no decide round has run yet, so a campaign that was away at the upgrade still gets
+ * its away report on the first `decide`.
+ */
+export function legacySleepBaseline(config: unknown): DecideBaseline | null {
+  const block = (config as { sleep_mode?: { since?: unknown; baseline?: { done?: unknown; weekly_pct?: unknown } } } | null)?.sleep_mode;
+  if (!block?.baseline) return null;
+  return parseDecideBaseline({ at: block.since, done: block.baseline.done, weekly_pct: block.baseline.weekly_pct });
 }
 
 /** Issue numbers whose queue status is done (`DONE_STATUSES`), ascending. */
@@ -88,9 +86,9 @@ export function planWakeUps(input: { budget: BudgetPanel; issues: Record<string,
 const list = (ns: number[]): string => ns.map((n) => `#${n}`).join(', ');
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-function workDone(baseline: SleepBaseline | null, issues: Record<string, QueueIssue> | null): string {
-  if (!baseline) return 'not measured — no sleep baseline was recorded';
-  if (!baseline.done) return 'not measured — queue.json was absent when sleep mode went on';
+function workDone(baseline: DecideBaseline | null, issues: Record<string, QueueIssue> | null): string {
+  if (!baseline) return 'not measured — no earlier decide round';
+  if (!baseline.done) return 'not measured — queue.json was absent at the last round';
   if (!issues) return 'not measured — queue.json not read';
   const before = new Set(baseline.done);
   const finished = doneIssues(issues).filter((n) => !before.has(n));
@@ -108,12 +106,12 @@ function openPrs(issues: Record<string, QueueIssue> | null): string {
   return all.length ? `${all.join('; ')} (cross-repo dependencies not read)` : 'none';
 }
 
-function budgetUsed(b: BudgetPanel, baseline: SleepBaseline | null): string {
+function budgetUsed(b: BudgetPanel, baseline: DecideBaseline | null): string {
   if (!b.probed) return `usage not probed — ${b.reason ?? 'no reading'}`;
   const parts: string[] = [];
   if (b.weekly_pct !== null) {
     const start = baseline?.weekly_pct;
-    const delta = typeof start === 'number' ? ` (+${Number((b.weekly_pct - start).toFixed(2))} points while away)` : '';
+    const delta = typeof start === 'number' ? ` (+${Number((b.weekly_pct - start).toFixed(2))} points since the last round)` : '';
     parts.push(`weekly ${b.weekly_pct}%${delta}`);
   }
   if (b.five_hour_pct !== null) parts.push(`5-hour ${b.five_hour_pct}%`);
@@ -122,40 +120,20 @@ function budgetUsed(b: BudgetPanel, baseline: SleepBaseline | null): string {
 
 const waiting = (pending: number): string => (pending ? `${pending}, asked next` : 'none');
 
-/**
- * The executive summary printed ahead of the round when the owner was away (`sleep-mode.md` §
- * Wake-up). `stillAway` is set by `decide`, which answers without ending the absence.
- */
-export function buildWakeReport(input: {
-  since: string | null;
-  baseline: SleepBaseline | null;
+/** The report printed ahead of the decide round: what ran since the last round, then the decisions waiting. */
+export function buildDecideReport(input: {
+  baseline: DecideBaseline | null;
   issues: Record<string, QueueIssue> | null;
   budget: BudgetPanel;
   pending: number;
-  stillAway?: boolean;
 }): string {
   return [
-    '## While you were away',
+    '## Since the last decide round',
     '',
-    input.since ? `- Asleep since ${when(input.since)}.` : '- Asleep since: not recorded.',
-    `- Work done: ${workDone(input.baseline, input.issues)}.`,
+    input.baseline ? `- Last round: ${when(input.baseline.at)}.` : '- Last round: none recorded.',
+    `- Issues finished: ${workDone(input.baseline, input.issues)}.`,
     `- Open PRs in merge order: ${openPrs(input.issues)}.`,
-    `- Budget used: ${budgetUsed(input.budget, input.baseline)}.`,
-    ...(input.stillAway
-      ? ['- Still away: the keep-awake hold and the print-only launch gate stay on until `/blackhole wake`.']
-      : []),
-    `- Decisions waiting for you: ${waiting(input.pending)}.`,
-    '',
-  ].join('\n');
-}
-
-/** The summary printed ahead of a decision round when the owner is present (`decision-parking.md` § Decide round). */
-export function buildDecideReport(input: { issues: Record<string, QueueIssue> | null; budget: BudgetPanel; pending: number }): string {
-  return [
-    '## Before you decide',
-    '',
-    `- Open PRs in merge order: ${openPrs(input.issues)}.`,
-    `- Usage now: ${budgetUsed(input.budget, null)}.`,
+    `- Weekly points used: ${budgetUsed(input.budget, input.baseline)}.`,
     `- Decisions waiting for you: ${waiting(input.pending)}.`,
     '',
   ].join('\n');

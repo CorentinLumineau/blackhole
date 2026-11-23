@@ -250,7 +250,7 @@ pass^k with a stated k and are never folded into the deterministic percentage.
 | `scripts/**/*.test.ts` (`bun test`) | 213 files, including `verify.*.test.ts` | T1 |
 | `scripts/hooks-*.test.ts` and `verify.hooks.test.ts` | about 8,300 lines | T1, seeds T3 |
 | `fixtures/worker-json/` (per-role, per-status worker returns) | many | Seeds T2 scripted agents |
-| `fixtures/recovery/`, `fixtures/campaign-status/{empty,full}`, `fixtures/queue.example.json`, `fixtures/findings-ledger.example.json`, `fixtures/sleep-mode`, `fixtures/staging` | multiple | Seed T2 initial states and goldens |
+| `fixtures/recovery/`, `fixtures/campaign-status/{empty,full}`, `fixtures/queue.example.json`, `fixtures/findings-ledger.example.json`, `fixtures/decision-parking`, `fixtures/staging` | multiple | Seed T2 initial states and goldens |
 | `scripts/lib/forge-adapter/*` (github, gitea/tea, gitlab/glab, with tests) | 3 forges | T2 shim seam, T5 Gitea contract |
 | `verify.cursor-harness.test.ts`, `agent-plugins-build.check.ts`, `claude-dist.check.ts`, `codex-build.check.ts` | present | T4 (partial) |
 | `.blackhole/hook-events/*.json` | 20 | T3 corpus seed |

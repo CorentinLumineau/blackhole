@@ -5,14 +5,17 @@ import { readJsonFile } from '../fs.ts';
 import { detectRunContext } from '../run-context.ts';
 import { writeJsonAtomic } from './record.ts';
 
-// The keep-awake hold of a sleeping campaign on a local host (`sleep-mode.md` § Keeps itself
-// alive): `sleep --on` starts an OS idle inhibitor, `sleep --off` and `wake` stop it. The record
+// The keep-awake hold a running campaign takes on a local host (`keep-awake.md`, ADR-059
+// amendment): held while a worker is in flight or a wake is armed, released at drain, stop and
+// `STOP-CAMPAIGN` (`campaign-record.ts keep-awake`). The record
 // lives in `.blackhole/.tmp/`, ignored wherever `.blackhole/` is tracked and never carried on the
 // state branch. A recorded pid is acted on only while its start time and command line still
 // match the record, so a reused pid is never signalled. Every process call goes through
 // `HoldDeps`, so unit tests never start a real inhibitor.
 
-export const SLEEP_HOLD_FILE = path.join('.tmp', 'sleep-hold.json');
+export const HOLD_FILE = path.join('.tmp', 'keep-awake-hold.json');
+/** Where retired sleep mode recorded its hold; a record found there is moved to `HOLD_FILE` on first read. */
+export const LEGACY_SLEEP_HOLD_FILE = path.join('.tmp', 'sleep-hold.json');
 /** How long a fresh inhibitor gets to fail (no D-Bus, no permission) before it counts as holding. */
 export const SETTLE_MS = 300;
 
@@ -43,7 +46,7 @@ export function inhibitorFor(platform: NodeJS.Platform, onPath: (bin: string) =>
   if (platform === 'linux' && onPath('systemd-inhibit')) {
     return {
       tool: 'systemd-inhibit',
-      command: ['systemd-inhibit', '--what=idle:sleep', '--who=blackhole', '--why=campaign sleep mode', '--mode=block', 'sleep', 'infinity'],
+      command: ['systemd-inhibit', '--what=idle:sleep', '--who=blackhole', '--why=campaign keep-awake', '--mode=block', 'sleep', 'infinity'],
     };
   }
   return null;
@@ -70,7 +73,8 @@ const isTool = (v: unknown): v is InhibitorTool => v === 'caffeinate' || v === '
 
 /** The recorded hold, or null when there is none or the file is not a valid record (pid 1 and below included). */
 export function readHold(campaignDir: string): HoldRecord | null {
-  const file = path.join(campaignDir, SLEEP_HOLD_FILE);
+  adoptLegacyHold(campaignDir);
+  const file = path.join(campaignDir, HOLD_FILE);
   if (!fs.existsSync(file)) return null;
   try {
     const r = readJsonFile(file, file) as Partial<HoldRecord>;
@@ -82,7 +86,14 @@ export function readHold(campaignDir: string): HoldRecord | null {
   }
 }
 
-const dropHold = (campaignDir: string): void => fs.rmSync(path.join(campaignDir, SLEEP_HOLD_FILE), { force: true });
+/** Moves a hold recorded by retired sleep mode to `HOLD_FILE`, so its live inhibitor can still be released. */
+function adoptLegacyHold(campaignDir: string): void {
+  const legacy = path.join(campaignDir, LEGACY_SLEEP_HOLD_FILE);
+  const current = path.join(campaignDir, HOLD_FILE);
+  if (fs.existsSync(legacy) && !fs.existsSync(current)) fs.renameSync(legacy, current);
+}
+
+const dropHold = (campaignDir: string): void => fs.rmSync(path.join(campaignDir, HOLD_FILE), { force: true });
 
 type Check = { state: 'live' } | { state: 'stale' } | { state: 'unknown'; reason: string };
 
@@ -135,9 +146,9 @@ export function startInhibitor(
 }
 
 /**
- * Takes the hold for `sleep --on`. Idempotent: a live recorded hold is kept; a stale one (pid gone
+ * Takes the hold. Idempotent: a live recorded hold is kept; a stale one (pid gone
  * or reused) is cleared and replaced; one whose state cannot be read is kept and nothing new starts.
- * Never throws on an inhibitor problem: sleep mode stays on and the line says why.
+ * Never throws on an inhibitor problem: the campaign runs on and the line says why.
  */
 export function takeHold(campaignDir: string, stateStore: StateStore, deps: HoldDeps, nowIso: string): string {
   if (stateStore === 'branch') return 'Keep-awake: not held — ephemeral host (state_store: branch), nothing to inhibit.';
@@ -152,21 +163,21 @@ export function takeHold(campaignDir: string, stateStore: StateStore, deps: Hold
   dropHold(campaignDir);
   const inhibitor = inhibitorFor(deps.platform, deps.onPath);
   if (!inhibitor) return `Keep-awake: not held — no caffeinate (macOS) or systemd-inhibit (Linux) on this host${stale}.`;
-  const started = startInhibitor(inhibitor.command, deps, path.join(campaignDir, '.tmp', 'sleep-hold.stderr'));
+  const started = startInhibitor(inhibitor.command, deps, path.join(campaignDir, '.tmp', 'keep-awake-hold.stderr'));
   if (!started.ok) return `Keep-awake: not held — ${inhibitor.tool} ${started.reason}${stale}.`;
   const record: HoldRecord = { pid: started.pid, tool: inhibitor.tool, started_at: nowIso, identity: started.identity };
   try {
-    writeJsonAtomic(path.join(campaignDir, SLEEP_HOLD_FILE), record);
+    writeJsonAtomic(path.join(campaignDir, HOLD_FILE), record);
   } catch (err) {
     // An unrecorded inhibitor could never be released, so it does not outlive this call.
     deps.kill(started.pid);
     return `Keep-awake: not held — could not record pid ${started.pid}, inhibitor stopped: ${(err as Error).message}${stale}.`;
   }
-  return `Keep-awake: held by ${inhibitor.tool} (pid ${started.pid}) until \`sleep --off\` or \`wake\`${stale}.`;
+  return `Keep-awake: held by ${inhibitor.tool} (pid ${started.pid}) until the campaign drains or stops${stale}.`;
 }
 
 /**
- * Releases the hold for `sleep --off` and `wake`. The record is dropped only once the hold is gone:
+ * Releases the hold. The record is dropped only once the hold is gone:
  * after a successful kill, or when its pid no longer names the hold. Returns the line to print.
  */
 export function releaseHold(campaignDir: string, deps: HoldDeps): string {
@@ -190,6 +201,20 @@ export function releaseHold(campaignDir: string, deps: HoldDeps): string {
   return `Keep-awake: released ${current.tool} (pid ${current.pid}).`;
 }
 
+/** The keep-awake rule: hold while a worker is in flight or a wake is armed; otherwise nothing needs the machine. */
+export const keepAwakeWanted = (state: { workers: number; wakeArmed: boolean }): boolean => state.workers > 0 || state.wakeArmed;
+
+/** Takes or releases the hold so it matches `keepAwakeWanted`. Idempotent; called at spawn, turn end, drain and stop. */
+export function reconcileHold(
+  campaignDir: string,
+  stateStore: StateStore,
+  deps: HoldDeps,
+  nowIso: string,
+  state: { workers: number; wakeArmed: boolean },
+): string {
+  return keepAwakeWanted(state) ? takeHold(campaignDir, stateStore, deps, nowIso) : releaseHold(campaignDir, deps);
+}
+
 export type KeepAwake = { held: true; tool: InhibitorTool; pid: number; since: string } | { held: false; reason: string };
 
 /** What `run-context.json` records about the hold: held, or why not. Reads only; never starts or stops one. */
@@ -199,7 +224,7 @@ export function keepAwakeStatus(campaignDir: string, stateStore: StateStore, ide
   if (!current) return { held: false, reason: 'no hold recorded' };
   const check = checkHold(current, identify);
   if (check.state === 'unknown') return { held: false, reason: unknownLine(current.pid, check.reason) };
-  if (check.state === 'stale') return { held: false, reason: `stale record: pid ${current.pid} is no longer the hold; \`sleep --on\` takes a new hold` };
+  if (check.state === 'stale') return { held: false, reason: `stale record: pid ${current.pid} is no longer the hold; the next \`keep-awake\` takes a new hold` };
   return { held: true, tool: current.tool, pid: current.pid, since: current.started_at };
 }
 
@@ -215,7 +240,7 @@ function parsePs(out: string): ProcState {
 export function identifyWith(psBin: string): HoldDeps['identify'] {
   return (pid) => {
     // `lstart` prints local time in the caller's locale: pin both, so the same process reads the
-    // same identity whichever shell runs `sleep --on` and which one runs `wake`.
+    // same identity whichever shell takes the hold and which one releases it.
     const ps = spawnSync(psBin, ['-p', String(pid), '-o', 'stat=', '-o', 'lstart=', '-o', 'args='], {
       encoding: 'utf-8',
       env: { ...process.env, TZ: 'UTC', LC_ALL: 'C' },

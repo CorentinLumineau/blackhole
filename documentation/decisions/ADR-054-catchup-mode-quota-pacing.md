@@ -9,7 +9,7 @@ related:
   - documentation/brainstorms/weekly-quota-pacing.md
   - documentation/decisions/ADR-027-forge-adapter-interface.md
   - src/references/config-template.md
-  - src/references/sleep-mode.md
+  - src/references/keep-awake.md
   - src/references/forge-sync.md
 ---
 
