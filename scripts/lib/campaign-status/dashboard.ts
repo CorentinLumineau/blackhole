@@ -8,6 +8,7 @@ import { DECIDE_HINT, runRows } from './run-state.ts';
 import { safePatternId, topDenyCounts } from './deny-counts.ts';
 import { SCOPE_LABELS } from './record.ts';
 import { formatScopeLabel } from './scope-label.ts';
+import { severityRank } from '../worker-json/constants.ts';
 import {
   computeStatusCounts,
   computeWaves,
@@ -153,11 +154,6 @@ export function capOverflowLine(totalCount: number, shownCount: number): string[
   return totalCount > shownCount ? [`- …and ${totalCount - shownCount} more`] : [];
 }
 
-// ADR-042 — severity rank for the open-section sort below: BLOCK before WARN
-// before NOTE, anything else last.
-const LEDGER_SEVERITY_RANK: Record<string, number> = { BLOCK: 0, WARN: 1, NOTE: 2 };
-const ledgerSeverityRank = (severity?: string): number => LEDGER_SEVERITY_RANK[severity ?? ''] ?? 3;
-
 // Recency key for the sort's tiebreak: last_seen_at when present (a hook-derived row bumped by
 // a repeat), else created_at, else 0 (sorts last within its severity tier rather than throwing).
 const ledgerRecencyKey = (f: LedgerFinding): number => {
@@ -174,7 +170,7 @@ export function sortOpenFindings(findings: LedgerFinding[]): LedgerFinding[] {
     .filter((f) => f.status === 'open')
     .slice()
     .sort((a, b) => {
-      const rankDiff = ledgerSeverityRank(a.severity) - ledgerSeverityRank(b.severity);
+      const rankDiff = severityRank(b.severity) - severityRank(a.severity);
       if (rankDiff !== 0) return rankDiff;
       return ledgerRecencyKey(b) - ledgerRecencyKey(a);
     });

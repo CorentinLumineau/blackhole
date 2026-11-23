@@ -12,7 +12,7 @@ export type QueueIssueForTriage = {
 export type LedgerFinding = {
   id: string;
   vcode: string;
-  severity: 'BLOCK' | 'WARN' | 'NOTE';
+  severity: 'BLOCK' | 'WARN' | 'INFO';
   phase: string;
   issue_ref: number | null;
   pr_ref: number | null;

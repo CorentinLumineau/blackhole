@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { OUTCOME_STATUSES, VERIFICATION_MODES } from '../lib/worker-json/constants.ts';
+import { LEGACY_SEVERITY_ALIASES, OUTCOME_STATUSES, SEVERITIES, VERIFICATION_MODES } from '../lib/worker-json/constants.ts';
 import { root, type CheckResult } from './check-utils.ts';
 import { readJsonFile } from '../lib/fs.ts';
 
@@ -23,6 +23,7 @@ type LedgerRow = {
   pr_ref?: unknown;
   pr?: unknown;
   verification_mode?: unknown;
+  severity?: unknown;
   status?: unknown;
   reason?: unknown;
 };
@@ -58,6 +59,14 @@ export const findLedgerSchemaDrift = (findings: unknown[]): string[] => {
     ) {
       violations.push(
         `${id}: verification_mode is ${JSON.stringify(row.verification_mode)} (expected "executed"|"reasoned")`,
+      );
+    }
+    // Issue #1439 — one optional severity, INFO; legacy NOTE has a migration, other values none.
+    if ('severity' in row && !(SEVERITIES as readonly unknown[]).includes(row.severity)) {
+      const legacy = typeof row.severity === 'string' && row.severity in LEGACY_SEVERITY_ALIASES;
+      violations.push(
+        `${id}: severity is ${JSON.stringify(row.severity)} (expected ${SEVERITIES.join('|')})` +
+          (legacy ? '; run scripts/migrate-ledger-schema.ts to rewrite it' : ''),
       );
     }
     if (

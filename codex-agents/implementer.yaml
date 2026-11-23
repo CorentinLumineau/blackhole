@@ -266,7 +266,7 @@ instructions: |
       implement session.
   *   **Push**: `git push --force-with-lease` to the existing `blackhole/issue-N` branch (explicit
       refspec per `phase-implement.md` § Explicit Git Targeting Gate).
-  *   **Ledger**: append one `V-MERGE-03` (NOTE) row per mechanically-resolved hunk per
+  *   **Ledger**: append one `V-MERGE-03` (INFO) row per mechanically-resolved hunk per
       `merge-conflict-protocol.md` § Ledger recording.
   *   **Semantic escalation**: on any semantic hunk after both attempts are exhausted (or on a
       genuine semantic conflict on Attempt 1), `git rebase --abort` (or `cherry-pick --abort`),

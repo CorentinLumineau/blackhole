@@ -34,7 +34,7 @@ import { SEVERITIES } from '../lib/worker-json/constants.ts';
 //     partial array without that anchor, or a target restated via `if`/`switch` comparison
 //     chains, is invisible
 //   - review severities: only `| Severity | Action |` tables; a cell with trailing text
-//     (`| NOTE (optional) |`) and prose forms ("downgraded to `NOTE`") are invisible
+//     (`| INFO (optional) |`) and prose forms ("downgraded to `INFO`") are invisible
 // Each gap is a documented engineering decision, not a silent trap — a future vocabulary or
 // extractor revision should widen these deliberately, with the same false-positive calibration
 // discipline used to narrow them in the first place (see PR #339 for the calibration evidence).

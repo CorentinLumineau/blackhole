@@ -2,9 +2,11 @@ import * as path from 'path';
 import { readJsonFile } from './lib/fs.ts';
 import { installStateFile } from './lib/state-write-guard.ts';
 import type { LedgerFinding } from './lib/promote-review-artifact.ts';
+import { normalizeSeverity } from './lib/worker-json/constants.ts';
 
 // One-shot normalization of the live findings-ledger.json's `issue_ref`/`pr_ref` schema drift,
-// across its three documented shapes: string issue_ref, legacy `pr` key, string pr_ref.
+// across its three documented shapes: string issue_ref, legacy `pr` key, string pr_ref — plus
+// the legacy optional severity spelling NOTE, rewritten to INFO (issue #1439).
 // Idempotent: re-running against an already-clean ledger reports `changed: 0`. Not wired into
 // `bun run verify` — see `ledger-schema.check.ts` for the recurring regression gate this
 // migration is not.
@@ -61,6 +63,9 @@ export function migrateFindings(findings: unknown[]): { migrated: LedgerFinding[
     const prRefCoerced = coerceRefValue(row.id, 'pr_ref', prRefSource);
     if (prRefCoerced !== row.pr_ref) mutated = true;
 
+    const severity = typeof row.severity === 'string' ? normalizeSeverity(row.severity) : row.severity;
+    if (severity !== row.severity) mutated = true;
+
     if (mutated) changed++;
 
     // `rest` already carries issue_ref/pr_ref at their original (possibly absent) key
@@ -71,6 +76,7 @@ export function migrateFindings(findings: unknown[]): { migrated: LedgerFinding[
     const out: RawFinding = { ...rest };
     if (issueRefCoerced !== undefined) out.issue_ref = issueRefCoerced;
     if (prRefCoerced !== undefined) out.pr_ref = prRefCoerced;
+    if (severity !== undefined) out.severity = severity;
     return out as LedgerFinding;
   });
 

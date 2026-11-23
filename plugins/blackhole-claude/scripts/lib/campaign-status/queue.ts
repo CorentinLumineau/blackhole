@@ -1,11 +1,12 @@
 import type { LedgerFinding, QueueIssue, Route, StatusCounts } from './types.ts';
+import { normalizeSeverity } from '../worker-json/constants.ts';
 
 export function countLedgerByStatus(findings: LedgerFinding[]) {
   const open = findings.filter((f) => f.status === 'open');
   const deferred = findings.filter((f) => f.status === 'deferred');
   const block = open.filter((f) => f.severity === 'BLOCK').length;
   const warn = open.filter((f) => f.severity === 'WARN').length;
-  const note = open.filter((f) => f.severity === 'NOTE' || f.severity === 'INFO').length;
+  const note = open.filter((f) => normalizeSeverity(f.severity ?? '') === 'INFO').length;
   return { open: open.length, deferred: deferred.length, block, warn, note };
 }
 
