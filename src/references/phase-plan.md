@@ -16,7 +16,7 @@
 - [ ] Plan artifact exists: `{repo_root}/.blackhole/plans/issue-N.md`
 - [ ] Planner JSON `status: ready` — do NOT spawn implementer if `blocked`
 - [ ] Reformulation posting (issue #456) — when planner JSON validates with `status: ready` and `track` is `quick` or `standard`, format `reformulation` via `scripts/lib/reformulation-surface.ts` `formatReformulationComment()` and post to the issue thread before implement spawn: `gh issue comment <issue_number> --body "$(cat <<'EOF' ... EOF)"` (skip when `status: blocked`, `track: skip|design|brainstorm`, or `reformulation` fails validation — treat as validation failure, do not advance). See `confidence-gates.md` § Async Two-Band Mapping.
-- [ ] queue.json: phase implement, status ready OR blocked (awaiting-plan-approval)
+- [ ] queue.json: phase implement, status ready OR blocked (awaiting-plan-approval); in the same atomic write, set `touch_paths` to the output of `bun run scripts/stack-parent.ts --queue <abs queue.json> --plan-touch-paths <issue>` when it is not `null` (the plan's `## Touch-Paths` plus `## Scope Amendments`), so the Step 3 overlap deferral (`queue-dag.md`) stops reading the config default globs
 ```
 
 ## Planner return format

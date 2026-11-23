@@ -53,3 +53,43 @@ describe('stack-parent.ts --issue', () => {
     expect(run(state, ['--plans-dir', other])).toBeNull();
   });
 });
+
+describe('stack-parent.ts --issue reads config.json beside the queue (#1458)', () => {
+  const writeConfig = (state: string, cfg: unknown): void =>
+    fs.writeFileSync(path.join(state, 'config.json'), JSON.stringify(cfg));
+
+  test('an unplanned issue does not stack on its config default globs', () => {
+    const state = setup();
+    writeConfig(state, { default_touch_paths: ['src/**', 'scripts/**', 'fixtures/**'] });
+    expect(run(state)).toBeNull();
+  });
+  test('an explicit --default-touch-paths wins over config.json', () => {
+    const state = setup();
+    writeConfig(state, { default_touch_paths: ['src/**', 'scripts/**', 'fixtures/**'] });
+    expect((run(state, ['--default-touch-paths', '[]']) as { parent: number }).parent).toBe(1381);
+  });
+  test('a plan named <N>.md is read when issue-<N>.md is absent', () => {
+    const state = setup();
+    fs.writeFileSync(path.join(state, 'plans', '1376.md'), plan);
+    expect(run(state)).toBeNull();
+  });
+});
+
+describe('stack-parent.ts --plan-touch-paths (#1458)', () => {
+  const runPlan = (state: string, issue: string): unknown => {
+    const r = Bun.spawnSync(['bun', 'run', script, '--queue', path.join(state, 'queue.json'), '--plan-touch-paths', issue], { cwd: tmp });
+    expect(r.exitCode).toBe(0);
+    return JSON.parse(r.stdout.toString());
+  };
+  test('prints the plan Touch-Paths to write into the queue entry', () => {
+    const state = setup();
+    fs.writeFileSync(path.join(state, 'plans', 'issue-1376.md'), plan);
+    expect(runPlan(state, '1376')).toEqual(['scripts/lib/foo.test.ts']);
+  });
+  test('prints null when there is no plan or it declares no Touch-Paths', () => {
+    const state = setup();
+    expect(runPlan(state, '1376')).toBeNull();
+    fs.writeFileSync(path.join(state, 'plans', 'issue-1376.md'), '# Plan\n');
+    expect(runPlan(state, '1376')).toBeNull();
+  });
+});
