@@ -223,6 +223,7 @@
 | reviews/review-docs-findings-ledger-id-shape-entity-key-asymmetry-consumer-path-resolution.md | Review artifact for issue #796 (LGTM, 1 deferred WARN) | review | current | on file change |
 | reviews/review-docs-implementer-document-gh-pr-edit-rest-patch-workaround.md | Review artifact for issue #813 (LGTM) | review | current | on file change |
 | reviews/review-docs-land-the-x-analyze-full-codebase-audit-report.md | Review artifact for issue #977 (LGTM) | review | current | on file change |
+| reviews/review-docs-lifecycle-installed-blackhole-does-not-ship-the-detector.md | Review artifact for issue #1399 (LGTM) | review | current | on file change |
 | reviews/review-docs-lifecycle-mercure-adr-frontmatter-classified-ambiguous-by-blackhole.md | Review artifact for issue #1398 (LGTM) | review | current | on file change |
 | reviews/review-docs-review-core-per-dispatch-mode-reviewer-prompt-requirements-verification-mod.md | Review artifact for issue #709 (LGTM) | review | current | on file change |
 | reviews/review-docs-tests-strip-issue-finding-id-citations-from-hooks-validate-file-test-commen.md | Review artifact for issue #736 (LGTM) | review | current | on file change |
