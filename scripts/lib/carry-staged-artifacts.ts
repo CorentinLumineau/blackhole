@@ -192,7 +192,13 @@ export const appendConstraintBulletIfAbsent = (
   if (alreadyCarried) return { content: architectureMd, appended: false };
 
   const marker = '## Active Constraints';
-  const insertAt = architectureMd.indexOf(marker) + marker.length;
+  const headingAt = architectureMd.indexOf(marker);
+  if (headingAt === -1) {
+    // No section to insert into: append one at end of file, leaving every existing byte intact.
+    const separator = architectureMd === '' ? '' : architectureMd.endsWith('\n') ? '\n' : '\n\n';
+    return { content: `${architectureMd}${separator}${marker}\n${stagedBullet}\n`, appended: true };
+  }
+  const insertAt = headingAt + marker.length;
   const content = `${architectureMd.slice(0, insertAt)}\n${stagedBullet}${architectureMd.slice(insertAt)}`;
   return { content, appended: true };
 };
