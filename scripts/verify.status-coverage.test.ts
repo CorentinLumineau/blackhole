@@ -124,6 +124,12 @@ describe('V-CONFIG-03 status page coverage', () => {
       ]);
     });
 
+    test('a label repeated within one cell fails', () => {
+      expect(findStatusCoverageGaps(doc(replaced('parallel_max', '| `parallel_max` | `config` | Concurrency | | Budget, Budget |')), TEMPLATE)).toEqual([
+        'parallel_max: "Budget" is named twice in its Launch summary cell',
+      ]);
+    });
+
     test('a row that does not claim the block fails', () => {
       expect(findStatusCoverageGaps(doc(replaced('repo', '| `repo` | `links` | — | forge pages | Merge, Scope |')), TEMPLATE)).toEqual([
         'repo: the Merge row does not claim it (LAUNCH_ROW_CLAIMS)',

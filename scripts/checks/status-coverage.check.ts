@@ -29,7 +29,7 @@ const list = (c: string | undefined): string[] => {
   return named && named !== '—' ? named.split(',').map((k) => k.trim()).filter(Boolean) : [];
 };
 
-/** The rows of the `| Block | Status page | Row | Reason |` table under `COVERAGE_HEADING`. */
+/** The rows of the `| Block | Status page | Row | Reason | Launch summary |` table under `COVERAGE_HEADING`. */
 export const parseCoverageTable = (doc: string): CoverageRow[] => {
   const lines = doc.split('\n');
   const start = lines.findIndex((l) => l.trimEnd() === COVERAGE_HEADING);
@@ -106,7 +106,10 @@ const launchGaps = (r: CoverageRow): string[] => {
   if (!r.launch.length) return top ? [`${r.block}: declares no launch summary row or Other config (${COVERAGE_HEADING})`] : [];
   const claimed = claimingLabels(r.block);
   const gaps: string[] = [];
-  for (const label of r.launch) {
+  for (const label of new Set(r.launch.filter((l, i) => r.launch.indexOf(l) !== i))) {
+    gaps.push(`${r.block}: "${label}" is named twice in its Launch summary cell`);
+  }
+  for (const label of new Set(r.launch)) {
     const key = LABEL_KEYS.get(label);
     if (key === undefined) gaps.push(`${r.block}: "${label}" is not a launch summary row (LAUNCH_ROW_LABELS)`);
     else if (label === OTHER_CONFIG) {
