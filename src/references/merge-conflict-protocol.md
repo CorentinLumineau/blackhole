@@ -77,9 +77,12 @@ Two production consumers, same technique, different keys and different primitive
 the row-splitting *idiom* is shared, the parse/render functions are not, because the two files'
 column schemas differ):
 
-- `documentation/INDEX.md` and `documentation/decisions/INDEX.md` — sorted by path
-  (`appendIndexRowIfAbsent`/`byPathByteOrder`, `scripts/lib/check-common.ts`, issue #743). See
-  `doc-governance.md` § INDEX.md Maintenance, "Row order (issue #743)" for that consumer's
+- `documentation/decisions/INDEX.md` — sorted by a key its header picks
+  (`scripts/lib/check-common.ts`, issues #743, #1390): the path for a blackhole header
+  (`appendIndexRowIfAbsent`), the `ADR-\d+` token for an ADR-style header
+  (`appendAdrIndexRowIfAbsent`), both through the shared `insertRowSorted` tail. The root
+  `documentation/INDEX.md` is regenerated whole from frontmatter, never appended to (issue #832).
+  See `doc-governance.md` § INDEX.md Maintenance, "Row order (issue #743)" for that consumer's
   write-up.
 - `documentation/reference/decision-log.md`'s Records table — sorted by the numeric id in the
   PR/Issue cell (`insertRecordRowsSorted`/`recordSortKey`, `scripts/decision-log-append.ts`,

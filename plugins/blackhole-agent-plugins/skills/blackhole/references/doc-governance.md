@@ -220,8 +220,8 @@ primitives in `scripts/lib/check-common.ts` chosen by the target file's own head
   column names, then dedups and sorts on the row's `ADR-\d+` token, so a bare id, a
   link to the ADR file, and a bare filename for the same ADR count as one row.
 
-Both sort with a byte-order (UTF-16 code-unit) comparator (`byPathByteOrder` and the shared
-`insertRowSorted` tail), never `String.prototype.localeCompare`, whose locale collation can
+Both sort by byte-order comparison in the shared `insertRowSorted` tail (the same rule as
+`byPathByteOrder`), never `String.prototype.localeCompare`, whose locale collation can
 place a row differently on another machine. Every untouched row survives byte for byte, and
 concurrent carry/promotion PRs touching the same file land their new rows at different offsets
 instead of the same anchor line. Since ADR filenames are zero-padded to a fixed 3-digit width,
@@ -229,7 +229,7 @@ path order and ADR-sequence order coincide for the decisions index — no separa
 is needed for that file.
 
 **Foreign root index (issue #1388)**: the carry step regenerates the root
-`documentation/INDEX.md` only when it is a blackhole-generated index (`isRegenerableRootIndex`,
+`documentation/INDEX.md` only when it is absent or a blackhole-generated index (`isRegenerableRootIndex`,
 `scripts/lib/doc-index-generate.ts`). When the consumer's file has a foreign header, link-style
 path cells, prose, or a second table, the carry step leaves it byte-identical and reports a
 skipped entry whose reason names `V-INT-01` (WARN), rather than overwriting the consumer's own
