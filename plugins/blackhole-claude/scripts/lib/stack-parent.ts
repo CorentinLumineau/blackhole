@@ -1,4 +1,6 @@
 import { childBranchFor } from '../stack-repair.ts';
+import { headingSectionsOnce } from './markdown-headings.ts';
+import { extractBacktickPaths } from './plan-touch-path-ssot-pairs.ts';
 import { chainTip as graphChainTip, effectiveParent, reachesNode, withoutRegenerated, type StackGraph } from './stack-overlap.ts';
 
 // Dispatch-time stack-parent selection (queue-dag.md § Step 3b). A ready issue whose touch_paths
@@ -64,6 +66,29 @@ export type StackParentOptions = {
    */
   parentFiles?: Record<string, string[]>;
 };
+
+/** Backtick paths under a plan's `## Touch-Paths` heading, deduplicated; empty when the plan has none. */
+export const planTouchPaths = (plan: string): string[] => {
+  const { primary } = headingSectionsOnce(plan, (h) => /^touch-paths\b/i.test(h.text), () => false);
+  return primary ? [...new Set(extractBacktickPaths(primary.text))] : [];
+};
+
+/**
+ * Queue issues with `touch_paths` replaced by their plan's Touch-Paths wherever `readPlan` returns a
+ * plan that declares some: a planned issue still carrying the config default globs would otherwise
+ * match every open PR touching `src/**` or `scripts/**`.
+ */
+export const withPlanTouchPaths = (
+  issues: Record<string, StackCandidate>,
+  readPlan: (issue: number) => string | null,
+): Record<string, StackCandidate> =>
+  Object.fromEntries(
+    Object.entries(issues).map(([k, v]) => {
+      const plan = readPlan(Number(k));
+      const paths = plan === null ? [] : planTouchPaths(plan);
+      return [k, paths.length ? { ...v, touch_paths: paths } : v];
+    }),
+  );
 
 /** Narrowed paths only: each default member, regenerated file and broad/root-only glob is dropped individually. */
 const knownPaths = (paths: string[] | undefined, defaults: string[] | undefined): string[] =>
