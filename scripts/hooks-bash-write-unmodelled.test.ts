@@ -264,3 +264,75 @@ describe('path operations in a trusted extra root', () => {
     });
   });
 });
+
+describe('a flag that is a prefix of a value-taking option', () => {
+  test('a real flag before the write option never swallows it', async () => {
+    await withState((state, wt, run) => {
+      const rel = path.relative(wt, state);
+      for (const cmd of [
+        `curl --head -o ${rel}/config.json https://example.invalid/x`,
+        `curl --head -o ${state}/config.json https://example.invalid/x`,
+        `tar --checkpoint -xf x -C ${rel}`,
+        `tar --occurrence -xf x -C ${rel}`,
+        `tar --checkpoint -xf x -C ${state}/hook-events`,
+      ]) {
+        expect(run(cmd)).toMatchObject(BLOCK);
+      }
+    });
+  });
+
+  test('a consumed value that is itself an option is still read as one', async () => {
+    await withState((state, _wt, run) => {
+      // An unknown abbreviation that may take a value must not hide the option after it.
+      expect(run(`tar --chec -xf x -C ${state}`)).not.toBeNull();
+      expect(run(`wget --ref -O ${state}/config.json https://example.invalid/x`)).not.toBeNull();
+      expect(run(`patch --fu -d ${state} -p1 < x.diff`)).not.toBeNull();
+    });
+  });
+
+  test('the same flags on an in-worktree target stay allowed', async () => {
+    await withState((_state, _wt, run) => {
+      for (const cmd of ['curl --head -o ./x https://example.invalid/x', 'tar --checkpoint -xf x -C ./out', 'tar --occurrence=2 -xf x']) {
+        expect(run(cmd)).toBeNull();
+      }
+    });
+  });
+});
+
+describe('read-only forms of a working-tree git subcommand', () => {
+  test('stash list/show, submodule status/summary, sparse-checkout list and a bare checkout stay allowed', async () => {
+    await withState((state, _wt, run) => {
+      const main = path.dirname(state);
+      for (const sub of ['stash list', 'stash show', 'stash show -p stash@{0}', 'submodule status', 'submodule summary', 'sparse-checkout list', 'checkout']) {
+        expect(run(`git -C ${main} ${sub}`)).toBeNull();
+      }
+    });
+  });
+
+  test('their writing forms are still denied', async () => {
+    await withState((state, _wt, run) => {
+      const main = path.dirname(state);
+      for (const sub of ['stash', 'stash pop', 'stash push', 'submodule update', 'sparse-checkout set x', 'checkout x', 'checkout -- .']) {
+        expect(run(`git -C ${main} ${sub}`)).toMatchObject(BLOCK);
+      }
+    });
+  });
+});
+
+describe('the command xargs runs', () => {
+  test('a writer name among the operands of a read-only command is not a writer', async () => {
+    await withState((_state, _wt, run) => {
+      for (const cmd of ['ls | xargs grep -l sort', 'ls | xargs -n1 grep rm', 'git ls-files | xargs -0 wc -l touch']) {
+        expect(run(cmd)).toBeNull();
+      }
+    });
+  });
+
+  test('a writer run by xargs after its own options still warns', async () => {
+    await withState((_state, _wt, run) => {
+      for (const cmd of ['ls | xargs rm', 'ls | xargs -n1 -P4 rm', 'ls | xargs -I {} cp x {}', 'ls | xargs -0 -- chmod 600', 'ls | xargs -L 1 /bin/rm']) {
+        expect(run(cmd)).not.toBeNull();
+      }
+    });
+  });
+});

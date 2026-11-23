@@ -1133,7 +1133,7 @@ const gitOutputTargets = (args) => {
     }
   }
   // A subcommand that writes the working tree writes into every `-C`/`--work-tree` base it names.
-  if (GIT_WORKTREE_WRITERS.has(args[subIdx])) {
+  if (GIT_WORKTREE_WRITERS.has(args[subIdx]) && !isReadOnlyGitForm(args[subIdx], args.slice(subIdx + 1))) {
     for (const base of bases) if (base) values.push(path.isAbsolute(base) ? base : `./${base}`);
     if (args.slice(subIdx + 1).includes('--unsafe-paths')) values.push(UNRESOLVABLE_TARGET);
   }
@@ -1153,6 +1153,16 @@ const GIT_WORKTREE_WRITERS = new Set([
   'apply', 'checkout', 'switch', 'restore', 'reset', 'stash', 'merge', 'pull', 'rebase', 'cherry-pick', 'revert',
   'am', 'clean', 'rm', 'mv', 'read-tree', 'checkout-index', 'sparse-checkout', 'submodule',
 ]);
+
+/** True for a form of a `GIT_WORKTREE_WRITERS` subcommand that only prints: `stash list|show`,
+ * `submodule` bare or `status|summary`, `sparse-checkout list`, and a bare `checkout`. */
+const isReadOnlyGitForm = (sub, rest) => {
+  const action = rest.find((t) => !t.startsWith('-'));
+  if (sub === 'stash') return action === 'list' || action === 'show';
+  if (sub === 'submodule') return action === undefined || action === 'status' || action === 'summary';
+  if (sub === 'sparse-checkout') return action === 'list';
+  return sub === 'checkout' && rest.length === 0;
+};
 
 /** `yq -i|--inplace` rewrites its file operands. The expression operand cannot be told from a
  * file without parsing yq's own flag set, so every operand is checked: an expression resolves to
@@ -1768,6 +1778,7 @@ const PATH_WRITER_HELPERS = {
   argsAfter: (tokens, idx) => positionalArgsSkippingRedirects(tokens, idx + 1),
   targetWord,
   commandName,
+  isLongOptionPrefix,
 };
 
 /** Write targets in one view of the command, each with the directories a relative target
