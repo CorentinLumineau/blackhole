@@ -6,7 +6,11 @@ import {
 } from './lib/worker-json/enum-source.ts';
 import { extractWorkerJson, parseJsonObject } from './lib/worker-json/extract.ts';
 import { resolveRole } from './lib/worker-json/resolve-role.ts';
-import { extractLastAssistantText, readTranscriptTail } from './lib/worker-json/transcript.ts';
+import {
+  extractLastAssistantText,
+  extractLastHandbackMessage,
+  readTranscriptTail,
+} from './lib/worker-json/transcript.ts';
 import type { HookInput, Role } from './lib/worker-json/types.ts';
 import { extractFromHookInput, validateWorker } from './lib/worker-json/validate.ts';
 import { parseFlags } from './lib/argv-flags.ts';
@@ -16,6 +20,7 @@ export type { ValidateWorkerFn } from './lib/worker-json/enum-source.ts';
 export {
   extractFromHookInput,
   extractLastAssistantText,
+  extractLastHandbackMessage,
   extractWorkerJson,
   readTranscriptTail,
   resolveRole,
@@ -120,10 +125,10 @@ function runCli(validate: ValidateWorkerFn, role: Role, payload: unknown): numbe
 /**
  * Recovers a worker's return JSON from its own persisted Claude Code subagent
  * transcript when the return never reached the orchestrator (`recovery-protocol.md`
- * §10). Fails loudly at every step — a missing transcript, a text-less final
- * turn, an unparsable extraction, or a schema-invalid recovered payload are all
- * reported to stderr and exit non-zero, never silently treated as "worker
- * produced nothing".
+ * §10). Fails loudly at every step — a missing transcript, a final turn with
+ * neither text nor a `SubagentHandback` call, an unparsable extraction, or a
+ * schema-invalid recovered payload are all reported to stderr and exit
+ * non-zero, never silently treated as "worker produced nothing".
  */
 function runRecoverTranscript(
   validate: ValidateWorkerFn,
@@ -136,17 +141,28 @@ function runRecoverTranscript(
     return 1;
   }
 
-  const text = extractLastAssistantText(tail);
-  if (text === null) {
-    console.error('no assistant message found in transcript');
+  // Assistant text first (Claude Code CLI); then the last `SubagentHandback` tool input,
+  // which is where a Claude desktop worker's return lives.
+  const sources = [extractLastAssistantText(tail), extractLastHandbackMessage(tail)].filter(
+    (text): text is string => text !== null,
+  );
+  if (sources.length === 0) {
+    console.error('no assistant message or SubagentHandback tool call found in transcript');
     return 1;
   }
 
-  let workerJson: unknown;
-  try {
-    workerJson = extractWorkerJson(text);
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+  let workerJson: unknown = null;
+  let lastError = '';
+  for (const text of sources) {
+    try {
+      workerJson = extractWorkerJson(text);
+      break;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  if (workerJson === null) {
+    console.error(lastError);
     return 1;
   }
 

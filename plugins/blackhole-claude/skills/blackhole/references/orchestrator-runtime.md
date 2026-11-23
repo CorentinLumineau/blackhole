@@ -112,11 +112,16 @@ below, classify each worker into exactly one of:
    a tied or unavailable `mtime`, abort this rung and fall through to rung 2 rather than risk
    applying a stale prior-turn return. Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/validate-worker-json.ts
    --recover-transcript <path> --role <role>`. Exit `0` → parse stdout as the recovered return
-   JSON, tag `notes: recovered-via-transcript`, done. If `$CLAUDE_CODE_SESSION_ID` is unset —
+   JSON, tag `notes: recovered-via-transcript`, done. **Claude desktop**: there the transcript is
+   the session's `tasks/<task id>.output` (`/tmp/claude-<uid>/<project slug>/$CLAUDE_CODE_SESSION_ID/tasks/`,
+   `<task id>` being the id the spawn returned; a symlink to that session's
+   `subagents/agent-<task id>.jsonl`), and the return is the worker's last `SubagentHandback`
+   tool input rather than assistant text — pass that file to the same command, which reads the
+   handback input when no assistant text carries the JSON. If `$CLAUDE_CODE_SESSION_ID` is unset —
    skip this rung entirely (a harness-capability check, not a fault) and go straight to rung 2.
 2. On rung 1's absence or failure (unset env var, empty glob, or the script's non-zero exit for
-   any reason — missing file, no assistant text, extraction failure, schema-validation failure)
-   — **do not retry the same transcript file.** `SendMessage` the worker by its spawn `name`
+   any reason — missing file, neither assistant text nor a `SubagentHandback` call, extraction
+   failure, schema-validation failure) — **do not retry the same transcript file.** `SendMessage` the worker by its spawn `name`
    asking it to re-emit its final status JSON verbatim; wait for the next idle/completion signal;
    retry rung 1 once against any new transcript content. On success, tag `notes:
    recovered-via-resend`.

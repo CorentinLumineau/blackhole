@@ -25,8 +25,14 @@ function extractFencedJson(text: string): unknown | null {
   }
 }
 
-function findBalancedObjectStrings(text: string): string[] {
-  const objects: string[] = [];
+interface ObjectSpan {
+  start: number;
+  end: number;
+  body: string;
+}
+
+function findBalancedObjectStrings(text: string): ObjectSpan[] {
+  const objects: ObjectSpan[] = [];
 
   for (let start = 0; start < text.length; start++) {
     if (text[start] !== '{') {
@@ -61,23 +67,28 @@ function findBalancedObjectStrings(text: string): string[] {
       } else if (ch === '}') {
         depth--;
         if (depth === 0) {
-          objects.push(text.slice(start, i + 1));
+          objects.push({ start, end: i + 1, body: text.slice(start, i + 1) });
           break;
         }
       }
     }
   }
 
-  return objects;
+  return objects.sort((a, b) => b.end - a.end || a.start - b.start);
 }
 
+/**
+ * Tries balanced `{...}` spans latest-ending first, and among spans ending at the same
+ * place the outermost first, so a top-level return wins over the objects nested inside
+ * it and over an unparsable brace in trailing prose.
+ */
 function extractBareObject(text: string): unknown | null {
   const candidates = findBalancedObjectStrings(text);
-  for (let i = candidates.length - 1; i >= 0; i--) {
+  for (const candidate of candidates) {
     try {
-      return parseJsonObject(candidates[i], 'bare object');
+      return parseJsonObject(candidate.body, 'bare object');
     } catch {
-      // try earlier candidate
+      // try the next candidate
     }
   }
   return null;
