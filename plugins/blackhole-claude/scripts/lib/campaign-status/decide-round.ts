@@ -29,12 +29,13 @@ export function parseDecideBaseline(raw: unknown): DecideBaseline | null {
 /**
  * The baseline retired sleep mode left in `config.json` (`sleep_mode.since` + `sleep_mode.baseline`),
  * used once when no decide round has run yet, so a campaign that was away at the upgrade still gets
- * its away report on the first `decide`.
+ * its away report on the first `decide`. A baseline with no `weekly_pct` reading still counts its
+ * `done` issues: the missing reading only leaves the weekly delta unmeasured.
  */
 export function legacySleepBaseline(config: unknown): DecideBaseline | null {
   const block = (config as { sleep_mode?: { since?: unknown; baseline?: { done?: unknown; weekly_pct?: unknown } } } | null)?.sleep_mode;
   if (!block?.baseline) return null;
-  return parseDecideBaseline({ at: block.since, done: block.baseline.done, weekly_pct: block.baseline.weekly_pct });
+  return parseDecideBaseline({ at: block.since, done: block.baseline.done, weekly_pct: block.baseline.weekly_pct ?? null });
 }
 
 /** Issue numbers whose queue status is done (`DONE_STATUSES`), ascending. */
