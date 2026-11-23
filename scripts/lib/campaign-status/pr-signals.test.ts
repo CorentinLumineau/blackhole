@@ -20,6 +20,19 @@ describe('ciOf / reviewOf', () => {
     });
   });
 
+  test('a CANCELLED run a newer run of the same producer replaced does not fail CI', () => {
+    const run = (conclusion: 'CANCELLED' | 'SUCCESS', suiteId: number, runId: number, startedAt: string): ForgeCheck => ({
+      name: 'pr-lint', status: 'COMPLETED', conclusion, suiteId, runId, startedAt, producer: 'pr-lint.yml:pull_request:42',
+    });
+    const older = run('CANCELLED', 100, 1000, '2026-11-20T10:00:00Z');
+    const newer = run('SUCCESS', 101, 1001, '2026-11-20T10:05:00Z');
+    expect(ciOf([older, newer])).toEqual({ ci: 'green', failing: [] });
+    // Without a proved producer the cancelled run cannot be shown replaced, so CI stays failing.
+    const { producer: _o, ...olderUnproved } = older;
+    const { producer: _n, ...newerUnproved } = newer;
+    expect(ciOf([olderUnproved, newerUnproved])).toEqual({ ci: 'failing', failing: ['pr-lint'] });
+  });
+
   test('the verdict is the ai-review label without its prefix', () => {
     expect(reviewOf([{ name: 'bug' }, { name: 'ai-review:NEEDS_CHANGES' }])).toBe('NEEDS_CHANGES');
     expect(reviewOf(['ai-review:LGTM'])).toBe('LGTM');
