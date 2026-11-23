@@ -15,6 +15,7 @@ import { resolveUsageWindows, USAGE_WINDOWS, type UsageWindow } from './usage-bu
 // configured or cached reading is never discarded for it. Cursor has no readable source: its reading
 // is null with a reason, which the usage-budget gate turns into `unavailable`, never a silent GO.
 // An explicit usage file (usage.ts --usage) is tried before the cache on every host, Cursor included;
+// a stale one ends the chain with its reason rather than falling back to the cache;
 // `report()` is the full normalized reading, `read()` the gate view of the same chain call.
 
 export type UsageSourceName = 'usage-file' | 'rate-limit-cache' | 'none';
@@ -58,7 +59,8 @@ export const restrictWindows = (limits: RateLimits, only: UsageWindow[] | null):
   return { limits: windows.length ? kept : null, windows };
 };
 
-type ProviderResult = { ok: true; report: UsageReport } | { ok: false; reason: string };
+/** `final`: the chain stops here, with no fallback to a later provider. */
+type ProviderResult = { ok: true; report: UsageReport } | { ok: false; reason: string; final?: boolean };
 type Provider = { source: UsageSourceName; run: (now: number) => ProviderResult };
 
 const fail = (reason: string): ProviderResult => ({ ok: false, reason });
@@ -92,7 +94,9 @@ const fileProvider = (usageFile: string, maxAgeSeconds: number): Provider => ({
       throw new UsageFileError(`usage file ${usageFile}: ${detail}`);
     }
     const readAt = Math.min(usage.read_at ?? mtime, now);
-    if (now - readAt > maxAgeSeconds) return fail(`usage file stale (${now - readAt}s > ${maxAgeSeconds}s)`);
+    // A stale file the caller named fails closed: falling through would hand back a reading from a
+    // source the caller did not choose (the cache may hold another account's usage).
+    if (now - readAt > maxAgeSeconds) return { ok: false, reason: `usage file stale (${now - readAt}s > ${maxAgeSeconds}s)`, final: true };
     // A window past its reset no longer applies, as in the cache reader.
     const windows = usage.windows.filter((w) => w.resets_at > now);
     if (!windows.length && usage.plan !== 'none') return fail('usage file carries no current window');
@@ -122,7 +126,7 @@ const cursorProvider: Provider = {
 };
 
 /** The source for `host`. Chain: the explicit `usageFile`, then the rate-limit cache (not on Cursor);
- * the first usable reading wins. Throws on an invalid `resource_policy.pace` or `usage_budget.windows`,
+ * the first usable reading wins, except that a stale `usageFile` ends the chain with no reading. Throws on an invalid `resource_policy.pace` or `usage_budget.windows`,
  * and a missing or malformed `usageFile` throws UsageFileError when read. */
 export const usageSourceFor = (host: Host, config: Record<string, unknown>, options: { cachePath?: string; usageFile?: string } = {}): UsageSource => {
   const maxAge = resolvePaceGateThresholds(config).maxAgeSeconds;
@@ -140,6 +144,7 @@ export const usageSourceFor = (host: Host, config: Record<string, unknown>, opti
       const result = provider.run(now);
       if (result.ok) return result.report;
       reasons.push(result.reason);
+      if (result.final) break;
     }
     return emptyReport(reasons.join('; '));
   };

@@ -50,6 +50,21 @@ describe('pace-floor CLI', () => {
     });
   });
 
+  test('a stale --usage file is unreadable with its reason, never a floor from a fresh cache', () => {
+    withTempDir('pace-floor-cli', (dir) => {
+      const file = usageFile(dir, { plan: 'max', windows: week.windows });
+      fs.utimesSync(file, NOW - 700, NOW - 700);
+      const cache = path.join(dir, 'rate-limits.json');
+      fs.writeFileSync(cache, JSON.stringify({ rate_limits: { seven_day: { used_percentage: 10, resets_at: RESET } } }));
+      fs.utimesSync(cache, NOW - 5, NOW - 5);
+      const r = run(dir, ['--usage', file, '--cache', cache, '--host', 'claude']);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatchObject({ status: 'unreadable', floor_pct: null, used_pct: null, source: 'none' });
+      expect(r.out.reason).toMatch(/^usage file stale \(700s > 600s\)$/);
+      expect(r.err).toContain('pace-floor: unreadable: usage file stale');
+    });
+  });
+
   test('a plan-none file is no-weekly', () => {
     withTempDir('pace-floor-cli', (dir) => {
       const r = run(dir, ['--usage', usageFile(dir, { plan: 'none', read_at: NOW - 5, windows: [] })]);
