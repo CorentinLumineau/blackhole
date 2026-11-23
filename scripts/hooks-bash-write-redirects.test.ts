@@ -204,6 +204,7 @@ describe('bash-write-target-guard.js — #1183 parsers stay linear', () => {
   const LARGE_INPUTS: Array<[string, (reps: number) => string, number]> = [
     ['backslash-newline continuations', (k) => `echo ${'a \\\n'.repeat(k)}> out.txt`, CAP / 4],
     ['a long sed script of substitutions', (k) => `sed '${'s/a/b/;'.repeat(k)}' f`, CAP / 7],
+    ['a grep pattern of separators with no space', (k) => `grep '${'a;'.repeat(k)}' f`, CAP / 2],
     ['a sed script of unterminated escapes', (k) => `sed 's/${'\\\\'.repeat(k)}' f`, CAP / 2],
     ['a long sed address chain', (k) => `sed -n '${'/a/,/b/{'.repeat(k)}' f`, CAP / 8],
     ['a long node -e script', (k) => `node -e "${'x=1;'.repeat(k)}"`, CAP / 4],
