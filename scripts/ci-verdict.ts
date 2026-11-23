@@ -9,7 +9,7 @@ import { checksFromSnapshot, ciVerdict, requiredChecksFromConfig, unconfiguredPe
 const USAGE = 'Usage: bun run scripts/ci-verdict.ts --checks <file> [--runs <file>] [--required <check name>]... [--config <path>]\n' +
   '  --required: exact check name that must have run and succeeded (repeatable; overrides merge_ready.required_checks)\n' +
   '  --config: campaign config to read merge_ready.required_checks from (default .blackhole/config.json)\n' +
-  '  --runs: the head\'s `GET repos/{repo}/actions/runs?head_sha=<sha>&per_page=100` JSON; it lets a rerun supersede an older run of the same workflow, without it every run is judged\n' +
+  '  --runs: the head\'s `GET repos/{repo}/actions/runs?head_sha=<sha>&per_page=100` JSON; it lets a newer pull_request run of the same workflow and PR replace an older CANCELLED run; without it every run is judged\n' +
   '  <file>: REST or GitHub MCP check-runs JSON, a combined-status JSON, both merged, or a ForgeCheck[] array';
 
 // parseFlags keeps one value per key, so the repeatable --required is collected here. A --required

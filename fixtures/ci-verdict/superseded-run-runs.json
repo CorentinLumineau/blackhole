@@ -1,9 +1,11 @@
 {
-  "description": "GET repos/{repo}/actions/runs?head_sha=<sha>&per_page=100 for the head of superseded-run.json: both pr-lint suites belong to one workflow fired by one pull_request event, the Verify suite to another workflow",
-  "total_count": 3,
+  "description": "GET repos/{repo}/actions/runs?head_sha=<sha>&per_page=100 for the head of superseded-run.json, recorded on blackhole PR #1360 head e6bf7efb after merge; pull_requests is constructed (one entry, PR 1360 into main, as GitHub lists it while the PR is open), every other field is recorded",
+  "total_count": 5,
   "workflow_runs": [
-    { "id": 9001, "check_suite_id": 121141391826, "workflow_id": 386981354, "event": "pull_request", "head_branch": "fix/superseded" },
-    { "id": 9002, "check_suite_id": 121141393769, "workflow_id": 386981354, "event": "pull_request", "head_branch": "fix/superseded" },
-    { "id": 9003, "check_suite_id": 121141391380, "workflow_id": 307277644, "event": "pull_request", "head_branch": "fix/superseded" }
+    {"id": 44730189679, "run_number": 656, "run_attempt": 1, "check_suite_id": 121072422323, "workflow_id": 386981354, "event": "pull_request", "head_branch": "blackhole/issue-1347-guard-gaps", "pull_requests": [{"number": 1360, "head": {"ref": "blackhole/issue-1347-guard-gaps"}, "base": {"ref": "main"}}]},
+    {"id": 44728078251, "run_number": 655, "run_attempt": 1, "check_suite_id": 121066750703, "workflow_id": 386981354, "event": "pull_request", "head_branch": "blackhole/issue-1347-guard-gaps", "pull_requests": [{"number": 1360, "head": {"ref": "blackhole/issue-1347-guard-gaps"}, "base": {"ref": "main"}}]},
+    {"id": 44728059373, "run_number": 654, "run_attempt": 1, "check_suite_id": 121066700170, "workflow_id": 386981354, "event": "pull_request", "head_branch": "blackhole/issue-1347-guard-gaps", "pull_requests": [{"number": 1360, "head": {"ref": "blackhole/issue-1347-guard-gaps"}, "base": {"ref": "main"}}]},
+    {"id": 44728009414, "run_number": 2032, "run_attempt": 1, "check_suite_id": 121066561322, "workflow_id": 307277644, "event": "pull_request", "head_branch": "blackhole/issue-1347-guard-gaps", "pull_requests": [{"number": 1360, "head": {"ref": "blackhole/issue-1347-guard-gaps"}, "base": {"ref": "main"}}]},
+    {"id": 44728009301, "run_number": 653, "run_attempt": 1, "check_suite_id": 121066561024, "workflow_id": 386981354, "event": "pull_request", "head_branch": "blackhole/issue-1347-guard-gaps", "pull_requests": [{"number": 1360, "head": {"ref": "blackhole/issue-1347-guard-gaps"}, "base": {"ref": "main"}}]}
   ]
 }

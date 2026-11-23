@@ -6,72 +6,73 @@ import * as path from 'path';
 import { root } from '../build/paths.ts';
 import { readJsonFile } from '../fs.ts';
 import type { ForgeCheck } from '../forge-adapter/types.ts';
-import { checksFromSnapshot, ciVerdict, requiredChecksFromConfig, unconfiguredPendingMessage } from './ci-verdict.ts';
+import { checksFromSnapshot, ciVerdict, requiredChecksFromConfig, unconfiguredPendingMessage, withoutSupersededCancelled, type CiVerdictOptions } from './ci-verdict.ts';
 
 const fixture = (name: string) => {
   const file = path.join(root, 'fixtures', 'ci-verdict', name);
   return readJsonFile(file, file);
 };
 
-describe('ciVerdict judges only the latest run of each producer\'s check', () => {
-  const PRODUCER = 'actions:1:pull_request:feat';
+describe('ciVerdict drops only a CANCELLED run a newer run of the same PR workflow replaced', () => {
+  const PRODUCER = 'actions:1:pull_request:feat:7:main';
   const run = (conclusion: ForgeCheck['conclusion'], rest: Partial<ForgeCheck> = {}): ForgeCheck =>
     ({ name: 'pr-lint', status: 'COMPLETED', conclusion, producer: PRODUCER, ...rest });
   const T0 = '2026-11-20T11:00:00Z';
   const T1 = '2026-11-20T11:29:49Z';
   const T2 = '2026-11-20T11:45:34Z';
-  const older = (c: ForgeCheck['conclusion']) => run(c, { startedAt: T1, runId: 1 });
+  const older = (c: ForgeCheck['conclusion']) => run(c, { startedAt: T1, runId: 1, suiteId: 11 });
   const newer = (c: ForgeCheck['conclusion'], status: ForgeCheck['status'] = 'COMPLETED') =>
-    run(c, { startedAt: T2, runId: 2, status });
+    run(c, { startedAt: T2, runId: 2, suiteId: 12, status });
 
   const suiteRun = (id: number, suite: number, conclusion: string, startedAt: string, name = 'pr-lint') =>
     ({ id, name, status: 'completed', conclusion, started_at: startedAt, check_suite: { id: suite } });
-  const workflowRun = (suite: number, workflow: number, event = 'pull_request', branch = 'feat') =>
-    ({ check_suite_id: suite, workflow_id: workflow, event, head_branch: branch });
+  const pr = (number: number, base = 'main') => ({ number, head: { ref: 'feat' }, base: { ref: base } });
+  type RunOpts = { event?: string; branch?: string; prs?: unknown[] };
+  const workflowRun = (suite: number, workflow: number, { event = 'pull_request', branch = 'feat', prs = [pr(7)] }: RunOpts = {}) =>
+    ({ check_suite_id: suite, workflow_id: workflow, event, head_branch: branch, pull_requests: prs });
+  const verdictOf = (checkRuns: unknown[], workflowRuns?: unknown[], options: CiVerdictOptions = {}) =>
+    ciVerdict(checksFromSnapshot({ check_runs: checkRuns }, workflowRuns === undefined ? undefined : { workflow_runs: workflowRuns }), options);
+  const cancelledThenPassed = [suiteRun(1, 11, 'cancelled', T1), suiteRun(2, 12, 'success', T2)];
+  const failedThenPassed = [suiteRun(1, 11, 'failure', T1), suiteRun(2, 12, 'success', T2)];
 
-  test('matrix row 1 (issue 1381): the PR #1384 shape, two suites of one workflow and event, is green once joined by the runs payload', () => {
+  test('matrix row 1 (issue 1381): the PR 1360 shape is green once joined by the runs payload, with and without a required list', () => {
     const checks = checksFromSnapshot(fixture('superseded-run.json'), fixture('superseded-run-runs.json'));
-    expect(ciVerdict(checks, { requiredChecks: ['Protocol Conformance', 'pr-lint'] })).toEqual({
-      verdict: 'green',
-      failing: [],
-      pending: [],
-      ignored: [],
-    });
+    expect(ciVerdict(checks, { requiredChecks: ['Protocol Conformance', 'pr-lint'] })).toEqual({ verdict: 'green', failing: [], pending: [], ignored: [] });
+    const runs = [workflowRun(11, 5), workflowRun(12, 5)];
+    expect(verdictOf(cancelledThenPassed, runs)).toMatchObject({ verdict: 'green', failing: [] });
+    expect(verdictOf(cancelledThenPassed, runs, { requiredChecks: ['pr-lint'] })).toMatchObject({ verdict: 'green', failing: [] });
+    expect(verdictOf([...cancelledThenPassed].reverse(), runs).verdict).toBe('green');
   });
 
   test('matrix row 2: two workflows sharing a job name never hide an older FAILURE behind the other workflow\'s newer SUCCESS', () => {
-    const failed = { name: 'build', status: 'COMPLETED', conclusion: 'FAILURE', producer: 'actions:1:push:feat', startedAt: T1, runId: 1 } as const;
-    const passed = { name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS', producer: 'actions:2:push:feat', startedAt: T2, runId: 2 } as const;
-    expect(ciVerdict([failed, passed])).toMatchObject({ verdict: 'red', failing: ['build'] });
-    expect(ciVerdict([passed, failed], { requiredChecks: ['build'] })).toMatchObject({ verdict: 'red', failing: ['build'] });
+    const runs = [workflowRun(11, 5), workflowRun(12, 6)];
+    expect(verdictOf(failedThenPassed, runs)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(verdictOf(failedThenPassed, runs, { requiredChecks: ['pr-lint'] })).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(verdictOf(cancelledThenPassed, runs)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
   });
 
   test('matrix row 3: one workflow fired by push and by pull_request for one SHA keeps the older event\'s FAILURE', () => {
-    const push = run('FAILURE', { producer: 'actions:1:push:feat', startedAt: T1, runId: 1 });
-    const pr = run('SUCCESS', { producer: 'actions:1:pull_request:feat', startedAt: T2, runId: 2 });
-    expect(ciVerdict([push, pr])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    const runs = [workflowRun(11, 5, { event: 'push', prs: [] }), workflowRun(12, 5)];
+    expect(verdictOf(failedThenPassed, runs)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(verdictOf(cancelledThenPassed, runs)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
   });
 
   test('matrix row 4: a commit status and a check run sharing a name are different producers', () => {
-    const status = run('FAILURE', { producer: 'status', startedAt: T1, runId: 1 });
-    const checkRun = run('SUCCESS', { startedAt: T2, runId: 2 });
-    expect(ciVerdict([status, checkRun])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
-    expect(ciVerdict([checkRun, status], { requiredChecks: ['pr-lint'] }).verdict).toBe('red');
+    const snapshot = { check_runs: [suiteRun(2, 12, 'success', T2)], statuses: [{ context: 'pr-lint', state: 'failure' }] };
+    const checks = checksFromSnapshot(snapshot, { workflow_runs: [workflowRun(12, 5)] });
+    expect(ciVerdict(checks)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(ciVerdict(checks, { requiredChecks: ['pr-lint'] }).verdict).toBe('red');
   });
 
-  test('matrix row 5: a newer SKIPPED or NEUTRAL run does not clear an older non-passing run of its producer', () => {
+  test('matrix row 5: a newer SKIPPED or NEUTRAL run of the same proved producer leaves an older FAILURE red', () => {
     expect(ciVerdict([older('FAILURE'), newer('SKIPPED')])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
     expect(ciVerdict([older('FAILURE'), newer('NEUTRAL')])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
-    expect(ciVerdict([older('CANCELLED'), newer('SKIPPED')], { requiredChecks: ['pr-lint'] }).verdict).toBe('red');
-    expect(ciVerdict([older('FAILURE'), newer('SKIPPED')]).verdict).toBe('red');
-    const stillGoing = run(null, { status: 'IN_PROGRESS', startedAt: T1, runId: 1 });
-    expect(ciVerdict([stillGoing, newer('SKIPPED')]).pending).toEqual(['pr-lint']);
-  });
-
-  test('matrix row 5: a FAILURE older than a SUCCESS stays superseded when a SKIPPED run follows', () => {
-    const result = ciVerdict([run('FAILURE', { startedAt: T0, runId: 1 }), run('SUCCESS', { startedAt: T1, runId: 2 }), run('SKIPPED', { startedAt: T2, runId: 3 })]);
-    expect(result.failing).toEqual([]);
-    expect(result.verdict).not.toBe('red');
+    const failSucceedSkip = [
+      run('FAILURE', { startedAt: T0, runId: 1, suiteId: 10 }),
+      run('SUCCESS', { startedAt: T1, runId: 2, suiteId: 11 }),
+      run('SKIPPED', { startedAt: T2, runId: 3, suiteId: 12 }),
+    ];
+    expect(ciVerdict(failSucceedSkip)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
   });
 
   test.each([
@@ -81,7 +82,7 @@ describe('ciVerdict judges only the latest run of each producer\'s check', () =>
     ['the epoch', '1970-01-01T00:00:00Z'],
   ])('matrix row 6: a queued rerun whose startedAt is %s still judges the head pending, with and without a run id', (_label, startedAt) => {
     const done = older('SUCCESS');
-    const queued = (runId?: number) => run(null, { status: 'QUEUED', startedAt: startedAt as string | undefined, ...(runId === undefined ? {} : { runId }) });
+    const queued = (runId?: number) => run(null, { status: 'QUEUED', startedAt: startedAt as string | undefined, suiteId: 12, ...(runId === undefined ? {} : { runId }) });
     expect(ciVerdict([done, queued(2)])).toMatchObject({ verdict: 'pending', pending: ['pr-lint'] });
     expect(ciVerdict([queued(2), done])).toMatchObject({ verdict: 'pending', pending: ['pr-lint'] });
     expect(ciVerdict([done, queued()])).toMatchObject({ verdict: 'pending', pending: ['pr-lint'] });
@@ -89,73 +90,131 @@ describe('ciVerdict judges only the latest run of each producer\'s check', () =>
   });
 
   test('matrix row 7: without a provable producer every run is kept, so an older CANCELLED still fails', () => {
-    const bare = (c: ForgeCheck['conclusion'], startedAt: string, runId: number): ForgeCheck =>
-      ({ name: 'pr-lint', status: 'COMPLETED', conclusion: c, startedAt, runId });
-    expect(ciVerdict([bare('CANCELLED', T1, 1), bare('SUCCESS', T2, 2)])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
-
-    const snapshot = { check_runs: [suiteRun(1, 11, 'cancelled', T1), suiteRun(2, 12, 'success', T2)] };
-    const verdictOf = (runs?: unknown) => ciVerdict(checksFromSnapshot(snapshot, runs));
-    expect(verdictOf()).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
-    expect(verdictOf({ workflow_runs: [workflowRun(99, 5)] })).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
-    expect(verdictOf({ workflow_runs: [workflowRun(11, 5), workflowRun(12, 5)] }).verdict).toBe('green');
-    expect(verdictOf({ workflow_runs: [workflowRun(11, 5)] })).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
-    expect(verdictOf({ workflow_runs: [workflowRun(11, 5), workflowRun(12, 5), workflowRun(12, 6)] })).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    const bare = (c: ForgeCheck['conclusion'], startedAt: string, runId: number, suiteId: number): ForgeCheck =>
+      ({ name: 'pr-lint', status: 'COMPLETED', conclusion: c, startedAt, runId, suiteId });
+    expect(ciVerdict([bare('CANCELLED', T1, 1, 11), bare('SUCCESS', T2, 2, 12)])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(verdictOf(cancelledThenPassed)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(verdictOf(cancelledThenPassed, [workflowRun(99, 5)])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(verdictOf(cancelledThenPassed, [workflowRun(11, 5)])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(verdictOf(cancelledThenPassed, [workflowRun(11, 5), workflowRun(12, 5), workflowRun(12, 6)])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
   });
 
   test('matrix row 8: a latest SKIPPED with an older SUCCESS of the same producer stays pending when no list is configured', () => {
-    const checks = [older('SUCCESS'), newer('SKIPPED')];
-    expect(ciVerdict(checks)).toMatchObject({ verdict: 'pending', missing_config: 'merge_ready.required_checks' });
-    expect(ciVerdict(checks, { requiredChecks: ['pr-lint'] })).toMatchObject({ verdict: 'pending', pending: ['pr-lint'] });
+    expect(ciVerdict([older('SUCCESS'), newer('SKIPPED')])).toMatchObject({ verdict: 'pending', missing_config: 'merge_ready.required_checks' });
+    expect(unconfiguredPendingMessage([older('SUCCESS'), newer('SKIPPED')], {})).toContain('1 gating check(s) were SKIPPED: pr-lint');
   });
 
-  test('a superseded CANCELLED run of one producer is not failing, whatever the array order or the required list', () => {
-    expect(ciVerdict([older('CANCELLED'), newer('SUCCESS')]).verdict).toBe('green');
-    expect(ciVerdict([newer('SUCCESS'), older('CANCELLED')]).verdict).toBe('green');
-    expect(ciVerdict([older('CANCELLED'), newer('SUCCESS')], { requiredChecks: ['pr-lint'] }).verdict).toBe('green');
-    expect(ciVerdict([older('FAILURE'), newer('SUCCESS')], { requiredChecks: ['pr-lint'] }).failing).toEqual([]);
+  test('matrix row 9a: two open PRs from one head branch to different bases never replace each other\'s runs', () => {
+    const bothListed = [pr(7, 'main'), pr(8, 'release')];
+    const listsBoth = [workflowRun(11, 5, { prs: bothListed }), workflowRun(12, 5, { prs: bothListed })];
+    expect(verdictOf(cancelledThenPassed, listsBoth)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(verdictOf(failedThenPassed, listsBoth)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    const ownPrEach = [workflowRun(11, 5, { prs: [pr(7, 'main')] }), workflowRun(12, 5, { prs: [pr(8, 'release')] })];
+    expect(verdictOf(cancelledThenPassed, ownPrEach)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(verdictOf(failedThenPassed, ownPrEach)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
   });
 
-  test('same-second starts are ordered by run id', () => {
-    const a = run('CANCELLED', { startedAt: T1, runId: 10 });
-    const b = run('SUCCESS', { startedAt: T1, runId: 11 });
-    expect(ciVerdict([a, b]).verdict).toBe('green');
-    expect(ciVerdict([b, a]).verdict).toBe('green');
-    expect(ciVerdict([run('SUCCESS', { startedAt: T1, runId: 10 }), run('CANCELLED', { startedAt: T1, runId: 11 })]).verdict).toBe('red');
+  test('matrix row 9b: a pull_request run listing no PR (a fork or closed PR) proves nothing', () => {
+    expect(verdictOf(cancelledThenPassed, [workflowRun(11, 5, { prs: [] }), workflowRun(12, 5, { prs: [] })])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
   });
 
-  test('without startedAt on every run, run ids alone order the producer\'s check', () => {
-    expect(ciVerdict([run('CANCELLED', { runId: 1 }), run('SUCCESS', { runId: 2 })]).verdict).toBe('green');
-    expect(ciVerdict([run('SUCCESS', { runId: 1 }), run('CANCELLED', { runId: 2 })]).verdict).toBe('red');
+  test.each([['workflow_dispatch'], ['repository_dispatch']])('matrix row 10: two %s runs of one workflow never replace each other', (event) => {
+    const runs = [workflowRun(11, 5, { event, prs: [] }), workflowRun(12, 5, { event, prs: [] })];
+    expect(verdictOf(cancelledThenPassed, runs)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(verdictOf(failedThenPassed, runs)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
   });
 
-  test('an older SUCCESS never masks a newer FAILURE or CANCELLED', () => {
+  test('matrix row 10: two push runs of one workflow never replace each other', () => {
+    const runs = [workflowRun(11, 5, { event: 'push', prs: [] }), workflowRun(12, 5, { event: 'push', prs: [] })];
+    expect(verdictOf(cancelledThenPassed, runs)).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+  });
+
+  test('matrix row 11: same-suite siblings with a tied start are never replaced, whatever their run ids', () => {
+    const siblings = [suiteRun(1, 11, 'cancelled', T1), suiteRun(2, 11, 'success', T1)];
+    expect(verdictOf(siblings, [workflowRun(11, 5)])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(ciVerdict([run('CANCELLED', { startedAt: T1, runId: 1, suiteId: 11 }), run('SUCCESS', { startedAt: T1, runId: 2, suiteId: 11 })]).verdict).toBe('red');
+  });
+
+  test('matrix row 12: a rerun inside one suite stays red; the real PR 1384 filter=all shape is green through the newer suite', () => {
+    const rerun = [suiteRun(1, 11, 'cancelled', T1), suiteRun(3, 11, 'success', T2)];
+    expect(verdictOf(rerun, [workflowRun(11, 5)])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    const pr1384 = [
+      suiteRun(136357151096, 121141391826, 'success', '2026-11-20T14:44:48Z'),
+      suiteRun(136354750487, 121141393769, 'success', '2026-11-20T14:40:27Z'),
+      suiteRun(136354740292, 121141391380, 'skipped', '2026-11-20T14:40:24Z', 'Release Notes Gate'),
+      suiteRun(136354737752, 121141391826, 'cancelled', '2026-11-20T14:40:23Z'),
+      suiteRun(136354737748, 121141391380, 'success', '2026-11-20T14:40:26Z', 'Protocol Conformance'),
+    ];
+    const runs1384 = [
+      workflowRun(121141391380, 307277644, { branch: 'blackhole/issue-1374', prs: [pr(1384)] }),
+      workflowRun(121141391826, 386981354, { branch: 'blackhole/issue-1374', prs: [pr(1384)] }),
+      workflowRun(121141393769, 386981354, { branch: 'blackhole/issue-1374', prs: [pr(1384)] }),
+    ];
+    expect(verdictOf(pr1384, runs1384, { requiredChecks: ['Protocol Conformance', 'pr-lint'] })).toEqual({ verdict: 'green', failing: [], pending: [], ignored: [] });
+  });
+
+  test('matrix row 13a: a FAILURE with the higher ids but the earlier start is never dropped', () => {
+    const failure = run('FAILURE', { startedAt: T1, runId: 2, suiteId: 12 });
+    const success = run('SUCCESS', { startedAt: T2, runId: 1, suiteId: 11 });
+    expect(ciVerdict([failure, success])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+  });
+
+  test('matrix row 13b: a CANCELLED with the higher ids but the earlier start is not replaced by a lower-id run', () => {
+    const cancelled = run('CANCELLED', { startedAt: T1, runId: 2, suiteId: 12 });
+    const success = run('SUCCESS', { startedAt: T2, runId: 1, suiteId: 11 });
+    expect(ciVerdict([cancelled, success])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+  });
+
+  test('matrix row 13c: a later start on the lower-id CANCELLED vetoes its replacement', () => {
+    const cancelled = run('CANCELLED', { startedAt: T2, runId: 1, suiteId: 11 });
+    const success = run('SUCCESS', { startedAt: T1, runId: 2, suiteId: 12 });
+    expect(ciVerdict([cancelled, success])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+  });
+
+  test('matrix row 14: an older FAILURE of the same proved producer stays red behind a newer SUCCESS', () => {
+    expect(ciVerdict([older('FAILURE'), newer('SUCCESS')])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(ciVerdict([older('FAILURE'), newer('SUCCESS')], { requiredChecks: ['pr-lint'] })).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(verdictOf(failedThenPassed, [workflowRun(11, 5), workflowRun(12, 5)])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+  });
+
+  test('withoutSupersededCancelled keeps every entry but the replaced CANCELLED, in input order', () => {
+    const extra = { name: 'verify', status: 'COMPLETED', conclusion: 'FAILURE', producer: PRODUCER, startedAt: T1, runId: 3, suiteId: 11 } as const;
+    expect(withoutSupersededCancelled([older('CANCELLED'), extra, newer('SUCCESS')])).toEqual([extra, newer('SUCCESS')]);
+    expect(withoutSupersededCancelled([newer('SUCCESS'), older('CANCELLED')])).toEqual([newer('SUCCESS')]);
+  });
+
+  test('a replacement needs a different suite, a higher run id and no contrary start; missing data keeps every run', () => {
+    expect(ciVerdict([run('CANCELLED', { runId: 1, suiteId: 11 }), run('SUCCESS', { runId: 2, suiteId: 12 })]).verdict).toBe('green');
+    expect(ciVerdict([run('CANCELLED', { startedAt: T1, runId: 1, suiteId: 11 }), run('SUCCESS', { startedAt: T1, runId: 2, suiteId: 12 })]).verdict).toBe('green');
+    expect(ciVerdict([run('CANCELLED', { runId: 1, suiteId: 12 }), run('SUCCESS', { runId: 2, suiteId: 11 })]).verdict).toBe('red');
+    expect(ciVerdict([run('CANCELLED'), run('SUCCESS')]).verdict).toBe('red');
+    expect(ciVerdict([run('CANCELLED', { runId: 1 }), run('SUCCESS', { runId: 2, suiteId: 12 })]).verdict).toBe('red');
+    expect(ciVerdict([run('CANCELLED', { suiteId: 11 }), run('SUCCESS', { runId: 2, suiteId: 12 })]).verdict).toBe('red');
+    expect(ciVerdict([run('CANCELLED', { runId: 1, suiteId: 11 }), run('SUCCESS', { suiteId: 12 })]).verdict).toBe('red');
+    expect(ciVerdict([older('CANCELLED'), { ...newer('SUCCESS'), producer: 'actions:1:pull_request:feat:8:main' }]).verdict).toBe('red');
+  });
+
+  test('the replacing run is judged as is: a newer FAILURE stays red, a newer queued run stays pending, a latest CANCELLED stays red', () => {
+    expect(ciVerdict([older('CANCELLED'), newer('FAILURE')])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(ciVerdict([older('CANCELLED'), newer(null, 'QUEUED')])).toMatchObject({ verdict: 'pending', pending: ['pr-lint'], failing: [] });
+    const queuedZeroStart = run(null, { status: 'QUEUED', startedAt: '0001-01-01T00:00:00Z', runId: 2, suiteId: 12 });
+    expect(ciVerdict([older('CANCELLED'), queuedZeroStart])).toMatchObject({ verdict: 'pending', pending: ['pr-lint'], failing: [] });
+    expect(ciVerdict([older('SUCCESS'), newer('CANCELLED')])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(ciVerdict([older('CANCELLED'), newer('CANCELLED')])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+  });
+
+  test('an older SUCCESS never masks a newer FAILURE, CANCELLED or unfinished run', () => {
     expect(ciVerdict([older('SUCCESS'), newer('FAILURE')])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
-    expect(ciVerdict([newer('CANCELLED'), older('SUCCESS')])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
     expect(ciVerdict([older('SUCCESS'), newer('CANCELLED')], { requiredChecks: ['pr-lint'] }).verdict).toBe('red');
-  });
-
-  test('an older SUCCESS never masks a newer run that is still going', () => {
     expect(ciVerdict([older('SUCCESS'), newer(null, 'IN_PROGRESS')])).toMatchObject({ verdict: 'pending', pending: ['pr-lint'] });
     expect(ciVerdict([older('SUCCESS'), newer(null, 'QUEUED')], { requiredChecks: ['pr-lint'] }).verdict).toBe('pending');
   });
 
-  test('the unconfigured warning follows the latest run: a superseded SKIPPED is not named', () => {
-    expect(unconfiguredPendingMessage([older('SKIPPED'), newer('SUCCESS')], {})).toBeNull();
-    expect(unconfiguredPendingMessage([older('SUCCESS'), newer('SKIPPED')], {})).toContain('1 gating check(s) were SKIPPED: pr-lint');
-  });
-
-  test('a producer\'s check with no ordering data keeps every run, so a non-passing one stays red', () => {
-    expect(ciVerdict([run('CANCELLED'), run('SUCCESS')]).verdict).toBe('red');
-    expect(ciVerdict([run('CANCELLED', { startedAt: T1 }), run('SUCCESS', { startedAt: T1 })]).verdict).toBe('red');
-    expect(ciVerdict([run('CANCELLED'), run('SUCCESS', { startedAt: T2, runId: 2 })]).verdict).toBe('red');
-    expect(ciVerdict([run('CANCELLED', { startedAt: 'not a date', runId: 1 }), run('SUCCESS', { startedAt: T2 })]).verdict).toBe('red');
-  });
-
   test('distinct names are never collapsed, and a Vercel name still lands in ignored', () => {
-    const other = { name: 'verify', status: 'COMPLETED', conclusion: 'FAILURE', producer: PRODUCER, startedAt: T1, runId: 1 } as const;
+    const other = { name: 'verify', status: 'COMPLETED', conclusion: 'CANCELLED', producer: PRODUCER, startedAt: T1, runId: 1, suiteId: 11 } as const;
     expect(ciVerdict([newer('SUCCESS'), other])).toMatchObject({ verdict: 'red', failing: ['verify'] });
-    const vercel = (c: ForgeCheck['conclusion'], startedAt: string): ForgeCheck => ({ name: 'Vercel', status: 'COMPLETED', conclusion: c, producer: PRODUCER, startedAt, runId: 1 });
-    expect(ciVerdict([newer('SUCCESS'), vercel('FAILURE', T1), vercel('SUCCESS', T2)]).ignored).toEqual(['Vercel']);
+    const vercel = (c: ForgeCheck['conclusion'], runId: number, suiteId: number): ForgeCheck => ({ name: 'Vercel', status: 'COMPLETED', conclusion: c, producer: PRODUCER, startedAt: T1, runId, suiteId });
+    expect(ciVerdict([newer('SUCCESS'), vercel('FAILURE', 1, 11), vercel('SUCCESS', 2, 12)]).ignored).toEqual(['Vercel', 'Vercel']);
   });
 });
 

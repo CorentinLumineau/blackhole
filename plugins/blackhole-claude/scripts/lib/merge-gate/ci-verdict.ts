@@ -25,9 +25,7 @@ const PASSING = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 
 /**
  * Accepts a REST or MCP check-runs payload, a combined-status payload, both merged, or ForgeCheck[].
- * `runs` is the head's `actions/runs` payload; it names the workflow behind each check suite so reruns
- * of one producer can supersede each other. Without it (or for a suite it does not name) a run carries
- * no producer and is judged on its own.
+ * `runs` is the head's `actions/runs` payload, the producer source `withoutSupersededCancelled` needs.
  */
 export const checksFromSnapshot = (snapshot: unknown, runs?: unknown): ForgeCheck[] => {
   const suites = runs === undefined ? undefined : suiteProducers(runs);
@@ -58,57 +56,38 @@ const startMs = (c: ForgeCheck): number => {
   return ms > 0 ? ms : NaN;
 };
 
-const runIdOf = (c: ForgeCheck): number => (typeof c.runId === 'number' ? c.runId : NaN);
-
-/** Entries ordered newest first as tiers of entries that tie; one tier holding every entry when they cannot all be ordered. */
-const tiersNewestFirst = (group: ForgeCheck[]): ForgeCheck[][] => {
-  const tierBy = (entries: ForgeCheck[], key: (c: ForgeCheck) => number): ForgeCheck[][] | null => {
-    const values = entries.map(key);
-    if (values.some((v) => Number.isNaN(v))) return null;
-    return [...new Set(values)].sort((x, y) => y - x).map((v) => entries.filter((_, i) => values[i] === v));
-  };
-  const byRun = (entries: ForgeCheck[]) => tierBy(entries, runIdOf) ?? [entries];
-  const byStart = tierBy(group, startMs);
-  return byStart ? byStart.flatMap(byRun) : (tierBy(group, runIdOf) ?? [group]);
-};
-
-const isNonExecuting = (c: ForgeCheck): boolean => c.status === 'COMPLETED' && (c.conclusion === 'SKIPPED' || c.conclusion === 'NEUTRAL');
-
 /**
- * Keeps the latest run of each producer's check, so a run a later run replaced (a cancelled re-trigger)
- * no longer judges the head. A check name alone does not identify a producer (two workflows can share a
- * job name, one workflow can run on push and pull_request, a commit status can be named like a check
- * run), so only runs carrying the same `producer` and `name` supersede each other; a run without a
- * producer is always kept. Order is `startedAt`, then `runId`; neither is `completed_at`, which is null
- * for the newest run while it is still going. A time is absent when missing, unparseable or at or
- * before the epoch (the zero time of an unstarted run); with any absent time the group is ordered by
- * `runId`, and a group that still cannot be ordered keeps every run: ordering data is never guessed.
- * A newest run that is only SKIPPED or NEUTRAL proves nothing was fixed, so the nearest older run that
- * actually executed stays too unless it passed.
+ * Drops each COMPLETED CANCELLED run that a newer run provably replaced, and keeps every other entry,
+ * so the verdict judges a head the way it would without the cancelled run.
+ *
+ * A check name does not identify a producer (two workflows can share a job name, one workflow can run
+ * on push and on pull_request, a commit status can be named like a check run), and even a shared
+ * workflow, event and branch does not prove replacement (two PRs from one branch, dispatch runs with
+ * different inputs, siblings in one suite). So a run only replaces another when both carry the same
+ * `producer` (proved by `suiteProducers` for one pull_request run of one PR) and `name`, and the newer
+ * one has a strictly higher `suiteId` and `runId`, both server-assigned. A start time never orders
+ * runs; it can only veto, when both starts are usable and the newer-by-id run started first. Only a
+ * CANCELLED run is ever dropped, so no ordering can hide a FAILURE, and the replacing run is judged
+ * as is. Anything unproved keeps every run: red or pending, never a false green.
  */
-export const latestPerName = (checks: ForgeCheck[]): ForgeCheck[] => {
-  const groups = new Map<string, ForgeCheck[]>();
-  const kept = new Set<ForgeCheck>();
-  for (const c of checks) {
-    if (c.producer === undefined) kept.add(c);
-    else groups.set(`${c.producer}\0${c.name}`, [...(groups.get(`${c.producer}\0${c.name}`) ?? []), c]);
-  }
-  for (const group of groups.values()) {
-    const [newest, ...older] = tiersNewestFirst(group);
-    for (const c of newest) kept.add(c);
-    if (!newest.every(isNonExecuting)) continue;
-    for (const tier of older) {
-      const executed = tier.filter((c) => !isNonExecuting(c));
-      if (executed.length === 0) continue;
-      for (const c of executed) if (!(c.status === 'COMPLETED' && c.conclusion === 'SUCCESS')) kept.add(c);
-      break;
-    }
-  }
-  return checks.filter((c) => kept.has(c));
+export const withoutSupersededCancelled = (checks: ForgeCheck[]): ForgeCheck[] => {
+  const replaced = (c: ForgeCheck): boolean => {
+    if (c.status !== 'COMPLETED' || c.conclusion !== 'CANCELLED') return false;
+    const { producer, suiteId, runId } = c;
+    if (typeof producer !== 'string' || typeof suiteId !== 'number' || typeof runId !== 'number') return false;
+    return checks.some((n) =>
+      n !== c &&
+      n.producer === producer &&
+      n.name === c.name &&
+      typeof n.suiteId === 'number' && n.suiteId > suiteId &&
+      typeof n.runId === 'number' && n.runId > runId &&
+      !(startMs(n) < startMs(c)));
+  };
+  return checks.filter((c) => !replaced(c));
 };
 
 export const ciVerdict = (allChecks: ForgeCheck[], options: CiVerdictOptions = {}): CiVerdict => {
-  const checks = latestPerName(allChecks);
+  const checks = withoutSupersededCancelled(allChecks);
   const ignored = checks.filter((c) => isVercelPreviewCheck(c.name)).map((c) => c.name);
   const gating = checks.filter((c) => !isVercelPreviewCheck(c.name));
   const pending = gating.filter((c) => c.status !== 'COMPLETED').map((c) => c.name);
@@ -150,7 +129,7 @@ export const requiredChecksFromConfig = (config: Record<string, unknown>): strin
 export const unconfiguredPendingMessage = (checks: ForgeCheck[], options: CiVerdictOptions): string | null => {
   const result = ciVerdict(checks, options);
   if (!result.missing_config) return null;
-  const skipped = latestPerName(checks)
+  const skipped = withoutSupersededCancelled(checks)
     .filter((c) => !isVercelPreviewCheck(c.name) && c.status === 'COMPLETED' && c.conclusion === 'SKIPPED')
     .map((c) => c.name);
   return `ci-verdict: pending, ${REQUIRED_CHECKS_KEY} is not configured and ${skipped.length} gating check(s) were SKIPPED: ${skipped.join(', ')}. ` +

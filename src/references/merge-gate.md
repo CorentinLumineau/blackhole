@@ -32,8 +32,8 @@ above): the poll/retry/rerun mechanics themselves are `phase-loop.md` § Merge
 protocol step 2's, unchanged.
 
 - **Applies to `ci_wait: poll` only.** With `ci_wait: pr-events` (run context) the wait is event
-  driven (`project-thread-mode.md` § CI wait). Either way the verdict comes from `bun run
-  scripts/ci-verdict.ts --checks <file>`, which reads `merge_ready.required_checks` from the config
+  driven (`project-thread-mode.md` § CI wait). Either way the verdict comes from `bun run scripts/ci-verdict.ts
+  --checks <file> --runs <runs file>` (the head's `actions/runs`), which reads `merge_ready.required_checks`
   (`--required <name>` overrides). Nothing executed, or a required check missing or skipped, is
   `pending`; with no list any skipped gating check is `pending`, naming `merge_ready.required_checks`.
 - **Interval**: poll `gh pr checks <n>` every 60s while the background CI-wait
