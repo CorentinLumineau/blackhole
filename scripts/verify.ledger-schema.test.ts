@@ -48,8 +48,25 @@ describe('findLedgerSchemaDrift', () => {
     expect(findLedgerSchemaDrift([...findings, { id: 'F-x', issue_ref: 1 }])).toEqual([]);
   });
 
-  test('a severity outside the vocabulary is reported as drift', () => {
-    expect(findLedgerSchemaDrift([{ id: 'F-7', issue_ref: 1, severity: 'LOW' }])).toHaveLength(1);
+  test('a severity outside the vocabulary is reported as drift, with no migration hint', () => {
+    const drift = findLedgerSchemaDrift([{ id: 'F-7', issue_ref: 1, severity: 'bogus' }]);
+    expect(drift).toHaveLength(1);
+    expect(drift[0]).not.toContain('migrate-ledger-schema');
+  });
+
+  test('an inherited Object.prototype key as severity gets no migration hint', () => {
+    const drift = findLedgerSchemaDrift([{ id: 'F-p', issue_ref: 1, severity: 'toString' }]);
+    expect(drift).toHaveLength(1);
+    expect(drift[0]).not.toContain('migrate-ledger-schema');
+  });
+
+  // Issue #1455 — a mercure-style severity has a remedy: the migration names it.
+  test('a mercure-style HIGH/MEDIUM/LOW severity is drift that names the migration', () => {
+    for (const severity of ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']) {
+      const drift = findLedgerSchemaDrift([{ id: 'F-8', issue_ref: 1, severity }]);
+      expect(drift).toHaveLength(1);
+      expect(drift[0]).toContain('migrate-ledger-schema');
+    }
   });
 
   test('a row with pr_ref key entirely absent is not reported as drift', () => {

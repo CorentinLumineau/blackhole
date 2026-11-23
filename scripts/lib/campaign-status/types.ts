@@ -218,7 +218,7 @@ export type StatusCounts = {
     /** Every `status` value present in queue.json, including ones outside the documented enum. */
     by_status: Record<string, number>;
   };
-  ledger: { open: number; block: number; warn: number; note: number; deferred: number };
+  ledger: { open: number; block: number; warn: number; info: number; deferred: number };
 };
 
 /** One queue issue as the status page shows it. Every string is untrusted state — escape before rendering. */

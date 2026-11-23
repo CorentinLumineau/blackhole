@@ -86,7 +86,7 @@ describe('buildStatusReport — JSON shape against the fixtures', () => {
         unclassified: 0,
         by_status: { 'in-flight': 1, blocked: 1, merged: 1 },
       },
-      ledger: { open: 2, block: 1, warn: 1, note: 0, deferred: 1 },
+      ledger: { open: 2, block: 1, warn: 1, info: 0, deferred: 1 },
     });
     expect(report.queue_health).toBe('healthy');
   });
@@ -197,11 +197,11 @@ describe('buildStatusReport — wait-reason grouping', () => {
 describe('text dashboard and JSON report the same counts', () => {
   function dashboardCounts(text: string) {
     const q = text.match(/\*\*Queue:\*\* (\d+) active · (\d+) done · (\d+) in-flight · (\d+) blocked · (\d+) ready(?: · (\d+) unclassified)?/);
-    const l = text.match(/\*\*Ledger:\*\* (\d+) open \(BLOCK (\d+) · WARN (\d+) · NOTE (\d+)\) · (\d+) deferred/);
+    const l = text.match(/\*\*Ledger:\*\* (\d+) open \(BLOCK (\d+) · WARN (\d+) · INFO (\d+)\) · (\d+) deferred/);
     if (!q || !l) throw new Error(`dashboard count lines not found:\n${text}`);
     const [active, done, in_flight, blocked, ready, unclassified] = q.slice(1).map((n) => Number(n ?? 0));
-    const [open, block, warn, note, deferred] = l.slice(1).map(Number);
-    return { queue: { active, done, in_flight, blocked, ready, unclassified }, ledger: { open, block, warn, note, deferred } };
+    const [open, block, warn, info, deferred] = l.slice(1).map(Number);
+    return { queue: { active, done, in_flight, blocked, ready, unclassified }, ledger: { open, block, warn, info, deferred } };
   }
 
   test('fixture campaign', () => {

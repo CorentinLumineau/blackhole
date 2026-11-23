@@ -12,8 +12,23 @@ describe('normalizeSeverity', () => {
     for (const s of SEVERITIES) expect(normalizeSeverity(s)).toBe(s);
   });
 
+  // Issue #1455 — mercure-style severities collapse by the V-MPARITY-01 tier map.
+  test('mercure CRITICAL/HIGH read as BLOCK, MEDIUM/LOW as WARN', () => {
+    expect(normalizeSeverity('CRITICAL')).toBe('BLOCK');
+    expect(normalizeSeverity('HIGH')).toBe('BLOCK');
+    expect(normalizeSeverity('MEDIUM')).toBe('WARN');
+    expect(normalizeSeverity('LOW')).toBe('WARN');
+  });
+
   test('an unknown value passes through unchanged (validators report it, this does not guess)', () => {
-    expect(normalizeSeverity('LOW')).toBe('LOW');
+    expect(normalizeSeverity('bogus')).toBe('bogus');
+  });
+
+  test('an inherited Object.prototype key is not an alias', () => {
+    for (const key of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      expect(normalizeSeverity(key)).toBe(key);
+      expect(severityRank(key)).toBe(0);
+    }
   });
 });
 

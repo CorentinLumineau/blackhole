@@ -6,7 +6,8 @@ import { normalizeSeverity } from './lib/worker-json/constants.ts';
 
 // One-shot normalization of the live findings-ledger.json's `issue_ref`/`pr_ref` schema drift,
 // across its three documented shapes: string issue_ref, legacy `pr` key, string pr_ref — plus
-// the legacy optional severity spelling NOTE, rewritten to INFO (issue #1439).
+// the legacy optional severity spelling NOTE, rewritten to INFO, and mercure-style severities
+// (CRITICAL/HIGH -> BLOCK, MEDIUM/LOW -> WARN; `LEGACY_SEVERITY_ALIASES`).
 // Idempotent: re-running against an already-clean ledger reports `changed: 0`. Not wired into
 // `bun run verify` — see `ledger-schema.check.ts` for the recurring regression gate this
 // migration is not.

@@ -4,10 +4,8 @@ import { normalizeSeverity } from '../worker-json/constants.ts';
 export function countLedgerByStatus(findings: LedgerFinding[]) {
   const open = findings.filter((f) => f.status === 'open');
   const deferred = findings.filter((f) => f.status === 'deferred');
-  const block = open.filter((f) => f.severity === 'BLOCK').length;
-  const warn = open.filter((f) => f.severity === 'WARN').length;
-  const note = open.filter((f) => normalizeSeverity(f.severity ?? '') === 'INFO').length;
-  return { open: open.length, deferred: deferred.length, block, warn, note };
+  const tier = (severity: string) => open.filter((f) => normalizeSeverity(f.severity ?? '') === severity).length;
+  return { open: open.length, deferred: deferred.length, block: tier('BLOCK'), warn: tier('WARN'), info: tier('INFO') };
 }
 
 // The documented `status` and `phase` values of a queue entry (`queue-dag.md` § Per-issue fields).
