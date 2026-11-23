@@ -50,7 +50,7 @@ or agent has since edited.
    SSOT: `config-template.md`'s `docs_governance.enabled` row, issue #477) and
    `docs_governance.companion_files` is not `false` in `.blackhole/config.json`
    (the same config gate that wraps this entire scaffold step).
-2. `bash "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/detect-frontend.sh` emits `frontend=yes` on the target repo.
+2. `bash "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/detect-frontend.sh` emits `frontend=yes` on the target repo.
 
 `scripts/detect-frontend.sh` is the single source of truth for the
 frontend-detection keyword set — this scaffold invokes it rather than

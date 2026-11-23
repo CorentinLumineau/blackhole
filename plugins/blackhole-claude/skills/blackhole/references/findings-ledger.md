@@ -141,7 +141,7 @@ a new, distinct finding sharing the resolved row's key.
 2. **Validate** before any read-dependent step:
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/state-write-guard.ts --tmp .blackhole/findings-ledger.json --entity-key findings
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/lib/state-write-guard.ts --tmp .blackhole/findings-ledger.json --entity-key findings
 ```
 
 Never `jq empty` alone — `blackhole-state.md` § Write protocol.
@@ -181,7 +181,7 @@ See `phase-review.md` § Checklist for the orchestrator-side mechanism.
 # Pseudocode: orchestrator builds JSON patch, writes via jq
 jq '.findings += [$new] | .next_id += 1 | .refreshed_at = (now | todate)' \
   .blackhole/findings-ledger.json > .blackhole/findings-ledger.json.tmp \
-  && bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/state-write-guard.ts --tmp .blackhole/findings-ledger.json.tmp \
+  && bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/lib/state-write-guard.ts --tmp .blackhole/findings-ledger.json.tmp \
        --live .blackhole/findings-ledger.json --entity-key findings \
   && mv .blackhole/findings-ledger.json.tmp .blackhole/findings-ledger.json
 ```
@@ -194,7 +194,7 @@ jq '.findings += [$new] | .next_id += 1 | .refreshed_at = (now | todate)' \
 
 ```bash
 gh issue create --title "..." --body "..." \
-  $(bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-scope.ts create-args)
+  $(bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-scope.ts create-args)
 # then append with deferred_to_issue: <number>
 ```
 

@@ -7,8 +7,8 @@ orchestrator turn logs.
 ## Command
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts
-# or: bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --campaign-dir .blackhole
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts
+# or: bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --campaign-dir .blackhole
 ```
 
 Reads `.blackhole/config.json`, `queue.json`, `findings-ledger.json`,
@@ -18,7 +18,7 @@ counts plus the review label, CI and mergeability of the open PRs the board show
 Sibling subcommand — config summary only, no forge call, no queue/ledger render:
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts config-summary
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts config-summary
 ```
 
 Used by the routine resume confirmation gate (`coordinator.md` § Bootstrap preflight). It is not
@@ -28,13 +28,13 @@ launch confirmation only.
 Launch summary — the launch gate's executive-summary table (`launch-gate.md` § The summary):
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [--campaign-dir <dir>] [--no-gh]
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [--campaign-dir <dir>] [--no-gh]
 ```
 
 Target check (`launch-gate.md` § Target check), the first step of a `run` or `catchup` start, ahead of the run context:
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts target [--stated <repo>] [--json] [--campaign-dir <dir>]
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts target [--stated <repo>] [--json] [--campaign-dir <dir>]
 ```
 
 It prints `Target: <owner/repo> · <campaign dir>` and needs no campaign yet (the origin remote
@@ -76,12 +76,12 @@ and cannot be combined with `--html`, `--out`, `--data` or `config-summary`.
 ## Status page
 
 Two report modes read the same state and the same count helpers as the dashboard, so their
-numbers never diverge from `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts`:
+numbers never diverge from `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts`:
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --json                    # StatusReport JSON on stdout
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --html [--out <path>]     # self-contained page, default .blackhole/.tmp/status.html
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --data <dir>              # row files <dir>/<id>.json for the Claude Data dashboard
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --json                    # StatusReport JSON on stdout
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --html [--out <path>]     # self-contained page, default .blackhole/.tmp/status.html
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --data <dir>              # row files <dir>/<id>.json for the Claude Data dashboard
 ```
 
 All accept `--campaign-dir` and `--no-gh`. `--json`, `--html` and `--data` are mutually exclusive, and
@@ -162,9 +162,9 @@ moves and board cards, and the `Open PR` / `Files changed` anchors of **Waiting 
 
 | Event | Who | Action |
 |-------|-----|--------|
-| Campaign start (before spawning orchestrator) | `coordinator` | Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` → print **full** output to user |
-| Orchestrator background turn completes (idle notification) | `coordinator` | Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` → print **full** output, then resume orchestrator if work remains — fires only when orchestrator has cleared its in-flight worker barrier and ended its turn |
-| User asks `status` / `@blackhole status` | Coordinator or orchestrator | Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` → print full output; do not spawn workers |
+| Campaign start (before spawning orchestrator) | `coordinator` | Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts` → print **full** output to user |
+| Orchestrator background turn completes (idle notification) | `coordinator` | Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts` → print **full** output, then resume orchestrator if work remains — fires only when orchestrator has cleared its in-flight worker barrier and ended its turn |
+| User asks `status` / `@blackhole status` | Coordinator or orchestrator | Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts` → print full output; do not spawn workers |
 | Intake files a GitHub issue | `coordinator` | Print one line: `📋 Filed #N — <title> (milestone <M>)` then re-run status if campaign is active |
 | Orchestrator ends turn | `orchestrator` | Ensure checkpoint written; coordinator prints dashboard on notification |
 
@@ -175,8 +175,8 @@ Skipped entirely when `status_page.enabled` is `false`. Procedure and per-harnes
 
 | Event | Who | Action |
 |-------|-----|--------|
-| Campaign start | `coordinator` or main-chat orchestrator | Claude Code: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --data` → create the Data dashboard once (saves `.blackhole/status-artifact.json`); elsewhere `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --html` → publish |
-| Every checkpoint write | `orchestrator` | Claude Code: `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --data` → upload the row files and update the datasets of the same dashboard; else `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --html` → refresh the `Blackhole status` canvas / rewrite the local file (`checkpoint-protocol.md` § Write order, step 5) |
+| Campaign start | `coordinator` or main-chat orchestrator | Claude Code: `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --data` → create the Data dashboard once (saves `.blackhole/status-artifact.json`); elsewhere `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --html` → publish |
+| Every checkpoint write | `orchestrator` | Claude Code: `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --data` → upload the row files and update the datasets of the same dashboard; else `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --html` → refresh the `Blackhole status` canvas / rewrite the local file (`checkpoint-protocol.md` § Write order, step 5) |
 | Main chat hands the turn back with workers in flight (Pattern C) | main-chat orchestrator | Same refresh as a checkpoint write |
 | User asks `status` | Coordinator or orchestrator | Print the dashboard as above, then refresh the page |
 
@@ -225,7 +225,7 @@ The status script emits markdown with:
 ```
 Orchestrator turn completes (notification)
   ↓
-Coordinator: bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts → print full dashboard to user
+Coordinator: bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts → print full dashboard to user
   ↓
 If queue work remains and not blocked on user: resume orchestrator
   ↓

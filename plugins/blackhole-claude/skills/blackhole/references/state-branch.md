@@ -13,7 +13,7 @@ After the checkpoint write order (`checkpoint-protocol.md` § Write order, step 
 clone:
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/state-branch.ts push --message "chore(state): turn <orchestrator_turn_id>"
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/state-branch.ts push --message "chore(state): turn <orchestrator_turn_id>"
 ```
 
 It commits the state files to the `blackhole/state` branch on `origin`, on top of the branch's
@@ -27,7 +27,7 @@ On bootstrap (right after run-context resolution) and on every resume, before re
 `.blackhole/`:
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/state-branch.ts pull
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/state-branch.ts pull
 ```
 
 | Exit | Meaning |

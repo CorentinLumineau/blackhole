@@ -34,7 +34,7 @@ parked, and the decide round posts the parked questions together, at most four p
 The thread's status checklist replaces the coordinator dashboard (`coordinator-dashboard.md`).
 At every turn end, after the checkpoint write order, refresh it: one line per in-flight issue
 with its phase, then the ready-set size and open BLOCK findings, using the dashboard's own
-numbers (`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts`). Post a thread reply only for a result, a blocker, or a decision the
+numbers (`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts`). Post a thread reply only for a result, a blocker, or a decision the
 user must make.
 
 ## CI wait: PR events
@@ -45,7 +45,7 @@ Project threads), replace the detached poll of `phase-loop.md` § Merge protocol
 1. Subscribe to the PR's activity right after the PR is created.
 2. End the turn instead of polling.
 3. On a CI event wake, read the PR's checks through the forge channel (`forge-channels.md`, row
-   "PR checks"), save the JSON plus the head's workflow runs, and run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/ci-verdict.ts --checks <file> --runs <runs file>` (it reads `merge_ready.required_checks`, `merge-gate.md` § CI-wait poller contract):
+   "PR checks"), save the JSON plus the head's workflow runs, and run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/ci-verdict.ts --checks <file> --runs <runs file>` (it reads `merge_ready.required_checks`, `merge-gate.md` § CI-wait poller contract):
    - exit `0` (green): continue with merge steps 2.5 to 5.
    - exit `1` (red): apply step 2's rules (rerun a cancelled run once, then `ci-diagnosis.md`).
    - exit `3` (pending): end the turn again.

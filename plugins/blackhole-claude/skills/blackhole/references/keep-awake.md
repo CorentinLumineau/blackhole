@@ -10,7 +10,7 @@ This replaces the hold that retired sleep mode took only while the owner said th
 One idempotent command takes or releases the hold so it matches the campaign's state:
 
 ```bash
-bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts keep-awake --workers <n> [--wake-armed]
+bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts keep-awake --workers <n> [--wake-armed]
 ```
 
 `<n>` is the number of workers in flight now (the `## In-flight workers` table of the checkpoint,
@@ -77,7 +77,7 @@ its own wake-ups. At every turn end of an unattended invocation (`checkpoint-pro
 order, step 3), run:
 
 ```bash
-bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts rearm
+bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts rearm
 ```
 
 It prints `{schedule, wake_ups}`: one entry per minute, soonest first, each with `at`, `reasons`

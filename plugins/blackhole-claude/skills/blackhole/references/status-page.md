@@ -1,7 +1,7 @@
 # Status Page — One Live View of the Campaign
 
 The owner checks campaign state on one page instead of asking the agent. The page is fed by
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --json` (the same counts as the text dashboard, `coordinator-dashboard.md`
+`bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --json` (the same counts as the text dashboard, `coordinator-dashboard.md`
 § Status page) and published to **one** place per harness. It never gets a second link. Claude
 Code shows a live Data dashboard (`--data`); `--html` is the Cursor and local-file view.
 
@@ -15,7 +15,7 @@ everything below; the text dashboard is unaffected.
 | Campaign start, after bootstrap and before the first spawn | `coordinator` (Pattern B) or the main-chat orchestrator (Pattern C) |
 | Every checkpoint write — `checkpoint-protocol.md` § Write order, step 5 | `orchestrator` |
 | The main chat hands the turn back while workers are still in flight (Pattern C) | main-chat orchestrator |
-| `status` mode / the owner asks for status | whoever runs `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts` |
+| `status` mode / the owner asks for status | whoever runs `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts` |
 
 A refresh is cheap and idempotent: regenerate, then update the existing view. Online it reads the
 forge counts, then two adapter reads per open PR the board shows (`prView` for the review label and
@@ -61,8 +61,8 @@ facts come from the owner or the orchestrator; each has one home (ADR-052):
 |------|------|-----------|------|
 | Headline (one sentence) | checkpoint `## Headline` | orchestrator | every checkpoint write |
 | Blocking the run (one line each) | checkpoint `## Blocking the run` (`none` when nothing blocks) | orchestrator | every checkpoint write |
-| Scope (in, parked, deferred, blocked upstream, out; date and optional reason) | `config.json` → `campaign_scope.entries` | the coordinator (Pattern B) or the main-chat orchestrator (Pattern C), with `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts scope` | the launch configuration gate, and every owner scope change |
-| Your decisions (date, one line) | `owner-decisions.json` | the coordinator (Pattern B) or the main-chat orchestrator (Pattern C), with `bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts decision` | every owner answer to a gate, and every scope or priority instruction |
+| Scope (in, parked, deferred, blocked upstream, out; date and optional reason) | `config.json` → `campaign_scope.entries` | the coordinator (Pattern B) or the main-chat orchestrator (Pattern C), with `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts scope` | the launch configuration gate, and every owner scope change |
+| Your decisions (date, one line) | `owner-decisions.json` | the coordinator (Pattern B) or the main-chat orchestrator (Pattern C), with `bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts decision` | every owner answer to a gate, and every scope or priority instruction |
 
 In Pattern B the orchestrator records only an answer given to it directly, never one the
 coordinator relayed, so each answer is written once (`clarify-gates.md` § Chat feedback intake,
@@ -70,9 +70,9 @@ item 6). Only the record script writes these two files (atomic, checked, a repea
 nothing, and re-recording an entry keeps its place and date):
 
 ```bash
-bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts scope --kind in --text "Open issues in milestone v2.0" --filter
-bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts scope --kind parked --text "Theme editor" --refs 111 --reason "another team owns it"
-bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-record.ts decision --text "Park the theme editor: another team owns it" --refs 111
+bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts scope --kind in --text "Open issues in milestone v2.0" --filter
+bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts scope --kind parked --text "Theme editor" --refs 111 --reason "another team owns it"
+bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-record.ts decision --text "Park the theme editor: another team owns it" --refs 111
 ```
 
 `--filter` marks the line the launch gate writes for the issue filter, and replaces the previous
@@ -90,12 +90,12 @@ the plugin version).
 ## Refresh procedure
 
 1. Render the view for this harness. Claude Code publishes a live **Data dashboard** fed by
-   `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --data .blackhole/.tmp/status-data` (one `<id>.json` row file per dataset,
+   `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --data .blackhole/.tmp/status-data` (one `<id>.json` row file per dataset,
    derived from the same `StatusReport` as `--json`, so the counts never diverge); every other
-   harness renders `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --html`, which writes `.blackhole/.tmp/status.html` (override
+   harness renders `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --html`, which writes `.blackhole/.tmp/status.html` (override
    with `--out <path>`) and prints the path. `--html` escapes every value and loads nothing from
    the network. With no `queue.json` yet (a fresh checkout holding only
-   `config.json`), run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/forge-sync.ts` first: it builds the queue and an empty ledger from
+   `config.json`), run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/forge-sync.ts` first: it builds the queue and an empty ledger from
    the forge (`forge-sync.md` § Queue builder script).
 2. Update the single view for this harness — the first matching row wins:
 
@@ -103,7 +103,7 @@ the plugin version).
 ### Claude Code (Artifact tool present)
 
 One Data dashboard per campaign, laid out by `templates/status-dashboard/index.html` (resolve it
-from `${BLACKHOLE_PLUGIN_ROOT:-.}`). Its datasets are `overview`, `moves`, `blockers`, `board`,
+from `$BLACKHOLE_PLUGIN_ROOT`). Its datasets are `overview`, `moves`, `blockers`, `board`,
 `streams`, `scope`, `config`, `decisions`, `links`, `denials` (the top 5 hook rules by deny and warn count), `budget` (the usage-budget rows, `budgetRows()`), `run` (`runRows()`: run route, decisions mode with its waiting count, coordination role) and `pending` (the parked owner decisions; `STATUS_DATASET_IDS`; the ids and fields:
 `scripts/lib/campaign-status/data.ts`). The page works STALE out in the reader's browser from
 `overview.last_activity_at` and `overview.stale_after_hours` (the one `STALE_AFTER_HOURS`), so a
@@ -120,7 +120,7 @@ other step keeps it as is.
   Data artifact type (`Artifact` `action: "quickstart"`, `intent: "other"`, then publish with the
   returned `type_url`, a `title` and `auto_open: "after_first_write"`; the page declares the
   `assets` capability). Then:
-  1. `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --data .blackhole/.tmp/status-data`.
+  1. `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --data .blackhole/.tmp/status-data`.
   2. Upload each row file as an asset (`Artifact` `url`, `asset: true`, `file_path`; a text file
      goes in a call of its own). Each result gives the file's `/_blob/<id>` url.
   3. Write, in one `ArtifactData` `batch`: `dash/meta` (`{title}`), one `datasets/<id>` per file
@@ -173,7 +173,7 @@ other step keeps it as is.
 
 ### Any other harness, or no artifact/canvas tool
 
-Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/campaign-status.ts --html`, then print the path once per session (`📄 Status page: .blackhole/.tmp/status.html`).
+Run `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/campaign-status.ts --html`, then print the path once per session (`📄 Status page: .blackhole/.tmp/status.html`).
 Later refreshes rewrite the same file silently.
 
 ## Page layout

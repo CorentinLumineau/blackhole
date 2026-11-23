@@ -51,7 +51,7 @@ issue plan. Treat both as binding — `V-SCOPE-02` applies.
 Your work is strictly governed by the 5-field contract delegated to you by the orchestrator. You must:
 1.  **Objective**: Fully satisfy the specified acceptance criteria and issue requirements.
 2.  **Output Format**: Adhere strictly to the requested deliverables.
-3.  **Scope Boundaries (Touch-Paths)**: Never modify any files outside the defined Touch-Paths list (`V-SCOPE-02`). Resolve plan paths per plan-template.md (package_root join; a leading `/` means repo root); the effective list is `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-parent.ts --plan-touch-paths <N>`.
+3.  **Scope Boundaries (Touch-Paths)**: Never modify any files outside the defined Touch-Paths list (`V-SCOPE-02`). Resolve plan paths per plan-template.md (package_root join; a leading `/` means repo root); the effective list is `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/stack-parent.ts --plan-touch-paths <N>`.
 4.  **Tool Guidance**: Run the designated tools, including the mandatory baseline verification.
 5.  **Stop Condition**: Confirm all completion criteria are fully met before exiting.
 
@@ -429,7 +429,7 @@ this section states only what the script does not decide.
     whether an existing doc at the target directory already covers the same concern; if so,
     update it in place (bump `last_updated`, preserve its original `created`) instead of letting
     the script create a duplicate.
-*   **Invoke**: `bun run --cwd <this worktree's absolute path> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/carry-staged-artifacts.ts
+*   **Invoke**: `bun run --cwd <this worktree's absolute path> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/carry-staged-artifacts.ts
     --manifest {repo_root}/.blackhole/staged/<issue>/manifest.json --repo-root <this worktree's
     absolute path> --staging-root {repo_root}` — `--cwd` MUST equal `--repo-root` (issue #798 —
     pins module resolution to the worktree, the same tree the CLI operates on). `{repo_root}` is
@@ -501,12 +501,12 @@ Delete]` — ADR-021 A2).
 *   **Gate**: identical kill switch to § Carry Staged Artifacts — both `docs_governance.enabled`
     and `docs_governance.write_governance` must resolve `true`; otherwise skip entirely (zero
     `route: review` manifest entries, zero promotion spawn).
-*   **Run** (plugin repo): `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/promote-review-artifact.ts --ledger <ledger> --issue <N> --title
+*   **Run** (plugin repo): `bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/promote-review-artifact.ts --ledger <ledger> --issue <N> --title
     "<title>" --pr <P> --branch <branch> --head <sha> --out-dir .blackhole/staged/<issue>/` —
     renderer SSOT: `scripts/lib/promote-review-artifact.ts` (ledger rows for `issue_ref`, final
     iteration selection, `recheck[]` resolution per plan).
     **Consumer worktree** (issue #687): the script lives in the vendored plugin — invoke with
-    `bun run --cwd <plugin-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/promote-review-artifact.ts --ledger
+    `bun run --cwd <plugin-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/promote-review-artifact.ts --ledger
     <consumer>/.blackhole/findings-ledger.json …` or `scripts/consumer-promote-review.sh` from the
     consumer repo (resolves `vendor/blackhole` or `BLACKHOLE_PLUGIN_ROOT`).
 *   **Stage**: write CLI outputs under `.blackhole/staged/<issue>/` and append one manifest entry
@@ -519,7 +519,7 @@ Delete]` — ADR-021 A2).
 *   **Verify (issue #806)**: merge-readiness never trusts the staged manifest for this — a
     manifest entry is written by the same party (`implementer`) the check exists to verify, so
     `check-review-artifact.ts` no longer reads it at all (`manifestHasReviewRoute` was removed
-    outright). Before merge, run `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/check-review-artifact.ts
+    outright). Before merge, run `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/check-review-artifact.ts
     --config <abs> --issue <N> --title "<title>" --ledger <abs findings-ledger.json> --pr <P>
     --branch <branch> --head <sha> --repo-root <abs repo-root> --diff-file <abs paths.txt>` —
     `--cwd` MUST equal `--repo-root` (issue #798 — pins module resolution to the same tree the
@@ -541,7 +541,7 @@ when the diff trigger predicates in `companion-file-sync.md` are true.
     first `git add` — collect the list of paths about to be staged.
 *   **Run**:
     ```bash
-    bun run --cwd <worktree-abs> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/companion-file-sync.ts --repo-root <worktree-abs> --diff-file <paths.txt>
+    bun run --cwd <worktree-abs> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/lib/companion-file-sync.ts --repo-root <worktree-abs> --diff-file <paths.txt>
     ```
     `--cwd` MUST equal `--repo-root` (issue #798 — pins module resolution to the worktree).
     Templates are read from `templates/companion-files/` per `companion-file-sync.md` — never

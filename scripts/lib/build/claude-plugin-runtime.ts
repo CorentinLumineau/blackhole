@@ -8,9 +8,14 @@ import { root, srcDir, CLAUDE_DISTRIBUTION_AGENT_DIR } from './paths.ts';
 // the scripts agents invoke ship inside the bundle, every invocation names the plugin root, and a
 // SessionStart hook exports that root to Bash. `finalizeClaudePluginBundle` applies all three.
 
-/** Shell expression a compiled invocation uses for the bundle root. Falls back to the working
- * directory, which is the self-hosting layout (blackhole's own checkout). */
-export const PLUGIN_ROOT_SHELL_EXPR = '"${BLACKHOLE_PLUGIN_ROOT:-.}"';
+/** Shell expression a compiled invocation uses for the bundle root, resolved in order: the
+ * `BLACKHOLE_PLUGIN_ROOT` the SessionStart hook exports, then `CLAUDE_PLUGIN_ROOT`, then a loud
+ * `:?` failure. It never falls back to the working directory: in a consumer repo that runs a
+ * same-named consumer script or fails with module-not-found, and in a blackhole worktree it runs
+ * that worktree's unreleased scripts. An empty value counts as unset. Strict POSIX, so sh, dash and
+ * bash agree. */
+export const PLUGIN_ROOT_UNSET_MESSAGE = 'blackhole plugin root unset, see blackhole#1269';
+export const PLUGIN_ROOT_SHELL_EXPR = `"\${BLACKHOLE_PLUGIN_ROOT:-\${CLAUDE_PLUGIN_ROOT:?${PLUGIN_ROOT_UNSET_MESSAGE}}}"`;
 
 /** SessionStart command that exports the plugin root for every later Bash call. Claude Code runs
  * shell-form hooks through `sh -c`, which is dash on many Linux hosts, so this must stay strict
@@ -36,8 +41,7 @@ export const PLUGIN_ROOT_NOTE =
 
 // `bun scripts/x.ts`, `bun run scripts/x.ts`, or `bun run --cwd <dir> scripts/x.ts`. The `--cwd`
 // pin names the tree the script operates on (cwd-pin-guard.check.ts) and is kept as written; only
-// the script path moves to the plugin root, which under self-hosting falls back to `.`, i.e. the
-// pinned tree itself. `<dir>` takes the same shapes cwd-pin-guard.check.ts accepts.
+// the script path moves to the plugin root, which never falls back to the pinned tree. `<dir>` takes the same shapes cwd-pin-guard.check.ts accepts.
 const INVOCATION_RE = /\bbun(\s+run(?:\s+--cwd\s+(?:<[^>]*>|`[^`]*`|"[^"]*"|\S+))?)?\s+scripts\/([\w./-]+\.ts)/g;
 // `bash scripts/x.sh`: the shell-script form of the same invocation. Only this exact form counts, so
 // a bare citation of a script and a consumer-owned `./scripts/setup.sh` are never shipped or rewritten.

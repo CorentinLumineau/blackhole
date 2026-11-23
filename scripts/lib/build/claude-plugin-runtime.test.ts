@@ -68,39 +68,26 @@ describe('rewriteScriptInvocations', () => {
   test('prefixes the plugin root on plain invocations', () => {
     const before = 'bun scripts/a.ts; bun run scripts/lib/b.ts';
     expect(rewriteScriptInvocations(before)).toBe(
-      'bun "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/a.ts; bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/lib/b.ts',
+      'bun "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/a.ts; bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/lib/b.ts',
     );
   });
 
   test('keeps the --cwd pin on the operated tree and points the script at the plugin root', () => {
     for (const cwd of ['"$X"', '<abs repo-root>', '`<this worktree>`', '/abs/path', '"${BLACKHOLE_PLUGIN_ROOT:-vendor/blackhole}"']) {
       expect(rewriteScriptInvocations(`bun run --cwd ${cwd} scripts/c.ts --repo-root r`)).toBe(
-        `bun run --cwd ${cwd} "\${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/c.ts --repo-root r`,
+        `bun run --cwd ${cwd} "\${BLACKHOLE_PLUGIN_ROOT:-\${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/c.ts --repo-root r`,
       );
     }
   });
 
   test('rewrites two invocations on one line independently', () => {
     expect(rewriteScriptInvocations('bun run --cwd <a> scripts/x.ts && bun run scripts/y.ts')).toBe(
-      'bun run --cwd <a> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/x.ts && bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/y.ts',
+      'bun run --cwd <a> "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/x.ts && bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/y.ts',
     );
   });
 
-  test('with the plugin root unset, the rewritten path still resolves under --cwd', () => {
-    withTempDir('runtime-cwd', (dir) => {
-      fs.mkdirSync(path.join(dir, 'scripts'));
-      fs.writeFileSync(path.join(dir, 'scripts', 'here.ts'), 'console.log(process.cwd());');
-      const cmd = rewriteScriptInvocations(`bun run --cwd ${dir} scripts/here.ts`);
-      const env = { ...process.env };
-      delete env.BLACKHOLE_PLUGIN_ROOT;
-      const r = Bun.spawnSync(['bash', '-c', cmd], { env, stdout: 'pipe', stderr: 'pipe' });
-      expect(r.exitCode).toBe(0);
-      expect(fs.realpathSync(r.stdout.toString().trim())).toBe(fs.realpathSync(dir));
-    });
-  });
-
   test('rewrites a bash scripts/x.sh call to the plugin root, idempotently', () => {
-    const rewritten = 'bash "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/detect-doc-schema.sh index x';
+    const rewritten = 'bash "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/detect-doc-schema.sh index x';
     expect(rewriteScriptInvocations('bash scripts/detect-doc-schema.sh index x')).toBe(rewritten);
     expect(rewriteScriptInvocations(rewritten)).toBe(rewritten);
   });
@@ -170,7 +157,7 @@ describe('finalized Claude bundle', () => {
         expect(fs.statSync(shipped).mode & 0o111).not.toBe(0);
       }
       const planner = fs.readFileSync(path.join(destRoot, 'agents', 'planner.md'), 'utf-8');
-      expect(planner).toContain('bash "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/detect-doc-schema.sh index documentation/INDEX.md');
+      expect(planner).toContain('bash "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/detect-doc-schema.sh index documentation/INDEX.md');
       expect(claudePluginRuntimeErrors(destRoot)).toEqual([]);
 
       withTempDir('runtime-consumer', (consumer) => {
