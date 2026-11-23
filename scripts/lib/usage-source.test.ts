@@ -190,20 +190,25 @@ describe('usageSourceFor provider chain', () => {
     });
   });
 
-  test('a stale file falls through to a fresh cache with no reason', () => {
+  test('a stale file fails closed: a fresh cache is never read in its place, the reason names the stale file', () => {
     withTempDir('usage-source', (dir) => {
       const usageFile = writeUsageFile(dir, { windows: fileWindows }, NOW - 700);
-      const report = usageSourceFor('claude', cfg(writeCache(dir, weeklyOnly)), { usageFile }).report(NOW);
-      expect(report).toMatchObject({ source: 'rate-limit-cache', provider: 'statusline', reason: null });
+      const source = usageSourceFor('claude', cfg(writeCache(dir, weeklyOnly)), { usageFile });
+      const report = source.report(NOW);
+      expect(report).toMatchObject({ source: 'none', provider: 'none', plan: 'unknown', windows: [], extra_usage: null, read_at: null });
+      expect(report.reason).toMatch(/^usage file stale \(\d+s > 600s\)$/);
+      const reading = source.read(NOW);
+      expect(reading).toMatchObject({ limits: null, windows: [] });
+      expect(reading.reason).toMatch(/^usage file stale /);
     });
   });
 
-  test('a stale file and no cache: the reason lists both failures in chain order', () => {
+  test('a stale file and no cache: the reason is the stale file alone, the cache is not consulted', () => {
     withTempDir('usage-source', (dir) => {
       const usageFile = writeUsageFile(dir, { windows: fileWindows }, NOW - 700);
       const report = usageSourceFor('claude', cfg(path.join(dir, 'missing.json')), { usageFile }).report(NOW);
       expect(report).toMatchObject({ source: 'none', provider: 'none', plan: 'unknown', windows: [], extra_usage: null, read_at: null });
-      expect(report.reason).toMatch(/^usage file stale \(\d+s > 600s\); no rate-limit cache at /);
+      expect(report.reason).toMatch(/^usage file stale \(\d+s > 600s\)$/);
     });
   });
 
