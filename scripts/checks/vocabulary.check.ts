@@ -3,6 +3,7 @@ import * as path from 'path';
 import { root, type CheckResult } from './check-utils.ts';
 import { QUEUE_STATUSES, QUEUE_NOTES, HUNT_KINDS, PLATFORM_TARGETS } from '../lib/build/facts.ts';
 import { walkFilesAbs } from '../lib/fs.ts';
+import { SEVERITIES } from '../lib/worker-json/constants.ts';
 
 // Issue #320 — V-VOCAB-01: generalized, registry-driven extension of ADR-007 R1′'s two-sided
 // facts-conformance mechanism to closed *value vocabularies* (enum-shaped strings agent prose
@@ -120,6 +121,27 @@ export const extractPlatformTargets = (content: string): string[] => {
   return out;
 };
 
+// --- review finding severities (V-VOCAB-01) ---
+// The first cell of each row of a `| Severity | ...` table in agent prose. Reviewers follow these
+// tables, and `validate-worker-json.ts --role reviewer` rejects any value outside SEVERITIES.
+export const extractReviewSeverities = (content: string): string[] => {
+  const out: string[] = [];
+  let inTable = false;
+  for (const line of content.split('\n')) {
+    if (/^\|\s*Severity\s*\|/.test(line)) {
+      inTable = true;
+      continue;
+    }
+    if (!line.startsWith('|')) {
+      inTable = false;
+      continue;
+    }
+    const m = inTable ? /^\|\s*`?([A-Z]+)`?\s*\|/.exec(line) : null;
+    if (m) out.push(m[1]);
+  }
+  return out;
+};
+
 const readAll = (absPath: string) => fs.readFileSync(absPath, 'utf-8');
 
 const scanSrcMd = (extractor: (content: string) => string[]): string[] =>
@@ -144,13 +166,14 @@ export type VocabSpec = {
 
 // Registry-driven (Codebase Conventions design decision 1, issue #320): adding a 6th vocabulary
 // is a 1-entry addition here, never a new inline sub-check block — the same OCP property
-// ADR-007's Design Principles claim for § facts generally. (4 entries — ADR status was removed
-// in fix round 1; see the NOTE above.)
+// ADR-007's Design Principles claim for § facts generally. (ADR status was removed in fix
+// round 1; see the NOTE above.)
 export const VOCAB_REGISTRY: VocabSpec[] = [
   { name: 'queue status', declared: QUEUE_STATUSES, scan: () => scanSrcMd(extractQueueStatuses) },
   { name: 'queue notes', declared: QUEUE_NOTES, scan: () => scanSrcMd(extractQueueNotes) },
   { name: 'kaizen kinds', declared: HUNT_KINDS, scan: () => scanSrcMd(extractHuntKinds) },
   { name: 'platform targets', declared: PLATFORM_TARGETS, scan: () => scanScriptsTs(extractPlatformTargets) },
+  { name: 'review severities', declared: SEVERITIES, scan: () => scanSrcMd(extractReviewSeverities) },
 ];
 
 const checkVocabulary = (): CheckResult => {

@@ -5,6 +5,7 @@ import {
   extractQueueStatuses,
   extractQueueNotes,
   extractHuntKinds,
+  extractReviewSeverities,
   extractPlatformTargets,
 } from './checks/vocabulary.check.ts';
 import { QUEUE_NOTES, QUEUE_STATUSES } from './lib/build/facts.ts';
@@ -121,11 +122,22 @@ describe('extractPlatformTargets', () => {
 
 describe('VOCAB_REGISTRY', () => {
   // ADR status was removed in fix round 1 (PR #339 review) — issue #324 (PR #338) already owns
-  // that concern with a purpose-built, more rigorous check. 4 entries, not 5.
-  test('has exactly 4 entries, one per named vocabulary', () => {
-    expect(VOCAB_REGISTRY).toHaveLength(4);
+  // that concern with a purpose-built, more rigorous check.
+  test('has exactly 5 entries, one per named vocabulary', () => {
+    expect(VOCAB_REGISTRY).toHaveLength(5);
     expect(VOCAB_REGISTRY.map((v) => v.name).sort()).toEqual(
-      ['kaizen kinds', 'platform targets', 'queue notes', 'queue status'].sort(),
+      ['kaizen kinds', 'platform targets', 'queue notes', 'queue status', 'review severities'].sort(),
     );
+  });
+});
+
+describe('extractReviewSeverities', () => {
+  test('reads the first cell of each row of a Severity table, backticked or bare', () => {
+    const doc = '| Severity | Action |\n|---|---|\n| BLOCK | fix |\n| `NOTE` | optional |\n\nprose\n| Other | x |\n| WARN | y |';
+    expect(extractReviewSeverities(doc)).toEqual(['BLOCK', 'NOTE']);
+  });
+
+  test('flags NOTE against the reviewer schema vocabulary', () => {
+    expect(findVocabMismatch(['BLOCK', 'NOTE'], ['BLOCK', 'WARN', 'INFO'])).toBe('undeclared value(s) [NOTE]');
   });
 });
