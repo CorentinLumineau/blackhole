@@ -222,12 +222,46 @@ export const changePrBase = (repo: string, number: number, base: string): PrChan
     : { ok: false, base: actual, detail: `base is ${actual ?? 'unreadable'} after the change, expected ${base}` };
 };
 
+/** At most 1000 rows (10 pages of 100) are read per list; a read still short of its total at the cap is refused, never returned partial. */
+const CHECK_PAGES_MAX = 10;
+
+/**
+ * Every row of one paged commit list. `total` reads the body's count when the endpoint's count is the
+ * whole list (check runs), and ends the read once reached; otherwise only a short page ends it. A body
+ * without the list, a read below the count, or a read still going at the cap throws.
+ */
+const listCommitPages = <Row>(
+  label: string,
+  endpoint: string,
+  key: 'check_runs' | 'statuses',
+  total?: (body: Record<string, unknown>) => number | null,
+): Row[] => {
+  const out: Row[] = [];
+  let expected: number | null = null;
+  for (let page = 1; page <= CHECK_PAGES_MAX; page++) {
+    const body = runGhApiRestJson<Record<string, unknown> | null>('GET', `${endpoint}?${query({ per_page: PAGE_SIZE, page })}`);
+    const rows = body?.[key];
+    const count = total && body ? total(body) : null;
+    if (!Array.isArray(rows) || (total && count === null)) {
+      throw new Error(`${label}: page ${page} is not a { ${total ? `total_count, ${key}` : key} } body`);
+    }
+    out.push(...(rows as Row[]));
+    expected = count;
+    const done = rows.length < PAGE_SIZE || (expected !== null && out.length >= expected);
+    if (done) {
+      if (expected !== null && out.length < expected) throw new Error(`${label}: read ${out.length} of total_count ${expected}`);
+      return out;
+    }
+  }
+  throw new Error(`${label}: still ${out.length}${expected === null ? '' : ` of total_count ${expected}`} after ${CHECK_PAGES_MAX} pages`);
+};
+
+const integerTotal = (body: Record<string, unknown>): number | null =>
+  Number.isInteger(body.total_count) && (body.total_count as number) >= 0 ? (body.total_count as number) : null;
+
 export const listChecks = (repo: string, sha: string): ForgeCheck[] => {
-  const runs = runGhApiRestJson<{ check_runs: RestCheckRun[] }>(
-    'GET',
-    `repos/${repo}/commits/${sha}/check-runs?per_page=${PAGE_SIZE}`,
-  ).check_runs;
-  const statuses = runGhApiRestJson<{ statuses: RestStatus[] }>('GET', `repos/${repo}/commits/${sha}/status`).statuses;
+  const runs = listCommitPages<RestCheckRun>(`check runs of ${sha}`, `repos/${repo}/commits/${sha}/check-runs`, 'check_runs', integerTotal);
+  const statuses = listCommitPages<RestStatus>(`statuses of ${sha}`, `repos/${repo}/commits/${sha}/status`, 'statuses');
   // Producers for `withoutSupersededCancelled`; without them every check run is judged on its own.
   let suites = new Map<number, string>();
   try {

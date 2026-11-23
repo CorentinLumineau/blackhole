@@ -360,6 +360,89 @@ describe('ciVerdict (ADR-050)', () => {
     expect(checksFromSnapshot(checks)).toBe(checks);
   });
 
+  describe('a snapshot that lists fewer runs than its total_count is pending, never green', () => {
+    const greenRun = (i: number) => ({ id: i, name: `job-${i}`, status: 'completed', conclusion: 'success' });
+    const thirtyGreen = Array.from({ length: 30 }, (_, i) => greenRun(i + 1));
+    const MERGED_MISMATCH = (runs: number, total: number) =>
+      `checks snapshot total_count ${total} does not match its ${runs} check runs: keep the check-runs total_count of a complete read when merging`;
+    const COMBINED_STATE = (state: string) =>
+      `statuses combined state is ${state} but every listed status passes: read every status page`;
+
+    test('30 green check runs of a total_count of 40 are pending, and the reason names the truncation', () => {
+      const result = ciVerdict(checksFromSnapshot({ total_count: 40, check_runs: thirtyGreen }));
+      expect(result.verdict).toBe('pending');
+      expect(result.failing).toEqual([]);
+      expect(result.pending).toEqual(['check_runs truncated: 30 of 40 fetched, read every page']);
+    });
+
+    test('a merged check_runs and statuses snapshot judges total_count against the check runs, not the sum', () => {
+      const statuses = Array.from({ length: 12 }, (_, i) => ({ context: `ctx-${i}`, state: 'success' }));
+      const result = ciVerdict(checksFromSnapshot({ total_count: 40, check_runs: thirtyGreen, statuses }));
+      expect(result.verdict).toBe('pending');
+      expect(result.pending).toEqual([MERGED_MISMATCH(30, 40)]);
+    });
+
+    test('a merged snapshot whose total_count came from the statuses payload is pending, whatever the merge order', () => {
+      const statuses = [{ context: 'a', state: 'success' }, { context: 'b', state: 'success' }];
+      const checkRunsPayload = { total_count: 40, check_runs: thirtyGreen };
+      const statusPayload = { state: 'success', total_count: 2, statuses };
+      const statusesLast = ciVerdict(checksFromSnapshot({ ...checkRunsPayload, ...statusPayload }));
+      expect(statusesLast.verdict).toBe('pending');
+      expect(statusesLast.pending).toEqual([MERGED_MISMATCH(30, 2)]);
+      expect(ciVerdict(checksFromSnapshot({ ...statusPayload, ...checkRunsPayload })).verdict).toBe('pending');
+    });
+
+    test('the reviewed merge shape (statuses last, combined state failure) is pending, never green', () => {
+      const snapshot = { ...{ total_count: 40, check_runs: thirtyGreen }, ...{ state: 'failure', total_count: 2, statuses: [{ context: 'a', state: 'success' }, { context: 'b', state: 'success' }] } };
+      const result = ciVerdict(checksFromSnapshot(snapshot));
+      expect(result.verdict).toBe('pending');
+      expect(result.pending).toEqual([MERGED_MISMATCH(30, 2), COMBINED_STATE('failure')]);
+    });
+
+    test('a merged snapshot whose total_count equals its check runs is judged on its rows', () => {
+      const statuses = [{ context: 'a', state: 'success' }];
+      expect(ciVerdict(checksFromSnapshot({ total_count: 30, check_runs: thirtyGreen, state: 'success', statuses })).verdict).toBe('green');
+    });
+
+    test('a combined state that is not success while every listed status passes means an unread status page', () => {
+      const statuses = [{ context: 'a', state: 'success' }];
+      const result = ciVerdict(checksFromSnapshot({ total_count: 30, check_runs: thirtyGreen, state: 'failure', statuses }));
+      expect(result.verdict).toBe('pending');
+      expect(result.pending).toEqual([COMBINED_STATE('failure')]);
+      expect(ciVerdict(checksFromSnapshot({ state: 'error', statuses })).pending).toEqual([COMBINED_STATE('error')]);
+    });
+
+    test('a combined state agrees with its listed statuses: a listed failure stays red, no statuses with state pending is no signal', () => {
+      expect(ciVerdict(checksFromSnapshot({ state: 'failure', statuses: [{ context: 'a', state: 'failure' }] })).pending).toEqual([]);
+      expect(ciVerdict(checksFromSnapshot({ total_count: 30, check_runs: thirtyGreen, state: 'pending', statuses: [] })).verdict).toBe('green');
+    });
+
+    test('a required list does not let a truncated snapshot through: every required check fetched and green is still pending', () => {
+      const result = ciVerdict(checksFromSnapshot({ total_count: 40, check_runs: thirtyGreen }), { requiredChecks: ['job-1', 'job-30'] });
+      expect(result.verdict).toBe('pending');
+      expect(result.pending).toEqual(['check_runs truncated: 30 of 40 fetched, read every page']);
+    });
+
+    test('a statuses-only snapshot judges total_count against the statuses', () => {
+      const statuses = [{ context: 'ci', state: 'success' }];
+      expect(ciVerdict(checksFromSnapshot({ total_count: 3, statuses })).pending).toEqual(['statuses truncated: 1 of 3 fetched, read every page']);
+    });
+
+    test('a fetched failure still makes a truncated snapshot red', () => {
+      const runs = [...thirtyGreen.slice(1), { id: 99, name: 'verify', status: 'completed', conclusion: 'failure' }];
+      expect(ciVerdict(checksFromSnapshot({ total_count: 40, check_runs: runs })).verdict).toBe('red');
+    });
+
+    test('a complete snapshot, or one with no total_count, is judged as before', () => {
+      expect(ciVerdict(checksFromSnapshot({ total_count: 30, check_runs: thirtyGreen })).verdict).toBe('green');
+      expect(ciVerdict(checksFromSnapshot({ check_runs: thirtyGreen })).verdict).toBe('green');
+    });
+
+    test('a total_count that is not a non-negative integer is rejected', () => {
+      expect(() => checksFromSnapshot({ total_count: '40', check_runs: thirtyGreen })).toThrow('total_count');
+    });
+  });
+
   test('a snapshot with neither check runs nor statuses is rejected', () => {
     expect(() => checksFromSnapshot({ description: 'x' })).toThrow('neither check_runs nor statuses');
   });

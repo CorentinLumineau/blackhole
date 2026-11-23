@@ -97,6 +97,7 @@ describe('GitHubForgeAdapter (REST)', () => {
       if (endpoint.includes('/check-runs')) {
         return {
           stdout: {
+            total_count: 2,
             check_runs: [
               { id: 5, name: 'verify', status: 'completed', conclusion: 'success', started_at: '2026-11-20T11:00:00Z', check_suite: { id: 31 } },
               { id: 6, name: 'lint', status: 'in_progress', conclusion: null, check_suite: { id: 99 } },
@@ -118,17 +119,91 @@ describe('GitHubForgeAdapter (REST)', () => {
     ]);
     expect(calls.map((c) => c.endpoint)).toEqual([
       'repos/owner/repo/pulls/7',
-      'repos/owner/repo/commits/abc123/check-runs?per_page=100',
-      'repos/owner/repo/commits/abc123/status',
+      'repos/owner/repo/commits/abc123/check-runs?per_page=100&page=1',
+      'repos/owner/repo/commits/abc123/status?per_page=100&page=1',
       'repos/owner/repo/actions/runs?head_sha=abc123&per_page=100',
     ]);
+  });
+
+  test('prChecks reads every check-runs page, so a failure past the first page reaches the verdict', async () => {
+    const page = (from: number, count: number, conclusion = 'success') =>
+      Array.from({ length: count }, (_, i) => ({ id: from + i, name: `job-${from + i}`, status: 'completed', conclusion }));
+    mockApi((_m, endpoint) => {
+      if (endpoint.endsWith('/pulls/7')) return { stdout: prRow(7) };
+      if (endpoint.includes('/check-runs')) {
+        return { stdout: endpoint.endsWith('&page=1') ? { total_count: 101, check_runs: page(1, 100) } : { total_count: 101, check_runs: page(101, 1, 'failure') } };
+      }
+      if (endpoint.includes('/actions/runs')) return { stdout: { workflow_runs: [] } };
+      return { stdout: { statuses: [] } };
+    });
+    const checks = await adapter.prChecks(7);
+    expect(checks).toHaveLength(101);
+    expect(checks[100]).toEqual({ name: 'job-101', status: 'COMPLETED', conclusion: 'FAILURE', runId: 101 });
+    expect(calls.map((c) => c.endpoint).filter((e) => e.includes('/check-runs'))).toEqual([
+      'repos/owner/repo/commits/abc123/check-runs?per_page=100&page=1',
+      'repos/owner/repo/commits/abc123/check-runs?per_page=100&page=2',
+    ]);
+  });
+
+  describe('prChecks paging stops on the total, a short page or the page cap, and never returns a partial list', () => {
+    const rows = (from: number, count: number) =>
+      Array.from({ length: count }, (_, i) => ({ id: from + i, name: `job-${from + i}`, status: 'completed', conclusion: 'success' }));
+    const statusRows = (count: number) => Array.from({ length: count }, (_, i) => ({ context: `ctx-${i}`, state: 'success' }));
+    const pageOf = (endpoint: string) => Number(/[?&]page=(\d+)/.exec(endpoint)?.[1]);
+    type Answer = (page: number) => Reply;
+    const serve = (checkRuns: Answer, status: Answer = () => ({ stdout: { statuses: [] } })) =>
+      mockApi((_m, endpoint) => {
+        if (endpoint.endsWith('/pulls/7')) return { stdout: prRow(7) };
+        if (endpoint.includes('/check-runs')) return checkRuns(pageOf(endpoint));
+        if (endpoint.includes('/actions/runs')) return { stdout: { workflow_runs: [] } };
+        return status(pageOf(endpoint));
+      });
+    const endpointsFor = (part: string) => calls.map((c) => c.endpoint).filter((e) => e.includes(part));
+
+    test('a full first page that reaches total_count ends the check-runs read without another request', async () => {
+      serve(() => ({ stdout: { total_count: 100, check_runs: rows(1, 100) } }));
+      expect(await adapter.prChecks(7)).toHaveLength(100);
+      expect(endpointsFor('/check-runs')).toEqual(['repos/owner/repo/commits/abc123/check-runs?per_page=100&page=1']);
+    });
+
+    test('statuses are paged at 100 rows: an exact 100-row page is followed by a read of the next, empty page', async () => {
+      serve(() => ({ stdout: { total_count: 0, check_runs: [] } }), (page) => ({ stdout: { statuses: page === 1 ? statusRows(100) : [] } }));
+      expect(await adapter.prChecks(7)).toHaveLength(100);
+      expect(endpointsFor('/status')).toEqual([
+        'repos/owner/repo/commits/abc123/status?per_page=100&page=1',
+        'repos/owner/repo/commits/abc123/status?per_page=100&page=2',
+      ]);
+    });
+
+    test('a check-runs read that ends below total_count throws instead of returning the rows it got', async () => {
+      serve((page) => ({ stdout: { total_count: 150, check_runs: page === 1 ? rows(1, 100) : [] } }));
+      await expect(adapter.prChecks(7)).rejects.toThrow('check runs of abc123: read 100 of total_count 150');
+    });
+
+    test('a failure on a later page fails the read', async () => {
+      serve((page) => (page === 1 ? { stdout: { total_count: 150, check_runs: rows(1, 100) } } : { status: 1, stderr: 'HTTP 502: Bad Gateway' }));
+      await expect(adapter.prChecks(7)).rejects.toThrow('HTTP 502: Bad Gateway');
+    });
+
+    test('a page body without the list or an integer total_count is a named error', async () => {
+      serve(() => ({ stdout: { message: 'Not Found' } }));
+      await expect(adapter.prChecks(7)).rejects.toThrow('check runs of abc123: page 1 is not a { total_count, check_runs } body');
+      serve(() => ({ stdout: { total_count: 0, check_runs: [] } }), () => ({ stdout: { message: 'Not Found' } }));
+      await expect(adapter.prChecks(7)).rejects.toThrow('statuses of abc123: page 1 is not a { statuses } body');
+    });
+
+    test('a read that is still short after the page cap throws', async () => {
+      serve((page) => ({ stdout: { total_count: 5000, check_runs: rows((page - 1) * 100 + 1, 100) } }));
+      await expect(adapter.prChecks(7)).rejects.toThrow('check runs of abc123: still 1000 of total_count 5000 after 10 pages');
+      expect(endpointsFor('/check-runs')).toHaveLength(10);
+    });
   });
 
   test('prChecks keeps every run producer-less and writes one stderr line when the workflow runs call fails', async () => {
     mockApi((_m, endpoint) => {
       if (endpoint.endsWith('/pulls/7')) return { stdout: prRow(7) };
       if (endpoint.includes('/check-runs')) {
-        return { stdout: { check_runs: [{ id: 5, name: 'verify', status: 'completed', conclusion: 'cancelled', check_suite: { id: 31 } }] } };
+        return { stdout: { total_count: 1, check_runs: [{ id: 5, name: 'verify', status: 'completed', conclusion: 'cancelled', check_suite: { id: 31 } }] } };
       }
       if (endpoint.includes('/actions/runs')) return { status: 1, stderr: 'HTTP 403: Resource not accessible by integration' };
       return { stdout: { statuses: [] } };
