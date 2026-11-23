@@ -84,6 +84,14 @@ describe('the launch summary of the full fixture', () => {
     expect(renderLaunchSummary(rows, ['W1', 'W2']).split('\n').slice(0, 5)).toEqual(['## Launch summary', '', '> W1', '> W2', '']);
   });
 
+  test('with a target, the heading names owner/repo and the absolute campaign directory; the table is unchanged', () => {
+    const rows = fullRows();
+    const target = { repo: 'acme/widgets', campaignDir: '/srv/widgets/.blackhole', source: 'config' as const };
+    const lines = renderLaunchSummary(rows, ['W1'], target).split('\n');
+    expect(lines.slice(0, 3)).toEqual(['## Launch summary — acme/widgets · /srv/widgets/.blackhole', '', '> W1']);
+    expect(lines.slice(1)).toEqual(renderLaunchSummary(rows, ['W1']).split('\n').slice(1));
+  });
+
   test('exactly 13 rows, in fixed order', () => {
     expect(rows.map((r) => r.key)).toEqual([
       'scope', 'order', 'merge', 'pacing', 'budget', 'status_page', 'kaizen_staging',

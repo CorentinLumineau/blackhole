@@ -11,7 +11,7 @@ const resolveFromRoot = (p: string): string => (path.isAbsolute(p) ? p : path.jo
 export const STATUS_COMMAND = `bun run "${path.resolve(import.meta.dir, '..', '..', 'campaign-status.ts')}"`;
 
 const USAGE =
-  `Usage: ${STATUS_COMMAND} [config-summary | usage-caps --enabled <true|false> [--stop-workers-at <6-100>] [--target-at-reset <1-100|none>]] [--json | --html [--out <path>] | --data <dir> | --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [--unattended] [catchup only: --usage-file <path> --floor <pct> --no-spawn-at <pct> --stop-workers-at <pct> --lane <name>]] [--campaign-dir <dir>] [--no-gh]`;
+  `Usage: ${STATUS_COMMAND} [config-summary | target [--stated <repo>] [--json] | usage-caps --enabled <true|false> [--stop-workers-at <6-100>] [--target-at-reset <1-100|none>]] [--json | --html [--out <path>] | --data <dir> | --summary [--mode run|catchup] [--usage <json>] [--now <epoch s>] [--json] [--unattended] [catchup only: --usage-file <path> --floor <pct> --no-spawn-at <pct> --stop-workers-at <pct> --lane <name>]] [--campaign-dir <dir>] [--no-gh]`;
 
 const pctFlag = (flags: Record<string, string>, name: string): number | null => {
   if (flags[name] === undefined) return null;

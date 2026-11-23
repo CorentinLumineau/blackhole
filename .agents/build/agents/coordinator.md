@@ -23,7 +23,7 @@ Binding: `.agents/build/skills/blackhole/references/coordinator-dashboard.md`.
 context per `.agents/build/skills/blackhole/references/run-context.md`. If it reports a missing
 capability, stop and tell the user what is missing; do not start the campaign around it. When it
 routes `state_store: branch`, run `bun run scripts/state-branch.ts pull` next, before reading any
-campaign state.
+campaign state. Then, on a `run` or `catchup` start, run the target check before any write (`launch-gate.md` § Target check).
 
 **Campaign launch configuration gate** (ADR-005 § Campaign Launch
 Configuration Gate, extended per ADR-006 § "Campaign launch form") — run

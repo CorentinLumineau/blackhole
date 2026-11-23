@@ -21,19 +21,44 @@ Bootstrap order, every `run` start:
 1. Resolve the run context (`run-context.md`); on `state_store: branch`, pull the state branch. A
    `warn:` line saying the running plugin is older than an installed version is part of its output:
    restate it verbatim, never drop it.
-2. Peer detection (ADR-057, `multitask-mode.md` § Peer campaign registry): run
+2. The target check (§ Target check), before any write: a Stop answer ends the bootstrap here.
+3. Peer detection (ADR-057, `multitask-mode.md` § Peer campaign registry): run
    `bun run scripts/peer-campaigns.ts heartbeat --turn 0` (add `--host-session <id>` on a host
    with a cross-session transport), so a peer bootstrapping at the same moment sees this one.
    The summary's Peers row then reads `detect` itself. A non-zero exit means no record was
    written, so a peer could not see this session: restate its stderr line and stop the bootstrap
    before any spawn. Exit 1 is an unresolvable git common dir, a worktree path or host a peer
    could not read, or a record that could not be written (one line naming the errno code and the registry directory); exit 2 is a usage error.
-3. The 6-step form when a `coordinator.md` trigger condition holds.
-4. The summary and the status-page probe (§ Probe procedure).
-5. The questions (§ Questions), unless print-only (§ Print-only mode).
-6. The rest is `coordinator.md`'s, in its order: publish or refresh the status page, then
+4. The 6-step form when a `coordinator.md` trigger condition holds.
+5. The summary and the status-page probe (§ Probe procedure).
+6. The questions (§ Questions), unless print-only (§ Print-only mode).
+7. The rest is `coordinator.md`'s, in its order: publish or refresh the status page, then
    `bun run scripts/doctor.ts` before the spawn (a non-zero exit stops it), then spawn or resume the
    orchestrator.
+
+## Target check
+
+A start with no scope argument resolves the campaign from the working directory, which may not be
+the repository the owner meant. Before any write, run:
+
+```bash
+bun run scripts/campaign-status.ts target [--stated <repo>] [--json]
+```
+
+It prints `Target: <owner/repo> · <absolute campaign dir>`: `config.json`'s `repo`, else the
+origin remote of the campaign's repository, so it works before a first bootstrap. Restate that line
+first. Pass `--stated` when the host gives the session a title, or the owner's request states
+another intent, that names a repository: the bare name, `owner/repo` or its URL as written there.
+Naming that repository is a judgment, so pass nothing when the title names none.
+
+- Exit `0`: no stated target, or it names the resolved repository. Continue.
+- Exit `3`: it names another one. Ask the one question its `--json` `card` carries, **Continue
+  here** or **Stop**, before peer detection and before any config write. Continue here records the
+  answer as a decision and goes on; Stop ends the bootstrap with nothing written.
+- Exit `2`: usage error.
+
+The summary heading repeats the target, `## Launch summary — <owner/repo> · <campaign dir>`, and
+`--summary --json` carries it as `target`.
 
 ## The summary
 
@@ -168,6 +193,8 @@ the summary, asks nothing and never waits. It does not park its rows either: the
 exception, the peer question:
 
 - every row counts as accepted;
+- the target check exits `3`: refuse to start, with its two lines, and write nothing; never run a
+  campaign on a repository the stated target does not name;
 - `merge_mode` unset: refuse to start, with one line, `merge_mode is unset; print-only mode cannot
   ask for it (R-002)` — never pick a merge mode for the owner;
 - a live peer that is not yet coordinated, or unreadable peer records (the Peers row offers a

@@ -8,6 +8,7 @@ import { formatScopeLabel } from './dashboard.ts';
 import { autonomyRow, otherConfigRow, plural, resourcePolicyRow, runPacingRow, waveSchedulingRow } from './launch-config-rows.ts';
 import { decisionsMode, QUESTIONS_PER_CARD, rawDecisionsMode, retiredSleepModeWarning } from './pending-decisions.ts';
 import { statusPageRow, type StatusPageInput } from './status-page-row.ts';
+import { targetHeading, type LaunchTarget } from './launch-target.ts';
 import { LAUNCH_ROW_KEYS, type BudgetPanel, type ConfigSummaryInput, type GateOption, type LaunchRow, type LaunchRowKey, type StatusReport } from './types.ts';
 
 // The executive-summary launch gate: one row per section, each with a one-line consequence, and
@@ -343,10 +344,13 @@ export function buildLaunchSummary({ report, config, budget, statusPage, catchup
 
 const cell = (s: string): string => s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
-/** The summary as one markdown table, the text the launch gate prints verbatim; each warning is a `> ` line above it. */
-export function renderLaunchSummary(rows: LaunchRow[], warnings: string[] = []): string {
+/**
+ * The summary as one markdown table, the text the launch gate prints verbatim; each warning is a `> `
+ * line above it. With `target`, the heading names the resolved repository and campaign directory.
+ */
+export function renderLaunchSummary(rows: LaunchRow[], warnings: string[] = [], target?: LaunchTarget): string {
   return [
-    '## Launch summary',
+    target ? targetHeading(target) : '## Launch summary',
     '',
     ...(warnings.length ? [...warnings.map((w) => `> ${w}`), ''] : []),
     '| Section | Now | Consequence |',
