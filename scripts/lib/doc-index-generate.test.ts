@@ -5,6 +5,7 @@ import { execFileSync } from 'child_process';
 import {
   buildDocIndexRows,
   diffDocIndexRows,
+  isRegenerableRootIndex,
   renderDocIndexTable,
   renderFullIndexFile,
   renderRootIndexFile,
@@ -223,6 +224,36 @@ describe('renderFullIndexFile (issue #832, Task 5 — hoisted from generate-doc-
     const docsDir = path.join(import.meta.dir, '..', '..', 'documentation');
     const cliOutput = execFileSync('bun', ['run', cliPath], { encoding: 'utf-8' });
     expect(cliOutput).toBe(renderFullIndexFile(docsDir));
+  });
+});
+
+describe('isRegenerableRootIndex (issue #1388)', () => {
+  const BLACKHOLE_TABLE =
+    '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
+
+  test('an absent file is regenerable', () => {
+    expect(isRegenerableRootIndex(null)).toBe(true);
+  });
+
+  test('a title-only file (headings and blank lines) is regenerable', () => {
+    expect(isRegenerableRootIndex('# Documentation Index\n\n')).toBe(true);
+  });
+
+  test('a file carrying blackhole\'s exact header is regenerable', () => {
+    expect(isRegenerableRootIndex(`# Documentation Index\n\n${BLACKHOLE_TABLE}| a.md | s | t | current | x |\n`)).toBe(true);
+  });
+
+  test('a foreign header with capitalised column names is not regenerable', () => {
+    const invest = '# Docs\n\n| Path | Summary | Type | Status | Review trigger |\n|---|---|---|---|---|\n| [a.md](a.md) | s | t | current | x |\n';
+    expect(isRegenerableRootIndex(invest)).toBe(false);
+  });
+
+  test('a 4-column header is not regenerable', () => {
+    expect(isRegenerableRootIndex('# Docs\n\n| path | summary | type | status |\n|---|---|---|---|\n')).toBe(false);
+  });
+
+  test('a table-less file with prose beyond the title block is not regenerable', () => {
+    expect(isRegenerableRootIndex('# Docs\n\nSee the wiki for the doc list.\n')).toBe(false);
   });
 });
 

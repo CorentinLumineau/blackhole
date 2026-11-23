@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { parseMdFrontmatter, parseFrontmatterFields } from './build/content.ts';
-import { byPathByteOrder, renderIndexRowLine, walkMdFilesAbs, type RootIndexRow } from './check-common.ts';
+import { byPathByteOrder, findTableBlock, renderIndexRowLine, walkMdFilesAbs, type RootIndexRow } from './check-common.ts';
 
 // Issue #811 (ADR-031 Phase 1) — pure generator half of the "generated-artifact + drift-check"
 // pattern (Codebase Conventions table): tree walk + frontmatter read + sorted row build. Reuses
@@ -76,6 +76,21 @@ export const ROOT_DOC_INDEX_PATH = 'documentation/INDEX.md';
 export const renderRootIndexFile = (existing: string | null, docsDir: string): string => {
   const titleBlock = existing === null ? '# Documentation Index\n\n' : `${existing.split('\n').slice(0, 2).join('\n')}\n`;
   return `${titleBlock}${renderFullIndexFile(docsDir)}`;
+};
+
+/**
+ * Whether `renderRootIndexFile` may overwrite `existing` without destroying content it cannot
+ * reproduce. True for an absent file, a file with nothing but headings and blank lines, or a
+ * table whose header cells are exactly blackhole's (case-sensitive). Any other table header, or
+ * prose outside a table, belongs to the consumer's own index convention and must be left alone.
+ */
+export const isRegenerableRootIndex = (existing: string | null): boolean => {
+  if (existing === null) return true;
+  const lines = existing.split('\n');
+  const { separatorIdx } = findTableBlock(lines);
+  if (separatorIdx === -1) return lines.every((l) => l.trim() === '' || l.trimStart().startsWith('#'));
+  const cells = (line: string): string => line.split('|').map((c) => c.trim()).slice(1, -1).join(',');
+  return cells(lines[separatorIdx - 1] ?? '') === cells(INDEX_TABLE_HEADER.split('\n')[0]);
 };
 
 // Issue #832 (ADR-031 Phase 2) — the one shared diff `doc-health.check.ts`'s V-DOCHEALTH-01/02/04
