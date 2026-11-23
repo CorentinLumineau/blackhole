@@ -435,6 +435,78 @@ describe('carryManifest — root documentation/INDEX.md append_row retirement (i
   });
 });
 
+describe('carryManifest — root INDEX regeneration respects a foreign header (issue #1388)', () => {
+  const carryOneNote = (repoRoot: string, indexContent: string | null) => {
+    const stagedRel = '.blackhole/staged/1388/analysis-issue-1388.md';
+    fs.mkdirSync(path.dirname(path.join(repoRoot, stagedRel)), { recursive: true });
+    fs.writeFileSync(
+      path.join(repoRoot, stagedRel),
+      '---\nissue: 1388\nsub_mode: analyze\nconfidence: 80\ncomputed_at_revision: 1\n---\n# Note\n\nbody\n',
+    );
+    fs.mkdirSync(path.join(repoRoot, 'documentation'), { recursive: true });
+    if (indexContent !== null) fs.writeFileSync(path.join(repoRoot, 'documentation', 'INDEX.md'), indexContent);
+    const manifest: Manifest = {
+      issue: 1388,
+      updated_at: 'x',
+      entries: [
+        {
+          route: 'analyze',
+          sub_mode: 'analyze',
+          produced_by: 'investigator',
+          declared_at: '2026-08-06T17:40:00.000Z',
+          staged_path: stagedRel,
+          target_path: 'documentation/audits/analysis-issue-1388.md',
+          target_kind: 'new_file',
+          summary: 'X',
+        },
+      ],
+    };
+    return carryManifest(manifest, repoRoot, { today: '2026-08-12' });
+  };
+  const indexPath = (repoRoot: string): string => path.join(repoRoot, 'documentation', 'INDEX.md');
+
+  test('a consumer index with a non-blackhole header is left byte-identical and the skip names V-INT-01', () => {
+    withTempDir('carry-foreign-index', (repoRoot) => {
+      const foreign =
+        '# Docs\n\n| Path | Summary | Type | Status | Review trigger |\n|---|---|---|---|---|\n| [a.md](a.md) | hand-written | doc | current | quarterly |\n';
+      const outcome = carryOneNote(repoRoot, foreign);
+
+      expect(fs.readFileSync(indexPath(repoRoot), 'utf-8')).toBe(foreign);
+      expect(outcome.carriedPaths).not.toContain('documentation/INDEX.md');
+      expect(outcome.carriedPaths).toContain('documentation/audits/analysis-issue-1388.md');
+      expect(fs.existsSync(path.join(repoRoot, 'documentation/audits/analysis-issue-1388.md'))).toBe(true);
+      expect(outcome.skippedEntries.some((s) => s.reason.includes('V-INT-01'))).toBe(true);
+    });
+  });
+
+  test('an absent index is created with blackhole\'s header', () => {
+    withTempDir('carry-absent-index', (repoRoot) => {
+      const outcome = carryOneNote(repoRoot, null);
+      expect(outcome.carriedPaths).toContain('documentation/INDEX.md');
+      expect(fs.readFileSync(indexPath(repoRoot), 'utf-8')).toContain('| path | summary | type | status | review_trigger |');
+    });
+  });
+
+  test('a title-only index is regenerated', () => {
+    withTempDir('carry-title-only-index', (repoRoot) => {
+      const outcome = carryOneNote(repoRoot, '# Documentation Index\n\n');
+      expect(outcome.carriedPaths).toContain('documentation/INDEX.md');
+      expect(parseIndexTableRows(fs.readFileSync(indexPath(repoRoot), 'utf-8')).map((r) => r.path)).toContain(
+        'audits/analysis-issue-1388.md',
+      );
+    });
+  });
+
+  test('an index with blackhole\'s header is regenerated and gains the new row', () => {
+    withTempDir('carry-blackhole-index', (repoRoot) => {
+      const own = '# Documentation Index\n\n| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
+      const outcome = carryOneNote(repoRoot, own);
+      expect(outcome.carriedPaths).toContain('documentation/INDEX.md');
+      expect(outcome.skippedEntries).toHaveLength(0);
+    });
+  });
+});
+
 describe('carryManifest — two-root resolution (opts.stagingRoot, issue #760)', () => {
   const baseEntry = {
     route: 'plan',

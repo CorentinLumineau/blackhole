@@ -4,7 +4,7 @@ import { appendAdrIndexRowIfAbsent, appendIndexRowIfAbsent, isAdrIndexHeader, pa
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { readJsonFile } from './fs.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
-import { ROOT_DOC_INDEX_PATH, renderRootIndexFile } from './doc-index-generate.ts';
+import { ROOT_DOC_INDEX_PATH, isRegenerableRootIndex, renderRootIndexFile } from './doc-index-generate.ts';
 
 // Mechanizes the mechanical two-thirds of `implementer.md` § Carry Staged Artifacts: the
 // manifest shape guard, `target_kind` dispatch, the 9-row frontmatter rewrite mapping
@@ -393,11 +393,18 @@ export const carryManifest = (
   if (regenerateRootIndex) {
     const indexAbs = path.join(repoRoot, ROOT_DOC_INDEX_PATH);
     const existing = fs.existsSync(indexAbs) ? fs.readFileSync(indexAbs, 'utf-8') : null;
-    const written = writeCarryTarget(indexAbs, renderRootIndexFile(existing, path.join(repoRoot, 'documentation')));
-    if (written.ok) {
-      carriedPaths.push(ROOT_DOC_INDEX_PATH);
+    if (!isRegenerableRootIndex(existing)) {
+      skipped.push({
+        index: -1,
+        reason: `${ROOT_DOC_INDEX_PATH} has a non-blackhole table header; regeneration skipped to keep the consumer index intact (V-INT-01 WARN)`,
+      });
     } else {
-      skipped.push({ index: -1, reason: `write failed for target_path "${ROOT_DOC_INDEX_PATH}": ${written.message}` });
+      const written = writeCarryTarget(indexAbs, renderRootIndexFile(existing, path.join(repoRoot, 'documentation')));
+      if (written.ok) {
+        carriedPaths.push(ROOT_DOC_INDEX_PATH);
+      } else {
+        skipped.push({ index: -1, reason: `write failed for target_path "${ROOT_DOC_INDEX_PATH}": ${written.message}` });
+      }
     }
   }
 
