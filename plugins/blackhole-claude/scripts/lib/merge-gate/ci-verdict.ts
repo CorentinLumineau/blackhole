@@ -26,16 +26,34 @@ const PASSING = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const NOT_EXECUTED = new Set(['NEUTRAL', 'SKIPPED', 'CANCELLED']);
 
 /**
+ * The queued placeholder `checksFromSnapshot` adds for a payload that lists fewer rows than its
+ * `total_count`: an unread page can hold a FAILURE, so the verdict is at least pending and names why.
+ */
+const truncatedCheck = (list: 'check_runs' | 'statuses', fetched: number, total: number): ForgeCheck =>
+  ({ name: `${list} truncated: ${fetched} of ${total} fetched, read every page`, status: 'QUEUED', conclusion: null });
+
+/**
  * Accepts a REST or MCP check-runs payload, a combined-status payload, both merged, or ForgeCheck[].
  * `runs` is the head's `actions/runs` payload, the producer source `withoutSupersededCancelled` needs.
+ *
+ * A `total_count` counts the check runs when `check_runs` is present (the check-runs payload, whose
+ * default page is 30 rows), otherwise the statuses. When it exceeds the rows listed, the snapshot is a
+ * partial page and one queued `truncatedCheck` entry is added, so `ciVerdict` reports it in `pending`
+ * and never returns green. A merged snapshot must keep the check-runs `total_count`.
  */
 export const checksFromSnapshot = (snapshot: unknown, runs?: unknown): ForgeCheck[] => {
   const suites = runs === undefined ? undefined : suiteProducers(runs);
   if (Array.isArray(snapshot)) return snapshot as ForgeCheck[];
   if (snapshot === null || typeof snapshot !== 'object') throw new Error('checks snapshot must be an object or an array');
-  const { check_runs, statuses } = snapshot as { check_runs?: RestCheckRun[]; statuses?: RestStatus[] };
+  const { check_runs, statuses, total_count } = snapshot as { check_runs?: RestCheckRun[]; statuses?: RestStatus[]; total_count?: unknown };
   if (!check_runs && !statuses) throw new Error('checks snapshot has neither check_runs nor statuses');
-  return [...(check_runs ?? []).map((row) => mapRestCheckRun(row, suites)), ...(statuses ?? []).map(mapRestStatus)];
+  if (total_count !== undefined && !(Number.isInteger(total_count) && (total_count as number) >= 0)) {
+    throw new Error('checks snapshot total_count must be a non-negative integer');
+  }
+  const checks = [...(check_runs ?? []).map((row) => mapRestCheckRun(row, suites)), ...(statuses ?? []).map(mapRestStatus)];
+  const [list, fetched] = check_runs ? ['check_runs' as const, check_runs.length] : ['statuses' as const, statuses?.length ?? 0];
+  if (typeof total_count === 'number' && total_count > fetched) checks.push(truncatedCheck(list, fetched, total_count));
+  return checks;
 };
 
 export type CiVerdictOptions = {

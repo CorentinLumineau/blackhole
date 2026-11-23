@@ -222,11 +222,21 @@ export const changePrBase = (repo: string, number: number, base: string): PrChan
     : { ok: false, base: actual, detail: `base is ${actual ?? 'unreadable'} after the change, expected ${base}` };
 };
 
+/** Every check run of a commit: the endpoint pages its `{ total_count, check_runs }` body, so a short page ends the read. */
+const listCheckRuns = (repo: string, sha: string): RestCheckRun[] => {
+  const runs: RestCheckRun[] = [];
+  for (let page = 1; ; page++) {
+    const rows = runGhApiRestJson<{ check_runs: RestCheckRun[] }>(
+      'GET',
+      `repos/${repo}/commits/${sha}/check-runs?${query({ per_page: PAGE_SIZE, page })}`,
+    ).check_runs;
+    runs.push(...rows);
+    if (rows.length < PAGE_SIZE) return runs;
+  }
+};
+
 export const listChecks = (repo: string, sha: string): ForgeCheck[] => {
-  const runs = runGhApiRestJson<{ check_runs: RestCheckRun[] }>(
-    'GET',
-    `repos/${repo}/commits/${sha}/check-runs?per_page=${PAGE_SIZE}`,
-  ).check_runs;
+  const runs = listCheckRuns(repo, sha);
   const statuses = runGhApiRestJson<{ statuses: RestStatus[] }>('GET', `repos/${repo}/commits/${sha}/status`).statuses;
   // Producers for `withoutSupersededCancelled`; without them every check run is judged on its own.
   let suites = new Map<number, string>();

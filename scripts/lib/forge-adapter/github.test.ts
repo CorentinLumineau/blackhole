@@ -118,9 +118,29 @@ describe('GitHubForgeAdapter (REST)', () => {
     ]);
     expect(calls.map((c) => c.endpoint)).toEqual([
       'repos/owner/repo/pulls/7',
-      'repos/owner/repo/commits/abc123/check-runs?per_page=100',
+      'repos/owner/repo/commits/abc123/check-runs?per_page=100&page=1',
       'repos/owner/repo/commits/abc123/status',
       'repos/owner/repo/actions/runs?head_sha=abc123&per_page=100',
+    ]);
+  });
+
+  test('prChecks reads every check-runs page, so a failure past the first page reaches the verdict', async () => {
+    const page = (from: number, count: number, conclusion = 'success') =>
+      Array.from({ length: count }, (_, i) => ({ id: from + i, name: `job-${from + i}`, status: 'completed', conclusion }));
+    mockApi((_m, endpoint) => {
+      if (endpoint.endsWith('/pulls/7')) return { stdout: prRow(7) };
+      if (endpoint.includes('/check-runs')) {
+        return { stdout: endpoint.endsWith('&page=1') ? { total_count: 101, check_runs: page(1, 100) } : { total_count: 101, check_runs: page(101, 1, 'failure') } };
+      }
+      if (endpoint.includes('/actions/runs')) return { stdout: { workflow_runs: [] } };
+      return { stdout: { statuses: [] } };
+    });
+    const checks = await adapter.prChecks(7);
+    expect(checks).toHaveLength(101);
+    expect(checks[100]).toEqual({ name: 'job-101', status: 'COMPLETED', conclusion: 'FAILURE', runId: 101 });
+    expect(calls.map((c) => c.endpoint).filter((e) => e.includes('/check-runs'))).toEqual([
+      'repos/owner/repo/commits/abc123/check-runs?per_page=100&page=1',
+      'repos/owner/repo/commits/abc123/check-runs?per_page=100&page=2',
     ]);
   });
 
