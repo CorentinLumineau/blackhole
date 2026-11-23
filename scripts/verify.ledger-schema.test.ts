@@ -34,6 +34,24 @@ describe('findLedgerSchemaDrift', () => {
     expect(drift[0]).toContain('pr_ref');
   });
 
+  // Issue #1439 — the ledger writes one optional severity, INFO; legacy NOTE is drift that
+  // `migrate-ledger-schema.ts` rewrites.
+  test('a legacy NOTE severity is reported as drift, naming the migration', () => {
+    const drift = findLedgerSchemaDrift([{ id: 'F-9', issue_ref: 1, severity: 'NOTE' }]);
+    expect(drift).toHaveLength(1);
+    expect(drift[0]).toContain('F-9');
+    expect(drift[0]).toContain('migrate-ledger-schema');
+  });
+
+  test('BLOCK, WARN and INFO severities, or no severity key, report no drift', () => {
+    const findings = ['BLOCK', 'WARN', 'INFO'].map((severity, i) => ({ id: `F-${i}`, issue_ref: 1, severity }));
+    expect(findLedgerSchemaDrift([...findings, { id: 'F-x', issue_ref: 1 }])).toEqual([]);
+  });
+
+  test('a severity outside the vocabulary is reported as drift', () => {
+    expect(findLedgerSchemaDrift([{ id: 'F-7', issue_ref: 1, severity: 'LOW' }])).toHaveLength(1);
+  });
+
   test('a row with pr_ref key entirely absent is not reported as drift', () => {
     const findings = [{ id: 'F-4', issue_ref: 100 }];
     expect(findLedgerSchemaDrift(findings)).toEqual([]);

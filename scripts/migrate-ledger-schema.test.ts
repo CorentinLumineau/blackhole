@@ -9,6 +9,16 @@ import { migrateFindings, runMigration } from './migrate-ledger-schema.ts';
 // touches real campaign state — Codebase Conventions).
 
 describe('migrateFindings', () => {
+  // Issue #1439 — read both, write one: legacy NOTE rows are rewritten to INFO.
+  test('legacy NOTE severity rewrites to INFO, row counted as changed', () => {
+    const { migrated, changed } = migrateFindings([
+      { id: 'F-n', issue_ref: 1, pr_ref: null, severity: 'NOTE' },
+      { id: 'F-i', issue_ref: 1, pr_ref: null, severity: 'INFO' },
+    ]);
+    expect(migrated.map((f) => f.severity)).toEqual(['INFO', 'INFO']);
+    expect(changed).toBe(1);
+  });
+
   test('string issue_ref coerces to a number, row counted as changed', () => {
     const { migrated, changed } = migrateFindings([
       { id: 'F-1', issue_ref: '715', pr_ref: null },

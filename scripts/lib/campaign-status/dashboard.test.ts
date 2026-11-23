@@ -46,6 +46,21 @@ describe('renderLedgerOpenSection — occurrences, last_seen_at, sort', () => {
     expect(row).toBe('- **F-00011** `V-DRY-01` WARN — dup code');
   });
 
+  // Issue #1439 — INFO is the optional severity; legacy NOTE rows sort with it, both after WARN
+  // and before an unrecognized value.
+  test('INFO and legacy NOTE sort after WARN and before an unknown severity', () => {
+    const findings: LedgerFinding[] = [
+      { id: 'F-21', vcode: 'V-X', severity: 'ODD', status: 'open', summary: 'unknown', last_seen_at: '2026-06-03T00:00:00.000Z' },
+      { id: 'F-22', vcode: 'V-X', severity: 'INFO', status: 'open', summary: 'info', last_seen_at: '2026-06-02T00:00:00.000Z' },
+      { id: 'F-23', vcode: 'V-X', severity: 'NOTE', status: 'open', summary: 'note', last_seen_at: '2026-06-01T00:00:00.000Z' },
+      { id: 'F-24', vcode: 'V-X', severity: 'WARN', status: 'open', summary: 'warn', last_seen_at: '2026-01-01T00:00:00.000Z' },
+    ];
+    const ids = renderLedgerOpenSection(findings)
+      .filter((l) => l.startsWith('- **F-'))
+      .map((l) => l.match(/F-\d+/)?.[0]);
+    expect(ids).toEqual(['F-24', 'F-22', 'F-23', 'F-21']);
+  });
+
   test('2e — sorted BLOCK-before-WARN then most-recent-first, even when append order disagrees', () => {
     const findings: LedgerFinding[] = [
       { id: 'F-01', vcode: 'V-WARN-A', severity: 'WARN', status: 'open', summary: 'old warn', last_seen_at: '2026-01-01T00:00:00.000Z' },

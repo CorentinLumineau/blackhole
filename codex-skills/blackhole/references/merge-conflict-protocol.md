@@ -191,7 +191,7 @@ Full gate spec: `implementer.md` § Conflict Resolution Gate.
 
 ## Ledger recording
 
-One `V-MERGE-03` (NOTE) row per mechanically-resolved hunk, appended `status: resolved`
+One `V-MERGE-03` (INFO) row per mechanically-resolved hunk, appended `status: resolved`
 immediately (audit trail, not a defect — mirrors how `V-MERGE-01`/`V-MERGE-02` record drift for
 audit, not remediation). `file`/`line` identify the hunk; `summary` names which of the 4
 mechanical classes matched.

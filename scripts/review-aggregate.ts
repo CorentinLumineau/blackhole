@@ -1,6 +1,7 @@
 import { readJsonFile } from './lib/fs.ts';
 import { parseFlags } from './lib/argv-flags.ts';
 import { decide, gitIo } from './lib/slop-citation/slop-citation-check.mjs';
+import { severityRank } from './lib/worker-json/constants.ts';
 
 export type Finding = {
   id?: string;
@@ -85,19 +86,8 @@ export type AggregateOutput = {
   error?: string;
 };
 
-const SEVERITY_RANK: Record<string, number> = {
-  BLOCK: 3,
-  WARN: 2,
-  NOTE: 1,
-  INFO: 1,
-};
-
 function dedupKey(finding: Finding): string {
   return `${finding.vcode}\0${finding.file}\0${finding.line}\0${finding.issue_ref ?? ''}`;
-}
-
-function severityRank(severity: string): number {
-  return SEVERITY_RANK[severity] ?? 0;
 }
 
 function stampIssueRef(findings: Finding[], issueRef: number): Finding[] {

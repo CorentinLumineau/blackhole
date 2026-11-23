@@ -44,10 +44,8 @@ export type ReviewPromotionOutput = {
   findingsCount: number;
 };
 
-import { OUTCOME_STATUSES } from './worker-json/constants.ts';
+import { OUTCOME_STATUSES, severityRank } from './worker-json/constants.ts';
 import { deriveConcernSlug, reviewTargetPath } from './concern-slug.ts';
-
-const SEVERITY_RANK: Record<string, number> = { BLOCK: 3, WARN: 2, NOTE: 1, INFO: 1 };
 
 const findingKey = (f: LedgerFinding): string => `${f.vcode}\0${f.file}\0${f.line}`;
 
@@ -94,13 +92,13 @@ export function selectReviewFindings(
       byKey.set(key, finding);
       continue;
     }
-    if (nextPr === existingPr && (SEVERITY_RANK[finding.severity] ?? 0) > (SEVERITY_RANK[existing.severity] ?? 0)) {
+    if (nextPr === existingPr && severityRank(finding.severity) > severityRank(existing.severity)) {
       byKey.set(key, finding);
     }
   }
 
   return [...byKey.values()].sort((a, b) => {
-    const rankDiff = (SEVERITY_RANK[b.severity] ?? 0) - (SEVERITY_RANK[a.severity] ?? 0);
+    const rankDiff = severityRank(b.severity) - severityRank(a.severity);
     if (rankDiff !== 0) return rankDiff;
     return a.file < b.file ? -1 : a.file > b.file ? 1 : 0;
   });

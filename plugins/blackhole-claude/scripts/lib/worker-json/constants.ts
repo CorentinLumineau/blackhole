@@ -13,6 +13,14 @@ export const TRACKS = ['quick', 'standard', 'skip', 'design', 'brainstorm'] as c
 export const SIZE_ESTIMATES = ['xs', 's', 'm', 'l', 'xl'] as const;
 export const EXECUTION_MODES = ['standard', 'refactor-strict', 'docs-only'] as const;
 export const SEVERITIES = ['BLOCK', 'WARN', 'INFO'] as const;
+// Issue #1439 — the ledger once spelled the optional severity NOTE. Readers accept it as INFO;
+// nothing writes it (`migrate-ledger-schema.ts` rewrites old rows, V-LEDGER-01 reports them).
+export const LEGACY_SEVERITY_ALIASES: Readonly<Record<string, (typeof SEVERITIES)[number]>> = { NOTE: 'INFO' };
+export const normalizeSeverity = (severity: string): string => LEGACY_SEVERITY_ALIASES[severity] ?? severity;
+const SEVERITY_RANK: Readonly<Record<string, number>> = { BLOCK: 3, WARN: 2, INFO: 1 };
+/** BLOCK 3, WARN 2, INFO (or legacy NOTE) 1, anything else 0. */
+export const severityRank = (severity: string | undefined): number =>
+  SEVERITY_RANK[normalizeSeverity(severity ?? '')] ?? 0;
 export const ROUTE_STATUSES = ['routed', 'error', PARTIAL_STATUS] as const;
 export const TASK_TYPES = ['feature', 'bugfix', 'refactor', 'docs'] as const;
 export const DECISION_RECORD_KINDS = ['root-cause', 'approach', 'refactor', 'improvement', 'reuse'] as const;
