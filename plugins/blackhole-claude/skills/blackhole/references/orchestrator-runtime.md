@@ -238,8 +238,9 @@ after reading checkpoint and forge sync:
    `bun run --cwd <abs repo-root> "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/plugin-drift-signal.ts --repo-root <abs repo-root>`,
    where `<abs repo-root>` is the campaign repo's main clone. `--repo-root` is required in a
    consumer: without it the script describes its own folder, which is the plugin cache there,
-   not the campaign repo. Existence-gated on `scripts/plugin-drift-signal.ts` being present (a
-   consumer repo without the script simply has nothing to run — no error).
+   not the campaign repo, and the script refuses to run. Existence-gated on
+   `scripts/plugin-drift-signal.ts` being present: inert when no blackhole install provides the
+   script — no error.
    **Local-only**: skip it when the run context routes `state_store: branch`. That machine
    installed the plugin fresh for this session and is reclaimed afterwards, so there is no
    long-lived cache to drift; say "plugin drift: skipped (ephemeral machine)" once in the turn.

@@ -9,7 +9,7 @@ import { orderHookSources, type GitResolver, type OrderingResult, type VetoPair,
 import { readOriginUrl } from './lib/forge-detection.ts';
 import { root } from './checks/check-utils.ts';
 import { projectIdentity } from './project-identity.ts';
-import { parseFlags } from './lib/argv-flags.ts';
+import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 
 // Issue #912 (ADR-044) — widens the session-start advisory half of the plugin-cache drift
 // detection (mechanism 2 of ADR-030's composite fix) from "does one guessed installed-cache path
@@ -156,17 +156,65 @@ export function readRepoHeadSha(repoRoot: string): string | null {
   return r.status === 0 ? r.stdout.trim() : null;
 }
 
-// The campaign repo the signal describes. Defaults to this script's own repo, which is right
-// only when blackhole runs its own campaign: from an installed plugin, `root` is the plugin
-// folder, so the playbook step passes `--repo-root <campaign repo root>` (issue #1454).
-export const resolveRepoRoot = (argv: string[], fallback: string = root): string => {
-  const value = parseFlags(argv)['repo-root'];
+export type RepoRootContext = {
+  /** The script's own repo — the default target, right only when blackhole runs its own campaign. */
+  fallback: string;
+  /** Home directory, whose `.claude/plugins/cache` holds installed plugin copies. */
+  home: string;
+  /** `BLACKHOLE_PLUGIN_ROOT`, exported by the installed plugin's SessionStart hook. */
+  pluginRoot: string | undefined;
+};
+
+const isWithin = (child: string, parent: string): boolean => {
+  const rel = path.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+};
+
+// The campaign repo the signal describes (issue #1454). From an installed plugin, `root` is the
+// plugin folder, so the playbook step passes `--repo-root <campaign repo root>`. Every way of
+// landing on the wrong folder throws instead of writing a signal about it: an unparsed flag form
+// (`--repo-root=<path>`), a path that is not an existing git checkout, or a missing flag when the
+// script's own folder is an installed plugin copy.
+export const resolveRepoRoot = (
+  argv: string[],
+  ctx: RepoRootContext = { fallback: root, home: os.homedir(), pluginRoot: process.env.BLACKHOLE_PLUGIN_ROOT },
+): string => {
+  const flags = parseFlags(argv);
+  const unknown = unknownFlagKeys(flags, ['repo-root']);
+  if (unknown.length) {
+    throw new Error(`unknown flag --${unknown[0]} (usage: --repo-root <abs repo-root>, space-separated)`);
+  }
+  const value = flags['repo-root'];
   if (value === true) throw new Error('--repo-root needs a path');
-  return path.resolve(value ?? fallback);
+  let repoRoot: string;
+  if (value === undefined) {
+    repoRoot = path.resolve(ctx.fallback);
+    const pluginCache = path.join(ctx.home, '.claude', 'plugins', 'cache');
+    const isPluginRoot = ctx.pluginRoot !== undefined && path.resolve(ctx.pluginRoot) === repoRoot;
+    if (isPluginRoot || isWithin(repoRoot, pluginCache)) {
+      throw new Error(`${repoRoot} is the installed plugin, not a campaign repo: pass --repo-root <abs repo-root>`);
+    }
+  } else {
+    repoRoot = path.resolve(value);
+  }
+  if (!fs.existsSync(repoRoot) || !fs.statSync(repoRoot).isDirectory()) {
+    throw new Error(`--repo-root ${repoRoot} is not an existing directory`);
+  }
+  // A file in a linked worktree, a directory in a main clone.
+  if (!fs.existsSync(path.join(repoRoot, '.git'))) {
+    throw new Error(`--repo-root ${repoRoot} has no .git: not a git checkout`);
+  }
+  return repoRoot;
 };
 
 function main(): void {
-  const repoRoot = resolveRepoRoot(process.argv.slice(2));
+  let repoRoot: string;
+  try {
+    repoRoot = resolveRepoRoot(process.argv.slice(2));
+  } catch (err) {
+    console.error(`plugin-drift-signal: ${(err as Error).message}`);
+    process.exit(2);
+  }
   const resolver = createRealGitResolver(repoRoot);
 
   const sources = enumerateHookSources({

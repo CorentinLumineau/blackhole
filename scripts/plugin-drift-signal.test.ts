@@ -22,8 +22,11 @@ describe('plugin-drift-signal.ts from a built Claude plugin tree', () => {
           stderr: 'pipe',
         });
         expect(r.stderr.toString()).not.toContain('Cannot find module');
-        expect(r.exitCode).toBe(0);
-        expect(r.stdout.toString()).toContain('installed_present=');
+        // Without --repo-root the only repo it could describe is the plugin folder itself, so it
+        // refuses rather than writing a signal about the install (issue #1454).
+        expect(r.exitCode).not.toBe(0);
+        expect(r.stderr.toString()).toContain('pass --repo-root');
+        expect(fs.existsSync(path.join(destRoot, '.blackhole'))).toBe(false);
       });
     });
   });
@@ -35,6 +38,7 @@ describe('plugin-drift-signal.ts from a built Claude plugin tree', () => {
     withTempDir('drift-bundle', (destRoot) => {
       populateClaudeFixtureTree(destRoot);
       withTempDir('drift-consumer', (consumer) => {
+        fs.mkdirSync(path.join(consumer, '.git'));
         withTempDir('drift-home', (home) => {
           const cmd = rewriteScriptInvocations(
             `bun run --cwd ${consumer} scripts/plugin-drift-signal.ts --repo-root ${consumer}`,
@@ -60,16 +64,74 @@ describe('plugin-drift-signal.ts from a built Claude plugin tree', () => {
 });
 
 describe('resolveRepoRoot', () => {
-  test('uses --repo-root when given, resolved to an absolute path', () => {
-    expect(resolveRepoRoot(['--repo-root', '/srv/campaign'], '/plugin')).toBe('/srv/campaign');
-    expect(resolveRepoRoot(['--repo-root', 'rel'], '/plugin')).toBe(path.resolve('rel'));
+  const withRepo = (fn: (repo: string) => void) =>
+    withTempDir('drift-repo', (repo) => {
+      fs.mkdirSync(path.join(repo, '.git'));
+      fn(repo);
+    });
+  const env = { home: '/home/someone', pluginRoot: undefined };
+
+  test('uses --repo-root when it names an existing git repo', () => {
+    withRepo((repo) => {
+      expect(resolveRepoRoot(['--repo-root', repo], { ...env, fallback: '/plugin' })).toBe(repo);
+    });
   });
 
-  test('falls back to the script repo when the flag is absent', () => {
-    expect(resolveRepoRoot([], '/plugin')).toBe('/plugin');
+  test('accepts a git worktree, whose .git is a file', () => {
+    withTempDir('drift-wt', (repo) => {
+      fs.writeFileSync(path.join(repo, '.git'), 'gitdir: /elsewhere\n');
+      expect(resolveRepoRoot(['--repo-root', repo], { ...env, fallback: '/plugin' })).toBe(repo);
+    });
+  });
+
+  test('refuses a --repo-root that does not exist, and creates nothing there', () => {
+    withTempDir('drift-missing', (dir) => {
+      const missing = path.join(dir, 'nope');
+      expect(() => resolveRepoRoot(['--repo-root', missing], { ...env, fallback: '/plugin' })).toThrow(
+        'is not an existing directory',
+      );
+      expect(fs.existsSync(missing)).toBe(false);
+    });
+  });
+
+  test('refuses a --repo-root directory that is not a git repo', () => {
+    withTempDir('drift-nogit', (dir) => {
+      expect(() => resolveRepoRoot(['--repo-root', dir], { ...env, fallback: '/plugin' })).toThrow('has no .git');
+    });
   });
 
   test('refuses a bare --repo-root with no path', () => {
-    expect(() => resolveRepoRoot(['--repo-root'], '/plugin')).toThrow('--repo-root needs a path');
+    expect(() => resolveRepoRoot(['--repo-root'], { ...env, fallback: '/plugin' })).toThrow('--repo-root needs a path');
+  });
+
+  test('refuses the --repo-root=<path> form instead of silently ignoring it', () => {
+    withRepo((repo) => {
+      expect(() => resolveRepoRoot([`--repo-root=${repo}`], { ...env, fallback: repo })).toThrow(
+        'unknown flag --repo-root=',
+      );
+    });
+  });
+
+  test('refuses any other unknown flag', () => {
+    withRepo((repo) => {
+      expect(() => resolveRepoRoot(['--repo', repo], { ...env, fallback: repo })).toThrow('unknown flag --repo');
+    });
+  });
+
+  test('falls back to the script repo when the flag is absent and that repo is a checkout', () => {
+    withRepo((repo) => {
+      expect(resolveRepoRoot([], { ...env, fallback: repo })).toBe(repo);
+    });
+  });
+
+  test('refuses the fallback when it sits under the plugin cache', () => {
+    const fallback = path.join('/home/someone', '.claude', 'plugins', 'cache', 'mk', 'blackhole', '1.0.0');
+    expect(() => resolveRepoRoot([], { ...env, fallback })).toThrow('pass --repo-root');
+  });
+
+  test('refuses the fallback when it is BLACKHOLE_PLUGIN_ROOT', () => {
+    withRepo((repo) => {
+      expect(() => resolveRepoRoot([], { ...env, pluginRoot: repo, fallback: repo })).toThrow('pass --repo-root');
+    });
   });
 });
