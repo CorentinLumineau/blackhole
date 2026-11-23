@@ -514,6 +514,20 @@ describe('carryManifest — root INDEX regeneration respects a foreign header (i
     });
   });
 
+  const OWN_HEADER = '| path | summary | type | status | review_trigger |\n|------|---------|------|--------|----------------|\n';
+  test.each([
+    ['link-style path cells', `# Documentation Index\n\n${OWN_HEADER}| [a.md](a.md) | hand-written | doc | current | quarterly |\n`],
+    ['prose between the title block and the table', `# Documentation Index\n\nRead this first.\n\n${OWN_HEADER}| a.md | s | doc | current | x |\n`],
+    ['a second table', `# Documentation Index\n\n${OWN_HEADER}| a.md | s | doc | current | x |\n\n| term | meaning |\n|---|---|\n| ADR | decision |\n`],
+  ])('blackhole\'s header with %s is left byte-identical and the skip names V-INT-01 (issue #1422)', (_shape, content) => {
+    withTempDir('carry-own-header-foreign-body', (repoRoot) => {
+      const outcome = carryOneNote(repoRoot, content);
+      expect(fs.readFileSync(indexPath(repoRoot), 'utf-8')).toBe(content);
+      expect(outcome.carriedPaths).not.toContain('documentation/INDEX.md');
+      expect(outcome.skippedEntries.some((s) => s.reason.includes('V-INT-01'))).toBe(true);
+    });
+  });
+
   test('an absent index is created with blackhole\'s header', () => {
     withTempDir('carry-absent-index', (repoRoot) => {
       const outcome = carryOneNote(repoRoot, null);

@@ -404,7 +404,7 @@ export const carryManifest = (
     if (!isRegenerableRootIndex(existing)) {
       skipped.push({
         index: -1,
-        reason: `${ROOT_DOC_INDEX_PATH} has a non-blackhole table header; regeneration skipped to keep the consumer index intact (V-INT-01 WARN)`,
+        reason: `${ROOT_DOC_INDEX_PATH} is not a blackhole-generated index (foreign header, link-style path cells, prose, or a second table); regeneration skipped to keep the consumer index intact (V-INT-01 WARN)`,
       });
     } else {
       const written = writeCarryTarget(indexAbs, renderRootIndexFile(existing, path.join(repoRoot, 'documentation')));
