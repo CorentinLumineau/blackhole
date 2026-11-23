@@ -255,6 +255,24 @@ describe('isRegenerableRootIndex (issue #1388)', () => {
   test('a table-less file with prose beyond the title block is not regenerable', () => {
     expect(isRegenerableRootIndex('# Docs\n\nSee the wiki for the doc list.\n')).toBe(false);
   });
+
+  test('blackhole\'s header with a link-style path cell is not regenerable (issue #1422)', () => {
+    expect(isRegenerableRootIndex(`# Documentation Index\n\n${BLACKHOLE_TABLE}| [a.md](a.md) | s | t | current | x |\n`)).toBe(false);
+  });
+
+  test('blackhole\'s header with prose between the title block and the table is not regenerable (issue #1422)', () => {
+    expect(isRegenerableRootIndex(`# Documentation Index\n\nHand-written intro.\n\n${BLACKHOLE_TABLE}| a.md | s | t | current | x |\n`)).toBe(false);
+  });
+
+  test('blackhole\'s header followed by a second table is not regenerable (issue #1422)', () => {
+    const second = '\n## Archived\n\n| path | note |\n|---|---|\n| old.md | gone |\n';
+    expect(isRegenerableRootIndex(`# Documentation Index\n\n${BLACKHOLE_TABLE}| a.md | s | t | current | x |\n${second}`)).toBe(false);
+  });
+
+  test('blackhole\'s own committed documentation/INDEX.md stays regenerable (issue #1422)', () => {
+    const own = fs.readFileSync(path.join(import.meta.dir, '..', '..', 'documentation', 'INDEX.md'), 'utf-8');
+    expect(isRegenerableRootIndex(own)).toBe(true);
+  });
 });
 
 describe('renderRootIndexFile (#1303)', () => {

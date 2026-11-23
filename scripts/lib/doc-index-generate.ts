@@ -80,17 +80,27 @@ export const renderRootIndexFile = (existing: string | null, docsDir: string): s
 
 /**
  * Whether `renderRootIndexFile` may overwrite `existing` without destroying content it cannot
- * reproduce. True for an absent file, a file with nothing but headings and blank lines, or a
- * table whose header cells are exactly blackhole's (case-sensitive). Any other table header, or
- * prose outside a table, belongs to the consumer's own index convention and must be left alone.
+ * reproduce. `renderRootIndexFile` keeps only the first two lines (the title block) and rebuilds
+ * one bare-path table, so the file is regenerable only when everything else is that table or
+ * blank: an absent file, a title-only file, or one table whose header cells are exactly
+ * blackhole's (case-sensitive) and whose data rows carry bare path cells. A foreign header, a
+ * markdown-link path cell, prose or a heading below the title block, or a second table belongs
+ * to the consumer's own index convention and must be left alone.
  */
 export const isRegenerableRootIndex = (existing: string | null): boolean => {
   if (existing === null) return true;
   const lines = existing.split('\n');
-  const { separatorIdx } = findTableBlock(lines);
-  if (separatorIdx === -1) return lines.every((l) => l.trim() === '' || l.trimStart().startsWith('#'));
-  const cells = (line: string): string => line.split('|').map((c) => c.trim()).slice(1, -1).join(',');
-  return cells(lines[separatorIdx - 1] ?? '') === cells(INDEX_TABLE_HEADER.split('\n')[0]);
+  const { separatorIdx, blockEnd } = findTableBlock(lines);
+  const cells = (line: string): string[] => line.split('|').map((c) => c.trim()).slice(1, -1);
+  const TITLE_BLOCK_LINES = 2;
+  const tableStart = separatorIdx === -1 ? -1 : separatorIdx - 1;
+  const outsideIsBlank = lines.every(
+    (l, i) => i < TITLE_BLOCK_LINES || (i >= tableStart && i < blockEnd) || l.trim() === ''
+  );
+  if (!outsideIsBlank) return false;
+  if (separatorIdx === -1) return lines.slice(0, TITLE_BLOCK_LINES).every((l) => l.trim() === '' || l.trimStart().startsWith('#'));
+  if (cells(lines[tableStart] ?? '').join(',') !== cells(INDEX_TABLE_HEADER.split('\n')[0]).join(',')) return false;
+  return lines.slice(separatorIdx + 1, blockEnd).every((row) => !/^\[.*\]\(.*\)$/.test(cells(row)[0] ?? ''));
 };
 
 // Issue #832 (ADR-031 Phase 2) — the one shared diff `doc-health.check.ts`'s V-DOCHEALTH-01/02/04
