@@ -250,6 +250,14 @@ describe('a destination spelled with adjacent quote segments', () => {
     });
   });
 
+  test('a closed quoted redirect target holding a space blocks at a protected state path', async () => {
+    await withState((state, wt, run) => {
+      expect(run(`echo y > '${state}/my file'`)).toMatchObject(BLOCK);
+      expect(run(`echo y >> "${state}/hook-events/a b"`)).toMatchObject(BLOCK);
+      expect(run(`bash -c 'echo hi > ${wt}/x'`)).toMatchObject({ tier: 'warn', pattern_id: 'bash-write-target-unresolvable' });
+    });
+  });
+
   test('a plainly quoted in-worktree target is unchanged', async () => {
     await withState((_state, _wt, run) => {
       expect(run('echo y > "./y"')).toBeNull();
