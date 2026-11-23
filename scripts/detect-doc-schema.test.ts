@@ -160,6 +160,54 @@ describe('detect-doc-schema.sh — frontmatter mode', () => {
     }
   });
 
+  test('mercure ADR with shared-name last_updated (6 mercure keys vs 1) -> schema=mercure', () => {
+    const fixtureDir = makeFixtureDir();
+    try {
+      const filePath = writeFixture(
+        fixtureDir,
+        'ADR-123-foo.md',
+        '---\ntype: adr\nnumber: 123\ntitle: Some Decision\nstatus: Accepted\ncreated: 2026-07-20\nlast_updated: 2026-07-21\nsource: brainstorm\nscope: initiative\ndecision_signals: [a, b]\ntracking_initiative: foo\n---\n\n# ADR-123 Some Decision\n'
+      );
+      const result = run('frontmatter', filePath);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('schema=mercure\n');
+    } finally {
+      fs.rmSync(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  test('blackhole ADR with a stray title (1 mercure key vs 2) -> schema=blackhole', () => {
+    const fixtureDir = makeFixtureDir();
+    try {
+      const filePath = writeFixture(
+        fixtureDir,
+        'ADR-013-foo.md',
+        '---\ntype: adr\ntitle: Stray\nstatus: current\ncreated: 2026-07-20\nlast_updated: 2026-07-20\nreview_trigger: "on protocol change"\n---\n\n# ADR-013 Some Decision\n'
+      );
+      const result = run('frontmatter', filePath);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('schema=blackhole\n');
+    } finally {
+      fs.rmSync(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  test('evenly split discriminators (2 mercure keys vs 2) -> schema=ambiguous', () => {
+    const fixtureDir = makeFixtureDir();
+    try {
+      const filePath = writeFixture(
+        fixtureDir,
+        'ADR-013-foo.md',
+        '---\ntype: adr\nnumber: 13\ntitle: Some Decision\nstatus: current\nlast_updated: 2026-07-20\nreview_trigger: "on protocol change"\n---\n\n# ADR-013 Some Decision\n'
+      );
+      const result = run('frontmatter', filePath);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe('schema=ambiguous\n');
+    } finally {
+      fs.rmSync(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
   test('only-shared-keys frontmatter (no discriminator from either set) -> schema=ambiguous', () => {
     const fixtureDir = makeFixtureDir();
     try {

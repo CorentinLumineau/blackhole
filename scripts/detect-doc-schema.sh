@@ -29,7 +29,9 @@
 #   mercure-only discriminator keys:   number, title, source, scope, decision_signals,
 #                                       tracking_initiative
 #   blackhole-only discriminator keys: last_updated, review_trigger
-#   both sets present, neither set present, or unparsable/missing block -> ambiguous
+#   Count the keys present from each set: more mercure-only keys than blackhole-only keys
+#   -> mercure; more blackhole-only than mercure-only -> blackhole. An equal count (including
+#   neither set present) or an unparsable/missing block -> ambiguous.
 
 set -u
 
@@ -96,17 +98,15 @@ detect_frontmatter() {
     local mercure_keys=("number" "title" "source" "scope" "decision_signals" "tracking_initiative")
     local blackhole_keys=("last_updated" "review_trigger")
 
-    local has_mercure="false"
-    local has_blackhole="false"
+    local mercure_count=0
+    local blackhole_count=0
     local k
-    for k in "${mercure_keys[@]}"; do has_key "$k" && has_mercure="true"; done
-    for k in "${blackhole_keys[@]}"; do has_key "$k" && has_blackhole="true"; done
+    for k in "${mercure_keys[@]}"; do has_key "$k" && mercure_count=$((mercure_count + 1)); done
+    for k in "${blackhole_keys[@]}"; do has_key "$k" && blackhole_count=$((blackhole_count + 1)); done
 
-    if [[ "$has_mercure" == "true" && "$has_blackhole" == "true" ]]; then
-        emit "ambiguous"
-    elif [[ "$has_mercure" == "true" ]]; then
+    if (( mercure_count > blackhole_count )); then
         emit "mercure"
-    elif [[ "$has_blackhole" == "true" ]]; then
+    elif (( blackhole_count > mercure_count )); then
         emit "blackhole"
     else
         emit "ambiguous"
