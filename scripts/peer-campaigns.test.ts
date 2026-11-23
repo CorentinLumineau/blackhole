@@ -211,6 +211,37 @@ describe('peer-campaigns CLI', () => {
     expect(cli(['release', '--campaign-dir', campaign(wt1)], a, process.pid).code).toBe(0);
   });
 
+  test('a host session starting beside a live token-mode session keeps it as a peer', () => {
+    const b = 'bbbbbbbb-aaaa-4000-8000-00000000000a';
+    const tokenFile = path.join(campaign(wt1), '.tmp', 'campaign-session.json');
+    fs.rmSync(tokenFile, { force: true });
+    fs.rmSync(path.join(campaign(wt1), '.tmp', 'campaign-last-session.json'), { force: true });
+    // A plain shell (no host session id, no host pid) is running this campaign dir.
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '4']).code).toBe(0);
+    const token = JSON.parse(fs.readFileSync(tokenFile, 'utf-8')).session;
+    // A Claude session starts on the same campaign dir: its launch gate must see the token session.
+    const peers = JSON.parse(cli(['detect', '--campaign-dir', campaign(wt1)], b, process.pid).stdout).peers.map((p: { session: string }) => p.session);
+    expect(peers).toEqual([token]);
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '0'], b, process.pid).code).toBe(0);
+    expect(registryFiles().sort()).toEqual([`${b}.json`, `${token}.json`].sort());
+    expect(cli(['release', '--campaign-dir', campaign(wt1)], b, process.pid).code).toBe(0);
+    expect(cli(['release', '--campaign-dir', campaign(wt1)]).code).toBe(0);
+  });
+
+  test('a token-mode session inside a host process records its pid and recognises its own earlier record', () => {
+    const tokenFile = path.join(campaign(wt1), '.tmp', 'campaign-session.json');
+    fs.rmSync(tokenFile, { force: true });
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '1'], undefined, process.pid).code).toBe(0);
+    const first = JSON.parse(fs.readFileSync(tokenFile, 'utf-8')).session;
+    expect(JSON.parse(fs.readFileSync(path.join(registry, `${first}.json`), 'utf-8')).host_pid).toBe(process.pid);
+    // The token is lost; the same live host process mints a new one and replaces its own record.
+    fs.rmSync(tokenFile);
+    expect(JSON.parse(cli(['detect', '--campaign-dir', campaign(wt1)], undefined, process.pid).stdout).verdict).toBe('solo');
+    expect(cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '2'], undefined, process.pid).code).toBe(0);
+    expect(registryFiles()).toHaveLength(1);
+    expect(cli(['release', '--campaign-dir', campaign(wt1)], undefined, process.pid).code).toBe(0);
+  });
+
   test('an unusable host session id warns on stderr and falls back to the campaign-dir token', () => {
     const r = cli(['heartbeat', '--campaign-dir', campaign(wt1), '--turn', '1'], 'not a session id!');
     expect(r.code).toBe(0);

@@ -157,14 +157,14 @@ queue entry that is `in-flight`, or carries a `pr` and is not held for a peer
 (`another session:`, [forge-sync.md](forge-sync.md) § Queue builder script). It stays live for 40 minutes after its last
 heartbeat, the same lease as § Grant lease. This session's own id is the host session id
 (`CLAUDE_CODE_SESSION_ID`) where the host sets one, so two sessions running one campaign directory
-keep two records and each sees the other as a peer. The record also carries the host process id
-(`CLAUDE_PID`), and such a session writes its id to `.blackhole/.tmp/campaign-last-session.json`.
+keep two records and each sees the other as a peer. Every record carries the host process id
+(`CLAUDE_PID`) when the host sets one, and a host-scoped session writes its id to `.blackhole/.tmp/campaign-last-session.json`.
 Where the host sets no session id, the id lives in `.blackhole/.tmp/campaign-session.json`, which
 every session on that campaign directory shares; a host-scoped session never writes it. A record
 in this worktree on this host is this campaign's earlier session, read as self and removed by
 `heartbeat`, when its recorded host process is this one (`/clear`) or is gone (a resume or fork in
 a new process). A record with no recorded pid is an earlier session for a token id (a lost token),
-and, for a host id, only when it carries the last-session or token id and has not heartbeated
+and, for a host id, only when it carries the last-session id and has not heartbeated
 since this session's first heartbeat. A record whose host process is alive is always a peer, so a
 token-mode session sees a live host-scoped one; two token-mode sessions on one directory still
 share one id and stay unseen.

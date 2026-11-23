@@ -126,7 +126,7 @@ describe('livePeers', () => {
 });
 
 describe('supersededSessions', () => {
-  const me = { session: self.session, worktree: self.worktree, host: self.host, hostScoped: true, pid: 100 as number | null, markers: [] as string[], startedAtMs: null as number | null };
+  const me = { session: self.session, worktree: self.worktree, host: self.host, hostScoped: true, pid: 100 as number | null, lastSession: null as string | null, startedAtMs: null as number | null };
   const here = (over: Partial<PeerRecord>) => record({ worktree: self.worktree, host: self.host, ...over });
   const alive = (pid: number) => pid === 200;
 
@@ -144,12 +144,12 @@ describe('supersededSessions', () => {
 
   test('without a pid, the last owner of the campaign dir is superseded until it heartbeats after this session started', () => {
     const r = here({ heartbeat_at: minutesAgo(5) });
-    expect(supersededSessions([r], { ...me, markers: [r.session] }, alive)).toEqual([r.session]);
+    expect(supersededSessions([r], { ...me, lastSession: r.session }, alive)).toEqual([r.session]);
     // Its last heartbeat came before this session's first one: superseded.
-    expect(supersededSessions([r], { ...me, markers: [r.session], startedAtMs: NOW - 1 * 60_000 }, alive)).toEqual([r.session]);
+    expect(supersededSessions([r], { ...me, lastSession: r.session, startedAtMs: NOW - 1 * 60_000 }, alive)).toEqual([r.session]);
     // It heartbeated after this session started: it is running concurrently, a peer.
-    expect(supersededSessions([r], { ...me, markers: [r.session], startedAtMs: NOW - 10 * 60_000 }, alive)).toEqual([]);
-    expect(supersededSessions([r], { ...me, markers: ['someone-else'] }, alive)).toEqual([]);
+    expect(supersededSessions([r], { ...me, lastSession: r.session, startedAtMs: NOW - 10 * 60_000 }, alive)).toEqual([]);
+    expect(supersededSessions([r], { ...me, lastSession: 'someone-else' }, alive)).toEqual([]);
   });
 
   test('with a token id, any pid-less same-worktree record is this campaign before its token was lost', () => {

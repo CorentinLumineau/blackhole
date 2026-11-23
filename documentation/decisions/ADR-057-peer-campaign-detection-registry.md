@@ -203,15 +203,17 @@ Disclosures:
     campaign directory is a peer and the launch gate asks the peer question.
   - **Predecessor marker**: to keep this ADR's discriminating CRITICAL closed (a state-lost
     session must not read its own claims as a peer's), each record carries `host_pid`
-    (`CLAUDE_PID`, optional, older records read as null), and a host-scoped session writes its id
+    (`CLAUDE_PID` when set, in either mode; optional, older records read as null), and a host-scoped session writes its id
     to its own file, `<campaign dir>/.tmp/campaign-last-session.json`; the token file stays
     token-mode only, so a token-mode session never adopts a host session's id. A same-worktree,
     same-host record is this campaign's earlier session, read as self and removed by `heartbeat`,
     when its host process is this one (`/clear`) or is gone (a resume or fork in a new process).
     With no pid recorded, it is an earlier session for a token id (the original lost-token rule),
-    and for a host id only when it carries the last-session or token id and has not heartbeated
+    and for a host id only when it carries the last-session id and has not heartbeated
     since this session's first heartbeat. A record whose host process is alive is always a peer,
-    token mode included.
+    token mode included. A pidless record under the token id (a live plain-shell, Cursor or Codex
+    session, or a pre-upgrade record) is never superseded by a host-scoped session: it stays a
+    peer until its 40-minute lease lapses.
   - **Residuals**:
     - With no host session id (Cursor, Codex, a plain shell), two token-mode sessions on one
       campaign directory still share one id and stay unseen.
@@ -220,6 +222,11 @@ Disclosures:
       record, and `detect` at that session's launch gate returns `solo`: the #1408 symptom. It
       lasts until the other session's next heartbeat recreates its record. Exposure is limited
       because Claude Code sets both variables.
+    - The token-side mirror: a token-mode session with no `CLAUDE_PID` reads any pidless record in
+      its worktree as its own lost-token record, so it deletes a live host-scoped session that has
+      no `CLAUDE_PID` and does not see it, until that session's next heartbeat recreates it.
+    - After an upgrade, a crashed pre-upgrade session's token record reads as a peer of the next
+      host-scoped session until its lease lapses.
     - Liveness is `kill(pid, 0)` only: a reused pid reads a gone predecessor as alive, so it
       shows as a peer until its 40-minute lease ends. Comparing the process start time would
       harden this; it is a known limit, not implemented.

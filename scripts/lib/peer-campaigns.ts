@@ -155,8 +155,8 @@ export type SuccessorView = {
   hostScoped: boolean;
   /** This session's host process id, or null when unknown. */
   pid: number | null;
-  /** Ids a host-scoped session's predecessor may carry: the campaign dir's last session and its legacy token. */
-  markers: string[];
+  /** The campaign dir's last host-scoped session (`.tmp/campaign-last-session.json`), or null. */
+  lastSession: string | null;
   /** When this session's own record started, or null before its first heartbeat. */
   startedAtMs: number | null;
 };
@@ -166,8 +166,9 @@ export type SuccessorView = {
  * resume in a new session, `/clear`, `--fork-session` after the old one exited, a lost token),
  * not a peer. With a recorded host pid: superseded when it is this same host process or that
  * process is gone, so a live host-scoped session is always a peer. Without one: for a token id,
- * always (the campaign before its token was lost); for a host-scoped id, when it carries one of
- * `markers` and did not heartbeat after this session's first heartbeat.
+ * always (the campaign before its token was lost); for a host-scoped id, only when it is the
+ * campaign dir's `lastSession` and did not heartbeat after this session's first heartbeat, so a
+ * live token-mode session's record stays a peer (and a dead one lapses with its lease).
  */
 export function supersededSessions(records: PeerRecord[], me: SuccessorView, pidAlive: (pid: number) => boolean): string[] {
   return records
@@ -175,7 +176,7 @@ export function supersededSessions(records: PeerRecord[], me: SuccessorView, pid
     .filter((r) =>
       r.host_pid !== null
         ? r.host_pid === me.pid || !pidAlive(r.host_pid)
-        : !me.hostScoped || (me.markers.includes(r.session) && (me.startedAtMs === null || Date.parse(r.heartbeat_at) <= me.startedAtMs)),
+        : !me.hostScoped || (r.session === me.lastSession && (me.startedAtMs === null || Date.parse(r.heartbeat_at) <= me.startedAtMs)),
     )
     .map((r) => r.session);
 }
