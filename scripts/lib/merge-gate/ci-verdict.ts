@@ -25,34 +25,48 @@ const PASSING = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 /** Completed conclusions that cannot replace a CANCELLED run (`withoutSupersededCancelled`). */
 const NOT_EXECUTED = new Set(['NEUTRAL', 'SKIPPED', 'CANCELLED']);
 
-/**
- * The queued placeholder `checksFromSnapshot` adds for a payload that lists fewer rows than its
- * `total_count`: an unread page can hold a FAILURE, so the verdict is at least pending and names why.
- */
-const truncatedCheck = (list: 'check_runs' | 'statuses', fetched: number, total: number): ForgeCheck =>
-  ({ name: `${list} truncated: ${fetched} of ${total} fetched, read every page`, status: 'QUEUED', conclusion: null });
+/** A queued placeholder `checksFromSnapshot` adds when the snapshot proves rows are missing, so the verdict is at least pending and names why. */
+const placeholder = (name: string): ForgeCheck => ({ name, status: 'QUEUED', conclusion: null });
 
 /**
  * Accepts a REST or MCP check-runs payload, a combined-status payload, both merged, or ForgeCheck[].
  * `runs` is the head's `actions/runs` payload, the producer source `withoutSupersededCancelled` needs.
  *
- * A `total_count` counts the check runs when `check_runs` is present (the check-runs payload, whose
- * default page is 30 rows), otherwise the statuses. When it exceeds the rows listed, the snapshot is a
- * partial page and one queued `truncatedCheck` entry is added, so `ciVerdict` reports it in `pending`
- * and never returns green. A merged snapshot must keep the check-runs `total_count`.
+ * Both payloads carry a `total_count` (the check-runs one counts every run, while its default page is
+ * 30 rows), and a merge keeps only one of them, so a snapshot is checked for missing rows:
+ * - only `check_runs`, or only `statuses`: a `total_count` above the rows listed is a partial read;
+ * - both lists: `total_count` must equal the check-runs count, since nothing tells which payload it
+ *   came from;
+ * - a combined-status `state` other than `success` while every listed status passes means a status
+ *   page holding the non-passing one was not read (`pending` with no statuses is no signal).
+ * Each case adds a queued placeholder, so `ciVerdict` reports it in `pending` and never returns green.
  */
 export const checksFromSnapshot = (snapshot: unknown, runs?: unknown): ForgeCheck[] => {
   const suites = runs === undefined ? undefined : suiteProducers(runs);
   if (Array.isArray(snapshot)) return snapshot as ForgeCheck[];
   if (snapshot === null || typeof snapshot !== 'object') throw new Error('checks snapshot must be an object or an array');
-  const { check_runs, statuses, total_count } = snapshot as { check_runs?: RestCheckRun[]; statuses?: RestStatus[]; total_count?: unknown };
+  const { check_runs, statuses, total_count, state } =
+    snapshot as { check_runs?: RestCheckRun[]; statuses?: RestStatus[]; total_count?: unknown; state?: unknown };
   if (!check_runs && !statuses) throw new Error('checks snapshot has neither check_runs nor statuses');
   if (total_count !== undefined && !(Number.isInteger(total_count) && (total_count as number) >= 0)) {
     throw new Error('checks snapshot total_count must be a non-negative integer');
   }
-  const checks = [...(check_runs ?? []).map((row) => mapRestCheckRun(row, suites)), ...(statuses ?? []).map(mapRestStatus)];
-  const [list, fetched] = check_runs ? ['check_runs' as const, check_runs.length] : ['statuses' as const, statuses?.length ?? 0];
-  if (typeof total_count === 'number' && total_count > fetched) checks.push(truncatedCheck(list, fetched, total_count));
+  const mappedStatuses = (statuses ?? []).map(mapRestStatus);
+  const checks = [...(check_runs ?? []).map((row) => mapRestCheckRun(row, suites)), ...mappedStatuses];
+  if (typeof total_count === 'number') {
+    if (check_runs && statuses) {
+      if (total_count !== check_runs.length) {
+        checks.push(placeholder(`checks snapshot total_count ${total_count} does not match its ${check_runs.length} check runs: keep the check-runs total_count of a complete read when merging`));
+      }
+    } else {
+      const [list, fetched] = check_runs ? ['check_runs', check_runs.length] : ['statuses', mappedStatuses.length];
+      if (total_count > fetched) checks.push(placeholder(`${list} truncated: ${fetched} of ${total_count} fetched, read every page`));
+    }
+  }
+  const allPass = mappedStatuses.every((c) => c.status === 'COMPLETED' && c.conclusion === 'SUCCESS');
+  if (typeof state === 'string' && state !== 'success' && allPass && !(state === 'pending' && mappedStatuses.length === 0)) {
+    checks.push(placeholder(`statuses combined state is ${state} but every listed status passes: read every status page`));
+  }
   return checks;
 };
 
