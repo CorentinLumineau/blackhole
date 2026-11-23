@@ -62,7 +62,15 @@ const REQUIRED_FIELDS = [
  */
 export const loadManifest = (manifestPath: string): Manifest | null => {
   if (!fs.existsSync(manifestPath)) return null;
-  return readJsonFile(manifestPath, manifestPath) as Manifest;
+  const parsed: unknown = readJsonFile(manifestPath, manifestPath);
+  const shape = Array.isArray(parsed) ? 'a bare array' : parsed === null ? 'null' : typeof parsed;
+  if (shape !== 'object' || !Array.isArray((parsed as { entries?: unknown }).entries)) {
+    throw new Error(
+      `${manifestPath}: a staging manifest is an object {issue, updated_at, entries: [...]} ` +
+        `(blackhole-state.md § Staging), got ${shape === 'object' ? 'an object with no entries array' : shape}`,
+    );
+  }
+  return parsed as Manifest;
 };
 
 /**

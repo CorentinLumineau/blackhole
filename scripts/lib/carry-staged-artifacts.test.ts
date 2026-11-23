@@ -45,6 +45,22 @@ describe('loadManifest — shape guard (absent vs. zero-byte/unparseable, blackh
     });
   });
 
+  test('a bare-array manifest throws a shape error naming the documented object, not a TypeError', () => {
+    withTempDir('carry-shape', (dir) => {
+      const manifestPath = path.join(dir, 'manifest.json');
+      fs.writeFileSync(manifestPath, JSON.stringify([{ route: 'plan', target_kind: 'new_file' }]));
+      expect(() => loadManifest(manifestPath)).toThrow(/object \{issue, updated_at, entries: \[\.\.\.\]\}.*got a bare array/);
+    });
+  });
+
+  test('an object manifest without an entries array throws a shape error', () => {
+    withTempDir('carry-shape', (dir) => {
+      const manifestPath = path.join(dir, 'manifest.json');
+      fs.writeFileSync(manifestPath, JSON.stringify({ issue: 1, updated_at: 'x', entries: {} }));
+      expect(() => loadManifest(manifestPath)).toThrow(/got an object with no entries array/);
+    });
+  });
+
   test('a valid manifest loads', () => {
     withTempDir('carry-shape', (dir) => {
       const manifestPath = path.join(dir, 'manifest.json');
