@@ -6,12 +6,14 @@ file owns only the merge method and the low-risk automerge gate. Consulted by `p
 
 ## `classifyMergeRisk(pr) -> automerge | needs-chef` — low-risk merge gate
 
-**Merge method.** Blackhole merges with `--squash` by default. A PR that has open stacked
-children is merged with `--merge` (a merge commit) when the repo allows it, because the child then
-already contains the parent's tip and recovery (`merge-gate.md` § 7) is a retarget with no commit, no push and no
-CI rerun. When the repo allows no merge commit, it stays `--squash` and `merge-gate.md` § 7's replay is mandatory.
-`bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts merge-method --queue <abs queue.json> --repo-slug <owner/repo>
---forge <config.forge> --issue <N>` prints the choice as JSON (`method`, `flag`, `reason`); with unreadable repo settings and open stacked children it prints `hold: true` and exits 3 instead of choosing squash; `phase-loop.md` step 4 runs it.
+**Merge method.** Blackhole merges with `--squash` by default. A PR that has open stacked children
+is merged with `--merge` (a merge commit) when the repo allows it, because the child then already
+contains the parent's tip and recovery (`merge-gate.md` § 7) is a retarget with no commit, no push
+and no CI rerun. When the repo allows no merge commit, it stays `--squash` and `merge-gate.md` § 7's
+replay is mandatory. `bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/stack-repair.ts merge-method --queue <abs queue.json>
+--repo-slug <owner/repo> --forge <config.forge> --issue <N>` prints the choice as JSON (`method`,
+`flag`, `reason`); with unreadable repo settings and open stacked children it prints `hold: true`
+and exits 3 instead of choosing squash; `phase-loop.md` step 4 runs it.
 
 Blackhole may merge **its own** PRs only when CI is already green (step 1 / C3) **and** the
 diff is low-risk. Any other PR that has reached this point stays open for Chef (the orchestrator /
