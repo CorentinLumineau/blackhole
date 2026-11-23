@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
-import { enumerateHookSources, type HookSourceInputs } from './lib/hook-sources.ts';
+import { enumerateHookSources, resolveInstalledPluginRowsModule, type HookSourceInputs } from './lib/hook-sources.ts';
 import { orderHookSources, type GitResolver } from './lib/hook-source-ordering.ts';
 import { withTempGitRepo, runGit } from './lib/test-fixtures.ts';
 import * as fs from 'fs';
@@ -347,5 +347,19 @@ describe('orderHookSources', () => {
       expect(result.veto_pairs).toHaveLength(0);
       expect(result.sources.every((s) => s.relation_to_origin_main === 'identical')).toBe(true);
     });
+  });
+});
+
+describe('resolveInstalledPluginRowsModule', () => {
+  const rel = (...parts: string[]) => path.join('/base', ...parts);
+  test('resolves the repo-checkout path first, then the plugin bundle hooks/ path', () => {
+    const repo = rel('templates', 'hooks', 'pretooluse', 'utils', 'installed-plugin-rows.js');
+    const bundle = rel('hooks', 'utils', 'installed-plugin-rows.js');
+    expect(resolveInstalledPluginRowsModule('/base', (p) => p === repo || p === bundle)).toBe(repo);
+    expect(resolveInstalledPluginRowsModule('/base', (p) => p === bundle)).toBe(bundle);
+  });
+
+  test('throws naming every path tried when neither layout has the helper', () => {
+    expect(() => resolveInstalledPluginRowsModule('/base', () => false)).toThrow(/hooks\/utils\/installed-plugin-rows\.js/);
   });
 });
