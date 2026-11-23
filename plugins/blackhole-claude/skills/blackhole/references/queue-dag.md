@@ -88,8 +88,8 @@ A queue written before the enums above were enforced can still carry a legacy `s
 `scripts/queue-migrate.ts` rewrites them in one pass. Run from the repo that holds the campaign:
 
 ```bash
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/queue-migrate.ts            # dry run: prints each change, writes nothing
-bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/queue-migrate.ts --apply    # snapshots queue.json to archive/, installs through the guard
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/queue-migrate.ts            # dry run: prints each change, writes nothing
+bun run "${BLACKHOLE_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?blackhole plugin root unset, see blackhole#1269}}"/scripts/queue-migrate.ts --apply    # snapshots queue.json to archive/, installs through the guard
 ```
 
 `--campaign-dir <dir>` points it at a campaign directory other than `./.blackhole`. Run `--apply`
