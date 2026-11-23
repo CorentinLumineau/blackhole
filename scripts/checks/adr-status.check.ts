@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseMdFrontmatter } from '../lib/build/content.ts';
-import { parseIndexTableRows } from '../lib/check-common.ts';
+import { lookupIndexStatus, parseDecisionsIndexStatusMap } from '../lib/check-common.ts';
 import { root, type CheckResult } from './check-utils.ts';
 
 // ADR-007 T5/R2' — adr-status.check.ts: V-ADR-01..05, V-ADA-08 lifecycle (#460).
@@ -28,15 +28,9 @@ export const extractBodyStatusLeadingToken = (content: string): string | null =>
   return tokenMatch ? tokenMatch[1] : null;
 };
 
-// V-ADR-02: INDEX.md status column keyed by ADR filename.
-export const parseIndexStatusMap = (indexContent: string): Map<string, string> => {
-  const rows = new Map<string, string>();
-  for (const row of parseIndexTableRows(indexContent)) {
-    if (!row.path.startsWith('ADR-')) continue;
-    rows.set(row.path, row.status);
-  }
-  return rows;
-};
+// V-ADR-02: INDEX.md status column, read by header name for both index schemas (issue #1411).
+export const parseIndexStatusMap = parseDecisionsIndexStatusMap;
+export { lookupIndexStatus };
 
 // V-ADR-01 (pure)
 export const findInvalidAdrStatuses = (files: { filename: string; status: string | null }[]): string[] =>
@@ -51,7 +45,7 @@ export const findAdrIndexMismatches = (
 ): string[] =>
   files
     .filter((f) => {
-      const indexStatus = indexMap.get(f.filename);
+      const indexStatus = lookupIndexStatus(indexMap, f.filename);
       return indexStatus === undefined || indexStatus !== f.frontmatterStatus;
     })
     .map((f) => f.filename);
@@ -171,7 +165,7 @@ const checkAdrSupersededLifecycle = (): CheckResult => {
     return {
       filename,
       frontmatterStatus: extractFrontmatterStatus(content),
-      indexStatus: indexMap.get(filename),
+      indexStatus: lookupIndexStatus(indexMap, filename),
       supersessionCitation: extractSupersessionCitation(content),
     };
   });

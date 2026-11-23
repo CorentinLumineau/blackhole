@@ -14,6 +14,7 @@ import {
   findTableBlock,
   isAdrIndexHeader,
   parseIndexTableRows,
+  readIndexColumns,
   parseVcodeTableRows,
   renderIndexRowLine,
 } from './check-common.ts';
@@ -671,5 +672,20 @@ describe('isAdrIndexHeader / appendAdrIndexRowIfAbsent (issue #1390)', () => {
     expect(appendIndexRowIfAbsent(blackhole, row).content).toBe(
       '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n| ADR-001-x.md | One | adr | accepted | never |\n| ADR-002-two.md | Two | adr | accepted | never |\n',
     );
+  });
+});
+
+describe('readIndexColumns (issue #1411)', () => {
+  test('reads columns by header name, whatever their position', () => {
+    const invest = '| ADR | Title | Status | Date | Traceability |\n|---|---|---|---|---|\n| ADR-001 | A \\| b | Accepted | 2026-01-01 | #1 |\n';
+    expect(readIndexColumns(invest, 'ADR', 'status')).toEqual([{ key: 'ADR-001', value: 'Accepted' }]);
+    expect(readIndexColumns(invest, 'adr', 'title')).toEqual([{ key: 'ADR-001', value: 'A | b' }]);
+    const blackhole = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n| ADR-001-x.md | One | adr | accepted | never |\n';
+    expect(readIndexColumns(blackhole, 'path', 'status')).toEqual([{ key: 'ADR-001-x.md', value: 'accepted' }]);
+  });
+
+  test('a column the header does not carry yields no rows', () => {
+    expect(readIndexColumns('| ADR | Title |\n|---|---|\n| ADR-001 | A |\n', 'adr', 'status')).toEqual([]);
+    expect(readIndexColumns('no table\n', 'adr', 'status')).toEqual([]);
   });
 });

@@ -141,10 +141,10 @@ export const expandVcodeTableKey = (key: string): string[] => {
 };
 
 // Issue #573 (#498 deferral): `documentation/**/INDEX.md`'s 5-column `| path | summary | type |
-// status | review_trigger |` schema is parsed by two near-identical call sites —
-// doc-health.check.ts's parseRootIndexRows (root documentation/INDEX.md, folder-prefixed path)
-// and adr-status.check.ts's parseIndexStatusMap (documentation/decisions/INDEX.md, bare ADR
-// filename in the same column position). Same split('|').map(trim) + length-guard idiom as
+// status | review_trigger |` schema, as doc-health.check.ts's parseRootIndexRows reads it (root
+// documentation/INDEX.md, folder-prefixed path). adr-status.check.ts's parseIndexStatusMap reads
+// the decisions index by header name through readIndexColumns instead, since a consumer's
+// decisions index may use the ADR-style header (issue #1411). Same split('|').map(trim) + length-guard idiom as
 // parseVcodeTableRows above (V-INT-02) — the row-splitting *technique* is shared; the path
 // column's *interpretation* is not (folder-prefixed vs. bare filename) and stays with each
 // caller. Header/separator rows are skipped by the generic 'path' header value and the
@@ -372,6 +372,63 @@ const indexHeaderColumns = (indexContent: string): string[] => {
 // adds `Traceability`) uses a different row schema than blackhole's `path | summary | ...`;
 // column-name detection is the only signal the carry step has for which one it is appending to.
 export const isAdrIndexHeader = (indexContent: string): boolean => indexHeaderColumns(indexContent)[0] === 'adr';
+
+// Reads two columns of an INDEX table by header name rather than by position, so one reader works
+// on blackhole's `path | summary | type | status | review_trigger` and on the ADR-style
+// `ADR | Title | Status | Date [| Traceability]` header alike. Column names match lowercased; a
+// missing column yields no rows. Cells come back trimmed and unescaped, as parseIndexTableRows
+// returns them.
+export const readIndexColumns = (
+  indexContent: string,
+  keyColumn: string,
+  valueColumn: string,
+): { key: string; value: string }[] => {
+  const columns = indexHeaderColumns(indexContent);
+  const keyIdx = columns.indexOf(keyColumn.toLowerCase());
+  const valueIdx = columns.indexOf(valueColumn.toLowerCase());
+  if (keyIdx === -1 || valueIdx === -1) return [];
+  const rows: { key: string; value: string }[] = [];
+  let headerSeen = false;
+  for (const line of indexContent.split('\n')) {
+    if (!line.trim().startsWith('|') || isSeparatorRow(line)) continue;
+    if (!headerSeen) {
+      headerSeen = true;
+      continue;
+    }
+    const cells = splitRowCells(line).map(unescapeTableCell);
+    if (cells[keyIdx]) rows.push({ key: cells[keyIdx], value: cells[valueIdx] ?? '' });
+  }
+  return rows;
+};
+
+// adr-status.check.ts's V-ADR-02 reader (issue #1411): the decisions INDEX status column, found
+// by header name. A blackhole header (`path | ... | status | ...`) is keyed by the ADR filename
+// and keeps its status cell verbatim, since V-ADR-02 requires the exact bare token there. An
+// ADR-style header (mercure `ADR | Title | Status | Date`, invest adds `Traceability`) is keyed
+// by the linked filename, or by the bare `ADR-NNN` id when the cell has no link, and its status
+// is the cell's leading word lowercased (`Superseded by ADR-003` reads `superseded`).
+export const parseDecisionsIndexStatusMap = (indexContent: string): Map<string, string> => {
+  const rows = new Map<string, string>();
+  if (isAdrIndexHeader(indexContent)) {
+    for (const { key, value } of readIndexColumns(indexContent, 'adr', 'status')) {
+      const link = key.match(/^\[[^\]]*\]\(([^)]*)\)$/);
+      const target = link ? path.basename(link[1]) : key;
+      const id = target.match(/^ADR-\d+(?:-[^\s]*\.md)?/)?.[0];
+      if (!id) continue;
+      rows.set(id, (value.match(/^[A-Za-z]+/)?.[0] ?? value).toLowerCase());
+    }
+    return rows;
+  }
+  for (const { key, value } of readIndexColumns(indexContent, 'path', 'status')) {
+    if (!key.startsWith('ADR-')) continue;
+    rows.set(key, value);
+  }
+  return rows;
+};
+
+// An ADR-style index may key a row by its bare `ADR-NNN` id instead of the filename.
+export const lookupIndexStatus = (indexMap: Map<string, string>, filename: string): string | undefined =>
+  indexMap.get(filename) ?? indexMap.get(filename.match(/^ADR-\d+/)?.[0] ?? '');
 
 const ADR_TOKEN = /ADR-\d+/;
 

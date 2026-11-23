@@ -91,6 +91,51 @@ describe('parseIndexStatusMap', () => {
   });
 });
 
+describe('parseIndexStatusMap — ADR-style headers (issue #1411)', () => {
+  const mercure = `# Decisions
+
+| ADR     | Title  | Status                | Date       |
+| ------- | ------ | --------------------- | ---------- |
+| ADR-001 | One    | Accepted              | 2026-01-01 |
+| ADR-002 | Two    | Superseded by ADR-003 | 2026-01-02 |
+`;
+  const invest = `| ADR | Title | Status | Date | Traceability |
+|-----|-------|--------|------|--------------|
+| [ADR-001](./ADR-001-a.md) | One | Accepted | 2026-01-01 | #1 |
+| [ADR-002](./ADR-002-b.md) | Two \\| pipe | Superseded by ADR-003 | 2026-01-02 | #2 |
+`;
+
+  test('mercure header: status read from the Status column, keyed by ADR id', () => {
+    const map = parseIndexStatusMap(mercure);
+    expect(map.get('ADR-001')).toBe('accepted');
+    expect(map.get('ADR-002')).toBe('superseded');
+    expect(map.size).toBe(2);
+  });
+
+  test('invest header: status read from the Status column, keyed by the linked filename', () => {
+    const map = parseIndexStatusMap(invest);
+    expect(map.get('ADR-001-a.md')).toBe('accepted');
+    expect(map.get('ADR-002-b.md')).toBe('superseded');
+    expect(map.size).toBe(2);
+  });
+
+  test('V-ADR-02 matches files against a bare-id mercure index', () => {
+    const files = [
+      { filename: 'ADR-001-one.md', frontmatterStatus: 'accepted' },
+      { filename: 'ADR-002-two.md', frontmatterStatus: 'accepted' },
+    ];
+    expect(findAdrIndexMismatches(files, parseIndexStatusMap(mercure))).toEqual(['ADR-002-two.md']);
+  });
+
+  test('blackhole header keeps exact-case status (V-ADR-02 bare token rule)', () => {
+    const index = `| path | summary | type | status | review_trigger |
+|---|---|---|---|---|
+| ADR-001-a.md | A | adr | Accepted | never |
+`;
+    expect(parseIndexStatusMap(index).get('ADR-001-a.md')).toBe('Accepted');
+  });
+});
+
 describe('findAdrIndexMismatches (V-ADR-02)', () => {
   test('a matching frontmatter/INDEX-row pair passes', () => {
     const files = [{ filename: 'ADR-001-a.md', frontmatterStatus: 'accepted' }];
