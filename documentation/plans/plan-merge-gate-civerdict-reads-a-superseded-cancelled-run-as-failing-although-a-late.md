@@ -20,7 +20,7 @@ This revision replaces the "latest run per proved producer" design that PR #1385
 | Producer proved only for `event == "pull_request"` with **exactly one** `pull_requests[]` entry; key adds the PR number and base ref | F-00754: two PRs from one head branch list both PRs on each run (length 2, unproved); `push`, `workflow_dispatch`, `repository_dispatch` and every other event are unproved |
 | `ForgeCheck.suiteId` kept; a run is only ever replaced by a run of a **different, newer** suite | F-00754 same-suite siblings (a matrix job with a static name, a tied start time) |
 | Order by server-assigned check-run id **and** suite id, both strictly newer; `startedAt` is only a veto (newer-by-id but earlier-start keeps both) | F-00753 / F-00756: no ordering decision rests on a timestamp |
-| Non-executing-newest rule (F-00747) and the tier ordering code deleted | Moot: a FAILURE is never dropped, so a newer SKIPPED cannot unmask anything |
+| Non-executing-newest rule (F-00747) and the tier ordering code deleted | Moot for a FAILURE, which is never dropped. Not moot for a CANCELLED run: fix round 4 (owner ruling F-00834) lets only a run that executed, or is still running, replace one; a newer NEUTRAL, SKIPPED or CANCELLED run does not (design decision 1, rows 15-19) |
 | `mapRestStatus` reverted to origin/main (no `producer`, `runId`, `startedAt`) | A commit status has no CANCELLED state, so it can never be dropped; the fields lose their only consumer (V-YAGNI-01) |
 | `src/references/merge-gate.md` moves into Touch-Paths | F-00755: the poll merge path calls `ci-verdict.ts` without `--runs`, so the fix was inactive there |
 | `listChecks` join failure writes one stderr line | F-00757 |
@@ -113,7 +113,12 @@ SUCCESS on the same head (a PR body or label fixed between `edited`/`labeled` ru
      `N.runId > C.runId` (both numeric, both server-assigned);
    - and it is not the case that both carry a usable `startedAt` with `start(N) < start(C)`
      (usable: parses to a moment after the epoch, so the zero time `0001-01-01T00:00:00Z` of a
-     queued run is unusable, F-00748). A disagreement between id order and start order keeps both.
+     queued run is unusable, F-00748). A disagreement between id order and start order keeps both;
+   - and N executed or is still running: N is QUEUED or IN_PROGRESS, or COMPLETED with a conclusion
+     other than NEUTRAL, SKIPPED or CANCELLED (owner ruling 2026-11-23, F-00834). A newer NEUTRAL or
+     SKIPPED run leaves C in place, so the verdict is red. Since a CANCELLED N never replaces, a
+     replacing run is never itself dropped, and the start veto cannot be bypassed through a chain of
+     CANCELLED runs (F-00852).
    Every other entry is kept and judged by the unchanged `ciVerdict` body. N's own conclusion is
    judged as is: a newer FAILURE stays red, a newer QUEUED stays pending, a latest CANCELLED with
    no newer run stays red (the issue's "a name whose latest run is CANCELLED stays non-green").
@@ -167,6 +172,15 @@ origin/main. Merge-gate step 2 reruns only `cancelled`, so such a head goes to `
 Observed in the last 300 pr-lint runs (workflow 386981354) on heads `0e105ec5` (failure, success,
 success), `cca09a76` (failure, failure, success) and `d77eb8e9` (failure, failure, success,
 cancelled, success, success).
+
+**Second ruling (2026-11-23, F-00834)**: "Only a newer SUCCESS (or a failing run) replaces a
+CANCELLED run; a newer NEUTRAL or SKIPPED run leaves the verdict red. Fail closed." A newer run
+still QUEUED or IN_PROGRESS keeps replacing (verdict pending). Accepted cost: a job that is always
+SKIPPED on PRs (the tag-only Release Notes Gate in `verify.yml`, under cancel-in-progress
+concurrency) whose CANCELLED run is followed by a SKIPPED one stays red until that run is re-run.
+Whether GitHub reports a job whose job-level `if:` is false as CANCELLED or SKIPPED when its run is
+cancelled is not determined: GitHub's workflow cancellation reference says the `if:` of running
+jobs is re-evaluated on cancel, but does not state the conclusion of a job whose `if:` was false.
 
 ## Touch-Paths
 
@@ -260,6 +274,11 @@ the new selection code is written.
 | 13b | Same, but the higher-id earlier-start run is CANCELLED | red | head (green) |
 | 13c | CANCELLED with lower id and suite but later `startedAt` than the higher-id SUCCESS | red (start vetoes) | guard (red on head) |
 | 14 | Same proved producer (row 1 identity), older FAILURE then newer SUCCESS | red (a FAILURE is never dropped) | head (green) |
+| 15 | Same proved producer, no required list: `x` CANCELLED (suite 1, run 1) then `x` NEUTRAL (suite 2, run 2) | red | b3f696a7 (green: the NEUTRAL run replaced the CANCELLED one) |
+| 16 | `pr-lint` CANCELLED then newer `pr-lint` SKIPPED, plus `verify` SUCCESS; required `[verify]` | red | b3f696a7 (green) |
+| 17 | `pr-lint` CANCELLED then newer `pr-lint` SKIPPED; required `[pr-lint]` | red | b3f696a7 (pending) |
+| 18 | Static-name matrix: `t` SUCCESS (suite 1, run 1), `t` CANCELLED (suite 1, run 2), `t` SUCCESS (suite 2, run 3), no list | green (the newer-suite SUCCESS executed, so it replaces) | guard (green on b3f696a7 too) |
+| 19 | Chain: C1 CANCELLED (suite 11, run 1, start 11:45), C2 CANCELLED (suite 12, run 2, no start or the zero time), N2 SUCCESS (suite 13, run 3, start 11:29) | red (C2 never replaces C1; N2's earlier start vetoes) | b3f696a7 (green: C1 dropped via C2, C2 via N2) |
 
 Plus: `suiteProducers` tests (pull_request with one entry yields the key with number and base;
 push, workflow_dispatch, repository_dispatch, empty, two-entry and malformed `pull_requests` yield
@@ -291,14 +310,14 @@ FAILURE/CANCELLED red, newer IN_PROGRESS pending; Vercel still in `ignored`.
 ## Task Breakdown
 
 - [ ] **Red tests** - add matrix rows 9-14, the `suiteProducers` event/length cases, the `mapRestCheckRun` `suiteId` case and the `listChecks` stderr case to `ci-verdict.test.ts` and `github.test.ts`; rewrite the head tests whose expectation inverts or whose input lacks the new fields: the FAILURE, SUCCESS, SKIPPED case expecting green (now red, row 14 semantics), the `mapRestStatus` `producer: 'status'` assertion (now origin/main output), the `startedAt` tie test (now row 11, same suite, red), and row 1's inline cases (add `suiteId` and a single `pull_requests` entry). — **AC**: running `bun test scripts/lib/merge-gate/ci-verdict.test.ts` and `bun test scripts/lib/forge-adapter/github.test.ts` on head 53025ccb shows each new row failing with the wrong verdict named in the matrix (quote the failing assertion per row in the PR body).
-- [ ] **Fixture** - re-record `fixtures/ci-verdict/superseded-run.json` and `superseded-run-runs.json` to the #1360 shape with one constructed `pull_requests` entry. — **AC**: `bun run scripts/ci-verdict.ts --checks fixtures/ci-verdict/superseded-run.json --runs fixtures/ci-verdict/superseded-run-runs.json` exits 0 after the fix and exits 1 without `--runs`; `description` names the constructed field.
+- [ ] **Fixture** - re-record `fixtures/ci-verdict/superseded-run.json` and `superseded-run-runs.json` to the #1360 shape with one constructed `pull_requests` entry. — **AC**: `bun run scripts/ci-verdict.ts --checks fixtures/ci-verdict/superseded-run.json --runs fixtures/ci-verdict/superseded-run-runs.json --required pr-lint --required 'Protocol Conformance'` exits 0 after the fix and exits 1 without `--runs` (without a `--required`/`--config` list it exits 3: the recorded Release Notes Gate is SKIPPED); `description` names the constructed field.
 - [ ] **Identity** - `suiteProducers` pull_request-only single-PR key, `suiteId` on `ForgeCheck`, `mapRestCheckRun`, `mapRestStatus` reverted. — **AC**: `git diff origin/main...HEAD -- scripts/lib/forge-adapter/github-rest.ts` shows no change inside `mapRestStatus`; the `suiteProducers` and mapper tests pass.
-- [ ] **Selection** - `withoutSupersededCancelled` replaces `latestPerName`, `tiersNewestFirst`, `isNonExecuting`. — **AC**: every matrix row 1-14 passes; `grep -c "latestPerName\|tiersNewestFirst\|isNonExecuting" scripts/lib/merge-gate/ci-verdict.ts` returns 0 (scope: that file only, no exemptions).
+- [ ] **Selection** - `withoutSupersededCancelled` replaces `latestPerName`, `tiersNewestFirst`, `isNonExecuting`. — **AC**: every matrix row 1-19 passes; `grep -c "latestPerName\|tiersNewestFirst\|isNonExecuting" scripts/lib/merge-gate/ci-verdict.ts` returns 0 (scope: that file only, no exemptions).
 - [ ] **Join diagnostics** - stderr line in the `listChecks` catch, fallback unchanged. — **AC**: the degrade test asserts the stderr line text and that the returned checks carry no `producer`.
 - [ ] **Comments** - one canonical rationale on `withoutSupersededCancelled` (F-00758). — **AC**: `grep -n "does not identify\|never superseded" scripts/lib/forge-adapter/github-rest.ts scripts/lib/forge-adapter/types.ts` returns nothing (scope: those two files only, no exemptions); no `#\d+` in any added source comment line.
 - [ ] **Poll path doc** - `src/references/merge-gate.md` names `--runs <runs file>` (F-00755). — **AC**: `grep -c -- "--checks <file> --runs <runs file>" src/references/merge-gate.md` returns 1 (flag and argument on one line) and `wc -l < src/references/merge-gate.md` prints 605 or 606; `bun run build` regenerates the mirrors.
 - [ ] **PR hygiene** - retitle PR #1385 to `fix(merge-gate): let a newer run of the same PR workflow replace a CANCELLED run in ciVerdict` and update the body to the rule, the narrowing list (design decision 6) and "#1383 and #1386 untouched". — **AC**: `gh pr view 1385 --json title` returns that title; the body still contains `Closes #1381`.
-- [ ] **Scope and mirror** - **AC**: `git diff --name-only origin/main...HEAD` lists only Touch-Paths, generated mirrors and carry outputs; each `plugins/blackhole-claude/` script copy is byte-identical to its source (`cmp`); typecheck passes locally; CI green on the pushed head.
+- [ ] **Scope and mirror** - **AC**: `git diff --name-only origin/main...HEAD` lists only Touch-Paths, generated mirrors and carry outputs; each `plugins/blackhole-claude/` script copy is byte-identical to its source (`cmp`); each changed `.ts` transpiles with `bun build <file> --no-bundle --outdir <tmp dir>` (the repo has no tsc or tsconfig, so no typecheck runs locally); CI green on the pushed head.
 
 ## Quality Gate Results
 
@@ -318,13 +337,13 @@ Computed by `bun run scripts/plan-quality-gate.ts --plan-file <this plan> --repo
 ## Review directive
 
 The next review of PR #1385 is a **FULL review in security mode, not a recheck**: re-audit every
-file of the amended diff against matrix rows 1-14, the threat model above and F-00746..F-00758,
+file of the amended diff against matrix rows 1-19, the threat model above and F-00746..F-00758,
 with an independent security verification leg (V-SEC-07) that tries each sibling shape in the
 "what distinguishes" table against the code.
 
 ## Sprint Contract
 
 Done when every matrix row is a passing test that was wrong on its stated baseline (rows 9-14 shown
-wrong on 53025ccb), scoped test files and typecheck pass locally, CI is green on the pushed head
+wrong on 53025ccb, rows 15-17 and 19 on b3f696a7), scoped test files pass and changed sources transpile locally, CI is green on the pushed head
 (`ci-first-verification.md`), F-00753..F-00758 are addressed, the PR is retitled, and the PR body
 links `Closes #1381` and names #1383 and #1386 as untouched.

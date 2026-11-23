@@ -177,6 +177,34 @@ describe('ciVerdict drops only a CANCELLED run a newer run of the same PR workfl
     expect(verdictOf(failedThenPassed, [workflowRun(11, 5), workflowRun(12, 5)])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
   });
 
+  test('matrix row 15: a newer NEUTRAL run of the same proved producer does not replace a CANCELLED run', () => {
+    const x = (conclusion: ForgeCheck['conclusion'], runId: number, suiteId: number): ForgeCheck =>
+      ({ name: 'x', status: 'COMPLETED', conclusion, producer: PRODUCER, runId, suiteId });
+    expect(ciVerdict([x('CANCELLED', 1, 1), x('NEUTRAL', 2, 2)])).toMatchObject({ verdict: 'red', failing: ['x'] });
+  });
+
+  test('matrix row 16: a newer SKIPPED run leaves a CANCELLED run red beside a passing required check', () => {
+    const verify: ForgeCheck = { name: 'verify', status: 'COMPLETED', conclusion: 'SUCCESS' };
+    expect(ciVerdict([older('CANCELLED'), newer('SKIPPED'), verify], { requiredChecks: ['verify'] })).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+  });
+
+  test('matrix row 17: a newer SKIPPED run of a required check leaves its CANCELLED run red, not pending', () => {
+    expect(ciVerdict([older('CANCELLED'), newer('SKIPPED')], { requiredChecks: ['pr-lint'] })).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+  });
+
+  test('matrix row 18: in a static-name matrix a newer-suite SUCCESS still replaces the CANCELLED sibling', () => {
+    const t = (conclusion: ForgeCheck['conclusion'], runId: number, suiteId: number): ForgeCheck =>
+      ({ name: 't', status: 'COMPLETED', conclusion, producer: PRODUCER, runId, suiteId });
+    expect(ciVerdict([t('SUCCESS', 1, 1), t('CANCELLED', 2, 1), t('SUCCESS', 3, 2)])).toEqual({ verdict: 'green', failing: [], pending: [], ignored: [] });
+  });
+
+  test('matrix row 19: a CANCELLED run never replaces another, so the start veto cannot be bypassed through a chain', () => {
+    const c1 = run('CANCELLED', { startedAt: T2, runId: 1, suiteId: 11 });
+    const n2 = run('SUCCESS', { startedAt: T1, runId: 3, suiteId: 13 });
+    expect(ciVerdict([c1, run('CANCELLED', { runId: 2, suiteId: 12 }), n2])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(ciVerdict([c1, run('CANCELLED', { startedAt: '0001-01-01T00:00:00Z', runId: 2, suiteId: 12 }), n2])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+  });
+
   test('withoutSupersededCancelled keeps every entry but the replaced CANCELLED, in input order', () => {
     const extra = { name: 'verify', status: 'COMPLETED', conclusion: 'FAILURE', producer: PRODUCER, startedAt: T1, runId: 3, suiteId: 11 } as const;
     expect(withoutSupersededCancelled([older('CANCELLED'), extra, newer('SUCCESS')])).toEqual([extra, newer('SUCCESS')]);
@@ -200,7 +228,7 @@ describe('ciVerdict drops only a CANCELLED run a newer run of the same PR workfl
     const queuedZeroStart = run(null, { status: 'QUEUED', startedAt: '0001-01-01T00:00:00Z', runId: 2, suiteId: 12 });
     expect(ciVerdict([older('CANCELLED'), queuedZeroStart])).toMatchObject({ verdict: 'pending', pending: ['pr-lint'], failing: [] });
     expect(ciVerdict([older('SUCCESS'), newer('CANCELLED')])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
-    expect(ciVerdict([older('CANCELLED'), newer('CANCELLED')])).toMatchObject({ verdict: 'red', failing: ['pr-lint'] });
+    expect(ciVerdict([older('CANCELLED'), newer('CANCELLED')])).toMatchObject({ verdict: 'red', failing: ['pr-lint', 'pr-lint'] });
   });
 
   test('an older SUCCESS never masks a newer FAILURE, CANCELLED or unfinished run', () => {

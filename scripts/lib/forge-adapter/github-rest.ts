@@ -35,6 +35,11 @@ export type RestPrRow = {
 
 export type RestPrFile = { filename: string; previous_filename?: string };
 
+/**
+ * One `check_runs[]` row of `GET repos/{repo}/commits/{sha}/check-runs` (or the same row from an MCP
+ * tool). `id` and `check_suite.id` are server-assigned; `started_at` is null or the zero time while
+ * the run is queued.
+ */
 export type RestCheckRun = {
   id?: number;
   name: string;
@@ -118,6 +123,11 @@ export const mapRestPr = (row: RestPrRow): ForgePr => ({
   mergeable: row.mergeable,
 });
 
+/**
+ * Maps a REST check run to a `ForgeCheck`: status and conclusion upper-cased, `runId`, `suiteId` and
+ * `startedAt` copied when present. `suites` is the `suiteProducers` map; `producer` is set only when
+ * the run's suite is in it, so without it the run is judged on its own.
+ */
 export const mapRestCheckRun = (row: RestCheckRun, suites?: Map<number, string>): ForgeCheck => {
   const suite = row.check_suite?.id;
   const producer = typeof suite === 'number' ? suites?.get(suite) : undefined;

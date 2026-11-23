@@ -22,6 +22,8 @@ export function isVercelPreviewCheck(name: string): boolean {
 }
 
 const PASSING = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
+/** Completed conclusions that cannot replace a CANCELLED run (`withoutSupersededCancelled`). */
+const NOT_EXECUTED = new Set(['NEUTRAL', 'SKIPPED', 'CANCELLED']);
 
 /**
  * Accepts a REST or MCP check-runs payload, a combined-status payload, both merged, or ForgeCheck[].
@@ -66,17 +68,24 @@ const startMs = (c: ForgeCheck): number => {
  * different inputs, siblings in one suite). So a run only replaces another when both carry the same
  * `producer` (proved by `suiteProducers` for one pull_request run of one PR) and `name`, and the newer
  * one has a strictly higher `suiteId` and `runId`, both server-assigned. A start time never orders
- * runs; it can only veto, when both starts are usable and the newer-by-id run started first. Only a
- * CANCELLED run is ever dropped, so no ordering can hide a FAILURE, and the replacing run is judged
- * as is. Anything unproved keeps every run: red or pending, never a false green.
+ * runs; it can only veto, when both starts are usable and the newer-by-id run started first. The
+ * replacing run must be still running or have ended SUCCESS or failing: a newer NEUTRAL, SKIPPED or
+ * CANCELLED run leaves the CANCELLED run in place, so the verdict stays red (fail closed). Since a
+ * CANCELLED run never replaces, a replacing run is never itself dropped and no chain of runs can
+ * route around the start veto.
+ * Only a CANCELLED run is ever dropped, so no ordering can hide a FAILURE, and the replacing run is
+ * judged as is. Anything unproved keeps every run: red or pending, never a false green.
  */
 export const withoutSupersededCancelled = (checks: ForgeCheck[]): ForgeCheck[] => {
+  const canReplace = (n: ForgeCheck): boolean =>
+    n.status !== 'COMPLETED' || !NOT_EXECUTED.has(n.conclusion ?? '');
   const replaced = (c: ForgeCheck): boolean => {
     if (c.status !== 'COMPLETED' || c.conclusion !== 'CANCELLED') return false;
     const { producer, suiteId, runId } = c;
     if (typeof producer !== 'string' || typeof suiteId !== 'number' || typeof runId !== 'number') return false;
     return checks.some((n) =>
       n !== c &&
+      canReplace(n) &&
       n.producer === producer &&
       n.name === c.name &&
       typeof n.suiteId === 'number' && n.suiteId > suiteId &&
