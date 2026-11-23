@@ -146,10 +146,10 @@ Use harness-native identifiers; prefer latest version in each family.
 
 **Agent effort.** No Claude Code spawn surface sets effort, so the agent frontmatter `effort` is
 the value a subagent actually runs at; an agent without one runs at the host default. Every agent
-therefore declares it: `low` for `coordinator`, `router` and `orchestrator`, `medium` for
-`planner`, `implementer` and `investigator`, `high` for `reviewer` and `hunter` (policy:
-`scripts/checks/agents.check.ts` `AGENT_FRONTMATTER_POLICY`; an agent with no row fails
-`V-AGENT-01`). The tier-folded effort above stays the logical value recorded in the spawn footer.
+therefore declares one, set in `scripts/checks/agents.check.ts` `AGENT_FRONTMATTER_POLICY` (an
+agent with no row there fails `V-AGENT-01`). On Claude Code the frontmatter value wins: the
+tier-folded effort above is advisory and only recorded in the spawn footer, even where it differs
+(for example a `track: design` planner), and `worker_effort_policy: inherit` has no effect.
 
 **Context window.** A plugin agent type's context window comes from its frontmatter `model`,
 never from the spawn. A Workflow `agent({ model })` override (or an `Agent` `model` parameter)

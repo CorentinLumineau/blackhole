@@ -59,7 +59,7 @@ export const validateAgentEffortFrontmatter = (
   fm: Record<string, string>,
   expected: AgentFrontmatterPolicy | undefined,
 ): string[] => {
-  if (!expected) return [`${file}: no AGENT_FRONTMATTER_POLICY row`, ...(fm.effort ? [] : [`${file}: missing effort`])];
+  if (!expected) return [`${file}: no row in agents.check.ts AGENT_FRONTMATTER_POLICY`, ...(fm.effort ? [] : [`${file}: missing effort`])];
   const errors = [...checkPolicyKey(file, 'effort', fm, expected), ...checkPolicyKey(file, 'model', fm, expected)];
   if (fm.autoCompactWindow) errors.push(`${file}: autoCompactWindow must be absent, got ${fm.autoCompactWindow}`);
   return errors;
@@ -113,8 +113,7 @@ const checkAgentToolPolicy = (): CheckResult => {
 };
 
 // V-AGENT-01: Agent frontmatter
-const checkAgentFrontmatter = (): CheckResult => {
-  const agentsDir = path.join(srcDir, 'agents');
+export const checkAgentFrontmatter = (agentsDir = path.join(srcDir, 'agents')): CheckResult => {
   const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md'));
   const missing: string[] = [];
 
