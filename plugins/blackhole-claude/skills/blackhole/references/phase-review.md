@@ -68,7 +68,7 @@ See [review-core.md](review-core.md) for severity mapping, LGTM definition, and 
 |----------|--------|
 | BLOCK | Must fix before merge; re-run review after fix |
 | WARN | Fix in PR, or document in PR body + ledger defer with filed issue |
-| NOTE | Optional fix; ledger row optional |
+| INFO | Optional fix; ledger row optional |
 
 Never merge on a direct commit to main (`V-BRANCH-02`) or if force-pushing occurred (`V-BRANCH-01`).
 Never merge on errored review — empty findings from failed agent is not LGTM.

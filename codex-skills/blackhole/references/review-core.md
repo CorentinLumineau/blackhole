@@ -20,7 +20,7 @@ The orchestrator calls `scripts/review-aggregate.ts` after reviewer completion �
 |----------|--------|----------------|
 | `BLOCK` | Must fix before merge; re-run review after fix | No |
 | `WARN` | Fix in PR, or defer (file issue + `deferred_to_issue`) | Yes, if addressed or deferred |
-| `NOTE` | Optional fix; ledger row optional | Yes |
+| `INFO` | Optional fix; ledger row optional | Yes |
 
 Never merge on a direct commit to main (`V-BRANCH-02`) or if force-pushing occurred (`V-BRANCH-01`).
 Never merge on errored review — empty findings from a failed agent is not LGTM.
@@ -80,7 +80,7 @@ required by this issue — cross-reference only.
 
 Before ledger append, deduplicate on `(vcode, file, line, issue_ref)` per `findings-ledger.md`.
 
-`review-aggregate.ts` performs exact-key dedup with severity merge (`BLOCK` > `WARN` > `NOTE`/`INFO`); orchestrator performs the same key check at write time.
+`review-aggregate.ts` performs exact-key dedup with severity merge (`BLOCK` > `WARN` > `INFO`); orchestrator performs the same key check at write time.
 
 **Recheck exclusion (issue #485)**: a same-key collision is **not** merged when the prior
 finding's ledger `id` appears in the reviewer's `recheck[]` with `verdict: fixed` — that prior
@@ -121,7 +121,7 @@ Rules 1, 3, 4, 5 and 6 are enforced by `aggregateReview` in `scripts/review-aggr
 4. **Exploitability gate (`V-SEC-06`)**: cross-reference only — see
    `blackhole-vcodes.md`'s existing row. Every security finding must carry a concrete
    attack scenario (who/what/result); findings without one are downgraded to
-   `NOTE`/INFO-equivalent, never `BLOCK`.
+   `INFO`, never `BLOCK`.
 5. **Adversarial re-verification (`V-SEC-07`)**: the primary spawn's prompt still
    instructs a self-adversarial first pass per finding before inclusion (attempt to
    disprove the exploit path; default to reject — omit or downgrade — if not
@@ -155,7 +155,7 @@ LLM aggregation hop.
    default) are the security instance of this same mechanism; they are verified in the same
    single spawn as every other BLOCK, never in a second one. No `BLOCK` in the primary
    output → no verification spawn and no `--verification-file`.
-2. **Scope**: every `BLOCK` finding whose `origin` is not `pre-existing`. `WARN`/`NOTE`
+2. **Scope**: every `BLOCK` finding whose `origin` is not `pre-existing`. `WARN`/`INFO`
    findings are never sent for verification.
 3. **Id-stamping (orchestrator step, before spawn)**: every BLOCK is assigned a `finding_id`; the primary's `findings[]` do not yet
    carry a ledger `id` at review time (ledger `F-NNNNN` ids are assigned at append, after

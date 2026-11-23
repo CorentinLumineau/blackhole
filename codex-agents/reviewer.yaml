@@ -260,7 +260,7 @@ instructions: |
       *   No finding cites a `file:line` outside the PR diff's changed lines (`V-SCOPE-01`).
       *   No finding proposes refactoring a pre-existing pattern in code the diff does not touch
           (`V-SCOPE-01`).
-  *   **Disposition rule**: a finding failing any check above is downgraded to `NOTE` if it still
+  *   **Disposition rule**: a finding failing any check above is downgraded to `INFO` if it still
       names an in-diff `file:line`; remove it entirely if it does not.
   *   **Rerouting rule (`V-PARETO-02`)**: when a finding is removed *solely* because it cites
       out-of-diff code — not because the underlying observation is invalid — re-tag it as a
