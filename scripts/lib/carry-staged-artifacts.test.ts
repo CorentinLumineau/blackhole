@@ -379,6 +379,32 @@ describe('append_row dedup — ARCHITECTURE.md bullet-list discriminator (citati
     const appended = appendConstraintBulletIfAbsent('# A\r\n', bullet);
     expect(appended.content).toBe(`# A\r\n\r\n## Active Constraints\r\n${bullet}\r\n`);
   });
+
+  test('mixed endings: an LF heading line inside a CRLF file -> the bullet reuses the heading line ending', () => {
+    const mixed = '# A\r\n\r\n## Active Constraints\n- Old (ADR-001)\r\n';
+    const result = appendConstraintBulletIfAbsent(mixed, bullet);
+    expect(result.content).toBe(`# A\r\n\r\n## Active Constraints\n${bullet}\n- Old (ADR-001)\r\n`);
+    expect(appendConstraintBulletIfAbsent(result.content, bullet).appended).toBe(false);
+  });
+
+  test('an unterminated fence is closed before the section is appended -> carry twice is idempotent', () => {
+    const open = '# A\n```\ncode\n';
+    const first = appendConstraintBulletIfAbsent(open, bullet);
+    expect(first.content).toBe(`${open}\`\`\`\n\n## Active Constraints\n${bullet}\n`);
+    const second = appendConstraintBulletIfAbsent(first.content, bullet);
+    expect(second.appended).toBe(false);
+    expect(second.content).toBe(first.content);
+
+    const noNewline = appendConstraintBulletIfAbsent('# A\n~~~~\ncode', bullet);
+    expect(noNewline.content).toBe(`# A\n~~~~\ncode\n~~~~\n\n## Active Constraints\n${bullet}\n`);
+  });
+
+  test('CommonMark h2 variants count as the heading (indent, closing #s)', () => {
+    const indented = '# A\n   ## Active Constraints ##\n- Old (ADR-001)\n';
+    const result = appendConstraintBulletIfAbsent(indented, bullet);
+    expect(result.content).toBe(`# A\n   ## Active Constraints ##\n${bullet}\n- Old (ADR-001)\n`);
+    expect(activeConstraintsBullets(result.content)).toEqual([bullet, '- Old (ADR-001)']);
+  });
 });
 
 describe('carryManifest — end-to-end against the blackhole-state.md § Staging worked example (reused fixture, not invented)', () => {
