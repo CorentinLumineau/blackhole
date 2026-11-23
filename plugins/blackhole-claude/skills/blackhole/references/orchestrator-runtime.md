@@ -116,8 +116,8 @@ below, classify each worker into exactly one of:
    the session's `tasks/<task id>.output` (`/tmp/claude-<uid>/<project slug>/$CLAUDE_CODE_SESSION_ID/tasks/`,
    `<task id>` being the id the spawn returned; a symlink to that session's
    `subagents/agent-<task id>.jsonl`), and the return is the worker's last `SubagentHandback`
-   tool input rather than assistant text — pass that file to the same command, which reads the
-   handback input when no assistant text carries the JSON. If `$CLAUDE_CODE_SESSION_ID` is unset —
+   tool input rather than assistant text — pass that file to the same command, which prefers a
+   handback input in the last assistant turn over that turn's text. If `$CLAUDE_CODE_SESSION_ID` is unset —
    skip this rung entirely (a harness-capability check, not a fault) and go straight to rung 2.
 2. On rung 1's absence or failure (unset env var, empty glob, or the script's non-zero exit for
    any reason — missing file, neither assistant text nor a `SubagentHandback` call, extraction

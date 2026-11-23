@@ -80,18 +80,25 @@ function findBalancedObjectStrings(text: string): ObjectSpan[] {
 /**
  * Tries balanced `{...}` spans latest-ending first, and among spans ending at the same
  * place the outermost first, so a top-level return wins over the objects nested inside
- * it and over an unparsable brace in trailing prose.
+ * it and over an unparsable brace in trailing prose. Every worker return carries a
+ * `status` key, so the first parsable span that has one wins over a trailing `{}` or
+ * example object in prose; with none, the first parsable span is returned.
  */
 function extractBareObject(text: string): unknown | null {
-  const candidates = findBalancedObjectStrings(text);
-  for (const candidate of candidates) {
+  let firstParsed: unknown | null = null;
+  for (const candidate of findBalancedObjectStrings(text)) {
+    let parsed: unknown;
     try {
-      return parseJsonObject(candidate.body, 'bare object');
+      parsed = parseJsonObject(candidate.body, 'bare object');
     } catch {
-      // try the next candidate
+      continue;
     }
+    if (isObject(parsed) && 'status' in parsed) {
+      return parsed;
+    }
+    firstParsed ??= parsed;
   }
-  return null;
+  return firstParsed;
 }
 
 export function extractWorkerJson(text: string): unknown {

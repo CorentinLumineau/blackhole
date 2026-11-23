@@ -1,5 +1,5 @@
 import { extractWorkerJson } from './extract.ts';
-import { readTranscriptTail } from './transcript.ts';
+import { hasAssistantTurn, readTranscriptTail, transcriptReturnCandidates } from './transcript.ts';
 import type { HookInput, Role } from './types.ts';
 import { validateHunter } from './validators/hunter.ts';
 import { validateImplementer } from './validators/implementer.ts';
@@ -39,7 +39,17 @@ export function extractFromHookInput(input: HookInput): unknown {
   if (input.agent_transcript_path) {
     const tail = readTranscriptTail(input.agent_transcript_path);
     if (tail) {
-      return extractWorkerJson(tail);
+      // A JSONL transcript holds the return as an escaped string inside an envelope line, so
+      // read it out of the last assistant turn; scanning the raw tail would return an envelope.
+      // Only a tail with no assistant envelope at all is scanned as plain text.
+      const candidates = hasAssistantTurn(tail) ? transcriptReturnCandidates(tail) : [tail];
+      for (const text of candidates) {
+        try {
+          return extractWorkerJson(text);
+        } catch {
+          // try the next candidate
+        }
+      }
     }
   }
 
