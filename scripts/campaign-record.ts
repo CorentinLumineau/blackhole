@@ -134,7 +134,7 @@ function readDecideBaseline(campaignDir: string, config: Record<string, unknown>
   const file = path.join(campaignDir, DECIDE_BASELINE_FILE);
   if (!fs.existsSync(file)) return legacySleepBaseline(config);
   try {
-    return parseDecideBaseline(JSON.parse(fs.readFileSync(file, 'utf-8')));
+    return parseDecideBaseline(readJsonFile(file, file));
   } catch {
     return null;
   }

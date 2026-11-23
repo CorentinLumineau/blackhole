@@ -47,7 +47,9 @@ export function findHintDrift(doc: string): string[] {
   ];
 }
 
-export const runChecks = (): CheckResult[] => {
+export const checkSkillModesHint = (): CheckResult => {
   const drift = findHintDrift(read(SKILL));
-  return [drift.length ? { id: 'V-HINT-01', ok: false, detail: drift.join('; ') } : { id: 'V-HINT-01', ok: true }];
+  return drift.length ? { id: 'V-HINT-01', ok: false, detail: drift.join('; ') } : { id: 'V-HINT-01', ok: true };
 };
+
+export const runChecks = (): CheckResult[] => [checkSkillModesHint()];
