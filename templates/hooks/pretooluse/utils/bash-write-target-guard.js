@@ -40,7 +40,7 @@
 
 const path = require('path');
 const { computeMaskedSpans, computeHeredocBodyMask } = require('./bash-context');
-const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC } = require('./shell-lexer');
+const { skipQuotedSpan, isRedirectAmpersand, decodeAnsiC, shellWordEnd } = require('./shell-lexer');
 const {
   readAssignedWorktreeRoot,
   mainCloneRoot,
@@ -449,24 +449,26 @@ const maskRedirectNoise = (visible, allowed) => {
   return chars.join('');
 };
 
-const REDIRECT_RE = /(&>>|&>|>>|>&|>\||>)\s*(\S+)?/g;
+const REDIRECT_RE = /(&>>|&>|>>|>&|>\||>)\s*/g;
 
 /** After a `>&` operator, a digit or `-` is fd duplication/close (`>&2`, `>&-`); anything else is a
  * file path (`>&file` is `&>file`). */
 const isFdDupOperand = (token) => /^(\d+|-)(?:[;&|)]|$)/.test(token);
 
-/** Every redirect-shaped write target in the full visible command — `>`, `>>`, `&>`, `&>>`
- * followed by a real file argument. Never a bare fd-duplication target (`&1`, `&2`) or a dangling
- * operator with nothing after it. Scanned across the whole command, not per clause: a redirect
- * operator's target binds to the nearest preceding command regardless of clause boundaries, so no
- * clause-scoping is needed here (unlike the command-argument scans below, which must not read
- * past their own clause). */
+/** Every redirect-shaped write target in `visible` — `>`, `>>`, `&>`, `&>>`, `>|`, `>&` followed by
+ * a real file argument. Never a bare fd-duplication target (`&1`, `&2`) or a dangling operator
+ * with nothing after it. The caller passes one clause at a time (`collectWriteSignals`). Each
+ * target is one shell word (`shellWordEnd`), so a glued `;`, `&`, `|`, `<` or `>` ends it, and a
+ * following `>` is scanned as its own redirect. */
 const findRedirectTargets = (visible) => {
   const targets = [];
   REDIRECT_RE.lastIndex = 0;
   let match = REDIRECT_RE.exec(visible);
   while (match !== null) {
-    const raw = match[2];
+    // The target is one shell word: it ends at an unquoted `;`, `&` or `|`, never inside quotes.
+    const end = shellWordEnd(visible, REDIRECT_RE.lastIndex);
+    const raw = visible.slice(REDIRECT_RE.lastIndex, end) || undefined;
+    REDIRECT_RE.lastIndex = end;
     const isFdDup = match[1] === '>&' ? raw && isFdDupOperand(raw) : raw && isFdDuplicationTarget(raw);
     if (raw && !isFdDup) {
       targets.push(targetWord(raw));

@@ -236,10 +236,17 @@ describe('a destination spelled with adjacent quote segments', () => {
   test('a target whose quote never closes is warned on, never allowed or guessed at', async () => {
     await withState((state, wt, run) => {
       const warn = { tier: 'warn', pattern_id: 'bash-write-target-unresolvable' };
-      expect(run(`echo y > '${wt}/my file'`)).toMatchObject(warn);
       expect(run(`echo y > '${state}/config.json`)).toMatchObject(warn);
       expect(run(`echo y > "${wt}/my file`)).toMatchObject(warn);
       expect(run(`bash -c 'echo hi > ${wt}/x'`)).toMatchObject(warn);
+    });
+  });
+
+  test('a closed quoted redirect target holding a space is one word, read like a cp or tee operand', async () => {
+    await withState((_state, wt, run) => {
+      expect(run(`echo y > '${wt}/my file'`)).toBeNull();
+      expect(run(`cp x '${wt}/my file'`)).toBeNull();
+      expect(run(`echo y | tee '${wt}/my file'`)).toBeNull();
     });
   });
 

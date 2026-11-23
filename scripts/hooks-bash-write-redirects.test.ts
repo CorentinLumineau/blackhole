@@ -347,3 +347,101 @@ describe('bash-write-target-guard.js — #1183 review: interpreter calls, words 
     });
   }
 });
+
+// Issue #1338: a redirect target glued to a clause operator (`> f;`, `> f&&`, `>f|cat`) ends where
+// bash ends it, at the unquoted operator; a quoted target (`> "f; "`) keeps its `;` and space.
+describe('bash-write-target-guard.js — redirect target glued to a clause operator (#1338)', () => {
+  const GLUED_FORMS: Array<[string, (t: string) => string]> = [
+    ['`> <target>;`', (t) => `echo hi > ${t};`],
+    ['`> <target>; echo x`', (t) => `echo hi > ${t}; echo x`],
+    ['`> <target>&& echo x`', (t) => `echo hi > ${t}&& echo x`],
+    ['`><target>|cat`', (t) => `echo hi >${t}|cat`],
+    ['`> <target>&`', (t) => `echo hi > ${t}&`],
+  ];
+
+  for (const [label, build] of GLUED_FORMS) {
+    test(`#1338: ${label} inside the assigned worktree has no verdict`, async () => {
+      await withLinkedWorktree('blackhole-hook-1338-', async (_mainRepo, worktree) => {
+        expect(guard().evaluateBashWriteTargets(build(path.join(worktree, 'mt.txt')), worktree)).toBeNull();
+      });
+    });
+
+    test(`#1338: ${label} outside the assigned worktree is denied on the path without the operator`, async () => {
+      await withLinkedWorktree('blackhole-hook-1338-', async (mainRepo, worktree) => {
+        const verdict = guard().evaluateBashWriteTargets(build(path.join(mainRepo, 'mt.txt')), worktree);
+        expect(verdict).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+        expect(verdict.reason).toContain(`${path.join(mainRepo, 'mt.txt')}. Remedy`);
+      });
+    });
+  }
+
+  test('#1338: a quoted `> "<target>; "` inside the assigned worktree is the literal name, no verdict', async () => {
+    await withLinkedWorktree('blackhole-hook-1338-', async (_mainRepo, worktree) => {
+      expect(guard().evaluateBashWriteTargets(`echo hi > "${path.join(worktree, 'mt.txt; ')}"`, worktree)).toBeNull();
+    });
+  });
+
+  test('#1338: a quoted `> "<target>; "` outside the assigned worktree is denied on the literal name', async () => {
+    await withLinkedWorktree('blackhole-hook-1338-', async (mainRepo, worktree) => {
+      const verdict = guard().evaluateBashWriteTargets(`echo hi > "${path.join(mainRepo, 'mt.txt; ')}"`, worktree);
+      expect(verdict).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+      expect(verdict.reason).toContain(`${path.join(mainRepo, 'mt.txt; ')}.`);
+    });
+  });
+});
+
+// A redirect word also ends at an unquoted `<` or `>`: the next operator opens its own redirect, so
+// a target glued after a worktree target (`>W/a>M/x`) is still judged.
+describe('bash-write-target-guard.js — redirect target glued to a second redirect (#1338, #1452)', () => {
+  const FORMS: Array<[string, (w: string, m: string) => string]> = [
+    ['`>W/a>M/x`', (w, m) => `echo hi >${w}/a>${m}/x`],
+    ['`> W/a>>M/x`', (w, m) => `echo hi > ${w}/a>>${m}/x`],
+    ['`> W/a\\ b>M/x`', (w, m) => `echo hi > ${w}/a\\ b>${m}/x`],
+    ['`> "W/a"\\ b>M/x`', (w, m) => `echo hi > "${w}/a"\\ b>${m}/x`],
+    ["`> 'W/a b'>M/x`", (w, m) => `echo hi > '${w}/a b'>${m}/x`],
+    ['`> "W/a b">M/x`', (w, m) => `echo hi > "${w}/a b">${m}/x`],
+    ['`> "W/a"\'b c\'>M/x`', (w, m) => `echo hi > "${w}/a"'b c'>${m}/x`],
+    ['`>W/a&>M/x`', (w, m) => `echo hi >${w}/a&>${m}/x`],
+    ['`2>&1>M/x` (fd duplication glued to a file redirect)', (_w, m) => `echo hi 2>&1>${m}/x`],
+  ];
+
+  for (const [label, build] of FORMS) {
+    test(`#1452: ${label} is denied on the second target outside the worktree`, async () => {
+      await withLinkedWorktree('blackhole-hook-1452-', async (mainRepo, worktree) => {
+        const verdict = guard().evaluateBashWriteTargets(build(worktree, mainRepo), worktree);
+        expect(verdict).toMatchObject({ tier: 'block', pattern_id: 'bash-outside-assigned-worktree' });
+        expect(verdict.reason).toContain(`${path.join(mainRepo, 'x')}. Remedy`);
+      });
+    });
+  }
+
+  test('#1452: `>W/a<M/x` writes only W/a, so it has no verdict', async () => {
+    await withLinkedWorktree('blackhole-hook-1452-', async (mainRepo, worktree) => {
+      expect(guard().evaluateBashWriteTargets(`echo hi >${worktree}/a<${mainRepo}/x`, worktree)).toBeNull();
+    });
+  });
+});
+
+describe('shell-lexer.js — shellWordEnd (#1338)', () => {
+  const lexer = () => require(path.join(PRETOOLUSE_HOOKS_DIR, 'utils', 'shell-lexer.js'));
+  const word = (text: string) => text.slice(0, lexer().shellWordEnd(text, 0));
+
+  for (const [text, expected] of [
+    ['f;', 'f'],
+    ['f&&g', 'f'],
+    ['f|cat', 'f'],
+    ['f g', 'f'],
+    ['"f; "x;', '"f; "x'],
+    ["'a|b'&", "'a|b'"],
+    ['f\\;g;', 'f\\;g'],
+    ['a>b', 'a'],
+    ['a<b', 'a'],
+    ['"a>b">c', '"a>b"'],
+    ['a\\>b>c', 'a\\>b'],
+    [';', ''],
+  ] as const) {
+    test(`#1338: the word in \`${text}\` is \`${expected}\``, () => {
+      expect(word(text)).toBe(expected);
+    });
+  }
+});
