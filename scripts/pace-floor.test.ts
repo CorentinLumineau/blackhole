@@ -94,6 +94,21 @@ describe('pace-floor CLI', () => {
   });
 });
 
+describe('pace-floor CLI, shared cache across accounts', () => {
+  test('a cache another account overwrote is unreadable, never a floor from its reading', () => {
+    withTempDir('pace-floor-cli', (dir) => {
+      fs.writeFileSync(path.join(dir, 'usage-history.jsonl'), JSON.stringify({ observed_at: NOW - 300, used_percentage: 34, resets_at: RESET }) + '\n');
+      const cache = path.join(dir, 'rate-limits.json');
+      fs.writeFileSync(cache, JSON.stringify({ rate_limits: { seven_day: { used_percentage: 26, resets_at: RESET + 68400 } } }));
+      fs.utimesSync(cache, NOW - 5, NOW - 5);
+      const r = run(dir, ['--cache', cache, '--host', 'claude']);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatchObject({ status: 'unreadable', floor_pct: null, used_pct: null });
+      expect(r.out.reason).toContain('another account');
+    });
+  });
+});
+
 describe('pace-floor CLI, desktop get_usage payload', () => {
   test('--usage accepts the raw payload and prints a floor line', () => {
     withTempDir('pace-floor-cli', (dir) => {

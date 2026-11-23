@@ -10,6 +10,7 @@ import { retiredSleepModeWarning } from './lib/campaign-status/pending-decisions
 import { pluginVersionWarning, readPluginVersion, readPluginVersionCheck } from './lib/plugin-drift.ts';
 import { projectIdentity } from './project-identity.ts';
 import { keepAwakeStatus, systemHoldDeps } from './lib/campaign-status/keep-awake.ts';
+import { USAGE_HISTORY_FILE } from './lib/usage-history.ts';
 import {
   AGENT_TOOLS,
   detectRunContext,
@@ -64,9 +65,9 @@ const usageBudgetEnabled = ({ config, unreadable }: Config): { enabled: boolean;
 };
 
 /** The host's usage source and the windows its current reading shows (usage-source.ts). */
-const detectUsage = (host: Parameters<typeof usageSourceFor>[0], config: Record<string, unknown>): Omit<UsageReading, 'limits'> => {
+const detectUsage = (host: Parameters<typeof usageSourceFor>[0], config: Record<string, unknown>, historyPath: string): Omit<UsageReading, 'limits'> => {
   try {
-    const { source, windows, reason } = usageSourceFor(host, config).read(Math.floor(Date.now() / 1000));
+    const { source, windows, reason } = usageSourceFor(host, config, { historyPath }).read(Math.floor(Date.now() / 1000));
     return { source, windows, reason };
   } catch (err) {
     return { source: 'none', windows: [], reason: `usage source config invalid: ${(err as Error).message}` };
@@ -101,7 +102,7 @@ const main = () => {
   const config = readConfig(path.join(campaignDir, 'config.json'));
   const budget = usageBudgetEnabled(config);
   const route = routeRunContext(context, { usageBudgetEnabled: budget.enabled });
-  const usage = detectUsage(context.host.value, config.config);
+  const usage = detectUsage(context.host.value, config.config, path.join(campaignDir, USAGE_HISTORY_FILE));
   const pluginCheck = readPluginVersionCheck({
     running: readPluginVersion(path.join(import.meta.dir, '..')),
     homeDir: os.homedir(),

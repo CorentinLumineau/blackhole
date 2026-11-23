@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { readJsonl, writeJsonlCapped } from './fs.ts';
 import { MAX_LINES } from './pace-log.ts';
 import type { WeeklyReading } from './usage-budget.ts';
@@ -8,6 +9,9 @@ import type { WeeklyReading } from './usage-budget.ts';
 // (usage-budget.ts `weeklyPace`). Local only, never on the state branch.
 
 export const USAGE_HISTORY_FILE = 'usage-history.jsonl';
+
+/** The usage history beside `configPath`, where usage-probe.ts writes it and every cache reader looks for it. */
+export const usageHistoryPathFor = (configPath: string): string => path.join(path.dirname(configPath), USAGE_HISTORY_FILE);
 
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isReading = (v: unknown): v is WeeklyReading =>

@@ -110,7 +110,7 @@ has no `documentation/` target.
    2. Render a durable plan body at `.blackhole/staged/<issue>/plan-{slug}.md` (filename from
       `scripts/lib/concern-slug.ts`'s `planTargetPath`) via Bash heredoc + atomic `mv` (full-destination-path `.tmp` naming — `blackhole-state.md` § Staging, issue #911). Strip
       campaign-only frontmatter keys from the working plan copy: `plan_base_commit`, `track`,
-      `task_type`, `threat_screen_passed`, `ui_gate`. Add lifecycle frontmatter per
+      `task_type`, `threat_screen_passed`, `ui_gate`, `package_root`. Add lifecycle frontmatter per
       `doc-governance.md` § Lifecycle Frontmatter (`type: plan`, `summary`, `status: current`,
       `review_trigger`, `created`, `last_updated`) — `summary` is the plan's own one-line
       description (`objective`, JSON-quoted), authored directly on the plan body's frontmatter
@@ -147,7 +147,9 @@ has no `documentation/` target.
     do not hand-enumerate the compiled output trees (`.cursor/`, `.claude/`, `skills/`,
     `codex-*`, `.agents/build/`, `plugins/`). `scripts/lib/build/targets.ts` is the SSOT for
     which trees a given source compiles to, so a hand enumeration drifts the moment a target is
-    added, renamed, or split (`V-INT-02`/`V-DRY-01`: one enumeration, one place).
+    added, renamed, or split (`V-INT-02`/`V-DRY-01`: one enumeration, one place). When the
+    Touch-Paths are relative to a monorepo sub-package, set the plan's `package_root` frontmatter
+    to that package (`plan-template.md`) and write any repo-root file with a leading `/`.
 *   **Documentation Impact (when `docs_governance.enabled`)**: Companion/consumer docs the
     Touch-Paths affect, or `None — <justification>`. Omit this bullet's output section entirely
     when `docs_governance.enabled` is absent or `false` (see Plan Output File Template below).
@@ -199,6 +201,7 @@ has no `documentation/` target.
 *   **Objective**: Issue summary and constraints.
 *   **Touch-Paths**: Specific files allowed to change — same generated-dist-tree citation
     convention as Quick Track's Touch-Paths bullet above, not a new heuristic shape (`V-INT-03`).
+    Set `package_root` when the Touch-Paths are package-relative, as on Quick Track.
 *   **Documentation Impact (when `docs_governance.enabled`)**: Companion/consumer docs the
     Touch-Paths affect (runbook: `artifact-contract.md` + `ops-touch-paths.ts` when ops paths apply), or `None — <justification>`. Omit this bullet's output section entirely
     when `docs_governance.enabled` is absent or `false` (see Plan Output File Template below).
