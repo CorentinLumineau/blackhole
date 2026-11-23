@@ -33,6 +33,8 @@ import { SEVERITIES } from '../lib/worker-json/constants.ts';
 //   - platform targets: only an array literal containing the quoted `'cursor'` anchor; a
 //     partial array without that anchor, or a target restated via `if`/`switch` comparison
 //     chains, is invisible
+//   - review severities: only `| Severity | Action |` tables; a cell with trailing text
+//     (`| NOTE (optional) |`) and prose forms ("downgraded to `NOTE`") are invisible
 // Each gap is a documented engineering decision, not a silent trap — a future vocabulary or
 // extractor revision should widen these deliberately, with the same false-positive calibration
 // discipline used to narrow them in the first place (see PR #339 for the calibration evidence).
@@ -122,22 +124,24 @@ export const extractPlatformTargets = (content: string): string[] => {
 };
 
 // --- review finding severities (V-VOCAB-01) ---
-// The first cell of each row of a `| Severity | ...` table in agent prose. Reviewers follow these
-// tables, and `validate-worker-json.ts --role reviewer` rejects any value outside SEVERITIES.
+// The first cell of each row of a `| Severity | Action | ...` table in agent prose (indented or
+// not, header and cells bare or backticked, any case). Reviewers follow these tables, and
+// `validate-worker-json.ts --role reviewer` rejects any value outside SEVERITIES. The `Action`
+// second column keeps other severity scales (hunter LOW/MEDIUM/HIGH) out of this check.
 export const extractReviewSeverities = (content: string): string[] => {
   const out: string[] = [];
   let inTable = false;
   for (const line of content.split('\n')) {
-    if (/^\|\s*Severity\s*\|/.test(line)) {
+    if (/^\s*\|\s*`?Severity`?\s*\|\s*`?Action`?\s*\|/i.test(line)) {
       inTable = true;
       continue;
     }
-    if (!line.startsWith('|')) {
+    if (!/^\s*\|/.test(line)) {
       inTable = false;
       continue;
     }
-    const m = inTable ? /^\|\s*`?([A-Z]+)`?\s*\|/.exec(line) : null;
-    if (m) out.push(m[1]);
+    const m = inTable ? /^\s*\|\s*`?([A-Za-z]+)`?\s*\|/.exec(line) : null;
+    if (m) out.push(m[1].toUpperCase());
   }
   return out;
 };

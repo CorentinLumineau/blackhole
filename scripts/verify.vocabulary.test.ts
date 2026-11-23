@@ -9,6 +9,7 @@ import {
   extractPlatformTargets,
 } from './checks/vocabulary.check.ts';
 import { QUEUE_NOTES, QUEUE_STATUSES } from './lib/build/facts.ts';
+import { SEVERITIES } from './lib/worker-json/constants.ts';
 
 // ADR-007 T5/R2' style: pure extraction/comparison functions tested against synthetic string
 // fixtures — no real filesystem reads (real-repo scanning is exercised by `bun run verify` /
@@ -132,12 +133,23 @@ describe('VOCAB_REGISTRY', () => {
 });
 
 describe('extractReviewSeverities', () => {
-  test('reads the first cell of each row of a Severity table, backticked or bare', () => {
+  test('reads the first cell of each row of a Severity/Action table, backticked or bare', () => {
     const doc = '| Severity | Action |\n|---|---|\n| BLOCK | fix |\n| `NOTE` | optional |\n\nprose\n| Other | x |\n| WARN | y |';
     expect(extractReviewSeverities(doc)).toEqual(['BLOCK', 'NOTE']);
   });
 
-  test('flags NOTE against the reviewer schema vocabulary', () => {
-    expect(findVocabMismatch(['BLOCK', 'NOTE'], ['BLOCK', 'WARN', 'INFO'])).toBe('undeclared value(s) [NOTE]');
+  test('reads an indented table with a backticked header and mixed-case cells', () => {
+    const doc = '  | `Severity` | `Action` |\n  |---|---|\n  | Note | optional |';
+    expect(extractReviewSeverities(doc)).toEqual(['NOTE']);
+  });
+
+  test('skips a severity table whose second column is not Action', () => {
+    expect(extractReviewSeverities('| Severity | Meaning |\n|---|---|\n| MEDIUM | x |')).toEqual([]);
+  });
+
+  test('the registry checks review severities against the reviewer schema vocabulary', () => {
+    const spec = VOCAB_REGISTRY.find((v) => v.name === 'review severities')!;
+    expect(spec.declared).toBe(SEVERITIES);
+    expect(findVocabMismatch(['BLOCK', 'NOTE'], spec.declared)).toBe('undeclared value(s) [NOTE]');
   });
 });
