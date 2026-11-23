@@ -81,6 +81,31 @@ name alone.
 | `route` | object \| absent | Optional (ADR-004); absent == today's behavior (`plan_mode: full`). See `### \`route\` object` subsection |
 | `rulings_checked_at` | number \| absent | Optional (issue #422); absent ≡ `0`. The rulings ledger (`documentation/reference/product-principles.md`) frontmatter `rulings_revision` this issue was last validated against — monotonic, never decremented, written only by the orchestrator (single-writer, `blackhole-state.md`) in the same atomic write as the phase transition it accompanies. Set from a planner return whose `ruling_conflicts: []` (`worker-schemas.md` § Rulings ledger (read-input)). Staleness predicate `stale(I)`, the single definition every consumption site cites (`orchestrator.md` § Ruling Re-Check Gate, `orchestrator-runtime.md` § Triage): `stale(I) ≡ ledgerPresent AND docs_governance.enabled AND docs_governance.companion_files AND (I.rulings_checked_at ?? 0) < ledger.rulings_revision` — absent ledger or either config flag `false` means the predicate never fires, byte-identical to today's behavior |
 
+### Legacy values
+
+A queue written before the enums above were enforced can still carry a legacy `status` or
+`phase`, and the state-write guard then refuses every write to it, `forge-sync.ts` included.
+`scripts/queue-migrate.ts` rewrites them in one pass. Run from the repo that holds the campaign:
+
+```bash
+bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/queue-migrate.ts            # dry run: prints each change, writes nothing
+bun run "${BLACKHOLE_PLUGIN_ROOT:-.}"/scripts/queue-migrate.ts --apply    # snapshots queue.json to archive/, installs through the guard
+```
+
+`--campaign-dir <dir>` points it at a campaign directory other than `./.blackhole`. Run `--apply`
+only while no orchestrator runs: the orchestrator is the single writer of `queue.json`
+(`blackhole-state.md` § Single-writer invariant).
+
+| Field | Legacy value | Becomes |
+|-------|--------------|---------|
+| `status` | `done` | `merged` when the entry records a numeric `pr` (even if that PR was closed unmerged; the legacy entry does not say), else `closed`; the phase becomes `done` |
+| `status` | `in-review` | `in-flight`, with the phase set to `review` |
+| `status` | `excluded` | `blocked`, with `notes` starting `awaiting-user-clarification: legacy status excluded…` (any earlier note kept after `; `). It is an owner gate, so the promotion rule below never moves it to `ready` until the owner answers |
+| `phase` | `loop` | `done` |
+
+Every entry is kept. Any other undocumented value stops the migration, naming the entry, to be
+fixed by hand.
+
 ### `route` object (optional — ADR-004)
 
 <!-- shape: exhaustive -->
@@ -273,7 +298,7 @@ unless `--parent-files '{"<parent>": [...]}'` is passed; the config `default_tou
 from the `config.json` beside the queue, or `--default-touch-paths '[...]'` overrides it, so an
 unplanned issue never stacks on the default globs either). An issue whose plan (`plans/issue-<N>.md`, else `plans/<N>.md`, beside the
 queue, or `--plans-dir <abs>`) declares `## Touch-Paths` is matched on those paths, with `## Scope Amendments` `widen` lines added and
-`narrow` lines removed, instead of its queue `touch_paths` (`withPlanTouchPaths`), so a planned issue never stacks on the default globs.
+`narrow` lines removed and each path, amendments included, joined to the plan's `package_root` frontmatter when it names a sub-package (paths already under it are kept, and a leading `/` marks a repo-root path such as a workflow or doc that is never joined; amendments apply after the join), instead of its queue `touch_paths` (`withPlanTouchPaths`), so a planned issue never stacks on the default globs.
 The queue entry's own `touch_paths` is set from the same plan when the planner result is applied
 (`phase-plan.md`, `--plan-touch-paths <N>`), so Step 3's overlap deferral reads the plan's paths too. The same script re-checks a PR that already exists
 (`phase-loop.md` Step 0.4). When it names a

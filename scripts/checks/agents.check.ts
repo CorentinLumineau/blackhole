@@ -21,26 +21,26 @@ export const AGENT_TOOL_POLICY_DENY_MATRIX: Record<string, string[] | null> = {
   'hunter.md': ['Write', 'Edit', 'Delete'],
 };
 
-/** Claude Code agent frontmatter: `effort: low` for triage/routing, `high` for
- * review/verification. `model` pins the context window of a plugin agent type — a spawn-time
- * `agent({ model })` override changes the model but not that window (model-routing.md § Context
- * window), so agents that load a consumer repo's base context plus whole files or diffs run on
- * `opus[1m]`. Absent keys must stay absent — a stray `effort:` on planner/implementer would pin
- * session effort against `worker_effort_policy` spawn routing. `autoCompactWindow` is banned on
+/** Claude Code agent frontmatter: every agent has a row and declares `effort` (no spawn surface
+ * sets it, so an unset agent runs at the host default — model-routing.md § Agent effort). `model`
+ * pins the context window of a plugin agent type — a spawn-time `agent({ model })` override changes
+ * the model but not that window (model-routing.md § Context window), so agents that load a consumer
+ * repo's base context plus whole files or diffs run on `opus[1m]`; an absent `model` must stay
+ * absent. `autoCompactWindow` is banned on
  * every agent: a 100k cap sits below the base context some consumer repos inject, and the agent
  * then thrashes on auto-compaction until it dies. */
 export const AGENT_1M_MODEL = 'opus[1m]';
-export type AgentFrontmatterPolicy = { effort?: 'low' | 'high'; model?: string };
+export type AgentFrontmatterPolicy = { effort: 'low' | 'medium' | 'high'; model?: string };
 
 export const AGENT_FRONTMATTER_POLICY: Record<string, AgentFrontmatterPolicy> = {
   'coordinator.md': { effort: 'low' },
   'router.md': { effort: 'low' },
   'orchestrator.md': { effort: 'low', model: AGENT_1M_MODEL },
-  'planner.md': { model: AGENT_1M_MODEL },
-  'implementer.md': { model: AGENT_1M_MODEL },
+  'planner.md': { effort: 'medium', model: AGENT_1M_MODEL },
+  'implementer.md': { effort: 'medium', model: AGENT_1M_MODEL },
   'reviewer.md': { effort: 'high', model: AGENT_1M_MODEL },
   'hunter.md': { effort: 'high', model: AGENT_1M_MODEL },
-  'investigator.md': { model: AGENT_1M_MODEL },
+  'investigator.md': { effort: 'medium', model: AGENT_1M_MODEL },
 };
 
 const checkPolicyKey = (
@@ -57,8 +57,9 @@ const checkPolicyKey = (
 export const validateAgentEffortFrontmatter = (
   file: string,
   fm: Record<string, string>,
-  expected: AgentFrontmatterPolicy,
+  expected: AgentFrontmatterPolicy | undefined,
 ): string[] => {
+  if (!expected) return [`${file}: no row in agents.check.ts AGENT_FRONTMATTER_POLICY`, ...(fm.effort ? [] : [`${file}: missing effort`])];
   const errors = [...checkPolicyKey(file, 'effort', fm, expected), ...checkPolicyKey(file, 'model', fm, expected)];
   if (fm.autoCompactWindow) errors.push(`${file}: autoCompactWindow must be absent, got ${fm.autoCompactWindow}`);
   return errors;
@@ -112,8 +113,7 @@ const checkAgentToolPolicy = (): CheckResult => {
 };
 
 // V-AGENT-01: Agent frontmatter
-const checkAgentFrontmatter = (): CheckResult => {
-  const agentsDir = path.join(srcDir, 'agents');
+export const checkAgentFrontmatter = (agentsDir = path.join(srcDir, 'agents')): CheckResult => {
   const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.md'));
   const missing: string[] = [];
 
@@ -127,10 +127,9 @@ const checkAgentFrontmatter = (): CheckResult => {
     for (const key of ['name:', 'description:']) {
       if (!frontmatter.includes(key)) missing.push(`${file}: missing ${key}`);
     }
-    const policy = AGENT_FRONTMATTER_POLICY[file];
-    if (policy) {
-      missing.push(...validateAgentEffortFrontmatter(file, parseFrontmatterFields(frontmatter), policy));
-    }
+    missing.push(
+      ...validateAgentEffortFrontmatter(file, parseFrontmatterFields(frontmatter), AGENT_FRONTMATTER_POLICY[file]),
+    );
   }
 
   if (missing.length) return { id: 'V-AGENT-01', ok: false, detail: missing.join('; ') };

@@ -124,7 +124,7 @@ afterEach(() => {
 });
 
 describe('findManifestVersionMismatches', () => {
-  test('returns [] when package.json and all 5 manifests share the same version', () => {
+  test('returns [] when package.json and every registered manifest shares the same version', () => {
     const manifests: Record<string, unknown> = {};
     for (const { path } of MANIFEST_PATHS) {
       manifests[path] = { version: '0.8.0' };
@@ -134,7 +134,7 @@ describe('findManifestVersionMismatches', () => {
     expect(findManifestVersionMismatches('0.8.0', manifests)).toEqual([]);
   });
 
-  test('regression shape: one stale manifest (.codex-plugin/plugin.json) is detected while the other 4 match', () => {
+  test('regression shape: one stale manifest (.codex-plugin/plugin.json) is detected while the others match', () => {
     const manifests: Record<string, unknown> = {};
     for (const { path } of MANIFEST_PATHS) {
       manifests[path] = { version: '0.4.2' };
@@ -171,6 +171,21 @@ describe('MANIFEST_PATHS registry coverage', () => {
       'plugins/blackhole-claude/.claude-plugin/plugin.json',
       'plugins/blackhole/plugin.json',
     ]);
+  });
+
+  test('live docs never state a version-carrying manifest count other than the registry length', () => {
+    const sources = [
+      ...execSync('git ls-files src', { cwd: repoRoot, encoding: 'utf8' }).split('\n').filter((f) => f.endsWith('.md')),
+      'templates/hooks/pretooluse/README.md',
+    ];
+    const stale: string[] = [];
+    for (const rel of sources) {
+      const text = fs.readFileSync(path.join(repoRoot, rel), 'utf8');
+      for (const m of text.matchAll(/\b(\d+) version-carrying manifests\b/g)) {
+        if (Number(m[1]) !== MANIFEST_PATHS.length) stale.push(`${rel}: "${m[0]}"`);
+      }
+    }
+    expect(stale).toEqual([]);
   });
 
   test('every tracked versioned manifest is registered and every registered one matches package.json', () => {

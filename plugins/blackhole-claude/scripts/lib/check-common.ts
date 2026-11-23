@@ -371,6 +371,38 @@ const indexHeaderColumns = (indexContent: string): string[] => {
 // column-name detection is the only signal the carry step has for which one it is appending to.
 export const isAdrIndexHeader = (indexContent: string): boolean => indexHeaderColumns(indexContent)[0] === 'adr';
 
+export class IndexFragmentShapeError extends Error {
+  override name = 'IndexFragmentShapeError';
+}
+
+const BLACKHOLE_INDEX_COLUMNS = ['path', 'summary', 'type', 'status', 'review_trigger'];
+
+// Refuses a staged row fragment whose shape does not match the blackhole-schema table it is about
+// to be appended to (the target's own header, or blackhole's five columns when it has none).
+// parseIndexTableRows reads any row of five or more cells positionally, so a four-cell foreign
+// fragment (mercure `ADR | Title | Status | Date`) would otherwise come back with its cells in the
+// wrong columns and an empty review_trigger. A cell-count mismatch, or an `adr` type value sitting
+// outside the type column (a shifted row), throws before anything is written. Converting a foreign
+// fragment by column name is not attempted: it carries no summary/review_trigger to map from.
+export const assertIndexFragmentShape = (indexContent: string, fragment: string): void => {
+  const header = indexHeaderColumns(indexContent);
+  const columns = header.length > 0 ? header : BLACKHOLE_INDEX_COLUMNS;
+  const line = fragment.split('\n').find((l) => l.trim().startsWith('|'));
+  const cells = line ? splitRowCells(line) : [];
+  if (cells.length !== columns.length) {
+    throw new IndexFragmentShapeError(
+      `staged append_row fragment has ${cells.length} cells but the target table has ${columns.length} columns (${columns.join(' | ')}); refusing to append it misaligned: ${fragment}`,
+    );
+  }
+  const typeIdx = columns.indexOf('type');
+  const strayAdr = cells.findIndex((c, i) => i !== typeIdx && c.toLowerCase() === 'adr');
+  if (typeIdx !== -1 && strayAdr !== -1) {
+    throw new IndexFragmentShapeError(
+      `staged append_row fragment carries the \`adr\` type value in column ${strayAdr + 1} (${columns[strayAdr]}), not the type column; refusing to append a shifted row: ${fragment}`,
+    );
+  }
+};
+
 // Reads two columns of an INDEX table by header name rather than by position, so one reader works
 // on blackhole's `path | summary | type | status | review_trigger` and on the ADR-style
 // `ADR | Title | Status | Date [| Traceability]` header alike. Column names match lowercased; a

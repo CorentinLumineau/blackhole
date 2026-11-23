@@ -4,7 +4,7 @@ import { parseFlags, unknownFlagKeys } from './lib/argv-flags.ts';
 import { readJsonFile } from './lib/fs.ts';
 import { ccdRowsToWindows } from './lib/usage-normalize.ts';
 import { resolveRateLimitCachePath, type RateLimits } from './lib/rate-limit-cache.ts';
-import { appendUsageReading, USAGE_HISTORY_FILE } from './lib/usage-history.ts';
+import { appendUsageReading, usageHistoryPathFor } from './lib/usage-history.ts';
 
 // Usage: bun run scripts/usage-probe.ts (--from-events <file|-> | --from-ccd-usage <file|->) [--cache <path>] [--config <path>] [--now <epoch s>]
 // --from-ccd-usage takes the Claude desktop app's `get_usage` JSON: `plan.windows[]` rows
@@ -144,7 +144,7 @@ const main = (): void => {
     const detail = error instanceof Error ? error.message : String(error);
     return fail(`cannot write rate-limit cache at ${cachePath}: ${detail.replace(/\s+/g, ' ')}`, 3);
   }
-  const historyPath = path.join(path.dirname(configPath), USAGE_HISTORY_FILE);
+  const historyPath = usageHistoryPathFor(configPath);
   try {
     if (limits.seven_day) appendUsageReading(historyPath, { observed_at: observedAt, ...limits.seven_day });
   } catch (error) {

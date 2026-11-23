@@ -214,13 +214,32 @@ it resolves the conflict by running `bun run scripts/generate-doc-index.ts --wri
 (`merge-conflict-protocol.md` § Classification rule, item 1).
 
 **Row order (issue #743) — `documentation/decisions/INDEX.md` only**: that file (untouched by
-the generation mechanism above) still inserts rows in path-sorted order via the shared
-`appendIndexRowIfAbsent` primitive (`scripts/lib/check-common.ts`), which rebuilds the row block
-as `[...existingRows, newRow].sort((a, b) => a.path.localeCompare(b.path))` on every insert, so
+the generation mechanism above) still inserts rows in sorted order, through one of two
+primitives in `scripts/lib/check-common.ts` chosen by the target file's own header
+(`isAdrIndexHeader`, issue #1390):
+
+- **blackhole header** (`path | summary | type | status | review_trigger`):
+  `appendIndexRowIfAbsent` dedups on the row's `path` cell and rebuilds the row block in path
+  order.
+- **ADR-style header** (first column `ADR`, e.g. `ADR | Title | Status | Date`):
+  `appendAdrIndexRowIfAbsent` renders the staged fragment cell by cell from the header's own
+  column names, then dedups and sorts on the row's `ADR-\d+` token, so a bare id, a
+  link to the ADR file, and a bare filename for the same ADR count as one row.
+
+Both sort by byte-order comparison in the shared `insertRowSorted` tail (the same rule as
+`byPathByteOrder`), never `String.prototype.localeCompare`, whose locale collation can
+place a row differently on another machine. Every untouched row survives byte for byte, and
 concurrent carry/promotion PRs touching the same file land their new rows at different offsets
 instead of the same anchor line. Since ADR filenames are zero-padded to a fixed 3-digit width,
 path order and ADR-sequence order coincide for the decisions index — no separate ordering rule
 is needed for that file.
+
+**Foreign root index (issue #1388)**: the carry step regenerates the root
+`documentation/INDEX.md` only when it is absent or a blackhole-generated index (`isRegenerableRootIndex`,
+`scripts/lib/doc-index-generate.ts`). When the consumer's file has a foreign header, link-style
+path cells, prose, or a second table, the carry step leaves it byte-identical and reports a
+skipped entry whose reason names `V-INT-01` (WARN), rather than overwriting the consumer's own
+index (§ Repo Convention Precedence).
 
 Owning agent: **`implementer`** — no new agent is minted for this obligation; it reuses
 `implementer`'s existing ADR-021 D2 carry-step role (the mechanism that already writes

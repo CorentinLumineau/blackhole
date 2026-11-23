@@ -1,8 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { appendAdrIndexRowIfAbsent, appendIndexRowIfAbsent, isAdrIndexHeader, parseIndexTableRows, type RootIndexRow } from './check-common.ts';
+import { appendAdrIndexRowIfAbsent, appendIndexRowIfAbsent, assertIndexFragmentShape, isAdrIndexHeader, parseIndexTableRows, type RootIndexRow } from './check-common.ts';
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { readJsonFile } from './fs.ts';
+import { fencedLineMask, markdownHeadings, openFenceAtEnd, sectionEnd, type MarkdownHeading } from './markdown-headings.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
 import { ROOT_DOC_INDEX_PATH, isRegenerableRootIndex, renderRootIndexFile } from './doc-index-generate.ts';
 
@@ -173,14 +174,27 @@ export const citationSuffix = (bulletLine: string): string | null => {
   return match ? `(${match[1]})` : null;
 };
 
+const ACTIVE_CONSTRAINTS_HEADING = '## Active Constraints';
+
+/** The unfenced `## Active Constraints` h2 and the line its section ends on, or null when absent. */
+const activeConstraintsSection = (lines: string[]): { heading: MarkdownHeading; end: number } | null => {
+  const headings = markdownHeadings(lines);
+  const heading = headings.find((h) => h.level === 2 && h.text === 'Active Constraints');
+  return heading ? { heading, end: sectionEnd(headings, heading, lines.length) } : null;
+};
+
 /** `- ` bullet lines of ARCHITECTURE.md's `## Active Constraints` section, trimmed. */
 export const activeConstraintsBullets = (architectureMd: string): string[] => {
-  const section = architectureMd.split('## Active Constraints')[1] ?? '';
-  const body = section.split(/\n## /)[0] ?? '';
-  return body
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('- '));
+  const lines = architectureMd.split('\n');
+  const section = activeConstraintsSection(lines);
+  if (!section) return [];
+  const fenced = fencedLineMask(lines);
+  const bullets: string[] = [];
+  for (let i = section.heading.line + 1; i < section.end; i++) {
+    const trimmed = lines[i].trim();
+    if (!fenced[i] && trimmed.startsWith('- ')) bullets.push(trimmed);
+  }
+  return bullets;
 };
 
 export const appendConstraintBulletIfAbsent = (
@@ -191,15 +205,33 @@ export const appendConstraintBulletIfAbsent = (
   const alreadyCarried = activeConstraintsBullets(architectureMd).some((bullet) => citationSuffix(bullet) === suffix);
   if (alreadyCarried) return { content: architectureMd, appended: false };
 
-  const marker = '## Active Constraints';
-  const insertAt = architectureMd.indexOf(marker) + marker.length;
-  const content = `${architectureMd.slice(0, insertAt)}\n${stagedBullet}${architectureMd.slice(insertAt)}`;
+  const fileEol = architectureMd.includes('\r\n') ? '\r\n' : '\n';
+  const lines = architectureMd.split('\n');
+  const section = activeConstraintsSection(lines);
+  if (!section) {
+    // No section to insert into: append one at end of file, leaving every existing byte intact.
+    // A fence left open at end of file would swallow the new section (and every later carry would
+    // append another), so close it first.
+    const openFence = openFenceAtEnd(lines);
+    let prefix = architectureMd;
+    if (openFence) prefix += `${prefix.endsWith('\n') ? '' : fileEol}${openFence}${fileEol}`;
+    const separator = prefix === '' ? '' : prefix.endsWith('\n') ? fileEol : `${fileEol}${fileEol}`;
+    return { content: `${prefix}${separator}${ACTIVE_CONSTRAINTS_HEADING}${fileEol}${stagedBullet}${fileEol}`, appended: true };
+  }
+  // Insert right after the heading text, reusing the heading line's own line ending.
+  const headingLine = section.heading.line;
+  const headingRaw = lines[headingLine];
+  const headingStart = lines.slice(0, headingLine).reduce((offset, line) => offset + line.length + 1, 0);
+  const insertAt = headingStart + headingRaw.length - (headingRaw.endsWith('\r') ? 1 : 0);
+  const eol = headingRaw.endsWith('\r') ? '\r\n' : headingLine < lines.length - 1 ? '\n' : fileEol;
+  const content = `${architectureMd.slice(0, insertAt)}${eol}${stagedBullet}${architectureMd.slice(insertAt)}`;
   return { content, appended: true };
 };
 
 /**
- * `append_row` dedup, pipe-table discriminator (`documentation/decisions/INDEX.md`,
- * `documentation/INDEX.md`) — the row's `path` column value. Delegates to `check-common.ts`'s
+ * `append_row` dedup, pipe-table discriminator (`documentation/decisions/INDEX.md`; root
+ * `documentation/INDEX.md` append_row entries are skipped as retired before reaching here) — the
+ * row's `path` column value. Delegates to `check-common.ts`'s
  * `appendIndexRowIfAbsent` (V-INT-02); an index whose header is ADR-schema goes to
  * `appendAdrIndexRowIfAbsent` instead, which renders by that header's columns and needs `today`.
  */
@@ -213,6 +245,7 @@ export const appendPipeTableRowIfAbsent = (
       today: opts.today ?? new Date().toISOString().slice(0, 10),
     });
   }
+  assertIndexFragmentShape(existingContent, stagedFragment);
   const [row] = parseIndexTableRows(stagedFragment);
   if (!row) throw new Error(`staged append_row fragment did not parse as a table row: ${stagedFragment}`);
   return appendIndexRowIfAbsent(existingContent, row as RootIndexRow);

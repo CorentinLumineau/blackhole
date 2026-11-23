@@ -39,6 +39,11 @@ const countEntities = (parsed: unknown, entityKey: string): number | null => {
 // `QUEUE_PHASES`; the ledger's `findings` use their own status vocabulary and are not checked here.
 const QUEUE_ENTITY_KEY = 'issues';
 
+// The remedy for a queue written before the enums were enforced: legacy values (`done`,
+// `in-review`, `excluded`, phase `loop`) have a documented mapping in `scripts/queue-migrate.ts`.
+const QUEUE_MIGRATE_REMEDY =
+  'Legacy values are migrated by scripts/queue-migrate.ts in the blackhole plugin (dry run by default, --apply to write; queue-dag.md § Legacy values)';
+
 /** The first queue entry whose `status` or `phase` is present but undocumented, as a refusal reason. */
 const queueEnumError = (entries: unknown): string | null => {
   if (typeof entries !== 'object' || entries === null) return null;
@@ -51,7 +56,7 @@ const queueEnumError = (entries: unknown): string | null => {
     for (const [field, allowed] of fields) {
       const value = (entry as Record<string, unknown>)[field];
       if (value === undefined || (typeof value === 'string' && allowed.includes(value))) continue;
-      return `queue entry #${num} has ${field} ${JSON.stringify(value)} — valid values: ${allowed.join(', ')}`;
+      return `queue entry #${num} has ${field} ${JSON.stringify(value)} — valid values: ${allowed.join(', ')}. ${QUEUE_MIGRATE_REMEDY}`;
     }
   }
   return null;

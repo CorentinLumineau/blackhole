@@ -10,7 +10,7 @@ const USAGE = 'Usage: bun run scripts/ci-verdict.ts --checks <file> [--runs <fil
   '  --required: exact check name that must have run and succeeded (repeatable; overrides merge_ready.required_checks)\n' +
   '  --config: campaign config to read merge_ready.required_checks from (default .blackhole/config.json)\n' +
   '  --runs: the head\'s `GET repos/{repo}/actions/runs?head_sha=<sha>&per_page=100` JSON; it lets a newer pull_request run of the same workflow and PR replace an older CANCELLED run, unless that newer run ended NEUTRAL, SKIPPED or CANCELLED; without it every run is judged\n' +
-  '  <file>: REST or GitHub MCP check-runs JSON, a combined-status JSON, both merged, or a ForgeCheck[] array; a total_count above the rows listed (an unread page) is pending';
+  '  <file>: REST or GitHub MCP check-runs JSON, a combined-status JSON, both merged (carrying check_runs_total_count; a bare total_count there is pending), or a ForgeCheck[] array; a total_count above the rows listed (an unread page) is pending';
 
 // parseFlags keeps one value per key, so the repeatable --required is collected here. A --required
 // without a usable value (last token, followed by a flag, or empty) is a usage error, never a

@@ -86,6 +86,11 @@ describe('stack-parent.ts --plan-touch-paths (#1458)', () => {
     fs.writeFileSync(path.join(state, 'plans', 'issue-1376.md'), plan);
     expect(runPlan(state, '1376')).toEqual(['scripts/lib/foo.test.ts']);
   });
+  test('joins the plan package_root onto sub-package Touch-Paths (#1462)', () => {
+    const state = setup();
+    fs.writeFileSync(path.join(state, 'plans', 'issue-1376.md'), `---\npackage_root: apps/invest\n---\n${plan}`);
+    expect(runPlan(state, '1376')).toEqual(['apps/invest/scripts/lib/foo.test.ts']);
+  });
   test('prints null when there is no plan or it declares no Touch-Paths', () => {
     const state = setup();
     expect(runPlan(state, '1376')).toBeNull();

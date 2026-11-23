@@ -155,6 +155,17 @@ describe('readBudgetPanel', () => {
     expect(lines(panel)[0]).toBe('Usage: weekly 21% at Fri 15 Jan 03:45 UTC, 4h 15m old (stale); target line 22.5% now');
   });
 
+  it('a stale cache from another weekly window is not shown as this campaign\'s last reading', () => {
+    const cache = path.join(dir, 'rate-limits.json');
+    fs.writeFileSync(cache, JSON.stringify({ rate_limits: { seven_day: { used_percentage: 21, resets_at: NOW + WEEK / 2 } } }));
+    fs.utimesSync(cache, NOW - 15_300, NOW - 15_300);
+    const historyPath = path.join(dir, 'usage-history.jsonl');
+    appendUsageReading(historyPath, { observed_at: NOW - 600, used_percentage: 34, resets_at: NOW + WEEK / 2 + 19 * HOUR });
+    const panel = readBudgetPanel({ resource_policy: { pace: { cache_path: cache } } }, 'claude', NOW, historyPath);
+    expect(panel.probed).toBe(false);
+    expect(panel.stale).toBeNull();
+  });
+
   it('cursor: not probed, with the reason no usage source is readable there', () => {
     const cache = path.join(dir, 'rate-limits.json');
     fs.writeFileSync(cache, JSON.stringify({ rate_limits: { seven_day: { used_percentage: 21, resets_at: NOW + 50 * HOUR } } }));

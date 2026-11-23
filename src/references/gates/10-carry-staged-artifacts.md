@@ -39,9 +39,15 @@ this section states only what the script does not decide.
 *   **What the script dispatches** (ported verbatim from this section's pre-#715 prose, not
     restated here): `new_file` entries copy verbatim except an investigator analyze/investigate
     note, which gets the 9-row frontmatter rewrite (working-note schema → `doc-governance.md`
-    lifecycle schema); `append_row` entries dedup idempotently on two discriminator shapes — the
-    pipe-table row's `path` column value for `documentation/decisions/INDEX.md` /
-    `documentation/INDEX.md`, and, when `target_path === "ARCHITECTURE.md"` (bullet-list
+    lifecycle schema); `append_row` entries dedup idempotently on these discriminator shapes —
+    for the pipe-table target `documentation/decisions/INDEX.md`, the target's header picks the
+    key: a blackhole header (`path | summary | ...`) dedups and sorts on
+    the row's `path` column value (`appendIndexRowIfAbsent`), an ADR-style header (first column `ADR`)
+    renders the row by its own column names and dedups and sorts on the `ADR-\d+` token
+    (`appendAdrIndexRowIfAbsent`), both with a byte-order comparator, never `localeCompare`
+    (`doc-governance.md` § INDEX.md Maintenance) — an `append_row` entry targeting
+    `documentation/INDEX.md` is skipped as retired, since that index is regenerated (issue #832);
+    and, when `target_path === "ARCHITECTURE.md"` (bullet-list
     target, `## Active Constraints`), the citation suffix — the mandatory trailing
     `(ADR-{NNN})` or `(analyze: issue #N)` attribution `planner.md` appends to every constraint
     bullet, the same discriminator `planner.md`'s own near-duplicate check already uses (§

@@ -5,6 +5,7 @@ import { read } from '../checks/check-utils.ts';
 import { extractManifestExampleJson } from '../checks/staging-schema.check.ts';
 import { withTempDir } from './test-fixtures.ts';
 import {
+  activeConstraintsBullets,
   appendConstraintBulletIfAbsent,
   appendPipeTableRowIfAbsent,
   carryManifest,
@@ -15,7 +16,7 @@ import {
   type Manifest,
 } from './carry-staged-artifacts.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
-import { parseIndexTableRows } from './check-common.ts';
+import { IndexFragmentShapeError, parseIndexTableRows } from './check-common.ts';
 
 // Issue #715 (R-10) — mechanizes implementer.md § Carry Staged Artifacts' manifest shape guard,
 // target_kind dispatch, 9-row frontmatter rewrite, and append_row dedup for both discriminator
@@ -274,6 +275,58 @@ describe('append_row — ADR-schema decisions index (issue #1390)', () => {
   });
 });
 
+describe('append_row — fragment shape must match a blackhole header (issue #1412)', () => {
+  const bh = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n| ADR-001-one.md | One | adr | accepted | on protocol change |\n';
+
+  test('a 4-cell mercure-shaped fragment is refused with a named error, never appended misaligned', () => {
+    const foreign = '| [ADR-002](./ADR-002-two.md) | Two | Accepted | 2026-11-23 |';
+    expect(() => appendPipeTableRowIfAbsent(bh, foreign, { today: '2026-11-23' })).toThrow(IndexFragmentShapeError);
+    expect(() => appendPipeTableRowIfAbsent(bh, foreign)).toThrow(/4 cells.*5 columns/);
+  });
+
+  test('a fragment with more cells than the header is refused too', () => {
+    const wide = '| ADR-002-two.md | Two | adr | accepted | on protocol change | extra |';
+    expect(() => appendPipeTableRowIfAbsent(bh, wide)).toThrow(IndexFragmentShapeError);
+  });
+
+  test('a 5-cell fragment whose `adr` type value sits outside the type column is refused as shifted', () => {
+    const shifted = '| ADR-002-two.md | adr | Two | accepted | on protocol change |';
+    expect(() => appendPipeTableRowIfAbsent(bh, shifted)).toThrow(/type column/);
+  });
+
+  test('a headerless target still requires the 5-cell blackhole shape', () => {
+    expect(() => appendPipeTableRowIfAbsent('', '| ADR-002 | Two | Accepted | 2026-11-23 |')).toThrow(IndexFragmentShapeError);
+  });
+
+  test('carryManifest refuses the 4-cell fragment and leaves the index untouched', () => {
+    withTempDir('carry-misaligned-fragment', (repoRoot) => {
+      const indexAbs = path.join(repoRoot, 'documentation/decisions/INDEX.md');
+      fs.mkdirSync(path.dirname(indexAbs), { recursive: true });
+      fs.writeFileSync(indexAbs, bh);
+      const stagedRel = '.blackhole/staged/1412/decisions-index-row.md';
+      fs.mkdirSync(path.join(repoRoot, path.dirname(stagedRel)), { recursive: true });
+      fs.writeFileSync(path.join(repoRoot, stagedRel), '| ADR-002 | Two | Accepted | 2026-11-23 |\n');
+      const manifest = {
+        issue: 1412,
+        updated_at: '2026-11-23T00:00:00.000Z',
+        entries: [
+          {
+            route: 'design',
+            sub_mode: null,
+            produced_by: 'planner',
+            declared_at: '2026-11-23T00:00:00.000Z',
+            staged_path: stagedRel,
+            target_path: 'documentation/decisions/INDEX.md',
+            target_kind: 'append_row',
+          },
+        ],
+      } as Manifest;
+      expect(() => carryManifest(manifest, repoRoot)).toThrow(IndexFragmentShapeError);
+      expect(fs.readFileSync(indexAbs, 'utf-8')).toBe(bh);
+    });
+  });
+});
+
 describe('append_row dedup — ARCHITECTURE.md bullet-list discriminator (citation suffix, issue #557)', () => {
   const architectureFixture = '# ARCHITECTURE\n\n## Active Constraints\n';
   const bullet = '- Never write directly to queue.json from a worker (ADR-021)';
@@ -306,6 +359,103 @@ describe('append_row dedup — ARCHITECTURE.md bullet-list discriminator (citati
     expect(first.appended).toBe(true);
     const second = appendConstraintBulletIfAbsent(first.content, analyzeBullet);
     expect(second.appended).toBe(false);
+  });
+
+  test('heading absent -> existing bytes untouched, new section appended at end of file', () => {
+    const noHeading = '# ARCHITECTURE\n\nSome consumer prose that must stay intact.\n';
+    const result = appendConstraintBulletIfAbsent(noHeading, bullet);
+    expect(result.appended).toBe(true);
+    expect(result.content.startsWith(noHeading)).toBe(true);
+    expect(result.content).toBe(`${noHeading}\n## Active Constraints\n${bullet}\n`);
+    const second = appendConstraintBulletIfAbsent(result.content, bullet);
+    expect(second.appended).toBe(false);
+    expect(second.content).toBe(result.content);
+  });
+
+  test('heading absent, no trailing newline -> section still starts on its own line', () => {
+    const result = appendConstraintBulletIfAbsent('# ARCHITECTURE', bullet);
+    expect(result.content).toBe(`# ARCHITECTURE\n\n## Active Constraints\n${bullet}\n`);
+  });
+
+  test('empty (absent) file -> heading plus bullet', () => {
+    const result = appendConstraintBulletIfAbsent('', bullet);
+    expect(result.appended).toBe(true);
+    expect(result.content).toBe(`## Active Constraints\n${bullet}\n`);
+  });
+
+  test('an h3 "### Active Constraints" is not the heading -> h2 section appended, h3 untouched', () => {
+    const h3 = '# ARCHITECTURE\n\n### Active Constraints\n\nprose\n';
+    const result = appendConstraintBulletIfAbsent(h3, bullet);
+    expect(result.appended).toBe(true);
+    expect(result.content).toBe(`${h3}\n## Active Constraints\n${bullet}\n`);
+    expect(appendConstraintBulletIfAbsent(result.content, bullet).appended).toBe(false);
+  });
+
+  test('a heading inside a fenced code block is not the heading -> bullet never lands in the fence', () => {
+    const fenced = '# ARCHITECTURE\n\n```md\n## Active Constraints\n- Example (ADR-021)\n```\n';
+    expect(activeConstraintsBullets(fenced)).toEqual([]);
+    const result = appendConstraintBulletIfAbsent(fenced, bullet);
+    expect(result.appended).toBe(true);
+    expect(result.content).toBe(`${fenced}\n## Active Constraints\n${bullet}\n`);
+  });
+
+  test('a fenced heading before the real one -> bullet goes under the real heading', () => {
+    const md = '# A\n\n~~~\n## Active Constraints\n~~~\n\n## Active Constraints\n- Old (ADR-001)\n\n## Next\n';
+    const result = appendConstraintBulletIfAbsent(md, bullet);
+    expect(result.content).toBe(
+      `# A\n\n~~~\n## Active Constraints\n~~~\n\n## Active Constraints\n${bullet}\n- Old (ADR-001)\n\n## Next\n`,
+    );
+  });
+
+  test('an inline mention is not the heading -> no mid-line splice, re-carry idempotent', () => {
+    const inline = '# ARCHITECTURE\n\nSee `## Active Constraints` later.\n';
+    const result = appendConstraintBulletIfAbsent(inline, bullet);
+    expect(result.appended).toBe(true);
+    expect(result.content).toBe(`${inline}\n## Active Constraints\n${bullet}\n`);
+    const second = appendConstraintBulletIfAbsent(result.content, bullet);
+    expect(second.appended).toBe(false);
+    expect(second.content).toBe(result.content);
+  });
+
+  test('section body stops at the next h2 and keeps h3 subsections', () => {
+    const md = '## Active Constraints\n- A (ADR-001)\n### Sub\n- B (ADR-002)\n## Other\n- C (ADR-003)\n';
+    expect(activeConstraintsBullets(md)).toEqual(['- A (ADR-001)', '- B (ADR-002)']);
+  });
+
+  test('CRLF input keeps CRLF line endings (existing heading and appended section)', () => {
+    const withHeading = '# A\r\n\r\n## Active Constraints\r\n- Old (ADR-001)\r\n';
+    const inserted = appendConstraintBulletIfAbsent(withHeading, bullet);
+    expect(inserted.content).toBe(`# A\r\n\r\n## Active Constraints\r\n${bullet}\r\n- Old (ADR-001)\r\n`);
+    expect(appendConstraintBulletIfAbsent(inserted.content, bullet).appended).toBe(false);
+
+    const appended = appendConstraintBulletIfAbsent('# A\r\n', bullet);
+    expect(appended.content).toBe(`# A\r\n\r\n## Active Constraints\r\n${bullet}\r\n`);
+  });
+
+  test('mixed endings: an LF heading line inside a CRLF file -> the bullet reuses the heading line ending', () => {
+    const mixed = '# A\r\n\r\n## Active Constraints\n- Old (ADR-001)\r\n';
+    const result = appendConstraintBulletIfAbsent(mixed, bullet);
+    expect(result.content).toBe(`# A\r\n\r\n## Active Constraints\n${bullet}\n- Old (ADR-001)\r\n`);
+    expect(appendConstraintBulletIfAbsent(result.content, bullet).appended).toBe(false);
+  });
+
+  test('an unterminated fence is closed before the section is appended -> carry twice is idempotent', () => {
+    const open = '# A\n```\ncode\n';
+    const first = appendConstraintBulletIfAbsent(open, bullet);
+    expect(first.content).toBe(`${open}\`\`\`\n\n## Active Constraints\n${bullet}\n`);
+    const second = appendConstraintBulletIfAbsent(first.content, bullet);
+    expect(second.appended).toBe(false);
+    expect(second.content).toBe(first.content);
+
+    const noNewline = appendConstraintBulletIfAbsent('# A\n~~~~\ncode', bullet);
+    expect(noNewline.content).toBe(`# A\n~~~~\ncode\n~~~~\n\n## Active Constraints\n${bullet}\n`);
+  });
+
+  test('CommonMark h2 variants count as the heading (indent, closing #s)', () => {
+    const indented = '# A\n   ## Active Constraints ##\n- Old (ADR-001)\n';
+    const result = appendConstraintBulletIfAbsent(indented, bullet);
+    expect(result.content).toBe(`# A\n   ## Active Constraints ##\n${bullet}\n- Old (ADR-001)\n`);
+    expect(activeConstraintsBullets(result.content)).toEqual([bullet, '- Old (ADR-001)']);
   });
 });
 
