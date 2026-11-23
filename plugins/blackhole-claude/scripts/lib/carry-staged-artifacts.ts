@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { appendAdrIndexRowIfAbsent, appendIndexRowIfAbsent, isAdrIndexHeader, parseIndexTableRows, type RootIndexRow } from './check-common.ts';
+import { appendAdrIndexRowIfAbsent, appendIndexRowIfAbsent, assertIndexFragmentShape, isAdrIndexHeader, parseIndexTableRows, type RootIndexRow } from './check-common.ts';
 import { parseFrontmatterFields, parseMdFrontmatter } from './build/content.ts';
 import { readJsonFile } from './fs.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
@@ -213,6 +213,7 @@ export const appendPipeTableRowIfAbsent = (
       today: opts.today ?? new Date().toISOString().slice(0, 10),
     });
   }
+  assertIndexFragmentShape(existingContent, stagedFragment);
   const [row] = parseIndexTableRows(stagedFragment);
   if (!row) throw new Error(`staged append_row fragment did not parse as a table row: ${stagedFragment}`);
   return appendIndexRowIfAbsent(existingContent, row as RootIndexRow);

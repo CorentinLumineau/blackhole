@@ -15,7 +15,7 @@ import {
   type Manifest,
 } from './carry-staged-artifacts.ts';
 import { isCarryTargetAllowed } from './carry-target-allowlist.ts';
-import { parseIndexTableRows } from './check-common.ts';
+import { IndexFragmentShapeError, parseIndexTableRows } from './check-common.ts';
 
 // Issue #715 (R-10) — mechanizes implementer.md § Carry Staged Artifacts' manifest shape guard,
 // target_kind dispatch, 9-row frontmatter rewrite, and append_row dedup for both discriminator
@@ -271,6 +271,58 @@ describe('append_row — ADR-schema decisions index (issue #1390)', () => {
   test('blackhole header keeps the 5-column render when today is supplied', () => {
     const bh = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n';
     expect(appendPipeTableRowIfAbsent(bh, fragment, { today: '2026-11-23' }).content).toBe(`${bh}${fragment}\n`);
+  });
+});
+
+describe('append_row — fragment shape must match a blackhole header (issue #1412)', () => {
+  const bh = '| path | summary | type | status | review_trigger |\n|---|---|---|---|---|\n| ADR-001-one.md | One | adr | accepted | on protocol change |\n';
+
+  test('a 4-cell mercure-shaped fragment is refused with a named error, never appended misaligned', () => {
+    const foreign = '| [ADR-002](./ADR-002-two.md) | Two | Accepted | 2026-11-23 |';
+    expect(() => appendPipeTableRowIfAbsent(bh, foreign, { today: '2026-11-23' })).toThrow(IndexFragmentShapeError);
+    expect(() => appendPipeTableRowIfAbsent(bh, foreign)).toThrow(/4 cells.*5 columns/);
+  });
+
+  test('a fragment with more cells than the header is refused too', () => {
+    const wide = '| ADR-002-two.md | Two | adr | accepted | on protocol change | extra |';
+    expect(() => appendPipeTableRowIfAbsent(bh, wide)).toThrow(IndexFragmentShapeError);
+  });
+
+  test('a 5-cell fragment whose `adr` type value sits outside the type column is refused as shifted', () => {
+    const shifted = '| ADR-002-two.md | adr | Two | accepted | on protocol change |';
+    expect(() => appendPipeTableRowIfAbsent(bh, shifted)).toThrow(/type column/);
+  });
+
+  test('a headerless target still requires the 5-cell blackhole shape', () => {
+    expect(() => appendPipeTableRowIfAbsent('', '| ADR-002 | Two | Accepted | 2026-11-23 |')).toThrow(IndexFragmentShapeError);
+  });
+
+  test('carryManifest refuses the 4-cell fragment and leaves the index untouched', () => {
+    withTempDir('carry-misaligned-fragment', (repoRoot) => {
+      const indexAbs = path.join(repoRoot, 'documentation/decisions/INDEX.md');
+      fs.mkdirSync(path.dirname(indexAbs), { recursive: true });
+      fs.writeFileSync(indexAbs, bh);
+      const stagedRel = '.blackhole/staged/1412/decisions-index-row.md';
+      fs.mkdirSync(path.join(repoRoot, path.dirname(stagedRel)), { recursive: true });
+      fs.writeFileSync(path.join(repoRoot, stagedRel), '| ADR-002 | Two | Accepted | 2026-11-23 |\n');
+      const manifest = {
+        issue: 1412,
+        updated_at: '2026-11-23T00:00:00.000Z',
+        entries: [
+          {
+            route: 'design',
+            sub_mode: null,
+            produced_by: 'planner',
+            declared_at: '2026-11-23T00:00:00.000Z',
+            staged_path: stagedRel,
+            target_path: 'documentation/decisions/INDEX.md',
+            target_kind: 'append_row',
+          },
+        ],
+      } as Manifest;
+      expect(() => carryManifest(manifest, repoRoot)).toThrow(IndexFragmentShapeError);
+      expect(fs.readFileSync(indexAbs, 'utf-8')).toBe(bh);
+    });
   });
 });
 
